@@ -1,0 +1,38 @@
+# VerseCraft (文界工坊) - Cursor AI Developer Rules
+
+## 1. Project Identity & Scope
+- **Target**: Minimum Viable Product (MVP), Local Single-Player Game.
+- **Audience**: Chinese Market. ALL UI, narratives, mock data, and comments MUST be in Simplified Chinese.
+- **Theme**: Rule-Based Apartment (规则怪谈公寓). First-Person perspective. Apple Minimalist Light Theme ONLY.
+- **Tech Stack**: Next.js 15, React 19, Tailwind CSS v4, Zustand, pnpm.
+
+## 2. Static Routing Table (STRICT RESTRICTION)
+Use ONLY the following 7 STATIC routes. DO NOT add dynamic routes (e.g., [id]):
+1. `/` (Main Entry)
+2. `/intro` (Game Rules & Value)
+3. `/recharge` (Monetization)
+4. `/world/apartment` (Worldview)
+5. `/create` (Character Creation)
+6. `/play` (Core Game Zone - use Zustand `currentSaveSlot` for saves)
+7. `/settlement` (Endgame: Death/Clear detection, .md Export)
+
+## 3. Next.js 15 Architectural Redlines
+- **Async APIs**: Request-specific APIs are asynchronous. You MUST `await params`, `await searchParams`, `await cookies()`, and `await headers()`. Synchronous access will crash.
+- **Tailwind v4**: Use CSS-first config via `@theme` in `globals.css`. DO NOT create `tailwind.config.ts`.
+- **Server Actions vs Route Handlers**: Use Route Handlers (`app/api/chat/route.ts`) returning a `ReadableStream` via Server-Sent Events (SSE) for DeepSeek narrative streaming.
+
+## 4. Zustand State Management (CRITICAL)
+- Stores MUST be strictly client-side (`"use client"`).
+- **Hydration Rule**: To prevent React 19 SSR hydration mismatches when using `idb-keyval`, set `skipHydration: true` inside the persist configuration. 
+- Manually trigger `useStore.persist.rehydrate()` inside a `useEffect` hook on the client. Render a Skeleton Loader while hydration is pending. DO NOT use `useSyncExternalStore`.
+
+## 5. Volcengine DeepSeek-V3.2 Integration
+- **JSON Output**: When configuring `response_format: { "type": "json_object" }` or schema, explicitly hardcode "请严格以 JSON 格式输出" in the system message payload to prevent infinite blank tokens.
+- **Multi-turn History**: You MUST explicitly strip/remove `reasoning_content` from the message history before sending multi-turn requests (to avoid 400 Bad Request errors).
+- **Anti-Cheat Validation**: In `/play`, implement Two-Stage Deduction. Inject user's `current_inventory`, `stats`, and `npc_relationships` as context. DeepSeek MUST output `is_action_legal: boolean`. Reject impossible actions, deduct Sanity (理智), and narrate creatively.
+
+## 6. Continuous Integration Workflow
+- After every functional modification or feature completion, autonomously execute:
+  1. `git add .`
+  2. `git commit -m "feat/fix/chore: description"`
+  3. `git push origin main`
