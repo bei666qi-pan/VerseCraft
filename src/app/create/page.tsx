@@ -1,7 +1,362 @@
-export default function CreatePage() {
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { StatType } from "@/lib/registry/types";
+import { useGameStore, type EchoTalent } from "@/store/useGameStore";
+
+type GenderOption = "男" | "女" | "其他";
+
+const PERSONALITY_RE = /^[\u4e00-\u9fa5]{2,6}$/;
+
+const STAT_LABELS: Record<StatType, string> = {
+  sanity: "理智",
+  agility: "敏捷",
+  luck: "幸运",
+  charm: "魅力",
+  background: "出身",
+};
+
+const STAT_DESCRIPTIONS: Record<StatType, string> = {
+  sanity: "作为生命值与承压阈值，遭遇诡异与错误选择会快速降低。",
+  agility: "决定闪避、逃脱与追击中的成功率，也影响部分事件的反应窗口。",
+  luck: "提升收益事件与正面分支出现频率，并影响随机检定的上限倾向。",
+  charm: "影响 NPC 初始好感度与对话说服强度，也会改变某些交易成本。",
+  background:
+    "越高越可能以更高品阶物品开局（最高可到 A 级），也会影响规则理解度。",
+};
+
+const BASE_STAT = 3;
+const EXTRA_POINTS = 20;
+
+const TALENTS: readonly {
+  key: EchoTalent;
+  title: string;
+  cd: string;
+  desc: string;
+}[] = [
+  {
+    key: "时间回溯",
+    title: "时间回溯",
+    cd: "CD：6 章",
+    desc: "回到上一章，重新选择一次关键分支。",
+  },
+  {
+    key: "命运馈赠",
+    title: "命运馈赠",
+    cd: "CD：3 章",
+    desc: "获得一个随机世界观相关物品。",
+  },
+  {
+    key: "主角光环",
+    title: "主角光环",
+    cd: "CD：6 章",
+    desc: "3 章内免疫死亡，并触发 1 次必定幸运事件。",
+  },
+  {
+    key: "生命汇源",
+    title: "生命汇源",
+    cd: "CD：5 章",
+    desc: "将理智恢复至 100%。",
+  },
+  {
+    key: "洞察之眼",
+    title: "洞察之眼",
+    cd: "CD：4 章",
+    desc: "下一次事件中标记一个必定收益的选择。",
+  },
+  {
+    key: "丧钟回响",
+    title: "丧钟回响",
+    cd: "CD：7 章",
+    desc: "强制处决一名恶意 NPC（若存在）。",
+  },
+] as const;
+
+function sumStats(stats: Record<StatType, number>): number {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-2xl font-bold">铸造角色</h1>
+    stats.sanity + stats.agility + stats.luck + stats.charm + stats.background
+  );
+}
+
+function clampInt(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+
+export default function CreatePage() {
+  const router = useRouter();
+
+  const [name, setName] = useState("");
+  const [gender, setGender] = useState<GenderOption>("男");
+  const [height, setHeight] = useState<number>(170);
+  const [personality, setPersonality] = useState("");
+  const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
+
+  const [stats, setStats] = useState<Record<StatType, number>>({
+    sanity: BASE_STAT,
+    agility: BASE_STAT,
+    luck: BASE_STAT,
+    charm: BASE_STAT,
+    background: BASE_STAT,
+  });
+
+  const usedPoints = useMemo(() => sumStats(stats) - BASE_STAT * 5, [stats]);
+  const remaining = EXTRA_POINTS - usedPoints;
+
+  const personalityValid = PERSONALITY_RE.test(personality);
+
+  const canSubmit =
+    name.trim().length > 0 &&
+    height >= 140 &&
+    height <= 220 &&
+    personalityValid &&
+    remaining === 0 &&
+    selectedTalent !== null;
+
+  function inc(stat: StatType) {
+    if (remaining <= 0) return;
+    setStats((s) => ({ ...s, [stat]: s[stat] + 1 }));
+  }
+
+  function dec(stat: StatType) {
+    if (stats[stat] <= BASE_STAT) return;
+    setStats((s) => ({ ...s, [stat]: s[stat] - 1 }));
+  }
+
+  function handleSubmit() {
+    if (!canSubmit || !selectedTalent) return;
+
+    const cleanName = name.trim();
+    const cleanPersonality = personality.trim();
+    const cleanHeight = clampInt(height, 140, 220);
+
+    useGameStore.getState().initCharacter(
+      { name: cleanName, gender, height: cleanHeight, personality: cleanPersonality },
+      stats,
+      selectedTalent
+    );
+
+    router.push("/play");
+  }
+
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto w-full max-w-3xl px-6 py-12">
+        <header className="space-y-3">
+          <h1 className="text-2xl font-semibold tracking-tight">铸造角色</h1>
+          <p className="text-sm text-neutral-600">
+            你正在向如月公寓递交一份自我证明。每一个字，都将被记录。
+          </p>
+        </header>
+
+        <section className="mt-10 rounded-2xl border border-border bg-white p-6">
+          <h2 className="text-base font-semibold">基础档案</h2>
+
+          <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium">称呼（Name）</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="请输入你的称呼"
+                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium">性别（Gender）</span>
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value as GenderOption)}
+                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+              >
+                <option value="男">男</option>
+                <option value="女">女</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium">身高（Height）</span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={140}
+                  max={220}
+                  value={height}
+                  onChange={(e) => setHeight(Number(e.target.value))}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+                />
+                <span className="shrink-0 text-sm text-neutral-600">cm</span>
+              </div>
+              <p className="text-xs text-neutral-500">范围：140 - 220</p>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium">性格（Personality）</span>
+              <input
+                value={personality}
+                onChange={(e) => setPersonality(e.target.value)}
+                placeholder="仅限 2-6 个中文字符"
+                className={`h-11 w-full rounded-xl border bg-white px-4 text-sm outline-none transition ${
+                  personality.length === 0
+                    ? "border-border focus:border-neutral-400"
+                    : personalityValid
+                      ? "border-border focus:border-neutral-400"
+                      : "border-danger focus:border-danger"
+                }`}
+              />
+              <p className="text-xs text-danger">
+                注意：深渊 DM 将严格校验性格设定。若输入非法词汇、玩梗或毫无关联的乱码，将在序章被诡异直接抹杀！
+              </p>
+              {!personalityValid && personality.length > 0 ? (
+                <p className="text-xs text-danger">
+                  当前输入不合法：必须匹配{" "}
+                  <span className="font-mono">
+                    {String.raw`^[\u4e00-\u9fa5]{2,6}$`}
+                  </span>
+                  。
+                </p>
+              ) : null}
+            </label>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-border bg-white p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold">属性加点（RPG System）</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                总可用点数 {EXTRA_POINTS}，基础值均为 {BASE_STAT}。必须刚好用完。
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-muted px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-8">
+                <span className="text-neutral-600">剩余点数</span>
+                <span className={remaining === 0 ? "font-semibold" : "font-semibold text-danger"}>
+                  {remaining}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {(Object.keys(STAT_LABELS) as StatType[]).map((stat) => (
+              <div
+                key={stat}
+                className="rounded-2xl border border-border bg-white p-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold">{STAT_LABELS[stat]}</span>
+                      <span className="text-sm text-neutral-600">
+                        当前：{stats[stat]}
+                      </span>
+                    </div>
+                    <p className="text-sm text-neutral-600">
+                      {STAT_DESCRIPTIONS[stat]}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => dec(stat)}
+                      disabled={stats[stat] <= BASE_STAT}
+                      className="h-10 w-10 rounded-xl border border-border bg-white text-lg text-neutral-700 transition disabled:opacity-40"
+                      aria-label={`减少${STAT_LABELS[stat]}`}
+                    >
+                      -
+                    </button>
+                    <div className="w-10 text-center text-sm font-semibold">
+                      {stats[stat]}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => inc(stat)}
+                      disabled={remaining <= 0}
+                      className="h-10 w-10 rounded-xl border border-border bg-white text-lg text-neutral-700 transition disabled:opacity-40"
+                      aria-label={`增加${STAT_LABELS[stat]}`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-border bg-white p-6">
+          <h2 className="text-base font-semibold">回响天赋（Echo Talents）</h2>
+          <p className="mt-1 text-sm text-neutral-600">必须单选 1 个。</p>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {TALENTS.map((t) => {
+              const active = selectedTalent === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setSelectedTalent(t.key)}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    active
+                      ? "border-accent bg-muted"
+                      : "border-border bg-white hover:bg-muted"
+                  }`}
+                  aria-pressed={active}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold">{t.title}</div>
+                      <div className="text-xs text-neutral-600">{t.cd}</div>
+                    </div>
+                    <div
+                      className={`mt-1 h-4 w-4 rounded-full border ${
+                        active ? "border-accent bg-accent" : "border-border"
+                      }`}
+                      aria-hidden
+                    />
+                  </div>
+                  <p className="mt-3 text-sm text-neutral-700">{t.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <div className="rounded-2xl border border-border bg-white p-6">
+            <h2 className="text-base font-semibold">确认提交</h2>
+            <p className="mt-2 text-sm text-neutral-600">
+              你将带着这份设定进入意识潜入区。一旦落笔，规则将开始回收你。
+            </p>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-neutral-600">
+                {!canSubmit ? (
+                  <span className="text-danger">
+                    未满足提交条件：请检查必填字段、性格格式、点数是否用尽、天赋是否已选择。
+                  </span>
+                ) : (
+                  <span>校验通过。准备进入。</span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="h-11 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition disabled:opacity-40"
+              >
+                进入意识潜入
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
