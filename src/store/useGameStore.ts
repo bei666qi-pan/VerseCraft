@@ -82,7 +82,10 @@ interface GameState {
   stats: Record<StatType, number>;
 
   inventory: Item[];
+  logs: { role: string; content: string; reasoning?: string }[];
+
   setHydrated: (state: boolean) => void;
+  pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
   setStats: (stats: Partial<Record<StatType, number>>) => void;
   setInventory: (inventory: Item[]) => void;
   addToInventory: (item: Item) => void;
@@ -168,8 +171,12 @@ export const useGameStore = create<GameState>()(
       chapter: 1,
       stats: { ...DEFAULT_STATS },
       inventory: [],
+      logs: [],
 
       setHydrated: (state) => set({ isHydrated: state }),
+
+      pushLog: (entry) =>
+        set((s) => ({ logs: [...(s.logs ?? []), entry] })),
 
       setStats: (stats) =>
         set((s) => ({ stats: { ...s.stats, ...stats } })),
@@ -293,6 +300,7 @@ export const useGameStore = create<GameState>()(
         chapter: s.chapter,
         stats: s.stats,
         inventory: s.inventory,
+        logs: s.logs ?? [],
       }),
     }
   )

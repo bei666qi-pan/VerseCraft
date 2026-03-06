@@ -206,6 +206,7 @@ export default function PlayPage() {
       ...messagesRef.current,
       { role: "user", content: trimmed },
     ];
+    useGameStore.getState().pushLog({ role: "user", content: trimmed });
 
     const playerContext = useGameStore.getState().getPromptContext();
 
@@ -279,6 +280,11 @@ export default function PlayPage() {
       ...messagesRef.current,
       { role: "assistant", content: parsed.narrative },
     ];
+    useGameStore.getState().pushLog({
+      role: "assistant",
+      content: parsed.narrative,
+      reasoning: undefined,
+    });
 
     // 扣理智
     const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
