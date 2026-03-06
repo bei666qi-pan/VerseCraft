@@ -10,6 +10,14 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --animate-mesh-gradient: mesh-gradient 15s ease infinite alternate;
+}
+
+@keyframes mesh-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* Apple Minimalist Light Theme 强制白天模式 */
