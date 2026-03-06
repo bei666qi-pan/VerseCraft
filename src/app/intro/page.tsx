@@ -25,102 +25,142 @@ const STATS = [
   },
 ];
 
+const TALENTS = [
+  "时间回溯",
+  "命运馈赠",
+  "主角光环",
+  "生命汇源",
+  "洞察之眼",
+  "丧钟回响",
+];
+
 export default function IntroPage() {
   return (
-    <main className="flex flex-1 flex-col items-center px-6 py-16">
-      <article className="w-full max-w-2xl">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          入职协议与世界观须知
-        </h1>
-        <p className="mt-3 text-sm text-foreground/50">
-          请在签署前仔细阅读以下内容。签署即视为同意所有条款。
-        </p>
+    <main className="min-h-screen bg-gradient-to-b from-[#FAFAFA] to-[#F4F4F5]">
+      <div className="mx-auto max-w-2xl px-6 pb-40 pt-20">
+        {/* ── Header ── */}
+        <header className="space-y-4">
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
+            Kisaragi Apartment · 入住须知
+          </p>
+          <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 sm:text-5xl">
+            入职协议与<br />世界观须知
+          </h1>
+          <p className="max-w-md text-base leading-relaxed text-zinc-500">
+            请在签署前仔细阅读以下内容。签署即视为你已知晓一切真相，并自愿承担后果。
+          </p>
+        </header>
 
-        <div className="mt-10 space-y-8">
-          <section>
-            <h2 className="text-lg font-semibold">§1 关于「如月公寓」的真相</h2>
-            <div className="mt-3 rounded-2xl border border-border bg-muted/50 px-6 py-5 text-sm leading-relaxed text-foreground/80">
-              <p>
-                如月公寓并非人类建筑。它是某种高维生物的
-                <strong className="text-foreground">拟态消化器官</strong>。
-              </p>
-              <p className="mt-3">
-                你所看见的承重墙，是骨骼在三维空间的投影；走廊尽头永远滴落的红色液体，
-                不是水管泄漏——那是胃酸。每一层楼都是一段蠕动的肠壁，
-                而你正沿着它的消化方向行走。
-              </p>
-              <p className="mt-3">
-                公寓会发布规则。规则是这具身体的免疫协议。
-                <strong className="text-danger">
-                  违反规则等同于被抗体标记，你将被大模型 DM 直接抹杀。
-                </strong>
+        {/* ── §1 Truth ── */}
+        <section className="mt-16">
+          <h2 className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">
+            §1
+          </h2>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-900">
+            关于「如月公寓」的真相
+          </h3>
+          <div className="mt-5 rounded-3xl bg-white/80 px-7 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
+            <p className="text-sm leading-relaxed text-zinc-600">
+              如月公寓并非人类建筑。它是某种高维生物的
+              <span className="font-medium text-zinc-900">拟态消化器官</span>。
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-zinc-600">
+              你所看见的承重墙，是骨骼在三维空间的投影；走廊尽头永远滴落的红色液体，不是水管泄漏——那是胃酸。每一层楼都是一段蠕动的肠壁，而你正沿着它的消化方向行走。
+            </p>
+            <div className="mt-5 rounded-2xl bg-red-50/80 px-5 py-4">
+              <p className="text-sm font-medium leading-relaxed text-red-600/90">
+                公寓会发布规则。规则是这具身体的免疫协议。违反规则等同于被抗体标记——你将被大模型 DM 直接抹杀。
               </p>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <section>
-            <h2 className="text-lg font-semibold">§2 核心属性系统</h2>
-            <p className="mt-2 text-sm text-foreground/60">
-              创建角色时，你将分配 20 个属性点到以下 5 项基础属性中。
+        {/* ── §2 Stats ── */}
+        <section className="mt-16">
+          <h2 className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">
+            §2
+          </h2>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-900">
+            核心属性系统
+          </h3>
+          <p className="mt-3 text-sm leading-relaxed text-zinc-500">
+            创建角色时，你将分配 20 个属性点到以下 5 项基础属性中。每一点都关乎生死。
+          </p>
+
+          <div className="mt-6 space-y-3">
+            {STATS.map((stat) => (
+              <div
+                key={stat.name}
+                className="flex items-start gap-4 rounded-2xl bg-white/80 px-6 py-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+              >
+                <span className="mt-0.5 shrink-0 rounded-lg bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 shadow-inner">
+                  {stat.name}
+                </span>
+                <p className="text-sm leading-relaxed text-zinc-500">
+                  {stat.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── §3 Talents ── */}
+        <section className="mt-16">
+          <h2 className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">
+            §3
+          </h2>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-900">
+            回响天赋
+          </h3>
+          <div className="mt-5 rounded-3xl bg-white/80 px-7 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
+            <p className="text-sm leading-relaxed text-zinc-600">
+              每位入住者可选择一项
+              <span className="font-medium text-zinc-900">回响天赋（Echo Talent）</span>。天赋是你对抗规则与异常的核心手段，但每次使用后将进入冷却。合理规划天赋使用节奏，是存活的关键。
             </p>
-            <div className="mt-4 space-y-3">
-              {STATS.map((stat) => (
-                <div
-                  key={stat.name}
-                  className="flex items-start gap-4 rounded-xl border border-border px-5 py-4"
+            <div className="mt-5 flex flex-wrap gap-2">
+              {TALENTS.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-lg bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 shadow-inner"
                 >
-                  <span className="shrink-0 text-base font-semibold">
-                    {stat.name}
-                  </span>
-                  <p className="text-sm leading-relaxed text-foreground/60">
-                    {stat.desc}
-                  </p>
-                </div>
+                  {t}
+                </span>
               ))}
             </div>
-          </section>
+          </div>
+        </section>
 
-          <section>
-            <h2 className="text-lg font-semibold">§3 回响天赋</h2>
-            <div className="mt-3 rounded-2xl border border-border bg-muted/50 px-6 py-5 text-sm leading-relaxed text-foreground/80">
-              <p>
-                每位入住者可选择一项
-                <strong className="text-foreground">回响天赋（Echo Talent）</strong>。
-                天赋是你对抗规则与异常的核心手段，但每次使用后将进入冷却。
-              </p>
-              <p className="mt-3">
-                可选天赋包括：时间回溯、命运馈赠、主角光环、生命汇源、洞察之眼、丧钟回响。
-                每项天赋拥有不同的冷却回合数与触发效果。合理规划天赋使用节奏，
-                是存活的关键。
-              </p>
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold">§4 行动守则</h2>
-            <div className="mt-3 rounded-2xl border border-border bg-muted/50 px-6 py-5 text-sm leading-relaxed text-foreground/80">
-              <p>
-                每回合你可输入一条不超过 20 字的行动指令。深渊 DM（大模型）将严格校验
-                你的行动是否合法——是否符合当前持有的物品、属性、NPC
-                关系以及公寓规则。
-              </p>
-              <p className="mt-3 text-danger font-medium">
+        {/* ── §4 Rules ── */}
+        <section className="mt-16">
+          <h2 className="text-xs font-medium uppercase tracking-[0.15em] text-zinc-400">
+            §4
+          </h2>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-900">
+            行动守则
+          </h3>
+          <div className="mt-5 rounded-3xl bg-white/80 px-7 py-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
+            <p className="text-sm leading-relaxed text-zinc-600">
+              每回合你可输入一条不超过 20 字的行动指令。深渊 DM（大模型）将严格校验你的行动是否合法——是否符合当前持有的物品、属性、NPC 关系以及公寓规则。
+            </p>
+            <div className="mt-5 rounded-2xl bg-red-50/80 px-5 py-4">
+              <p className="text-sm font-medium leading-relaxed text-red-600/90">
                 不可能的行动将被拒绝，并扣除理智值。不要试图欺骗系统。
               </p>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
+      </div>
 
-        <div className="mt-12 flex justify-center">
-          <Link
-            href="/create"
-            className="inline-flex items-center gap-2 rounded-full bg-foreground px-8 py-3.5 text-sm font-medium text-background transition-all hover:opacity-80 active:scale-[0.97]"
-          >
-            签署协议并建立档案
-            <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-      </article>
+      {/* ── Floating CTA Capsule ── */}
+      <div className="pointer-events-none fixed bottom-0 left-0 right-0 flex justify-center pb-10">
+        <Link
+          href="/create"
+          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/70 px-6 py-3 text-sm font-medium text-zinc-900 shadow-2xl backdrop-blur-2xl transition-transform hover:scale-105 active:scale-[0.97]"
+        >
+          签署协议并建立档案
+          <span aria-hidden="true">→</span>
+        </Link>
+      </div>
     </main>
   );
 }
