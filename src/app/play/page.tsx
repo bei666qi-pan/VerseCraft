@@ -272,9 +272,6 @@ export default function PlayPage() {
       return;
     }
 
-    // 固化最终叙事
-    setLiveNarrative(parsed.narrative);
-
     // 写入消息历史：assistant content 记录为最终 narrative（避免塞入长 JSON）
     messagesRef.current = [
       ...messagesRef.current,
@@ -285,6 +282,9 @@ export default function PlayPage() {
       content: parsed.narrative,
       reasoning: undefined,
     });
+
+    // 清空 liveNarrative，避免与 messagesRef 中的同一条消息重复渲染
+    setLiveNarrative("");
 
     // 扣理智
     const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
