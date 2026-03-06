@@ -10,36 +10,6 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-
-  --animate-mesh-gradient: mesh-gradient 15s ease infinite alternate;
-  --animate-shimmer: shimmer 3s ease-in-out infinite;
-  --animate-pulse-line: pulse-line 2.5s ease-in-out infinite;
-  --animate-float-up: float-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes mesh-gradient {
-  0%   { background-position: 0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-@keyframes shimmer {
-  0%, 100% { background-position: -200% 0; }
-  50%      { background-position: 200% 0; }
-}
-
-@keyframes pulse-line {
-  0%, 100% { opacity: 0.3; transform: scaleY(0.6); }
-  50%      { opacity: 1;   transform: scaleY(1); }
-}
-
-@keyframes float-up {
-  from { opacity: 0; transform: translateY(32px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@utility bg-noise {
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }
 
 /* Apple Minimalist Light Theme 强制白天模式 */
