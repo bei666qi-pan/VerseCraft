@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { GameProvider } from "@/components/GameProvider";
-import { MinimalNav } from "@/components/MinimalNav";
+import FloatingNav from "@/components/FloatingNav";
+import HydrationProvider from "@/components/HydrationProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "文界工坊",
-  description: "规则怪谈公寓 - 意识潜入",
+  title: "文界工坊 (VerseCraft)",
+  description: "锻造可能，实现幻想 - 规则怪谈文字冒险",
 };
 
 export default function RootLayout({
@@ -27,12 +27,12 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased min-h-screen flex flex-col`}
       >
-        <GameProvider>
+        <HydrationProvider>
           {children}
-          <MinimalNav />
-        </GameProvider>
+        </HydrationProvider>
+        <FloatingNav />
       </body>
     </html>
   );
