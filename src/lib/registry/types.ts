@@ -20,30 +20,40 @@ export interface Item {
   description: string;
   statBonus?: Partial<Record<StatType, number>>;
   tags: string;
+  /** Blocks one lethal attack (e.g. from B2守门人) when used correctly */
+  blockLethal?: boolean;
+  /** Rule-based kill: can ignore combatPower gap to kill anomaly/NPC */
+  ruleKill?: boolean;
 }
 
 export interface NPC {
   id: string;
   name: string;
   location: string;
-  /** Initial floor; DM may place NPC on random floor each run */
-  floor: FloorId;
-  /** Personality/temperament, e.g. 暴躁/温和/贪婪. Affects interaction and aggression. */
+  /** Initial/refresh floor; use "random" for random floor spawn per run */
+  floor: FloorId | "random";
+  /** Personality: 暴躁/温和/贪婪/怯懦 etc. Affects interaction and aggression. */
   personality: string;
+  /** Specialty: 后勤补给/战斗辅助/情报提供 etc. */
+  specialty: string;
+  /** Combat power 3-10. High-power NPCs (9-10) can fight A-008 if favorability极高. */
+  combatPower: number;
   appearance: string;
-  taboo: string; // 绝对禁忌（触发好感度暴跌或攻击的条件）
+  taboo: string;
   defaultFavorability: number;
-  lore: string; // 背景故事
+  lore: string;
 }
 
-/** Player cannot fight anomalies or NPCs unarmed. Must use items or high favorability. */
+/** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */
 export interface Anomaly {
   id: string;
   name: string;
-  /** Floor this anomaly is fixed to. A-001~A-007: floors 1-7; A-008: B2 only */
+  /** Floor: A-001~A-007 on 1-7; A-008 on B2 only */
   floor: FloorId;
+  /** Combat power 3-10. A-008 must be 10. */
+  combatPower: number;
   appearance: string;
-  killingRule: string; // 必杀规则
-  survivalMethod: string; // 破局条件描述（后续会被大模型提取解析）
+  killingRule: string;
+  survivalMethod: string;
   sanityDamage: number;
 }

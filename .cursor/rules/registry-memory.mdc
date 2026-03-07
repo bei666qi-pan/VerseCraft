@@ -1,27 +1,34 @@
 ---
-description: VerseCraft Registry Structure - Map, Anomalies, NPCs
+description: VerseCraft Registry Structure - Map, Anomalies, NPCs, Items
 globs: src/lib/registry/**/*
 ---
 
 # Registry Structure (Phase 1)
 
 ## Map / Floors
-- **B2**: 出口所在，第 8 诡异守门
+- **B2**: 真实出口，第 8 诡异（深渊守门人）守门，战力 10
 - **B1**: 玩家初始复苏地
-- **1-7**: 地上层，每层固定 1 个诡异
-
-See: `src/lib/registry/world.ts`
+- **1-7**: 地上层，每层固定 1 个诡异，战力 5-9
 
 ## Anomalies (8 total)
-- A-001 ~ A-007: 分布于 1-7 层
-- A-008 深渊守门人: 固定在 B2 层
-  - 试炼：道具抵挡 3 次攻击 或 凌晨 1 点潜行通过
+- A-001 ~ A-007: 分布于 1-7 层，combatPower 5-9
+- A-008 深渊守门人: 固定 B2 层，combatPower 10，极高污染与攻击性
+  - 通关 A：道具抵挡 3 次攻击 或 凌晨 1 点潜行通过
+  - 通关 S：击杀全部 8 诡异
 
 See: `src/lib/registry/anomalies.ts`
 
 ## NPCs
-- `personality`: 性格（暴躁/温和/贪婪等）
-- `floor`: 初始楼层（DM 可随机分配）
-- 玩家无法徒手对抗 NPC，须高好感度或特定道具
+- `personality`: 性格（暴躁/贪婪/温和/怯懦等）
+- `specialty`: 特长（后勤补给/战斗辅助/情报提供）
+- `combatPower`: 战力 3-10
+- `floor`: 初始/刷新楼层，`"random"` 表示随机楼层刷新
+- 高战力（9-10）NPC：无面保安、半夜剁肉厨师、前调查员
 
 See: `src/lib/registry/npcs.ts`
+
+## Items
+- `blockLethal`: 可抵挡致命攻击（如符纸护身符、防污染协议残页）
+- `ruleKill`: 规则类杀伤，可跨越战力鸿沟击杀（如建筑原稿、协议残页）
+
+See: `src/lib/registry/items.ts`, `src/lib/registry/types.ts`

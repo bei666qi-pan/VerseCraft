@@ -10,9 +10,10 @@ export const ITEMS: readonly Item[] = [
     name: "染血的如月建筑原稿",
     tier: "S",
     description:
-      "一份泛黄的建筑设计图，边缘浸染暗红色污渍。图纸标注了如月公寓的「真实结构」——承重墙被标为「骨骼投影」，水管网络被标为「消化管道」。署名处有被涂抹的研究机构代号。",
+      "一份泛黄的建筑设计图，边缘浸染暗红色污渍。图纸标注了如月公寓的「真实结构」——承重墙被标为「骨骼投影」，水管网络被标为「消化管道」。知晓结构者可利用规则漏洞，跨越战力鸿沟对诡异施加致命一击。",
     statBonus: { background: 5, sanity: 3 },
     tags: "meta,truth",
+    ruleKill: true,
   },
   // === A级 3个 ===
   {
@@ -29,9 +30,11 @@ export const ITEMS: readonly Item[] = [
     name: "防污染应急协议残页",
     tier: "A",
     description:
-      "上世纪 80 年代秘密研究机构遗留的协议碎片。记载了红水静置、镜子遮挡等核心规则的原始依据。持有者可临时「强化」对特定规则的理解。",
+      "上世纪 80 年代秘密研究机构遗留的协议碎片。记载了红水静置、镜子遮挡等核心规则的原始依据。持有者可临时「强化」对特定规则的理解，抵挡一次致命攻击；亦可利用规则逆写对诡异施加规则类杀伤。",
     statBonus: { background: 4 },
     tags: "protocol,rules",
+    blockLethal: true,
+    ruleKill: true,
   },
   {
     id: "I-A03",
@@ -121,9 +124,10 @@ export const ITEMS: readonly Item[] = [
     name: "符纸护身符",
     tier: "C",
     description:
-      "不知名道士留下的黄符，朱砂字迹已褪色。可抵御一次低强度的诡异接触，使用后符纸自燃成灰。对高维实体效果有限。",
+      "不知名道士留下的黄符，朱砂字迹已褪色。可抵挡一次致命攻击（包括 B2 守门人的单次攻击），使用后符纸自燃成灰。",
     statBonus: { sanity: 2 },
     tags: "protection,exorcism",
+    blockLethal: true,
   },
   {
     id: "I-C05",
