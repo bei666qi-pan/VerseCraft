@@ -47,6 +47,7 @@ function resolveDeepSeekConfig(): { apiUrl: string; apiKey: string; model: strin
 
   const model =
     getEnv("VOLCENGINE_ENDPOINT_ID") ??
+    getEnv("ARK_ENDPOINT_ID") ??
     getEnv("VOLCENGINE_DEEPSEEK_MODEL") ??
     getEnv("ARK_MODEL") ??
     getEnv("DEEPSEEK_MODEL") ??
@@ -124,8 +125,13 @@ export async function POST(req: Request) {
   const delays = [1000, 2000, 4000];
   let lastError: unknown = null;
 
+  const TIMEOUT_MS = 60000;
+
   for (let attempt = 0; attempt <= 3; attempt++) {
     try {
+      const ac = new AbortController();
+      const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
+
       const upstream = await fetch(apiUrl, {
         method: "POST",
         headers: {
@@ -135,9 +141,13 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           model,
           stream: true,
+          max_tokens: 4096,
           messages: safeMessages,
         }),
+        signal: ac.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!upstream.ok || !upstream.body) {
         const text = await upstream.text().catch(() => "");
