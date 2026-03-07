@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Backpack, BookOpen, Package } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
+import { useSmoothStream } from "@/hooks/useSmoothStream";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -67,6 +68,32 @@ function renderNarrativeText(text: string) {
       );
     return <span key={i}>{part}</span>;
   });
+}
+
+function DMNarrativeBlock({
+  content,
+  isDarkMoon,
+}: {
+  content: string;
+  isDarkMoon: boolean;
+}) {
+  const baseClass = isDarkMoon
+    ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200"
+    : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800";
+  const paras = content.split(/\n\n+/).filter(Boolean);
+  return (
+    <div className={`${baseClass} whitespace-pre-wrap`}>
+      {paras.length > 1 ? (
+        paras.map((p, i) => (
+          <p key={i} className="whitespace-pre-wrap">
+            {renderNarrativeText(p)}
+          </p>
+        ))
+      ) : (
+        <>{renderNarrativeText(content)}</>
+      )}
+    </div>
+  );
 }
 
 function safeNumber(n: unknown, fallback: number): number {
@@ -340,10 +367,18 @@ export default function PlayPage() {
     }
   }, [isHydrated, showApocalypseOverlay]);
 
+  const { text: smoothNarrative, isComplete: smoothComplete } = useSmoothStream(
+    liveNarrative,
+    isStreaming
+  );
+
   useEffect(() => {
     if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [liveNarrative, isStreaming]);
+    scrollRef.current.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [smoothNarrative, isStreaming]);
 
   useEffect(() => {
     if (sanity <= 0) {
@@ -631,22 +666,34 @@ export default function PlayPage() {
             <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">TIME /</span>
             <span className="ml-2 text-sm font-bold tabular-nums text-white">{day} 日 {hour} 时</span>
           </div>
-          <button
-            type="button"
-            onClick={onUseTalent}
-            disabled={!talent || talentCdLeft > 0 || isStreaming}
-            className="rounded-full border border-white/10 bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all hover:bg-white/20 disabled:opacity-50 backdrop-blur-md"
-          >
-            {talent ? (
-              talentCdLeft > 0 ? (
-                <>回响天赋：{talent}（剩余 {talentCdLeft}）</>
-              ) : (
-                <>发动：{talent}</>
-              )
-            ) : (
-              <>未选择回响天赋</>
+          <div className="relative group">
+            {talent && talentCdLeft === 0 && !isStreaming && (
+              <div
+                className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
+                aria-hidden
+              />
             )}
-          </button>
+            <button
+              type="button"
+              onClick={onUseTalent}
+              disabled={!talent || talentCdLeft > 0 || isStreaming}
+              className={`relative rounded-full px-6 py-2 font-bold tracking-widest transition-all ${
+                talent && talentCdLeft === 0 && !isStreaming
+                  ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
+                  : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
+              }`}
+            >
+              {talent ? (
+                talentCdLeft > 0 ? (
+                  <>{talent} (冷却: {talentCdLeft} 时)</>
+                ) : (
+                  <>发动：{talent}</>
+                )
+              ) : (
+                <>未选择回响天赋</>
+              )}
+            </button>
+          </div>
         </div>
 
         <button
@@ -758,23 +805,19 @@ export default function PlayPage() {
                       >
                         {m.role === "user" ? "你" : "DM"}
                       </div>
-                      <div
-                        className={`whitespace-pre-wrap ${
-                          m.role === "assistant"
-                            ? "leading-loose tracking-wide text-lg text-slate-800"
-                            : ""
-                        }`}
-                      >
-                        {m.role === "assistant"
-                          ? renderNarrativeText(m.content)
-                          : m.content}
+                      <div className={m.role === "assistant" ? "" : "whitespace-pre-wrap"}>
+                        {m.role === "assistant" ? (
+                          <DMNarrativeBlock content={m.content} isDarkMoon={isDarkMoon} />
+                        ) : (
+                          m.content
+                        )}
                       </div>
                     </div>
                   ))}
 
                   {isStreaming ? (
                     <div
-                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
                         isDarkMoon
                           ? "border-red-900/40 bg-red-950/20 text-red-100"
                           : "border-border bg-white text-neutral-900"
@@ -783,13 +826,21 @@ export default function PlayPage() {
                       <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <div className="whitespace-pre-wrap leading-loose tracking-wide text-lg text-slate-800">
-                        {renderNarrativeText(liveNarrative || "……")}
+                      <div className={isDarkMoon ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200" : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800"}>
+                        <span className="whitespace-pre-wrap">
+                          {renderNarrativeText(smoothNarrative)}
+                        </span>
+                        {!smoothComplete && (
+                          <span
+                            className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+                            aria-hidden
+                          />
+                        )}
                       </div>
                     </div>
                   ) : liveNarrative ? (
                     <div
-                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
                         isDarkMoon
                           ? "border-red-900/40 bg-red-950/20 text-red-100"
                           : "border-border bg-white text-neutral-900"
@@ -798,9 +849,7 @@ export default function PlayPage() {
                       <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <div className="whitespace-pre-wrap leading-loose tracking-wide text-lg text-slate-800">
-                        {renderNarrativeText(liveNarrative)}
-                      </div>
+                      <DMNarrativeBlock content={liveNarrative} isDarkMoon={isDarkMoon} />
                     </div>
                   ) : (
                     <div

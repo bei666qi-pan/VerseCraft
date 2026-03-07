@@ -73,6 +73,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "## 【叙事排版与 Markdown 格式（绝对执行）】",
     "",
     "你的 narrative 回复必须多分段，以增强可读性。请将所有的 NPC 名字、诡异名称、重要道具和关键线索使用 Markdown 加粗（如 **陈婆婆**、**A-001**、**染血的羊皮纸**）。",
+    "",
+    "【排版绝对指令】：你的叙事回复(narrative)必须分成3到4个短段落，严禁长篇大论。每个段落之间必须使用 \\n\\n 隔开。",
   ];
 
   if (isFirstAction) {
