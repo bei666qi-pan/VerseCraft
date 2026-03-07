@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Backpack } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 
@@ -13,6 +14,7 @@ type DMJson = {
   sanity_damage: number;
   narrative: string;
   is_death: boolean;
+  consumes_time?: boolean;
 };
 
 const MAX_INPUT = 20;
@@ -87,6 +89,7 @@ const FALLBACK_DM: DMJson = {
   sanity_damage: 0,
   narrative: "（系统波动）周围的空气似乎扭曲了一瞬，请继续你的行动...",
   is_death: false,
+  consumes_time: true,
 };
 
 function tryParseDM(raw: string): DMJson | null {
@@ -432,7 +435,8 @@ export default function PlayPage() {
     }
 
     const isItemUse = trimmed.startsWith("我使用了道具：");
-    if (parsed.is_action_legal && !parsed.is_death && !isItemUse) {
+    const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
+    if (parsed.is_action_legal && !parsed.is_death && shouldAdvanceTime) {
       const storeAny = useGameStore as any;
       storeAny.getState().decrementCooldowns();
       const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
@@ -525,53 +529,47 @@ export default function PlayPage() {
         </div>
       )}
 
-      <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
-        <div className="relative mb-8 inline-flex items-center justify-center group">
-          <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-blue-500/30 opacity-70 blur-2xl transition-opacity duration-700 group-hover:opacity-100 animate-pulse" aria-hidden />
-          <h1 className="relative z-10 text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-white/20 drop-shadow-[0_0_25px_rgba(255,255,255,0.7)] md:text-7xl">
+      <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-4 border-b border-white/5 bg-slate-900/20 px-6 py-4 shadow-sm backdrop-blur-xl md:flex-nowrap">
+        <div className="relative group flex items-center">
+          <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
+          <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
             意识潜入
           </h1>
         </div>
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex-1" />
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowExitModal(true)}
-              className="rounded-full border border-red-500/30 bg-red-950/40 px-6 py-2 text-sm font-bold tracking-widest text-red-400 backdrop-blur-md transition-all duration-300 hover:bg-red-900/60 hover:text-red-300 hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-            >
-              退出
-            </button>
-            <button
-              type="button"
-              onClick={onUseTalent}
-              disabled={!talent || talentCdLeft > 0 || isStreaming}
-              className={`h-11 rounded-xl border px-5 text-sm font-semibold transition ${
-              isDarkMoon
-                ? "border-red-900/60 bg-red-950/50 text-red-300"
-                : !talent
-                  ? "border-border bg-white text-neutral-400"
-                  : talentCdLeft > 0 || isStreaming
-                    ? "border-border bg-white text-neutral-400"
-                    : "border-accent bg-muted text-neutral-900 hover:bg-white"
-            }`}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center rounded-full border border-white/10 bg-black/40 px-5 py-2 shadow-inner backdrop-blur-md">
+            <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">TIME /</span>
+            <span className="ml-2 text-sm font-bold tabular-nums text-white">{day} 日 {hour} 时</span>
+          </div>
+          <button
+            type="button"
+            onClick={onUseTalent}
+            disabled={!talent || talentCdLeft > 0 || isStreaming}
+            className="rounded-full border border-white/10 bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all hover:bg-white/20 disabled:opacity-50 backdrop-blur-md"
           >
             {talent ? (
               talentCdLeft > 0 ? (
-                <>
-                  回响天赋：{talent}（剩余 {talentCdLeft}）
-                </>
+                <>回响天赋：{talent}（剩余 {talentCdLeft}）</>
               ) : (
-                <>发动回响天赋：{talent}</>
+                <>发动：{talent}</>
               )
             ) : (
               <>未选择回响天赋</>
             )}
-            </button>
-          </div>
-        </header>
+          </button>
+        </div>
 
+        <button
+          type="button"
+          onClick={() => setShowExitModal(true)}
+          className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
+        >
+          退出
+        </button>
+      </header>
+
+      <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
       {showExitModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -605,13 +603,6 @@ export default function PlayPage() {
           </div>
         </div>
       )}
-
-        <div className="fixed top-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-black/60 px-8 py-2.5 shadow-[0_0_30px_rgba(255,255,255,0.15)] backdrop-blur-2xl group">
-          <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent group-hover:animate-[shimmer_2s_infinite]" aria-hidden />
-          <span className="relative z-10 text-sm font-medium uppercase tracking-[0.3em] text-white/90">
-            TIME / <span className="ml-2 font-bold text-white">{day} 日 {hour} 时</span>
-          </span>
-        </div>
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-4">
@@ -774,25 +765,11 @@ export default function PlayPage() {
       <button
         type="button"
         onClick={() => setShowInventoryModal(true)}
-        className="fixed bottom-10 left-10 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110"
+        className="group fixed bottom-10 left-10 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110"
         title="背包"
       >
         <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="relative z-10 h-6 w-6 text-violet-300"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M4 10h16v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10z" />
-          <path d="M8 10V6a4 4 0 118 0v4" />
-          <path d="M12 14v4" />
-        </svg>
+        <Backpack size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
       </button>
 
       {showInventoryModal && (

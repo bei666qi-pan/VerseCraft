@@ -32,9 +32,23 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【通关结局 S - 杀戮通关】若玩家利用极度稀有的规则类杀伤道具，或联合战力 9-10 的顶级 NPC，成功杀死公寓内全部 7 个普通诡异（1-7 层）以及第 8 诡异（B2 守门人），系统将触发隐藏 S 级结局。",
     "",
     "请严格以 JSON 格式输出，Schema 如下：",
-    '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean }',
+    '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean, "consumes_time": boolean }',
     "",
-    '你必须且只能返回一个合法的 JSON 对象，格式必须完全遵守：{"is_action_legal": boolean, "narrative": "你的剧情回复"}。严禁在 JSON 外输出任何 markdown 标记或解释性文字！',
+    "consumes_time：默认 true 表示本次行动消耗 1 小时。当敏捷>20 且触发「极速反应」时，必须设为 false，使玩家本次行动不消耗时间。",
+    "",
+    '你必须且只能返回一个合法的 JSON 对象，格式必须完全遵守上述 Schema。严禁在 JSON 外输出任何 markdown 标记或解释性文字！',
+    "",
+    "## 【核心属性检定与 >20 点质变法则（绝对执行）】",
+    "",
+    "理智 (Sanity)：<0 即死亡。理智越高越难陷入幻象。质变：理智>20 时，玩家在探索时有极大概率发现隐藏道具并获取规则提醒。",
+    "",
+    "敏捷 (Agility)：敏捷越高，你的 narrative 必须越长、越丰富，且玩家越容易从诡异/恶意 NPC 手中逃脱。质变：敏捷>20 时，玩家有一定概率触发「极速反应」，此时你必须在返回的 JSON 中设置 consumes_time: false，让玩家本次行动不消耗时间。",
+    "",
+    "幸运 (Luck)：幸运越高，越容易遇到正向事件，越难遇到恶意实体，极易发现道具。质变：幸运>20 时，玩家的普通探索有可能直接发现 A 级/S 级道具的线索，或直接看破当前楼层诡异的必杀规则。",
+    "",
+    "魅力 (Charm)：魅力越高，越容易获取 NPC 好感，更难引起诡异注意。质变：魅力>20 时，中立 NPC 极有可能主动出手相助，甚至诡异在必杀判定时有概率放玩家一条生路。",
+    "",
+    "出身 (Background)：出身越高，开局自带的道具越好（最高 A 级）。质变：出身>20 时，玩家开局即可能有一名原世界观中的 NPC 全程协助，或有 1 只诡异（非 B2 守门人）天生认识玩家并愿意提供帮助。",
   ];
 
   if (isFirstAction) {
@@ -101,6 +115,7 @@ function sanitizeAssistantContent(content: string): string {
     sanity_damage: 0,
     narrative: content.slice(0, 500),
     is_death: false,
+    consumes_time: true,
   });
 }
 
@@ -142,6 +157,7 @@ export async function POST(req: Request) {
           sanity_damage: 0,
           narrative: "系统异常：未配置 Volcengine API Key，无法连接深渊 DM。",
           is_death: false,
+          consumes_time: true,
         })
       ),
       {
@@ -169,6 +185,7 @@ export async function POST(req: Request) {
       sanity_damage: 0,
       narrative: FALLBACK_NARRATIVE,
       is_death: false,
+      consumes_time: true,
     })), { status: 200, headers: SSE_HEADERS });
   }
 
