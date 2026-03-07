@@ -135,10 +135,7 @@ function ensureRuntimeActions() {
             const v = safeNumber(nextCds[k], 0);
             nextCds[k] = v > 0 ? v - 1 : 0;
           }
-          return {
-            chapter: safeNumber(p.chapter, 1) + 1,
-            talentCooldowns: nextCds,
-          };
+          return { talentCooldowns: nextCds };
         });
       },
     }));
@@ -244,7 +241,6 @@ export default function PlayPage() {
   const isHydrated = useGameStore((s) => s.isHydrated);
   const setHydrated = useGameStore((s) => s.setHydrated);
 
-  const chapter = useGameStore((s) => s.chapter);
   const stats = useGameStore((s) => s.stats);
   const inventory = useGameStore((s) => s.inventory);
   const talent = useGameStore((s) => s.talent);
@@ -532,52 +528,20 @@ export default function PlayPage() {
       <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
         <div className="relative mb-8 inline-flex items-center justify-center group">
           <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-blue-500/30 opacity-70 blur-2xl transition-opacity duration-700 group-hover:opacity-100 animate-pulse" aria-hidden />
-          <h1 className="relative z-10 text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] md:text-5xl">
+          <h1 className="relative z-10 text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-white/90 to-white/20 drop-shadow-[0_0_25px_rgba(255,255,255,0.7)] md:text-7xl">
             意识潜入
           </h1>
         </div>
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
-            <p
-              className={`text-sm ${
-                isDarkMoon ? "text-red-300/90" : "text-neutral-600"
-              }`}
-            >
-              章节：<span className="font-semibold">{chapter}</span>
-              {" · "}
-              理智：
-              <span
-                className={`ml-1 font-semibold ${
-                  sanity <= 3 ? "text-red-400" : isDarkMoon ? "text-red-200" : "text-neutral-900"
-                }`}
-              >
-                {sanity}
-              </span>
-            </p>
-          </div>
+          <div className="flex-1" />
 
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setShowExitModal(true)}
-              className="h-11 rounded-xl border border-red-900/60 bg-red-950/30 px-4 text-red-400 transition hover:bg-red-950/50"
-              title="放弃挣扎"
+              className="rounded-full border border-red-500/30 bg-red-950/40 px-6 py-2 text-sm font-bold tracking-widest text-red-400 backdrop-blur-md transition-all duration-300 hover:bg-red-900/60 hover:text-red-300 hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
+              退出
             </button>
             <button
               type="button"
@@ -642,20 +606,15 @@ export default function PlayPage() {
         </div>
       )}
 
+        <div className="fixed top-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-black/60 px-8 py-2.5 shadow-[0_0_30px_rgba(255,255,255,0.15)] backdrop-blur-2xl group">
+          <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent group-hover:animate-[shimmer_2s_infinite]" aria-hidden />
+          <span className="relative z-10 text-sm font-medium uppercase tracking-[0.3em] text-white/90">
+            TIME / <span className="ml-2 font-bold text-white">{day} 日 {hour} 时</span>
+          </span>
+        </div>
+
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-4">
-            <div
-              className={`mb-4 rounded-2xl border px-5 py-4 backdrop-blur-md ${
-                isDarkMoon
-                  ? "border-red-900/60 bg-red-950/30"
-                  : "border-white/60 bg-white/80"
-              }`}
-            >
-              <p className={`font-mono text-base font-semibold tabular-nums ${isDarkMoon ? "text-red-200" : "text-neutral-800"}`}>
-                存活时间：{day} 日 {hour} 时
-              </p>
-            </div>
-
             <div
               className={`rounded-3xl border p-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
                 isDarkMoon
@@ -815,19 +774,24 @@ export default function PlayPage() {
       <button
         type="button"
         onClick={() => setShowInventoryModal(true)}
-        className="fixed bottom-10 right-10 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_30px_rgba(99,102,241,0.3)] backdrop-blur-xl transition hover:scale-110"
+        className="fixed bottom-10 left-10 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110"
         title="背包"
       >
-        <div className="absolute -inset-2 rounded-full bg-indigo-500/20 blur-xl" aria-hidden />
+        <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          className="relative z-10 h-6 w-6 text-indigo-300"
+          className="relative z-10 h-6 w-6 text-violet-300"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           aria-hidden
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8 4-8-4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          <path d="M4 10h16v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10z" />
+          <path d="M8 10V6a4 4 0 118 0v4" />
+          <path d="M12 14v4" />
         </svg>
       </button>
 

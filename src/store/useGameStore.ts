@@ -90,7 +90,6 @@ interface GameState {
   personality: string;
   talent: EchoTalent | null;
   talentCooldowns: Record<EchoTalent, number>;
-  chapter: number;
 
   /** Time tick: day 0-9+, hour 0-23. Advances 1h per successful action. */
   time: GameTime;
@@ -186,7 +185,6 @@ export const useGameStore = create<GameState>()(
       personality: "",
       talent: null,
       talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
-      chapter: 1,
       time: { day: 0, hour: 0 },
       stats: { ...DEFAULT_STATS },
       inventory: [],
@@ -237,7 +235,6 @@ export const useGameStore = create<GameState>()(
           personality: profile.personality,
           talent,
           talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
-          chapter: 1,
           time: { day: 0, hour: 0 },
           stats,
           inventory: [PARCHMENT_ITEM, startingItem],
@@ -265,12 +262,11 @@ export const useGameStore = create<GameState>()(
           `性别[${s.gender || "未设定"}]，` +
           `身高[${s.height || 0}cm]，` +
           `性格[${s.personality || "未设定"}]。` +
-          `章节[${s.chapter}]。` +
           `游戏时间[第${time.day}日 ${time.hour}时]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
           `物品清单：${inv || "空"}。` +
-          `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[${s.talentCooldowns[t]}章]`).join("，")}。`
+          `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。`
         );
       },
 
@@ -331,7 +327,6 @@ export const useGameStore = create<GameState>()(
         personality: s.personality,
         talent: s.talent,
         talentCooldowns: s.talentCooldowns,
-        chapter: s.chapter,
         time: s.time ?? { day: 0, hour: 0 },
         stats: s.stats,
         inventory: s.inventory,

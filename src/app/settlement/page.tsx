@@ -72,7 +72,7 @@ export default function SettlementPage() {
 
   const stats = useGameStore((s) => s.stats);
   const logs = useGameStore((s) => s.logs ?? []);
-  const chapter = useGameStore((s) => s.chapter);
+  const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
 
   const sanity = stats?.sanity ?? 0;
   const isDead = sanity <= 0;
@@ -128,9 +128,9 @@ export default function SettlementPage() {
             <h2 className="text-sm font-semibold text-neutral-900">最终数据</h2>
             <div className="mt-5 grid grid-cols-2 gap-4">
               <div className="rounded-xl border border-border bg-white px-4 py-3">
-                <div className="text-xs text-neutral-600">存活章节</div>
+                <div className="text-xs text-neutral-600">存活时间</div>
                 <div className="mt-1 text-xl font-semibold text-neutral-900">
-                  {chapter}
+                  {time.day} 日 {time.hour} 时
                 </div>
               </div>
               <div className="rounded-xl border border-border bg-white px-4 py-3">
