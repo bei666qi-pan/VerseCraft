@@ -1,0 +1,27 @@
+---
+description: VerseCraft Registry Structure - Map, Anomalies, NPCs
+globs: src/lib/registry/**/*
+---
+
+# Registry Structure (Phase 1)
+
+## Map / Floors
+- **B2**: 出口所在，第 8 诡异守门
+- **B1**: 玩家初始复苏地
+- **1-7**: 地上层，每层固定 1 个诡异
+
+See: `src/lib/registry/world.ts`
+
+## Anomalies (8 total)
+- A-001 ~ A-007: 分布于 1-7 层
+- A-008 深渊守门人: 固定在 B2 层
+  - 试炼：道具抵挡 3 次攻击 或 凌晨 1 点潜行通过
+
+See: `src/lib/registry/anomalies.ts`
+
+## NPCs
+- `personality`: 性格（暴躁/温和/贪婪等）
+- `floor`: 初始楼层（DM 可随机分配）
+- 玩家无法徒手对抗 NPC，须高好感度或特定道具
+
+See: `src/lib/registry/npcs.ts`

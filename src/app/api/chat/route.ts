@@ -10,8 +10,8 @@ type IncomingMessage = {
   reasoning_content?: unknown;
 };
 
-function buildSystemPrompt(playerContext: string): string {
-  return [
+function buildSystemPrompt(playerContext: string, isFirstAction: boolean): string {
+  const base = [
     "你是一个冷酷无情的规则怪谈地下城主。",
     `当前玩家状态：${playerContext}`,
     "",
@@ -19,11 +19,38 @@ function buildSystemPrompt(playerContext: string): string {
     "阶段一（合法性与人设校验）：玩家是否在进行“神明级”动作、使用未拥有的物品、或者违背其设定的性格？如果是，判定 is_action_legal: false，拒绝该动作，并给予严厉的理智惩罚叙事。",
     "阶段二（世界观响应）：如果合法，根据玩家的属性（理智/敏捷/幸运等）进行暗骰判定。",
     "",
+    "## 绝对世界法则与通关判定",
+    "",
+    "【地图与楼层】玩家初始在 B1 层苏醒。向上是 1-7 层（每层固定 1 个诡异），向下是 B2 层。",
+    "",
+    "【战斗法则】玩家绝对无法徒手对诡异或 NPC 造成伤害。任何尝试徒手攻击的指令，必须判定 is_action_legal: false，扣除理智值并给予残酷的惩罚叙事。玩家只能通过特定道具影响或杀死诡异/NPC。",
+    "",
+    "【NPC 交互】NPC 分布在随机楼层，性格各异（暴躁、温和、贪婪等）。玩家可通过对话/交易提升好感度获取道具，或使用致命道具击杀他们夺取。脾气差的 NPC 极易因玩家不当言辞发起攻击。",
+    "",
+    "【通关结局 A - 逃脱】出口在 B2 层。玩家须通过探索获得线索，得知出口位置及暗号。到达 B2 层门前时，必须在动作中明确说出暗号「暗月」方可进入，否则门无法打开。进入 B2 后将直面第 8 诡异（深渊守门人）。通关方式唯二：①消耗道具成功抵挡其 3 次攻击；②在凌晨 1 点（它消失的 1 小时内）潜行通过。",
+    "",
+    "【通关结局 B - 朝圣】利用特定道具或完成特定仪式，向公寓深处的「核心」朝圣，达成另一种结局。",
+    "",
     "请严格以 JSON 格式输出，Schema 如下：",
     '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean }',
     "",
     '你必须且只能返回一个合法的 JSON 对象，格式必须完全遵守：{"is_action_legal": boolean, "narrative": "你的剧情回复"}。严禁在 JSON 外输出任何 markdown 标记或解释性文字！',
-  ].join("\n");
+  ];
+
+  if (isFirstAction) {
+    const idx = base.findIndex((s) => s.startsWith("请严格以 JSON"));
+    if (idx > 0) {
+      base.splice(
+        idx,
+        0,
+        "",
+        "【开局叙事约束】这是玩家的第一个动作。你的 narrative 必须是一段约 200 字的第一人称视角开场白。描述玩家从冰冷的地板上苏醒，发现一张写有半真半假规则的羊皮纸，并描绘周围令人不安的细节（如：熟悉的灰色石墙、扭曲的符号、微弱的荧光苔藓、铁锈般的血腥味等）。",
+        ""
+      );
+    }
+  }
+
+  return base.join("\n");
 }
 
 function sse(data: string): Uint8Array {
@@ -92,7 +119,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "messages must be an array" }, { status: 400 });
   }
 
-  const systemPrompt = buildSystemPrompt(playerContext);
+  const isFirstAction = !messages.some((m) => m.role === "assistant");
+  const systemPrompt = buildSystemPrompt(playerContext, isFirstAction);
 
   // 历史消息清洗：仅保留 role 与 content，移除 reasoning_content；assistant 非 JSON 时包装为标准格式
   const safeMessages = messages

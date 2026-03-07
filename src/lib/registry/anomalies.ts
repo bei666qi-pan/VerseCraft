@@ -1,5 +1,6 @@
 // src/lib/registry/anomalies.ts
 // 如月公寓致命诡异实体注册表
+// 地上 1-7 层每层固定 1 个诡异；B2 层固定第 8 诡异（最强守门人）
 
 import type { Anomaly } from "./types";
 
@@ -7,6 +8,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-001",
     name: "时差症候群",
+    floor: "1",
     appearance:
       "走廊尽头的时钟突然倒转，四周墙壁上的挂历页飞速翻动。你的影子与你的动作产生数秒延迟，最终影子先行一步，走向你无法辨认的方向。",
     killingRule:
@@ -18,6 +20,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-002",
     name: "无头猎犬",
+    floor: "2",
     appearance:
       "4 楼走廊深处传来沉重喘息与指甲刮擦地面的声响。一头颈断处不断滴落黑色粘液的犬形生物凭听觉锁定猎物。它没有头颅，却「看见」一切发出声音的因果链。",
     killingRule:
@@ -29,6 +32,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-003",
     name: "认知腐蚀者",
+    floor: "3",
     appearance:
       "你脑中突然涌现从未经历过的记忆：在这栋公寓住了十年、与某个陌生人结婚、参加过自己的葬礼。墙壁上的告示开始逐字扭曲，你所认识的文字变成无法解读的符号。",
     killingRule:
@@ -40,6 +44,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-004",
     name: "管道中的屠夫",
+    floor: "4",
     appearance:
       "水龙头、地漏、马桶中涌出粘稠的猩红液体，伴随碎骨与毛发。液体逐渐凝聚成持刀人形，五官模糊，不断滴落未消化的血肉。它是公寓消化系统在管道内的拟态投射。",
     killingRule:
@@ -51,6 +56,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-005",
     name: "器官拟态墙",
+    floor: "5",
     appearance:
       "某面墙壁表面开始起伏，如同呼吸。墙皮剥落处露出粉红色肉膜与血管纹理。墙壁「睁」开一只没有瞳孔的眼睛，凝视着你。你感到被消化的渴望。",
     killingRule:
@@ -62,6 +68,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-006",
     name: "楼梯间的倒行者",
+    floor: "6",
     appearance:
       "楼梯上出现一个背对你的身影，正在「下行」——但他的脚掌与台阶方向相反，仿佛在倒放录像中行走。他的后脑勺光滑如镜，映出你所在的位置。",
     killingRule:
@@ -73,6 +80,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-007",
     name: "13 楼门扉",
+    floor: "7",
     appearance:
       "电梯门打开，显示屏写着 13。走廊两侧房门紧闭，地面铺满灰尘与鞋印——但所有鞋尖都指向电梯方向。尽头有一扇半开的门，门内传来你的声音，正在呼唤你的名字。",
     killingRule:
@@ -80,5 +88,17 @@ export const ANOMALIES: readonly Anomaly[] = [
     survivalMethod:
       "切勿跨出电梯。立即按下关门键，若门无法关闭，连续按其他楼层按钮直至电梯响应。若你已误入走廊，唯一生路是：绝不回头，笔直跑向电梯，在门关闭前冲入。跑动期间不要听、不要应、不要看两侧房门。",
     sanityDamage: 50,
+  },
+  {
+    id: "A-008",
+    name: "深渊守门人",
+    floor: "B2",
+    appearance:
+      "B2 出口门前，一具高逾三米的类人轮廓伫立。它的躯体由无数住户的残影叠合而成，面容不断轮换。它守卫着离开公寓的唯一通道。",
+    killingRule:
+      "若玩家未满足通关条件便试图通过，或在其存在的时段（凌晨 1 点除外）未使用道具抵挡其 3 次攻击即硬闯，守门人将发动即死判定。",
+    survivalMethod:
+      "通关方式唯二：①使用道具成功抵挡其 3 次攻击；②在游戏时间凌晨 1 点整（守门人消失的 1 小时内）潜行通过。",
+    sanityDamage: 80,
   },
 ];
