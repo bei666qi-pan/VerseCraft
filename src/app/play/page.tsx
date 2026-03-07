@@ -409,13 +409,18 @@ export default function PlayPage() {
 
   useEffect(() => {
     if (!isMounted || !isHydrated) return;
-    const handler = () => {
-      window.confirm("只能通过死亡或通关离开。");
-      window.history.pushState(null, "", window.location.pathname);
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
+      const confirmLeave = window.confirm(
+        "深渊的凝视正在干扰你的认知。你的进度尚未保存，确定要强行切断连接吗？"
+      );
+      if (confirmLeave) {
+        window.location.href = "/";
+      }
     };
-    window.history.pushState(null, "", window.location.pathname);
-    window.addEventListener("popstate", handler);
-    return () => window.removeEventListener("popstate", handler);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [isMounted, isHydrated]);
 
   useEffect(() => {
@@ -698,7 +703,13 @@ export default function PlayPage() {
     setShowCodexModal(false);
   }
 
-  function onConfirmExit() {
+  function onSaveAndExit() {
+    useGameStore.getState().saveGame("auto_save");
+    setShowExitModal(false);
+    router.push("/");
+  }
+
+  function onAbandonAndDie() {
     setStats({ sanity: 0 });
     setShowExitModal(false);
   }
@@ -807,27 +818,27 @@ export default function PlayPage() {
           aria-modal
           aria-labelledby="exit-modal-title"
         >
-          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/95 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
+          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
             <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
-              警告：意识切断
+              意识脱离申请
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-slate-300">
-              离开此页面等同于放弃生存。你的理智将被瞬间清零，当前躯体将被公寓吞噬。确认要退出吗？
+              选择封存意识可保存进度并返回首页；选择放弃躯壳将直接触发死亡。
             </p>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => setShowExitModal(false)}
-                className="rounded-xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/20"
+                onClick={onSaveAndExit}
+                className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
               >
-                取消
+                封存意识 (保存并退出)
               </button>
               <button
                 type="button"
-                onClick={onConfirmExit}
-                className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                onClick={onAbandonAndDie}
+                className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
               >
-                确认死亡并退出
+                放弃躯壳 (直接抹杀)
               </button>
             </div>
           </div>

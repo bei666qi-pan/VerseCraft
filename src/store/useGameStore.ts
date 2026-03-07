@@ -92,8 +92,19 @@ export interface CodexEntry {
   weakness?: string;
 }
 
+export interface SaveSlotData {
+  stats: Record<StatType, number>;
+  inventory: Item[];
+  logs: { role: string; content: string; reasoning?: string }[];
+  time: GameTime;
+  codex: Record<string, CodexEntry>;
+  historicalMaxSanity: number;
+}
+
 interface GameState {
   currentSaveSlot: string;
+  /** 最多 3 个存档位 */
+  saveSlots: Record<string, SaveSlotData>;
   isHydrated: boolean;
 
   playerName: string;
@@ -157,6 +168,9 @@ interface GameState {
     anomalyThreshold: number,
     anomalyWeaknessTags: string
   ) => PerformCheckResult;
+
+  saveGame: (slotId: string) => void;
+  loadGame: (slotId: string) => void;
 }
 
 const DEFAULT_STATS: Record<StatType, number> = {
@@ -212,6 +226,7 @@ export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       currentSaveSlot: "slot_1",
+      saveSlots: {},
       isHydrated: false,
       playerName: "",
       gender: "",
@@ -418,6 +433,33 @@ export const useGameStore = create<GameState>()(
           narrative: "判定失败，陷入致命危机。",
         };
       },
+
+      saveGame: (slotId) =>
+        set((s) => {
+          const data: SaveSlotData = {
+            stats: JSON.parse(JSON.stringify(s.stats)),
+            inventory: JSON.parse(JSON.stringify(s.inventory)),
+            logs: JSON.parse(JSON.stringify(s.logs ?? [])),
+            time: JSON.parse(JSON.stringify(s.time ?? { day: 0, hour: 0 })),
+            codex: JSON.parse(JSON.stringify(s.codex ?? {})),
+            historicalMaxSanity: s.historicalMaxSanity ?? 50,
+          };
+          const next = { ...s.saveSlots, [slotId]: data };
+          return { saveSlots: next };
+        }),
+
+      loadGame: (slotId) => {
+        const data = get().saveSlots[slotId];
+        if (!data) return;
+        set({
+          stats: JSON.parse(JSON.stringify(data.stats)),
+          inventory: JSON.parse(JSON.stringify(data.inventory)),
+          logs: JSON.parse(JSON.stringify(data.logs)),
+          time: JSON.parse(JSON.stringify(data.time)),
+          codex: JSON.parse(JSON.stringify(data.codex)),
+          historicalMaxSanity: data.historicalMaxSanity,
+        });
+      },
     }),
     {
       name: DB_KEY,
@@ -425,6 +467,7 @@ export const useGameStore = create<GameState>()(
       skipHydration: true,
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
+        saveSlots: s.saveSlots ?? {},
         playerName: s.playerName,
         gender: s.gender,
         height: s.height,
