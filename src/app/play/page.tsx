@@ -16,6 +16,7 @@ type DMJson = {
   narrative: string;
   is_death: boolean;
   consumes_time?: boolean;
+  consumed_items?: string[];
   codex_updates?: Array<{
     id: string;
     name: string;
@@ -102,35 +103,16 @@ function safeNumber(n: unknown, fallback: number): number {
 }
 
 /**
- * Extract only the narrative string value from streaming JSON.
- * Returns null if "narrative" key not present; "" if key present but empty.
- * Never returns JSON structure, braces, or keys - only decoded narrative text.
+ * Extract only narrative text from streaming JSON. Uses aggressive regex to avoid
+ * any JSON prefix/keys leaking. Returns "" when narrative not yet present.
  */
-function extractNarrativePartial(raw: string): string | null {
-  const match = raw.match(/"narrative"\s*:\s*"/);
-  if (!match) return null;
-  const start = match.index! + match[0].length;
-  let out = "";
-  let i = start;
-  while (i < raw.length) {
-    const ch = raw[i]!;
-    if (ch === "\\") {
-      const next = raw[i + 1];
-      if (next === undefined) break;
-      if (next === "n") out += "\n";
-      else if (next === "t") out += "\t";
-      else if (next === "r") out += "\r";
-      else if (next === "\"") out += "\"";
-      else if (next === "\\") out += "\\";
-      else out += next;
-      i += 2;
-      continue;
-    }
-    if (ch === "\"") return out;
-    out += ch;
-    i += 1;
-  }
-  return out;
+function extractNarrativePartial(raw: string): string {
+  const match = raw.match(/"narrative"\s*:\s*"([^]*)/);
+  if (!match) return "";
+  let text = match[1];
+  text = text.replace(/(?<!\\)"(?:\s*[,}\]].*)?$/, "");
+  text = text.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r").replace(/\\"/g, "\"");
+  return text;
 }
 
 const FALLBACK_DM: DMJson = {
@@ -488,7 +470,7 @@ export default function PlayPage() {
             setRawDmBuffer(raw);
 
             const partial = extractNarrativePartial(raw);
-            if (partial !== null) setLiveNarrative(partial);
+            setLiveNarrative(partial);
           }
         }
       }
@@ -516,6 +498,10 @@ export default function PlayPage() {
     });
 
     setLiveNarrative("");
+
+    if (Array.isArray(parsed.consumed_items) && parsed.consumed_items.length > 0) {
+      useGameStore.getState().consumeItems(parsed.consumed_items);
+    }
 
     if (Array.isArray(parsed.codex_updates) && parsed.codex_updates.length > 0) {
       const entries: CodexEntry[] = parsed.codex_updates.filter(

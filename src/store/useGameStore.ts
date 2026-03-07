@@ -131,6 +131,7 @@ interface GameState {
   setInventory: (inventory: Item[]) => void;
   addToInventory: (item: Item) => void;
   removeFromInventory: (itemId: string) => void;
+  consumeItems: (itemNames: string[]) => void;
 
   // 核心 Action
   initCharacter: (
@@ -271,6 +272,11 @@ export const useGameStore = create<GameState>()(
       removeFromInventory: (itemId) =>
         set((s) => ({
           inventory: s.inventory.filter((i) => i.id !== itemId),
+        })),
+
+      consumeItems: (itemNames) =>
+        set((s) => ({
+          inventory: s.inventory.filter((i) => !itemNames.includes(i.name)),
         })),
 
       initCharacter: (profile, stats, talent) => {
