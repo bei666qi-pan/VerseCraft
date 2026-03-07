@@ -27,8 +27,9 @@ See: `src/lib/registry/anomalies.ts`
 
 See: `src/lib/registry/npcs.ts`
 
-## Items
+## Items (81 total: S1/A3/B10/C17/D50)
 - `blockLethal`: 可抵挡致命攻击（如符纸护身符、防污染协议残页）
 - `ruleKill`: 规则类杀伤，可跨越战力鸿沟击杀（如建筑原稿、协议残页）
+- 部分 B 级道具含 `使用此物品可增加特定NPC的好感度`，供 DM 触发好感度引擎（陈婆婆的织针、林医生的处方笺、邮差的挂号信、保安的巡逻表、夜读老人的书）
 
 See: `src/lib/registry/items.ts`, `src/lib/registry/types.ts`

@@ -6,6 +6,7 @@ RUN apk add --no-cache ca-certificates libc6-compat
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+RUN npm config set registry https://registry.npmmirror.com/
 RUN corepack enable pnpm && pnpm install --frozen-lockfile
 
 FROM base AS builder

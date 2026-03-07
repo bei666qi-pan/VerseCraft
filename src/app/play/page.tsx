@@ -433,11 +433,17 @@ export default function PlayPage() {
 
     useGameStore.getState().pushLog({ role: "user", content: trimmed });
 
+    const diceRoll = Math.floor(Math.random() * 100) + 1;
+    const actionPayload = `【系统暗骰：本次行动检定值为 ${diceRoll}/100 (1为大成功，100为大失败)】\n玩家行动：${trimmed}`;
+
     const history = useGameStore.getState().logs ?? [];
-    const messages: ChatMessage[] = history.map((l) => ({
-      role: l.role as ChatRole,
-      content: l.content,
-    }));
+    const messages: ChatMessage[] = history.map((l, idx) => {
+      const isLastUser = idx === history.length - 1 && l.role === "user";
+      return {
+        role: l.role as ChatRole,
+        content: isLastUser ? actionPayload : l.content,
+      };
+    });
 
     const playerContext = useGameStore.getState().getPromptContext();
 
