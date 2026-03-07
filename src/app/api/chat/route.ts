@@ -61,6 +61,18 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【图鉴推送指令】：当玩家在剧情中首次遇到任何 NPC/诡异，或通过交互发现了它们的性格、弱点、规则、或者好感度发生变化时，你必须在返回的 JSON 中携带 codex_updates 数组，将该实体的最新情报（如 name, type, favorability, combatPower, personality, rules_discovered）推送给前端系统。",
     "",
     "JSON Schema 追加可选字段：codex_updates: [{ id, name, type: 'npc'|'anomaly', favorability?, combatPower?, personality?, traits?, rules_discovered? }]",
+    "",
+    "## 【深度好感度与暗月狂暴法则】",
+    "",
+    "初始阈值：NPC 初始好感度为 0。诡异初始好感度为 -10。",
+    "",
+    "行为准则：好感度 > 0 会提供帮助；好感度 < 0 会展露敌意。诡异好感度 > -5 时一般不会主动攻击。好感度可通过玩家的高「出身」属性、赠送道具或巧妙对话改变。",
+    "",
+    "暗月狂暴：当游戏时间到达第 3 日 0 时（暗月阶段），你必须在后台将所有诡异的好感度强制 -5，并将其战斗力强制 +2。诡异将陷入极度狂躁的攻击状态。",
+    "",
+    "## 【叙事排版与 Markdown 格式（绝对执行）】",
+    "",
+    "你的 narrative 回复必须多分段，以增强可读性。请将所有的 NPC 名字、诡异名称、重要道具和关键线索使用 Markdown 加粗（如 **陈婆婆**、**A-001**、**染血的羊皮纸**）。",
   ];
 
   if (isFirstAction) {

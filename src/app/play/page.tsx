@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Backpack, BookOpen } from "lucide-react";
+import { Backpack, BookOpen, Package } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 
@@ -50,6 +50,23 @@ const STAT_LABELS: Record<StatType, string> = {
 function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+
+function renderNarrativeText(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    const m = part.match(/^\*\*(.+)\*\*$/);
+    if (m)
+      return (
+        <strong
+          key={i}
+          className="font-bold text-red-600 drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+        >
+          {m[1]}
+        </strong>
+      );
+    return <span key={i}>{part}</span>;
+  });
 }
 
 function safeNumber(n: unknown, fallback: number): number {
@@ -264,6 +281,11 @@ export default function PlayPage() {
   const setStats = useGameStore((s) => s.setStats);
   const codex = useGameStore((s) => s.codex ?? {});
   const mergeCodex = useGameStore((s) => s.mergeCodex);
+  const hasReadParchment = useGameStore((s) => s.hasReadParchment ?? false);
+  const hasCheckedCodex = useGameStore((s) => s.hasCheckedCodex ?? false);
+  const warehouse = useGameStore((s) => s.warehouse ?? []);
+  const setHasReadParchment = useGameStore((s) => s.setHasReadParchment);
+  const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -274,11 +296,14 @@ export default function PlayPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [showCodexModal, setShowCodexModal] = useState(false);
+  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  const [codexPage, setCodexPage] = useState(0);
   const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
   const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const hasTriggeredOpening = useRef(false);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -352,11 +377,24 @@ export default function PlayPage() {
     return () => window.removeEventListener("popstate", handler);
   }, [isMounted, isHydrated]);
 
-  async function sendAction(action: string) {
+  useEffect(() => {
+    if (!isMounted || !isHydrated || isStreaming || hasTriggeredOpening.current) return;
+    const currentLogs = useGameStore.getState().logs ?? [];
+    if (currentLogs.length === 0) {
+      hasTriggeredOpening.current = true;
+      void sendAction(
+        "【系统强制指令：玩家刚刚苏醒。请直接输出200字第一人称开场白，提及旁边有一张染血的羊皮纸，并在结尾用引导性话语提示玩家打开书包使用羊皮纸。】",
+        true
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sendAction is stable, avoid re-trigger
+  }, [isMounted, isHydrated, isStreaming]);
+
+  async function sendAction(action: string, bypassLengthCheck?: boolean) {
     if (isStreaming) return;
     const trimmed = action.trim();
     if (!trimmed) return;
-    if (trimmed.length > MAX_INPUT) return;
+    if (!bypassLengthCheck && trimmed.length > MAX_INPUT) return;
 
     setIsStreaming(true);
     setRawDmBuffer("");
@@ -505,6 +543,7 @@ export default function PlayPage() {
   }
 
   function onUseItem(item: Item) {
+    if (item.id === "I-PARCHMENT") setHasReadParchment(true);
     const text = `我使用了道具：${item.name}`;
     void sendAction(text);
     setSelectedModalItemId(null);
@@ -514,11 +553,20 @@ export default function PlayPage() {
   function openInventory() {
     setShowInventoryModal(true);
     setShowCodexModal(false);
+    setShowWarehouseModal(false);
   }
 
   function openCodex() {
+    setHasCheckedCodex(true);
     setShowCodexModal(true);
     setShowInventoryModal(false);
+    setShowWarehouseModal(false);
+  }
+
+  function openWarehouse() {
+    setShowWarehouseModal(true);
+    setShowInventoryModal(false);
+    setShowCodexModal(false);
   }
 
   function onConfirmExit() {
@@ -693,7 +741,7 @@ export default function PlayPage() {
                   {displayMessages.map((m, idx) => (
                     <div
                       key={`${m.role}-${idx}`}
-                      className={`rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm leading-7 ${
                         isDarkMoon
                           ? m.role === "user"
                             ? "border-red-900/40 bg-red-950/50 text-red-100"
@@ -710,13 +758,23 @@ export default function PlayPage() {
                       >
                         {m.role === "user" ? "你" : "DM"}
                       </div>
-                      <div className="whitespace-pre-wrap">{m.content}</div>
+                      <div
+                        className={`whitespace-pre-wrap ${
+                          m.role === "assistant"
+                            ? "leading-loose tracking-wide text-lg text-slate-800"
+                            : ""
+                        }`}
+                      >
+                        {m.role === "assistant"
+                          ? renderNarrativeText(m.content)
+                          : m.content}
+                      </div>
                     </div>
                   ))}
 
                   {isStreaming ? (
                     <div
-                      className={`rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm leading-7 ${
                         isDarkMoon
                           ? "border-red-900/40 bg-red-950/20 text-red-100"
                           : "border-border bg-white text-neutral-900"
@@ -725,11 +783,13 @@ export default function PlayPage() {
                       <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <div className="whitespace-pre-wrap">{liveNarrative || "……"}</div>
+                      <div className="whitespace-pre-wrap leading-loose tracking-wide text-lg text-slate-800">
+                        {renderNarrativeText(liveNarrative || "……")}
+                      </div>
                     </div>
                   ) : liveNarrative ? (
                     <div
-                      className={`rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm leading-7 ${
                         isDarkMoon
                           ? "border-red-900/40 bg-red-950/20 text-red-100"
                           : "border-border bg-white text-neutral-900"
@@ -738,7 +798,9 @@ export default function PlayPage() {
                       <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <div className="whitespace-pre-wrap">{liveNarrative}</div>
+                      <div className="whitespace-pre-wrap leading-loose tracking-wide text-lg text-slate-800">
+                        {renderNarrativeText(liveNarrative)}
+                      </div>
                     </div>
                   ) : (
                     <div
@@ -763,18 +825,18 @@ export default function PlayPage() {
                       if (e.key === "Enter") onSubmit();
                     }}
                     maxLength={MAX_INPUT}
-                    placeholder="最多 20 字：例如「用手电筒照镜子」"
+                    placeholder={hasReadParchment ? "最多 20 字：例如「用手电筒照镜子」" : "你需要先查看背包中的羊皮纸..."}
                     className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                       isDarkMoon
                         ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
                         : "border-border bg-white focus:border-neutral-400"
                     }`}
-                    disabled={isStreaming}
+                    disabled={isStreaming || !hasReadParchment}
                   />
                   <button
                     type="button"
                     onClick={onSubmit}
-                    disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
+                    disabled={isStreaming || !hasReadParchment || input.trim().length === 0 || input.trim().length > MAX_INPUT}
                     className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
                       isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
                     }`}
@@ -803,11 +865,13 @@ export default function PlayPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-10 left-10 z-40 flex gap-4">
+      <div className="fixed bottom-10 left-10 z-40 flex gap-3">
         <button
           type="button"
           onClick={openInventory}
-          className="group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110"
+          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110 ${
+            !hasReadParchment ? "animate-bounce ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
+          }`}
           title="背包"
         >
           <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
@@ -816,11 +880,22 @@ export default function PlayPage() {
         <button
           type="button"
           onClick={openCodex}
-          className="group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-xl transition hover:scale-110"
+          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-xl transition hover:scale-110 ${
+            Object.keys(codex).length > 0 && !hasCheckedCodex ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
+          }`}
           title="图鉴"
         >
           <div className="absolute -inset-2 rounded-full bg-indigo-500/20 blur-xl" aria-hidden />
           <BookOpen size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+        </button>
+        <button
+          type="button"
+          onClick={openWarehouse}
+          className="group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(100,116,139,0.4)] backdrop-blur-xl transition hover:scale-110"
+          title="仓库"
+        >
+          <div className="absolute -inset-2 rounded-full bg-slate-500/20 blur-xl" aria-hidden />
+          <Package size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
         </button>
       </div>
 
@@ -910,109 +985,111 @@ export default function PlayPage() {
           aria-modal
           aria-labelledby="codex-modal-title"
         >
-          <div className="relative flex h-[70vh] w-[90vw] max-w-5xl flex-row overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-2xl backdrop-blur-3xl">
+          <div className="relative flex h-[70vh] w-[80vw] flex-row overflow-hidden rounded-xl bg-slate-100/90 shadow-2xl backdrop-blur-3xl">
             <button
               type="button"
-              onClick={() => { setShowCodexModal(false); setSelectedCodexId(null); }}
-              className="absolute right-4 top-4 z-10 rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              onClick={() => { setShowCodexModal(false); setSelectedCodexId(null); setCodexPage(0); }}
+              className="absolute right-4 top-4 z-10 rounded-full p-1.5 text-slate-500 transition hover:bg-white/20 hover:text-slate-800"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <div
-              className="flex w-1/2 flex-col overflow-hidden"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-                <h2 id="codex-modal-title" className="border-b border-white/10 px-6 py-4 text-sm font-semibold tracking-widest text-white">
-                  图鉴 · 目录
-                </h2>
-                <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">NPC</p>
-                  <div className="space-y-2">
-                    {Object.values(codex)
-                      .filter((e) => e.type === "npc")
-                      .map((e) => (
-                        <button
-                          key={e.id}
-                          type="button"
-                          onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
-                          className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
-                            selectedCodexId === e.id
-                              ? "bg-indigo-500/30 text-white"
-                              : "bg-white/5 text-slate-300 hover:bg-white/10"
-                          }`}
-                        >
-                          {e.name}
-                        </button>
-                      ))}
-                    {Object.values(codex).filter((e) => e.type === "npc").length === 0 && (
-                      <p className="py-4 text-xs text-slate-600">暂无</p>
-                    )}
-                  </div>
-                  <p className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-slate-500">诡异</p>
-                  <div className="space-y-2">
-                    {Object.values(codex)
-                      .filter((e) => e.type === "anomaly")
-                      .map((e) => (
-                        <button
-                          key={e.id}
-                          type="button"
-                          onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
-                          className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
-                            selectedCodexId === e.id
-                              ? "bg-red-500/20 text-white"
-                              : "bg-white/5 text-slate-300 hover:bg-white/10"
-                          }`}
-                        >
-                          {e.name}
-                        </button>
-                      ))}
-                    {Object.values(codex).filter((e) => e.type === "anomaly").length === 0 && (
-                      <p className="py-4 text-xs text-slate-600">暂无</p>
-                    )}
-                  </div>
-                </div>
+            <div className="flex w-1/2 flex-col overflow-hidden">
+              <h2 id="codex-modal-title" className="border-b border-slate-300/60 px-6 py-4 text-sm font-semibold tracking-widest text-slate-800">
+                图鉴 · 目录
+              </h2>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                {(() => {
+                  const allEntries = [
+                    ...Object.values(codex).filter((e) => e.type === "npc"),
+                    ...Object.values(codex).filter((e) => e.type === "anomaly"),
+                  ];
+                  const PAGE_SIZE = 6;
+                  const totalPages = Math.max(1, Math.ceil(allEntries.length / PAGE_SIZE));
+                  const pageEntries = allEntries.slice(codexPage * PAGE_SIZE, (codexPage + 1) * PAGE_SIZE);
+                  return (
+                    <>
+                      <div className="space-y-2">
+                        {pageEntries.length === 0 ? (
+                          <p className="py-4 text-xs text-slate-600">暂无</p>
+                        ) : (
+                          pageEntries.map((e) => (
+                            <button
+                              key={e.id}
+                              type="button"
+                              onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
+                              className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
+                                e.type === "anomaly"
+                                  ? selectedCodexId === e.id
+                                    ? "bg-red-500/30 text-white"
+                                    : "bg-white/60 text-slate-700 hover:bg-red-500/10"
+                                  : selectedCodexId === e.id
+                                    ? "bg-indigo-500/30 text-white"
+                                    : "bg-white/60 text-slate-700 hover:bg-indigo-500/10"
+                              }`}
+                            >
+                              {e.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                      {allEntries.length > PAGE_SIZE && (
+                        <div className="mt-4 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setCodexPage((p) => Math.min(p + 1, totalPages - 1))}
+                            disabled={codexPage >= totalPages - 1}
+                            className="rounded-lg bg-slate-700/80 px-4 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-40"
+                          >
+                            → 下一页
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
-              <div className="w-px shrink-0 bg-gradient-to-b from-transparent via-white/20 to-transparent" />
-              <div className="flex w-1/2 flex-1 flex-col overflow-y-auto p-6">
+            </div>
+            <div className="w-px shrink-0 bg-gradient-to-b from-transparent via-black/30 to-transparent" aria-hidden />
+            <div className="flex w-1/2 flex-1 flex-col overflow-y-auto p-6">
                 {selectedCodexId && codex[selectedCodexId] ? (
                   (() => {
                     const e = codex[selectedCodexId]!;
                     const fav = e.favorability ?? 0;
                     return (
                       <>
-                        <h3 className="text-xl font-bold text-white">{e.name}</h3>
+                        <h3 className="text-xl font-bold text-slate-900">{e.name}</h3>
                         <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{e.type === "npc" ? "NPC" : "诡异"}</p>
                         <div className="mt-6 space-y-4">
                           <div>
                             <span className="text-xs text-slate-500">好感度</span>
-                            <p className={`mt-1 font-bold ${fav >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            <p className={`mt-1 font-bold ${fav >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {fav}
                             </p>
                           </div>
                           {typeof e.combatPower === "number" && (
                             <div>
                               <span className="text-xs text-slate-500">战斗力</span>
-                              <p className="mt-1 font-semibold text-white">{e.combatPower}</p>
+                              <p className="mt-1 font-semibold text-slate-800">{e.combatPower}</p>
                             </div>
                           )}
                           {e.personality && (
                             <div>
                               <span className="text-xs text-slate-500">性格</span>
-                              <p className="mt-1 text-sm text-slate-200">{e.personality}</p>
+                              <p className="mt-1 text-sm text-slate-700">{e.personality}</p>
                             </div>
                           )}
                           {e.traits && (
                             <div>
                               <span className="text-xs text-slate-500">特质</span>
-                              <p className="mt-1 text-sm text-slate-200">{e.traits}</p>
+                              <p className="mt-1 text-sm text-slate-700">{e.traits}</p>
                             </div>
                           )}
                           {e.rules_discovered && (
                             <div>
                               <span className="text-xs text-slate-500">已知规则</span>
-                              <p className="mt-1 text-sm text-amber-200/90">{e.rules_discovered}</p>
+                              <p className="mt-1 text-sm text-amber-800">{e.rules_discovered}</p>
                             </div>
                           )}
                         </div>
@@ -1025,6 +1102,58 @@ export default function PlayPage() {
               </div>
             </div>
           </div>
+      )}
+
+      {showWarehouseModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+          role="dialog"
+          aria-modal
+          aria-labelledby="warehouse-modal-title"
+        >
+          <div className="relative mx-4 w-full max-w-2xl rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 id="warehouse-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                仓库
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowWarehouseModal(false)}
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {Array.from({ length: 12 }, (_, idx) => {
+                const item = warehouse[idx];
+                return (
+                  <div
+                    key={item?.id ?? `empty-${idx}`}
+                    className={`flex min-h-[72px] flex-col items-center justify-center rounded-xl border p-3 ${
+                      item
+                        ? "border-white/20 bg-slate-800/60"
+                        : "border-white/5 bg-black/40 shadow-inner"
+                    }`}
+                  >
+                    {item ? (
+                      <>
+                        <span className="text-xs font-semibold text-white truncate w-full text-center">{item.name}</span>
+                        {item.description && (
+                          <span className="mt-1 text-[10px] text-slate-400 line-clamp-2">{item.description}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-600">空</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

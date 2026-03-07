@@ -113,7 +113,16 @@ interface GameState {
   /** 图鉴：NPC/诡异情报，由 DM 通过 codex_updates 推送 */
   codex: Record<string, CodexEntry>;
 
+  /** 新手引导：是否已阅读羊皮纸 */
+  hasReadParchment: boolean;
+  /** 新手引导：是否已查看图鉴 */
+  hasCheckedCodex: boolean;
+  /** 仓库：非道具展示品（纯展示） */
+  warehouse: Array<{ id: string; name: string; description?: string }>;
+
   setHydrated: (state: boolean) => void;
+  setHasReadParchment: (v: boolean) => void;
+  setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
   advanceTime: () => void;
@@ -205,8 +214,13 @@ export const useGameStore = create<GameState>()(
       inventory: [],
       logs: [],
       codex: {},
+      hasReadParchment: false,
+      hasCheckedCodex: false,
+      warehouse: [],
 
       setHydrated: (state) => set({ isHydrated: state }),
+      setHasReadParchment: (v) => set({ hasReadParchment: v }),
+      setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
 
       mergeCodex: (updates) =>
         set((s) => {
@@ -272,6 +286,9 @@ export const useGameStore = create<GameState>()(
           stats,
           inventory: [PARCHMENT_ITEM, startingItem],
           codex: {},
+          hasReadParchment: false,
+          hasCheckedCodex: false,
+          warehouse: [],
         });
       },
 
@@ -369,6 +386,9 @@ export const useGameStore = create<GameState>()(
         inventory: s.inventory,
         logs: s.logs ?? [],
         codex: s.codex ?? {},
+        hasReadParchment: s.hasReadParchment ?? false,
+        hasCheckedCodex: s.hasCheckedCodex ?? false,
+        warehouse: s.warehouse ?? [],
       }),
     }
   )
