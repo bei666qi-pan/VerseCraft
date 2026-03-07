@@ -35,7 +35,7 @@ const TALENT_CD: Record<EchoTalent, number> = {
   时间回溯: 6,
   命运馈赠: 3,
   主角光环: 6,
-  生命汇源: 5,
+  生命汇源: 7,
   洞察之眼: 4,
   丧钟回响: 7,
 };
@@ -364,9 +364,7 @@ export default function PlayPage() {
   useEffect(() => {
     if (!scrollRef.current) return;
     const el = scrollRef.current;
-    if (isStreaming) {
-      el.scrollTop = el.scrollHeight;
-    } else {
+    if (!isStreaming) {
       if (prevIsStreamingRef.current) {
         el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       } else {
@@ -604,7 +602,8 @@ export default function PlayPage() {
         break;
       }
       case "生命汇源": {
-        setStats({ sanity: 50 });
+        const hist = useGameStore.getState().historicalMaxSanity ?? 50;
+        setStats({ sanity: hist });
         break;
       }
       case "洞察之眼": {
@@ -829,7 +828,8 @@ export default function PlayPage() {
 
               <div
                 ref={scrollRef}
-                className="h-[54vh] overflow-auto px-5 py-5"
+                className="h-[54vh] overflow-y-auto overscroll-contain px-5 py-5"
+                style={{ overflowAnchor: "auto" }}
               >
                 <div className="space-y-4">
                   {displayMessages.map((m, idx) => (
@@ -864,7 +864,7 @@ export default function PlayPage() {
 
                   {isStreaming ? (
                     <div
-                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
+                      className={`min-h-[100px] animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
                         isDarkMoon
                           ? "border-red-900/40 bg-red-950/20 text-red-100"
                           : "border-border bg-white text-neutral-900"

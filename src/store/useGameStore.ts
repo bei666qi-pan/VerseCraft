@@ -106,6 +106,8 @@ interface GameState {
   time: GameTime;
 
   stats: Record<StatType, number>;
+  /** Max sanity ever reached; used by 生命汇源 talent */
+  historicalMaxSanity: number;
 
   inventory: Item[];
   logs: { role: string; content: string; reasoning?: string }[];
@@ -214,6 +216,7 @@ export const useGameStore = create<GameState>()(
       talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
       time: { day: 0, hour: 0 },
       stats: { ...DEFAULT_STATS },
+      historicalMaxSanity: 50,
       inventory: [],
       logs: [],
       codex: {},
@@ -273,7 +276,13 @@ export const useGameStore = create<GameState>()(
       setTime: (time) => set({ time }),
 
       setStats: (stats) =>
-        set((s) => ({ stats: { ...s.stats, ...stats } })),
+        set((s) => {
+          const next = { ...s.stats, ...stats };
+          const newSanity = next.sanity;
+          const hist = s.historicalMaxSanity ?? 50;
+          const nextHist = typeof newSanity === "number" && newSanity > hist ? newSanity : hist;
+          return { stats: next, historicalMaxSanity: nextHist };
+        }),
 
       setInventory: (inventory) => set({ inventory }),
 
@@ -297,6 +306,7 @@ export const useGameStore = create<GameState>()(
       initCharacter: (profile, stats, talent) => {
         const background = stats.background ?? DEFAULT_STATS.background;
         const startingItem = pickStartingItemByBackground(background);
+        const initialSanity = stats.sanity ?? DEFAULT_STATS.sanity;
 
         set({
           playerName: profile.name,
@@ -307,6 +317,7 @@ export const useGameStore = create<GameState>()(
           talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
           time: { day: 0, hour: 0 },
           stats,
+          historicalMaxSanity: initialSanity,
           inventory: [PARCHMENT_ITEM, startingItem],
           codex: {},
           hasReadParchment: false,
@@ -406,6 +417,7 @@ export const useGameStore = create<GameState>()(
         talentCooldowns: s.talentCooldowns,
         time: s.time ?? { day: 0, hour: 0 },
         stats: s.stats,
+        historicalMaxSanity: s.historicalMaxSanity ?? 50,
         inventory: s.inventory,
         logs: s.logs ?? [],
         codex: s.codex ?? {},
