@@ -190,9 +190,7 @@ function StatEnergyBar({
 
   const labelClass = isSanityDanger
     ? "text-red-400 animate-pulse font-bold"
-    : isDarkMoon
-      ? "text-red-200/90"
-      : "text-slate-300";
+    : "text-white font-bold tracking-widest";
   const valueClass = isDarkMoon ? "text-red-300/70" : "text-slate-500";
   const trackBg = isDarkMoon ? "bg-red-900/50" : "bg-slate-800/50";
 
@@ -263,8 +261,8 @@ export default function PlayPage() {
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -437,7 +435,8 @@ export default function PlayPage() {
       useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
     }
 
-    if (parsed.is_action_legal && !parsed.is_death) {
+    const isItemUse = trimmed.startsWith("我使用了道具：");
+    if (parsed.is_action_legal && !parsed.is_death && !isItemUse) {
       const storeAny = useGameStore as any;
       storeAny.getState().decrementCooldowns();
       const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
@@ -477,7 +476,8 @@ export default function PlayPage() {
   function onUseItem(item: Item) {
     const text = `我使用了道具：${item.name}`;
     void sendAction(text);
-    setSelectedItemId(null);
+    setSelectedModalItemId(null);
+    setShowInventoryModal(false);
   }
 
   function onConfirmExit() {
@@ -530,15 +530,14 @@ export default function PlayPage() {
       )}
 
       <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="relative mb-8 inline-flex items-center justify-center group">
+          <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-blue-500/30 opacity-70 blur-2xl transition-opacity duration-700 group-hover:opacity-100 animate-pulse" aria-hidden />
+          <h1 className="relative z-10 text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] md:text-5xl">
+            意识潜入
+          </h1>
+        </div>
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <h1
-              className={`text-2xl font-semibold tracking-tight ${
-                isDarkMoon ? "text-red-200" : ""
-              }`}
-            >
-              意识潜入
-            </h1>
             <p
               className={`text-sm ${
                 isDarkMoon ? "text-red-300/90" : "text-neutral-600"
@@ -680,93 +679,6 @@ export default function PlayPage() {
               </div>
             </div>
 
-            <div
-              className={`mt-6 overflow-hidden rounded-3xl border shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
-                isDarkMoon
-                  ? "border-red-900/40 bg-red-950/30 backdrop-blur-2xl"
-                  : "border-white/10 bg-slate-900/40 backdrop-blur-2xl"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => setInventoryCollapsed((c) => !c)}
-                className="flex w-full items-center justify-between p-5 text-left"
-              >
-                <h2 className={`text-sm font-semibold tracking-widest ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
-                  背包
-                </h2>
-                <span className={`text-xs ${isDarkMoon ? "text-red-300/70" : "text-slate-500"}`}>
-                  {inventoryCollapsed ? "展开" : "收起"}
-                </span>
-              </button>
-              {!inventoryCollapsed && (
-                <div className="border-t border-white/5 px-5 pb-5 pt-4">
-                  {inventory.length === 0 ? (
-                    <div
-                      className={`rounded-xl border px-4 py-3 text-sm ${
-                        isDarkMoon ? "border-red-900/40 bg-red-950/30 text-red-300/80" : "border-white/10 bg-slate-800/50 text-slate-400"
-                      }`}
-                    >
-                      空
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {inventory.map((i) => (
-                        <div key={i.id}>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedItemId(selectedItemId === i.id ? null : i.id)}
-                            className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                              selectedItemId === i.id
-                                ? isDarkMoon
-                                  ? "border-red-700/60 bg-red-950/50"
-                                  : "border-indigo-500/40 bg-slate-800/80"
-                                : isDarkMoon
-                                  ? "border-red-900/40 bg-red-950/30 hover:border-red-900/60"
-                                  : "border-white/10 bg-slate-800/50 hover:border-white/20"
-                            }`}
-                          >
-                            <div className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-slate-200"}`}>
-                              {formatItem(i)}
-                            </div>
-                          </button>
-                          {selectedItemId === i.id && (
-                            <div
-                              className={`mt-2 rounded-xl border p-4 ${
-                                isDarkMoon ? "border-red-900/40 bg-red-950/40" : "border-white/10 bg-slate-800/60"
-                              }`}
-                            >
-                              <p className={`text-xs leading-relaxed ${isDarkMoon ? "text-red-300/90" : "text-slate-300"}`}>
-                                {i.description}
-                              </p>
-                              {i.statBonus && Object.keys(i.statBonus).length > 0 && (
-                                <p className={`mt-2 text-xs ${isDarkMoon ? "text-red-400/80" : "text-indigo-300"}`}>
-                                  属性：{Object.entries(i.statBonus)
-                                    .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
-                                    .join(", ")}
-                                </p>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => onUseItem(i)}
-                                disabled={isStreaming}
-                                className={`mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-40 ${
-                                  isDarkMoon
-                                    ? "bg-red-900/80 text-red-100 hover:bg-red-900"
-                                    : "bg-indigo-600/80 text-white hover:bg-indigo-600"
-                                }`}
-                              >
-                                使用该物品
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </aside>
 
           <section className="lg:col-span-8">
@@ -899,6 +811,104 @@ export default function PlayPage() {
           </section>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowInventoryModal(true)}
+        className="fixed bottom-10 right-10 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_30px_rgba(99,102,241,0.3)] backdrop-blur-xl transition hover:scale-110"
+        title="背包"
+      >
+        <div className="absolute -inset-2 rounded-full bg-indigo-500/20 blur-xl" aria-hidden />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="relative z-10 h-6 w-6 text-indigo-300"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8 4-8-4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+      </button>
+
+      {showInventoryModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+          role="dialog"
+          aria-modal
+          aria-labelledby="inventory-modal-title"
+        >
+          <div className="relative mx-4 w-full max-w-md rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                背包
+              </h2>
+              <button
+                type="button"
+                onClick={() => { setShowInventoryModal(false); setSelectedModalItemId(null); }}
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {Array.from({ length: 6 }, (_, idx) => {
+                const item = inventory[idx];
+                const isSelected = item && selectedModalItemId === item.id;
+                return (
+                  <button
+                    key={item?.id ?? `empty-${idx}`}
+                    type="button"
+                    onClick={() => item && setSelectedModalItemId(isSelected ? null : item.id)}
+                    className={`flex min-h-[88px] flex-col items-center justify-center rounded-xl border p-3 transition ${
+                      item
+                        ? isSelected
+                          ? "border-indigo-500/60 bg-indigo-500/20"
+                          : "border-white/20 bg-slate-800/60 hover:border-white/40"
+                        : "border-white/5 bg-black/40 shadow-inner"
+                    }`}
+                  >
+                    {item ? (
+                      <>
+                        <span className="text-xs font-semibold text-white truncate w-full text-center">{item.name}</span>
+                        <span className="mt-1 text-[10px] text-slate-400">{item.tier}</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-600">空</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedModalItemId && (() => {
+              const item = inventory.find((i) => i.id === selectedModalItemId);
+              if (!item) return null;
+              return (
+                <div className="mt-5 rounded-xl border border-white/10 bg-slate-800/60 p-4">
+                  <p className="text-sm leading-relaxed text-slate-200">{item.description}</p>
+                  {item.statBonus && Object.keys(item.statBonus).length > 0 && (
+                    <p className="mt-2 text-xs text-indigo-300">
+                      属性：{Object.entries(item.statBonus)
+                        .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
+                        .join(", ")}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onUseItem(item)}
+                    disabled={isStreaming}
+                    className="mt-4 w-full rounded-xl bg-indigo-600/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-40"
+                  >
+                    使用该物品
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
