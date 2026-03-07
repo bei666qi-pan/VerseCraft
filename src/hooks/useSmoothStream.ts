@@ -6,11 +6,11 @@ const CHARS_PER_FRAME = 2;
 
 /**
  * Grok-style stream: Delta append via queue + requestAnimationFrame.
- * Only appends new chars; displayed never shrinks. Latch: once displayed > 0, isThinking stays false.
+ * `displayed` only ever grows during an active stream, so once content
+ * appears the spinner can never flash back.
  */
 export function useSmoothStream(source: string, isActive: boolean): { text: string; isComplete: boolean; isThinking: boolean } {
   const [displayed, setDisplayed] = useState("");
-  const [hasShownContent, setHasShownContent] = useState(false);
   const queueRef = useRef("");
   const prevSourceLenRef = useRef(0);
   const prevActiveRef = useRef(isActive);
@@ -21,13 +21,11 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
     prevActiveRef.current = isActive;
     if (!isActive) {
       setDisplayed(source);
-      setHasShownContent(false);
       queueRef.current = "";
       prevSourceLenRef.current = source.length;
       return;
     }
     if (streamJustStarted) {
-      setHasShownContent(false);
       setDisplayed("");
       queueRef.current = "";
       prevSourceLenRef.current = 0;
@@ -62,15 +60,9 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
     return () => cancelAnimationFrame(rafId);
   }, [isActive]);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- latch */
-  useEffect(() => {
-    if (displayed.length > 0) setHasShownContent(true);
-  }, [displayed]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   const text = isActive ? (displayed || "……") : source;
   const isComplete = !isActive;
-  const isThinking = isActive && displayed.length === 0 && !hasShownContent;
+  const isThinking = isActive && displayed.length === 0;
 
   return { text, isComplete, isThinking };
 }

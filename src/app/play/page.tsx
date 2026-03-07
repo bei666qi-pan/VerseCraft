@@ -112,26 +112,51 @@ function safeNumber(n: unknown, fallback: number): number {
 }
 
 /**
- * Extract narrative from streaming JSON using indexOf (no complex regex).
- * Strips trailing JSON keys to prevent leakage onto screen.
+ * Extract narrative from streaming JSON by finding the exact JSON string boundaries.
+ * Scans for the closing unescaped double-quote to avoid ALL JSON key leakage,
+ * regardless of key ordering or mid-stream truncation.
  */
 function extractNarrative(raw: string): string {
-  const startIndex = raw.indexOf('"narrative"');
-  if (startIndex === -1) return "";
-  const colonIndex = raw.indexOf(":", startIndex);
-  if (colonIndex === -1) return "";
-  const quoteIndex = raw.indexOf('"', colonIndex);
-  if (quoteIndex === -1) return "";
+  const keyIdx = raw.indexOf('"narrative"');
+  if (keyIdx === -1) return "";
+  const colonIdx = raw.indexOf(":", keyIdx + 11);
+  if (colonIdx === -1) return "";
 
-  let text = raw.substring(quoteIndex + 1);
+  let openQuote = -1;
+  for (let j = colonIdx + 1; j < raw.length; j++) {
+    const ch = raw[j];
+    if (ch === '"') { openQuote = j; break; }
+    if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') return "";
+  }
+  if (openQuote === -1) return "";
 
-  text = text.replace(/",\s*"consumes_time".*$/, "");
-  text = text.replace(/",\s*"consumed_items".*$/, "");
-  text = text.replace(/",\s*"awarded_items".*$/, "");
-  text = text.replace(/",\s*"codex_updates".*$/, "");
-  text = text.replace(/"\s*}$/, "");
+  let closeQuote = -1;
+  for (let j = openQuote + 1; j < raw.length; j++) {
+    if (raw[j] === '\\') { j++; continue; }
+    if (raw[j] === '"') { closeQuote = j; break; }
+  }
 
-  return text.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  let text: string;
+  if (closeQuote !== -1) {
+    text = raw.substring(openQuote + 1, closeQuote);
+  } else {
+    text = raw.substring(openQuote + 1);
+    if (text.endsWith("\\")) text = text.slice(0, -1);
+  }
+
+  return text.replace(/\\(["\\/bfnrt])/g, (_, c: string) => {
+    switch (c) {
+      case 'n': return '\n';
+      case 'r': return '\r';
+      case 't': return '\t';
+      case '"': return '"';
+      case '\\': return '\\';
+      case '/': return '/';
+      case 'b': return '\b';
+      case 'f': return '\f';
+      default: return c;
+    }
+  });
 }
 
 const FALLBACK_DM: DMJson = {
@@ -376,7 +401,9 @@ export default function PlayPage() {
   useEffect(() => {
     if (!scrollRef.current) return;
     const el = scrollRef.current;
-    if (!isStreaming) {
+    if (isStreaming) {
+      el.scrollTop = el.scrollHeight;
+    } else {
       if (prevIsStreamingRef.current) {
         el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       } else {
