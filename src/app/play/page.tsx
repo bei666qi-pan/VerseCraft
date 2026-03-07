@@ -82,21 +82,41 @@ function extractNarrativePartial(raw: string): string | null {
   return out;
 }
 
+const FALLBACK_DM: DMJson = {
+  is_action_legal: true,
+  sanity_damage: 0,
+  narrative: "（系统波动）周围的空气似乎扭曲了一瞬，请继续你的行动...",
+  is_death: false,
+};
+
 function tryParseDM(raw: string): DMJson | null {
-  try {
-    const obj = JSON.parse(raw) as DMJson;
-    if (
-      typeof obj?.is_action_legal === "boolean" &&
-      typeof obj?.sanity_damage === "number" &&
-      typeof obj?.narrative === "string" &&
-      typeof obj?.is_death === "boolean"
-    ) {
-      return obj;
-    }
-    return null;
-  } catch {
-    return null;
+  let cleanContent = raw
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleanContent = jsonMatch[0];
   }
+
+  let parsedData: DMJson;
+  try {
+    parsedData = JSON.parse(cleanContent) as DMJson;
+  } catch (e) {
+    console.error("JSON Parsing Failed, raw content:", raw);
+    return FALLBACK_DM;
+  }
+
+  if (
+    typeof parsedData?.is_action_legal === "boolean" &&
+    typeof parsedData?.sanity_damage === "number" &&
+    typeof parsedData?.narrative === "string" &&
+    typeof parsedData?.is_death === "boolean"
+  ) {
+    return parsedData;
+  }
+  return FALLBACK_DM;
 }
 
 function ensureRuntimeActions() {
