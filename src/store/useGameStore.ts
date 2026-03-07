@@ -6,6 +6,16 @@ import { get, set, del } from "idb-keyval";
 import type { Item, StatType } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
 
+export const PARCHMENT_ITEM: Item = {
+  id: "I-PARCHMENT",
+  name: "染血的羊皮纸",
+  tier: "S",
+  description:
+    "三日之后，暗月降至；十日之后，一切终焉。本层徘徊着未知的诡异，不要相信任何轻易示好的住客。记住，暗月期间不要直视光源。",
+  statBonus: {},
+  tags: "lore,truth",
+};
+
 const DB_KEY = "versecraft-storage";
 
 const idbStorage: import("zustand/middleware").StateStorage = {
@@ -230,7 +240,7 @@ export const useGameStore = create<GameState>()(
           chapter: 1,
           time: { day: 0, hour: 0 },
           stats,
-          inventory: [startingItem],
+          inventory: [PARCHMENT_ITEM, startingItem],
         });
       },
 

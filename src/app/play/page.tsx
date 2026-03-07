@@ -263,6 +263,9 @@ export default function PlayPage() {
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [showExitModal, setShowExitModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -327,6 +330,17 @@ export default function PlayPage() {
     return () => clearTimeout(t);
   }, [showApocalypseOverlay, setStats, router]);
 
+  useEffect(() => {
+    if (!isMounted || !isHydrated) return;
+    const handler = () => {
+      window.confirm("只能通过死亡或通关离开。");
+      window.history.pushState(null, "", window.location.pathname);
+    };
+    window.history.pushState(null, "", window.location.pathname);
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [isMounted, isHydrated]);
+
   async function sendAction(action: string) {
     if (isStreaming) return;
     const trimmed = action.trim();
@@ -337,10 +351,6 @@ export default function PlayPage() {
     setRawDmBuffer("");
     setLiveNarrative("");
 
-    messagesRef.current = [
-      ...messagesRef.current,
-      { role: "user", content: trimmed },
-    ];
     useGameStore.getState().pushLog({ role: "user", content: trimmed });
 
     const history = useGameStore.getState().logs ?? [];
@@ -464,6 +474,17 @@ export default function PlayPage() {
     void sendAction(`发动天赋：${talent}！`);
   }
 
+  function onUseItem(item: Item) {
+    const text = `我使用了道具：${item.name}`;
+    void sendAction(text);
+    setSelectedItemId(null);
+  }
+
+  function onConfirmExit() {
+    setStats({ sanity: 0 });
+    setShowExitModal(false);
+  }
+
   if (!isMounted || !isHydrated) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -536,11 +557,34 @@ export default function PlayPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onUseTalent}
-            disabled={!talent || talentCdLeft > 0 || isStreaming}
-            className={`h-11 rounded-xl border px-5 text-sm font-semibold transition ${
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowExitModal(true)}
+              className="h-11 rounded-xl border border-red-900/60 bg-red-950/30 px-4 text-red-400 transition hover:bg-red-950/50"
+              title="放弃挣扎"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onUseTalent}
+              disabled={!talent || talentCdLeft > 0 || isStreaming}
+              className={`h-11 rounded-xl border px-5 text-sm font-semibold transition ${
               isDarkMoon
                 ? "border-red-900/60 bg-red-950/50 text-red-300"
                 : !talent
@@ -561,8 +605,43 @@ export default function PlayPage() {
             ) : (
               <>未选择回响天赋</>
             )}
-          </button>
+            </button>
+          </div>
         </header>
+
+      {showExitModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal
+          aria-labelledby="exit-modal-title"
+        >
+          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/95 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
+            <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
+              警告：意识切断
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-slate-300">
+              离开此页面等同于放弃生存。你的理智将被瞬间清零，当前躯体将被公寓吞噬。确认要退出吗？
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className="rounded-xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/20"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmExit}
+                className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                确认死亡并退出
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-4">
@@ -602,38 +681,91 @@ export default function PlayPage() {
             </div>
 
             <div
-              className={`mt-6 rounded-2xl border p-5 ${
-                isDarkMoon ? "border-red-900/50 bg-red-950/40" : "border-border bg-white"
+              className={`mt-6 overflow-hidden rounded-3xl border shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
+                isDarkMoon
+                  ? "border-red-900/40 bg-red-950/30 backdrop-blur-2xl"
+                  : "border-white/10 bg-slate-900/40 backdrop-blur-2xl"
               }`}
             >
-              <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>物品栏</h2>
-              <div className="mt-4 space-y-2">
-                {inventory.length === 0 ? (
-                  <div
-                    className={`rounded-xl border px-4 py-3 text-sm ${
-                      isDarkMoon ? "border-red-900/40 bg-red-950/30 text-red-300/80" : "border-border bg-muted text-neutral-600"
-                    }`}
-                  >
-                    空
-                  </div>
-                ) : (
-                  inventory.map((i) => (
+              <button
+                type="button"
+                onClick={() => setInventoryCollapsed((c) => !c)}
+                className="flex w-full items-center justify-between p-5 text-left"
+              >
+                <h2 className={`text-sm font-semibold tracking-widest ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
+                  背包
+                </h2>
+                <span className={`text-xs ${isDarkMoon ? "text-red-300/70" : "text-slate-500"}`}>
+                  {inventoryCollapsed ? "展开" : "收起"}
+                </span>
+              </button>
+              {!inventoryCollapsed && (
+                <div className="border-t border-white/5 px-5 pb-5 pt-4">
+                  {inventory.length === 0 ? (
                     <div
-                      key={i.id}
-                      className={`rounded-xl border px-4 py-3 ${
-                        isDarkMoon ? "border-red-900/40 bg-red-950/30" : "border-border bg-muted"
+                      className={`rounded-xl border px-4 py-3 text-sm ${
+                        isDarkMoon ? "border-red-900/40 bg-red-950/30 text-red-300/80" : "border-white/10 bg-slate-800/50 text-slate-400"
                       }`}
                     >
-                      <div className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-neutral-900"}`}>
-                        {formatItem(i)}
-                      </div>
-                      <div className={`mt-1 text-xs ${isDarkMoon ? "text-red-300/70" : "text-neutral-600"}`}>
-                        {i.description}
-                      </div>
+                      空
                     </div>
-                  ))
-                )}
-              </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {inventory.map((i) => (
+                        <div key={i.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedItemId(selectedItemId === i.id ? null : i.id)}
+                            className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                              selectedItemId === i.id
+                                ? isDarkMoon
+                                  ? "border-red-700/60 bg-red-950/50"
+                                  : "border-indigo-500/40 bg-slate-800/80"
+                                : isDarkMoon
+                                  ? "border-red-900/40 bg-red-950/30 hover:border-red-900/60"
+                                  : "border-white/10 bg-slate-800/50 hover:border-white/20"
+                            }`}
+                          >
+                            <div className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-slate-200"}`}>
+                              {formatItem(i)}
+                            </div>
+                          </button>
+                          {selectedItemId === i.id && (
+                            <div
+                              className={`mt-2 rounded-xl border p-4 ${
+                                isDarkMoon ? "border-red-900/40 bg-red-950/40" : "border-white/10 bg-slate-800/60"
+                              }`}
+                            >
+                              <p className={`text-xs leading-relaxed ${isDarkMoon ? "text-red-300/90" : "text-slate-300"}`}>
+                                {i.description}
+                              </p>
+                              {i.statBonus && Object.keys(i.statBonus).length > 0 && (
+                                <p className={`mt-2 text-xs ${isDarkMoon ? "text-red-400/80" : "text-indigo-300"}`}>
+                                  属性：{Object.entries(i.statBonus)
+                                    .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
+                                    .join(", ")}
+                                </p>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => onUseItem(i)}
+                                disabled={isStreaming}
+                                className={`mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-40 ${
+                                  isDarkMoon
+                                    ? "bg-red-900/80 text-red-100 hover:bg-red-900"
+                                    : "bg-indigo-600/80 text-white hover:bg-indigo-600"
+                                }`}
+                              >
+                                使用该物品
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </aside>
 
