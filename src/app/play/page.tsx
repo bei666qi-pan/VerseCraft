@@ -17,6 +17,14 @@ type DMJson = {
   is_death: boolean;
   consumes_time?: boolean;
   consumed_items?: string[];
+  awarded_items?: Array<{
+    id?: string;
+    name?: string;
+    tier?: string;
+    description?: string;
+    tags?: string;
+    statBonus?: Record<string, number>;
+  }>;
   codex_updates?: Array<{
     id: string;
     name: string;
@@ -118,6 +126,7 @@ function extractNarrative(raw: string): string {
 
   text = text.replace(/",\s*"consumes_time".*$/, "");
   text = text.replace(/",\s*"consumed_items".*$/, "");
+  text = text.replace(/",\s*"awarded_items".*$/, "");
   text = text.replace(/",\s*"codex_updates".*$/, "");
   text = text.replace(/"\s*}$/, "");
 
@@ -412,7 +421,7 @@ export default function PlayPage() {
     if (currentLogs.length === 0) {
       hasTriggeredOpening.current = true;
       void sendAction(
-        "【系统强制指令：玩家刚刚苏醒。请直接输出200字第一人称开场白，提及旁边有一张染血的羊皮纸，并在结尾用引导性话语提示玩家打开书包使用羊皮纸。】",
+        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以"一股庞大的知识粗暴地灌进了我的脑子……"开头。在叙事中自然地告诉玩家这些世界观：这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；但玩家目前处于地下一层（B1），这里是绝对安全区，没有诡异。最后，提及玩家手里捏着一张羊皮纸，并在结尾用环境描写引导玩家点击左下角书包使用羊皮纸。严禁出戏！】',
         true
       );
     }
@@ -519,6 +528,39 @@ export default function PlayPage() {
 
     if (Array.isArray(parsed.consumed_items) && parsed.consumed_items.length > 0) {
       useGameStore.getState().consumeItems(parsed.consumed_items);
+    }
+
+    const validTiers = ["S", "A", "B", "C", "D"] as const;
+    if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
+      const items: Item[] = parsed.awarded_items
+        .filter((r) => r && typeof r === "object" && typeof (r as Record<string, unknown>).name === "string")
+        .map((r, idx) => {
+          const o = r as Record<string, unknown>;
+          const id =
+            typeof o.id === "string" && o.id
+              ? o.id
+              : `I-AWARD-${Date.now()}-${idx}`;
+          const name = String(o.name ?? "未知道具");
+          const tier = validTiers.includes(String(o.tier) as (typeof validTiers)[number])
+            ? (String(o.tier) as Item["tier"])
+            : "B";
+          return {
+            id,
+            name,
+            tier,
+            description: typeof o.description === "string" ? o.description : name,
+            tags: typeof o.tags === "string" ? o.tags : "loot",
+            statBonus: (o.statBonus as Item["statBonus"]) ?? undefined,
+          } satisfies Item;
+        });
+      if (items.length > 0) {
+        useGameStore.getState().addItems(items);
+        useGameStore.getState().pushLog({
+          role: "assistant",
+          content: "**获得了新物品，已放入书包**",
+          reasoning: undefined,
+        });
+      }
     }
 
     if (Array.isArray(parsed.codex_updates) && parsed.codex_updates.length > 0) {
@@ -854,7 +896,13 @@ export default function PlayPage() {
                       </div>
                       <div className={m.role === "assistant" ? "" : "whitespace-pre-wrap"}>
                         {m.role === "assistant" ? (
-                          <DMNarrativeBlock content={m.content} isDarkMoon={isDarkMoon} />
+                          m.content.includes("获得了新物品，已放入书包") ? (
+                            <p className="font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]">
+                              {m.content.replace(/\*\*/g, "")}
+                            </p>
+                          ) : (
+                            <DMNarrativeBlock content={m.content} isDarkMoon={isDarkMoon} />
+                          )
                         ) : (
                           m.content
                         )}

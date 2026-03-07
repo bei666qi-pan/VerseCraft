@@ -134,6 +134,7 @@ interface GameState {
   setStats: (stats: Partial<Record<StatType, number>>) => void;
   setInventory: (inventory: Item[]) => void;
   addToInventory: (item: Item) => void;
+  addItems: (items: Item[]) => void;
   removeFromInventory: (itemId: string) => void;
   consumeItems: (itemNames: string[]) => void;
 
@@ -292,6 +293,14 @@ export const useGameStore = create<GameState>()(
             ? s.inventory
             : [...s.inventory, item],
         })),
+
+      addItems: (items) =>
+        set((s) => {
+          const existingIds = new Set(s.inventory.map((i) => i.id));
+          const toAdd = items.filter((it) => it?.id && it?.name && !existingIds.has(it.id));
+          for (const it of toAdd) existingIds.add(it.id);
+          return { inventory: [...s.inventory, ...toAdd] };
+        }),
 
       removeFromInventory: (itemId) =>
         set((s) => ({

@@ -48,13 +48,15 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【通关结局 S - 杀戮通关】若玩家利用极度稀有的规则类杀伤道具，或联合战力 9-10 的顶级 NPC，成功杀死公寓内全部 7 个普通诡异（1-7 层）以及第 8 诡异（B2 守门人），系统将触发隐藏 S 级结局。",
     "",
     "请严格以 JSON 格式输出，Schema 如下：",
-    '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean, "consumes_time": boolean, "consumed_items": ["消耗掉的道具名称"], "codex_updates": [可选] }',
+    '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean, "consumes_time": boolean, "consumed_items": ["消耗掉的道具名称"], "codex_updates": [可选], "awarded_items": [可选] }',
     "",
     "consumes_time：默认 true 表示本次行动消耗 1 小时。当敏捷>20 且触发「极速反应」时，必须设为 false，使玩家本次行动不消耗时间。",
     "",
     "【道具消耗法则】：当玩家在动作中声明使用了某项一次性道具/物品（如羊皮纸、武器、消耗品等），且该动作合法生效后，你必须将该道具的准确名称放入 consumed_items 数组中。系统将据此从玩家背包中永久销毁该物品。如果未消耗物品，返回空数组 []。",
     "",
     "【强制道具消耗法则】：当玩家声明使用了【】内的道具时，只要该动作发生，你必须在返回的 JSON 的 'consumed_items' 数组中精准填入该道具的名称！严禁返回空数组，否则玩家将无限刷道具！",
+    "",
+    "【击杀掉落法则】：当玩家利用环境、高好感度 NPC 或高阶道具成功击杀了一只诡异后，你必须在 narrative 中描述诡异消散后留下了物品，并**必须**在返回的 JSON 的 \"awarded_items\" 数组中，自动为玩家生成 2 个等级至少为 B 级（B、A 或 S 级）的全新强力道具。每个道具格式：{ \"id\": \"I-xxx\", \"name\": \"道具名\", \"tier\": \"B\"|\"A\"|\"S\", \"description\": \"描述\", \"tags\": \"lore,loot\" }。",
     "",
     '你必须且只能返回一个合法的 JSON 对象，格式必须完全遵守上述 Schema。严禁在 JSON 外输出任何 markdown 标记或解释性文字！',
     "",
@@ -96,6 +98,10 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "你的 narrative 回复必须多分段，以增强可读性。请将所有的 NPC 名字、诡异名称、重要道具和关键线索使用 Markdown 加粗（如 **陈婆婆**、**A-001**、**染血的羊皮纸**）。",
     "",
     "【排版绝对指令】：你的叙事回复(narrative)必须分成3到4个短段落，严禁长篇大论。每个段落之间必须使用 \\n\\n 隔开。",
+    "",
+    "【网文叙事节奏法则】：你的回复必须极度克制、简短、充满感官刺激。多用短句和独立成段的结构（参考悬疑网文）。必须根据玩家当前的处境把控节奏，在段落结尾必须抛出一个悬念或环境异动，引导玩家联想下一步该怎么做。",
+    "",
+    "【B1 安全区与 NPC 偶遇法则】：玩家初始在 B1 层，B1 绝对没有诡异。此外，在游戏开始的前 5 个小时（time.hour < 5 且 time.day === 0）内，你必须安排玩家遇到至少一名拥有特定性格的 NPC，以展开互动。",
   ];
 
   if (isFirstAction) {
