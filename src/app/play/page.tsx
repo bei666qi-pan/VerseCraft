@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Backpack, BookOpen, Package } from "lucide-react";
+import { Backpack, BookOpen, Lightbulb, Package } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
@@ -34,6 +34,7 @@ type DMJson = {
     personality?: string;
     traits?: string;
     rules_discovered?: string;
+    weakness?: string;
   }>;
 };
 
@@ -310,6 +311,8 @@ export default function PlayPage() {
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const setHasReadParchment = useGameStore((s) => s.setHasReadParchment);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
+  const hintUsedThisTurn = useGameStore((s) => s.hintUsedThisTurn ?? false);
+  const setHintUsedThisTurn = useGameStore((s) => s.setHintUsedThisTurn);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -576,6 +579,7 @@ export default function PlayPage() {
         personality: typeof u.personality === "string" ? u.personality : undefined,
         traits: typeof u.traits === "string" ? u.traits : undefined,
         rules_discovered: typeof u.rules_discovered === "string" ? u.rules_discovered : undefined,
+        weakness: typeof u.weakness === "string" ? u.weakness : undefined,
       }));
       mergeCodex(entries);
     }
@@ -588,6 +592,8 @@ export default function PlayPage() {
 
     const isItemUse = trimmed.startsWith("我使用了道具：");
     const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
+    useGameStore.getState().setHintUsedThisTurn(false);
+
     if (parsed.is_action_legal && !parsed.is_death && shouldAdvanceTime) {
       const storeAny = useGameStore as any;
       storeAny.getState().decrementCooldowns();
@@ -972,6 +978,28 @@ export default function PlayPage() {
               </div>
 
               <div className={`border-t p-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+                <div className="mb-3 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hintUsedThisTurn || isStreaming || !hasReadParchment) return;
+                      setHintUsedThisTurn(true);
+                      void sendAction(
+                        '【系统强制干预：玩家请求了当前的破局提示。请以深渊DM的神秘口吻，简短地给出一个下一步的行动思路，可以暗示当前楼层诡异的弱点、某个NPC的喜好，或某件道具的隐藏用法。这只是建议，不代表绝对安全。【重要：本次为提示请求，不消耗游戏时间，你必须在返回的 JSON 中设置 consumes_time: false】】',
+                        true
+                      );
+                    }}
+                    disabled={hintUsedThisTurn || isStreaming || !hasReadParchment}
+                    title={hintUsedThisTurn ? "本回合已使用" : "AI 破局提示"}
+                    className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all ${
+                      hintUsedThisTurn || isStreaming || !hasReadParchment
+                        ? "border-slate-400/30 bg-slate-300/30 text-slate-500 opacity-50 cursor-not-allowed"
+                        : "border-amber-400/50 bg-amber-500/20 text-amber-400 shadow-[0_0_10px_rgba(252,211,77,0.5)] animate-pulse hover:shadow-[0_0_14px_rgba(252,211,77,0.6)]"
+                    }`}
+                  >
+                    <Lightbulb size={18} strokeWidth={1.5} />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <input
                     value={input}
@@ -1245,6 +1273,14 @@ export default function PlayPage() {
                             <div>
                               <span className="text-xs text-slate-500">已知规则</span>
                               <p className="mt-1 text-sm text-amber-800">{e.rules_discovered}</p>
+                            </div>
+                          )}
+                          {e.weakness && (
+                            <div>
+                              <span className="text-xs text-slate-500">已知弱点</span>
+                              <p className="mt-1 font-semibold text-amber-500 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]">
+                                {e.weakness}
+                              </p>
                             </div>
                           )}
                         </div>

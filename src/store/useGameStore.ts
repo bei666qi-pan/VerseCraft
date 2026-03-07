@@ -89,6 +89,7 @@ export interface CodexEntry {
   personality?: string;
   traits?: string;
   rules_discovered?: string;
+  weakness?: string;
 }
 
 interface GameState {
@@ -121,8 +122,11 @@ interface GameState {
   hasCheckedCodex: boolean;
   /** 仓库：非道具展示品（纯展示） */
   warehouse: Array<{ id: string; name: string; description?: string }>;
+  /** 本回合是否已使用 AI 破局提示（每回合限用一次，提交动作后重置） */
+  hintUsedThisTurn: boolean;
 
   setHydrated: (state: boolean) => void;
+  setHintUsedThisTurn: (v: boolean) => void;
   setHasReadParchment: (v: boolean) => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
@@ -224,8 +228,10 @@ export const useGameStore = create<GameState>()(
       hasReadParchment: false,
       hasCheckedCodex: false,
       warehouse: [],
+      hintUsedThisTurn: false,
 
       setHydrated: (state) => set({ isHydrated: state }),
+      setHintUsedThisTurn: (v) => set({ hintUsedThisTurn: v }),
       setHasReadParchment: (v) => set({ hasReadParchment: v }),
       setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
 
@@ -332,6 +338,7 @@ export const useGameStore = create<GameState>()(
           hasReadParchment: false,
           hasCheckedCodex: false,
           warehouse: [],
+          hintUsedThisTurn: false,
         });
       },
 

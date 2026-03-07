@@ -83,7 +83,7 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【图鉴强制解锁法则】：只要当前场景中出现、暗示、或遭遇了任何 NPC 或诡异（无论是否直接对话，无论玩家是否知晓其全貌），你**必须立即**在本次回复的 'codex_updates' 数组中生成它的基础档案！未知属性可填'未知'。如果不生成，系统将判定为严重逻辑错误！",
     "【图鉴推送指令（补充）】：当玩家通过交互发现实体的性格、弱点、规则或好感度发生变化时，你必须在 codex_updates 中更新该实体的最新情报（如 name, type, favorability, combatPower, personality, rules_discovered）。",
     "",
-    "JSON Schema 追加可选字段：codex_updates: [{ id, name, type: 'npc'|'anomaly', favorability?, combatPower?, personality?, traits?, rules_discovered? }]",
+    "JSON Schema 追加可选字段：codex_updates: [{ id, name, type: 'npc'|'anomaly', favorability?, combatPower?, personality?, traits?, rules_discovered?, weakness? }]",
     "",
     "## 【深度好感度与暗月狂暴法则】",
     "",
@@ -102,6 +102,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【网文叙事节奏法则】：你的回复必须极度克制、简短、充满感官刺激。多用短句和独立成段的结构（参考悬疑网文）。必须根据玩家当前的处境把控节奏，在段落结尾必须抛出一个悬念或环境异动，引导玩家联想下一步该怎么做。",
     "",
     "【B1 安全区与 NPC 偶遇法则】：玩家初始在 B1 层，B1 绝对没有诡异。此外，在游戏开始的前 5 个小时（time.hour < 5 且 time.day === 0）内，你必须安排玩家遇到至少一名拥有特定性格的 NPC，以展开互动。",
+    "",
+    "【弱点克制法则】：每个诡异都存在符合常理或世界观的致命弱点（如怕光、惧怕某种声音、或者某件特定道具）。当玩家的行动逻辑准确命中了该弱点（利用特定道具或 NPC 联合），你必须判定此行动为「效果拔群」，无视战力差距，极大幅度降低击杀难度。并在返回的 codex_updates 中，将该诡异的 weakness 字段更新给前端。",
   ];
 
   if (isFirstAction) {
