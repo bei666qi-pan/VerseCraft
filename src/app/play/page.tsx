@@ -164,6 +164,82 @@ function formatItem(i: Item): string {
   return `${i.name}（${i.tier}）`;
 }
 
+const STAT_MAX = 50;
+
+function StatEnergyBar({
+  statName,
+  value,
+  isSanityDanger,
+  isDarkMoon,
+}: {
+  statName: string;
+  value: number;
+  isSanityDanger: boolean;
+  isDarkMoon: boolean;
+}) {
+  const bar1 = (Math.min(value, 25) / 25) * 100;
+  const bar2 = (Math.max(0, value - 25) / 25) * 100;
+
+  const fillGradient = isSanityDanger
+    ? "from-red-600 to-red-500"
+    : "from-indigo-500 to-blue-400";
+  const glowColor = isSanityDanger ? "bg-red-500/50" : "bg-indigo-400/50";
+  const bar2Gradient = isSanityDanger
+    ? "from-red-500 to-rose-400"
+    : "from-purple-500 to-fuchsia-400";
+
+  const labelClass = isSanityDanger
+    ? "text-red-400 animate-pulse font-bold"
+    : isDarkMoon
+      ? "text-red-200/90"
+      : "text-slate-300";
+  const valueClass = isDarkMoon ? "text-red-300/70" : "text-slate-500";
+  const trackBg = isDarkMoon ? "bg-red-900/50" : "bg-slate-800/50";
+
+  return (
+    <div className="relative mb-6 group">
+      {isSanityDanger && (
+        <div
+          className="absolute -inset-2 bg-red-500/10 blur-xl rounded-full z-[-1] animate-pulse"
+          aria-hidden
+        />
+      )}
+      <div className="flex justify-between items-end mb-2">
+        <span className={`text-sm font-medium tracking-widest ${labelClass}`}>
+          {statName}
+        </span>
+        <span className={`text-xs font-mono ${valueClass}`}>{value} / {STAT_MAX}</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className={`relative h-1.5 w-full rounded-full overflow-hidden border border-white/5 ${trackBg}`}>
+          <div
+            className={`absolute top-0 left-0 h-full bg-gradient-to-r ${fillGradient} transition-all duration-700 ease-out`}
+            style={{ width: `${bar1}%` }}
+          />
+          {bar1 > 0 && (
+            <div
+              className={`absolute top-0 left-0 h-full blur-sm opacity-50 ${glowColor}`}
+              style={{ width: `${bar1}%` }}
+            />
+          )}
+        </div>
+        <div className={`relative h-1.5 w-full rounded-full overflow-hidden border border-white/5 ${trackBg}`}>
+          <div
+            className={`absolute top-0 left-0 h-full bg-gradient-to-r ${bar2Gradient} transition-all duration-700 ease-out`}
+            style={{ width: `${bar2}%` }}
+          />
+          {bar2 > 0 && !isSanityDanger && (
+            <div
+              className="absolute top-0 left-0 h-full bg-purple-400/50 blur-sm opacity-50"
+              style={{ width: `${bar2}%` }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlayPage() {
   const router = useRouter();
 
@@ -503,44 +579,25 @@ export default function PlayPage() {
             </div>
 
             <div
-              className={`rounded-2xl border p-5 ${
+              className={`rounded-3xl border p-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
                 isDarkMoon
-                  ? "border-red-900/50 bg-red-950/40 backdrop-blur-sm"
-                  : "border-border bg-white"
+                  ? "border-red-900/40 bg-red-950/30 backdrop-blur-2xl"
+                  : "border-white/10 bg-slate-900/40 backdrop-blur-2xl"
               }`}
             >
-              <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>属性</h2>
-              <div className="mt-4 space-y-3">
-                {STAT_ORDER.map((k) => {
-                  const isSanityDanger = k === "sanity" && (stats[k] ?? 0) <= 3;
-                  return (
-                    <div
-                      key={k}
-                      className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
-                        isSanityDanger
-                          ? "animate-pulse border-red-500/50 bg-red-500/10 text-red-500"
-                          : isDarkMoon
-                            ? "border-red-900/40 bg-red-950/30"
-                            : "border-border bg-muted"
-                      }`}
-                    >
-                      <span
-                        className={`text-sm ${
-                          isSanityDanger ? "font-semibold text-red-500" : isDarkMoon ? "text-red-300/80" : "text-neutral-700"
-                        }`}
-                      >
-                        {STAT_LABELS[k]}
-                      </span>
-                      <span
-                        className={`font-mono text-sm font-semibold tabular-nums ${
-                          isSanityDanger ? "text-red-500" : isDarkMoon ? "text-red-200" : "text-neutral-900"
-                        }`}
-                      >
-                        {stats[k] ?? 0}
-                      </span>
-                    </div>
-                  );
-                })}
+              <h2 className={`mb-5 text-sm font-semibold tracking-widest ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
+                属性
+              </h2>
+              <div className="space-y-2">
+                {STAT_ORDER.map((k) => (
+                  <StatEnergyBar
+                    key={k}
+                    statName={STAT_LABELS[k]}
+                    value={stats[k] ?? 0}
+                    isSanityDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
+                    isDarkMoon={isDarkMoon}
+                  />
+                ))}
               </div>
             </div>
 
