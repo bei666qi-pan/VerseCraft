@@ -367,17 +367,25 @@ export default function PlayPage() {
     }
   }, [isHydrated, showApocalypseOverlay]);
 
-  const { text: smoothNarrative, isComplete: smoothComplete } = useSmoothStream(
+  const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStream(
     liveNarrative,
     isStreaming
   );
 
+  const prevIsStreamingRef = useRef(false);
   useEffect(() => {
     if (!scrollRef.current) return;
-    scrollRef.current.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    const el = scrollRef.current;
+    if (isStreaming) {
+      el.scrollTop = el.scrollHeight;
+    } else {
+      if (prevIsStreamingRef.current) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+    prevIsStreamingRef.current = isStreaming;
   }, [smoothNarrative, isStreaming]);
 
   useEffect(() => {
@@ -826,17 +834,29 @@ export default function PlayPage() {
                       <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <div className={isDarkMoon ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200" : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800"}>
-                        <span className="whitespace-pre-wrap">
-                          {renderNarrativeText(smoothNarrative)}
-                        </span>
-                        {!smoothComplete && (
-                          <span
-                            className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
-                            aria-hidden
-                          />
-                        )}
-                      </div>
+                      {smoothThinking ? (
+                        <div className="flex items-center gap-3 py-2">
+                          <div className="relative flex h-6 w-6 items-center justify-center">
+                            <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
+                            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                          </div>
+                          <span className="animate-pulse bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
+                            深渊 DM 正在推演...
+                          </span>
+                        </div>
+                      ) : (
+                        <div className={isDarkMoon ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200" : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800"}>
+                          <span className="whitespace-pre-wrap">
+                            {renderNarrativeText(smoothNarrative)}
+                          </span>
+                          {!smoothComplete && (
+                            <span
+                              className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+                              aria-hidden
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : liveNarrative ? (
                     <div

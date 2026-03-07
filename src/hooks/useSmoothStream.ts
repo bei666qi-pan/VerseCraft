@@ -32,8 +32,8 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
   useEffect(() => {
     if (!isActive) return;
     const id = setInterval(() => {
-      const target = sourceRef.current;
       setDisplayed((prev) => {
+        const target = sourceRef.current;
         if (prev.length >= target.length) return prev;
         const take = Math.min(CHARS_PER_TICK, target.length - prev.length);
         return target.slice(0, prev.length + take);
@@ -44,6 +44,7 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
 
   const text = isActive ? (displayed || "……") : source;
   const isComplete = !isActive;
+  const isThinking = isActive && displayed.length === 0;
 
-  return { text, isComplete };
+  return { text, isComplete, isThinking };
 }
