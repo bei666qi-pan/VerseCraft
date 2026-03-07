@@ -7,7 +7,7 @@ type LogEntry = { role: string; content: string; reasoning?: string };
 
 function buildMarkdown(logs: LogEntry[]): string {
   const lines: string[] = [
-    "# 文界工坊 · 跑团记录",
+    "# 文界工坊 · 生存记录",
     "",
     "---",
     "",
@@ -92,7 +92,7 @@ export default function SettlementPage() {
   function handleExport() {
     const md = buildMarkdown(logs);
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    triggerDownload(md, `versecraft-跑团记录-${ts}.md`);
+    triggerDownload(md, `versecraft-生存记录-${ts}.md`);
   }
 
   async function handleRestart() {
@@ -152,7 +152,7 @@ export default function SettlementPage() {
               onClick={handleExport}
               className="h-12 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-neutral-900 transition hover:bg-muted"
             >
-              导出跑团记录 (.md)
+              导出生存记录 (.md)
             </button>
             <button
               type="button"

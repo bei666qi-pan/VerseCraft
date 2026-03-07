@@ -141,35 +141,39 @@ export default function CreatePage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-3xl px-6 py-12">
+    <main className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-800">
+      {/* 环境漫反射光晕 */}
+      <div className="pointer-events-none absolute -z-10 top-0 left-1/2 h-[500px] w-[80vw] -translate-x-1/2 rounded-full bg-indigo-100/40 blur-[120px]" />
+      <div className="pointer-events-none absolute -z-10 bottom-0 right-1/4 h-[400px] w-[40vw] rounded-full bg-purple-50/50 blur-[100px]" />
+
+      <div className="relative z-10 mx-auto w-full max-w-3xl px-6 py-12">
         <header className="space-y-3">
-          <h1 className="text-2xl font-semibold tracking-tight">铸造角色</h1>
-          <p className="text-sm text-neutral-600">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">铸造角色</h1>
+          <p className="text-sm text-slate-600">
             你正在向如月公寓递交一份自我证明。每一个字，都将被记录。
           </p>
         </header>
 
-        <section className="mt-10 rounded-2xl border border-border bg-white p-6">
-          <h2 className="text-base font-semibold">基础档案</h2>
+        <section className="relative mt-10 rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
+          <h2 className="text-base font-semibold text-slate-900">基础档案</h2>
 
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm font-medium">称呼（Name）</span>
+              <span className="text-sm font-medium text-slate-700">称呼（Name）</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="请输入你的称呼"
-                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+                className="h-11 w-full rounded-xl border border-white/80 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50"
               />
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium">性别（Gender）</span>
+              <span className="text-sm font-medium text-slate-700">性别（Gender）</span>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value as GenderOption)}
-                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+                className="h-11 w-full rounded-xl border border-white/80 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50"
               >
                 <option value="男">男</option>
                 <option value="女">女</option>
@@ -178,7 +182,7 @@ export default function CreatePage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium">身高（Height）</span>
+              <span className="text-sm font-medium text-slate-700">身高（Height）</span>
               <div className="flex items-center gap-3">
                 <input
                   type="number"
@@ -186,7 +190,7 @@ export default function CreatePage() {
                   max={220}
                   value={height}
                   onChange={(e) => setHeight(Number(e.target.value))}
-                  className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+                  className="h-11 w-full rounded-xl border border-white/80 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50"
                 />
                 <span className="shrink-0 text-sm text-neutral-600">cm</span>
               </div>
@@ -194,17 +198,17 @@ export default function CreatePage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium">性格（Personality）</span>
+              <span className="text-sm font-medium text-slate-700">性格（Personality）</span>
               <input
                 value={personality}
                 onChange={(e) => setPersonality(e.target.value)}
                 placeholder="仅限 2-6 个中文字符"
-                className={`h-11 w-full rounded-xl border bg-white px-4 text-sm outline-none transition ${
+                className={`h-11 w-full rounded-xl border bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 ${
                   personality.length === 0
-                    ? "border-border focus:border-neutral-400"
+                    ? "border-white/80"
                     : personalityValid
-                      ? "border-border focus:border-neutral-400"
-                      : "border-danger focus:border-danger"
+                      ? "border-white/80"
+                      : "border-red-400 focus:ring-red-400/50"
                 }`}
               />
               <p className="text-xs text-danger">
@@ -223,15 +227,15 @@ export default function CreatePage() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-2xl border border-border bg-white p-6">
+        <section className="relative mt-8 rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold">属性加点（RPG System）</h2>
-              <p className="mt-1 text-sm text-neutral-600">
+              <h2 className="text-base font-semibold text-slate-900">属性加点（RPG System）</h2>
+              <p className="mt-1 text-sm text-slate-600">
                 总可用点数 {EXTRA_POINTS}，基础值均为 {BASE_STAT}。必须刚好用完。
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-muted px-4 py-3 text-sm">
+            <div className="rounded-xl border border-white/80 bg-white/50 px-4 py-3 text-sm text-slate-800">
               <div className="flex items-center justify-between gap-8">
                 <span className="text-neutral-600">剩余点数</span>
                 <span className={remaining === 0 ? "font-semibold" : "font-semibold text-danger"}>
@@ -245,7 +249,7 @@ export default function CreatePage() {
             {(Object.keys(STAT_LABELS) as StatType[]).map((stat) => (
               <div
                 key={stat}
-                className="rounded-2xl border border-border bg-white p-4"
+                className="rounded-2xl border border-white/80 bg-white/50 p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
@@ -265,7 +269,7 @@ export default function CreatePage() {
                       type="button"
                       onClick={() => dec(stat)}
                       disabled={stats[stat] <= BASE_STAT}
-                      className="h-10 w-10 rounded-xl border border-border bg-white text-lg text-neutral-700 transition disabled:opacity-40"
+                      className="h-10 w-10 rounded-xl border border-white/80 bg-white/70 text-lg text-slate-700 transition disabled:opacity-40"
                       aria-label={`减少${STAT_LABELS[stat]}`}
                     >
                       -
@@ -277,7 +281,7 @@ export default function CreatePage() {
                       type="button"
                       onClick={() => inc(stat)}
                       disabled={remaining <= 0}
-                      className="h-10 w-10 rounded-xl border border-border bg-white text-lg text-neutral-700 transition disabled:opacity-40"
+                      className="h-10 w-10 rounded-xl border border-white/80 bg-white/70 text-lg text-slate-700 transition disabled:opacity-40"
                       aria-label={`增加${STAT_LABELS[stat]}`}
                     >
                       +
@@ -289,9 +293,9 @@ export default function CreatePage() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-2xl border border-border bg-white p-6">
-          <h2 className="text-base font-semibold">回响天赋（Echo Talents）</h2>
-          <p className="mt-1 text-sm text-neutral-600">必须单选 1 个。</p>
+        <section className="relative mt-8 rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
+          <h2 className="text-base font-semibold text-slate-900">回响天赋（Echo Talents）</h2>
+          <p className="mt-1 text-sm text-slate-600">必须单选 1 个。</p>
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {TALENTS.map((t) => {
@@ -303,8 +307,8 @@ export default function CreatePage() {
                   onClick={() => setSelectedTalent(t.key)}
                   className={`rounded-2xl border p-4 text-left transition ${
                     active
-                      ? "border-accent bg-muted"
-                      : "border-border bg-white hover:bg-muted"
+                      ? "border-indigo-400/60 bg-indigo-50/80"
+                      : "border-white/80 bg-white/50 hover:bg-white/70"
                   }`}
                   aria-pressed={active}
                 >
@@ -315,7 +319,7 @@ export default function CreatePage() {
                     </div>
                     <div
                       className={`mt-1 h-4 w-4 rounded-full border ${
-                        active ? "border-accent bg-accent" : "border-border"
+                        active ? "border-indigo-500 bg-indigo-500" : "border-slate-300"
                       }`}
                       aria-hidden
                     />
@@ -328,16 +332,16 @@ export default function CreatePage() {
         </section>
 
         <section className="mt-8">
-          <div className="rounded-2xl border border-border bg-white p-6">
-            <h2 className="text-base font-semibold">确认提交</h2>
-            <p className="mt-2 text-sm text-neutral-600">
+          <div className="relative rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
+            <h2 className="text-base font-semibold text-slate-900">确认提交</h2>
+            <p className="mt-2 text-sm text-slate-600">
               你将带着这份设定进入意识潜入区。一旦落笔，规则将开始回收你。
             </p>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-neutral-600">
+              <div className="text-sm text-slate-600">
                 {!canSubmit ? (
-                  <span className="text-danger">
+                  <span className="text-red-600">
                     未满足提交条件：请检查必填字段、性格格式、点数是否用尽、天赋是否已选择。
                   </span>
                 ) : (
@@ -345,14 +349,17 @@ export default function CreatePage() {
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="h-11 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition disabled:opacity-40"
-              >
-                进入意识潜入
-              </button>
+              <div className="group relative inline-flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-xl transition-all duration-500 group-hover:bg-indigo-500/30 group-hover:blur-2xl" />
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                  className="relative rounded-full border border-white/80 bg-white/90 px-10 py-3.5 text-sm font-bold tracking-widest text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-md transition-all disabled:opacity-40 hover:scale-[1.02]"
+                >
+                  进入意识潜入
+                </button>
+              </div>
             </div>
           </div>
         </section>

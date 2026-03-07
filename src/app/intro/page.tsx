@@ -40,47 +40,17 @@ const SECTIONS = [
 
 export default function IntroPage() {
   return (
-    <div className="relative w-full min-h-screen overflow-hidden bg-slate-50 text-slate-800">
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 text-slate-800">
       {/* ── Ambient diffuse orbs ── */}
-      <div className="pointer-events-none absolute -z-10 top-0 left-1/2 -translate-x-1/2 h-[500px] w-[80vw] rounded-full bg-indigo-100/40 blur-[120px]" />
+      <div className="pointer-events-none absolute -z-10 top-0 left-1/2 h-[500px] w-[80vw] -translate-x-1/2 rounded-full bg-indigo-100/40 blur-[120px]" />
       <div className="pointer-events-none absolute -z-10 top-40 left-1/4 h-[400px] w-[40vw] rounded-full bg-blue-50/50 blur-[100px]" />
 
-      {/* ════════════════════════════════════════════
-          HERO
-         ════════════════════════════════════════════ */}
-      <div className="relative z-10 flex flex-col items-center justify-center pb-20 pt-32 text-center">
-        <div className="space-y-6">
-          <h1 className="text-6xl font-black tracking-tighter text-slate-900 drop-shadow-sm md:text-8xl">
-            用每一句文字
-            <br />
-            <span className="text-slate-600">锻造你的分支世界</span>
-          </h1>
-          <p className="mt-8 text-base font-medium uppercase tracking-[0.2em] text-slate-500 md:text-lg">
-            AI 互动小说平台 · 沉浸式体验 · Apple 级设计美学
-          </p>
-        </div>
+      <h1 className="relative z-10 mt-20 mb-12 text-center text-3xl font-bold tracking-widest text-slate-800">
+        如月公寓入职协议
+      </h1>
 
-        {/* Luminous pill button */}
-        <div className="group relative mt-10 inline-flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-xl transition-all duration-500 group-hover:bg-indigo-500/30 group-hover:blur-2xl" />
-          <Link
-            href="#protocol"
-            className="relative flex items-center gap-3 rounded-full border border-white/80 bg-white/90 px-12 py-5 font-semibold tracking-widest text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-md transition-transform duration-300 hover:scale-[1.02]"
-          >
-            进入世界
-            <span className="text-slate-400 transition-transform group-hover:translate-x-1">
-              →
-            </span>
-          </Link>
-        </div>
-      </div>
-
-      {/* ════════════════════════════════════════════
-          PROTOCOL — single-column solidified glass
-         ════════════════════════════════════════════ */}
       <div
-        id="protocol"
-        className="relative z-10 mx-auto flex max-w-4xl flex-col space-y-16 px-6 py-32"
+        className="relative z-10 mx-auto flex max-w-4xl flex-col space-y-16 px-6 pb-20"
       >
         {SECTIONS.map((s) => (
           <div
@@ -110,9 +80,6 @@ export default function IntroPage() {
         ))}
       </div>
 
-      {/* ════════════════════════════════════════════
-          FINAL CTA
-         ════════════════════════════════════════════ */}
       <div className="relative z-10 flex flex-col items-center pb-32 pt-8">
         <p className="text-sm font-light tracking-widest text-slate-400">
           准备好了吗？
@@ -123,10 +90,7 @@ export default function IntroPage() {
             href="/create"
             className="relative flex items-center gap-3 rounded-full border border-white/80 bg-white/90 px-12 py-5 font-semibold tracking-widest text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-md transition-transform duration-300 hover:scale-[1.02]"
           >
-            签署协议并建立档案
-            <span className="text-slate-400 transition-transform group-hover:translate-x-1">
-              →
-            </span>
+            签署协议并建立档案 →
           </Link>
         </div>
       </div>
