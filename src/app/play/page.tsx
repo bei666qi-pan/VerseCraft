@@ -103,16 +103,24 @@ function safeNumber(n: unknown, fallback: number): number {
 }
 
 /**
- * Extract only narrative text from streaming JSON. Bulletproof regex: captures
- * content after "narrative": " and strips any trailing JSON structure to avoid
- * leakage (e.g. ", "consumes_time": false) during stream end.
+ * Extract narrative from streaming JSON using indexOf (no complex regex).
+ * Strips trailing JSON keys to prevent leakage onto screen.
  */
-function extractNarrativePartial(raw: string): string {
-  const match = raw.match(/"narrative"\s*:\s*"(.*)/s);
-  if (!match) return "";
-  let text = match[1];
-  // Strip from first unescaped double-quote to end (prevents JSON tail leaking)
-  text = text.replace(/(?<!\\)".*$/s, "");
+function extractNarrative(raw: string): string {
+  const startIndex = raw.indexOf('"narrative"');
+  if (startIndex === -1) return "";
+  const colonIndex = raw.indexOf(":", startIndex);
+  if (colonIndex === -1) return "";
+  const quoteIndex = raw.indexOf('"', colonIndex);
+  if (quoteIndex === -1) return "";
+
+  let text = raw.substring(quoteIndex + 1);
+
+  text = text.replace(/",\s*"consumes_time".*$/, "");
+  text = text.replace(/",\s*"consumed_items".*$/, "");
+  text = text.replace(/",\s*"codex_updates".*$/, "");
+  text = text.replace(/"\s*}$/, "");
+
   return text.replace(/\\n/g, "\n").replace(/\\"/g, '"');
 }
 
@@ -284,6 +292,8 @@ export default function PlayPage() {
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const advanceTime = useGameStore((s) => s.advanceTime);
   const setStats = useGameStore((s) => s.setStats);
+  const rewindTime = useGameStore((s) => s.rewindTime);
+  const popLastNLogs = useGameStore((s) => s.popLastNLogs);
   const codex = useGameStore((s) => s.codex ?? {});
   const mergeCodex = useGameStore((s) => s.mergeCodex);
   const hasReadParchment = useGameStore((s) => s.hasReadParchment ?? false);
@@ -470,8 +480,11 @@ export default function PlayPage() {
             raw += chunk;
             setRawDmBuffer(raw);
 
-            const partial = extractNarrativePartial(raw);
-            setLiveNarrative(partial);
+            const partial = extractNarrative(raw);
+            setLiveNarrative((prev) => {
+              if (partial.length > prev.length) return partial;
+              return prev;
+            });
           }
         }
       }
@@ -560,10 +573,49 @@ export default function PlayPage() {
   function onUseTalent() {
     if (!talent) return;
     if (talentCdLeft > 0) return;
-    const storeAny = useGameStore as any;
+    const storeAny = useGameStore as { getState: () => { useTalent: (t: EchoTalent) => boolean } };
     const ok = storeAny.getState().useTalent(talent);
     if (!ok) return;
-    void sendAction(`发动天赋：${talent}！`);
+
+    switch (talent) {
+      case "时间回溯": {
+        rewindTime();
+        popLastNLogs(2);
+        break;
+      }
+      case "命运馈赠": {
+        void sendAction(
+          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在接下来的叙事中，顺理成章地给予玩家一个随机的世界观相关物品，并用红色加粗标出。】',
+          true
+        );
+        break;
+      }
+      case "主角光环": {
+        void sendAction(
+          '【系统强制干预：玩家发动了"主角光环"。请注意，接下来的3小时（回合）内玩家绝对免疫死亡，且本回合你必须为玩家触发1次必定幸运的正向事件！】',
+          true
+        );
+        break;
+      }
+      case "生命汇源": {
+        setStats({ sanity: 50 });
+        break;
+      }
+      case "洞察之眼": {
+        void sendAction(
+          '【系统强制干预：玩家发动了"洞察之眼"。请在接下来的叙事中，明确且直白地用红色加粗字体，为玩家标记出一个必定收益的选择或逃生路线。】',
+          true
+        );
+        break;
+      }
+      case "丧钟回响": {
+        void sendAction(
+          '【系统强制干预：玩家发动了"丧钟回响"。请在叙事中安排一种极度诡异的死法，强制处决当前场景中的一名恶意NPC或诡异（若存在）。】',
+          true
+        );
+        break;
+      }
+    }
   }
 
   function onUseItem(item: Item) {

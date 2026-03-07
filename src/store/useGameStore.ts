@@ -125,7 +125,9 @@ interface GameState {
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
+  popLastNLogs: (n: number) => void;
   advanceTime: () => void;
+  rewindTime: () => void;
   setTime: (time: GameTime) => void;
   setStats: (stats: Partial<Record<StatType, number>>) => void;
   setInventory: (inventory: Item[]) => void;
@@ -244,6 +246,19 @@ export const useGameStore = create<GameState>()(
 
       pushLog: (entry) =>
         set((s) => ({ logs: [...(s.logs ?? []), entry] })),
+
+      popLastNLogs: (n) =>
+        set((s) => ({ logs: (s.logs ?? []).slice(0, -n) })),
+
+      rewindTime: () =>
+        set((s) => {
+          const { day, hour } = s.time ?? { day: 0, hour: 0 };
+          if (hour <= 0) {
+            if (day <= 0) return {};
+            return { time: { day: day - 1, hour: 23 } };
+          }
+          return { time: { day, hour: hour - 1 } };
+        }),
 
       advanceTime: () =>
         set((s) => {

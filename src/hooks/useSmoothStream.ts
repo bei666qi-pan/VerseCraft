@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 
 const DRAIN_INTERVAL_MS = 20;
-const CHARS_PER_TICK = 2;
+const CATCHUP_THRESHOLD = 30;
+const CATCHUP_CHARS = 4;
+const NORMAL_CHARS = 1;
 
 /**
- * Gemini-style smooth stream: buffers incoming text and drains 1-2 chars per tick
- * to smooth out chunk-based SSE and eliminate "jumpy" rendering.
- * Core logic: target string grows from SSE chunks; displayed animates toward target
- * by appending CHARS_PER_TICK chars every DRAIN_INTERVAL_MS.
+ * Anti-jitter smooth stream: displayed only ever increases.
+ * Dynamic typing: when target - displayed > 30, add 4 chars/tick to catch up;
+ * otherwise add 1 char for smooth typing.
  */
 export function useSmoothStream(source: string, isActive: boolean): { text: string; isComplete: boolean; isThinking: boolean } {
   const [displayed, setDisplayed] = useState("");
@@ -41,7 +42,8 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
       setDisplayed((prev) => {
         const target = sourceRef.current;
         if (prev.length >= target.length) return prev;
-        const take = Math.min(CHARS_PER_TICK, target.length - prev.length);
+        const gap = target.length - prev.length;
+        const take = gap > CATCHUP_THRESHOLD ? Math.min(CATCHUP_CHARS, gap) : Math.min(NORMAL_CHARS, gap);
         return target.slice(0, prev.length + take);
       });
     }, DRAIN_INTERVAL_MS);
