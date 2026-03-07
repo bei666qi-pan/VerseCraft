@@ -65,11 +65,15 @@ const DEFAULT_TALENT_COOLDOWNS: Record<EchoTalent, number> = {
   丧钟回响: 0,
 };
 
+export interface GameTime {
+  day: number;
+  hour: number;
+}
+
 interface GameState {
   currentSaveSlot: string;
   isHydrated: boolean;
 
-  // --- 新增角色档案 ---
   playerName: string;
   gender: string;
   height: number;
@@ -78,7 +82,9 @@ interface GameState {
   talentCooldowns: Record<EchoTalent, number>;
   chapter: number;
 
-  // 基础属性 (理智, 敏捷, 幸运, 魅力, 出身)
+  /** Time tick: day 0-9+, hour 0-23. Advances 1h per successful action. */
+  time: GameTime;
+
   stats: Record<StatType, number>;
 
   inventory: Item[];
@@ -86,6 +92,8 @@ interface GameState {
 
   setHydrated: (state: boolean) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
+  advanceTime: () => void;
+  setTime: (time: GameTime) => void;
   setStats: (stats: Partial<Record<StatType, number>>) => void;
   setInventory: (inventory: Item[]) => void;
   addToInventory: (item: Item) => void;
@@ -169,6 +177,7 @@ export const useGameStore = create<GameState>()(
       talent: null,
       talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
       chapter: 1,
+      time: { day: 0, hour: 0 },
       stats: { ...DEFAULT_STATS },
       inventory: [],
       logs: [],
@@ -177,6 +186,18 @@ export const useGameStore = create<GameState>()(
 
       pushLog: (entry) =>
         set((s) => ({ logs: [...(s.logs ?? []), entry] })),
+
+      advanceTime: () =>
+        set((s) => {
+          const { day, hour } = s.time ?? { day: 0, hour: 0 };
+          const nextHour = hour + 1;
+          if (nextHour >= 24) {
+            return { time: { day: day + 1, hour: 0 } };
+          }
+          return { time: { day, hour: nextHour } };
+        }),
+
+      setTime: (time) => set({ time }),
 
       setStats: (stats) =>
         set((s) => ({ stats: { ...s.stats, ...stats } })),
@@ -207,6 +228,7 @@ export const useGameStore = create<GameState>()(
           talent,
           talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
           chapter: 1,
+          time: { day: 0, hour: 0 },
           stats,
           inventory: [startingItem],
         });
@@ -227,12 +249,14 @@ export const useGameStore = create<GameState>()(
 
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
 
+        const time = s.time ?? { day: 0, hour: 0 };
         return (
           `玩家档案：姓名[${s.playerName || "未命名"}]，` +
           `性别[${s.gender || "未设定"}]，` +
           `身高[${s.height || 0}cm]，` +
           `性格[${s.personality || "未设定"}]。` +
           `章节[${s.chapter}]。` +
+          `游戏时间[第${time.day}日 ${time.hour}时]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
           `物品清单：${inv || "空"}。` +
@@ -298,6 +322,7 @@ export const useGameStore = create<GameState>()(
         talent: s.talent,
         talentCooldowns: s.talentCooldowns,
         chapter: s.chapter,
+        time: s.time ?? { day: 0, hour: 0 },
         stats: s.stats,
         inventory: s.inventory,
         logs: s.logs ?? [],

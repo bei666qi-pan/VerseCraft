@@ -175,14 +175,24 @@ export default function PlayPage() {
   const inventory = useGameStore((s) => s.inventory);
   const talent = useGameStore((s) => s.talent);
   const talentCooldowns = useGameStore((s) => s.talentCooldowns);
+  const logs = useGameStore((s) => s.logs ?? []);
+  const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
+  const advanceTime = useGameStore((s) => s.advanceTime);
+  const setStats = useGameStore((s) => s.setStats);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [rawDmBuffer, setRawDmBuffer] = useState("");
   const [liveNarrative, setLiveNarrative] = useState("");
+  const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
+  const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
 
-  const messagesRef = useRef<ChatMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const day = time.day ?? 0;
+  const hour = time.hour ?? 0;
+  const isDarkMoon = day >= 3 && day < 10;
+  const isApocalypse = day >= 10;
 
   const sanity = stats.sanity ?? 0;
 
@@ -202,6 +212,14 @@ export default function PlayPage() {
   }, [setHydrated]);
 
   useEffect(() => {
+    if (!isHydrated) return;
+    const t = useGameStore.getState().time ?? { day: 0, hour: 0 };
+    if (t.day >= 10 && !showApocalypseOverlay) {
+      setShowApocalypseOverlay(true);
+    }
+  }, [isHydrated, showApocalypseOverlay]);
+
+  useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [liveNarrative, isStreaming]);
@@ -211,6 +229,21 @@ export default function PlayPage() {
       setTimeout(() => router.push("/settlement"), 2000);
     }
   }, [sanity, router]);
+
+  useEffect(() => {
+    if (!showDarkMoonOverlay) return;
+    const t = setTimeout(() => setShowDarkMoonOverlay(false), 3000);
+    return () => clearTimeout(t);
+  }, [showDarkMoonOverlay]);
+
+  useEffect(() => {
+    if (!showApocalypseOverlay) return;
+    const t = setTimeout(() => {
+      setStats({ sanity: 0 });
+      router.push("/settlement");
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [showApocalypseOverlay, setStats, router]);
 
   async function sendAction(action: string) {
     if (isStreaming) return;
@@ -228,13 +261,19 @@ export default function PlayPage() {
     ];
     useGameStore.getState().pushLog({ role: "user", content: trimmed });
 
+    const history = useGameStore.getState().logs ?? [];
+    const messages: ChatMessage[] = history.map((l) => ({
+      role: l.role as ChatRole,
+      content: l.content,
+    }));
+
     const playerContext = useGameStore.getState().getPromptContext();
 
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        messages: messagesRef.current,
+        messages,
         playerContext,
       }),
     });
@@ -292,36 +331,38 @@ export default function PlayPage() {
       return;
     }
 
-    // 写入消息历史：assistant content 记录为最终 narrative（避免塞入长 JSON）
-    messagesRef.current = [
-      ...messagesRef.current,
-      { role: "assistant", content: parsed.narrative },
-    ];
     useGameStore.getState().pushLog({
       role: "assistant",
       content: parsed.narrative,
       reasoning: undefined,
     });
 
-    // 清空 liveNarrative，避免与 messagesRef 中的同一条消息重复渲染
     setLiveNarrative("");
 
-    // 扣理智
     const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
     if (dmg > 0) {
       const cur = useGameStore.getState().stats.sanity ?? 0;
       useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
     }
 
-    // 行动推进：仅在合法且未死亡时推进章节与 CD
     if (parsed.is_action_legal && !parsed.is_death) {
       const storeAny = useGameStore as any;
       storeAny.getState().decrementCooldowns();
+      const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
+      advanceTime();
+      const nextTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
+      if (prevTime.day < 3 && nextTime.day === 3 && nextTime.hour === 0) {
+        setShowDarkMoonOverlay(true);
+      }
+      if (nextTime.day >= 10) {
+        setShowApocalypseOverlay(true);
+      }
     }
 
     setIsStreaming(false);
 
     const sanityAfter = useGameStore.getState().stats.sanity ?? 0;
+
     if (parsed.is_death || sanityAfter <= 0) {
       setTimeout(() => router.push("/settlement"), 2000);
     }
@@ -349,18 +390,61 @@ export default function PlayPage() {
     );
   }
 
+  const displayMessages = logs.map((l) => ({ role: l.role as ChatRole, content: l.content }));
+
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main
+      className={`min-h-screen transition-all duration-1000 ${
+        isDarkMoon
+          ? "bg-gradient-to-b from-red-950/95 via-neutral-950 to-black text-red-100"
+          : "bg-background text-foreground"
+      }`}
+    >
+      {showDarkMoonOverlay && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-700"
+          aria-hidden
+        >
+          <p className="animate-pulse text-3xl font-bold tracking-widest text-red-600 md:text-5xl">
+            暗月已至
+          </p>
+        </div>
+      )}
+
+      {showApocalypseOverlay && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-1000"
+          aria-hidden
+        >
+          <p className="animate-pulse text-2xl font-bold tracking-widest text-red-700 md:text-4xl">
+            终焉降临
+          </p>
+        </div>
+      )}
+
+      <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight">意识潜入</h1>
-            <p className="text-sm text-neutral-600">
-              章节：<span className="font-semibold text-neutral-900">{chapter}</span>{" "}
-              · 理智：
+            <h1
+              className={`text-2xl font-semibold tracking-tight ${
+                isDarkMoon ? "text-red-200" : ""
+              }`}
+            >
+              意识潜入
+            </h1>
+            <p
+              className={`text-sm ${
+                isDarkMoon ? "text-red-300/90" : "text-neutral-600"
+              }`}
+            >
+              存活：<span className="font-semibold">{day} 日 {hour} 时</span>
+              {" · "}
+              章节：<span className="font-semibold">{chapter}</span>
+              {" · "}
+              理智：
               <span
                 className={`ml-1 font-semibold ${
-                  sanity <= 3 ? "text-danger" : "text-neutral-900"
+                  sanity <= 3 ? "text-red-400" : isDarkMoon ? "text-red-200" : "text-neutral-900"
                 }`}
               >
                 {sanity}
@@ -373,11 +457,13 @@ export default function PlayPage() {
             onClick={onUseTalent}
             disabled={!talent || talentCdLeft > 0 || isStreaming}
             className={`h-11 rounded-xl border px-5 text-sm font-semibold transition ${
-              !talent
-                ? "border-border bg-white text-neutral-400"
-                : talentCdLeft > 0 || isStreaming
+              isDarkMoon
+                ? "border-red-900/60 bg-red-950/50 text-red-300"
+                : !talent
                   ? "border-border bg-white text-neutral-400"
-                  : "border-accent bg-muted text-neutral-900 hover:bg-white"
+                  : talentCdLeft > 0 || isStreaming
+                    ? "border-border bg-white text-neutral-400"
+                    : "border-accent bg-muted text-neutral-900 hover:bg-white"
             }`}
           >
             {talent ? (
@@ -396,18 +482,26 @@ export default function PlayPage() {
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-4">
-            <div className="rounded-2xl border border-border bg-white p-5">
-              <h2 className="text-sm font-semibold">属性</h2>
+            <div
+              className={`rounded-2xl border p-5 ${
+                isDarkMoon
+                  ? "border-red-900/50 bg-red-950/40"
+                  : "border-border bg-white"
+              }`}
+            >
+              <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>属性</h2>
               <div className="mt-4 space-y-3">
                 {STAT_ORDER.map((k) => (
                   <div
                     key={k}
-                    className="flex items-center justify-between rounded-xl border border-border bg-muted px-4 py-3"
+                    className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
+                      isDarkMoon ? "border-red-900/40 bg-red-950/30" : "border-border bg-muted"
+                    }`}
                   >
-                    <span className="text-sm text-neutral-700">
+                    <span className={`text-sm ${isDarkMoon ? "text-red-300/80" : "text-neutral-700"}`}>
                       {STAT_LABELS[k]}
                     </span>
-                    <span className="text-sm font-semibold text-neutral-900">
+                    <span className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-neutral-900"}`}>
                       {stats[k] ?? 0}
                     </span>
                   </div>
@@ -415,23 +509,33 @@ export default function PlayPage() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-border bg-white p-5">
-              <h2 className="text-sm font-semibold">物品栏</h2>
+            <div
+              className={`mt-6 rounded-2xl border p-5 ${
+                isDarkMoon ? "border-red-900/50 bg-red-950/40" : "border-border bg-white"
+              }`}
+            >
+              <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>物品栏</h2>
               <div className="mt-4 space-y-2">
                 {inventory.length === 0 ? (
-                  <div className="rounded-xl border border-border bg-muted px-4 py-3 text-sm text-neutral-600">
+                  <div
+                    className={`rounded-xl border px-4 py-3 text-sm ${
+                      isDarkMoon ? "border-red-900/40 bg-red-950/30 text-red-300/80" : "border-border bg-muted text-neutral-600"
+                    }`}
+                  >
                     空
                   </div>
                 ) : (
                   inventory.map((i) => (
                     <div
                       key={i.id}
-                      className="rounded-xl border border-border bg-muted px-4 py-3"
+                      className={`rounded-xl border px-4 py-3 ${
+                        isDarkMoon ? "border-red-900/40 bg-red-950/30" : "border-border bg-muted"
+                      }`}
                     >
-                      <div className="text-sm font-semibold text-neutral-900">
+                      <div className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-neutral-900"}`}>
                         {formatItem(i)}
                       </div>
-                      <div className="mt-1 text-xs text-neutral-600">
+                      <div className={`mt-1 text-xs ${isDarkMoon ? "text-red-300/70" : "text-neutral-600"}`}>
                         {i.description}
                       </div>
                     </div>
@@ -442,10 +546,14 @@ export default function PlayPage() {
           </aside>
 
           <section className="lg:col-span-8">
-            <div className="rounded-2xl border border-border bg-white">
-              <div className="border-b border-border px-5 py-4">
-                <h2 className="text-sm font-semibold">叙事主视窗</h2>
-                <p className="mt-1 text-xs text-neutral-600">
+            <div
+              className={`rounded-2xl border ${
+                isDarkMoon ? "border-red-900/50 bg-red-950/30" : "border-border bg-white"
+              }`}
+            >
+              <div className={`border-b px-5 py-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+                <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>叙事主视窗</h2>
+                <p className={`mt-1 text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
                   输入必须简短。规则会记住每一次犹豫。
                 </p>
               </div>
@@ -455,16 +563,24 @@ export default function PlayPage() {
                 className="h-[54vh] overflow-auto px-5 py-5"
               >
                 <div className="space-y-4">
-                  {messagesRef.current.map((m, idx) => (
+                  {displayMessages.map((m, idx) => (
                     <div
                       key={`${m.role}-${idx}`}
                       className={`rounded-2xl border px-4 py-3 text-sm leading-7 ${
-                        m.role === "user"
-                          ? "border-border bg-muted text-neutral-900"
-                          : "border-border bg-white text-neutral-900"
+                        isDarkMoon
+                          ? m.role === "user"
+                            ? "border-red-900/40 bg-red-950/50 text-red-100"
+                            : "border-red-900/40 bg-red-950/20 text-red-100"
+                          : m.role === "user"
+                            ? "border-border bg-muted text-neutral-900"
+                            : "border-border bg-white text-neutral-900"
                       }`}
                     >
-                      <div className="mb-1 text-xs font-semibold text-neutral-600">
+                      <div
+                        className={`mb-1 text-xs font-semibold ${
+                          isDarkMoon ? "text-red-300/90" : "text-neutral-600"
+                        }`}
+                      >
                         {m.role === "user" ? "你" : "DM"}
                       </div>
                       <div className="whitespace-pre-wrap">{m.content}</div>
@@ -472,30 +588,46 @@ export default function PlayPage() {
                   ))}
 
                   {isStreaming ? (
-                    <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm leading-7">
-                      <div className="mb-1 text-xs font-semibold text-neutral-600">
+                    <div
+                      className={`rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                        isDarkMoon
+                          ? "border-red-900/40 bg-red-950/20 text-red-100"
+                          : "border-border bg-white text-neutral-900"
+                      }`}
+                    >
+                      <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <div className="whitespace-pre-wrap">
-                        {liveNarrative || "……"}
-                      </div>
+                      <div className="whitespace-pre-wrap">{liveNarrative || "……"}</div>
                     </div>
                   ) : liveNarrative ? (
-                    <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm leading-7">
-                      <div className="mb-1 text-xs font-semibold text-neutral-600">
+                    <div
+                      className={`rounded-2xl border px-4 py-3 text-sm leading-7 ${
+                        isDarkMoon
+                          ? "border-red-900/40 bg-red-950/20 text-red-100"
+                          : "border-border bg-white text-neutral-900"
+                      }`}
+                    >
+                      <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
                       <div className="whitespace-pre-wrap">{liveNarrative}</div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-neutral-600">
+                    <div
+                      className={`rounded-2xl border px-4 py-3 text-sm ${
+                        isDarkMoon
+                          ? "border-red-900/40 bg-red-950/20 text-red-300/80"
+                          : "border-border bg-white text-neutral-600"
+                      }`}
+                    >
                       你站在走廊的白光下，听见墙壁深处传来缓慢而克制的吞咽声。请描述你的第一个动作。
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="border-t border-border p-4">
+              <div className={`border-t p-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <input
                     value={input}
@@ -505,19 +637,25 @@ export default function PlayPage() {
                     }}
                     maxLength={MAX_INPUT}
                     placeholder="最多 20 字：例如「用手电筒照镜子」"
-                    className="h-12 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition focus:border-neutral-400"
+                    className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                      isDarkMoon
+                        ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
+                        : "border-border bg-white focus:border-neutral-400"
+                    }`}
                     disabled={isStreaming}
                   />
                   <button
                     type="button"
                     onClick={onSubmit}
                     disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
-                    className="h-12 shrink-0 rounded-xl bg-foreground px-6 text-sm font-semibold text-background transition disabled:opacity-40"
+                    className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
+                      isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
+                    }`}
                   >
                     提交
                   </button>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-neutral-600">
+                <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
                   <span>
                     字数：{input.trim().length}/{MAX_INPUT}
                   </span>
@@ -529,7 +667,7 @@ export default function PlayPage() {
                         : "保持简短。保持真实。"}
                   </span>
                 </div>
-                <div className="mt-2 text-[11px] text-neutral-500">
+                <div className={`mt-2 text-[11px] ${isDarkMoon ? "text-red-400/60" : "text-neutral-500"}`}>
                   {rawDmBuffer ? "（调试）已接收流式 JSON 输出。" : null}
                 </div>
               </div>
