@@ -226,14 +226,16 @@ export const useGameStore = create<GameState>()(
         set((s) => {
           const next = { ...s.codex };
           for (const u of updates) {
-            if (!u?.id) continue;
-            const prev = next[u.id];
-            next[u.id] = {
+            if (!u?.name && !u?.id) continue;
+            const existingKey = Object.keys(next).find((k) => next[k]!.name === u.name || next[k]!.id === u.id);
+            const key = existingKey ?? (u.id || u.name);
+            const prev = next[key];
+            next[key] = {
               ...(prev ?? {}),
               ...u,
-              id: u.id,
+              id: prev?.id ?? u.id ?? u.name ?? key,
               name: u.name ?? prev?.name ?? "",
-              type: u.type ?? prev?.type ?? "npc",
+              type: (u.type ?? prev?.type ?? "npc") as "npc" | "anomaly",
             } as CodexEntry;
           }
           return { codex: next };

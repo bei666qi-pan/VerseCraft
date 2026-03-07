@@ -101,21 +101,17 @@ function safeNumber(n: unknown, fallback: number): number {
   return Number.isFinite(v) ? v : fallback;
 }
 
+/**
+ * Extract only the narrative string value from streaming JSON.
+ * Returns null if "narrative" key not present; "" if key present but empty.
+ * Never returns JSON structure, braces, or keys - only decoded narrative text.
+ */
 function extractNarrativePartial(raw: string): string | null {
-  const key = "\"narrative\"";
-  const k = raw.indexOf(key);
-  if (k === -1) return null;
-
-  const colon = raw.indexOf(":", k + key.length);
-  if (colon === -1) return null;
-
-  // 找到 narrative 字符串的起始引号
-  let i = colon + 1;
-  while (i < raw.length && /\s/.test(raw[i] ?? "")) i += 1;
-  if (raw[i] !== "\"") return null;
-  i += 1;
-
+  const match = raw.match(/"narrative"\s*:\s*"/);
+  if (!match) return null;
+  const start = match.index! + match[0].length;
   let out = "";
+  let i = start;
   while (i < raw.length) {
     const ch = raw[i]!;
     if (ch === "\\") {
@@ -134,7 +130,6 @@ function extractNarrativePartial(raw: string): string | null {
     out += ch;
     i += 1;
   }
-
   return out;
 }
 
@@ -494,7 +489,6 @@ export default function PlayPage() {
 
             const partial = extractNarrativePartial(raw);
             if (partial !== null) setLiveNarrative(partial);
-            else setLiveNarrative(raw);
           }
         }
       }
@@ -879,7 +873,6 @@ export default function PlayPage() {
                           : "border-border bg-white text-neutral-600"
                       }`}
                     >
-                      你站在走廊的白光下，听见墙壁深处传来缓慢而克制的吞咽声。请描述你的第一个动作。
                     </div>
                   )}
                 </div>
@@ -894,7 +887,7 @@ export default function PlayPage() {
                       if (e.key === "Enter") onSubmit();
                     }}
                     maxLength={MAX_INPUT}
-                    placeholder={hasReadParchment ? "最多 20 字：例如「用手电筒照镜子」" : "你需要先查看背包中的羊皮纸..."}
+                    placeholder={hasReadParchment ? "最多20字，发挥你的想象力，但务必遵循现实" : "你需要先查看背包中的羊皮纸..."}
                     className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
                       isDarkMoon
                         ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
