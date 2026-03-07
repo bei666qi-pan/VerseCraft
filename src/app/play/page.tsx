@@ -186,6 +186,7 @@ export default function PlayPage() {
   const [liveNarrative, setLiveNarrative] = useState("");
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -206,10 +207,15 @@ export default function PlayPage() {
   }, []);
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
     void Promise.resolve(useGameStore.persist.rehydrate()).then(() => {
       setHydrated(true);
     });
-  }, [setHydrated]);
+  }, [isMounted, setHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -382,10 +388,14 @@ export default function PlayPage() {
     void sendAction(`发动天赋：${talent}！`);
   }
 
-  if (!isHydrated) {
+  if (!isMounted || !isHydrated) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        读取世界线中...
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-neutral-200" />
+          <div className="h-4 w-32 animate-pulse rounded bg-neutral-100" />
+          <p className="text-sm text-neutral-500">读取世界线中...</p>
+        </div>
       </main>
     );
   }
@@ -396,7 +406,7 @@ export default function PlayPage() {
     <main
       className={`min-h-screen transition-all duration-1000 ${
         isDarkMoon
-          ? "bg-gradient-to-b from-red-950/95 via-neutral-950 to-black text-red-100"
+          ? "bg-gradient-to-b from-red-950/20 via-red-950/10 to-black text-red-100"
           : "bg-background text-foreground"
       }`}
     >
@@ -416,8 +426,8 @@ export default function PlayPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-1000"
           aria-hidden
         >
-          <p className="animate-pulse text-2xl font-bold tracking-widest text-red-700 md:text-4xl">
-            终焉降临
+          <p className="animate-pulse text-center text-xl font-bold tracking-widest text-white md:text-3xl">
+            十日已至，一切终焉。
           </p>
         </div>
       )}
@@ -437,8 +447,6 @@ export default function PlayPage() {
                 isDarkMoon ? "text-red-300/90" : "text-neutral-600"
               }`}
             >
-              存活：<span className="font-semibold">{day} 日 {hour} 时</span>
-              {" · "}
               章节：<span className="font-semibold">{chapter}</span>
               {" · "}
               理智：
@@ -483,29 +491,56 @@ export default function PlayPage() {
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-4">
             <div
+              className={`mb-4 rounded-2xl border px-5 py-4 backdrop-blur-md ${
+                isDarkMoon
+                  ? "border-red-900/60 bg-red-950/30"
+                  : "border-white/60 bg-white/80"
+              }`}
+            >
+              <p className={`font-mono text-base font-semibold tabular-nums ${isDarkMoon ? "text-red-200" : "text-neutral-800"}`}>
+                存活时间：{day} 日 {hour} 时
+              </p>
+            </div>
+
+            <div
               className={`rounded-2xl border p-5 ${
                 isDarkMoon
-                  ? "border-red-900/50 bg-red-950/40"
+                  ? "border-red-900/50 bg-red-950/40 backdrop-blur-sm"
                   : "border-border bg-white"
               }`}
             >
               <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>属性</h2>
               <div className="mt-4 space-y-3">
-                {STAT_ORDER.map((k) => (
-                  <div
-                    key={k}
-                    className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
-                      isDarkMoon ? "border-red-900/40 bg-red-950/30" : "border-border bg-muted"
-                    }`}
-                  >
-                    <span className={`text-sm ${isDarkMoon ? "text-red-300/80" : "text-neutral-700"}`}>
-                      {STAT_LABELS[k]}
-                    </span>
-                    <span className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-neutral-900"}`}>
-                      {stats[k] ?? 0}
-                    </span>
-                  </div>
-                ))}
+                {STAT_ORDER.map((k) => {
+                  const isSanityDanger = k === "sanity" && (stats[k] ?? 0) <= 3;
+                  return (
+                    <div
+                      key={k}
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
+                        isSanityDanger
+                          ? "animate-pulse border-red-500/50 bg-red-500/10 text-red-500"
+                          : isDarkMoon
+                            ? "border-red-900/40 bg-red-950/30"
+                            : "border-border bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`text-sm ${
+                          isSanityDanger ? "font-semibold text-red-500" : isDarkMoon ? "text-red-300/80" : "text-neutral-700"
+                        }`}
+                      >
+                        {STAT_LABELS[k]}
+                      </span>
+                      <span
+                        className={`font-mono text-sm font-semibold tabular-nums ${
+                          isSanityDanger ? "text-red-500" : isDarkMoon ? "text-red-200" : "text-neutral-900"
+                        }`}
+                      >
+                        {stats[k] ?? 0}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
