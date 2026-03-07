@@ -21,6 +21,8 @@ function buildSystemPrompt(playerContext: string): string {
     "",
     "请严格以 JSON 格式输出，Schema 如下：",
     '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean }',
+    "",
+    '你必须且只能返回一个合法的 JSON 对象，格式必须完全遵守：{"is_action_legal": boolean, "narrative": "你的剧情回复"}。严禁在 JSON 外输出任何 markdown 标记或解释性文字！',
   ].join("\n");
 }
 
@@ -56,6 +58,25 @@ function resolveDeepSeekConfig(): { apiUrl: string; apiKey: string; model: strin
   return { apiUrl, apiKey, model };
 }
 
+function isLikelyValidDMJson(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    return typeof parsed?.narrative === "string";
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeAssistantContent(content: string): string {
+  if (isLikelyValidDMJson(content)) return content;
+  return JSON.stringify({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: content.slice(0, 500),
+    is_death: false,
+  });
+}
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -73,13 +94,14 @@ export async function POST(req: Request) {
 
   const systemPrompt = buildSystemPrompt(playerContext);
 
-  // 历史消息清洗（极其重要）：仅保留 role 与 content，显式移除 reasoning_content
+  // 历史消息清洗：仅保留 role 与 content，移除 reasoning_content；assistant 非 JSON 时包装为标准格式
   const safeMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
-    .map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    .map((m) => {
+      const content =
+        (m.role === "assistant" ? sanitizeAssistantContent(m.content) : m.content);
+      return { role: m.role, content };
+    });
 
   safeMessages.unshift({ role: "system", content: systemPrompt });
 
@@ -125,13 +147,12 @@ export async function POST(req: Request) {
   const delays = [1000, 2000, 4000];
   let lastError: unknown = null;
 
-  const TIMEOUT_MS = 60000;
+  const TIMEOUT_MS = 120000;
 
   for (let attempt = 0; attempt <= 3; attempt++) {
+    const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
     try {
-      const ac = new AbortController();
-      const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
-
       const upstream = await fetch(apiUrl, {
         method: "POST",
         headers: {
@@ -142,6 +163,7 @@ export async function POST(req: Request) {
           model,
           stream: true,
           max_tokens: 8192,
+          response_format: { type: "json_object" },
           messages: safeMessages,
         }),
         signal: ac.signal,
@@ -231,6 +253,7 @@ export async function POST(req: Request) {
         },
       });
     } catch (err) {
+      clearTimeout(timeoutId);
       lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
       const cause = err instanceof Error ? err.cause : undefined;
