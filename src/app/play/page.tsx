@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Backpack } from "lucide-react";
+import { Backpack, BookOpen } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
-import { useGameStore, type EchoTalent } from "@/store/useGameStore";
+import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -15,6 +15,16 @@ type DMJson = {
   narrative: string;
   is_death: boolean;
   consumes_time?: boolean;
+  codex_updates?: Array<{
+    id: string;
+    name: string;
+    type: "npc" | "anomaly";
+    favorability?: number;
+    combatPower?: number;
+    personality?: string;
+    traits?: string;
+    rules_discovered?: string;
+  }>;
 };
 
 const MAX_INPUT = 20;
@@ -252,6 +262,8 @@ export default function PlayPage() {
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const advanceTime = useGameStore((s) => s.advanceTime);
   const setStats = useGameStore((s) => s.setStats);
+  const codex = useGameStore((s) => s.codex ?? {});
+  const mergeCodex = useGameStore((s) => s.mergeCodex);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -261,6 +273,8 @@ export default function PlayPage() {
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [showCodexModal, setShowCodexModal] = useState(false);
+  const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
   const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
 
@@ -428,6 +442,23 @@ export default function PlayPage() {
 
     setLiveNarrative("");
 
+    if (Array.isArray(parsed.codex_updates) && parsed.codex_updates.length > 0) {
+      const entries: CodexEntry[] = parsed.codex_updates.filter(
+        (u): u is { id: string; name: string; type: "npc" | "anomaly" } =>
+          u && typeof u.id === "string" && typeof u.name === "string" && (u.type === "npc" || u.type === "anomaly")
+      ).map((u) => ({
+        id: u.id,
+        name: u.name,
+        type: u.type,
+        favorability: typeof u.favorability === "number" ? u.favorability : undefined,
+        combatPower: typeof u.combatPower === "number" ? u.combatPower : undefined,
+        personality: typeof u.personality === "string" ? u.personality : undefined,
+        traits: typeof u.traits === "string" ? u.traits : undefined,
+        rules_discovered: typeof u.rules_discovered === "string" ? u.rules_discovered : undefined,
+      }));
+      mergeCodex(entries);
+    }
+
     const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
     if (dmg > 0) {
       const cur = useGameStore.getState().stats.sanity ?? 0;
@@ -477,6 +508,16 @@ export default function PlayPage() {
     const text = `我使用了道具：${item.name}`;
     void sendAction(text);
     setSelectedModalItemId(null);
+    setShowInventoryModal(false);
+  }
+
+  function openInventory() {
+    setShowInventoryModal(true);
+    setShowCodexModal(false);
+  }
+
+  function openCodex() {
+    setShowCodexModal(true);
     setShowInventoryModal(false);
   }
 
@@ -762,15 +803,26 @@ export default function PlayPage() {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowInventoryModal(true)}
-        className="group fixed bottom-10 left-10 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110"
-        title="背包"
-      >
-        <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
-        <Backpack size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
-      </button>
+      <div className="fixed bottom-10 left-10 z-40 flex gap-4">
+        <button
+          type="button"
+          onClick={openInventory}
+          className="group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110"
+          title="背包"
+        >
+          <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
+          <Backpack size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+        </button>
+        <button
+          type="button"
+          onClick={openCodex}
+          className="group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-xl transition hover:scale-110"
+          title="图鉴"
+        >
+          <div className="absolute -inset-2 rounded-full bg-indigo-500/20 blur-xl" aria-hidden />
+          <BookOpen size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+        </button>
+      </div>
 
       {showInventoryModal && (
         <div
@@ -849,6 +901,130 @@ export default function PlayPage() {
             })()}
           </div>
         </div>
+      )}
+
+      {showCodexModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+          role="dialog"
+          aria-modal
+          aria-labelledby="codex-modal-title"
+        >
+          <div className="relative flex h-[70vh] w-[90vw] max-w-5xl flex-row overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-2xl backdrop-blur-3xl">
+            <button
+              type="button"
+              onClick={() => { setShowCodexModal(false); setSelectedCodexId(null); }}
+              className="absolute right-4 top-4 z-10 rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div
+              className="flex w-1/2 flex-col overflow-hidden"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+                <h2 id="codex-modal-title" className="border-b border-white/10 px-6 py-4 text-sm font-semibold tracking-widest text-white">
+                  图鉴 · 目录
+                </h2>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">NPC</p>
+                  <div className="space-y-2">
+                    {Object.values(codex)
+                      .filter((e) => e.type === "npc")
+                      .map((e) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
+                          className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
+                            selectedCodexId === e.id
+                              ? "bg-indigo-500/30 text-white"
+                              : "bg-white/5 text-slate-300 hover:bg-white/10"
+                          }`}
+                        >
+                          {e.name}
+                        </button>
+                      ))}
+                    {Object.values(codex).filter((e) => e.type === "npc").length === 0 && (
+                      <p className="py-4 text-xs text-slate-600">暂无</p>
+                    )}
+                  </div>
+                  <p className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-slate-500">诡异</p>
+                  <div className="space-y-2">
+                    {Object.values(codex)
+                      .filter((e) => e.type === "anomaly")
+                      .map((e) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
+                          className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
+                            selectedCodexId === e.id
+                              ? "bg-red-500/20 text-white"
+                              : "bg-white/5 text-slate-300 hover:bg-white/10"
+                          }`}
+                        >
+                          {e.name}
+                        </button>
+                      ))}
+                    {Object.values(codex).filter((e) => e.type === "anomaly").length === 0 && (
+                      <p className="py-4 text-xs text-slate-600">暂无</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="w-px shrink-0 bg-gradient-to-b from-transparent via-white/20 to-transparent" />
+              <div className="flex w-1/2 flex-1 flex-col overflow-y-auto p-6">
+                {selectedCodexId && codex[selectedCodexId] ? (
+                  (() => {
+                    const e = codex[selectedCodexId]!;
+                    const fav = e.favorability ?? 0;
+                    return (
+                      <>
+                        <h3 className="text-xl font-bold text-white">{e.name}</h3>
+                        <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{e.type === "npc" ? "NPC" : "诡异"}</p>
+                        <div className="mt-6 space-y-4">
+                          <div>
+                            <span className="text-xs text-slate-500">好感度</span>
+                            <p className={`mt-1 font-bold ${fav >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {fav}
+                            </p>
+                          </div>
+                          {typeof e.combatPower === "number" && (
+                            <div>
+                              <span className="text-xs text-slate-500">战斗力</span>
+                              <p className="mt-1 font-semibold text-white">{e.combatPower}</p>
+                            </div>
+                          )}
+                          {e.personality && (
+                            <div>
+                              <span className="text-xs text-slate-500">性格</span>
+                              <p className="mt-1 text-sm text-slate-200">{e.personality}</p>
+                            </div>
+                          )}
+                          {e.traits && (
+                            <div>
+                              <span className="text-xs text-slate-500">特质</span>
+                              <p className="mt-1 text-sm text-slate-200">{e.traits}</p>
+                            </div>
+                          )}
+                          {e.rules_discovered && (
+                            <div>
+                              <span className="text-xs text-slate-500">已知规则</span>
+                              <p className="mt-1 text-sm text-amber-200/90">{e.rules_discovered}</p>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <p className="text-slate-500">选择左侧条目查看详情</p>
+                )}
+              </div>
+            </div>
+          </div>
       )}
     </main>
   );

@@ -80,6 +80,17 @@ export interface GameTime {
   hour: number;
 }
 
+export interface CodexEntry {
+  id: string;
+  name: string;
+  type: "npc" | "anomaly";
+  favorability?: number;
+  combatPower?: number;
+  personality?: string;
+  traits?: string;
+  rules_discovered?: string;
+}
+
 interface GameState {
   currentSaveSlot: string;
   isHydrated: boolean;
@@ -99,7 +110,11 @@ interface GameState {
   inventory: Item[];
   logs: { role: string; content: string; reasoning?: string }[];
 
+  /** 图鉴：NPC/诡异情报，由 DM 通过 codex_updates 推送 */
+  codex: Record<string, CodexEntry>;
+
   setHydrated: (state: boolean) => void;
+  mergeCodex: (updates: CodexEntry[]) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
   advanceTime: () => void;
   setTime: (time: GameTime) => void;
@@ -189,8 +204,26 @@ export const useGameStore = create<GameState>()(
       stats: { ...DEFAULT_STATS },
       inventory: [],
       logs: [],
+      codex: {},
 
       setHydrated: (state) => set({ isHydrated: state }),
+
+      mergeCodex: (updates) =>
+        set((s) => {
+          const next = { ...s.codex };
+          for (const u of updates) {
+            if (!u?.id) continue;
+            const prev = next[u.id];
+            next[u.id] = {
+              ...(prev ?? {}),
+              ...u,
+              id: u.id,
+              name: u.name ?? prev?.name ?? "",
+              type: u.type ?? prev?.type ?? "npc",
+            } as CodexEntry;
+          }
+          return { codex: next };
+        }),
 
       pushLog: (entry) =>
         set((s) => ({ logs: [...(s.logs ?? []), entry] })),
@@ -238,6 +271,7 @@ export const useGameStore = create<GameState>()(
           time: { day: 0, hour: 0 },
           stats,
           inventory: [PARCHMENT_ITEM, startingItem],
+          codex: {},
         });
       },
 
@@ -266,7 +300,10 @@ export const useGameStore = create<GameState>()(
           `当前属性：${statsText}。` +
           `${talentText}。` +
           `物品清单：${inv || "空"}。` +
-          `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。`
+          `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
+          (Object.keys(s.codex ?? {}).length > 0
+            ? ` 图鉴已解锁：${Object.values(s.codex ?? {}).map((e) => `${e.name}[${e.type}|好感${e.favorability ?? 0}]`).join("，")}。`
+            : "")
         );
       },
 
@@ -331,6 +368,7 @@ export const useGameStore = create<GameState>()(
         stats: s.stats,
         inventory: s.inventory,
         logs: s.logs ?? [],
+        codex: s.codex ?? {},
       }),
     }
   )

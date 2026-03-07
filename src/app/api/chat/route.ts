@@ -32,7 +32,7 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【通关结局 S - 杀戮通关】若玩家利用极度稀有的规则类杀伤道具，或联合战力 9-10 的顶级 NPC，成功杀死公寓内全部 7 个普通诡异（1-7 层）以及第 8 诡异（B2 守门人），系统将触发隐藏 S 级结局。",
     "",
     "请严格以 JSON 格式输出，Schema 如下：",
-    '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean, "consumes_time": boolean }',
+    '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情，不要有任何多余的废话", "is_death": boolean, "consumes_time": boolean, "codex_updates": [可选] }',
     "",
     "consumes_time：默认 true 表示本次行动消耗 1 小时。当敏捷>20 且触发「极速反应」时，必须设为 false，使玩家本次行动不消耗时间。",
     "",
@@ -49,6 +49,18 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "魅力 (Charm)：魅力越高，越容易获取 NPC 好感，更难引起诡异注意。质变：魅力>20 时，中立 NPC 极有可能主动出手相助，甚至诡异在必杀判定时有概率放玩家一条生路。",
     "",
     "出身 (Background)：出身越高，开局自带的道具越好（最高 A 级）。质变：出身>20 时，玩家开局即可能有一名原世界观中的 NPC 全程协助，或有 1 只诡异（非 B2 守门人）天生认识玩家并愿意提供帮助。",
+    "",
+    "## 【NPC 与诡异好感度系统法则（绝对执行）】",
+    "",
+    "初始设定：所有普通 NPC 初始好感度为 0。所有诡异初始好感度为 -10。",
+    "",
+    "好感度演变：好感度可通过玩家的「出身」属性（出身越高越容易自带高好感）、特定道具、符合 NPC 性格的对话来增加。好感度 >0 时实体可能提供帮助或线索；好感度 <0 时实体极易发起主动攻击。",
+    "",
+    "暗月狂暴机制：当游戏时间到达或超过 3 日 0 时（暗月阶段），所有诡异的好感度强制额外下降 5 点，陷入狂躁状态，且其战斗力 (combatPower) 强制临时 +2。",
+    "",
+    "【图鉴推送指令】：当玩家在剧情中首次遇到任何 NPC/诡异，或通过交互发现了它们的性格、弱点、规则、或者好感度发生变化时，你必须在返回的 JSON 中携带 codex_updates 数组，将该实体的最新情报（如 name, type, favorability, combatPower, personality, rules_discovered）推送给前端系统。",
+    "",
+    "JSON Schema 追加可选字段：codex_updates: [{ id, name, type: 'npc'|'anomaly', favorability?, combatPower?, personality?, traits?, rules_discovered? }]",
   ];
 
   if (isFirstAction) {
