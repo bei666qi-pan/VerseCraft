@@ -46,6 +46,7 @@ function resolveDeepSeekConfig(): { apiUrl: string; apiKey: string; model: strin
   const apiKey = getEnv("VOLCENGINE_API_KEY") ?? getEnv("ARK_API_KEY") ?? getEnv("DEEPSEEK_API_KEY") ?? "";
 
   const model =
+    getEnv("VOLCENGINE_ENDPOINT_ID") ??
     getEnv("VOLCENGINE_DEEPSEEK_MODEL") ??
     getEnv("ARK_MODEL") ??
     getEnv("DEEPSEEK_MODEL") ??
@@ -103,110 +104,138 @@ export async function POST(req: Request) {
     );
   }
 
-  const upstream = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      stream: true,
-      messages: safeMessages,
-    }),
-  });
+  const FALLBACK_NARRATIVE =
+    "游戏主脑暂时离线，请稍后再试。";
+  const SSE_HEADERS = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  } as const;
 
-  if (!upstream.ok || !upstream.body) {
-    const text = await upstream.text().catch(() => "");
-    return new Response(
-      sseText(
-        JSON.stringify({
-          is_action_legal: false,
-          sanity_damage: 0,
-          narrative: `深渊 DM 连接失败（${upstream.status}）。${text ? `响应：${text}` : ""}`,
-          is_death: false,
-        })
-      ),
-      {
-        status: 502,
-        headers: {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-          Connection: "keep-alive",
-        },
-      }
-    );
+  function sendFallback(): Response {
+    return new Response(sseText(JSON.stringify({
+      is_action_legal: false,
+      sanity_damage: 0,
+      narrative: FALLBACK_NARRATIVE,
+      is_death: false,
+    })), { status: 200, headers: SSE_HEADERS });
   }
 
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-  let accumulated = "";
+  const delays = [1000, 2000, 4000];
+  let lastError: unknown = null;
 
-  const stream = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const { value, done } = await reader.read();
-      if (done) {
-        controller.close();
-        return;
-      }
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    try {
+      const upstream = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          stream: true,
+          messages: safeMessages,
+        }),
+      });
 
-      buffer += decoder.decode(value, { stream: true });
-
-      while (true) {
-        const idx = buffer.indexOf("\n");
-        if (idx === -1) break;
-        const line = buffer.slice(0, idx).trimEnd();
-        buffer = buffer.slice(idx + 1);
-
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-
-        if (!data) continue;
-        if (data === "[DONE]") {
-          controller.close();
-          return;
-        }
-
-        // OpenAI/Ark 兼容 SSE：data: { ...json... }
-        let json: any = null;
-        try {
-          json = JSON.parse(data);
-        } catch {
-          // 若上游直接吐纯文本（极少见），仍按 chunk 转发
-          accumulated += data;
-          controller.enqueue(sse(data));
+      if (!upstream.ok || !upstream.body) {
+        const text = await upstream.text().catch(() => "");
+        console.error(
+          `[api/chat] upstream failed attempt=${attempt + 1} status=${upstream.status} url=${apiUrl}`,
+          { status: upstream.status, statusText: upstream.statusText, body: text }
+        );
+        lastError = new Error(`HTTP ${upstream.status}: ${text}`);
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, delays[attempt]));
           continue;
         }
-
-        const deltaContent =
-          json?.choices?.[0]?.delta?.content ??
-          json?.choices?.[0]?.message?.content ??
-          "";
-
-        if (typeof deltaContent === "string" && deltaContent.length > 0) {
-          accumulated += deltaContent;
-          controller.enqueue(sse(deltaContent));
-        }
+        return sendFallback();
       }
-    },
-    async cancel() {
-      try {
-        await reader.cancel();
-      } catch {
-        // ignore
-      }
-    },
-  });
 
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let accumulated = "";
+
+          const stream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          const { value, done } = await reader.read();
+          if (done) {
+            controller.close();
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+
+          while (true) {
+            const idx = buffer.indexOf("\n");
+            if (idx === -1) break;
+            const line = buffer.slice(0, idx).trimEnd();
+            buffer = buffer.slice(idx + 1);
+
+            if (!line.startsWith("data:")) continue;
+            const data = line.slice(5).trim();
+
+            if (!data) continue;
+            if (data === "[DONE]") {
+              controller.close();
+              return;
+            }
+
+            // OpenAI/Ark compatible SSE: data: { ...json... }
+            let json: { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> } | null = null;
+            try {
+              json = JSON.parse(data);
+            } catch {
+              accumulated += data;
+              controller.enqueue(sse(data));
+              continue;
+            }
+
+            const deltaContent =
+              json?.choices?.[0]?.delta?.content ??
+              json?.choices?.[0]?.message?.content ??
+              "";
+
+            if (typeof deltaContent === "string" && deltaContent.length > 0) {
+              accumulated += deltaContent;
+              controller.enqueue(sse(deltaContent));
+            }
+          }
+        },
+        async cancel() {
+          try {
+            await reader.cancel();
+          } catch {
+            // ignore
+          }
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...SSE_HEADERS,
+          "X-Accel-Buffering": "no",
+        },
+      });
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const cause = err instanceof Error ? err.cause : undefined;
+      console.error(
+        `[api/chat] fetch exception attempt=${attempt + 1} url=${apiUrl}`,
+        { message: msg, cause, error: err }
+      );
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, delays[attempt]));
+        continue;
+      }
+      return sendFallback();
+    }
+  }
+
+  return sendFallback();
 }
 
