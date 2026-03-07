@@ -103,16 +103,17 @@ function safeNumber(n: unknown, fallback: number): number {
 }
 
 /**
- * Extract only narrative text from streaming JSON. Uses aggressive regex to avoid
- * any JSON prefix/keys leaking. Returns "" when narrative not yet present.
+ * Extract only narrative text from streaming JSON. Bulletproof regex: captures
+ * content after "narrative": " and strips any trailing JSON structure to avoid
+ * leakage (e.g. ", "consumes_time": false) during stream end.
  */
 function extractNarrativePartial(raw: string): string {
-  const match = raw.match(/"narrative"\s*:\s*"([^]*)/);
+  const match = raw.match(/"narrative"\s*:\s*"(.*)/s);
   if (!match) return "";
   let text = match[1];
-  text = text.replace(/(?<!\\)"(?:\s*[,}\]].*)?$/, "");
-  text = text.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r").replace(/\\"/g, "\"");
-  return text;
+  // Strip from first unescaped double-quote to end (prevents JSON tail leaking)
+  text = text.replace(/(?<!\\)".*$/s, "");
+  return text.replace(/\\n/g, "\n").replace(/\\"/g, '"');
 }
 
 const FALLBACK_DM: DMJson = {
@@ -567,7 +568,7 @@ export default function PlayPage() {
 
   function onUseItem(item: Item) {
     if (item.id === "I-PARCHMENT") setHasReadParchment(true);
-    const text = `我使用了道具：${item.name}`;
+    const text = `我使用了道具：【${item.name}】`;
     void sendAction(text);
     setSelectedModalItemId(null);
     setShowInventoryModal(false);
