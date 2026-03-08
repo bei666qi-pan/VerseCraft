@@ -157,8 +157,12 @@ interface GameState {
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
   /** 非法闯入警戒闪烁计时 */
   intrusionFlashUntil: number;
+  /** 是否已开始游戏（角色初始化完成后为 true） */
+  isGameStarted: boolean;
 
   setHydrated: (state: boolean) => void;
+  /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
+  resetForNewGame: () => void;
   setCurrentOptions: (options: string[]) => void;
   toggleInputMode: () => void;
   setOriginium: (v: number) => void;
@@ -282,8 +286,35 @@ export const useGameStore = create<GameState>()(
       playerLocation: "B1_SafeZone",
       dynamicNpcStates: {},
       intrusionFlashUntil: 0,
+      isGameStarted: false,
 
       setHydrated: (state) => set({ isHydrated: state }),
+      resetForNewGame: () =>
+        set({
+          playerName: "",
+          gender: "",
+          height: 170,
+          personality: "",
+          talent: null,
+          talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
+          time: { day: 0, hour: 0 },
+          stats: { ...DEFAULT_STATS },
+          historicalMaxSanity: 50,
+          inventory: [],
+          logs: [],
+          codex: {},
+          hasReadParchment: false,
+          hasCheckedCodex: false,
+          warehouse: [],
+          currentOptions: [],
+          inputMode: "options" as const,
+          originium: 0,
+          tasks: [],
+          playerLocation: "B1_SafeZone",
+          dynamicNpcStates: {},
+          intrusionFlashUntil: 0,
+          isGameStarted: false,
+        }),
       setCurrentOptions: (options) => set({ currentOptions: options, inputMode: "options" as const }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setOriginium: (v) => set({ originium: Math.max(0, v) }),
@@ -439,6 +470,7 @@ export const useGameStore = create<GameState>()(
             Object.entries(NPC_SOCIAL_GRAPH).map(([id, p]) => [id, { currentLocation: p.homeLocation, isAlive: true }])
           ),
           intrusionFlashUntil: 0,
+          isGameStarted: true,
         });
       },
 
@@ -583,6 +615,7 @@ export const useGameStore = create<GameState>()(
         tasks: s.tasks ?? [],
         playerLocation: s.playerLocation ?? "B1_SafeZone",
         dynamicNpcStates: s.dynamicNpcStates ?? {},
+        isGameStarted: s.isGameStarted ?? false,
       }),
     }
   )
