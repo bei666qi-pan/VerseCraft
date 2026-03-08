@@ -1038,11 +1038,12 @@ export default function PlayPage() {
                           type="button"
                           onClick={() => { void sendAction(option); }}
                           disabled={isStreaming}
-                          className="relative group p-4 text-left bg-slate-900/40 backdrop-blur-2xl border border-white/10 rounded-[1.5rem] hover:bg-slate-800/60 hover:border-indigo-400/50 transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_10px_30px_-10px_rgba(99,102,241,0.3)] overflow-hidden disabled:opacity-40"
+                          className="relative group p-4 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-[1.5rem] ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.35),0_10px_30px_-10px_rgba(99,102,241,0.25)] transition-all duration-300 hover:-translate-y-1 overflow-hidden disabled:opacity-40"
                           style={{ animationDelay: `${idx * 80}ms` }}
                         >
-                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-blue-500/0 group-hover:from-indigo-500/10 group-hover:via-purple-500/10 group-hover:to-blue-500/10 transition-all duration-500" />
-                          <span className="relative z-10 text-sm md:text-base text-slate-200 group-hover:text-white font-medium tracking-wide">
+                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-cyan-500/0 group-hover:from-indigo-500/15 group-hover:via-purple-500/10 group-hover:to-cyan-500/15 transition-all duration-300" />
+                          <div className="absolute -inset-px rounded-[1.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-indigo-500/20 via-transparent to-purple-500/20 blur-sm" aria-hidden />
+                          <span className="relative z-10 text-sm md:text-base text-white/95 group-hover:text-white font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
                             {option}
                           </span>
                         </button>
