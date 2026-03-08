@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package, Volume2, VolumeX } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
@@ -795,33 +796,51 @@ export default function PlayPage() {
     setShowInventoryModal(false);
   }
 
+  const withTransition = useCallback((fn: () => void) => {
+    if (typeof document !== "undefined" && "startViewTransition" in document) {
+      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+        flushSync(fn);
+      });
+    } else {
+      fn();
+    }
+  }, []);
+
   function openInventory() {
-    setShowInventoryModal(true);
-    setShowCodexModal(false);
-    setShowWarehouseModal(false);
-    setShowTaskModal(false);
+    withTransition(() => {
+      setShowInventoryModal(true);
+      setShowCodexModal(false);
+      setShowWarehouseModal(false);
+      setShowTaskModal(false);
+    });
   }
 
   function openCodex() {
-    setHasCheckedCodex(true);
-    setShowCodexModal(true);
-    setShowInventoryModal(false);
-    setShowWarehouseModal(false);
-    setShowTaskModal(false);
+    withTransition(() => {
+      setHasCheckedCodex(true);
+      setShowCodexModal(true);
+      setShowInventoryModal(false);
+      setShowWarehouseModal(false);
+      setShowTaskModal(false);
+    });
   }
 
   function openWarehouse() {
-    setShowWarehouseModal(true);
-    setShowInventoryModal(false);
-    setShowCodexModal(false);
-    setShowTaskModal(false);
+    withTransition(() => {
+      setShowWarehouseModal(true);
+      setShowInventoryModal(false);
+      setShowCodexModal(false);
+      setShowTaskModal(false);
+    });
   }
 
   function openTasks() {
-    setShowTaskModal(true);
-    setShowInventoryModal(false);
-    setShowCodexModal(false);
-    setShowWarehouseModal(false);
+    withTransition(() => {
+      setShowTaskModal(true);
+      setShowInventoryModal(false);
+      setShowCodexModal(false);
+      setShowWarehouseModal(false);
+    });
   }
 
   function onSaveAndExit() {
@@ -1173,7 +1192,7 @@ export default function PlayPage() {
                           </span>
                           <button
                             type="button"
-                            onClick={toggleInputMode}
+                            onClick={() => withTransition(toggleInputMode)}
                             className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
                           >
                             <Keyboard size={14} strokeWidth={1.5} />
@@ -1223,7 +1242,7 @@ export default function PlayPage() {
                             {currentOptions.length > 0 && !isStreaming && (
                               <button
                                 type="button"
-                                onClick={toggleInputMode}
+                                onClick={() => withTransition(toggleInputMode)}
                                 className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
                               >
                                 <List size={14} strokeWidth={1.5} />
