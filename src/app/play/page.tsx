@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Backpack, BookOpen, Lightbulb, Package } from "lucide-react";
+import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package, Volume2, VolumeX } from "lucide-react";
+import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
-import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
+import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
 
 type ChatRole = "user" | "assistant";
@@ -36,6 +38,12 @@ type DMJson = {
     rules_discovered?: string;
     weakness?: string;
   }>;
+  options?: string[];
+  currency_change?: number;
+  new_tasks?: Array<{ id: string; title: string; desc: string; issuer: string; reward: string }>;
+  task_updates?: Array<{ id: string; status: "active" | "completed" | "failed" }>;
+  player_location?: string;
+  npc_location_updates?: Array<{ id: string; to_location: string }>;
 };
 
 const MAX_INPUT = 20;
@@ -71,7 +79,7 @@ function renderNarrativeText(text: string) {
       return (
         <strong
           key={i}
-          className="font-bold text-red-600 drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+          className="inline-block font-bold text-red-600 animate-glitch drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]"
         >
           {m[1]}
         </strong>
@@ -112,26 +120,51 @@ function safeNumber(n: unknown, fallback: number): number {
 }
 
 /**
- * Extract narrative from streaming JSON using indexOf (no complex regex).
- * Strips trailing JSON keys to prevent leakage onto screen.
+ * Extract narrative from streaming JSON by finding the exact JSON string boundaries.
+ * Scans for the closing unescaped double-quote to avoid ALL JSON key leakage,
+ * regardless of key ordering or mid-stream truncation.
  */
 function extractNarrative(raw: string): string {
-  const startIndex = raw.indexOf('"narrative"');
-  if (startIndex === -1) return "";
-  const colonIndex = raw.indexOf(":", startIndex);
-  if (colonIndex === -1) return "";
-  const quoteIndex = raw.indexOf('"', colonIndex);
-  if (quoteIndex === -1) return "";
+  const keyIdx = raw.indexOf('"narrative"');
+  if (keyIdx === -1) return "";
+  const colonIdx = raw.indexOf(":", keyIdx + 11);
+  if (colonIdx === -1) return "";
 
-  let text = raw.substring(quoteIndex + 1);
+  let openQuote = -1;
+  for (let j = colonIdx + 1; j < raw.length; j++) {
+    const ch = raw[j];
+    if (ch === '"') { openQuote = j; break; }
+    if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') return "";
+  }
+  if (openQuote === -1) return "";
 
-  text = text.replace(/",\s*"consumes_time".*$/, "");
-  text = text.replace(/",\s*"consumed_items".*$/, "");
-  text = text.replace(/",\s*"awarded_items".*$/, "");
-  text = text.replace(/",\s*"codex_updates".*$/, "");
-  text = text.replace(/"\s*}$/, "");
+  let closeQuote = -1;
+  for (let j = openQuote + 1; j < raw.length; j++) {
+    if (raw[j] === '\\') { j++; continue; }
+    if (raw[j] === '"') { closeQuote = j; break; }
+  }
 
-  return text.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  let text: string;
+  if (closeQuote !== -1) {
+    text = raw.substring(openQuote + 1, closeQuote);
+  } else {
+    text = raw.substring(openQuote + 1);
+    if (text.endsWith("\\")) text = text.slice(0, -1);
+  }
+
+  return text.replace(/\\(["\\/bfnrt])/g, (_, c: string) => {
+    switch (c) {
+      case 'n': return '\n';
+      case 'r': return '\r';
+      case 't': return '\t';
+      case '"': return '"';
+      case '\\': return '\\';
+      case '/': return '/';
+      case 'b': return '\b';
+      case 'f': return '\f';
+      default: return c;
+    }
+  });
 }
 
 const FALLBACK_DM: DMJson = {
@@ -311,8 +344,21 @@ export default function PlayPage() {
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const setHasReadParchment = useGameStore((s) => s.setHasReadParchment);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
-  const hintUsedThisTurn = useGameStore((s) => s.hintUsedThisTurn ?? false);
-  const setHintUsedThisTurn = useGameStore((s) => s.setHintUsedThisTurn);
+  const currentOptions = useGameStore((s) => s.currentOptions ?? []);
+  const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
+  const inputMode = useGameStore((s) => s.inputMode ?? "options");
+  const toggleInputMode = useGameStore((s) => s.toggleInputMode);
+  const originium = useGameStore((s) => s.originium ?? 0);
+  const tasks = useGameStore((s) => s.tasks ?? []);
+  const addOriginium = useGameStore((s) => s.addOriginium);
+  const addTask = useGameStore((s) => s.addTask);
+  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
+  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
+  const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
+  const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
+  const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
+  const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+  const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -328,6 +374,8 @@ export default function PlayPage() {
   const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
   const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [audioMuted, setAudioMuted] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -361,6 +409,13 @@ export default function PlayPage() {
 
   useEffect(() => {
     if (!isHydrated) return;
+    if (!isGameStarted) {
+      router.replace("/");
+    }
+  }, [isHydrated, isGameStarted, router]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     const t = useGameStore.getState().time ?? { day: 0, hour: 0 };
     if (t.day >= 10 && !showApocalypseOverlay) {
       setShowApocalypseOverlay(true);
@@ -376,7 +431,9 @@ export default function PlayPage() {
   useEffect(() => {
     if (!scrollRef.current) return;
     const el = scrollRef.current;
-    if (!isStreaming) {
+    if (isStreaming) {
+      el.scrollTop = el.scrollHeight;
+    } else {
       if (prevIsStreamingRef.current) {
         el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       } else {
@@ -385,6 +442,24 @@ export default function PlayPage() {
     }
     prevIsStreamingRef.current = isStreaming;
   }, [smoothNarrative, isStreaming]);
+
+  useEffect(() => {
+    if (intrusionFlashUntil <= Date.now()) {
+      setShowIntrusionFlash(false);
+      return;
+    }
+    setShowIntrusionFlash(true);
+    const t = setTimeout(() => setShowIntrusionFlash(false), intrusionFlashUntil - Date.now());
+    return () => clearTimeout(t);
+  }, [intrusionFlashUntil]);
+
+  useEffect(() => {
+    if (!audioMuted) updateSanityFilter(sanity);
+  }, [sanity, audioMuted]);
+
+  useEffect(() => {
+    if (!audioMuted) setDarkMoonMode(isDarkMoon);
+  }, [isDarkMoon, audioMuted]);
 
   useEffect(() => {
     if (sanity <= 0) {
@@ -595,9 +670,53 @@ export default function PlayPage() {
       useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
     }
 
+    if (Array.isArray(parsed.options) && parsed.options.length > 0) {
+      const validOpts = parsed.options
+        .filter((o): o is string => typeof o === "string" && o.length > 0)
+        .slice(0, 4);
+      setCurrentOptions(validOpts);
+    }
+
+    if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
+      addOriginium(parsed.currency_change);
+    }
+
+    if (Array.isArray(parsed.new_tasks) && parsed.new_tasks.length > 0) {
+      for (const t of parsed.new_tasks) {
+        if (t && typeof t.id === "string" && typeof t.title === "string") {
+          addTask({
+            id: t.id,
+            title: t.title,
+            desc: typeof t.desc === "string" ? t.desc : "",
+            issuer: typeof t.issuer === "string" ? t.issuer : "未知",
+            reward: typeof t.reward === "string" ? t.reward : "",
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(parsed.task_updates) && parsed.task_updates.length > 0) {
+      for (const u of parsed.task_updates) {
+        if (u && typeof u.id === "string" && (u.status === "active" || u.status === "completed" || u.status === "failed")) {
+          updateTaskStatus(u.id, u.status);
+        }
+      }
+    }
+
+    if (typeof parsed.player_location === "string" && parsed.player_location.length > 0) {
+      setPlayerLocation(parsed.player_location);
+    }
+
+    if (Array.isArray(parsed.npc_location_updates) && parsed.npc_location_updates.length > 0) {
+      for (const u of parsed.npc_location_updates) {
+        if (u && typeof u.id === "string" && typeof u.to_location === "string") {
+          updateNpcLocation(u.id, u.to_location);
+        }
+      }
+    }
+
     const isItemUse = trimmed.startsWith("我使用了道具：");
     const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
-    useGameStore.getState().setHintUsedThisTurn(false);
 
     if (parsed.is_action_legal && !parsed.is_death && shouldAdvanceTime) {
       const storeAny = useGameStore as any;
@@ -684,23 +803,51 @@ export default function PlayPage() {
     setShowInventoryModal(false);
   }
 
+  const withTransition = useCallback((fn: () => void) => {
+    if (typeof document !== "undefined" && "startViewTransition" in document) {
+      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
+        flushSync(fn);
+      });
+    } else {
+      fn();
+    }
+  }, []);
+
   function openInventory() {
-    setShowInventoryModal(true);
-    setShowCodexModal(false);
-    setShowWarehouseModal(false);
+    withTransition(() => {
+      setShowInventoryModal(true);
+      setShowCodexModal(false);
+      setShowWarehouseModal(false);
+      setShowTaskModal(false);
+    });
   }
 
   function openCodex() {
-    setHasCheckedCodex(true);
-    setShowCodexModal(true);
-    setShowInventoryModal(false);
-    setShowWarehouseModal(false);
+    withTransition(() => {
+      setHasCheckedCodex(true);
+      setShowCodexModal(true);
+      setShowInventoryModal(false);
+      setShowWarehouseModal(false);
+      setShowTaskModal(false);
+    });
   }
 
   function openWarehouse() {
-    setShowWarehouseModal(true);
-    setShowInventoryModal(false);
-    setShowCodexModal(false);
+    withTransition(() => {
+      setShowWarehouseModal(true);
+      setShowInventoryModal(false);
+      setShowCodexModal(false);
+      setShowTaskModal(false);
+    });
+  }
+
+  function openTasks() {
+    withTransition(() => {
+      setShowTaskModal(true);
+      setShowInventoryModal(false);
+      setShowCodexModal(false);
+      setShowWarehouseModal(false);
+    });
   }
 
   function onSaveAndExit() {
@@ -714,13 +861,13 @@ export default function PlayPage() {
     setShowExitModal(false);
   }
 
-  if (!isMounted || !isHydrated) {
+  if (!isMounted || !isHydrated || !isGameStarted) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
+      <main className="flex min-h-screen items-center justify-center bg-[#0f172a] text-white">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-neutral-200" />
-          <div className="h-4 w-32 animate-pulse rounded bg-neutral-100" />
-          <p className="text-sm text-neutral-500">读取世界线中...</p>
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
+          <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
+          <p className="text-sm text-slate-400">读取世界线中...</p>
         </div>
       </main>
     );
@@ -758,12 +905,22 @@ export default function PlayPage() {
         </div>
       )}
 
+      {showIntrusionFlash && (
+        <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
+      )}
+
       <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-4 border-b border-white/5 bg-slate-900/20 px-6 py-4 shadow-sm backdrop-blur-xl md:flex-nowrap">
-        <div className="relative group flex items-center">
-          <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
-          <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
-            意识潜入
-          </h1>
+        <div className="flex items-center gap-4">
+          <div className="relative group flex items-center">
+            <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
+            <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
+              意识潜入
+            </h1>
+          </div>
+          <div className="hidden items-center rounded-full border border-cyan-400/20 bg-cyan-950/30 px-4 py-1.5 shadow-[0_0_12px_rgba(34,211,238,0.15)] backdrop-blur-md md:flex">
+            <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">LOC</span>
+            <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{playerLocation.replace(/_/g, " ")}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -801,13 +958,34 @@ export default function PlayPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowExitModal(true)}
-          className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
-        >
-          退出
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              const nowMuted = toggleMute();
+              setAudioMuted(nowMuted);
+              if (!nowMuted) {
+                updateSanityFilter(sanity);
+                setDarkMoonMode(isDarkMoon);
+              }
+            }}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all backdrop-blur-md ${
+              audioMuted
+                ? "border-white/10 bg-slate-800/50 text-slate-500"
+                : "border-indigo-400/30 bg-indigo-950/40 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.3)]"
+            }`}
+            title={audioMuted ? "开启声场" : "静音"}
+          >
+            {audioMuted ? <VolumeX size={16} strokeWidth={1.5} /> : <Volume2 size={16} strokeWidth={1.5} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowExitModal(true)}
+            className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
+          >
+            退出
+          </button>
+        </div>
       </header>
 
       <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
@@ -989,70 +1167,116 @@ export default function PlayPage() {
               </div>
 
               <div className={`border-t p-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
-                <div className="mb-3 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (hintUsedThisTurn || isStreaming || !hasReadParchment) return;
-                      setHintUsedThisTurn(true);
-                      void sendAction(
-                        '【系统强制干预：玩家请求了当前的破局提示。请以深渊DM的神秘口吻，简短地给出一个下一步的行动思路，可以暗示当前楼层诡异的弱点、某个NPC的喜好，或某件道具的隐藏用法。这只是建议，不代表绝对安全。【重要：本次为提示请求，不消耗游戏时间，你必须在返回的 JSON 中设置 consumes_time: false】】',
-                        true
-                      );
-                    }}
-                    disabled={hintUsedThisTurn || isStreaming || !hasReadParchment}
-                    title={hintUsedThisTurn ? "本回合已使用" : "AI 破局提示"}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all ${
-                      hintUsedThisTurn || isStreaming || !hasReadParchment
-                        ? "border-slate-400/30 bg-slate-300/30 text-slate-500 opacity-50 cursor-not-allowed"
-                        : "border-amber-400/50 bg-amber-500/20 text-amber-400 shadow-[0_0_10px_rgba(252,211,77,0.5)] animate-pulse hover:shadow-[0_0_14px_rgba(252,211,77,0.6)]"
-                    }`}
-                  >
-                    <Lightbulb size={18} strokeWidth={1.5} />
-                  </button>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") onSubmit();
-                    }}
-                    maxLength={MAX_INPUT}
-                    placeholder={hasReadParchment ? "最多20字，发挥你的想象力，但务必遵循现实" : "你需要先查看背包中的羊皮纸..."}
-                    className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
-                      isDarkMoon
-                        ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
-                        : "border-border bg-white focus:border-neutral-400"
-                    }`}
-                    disabled={isStreaming || !hasReadParchment}
-                  />
-                  <button
-                    type="button"
-                    onClick={onSubmit}
-                    disabled={isStreaming || !hasReadParchment || input.trim().length === 0 || input.trim().length > MAX_INPUT}
-                    className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
-                      isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
-                    }`}
-                  >
-                    提交
-                  </button>
-                </div>
-                <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
-                  <span>
-                    字数：{input.trim().length}/{MAX_INPUT}
-                  </span>
-                  <span className={input.trim().length > MAX_INPUT ? "text-danger" : ""}>
-                    {input.trim().length > MAX_INPUT
-                      ? "动作过长：将被公寓拒绝。"
-                      : isStreaming
-                        ? "深渊 DM 正在推演..."
-                        : "保持简短。保持真实。"}
-                  </span>
-                </div>
-                <div className={`mt-2 text-[11px] ${isDarkMoon ? "text-red-400/60" : "text-neutral-500"}`}>
-                  {rawDmBuffer ? "（调试）已接收流式 JSON 输出。" : null}
-                </div>
+                {!hasReadParchment ? (
+                  <p className={`py-3 text-center text-sm ${isDarkMoon ? "text-red-400/70" : "text-neutral-500"}`}>
+                    你需要先查看背包中的羊皮纸...
+                  </p>
+                ) : (() => {
+                  const showOpts = inputMode === "options" && currentOptions.length > 0 && !isStreaming;
+                  return (
+                    <div className="relative">
+                      {/* Layer A: Options grid */}
+                      <div
+                        className={`transition-all duration-300 ease-in-out ${
+                          showOpts
+                            ? "opacity-100 translate-y-0"
+                            : "opacity-0 translate-y-4 pointer-events-none absolute inset-0"
+                        }`}
+                      >
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {currentOptions.map((option, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => { playUIClick(); void sendAction(option, true); }}
+                              disabled={isStreaming}
+                              className="relative group p-4 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-[1.5rem] ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.35),0_10px_30px_-10px_rgba(99,102,241,0.25)] transition-all duration-300 hover:-translate-y-1 overflow-hidden disabled:opacity-40"
+                              style={{ animationDelay: `${idx * 80}ms` }}
+                            >
+                              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-cyan-500/0 group-hover:from-indigo-500/15 group-hover:via-purple-500/10 group-hover:to-cyan-500/15 transition-all duration-300" />
+                              <div className="absolute -inset-px rounded-[1.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-indigo-500/20 via-transparent to-purple-500/20 blur-sm" aria-hidden />
+                              <span className="relative z-10 text-sm md:text-base text-white/95 group-hover:text-white font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
+                                {option}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className={`text-xs ${isDarkMoon ? "text-red-300/60" : "text-neutral-500"}`}>
+                            选择一个行动，或切换至手动输入
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => withTransition(toggleInputMode)}
+                            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
+                          >
+                            <Keyboard size={14} strokeWidth={1.5} />
+                            <span>手动输入</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Layer B: Text input */}
+                      <div
+                        className={`transition-all duration-300 ease-in-out ${
+                          showOpts
+                            ? "opacity-0 -translate-y-4 pointer-events-none absolute inset-0"
+                            : "opacity-100 translate-y-0"
+                        }`}
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <input
+                            value={input}
+                            onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") onSubmit();
+                            }}
+                            maxLength={MAX_INPUT}
+                            placeholder="最多20字，发挥你的想象力，但务必遵循现实"
+                            className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                              isDarkMoon
+                                ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
+                                : "border-border bg-white focus:border-neutral-400"
+                            }`}
+                            disabled={isStreaming}
+                          />
+                          <button
+                            type="button"
+                            onClick={onSubmit}
+                            disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
+                            className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
+                              isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
+                            }`}
+                          >
+                            提交
+                          </button>
+                        </div>
+                        <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
+                          <span>字数：{input.trim().length}/{MAX_INPUT}</span>
+                          <div className="flex items-center gap-3">
+                            <span className={input.trim().length > MAX_INPUT ? "text-danger" : ""}>
+                              {input.trim().length > MAX_INPUT
+                                ? "动作过长：将被公寓拒绝。"
+                                : isStreaming
+                                  ? "深渊 DM 正在推演..."
+                                  : "保持简短。保持真实。"}
+                            </span>
+                            {currentOptions.length > 0 && !isStreaming && (
+                              <button
+                                type="button"
+                                onClick={() => withTransition(toggleInputMode)}
+                                className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
+                              >
+                                <List size={14} strokeWidth={1.5} />
+                                <span>返回选项</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </section>
@@ -1091,6 +1315,17 @@ export default function PlayPage() {
           <div className="absolute -inset-2 rounded-full bg-slate-500/20 blur-xl" aria-hidden />
           <Package size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
         </button>
+        <button
+          type="button"
+          onClick={openTasks}
+          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] backdrop-blur-xl transition hover:scale-110 ${
+            tasks.filter((t) => t.status === "active").length > 0 ? "ring-2 ring-amber-400/50 ring-offset-2 ring-offset-slate-900" : ""
+          }`}
+          title="任务"
+        >
+          <div className="absolute -inset-2 rounded-full bg-amber-500/15 blur-xl" aria-hidden />
+          <ClipboardList size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+        </button>
       </div>
 
       {showInventoryModal && (
@@ -1102,9 +1337,16 @@ export default function PlayPage() {
         >
           <div className="relative mx-4 w-full max-w-md rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
             <div className="flex items-center justify-between mb-5">
-              <h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                背包
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                  背包
+                </h2>
+                <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
+                  <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                  <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
+                  <span className="text-[10px] text-amber-400/70">原石</span>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => { setShowInventoryModal(false); setSelectedModalItemId(null); }}
@@ -1304,6 +1546,71 @@ export default function PlayPage() {
               </div>
             </div>
           </div>
+      )}
+
+      {showTaskModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+          role="dialog"
+          aria-modal
+          aria-labelledby="task-modal-title"
+        >
+          <div className="relative mx-4 w-full max-w-lg rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <h2 id="task-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                  任务追踪
+                </h2>
+                <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
+                  <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                  <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
+                  <span className="text-[10px] text-amber-400/70">原石</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTaskModal(false)}
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto space-y-3">
+              {tasks.length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-500">暂无任务。与 NPC 互动或探索可获取任务。</p>
+              ) : (
+                tasks.map((t) => (
+                  <div
+                    key={t.id}
+                    className={`rounded-xl border p-4 transition ${
+                      t.status === "active"
+                        ? "border-amber-400/30 bg-amber-500/5"
+                        : t.status === "completed"
+                          ? "border-emerald-400/30 bg-emerald-500/5 opacity-70"
+                          : "border-red-400/30 bg-red-500/5 opacity-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold text-white">{t.title}</span>
+                      <span className={`text-[10px] font-medium uppercase tracking-wider ${
+                        t.status === "active" ? "text-amber-400" : t.status === "completed" ? "text-emerald-400" : "text-red-400"
+                      }`}>
+                        {t.status === "active" ? "进行中" : t.status === "completed" ? "已完成" : "已失败"}
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                      <span>委托人：{t.issuer}</span>
+                      <span>奖励：{t.reward}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {showWarehouseModal && (

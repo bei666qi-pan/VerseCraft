@@ -5,6 +5,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { get, set, del } from "idb-keyval";
 import type { Item, StatType } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
+import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 
 export const PARCHMENT_ITEM: Item = {
   id: "I-PARCHMENT",
@@ -92,6 +93,15 @@ export interface CodexEntry {
   weakness?: string;
 }
 
+export interface GameTask {
+  id: string;
+  title: string;
+  desc: string;
+  issuer: string;
+  reward: string;
+  status: "active" | "completed" | "failed";
+}
+
 export interface SaveSlotData {
   stats: Record<StatType, number>;
   inventory: Item[];
@@ -133,11 +143,37 @@ interface GameState {
   hasCheckedCodex: boolean;
   /** 仓库：非道具展示品（纯展示） */
   warehouse: Array<{ id: string; name: string; description?: string }>;
-  /** 本回合是否已使用 AI 破局提示（每回合限用一次，提交动作后重置） */
-  hintUsedThisTurn: boolean;
+  /** AI 动态选项：由大模型在每次回复中生成的 4 个行动选项 */
+  currentOptions: string[];
+  /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
+  inputMode: "options" | "text";
+  /** 原石货币：初始值 = 出身属性点数 */
+  originium: number;
+  /** 任务追踪系统 */
+  tasks: GameTask[];
+  /** 玩家当前位置 */
+  playerLocation: string;
+  /** NPC 动态状态（位置 + 存活） */
+  dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
+  /** 非法闯入警戒闪烁计时 */
+  intrusionFlashUntil: number;
+  /** 是否已开始游戏（角色初始化完成后为 true） */
+  isGameStarted: boolean;
 
   setHydrated: (state: boolean) => void;
-  setHintUsedThisTurn: (v: boolean) => void;
+  /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
+  resetForNewGame: () => void;
+  setCurrentOptions: (options: string[]) => void;
+  toggleInputMode: () => void;
+  setOriginium: (v: number) => void;
+  addOriginium: (delta: number) => void;
+  upgradeAttribute: (attr: StatType) => boolean;
+  addTask: (task: Omit<GameTask, "status"> & { status?: GameTask["status"] }) => void;
+  updateTaskStatus: (taskId: string, status: GameTask["status"]) => void;
+  setPlayerLocation: (loc: string) => void;
+  updateNpcLocation: (npcId: string, location: string) => void;
+  killNpc: (npcId: string) => void;
+  triggerIntrusionFlash: () => void;
   setHasReadParchment: (v: boolean) => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
@@ -243,10 +279,82 @@ export const useGameStore = create<GameState>()(
       hasReadParchment: false,
       hasCheckedCodex: false,
       warehouse: [],
-      hintUsedThisTurn: false,
+      currentOptions: [],
+      inputMode: "options" as const,
+      originium: 0,
+      tasks: [],
+      playerLocation: "B1_SafeZone",
+      dynamicNpcStates: {},
+      intrusionFlashUntil: 0,
+      isGameStarted: false,
 
       setHydrated: (state) => set({ isHydrated: state }),
-      setHintUsedThisTurn: (v) => set({ hintUsedThisTurn: v }),
+      resetForNewGame: () =>
+        set({
+          playerName: "",
+          gender: "",
+          height: 170,
+          personality: "",
+          talent: null,
+          talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
+          time: { day: 0, hour: 0 },
+          stats: { ...DEFAULT_STATS },
+          historicalMaxSanity: 50,
+          inventory: [],
+          logs: [],
+          codex: {},
+          hasReadParchment: false,
+          hasCheckedCodex: false,
+          warehouse: [],
+          currentOptions: [],
+          inputMode: "options" as const,
+          originium: 0,
+          tasks: [],
+          playerLocation: "B1_SafeZone",
+          dynamicNpcStates: {},
+          intrusionFlashUntil: 0,
+          isGameStarted: false,
+        }),
+      setCurrentOptions: (options) => set({ currentOptions: options, inputMode: "options" as const }),
+      toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
+      setOriginium: (v) => set({ originium: Math.max(0, v) }),
+      addOriginium: (delta) => set((s) => ({ originium: Math.max(0, s.originium + delta) })),
+      upgradeAttribute: (attr) => {
+        const s = get();
+        const cur = s.stats[attr] ?? 0;
+        if (cur >= 50) return false;
+        const cost = cur < 20 ? 2 : 3;
+        if (s.originium < cost) return false;
+        set({
+          originium: s.originium - cost,
+          stats: { ...s.stats, [attr]: cur + 1 },
+        });
+        return true;
+      },
+      addTask: (task) =>
+        set((s) => ({
+          tasks: [...s.tasks, { ...task, status: task.status ?? "active" }],
+        })),
+      updateTaskStatus: (taskId, status) =>
+        set((s) => ({
+          tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
+        })),
+      setPlayerLocation: (loc) => set({ playerLocation: loc }),
+      updateNpcLocation: (npcId, location) =>
+        set((s) => ({
+          dynamicNpcStates: {
+            ...s.dynamicNpcStates,
+            [npcId]: { ...(s.dynamicNpcStates[npcId] ?? { currentLocation: "", isAlive: true }), currentLocation: location },
+          },
+        })),
+      killNpc: (npcId) =>
+        set((s) => ({
+          dynamicNpcStates: {
+            ...s.dynamicNpcStates,
+            [npcId]: { ...(s.dynamicNpcStates[npcId] ?? { currentLocation: "" }), isAlive: false },
+          },
+        })),
+      triggerIntrusionFlash: () => set({ intrusionFlashUntil: Date.now() + 2000 }),
       setHasReadParchment: (v) => set({ hasReadParchment: v }),
       setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
 
@@ -353,7 +461,16 @@ export const useGameStore = create<GameState>()(
           hasReadParchment: false,
           hasCheckedCodex: false,
           warehouse: [],
-          hintUsedThisTurn: false,
+          currentOptions: [],
+          inputMode: "options" as const,
+          originium: background,
+          tasks: [],
+          playerLocation: "B1_SafeZone",
+          dynamicNpcStates: Object.fromEntries(
+            Object.entries(NPC_SOCIAL_GRAPH).map(([id, p]) => [id, { currentLocation: p.homeLocation, isAlive: true }])
+          ),
+          intrusionFlashUntil: 0,
+          isGameStarted: true,
         });
       },
 
@@ -373,19 +490,30 @@ export const useGameStore = create<GameState>()(
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
 
         const time = s.time ?? { day: 0, hour: 0 };
+        const npcPositions = Object.entries(s.dynamicNpcStates)
+          .filter(([, v]) => v.isAlive)
+          .map(([id, v]) => `${id}@${v.currentLocation}`)
+          .join("，");
+
         return (
           `玩家档案：姓名[${s.playerName || "未命名"}]，` +
           `性别[${s.gender || "未设定"}]，` +
           `身高[${s.height || 0}cm]，` +
           `性格[${s.personality || "未设定"}]。` +
           `游戏时间[第${time.day}日 ${time.hour}时]。` +
+          `玩家位置[${s.playerLocation}]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
           `物品清单：${inv || "空"}。` +
           `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
+          `原石[${s.originium}]。` +
+          (s.tasks.filter((t) => t.status === "active").length > 0
+            ? `进行中的任务：${s.tasks.filter((t) => t.status === "active").map((t) => `${t.title}[来自${t.issuer}]`).join("，")}。`
+            : "") +
           (Object.keys(s.codex ?? {}).length > 0
             ? ` 图鉴已解锁：${Object.values(s.codex ?? {}).map((e) => `${e.name}[${e.type}|好感${e.favorability ?? 0}]`).join("，")}。`
-            : "")
+            : "") +
+          (npcPositions ? ` NPC当前位置：${npcPositions}。` : "")
         );
       },
 
@@ -483,6 +611,11 @@ export const useGameStore = create<GameState>()(
         hasReadParchment: s.hasReadParchment ?? false,
         hasCheckedCodex: s.hasCheckedCodex ?? false,
         warehouse: s.warehouse ?? [],
+        originium: s.originium ?? 0,
+        tasks: s.tasks ?? [],
+        playerLocation: s.playerLocation ?? "B1_SafeZone",
+        dynamicNpcStates: s.dynamicNpcStates ?? {},
+        isGameStarted: s.isGameStarted ?? false,
       }),
     }
   )
