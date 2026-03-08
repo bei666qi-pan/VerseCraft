@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Backpack, BookOpen, Keyboard, List, Package } from "lucide-react";
+import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
-import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
+import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
 
 type ChatRole = "user" | "assistant";
@@ -37,6 +37,9 @@ type DMJson = {
     weakness?: string;
   }>;
   options?: string[];
+  currency_change?: number;
+  new_tasks?: Array<{ id: string; title: string; desc: string; issuer: string; reward: string }>;
+  task_updates?: Array<{ id: string; status: "active" | "completed" | "failed" }>;
 };
 
 const MAX_INPUT = 20;
@@ -341,6 +344,11 @@ export default function PlayPage() {
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
   const toggleInputMode = useGameStore((s) => s.toggleInputMode);
+  const originium = useGameStore((s) => s.originium ?? 0);
+  const tasks = useGameStore((s) => s.tasks ?? []);
+  const addOriginium = useGameStore((s) => s.addOriginium);
+  const addTask = useGameStore((s) => s.addTask);
+  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -356,6 +364,7 @@ export default function PlayPage() {
   const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
   const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -632,6 +641,32 @@ export default function PlayPage() {
       setCurrentOptions(validOpts);
     }
 
+    if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
+      addOriginium(parsed.currency_change);
+    }
+
+    if (Array.isArray(parsed.new_tasks) && parsed.new_tasks.length > 0) {
+      for (const t of parsed.new_tasks) {
+        if (t && typeof t.id === "string" && typeof t.title === "string") {
+          addTask({
+            id: t.id,
+            title: t.title,
+            desc: typeof t.desc === "string" ? t.desc : "",
+            issuer: typeof t.issuer === "string" ? t.issuer : "未知",
+            reward: typeof t.reward === "string" ? t.reward : "",
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(parsed.task_updates) && parsed.task_updates.length > 0) {
+      for (const u of parsed.task_updates) {
+        if (u && typeof u.id === "string" && (u.status === "active" || u.status === "completed" || u.status === "failed")) {
+          updateTaskStatus(u.id, u.status);
+        }
+      }
+    }
+
     const isItemUse = trimmed.startsWith("我使用了道具：");
     const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
 
@@ -724,6 +759,7 @@ export default function PlayPage() {
     setShowInventoryModal(true);
     setShowCodexModal(false);
     setShowWarehouseModal(false);
+    setShowTaskModal(false);
   }
 
   function openCodex() {
@@ -731,12 +767,21 @@ export default function PlayPage() {
     setShowCodexModal(true);
     setShowInventoryModal(false);
     setShowWarehouseModal(false);
+    setShowTaskModal(false);
   }
 
   function openWarehouse() {
     setShowWarehouseModal(true);
     setShowInventoryModal(false);
     setShowCodexModal(false);
+    setShowTaskModal(false);
+  }
+
+  function openTasks() {
+    setShowTaskModal(true);
+    setShowInventoryModal(false);
+    setShowCodexModal(false);
+    setShowWarehouseModal(false);
   }
 
   function onSaveAndExit() {
@@ -1154,6 +1199,17 @@ export default function PlayPage() {
           <div className="absolute -inset-2 rounded-full bg-slate-500/20 blur-xl" aria-hidden />
           <Package size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
         </button>
+        <button
+          type="button"
+          onClick={openTasks}
+          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] backdrop-blur-xl transition hover:scale-110 ${
+            tasks.filter((t) => t.status === "active").length > 0 ? "ring-2 ring-amber-400/50 ring-offset-2 ring-offset-slate-900" : ""
+          }`}
+          title="任务"
+        >
+          <div className="absolute -inset-2 rounded-full bg-amber-500/15 blur-xl" aria-hidden />
+          <ClipboardList size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+        </button>
       </div>
 
       {showInventoryModal && (
@@ -1165,9 +1221,16 @@ export default function PlayPage() {
         >
           <div className="relative mx-4 w-full max-w-md rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
             <div className="flex items-center justify-between mb-5">
-              <h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                背包
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                  背包
+                </h2>
+                <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
+                  <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                  <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
+                  <span className="text-[10px] text-amber-400/70">原石</span>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => { setShowInventoryModal(false); setSelectedModalItemId(null); }}
@@ -1367,6 +1430,71 @@ export default function PlayPage() {
               </div>
             </div>
           </div>
+      )}
+
+      {showTaskModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+          role="dialog"
+          aria-modal
+          aria-labelledby="task-modal-title"
+        >
+          <div className="relative mx-4 w-full max-w-lg rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <h2 id="task-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                  任务追踪
+                </h2>
+                <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
+                  <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                  <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
+                  <span className="text-[10px] text-amber-400/70">原石</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTaskModal(false)}
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto space-y-3">
+              {tasks.length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-500">暂无任务。与 NPC 互动或探索可获取任务。</p>
+              ) : (
+                tasks.map((t) => (
+                  <div
+                    key={t.id}
+                    className={`rounded-xl border p-4 transition ${
+                      t.status === "active"
+                        ? "border-amber-400/30 bg-amber-500/5"
+                        : t.status === "completed"
+                          ? "border-emerald-400/30 bg-emerald-500/5 opacity-70"
+                          : "border-red-400/30 bg-red-500/5 opacity-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold text-white">{t.title}</span>
+                      <span className={`text-[10px] font-medium uppercase tracking-wider ${
+                        t.status === "active" ? "text-amber-400" : t.status === "completed" ? "text-emerald-400" : "text-red-400"
+                      }`}>
+                        {t.status === "active" ? "进行中" : t.status === "completed" ? "已完成" : "已失败"}
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                      <span>委托人：{t.issuer}</span>
+                      <span>奖励：{t.reward}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {showWarehouseModal && (

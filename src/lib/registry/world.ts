@@ -57,3 +57,17 @@ export const NPC_EXCLUSIVE_ITEMS: Record<string, string> = {
   "N-019": "调查笔记（前调查员专属）",
   "N-020": "入住须知（引导员专属）",
 };
+
+/** Combat power tiers for anomalies (used in DM prompt as hard reference) */
+export const ANOMALY_COMBAT_TIERS = {
+  floors_1_3: 15,
+  floors_4_6: 18,
+  floor_7: 20,
+  b2_boss: 29,
+} as const;
+
+/** Each NPC holds 10 bound originium that they cannot use themselves */
+export const NPC_BOUND_ORIGINIUM = 10;
+
+/** S-tier items can ONLY drop from the 7F manager's exclusive quest line */
+export const S_TIER_DROP_HOLDER = "N-011";

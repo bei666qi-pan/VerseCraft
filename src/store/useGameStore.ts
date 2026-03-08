@@ -92,6 +92,15 @@ export interface CodexEntry {
   weakness?: string;
 }
 
+export interface GameTask {
+  id: string;
+  title: string;
+  desc: string;
+  issuer: string;
+  reward: string;
+  status: "active" | "completed" | "failed";
+}
+
 export interface SaveSlotData {
   stats: Record<StatType, number>;
   inventory: Item[];
@@ -137,10 +146,19 @@ interface GameState {
   currentOptions: string[];
   /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
   inputMode: "options" | "text";
+  /** 原石货币：初始值 = 出身属性点数 */
+  originium: number;
+  /** 任务追踪系统 */
+  tasks: GameTask[];
 
   setHydrated: (state: boolean) => void;
   setCurrentOptions: (options: string[]) => void;
   toggleInputMode: () => void;
+  setOriginium: (v: number) => void;
+  addOriginium: (delta: number) => void;
+  upgradeAttribute: (attr: StatType) => boolean;
+  addTask: (task: Omit<GameTask, "status"> & { status?: GameTask["status"] }) => void;
+  updateTaskStatus: (taskId: string, status: GameTask["status"]) => void;
   setHasReadParchment: (v: boolean) => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
@@ -248,10 +266,33 @@ export const useGameStore = create<GameState>()(
       warehouse: [],
       currentOptions: [],
       inputMode: "options" as const,
+      originium: 0,
+      tasks: [],
 
       setHydrated: (state) => set({ isHydrated: state }),
       setCurrentOptions: (options) => set({ currentOptions: options }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
+      setOriginium: (v) => set({ originium: Math.max(0, v) }),
+      addOriginium: (delta) => set((s) => ({ originium: Math.max(0, s.originium + delta) })),
+      upgradeAttribute: (attr) => {
+        const s = get();
+        const cur = s.stats[attr] ?? 0;
+        const cost = cur < 20 ? 2 : 3;
+        if (s.originium < cost) return false;
+        set({
+          originium: s.originium - cost,
+          stats: { ...s.stats, [attr]: cur + 1 },
+        });
+        return true;
+      },
+      addTask: (task) =>
+        set((s) => ({
+          tasks: [...s.tasks, { ...task, status: task.status ?? "active" }],
+        })),
+      updateTaskStatus: (taskId, status) =>
+        set((s) => ({
+          tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
+        })),
       setHasReadParchment: (v) => set({ hasReadParchment: v }),
       setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
 
@@ -360,6 +401,8 @@ export const useGameStore = create<GameState>()(
           warehouse: [],
           currentOptions: [],
           inputMode: "options" as const,
+          originium: background,
+          tasks: [],
         });
       },
 
@@ -389,6 +432,10 @@ export const useGameStore = create<GameState>()(
           `${talentText}。` +
           `物品清单：${inv || "空"}。` +
           `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
+          `原石[${s.originium}]。` +
+          (s.tasks.filter((t) => t.status === "active").length > 0
+            ? `进行中的任务：${s.tasks.filter((t) => t.status === "active").map((t) => `${t.title}[来自${t.issuer}]`).join("，")}。`
+            : "") +
           (Object.keys(s.codex ?? {}).length > 0
             ? ` 图鉴已解锁：${Object.values(s.codex ?? {}).map((e) => `${e.name}[${e.type}|好感${e.favorability ?? 0}]`).join("，")}。`
             : "")
@@ -489,6 +536,8 @@ export const useGameStore = create<GameState>()(
         hasReadParchment: s.hasReadParchment ?? false,
         hasCheckedCodex: s.hasCheckedCodex ?? false,
         warehouse: s.warehouse ?? [],
+        originium: s.originium ?? 0,
+        tasks: s.tasks ?? [],
       }),
     }
   )
