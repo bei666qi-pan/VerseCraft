@@ -667,7 +667,6 @@ export default function PlayPage() {
         .filter((o): o is string => typeof o === "string" && o.length > 0)
         .slice(0, 4);
       setCurrentOptions(validOpts);
-      useGameStore.setState({ inputMode: "options" });
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -1164,10 +1163,18 @@ export default function PlayPage() {
                   <p className={`py-3 text-center text-sm ${isDarkMoon ? "text-red-400/70" : "text-neutral-500"}`}>
                     你需要先查看背包中的羊皮纸...
                   </p>
-                ) : (
-                  <div key={inputMode === "options" && currentOptions.length > 0 && !isStreaming ? "opts" : "text"} className="animate-[fadeIn_0.3s_ease-out]">
-                    {inputMode === "options" && currentOptions.length > 0 && !isStreaming ? (
-                      <>
+                ) : (() => {
+                  const showOpts = inputMode === "options" && currentOptions.length > 0 && !isStreaming;
+                  return (
+                    <div className="relative">
+                      {/* Layer A: Options grid */}
+                      <div
+                        className={`transition-all duration-300 ease-in-out ${
+                          showOpts
+                            ? "opacity-100 translate-y-0"
+                            : "opacity-0 translate-y-4 pointer-events-none absolute inset-0"
+                        }`}
+                      >
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           {currentOptions.map((option, idx) => (
                             <button
@@ -1199,9 +1206,16 @@ export default function PlayPage() {
                             <span>手动输入</span>
                           </button>
                         </div>
-                      </>
-                    ) : (
-                      <>
+                      </div>
+
+                      {/* Layer B: Text input */}
+                      <div
+                        className={`transition-all duration-300 ease-in-out ${
+                          showOpts
+                            ? "opacity-0 -translate-y-4 pointer-events-none absolute inset-0"
+                            : "opacity-100 translate-y-0"
+                        }`}
+                      >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <input
                             value={input}
@@ -1251,10 +1265,10 @@ export default function PlayPage() {
                             )}
                           </div>
                         </div>
-                      </>
-                    )}
-                  </div>
-                )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </section>

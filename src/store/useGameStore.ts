@@ -284,7 +284,7 @@ export const useGameStore = create<GameState>()(
       intrusionFlashUntil: 0,
 
       setHydrated: (state) => set({ isHydrated: state }),
-      setCurrentOptions: (options) => set({ currentOptions: options }),
+      setCurrentOptions: (options) => set({ currentOptions: options, inputMode: "options" as const }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setOriginium: (v) => set({ originium: Math.max(0, v) }),
       addOriginium: (delta) => set((s) => ({ originium: Math.max(0, s.originium + delta) })),
