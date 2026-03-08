@@ -78,7 +78,7 @@ function renderNarrativeText(text: string) {
       return (
         <strong
           key={i}
-          className="font-bold text-red-600 drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+          className="inline-block font-bold text-red-600 animate-glitch drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]"
         >
           {m[1]}
         </strong>
