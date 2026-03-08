@@ -357,6 +357,7 @@ export default function PlayPage() {
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
+  const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -405,6 +406,13 @@ export default function PlayPage() {
       setHydrated(true);
     });
   }, [isMounted, setHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!isGameStarted) {
+      router.replace("/");
+    }
+  }, [isHydrated, isGameStarted, router]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -853,13 +861,13 @@ export default function PlayPage() {
     setShowExitModal(false);
   }
 
-  if (!isMounted || !isHydrated) {
+  if (!isMounted || !isHydrated || !isGameStarted) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
+      <main className="flex min-h-screen items-center justify-center bg-[#0f172a] text-white">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-neutral-200" />
-          <div className="h-4 w-32 animate-pulse rounded bg-neutral-100" />
-          <p className="text-sm text-neutral-500">读取世界线中...</p>
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
+          <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
+          <p className="text-sm text-slate-400">读取世界线中...</p>
         </div>
       </main>
     );
