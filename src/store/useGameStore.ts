@@ -291,6 +291,7 @@ export const useGameStore = create<GameState>()(
       upgradeAttribute: (attr) => {
         const s = get();
         const cur = s.stats[attr] ?? 0;
+        if (cur >= 50) return false;
         const cost = cur < 20 ? 2 : 3;
         if (s.originium < cost) return false;
         set({

@@ -355,6 +355,7 @@ export default function PlayPage() {
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
+  const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -430,6 +431,16 @@ export default function PlayPage() {
     }
     prevIsStreamingRef.current = isStreaming;
   }, [smoothNarrative, isStreaming]);
+
+  useEffect(() => {
+    if (intrusionFlashUntil <= Date.now()) {
+      setShowIntrusionFlash(false);
+      return;
+    }
+    setShowIntrusionFlash(true);
+    const t = setTimeout(() => setShowIntrusionFlash(false), intrusionFlashUntil - Date.now());
+    return () => clearTimeout(t);
+  }, [intrusionFlashUntil]);
 
   useEffect(() => {
     if (sanity <= 0) {
@@ -857,7 +868,7 @@ export default function PlayPage() {
         </div>
       )}
 
-      {intrusionFlashUntil > Date.now() && (
+      {showIntrusionFlash && (
         <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
       )}
 
@@ -1109,7 +1120,7 @@ export default function PlayPage() {
                         <button
                           key={idx}
                           type="button"
-                          onClick={() => { void sendAction(option); }}
+                          onClick={() => { void sendAction(option, true); }}
                           disabled={isStreaming}
                           className="relative group p-4 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-[1.5rem] ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.35),0_10px_30px_-10px_rgba(99,102,241,0.25)] transition-all duration-300 hover:-translate-y-1 overflow-hidden disabled:opacity-40"
                           style={{ animationDelay: `${idx * 80}ms` }}
