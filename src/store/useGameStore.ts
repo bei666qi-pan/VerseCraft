@@ -133,11 +133,14 @@ interface GameState {
   hasCheckedCodex: boolean;
   /** 仓库：非道具展示品（纯展示） */
   warehouse: Array<{ id: string; name: string; description?: string }>;
-  /** 本回合是否已使用 AI 破局提示（每回合限用一次，提交动作后重置） */
-  hintUsedThisTurn: boolean;
+  /** AI 动态选项：由大模型在每次回复中生成的 4 个行动选项 */
+  currentOptions: string[];
+  /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
+  inputMode: "options" | "text";
 
   setHydrated: (state: boolean) => void;
-  setHintUsedThisTurn: (v: boolean) => void;
+  setCurrentOptions: (options: string[]) => void;
+  toggleInputMode: () => void;
   setHasReadParchment: (v: boolean) => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
@@ -243,10 +246,12 @@ export const useGameStore = create<GameState>()(
       hasReadParchment: false,
       hasCheckedCodex: false,
       warehouse: [],
-      hintUsedThisTurn: false,
+      currentOptions: [],
+      inputMode: "options" as const,
 
       setHydrated: (state) => set({ isHydrated: state }),
-      setHintUsedThisTurn: (v) => set({ hintUsedThisTurn: v }),
+      setCurrentOptions: (options) => set({ currentOptions: options }),
+      toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setHasReadParchment: (v) => set({ hasReadParchment: v }),
       setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
 
@@ -353,7 +358,8 @@ export const useGameStore = create<GameState>()(
           hasReadParchment: false,
           hasCheckedCodex: false,
           warehouse: [],
-          hintUsedThisTurn: false,
+          currentOptions: [],
+          inputMode: "options" as const,
         });
       },
 
