@@ -1,5 +1,7 @@
 // src/app/api/chat/route.ts
 import { NextResponse } from "next/server";
+import { NPCS } from "@/lib/registry/npcs";
+import { ANOMALIES } from "@/lib/registry/anomalies";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +11,12 @@ type IncomingMessage = {
   content: string;
   reasoning_content?: unknown;
 };
+
+function getCodexCanonicalNamesBlock(): string {
+  const npcNames = NPCS.map((n) => `${n.id} ${n.name}`).join("，");
+  const anomalyNames = ANOMALIES.map((a) => `${a.id} ${a.name}`).join("，");
+  return `NPC 真名：${npcNames}。诡异真名：${anomalyNames}。`;
+}
 
 function buildSystemPrompt(playerContext: string, isFirstAction: boolean): string {
   const base = [
@@ -89,6 +97,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "",
     "## 【原石经济与任务系统法则（绝对执行）】",
     "",
+    "【原石支付防作弊红线（绝对执行）】：若玩家当前原石为 0，绝对禁止在剧情中让玩家成功支付、使用或消耗原石。任何需要原石的交易、任务、贿赂或行动必须判定为失败或拒绝，并在 narrative 中明确描写玩家因原石不足而无法完成该行动。",
+    "",
     "【出身与原石】：玩家的「出身」属性仅代表带入公寓的初始财富（1点出身=1原石）。玩家与所有 NPC 没有任何先天关系。在 NPC 眼里，玩家只是无数来送死的人类中的一个，态度冷漠。若玩家「出身」>20，你必须在游戏前 3 小时内寻找合理剧情节点自动赠予 B 级或以上道具（通过 awarded_items 输出）。",
     "",
     "【任务系统】：NPC 或诡异均可向玩家发布任务。当 NPC/诡异提出任务时，你必须在 new_tasks 数组中输出任务详情。任务完成或失败时，在 task_updates 中更新状态。奖励通常为原石（通过 currency_change 输出）或道具（通过 awarded_items 输出）。",
@@ -121,6 +131,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "",
     "【图鉴强制解锁法则】：只要当前场景中出现、暗示、或遭遇了任何 NPC 或诡异（无论是否直接对话，无论玩家是否知晓其全貌），你**必须立即**在本次回复的 'codex_updates' 数组中生成它的基础档案！未知属性可填'未知'。如果不生成，系统将判定为严重逻辑错误！",
     "【图鉴推送指令（补充）】：当玩家通过交互发现实体的性格、弱点、规则或好感度发生变化时，你必须在 codex_updates 中更新该实体的最新情报（如 name, type, favorability, combatPower, personality, rules_discovered）。",
+    "",
+    "【图鉴真名红线（绝对执行）】：codex_updates 中的 name 字段**必须**使用下列系统注入的「真实硬编码名称」，严禁使用模糊描述（如「扭曲的怪物」「走廊里的存在」）。description 可保持惊悚叙事风格。" + getCodexCanonicalNamesBlock(),
     "",
     "JSON Schema 追加可选字段：codex_updates: [{ id, name, type: 'npc'|'anomaly', favorability?, combatPower?, personality?, traits?, rules_discovered?, weakness? }]",
     "",

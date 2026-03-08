@@ -1,0 +1,93 @@
+---
+description: Tailwind CSS v4 and Liquid Glass UI standards
+globs: "**/*.{tsx,css}"
+alwaysApply: true
+---
+
+# Ethereal UI: Liquid Glass Design System
+
+All UI must be **Simplified Chinese (简体中文)**. Use the **Liquid Glass** aesthetic: translucent backgrounds, backdrop blur, and soft inner shadows. Avoid hard borders.
+
+## Rules
+
+1. **Language** — All user-facing text MUST be Simplified Chinese.
+2. **Liquid Glass Style** — Use `bg-white/5` (or dark variants), `backdrop-blur-xl`, and `shadow-[inset_...]`.
+3. **No Hard Borders** — Prefer subtle shadows and translucent surfaces over `border` or `ring`.
+4. **Animation** — All animations MUST be defined in `globals.css` under `@theme` (Tailwind v4).
+
+## Liquid Glass Pattern
+
+```tsx
+// ✅ CORRECT: Liquid Glass card
+<div className="bg-white/5 backdrop-blur-xl rounded-2xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+  <p className="text-white/90">内容区域</p>
+</div>
+```
+
+```tsx
+// ✅ CORRECT: Dark mode glass panel
+<div className="bg-black/20 backdrop-blur-xl rounded-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+  <span>简体中文标签</span>
+</div>
+```
+
+## Animation in globals.css
+
+```css
+/* globals.css */
+@import "tailwindcss";
+
+@theme {
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+```
+
+```tsx
+// ✅ CORRECT: Using theme animation
+<div className="animate-[var(--animate-fade-in)]">淡入内容</div>
+```
+
+## Recommended Token Combinations
+
+| Purpose        | Classes                                                                 |
+|----------------|-------------------------------------------------------------------------|
+| Glass surface  | `bg-white/5 backdrop-blur-xl`                                           |
+| Inner highlight| `shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]`                       |
+| Dark glass     | `bg-black/20 backdrop-blur-xl`                                          |
+| Soft divider   | `border-white/5` (minimal; prefer shadow when possible)                 |
+
+## Forbidden Patterns
+
+```tsx
+// ❌ WRONG: hard border
+<div className="border border-gray-300 rounded-lg">内容</div>
+```
+
+```tsx
+// ❌ WRONG: English-only UI text
+<button>Submit</button>
+```
+
+```tsx
+// ❌ WRONG: inline keyframes in component
+<div style={{ animation: "fadeIn 0.3s ease" }}>内容</div>
+```
+
+All animations belong in `globals.css` `@theme` or `@keyframes`.

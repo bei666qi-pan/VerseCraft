@@ -1,0 +1,42 @@
+---
+description: Automated Git and Deployment Workflow
+globs: "**/*"
+alwaysApply: true
+---
+
+# Automated Git and Deployment Workflow
+
+## 强制法则（MANDATORY）
+
+当以下条件全部满足时，Cursor Agent **必须**主动执行部署脚本：
+
+1. 用户提出的任务已全部完成；
+2. 代码修改已落地且通过校验；
+3. 用户未明确反对提交或部署。
+
+## 执行指令
+
+在集成终端中运行：
+
+```bash
+./deploy.sh "feat: 更新说明"
+```
+
+将 `"更新说明"` 替换为本次改动的一句话描述（中文或英文均可）。
+
+## 脚本行为
+
+- `git add .` — 暂存所有变更
+- `git commit -m "..."` — 提交
+- `git push origin main` — 推送到 GitHub
+- 输出服务器部署提示（需在火山引擎服务器上手动或通过 SSH 执行 Docker 重建）
+
+## 示例
+
+任务完成后的典型调用：
+
+```bash
+./deploy.sh "feat: 完成动态 BGM 与移动端 UI 适配"
+./deploy.sh "fix: 修复原石掉落概率计算"
+./deploy.sh "chore: 文案与规则更新"
+```

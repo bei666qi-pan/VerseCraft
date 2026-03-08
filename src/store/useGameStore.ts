@@ -159,6 +159,8 @@ interface GameState {
   intrusionFlashUntil: number;
   /** 是否已开始游戏（角色初始化完成后为 true） */
   isGameStarted: boolean;
+  /** 原石掉落 UI 通知截止时间戳（触发时显示短暂提示） */
+  originiumDropNotifyUntil: number;
 
   setHydrated: (state: boolean) => void;
   /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
@@ -167,6 +169,8 @@ interface GameState {
   toggleInputMode: () => void;
   setOriginium: (v: number) => void;
   addOriginium: (delta: number) => void;
+  /** 每回合判定出身>=20时按概率掉落原石，若触发则 +1 并设置 originiumDropNotifyUntil */
+  tryOriginiumDrop: () => void;
   upgradeAttribute: (attr: StatType) => boolean;
   addTask: (task: Omit<GameTask, "status"> & { status?: GameTask["status"] }) => void;
   updateTaskStatus: (taskId: string, status: GameTask["status"]) => void;
@@ -287,6 +291,7 @@ export const useGameStore = create<GameState>()(
       dynamicNpcStates: {},
       intrusionFlashUntil: 0,
       isGameStarted: false,
+      originiumDropNotifyUntil: 0,
 
       setHydrated: (state) => set({ isHydrated: state }),
       resetForNewGame: () =>
@@ -314,17 +319,33 @@ export const useGameStore = create<GameState>()(
           dynamicNpcStates: {},
           intrusionFlashUntil: 0,
           isGameStarted: false,
+          originiumDropNotifyUntil: 0,
         }),
       setCurrentOptions: (options) => set({ currentOptions: options, inputMode: "options" as const }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setOriginium: (v) => set({ originium: Math.max(0, v) }),
-      addOriginium: (delta) => set((s) => ({ originium: Math.max(0, s.originium + delta) })),
+      addOriginium: (delta) =>
+        set((s) => {
+          if (delta < 0 && s.originium <= 0) return {};
+          return { originium: Math.max(0, s.originium + delta) };
+        }),
+      tryOriginiumDrop: () =>
+        set((s) => {
+          const bg = s.stats.background ?? 0;
+          if (bg < 20) return {};
+          const probability = Math.min(100, 20 + (bg - 20));
+          if (Math.random() * 100 >= probability) return {};
+          return {
+            originium: s.originium + 1,
+            originiumDropNotifyUntil: Date.now() + 2000,
+          };
+        }),
       upgradeAttribute: (attr) => {
         const s = get();
         const cur = s.stats[attr] ?? 0;
         if (cur >= 50) return false;
         const cost = cur < 20 ? 2 : 3;
-        if (s.originium < cost) return false;
+        if (s.originium <= 0 || s.originium < cost) return false;
         set({
           originium: s.originium - cost,
           stats: { ...s.stats, [attr]: cur + 1 },

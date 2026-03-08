@@ -19,15 +19,15 @@ const STAT_LABELS: Record<StatType, string> = {
 
 const STAT_DESCRIPTIONS: Record<StatType, string> = {
   sanity:
-    "你的血条。归零即死。越高越不容易见鬼。>20 质变：能直接看破隐藏道具和规则。",
+    "血条，归零即死。越高越难见鬼。>20 质变：可看破隐藏道具与规则。",
   agility:
-    "跑路和闪避速度。越高越容易从诡异手里逃脱。>20 质变：天下武功唯快不破，行动有概率不消耗时间。",
+    "跑路与闪避。越高越容易从诡异手中逃脱。>20 质变：行动有概率不消耗时间。",
   luck:
-    "非酋还是欧皇。越高出门越容易捡到宝。>20 质变：走路都能踢到 A 级甚至 S 级神器。",
+    "欧非体质。越高越容易捡到好货。>20 质变：探索有机会直接获得 A/S 级线索。",
   charm:
-    "靠脸吃饭的交涉力。越高 NPC 越喜欢你。>20 质变：诡异看了你都得愣一秒放你一条生路。",
+    "交涉力。越高 NPC 越友善，交易越划算。>20 质变：诡异可能短暂放过你。",
   background:
-    "投胎技术。决定你的开局富裕程度。>20 质变：开局自带满级大佬 NPC 当保镖。",
+    "开局财富。初始携带等同于点数的原石。当出身>20时，每回合有 (20+超出点数)% 概率自动凝结 1 颗原石。>20 质变：开局可能自带高战力 NPC 或诡异盟友。",
 };
 
 const BASE_STAT = 3;
@@ -39,12 +39,12 @@ const TALENTS: readonly {
   cd: string;
   desc: string;
 }[] = [
-  { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "时间倒流1小时，移除最后两条对话记录。" },
+  { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。" },
   { key: "命运馈赠", title: "命运馈赠", cd: "CD：3 小时", desc: "获得一个随机世界观相关物品。" },
-  { key: "主角光环", title: "主角光环", cd: "CD：6 小时", desc: "3小时内免疫死亡，触发1次必定幸运事件。" },
-  { key: "生命汇源", title: "生命汇源", cd: "CD：7 小时", desc: "将理智恢复至你曾达到过的历史最大值。" },
-  { key: "洞察之眼", title: "洞察之眼", cd: "CD：4 小时", desc: "叙事中标记一个必定收益的选择或逃生路线。" },
-  { key: "丧钟回响", title: "丧钟回响", cd: "CD：7 小时", desc: "强制处决一名恶意NPC或诡异（若存在）。" },
+  { key: "主角光环", title: "主角光环", cd: "CD：6 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
+  { key: "生命汇源", title: "生命汇源", cd: "CD：7 小时", desc: "理智恢复至历史最大值。" },
+  { key: "洞察之眼", title: "洞察之眼", cd: "CD：4 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
+  { key: "丧钟回响", title: "丧钟回响", cd: "CD：7 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。" },
 ] as const;
 
 function sumStats(stats: Record<StatType, number>): number {
@@ -57,6 +57,13 @@ function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, Math.trunc(n)));
 }
+
+const GLASS_PANEL =
+  "rounded-[2rem] border border-white/60 bg-white/40 shadow-[inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-3xl";
+const GLASS_INPUT =
+  "rounded-xl border border-white/60 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300/60";
+const GLASS_BTN =
+  "h-10 w-10 rounded-xl border border-white/60 bg-white/50 text-slate-700 transition-all duration-200 hover:bg-white/70 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed";
 
 export default function CreatePage() {
   const router = useRouter();
@@ -116,38 +123,51 @@ export default function CreatePage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-800">
-      {/* 环境漫反射光晕 */}
-      <div className="pointer-events-none absolute -z-10 top-0 left-1/2 h-[500px] w-[80vw] -translate-x-1/2 rounded-full bg-indigo-100/40 blur-[120px]" />
-      <div className="pointer-events-none absolute -z-10 bottom-0 right-1/4 h-[400px] w-[40vw] rounded-full bg-purple-50/50 blur-[100px]" />
+      {/* 神圣诡异光晕 - 呼吸浮动 */}
+      <div
+        className="pointer-events-none absolute -z-10 top-[15%] right-[5%] h-[500px] w-[500px] rounded-full bg-cyan-200/40 blur-[120px] animate-[haloFloat_12s_ease-in-out_infinite]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -z-10 bottom-[25%] left-[5%] h-[450px] w-[450px] rounded-full bg-purple-200/40 blur-[110px] animate-[haloFloat_14s_ease-in-out_infinite]"
+        style={{ animationDelay: "-4s" }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -z-10 top-1/2 left-1/2 h-[350px] w-[350px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-200/30 blur-[90px] animate-[ambientDrift_18s_ease-in-out_infinite]"
+        aria-hidden
+      />
 
       <div className="relative z-10 mx-auto w-full max-w-3xl px-6 py-12">
         <header className="space-y-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">铸造角色</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
+            铸造角色
+          </h1>
           <p className="text-sm text-slate-600">
-            你正在向如月公寓递交一份自我证明。每一个字，都将被记录。
+            向如月公寓递交自我证明。每一个字都将被记录。
           </p>
         </header>
 
-        <section className="relative mt-10 rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
-          <h2 className="text-base font-semibold text-slate-900">基础档案</h2>
+        <section className={`relative mt-10 ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
+          <h2 className="text-base font-semibold text-slate-800">基础档案</h2>
 
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">称呼（Name）</span>
+              <span className="text-sm font-medium text-slate-700">称呼</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="请输入你的称呼"
-                className="h-11 w-full rounded-xl border border-white/80 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50"
+                placeholder="请输入 2-6 字"
+                className={`h-11 w-full ${GLASS_INPUT}`}
               />
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">性别（Gender）</span>
+              <span className="text-sm font-medium text-slate-700">性别</span>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value as GenderOption)}
-                className="h-11 w-full rounded-xl border border-white/80 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50"
+                className={`h-11 w-full ${GLASS_INPUT}`}
               >
                 <option value="男">男</option>
                 <option value="女">女</option>
@@ -156,7 +176,7 @@ export default function CreatePage() {
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">身高（Height）</span>
+              <span className="text-sm font-medium text-slate-700">身高</span>
               <div className="flex items-center gap-3">
                 <input
                   type="number"
@@ -164,55 +184,50 @@ export default function CreatePage() {
                   max={220}
                   value={height}
                   onChange={(e) => setHeight(Number(e.target.value))}
-                  className="h-11 w-full rounded-xl border border-white/80 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50"
+                  className={`h-11 w-full ${GLASS_INPUT}`}
                 />
-                <span className="shrink-0 text-sm text-neutral-600">cm</span>
+                <span className="shrink-0 text-sm text-slate-600">cm</span>
               </div>
-              <p className="text-xs text-neutral-500">范围：140 - 220</p>
+              <p className="text-xs text-slate-500">140 — 220</p>
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">性格（Personality）</span>
+              <span className="text-sm font-medium text-slate-700">性格</span>
               <input
                 value={personality}
                 onChange={(e) => setPersonality(e.target.value)}
                 placeholder="仅限 2-6 个中文字符"
-                className={`h-11 w-full rounded-xl border bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 ${
-                  personality.length === 0
-                    ? "border-white/80"
-                    : personalityValid
-                      ? "border-white/80"
-                      : "border-red-400 focus:ring-red-400/50"
+                className={`h-11 w-full ${GLASS_INPUT} ${
+                  personality.length > 0 && !personalityValid
+                    ? "border-red-400/70 focus:ring-red-400/50"
+                    : ""
                 }`}
               />
-              <p className="text-xs text-danger">
-                注意：深渊 DM 将严格校验性格设定。若输入非法词汇、玩梗或毫无关联的乱码，将在序章被诡异直接抹杀！
-              </p>
               {!personalityValid && personality.length > 0 ? (
-                <p className="text-xs text-danger">
-                  当前输入不合法：必须匹配{" "}
-                  <span className="font-mono">
-                    {String.raw`^[\u4e00-\u9fa5]{2,6}$`}
-                  </span>
-                  。
+                <p className="text-xs text-red-500">
+                  必须为 2-6 个中文字符，深渊 DM 将严格校验。
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-xs text-slate-500">
+                  非法词汇或乱码将在序章被抹杀。
+                </p>
+              )}
             </label>
           </div>
         </section>
 
-        <section className="relative mt-8 rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
+        <section className={`relative mt-8 ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">属性加点（RPG System）</h2>
+              <h2 className="text-base font-semibold text-slate-800">属性加点</h2>
               <p className="mt-1 text-sm text-slate-600">
-                总可用点数 {EXTRA_POINTS}，基础值均为 {BASE_STAT}。必须刚好用完。
+                可用点数 {EXTRA_POINTS}，基础值 {BASE_STAT}。必须刚好用完。
               </p>
             </div>
-            <div className="rounded-xl border border-white/80 bg-white/50 px-4 py-3 text-sm text-slate-800">
+            <div className={`rounded-xl ${GLASS_INPUT} py-3`}>
               <div className="flex items-center justify-between gap-8">
-                <span className="text-neutral-600">剩余点数</span>
-                <span className={remaining === 0 ? "font-semibold" : "font-semibold text-danger"}>
+                <span className="text-slate-600">剩余</span>
+                <span className={remaining === 0 ? "font-semibold text-slate-800" : "font-semibold text-red-500"}>
                   {remaining}
                 </span>
               </div>
@@ -223,39 +238,37 @@ export default function CreatePage() {
             {(Object.keys(STAT_LABELS) as StatType[]).map((stat) => (
               <div
                 key={stat}
-                className="rounded-2xl border border-white/80 bg-white/50 p-4"
+                className={`rounded-2xl border border-white/60 bg-white/50 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-200 hover:bg-white/60`}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold">{STAT_LABELS[stat]}</span>
-                      <span className="text-sm text-neutral-600">
-                        当前：{stats[stat]}
-                      </span>
+                      <span className="text-sm font-semibold text-slate-800">{STAT_LABELS[stat]}</span>
+                      <span className="text-sm text-slate-600">当前：{stats[stat]}</span>
                     </div>
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-sm text-slate-600 leading-relaxed">
                       {STAT_DESCRIPTIONS[stat]}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => dec(stat)}
                       disabled={stats[stat] <= BASE_STAT}
-                      className="h-10 w-10 rounded-xl border border-white/80 bg-white/70 text-lg text-slate-700 transition disabled:opacity-40"
+                      className={GLASS_BTN}
                       aria-label={`减少${STAT_LABELS[stat]}`}
                     >
-                      -
+                      −
                     </button>
-                    <div className="w-10 text-center text-sm font-semibold">
+                    <div className="w-12 text-center text-base font-semibold text-slate-800 tabular-nums">
                       {stats[stat]}
                     </div>
                     <button
                       type="button"
                       onClick={() => inc(stat)}
                       disabled={remaining <= 0}
-                      className="h-10 w-10 rounded-xl border border-white/80 bg-white/70 text-lg text-slate-700 transition disabled:opacity-40"
+                      className={GLASS_BTN}
                       aria-label={`增加${STAT_LABELS[stat]}`}
                     >
                       +
@@ -267,9 +280,9 @@ export default function CreatePage() {
           </div>
         </section>
 
-        <section className="relative mt-8 rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
-          <h2 className="text-base font-semibold text-slate-900">回响天赋（Echo Talents）</h2>
-          <p className="mt-1 text-sm text-slate-600">必须单选 1 个。</p>
+        <section className={`relative mt-8 ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
+          <h2 className="text-base font-semibold text-slate-800">回响天赋</h2>
+          <p className="mt-1 text-sm text-slate-600">必选一项。</p>
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {TALENTS.map((t) => {
@@ -279,26 +292,26 @@ export default function CreatePage() {
                   key={t.key}
                   type="button"
                   onClick={() => setSelectedTalent(t.key)}
-                  className={`rounded-2xl border p-4 text-left transition ${
+                  className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
                     active
-                      ? "border-indigo-400/60 bg-indigo-50/80"
-                      : "border-white/80 bg-white/50 hover:bg-white/70"
+                      ? "border-indigo-400/70 bg-indigo-50/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+                      : "border-white/60 bg-white/50 hover:bg-white/60 hover:scale-[1.01] active:scale-[0.99]"
                   }`}
                   aria-pressed={active}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <div className="text-sm font-semibold">{t.title}</div>
-                      <div className="text-xs text-neutral-600">{t.cd}</div>
+                      <div className="text-sm font-semibold text-slate-800">{t.title}</div>
+                      <div className="text-xs text-slate-500">{t.cd}</div>
                     </div>
                     <div
-                      className={`mt-1 h-4 w-4 rounded-full border ${
+                      className={`mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${
                         active ? "border-indigo-500 bg-indigo-500" : "border-slate-300"
                       }`}
                       aria-hidden
                     />
                   </div>
-                  <p className="mt-3 text-sm text-neutral-700">{t.desc}</p>
+                  <p className="mt-3 text-sm text-slate-600">{t.desc}</p>
                 </button>
               );
             })}
@@ -306,20 +319,20 @@ export default function CreatePage() {
         </section>
 
         <section className="mt-8">
-          <div className="relative rounded-[2rem] border border-white bg-white/60 p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.05)] backdrop-blur-2xl transition-all hover:bg-white/70 md:p-10">
-            <h2 className="text-base font-semibold text-slate-900">确认提交</h2>
+          <div className={`relative ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
+            <h2 className="text-base font-semibold text-slate-800">确认提交</h2>
             <p className="mt-2 text-sm text-slate-600">
-              你将带着这份设定进入意识潜入区。一旦落笔，规则将开始回收你。
+              落笔即生效，规则将开始回收你。
             </p>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-slate-600">
                 {!canSubmit ? (
-                  <span className="text-red-600">
-                    未满足提交条件：请检查必填字段、性格格式、点数是否用尽、天赋是否已选择。
+                  <span className="text-red-500">
+                    未满足：检查必填项、性格格式、点数用尽、天赋已选。
                   </span>
                 ) : (
-                  <span>校验通过。准备进入。</span>
+                  <span className="text-slate-700">校验通过，准备进入。</span>
                 )}
               </div>
 
@@ -329,7 +342,7 @@ export default function CreatePage() {
                   type="button"
                   onClick={handleSubmit}
                   disabled={!canSubmit}
-                  className="relative rounded-full border border-white/80 bg-white/90 px-10 py-3.5 text-sm font-bold tracking-widest text-slate-800 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-md transition-all disabled:opacity-40 hover:scale-[1.02]"
+                  className="relative rounded-full border border-white/60 bg-white/40 px-10 py-3.5 text-sm font-bold tracking-widest text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-3xl transition-all duration-300 disabled:opacity-40 hover:scale-[1.02] hover:bg-white/50 active:scale-[0.98]"
                 >
                   进入意识潜入
                 </button>

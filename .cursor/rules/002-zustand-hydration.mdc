@@ -1,0 +1,114 @@
+---
+description: Zustand state management and hydration safety
+globs: "store/**/*.ts, **/*.tsx"
+alwaysApply: true
+---
+
+# Zustand Persist & Hydration Safety
+
+When using Zustand's `persist` middleware, React 19 Server-Side Rendering (SSR) and hydration require explicit handling. Failure to configure `skipHydration` and manually rehydrate leads to **Hydration Mismatch** errors.
+
+## Rules
+
+1. **persist middleware** — MUST set `skipHydration: true` in the persist config.
+2. **Rehydration** — Use `useEffect` to call `useStore.persist.rehydrate()` on the client.
+3. **isHydrated** — Track hydration state and avoid rendering persisted-dependent UI until hydrated.
+
+## Correct Store Setup
+
+```ts
+// store/useExampleStore.ts
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+interface ExampleState {
+  count: number;
+  isHydrated: boolean;
+  setCount: (n: number) => void;
+  setHydrated: () => void;
+}
+
+export const useExampleStore = create<ExampleState>()(
+  persist(
+    (set) => ({
+      count: 0,
+      isHydrated: false,
+      setCount: (n) => set({ count: n }),
+      setHydrated: () => set({ isHydrated: true }),
+    }),
+    {
+      name: "example-storage",
+      skipHydration: true, // REQUIRED for React 19
+    }
+  )
+);
+```
+
+## Correct Component Usage
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useExampleStore } from "@/store/useExampleStore";
+
+export function HydratedCounter() {
+  const [mounted, setMounted] = useState(false);
+  const { count, isHydrated, setCount, persist } = useExampleStore();
+
+  useEffect(() => {
+    persist.rehydrate().then(() => {
+      useExampleStore.getState().setHydrated(true);
+      setMounted(true);
+    });
+  }, [persist]);
+
+  if (!mounted || !isHydrated) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <span>{count}</span>
+      <button onClick={() => setCount(count + 1)}>+1</button>
+    </div>
+  );
+}
+```
+
+## Alternative: Single useEffect Rehydration
+
+```tsx
+"use client";
+
+import { useEffect } from "react";
+import { useExampleStore } from "@/store/useExampleStore";
+
+export function SafePersistedUI() {
+  const { count, persist } = useExampleStore();
+
+  useEffect(() => {
+    persist.rehydrate();
+  }, [persist]);
+
+  return <div>{count}</div>;
+}
+```
+
+If the persisted value affects initial layout or text, use `isHydrated` guard to avoid mismatch. For layout-only effects, rehydration in `useEffect` may suffice.
+
+## Forbidden Patterns
+
+```ts
+// ❌ WRONG: missing skipHydration
+persist(
+  (set) => ({ ... }),
+  { name: "storage" } // Will cause hydration mismatch
+);
+```
+
+```tsx
+// ❌ WRONG: reading persisted state before rehydration
+const count = useExampleStore((s) => s.count);
+return <div>{count}</div>; // May differ from server-rendered HTML
+```

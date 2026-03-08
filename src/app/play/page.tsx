@@ -249,6 +249,57 @@ function formatItem(i: Item): string {
 
 const STAT_MAX = 50;
 
+function MobileStatsPanel({
+  stats,
+  STAT_LABELS,
+  STAT_ORDER,
+  isDarkMoon,
+}: {
+  stats: Record<StatType, number>;
+  STAT_LABELS: Record<StatType, string>;
+  STAT_ORDER: StatType[];
+  isDarkMoon: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div
+      className={`lg:hidden sticky top-0 z-30 rounded-2xl border shadow-lg backdrop-blur-2xl ${
+        isDarkMoon
+          ? "border-red-900/40 bg-red-950/40"
+          : "border-white/10 bg-slate-900/50"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+      >
+        <span className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
+          属性 · 理智 {stats.sanity ?? 0}/{STAT_MAX}
+        </span>
+        <span className={`text-xs ${isDarkMoon ? "text-red-300/80" : "text-slate-400"}`}>
+          {expanded ? "收起" : "展开"}
+        </span>
+      </button>
+      {expanded && (
+        <div className="border-t border-white/10 px-4 py-4">
+          <div className="space-y-2">
+            {STAT_ORDER.map((k) => (
+              <StatEnergyBar
+                key={k}
+                statName={STAT_LABELS[k]}
+                value={stats[k] ?? 0}
+                isSanityDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
+                isDarkMoon={isDarkMoon}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatEnergyBar({
   statName,
   value,
@@ -723,6 +774,7 @@ export default function PlayPage() {
       storeAny.getState().decrementCooldowns();
       const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
       advanceTime();
+      useGameStore.getState().tryOriginiumDrop();
       const nextTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
       if (prevTime.day < 3 && nextTime.day === 3 && nextTime.hour === 0) {
         setShowDarkMoonOverlay(true);
@@ -863,7 +915,7 @@ export default function PlayPage() {
 
   if (!isMounted || !isHydrated || !isGameStarted) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0f172a] text-white">
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#0f172a] text-white">
         <div className="flex flex-col items-center gap-4">
           <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
           <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
@@ -877,7 +929,7 @@ export default function PlayPage() {
 
   return (
     <main
-      className={`min-h-screen transition-all duration-1000 ${
+      className={`min-h-[100dvh] transition-all duration-1000 ${
         isDarkMoon
           ? "bg-gradient-to-b from-red-950/20 via-red-950/10 to-black text-red-100"
           : "bg-background text-foreground"
@@ -909,7 +961,7 @@ export default function PlayPage() {
         <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
       )}
 
-      <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-4 border-b border-white/5 bg-slate-900/20 px-6 py-4 shadow-sm backdrop-blur-xl md:flex-nowrap">
+      <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-slate-900/20 px-4 py-3 shadow-sm backdrop-blur-xl md:flex-nowrap md:gap-4 md:px-6 md:py-4">
         <div className="flex items-center gap-4">
           <div className="relative group flex items-center">
             <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
@@ -918,14 +970,14 @@ export default function PlayPage() {
             </h1>
           </div>
           <div className="hidden items-center rounded-full border border-cyan-400/20 bg-cyan-950/30 px-4 py-1.5 shadow-[0_0_12px_rgba(34,211,238,0.15)] backdrop-blur-md md:flex">
-            <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">LOC</span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">位置</span>
             <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{playerLocation.replace(/_/g, " ")}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center rounded-full border border-white/10 bg-black/40 px-5 py-2 shadow-inner backdrop-blur-md">
-            <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">TIME /</span>
+            <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">时间</span>
             <span className="ml-2 text-sm font-bold tabular-nums text-white">{day} 日 {hour} 时</span>
           </div>
           <div className="relative group">
@@ -988,7 +1040,7 @@ export default function PlayPage() {
         </div>
       </header>
 
-      <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
+      <div className="relative mx-auto w-full max-w-6xl px-4 py-6 max-md:pb-28 md:px-6 md:py-8">
       {showExitModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -1025,8 +1077,15 @@ export default function PlayPage() {
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           <aside className="lg:col-span-4">
+            {/* Mobile: 吸顶可折叠 | PC: 侧边栏 */}
+            <MobileStatsPanel
+              stats={stats}
+              STAT_LABELS={STAT_LABELS}
+              STAT_ORDER={STAT_ORDER}
+              isDarkMoon={isDarkMoon}
+            />
             <div
-              className={`rounded-3xl border p-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
+              className={`hidden lg:block rounded-3xl border p-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
                 isDarkMoon
                   ? "border-red-900/40 bg-red-950/30 backdrop-blur-2xl"
                   : "border-white/10 bg-slate-900/40 backdrop-blur-2xl"
@@ -1047,7 +1106,6 @@ export default function PlayPage() {
                 ))}
               </div>
             </div>
-
           </aside>
 
           <section className="lg:col-span-8">
@@ -1065,7 +1123,7 @@ export default function PlayPage() {
 
               <div
                 ref={scrollRef}
-                className="h-[54vh] overflow-y-auto overscroll-contain px-5 py-5"
+                className="h-[54dvh] min-h-[200px] overflow-y-auto overscroll-contain px-5 py-5"
                 style={{ overflowAnchor: "auto" }}
               >
                 <div className="space-y-4">
@@ -1169,10 +1227,38 @@ export default function PlayPage() {
               <div className={`border-t p-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
                 {!hasReadParchment ? (
                   <p className={`py-3 text-center text-sm ${isDarkMoon ? "text-red-400/70" : "text-neutral-500"}`}>
-                    你需要先查看背包中的羊皮纸...
+                    你需要先查看行囊中的羊皮纸...
                   </p>
+                ) : isStreaming ? (
+                  <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-white/10 bg-white/10 px-8 py-12 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl">
+                    <div className="relative flex h-16 w-16 items-center justify-center">
+                      <div
+                        className="absolute inset-0 rounded-full border-2 border-transparent border-t-indigo-400/80 border-r-purple-400/60 animate-spin"
+                        style={{
+                          boxShadow:
+                            "0 0 20px rgba(99, 102, 241, 0.4), 0 0 40px rgba(139, 92, 246, 0.2), inset 0 0 20px rgba(99, 102, 241, 0.1)",
+                        }}
+                        aria-hidden
+                      />
+                      <div
+                        className="absolute inset-2 rounded-full border-2 border-transparent border-b-cyan-400/50 border-l-indigo-400/50 animate-spin"
+                        style={{
+                          animationDirection: "reverse",
+                          animationDuration: "2s",
+                          boxShadow: "0 0 12px rgba(34, 211, 238, 0.3)",
+                        }}
+                        aria-hidden
+                      />
+                    </div>
+                    <p
+                      className={`text-center text-sm font-medium tracking-wide ${isDarkMoon ? "text-red-200/90" : "text-slate-700"} animate-[breathe_2s_ease-in-out_infinite]`}
+                      style={{ textShadow: "0 0 16px rgba(99, 102, 241, 0.5)" }}
+                    >
+                      深渊正在推演命运的选项，请稍候...
+                    </p>
+                  </div>
                 ) : (() => {
-                  const showOpts = inputMode === "options" && currentOptions.length > 0 && !isStreaming;
+                  const showOpts = inputMode === "options" && currentOptions.length > 0;
                   return (
                     <div className="relative">
                       {/* Layer A: Options grid */}
@@ -1232,8 +1318,10 @@ export default function PlayPage() {
                               if (e.key === "Enter") onSubmit();
                             }}
                             maxLength={MAX_INPUT}
-                            placeholder="最多20字，发挥你的想象力，但务必遵循现实"
-                            className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                            placeholder="输入指令，最多20字"
+                            inputMode="text"
+                            enterKeyHint="done"
+                            className={`min-h-[44px] h-12 w-full rounded-xl border px-4 text-base outline-none transition md:text-sm ${
                               isDarkMoon
                                 ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
                                 : "border-border bg-white focus:border-neutral-400"
@@ -1244,11 +1332,11 @@ export default function PlayPage() {
                             type="button"
                             onClick={onSubmit}
                             disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
-                            className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
+                            className={`min-h-[44px] h-12 shrink-0 rounded-xl px-6 text-base font-semibold transition disabled:opacity-40 md:text-sm ${
                               isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
                             }`}
                           >
-                            提交
+                            确认
                           </button>
                         </div>
                         <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
@@ -1283,48 +1371,49 @@ export default function PlayPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-10 left-10 z-40 flex gap-3">
+      {/* Trinity 按钮组: 手机端 iOS Dock 毛玻璃底栏 | PC 端左下角 */}
+      <div className="fixed z-40 md:bottom-10 md:left-10 md:flex md:gap-3 max-md:bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] max-md:left-1/2 max-md:-translate-x-1/2 max-md:w-[90%] max-md:max-w-sm max-md:rounded-full max-md:border max-md:border-white/20 max-md:bg-white/10 max-md:px-6 max-md:py-3 max-md:backdrop-blur-2xl max-md:shadow-[0_8px_32px_rgba(0,0,0,0.2)] max-md:flex max-md:justify-between max-md:items-center">
         <button
           type="button"
           onClick={openInventory}
-          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110 ${
+          className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
             !hasReadParchment ? "animate-bounce ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
           }`}
-          title="背包"
+          title="行囊"
         >
           <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
-          <Backpack size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+          <Backpack size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
         </button>
         <button
           type="button"
           onClick={openCodex}
-          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-xl transition hover:scale-110 ${
+          className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
             Object.keys(codex).length > 0 && !hasCheckedCodex ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
           }`}
-          title="图鉴"
+          title="异闻录"
         >
           <div className="absolute -inset-2 rounded-full bg-indigo-500/20 blur-xl" aria-hidden />
-          <BookOpen size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+          <BookOpen size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
         </button>
         <button
           type="button"
           onClick={openWarehouse}
-          className="group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(100,116,139,0.4)] backdrop-blur-xl transition hover:scale-110"
+          className="group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(100,116,139,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95"
           title="仓库"
         >
           <div className="absolute -inset-2 rounded-full bg-slate-500/20 blur-xl" aria-hidden />
-          <Package size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+          <Package size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
         </button>
         <button
           type="button"
           onClick={openTasks}
-          className={`group flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] backdrop-blur-xl transition hover:scale-110 ${
+          className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
             tasks.filter((t) => t.status === "active").length > 0 ? "ring-2 ring-amber-400/50 ring-offset-2 ring-offset-slate-900" : ""
           }`}
-          title="任务"
+          title="契约"
         >
           <div className="absolute -inset-2 rounded-full bg-amber-500/15 blur-xl" aria-hidden />
-          <ClipboardList size={24} className="relative z-10 text-white/80 group-hover:text-white" strokeWidth={1.5} />
+          <ClipboardList size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
         </button>
       </div>
 
@@ -1338,8 +1427,8 @@ export default function PlayPage() {
           <div className="relative mx-4 w-full max-w-md rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
-                <h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                  背包
+<h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
+                行囊
                 </h2>
                 <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
                   <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
@@ -1433,7 +1522,7 @@ export default function PlayPage() {
             </button>
             <div className="flex w-1/2 flex-col overflow-hidden">
               <h2 id="codex-modal-title" className="border-b border-slate-300/60 px-6 py-4 text-sm font-semibold tracking-widest text-slate-800">
-                图鉴 · 目录
+                异闻录 · 目录
               </h2>
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {(() => {
@@ -1478,7 +1567,7 @@ export default function PlayPage() {
                             disabled={codexPage >= totalPages - 1}
                             className="rounded-lg bg-slate-700/80 px-4 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-40"
                           >
-                            → 下一页
+                            下一页
                           </button>
                         </div>
                       )}
@@ -1496,7 +1585,7 @@ export default function PlayPage() {
                     return (
                       <>
                         <h3 className="text-xl font-bold text-slate-900">{e.name}</h3>
-                        <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{e.type === "npc" ? "NPC" : "诡异"}</p>
+                        <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{e.type === "npc" ? "徘徊者" : "诡异"}</p>
                         <div className="mt-6 space-y-4">
                           <div>
                             <span className="text-xs text-slate-500">好感度</span>
@@ -1559,7 +1648,7 @@ export default function PlayPage() {
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <h2 id="task-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                  任务追踪
+                  契约追踪
                 </h2>
                 <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
                   <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />

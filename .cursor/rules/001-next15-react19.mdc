@@ -1,0 +1,74 @@
+---
+description: Next.js 15 and React 19 async/await API rules
+globs: "**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# Next.js 15 Async API Rules
+
+In Next.js 15+, `cookies()`, `headers()`, `params`, and `searchParams` are **asynchronous**. They MUST be awaited before use. Synchronous destructuring is forbidden and will cause runtime errors.
+
+## Rules
+
+1. **cookies()** — Always `await cookies()` before calling `.get()`, `.getAll()`, etc.
+2. **headers()** — Always `await headers()` before accessing headers.
+3. **params** — Page/Route `params` is a Promise; await it before destructuring.
+4. **searchParams** — Page `searchParams` is a Promise; await it before use.
+
+## Correct Examples
+
+### Server Component / Route Handler
+
+```tsx
+// ✅ CORRECT: cookies
+import { cookies } from "next/headers";
+
+export default async function Page() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token");
+  return <div>{token?.value}</div>;
+}
+```
+
+```tsx
+// ✅ CORRECT: headers
+import { headers } from "next/headers";
+
+export default async function Page() {
+  const headersList = await headers();
+  const userAgent = headersList.get("user-agent");
+  return <div>{userAgent}</div>;
+}
+```
+
+```tsx
+// ✅ CORRECT: params (Page)
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <div>ID: {id}</div>;
+}
+```
+
+```tsx
+// ✅ CORRECT: searchParams (Page)
+export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await searchParams;
+  return <div>Query: {q}</div>;
+}
+```
+
+## Forbidden Patterns
+
+```tsx
+// ❌ WRONG: synchronous destructuring
+export default async function Page({ params }: { params: { id: string } }) {
+  const { id } = params; // Will fail in Next.js 15+
+  return <div>{id}</div>;
+}
+```
+
+```tsx
+// ❌ WRONG: cookies without await
+const cookieStore = cookies();
+const token = cookieStore.get("token");
+```
