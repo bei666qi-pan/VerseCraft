@@ -40,6 +40,8 @@ type DMJson = {
   currency_change?: number;
   new_tasks?: Array<{ id: string; title: string; desc: string; issuer: string; reward: string }>;
   task_updates?: Array<{ id: string; status: "active" | "completed" | "failed" }>;
+  player_location?: string;
+  npc_location_updates?: Array<{ id: string; to_location: string }>;
 };
 
 const MAX_INPUT = 20;
@@ -349,6 +351,10 @@ export default function PlayPage() {
   const addOriginium = useGameStore((s) => s.addOriginium);
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
+  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
+  const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
+  const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
+  const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -667,6 +673,18 @@ export default function PlayPage() {
       }
     }
 
+    if (typeof parsed.player_location === "string" && parsed.player_location.length > 0) {
+      setPlayerLocation(parsed.player_location);
+    }
+
+    if (Array.isArray(parsed.npc_location_updates) && parsed.npc_location_updates.length > 0) {
+      for (const u of parsed.npc_location_updates) {
+        if (u && typeof u.id === "string" && typeof u.to_location === "string") {
+          updateNpcLocation(u.id, u.to_location);
+        }
+      }
+    }
+
     const isItemUse = trimmed.startsWith("我使用了道具：");
     const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
 
@@ -839,12 +857,22 @@ export default function PlayPage() {
         </div>
       )}
 
+      {intrusionFlashUntil > Date.now() && (
+        <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
+      )}
+
       <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-4 border-b border-white/5 bg-slate-900/20 px-6 py-4 shadow-sm backdrop-blur-xl md:flex-nowrap">
-        <div className="relative group flex items-center">
-          <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
-          <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
-            意识潜入
-          </h1>
+        <div className="flex items-center gap-4">
+          <div className="relative group flex items-center">
+            <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
+            <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
+              意识潜入
+            </h1>
+          </div>
+          <div className="hidden items-center rounded-full border border-cyan-400/20 bg-cyan-950/30 px-4 py-1.5 shadow-[0_0_12px_rgba(34,211,238,0.15)] backdrop-blur-md md:flex">
+            <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">LOC</span>
+            <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{playerLocation.replace(/_/g, " ")}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">

@@ -44,6 +44,13 @@ export interface NPC {
   lore: string;
 }
 
+export interface NpcSocialProfile {
+  homeLocation: string;
+  weakness: string;
+  scheduleBehavior: string;
+  relationships: Record<string, string>;
+}
+
 /** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */
 export interface Anomaly {
   id: string;
