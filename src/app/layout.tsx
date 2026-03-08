@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import FloatingNav from "@/components/FloatingNav";
 import HydrationProvider from "@/components/HydrationProvider";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
           {children}
         </HydrationProvider>
         <FloatingNav />
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
