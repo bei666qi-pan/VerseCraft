@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package } from "lucide-react";
+import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package, Volume2, VolumeX } from "lucide-react";
+import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
@@ -372,6 +373,7 @@ export default function PlayPage() {
   const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [audioMuted, setAudioMuted] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -441,6 +443,14 @@ export default function PlayPage() {
     const t = setTimeout(() => setShowIntrusionFlash(false), intrusionFlashUntil - Date.now());
     return () => clearTimeout(t);
   }, [intrusionFlashUntil]);
+
+  useEffect(() => {
+    if (!audioMuted) updateSanityFilter(sanity);
+  }, [sanity, audioMuted]);
+
+  useEffect(() => {
+    if (!audioMuted) setDarkMoonMode(isDarkMoon);
+  }, [isDarkMoon, audioMuted]);
 
   useEffect(() => {
     if (sanity <= 0) {
@@ -656,6 +666,7 @@ export default function PlayPage() {
         .filter((o): o is string => typeof o === "string" && o.length > 0)
         .slice(0, 4);
       setCurrentOptions(validOpts);
+      useGameStore.setState({ inputMode: "options" });
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -921,13 +932,34 @@ export default function PlayPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowExitModal(true)}
-          className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
-        >
-          退出
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              const nowMuted = toggleMute();
+              setAudioMuted(nowMuted);
+              if (!nowMuted) {
+                updateSanityFilter(sanity);
+                setDarkMoonMode(isDarkMoon);
+              }
+            }}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all backdrop-blur-md ${
+              audioMuted
+                ? "border-white/10 bg-slate-800/50 text-slate-500"
+                : "border-indigo-400/30 bg-indigo-950/40 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.3)]"
+            }`}
+            title={audioMuted ? "开启声场" : "静音"}
+          >
+            {audioMuted ? <VolumeX size={16} strokeWidth={1.5} /> : <Volume2 size={16} strokeWidth={1.5} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowExitModal(true)}
+            className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
+          >
+            退出
+          </button>
+        </div>
       </header>
 
       <div className="relative mx-auto w-full max-w-6xl px-6 py-8">
@@ -1113,91 +1145,95 @@ export default function PlayPage() {
                   <p className={`py-3 text-center text-sm ${isDarkMoon ? "text-red-400/70" : "text-neutral-500"}`}>
                     你需要先查看背包中的羊皮纸...
                   </p>
-                ) : inputMode === "options" && currentOptions.length > 0 && !isStreaming ? (
-                  <div className="animate-[fadeIn_0.5s_ease-out_forwards]">
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {currentOptions.map((option, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => { void sendAction(option, true); }}
-                          disabled={isStreaming}
-                          className="relative group p-4 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-[1.5rem] ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.35),0_10px_30px_-10px_rgba(99,102,241,0.25)] transition-all duration-300 hover:-translate-y-1 overflow-hidden disabled:opacity-40"
-                          style={{ animationDelay: `${idx * 80}ms` }}
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-cyan-500/0 group-hover:from-indigo-500/15 group-hover:via-purple-500/10 group-hover:to-cyan-500/15 transition-all duration-300" />
-                          <div className="absolute -inset-px rounded-[1.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-indigo-500/20 via-transparent to-purple-500/20 blur-sm" aria-hidden />
-                          <span className="relative z-10 text-sm md:text-base text-white/95 group-hover:text-white font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
-                            {option}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between">
-                      <span className={`text-xs ${isDarkMoon ? "text-red-300/60" : "text-neutral-500"}`}>
-                        {isStreaming ? "深渊 DM 正在推演..." : "选择一个行动，或切换至手动输入"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={toggleInputMode}
-                        className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
-                      >
-                        <Keyboard size={14} strokeWidth={1.5} />
-                        <span>手动输入</span>
-                      </button>
-                    </div>
-                  </div>
                 ) : (
-                  <div>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <input
-                        value={input}
-                        onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") onSubmit();
-                        }}
-                        maxLength={MAX_INPUT}
-                        placeholder="最多20字，发挥你的想象力，但务必遵循现实"
-                        className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
-                          isDarkMoon
-                            ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
-                            : "border-border bg-white focus:border-neutral-400"
-                        }`}
-                        disabled={isStreaming}
-                      />
-                      <button
-                        type="button"
-                        onClick={onSubmit}
-                        disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
-                        className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
-                          isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
-                        }`}
-                      >
-                        提交
-                      </button>
-                    </div>
-                    <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
-                      <span>字数：{input.trim().length}/{MAX_INPUT}</span>
-                      <div className="flex items-center gap-3">
-                        <span className={input.trim().length > MAX_INPUT ? "text-danger" : ""}>
-                          {input.trim().length > MAX_INPUT
-                            ? "动作过长：将被公寓拒绝。"
-                            : isStreaming
-                              ? "深渊 DM 正在推演..."
-                              : "保持简短。保持真实。"}
-                        </span>
-                        {currentOptions.length > 0 && !isStreaming && (
+                  <div key={inputMode === "options" && currentOptions.length > 0 && !isStreaming ? "opts" : "text"} className="animate-[fadeIn_0.3s_ease-out]">
+                    {inputMode === "options" && currentOptions.length > 0 && !isStreaming ? (
+                      <>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {currentOptions.map((option, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => { playUIClick(); void sendAction(option, true); }}
+                              disabled={isStreaming}
+                              className="relative group p-4 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-[1.5rem] ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.35),0_10px_30px_-10px_rgba(99,102,241,0.25)] transition-all duration-300 hover:-translate-y-1 overflow-hidden disabled:opacity-40"
+                              style={{ animationDelay: `${idx * 80}ms` }}
+                            >
+                              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-cyan-500/0 group-hover:from-indigo-500/15 group-hover:via-purple-500/10 group-hover:to-cyan-500/15 transition-all duration-300" />
+                              <div className="absolute -inset-px rounded-[1.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-indigo-500/20 via-transparent to-purple-500/20 blur-sm" aria-hidden />
+                              <span className="relative z-10 text-sm md:text-base text-white/95 group-hover:text-white font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
+                                {option}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className={`text-xs ${isDarkMoon ? "text-red-300/60" : "text-neutral-500"}`}>
+                            选择一个行动，或切换至手动输入
+                          </span>
                           <button
                             type="button"
                             onClick={toggleInputMode}
-                            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
+                            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
                           >
-                            <List size={14} strokeWidth={1.5} />
-                            <span>返回选项</span>
+                            <Keyboard size={14} strokeWidth={1.5} />
+                            <span>手动输入</span>
                           </button>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <input
+                            value={input}
+                            onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") onSubmit();
+                            }}
+                            maxLength={MAX_INPUT}
+                            placeholder="最多20字，发挥你的想象力，但务必遵循现实"
+                            className={`h-12 w-full rounded-xl border px-4 text-sm outline-none transition ${
+                              isDarkMoon
+                                ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
+                                : "border-border bg-white focus:border-neutral-400"
+                            }`}
+                            disabled={isStreaming}
+                          />
+                          <button
+                            type="button"
+                            onClick={onSubmit}
+                            disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
+                            className={`h-12 shrink-0 rounded-xl px-6 text-sm font-semibold transition disabled:opacity-40 ${
+                              isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
+                            }`}
+                          >
+                            提交
+                          </button>
+                        </div>
+                        <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
+                          <span>字数：{input.trim().length}/{MAX_INPUT}</span>
+                          <div className="flex items-center gap-3">
+                            <span className={input.trim().length > MAX_INPUT ? "text-danger" : ""}>
+                              {input.trim().length > MAX_INPUT
+                                ? "动作过长：将被公寓拒绝。"
+                                : isStreaming
+                                  ? "深渊 DM 正在推演..."
+                                  : "保持简短。保持真实。"}
+                            </span>
+                            {currentOptions.length > 0 && !isStreaming && (
+                              <button
+                                type="button"
+                                onClick={toggleInputMode}
+                                className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
+                              >
+                                <List size={14} strokeWidth={1.5} />
+                                <span>返回选项</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
