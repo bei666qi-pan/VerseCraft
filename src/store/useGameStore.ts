@@ -334,7 +334,7 @@ export const useGameStore = create<GameState>()(
           isGameStarted: false,
           originiumDropNotifyUntil: 0,
         }),
-      setCurrentOptions: (options) => set({ currentOptions: options, inputMode: "options" as const }),
+      setCurrentOptions: (options) => set({ currentOptions: options }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setOriginium: (v) => set({ originium: Math.max(0, v) }),
       addOriginium: (delta) =>

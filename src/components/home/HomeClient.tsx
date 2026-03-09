@@ -40,6 +40,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const hydrateFromCloud = useGameStore((s) => s.hydrateFromCloud);
 
   const [authOpen, setAuthOpen] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [authWarn, setAuthWarn] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -126,8 +127,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   function openAuthModal() {
-    setAuthOpen((v) => !v);
+    setAuthOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsConnecting(true);
+      } else {
+        setIsConnecting(false);
+      }
+      return next;
+    });
   }
+
+  useEffect(() => {
+    if (!isConnecting) return;
+    const timer = window.setTimeout(() => setIsConnecting(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [isConnecting]);
 
   async function handleLogout() {
     await signOut({ redirect: false });
@@ -165,7 +180,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <div className="fixed right-8 top-8 z-50">
         {!user ? (
           <div className="relative group">
-            <div className="pointer-events-none absolute -inset-2 rounded-full bg-gradient-to-r from-purple-600 via-cyan-500 to-blue-600 opacity-70 blur-xl animate-pulse" />
+            <div
+              className={`pointer-events-none absolute -inset-1.5 rounded-full blur-md transition-all duration-700 ${
+                isConnecting
+                  ? "bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 opacity-100 animate-pulse scale-110"
+                  : "bg-white/30 opacity-70 group-hover:opacity-100 group-hover:bg-white/50"
+              }`}
+            />
             <button
               type="button"
               onClick={openAuthModal}
@@ -174,7 +195,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               }`}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-active:animate-[shimmer_0.5s_ease-out]" />
-              <span className="relative z-10 bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-xl font-black uppercase tracking-[0.3em] text-transparent">
+              <span
+                className={`relative z-10 text-xl font-black uppercase tracking-[0.3em] ${
+                  isConnecting
+                    ? "bg-gradient-to-r from-white via-cyan-100 to-indigo-200 bg-clip-text text-transparent drop-shadow-[0_0_16px_rgba(56,189,248,0.6)]"
+                    : "text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.7)]"
+                }`}
+              >
                 建立档案 / 系统接入
               </span>
             </button>
