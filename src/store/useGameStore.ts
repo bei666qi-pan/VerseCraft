@@ -168,6 +168,7 @@ interface GameState {
   originiumDropNotifyUntil: number;
 
   setHydrated: (state: boolean) => void;
+  setUser: (user: AuthUser | null) => void;
   mockLogin: () => void;
   logout: () => void;
   /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
@@ -218,6 +219,7 @@ interface GameState {
 
   saveGame: (slotId: string) => void;
   loadGame: (slotId: string) => void;
+  hydrateFromCloud: (slotId: string, data: SaveSlotData) => void;
 }
 
 const DEFAULT_STATS: Record<StatType, number> = {
@@ -302,6 +304,7 @@ export const useGameStore = create<GameState>()(
       originiumDropNotifyUntil: 0,
 
       setHydrated: (state) => set({ isHydrated: state }),
+      setUser: (user) => set({ user }),
       mockLogin: () => set({ user: { name: "觉醒者_007" } }),
       logout: () => set({ user: null }),
       resetForNewGame: () =>
@@ -593,19 +596,21 @@ export const useGameStore = create<GameState>()(
         };
       },
 
-      saveGame: (slotId) =>
-        set((s) => {
-          const data: SaveSlotData = {
-            stats: JSON.parse(JSON.stringify(s.stats)),
-            inventory: JSON.parse(JSON.stringify(s.inventory)),
-            logs: JSON.parse(JSON.stringify(s.logs ?? [])),
-            time: JSON.parse(JSON.stringify(s.time ?? { day: 0, hour: 0 })),
-            codex: JSON.parse(JSON.stringify(s.codex ?? {})),
-            historicalMaxSanity: s.historicalMaxSanity ?? 50,
-          };
-          const next = { ...s.saveSlots, [slotId]: data };
-          return { saveSlots: next };
-        }),
+      saveGame: (slotId) => {
+        const s = get();
+        const data: SaveSlotData = {
+          stats: JSON.parse(JSON.stringify(s.stats)),
+          inventory: JSON.parse(JSON.stringify(s.inventory)),
+          logs: JSON.parse(JSON.stringify(s.logs ?? [])),
+          time: JSON.parse(JSON.stringify(s.time ?? { day: 0, hour: 0 })),
+          codex: JSON.parse(JSON.stringify(s.codex ?? {})),
+          historicalMaxSanity: s.historicalMaxSanity ?? 50,
+        };
+        set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
+        void import("@/app/actions/save")
+          .then(({ syncSaveToCloud }) => syncSaveToCloud(slotId, data))
+          .catch(() => undefined);
+      },
 
       loadGame: (slotId) => {
         const data = get().saveSlots[slotId];
@@ -618,6 +623,20 @@ export const useGameStore = create<GameState>()(
           codex: JSON.parse(JSON.stringify(data.codex)),
           historicalMaxSanity: data.historicalMaxSanity,
         });
+      },
+      hydrateFromCloud: (slotId, data) => {
+        if (!data) return;
+        set((s) => ({
+          currentSaveSlot: slotId,
+          saveSlots: { ...s.saveSlots, [slotId]: data },
+          stats: JSON.parse(JSON.stringify(data.stats)),
+          inventory: JSON.parse(JSON.stringify(data.inventory)),
+          logs: JSON.parse(JSON.stringify(data.logs ?? [])),
+          time: JSON.parse(JSON.stringify(data.time ?? { day: 0, hour: 0 })),
+          codex: JSON.parse(JSON.stringify(data.codex ?? {})),
+          historicalMaxSanity: data.historicalMaxSanity ?? 50,
+          isGameStarted: true,
+        }));
       },
     }),
     {
