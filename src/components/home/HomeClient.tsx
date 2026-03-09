@@ -89,6 +89,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     return false;
   }
 
+  function openAuthModal() {
+    setAuthOpen(true);
+  }
+
   async function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!loginForm.name.trim() || !loginForm.password) {
@@ -111,7 +115,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       router.refresh();
       return;
     }
-    setToast("登录失败，请检查账号密码。");
+    console.error("Login Error Response:", result);
+    setToast(`登录失败：${result?.error ?? "请检查账号密码"}`);
   }
 
   async function handleLogout() {
@@ -149,17 +154,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <div className="fixed right-8 top-8 z-50">
         {!user ? (
-          <div className="relative">
+          <div className="relative group">
+            <div
+              className={`absolute -inset-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 rounded-full blur-md opacity-75 group-hover:opacity-100 animate-pulse transition-opacity duration-500 ${
+                authWarn ? "ring-2 ring-red-500 rounded-[999px]" : ""
+              }`}
+            />
             <button
               type="button"
-              onClick={() => setAuthOpen((v) => !v)}
-              className={`rounded-full border px-6 py-2.5 text-sm font-semibold tracking-widest text-slate-100 backdrop-blur-2xl transition-all duration-700 ease-in-out ${
-                authWarn
-                  ? "animate-bounce ring-2 ring-red-500 border-red-400/60 bg-red-500/20 shadow-[0_0_22px_rgba(239,68,68,0.35)]"
-                  : "border-white/30 bg-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_8px_30px_rgba(14,116,144,0.15)] hover:bg-white/20"
+              onClick={openAuthModal}
+              className={`relative flex items-center gap-2 px-8 py-3 bg-slate-950/60 backdrop-blur-2xl border border-white/20 rounded-full text-white font-black tracking-[0.2em] shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] transition-all duration-300 group-hover:bg-slate-900/80 group-hover:scale-105 ${
+                authWarn ? "animate-bounce" : ""
               }`}
             >
-              注册 / 登录
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300">
+                系统接入
+              </span>
             </button>
 
             {authOpen && (
