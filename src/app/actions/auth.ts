@@ -4,50 +4,69 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { AuthError } from "next-auth";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
-import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { createFallbackUser, getFallbackUserByName } from "@/lib/authFallbackStore";
+import { signIn } from "../../../auth";
+
+type AuthActionState = {
+  success: boolean;
+  message?: string;
+  error?: string;
+};
 
 export async function registerUser(
-  _prevState: { ok: boolean; message: string },
+  _prevState: AuthActionState,
   formData: FormData
-) {
+) : Promise<AuthActionState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (name.length < 2 || password.length < 6) {
+    return { success: false, error: "注册失败：账号至少 2 位且密码至少 6 位" };
+  }
+
   try {
-    const name = String(formData.get("name") ?? "").trim();
-    const password = String(formData.get("password") ?? "");
-
-    if (name.length < 2 || password.length < 6) {
-      return { ok: false, message: "账号至少 2 位，密码至少 6 位。" };
-    }
-
     const hashed = await bcrypt.hash(password, 10);
-    try {
-      const existing = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
-      if (existing[0]) {
-        return { ok: false, message: "该账号已存在，请直接登录。" };
-      }
-
-      await db.insert(users).values({
-        id: randomUUID(),
-        name,
-        password: hashed,
-      });
-    } catch (dbError) {
-      const fallbackExisting = await getFallbackUserByName(name);
-      if (fallbackExisting) {
-        return { ok: false, message: "该账号已存在，请直接登录。" };
-      }
-      await createFallbackUser(name, hashed);
-      console.error("Registration Backend Error:", dbError);
-      return { ok: true, message: "数据库暂不可用，已切换本地应急注册，请直接登录。" };
-    }
-
-    return { ok: true, message: "注册成功，请直接登录。" };
+    await db.insert(users).values({
+      id: randomUUID(),
+      name,
+      password: hashed,
+    });
+    return { success: true, message: "注册成功" };
   } catch (error) {
-    if (error instanceof AuthError) throw error;
-    if (isRedirectError(error)) throw error;
     console.error("Registration Backend Error:", error);
-    return { ok: false, message: "注册失败，请稍后再试。" };
+    return { success: false, error: "注册失败：该账号已被占用或数据库连接异常" };
+  }
+}
+
+export async function loginUser(
+  _prevState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!name || !password) {
+    return { success: false, error: "登录失败：请输入账号和密码" };
+  }
+
+  try {
+    await signIn("credentials", {
+      name,
+      password,
+      redirectTo: "/",
+    });
+    return { success: true, message: "登录成功" };
+  } catch (error) {
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case "CredentialsSignin":
+          return { success: false, error: "登录失败：账号或密码错误" };
+        default:
+          return { success: false, error: "登录验证时发生未知错误" };
+      }
+    }
+    if (isRedirectError(error)) {
+      throw error;
+    }
+    throw error;
   }
 }

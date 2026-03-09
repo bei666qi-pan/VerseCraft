@@ -2,9 +2,9 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn, signOut } from "next-auth/react";
+import { signOut } from "next-auth/react";
 import { fetchCloudSaves } from "@/app/actions/save";
-import { registerUser } from "@/app/actions/auth";
+import { loginUser, registerUser } from "@/app/actions/auth";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 
 type HomeClientProps = {
@@ -17,7 +17,7 @@ type SaveRow = {
   updatedAt: string | null;
 };
 
-const INITIAL_AUTH_ACTION_STATE = { ok: false, message: "" };
+const INITIAL_AUTH_ACTION_STATE = { success: false, message: "", error: "" };
 
 function isSaveSlotData(data: Record<string, unknown>): data is SaveSlotData {
   return (
@@ -44,8 +44,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [authWarn, setAuthWarn] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
-  const [loginPending, setLoginPending] = useState(false);
-  const [loginForm, setLoginForm] = useState({ name: "", password: "" });
+
+  const [loginState, loginAction, loginPending] = useActionState(loginUser, INITIAL_AUTH_ACTION_STATE);
 
   const [registerState, registerAction, registerPending] = useActionState(
     registerUser,
@@ -90,33 +90,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   function openAuthModal() {
-    setAuthOpen(true);
-  }
-
-  async function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!loginForm.name.trim() || !loginForm.password) {
-      setToast("请输入账号和密码。");
-      return;
-    }
-
-    setLoginPending(true);
-    const result = await signIn("credentials", {
-      redirect: false,
-      name: loginForm.name.trim(),
-      password: loginForm.password,
-    });
-    setLoginPending(false);
-
-    if (result?.ok) {
-      setAuthOpen(false);
-      setToast("登录成功，欢迎回来。");
-      setLoginForm({ name: "", password: "" });
-      router.refresh();
-      return;
-    }
-    console.error("Login Error Response:", result);
-    setToast(`登录失败：${result?.error ?? "请检查账号密码"}`);
+    setAuthOpen((v) => !v);
   }
 
   async function handleLogout() {
@@ -155,21 +129,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <div className="fixed right-8 top-8 z-50">
         {!user ? (
           <div className="relative group">
-            <div
-              className={`absolute -inset-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 rounded-full blur-md opacity-75 group-hover:opacity-100 animate-pulse transition-opacity duration-500 ${
-                authWarn ? "ring-2 ring-red-500 rounded-[999px]" : ""
-              }`}
-            />
             <button
               type="button"
               onClick={openAuthModal}
-              className={`relative flex items-center gap-2 px-8 py-3 bg-slate-950/60 backdrop-blur-2xl border border-white/20 rounded-full text-white font-black tracking-[0.2em] shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] transition-all duration-300 group-hover:bg-slate-900/80 group-hover:scale-105 ${
-                authWarn ? "animate-bounce" : ""
+              className={`relative overflow-hidden rounded-full border px-6 py-2 font-medium tracking-widest transition-all duration-500 text-slate-400 bg-slate-900/30 border-white/5 backdrop-blur-sm hover:text-white hover:bg-slate-800/80 hover:border-indigo-400/50 hover:shadow-[0_0_30px_rgba(99,102,241,0.6)] hover:-translate-y-0.5 active:scale-95 active:shadow-[0_0_50px_rgba(168,85,247,0.9)] active:border-purple-400 group ${
+                authWarn ? "animate-bounce ring-2 ring-red-500" : ""
               }`}
             >
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300">
-                系统接入
-              </span>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-active:animate-[shimmer_0.5s_ease-out]" />
+              <span className="relative z-10">接入档案</span>
             </button>
 
             {authOpen && (
@@ -192,19 +160,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </div>
 
                 {mode === "login" ? (
-                  <form className="space-y-3" onSubmit={handleLoginSubmit}>
+                  <form className="space-y-3" action={loginAction}>
                     <input
                       name="name"
-                      value={loginForm.name}
-                      onChange={(e) => setLoginForm((p) => ({ ...p, name: e.target.value }))}
                       placeholder="账号"
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
                     />
                     <input
                       name="password"
                       type="password"
-                      value={loginForm.password}
-                      onChange={(e) => setLoginForm((p) => ({ ...p, password: e.target.value }))}
                       placeholder="密码"
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
                     />
@@ -215,6 +179,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     >
                       {loginPending ? "登录中..." : "登录"}
                     </button>
+                    {!loginState.success && loginState.error && (
+                      <p className="text-xs text-red-600">{loginState.error}</p>
+                    )}
                   </form>
                 ) : (
                   <form className="space-y-3" action={registerAction}>
@@ -236,9 +203,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     >
                       {registerPending ? "注册中..." : "注册"}
                     </button>
-                    {registerState.message && (
-                      <p className={`text-xs ${registerState.ok ? "text-emerald-700" : "text-red-600"}`}>
-                        {registerState.message}
+                    {(registerState.message || registerState.error) && (
+                      <p
+                        className={`text-xs ${
+                          registerState.success ? "text-emerald-700" : "text-red-600"
+                        }`}
+                      >
+                        {registerState.success ? registerState.message : registerState.error}
                       </p>
                     )}
                   </form>
