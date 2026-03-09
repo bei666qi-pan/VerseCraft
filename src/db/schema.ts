@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { json, mysqlTable, serial, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { int, json, mysqlTable, serial, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable(
   "users",
@@ -7,6 +7,9 @@ export const users = mysqlTable(
     id: varchar("id", { length: 191 }).primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
     password: varchar("password", { length: 255 }).notNull(),
+    tokensUsed: int("tokens_used").notNull().default(0),
+    playTime: int("play_time").notNull().default(0),
+    lastActive: timestamp("last_active").notNull().defaultNow(),
   },
   (table) => ({
     nameUnique: uniqueIndex("users_name_unique").on(table.name),

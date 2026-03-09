@@ -1,7 +1,11 @@
 // src/app/api/chat/route.ts
 import { NextResponse } from "next/server";
+import { eq, sql } from "drizzle-orm";
 import { NPCS } from "@/lib/registry/npcs";
 import { ANOMALIES } from "@/lib/registry/anomalies";
+import { auth } from "../../../../auth";
+import { db } from "@/db";
+import { users } from "@/db/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -241,6 +245,18 @@ function sanitizeAssistantContent(content: string): string {
   });
 }
 
+async function persistTokenUsage(userId: string | null, totalTokens: number) {
+  if (!userId || !Number.isFinite(totalTokens) || totalTokens <= 0) return;
+
+  await db
+    .update(users)
+    .set({
+      tokensUsed: sql`${users.tokensUsed} + ${Math.trunc(totalTokens)}`,
+      lastActive: new Date(),
+    })
+    .where(eq(users.id, userId));
+}
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -258,6 +274,8 @@ export async function POST(req: Request) {
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
   const systemPrompt = buildSystemPrompt(playerContext, isFirstAction);
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
 
   // 历史消息清洗：仅保留 role 与 content，移除 reasoning_content；assistant 非 JSON 时包装为标准格式
   const safeMessages = messages
@@ -356,11 +374,22 @@ export async function POST(req: Request) {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let accumulated = "";
+      let latestTotalTokens = 0;
+      let tokenUsageFlushed = false;
 
-          const stream = new ReadableStream<Uint8Array>({
+      const flushTokenUsage = async () => {
+        if (tokenUsageFlushed) return;
+        tokenUsageFlushed = true;
+        await persistTokenUsage(userId, latestTotalTokens).catch((error) => {
+          console.error("[api/chat] failed to persist token usage", error);
+        });
+      };
+
+      const stream = new ReadableStream<Uint8Array>({
         async pull(controller) {
           const { value, done } = await reader.read();
           if (done) {
+            await flushTokenUsage();
             controller.close();
             return;
           }
@@ -378,12 +407,16 @@ export async function POST(req: Request) {
 
             if (!data) continue;
             if (data === "[DONE]") {
+              await flushTokenUsage();
               controller.close();
               return;
             }
 
             // OpenAI/Ark compatible SSE: data: { ...json... }
-            let json: { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> } | null = null;
+            let json: {
+              choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+              usage?: { total_tokens?: number };
+            } | null = null;
             try {
               json = JSON.parse(data);
             } catch {
@@ -400,6 +433,11 @@ export async function POST(req: Request) {
             if (typeof deltaContent === "string" && deltaContent.length > 0) {
               accumulated += deltaContent;
               controller.enqueue(sse(deltaContent));
+            }
+
+            const usageTokens = Number(json?.usage?.total_tokens ?? 0);
+            if (Number.isFinite(usageTokens) && usageTokens > 0) {
+              latestTotalTokens = Math.max(latestTotalTokens, Math.trunc(usageTokens));
             }
           }
         },

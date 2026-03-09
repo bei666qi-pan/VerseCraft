@@ -9,6 +9,7 @@ import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
+import { useHeartbeat } from "@/hooks/useHeartbeat";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -502,6 +503,7 @@ export default function PlayPage() {
   const hour = time.hour ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
   const isApocalypse = day >= 10;
+  useHeartbeat(isHydrated && isGameStarted);
 
   const sanity = stats.sanity ?? 0;
   const displayLocation = useMemo(() => formatLocationLabel(playerLocation), [playerLocation]);
