@@ -9,7 +9,7 @@ export const users = mysqlTable(
     password: varchar("password", { length: 255 }).notNull(),
     tokensUsed: int("tokens_used").notNull().default(0),
     playTime: int("play_time").notNull().default(0),
-    lastActive: timestamp("last_active").notNull().defaultNow(),
+    lastActive: timestamp("last_active").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     nameUnique: uniqueIndex("users_name_unique").on(table.name),
