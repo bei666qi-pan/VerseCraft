@@ -7,7 +7,6 @@ import { Menu, X } from "lucide-react";
 const ROUTES = [
   { href: "/", label: "主界面" },
   { href: "/intro", label: "入局指南" },
-  { href: "/recharge", label: "充值中心" },
   { href: "/world/apartment", label: "公寓档案" },
   { href: "/create", label: "铸造角色" },
   { href: "/play", label: "意识潜入" },

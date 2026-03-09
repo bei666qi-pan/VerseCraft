@@ -395,76 +395,75 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent" />
 
-      {user && (
-        <>
-          <button
-            type="button"
-            className="fixed bottom-8 right-8 z-50"
-            onClick={() => {
-              setFeedbackOpen(true);
-              setFeedbackSuccess(false);
-            }}
-            aria-label="打开意见采集"
-          >
-            <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
-              <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 drop-shadow-[0_0_10px_rgba(148,163,184,0.8)]" />
-              <div className="absolute inset-1 rounded-full bg-white/80 backdrop-blur-sm transition-all group-hover:bg-white" />
-              <Lightbulb className="relative z-10 text-slate-700" size={24} />
-            </div>
-          </button>
+      <button
+        type="button"
+        className="fixed bottom-8 right-8 z-[90]"
+        onClick={() => {
+          if (!user) {
+            requireLoginOrWarn();
+            return;
+          }
+          setFeedbackOpen(true);
+          setFeedbackSuccess(false);
+        }}
+        aria-label="打开意见采集"
+      >
+        <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
+          <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
+          <div className="absolute inset-1 rounded-full bg-white/85 backdrop-blur-sm transition-all group-hover:bg-white" />
+          <Lightbulb className="relative z-10 text-slate-700 drop-shadow-[0_0_6px_rgba(71,85,105,0.55)]" size={24} />
+        </div>
+      </button>
 
-          <div
-            className={`fixed inset-0 z-[60] flex items-center justify-center p-6 transition-all duration-500 ${
-              feedbackOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          >
-            <div
-              className={`absolute inset-0 bg-slate-200/50 backdrop-blur-sm transition-all duration-500 ${
-                feedbackOpen ? "opacity-100" : "opacity-0"
-              }`}
-              onClick={() => {
-                if (feedbackPending) return;
-                setFeedbackOpen(false);
-                setFeedbackSuccess(false);
-              }}
-            />
-            <div
-              className={`relative w-full max-w-2xl rounded-[2rem] border border-white bg-slate-100/90 p-10 shadow-[0_0_40px_rgba(200,200,200,0.5)] backdrop-blur-3xl transition-all duration-500 ${
-                feedbackOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
-              }`}
-            >
-              <h3 className="text-2xl font-semibold tracking-wide text-slate-700">意见采集</h3>
-              {!feedbackSuccess ? (
-                <>
-                  <p className="mt-3 text-sm text-slate-500">把你的建议告诉我们，我们会认真阅读每一条反馈。</p>
-                  <textarea
-                    value={feedbackContent}
-                    onChange={(event) => setFeedbackContent(event.target.value)}
-                    placeholder="请输入你的建议或反馈..."
-                    className="mt-6 h-56 w-full resize-none rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 outline-none transition-all focus:border-slate-400 focus:shadow-[0_0_0_4px_rgba(148,163,184,0.15)]"
-                  />
-                  <div className="mt-6 flex justify-end">
-                    <button
-                      type="button"
-                      disabled={feedbackPending}
-                      onClick={() => void handleFeedbackSubmit()}
-                      className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {feedbackPending ? "提交中..." : "提交意见"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="mt-8 flex min-h-44 items-center justify-center">
-                  <p className="text-center text-xl font-medium text-slate-700">
-                    谢谢您的意见，游戏会因您变得更好！
-                  </p>
-                </div>
-              )}
+      <div
+        className={`fixed inset-0 z-[80] flex items-center justify-center p-6 transition-all duration-500 ${
+          feedbackOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      >
+        <div
+          className={`absolute inset-0 bg-slate-200/50 backdrop-blur-sm transition-all duration-500 ${
+            feedbackOpen ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={() => {
+            if (feedbackPending) return;
+            setFeedbackOpen(false);
+            setFeedbackSuccess(false);
+          }}
+        />
+        <div
+          className={`relative w-full max-w-2xl rounded-[2rem] border border-white bg-slate-100/90 p-10 shadow-[0_0_40px_rgba(200,200,200,0.5)] backdrop-blur-3xl transition-all duration-500 ${
+            feedbackOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
+          }`}
+        >
+          <h3 className="text-2xl font-semibold tracking-wide text-slate-700">意见采集</h3>
+          {!feedbackSuccess ? (
+            <>
+              <p className="mt-3 text-sm text-slate-500">把你的建议告诉我们，我们会认真阅读每一条反馈。</p>
+              <textarea
+                value={feedbackContent}
+                onChange={(event) => setFeedbackContent(event.target.value)}
+                placeholder="请输入你的建议或反馈..."
+                className="mt-6 h-56 w-full resize-none rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 outline-none transition-all focus:border-slate-400 focus:shadow-[0_0_0_4px_rgba(148,163,184,0.15)]"
+              />
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  disabled={feedbackPending}
+                  onClick={() => void handleFeedbackSubmit()}
+                  className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {feedbackPending ? "提交中..." : "提交意见"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="mt-8 flex min-h-44 items-center justify-center">
+              <p className="text-center text-xl font-medium text-slate-700">谢谢您的意见，游戏会因您变得更好！</p>
             </div>
-          </div>
-        </>
-      )}
+          )}
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import FloatingNav from "@/components/FloatingNav";
 import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
@@ -33,7 +32,6 @@ export default function RootLayout({
         <HydrationProvider>
           {children}
         </HydrationProvider>
-        <FloatingNav />
         <ServiceWorkerRegistrar />
       </body>
     </html>
