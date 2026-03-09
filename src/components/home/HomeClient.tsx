@@ -7,6 +7,7 @@ import { Lightbulb } from "lucide-react";
 import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
+import Leaderboard from "@/components/Leaderboard";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 
 type HomeClientProps = {
@@ -391,6 +392,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           欢迎第一批内测玩家加入QQ群 <span className="select-all font-bold text-slate-500">377493954</span>{" "}
           交流【1.0先行版】
         </p>
+        <Leaderboard userId={user?.id} />
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent" />

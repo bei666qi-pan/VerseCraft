@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { int, json, mysqlTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable(
@@ -28,6 +28,17 @@ export const feedbacks = mysqlTable("feedbacks", {
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const gameRecords = mysqlTable("game_records", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 191 })
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  killedAnomalies: int("killed_anomalies").notNull().default(0),
+  maxFloorScore: int("max_floor_score").notNull().default(0),
+  survivalTimeSeconds: int("survival_time_seconds").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const saveSlots = mysqlTable(
   "save_slots",
   {
@@ -46,3 +57,30 @@ export const saveSlots = mysqlTable(
     userSlotUnique: uniqueIndex("save_slots_user_slot_unique").on(table.userId, table.slotId),
   })
 );
+
+export const usersRelations = relations(users, ({ many }) => ({
+  feedbacks: many(feedbacks),
+  gameRecords: many(gameRecords),
+  saveSlots: many(saveSlots),
+}));
+
+export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
+  user: one(users, {
+    fields: [feedbacks.userId],
+    references: [users.id],
+  }),
+}));
+
+export const gameRecordsRelations = relations(gameRecords, ({ one }) => ({
+  user: one(users, {
+    fields: [gameRecords.userId],
+    references: [users.id],
+  }),
+}));
+
+export const saveSlotsRelations = relations(saveSlots, ({ one }) => ({
+  user: one(users, {
+    fields: [saveSlots.userId],
+    references: [users.id],
+  }),
+}));

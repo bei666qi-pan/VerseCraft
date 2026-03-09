@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
+import { submitGameRecord } from "@/app/actions/leaderboard";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 
@@ -67,12 +68,32 @@ function triggerDownload(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function resolveFloorScore(location: string): number {
+  if (!location) return 0;
+  if (location.startsWith("B2_")) return 99;
+  if (location.startsWith("B1_")) return 0;
+  const match = location.match(/^(\d)F_/);
+  if (!match) return 0;
+  return Number(match[1] ?? 0);
+}
+
+function estimateKilledAnomalies(logs: LogEntry[]): number {
+  const text = logs
+    .filter((item) => item.role === "assistant")
+    .map((item) => item.content)
+    .join("\n");
+  const matches = text.match(/击杀.{0,8}诡异|诡异.{0,8}击杀/g);
+  return matches ? Math.max(0, matches.length) : 0;
+}
+
 export default function SettlementPage() {
   const [mounted, setMounted] = useState(false);
+  const [recorded, setRecorded] = useState(false);
 
   const stats = useGameStore((s) => s.stats);
   const logs = useGameStore((s) => s.logs ?? []);
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
+  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
 
   const sanity = stats?.sanity ?? 0;
   const isDead = sanity <= 0;
@@ -80,6 +101,18 @@ export default function SettlementPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted || recorded) return;
+    setRecorded(true);
+    const survivalTimeSeconds = Math.max(0, ((time.day ?? 0) * 24 + (time.hour ?? 0)) * 3600);
+    const payload = {
+      killedAnomalies: estimateKilledAnomalies(logs),
+      maxFloorScore: resolveFloorScore(playerLocation),
+      survivalTimeSeconds,
+    };
+    void submitGameRecord(payload);
+  }, [logs, mounted, playerLocation, recorded, time.day, time.hour]);
 
   if (!mounted) {
     return (
