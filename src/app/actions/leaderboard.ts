@@ -20,6 +20,8 @@ type ExploreRow = {
   rankPosition: number;
 };
 
+type RawRow = Record<string, unknown>;
+
 function pickString(obj: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
     const value = obj[key];
@@ -39,6 +41,15 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]): number {
     }
   }
   return 0;
+}
+
+function unwrapRows<T extends RawRow>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && typeof result === "object") {
+    const maybeRows = (result as { rows?: unknown }).rows;
+    if (Array.isArray(maybeRows)) return maybeRows as T[];
+  }
+  return [];
 }
 
 export type KillLeaderboardResult = {
@@ -113,7 +124,7 @@ export async function submitGameRecord(input: {
 }
 
 export async function getKillLeaderboard(userId?: string): Promise<KillLeaderboardResult> {
-  const topRows = (await db.execute(sql`
+  const topResult = await db.execute(sql`
     WITH ranked AS (
       SELECT
         gr.user_id AS userId,
@@ -132,11 +143,12 @@ export async function getKillLeaderboard(userId?: string): Promise<KillLeaderboa
     FROM ranked
     ORDER BY rankPosition ASC
     LIMIT 10
-  `)) as unknown as KillRow[];
+  `);
+  const topRows = unwrapRows<KillRow>(topResult);
 
-  const currentRows =
+  const currentResult =
     userId && userId.trim()
-      ? ((await db.execute(sql`
+      ? await db.execute(sql`
           WITH ranked AS (
             SELECT
               gr.user_id AS userId,
@@ -155,11 +167,12 @@ export async function getKillLeaderboard(userId?: string): Promise<KillLeaderboa
           FROM ranked
           WHERE userId = ${userId}
           LIMIT 1
-        `)) as unknown as KillRow[])
+        `)
       : [];
+  const currentRows = unwrapRows<KillRow>(currentResult);
 
-  return {
-    top10: topRows.map((row) => {
+  const normalizedTop = topRows
+    .map((row) => {
       const safeRow = row as unknown as Record<string, unknown>;
       return {
         userId: pickString(safeRow, ["userId", "user_id", "userid"]),
@@ -176,32 +189,43 @@ export async function getKillLeaderboard(userId?: string): Promise<KillLeaderboa
         ]),
         rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
       };
-    }),
-    currentUser: currentRows[0]
-      ? (() => {
-          const safeRow = currentRows[0] as unknown as Record<string, unknown>;
-          return {
-            userId: pickString(safeRow, ["userId", "user_id", "userid"]),
-            userName: pickString(safeRow, ["userName", "user_name", "username"]),
-            killedAnomalies: pickNumber(safeRow, [
-              "killedAnomalies",
-              "killed_anomalies",
-              "killedanomalies",
-            ]),
-            survivalTimeSeconds: pickNumber(safeRow, [
-              "survivalTimeSeconds",
-              "survival_time_seconds",
-              "survivaltimeseconds",
-            ]),
-            rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
-          };
-        })()
-      : null,
+    })
+    .filter((row) => row.userId && row.userName && row.rank > 0 && row.killedAnomalies > 0)
+    .slice(0, 10);
+
+  const normalizedCurrent = currentRows[0]
+    ? (() => {
+        const safeRow = currentRows[0] as unknown as Record<string, unknown>;
+        const parsed = {
+          userId: pickString(safeRow, ["userId", "user_id", "userid"]),
+          userName: pickString(safeRow, ["userName", "user_name", "username"]),
+          killedAnomalies: pickNumber(safeRow, [
+            "killedAnomalies",
+            "killed_anomalies",
+            "killedanomalies",
+          ]),
+          survivalTimeSeconds: pickNumber(safeRow, [
+            "survivalTimeSeconds",
+            "survival_time_seconds",
+            "survivaltimeseconds",
+          ]),
+          rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
+        };
+        if (!parsed.userId || !parsed.userName || parsed.rank <= 0 || parsed.killedAnomalies <= 0) {
+          return null;
+        }
+        return parsed;
+      })()
+    : null;
+
+  return {
+    top10: normalizedTop,
+    currentUser: normalizedCurrent,
   };
 }
 
 export async function getExplorationLeaderboard(userId?: string): Promise<ExplorationLeaderboardResult> {
-  const topRows = (await db.execute(sql`
+  const topResult = await db.execute(sql`
     WITH ranked AS (
       SELECT
         gr.user_id AS userId,
@@ -220,11 +244,12 @@ export async function getExplorationLeaderboard(userId?: string): Promise<Explor
     FROM ranked
     ORDER BY rankPosition ASC
     LIMIT 10
-  `)) as unknown as ExploreRow[];
+  `);
+  const topRows = unwrapRows<ExploreRow>(topResult);
 
-  const currentRows =
+  const currentResult =
     userId && userId.trim()
-      ? ((await db.execute(sql`
+      ? await db.execute(sql`
           WITH ranked AS (
             SELECT
               gr.user_id AS userId,
@@ -243,11 +268,12 @@ export async function getExplorationLeaderboard(userId?: string): Promise<Explor
           FROM ranked
           WHERE userId = ${userId}
           LIMIT 1
-        `)) as unknown as ExploreRow[])
+        `)
       : [];
+  const currentRows = unwrapRows<ExploreRow>(currentResult);
 
-  return {
-    top10: topRows.map((row) => {
+  const normalizedTop = topRows
+    .map((row) => {
       const safeRow = row as unknown as Record<string, unknown>;
       const maxFloorScore = pickNumber(safeRow, ["maxFloorScore", "max_floor_score", "maxfloorscore"]);
       const survivalTimeSeconds = pickNumber(safeRow, [
@@ -264,30 +290,37 @@ export async function getExplorationLeaderboard(userId?: string): Promise<Explor
         survivalText: formatDuration(survivalTimeSeconds),
         rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
       };
-    }),
-    currentUser: currentRows[0]
-      ? (() => {
-          const safeRow = currentRows[0] as unknown as Record<string, unknown>;
-          const maxFloorScore = pickNumber(safeRow, [
-            "maxFloorScore",
-            "max_floor_score",
-            "maxfloorscore",
-          ]);
-          const survivalTimeSeconds = pickNumber(safeRow, [
-            "survivalTimeSeconds",
-            "survival_time_seconds",
-            "survivaltimeseconds",
-          ]);
-          return {
-            userId: pickString(safeRow, ["userId", "user_id", "userid"]),
-            userName: pickString(safeRow, ["userName", "user_name", "username"]),
-            maxFloorScore,
-            floorText: formatFloor(maxFloorScore),
-            survivalTimeSeconds,
-            survivalText: formatDuration(survivalTimeSeconds),
-            rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
-          };
-        })()
-      : null,
+    })
+    .filter((row) => row.userId && row.userName && row.rank > 0 && row.maxFloorScore > 0)
+    .slice(0, 10);
+
+  const normalizedCurrent = currentRows[0]
+    ? (() => {
+        const safeRow = currentRows[0] as unknown as Record<string, unknown>;
+        const maxFloorScore = pickNumber(safeRow, ["maxFloorScore", "max_floor_score", "maxfloorscore"]);
+        const survivalTimeSeconds = pickNumber(safeRow, [
+          "survivalTimeSeconds",
+          "survival_time_seconds",
+          "survivaltimeseconds",
+        ]);
+        const parsed = {
+          userId: pickString(safeRow, ["userId", "user_id", "userid"]),
+          userName: pickString(safeRow, ["userName", "user_name", "username"]),
+          maxFloorScore,
+          floorText: formatFloor(maxFloorScore),
+          survivalTimeSeconds,
+          survivalText: formatDuration(survivalTimeSeconds),
+          rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
+        };
+        if (!parsed.userId || !parsed.userName || parsed.rank <= 0 || parsed.maxFloorScore <= 0) {
+          return null;
+        }
+        return parsed;
+      })()
+    : null;
+
+  return {
+    top10: normalizedTop,
+    currentUser: normalizedCurrent,
   };
 }
