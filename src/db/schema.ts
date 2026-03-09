@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { json, mysqlTable, serial, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable(
@@ -21,7 +22,10 @@ export const saveSlots = mysqlTable(
       .references(() => users.id, { onDelete: "cascade" }),
     slotId: varchar("slot_id", { length: 64 }).notNull(),
     data: json("data").$type<Record<string, unknown>>().notNull(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .onUpdateNow(),
   },
   (table) => ({
     userSlotUnique: uniqueIndex("save_slots_user_slot_unique").on(table.userId, table.slotId),

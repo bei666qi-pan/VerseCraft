@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
@@ -44,6 +44,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [authWarn, setAuthWarn] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
+  const [registerName, setRegisterName] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerAutoLoginPending, setRegisterAutoLoginPending] = useState(false);
 
   const [loginState, loginAction, loginPending] = useActionState(loginUser, INITIAL_AUTH_ACTION_STATE);
 
@@ -80,6 +83,39 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const t = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!registerState.success) return;
+    if (registerAutoLoginPending) return;
+    const name = registerName.trim();
+    if (!name || !registerPassword) return;
+
+    let active = true;
+    const run = async () => {
+      setRegisterAutoLoginPending(true);
+      const result = await signIn("credentials", {
+        name,
+        password: registerPassword,
+        redirect: false,
+      });
+      if (!active) return;
+      setRegisterAutoLoginPending(false);
+      if (result?.error) {
+        setToast("注册成功，但系统接入失败，请手动登录。");
+        return;
+      }
+      setAuthOpen(false);
+      setMode("login");
+      setRegisterName("");
+      setRegisterPassword("");
+      router.refresh();
+    };
+
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [registerAutoLoginPending, registerName, registerPassword, registerState.success, router]);
 
   function requireLoginOrWarn(): boolean {
     if (user) return true;
@@ -129,15 +165,18 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <div className="fixed right-8 top-8 z-50">
         {!user ? (
           <div className="relative group">
+            <div className="pointer-events-none absolute -inset-2 rounded-full bg-gradient-to-r from-purple-600 via-cyan-500 to-blue-600 opacity-70 blur-xl animate-pulse" />
             <button
               type="button"
               onClick={openAuthModal}
-              className={`relative overflow-hidden rounded-full border px-6 py-2 font-medium tracking-widest transition-all duration-500 text-slate-400 bg-slate-900/30 border-white/5 backdrop-blur-sm hover:text-white hover:bg-slate-800/80 hover:border-indigo-400/50 hover:shadow-[0_0_30px_rgba(99,102,241,0.6)] hover:-translate-y-0.5 active:scale-95 active:shadow-[0_0_50px_rgba(168,85,247,0.9)] active:border-purple-400 group ${
+              className={`relative flex items-center justify-center overflow-hidden rounded-full border border-white/20 bg-black/50 px-12 py-4 backdrop-blur-3xl transition-all duration-500 hover:scale-105 hover:border-cyan-300/60 hover:shadow-[0_0_35px_rgba(6,182,212,0.55)] active:scale-95 ${
                 authWarn ? "animate-bounce ring-2 ring-red-500" : ""
               }`}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-active:animate-[shimmer_0.5s_ease-out]" />
-              <span className="relative z-10">接入档案</span>
+              <span className="relative z-10 bg-gradient-to-r from-white to-cyan-200 bg-clip-text text-xl font-black uppercase tracking-[0.3em] text-transparent">
+                建立档案 / 系统接入
+              </span>
             </button>
 
             {authOpen && (
@@ -160,7 +199,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </div>
 
                 {mode === "login" ? (
-                  <form className="space-y-3" action={loginAction}>
+                  <form key="login-form" className="space-y-3" action={loginAction}>
                     <input
                       name="name"
                       placeholder="账号"
@@ -191,26 +230,30 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     )}
                   </form>
                 ) : (
-                  <form className="space-y-3" action={registerAction}>
+                  <form key="register-form" className="space-y-3" action={registerAction}>
                     <input
                       name="name"
                       placeholder="账号（至少2位）"
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
+                      value={registerName}
+                      onChange={(event) => setRegisterName(event.target.value)}
                     />
                     <input
                       name="password"
                       type="password"
                       placeholder="密码（至少6位）"
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
+                      value={registerPassword}
+                      onChange={(event) => setRegisterPassword(event.target.value)}
                     />
                     <button
                       type="submit"
-                      disabled={registerPending}
+                      disabled={registerPending || registerAutoLoginPending}
                       className={`h-10 w-full rounded-xl bg-cyan-700 text-sm font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        registerPending ? "animate-pulse" : ""
+                        registerPending || registerAutoLoginPending ? "animate-pulse" : ""
                       }`}
                     >
-                      {registerPending ? "正在连接深渊..." : "注册"}
+                      {registerPending || registerAutoLoginPending ? "正在连接深渊..." : "注册"}
                     </button>
                     {(registerState.message || registerState.error) && (
                       registerState.success ? (

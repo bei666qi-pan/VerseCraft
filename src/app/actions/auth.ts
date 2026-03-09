@@ -60,8 +60,7 @@ function resolveCredentialsError(error: AuthError): string | null {
     message?: string;
   };
   const allowedMessages = new Set([
-    "未找到该档案，请检查账号。",
-    "记忆密钥不匹配，拒绝访问。",
+    "密码错误或档案不存在。",
     "深渊意志干扰了数据库连接，请稍后再试。",
   ]);
   const nestedErrorMessage = authError.cause?.err?.message?.trim();
@@ -92,14 +91,34 @@ export async function registerUser(
       name,
       password: hashed,
     });
-    return { success: true, message: "注册成功" };
   } catch (error) {
     console.error("Registration Backend Error:", error);
     if (isDuplicateUserError(error)) {
-      return { success: false, error: "该觉醒者代号已被占用，请更换。" };
+      return { success: false, error: "该名称已被占用，档案已存在。" };
     }
     if (isDatabaseConnectionError(error)) {
       return { success: false, error: "深渊意志干扰了数据库连接，请稍后再试。" };
+    }
+    return { success: false, error: "系统异常，注册中止。" };
+  }
+
+  try {
+    await signIn("credentials", {
+      name,
+      password,
+      redirectTo: "/",
+    });
+    return { success: true, message: "注册成功" };
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+    console.error("Registration Auto SignIn Error:", error);
+    if (error instanceof AuthError) {
+      const explicitMessage = resolveCredentialsError(error);
+      if (explicitMessage) {
+        return { success: false, error: explicitMessage };
+      }
     }
     return { success: false, error: "系统异常，注册中止。" };
   }
@@ -130,7 +149,7 @@ export async function loginUser(
       }
       switch (error.type) {
         case "CredentialsSignin":
-          return { success: false, error: "记忆密钥不匹配，拒绝访问。" };
+          return { success: false, error: "密码错误或档案不存在。" };
         default:
           return { success: false, error: "登录验证时发生未知错误" };
       }
