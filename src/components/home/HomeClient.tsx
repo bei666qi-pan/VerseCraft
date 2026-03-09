@@ -175,12 +175,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     <button
                       type="submit"
                       disabled={loginPending}
-                      className="h-10 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                      className={`h-10 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${
+                        loginPending ? "animate-pulse" : ""
+                      }`}
                     >
-                      {loginPending ? "登录中..." : "登录"}
+                      {loginPending ? "正在连接深渊..." : "登录"}
                     </button>
                     {!loginState.success && loginState.error && (
-                      <p className="text-xs text-red-600">{loginState.error}</p>
+                      <div className="mt-4 flex items-center gap-3 rounded-xl border border-red-500/50 bg-red-950/50 px-4 py-3 animate-[pulse_2s_ease-in-out_infinite]">
+                        <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]" />
+                        <span className="text-sm font-medium tracking-widest text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
+                          {loginState.error}
+                        </span>
+                      </div>
                     )}
                   </form>
                 ) : (
@@ -199,18 +206,23 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     <button
                       type="submit"
                       disabled={registerPending}
-                      className="h-10 w-full rounded-xl bg-cyan-700 text-sm font-semibold text-white transition hover:bg-cyan-600 disabled:opacity-50"
+                      className={`h-10 w-full rounded-xl bg-cyan-700 text-sm font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60 ${
+                        registerPending ? "animate-pulse" : ""
+                      }`}
                     >
-                      {registerPending ? "注册中..." : "注册"}
+                      {registerPending ? "正在连接深渊..." : "注册"}
                     </button>
                     {(registerState.message || registerState.error) && (
-                      <p
-                        className={`text-xs ${
-                          registerState.success ? "text-emerald-700" : "text-red-600"
-                        }`}
-                      >
-                        {registerState.success ? registerState.message : registerState.error}
-                      </p>
+                      registerState.success ? (
+                        <p className="text-xs text-emerald-700">{registerState.message}</p>
+                      ) : (
+                        <div className="mt-4 flex items-center gap-3 rounded-xl border border-red-500/50 bg-red-950/50 px-4 py-3 animate-[pulse_2s_ease-in-out_infinite]">
+                          <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]" />
+                          <span className="text-sm font-medium tracking-widest text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
+                            {registerState.error}
+                          </span>
+                        </div>
+                      )
                     )}
                   </form>
                 )}

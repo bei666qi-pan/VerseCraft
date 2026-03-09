@@ -18,16 +18,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       authorize: async (credentials) => {
         const name = String(credentials?.name ?? "").trim();
         const password = String(credentials?.password ?? "");
-        if (!name || !password) return null;
+        if (!name || !password) throw new Error("未找到该档案，请检查账号。");
+        try {
+          const found = await db.select().from(users).where(eq(users.name, name)).limit(1);
+          const row = found[0];
+          if (!row) throw new Error("未找到该档案，请检查账号。");
 
-        const found = await db.select().from(users).where(eq(users.name, name)).limit(1);
-        const row = found[0];
-        if (!row) return null;
+          const ok = await bcrypt.compare(password, row.password);
+          if (!ok) throw new Error("记忆密钥不匹配，拒绝访问。");
 
-        const ok = await bcrypt.compare(password, row.password);
-        if (!ok) return null;
-
-        return { id: row.id, name: row.name };
+          return { id: row.id, name: row.name };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error ?? "");
+          if (message === "未找到该档案，请检查账号。" || message === "记忆密钥不匹配，拒绝访问。") {
+            throw error;
+          }
+          throw new Error("深渊意志干扰了数据库连接，请稍后再试。");
+        }
       },
     }),
   ],

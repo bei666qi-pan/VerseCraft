@@ -14,6 +14,67 @@ type AuthActionState = {
   error?: string;
 };
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "";
+}
+
+function isDuplicateUserError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: string; message?: string; cause?: unknown };
+  const message = getErrorMessage(error).toLowerCase();
+  const code = String(maybeError.code ?? "").toUpperCase();
+  const causeMessage = getErrorMessage(maybeError.cause).toLowerCase();
+  return (
+    code === "ER_DUP_ENTRY" ||
+    message.includes("duplicate") ||
+    message.includes("users_name_unique") ||
+    causeMessage.includes("duplicate")
+  );
+}
+
+function isDatabaseConnectionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: string; message?: string; cause?: unknown };
+  const code = String(maybeError.code ?? "").toUpperCase();
+  const message = getErrorMessage(error).toLowerCase();
+  const causeMessage = getErrorMessage(maybeError.cause).toLowerCase();
+  const merged = `${message} ${causeMessage}`;
+  return (
+    code === "ETIMEDOUT" ||
+    code === "ECONNREFUSED" ||
+    code === "PROTOCOL_CONNECTION_LOST" ||
+    code === "ER_ACCESS_DENIED_ERROR" ||
+    merged.includes("timeout") ||
+    merged.includes("timed out") ||
+    merged.includes("connect") ||
+    merged.includes("connection") ||
+    merged.includes("access denied")
+  );
+}
+
+function resolveCredentialsError(error: AuthError): string | null {
+  const authError = error as AuthError & {
+    cause?: { err?: Error; message?: string };
+    message?: string;
+  };
+  const allowedMessages = new Set([
+    "未找到该档案，请检查账号。",
+    "记忆密钥不匹配，拒绝访问。",
+    "深渊意志干扰了数据库连接，请稍后再试。",
+  ]);
+  const nestedErrorMessage = authError.cause?.err?.message?.trim();
+  if (nestedErrorMessage && allowedMessages.has(nestedErrorMessage)) return nestedErrorMessage;
+  const nestedCauseMessage = authError.cause?.message?.trim();
+  if (nestedCauseMessage && allowedMessages.has(nestedCauseMessage)) return nestedCauseMessage;
+  const directMessage = authError.message?.trim();
+  if (directMessage && allowedMessages.has(directMessage)) {
+    return directMessage;
+  }
+  return null;
+}
+
 export async function registerUser(
   _prevState: AuthActionState,
   formData: FormData
@@ -34,7 +95,13 @@ export async function registerUser(
     return { success: true, message: "注册成功" };
   } catch (error) {
     console.error("Registration Backend Error:", error);
-    return { success: false, error: "注册失败：该账号已被占用或数据库连接异常" };
+    if (isDuplicateUserError(error)) {
+      return { success: false, error: "该觉醒者代号已被占用，请更换。" };
+    }
+    if (isDatabaseConnectionError(error)) {
+      return { success: false, error: "深渊意志干扰了数据库连接，请稍后再试。" };
+    }
+    return { success: false, error: "系统异常，注册中止。" };
   }
 }
 
@@ -57,9 +124,13 @@ export async function loginUser(
     return { success: true, message: "登录成功" };
   } catch (error) {
     if (error instanceof AuthError) {
+      const explicitMessage = resolveCredentialsError(error);
+      if (explicitMessage) {
+        return { success: false, error: explicitMessage };
+      }
       switch (error.type) {
         case "CredentialsSignin":
-          return { success: false, error: "登录失败：账号或密码错误" };
+          return { success: false, error: "记忆密钥不匹配，拒绝访问。" };
         default:
           return { success: false, error: "登录验证时发生未知错误" };
       }
@@ -67,6 +138,7 @@ export async function loginUser(
     if (isRedirectError(error)) {
       throw error;
     }
-    throw error;
+    console.error("Login Backend Error:", error);
+    return { success: false, error: "系统异常，登录中止。" };
   }
 }
