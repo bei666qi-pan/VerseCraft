@@ -442,6 +442,7 @@ function StatEnergyBar({
 
 export default function PlayPage() {
   const router = useRouter();
+  const lastAutoSaveRef = useRef(0);
 
   const isHydrated = useGameStore((s) => s.isHydrated);
   const setHydrated = useGameStore((s) => s.setHydrated);
@@ -631,6 +632,41 @@ export default function PlayPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sendAction is stable, avoid re-trigger
   }, [isMounted, isHydrated, isStreaming]);
+
+  const autoSaveProgress = useCallback(() => {
+    if (!isHydrated || !isGameStarted) return;
+    const now = Date.now();
+    if (now - lastAutoSaveRef.current < 800) return;
+    lastAutoSaveRef.current = now;
+    useGameStore.getState().saveGame("auto_save");
+  }, [isGameStarted, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted) return;
+    const timer = window.setInterval(() => {
+      autoSaveProgress();
+    }, 20000);
+    return () => window.clearInterval(timer);
+  }, [autoSaveProgress, isGameStarted, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted) return;
+    const handlePageHide = () => autoSaveProgress();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        autoSaveProgress();
+      }
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handlePageHide);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      autoSaveProgress();
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handlePageHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [autoSaveProgress, isGameStarted, isHydrated]);
 
   async function sendAction(action: string, bypassLengthCheck?: boolean) {
     if (isStreaming) return;

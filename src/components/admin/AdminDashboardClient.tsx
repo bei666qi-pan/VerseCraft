@@ -10,6 +10,9 @@ type DashboardUserRow = {
   playTime: number;
   todayPlayTime: number;
   isOnline: number;
+  feedbackPreview: string;
+  feedbackContent: string;
+  feedbackCreatedAt: string | null;
 };
 
 type ServerMetrics = {
@@ -38,6 +41,11 @@ function formatTokenCost(tokens: number): string {
 
 export default function AdminDashboardClient({ metrics, rows, onlineCount }: AdminDashboardClientProps) {
   const [mode, setMode] = useState<"today" | "total">("today");
+  const [detail, setDetail] = useState<{
+    userName: string;
+    content: string;
+    createdAt: string | null;
+  } | null>(null);
 
   const tableRows = useMemo(
     () =>
@@ -105,12 +113,13 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
           </div>
 
           <div className="overflow-x-auto rounded-3xl border border-slate-200/50 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-slate-200/70 text-slate-500">
                 <tr>
                   <th className="px-5 py-4 font-medium">账号名</th>
                   <th className="px-5 py-4 font-medium">{mode === "today" ? "今日时长" : "累计时长"}</th>
                   <th className="px-5 py-4 font-medium">{mode === "today" ? "今日 Token" : "累计 Token"}</th>
+                  <th className="px-5 py-4 font-medium">玩家意见</th>
                   <th className="px-5 py-4 font-medium">状态</th>
                 </tr>
               </thead>
@@ -124,6 +133,27 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
                       <td className="px-5 py-4 text-slate-600">{formatPlayTime(user.playTimeValue)}</td>
                       <td className="px-5 py-4 text-slate-600">
                         {user.tokenValue.toLocaleString()}（约 ￥{cost}）
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">
+                        {user.feedbackContent ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDetail({
+                                userName: user.name,
+                                content: user.feedbackContent,
+                                createdAt: user.feedbackCreatedAt,
+                              })
+                            }
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                          >
+                            {user.feedbackPreview}
+                            {user.feedbackContent.length > 6 ? "..." : ""}
+                            <span className="text-slate-400">查看详情</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400">暂无</span>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         {active ? (
@@ -146,6 +176,36 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
           </div>
         </div>
       </section>
+
+      {detail && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/20 p-6 backdrop-blur-sm">
+          <div
+            className="absolute inset-0"
+            onClick={() => setDetail(null)}
+          />
+          <div className="relative w-full max-w-xl rounded-3xl border border-slate-200/60 bg-white/95 p-6 shadow-[0_16px_50px_rgba(15,23,42,0.2)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">意见详情</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  来自账号：{detail.userName}
+                  {detail.createdAt ? ` · ${new Date(detail.createdAt).toLocaleString("zh-CN")}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetail(null)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 transition hover:text-slate-800"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
+              {detail.content}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

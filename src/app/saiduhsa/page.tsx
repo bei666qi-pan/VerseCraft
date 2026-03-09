@@ -2,7 +2,7 @@ import os from "node:os";
 import { cookies } from "next/headers";
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { feedbacks, users } from "@/db/schema";
 import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
 import AdminDashboardClient from "@/components/admin/AdminDashboardClient";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
@@ -67,12 +67,48 @@ export default async function ShadowAdminPage() {
     .from(users)
     .orderBy(desc(users.lastActive));
 
-  const onlineCount = rows.filter((user) => user.isOnline === 1).length;
+  const latestFeedbackRows = await db
+    .select({
+      userId: feedbacks.userId,
+      content: feedbacks.content,
+      createdAt: feedbacks.createdAt,
+    })
+    .from(feedbacks)
+    .orderBy(desc(feedbacks.createdAt));
+
+  const latestFeedbackMap = new Map<
+    string,
+    { content: string; createdAt: Date | null }
+  >();
+  for (const item of latestFeedbackRows) {
+    if (latestFeedbackMap.has(item.userId)) continue;
+    latestFeedbackMap.set(item.userId, {
+      content: item.content,
+      createdAt: item.createdAt,
+    });
+  }
+
+  const sortedRows = rows
+    .map((user) => {
+      const latest = latestFeedbackMap.get(user.id);
+      return {
+        ...user,
+        feedbackPreview: latest ? latest.content.slice(0, 6) : "",
+        feedbackContent: latest?.content ?? "",
+        feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
+      };
+    })
+    .sort((a, b) => {
+      if (b.isOnline !== a.isOnline) return b.isOnline - a.isOnline;
+      return b.tokensUsed - a.tokensUsed;
+    });
+
+  const onlineCount = sortedRows.filter((user) => user.isOnline === 1).length;
 
   return (
     <AdminDashboardClient
       metrics={metrics}
-      rows={rows}
+      rows={sortedRows}
       onlineCount={onlineCount}
     />
   );
