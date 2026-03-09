@@ -62,6 +62,7 @@ export default async function ShadowAdminPage() {
       todayTokensUsed: users.todayTokensUsed,
       playTime: users.playTime,
       todayPlayTime: users.todayPlayTime,
+      lastActive: users.lastActive,
       isOnline: sql<number>`IF(TIMESTAMPDIFF(SECOND, ${users.lastActive}, NOW()) < 120, 1, 0)`,
     })
     .from(users)

@@ -9,6 +9,7 @@ type DashboardUserRow = {
   todayTokensUsed: number;
   playTime: number;
   todayPlayTime: number;
+  lastActive: string | Date;
   isOnline: number;
   feedbackPreview: string;
   feedbackContent: string;
@@ -39,6 +40,17 @@ function formatTokenCost(tokens: number): string {
   return fee.toFixed(4);
 }
 
+function normalizeToken(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.trunc(value));
+}
+
+function formatLastOnline(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "未知";
+  return date.toLocaleString("zh-CN");
+}
+
 export default function AdminDashboardClient({ metrics, rows, onlineCount }: AdminDashboardClientProps) {
   const [mode, setMode] = useState<"today" | "total">("today");
   const [detail, setDetail] = useState<{
@@ -50,10 +62,14 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
   const tableRows = useMemo(
     () =>
       rows.map((user) => {
-        const tokenValue = mode === "today" ? user.todayTokensUsed : user.tokensUsed;
+        const todayToken = normalizeToken(user.todayTokensUsed);
+        const totalToken = normalizeToken(user.tokensUsed);
+        const tokenValue = mode === "today" ? todayToken : totalToken;
         const playTimeValue = mode === "today" ? user.todayPlayTime : user.playTime;
         return {
           ...user,
+          todayToken,
+          totalToken,
           tokenValue,
           playTimeValue,
         };
@@ -133,6 +149,7 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
                       <td className="px-5 py-4 text-slate-600">{formatPlayTime(user.playTimeValue)}</td>
                       <td className="px-5 py-4 text-slate-600">
                         {user.tokenValue.toLocaleString()}（约 ￥{cost}）
+                        <div className="mt-1 text-xs text-slate-400">总计 {user.totalToken.toLocaleString()}</div>
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         {user.feedbackContent ? (
@@ -162,10 +179,13 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
                             在线
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-2 text-slate-500">
-                            <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
-                            离线
-                          </span>
+                          <div className="inline-flex flex-col gap-1 text-slate-500">
+                            <span className="inline-flex items-center gap-2">
+                              <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+                              离线
+                            </span>
+                            <span className="text-xs text-slate-400">最后在线：{formatLastOnline(user.lastActive)}</span>
+                          </div>
                         )}
                       </td>
                     </tr>
