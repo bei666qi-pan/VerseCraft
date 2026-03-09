@@ -247,11 +247,24 @@ function sanitizeAssistantContent(content: string): string {
 
 async function persistTokenUsage(userId: string | null, totalTokens: number) {
   if (!userId || !Number.isFinite(totalTokens) || totalTokens <= 0) return;
+  const tokenDelta = Math.trunc(totalTokens);
 
   await db
     .update(users)
     .set({
-      tokensUsed: sql`${users.tokensUsed} + ${Math.trunc(totalTokens)}`,
+      tokensUsed: sql`${users.tokensUsed} + ${tokenDelta}`,
+      todayTokensUsed: sql`CASE
+        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.todayTokensUsed} + ${tokenDelta}
+        ELSE ${tokenDelta}
+      END`,
+      todayPlayTime: sql`CASE
+        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.todayPlayTime}
+        ELSE 0
+      END`,
+      lastDataReset: sql`CASE
+        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.lastDataReset}
+        ELSE NOW()
+      END`,
       lastActive: new Date(),
     })
     .where(eq(users.id, userId));

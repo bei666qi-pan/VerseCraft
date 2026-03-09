@@ -3,8 +3,10 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
+import { Lightbulb } from "lucide-react";
 import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
+import { submitFeedback } from "@/app/actions/feedback";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 
 type HomeClientProps = {
@@ -48,6 +50,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [registerName, setRegisterName] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerAutoLoginPending, setRegisterAutoLoginPending] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [feedbackPending, setFeedbackPending] = useState(false);
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
   const [loginState, loginAction, loginPending] = useActionState(loginUser, INITIAL_AUTH_ACTION_STATE);
 
@@ -84,6 +90,16 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const t = setTimeout(() => setToast(null), 2200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!feedbackSuccess || !feedbackOpen) return;
+    const t = window.setTimeout(() => {
+      setFeedbackOpen(false);
+      setFeedbackSuccess(false);
+      setFeedbackContent("");
+    }, 3000);
+    return () => window.clearTimeout(t);
+  }, [feedbackOpen, feedbackSuccess]);
 
   useEffect(() => {
     if (!registerState.success) return;
@@ -160,6 +176,24 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       hydrateFromCloud("auto_save", auto.data);
     }
     router.push("/play");
+  }
+
+  async function handleFeedbackSubmit() {
+    if (!user) return;
+    if (!feedbackContent.trim()) {
+      setToast("请先输入你的意见。");
+      return;
+    }
+
+    setFeedbackPending(true);
+    const result = await submitFeedback(feedbackContent);
+    setFeedbackPending(false);
+    if (!result.success) {
+      setToast(result.message);
+      return;
+    }
+    setFeedbackSuccess(true);
+    setFeedbackContent("");
   }
 
   return (
@@ -353,9 +387,84 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <span className="relative text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
           </button>
         </div>
+        <p className="mt-8 text-xs font-medium tracking-widest text-slate-400 transition-colors duration-300 hover:text-slate-600 md:text-sm">
+          欢迎第一批内测玩家加入QQ群 <span className="select-all font-bold text-slate-500">377493954</span>{" "}
+          交流【1.0先行版】
+        </p>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent" />
+
+      {user && (
+        <>
+          <button
+            type="button"
+            className="fixed bottom-8 right-8 z-50"
+            onClick={() => {
+              setFeedbackOpen(true);
+              setFeedbackSuccess(false);
+            }}
+            aria-label="打开意见采集"
+          >
+            <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
+              <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 drop-shadow-[0_0_10px_rgba(148,163,184,0.8)]" />
+              <div className="absolute inset-1 rounded-full bg-white/80 backdrop-blur-sm transition-all group-hover:bg-white" />
+              <Lightbulb className="relative z-10 text-slate-700" size={24} />
+            </div>
+          </button>
+
+          <div
+            className={`fixed inset-0 z-[60] flex items-center justify-center p-6 transition-all duration-500 ${
+              feedbackOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+            }`}
+          >
+            <div
+              className={`absolute inset-0 bg-slate-200/50 backdrop-blur-sm transition-all duration-500 ${
+                feedbackOpen ? "opacity-100" : "opacity-0"
+              }`}
+              onClick={() => {
+                if (feedbackPending) return;
+                setFeedbackOpen(false);
+                setFeedbackSuccess(false);
+              }}
+            />
+            <div
+              className={`relative w-full max-w-2xl rounded-[2rem] border border-white bg-slate-100/90 p-10 shadow-[0_0_40px_rgba(200,200,200,0.5)] backdrop-blur-3xl transition-all duration-500 ${
+                feedbackOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
+              }`}
+            >
+              <h3 className="text-2xl font-semibold tracking-wide text-slate-700">意见采集</h3>
+              {!feedbackSuccess ? (
+                <>
+                  <p className="mt-3 text-sm text-slate-500">把你的建议告诉我们，我们会认真阅读每一条反馈。</p>
+                  <textarea
+                    value={feedbackContent}
+                    onChange={(event) => setFeedbackContent(event.target.value)}
+                    placeholder="请输入你的建议或反馈..."
+                    className="mt-6 h-56 w-full resize-none rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 outline-none transition-all focus:border-slate-400 focus:shadow-[0_0_0_4px_rgba(148,163,184,0.15)]"
+                  />
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      type="button"
+                      disabled={feedbackPending}
+                      onClick={() => void handleFeedbackSubmit()}
+                      className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {feedbackPending ? "提交中..." : "提交意见"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-8 flex min-h-44 items-center justify-center">
+                  <p className="text-center text-xl font-medium text-slate-700">
+                    谢谢您的意见，游戏会因您变得更好！
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </main>
   );
 }

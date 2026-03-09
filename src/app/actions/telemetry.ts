@@ -17,6 +17,18 @@ export async function pingPresence() {
     .set({
       lastActive: new Date(),
       playTime: sql`${users.playTime} + 30`,
+      todayPlayTime: sql`CASE
+        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.todayPlayTime} + 30
+        ELSE 30
+      END`,
+      todayTokensUsed: sql`CASE
+        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.todayTokensUsed}
+        ELSE 0
+      END`,
+      lastDataReset: sql`CASE
+        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.lastDataReset}
+        ELSE NOW()
+      END`,
     })
     .where(eq(users.id, userId));
 
