@@ -111,11 +111,16 @@ export interface SaveSlotData {
   historicalMaxSanity: number;
 }
 
+export interface AuthUser {
+  name: string;
+}
+
 interface GameState {
   currentSaveSlot: string;
   /** 最多 3 个存档位 */
   saveSlots: Record<string, SaveSlotData>;
   isHydrated: boolean;
+  user: AuthUser | null;
 
   playerName: string;
   gender: string;
@@ -163,6 +168,8 @@ interface GameState {
   originiumDropNotifyUntil: number;
 
   setHydrated: (state: boolean) => void;
+  mockLogin: () => void;
+  logout: () => void;
   /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
   resetForNewGame: () => void;
   setCurrentOptions: (options: string[]) => void;
@@ -268,6 +275,7 @@ export const useGameStore = create<GameState>()(
       currentSaveSlot: "slot_1",
       saveSlots: {},
       isHydrated: false,
+      user: null,
       playerName: "",
       gender: "",
       height: 170,
@@ -294,6 +302,8 @@ export const useGameStore = create<GameState>()(
       originiumDropNotifyUntil: 0,
 
       setHydrated: (state) => set({ isHydrated: state }),
+      mockLogin: () => set({ user: { name: "觉醒者_007" } }),
+      logout: () => set({ user: null }),
       resetForNewGame: () =>
         set({
           playerName: "",
@@ -617,6 +627,7 @@ export const useGameStore = create<GameState>()(
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
         saveSlots: s.saveSlots ?? {},
+        user: s.user ?? null,
         playerName: s.playerName,
         gender: s.gender,
         height: s.height,
