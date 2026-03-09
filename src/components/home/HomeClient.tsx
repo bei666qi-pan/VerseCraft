@@ -4,7 +4,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { fetchCloudSaves } from "@/app/actions/save";
-import { INITIAL_AUTH_ACTION_STATE, registerUser } from "@/app/actions/auth";
+import { registerUser } from "@/app/actions/auth";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 
 type HomeClientProps = {
@@ -16,6 +16,8 @@ type SaveRow = {
   data: Record<string, unknown>;
   updatedAt: string | null;
 };
+
+const INITIAL_AUTH_ACTION_STATE = { ok: false, message: "" };
 
 function isSaveSlotData(data: Record<string, unknown>): data is SaveSlotData {
   return (
