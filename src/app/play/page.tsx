@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package, Volume2, VolumeX } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
+import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
 
@@ -65,6 +66,72 @@ const STAT_LABELS: Record<StatType, string> = {
   charm: "魅力",
   background: "出身",
 };
+
+const NPC_NAME_BY_ID = new Map(NPCS.map((npc) => [npc.id, npc.name]));
+const NPC_NAMES = NPCS.map((npc) => npc.name).filter(Boolean);
+
+const LOCATION_LABELS: Record<string, string> = {
+  B2_Passage: "B2 通道",
+  B2_GatekeeperDomain: "B2 守门领域",
+  B1_SafeZone: "B1 安全区",
+  B1_Storage: "B1 储物间",
+  B1_Laundry: "B1 洗衣房",
+  B1_PowerRoom: "B1 配电间",
+  "1F_Lobby": "1 楼门厅",
+  "1F_PropertyOffice": "1 楼物业办公室",
+  "1F_GuardRoom": "1 楼保安室",
+  "1F_Mailboxes": "1 楼信箱区",
+  "2F_Clinic201": "2 楼 201 诊室",
+  "2F_Room202": "2 楼 202 室",
+  "2F_Room203": "2 楼 203 室",
+  "2F_Corridor": "2 楼走廊",
+  "3F_Room301": "3 楼 301 室",
+  "3F_Room302": "3 楼 302 室",
+  "3F_Stairwell": "3 楼楼梯间",
+  "4F_Room401": "4 楼 401 室",
+  "4F_Room402": "4 楼 402 室",
+  "4F_CorridorEnd": "4 楼走廊尽头",
+  "5F_Room501": "5 楼 501 室",
+  "5F_Room502": "5 楼 502 室",
+  "5F_Studio503": "5 楼 503 画室",
+  "6F_Room601": "6 楼 601 室",
+  "6F_Room602": "6 楼 602 室",
+  "6F_Stairwell": "6 楼楼梯间",
+  "7F_Room701": "7 楼 701 室",
+  "7F_Bench": "7 楼长椅区",
+  "7F_Kitchen": "7 楼厨房",
+  "7F_SealedDoor": "7 楼封闭门区",
+};
+
+function toSeed(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function pickNpcNameBySeed(seedText: string): string {
+  if (NPC_NAMES.length === 0) return "无名委托人";
+  const idx = toSeed(seedText || String(Date.now())) % NPC_NAMES.length;
+  return NPC_NAMES[idx] ?? NPC_NAMES[0] ?? "无名委托人";
+}
+
+function normalizeIssuerName(rawIssuer: unknown, seedText: string): string {
+  const issuer = typeof rawIssuer === "string" ? rawIssuer.trim() : "";
+  if (!issuer) return pickNpcNameBySeed(seedText);
+  if (issuer === "未知" || issuer.toLowerCase() === "unknown") {
+    return pickNpcNameBySeed(seedText);
+  }
+  if (NPC_NAME_BY_ID.has(issuer)) return NPC_NAME_BY_ID.get(issuer) ?? pickNpcNameBySeed(seedText);
+  if (NPC_NAMES.includes(issuer)) return issuer;
+  return pickNpcNameBySeed(seedText);
+}
+
+function formatLocationLabel(location: string): string {
+  if (!location) return "未知区域";
+  return LOCATION_LABELS[location] ?? location.replace(/_/g, " ");
+}
 
 function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
@@ -437,6 +504,7 @@ export default function PlayPage() {
   const isApocalypse = day >= 10;
 
   const sanity = stats.sanity ?? 0;
+  const displayLocation = useMemo(() => formatLocationLabel(playerLocation), [playerLocation]);
 
   const talentCdLeft = useMemo(() => {
     if (!talent) return 0;
@@ -739,7 +807,7 @@ export default function PlayPage() {
             id: t.id,
             title: t.title,
             desc: typeof t.desc === "string" ? t.desc : "",
-            issuer: typeof t.issuer === "string" ? t.issuer : "未知",
+            issuer: normalizeIssuerName(t.issuer, t.id),
             reward: typeof t.reward === "string" ? t.reward : "",
           });
         }
@@ -971,7 +1039,7 @@ export default function PlayPage() {
           </div>
           <div className="hidden items-center rounded-full border border-cyan-400/20 bg-cyan-950/30 px-4 py-1.5 shadow-[0_0_12px_rgba(34,211,238,0.15)] backdrop-blur-md md:flex">
             <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">位置</span>
-            <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{playerLocation.replace(/_/g, " ")}</span>
+            <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{displayLocation}</span>
           </div>
         </div>
 
@@ -1691,7 +1759,7 @@ export default function PlayPage() {
                     </div>
                     <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
                     <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-                      <span>委托人：{t.issuer}</span>
+                      <span>委托人：{normalizeIssuerName(t.issuer, t.id)}</span>
                       <span>奖励：{t.reward}</span>
                     </div>
                   </div>
