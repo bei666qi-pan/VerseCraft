@@ -1044,37 +1044,31 @@ export default function PlayPage() {
         <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
       )}
 
-      <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-slate-900/20 px-4 py-3 shadow-sm backdrop-blur-xl md:flex-nowrap md:gap-4 md:px-6 md:py-4">
-        <div className="flex h-12 min-h-12 items-center gap-3">
-          <div className="relative group flex h-12 min-h-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/10 backdrop-blur-2xl transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]">
-            <div className="absolute inset-[-80%] animate-[spin_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_90deg,transparent_180deg,rgba(255,255,255,0.3)_270deg,transparent_360deg)] opacity-80" aria-hidden />
-            <button type="button" onClick={() => setActiveMenu("settings")} className="relative z-10 flex h-full w-full items-center justify-center" title="设置">
-              <Settings className="h-5 w-5 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" strokeWidth={1.5} />
-            </button>
-          </div>
-          <div className="relative group flex h-12 min-h-12 items-center">
-            <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
-            <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
-              意识潜入
-            </h1>
-          </div>
-          <div className="hidden items-center rounded-full border border-cyan-400/20 bg-cyan-950/30 px-4 py-1.5 shadow-[0_0_12px_rgba(34,211,238,0.15)] backdrop-blur-md md:flex">
-            <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">位置</span>
-            <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{displayLocation}</span>
-          </div>
-        </div>
-
-        <div className="flex h-12 min-h-12 items-center gap-4">
+      <header className="relative z-40 flex w-full flex-row items-center justify-center gap-4 border-b border-white/5 bg-slate-900/20 px-4 py-3 shadow-sm backdrop-blur-xl md:px-6 md:py-4">
+        <div className="flex h-14 shrink-0 flex-row items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setActiveMenu("settings")}
+            className="flex h-14 min-h-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 backdrop-blur-md transition-all hover:bg-white/10"
+            title="设置"
+          >
+            <Settings className="h-5 w-5 text-white" strokeWidth={1.5} />
+          </button>
           <button
             type="button"
             onClick={() => setShowExitModal(true)}
-            className="h-12 min-h-12 rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
+            className="flex h-14 min-h-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 text-sm font-bold tracking-widest text-red-400 backdrop-blur-md transition-all hover:bg-red-900/30 hover:border-red-500/30"
           >
             退出
           </button>
-          <span className="font-mono text-sm tabular-nums text-slate-400">
-            {day} 日 {hour} 时
-          </span>
+        </div>
+        <div className="flex h-14 min-h-14 flex-1 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 backdrop-blur-md md:max-w-2xl">
+          <h1 className="text-center text-xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 md:text-2xl">
+            意识潜入
+          </h1>
+        </div>
+        <div className="flex h-14 min-h-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 font-mono text-sm tabular-nums text-slate-300 backdrop-blur-md">
+          {day} 日 {hour} 时
         </div>
       </header>
 
@@ -1113,51 +1107,27 @@ export default function PlayPage() {
         </div>
       )}
 
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <aside className="lg:col-span-4">
-            {/* Mobile: 吸顶可折叠 | PC: 侧边栏 */}
-            <MobileStatsPanel
-              stats={stats}
-              STAT_LABELS={STAT_LABELS}
-              STAT_ORDER={STAT_ORDER}
-              isDarkMoon={isDarkMoon}
-            />
-            <div
-              className={`hidden lg:block rounded-3xl border p-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] ${
-                isDarkMoon
-                  ? "border-red-900/40 bg-red-950/30 backdrop-blur-2xl"
-                  : "border-white/10 bg-slate-900/40 backdrop-blur-2xl"
-              }`}
-            >
-              <h2 className={`mb-5 text-sm font-semibold tracking-widest ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
-                状态
-              </h2>
-              <div className="space-y-2">
-                {STAT_ORDER.map((k) => (
-                  <StatEnergyBar
-                    key={k}
-                    statName={STAT_LABELS[k]}
-                    value={stats[k] ?? 0}
-                    isSanityDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
-                    isDarkMoon={isDarkMoon}
-                  />
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          <section className="lg:col-span-8">
+        <div className="mt-6">
+          <section className="w-full">
             <div
               className={`relative rounded-2xl border overflow-hidden ${
                 isDarkMoon ? "border-red-900/50 bg-red-950/30" : "border-border bg-white"
               }`}
             >
               <div className={`border-b px-4 overflow-hidden min-w-0 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
-                <div className="flex items-center justify-between w-full gap-3 py-4">
-                  <h2 className={`text-xl md:text-2xl font-bold tracking-widest truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] ${isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
+                <div className="grid grid-cols-3 items-center w-full relative gap-3 py-4">
+                  <h2 className={`justify-self-start text-xl md:text-2xl font-bold tracking-widest truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] ${isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
                     叙事主视窗
                   </h2>
-                  <div className="flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveMenu("settings")}
+                    className="justify-self-center relative flex items-center justify-center w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border border-white/20 text-slate-300 shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:shadow-[0_0_25px_rgba(255,255,255,0.3)] hover:bg-white/10 transition-all duration-500 cursor-pointer group"
+                    aria-label="设置"
+                  >
+                    <Settings className="h-5 w-5 text-white" strokeWidth={1.5} />
+                  </button>
+                  <div className="justify-self-end flex-shrink-0">
                     <div className="relative group rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-xl shadow-[0_0_20px_rgba(99,102,241,0.2)]">
                       {talent && talentCdLeft === 0 && !isStreaming && (
                         <div
@@ -1179,7 +1149,7 @@ export default function PlayPage() {
                           talentCdLeft > 0 ? (
                             <>{talent} (冷却: {talentCdLeft} 时)</>
                           ) : (
-                            <>发动：{talent}</>
+                            <>{talent}</>
                           )
                         ) : (
                           <>命运回响</>
@@ -1445,14 +1415,6 @@ export default function PlayPage() {
             </div>
           </section>
         </div>
-      </div>
-
-      {/* 底部 Action Bar: 移动端安全区占位，设置与时间已移至 header */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center px-4 py-4 md:bottom-6 md:px-8 md:pb-6" aria-hidden>
-        <div
-          className="flex w-full max-w-4xl flex-row items-center justify-center rounded-2xl border border-white/10 bg-slate-900/40 px-6 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl md:px-8"
-          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
-        />
       </div>
 
       <UnifiedMenuModal

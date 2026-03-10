@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type GameTask } from "@/store/useGameStore";
@@ -80,6 +81,14 @@ function formatLocationLabel(location: string): string {
   if (!location) return "未知区域";
   return LOCATION_LABELS[location] ?? location.replace(/_/g, " ");
 }
+
+const TAB_ICONS = {
+  settings: Settings,
+  backpack: Package,
+  codex: BookOpen,
+  warehouse: Warehouse,
+  tasks: ClipboardList,
+} as const;
 
 const TABS: { id: ActiveMenu; label: string }[] = [
   { id: "settings", label: "设置" },
@@ -204,14 +213,14 @@ function BackpackPanel({
   return (
     <div className="flex h-full flex-row overflow-hidden">
       <div className="flex w-2/5 flex-col border-r border-white/10">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <div className="border-b border-white/10 px-4 py-3">
           <h3 className="text-sm font-semibold tracking-widest text-slate-400">
-            行囊 · 目录
+            行囊
           </h3>
-          <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
-            <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-            <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
-            <span className="text-[10px] text-amber-400/70">原石</span>
+          <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-white/10 to-transparent border border-white/10 rounded-xl mb-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+            <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+            <span className="text-sm font-bold tabular-nums text-amber-300">{originium}</span>
+            <span className="text-xs text-amber-400/90">原石</span>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -539,13 +548,13 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 w-screen h-[100dvh] z-50 bg-black/60 backdrop-blur-2xl flex"
       role="dialog"
       aria-modal
       aria-labelledby="unified-menu-title"
     >
       <div
-        className="flex h-[80vh] w-[80vw] overflow-hidden rounded-3xl border border-white/10 bg-slate-900/30 shadow-[0_0_50px_rgba(255,255,255,0.05)_inset,0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-3xl"
+        className="flex h-full w-full overflow-hidden border-t border-white/10 bg-slate-900/60 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-3xl"
         id="unified-menu-content"
       >
         {/* 左侧侧边栏 */}
@@ -553,21 +562,23 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
           <h2 id="unified-menu-title" className="sr-only">
             控制中枢
           </h2>
-          <div className="space-y-1">
+          <div className="flex flex-col items-center gap-3">
             {TABS.map((tab) => {
               const isActive = currentTab === tab.id;
+              const Icon = TAB_ICONS[tab.id];
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => handleTabSelect(tab.id)}
-                  className={`w-full rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+                  className={`flex flex-col items-center justify-center gap-1.5 w-16 h-16 rounded-2xl transition-all duration-500 cursor-pointer ${
                     isActive
-                      ? "bg-white/15 text-white shadow-[0_0_12px_rgba(255,255,255,0.2)]"
-                      : "text-slate-500 hover:bg-white/5 hover:text-slate-300"
+                      ? "text-white bg-white/10 border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.15)] drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
+                      : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
                   }`}
                 >
-                  {tab.label}
+                  <Icon className="h-6 w-6" strokeWidth={1.5} />
+                  <span className="text-[10px] font-medium tracking-wide">{tab.label}</span>
                 </button>
               );
             })}
