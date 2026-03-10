@@ -66,12 +66,28 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
         const totalToken = normalizeToken(user.tokensUsed);
         const tokenValue = mode === "today" ? todayToken : totalToken;
         const playTimeValue = mode === "today" ? user.todayPlayTime : user.playTime;
+        const todaySec = Number(user.todayPlayTime) ?? 0;
+        const totalSec = Number(user.playTime) ?? 0;
+        const lastActiveMs =
+          user.lastActive instanceof Date
+            ? user.lastActive.getTime()
+            : new Date(String(user.lastActive)).getTime();
+        const daysSinceActive = Math.max(
+          1,
+          Math.ceil((Date.now() - lastActiveMs) / 86400000)
+        );
+        const avgSecPerDay = totalSec / daysSinceActive;
+        const isActive =
+          mode === "today"
+            ? todaySec >= 1800
+            : avgSecPerDay >= 900;
         return {
           ...user,
           todayToken,
           totalToken,
           tokenValue,
           playTimeValue,
+          isActive,
         };
       }),
     [mode, rows]
@@ -145,7 +161,17 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
                   const cost = formatTokenCost(user.tokenValue);
                   return (
                     <tr key={user.id} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-5 py-4 text-slate-700">{user.name}</td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={
+                            user.isActive
+                              ? "font-medium text-slate-800 drop-shadow-[0_0_8px_rgba(34,211,238,0.7)]"
+                              : "text-slate-700"
+                          }
+                        >
+                          {user.name}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 text-slate-600">{formatPlayTime(user.playTimeValue)}</td>
                       <td className="px-5 py-4 text-slate-600">
                         {user.tokenValue.toLocaleString()}（约 ￥{cost}）

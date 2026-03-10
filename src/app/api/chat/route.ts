@@ -363,6 +363,7 @@ export async function POST(req: Request) {
           max_tokens: 8192,
           response_format: { type: "json_object" },
           messages: safeMessages,
+          stream_options: { include_usage: true },
         }),
         signal: ac.signal,
       });
@@ -393,7 +394,13 @@ export async function POST(req: Request) {
       const flushTokenUsage = async () => {
         if (tokenUsageFlushed) return;
         tokenUsageFlushed = true;
-        await persistTokenUsage(userId, latestTotalTokens).catch((error) => {
+        const toPersist =
+          latestTotalTokens > 0
+            ? latestTotalTokens
+            : accumulated.length > 0
+              ? Math.max(100, Math.ceil(accumulated.length / 2.5))
+              : 0;
+        await persistTokenUsage(userId, toPersist).catch((error) => {
           console.error("[api/chat] failed to persist token usage", error);
         });
       };
@@ -428,7 +435,11 @@ export async function POST(req: Request) {
             // OpenAI/Ark compatible SSE: data: { ...json... }
             let json: {
               choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
-              usage?: { total_tokens?: number };
+              usage?: {
+                total_tokens?: number;
+                input_tokens?: number;
+                output_tokens?: number;
+              };
             } | null = null;
             try {
               json = JSON.parse(data);
@@ -448,8 +459,16 @@ export async function POST(req: Request) {
               controller.enqueue(sse(deltaContent));
             }
 
-            const usageTokens = Number(json?.usage?.total_tokens ?? 0);
-            if (Number.isFinite(usageTokens) && usageTokens > 0) {
+            const u = json?.usage;
+            const total = Number(u?.total_tokens ?? 0);
+            const inputOutput =
+              Number(u?.input_tokens ?? 0) + Number(u?.output_tokens ?? 0);
+            const usageTokens = Number.isFinite(total) && total > 0
+              ? total
+              : Number.isFinite(inputOutput) && inputOutput > 0
+                ? inputOutput
+                : 0;
+            if (usageTokens > 0) {
               latestTotalTokens = Math.max(latestTotalTokens, Math.trunc(usageTokens));
             }
           }

@@ -101,7 +101,9 @@ export default async function ShadowAdminPage() {
     })
     .sort((a, b) => {
       if (b.isOnline !== a.isOnline) return b.isOnline - a.isOnline;
-      return b.tokensUsed - a.tokensUsed;
+      const aTime = Number(a.playTime) ?? 0;
+      const bTime = Number(b.playTime) ?? 0;
+      return bTime - aTime;
     });
 
   const onlineCount = sortedRows.filter((user) => user.isOnline === 1).length;
