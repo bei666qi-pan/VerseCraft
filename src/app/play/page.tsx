@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Backpack, BookOpen, ClipboardList, Keyboard, List, Package, Volume2, VolumeX } from "lucide-react";
+import { Keyboard, List, Settings, Volume2, VolumeX } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
+import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
+import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -478,6 +480,8 @@ export default function PlayPage() {
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+  const activeMenu = usePersistStore((s) => s.activeMenu);
+  const setActiveMenu = usePersistStore((s) => s.setActiveMenu);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -487,14 +491,7 @@ export default function PlayPage() {
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [showInventoryModal, setShowInventoryModal] = useState(false);
-  const [showCodexModal, setShowCodexModal] = useState(false);
-  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
-  const [codexPage, setCodexPage] = useState(0);
-  const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
-  const [selectedModalItemId, setSelectedModalItemId] = useState<string | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
-  const [showTaskModal, setShowTaskModal] = useState(false);
   const [audioMuted, setAudioMuted] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -958,8 +955,7 @@ export default function PlayPage() {
     if (item.id === "I-PARCHMENT") setHasReadParchment(true);
     const text = `我使用了道具：【${item.name}】`;
     void sendAction(text);
-    setSelectedModalItemId(null);
-    setShowInventoryModal(false);
+    setActiveMenu(null);
   }
 
   const withTransition = useCallback((fn: () => void) => {
@@ -971,43 +967,6 @@ export default function PlayPage() {
       fn();
     }
   }, []);
-
-  function openInventory() {
-    withTransition(() => {
-      setShowInventoryModal(true);
-      setShowCodexModal(false);
-      setShowWarehouseModal(false);
-      setShowTaskModal(false);
-    });
-  }
-
-  function openCodex() {
-    withTransition(() => {
-      setHasCheckedCodex(true);
-      setShowCodexModal(true);
-      setShowInventoryModal(false);
-      setShowWarehouseModal(false);
-      setShowTaskModal(false);
-    });
-  }
-
-  function openWarehouse() {
-    withTransition(() => {
-      setShowWarehouseModal(true);
-      setShowInventoryModal(false);
-      setShowCodexModal(false);
-      setShowTaskModal(false);
-    });
-  }
-
-  function openTasks() {
-    withTransition(() => {
-      setShowTaskModal(true);
-      setShowInventoryModal(false);
-      setShowCodexModal(false);
-      setShowWarehouseModal(false);
-    });
-  }
 
   function onSaveAndExit() {
     useGameStore.getState().saveGame("auto_save");
@@ -1079,41 +1038,6 @@ export default function PlayPage() {
           <div className="hidden items-center rounded-full border border-cyan-400/20 bg-cyan-950/30 px-4 py-1.5 shadow-[0_0_12px_rgba(34,211,238,0.15)] backdrop-blur-md md:flex">
             <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-cyan-400/70">位置</span>
             <span className="ml-2 text-xs font-bold text-cyan-300 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]">{displayLocation}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center rounded-full border border-white/10 bg-black/40 px-5 py-2 shadow-inner backdrop-blur-md">
-            <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">时间</span>
-            <span className="ml-2 text-sm font-bold tabular-nums text-white">{day} 日 {hour} 时</span>
-          </div>
-          <div className="relative group">
-            {talent && talentCdLeft === 0 && !isStreaming && (
-              <div
-                className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
-                aria-hidden
-              />
-            )}
-            <button
-              type="button"
-              onClick={onUseTalent}
-              disabled={!talent || talentCdLeft > 0 || isStreaming}
-              className={`relative rounded-full px-6 py-2 font-bold tracking-widest transition-all ${
-                talent && talentCdLeft === 0 && !isStreaming
-                  ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
-                  : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
-              }`}
-            >
-              {talent ? (
-                talentCdLeft > 0 ? (
-                  <>{talent} (冷却: {talentCdLeft} 时)</>
-                ) : (
-                  <>发动：{talent}</>
-                )
-              ) : (
-                <>未选择回响天赋</>
-              )}
-            </button>
           </div>
         </div>
 
@@ -1217,10 +1141,42 @@ export default function PlayPage() {
 
           <section className="lg:col-span-8">
             <div
-              className={`rounded-2xl border ${
+              className={`relative rounded-2xl border ${
                 isDarkMoon ? "border-red-900/50 bg-red-950/30" : "border-border bg-white"
               }`}
             >
+              {/* Echo Talent: inside narrative card, top-right */}
+              <div className="absolute top-4 right-4 z-20">
+                <div className="relative group rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-xl shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+                  {talent && talentCdLeft === 0 && !isStreaming && (
+                    <div
+                      className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
+                      aria-hidden
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={onUseTalent}
+                    disabled={!talent || talentCdLeft > 0 || isStreaming}
+                    className={`relative rounded-full px-5 py-2 font-bold tracking-widest transition-all ${
+                      talent && talentCdLeft === 0 && !isStreaming
+                        ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
+                        : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
+                    }`}
+                  >
+                    {talent ? (
+                      talentCdLeft > 0 ? (
+                        <>{talent} (冷却: {talentCdLeft} 时)</>
+                      ) : (
+                        <>发动：{talent}</>
+                      )
+                    ) : (
+                      <>未选择回响天赋</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               <div className={`border-b px-5 py-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
                 <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>叙事主视窗</h2>
                 <p className={`mt-1 text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
@@ -1478,388 +1434,47 @@ export default function PlayPage() {
         </div>
       </div>
 
-      {/* Trinity 按钮组: 手机端 iOS Dock 毛玻璃底栏 | PC 端左下角 */}
-      <div className="fixed z-40 md:bottom-10 md:left-10 md:flex md:gap-3 max-md:bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] max-md:left-1/2 max-md:-translate-x-1/2 max-md:w-[90%] max-md:max-w-sm max-md:rounded-full max-md:border max-md:border-white/20 max-md:bg-white/10 max-md:px-6 max-md:py-3 max-md:backdrop-blur-2xl max-md:shadow-[0_8px_32px_rgba(0,0,0,0.2)] max-md:flex max-md:justify-between max-md:items-center">
-        <button
-          type="button"
-          onClick={openInventory}
-          className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
-            !hasReadParchment && logs.length === 0 ? "animate-bounce ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
-          }`}
-          title="行囊"
-        >
-          <div className="absolute -inset-2 rounded-full bg-violet-500/20 blur-xl" aria-hidden />
-          <Backpack size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
-        </button>
-        <button
-          type="button"
-          onClick={openCodex}
-          className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
-            Object.keys(codex).length > 0 && !hasCheckedCodex ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
-          }`}
-          title="异闻录"
-        >
-          <div className="absolute -inset-2 rounded-full bg-indigo-500/20 blur-xl" aria-hidden />
-          <BookOpen size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
-        </button>
-        <button
-          type="button"
-          onClick={openWarehouse}
-          className="group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(100,116,139,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95"
-          title="仓库"
-        >
-          <div className="absolute -inset-2 rounded-full bg-slate-500/20 blur-xl" aria-hidden />
-          <Package size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
-        </button>
-        <button
-          type="button"
-          onClick={openTasks}
-          className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(234,179,8,0.3)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
-            tasks.filter((t) => t.status === "active").length > 0 ? "ring-2 ring-amber-400/50 ring-offset-2 ring-offset-slate-900" : ""
-          }`}
-          title="契约"
-        >
-          <div className="absolute -inset-2 rounded-full bg-amber-500/15 blur-xl" aria-hidden />
-          <ClipboardList size={22} className="relative z-10 text-white/80 group-hover:text-white md:w-6 md:h-6" strokeWidth={1.5} />
-        </button>
-      </div>
-
-      {showInventoryModal && (
+      {/* 底部 Action Bar: 设置 | 意识潜入区 | 时间 */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center gap-4 px-4 py-4 md:bottom-6 md:px-8 md:pb-6">
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal
-          aria-labelledby="inventory-modal-title"
+          className="flex w-full max-w-4xl flex-row items-center justify-between gap-6 rounded-2xl border border-white/10 bg-slate-900/40 px-6 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl md:px-8"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          <div className="relative mx-4 w-full max-w-md rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-<h2 id="inventory-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                行囊
-                </h2>
-                <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
-                  <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-                  <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
-                  <span className="text-[10px] text-amber-400/70">原石</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setShowInventoryModal(false); setSelectedModalItemId(null); }}
-                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              {Array.from({ length: 6 }, (_, idx) => {
-                const item = inventory[idx];
-                const isSelected = item && selectedModalItemId === item.id;
-                return (
-                  <button
-                    key={item?.id ?? `empty-${idx}`}
-                    type="button"
-                    onClick={() => item && setSelectedModalItemId(isSelected ? null : item.id)}
-                    className={`flex min-h-[88px] flex-col items-center justify-center rounded-xl border p-3 transition ${
-                      item
-                        ? isSelected
-                          ? "border-indigo-500/60 bg-indigo-500/20"
-                          : "border-white/20 bg-slate-800/60 hover:border-white/40"
-                        : "border-white/5 bg-black/40 shadow-inner"
-                    }`}
-                  >
-                    {item ? (
-                      <>
-                        <span className="text-xs font-semibold text-white truncate w-full text-center">{item.name}</span>
-                        <span className="mt-1 text-[10px] text-slate-400">{item.tier}</span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-slate-600">空</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedModalItemId && (() => {
-              const item = inventory.find((i) => i.id === selectedModalItemId);
-              if (!item) return null;
-              return (
-                <div className="mt-5 rounded-xl border border-white/10 bg-slate-800/60 p-4">
-                  <p className="text-sm leading-relaxed text-slate-200">{item.description}</p>
-                  {item.statBonus && Object.keys(item.statBonus).length > 0 && (
-                    <p className="mt-2 text-xs text-indigo-300">
-                      属性：{Object.entries(item.statBonus)
-                        .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
-                        .join(", ")}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onUseItem(item)}
-                    disabled={isStreaming}
-                    className="mt-4 w-full rounded-xl bg-indigo-600/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-40"
-                  >
-                    使用该物品
-                  </button>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {showCodexModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal
-          aria-labelledby="codex-modal-title"
-        >
-          <div className="relative flex h-[70vh] w-[80vw] flex-row overflow-hidden rounded-xl bg-slate-100/90 shadow-2xl backdrop-blur-3xl">
+          {/* 左侧: 设置按钮 */}
+          <div className="flex shrink-0 items-center">
             <button
               type="button"
-              onClick={() => { setShowCodexModal(false); setSelectedCodexId(null); setCodexPage(0); }}
-              className="absolute right-4 top-4 z-10 rounded-full p-1.5 text-slate-500 transition hover:bg-white/20 hover:text-slate-800"
+              onClick={() => setActiveMenu("settings")}
+              className="group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl"
+              title="设置"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <div
+                className="absolute inset-[-50%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0_340deg,rgba(255,255,255,0.8)_360deg)]"
+                aria-hidden
+              />
+              <div className="absolute inset-[2px] flex items-center justify-center rounded-2xl border border-white/10 bg-slate-900/80 backdrop-blur-xl transition-colors group-hover:bg-slate-800/80">
+                <Settings className="h-5 w-5 text-slate-300" strokeWidth={1.5} />
+              </div>
             </button>
-            <div className="flex w-1/2 flex-col overflow-hidden">
-              <h2 id="codex-modal-title" className="border-b border-slate-300/60 px-6 py-4 text-sm font-semibold tracking-widest text-slate-800">
-                异闻录 · 目录
-              </h2>
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                {(() => {
-                  const allEntries = [
-                    ...Object.values(codex).filter((e) => e.type === "npc"),
-                    ...Object.values(codex).filter((e) => e.type === "anomaly"),
-                  ];
-                  const PAGE_SIZE = 6;
-                  const totalPages = Math.max(1, Math.ceil(allEntries.length / PAGE_SIZE));
-                  const pageEntries = allEntries.slice(codexPage * PAGE_SIZE, (codexPage + 1) * PAGE_SIZE);
-                  return (
-                    <>
-                      <div className="space-y-2">
-                        {pageEntries.length === 0 ? (
-                          <p className="py-4 text-xs text-slate-600">暂无</p>
-                        ) : (
-                          pageEntries.map((e) => (
-                            <button
-                              key={e.id}
-                              type="button"
-                              onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
-                              className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
-                                e.type === "anomaly"
-                                  ? selectedCodexId === e.id
-                                    ? "bg-red-500/30 text-white"
-                                    : "bg-white/60 text-slate-700 hover:bg-red-500/10"
-                                  : selectedCodexId === e.id
-                                    ? "bg-indigo-500/30 text-white"
-                                    : "bg-white/60 text-slate-700 hover:bg-indigo-500/10"
-                              }`}
-                            >
-                              {e.name}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                      {allEntries.length > PAGE_SIZE && (
-                        <div className="mt-4 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setCodexPage((p) => Math.min(p + 1, totalPages - 1))}
-                            disabled={codexPage >= totalPages - 1}
-                            className="rounded-lg bg-slate-700/80 px-4 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-40"
-                          >
-                            下一页
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-            <div className="w-px shrink-0 bg-gradient-to-b from-transparent via-black/30 to-transparent" aria-hidden />
-            <div className="flex w-1/2 flex-1 flex-col overflow-y-auto p-6">
-                {selectedCodexId && codex[selectedCodexId] ? (
-                  (() => {
-                    const e = codex[selectedCodexId]!;
-                    const fav = e.favorability ?? 0;
-                    return (
-                      <>
-                        <h3 className="text-xl font-bold text-slate-900">{e.name}</h3>
-                        <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{e.type === "npc" ? "徘徊者" : "诡异"}</p>
-                        <div className="mt-6 space-y-4">
-                          <div>
-                            <span className="text-xs text-slate-500">好感度</span>
-                            <p className={`mt-1 font-bold ${fav >= 0 ? "text-green-600" : "text-red-600"}`}>
-                              {fav}
-                            </p>
-                          </div>
-                          {typeof e.combatPower === "number" && (
-                            <div>
-                              <span className="text-xs text-slate-500">战斗力</span>
-                              <p className="mt-1 font-semibold text-slate-800">{e.combatPower}</p>
-                            </div>
-                          )}
-                          {e.personality && (
-                            <div>
-                              <span className="text-xs text-slate-500">性格</span>
-                              <p className="mt-1 text-sm text-slate-700">{e.personality}</p>
-                            </div>
-                          )}
-                          {e.traits && (
-                            <div>
-                              <span className="text-xs text-slate-500">特质</span>
-                              <p className="mt-1 text-sm text-slate-700">{e.traits}</p>
-                            </div>
-                          )}
-                          {e.rules_discovered && (
-                            <div>
-                              <span className="text-xs text-slate-500">已知规则</span>
-                              <p className="mt-1 text-sm text-amber-800">{e.rules_discovered}</p>
-                            </div>
-                          )}
-                          {e.weakness && (
-                            <div>
-                              <span className="text-xs text-slate-500">已知弱点</span>
-                              <p className="mt-1 font-semibold text-amber-500 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]">
-                                {e.weakness}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : (
-                  <p className="text-slate-500">选择左侧条目查看详情</p>
-                )}
-              </div>
-            </div>
           </div>
-      )}
 
-      {showTaskModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal
-          aria-labelledby="task-modal-title"
-        >
-          <div className="relative mx-4 w-full max-w-lg rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <h2 id="task-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                  契约追踪
-                </h2>
-                <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
-                  <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-                  <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
-                  <span className="text-[10px] text-amber-400/70">原石</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTaskModal(false)}
-                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="max-h-[50vh] overflow-y-auto space-y-3">
-              {tasks.length === 0 ? (
-                <p className="py-8 text-center text-xs text-slate-500">暂无任务。与 NPC 互动或探索可获取任务。</p>
-              ) : (
-                tasks.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`rounded-xl border p-4 transition ${
-                      t.status === "active"
-                        ? "border-amber-400/30 bg-amber-500/5"
-                        : t.status === "completed"
-                          ? "border-emerald-400/30 bg-emerald-500/5 opacity-70"
-                          : "border-red-400/30 bg-red-500/5 opacity-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-semibold text-white">{t.title}</span>
-                      <span className={`text-[10px] font-medium uppercase tracking-wider ${
-                        t.status === "active" ? "text-amber-400" : t.status === "completed" ? "text-emerald-400" : "text-red-400"
-                      }`}>
-                        {t.status === "active" ? "进行中" : t.status === "completed" ? "已完成" : "已失败"}
-                      </span>
-                    </div>
-                    <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-                      <span>委托人：{normalizeIssuerName(t.issuer, t.id)}</span>
-                      <span>奖励：{t.reward}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+          {/* 中间: 意识潜入输入区占位，实际输入在叙事卡片内，此处保持视觉平衡 */}
+          <div className="min-w-0 flex-1" />
+
+          {/* 右侧: 时间显示 */}
+          <div className="flex shrink-0 items-center font-mono text-sm text-slate-400 tabular-nums">
+            {day} 日 {hour} 时
           </div>
         </div>
-      )}
+      </div>
 
-      {showWarehouseModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal
-          aria-labelledby="warehouse-modal-title"
-        >
-          <div className="relative mx-4 w-full max-w-2xl rounded-[2rem] border border-white/10 bg-slate-900/70 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 id="warehouse-modal-title" className="text-sm font-semibold tracking-widest text-white">
-                仓库
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowWarehouseModal(false)}
-                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              {Array.from({ length: 12 }, (_, idx) => {
-                const item = warehouse[idx];
-                return (
-                  <div
-                    key={item?.id ?? `empty-${idx}`}
-                    className={`flex min-h-[72px] flex-col items-center justify-center rounded-xl border p-3 ${
-                      item
-                        ? "border-white/20 bg-slate-800/60"
-                        : "border-white/5 bg-black/40 shadow-inner"
-                    }`}
-                  >
-                    {item ? (
-                      <>
-                        <span className="text-xs font-semibold text-white truncate w-full text-center">{item.name}</span>
-                        {item.description && (
-                          <span className="mt-1 text-[10px] text-slate-400 line-clamp-2">{item.description}</span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-slate-600">空</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      <UnifiedMenuModal
+        activeMenu={activeMenu}
+        onClose={() => setActiveMenu(null)}
+        onUseItem={onUseItem}
+        isStreaming={isStreaming}
+      />
+
     </main>
   );
 }

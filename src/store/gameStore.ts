@@ -39,6 +39,8 @@ export interface GameStats {
   background: number;
 }
 
+export type ActiveMenu = "settings" | "backpack" | "codex" | "warehouse" | "tasks" | null;
+
 const RECENT_OPTIONS_MAX = 8;
 
 export interface GameState {
@@ -49,6 +51,10 @@ export interface GameState {
   isHydrated: boolean;
   /** Past 2 rounds of generated options (max 8), for anti-loop. */
   recentOptions: string;
+  /** Unified modal/panel state: null = all closed. */
+  activeMenu: ActiveMenu;
+  /** Volume 0–100, for audioEngine binding. */
+  volume: number;
 }
 
 const DEFAULT_STATS: GameStats = {
@@ -70,6 +76,8 @@ interface GameActions {
   resetGame: () => void;
   /** Append new options to recentOptions, trim to max 8. */
   appendRecentOptions: (options: string[]) => void;
+  setActiveMenu: (menu: ActiveMenu) => void;
+  setVolume: (volume: number) => void;
 }
 
 const initialState: GameState = {
@@ -79,6 +87,8 @@ const initialState: GameState = {
   inventory: [],
   isHydrated: false,
   recentOptions: "",
+  activeMenu: null,
+  volume: 50,
 };
 
 export const useGameStore = create<GameState & GameActions>()(
@@ -126,6 +136,10 @@ export const useGameStore = create<GameState & GameActions>()(
           const next = [...prev, ...options].slice(-RECENT_OPTIONS_MAX);
           return { recentOptions: next.join(sep) };
         }),
+
+      setActiveMenu: (menu) => set({ activeMenu: menu }),
+
+      setVolume: (vol) => set({ volume: Math.max(0, Math.min(100, vol)) }),
     }),
     {
       name: DB_KEY,
