@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Keyboard, List, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
@@ -12,6 +11,7 @@ import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
+import { getOnboardingStatus, markOnboardingViewed, type OnboardingStatus } from "@/app/actions/onboarding";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -141,8 +141,39 @@ function clampInt(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
+const BLOOD_MARKER = "{{BLOOD}}";
+const BLOOD_END = "{{/BLOOD}}";
+
+function applyBloodErase(narrative: string): string {
+  const parts = narrative.split(/([。！？\n]+)/);
+  const sentences: string[] = [];
+  let buf = "";
+  for (const p of parts) {
+    if (/^[。！？\n]+$/.test(p)) {
+      if (buf.trim()) sentences.push(buf + p);
+      buf = "";
+    } else {
+      buf += p;
+    }
+  }
+  if (buf.trim()) sentences.push(buf);
+  const meaningful = sentences.filter((s) => s.trim().length > 4);
+  if (meaningful.length < 2) return narrative;
+  const startIdx = Math.min(
+    Math.floor(Math.random() * (meaningful.length - 1)),
+    meaningful.length - 2
+  );
+  const s0 = meaningful[startIdx];
+  const s1 = meaningful[startIdx + 1];
+  const idx0 = narrative.indexOf(s0);
+  const idx1 = narrative.indexOf(s1, idx0);
+  if (idx0 === -1 || idx1 === -1) return narrative;
+  const end = idx1 + s1.length;
+  return `${narrative.slice(0, idx0)}${BLOOD_MARKER}${narrative.slice(idx0, end)}${BLOOD_END}${narrative.slice(end)}`;
+}
+
 function renderNarrativeText(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(\*\*[^*]+\*\*|\^\^[^^]+\^\^|{{BLOOD}}[\s\S]*?{{\/BLOOD}})/g);
   return parts.map((part, i) => {
     const m = part.match(/^\*\*(.+)\*\*$/);
     if (m)
@@ -154,6 +185,28 @@ function renderNarrativeText(text: string) {
           {m[1]}
         </strong>
       );
+    const green = part.match(/^\^\^(.+)\^\^$/);
+    if (green)
+      return (
+        <span
+          key={i}
+          className="font-semibold text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+        >
+          {green[1]}
+        </span>
+      );
+    const blood = part.match(/^\{\{BLOOD\}\}([\s\S]*)\{\{\/BLOOD\}\}$/);
+    if (blood)
+      return (
+        <span key={i} className="relative inline-block">
+          <span className="relative z-0 text-inherit opacity-30">{blood[1]}</span>
+          <span
+            className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-br from-red-900/85 via-red-800/80 to-red-950/90 mix-blend-multiply"
+            style={{ borderRadius: "2px" }}
+            aria-hidden
+          />
+        </span>
+      );
     return <span key={i}>{part}</span>;
   });
 }
@@ -161,13 +214,17 @@ function renderNarrativeText(text: string) {
 function DMNarrativeBlock({
   content,
   isDarkMoon,
+  isLowSanity,
 }: {
   content: string;
   isDarkMoon: boolean;
+  isLowSanity?: boolean;
 }) {
-  const baseClass = isDarkMoon
-    ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200"
-    : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800";
+  const baseClass = isLowSanity
+    ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-white"
+    : isDarkMoon
+      ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200"
+      : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800";
   const paras = content.split(/\n\n+/).filter(Boolean);
   return (
     <div className={`${baseClass} whitespace-pre-wrap`}>
@@ -466,10 +523,16 @@ export default function PlayPage() {
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const setHasReadParchment = useGameStore((s) => s.setHasReadParchment);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
-  const currentOptions = useGameStore((s) => s.currentOptions ?? []);
+  const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
-  const inputMode = useGameStore((s) => s.inputMode ?? "options");
-  const toggleInputMode = useGameStore((s) => s.toggleInputMode);
+  const storeInputMode = useGameStore((s) => s.inputMode ?? "options");
+  const persistInputMode = usePersistStore((s) => s.inputMode ?? "options");
+  const persistCurrentOptions = usePersistStore((s) => s.currentOptions ?? []);
+  const setPersistCurrentOptions = usePersistStore((s) => s.setCurrentOptions);
+  const logsLen = logs.length;
+  const currentOptions =
+    persistCurrentOptions.length > 0 ? persistCurrentOptions : currentOptionsFromStore;
+  const inputMode = logsLen > 0 ? persistInputMode : storeInputMode;
   const originium = useGameStore((s) => s.originium ?? 0);
   const tasks = useGameStore((s) => s.tasks ?? []);
   const addOriginium = useGameStore((s) => s.addOriginium);
@@ -494,19 +557,41 @@ export default function PlayPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [audioMuted, setAudioMuted] = useState(true);
+  const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
+  const hasTriggeredResume = useRef(false);
   const userScrolledUpRef = useRef(false);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
   const isApocalypse = day >= 10;
+  const isLowSanity = (stats.sanity ?? 0) < 10;
   useHeartbeat(isHydrated && isGameStarted);
 
   const sanity = stats.sanity ?? 0;
   const displayLocation = useMemo(() => formatLocationLabel(playerLocation), [playerLocation]);
+
+  const codexKeys = Object.keys(codex ?? {});
+  const warehouseList = warehouse ?? [];
+  const tasksList = tasks ?? [];
+  const mustViewCodex = codexKeys.length > 0 && !onboardingStatus?.codexFirstViewDone;
+  const mustViewWarehouse = warehouseList.length > 0 && !onboardingStatus?.warehouseFirstViewDone;
+  const mustViewTasks = tasksList.length > 0 && !onboardingStatus?.tasksFirstViewDone;
+  const hasOnboardingGate = mustViewCodex || mustViewWarehouse || mustViewTasks;
+  const pendingViews: string[] = [];
+  if (mustViewCodex) pendingViews.push("图鉴");
+  if (mustViewWarehouse) pendingViews.push("仓库");
+  if (mustViewTasks) pendingViews.push("任务");
+  const hasAnyGate = !hasReadParchment || hasOnboardingGate;
+  const gateMessage = !hasReadParchment
+    ? "你需要先使用行囊中的【染血的羊皮纸】才能继续对话"
+    : pendingViews.length > 0
+      ? `你需要先点击查看【${pendingViews.join("】【")}】后才能继续`
+      : "";
 
   const talentCdLeft = useMemo(() => {
     if (!talent) return 0;
@@ -523,7 +608,13 @@ export default function PlayPage() {
 
   useEffect(() => {
     if (!isMounted) return;
-    void Promise.resolve(useGameStore.persist.rehydrate()).then(() => {
+    void Promise.all([
+      Promise.resolve(useGameStore.persist.rehydrate()),
+      Promise.resolve(
+        (usePersistStore as unknown as { persist?: { rehydrate: () => Promise<unknown> } })
+          .persist?.rehydrate?.() ?? Promise.resolve()
+      ),
+    ]).then(() => {
       setHydrated(true);
     });
   }, [isMounted, setHydrated]);
@@ -534,6 +625,11 @@ export default function PlayPage() {
       router.replace("/");
     }
   }, [isHydrated, isGameStarted, router]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    getOnboardingStatus().then(setOnboardingStatus);
+  }, [isHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -631,15 +727,31 @@ export default function PlayPage() {
   useEffect(() => {
     if (!isMounted || !isHydrated || isStreaming || hasTriggeredOpening.current) return;
     const currentLogs = useGameStore.getState().logs ?? [];
-    if (currentLogs.length === 0) {
-      hasTriggeredOpening.current = true;
+    const turn = currentLogs.length;
+    if (turn > 0) return;
+    hasTriggeredOpening.current = true;
       void sendAction(
-        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：“你可以跟随直觉做出选择（点击选项），或亲自在脑海中构思你的下一步行动（切换为文字填空）”。切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
+        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
         true
       );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sendAction is stable, avoid re-trigger
   }, [isMounted, isHydrated, isStreaming]);
+
+  useEffect(() => {
+    if (
+      !isMounted ||
+      !isHydrated ||
+      !isGameStarted ||
+      isStreaming ||
+      hasTriggeredResume.current
+    )
+      return;
+    const logs = useGameStore.getState().logs ?? [];
+    if (logs.length === 0) return;
+    const last = logs[logs.length - 1];
+    if (!last || last.role !== "user") return;
+    hasTriggeredResume.current = true;
+    void sendAction(last.content, true, true);
+  }, [isMounted, isHydrated, isGameStarted, isStreaming]);
 
   const autoSaveProgress = useCallback(() => {
     if (!isHydrated || !isGameStarted) return;
@@ -676,7 +788,11 @@ export default function PlayPage() {
     };
   }, [autoSaveProgress, isGameStarted, isHydrated]);
 
-  async function sendAction(action: string, bypassLengthCheck?: boolean) {
+  async function sendAction(
+    action: string,
+    bypassLengthCheck?: boolean,
+    isResume?: boolean
+  ) {
     if (isStreaming) return;
     const trimmed = action.trim();
     if (!trimmed) return;
@@ -686,17 +802,21 @@ export default function PlayPage() {
     setRawDmBuffer("");
     setLiveNarrative("");
 
-    useGameStore.getState().pushLog({ role: "user", content: trimmed });
+    const sanityAtStart = useGameStore.getState().stats.sanity ?? 0;
+    const prevPending = pendingHallucinationCheck;
+    setPendingHallucinationCheck(false);
+    const shouldApplyHallucination = prevPending && sanityAtStart < 10 && Math.random() < 0.3;
 
-    const diceRoll = Math.floor(Math.random() * 100) + 1;
-    const actionPayload = `【系统暗骰：本次行动检定值为 ${diceRoll}/100 (1为大成功，100为大失败)】\n玩家行动：${trimmed}`;
+    if (!isResume) {
+      useGameStore.getState().pushLog({ role: "user", content: trimmed });
+    }
 
     const history = useGameStore.getState().logs ?? [];
     const messages: ChatMessage[] = history.map((l, idx) => {
       const isLastUser = idx === history.length - 1 && l.role === "user";
       return {
         role: l.role as ChatRole,
-        content: isLastUser ? actionPayload : l.content,
+        content: isLastUser ? trimmed : l.content,
       };
     });
 
@@ -713,7 +833,12 @@ export default function PlayPage() {
 
     if (!res.ok || !res.body) {
       setIsStreaming(false);
-      setLiveNarrative(`连接失败：${res.status}`);
+      const msg = res.status === 429 || res.status === 503
+        ? "深渊暂时拒绝了你的连接，请稍后再试。"
+        : res.status === 403
+          ? "深渊拒绝了你。请确认你的身份后再试。"
+          : "连接深渊时发生了波动，请稍后再试。";
+      setLiveNarrative(msg);
       return;
     }
 
@@ -766,13 +891,23 @@ export default function PlayPage() {
       return;
     }
 
+    const narrativeToPush = shouldApplyHallucination
+      ? applyBloodErase(parsed.narrative)
+      : parsed.narrative;
     useGameStore.getState().pushLog({
       role: "assistant",
-      content: parsed.narrative,
+      content: narrativeToPush,
       reasoning: undefined,
     });
 
     setLiveNarrative("");
+
+    const consumed = Array.isArray(parsed.consumed_items) ? parsed.consumed_items : [];
+    const hadItemUseNoParchment = consumed.length > 0 && consumed.some((id: string) => id !== "I-PARCHMENT");
+    const hadAnomaly = (parsed.sanity_damage ?? 0) > 0;
+    if (!parsed.is_death) {
+      setPendingHallucinationCheck(hadItemUseNoParchment || hadAnomaly);
+    }
 
     if (Array.isArray(parsed.consumed_items) && parsed.consumed_items.length > 0) {
       useGameStore.getState().consumeItems(parsed.consumed_items);
@@ -840,6 +975,7 @@ export default function PlayPage() {
         .filter((o): o is string => typeof o === "string" && o.length > 0)
         .slice(0, 4);
       setCurrentOptions(validOpts);
+      setPersistCurrentOptions(validOpts);
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -975,16 +1111,6 @@ export default function PlayPage() {
     setActiveMenu(null);
   }
 
-  const withTransition = useCallback((fn: () => void) => {
-    if (typeof document !== "undefined" && "startViewTransition" in document) {
-      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
-        flushSync(fn);
-      });
-    } else {
-      fn();
-    }
-  }, []);
-
   function onSaveAndExit() {
     useGameStore.getState().saveGame("auto_save");
     setShowExitModal(false);
@@ -1012,10 +1138,12 @@ export default function PlayPage() {
 
   return (
     <main
-      className={`min-h-[100dvh] transition-all duration-1000 ${
-        isDarkMoon
-          ? "bg-gradient-to-b from-red-950/20 via-red-950/10 to-black text-red-100"
-          : "bg-background text-foreground"
+      className={`flex h-[100dvh] flex-col overflow-hidden transition-all duration-1000 ${
+        isLowSanity
+          ? "bg-black text-white"
+          : isDarkMoon
+            ? "bg-gradient-to-b from-red-950/20 via-red-950/10 to-black text-red-100"
+            : "bg-background text-foreground"
       }`}
     >
       {showDarkMoonOverlay && (
@@ -1044,35 +1172,7 @@ export default function PlayPage() {
         <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
       )}
 
-      <header className="relative z-40 flex w-full flex-row items-center justify-center gap-4 border-b border-white/5 bg-slate-900/20 px-4 py-3 shadow-sm backdrop-blur-xl md:px-6 md:py-4">
-        <div className="flex h-14 shrink-0 flex-row items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setActiveMenu("settings")}
-            className="flex h-14 min-h-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 backdrop-blur-md transition-all hover:bg-white/10"
-            title="设置"
-          >
-            <Settings className="h-5 w-5 text-white" strokeWidth={1.5} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowExitModal(true)}
-            className="flex h-14 min-h-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 text-sm font-bold tracking-widest text-red-400 backdrop-blur-md transition-all hover:bg-red-900/30 hover:border-red-500/30"
-          >
-            退出
-          </button>
-        </div>
-        <div className="flex h-14 min-h-14 flex-1 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 backdrop-blur-md md:max-w-2xl">
-          <h1 className="text-center text-xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 md:text-2xl">
-            意识潜入
-          </h1>
-        </div>
-        <div className="flex h-14 min-h-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 font-mono text-sm tabular-nums text-slate-300 backdrop-blur-md">
-          {day} 日 {hour} 时
-        </div>
-      </header>
-
-      <div className="relative mx-auto w-full max-w-6xl px-4 py-6 max-md:pb-28 md:px-6 md:py-8">
+      <div className="relative flex min-h-0 flex-1 flex-col">
       {showExitModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -1080,12 +1180,12 @@ export default function PlayPage() {
           aria-modal
           aria-labelledby="exit-modal-title"
         >
-          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
+          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
             <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
               意识脱离申请
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-slate-300">
-              选择封存意识可保存进度并返回首页；选择放弃躯壳将直接触发死亡。
+              选择保存并退出可保存进度并返回首页；选择直接退出将直接触发死亡。
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-end">
               <button
@@ -1093,45 +1193,52 @@ export default function PlayPage() {
                 onClick={onSaveAndExit}
                 className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
               >
-                封存意识 (保存并退出)
+                保存并退出
               </button>
               <button
                 type="button"
                 onClick={onAbandonAndDie}
                 className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
               >
-                放弃躯壳 (直接抹杀)
+                直接退出
               </button>
             </div>
           </div>
         </div>
       )}
 
-        <div className="mt-6">
-          <section className="w-full">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <section className="flex min-h-0 flex-1 flex-col">
             <div
-              className={`relative rounded-2xl border overflow-hidden ${
-                isDarkMoon ? "border-red-900/50 bg-red-950/30" : "border-border bg-white"
+              className={`relative flex h-full min-h-0 flex-1 flex-col overflow-hidden ${
+                isLowSanity ? "bg-black" : isDarkMoon ? "bg-red-950/30" : "bg-white"
               }`}
             >
-              <div className={`border-b px-4 overflow-hidden min-w-0 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
-                <div className="grid grid-cols-3 items-center w-full relative gap-3 py-4">
-                  <h2 className={`justify-self-start text-xl md:text-2xl font-bold tracking-widest truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] ${isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
-                    叙事主视窗
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setActiveMenu("settings")}
-                    className="justify-self-center relative flex items-center justify-center w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border border-white/20 text-slate-300 shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:shadow-[0_0_25px_rgba(255,255,255,0.3)] hover:bg-white/10 transition-all duration-500 cursor-pointer group"
-                    aria-label="设置"
-                  >
-                    <Settings className="h-5 w-5 text-white" strokeWidth={1.5} />
-                  </button>
-                  <div className="justify-self-end flex-shrink-0">
-                    <div className="relative group rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-xl shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+              <div className={`shrink-0 border-b px-3 py-2 ${isLowSanity ? "border-white/20" : isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+                <div className="flex min-h-[40px] items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <h2 className={`truncate text-base font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg ${isLowSanity ? "text-white" : isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
+                      叙事主视窗
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMenu("settings")}
+                      className="shrink-0 min-h-[44px] min-w-[44px] touch-manipulation"
+                      aria-label="设置"
+                    >
+                      <div className="group relative flex h-8 w-8 cursor-pointer items-center justify-center">
+                        <div className="absolute -inset-0.5 rounded-full bg-slate-300/45 blur-sm animate-pulse" />
+                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite]" />
+                        <div className="absolute inset-0.5 rounded-full bg-white/85 backdrop-blur-sm transition-all group-hover:bg-white" />
+                        <Settings className="relative z-10 text-slate-700" size={16} strokeWidth={1.5} />
+                      </div>
+                    </button>
+                  </div>
+                  <div className="shrink-0 min-w-0">
+                    <div className="relative group">
                       {talent && talentCdLeft === 0 && !isStreaming && (
                         <div
-                          className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
+                          className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
                           aria-hidden
                         />
                       )}
@@ -1139,7 +1246,7 @@ export default function PlayPage() {
                         type="button"
                         onClick={onUseTalent}
                         disabled={!talent || talentCdLeft > 0 || isStreaming}
-                        className={`relative rounded-full px-5 py-2 text-xl md:text-2xl font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] transition-all ${
+                        className={`relative truncate rounded-full px-3 py-1.5 text-sm font-bold tracking-wider drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] transition-all md:text-base ${
                           talent && talentCdLeft === 0 && !isStreaming
                             ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
                             : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
@@ -1147,12 +1254,12 @@ export default function PlayPage() {
                       >
                         {talent ? (
                           talentCdLeft > 0 ? (
-                            <>{talent} (冷却: {talentCdLeft} 时)</>
+                            <span className="truncate">{talent} (冷却:{talentCdLeft})</span>
                           ) : (
-                            <>{talent}</>
+                            <span className="truncate">{talent}</span>
                           )
                         ) : (
-                          <>命运回响</>
+                          <span className="truncate">命运回响</span>
                         )}
                       </button>
                     </div>
@@ -1163,26 +1270,30 @@ export default function PlayPage() {
               <div
                 ref={scrollRef}
                 onScroll={onScrollContainer}
-                className="h-[54dvh] min-h-[200px] overflow-y-auto overscroll-contain px-5 py-5"
-                style={{ overflowAnchor: "auto" }}
+                className="touch-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-6 md:py-6"
+                style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
               >
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {displayMessages.map((m, idx) => (
                     <div
                       key={`${m.role}-${idx}`}
-                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm leading-7 ${
-                        isDarkMoon
+                      className={`animate-[fadeIn_0.8s_ease-out] rounded-lg border px-3 py-2 text-xs leading-6 md:px-4 md:py-3 md:text-base md:leading-7 ${
+                        isLowSanity
                           ? m.role === "user"
-                            ? "border-red-900/40 bg-red-950/50 text-red-100"
-                            : "border-red-900/40 bg-red-950/20 text-red-100"
-                          : m.role === "user"
-                            ? "border-border bg-muted text-neutral-900"
-                            : "border-border bg-white text-neutral-900"
+                            ? "border-white/20 bg-white/10 text-white"
+                            : "border-white/20 bg-white/5 text-white"
+                          : isDarkMoon
+                            ? m.role === "user"
+                              ? "border-red-900/40 bg-red-950/50 text-red-100"
+                              : "border-red-900/40 bg-red-950/20 text-red-100"
+                            : m.role === "user"
+                              ? "border-border bg-muted text-neutral-900"
+                              : "border-border bg-white text-neutral-900"
                       }`}
                     >
                       <div
                         className={`mb-1 text-xs font-semibold ${
-                          isDarkMoon ? "text-red-300/90" : "text-neutral-600"
+                          isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-300/90" : "text-neutral-600"
                         }`}
                       >
                         {m.role === "user" ? "你" : "DM"}
@@ -1194,7 +1305,7 @@ export default function PlayPage() {
                               {m.content.replace(/\*\*/g, "")}
                             </p>
                           ) : (
-                            <DMNarrativeBlock content={m.content} isDarkMoon={isDarkMoon} />
+                            <DMNarrativeBlock content={m.content} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
                           )
                         ) : (
                           m.content
@@ -1206,12 +1317,14 @@ export default function PlayPage() {
                   {isStreaming ? (
                     <div
                       className={`min-h-[100px] animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
-                        isDarkMoon
-                          ? "border-red-900/40 bg-red-950/20 text-red-100"
-                          : "border-border bg-white text-neutral-900"
+                        isLowSanity
+                          ? "border-white/20 bg-white/5 text-white"
+                          : isDarkMoon
+                            ? "border-red-900/40 bg-red-950/20 text-red-100"
+                            : "border-border bg-white text-neutral-900"
                       }`}
                     >
-                      <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
+                      <div className={`mb-1 text-xs font-semibold ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
                       {smoothThinking ? (
@@ -1225,7 +1338,7 @@ export default function PlayPage() {
                           </span>
                         </div>
                       ) : (
-                        <div className={isDarkMoon ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200" : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800"}>
+                        <div className={isLowSanity ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-white" : isDarkMoon ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200" : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800"}>
                           <span className="whitespace-pre-wrap">
                             {renderNarrativeText(smoothNarrative)}
                           </span>
@@ -1241,22 +1354,26 @@ export default function PlayPage() {
                   ) : liveNarrative ? (
                     <div
                       className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
-                        isDarkMoon
-                          ? "border-red-900/40 bg-red-950/20 text-red-100"
-                          : "border-border bg-white text-neutral-900"
+                        isLowSanity
+                          ? "border-white/20 bg-white/5 text-white"
+                          : isDarkMoon
+                            ? "border-red-900/40 bg-red-950/20 text-red-100"
+                            : "border-border bg-white text-neutral-900"
                       }`}
                     >
-                      <div className={`mb-1 text-xs font-semibold ${isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
+                      <div className={`mb-1 text-xs font-semibold ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
                         DM
                       </div>
-                      <DMNarrativeBlock content={liveNarrative} isDarkMoon={isDarkMoon} />
+                      <DMNarrativeBlock content={liveNarrative} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
                     </div>
                   ) : (
                     <div
                       className={`rounded-2xl border px-4 py-3 text-sm ${
-                        isDarkMoon
-                          ? "border-red-900/40 bg-red-950/20 text-red-300/80"
-                          : "border-border bg-white text-neutral-600"
+                        isLowSanity
+                          ? "border-white/20 bg-white/5 text-white/60"
+                          : isDarkMoon
+                            ? "border-red-900/40 bg-red-950/20 text-red-300/80"
+                            : "border-border bg-white text-neutral-600"
                       }`}
                     >
                     </div>
@@ -1264,34 +1381,27 @@ export default function PlayPage() {
                 </div>
               </div>
 
-              <div className={`border-t p-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
-                {!hasReadParchment && logs.length === 0 ? (
-                  <p className={`py-3 text-center text-sm ${isDarkMoon ? "text-red-400/70" : "text-neutral-500"}`}>
-                    你需要先查看行囊中的羊皮纸...
+              <div className={`shrink-0 border-t px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isLowSanity ? "border-white/20" : isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+                {hasAnyGate ? (
+                  <p className={`py-3 text-center text-sm font-medium ${isLowSanity ? "text-white/80" : isDarkMoon ? "text-red-400/90" : "text-neutral-600"}`}>
+                    {gateMessage}
                   </p>
                 ) : isStreaming ? (
-                  <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-white/10 bg-white/10 px-8 py-12 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl">
-                    <div className="relative flex h-16 w-16 items-center justify-center">
+                  <div className="liquid-glass halo-nerve flex flex-col items-center justify-center gap-2 rounded-xl px-3 py-4">
+                    <div className="relative flex h-10 w-10 items-center justify-center">
                       <div
                         className="absolute inset-0 rounded-full border-2 border-transparent border-t-indigo-400/80 border-r-purple-400/60 animate-spin"
-                        style={{
-                          boxShadow:
-                            "0 0 20px rgba(99, 102, 241, 0.4), 0 0 40px rgba(139, 92, 246, 0.2), inset 0 0 20px rgba(99, 102, 241, 0.1)",
-                        }}
+                        style={{ boxShadow: "0 0 12px rgba(99,102,241,0.4)" }}
                         aria-hidden
                       />
                       <div
-                        className="absolute inset-2 rounded-full border-2 border-transparent border-b-cyan-400/50 border-l-indigo-400/50 animate-spin"
-                        style={{
-                          animationDirection: "reverse",
-                          animationDuration: "2s",
-                          boxShadow: "0 0 12px rgba(34, 211, 238, 0.3)",
-                        }}
+                        className="absolute inset-1 rounded-full border-2 border-transparent border-b-cyan-400/50 border-l-indigo-400/50 animate-spin"
+                        style={{ animationDirection: "reverse", animationDuration: "2s" }}
                         aria-hidden
                       />
                     </div>
                     <p
-                      className={`text-center text-sm font-medium tracking-wide ${isDarkMoon ? "text-red-200/90" : "text-slate-700"} animate-[breathe_2s_ease-in-out_infinite]`}
+                      className={`text-center text-xs font-medium tracking-wide ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-200/90" : "text-slate-700"} animate-[breathe_2s_ease-in-out_infinite]`}
                       style={{ textShadow: "0 0 16px rgba(99, 102, 241, 0.5)" }}
                     >
                       深渊正在推演命运的选项，请稍候...
@@ -1309,36 +1419,20 @@ export default function PlayPage() {
                             : "opacity-0 translate-y-4 pointer-events-none absolute inset-0"
                         }`}
                       >
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-2">
                           {currentOptions.map((option, idx) => (
                             <button
                               key={idx}
                               type="button"
                               onClick={() => { playUIClick(); void sendAction(option, true); }}
                               disabled={isStreaming}
-                              className="relative group p-4 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-[1.5rem] ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.35),0_10px_30px_-10px_rgba(99,102,241,0.25)] transition-all duration-300 hover:-translate-y-1 overflow-hidden disabled:opacity-40"
-                              style={{ animationDelay: `${idx * 80}ms` }}
+                              className="relative group min-h-[44px] p-3 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-xl ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 transition-all duration-300 overflow-hidden disabled:opacity-40 touch-manipulation"
                             >
-                              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-purple-500/0 to-cyan-500/0 group-hover:from-indigo-500/15 group-hover:via-purple-500/10 group-hover:to-cyan-500/15 transition-all duration-300" />
-                              <div className="absolute -inset-px rounded-[1.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-indigo-500/20 via-transparent to-purple-500/20 blur-sm" aria-hidden />
-                              <span className="relative z-10 text-sm md:text-base text-white/95 group-hover:text-white font-medium tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
+                              <span className="relative z-10 line-clamp-2 text-xs text-white/95 group-hover:text-white font-medium drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)] md:text-sm">
                                 {option}
                               </span>
                             </button>
                           ))}
-                        </div>
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className={`text-xs ${isDarkMoon ? "text-red-300/60" : "text-neutral-500"}`}>
-                            选择一个行动，或切换至手动输入
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => withTransition(toggleInputMode)}
-                            className="relative overflow-hidden rounded-xl border border-indigo-400/50 bg-indigo-500/20 px-6 py-3 font-bold tracking-widest text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-2xl transition-all duration-500 hover:bg-indigo-500/30 hover:shadow-[0_0_35px_rgba(99,102,241,0.6)] flex items-center gap-2"
-                          >
-                            <Keyboard size={16} strokeWidth={1.5} />
-                            <span>手动输入</span>
-                          </button>
                         </div>
                       </div>
 
@@ -1350,7 +1444,7 @@ export default function PlayPage() {
                             : "opacity-100 translate-y-0"
                         }`}
                       >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                           <input
                             value={input}
                             onChange={(e) => {
@@ -1363,10 +1457,12 @@ export default function PlayPage() {
                             placeholder="输入指令，最多20字"
                             inputMode="text"
                             enterKeyHint="done"
-                            className={`min-h-[44px] h-12 w-full rounded-xl border px-4 text-base outline-none transition md:text-sm ${
-                              isDarkMoon
-                                ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
-                                : "border-border bg-white focus:border-neutral-400"
+                            className={`min-h-[44px] w-full rounded-lg border px-3 text-base outline-none transition touch-manipulation ${
+                              isLowSanity
+                                ? "border-white/30 bg-white/10 text-white placeholder:text-white/50 focus:border-white/50"
+                                : isDarkMoon
+                                  ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
+                                  : "border-border bg-white focus:border-neutral-400"
                             }`}
                             disabled={isStreaming}
                           />
@@ -1374,14 +1470,14 @@ export default function PlayPage() {
                             type="button"
                             onClick={onSubmit}
                             disabled={isStreaming || input.trim().length === 0}
-                            className={`min-h-[44px] h-12 shrink-0 rounded-xl px-6 text-base font-semibold transition disabled:opacity-40 md:text-sm ${
-                              isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
+                            className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition disabled:opacity-40 touch-manipulation ${
+                              isLowSanity ? "bg-white/20 text-white" : isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
                             }`}
                           >
                             确认
                           </button>
                         </div>
-                        <div className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
+                        <div className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs ${isLowSanity ? "text-white/70" : isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
                           <span>字数：{input.trim().length}/{MAX_INPUT}</span>
                           <div className="flex items-center gap-3">
                             {inputError ? (
@@ -1394,16 +1490,6 @@ export default function PlayPage() {
                                     ? "深渊 DM 正在推演..."
                                     : "保持简短。保持真实。"}
                               </span>
-                            )}
-                            {currentOptions.length > 0 && !isStreaming && (
-                              <button
-                                type="button"
-                                onClick={() => withTransition(toggleInputMode)}
-                                className="relative overflow-hidden rounded-xl border border-indigo-400/50 bg-indigo-500/20 px-6 py-3 font-bold tracking-widest text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-2xl transition-all duration-500 hover:bg-indigo-500/30 hover:shadow-[0_0_35px_rgba(99,102,241,0.6)] flex items-center gap-2"
-                              >
-                                <List size={16} strokeWidth={1.5} />
-                                <span>返回选项</span>
-                              </button>
                             )}
                           </div>
                         </div>
@@ -1422,6 +1508,15 @@ export default function PlayPage() {
         onClose={() => setActiveMenu(null)}
         onUseItem={onUseItem}
         isStreaming={isStreaming}
+        onViewedTab={async (tab) => {
+          const ok = await markOnboardingViewed(tab);
+          if (ok)
+            setOnboardingStatus((s) => ({
+              codexFirstViewDone: (s?.codexFirstViewDone ?? false) || tab === "codex",
+              warehouseFirstViewDone: (s?.warehouseFirstViewDone ?? false) || tab === "warehouse",
+              tasksFirstViewDone: (s?.tasksFirstViewDone ?? false) || tab === "tasks",
+            }));
+        }}
       />
 
     </main>

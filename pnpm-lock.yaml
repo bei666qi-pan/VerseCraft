@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      altcha:
+        specifier: ^2.3.0
+        version: 2.3.0
+      altcha-lib:
+        specifier: ^1.4.1
+        version: 1.4.1
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -81,6 +87,9 @@ packages:
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+
+  '@altcha/crypto@0.0.1':
+    resolution: {integrity: sha512-qZMdnoD3lAyvfSUMNtC2adRi666Pxdcw9zqfMU5qBOaJWqpN9K+eqQGWqeiKDMqL0SF+EytNG4kR/Pr/99GJ6g==}
 
   '@auth/core@0.41.0':
     resolution: {integrity: sha512-Wd7mHPQ/8zy6Qj7f4T46vg3aoor8fskJm6g2Zyj064oQ3+p0xNZXAV60ww0hY+MbTesfu29kK14Zk5d5JTazXQ==}
@@ -935,6 +944,12 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  '@rollup/rollup-linux-x64-gnu@4.18.0':
+    resolution: {integrity: sha512-xuglR2rBVHA5UsI8h8UbX4VJ470PtGCf5Vpswh7p2ukaqBGFTnsfzxUBetoWBWymHMxbIG0Cmx7Y9qDZzr648w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
 
@@ -1233,6 +1248,12 @@ packages:
 
   ajv@6.14.0:
     resolution: {integrity: sha512-IWrosm/yrn43eiKqkfkHis7QioDleaXQHdDVPKg0FSwwd/DuvyX79TZnFOnYpB7dcsFAMmtFztZuXPDvSePkFw==}
+
+  altcha-lib@1.4.1:
+    resolution: {integrity: sha512-MAXP9tkQOA2SE9Gwoe3LAcZbcDpp3XzYc5GDVej/y3eMNaFG/eVnRY1/7SGFW0RPsViEjPf+hi5eANjuZrH1xA==}
+
+  altcha@2.3.0:
+    resolution: {integrity: sha512-vl8I0dQvSQB7/Mx09XuWZ1+LdSP7vEda6OLbg9kUQ2ZO2LT7MzgUyLK7Iips+GAV6c0ntVcS1XWOqhEPpwbDhQ==}
 
   ansi-styles@4.3.0:
     resolution: {integrity: sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==}
@@ -2725,6 +2746,8 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
+  '@altcha/crypto@0.0.1': {}
+
   '@auth/core@0.41.0':
     dependencies:
       '@panva/hkdf': 1.2.1
@@ -3313,6 +3336,9 @@ snapshots:
     dependencies:
       playwright: 1.58.2
 
+  '@rollup/rollup-linux-x64-gnu@4.18.0':
+    optional: true
+
   '@rtsao/scc@1.1.0': {}
 
   '@swc/helpers@0.5.15':
@@ -3575,6 +3601,14 @@ snapshots:
       fast-json-stable-stringify: 2.1.0
       json-schema-traverse: 0.4.1
       uri-js: 4.4.1
+
+  altcha-lib@1.4.1: {}
+
+  altcha@2.3.0:
+    dependencies:
+      '@altcha/crypto': 0.0.1
+    optionalDependencies:
+      '@rollup/rollup-linux-x64-gnu': 4.18.0
 
   ansi-styles@4.3.0:
     dependencies:

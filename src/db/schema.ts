@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { int, json, mysqlTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, date, int, json, mysqlTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable(
   "users",
@@ -39,6 +39,48 @@ export const gameRecords = mysqlTable("game_records", {
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const gameSessionMemory = mysqlTable("game_session_memory", {
+  userId: varchar("user_id", { length: 191 })
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  plotSummary: text("plot_summary"),
+  playerStatus: json("player_status").$type<Record<string, unknown>>(),
+  npcRelationships: json("npc_relationships").$type<Record<string, unknown>>(),
+  updatedAt: timestamp("updated_at")
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`)
+    .onUpdateNow(),
+});
+
+export const userOnboarding = mysqlTable("user_onboarding", {
+  userId: varchar("user_id", { length: 191 })
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  codexFirstViewDone: int("codex_first_view_done", { unsigned: true })
+    .notNull()
+    .default(0),
+  warehouseFirstViewDone: int("warehouse_first_view_done", { unsigned: true })
+    .notNull()
+    .default(0),
+  tasksFirstViewDone: int("tasks_first_view_done", { unsigned: true })
+    .notNull()
+    .default(0),
+  updatedAt: timestamp("updated_at")
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`)
+    .onUpdateNow(),
+});
+
+export const usersQuota = mysqlTable("users_quota", {
+  userId: varchar("user_id", { length: 191 })
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  dailyTokens: int("daily_tokens", { unsigned: true }).notNull().default(0),
+  dailyActions: int("daily_actions", { unsigned: true }).notNull().default(0),
+  lastActionDate: date("last_action_date").notNull().default(sql`(CURDATE())`),
+  isBanned: boolean("is_banned").notNull().default(false),
+});
+
 export const saveSlots = mysqlTable(
   "save_slots",
   {
@@ -58,10 +100,27 @@ export const saveSlots = mysqlTable(
   })
 );
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersQuotaRelations = relations(usersQuota, ({ one }) => ({
+  user: one(users, {
+    fields: [usersQuota.userId],
+    references: [users.id],
+  }),
+}));
+
+export const usersRelations = relations(users, ({ many, one }) => ({
   feedbacks: many(feedbacks),
   gameRecords: many(gameRecords),
   saveSlots: many(saveSlots),
+  onboarding: one(userOnboarding),
+  sessionMemory: one(gameSessionMemory),
+  quota: one(usersQuota),
+}));
+
+export const gameSessionMemoryRelations = relations(gameSessionMemory, ({ one }) => ({
+  user: one(users, {
+    fields: [gameSessionMemory.userId],
+    references: [users.id],
+  }),
 }));
 
 export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
@@ -81,6 +140,13 @@ export const gameRecordsRelations = relations(gameRecords, ({ one }) => ({
 export const saveSlotsRelations = relations(saveSlots, ({ one }) => ({
   user: one(users, {
     fields: [saveSlots.userId],
+    references: [users.id],
+  }),
+}));
+
+export const userOnboardingRelations = relations(userOnboarding, ({ one }) => ({
+  user: one(users, {
+    fields: [userOnboarding.userId],
     references: [users.id],
   }),
 }));

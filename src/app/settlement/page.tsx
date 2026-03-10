@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
+import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
+import { deleteCloudSaveSlot } from "@/app/actions/save";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 
@@ -88,7 +90,7 @@ function estimateKilledAnomalies(logs: LogEntry[]): number {
 
 export default function SettlementPage() {
   const [mounted, setMounted] = useState(false);
-  const [recorded, setRecorded] = useState(false);
+  const hasUploadedRef = useRef(false);
 
   const stats = useGameStore((s) => s.stats);
   const logs = useGameStore((s) => s.logs ?? []);
@@ -105,19 +107,31 @@ export default function SettlementPage() {
   useEffect(() => {
     if (!mounted) return;
     useGameStore.getState().clearSaveForDeath();
+    void deleteCloudSaveSlot("auto_save");
   }, [mounted]);
 
   useEffect(() => {
-    if (!mounted || recorded) return;
-    setRecorded(true);
-    const survivalTimeSeconds = Math.max(0, ((time.day ?? 0) * 24 + (time.hour ?? 0)) * 3600);
-    const payload = {
-      killedAnomalies: estimateKilledAnomalies(logs),
-      maxFloorScore: resolveFloorScore(playerLocation),
-      survivalTimeSeconds,
+    if (!mounted) return;
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href);
     };
-    void submitGameRecord(payload);
-  }, [logs, mounted, playerLocation, recorded, time.day, time.hour]);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted || hasUploadedRef.current) return;
+    hasUploadedRef.current = true;
+    const kills = estimateKilledAnomalies(logs);
+    const progress = resolveFloorScore(playerLocation);
+    const survivalTimeSeconds = Math.max(0, ((time.day ?? 0) * 24 + (time.hour ?? 0)) * 3600);
+    void submitGameRecord({
+      killedAnomalies: kills,
+      maxFloorScore: progress,
+      survivalTimeSeconds,
+    });
+  }, [logs, mounted, playerLocation, time.day, time.hour]);
 
   if (!mounted) {
     return (
@@ -134,9 +148,16 @@ export default function SettlementPage() {
   }
 
   async function handleRestart() {
+    useGameStore.getState().destroySaveData();
+    usePersistStore.getState().destroySaveData();
+    await deleteCloudSaveSlot("auto_save");
     const p = useGameStore.persist.clearStorage();
     if (p && typeof (p as Promise<unknown>).then === "function") {
       await (p as Promise<void>);
+    }
+    const persistP = (usePersistStore as unknown as { persist?: { clearStorage?: () => void | Promise<void> } }).persist?.clearStorage?.();
+    if (persistP && typeof (persistP as Promise<unknown>).then === "function") {
+      await (persistP as Promise<void>);
     }
     window.location.href = "/";
   }

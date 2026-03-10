@@ -63,3 +63,16 @@ export async function fetchCloudSaveBySlot(slotId: string) {
 
   return (rows[0]?.data as Record<string, unknown> | undefined) ?? null;
 }
+
+export async function deleteCloudSaveSlot(slotId: string) {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return { ok: false };
+  if (!slotId) return { ok: false };
+
+  await db
+    .delete(saveSlots)
+    .where(and(eq(saveSlots.userId, userId), eq(saveSlots.slotId, slotId)));
+
+  return { ok: true };
+}

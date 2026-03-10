@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
+import { GlassCtaButton } from "@/components/GlassCtaButton";
 
 type GenderOption = "男" | "女" | "其他";
 
@@ -17,17 +18,27 @@ const STAT_LABELS: Record<StatType, string> = {
   background: "出身",
 };
 
-const STAT_DESCRIPTIONS: Record<StatType, string> = {
-  sanity:
-    "血条，归零即死。越高越难见鬼。>20 质变：可看破隐藏道具与规则。",
-  agility:
-    "跑路与闪避。越高越容易从诡异手中逃脱。>20 质变：行动有概率不消耗时间。",
-  luck:
-    "欧非体质。越高越容易捡到好货。>20 质变：探索有机会直接获得 A/S 级线索。",
-  charm:
-    "交涉力。越高 NPC 越友善，交易越划算。>20 质变：诡异可能短暂放过你。",
-  background:
-    "1点出身对应1初始原石。出身大于20时，每回合有 (20+超出点数)% 概率自动凝结 1 颗原石。",
+const STAT_DESCRIPTIONS: Record<StatType, string[]> = {
+  sanity: [
+    "血条，归零即死。越高越难见鬼。",
+    ">20 质变：可看破隐藏道具与规则。",
+  ],
+  agility: [
+    "跑路与闪避。越高越容易从诡异手中逃脱。",
+    ">20 质变：行动有概率不消耗时间。",
+  ],
+  luck: [
+    "欧非体质。越高越容易捡到好货。",
+    ">20 质变：探索有机会直接获得 A/S 级线索。",
+  ],
+  charm: [
+    "交涉力。越高 NPC 越友善，交易越划算。",
+    ">20 质变：诡异可能短暂放过你。",
+  ],
+  background: [
+    "1点出身对应1初始原石。",
+    ">20 质变：每回合有 (20+超出点数)% 概率自动凝结 1 颗原石。",
+  ],
 };
 
 const BASE_STAT = 3;
@@ -61,9 +72,9 @@ function clampInt(n: number, min: number, max: number): number {
 const GLASS_PANEL =
   "rounded-[2rem] border border-white/60 bg-white/40 shadow-[inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-3xl";
 const GLASS_INPUT =
-  "rounded-xl border border-white/60 bg-white/50 px-4 text-sm text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300/60";
+  "rounded-xl border border-white/60 bg-white/50 px-4 text-base text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300/60 touch-manipulation min-h-[44px]";
 const GLASS_BTN =
-  "h-10 w-10 rounded-xl border border-white/60 bg-white/50 text-slate-700 transition-all duration-200 hover:bg-white/70 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed";
+  "h-10 w-10 rounded-xl border border-white/60 bg-white/50 text-slate-700 select-none touch-manipulation transition-[transform,background-color,box-shadow] duration-150 ease-out hover:bg-white/70 hover:scale-105 hover:shadow-md active:scale-[0.92] active:bg-white/90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.08)] disabled:opacity-40 disabled:hover:scale-100 disabled:hover:shadow-none disabled:cursor-not-allowed disabled:active:scale-100";
 
 export default function CreatePage() {
   const router = useRouter();
@@ -72,6 +83,8 @@ export default function CreatePage() {
   const [gender, setGender] = useState<GenderOption>("男");
   const [height, setHeight] = useState<number>(170);
   const [personality, setPersonality] = useState("");
+  const [heightFocused, setHeightFocused] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
 
   const [stats, setStats] = useState<Record<StatType, number>>({
@@ -106,7 +119,10 @@ export default function CreatePage() {
   }
 
   function handleSubmit() {
-    if (!canSubmit || !selectedTalent) return;
+    if (!canSubmit || !selectedTalent) {
+      setSubmitAttempted(true);
+      return;
+    }
 
     const cleanName = name.trim();
     const cleanPersonality = personality.trim();
@@ -138,17 +154,8 @@ export default function CreatePage() {
         aria-hidden
       />
 
-      <div className="relative z-10 mx-auto w-full max-w-3xl px-6 py-12">
-        <header className="space-y-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
-            铸造角色
-          </h1>
-          <p className="text-sm text-slate-600">
-            向如月公寓递交自我证明。每一个字都将被记录。
-          </p>
-        </header>
-
-        <section className={`relative mt-10 ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
+      <div className="relative z-10 mx-auto w-full max-w-3xl px-4 sm:px-6 py-4 sm:py-5">
+        <section className={`relative ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
           <h2 className="text-base font-semibold text-slate-800">基础档案</h2>
 
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -184,11 +191,15 @@ export default function CreatePage() {
                   max={220}
                   value={height}
                   onChange={(e) => setHeight(Number(e.target.value))}
+                  onFocus={() => setHeightFocused(true)}
+                  onBlur={() => setHeightFocused(false)}
                   className={`h-11 w-full ${GLASS_INPUT}`}
                 />
                 <span className="shrink-0 text-sm text-slate-600">cm</span>
               </div>
-              <p className="text-xs text-slate-500">140 — 220</p>
+              {heightFocused ? (
+                <p className="text-xs text-red-500">140 — 220</p>
+              ) : null}
             </label>
 
             <label className="space-y-2">
@@ -207,11 +218,7 @@ export default function CreatePage() {
                 <p className="text-xs text-red-500">
                   必须为 2-6 个中文字符，深渊 DM 将严格校验。
                 </p>
-              ) : (
-                <p className="text-xs text-slate-500">
-                  非法词汇或乱码将在序章被抹杀。
-                </p>
-              )}
+              ) : null}
             </label>
           </div>
         </section>
@@ -246,9 +253,11 @@ export default function CreatePage() {
                       <span className="text-sm font-semibold text-slate-800">{STAT_LABELS[stat]}</span>
                       <span className="text-sm text-slate-600">当前：{stats[stat]}</span>
                     </div>
-                    <p className="text-sm text-slate-600 leading-relaxed">
-                      {STAT_DESCRIPTIONS[stat]}
-                    </p>
+                    <div className="space-y-0.5 text-sm text-slate-600 leading-relaxed">
+                      {STAT_DESCRIPTIONS[stat].map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -319,36 +328,15 @@ export default function CreatePage() {
         </section>
 
         <section className="mt-8">
-          <div className={`relative ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
-            <h2 className="text-base font-semibold text-slate-800">确认提交</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              落笔即生效，规则将开始回收你。
-            </p>
-
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-slate-600">
-                {!canSubmit ? (
-                  <span className="text-red-500">
-                    未满足：检查必填项、性格格式、点数用尽、天赋已选。
-                  </span>
-                ) : (
-                  <span className="text-slate-700">校验通过，准备进入。</span>
-                )}
-              </div>
-
-              <div className="group relative inline-flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-xl transition-all duration-500 group-hover:bg-indigo-500/30 group-hover:blur-2xl" />
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
-                  className="relative rounded-full border border-white/60 bg-white/40 px-10 py-3.5 text-sm font-bold tracking-widest text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-3xl transition-all duration-300 disabled:opacity-40 hover:scale-[1.02] hover:bg-white/50 active:scale-[0.98]"
-                >
-                  进入意识潜入
-                </button>
-              </div>
-            </div>
-          </div>
+          <GlassCtaButton
+            label="意识潜入"
+            onClick={handleSubmit}
+            error={
+              submitAttempted && !canSubmit
+                ? "检查必填项、性格格式、点数用尽、天赋已选。"
+                : null
+            }
+          />
         </section>
       </div>
     </main>

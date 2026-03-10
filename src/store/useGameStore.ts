@@ -185,6 +185,8 @@ interface GameState {
   clearSaveForDeath: () => void;
   /** 结算页用：清空存档与物品，仅保留日志/时间/位置用于展示 */
   clearSaveDataKeepLogs: () => void;
+  /** 物理级销毁存档：清空 logs、inventory、saveSlots，强制 isGameStarted=false。离开结算页时调用。 */
+  destroySaveData: () => void;
   setCurrentOptions: (options: string[]) => void;
   toggleInputMode: () => void;
   setOriginium: (v: number) => void;
@@ -378,6 +380,17 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
         })),
+
+      destroySaveData: () =>
+        set({
+          logs: [],
+          inventory: [],
+          saveSlots: {},
+          isGameStarted: false,
+          currentOptions: [],
+          recentOptions: [],
+        }),
+
       setCurrentOptions: (options) =>
         set((s) => {
           const appended = [...(s.recentOptions ?? []), ...options];

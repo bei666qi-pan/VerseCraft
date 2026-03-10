@@ -1,4 +1,5 @@
 // src/app/api/chat/route.ts
+import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { NPCS } from "@/lib/registry/npcs";
@@ -6,7 +7,9 @@ import { ANOMALIES } from "@/lib/registry/anomalies";
 import { buildLoreContextForDM } from "@/lib/registry/world";
 import { auth } from "../../../../auth";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, gameSessionMemory } from "@/db/schema";
+import { compressMemory } from "@/lib/memoryCompress";
+import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +26,35 @@ function getCodexCanonicalNamesBlock(): string {
   return `NPC 真名：${npcNames}。诡异真名：${anomalyNames}。`;
 }
 
-function buildSystemPrompt(playerContext: string, isFirstAction: boolean): string {
+const ROUNDS_THRESHOLD = 10;
+const SHORT_TERM_ROUNDS = 5;
+
+function buildMemoryBlock(mem: { plot_summary: string; player_status: Record<string, unknown>; npc_relationships: Record<string, unknown> } | null): string {
+  if (!mem?.plot_summary) return "";
+  return [
+    "",
+    "## 【动态记忆（压缩剧情摘要）】",
+    "",
+    "【剧情摘要】",
+    mem.plot_summary,
+    "",
+    "【玩家状态快照】",
+    JSON.stringify(mem.player_status, null, 0).slice(0, 500),
+    "",
+    "【NPC 关系快照】",
+    JSON.stringify(mem.npc_relationships, null, 0).slice(0, 300),
+    "",
+  ].join("\n");
+}
+
+function buildSystemPrompt(
+  playerContext: string,
+  isFirstAction: boolean,
+  memoryBlock?: string
+): string {
   const base = [
     "你是一个冷酷无情、充满威严的规则怪谈地下城主。你的叙事必须通俗易懂但充满史诗感、刺激感与连贯感，让玩家深刻代入主角视角。多用短句、环境感官暗示（声音、气味、触感、温度），避免 AI 客服式的过度解释。每一段文字都要像悬疑网文一样让人欲罢不能。",
+    memoryBlock || "",
     `当前玩家状态：${playerContext}`,
     "",
     "## 【固化世界观：如月公寓真相（DM 必知·严禁泄露）】",
@@ -164,7 +193,7 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "",
     "【悬念钩子】：每次叙事的最后一段必须留下一个强烈的悬念或环境异动（如：声响、光影变化、温度骤降、不明脚步声），引导玩家思考下一步行动。",
     "",
-    "【B1 安全区与新手引导法则】：玩家初始在 B1 层，B1 绝对没有诡异。B1 的 NPC（电工老刘、洗衣房阿姨）必须严格遵守人设，在前期对话中自然地透露公寓生存规则、楼层结构、探索目标，绝不能让玩家漫无目的地迷茫。在游戏前 5 小时内，必须安排玩家遇到 B1 的 NPC 并展开互动引导。",
+    "【B1 安全区与新手引导法则】：玩家初始在 B1 层，B1 绝对没有诡异。B1 的 NPC（电工老刘、洗衣房阿姨）必须严格遵守人设，在前期对话中自然地透露公寓生存规则、楼层结构、探索目标，绝不能让玩家漫无目的地迷茫。在游戏前 5 小时内，必须安排玩家遇到 B1 的 NPC 并展开互动引导。新手引导中**必须**提到：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。并用绿字着重标注（使用 ^^...^^ 包裹该提示，如 ^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^）。",
     "",
     "【弱点克制法则】：每个诡异都存在固定的致命弱点。当玩家的行动逻辑准确命中弱点（利用道具或 NPC 联合），必须判定为「效果拔群」，无视战力差距。在 codex_updates 中更新 weakness 字段。",
     "",
@@ -190,7 +219,7 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
         idx,
         0,
         "",
-        "【开局叙事强制约束】对话历史为空，这是玩家的第一个动作！你的 narrative 必须是一段约 200 字的第一人称视角开场白。你必须描写：玩家从冰冷的地板上苏醒，头痛欲裂；发现身边有一张羊皮纸，上面写着关于如月公寓的半真半假的生存规则；随后通过第一人称观察周围环境，描绘令人不安的细节（熟悉的灰色石墙、扭曲的符号、微弱的荧光苔藓、铁锈般的血腥味等）。",
+        "【开局叙事强制约束】对话历史为空，这是玩家的第一个动作！你的 narrative 必须是一段约 200 字的第一人称视角开场白。你必须描写：玩家从冰冷的地板上苏醒，头痛欲裂；发现身边有一张羊皮纸，上面写着关于如月公寓的半真半假的生存规则；随后通过第一人称观察周围环境，描绘令人不安的细节（熟悉的灰色石墙、扭曲的符号、微弱的荧光苔藓、铁锈般的血腥味等）。**必须**在叙事结尾以脑海中的神秘低语或羊皮纸血字形式，用绿字着重标注（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^",
         ""
       );
     }
@@ -292,20 +321,138 @@ export async function POST(req: Request) {
   }
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
-  const systemPrompt = buildSystemPrompt(playerContext, isFirstAction);
   const session = await auth();
   const userId = session?.user?.id ?? null;
 
-  // 历史消息清洗：仅保留 role 与 content，移除 reasoning_content；assistant 非 JSON 时包装为标准格式
-  const safeMessages = messages
+  // Load compressed memory (skip if first action)
+  let sessionMemory: { plot_summary: string; player_status: Record<string, unknown>; npc_relationships: Record<string, unknown> } | null = null;
+  if (!isFirstAction && userId) {
+    const memRows = await db
+      .select({
+        plotSummary: gameSessionMemory.plotSummary,
+        playerStatus: gameSessionMemory.playerStatus,
+        npcRelationships: gameSessionMemory.npcRelationships,
+      })
+      .from(gameSessionMemory)
+      .where(eq(gameSessionMemory.userId, userId))
+      .limit(1);
+    const mr = memRows[0];
+    if (mr?.plotSummary) {
+      sessionMemory = {
+        plot_summary: String(mr.plotSummary),
+        player_status: (mr.playerStatus as Record<string, unknown>) ?? {},
+        npc_relationships: (mr.npcRelationships as Record<string, unknown>) ?? {},
+      };
+    }
+  }
+
+  const memoryBlock = buildMemoryBlock(sessionMemory);
+  const systemPrompt = buildSystemPrompt(playerContext, isFirstAction, memoryBlock);
+
+  if (userId) {
+    try {
+      const estimated = estimateTokensFromInput(systemPrompt, messages);
+      const quotaResult = await checkQuota(userId, estimated);
+      if (!quotaResult.ok) {
+        const msg =
+          quotaResult.reason === "banned"
+            ? "账号已被封禁，无法继续游戏。"
+            : quotaResult.reason === "token_limit"
+              ? "今日 Token 配额已用尽，请明天再试。"
+              : "今日动作次数已达上限，请明天再试。";
+        return new Response(
+          sseText(
+            JSON.stringify({
+              is_action_legal: false,
+              sanity_damage: 0,
+              narrative: msg,
+              is_death: false,
+              consumes_time: true,
+            })
+          ),
+          {
+            status: quotaResult.reason === "banned" ? 403 : 429,
+            headers: {
+              "Content-Type": "text/event-stream; charset=utf-8",
+              "Cache-Control": "no-cache, no-transform",
+              Connection: "keep-alive",
+            },
+          }
+        );
+      }
+    } catch (quotaErr) {
+      console.error("[api/chat] quota check failed, proceeding without quota", quotaErr);
+    }
+  }
+
+  const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
     .map((m) => {
       const content =
-        (m.role === "assistant" ? sanitizeAssistantContent(m.content) : m.content);
-      return { role: m.role, content };
+        m.role === "assistant" ? sanitizeAssistantContent(m.content) : m.content;
+      return { role: m.role, content } as { role: string; content: string };
     });
 
-  safeMessages.unshift({ role: "system", content: systemPrompt });
+  const lastUserIdx = rawChatMessages.map((m) => m.role).lastIndexOf("user");
+  if (lastUserIdx >= 0) {
+    const rawAction = String(rawChatMessages[lastUserIdx]!.content ?? "").trim();
+    const dice = randomInt(1, 101);
+    rawChatMessages[lastUserIdx] = {
+      role: "user",
+      content: `【系统暗骰：本次行动检定值为 ${dice}/100 (1为大成功，100为大失败)】\n玩家行动：${rawAction}`,
+    };
+  }
+
+  // Memory compression: when rounds > 10, keep last 5 + current, compress the 5 before
+  const chatMsgs = rawChatMessages;
+  const totalRounds = Math.floor((chatMsgs.length - 1) / 2);
+  let messagesToSend = rawChatMessages;
+
+  if (totalRounds > ROUNDS_THRESHOLD && userId) {
+    const keepCount = SHORT_TERM_ROUNDS * 2 + 1;
+    const toCompressCount = 5 * 2;
+    const shortTerm = chatMsgs.slice(-keepCount);
+    const toCompress = chatMsgs.slice(-keepCount - toCompressCount, -keepCount);
+
+    messagesToSend = shortTerm;
+
+    void (async () => {
+      try {
+        const newMem = await compressMemory(sessionMemory, toCompress);
+        if (newMem && userId) {
+          await db
+            .insert(gameSessionMemory)
+            .values({
+              userId,
+              plotSummary: newMem.plot_summary,
+              playerStatus: newMem.player_status,
+              npcRelationships: newMem.npc_relationships,
+            })
+            .onDuplicateKeyUpdate({
+              set: {
+                plotSummary: newMem.plot_summary,
+                playerStatus: newMem.player_status,
+                npcRelationships: newMem.npc_relationships,
+              },
+            });
+        }
+      } catch (e) {
+        console.error("[api/chat] async memory compress failed", e);
+      }
+    })();
+  }
+
+  if (isFirstAction && userId) {
+    await db
+      .delete(gameSessionMemory)
+      .where(eq(gameSessionMemory.userId, userId))
+      .catch(() => {});
+  }
+
+  const safeMessages = [
+    { role: "system" as const, content: systemPrompt },
+    ...messagesToSend,
+  ];
 
   const { apiUrl, apiKey, model } = resolveDeepSeekConfig();
   if (!apiKey) {
@@ -409,6 +556,11 @@ export async function POST(req: Request) {
         await persistTokenUsage(userId, toPersist).catch((error) => {
           console.error("[api/chat] failed to persist token usage", error);
         });
+        if (userId && toPersist > 0) {
+          await incrementQuota(userId, toPersist).catch((error) => {
+            console.error("[api/chat] failed to increment quota", error);
+          });
+        }
       };
 
       const stream = new ReadableStream<Uint8Array>({

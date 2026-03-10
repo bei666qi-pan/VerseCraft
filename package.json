@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "altcha": "^2.3.0",
+    "altcha-lib": "^1.4.1",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.1",
     "idb-keyval": "^6.2.2",

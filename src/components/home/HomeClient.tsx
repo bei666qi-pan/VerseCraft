@@ -1,5 +1,6 @@
 "use client";
 
+import "altcha";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
@@ -213,7 +214,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           style={{ animation: "haloFloat 22s ease-in-out infinite 4s" }}
         />
 
-        <div className="fixed right-8 top-8 z-50">
+        <div className="fixed right-4 top-4 sm:right-8 sm:top-8 z-50" style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}>
         {!user ? (
           <div className="relative group">
             <div
@@ -243,7 +244,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             </button>
 
             {authOpen && (
-              <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-white/30 bg-white/20 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-2xl">
+              <div className="liquid-glass-strong absolute right-0 mt-3 w-80 rounded-2xl p-4">
                 <div className="mb-4 flex gap-2">
                   <button
                     type="button"
@@ -262,7 +263,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </div>
 
                 {mode === "login" ? (
-                  <form key="login-form" className="space-y-3" action={loginAction}>
+                  <form key="login-form" className="relative space-y-3" action={loginAction}>
+                    <input
+                      name="fax_number"
+                      type="text"
+                      autoComplete="off"
+                      aria-hidden={true}
+                      tabIndex={-1}
+                      className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
+                    />
                     <input
                       name="name"
                       placeholder="账号"
@@ -274,18 +283,23 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       placeholder="密码"
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
                     />
+                    <altcha-widget
+                      challengeurl="/api/altcha/challenge"
+                      auto="onsubmit"
+                      style={{ display: "none" }}
+                    />
                     <button
                       type="submit"
                       disabled={loginPending}
                       className={`h-10 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        loginPending ? "animate-pulse" : ""
+                        loginPending ? "halo-nerve" : ""
                       }`}
                     >
                       {loginPending ? "正在连接深渊..." : "登录"}
                     </button>
                     {!loginState.success && loginState.error && (
-                      <div className="mt-4 flex items-center gap-3 rounded-xl border border-red-500/50 bg-red-950/50 px-4 py-3 animate-[pulse_2s_ease-in-out_infinite]">
-                        <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]" />
+                      <div className="liquid-glass mt-4 flex gap-3 rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3">
+                        <div className="h-2 w-2 shrink-0 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
                         <span className="text-sm font-medium tracking-widest text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
                           {loginState.error}
                         </span>
@@ -293,7 +307,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     )}
                   </form>
                 ) : (
-                  <form key="register-form" className="space-y-3" action={registerAction}>
+                  <form key="register-form" className="relative space-y-3" action={registerAction}>
+                    <input
+                      name="fax_number"
+                      type="text"
+                      autoComplete="off"
+                      aria-hidden={true}
+                      tabIndex={-1}
+                      className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
+                    />
                     <input
                       name="name"
                       placeholder="账号（至少2位）"
@@ -309,11 +331,16 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       value={registerPassword}
                       onChange={(event) => setRegisterPassword(event.target.value)}
                     />
+                    <altcha-widget
+                      challengeurl="/api/altcha/challenge"
+                      auto="onsubmit"
+                      style={{ display: "none" }}
+                    />
                     <button
                       type="submit"
                       disabled={registerPending || registerAutoLoginPending}
                       className={`h-10 w-full rounded-xl bg-cyan-700 text-sm font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        registerPending || registerAutoLoginPending ? "animate-pulse" : ""
+                        registerPending || registerAutoLoginPending ? "halo-nerve" : ""
                       }`}
                     >
                       {registerPending || registerAutoLoginPending ? "正在连接深渊..." : "注册"}
@@ -322,8 +349,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       registerState.success ? (
                         <p className="text-xs text-emerald-700">{registerState.message}</p>
                       ) : (
-                        <div className="mt-4 flex items-center gap-3 rounded-xl border border-red-500/50 bg-red-950/50 px-4 py-3 animate-[pulse_2s_ease-in-out_infinite]">
-                          <div className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]" />
+                        <div className="liquid-glass mt-4 flex gap-3 rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3">
+                          <div className="h-2 w-2 shrink-0 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
                           <span className="text-sm font-medium tracking-widest text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
                             {registerState.error}
                           </span>

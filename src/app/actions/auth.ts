@@ -1,6 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { verifySolution } from "altcha-lib";
 import { randomUUID } from "node:crypto";
 import { AuthError } from "next-auth";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
@@ -54,6 +55,24 @@ function isDatabaseConnectionError(error: unknown): boolean {
   );
 }
 
+const HONEYPOT_FIELD = "fax_number";
+const ALTCHA_HMAC_KEY = process.env.ALTCHA_HMAC_KEY ?? process.env.AUTH_SECRET ?? "versecraft-altcha-fallback";
+
+function isHoneypotTriggered(formData: FormData): boolean {
+  const val = formData.get(HONEYPOT_FIELD);
+  return val != null && String(val).trim().length > 0;
+}
+
+async function verifyAltcha(formData: FormData): Promise<boolean> {
+  const payload = formData.get("altcha");
+  if (!payload || typeof payload !== "string") return false;
+  try {
+    return await verifySolution(payload, ALTCHA_HMAC_KEY);
+  } catch {
+    return false;
+  }
+}
+
 function resolveCredentialsError(error: AuthError): string | null {
   const authError = error as AuthError & {
     cause?: { err?: Error; message?: string };
@@ -78,6 +97,13 @@ export async function registerUser(
   _prevState: AuthActionState,
   formData: FormData
 ) : Promise<AuthActionState> {
+  if (isHoneypotTriggered(formData)) {
+    return { success: false, error: "系统异常，注册中止。" };
+  }
+  const altchaOk = await verifyAltcha(formData);
+  if (!altchaOk) {
+    return { success: false, error: "验证未通过，请刷新页面重试。" };
+  }
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   if (name.length < 2 || password.length < 6) {
@@ -128,6 +154,13 @@ export async function loginUser(
   _prevState: AuthActionState,
   formData: FormData
 ): Promise<AuthActionState> {
+  if (isHoneypotTriggered(formData)) {
+    return { success: false, error: "系统异常，登录中止。" };
+  }
+  const altchaOk = await verifyAltcha(formData);
+  if (!altchaOk) {
+    return { success: false, error: "验证未通过，请刷新页面重试。" };
+  }
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   if (!name || !password) {

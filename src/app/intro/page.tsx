@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { GlassCtaButton } from "@/components/GlassCtaButton";
 
 const RULES: { tag: string; title: string; paragraphs: string[]; warning: string | null }[] = [
   {
@@ -69,7 +70,7 @@ export default function IntroPage() {
       </header>
 
       {/* 中间自适应滚动区 */}
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+      <main className="touch-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6" style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
         <div className="space-y-2">
           {RULES.map((r, i) => (
             <div
@@ -119,21 +120,12 @@ export default function IntroPage() {
         </div>
       </main>
 
-      {/* 底部固定 Liquid Glass 面板 */}
-      <footer className="shrink-0 border-t border-white/20 bg-white/30 backdrop-blur-2xl">
-        <div className="flex flex-col items-center px-4 py-5">
-          <div className="group relative inline-flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full bg-indigo-500/25 blur-xl animate-pulse transition-all duration-700 group-hover:bg-indigo-500/35 group-hover:blur-2xl" />
-            <button
-              type="button"
-              onClick={() => router.push("/create")}
-              className="relative flex items-center gap-2 rounded-full border border-white/60 bg-white/50 px-10 py-4 font-bold tracking-[0.2em] text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_0_24px_rgba(99,102,241,0.15)] backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] hover:bg-white/70 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_0_32px_rgba(99,102,241,0.25)] active:scale-[0.98]"
-            >
-              签署协议并建立档案
-              <span className="text-slate-500">→</span>
-            </button>
-          </div>
-        </div>
+      {/* 底部固定 CTA - 与 create 意识潜入严格统一 */}
+      <footer className="shrink-0 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <GlassCtaButton
+          label="签署协议"
+          onClick={() => router.push("/create")}
+        />
       </footer>
     </div>
   );

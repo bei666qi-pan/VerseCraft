@@ -55,6 +55,10 @@ export interface GameState {
   activeMenu: ActiveMenu;
   /** Volume 0–100, for audioEngine binding. */
   volume: number;
+  /** Input mode: options = 4-choice cards, text = manual input. Persisted for load restore. */
+  inputMode: "options" | "text";
+  /** Current 4 options from last DM response. Persisted for load restore. */
+  currentOptions: string[];
 }
 
 const DEFAULT_STATS: GameStats = {
@@ -78,6 +82,10 @@ interface GameActions {
   appendRecentOptions: (options: string[]) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
   setVolume: (volume: number) => void;
+  setInputMode: (mode: "options" | "text") => void;
+  setCurrentOptions: (options: string[]) => void;
+  /** 物理级清档：清空 inventory、inputMode、currentOptions，配合 useGameStore.destroySaveData 使用。 */
+  destroySaveData: () => void;
 }
 
 const initialState: GameState = {
@@ -89,6 +97,8 @@ const initialState: GameState = {
   recentOptions: "",
   activeMenu: null,
   volume: 50,
+  inputMode: "options" as const,
+  currentOptions: [],
 };
 
 export const useGameStore = create<GameState & GameActions>()(
@@ -140,6 +150,18 @@ export const useGameStore = create<GameState & GameActions>()(
       setActiveMenu: (menu) => set({ activeMenu: menu }),
 
       setVolume: (vol) => set({ volume: Math.max(0, Math.min(100, vol)) }),
+
+      setInputMode: (mode) => set({ inputMode: mode }),
+
+      setCurrentOptions: (opts) =>
+        set({ currentOptions: Array.isArray(opts) ? opts.slice(0, 4) : [] }),
+
+      destroySaveData: () =>
+        set({
+          inventory: [],
+          inputMode: "options" as const,
+          currentOptions: [],
+        }),
     }),
     {
       name: DB_KEY,
@@ -150,6 +172,8 @@ export const useGameStore = create<GameState & GameActions>()(
         stats: s.stats,
         echoTalent: s.echoTalent,
         inventory: s.inventory,
+        inputMode: s.inputMode ?? "options",
+        currentOptions: s.currentOptions ?? [],
       }),
     }
   )

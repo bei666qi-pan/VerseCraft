@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList } from "lucide-react";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type GameTask } from "@/store/useGameStore";
@@ -103,6 +103,8 @@ interface UnifiedMenuModalProps {
   onClose: () => void;
   onUseItem: (item: Item) => void;
   isStreaming: boolean;
+  /** Called when user views codex/warehouse/tasks tab (for account-first onboarding) */
+  onViewedTab?: (tab: "codex" | "warehouse" | "tasks") => void;
 }
 
 function StatBar({ statName, value, isDanger }: { statName: string; value: number; isDanger: boolean }) {
@@ -131,17 +133,30 @@ function StatBar({ statName, value, isDanger }: { statName: string; value: numbe
 function SettingsPanel({
   stats,
   playerLocation,
+  time,
   volume,
   setVolume,
-  onExitGame,
+  inputMode,
+  onToggleInputMode,
+  onSaveAndExit,
+  onAbandonAndDie,
 }: {
   stats: Record<StatType, number>;
   playerLocation: string;
+  time: { day: number; hour: number };
   volume: number;
   setVolume: (v: number) => void;
-  onExitGame: () => void;
+  inputMode: "options" | "text";
+  onToggleInputMode: () => void;
+  onSaveAndExit: () => void;
+  onAbandonAndDie: () => void;
 }) {
   const displayLocation = formatLocationLabel(playerLocation);
+  const day = time.day ?? 0;
+  const hour = time.hour ?? 0;
+  const rowClass = "rounded-xl border border-white/10 bg-white/5 px-4 py-3";
+  const labelClass = "text-xs text-slate-500";
+  const valueClass = "mt-1 font-semibold text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]";
   return (
     <div className="space-y-8 p-6">
       <div>
@@ -156,11 +171,15 @@ function SettingsPanel({
             />
           ))}
         </div>
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-          <span className="text-xs text-slate-500">当前位置</span>
-          <p className="mt-1 font-semibold text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]">
-            {displayLocation}
-          </p>
+        <div className="mt-4 flex items-center gap-4">
+          <div className={rowClass}>
+            <span className={labelClass}>当前位置</span>
+            <p className={valueClass}>{displayLocation}</p>
+          </div>
+          <div className={rowClass}>
+            <span className={labelClass}>时间</span>
+            <p className={valueClass}>{day} 日 {hour} 时</p>
+          </div>
         </div>
       </div>
 
@@ -180,12 +199,45 @@ function SettingsPanel({
       </div>
 
       <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">输入模式</h3>
         <button
           type="button"
-          onClick={onExitGame}
-          className="rounded-xl border border-red-500/40 bg-red-950/50 px-6 py-3 text-sm font-semibold text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all hover:border-red-500/60 hover:bg-red-900/50 hover:shadow-[0_0_25px_rgba(239,68,68,0.4)]"
+          onClick={onToggleInputMode}
+          className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/20 bg-gradient-to-b from-white/15 to-white/5 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98]"
         >
-          退出游戏
+          <span className="text-sm font-medium tracking-wide text-slate-100">
+            {inputMode === "options" ? "当前：选项模式" : "当前：手动输入"}
+          </span>
+          <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+            {inputMode === "options" ? (
+              <>
+                <Keyboard size={14} strokeWidth={2} />
+                切换到手动输入
+              </>
+            ) : (
+              <>
+                <List size={14} strokeWidth={2} />
+                切换到选项
+              </>
+            )}
+          </span>
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={onSaveAndExit}
+          className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
+        >
+          保存并退出
+        </button>
+        <button
+          type="button"
+          onClick={onAbandonAndDie}
+          className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
+        >
+          直接退出
         </button>
       </div>
     </div>
@@ -510,7 +562,7 @@ function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number
   );
 }
 
-export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }: UnifiedMenuModalProps) {
+export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, onViewedTab }: UnifiedMenuModalProps) {
   const router = useRouter();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [codexPage, setCodexPage] = useState(0);
@@ -523,24 +575,40 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
   const tasks = useGameStore((s) => s.tasks ?? []);
   const originium = useGameStore((s) => s.originium ?? 0);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
-  const resetForNewGame = useGameStore((s) => s.resetForNewGame);
-  const setHasReadParchment = useGameStore((s) => s.setHasReadParchment);
+  const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
 
   const volume = usePersistStore((s) => s.volume);
   const setVolume = usePersistStore((s) => s.setVolume);
+  const inputMode = usePersistStore((s) => s.inputMode ?? "options");
+  const setPersistInputMode = usePersistStore((s) => s.setInputMode);
+  const toggleInputMode = useGameStore((s) => s.toggleInputMode);
 
   const currentTab = activeMenu ?? "settings";
 
-  function handleExitGame() {
-    resetForNewGame();
+  function handleToggleInputMode() {
+    toggleInputMode();
+    setPersistInputMode(inputMode === "options" ? "text" : "options");
+  }
+
+  function handleSaveAndExit() {
+    useGameStore.getState().saveGame("auto_save");
     onClose();
     router.push("/");
   }
 
+  function handleAbandonAndDie() {
+    useGameStore.getState().setStats({ sanity: 0 });
+    onClose();
+  }
+
   function handleTabSelect(id: ActiveMenu) {
-    if (id === "backpack") setHasReadParchment(true);
-    if (id === "codex") setHasCheckedCodex(true);
+    if (id === "codex") {
+      setHasCheckedCodex(true);
+      onViewedTab?.("codex");
+    }
+    if (id === "warehouse") onViewedTab?.("warehouse");
+    if (id === "tasks") onViewedTab?.("tasks");
     usePersistStore.getState().setActiveMenu(id);
   }
 
@@ -558,7 +626,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
         id="unified-menu-content"
       >
         {/* 左侧侧边栏 */}
-        <aside className="flex w-1/4 flex-col border-r border-white/10 bg-black/20 p-4">
+        <aside className="flex w-20 min-w-[72px] sm:w-1/4 flex-col border-r border-white/10 bg-black/20 p-3 sm:p-4">
           <h2 id="unified-menu-title" className="sr-only">
             控制中枢
           </h2>
@@ -571,7 +639,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
                   key={tab.id}
                   type="button"
                   onClick={() => handleTabSelect(tab.id)}
-                  className={`flex flex-col items-center justify-center gap-1.5 w-16 h-16 rounded-2xl transition-all duration-500 cursor-pointer ${
+                  className={`flex flex-col items-center justify-center gap-1.5 min-w-[56px] min-h-[56px] w-14 h-14 sm:w-16 sm:h-16 rounded-2xl transition-all duration-500 cursor-pointer touch-manipulation ${
                     isActive
                       ? "text-white bg-white/10 border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.15)] drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
                       : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
@@ -586,7 +654,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
           <button
             type="button"
             onClick={onClose}
-            className="mt-auto rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white"
+            className="mt-auto min-h-[44px] rounded-xl border border-white/30 bg-white/15 px-5 py-3 text-sm font-semibold text-white shadow-[0_0_12px_rgba(255,255,255,0.15)] transition hover:bg-white/25 hover:border-white/50 hover:shadow-[0_0_20px_rgba(255,255,255,0.25)] touch-manipulation"
           >
             关闭
           </button>
@@ -598,9 +666,13 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming }
             <SettingsPanel
               stats={stats}
               playerLocation={playerLocation}
+              time={time}
               volume={volume}
               setVolume={setVolume}
-              onExitGame={handleExitGame}
+              inputMode={inputMode}
+              onToggleInputMode={handleToggleInputMode}
+              onSaveAndExit={handleSaveAndExit}
+              onAbandonAndDie={handleAbandonAndDie}
             />
           )}
           {currentTab === "backpack" && (
