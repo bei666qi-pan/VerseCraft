@@ -109,6 +109,10 @@ export interface SaveSlotData {
   time: GameTime;
   codex: Record<string, CodexEntry>;
   historicalMaxSanity: number;
+  talent?: EchoTalent | null;
+  talentCooldowns?: Record<EchoTalent, number>;
+  hasReadParchment?: boolean;
+  hasCheckedCodex?: boolean;
 }
 
 export interface AuthUser {
@@ -175,6 +179,10 @@ interface GameState {
   logout: () => void;
   /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
   resetForNewGame: () => void;
+  /** 标记游戏结束（死亡）：清空存档，隐藏继续冒险 */
+  markGameOver: () => void;
+  /** 结算页用：清空存档与物品，仅保留日志/时间/位置用于展示 */
+  clearSaveDataKeepLogs: () => void;
   setCurrentOptions: (options: string[]) => void;
   toggleInputMode: () => void;
   setOriginium: (v: number) => void;
@@ -338,6 +346,24 @@ export const useGameStore = create<GameState>()(
           isGameStarted: false,
           originiumDropNotifyUntil: 0,
         }),
+
+      markGameOver: () =>
+        set((s) => {
+          const { auto_save, ...rest } = s.saveSlots ?? {};
+          return {
+            isGameStarted: false,
+            saveSlots: rest,
+          };
+        }),
+
+      clearSaveDataKeepLogs: () =>
+        set((s) => ({
+          isGameStarted: false,
+          saveSlots: {},
+          inventory: [],
+          currentOptions: [],
+          recentOptions: [],
+        })),
       setCurrentOptions: (options) =>
         set((s) => {
           const appended = [...(s.recentOptions ?? []), ...options];
@@ -618,6 +644,10 @@ export const useGameStore = create<GameState>()(
           time: JSON.parse(JSON.stringify(s.time ?? { day: 0, hour: 0 })),
           codex: JSON.parse(JSON.stringify(s.codex ?? {})),
           historicalMaxSanity: s.historicalMaxSanity ?? 50,
+          talent: s.talent,
+          talentCooldowns: JSON.parse(JSON.stringify(s.talentCooldowns ?? {})),
+          hasReadParchment: s.hasReadParchment ?? false,
+          hasCheckedCodex: s.hasCheckedCodex ?? false,
         };
         set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
         void import("@/app/actions/save")
@@ -628,6 +658,10 @@ export const useGameStore = create<GameState>()(
       loadGame: (slotId) => {
         const data = get().saveSlots[slotId];
         if (!data) return;
+        const talentCooldowns =
+          data.talentCooldowns && typeof data.talentCooldowns === "object"
+            ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
+            : DEFAULT_TALENT_COOLDOWNS;
         set({
           stats: JSON.parse(JSON.stringify(data.stats)),
           inventory: JSON.parse(JSON.stringify(data.inventory)),
@@ -635,21 +669,37 @@ export const useGameStore = create<GameState>()(
           time: JSON.parse(JSON.stringify(data.time)),
           codex: JSON.parse(JSON.stringify(data.codex)),
           historicalMaxSanity: data.historicalMaxSanity,
+          talent: data.talent ?? null,
+          talentCooldowns,
+          hasReadParchment: data.hasReadParchment ?? (Array.isArray(data.logs) && data.logs.length > 0),
+          hasCheckedCodex: data.hasCheckedCodex ?? false,
         });
       },
       hydrateFromCloud: (slotId, data) => {
         if (!data) return;
-        set((s) => ({
-          currentSaveSlot: slotId,
-          saveSlots: { ...s.saveSlots, [slotId]: data },
-          stats: JSON.parse(JSON.stringify(data.stats)),
-          inventory: JSON.parse(JSON.stringify(data.inventory)),
-          logs: JSON.parse(JSON.stringify(data.logs ?? [])),
-          time: JSON.parse(JSON.stringify(data.time ?? { day: 0, hour: 0 })),
-          codex: JSON.parse(JSON.stringify(data.codex ?? {})),
-          historicalMaxSanity: data.historicalMaxSanity ?? 50,
-          isGameStarted: true,
-        }));
+        const talentCooldowns =
+          data.talentCooldowns && typeof data.talentCooldowns === "object"
+            ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
+            : DEFAULT_TALENT_COOLDOWNS;
+        set((s) => {
+          const loadedLogs = data.logs ?? [];
+          const hasProgress = Array.isArray(loadedLogs) && loadedLogs.length > 0;
+          return {
+            currentSaveSlot: slotId,
+            saveSlots: { ...s.saveSlots, [slotId]: data },
+            stats: JSON.parse(JSON.stringify(data.stats)),
+            inventory: JSON.parse(JSON.stringify(data.inventory)),
+            logs: JSON.parse(JSON.stringify(data.logs ?? [])),
+            time: JSON.parse(JSON.stringify(data.time ?? { day: 0, hour: 0 })),
+            codex: JSON.parse(JSON.stringify(data.codex ?? {})),
+            historicalMaxSanity: data.historicalMaxSanity ?? 50,
+            talent: data.talent ?? s.talent ?? null,
+            talentCooldowns,
+            hasReadParchment: data.hasReadParchment ?? hasProgress,
+            hasCheckedCodex: data.hasCheckedCodex ?? false,
+            isGameStarted: true,
+          };
+        });
       },
     }),
     {

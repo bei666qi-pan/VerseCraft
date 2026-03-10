@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-const SECTIONS = [
+const RULES: { tag: string; title: string; paragraphs: string[]; warning: string | null }[] = [
   {
-    tag: "§1 — 真相",
+    tag: "规则一",
     title: "如月公寓并非人类建筑",
     paragraphs: [
       "它是折叠在三维空间的高维生命体。地上 7 层，每层盘踞一只遵循固定杀人规则的诡异。",
@@ -14,7 +15,7 @@ const SECTIONS = [
     warning: null,
   },
   {
-    tag: "§2 — 属性",
+    tag: "规则二",
     title: "五项属性决定生死",
     paragraphs: [
       "理智即血条，归零即死。敏捷决定闪避，幸运偏向随机事件，魅力影响 NPC 交易与好感，出身决定开局财富与物品品阶。",
@@ -22,7 +23,7 @@ const SECTIONS = [
     warning: null,
   },
   {
-    tag: "§3 — 天赋",
+    tag: "规则三",
     title: "回响天赋是存活的关键",
     paragraphs: [
       "选择一项：时间回溯 · 命运馈赠 · 主角光环 · 生命汇源 · 洞察之眼 · 丧钟回响。天赋可对抗规则与异常，每次使用后进入冷却。",
@@ -30,7 +31,7 @@ const SECTIONS = [
     warning: null,
   },
   {
-    tag: "§4 — 守则",
+    tag: "规则四",
     title: "每回合不超过 20 字",
     paragraphs: [
       "深渊 DM 会严格校验你的行动：是否持有对应物品、是否符合属性与 NPC 关系、是否违反公寓规则。",
@@ -40,8 +41,11 @@ const SECTIONS = [
 ];
 
 export default function IntroPage() {
+  const router = useRouter();
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 text-slate-800">
+    <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 text-slate-800">
       {/* 神圣诡异光晕 - 呼吸浮动 */}
       <div
         className="pointer-events-none absolute -z-10 top-[10%] left-[5%] h-[600px] w-[600px] rounded-full bg-cyan-200/40 blur-[140px] animate-[haloFloat_12s_ease-in-out_infinite]"
@@ -57,53 +61,80 @@ export default function IntroPage() {
         aria-hidden
       />
 
-      <h1 className="relative z-10 mt-20 mb-12 text-center text-3xl font-bold tracking-widest text-slate-800">
-        如月公寓入职协议
-      </h1>
+      {/* 顶部固定标题区 */}
+      <header className="shrink-0 px-4 pt-8 pb-4">
+        <h1 className="text-center text-2xl font-bold tracking-[0.25em] text-slate-800 md:text-3xl md:tracking-[0.35em]">
+          如月公寓入职协议
+        </h1>
+      </header>
 
-      <div className="relative z-10 mx-auto flex max-w-4xl flex-col space-y-16 px-6 pb-20">
-        {SECTIONS.map((s) => (
-          <div
-            key={s.tag}
-            className="group relative w-full rounded-[2rem] border border-white/60 bg-white/40 p-10 shadow-[inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-3xl transition-all duration-500 hover:bg-white/50 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_8px_32px_-12px_rgba(0,0,0,0.06)] md:p-12"
-          >
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              {s.tag}
-            </p>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-800 md:text-3xl">
-              {s.title}
-            </h2>
-            {s.paragraphs.map((p, i) => (
-              <p
-                key={i}
-                className="mt-6 text-lg font-light leading-relaxed text-slate-700 md:text-xl"
+      {/* 中间自适应滚动区 */}
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+        <div className="space-y-2">
+          {RULES.map((r, i) => (
+            <div
+              key={r.tag}
+              className="rounded-2xl border border-white/60 bg-white/40 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] backdrop-blur-2xl transition-all duration-300 hover:bg-white/50"
+            >
+              <button
+                type="button"
+                onClick={() => setOpenIndex(openIndex === i ? null : i)}
+                className="flex w-full cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left"
+                aria-expanded={openIndex === i}
               >
-                {p}
-              </p>
-            ))}
-            {s.warning && (
-              <p className="mt-6 text-sm leading-relaxed text-red-500/90">
-                {s.warning}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
+                <span className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">
+                  {r.tag}
+                </span>
+                <span className="flex-1 text-lg font-bold tracking-widest text-slate-800 md:text-xl">
+                  {r.title}
+                </span>
+                <span
+                  className={`shrink-0 text-slate-400 transition-transform duration-300 ${openIndex === i ? "rotate-180" : ""}`}
+                  aria-hidden
+                >
+                  ▼
+                </span>
+              </button>
 
-      <div className="relative z-10 flex flex-col items-center pb-32 pt-8">
-        <p className="text-sm font-light tracking-widest text-slate-500">
-          准备好了吗？
-        </p>
-        <div className="group relative mt-8 inline-flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-xl transition-all duration-500 group-hover:bg-indigo-500/30 group-hover:blur-2xl" />
-          <Link
-            href="/create"
-            className="relative flex items-center gap-3 rounded-full border border-white/60 bg-white/40 px-12 py-5 font-semibold tracking-widest text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1)] backdrop-blur-3xl transition-all duration-300 hover:scale-[1.02] hover:bg-white/50"
-          >
-            签署协议并建立档案 →
-          </Link>
+              <div
+                className={`grid transition-[grid-template-rows,opacity,margin] duration-500 ease-in-out ${openIndex === i ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0 mt-0"}`}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div className="border-t border-white/30 px-5 pb-4 pt-3">
+                    <div className="space-y-3 text-sm leading-relaxed text-slate-600 md:text-base">
+                      {r.paragraphs.map((p, j) => (
+                        <p key={j}>{p}</p>
+                      ))}
+                    </div>
+                    {r.warning && (
+                      <p className="mt-3 text-sm leading-relaxed text-red-500/90">
+                        {r.warning}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      </main>
+
+      {/* 底部固定 Liquid Glass 面板 */}
+      <footer className="shrink-0 border-t border-white/20 bg-white/30 backdrop-blur-2xl">
+        <div className="flex flex-col items-center px-4 py-5">
+          <div className="group relative inline-flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-indigo-500/25 blur-xl animate-pulse transition-all duration-700 group-hover:bg-indigo-500/35 group-hover:blur-2xl" />
+            <button
+              type="button"
+              onClick={() => router.push("/create")}
+              className="relative flex items-center gap-2 rounded-full border border-white/60 bg-white/50 px-10 py-4 font-bold tracking-[0.2em] text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_0_24px_rgba(99,102,241,0.15)] backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] hover:bg-white/70 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_0_32px_rgba(99,102,241,0.25)] active:scale-[0.98]"
+            >
+              签署协议并建立档案
+              <span className="text-slate-500">→</span>
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

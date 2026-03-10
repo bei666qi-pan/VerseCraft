@@ -103,6 +103,11 @@ export default function SettlementPage() {
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
+    useGameStore.getState().clearSaveDataKeepLogs();
+  }, [mounted]);
+
+  useEffect(() => {
     if (!mounted || recorded) return;
     setRecorded(true);
     const survivalTimeSeconds = Math.max(0, ((time.day ?? 0) * 24 + (time.hour ?? 0)) * 3600);

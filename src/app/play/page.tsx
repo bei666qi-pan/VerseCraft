@@ -895,6 +895,7 @@ export default function PlayPage() {
     const sanityAfter = useGameStore.getState().stats.sanity ?? 0;
 
     if (parsed.is_death || sanityAfter <= 0) {
+      useGameStore.getState().markGameOver();
       setTimeout(() => router.push("/settlement"), 2000);
     }
   }
@@ -1331,7 +1332,7 @@ export default function PlayPage() {
               </div>
 
               <div className={`border-t p-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
-                {!hasReadParchment ? (
+                {!hasReadParchment && logs.length === 0 ? (
                   <p className={`py-3 text-center text-sm ${isDarkMoon ? "text-red-400/70" : "text-neutral-500"}`}>
                     你需要先查看行囊中的羊皮纸...
                   </p>
@@ -1483,7 +1484,7 @@ export default function PlayPage() {
           type="button"
           onClick={openInventory}
           className={`group flex h-12 w-12 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-full border border-white/20 bg-slate-900/50 shadow-[0_0_20px_rgba(139,92,246,0.4)] backdrop-blur-xl transition hover:scale-110 active:scale-95 ${
-            !hasReadParchment ? "animate-bounce ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
+            !hasReadParchment && logs.length === 0 ? "animate-bounce ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : ""
           }`}
           title="行囊"
         >
