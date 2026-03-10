@@ -345,7 +345,7 @@ function MobileStatsPanel({
         className="flex w-full items-center justify-between px-4 py-3 text-left"
       >
         <span className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
-          属性 · 理智 {stats.sanity ?? 0}/{STAT_MAX}
+          理智 {stats.sanity ?? 0}/{STAT_MAX}
         </span>
         <span className={`text-xs ${isDarkMoon ? "text-red-300/80" : "text-slate-400"}`}>
           {expanded ? "收起" : "展开"}
@@ -1045,8 +1045,14 @@ export default function PlayPage() {
       )}
 
       <header className="relative z-40 flex w-full flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-slate-900/20 px-4 py-3 shadow-sm backdrop-blur-xl md:flex-nowrap md:gap-4 md:px-6 md:py-4">
-        <div className="flex items-center gap-4">
-          <div className="relative group flex items-center">
+        <div className="flex h-12 min-h-12 items-center gap-3">
+          <div className="relative group flex h-12 min-h-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/10 backdrop-blur-2xl transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]">
+            <div className="absolute inset-[-80%] animate-[spin_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_90deg,transparent_180deg,rgba(255,255,255,0.3)_270deg,transparent_360deg)] opacity-80" aria-hidden />
+            <button type="button" onClick={() => setActiveMenu("settings")} className="relative z-10 flex h-full w-full items-center justify-center" title="设置">
+              <Settings className="h-5 w-5 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" strokeWidth={1.5} />
+            </button>
+          </div>
+          <div className="relative group flex h-12 min-h-12 items-center">
             <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-indigo-500/30 to-blue-500/30 opacity-70 blur-xl transition-opacity group-hover:opacity-100" aria-hidden />
             <h1 className="relative z-10 text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 drop-shadow-md md:text-3xl">
               意识潜入
@@ -1058,14 +1064,17 @@ export default function PlayPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex h-12 min-h-12 items-center gap-4">
           <button
             type="button"
             onClick={() => setShowExitModal(true)}
-            className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
+            className="h-12 min-h-12 rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
           >
             退出
           </button>
+          <span className="font-mono text-sm tabular-nums text-slate-400">
+            {day} 日 {hour} 时
+          </span>
         </div>
       </header>
 
@@ -1121,7 +1130,7 @@ export default function PlayPage() {
               }`}
             >
               <h2 className={`mb-5 text-sm font-semibold tracking-widest ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
-                属性
+                状态
               </h2>
               <div className="space-y-2">
                 {STAT_ORDER.map((k) => (
@@ -1139,44 +1148,46 @@ export default function PlayPage() {
 
           <section className="lg:col-span-8">
             <div
-              className={`relative rounded-2xl border ${
+              className={`relative rounded-2xl border overflow-hidden ${
                 isDarkMoon ? "border-red-900/50 bg-red-950/30" : "border-border bg-white"
               }`}
             >
-              {/* Echo Talent: inside narrative card, top-right */}
-              <div className="absolute top-4 right-4 z-20">
-                <div className="relative group rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-xl shadow-[0_0_20px_rgba(99,102,241,0.2)]">
-                  {talent && talentCdLeft === 0 && !isStreaming && (
-                    <div
-                      className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
-                      aria-hidden
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={onUseTalent}
-                    disabled={!talent || talentCdLeft > 0 || isStreaming}
-                    className={`relative rounded-full px-5 py-2 font-bold tracking-widest transition-all ${
-                      talent && talentCdLeft === 0 && !isStreaming
-                        ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
-                        : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
-                    }`}
-                  >
-                    {talent ? (
-                      talentCdLeft > 0 ? (
-                        <>{talent} (冷却: {talentCdLeft} 时)</>
-                      ) : (
-                        <>发动：{talent}</>
-                      )
-                    ) : (
-                      <>未选择回响天赋</>
-                    )}
-                  </button>
+              <div className={`border-b px-4 overflow-hidden min-w-0 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+                <div className="flex items-center justify-between w-full gap-3 py-4">
+                  <h2 className={`text-xl md:text-2xl font-bold tracking-widest truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] ${isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
+                    叙事主视窗
+                  </h2>
+                  <div className="flex-shrink-0">
+                    <div className="relative group rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-xl shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+                      {talent && talentCdLeft === 0 && !isStreaming && (
+                        <div
+                          className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
+                          aria-hidden
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={onUseTalent}
+                        disabled={!talent || talentCdLeft > 0 || isStreaming}
+                        className={`relative rounded-full px-5 py-2 text-xl md:text-2xl font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] transition-all ${
+                          talent && talentCdLeft === 0 && !isStreaming
+                            ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
+                            : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
+                        }`}
+                      >
+                        {talent ? (
+                          talentCdLeft > 0 ? (
+                            <>{talent} (冷却: {talentCdLeft} 时)</>
+                          ) : (
+                            <>发动：{talent}</>
+                          )
+                        ) : (
+                          <>命运回响</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              <div className={`border-b px-5 py-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
-                <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>叙事主视窗</h2>
               </div>
 
               <div
@@ -1353,9 +1364,9 @@ export default function PlayPage() {
                           <button
                             type="button"
                             onClick={() => withTransition(toggleInputMode)}
-                            className="flex items-center gap-1.5 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-2 text-sm font-medium tracking-widest text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all duration-300 hover:bg-indigo-500/20 hover:border-indigo-400/60"
+                            className="relative overflow-hidden rounded-xl border border-indigo-400/50 bg-indigo-500/20 px-6 py-3 font-bold tracking-widest text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-2xl transition-all duration-500 hover:bg-indigo-500/30 hover:shadow-[0_0_35px_rgba(99,102,241,0.6)] flex items-center gap-2"
                           >
-                            <Keyboard size={14} strokeWidth={1.5} />
+                            <Keyboard size={16} strokeWidth={1.5} />
                             <span>手动输入</span>
                           </button>
                         </div>
@@ -1418,9 +1429,9 @@ export default function PlayPage() {
                               <button
                                 type="button"
                                 onClick={() => withTransition(toggleInputMode)}
-                                className="flex items-center gap-1.5 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-2 text-sm font-medium tracking-widest text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all duration-300 hover:bg-indigo-500/20 hover:border-indigo-400/60"
+                                className="relative overflow-hidden rounded-xl border border-indigo-400/50 bg-indigo-500/20 px-6 py-3 font-bold tracking-widest text-indigo-100 shadow-[0_0_20px_rgba(99,102,241,0.4)] backdrop-blur-2xl transition-all duration-500 hover:bg-indigo-500/30 hover:shadow-[0_0_35px_rgba(99,102,241,0.6)] flex items-center gap-2"
                               >
-                                <List size={14} strokeWidth={1.5} />
+                                <List size={16} strokeWidth={1.5} />
                                 <span>返回选项</span>
                               </button>
                             )}
@@ -1436,37 +1447,12 @@ export default function PlayPage() {
         </div>
       </div>
 
-      {/* 底部 Action Bar: 设置 | 意识潜入区 | 时间 */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center px-4 py-4 md:bottom-6 md:px-8 md:pb-6">
+      {/* 底部 Action Bar: 移动端安全区占位，设置与时间已移至 header */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center px-4 py-4 md:bottom-6 md:px-8 md:pb-6" aria-hidden>
         <div
-          className="flex w-full max-w-4xl flex-row items-center justify-between gap-6 rounded-2xl border border-white/10 bg-slate-900/40 px-6 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl md:px-8"
+          className="flex w-full max-w-4xl flex-row items-center justify-center rounded-2xl border border-white/10 bg-slate-900/40 px-6 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl md:px-8"
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
-        >
-          {/* 左侧: 设置按钮 - Apple Liquid Glass 光效 */}
-          <div className="flex shrink-0 items-center">
-            <button
-              type="button"
-              onClick={() => setActiveMenu("settings")}
-              className="group relative flex h-12 min-h-12 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-white shadow-[0_0_20px_rgba(255,255,255,0.15)] backdrop-blur-2xl transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]"
-              title="设置"
-            >
-              <div
-                className="absolute inset-[-80%] animate-[spin_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_90deg,transparent_180deg,rgba(255,255,255,0.3)_270deg,transparent_360deg)] opacity-80"
-                aria-hidden
-              />
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,rgba(255,255,255,0.2),transparent_70%)]" aria-hidden />
-              <Settings className="relative z-10 h-5 w-5 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" strokeWidth={1.5} />
-            </button>
-          </div>
-
-          {/* 中间: 意识潜入输入区占位，实际输入在叙事卡片内 */}
-          <div className="min-w-0 flex-1" />
-
-          {/* 右侧: 时间显示 */}
-          <div className="flex shrink-0 items-center font-mono text-sm text-slate-400 tabular-nums">
-            {day} 日 {hour} 时
-          </div>
-        </div>
+        />
       </div>
 
       <UnifiedMenuModal

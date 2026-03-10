@@ -198,80 +198,95 @@ function BackpackPanel({
   onUseItem: (item: Item) => void;
   isStreaming: boolean;
 }) {
+  const slotItems = Array.from({ length: 6 }, (_, idx) => inventory[idx] ?? null);
+  const selectedItem = selectedId ? inventory.find((i) => i.id === selectedId) : null;
+
   return (
-    <div className="flex h-full flex-col p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold tracking-widest text-slate-400">行囊</h3>
-        <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
-          <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-          <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
-          <span className="text-[10px] text-amber-400/70">原石</span>
+    <div className="flex h-full flex-row overflow-hidden">
+      <div className="flex w-2/5 flex-col border-r border-white/10">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <h3 className="text-sm font-semibold tracking-widest text-slate-400">
+            行囊 · 目录
+          </h3>
+          <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
+            <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+            <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
+            <span className="text-[10px] text-amber-400/70">原石</span>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {slotItems.length === 0 ? (
+            <p className="py-4 text-xs text-slate-500">暂无</p>
+          ) : (
+            <div className="space-y-2">
+              {slotItems.map((item, idx) => {
+                const isSelected = item && selectedId === item.id;
+                const firstIdx = item ? inventory.findIndex((i) => i.id === item.id) : -1;
+                const count = item && firstIdx === idx ? inventory.filter((i) => i.id === item.id).length : 0;
+                return (
+                  <button
+                    key={item?.id ?? `empty-${idx}`}
+                    type="button"
+                    onClick={() => item && onSelect(isSelected ? null : item.id)}
+                    className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
+                      item
+                        ? selectedId === item.id
+                          ? "bg-indigo-500/30 text-white"
+                          : "bg-white/5 text-slate-300 hover:bg-indigo-500/10"
+                        : "bg-white/5 text-slate-500 hover:bg-white/10"
+                    }`}
+                  >
+                    {item ? (
+                      <span className="block truncate">
+                        {item.name}
+                        {count > 1 ? ` × ${count}` : ""}
+                      </span>
+                    ) : (
+                      <span className="block truncate">空</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
-      <div className="grid grid-cols-6 gap-3 w-full flex-1 overflow-y-auto">
-        {Array.from({ length: 6 }, (_, idx) => {
-          const item = inventory[idx];
-          const isSelected = item && selectedId === item.id;
-          const firstIdx = item ? inventory.findIndex((i) => i.id === item.id) : -1;
-          const count = item && firstIdx === idx ? inventory.filter((i) => i.id === item.id).length : 0;
-          return (
-            <button
-              key={item?.id ?? `empty-${idx}`}
-              type="button"
-              onClick={() => item && onSelect(isSelected ? null : item.id)}
-              className={`relative aspect-square flex flex-col items-center justify-center rounded-2xl border p-2 shadow-[inset_0_2px_10px_rgba(0,0,0,0.3)] transition-colors cursor-pointer group ${
-                item
-                  ? isSelected
-                    ? "border-indigo-500/60 bg-indigo-500/20 hover:bg-indigo-500/25 hover:border-indigo-400/70"
-                    : "bg-black/20 border-white/5 hover:bg-white/10 hover:border-white/20"
-                  : "bg-black/20 border-white/5"
-              }`}
-            >
-              {item ? (
-                <>
-                  {count > 1 && (
-                    <span className="absolute -top-1 -right-1 bg-white/20 backdrop-blur-md text-[10px] px-1.5 rounded-full text-slate-200">
-                      {count}
-                    </span>
-                  )}
-                  <span className="truncate w-full text-center text-xs font-semibold text-white group-hover:text-white">
-                    {item.name}
-                  </span>
-                  <span className="truncate text-xs mt-1 text-slate-300 group-hover:text-white w-full text-center">
-                    {item.tier}
-                  </span>
-                </>
-              ) : (
-                <span className="text-xs text-slate-600">空</span>
+      <div className="flex flex-1 flex-col overflow-y-auto p-6">
+        {selectedItem ? (
+          <>
+            <h3 className="text-xl font-bold text-white">{selectedItem.name}</h3>
+            <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">
+              {selectedItem.tier}
+            </p>
+            <div className="mt-6 space-y-4">
+              <div>
+                <span className="text-xs text-slate-500">描述</span>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">{selectedItem.description}</p>
+              </div>
+              {selectedItem.statBonus && Object.keys(selectedItem.statBonus).length > 0 && (
+                <div>
+                  <span className="text-xs text-slate-500">属性</span>
+                  <p className="mt-1 text-sm text-indigo-300">
+                    {Object.entries(selectedItem.statBonus)
+                      .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
+                      .join(", ")}
+                  </p>
+                </div>
               )}
-            </button>
-          );
-        })}
+              <button
+                type="button"
+                onClick={() => { onUseItem(selectedItem); onSelect(null); }}
+                disabled={isStreaming}
+                className="mt-4 w-full rounded-xl border border-indigo-400/40 bg-indigo-500/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500/40 disabled:opacity-40"
+              >
+                使用该物品
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="text-slate-500">选择左侧条目查看详情</p>
+        )}
       </div>
-      {selectedId && (() => {
-        const item = inventory.find((i) => i.id === selectedId);
-        if (!item) return null;
-        return (
-          <div className="mt-4 rounded-xl border border-white/10 bg-slate-800/40 p-4">
-            <p className="text-sm leading-relaxed text-slate-200">{item.description}</p>
-            {item.statBonus && Object.keys(item.statBonus).length > 0 && (
-              <p className="mt-2 text-xs text-indigo-300">
-                属性：{Object.entries(item.statBonus)
-                  .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
-                  .join(", ")}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => { onUseItem(item); onSelect(null); }}
-              disabled={isStreaming}
-              className="mt-4 w-full rounded-xl bg-indigo-600/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:opacity-40"
-            >
-              使用该物品
-            </button>
-          </div>
-        );
-      })()}
     </div>
   );
 }
