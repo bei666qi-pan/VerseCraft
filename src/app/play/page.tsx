@@ -52,11 +52,11 @@ const MAX_INPUT = 20;
 
 const TALENT_CD: Record<EchoTalent, number> = {
   时间回溯: 6,
-  命运馈赠: 3,
-  主角光环: 6,
-  生命汇源: 7,
-  洞察之眼: 4,
-  丧钟回响: 7,
+  命运馈赠: 7,
+  主角光环: 8,
+  生命汇源: 10,
+  洞察之眼: 8,
+  丧钟回响: 24,
 };
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];

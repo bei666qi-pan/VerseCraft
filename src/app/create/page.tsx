@@ -27,7 +27,7 @@ const STAT_DESCRIPTIONS: Record<StatType, string> = {
   charm:
     "交涉力。越高 NPC 越友善，交易越划算。>20 质变：诡异可能短暂放过你。",
   background:
-    "开局财富。初始携带等同于点数的原石。当出身>20时，每回合有 (20+超出点数)% 概率自动凝结 1 颗原石。>20 质变：开局可能自带高战力 NPC 或诡异盟友。",
+    "1点出身对应1初始原石。出身大于20时，每回合有 (20+超出点数)% 概率自动凝结 1 颗原石。",
 };
 
 const BASE_STAT = 3;
@@ -40,11 +40,11 @@ const TALENTS: readonly {
   desc: string;
 }[] = [
   { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。" },
-  { key: "命运馈赠", title: "命运馈赠", cd: "CD：3 小时", desc: "获得一个随机世界观相关物品。" },
-  { key: "主角光环", title: "主角光环", cd: "CD：6 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
-  { key: "生命汇源", title: "生命汇源", cd: "CD：7 小时", desc: "理智恢复至历史最大值。" },
-  { key: "洞察之眼", title: "洞察之眼", cd: "CD：4 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
-  { key: "丧钟回响", title: "丧钟回响", cd: "CD：7 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。" },
+  { key: "命运馈赠", title: "命运馈赠", cd: "CD：7 小时", desc: "获得一个随机世界观相关物品。" },
+  { key: "主角光环", title: "主角光环", cd: "CD：8 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
+  { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "理智恢复至历史最大值。" },
+  { key: "洞察之眼", title: "洞察之眼", cd: "CD：8 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
+  { key: "丧钟回响", title: "丧钟回响", cd: "CD：24 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。" },
 ] as const;
 
 function sumStats(stats: Record<StatType, number>): number {

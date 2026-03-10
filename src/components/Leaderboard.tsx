@@ -71,7 +71,7 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
     <>
       <button
         type="button"
-        className="fixed bottom-8 left-8 z-[90]"
+        className="fixed bottom-8 left-8 z-50"
         onClick={() => setOpen(true)}
         aria-label="打开深渊排行榜"
       >

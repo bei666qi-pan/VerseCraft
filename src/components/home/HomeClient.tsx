@@ -198,21 +198,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   return (
-    <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-[#f8fafc]">
-      <div
-        className="pointer-events-none absolute -z-10 top-[-8%] left-[10%] h-[520px] w-[520px] rounded-full bg-cyan-200/40 blur-[120px]"
-        style={{ animation: "haloFloat 14s ease-in-out infinite" }}
-      />
-      <div
-        className="pointer-events-none absolute -z-10 bottom-[-6%] right-[8%] h-[480px] w-[480px] rounded-full bg-fuchsia-200/40 blur-[120px]"
-        style={{ animation: "haloFloat 18s ease-in-out infinite reverse" }}
-      />
-      <div
-        className="pointer-events-none absolute -z-10 top-[35%] left-[50%] h-[350px] w-[350px] -translate-x-1/2 rounded-full bg-indigo-100/50 blur-[100px]"
-        style={{ animation: "haloFloat 22s ease-in-out infinite 4s" }}
-      />
+    <>
+      <main className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-[#f8fafc]">
+        <div
+          className="pointer-events-none absolute -z-10 top-[-8%] left-[10%] h-[520px] w-[520px] rounded-full bg-cyan-200/40 blur-[120px]"
+          style={{ animation: "haloFloat 14s ease-in-out infinite" }}
+        />
+        <div
+          className="pointer-events-none absolute -z-10 bottom-[-6%] right-[8%] h-[480px] w-[480px] rounded-full bg-fuchsia-200/40 blur-[120px]"
+          style={{ animation: "haloFloat 18s ease-in-out infinite reverse" }}
+        />
+        <div
+          className="pointer-events-none absolute -z-10 top-[35%] left-[50%] h-[350px] w-[350px] -translate-x-1/2 rounded-full bg-indigo-100/50 blur-[100px]"
+          style={{ animation: "haloFloat 22s ease-in-out infinite 4s" }}
+        />
 
-      <div className="fixed right-8 top-8 z-50">
+        <div className="fixed right-8 top-8 z-50">
         {!user ? (
           <div className="relative group">
             <div
@@ -388,11 +389,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <span className="relative text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
           </button>
         </div>
-        <p className="mt-8 text-xs font-medium tracking-widest text-slate-400 transition-colors duration-300 hover:text-slate-600 md:text-sm">
-          欢迎第一批内测玩家加入QQ群 <span className="select-all font-bold text-slate-500">377493954</span>{" "}
-          交流【1.0先行版】
-        </p>
-        <Leaderboard userId={user?.id} />
+        <div className="flex flex-col items-center gap-2 text-sm text-slate-400/80 mt-8">
+          <p>欢迎第一批内测玩家加入QQ群 <span className="font-mono text-slate-300">377493954</span> 交流</p>
+          <p className="tracking-widest opacity-70">【1.1先行版】</p>
+        </div>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent" />
@@ -467,5 +467,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
       </div>
     </main>
+
+    <Leaderboard userId={user?.id} />
+    </>
   );
 }
