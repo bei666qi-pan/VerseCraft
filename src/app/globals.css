@@ -84,18 +84,42 @@
   90% { transform: translate(-1px, 1px); }
 }
 
-/* Talent glow: opacity-only for GPU composite, no layout/paint */
-@keyframes talent-glow {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 0.95; }
+/* Talent effect overlays: GPU-only (opacity + transform) to avoid lag */
+@keyframes talent-rewind {
+  0% { opacity: 0; transform: scale(1.03); }
+  30% { opacity: 0.55; transform: scale(1); }
+  70% { opacity: 0.4; transform: scale(0.99); }
+  100% { opacity: 0; transform: scale(1); }
 }
-
-.talent-glow-time { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(251,191,36,0.4) 0%, rgba(245,158,11,0.25) 40%, transparent 70%); }
-.talent-glow-gift { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(52,211,153,0.45) 0%, rgba(16,185,129,0.3) 40%, transparent 70%); }
-.talent-glow-aura { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(253,224,71,0.5) 0%, rgba(250,204,21,0.35) 40%, transparent 70%); }
-.talent-glow-life { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(45,212,191,0.45) 0%, rgba(20,184,166,0.3) 40%, transparent 70%); }
-.talent-glow-eye { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(129,140,248,0.5) 0%, rgba(99,102,241,0.35) 40%, transparent 70%); }
-.talent-glow-bell { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(185,28,28,0.4) 0%, rgba(127,29,29,0.3) 40%, transparent 70%); }
+@keyframes talent-gift {
+  0% { opacity: 0; transform: scale(0.98); }
+  25% { opacity: 0.6; transform: scale(1.02); }
+  75% { opacity: 0.45; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes talent-halo {
+  0% { opacity: 0; }
+  20% { opacity: 0.5; }
+  60% { opacity: 0.45; }
+  100% { opacity: 0; }
+}
+@keyframes talent-life {
+  0% { opacity: 0; }
+  30% { opacity: 0.5; }
+  70% { opacity: 0.4; }
+  100% { opacity: 0; }
+}
+@keyframes talent-insight {
+  0% { opacity: 0; transform: scale(1.02); }
+  35% { opacity: 0.55; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes talent-deathbell {
+  0% { opacity: 0; }
+  25% { opacity: 0.65; }
+  75% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
 
 /* Liquid Glass: base + specular rim + optional refraction */
 .liquid-glass {

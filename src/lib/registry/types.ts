@@ -8,28 +8,21 @@ export type StatType =
   | "charm"
   | "background";
 
+export type ItemTier = "S" | "A" | "B" | "C" | "D";
+
 /** Floor IDs: B2=exit, B1=spawn, 1-7=above ground */
 export type FloorId = "B2" | "B1" | "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
 export interface Item {
   id: string;
   name: string;
+  tier: ItemTier;
   description: string;
-  /** N-xxx or A-xxx. Every item has exactly one owner. Road drops = owner dropped it. */
-  ownerId: string;
-  /** Canon lore: how this item came to exist. Fixed in worldview. */
-  origin: string;
-  /** Side effect when used or carried. */
-  sideEffect: string;
-  /** Value/utility: favor boost, anomaly damage, stat boost, block attack, etc. */
-  value: string;
-  /** Only 5 items can be found on road (owner dropped it). Very low probability. */
-  canFindOnRoad?: boolean;
-  /** Min stat requirements to use. All listed must be met. 染血的羊皮纸 has none. */
-  statRequirement?: Partial<Record<StatType, number>>;
   statBonus?: Partial<Record<StatType, number>>;
   tags: string;
+  /** Blocks one lethal attack (e.g. from B2守门人) when used correctly */
   blockLethal?: boolean;
+  /** Rule-based kill: can ignore combatPower gap to kill anomaly/NPC */
   ruleKill?: boolean;
 }
 
@@ -65,8 +58,6 @@ export interface NpcSocialProfile {
   core_desires: string;
   /** Immutable emotion threads — cannot be retconned. */
   immutable_relationships: ImmutableRelationship[];
-  /** Emotional traits, verbal tics, mannerisms — makes NPC feel human. DM should weave into dialogue. */
-  emotional_traits?: string;
 }
 
 /** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */

@@ -49,14 +49,13 @@ const TALENTS: readonly {
   title: string;
   cd: string;
   desc: string;
-  activeRing: string;
 }[] = [
-  { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。", activeRing: "border-amber-400/70 bg-amber-50/70" },
-  { key: "命运馈赠", title: "命运馈赠", cd: "CD：7 小时", desc: "获得一个随机世界观相关物品。", activeRing: "border-emerald-400/70 bg-emerald-50/70" },
-  { key: "主角光环", title: "主角光环", cd: "CD：8 小时", desc: "3小时内免疫死亡，触发1次必幸事件。", activeRing: "border-yellow-400/70 bg-yellow-50/70" },
-  { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "理智恢复至历史最大值。", activeRing: "border-teal-400/70 bg-teal-50/70" },
-  { key: "洞察之眼", title: "洞察之眼", cd: "CD：8 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。", activeRing: "border-indigo-400/70 bg-indigo-50/70" },
-  { key: "丧钟回响", title: "丧钟回响", cd: "CD：24 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。", activeRing: "border-red-800/60 bg-red-50/60" },
+  { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。" },
+  { key: "命运馈赠", title: "命运馈赠", cd: "CD：7 小时", desc: "获得一个随机世界观相关物品。" },
+  { key: "主角光环", title: "主角光环", cd: "CD：8 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
+  { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "理智恢复至历史最大值。" },
+  { key: "洞察之眼", title: "洞察之眼", cd: "CD：8 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
+  { key: "丧钟回响", title: "丧钟回响", cd: "CD：24 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。" },
 ] as const;
 
 function sumStats(stats: Record<StatType, number>): number {
@@ -304,7 +303,7 @@ export default function CreatePage() {
                   onClick={() => setSelectedTalent(t.key)}
                   className={`rounded-2xl border p-4 text-left transition-all duration-200 ${
                     active
-                      ? `${t.activeRing} shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]`
+                      ? "border-indigo-400/70 bg-indigo-50/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
                       : "border-white/60 bg-white/50 hover:bg-white/60 hover:scale-[1.01] active:scale-[0.99]"
                   }`}
                   aria-pressed={active}
@@ -316,9 +315,7 @@ export default function CreatePage() {
                     </div>
                     <div
                       className={`mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${
-                        active
-                          ? { 时间回溯: "border-amber-500 bg-amber-500", 命运馈赠: "border-emerald-500 bg-emerald-500", 主角光环: "border-yellow-500 bg-yellow-500", 生命汇源: "border-teal-500 bg-teal-500", 洞察之眼: "border-indigo-500 bg-indigo-500", 丧钟回响: "border-red-700 bg-red-700" }[t.key]
-                          : "border-slate-300"
+                        active ? "border-indigo-500 bg-indigo-500" : "border-slate-300"
                       }`}
                       aria-hidden
                     />

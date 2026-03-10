@@ -8,9 +8,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const setHydrated = useGameStore((s) => s.setHydrated);
 
   useEffect(() => {
-    void Promise.resolve(useGameStore.persist.rehydrate()).then(() => {
+    const DEADLINE_MS = 4000;
+    const deadlineId = setTimeout(() => setHydrated(true), DEADLINE_MS);
+    void Promise.resolve(useGameStore.persist.rehydrate()).finally(() => {
+      clearTimeout(deadlineId);
       setHydrated(true);
     });
+    return () => clearTimeout(deadlineId);
   }, [setHydrated]);
 
   if (!isHydrated) {

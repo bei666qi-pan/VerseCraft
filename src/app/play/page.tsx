@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
-import { ITEMS_BY_ID } from "@/lib/registry/items";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useGameStore as usePersistStore } from "@/store/gameStore";
@@ -62,13 +61,31 @@ const TALENT_CD: Record<EchoTalent, number> = {
   丧钟回响: 24,
 };
 
-const TALENT_GLOW: Record<EchoTalent, string> = {
-  时间回溯: "talent-glow-time",
-  命运馈赠: "talent-glow-gift",
-  主角光环: "talent-glow-aura",
-  生命汇源: "talent-glow-life",
-  洞察之眼: "talent-glow-eye",
-  丧钟回响: "talent-glow-bell",
+const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string }> = {
+  时间回溯: {
+    bg: "radial-gradient(ellipse 90% 90% at 50% 50%, transparent 30%, rgba(6,182,212,0.2) 60%, rgba(8,145,178,0.4) 100%)",
+    anim: "talent-rewind 1.4s ease-out forwards",
+  },
+  命运馈赠: {
+    bg: "radial-gradient(ellipse 85% 85% at 50% 50%, transparent 25%, rgba(245,158,11,0.25) 55%, rgba(217,119,6,0.5) 100%)",
+    anim: "talent-gift 1.4s ease-out forwards",
+  },
+  主角光环: {
+    bg: "radial-gradient(ellipse 70% 70% at 50% 50%, transparent 50%, rgba(253,224,71,0.15) 75%, rgba(250,204,21,0.35) 100%)",
+    anim: "talent-halo 1.4s ease-out forwards",
+  },
+  生命汇源: {
+    bg: "radial-gradient(ellipse 88% 88% at 50% 50%, transparent 35%, rgba(34,197,94,0.2) 65%, rgba(22,163,74,0.45) 100%)",
+    anim: "talent-life 1.4s ease-out forwards",
+  },
+  洞察之眼: {
+    bg: "radial-gradient(ellipse 85% 85% at 50% 50%, transparent 30%, rgba(139,92,246,0.2) 60%, rgba(124,58,237,0.45) 100%)",
+    anim: "talent-insight 1.4s ease-out forwards",
+  },
+  丧钟回响: {
+    bg: "radial-gradient(ellipse 90% 90% at 50% 50%, transparent 20%, rgba(120,0,0,0.25) 55%, rgba(70,0,0,0.6) 100%)",
+    anim: "talent-deathbell 1.4s ease-out forwards",
+  },
 };
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
@@ -388,7 +405,7 @@ function ensureRuntimeActions() {
 }
 
 function formatItem(i: Item): string {
-  return i.name;
+  return `${i.name}（${i.tier}）`;
 }
 
 const STAT_MAX = 50;
@@ -578,6 +595,8 @@ export default function PlayPage() {
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
+  const [talentEffectUntil, setTalentEffectUntil] = useState(0);
+  const [talentEffectType, setTalentEffectType] = useState<EchoTalent | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -627,15 +646,20 @@ export default function PlayPage() {
 
   useEffect(() => {
     if (!isMounted) return;
+    const REHYDRATE_TIMEOUT_MS = 4000;
+    const deadlineId = setTimeout(() => setHydrated(true), REHYDRATE_TIMEOUT_MS);
     void Promise.all([
       Promise.resolve(useGameStore.persist.rehydrate()),
       Promise.resolve(
         (usePersistStore as unknown as { persist?: { rehydrate: () => Promise<unknown> } })
           .persist?.rehydrate?.() ?? Promise.resolve()
       ),
-    ]).then(() => {
-      setHydrated(true);
-    });
+    ])
+      .finally(() => {
+        clearTimeout(deadlineId);
+        setHydrated(true);
+      });
+    return () => clearTimeout(deadlineId);
   }, [isMounted, setHydrated]);
 
   useEffect(() => {
@@ -711,6 +735,15 @@ export default function PlayPage() {
   }, [hitEffectUntil]);
 
   useEffect(() => {
+    if (talentEffectUntil <= Date.now()) return;
+    const t = setTimeout(() => {
+      setTalentEffectUntil(0);
+      setTalentEffectType(null);
+    }, Math.max(0, talentEffectUntil - Date.now()));
+    return () => clearTimeout(t);
+  }, [talentEffectUntil]);
+
+  useEffect(() => {
     if (!audioMuted) updateSanityFilter(sanity);
   }, [sanity, audioMuted]);
 
@@ -762,7 +795,7 @@ export default function PlayPage() {
     if (turn > 0) return;
     hasTriggeredOpening.current = true;
       void sendAction(
-        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. **必须用绿字着重标注**（使用 ^^...^^ 包裹）：原石是这里的硬通货，可在【设置】的【属性】最右侧消耗原石增强自身属性。20以下2原石加1点，30以下3原石加1点。4. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
+        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
         true
       );
   }, [isMounted, isHydrated, isStreaming]);
@@ -940,23 +973,25 @@ export default function PlayPage() {
       useGameStore.getState().consumeItems(parsed.consumed_items);
     }
 
+    const validTiers = ["S", "A", "B", "C", "D"] as const;
     if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
       const items: Item[] = parsed.awarded_items
         .filter((r) => r && typeof r === "object" && typeof (r as Record<string, unknown>).name === "string")
         .map((r, idx) => {
           const o = r as Record<string, unknown>;
-          const id = typeof o.id === "string" && o.id ? o.id : `I-AWARD-${Date.now()}-${idx}`;
-          const registryItem = id ? ITEMS_BY_ID[id] : null;
-          if (registryItem) return registryItem;
+          const id =
+            typeof o.id === "string" && o.id
+              ? o.id
+              : `I-AWARD-${Date.now()}-${idx}`;
           const name = String(o.name ?? "未知道具");
+          const tier = validTiers.includes(String(o.tier) as (typeof validTiers)[number])
+            ? (String(o.tier) as Item["tier"])
+            : "B";
           return {
             id,
             name,
-            ownerId: typeof o.ownerId === "string" ? o.ownerId : "unknown",
+            tier,
             description: typeof o.description === "string" ? o.description : name,
-            origin: typeof o.origin === "string" ? o.origin : "",
-            sideEffect: typeof o.sideEffect === "string" ? o.sideEffect : "",
-            value: typeof o.value === "string" ? o.value : "",
             tags: typeof o.tags === "string" ? o.tags : "loot",
             statBonus: (o.statBonus as Item["statBonus"]) ?? undefined,
           } satisfies Item;
@@ -1080,12 +1115,21 @@ export default function PlayPage() {
     setInput("");
   }
 
+  const TALENT_EFFECT_DURATION = 1400;
+
+  function triggerTalentEffect(t: EchoTalent) {
+    setTalentEffectType(t);
+    setTalentEffectUntil(Date.now() + TALENT_EFFECT_DURATION);
+  }
+
   function onUseTalent() {
     if (!talent) return;
     if (talentCdLeft > 0) return;
     const storeAny = useGameStore as { getState: () => { useTalent: (t: EchoTalent) => boolean } };
     const ok = storeAny.getState().useTalent(talent);
     if (!ok) return;
+
+    triggerTalentEffect(talent);
 
     switch (talent) {
       case "时间回溯": {
@@ -1095,7 +1139,7 @@ export default function PlayPage() {
       }
       case "命运馈赠": {
         void sendAction(
-          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在叙事中描写玩家偶然拾获某件主人遗漏之物，并用红色加粗标出。awarded_items 中放入 { "id": "I-001" } 至 I-005 中随机一件（陈婆婆毛线团/林医生听诊器/邮差信封/狗绳/张先生报纸），仅此5件可被「捡到」。】',
+          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在接下来的叙事中，顺理成章地给予玩家一个随机的世界观相关物品，并用红色加粗标出。】',
           true
         );
         break;
@@ -1130,16 +1174,6 @@ export default function PlayPage() {
   }
 
   function onUseItem(item: Item) {
-    const req = item.statRequirement;
-    if (req) {
-      for (const [stat, minVal] of Object.entries(req)) {
-        const cur = stats[stat as keyof typeof stats] ?? 0;
-        if (cur < (minVal ?? 0)) {
-          setToast?.({ text: `【${item.name}】需要${stat === "sanity" ? "理智" : stat === "agility" ? "敏捷" : stat === "luck" ? "幸运" : stat === "charm" ? "魅力" : "出身"}≥${minVal}，当前${cur}，无法使用。`, type: "error" });
-          return;
-        }
-      }
-    }
     if (item.id === "I-PARCHMENT") setHasReadParchment(true);
     const text = `我使用了道具：【${item.name}】`;
     void sendAction(text);
@@ -1220,6 +1254,21 @@ export default function PlayPage() {
         </div>
       )}
 
+      {talentEffectType && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[54]"
+          aria-hidden
+        >
+          <div
+            className="absolute inset-0"
+            style={{
+              background: TALENT_EFFECT_STYLE[talentEffectType].bg,
+              animation: TALENT_EFFECT_STYLE[talentEffectType].anim,
+            }}
+          />
+        </div>
+      )}
+
       <div
         className={`relative flex min-h-0 flex-1 flex-col ${hitEffectUntil > Date.now() ? "animate-[sanity-hit-shake_0.5s_ease-out_2]" : ""}`}
       >
@@ -1288,7 +1337,7 @@ export default function PlayPage() {
                     <div className="relative group">
                       {talent && talentCdLeft === 0 && !isStreaming && (
                         <div
-                          className={`absolute -inset-1 rounded-full blur-sm transition-opacity duration-500 group-hover:opacity-100 animate-[talent-glow_2.5s_ease-in-out_infinite] ${TALENT_GLOW[talent] ?? "talent-glow-aura"}`}
+                          className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
                           aria-hidden
                         />
                       )}

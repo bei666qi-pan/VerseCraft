@@ -1,6 +1,5 @@
 "use client";
 
-import "altcha";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
@@ -283,11 +282,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       placeholder="密码"
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
                     />
-                    <altcha-widget
-                      challengeurl="/api/altcha/challenge"
-                      auto="onsubmit"
-                      style={{ display: "none" }}
-                    />
                     <button
                       type="submit"
                       disabled={loginPending}
@@ -330,11 +324,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
                       value={registerPassword}
                       onChange={(event) => setRegisterPassword(event.target.value)}
-                    />
-                    <altcha-widget
-                      challengeurl="/api/altcha/challenge"
-                      auto="onsubmit"
-                      style={{ display: "none" }}
                     />
                     <button
                       type="submit"

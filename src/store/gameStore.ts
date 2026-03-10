@@ -2,35 +2,12 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { get, set, del } from "idb-keyval";
 import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
+import { createResilientIdbStorage } from "@/lib/resilientStorage";
 
 const DB_KEY = "versecraft-game-state";
 
-const idbStorage: import("zustand/middleware").StateStorage = {
-  getItem: async (name: string) => {
-    try {
-      const value = await get(name);
-      return value ?? null;
-    } catch {
-      return null;
-    }
-  },
-  setItem: async (name: string, value: string) => {
-    try {
-      await set(name, value);
-    } catch {
-      // ignore
-    }
-  },
-  removeItem: async (name: string) => {
-    try {
-      await del(name);
-    } catch {
-      // ignore
-    }
-  },
-};
+const idbStorage = createResilientIdbStorage();
 
 export interface GameStats {
   sanity: number;
