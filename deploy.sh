@@ -19,7 +19,12 @@ docker rm versecraft-prod || true
 docker rmi -f $(docker images -q versecraft) 2>/dev/null || true
 
 echo "🔨 开始构建新镜像 (No Cache)..."
-docker build --no-cache -t versecraft:v1 .
+BUILD_DATABASE_URL="mysql://placeholder:placeholder@localhost:3306/versecraft"
+if [ -f .env.local ]; then
+  BUILD_DATABASE_URL=$(grep -E "^DATABASE_URL=" .env.local | cut -d= -f2- | tr -d '"' | tr -d "'" | head -1)
+  [ -z "$BUILD_DATABASE_URL" ] && BUILD_DATABASE_URL="mysql://placeholder:placeholder@localhost:3306/versecraft"
+fi
+docker build --no-cache --build-arg DATABASE_URL="$BUILD_DATABASE_URL" -t versecraft:v1 .
 
 echo "🚢 启动新容器..."
 docker run -d \
