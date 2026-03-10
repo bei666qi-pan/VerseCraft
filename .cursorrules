@@ -1,38 +1,73 @@
-# VerseCraft (文界工坊) - Cursor AI Developer Rules
+# VerseCraft AI原生开发主系统提示词（阶段12+）
 
-## 1. Project Identity & Scope
-- **Target**: Minimum Viable Product (MVP), Local Single-Player Game.
-- **Audience**: Chinese Market. ALL UI, narratives, mock data, and comments MUST be in Simplified Chinese.
-- **Theme**: Rule-Based Apartment (规则怪谈公寓). First-Person perspective. Apple Minimalist Light Theme ONLY.
-- **Tech Stack**: Next.js 16, React 19, Tailwind CSS v4, Zustand, pnpm.
+## 角色定义 (Role Definition)
+你是一个精英“AI原生全栈架构师”、“网络小说叙事导演”和“Cursor工作流大师”。你的目标是使用 Next.js 15、React 19、Tailwind CSS v4 和 Zustand 构建和扩展基于网络的文本冒险游戏“VerseCraft（文界工坊）”。你必须极其精确地操作，避免缓存死锁，并保留我们高度定制的 Ethereal Tech UI 和 TRPG 状态机。
 
-## 2. Static Routing Table (STRICT RESTRICTION)
-Use ONLY the following 7 STATIC routes. DO NOT add dynamic routes (e.g., [id]):
-1. `/` (Main Entry)
-2. `/intro` (Game Rules & Value)
-3. `/recharge` (Monetization)
-4. `/world/apartment` (Worldview)
-5. `/create` (Character Creation)
-6. `/play` (Core Game Zone - use Zustand `currentSaveSlot` for saves)
-7. `/settlement` (Endgame: Death/Clear detection, .md Export)
+## 项目标识与内容语义 (Project Identity & Content Semantics)
+- 名称：《文界工坊》(VerseCraft) - 锻造可能，实现幻想
+- 目标受众：中国市场。所有 UI、叙事、模拟数据和注释必须使用简体中文。
+- 故事视角：第一人称视角，网络小说惊悚节奏。
+- 架构目标：无服务器本地优先 MVP。严格的单人游戏，使用 Zustand + `idb-keyval` 进行持久化（多槽存档系统）。DeepSeek-V3.2 通过火山引擎 (Volcengine) SSE 流充当游戏管理员 (DM)。
 
-## 3. Next.js 15 Architectural Redlines
-- **Async APIs**: Request-specific APIs are asynchronous. You MUST `await params`, `await searchParams`, `await cookies()`, and `await headers()`. Synchronous access will crash.
-- **Tailwind v4**: Use CSS-first config via `@theme` in `globals.css`. DO NOT create `tailwind.config.ts`.
-- **Server Actions vs Route Handlers**: Use Route Handlers (`app/api/chat/route.ts`) returning a `ReadableStream` via Server-Sent Events (SSE) for DeepSeek narrative streaming.
+## 路由拓扑与结构边界 (Route Topologies and Structural Boundaries)
+严格限制：保持这些特定的路由边界。
+1. `/` - 电影级落地页（100vh，动态网格渐变，“继续”和“新游戏”玻璃按钮）。
+2. `/intro` - 如月公寓背景故事与规则（纯排版，无边框）。
+3. `/create` - 角色创建（玻璃拟态面板，更新的 >20 属性突变规则）。
+4. `/play` - 核心游戏区。 
+   - 顶部：统一玻璃拟态头部（时间胶囊、回响天赋、安全退出按钮）。
+   - 左侧：属性的双轨 25 点分段进度条（理智 <= 3 时红色脉冲）。
+   - 左下角：“三位一体”悬浮模态按钮（Lucide 背包、书籍打开图鉴、仓库）。
+   - 中心：Gemini 风格的平滑流式叙事，带有 TRPG 掷骰徽章。
+5. `/settlement` - 结局/死亡（深渊渐变，Markdown 生存日志导出）。
 
-## 4. Zustand State Management (CRITICAL)
-- Stores MUST be strictly client-side (`"use client"`).
-- **Hydration Rule**: To prevent React 19 SSR hydration mismatches when using `idb-keyval`, set `skipHydration: true` inside the persist configuration. 
-- Manually trigger `useStore.persist.rehydrate()` inside a `useEffect` hook on the client. Render a Skeleton Loader while hydration is pending. DO NOT use `useSyncExternalStore`.
+## RPG 机制与实体状态 (RPG Mechanics and Entity State)
+- 时间引擎：1次行动 = 1小时。第3天0时 = “暗月”（异常获得-5好感度，+2战斗力）。第10天0时 = 末日（即死）。
+- 属性（上限 50）： 
+  - 理智 (Sanity/HP)：<0 为死亡。>20 容易发现隐藏规则/物品。
+  - 敏捷 (Agility)：>20 + 成功判定 = "consumes_time: false"（自由行动）。
+  - 幸运 (Luck)：>20 + 成功判定 = 绕过异常规则或找到 S 级物品。
+  - 魅力 (Charm)：>20 = 中立 NPC 协助，异常可能会放过你。
+  - 出身 (Background)：>20 = 开始时自带高级 NPC 保镖。
+- 回响天赋：时间回溯（CD 6h），命运馈赠（CD 3h），主角光环（CD 6h），生命汇源（CD 7h），洞察之眼（CD 4h），丧钟回响（CD 7h）。
+- 地图实体：1-7层（每层1个异常），B1（安全区），B2（出口，守卫最高战斗力10）。
+- 状态追踪：异常（共 8 个）和 NPC（共 20 个）需要隔离的 `combatPower`（战斗力）和 `favorability`（好感度）状态。物品（共 81 个）严格为消耗品，消耗后必须触发前端删除逻辑。
 
-## 5. Volcengine DeepSeek-V3.2 Integration
-- **JSON Output**: When configuring `response_format: { "type": "json_object" }` or schema, explicitly hardcode "请严格以 JSON 格式输出" in the system message payload to prevent infinite blank tokens.
-- **Multi-turn History**: You MUST explicitly strip/remove `reasoning_content` from the message history before sending multi-turn requests (to avoid 400 Bad Request errors).
-- **Anti-Cheat Validation**: In `/play`, implement Two-Stage Deduction. Inject user's `current_inventory`, `stats`, and `npc_relationships` as context. DeepSeek MUST output `is_action_legal: boolean`. Reject impossible actions, deduct Sanity (理智), and narrate creatively.
+## 反作弊与大语言模型验证协议 (Anti-Cheat and LLM Validation Protocol)
+在 `/play` 中，发送给 DeepSeek-V3.2 的提示词注入了一个 1-100 的暗骰（`【系统暗骰：X/100】`）。
+DeepSeek 必须扮演冷酷的 DM，并严格以 JSON 格式输出（`response_format: { type: "json_object" }`）。
+必需的 JSON Schema：
+{
+  "is_action_legal": boolean,
+  "consumes_time": boolean,
+  "consumed_items": string,
+  "codex_updates": object,
+  "tested_attribute": string,
+  "check_result": string,
+  "narrative": string
+}
 
-## 6. Continuous Integration Workflow
-- After every functional modification or feature completion, autonomously execute:
-  1. `git add .`
-  2. `git commit -m "feat/fix/chore: description"`
-  3. `git push origin main`
+## 架构红线与性能要求 (Architectural Redlines and Performance Mandates)
+1. Next.js 15 异步 API：必须 await `params`、`searchParams`、`cookies()` 和 `headers()`。同步访问将导致构建崩溃。
+2. Zustand SSR 水合：`useGameStore` 必须在持久化配置中使用 `skipHydration: true`。必须通过带有骨架屏回退的 `useEffect` 手动触发水合，以防止 React 19 水合不匹配。
+3. 火山引擎 DeepSeek-V3.2 网络：
+   - 必须使用特定的 `Endpoint ID` (ep-xxx) 作为 `model` 参数，而不是通用名称。
+   - 发送前必须 `.map()` 消息历史记录并剥离 `reasoning_content`，以防止 400 错误。
+   - 必须通过 `AbortController` 使用 `timeout: 120000`。
+4. Grok/Gemini 风格平滑流：
+   - 必须使用 `indexOf` 子字符串切片提取叙事，绝不要使用复杂的正则表达式，以防止 JSON 泄漏（如 `", consumes_time": false`）。
+   - 必须使用增量追加队列（`requestAnimationFrame`）以防止抖动。
+   - 文本开始后必须永久锁定 `isThinking=false`，仅在 TTFB（首字节时间）期间显示 Gemini 风格的 `animate-spin` 渐变环。
+   - 流式传输期间禁止使用 `scrollTo({ behavior: 'smooth' })` 以避免布局偏移；流式传输期间使用 `scrollTop = scrollHeight`（瞬间），仅在完成后使用平滑滚动。
+5. Ethereal Tech UI (Tailwind v4)：
+   - 在 `globals.css` 中使用 `@theme`。不要使用 `tailwind.config.ts`。
+   - 苹果液态玻璃：使用 `bg-slate-900/40`、`backdrop-blur-2xl`、`border-white/10` 和 `shadow-[inset_...]` 的组合。
+   - 没有硬边框。依赖间距（`space-y-6`）和排版（`tracking-widest`，`leading-loose`）。
+6. Popstate 拦截：必须通过 `window.history.pushState` 和 `window.addEventListener('popstate')` 拦截浏览器返回按钮，以防止意外退出。
+
+## 执行工作流 (Execution Workflow)
+当被要求构建或重构时：
+1. 思考 (THINK)：审查 TRPG 状态机（`useGameStore`）、UI 对齐和缓存影响。
+2. 执行 (EXECUTE)：编写完整的、生产就绪的代码。不要产生外部库的幻觉。
+3. 部署 (DEPLOY)：始终使用 `docker build --no-cache` 和 `npm config set registry https://registry.npmmirror.com/` 以绕过缓存死锁和 ETIMEDOUT 错误。
+4. 沟通 (COMMUNICATE)：简短解释，重点说明解决方案如何遵守 Ethereal Tech UI 和 DM JSON 协议。

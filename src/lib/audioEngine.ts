@@ -83,8 +83,8 @@ export function updateSanityFilter(sanity: number): void {
   const c = getCtx();
   const t = c.currentTime;
 
-  if (sanity < 10) {
-    const ratio = Math.max(0, sanity) / 10;
+  if (sanity < 20) {
+    const ratio = Math.max(0, sanity) / 20;
     droneFilter.frequency.setTargetAtTime(200 + ratio * 600, t, 0.5);
     droneFilter.Q.setTargetAtTime(8 - ratio * 6, t, 0.5);
     droneGain.gain.setTargetAtTime(0.25 + (1 - ratio) * 0.15, t, 0.5);

@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
+import { ITEMS_BY_ID } from "@/lib/registry/items";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useGameStore as usePersistStore } from "@/store/gameStore";
-import { useSmoothStream } from "@/hooks/useSmoothStream";
+import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 import { getOnboardingStatus, markOnboardingViewed, type OnboardingStatus } from "@/app/actions/onboarding";
@@ -59,6 +60,15 @@ const TALENT_CD: Record<EchoTalent, number> = {
   生命汇源: 10,
   洞察之眼: 8,
   丧钟回响: 24,
+};
+
+const TALENT_GLOW: Record<EchoTalent, string> = {
+  时间回溯: "talent-glow-time",
+  命运馈赠: "talent-glow-gift",
+  主角光环: "talent-glow-aura",
+  生命汇源: "talent-glow-life",
+  洞察之眼: "talent-glow-eye",
+  丧钟回响: "talent-glow-bell",
 };
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
@@ -279,19 +289,26 @@ function extractNarrative(raw: string): string {
     if (text.endsWith("\\")) text = text.slice(0, -1);
   }
 
-  return text.replace(/\\(["\\/bfnrt])/g, (_, c: string) => {
-    switch (c) {
-      case 'n': return '\n';
-      case 'r': return '\r';
-      case 't': return '\t';
-      case '"': return '"';
-      case '\\': return '\\';
-      case '/': return '/';
-      case 'b': return '\b';
-      case 'f': return '\f';
-      default: return c;
+  const out: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\\" && i + 1 < text.length) {
+      const c = text[i + 1];
+      switch (c) {
+        case "n": out.push("\n"); i++; break;
+        case "r": out.push("\r"); i++; break;
+        case "t": out.push("\t"); i++; break;
+        case '"': out.push('"'); i++; break;
+        case "\\": out.push("\\"); i++; break;
+        case "/": out.push("/"); i++; break;
+        case "b": out.push("\b"); i++; break;
+        case "f": out.push("\f"); i++; break;
+        default: out.push(c); i++; break;
+      }
+    } else {
+      out.push(text[i] ?? "");
     }
-  });
+  }
+  return out.join("");
 }
 
 const FALLBACK_DM: DMJson = {
@@ -371,7 +388,7 @@ function ensureRuntimeActions() {
 }
 
 function formatItem(i: Item): string {
-  return `${i.name}（${i.tier}）`;
+  return i.name;
 }
 
 const STAT_MAX = 50;
@@ -550,8 +567,9 @@ export default function PlayPage() {
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [rawDmBuffer, setRawDmBuffer] = useState("");
   const [liveNarrative, setLiveNarrative] = useState("");
+  const narrativeRef = useRef("");
+  const rawDmBufferRef = useRef("");
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -559,6 +577,7 @@ export default function PlayPage() {
   const [audioMuted, setAudioMuted] = useState(true);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [hitEffectUntil, setHitEffectUntil] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -569,7 +588,7 @@ export default function PlayPage() {
   const hour = time.hour ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
   const isApocalypse = day >= 10;
-  const isLowSanity = (stats.sanity ?? 0) < 10;
+  const isLowSanity = (stats.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted);
 
   const sanity = stats.sanity ?? 0;
@@ -639,9 +658,15 @@ export default function PlayPage() {
     }
   }, [isHydrated, showApocalypseOverlay]);
 
-  const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStream(
-    liveNarrative,
-    isStreaming
+  const onFrameScroll = useCallback(() => {
+    if (userScrolledUpRef.current || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, []);
+
+  const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
+    narrativeRef,
+    isStreaming,
+    onFrameScroll
   );
 
   const prevIsStreamingRef = useRef(false);
@@ -678,6 +703,12 @@ export default function PlayPage() {
     const t = setTimeout(() => setShowIntrusionFlash(false), intrusionFlashUntil - Date.now());
     return () => clearTimeout(t);
   }, [intrusionFlashUntil]);
+
+  useEffect(() => {
+    if (hitEffectUntil <= Date.now()) return;
+    const t = setTimeout(() => setHitEffectUntil(0), Math.max(0, hitEffectUntil - Date.now()));
+    return () => clearTimeout(t);
+  }, [hitEffectUntil]);
 
   useEffect(() => {
     if (!audioMuted) updateSanityFilter(sanity);
@@ -731,7 +762,7 @@ export default function PlayPage() {
     if (turn > 0) return;
     hasTriggeredOpening.current = true;
       void sendAction(
-        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
+        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. **必须用绿字着重标注**（使用 ^^...^^ 包裹）：原石是这里的硬通货，可在【设置】的【属性】最右侧消耗原石增强自身属性。20以下2原石加1点，30以下3原石加1点。4. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
         true
       );
   }, [isMounted, isHydrated, isStreaming]);
@@ -799,13 +830,14 @@ export default function PlayPage() {
     if (!bypassLengthCheck && trimmed.length > MAX_INPUT) return;
 
     setIsStreaming(true);
-    setRawDmBuffer("");
+    narrativeRef.current = "";
+    rawDmBufferRef.current = "";
     setLiveNarrative("");
 
     const sanityAtStart = useGameStore.getState().stats.sanity ?? 0;
     const prevPending = pendingHallucinationCheck;
     setPendingHallucinationCheck(false);
-    const shouldApplyHallucination = prevPending && sanityAtStart < 10 && Math.random() < 0.3;
+    const shouldApplyHallucination = prevPending && sanityAtStart < 20 && Math.random() < 0.3;
 
     if (!isResume) {
       useGameStore.getState().pushLog({ role: "user", content: trimmed });
@@ -864,13 +896,8 @@ export default function PlayPage() {
             if (!line.startsWith("data:")) continue;
             const chunk = line.slice(5).trimStart();
             raw += chunk;
-            setRawDmBuffer(raw);
-
-            const partial = extractNarrative(raw);
-            setLiveNarrative((prev) => {
-              if (partial.length > prev.length) return partial;
-              return prev;
-            });
+            rawDmBufferRef.current = raw;
+            narrativeRef.current = extractNarrative(raw);
           }
         }
       }
@@ -913,25 +940,23 @@ export default function PlayPage() {
       useGameStore.getState().consumeItems(parsed.consumed_items);
     }
 
-    const validTiers = ["S", "A", "B", "C", "D"] as const;
     if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
       const items: Item[] = parsed.awarded_items
         .filter((r) => r && typeof r === "object" && typeof (r as Record<string, unknown>).name === "string")
         .map((r, idx) => {
           const o = r as Record<string, unknown>;
-          const id =
-            typeof o.id === "string" && o.id
-              ? o.id
-              : `I-AWARD-${Date.now()}-${idx}`;
+          const id = typeof o.id === "string" && o.id ? o.id : `I-AWARD-${Date.now()}-${idx}`;
+          const registryItem = id ? ITEMS_BY_ID[id] : null;
+          if (registryItem) return registryItem;
           const name = String(o.name ?? "未知道具");
-          const tier = validTiers.includes(String(o.tier) as (typeof validTiers)[number])
-            ? (String(o.tier) as Item["tier"])
-            : "B";
           return {
             id,
             name,
-            tier,
+            ownerId: typeof o.ownerId === "string" ? o.ownerId : "unknown",
             description: typeof o.description === "string" ? o.description : name,
+            origin: typeof o.origin === "string" ? o.origin : "",
+            sideEffect: typeof o.sideEffect === "string" ? o.sideEffect : "",
+            value: typeof o.value === "string" ? o.value : "",
             tags: typeof o.tags === "string" ? o.tags : "loot",
             statBonus: (o.statBonus as Item["statBonus"]) ?? undefined,
           } satisfies Item;
@@ -968,6 +993,7 @@ export default function PlayPage() {
     if (dmg > 0) {
       const cur = useGameStore.getState().stats.sanity ?? 0;
       useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
+      setHitEffectUntil(Date.now() + 1200);
     }
 
     if (Array.isArray(parsed.options) && parsed.options.length > 0) {
@@ -1039,7 +1065,6 @@ export default function PlayPage() {
     const sanityAfter = useGameStore.getState().stats.sanity ?? 0;
 
     if (parsed.is_death || sanityAfter <= 0) {
-      useGameStore.getState().clearSaveForDeath();
       setTimeout(() => router.push("/settlement"), 2000);
     }
   }
@@ -1070,7 +1095,7 @@ export default function PlayPage() {
       }
       case "命运馈赠": {
         void sendAction(
-          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在接下来的叙事中，顺理成章地给予玩家一个随机的世界观相关物品，并用红色加粗标出。】',
+          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在叙事中描写玩家偶然拾获某件主人遗漏之物，并用红色加粗标出。awarded_items 中放入 { "id": "I-001" } 至 I-005 中随机一件（陈婆婆毛线团/林医生听诊器/邮差信封/狗绳/张先生报纸），仅此5件可被「捡到」。】',
           true
         );
         break;
@@ -1105,6 +1130,16 @@ export default function PlayPage() {
   }
 
   function onUseItem(item: Item) {
+    const req = item.statRequirement;
+    if (req) {
+      for (const [stat, minVal] of Object.entries(req)) {
+        const cur = stats[stat as keyof typeof stats] ?? 0;
+        if (cur < (minVal ?? 0)) {
+          setToast?.({ text: `【${item.name}】需要${stat === "sanity" ? "理智" : stat === "agility" ? "敏捷" : stat === "luck" ? "幸运" : stat === "charm" ? "魅力" : "出身"}≥${minVal}，当前${cur}，无法使用。`, type: "error" });
+          return;
+        }
+      }
+    }
     if (item.id === "I-PARCHMENT") setHasReadParchment(true);
     const text = `我使用了道具：【${item.name}】`;
     void sendAction(text);
@@ -1120,6 +1155,7 @@ export default function PlayPage() {
   function onAbandonAndDie() {
     setStats({ sanity: 0 });
     setShowExitModal(false);
+    router.push("/settlement");
   }
 
   if (!isMounted || !isHydrated || !isGameStarted) {
@@ -1172,15 +1208,29 @@ export default function PlayPage() {
         <div className="pointer-events-none fixed inset-0 z-[60] animate-pulse border-[6px] border-red-600/40 shadow-[inset_0_0_60px_rgba(220,38,38,0.15)]" aria-hidden />
       )}
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      {hitEffectUntil > Date.now() && (
+        <div className="pointer-events-none fixed inset-0 z-[55]" aria-hidden>
+          <div
+            className="absolute inset-0 opacity-90"
+            style={{
+              background: "radial-gradient(ellipse 85% 85% at 50% 50%, transparent 35%, rgba(160,0,0,0.2) 65%, rgba(220,38,38,0.45) 100%)",
+              boxShadow: "inset 0 0 100px 30px rgba(220,38,38,0.3)",
+            }}
+          />
+        </div>
+      )}
+
+      <div
+        className={`relative flex min-h-0 flex-1 flex-col ${hitEffectUntil > Date.now() ? "animate-[sanity-hit-shake_0.5s_ease-out_2]" : ""}`}
+      >
       {showExitModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
           role="dialog"
           aria-modal
           aria-labelledby="exit-modal-title"
         >
-          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
+          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/70 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
             <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
               意识脱离申请
             </h2>
@@ -1238,7 +1288,7 @@ export default function PlayPage() {
                     <div className="relative group">
                       {talent && talentCdLeft === 0 && !isStreaming && (
                         <div
-                          className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
+                          className={`absolute -inset-1 rounded-full blur-sm transition-opacity duration-500 group-hover:opacity-100 animate-[talent-glow_2.5s_ease-in-out_infinite] ${TALENT_GLOW[talent] ?? "talent-glow-aura"}`}
                           aria-hidden
                         />
                       )}

@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { NPCS } from "@/lib/registry/npcs";
 import { ANOMALIES } from "@/lib/registry/anomalies";
-import { buildLoreContextForDM } from "@/lib/registry/world";
+import { ITEMS } from "@/lib/registry/items";
+import { buildLoreContextForDM, FLOOR_PERSONALITY_HINT } from "@/lib/registry/world";
 import { auth } from "../../../../auth";
 import { db } from "@/db";
 import { users, gameSessionMemory } from "@/db/schema";
@@ -24,6 +25,16 @@ function getCodexCanonicalNamesBlock(): string {
   const npcNames = NPCS.map((n) => `${n.id} ${n.name}`).join("，");
   const anomalyNames = ANOMALIES.map((a) => `${a.id} ${a.name}`).join("，");
   return `NPC 真名：${npcNames}。诡异真名：${anomalyNames}。`;
+}
+
+function getItemOwnerBlock(): string {
+  const byOwner: Record<string, string[]> = {};
+  for (const i of ITEMS) {
+    if (!byOwner[i.ownerId]) byOwner[i.ownerId] = [];
+    byOwner[i.ownerId].push(`${i.name}(${i.id})`);
+  }
+  const lines = Object.entries(byOwner).map(([owner, items]) => `${owner}拥有：${items.join("、")}`);
+  return "【物品主人表】" + lines.join("；") + "。可遗漏拾取(概率极低)的5件：I-001、I-002、I-003、I-004、I-005。";
 }
 
 const ROUNDS_THRESHOLD = 10;
@@ -73,9 +84,11 @@ function buildSystemPrompt(
     "",
     "【出口大 Boss — A-008 深渊守门人】：B2 层唯一实体。它是唯一知晓部分公寓真相且能正常沟通的诡异。好感度永久锁定为 -99（绝对不可改变，任何提升好感度的尝试都必须被拒绝）。每次攻击造成 15-25 点理智伤害。",
     "",
-    "【秘密保护绝对红线】：你绝对不允许主动向玩家泄露上述世界观底色（NPC曾是人类、诡异也是人类、公寓是消化器官、管理者身份）。只有当玩家使用特定道具（如 I-S01 染血的如月建筑原稿）、触发特殊事件、或与特定 NPC 深度互动后，才能逐步暗示这些秘密。泄露秘密 = 严重违规！",
+    "【秘密保护绝对红线】：你绝对不允许主动向玩家泄露上述世界观底色。只有当玩家使用特定道具（如 I-058 染血的如月建筑原稿）、触发特殊事件、或与特定 NPC 深度互动后，才能逐步暗示这些秘密。泄露秘密 = 严重违规！",
     "",
     buildLoreContextForDM(),
+    "",
+    getItemOwnerBlock(),
     "",
     "玩家即将进行动作。你必须执行两阶段推演：",
     "阶段一（合法性与人设校验）：玩家是否在进行“神明级”动作、使用未拥有的物品、或者违背其设定的性格？如果是，判定 is_action_legal: false，拒绝该动作，并给予严厉的理智惩罚叙事。",
@@ -113,6 +126,8 @@ function buildSystemPrompt(
     "",
     "【NPC 互动法则】NPC 是固定位置的「徘徊者」，各有 personality（暴躁/贪婪/温和/怯懦等）和 specialty（后勤补给/战斗辅助/情报提供）。每个 NPC 携带 1 件专属道具。对暴躁 NPC 说错话会直接引发攻击。玩家可通过交易/话疗提升好感度获取道具，也可使用杀伤道具强行击杀 NPC 夺宝。高战力（9-10）NPC 在好感度极高时有概率能与最强诡异抗衡甚至击杀。",
     "",
+    "【NPC 有血有肉法则】：每个 NPC 的 fixed_lore、core_desires、emotional_traits 都蕴含其过往创伤、执念与人性残余。写 NPC 对话时必须融入其 emotional_traits（语气、小动作、口头禅），让玩家觉得对方是活生生的人而非工具。例如陈婆婆说话时会下意识抚摸毛线，盲人提到大黄会声音发抖。叙事中要体现 NPC 的微妙情绪——犹豫、柔软、恐惧、渴望——而非机械应答。",
+    "",
     "【通关结局 A - 逃出生天】玩家须探索得知出口在 B2 层及暗号。到达 B2 门前时，必须在动作中明确说出暗号「暗月」方可开门。进入 B2 后直面第 8 诡异。离开唯二方法：①使用道具成功抵挡其 3 次攻击；②在游戏时间凌晨 1 点（它消失的一小时内）趁机潜行通过。",
     "",
     "【通关结局 S - 杀戮通关】若玩家利用极度稀有的规则类杀伤道具，或联合战力 9-10 的顶级 NPC，成功杀死公寓内全部 7 个普通诡异（1-7 层）以及第 8 诡异（B2 守门人），系统将触发隐藏 S 级结局。",
@@ -130,7 +145,7 @@ function buildSystemPrompt(
     "",
     "【强制道具消耗法则】：当玩家声明使用了【】内的道具时，只要该动作发生，你必须在返回的 JSON 的 'consumed_items' 数组中精准填入该道具的名称！严禁返回空数组，否则玩家将无限刷道具！",
     "",
-    "【击杀掉落法则】：当玩家利用环境、高好感度 NPC 或高阶道具成功击杀了一只诡异后，你必须在 narrative 中描述诡异消散后留下了物品，并**必须**在返回的 JSON 的 \"awarded_items\" 数组中，自动为玩家生成 2 个等级至少为 B 级（B、A 或 S 级）的全新强力道具。每个道具格式：{ \"id\": \"I-xxx\", \"name\": \"道具名\", \"tier\": \"B\"|\"A\"|\"S\", \"description\": \"描述\", \"tags\": \"lore,loot\" }。",
+    "【击杀掉落法则】：当玩家击杀 NPC 或诡异后，你必须在 narrative 中描述其消散/死亡后留下了物品。awarded_items 中**必须**只返回【该实体拥有的物品】的 id（见下方物品主人表）。每件物品有唯一主人，击杀某实体只能掉落其拥有的物品。格式：{ \"id\": \"I-xxx\" }，系统会自动从注册表补全。击杀诡异可掉落 1-2 件该诡异拥有的物品；击杀 NPC 可掉落其 1 件专属物品。",
     "",
     '你必须且只能返回一个合法的 JSON 对象，格式必须完全遵守上述 Schema。严禁在 JSON 外输出任何 markdown 标记或解释性文字！',
     "",
@@ -142,11 +157,13 @@ function buildSystemPrompt(
     "",
     "【任务系统】：NPC 或诡异均可向玩家发布任务。当 NPC/诡异提出任务时，你必须在 new_tasks 数组中输出任务详情。任务完成或失败时，在 task_updates 中更新状态。奖励通常为原石（通过 currency_change 输出）或道具（通过 awarded_items 输出）。",
     "",
-    "【恶意任务与欺诈】：好感度 ≤ 0 或性格为「贪婪/虚伪」的 NPC 可能发布恶意任务：故意不给奖励、设置陷阱坑杀玩家、或利用任务骗取玩家原石。好感度为 0 的贪婪 NPC 会主动设局抢夺玩家原石。NPC 获取玩家原石后，其战力在本局游戏中永久提升（每 5 原石 +1 战力）。",
+    "【恶意任务与欺诈】：好感度 ≤ 0 或性格为「贪婪/虚伪」的 NPC 可能发布恶意任务：故意不给奖励、设置陷阱坑杀玩家、或利用任务骗取玩家原石。好感度为 0 的贪婪 NPC 会主动设局抢夺玩家原石。NPC 获取玩家/其他NPC/诡异的原石后，其战力在本局游戏中永久提升（每 5 原石 +1 战力），你必须在 codex_updates 中更新该 NPC 的 combatPower 以体现战力增强。",
+    "",
+    `【楼层与NPC性格法则（绝对执行）】：${FLOOR_PERSONALITY_HINT} 每个NPC最多可赠予玩家的原石上限（按所在楼层）：B1/1/2层=10颗，3/4/5/6层=20颗，7层=30颗。超出上限后该NPC不再赠予原石。`,
     "",
     "【战斗圆场法则】：战力数值仅作参考。战斗胜负绝大部分取决于玩家策略与剧情合理性。你必须用精彩的剧情推算圆场，不要生硬比大小。弱者可以通过智谋、环境利用、道具组合击败强者。",
     "",
-    "【物资极度匮乏法则】：大幅降低探索时凭空捡到道具的概率。绝对红线：S 级道具【仅且只能】通过完成第 7 层管理员（N-011 夜读老人）的一系列专属任务获得，严禁在其他任何场景/楼层掉落 S 级道具！",
+    "【物资获取法则（绝对执行）】：所有 60 件物品都有唯一主人（NPC 或诡异）。道具获取方式仅四种：①交易（与持有者交换）②击杀 NPC/诡异（掉落其拥有的物品）③高好感度 NPC 赠予④完成对应任务。探索路上捡到道具概率极低，且只能捡到【可遗漏的 5 件】——陈婆婆毛线团(I-001)、林医生听诊器(I-002)、邮差空白信封(I-003)、狗绳(I-004)、张先生报纸(I-005)，均为某次主人遗漏。严禁凭空生成或发现其他物品！",
     "",
     "## 【核心属性检定与 >20 点质变法则（绝对执行）】",
     "",
@@ -219,7 +236,7 @@ function buildSystemPrompt(
         idx,
         0,
         "",
-        "【开局叙事强制约束】对话历史为空，这是玩家的第一个动作！你的 narrative 必须是一段约 200 字的第一人称视角开场白。你必须描写：玩家从冰冷的地板上苏醒，头痛欲裂；发现身边有一张羊皮纸，上面写着关于如月公寓的半真半假的生存规则；随后通过第一人称观察周围环境，描绘令人不安的细节（熟悉的灰色石墙、扭曲的符号、微弱的荧光苔藓、铁锈般的血腥味等）。**必须**在叙事结尾以脑海中的神秘低语或羊皮纸血字形式，用绿字着重标注（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^",
+        "【开局叙事强制约束】对话历史为空，这是玩家的第一个动作！你的 narrative 必须是一段约 200 字的第一人称视角开场白。你必须描写：玩家从冰冷的地板上苏醒，头痛欲裂；发现身边有一张羊皮纸，上面写着关于如月公寓的半真半假的生存规则；随后通过第一人称观察周围环境，描绘令人不安的细节（熟悉的灰色石墙、扭曲的符号、微弱的荧光苔藓、铁锈般的血腥味等）。**必须**在叙事中用绿字着重标注（使用 ^^...^^ 包裹）两件事：①原石是这里的硬通货，可在【设置】的【属性】最右侧消耗原石增强自身属性，20以下2原石加1点，30以下3原石加1点；②可在【设置】中将选项输入切换为手动输入，若手动输入不可能的事情则会被抹杀。例如：^^原石是这里的硬通货，可在设置中消耗原石增强自身。^^ 以及 ^^你可以将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^",
         ""
       );
     }
@@ -385,6 +402,8 @@ export async function POST(req: Request) {
     }
   }
 
+  // Architecture mandate: strip reasoning_content to prevent Volcengine 400 Bad Request.
+  // DeepSeek-V3.2 returns reasoning_content; must never send it back in subsequent turns.
   const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
     .map((m) => {
@@ -485,185 +504,196 @@ export async function POST(req: Request) {
     Connection: "keep-alive",
   } as const;
 
-  function sendFallback(): Response {
-    return new Response(sseText(JSON.stringify({
-      is_action_legal: false,
-      sanity_damage: 0,
-      narrative: FALLBACK_NARRATIVE,
-      is_death: false,
-      consumes_time: true,
-    })), { status: 200, headers: SSE_HEADERS });
-  }
+  const fallbackPayload = JSON.stringify({
+    is_action_legal: false,
+    sanity_damage: 0,
+    narrative: FALLBACK_NARRATIVE,
+    is_death: false,
+    consumes_time: true,
+  });
 
-  const delays = [1000, 2000, 4000];
-  let lastError: unknown = null;
+  // Immediate Response Bypass: return stream within milliseconds to avoid serverless timeout.
+  // Upstream fetch + parse + enqueue runs in background IIFE.
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
 
-  const TIMEOUT_MS = 120000;
+  const writeToStream = async (data: string) => {
+    await writer.write(sse(data));
+  };
 
-  for (let attempt = 0; attempt <= 3; attempt++) {
-    const ac = new AbortController();
-    const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
+  const closeWithFallback = async () => {
     try {
-      const upstream = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          stream: true,
-          max_tokens: 8192,
-          response_format: { type: "json_object" },
-          messages: safeMessages,
-          stream_options: { include_usage: true },
-        }),
-        signal: ac.signal,
-      });
+      await writeToStream(fallbackPayload);
+    } finally {
+      await writer.close();
+    }
+  };
 
-      clearTimeout(timeoutId);
+  (async () => {
+    const delays = [1000, 2000, 4000];
+    const TIMEOUT_MS = 120000;
 
-      if (!upstream.ok || !upstream.body) {
-        const text = await upstream.text().catch(() => "");
-        console.error(
-          `[api/chat] upstream failed attempt=${attempt + 1} status=${upstream.status} url=${apiUrl}`,
-          { status: upstream.status, statusText: upstream.statusText, body: text }
-        );
-        lastError = new Error(`HTTP ${upstream.status}: ${text}`);
-        if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, delays[attempt]));
-          continue;
-        }
-        return sendFallback();
-      }
-
-      const reader = upstream.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-      let accumulated = "";
-      let latestTotalTokens = 0;
-      let tokenUsageFlushed = false;
-
-      const flushTokenUsage = async () => {
-        if (tokenUsageFlushed) return;
-        tokenUsageFlushed = true;
-        const toPersist =
-          latestTotalTokens > 0
-            ? latestTotalTokens
-            : accumulated.length > 0
-              ? Math.max(100, Math.ceil(accumulated.length / 2.5))
-              : 0;
-        await persistTokenUsage(userId, toPersist).catch((error) => {
-          console.error("[api/chat] failed to persist token usage", error);
+    for (let attempt = 0; attempt <= 3; attempt++) {
+      const ac = new AbortController();
+      const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
+      try {
+        const upstream = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            stream: true,
+            max_tokens: 8192,
+            response_format: { type: "json_object" },
+            messages: safeMessages,
+            stream_options: { include_usage: true },
+          }),
+          signal: ac.signal,
         });
-        if (userId && toPersist > 0) {
-          await incrementQuota(userId, toPersist).catch((error) => {
-            console.error("[api/chat] failed to increment quota", error);
-          });
-        }
-      };
 
-      const stream = new ReadableStream<Uint8Array>({
-        async pull(controller) {
-          const { value, done } = await reader.read();
-          if (done) {
-            await flushTokenUsage();
-            controller.close();
-            return;
+        clearTimeout(timeoutId);
+
+        if (!upstream.ok || !upstream.body) {
+          const text = await upstream.text().catch(() => "");
+          console.error(
+            `[api/chat] upstream failed attempt=${attempt + 1} status=${upstream.status} url=${apiUrl}`,
+            { status: upstream.status, statusText: upstream.statusText, body: text }
+          );
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, delays[attempt]));
+            continue;
           }
+          await closeWithFallback();
+          return;
+        }
 
-          buffer += decoder.decode(value, { stream: true });
+        const reader = upstream.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let accumulated = "";
+        let latestTotalTokens = 0;
+        let tokenUsageFlushed = false;
 
+        const flushTokenUsage = async () => {
+          if (tokenUsageFlushed) return;
+          tokenUsageFlushed = true;
+          const toPersist =
+            latestTotalTokens > 0
+              ? latestTotalTokens
+              : accumulated.length > 0
+                ? Math.max(100, Math.ceil(accumulated.length / 2.5))
+                : 0;
+          await persistTokenUsage(userId, toPersist).catch((error) => {
+            console.error("[api/chat] failed to persist token usage", error);
+          });
+          if (userId && toPersist > 0) {
+            await incrementQuota(userId, toPersist).catch((error) => {
+              console.error("[api/chat] failed to increment quota", error);
+            });
+          }
+        };
+
+        try {
           while (true) {
-            const idx = buffer.indexOf("\n");
-            if (idx === -1) break;
-            const line = buffer.slice(0, idx).trimEnd();
-            buffer = buffer.slice(idx + 1);
-
-            if (!line.startsWith("data:")) continue;
-            const data = line.slice(5).trim();
-
-            if (!data) continue;
-            if (data === "[DONE]") {
+            const { value, done } = await reader.read();
+            if (done) {
               await flushTokenUsage();
-              controller.close();
+              await writer.close();
               return;
             }
 
-            // OpenAI/Ark compatible SSE: data: { ...json... }
-            let json: {
-              choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
-              usage?: {
-                total_tokens?: number;
-                input_tokens?: number;
-                output_tokens?: number;
-              };
-            } | null = null;
-            try {
-              json = JSON.parse(data);
-            } catch {
-              accumulated += data;
-              controller.enqueue(sse(data));
-              continue;
-            }
+            buffer += decoder.decode(value, { stream: true });
 
-            const deltaContent =
-              json?.choices?.[0]?.delta?.content ??
-              json?.choices?.[0]?.message?.content ??
-              "";
+            while (true) {
+              const idx = buffer.indexOf("\n");
+              if (idx === -1) break;
+              const line = buffer.slice(0, idx).trimEnd();
+              buffer = buffer.slice(idx + 1);
 
-            if (typeof deltaContent === "string" && deltaContent.length > 0) {
-              accumulated += deltaContent;
-              controller.enqueue(sse(deltaContent));
-            }
+              if (!line.startsWith("data:")) continue;
+              const data = line.slice(5).trim();
 
-            const u = json?.usage;
-            const total = Number(u?.total_tokens ?? 0);
-            const inputOutput =
-              Number(u?.input_tokens ?? 0) + Number(u?.output_tokens ?? 0);
-            const usageTokens = Number.isFinite(total) && total > 0
-              ? total
-              : Number.isFinite(inputOutput) && inputOutput > 0
-                ? inputOutput
-                : 0;
-            if (usageTokens > 0) {
-              latestTotalTokens = Math.max(latestTotalTokens, Math.trunc(usageTokens));
+              if (!data) continue;
+              if (data === "[DONE]") {
+                await flushTokenUsage();
+                await writer.close();
+                return;
+              }
+
+              let json: {
+                choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+                usage?: {
+                  total_tokens?: number;
+                  input_tokens?: number;
+                  output_tokens?: number;
+                };
+              } | null = null;
+              try {
+                json = JSON.parse(data);
+              } catch {
+                accumulated += data;
+                await writeToStream(data);
+                continue;
+              }
+
+              const deltaContent =
+                json?.choices?.[0]?.delta?.content ??
+                json?.choices?.[0]?.message?.content ??
+                "";
+
+              if (typeof deltaContent === "string" && deltaContent.length > 0) {
+                accumulated += deltaContent;
+                await writeToStream(deltaContent);
+              }
+
+              const u = json?.usage;
+              const total = Number(u?.total_tokens ?? 0);
+              const inputOutput =
+                Number(u?.input_tokens ?? 0) + Number(u?.output_tokens ?? 0);
+              const usageTokens = Number.isFinite(total) && total > 0
+                ? total
+                : Number.isFinite(inputOutput) && inputOutput > 0
+                  ? inputOutput
+                  : 0;
+              if (usageTokens > 0) {
+                latestTotalTokens = Math.max(latestTotalTokens, Math.trunc(usageTokens));
+              }
             }
           }
-        },
-        async cancel() {
+        } catch (readErr) {
           try {
             await reader.cancel();
           } catch {
             // ignore
           }
-        },
-      });
-
-      return new Response(stream, {
-        status: 200,
-        headers: {
-          ...SSE_HEADERS,
-          "X-Accel-Buffering": "no",
-        },
-      });
-    } catch (err) {
-      clearTimeout(timeoutId);
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      const cause = err instanceof Error ? err.cause : undefined;
-      console.error(
-        `[api/chat] fetch exception attempt=${attempt + 1} url=${apiUrl}`,
-        { message: msg, cause, error: err }
-      );
-      if (attempt < 3) {
-        await new Promise((r) => setTimeout(r, delays[attempt]));
-        continue;
+          await closeWithFallback();
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const msg = err instanceof Error ? err.message : String(err);
+        const cause = err instanceof Error ? err.cause : undefined;
+        console.error(
+          `[api/chat] fetch exception attempt=${attempt + 1} url=${apiUrl}`,
+          { message: msg, cause, error: err }
+        );
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, delays[attempt]));
+          continue;
+        }
+        await closeWithFallback();
       }
-      return sendFallback();
     }
-  }
+  })();
 
-  return sendFallback();
+  return new Response(readable, {
+    status: 200,
+    headers: {
+      ...SSE_HEADERS,
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
 

@@ -60,23 +60,42 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* GPU-only: transform + opacity to avoid layout/paint pipeline */
 @keyframes breathe {
-  0%, 100% { opacity: 0.7; text-shadow: 0 0 12px rgba(99, 102, 241, 0.5); }
-  50% { opacity: 1; text-shadow: 0 0 24px rgba(99, 102, 241, 0.8); }
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
 }
 
 @keyframes halo-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 20px rgba(255, 255, 255, 0.25),
-      inset 0 0 24px rgba(255, 255, 255, 0.08);
-  }
-  50% {
-    box-shadow:
-      0 0 36px rgba(255, 255, 255, 0.45),
-      inset 0 0 32px rgba(255, 255, 255, 0.15);
-  }
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
 }
+
+@keyframes sanity-hit-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-3px, -2px); }
+  20% { transform: translate(3px, 2px); }
+  30% { transform: translate(-2px, 3px); }
+  40% { transform: translate(2px, -3px); }
+  50% { transform: translate(-3px, 2px); }
+  60% { transform: translate(3px, -2px); }
+  70% { transform: translate(-2px, -3px); }
+  80% { transform: translate(2px, 3px); }
+  90% { transform: translate(-1px, 1px); }
+}
+
+/* Talent glow: opacity-only for GPU composite, no layout/paint */
+@keyframes talent-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.95; }
+}
+
+.talent-glow-time { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(251,191,36,0.4) 0%, rgba(245,158,11,0.25) 40%, transparent 70%); }
+.talent-glow-gift { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(52,211,153,0.45) 0%, rgba(16,185,129,0.3) 40%, transparent 70%); }
+.talent-glow-aura { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(253,224,71,0.5) 0%, rgba(250,204,21,0.35) 40%, transparent 70%); }
+.talent-glow-life { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(45,212,191,0.45) 0%, rgba(20,184,166,0.3) 40%, transparent 70%); }
+.talent-glow-eye { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(129,140,248,0.5) 0%, rgba(99,102,241,0.35) 40%, transparent 70%); }
+.talent-glow-bell { background: radial-gradient(ellipse 120% 120% at 50% 50%, rgba(185,28,28,0.4) 0%, rgba(127,29,29,0.3) 40%, transparent 70%); }
 
 /* Liquid Glass: base + specular rim + optional refraction */
 .liquid-glass {

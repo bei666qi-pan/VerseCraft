@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Activity, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List } from "lucide-react";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Plus } from "lucide-react";
 import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type GameTask } from "@/store/useGameStore";
@@ -107,16 +107,49 @@ interface UnifiedMenuModalProps {
   onViewedTab?: (tab: "codex" | "warehouse" | "tasks") => void;
 }
 
-function StatBar({ statName, value, isDanger }: { statName: string; value: number; isDanger: boolean }) {
+function StatBar({
+  statName,
+  value,
+  isDanger,
+  statKey,
+  originium,
+  onUpgrade,
+}: {
+  statName: string;
+  value: number;
+  isDanger: boolean;
+  statKey?: StatType;
+  originium?: number;
+  onUpgrade?: (attr: StatType) => void;
+}) {
   const bar1 = (Math.min(value, 25) / 25) * 100;
   const bar2 = (Math.max(0, value - 25) / 25) * 100;
   const fillGradient = isDanger ? "from-red-600 to-red-500" : "from-indigo-500 to-blue-400";
   const bar2Gradient = isDanger ? "from-red-500 to-rose-400" : "from-purple-500 to-fuchsia-400";
+  const cost = value < 20 ? 2 : 3;
+  const canUpgrade = statKey && onUpgrade && value < STAT_MAX && (originium ?? 0) >= cost;
   return (
     <div className="mb-4">
-      <div className="mb-1 flex justify-between">
+      <div className="mb-1 flex items-center justify-between gap-2">
         <span className={`text-sm font-medium ${isDanger ? "text-red-400" : "text-slate-300"}`}>{statName}</span>
-        <span className="text-xs font-mono text-slate-500">{value} / {STAT_MAX}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-slate-500">{value} / {STAT_MAX}</span>
+          {statKey && onUpgrade && (
+            <button
+              type="button"
+              title={`消耗 ${cost} 原石加点`}
+              onClick={() => onUpgrade(statKey)}
+              disabled={!canUpgrade}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold transition-all ${
+                canUpgrade
+                  ? "bg-amber-500/30 text-amber-300 hover:bg-amber-500/50 hover:shadow-[0_0_12px_rgba(245,158,11,0.5)] active:scale-95"
+                  : "cursor-not-allowed bg-white/5 text-slate-500"
+              }`}
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex flex-col gap-1">
         <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800/50">
@@ -132,6 +165,8 @@ function StatBar({ statName, value, isDanger }: { statName: string; value: numbe
 
 function SettingsPanel({
   stats,
+  originium,
+  onUpgradeAttribute,
   playerLocation,
   time,
   volume,
@@ -142,6 +177,8 @@ function SettingsPanel({
   onAbandonAndDie,
 }: {
   stats: Record<StatType, number>;
+  originium: number;
+  onUpgradeAttribute: (attr: StatType) => void;
   playerLocation: string;
   time: { day: number; hour: number };
   volume: number;
@@ -161,6 +198,9 @@ function SettingsPanel({
     <div className="space-y-8 p-6">
       <div>
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">属性与坐标</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-amber-400/90">原石：{originium} · 20以下2原石/点，30以下3原石/点</span>
+        </div>
         <div className="space-y-2">
           {STAT_ORDER.map((k) => (
             <StatBar
@@ -168,6 +208,9 @@ function SettingsPanel({
               statName={STAT_LABELS[k]}
               value={stats[k] ?? 0}
               isDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
+              statKey={k}
+              originium={originium}
+              onUpgrade={onUpgradeAttribute}
             />
           ))}
         </div>
@@ -316,14 +359,32 @@ function BackpackPanel({
         {selectedItem ? (
           <>
             <h3 className="text-xl font-bold text-white">{selectedItem.name}</h3>
-            <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">
-              {selectedItem.tier}
-            </p>
+            {"ownerId" in selectedItem && selectedItem.ownerId && (
+              <p className="mt-1 text-xs text-slate-500">主人：{selectedItem.ownerId}</p>
+            )}
             <div className="mt-6 space-y-4">
               <div>
                 <span className="text-xs text-slate-500">描述</span>
                 <p className="mt-1 text-sm leading-relaxed text-slate-300">{selectedItem.description}</p>
               </div>
+              {"origin" in selectedItem && selectedItem.origin && (
+                <div>
+                  <span className="text-xs text-slate-500">来历</span>
+                  <p className="mt-1 text-sm text-amber-200/90">{selectedItem.origin}</p>
+                </div>
+              )}
+              {"value" in selectedItem && selectedItem.value && (
+                <div>
+                  <span className="text-xs text-slate-500">价值</span>
+                  <p className="mt-1 text-sm text-emerald-300/90">{selectedItem.value}</p>
+                </div>
+              )}
+              {"sideEffect" in selectedItem && selectedItem.sideEffect && (
+                <div>
+                  <span className="text-xs text-slate-500">副作用</span>
+                  <p className="mt-1 text-sm text-red-300/90">{selectedItem.sideEffect}</p>
+                </div>
+              )}
               {selectedItem.statBonus && Object.keys(selectedItem.statBonus).length > 0 && (
                 <div>
                   <span className="text-xs text-slate-500">属性</span>
@@ -574,6 +635,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const tasks = useGameStore((s) => s.tasks ?? []);
   const originium = useGameStore((s) => s.originium ?? 0);
+  const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
@@ -600,6 +662,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   function handleAbandonAndDie() {
     useGameStore.getState().setStats({ sanity: 0 });
     onClose();
+    router.push("/settlement");
   }
 
   function handleTabSelect(id: ActiveMenu) {
@@ -612,21 +675,23 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
     usePersistStore.getState().setActiveMenu(id);
   }
 
-  if (activeMenu === null) return null;
+  const isOpen = activeMenu !== null;
 
   return (
-    <div
-      className="fixed inset-0 w-screen h-[100dvh] z-50 bg-black/60 backdrop-blur-2xl flex"
-      role="dialog"
-      aria-modal
-      aria-labelledby="unified-menu-title"
-    >
+    <Activity mode={isOpen ? "visible" : "hidden"}>
       <div
-        className="flex h-full w-full overflow-hidden border-t border-white/10 bg-slate-900/60 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-3xl"
-        id="unified-menu-content"
+        className="fixed inset-0 z-50 flex h-[100dvh] w-screen bg-black/70"
+        role="dialog"
+        aria-modal
+        aria-labelledby="unified-menu-title"
+        aria-hidden={!isOpen}
       >
-        {/* 左侧侧边栏 */}
-        <aside className="flex w-20 min-w-[72px] sm:w-1/4 flex-col border-r border-white/10 bg-black/20 p-3 sm:p-4">
+        <div
+          className="flex h-full w-full overflow-hidden border-t border-white/10 bg-slate-900/50 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
+          id="unified-menu-content"
+        >
+          {/* 左侧侧边栏 */}
+          <aside className="flex w-20 min-w-[72px] sm:w-1/4 flex-col border-r border-white/10 bg-black/20 p-3 sm:p-4">
           <h2 id="unified-menu-title" className="sr-only">
             控制中枢
           </h2>
@@ -660,11 +725,13 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
           </button>
         </aside>
 
-        {/* 右侧内容区 */}
+        {/* 右侧内容区 - Activity 保留各 Tab 的 DOM/状态，hidden 时暂停 useEffect */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {currentTab === "settings" && (
+          <Activity mode={currentTab === "settings" ? "visible" : "hidden"}>
             <SettingsPanel
               stats={stats}
+              originium={originium}
+              onUpgradeAttribute={upgradeAttribute}
               playerLocation={playerLocation}
               time={time}
               volume={volume}
@@ -674,8 +741,8 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               onSaveAndExit={handleSaveAndExit}
               onAbandonAndDie={handleAbandonAndDie}
             />
-          )}
-          {currentTab === "backpack" && (
+          </Activity>
+          <Activity mode={currentTab === "backpack" ? "visible" : "hidden"}>
             <BackpackPanel
               inventory={inventory}
               originium={originium}
@@ -684,8 +751,8 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               onUseItem={onUseItem}
               isStreaming={isStreaming}
             />
-          )}
-          {currentTab === "codex" && (
+          </Activity>
+          <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>
             <CodexPanel
               codex={codex}
               selectedId={selectedCodexId}
@@ -693,11 +760,16 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               page={codexPage}
               onPageChange={setCodexPage}
             />
-          )}
-          {currentTab === "warehouse" && <WarehousePanel warehouse={warehouse} />}
-          {currentTab === "tasks" && <TasksPanel tasks={tasks} originium={originium} />}
+          </Activity>
+          <Activity mode={currentTab === "warehouse" ? "visible" : "hidden"}>
+            <WarehousePanel warehouse={warehouse} />
+          </Activity>
+          <Activity mode={currentTab === "tasks" ? "visible" : "hidden"}>
+            <TasksPanel tasks={tasks} originium={originium} />
+          </Activity>
         </main>
       </div>
     </div>
+    </Activity>
   );
 }

@@ -3,16 +3,29 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { get, set, del } from "idb-keyval";
+import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
 import type { Item, StatType } from "@/lib/registry/types";
-import { ITEMS } from "@/lib/registry/items";
+import { ITEMS, ITEMS_BY_ID } from "@/lib/registry/items";
+
+function normalizeInventory(inv: unknown[]): Item[] {
+  return inv.map((raw) => {
+    const r = raw as Record<string, unknown>;
+    const id = typeof r?.id === "string" ? r.id : "";
+    const canonical = id ? ITEMS_BY_ID[id] : null;
+    if (canonical) return canonical;
+    return raw as Item;
+  });
+}
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 
-export const PARCHMENT_ITEM: Item = {
+export const PARCHMENT_ITEM: Item = ITEMS_BY_ID["I-PARCHMENT"] ?? {
   id: "I-PARCHMENT",
   name: "染血的羊皮纸",
-  tier: "S",
-  description:
-    "三日之后，暗月降至；十日之后，一切终焉。本层徘徊着未知的诡异，不要相信任何轻易示好的住客。记住，暗月期间不要直视光源。",
+  ownerId: "A-008",
+  description: "三日之后暗月降至；十日之后一切终焉。本层徘徊着未知的诡异，不要相信轻易示好的住客。暗月期间不要直视光源。",
+  origin: "守门人结界边缘散落的规则碎片。",
+  sideEffect: "阅读后会被公寓标记。",
+  value: "知晓基础规则。",
   statBonus: {},
   tags: "lore,truth",
 };
@@ -259,30 +272,19 @@ function clamp01(n: number): number {
 }
 
 function pickStartingItemByBackground(background: number): Item {
-  const dItems = ITEMS.filter((i) => i.tier === "D");
-  const bItems = ITEMS.filter((i) => i.tier === "B");
-  const aItems = ITEMS.filter((i) => i.tier === "A");
-
+  const commonPool = ITEMS.filter(
+    (i) => i.id !== "I-PARCHMENT" && ["N-001", "N-002", "N-003", "N-006", "N-008", "N-014"].includes(i.ownerId)
+  );
+  const favorPool = ITEMS.filter(
+    (i) => i.value.includes("好感") || i.tags.includes("favor")
+  );
   const safePick = (pool: Item[], fallback: Item): Item => {
     if (pool.length === 0) return fallback;
-    const idx = Math.floor(Math.random() * pool.length);
-    return pool[idx] ?? fallback;
+    return pool[Math.floor(Math.random() * pool.length)] ?? fallback;
   };
-
-  const fallback = dItems[0] ?? ITEMS[0]!;
-
-  const highTierChance = clamp01((background || 0) * 0.1);
-  const roll = Math.random();
-
-  if (roll < highTierChance) {
-    const aChance = clamp01((background - 6) / 20);
-    const chooseA = Math.random() < aChance;
-    return chooseA
-      ? safePick(aItems, safePick(bItems, fallback))
-      : safePick(bItems, safePick(aItems, fallback));
-  }
-
-  return safePick(dItems, fallback);
+  const fallback = commonPool[0] ?? ITEMS[1]!;
+  const highChance = clamp01((background || 0) * 0.08);
+  return Math.random() < highChance ? safePick(favorPool, safePick(commonPool, fallback)) : safePick(commonPool, fallback);
 }
 
 export const useGameStore = create<GameState>()(
@@ -574,7 +576,7 @@ export const useGameStore = create<GameState>()(
       getPromptContext: () => {
         const s = get();
         const inv = s.inventory
-          .map((i) => `${i.name}[${i.id}|${i.tier}]`)
+          .map((i) => `${i.name}[${i.id}]`)
           .join("，");
 
         const statsText =
@@ -584,7 +586,7 @@ export const useGameStore = create<GameState>()(
           `魅力[${s.stats.charm}]，` +
           `出身[${s.stats.background}]`;
 
-        const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
+        const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选]";
 
         const time = s.time ?? { day: 0, hour: 0 };
         const npcPositions = Object.entries(s.dynamicNpcStates)
@@ -691,7 +693,7 @@ export const useGameStore = create<GameState>()(
             : DEFAULT_TALENT_COOLDOWNS;
         set({
           stats: JSON.parse(JSON.stringify(data.stats)),
-          inventory: JSON.parse(JSON.stringify(data.inventory)),
+          inventory: normalizeInventory(JSON.parse(JSON.stringify(data.inventory ?? []))),
           logs: JSON.parse(JSON.stringify(data.logs)),
           time: JSON.parse(JSON.stringify(data.time)),
           codex: JSON.parse(JSON.stringify(data.codex)),
@@ -715,7 +717,7 @@ export const useGameStore = create<GameState>()(
             currentSaveSlot: slotId,
             saveSlots: { ...s.saveSlots, [slotId]: data },
             stats: JSON.parse(JSON.stringify(data.stats)),
-            inventory: JSON.parse(JSON.stringify(data.inventory)),
+            inventory: normalizeInventory(JSON.parse(JSON.stringify(data.inventory ?? []))),
             logs: JSON.parse(JSON.stringify(data.logs ?? [])),
             time: JSON.parse(JSON.stringify(data.time ?? { day: 0, hour: 0 })),
             codex: JSON.parse(JSON.stringify(data.codex ?? {})),
@@ -731,8 +733,9 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: DB_KEY,
-      storage: createJSONStorage(() => idbStorage),
+      storage: createJSONStorage(() => createDebouncedStorage(idbStorage, 1000)),
       skipHydration: true,
+      // Excludes transient UI: isHydrated, currentOptions, recentOptions, inputMode, intrusionFlashUntil, originiumDropNotifyUntil
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
         saveSlots: s.saveSlots ?? {},

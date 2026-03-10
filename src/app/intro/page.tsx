@@ -47,18 +47,18 @@ export default function IntroPage() {
 
   return (
     <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 text-slate-800">
-      {/* 神圣诡异光晕 - 呼吸浮动 */}
+      {/* 光晕：原生径向渐变，无 filter:blur，GPU 友好 */}
       <div
-        className="pointer-events-none absolute -z-10 top-[10%] left-[5%] h-[600px] w-[600px] rounded-full bg-cyan-200/40 blur-[140px] animate-[haloFloat_12s_ease-in-out_infinite]"
+        className="pointer-events-none absolute -z-10 top-[10%] left-[5%] h-[600px] w-[600px] rounded-full bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,oklch(0.9_0.06_195/0.4)_0%,transparent_70%)] animate-[haloFloat_12s_ease-in-out_infinite]"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -z-10 bottom-[20%] right-[10%] h-[500px] w-[500px] rounded-full bg-purple-200/40 blur-[120px] animate-[haloFloat_14s_ease-in-out_infinite]"
+        className="pointer-events-none absolute -z-10 bottom-[20%] right-[10%] h-[500px] w-[500px] rounded-full bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,oklch(0.88_0.08_300/0.35)_0%,transparent_70%)] animate-[haloFloat_14s_ease-in-out_infinite]"
         style={{ animationDelay: "-3s" }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -z-10 top-1/2 left-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-200/30 blur-[100px] animate-[ambientDrift_16s_ease-in-out_infinite]"
+        className="pointer-events-none absolute -z-10 top-1/2 left-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,oklch(0.85_0.05_270/0.3)_0%,transparent_70%)] animate-[ambientDrift_16s_ease-in-out_infinite]"
         aria-hidden
       />
 

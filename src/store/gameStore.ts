@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { get, set, del } from "idb-keyval";
+import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
 
 const DB_KEY = "versecraft-game-state";
 
@@ -166,7 +167,7 @@ export const useGameStore = create<GameState & GameActions>()(
     {
       name: DB_KEY,
       skipHydration: true,
-      storage: createJSONStorage(() => idbStorage),
+      storage: createJSONStorage(() => createDebouncedStorage(idbStorage, 1000)),
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
         stats: s.stats,

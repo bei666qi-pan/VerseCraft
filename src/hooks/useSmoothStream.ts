@@ -1,13 +1,71 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 
 const CHARS_PER_FRAME = 2;
 
 /**
- * Grok-style stream: Delta append via queue + requestAnimationFrame.
- * `displayed` only ever grows during an active stream, so once content
- * appears the spinner can never flash back.
+ * Architecture: decouple network ingestion from React. Incoming tokens append to
+ * useRef buffer; rAF loop batches updates into single DOM write per frame (60 FPS).
+ * Avoids re-render cascade from per-chunk setState.
+ */
+export function useSmoothStreamFromRef(
+  narrativeRef: MutableRefObject<string>,
+  isActive: boolean,
+  onFrameScroll?: () => void
+): { text: string; isComplete: boolean; isThinking: boolean } {
+  const [displayed, setDisplayed] = useState("");
+  const queueRef = useRef("");
+  const prevLenRef = useRef(0);
+  const prevActiveRef = useRef(isActive);
+
+  useEffect(() => {
+    if (!isActive) {
+      setDisplayed("");
+      queueRef.current = "";
+      prevLenRef.current = 0;
+      prevActiveRef.current = false;
+      return;
+    }
+    prevActiveRef.current = true;
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    let rafId: number;
+
+    function tick() {
+      const src = narrativeRef.current;
+      if (src.length > prevLenRef.current) {
+        const delta = src.slice(prevLenRef.current);
+        queueRef.current += delta;
+        prevLenRef.current = src.length;
+      }
+
+      const q = queueRef.current;
+      if (q.length > 0) {
+        const take = Math.min(CHARS_PER_FRAME, q.length);
+        const chunk = q.slice(0, take);
+        queueRef.current = q.slice(take);
+        setDisplayed((prev) => prev + chunk);
+        onFrameScroll?.();
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isActive, narrativeRef, onFrameScroll]);
+
+  const text = isActive ? (displayed || "……") : "";
+  const isComplete = !isActive;
+  const isThinking = isActive && displayed.length === 0;
+
+  return { text, isComplete, isThinking };
+}
+
+/**
+ * Legacy: state-based source. Prefer useSmoothStreamFromRef for streaming.
  */
 export function useSmoothStream(source: string, isActive: boolean): { text: string; isComplete: boolean; isThinking: boolean } {
   const [displayed, setDisplayed] = useState("");
@@ -15,7 +73,6 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
   const prevSourceLenRef = useRef(0);
   const prevActiveRef = useRef(isActive);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- reset on stream start/end */
   useEffect(() => {
     const streamJustStarted = isActive && !prevActiveRef.current;
     prevActiveRef.current = isActive;
@@ -31,7 +88,6 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
       prevSourceLenRef.current = 0;
     }
   }, [isActive, source]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!isActive) return;
@@ -45,7 +101,6 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
   useEffect(() => {
     if (!isActive) return;
     let rafId: number;
-
     function drain() {
       const q = queueRef.current;
       if (q.length > 0) {
