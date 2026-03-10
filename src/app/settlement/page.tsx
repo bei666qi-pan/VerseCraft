@@ -104,7 +104,7 @@ export default function SettlementPage() {
 
   useEffect(() => {
     if (!mounted) return;
-    useGameStore.getState().clearSaveDataKeepLogs();
+    useGameStore.getState().clearSaveForDeath();
   }, [mounted]);
 
   useEffect(() => {

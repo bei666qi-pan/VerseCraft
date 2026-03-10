@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Keyboard, List, Settings, Volume2, VolumeX } from "lucide-react";
+import { Keyboard, List, Settings } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
@@ -485,6 +485,7 @@ export default function PlayPage() {
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
+  const [inputError, setInputError] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [rawDmBuffer, setRawDmBuffer] = useState("");
   const [liveNarrative, setLiveNarrative] = useState("");
@@ -496,6 +497,7 @@ export default function PlayPage() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
+  const userScrolledUpRef = useRef(false);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -547,9 +549,18 @@ export default function PlayPage() {
   );
 
   const prevIsStreamingRef = useRef(false);
+  const onScrollContainer = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollTop, clientHeight, scrollHeight } = el;
+    const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
+    userScrolledUpRef.current = !atBottom;
+  }, []);
+
   useEffect(() => {
     if (!scrollRef.current) return;
     const el = scrollRef.current;
+    if (userScrolledUpRef.current) return;
     if (isStreaming) {
       el.scrollTop = el.scrollHeight;
     } else {
@@ -892,12 +903,18 @@ export default function PlayPage() {
     const sanityAfter = useGameStore.getState().stats.sanity ?? 0;
 
     if (parsed.is_death || sanityAfter <= 0) {
-      useGameStore.getState().markGameOver();
+      useGameStore.getState().clearSaveForDeath();
       setTimeout(() => router.push("/settlement"), 2000);
     }
   }
 
   function onSubmit() {
+    const trimmed = input.trim();
+    if (trimmed.length > MAX_INPUT) {
+      setInputError("输入不可超过20个字符");
+      return;
+    }
+    setInputError("");
     void sendAction(input);
     setInput("");
   }
@@ -1044,25 +1061,6 @@ export default function PlayPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => {
-              const nowMuted = toggleMute();
-              setAudioMuted(nowMuted);
-              if (!nowMuted) {
-                updateSanityFilter(sanity);
-                setDarkMoonMode(isDarkMoon);
-              }
-            }}
-            className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all backdrop-blur-md ${
-              audioMuted
-                ? "border-white/10 bg-slate-800/50 text-slate-500"
-                : "border-indigo-400/30 bg-indigo-950/40 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.3)]"
-            }`}
-            title={audioMuted ? "开启声场" : "静音"}
-          >
-            {audioMuted ? <VolumeX size={16} strokeWidth={1.5} /> : <Volume2 size={16} strokeWidth={1.5} />}
-          </button>
-          <button
-            type="button"
             onClick={() => setShowExitModal(true)}
             className="rounded-full border border-red-500/30 bg-red-950/50 px-6 py-2 text-sm font-bold tracking-widest text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all backdrop-blur-md hover:bg-red-900/70"
           >
@@ -1179,13 +1177,11 @@ export default function PlayPage() {
 
               <div className={`border-b px-5 py-4 ${isDarkMoon ? "border-red-900/50" : "border-border"}`}>
                 <h2 className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : ""}`}>叙事主视窗</h2>
-                <p className={`mt-1 text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
-                  输入必须简短。规则会记住每一次犹豫。
-                </p>
               </div>
 
               <div
                 ref={scrollRef}
+                onScroll={onScrollContainer}
                 className="h-[54dvh] min-h-[200px] overflow-y-auto overscroll-contain px-5 py-5"
                 style={{ overflowAnchor: "auto" }}
               >
@@ -1357,7 +1353,7 @@ export default function PlayPage() {
                           <button
                             type="button"
                             onClick={() => withTransition(toggleInputMode)}
-                            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
+                            className="flex items-center gap-1.5 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-2 text-sm font-medium tracking-widest text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all duration-300 hover:bg-indigo-500/20 hover:border-indigo-400/60"
                           >
                             <Keyboard size={14} strokeWidth={1.5} />
                             <span>手动输入</span>
@@ -1376,11 +1372,13 @@ export default function PlayPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <input
                             value={input}
-                            onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT))}
+                            onChange={(e) => {
+                              setInput(e.target.value);
+                              setInputError("");
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") onSubmit();
                             }}
-                            maxLength={MAX_INPUT}
                             placeholder="输入指令，最多20字"
                             inputMode="text"
                             enterKeyHint="done"
@@ -1394,7 +1392,7 @@ export default function PlayPage() {
                           <button
                             type="button"
                             onClick={onSubmit}
-                            disabled={isStreaming || input.trim().length === 0 || input.trim().length > MAX_INPUT}
+                            disabled={isStreaming || input.trim().length === 0}
                             className={`min-h-[44px] h-12 shrink-0 rounded-xl px-6 text-base font-semibold transition disabled:opacity-40 md:text-sm ${
                               isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
                             }`}
@@ -1402,21 +1400,25 @@ export default function PlayPage() {
                             确认
                           </button>
                         </div>
-                        <div className={`mt-2 flex items-center justify-between text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
+                        <div className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs ${isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
                           <span>字数：{input.trim().length}/{MAX_INPUT}</span>
                           <div className="flex items-center gap-3">
-                            <span className={input.trim().length > MAX_INPUT ? "text-danger" : ""}>
-                              {input.trim().length > MAX_INPUT
-                                ? "动作过长：将被公寓拒绝。"
-                                : isStreaming
-                                  ? "深渊 DM 正在推演..."
-                                  : "保持简短。保持真实。"}
-                            </span>
+                            {inputError ? (
+                              <span className="text-red-500 font-medium">{inputError}</span>
+                            ) : (
+                              <span className={input.trim().length > MAX_INPUT ? "text-red-500" : ""}>
+                                {input.trim().length > MAX_INPUT
+                                  ? "动作过长：将被公寓拒绝。"
+                                  : isStreaming
+                                    ? "深渊 DM 正在推演..."
+                                    : "保持简短。保持真实。"}
+                              </span>
+                            )}
                             {currentOptions.length > 0 && !isStreaming && (
                               <button
                                 type="button"
                                 onClick={() => withTransition(toggleInputMode)}
-                                className="flex items-center gap-1.5 rounded-full border border-white/10 bg-slate-800/50 px-4 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-md transition-all duration-300 hover:border-indigo-400/40 hover:text-white hover:bg-slate-700/60"
+                                className="flex items-center gap-1.5 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-4 py-2 text-sm font-medium tracking-widest text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all duration-300 hover:bg-indigo-500/20 hover:border-indigo-400/60"
                               >
                                 <List size={14} strokeWidth={1.5} />
                                 <span>返回选项</span>
@@ -1435,30 +1437,29 @@ export default function PlayPage() {
       </div>
 
       {/* 底部 Action Bar: 设置 | 意识潜入区 | 时间 */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center gap-4 px-4 py-4 md:bottom-6 md:px-8 md:pb-6">
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-center px-4 py-4 md:bottom-6 md:px-8 md:pb-6">
         <div
           className="flex w-full max-w-4xl flex-row items-center justify-between gap-6 rounded-2xl border border-white/10 bg-slate-900/40 px-6 py-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl md:px-8"
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
         >
-          {/* 左侧: 设置按钮 */}
+          {/* 左侧: 设置按钮 - Apple Liquid Glass 光效 */}
           <div className="flex shrink-0 items-center">
             <button
               type="button"
               onClick={() => setActiveMenu("settings")}
-              className="group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl"
+              className="group relative flex h-12 min-h-12 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-white shadow-[0_0_20px_rgba(255,255,255,0.15)] backdrop-blur-2xl transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]"
               title="设置"
             >
               <div
-                className="absolute inset-[-50%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0_340deg,rgba(255,255,255,0.8)_360deg)]"
+                className="absolute inset-[-80%] animate-[spin_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_90deg,transparent_180deg,rgba(255,255,255,0.3)_270deg,transparent_360deg)] opacity-80"
                 aria-hidden
               />
-              <div className="absolute inset-[2px] flex items-center justify-center rounded-2xl border border-white/10 bg-slate-900/80 backdrop-blur-xl transition-colors group-hover:bg-slate-800/80">
-                <Settings className="h-5 w-5 text-slate-300" strokeWidth={1.5} />
-              </div>
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,rgba(255,255,255,0.2),transparent_70%)]" aria-hidden />
+              <Settings className="relative z-10 h-5 w-5 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" strokeWidth={1.5} />
             </button>
           </div>
 
-          {/* 中间: 意识潜入输入区占位，实际输入在叙事卡片内，此处保持视觉平衡 */}
+          {/* 中间: 意识潜入输入区占位，实际输入在叙事卡片内 */}
           <div className="min-w-0 flex-1" />
 
           {/* 右侧: 时间显示 */}

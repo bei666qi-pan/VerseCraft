@@ -208,27 +208,38 @@ function BackpackPanel({
           <span className="text-[10px] text-amber-400/70">原石</span>
         </div>
       </div>
-      <div className="grid flex-1 grid-cols-3 gap-4 overflow-y-auto">
+      <div className="grid grid-cols-6 gap-3 w-full flex-1 overflow-y-auto">
         {Array.from({ length: 6 }, (_, idx) => {
           const item = inventory[idx];
           const isSelected = item && selectedId === item.id;
+          const firstIdx = item ? inventory.findIndex((i) => i.id === item.id) : -1;
+          const count = item && firstIdx === idx ? inventory.filter((i) => i.id === item.id).length : 0;
           return (
             <button
               key={item?.id ?? `empty-${idx}`}
               type="button"
               onClick={() => item && onSelect(isSelected ? null : item.id)}
-              className={`flex min-h-[88px] flex-col items-center justify-center rounded-xl border p-3 transition ${
+              className={`relative aspect-square flex flex-col items-center justify-center rounded-2xl border p-2 shadow-[inset_0_2px_10px_rgba(0,0,0,0.3)] transition-colors cursor-pointer group ${
                 item
                   ? isSelected
-                    ? "border-indigo-500/60 bg-indigo-500/20"
-                    : "border-white/20 bg-slate-800/40 hover:border-white/40"
-                  : "border-white/5 bg-black/30"
+                    ? "border-indigo-500/60 bg-indigo-500/20 hover:bg-indigo-500/25 hover:border-indigo-400/70"
+                    : "bg-black/20 border-white/5 hover:bg-white/10 hover:border-white/20"
+                  : "bg-black/20 border-white/5"
               }`}
             >
               {item ? (
                 <>
-                  <span className="truncate w-full text-center text-xs font-semibold text-white">{item.name}</span>
-                  <span className="mt-1 text-[10px] text-slate-400">{item.tier}</span>
+                  {count > 1 && (
+                    <span className="absolute -top-1 -right-1 bg-white/20 backdrop-blur-md text-[10px] px-1.5 rounded-full text-slate-200">
+                      {count}
+                    </span>
+                  )}
+                  <span className="truncate w-full text-center text-xs font-semibold text-white group-hover:text-white">
+                    {item.name}
+                  </span>
+                  <span className="truncate text-xs mt-1 text-slate-300 group-hover:text-white w-full text-center">
+                    {item.tier}
+                  </span>
                 </>
               ) : (
                 <span className="text-xs text-slate-600">空</span>

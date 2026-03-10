@@ -181,6 +181,8 @@ interface GameState {
   resetForNewGame: () => void;
   /** 标记游戏结束（死亡）：清空存档，隐藏继续冒险 */
   markGameOver: () => void;
+  /** 死亡专用：强制 isGameStarted=false，清空进度数据，保留日志/时间/位置用于结算展示 */
+  clearSaveForDeath: () => void;
   /** 结算页用：清空存档与物品，仅保留日志/时间/位置用于展示 */
   clearSaveDataKeepLogs: () => void;
   setCurrentOptions: (options: string[]) => void;
@@ -355,6 +357,18 @@ export const useGameStore = create<GameState>()(
             saveSlots: rest,
           };
         }),
+
+      clearSaveForDeath: () =>
+        set((s) => ({
+          ...s,
+          isGameStarted: false,
+          saveSlots: {},
+          inventory: [],
+          tasks: [],
+          warehouse: [],
+          currentOptions: [],
+          recentOptions: [],
+        })),
 
       clearSaveDataKeepLogs: () =>
         set((s) => ({
