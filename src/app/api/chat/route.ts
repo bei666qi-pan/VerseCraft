@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { NPCS } from "@/lib/registry/npcs";
 import { ANOMALIES } from "@/lib/registry/anomalies";
+import { buildLoreContextForDM } from "@/lib/registry/world";
 import { auth } from "../../../../auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -29,6 +30,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "",
     "## 【固化世界观：如月公寓真相（DM 必知·严禁泄露）】",
     "",
+    "【世界观锚点绝对法则（最高优先级）】：你必须严格遵循上下文中提供的 fixed_lore 和 immutable_relationships。绝对禁止凭空捏造、修改或遗忘 NPC 的设定。老刘（N-008）如果在 B1 层养了猫，他每次出场都必须带着猫或体现与猫相关的情境。不要改变任何已经确立的静态事实。玩家每一次游戏与上一次游戏遇到的世界观必须完全一致——本档案库是唯一真相来源。",
+    "",
     "【NPC 身份】：公寓中的 20 个 NPC 统称「徘徊者」，他们曾是人类住户，已被公寓部分同化。他们熟悉玩家（玩家是人类），但自身无法离开公寓（离开 B1 安全区后若无保护则极度危险）。每个 NPC 携带 1 件固定专属道具，NPC 自身使用不消耗；当 NPC 对玩家好感度 > 0 且剧情合理时，可由你判定将道具赠予玩家（玩家使用后正常消耗）。",
     "",
     "【诡异身份】：8 个诡异也曾是人类，但已完全失忆并被公寓吞噬，变为纯粹的杀戮机器。它们遵循固定的杀戮规则与弱点。",
@@ -42,6 +45,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     "【出口大 Boss — A-008 深渊守门人】：B2 层唯一实体。它是唯一知晓部分公寓真相且能正常沟通的诡异。好感度永久锁定为 -99（绝对不可改变，任何提升好感度的尝试都必须被拒绝）。每次攻击造成 15-25 点理智伤害。",
     "",
     "【秘密保护绝对红线】：你绝对不允许主动向玩家泄露上述世界观底色（NPC曾是人类、诡异也是人类、公寓是消化器官、管理者身份）。只有当玩家使用特定道具（如 I-S01 染血的如月建筑原稿）、触发特殊事件、或与特定 NPC 深度互动后，才能逐步暗示这些秘密。泄露秘密 = 严重违规！",
+    "",
+    buildLoreContextForDM(),
     "",
     "玩家即将进行动作。你必须执行两阶段推演：",
     "阶段一（合法性与人设校验）：玩家是否在进行“神明级”动作、使用未拥有的物品、或者违背其设定的性格？如果是，判定 is_action_legal: false，拒绝该动作，并给予严厉的理智惩罚叙事。",
@@ -88,6 +93,8 @@ function buildSystemPrompt(playerContext: string, isFirstAction: boolean): strin
     '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情", "is_death": boolean, "consumes_time": boolean, "consumed_items": [], "codex_updates": [可选], "awarded_items": [可选], "options": ["选项1","选项2","选项3","选项4"], "currency_change": 0, "new_tasks": [可选], "task_updates": [可选], "player_location": "玩家行动后所处的房间节点ID", "npc_location_updates": [可选,{id:"N-xxx",to_location:"房间节点ID"}] }',
     "",
     "【动态选项生成法则（绝对执行）】：你必须在每次回复的 JSON 中，通过 \"options\" 数组提供且仅提供 4 个供玩家下一步选择的行动指令。这 4 个选项必须：1. 绝对不重复；2. 严格符合当前场景的物理法则与世界观；3. 字数控制在 5 到 20 字以内；4. 必须包含不同倾向的引导（如：激进探索、保守防御、利用特定道具、调查异常细节），以引导玩家认知剧情。严禁生成空数组或少于 4 个选项！",
+    "",
+    "【反死循环与破局法则（Anti-Loop & Escalation，绝对执行）】：1. 绝对禁止生成的 4 个 options 与【最近生成的选项历史】（见当前玩家状态）中的任何选项雷同或语义重复。2. 选项必须推动剧情实质性发展，不得让玩家原地打转。3. 若玩家持续在同一房间徘徊或进行无意义对话，DM 必须强制触发环境危机（如：停电、诡异突然破门而入、墙壁渗血）来打破僵局，并在 options 中提供逃生/战斗/应对的实质性选项。",
     "",
     "consumes_time：默认 true 表示本次行动消耗 1 小时。当敏捷>20 且触发「极速反应」时，必须设为 false，使玩家本次行动不消耗时间。",
     "",

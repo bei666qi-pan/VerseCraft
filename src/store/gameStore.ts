@@ -39,12 +39,16 @@ export interface GameStats {
   background: number;
 }
 
+const RECENT_OPTIONS_MAX = 8;
+
 export interface GameState {
   currentSaveSlot: number;
   stats: GameStats;
   echoTalent: string | null;
   inventory: string[];
   isHydrated: boolean;
+  /** Past 2 rounds of generated options (max 8), for anti-loop. */
+  recentOptions: string;
 }
 
 const DEFAULT_STATS: GameStats = {
@@ -64,6 +68,8 @@ interface GameActions {
   removeFromInventory: (item: string) => void;
   setHydrated: (hydrated: boolean) => void;
   resetGame: () => void;
+  /** Append new options to recentOptions, trim to max 8. */
+  appendRecentOptions: (options: string[]) => void;
 }
 
 const initialState: GameState = {
@@ -72,6 +78,7 @@ const initialState: GameState = {
   echoTalent: null,
   inventory: [],
   isHydrated: false,
+  recentOptions: "",
 };
 
 export const useGameStore = create<GameState & GameActions>()(
@@ -109,6 +116,15 @@ export const useGameStore = create<GameState & GameActions>()(
           stats: { ...DEFAULT_STATS },
           echoTalent: null,
           inventory: [],
+          recentOptions: "",
+        }),
+
+      appendRecentOptions: (options) =>
+        set((state) => {
+          const sep = "\u0001";
+          const prev = (state.recentOptions || "").split(sep).filter(Boolean);
+          const next = [...prev, ...options].slice(-RECENT_OPTIONS_MAX);
+          return { recentOptions: next.join(sep) };
         }),
     }),
     {

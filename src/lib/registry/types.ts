@@ -44,11 +44,20 @@ export interface NPC {
   lore: string;
 }
 
+/** Immutable emotion/relationship thread — e.g. "secretly in love with X" or "blood feud with Y" */
+export type ImmutableRelationship = string;
+
 export interface NpcSocialProfile {
   homeLocation: string;
   weakness: string;
   scheduleBehavior: string;
   relationships: Record<string, string>;
+  /** Absolute canon background — DM MUST never fabricate, modify or forget. */
+  fixed_lore: string;
+  /** Core desires that drive the NPC's behavior. */
+  core_desires: string;
+  /** Immutable emotion threads — cannot be retconned. */
+  immutable_relationships: ImmutableRelationship[];
 }
 
 /** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */

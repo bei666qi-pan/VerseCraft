@@ -150,6 +150,8 @@ interface GameState {
   warehouse: Array<{ id: string; name: string; description?: string }>;
   /** AI 动态选项：由大模型在每次回复中生成的 4 个行动选项 */
   currentOptions: string[];
+  /** 过去 2 轮生成的选项历史，上限 8 个，用于反死循环 */
+  recentOptions: string[];
   /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
   inputMode: "options" | "text";
   /** 原石货币：初始值 = 出身属性点数 */
@@ -294,6 +296,7 @@ export const useGameStore = create<GameState>()(
       hasCheckedCodex: false,
       warehouse: [],
       currentOptions: [],
+      recentOptions: [],
       inputMode: "options" as const,
       originium: 0,
       tasks: [],
@@ -325,6 +328,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: false,
           warehouse: [],
           currentOptions: [],
+          recentOptions: [],
           inputMode: "options" as const,
           originium: 0,
           tasks: [],
@@ -334,7 +338,12 @@ export const useGameStore = create<GameState>()(
           isGameStarted: false,
           originiumDropNotifyUntil: 0,
         }),
-      setCurrentOptions: (options) => set({ currentOptions: options }),
+      setCurrentOptions: (options) =>
+        set((s) => {
+          const appended = [...(s.recentOptions ?? []), ...options];
+          const trimmed = appended.slice(-8);
+          return { currentOptions: options, recentOptions: trimmed };
+        }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setOriginium: (v) => set({ originium: Math.max(0, v) }),
       addOriginium: (delta) =>
@@ -496,6 +505,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: false,
           warehouse: [],
           currentOptions: [],
+          recentOptions: [],
           inputMode: "options" as const,
           originium: background,
           tasks: [],
@@ -547,7 +557,10 @@ export const useGameStore = create<GameState>()(
           (Object.keys(s.codex ?? {}).length > 0
             ? ` 图鉴已解锁：${Object.values(s.codex ?? {}).map((e) => `${e.name}[${e.type}|好感${e.favorability ?? 0}]`).join("，")}。`
             : "") +
-          (npcPositions ? ` NPC当前位置：${npcPositions}。` : "")
+          (npcPositions ? ` NPC当前位置：${npcPositions}。` : "") +
+          (s.recentOptions?.length
+            ? ` 【最近生成的选项历史】：${s.recentOptions.join("；")}。`
+            : " 【最近生成的选项历史】：（无）。")
         );
       },
 
