@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { BgmPlayer } from "@/components/BgmPlayer";
 
 /** Client-side auth guard to avoid server redirect() which can trigger React hooks order issues (Next.js #78396) */
 export function PlayAuthGuard({
@@ -30,5 +31,10 @@ export function PlayAuthGuard({
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <BgmPlayer />
+      {children}
+    </>
+  );
 }

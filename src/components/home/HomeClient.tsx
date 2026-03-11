@@ -9,6 +9,7 @@ import { loginUser, registerUser } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
+import { unlockBgmOnUserGesture } from "@/config/audio";
 
 type HomeClientProps = {
   initialUser: { id: string; name: string } | null;
@@ -170,7 +171,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   async function handleContinueAdventure() {
     if (!requireLoginOrWarn()) return;
-
+    unlockBgmOnUserGesture();
     const rows = await fetchCloudSaves().catch(() => []);
     const auto = (rows as SaveRow[]).find((r) => r.slotId === "auto_save");
     if (auto && isSaveSlotData(auto.data)) {
@@ -396,6 +397,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             type="button"
             onClick={() => {
               if (!requireLoginOrWarn()) return;
+              unlockBgmOnUserGesture();
               resetForNewGame();
               router.push("/intro");
             }}

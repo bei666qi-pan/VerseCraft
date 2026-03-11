@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
-import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
+import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
 import { ITEMS } from "@/lib/registry/items";
@@ -16,6 +16,7 @@ import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 import { OnboardingGuide, type OnboardingStep } from "@/components/OnboardingGuide";
 import { getOnboardingStatus, markOnboardingViewed, type OnboardingStatus } from "@/app/actions/onboarding";
+import { isValidBgmTrack } from "@/config/audio";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -53,6 +54,7 @@ type DMJson = {
   task_updates?: Array<{ id: string; status: "active" | "completed" | "failed" }>;
   player_location?: string;
   npc_location_updates?: Array<{ id: string; to_location: string }>;
+  bgm_track?: string;
 };
 
 const MAX_INPUT = 20;
@@ -607,6 +609,7 @@ function PlayContent() {
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
+  const setBgm = useGameStore((s) => s.setBgm);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
@@ -623,7 +626,8 @@ function PlayContent() {
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
-  const [audioMuted, setAudioMuted] = useState(true);
+  const [audioMuted, setAudioMuted] = useState(false);
+  const volume = usePersistStore((s) => s.volume ?? 50);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
@@ -782,6 +786,14 @@ function PlayContent() {
     }, Math.max(0, talentEffectUntil - Date.now()));
     return () => clearTimeout(t);
   }, [talentEffectUntil]);
+
+  useEffect(() => {
+    setAudioMuted(isMuted());
+  }, []);
+
+  useEffect(() => {
+    setMasterVolume(volume);
+  }, [volume]);
 
   useEffect(() => {
     if (!audioMuted) updateSanityFilter(sanity);
@@ -971,6 +983,10 @@ function PlayContent() {
             raw += chunk;
             rawDmBufferRef.current = raw;
             narrativeRef.current = extractNarrative(raw);
+            const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
+            if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
+              setBgm(bgmMatch[1]);
+            }
           }
         }
       }
@@ -1148,6 +1164,10 @@ function PlayContent() {
 
     if (typeof parsed.player_location === "string" && parsed.player_location.length > 0) {
       setPlayerLocation(parsed.player_location);
+    }
+
+    if (typeof parsed.bgm_track === "string" && isValidBgmTrack(parsed.bgm_track)) {
+      setBgm(parsed.bgm_track);
     }
 
     if (Array.isArray(parsed.npc_location_updates) && parsed.npc_location_updates.length > 0) {
@@ -1648,6 +1668,11 @@ function PlayContent() {
         onClose={() => setActiveMenu(null)}
         onUseItem={onUseItem}
         isStreaming={isStreaming}
+        audioMuted={audioMuted}
+        onToggleMute={() => {
+          toggleMute();
+          setAudioMuted(isMuted());
+        }}
         onViewedTab={async (tab) => {
           const ok = await markOnboardingViewed(tab);
           if (ok)

@@ -105,6 +105,7 @@ export interface SaveSlotData {
   hasReadParchment?: boolean;
   hasCheckedCodex?: boolean;
   originium?: number;
+  currentBgm?: string;
 }
 
 export interface AuthUser {
@@ -164,7 +165,10 @@ interface GameState {
   intrusionFlashUntil: number;
   /** 是否已开始游戏（角色初始化完成后为 true） */
   isGameStarted: boolean;
+  /** BGM track key (bgm_1_calm by default). Not persisted to avoid write amplification; restored from save on load. */
+  currentBgm: string;
   setHydrated: (state: boolean) => void;
+  setBgm: (track: string) => void;
   setUser: (user: AuthUser | null) => void;
   mockLogin: () => void;
   logout: () => void;
@@ -317,8 +321,10 @@ export const useGameStore = create<GameState>()(
       dynamicNpcStates: {},
       intrusionFlashUntil: 0,
       isGameStarted: false,
+      currentBgm: "bgm_1_calm",
 
       setHydrated: (state) => set({ isHydrated: state }),
+      setBgm: (track) => set({ currentBgm: track }),
       setUser: (user) => set({ user }),
       mockLogin: () => set({ user: { name: "觉醒者_007" } }),
       logout: () => set({ user: null }),
@@ -349,6 +355,7 @@ export const useGameStore = create<GameState>()(
           dynamicNpcStates: {},
           intrusionFlashUntil: 0,
           isGameStarted: false,
+          currentBgm: "bgm_1_calm",
         }),
 
       markGameOver: () =>
@@ -705,6 +712,7 @@ export const useGameStore = create<GameState>()(
           hasReadParchment: s.hasReadParchment ?? false,
           hasCheckedCodex: s.hasCheckedCodex ?? false,
           originium: s.originium ?? 0,
+          currentBgm: s.currentBgm ?? "bgm_1_calm",
         };
         set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
         void import("@/app/actions/save")
@@ -733,6 +741,7 @@ export const useGameStore = create<GameState>()(
           hasReadParchment: data.hasReadParchment ?? (Array.isArray(data.logs) && data.logs.length > 0),
           hasCheckedCodex: data.hasCheckedCodex ?? false,
           originium: data.originium ?? get().originium ?? 0,
+          currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
         });
       },
       hydrateFromCloud: (slotId, data) => {
@@ -760,6 +769,7 @@ export const useGameStore = create<GameState>()(
             hasReadParchment: data.hasReadParchment ?? hasProgress,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
             originium: data.originium ?? s.originium ?? 0,
+            currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
             isGameStarted: true,
           };
         });

@@ -2,7 +2,7 @@
 
 import { Activity, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy } from "lucide-react";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy, Volume2, VolumeX } from "lucide-react";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { canUseItem, formatStatRequirements } from "@/lib/registry/itemUtils";
@@ -120,6 +120,8 @@ interface UnifiedMenuModalProps {
   onClose: () => void;
   onUseItem: (item: Item) => void;
   isStreaming: boolean;
+  audioMuted: boolean;
+  onToggleMute: () => void;
   /** Called when user views codex/warehouse/tasks tab (for account-first onboarding) */
   onViewedTab?: (tab: "codex" | "warehouse" | "tasks") => void;
 }
@@ -161,6 +163,8 @@ function SettingsPanel({
   time,
   volume,
   setVolume,
+  audioMuted,
+  onToggleMute,
   inputMode,
   onToggleInputMode,
   onSaveAndExit,
@@ -175,6 +179,8 @@ function SettingsPanel({
   time: { day: number; hour: number };
   volume: number;
   setVolume: (v: number) => void;
+  audioMuted: boolean;
+  onToggleMute: () => void;
   inputMode: "options" | "text";
   onToggleInputMode: () => void;
   onSaveAndExit: () => void;
@@ -259,16 +265,40 @@ function SettingsPanel({
 
       <div>
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">音量调节</h3>
-        <div className="flex items-center gap-4">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            className="h-2 w-48 flex-1 appearance-none rounded-full bg-slate-700 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
-          />
-          <span className="w-10 text-right font-mono text-sm text-slate-400">{volume}</span>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              disabled={audioMuted}
+              className="h-2 w-48 flex-1 appearance-none rounded-full bg-slate-700 disabled:opacity-50 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
+            />
+            <span className="w-10 text-right font-mono text-sm text-slate-400">{volume}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleMute}
+            className={`flex w-full items-center justify-between gap-4 rounded-2xl border px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98] ${
+              audioMuted
+                ? "border-amber-500/40 bg-gradient-to-b from-amber-500/20 to-amber-500/5"
+                : "border-white/20 bg-gradient-to-b from-white/15 to-white/5"
+            }`}
+          >
+            <span className="text-sm font-medium tracking-wide text-slate-100">
+              {audioMuted ? "静音中" : "已开启声音"}
+            </span>
+            <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+              {audioMuted ? (
+                <VolumeX size={18} strokeWidth={2} />
+              ) : (
+                <Volume2 size={18} strokeWidth={2} />
+              )}
+              {audioMuted ? "点击开启" : "点击静音"}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -709,7 +739,7 @@ function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number
   );
 }
 
-export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, onViewedTab }: UnifiedMenuModalProps) {
+export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, audioMuted, onToggleMute, onViewedTab }: UnifiedMenuModalProps) {
   const router = useRouter();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [codexPage, setCodexPage] = useState(0);
@@ -828,6 +858,8 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               time={time}
               volume={volume}
               setVolume={setVolume}
+              audioMuted={audioMuted}
+              onToggleMute={onToggleMute}
               inputMode={inputMode}
               onToggleInputMode={handleToggleInputMode}
               onSaveAndExit={handleSaveAndExit}

@@ -7,7 +7,7 @@ let masterGain: GainNode | null = null;
 let droneOsc: OscillatorNode | null = null;
 let droneGain: GainNode | null = null;
 let droneFilter: BiquadFilterNode | null = null;
-let muted = true;
+let muted = false;
 let droneStarted = false;
 
 function getCtx(): AudioContext {
@@ -49,6 +49,13 @@ export function toggleMute(): boolean {
 
 export function isMuted(): boolean {
   return muted;
+}
+
+/** Set master volume 0–100. Applied when not muted. */
+export function setMasterVolume(percent: number): void {
+  const p = Math.max(0, Math.min(100, percent));
+  const gain = getMaster();
+  gain.gain.setTargetAtTime((p / 100) * 0.5, getCtx().currentTime, 0.05);
 }
 
 // --------------- Persistent low-frequency drone (heartbeat / tinnitus) ---------------
