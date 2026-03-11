@@ -1,33 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useGameStore } from "@/store/useGameStore";
-
-const REHYDRATE_TIMEOUT_MS = 4000;
+import { useGameStore as usePersistStore } from "@/store/gameStore";
 
 export default function HydrationProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const isHydrated = useGameStore((state) => state.isHydrated);
-  const [deadlinePassed, setDeadlinePassed] = useState(false);
+  const isHydrated = useGameStore((s) => s.isHydrated);
+  const setHydrated = useGameStore((s) => s.setHydrated);
+  const hasRehydratedRef = useRef(false);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => setDeadlinePassed(true), REHYDRATE_TIMEOUT_MS);
-    void Promise.resolve(useGameStore.persist.rehydrate())
-      .finally(() => {
-        clearTimeout(timeoutId);
-        useGameStore.getState().setHydrated(true);
-      });
-    return () => clearTimeout(timeoutId);
-  }, []);
+    // React 18/19 严格模式下会双重挂载，用 ref 确保 rehydrate 只调用一次，避免 IDB 事务冲突
+    if (hasRehydratedRef.current) return;
+    hasRehydratedRef.current = true;
 
-  useEffect(() => {
-    if (deadlinePassed && !isHydrated) {
-      useGameStore.getState().setHydrated(true);
-    }
-  }, [deadlinePassed, isHydrated]);
+    const rehydrateMain = useGameStore.persist.rehydrate();
+    const rehydratePersist =
+      (usePersistStore as { persist?: { rehydrate: () => Promise<unknown> } })
+        .persist?.rehydrate?.() ?? Promise.resolve();
+
+    void Promise.all([
+      Promise.resolve(rehydrateMain),
+      Promise.resolve(rehydratePersist),
+    ]).finally(() => {
+      setHydrated(true);
+    });
+  }, [setHydrated]);
 
   if (!isHydrated) {
     return (

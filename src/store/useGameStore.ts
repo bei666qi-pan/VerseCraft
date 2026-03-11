@@ -19,8 +19,17 @@ export const PARCHMENT_ITEM: Item = {
 };
 
 const DB_KEY = "versecraft-storage";
+const PERSIST_VERSION = 1;
 
 const idbStorage = createResilientIdbStorage();
+
+/** 防御性迁移：当本地持久化数据版本不匹配时，直接丢弃旧数据，使用初始状态，避免旧 Schema 缺少 NPC/物品字段导致渲染崩溃 */
+function migratePersistedState(
+  _persistedState: unknown,
+  _fromVersion: number
+): Record<string, unknown> {
+  return {};
+}
 
 interface PerformCheckResult {
   success: boolean;
@@ -709,8 +718,17 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: DB_KEY,
+      version: PERSIST_VERSION,
+      migrate: migratePersistedState,
       storage: createJSONStorage(() => createDebouncedStorage(idbStorage, 1000)),
       skipHydration: true,
+      /** 捕获反序列化/持久化过程中的静默错误，确保生命周期闭环，避免永远 pending */
+      onRehydrateStorage: () => (state, error) => {
+        if (error != null) {
+          console.warn("[useGameStore] Rehydration error, falling back to initial state:", error);
+        }
+        useGameStore.getState().setHydrated(true);
+      },
       // Excludes transient UI: isHydrated, currentOptions, recentOptions, inputMode, intrusionFlashUntil, originiumDropNotifyUntil
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,

@@ -538,7 +538,6 @@ export default function PlayPage() {
   const lastAutoSaveRef = useRef(0);
 
   const isHydrated = useGameStore((s) => s.isHydrated);
-  const setHydrated = useGameStore((s) => s.setHydrated);
 
   const stats = useGameStore((s) => s.stats);
   const inventory = useGameStore((s) => s.inventory);
@@ -643,24 +642,6 @@ export default function PlayPage() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  useEffect(() => {
-    if (!isMounted) return;
-    const REHYDRATE_TIMEOUT_MS = 4000;
-    const deadlineId = setTimeout(() => setHydrated(true), REHYDRATE_TIMEOUT_MS);
-    void Promise.all([
-      Promise.resolve(useGameStore.persist.rehydrate()),
-      Promise.resolve(
-        (usePersistStore as unknown as { persist?: { rehydrate: () => Promise<unknown> } })
-          .persist?.rehydrate?.() ?? Promise.resolve()
-      ),
-    ])
-      .finally(() => {
-        clearTimeout(deadlineId);
-        setHydrated(true);
-      });
-    return () => clearTimeout(deadlineId);
-  }, [isMounted, setHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;

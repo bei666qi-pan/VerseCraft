@@ -1,9 +1,9 @@
 // Resilient storage: IDB with timeout + localStorage fallback.
 // Mitigates "stuck loading" when IndexedDB hangs (e.g. mobile Safari private mode).
-// When IDB times out or fails, falls back to localStorage so app never blocks.
+// getItem 必须严格返回 string | null，绝不能将非字符串脏数据传给 Zustand 导致 JSON.parse 崩溃。
 
 import type { StateStorage } from "zustand/middleware";
-import { get, set, del } from "idb-keyval";
+import { get, set, del, clear } from "idb-keyval";
 
 const GET_ITEM_TIMEOUT_MS = 3000;
 const SET_ITEM_TIMEOUT_MS = 5000;
@@ -18,7 +18,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 function getLocalItem(name: string): string | null {
   if (typeof localStorage === "undefined") return null;
   try {
-    return localStorage.getItem(name);
+    const v = localStorage.getItem(name);
+    return typeof v === "string" ? v : null;
   } catch {
     return null;
   }
@@ -45,14 +46,36 @@ function removeLocalItem(name: string): void {
 export function createResilientIdbStorage(): StateStorage {
   return {
     getItem: async (name: string): Promise<string | null> => {
-      let value: string | null = null;
       try {
         const idbResult = await withTimeout(get(name), GET_ITEM_TIMEOUT_MS);
+        // 严格校验：仅接受 string，拒绝 [object Object] 或非字符串脏数据
         if (idbResult != null && typeof idbResult === "string") return idbResult;
+        // idb 返回非字符串（旧脏数据）时清空 IDB，避免污染 Zustand
+        if (idbResult != null && typeof idbResult !== "string") {
+          try {
+            await clear();
+          } catch {
+            /* ignore */
+          }
+          return null;
+        }
+        // idb 无数据或超时，尝试 localStorage 回退
+        const local = getLocalItem(name);
+        return typeof local === "string" ? local : null;
       } catch {
-        /* IDB threw, fall through to localStorage */
+        // 终极兜底：IDB 事务锁死/Safari 隐私模式/解析异常时，清空 IDB 并返回 null，强制 Zustand 使用默认状态
+        try {
+          await clear();
+        } catch {
+          /* ignore clear failure */
+        }
+        try {
+          removeLocalItem(name);
+        } catch {
+          /* ignore */
+        }
+        return null;
       }
-      return getLocalItem(name);
     },
 
     setItem: async (name: string, value: string): Promise<void> => {
