@@ -8,6 +8,7 @@ import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
+import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 import { unlockBgmOnUserGesture } from "@/config/audio";
 
@@ -73,6 +74,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   useEffect(() => {
     setUser(user ? { name: user.name } : null);
   }, [setUser, user]);
+
+  useHeartbeat(!!user);
 
   useEffect(() => {
     if (!user) return;

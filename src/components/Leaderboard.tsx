@@ -25,26 +25,30 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
   const [open, setOpen] = useState(false);
   const [killData, setKillData] = useState<KillLeaderboardResult>({ top10: [], currentUser: null });
   const [exploreData, setExploreData] = useState<ExplorationLeaderboardResult>({ top10: [], currentUser: null });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
     let active = true;
     const run = async () => {
       setLoading(true);
-      const [kill, explore] = await Promise.all([
-        getKillLeaderboard(userId),
-        getExplorationLeaderboard(userId),
-      ]);
-      if (!active) return;
-      setKillData(kill);
-      setExploreData(explore);
-      setLoading(false);
+      try {
+        const [kill, explore] = await Promise.all([
+          getKillLeaderboard(userId),
+          getExplorationLeaderboard(userId),
+        ]);
+        if (!active) return;
+        setKillData(kill);
+        setExploreData(explore);
+      } finally {
+        if (active) setLoading(false);
+      }
     };
     void run();
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [open, userId]);
 
   const list = useMemo(() => {
     if (tab === "kill") {

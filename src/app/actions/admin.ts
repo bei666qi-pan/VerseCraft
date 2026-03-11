@@ -17,7 +17,7 @@ export async function authenticateAdminShadow(
   const cookieStore = await cookies();
 
   if (!configuredPassword) {
-    return { ok: false, error: "ADMIN_PASSWORD is not configured." };
+    return { ok: false, error: "请在 .env.local 中设置 ADMIN_PASSWORD 后重试。" };
   }
 
   if (!inputPassword || inputPassword !== configuredPassword) {

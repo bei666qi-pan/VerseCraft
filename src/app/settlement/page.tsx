@@ -225,9 +225,12 @@ export default function SettlementPage() {
 
   useEffect(() => {
     if (!mounted) return;
-    useGameStore.getState().clearSaveForDeath();
-    void deleteCloudSaveSlot("auto_save");
-  }, [mounted]);
+    void (async () => {
+      await handleSubmit();
+      useGameStore.getState().clearSaveForDeath();
+      await deleteCloudSaveSlot("auto_save");
+    })();
+  }, [mounted, handleSubmit]);
 
   useEffect(() => {
     if (!mounted) return;

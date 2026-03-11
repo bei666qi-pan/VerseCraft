@@ -170,7 +170,6 @@ interface GameState {
   setHydrated: (state: boolean) => void;
   setBgm: (track: string) => void;
   setUser: (user: AuthUser | null) => void;
-  mockLogin: () => void;
   logout: () => void;
   /** 深度重置：将所有状态恢复为初始默认值（新游戏前调用） */
   resetForNewGame: () => void;
@@ -326,7 +325,6 @@ export const useGameStore = create<GameState>()(
       setHydrated: (state) => set({ isHydrated: state }),
       setBgm: (track) => set({ currentBgm: track }),
       setUser: (user) => set({ user }),
-      mockLogin: () => set({ user: { name: "觉醒者_007" } }),
       logout: () => set({ user: null }),
       resetForNewGame: () =>
         set({
@@ -423,10 +421,16 @@ export const useGameStore = create<GameState>()(
           (s.stats.charm ?? 0) + (s.stats.background ?? 0);
         const cost = totalPoints < 20 ? 2 : 3;
         if (s.originium <= 0 || s.originium < cost) return false;
-        set({
+        const nextVal = cur + 1;
+        const updates: Partial<ReturnType<typeof get>> = {
           originium: s.originium - cost,
-          stats: { ...s.stats, [attr]: cur + 1 },
-        });
+          stats: { ...s.stats, [attr]: nextVal },
+        };
+        if (attr === "sanity") {
+          const histMax = s.historicalMaxSanity ?? 50;
+          updates.historicalMaxSanity = histMax + 1;
+        }
+        set(updates);
         return true;
       },
       restoreSanity: () => {

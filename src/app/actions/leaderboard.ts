@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
@@ -133,6 +134,8 @@ export async function submitGameRecord(input: {
   const inKillTop10 = killRes.currentUser != null && killRes.currentUser.rank <= 10;
   const inExploreTop10 = exploreRes.currentUser != null && exploreRes.currentUser.rank <= 10;
   const onLeaderboard = inKillTop10 || inExploreTop10;
+
+  revalidatePath("/");
 
   return { success: true, onLeaderboard };
 }

@@ -2,7 +2,7 @@
 
 import { Activity, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy, Volume2, VolumeX } from "lucide-react";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy, Volume2, VolumeX, ChevronDown, ChevronUp } from "lucide-react";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { canUseItem, formatStatRequirements } from "@/lib/registry/itemUtils";
@@ -85,7 +85,9 @@ function normalizeIssuerName(rawIssuer: unknown, seedText: string): string {
 
 function formatLocationLabel(location: string): string {
   if (!location) return "未知区域";
-  return LOCATION_LABELS[location] ?? location.replace(/_/g, " ");
+  const mapped = LOCATION_LABELS[location];
+  if (mapped) return mapped;
+  return "未知区域";
 }
 
 const TAB_ICONS: Record<NonNullable<ActiveMenu>, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
@@ -97,7 +99,7 @@ const TAB_ICONS: Record<NonNullable<ActiveMenu>, React.ComponentType<{ className
   achievements: Trophy,
 };
 
-const TABS: { id: ActiveMenu; label: string }[] = [
+const TABS: { id: NonNullable<ActiveMenu>; label: string }[] = [
   { id: "settings", label: "设置" },
   { id: "backpack", label: "行囊" },
   { id: "codex", label: "图鉴" },
@@ -186,6 +188,7 @@ function SettingsPanel({
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
 }) {
+  const [showOriginiumDesc, setShowOriginiumDesc] = useState(false);
   const displayLocation = formatLocationLabel(playerLocation);
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -204,10 +207,10 @@ function SettingsPanel({
     return originium >= costPerPoint;
   };
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 overflow-y-auto max-h-[calc(100dvh-120px)]">
       <div>
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">属性与坐标</h3>
-        <div className="flex flex-row gap-6">
+        <h3 className="mb-3 sm:mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">属性与坐标</h3>
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
           <div className="flex-1 min-w-0 space-y-2">
             {STAT_ORDER.map((k) => (
               <StatBar
@@ -219,23 +222,39 @@ function SettingsPanel({
               />
             ))}
           </div>
-          <div className="flex flex-col w-[180px] shrink-0 gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-4">
+          <div className="flex flex-col w-full sm:w-[180px] shrink-0 gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-4">
             <div className="flex items-center gap-2">
               <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500" />
               <span className="text-sm font-bold text-amber-300">{originium}</span>
               <span className="text-xs text-amber-400/90">原石</span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              加点：总属性&lt;20 需2原石/点，≥20 需{costPerPoint}原石/点。理智低于历史最高时，1原石=1理智。
-            </p>
-            <div className="space-y-1.5">
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowOriginiumDesc((v) => !v)}
+                className="flex w-full cursor-pointer items-center justify-between gap-2 py-1 text-[11px] text-slate-400 hover:text-slate-300 touch-manipulation"
+              >
+                <span>原石说明</span>
+                {showOriginiumDesc ? (
+                  <ChevronUp className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                )}
+              </button>
+              {showOriginiumDesc && (
+                <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
+                  加点：总属性&lt;20 需2原石/点，≥20 需{costPerPoint}原石/点。理智低于历史最高时，1原石=1理智。
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-1 gap-1.5 sm:gap-1.5">
               {STAT_ORDER.map((k) => (
                 <button
                   key={k}
                   type="button"
                   onClick={() => onUpgradeAttr(k)}
                   disabled={!canUpgrade(k)}
-                  className="w-full rounded-lg border border-white/20 bg-white/5 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="min-h-[36px] rounded-lg border border-white/20 bg-white/5 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
                 >
                   +{STAT_LABELS[k]}
                 </button>
@@ -244,19 +263,45 @@ function SettingsPanel({
                 type="button"
                 onClick={onRestoreSanity}
                 disabled={!canRestoreSanity}
-                className="w-full rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1.5 text-xs text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="min-h-[36px] col-span-2 sm:col-span-1 rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1.5 text-xs text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
               >
                 回理智 (1原石)
               </button>
             </div>
           </div>
         </div>
-        <div className="mt-4 flex items-center gap-4">
-          <div className={rowClass}>
+
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onToggleInputMode}
+            className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/20 bg-gradient-to-b from-white/15 to-white/5 px-4 sm:px-5 py-3 sm:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98] touch-manipulation"
+          >
+            <span className="text-sm font-medium tracking-wide text-slate-100">
+              {inputMode === "options" ? "当前：选项模式" : "当前：手动输入"}
+            </span>
+            <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/20 px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+              {inputMode === "options" ? (
+                <>
+                  <Keyboard size={14} strokeWidth={2} />
+                  切换到手动输入
+                </>
+              ) : (
+                <>
+                  <List size={14} strokeWidth={2} />
+                  切换到选项
+                </>
+              )}
+            </span>
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
+          <div className={`${rowClass} flex-1 min-w-0`}>
             <span className={labelClass}>当前位置</span>
-            <p className={valueClass}>{displayLocation}</p>
+            <p className={`${valueClass} break-words`}>{displayLocation}</p>
           </div>
-          <div className={rowClass}>
+          <div className={`${rowClass} flex-1 min-w-0`}>
             <span className={labelClass}>时间</span>
             <p className={valueClass}>{day} 日 {hour} 时</p>
           </div>
@@ -264,7 +309,7 @@ function SettingsPanel({
       </div>
 
       <div>
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">音量调节</h3>
+        <h3 className="mb-3 sm:mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">音量调节</h3>
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
             <input
@@ -274,14 +319,14 @@ function SettingsPanel({
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
               disabled={audioMuted}
-              className="h-2 w-48 flex-1 appearance-none rounded-full bg-slate-700 disabled:opacity-50 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
+              className="h-3 min-h-[24px] w-full min-w-0 flex-1 appearance-none rounded-full bg-slate-700 disabled:opacity-50 touch-manipulation [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
             />
             <span className="w-10 text-right font-mono text-sm text-slate-400">{volume}</span>
           </div>
           <button
             type="button"
             onClick={onToggleMute}
-            className={`flex w-full items-center justify-between gap-4 rounded-2xl border px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98] ${
+            className={`flex w-full items-center justify-between gap-4 rounded-2xl border px-4 sm:px-5 py-3 sm:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98] touch-manipulation min-h-[44px] ${
               audioMuted
                 ? "border-amber-500/40 bg-gradient-to-b from-amber-500/20 to-amber-500/5"
                 : "border-white/20 bg-gradient-to-b from-white/15 to-white/5"
@@ -302,44 +347,18 @@ function SettingsPanel({
         </div>
       </div>
 
-      <div>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">输入模式</h3>
-        <button
-          type="button"
-          onClick={onToggleInputMode}
-          className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/20 bg-gradient-to-b from-white/15 to-white/5 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98]"
-        >
-          <span className="text-sm font-medium tracking-wide text-slate-100">
-            {inputMode === "options" ? "当前：选项模式" : "当前：手动输入"}
-          </span>
-          <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
-            {inputMode === "options" ? (
-              <>
-                <Keyboard size={14} strokeWidth={2} />
-                切换到手动输入
-              </>
-            ) : (
-              <>
-                <List size={14} strokeWidth={2} />
-                切换到选项
-              </>
-            )}
-          </span>
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-2">
         <button
           type="button"
           onClick={onSaveAndExit}
-          className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
+          className="min-h-[44px] rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)] touch-manipulation"
         >
           保存并退出
         </button>
         <button
           type="button"
           onClick={onAbandonAndDie}
-          className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
+          className="min-h-[44px] rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)] touch-manipulation"
         >
           直接退出
         </button>
@@ -814,7 +833,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
           <h2 id="unified-menu-title" className="sr-only">
             控制中枢
           </h2>
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-1 min-h-0 flex-col items-center gap-2 sm:gap-3 overflow-y-auto py-1">
             {TABS.map((tab) => {
               const isActive = currentTab === tab.id;
               const Icon = TAB_ICONS[tab.id];
@@ -824,14 +843,14 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
                   type="button"
                   onClick={() => handleTabSelect(tab.id)}
                   data-onboarding={TAB_ONBOARDING_ATTR[tab.id]}
-                  className={`flex flex-col items-center justify-center gap-1.5 min-w-[56px] min-h-[56px] w-14 h-14 sm:w-16 sm:h-16 rounded-2xl transition-all duration-500 cursor-pointer touch-manipulation ${
+                  className={`flex flex-col items-center justify-center gap-1 min-w-[52px] min-h-[48px] w-12 h-12 sm:min-w-[56px] sm:min-h-[56px] sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl transition-all duration-500 cursor-pointer touch-manipulation ${
                     isActive
                       ? "text-white bg-white/10 border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.15)] drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
                       : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
                   }`}
                 >
-                  <Icon className="h-6 w-6" strokeWidth={1.5} />
-                  <span className="text-[10px] font-medium tracking-wide">{tab.label}</span>
+                  <Icon className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={1.5} />
+                  <span className="text-[9px] sm:text-[10px] font-medium tracking-wide leading-tight">{tab.label}</span>
                 </button>
               );
             })}

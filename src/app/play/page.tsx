@@ -175,7 +175,9 @@ function normalizeIssuerName(rawIssuer: unknown, seedText: string): string {
 
 function formatLocationLabel(location: string): string {
   if (!location) return "未知区域";
-  return LOCATION_LABELS[location] ?? location.replace(/_/g, " ");
+  const mapped = LOCATION_LABELS[location];
+  if (mapped) return mapped;
+  return "未知区域";
 }
 
 function clampInt(n: number, min: number, max: number): number {
@@ -673,7 +675,7 @@ function PlayContent() {
   }, [showOnboarding, mustViewCodex, mustViewWarehouse, mustViewTasks]);
   /** Only parchment blocks dialogue; 图鉴/仓库/任务 viewing does not block */
   const hasAnyGate = !hasReadParchment;
-  const gateMessage = hasAnyGate ? "你需要先使用行囊中的【染血的羊皮纸】才能继续对话" : "";
+  const gateMessage = hasAnyGate ? "你需要先使用左上角【设置】里的【行囊】的【染血的羊皮纸】才能继续对话" : "";
 
   const talentCdLeft = useMemo(() => {
     if (!talent) return 0;
@@ -714,7 +716,7 @@ function PlayContent() {
     const hasParchment = inventory.some((i) => i.id === "I-PARCHMENT");
     if (hasParchment && !firstHintShownRef.current.has("I-PARCHMENT")) {
       firstHintShownRef.current.add("I-PARCHMENT");
-      setFirstTimeHint("请玩家在设置里查看和使用【染血的羊皮纸】的详情");
+      setFirstTimeHint("请使用左上角【设置】里的【行囊】的染血的羊皮纸");
     }
   }, [isGameStarted, inventory, logs.length]);
 
@@ -1429,23 +1431,23 @@ function PlayContent() {
               <div className={`shrink-0 px-3 py-2 ${isLowSanity ? "bg-white/5" : isDarkMoon ? "bg-red-950/20" : "bg-slate-900/10"}`}>
                 <div className="flex min-h-[40px] items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <h2 className={`truncate text-base font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg ${isLowSanity ? "text-white" : isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
-                      叙事主视窗
-                    </h2>
                     <button
                       type="button"
                       onClick={() => setActiveMenu("settings")}
                       data-onboarding="settings-btn"
-                      className="shrink-0 min-h-[44px] min-w-[44px] touch-manipulation"
+                      className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
                       aria-label="设置"
                     >
-                      <div className="group relative flex h-8 w-8 cursor-pointer items-center justify-center">
-                        <div className="absolute -inset-0.5 rounded-full bg-slate-300/45 blur-sm animate-pulse" />
-                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite]" />
-                        <div className="absolute inset-0.5 rounded-full bg-white/85 backdrop-blur-sm transition-all group-hover:bg-white" />
-                        <Settings className="relative z-10 text-slate-700" size={16} strokeWidth={1.5} />
+                      <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
+                        <div className="absolute -inset-0.5 rounded-full bg-slate-300/60 blur-sm animate-pulse" />
+                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-200 border-t-white animate-[spin_1.2s_linear_infinite]" />
+                        <div className="absolute inset-0.5 rounded-full bg-white/95 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_12px_rgba(255,255,255,0.6)]" />
+                        <Settings className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
                       </div>
                     </button>
+                    <h2 className={`truncate text-base font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg ${isLowSanity ? "text-white" : isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
+                      叙事主视窗
+                    </h2>
                   </div>
                   <div className="shrink-0 min-w-0">
                     <div className="relative group">

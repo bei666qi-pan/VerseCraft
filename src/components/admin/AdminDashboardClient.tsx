@@ -28,16 +28,9 @@ type DashboardUserRow = {
   feedbackCreatedAt: string | null;
 };
 
-type ServerMetrics = {
-  cpuLoadPercent: number;
-  memoryUsagePercent: number;
-  onlineCapacityEstimate: number;
-};
-
 type ChartPoint = { date: string; users: number; tokens: number; activeUsers?: number };
 
 type AdminDashboardClientProps = {
-  metrics: ServerMetrics;
   rows: DashboardUserRow[];
   onlineCount: number;
   totalUsers: number;
@@ -73,7 +66,6 @@ const REFRESH_INTERVAL_MS = 30_000;
 const TABLE_PAGE_SIZE = 15;
 
 export default function AdminDashboardClient({
-  metrics,
   rows,
   onlineCount,
   totalUsers,
@@ -156,8 +148,6 @@ export default function AdminDashboardClient({
     fetchChartData();
   }, [chartDataProp, fetchChartData]);
 
-  const isPreview = !!chartDataProp;
-
   const totalTablePages = Math.max(1, Math.ceil(tableRows.length / TABLE_PAGE_SIZE));
   const paginatedRows = useMemo(
     () =>
@@ -180,11 +170,6 @@ export default function AdminDashboardClient({
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-50 p-8 text-slate-800">
-      {isPreview && (
-        <div className="fixed top-4 right-4 z-50 rounded-full border border-amber-400/60 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 shadow-lg">
-          本地预览 · 模拟数据
-        </div>
-      )}
       <section className="relative z-10 mx-auto max-w-7xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -206,20 +191,10 @@ export default function AdminDashboardClient({
           </button>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-            <p className="text-xs tracking-[0.18em] text-slate-500">CPU 负载</p>
-            <p className="mt-3 text-3xl font-semibold text-slate-800">{metrics.cpuLoadPercent.toFixed(1)}%</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-            <p className="text-xs tracking-[0.18em] text-slate-500">内存占用</p>
-            <p className="mt-3 text-3xl font-semibold text-slate-800">{metrics.memoryUsagePercent.toFixed(1)}%</p>
-          </div>
-          <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-            <p className="text-xs tracking-[0.18em] text-slate-500">在线 / 承载</p>
-            <p className="mt-3 text-3xl font-semibold text-slate-800">
-              {onlineCount} / {metrics.onlineCapacityEstimate}
-            </p>
+            <p className="text-xs tracking-[0.18em] text-slate-500">当前在线</p>
+            <p className="mt-3 text-3xl font-semibold text-slate-800">{onlineCount}</p>
           </div>
           <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
             <p className="text-xs tracking-[0.18em] text-slate-500">累计 Token 消耗</p>

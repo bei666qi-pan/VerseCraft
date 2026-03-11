@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StatType } from "@/lib/registry/types";
+import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 
@@ -83,6 +84,8 @@ function triggerTapFeedback() {
 
 export default function CreatePage() {
   const router = useRouter();
+  const user = useGameStore((s) => s.user);
+  useHeartbeat(!!user);
 
   const [name, setName] = useState("");
   const [gender, setGender] = useState<GenderOption>("男");

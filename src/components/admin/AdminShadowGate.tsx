@@ -48,12 +48,6 @@ export function AdminShadowGate() {
         >
           {pending ? "Verifying..." : "Enter"}
         </button>
-        <a
-          href="/saiduhsa/preview"
-          className="mt-4 block text-center text-xs text-slate-500 hover:text-slate-300"
-        >
-          本地预览
-        </a>
       </form>
     </main>
   );
