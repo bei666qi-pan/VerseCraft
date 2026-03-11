@@ -13,6 +13,22 @@ export type ItemTier = "S" | "A" | "B" | "C" | "D";
 /** Floor IDs: B2=exit, B1=spawn, 1-7=above ground */
 export type FloorId = "B2" | "B1" | "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
+/** Item effect types — direct, observable effects (not clue-based) */
+export type ItemEffectType =
+  | "shield"        // Blocks one lethal attack
+  | "ruleKill"     // Rule-based kill, ignores combatPower gap
+  | "tempStat"     // Temporarily boost a stat (e.g. +5 agility for 1h)
+  | "tempFavor"    // Temporarily boost NPC/anomaly favor
+  | "transform"    // Transform into specific NPC appearance
+  | "purify"       // Purify pollution / drive away low-tier anomaly
+  | "key"          // Open doors / bypass locks
+  | "bait"         // Divert anomaly attention
+  | "binding"      // Bind/trap small entity briefly
+  | "consumable";  // One-time consumable (heal/stat restore)
+
+/** Stat requirement per tier: D≥3, C 5-10, B 10-15, A 20, S all≥20. Parchment has none. */
+export type StatRequirement = Partial<Record<StatType, number>>;
+
 export interface Item {
   id: string;
   name: string;
@@ -20,10 +36,22 @@ export interface Item {
   description: string;
   statBonus?: Partial<Record<StatType, number>>;
   tags: string;
-  /** Blocks one lethal attack (e.g. from B2守门人) when used correctly */
+  /** Usage requirement: player must meet these stats. Omit = no check (parchment only). */
+  statRequirements?: StatRequirement;
+  /** Owner NPC or Anomaly ID. All items have an owner; dropped items belong to the entity that dropped them. */
+  ownerId: string;
+  /** Primary effect type for DM/UI display */
+  effectType?: ItemEffectType;
+  /** Blocks one lethal attack (legacy, maps to effectType shield) */
   blockLethal?: boolean;
-  /** Rule-based kill: can ignore combatPower gap to kill anomaly/NPC */
+  /** Rule-based kill (legacy, maps to effectType ruleKill) */
   ruleKill?: boolean;
+  /** For transform: target NPC id to impersonate */
+  transformTargetId?: string;
+  /** For tempStat: stat and value */
+  tempStatEffect?: { stat: StatType; value: number };
+  /** For tempFavor: base favor gain */
+  tempFavorEffect?: number;
 }
 
 export interface NPC {
@@ -58,6 +86,29 @@ export interface NpcSocialProfile {
   core_desires: string;
   /** Immutable emotion threads — cannot be retconned. */
   immutable_relationships: ImmutableRelationship[];
+  /** Emotional traits, quirks, habits — makes NPC feel like a real person. DM MUST weave into dialogue. */
+  emotional_traits?: string;
+  /** Speech patterns, catchphrases, tone — e.g. "爱用歇后语；对熟人会骂骂咧咧实则关心" */
+  speech_patterns?: string;
+  /** B1 only: in-character script for guiding new tenants about Settings/Tasks/Backpack/ManualInput. Never break 4th wall. */
+  new_tenant_guidance_script?: string;
+}
+
+/** 物品：存放于仓库，无属性要求，无等级。收益略大于副作用。楼层越高越强。 */
+export interface WarehouseItem {
+  id: string;
+  name: string;
+  description: string;
+  /** Benefit description (正向作用) */
+  benefit: string;
+  /** Side effect description (副作用). Always present, slightly weaker than benefit. */
+  sideEffect: string;
+  /** Owner NPC or Anomaly ID */
+  ownerId: string;
+  /** Floor of origin — higher floor = stronger item */
+  floor: FloorId;
+  /** Resurrection item: revives any NPC/anomaly except player. SideEffect: 1天内玩家遭遇生命威胁试炼 */
+  isResurrection?: boolean;
 }
 
 /** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */

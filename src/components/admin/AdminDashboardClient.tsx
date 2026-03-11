@@ -1,6 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 type DashboardUserRow = {
   id: string;
@@ -22,10 +34,16 @@ type ServerMetrics = {
   onlineCapacityEstimate: number;
 };
 
+type ChartPoint = { date: string; users: number; tokens: number; activeUsers?: number };
+
 type AdminDashboardClientProps = {
   metrics: ServerMetrics;
   rows: DashboardUserRow[];
   onlineCount: number;
+  totalUsers: number;
+  totalTokens: number;
+  /** Optional: for local preview, skip API fetch */
+  chartData?: ChartPoint[];
 };
 
 function formatPlayTime(totalSeconds: number): string {
@@ -51,8 +69,26 @@ function formatLastOnline(value: string | Date): string {
   return date.toLocaleString("zh-CN");
 }
 
-export default function AdminDashboardClient({ metrics, rows, onlineCount }: AdminDashboardClientProps) {
+const REFRESH_INTERVAL_MS = 30_000;
+const TABLE_PAGE_SIZE = 15;
+
+export default function AdminDashboardClient({
+  metrics,
+  rows,
+  onlineCount,
+  totalUsers,
+  totalTokens,
+  chartData: chartDataProp,
+}: AdminDashboardClientProps) {
+  const router = useRouter();
   const [mode, setMode] = useState<"today" | "total">("today");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [viewMode, setViewMode] = useState<"table" | "charts">("table");
+  const [tablePage, setTablePage] = useState(1);
+  const [chartData, setChartData] = useState<ChartPoint[]>(chartDataProp ?? []);
+  const chartsRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+
   const [detail, setDetail] = useState<{
     userName: string;
     content: string;
@@ -93,13 +129,84 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
     [mode, rows]
   );
 
+  const fetchChartData = useCallback(() => {
+    if (chartDataProp) return;
+    fetch("/api/admin/stats")
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d.chartData) && setChartData(d.chartData))
+      .catch(() => {});
+  }, [chartDataProp]);
+
+  const handleRefresh = useCallback(() => {
+    router.refresh();
+    fetchChartData();
+  }, [router, fetchChartData]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(handleRefresh, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [autoRefresh, handleRefresh]);
+
+  useEffect(() => {
+    if (chartDataProp) {
+      setChartData(chartDataProp);
+      return;
+    }
+    fetchChartData();
+  }, [chartDataProp, fetchChartData]);
+
+  const isPreview = !!chartDataProp;
+
+  const totalTablePages = Math.max(1, Math.ceil(tableRows.length / TABLE_PAGE_SIZE));
+  const paginatedRows = useMemo(
+    () =>
+      tableRows.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE),
+    [tableRows, tablePage]
+  );
+
+  useEffect(() => {
+    if (tablePage > totalTablePages) setTablePage(1);
+  }, [tablePage, totalTablePages]);
+
+  const chartWithDeltas = useMemo(() => {
+    if (chartData.length < 2) return chartData;
+    return chartData.map((p, i) => ({
+      ...p,
+      dailyTokens: i === 0 ? (p.tokens ?? 0) : Math.max(0, (p.tokens ?? 0) - (chartData[i - 1]!.tokens ?? 0)),
+      activeUsers: p.activeUsers ?? 0,
+    }));
+  }, [chartData]);
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-50 p-8 text-slate-800">
+      {isPreview && (
+        <div className="fixed top-4 right-4 z-50 rounded-full border border-amber-400/60 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 shadow-lg">
+          本地预览 · 模拟数据
+        </div>
+      )}
       <section className="relative z-10 mx-auto max-w-7xl">
-        <h1 className="text-2xl font-semibold tracking-[0.12em] text-slate-800">控制台</h1>
-        <p className="mt-2 text-sm text-slate-500">运营监控与玩家数据总览</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-[0.12em] text-slate-800">控制台</h1>
+            <p className="mt-2 text-sm text-slate-500">运营监控与玩家数据总览</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = viewMode === "table" ? "charts" : "table";
+              setViewMode(next);
+              requestAnimationFrame(() => {
+                (next === "charts" ? chartsRef : tableRef).current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              });
+            }}
+            className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            {viewMode === "table" ? "📊 可视化图表" : "📋 数据表格"}
+          </button>
+        </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
             <p className="text-xs tracking-[0.18em] text-slate-500">CPU 负载</p>
             <p className="mt-3 text-3xl font-semibold text-slate-800">{metrics.cpuLoadPercent.toFixed(1)}%</p>
@@ -114,10 +221,106 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
               {onlineCount} / {metrics.onlineCapacityEstimate}
             </p>
           </div>
+          <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+            <p className="text-xs tracking-[0.18em] text-slate-500">累计 Token 消耗</p>
+            <p className="mt-3 text-2xl font-semibold text-slate-800">
+              {(totalTokens / 1_000_000).toFixed(2)}M
+            </p>
+            <p className="mt-1 text-xs text-slate-400">约 ￥{formatTokenCost(totalTokens)}</p>
+          </div>
+          <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+            <p className="text-xs tracking-[0.18em] text-slate-500">注册玩家总数</p>
+            <p className="mt-3 text-3xl font-semibold text-slate-800">{totalUsers}</p>
+          </div>
         </div>
 
-        <div className="mt-8 rounded-3xl border border-slate-200/50 bg-white/70 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-          <div className="mb-4 flex justify-end">
+        {viewMode === "charts" && (
+          <>
+        {chartData.length > 0 ? (
+          <div ref={chartsRef} className="mt-8">
+            <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+              <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+                <p className="mb-4 text-sm font-medium tracking-wide text-slate-600">Token 日消耗</p>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartWithDeltas}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}百万` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}千` : String(v))} />
+                      <Tooltip
+                        formatter={(v: number) => [v.toLocaleString(), "Token"]}
+                        contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }}
+                      />
+                      <Bar dataKey="dailyTokens" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+                <p className="mb-4 text-sm font-medium tracking-wide text-slate-600">玩家日活</p>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartWithDeltas}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <Tooltip
+                        formatter={(v: number) => [v, "日活"]}
+                        contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }}
+                      />
+                      <Bar dataKey="activeUsers" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl lg:col-span-2">
+                <p className="mb-4 text-sm font-medium tracking-wide text-slate-600">累计 Token 消耗趋势</p>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => `${(v / 1e6).toFixed(1)}百万`} />
+                      <Tooltip
+                        formatter={(v: number) => [(v / 1_000_000).toFixed(2) + " 百万", "Token"]}
+                        contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }}
+                      />
+                      <Area type="monotone" dataKey="tokens" stroke="#10b981" fill="#10b981" fillOpacity={0.3} strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div ref={chartsRef} className="mt-8 rounded-3xl border border-slate-200/50 bg-white/70 p-8 text-center text-slate-500 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+            暂无图表数据，请点击刷新或稍后再试
+          </div>
+        )}
+          </>
+        )}
+
+        {viewMode === "table" && (
+        <div ref={tableRef} className="mt-8 rounded-3xl border border-slate-200/50 bg-white/70 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="rounded-full border border-slate-200 bg-white/80 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                刷新
+              </button>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                每30秒自动刷新
+              </label>
+            </div>
             <div className="inline-flex rounded-full border border-slate-200 bg-white/80 p-1">
               <button
                 type="button"
@@ -156,7 +359,7 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((user) => {
+                {paginatedRows.map((user) => {
                   const active = user.isOnline === 1;
                   const cost = formatTokenCost(user.tokenValue);
                   return (
@@ -220,7 +423,34 @@ export default function AdminDashboardClient({ metrics, rows, onlineCount }: Adm
               </tbody>
             </table>
           </div>
+
+          {totalTablePages > 1 && (
+            <div className="mt-4 flex items-center justify-between border-t border-slate-200/70 pt-4">
+              <p className="text-sm text-slate-500">
+                第 {tablePage} / {totalTablePages} 页，共 {tableRows.length} 人
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                  disabled={tablePage <= 1}
+                  className="rounded-full border border-slate-200 bg-white/80 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  上一页
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))}
+                  disabled={tablePage >= totalTablePages}
+                  className="rounded-full border border-slate-200 bg-white/80 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+        )}
       </section>
 
       {detail && (

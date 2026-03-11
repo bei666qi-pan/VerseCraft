@@ -2,6 +2,8 @@
 // 如月公寓地图与楼层结构 — 固化世界观
 
 import type { FloorId } from "./types";
+import { ITEMS } from "./items";
+import { WAREHOUSE_ITEMS } from "./warehouseItems";
 
 export const FLOORS: readonly { id: FloorId; label: string; description: string }[] = [
   { id: "B2", label: "地下 B2 层", description: "出口通道、守门人结界。第 8 诡异（深渊守门人）永驻此地。" },
@@ -66,11 +68,43 @@ export const ANOMALY_COMBAT_TIERS = {
   b2_boss: 29,
 } as const;
 
-/** Each NPC holds 10 bound originium that they cannot use themselves */
-export const NPC_BOUND_ORIGINIUM = 10;
+/** NPCs hold 8–20 originium each (saved from salary). Originium = life source, heals injuries, brings pleasure; hard currency in the apartment. */
+export const NPC_ORIGINIUM_RANGE = { min: 8, max: 20 };
 
 /** S-tier items can ONLY drop from the 7F manager's exclusive quest line */
 export const S_TIER_DROP_HOLDER = "N-011";
+
+/** Item IDs each entity carries. When killed, they drop a subset. Derive from ITEMS.ownerId. */
+export const ENTITY_CARRIED_ITEMS: Record<string, string[]> = (() => {
+  const map: Record<string, string[]> = {};
+  for (const it of ITEMS) {
+    const o = it.ownerId;
+    if (!map[o]) map[o] = [];
+    map[o].push(it.id);
+  }
+  return map;
+})();
+
+/** Get item IDs that entity can drop when killed */
+export function getItemIdsDroppedBy(entityId: string): string[] {
+  return ENTITY_CARRIED_ITEMS[entityId] ?? [];
+}
+
+/** Warehouse item IDs each entity carries. When killed, they drop to warehouse. Same logic as 道具. */
+export const ENTITY_WAREHOUSE_ITEMS: Record<string, string[]> = (() => {
+  const map: Record<string, string[]> = {};
+  for (const it of WAREHOUSE_ITEMS) {
+    const o = it.ownerId;
+    if (!map[o]) map[o] = [];
+    map[o].push(it.id);
+  }
+  return map;
+})();
+
+/** Get warehouse item IDs that entity can drop when killed */
+export function getWarehouseItemIdsDroppedBy(entityId: string): string[] {
+  return ENTITY_WAREHOUSE_ITEMS[entityId] ?? [];
+}
 
 /** B2 entrance has an indestructible wooden door — cannot be burned, smashed, or bypassed by brute force */
 export const B2_DOOR_INDESTRUCTIBLE = true;
@@ -105,6 +139,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "对物业经理（N-010）表面恭敬实则畏惧，知道他非人",
       "不信任引导员（N-020），曾警告过无数新住户",
     ],
+    emotional_traits: "对阿花有近乎溺爱的温柔；提到往事时会沉默片刻再岔开话题；对新来的人有种复杂的同情与戒备——想提醒又怕说太多。",
+    speech_patterns: "称呼年轻人用「孩子」；说话慢条斯理，常叹气；对不信任的人会用「你们年轻人」拉开距离。",
   },
   "N-002": {
     homeLocation: "2F_Clinic201",
@@ -119,6 +155,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "与厨师（N-012）互不干涉，心照不宣",
       "对认知腐蚀者（A-003）有刻骨恐惧",
     ],
+    emotional_traits: "外表冷静克制，内心有深刻的自责与执念；对「病人」有扭曲的保护欲——既想救赎又害怕再次失败；独处时会盯着病历发愣。",
+    speech_patterns: "用医学术语时会下意识放慢语速；对不配合的人会冷笑；常说「按规矩来」「先检查再说」。",
   },
   "N-003": {
     homeLocation: "1F_Mailboxes",
@@ -132,6 +170,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "与张先生（N-006）有十年送报默契，无日期报纸是他亲手挑选的",
       "唯一知道夜读老人（N-011）消化日志内容的人，从不泄露",
     ],
+    emotional_traits: "被时间感错乱折磨，却用送信维持「秩序」；对张先生有罕见的温情；知道太多秘密，眼神空洞而疲惫。",
+    speech_patterns: "说话简短，常停顿；提到日期会含糊其辞；递信时会喃喃「到了」「该你的」。",
   },
   "N-004": {
     homeLocation: "3F_Stairwell",
@@ -160,6 +200,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "与钢琴师亡灵（N-013）前世皆为钢琴师，灵魂有隐秘共鸣",
       "无头猎犬（A-002）用大黄声带诱杀——血海深仇",
     ],
+    emotional_traits: "失明后更依赖听觉与触觉；对大黄的执念近乎偏执；偶尔会无意识做出弹琴的手势。",
+    speech_patterns: "会先听脚步再开口；说话时微微侧头朝向声源；呼唤「大黄」时声音会发抖。",
   },
   "N-006": {
     homeLocation: "4F_Room401",
@@ -200,6 +242,10 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "厌恶物业经理（N-010），认为他知道线从哪来却不说",
       "与洗衣房阿姨（N-014）是 B1 互助同盟，彼此照应",
     ],
+    emotional_traits: "暴躁是表象，本质是无力感和愤怒——见过真相却无法逃离；对黑猫有软肋，摸猫时语气会不自觉变柔；对新来的人嘴上嫌弃实则会悄悄提醒。",
+    speech_patterns: "爱用「妈的」「搞什么」「别瞎动」；对熟人会骂骂咧咧实则关心；会突然压低声音说正经事。",
+    new_tenant_guidance_script:
+      "以前来的人都跟我说，那个什么【设置】里面的任务啦、背包啦，还有能自己写想法的手动输入，挺管用的。你新来的，有空自个儿琢磨琢磨，别跟无头苍蝇似的乱窜。",
   },
   "N-009": {
     homeLocation: "6F_Room602",
@@ -214,6 +260,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "无面保安（N-018）是唯一能通过镜子分辨她们的人",
       "倒行者（A-006）与她们同源，来自镜像维度",
     ],
+    emotional_traits: "两人之间有诡异的默契，有时会同时说同一句话；对被分开有深层恐惧；对能分辨她们的人既渴望又害怕。",
+    speech_patterns: "经常轮流接话或异口同声；称呼对方时从不叫名字；会用「我们」而非「我」。",
   },
   "N-010": {
     homeLocation: "1F_PropertyOffice",
@@ -281,6 +329,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "与电工老刘（N-008）是 B1 同盟，彼此信任",
       "恐惧红制服保洁员（N-017），知道茶壶内是浓缩消化液",
     ],
+    emotional_traits: "用「干活」来麻痹恐惧；对老刘有战友般的依赖；看到沾血衣服会愣住、手抖，但很快恢复。",
+    speech_patterns: "哼 80 年代摇篮曲时会跑调；说话朴实，爱用「唉」「没办法」；对新人有种过来人的担忧。",
   },
   "N-015": {
     homeLocation: "1F_Lobby",
@@ -348,6 +398,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "厨师（N-012）是 7 楼唯一半信任的同伴",
       "曾潜入 B2 遇 A-008 失败，差点丧命",
     ],
+    emotional_traits: "偏执与恐惧交织；对「真相」有近乎宗教式的狂热；独处时会盯着笔记喃喃自语，怀疑自己的记忆。",
+    speech_patterns: "爱用专业术语；说话时会扫视周围；对陌生人极度警惕，开门时手里总握着刀。",
   },
   "N-020": {
     homeLocation: "1F_Lobby",
@@ -384,6 +436,15 @@ export function buildLoreContextForDM(): string {
     lines.push(
       `immutable_relationships: ${profile.immutable_relationships.map((r) => `"${r}"`).join("；")}`
     );
+    if (profile.emotional_traits) {
+      lines.push(`emotional_traits: ${profile.emotional_traits}`);
+    }
+    if (profile.speech_patterns) {
+      lines.push(`speech_patterns: ${profile.speech_patterns}`);
+    }
+    if (profile.new_tenant_guidance_script) {
+      lines.push(`new_tenant_guidance_script（B1 新人引导时务必自然说出）: ${profile.new_tenant_guidance_script}`);
+    }
     lines.push("");
   }
   return lines.join("\n");

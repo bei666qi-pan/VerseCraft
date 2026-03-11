@@ -4,10 +4,11 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
 import { createResilientIdbStorage } from "@/lib/resilientStorage";
-import type { Item, StatType } from "@/lib/registry/types";
+import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 
+/** Tutorial item — no stat requirements. Owner: N-011 (manager planted it for new tenants). */
 export const PARCHMENT_ITEM: Item = {
   id: "I-PARCHMENT",
   name: "染血的羊皮纸",
@@ -16,6 +17,7 @@ export const PARCHMENT_ITEM: Item = {
     "三日之后，暗月降至；十日之后，一切终焉。本层徘徊着未知的诡异，不要相信任何轻易示好的住客。记住，暗月期间不要直视光源。",
   statBonus: {},
   tags: "lore,truth",
+  ownerId: "N-011",
 };
 
 const DB_KEY = "versecraft-storage";
@@ -92,14 +94,17 @@ export interface GameTask {
 export interface SaveSlotData {
   stats: Record<StatType, number>;
   inventory: Item[];
+  warehouse?: WarehouseItem[];
   logs: { role: string; content: string; reasoning?: string }[];
   time: GameTime;
   codex: Record<string, CodexEntry>;
   historicalMaxSanity: number;
+  historicalMaxFloorScore?: number;
   talent?: EchoTalent | null;
   talentCooldowns?: Record<EchoTalent, number>;
   hasReadParchment?: boolean;
   hasCheckedCodex?: boolean;
+  originium?: number;
 }
 
 export interface AuthUser {
@@ -137,8 +142,8 @@ interface GameState {
   hasReadParchment: boolean;
   /** 新手引导：是否已查看图鉴 */
   hasCheckedCodex: boolean;
-  /** 仓库：非道具展示品（纯展示） */
-  warehouse: Array<{ id: string; name: string; description?: string }>;
+  /** 仓库：物品（非道具），仅存仓库。无属性要求，有正向作用与对应副作用。 */
+  warehouse: WarehouseItem[];
   /** AI 动态选项：由大模型在每次回复中生成的 4 个行动选项 */
   currentOptions: string[];
   /** 过去 2 轮生成的选项历史，上限 8 个，用于反死循环 */
@@ -151,15 +156,14 @@ interface GameState {
   tasks: GameTask[];
   /** 玩家当前位置 */
   playerLocation: string;
+  /** 历史最高抵达楼层分数（B1=0, 1F=1, ..., B2=99），用于结算与排行榜 */
+  historicalMaxFloorScore: number;
   /** NPC 动态状态（位置 + 存活） */
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
   /** 非法闯入警戒闪烁计时 */
   intrusionFlashUntil: number;
   /** 是否已开始游戏（角色初始化完成后为 true） */
   isGameStarted: boolean;
-  /** 原石掉落 UI 通知截止时间戳（触发时显示短暂提示） */
-  originiumDropNotifyUntil: number;
-
   setHydrated: (state: boolean) => void;
   setUser: (user: AuthUser | null) => void;
   mockLogin: () => void;
@@ -178,9 +182,9 @@ interface GameState {
   toggleInputMode: () => void;
   setOriginium: (v: number) => void;
   addOriginium: (delta: number) => void;
-  /** 每回合判定出身>=20时按概率掉落原石，若触发则 +1 并设置 originiumDropNotifyUntil */
-  tryOriginiumDrop: () => void;
   upgradeAttribute: (attr: StatType) => boolean;
+  /** 用原石恢复理智：当理智低于历史最高时，1原石=1理智 */
+  restoreSanity: () => boolean;
   addTask: (task: Omit<GameTask, "status"> & { status?: GameTask["status"] }) => void;
   updateTaskStatus: (taskId: string, status: GameTask["status"]) => void;
   setPlayerLocation: (loc: string) => void;
@@ -201,6 +205,7 @@ interface GameState {
   addItems: (items: Item[]) => void;
   removeFromInventory: (itemId: string) => void;
   consumeItems: (itemNames: string[]) => void;
+  addWarehouseItems: (items: WarehouseItem[]) => void;
 
   // 核心 Action
   initCharacter: (
@@ -230,6 +235,14 @@ const DEFAULT_STATS: Record<StatType, number> = {
   charm: 3,
   background: 3,
 };
+
+function resolveFloorScore(loc: string): number {
+  if (!loc) return 0;
+  if (loc.startsWith("B2_")) return 99;
+  if (loc.startsWith("B1_")) return 0;
+  const m = loc.match(/^(\d)F_/);
+  return m ? Number(m[1] ?? 0) : 0;
+}
 
 function parseTags(tagsStr: string): string[] {
   return tagsStr
@@ -300,10 +313,10 @@ export const useGameStore = create<GameState>()(
       originium: 0,
       tasks: [],
       playerLocation: "B1_SafeZone",
+      historicalMaxFloorScore: 0,
       dynamicNpcStates: {},
       intrusionFlashUntil: 0,
       isGameStarted: false,
-      originiumDropNotifyUntil: 0,
 
       setHydrated: (state) => set({ isHydrated: state }),
       setUser: (user) => set({ user }),
@@ -332,10 +345,10 @@ export const useGameStore = create<GameState>()(
           originium: 0,
           tasks: [],
           playerLocation: "B1_SafeZone",
+          historicalMaxFloorScore: 0,
           dynamicNpcStates: {},
           intrusionFlashUntil: 0,
           isGameStarted: false,
-          originiumDropNotifyUntil: 0,
         }),
 
       markGameOver: () =>
@@ -364,6 +377,7 @@ export const useGameStore = create<GameState>()(
           isGameStarted: false,
           saveSlots: {},
           inventory: [],
+          warehouse: [],
           currentOptions: [],
           recentOptions: [],
         })),
@@ -372,10 +386,12 @@ export const useGameStore = create<GameState>()(
         set({
           logs: [],
           inventory: [],
+          warehouse: [],
           saveSlots: {},
           isGameStarted: false,
           currentOptions: [],
           recentOptions: [],
+          historicalMaxFloorScore: 0,
         }),
 
       setCurrentOptions: (options) =>
@@ -391,26 +407,29 @@ export const useGameStore = create<GameState>()(
           if (delta < 0 && s.originium <= 0) return {};
           return { originium: Math.max(0, s.originium + delta) };
         }),
-      tryOriginiumDrop: () =>
-        set((s) => {
-          const bg = s.stats.background ?? 0;
-          if (bg < 20) return {};
-          const probability = Math.min(100, 20 + (bg - 20));
-          if (Math.random() * 100 >= probability) return {};
-          return {
-            originium: s.originium + 1,
-            originiumDropNotifyUntil: Date.now() + 2000,
-          };
-        }),
       upgradeAttribute: (attr) => {
         const s = get();
         const cur = s.stats[attr] ?? 0;
         if (cur >= 50) return false;
-        const cost = cur < 20 ? 2 : 3;
+        const totalPoints =
+          (s.stats.sanity ?? 0) + (s.stats.agility ?? 0) + (s.stats.luck ?? 0) +
+          (s.stats.charm ?? 0) + (s.stats.background ?? 0);
+        const cost = totalPoints < 20 ? 2 : 3;
         if (s.originium <= 0 || s.originium < cost) return false;
         set({
           originium: s.originium - cost,
           stats: { ...s.stats, [attr]: cur + 1 },
+        });
+        return true;
+      },
+      restoreSanity: () => {
+        const s = get();
+        const cur = s.stats.sanity ?? 0;
+        const histMax = s.historicalMaxSanity ?? 50;
+        if (cur >= histMax || s.originium < 1) return false;
+        set({
+          originium: s.originium - 1,
+          stats: { ...s.stats, sanity: cur + 1 },
         });
         return true;
       },
@@ -422,7 +441,15 @@ export const useGameStore = create<GameState>()(
         set((s) => ({
           tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
         })),
-      setPlayerLocation: (loc) => set({ playerLocation: loc }),
+      setPlayerLocation: (loc) =>
+        set((s) => {
+          const nextScore = resolveFloorScore(loc);
+          const prevMax = s.historicalMaxFloorScore ?? 0;
+          return {
+            playerLocation: loc,
+            historicalMaxFloorScore: Math.max(prevMax, nextScore),
+          };
+        }),
       updateNpcLocation: (npcId, location) =>
         set((s) => ({
           dynamicNpcStates: {
@@ -524,6 +551,13 @@ export const useGameStore = create<GameState>()(
           inventory: s.inventory.filter((i) => !itemNames.includes(i.name)),
         })),
 
+      addWarehouseItems: (items) =>
+        set((s) => {
+          const existingIds = new Set((s.warehouse ?? []).map((w) => w.id));
+          const toAdd = items.filter((w) => w?.id && w?.name && !existingIds.has(w.id));
+          return { warehouse: [...(s.warehouse ?? []), ...toAdd] };
+        }),
+
       initCharacter: (profile, stats, talent) => {
         const background = stats.background ?? DEFAULT_STATS.background;
         const startingItem = pickStartingItemByBackground(background);
@@ -550,6 +584,7 @@ export const useGameStore = create<GameState>()(
           originium: background,
           tasks: [],
           playerLocation: "B1_SafeZone",
+          historicalMaxFloorScore: 0,
           dynamicNpcStates: Object.fromEntries(
             Object.entries(NPC_SOCIAL_GRAPH).map(([id, p]) => [id, { currentLocation: p.homeLocation, isAlive: true }])
           ),
@@ -588,7 +623,12 @@ export const useGameStore = create<GameState>()(
           `玩家位置[${s.playerLocation}]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
-          `物品清单：${inv || "空"}。` +
+          `行囊道具：${inv || "空"}。` +
+          (() => {
+            const wh = s.warehouse ?? [];
+            if (wh.length === 0) return "";
+            return ` 仓库物品：${wh.map((w) => `${w.name}[${w.id}]`).join("，")}。`;
+          })() +
           `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
           `原石[${s.originium}]。` +
           (s.tasks.filter((t) => t.status === "active").length > 0
@@ -654,14 +694,17 @@ export const useGameStore = create<GameState>()(
         const data: SaveSlotData = {
           stats: JSON.parse(JSON.stringify(s.stats)),
           inventory: JSON.parse(JSON.stringify(s.inventory)),
+          warehouse: JSON.parse(JSON.stringify(s.warehouse ?? [])),
           logs: JSON.parse(JSON.stringify(s.logs ?? [])),
           time: JSON.parse(JSON.stringify(s.time ?? { day: 0, hour: 0 })),
           codex: JSON.parse(JSON.stringify(s.codex ?? {})),
           historicalMaxSanity: s.historicalMaxSanity ?? 50,
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
           talent: s.talent,
           talentCooldowns: JSON.parse(JSON.stringify(s.talentCooldowns ?? {})),
           hasReadParchment: s.hasReadParchment ?? false,
           hasCheckedCodex: s.hasCheckedCodex ?? false,
+          originium: s.originium ?? 0,
         };
         set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
         void import("@/app/actions/save")
@@ -679,14 +722,17 @@ export const useGameStore = create<GameState>()(
         set({
           stats: JSON.parse(JSON.stringify(data.stats)),
           inventory: JSON.parse(JSON.stringify(data.inventory)),
+          warehouse: Array.isArray(data.warehouse) ? JSON.parse(JSON.stringify(data.warehouse)) : [],
           logs: JSON.parse(JSON.stringify(data.logs)),
           time: JSON.parse(JSON.stringify(data.time)),
           codex: JSON.parse(JSON.stringify(data.codex)),
           historicalMaxSanity: data.historicalMaxSanity,
+          historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
           talent: data.talent ?? null,
           talentCooldowns,
           hasReadParchment: data.hasReadParchment ?? (Array.isArray(data.logs) && data.logs.length > 0),
           hasCheckedCodex: data.hasCheckedCodex ?? false,
+          originium: data.originium ?? get().originium ?? 0,
         });
       },
       hydrateFromCloud: (slotId, data) => {
@@ -703,14 +749,17 @@ export const useGameStore = create<GameState>()(
             saveSlots: { ...s.saveSlots, [slotId]: data },
             stats: JSON.parse(JSON.stringify(data.stats)),
             inventory: JSON.parse(JSON.stringify(data.inventory)),
+            warehouse: Array.isArray(data.warehouse) ? JSON.parse(JSON.stringify(data.warehouse)) : [],
             logs: JSON.parse(JSON.stringify(data.logs ?? [])),
             time: JSON.parse(JSON.stringify(data.time ?? { day: 0, hour: 0 })),
             codex: JSON.parse(JSON.stringify(data.codex ?? {})),
             historicalMaxSanity: data.historicalMaxSanity ?? 50,
+            historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
             talent: data.talent ?? s.talent ?? null,
             talentCooldowns,
             hasReadParchment: data.hasReadParchment ?? hasProgress,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
+            originium: data.originium ?? s.originium ?? 0,
             isGameStarted: true,
           };
         });
@@ -729,7 +778,7 @@ export const useGameStore = create<GameState>()(
         }
         useGameStore.getState().setHydrated(true);
       },
-      // Excludes transient UI: isHydrated, currentOptions, recentOptions, inputMode, intrusionFlashUntil, originiumDropNotifyUntil
+      // Excludes transient UI: isHydrated, currentOptions, recentOptions, inputMode, intrusionFlashUntil
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
         saveSlots: s.saveSlots ?? {},
@@ -752,6 +801,7 @@ export const useGameStore = create<GameState>()(
         originium: s.originium ?? 0,
         tasks: s.tasks ?? [],
         playerLocation: s.playerLocation ?? "B1_SafeZone",
+        historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
         dynamicNpcStates: s.dynamicNpcStates ?? {},
         isGameStarted: s.isGameStarted ?? false,
       }),

@@ -1,11 +1,9 @@
 import { type ReactNode } from "react";
-import { redirect } from "next/navigation";
 import { auth } from "../../../auth";
+import { PlayAuthGuard } from "@/components/PlayAuthGuard";
 
 export default async function PlayLayout({ children }: { children: ReactNode }) {
   const session = await auth();
-  if (!session?.user?.id) {
-    redirect("/");
-  }
-  return <>{children}</>;
+  const authorized = Boolean(session?.user?.id);
+  return <PlayAuthGuard authorized={authorized}>{children}</PlayAuthGuard>;
 }

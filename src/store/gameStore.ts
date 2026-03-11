@@ -17,7 +17,7 @@ export interface GameStats {
   background: number;
 }
 
-export type ActiveMenu = "settings" | "backpack" | "codex" | "warehouse" | "tasks" | null;
+export type ActiveMenu = "settings" | "backpack" | "codex" | "warehouse" | "tasks" | "achievements" | null;
 
 const RECENT_OPTIONS_MAX = 8;
 

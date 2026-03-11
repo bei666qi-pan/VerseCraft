@@ -36,8 +36,7 @@ const STAT_DESCRIPTIONS: Record<StatType, string[]> = {
     ">20 质变：诡异可能短暂放过你。",
   ],
   background: [
-    "1点出身对应1初始原石。",
-    ">20 质变：每回合有 (20+超出点数)% 概率自动凝结 1 颗原石。",
+    "1点出身对应1初始原石。原石来自7楼矿脉，玩家不可进入；更多原石需通过NPC任务等获取。",
   ],
 };
 
@@ -51,11 +50,11 @@ const TALENTS: readonly {
   desc: string;
 }[] = [
   { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。" },
-  { key: "命运馈赠", title: "命运馈赠", cd: "CD：7 小时", desc: "获得一个随机世界观相关物品。" },
+  { key: "命运馈赠", title: "命运馈赠", cd: "CD：10 小时", desc: "随机抢夺世界里的一个道具。道具均有主人，在主人面前使用会被察觉。" },
   { key: "主角光环", title: "主角光环", cd: "CD：8 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
   { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "理智恢复至历史最大值。" },
   { key: "洞察之眼", title: "洞察之眼", cd: "CD：8 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
-  { key: "丧钟回响", title: "丧钟回响", cd: "CD：24 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。" },
+  { key: "丧钟回响", title: "丧钟回响", cd: "CD：30 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。夜读老人与深渊守门人免疫。" },
 ] as const;
 
 function sumStats(stats: Record<StatType, number>): number {
@@ -74,7 +73,13 @@ const GLASS_PANEL =
 const GLASS_INPUT =
   "rounded-xl border border-white/60 bg-white/50 px-4 text-base text-slate-800 outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300/60 touch-manipulation min-h-[44px]";
 const GLASS_BTN =
-  "h-10 w-10 rounded-xl border border-white/60 bg-white/50 text-slate-700 select-none touch-manipulation transition-[transform,background-color,box-shadow] duration-150 ease-out hover:bg-white/70 hover:scale-105 hover:shadow-md active:scale-[0.92] active:bg-white/90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.08)] disabled:opacity-40 disabled:hover:scale-100 disabled:hover:shadow-none disabled:cursor-not-allowed disabled:active:scale-100";
+  "h-10 w-10 rounded-xl border border-white/60 bg-white/50 text-slate-700 select-none touch-manipulation transition-[transform,background-color,box-shadow] duration-100 ease-out hover:bg-white/70 hover:scale-105 hover:shadow-md active:scale-[0.85] active:bg-white/95 active:shadow-[inset_0_3px_6px_rgba(0,0,0,0.12)] active:border-white/80 disabled:opacity-40 disabled:hover:scale-100 disabled:hover:shadow-none disabled:cursor-not-allowed disabled:active:scale-100";
+
+function triggerTapFeedback() {
+  if (typeof navigator !== "undefined" && navigator.vibrate) {
+    navigator.vibrate(10);
+  }
+}
 
 export default function CreatePage() {
   const router = useRouter();
@@ -263,7 +268,10 @@ export default function CreatePage() {
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => dec(stat)}
+                      onClick={() => {
+                        triggerTapFeedback();
+                        dec(stat);
+                      }}
                       disabled={stats[stat] <= BASE_STAT}
                       className={GLASS_BTN}
                       aria-label={`减少${STAT_LABELS[stat]}`}
@@ -275,7 +283,10 @@ export default function CreatePage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => inc(stat)}
+                      onClick={() => {
+                        triggerTapFeedback();
+                        inc(stat);
+                      }}
                       disabled={remaining <= 0}
                       className={GLASS_BTN}
                       aria-label={`增加${STAT_LABELS[stat]}`}

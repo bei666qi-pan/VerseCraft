@@ -106,7 +106,7 @@ export async function submitGameRecord(input: {
   killedAnomalies: number;
   maxFloorScore: number;
   survivalTimeSeconds: number;
-}): Promise<{ success: boolean }> {
+}): Promise<{ success: boolean; onLeaderboard?: boolean }> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return { success: false };
@@ -120,7 +120,21 @@ export async function submitGameRecord(input: {
     VALUES (${userId}, ${killedAnomalies}, ${maxFloorScore}, ${survivalTimeSeconds}, NOW())
   `);
 
-  return { success: true };
+  const qualifiesKill = killedAnomalies >= 1;
+  const qualifiesExplore = maxFloorScore >= 1;
+  if (!qualifiesKill && !qualifiesExplore) {
+    return { success: true, onLeaderboard: false };
+  }
+
+  const [killRes, exploreRes] = await Promise.all([
+    qualifiesKill ? getKillLeaderboard(userId) : Promise.resolve({ currentUser: null }),
+    qualifiesExplore ? getExplorationLeaderboard(userId) : Promise.resolve({ currentUser: null }),
+  ]);
+  const inKillTop10 = killRes.currentUser != null && killRes.currentUser.rank <= 10;
+  const inExploreTop10 = exploreRes.currentUser != null && exploreRes.currentUser.rank <= 10;
+  const onLeaderboard = inKillTop10 || inExploreTop10;
+
+  return { success: true, onLeaderboard };
 }
 
 export async function getKillLeaderboard(userId?: string): Promise<KillLeaderboardResult> {

@@ -100,6 +100,16 @@ export const saveSlots = mysqlTable(
   })
 );
 
+export const adminStatsSnapshots = mysqlTable("admin_stats_snapshots", {
+  date: date("date").primaryKey(),
+  totalUsers: int("total_users").notNull().default(0),
+  totalTokens: int("total_tokens").notNull().default(0),
+  activeUsers: int("active_users").notNull().default(0),
+  createdAt: timestamp("created_at")
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const usersQuotaRelations = relations(usersQuota, ({ one }) => ({
   user: one(users, {
     fields: [usersQuota.userId],

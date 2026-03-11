@@ -6,7 +6,12 @@
     "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:push": "DOTENV_CONFIG_PATH=.env.local node -r dotenv/config ./scripts/db-push.mjs",
+    "db:generate": "drizzle-kit generate",
+    "diagnose:play": "npx tsx scripts/diagnose-play-error.ts",
+    "db:delete-test-accounts": "npx tsx scripts/delete-test-accounts.ts",
+    "test:play": "playwright test e2e/play.spec.ts"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
@@ -22,6 +27,7 @@
     "next-auth": "^5.0.0-beta.30",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "recharts": "^3.8.0",
     "redis": "^5.11.0",
     "zustand": "^5.0.11"
   },

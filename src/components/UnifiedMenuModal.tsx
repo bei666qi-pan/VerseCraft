@@ -2,11 +2,17 @@
 
 import { Activity, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List } from "lucide-react";
-import type { Item, StatType } from "@/lib/registry/types";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy } from "lucide-react";
+import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
+import { canUseItem, formatStatRequirements } from "@/lib/registry/itemUtils";
 import { useGameStore, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { useGameStore as usePersistStore, type ActiveMenu } from "@/store/gameStore";
+import {
+  useAchievementsStore,
+  type AchievementRecord,
+  type AchievementGrade,
+} from "@/store/useAchievementsStore";
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
 const STAT_LABELS: Record<StatType, string> = {
@@ -82,13 +88,14 @@ function formatLocationLabel(location: string): string {
   return LOCATION_LABELS[location] ?? location.replace(/_/g, " ");
 }
 
-const TAB_ICONS = {
+const TAB_ICONS: Record<NonNullable<ActiveMenu>, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
   settings: Settings,
   backpack: Package,
   codex: BookOpen,
   warehouse: Warehouse,
   tasks: ClipboardList,
-} as const;
+  achievements: Trophy,
+};
 
 const TABS: { id: ActiveMenu; label: string }[] = [
   { id: "settings", label: "设置" },
@@ -96,7 +103,17 @@ const TABS: { id: ActiveMenu; label: string }[] = [
   { id: "codex", label: "图鉴" },
   { id: "warehouse", label: "仓库" },
   { id: "tasks", label: "任务" },
+  { id: "achievements", label: "成就" },
 ];
+
+const TAB_ONBOARDING_ATTR: Record<NonNullable<ActiveMenu>, string> = {
+  settings: "settings-tab",
+  backpack: "backpack-tab",
+  codex: "codex-tab",
+  warehouse: "warehouse-tab",
+  tasks: "tasks-tab",
+  achievements: "achievements-tab",
+};
 
 interface UnifiedMenuModalProps {
   activeMenu: ActiveMenu;
@@ -107,24 +124,28 @@ interface UnifiedMenuModalProps {
   onViewedTab?: (tab: "codex" | "warehouse" | "tasks") => void;
 }
 
-function StatBar({ statName, value, isDanger }: { statName: string; value: number; isDanger: boolean }) {
-  const bar1 = (Math.min(value, 25) / 25) * 100;
-  const bar2 = (Math.max(0, value - 25) / 25) * 100;
+function StatBar({
+  statName,
+  value,
+  displayMax,
+  isDanger,
+}: {
+  statName: string;
+  value: number;
+  displayMax: number;
+  isDanger: boolean;
+}) {
+  const cap = Math.max(1, displayMax);
+  const pct = (value / cap) * 100;
   const fillGradient = isDanger ? "from-red-600 to-red-500" : "from-indigo-500 to-blue-400";
-  const bar2Gradient = isDanger ? "from-red-500 to-rose-400" : "from-purple-500 to-fuchsia-400";
   return (
     <div className="mb-4">
       <div className="mb-1 flex justify-between">
         <span className={`text-sm font-medium ${isDanger ? "text-red-400" : "text-slate-300"}`}>{statName}</span>
-        <span className="text-xs font-mono text-slate-500">{value} / {STAT_MAX}</span>
+        <span className="text-xs font-mono text-slate-500">{value} / {cap}</span>
       </div>
-      <div className="flex flex-col gap-1">
-        <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800/50">
-          <div className={`h-full bg-gradient-to-r ${fillGradient} transition-all`} style={{ width: `${bar1}%` }} />
-        </div>
-        <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800/50">
-          <div className={`h-full bg-gradient-to-r ${bar2Gradient} transition-all`} style={{ width: `${bar2}%` }} />
-        </div>
+      <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800/50">
+        <div className={`h-full bg-gradient-to-r ${fillGradient} transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
     </div>
   );
@@ -132,6 +153,10 @@ function StatBar({ statName, value, isDanger }: { statName: string; value: numbe
 
 function SettingsPanel({
   stats,
+  historicalMaxSanity,
+  originium,
+  onUpgradeAttr,
+  onRestoreSanity,
   playerLocation,
   time,
   volume,
@@ -142,6 +167,10 @@ function SettingsPanel({
   onAbandonAndDie,
 }: {
   stats: Record<StatType, number>;
+  historicalMaxSanity: number;
+  originium: number;
+  onUpgradeAttr: (attr: StatType) => void;
+  onRestoreSanity: () => void;
   playerLocation: string;
   time: { day: number; hour: number };
   volume: number;
@@ -157,19 +186,64 @@ function SettingsPanel({
   const rowClass = "rounded-xl border border-white/10 bg-white/5 px-4 py-3";
   const labelClass = "text-xs text-slate-500";
   const valueClass = "mt-1 font-semibold text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]";
+  const totalPoints =
+    (stats.sanity ?? 0) + (stats.agility ?? 0) + (stats.luck ?? 0) +
+    (stats.charm ?? 0) + (stats.background ?? 0);
+  const costPerPoint = totalPoints < 20 ? 2 : 3;
+  const sanity = stats.sanity ?? 0;
+  const canRestoreSanity = sanity < historicalMaxSanity && originium >= 1;
+  const canUpgrade = (attr: StatType) => {
+    const cur = stats[attr] ?? 0;
+    if (cur >= 50) return false;
+    return originium >= costPerPoint;
+  };
   return (
     <div className="space-y-8 p-6">
       <div>
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">属性与坐标</h3>
-        <div className="space-y-2">
-          {STAT_ORDER.map((k) => (
-            <StatBar
-              key={k}
-              statName={STAT_LABELS[k]}
-              value={stats[k] ?? 0}
-              isDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
-            />
-          ))}
+        <div className="flex flex-row gap-6">
+          <div className="flex-1 min-w-0 space-y-2">
+            {STAT_ORDER.map((k) => (
+              <StatBar
+                key={k}
+                statName={STAT_LABELS[k]}
+                value={stats[k] ?? 0}
+                displayMax={k === "sanity" ? historicalMaxSanity : STAT_MAX}
+                isDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
+              />
+            ))}
+          </div>
+          <div className="flex flex-col w-[180px] shrink-0 gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-4">
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500" />
+              <span className="text-sm font-bold text-amber-300">{originium}</span>
+              <span className="text-xs text-amber-400/90">原石</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              加点：总属性&lt;20 需2原石/点，≥20 需{costPerPoint}原石/点。理智低于历史最高时，1原石=1理智。
+            </p>
+            <div className="space-y-1.5">
+              {STAT_ORDER.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => onUpgradeAttr(k)}
+                  disabled={!canUpgrade(k)}
+                  className="w-full rounded-lg border border-white/20 bg-white/5 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  +{STAT_LABELS[k]}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={onRestoreSanity}
+                disabled={!canRestoreSanity}
+                className="w-full rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1.5 text-xs text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                回理智 (1原石)
+              </button>
+            </div>
+          </div>
         </div>
         <div className="mt-4 flex items-center gap-4">
           <div className={rowClass}>
@@ -251,6 +325,7 @@ function BackpackPanel({
   onSelect,
   onUseItem,
   isStreaming,
+  stats,
 }: {
   inventory: Item[];
   originium: number;
@@ -258,6 +333,7 @@ function BackpackPanel({
   onSelect: (id: string | null) => void;
   onUseItem: (item: Item) => void;
   isStreaming: boolean;
+  stats: Record<StatType, number>;
 }) {
   const slotItems = Array.from({ length: 6 }, (_, idx) => inventory[idx] ?? null);
   const selectedItem = selectedId ? inventory.find((i) => i.id === selectedId) : null;
@@ -324,6 +400,12 @@ function BackpackPanel({
                 <span className="text-xs text-slate-500">描述</span>
                 <p className="mt-1 text-sm leading-relaxed text-slate-300">{selectedItem.description}</p>
               </div>
+              {formatStatRequirements(selectedItem) && (
+                <div>
+                  <span className="text-xs text-slate-500">使用条件</span>
+                  <p className="mt-1 text-sm text-amber-300">{formatStatRequirements(selectedItem)}</p>
+                </div>
+              )}
               {selectedItem.statBonus && Object.keys(selectedItem.statBonus).length > 0 && (
                 <div>
                   <span className="text-xs text-slate-500">属性</span>
@@ -334,14 +416,20 @@ function BackpackPanel({
                   </p>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => { onUseItem(selectedItem); onSelect(null); }}
-                disabled={isStreaming}
-                className="mt-4 w-full rounded-xl border border-indigo-400/40 bg-indigo-500/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500/40 disabled:opacity-40"
-              >
-                使用该物品
-              </button>
+              {(() => {
+                const useCheck = canUseItem(selectedItem, stats);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => { if (useCheck.ok) { onUseItem(selectedItem); onSelect(null); } }}
+                    disabled={isStreaming || !useCheck.ok}
+                    title={!useCheck.ok ? useCheck.reason : undefined}
+                    className="mt-4 w-full rounded-xl border border-indigo-400/40 bg-indigo-500/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {useCheck.ok ? "使用该物品" : useCheck.reason ?? "无法使用"}
+                  </button>
+                );
+              })()}
             </div>
           </>
         ) : (
@@ -483,33 +571,92 @@ function CodexPanel({
   );
 }
 
-function WarehousePanel({ warehouse }: { warehouse: Item[] }) {
+function WarehousePanel({ warehouse }: { warehouse: WarehouseItem[] }) {
+  const [selected, setSelected] = useState<WarehouseItem | null>(null);
+  return (
+    <div className="flex h-full flex-col overflow-hidden p-6">
+      <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">仓库</h3>
+      <p className="mb-3 text-xs text-slate-500">物品存放于此，无属性要求。使用时有正向作用与对应副作用，收益略大于副作用。</p>
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+        {(warehouse ?? []).map((w, idx) => (
+          <button
+            key={w.id}
+            type="button"
+            onClick={() => setSelected(selected?.id === w.id ? null : w)}
+            className={`flex min-h-[64px] flex-col items-center justify-center rounded-xl border p-2 text-left transition ${
+              selected?.id === w.id ? "border-amber-400/50 bg-amber-500/20" : "border-white/20 bg-slate-800/40 hover:bg-slate-800/60"
+            }`}
+          >
+            <span className="truncate w-full text-center text-xs font-semibold text-white">{w.name}</span>
+            <span className="mt-0.5 text-[10px] text-slate-500">{"floor" in w && w.floor ? (String(w.floor).startsWith("B") ? w.floor : `${w.floor}F`) : ""}</span>
+          </button>
+        ))}
+      </div>
+      {selected && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-slate-800/60 p-4">
+          <h4 className="text-sm font-semibold text-white">{selected.name}</h4>
+          <p className="mt-1 text-xs text-slate-400">{selected.description}</p>
+          {"benefit" in selected && selected.benefit && (
+            <div className="mt-2">
+              <span className="text-[10px] text-emerald-400">正向：</span>
+              <p className="text-xs text-slate-300">{selected.benefit}</p>
+            </div>
+          )}
+          {"sideEffect" in selected && selected.sideEffect && (
+            <div className="mt-1">
+              <span className="text-[10px] text-amber-400">副作用：</span>
+              <p className="text-xs text-slate-400">{selected.sideEffect}</p>
+            </div>
+          )}
+          {"isResurrection" in selected && selected.isResurrection && (
+            <span className="mt-2 inline-block rounded bg-rose-500/20 px-2 py-0.5 text-[10px] text-rose-300">复活物品</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ACHIEVEMENT_GRADE_STYLES: Record<AchievementGrade, string> = {
+  S: "bg-gradient-to-br from-amber-400 to-amber-500 text-transparent bg-clip-text drop-shadow-[0_0_8px_rgba(251,191,36,0.5)] font-bold",
+  A: "text-cyan-300 font-semibold",
+  B: "text-violet-300 font-semibold",
+  C: "text-sky-300 font-medium",
+  D: "text-slate-300 font-medium",
+  E: "text-slate-500",
+};
+
+function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
   return (
     <div className="p-6">
-      <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">仓库</h3>
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 12 }, (_, idx) => {
-          const item = warehouse[idx];
-          return (
+      <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">历史成就</h3>
+      <p className="mb-4 text-xs text-slate-500">展示评级最高的 5 次游戏记录</p>
+      <div className="max-h-[55vh] space-y-4 overflow-y-auto">
+        {records.length === 0 ? (
+          <p className="py-8 text-center text-xs text-slate-500">暂无成就记录。完成游戏结算后可在此查看。</p>
+        ) : (
+          records.map((r, idx) => (
             <div
-              key={item?.id ?? `empty-${idx}`}
-              className={`flex min-h-[72px] flex-col items-center justify-center rounded-xl border p-3 ${
-                item ? "border-white/20 bg-slate-800/40" : "border-white/5 bg-black/30"
-              }`}
+              key={`${r.createdAt}-${idx}`}
+              className="rounded-xl border border-slate-600/50 bg-slate-800/40 p-4"
             >
-              {item ? (
-                <>
-                  <span className="truncate w-full text-center text-xs font-semibold text-white">{item.name}</span>
-                  {item.description && (
-                    <span className="mt-1 line-clamp-2 text-[10px] text-slate-400">{item.description}</span>
-                  )}
-                </>
-              ) : (
-                <span className="text-xs text-slate-600">空</span>
-              )}
+              <div className="mb-2 flex items-center justify-between">
+                <span className={`text-xl ${ACHIEVEMENT_GRADE_STYLES[r.grade]}`}>{r.grade}</span>
+                <span className="text-xs text-slate-500">存活 {r.survivalTimeText}</span>
+              </div>
+              <div className="mb-2 grid grid-cols-2 gap-2 text-xs">
+                <span className="text-slate-500">猎杀诡异</span>
+                <span className="text-slate-200">{r.kills} 只</span>
+                <span className="text-slate-500">最高抵达</span>
+                <span className="text-slate-200">{r.maxFloorDisplay}</span>
+              </div>
+              <div className="mt-2 border-t border-slate-600/50 pt-2">
+                <p className="text-[11px] leading-relaxed text-slate-400">{r.reviewLine1}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{r.reviewLine2}</p>
+              </div>
             </div>
-          );
-        })}
+          ))
+        )}
       </div>
     </div>
   );
@@ -569,11 +716,14 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
 
   const stats = useGameStore((s) => s.stats);
+  const historicalMaxSanity = useGameStore((s) => s.historicalMaxSanity ?? 50);
   const inventory = useGameStore((s) => s.inventory);
   const codex = useGameStore((s) => s.codex ?? {});
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const tasks = useGameStore((s) => s.tasks ?? []);
   const originium = useGameStore((s) => s.originium ?? 0);
+  const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
+  const restoreSanity = useGameStore((s) => s.restoreSanity);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
@@ -581,6 +731,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   const volume = usePersistStore((s) => s.volume);
   const setVolume = usePersistStore((s) => s.setVolume);
   const inputMode = usePersistStore((s) => s.inputMode ?? "options");
+  const achievementRecords = useAchievementsStore((s) => s.records ?? []);
   const setPersistInputMode = usePersistStore((s) => s.setInputMode);
   const toggleInputMode = useGameStore((s) => s.toggleInputMode);
 
@@ -642,6 +793,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
                   key={tab.id}
                   type="button"
                   onClick={() => handleTabSelect(tab.id)}
+                  data-onboarding={TAB_ONBOARDING_ATTR[tab.id]}
                   className={`flex flex-col items-center justify-center gap-1.5 min-w-[56px] min-h-[56px] w-14 h-14 sm:w-16 sm:h-16 rounded-2xl transition-all duration-500 cursor-pointer touch-manipulation ${
                     isActive
                       ? "text-white bg-white/10 border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.15)] drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
@@ -668,6 +820,10 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
           <Activity mode={currentTab === "settings" ? "visible" : "hidden"}>
             <SettingsPanel
               stats={stats}
+              historicalMaxSanity={historicalMaxSanity}
+              originium={originium}
+              onUpgradeAttr={(attr) => upgradeAttribute(attr)}
+              onRestoreSanity={() => restoreSanity()}
               playerLocation={playerLocation}
               time={time}
               volume={volume}
@@ -686,6 +842,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               onSelect={setSelectedItemId}
               onUseItem={onUseItem}
               isStreaming={isStreaming}
+              stats={stats}
             />
           </Activity>
           <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>
@@ -702,6 +859,9 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
           </Activity>
           <Activity mode={currentTab === "tasks" ? "visible" : "hidden"}>
             <TasksPanel tasks={tasks} originium={originium} />
+          </Activity>
+          <Activity mode={currentTab === "achievements" ? "visible" : "hidden"}>
+            <AchievementsPanel records={achievementRecords} />
           </Activity>
         </main>
       </div>

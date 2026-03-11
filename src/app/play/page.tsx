@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
+import { canUseItem } from "@/lib/registry/itemUtils";
+import { ITEMS } from "@/lib/registry/items";
+import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
+import { OnboardingGuide, type OnboardingStep } from "@/components/OnboardingGuide";
 import { getOnboardingStatus, markOnboardingViewed, type OnboardingStatus } from "@/app/actions/onboarding";
 
 type ChatRole = "user" | "assistant";
@@ -31,6 +35,7 @@ type DMJson = {
     tags?: string;
     statBonus?: Record<string, number>;
   }>;
+  awarded_warehouse_items?: Array<{ id?: string }>;
   codex_updates?: Array<{
     id: string;
     name: string;
@@ -54,11 +59,11 @@ const MAX_INPUT = 20;
 
 const TALENT_CD: Record<EchoTalent, number> = {
   时间回溯: 6,
-  命运馈赠: 7,
+  命运馈赠: 10,
   主角光环: 8,
   生命汇源: 10,
   洞察之眼: 8,
-  丧钟回响: 24,
+  丧钟回响: 30,
 };
 
 const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string }> = {
@@ -95,6 +100,14 @@ const STAT_LABELS: Record<StatType, string> = {
   luck: "幸运",
   charm: "魅力",
   background: "出身",
+};
+
+const FALLBACK_STATS: Record<StatType, number> = {
+  sanity: 3,
+  agility: 3,
+  luck: 3,
+  charm: 3,
+  background: 3,
 };
 
 const NPC_NAME_BY_ID = new Map(NPCS.map((npc) => [npc.id, npc.name]));
@@ -199,8 +212,19 @@ function applyBloodErase(narrative: string): string {
   return `${narrative.slice(0, idx0)}${BLOOD_MARKER}${narrative.slice(idx0, end)}${BLOOD_END}${narrative.slice(end)}`;
 }
 
-function renderNarrativeText(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|\^\^[^^]+\^\^|{{BLOOD}}[\s\S]*?{{\/BLOOD}})/g);
+function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
+  const plainOnly = options?.plainOnly ?? false;
+  const normalized = text.replace(/\{\{blood\}\}/gi, "{{BLOOD}}").replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
+  const stripOrphans = (s: string) =>
+    s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "");
+  if (plainOnly) {
+    const plain = normalized
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\^\^([^^]+)\^\^/g, "$1")
+      .replace(/\{\{BLOOD\}\}([\s\S]*?)\{\{\/BLOOD\}\}/g, "$1");
+    return <span>{stripOrphans(plain)}</span>;
+  }
+  const parts = normalized.split(/(\*\*[^*]+\*\*|\^\^[^^]+\^\^|{{BLOOD}}[\s\S]*?{{\/BLOOD}})/g);
   return parts.map((part, i) => {
     const m = part.match(/^\*\*(.+)\*\*$/);
     if (m)
@@ -234,7 +258,7 @@ function renderNarrativeText(text: string) {
           />
         </span>
       );
-    return <span key={i}>{part}</span>;
+    return <span key={i}>{stripOrphans(part)}</span>;
   });
 }
 
@@ -247,11 +271,12 @@ function DMNarrativeBlock({
   isDarkMoon: boolean;
   isLowSanity?: boolean;
 }) {
+  // Phase 3: Tomato novel typography - 18px, 1.8 line-height, tracking-wide, space-y-6
   const baseClass = isLowSanity
-    ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-white"
+    ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-white"
     : isDarkMoon
-      ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200"
-      : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800";
+      ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-200"
+      : "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800";
   const paras = content.split(/\n\n+/).filter(Boolean);
   return (
     <div className={`${baseClass} whitespace-pre-wrap`}>
@@ -533,16 +558,25 @@ function StatEnergyBar({
   );
 }
 
-export default function PlayPage() {
+function PlayContent() {
   const router = useRouter();
   const lastAutoSaveRef = useRef(0);
 
   const isHydrated = useGameStore((s) => s.isHydrated);
 
-  const stats = useGameStore((s) => s.stats);
-  const inventory = useGameStore((s) => s.inventory);
+  const rawStats = useGameStore((s) => s.stats);
+  const stats = useMemo(() => {
+    const base = rawStats ?? FALLBACK_STATS;
+    const safe: Record<StatType, number> = { ...FALLBACK_STATS };
+    for (const key of STAT_ORDER) {
+      const v = (base as Record<StatType, number> | undefined)?.[key];
+      safe[key] = Number.isFinite(v as number) ? (v as number) : FALLBACK_STATS[key];
+    }
+    return safe;
+  }, [rawStats]);
+  const inventory = useGameStore((s) => s.inventory ?? []);
   const talent = useGameStore((s) => s.talent);
-  const talentCooldowns = useGameStore((s) => s.talentCooldowns);
+  const talentCooldowns = useGameStore((s) => s.talentCooldowns ?? {});
   const logs = useGameStore((s) => s.logs ?? []);
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const advanceTime = useGameStore((s) => s.advanceTime);
@@ -588,7 +622,6 @@ export default function PlayPage() {
   const rawDmBufferRef = useRef("");
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [audioMuted, setAudioMuted] = useState(true);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
@@ -596,6 +629,10 @@ export default function PlayPage() {
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
   const [talentEffectType, setTalentEffectType] = useState<EchoTalent | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingActive, setOnboardingActive] = useState(false);
+  const [firstTimeHint, setFirstTimeHint] = useState<string | null>(null);
+  const firstHintShownRef = useRef<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -619,16 +656,20 @@ export default function PlayPage() {
   const mustViewWarehouse = warehouseList.length > 0 && !onboardingStatus?.warehouseFirstViewDone;
   const mustViewTasks = tasksList.length > 0 && !onboardingStatus?.tasksFirstViewDone;
   const hasOnboardingGate = mustViewCodex || mustViewWarehouse || mustViewTasks;
-  const pendingViews: string[] = [];
-  if (mustViewCodex) pendingViews.push("图鉴");
-  if (mustViewWarehouse) pendingViews.push("仓库");
-  if (mustViewTasks) pendingViews.push("任务");
-  const hasAnyGate = !hasReadParchment || hasOnboardingGate;
-  const gateMessage = !hasReadParchment
-    ? "你需要先使用行囊中的【染血的羊皮纸】才能继续对话"
-    : pendingViews.length > 0
-      ? `你需要先点击查看【${pendingViews.join("】【")}】后才能继续`
-      : "";
+  const showOnboarding = hasOnboardingGate && !isStreaming;
+  const onboardingSteps = useMemo((): OnboardingStep[] => {
+    if (!showOnboarding) return [];
+    const steps: OnboardingStep[] = [
+      { targetSelector: '[data-onboarding="settings-btn"]', tip: "点击此处打开控制中枢，查看行囊、图鉴与任务", arrowDirection: "left" },
+    ];
+    if (mustViewCodex) steps.push({ targetSelector: '[data-onboarding="codex-tab"]', tip: "图鉴中记录了已发现的 NPC 与诡异档案", arrowDirection: "right" });
+    if (mustViewWarehouse) steps.push({ targetSelector: '[data-onboarding="warehouse-tab"]', tip: "仓库可存放多余物品", arrowDirection: "right" });
+    if (mustViewTasks) steps.push({ targetSelector: '[data-onboarding="tasks-tab"]', tip: "任务追踪你的契约进度", arrowDirection: "right" });
+    return steps;
+  }, [showOnboarding, mustViewCodex, mustViewWarehouse, mustViewTasks]);
+  /** Only parchment blocks dialogue; 图鉴/仓库/任务 viewing does not block */
+  const hasAnyGate = !hasReadParchment;
+  const gateMessage = hasAnyGate ? "你需要先使用行囊中的【染血的羊皮纸】才能继续对话" : "";
 
   const talentCdLeft = useMemo(() => {
     if (!talent) return 0;
@@ -637,10 +678,6 @@ export default function PlayPage() {
 
   useEffect(() => {
     ensureRuntimeActions();
-  }, []);
-
-  useEffect(() => {
-    setIsMounted(true);
   }, []);
 
   useEffect(() => {
@@ -654,6 +691,28 @@ export default function PlayPage() {
     if (!isHydrated) return;
     getOnboardingStatus().then(setOnboardingStatus);
   }, [isHydrated]);
+
+  useEffect(() => {
+    if (showOnboarding && onboardingSteps.length > 0 && !onboardingActive) {
+      setOnboardingActive(true);
+      setOnboardingStep(0);
+    }
+  }, [showOnboarding, onboardingSteps.length, onboardingActive]);
+
+  useEffect(() => {
+    if (!firstTimeHint) return;
+    const t = setTimeout(() => setFirstTimeHint(null), 4000);
+    return () => clearTimeout(t);
+  }, [firstTimeHint]);
+
+  useEffect(() => {
+    if (!isGameStarted || !inventory.length || logs.length > 0) return;
+    const hasParchment = inventory.some((i) => i.id === "I-PARCHMENT");
+    if (hasParchment && !firstHintShownRef.current.has("I-PARCHMENT")) {
+      firstHintShownRef.current.add("I-PARCHMENT");
+      setFirstTimeHint("请玩家在设置里查看和使用【染血的羊皮纸】的详情");
+    }
+  }, [isGameStarted, inventory, logs.length]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -754,7 +813,7 @@ export default function PlayPage() {
   }, [showApocalypseOverlay, setStats, router]);
 
   useEffect(() => {
-    if (!isMounted || !isHydrated) return;
+    if (!isHydrated) return;
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
@@ -767,23 +826,22 @@ export default function PlayPage() {
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [isMounted, isHydrated]);
+  }, [isHydrated]);
 
   useEffect(() => {
-    if (!isMounted || !isHydrated || isStreaming || hasTriggeredOpening.current) return;
+    if (!isHydrated || isStreaming || hasTriggeredOpening.current) return;
     const currentLogs = useGameStore.getState().logs ?? [];
     const turn = currentLogs.length;
     if (turn > 0) return;
     hasTriggeredOpening.current = true;
       void sendAction(
-        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）：可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
+        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的B1层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）两条内容：① 可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。② 可在【设置】的【属性】右侧用原石加点提升属性，总属性<20时2原石/点、≥20时3原石/点；理智低于自身历史最高时，1原石可恢复1点理智。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ ^^原石可在设置中用于加点或回理智。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
         true
       );
-  }, [isMounted, isHydrated, isStreaming]);
+  }, [isHydrated, isStreaming]);
 
   useEffect(() => {
     if (
-      !isMounted ||
       !isHydrated ||
       !isGameStarted ||
       isStreaming ||
@@ -794,9 +852,10 @@ export default function PlayPage() {
     if (logs.length === 0) return;
     const last = logs[logs.length - 1];
     if (!last || last.role !== "user") return;
+    if (hasTriggeredOpening.current && logs.length === 1) return;
     hasTriggeredResume.current = true;
     void sendAction(last.content, true, true);
-  }, [isMounted, isHydrated, isGameStarted, isStreaming]);
+  }, [isHydrated, isGameStarted, isStreaming]);
 
   const autoSaveProgress = useCallback(() => {
     if (!isHydrated || !isGameStarted) return;
@@ -955,6 +1014,7 @@ export default function PlayPage() {
     }
 
     const validTiers = ["S", "A", "B", "C", "D"] as const;
+    const itemById = new Map(ITEMS.map((i) => [i.id, i]));
     if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
       const items: Item[] = parsed.awarded_items
         .filter((r) => r && typeof r === "object" && typeof (r as Record<string, unknown>).name === "string")
@@ -964,6 +1024,8 @@ export default function PlayPage() {
             typeof o.id === "string" && o.id
               ? o.id
               : `I-AWARD-${Date.now()}-${idx}`;
+          const registryItem = itemById.get(id);
+          if (registryItem) return registryItem;
           const name = String(o.name ?? "未知道具");
           const tier = validTiers.includes(String(o.tier) as (typeof validTiers)[number])
             ? (String(o.tier) as Item["tier"])
@@ -975,15 +1037,43 @@ export default function PlayPage() {
             description: typeof o.description === "string" ? o.description : name,
             tags: typeof o.tags === "string" ? o.tags : "loot",
             statBonus: (o.statBonus as Item["statBonus"]) ?? undefined,
+            ownerId: "N-019",
           } satisfies Item;
         });
       if (items.length > 0) {
+        const prevInvIds = new Set(useGameStore.getState().inventory.map((i) => i.id));
         useGameStore.getState().addItems(items);
         useGameStore.getState().pushLog({
           role: "assistant",
-          content: "**获得了新物品，已放入书包**",
+          content: "**获得了新道具，已放入行囊**",
           reasoning: undefined,
         });
+        const firstNew = items.find((it) => !prevInvIds.has(it.id));
+        if (firstNew) {
+          setFirstTimeHint(`请玩家在设置里查看和使用【${firstNew.name}】的详情`);
+        }
+      }
+    }
+
+    const warehouseById = new Map(WAREHOUSE_ITEMS.map((w) => [w.id, w]));
+    if (Array.isArray(parsed.awarded_warehouse_items) && parsed.awarded_warehouse_items.length > 0) {
+      const whItems = parsed.awarded_warehouse_items
+        .map((r) => (r && typeof r === "object" && typeof (r as { id?: string }).id === "string" ? (r as { id: string }).id : null))
+        .filter((id): id is string => !!id)
+        .map((id) => warehouseById.get(id))
+        .filter((w): w is NonNullable<typeof w> => !!w);
+      if (whItems.length > 0) {
+        const prevWhIds = new Set((useGameStore.getState().warehouse ?? []).map((w) => w.id));
+        useGameStore.getState().addWarehouseItems(whItems);
+        useGameStore.getState().pushLog({
+          role: "assistant",
+          content: "**获得了新物品，已放入仓库**",
+          reasoning: undefined,
+        });
+        const firstNew = whItems.find((w) => !prevWhIds.has(w.id));
+        if (firstNew) {
+          setFirstTimeHint(`请玩家在设置里查看和使用【${firstNew.name}】的详情`);
+        }
       }
     }
 
@@ -1002,7 +1092,17 @@ export default function PlayPage() {
         rules_discovered: typeof u.rules_discovered === "string" ? u.rules_discovered : undefined,
         weakness: typeof u.weakness === "string" ? u.weakness : undefined,
       }));
+      const prevCodex = useGameStore.getState().codex ?? {};
       mergeCodex(entries);
+      const firstNewNpc = entries.find((e) => e.type === "npc" && !(e.id in prevCodex));
+      if (firstNewNpc) {
+        setFirstTimeHint(`请玩家在设置里查看和使用【${firstNewNpc.name}】的详情`);
+      } else {
+        const firstNewAnomaly = entries.find((e) => e.type === "anomaly" && !(e.id in prevCodex));
+        if (firstNewAnomaly) {
+          setFirstTimeHint(`请玩家在设置里查看和使用【${firstNewAnomaly.name}】的详情`);
+        }
+      }
     }
 
     const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
@@ -1066,7 +1166,6 @@ export default function PlayPage() {
       storeAny.getState().decrementCooldowns();
       const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
       advanceTime();
-      useGameStore.getState().tryOriginiumDrop();
       const nextTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
       if (prevTime.day < 3 && nextTime.day === 3 && nextTime.hour === 0) {
         setShowDarkMoonOverlay(true);
@@ -1120,7 +1219,7 @@ export default function PlayPage() {
       }
       case "命运馈赠": {
         void sendAction(
-          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在接下来的叙事中，顺理成章地给予玩家一个随机的世界观相关物品，并用红色加粗标出。】',
+          '【系统强制干预：玩家发动了"命运馈赠"天赋。请在叙事中安排玩家随机抢夺世界里的一个道具（从道具/物品表中选一，须有 ownerId 主人）。叙事需顺理成章，并用红色加粗标出该道具。重要：该道具均有主人；若玩家之后在主人面前使用或展示该道具，主人会察觉是玩家抢夺的，并据此产生敌意或报复。】',
           true
         );
         break;
@@ -1146,7 +1245,7 @@ export default function PlayPage() {
       }
       case "丧钟回响": {
         void sendAction(
-          '【系统强制干预：玩家发动了"丧钟回响"。请在叙事中安排一种极度诡异的死法，强制处决当前场景中的一名恶意NPC或诡异（若存在）。】',
+          '【系统强制干预：玩家发动了"丧钟回响"。请在叙事中安排一种极度诡异的死法，强制处决当前场景中的一名恶意NPC或诡异（若存在）。注意：N-011 夜读老人与 A-008 深渊守门人免疫丧钟回响，不可被选为目标。】',
           true
         );
         break;
@@ -1155,6 +1254,8 @@ export default function PlayPage() {
   }
 
   function onUseItem(item: Item) {
+    const check = canUseItem(item, stats);
+    if (!check.ok) return; // UI should block, but guard here
     if (item.id === "I-PARCHMENT") setHasReadParchment(true);
     const text = `我使用了道具：【${item.name}】`;
     void sendAction(text);
@@ -1173,19 +1274,13 @@ export default function PlayPage() {
     router.push("/settlement");
   }
 
-  if (!isMounted || !isHydrated || !isGameStarted) {
-    return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-[#0f172a] text-white">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
-          <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
-          <p className="text-sm text-slate-400">读取世界线中...</p>
-        </div>
-      </main>
-    );
-  }
-
-  const displayMessages = logs.map((l) => ({ role: l.role as ChatRole, content: l.content }));
+  // Phase 1: Pure DM narrative flow - filter user, merge assistant into seamless novel
+  const displayMessages = useMemo(() => {
+    const assistantOnly = logs
+      .filter((l) => l.role === "assistant")
+      .map((l) => l.content);
+    return assistantOnly;
+  }, [logs]);
 
   return (
     <main
@@ -1232,6 +1327,23 @@ export default function PlayPage() {
               boxShadow: "inset 0 0 100px 30px rgba(220,38,38,0.3)",
             }}
           />
+        </div>
+      )}
+
+      {firstTimeHint && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[53] flex items-center justify-center"
+          aria-hidden
+        >
+          <p
+            className="animate-[fadeIn_0.5s_ease-out] px-6 text-center text-lg md:text-xl font-medium text-emerald-400/90"
+            style={{
+              textShadow:
+                "0 0 12px rgba(52,211,153,0.5), 0 0 24px rgba(52,211,153,0.35), 0 0 40px rgba(52,211,153,0.2)",
+            }}
+          >
+            {firstTimeHint}
+          </p>
         </div>
       )}
 
@@ -1294,7 +1406,7 @@ export default function PlayPage() {
                 isLowSanity ? "bg-black" : isDarkMoon ? "bg-red-950/30" : "bg-white"
               }`}
             >
-              <div className={`shrink-0 border-b px-3 py-2 ${isLowSanity ? "border-white/20" : isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+              <div className={`shrink-0 px-3 py-2 ${isLowSanity ? "bg-white/5" : isDarkMoon ? "bg-red-950/20" : "bg-slate-900/10"}`}>
                 <div className="flex min-h-[40px] items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <h2 className={`truncate text-base font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg ${isLowSanity ? "text-white" : isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
@@ -1303,6 +1415,7 @@ export default function PlayPage() {
                     <button
                       type="button"
                       onClick={() => setActiveMenu("settings")}
+                      data-onboarding="settings-btn"
                       className="shrink-0 min-h-[44px] min-w-[44px] touch-manipulation"
                       aria-label="设置"
                     >
@@ -1353,74 +1466,41 @@ export default function PlayPage() {
                 className="touch-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-6 md:py-6"
                 style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
               >
-                <div className="space-y-2">
-                  {displayMessages.map((m, idx) => (
+                <div className="space-y-6">
+                  {displayMessages.length > 0 && (
                     <div
-                      key={`${m.role}-${idx}`}
-                      className={`animate-[fadeIn_0.8s_ease-out] rounded-lg border px-3 py-2 text-xs leading-6 md:px-4 md:py-3 md:text-base md:leading-7 ${
-                        isLowSanity
-                          ? m.role === "user"
-                            ? "border-white/20 bg-white/10 text-white"
-                            : "border-white/20 bg-white/5 text-white"
-                          : isDarkMoon
-                            ? m.role === "user"
-                              ? "border-red-900/40 bg-red-950/50 text-red-100"
-                              : "border-red-900/40 bg-red-950/20 text-red-100"
-                            : m.role === "user"
-                              ? "border-border bg-muted text-neutral-900"
-                              : "border-border bg-white text-neutral-900"
-                      }`}
+                      className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
                     >
-                      <div
-                        className={`mb-1 text-xs font-semibold ${
-                          isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-300/90" : "text-neutral-600"
-                        }`}
-                      >
-                        {m.role === "user" ? "你" : "DM"}
-                      </div>
-                      <div className={m.role === "assistant" ? "" : "whitespace-pre-wrap"}>
-                        {m.role === "assistant" ? (
-                          m.content.includes("获得了新物品，已放入书包") ? (
-                            <p className="font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]">
-                              {m.content.replace(/\*\*/g, "")}
-                            </p>
-                          ) : (
-                            <DMNarrativeBlock content={m.content} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
-                          )
+                      {displayMessages.map((content, idx) =>
+                        content.includes("获得了新物品，已放入书包") ? (
+                          <p key={idx} className="mb-6 font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)] text-base">
+                            {content.replace(/\*\*/g, "")}
+                          </p>
                         ) : (
-                          m.content
-                        )}
-                      </div>
+                          <div key={idx} className="mb-6">
+                            <DMNarrativeBlock content={content} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
+                          </div>
+                        )
+                      )}
                     </div>
-                  ))}
+                  )}
 
                   {isStreaming ? (
-                    <div
-                      className={`min-h-[100px] animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
-                        isLowSanity
-                          ? "border-white/20 bg-white/5 text-white"
-                          : isDarkMoon
-                            ? "border-red-900/40 bg-red-950/20 text-red-100"
-                            : "border-border bg-white text-neutral-900"
-                      }`}
-                    >
-                      <div className={`mb-1 text-xs font-semibold ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
-                        DM
-                      </div>
+                    <div className="min-h-[100px] animate-[fadeIn_0.8s_ease-out]">
                       {smoothThinking ? (
-                        <div className="flex items-center gap-3 py-2">
+                        <div className="flex items-center gap-3 py-4">
                           <div className="relative flex h-6 w-6 items-center justify-center">
                             <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
                             <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
                           </div>
                           <span className="animate-pulse bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
-                            深渊 DM 正在推演...
+                            正在推演...
                           </span>
                         </div>
                       ) : (
-                        <div className={isLowSanity ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-white" : isDarkMoon ? "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-200" : "space-y-6 leading-[2.2] tracking-wide text-[1.05rem] text-slate-800"}>
+                        <div className={isLowSanity ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-white" : isDarkMoon ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-200" : "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800"}>
                           <span className="whitespace-pre-wrap">
-                            {renderNarrativeText(smoothNarrative)}
+                            {renderNarrativeText(smoothNarrative, { plainOnly: true })}
                           </span>
                           {!smoothComplete && (
                             <span
@@ -1432,36 +1512,16 @@ export default function PlayPage() {
                       )}
                     </div>
                   ) : liveNarrative ? (
-                    <div
-                      className={`animate-[fadeIn_0.8s_ease-out] rounded-2xl border px-4 py-3 text-sm ${
-                        isLowSanity
-                          ? "border-white/20 bg-white/5 text-white"
-                          : isDarkMoon
-                            ? "border-red-900/40 bg-red-950/20 text-red-100"
-                            : "border-border bg-white text-neutral-900"
-                      }`}
-                    >
-                      <div className={`mb-1 text-xs font-semibold ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-300/90" : "text-neutral-600"}`}>
-                        DM
-                      </div>
+                    <div className="animate-[fadeIn_0.8s_ease-out]">
                       <DMNarrativeBlock content={liveNarrative} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
                     </div>
-                  ) : (
-                    <div
-                      className={`rounded-2xl border px-4 py-3 text-sm ${
-                        isLowSanity
-                          ? "border-white/20 bg-white/5 text-white/60"
-                          : isDarkMoon
-                            ? "border-red-900/40 bg-red-950/20 text-red-300/80"
-                            : "border-border bg-white text-neutral-600"
-                      }`}
-                    >
-                    </div>
-                  )}
+                  ) : displayMessages.length === 0 && !isStreaming ? (
+                    <div className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`} />
+                  ) : null}
                 </div>
               </div>
 
-              <div className={`shrink-0 border-t px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isLowSanity ? "border-white/20" : isDarkMoon ? "border-red-900/50" : "border-border"}`}>
+              <div className={`shrink-0 px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isLowSanity ? "bg-white/5" : isDarkMoon ? "bg-red-950/20" : "bg-slate-900/10"}`}>
                 {hasAnyGate ? (
                   <p className={`py-3 text-center text-sm font-medium ${isLowSanity ? "text-white/80" : isDarkMoon ? "text-red-400/90" : "text-neutral-600"}`}>
                     {gateMessage}
@@ -1484,7 +1544,7 @@ export default function PlayPage() {
                       className={`text-center text-xs font-medium tracking-wide ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-200/90" : "text-slate-700"} animate-[breathe_2s_ease-in-out_infinite]`}
                       style={{ textShadow: "0 0 16px rgba(99, 102, 241, 0.5)" }}
                     >
-                      深渊正在推演命运的选项，请稍候...
+                      正在推演...
                     </p>
                   </div>
                 ) : (() => {
@@ -1506,7 +1566,7 @@ export default function PlayPage() {
                               type="button"
                               onClick={() => { playUIClick(); void sendAction(option, true); }}
                               disabled={isStreaming}
-                              className="relative group min-h-[44px] p-3 text-left bg-slate-900/50 backdrop-blur-2xl border border-white/15 rounded-xl ring-1 ring-white/5 hover:bg-slate-800/70 hover:border-indigo-400/60 hover:ring-2 hover:ring-white/30 transition-all duration-300 overflow-hidden disabled:opacity-40 touch-manipulation"
+                              className="relative group min-h-[44px] p-3 text-left bg-slate-900/30 backdrop-blur-2xl rounded-xl hover:bg-slate-800/50 hover:bg-indigo-500/10 transition-all duration-300 overflow-hidden disabled:opacity-40 touch-manipulation"
                             >
                               <span className="relative z-10 line-clamp-2 text-xs text-white/95 group-hover:text-white font-medium drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)] md:text-sm">
                                 {option}
@@ -1537,12 +1597,12 @@ export default function PlayPage() {
                             placeholder="输入指令，最多20字"
                             inputMode="text"
                             enterKeyHint="done"
-                            className={`min-h-[44px] w-full rounded-lg border px-3 text-base outline-none transition touch-manipulation ${
+                            className={`min-h-[44px] w-full rounded-xl px-3 text-base outline-none transition touch-manipulation ${
                               isLowSanity
-                                ? "border-white/30 bg-white/10 text-white placeholder:text-white/50 focus:border-white/50"
+                                ? "bg-white/10 text-white placeholder:text-white/50 focus:bg-white/15"
                                 : isDarkMoon
-                                  ? "border-red-900/50 bg-red-950/50 text-red-100 placeholder:text-red-400/50 focus:border-red-700"
-                                  : "border-border bg-white focus:border-neutral-400"
+                                  ? "bg-red-950/40 text-red-100 placeholder:text-red-400/50 focus:bg-red-950/60"
+                                  : "bg-white/90 text-slate-800 placeholder:text-slate-500 focus:bg-white"
                             }`}
                             disabled={isStreaming}
                           />
@@ -1567,7 +1627,7 @@ export default function PlayPage() {
                                 {input.trim().length > MAX_INPUT
                                   ? "动作过长：将被公寓拒绝。"
                                   : isStreaming
-                                    ? "深渊 DM 正在推演..."
+                                    ? "正在推演..."
                                     : "保持简短。保持真实。"}
                               </span>
                             )}
@@ -1599,7 +1659,48 @@ export default function PlayPage() {
         }}
       />
 
+      {onboardingActive && onboardingSteps.length > 0 && (
+        <OnboardingGuide
+          steps={onboardingSteps}
+          currentStep={onboardingStep}
+          onNext={() => setOnboardingStep((s) => s + 1)}
+          onComplete={async () => {
+            setOnboardingActive(false);
+            if (mustViewCodex) await markOnboardingViewed("codex");
+            if (mustViewWarehouse) await markOnboardingViewed("warehouse");
+            if (mustViewTasks) await markOnboardingViewed("tasks");
+            setOnboardingStatus((s) => ({
+              ...s,
+              codexFirstViewDone: (s?.codexFirstViewDone ?? false) || mustViewCodex,
+              warehouseFirstViewDone: (s?.warehouseFirstViewDone ?? false) || mustViewWarehouse,
+              tasksFirstViewDone: (s?.tasksFirstViewDone ?? false) || mustViewTasks,
+            }));
+          }}
+          onBeforeStep={(idx) => {
+            if (idx >= 1) setActiveMenu("settings");
+          }}
+        />
+      )}
+
     </main>
   );
 }
 
+export default function PlayPageWrapper() {
+  const isHydrated = useGameStore((s) => s.isHydrated);
+  const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+
+  if (!isHydrated || !isGameStarted) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#0f172a] text-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
+          <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
+          <p className="text-sm text-slate-400">读取世界线中...</p>
+        </div>
+      </main>
+    );
+  }
+
+  return <PlayContent />;
+}
