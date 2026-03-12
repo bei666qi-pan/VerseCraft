@@ -217,19 +217,21 @@ function applyBloodErase(narrative: string): string {
 }
 
 function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
-  const plainOnly = options?.plainOnly ?? false;
-  const normalized = text.replace(/\{\{blood\}\}/gi, "{{BLOOD}}").replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
-  const stripOrphans = (s: string) =>
-    s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "");
-  if (plainOnly) {
-    const plain = normalized
-      .replace(/\*\*([^*]+)\*\*/g, "$1")
-      .replace(/\^\^([^^]+)\^\^/g, "$1")
-      .replace(/\{\{BLOOD\}\}([\s\S]*?)\{\{\/BLOOD\}\}/g, "$1");
-    return <span>{stripOrphans(plain)}</span>;
-  }
-  const parts = normalized.split(/(\*\*[^*]+\*\*|\^\^[^^]+\^\^|{{BLOOD}}[\s\S]*?{{\/BLOOD}})/g);
-  return parts.map((part, i) => {
+  try {
+    const safeText = typeof text === "string" ? text.slice(0, 15000) : "";
+    const plainOnly = options?.plainOnly ?? false;
+    const normalized = safeText.replace(/\{\{blood\}\}/gi, "{{BLOOD}}").replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
+    const stripOrphans = (s: string) =>
+      s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "").replace(/\*\*/g, "");
+    if (plainOnly) {
+      const plain = normalized
+        .replace(/\*\*([^*]*)\*\*/g, "$1")
+        .replace(/\^\^([^^]*)\^\^/g, "$1")
+        .replace(/\{\{BLOOD\}\}([\s\S]*?)\{\{\/BLOOD\}\}/g, "$1");
+      return <span>{stripOrphans(plain)}</span>;
+    }
+    const parts = normalized.split(/(\*\*[^*]*\*\*|\^\^[^^]*\^\^|{{BLOOD}}[\s\S]*?{{\/BLOOD}})/g);
+    return parts.map((part, i) => {
     const m = part.match(/^\*\*(.+)\*\*$/);
     if (m)
       return (
@@ -264,6 +266,9 @@ function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
       );
     return <span key={i}>{stripOrphans(part)}</span>;
   });
+  } catch {
+    return <span>{typeof text === "string" ? text.slice(0, 500) : ""}</span>;
+  }
 }
 
 function DMNarrativeBlock({
@@ -275,26 +280,35 @@ function DMNarrativeBlock({
   isDarkMoon: boolean;
   isLowSanity?: boolean;
 }) {
-  // Phase 3: Tomato novel typography - 18px, 1.8 line-height, tracking-wide, space-y-6
+  const safeContent = typeof content === "string" ? content : "";
   const baseClass = isLowSanity
     ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-white"
     : isDarkMoon
       ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-200"
       : "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800";
-  const paras = content.split(/\n\n+/).filter(Boolean);
-  return (
-    <div className={`${baseClass} whitespace-pre-wrap`}>
-      {paras.length > 1 ? (
-        paras.map((p, i) => (
-          <p key={i} className="whitespace-pre-wrap">
-            {renderNarrativeText(p)}
-          </p>
-        ))
-      ) : (
-        <>{renderNarrativeText(content)}</>
-      )}
-    </div>
-  );
+  let paras: string[] = [];
+  try {
+    paras = safeContent.split(/\n\n+/).filter(Boolean);
+  } catch {
+    paras = [safeContent];
+  }
+  try {
+    return (
+      <div className={`${baseClass} whitespace-pre-wrap`}>
+        {paras.length > 1 ? (
+          paras.map((p, i) => (
+            <p key={i} className="whitespace-pre-wrap">
+              {renderNarrativeText(p)}
+            </p>
+          ))
+        ) : (
+          <>{renderNarrativeText(safeContent)}</>
+        )}
+      </div>
+    );
+  } catch {
+    return <div className={baseClass}>{safeContent.slice(0, 500)}</div>;
+  }
 }
 
 function safeNumber(n: unknown, fallback: number): number {
@@ -1045,9 +1059,13 @@ function PlayContent() {
       return;
     }
 
-    const narrativeToPush = shouldApplyHallucination
-      ? applyBloodErase(parsed.narrative)
-      : parsed.narrative;
+    const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
+    let narrativeToPush: string;
+    try {
+      narrativeToPush = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
+    } catch {
+      narrativeToPush = rawNarrative.slice(0, 50000);
+    }
     useGameStore.getState().pushLog({
       role: "assistant",
       content: narrativeToPush,
@@ -1344,9 +1362,9 @@ function PlayContent() {
 
   // Phase 1: Pure DM narrative flow - filter user, merge assistant into seamless novel
   const displayMessages = useMemo(() => {
-    const assistantOnly = logs
-      .filter((l) => l.role === "assistant")
-      .map((l) => l.content);
+    const assistantOnly = (logs ?? [])
+      .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
+      .map((l) => String(l.content));
     return assistantOnly;
   }, [logs]);
 
@@ -1415,20 +1433,24 @@ function PlayContent() {
         </div>
       )}
 
-      {talentEffectType && (
-        <div
-          className="pointer-events-none fixed inset-0 z-[54]"
-          aria-hidden
-        >
+      {talentEffectType && (() => {
+        const style = TALENT_EFFECT_STYLE[talentEffectType];
+        if (!style) return null;
+        return (
           <div
-            className="absolute inset-0"
-            style={{
-              background: TALENT_EFFECT_STYLE[talentEffectType].bg,
-              animation: TALENT_EFFECT_STYLE[talentEffectType].anim,
-            }}
-          />
-        </div>
-      )}
+            className="pointer-events-none fixed inset-0 z-[54]"
+            aria-hidden
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                background: style.bg,
+                animation: style.anim,
+              }}
+            />
+          </div>
+        );
+      })()}
 
       <div
         className={`relative flex min-h-0 flex-1 flex-col ${hitEffectUntil > Date.now() ? "animate-[sanity-hit-shake_0.5s_ease-out_2]" : ""}`}
@@ -1539,17 +1561,18 @@ function PlayContent() {
                     <div
                       className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
                     >
-                      {displayMessages.map((content, idx) =>
-                        content.includes("获得了新物品，已放入书包") ? (
+                      {displayMessages.map((content, idx) => {
+                        const safeContent = typeof content === "string" ? content : "";
+                        return safeContent.includes("获得了新物品，已放入书包") ? (
                           <p key={idx} className="mb-6 font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)] text-base">
-                            {content.replace(/\*\*/g, "")}
+                            {safeContent.replace(/\*\*/g, "")}
                           </p>
                         ) : (
                           <div key={idx} className="mb-6">
-                            <DMNarrativeBlock content={content} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
+                            <DMNarrativeBlock content={safeContent} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
                           </div>
-                        )
-                      )}
+                        );
+                      })}
                     </div>
                   )}
 

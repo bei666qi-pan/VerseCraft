@@ -171,3 +171,18 @@ export function createResilientIdbStorage(): StateStorage {
     },
   };
 }
+
+const PERSIST_KEYS = ["versecraft-storage", "versecraft-game-state", "versecraft-achievements"];
+
+/** Clear all VerseCraft persisted data. Use when recovery from corrupted state is needed. */
+export async function clearVersecraftStorage(): Promise<void> {
+  for (const key of PERSIST_KEYS) {
+    memoryCache.delete(key);
+    removeLocalItem(key);
+    try {
+      await withTimeout(del(key), 1000);
+    } catch {
+      /* ignore */
+    }
+  }
+}

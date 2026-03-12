@@ -134,6 +134,22 @@ export function BgmPlayer() {
     return () => stopCrossfade();
   }, [stopCrossfade]);
 
+  useEffect(() => {
+    return () => {
+      const a = aRef.current;
+      const b = bRef.current;
+      if (a) {
+        a.pause();
+        a.src = "";
+      }
+      if (b) {
+        b.pause();
+        b.src = "";
+      }
+      stopCrossfade();
+    };
+  }, [stopCrossfade]);
+
   return (
     <div className="sr-only" aria-hidden>
       <audio ref={setRefA} preload="metadata" />
