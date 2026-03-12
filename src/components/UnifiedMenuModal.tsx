@@ -31,37 +31,49 @@ const STAT_LABELS: Record<StatType, string> = {
 };
 const STAT_MAX = 50;
 
+const FLOOR_LABELS: Record<string, string> = {
+  B2: "地下二层",
+  B1: "地下一层",
+  "1": "一楼",
+  "2": "二楼",
+  "3": "三楼",
+  "4": "四楼",
+  "5": "五楼",
+  "6": "六楼",
+  "7": "七楼",
+};
+
 const LOCATION_LABELS: Record<string, string> = {
-  B2_Passage: "B2 通道",
-  B2_GatekeeperDomain: "B2 守门领域",
-  B1_SafeZone: "B1 安全区",
-  B1_Storage: "B1 储物间",
-  B1_Laundry: "B1 洗衣房",
-  B1_PowerRoom: "B1 配电间",
-  "1F_Lobby": "1 楼门厅",
-  "1F_PropertyOffice": "1 楼物业办公室",
-  "1F_GuardRoom": "1 楼保安室",
-  "1F_Mailboxes": "1 楼信箱区",
-  "2F_Clinic201": "2 楼 201 诊室",
-  "2F_Room202": "2 楼 202 室",
-  "2F_Room203": "2 楼 203 室",
-  "2F_Corridor": "2 楼走廊",
-  "3F_Room301": "3 楼 301 室",
-  "3F_Room302": "3 楼 302 室",
-  "3F_Stairwell": "3 楼楼梯间",
-  "4F_Room401": "4 楼 401 室",
-  "4F_Room402": "4 楼 402 室",
-  "4F_CorridorEnd": "4 楼走廊尽头",
-  "5F_Room501": "5 楼 501 室",
-  "5F_Room502": "5 楼 502 室",
-  "5F_Studio503": "5 楼 503 画室",
-  "6F_Room601": "6 楼 601 室",
-  "6F_Room602": "6 楼 602 室",
-  "6F_Stairwell": "6 楼楼梯间",
-  "7F_Room701": "7 楼 701 室",
-  "7F_Bench": "7 楼长椅区",
-  "7F_Kitchen": "7 楼厨房",
-  "7F_SealedDoor": "7 楼封闭门区",
+  B2_Passage: "地下二层通道",
+  B2_GatekeeperDomain: "地下二层守门领域",
+  B1_SafeZone: "地下一层安全区",
+  B1_Storage: "地下一层储物间",
+  B1_Laundry: "地下一层洗衣房",
+  B1_PowerRoom: "地下一层配电间",
+  "1F_Lobby": "一楼门厅",
+  "1F_PropertyOffice": "一楼物业办公室",
+  "1F_GuardRoom": "一楼保安室",
+  "1F_Mailboxes": "一楼信箱区",
+  "2F_Clinic201": "二楼 201 诊室",
+  "2F_Room202": "二楼 202 室",
+  "2F_Room203": "二楼 203 室",
+  "2F_Corridor": "二楼走廊",
+  "3F_Room301": "三楼 301 室",
+  "3F_Room302": "三楼 302 室",
+  "3F_Stairwell": "三楼楼梯间",
+  "4F_Room401": "四楼 401 室",
+  "4F_Room402": "四楼 402 室",
+  "4F_CorridorEnd": "四楼走廊尽头",
+  "5F_Room501": "五楼 501 室",
+  "5F_Room502": "五楼 502 室",
+  "5F_Studio503": "五楼 503 画室",
+  "6F_Room601": "六楼 601 室",
+  "6F_Room602": "六楼 602 室",
+  "6F_Stairwell": "六楼楼梯间",
+  "7F_Room701": "七楼 701 室",
+  "7F_Bench": "七楼长椅区",
+  "7F_Kitchen": "七楼厨房",
+  "7F_SealedDoor": "七楼封闭门区",
 };
 
 const NPC_NAME_BY_ID = new Map(NPCS.map((npc) => [npc.id, npc.name]));
@@ -649,7 +661,7 @@ function WarehousePanel({ warehouse }: { warehouse: WarehouseItem[] }) {
             }`}
           >
             <span className="truncate w-full text-center text-xs font-semibold text-white">{w.name}</span>
-            <span className="mt-0.5 text-[10px] text-slate-500">{"floor" in w && w.floor ? (String(w.floor).startsWith("B") ? w.floor : `${w.floor}F`) : ""}</span>
+            <span className="mt-0.5 text-[10px] text-slate-500">{"floor" in w && w.floor ? FLOOR_LABELS[String(w.floor)] ?? String(w.floor) : ""}</span>
           </button>
         ))}
       </div>

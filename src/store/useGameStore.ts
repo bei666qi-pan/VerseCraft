@@ -576,9 +576,17 @@ export const useGameStore = create<GameState>()(
       consumeItems: (itemNames) =>
         set((s) => {
           const inv = s.inventory ?? [];
-          const names = Array.isArray(itemNames) ? itemNames : [];
+          const keys = Array.isArray(itemNames)
+            ? itemNames.filter((x) => typeof x === "string" && x.length > 0).map((x) => String(x).trim())
+            : [];
+          if (keys.length === 0) return {};
           return {
-            inventory: inv.filter((i) => i && typeof i.name === "string" && !names.includes(i.name)),
+            inventory: inv.filter(
+              (i) =>
+                i &&
+                typeof i.name === "string" &&
+                !keys.some((k) => k === i.name || k === i.id)
+            ),
           };
         }),
 
@@ -722,7 +730,7 @@ export const useGameStore = create<GameState>()(
 
         return {
           success: false,
-          narrative: "判定失败，陷入致命危机。",
+          narrative: "一切陷入黑暗，致命的危机正在向你逼近。",
         };
       },
 

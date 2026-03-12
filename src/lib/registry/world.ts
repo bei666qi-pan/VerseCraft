@@ -6,8 +6,8 @@ import { ITEMS } from "./items";
 import { WAREHOUSE_ITEMS } from "./warehouseItems";
 
 export const FLOORS: readonly { id: FloorId; label: string; description: string }[] = [
-  { id: "B2", label: "地下 B2 层", description: "出口通道、守门人结界。第 8 诡异（深渊守门人）永驻此地。" },
-  { id: "B1", label: "地下 B1 层", description: "玩家初始复苏地。储物间、洗衣房、配电间。绝对安全区，无诡异。" },
+  { id: "B2", label: "地下二层", description: "出口通道、守门人结界。第 8 诡异（深渊守门人）永驻此地。" },
+  { id: "B1", label: "地下一层", description: "玩家初始复苏地。储物间、洗衣房、配电间。绝对安全区，无诡异。" },
   { id: "1", label: "1 楼", description: "门厅、物业办公室、保安室、信箱区。陈婆婆长椅、物业经理办公室、新住户引导台。" },
   { id: "2", label: "2 楼", description: "201 诊室（林医生）、202 室、203 室、走廊。消毒水与甜腻气味弥漫。" },
   { id: "3", label: "3 楼", description: "301 室、302 室、楼梯间。小女孩阿花踢毽子的回响不绝于耳。" },
@@ -232,11 +232,11 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
   "N-008": {
     homeLocation: "B1_PowerRoom",
     weakness: "停电会让他极度暴躁；提及「墙壁内的血管」会触发创伤",
-    scheduleBehavior: "全天在 B1 配电间或各楼层修电路，夜间回 B1",
-    relationships: { "N-010": "厌恶物业经理（「他知道线从哪来但不说」）", "N-014": "与洗衣房阿姨互相照应，B1 的同盟" },
+    scheduleBehavior: "全天在地下一层配电间或各楼层修电路，夜间回地下一层",
+    relationships: { "N-010": "厌恶物业经理（「他知道线从哪来但不说」）", "N-014": "与洗衣房阿姨互相照应，地下一层的同盟" },
     fixed_lore:
-      "在 B1 层配电间旁养了一只变异的黑猫，极其护短。黑猫瞳孔会随公寓「消化进度」变色，老刘据此判断楼层危险度。他曾在一次检修中看见墙壁内的「布线」——那不是电线，是血管。他从此只修灯，不问线从哪来。黑猫每次他出场都必须跟随或在附近。",
-    core_desires: "保护黑猫；让 B1 成为公寓内最后的「正常」区域；查明物业经理隐瞒的线路真相。",
+      "在地下一层配电间旁养了一只变异的黑猫，极其护短。黑猫瞳孔会随公寓「消化进度」变色，老刘据此判断楼层危险度。他曾在一次检修中看见墙壁内的「布线」——那不是电线，是血管。他从此只修灯，不问线从哪来。黑猫每次他出场都必须跟随或在附近。",
+    core_desires: "保护黑猫；让地下一层成为公寓内最后的「正常」区域；查明物业经理隐瞒的线路真相。",
     immutable_relationships: [
       "与变异黑猫形影不离，极其护短，黑猫必须每次出场",
       "厌恶物业经理（N-010），认为他知道线从哪来却不说",
@@ -284,7 +284,7 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     relationships: { "N-019": "暗中监视前调查员的一切行为", "N-010": "物业经理是他的棋子", "A-007": "13楼门扉是他设下的封印" },
     fixed_lore:
       "公寓真正管理者。表面战力 5，真实战力 30。他手中的消化日志记录每一个被吸收的住户，邮差老王是唯一知道书内容的人。13 楼门扉是他设下的封印，关押着公寓无法消化的「残渣」。物业经理是他的前台，前调查员是他重点监视对象。",
-    core_desires: "维持公寓消化运转；确保 B2 守门人不被惊动；将调查员的情报价值榨干后再处理。",
+    core_desires: "维持公寓消化运转；确保深渊守门人不被惊动；将调查员的情报价值榨干后再处理。",
     immutable_relationships: [
       "暗中监视前调查员（N-019）的一切行为",
       "物业经理（N-010）是他的棋子",
@@ -321,12 +321,12 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "B1_Laundry",
     weakness: "沾血衣物触发她的旧习（防污染协议时期的创伤）；漂白剂是她的武器也是软肋",
     scheduleBehavior: "全天在洗衣房工作，偶尔去配电间找老刘聊天",
-    relationships: { "N-008": "B1 互助同盟，彼此信任", "N-017": "恐惧红制服保洁员（她知道茶壶里是什么）" },
+    relationships: { "N-008": "地下一层互助同盟，彼此信任", "N-017": "恐惧红制服保洁员（她知道茶壶里是什么）" },
     fixed_lore:
       "防污染应急协议时期的后勤人员。她知道红色自来水的真相，也知道「静置 12 小时」是为了让胃酸稀释。她选择留下因为「总得有人洗那些洗不干净的东西」。沾血衣物会触发她的旧习与创伤。她知道红制服保洁员茶壶里是什么——浓缩消化液。",
-    core_desires: "守护 B1 安全区；与老刘一起维持最后的「正常」；永远不要再碰红制服保洁员的茶壶。",
+    core_desires: "守护地下一层安全区；与老刘一起维持最后的「正常」；永远不要再碰红制服保洁员的茶壶。",
     immutable_relationships: [
-      "与电工老刘（N-008）是 B1 同盟，彼此信任",
+      "与电工老刘（N-008）是地下一层同盟，彼此信任",
       "恐惧红制服保洁员（N-017），知道茶壶内是浓缩消化液",
     ],
     emotional_traits: "用「干活」来麻痹恐惧；对老刘有战友般的依赖；看到沾血衣服会愣住、手抖，但很快恢复。",
@@ -389,14 +389,14 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "7F_Room701",
     weakness: "被发现在调查会触发杀意；调查笔记是他的命根（毁掉则精神崩溃）",
     scheduleBehavior: "白天在 7 楼搜集证据，夜间躲在房间整理笔记",
-    relationships: { "N-011": "怀疑夜读老人是关键人物但无法确认", "N-012": "厨师是他唯一半信任的 7 楼同伴", "A-008": "曾试图潜入 B2 失败，差点丧命" },
+    relationships: { "N-011": "怀疑夜读老人是关键人物但无法确认", "N-012": "厨师是他唯一半信任的 7 楼同伴", "A-008": "曾试图潜入地下二层失败，差点丧命" },
     fixed_lore:
-      "来自上世纪 80 年代秘密研究机构，奉命调查公寓异常。同事全部失踪，他选择留下。笔记中有高维拟态肠胃的推测，但他已分不清哪些是发现、哪些是公寓植入的假情报。夜读老人暗中监视他。曾潜入 B2 失败差点丧命。他杀过三个「知道太多」的人。",
+      "来自上世纪 80 年代秘密研究机构，奉命调查公寓异常。同事全部失踪，他选择留下。笔记中有高维拟态肠胃的推测，但他已分不清哪些是发现、哪些是公寓植入的假情报。夜读老人暗中监视他。曾潜入地下二层失败差点丧命。他杀过三个「知道太多」的人。",
     core_desires: "查明公寓真相；在笔记中留下足以警示后人的证据；活着离开并公诸于世。",
     immutable_relationships: [
       "怀疑夜读老人（N-011）是关键人物，被其暗中监视",
       "厨师（N-012）是 7 楼唯一半信任的同伴",
-      "曾潜入 B2 遇 A-008 失败，差点丧命",
+      "曾潜入地下二层遇 A-008 失败，差点丧命",
     ],
     emotional_traits: "偏执与恐惧交织；对「真相」有近乎宗教式的狂热；独处时会盯着笔记喃喃自语，怀疑自己的记忆。",
     speech_patterns: "爱用专业术语；说话时会扫视周围；对陌生人极度警惕，开门时手里总握着刀。",
@@ -443,7 +443,7 @@ export function buildLoreContextForDM(): string {
       lines.push(`speech_patterns: ${profile.speech_patterns}`);
     }
     if (profile.new_tenant_guidance_script) {
-      lines.push(`new_tenant_guidance_script（B1 新人引导时务必自然说出）: ${profile.new_tenant_guidance_script}`);
+      lines.push(`new_tenant_guidance_script（地下一层新人引导时务必自然说出）: ${profile.new_tenant_guidance_script}`);
     }
     lines.push("");
   }

@@ -39,8 +39,8 @@ function computeGrade(
 }
 
 function formatFloorDisplay(score: number): string {
-  if (score >= 99) return "B2 出口";
-  if (score <= 0) return "B1 层";
+  if (score >= 99) return "地下二层出口";
+  if (score <= 0) return "地下一层";
   return `第 ${score} 层`;
 }
 
@@ -77,7 +77,7 @@ function generateSettlementReview(
       ];
     }
     return [
-      "连 B1 的洗衣房阿姨都比你活得久。",
+      "连地下一层的洗衣房阿姨都比你活得久。",
       "也许下次记得：不要相信任何人，包括你自己。",
     ];
   }
@@ -103,7 +103,7 @@ function generateSettlementReview(
   }
   if (grade === "D") {
     return [
-      "你至少走出了 B1，也至少摸到了诡异的衣角。",
+      "你至少走出了地下一层，也至少摸到了诡异的衣角。",
       "对于这栋楼而言，你仍是饲料；但对于那些从未上过楼的人而言，你已是传说。",
     ];
   }
