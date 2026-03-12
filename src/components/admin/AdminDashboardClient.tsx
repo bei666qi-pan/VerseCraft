@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   AreaChart,
   Area,
@@ -66,20 +65,32 @@ const REFRESH_INTERVAL_MS = 30_000;
 const TABLE_PAGE_SIZE = 15;
 
 export default function AdminDashboardClient({
-  rows,
-  onlineCount,
-  totalUsers,
-  totalTokens,
+  rows: rowsProp,
+  onlineCount: onlineCountProp,
+  totalUsers: totalUsersProp,
+  totalTokens: totalTokensProp,
   chartData: chartDataProp,
 }: AdminDashboardClientProps) {
-  const router = useRouter();
+  const [rows, setRows] = useState(rowsProp);
+  const [onlineCount, setOnlineCount] = useState(onlineCountProp);
+  const [totalUsers, setTotalUsers] = useState(totalUsersProp);
+  const [totalTokens, setTotalTokens] = useState(totalTokensProp);
   const [mode, setMode] = useState<"today" | "total">("today");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "charts">("table");
   const [tablePage, setTablePage] = useState(1);
   const [chartData, setChartData] = useState<ChartPoint[]>(chartDataProp ?? []);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const chartsRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRows(rowsProp);
+    setOnlineCount(onlineCountProp);
+    setTotalUsers(totalUsersProp);
+    setTotalTokens(totalTokensProp);
+    setChartData(chartDataProp ?? []);
+  }, [rowsProp, onlineCountProp, totalUsersProp, totalTokensProp, chartDataProp]);
 
   const [detail, setDetail] = useState<{
     userName: string;
@@ -123,16 +134,33 @@ export default function AdminDashboardClient({
 
   const fetchChartData = useCallback(() => {
     if (chartDataProp) return;
-    fetch("/api/admin/stats")
+    fetch("/api/admin/stats", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => Array.isArray(d.chartData) && setChartData(d.chartData))
       .catch(() => {});
   }, [chartDataProp]);
 
+  const fetchDashboardData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch("/api/admin/dashboard-data", { credentials: "include" });
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d.rows) setRows(d.rows);
+      if (typeof d.onlineCount === "number") setOnlineCount(d.onlineCount);
+      if (typeof d.totalUsers === "number") setTotalUsers(d.totalUsers);
+      if (typeof d.totalTokens === "number") setTotalTokens(d.totalTokens);
+      if (Array.isArray(d.chartData)) setChartData(d.chartData);
+    } catch {
+      // Silent fail
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
   const handleRefresh = useCallback(() => {
-    router.refresh();
-    fetchChartData();
-  }, [router, fetchChartData]);
+    void fetchDashboardData();
+  }, [fetchDashboardData]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -282,9 +310,10 @@ export default function AdminDashboardClient({
               <button
                 type="button"
                 onClick={handleRefresh}
-                className="rounded-full border border-slate-200 bg-white/80 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                disabled={isRefreshing}
+                className="rounded-full border border-slate-200 bg-white/80 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
               >
-                刷新
+                {isRefreshing ? "刷新中..." : "刷新"}
               </button>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
                 <input
@@ -388,7 +417,9 @@ export default function AdminDashboardClient({
                               <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
                               离线
                             </span>
-                            <span className="text-xs text-slate-400">最后在线：{formatLastOnline(user.lastActive)}</span>
+                            <span className="text-xs text-slate-400" suppressHydrationWarning>
+                              最后在线：{formatLastOnline(user.lastActive)}
+                            </span>
                           </div>
                         )}
                       </td>
@@ -440,7 +471,13 @@ export default function AdminDashboardClient({
                 <h3 className="text-lg font-semibold text-slate-800">意见详情</h3>
                 <p className="mt-1 text-xs text-slate-500">
                   来自账号：{detail.userName}
-                  {detail.createdAt ? ` · ${new Date(detail.createdAt).toLocaleString("zh-CN")}` : ""}
+                  {detail.createdAt ? (
+                    <span suppressHydrationWarning>
+                      {` · ${new Date(detail.createdAt).toLocaleString("zh-CN")}`}
+                    </span>
+                  ) : (
+                    ""
+                  )}
                 </p>
               </div>
               <button

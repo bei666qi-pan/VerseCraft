@@ -71,3 +71,20 @@ DeepSeek 必须扮演冷酷的 DM，并严格以 JSON 格式输出（`response_f
 2. 执行 (EXECUTE)：编写完整的、生产就绪的代码。不要产生外部库的幻觉。
 3. 部署 (DEPLOY)：始终使用 `docker build --no-cache` 和 `npm config set registry https://registry.npmmirror.com/` 以绕过缓存死锁和 ETIMEDOUT 错误。
 4. 沟通 (COMMUNICATE)：简短解释，重点说明解决方案如何遵守 Ethereal Tech UI 和 DM JSON 协议。
+Next.js 15 Compliance: Every dynamic API (params, searchParams, cookies) MUST be awaited or unwrapped using React's use() hook. Direct property access is prohibited as it causes build failure in production.Zustand Persistence Safety: When using persist middleware, always set skipHydration: true. Use a dedicated HydrationProvider to call rehydrate() manually inside useEffect to prevent hydration mismatch.Defensive State Access: Implement strict existence checks for store slices like stats. Provide default objects when a slice is undefined during the initial rehydration phase.Resilient Storage: All IndexedDB operations via idb-keyval MUST include a timeout/error catch block. On failure, automatically fall back to localStorage or MemoryStorage.SSR Boundary Integrity: Access to window, document, or navigator MUST be encapsulated in useEffect or if (typeof window!== 'undefined') blocks to prevent "document is not defined" ReferenceErrors during SSR.
+
+## 诊断提示模板 (Diagnostic Prompt Templates)
+当修复特定水合/undefined 崩溃时：
+- 案例 A (UnifiedMenuModal stats 未定义)：1) stats 使用 ?? { sanity:0, agility:0, luck:0, charm:0, background:0 }；2) useIsMounted 守卫依赖 store 的 UI 块；3) canUseItem 增加类型保护。
+- 案例 B (Safari 持久化挂起)：1) 存储层 500ms 超时检测，超时则 fallback localStorage；2) 入口处 ensureStorageReady() 激活 IDB 驱动。
+- Server Actions：仅传递可序列化数据；partialize 只保留核心进度字段；API/Server Action 用 try-catch 包裹并返回结构化 JSON 错误。
+
+## React 19.2 Activity 与全栈防御
+- Activity：UnifiedMenuModal 已使用 `<Activity mode={visible|hidden}>` 实现“内存挂载但视觉隐藏”。升级依赖时务必确保 react 与 react-dom 版本完全一致（当前 19.2.3），否则可能导致 ReferenceError 或渲染树错位。
+- 全栈防御 E_total = E_auth + E_hydration + E_storage：鉴权 try-catch、skipHydration+rehydrate、IDB→localStorage→Memory 多级降级。
+
+## 错误排查 SOP (Phase 12+)
+1. 控制台深潜：捕获 error.tsx 中的完整 JSON，关注 digest 属性（Next.js 15 服务端错误 ID）。
+2. 持久化重置：DevTools Application 清除 versecraft-storage、versecraft-game-state，排除旧 schema 导致的 JSON.parse 异常。
+3. 水合压力测试：Chrome DevTools 限速 Slow 3G、禁用 CPU 性能，验证 stats 默认值在水合前的中间态是否生效。
+4. 环境变量：确认 AUTH_SECRET、DATABASE_URL 正确映射；排查 Server Action 在非 SSL 下被拦截。

@@ -28,6 +28,12 @@ export function useHeartbeat(enabled: boolean) {
       maybePing();
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleUserActivity();
+      }
+    };
+
     // Initial ping on mount to mark session active.
     maybePing();
 
@@ -36,11 +42,7 @@ export function useHeartbeat(enabled: boolean) {
       window.addEventListener("click", handleUserActivity);
       window.addEventListener("keydown", handleUserActivity);
       window.addEventListener("pointerdown", handleUserActivity);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") {
-          handleUserActivity();
-        }
-      });
+      document.addEventListener("visibilitychange", handleVisibilityChange);
     }
 
     // Lightweight passive polling as a safety net, debounced by maybePing.
@@ -51,7 +53,7 @@ export function useHeartbeat(enabled: boolean) {
         window.removeEventListener("click", handleUserActivity);
         window.removeEventListener("keydown", handleUserActivity);
         window.removeEventListener("pointerdown", handleUserActivity);
-        document.removeEventListener("visibilitychange", handleUserActivity);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
       if (passiveTimer) {
         clearInterval(passiveTimer);

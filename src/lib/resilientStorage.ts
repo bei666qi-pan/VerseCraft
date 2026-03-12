@@ -1,5 +1,5 @@
-// Resilient storage: IDB with timeout + localStorage fallback.
-// Mitigates "stuck loading" when IndexedDB hangs (e.g. mobile Safari private mode).
+// Resilient storage: IDB with timeout + localStorage fallback + memory cache.
+// Mitigates Safari private mode (indexedDB null/hang), bfcache lock, quota limits.
 // getItem 必须严格返回 string | null，绝不能将非字符串脏数据传给 Zustand 导致 JSON.parse 崩溃。
 
 import type { StateStorage } from "zustand/middleware";
@@ -7,12 +7,76 @@ import { get, set, del, clear } from "idb-keyval";
 
 const GET_ITEM_TIMEOUT_MS = 3000;
 const SET_ITEM_TIMEOUT_MS = 5000;
+const SAFARI_NULL_PROBE_MS = 500;
+
+const memoryCache = new Map<string, string>();
+let idbAvailable: boolean | null = null;
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([
-    p,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-  ]);
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timerId = setTimeout(() => resolve(null), ms);
+  });
+  return Promise.race([p, timeoutPromise]).finally(() => {
+    if (timerId != null) clearTimeout(timerId);
+  });
+}
+
+/** Lifecycle guard: probe IDB before idb-keyval. Call at app bootstrap to detect Safari private mode early. */
+export async function ensureStorageReady(): Promise<void> {
+  await probeIdbAvailable();
+}
+
+function probeIdbAvailable(): Promise<boolean> {
+  if (idbAvailable !== null) return Promise.resolve(idbAvailable);
+  if (typeof indexedDB === "undefined" || indexedDB == null) {
+    idbAvailable = false;
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    const t = setTimeout(() => {
+      idbAvailable = false;
+      resolve(false);
+    }, SAFARI_NULL_PROBE_MS);
+    try {
+      const req = indexedDB.open("__versecraft_probe__");
+      if (req == null) {
+        clearTimeout(t);
+        idbAvailable = false;
+        resolve(false);
+        return;
+      }
+      req.onsuccess = () => {
+        clearTimeout(t);
+        req.result?.close();
+        idbAvailable = true;
+        resolve(true);
+      };
+      req.onerror = () => {
+        clearTimeout(t);
+        idbAvailable = false;
+        resolve(false);
+      };
+      req.onblocked = () => {
+        clearTimeout(t);
+        idbAvailable = false;
+        resolve(false);
+      };
+    } catch {
+      clearTimeout(t);
+      idbAvailable = false;
+      resolve(false);
+    }
+  });
+}
+
+function dispatchStorageDegraded(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new CustomEvent("storage-degraded"));
+  } catch {
+    /* ignore */
+  }
 }
 
 function getLocalItem(name: string): string | null {
@@ -25,12 +89,13 @@ function getLocalItem(name: string): string | null {
   }
 }
 
-function setLocalItem(name: string, value: string): void {
-  if (typeof localStorage === "undefined") return;
+function setLocalItem(name: string, value: string): boolean {
+  if (typeof localStorage === "undefined") return false;
   try {
     localStorage.setItem(name, value);
+    return true;
   } catch {
-    /* ignore */
+    return false;
   }
 }
 
@@ -47,50 +112,59 @@ export function createResilientIdbStorage(): StateStorage {
   return {
     getItem: async (name: string): Promise<string | null> => {
       try {
-        const idbResult = await withTimeout(get(name), GET_ITEM_TIMEOUT_MS);
-        // 严格校验：仅接受 string，拒绝 [object Object] 或非字符串脏数据
-        if (idbResult != null && typeof idbResult === "string") return idbResult;
-        // idb 返回非字符串（旧脏数据）时清空 IDB，避免污染 Zustand
-        if (idbResult != null && typeof idbResult !== "string") {
-          try {
-            await clear();
-          } catch {
-            /* ignore */
+        const canUseIdb = await probeIdbAvailable();
+        if (canUseIdb) {
+          const idbResult = await withTimeout(get(name), GET_ITEM_TIMEOUT_MS);
+          if (idbResult != null && typeof idbResult === "string") return idbResult;
+          if (idbResult != null && typeof idbResult !== "string") {
+            try {
+              await withTimeout(clear(), 1000);
+            } catch {
+              /* ignore */
+            }
+            return getLocalItem(name) ?? memoryCache.get(name) ?? null;
           }
-          return null;
         }
-        // idb 无数据或超时，尝试 localStorage 回退
         const local = getLocalItem(name);
-        return typeof local === "string" ? local : null;
+        if (typeof local === "string") return local;
+        const mem = memoryCache.get(name);
+        return typeof mem === "string" ? mem : null;
       } catch {
-        // 终极兜底：IDB 事务锁死/Safari 隐私模式/解析异常时，清空 IDB 并返回 null，强制 Zustand 使用默认状态
         try {
-          await clear();
-        } catch {
-          /* ignore clear failure */
-        }
-        try {
-          removeLocalItem(name);
+          await withTimeout(clear(), 1000);
         } catch {
           /* ignore */
         }
-        return null;
+        removeLocalItem(name);
+        return memoryCache.get(name) ?? null;
       }
     },
 
     setItem: async (name: string, value: string): Promise<void> => {
+      memoryCache.set(name, value);
       try {
-        const ok = await withTimeout(set(name, value), SET_ITEM_TIMEOUT_MS);
-        if (ok === null) setLocalItem(name, value);
+        const canUseIdb = await probeIdbAvailable();
+        if (canUseIdb) {
+          const done = await withTimeout(set(name, value), SET_ITEM_TIMEOUT_MS);
+          if (done !== null) return;
+        }
+        if (setLocalItem(name, value)) return;
       } catch {
-        setLocalItem(name, value);
+        if (setLocalItem(name, value)) return;
       }
+      dispatchStorageDegraded();
     },
 
     removeItem: async (name: string): Promise<void> => {
+      memoryCache.delete(name);
       try {
-        const ok = await withTimeout(del(name), GET_ITEM_TIMEOUT_MS);
-        if (ok === null) removeLocalItem(name);
+        const canUseIdb = await probeIdbAvailable();
+        if (canUseIdb) {
+          const done = await withTimeout(del(name), GET_ITEM_TIMEOUT_MS);
+          if (done !== null) return;
+        }
+        removeLocalItem(name);
+        return;
       } catch {
         removeLocalItem(name);
       }

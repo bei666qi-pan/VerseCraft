@@ -1,6 +1,6 @@
 // src/lib/idbDebouncedStorage.ts
 // Debounced IndexedDB adapter to mitigate write amplification.
-// Accumulates state changes and delays JSON.stringify + DB write until inactivity.
+// Flushes on pagehide/beforeunload to avoid bfcache transaction lock (Safari).
 
 import type { StateStorage } from "zustand/middleware";
 
@@ -19,9 +19,19 @@ export function createDebouncedStorage(
       timeoutId = null;
     }
     if (pending) {
-      void base.setItem(pending.name, pending.value);
+      void base.setItem(pending.name, pending.value).catch(() => {
+        /* IDB/store write failure - avoid unhandled rejection; state remains in memory */
+      });
       pending = null;
     }
+  }
+
+  if (typeof window !== "undefined") {
+    const onUnload = () => {
+      flush();
+    };
+    window.addEventListener("pagehide", onUnload);
+    window.addEventListener("beforeunload", onUnload);
   }
 
   return {

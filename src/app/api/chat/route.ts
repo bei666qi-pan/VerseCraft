@@ -310,6 +310,8 @@ function sanitizeAssistantContent(content: string): string {
   });
 }
 
+const PLAY_TIME_PER_ACTION_SEC = 3600; // 1 game hour per chat action
+
 async function persistTokenUsage(userId: string | null, totalTokens: number) {
   if (!userId || !Number.isFinite(totalTokens) || totalTokens <= 0) return;
   const tokenDelta = Math.trunc(totalTokens);
@@ -317,17 +319,21 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
   await db
     .update(users)
     .set({
-      tokensUsed: sql`${users.tokensUsed} + ${tokenDelta}`,
+      tokensUsed: sql`COALESCE(${users.tokensUsed}, 0) + ${tokenDelta}`,
       todayTokensUsed: sql`CASE
-        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.todayTokensUsed} + ${tokenDelta}
+        WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
+        THEN COALESCE(${users.todayTokensUsed}, 0) + ${tokenDelta}
         ELSE ${tokenDelta}
       END`,
+      playTime: sql`COALESCE(${users.playTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}`,
       todayPlayTime: sql`CASE
-        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.todayPlayTime}
-        ELSE 0
+        WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
+        THEN COALESCE(${users.todayPlayTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}
+        ELSE ${PLAY_TIME_PER_ACTION_SEC}
       END`,
       lastDataReset: sql`CASE
-        WHEN DATE(${users.lastDataReset}) = CURRENT_DATE THEN ${users.lastDataReset}
+        WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
+        THEN ${users.lastDataReset}
         ELSE NOW()
       END`,
       lastActive: new Date(),

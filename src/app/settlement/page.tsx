@@ -6,6 +6,7 @@ import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
 import { deleteCloudSaveSlot } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
+import { useMounted } from "@/hooks/useMounted";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 
@@ -193,12 +194,12 @@ function estimateKilledAnomalies(logs: LogEntry[]): number {
 }
 
 export default function SettlementPage() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [onLeaderboardToast, setOnLeaderboardToast] = useState(false);
   const hasUploadedRef = useRef(false);
   const hasAchievementPushedRef = useRef(false);
 
-  const stats = useGameStore((s) => s.stats);
+  const stats = useGameStore((s) => s.stats) ?? { sanity: 0, agility: 0, luck: 0, charm: 0, background: 0 };
   const logs = useGameStore((s) => s.logs ?? []);
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
@@ -218,10 +219,6 @@ export default function SettlementPage() {
     maxFloor,
     survivalHours
   );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!mounted) return;

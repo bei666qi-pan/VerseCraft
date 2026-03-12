@@ -465,7 +465,7 @@ function MobileStatsPanel({
         className="flex w-full items-center justify-between px-4 py-3 text-left"
       >
         <span className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
-          理智 {stats.sanity ?? 0}/{STAT_MAX}
+          理智 {stats?.sanity ?? 0}/{STAT_MAX}
         </span>
         <span className={`text-xs ${isDarkMoon ? "text-red-300/80" : "text-slate-400"}`}>
           {expanded ? "收起" : "展开"}
@@ -478,8 +478,8 @@ function MobileStatsPanel({
               <StatEnergyBar
                 key={k}
                 statName={STAT_LABELS[k]}
-                value={stats[k] ?? 0}
-                isSanityDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
+                value={stats?.[k] ?? 0}
+                isSanityDanger={k === "sanity" && (stats?.sanity ?? 0) <= 3}
                 isDarkMoon={isDarkMoon}
               />
             ))}
@@ -568,7 +568,7 @@ function PlayContent() {
 
   const isHydrated = useGameStore((s) => s.isHydrated);
 
-  const rawStats = useGameStore((s) => s.stats);
+  const rawStats = useGameStore((s) => s.stats) ?? FALLBACK_STATS;
   const stats = useMemo(() => {
     const base = rawStats ?? FALLBACK_STATS;
     const safe: Record<StatType, number> = { ...FALLBACK_STATS };
@@ -644,15 +644,17 @@ function PlayContent() {
   const hasTriggeredOpening = useRef(false);
   const hasTriggeredResume = useRef(false);
   const userScrolledUpRef = useRef(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
   const isApocalypse = day >= 10;
-  const isLowSanity = (stats.sanity ?? 0) < 20;
+  const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted);
 
-  const sanity = stats.sanity ?? 0;
+  const sanity = stats?.sanity ?? 0;
   const displayLocation = useMemo(() => formatLocationLabel(playerLocation), [playerLocation]);
 
   const codexKeys = Object.keys(codex ?? {});
@@ -900,6 +902,8 @@ function PlayContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       autoSaveProgress();
+      streamAbortRef.current?.abort();
+      streamReaderRef.current?.cancel().catch(() => {});
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handlePageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -921,7 +925,7 @@ function PlayContent() {
     rawDmBufferRef.current = "";
     setLiveNarrative("");
 
-    const sanityAtStart = useGameStore.getState().stats.sanity ?? 0;
+    const sanityAtStart = useGameStore.getState().stats?.sanity ?? 0;
     const prevPending = pendingHallucinationCheck;
     setPendingHallucinationCheck(false);
     const shouldApplyHallucination = prevPending && sanityAtStart < 20 && Math.random() < 0.3;
@@ -941,14 +945,31 @@ function PlayContent() {
 
     const playerContext = useGameStore.getState().getPromptContext();
 
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages,
-        playerContext,
-      }),
-    });
+    const ac = new AbortController();
+    streamAbortRef.current = ac;
+
+    let res: Response;
+    try {
+      res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          playerContext,
+        }),
+        signal: ac.signal,
+      });
+    } catch (fetchErr) {
+      streamAbortRef.current = null;
+      setIsStreaming(false);
+      if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+        return;
+      }
+      setLiveNarrative("连接深渊时发生了波动，请稍后再试。");
+      return;
+    } finally {
+      streamAbortRef.current = null;
+    }
 
     if (!res.ok || !res.body) {
       setIsStreaming(false);
@@ -962,10 +983,12 @@ function PlayContent() {
     }
 
     const reader = res.body.getReader();
+    streamReaderRef.current = reader;
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let raw = "";
 
+    let streamCancelled = false;
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -992,12 +1015,25 @@ function PlayContent() {
           }
         }
       }
+    } catch (readErr) {
+      const err = readErr as Error & { name?: string };
+      if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
+        streamCancelled = true;
+      } else {
+        throw readErr;
+      }
     } finally {
+      streamReaderRef.current = null;
       try {
         await reader.cancel();
       } catch {
         // ignore
       }
+    }
+
+    if (streamCancelled) {
+      setIsStreaming(false);
+      return;
     }
 
     const parsed = tryParseDM(raw);
@@ -1020,15 +1056,17 @@ function PlayContent() {
 
     setLiveNarrative("");
 
-    const consumed = Array.isArray(parsed.consumed_items) ? parsed.consumed_items : [];
-    const hadItemUseNoParchment = consumed.length > 0 && consumed.some((id: string) => id !== "I-PARCHMENT");
+    const consumedNames = Array.isArray(parsed.consumed_items)
+      ? (parsed.consumed_items as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0)
+      : [];
+    const hadItemUseNoParchment = consumedNames.length > 0 && consumedNames.some((id) => id !== "I-PARCHMENT");
     const hadAnomaly = (parsed.sanity_damage ?? 0) > 0;
     if (!parsed.is_death) {
       setPendingHallucinationCheck(hadItemUseNoParchment || hadAnomaly);
     }
 
-    if (Array.isArray(parsed.consumed_items) && parsed.consumed_items.length > 0) {
-      useGameStore.getState().consumeItems(parsed.consumed_items);
+    if (consumedNames.length > 0) {
+      useGameStore.getState().consumeItems(consumedNames);
     }
 
     const validTiers = ["S", "A", "B", "C", "D"] as const;
@@ -1048,13 +1086,21 @@ function PlayContent() {
           const tier = validTiers.includes(String(o.tier) as (typeof validTiers)[number])
             ? (String(o.tier) as Item["tier"])
             : "B";
+          const rawStatBonus = o.statBonus;
+          let statBonus: Item["statBonus"] = undefined;
+          if (rawStatBonus && typeof rawStatBonus === "object" && !Array.isArray(rawStatBonus)) {
+            const entries = Object.entries(rawStatBonus as Record<string, unknown>).filter(
+              ([, v]) => typeof v === "number" && Number.isFinite(v)
+            ) as [StatType, number][];
+            if (entries.length > 0) statBonus = Object.fromEntries(entries) as Item["statBonus"];
+          }
           return {
             id,
             name,
             tier,
             description: typeof o.description === "string" ? o.description : name,
             tags: typeof o.tags === "string" ? o.tags : "loot",
-            statBonus: (o.statBonus as Item["statBonus"]) ?? undefined,
+            statBonus,
             ownerId: "N-019",
           } satisfies Item;
         });
@@ -1125,7 +1171,7 @@ function PlayContent() {
 
     const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
     if (dmg > 0) {
-      const cur = useGameStore.getState().stats.sanity ?? 0;
+      const cur = useGameStore.getState().stats?.sanity ?? 0;
       useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
       setHitEffectUntil(Date.now() + 1200);
     }
@@ -1199,7 +1245,7 @@ function PlayContent() {
 
     setIsStreaming(false);
 
-    const sanityAfter = useGameStore.getState().stats.sanity ?? 0;
+    const sanityAfter = useGameStore.getState().stats?.sanity ?? 0;
 
     if (parsed.is_death || sanityAfter <= 0) {
       setTimeout(() => router.push("/settlement"), 2000);

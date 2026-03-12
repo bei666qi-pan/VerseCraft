@@ -1,25 +1,18 @@
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { asc, desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { adminStatsSnapshots, feedbacks, users } from "@/db/schema";
-import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
-import AdminDashboardClient from "@/components/admin/AdminDashboardClient";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-export default async function ShadowAdminPage() {
+export async function GET() {
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  const hasAccess = verifyAdminShadowSession(shadowCookie);
-
-  if (!hasAccess) {
-    if (shadowCookie) {
-      cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/saiduhsa" });
-    }
-    return <AdminShadowGate />;
+  if (!verifyAdminShadowSession(shadowCookie)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   const rows = await db
@@ -62,7 +55,8 @@ export default async function ShadowAdminPage() {
   const nowMs = Date.now();
   const onlineIdSet = new Set(onlineIds);
   for (const u of rows) {
-    const la = u.lastActive instanceof Date ? u.lastActive : new Date(String(u.lastActive));
+    const la =
+      u.lastActive instanceof Date ? u.lastActive : new Date(String(u.lastActive));
     if (nowMs - la.getTime() < ONLINE_CUTOFF_MS) onlineIdSet.add(u.id);
   }
 
@@ -71,10 +65,16 @@ export default async function ShadowAdminPage() {
       const latest = latestFeedbackMap.get(user.id);
       return {
         ...user,
+        lastActive:
+          user.lastActive instanceof Date
+            ? user.lastActive.toISOString()
+            : String(user.lastActive),
         isOnline: onlineIdSet.has(user.id) ? 1 : 0,
         feedbackPreview: latest ? latest.content.slice(0, 6) : "",
         feedbackContent: latest?.content ?? "",
-        feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
+        feedbackCreatedAt: latest?.createdAt
+          ? new Date(latest.createdAt).toISOString()
+          : null,
       };
     })
     .sort((a, b) => {
@@ -87,14 +87,21 @@ export default async function ShadowAdminPage() {
       return bTime - aTime;
     });
 
-  const onlineCount = sortedRows.filter((user) => user.isOnline === 1).length;
+  const onlineCount = sortedRows.filter((u) => u.isOnline === 1).length;
   const totalUsers = sortedRows.length;
-  const totalTokens = sortedRows.reduce((sum, u) => sum + Number(u.tokensUsed ?? 0), 0);
+  const totalTokens = sortedRows.reduce(
+    (sum, u) => sum + Number(u.tokensUsed ?? 0),
+    0
+  );
 
   const today = new Date().toISOString().slice(0, 10);
-  let chartData: { date: string; users: number; tokens: number; activeUsers: number }[] = [
-    { date: today, users: totalUsers, tokens: totalTokens, activeUsers: 0 },
-  ];
+  let chartData: {
+    date: string;
+    users: number;
+    tokens: number;
+    activeUsers: number;
+  }[] = [{ date: today, users: totalUsers, tokens: totalTokens, activeUsers: 0 }];
+
   try {
     const [dauRow] = await db
       .select({ count: sql<number>`COUNT(*)` })
@@ -105,8 +112,15 @@ export default async function ShadowAdminPage() {
 
     await db
       .insert(adminStatsSnapshots)
-      .values({ date: today, totalUsers, totalTokens, activeUsers: activeUsersToday })
-      .onDuplicateKeyUpdate({ set: { totalUsers, totalTokens, activeUsers: activeUsersToday } });
+      .values({
+        date: today,
+        totalUsers,
+        totalTokens,
+        activeUsers: activeUsersToday,
+      })
+      .onDuplicateKeyUpdate({
+        set: { totalUsers, totalTokens, activeUsers: activeUsersToday },
+      });
 
     const snapshots = await db
       .select({
@@ -126,18 +140,21 @@ export default async function ShadowAdminPage() {
     }));
   } catch {
     chartData[0]!.activeUsers = sortedRows.filter((u) => {
-      const la = u.lastActive instanceof Date ? u.lastActive : new Date(String(u.lastActive));
+      const la =
+        typeof u.lastActive === "string"
+          ? new Date(u.lastActive)
+          : u.lastActive instanceof Date
+            ? u.lastActive
+            : new Date(String(u.lastActive));
       return la.toISOString().slice(0, 10) === today;
     }).length;
   }
 
-  return (
-    <AdminDashboardClient
-      rows={sortedRows}
-      onlineCount={onlineCount}
-      totalUsers={totalUsers}
-      totalTokens={totalTokens}
-      chartData={chartData}
-    />
-  );
+  return NextResponse.json({
+    rows: sortedRows,
+    onlineCount,
+    totalUsers,
+    totalTokens,
+    chartData,
+  });
 }

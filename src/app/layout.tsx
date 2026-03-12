@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +45,7 @@ export default function RootLayout({
             </filter>
           </defs>
         </svg>
+        <StorageDegradedBanner />
         <HydrationProvider>
           {children}
         </HydrationProvider>

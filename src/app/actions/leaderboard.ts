@@ -45,10 +45,14 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]): number {
 }
 
 function unwrapRows<T extends RawRow>(result: unknown): T[] {
-  if (Array.isArray(result)) return result as T[];
   if (result && typeof result === "object") {
     const maybeRows = (result as { rows?: unknown }).rows;
     if (Array.isArray(maybeRows)) return maybeRows as T[];
+  }
+  if (Array.isArray(result) && result.length >= 1) {
+    const first = result[0];
+    if (Array.isArray(first)) return first as T[];
+    return result as T[];
   }
   return [];
 }

@@ -4,7 +4,7 @@ import "server-only";
 import { Redis } from "@upstash/redis";
 
 const ACTIVE_USERS_KEY = "active_users";
-const ONLINE_WINDOW_MS = 5 * 60_000;
+const ONLINE_WINDOW_MS = 10 * 60_000; // 10 min for better visibility
 
 let redis: ReturnType<typeof Redis.fromEnv> | null = null;
 

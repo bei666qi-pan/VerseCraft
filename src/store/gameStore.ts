@@ -88,7 +88,7 @@ export const useGameStore = create<GameState & GameActions>()(
 
       setStats: (stats) =>
         set((state) => ({
-          stats: { ...state.stats, ...stats },
+          stats: { ...(state.stats ?? DEFAULT_STATS), ...stats },
         })),
 
       setEchoTalent: (talent) => set({ echoTalent: talent }),
@@ -147,7 +147,7 @@ export const useGameStore = create<GameState & GameActions>()(
       storage: createJSONStorage(() => createDebouncedStorage(idbStorage, 1000)),
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
-        stats: s.stats,
+        stats: s.stats ?? { ...DEFAULT_STATS },
         echoTalent: s.echoTalent,
         inventory: s.inventory,
         inputMode: s.inputMode ?? "options",

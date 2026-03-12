@@ -414,17 +414,18 @@ export const useGameStore = create<GameState>()(
         }),
       upgradeAttribute: (attr) => {
         const s = get();
-        const cur = s.stats[attr] ?? 0;
+        const stats = s.stats ?? DEFAULT_STATS;
+        const cur = stats[attr] ?? 0;
         if (cur >= 50) return false;
         const totalPoints =
-          (s.stats.sanity ?? 0) + (s.stats.agility ?? 0) + (s.stats.luck ?? 0) +
-          (s.stats.charm ?? 0) + (s.stats.background ?? 0);
+          (stats.sanity ?? 0) + (stats.agility ?? 0) + (stats.luck ?? 0) +
+          (stats.charm ?? 0) + (stats.background ?? 0);
         const cost = totalPoints < 20 ? 2 : 3;
         if (s.originium <= 0 || s.originium < cost) return false;
         const nextVal = cur + 1;
         const updates: Partial<ReturnType<typeof get>> = {
           originium: s.originium - cost,
-          stats: { ...s.stats, [attr]: nextVal },
+          stats: { ...stats, [attr]: nextVal },
         };
         if (attr === "sanity") {
           const histMax = s.historicalMaxSanity ?? 50;
@@ -435,12 +436,13 @@ export const useGameStore = create<GameState>()(
       },
       restoreSanity: () => {
         const s = get();
-        const cur = s.stats.sanity ?? 0;
+        const stats = s.stats ?? DEFAULT_STATS;
+        const cur = stats.sanity ?? 0;
         const histMax = s.historicalMaxSanity ?? 50;
         if (cur >= histMax || s.originium < 1) return false;
         set({
           originium: s.originium - 1,
-          stats: { ...s.stats, sanity: cur + 1 },
+          stats: { ...stats, sanity: cur + 1 },
         });
         return true;
       },
@@ -481,19 +483,29 @@ export const useGameStore = create<GameState>()(
 
       mergeCodex: (updates) =>
         set((s) => {
-          const next = { ...s.codex };
-          for (const u of updates) {
-            if (!u?.name && !u?.id) continue;
-            const existingKey = Object.keys(next).find((k) => next[k]!.name === u.name || next[k]!.id === u.id);
-            const key = existingKey ?? (u.id || u.name);
+          const base = s.codex ?? {};
+          const next = typeof base === "object" && base !== null ? { ...base } : {};
+          const safeUpdates = Array.isArray(updates) ? updates : [];
+          for (const u of safeUpdates) {
+            if (!u || (typeof u !== "object")) continue;
+            const name = typeof u.name === "string" ? u.name : (u as { name?: unknown }).name;
+            const id = typeof u.id === "string" ? u.id : (u as { id?: unknown }).id;
+            if (!name && !id) continue;
+            const existingKey = Object.keys(next).find((k) => next[k]?.name === name || next[k]?.id === id);
+            const key = existingKey ?? id ?? name ?? "unknown";
             const prev = next[key];
-            next[key] = {
-              ...(prev ?? {}),
-              ...u,
-              id: prev?.id ?? u.id ?? u.name ?? key,
-              name: u.name ?? prev?.name ?? "",
-              type: (u.type ?? prev?.type ?? "npc") as "npc" | "anomaly",
-            } as CodexEntry;
+            const merged: CodexEntry = {
+              id: prev?.id ?? id ?? name ?? key,
+              name: name ?? prev?.name ?? "",
+              type: (u.type === "npc" || u.type === "anomaly" ? u.type : prev?.type ?? "npc") as "npc" | "anomaly",
+              ...(typeof u.favorability === "number" ? { favorability: u.favorability } : {}),
+              ...(typeof u.combatPower === "number" ? { combatPower: u.combatPower } : {}),
+              ...(typeof u.personality === "string" ? { personality: u.personality } : {}),
+              ...(typeof u.traits === "string" ? { traits: u.traits } : {}),
+              ...(typeof u.rules_discovered === "string" ? { rules_discovered: u.rules_discovered } : {}),
+              ...(typeof u.weakness === "string" ? { weakness: u.weakness } : {}),
+            };
+            next[key] = merged;
           }
           return { codex: next };
         }),
@@ -528,7 +540,8 @@ export const useGameStore = create<GameState>()(
 
       setStats: (stats) =>
         set((s) => {
-          const next = { ...s.stats, ...stats };
+          const base = s.stats ?? DEFAULT_STATS;
+          const next = { ...base, ...stats };
           const newSanity = next.sanity;
           const hist = s.historicalMaxSanity ?? 50;
           const nextHist = typeof newSanity === "number" && newSanity > hist ? newSanity : hist;
@@ -538,29 +551,36 @@ export const useGameStore = create<GameState>()(
       setInventory: (inventory) => set({ inventory }),
 
       addToInventory: (item) =>
-        set((s) => ({
-          inventory: s.inventory.some((i) => i.id === item.id)
-            ? s.inventory
-            : [...s.inventory, item],
-        })),
+        set((s) => {
+          const inv = s.inventory ?? [];
+          return {
+            inventory: inv.some((i) => i.id === item.id) ? inv : [...inv, item],
+          };
+        }),
 
       addItems: (items) =>
         set((s) => {
-          const existingIds = new Set(s.inventory.map((i) => i.id));
-          const toAdd = items.filter((it) => it?.id && it?.name && !existingIds.has(it.id));
+          const inv = (s.inventory ?? []).filter((i): i is NonNullable<typeof i> => !!i);
+          const existingIds = new Set(inv.map((i) => i.id).filter(Boolean));
+          const safeItems = Array.isArray(items) ? items : [];
+          const toAdd = safeItems.filter((it) => it && it.id && it.name && !existingIds.has(it.id));
           for (const it of toAdd) existingIds.add(it.id);
-          return { inventory: [...s.inventory, ...toAdd] };
+          return { inventory: [...inv, ...toAdd] };
         }),
 
-      removeFromInventory: (itemId) =>
+      removeFromInventory: (itemId: string) =>
         set((s) => ({
-          inventory: s.inventory.filter((i) => i.id !== itemId),
+          inventory: (s.inventory ?? []).filter((i) => i?.id !== itemId),
         })),
 
       consumeItems: (itemNames) =>
-        set((s) => ({
-          inventory: s.inventory.filter((i) => !itemNames.includes(i.name)),
-        })),
+        set((s) => {
+          const inv = s.inventory ?? [];
+          const names = Array.isArray(itemNames) ? itemNames : [];
+          return {
+            inventory: inv.filter((i) => i && typeof i.name === "string" && !names.includes(i.name)),
+          };
+        }),
 
       addWarehouseItems: (items) =>
         set((s) => {
@@ -606,24 +626,28 @@ export const useGameStore = create<GameState>()(
 
       getPromptContext: () => {
         const s = get();
-        const inv = s.inventory
+        const inv = (s.inventory ?? [])
           .map((i) => `${i.name}[${i.id}|${i.tier}]`)
           .join("，");
 
+        const stats = s.stats ?? DEFAULT_STATS;
         const statsText =
-          `理智[${s.stats.sanity}]，` +
-          `敏捷[${s.stats.agility}]，` +
-          `幸运[${s.stats.luck}]，` +
-          `魅力[${s.stats.charm}]，` +
-          `出身[${s.stats.background}]`;
+          `理智[${stats.sanity}]，` +
+          `敏捷[${stats.agility}]，` +
+          `幸运[${stats.luck}]，` +
+          `魅力[${stats.charm}]，` +
+          `出身[${stats.background}]`;
 
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
 
         const time = s.time ?? { day: 0, hour: 0 };
-        const npcPositions = Object.entries(s.dynamicNpcStates)
-          .filter(([, v]) => v.isAlive)
-          .map(([id, v]) => `${id}@${v.currentLocation}`)
-          .join("，");
+        const npcStates = s.dynamicNpcStates ?? {};
+        const npcPositions = typeof npcStates === "object" && npcStates !== null
+          ? Object.entries(npcStates)
+              .filter(([, v]) => v && typeof v === "object" && v.isAlive)
+              .map(([id, v]) => `${id}@${(v as { currentLocation?: string }).currentLocation ?? "?"}`)
+              .join("，")
+          : "";
 
         return (
           `玩家档案：姓名[${s.playerName || "未命名"}]，` +
@@ -661,10 +685,12 @@ export const useGameStore = create<GameState>()(
         anomalyWeaknessTags
       ): PerformCheckResult => {
         const state = get();
+        const stats = state.stats ?? DEFAULT_STATS;
+        const inventory = state.inventory ?? [];
 
         const weaknessTags = parseTags(anomalyWeaknessTags);
 
-        const hasWeakness = state.inventory.some((item) => {
+        const hasWeakness = inventory.some((item) => {
           const itemTags = parseTags(item.tags);
           return itemTags.some((tag) => weaknessTags.includes(tag));
         });
@@ -676,9 +702,9 @@ export const useGameStore = create<GameState>()(
           };
         }
 
-        const statValue = state.stats[baseStat] ?? 0;
+        const statValue = stats[baseStat] ?? 0;
 
-        const itemBonus = state.inventory.reduce((sum, item) => {
+        const itemBonus = inventory.reduce((sum, item) => {
           const bonus = item.statBonus?.[baseStat] ?? 0;
           return sum + bonus;
         }, 0);
@@ -702,8 +728,9 @@ export const useGameStore = create<GameState>()(
 
       saveGame: (slotId) => {
         const s = get();
+        const safeStats = s.stats ?? DEFAULT_STATS;
         const data: SaveSlotData = {
-          stats: JSON.parse(JSON.stringify(s.stats)),
+          stats: JSON.parse(JSON.stringify(safeStats)),
           inventory: JSON.parse(JSON.stringify(s.inventory)),
           warehouse: JSON.parse(JSON.stringify(s.warehouse ?? [])),
           logs: JSON.parse(JSON.stringify(s.logs ?? [])),
@@ -731,8 +758,9 @@ export const useGameStore = create<GameState>()(
           data.talentCooldowns && typeof data.talentCooldowns === "object"
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
+        const safeStats = data.stats ?? DEFAULT_STATS;
         set({
-          stats: JSON.parse(JSON.stringify(data.stats)),
+          stats: JSON.parse(JSON.stringify(safeStats)),
           inventory: JSON.parse(JSON.stringify(data.inventory)),
           warehouse: Array.isArray(data.warehouse) ? JSON.parse(JSON.stringify(data.warehouse)) : [],
           logs: JSON.parse(JSON.stringify(data.logs)),
@@ -754,13 +782,14 @@ export const useGameStore = create<GameState>()(
           data.talentCooldowns && typeof data.talentCooldowns === "object"
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
+        const safeStats = data.stats ?? DEFAULT_STATS;
         set((s) => {
           const loadedLogs = data.logs ?? [];
           const hasProgress = Array.isArray(loadedLogs) && loadedLogs.length > 0;
           return {
             currentSaveSlot: slotId,
             saveSlots: { ...s.saveSlots, [slotId]: data },
-            stats: JSON.parse(JSON.stringify(data.stats)),
+            stats: JSON.parse(JSON.stringify(safeStats)),
             inventory: JSON.parse(JSON.stringify(data.inventory)),
             warehouse: Array.isArray(data.warehouse) ? JSON.parse(JSON.stringify(data.warehouse)) : [],
             logs: JSON.parse(JSON.stringify(data.logs ?? [])),
@@ -804,7 +833,7 @@ export const useGameStore = create<GameState>()(
         talent: s.talent,
         talentCooldowns: s.talentCooldowns,
         time: s.time ?? { day: 0, hour: 0 },
-        stats: s.stats,
+        stats: s.stats ?? DEFAULT_STATS,
         historicalMaxSanity: s.historicalMaxSanity ?? 50,
         inventory: s.inventory,
         logs: s.logs ?? [],

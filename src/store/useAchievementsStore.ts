@@ -62,7 +62,8 @@ export const useAchievementsStore = create<AchievementsState>()(
       storage: createJSONStorage(() =>
         createDebouncedStorage(idbStorage, 500)
       ),
-      partialize: (state) => ({ records: state.records }),
+      partialize: (state) => ({ records: state.records ?? [] }),
+      skipHydration: true,
     }
   )
 );

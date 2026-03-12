@@ -18,15 +18,21 @@ export const PARCHMENT_ID = "I-PARCHMENT";
 /**
  * Check if player can use item based on stat requirements.
  * Parchment (I-PARCHMENT) always passes.
+ * Defensive: returns false if item or stats are invalid (hydration/SSR safety).
  */
-export function canUseItem(item: Item, stats: Record<StatType, number>): { ok: boolean; reason?: string } {
+export function canUseItem(
+  item: Item | null | undefined,
+  stats: Record<StatType, number> | null | undefined
+): { ok: boolean; reason?: string } {
+  if (!item || typeof item !== "object") return { ok: false, reason: "无效道具" };
+  const safeStats = stats ?? {};
   if (item.id === PARCHMENT_ID) return { ok: true };
   const req = item.statRequirements;
-  if (!req || Object.keys(req).length === 0) return { ok: true };
+  if (!req || typeof req !== "object" || Object.keys(req).length === 0) return { ok: true };
 
   const entries = Object.entries(req) as [StatType, number][];
   for (const [stat, min] of entries) {
-    const val = stats[stat] ?? 0;
+    const val = safeStats[stat] ?? 0;
     if (val < min) {
       return { ok: false, reason: `${STAT_LABELS[stat]}不足（需要${min}，当前${val}）` };
     }
@@ -36,11 +42,12 @@ export function canUseItem(item: Item, stats: Record<StatType, number>): { ok: b
 
 /**
  * Format stat requirements for UI display.
+ * Defensive: returns null if item is invalid (hydration/SSR safety).
  */
-export function formatStatRequirements(item: Item): string | null {
-  if (item.id === PARCHMENT_ID) return null;
+export function formatStatRequirements(item: Item | null | undefined): string | null {
+  if (!item || typeof item !== "object") return null;
   const req = item.statRequirements;
-  if (!req || Object.keys(req).length === 0) return null;
+  if (!req || typeof req !== "object" || Object.keys(req).length === 0) return null;
 
   const parts = (Object.entries(req) as [StatType, number][]).map(
     ([stat, min]) => `${STAT_LABELS[stat]}≥${min}`

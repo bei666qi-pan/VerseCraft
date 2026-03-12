@@ -86,8 +86,10 @@ export function OnboardingGuide({
 
   if (!step || currentStep < 0 || currentStep >= steps.length) return null;
 
-  const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-  const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+  const fallbackW = 1024;
+  const fallbackH = 768;
+  const cx = rect ? rect.left + rect.width / 2 : fallbackW / 2;
+  const cy = rect ? rect.top + rect.height / 2 : fallbackH / 2;
   const radius = rect ? Math.max(rect.width, rect.height) * 0.75 + 20 : 100;
   const dir = step.arrowDirection ?? "bottom";
 
@@ -140,7 +142,7 @@ export function OnboardingGuide({
       <div
         className="absolute backdrop-blur-md bg-white/5 rounded-2xl px-5 py-4 max-w-[280px] shadow-xl"
         style={{
-          left: rect ? Math.max(16, Math.min(rect.left + rect.width / 2 - 140, window.innerWidth - 296)) : "50%",
+          left: rect ? Math.max(16, Math.min(rect.left + rect.width / 2 - 140, fallbackW - 296)) : "50%",
           top: rect
             ? dir === "bottom"
               ? rect.bottom + 28

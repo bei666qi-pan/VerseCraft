@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, useState } from "react";
+import { Activity, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy, Volume2, VolumeX, ChevronDown, ChevronUp } from "lucide-react";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
@@ -15,6 +15,13 @@ import {
 } from "@/store/useAchievementsStore";
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
+const FALLBACK_STATS: Record<StatType, number> = {
+  sanity: 0,
+  agility: 0,
+  luck: 0,
+  charm: 0,
+  background: 0,
+};
 const STAT_LABELS: Record<StatType, string> = {
   sanity: "理智",
   agility: "敏捷",
@@ -384,8 +391,13 @@ function BackpackPanel({
   isStreaming: boolean;
   stats: Record<StatType, number>;
 }) {
-  const slotItems = Array.from({ length: 6 }, (_, idx) => inventory[idx] ?? null);
-  const selectedItem = selectedId ? inventory.find((i) => i.id === selectedId) : null;
+  const safeInventory = Array.isArray(inventory) ? inventory : [];
+  const slotItems = Array.from({ length: 6 }, (_, idx) => safeInventory[idx] ?? null);
+  const selectedItem = selectedId ? safeInventory.find((i) => i && i.id === selectedId) ?? null : null;
+
+  useEffect(() => {
+    if (selectedId && !selectedItem) onSelect(null);
+  }, [selectedId, selectedItem, onSelect]);
 
   return (
     <div className="flex h-full flex-row overflow-hidden">
@@ -401,14 +413,14 @@ function BackpackPanel({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {slotItems.length === 0 ? (
+          {slotItems.every((s) => s === null) ? (
             <p className="py-4 text-xs text-slate-500">暂无</p>
           ) : (
             <div className="space-y-2">
               {slotItems.map((item, idx) => {
                 const isSelected = item && selectedId === item.id;
-                const firstIdx = item ? inventory.findIndex((i) => i.id === item.id) : -1;
-                const count = item && firstIdx === idx ? inventory.filter((i) => i.id === item.id).length : 0;
+                const firstIdx = item ? safeInventory.findIndex((i) => i && i.id === item.id) : -1;
+                const count = item && firstIdx === idx ? safeInventory.filter((i) => i && i.id === item.id).length : 0;
                 return (
                   <button
                     key={item?.id ?? `empty-${idx}`}
@@ -438,16 +450,16 @@ function BackpackPanel({
         </div>
       </div>
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        {selectedItem ? (
+        {selectedItem && typeof selectedItem === "object" ? (
           <>
-            <h3 className="text-xl font-bold text-white">{selectedItem.name}</h3>
+            <h3 className="text-xl font-bold text-white">{selectedItem.name ?? "未知"}</h3>
             <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">
-              {selectedItem.tier}
+              {selectedItem.tier ?? "D"}
             </p>
             <div className="mt-6 space-y-4">
               <div>
                 <span className="text-xs text-slate-500">描述</span>
-                <p className="mt-1 text-sm leading-relaxed text-slate-300">{selectedItem.description}</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">{selectedItem.description ?? ""}</p>
               </div>
               {formatStatRequirements(selectedItem) && (
                 <div>
@@ -455,7 +467,7 @@ function BackpackPanel({
                   <p className="mt-1 text-sm text-amber-300">{formatStatRequirements(selectedItem)}</p>
                 </div>
               )}
-              {selectedItem.statBonus && Object.keys(selectedItem.statBonus).length > 0 && (
+              {selectedItem?.statBonus && typeof selectedItem.statBonus === "object" && Object.keys(selectedItem.statBonus).length > 0 && (
                 <div>
                   <span className="text-xs text-slate-500">属性</span>
                   <p className="mt-1 text-sm text-indigo-300">
@@ -764,9 +776,9 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   const [codexPage, setCodexPage] = useState(0);
   const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
 
-  const stats = useGameStore((s) => s.stats);
+  const stats = useGameStore((s) => s.stats) ?? { ...FALLBACK_STATS };
   const historicalMaxSanity = useGameStore((s) => s.historicalMaxSanity ?? 50);
-  const inventory = useGameStore((s) => s.inventory);
+  const inventory = useGameStore((s) => s.inventory) ?? [];
   const codex = useGameStore((s) => s.codex ?? {});
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const tasks = useGameStore((s) => s.tasks ?? []);
