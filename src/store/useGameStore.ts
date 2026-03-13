@@ -151,7 +151,7 @@ interface GameState {
   recentOptions: string[];
   /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
   inputMode: "options" | "text";
-  /** 原石货币：初始值 = 出身属性点数 */
+  /** 原石货币：初始值 = 10 + 出身，每小时有 10% + (出身-20)*2% 概率获得 1 原石 */
   originium: number;
   /** 任务追踪系统 */
   tasks: GameTask[];
@@ -232,11 +232,11 @@ interface GameState {
 }
 
 const DEFAULT_STATS: Record<StatType, number> = {
-  sanity: 3,
-  agility: 3,
-  luck: 3,
-  charm: 3,
-  background: 3,
+  sanity: 10,
+  agility: 0,
+  luck: 0,
+  charm: 0,
+  background: 0,
 };
 
 function resolveFloorScore(loc: string): number {
@@ -336,7 +336,7 @@ export const useGameStore = create<GameState>()(
           talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
           time: { day: 0, hour: 0 },
           stats: { ...DEFAULT_STATS },
-          historicalMaxSanity: 50,
+          historicalMaxSanity: DEFAULT_STATS.sanity,
           inventory: [],
           logs: [],
           codex: {},
@@ -530,10 +530,18 @@ export const useGameStore = create<GameState>()(
         set((s) => {
           const { day, hour } = s.time ?? { day: 0, hour: 0 };
           const nextHour = hour + 1;
-          if (nextHour >= 24) {
-            return { time: { day: day + 1, hour: 0 } };
-          }
-          return { time: { day, hour: nextHour } };
+          const nextTime = nextHour >= 24
+            ? { day: day + 1, hour: 0 }
+            : { day, hour: nextHour };
+          const bg = (s.stats ?? DEFAULT_STATS).background ?? 0;
+          const prob = 0.1 + Math.max(0, bg - 20) * 0.02;
+          const roll = Math.random();
+          const gain = roll < prob ? 1 : 0;
+          const nextOriginium = gain > 0 ? (s.originium ?? 0) + gain : s.originium ?? 0;
+          return {
+            time: nextTime,
+            ...(gain > 0 ? { originium: nextOriginium } : {}),
+          };
         }),
 
       setTime: (time) => set({ time }),
@@ -620,7 +628,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           inputMode: "options" as const,
-          originium: background,
+          originium: 10 + background,
           tasks: [],
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,

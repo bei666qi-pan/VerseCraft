@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
@@ -37,12 +37,18 @@ const STAT_DESCRIPTIONS: Record<StatType, string[]> = {
     ">20 质变：诡异可能短暂放过你。",
   ],
   background: [
-    "1点出身对应1初始原石。原石来自7楼矿脉，玩家不可进入；更多原石需通过NPC任务等获取。",
+    "出身>20时，每小时额外+2%获得原石概率（基础10%/时）。初始原石=10+出身。",
   ],
 };
 
-const BASE_STAT = 3;
-const EXTRA_POINTS = 20;
+const BASE_STATS: Record<StatType, number> = {
+  sanity: 10,
+  agility: 0,
+  luck: 0,
+  charm: 0,
+  background: 0,
+};
+const EXTRA_POINTS = 30;
 
 const TALENTS: readonly {
   key: EchoTalent;
@@ -53,10 +59,14 @@ const TALENTS: readonly {
   { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。" },
   { key: "命运馈赠", title: "命运馈赠", cd: "CD：10 小时", desc: "随机抢夺世界里的一个道具。道具均有主人，在主人面前使用会被察觉。" },
   { key: "主角光环", title: "主角光环", cd: "CD：8 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
-  { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "理智恢复至历史最大值。" },
+  { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "一次最多恢复 20 理智。" },
   { key: "洞察之眼", title: "洞察之眼", cd: "CD：8 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
   { key: "丧钟回响", title: "丧钟回响", cd: "CD：30 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。夜读老人与深渊守门人免疫。" },
 ] as const;
+
+function baseSum(): number {
+  return BASE_STATS.sanity + BASE_STATS.agility + BASE_STATS.luck + BASE_STATS.charm + BASE_STATS.background;
+}
 
 function sumStats(stats: Record<StatType, number>): number {
   return (
@@ -82,6 +92,99 @@ function triggerTapFeedback() {
   }
 }
 
+const RAPID_CLICK_WINDOW_MS = 600;
+const RAPID_CLICK_THRESHOLD = 3;
+const HOLD_DELAY_MS = 350;
+const REPEAT_INTERVAL_MS = 120;
+const ACCEL_INTERVAL_MS = 50;
+
+function useStatStepper(
+  inc: (stat: StatType) => void,
+  dec: (stat: StatType) => void,
+  remaining: number,
+  stats: Record<StatType, number>
+) {
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clickTimes = useRef<number[]>([]);
+  const isRapid = useRef(false);
+  const remainingRef = useRef(remaining);
+  const statsRef = useRef(stats);
+  remainingRef.current = remaining;
+  statsRef.current = stats;
+
+  const clearTimers = useCallback(() => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    if (repeatTimer.current) {
+      clearInterval(repeatTimer.current);
+      repeatTimer.current = null;
+    }
+  }, []);
+
+  const startHoldRepeat = useCallback(
+    (stat: StatType, delta: 1 | -1) => {
+      let stepCount = 0;
+      const doStep = () => {
+        const rem = remainingRef.current;
+        const st = statsRef.current;
+        if (delta > 0 && rem <= 0) {
+          clearTimers();
+          return;
+        }
+        if (delta < 0 && st[stat] <= BASE_STATS[stat]) {
+          clearTimers();
+          return;
+        }
+        triggerTapFeedback();
+        if (delta > 0) inc(stat);
+        else dec(stat);
+        stepCount++;
+      };
+      const initialInterval = isRapid.current ? ACCEL_INTERVAL_MS : REPEAT_INTERVAL_MS;
+      let intervalMs = initialInterval;
+      const tick = () => {
+        doStep();
+        if (stepCount >= 4 && intervalMs !== ACCEL_INTERVAL_MS) {
+          if (repeatTimer.current) clearInterval(repeatTimer.current);
+          intervalMs = ACCEL_INTERVAL_MS;
+          repeatTimer.current = setInterval(tick, intervalMs);
+        }
+      };
+      repeatTimer.current = setInterval(tick, intervalMs);
+    },
+    [inc, dec, clearTimers]
+  );
+
+  const handlePointerDown = useCallback(
+    (stat: StatType, delta: 1 | -1) => {
+      clearTimers();
+      const now = Date.now();
+      clickTimes.current = clickTimes.current.filter((t) => now - t < RAPID_CLICK_WINDOW_MS);
+      clickTimes.current.push(now);
+      isRapid.current = clickTimes.current.length >= RAPID_CLICK_THRESHOLD;
+
+      triggerTapFeedback();
+      if (delta > 0) inc(stat);
+      else dec(stat);
+
+      holdTimer.current = setTimeout(() => {
+        holdTimer.current = null;
+        startHoldRepeat(stat, delta);
+      }, HOLD_DELAY_MS);
+    },
+    [inc, dec, clearTimers, startHoldRepeat]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    clearTimers();
+  }, [clearTimers]);
+
+  return { handlePointerDown, handlePointerUp };
+}
+
 export default function CreatePage() {
   const router = useRouter();
   const user = useGameStore((s) => s.user);
@@ -95,15 +198,9 @@ export default function CreatePage() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
 
-  const [stats, setStats] = useState<Record<StatType, number>>({
-    sanity: BASE_STAT,
-    agility: BASE_STAT,
-    luck: BASE_STAT,
-    charm: BASE_STAT,
-    background: BASE_STAT,
-  });
+  const [stats, setStats] = useState<Record<StatType, number>>({ ...BASE_STATS });
 
-  const usedPoints = useMemo(() => sumStats(stats) - BASE_STAT * 5, [stats]);
+  const usedPoints = useMemo(() => sumStats(stats) - baseSum(), [stats]);
   const remaining = EXTRA_POINTS - usedPoints;
 
   const personalityValid = PERSONALITY_RE.test(personality);
@@ -122,9 +219,12 @@ export default function CreatePage() {
   }
 
   function dec(stat: StatType) {
-    if (stats[stat] <= BASE_STAT) return;
+    const minVal = BASE_STATS[stat];
+    if (stats[stat] <= minVal) return;
     setStats((s) => ({ ...s, [stat]: s[stat] - 1 }));
   }
+
+  const stepper = useStatStepper(inc, dec, remaining, stats);
 
   function handleSubmit() {
     if (!canSubmit || !selectedTalent) {
@@ -236,7 +336,7 @@ export default function CreatePage() {
             <div>
               <h2 className="text-base font-semibold text-slate-800">属性加点</h2>
               <p className="mt-1 text-sm text-slate-600">
-                可用点数 {EXTRA_POINTS}，基础值 {BASE_STAT}。必须刚好用完。
+                可用点数 {EXTRA_POINTS}，理智初值 10，其余 0。必须刚好用完。初始原石=10+出身。
               </p>
             </div>
             <div className={`rounded-xl ${GLASS_INPUT} py-3`}>
@@ -271,11 +371,10 @@ export default function CreatePage() {
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
-                        triggerTapFeedback();
-                        dec(stat);
-                      }}
-                      disabled={stats[stat] <= BASE_STAT}
+                      onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); stepper.handlePointerDown(stat, -1); }}
+                      onPointerUp={stepper.handlePointerUp}
+                      onPointerLeave={stepper.handlePointerUp}
+                      disabled={stats[stat] <= BASE_STATS[stat]}
                       className={GLASS_BTN}
                       aria-label={`减少${STAT_LABELS[stat]}`}
                     >
@@ -286,10 +385,9 @@ export default function CreatePage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        triggerTapFeedback();
-                        inc(stat);
-                      }}
+                      onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); stepper.handlePointerDown(stat, 1); }}
+                      onPointerUp={stepper.handlePointerUp}
+                      onPointerLeave={stepper.handlePointerUp}
                       disabled={remaining <= 0}
                       className={GLASS_BTN}
                       aria-label={`增加${STAT_LABELS[stat]}`}

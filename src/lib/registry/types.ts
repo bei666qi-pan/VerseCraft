@@ -42,6 +42,8 @@ export interface Item {
   ownerId: string;
   /** Primary effect type for DM/UI display */
   effectType?: ItemEffectType;
+  /** Short one-line effect for quick scan; falls back to derived from effectType if absent */
+  effectSummary?: string;
   /** Blocks one lethal attack (legacy, maps to effectType shield) */
   blockLethal?: boolean;
   /** Rule-based kill (legacy, maps to effectType ruleKill) */

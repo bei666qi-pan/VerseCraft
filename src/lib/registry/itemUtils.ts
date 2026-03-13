@@ -12,6 +12,45 @@ const STAT_LABELS: Record<StatType, string> = {
   background: "出身",
 };
 
+/** Effect type labels for intuitive display */
+export const EFFECT_TYPE_LABELS: Record<string, string> = {
+  shield: "护盾",
+  ruleKill: "规则击杀",
+  tempStat: "临时属性",
+  tempFavor: "好感加成",
+  transform: "幻形",
+  purify: "净化",
+  key: "开锁",
+  bait: "诱饵",
+  binding: "束缚",
+  consumable: "消耗品",
+};
+
+/**
+ * Get concise effect summary for Item. Uses effectSummary if present, else derives from effectType.
+ */
+export function getItemEffectSummary(item: Item | null | undefined): string | null {
+  if (!item || typeof item !== "object") return null;
+  if (item.effectSummary && item.effectSummary.trim()) return item.effectSummary.trim();
+  const t = item.effectType;
+  if (!t) return null;
+  if (t === "shield") return item.blockLethal && item.ruleKill ? "抵挡1次致命攻击或施加规则击杀" : "抵挡1次致命攻击";
+  if (t === "ruleKill") return "可对诡异施加规则类致命一击";
+  if (t === "tempStat" && item.tempStatEffect) {
+    const { stat, value } = item.tempStatEffect;
+    const s = STAT_LABELS[stat] ?? stat;
+    return value >= 0 ? `${s}+${value}` : `${s}${value}`;
+  }
+  if (t === "tempFavor") return `好感+${item.tempFavorEffect ?? "?"}`;
+  if (t === "transform") return "幻形为指定角色";
+  if (t === "purify") return "净化污染/驱散低阶诡异";
+  if (t === "key") return "开门/解锁";
+  if (t === "bait") return "吸引诡异注意，争取撤离";
+  if (t === "binding") return "束缚诡异短暂时间";
+  if (t === "consumable") return "一次性使用（恢复/修正属性）";
+  return EFFECT_TYPE_LABELS[t] ?? t;
+}
+
 /** Parchment has no stat requirements (tutorial item) */
 export const PARCHMENT_ID = "I-PARCHMENT";
 

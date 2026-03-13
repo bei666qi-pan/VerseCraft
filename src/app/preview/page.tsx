@@ -4,15 +4,12 @@ import { useRouter } from "next/navigation";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 
-const BASE_STAT = 3;
-const EXTRA_POINTS = 20;
-
 const DEFAULT_STATS = {
-  sanity: BASE_STAT + 5,
-  agility: BASE_STAT + 4,
-  luck: BASE_STAT + 4,
-  charm: BASE_STAT + 4,
-  background: BASE_STAT + 3,
+  sanity: 10,
+  agility: 8,
+  luck: 8,
+  charm: 7,
+  background: 7,
 };
 
 export default function PreviewLandingPage() {

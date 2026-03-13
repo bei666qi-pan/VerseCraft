@@ -220,6 +220,21 @@ export default function SettlementPage() {
     survivalHours
   );
 
+  const handleSubmit = useCallback(async () => {
+    if (hasUploadedRef.current) return;
+    hasUploadedRef.current = true;
+    const survivalTimeSeconds = Math.max(0, survivalHours * 3600);
+    const res = await submitGameRecord({
+      killedAnomalies: kills,
+      maxFloorScore: maxFloor,
+      survivalTimeSeconds,
+    });
+    if (res.success && res.onLeaderboard) {
+      setOnLeaderboardToast(true);
+      setTimeout(() => setOnLeaderboardToast(false), 5000);
+    }
+  }, [kills, maxFloor, survivalHours]);
+
   useEffect(() => {
     if (!mounted) return;
     void (async () => {
@@ -238,26 +253,6 @@ export default function SettlementPage() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [mounted]);
-
-  const handleSubmit = useCallback(async () => {
-    if (hasUploadedRef.current) return;
-    hasUploadedRef.current = true;
-    const survivalTimeSeconds = Math.max(0, survivalHours * 3600);
-    const res = await submitGameRecord({
-      killedAnomalies: kills,
-      maxFloorScore: maxFloor,
-      survivalTimeSeconds,
-    });
-    if (res.success && res.onLeaderboard) {
-      setOnLeaderboardToast(true);
-      setTimeout(() => setOnLeaderboardToast(false), 5000);
-    }
-  }, [kills, maxFloor, survivalHours]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    void handleSubmit();
-  }, [mounted, handleSubmit]);
 
   useEffect(() => {
     if (!mounted || hasAchievementPushedRef.current) return;

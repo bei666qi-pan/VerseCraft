@@ -1,11 +1,11 @@
 "use client";
 
-import { Activity, useEffect, useState } from "react";
+import { Activity, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Keyboard, List, Trophy, Volume2, VolumeX, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2, VolumeX, ChevronDown, ChevronUp } from "lucide-react";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
-import { canUseItem, formatStatRequirements } from "@/lib/registry/itemUtils";
+import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
 import { useGameStore, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { useGameStore as usePersistStore, type ActiveMenu } from "@/store/gameStore";
 import {
@@ -147,6 +147,85 @@ interface UnifiedMenuModalProps {
   onViewedTab?: (tab: "codex" | "warehouse" | "tasks") => void;
 }
 
+const RAPID_CLICK_WINDOW_MS = 600;
+const RAPID_CLICK_THRESHOLD = 3;
+const HOLD_DELAY_MS = 350;
+const REPEAT_INTERVAL_MS = 120;
+const ACCEL_INTERVAL_MS = 50;
+
+function useUpgradeStepper(
+  onUpgradeAttr: (attr: StatType) => void,
+  canUpgrade: (attr: StatType) => boolean,
+  stats: Record<StatType, number>
+) {
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clickTimes = useRef<number[]>([]);
+  const isRapid = useRef(false);
+  const canUpgradeRef = useRef(canUpgrade);
+  canUpgradeRef.current = canUpgrade;
+
+  const clearTimers = useCallback(() => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    if (repeatTimer.current) {
+      clearInterval(repeatTimer.current);
+      repeatTimer.current = null;
+    }
+  }, []);
+
+  const startHoldRepeat = useCallback(
+    (attr: StatType) => {
+      let stepCount = 0;
+      const doStep = () => {
+        if (!canUpgradeRef.current(attr)) {
+          clearTimers();
+          return;
+        }
+        onUpgradeAttr(attr);
+        stepCount++;
+      };
+      const initialInterval = isRapid.current ? ACCEL_INTERVAL_MS : REPEAT_INTERVAL_MS;
+      let intervalMs = initialInterval;
+      const tick = () => {
+        doStep();
+        if (stepCount >= 4 && intervalMs !== ACCEL_INTERVAL_MS) {
+          if (repeatTimer.current) clearInterval(repeatTimer.current);
+          intervalMs = ACCEL_INTERVAL_MS;
+          repeatTimer.current = setInterval(tick, intervalMs);
+        }
+      };
+      repeatTimer.current = setInterval(tick, intervalMs);
+    },
+    [onUpgradeAttr, clearTimers]
+  );
+
+  const handlePointerDown = useCallback(
+    (attr: StatType) => {
+      clearTimers();
+      const now = Date.now();
+      clickTimes.current = clickTimes.current.filter((t) => now - t < RAPID_CLICK_WINDOW_MS);
+      clickTimes.current.push(now);
+      isRapid.current = clickTimes.current.length >= RAPID_CLICK_THRESHOLD;
+      if (!canUpgradeRef.current(attr)) return;
+      onUpgradeAttr(attr);
+      holdTimer.current = setTimeout(() => {
+        holdTimer.current = null;
+        startHoldRepeat(attr);
+      }, HOLD_DELAY_MS);
+    },
+    [onUpgradeAttr, clearTimers, startHoldRepeat]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    clearTimers();
+  }, [clearTimers]);
+
+  return { handlePointerDown, handlePointerUp };
+}
+
 function StatBar({
   statName,
   value,
@@ -186,8 +265,6 @@ function SettingsPanel({
   setVolume,
   audioMuted,
   onToggleMute,
-  inputMode,
-  onToggleInputMode,
   onSaveAndExit,
   onAbandonAndDie,
 }: {
@@ -202,8 +279,6 @@ function SettingsPanel({
   setVolume: (v: number) => void;
   audioMuted: boolean;
   onToggleMute: () => void;
-  inputMode: "options" | "text";
-  onToggleInputMode: () => void;
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
 }) {
@@ -225,6 +300,7 @@ function SettingsPanel({
     if (cur >= 50) return false;
     return originium >= costPerPoint;
   };
+  const stepper = useUpgradeStepper(onUpgradeAttr, canUpgrade, stats);
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 overflow-y-auto max-h-[calc(100dvh-120px)]">
       <div>
@@ -271,7 +347,9 @@ function SettingsPanel({
                 <button
                   key={k}
                   type="button"
-                  onClick={() => onUpgradeAttr(k)}
+                  onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); stepper.handlePointerDown(k); }}
+                  onPointerUp={stepper.handlePointerUp}
+                  onPointerLeave={stepper.handlePointerUp}
                   disabled={!canUpgrade(k)}
                   className="min-h-[36px] rounded-lg border border-white/20 bg-white/5 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
                 >
@@ -288,31 +366,6 @@ function SettingsPanel({
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={onToggleInputMode}
-            className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/20 bg-gradient-to-b from-white/15 to-white/5 px-4 sm:px-5 py-3 sm:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98] touch-manipulation"
-          >
-            <span className="text-sm font-medium tracking-wide text-slate-100">
-              {inputMode === "options" ? "当前：选项模式" : "当前：手动输入"}
-            </span>
-            <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/20 px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
-              {inputMode === "options" ? (
-                <>
-                  <Keyboard size={14} strokeWidth={2} />
-                  切换到手动输入
-                </>
-              ) : (
-                <>
-                  <List size={14} strokeWidth={2} />
-                  切换到选项
-                </>
-              )}
-            </span>
-          </button>
         </div>
 
         <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
@@ -469,6 +522,12 @@ function BackpackPanel({
               {selectedItem.tier ?? "D"}
             </p>
             <div className="mt-6 space-y-4">
+              {getItemEffectSummary(selectedItem) && (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+                  <span className="text-[10px] uppercase tracking-wider text-emerald-400">效果</span>
+                  <p className="mt-0.5 text-sm font-medium text-emerald-200">{getItemEffectSummary(selectedItem)}</p>
+                </div>
+              )}
               <div>
                 <span className="text-xs text-slate-500">描述</span>
                 <p className="mt-1 text-sm leading-relaxed text-slate-300">{selectedItem.description ?? ""}</p>
@@ -803,17 +862,9 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
 
   const volume = usePersistStore((s) => s.volume);
   const setVolume = usePersistStore((s) => s.setVolume);
-  const inputMode = usePersistStore((s) => s.inputMode ?? "options");
   const achievementRecords = useAchievementsStore((s) => s.records ?? []);
-  const setPersistInputMode = usePersistStore((s) => s.setInputMode);
-  const toggleInputMode = useGameStore((s) => s.toggleInputMode);
 
   const currentTab = activeMenu ?? "settings";
-
-  function handleToggleInputMode() {
-    toggleInputMode();
-    setPersistInputMode(inputMode === "options" ? "text" : "options");
-  }
 
   function handleSaveAndExit() {
     useGameStore.getState().saveGame("auto_save");
@@ -903,8 +954,6 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               setVolume={setVolume}
               audioMuted={audioMuted}
               onToggleMute={onToggleMute}
-              inputMode={inputMode}
-              onToggleInputMode={handleToggleInputMode}
               onSaveAndExit={handleSaveAndExit}
               onAbandonAndDie={handleAbandonAndDie}
             />

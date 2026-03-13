@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Settings } from "lucide-react";
+import { Settings, Keyboard, List } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
@@ -105,11 +105,11 @@ const STAT_LABELS: Record<StatType, string> = {
 };
 
 const FALLBACK_STATS: Record<StatType, number> = {
-  sanity: 3,
-  agility: 3,
-  luck: 3,
-  charm: 3,
-  background: 3,
+  sanity: 10,
+  agility: 0,
+  luck: 0,
+  charm: 0,
+  background: 0,
 };
 
 const NPC_NAME_BY_ID = new Map(NPCS.map((npc) => [npc.id, npc.name]));
@@ -631,6 +631,8 @@ function PlayContent() {
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const activeMenu = usePersistStore((s) => s.activeMenu);
   const setActiveMenu = usePersistStore((s) => s.setActiveMenu);
+  const toggleInputMode = useGameStore((s) => s.toggleInputMode);
+  const setPersistInputMode = usePersistStore((s) => s.setInputMode);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -1330,8 +1332,10 @@ function PlayContent() {
         break;
       }
       case "生命汇源": {
+        const cur = useGameStore.getState().stats?.sanity ?? 0;
         const hist = useGameStore.getState().historicalMaxSanity ?? 50;
-        setStats({ sanity: hist });
+        const recover = Math.min(20, hist - cur);
+        setStats({ sanity: cur + recover });
         break;
       }
       case "洞察之眼": {
@@ -1529,6 +1533,26 @@ function PlayContent() {
                       叙事主视窗
                     </h2>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleInputMode();
+                      setPersistInputMode(inputMode === "options" ? "text" : "options");
+                    }}
+                    className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
+                    aria-label={inputMode === "options" ? "切换到手动输入" : "切换到选项"}
+                  >
+                    <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
+                      <div className="absolute -inset-0.5 rounded-full bg-slate-300/60 blur-sm animate-pulse" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-200 border-t-white animate-[spin_1.2s_linear_infinite]" />
+                      <div className="absolute inset-0.5 rounded-full bg-white/95 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_12px_rgba(255,255,255,0.6)]" />
+                      {inputMode === "options" ? (
+                        <Keyboard className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
+                      ) : (
+                        <List className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
+                      )}
+                    </div>
+                  </button>
                   <div className="shrink-0 min-w-0">
                     <div className="relative group">
                       {talent && talentCdLeft === 0 && !isStreaming && (
