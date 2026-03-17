@@ -23,11 +23,11 @@ const FALLBACK_STATS: Record<StatType, number> = {
   background: 0,
 };
 const STAT_LABELS: Record<StatType, string> = {
-  sanity: "理智",
-  agility: "敏捷",
-  luck: "幸运",
-  charm: "魅力",
-  background: "出身",
+  sanity: "精神锚点",
+  agility: "思维敏锐度",
+  luck: "灵感直觉",
+  charm: "表达感染力",
+  background: "创作底色",
 };
 const STAT_MAX = 50;
 
@@ -120,7 +120,7 @@ const TAB_ICONS: Record<NonNullable<ActiveMenu>, React.ComponentType<{ className
 
 const TABS: { id: NonNullable<ActiveMenu>; label: string }[] = [
   { id: "settings", label: "设置" },
-  { id: "backpack", label: "行囊" },
+  { id: "backpack", label: "灵感手记" },
   { id: "codex", label: "图鉴" },
   { id: "warehouse", label: "仓库" },
   { id: "tasks", label: "任务" },
@@ -304,7 +304,7 @@ function SettingsPanel({
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 overflow-y-auto max-h-[calc(100dvh-120px)]">
       <div>
-        <h3 className="mb-3 sm:mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">属性与坐标</h3>
+        <h3 className="mb-3 sm:mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">叙事维度与坐标</h3>
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
           <div className="flex-1 min-w-0 space-y-2">
             {STAT_ORDER.map((k) => (
@@ -338,7 +338,7 @@ function SettingsPanel({
               </button>
               {showOriginiumDesc && (
                 <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
-                  加点：总属性&lt;20 需2原石/点，≥20 需{costPerPoint}原石/点。理智低于历史最高时，1原石=1理智。
+                  潜能赋予：总叙事维度&lt;20 需2原石/点，≥20 需{costPerPoint}原石/点。精神锚点低于历史最高时，1原石=1精神锚点。
                 </p>
               )}
             </div>
@@ -362,7 +362,7 @@ function SettingsPanel({
                 disabled={!canRestoreSanity}
                 className="min-h-[36px] col-span-2 sm:col-span-1 rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1.5 text-xs text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
               >
-                回理智 (1原石)
+                恢复精神锚点 (1原石)
               </button>
             </div>
           </div>
@@ -425,14 +425,14 @@ function SettingsPanel({
           onClick={onSaveAndExit}
           className="min-h-[44px] rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)] touch-manipulation"
         >
-          保存并退出
+          保存并封卷
         </button>
         <button
           type="button"
           onClick={onAbandonAndDie}
           className="min-h-[44px] rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)] touch-manipulation"
         >
-          直接退出
+          直接封卷
         </button>
       </div>
     </div>
@@ -469,7 +469,7 @@ function BackpackPanel({
       <div className="flex w-2/5 flex-col border-r border-white/10">
         <div className="border-b border-white/10 px-4 py-3">
           <h3 className="text-sm font-semibold tracking-widest text-slate-400">
-            行囊
+            灵感手记
           </h3>
           <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-white/10 to-transparent border border-white/10 rounded-xl mb-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
             <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
@@ -540,7 +540,7 @@ function BackpackPanel({
               )}
               {selectedItem?.statBonus && typeof selectedItem.statBonus === "object" && Object.keys(selectedItem.statBonus).length > 0 && (
                 <div>
-                  <span className="text-xs text-slate-500">属性</span>
+                  <span className="text-xs text-slate-500">叙事维度</span>
                   <p className="mt-1 text-sm text-indigo-300">
                     {Object.entries(selectedItem.statBonus)
                       .map(([k, v]) => `${STAT_LABELS[k as StatType] ?? k}: ${v}`)
@@ -558,7 +558,7 @@ function BackpackPanel({
                     title={!useCheck.ok ? useCheck.reason : undefined}
                     className="mt-4 w-full rounded-xl border border-indigo-400/40 bg-indigo-500/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500/40 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {useCheck.ok ? "使用该物品" : useCheck.reason ?? "无法使用"}
+                    {useCheck.ok ? "消耗灵感" : useCheck.reason ?? "无法消耗"}
                   </button>
                 );
               })()}
@@ -663,7 +663,7 @@ function CodexPanel({
               </div>
               {typeof selectedEntry.combatPower === "number" && (
                 <div>
-                  <span className="text-xs text-slate-500">战斗力</span>
+                  <span className="text-xs text-slate-500">剧情张力</span>
                   <p className="mt-1 font-semibold text-slate-200">{selectedEntry.combatPower}</p>
                 </div>
               )}
@@ -708,7 +708,7 @@ function WarehousePanel({ warehouse }: { warehouse: WarehouseItem[] }) {
   return (
     <div className="flex h-full flex-col overflow-hidden p-6">
       <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">仓库</h3>
-      <p className="mb-3 text-xs text-slate-500">物品存放于此，无属性要求。使用时有正向作用与对应副作用，收益略大于副作用。</p>
+      <p className="mb-3 text-xs text-slate-500">物品存放于此，无叙事维度要求。使用时有正向作用与对应副作用，收益略大于副作用。</p>
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
         {(warehouse ?? []).map((w, idx) => (
           <button
@@ -762,10 +762,10 @@ function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
   return (
     <div className="p-6">
       <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">历史成就</h3>
-      <p className="mb-4 text-xs text-slate-500">展示评级最高的 5 次游戏记录</p>
+      <p className="mb-4 text-xs text-slate-500">展示评级最高的 5 次封卷记录</p>
       <div className="max-h-[55vh] space-y-4 overflow-y-auto">
         {records.length === 0 ? (
-          <p className="py-8 text-center text-xs text-slate-500">暂无成就记录。完成游戏结算后可在此查看。</p>
+          <p className="py-8 text-center text-xs text-slate-500">暂无成就记录。完成封卷后可在此查看。</p>
         ) : (
           records.map((r, idx) => (
             <div

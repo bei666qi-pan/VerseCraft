@@ -28,12 +28,12 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
 
   const [visible, setVisible] = useState(false);
 
-  // 记录访问次数：每次组件挂载视为一次打开游戏
+  // 记录访问次数：每次组件挂载视为一次打开创作工坊
   useEffect(() => {
     bumpVisitCount();
   }, [bumpVisitCount]);
 
-  // 在 /play 页面累积游玩时长
+  // 在 /play 页面累积执笔时长
   useEffect(() => {
     if (!isGuest) return;
     const inPlayRoute = pathname?.startsWith("/play");

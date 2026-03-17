@@ -164,6 +164,9 @@ interface GameState {
   isGameStarted: boolean;
   /** BGM track key (bgm_1_calm by default). Not persisted to avoid write amplification; restored from save on load. */
   currentBgm: string;
+  /** 安全降级：当上游安全拦截/流破损导致解析失败时，强制覆盖叙事并扣理智 */
+  securityFallback: { active: boolean; message: string; at: number; reason?: string };
+  triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
   setBgm: (track: string) => void;
   setUser: (user: AuthUser | null) => void;
@@ -334,9 +337,24 @@ export const useGameStore = create<GameState>()(
       intrusionFlashUntil: 0,
       isGameStarted: false,
       currentBgm: "bgm_1_calm",
+      securityFallback: { active: false, message: "", at: 0 },
 
       setHydrated: (state) => set({ isHydrated: state }),
       setBgm: (track) => set({ currentBgm: track }),
+      triggerSecurityFallback: (reason) =>
+        set((s) => {
+          const curSanity = s.stats?.sanity ?? 0;
+          const nextSanity = Math.max(0, curSanity - 1);
+          return {
+            securityFallback: {
+              active: true,
+              message: "{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}",
+              at: Date.now(),
+              reason,
+            },
+            stats: { ...(s.stats ?? DEFAULT_STATS), sanity: nextSanity },
+          };
+        }),
       setUser: (user) =>
         set((s) => ({
           user,

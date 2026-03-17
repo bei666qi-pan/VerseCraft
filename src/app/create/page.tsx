@@ -12,32 +12,32 @@ type GenderOption = "男" | "女" | "其他";
 const PERSONALITY_RE = /^[\u4e00-\u9fa5]{2,6}$/;
 
 const STAT_LABELS: Record<StatType, string> = {
-  sanity: "理智",
-  agility: "敏捷",
-  luck: "幸运",
-  charm: "魅力",
-  background: "出身",
+  sanity: "精神锚点",
+  agility: "思维敏锐度",
+  luck: "灵感直觉",
+  charm: "表达感染力",
+  background: "创作底色",
 };
 
 const STAT_DESCRIPTIONS: Record<StatType, string[]> = {
   sanity: [
-    "血条，归零即死。越高越难见鬼。",
-    ">20 质变：可看破隐藏道具与规则。",
+    "精神稳定度的锚点。越稳，越能抵抗叙事侵蚀。",
+    ">20 质变：更容易捕捉隐藏线索与规则裂缝。",
   ],
   agility: [
-    "跑路与闪避。越高越容易从诡异手中逃脱。",
-    ">20 质变：行动有概率不消耗时间。",
+    "思维反应与叙事转折速度。越高，越容易在危机中找到转机。",
+    ">20 质变：有概率触发“灵感闪回”，本轮不消耗时间。",
   ],
   luck: [
-    "欧非体质。越高越容易捡到好货。",
-    ">20 质变：探索有机会直接获得 A/S 级线索。",
+    "灵感与偶然性偏向。越高，越容易得到关键提示。",
+    ">20 质变：探索有机会直接获得更高阶线索。",
   ],
   charm: [
-    "交涉力。越高 NPC 越友善，交易越划算。",
-    ">20 质变：诡异可能短暂放过你。",
+    "表达感染力。越高，越可能改变对话走向。",
+    ">20 质变：某些对峙会出现“转圜窗口”。",
   ],
   background: [
-    "出身>20时，每小时额外+2%获得原石概率（基础10%/时）。初始原石=10+出身。",
+    "创作底色会影响初始资源与灵感积累倾向。初始原石=10+创作底色。",
   ],
 };
 
@@ -56,12 +56,12 @@ const TALENTS: readonly {
   cd: string;
   desc: string;
 }[] = [
-  { key: "时间回溯", title: "时间回溯", cd: "CD：6 小时", desc: "倒流1小时，移除最后两条对话。" },
-  { key: "命运馈赠", title: "命运馈赠", cd: "CD：10 小时", desc: "随机抢夺世界里的一个道具。道具均有主人，在主人面前使用会被察觉。" },
-  { key: "主角光环", title: "主角光环", cd: "CD：8 小时", desc: "3小时内免疫死亡，触发1次必幸事件。" },
-  { key: "生命汇源", title: "生命汇源", cd: "CD：10 小时", desc: "一次最多恢复 20 理智。" },
-  { key: "洞察之眼", title: "洞察之眼", cd: "CD：8 小时", desc: "叙事中标出一个必定收益的选择或逃生路线。" },
-  { key: "丧钟回响", title: "丧钟回响", cd: "CD：30 小时", desc: "强制处决一名恶意 NPC 或诡异（若存在）。夜读老人与深渊守门人免疫。" },
+  { key: "时间回溯", title: "时间回溯", cd: "冷却：6 小时", desc: "回溯 1 小时，移除最后两条文本记录。" },
+  { key: "命运馈赠", title: "命运馈赠", cd: "冷却：10 小时", desc: "在不改动底层规则的前提下，触发一次高风险的灵感夺取。" },
+  { key: "主角光环", title: "主角光环", cd: "冷却：8 小时", desc: "短时间内大幅提高“叙事容错”，并触发 1 次确定性收益事件。" },
+  { key: "生命汇源", title: "生命汇源", cd: "冷却：10 小时", desc: "一次最多恢复 20 点精神锚点。" },
+  { key: "洞察之眼", title: "洞察之眼", cd: "冷却：8 小时", desc: "在叙事中标记一条高确定性的推进路径。" },
+  { key: "丧钟回响", title: "丧钟回响", cd: "冷却：30 小时", desc: "对当前场景中的恶意实体施加强制终止（部分存在免疫）。" },
 ] as const;
 
 function baseSum(): number {
@@ -268,6 +268,7 @@ export default function CreatePage() {
             <h2 className="text-base font-semibold text-slate-800">基础档案</h2>
             <button
               type="button"
+              aria-label="一键注册角色（仅生成本地角色档案，不生成账号）"
               onClick={() => {
                 const namePool = ["黎川", "苏木", "阿夜", "行者", "白葵", "祁夜"];
                 const personalityPool = ["冷静", "冲动", "多疑", "乐观", "谨慎", "偏执"];
@@ -298,14 +299,14 @@ export default function CreatePage() {
                 setStats(base);
                 setSelectedTalent(randomTalent);
               }}
-              className="group relative hidden sm:inline-flex items-center gap-3 rounded-full border border-white/15 bg-slate-900/40 px-4 py-2 text-xs font-semibold text-slate-50 shadow-[0_0_30px_rgba(15,23,42,0.7)] backdrop-blur-2xl transition-all duration-300 hover:scale-105 hover:border-cyan-300/70 hover:shadow-[0_0_45px_rgba(56,189,248,0.85)]"
+              className="group relative inline-flex items-center gap-3 rounded-full border border-white/15 bg-slate-900/40 px-3 py-2 text-xs font-semibold text-slate-50 shadow-[0_0_30px_rgba(15,23,42,0.7)] backdrop-blur-2xl transition-all duration-300 hover:scale-105 hover:border-cyan-300/70 hover:shadow-[0_0_45px_rgba(56,189,248,0.85)] sm:px-4"
             >
               <div className="relative flex h-8 w-8 items-center justify-center">
                 <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
                 <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
               </div>
-              <span className="relative tracking-[0.25em]">一键注册</span>
+              <span className="relative tracking-[0.18em] sm:tracking-[0.25em]">一键注册角色</span>
             </button>
           </div>
 
@@ -367,7 +368,7 @@ export default function CreatePage() {
               />
               {!personalityValid && personality.length > 0 ? (
                 <p className="text-xs text-red-500">
-                  必须为 2-6 个中文字符，深渊 DM 将严格校验。
+                  必须为 2-6 个中文字符，主笔将严格校验。
                 </p>
               ) : null}
             </label>
@@ -377,9 +378,9 @@ export default function CreatePage() {
         <section className={`relative mt-8 ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-800">属性加点</h2>
+              <h2 className="text-base font-semibold text-slate-800">叙事维度 · 潜能赋予</h2>
               <p className="mt-1 text-sm text-slate-600">
-                可用点数 {EXTRA_POINTS}，理智初值 10，其余 0。必须刚好用完。初始原石=10+出身。
+                可用点数 {EXTRA_POINTS}，精神锚点初值 10，其余 0。必须刚好用完。初始原石=10+创作底色。
               </p>
             </div>
             <div className={`rounded-xl ${GLASS_INPUT} py-3`}>

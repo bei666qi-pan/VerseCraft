@@ -5,14 +5,6 @@ import { sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
 
-type KillRow = {
-  userId: string;
-  userName: string;
-  killedAnomalies: number;
-  survivalTimeSeconds: number;
-  rankPosition: number;
-};
-
 type ExploreRow = {
   userId: string;
   userName: string;
@@ -56,23 +48,6 @@ function unwrapRows<T extends RawRow>(result: unknown): T[] {
   }
   return [];
 }
-
-export type KillLeaderboardResult = {
-  top10: Array<{
-    userId: string;
-    userName: string;
-    killedAnomalies: number;
-    survivalTimeSeconds: number;
-    rank: number;
-  }>;
-  currentUser: {
-    userId: string;
-    userName: string;
-    killedAnomalies: number;
-    survivalTimeSeconds: number;
-    rank: number;
-  } | null;
-};
 
 export type ExplorationLeaderboardResult = {
   top10: Array<{
@@ -125,141 +100,42 @@ export async function submitGameRecord(input: {
     VALUES (${userId}, ${killedAnomalies}, ${maxFloorScore}, ${survivalTimeSeconds}, NOW())
   `);
 
-  const qualifiesKill = killedAnomalies >= 1;
   const qualifiesExplore = maxFloorScore >= 1;
-  if (!qualifiesKill && !qualifiesExplore) {
+  if (!qualifiesExplore) {
     return { success: true, onLeaderboard: false };
   }
 
-  const [killRes, exploreRes] = await Promise.all([
-    qualifiesKill ? getKillLeaderboard(userId) : Promise.resolve({ currentUser: null }),
-    qualifiesExplore ? getExplorationLeaderboard(userId) : Promise.resolve({ currentUser: null }),
-  ]);
-  const inKillTop10 = killRes.currentUser != null && killRes.currentUser.rank <= 10;
-  const inExploreTop10 = exploreRes.currentUser != null && exploreRes.currentUser.rank <= 10;
-  const onLeaderboard = inKillTop10 || inExploreTop10;
+  const exploreRes = await getExplorationLeaderboard(userId);
+  const onLeaderboard = exploreRes.currentUser != null && exploreRes.currentUser.rank <= 10;
 
   revalidatePath("/");
 
   return { success: true, onLeaderboard };
 }
 
-export async function getKillLeaderboard(userId?: string): Promise<KillLeaderboardResult> {
-  const topResult = await db.execute(sql`
-    WITH ranked AS (
-      SELECT
-        gr.user_id AS userId,
-        u.name AS userName,
-        MAX(gr.killed_anomalies) AS killedAnomalies,
-        MIN(gr.survival_time_seconds) AS survivalTimeSeconds,
-        RANK() OVER (
-          ORDER BY MAX(gr.killed_anomalies) DESC, MIN(gr.survival_time_seconds) ASC
-        ) AS rankPosition
-      FROM game_records gr
-      INNER JOIN users u ON u.id = gr.user_id
-      WHERE gr.killed_anomalies > 0
-      GROUP BY gr.user_id, u.name
-    )
-    SELECT userId, userName, killedAnomalies, survivalTimeSeconds, rankPosition
-    FROM ranked
-    ORDER BY rankPosition ASC
-    LIMIT 10
-  `);
-  const topRows = unwrapRows<KillRow>(topResult);
-
-  const currentResult =
-    userId && userId.trim()
-      ? await db.execute(sql`
-          WITH ranked AS (
-            SELECT
-              gr.user_id AS userId,
-              u.name AS userName,
-              MAX(gr.killed_anomalies) AS killedAnomalies,
-              MIN(gr.survival_time_seconds) AS survivalTimeSeconds,
-              RANK() OVER (
-                ORDER BY MAX(gr.killed_anomalies) DESC, MIN(gr.survival_time_seconds) ASC
-              ) AS rankPosition
-            FROM game_records gr
-            INNER JOIN users u ON u.id = gr.user_id
-            WHERE gr.killed_anomalies > 0
-            GROUP BY gr.user_id, u.name
-          )
-          SELECT userId, userName, killedAnomalies, survivalTimeSeconds, rankPosition
-          FROM ranked
-          WHERE userId = ${userId}
-          LIMIT 1
-        `)
-      : [];
-  const currentRows = unwrapRows<KillRow>(currentResult);
-
-  const normalizedTop = topRows
-    .map((row) => {
-      const safeRow = row as unknown as Record<string, unknown>;
-      return {
-        userId: pickString(safeRow, ["userId", "user_id", "userid"]),
-        userName: pickString(safeRow, ["userName", "user_name", "username"]),
-        killedAnomalies: pickNumber(safeRow, [
-          "killedAnomalies",
-          "killed_anomalies",
-          "killedanomalies",
-        ]),
-        survivalTimeSeconds: pickNumber(safeRow, [
-          "survivalTimeSeconds",
-          "survival_time_seconds",
-          "survivaltimeseconds",
-        ]),
-        rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
-      };
-    })
-    .filter((row) => row.userId && row.userName && row.rank > 0 && row.killedAnomalies > 0)
-    .slice(0, 10);
-
-  const normalizedCurrent = currentRows[0]
-    ? (() => {
-        const safeRow = currentRows[0] as unknown as Record<string, unknown>;
-        const parsed = {
-          userId: pickString(safeRow, ["userId", "user_id", "userid"]),
-          userName: pickString(safeRow, ["userName", "user_name", "username"]),
-          killedAnomalies: pickNumber(safeRow, [
-            "killedAnomalies",
-            "killed_anomalies",
-            "killedanomalies",
-          ]),
-          survivalTimeSeconds: pickNumber(safeRow, [
-            "survivalTimeSeconds",
-            "survival_time_seconds",
-            "survivaltimeseconds",
-          ]),
-          rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
-        };
-        if (!parsed.userId || !parsed.userName || parsed.rank <= 0 || parsed.killedAnomalies <= 0) {
-          return null;
-        }
-        return parsed;
-      })()
-    : null;
-
-  return {
-    top10: normalizedTop,
-    currentUser: normalizedCurrent,
-  };
-}
-
 export async function getExplorationLeaderboard(userId?: string): Promise<ExplorationLeaderboardResult> {
   const topResult = await db.execute(sql`
-    WITH ranked AS (
+    WITH agg AS (
       SELECT
         gr.user_id AS userId,
         u.name AS userName,
         MAX(gr.max_floor_score) AS maxFloorScore,
-        MIN(gr.survival_time_seconds) AS survivalTimeSeconds,
-        RANK() OVER (
-          ORDER BY MAX(gr.max_floor_score) DESC, MIN(gr.survival_time_seconds) ASC
-        ) AS rankPosition
+        MIN(gr.survival_time_seconds) AS survivalTimeSeconds
       FROM game_records gr
       INNER JOIN users u ON u.id = gr.user_id
       WHERE gr.max_floor_score > 0
       GROUP BY gr.user_id, u.name
+    ),
+    ranked AS (
+      SELECT
+        userId,
+        userName,
+        maxFloorScore,
+        survivalTimeSeconds,
+        RANK() OVER (
+          ORDER BY maxFloorScore DESC, survivalTimeSeconds ASC
+        ) AS rankPosition
+      FROM agg
     )
     SELECT userId, userName, maxFloorScore, survivalTimeSeconds, rankPosition
     FROM ranked
@@ -271,19 +147,27 @@ export async function getExplorationLeaderboard(userId?: string): Promise<Explor
   const currentResult =
     userId && userId.trim()
       ? await db.execute(sql`
-          WITH ranked AS (
+          WITH agg AS (
             SELECT
               gr.user_id AS userId,
               u.name AS userName,
               MAX(gr.max_floor_score) AS maxFloorScore,
-              MIN(gr.survival_time_seconds) AS survivalTimeSeconds,
-              RANK() OVER (
-                ORDER BY MAX(gr.max_floor_score) DESC, MIN(gr.survival_time_seconds) ASC
-              ) AS rankPosition
+              MIN(gr.survival_time_seconds) AS survivalTimeSeconds
             FROM game_records gr
             INNER JOIN users u ON u.id = gr.user_id
             WHERE gr.max_floor_score > 0
             GROUP BY gr.user_id, u.name
+          ),
+          ranked AS (
+            SELECT
+              userId,
+              userName,
+              maxFloorScore,
+              survivalTimeSeconds,
+              RANK() OVER (
+                ORDER BY maxFloorScore DESC, survivalTimeSeconds ASC
+              ) AS rankPosition
+            FROM agg
           )
           SELECT userId, userName, maxFloorScore, survivalTimeSeconds, rankPosition
           FROM ranked

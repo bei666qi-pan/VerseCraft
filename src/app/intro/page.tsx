@@ -6,7 +6,7 @@ import { GlassCtaButton } from "@/components/GlassCtaButton";
 
 const RULES: { title: string }[] = [
   { title: "诡异类型世界，微恐，难度高" },
-  { title: "左上角的设置里是游戏玩法的入口" },
+  { title: "左上角的设置里是「一切创作设定」的入口" },
   { title: "右上角的键盘按钮可切换至手动输入" },
 ];
 
@@ -60,7 +60,7 @@ export default function IntroPage() {
 
           <footer className="mt-7 flex flex-col items-center gap-3 sm:mt-8">
             <p className="text-xs text-slate-500 sm:text-sm">
-              祝各位内测用户游戏愉快。
+              祝各位内测用户执笔顺利。
             </p>
             <GlassCtaButton
               label="创建形象"

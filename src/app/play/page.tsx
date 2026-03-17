@@ -95,11 +95,11 @@ const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string }> = {
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
 const STAT_LABELS: Record<StatType, string> = {
-  sanity: "理智",
-  agility: "敏捷",
-  luck: "幸运",
-  charm: "魅力",
-  background: "出身",
+  sanity: "精神锚点",
+  agility: "思维敏锐度",
+  luck: "灵感直觉",
+  charm: "表达感染力",
+  background: "创作底色",
 };
 
 const FALLBACK_STATS: Record<StatType, number> = {
@@ -218,7 +218,41 @@ function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
   try {
     const safeText = typeof text === "string" ? text.slice(0, 15000) : "";
     const plainOnly = options?.plainOnly ?? false;
-    const normalized = safeText.replace(/\{\{blood\}\}/gi, "{{BLOOD}}").replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
+    const localized = (() => {
+      try {
+        if (!safeText) return safeText;
+        // 展示级“平台化”净化：不影响底层状态与协议，仅影响读者看到的文本
+        const normalizePlatformWords = (s: string) => {
+          let out = s;
+          out = out.replace(/游戏玩法/g, "创作设定");
+          out = out.replace(/游戏/g, "创作");
+          out = out.replace(/属性面板/g, "叙事维度");
+          out = out.replace(/属性/g, "叙事维度");
+          out = out.replace(/加点/g, "潜能赋予");
+          out = out.replace(/理智值\/生命值|理智值|生命值|理智/g, "精神锚点");
+          out = out.replace(/敏捷/g, "思维敏锐度");
+          out = out.replace(/幸运/g, "灵感直觉");
+          out = out.replace(/战斗力/g, "剧情张力");
+          out = out.replace(/背包|行囊|道具/g, "灵感手记");
+          out = out.replace(/使用道具/g, "消耗灵感");
+          return out;
+        };
+        const base = normalizePlatformWords(safeText);
+        const keys = Object.keys(LOCATION_LABELS ?? {});
+        if (keys.length === 0) return safeText;
+        keys.sort((a, b) => b.length - a.length);
+        let out = base;
+        for (const k of keys) {
+          const zh = LOCATION_LABELS[k];
+          if (!zh) continue;
+          out = out.split(k).join(zh);
+        }
+        return out;
+      } catch {
+        return safeText;
+      }
+    })();
+    const normalized = localized.replace(/\{\{blood\}\}/gi, "{{BLOOD}}").replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
     const stripOrphans = (s: string) =>
       s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "").replace(/\*\*/g, "");
     if (plainOnly) {
@@ -395,7 +429,7 @@ function tryParseDM(raw: string): DMJson | null {
     parsedData = JSON.parse(cleanContent) as DMJson;
   } catch (e) {
     console.error("JSON Parsing Failed, raw content:", raw);
-    return FALLBACK_DM;
+    return null;
   }
 
   if (
@@ -406,7 +440,7 @@ function tryParseDM(raw: string): DMJson | null {
   ) {
     return parsedData;
   }
-  return FALLBACK_DM;
+  return null;
 }
 
 function ensureRuntimeActions() {
@@ -479,7 +513,7 @@ function MobileStatsPanel({
         className="flex w-full items-center justify-between px-4 py-3 text-left"
       >
         <span className={`text-sm font-semibold ${isDarkMoon ? "text-red-200" : "text-slate-300"}`}>
-          理智 {stats?.sanity ?? 0}/{STAT_MAX}
+          精神锚点 {stats?.sanity ?? 0}/{STAT_MAX}
         </span>
         <span className={`text-xs ${isDarkMoon ? "text-red-300/80" : "text-slate-400"}`}>
           {expanded ? "收起" : "展开"}
@@ -732,12 +766,18 @@ const LOCAL_FALLBACK_OPENING =
     onFrameScroll
   );
 
-  // 仅保留助手叙事日志，供正文渲染与绿字提取使用
-  const displayMessages = useMemo(() => {
-    const assistantOnly = (logs ?? [])
+  const displayEntries = useMemo(() => {
+    return (logs ?? [])
+      // 玩家侧仅展示小说式叙事：不渲染用户输入的具体行动文本
+      .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
+      .map((l) => ({ role: "assistant" as const, content: String(l.content) }));
+  }, [logs]);
+
+  // 仅保留助手叙事日志，供绿字提取与最新助手文本推断使用
+  const assistantOnlyMessages = useMemo(() => {
+    return (logs ?? [])
       .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
       .map((l) => String(l.content));
-    return assistantOnly;
   }, [logs]);
 
   const latestAssistantRaw = useMemo(() => {
@@ -747,9 +787,9 @@ const LOCAL_FALLBACK_OPENING =
         : narrativeRef.current ?? "";
     }
     if (liveNarrative) return liveNarrative;
-    if (displayMessages.length > 0) return displayMessages[displayMessages.length - 1] ?? "";
+    if (assistantOnlyMessages.length > 0) return assistantOnlyMessages[assistantOnlyMessages.length - 1] ?? "";
     return "";
-  }, [isStreaming, smoothNarrative, liveNarrative, displayMessages]);
+  }, [isStreaming, smoothNarrative, liveNarrative, assistantOnlyMessages]);
 
   const greenTips = useMemo(() => extractGreenTips(latestAssistantRaw), [latestAssistantRaw]);
 
@@ -863,7 +903,7 @@ const LOCAL_FALLBACK_OPENING =
     // 仅在还没有任何助手叙事时触发一次 300 字开场白
     if (turn > 0) return;
     hasTriggeredOpening.current = true;
-    void sendAction(OPENING_ACTION, true);
+    void sendAction(OPENING_ACTION, true, false, true);
   }, [isHydrated, isStreaming]);
 
   // 后端长时间无响应或前几次失败时，本地兜底注入一段开场白，避免玩家看到纯黑屏
@@ -877,11 +917,44 @@ const LOCAL_FALLBACK_OPENING =
       if (hasAssistant) return;
       // 仅在完全没有助手叙事时注入一次本地开场白
       state.pushLog({ role: "assistant", content: LOCAL_FALLBACK_OPENING });
+
+      // 开场兜底叙事也必须配套给出可点击选项（仅写 UI 层文案，不改任何底层机制）
+      const safeDefaultOptions = [
+        "查看周围环境",
+        "检查背包与随身物品",
+        "尝试与附近原住民搭话",
+        "谨慎前往下一处房间",
+      ];
+      setCurrentOptions(safeDefaultOptions);
+      setPersistCurrentOptions(safeDefaultOptions);
     }, 8000);
     return () => {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     };
   }, [isHydrated]);
+
+  // 兜底：若开场叙事已出现但选项为空，补齐 4 个默认选项（避免首次进入看到“无选项”）
+  const hasSeededOpeningOptions = useRef(false);
+  useEffect(() => {
+    if (!isHydrated || isStreaming) return;
+    if (hasSeededOpeningOptions.current) return;
+    const state = useGameStore.getState();
+    const logsNow = state.logs ?? [];
+    const hasAssistant = logsNow.some((l) => l && l.role === "assistant");
+    if (!hasAssistant) return;
+    if (inputMode !== "options") return;
+    if (currentOptions.length > 0) return;
+
+    hasSeededOpeningOptions.current = true;
+    const safeDefaultOptions = [
+      "查看周围环境",
+      "检查背包与随身物品",
+      "尝试与附近原住民搭话",
+      "谨慎前往下一处房间",
+    ];
+    setCurrentOptions(safeDefaultOptions);
+    setPersistCurrentOptions(safeDefaultOptions);
+  }, [currentOptions.length, inputMode, isHydrated, isStreaming, setCurrentOptions, setPersistCurrentOptions]);
 
   useEffect(() => {
     if (
@@ -940,7 +1013,8 @@ const LOCAL_FALLBACK_OPENING =
   async function sendAction(
     action: string,
     bypassLengthCheck?: boolean,
-    isResume?: boolean
+    isResume?: boolean,
+    isSystemAction?: boolean
   ) {
     if (isStreaming) return;
     const currentState = useGameStore.getState();
@@ -962,7 +1036,7 @@ const LOCAL_FALLBACK_OPENING =
     setPendingHallucinationCheck(false);
     const shouldApplyHallucination = prevPending && sanityAtStart < 20 && Math.random() < 0.3;
 
-    if (!isResume) {
+    if (!isResume && !isSystemAction) {
       useGameStore.getState().pushLog({ role: "user", content: trimmed });
       if (currentState.isGuest) {
         incrementDialogueCount();
@@ -970,13 +1044,16 @@ const LOCAL_FALLBACK_OPENING =
     }
 
     const history = useGameStore.getState().logs ?? [];
-    const messages: ChatMessage[] = history.map((l, idx) => {
-      const isLastUser = idx === history.length - 1 && l.role === "user";
-      return {
-        role: l.role as ChatRole,
-        content: isLastUser ? trimmed : l.content,
-      };
-    });
+    const baseMessages: ChatMessage[] = history
+      .filter((l) => l && (l.role === "user" || l.role === "assistant"))
+      .map((l) => ({ role: l.role as ChatRole, content: String(l.content ?? "") }));
+
+    const messages: ChatMessage[] = isResume
+      ? baseMessages.map((m, idx) => {
+          const isLastUser = idx === baseMessages.length - 1 && m.role === "user";
+          return { ...m, content: isLastUser ? trimmed : m.content };
+        })
+      : [...baseMessages, { role: "user", content: trimmed }];
 
     const playerContext = useGameStore.getState().getPromptContext();
 
@@ -1098,7 +1175,12 @@ const LOCAL_FALLBACK_OPENING =
             const chunk = line.slice(5).trimStart();
             raw += chunk;
             rawDmBufferRef.current = raw;
-            narrativeRef.current = extractNarrative(raw);
+            try {
+              narrativeRef.current = extractNarrative(raw);
+            } catch {
+              // Defensive: never crash UI on malformed stream
+              narrativeRef.current = "";
+            }
             const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
             if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
               setBgm(bgmMatch[1]);
@@ -1111,7 +1193,18 @@ const LOCAL_FALLBACK_OPENING =
       if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
         streamCancelled = true;
       } else {
-        throw readErr;
+        // Treat unknown stream read errors as potential safety intercept / broken stream.
+        console.error("[/api/chat] stream read error", readErr);
+        try {
+          useGameStore.getState().triggerSecurityFallback("stream_read_error");
+        } catch {
+          // ignore
+        }
+        rawDmBufferRef.current = "";
+        narrativeRef.current = "";
+        setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
+        setIsStreaming(false);
+        return;
       }
     } finally {
       streamReaderRef.current = null;
@@ -1124,15 +1217,34 @@ const LOCAL_FALLBACK_OPENING =
 
     if (streamCancelled) {
       setIsStreaming(false);
+      // Could be user abort OR upstream safety cut-off. If we already received a broken JSON fragment, treat as safety intercept.
+      const looksLikeJsonFragment = typeof raw === "string" && raw.includes("{") && raw.includes("\"narrative\"");
+      const looksTruncated = looksLikeJsonFragment && !raw.trimEnd().endsWith("}");
+      if (looksTruncated) {
+        try {
+          useGameStore.getState().triggerSecurityFallback("stream_aborted_with_truncated_json");
+        } catch {
+          // ignore
+        }
+        rawDmBufferRef.current = "";
+        narrativeRef.current = "";
+        setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
+      }
       return;
     }
 
     const parsed = tryParseDM(raw);
     if (!parsed) {
       setIsStreaming(false);
-      setLiveNarrative(
-        "深渊 DM 输出解析失败。请尝试缩短动作描述，或稍后重试。"
-      );
+      // Potential upstream guardrail cut-off: broken/truncated JSON stream.
+      try {
+        useGameStore.getState().triggerSecurityFallback("dm_json_parse_failed_or_truncated");
+      } catch {
+        // ignore
+      }
+      rawDmBufferRef.current = "";
+      narrativeRef.current = "";
+      setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
       return;
     }
 
@@ -1296,14 +1408,31 @@ const LOCAL_FALLBACK_OPENING =
       setHitEffectUntil(Date.now() + 1200);
     }
 
-    if (Array.isArray(parsed.options) && parsed.options.length > 0) {
-      const modeNow = useGameStore.getState().inputMode ?? "options";
-      if (modeNow === "options") {
-        const validOpts = parsed.options
-          .filter((o): o is string => typeof o === "string" && o.length > 0)
-          .slice(0, 4);
-        setCurrentOptions(validOpts);
-        setPersistCurrentOptions(validOpts);
+    const modeNow = useGameStore.getState().inputMode ?? "options";
+    if (modeNow === "options") {
+      const safeDefaultOptions = [
+        "查看周围环境",
+        "检查背包与随身物品",
+        "尝试与附近原住民搭话",
+        "谨慎前往下一处房间",
+      ];
+      const validOpts = Array.isArray(parsed.options)
+        ? parsed.options
+            .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+            .map((o) => o.trim())
+            .slice(0, 4)
+        : [];
+
+      const merged = [...validOpts];
+      for (const d of safeDefaultOptions) {
+        if (merged.length >= 4) break;
+        if (merged.includes(d)) continue;
+        merged.push(d);
+      }
+
+      if (merged.length > 0) {
+        setCurrentOptions(merged.slice(0, 4));
+        setPersistCurrentOptions(merged.slice(0, 4));
       }
     }
 
@@ -1553,7 +1682,7 @@ const LOCAL_FALLBACK_OPENING =
               体验次数已耗尽
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-200">
-              体验次数已耗尽，请注册账号以继续游戏。
+              体验次数已耗尽，请注册账号以继续执笔创作。
             </p>
             <div className="mt-8 flex justify-center">
               <button
@@ -1581,7 +1710,7 @@ const LOCAL_FALLBACK_OPENING =
               意识脱离申请
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-slate-300">
-              选择保存并退出可保存进度并返回首页；选择直接退出将直接触发死亡。
+              选择保存并退出可保存进度并返回首页；选择直接退出将直接封卷。
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-end">
               <button
@@ -1589,14 +1718,14 @@ const LOCAL_FALLBACK_OPENING =
                 onClick={onSaveAndExit}
                 className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
               >
-                保存并退出
+                保存并封卷
               </button>
               <button
                 type="button"
                 onClick={onAbandonAndDie}
                 className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
               >
-                直接退出
+                直接封卷
               </button>
             </div>
           </div>
@@ -1691,13 +1820,25 @@ const LOCAL_FALLBACK_OPENING =
                 style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
               >
                 <div className="space-y-6">
-                  {/* 叙事正文：历史 + 正在流式 + 完整一条 */}
-                  {displayMessages.length > 0 && (
+                  {/* 正文：用户输入 + 助手叙事（按日志顺序渲染） */}
+                  {displayEntries.length > 0 && (
                     <div
                       className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
                     >
-                      {displayMessages.map((content, idx) => {
-                        const safeContent = typeof content === "string" ? content : "";
+                      {displayEntries.map((entry, idx) => {
+                        const safeContent = typeof entry.content === "string" ? entry.content : "";
+                        if (entry.role === "user") {
+                          return (
+                            <p
+                              key={idx}
+                              className={`mb-6 whitespace-pre-wrap break-words text-[18px] leading-[1.8] ${
+                                isLowSanity ? "text-white/90" : isDarkMoon ? "text-slate-200" : "text-slate-800"
+                              }`}
+                            >
+                              {safeContent}
+                            </p>
+                          );
+                        }
                         return safeContent.includes("获得了新物品，已放入书包") ? (
                           <p
                             key={idx}
@@ -1728,7 +1869,7 @@ const LOCAL_FALLBACK_OPENING =
                             <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
                           </div>
                           <span className="animate-pulse bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
-                            正在推演...
+                            正在生成...
                           </span>
                         </div>
                       ) : (
@@ -1760,7 +1901,7 @@ const LOCAL_FALLBACK_OPENING =
                                 <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
                                 <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
                               </div>
-                              <span>推演选项中...</span>
+                              <span>生成选项中...</span>
                             </div>
                           )}
                         </>
@@ -1774,7 +1915,7 @@ const LOCAL_FALLBACK_OPENING =
                         isLowSanity={isLowSanity}
                       />
                     </div>
-                  ) : displayMessages.length === 0 && !isStreaming ? (
+                  ) : displayEntries.length === 0 && !isStreaming ? (
                     <div
                       className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`}
                     />
@@ -1784,14 +1925,28 @@ const LOCAL_FALLBACK_OPENING =
                   {(greenTips.length > 0 || firstTimeHint) && (
                     <div className="mt-2 space-y-1">
                       {firstTimeHint && (
-                        <p className="text-sm font-semibold text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.6)]">
+                        <p
+                          className={`text-sm font-semibold ${
+                            isLowSanity
+                              ? "text-white/85"
+                              : isDarkMoon
+                                ? "text-slate-200"
+                                : "text-slate-700"
+                          }`}
+                        >
                           {firstTimeHint}
                         </p>
                       )}
                       {greenTips.map((tip, idx) => (
                         <p
                           key={idx}
-                          className="text-sm font-semibold text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+                          className={`text-sm font-semibold ${
+                            isLowSanity
+                              ? "text-white/85"
+                              : isDarkMoon
+                                ? "text-slate-200"
+                                : "text-slate-700"
+                          }`}
                         >
                           {tip}
                         </p>
@@ -1850,6 +2005,17 @@ const LOCAL_FALLBACK_OPENING =
                   </p>
                 ) : inputMode === "text" ? (
                   <div className="relative">
+                    <div
+                      className={`mb-2 rounded-xl border px-3 py-2 text-xs leading-relaxed ${
+                        isLowSanity
+                          ? "border-white/10 bg-white/5 text-white/75"
+                          : isDarkMoon
+                            ? "border-red-900/40 bg-red-950/20 text-red-200/80"
+                            : "border-slate-200/70 bg-white/70 text-slate-700"
+                      }`}
+                    >
+                      本平台为AI协作创意写作工具，请创作者遵守中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。
+                    </div>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         value={input}
@@ -1860,7 +2026,7 @@ const LOCAL_FALLBACK_OPENING =
                         onKeyDown={(e) => {
                           if (e.key === "Enter") onSubmit();
                         }}
-                        placeholder="输入指令，最多20字"
+                        placeholder="输入你的创作动作/对白（最多20字）"
                         inputMode="text"
                         enterKeyHint="done"
                         className={`min-h-[44px] w-full rounded-xl px-3 text-base outline-none transition touch-manipulation ${
@@ -1884,7 +2050,7 @@ const LOCAL_FALLBACK_OPENING =
                               : "bg-foreground text-background"
                         }`}
                       >
-                        确认
+                        提交
                       </button>
                     </div>
                     <div
@@ -1905,11 +2071,11 @@ const LOCAL_FALLBACK_OPENING =
                             }
                           >
                             {isGuestDialogueExhausted
-                              ? "体验次数已耗尽，请注册账号以继续游戏。"
+                              ? "体验次数已耗尽，请注册账号以继续执笔创作。"
                               : input.trim().length > MAX_INPUT
-                                ? "动作过长：将被公寓拒绝。"
+                                ? "文本过长：将被叙事拒绝。"
                                 : isStreaming
-                                  ? "正在推演..."
+                                  ? "正在生成..."
                                   : "保持简短。保持真实。"}
                           </span>
                         )}
@@ -1919,7 +2085,7 @@ const LOCAL_FALLBACK_OPENING =
                 ) : (
                   <div className="flex items-center justify-between text-xs text-neutral-600">
                     <span className="opacity-80">
-                      当前为选项模式，请直接点击上方选项进行行动。
+                      当前为选项模式，请直接点击上方选项推进文本。
                     </span>
                     <span className="hidden sm:inline opacity-60">
                       想自由输入时，可用右上角按钮切换为手动输入。

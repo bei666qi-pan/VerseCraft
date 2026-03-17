@@ -4,9 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Trophy } from "lucide-react";
 import {
   getExplorationLeaderboard,
-  getKillLeaderboard,
   type ExplorationLeaderboardResult,
-  type KillLeaderboardResult,
 } from "@/app/actions/leaderboard";
 
 type LeaderboardProps = {
@@ -21,9 +19,7 @@ function topRankClass(rank: number): string {
 }
 
 export default function Leaderboard({ userId }: LeaderboardProps) {
-  const [tab, setTab] = useState<"kill" | "explore">("kill");
   const [open, setOpen] = useState(false);
-  const [killData, setKillData] = useState<KillLeaderboardResult>({ top10: [], currentUser: null });
   const [exploreData, setExploreData] = useState<ExplorationLeaderboardResult>({ top10: [], currentUser: null });
   const [loading, setLoading] = useState(false);
 
@@ -33,12 +29,8 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
     const run = async () => {
       setLoading(true);
       try {
-        const [kill, explore] = await Promise.all([
-          getKillLeaderboard(userId),
-          getExplorationLeaderboard(userId),
-        ]);
+        const explore = await getExplorationLeaderboard(userId);
         if (!active) return;
-        setKillData(kill);
         setExploreData(explore);
       } finally {
         if (active) setLoading(false);
@@ -51,15 +43,6 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
   }, [open, userId]);
 
   const list = useMemo(() => {
-    if (tab === "kill") {
-      return killData.top10.map((item) => ({
-        key: `${item.userId}-kill`,
-        rank: item.rank,
-        name: item.userName,
-        metric: `${item.killedAnomalies} 只`,
-        extra: `存活 ${item.survivalTimeSeconds}s`,
-      }));
-    }
     return exploreData.top10.map((item) => ({
       key: `${item.userId}-explore`,
       rank: item.rank,
@@ -67,9 +50,9 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
       metric: item.floorText,
       extra: item.survivalText,
     }));
-  }, [exploreData.top10, killData.top10, tab]);
+  }, [exploreData.top10]);
 
-  const current = tab === "kill" ? killData.currentUser : exploreData.currentUser;
+  const current = exploreData.currentUser;
 
   return (
     <>
@@ -104,34 +87,13 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
           }`}
         >
           <div className="flex items-center justify-between">
-            <h2 className="text-lg tracking-[0.2em] text-slate-700">深渊排行榜</h2>
+            <h2 className="text-lg tracking-[0.2em] text-slate-700">排行榜</h2>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 text-xs text-slate-500 transition hover:text-slate-800"
             >
               关闭
-            </button>
-          </div>
-
-          <div className="mt-4 inline-flex rounded-full border border-slate-200 bg-white/80 p-1">
-            <button
-              type="button"
-              onClick={() => setTab("kill")}
-              className={`rounded-full px-4 py-1.5 text-xs transition ${
-                tab === "kill" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              猎杀榜
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("explore")}
-              className={`rounded-full px-4 py-1.5 text-xs transition ${
-                tab === "explore" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              探索榜
             </button>
           </div>
 
@@ -167,9 +129,7 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
                   <span className="text-slate-700">#{current.rank}</span>
                   <span className="truncate text-slate-700">{current.userName}</span>
                   <span className="text-right text-slate-600">
-                    {tab === "kill"
-                      ? ("killedAnomalies" in current ? `${current.killedAnomalies} 只` : "-")
-                      : ("floorText" in current ? current.floorText : "-")}
+                    {"floorText" in current ? current.floorText : "-"}
                   </span>
                 </div>
               </div>
