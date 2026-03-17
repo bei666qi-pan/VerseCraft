@@ -60,7 +60,7 @@ export function canUseItem(
   stats: Record<StatType, number> | null | undefined
 ): { ok: boolean; reason?: string } {
   if (!item || typeof item !== "object") return { ok: false, reason: "无效道具" };
-  const safeStats = stats ?? {};
+  const safeStats = stats ?? ({} as Record<StatType, number>);
   const req = item.statRequirements;
   if (!req || typeof req !== "object" || Object.keys(req).length === 0) return { ok: true };
 

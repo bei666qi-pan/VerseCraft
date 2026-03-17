@@ -37,7 +37,7 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
   useEffect(() => {
     if (!isGuest) return;
     const inPlayRoute = pathname?.startsWith("/play");
-    if (!inPlayRoute && context !== "play") return;
+    if (!inPlayRoute) return;
 
     const interval = window.setInterval(() => {
       addPlayTimeSeconds(5);

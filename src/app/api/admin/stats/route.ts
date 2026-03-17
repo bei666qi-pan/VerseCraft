@@ -46,7 +46,8 @@ export async function GET() {
         totalTokens,
         activeUsers: activeUsersToday,
       })
-      .onDuplicateKeyUpdate({
+      .onConflictDoUpdate({
+        target: adminStatsSnapshots.date,
         set: {
           totalUsers,
           totalTokens,

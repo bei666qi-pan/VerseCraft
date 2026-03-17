@@ -1,4 +1,4 @@
-参考以下文档，强化文界工坊的性能，并结合自己的理解，禁止影响原有任何具体游戏功能和UI！！// src/lib/ratelimit.ts
+// src/lib/ratelimit.ts
 // Local Redis-based rate limiting + hot IP cache.
 
 import { createClient, type RedisClientType } from "redis";
@@ -91,11 +91,11 @@ async function checkWithRedis(
   const key = `${prefix}:${windowId}:${ip}`;
 
   try {
-    const multiResult = await client
+    const multiResult = (await client
       .multi()
       .incr(key)
-      .pexpire(key, intervalMs, "NX")
-      .exec();
+      .pExpire(key, intervalMs, "NX")
+      .exec()) as unknown as Array<[unknown, unknown]>;
 
     const incrReply = multiResult?.[0]?.[1];
     const count = typeof incrReply === "number" ? incrReply : Number(incrReply ?? 0);

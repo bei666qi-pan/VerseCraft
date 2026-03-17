@@ -106,7 +106,10 @@ export default async function ShadowAdminPage() {
     await db
       .insert(adminStatsSnapshots)
       .values({ date: today, totalUsers, totalTokens, activeUsers: activeUsersToday })
-      .onDuplicateKeyUpdate({ set: { totalUsers, totalTokens, activeUsers: activeUsersToday } });
+      .onConflictDoUpdate({
+        target: adminStatsSnapshots.date,
+        set: { totalUsers, totalTokens, activeUsers: activeUsersToday },
+      });
 
     const snapshots = await db
       .select({

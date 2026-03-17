@@ -251,7 +251,10 @@ export default function AdminDashboardClient({
                       <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
                       <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}百万` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}千` : String(v))} />
                       <Tooltip
-                        formatter={(v: number) => [v.toLocaleString(), "Token"]}
+                        formatter={(v) => [
+                          typeof v === "number" ? v.toLocaleString() : String(v ?? ""),
+                          "Token",
+                        ]}
                         contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }}
                       />
                       <Bar dataKey="dailyTokens" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -268,7 +271,7 @@ export default function AdminDashboardClient({
                       <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
                       <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
                       <Tooltip
-                        formatter={(v: number) => [v, "日活"]}
+                        formatter={(v) => [typeof v === "number" ? v : Number(v ?? 0), "日活"]}
                         contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }}
                       />
                       <Bar dataKey="activeUsers" fill="#3b82f6" radius={[4, 4, 0, 0]} />
@@ -285,7 +288,10 @@ export default function AdminDashboardClient({
                       <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
                       <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => `${(v / 1e6).toFixed(1)}百万`} />
                       <Tooltip
-                        formatter={(v: number) => [(v / 1_000_000).toFixed(2) + " 百万", "Token"]}
+                        formatter={(v) => [
+                          (Number(v ?? 0) / 1_000_000).toFixed(2) + " 百万",
+                          "Token",
+                        ]}
                         contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0" }}
                       />
                       <Area type="monotone" dataKey="tokens" stroke="#10b981" fill="#10b981" fillOpacity={0.3} strokeWidth={2} />

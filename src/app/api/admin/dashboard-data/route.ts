@@ -15,29 +15,37 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const rows = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      tokensUsed: users.tokensUsed,
-      todayTokensUsed: users.todayTokensUsed,
-      playTime: users.playTime,
-      todayPlayTime: users.todayPlayTime,
-      lastActive: users.lastActive,
-    })
-    .from(users)
-    .orderBy(desc(users.tokensUsed));
+  try {
+    const rows = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        tokensUsed: users.tokensUsed,
+        todayTokensUsed: users.todayTokensUsed,
+        playTime: users.playTime,
+        todayPlayTime: users.todayPlayTime,
+        lastActive: users.lastActive,
+      })
+      .from(users)
+      .orderBy(desc(users.tokensUsed));
 
-  const { ids: onlineIds } = await getOnlineUsersFromPresence();
+    const { ids: onlineIds } = await getOnlineUsersFromPresence().catch((error) => {
+      const err = error as Error;
+      console.error(
+        `\x1b[31m[api/admin/dashboard-data] Redis presence failed\x1b[0m`,
+        { message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      );
+      return { ids: [], count: 0 };
+    });
 
-  const latestFeedbackRows = await db
-    .select({
-      userId: feedbacks.userId,
-      content: feedbacks.content,
-      createdAt: feedbacks.createdAt,
-    })
-    .from(feedbacks)
-    .orderBy(desc(feedbacks.createdAt));
+    const latestFeedbackRows = await db
+      .select({
+        userId: feedbacks.userId,
+        content: feedbacks.content,
+        createdAt: feedbacks.createdAt,
+      })
+      .from(feedbacks)
+      .orderBy(desc(feedbacks.createdAt));
 
   const latestFeedbackMap = new Map<
     string,
@@ -118,7 +126,8 @@ export async function GET() {
         totalTokens,
         activeUsers: activeUsersToday,
       })
-      .onDuplicateKeyUpdate({
+      .onConflictDoUpdate({
+        target: adminStatsSnapshots.date,
         set: { totalUsers, totalTokens, activeUsers: activeUsersToday },
       });
 
@@ -140,21 +149,30 @@ export async function GET() {
     }));
   } catch {
     chartData[0]!.activeUsers = sortedRows.filter((u) => {
+      const laRaw = u.lastActive as unknown;
       const la =
-        typeof u.lastActive === "string"
-          ? new Date(u.lastActive)
-          : u.lastActive instanceof Date
-            ? u.lastActive
-            : new Date(String(u.lastActive));
+        typeof laRaw === "string"
+          ? new Date(laRaw)
+          : laRaw instanceof Date
+            ? laRaw
+            : new Date(String(laRaw));
       return la.toISOString().slice(0, 10) === today;
     }).length;
   }
 
-  return NextResponse.json({
-    rows: sortedRows,
-    onlineCount,
-    totalUsers,
-    totalTokens,
-    chartData,
-  });
+    return NextResponse.json({
+      rows: sortedRows,
+      onlineCount,
+      totalUsers,
+      totalTokens,
+      chartData,
+    });
+  } catch (error) {
+    const err = error as Error;
+    console.error(
+      `\x1b[31m[api/admin/dashboard-data] handler failed\x1b[0m`,
+      { message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

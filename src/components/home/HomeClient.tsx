@@ -25,14 +25,15 @@ type SaveRow = {
 
 const INITIAL_AUTH_ACTION_STATE = { success: false, message: "", error: "" };
 
-function isSaveSlotData(data: Record<string, unknown>): data is SaveSlotData {
+function isSaveSlotData(data: unknown): data is SaveSlotData {
+  const d = data as Record<string, unknown> | null;
   return (
-    typeof data === "object" &&
-    data !== null &&
-    typeof data.historicalMaxSanity === "number" &&
-    typeof data.time === "object" &&
-    Array.isArray(data.inventory) &&
-    Array.isArray(data.logs)
+    typeof d === "object" &&
+    d !== null &&
+    typeof d.historicalMaxSanity === "number" &&
+    typeof d.time === "object" &&
+    Array.isArray(d.inventory) &&
+    Array.isArray(d.logs)
   );
 }
 

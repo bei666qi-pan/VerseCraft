@@ -344,29 +344,37 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
   if (!userId || !Number.isFinite(totalTokens) || totalTokens <= 0) return;
   const tokenDelta = Math.trunc(totalTokens);
 
-  await db
-    .update(users)
-    .set({
-      tokensUsed: sql`COALESCE(${users.tokensUsed}, 0) + ${tokenDelta}`,
-      todayTokensUsed: sql`CASE
-        WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
-        THEN COALESCE(${users.todayTokensUsed}, 0) + ${tokenDelta}
-        ELSE ${tokenDelta}
-      END`,
-      playTime: sql`COALESCE(${users.playTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}`,
-      todayPlayTime: sql`CASE
-        WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
-        THEN COALESCE(${users.todayPlayTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}
-        ELSE ${PLAY_TIME_PER_ACTION_SEC}
-      END`,
-      lastDataReset: sql`CASE
-        WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
-        THEN ${users.lastDataReset}
-        ELSE NOW()
-      END`,
-      lastActive: new Date(),
-    })
-    .where(eq(users.id, userId));
+  try {
+    await db
+      .update(users)
+      .set({
+        tokensUsed: sql`COALESCE(${users.tokensUsed}, 0) + ${tokenDelta}`,
+        todayTokensUsed: sql`CASE
+          WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
+          THEN COALESCE(${users.todayTokensUsed}, 0) + ${tokenDelta}
+          ELSE ${tokenDelta}
+        END`,
+        playTime: sql`COALESCE(${users.playTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}`,
+        todayPlayTime: sql`CASE
+          WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
+          THEN COALESCE(${users.todayPlayTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}
+          ELSE ${PLAY_TIME_PER_ACTION_SEC}
+        END`,
+        lastDataReset: sql`CASE
+          WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
+          THEN ${users.lastDataReset}
+          ELSE NOW()
+        END`,
+        lastActive: new Date(),
+      })
+      .where(eq(users.id, userId));
+  } catch (error) {
+    const err = error as Error;
+    console.error(
+      `\x1b[31m[api/chat] persistTokenUsage failed\x1b[0m`,
+      { userId, tokenDelta, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+    );
+  }
 }
 
 export async function POST(req: Request) {
@@ -391,22 +399,30 @@ export async function POST(req: Request) {
   // Load compressed memory (skip if first action)
   let sessionMemory: { plot_summary: string; player_status: Record<string, unknown>; npc_relationships: Record<string, unknown> } | null = null;
   if (!isFirstAction && userId) {
-    const memRows = await db
-      .select({
-        plotSummary: gameSessionMemory.plotSummary,
-        playerStatus: gameSessionMemory.playerStatus,
-        npcRelationships: gameSessionMemory.npcRelationships,
-      })
-      .from(gameSessionMemory)
-      .where(eq(gameSessionMemory.userId, userId))
-      .limit(1);
-    const mr = memRows[0];
-    if (mr?.plotSummary) {
-      sessionMemory = {
-        plot_summary: String(mr.plotSummary),
-        player_status: (mr.playerStatus as Record<string, unknown>) ?? {},
-        npc_relationships: (mr.npcRelationships as Record<string, unknown>) ?? {},
-      };
+    try {
+      const memRows = await db
+        .select({
+          plotSummary: gameSessionMemory.plotSummary,
+          playerStatus: gameSessionMemory.playerStatus,
+          npcRelationships: gameSessionMemory.npcRelationships,
+        })
+        .from(gameSessionMemory)
+        .where(eq(gameSessionMemory.userId, userId))
+        .limit(1);
+      const mr = memRows[0];
+      if (mr?.plotSummary) {
+        sessionMemory = {
+          plot_summary: String(mr.plotSummary),
+          player_status: (mr.playerStatus as Record<string, unknown>) ?? {},
+          npc_relationships: (mr.npcRelationships as Record<string, unknown>) ?? {},
+        };
+      }
+    } catch (error) {
+      const err = error as Error;
+      console.error(
+        `\x1b[31m[api/chat] failed to load session memory\x1b[0m`,
+        { userId, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      );
     }
   }
 
@@ -500,7 +516,8 @@ export async function POST(req: Request) {
               playerStatus: newMem.player_status,
               npcRelationships: newMem.npc_relationships,
             })
-            .onDuplicateKeyUpdate({
+            .onConflictDoUpdate({
+              target: gameSessionMemory.userId,
               set: {
                 plotSummary: newMem.plot_summary,
                 playerStatus: newMem.player_status,
@@ -528,6 +545,10 @@ export async function POST(req: Request) {
 
   const { apiUrl, apiKey, model } = resolveDeepSeekConfig();
   if (!apiKey) {
+    console.error(
+      `\x1b[31m[api/chat] VOLCENGINE_API_KEY is empty. Checked: VOLCENGINE_API_KEY | ARK_API_KEY | DEEPSEEK_API_KEY\x1b[0m`,
+      { apiUrl, model }
+    );
     return new Response(
       sseText(
         JSON.stringify({
@@ -565,15 +586,76 @@ export async function POST(req: Request) {
     consumes_time: true,
   });
 
-  // Immediate Response Bypass: return stream within milliseconds to avoid serverless timeout.
-  // Upstream fetch + parse + enqueue runs in background IIFE.
+  const TIMEOUT_MS = 120000;
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        stream: true,
+        max_tokens: 8192,
+        response_format: { type: "json_object" },
+        messages: safeMessages,
+        stream_options: { include_usage: true },
+      }),
+      signal: ac.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const err = error as Error;
+    const isTimeout = err?.name === "AbortError" || /abort|timeout/i.test(err?.message ?? "");
+    console.error(
+      `\x1b[31m[api/chat] upstream fetch failed\x1b[0m`,
+      { apiUrl, model, isTimeout, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+    );
+    return NextResponse.json(
+      { error: isTimeout ? "Upstream Timeout" : "Upstream Error" },
+      { status: isTimeout ? 504 : 500 }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    const text = await upstream.text().catch(() => "");
+    const upstreamStatus = upstream.status;
+    const isAuthError = upstreamStatus === 401 || upstreamStatus === 403;
+    console.error(
+      `\x1b[31m[api/chat] upstream non-OK\x1b[0m`,
+      {
+        status: upstreamStatus,
+        statusText: upstream.statusText,
+        apiUrl,
+        model,
+        body: text,
+        hint: isAuthError
+          ? "Upstream returned 401/403. Check VOLCENGINE_API_KEY + endpoint permissions/model id."
+          : undefined,
+      }
+    );
+    if (isAuthError) {
+      return NextResponse.json(
+        { error: "Upstream Auth Failed", code: "UPSTREAM_AUTH_FAILED", upstreamStatus },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Upstream Error", code: "UPSTREAM_ERROR", upstreamStatus },
+      { status: 502 }
+    );
+  }
+
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
-
-  const writeToStream = async (data: string) => {
-    await writer.write(sse(data));
-  };
-
+  const writeToStream = async (data: string) => writer.write(sse(data));
   const closeWithFallback = async () => {
     try {
       await writeToStream(fallbackPayload);
@@ -583,170 +665,120 @@ export async function POST(req: Request) {
   };
 
   (async () => {
-    const delays = [1000, 2000, 4000];
-    const TIMEOUT_MS = 120000;
+    const reader = upstream.body!.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let accumulated = "";
+    let latestTotalTokens = 0;
+    let tokenUsageFlushed = false;
 
-    for (let attempt = 0; attempt <= 3; attempt++) {
-      const ac = new AbortController();
-      const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
-      try {
-        const upstream = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            stream: true,
-            max_tokens: 8192,
-            response_format: { type: "json_object" },
-            messages: safeMessages,
-            stream_options: { include_usage: true },
-          }),
-          signal: ac.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!upstream.ok || !upstream.body) {
-          const text = await upstream.text().catch(() => "");
+    const flushTokenUsage = async () => {
+      if (tokenUsageFlushed) return;
+      tokenUsageFlushed = true;
+      const toPersist =
+        latestTotalTokens > 0
+          ? latestTotalTokens
+          : accumulated.length > 0
+            ? Math.max(100, Math.ceil(accumulated.length / 2.5))
+            : 0;
+      await persistTokenUsage(userId, toPersist);
+      if (userId && toPersist > 0) {
+        await incrementQuota(userId, toPersist).catch((error) => {
+          const err = error as Error;
           console.error(
-            `[api/chat] upstream failed attempt=${attempt + 1} status=${upstream.status} url=${apiUrl}`,
-            { status: upstream.status, statusText: upstream.statusText, body: text }
+            `\x1b[31m[api/chat] failed to increment quota\x1b[0m`,
+            { userId, toPersist, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
           );
-          if (attempt < 3) {
-            await new Promise((r) => setTimeout(r, delays[attempt]));
-            continue;
-          }
-          await closeWithFallback();
+        });
+      }
+    };
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          await flushTokenUsage();
+          await writer.close();
           return;
         }
 
-        const reader = upstream.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
-        let accumulated = "";
-        let latestTotalTokens = 0;
-        let tokenUsageFlushed = false;
+        buffer += decoder.decode(value, { stream: true });
 
-        const flushTokenUsage = async () => {
-          if (tokenUsageFlushed) return;
-          tokenUsageFlushed = true;
-          const toPersist =
-            latestTotalTokens > 0
-              ? latestTotalTokens
-              : accumulated.length > 0
-                ? Math.max(100, Math.ceil(accumulated.length / 2.5))
-                : 0;
-          await persistTokenUsage(userId, toPersist).catch((error) => {
-            console.error("[api/chat] failed to persist token usage", error);
-          });
-          if (userId && toPersist > 0) {
-            await incrementQuota(userId, toPersist).catch((error) => {
-              console.error("[api/chat] failed to increment quota", error);
-            });
+        while (true) {
+          const idx = buffer.indexOf("\n");
+          if (idx === -1) break;
+          const line = buffer.slice(0, idx).trimEnd();
+          buffer = buffer.slice(idx + 1);
+
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+
+          if (!data) continue;
+          if (data === "[DONE]") {
+            await flushTokenUsage();
+            await writer.close();
+            return;
           }
-        };
 
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) {
-              await flushTokenUsage();
-              await writer.close();
-              return;
-            }
+          let json: {
+            choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+            usage?: { total_tokens?: number; input_tokens?: number; output_tokens?: number };
+          } | null = null;
 
-            buffer += decoder.decode(value, { stream: true });
-
-            while (true) {
-              const idx = buffer.indexOf("\n");
-              if (idx === -1) break;
-              const line = buffer.slice(0, idx).trimEnd();
-              buffer = buffer.slice(idx + 1);
-
-              if (!line.startsWith("data:")) continue;
-              const data = line.slice(5).trim();
-
-              if (!data) continue;
-              if (data === "[DONE]") {
-                await flushTokenUsage();
-                await writer.close();
-                return;
-              }
-
-              let json: {
-                choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
-                usage?: {
-                  total_tokens?: number;
-                  input_tokens?: number;
-                  output_tokens?: number;
-                };
-              } | null = null;
-              try {
-                json = JSON.parse(data);
-              } catch {
-                accumulated += data;
-                await writeToStream(data);
-                continue;
-              }
-
-              const deltaContent =
-                json?.choices?.[0]?.delta?.content ??
-                json?.choices?.[0]?.message?.content ??
-                "";
-
-              if (typeof deltaContent === "string" && deltaContent.length > 0) {
-                accumulated += deltaContent;
-                await writeToStream(deltaContent);
-              }
-
-              const u = json?.usage;
-              const total = Number(u?.total_tokens ?? 0);
-              const inputOutput =
-                Number(u?.input_tokens ?? 0) + Number(u?.output_tokens ?? 0);
-              const usageTokens = Number.isFinite(total) && total > 0
-                ? total
-                : Number.isFinite(inputOutput) && inputOutput > 0
-                  ? inputOutput
-                  : 0;
-              if (usageTokens > 0) {
-                latestTotalTokens = Math.max(latestTotalTokens, Math.trunc(usageTokens));
-              }
-            }
-          }
-        } catch (readErr) {
           try {
-            await reader.cancel();
+            json = JSON.parse(data);
           } catch {
-            // ignore
+            accumulated += data;
+            await writeToStream(data);
+            continue;
           }
-          await closeWithFallback();
+
+          const deltaContent =
+            json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content ?? "";
+
+          if (typeof deltaContent === "string" && deltaContent.length > 0) {
+            accumulated += deltaContent;
+            await writeToStream(deltaContent);
+          }
+
+          const u = json?.usage;
+          const total = Number(u?.total_tokens ?? 0);
+          const inputOutput = Number(u?.input_tokens ?? 0) + Number(u?.output_tokens ?? 0);
+          const usageTokens =
+            Number.isFinite(total) && total > 0
+              ? total
+              : Number.isFinite(inputOutput) && inputOutput > 0
+                ? inputOutput
+                : 0;
+          if (usageTokens > 0) {
+            latestTotalTokens = Math.max(latestTotalTokens, Math.trunc(usageTokens));
+          }
         }
-      } catch (err) {
-        clearTimeout(timeoutId);
-        const msg = err instanceof Error ? err.message : String(err);
-        const cause = err instanceof Error ? err.cause : undefined;
-        console.error(
-          `[api/chat] fetch exception attempt=${attempt + 1} url=${apiUrl}`,
-          { message: msg, cause, error: err }
-        );
-        if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, delays[attempt]));
-          continue;
-        }
-        await closeWithFallback();
       }
+    } catch (error) {
+      const err = error as Error;
+      console.error(
+        `\x1b[31m[api/chat] stream pipe failed\x1b[0m`,
+        { apiUrl, model, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      );
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+      await closeWithFallback();
     }
-  })();
+  })().catch((error) => {
+    const err = error as Error;
+    console.error(
+      `\x1b[31m[api/chat] background task crashed\x1b[0m`,
+      { apiUrl, model, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+    );
+  });
 
   return new Response(readable, {
     status: 200,
-    headers: {
-      ...SSE_HEADERS,
-      "X-Accel-Buffering": "no",
-    },
+    headers: { ...SSE_HEADERS, "X-Accel-Buffering": "no" },
   });
 }
 

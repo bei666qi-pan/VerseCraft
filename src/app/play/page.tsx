@@ -1008,10 +1008,66 @@ const LOCAL_FALLBACK_OPENING =
 
     if (!res.ok || !res.body) {
       setIsStreaming(false);
+      const errorText = await res.text().catch(() => "");
+      const contentType = res.headers.get("content-type") ?? "";
+      let parsedError: unknown = null;
+      try {
+        if (contentType.includes("application/json") && errorText) {
+          parsedError = JSON.parse(errorText);
+        } else if (contentType.includes("text/event-stream") && errorText) {
+          const m = errorText.match(/(^|\\n)data:\\s*(\\{[\\s\\S]*\\})(\\n|$)/);
+          if (m?.[2]) parsedError = JSON.parse(m[2]);
+        }
+      } catch {
+        parsedError = null;
+      }
+
+      const maybeObj = parsedError as { code?: unknown; upstreamStatus?: unknown } | null;
+      const upstreamStatus =
+        maybeObj && typeof maybeObj === "object" ? Number((maybeObj as any).upstreamStatus ?? 0) : 0;
+      const code = maybeObj && typeof maybeObj === "object" ? String((maybeObj as any).code ?? "") : "";
+
+      // Print a guaranteed-visible line first (DevTools sometimes shows `{}` for objects).
+      const isAuthFailed =
+        res.status === 502 &&
+        (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403);
+
+      const logLine = `[/api/chat] non-OK status=${res.status} statusText=${res.statusText} contentType=${contentType} body=${errorText.slice(0, 800)}`;
+
+      if (isAuthFailed) {
+        console.warn(logLine);
+      } else {
+        console.error(logLine);
+      }
+
+      const detail = {
+        status: res.status,
+        statusText: res.statusText,
+        contentType,
+        parsedError,
+        body: errorText,
+      };
+      const detailText = (() => {
+        try {
+          return JSON.stringify(detail, null, 2);
+        } catch {
+          return String(detail);
+        }
+      })();
+      if (isAuthFailed) {
+        console.warn("[/api/chat] non-OK response detail", detailText);
+      } else {
+        console.error("[/api/chat] non-OK response detail", detailText);
+      }
+
       const msg = res.status === 429 || res.status === 503
         ? "深渊暂时拒绝了你的连接，请稍后再试。"
         : res.status === 403
           ? "深渊拒绝了你。请确认你的身份后再试。"
+          : (res.status === 502 && (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403))
+            ? "深渊鉴权失败：请检查 VOLCENGINE_API_KEY / Endpoint 权限 / 模型ID。"
+          : res.status === 504
+            ? "深渊回应超时（504），请稍后再试。"
           : "连接深渊时发生了波动，请稍后再试。";
       setLiveNarrative(msg);
       return;
@@ -1112,7 +1168,7 @@ const LOCAL_FALLBACK_OPENING =
     if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
       const resolved: Item[] = [];
       for (let idx = 0; idx < parsed.awarded_items.length; idx++) {
-        const r = parsed.awarded_items[idx];
+        const r: unknown = parsed.awarded_items[idx];
         let id: string | null = null;
         let o: Record<string, unknown> | null = null;
         if (typeof r === "string" && r.trim()) {
@@ -1169,7 +1225,7 @@ const LOCAL_FALLBACK_OPENING =
     const warehouseById = new Map(WAREHOUSE_ITEMS.map((w) => [w.id, w]));
     if (Array.isArray(parsed.awarded_warehouse_items) && parsed.awarded_warehouse_items.length > 0) {
       const whIds: string[] = [];
-      for (const r of parsed.awarded_warehouse_items) {
+      for (const r of parsed.awarded_warehouse_items as unknown[]) {
         if (typeof r === "string" && r.trim()) whIds.push(r.trim());
         else if (r && typeof r === "object" && typeof (r as { id?: string }).id === "string") whIds.push((r as { id: string }).id);
       }
@@ -1192,9 +1248,23 @@ const LOCAL_FALLBACK_OPENING =
     }
 
     if (Array.isArray(parsed.codex_updates) && parsed.codex_updates.length > 0) {
-      const entries: CodexEntry[] = parsed.codex_updates.filter(
-        (u): u is { id: string; name: string; type: "npc" | "anomaly" } =>
-          u && typeof u.id === "string" && typeof u.name === "string" && (u.type === "npc" || u.type === "anomaly")
+      type RawCodexUpdate = {
+        id: string;
+        name: string;
+        type: "npc" | "anomaly";
+        favorability?: unknown;
+        combatPower?: unknown;
+        personality?: unknown;
+        traits?: unknown;
+        rules_discovered?: unknown;
+        weakness?: unknown;
+      };
+      const entries: CodexEntry[] = (parsed.codex_updates as unknown[]).filter(
+        (u): u is RawCodexUpdate =>
+          !!u &&
+          typeof (u as { id?: unknown }).id === "string" &&
+          typeof (u as { name?: unknown }).name === "string" &&
+          (((u as { type?: unknown }).type === "npc") || ((u as { type?: unknown }).type === "anomaly"))
       ).map((u) => ({
         id: u.id,
         name: u.name,
@@ -1330,7 +1400,9 @@ const LOCAL_FALLBACK_OPENING =
   function onUseTalent() {
     if (!talent) return;
     if (talentCdLeft > 0) return;
-    const storeAny = useGameStore as { getState: () => { useTalent: (t: EchoTalent) => boolean } };
+    const storeAny = useGameStore as unknown as {
+      getState: () => { useTalent: (t: EchoTalent) => boolean };
+    };
     const ok = storeAny.getState().useTalent(talent);
     if (!ok) return;
 

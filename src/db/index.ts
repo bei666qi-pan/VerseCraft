@@ -1,7 +1,7 @@
 import "server-only";
 
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "./schema";
 
 const rawDatabaseUrl = process.env.DATABASE_URL;
@@ -11,17 +11,17 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is not configured");
 }
 
-const globalForDb = globalThis as unknown as { mysqlPool?: mysql.Pool };
+const globalForDb = globalThis as unknown as { pgPool?: Pool };
 
 const pool =
-  globalForDb.mysqlPool ??
-  mysql.createPool({
-    uri: databaseUrl,
-    connectionLimit: 10,
+  globalForDb.pgPool ??
+  new Pool({
+    connectionString: databaseUrl,
+    max: 10,
   });
 
 if (process.env.NODE_ENV !== "production") {
-  globalForDb.mysqlPool = pool;
+  globalForDb.pgPool = pool;
 }
 
-export const db = drizzle(pool, { schema, mode: "default" });
+export const db = drizzle(pool, { schema });

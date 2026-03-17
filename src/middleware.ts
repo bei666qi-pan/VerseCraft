@@ -41,7 +41,7 @@ function getClientIp(req: NextRequest): string {
   if (forwarded) return forwarded.split(",")[0].trim();
   const realIp = req.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
-  return req.ip ?? "unknown";
+  return (req as unknown as { ip?: string }).ip ?? "unknown";
 }
 
 const RATE_LIMITED_JSON = { error: "rate_limited", message: "请求过于频繁，请稍后再试。" };

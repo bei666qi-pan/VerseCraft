@@ -505,12 +505,15 @@ export const useGameStore = create<GameState>()(
       mergeCodex: (updates) =>
         set((s) => {
           const base = s.codex ?? {};
-          const next = typeof base === "object" && base !== null ? { ...base } : {};
+          const next = (typeof base === "object" && base !== null ? { ...base } : {}) as Record<
+            string,
+            CodexEntry
+          >;
           const safeUpdates = Array.isArray(updates) ? updates : [];
           for (const u of safeUpdates) {
             if (!u || (typeof u !== "object")) continue;
-            const name = typeof u.name === "string" ? u.name : (u as { name?: unknown }).name;
-            const id = typeof u.id === "string" ? u.id : (u as { id?: unknown }).id;
+            const name = typeof (u as { name?: unknown }).name === "string" ? (u as { name: string }).name : null;
+            const id = typeof (u as { id?: unknown }).id === "string" ? (u as { id: string }).id : null;
             if (!name && !id) continue;
             const existingKey = Object.keys(next).find((k) => next[k]?.name === name || next[k]?.id === id);
             const key = existingKey ?? id ?? name ?? "unknown";
@@ -659,7 +662,6 @@ export const useGameStore = create<GameState>()(
           historicalMaxSanity: initialSanity,
           inventory: [startingItem],
           codex: {},
-          hasReadParchment: false,
           hasCheckedCodex: false,
           warehouse: [],
           currentOptions: [],

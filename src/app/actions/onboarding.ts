@@ -66,7 +66,7 @@ export async function markOnboardingViewed(
       warehouseFirstViewDone: type === "warehouse" ? 1 : 0,
       tasksFirstViewDone: type === "tasks" ? 1 : 0,
     })
-    .onDuplicateKeyUpdate({ set: setColumn });
+    .onConflictDoUpdate({ target: userOnboarding.userId, set: setColumn });
 
   return { ok: true };
 }

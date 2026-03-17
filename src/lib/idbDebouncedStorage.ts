@@ -19,7 +19,7 @@ export function createDebouncedStorage(
       timeoutId = null;
     }
     if (pending) {
-      void base.setItem(pending.name, pending.value).catch(() => {
+      void Promise.resolve(base.setItem(pending.name, pending.value)).catch(() => {
         /* IDB/store write failure - avoid unhandled rejection; state remains in memory */
       });
       pending = null;

@@ -1,6 +1,6 @@
 // src/app/api/heartbeat/route.ts
 import { NextResponse } from "next/server";
-import { auth } from "../../../auth";
+import { auth } from "../../../../auth";
 import { markUserActive, linkGuestToUser } from "@/lib/presence";
 
 type HeartbeatBody = {

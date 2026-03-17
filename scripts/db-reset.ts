@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import mysql from "mysql2/promise";
+import { Client } from "pg";
 
 function resolveDatabaseUrl(): string {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
@@ -24,13 +24,14 @@ function resolveDatabaseUrl(): string {
 
 async function main() {
   const databaseUrl = resolveDatabaseUrl();
-  const conn = await mysql.createConnection(databaseUrl);
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
   try {
-    await conn.execute("DROP TABLE IF EXISTS `save_slots`");
-    await conn.execute("DROP TABLE IF EXISTS `users`");
+    await client.query("DROP TABLE IF EXISTS save_slots CASCADE");
+    await client.query("DROP TABLE IF EXISTS users CASCADE");
     console.log("Dropped tables: save_slots, users");
   } finally {
-    await conn.end();
+    await client.end();
   }
 }
 

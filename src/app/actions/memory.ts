@@ -44,7 +44,8 @@ export async function upsertSessionMemory(mem: CompressedMemory): Promise<{ ok: 
       playerStatus: mem.player_status,
       npcRelationships: mem.npc_relationships,
     })
-    .onDuplicateKeyUpdate({
+    .onConflictDoUpdate({
+      target: gameSessionMemory.userId,
       set: {
         plotSummary: mem.plot_summary,
         playerStatus: mem.player_status,

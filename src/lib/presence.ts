@@ -45,8 +45,8 @@ export async function linkGuestToUser(guestId: string, userId: string): Promise<
 
   try {
     const [guestScore, userScore] = await Promise.all([
-      client.zscore<number | null>(ACTIVE_USERS_KEY, guestMember),
-      client.zscore<number | null>(ACTIVE_USERS_KEY, userId),
+      client.zscore<number | null>(ACTIVE_USERS_KEY, guestMember as any),
+      client.zscore<number | null>(ACTIVE_USERS_KEY, userId as any),
     ]);
 
     const now = Date.now();

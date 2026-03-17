@@ -25,7 +25,8 @@ export async function syncSaveToCloud(slotId: string, data: unknown) {
         data: payload as Record<string, unknown>,
         updatedAt: new Date(),
       })
-      .onDuplicateKeyUpdate({
+      .onConflictDoUpdate({
+        target: [saveSlots.userId, saveSlots.slotId],
         set: {
           data: payload as Record<string, unknown>,
           updatedAt: sql`CURRENT_TIMESTAMP`,

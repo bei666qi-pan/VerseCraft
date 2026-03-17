@@ -167,7 +167,9 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
                   <span className="text-slate-700">#{current.rank}</span>
                   <span className="truncate text-slate-700">{current.userName}</span>
                   <span className="text-right text-slate-600">
-                    {tab === "kill" ? `${current.killedAnomalies} 只` : current.floorText}
+                    {tab === "kill"
+                      ? ("killedAnomalies" in current ? `${current.killedAnomalies} 只` : "-")
+                      : ("floorText" in current ? current.floorText : "-")}
                   </span>
                 </div>
               </div>

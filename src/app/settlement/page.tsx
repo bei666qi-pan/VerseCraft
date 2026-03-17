@@ -297,7 +297,7 @@ export default function SettlementPage() {
     useGameStore.getState().destroySaveData();
     usePersistStore.getState().destroySaveData();
     await deleteCloudSaveSlot("auto_save");
-    const p = useGameStore.persist.clearStorage();
+    const p = useGameStore.persist.clearStorage() as unknown;
     if (p && typeof (p as Promise<unknown>).then === "function") {
       await (p as Promise<void>);
     }

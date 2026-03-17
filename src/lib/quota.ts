@@ -48,26 +48,26 @@ export async function incrementQuota(
   actualTokens: number
 ): Promise<void> {
   const tokenDelta = Math.max(0, Math.trunc(actualTokens));
-  const today = new Date().toISOString().slice(0, 10);
   await db
     .insert(usersQuota)
     .values({
       userId,
       dailyTokens: tokenDelta,
       dailyActions: 1,
-      lastActionDate: today,
+      lastActionDate: sql`CURRENT_DATE`,
     })
-    .onDuplicateKeyUpdate({
+    .onConflictDoUpdate({
+      target: usersQuota.userId,
       set: {
         dailyTokens: sql`CASE 
-          WHEN DATE(${usersQuota.lastActionDate}) < CURDATE() THEN ${tokenDelta}
+          WHEN ${usersQuota.lastActionDate} < CURRENT_DATE THEN ${tokenDelta}
           ELSE ${usersQuota.dailyTokens} + ${tokenDelta}
         END`,
         dailyActions: sql`CASE 
-          WHEN DATE(${usersQuota.lastActionDate}) < CURDATE() THEN 1
+          WHEN ${usersQuota.lastActionDate} < CURRENT_DATE THEN 1
           ELSE ${usersQuota.dailyActions} + 1
         END`,
-        lastActionDate: sql`CURDATE()`,
+        lastActionDate: sql`CURRENT_DATE`,
       },
     });
 }
