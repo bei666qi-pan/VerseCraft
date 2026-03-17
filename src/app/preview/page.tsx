@@ -34,7 +34,7 @@ export default function PreviewLandingPage() {
   if (!isDev) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-900 text-white">
-        <p className="text-slate-400">玩家预览仅在开发环境可用</p>
+        <p className="text-slate-400">用户预览仅在开发环境可用</p>
       </main>
     );
   }
@@ -43,7 +43,7 @@ export default function PreviewLandingPage() {
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 text-slate-800">
       <div className="relative z-10 max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-widest text-slate-800">
-          玩家界面 · 本地测试
+          用户界面 · 本地测试
         </h1>
         <p className="mt-3 text-sm text-slate-600">
           使用预设角色与天赋快速进入游戏，无需登录。仅用于开发调试。

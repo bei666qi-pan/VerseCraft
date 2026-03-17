@@ -4,6 +4,7 @@ import "./globals.css";
 import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
+import ChunkErrorHandler from "@/components/ChunkErrorHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,6 +48,7 @@ export default function RootLayout({
           </defs>
         </svg>
         <StorageDegradedBanner />
+        <ChunkErrorHandler />
         <HydrationProvider>
           {children}
         </HydrationProvider>

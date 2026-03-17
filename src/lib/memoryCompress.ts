@@ -17,8 +17,8 @@ export interface ChatMessage {
 const COMPRESSION_PROMPT = `你是一个游戏剧情整理员。请根据提供的『旧的剧情摘要』和『最新的 5 轮对话』，生成一份最新的全局状态报告。
 请务必以 JSON 格式输出，且只输出 JSON，不要包含任何 markdown 或解释。必须包含以下字段：
 - plot_summary: 字符串，用大概 300 字总结目前为止的核心剧情发展。
-- player_status: 对象，包含玩家当前所在位置、拥有的关键道具、健康/心理状态（如理智值）。
-- npc_relationships: 对象格式，记录这 5 轮对话中发生过互动的 NPC 对玩家的态度变化或好感度，key 为 NPC 名称或 ID。`;
+- player_status: 对象，包含用户当前所在位置、拥有的关键道具、健康/心理状态（如理智值）。
+- npc_relationships: 对象格式，记录这 5 轮对话中发生过互动的 NPC 对用户的态度变化或好感度，key 为 NPC 名称或 ID。`;
 
 function getEnv(name: string): string | undefined {
   const v = process.env[name];
@@ -42,7 +42,7 @@ function resolveCompressionConfig(): { apiUrl: string; apiKey: string; model: st
 
 function formatChatsForCompression(chats: ChatMessage[]): string {
   return chats
-    .map((m) => `${m.role === "user" ? "玩家" : "DM"}：${m.content}`)
+    .map((m) => `${m.role === "user" ? "用户" : "DM"}：${m.content}`)
     .join("\n\n");
 }
 
@@ -80,7 +80,7 @@ export async function compressMemory(
   const maxRetries = options?.maxRetries ?? 2;
 
   const oldBlock = oldSummary
-    ? `【旧剧情摘要】\n${oldSummary.plot_summary}\n\n【旧玩家状态】\n${JSON.stringify(oldSummary.player_status)}\n\n【旧 NPC 关系】\n${JSON.stringify(oldSummary.npc_relationships)}`
+    ? `【旧剧情摘要】\n${oldSummary.plot_summary}\n\n【旧用户状态】\n${JSON.stringify(oldSummary.player_status)}\n\n【旧 NPC 关系】\n${JSON.stringify(oldSummary.npc_relationships)}`
     : "（无）";
 
   const chatsBlock = formatChatsForCompression(oldestChats);

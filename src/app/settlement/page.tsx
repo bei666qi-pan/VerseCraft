@@ -1,3 +1,4 @@
+// src/app/settlement/page.tsx
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -6,6 +7,7 @@ import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
 import { deleteCloudSaveSlot } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
+import { GuestSoftNudge } from "@/components/GuestSoftNudge";
 import { useMounted } from "@/hooks/useMounted";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
@@ -123,7 +125,7 @@ function buildMarkdown(logs: LogEntry[]): string {
 
   for (const entry of logs) {
     if (entry.role === "user") {
-      lines.push("## 玩家动作");
+      lines.push("## 用户动作");
       lines.push("");
       lines.push(entry.content);
       lines.push("");
@@ -308,6 +310,7 @@ export default function SettlementPage() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-foreground">
+      <GuestSoftNudge context="settlement" />
       {onLeaderboardToast && (
         <div
           className="fixed inset-x-4 top-8 z-50 mx-auto max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900/95 px-5 py-4 shadow-[0_0_30px_rgba(34,211,238,0.15)] backdrop-blur-xl"

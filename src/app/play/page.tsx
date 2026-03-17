@@ -14,8 +14,6 @@ import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
-import { OnboardingGuide, type OnboardingStep } from "@/components/OnboardingGuide";
-import { getOnboardingStatus, markOnboardingViewed, type OnboardingStatus } from "@/app/actions/onboarding";
 import { isValidBgmTrack } from "@/config/audio";
 
 type ChatRole = "user" | "assistant";
@@ -242,16 +240,6 @@ function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
           {m[1]}
         </strong>
       );
-    const green = part.match(/^\^\^(.+)\^\^$/);
-    if (green)
-      return (
-        <span
-          key={i}
-          className="font-semibold text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]"
-        >
-          {green[1]}
-        </span>
-      );
     const blood = part.match(/^\{\{BLOOD\}\}([\s\S]*)\{\{\/BLOOD\}\}$/);
     if (blood)
       return (
@@ -269,6 +257,18 @@ function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
   } catch {
     return <span>{typeof text === "string" ? text.slice(0, 500) : ""}</span>;
   }
+}
+
+function extractGreenTips(text: string): string[] {
+  if (typeof text !== "string" || !text.includes("^^")) return [];
+  const tips: string[] = [];
+  const regex = /\^\^([\s\S]*?)\^\^/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const tip = match[1]?.trim();
+    if (tip) tips.push(tip);
+  }
+  return tips;
 }
 
 function DMNarrativeBlock({
@@ -603,10 +603,8 @@ function PlayContent() {
   const popLastNLogs = useGameStore((s) => s.popLastNLogs);
   const codex = useGameStore((s) => s.codex ?? {});
   const mergeCodex = useGameStore((s) => s.mergeCodex);
-  const hasReadParchment = useGameStore((s) => s.hasReadParchment ?? false);
   const hasCheckedCodex = useGameStore((s) => s.hasCheckedCodex ?? false);
   const warehouse = useGameStore((s) => s.warehouse ?? []);
-  const setHasReadParchment = useGameStore((s) => s.setHasReadParchment);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
@@ -629,6 +627,9 @@ function PlayContent() {
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+  const isGuest = useGameStore((s) => s.isGuest ?? false);
+  const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
+  const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
   const activeMenu = usePersistStore((s) => s.activeMenu);
   const setActiveMenu = usePersistStore((s) => s.setActiveMenu);
   const toggleInputMode = useGameStore((s) => s.toggleInputMode);
@@ -647,14 +648,12 @@ function PlayContent() {
   const [audioMuted, setAudioMuted] = useState(false);
   const volume = usePersistStore((s) => s.volume ?? 50);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
-  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
   const [talentEffectType, setTalentEffectType] = useState<EchoTalent | null>(null);
-  const [onboardingStep, setOnboardingStep] = useState(0);
-  const [onboardingActive, setOnboardingActive] = useState(false);
   const [firstTimeHint, setFirstTimeHint] = useState<string | null>(null);
   const firstHintShownRef = useRef<Set<string>>(new Set());
+  const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -670,35 +669,28 @@ function PlayContent() {
   const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted);
 
+  const isGuestDialogueExhausted = isGuest && dialogueCount >= 50;
+
   const sanity = stats?.sanity ?? 0;
   const displayLocation = useMemo(() => formatLocationLabel(playerLocation), [playerLocation]);
 
   const codexKeys = Object.keys(codex ?? {});
   const warehouseList = warehouse ?? [];
   const tasksList = tasks ?? [];
-  const mustViewCodex = codexKeys.length > 0 && !onboardingStatus?.codexFirstViewDone;
-  const mustViewWarehouse = warehouseList.length > 0 && !onboardingStatus?.warehouseFirstViewDone;
-  const mustViewTasks = tasksList.length > 0 && !onboardingStatus?.tasksFirstViewDone;
-  const hasOnboardingGate = mustViewCodex || mustViewWarehouse || mustViewTasks;
-  const showOnboarding = hasOnboardingGate && !isStreaming;
-  const onboardingSteps = useMemo((): OnboardingStep[] => {
-    if (!showOnboarding) return [];
-    const steps: OnboardingStep[] = [
-      { targetSelector: '[data-onboarding="settings-btn"]', tip: "点击此处打开控制中枢，查看行囊、图鉴与任务", arrowDirection: "left" },
-    ];
-    if (mustViewCodex) steps.push({ targetSelector: '[data-onboarding="codex-tab"]', tip: "图鉴中记录了已发现的 NPC 与诡异档案", arrowDirection: "right" });
-    if (mustViewWarehouse) steps.push({ targetSelector: '[data-onboarding="warehouse-tab"]', tip: "仓库可存放多余物品", arrowDirection: "right" });
-    if (mustViewTasks) steps.push({ targetSelector: '[data-onboarding="tasks-tab"]', tip: "任务追踪你的契约进度", arrowDirection: "right" });
-    return steps;
-  }, [showOnboarding, mustViewCodex, mustViewWarehouse, mustViewTasks]);
-  /** Only parchment blocks dialogue; 图鉴/仓库/任务 viewing does not block */
-  const hasAnyGate = !hasReadParchment;
-  const gateMessage = hasAnyGate ? "你需要先使用左上角【设置】里的【行囊】的【染血的羊皮纸】才能继续对话" : "";
+  /** 已移除羊皮纸强制引导，不再阻塞对话 */
+  const hasAnyGate = false;
+  const gateMessage = "";
 
   const talentCdLeft = useMemo(() => {
     if (!talent) return 0;
     return safeNumber(talentCooldowns?.[talent], 0);
   }, [talent, talentCooldowns]);
+
+  const OPENING_ACTION =
+    '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的地下一层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或环境中的诡异符号的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）两条内容：① 可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。② 可在【设置】的【属性】右侧用原石加点提升属性，总属性<20时2原石/点、≥20时3原石/点；理智低于自身历史最高时，1原石可恢复1点理智。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ ^^原石可在设置中用于加点或回理智。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】';
+
+const LOCAL_FALLBACK_OPENING =
+  "一股庞大的知识粗暴地灌进了我的脑子，像有人拎着铁锤敲击颅骨——疼痛顺着脊椎一路炸开，我在冰冷的地面上大口喘气。\n\n眼前是熟悉又陌生的灰色石墙，裂缝里渗出暗色的水渍；头顶昏黄灯管时明时暗，嗡嗡声像压在耳边的低语。空气里混杂着潮湿霉味、金属锈味，还有一丝若有若无的血腥。\n\n我勉强抬起头，意识到这里不是普通的地下室，而是名为「如月公寓」的某个角落——一栋被改造成消化器官的建筑，七层之上盘踞着无法徒手杀死的诡异，而我只是在地下一层的安全阴影里苟延残喘。\n\n某种理性在耳边低语，提醒我：\n^^你可以先跟随直觉点击屏幕上的选项，顺着故事一步步试探这个地方的规则。若擅自输入不可能发生的事情，那些东西会毫不犹豫地抹杀你的念头。^^\n^^当你逐渐理解这里的生存方式时，可以在设置里，用「原石」为自己的属性加点、或在理智崩溃前勉强把自己拉回来——那也许是你唯一能干预命运的筹码。^^";
 
   useEffect(() => {
     ensureRuntimeActions();
@@ -712,18 +704,6 @@ function PlayContent() {
   }, [isHydrated, isGameStarted, router]);
 
   useEffect(() => {
-    if (!isHydrated) return;
-    getOnboardingStatus().then(setOnboardingStatus);
-  }, [isHydrated]);
-
-  useEffect(() => {
-    if (showOnboarding && onboardingSteps.length > 0 && !onboardingActive) {
-      setOnboardingActive(true);
-      setOnboardingStep(0);
-    }
-  }, [showOnboarding, onboardingSteps.length, onboardingActive]);
-
-  useEffect(() => {
     if (!firstTimeHint) return;
     const t = setTimeout(() => setFirstTimeHint(null), 4000);
     return () => clearTimeout(t);
@@ -731,11 +711,6 @@ function PlayContent() {
 
   useEffect(() => {
     if (!isGameStarted || !inventory.length || logs.length > 0) return;
-    const hasParchment = inventory.some((i) => i.id === "I-PARCHMENT");
-    if (hasParchment && !firstHintShownRef.current.has("I-PARCHMENT")) {
-      firstHintShownRef.current.add("I-PARCHMENT");
-      setFirstTimeHint("请使用左上角【设置】里的【行囊】的染血的羊皮纸");
-    }
   }, [isGameStarted, inventory, logs.length]);
 
   useEffect(() => {
@@ -756,6 +731,27 @@ function PlayContent() {
     isStreaming,
     onFrameScroll
   );
+
+  // 仅保留助手叙事日志，供正文渲染与绿字提取使用
+  const displayMessages = useMemo(() => {
+    const assistantOnly = (logs ?? [])
+      .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
+      .map((l) => String(l.content));
+    return assistantOnly;
+  }, [logs]);
+
+  const latestAssistantRaw = useMemo(() => {
+    if (isStreaming) {
+      return typeof smoothNarrative === "string" && smoothNarrative.length > 0
+        ? smoothNarrative
+        : narrativeRef.current ?? "";
+    }
+    if (liveNarrative) return liveNarrative;
+    if (displayMessages.length > 0) return displayMessages[displayMessages.length - 1] ?? "";
+    return "";
+  }, [isStreaming, smoothNarrative, liveNarrative, displayMessages]);
+
+  const greenTips = useMemo(() => extractGreenTips(latestAssistantRaw), [latestAssistantRaw]);
 
   const prevIsStreamingRef = useRef(false);
   const onScrollContainer = useCallback(() => {
@@ -864,13 +860,28 @@ function PlayContent() {
     if (!isHydrated || isStreaming || hasTriggeredOpening.current) return;
     const currentLogs = useGameStore.getState().logs ?? [];
     const turn = currentLogs.length;
+    // 仅在还没有任何助手叙事时触发一次 300 字开场白
     if (turn > 0) return;
     hasTriggeredOpening.current = true;
-      void sendAction(
-        '【系统强制指令：玩家刚刚苏醒。请直接输出第一人称开场白。必须以“一股庞大的知识粗暴地灌进了我的脑子……”开头。在叙事中自然地告诉玩家：1. 这里是如月公寓，共7层，每层有一只无法被徒手杀死的诡异；2. 目前所在的地下一层没有诡异，但不要轻易相信其他被称为“原住民”的NPC；3. 关键规则教学：在叙事结尾，以脑海中的神秘低语或羊皮纸上的血字的形式，隐晦地提示玩家：可以跟随直觉做出选择（点击选项），或亲自在脑海中构思下一步行动。**必须用绿字着重标注**（使用 ^^...^^ 包裹）两条内容：① 可在【设置】中将选项输入切换为手动输入；若手动输入不可能的事情，则会被抹杀。② 可在【设置】的【属性】右侧用原石加点提升属性，总属性<20时2原石/点、≥20时3原石/点；理智低于自身历史最高时，1原石可恢复1点理智。例如：^^你可以选择将选项切换为手动输入，自由书写你的意志。若手动输入不可能的事情，则会被抹杀。^^ ^^原石可在设置中用于加点或回理智。^^ 切记：所有提示必须完美融入惊悚世界观，绝对不可打破第四面墙，语气要冷酷、诡异！】',
-        true
-      );
+    void sendAction(OPENING_ACTION, true);
   }, [isHydrated, isStreaming]);
+
+  // 后端长时间无响应或前几次失败时，本地兜底注入一段开场白，避免玩家看到纯黑屏
+  useEffect(() => {
+    if (!isHydrated) return;
+    let timeoutId: number | undefined;
+    timeoutId = window.setTimeout(() => {
+      const state = useGameStore.getState();
+      const logsNow = state.logs ?? [];
+      const hasAssistant = logsNow.some((l) => l && l.role === "assistant");
+      if (hasAssistant) return;
+      // 仅在完全没有助手叙事时注入一次本地开场白
+      state.pushLog({ role: "assistant", content: LOCAL_FALLBACK_OPENING });
+    }, 8000);
+    return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [isHydrated]);
 
   useEffect(() => {
     if (
@@ -932,6 +943,11 @@ function PlayContent() {
     isResume?: boolean
   ) {
     if (isStreaming) return;
+    const currentState = useGameStore.getState();
+    if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
+      setShowDialoguePaywall(true);
+      return;
+    }
     const trimmed = action.trim();
     if (!trimmed) return;
     if (!bypassLengthCheck && trimmed.length > MAX_INPUT) return;
@@ -948,6 +964,9 @@ function PlayContent() {
 
     if (!isResume) {
       useGameStore.getState().pushLog({ role: "user", content: trimmed });
+      if (currentState.isGuest) {
+        incrementDialogueCount();
+      }
     }
 
     const history = useGameStore.getState().logs ?? [];
@@ -1079,10 +1098,9 @@ function PlayContent() {
     const consumedNames = Array.isArray(parsed.consumed_items)
       ? (parsed.consumed_items as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0)
       : [];
-    const hadItemUseNoParchment = consumedNames.length > 0 && consumedNames.some((id) => id !== "I-PARCHMENT");
     const hadAnomaly = (parsed.sanity_damage ?? 0) > 0;
     if (!parsed.is_death) {
-      setPendingHallucinationCheck(hadItemUseNoParchment || hadAnomaly);
+      setPendingHallucinationCheck((consumedNames.length > 0) || hadAnomaly);
     }
 
     if (consumedNames.length > 0) {
@@ -1209,11 +1227,14 @@ function PlayContent() {
     }
 
     if (Array.isArray(parsed.options) && parsed.options.length > 0) {
-      const validOpts = parsed.options
-        .filter((o): o is string => typeof o === "string" && o.length > 0)
-        .slice(0, 4);
-      setCurrentOptions(validOpts);
-      setPersistCurrentOptions(validOpts);
+      const modeNow = useGameStore.getState().inputMode ?? "options";
+      if (modeNow === "options") {
+        const validOpts = parsed.options
+          .filter((o): o is string => typeof o === "string" && o.length > 0)
+          .slice(0, 4);
+        setCurrentOptions(validOpts);
+        setPersistCurrentOptions(validOpts);
+      }
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -1291,6 +1312,10 @@ function PlayContent() {
       return;
     }
     setInputError("");
+    if (isGuestDialogueExhausted) {
+      setShowDialoguePaywall(true);
+      return;
+    }
     void sendAction(input);
     setInput("");
   }
@@ -1358,7 +1383,6 @@ function PlayContent() {
   function onUseItem(item: Item) {
     const check = canUseItem(item, stats);
     if (!check.ok) return; // UI should block, but guard here
-    if (item.id === "I-PARCHMENT") setHasReadParchment(true);
     const text = `我使用了道具：【${item.name}】`;
     void sendAction(text);
     setActiveMenu(null);
@@ -1375,14 +1399,6 @@ function PlayContent() {
     setShowExitModal(false);
     router.push("/settlement");
   }
-
-  // Phase 1: Pure DM narrative flow - filter user, merge assistant into seamless novel
-  const displayMessages = useMemo(() => {
-    const assistantOnly = (logs ?? [])
-      .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
-      .map((l) => String(l.content));
-    return assistantOnly;
-  }, [logs]);
 
   return (
     <main
@@ -1432,23 +1448,6 @@ function PlayContent() {
         </div>
       )}
 
-      {firstTimeHint && (
-        <div
-          className="pointer-events-none fixed inset-0 z-[53] flex items-center justify-center"
-          aria-hidden
-        >
-          <p
-            className="animate-[fadeIn_0.5s_ease-out] px-6 text-center text-lg md:text-xl font-medium text-emerald-400/90"
-            style={{
-              textShadow:
-                "0 0 12px rgba(52,211,153,0.5), 0 0 24px rgba(52,211,153,0.35), 0 0 40px rgba(52,211,153,0.2)",
-            }}
-          >
-            {firstTimeHint}
-          </p>
-        </div>
-      )}
-
       {talentEffectType && (() => {
         const style = TALENT_EFFECT_STYLE[talentEffectType];
         if (!style) return null;
@@ -1471,6 +1470,33 @@ function PlayContent() {
       <div
         className={`relative flex min-h-0 flex-1 flex-col ${hitEffectUntil > Date.now() ? "animate-[sanity-hit-shake_0.5s_ease-out_2]" : ""}`}
       >
+      {showDialoguePaywall && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-xl"
+          role="dialog"
+          aria-modal
+        >
+          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/15 bg-slate-900/60 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.85)] backdrop-blur-2xl">
+            <h2 className="text-lg font-semibold tracking-wide text-white">
+              体验次数已耗尽
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-200">
+              体验次数已耗尽，请注册账号以继续游戏。
+            </p>
+            <div className="mt-8 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  router.push("/");
+                }}
+                className="group relative inline-flex items-center gap-3 rounded-full border border-white/15 bg-slate-900/70 px-8 py-3 text-sm font-semibold text-slate-50 shadow-[0_0_40px_rgba(15,23,42,0.9)] backdrop-blur-2xl transition-all duration-300 hover:scale-105 hover:border-cyan-300/70 hover:shadow-[0_0_55px_rgba(56,189,248,0.85)]"
+              >
+                <span className="relative">注册 / 登录</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showExitModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
@@ -1593,6 +1619,7 @@ function PlayContent() {
                 style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
               >
                 <div className="space-y-6">
+                  {/* 叙事正文：历史 + 正在流式 + 完整一条 */}
                   {displayMessages.length > 0 && (
                     <div
                       className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
@@ -1600,12 +1627,19 @@ function PlayContent() {
                       {displayMessages.map((content, idx) => {
                         const safeContent = typeof content === "string" ? content : "";
                         return safeContent.includes("获得了新物品，已放入书包") ? (
-                          <p key={idx} className="mb-6 font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)] text-base">
+                          <p
+                            key={idx}
+                            className="mb-6 text-base font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                          >
                             {safeContent.replace(/\*\*/g, "")}
                           </p>
                         ) : (
                           <div key={idx} className="mb-6">
-                            <DMNarrativeBlock content={safeContent} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
+                            <DMNarrativeBlock
+                              content={safeContent}
+                              isDarkMoon={isDarkMoon}
+                              isLowSanity={isLowSanity}
+                            />
                           </div>
                         );
                       })}
@@ -1613,8 +1647,9 @@ function PlayContent() {
                   )}
 
                   {isStreaming ? (
-                    <div className="min-h-[100px] animate-[fadeIn_0.8s_ease-out]">
+                    <div className="min-h-[100px] animate-[fadeIn_0.8s_ease-out] space-y-3">
                       {smoothThinking ? (
+                        // 阶段 1：纯“正在推演...”阶段，只显示一个统一样式的小圈圈
                         <div className="flex items-center gap-3 py-4">
                           <div className="relative flex h-6 w-6 items-center justify-center">
                             <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
@@ -1625,145 +1660,200 @@ function PlayContent() {
                           </span>
                         </div>
                       ) : (
-                        <div className={isLowSanity ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-white" : isDarkMoon ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-200" : "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800"}>
-                          <span className="whitespace-pre-wrap">
-                            {renderNarrativeText(smoothNarrative, { plainOnly: true })}
-                          </span>
-                          {!smoothComplete && (
-                            <span
-                              className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
-                              aria-hidden
-                            />
+                        <>
+                          {/* 阶段 2：正文流式输出 */}
+                          <div
+                            className={
+                              isLowSanity
+                                ? "space-y-6 text-[18px] leading-[1.8] text-white"
+                                : isDarkMoon
+                                  ? "space-y-6 text-[18px] leading-[1.8] text-slate-200"
+                                  : "space-y-6 text-[18px] leading-[1.8] text-slate-800"
+                            }
+                          >
+                            <span className="whitespace-pre-wrap">
+                              {renderNarrativeText(smoothNarrative, { plainOnly: true })}
+                            </span>
+                            {!smoothComplete && (
+                              <span
+                                className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+                                aria-hidden
+                              />
+                            )}
+                          </div>
+                          {/* 阶段 3：正文结束后，才在正文末尾显示“推演选项中...”的小圈圈，且样式与上方一致 */}
+                          {smoothComplete && inputMode === "options" && (
+                            <div className="flex items-center gap-3 pt-2 text-xs text-slate-400">
+                              <div className="relative flex h-6 w-6 items-center justify-center">
+                                <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
+                                <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                              </div>
+                              <span>推演选项中...</span>
+                            </div>
                           )}
-                        </div>
+                        </>
                       )}
                     </div>
                   ) : liveNarrative ? (
                     <div className="animate-[fadeIn_0.8s_ease-out]">
-                      <DMNarrativeBlock content={liveNarrative} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
+                      <DMNarrativeBlock
+                        content={liveNarrative}
+                        isDarkMoon={isDarkMoon}
+                        isLowSanity={isLowSanity}
+                      />
                     </div>
                   ) : displayMessages.length === 0 && !isStreaming ? (
-                    <div className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`} />
+                    <div
+                      className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`}
+                    />
                   ) : null}
+
+                  {/* 绿字提示：从 narrative 中抽取 ^^...^^，集中在正文底部展示（选项上方），并附加一次性引导提示 */}
+                  {(greenTips.length > 0 || firstTimeHint) && (
+                    <div className="mt-2 space-y-1">
+                      {firstTimeHint && (
+                        <p className="text-sm font-semibold text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.6)]">
+                          {firstTimeHint}
+                        </p>
+                      )}
+                      {greenTips.map((tip, idx) => (
+                        <p
+                          key={idx}
+                          className="text-sm font-semibold text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]"
+                        >
+                          {tip}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 选项列表：紧跟在叙事之后，一行一个 */}
+                  {inputMode === "options" && currentOptions.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {currentOptions.map((option, idx) => {
+                        const optionTextColor = isLowSanity
+                          ? "text-white"
+                          : isDarkMoon
+                            ? "text-red-100"
+                            : "text-slate-900";
+                        const optionBorderAndBg =
+                          isLowSanity || isDarkMoon
+                            ? "border border-white/15 bg-slate-900/40 hover:bg-slate-900/60"
+                            : "border border-slate-200 bg-white hover:bg-slate-50";
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              if (isGuestDialogueExhausted) {
+                                setShowDialoguePaywall(true);
+                                return;
+                              }
+                              // 点击后立即清空当前选项，让玩家感知到已提交
+                              setCurrentOptions([]);
+                              setPersistCurrentOptions([]);
+                              playUIClick();
+                              void sendAction(option, true);
+                            }}
+                            disabled={isStreaming || isGuestDialogueExhausted}
+                            className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-medium tracking-wide shadow-sm transition-all duration-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 md:text-base ${optionTextColor} ${optionBorderAndBg}`}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className={`shrink-0 px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isLowSanity ? "bg-white/5" : isDarkMoon ? "bg-red-950/20" : "bg-slate-900/10"}`}>
                 {hasAnyGate ? (
-                  <p className={`py-3 text-center text-sm font-medium ${isLowSanity ? "text-white/80" : isDarkMoon ? "text-red-400/90" : "text-neutral-600"}`}>
+                  <p
+                    className={`py-3 text-center text-sm font-medium ${
+                      isLowSanity ? "text-white/80" : isDarkMoon ? "text-red-400/90" : "text-neutral-600"
+                    }`}
+                  >
                     {gateMessage}
                   </p>
-                ) : isStreaming ? (
-                  <div className="liquid-glass halo-nerve flex flex-col items-center justify-center gap-2 rounded-xl px-3 py-4">
-                    <div className="relative flex h-10 w-10 items-center justify-center">
-                      <div
-                        className="absolute inset-0 rounded-full border-2 border-transparent border-t-indigo-400/80 border-r-purple-400/60 animate-spin"
-                        style={{ boxShadow: "0 0 12px rgba(99,102,241,0.4)" }}
-                        aria-hidden
+                ) : inputMode === "text" ? (
+                  <div className="relative">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        value={input}
+                        onChange={(e) => {
+                          setInput(e.target.value);
+                          setInputError("");
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") onSubmit();
+                        }}
+                        placeholder="输入指令，最多20字"
+                        inputMode="text"
+                        enterKeyHint="done"
+                        className={`min-h-[44px] w-full rounded-xl px-3 text-base outline-none transition touch-manipulation ${
+                          isLowSanity
+                            ? "bg-white/10 text-white placeholder:text-white/50 focus:bg-white/15"
+                            : isDarkMoon
+                              ? "bg-red-950/40 text-red-100 placeholder:text-red-400/50 focus:bg-red-950/60"
+                              : "bg-white/90 text-slate-800 placeholder:text-slate-500 focus:bg-white"
+                        }`}
+                        disabled={isStreaming || isGuestDialogueExhausted}
                       />
-                      <div
-                        className="absolute inset-1 rounded-full border-2 border-transparent border-b-cyan-400/50 border-l-indigo-400/50 animate-spin"
-                        style={{ animationDirection: "reverse", animationDuration: "2s" }}
-                        aria-hidden
-                      />
+                      <button
+                        type="button"
+                        onClick={onSubmit}
+                        disabled={isStreaming || input.trim().length === 0 || isGuestDialogueExhausted}
+                        className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition disabled:opacity-40 touch-manipulation ${
+                          isLowSanity
+                            ? "bg-white/20 text-white"
+                            : isDarkMoon
+                              ? "bg-red-900 text-red-100"
+                              : "bg-foreground text-background"
+                        }`}
+                      >
+                        确认
+                      </button>
                     </div>
-                    <p
-                      className={`text-center text-xs font-medium tracking-wide ${isLowSanity ? "text-white/90" : isDarkMoon ? "text-red-200/90" : "text-slate-700"} animate-[breathe_2s_ease-in-out_infinite]`}
-                      style={{ textShadow: "0 0 16px rgba(99, 102, 241, 0.5)" }}
+                    <div
+                      className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs ${
+                        isLowSanity ? "text-white/70" : isDarkMoon ? "text-red-300/80" : "text-neutral-600"
+                      }`}
                     >
-                      正在推演...
-                    </p>
-                  </div>
-                ) : (() => {
-                  const showOpts = inputMode === "options" && currentOptions.length > 0;
-                  return (
-                    <div className="relative">
-                      {/* Layer A: Options grid */}
-                      <div
-                        className={`transition-all duration-300 ease-in-out ${
-                          showOpts
-                            ? "opacity-100 translate-y-0"
-                            : "opacity-0 translate-y-4 pointer-events-none absolute inset-0"
-                        }`}
-                      >
-                        <div className="grid grid-cols-2 gap-2 md:grid-cols-2">
-                          {currentOptions.map((option, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => { playUIClick(); void sendAction(option, true); }}
-                              disabled={isStreaming}
-                              className="relative group min-h-[44px] p-3 text-left bg-slate-900/30 backdrop-blur-2xl rounded-xl hover:bg-slate-800/50 hover:bg-indigo-500/10 transition-all duration-300 overflow-hidden disabled:opacity-40 touch-manipulation"
-                            >
-                              <span className="relative z-10 line-clamp-2 text-xs text-white/95 group-hover:text-white font-medium drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)] md:text-sm">
-                                {option}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Layer B: Text input */}
-                      <div
-                        className={`transition-all duration-300 ease-in-out ${
-                          showOpts
-                            ? "opacity-0 -translate-y-4 pointer-events-none absolute inset-0"
-                            : "opacity-100 translate-y-0"
-                        }`}
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <input
-                            value={input}
-                            onChange={(e) => {
-                              setInput(e.target.value);
-                              setInputError("");
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") onSubmit();
-                            }}
-                            placeholder="输入指令，最多20字"
-                            inputMode="text"
-                            enterKeyHint="done"
-                            className={`min-h-[44px] w-full rounded-xl px-3 text-base outline-none transition touch-manipulation ${
-                              isLowSanity
-                                ? "bg-white/10 text-white placeholder:text-white/50 focus:bg-white/15"
-                                : isDarkMoon
-                                  ? "bg-red-950/40 text-red-100 placeholder:text-red-400/50 focus:bg-red-950/60"
-                                  : "bg-white/90 text-slate-800 placeholder:text-slate-500 focus:bg-white"
-                            }`}
-                            disabled={isStreaming}
-                          />
-                          <button
-                            type="button"
-                            onClick={onSubmit}
-                            disabled={isStreaming || input.trim().length === 0}
-                            className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition disabled:opacity-40 touch-manipulation ${
-                              isLowSanity ? "bg-white/20 text-white" : isDarkMoon ? "bg-red-900 text-red-100" : "bg-foreground text-background"
-                            }`}
+                      <span>
+                        字数：{input.trim().length}/{MAX_INPUT}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {inputError ? (
+                          <span className="font-medium text-red-500">{inputError}</span>
+                        ) : (
+                          <span
+                            className={
+                              input.trim().length > MAX_INPUT || isGuestDialogueExhausted ? "text-red-500" : ""
+                            }
                           >
-                            确认
-                          </button>
-                        </div>
-                        <div className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs ${isLowSanity ? "text-white/70" : isDarkMoon ? "text-red-300/80" : "text-neutral-600"}`}>
-                          <span>字数：{input.trim().length}/{MAX_INPUT}</span>
-                          <div className="flex items-center gap-3">
-                            {inputError ? (
-                              <span className="text-red-500 font-medium">{inputError}</span>
-                            ) : (
-                              <span className={input.trim().length > MAX_INPUT ? "text-red-500" : ""}>
-                                {input.trim().length > MAX_INPUT
-                                  ? "动作过长：将被公寓拒绝。"
-                                  : isStreaming
-                                    ? "正在推演..."
-                                    : "保持简短。保持真实。"}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                            {isGuestDialogueExhausted
+                              ? "体验次数已耗尽，请注册账号以继续游戏。"
+                              : input.trim().length > MAX_INPUT
+                                ? "动作过长：将被公寓拒绝。"
+                                : isStreaming
+                                  ? "正在推演..."
+                                  : "保持简短。保持真实。"}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  );
-                })()}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-xs text-neutral-600">
+                    <span className="opacity-80">
+                      当前为选项模式，请直接点击上方选项进行行动。
+                    </span>
+                    <span className="hidden sm:inline opacity-60">
+                      想自由输入时，可用右上角按钮切换为手动输入。
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -1780,39 +1870,10 @@ function PlayContent() {
           toggleMute();
           setAudioMuted(isMuted());
         }}
-        onViewedTab={async (tab) => {
-          const ok = await markOnboardingViewed(tab);
-          if (ok)
-            setOnboardingStatus((s) => ({
-              codexFirstViewDone: (s?.codexFirstViewDone ?? false) || tab === "codex",
-              warehouseFirstViewDone: (s?.warehouseFirstViewDone ?? false) || tab === "warehouse",
-              tasksFirstViewDone: (s?.tasksFirstViewDone ?? false) || tab === "tasks",
-            }));
+        onViewedTab={() => {
+          // 保留回调签名以兼容现有 props，但不再做引导状态记录
         }}
       />
-
-      {onboardingActive && onboardingSteps.length > 0 && (
-        <OnboardingGuide
-          steps={onboardingSteps}
-          currentStep={onboardingStep}
-          onNext={() => setOnboardingStep((s) => s + 1)}
-          onComplete={async () => {
-            setOnboardingActive(false);
-            if (mustViewCodex) await markOnboardingViewed("codex");
-            if (mustViewWarehouse) await markOnboardingViewed("warehouse");
-            if (mustViewTasks) await markOnboardingViewed("tasks");
-            setOnboardingStatus((s) => ({
-              ...s,
-              codexFirstViewDone: (s?.codexFirstViewDone ?? false) || mustViewCodex,
-              warehouseFirstViewDone: (s?.warehouseFirstViewDone ?? false) || mustViewWarehouse,
-              tasksFirstViewDone: (s?.tasksFirstViewDone ?? false) || mustViewTasks,
-            }));
-          }}
-          onBeforeStep={(idx) => {
-            if (idx >= 1) setActiveMenu("settings");
-          }}
-        />
-      )}
 
     </main>
   );

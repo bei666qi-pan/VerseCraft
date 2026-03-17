@@ -264,10 +264,53 @@ export default function CreatePage() {
 
       <div className="relative z-10 mx-auto w-full max-w-3xl px-4 sm:px-6 py-4 sm:py-5">
         <section className={`relative ${GLASS_PANEL} p-8 transition-all duration-300 hover:bg-white/50 md:p-10`}>
-          <h2 className="text-base font-semibold text-slate-800">基础档案</h2>
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-base font-semibold text-slate-800">基础档案</h2>
+            <button
+              type="button"
+              onClick={() => {
+                const namePool = ["黎川", "苏木", "阿夜", "行者", "白葵", "祁夜"];
+                const personalityPool = ["冷静", "冲动", "多疑", "乐观", "谨慎", "偏执"];
+                const pick = <T,>(arr: readonly T[]): T =>
+                  arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!;
+
+                const randomName = pick(namePool);
+                const randomGender: GenderOption = pick(["男", "女", "其他"] as const);
+                const randomHeight = 160 + Math.floor(Math.random() * 41);
+                const randomPersonality = pick(personalityPool);
+
+                const base = { ...BASE_STATS };
+                let remainingPoints = EXTRA_POINTS;
+                const statKeys = Object.keys(BASE_STATS) as StatType[];
+                while (remainingPoints > 0) {
+                  const key = pick(statKeys);
+                  if (base[key] >= 30) continue;
+                  base[key] += 1;
+                  remainingPoints -= 1;
+                }
+
+                const randomTalent = pick(TALENTS).key;
+
+                setName(randomName);
+                setGender(randomGender);
+                setHeight(randomHeight);
+                setPersonality(randomPersonality);
+                setStats(base);
+                setSelectedTalent(randomTalent);
+              }}
+              className="group relative hidden sm:inline-flex items-center gap-3 rounded-full border border-white/15 bg-slate-900/40 px-4 py-2 text-xs font-semibold text-slate-50 shadow-[0_0_30px_rgba(15,23,42,0.7)] backdrop-blur-2xl transition-all duration-300 hover:scale-105 hover:border-cyan-300/70 hover:shadow-[0_0_45px_rgba(56,189,248,0.85)]"
+            >
+              <div className="relative flex h-8 w-8 items-center justify-center">
+                <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
+                <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
+              </div>
+              <span className="relative tracking-[0.25em]">一键注册</span>
+            </button>
+          </div>
 
           <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <label className="space-y-2">
+            <label className="mt-4 space-y-2 sm:mt-0">
               <span className="text-sm font-medium text-slate-700">称呼</span>
               <input
                 value={name}

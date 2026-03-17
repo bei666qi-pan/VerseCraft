@@ -51,12 +51,8 @@ export function getItemEffectSummary(item: Item | null | undefined): string | nu
   return EFFECT_TYPE_LABELS[t] ?? t;
 }
 
-/** Parchment has no stat requirements (tutorial item) */
-export const PARCHMENT_ID = "I-PARCHMENT";
-
 /**
  * Check if player can use item based on stat requirements.
- * Parchment (I-PARCHMENT) always passes.
  * Defensive: returns false if item or stats are invalid (hydration/SSR safety).
  */
 export function canUseItem(
@@ -65,7 +61,6 @@ export function canUseItem(
 ): { ok: boolean; reason?: string } {
   if (!item || typeof item !== "object") return { ok: false, reason: "无效道具" };
   const safeStats = stats ?? {};
-  if (item.id === PARCHMENT_ID) return { ok: true };
   const req = item.statRequirements;
   if (!req || typeof req !== "object" || Object.keys(req).length === 0) return { ok: true };
 

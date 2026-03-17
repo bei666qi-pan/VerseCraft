@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
@@ -140,11 +141,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [registerAutoLoginPending, registerName, registerPassword, registerState.success, router]);
 
   function requireLoginOrWarn(): boolean {
-    if (user) return true;
-    setAuthWarn(true);
-    setAuthOpen(true);
-    setToast("深渊拒绝了无名之辈。请先完成登录。");
-    return false;
+    return true;
   }
 
   function openAuthModal() {
@@ -218,159 +215,174 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         />
 
         <div className="fixed right-4 top-4 sm:right-8 sm:top-8 z-50" style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}>
-        {!user ? (
-          <div className="relative group">
-            <div
-              className={`pointer-events-none absolute -inset-1.5 rounded-full blur-md transition-all duration-700 ${
-                isConnecting
-                  ? "bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 opacity-100 animate-pulse scale-110"
-                  : "bg-white/30 opacity-70 group-hover:opacity-100 group-hover:bg-white/50"
-              }`}
-            />
-            <button
-              type="button"
-              onClick={openAuthModal}
-              className={`relative flex items-center justify-center overflow-hidden rounded-full border border-white/20 bg-black/50 px-12 py-4 backdrop-blur-3xl transition-all duration-500 hover:scale-105 hover:border-cyan-300/60 hover:shadow-[0_0_35px_rgba(6,182,212,0.55)] active:scale-95 ${
-                authWarn ? "animate-bounce ring-2 ring-red-500" : ""
-              }`}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-active:animate-[shimmer_0.5s_ease-out]" />
-              <span
-                className={`relative z-10 text-xl font-black uppercase tracking-[0.3em] ${
-                  isConnecting
-                    ? "bg-gradient-to-r from-white via-cyan-100 to-indigo-200 bg-clip-text text-transparent drop-shadow-[0_0_16px_rgba(56,189,248,0.6)]"
-                    : "text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.7)]"
+          {!user ? (
+            <button type="button" onClick={openAuthModal} aria-label="注册或登录账户">
+              <div
+                className={`group relative flex items-center gap-3 rounded-full border border-white/10 bg-slate-900/40 px-5 py-2.5 backdrop-blur-2xl shadow-[0_0_34px_rgba(15,23,42,0.7)] transition-all duration-500 hover:scale-105 hover:border-cyan-300/60 hover:shadow-[0_0_45px_rgba(56,189,248,0.75)] active:scale-95 ${
+                  authWarn ? "ring-2 ring-red-500/80 animate-pulse" : ""
                 }`}
               >
-                建立档案 / 系统接入
-              </span>
+                <div className="relative flex h-11 w-11 items-center justify-center">
+                  <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-200 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_18px_rgba(148,163,184,0.95)]" />
+                  <div className="absolute inset-[3px] rounded-full bg-slate-900/90 backdrop-blur-sm border border-white/15" />
+                  <div className="relative h-5 w-5">
+                    <Image
+                      src="/vercel.svg"
+                      alt="VerseCraft"
+                      fill
+                      sizes="20px"
+                      className="object-contain scale-90"
+                    />
+                  </div>
+                </div>
+                <span
+                  className={`pr-1 text-xs font-semibold tracking-[0.28em] text-slate-100 uppercase ${
+                    isConnecting ? "opacity-80" : ""
+                  }`}
+                >
+                  注册 / 登录
+                </span>
+              </div>
             </button>
+          ) : (
+            <div className="flex items-center gap-3 animate-[fadeIn_1s_ease-out]">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse drop-shadow-[0_0_8px_rgba(74,222,128,1)]" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] font-black tracking-widest text-lg">
+                {user.name}
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="ml-4 text-xs text-slate-500 hover:text-red-400 transition-colors"
+              >
+                登出
+              </button>
+            </div>
+          )}
+        </div>
 
-            {authOpen && (
-              <div className="liquid-glass-strong absolute right-0 mt-3 w-80 rounded-2xl p-4">
-                <div className="mb-4 flex gap-2">
+        {authOpen && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
+            <div
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+              onClick={() => setAuthOpen(false)}
+            />
+            <div className="relative w-full max-w-md rounded-3xl border border-white/20 bg-slate-900/85 px-6 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.9)] backdrop-blur-2xl">
+              <div className="flex items-center justify-between gap-4">
+                <div className="inline-flex rounded-full bg-slate-800/90 p-1 text-xs text-slate-300">
                   <button
                     type="button"
                     onClick={() => setMode("login")}
-                    className={`rounded-full px-3 py-1 text-xs transition ${mode === "login" ? "bg-slate-900 text-white" : "bg-white/40 text-slate-600"}`}
+                    className={`rounded-full px-3 py-1 ${
+                      mode === "login" ? "bg-slate-100 text-slate-900" : "text-slate-300"
+                    }`}
                   >
                     登录
                   </button>
                   <button
                     type="button"
                     onClick={() => setMode("register")}
-                    className={`rounded-full px-3 py-1 text-xs transition ${mode === "register" ? "bg-slate-900 text-white" : "bg-white/40 text-slate-600"}`}
+                    className={`rounded-full px-3 py-1 ${
+                      mode === "register" ? "bg-slate-100 text-slate-900" : "text-slate-300"
+                    }`}
                   >
                     注册
                   </button>
                 </div>
-
-                {mode === "login" ? (
-                  <form key="login-form" className="relative space-y-3" action={loginAction}>
-                    <input
-                      name="fax_number"
-                      type="text"
-                      autoComplete="off"
-                      aria-hidden={true}
-                      tabIndex={-1}
-                      className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
-                    />
-                    <input
-                      name="name"
-                      placeholder="账号"
-                      className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
-                    />
-                    <input
-                      name="password"
-                      type="password"
-                      placeholder="密码"
-                      className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={loginPending}
-                      className={`h-10 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        loginPending ? "halo-nerve" : ""
-                      }`}
-                    >
-                      {loginPending ? "正在连接深渊..." : "登录"}
-                    </button>
-                    {!loginState.success && loginState.error && (
-                      <div className="liquid-glass mt-4 flex gap-3 rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3">
-                        <div className="h-2 w-2 shrink-0 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-                        <span className="text-sm font-medium tracking-widest text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
-                          {loginState.error}
-                        </span>
-                      </div>
-                    )}
-                  </form>
-                ) : (
-                  <form key="register-form" className="relative space-y-3" action={registerAction}>
-                    <input
-                      name="fax_number"
-                      type="text"
-                      autoComplete="off"
-                      aria-hidden={true}
-                      tabIndex={-1}
-                      className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
-                    />
-                    <input
-                      name="name"
-                      placeholder="账号（至少2位）"
-                      className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
-                      value={registerName}
-                      onChange={(event) => setRegisterName(event.target.value)}
-                    />
-                    <input
-                      name="password"
-                      type="password"
-                      placeholder="密码（至少6位）"
-                      className="h-10 w-full rounded-xl border border-white/40 bg-white/60 px-3 text-sm outline-none"
-                      value={registerPassword}
-                      onChange={(event) => setRegisterPassword(event.target.value)}
-                    />
-                    <button
-                      type="submit"
-                      disabled={registerPending || registerAutoLoginPending}
-                      className={`h-10 w-full rounded-xl bg-cyan-700 text-sm font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        registerPending || registerAutoLoginPending ? "halo-nerve" : ""
-                      }`}
-                    >
-                      {registerPending || registerAutoLoginPending ? "正在连接深渊..." : "注册"}
-                    </button>
-                    {(registerState.message || registerState.error) && (
-                      registerState.success ? (
-                        <p className="text-xs text-emerald-700">{registerState.message}</p>
-                      ) : (
-                        <div className="liquid-glass mt-4 flex gap-3 rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3">
-                          <div className="h-2 w-2 shrink-0 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-                          <span className="text-sm font-medium tracking-widest text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
-                            {registerState.error}
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </form>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setAuthOpen(false)}
+                  className="rounded-full border border-slate-600/60 bg-slate-800/80 px-3 py-1 text-xs text-slate-300 hover:border-slate-400 hover:text-slate-100"
+                >
+                  关闭
+                </button>
               </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center gap-3 animate-[fadeIn_1s_ease-out]">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse drop-shadow-[0_0_8px_rgba(74,222,128,1)]" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] font-black tracking-widest text-lg">
-              {user.name}
-            </span>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="ml-4 text-xs text-slate-500 hover:text-red-400 transition-colors"
-            >
-              登出
-            </button>
+
+              {mode === "login" ? (
+                <form key="login-form" className="mt-5 space-y-3" action={loginAction}>
+                  <input
+                    name="fax_number"
+                    type="text"
+                    autoComplete="off"
+                    aria-hidden={true}
+                    tabIndex={-1}
+                    className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
+                  />
+                  <input
+                    name="name"
+                    placeholder="账号"
+                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="密码"
+                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loginPending}
+                    className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg白 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      loginPending ? "halo-nerve" : ""
+                    }`}
+                  >
+                    {loginPending ? "正在连接..." : "登录"}
+                  </button>
+                  {!loginState.success && loginState.error && (
+                    <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
+                      {loginState.error}
+                    </div>
+                  )}
+                </form>
+              ) : (
+                <form key="register-form" className="mt-5 space-y-3" action={registerAction}>
+                  <input
+                    name="fax_number"
+                    type="text"
+                    autoComplete="off"
+                    aria-hidden={true}
+                    tabIndex={-1}
+                    className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
+                  />
+                  <input
+                    name="name"
+                    placeholder="账号（至少2位）"
+                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    value={registerName}
+                    onChange={(event) => setRegisterName(event.target.value)}
+                  />
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="密码（至少6位）"
+                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    value={registerPassword}
+                    onChange={(event) => setRegisterPassword(event.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    disabled={registerPending || registerAutoLoginPending}
+                    className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                      registerPending || registerAutoLoginPending ? "halo-nerve" : ""
+                    }`}
+                  >
+                    {registerPending || registerAutoLoginPending ? "正在连接..." : "注册"}
+                  </button>
+                  {(registerState.message || registerState.error) && (
+                    registerState.success ? (
+                      <p className="mt-2 text-xs text-emerald-400">{registerState.message}</p>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
+                        {registerState.error}
+                      </div>
+                    )
+                  )}
+                </form>
+              )}
+            </div>
           </div>
         )}
-      </div>
 
       {toast && (
         <div className="pointer-events-none fixed top-24 right-8 z-50 rounded-2xl border border-red-400/50 bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-xl shadow-[0_0_24px_rgba(220,38,38,0.3)] animate-[fadeIn_0.35s_ease-out]">
@@ -411,7 +423,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           </button>
         </div>
         <div className="flex flex-col items-center gap-2 text-sm text-slate-400/80 mt-8">
-          <p>欢迎第一批内测玩家加入QQ群 <span className="font-mono text-slate-300">377493954</span> 交流</p>
+          <p>欢迎第一批内测用户加入QQ群 <span className="font-mono text-slate-300">377493954</span> 交流</p>
           <p className="tracking-widest opacity-70">【1.1先行版】</p>
         </div>
       </div>

@@ -8,18 +8,6 @@ import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 
-/** Tutorial item — no stat requirements. Owner: N-011 (manager planted it for new tenants). */
-export const PARCHMENT_ITEM: Item = {
-  id: "I-PARCHMENT",
-  name: "染血的羊皮纸",
-  tier: "S",
-  description:
-    "三日之后，暗月降至；十日之后，一切终焉。本层徘徊着未知的诡异，不要相信任何轻易示好的住客。记住，暗月期间不要直视光源。",
-  statBonus: {},
-  tags: "lore,truth",
-  ownerId: "N-011",
-};
-
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
 
@@ -102,7 +90,6 @@ export interface SaveSlotData {
   historicalMaxFloorScore?: number;
   talent?: EchoTalent | null;
   talentCooldowns?: Record<EchoTalent, number>;
-  hasReadParchment?: boolean;
   hasCheckedCodex?: boolean;
   originium?: number;
   currentBgm?: string;
@@ -118,6 +105,18 @@ interface GameState {
   saveSlots: Record<string, SaveSlotData>;
   isHydrated: boolean;
   user: AuthUser | null;
+  guestId: string | null;
+  isGuest: boolean;
+
+  /** 游客累计游玩时长（秒） */
+  playTimeSeconds: number;
+  /** 打开游戏次数（前端加载次数统计） */
+  visitCount: number;
+  /** 是否已经展示过游客软引导提示，防止重复打扰 */
+  hasShownGuestSoftNudge: boolean;
+
+  /** 游客体验对话次数（DeepSeek 行动指令次数） */
+  dialogueCount: number;
 
   playerName: string;
   gender: string;
@@ -139,9 +138,7 @@ interface GameState {
   /** 图鉴：NPC/诡异情报，由 DM 通过 codex_updates 推送 */
   codex: Record<string, CodexEntry>;
 
-  /** 新手引导：是否已阅读羊皮纸 */
-  hasReadParchment: boolean;
-  /** 新手引导：是否已查看图鉴 */
+  /** 新手引导：是否已查看图鉴（羊皮纸引导已移除） */
   hasCheckedCodex: boolean;
   /** 仓库：物品（非道具），仅存仓库。无属性要求，有正向作用与对应副作用。 */
   warehouse: WarehouseItem[];
@@ -155,7 +152,7 @@ interface GameState {
   originium: number;
   /** 任务追踪系统 */
   tasks: GameTask[];
-  /** 玩家当前位置 */
+  /** 用户当前位置 */
   playerLocation: string;
   /** 历史最高抵达楼层分数（B1=0, 1F=1, ..., B2=99），用于结算与排行榜 */
   historicalMaxFloorScore: number;
@@ -194,7 +191,6 @@ interface GameState {
   updateNpcLocation: (npcId: string, location: string) => void;
   killNpc: (npcId: string) => void;
   triggerIntrusionFlash: () => void;
-  setHasReadParchment: (v: boolean) => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
@@ -209,6 +205,14 @@ interface GameState {
   removeFromInventory: (itemId: string) => void;
   consumeItems: (itemNames: string[]) => void;
   addWarehouseItems: (items: WarehouseItem[]) => void;
+
+  /** 游客模式辅助：增加游玩时长与访问次数 */
+  addPlayTimeSeconds: (deltaSeconds: number) => void;
+  bumpVisitCount: () => void;
+  markGuestSoftNudgeShown: () => void;
+
+  /** 游客体验对话计数自增 */
+  incrementDialogueCount: () => void;
 
   // 核心 Action
   initCharacter: (
@@ -288,6 +292,10 @@ function pickStartingItemByBackground(background: number): Item {
   return safePick(dItems, fallback);
 }
 
+function createGuestId(): string {
+  return `guest_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -295,6 +303,12 @@ export const useGameStore = create<GameState>()(
       saveSlots: {},
       isHydrated: false,
       user: null,
+      guestId: createGuestId(),
+      isGuest: true,
+      playTimeSeconds: 0,
+      visitCount: 0,
+      hasShownGuestSoftNudge: false,
+      dialogueCount: 0,
       playerName: "",
       gender: "",
       height: 170,
@@ -307,7 +321,6 @@ export const useGameStore = create<GameState>()(
       inventory: [],
       logs: [],
       codex: {},
-      hasReadParchment: false,
       hasCheckedCodex: false,
       warehouse: [],
       currentOptions: [],
@@ -324,8 +337,18 @@ export const useGameStore = create<GameState>()(
 
       setHydrated: (state) => set({ isHydrated: state }),
       setBgm: (track) => set({ currentBgm: track }),
-      setUser: (user) => set({ user }),
-      logout: () => set({ user: null }),
+      setUser: (user) =>
+        set((s) => ({
+          user,
+          isGuest: !user,
+          guestId: user ? s.guestId : s.guestId ?? createGuestId(),
+        })),
+      logout: () =>
+        set(() => ({
+          user: null,
+          isGuest: true,
+          guestId: createGuestId(),
+        })),
       resetForNewGame: () =>
         set({
           playerName: "",
@@ -340,7 +363,6 @@ export const useGameStore = create<GameState>()(
           inventory: [],
           logs: [],
           codex: {},
-          hasReadParchment: false,
           hasCheckedCodex: false,
           warehouse: [],
           currentOptions: [],
@@ -478,7 +500,6 @@ export const useGameStore = create<GameState>()(
           },
         })),
       triggerIntrusionFlash: () => set({ intrusionFlashUntil: Date.now() + 2000 }),
-      setHasReadParchment: (v) => set({ hasReadParchment: v }),
       setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
 
       mergeCodex: (updates) =>
@@ -605,6 +626,22 @@ export const useGameStore = create<GameState>()(
           return { warehouse: [...(s.warehouse ?? []), ...toAdd] };
         }),
 
+      addPlayTimeSeconds: (deltaSeconds) =>
+        set((s) => {
+          if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return {};
+          const next = (s.playTimeSeconds ?? 0) + deltaSeconds;
+          return { playTimeSeconds: next };
+        }),
+      bumpVisitCount: () =>
+        set((s) => ({
+          visitCount: (s.visitCount ?? 0) + 1,
+        })),
+      markGuestSoftNudgeShown: () => set({ hasShownGuestSoftNudge: true }),
+      incrementDialogueCount: () =>
+        set((s) => ({
+          dialogueCount: (s.dialogueCount ?? 0) + 1,
+        })),
+
       initCharacter: (profile, stats, talent) => {
         const background = stats.background ?? DEFAULT_STATS.background;
         const startingItem = pickStartingItemByBackground(background);
@@ -620,7 +657,7 @@ export const useGameStore = create<GameState>()(
           time: { day: 0, hour: 0 },
           stats,
           historicalMaxSanity: initialSanity,
-          inventory: [PARCHMENT_ITEM, startingItem],
+          inventory: [startingItem],
           codex: {},
           hasReadParchment: false,
           hasCheckedCodex: false,
@@ -666,12 +703,12 @@ export const useGameStore = create<GameState>()(
           : "";
 
         return (
-          `玩家档案：姓名[${s.playerName || "未命名"}]，` +
+          `用户档案：姓名[${s.playerName || "未命名"}]，` +
           `性别[${s.gender || "未设定"}]，` +
           `身高[${s.height || 0}cm]，` +
           `性格[${s.personality || "未设定"}]。` +
           `游戏时间[第${time.day}日 ${time.hour}时]。` +
-          `玩家位置[${s.playerLocation}]。` +
+          `用户位置[${s.playerLocation}]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
           `行囊道具：${inv || "空"}。` +
@@ -756,7 +793,6 @@ export const useGameStore = create<GameState>()(
           historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
           talent: s.talent,
           talentCooldowns: JSON.parse(JSON.stringify(s.talentCooldowns ?? {})),
-          hasReadParchment: s.hasReadParchment ?? false,
           hasCheckedCodex: s.hasCheckedCodex ?? false,
           originium: s.originium ?? 0,
           currentBgm: s.currentBgm ?? "bgm_1_calm",
@@ -786,7 +822,6 @@ export const useGameStore = create<GameState>()(
           historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
           talent: data.talent ?? null,
           talentCooldowns,
-          hasReadParchment: data.hasReadParchment ?? (Array.isArray(data.logs) && data.logs.length > 0),
           hasCheckedCodex: data.hasCheckedCodex ?? false,
           originium: data.originium ?? get().originium ?? 0,
           currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
@@ -815,7 +850,6 @@ export const useGameStore = create<GameState>()(
             historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
             talent: data.talent ?? s.talent ?? null,
             talentCooldowns,
-            hasReadParchment: data.hasReadParchment ?? hasProgress,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
             originium: data.originium ?? s.originium ?? 0,
             currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
@@ -842,6 +876,12 @@ export const useGameStore = create<GameState>()(
         currentSaveSlot: s.currentSaveSlot,
         saveSlots: s.saveSlots ?? {},
         user: s.user ?? null,
+        guestId: s.guestId ?? null,
+        isGuest: s.isGuest ?? true,
+        playTimeSeconds: s.playTimeSeconds ?? 0,
+        visitCount: s.visitCount ?? 0,
+        hasShownGuestSoftNudge: s.hasShownGuestSoftNudge ?? false,
+         dialogueCount: s.dialogueCount ?? 0,
         playerName: s.playerName,
         gender: s.gender,
         height: s.height,
@@ -854,7 +894,6 @@ export const useGameStore = create<GameState>()(
         inventory: s.inventory,
         logs: s.logs ?? [],
         codex: s.codex ?? {},
-        hasReadParchment: s.hasReadParchment ?? false,
         hasCheckedCodex: s.hasCheckedCodex ?? false,
         warehouse: s.warehouse ?? [],
         originium: s.originium ?? 0,

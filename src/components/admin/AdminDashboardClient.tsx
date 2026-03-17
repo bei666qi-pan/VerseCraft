@@ -202,7 +202,7 @@ export default function AdminDashboardClient({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-[0.12em] text-slate-800">控制台</h1>
-            <p className="mt-2 text-sm text-slate-500">运营监控与玩家数据总览</p>
+            <p className="mt-2 text-sm text-slate-500">运营监控与用户数据总览</p>
           </div>
           <button
             type="button"
@@ -231,8 +231,8 @@ export default function AdminDashboardClient({
             </p>
             <p className="mt-1 text-xs text-slate-400">约 ￥{formatTokenCost(totalTokens)}</p>
           </div>
-          <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-            <p className="text-xs tracking-[0.18em] text-slate-500">注册玩家总数</p>
+          <div className="rounded-3xl border border-slate-200/50 bg白/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+            <p className="text-xs tracking-[0.18em] text-slate-500">注册用户总数</p>
             <p className="mt-3 text-3xl font-semibold text-slate-800">{totalUsers}</p>
           </div>
         </div>
@@ -260,7 +260,7 @@ export default function AdminDashboardClient({
                 </div>
               </div>
               <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
-                <p className="mb-4 text-sm font-medium tracking-wide text-slate-600">玩家日活</p>
+                <p className="mb-4 text-sm font-medium tracking-wide text-slate-600">用户日活</p>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartWithDeltas}>
@@ -358,7 +358,7 @@ export default function AdminDashboardClient({
                   <th className="px-5 py-4 font-medium">账号名</th>
                   <th className="px-5 py-4 font-medium">{mode === "today" ? "今日时长" : "累计时长"}</th>
                   <th className="px-5 py-4 font-medium">{mode === "today" ? "今日 Token" : "累计 Token"}</th>
-                  <th className="px-5 py-4 font-medium">玩家意见</th>
+                  <th className="px-5 py-4 font-medium">用户意见</th>
                   <th className="px-5 py-4 font-medium">状态</th>
                 </tr>
               </thead>
