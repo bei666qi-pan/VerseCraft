@@ -1,0 +1,28 @@
+name: Sync to Gitee
+
+on:
+  push:
+    branches:
+      - main  # 如果你的 GitHub 默认分支是 main，请改为 main
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror the GitHub repo to Gitee
+        uses: Yikun/hub-mirror-action@master
+        with:
+          # 源仓库：github/你的用户名
+          src: github/bei666qi-pan
+          # 目标仓库：gitee/你的用户名
+          dst: gitee/bei-qi-luo
+          # 必填：之前在 GitHub Secrets 中配置的私钥名
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
+          # 必填：之前在 GitHub Secrets 中配置的令牌名
+          dst_token: ${{ secrets.GITEE_TOKEN }}
+          # 必填：具体的仓库名
+          static_list: "VerseCraft"
+          # 设置为 true 强制同步，确保两端内容完全一致
+          force_update: true
+          # 开启调试模式，方便在 Actions 日志中排查问题
+          debug: true
