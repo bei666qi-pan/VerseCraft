@@ -26,3 +26,4 @@ jobs:
           force_update: true
           # 开启调试模式，方便在 Actions 日志中排查问题
           debug: true
+          clone_style: "ssh"
