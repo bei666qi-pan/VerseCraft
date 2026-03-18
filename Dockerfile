@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20-alpine AS base
 RUN apk add --no-cache ca-certificates libc6-compat
 
 FROM base AS deps
