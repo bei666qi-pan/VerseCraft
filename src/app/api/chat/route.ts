@@ -598,7 +598,8 @@ export async function POST(req: Request) {
     consumes_time: true,
   });
 
-  const TIMEOUT_MS = 120000;
+  // Prevent "hang for minutes" UX when upstream is slow or rate-limiting.
+  const TIMEOUT_MS = 60000;
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
 
@@ -613,7 +614,8 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model,
         stream: true,
-        max_tokens: 8192,
+        // Keep output compact: DM schema requires short narrative/options.
+        max_tokens: 1536,
         response_format: { type: "json_object" },
         messages: safeMessages,
         stream_options: { include_usage: true },
@@ -653,6 +655,23 @@ export async function POST(req: Request) {
           : undefined,
       }
     );
+    if (upstreamStatus === 429) {
+      return NextResponse.json(
+        {
+          error: "Upstream Rate Limited",
+          code: "UPSTREAM_RATE_LIMITED",
+          upstreamStatus,
+          retryAfter: upstream.headers.get("retry-after"),
+        },
+        { status: 429 }
+      );
+    }
+    if (upstreamStatus === 503) {
+      return NextResponse.json(
+        { error: "Upstream Service Unavailable", code: "UPSTREAM_UNAVAILABLE", upstreamStatus },
+        { status: 503 }
+      );
+    }
     if (isAuthError) {
       return NextResponse.json(
         { error: "Upstream Auth Failed", code: "UPSTREAM_AUTH_FAILED", upstreamStatus },

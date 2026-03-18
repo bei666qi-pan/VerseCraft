@@ -695,6 +695,8 @@ function PlayContent() {
   const userScrolledUpRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  // Prevent duplicate /api/chat requests before React finishes re-rendering.
+  const sendActionInFlightRef = useRef(false);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -1016,7 +1018,7 @@ const LOCAL_FALLBACK_OPENING =
     isResume?: boolean,
     isSystemAction?: boolean
   ) {
-    if (isStreaming) return;
+    if (isStreaming || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
     if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
       setShowDialoguePaywall(true);
@@ -1026,11 +1028,13 @@ const LOCAL_FALLBACK_OPENING =
     if (!trimmed) return;
     if (!bypassLengthCheck && trimmed.length > MAX_INPUT) return;
 
+    sendActionInFlightRef.current = true;
     setIsStreaming(true);
     narrativeRef.current = "";
     rawDmBufferRef.current = "";
     setLiveNarrative("");
 
+    try {
     const sanityAtStart = useGameStore.getState().stats?.sanity ?? 0;
     const prevPending = pendingHallucinationCheck;
     setPendingHallucinationCheck(false);
@@ -1147,19 +1151,6 @@ const LOCAL_FALLBACK_OPENING =
             ? "深渊回应超时（504），请稍后再试。"
           : "连接深渊时发生了波动，请稍后再试。";
       setLiveNarrative(msg);
-
-      // Upstream 429/502 等导致非 OK 时，前端不再进入 DM JSON 流处理分支，
-      // 这会让 currentOptions 为空而“看起来像 AI 没生成”。这里补齐展示级默认选项。
-      if (inputMode === "options" && currentOptions.length === 0) {
-        const safeDefaultOptions = [
-          "查看周围环境",
-          "检查背包与随身物品",
-          "尝试与附近原住民搭话",
-          "谨慎前往下一处房间",
-        ];
-        setCurrentOptions(safeDefaultOptions);
-        setPersistCurrentOptions(safeDefaultOptions);
-      }
       return;
     }
 
@@ -1515,6 +1506,9 @@ const LOCAL_FALLBACK_OPENING =
     if (parsed.is_death || sanityAfter <= 0) {
       setTimeout(() => router.push("/settlement"), 2000);
     }
+    } finally {
+      sendActionInFlightRef.current = false;
+    }
   }
 
   function onSubmit() {
@@ -1840,6 +1834,18 @@ const LOCAL_FALLBACK_OPENING =
                     >
                       {displayEntries.map((entry, idx) => {
                         const safeContent = typeof entry.content === "string" ? entry.content : "";
+                        if (entry.role === "user") {
+                          return (
+                            <p
+                              key={idx}
+                              className={`mb-6 whitespace-pre-wrap break-words text-[18px] leading-[1.8] ${
+                                isLowSanity ? "text-white/90" : isDarkMoon ? "text-slate-200" : "text-slate-800"
+                              }`}
+                            >
+                              {safeContent}
+                            </p>
+                          );
+                        }
                         return safeContent.includes("获得了新物品，已放入书包") ? (
                           <p
                             key={idx}

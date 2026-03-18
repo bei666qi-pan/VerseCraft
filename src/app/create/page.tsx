@@ -305,6 +305,14 @@ export default function CreatePage() {
                 <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
                 <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
+                <div className="absolute inset-[6px]">
+                  <img
+                    src="/vercel.svg"
+                    alt="VerseCraft"
+                    className="h-full w-full object-contain scale-[1.15]"
+                    draggable={false}
+                  />
+                </div>
               </div>
               <span className="relative tracking-[0.18em] sm:tracking-[0.25em]">一键注册角色</span>
             </button>

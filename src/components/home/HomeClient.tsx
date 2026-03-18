@@ -219,21 +219,21 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           {!user ? (
             <button type="button" onClick={openAuthModal} aria-label="注册或登录账户">
               <div
-                className={`group relative flex items-center gap-3 rounded-full border border-white/10 bg-slate-900/40 px-5 py-2.5 backdrop-blur-2xl shadow-[0_0_34px_rgba(15,23,42,0.7)] transition-all duration-500 hover:scale-105 hover:border-cyan-300/60 hover:shadow-[0_0_45px_rgba(56,189,248,0.75)] active:scale-95 ${
+                className={`group relative flex items-center gap-2.5 rounded-full border border-white/10 bg-slate-900/40 px-4 py-2 backdrop-blur-2xl shadow-[0_0_34px_rgba(15,23,42,0.7)] transition-all duration-500 hover:scale-105 hover:border-cyan-300/60 hover:shadow-[0_0_45px_rgba(56,189,248,0.75)] active:scale-95 ${
                   authWarn ? "ring-2 ring-red-500/80 animate-pulse" : ""
                 }`}
               >
-                <div className="relative flex h-11 w-11 items-center justify-center">
+                <div className="relative flex h-10 w-10 items-center justify-center">
                   <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                   <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-200 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_18px_rgba(148,163,184,0.95)]" />
                   <div className="absolute inset-[3px] rounded-full bg-slate-900/90 backdrop-blur-sm border border-white/15" />
-                  <div className="relative h-5 w-5">
+                  <div className="relative h-8 w-8">
                     <Image
                       src="/vercel.svg"
                       alt="VerseCraft"
                       fill
-                      sizes="20px"
-                      className="object-contain scale-90"
+                      sizes="32px"
+                      className="object-contain scale-[1.15]"
                     />
                   </div>
                 </div>
