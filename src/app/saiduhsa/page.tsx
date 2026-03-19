@@ -22,29 +22,30 @@ export default async function ShadowAdminPage() {
     return <AdminShadowGate />;
   }
 
-  const rows = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      tokensUsed: users.tokensUsed,
-      todayTokensUsed: users.todayTokensUsed,
-      playTime: users.playTime,
-      todayPlayTime: users.todayPlayTime,
-      lastActive: users.lastActive,
-    })
-    .from(users)
-    .orderBy(desc(users.tokensUsed));
+  try {
+    const rows = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        tokensUsed: users.tokensUsed,
+        todayTokensUsed: users.todayTokensUsed,
+        playTime: users.playTime,
+        todayPlayTime: users.todayPlayTime,
+        lastActive: users.lastActive,
+      })
+      .from(users)
+      .orderBy(desc(users.tokensUsed));
 
-  const { ids: onlineIds } = await getOnlineUsersFromPresence();
+    const { ids: onlineIds } = await getOnlineUsersFromPresence().catch(() => ({ ids: [], count: 0 }));
 
-  const latestFeedbackRows = await db
-    .select({
-      userId: feedbacks.userId,
-      content: feedbacks.content,
-      createdAt: feedbacks.createdAt,
-    })
-    .from(feedbacks)
-    .orderBy(desc(feedbacks.createdAt));
+    const latestFeedbackRows = await db
+      .select({
+        userId: feedbacks.userId,
+        content: feedbacks.content,
+        createdAt: feedbacks.createdAt,
+      })
+      .from(feedbacks)
+      .orderBy(desc(feedbacks.createdAt));
 
   const latestFeedbackMap = new Map<
     string,
@@ -134,13 +135,60 @@ export default async function ShadowAdminPage() {
     }).length;
   }
 
-  return (
-    <AdminDashboardClient
-      rows={sortedRows}
-      onlineCount={onlineCount}
-      totalUsers={totalUsers}
-      totalTokens={totalTokens}
-      chartData={chartData}
-    />
-  );
+    return (
+      <AdminDashboardClient
+        rows={sortedRows}
+        onlineCount={onlineCount}
+        totalUsers={totalUsers}
+        totalTokens={totalTokens}
+        chartData={chartData}
+      />
+    );
+  } catch (error) {
+    const err = error as Error;
+    console.error("[saiduhsa] admin page render failed", {
+      message: err?.message,
+      cause: (err as any)?.cause,
+      stack: err?.stack,
+      error,
+    });
+
+    // Avoid falling into the global error boundary (which misleadingly suggests clearing browser cache).
+    // Show a deterministic server-side fallback UI instead.
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-black p-8 text-slate-200">
+        <div className="w-full max-w-xl rounded-3xl bg-white/5 p-8 shadow-[0_0_40px_rgba(168,85,247,0.2)] backdrop-blur-2xl">
+          <h1 className="text-lg font-semibold tracking-[0.2em] text-slate-100">控制台暂不可用</h1>
+          <p className="mt-3 text-sm text-slate-400">
+            后台数据源暂时不可用（通常是数据库/缓存服务波动）。请稍后刷新重试。
+          </p>
+          <p className="mt-2 text-xs text-slate-500 break-words">
+            {err?.message ? `错误信息：${err.message}` : "错误信息：未知"}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href="/saiduhsa"
+              className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-medium transition hover:bg-white/20"
+            >
+              刷新重试
+            </a>
+            <form
+              action={async () => {
+                "use server";
+                const store = await cookies();
+                store.delete({ name: ADMIN_SHADOW_COOKIE, path: "/saiduhsa" });
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded-xl bg-rose-500/15 px-5 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/25"
+              >
+                退出后台登录
+              </button>
+            </form>
+          </div>
+        </div>
+      </main>
+    );
+  }
 }

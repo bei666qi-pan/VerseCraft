@@ -111,10 +111,9 @@ export default function AdminDashboardClient({
           user.lastActive instanceof Date
             ? user.lastActive.getTime()
             : new Date(String(user.lastActive)).getTime();
-        const daysSinceActive = Math.max(
-          1,
-          Math.ceil((Date.now() - lastActiveMs) / 86400000)
-        );
+        const daysSinceActive = Number.isFinite(lastActiveMs)
+          ? Math.max(1, Math.ceil((Date.now() - lastActiveMs) / 86400000))
+          : 1;
         const avgSecPerDay = totalSec / daysSinceActive;
         const isActive =
           mode === "today"
@@ -231,7 +230,7 @@ export default function AdminDashboardClient({
             </p>
             <p className="mt-1 text-xs text-slate-400">约 ￥{formatTokenCost(totalTokens)}</p>
           </div>
-          <div className="rounded-3xl border border-slate-200/50 bg白/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
+          <div className="rounded-3xl border border-slate-200/50 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl">
             <p className="text-xs tracking-[0.18em] text-slate-500">注册用户总数</p>
             <p className="mt-3 text-3xl font-semibold text-slate-800">{totalUsers}</p>
           </div>
