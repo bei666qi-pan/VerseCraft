@@ -145,12 +145,25 @@ export default async function ShadowAdminPage() {
       />
     );
   } catch (error) {
-    const err = error as Error;
-    console.error("[saiduhsa] admin page render failed", {
+    const err = error as any;
+    // Print a guaranteed-visible line first (DevTools/Overlay may show `{}` for objects).
+    const errText = (() => {
+      try {
+        return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      } catch {
+        return "Unknown error";
+      }
+    })();
+    console.error(`[saiduhsa] admin page render failed: ${errText}`);
+    console.error("[saiduhsa] admin page render failed detail", {
+      text: errText,
+      name: err?.name,
       message: err?.message,
-      cause: (err as any)?.cause,
+      code: err?.code,
+      detail: err?.detail,
+      hint: err?.hint,
+      cause: err?.cause,
       stack: err?.stack,
-      error,
     });
 
     // Avoid falling into the global error boundary (which misleadingly suggests clearing browser cache).
@@ -163,8 +176,15 @@ export default async function ShadowAdminPage() {
             后台数据源暂时不可用（通常是数据库/缓存服务波动）。请稍后刷新重试。
           </p>
           <p className="mt-2 text-xs text-slate-500 break-words">
-            {err?.message ? `错误信息：${err.message}` : "错误信息：未知"}
+            {errText ? `错误信息：${errText}` : "错误信息：未知"}
           </p>
+          {typeof err?.code === "string" || typeof err?.detail === "string" ? (
+            <p className="mt-2 text-xs text-slate-500 break-words">
+              {typeof err?.code === "string" ? `错误代码：${err.code}` : null}
+              {typeof err?.code === "string" && typeof err?.detail === "string" ? " / " : null}
+              {typeof err?.detail === "string" ? `详情：${err.detail}` : null}
+            </p>
+          ) : null}
           <div className="mt-6 flex flex-wrap gap-3">
             <a
               href="/saiduhsa"
