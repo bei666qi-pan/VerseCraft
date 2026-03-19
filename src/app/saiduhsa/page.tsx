@@ -158,8 +158,10 @@ export default async function ShadowAdminPage() {
         return "Unknown error";
       }
     })();
-    console.error(`[saiduhsa] admin page render failed: ${errText}`);
-    console.error("[saiduhsa] admin page render failed detail", {
+    // In dev, Next overlay treats console.error as a server error surface.
+    // Use warn so local env misconfig (DB down/missing) won't look like an app crash.
+    console.warn(`[saiduhsa] admin page render failed: ${errText}`);
+    console.warn("[saiduhsa] admin page render failed detail", {
       text: errText,
       name: err?.name,
       message: err?.message,
