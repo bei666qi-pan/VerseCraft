@@ -5,8 +5,8 @@ RUN apk add --no-cache ca-certificates libc6-compat
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
-# 【关键修复】彻底抛弃 corepack，改用 npm 全局直装 pnpm，绕过签名校验报错
-RUN npm install -g pnpm
+# Avoid Corepack signature failures in some CI/build hosts.
+RUN npm install -g pnpm@10.0.0
 RUN pnpm config set registry https://registry.npmmirror.com/
 RUN pnpm config set fetch-retries 5
 RUN pnpm config set fetch-retry-mintimeout 20000
@@ -26,8 +26,8 @@ ENV DATABASE_URL=$DATABASE_URL
 # ENV NEXT_PUBLIC_XXX=$NEXT_PUBLIC_XXX
 
 ENV NEXT_TELEMETRY_DISABLED=1
-# 【关键修复】同样使用 npm 安装 pnpm，确保 build 阶段有 pnpm 可用
-RUN npm install -g pnpm
+# Keep pnpm version consistent with packageManager field.
+RUN npm install -g pnpm@10.0.0
 RUN pnpm run build
 
 # ---- 第三阶段：极简运行环境 ----
