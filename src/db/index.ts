@@ -13,7 +13,7 @@ if (!databaseUrl) {
 
 const globalForDb = globalThis as unknown as { pgPool?: Pool };
 
-const pool =
+export const pool =
   globalForDb.pgPool ??
   new Pool({
     connectionString: databaseUrl,

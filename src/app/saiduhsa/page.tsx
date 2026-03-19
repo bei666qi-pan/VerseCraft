@@ -6,6 +6,7 @@ import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
 import AdminDashboardClient from "@/components/admin/AdminDashboardClient";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
+import { ensureRuntimeSchema } from "@/db/ensureSchema";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,6 +24,9 @@ export default async function ShadowAdminPage() {
   }
 
   try {
+    // Safety net for first boot / missing migrations in production.
+    await ensureRuntimeSchema();
+
     const rows = await db
       .select({
         id: users.id,
