@@ -1,38 +1,36 @@
-#!/bin/bash
-# 遇到错误即停止
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "🚀 开始执行 VerseCraft 自动化部署..."
-
-# 1. 提交到 Git (接收第一个参数作为 commit message，如果没有则使用默认)
-COMMIT_MSG=${1:-"feat: 主页面UI重构"}
-echo "📦 提交代码到 GitHub: $COMMIT_MSG"
-git add .
-git commit -m "$COMMIT_MSG" || true
-git push origin main
-
-# 2. Docker 部署流程
-echo "🐳 开始清理旧 Docker 容器与镜像..."
-docker rm -f versecraft-prod 2>/dev/null || true
-# 强制删除旧镜像，忽略找不到镜像的错误
-docker rmi -f $(docker images -q versecraft) 2>/dev/null || true
-
-echo "🔨 开始构建新镜像 (No Cache)..."
-BUILD_DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/versecraft"
-if [ -f .env.local ]; then
-  BUILD_DATABASE_URL=$(grep -E "^DATABASE_URL=" .env.local | cut -d= -f2- | tr -d '"' | tr -d "'" | head -1)
-  [ -z "$BUILD_DATABASE_URL" ] && BUILD_DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/versecraft"
+msg="${1:-}"
+if [[ -z "${msg}" ]]; then
+  echo "Usage: ./deploy.sh \"chore: your message\""
+  exit 1
 fi
-docker build --no-cache --build-arg DATABASE_URL="$BUILD_DATABASE_URL" -t versecraft:v1 .
 
-echo "🚢 启动新容器..."
-docker run -d \
-  --name versecraft-prod \
-  -p 3000:3000 \
-  -e HOSTNAME="0.0.0.0" \
-  -e PORT="3000" \
-  --env-file .env.local \
-  --restart unless-stopped \
-  versecraft:v1
+if ! command -v git >/dev/null 2>&1; then
+  echo "Error: git not found"
+  exit 1
+fi
 
-echo "✅ 部署完成！VerseCraft 已在 http://localhost:3000 运行。"
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [[ -z "${branch}" ]]; then
+  echo "Error: cannot detect git branch"
+  exit 1
+fi
+
+git add .
+git commit -m "${msg}" || true
+
+echo "Pushing to origin/${branch} ..."
+git push origin "${branch}"
+
+cat <<'EOF'
+
+Coolify 部署提示：
+- 如果你在 Coolify 选择了 Dockerfile 构建：触发一次 Redeploy / Rebuild 即可。
+- 如果你启用了 Auto Deploy：push 后会自动触发构建。
+
+如果遇到 429/503：
+- 这是上游限流/不可用，已在 /api/chat 透传为 429/503，并缩短超时与输出长度以改善“耗时很久”体感。
+EOF
+

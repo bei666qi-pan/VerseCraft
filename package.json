@@ -2,6 +2,7 @@
   "name": "versecraft",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.0.0",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
@@ -9,8 +10,8 @@
     "lint": "next lint",
     "db:push": "DOTENV_CONFIG_PATH=.env.local node -r dotenv/config ./scripts/db-push.mjs",
     "db:generate": "drizzle-kit generate",
-    "diagnose:play": "npx tsx scripts/diagnose-play-error.ts",
-    "db:delete-test-accounts": "npx tsx scripts/delete-test-accounts.ts",
+    "diagnose:play": "pnpm dlx tsx scripts/diagnose-play-error.ts",
+    "db:delete-test-accounts": "pnpm dlx tsx scripts/delete-test-accounts.ts",
     "test:play": "playwright test e2e/play.spec.ts"
   },
   "dependencies": {

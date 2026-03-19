@@ -4,11 +4,12 @@ RUN apk add --no-cache ca-certificates libc6-compat
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
-RUN npm config set registry https://registry.npmmirror.com/
-RUN npm config set fetch-retries 5
-RUN npm config set fetch-retry-mintimeout 20000
-RUN npm config set fetch-retry-maxtimeout 120000
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN corepack enable
+RUN pnpm config set registry https://registry.npmmirror.com/
+RUN pnpm config set fetch-retries 5
+RUN pnpm config set fetch-retry-mintimeout 20000
+RUN pnpm config set fetch-retry-maxtimeout 120000
+RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
@@ -17,7 +18,8 @@ COPY . .
 ARG DATABASE_URL
 ENV DATABASE_URL=$DATABASE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm install -g pnpm && pnpm run build
+RUN corepack enable
+RUN pnpm run build
 
 FROM base AS runner
 WORKDIR /app
