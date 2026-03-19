@@ -4,6 +4,11 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
 import { createResilientIdbStorage } from "@/lib/resilientStorage";
+import {
+  checksumMiddleware,
+  createStateChecksum,
+  type IntegrityMetaState,
+} from "@/store/middleware/checksumMiddleware";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
@@ -99,7 +104,7 @@ export interface AuthUser {
   name: string;
 }
 
-interface GameState {
+interface GameState extends IntegrityMetaState {
   currentSaveSlot: string;
   /** 最多 3 个存档位 */
   saveSlots: Record<string, SaveSlotData>;
@@ -166,6 +171,8 @@ interface GameState {
   currentBgm: string;
   /** 安全降级：当上游安全拦截/流破损导致解析失败时，强制覆盖叙事并扣理智 */
   securityFallback: { active: boolean; message: string; at: number; reason?: string };
+  _integrity_dirty: boolean;
+  verifyStateIntegrity: () => Promise<boolean>;
   triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
   setBgm: (track: string) => void;
@@ -301,7 +308,7 @@ function createGuestId(): string {
 
 export const useGameStore = create<GameState>()(
   persist(
-    (set, get) => ({
+    checksumMiddleware((set, get) => ({
       currentSaveSlot: "slot_1",
       saveSlots: {},
       isHydrated: false,
@@ -338,6 +345,52 @@ export const useGameStore = create<GameState>()(
       isGameStarted: false,
       currentBgm: "bgm_1_calm",
       securityFallback: { active: false, message: "", at: 0 },
+      _checksum_fingerprint: "",
+      _integrity_dirty: false,
+      verifyStateIntegrity: async () => {
+        const state = get();
+        const expected = state._checksum_fingerprint;
+        const actual = createStateChecksum(state);
+        const isValid = expected === actual;
+        if (isValid) return true;
+
+        set({ _integrity_dirty: true });
+        const eventPayload = {
+          eventType: "client_state_integrity_violation",
+          occurredAt: new Date().toISOString(),
+          path: typeof window !== "undefined" ? window.location.pathname : "/",
+          expectedFingerprint: expected,
+          actualFingerprint: actual,
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+        };
+
+        if (typeof window !== "undefined") {
+          const body = JSON.stringify(eventPayload);
+          try {
+            const blob = new Blob([body], { type: "application/json" });
+            if (!navigator.sendBeacon("/api/security/state-integrity", blob)) {
+              void fetch("/api/security/state-integrity", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body,
+                keepalive: true,
+                cache: "no-store",
+              }).catch(() => undefined);
+            }
+          } catch {
+            void fetch("/api/security/state-integrity", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body,
+              keepalive: true,
+              cache: "no-store",
+            }).catch(() => undefined);
+          }
+        }
+
+        console.warn("[security][client_integrity] dirty_state_detected", eventPayload);
+        return false;
+      },
 
       setHydrated: (state) => set({ isHydrated: state }),
       setBgm: (track) => set({ currentBgm: track }),
@@ -877,7 +930,7 @@ export const useGameStore = create<GameState>()(
           };
         });
       },
-    }),
+    })),
     {
       name: DB_KEY,
       version: PERSIST_VERSION,
@@ -901,7 +954,7 @@ export const useGameStore = create<GameState>()(
         playTimeSeconds: s.playTimeSeconds ?? 0,
         visitCount: s.visitCount ?? 0,
         hasShownGuestSoftNudge: s.hasShownGuestSoftNudge ?? false,
-         dialogueCount: s.dialogueCount ?? 0,
+        dialogueCount: s.dialogueCount ?? 0,
         playerName: s.playerName,
         gender: s.gender,
         height: s.height,

@@ -2,9 +2,10 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { usersQuota } from "@/db/schema";
+import { env } from "@/lib/env";
 
-const DAILY_TOKEN_LIMIT = Number(process.env.DAILY_TOKEN_LIMIT) || 50_000;
-const DAILY_ACTION_LIMIT = Number(process.env.DAILY_ACTION_LIMIT) || 200;
+const DAILY_TOKEN_LIMIT = env.dailyTokenLimit;
+const DAILY_ACTION_LIMIT = env.dailyActionLimit;
 
 export type QuotaCheckResult =
   | { ok: true }

@@ -420,17 +420,24 @@ NPC / 诡异的状态必须保持实体级隔离，尤其是：
 
 ---
 
+
 ## 18. 默认验证思路
-如果你需要给出验证建议，优先参考现有脚本与链路：
+优先遵循仓库当前锁文件与现有脚本。
 
-- `npm run build`
-- `npm run test:play`
-- `npm run db:generate`
-- `npm run db:push`
+### 包管理器规则
+- 若仓库存在 `pnpm-lock.yaml`，优先使用 `pnpm`
+- 若仓库存在 `package-lock.json`，优先使用 `npm`
+- 若仓库存在 `yarn.lock`，优先使用 `yarn`
 
-**不要擅自虚构新的 npm script。**
-**不要默认把整个工程切到另一套包管理器。**
+当前仓库已存在 `pnpm-lock.yaml`，默认使用：
 
+- `pnpm build`
+- `pnpm test:play`
+- `pnpm db:generate`
+- `pnpm db:push`
+
+**不要擅自虚构新的 script。**
+**不要在 npm / pnpm / yarn 之间随意切换，除非用户明确要求或仓库锁文件发生变化。**
 ---
 
 ## 19. 最终原则

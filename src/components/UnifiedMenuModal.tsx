@@ -2,7 +2,7 @@
 
 import { Activity, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2, VolumeX, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2, VolumeX } from "lucide-react";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
@@ -231,11 +231,17 @@ function StatBar({
   value,
   displayMax,
   isDanger,
+  canUpgrade,
+  onUpgradePointerDown,
+  onUpgradePointerUp,
 }: {
   statName: string;
   value: number;
   displayMax: number;
   isDanger: boolean;
+  canUpgrade: boolean;
+  onUpgradePointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onUpgradePointerUp: () => void;
 }) {
   const cap = Math.max(1, displayMax);
   const pct = (value / cap) * 100;
@@ -246,8 +252,21 @@ function StatBar({
         <span className={`text-sm font-medium ${isDanger ? "text-red-400" : "text-slate-300"}`}>{statName}</span>
         <span className="text-xs font-mono text-slate-500">{value} / {cap}</span>
       </div>
-      <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800/50">
-        <div className={`h-full bg-gradient-to-r ${fillGradient} transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800/50">
+          <div className={`h-full bg-gradient-to-r ${fillGradient} transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
+        </div>
+        <button
+          type="button"
+          onPointerDown={onUpgradePointerDown}
+          onPointerUp={onUpgradePointerUp}
+          onPointerLeave={onUpgradePointerUp}
+          disabled={!canUpgrade}
+          aria-label={`提升${statName}`}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          +
+        </button>
       </div>
     </div>
   );
@@ -258,7 +277,6 @@ function SettingsPanel({
   historicalMaxSanity,
   originium,
   onUpgradeAttr,
-  onRestoreSanity,
   playerLocation,
   time,
   volume,
@@ -272,7 +290,6 @@ function SettingsPanel({
   historicalMaxSanity: number;
   originium: number;
   onUpgradeAttr: (attr: StatType) => void;
-  onRestoreSanity: () => void;
   playerLocation: string;
   time: { day: number; hour: number };
   volume: number;
@@ -282,7 +299,7 @@ function SettingsPanel({
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
 }) {
-  const [showOriginiumDesc, setShowOriginiumDesc] = useState(false);
+  const [showSealActions, setShowSealActions] = useState(false);
   const displayLocation = formatLocationLabel(playerLocation);
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -293,8 +310,6 @@ function SettingsPanel({
     (stats.sanity ?? 0) + (stats.agility ?? 0) + (stats.luck ?? 0) +
     (stats.charm ?? 0) + (stats.background ?? 0);
   const costPerPoint = totalPoints < 20 ? 2 : 3;
-  const sanity = stats.sanity ?? 0;
-  const canRestoreSanity = sanity < historicalMaxSanity && originium >= 1;
   const canUpgrade = (attr: StatType) => {
     const cur = stats[attr] ?? 0;
     if (cur >= 50) return false;
@@ -304,9 +319,16 @@ function SettingsPanel({
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 overflow-y-auto max-h-[calc(100dvh-120px)]">
       <div>
-        <h3 className="mb-3 sm:mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">叙事维度与坐标</h3>
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-          <div className="flex-1 min-w-0 space-y-2">
+        <div className="mb-3 sm:mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-widest text-slate-400">叙事维度与坐标</h3>
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs">
+            <div className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-amber-300 to-orange-500" />
+            <span className="font-bold tabular-nums text-amber-300">{originium}</span>
+            <span className="text-amber-400/80">原石</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-4 sm:gap-6">
+          <div className="min-w-0 space-y-2">
             {STAT_ORDER.map((k) => (
               <StatBar
                 key={k}
@@ -314,61 +336,18 @@ function SettingsPanel({
                 value={stats[k] ?? 0}
                 displayMax={k === "sanity" ? historicalMaxSanity : STAT_MAX}
                 isDanger={k === "sanity" && (stats[k] ?? 0) <= 3}
+                canUpgrade={canUpgrade(k)}
+                onUpgradePointerDown={(e) => {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                  stepper.handlePointerDown(k);
+                }}
+                onUpgradePointerUp={stepper.handlePointerUp}
               />
             ))}
           </div>
-          <div className="flex flex-col w-full sm:w-[180px] shrink-0 gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-4">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500" />
-              <span className="text-sm font-bold text-amber-300">{originium}</span>
-              <span className="text-xs text-amber-400/90">原石</span>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowOriginiumDesc((v) => !v)}
-                className="flex w-full cursor-pointer items-center justify-between gap-2 py-1 text-[11px] text-slate-400 hover:text-slate-300 touch-manipulation"
-              >
-                <span>原石说明</span>
-                {showOriginiumDesc ? (
-                  <ChevronUp className="h-3.5 w-3.5 shrink-0" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                )}
-              </button>
-              {showOriginiumDesc && (
-                <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
-                  潜能赋予：总叙事维度&lt;20 需2原石/点，≥20 需{costPerPoint}原石/点。精神锚点低于历史最高时，1原石=1精神锚点。
-                </p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-1 gap-1.5 sm:gap-1.5">
-              {STAT_ORDER.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); stepper.handlePointerDown(k); }}
-                  onPointerUp={stepper.handlePointerUp}
-                  onPointerLeave={stepper.handlePointerUp}
-                  disabled={!canUpgrade(k)}
-                  className="min-h-[36px] rounded-lg border border-white/20 bg-white/5 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
-                >
-                  +{STAT_LABELS[k]}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={onRestoreSanity}
-                disabled={!canRestoreSanity}
-                className="min-h-[36px] col-span-2 sm:col-span-1 rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1.5 text-xs text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
-              >
-                恢复精神锚点 (1原石)
-              </button>
-            </div>
-          </div>
         </div>
 
-        <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <div className="mt-4 flex flex-row gap-3 sm:gap-4">
           <div className={`${rowClass} flex-1 min-w-0`}>
             <span className={labelClass}>当前位置</span>
             <p className={`${valueClass} break-words`}>{displayLocation}</p>
@@ -381,9 +360,8 @@ function SettingsPanel({
       </div>
 
       <div>
-        <h3 className="mb-3 sm:mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">音量调节</h3>
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <input
               type="range"
               min={0}
@@ -394,46 +372,57 @@ function SettingsPanel({
               className="h-3 min-h-[24px] w-full min-w-0 flex-1 appearance-none rounded-full bg-slate-700 disabled:opacity-50 touch-manipulation [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
             />
             <span className="w-10 text-right font-mono text-sm text-slate-400">{volume}</span>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleMute}
-            className={`flex w-full items-center justify-between gap-4 rounded-2xl border px-4 sm:px-5 py-3 sm:py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] backdrop-blur-xl transition-all duration-200 hover:from-white/20 hover:to-white/10 active:scale-[0.98] touch-manipulation min-h-[44px] ${
-              audioMuted
-                ? "border-amber-500/40 bg-gradient-to-b from-amber-500/20 to-amber-500/5"
-                : "border-white/20 bg-gradient-to-b from-white/15 to-white/5"
-            }`}
-          >
-            <span className="text-sm font-medium tracking-wide text-slate-100">
-              {audioMuted ? "静音中" : "已开启声音"}
-            </span>
-            <span className="flex shrink-0 items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+            <button
+              type="button"
+              onClick={onToggleMute}
+              aria-label={audioMuted ? "开启声音" : "静音"}
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation ${
+                audioMuted
+                  ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+                  : "border-white/20 bg-white/10 text-slate-100"
+              }`}
+            >
               {audioMuted ? (
-                <VolumeX size={18} strokeWidth={2} />
+                <VolumeX size={16} strokeWidth={2} />
               ) : (
-                <Volume2 size={18} strokeWidth={2} />
+                <Volume2 size={16} strokeWidth={2} />
               )}
-              {audioMuted ? "点击开启" : "点击静音"}
-            </span>
-          </button>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-2">
-        <button
-          type="button"
-          onClick={onSaveAndExit}
-          className="min-h-[44px] rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)] touch-manipulation"
-        >
-          保存并封卷
-        </button>
-        <button
-          type="button"
-          onClick={onAbandonAndDie}
-          className="min-h-[44px] rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)] touch-manipulation"
-        >
-          直接封卷
-        </button>
+      <div className="pt-2">
+        <div className="flex">
+          <button
+            type="button"
+            onClick={() => setShowSealActions((v) => !v)}
+            className="min-h-[44px] w-full rounded-xl border border-white/30 bg-white/10 px-6 py-3 text-sm font-semibold text-slate-100 shadow-[0_0_12px_rgba(255,255,255,0.15)] transition hover:bg-white/15 hover:shadow-[0_0_16px_rgba(255,255,255,0.22)] touch-manipulation"
+          >
+            封卷
+          </button>
+        </div>
+        {showSealActions && (
+          <div className="mt-3 rounded-xl border border-white/15 bg-white/5 p-3 backdrop-blur-xl">
+            <p className="mb-3 text-xs text-slate-300">请选择封卷方式</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={onSaveAndExit}
+                className="min-h-[40px] rounded-lg border border-white/50 bg-white/5 px-4 py-2 text-xs font-medium text-slate-100 transition hover:bg-white/10 touch-manipulation"
+              >
+                保存历史并退出
+              </button>
+              <button
+                type="button"
+                onClick={onAbandonAndDie}
+                className="min-h-[40px] rounded-lg bg-gradient-to-r from-red-700 to-red-800 px-4 py-2 text-xs font-semibold text-white transition hover:shadow-[0_0_16px_rgba(239,68,68,0.5)] touch-manipulation"
+              >
+                直接退出
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -777,7 +766,7 @@ function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
                 <span className="text-xs text-slate-500">存活 {r.survivalTimeText}</span>
               </div>
               <div className="mb-2 grid grid-cols-2 gap-2 text-xs">
-                <span className="text-slate-500">猎杀诡异</span>
+                <span className="text-slate-500">消灭诡异</span>
                 <span className="text-slate-200">{r.kills} 只</span>
                 <span className="text-slate-500">最高抵达</span>
                 <span className="text-slate-200">{r.maxFloorDisplay}</span>
@@ -855,7 +844,6 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   const tasks = useGameStore((s) => s.tasks ?? []);
   const originium = useGameStore((s) => s.originium ?? 0);
   const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
-  const restoreSanity = useGameStore((s) => s.restoreSanity);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
@@ -947,7 +935,6 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               historicalMaxSanity={historicalMaxSanity}
               originium={originium}
               onUpgradeAttr={(attr) => upgradeAttribute(attr)}
-              onRestoreSanity={() => restoreSanity()}
               playerLocation={playerLocation}
               time={time}
               volume={volume}

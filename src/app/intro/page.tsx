@@ -68,6 +68,20 @@ export default function IntroPage() {
             />
           </footer>
         </div>
+        <section
+          className="mx-auto mt-4 max-w-[92%] px-1 text-[11px] leading-relaxed text-slate-500/75 sm:mt-5 sm:text-xs"
+          aria-label="免责声明"
+        >
+          <p>
+            本系统接入生成式人工智能，文本与剧情为 AI 生成，仅供娱乐参考，不代表平台立场。
+          </p>
+          <p className="mt-2">
+            《文界工坊》含悬疑与超现实虚构内容，请勿与现实混淆或模仿；如感不适，请立即停止体验。
+          </p>
+          <p className="mt-2">
+            请对交互指令负责，严禁输入违法违规内容；系统已启用违规拦截与必要记录机制。
+          </p>
+        </section>
       </div>
     </main>
   );

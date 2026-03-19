@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { ADMIN_SHADOW_COOKIE, buildAdminShadowSession } from "@/lib/adminShadow";
+import { env } from "@/lib/env";
 
 export type AdminShadowAuthState = {
   ok: boolean;
@@ -13,7 +14,7 @@ export async function authenticateAdminShadow(
   formData: FormData
 ): Promise<AdminShadowAuthState> {
   const inputPassword = String(formData.get("password") ?? "");
-  const configuredPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
+  const configuredPassword = (env.adminPassword ?? "").trim();
   const cookieStore = await cookies();
 
   if (!configuredPassword) {
@@ -32,7 +33,7 @@ export async function authenticateAdminShadow(
 
   cookieStore.set(ADMIN_SHADOW_COOKIE, session.value, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: env.nodeEnv === "production",
     sameSite: "strict",
     maxAge: session.maxAge,
     path: "/saiduhsa",

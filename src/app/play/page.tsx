@@ -53,9 +53,18 @@ type DMJson = {
   player_location?: string;
   npc_location_updates?: Array<{ id: string; to_location: string }>;
   bgm_track?: string;
+  security_meta?: {
+    action?: "allow" | "review" | "degrade" | "terminate" | "block";
+    stage?: "pre_input" | "post_model" | "final_output" | "risk_control";
+    risk_level?: "normal" | "gray" | "black";
+    request_id?: string;
+    reason?: string;
+  };
 };
 
 const MAX_INPUT = 20;
+const COMPLIANCE_HINT_TEXT =
+  "本平台为AI协作创意写作工具，请创作者遵守中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。";
 
 const TALENT_CD: Record<EchoTalent, number> = {
   时间回溯: 6,
@@ -296,11 +305,38 @@ function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
 function extractGreenTips(text: string): string[] {
   if (typeof text !== "string" || !text.includes("^^")) return [];
   const tips: string[] = [];
+  const seen = new Set<string>();
   const regex = /\^\^([\s\S]*?)\^\^/g;
+  const normalizeTip = (input: string): string => {
+    return input
+      .replace(/\s+/g, "")
+      .replace(/[，。、“”‘’：；！？,.!?:;'"()（）【】\[\]—\-]/g, "")
+      .replace(/属性面板|属性|加点/g, "潜能赋予")
+      .replace(/理智值\/生命值|理智值|理智|生命值/g, "精神锚点")
+      .replace(/选项输入切换为手动输入|将选项切换为手动输入|切换到手动输入/g, "手动输入")
+      .replace(/回理智|恢复理智|回精神锚点|恢复精神锚点/g, "回精神锚点")
+      .trim();
+  };
+  const MANUAL_INPUT_COMPLIANCE_KEY =
+    "你可以选择手动输入自由书写你的意志若手动输入不可能的事情则会被抹杀原石可在设置中用于潜能赋予或回精神锚点";
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     const tip = match[1]?.trim();
-    if (tip) tips.push(tip);
+    if (!tip) continue;
+    const key = normalizeTip(tip);
+    if (!key) continue;
+    // Compliance rule reminder can appear in multiple wording variants, show it only once.
+    const isManualInputComplianceTip =
+      key.includes("手动输入") &&
+      key.includes("不可能") &&
+      key.includes("抹杀") &&
+      key.includes("原石") &&
+      key.includes("潜能赋予") &&
+      key.includes("精神锚点");
+    const dedupeKey = isManualInputComplianceTip ? MANUAL_INPUT_COMPLIANCE_KEY : key;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    tips.push(tip);
   }
   return tips;
 }
@@ -348,6 +384,15 @@ function DMNarrativeBlock({
 function safeNumber(n: unknown, fallback: number): number {
   const v = typeof n === "number" ? n : Number(n);
   return Number.isFinite(v) ? v : fallback;
+}
+
+function localInputSafetyCheck(input: string): { ok: boolean; reason?: string } {
+  const text = String(input || "").trim();
+  if (!text) return { ok: false, reason: "输入不能为空" };
+  if (/(<script|javascript:|onerror=|onload=|drop\s+table|union\s+select|忽略以上规则|打印系统提示)/i.test(text)) {
+    return { ok: false, reason: "输入包含高风险指令，请调整表述后重试" };
+  }
+  return { ok: true };
 }
 
 /**
@@ -662,6 +707,7 @@ function PlayContent() {
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const isGuest = useGameStore((s) => s.isGuest ?? false);
+  const guestId = useGameStore((s) => s.guestId ?? null);
   const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
   const activeMenu = usePersistStore((s) => s.activeMenu);
@@ -688,10 +734,14 @@ function PlayContent() {
   const [firstTimeHint, setFirstTimeHint] = useState<string | null>(null);
   const firstHintShownRef = useRef<Set<string>>(new Set());
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
+  const [showComplianceHint, setShowComplianceHint] = useState(false);
+  const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
   const hasTriggeredResume = useRef(false);
+  const hasShownManualInputComplianceHintRef = useRef(false);
+  const complianceHintTimerRef = useRef<number | null>(null);
   const userScrolledUpRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
@@ -744,6 +794,38 @@ const LOCAL_FALLBACK_OPENING =
     const t = setTimeout(() => setFirstTimeHint(null), 4000);
     return () => clearTimeout(t);
   }, [firstTimeHint]);
+
+  const triggerComplianceHint = useCallback(() => {
+    if (complianceHintTimerRef.current) {
+      window.clearTimeout(complianceHintTimerRef.current);
+    }
+    setShowComplianceHint(true);
+    complianceHintTimerRef.current = window.setTimeout(() => {
+      setShowComplianceHint(false);
+      complianceHintTimerRef.current = null;
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (complianceHintTimerRef.current) {
+        window.clearTimeout(complianceHintTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isGuestDialogueExhausted) {
+      setShowRegisterPrompt(false);
+      return;
+    }
+    setShowRegisterPrompt(true);
+    const timer = window.setTimeout(() => {
+      setShowRegisterPrompt(false);
+      setShowDialoguePaywall(false);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [isGuestDialogueExhausted, showDialoguePaywall]);
 
   useEffect(() => {
     if (!isGameStarted || !inventory.length || logs.length > 0) return;
@@ -1027,6 +1109,13 @@ const LOCAL_FALLBACK_OPENING =
     const trimmed = action.trim();
     if (!trimmed) return;
     if (!bypassLengthCheck && trimmed.length > MAX_INPUT) return;
+    if (!isSystemAction) {
+      const localCheck = localInputSafetyCheck(trimmed);
+      if (!localCheck.ok) {
+        setInputError(localCheck.reason ?? "输入不安全");
+        return;
+      }
+    }
 
     sendActionInFlightRef.current = true;
     setIsStreaming(true);
@@ -1072,6 +1161,7 @@ const LOCAL_FALLBACK_OPENING =
         body: JSON.stringify({
           messages,
           playerContext,
+          sessionId: guestId ?? "browser_session",
         }),
         signal: ac.signal,
       });
@@ -1250,6 +1340,13 @@ const LOCAL_FALLBACK_OPENING =
       narrativeRef.current = "";
       setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
       return;
+    }
+
+    if (!parsed.is_action_legal) {
+      triggerComplianceHint();
+    }
+    if (parsed.security_meta?.action && parsed.security_meta.action !== "allow") {
+      triggerComplianceHint();
     }
 
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
@@ -1688,9 +1785,11 @@ const LOCAL_FALLBACK_OPENING =
             <h2 className="text-lg font-semibold tracking-wide text-white">
               体验次数已耗尽
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-slate-200">
-              体验次数已耗尽，请注册账号以继续执笔创作。
-            </p>
+            {showRegisterPrompt && (
+              <p className="mt-3 text-sm leading-relaxed text-slate-200">
+                体验次数已耗尽，可注册账号以继续执笔创作。
+              </p>
+            )}
             <div className="mt-8 flex justify-center">
               <button
                 type="button"
@@ -1770,8 +1869,13 @@ const LOCAL_FALLBACK_OPENING =
                   <button
                     type="button"
                     onClick={() => {
+                      const nextMode = inputMode === "options" ? "text" : "options";
                       toggleInputMode();
-                      setPersistInputMode(inputMode === "options" ? "text" : "options");
+                      setPersistInputMode(nextMode);
+                      if (nextMode === "text" && !hasShownManualInputComplianceHintRef.current) {
+                        hasShownManualInputComplianceHintRef.current = true;
+                        triggerComplianceHint();
+                      }
                     }}
                     className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
                     aria-label={inputMode === "options" ? "切换到手动输入" : "切换到选项"}
@@ -2012,17 +2116,6 @@ const LOCAL_FALLBACK_OPENING =
                   </p>
                 ) : inputMode === "text" ? (
                   <div className="relative">
-                    <div
-                      className={`mb-2 rounded-xl border px-3 py-2 text-xs leading-relaxed ${
-                        isLowSanity
-                          ? "border-white/10 bg-white/5 text-white/75"
-                          : isDarkMoon
-                            ? "border-red-900/40 bg-red-950/20 text-red-200/80"
-                            : "border-slate-200/70 bg-white/70 text-slate-700"
-                      }`}
-                    >
-                      本平台为AI协作创意写作工具，请创作者遵守中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。
-                    </div>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         value={input}
@@ -2078,7 +2171,7 @@ const LOCAL_FALLBACK_OPENING =
                             }
                           >
                             {isGuestDialogueExhausted
-                              ? "体验次数已耗尽，请注册账号以继续执笔创作。"
+                              ? (showRegisterPrompt ? "体验次数已耗尽，可注册账号以继续执笔创作。" : "")
                               : input.trim().length > MAX_INPUT
                                 ? "文本过长：将被叙事拒绝。"
                                 : isStreaming
@@ -2099,11 +2192,28 @@ const LOCAL_FALLBACK_OPENING =
                     </span>
                   </div>
                 )}
+                <div className="mt-2 text-center">
+                  <span
+                    className={`text-[10px] tracking-wide ${
+                      isLowSanity ? "text-white/45" : isDarkMoon ? "text-red-200/45" : "text-slate-500/55"
+                    }`}
+                  >
+                    内容由 AI 演算生成，纯属虚构，请注意甄别，切勿代入现实。
+                  </span>
+                </div>
               </div>
             </div>
           </section>
         </div>
       </div>
+
+      {showComplianceHint && (
+        <div className="pointer-events-none fixed bottom-24 left-1/2 z-[80] w-[min(92vw,720px)] -translate-x-1/2">
+          <div className="rounded-2xl bg-white/5 px-4 py-3 text-center text-sm text-white/90 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+            {COMPLIANCE_HINT_TEXT}
+          </div>
+        </div>
+      )}
 
       <UnifiedMenuModal
         activeMenu={activeMenu}

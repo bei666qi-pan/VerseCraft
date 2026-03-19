@@ -182,7 +182,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   async function handleFeedbackSubmit() {
-    if (!user) return;
     if (!feedbackContent.trim()) {
       setToast("请先输入你的意见。");
       return;
@@ -425,20 +424,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
         <div className="flex flex-col items-center gap-2 text-sm text-slate-400/80 mt-8">
           <p>欢迎第一批内测用户加入QQ群 <span className="font-mono text-slate-300">377493954</span> 交流</p>
-          <p className="tracking-widest opacity-70">【1.1先行版】</p>
         </div>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent" />
 
+      <div className="fixed bottom-8 left-1/2 z-[90] flex h-14 -translate-x-1/2 items-center text-xs tracking-widest text-slate-500/80">
+        <span>【1.1先行版】</span>
+      </div>
+
       <button
         type="button"
         className="fixed bottom-8 right-8 z-[90]"
         onClick={() => {
-          if (!user) {
-            requireLoginOrWarn();
-            return;
-          }
           setFeedbackOpen(true);
           setFeedbackSuccess(false);
         }}

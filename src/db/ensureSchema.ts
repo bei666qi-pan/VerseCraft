@@ -1,6 +1,7 @@
 import "server-only";
 
 import { pool } from "@/db/index";
+import { env } from "@/lib/env";
 
 let ensured = false;
 
@@ -14,7 +15,7 @@ export async function ensureRuntimeSchema(): Promise<void> {
   ensured = true;
 
   // Allow disabling in production if you manage migrations externally.
-  if (process.env.RUNTIME_SCHEMA_ENSURE === "0") return;
+  if (env.runtimeSchemaEnsure === "0") return;
 
   const client = await pool.connect();
   try {

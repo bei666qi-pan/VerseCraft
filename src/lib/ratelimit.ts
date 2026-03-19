@@ -2,6 +2,7 @@
 // Local Redis-based rate limiting + hot IP cache.
 
 import { createClient, type RedisClientType } from "redis";
+import { env } from "@/lib/env";
 
 type CacheEntry = { allowed: boolean; resetAt: number };
 const HOT_IP_CACHE_TTL_MS = 2000;
@@ -56,7 +57,7 @@ const llmFallback = createInMemoryLimiter(10, 60000);
 let clientPromise: Promise<RedisClientType> | null = null;
 
 async function getRedisClient(): Promise<RedisClientType | null> {
-  const url = process.env.REDIS_URL;
+  const url = env.redisUrl;
   if (!url || url.trim().length === 0) return null;
   if (!clientPromise) {
     clientPromise = (async () => {

@@ -80,7 +80,7 @@ function generateSettlementReview(
     }
     return [
       "连地下一层的洗衣房阿姨都比你活得久。",
-      "也许下次记得：不要相信任何人，包括你自己。",
+      "",
     ];
   }
   if (grade === "A") {
@@ -117,7 +117,7 @@ function generateSettlementReview(
 
 function buildMarkdown(logs: LogEntry[]): string {
   const lines: string[] = [
-    "# 文界工坊 · 生存记录",
+    "# 文界工坊 · 写作记录",
     "",
     "---",
     "",
@@ -198,8 +198,11 @@ function estimateKilledAnomalies(logs: LogEntry[]): number {
 export default function SettlementPage() {
   const mounted = useMounted();
   const [onLeaderboardToast, setOnLeaderboardToast] = useState(false);
+  const [fitScale, setFitScale] = useState(1);
   const hasUploadedRef = useRef(false);
   const hasAchievementPushedRef = useRef(false);
+  const fitWrapRef = useRef<HTMLDivElement | null>(null);
+  const fitCardRef = useRef<HTMLDivElement | null>(null);
 
   const stats = useGameStore((s) => s.stats) ?? { sanity: 0, agility: 0, luck: 0, charm: 0, background: 0 };
   const logs = useGameStore((s) => s.logs ?? []);
@@ -279,6 +282,43 @@ export default function SettlementPage() {
     time.hour,
   ]);
 
+  useEffect(() => {
+    if (!mounted) return;
+    const recomputeFitScale = () => {
+      const wrap = fitWrapRef.current;
+      const card = fitCardRef.current;
+      if (!wrap || !card) return;
+
+      const isMobile = window.matchMedia("(max-width: 640px)").matches;
+      if (!isMobile) {
+        setFitScale(1);
+        return;
+      }
+
+      // Reset first, then measure natural content height.
+      card.style.transform = "scale(1)";
+      const viewportHeight = Math.max(1, window.innerHeight || 1);
+      const viewportWidth = Math.max(1, window.innerWidth || 1);
+      const naturalHeight = Math.max(1, card.scrollHeight);
+      const naturalWidth = Math.max(1, card.scrollWidth);
+      const availableHeight = Math.max(1, viewportHeight - 12);
+      const availableWidth = Math.max(1, viewportWidth - 12);
+      const scaleByHeight = availableHeight / naturalHeight;
+      const scaleByWidth = availableWidth / naturalWidth;
+      const nextScale = Math.min(1, scaleByHeight, scaleByWidth);
+      setFitScale(nextScale);
+    };
+
+    const raf = window.requestAnimationFrame(recomputeFitScale);
+    window.addEventListener("resize", recomputeFitScale);
+    window.addEventListener("orientationchange", recomputeFitScale);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("resize", recomputeFitScale);
+      window.removeEventListener("orientationchange", recomputeFitScale);
+    };
+  }, [mounted, reviewLine1, reviewLine2, isDead, grade, sanity, kills, maxFloor, time.day, time.hour]);
+
   if (!mounted) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -290,7 +330,7 @@ export default function SettlementPage() {
   function handleExport() {
     const md = buildMarkdown(logs);
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    triggerDownload(md, `versecraft-生存记录-${ts}.md`);
+    triggerDownload(md, `versecraft-写作记录-${ts}.md`);
   }
 
   async function handleRestart() {
@@ -309,7 +349,7 @@ export default function SettlementPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-foreground">
+    <main className="relative h-[100dvh] overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-foreground">
       <GuestSoftNudge context="settlement" />
       {onLeaderboardToast && (
         <div
@@ -322,11 +362,15 @@ export default function SettlementPage() {
         </div>
       )}
 
-      <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-16">
-        <div className="w-full space-y-10 rounded-2xl border border-slate-700/60 bg-slate-900/50 p-10 shadow-xl backdrop-blur-sm">
+      <div ref={fitWrapRef} className="mx-auto flex h-[100dvh] w-full max-w-2xl flex-col items-center justify-center px-1.5 py-1.5 sm:px-6 sm:py-16">
+        <div
+          ref={fitCardRef}
+          className="w-full space-y-3 rounded-2xl border border-slate-700/60 bg-slate-900/50 p-3 shadow-xl backdrop-blur-sm sm:space-y-10 sm:p-10"
+          style={{ transform: `scale(${fitScale})`, transformOrigin: "center center" }}
+        >
           <header className="text-center">
             <div
-              className={`mb-4 text-6xl ${GRADE_STYLES[grade]}`}
+              className={`mb-2 text-5xl sm:mb-4 sm:text-6xl ${GRADE_STYLES[grade]}`}
               aria-label={`结算评级：${grade}`}
             >
               {grade}
@@ -337,29 +381,23 @@ export default function SettlementPage() {
               }`}
             >
               {isDead
-                ? "理智归零，你已成为公寓的一部分"
+                ? "精神锚点归零"
                 : "你暂时逃离了高维肠胃"}
             </h1>
             <p className="mt-3 text-sm text-slate-500">
               {isDead
-                ? "如月公寓的消化系统已将你纳入。"
+                ? ""
                 : "你暂时离开了那栋楼，但规则会记住你。"}
             </p>
           </header>
 
-          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-5 py-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              深渊评语
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">{reviewLine1}</p>
+          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-4">
+            <p className="text-sm leading-relaxed text-slate-300">{reviewLine1}</p>
             <p className="mt-1 text-sm leading-relaxed text-slate-400">{reviewLine2}</p>
           </section>
 
-          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-5 py-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              最终数据
-            </h2>
-            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-5">
+            <div className="grid grid-cols-2 gap-2 sm:gap-4 sm:grid-cols-4">
               <div className="rounded-lg border border-slate-600/40 bg-slate-900/50 px-4 py-3">
                 <div className="text-xs text-slate-500">存活时间</div>
                 <div className="mt-1 text-lg font-semibold text-slate-200">
@@ -367,7 +405,7 @@ export default function SettlementPage() {
                 </div>
               </div>
               <div className="rounded-lg border border-slate-600/40 bg-slate-900/50 px-4 py-3">
-                <div className="text-xs text-slate-500">剩余理智</div>
+                <div className="text-xs text-slate-500">精神锚点</div>
                 <div
                   className={`mt-1 text-lg font-semibold ${
                     sanity <= 0 ? "text-red-400" : "text-slate-200"
@@ -377,7 +415,7 @@ export default function SettlementPage() {
                 </div>
               </div>
               <div className="rounded-lg border border-slate-600/40 bg-slate-900/50 px-4 py-3">
-                <div className="text-xs text-slate-500">猎杀诡异</div>
+                <div className="text-xs text-slate-500">消灭诡异</div>
                 <div className="mt-1 text-lg font-semibold text-slate-200">{kills} 只</div>
               </div>
               <div className="rounded-lg border border-slate-600/40 bg-slate-900/50 px-4 py-3">
@@ -389,20 +427,20 @@ export default function SettlementPage() {
             </div>
           </section>
 
-          <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
+          <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:justify-center">
             <button
               type="button"
               onClick={handleExport}
               className="h-12 rounded-xl border border-slate-600 bg-slate-800 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
             >
-              导出生存记录 (.md)
+              导出写作记录 (.md)
             </button>
             <button
               type="button"
               onClick={handleRestart}
               className="h-12 rounded-xl bg-slate-100 px-6 text-sm font-semibold text-slate-900 transition hover:bg-white"
             >
-              重新开始
+              回到主页
             </button>
           </div>
         </div>

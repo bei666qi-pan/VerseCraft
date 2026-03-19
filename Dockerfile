@@ -18,12 +18,6 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# 声明后端环境变量
-ARG DATABASE_URL
-ENV DATABASE_URL=$DATABASE_URL
-# 【架构师提醒】如果你有 NEXT_PUBLIC_ 开头的变量，请在这里全部加上 ARG，例如：
-# ARG NEXT_PUBLIC_XXX
-# ENV NEXT_PUBLIC_XXX=$NEXT_PUBLIC_XXX
 
 ENV NEXT_TELEMETRY_DISABLED=1
 # Keep pnpm version consistent with packageManager field.
@@ -51,4 +45,5 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts/migrate.js ./scripts/migr
 
 USER nextjs
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD node -e "require('http').get('http://127.0.0.1:3000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 CMD ["sh", "-c", "if [ \"${MIGRATE_ON_BOOT}\" = \"1\" ]; then node scripts/migrate.js; fi; node server.js"]

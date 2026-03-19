@@ -1,12 +1,13 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { env } from "@/lib/env";
 
 export const ADMIN_SHADOW_COOKIE = "admin_shadow_session";
 const ONE_DAY_SECONDS = 24 * 60 * 60;
 
 function getAdminPassword(): string {
-  return (process.env.ADMIN_PASSWORD ?? "").trim();
+  return (env.adminPassword ?? "").trim();
 }
 
 function signPayload(payload: string, secret: string): string {

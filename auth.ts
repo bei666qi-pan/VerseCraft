@@ -4,10 +4,12 @@ import Credentials from "next-auth/providers/credentials";
 import { eq } from "drizzle-orm";
 import { db } from "./src/db";
 import { users } from "./src/db/schema";
+import { env } from "./src/lib/env";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: "jwt" },
-  secret: process.env.AUTH_SECRET,
+  secret: env.authSecret,
+  trustHost: env.authTrustHost === "true",
   providers: [
     Credentials({
       name: "credentials",

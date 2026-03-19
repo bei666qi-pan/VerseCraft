@@ -12,9 +12,6 @@ type FeedbackActionResult = {
 export async function submitFeedback(content: string): Promise<FeedbackActionResult> {
   const session = await auth();
   const userId = session?.user?.id;
-  if (!userId) {
-    return { success: false, message: "未登录，无法提交意见。" };
-  }
 
   const trimmed = content.trim();
   if (!trimmed) {
@@ -22,6 +19,11 @@ export async function submitFeedback(content: string): Promise<FeedbackActionRes
   }
   if (trimmed.length > 2000) {
     return { success: false, message: "意见内容请控制在 2000 字以内。" };
+  }
+
+  if (!userId) {
+    // Guests can also submit feedback; we acknowledge receipt without user-bound persistence.
+    return { success: true, message: "提交成功" };
   }
 
   try {

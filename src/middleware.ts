@@ -1,6 +1,7 @@
 // src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { applySecurityHeaders, hasPotentialHeaderInjection, isCrossSiteStateChangingRequest, isSuspiciousPath } from "@/lib/security/http";
 
 type Entry = { count: number; resetAt: number };
 
@@ -51,17 +52,30 @@ export function middleware(req: NextRequest) {
   const ip = getClientIp(req);
   const isStream = pathname === "/api/chat";
 
+  if (isSuspiciousPath(pathname)) {
+    return applySecurityHeaders(NextResponse.json({ error: "invalid_path" }, { status: 400 }));
+  }
+
+  const host = req.headers.get("host") ?? "";
+  if (hasPotentialHeaderInjection(host)) {
+    return applySecurityHeaders(NextResponse.json({ error: "invalid_header" }, { status: 400 }));
+  }
+
+  if (isCrossSiteStateChangingRequest(req)) {
+    return applySecurityHeaders(NextResponse.json({ error: "csrf_check_failed" }, { status: 403 }));
+  }
+
   if (isStream) {
     if (!llmLimiter(ip)) {
-      return NextResponse.json(RATE_LIMITED_JSON, { status: 429 });
+      return applySecurityHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }));
     }
   } else {
     if (!generalLimiter(ip)) {
-      return NextResponse.json(RATE_LIMITED_JSON, { status: 429 });
+      return applySecurityHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }));
     }
   }
 
-  return NextResponse.next();
+  return applySecurityHeaders(NextResponse.next());
 }
 
 export const config = {

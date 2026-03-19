@@ -1,8 +1,9 @@
 // src/app/api/altcha/challenge/route.ts
 import { createChallenge } from "altcha-lib";
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 
-const HMAC_KEY = process.env.ALTCHA_HMAC_KEY ?? process.env.AUTH_SECRET ?? "versecraft-altcha-fallback";
+const HMAC_KEY = env.altchaHmacKey ?? env.authSecret;
 
 export async function GET() {
   try {

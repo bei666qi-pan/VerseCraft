@@ -12,15 +12,16 @@ import { users, gameSessionMemory } from "@/db/schema";
 import { compressMemory } from "@/lib/memoryCompress";
 import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
 import { markUserActive } from "@/lib/presence";
+import { resolveDeepSeekConfig } from "@/lib/env";
+import { validateChatRequest, type IncomingMessage } from "@/lib/security/chatValidation";
+import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
+import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
+import { safeBlockedDmJson } from "@/lib/security/policy";
+import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
+import { writeAuditTrail } from "@/lib/security/auditTrail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type IncomingMessage = {
-  role: "system" | "user" | "assistant" | string;
-  content: string;
-  reasoning_content?: unknown;
-};
 
 function getCodexCanonicalNamesBlock(): string {
   const npcNames = NPCS.map((n) => `${n.id} ${n.name}`).join("，");
@@ -306,30 +307,6 @@ function sseText(data: string): string {
   return `data: ${data}\n\n`;
 }
 
-function getEnv(name: string): string | undefined {
-  const v = process.env[name];
-  return v && v.trim().length > 0 ? v.trim() : undefined;
-}
-
-function resolveDeepSeekConfig(): { apiUrl: string; apiKey: string; model: string } {
-  const apiUrl =
-    getEnv("VOLCENGINE_DEEPSEEK_API_URL") ??
-    getEnv("ARK_API_URL") ??
-    "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
-
-  const apiKey = getEnv("VOLCENGINE_API_KEY") ?? getEnv("ARK_API_KEY") ?? getEnv("DEEPSEEK_API_KEY") ?? "";
-
-  const model =
-    getEnv("VOLCENGINE_ENDPOINT_ID") ??
-    getEnv("ARK_ENDPOINT_ID") ??
-    getEnv("VOLCENGINE_DEEPSEEK_MODEL") ??
-    getEnv("ARK_MODEL") ??
-    getEnv("DEEPSEEK_MODEL") ??
-    "deepseek-v3.2";
-
-  return { apiUrl, apiKey, model };
-}
-
 function isLikelyValidDMJson(content: string): boolean {
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>;
@@ -397,16 +374,96 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const messages = (body as any)?.messages as IncomingMessage[] | undefined;
-  const playerContext = String((body as any)?.playerContext ?? "");
-
-  if (!Array.isArray(messages)) {
-    return NextResponse.json({ error: "messages must be an array" }, { status: 400 });
+  const validated = validateChatRequest(body);
+  if (!validated.ok) {
+    return NextResponse.json({ error: validated.error }, { status: validated.status });
   }
+  const messages = validated.messages;
+  const playerContext = validated.playerContext;
+  const latestUserInput = validated.latestUserInput;
+  const sessionId = validated.sessionId;
+  const clientIp = getClientIpFromHeaders(req.headers);
+  const requestId = createRequestId("chat");
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
   const session = await auth();
   const userId = session?.user?.id ?? null;
+
+  const riskControl = checkRiskControl({ ip: clientIp, sessionId, userId });
+  if (!riskControl.ok) {
+    writeAuditTrail({
+      requestId,
+      sessionId,
+      userId,
+      ip: clientIp,
+      stage: "risk_control",
+      riskLevel: riskControl.level,
+      action: "block",
+      rateLimited: true,
+      triggeredRule: riskControl.reason,
+      summary: "blocked_before_model",
+    });
+    return new Response(
+      sseText(
+        safeBlockedDmJson("当前请求过于频繁或风险过高，请稍后再试。", {
+          action: "block",
+          stage: "risk_control",
+          riskLevel: riskControl.level,
+          requestId,
+          reason: riskControl.reason,
+        })
+      ),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      }
+    );
+  }
+
+  const preCheck = await preInputModeration({
+    input: `${latestUserInput}\n${playerContext}`,
+    userId,
+    ip: clientIp,
+    path: "/api/chat",
+    requestId,
+  });
+  writeAuditTrail({
+    requestId,
+    sessionId,
+    userId,
+    ip: clientIp,
+    stage: "pre_input",
+    riskLevel: preCheck.result.severity === "high" || preCheck.result.severity === "critical" ? "gray" : "normal",
+    action: preCheck.policy.blocked ? "degrade" : preCheck.result.decision === "review" ? "review" : "allow",
+    triggeredRule: preCheck.result.reason,
+    provider: preCheck.provider,
+    summary: preCheck.result.categories.join(","),
+  });
+  if (preCheck.policy.blocked) {
+    recordHighRisk({ ip: clientIp, sessionId, userId }, preCheck.result.reason);
+    return new Response(
+      sseText(
+        safeBlockedDmJson(preCheck.policy.userMessage, {
+          action: "degrade",
+          stage: "pre_input",
+          riskLevel: "gray",
+          requestId,
+          reason: preCheck.result.reason,
+        })
+      ),
+      {
+      status: preCheck.policy.statusCode,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  }
 
   // Load compressed memory (skip if first action)
   let sessionMemory: { plot_summary: string; player_status: Record<string, unknown>; npc_relationships: Record<string, unknown> } | null = null;
@@ -700,6 +757,7 @@ export async function POST(req: Request) {
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
     let accumulated = "";
+    let streamBlocked = false;
     let latestTotalTokens = 0;
     let tokenUsageFlushed = false;
 
@@ -728,6 +786,41 @@ export async function POST(req: Request) {
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
+          if (!streamBlocked) {
+            const finalModeration = await finalOutputModeration({
+              input: accumulated,
+              userId,
+              ip: clientIp,
+              path: "/api/chat",
+              requestId,
+            });
+            if (finalModeration.policy.blocked) {
+              recordHighRisk({ ip: clientIp, sessionId, userId }, finalModeration.result.reason);
+              writeAuditTrail({
+                requestId,
+                sessionId,
+                userId,
+                ip: clientIp,
+                stage: "final_output",
+                riskLevel: "black",
+                action: "degrade",
+                triggeredRule: finalModeration.result.reason,
+                provider: finalModeration.provider,
+                summary: "blocked_after_stream_done",
+              });
+              await writer.write(
+                sse(
+                  safeBlockedDmJson(finalModeration.policy.userMessage, {
+                    action: "degrade",
+                    stage: "final_output",
+                    riskLevel: "black",
+                    requestId,
+                    reason: finalModeration.result.reason,
+                  })
+                )
+              );
+            }
+          }
           await flushTokenUsage();
           await writer.close();
           return;
@@ -746,6 +839,41 @@ export async function POST(req: Request) {
 
           if (!data) continue;
           if (data === "[DONE]") {
+            if (!streamBlocked) {
+              const finalModeration = await finalOutputModeration({
+                input: accumulated,
+                userId,
+                ip: clientIp,
+                path: "/api/chat",
+                requestId,
+              });
+              if (finalModeration.policy.blocked) {
+                recordHighRisk({ ip: clientIp, sessionId, userId }, finalModeration.result.reason);
+                writeAuditTrail({
+                  requestId,
+                  sessionId,
+                  userId,
+                  ip: clientIp,
+                  stage: "final_output",
+                  riskLevel: "black",
+                  action: "degrade",
+                  triggeredRule: finalModeration.result.reason,
+                  provider: finalModeration.provider,
+                  summary: "blocked_on_done_event",
+                });
+                await writer.write(
+                  sse(
+                    safeBlockedDmJson(finalModeration.policy.userMessage, {
+                      action: "degrade",
+                      stage: "final_output",
+                      riskLevel: "black",
+                      requestId,
+                      reason: finalModeration.result.reason,
+                    })
+                  )
+                );
+              }
+            }
             await flushTokenUsage();
             await writer.close();
             return;
@@ -759,6 +887,44 @@ export async function POST(req: Request) {
           try {
             json = JSON.parse(data);
           } catch {
+            const postChunkModeration = await postModelModeration({
+              input: data,
+              userId,
+              ip: clientIp,
+              path: "/api/chat",
+              requestId,
+            });
+            if (postChunkModeration.policy.blocked) {
+              streamBlocked = true;
+              recordHighRisk({ ip: clientIp, sessionId, userId }, postChunkModeration.result.reason);
+              writeAuditTrail({
+                requestId,
+                sessionId,
+                userId,
+                ip: clientIp,
+                stage: "post_model",
+                riskLevel: "black",
+                action: "terminate",
+                triggeredRule: postChunkModeration.result.reason,
+                provider: postChunkModeration.provider,
+                summary: "chunk_blocked_non_json",
+              });
+              await writer.write(
+                sse(
+                  safeBlockedDmJson(postChunkModeration.policy.userMessage, {
+                    action: "terminate",
+                    stage: "post_model",
+                    riskLevel: "black",
+                    requestId,
+                    reason: postChunkModeration.result.reason,
+                  })
+                )
+              );
+              await flushTokenUsage();
+              await reader.cancel().catch(() => {});
+              await writer.close();
+              return;
+            }
             accumulated += data;
             await writeToStream(data);
             continue;
@@ -768,6 +934,44 @@ export async function POST(req: Request) {
             json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.message?.content ?? "";
 
           if (typeof deltaContent === "string" && deltaContent.length > 0) {
+            const postChunkModeration = await postModelModeration({
+              input: deltaContent,
+              userId,
+              ip: clientIp,
+              path: "/api/chat",
+              requestId,
+            });
+            if (postChunkModeration.policy.blocked) {
+              streamBlocked = true;
+              recordHighRisk({ ip: clientIp, sessionId, userId }, postChunkModeration.result.reason);
+              writeAuditTrail({
+                requestId,
+                sessionId,
+                userId,
+                ip: clientIp,
+                stage: "post_model",
+                riskLevel: "black",
+                action: "terminate",
+                triggeredRule: postChunkModeration.result.reason,
+                provider: postChunkModeration.provider,
+                summary: "chunk_blocked_json_delta",
+              });
+              await writer.write(
+                sse(
+                  safeBlockedDmJson(postChunkModeration.policy.userMessage, {
+                    action: "terminate",
+                    stage: "post_model",
+                    riskLevel: "black",
+                    requestId,
+                    reason: postChunkModeration.result.reason,
+                  })
+                )
+              );
+              await flushTokenUsage();
+              await reader.cancel().catch(() => {});
+              await writer.close();
+              return;
+            }
             accumulated += deltaContent;
             await writeToStream(deltaContent);
           }
