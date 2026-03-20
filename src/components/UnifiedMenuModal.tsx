@@ -139,7 +139,8 @@ interface UnifiedMenuModalProps {
   activeMenu: ActiveMenu;
   onClose: () => void;
   onUseItem: (item: Item) => void;
-  isStreaming: boolean;
+  /** True while a DM turn locks the session (submit / options / talent); disables item consume in backpack. */
+  isChatBusy: boolean;
   audioMuted: boolean;
   onToggleMute: () => void;
   /** Called when user views codex/warehouse/tasks tab (for account-first onboarding) */
@@ -433,7 +434,7 @@ function BackpackPanel({
   selectedId,
   onSelect,
   onUseItem,
-  isStreaming,
+  isChatBusy,
   stats,
 }: {
   inventory: Item[];
@@ -441,7 +442,7 @@ function BackpackPanel({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onUseItem: (item: Item) => void;
-  isStreaming: boolean;
+  isChatBusy: boolean;
   stats: Record<StatType, number>;
 }) {
   const safeInventory = Array.isArray(inventory) ? inventory : [];
@@ -542,7 +543,7 @@ function BackpackPanel({
                   <button
                     type="button"
                     onClick={() => { if (useCheck.ok) { onUseItem(selectedItem); onSelect(null); } }}
-                    disabled={isStreaming || !useCheck.ok}
+                    disabled={isChatBusy || !useCheck.ok}
                     title={!useCheck.ok ? useCheck.reason : undefined}
                     className="mt-4 w-full rounded-xl border border-indigo-400/40 bg-indigo-500/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500/40 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -829,7 +830,7 @@ function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number
   );
 }
 
-export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, audioMuted, onToggleMute, onViewedTab }: UnifiedMenuModalProps) {
+export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, audioMuted, onToggleMute, onViewedTab }: UnifiedMenuModalProps) {
   const router = useRouter();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [codexPage, setCodexPage] = useState(0);
@@ -951,7 +952,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
               selectedId={selectedItemId}
               onSelect={setSelectedItemId}
               onUseItem={onUseItem}
-              isStreaming={isStreaming}
+              isChatBusy={isChatBusy}
               stats={stats}
             />
           </Activity>

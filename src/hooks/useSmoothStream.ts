@@ -8,19 +8,22 @@ const CHARS_PER_FRAME = 2;
  * Architecture: decouple network ingestion from React. Incoming tokens append to
  * useRef buffer; rAF loop batches updates into single DOM write per frame (60 FPS).
  * Avoids re-render cascade from per-chunk setState.
+ *
+ * @param isStreamVisualActive When true, the typewriter drain runs and UI may show the in-flight narrative strip.
+ *                             This is only the *display* path — not fetch status and not “interaction locked”.
  */
 export function useSmoothStreamFromRef(
   narrativeRef: MutableRefObject<string>,
-  isActive: boolean,
+  isStreamVisualActive: boolean,
   onFrameScroll?: () => void
 ): { text: string; isComplete: boolean; isThinking: boolean } {
   const [displayed, setDisplayed] = useState("");
   const queueRef = useRef("");
   const prevLenRef = useRef(0);
-  const prevActiveRef = useRef(isActive);
+  const prevActiveRef = useRef(isStreamVisualActive);
 
   useEffect(() => {
-    if (!isActive) {
+    if (!isStreamVisualActive) {
       setDisplayed("");
       queueRef.current = "";
       prevLenRef.current = 0;
@@ -28,10 +31,10 @@ export function useSmoothStreamFromRef(
       return;
     }
     prevActiveRef.current = true;
-  }, [isActive]);
+  }, [isStreamVisualActive]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isStreamVisualActive) return;
     let rafId: number;
 
     function tick() {
@@ -55,11 +58,11 @@ export function useSmoothStreamFromRef(
     }
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [isActive, narrativeRef, onFrameScroll]);
+  }, [isStreamVisualActive, narrativeRef, onFrameScroll]);
 
-  const text = isActive ? (displayed || "……") : "";
-  const isComplete = !isActive;
-  const isThinking = isActive && displayed.length === 0;
+  const text = isStreamVisualActive ? (displayed || "……") : "";
+  const isComplete = !isStreamVisualActive;
+  const isThinking = isStreamVisualActive && displayed.length === 0;
 
   return { text, isComplete, isThinking };
 }
@@ -67,16 +70,16 @@ export function useSmoothStreamFromRef(
 /**
  * Legacy: state-based source. Prefer useSmoothStreamFromRef for streaming.
  */
-export function useSmoothStream(source: string, isActive: boolean): { text: string; isComplete: boolean; isThinking: boolean } {
+export function useSmoothStream(source: string, isStreamVisualActive: boolean): { text: string; isComplete: boolean; isThinking: boolean } {
   const [displayed, setDisplayed] = useState("");
   const queueRef = useRef("");
   const prevSourceLenRef = useRef(0);
-  const prevActiveRef = useRef(isActive);
+  const prevActiveRef = useRef(isStreamVisualActive);
 
   useEffect(() => {
-    const streamJustStarted = isActive && !prevActiveRef.current;
-    prevActiveRef.current = isActive;
-    if (!isActive) {
+    const streamJustStarted = isStreamVisualActive && !prevActiveRef.current;
+    prevActiveRef.current = isStreamVisualActive;
+    if (!isStreamVisualActive) {
       setDisplayed(source);
       queueRef.current = "";
       prevSourceLenRef.current = source.length;
@@ -87,19 +90,19 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
       queueRef.current = "";
       prevSourceLenRef.current = 0;
     }
-  }, [isActive, source]);
+  }, [isStreamVisualActive, source]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isStreamVisualActive) return;
     if (source.length > prevSourceLenRef.current) {
       const delta = source.slice(prevSourceLenRef.current);
       queueRef.current += delta;
       prevSourceLenRef.current = source.length;
     }
-  }, [source, isActive]);
+  }, [source, isStreamVisualActive]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isStreamVisualActive) return;
     let rafId: number;
     function drain() {
       const q = queueRef.current;
@@ -113,11 +116,11 @@ export function useSmoothStream(source: string, isActive: boolean): { text: stri
     }
     rafId = requestAnimationFrame(drain);
     return () => cancelAnimationFrame(rafId);
-  }, [isActive]);
+  }, [isStreamVisualActive]);
 
-  const text = isActive ? (displayed || "……") : source;
-  const isComplete = !isActive;
-  const isThinking = isActive && displayed.length === 0;
+  const text = isStreamVisualActive ? (displayed || "……") : source;
+  const isComplete = !isStreamVisualActive;
+  const isThinking = isStreamVisualActive && displayed.length === 0;
 
   return { text, isComplete, isThinking };
 }

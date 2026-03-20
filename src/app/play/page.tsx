@@ -475,7 +475,16 @@ function tryParseDM(raw: string): DMJson | null {
   return null;
 }
 
-/** Explicit chat/SSE lifecycle — avoids ambiguous boolean combos (`isStreaming` × buffer × smooth hook). */
+/**
+ * One DM turn’s lifecycle (single /api/chat round-trip). Not synonymous with “bytes on wire” alone:
+ * interaction locking follows this state machine; the on-screen typewriter is gated by `isStreamVisualActive` only.
+ *
+ * - `idle` — No turn in flight; user may submit options/text and use talent; menu actions are allowed.
+ * - `waiting_upstream` — Request issued; awaiting first SSE `data:` payload (no narrative tokens yet).
+ * - `streaming_body` — SSE chunks arriving; raw JSON buffer grows; narrative ref updates; typewriter may run.
+ * - `turn_committing` — Stream ended; parsing DM JSON and mutating inventory/options/logs before unlock.
+ * - `error` — Reserved; UI treats like `idle` for interaction lock (turn aborted, controls re-enabled).
+ */
 type ChatStreamPhase =
   | "idle"
   | "waiting_upstream"
@@ -483,7 +492,8 @@ type ChatStreamPhase =
   | "turn_committing"
   | "error";
 
-function isStreamInteractionLocked(phase: ChatStreamPhase): boolean {
+/** True while the DM turn holds the session: disable submit/options/talent and block item use from menu. */
+function doesChatPhaseLockInteraction(phase: ChatStreamPhase): boolean {
   return phase !== "idle" && phase !== "error";
 }
 
@@ -672,6 +682,7 @@ function PlayContent() {
 
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState("");
+  /** See `ChatStreamPhase` — drives `isChatBusy` (interaction) vs `isStreamVisualActive` (typewriter strip). */
   const [streamPhase, setStreamPhase] = useState<ChatStreamPhase>("idle");
   const [liveNarrative, setLiveNarrative] = useState("");
   const narrativeRef = useRef("");
@@ -702,8 +713,7 @@ function PlayContent() {
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
   const sendActionInFlightRef = useRef(false);
   const streamPhaseRef = useRef<ChatStreamPhase>("idle");
-  /** 主链路开场：在助手首条叙事落库前为 true；用于超时降级闸门，避免与正常 SSE 并行抢写。 */
-  /** 已为「首条助手叙事」发起主链路请求（含系统开场）；用于超时降级，不与 SSE 并行抢写。 */
+  /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
   const openingAwaitingAssistantRef = useRef(false);
   const openingStartedAtRef = useRef(0);
 
@@ -711,11 +721,12 @@ function PlayContent() {
     streamPhaseRef.current = streamPhase;
   }, [streamPhase]);
 
-  const streamVisualActive =
+  /** True while the live narrative strip / typewriter should run (covers upstream wait + token drain + commit tick). */
+  const isStreamVisualActive =
     streamPhase === "waiting_upstream" ||
     streamPhase === "streaming_body" ||
     streamPhase === "turn_committing";
-  const streamBusy = isStreamInteractionLocked(streamPhase);
+  const isChatBusy = doesChatPhaseLockInteraction(streamPhase);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -811,7 +822,7 @@ const LOCAL_FALLBACK_OPENING =
 
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
-    streamVisualActive,
+    isStreamVisualActive,
     onFrameScroll
   );
 
@@ -830,7 +841,7 @@ const LOCAL_FALLBACK_OPENING =
   }, [logs]);
 
   const latestAssistantRaw = useMemo(() => {
-    if (streamVisualActive) {
+    if (isStreamVisualActive) {
       return typeof smoothNarrative === "string" && smoothNarrative.length > 0
         ? smoothNarrative
         : narrativeRef.current ?? "";
@@ -838,11 +849,11 @@ const LOCAL_FALLBACK_OPENING =
     if (liveNarrative) return liveNarrative;
     if (assistantOnlyMessages.length > 0) return assistantOnlyMessages[assistantOnlyMessages.length - 1] ?? "";
     return "";
-  }, [streamVisualActive, smoothNarrative, liveNarrative, assistantOnlyMessages]);
+  }, [isStreamVisualActive, smoothNarrative, liveNarrative, assistantOnlyMessages]);
 
   const greenTips = useMemo(() => extractGreenTips(latestAssistantRaw), [latestAssistantRaw]);
 
-  const prevIsStreamingRef = useRef(false);
+  const prevIsStreamVisualActiveRef = useRef(false);
   const onScrollContainer = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -855,17 +866,17 @@ const LOCAL_FALLBACK_OPENING =
     if (!scrollRef.current) return;
     const el = scrollRef.current;
     if (userScrolledUpRef.current) return;
-    if (streamVisualActive) {
+    if (isStreamVisualActive) {
       el.scrollTop = el.scrollHeight;
     } else {
-      if (prevIsStreamingRef.current) {
+      if (prevIsStreamVisualActiveRef.current) {
         el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       } else {
         el.scrollTop = el.scrollHeight;
       }
     }
-    prevIsStreamingRef.current = streamVisualActive;
-  }, [smoothNarrative, streamVisualActive]);
+    prevIsStreamVisualActiveRef.current = isStreamVisualActive;
+  }, [smoothNarrative, isStreamVisualActive]);
 
   useEffect(() => {
     if (intrusionFlashUntil <= Date.now()) {
@@ -946,7 +957,7 @@ const LOCAL_FALLBACK_OPENING =
   }, [isHydrated]);
 
   useEffect(() => {
-    if (!isHydrated || streamBusy || hasTriggeredOpening.current) return;
+    if (!isHydrated || isChatBusy || hasTriggeredOpening.current) return;
     const currentLogs = useGameStore.getState().logs ?? [];
     const turn = currentLogs.length;
     // 仅在还没有任何助手叙事时触发一次主链路开场（单一真相源；本地叙事仅作下方超时降级）
@@ -955,7 +966,7 @@ const LOCAL_FALLBACK_OPENING =
     openingAwaitingAssistantRef.current = true;
     openingStartedAtRef.current = Date.now();
     void sendAction(OPENING_ACTION, true, false, true);
-  }, [isHydrated, streamBusy]);
+  }, [isHydrated, isChatBusy]);
 
   // 开场超时降级：仅当主链路已结束且仍无助手叙事时注入本地开场；若仍在等待上游/流式吐字，则顺延，不与 SSE 竞争。
   useEffect(() => {
@@ -989,7 +1000,7 @@ const LOCAL_FALLBACK_OPENING =
   // 兜底：若开场叙事已出现但选项为空，补齐 4 个默认选项（避免首次进入看到“无选项”）
   const hasSeededOpeningOptions = useRef(false);
   useEffect(() => {
-    if (!isHydrated || streamBusy) return;
+    if (!isHydrated || isChatBusy) return;
     if (hasSeededOpeningOptions.current) return;
     const state = useGameStore.getState();
     const logsNow = state.logs ?? [];
@@ -1006,13 +1017,13 @@ const LOCAL_FALLBACK_OPENING =
       "谨慎前往下一处房间",
     ];
     setCurrentOptions(safeDefaultOptions);
-  }, [currentOptions.length, inputMode, isHydrated, streamBusy, setCurrentOptions]);
+  }, [currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
 
   useEffect(() => {
     if (
       !isHydrated ||
       !isGameStarted ||
-      streamBusy ||
+      isChatBusy ||
       hasTriggeredResume.current
     )
       return;
@@ -1023,7 +1034,7 @@ const LOCAL_FALLBACK_OPENING =
     if (hasTriggeredOpening.current && logs.length === 1) return;
     hasTriggeredResume.current = true;
     void sendAction(last.content, true, true);
-  }, [isHydrated, isGameStarted, streamBusy]);
+  }, [isHydrated, isGameStarted, isChatBusy]);
 
   const autoSaveProgress = useCallback(() => {
     if (!isHydrated || !isGameStarted) return;
@@ -1068,7 +1079,7 @@ const LOCAL_FALLBACK_OPENING =
     isResume?: boolean,
     isSystemAction?: boolean
   ) {
-    if (streamBusy || sendActionInFlightRef.current) return;
+    if (isChatBusy || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
     if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
       setShowDialoguePaywall(true);
@@ -1866,7 +1877,7 @@ const LOCAL_FALLBACK_OPENING =
                   </button>
                   <div className="shrink-0 min-w-0">
                     <div className="relative group">
-                      {talent && talentCdLeft === 0 && !streamBusy && (
+                      {talent && talentCdLeft === 0 && !isChatBusy && (
                         <div
                           className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
                           aria-hidden
@@ -1875,9 +1886,9 @@ const LOCAL_FALLBACK_OPENING =
                       <button
                         type="button"
                         onClick={onUseTalent}
-                        disabled={!talent || talentCdLeft > 0 || streamBusy}
+                        disabled={!talent || talentCdLeft > 0 || isChatBusy}
                         className={`relative truncate rounded-full px-3 py-1.5 text-sm font-bold tracking-wider drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] transition-all md:text-base ${
-                          talent && talentCdLeft === 0 && !streamBusy
+                          talent && talentCdLeft === 0 && !isChatBusy
                             ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
                             : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
                         }`}
@@ -1931,10 +1942,10 @@ const LOCAL_FALLBACK_OPENING =
                     </div>
                   )}
 
-                  {streamVisualActive ? (
+                  {isStreamVisualActive ? (
                     <div className="min-h-[100px] animate-[fadeIn_0.8s_ease-out] space-y-3">
                       {smoothThinking ? (
-                        // 阶段 1：纯“正在推演...”阶段，只显示一个统一样式的小圈圈
+                        // `isStreamVisualActive` + no typewriter output yet (e.g. waiting_upstream or empty buffer)
                         <div className="flex items-center gap-3 py-4">
                           <div className="relative flex h-6 w-6 items-center justify-center">
                             <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
@@ -1946,7 +1957,7 @@ const LOCAL_FALLBACK_OPENING =
                         </div>
                       ) : (
                         <>
-                          {/* 阶段 2：正文流式输出 */}
+                          {/* Typewriter drain while `isStreamVisualActive` (streaming_body / early commit) */}
                           <div
                             className={
                               isLowSanity
@@ -1966,7 +1977,7 @@ const LOCAL_FALLBACK_OPENING =
                               />
                             )}
                           </div>
-                          {/* 阶段 3：正文结束后，才在正文末尾显示“推演选项中...”的小圈圈，且样式与上方一致 */}
+                          {/* Typewriter queue empty but turn not unlocked (`turn_committing`); options not yet in state */}
                           {smoothComplete && inputMode === "options" && (
                             <div className="flex items-center gap-3 pt-2 text-xs text-slate-400">
                               <div className="relative flex h-6 w-6 items-center justify-center">
@@ -1987,7 +1998,7 @@ const LOCAL_FALLBACK_OPENING =
                         isLowSanity={isLowSanity}
                       />
                     </div>
-                  ) : displayEntries.length === 0 && !streamVisualActive ? (
+                  ) : displayEntries.length === 0 && !isStreamVisualActive ? (
                     <div
                       className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`}
                     />
@@ -2053,7 +2064,7 @@ const LOCAL_FALLBACK_OPENING =
                               playUIClick();
                               void sendAction(option, true);
                             }}
-                            disabled={streamBusy || isGuestDialogueExhausted}
+                            disabled={isChatBusy || isGuestDialogueExhausted}
                             className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-medium tracking-wide shadow-sm transition-all duration-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 md:text-base ${optionTextColor} ${optionBorderAndBg}`}
                           >
                             {option}
@@ -2096,12 +2107,12 @@ const LOCAL_FALLBACK_OPENING =
                               ? "bg-red-950/40 text-red-100 placeholder:text-red-400/50 focus:bg-red-950/60"
                               : "bg-white/90 text-slate-800 placeholder:text-slate-500 focus:bg-white"
                         }`}
-                        disabled={streamBusy || isGuestDialogueExhausted}
+                        disabled={isChatBusy || isGuestDialogueExhausted}
                       />
                       <button
                         type="button"
                         onClick={onSubmit}
-                        disabled={streamBusy || input.trim().length === 0 || isGuestDialogueExhausted}
+                        disabled={isChatBusy || input.trim().length === 0 || isGuestDialogueExhausted}
                         className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition disabled:opacity-40 touch-manipulation ${
                           isLowSanity
                             ? "bg-white/20 text-white"
@@ -2134,7 +2145,7 @@ const LOCAL_FALLBACK_OPENING =
                               ? (showRegisterPrompt ? "体验次数已耗尽，可注册账号以继续执笔创作。" : "")
                               : input.trim().length > MAX_INPUT
                                 ? "文本过长：将被叙事拒绝。"
-                                : streamBusy
+                                : isChatBusy
                                   ? "正在生成..."
                                   : "保持简短。保持真实。"}
                           </span>
@@ -2179,7 +2190,7 @@ const LOCAL_FALLBACK_OPENING =
         activeMenu={activeMenu}
         onClose={() => setActiveMenu(null)}
         onUseItem={onUseItem}
-        isStreaming={streamBusy}
+        isChatBusy={isChatBusy}
         audioMuted={audioMuted}
         onToggleMute={() => {
           toggleMute();
