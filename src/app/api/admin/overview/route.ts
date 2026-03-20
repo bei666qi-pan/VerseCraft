@@ -13,14 +13,19 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const range = parseAdminTimeRangeFromSearchParams(new URL(req.url).searchParams);
-  const data = await getOverviewMetrics(range);
-  return NextResponse.json({
-    totalUsers: data.cards.totalUsers,
-    totalTokens: data.cards.totalTokens,
-    chartData: data.chartData,
-    range: data.range,
-  }, {
-    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
-  });
+  const url = new URL(req.url);
+  const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
+  try {
+    const data = await getOverviewMetrics(range);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "private, max-age=20, stale-while-revalidate=20" },
+    });
+  } catch (error) {
+    console.error("[api/admin/overview] failed", error);
+    return NextResponse.json(
+      { error: "overview_unavailable", degraded: true, range },
+      { status: 500, headers: { "Cache-Control": "private, max-age=5" } }
+    );
+  }
 }
+

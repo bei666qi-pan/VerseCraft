@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
-import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
+import { getRealtimeMetrics } from "@/lib/admin/service";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,16 @@ export async function GET() {
   }
 
   try {
-    const metrics = await getAdminRealtimeMetrics();
-    return NextResponse.json(metrics);
+    const metrics = await getRealtimeMetrics();
+    return NextResponse.json(metrics, {
+      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" },
+    });
   } catch (error) {
     console.error("[api/admin/realtime] failed", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "realtime_unavailable", degraded: true },
+      { status: 500, headers: { "Cache-Control": "private, max-age=3" } }
+    );
   }
 }
 
