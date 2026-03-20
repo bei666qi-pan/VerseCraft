@@ -57,7 +57,11 @@ export async function callVolcengineModeration(input: string, context: Moderatio
       status: res.status,
       providerRequestId: typeof parsed?.request_id === "string" ? parsed.request_id : undefined,
       result: {
-        decision: typeof parsed?.decision === "string" ? parsed.decision : "review",
+        decision:
+          typeof parsed?.decision === "string" &&
+          (parsed.decision === "allow" || parsed.decision === "review" || parsed.decision === "block")
+            ? parsed.decision
+            : "review",
         score: Number(parsed?.score ?? 50),
         labels: Array.isArray(parsed?.labels) ? parsed.labels.map(String) : [],
         reason: typeof parsed?.reason === "string" ? parsed.reason : "provider_response",

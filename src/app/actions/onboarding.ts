@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
 import { userOnboarding } from "@/db/schema";
+import { recordOnboardingViewedAnalytics } from "@/lib/analytics/repository";
 
 export type OnboardingType = "codex" | "warehouse" | "tasks";
 
@@ -67,6 +68,19 @@ export async function markOnboardingViewed(
       tasksFirstViewDone: type === "tasks" ? 1 : 0,
     })
     .onConflictDoUpdate({ target: userOnboarding.userId, set: setColumn });
+
+  // Analytics best-effort: idempotent by userId+type.
+  void recordOnboardingViewedAnalytics({
+    eventId: `${userId}:onboarding_viewed:${type}`,
+    idempotencyKey: `${userId}:onboarding_viewed:${type}`,
+    userId,
+    sessionId: "system",
+    eventTime: new Date(),
+    page: "/",
+    source: "onboarding",
+    platform: "unknown",
+    payload: { onboardingType: type },
+  }).catch(() => {});
 
   return { ok: true };
 }

@@ -20,6 +20,11 @@ const required = [
   "save_slots",
   "users_quota",
   "admin_stats_snapshots",
+  "analytics_events",
+  "user_sessions",
+  "user_daily_activity",
+  "user_daily_tokens",
+  "admin_metrics_daily",
 ];
 
 async function main() {

@@ -4,37 +4,40 @@ import { memo, type ReactNode, type RefObject } from "react";
 import type { CSSProperties } from "react";
 import { DMNarrativeBlock, renderNarrativeText } from "../render/narrative";
 
-export type PlayStoryDisplayEntry = { role: "assistant"; content: string };
+export type PlayStoryDisplayEntry = { role: "assistant"; content: string; logIndex: number };
 
 const StoryHistory = memo(function StoryHistory({
   displayEntries,
   isLowSanity,
   isDarkMoon,
+  plainOnlyNewTurn,
+  plainOnlyLogIndexMin,
 }: {
   displayEntries: PlayStoryDisplayEntry[];
   isLowSanity: boolean;
   isDarkMoon: boolean;
+  plainOnlyNewTurn: boolean;
+  plainOnlyLogIndexMin: number;
 }) {
   if (displayEntries.length === 0) return null;
   return (
-    <div
-      className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
-    >
-      {displayEntries.map((entry, idx) => {
+    <div className={`${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}>
+      {displayEntries.map((entry) => {
         const safeContent = typeof entry.content === "string" ? entry.content : "";
         return safeContent.includes("获得了新物品，已放入书包") ? (
           <p
-            key={idx}
+            key={entry.logIndex}
             className="mb-6 text-base font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]"
           >
             {safeContent.replace(/\*\*/g, "")}
           </p>
         ) : (
-          <div key={idx} className="mb-6">
+          <div key={entry.logIndex} className="mb-6">
             <DMNarrativeBlock
               content={safeContent}
               isDarkMoon={isDarkMoon}
               isLowSanity={isLowSanity}
+              plainOnly={plainOnlyNewTurn && entry.logIndex >= plainOnlyLogIndexMin}
             />
           </div>
         );
@@ -62,7 +65,7 @@ const StreamPanel = memo(function StreamPanel({
 }) {
   if (!isStreamVisualActive) return null;
   return (
-    <div className="min-h-[140px] animate-[fadeIn_0.35s_ease-out] space-y-3">
+    <div className="min-h-[140px] space-y-3">
       {smoothThinking ? (
         <div className="flex items-center gap-3 py-3">
           <div className="relative flex h-6 w-6 items-center justify-center">
@@ -123,6 +126,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   liveNarrative,
   greenTips,
   firstTimeHint,
+  plainOnlyNewTurn,
+  plainOnlyLogIndexMin,
   children,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -138,6 +143,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   liveNarrative: string;
   greenTips: string[];
   firstTimeHint: string | null;
+  plainOnlyNewTurn: boolean;
+  plainOnlyLogIndexMin: number;
   children?: ReactNode;
 }) {
   return (
@@ -148,7 +155,13 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
       style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as CSSProperties}
     >
       <div className="space-y-6">
-        <StoryHistory displayEntries={displayEntries} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
+        <StoryHistory
+          displayEntries={displayEntries}
+          isDarkMoon={isDarkMoon}
+          isLowSanity={isLowSanity}
+          plainOnlyNewTurn={plainOnlyNewTurn}
+          plainOnlyLogIndexMin={plainOnlyLogIndexMin}
+        />
 
         <StreamPanel
           isStreamVisualActive={isStreamVisualActive}

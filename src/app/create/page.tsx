@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
@@ -305,12 +306,14 @@ export default function CreatePage() {
                 <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
                 <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
-                <div className="absolute inset-[6px]">
-                  <img
+                <div className="relative absolute inset-[6px]">
+                  <Image
                     src="/vercel.svg"
                     alt="VerseCraft"
-                    className="h-full w-full object-contain scale-[1.15]"
+                    fill
                     draggable={false}
+                    className="object-contain scale-[1.15]"
+                    sizes="64px"
                   />
                 </div>
               </div>

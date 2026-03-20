@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, date, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "users",
@@ -109,6 +109,136 @@ export const adminStatsSnapshots = pgTable("admin_stats_snapshots", {
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+/**
+ * ========= Analytics Data Foundation =========
+ *
+ * All analytics are event-driven.
+ * - `analyticsEvents`: append-only event log (idempotent via idempotencyKey)
+ * - `userSessions`: session rollup (best-effort, updated on chat completion events)
+ * - `userDailyActivity`: DAU/retention foundation (exists if at least one active event occurred)
+ * - `userDailyTokens`: daily spend/usage foundation
+ * - `adminMetricsDaily`: admin dashboard daily aggregates (used by charts)
+ *
+ * Notes:
+ * - We keep existing `users` cumulative fields for compatibility.
+ * - Current stage only records chat completion + a few key actions (register/feedback/game/onboarding).
+ * - Retention/cohort can be computed from userDailyActivity + user_registered events with exact date keys.
+ */
+
+export const analyticsEvents = pgTable(
+  "analytics_events",
+  {
+    eventId: varchar("event_id", { length: 191 }).primaryKey(),
+    userId: varchar("user_id", { length: 191 })
+      .references(() => users.id, { onDelete: "cascade" })
+      ,
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    eventName: varchar("event_name", { length: 64 }).notNull(),
+    eventTime: timestamp("event_time", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+
+    page: text("page"),
+    source: text("source"),
+    platform: text("platform"),
+
+    tokenCost: integer("token_cost").notNull().default(0),
+    playDurationDeltaSec: integer("play_duration_delta_sec").notNull().default(0),
+
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+
+    idempotencyKey: varchar("idempotency_key", { length: 191 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    idempotencyUnique: uniqueIndex("analytics_events_idempotency_unique").on(table.idempotencyKey),
+    userEventTimeIdx: index("analytics_events_user_event_time_idx").on(table.userId, table.eventTime),
+    eventNameTimeIdx: index("analytics_events_event_name_time_idx").on(table.eventName, table.eventTime),
+    sessionIdx: index("analytics_events_session_id_idx").on(table.sessionId),
+    pageTimeIdx: index("analytics_events_page_time_idx").on(table.page, table.eventTime),
+  })
+);
+
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    sessionId: varchar("session_id", { length: 191 }).primaryKey(),
+    userId: varchar("user_id", { length: 191 })
+      .references(() => users.id, { onDelete: "cascade" })
+      ,
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastPage: text("last_page"),
+
+    totalTokenCost: integer("total_token_cost").notNull().default(0),
+    totalPlayDurationSec: integer("total_play_duration_sec").notNull().default(0),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    userLastSeenIdx: index("user_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
+  })
+);
+
+export const userDailyActivity = pgTable(
+  "user_daily_activity",
+  {
+    userId: varchar("user_id", { length: 191 })
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    dateKey: date("date_key").notNull(),
+    firstActiveAt: timestamp("first_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+  },
+  (table) => ({
+    userDateUnique: uniqueIndex("user_daily_activity_user_date_unique").on(table.userId, table.dateKey),
+    dateKeyIdx: index("user_daily_activity_date_key_idx").on(table.dateKey),
+    userIdx: index("user_daily_activity_user_idx").on(table.userId),
+  })
+);
+
+export const userDailyTokens = pgTable(
+  "user_daily_tokens",
+  {
+    userId: varchar("user_id", { length: 191 })
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    dateKey: date("date_key").notNull(),
+    dailyTokenCost: integer("daily_token_cost").notNull().default(0),
+    dailyPlayDurationSec: integer("daily_play_duration_sec").notNull().default(0),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+  },
+  (table) => ({
+    userDateUnique: uniqueIndex("user_daily_tokens_user_date_unique").on(table.userId, table.dateKey),
+    dateKeyIdx: index("user_daily_tokens_date_key_idx").on(table.dateKey),
+    userIdx: index("user_daily_tokens_user_idx").on(table.userId),
+  })
+);
+
+export const adminMetricsDaily = pgTable(
+  "admin_metrics_daily",
+  {
+    dateKey: date("date_key").primaryKey(),
+    dau: integer("dau").notNull().default(0),
+    wau: integer("wau").notNull().default(0),
+    mau: integer("mau").notNull().default(0),
+
+    newUsers: integer("new_users").notNull().default(0),
+
+    totalTokenCost: integer("total_token_cost").notNull().default(0),
+    totalPlayDurationSec: integer("total_play_duration_sec").notNull().default(0),
+    chatActions: integer("chat_actions").notNull().default(0),
+
+    feedbackSubmittedCount: integer("feedback_submitted_count").notNull().default(0),
+    gameCompletedCount: integer("game_completed_count").notNull().default(0),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    dateKeyIdx: index("admin_metrics_daily_date_key_idx").on(table.dateKey),
+  })
+);
 
 export const usersQuotaRelations = relations(usersQuota, ({ one }) => ({
   user: one(users, {

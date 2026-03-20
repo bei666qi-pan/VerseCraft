@@ -82,7 +82,6 @@ function PlayContent() {
   const [streamPhase, setStreamPhase] = useState<ChatStreamPhase>("idle");
   const [liveNarrative, setLiveNarrative] = useState("");
   const narrativeRef = useRef("");
-  const rawDmBufferRef = useRef("");
   const [showDarkMoonOverlay, setShowDarkMoonOverlay] = useState(false);
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
@@ -105,6 +104,8 @@ function PlayContent() {
   const userScrolledUpRef = useRef(false);
   const autoScrollRafRef = useRef<number | null>(null);
   const lastAutoScrollAtRef = useRef(0);
+  const streamLogsBaselineRef = useRef(0);
+  const [renderTurnAsPlain, setRenderTurnAsPlain] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
@@ -217,23 +218,33 @@ function PlayContent() {
     });
   }, []);
 
+  const smoothStreamOptions = useMemo(
+    () => ({
+      minTickMs: 22,
+      maxTickMs: 140,
+      burstCharsWhenBacklog: 30,
+      // keep defaults for the rest (Gemini pacing)
+    }),
+    []
+  );
+
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
     isStreamVisualActive,
     () => scheduleAutoScroll(false),
-    {
-      minTickMs: 22,
-      maxTickMs: 140,
-      burstCharsWhenBacklog: 30,
-    }
+    smoothStreamOptions
   );
 
   const displayEntries = useMemo(() => {
-    return (logs ?? [])
+    const baseLogs = logs ?? [];
+    const cutoff = isStreamVisualActive ? streamLogsBaselineRef.current : baseLogs.length;
+    return baseLogs
+      .map((l, idx) => ({ l, idx }))
       // 玩家侧仅展示小说式叙事：不渲染用户输入的具体行动文本
-      .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
-      .map((l) => ({ role: "assistant" as const, content: String(l.content) }));
-  }, [logs]);
+      .filter(({ idx }) => idx < cutoff)
+      .filter(({ l }) => l && l.role === "assistant" && typeof l.content === "string")
+      .map(({ l, idx }) => ({ role: "assistant" as const, content: String(l!.content), logIndex: idx }));
+  }, [logs, isStreamVisualActive]);
 
   // 仅保留助手叙事日志，供绿字提取与最新助手文本推断使用
   const assistantOnlyMessages = useMemo(() => {
@@ -271,6 +282,23 @@ function PlayContent() {
     else scheduleAutoScroll(false);
     prevIsStreamVisualActiveRef.current = isStreamVisualActive;
   }, [smoothNarrative, isStreamVisualActive, scheduleAutoScroll]);
+
+  const prevIsStreamVisualActiveForPlainRef = useRef(isStreamVisualActive);
+  useEffect(() => {
+    const prev = prevIsStreamVisualActiveForPlainRef.current;
+    prevIsStreamVisualActiveForPlainRef.current = isStreamVisualActive;
+    if (!prev && isStreamVisualActive) {
+      // New turn: ensure rich rendering won't flash from previous turn.
+      setRenderTurnAsPlain(false);
+      return;
+    }
+    if (prev && !isStreamVisualActive) {
+      // One frame: keep the just-finished assistant bubble in plainOnly mode
+      // to reduce "plain -> rich" layout jitter.
+      setRenderTurnAsPlain(true);
+      requestAnimationFrame(() => setRenderTurnAsPlain(false));
+    }
+  }, [isStreamVisualActive]);
 
   useEffect(() => {
     return () => {
@@ -485,9 +513,10 @@ function PlayContent() {
     }
 
     sendActionInFlightRef.current = true;
+    streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
+    setRenderTurnAsPlain(false);
     setStreamPhase("waiting_upstream");
     narrativeRef.current = "";
-    rawDmBufferRef.current = "";
     setLiveNarrative("");
 
     try {
@@ -643,7 +672,6 @@ function PlayContent() {
               setStreamPhase("streaming_body");
             }
             raw += chunk;
-            rawDmBufferRef.current = raw;
             try {
               narrativeRef.current = extractNarrative(raw);
             } catch {
@@ -669,7 +697,6 @@ function PlayContent() {
         } catch {
           // ignore
         }
-        rawDmBufferRef.current = "";
         narrativeRef.current = "";
         setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
         setStreamPhase("idle");
@@ -695,7 +722,6 @@ function PlayContent() {
         } catch {
           // ignore
         }
-        rawDmBufferRef.current = "";
         narrativeRef.current = "";
         setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
       }
@@ -712,7 +738,6 @@ function PlayContent() {
       } catch {
         // ignore
       }
-      rawDmBufferRef.current = "";
       narrativeRef.current = "";
       setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
       return;
@@ -1201,6 +1226,8 @@ function PlayContent() {
                 liveNarrative={liveNarrative}
                 greenTips={greenTips}
                 firstTimeHint={firstTimeHint}
+              plainOnlyNewTurn={renderTurnAsPlain}
+              plainOnlyLogIndexMin={streamLogsBaselineRef.current}
               >
                 {inputMode === "options" && currentOptions.length > 0 && (
                   <PlayOptionsList

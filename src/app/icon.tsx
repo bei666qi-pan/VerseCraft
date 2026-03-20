@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 export const size = { width: 64, height: 64 };
 export const contentType = "image/png";
 
+/* eslint-disable @next/next/no-img-element */
 export default function Icon() {
   // Keep in sync with the logo used in auth/login UI: /vercel.svg
   return new ImageResponse(

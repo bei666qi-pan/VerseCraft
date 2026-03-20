@@ -156,10 +156,12 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   content,
   isDarkMoon,
   isLowSanity,
+  plainOnly,
 }: {
   content: string;
   isDarkMoon: boolean;
   isLowSanity?: boolean;
+  plainOnly?: boolean;
 }) {
   const safeContent = typeof content === "string" ? content : "";
   const baseClass = isLowSanity
@@ -178,11 +180,11 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
       {paras.length > 1 ? (
         paras.map((p, i) => (
           <p key={i} className="whitespace-pre-wrap">
-            {renderNarrativeText(p)}
+            {renderNarrativeText(p, { plainOnly: !!plainOnly })}
           </p>
         ))
       ) : (
-        <>{renderNarrativeText(safeContent)}</>
+        <>{renderNarrativeText(safeContent, { plainOnly: !!plainOnly })}</>
       )}
     </div>
   );

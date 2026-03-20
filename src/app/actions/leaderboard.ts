@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
+import { getUtcDateKey } from "@/lib/analytics/dateKeys";
+import { recordGameRecordSubmittedAnalytics } from "@/lib/analytics/repository";
 
 type ExploreRow = {
   userId: string;
@@ -99,6 +101,26 @@ export async function submitGameRecord(input: {
     INSERT INTO game_records (user_id, killed_anomalies, max_floor_score, survival_time_seconds, created_at)
     VALUES (${userId}, ${killedAnomalies}, ${maxFloorScore}, ${survivalTimeSeconds}, NOW())
   `);
+
+  // Analytics best-effort: game completion (idempotent by day + score tuple).
+  void recordGameRecordSubmittedAnalytics({
+    eventId: `${userId}:game_record_submitted:${Date.now()}`,
+    idempotencyKey: (() => {
+      const dateKey = getUtcDateKey(new Date());
+      return `game_record_submitted:${userId}:${dateKey}:${killedAnomalies}:${maxFloorScore}:${survivalTimeSeconds}`;
+    })(),
+    userId,
+    sessionId: "system",
+    eventTime: new Date(),
+    page: "/settlement",
+    source: "leaderboard",
+    platform: "unknown",
+    payload: {
+      killedAnomalies,
+      maxFloorScore,
+      survivalTimeSeconds,
+    },
+  }).catch(() => {});
 
   const qualifiesExplore = maxFloorScore >= 1;
   if (!qualifiesExplore) {

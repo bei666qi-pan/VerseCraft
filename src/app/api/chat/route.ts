@@ -12,6 +12,9 @@ import { users, gameSessionMemory } from "@/db/schema";
 import { compressMemory } from "@/lib/memoryCompress";
 import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
 import { markUserActive } from "@/lib/presence";
+import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
+import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
+import { recordChatActionCompletedAnalytics } from "@/lib/analytics/repository";
 import { resolveDeepSeekConfig } from "@/lib/env";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
@@ -358,6 +361,10 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
         lastActive: new Date(),
       })
       .where(eq(users.id, userId));
+
+    // Best-effort telemetry for admin charts.
+    // Do not await to avoid impacting /api/chat latency.
+    void recordDailyTokenUsage(getUtcDateKey(), tokenDelta, PLAY_TIME_PER_ACTION_SEC).catch(() => {});
   } catch (error) {
     const err = error as Error;
     const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
@@ -386,6 +393,7 @@ export async function POST(req: Request) {
   const sessionId = validated.sessionId;
   const clientIp = getClientIpFromHeaders(req.headers);
   const requestId = createRequestId("chat");
+  const platform = derivePlatformFromUserAgent(req.headers.get("user-agent"));
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
   const session = await auth();
@@ -785,6 +793,26 @@ export async function POST(req: Request) {
           );
         });
       }
+
+      // Event-driven analytics rollups: best-effort and idempotent.
+      void recordChatActionCompletedAnalytics({
+        eventId: `${requestId}:chat_action_completed`,
+        idempotencyKey: `${requestId}:chat_action_completed`,
+
+        userId,
+        sessionId: sessionId ?? "unknown_session",
+        page: "/play",
+        source: "chat",
+        platform,
+
+        tokenCost: toPersist,
+        playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
+
+        payload: {
+          requestId,
+          upstreamModel: model,
+        },
+      }).catch(() => {});
     };
 
     try {

@@ -1,12 +1,13 @@
 import { cookies } from "next/headers";
-import { asc, desc, sql } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { db } from "@/db";
-import { adminStatsSnapshots, feedbacks, users } from "@/db/schema";
+import { feedbacks, users } from "@/db/schema";
 import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
 import AdminDashboardClient from "@/components/admin/AdminDashboardClient";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { ensureRuntimeSchema } from "@/db/ensureSchema";
+import { getAdminChartData } from "@/lib/adminDailyMetrics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -95,49 +96,7 @@ export default async function ShadowAdminPage() {
   const onlineCount = sortedRows.filter((user) => user.isOnline === 1).length;
   const totalUsers = sortedRows.length;
   const totalTokens = sortedRows.reduce((sum, u) => sum + Number(u.tokensUsed ?? 0), 0);
-
-  const today = new Date().toISOString().slice(0, 10);
-  let chartData: { date: string; users: number; tokens: number; activeUsers: number }[] = [
-    { date: today, users: totalUsers, tokens: totalTokens, activeUsers: 0 },
-  ];
-  try {
-    const [dauRow] = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(users)
-      .where(sql`DATE(${users.lastActive}) = ${today}`);
-    const activeUsersToday = Number(dauRow?.count ?? 0);
-    chartData[0]!.activeUsers = activeUsersToday;
-
-    await db
-      .insert(adminStatsSnapshots)
-      .values({ date: today, totalUsers, totalTokens, activeUsers: activeUsersToday })
-      .onConflictDoUpdate({
-        target: adminStatsSnapshots.date,
-        set: { totalUsers, totalTokens, activeUsers: activeUsersToday },
-      });
-
-    const snapshots = await db
-      .select({
-        date: adminStatsSnapshots.date,
-        totalUsers: adminStatsSnapshots.totalUsers,
-        totalTokens: adminStatsSnapshots.totalTokens,
-        activeUsers: adminStatsSnapshots.activeUsers,
-      })
-      .from(adminStatsSnapshots)
-      .orderBy(asc(adminStatsSnapshots.date));
-
-    chartData = snapshots.map((s) => ({
-      date: String(s.date),
-      users: Number(s.totalUsers ?? 0),
-      tokens: Number(s.totalTokens ?? 0),
-      activeUsers: Number(s.activeUsers ?? 0),
-    }));
-  } catch {
-    chartData[0]!.activeUsers = sortedRows.filter((u) => {
-      const la = u.lastActive instanceof Date ? u.lastActive : new Date(String(u.lastActive));
-      return la.toISOString().slice(0, 10) === today;
-    }).length;
-  }
+  const chartData = await getAdminChartData(14);
 
     return (
       <AdminDashboardClient

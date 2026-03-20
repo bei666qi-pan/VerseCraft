@@ -27,7 +27,7 @@ type DashboardUserRow = {
   feedbackCreatedAt: string | null;
 };
 
-type ChartPoint = { date: string; users: number; tokens: number; activeUsers?: number };
+type ChartPoint = { date: string; users: number; tokens: number; activeUsers?: number; dailyTokens?: number };
 
 type AdminDashboardClientProps = {
   rows: DashboardUserRow[];
@@ -187,12 +187,23 @@ export default function AdminDashboardClient({
   }, [tablePage, totalTablePages]);
 
   const chartWithDeltas = useMemo(() => {
-    if (chartData.length < 2) return chartData;
-    return chartData.map((p, i) => ({
-      ...p,
-      dailyTokens: i === 0 ? (p.tokens ?? 0) : Math.max(0, (p.tokens ?? 0) - (chartData[i - 1]!.tokens ?? 0)),
-      activeUsers: p.activeUsers ?? 0,
-    }));
+    if (chartData.length === 0) return chartData;
+    return chartData.map((p, i) => {
+      const prev = i > 0 ? chartData[i - 1]! : null;
+
+      const dailyTokens =
+        typeof p.dailyTokens === "number" && Number.isFinite(p.dailyTokens)
+          ? Math.max(0, p.dailyTokens)
+          : i === 0
+            ? Math.max(0, p.tokens ?? 0)
+            : Math.max(0, (p.tokens ?? 0) - (prev?.tokens ?? 0));
+
+      return {
+        ...p,
+        dailyTokens,
+        activeUsers: p.activeUsers ?? 0,
+      };
+    });
   }, [chartData]);
 
   return (

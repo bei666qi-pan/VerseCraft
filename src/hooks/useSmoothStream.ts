@@ -1,16 +1,33 @@
 "use client";
 
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 
 type SmoothStreamOptions = {
   minTickMs?: number;
   maxTickMs?: number;
-  burstCharsWhenBacklog?: number;
+  /**
+   * Four-stage speed strategy (Gemini-like):
+   * - initial burst: first tokens appear fast
+   * - steady flow: punctuation-aware normal typing
+   * - backlog catch-up: when queue piles up, emit bigger chunks + reduce pauses
+   * - punctuation pause: comma/period/question pause longer
+   */
+  initialBurstWindowMs?: number;
+  initialBurstMaxLen?: number;
+  steadyMaxLen?: number;
+  backlogThreshold?: number;
+  backlogMaxLen?: number;
+  burstCharsWhenBacklog?: number; // backward compat with previous name
 };
 
 const DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
   minTickMs: 24,
   maxTickMs: 140,
+  initialBurstWindowMs: 260,
+  initialBurstMaxLen: 40,
+  steadyMaxLen: 18,
+  backlogThreshold: 220,
+  backlogMaxLen: 36,
   burstCharsWhenBacklog: 26,
 };
 
@@ -31,6 +48,12 @@ function takeSemanticChunk(input: string, maxLen = 18): string {
     const ch = input[i] ?? "";
     if (!ch) break;
     if (SENTENCE_PUNCT.has(ch)) {
+      // Keep consecutive newlines together to reduce layout jitter.
+      if (ch === "\n") {
+        i += 1;
+        while (i < limit && input[i] === "\n") i += 1;
+        break;
+      }
       i += 1;
       break;
     }
@@ -60,23 +83,61 @@ function takeSemanticChunk(input: string, maxLen = 18): string {
   return input.slice(0, Math.max(1, i));
 }
 
-function computePauseMs(chunk: string, backlog: number, options: Required<SmoothStreamOptions>): number {
+function computePauseMs(args: {
+  chunk: string;
+  backlog: number;
+  stage: "initial" | "steady" | "backlog";
+  options: Required<SmoothStreamOptions>;
+}): number {
+  const { chunk, backlog, stage, options } = args;
   const tail = chunk.trimEnd().slice(-1);
-  let pause = options.maxTickMs;
-  if (tail && SENTENCE_PUNCT.has(tail)) {
-    pause = 150;
-  } else if (tail && CLAUSE_PUNCT.has(tail)) {
-    pause = 90;
-  } else {
-    pause = 52;
+  let pause: number;
+  // punctuation pause
+  if (tail && SENTENCE_PUNCT.has(tail)) pause = 150;
+  else if (tail && CLAUSE_PUNCT.has(tail)) pause = 90;
+  else pause = 52;
+
+  // backlog catch-up reduces pauses
+  if (stage === "backlog") {
+    if (backlog > 420) pause = 24;
+    else if (backlog > 300) pause = 30;
+    else pause = Math.max(options.minTickMs, Math.min(pause, 58));
   }
 
-  if (backlog > 320) pause = 20;
-  else if (backlog > 200) pause = 28;
-  else if (backlog > 120) pause = 36;
-  else if (backlog > 60) pause = Math.min(pause, 44);
+  // initial burst keeps the first tokens snappy
+  if (stage === "initial") {
+    pause = Math.min(pause, 36);
+  }
 
   return Math.max(options.minTickMs, Math.min(options.maxTickMs, pause));
+}
+
+function adjustChunkBoundaryForMarkers(chunk: string): string {
+  // Avoid splitting markdown-ish/marker delimiters so plainOnly render doesn't show partial symbols.
+  // - **...** uses "**" delimiter
+  // - ^^...^^ uses "^^" delimiter
+  let i = chunk.length - 1;
+  let starCount = 0;
+  while (i >= 0 && chunk[i] === "*") {
+    starCount += 1;
+    i -= 1;
+  }
+  // Keep trailing "*" count even to avoid leaving a partial "**" delimiter.
+  if (starCount > 0 && starCount % 2 === 1 && chunk.length > 1) {
+    return chunk.slice(0, -1);
+  }
+
+  i = chunk.length - 1;
+  let caretCount = 0;
+  while (i >= 0 && chunk[i] === "^") {
+    caretCount += 1;
+    i -= 1;
+  }
+  // Keep trailing "^" count even to avoid leaving a partial "^^" delimiter.
+  if (caretCount > 0 && caretCount % 2 === 1 && chunk.length > 1) {
+    return chunk.slice(0, -1);
+  }
+  return chunk;
 }
 
 /**
@@ -97,12 +158,39 @@ export function useSmoothStreamFromRef(
   const queueRef = useRef("");
   const prevLenRef = useRef(0);
   const lastEmitAtRef = useRef(0);
-  useEffect(() => {
-    if (!isStreamVisualActive) {
+  const emittedNonWsLenRef = useRef(0);
+  const turnStartAtRef = useRef(0);
+  const hasShownMeaningfulRef = useRef(false);
+
+  const mergedOptionsRef = useRef<Required<SmoothStreamOptions>>({
+    ...DEFAULT_OPTIONS,
+    ...(options ?? {}),
+  });
+
+  useLayoutEffect(() => {
+    mergedOptionsRef.current = {
+      ...DEFAULT_OPTIONS,
+      ...(options ?? {}),
+    };
+  }, [options]);
+
+  useLayoutEffect(() => {
+    // Reset for each new visual turn, so StreamPanel never shows stale text.
+    if (isStreamVisualActive) {
+      turnStartAtRef.current = performance.now();
+      emittedNonWsLenRef.current = 0;
+      hasShownMeaningfulRef.current = false;
       queueRef.current = "";
       prevLenRef.current = 0;
       lastEmitAtRef.current = 0;
-      return;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplayed("");
+    } else {
+      queueRef.current = "";
+      prevLenRef.current = 0;
+      lastEmitAtRef.current = 0;
+      emittedNonWsLenRef.current = 0;
+      hasShownMeaningfulRef.current = false;
     }
   }, [isStreamVisualActive]);
 
@@ -120,25 +208,62 @@ export function useSmoothStreamFromRef(
 
       const q = queueRef.current;
       if (q.length > 0) {
-        const mergedOptions: Required<SmoothStreamOptions> = {
-          ...DEFAULT_OPTIONS,
-          ...options,
-        };
+        const mergedOptions = mergedOptionsRef.current;
+        // Determine 4-stage speed strategy.
         const now = performance.now();
-        const elapsed = now - lastEmitAtRef.current;
-        if (lastEmitAtRef.current === 0 || elapsed >= mergedOptions.minTickMs) {
-          let chunk = takeSemanticChunk(q);
-          if (q.length > 180) {
-            const burstLen = Math.min(mergedOptions.burstCharsWhenBacklog, q.length);
-            chunk = q.slice(0, Math.max(chunk.length, burstLen));
+        const backlog = q.length;
+        const elapsedTurnMs = now - turnStartAtRef.current;
+
+        const isInitial = elapsedTurnMs < mergedOptions.initialBurstWindowMs && !hasShownMeaningfulRef.current;
+        const isBacklog = backlog > Math.max(mergedOptions.backlogThreshold, 120);
+
+        const stage: "initial" | "steady" | "backlog" = isBacklog ? "backlog" : isInitial ? "initial" : "steady";
+
+        // Spinner back-flash defense: do not emit-only-whitespace until first meaningful char.
+        if (!hasShownMeaningfulRef.current) {
+          const trimmed = q.replace(/^\s+/, "");
+          if (trimmed !== q) {
+            queueRef.current = trimmed;
+            rafId = requestAnimationFrame(tick);
+            return;
           }
-          const remain = q.slice(chunk.length);
-          queueRef.current = remain;
-          setDisplayed((prev) => prev + chunk);
-          lastEmitAtRef.current = now;
-          onChunkRendered?.();
-          const pause = computePauseMs(chunk, remain.length, mergedOptions);
-          lastEmitAtRef.current = now - mergedOptions.minTickMs + pause;
+        }
+
+        const minGateMs = mergedOptions.minTickMs;
+        const elapsedGate = now - lastEmitAtRef.current;
+        if (lastEmitAtRef.current === 0 || elapsedGate >= minGateMs) {
+          const maxLen =
+            stage === "initial"
+              ? mergedOptions.initialBurstMaxLen
+              : stage === "backlog"
+                ? (() => {
+                    const over = Math.max(0, backlog - mergedOptions.backlogThreshold);
+                    const t = Math.max(0, Math.min(1, over / 240));
+                    const target =
+                      mergedOptions.steadyMaxLen +
+                      Math.round(t * (mergedOptions.backlogMaxLen - mergedOptions.steadyMaxLen));
+                    return Math.min(target, mergedOptions.backlogMaxLen, backlog);
+                  })()
+                : mergedOptions.steadyMaxLen;
+
+          let chunk = takeSemanticChunk(q, maxLen);
+          chunk = adjustChunkBoundaryForMarkers(chunk);
+          if (!chunk) {
+            queueRef.current = q.slice(1);
+          } else {
+            const remain = q.slice(chunk.length);
+            queueRef.current = remain;
+            const nonWsAdd = chunk.replace(/\s/g, "").length;
+            if (nonWsAdd > 0) {
+              emittedNonWsLenRef.current += nonWsAdd;
+              hasShownMeaningfulRef.current = true;
+            }
+            setDisplayed((prev) => prev + chunk);
+            onChunkRendered?.();
+            const pause = computePauseMs({ chunk, backlog: remain.length, stage, options: mergedOptions });
+            // Gate next emission by pause (works even when pause < minTickMs).
+            lastEmitAtRef.current = now - minGateMs + pause;
+          }
         }
       }
 
@@ -146,11 +271,12 @@ export function useSmoothStreamFromRef(
     }
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [isStreamVisualActive, narrativeRef, onChunkRendered, options]);
+  }, [isStreamVisualActive, narrativeRef, onChunkRendered]);
 
   const text = isStreamVisualActive ? displayed : "";
   const isComplete = !isStreamVisualActive;
-  const isThinking = isStreamVisualActive && displayed.length === 0;
+  // Show spinner only while there's no meaningful text on screen.
+  const isThinking = isStreamVisualActive && displayed.replace(/\s/g, "").length === 0;
 
   return { text, isComplete, isThinking };
 }

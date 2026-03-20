@@ -6,6 +6,7 @@ import { AuthError } from "next-auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signIn } from "../../../auth";
+import { recordUserRegisteredAnalytics } from "@/lib/analytics/repository";
 
 type AuthActionState = {
   success: boolean;
@@ -102,11 +103,25 @@ export async function registerUser(
 
   try {
     const hashed = await bcrypt.hash(password, 10);
+    const newUserId = randomUUID();
     await db.insert(users).values({
-      id: randomUUID(),
+      id: newUserId,
       name,
       password: hashed,
     });
+
+    // Analytics best-effort: user registration (idempotent by user id).
+    void recordUserRegisteredAnalytics({
+      eventId: `${newUserId}:user_registered`,
+      idempotencyKey: `${newUserId}:user_registered`,
+      userId: newUserId,
+      sessionId: "system",
+      eventTime: new Date(),
+      page: "/",
+      source: "auth",
+      platform: "unknown",
+      payload: { name },
+    }).catch(() => {});
   } catch (error) {
     console.error("Registration Backend Error:", error);
     if (isDuplicateUserError(error)) {

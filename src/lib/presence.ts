@@ -2,6 +2,7 @@
 import "server-only";
 
 import { Redis } from "@upstash/redis";
+import { DAILY_ACTIVE_SET_TTL_SECONDS, dailyActiveSetKey, getUtcDateKey } from "@/lib/adminDailyMetrics";
 
 const ACTIVE_USERS_KEY = "active_users";
 const ONLINE_WINDOW_MS = 10 * 60_000; // 10 min for better visibility
@@ -27,10 +28,18 @@ export async function markUserActive(userId: string): Promise<void> {
 
   const now = Date.now();
   try {
-    await client.zadd(ACTIVE_USERS_KEY, {
-      score: now,
-      member: userId,
-    });
+    // One telemetry write: presence ZSet + daily active set for DAU charting.
+    const dateKey = getUtcDateKey();
+    const dailySetKey = dailyActiveSetKey(dateKey);
+    await client
+      .multi()
+      .zadd(ACTIVE_USERS_KEY, {
+        score: now,
+        member: userId,
+      })
+      .sadd(dailySetKey, userId)
+      .expire(dailySetKey, DAILY_ACTIVE_SET_TTL_SECONDS)
+      .exec();
   } catch (err) {
     console.error("[presence] zadd active_users failed", err);
   }
@@ -45,8 +54,8 @@ export async function linkGuestToUser(guestId: string, userId: string): Promise<
 
   try {
     const [guestScore, userScore] = await Promise.all([
-      client.zscore<number | null>(ACTIVE_USERS_KEY, guestMember),
-      client.zscore<number | null>(ACTIVE_USERS_KEY, userId),
+      client.zscore(ACTIVE_USERS_KEY, guestMember),
+      client.zscore(ACTIVE_USERS_KEY, userId),
     ]);
 
     const now = Date.now();
@@ -65,6 +74,12 @@ export async function linkGuestToUser(guestId: string, userId: string): Promise<
       score: effectiveScore,
       member: userId,
     });
+    // Best-effort: keep DAU today consistent after mapping guest -> user.
+    const todayKey = getUtcDateKey();
+    const dailySetKey = dailyActiveSetKey(todayKey);
+    tx.srem(dailySetKey, guestMember);
+    tx.sadd(dailySetKey, userId);
+    tx.expire(dailySetKey, DAILY_ACTIVE_SET_TTL_SECONDS);
     await tx.exec();
   } catch (err) {
     console.error("[presence] linkGuestToUser failed", err);
