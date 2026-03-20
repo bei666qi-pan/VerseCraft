@@ -35,6 +35,44 @@ export async function insertAnalyticsEventIdempotent(input: AnalyticsEventInsert
   }
 }
 
+export async function recordGenericAnalyticsEvent(
+  input: AnalyticsEventInsertInput
+): Promise<void> {
+  await insertAnalyticsEventIdempotent(input);
+}
+
+export async function touchUserSessionHeartbeat(input: {
+  sessionId: string;
+  userId: string | null;
+  page: string | null;
+  eventTime?: Date;
+}): Promise<void> {
+  if (!input.sessionId) return;
+  const eventTime = input.eventTime ?? new Date();
+  try {
+    await db.execute(sql`
+      INSERT INTO user_sessions (
+        session_id, user_id, started_at, last_seen_at, last_page,
+        total_token_cost, total_play_duration_sec, chat_action_count, updated_at
+      ) VALUES (
+        ${input.sessionId},
+        ${input.userId},
+        ${eventTime},
+        ${eventTime},
+        ${input.page},
+        0, 0, 0, CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (session_id) DO UPDATE SET
+        user_id = COALESCE(EXCLUDED.user_id, user_sessions.user_id),
+        last_seen_at = GREATEST(user_sessions.last_seen_at, EXCLUDED.last_seen_at),
+        last_page = COALESCE(EXCLUDED.last_page, user_sessions.last_page),
+        updated_at = CURRENT_TIMESTAMP
+    `);
+  } catch (err) {
+    console.error("[analytics][touchUserSessionHeartbeat] failed", err);
+  }
+}
+
 /**
  * Chat completion ingestion with atomic rollup updates.
  * - idempotency is guaranteed by `analytics_events.idempotency_key`

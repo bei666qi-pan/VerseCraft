@@ -61,14 +61,7 @@ export async function GET() {
     });
   }
 
-  const ONLINE_CUTOFF_MS = 5 * 60_000;
-  const nowMs = Date.now();
   const onlineIdSet = new Set(onlineIds);
-  for (const u of rows) {
-    const la =
-      u.lastActive instanceof Date ? u.lastActive : new Date(String(u.lastActive));
-    if (nowMs - la.getTime() < ONLINE_CUTOFF_MS) onlineIdSet.add(u.id);
-  }
 
   const sortedRows = rows
     .map((user) => {

@@ -14,7 +14,7 @@ import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota
 import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
-import { recordChatActionCompletedAnalytics } from "@/lib/analytics/repository";
+import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 import { resolveDeepSeekConfig } from "@/lib/env";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
@@ -394,6 +394,7 @@ export async function POST(req: Request) {
   const clientIp = getClientIpFromHeaders(req.headers);
   const requestId = createRequestId("chat");
   const platform = derivePlatformFromUserAgent(req.headers.get("user-agent"));
+  const requestStartedAt = Date.now();
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
   const session = await auth();
@@ -624,6 +625,24 @@ export async function POST(req: Request) {
   ];
 
   const { apiUrl, apiKey, model } = resolveDeepSeekConfig();
+  void recordGenericAnalyticsEvent({
+    eventId: `${requestId}:chat_request_started`,
+    idempotencyKey: `${requestId}:chat_request_started`,
+    userId,
+    sessionId: sessionId ?? "unknown_session",
+    eventName: "chat_request_started",
+    eventTime: new Date(requestStartedAt),
+    page: "/play",
+    source: "chat",
+    platform,
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {
+      requestId,
+      model,
+      isFirstAction,
+    },
+  }).catch(() => {});
   if (!apiKey) {
     console.error(
       `\x1b[31m[api/chat] VOLCENGINE_API_KEY is empty. Checked: VOLCENGINE_API_KEY | ARK_API_KEY | DEEPSEEK_API_KEY\x1b[0m`,
@@ -699,6 +718,27 @@ export async function POST(req: Request) {
       `\x1b[31m[api/chat] upstream fetch failed\x1b[0m`,
       { apiUrl, model, isTimeout, message: err?.message, cause, stack: err?.stack, error }
     );
+    void recordGenericAnalyticsEvent({
+      eventId: `${requestId}:chat_request_finished_error`,
+      idempotencyKey: `${requestId}:chat_request_finished_error`,
+      userId,
+      sessionId: sessionId ?? "unknown_session",
+      eventName: "chat_request_finished",
+      eventTime: new Date(),
+      page: "/play",
+      source: "chat",
+      platform,
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        requestId,
+        model,
+        success: false,
+        stage: "fetch",
+        isTimeout,
+        totalLatencyMs: Date.now() - requestStartedAt,
+      },
+    }).catch(() => {});
     return NextResponse.json(
       { error: isTimeout ? "Upstream Timeout" : "Upstream Error" },
       { status: isTimeout ? 504 : 500 }
@@ -724,6 +764,27 @@ export async function POST(req: Request) {
           : undefined,
       }
     );
+    void recordGenericAnalyticsEvent({
+      eventId: `${requestId}:chat_request_finished_non_ok`,
+      idempotencyKey: `${requestId}:chat_request_finished_non_ok`,
+      userId,
+      sessionId: sessionId ?? "unknown_session",
+      eventName: "chat_request_finished",
+      eventTime: new Date(),
+      page: "/play",
+      source: "chat",
+      platform,
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        requestId,
+        model,
+        success: false,
+        stage: "upstream_non_ok",
+        upstreamStatus,
+        totalLatencyMs: Date.now() - requestStartedAt,
+      },
+    }).catch(() => {});
     if (upstreamStatus === 429) {
       return NextResponse.json(
         {
@@ -772,6 +833,7 @@ export async function POST(req: Request) {
     let streamBlocked = false;
     let latestTotalTokens = 0;
     let tokenUsageFlushed = false;
+    let firstChunkAt = 0;
 
     const flushTokenUsage = async () => {
       if (tokenUsageFlushed) return;
@@ -811,6 +873,28 @@ export async function POST(req: Request) {
         payload: {
           requestId,
           upstreamModel: model,
+        },
+      }).catch(() => {});
+
+      void recordGenericAnalyticsEvent({
+        eventId: `${requestId}:chat_request_finished`,
+        idempotencyKey: `${requestId}:chat_request_finished`,
+        userId,
+        sessionId: sessionId ?? "unknown_session",
+        eventName: "chat_request_finished",
+        eventTime: new Date(),
+        page: "/play",
+        source: "chat",
+        platform,
+        tokenCost: toPersist,
+        playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
+        payload: {
+          requestId,
+          model,
+          success: !streamBlocked,
+          firstChunkLatencyMs: firstChunkAt > 0 ? firstChunkAt - requestStartedAt : null,
+          totalLatencyMs: Date.now() - requestStartedAt,
+          isFirstAction,
         },
       }).catch(() => {});
     };
@@ -871,6 +955,7 @@ export async function POST(req: Request) {
           const data = line.slice(5).trim();
 
           if (!data) continue;
+          if (firstChunkAt === 0) firstChunkAt = Date.now();
           if (data === "[DONE]") {
             if (!streamBlocked) {
               const finalModeration = await finalOutputModeration({

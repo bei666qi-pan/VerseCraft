@@ -11,6 +11,7 @@ import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
+import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 import { isValidBgmTrack } from "@/config/audio";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
@@ -129,7 +130,9 @@ function PlayContent() {
   const day = time.day ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
   const isLowSanity = (stats?.sanity ?? 0) < 20;
-  useHeartbeat(isHydrated && isGameStarted);
+  useHeartbeat(isHydrated && isGameStarted, guestId ?? "guest_play", "/play");
+  const hasEnteredGameEventRef = useRef(false);
+  const hasFirstEffectiveActionRef = useRef(false);
 
   const isGuestDialogueExhausted = isGuest && dialogueCount >= 50;
 
@@ -149,6 +152,20 @@ function PlayContent() {
       router.replace("/");
     }
   }, [isHydrated, isGameStarted, router]);
+
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted) return;
+    if (hasEnteredGameEventRef.current) return;
+    hasEnteredGameEventRef.current = true;
+    void trackGameplayEvent({
+      eventName: "enter_main_game",
+      sessionId: guestId ?? "guest_play",
+      page: "/play",
+      source: "play_page",
+      idempotencyKey: `enter_main_game:${guestId ?? "guest"}:${Date.now()}`,
+      payload: { isGuest },
+    }).catch(() => {});
+  }, [guestId, isGameStarted, isGuest, isHydrated]);
 
   useEffect(() => {
     if (!firstTimeHint) return;
@@ -748,6 +765,32 @@ function PlayContent() {
     }
     if (parsed.security_meta?.action && parsed.security_meta.action !== "allow") {
       triggerComplianceHint();
+    }
+
+    if (parsed.is_action_legal && !isSystemAction) {
+      void trackGameplayEvent({
+        eventName: "effective_action",
+        sessionId: guestId ?? "guest_play",
+        page: "/play",
+        source: "play_action",
+        payload: {
+          actionLength: trimmed.length,
+          isResume: !!isResume,
+        },
+      }).catch(() => {});
+      if (!hasFirstEffectiveActionRef.current) {
+        hasFirstEffectiveActionRef.current = true;
+        void trackGameplayEvent({
+          eventName: "first_effective_action",
+          sessionId: guestId ?? "guest_play",
+          page: "/play",
+          source: "play_action",
+          idempotencyKey: `first_effective_action:${guestId ?? "guest"}`,
+          payload: {
+            actionLength: trimmed.length,
+          },
+        }).catch(() => {});
+      }
     }
 
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");

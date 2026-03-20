@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { ADMIN_SHADOW_COOKIE, buildAdminShadowSession } from "@/lib/adminShadow";
 import { env } from "@/lib/env";
+import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 
 export type AdminShadowAuthState = {
   ok: boolean;
@@ -38,6 +39,21 @@ export async function authenticateAdminShadow(
     maxAge: session.maxAge,
     path: "/saiduhsa",
   });
+
+  void recordGenericAnalyticsEvent({
+    eventId: `admin_login_success:${Date.now()}`,
+    idempotencyKey: `admin_login_success:${session.value.slice(0, 16)}`,
+    userId: null,
+    sessionId: "admin_shadow",
+    eventName: "admin_login_success",
+    eventTime: new Date(),
+    page: "/saiduhsa",
+    source: "admin_auth",
+    platform: "unknown",
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {},
+  }).catch(() => {});
 
   return { ok: true };
 }

@@ -42,6 +42,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const user = initialUser;
 
   const setUser = useGameStore((s) => s.setUser);
+  const guestId = useGameStore((s) => s.guestId ?? "guest_home");
   const saveSlots = useGameStore((s) => s.saveSlots ?? {});
   const resetForNewGame = useGameStore((s) => s.resetForNewGame);
   const hydrateFromCloud = useGameStore((s) => s.hydrateFromCloud);
@@ -74,7 +75,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     setUser(user ? { name: user.name } : null);
   }, [setUser, user]);
 
-  useHeartbeat(!!user);
+  useHeartbeat(!!user, guestId, "/");
 
   useEffect(() => {
     if (!user) return;

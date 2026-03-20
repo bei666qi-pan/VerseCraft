@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
-import { recordGameRecordSubmittedAnalytics } from "@/lib/analytics/repository";
+import { recordGameRecordSubmittedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 
 type ExploreRow = {
   userId: string;
@@ -88,6 +88,7 @@ export async function submitGameRecord(input: {
   killedAnomalies: number;
   maxFloorScore: number;
   survivalTimeSeconds: number;
+  outcome?: "victory" | "death" | "abandon";
 }): Promise<{ success: boolean; onLeaderboard?: boolean }> {
   const session = await auth();
   const userId = session?.user?.id;
@@ -96,6 +97,7 @@ export async function submitGameRecord(input: {
   const killedAnomalies = Math.max(0, Math.trunc(input.killedAnomalies));
   const maxFloorScore = Math.max(0, Math.trunc(input.maxFloorScore));
   const survivalTimeSeconds = Math.max(0, Math.trunc(input.survivalTimeSeconds));
+  const outcome = input.outcome ?? "abandon";
 
   await db.execute(sql`
     INSERT INTO game_records (user_id, killed_anomalies, max_floor_score, survival_time_seconds, created_at)
@@ -116,6 +118,27 @@ export async function submitGameRecord(input: {
     source: "leaderboard",
     platform: "unknown",
     payload: {
+      killedAnomalies,
+      maxFloorScore,
+      survivalTimeSeconds,
+      outcome,
+    },
+  }).catch(() => {});
+
+  void recordGenericAnalyticsEvent({
+    eventId: `${userId}:game_settlement:${Date.now()}`,
+    idempotencyKey: `game_settlement:${userId}:${getUtcDateKey(new Date())}:${outcome}:${maxFloorScore}:${survivalTimeSeconds}`,
+    userId,
+    sessionId: "system",
+    eventTime: new Date(),
+    eventName: "game_settlement",
+    page: "/settlement",
+    source: "leaderboard",
+    platform: "unknown",
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {
+      outcome,
       killedAnomalies,
       maxFloorScore,
       survivalTimeSeconds,

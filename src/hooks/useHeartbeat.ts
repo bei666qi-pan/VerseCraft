@@ -6,7 +6,7 @@ import { pingPresence } from "@/app/actions/telemetry";
 const HEARTBEAT_INTERVAL_MS = 60_000;
 const PASSIVE_POLL_INTERVAL_MS = 15_000;
 
-export function useHeartbeat(enabled: boolean) {
+export function useHeartbeat(enabled: boolean, sessionId?: string, page?: string) {
   useEffect(() => {
     if (!enabled) return;
 
@@ -19,7 +19,8 @@ export function useHeartbeat(enabled: boolean) {
         return;
       }
       lastPingAt = now;
-      void pingPresence().catch(() => {
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent : null;
+      void pingPresence(sessionId, page, ua).catch(() => {
         // Silent failure: heartbeat should never break gameplay flow.
       });
     };
@@ -59,6 +60,6 @@ export function useHeartbeat(enabled: boolean) {
         clearInterval(passiveTimer);
       }
     };
-  }, [enabled]);
+  }, [enabled, sessionId, page]);
 }
 

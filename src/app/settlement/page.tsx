@@ -230,6 +230,7 @@ export default function SettlementPage() {
       killedAnomalies: kills,
       maxFloorScore: maxFloor,
       survivalTimeSeconds,
+      outcome: isDead ? "death" : maxFloor >= 99 ? "victory" : "abandon",
     });
     if (res.success && res.onLeaderboard) {
       setOnLeaderboardToast(true);

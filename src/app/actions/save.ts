@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
 import { saveSlots } from "@/db/schema";
+import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 
 export async function syncSaveToCloud(slotId: string, data: unknown) {
   try {
@@ -32,6 +33,21 @@ export async function syncSaveToCloud(slotId: string, data: unknown) {
           updatedAt: sql`CURRENT_TIMESTAMP`,
         },
       });
+
+    void recordGenericAnalyticsEvent({
+      eventId: `${userId}:save_sync:${slotId}:${Date.now()}`,
+      idempotencyKey: `${userId}:save_sync:${slotId}:${Date.now()}`,
+      userId,
+      sessionId: `save_${userId}`,
+      eventName: "save_sync",
+      eventTime: new Date(),
+      page: "/play",
+      source: "save_action",
+      platform: "unknown",
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: { slotId },
+    }).catch(() => {});
 
     return { ok: true };
   } catch {
@@ -75,6 +91,23 @@ export async function fetchCloudSaveBySlot(slotId: string) {
       .from(saveSlots)
       .where(and(eq(saveSlots.userId, userId), eq(saveSlots.slotId, slotId)))
       .limit(1);
+
+    if (rows[0]?.data) {
+      void recordGenericAnalyticsEvent({
+        eventId: `${userId}:save_load:${slotId}:${Date.now()}`,
+        idempotencyKey: `${userId}:save_load:${slotId}:${Date.now()}`,
+        userId,
+        sessionId: `save_${userId}`,
+        eventName: "save_load",
+        eventTime: new Date(),
+        page: "/play",
+        source: "save_action",
+        platform: "unknown",
+        tokenCost: 0,
+        playDurationDeltaSec: 0,
+        payload: { slotId },
+      }).catch(() => {});
+    }
 
     return (rows[0]?.data as Record<string, unknown> | undefined) ?? null;
   } catch {

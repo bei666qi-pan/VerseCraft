@@ -6,7 +6,8 @@ import { AuthError } from "next-auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signIn } from "../../../auth";
-import { recordUserRegisteredAnalytics } from "@/lib/analytics/repository";
+import { recordGenericAnalyticsEvent, recordUserRegisteredAnalytics } from "@/lib/analytics/repository";
+import { eq } from "drizzle-orm";
 
 type AuthActionState = {
   success: boolean;
@@ -174,6 +175,22 @@ export async function loginUser(
       password,
       redirectTo: "/",
     });
+    const found = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
+    const uid = found[0]?.id ?? null;
+    void recordGenericAnalyticsEvent({
+      eventId: `${uid ?? name}:user_login_success:${Date.now()}`,
+      idempotencyKey: `user_login_success:${uid ?? name}:${Date.now()}`,
+      userId: uid,
+      sessionId: "system",
+      eventName: "user_login_success",
+      eventTime: new Date(),
+      page: "/",
+      source: "auth",
+      platform: "unknown",
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {},
+    }).catch(() => {});
     return { success: true, message: "登录成功" };
   } catch (error) {
     if (error instanceof AuthError) {
@@ -189,6 +206,22 @@ export async function loginUser(
       }
     }
     if (isNextRedirectError(error)) {
+      const found = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1).catch(() => []);
+      const uid = found[0]?.id ?? null;
+      void recordGenericAnalyticsEvent({
+        eventId: `${uid ?? name}:user_login_success:${Date.now()}`,
+        idempotencyKey: `user_login_success:${uid ?? name}:${Date.now()}`,
+        userId: uid,
+        sessionId: "system",
+        eventName: "user_login_success",
+        eventTime: new Date(),
+        page: "/",
+        source: "auth",
+        platform: "unknown",
+        tokenCost: 0,
+        playDurationDeltaSec: 0,
+        payload: {},
+      }).catch(() => {});
       throw error;
     }
     console.error("Login Backend Error:", error);

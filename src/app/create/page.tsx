@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
+import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 
@@ -189,7 +190,8 @@ function useStatStepper(
 export default function CreatePage() {
   const router = useRouter();
   const user = useGameStore((s) => s.user);
-  useHeartbeat(!!user);
+  const guestId = useGameStore((s) => s.guestId ?? "guest_create");
+  useHeartbeat(!!user, guestId, "/create");
 
   const [name, setName] = useState("");
   const [gender, setGender] = useState<GenderOption>("男");
@@ -242,6 +244,18 @@ export default function CreatePage() {
       stats,
       selectedTalent
     );
+    void trackGameplayEvent({
+      eventName: "create_character_success",
+      sessionId: guestId,
+      page: "/create",
+      source: "create_page",
+      idempotencyKey: `create_character_success:${guestId}:${cleanName}`,
+      payload: {
+        name: cleanName,
+        gender,
+        height: cleanHeight,
+      },
+    }).catch(() => {});
 
     router.push("/play");
   }
