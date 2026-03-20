@@ -19,10 +19,19 @@ function runOut(cmd) {
 }
 
 function main() {
-  const msg = process.argv[2] ?? "";
+  const argv = process.argv.slice(2);
+  const flags = new Set(argv.filter((a) => a.startsWith("--")));
+  const msg = argv.find((a) => !a.startsWith("--")) ?? "";
+
+  const noPush = flags.has("--no-push");
+  const noCommit = flags.has("--no-commit");
+  const dryRun = flags.has("--dry-run");
+
   if (!msg) {
-    console.error("Usage: node deploy.sh \"chore: your message\"");
-    process.exit(1);
+    if (!dryRun && !noCommit && !noPush) {
+      console.error('Usage: node deploy.sh "chore: your message" [--no-push|--no-commit|--dry-run]');
+      process.exit(1);
+    }
   }
 
   try {
@@ -65,17 +74,25 @@ function main() {
     })();
 
     if (hasStaged) {
-      console.log("Committing changes...");
-      run(`git commit -m "${msg.replaceAll('"', '\\"')}"`);
+      if (!noCommit && !dryRun) {
+        console.log("Committing changes...");
+        run(`git commit -m "${msg.replaceAll('"', '\\"')}"`);
+      } else {
+        console.log(noCommit ? "Skipping commit (--no-commit)." : "Dry-run: skip commit.");
+      }
     } else {
       console.log("No staged changes. Skipping commit.");
     }
 
-    console.log(`Pushing to ${remote}/${targetBranch} ...`);
-    if (currentBranch) {
-      run(`git push ${remote} ${targetBranch}`);
+    if (!noPush && !dryRun) {
+      console.log(`Pushing to ${remote}/${targetBranch} ...`);
+      if (currentBranch) {
+        run(`git push ${remote} ${targetBranch}`);
+      } else {
+        run(`git push ${remote} HEAD:${targetBranch}`);
+      }
     } else {
-      run(`git push ${remote} HEAD:${targetBranch}`);
+      console.log(noPush ? "Skipping push (--no-push)." : "Dry-run: skip push.");
     }
   } catch (err) {
     console.error("[deploy] failed:", err instanceof Error ? err.message : err);
