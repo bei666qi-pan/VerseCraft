@@ -37,7 +37,7 @@ export async function authenticateAdminShadow(
     secure: env.nodeEnv === "production",
     sameSite: "strict",
     maxAge: session.maxAge,
-    path: "/saiduhsa",
+    path: "/",
   });
 
   void recordGenericAnalyticsEvent({
@@ -55,5 +55,12 @@ export async function authenticateAdminShadow(
     payload: {},
   }).catch(() => {});
 
+  return { ok: true };
+}
+
+export async function clearAdminShadowSession(): Promise<{ ok: true }> {
+  const cookieStore = await cookies();
+  cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/" });
+  cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/saiduhsa" });
   return { ok: true };
 }

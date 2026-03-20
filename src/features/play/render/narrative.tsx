@@ -90,7 +90,7 @@ export function renderNarrativeText(text: string, options?: { plainOnly?: boolea
         return (
           <strong
             key={i}
-            className="inline-block font-bold text-red-600 animate-glitch drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]"
+            className="font-bold text-red-600 drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]"
           >
             {m[1]}
           </strong>

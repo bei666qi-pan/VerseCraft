@@ -13,9 +13,9 @@ export function PlayOptionsList({
   disabled: boolean;
   onPick: (option: string) => void;
 }) {
-  if (options.length === 0) return null;
+  if (options.length === 0) return <div className="mt-2 min-h-[70px]" />;
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-2 min-h-[70px] space-y-2">
       {options.map((option, idx) => {
         const optionTextColor = isLowSanity
           ? "text-white"

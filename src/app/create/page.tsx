@@ -322,11 +322,11 @@ export default function CreatePage() {
                 <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
                 <div className="relative absolute inset-[6px]">
                   <Image
-                    src="/vercel.svg"
+                    src="/logo.svg"
                     alt="VerseCraft"
                     fill
                     draggable={false}
-                    className="object-contain scale-[1.15]"
+                    className="object-cover scale-[1.12]"
                     sizes="64px"
                   />
                 </div>

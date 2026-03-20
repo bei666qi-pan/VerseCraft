@@ -6,7 +6,7 @@ export const contentType = "image/png";
 
 /* eslint-disable @next/next/no-img-element */
 export default function Icon() {
-  // Keep in sync with the logo used in auth/login UI: /vercel.svg
+  // Keep in sync with the logo used in auth/login UI: /logo.svg
   return new ImageResponse(
     (
       <div

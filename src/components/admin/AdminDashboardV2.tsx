@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { clearAdminShadowSession } from "@/app/actions/admin";
 
 type DashboardUserRow = {
   id: string;
@@ -25,9 +26,44 @@ type Props = {
   totalTokens: number;
   chartData?: ChartPoint[];
 };
+type OverviewData = {
+  cards?: { todayNewUsers?: number; dau?: number; wau?: number; mau?: number; todayTokenCost?: number };
+  chartData?: ChartPoint[];
+} | null;
+type RealtimeData = { onlineUsers?: number; activeSessions?: number; avgSessionDurationSec?: number; trends?: { eventsLast5m?: number; eventsLast15m?: number } } | null;
+type RetentionData = { d1?: { rate?: number }; d3?: { rate?: number }; d7?: { rate?: number }; cohortSize?: number } | null;
+type FunnelData = { stages?: Array<{ eventName?: string; users?: number; conversionRate?: number }> } | null;
+type FeedbackData = { totalFeedback?: number; negativeFeedback?: number; topics?: Array<{ topic?: string; count?: number }> } | null;
 
 const PAGE_SIZE = 12;
 const REFRESH_MS = 15000;
+type AiReport = {
+  model?: string;
+  degraded?: boolean;
+  input?: {
+    range?: { label?: string };
+    anomalyHints?: string[];
+  };
+  output?: {
+    executiveSummary?: string;
+    retentionRisks?: Array<{ priority: string; title: string; detail: string; evidence: string }>;
+    productProblems?: Array<{ priority: string; title: string; detail: string; evidence: string }>;
+    opportunityPoints?: Array<{ priority: string; title: string; detail: string; evidence: string }>;
+    top3Actions?: Array<{ priority: string; action: string; why: string; expectedImpact: string }>;
+    expectedImpact?: { retentionLift?: string; tokenCostChange?: string; confidenceNote?: string };
+    confidence?: { score?: number; level?: string; reason?: string };
+    evidence?: Array<{ metric: string; value: string; source: string }>;
+    suggestedExperiments?: Array<{ name: string; hypothesis: string; metric: string; duration: string }>;
+    generatedAt?: string;
+    evidenceSufficiency?: string;
+  };
+};
+
+function toPriorityLabel(v: string): string {
+  if (v === "immediate") return "立即修复";
+  if (v === "this_week") return "本周可做";
+  return "中期优化";
+}
 
 function formatPlayTime(totalSeconds: number): string {
   const sec = Math.max(0, Math.trunc(Number(totalSeconds) || 0));
@@ -44,12 +80,13 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
   const [range, setRange] = useState<"today" | "yesterday" | "7d" | "30d">("7d");
   const [rows, setRows] = useState(initialRows);
   const [chartData, setChartData] = useState<ChartPoint[]>(initialChart ?? []);
-  const [overview, setOverview] = useState<any>(null);
-  const [realtime, setRealtime] = useState<any>(null);
-  const [retention, setRetention] = useState<any>(null);
-  const [funnel, setFunnel] = useState<any>(null);
-  const [feedbackInsights, setFeedbackInsights] = useState<any>(null);
-  const [aiInsights, setAiInsights] = useState<any>(null);
+  const [overview, setOverview] = useState<OverviewData>(null);
+  const [realtime, setRealtime] = useState<RealtimeData>(null);
+  const [retention, setRetention] = useState<RetentionData>(null);
+  const [funnel, setFunnel] = useState<FunnelData>(null);
+  const [feedbackInsights, setFeedbackInsights] = useState<FeedbackData>(null);
+  const [aiReport, setAiReport] = useState<AiReport | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
   const [realtimeSeries, setRealtimeSeries] = useState<Array<{ t: string; online: number; sessions: number }>>([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,34 +102,47 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
     setRefreshing(true);
     setErr(null);
     try {
-      const [o, r, rt, f, fi, ai, d] = await Promise.all([
+      const [o, r, rt, f, fi, d] = await Promise.all([
         fetch(`/api/admin/overview?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/retention?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/realtime`, { credentials: "include" }),
         fetch(`/api/admin/funnel?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/feedback-insights?range=${range}`, { credentials: "include" }),
-        fetch(`/api/admin/ai-insights?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/dashboard-data`, { credentials: "include" }),
       ]);
 
-      const [ov, re, rtj, fu, fb, aij, dj] = await Promise.all([
+      const [ov, re, rtj, fu, fb, dj] = await Promise.all([
         o.json().catch(() => null),
         r.json().catch(() => null),
         rt.json().catch(() => null),
         f.json().catch(() => null),
         fi.json().catch(() => null),
-        ai.json().catch(() => null),
         d.json().catch(() => null),
       ]);
 
-      if (!o.ok && !d.ok) throw new Error("后台数据读取失败");
+      const statuses = [o.status, r.status, rt.status, f.status, fi.status, d.status];
+      if (statuses.some((s) => s === 403)) {
+        // Avoid self-redirect loop on /saiduhsa causing full page reload + hydration flicker.
+        const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+        if (pathname !== "/saiduhsa") {
+          window.location.href = "/saiduhsa";
+          return;
+        }
+        setAutoRefresh(false);
+        setErr("登录态已失效，请在当前页面重新验证管理员口令。");
+        return;
+      }
+
+      const hasAnySuccess = [o.ok, r.ok, rt.ok, f.ok, fi.ok, d.ok].some(Boolean);
+      if (!hasAnySuccess) throw new Error("后台数据读取失败");
+
       if (ov) {
-        setOverview(ov);
+        setOverview(ov as OverviewData);
         if (Array.isArray(ov.chartData)) setChartData(ov.chartData);
       }
-      if (re) setRetention(re);
+      if (re) setRetention(re as RetentionData);
       if (rtj) {
-        setRealtime(rtj);
+        setRealtime(rtj as RealtimeData);
         setRealtimeSeries((prev) => [
           ...prev.slice(-23),
           {
@@ -102,9 +152,8 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
           },
         ]);
       }
-      if (fu) setFunnel(fu);
-      if (fb) setFeedbackInsights(fb);
-      if (aij) setAiInsights(aij);
+      if (fu) setFunnel(fu as FunnelData);
+      if (fb) setFeedbackInsights(fb as FeedbackData);
       if (dj?.rows) setRows(dj.rows);
       if (Array.isArray(dj?.chartData) && !ov?.chartData) setChartData(dj.chartData);
     } catch {
@@ -112,6 +161,20 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
     } finally {
       setRefreshing(false);
       setLoading(false);
+    }
+  }, [range]);
+
+  const generateAiReport = useCallback(async () => {
+    setAiLoading(true);
+    try {
+      const resp = await fetch(`/api/admin/ai-insights?range=${range}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data) setAiReport(data);
+    } finally {
+      setAiLoading(false);
     }
   }, [range]);
 
@@ -184,7 +247,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
             <p className="text-sm text-slate-400">总用户 {Number(totalUsers).toLocaleString()} · 累计 Token {Number(totalTokens).toLocaleString()}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select value={range} onChange={(e) => setRange(e.target.value as any)} className="rounded-xl bg-white/10 px-3 py-2 text-sm backdrop-blur-xl">
+            <select value={range} onChange={(e) => setRange(e.target.value as "today" | "yesterday" | "7d" | "30d")} className="rounded-xl bg-white/10 px-3 py-2 text-sm backdrop-blur-xl">
               <option value="today">今日</option>
               <option value="yesterday">昨日</option>
               <option value="7d">近7天</option>
@@ -200,7 +263,28 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
           </div>
         </div>
 
-        {err ? <div className="rounded-2xl bg-red-500/15 p-3 text-sm text-red-100">{err}</div> : null}
+        {err ? (
+          <div className="rounded-2xl bg-red-500/15 p-3 text-sm text-red-100">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span>{err}</span>
+              {err.includes("登录态已失效") ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await clearAdminShadowSession();
+                    } finally {
+                      window.location.href = `/saiduhsa?reauth=${Date.now()}`;
+                    }
+                  }}
+                  className="rounded-lg bg-white/15 px-3 py-1.5 text-xs text-white transition hover:bg-white/25"
+                >
+                  重新验证
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
           {[
@@ -286,7 +370,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] xl:col-span-2">
             <p className="mb-2 text-sm">漏斗</p>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-              {(funnel?.stages ?? []).map((s: any) => (
+              {(funnel?.stages ?? []).map((s) => (
                 <div key={String(s.eventName)} className="rounded-xl bg-white/10 p-2">
                   <p className="text-xs text-slate-300">{String(s.eventName)}</p>
                   <p className="text-lg font-semibold">{Number(s.users ?? 0)}</p>
@@ -303,7 +387,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
             <div className="mb-2 flex flex-wrap gap-2 text-xs text-slate-200">
               <span className="rounded-lg bg-white/10 px-2 py-1">反馈 {Number(feedbackInsights?.totalFeedback ?? 0)}</span>
               <span className="rounded-lg bg-white/10 px-2 py-1">负向 {Number(feedbackInsights?.negativeFeedback ?? 0)}</span>
-              {(feedbackInsights?.topics ?? []).slice(0, 3).map((t: any) => (
+              {(feedbackInsights?.topics ?? []).slice(0, 3).map((t) => (
                 <span key={String(t.topic)} className="rounded-lg bg-white/10 px-2 py-1">{String(t.topic)} {Number(t.count ?? 0)}</span>
               ))}
             </div>
@@ -316,11 +400,35 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
             </div>
           </div>
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-            <p className="mb-2 text-sm">AI 洞察</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm">AI 运营分析官</p>
+              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => void generateAiReport()} disabled={aiLoading}>
+                {aiLoading ? "生成中..." : "一键生成分析"}
+              </button>
+            </div>
             <div className="space-y-2 text-sm">
-              {(aiInsights?.suggestions ?? []).map((s: string, i: number) => (
-                <div key={i} className="rounded-xl bg-white/10 p-2">{s}</div>
+              {aiReport?.output?.generatedAt ? (
+                <p className="text-xs text-slate-300">生成时间：{new Date(aiReport.output.generatedAt).toLocaleString("zh-CN")}</p>
+              ) : null}
+              <p className="rounded-xl bg-white/10 p-2 text-xs text-slate-200">
+                {aiReport?.output?.executiveSummary ?? "点击“一键生成分析”获取可追溯的结构化建议。"}
+              </p>
+              {aiReport?.output?.evidenceSufficiency === "insufficient" ? (
+                <p className="rounded-xl bg-yellow-500/15 p-2 text-xs text-yellow-100">证据不足：样本量偏小，建议先扩大采样窗口再决策。</p>
+              ) : null}
+              {(aiReport?.output?.top3Actions ?? []).map((a, i) => (
+                <div key={i} className="rounded-xl bg-white/10 p-2 text-xs">
+                  <p className="text-slate-300">{toPriorityLabel(String(a.priority))}</p>
+                  <p className="mt-1 text-slate-100">{a.action}</p>
+                  <p className="mt-1 text-slate-300">{a.why}</p>
+                </div>
               ))}
+              <div className="rounded-xl bg-white/10 p-2 text-xs">
+                <p className="text-slate-300">证据来源摘要</p>
+                {(aiReport?.output?.evidence ?? []).slice(0, 3).map((e, i) => (
+                  <p key={i} className="mt-1 text-slate-200">{e.metric}: {e.value}（{e.source}）</p>
+                ))}
+              </div>
             </div>
           </div>
         </div>

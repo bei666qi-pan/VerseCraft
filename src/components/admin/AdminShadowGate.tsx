@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { authenticateAdminShadow, type AdminShadowAuthState } from "@/app/actions/admin";
 
@@ -9,10 +9,15 @@ const INITIAL_STATE: AdminShadowAuthState = { ok: false };
 export function AdminShadowGate() {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(authenticateAdminShadow, INITIAL_STATE);
+  const hasRefreshedRef = useRef(false);
 
   useEffect(() => {
-    if (state.ok) {
-      router.refresh();
+    if (state.ok && !hasRefreshedRef.current) {
+      hasRefreshedRef.current = true;
+      router.replace("/saiduhsa");
+    }
+    if (!state.ok) {
+      hasRefreshedRef.current = false;
     }
   }, [router, state.ok]);
 

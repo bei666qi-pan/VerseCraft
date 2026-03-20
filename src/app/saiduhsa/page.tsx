@@ -16,6 +16,7 @@ export default async function ShadowAdminPage() {
 
   if (!hasAccess) {
     if (shadowCookie) {
+      cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/" });
       cookieStore.delete({ name: ADMIN_SHADOW_COOKIE, path: "/saiduhsa" });
     }
     return <AdminShadowGate />;
@@ -91,6 +92,7 @@ export default async function ShadowAdminPage() {
               action={async () => {
                 "use server";
                 const store = await cookies();
+                store.delete({ name: ADMIN_SHADOW_COOKIE, path: "/" });
                 store.delete({ name: ADMIN_SHADOW_COOKIE, path: "/saiduhsa" });
               }}
             >

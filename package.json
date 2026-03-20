@@ -13,7 +13,12 @@
     "db:generate": "drizzle-kit generate",
     "diagnose:play": "pnpm dlx tsx scripts/diagnose-play-error.ts",
     "db:delete-test-accounts": "pnpm dlx tsx scripts/delete-test-accounts.ts",
-    "test:play": "playwright test e2e/play.spec.ts"
+    "test:play": "playwright test e2e/play.spec.ts",
+    "test:unit": "tsx --test src/lib/admin/*.test.ts",
+    "test:admin:api": "playwright test e2e/admin-api.spec.ts",
+    "test:admin:perf": "playwright test e2e/admin-performance.spec.ts",
+    "analyze:admin-sql": "tsx scripts/admin-explain-baseline.ts",
+    "analyze:admin-sql:strict": "tsx scripts/admin-explain-baseline.ts --strict"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

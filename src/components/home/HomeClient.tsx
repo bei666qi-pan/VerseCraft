@@ -194,11 +194,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   <div className="absolute inset-[3px] rounded-full bg-slate-900/90 backdrop-blur-sm border border-white/15" />
                   <div className="relative h-8 w-8">
                     <Image
-                      src="/vercel.svg"
+                      src="/logo.svg"
                       alt="VerseCraft"
                       fill
                       sizes="32px"
-                      className="object-contain scale-[1.15]"
+                      className="object-cover scale-[1.12]"
                     />
                   </div>
                 </div>

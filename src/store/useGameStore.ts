@@ -100,6 +100,7 @@ export interface SaveSlotData {
   hasCheckedCodex?: boolean;
   originium?: number;
   currentBgm?: string;
+  currentOptions?: string[];
 }
 
 export interface AuthUser {
@@ -931,6 +932,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: s.hasCheckedCodex ?? false,
           originium: s.originium ?? 0,
           currentBgm: s.currentBgm ?? "bgm_1_calm",
+          currentOptions: Array.isArray(s.currentOptions) ? JSON.parse(JSON.stringify(s.currentOptions)) : [],
         };
         set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
         void import("@/app/actions/save")
@@ -960,6 +962,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: data.hasCheckedCodex ?? false,
           originium: data.originium ?? get().originium ?? 0,
           currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
+          currentOptions: Array.isArray(data.currentOptions) ? JSON.parse(JSON.stringify(data.currentOptions)) : [],
         });
       },
       hydrateFromCloud: (slotId, data) => {
@@ -989,6 +992,7 @@ export const useGameStore = create<GameState>()(
             hasCheckedCodex: data.hasCheckedCodex ?? false,
             originium: data.originium ?? s.originium ?? 0,
             currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
+            currentOptions: Array.isArray(data.currentOptions) ? JSON.parse(JSON.stringify(data.currentOptions)) : [],
             isGameStarted: true,
           };
         });

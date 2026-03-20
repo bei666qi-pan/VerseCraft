@@ -2,11 +2,18 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsEvents, feedbacks, gameRecords, userDailyActivity, users } from "@/db/schema";
+import { adminMetricsDaily, analyticsEvents, feedbacks, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
+import { computeFunnel, computeTokenStats } from "@/lib/admin/metricsUtils";
+
+function normalizeExecuteRows(result: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
+  const rows = (result as { rows?: unknown })?.rows;
+  return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+}
 
 export async function getDashboardTableData() {
   const rows = await db
@@ -23,39 +30,52 @@ export async function getDashboardTableData() {
     .orderBy(desc(users.tokensUsed));
 
   const { ids: onlineIds } = await getOnlineUsersFromPresence().catch(() => ({ ids: [], count: 0 }));
-  const latestFeedbackRows = await db
-    .select({
-      userId: feedbacks.userId,
-      content: feedbacks.content,
-      createdAt: feedbacks.createdAt,
-    })
-    .from(feedbacks)
-    .orderBy(desc(feedbacks.createdAt));
-  const latestGameRows = await db
-    .select({
-      userId: gameRecords.userId,
-      maxFloorScore: gameRecords.maxFloorScore,
-      survivalTimeSeconds: gameRecords.survivalTimeSeconds,
-      createdAt: gameRecords.createdAt,
-    })
-    .from(gameRecords)
-    .orderBy(desc(gameRecords.createdAt));
+  // 避免全表拉取后在内存去重：改为 DISTINCT ON 每用户一条最新记录。
+  const latestFeedbackRowsRaw = await db.execute(sql`
+    SELECT DISTINCT ON (user_id)
+      user_id AS "userId",
+      content,
+      created_at AS "createdAt"
+    FROM feedbacks
+    ORDER BY user_id, created_at DESC
+  `);
+  const latestGameRowsRaw = await db
+    .execute(sql`
+      SELECT DISTINCT ON (user_id)
+        user_id AS "userId",
+        max_floor_score AS "maxFloorScore",
+        survival_time_seconds AS "survivalTimeSeconds",
+        created_at AS "createdAt"
+      FROM game_records
+      ORDER BY user_id, created_at DESC
+    `)
+    .catch((error) => {
+      // Some local environments may not have game_records yet.
+      console.warn("[admin][getDashboardTableData] game_records query failed, fallback empty", error);
+      return { rows: [] };
+    });
+
+  const latestFeedbackRows = normalizeExecuteRows(latestFeedbackRowsRaw);
+  const latestGameRows = normalizeExecuteRows(latestGameRowsRaw);
 
   const latestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
-  for (const item of latestFeedbackRows) {
-    if (!latestFeedbackMap.has(item.userId)) {
-      latestFeedbackMap.set(item.userId, { content: item.content, createdAt: item.createdAt });
-    }
+  for (const row of latestFeedbackRows) {
+    const userId = String(row.userId ?? "");
+    if (!userId) continue;
+    latestFeedbackMap.set(userId, {
+      content: String(row.content ?? ""),
+      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+    });
   }
   const latestGameMap = new Map<string, { maxFloorScore: number; survivalTimeSeconds: number; createdAt: Date | null }>();
-  for (const item of latestGameRows) {
-    if (!latestGameMap.has(item.userId)) {
-      latestGameMap.set(item.userId, {
-        maxFloorScore: Number(item.maxFloorScore ?? 0),
-        survivalTimeSeconds: Number(item.survivalTimeSeconds ?? 0),
-        createdAt: item.createdAt,
-      });
-    }
+  for (const row of latestGameRows) {
+    const userId = String(row.userId ?? "");
+    if (!userId) continue;
+    latestGameMap.set(userId, {
+      maxFloorScore: Number(row.maxFloorScore ?? 0),
+      survivalTimeSeconds: Number(row.survivalTimeSeconds ?? 0),
+      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+    });
   }
 
   const onlineSet = new Set(onlineIds);
@@ -112,8 +132,7 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
     .where(sql`${adminMetricsDaily.dateKey} = ${range.endDateKey}::date`)
     .limit(1);
 
-  const avgTokenPerActive =
-    Number(dailyAgg?.dau ?? 0) > 0 ? Number(dailyAgg?.tokenCost ?? 0) / Number(dailyAgg?.dau ?? 1) : 0;
+  const tokenStats = computeTokenStats(Number(dailyAgg?.tokenCost ?? 0), Number(dailyAgg?.dau ?? 0));
 
   return {
     range,
@@ -123,7 +142,7 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
       activeUsersRange: Number(dailyAgg?.dau ?? 0),
       newUsersRange: Number(dailyAgg?.newUsers ?? 0),
       tokenCostRange: Number(dailyAgg?.tokenCost ?? 0),
-      avgTokenPerActive,
+      avgTokenPerActive: tokenStats.tokenPerActive,
       feedbackCountRange: Number(dailyAgg?.feedbackCount ?? 0),
       gameCompletedRange: Number(dailyAgg?.gameCompleted ?? 0),
       todayNewUsers: Number(latestDayAgg?.newUsers ?? 0),
@@ -294,17 +313,9 @@ export async function getFunnelMetrics(range: AdminTimeRange) {
     )
     .groupBy(analyticsEvents.eventName);
 
-  const byEvent = new Map(rows.map((r) => [r.eventName, Number(r.users ?? 0)]));
-  const base = Number(byEvent.get("user_registered") ?? 0);
-
-  const stages = eventNames.map((name) => {
-    const count = Number(byEvent.get(name) ?? 0);
-    return {
-      eventName: name,
-      users: count,
-      conversionRate: base > 0 ? count / base : 0,
-    };
-  });
+  const byEvent: Record<string, number> = {};
+  for (const r of rows) byEvent[String(r.eventName)] = Number(r.users ?? 0);
+  const stages = computeFunnel([...eventNames], byEvent);
 
   return { range, stages };
 }
@@ -343,12 +354,17 @@ export async function getFeedbackInsights(range: AdminTimeRange) {
   const topicList = Object.entries(topics)
     .map(([topic, count]) => ({ topic, count }))
     .sort((a, b) => b.count - a.count);
+  const samples = rows
+    .map((r) => String(r.content ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 50);
 
   return {
     range,
     totalFeedback: rows.length,
     negativeFeedback: negativeCount,
     topics: topicList,
+    samples,
   };
 }
 

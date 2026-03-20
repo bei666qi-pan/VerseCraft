@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Settings, Keyboard, List } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
@@ -106,7 +106,6 @@ function PlayContent() {
   const autoScrollRafRef = useRef<number | null>(null);
   const lastAutoScrollAtRef = useRef(0);
   const streamLogsBaselineRef = useRef(0);
-  const [renderTurnAsPlain, setRenderTurnAsPlain] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
@@ -169,7 +168,7 @@ function PlayContent() {
 
   useEffect(() => {
     if (!firstTimeHint) return;
-    const t = setTimeout(() => setFirstTimeHint(null), 4000);
+    const t = setTimeout(() => setFirstTimeHint(null), 3000);
     return () => clearTimeout(t);
   }, [firstTimeHint]);
 
@@ -218,12 +217,12 @@ function PlayContent() {
   }, [isHydrated, showApocalypseOverlay]);
 
   const scheduleAutoScroll = useCallback((smooth = false) => {
-    if (userScrolledUpRef.current || !scrollRef.current) return;
+    if (!scrollRef.current) return;
     if (autoScrollRafRef.current != null) return;
     autoScrollRafRef.current = requestAnimationFrame(() => {
       autoScrollRafRef.current = null;
       const el = scrollRef.current;
-      if (!el || userScrolledUpRef.current) return;
+      if (!el) return;
       const now = performance.now();
       if (!smooth && now - lastAutoScrollAtRef.current < 48) return;
       lastAutoScrollAtRef.current = now;
@@ -237,9 +236,9 @@ function PlayContent() {
 
   const smoothStreamOptions = useMemo(
     () => ({
-      minTickMs: 22,
-      maxTickMs: 140,
-      burstCharsWhenBacklog: 30,
+      minTickMs: 28,
+      maxTickMs: 36,
+      burstCharsWhenBacklog: 16,
       // keep defaults for the rest (Gemini pacing)
     }),
     []
@@ -257,10 +256,9 @@ function PlayContent() {
     const cutoff = isStreamVisualActive ? streamLogsBaselineRef.current : baseLogs.length;
     return baseLogs
       .map((l, idx) => ({ l, idx }))
-      // 玩家侧仅展示小说式叙事：不渲染用户输入的具体行动文本
       .filter(({ idx }) => idx < cutoff)
-      .filter(({ l }) => l && l.role === "assistant" && typeof l.content === "string")
-      .map(({ l, idx }) => ({ role: "assistant" as const, content: String(l!.content), logIndex: idx }));
+      .filter(({ l }) => l && (l.role === "assistant" || l.role === "user") && typeof l.content === "string")
+      .map(({ l, idx }) => ({ role: l!.role as "assistant" | "user", content: String(l!.content), logIndex: idx }));
   }, [logs, isStreamVisualActive]);
 
   // 仅保留助手叙事日志，供绿字提取与最新助手文本推断使用
@@ -285,11 +283,8 @@ function PlayContent() {
 
   const prevIsStreamVisualActiveRef = useRef(false);
   const onScrollContainer = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const { scrollTop, clientHeight, scrollHeight } = el;
-    const atBottom = scrollTop + clientHeight >= scrollHeight - 10;
-    userScrolledUpRef.current = !atBottom;
+    // 始终保持跟随底部，避免流式阅读中断。
+    userScrolledUpRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -300,22 +295,16 @@ function PlayContent() {
     prevIsStreamVisualActiveRef.current = isStreamVisualActive;
   }, [smoothNarrative, isStreamVisualActive, scheduleAutoScroll]);
 
-  const prevIsStreamVisualActiveForPlainRef = useRef(isStreamVisualActive);
+  useLayoutEffect(() => {
+    // Pin to bottom before paint to avoid end-of-stream flicker.
+    scheduleAutoScroll(false);
+  }, [displayEntries.length, liveNarrative, scheduleAutoScroll]);
+
   useEffect(() => {
-    const prev = prevIsStreamVisualActiveForPlainRef.current;
-    prevIsStreamVisualActiveForPlainRef.current = isStreamVisualActive;
-    if (!prev && isStreamVisualActive) {
-      // New turn: ensure rich rendering won't flash from previous turn.
-      setRenderTurnAsPlain(false);
-      return;
-    }
-    if (prev && !isStreamVisualActive) {
-      // One frame: keep the just-finished assistant bubble in plainOnly mode
-      // to reduce "plain -> rich" layout jitter.
-      setRenderTurnAsPlain(true);
-      requestAnimationFrame(() => setRenderTurnAsPlain(false));
-    }
-  }, [isStreamVisualActive]);
+    if (!isChatBusy) return;
+    const id = window.setInterval(() => scheduleAutoScroll(false), 80);
+    return () => window.clearInterval(id);
+  }, [isChatBusy, scheduleAutoScroll]);
 
   useEffect(() => {
     return () => {
@@ -439,6 +428,22 @@ function PlayContent() {
   // 兜底：若开场叙事已出现但选项为空，补齐 4 个默认选项（避免首次进入看到“无选项”）
   const hasSeededOpeningOptions = useRef(false);
   useEffect(() => {
+    if (!isHydrated || !isGameStarted || isChatBusy) return;
+    if (currentOptions.length > 0) return;
+    const state = useGameStore.getState();
+    const slot =
+      state.saveSlots?.[state.currentSaveSlot] ??
+      state.saveSlots?.["auto_save"] ??
+      null;
+    const savedOptions = Array.isArray(slot?.currentOptions)
+      ? slot.currentOptions.filter((x) => typeof x === "string" && x.trim().length > 0).slice(0, 4)
+      : [];
+    if (savedOptions.length > 0) {
+      setCurrentOptions([...savedOptions]);
+    }
+  }, [currentOptions.length, isChatBusy, isGameStarted, isHydrated, setCurrentOptions]);
+
+  useEffect(() => {
     if (!isHydrated || isChatBusy) return;
     if (hasSeededOpeningOptions.current) return;
     const state = useGameStore.getState();
@@ -531,7 +536,6 @@ function PlayContent() {
 
     sendActionInFlightRef.current = true;
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
-    setRenderTurnAsPlain(false);
     setStreamPhase("waiting_upstream");
     narrativeRef.current = "";
     setLiveNarrative("");
@@ -874,7 +878,7 @@ function PlayContent() {
         });
         const firstNew = items.find((it) => !prevInvIds.has(it.id));
         if (firstNew) {
-          setFirstTimeHint(`请玩家在设置里查看和使用【${firstNew.name}】的详情`);
+          setFirstTimeHint(`你记下了新道具【${firstNew.name}】。`);
         }
       }
     }
@@ -899,7 +903,7 @@ function PlayContent() {
         });
         const firstNew = whItems.find((w) => !prevWhIds.has(w.id));
         if (firstNew) {
-          setFirstTimeHint(`请玩家在设置里查看和使用【${firstNew.name}】的详情`);
+          setFirstTimeHint(`你在仓库中发现了新物品【${firstNew.name}】。`);
         }
       }
     }
@@ -937,11 +941,11 @@ function PlayContent() {
       mergeCodex(entries);
       const firstNewNpc = entries.find((e) => e.type === "npc" && !(e.id in prevCodex));
       if (firstNewNpc) {
-        setFirstTimeHint(`请玩家在设置里查看和使用【${firstNewNpc.name}】的详情`);
+        setFirstTimeHint(`新的角色线索出现了：${firstNewNpc.name}。`);
       } else {
         const firstNewAnomaly = entries.find((e) => e.type === "anomaly" && !(e.id in prevCodex));
         if (firstNewAnomaly) {
-          setFirstTimeHint(`请玩家在设置里查看和使用【${firstNewAnomaly.name}】的详情`);
+          setFirstTimeHint(`新的异常记录已加入：${firstNewAnomaly.name}。`);
         }
       }
     }
@@ -953,25 +957,23 @@ function PlayContent() {
       setHitEffectUntil(Date.now() + 1200);
     }
 
-    const modeNow = useGameStore.getState().inputMode ?? "options";
-    if (modeNow === "options") {
-      const validOpts = Array.isArray(parsed.options)
-        ? parsed.options
-            .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
-            .map((o) => o.trim())
-            .slice(0, 4)
-        : [];
+    const validOpts = Array.isArray(parsed.options)
+      ? parsed.options
+          .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+          .map((o) => o.trim())
+          .slice(0, 4)
+      : [];
 
-      const merged = [...validOpts];
-      for (const d of DEFAULT_FOUR_ACTION_OPTIONS) {
-        if (merged.length >= 4) break;
-        if (merged.includes(d)) continue;
-        merged.push(d);
-      }
+    const merged = [...validOpts];
+    for (const d of DEFAULT_FOUR_ACTION_OPTIONS) {
+      if (merged.length >= 4) break;
+      if (merged.includes(d)) continue;
+      merged.push(d);
+    }
 
-      if (merged.length > 0) {
-        setCurrentOptions(merged.slice(0, 4));
-      }
+    if (merged.length > 0) {
+      setCurrentOptions([...merged.slice(0, 4)]);
+      useGameStore.getState().saveGame("auto_save");
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -1263,17 +1265,19 @@ function PlayContent() {
                 smoothThinking={smoothThinking}
                 smoothNarrative={smoothNarrative}
                 smoothComplete={smoothComplete}
+                isChatBusy={isChatBusy}
                 inputMode={inputMode}
                 isLowSanity={isLowSanity}
                 isDarkMoon={isDarkMoon}
                 liveNarrative={liveNarrative}
                 greenTips={greenTips}
                 firstTimeHint={firstTimeHint}
-              plainOnlyNewTurn={renderTurnAsPlain}
+                plainOnlyNewTurn={false}
               plainOnlyLogIndexMin={streamLogsBaselineRef.current}
               >
-                {inputMode === "options" && currentOptions.length > 0 && (
+                {inputMode === "options" && !isChatBusy && (
                   <PlayOptionsList
+                    key={`opts:${currentOptions.join("||")}`}
                     options={currentOptions}
                     isLowSanity={isLowSanity}
                     isDarkMoon={isDarkMoon}
@@ -1283,7 +1287,6 @@ function PlayContent() {
                         setShowDialoguePaywall(true);
                         return;
                       }
-                      setCurrentOptions([]);
                       playUIClick();
                       void sendAction(option, true);
                     }}
@@ -1337,13 +1340,20 @@ function PlayContent() {
 }
 
 export default function PlayPageWrapper() {
+  const router = useRouter();
   const isHydrated = useGameStore((s) => s.isHydrated);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
 
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (isGameStarted) return;
+    router.replace("/");
+  }, [isHydrated, isGameStarted, router]);
+
   return (
     <div className="relative min-h-[100dvh]">
-      <PlayContent />
-      {(!isHydrated || !isGameStarted) && (
+      {isHydrated && isGameStarted ? <PlayContent /> : null}
+      {!isHydrated && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#0f172a]/65 backdrop-blur-xl">
           <div className="flex flex-col items-center gap-4">
             <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />

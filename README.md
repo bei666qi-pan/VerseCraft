@@ -89,6 +89,14 @@ cp .env.example .env.local
 
 详细说明见 `docs/deployment-coolify.md` 与 `docs/local-development.md`。
 
+## 后台质量回归
+
+- 后台指标与 AI 洞察维护文档：`docs/admin-analytics-maintenance.md`
+- 后台接口集成测试：`pnpm test:admin:api`
+- 后台平滑性回归：`pnpm test:admin:perf`
+- 后台 SQL 执行计划基线：`pnpm analyze:admin-sql`
+- 严格门槛（CI 推荐）：`pnpm analyze:admin-sql:strict`
+
 ## 项目结构
 
 ```
