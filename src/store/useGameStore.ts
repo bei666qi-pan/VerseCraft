@@ -104,6 +104,22 @@ export interface AuthUser {
   name: string;
 }
 
+/** Unified modal / panel: null = all closed. Pure UI; not bundled into save slots. */
+export type ActiveMenu = "settings" | "backpack" | "codex" | "warehouse" | "tasks" | "achievements" | null;
+
+/**
+ * Cooldown rounds after activating a talent (must stay in sync with play-page talent UX).
+ * Expressed in turns advanced by successful legal actions.
+ */
+const TALENT_ACTION_COOLDOWNS: Record<EchoTalent, number> = {
+  时间回溯: 6,
+  命运馈赠: 10,
+  主角光环: 8,
+  生命汇源: 10,
+  洞察之眼: 8,
+  丧钟回响: 30,
+};
+
 interface GameState extends IntegrityMetaState {
   currentSaveSlot: string;
   /** 最多 3 个存档位 */
@@ -169,12 +185,22 @@ interface GameState extends IntegrityMetaState {
   isGameStarted: boolean;
   /** BGM track key (bgm_1_calm by default). Not persisted to avoid write amplification; restored from save on load. */
   currentBgm: string;
+  /** Master BGM volume 0–100 for audio engine binding. */
+  volume: number;
+  /** Unified in-game menu surface (pure UI). */
+  activeMenu: ActiveMenu;
   /** 安全降级：当上游安全拦截/流破损导致解析失败时，强制覆盖叙事并扣理智 */
   securityFallback: { active: boolean; message: string; at: number; reason?: string };
   _integrity_dirty: boolean;
   verifyStateIntegrity: () => Promise<boolean>;
   triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
+  setVolume: (volume: number) => void;
+  setActiveMenu: (menu: ActiveMenu) => void;
+  /** Activate talent for current round: applies cooldown; returns false if still on cooldown. */
+  useTalent: (talent: EchoTalent) => boolean;
+  /** Decrement all talent cooldowns by 1 after a successful advancing turn. */
+  decrementCooldowns: () => void;
   setBgm: (track: string) => void;
   setUser: (user: AuthUser | null) => void;
   logout: () => void;
@@ -306,6 +332,11 @@ function createGuestId(): string {
   return `guest_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function clampVolume(n: number): number {
+  if (!Number.isFinite(n)) return 50;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     checksumMiddleware((set, get) => ({
@@ -344,6 +375,8 @@ export const useGameStore = create<GameState>()(
       intrusionFlashUntil: 0,
       isGameStarted: false,
       currentBgm: "bgm_1_calm",
+      volume: 50,
+      activeMenu: null,
       securityFallback: { active: false, message: "", at: 0 },
       _checksum_fingerprint: "",
       _integrity_dirty: false,
@@ -394,6 +427,31 @@ export const useGameStore = create<GameState>()(
 
       setHydrated: (state) => set({ isHydrated: state }),
       setBgm: (track) => set({ currentBgm: track }),
+      setVolume: (vol) => set({ volume: clampVolume(vol) }),
+      setActiveMenu: (menu) => set({ activeMenu: menu }),
+      useTalent: (talent) => {
+        const s = get();
+        const cds = s.talentCooldowns ?? DEFAULT_TALENT_COOLDOWNS;
+        const cdNow = Number(cds[talent]);
+        const safeCd = Number.isFinite(cdNow) ? cdNow : 0;
+        if (safeCd > 0) return false;
+        const nextCd = TALENT_ACTION_COOLDOWNS[talent] ?? 0;
+        set({
+          talentCooldowns: { ...cds, [talent]: nextCd },
+        });
+        return true;
+      },
+      decrementCooldowns: () =>
+        set((s) => {
+          const prev = s.talentCooldowns ?? DEFAULT_TALENT_COOLDOWNS;
+          const next = { ...prev } as Record<EchoTalent, number>;
+          for (const k of ECHO_TALENTS) {
+            const v = Number(next[k]);
+            const safe = Number.isFinite(v) ? v : 0;
+            next[k] = safe > 0 ? safe - 1 : 0;
+          }
+          return { talentCooldowns: next };
+        }),
       triggerSecurityFallback: (reason) =>
         set((s) => {
           const curSanity = s.stats?.sanity ?? 0;
@@ -447,6 +505,7 @@ export const useGameStore = create<GameState>()(
           intrusionFlashUntil: 0,
           isGameStarted: false,
           currentBgm: "bgm_1_calm",
+          activeMenu: null,
         }),
 
       markGameOver: () =>
@@ -975,6 +1034,7 @@ export const useGameStore = create<GameState>()(
         historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
         dynamicNpcStates: s.dynamicNpcStates ?? {},
         isGameStarted: s.isGameStarted ?? false,
+        volume: clampVolume(s.volume ?? 50),
       }),
     }
   )

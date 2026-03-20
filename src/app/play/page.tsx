@@ -10,11 +10,11 @@ import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { NPCS } from "@/lib/registry/npcs";
 import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
-import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 import { isValidBgmTrack } from "@/config/audio";
+import { glassModalOverlay, glassPlayDialogSurface } from "@/lib/ui/glassStyles";
 
 type ChatRole = "user" | "assistant";
 type ChatMessage = { role: ChatRole; content: string };
@@ -65,15 +65,6 @@ type DMJson = {
 const MAX_INPUT = 20;
 const COMPLIANCE_HINT_TEXT =
   "本平台为AI协作创意写作工具，请创作者遵守中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。";
-
-const TALENT_CD: Record<EchoTalent, number> = {
-  时间回溯: 6,
-  命运馈赠: 10,
-  主角光环: 8,
-  生命汇源: 10,
-  洞察之眼: 8,
-  丧钟回响: 30,
-};
 
 const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string }> = {
   时间回溯: {
@@ -271,7 +262,7 @@ function renderNarrativeText(text: string, options?: { plainOnly?: boolean }) {
         .replace(/\{\{BLOOD\}\}([\s\S]*?)\{\{\/BLOOD\}\}/g, "$1");
       return <span>{stripOrphans(plain)}</span>;
     }
-    const parts = normalized.split(/(\*\*[^*]*\*\*|\^\^[^^]*\^\^|{{BLOOD}}[\s\S]*?{{\/BLOOD}})/g);
+    const parts = normalized.split(/(\*\*[^*]*\*\*|\^\^[^^]*\^\^|\{\{BLOOD\}\}[\s\S]*?\{\{\/BLOOD\}\})/g);
     return parts.map((part, i) => {
     const m = part.match(/^\*\*(.+)\*\*$/);
     if (m)
@@ -362,23 +353,19 @@ function DMNarrativeBlock({
   } catch {
     paras = [safeContent];
   }
-  try {
-    return (
-      <div className={`${baseClass} whitespace-pre-wrap`}>
-        {paras.length > 1 ? (
-          paras.map((p, i) => (
-            <p key={i} className="whitespace-pre-wrap">
-              {renderNarrativeText(p)}
-            </p>
-          ))
-        ) : (
-          <>{renderNarrativeText(safeContent)}</>
-        )}
-      </div>
-    );
-  } catch {
-    return <div className={baseClass}>{safeContent.slice(0, 500)}</div>;
-  }
+  return (
+    <div className={`${baseClass} whitespace-pre-wrap`}>
+      {paras.length > 1 ? (
+        paras.map((p, i) => (
+          <p key={i} className="whitespace-pre-wrap">
+            {renderNarrativeText(p)}
+          </p>
+        ))
+      ) : (
+        <>{renderNarrativeText(safeContent)}</>
+      )}
+    </div>
+  );
 }
 
 function safeNumber(n: unknown, fallback: number): number {
@@ -488,42 +475,16 @@ function tryParseDM(raw: string): DMJson | null {
   return null;
 }
 
-function ensureRuntimeActions() {
-  const storeAny = useGameStore as any;
-  const s = storeAny.getState?.() ?? {};
+/** Explicit chat/SSE lifecycle — avoids ambiguous boolean combos (`isStreaming` × buffer × smooth hook). */
+type ChatStreamPhase =
+  | "idle"
+  | "waiting_upstream"
+  | "streaming_body"
+  | "turn_committing"
+  | "error";
 
-  // 仅在缺失时注入，避免重复覆盖
-  if (typeof s.decrementCooldowns !== "function") {
-    storeAny.setState((prev: any) => ({
-      ...prev,
-      decrementCooldowns: () => {
-        storeAny.setState((p: any) => {
-          const prevCds = p.talentCooldowns ?? {};
-          const nextCds: Record<string, number> = { ...prevCds };
-          for (const k of Object.keys(nextCds)) {
-            const v = safeNumber(nextCds[k], 0);
-            nextCds[k] = v > 0 ? v - 1 : 0;
-          }
-          return { talentCooldowns: nextCds };
-        });
-      },
-    }));
-  }
-
-  if (typeof s.useTalent !== "function") {
-    storeAny.setState((prev: any) => ({
-      ...prev,
-      useTalent: (talent: EchoTalent) => {
-        const cdNow = safeNumber(storeAny.getState().talentCooldowns?.[talent], 0);
-        if (cdNow > 0) return false;
-        const nextCd = TALENT_CD[talent] ?? 0;
-        storeAny.setState((p: any) => ({
-          talentCooldowns: { ...(p.talentCooldowns ?? {}), [talent]: nextCd },
-        }));
-        return true;
-      },
-    }));
-  }
+function isStreamInteractionLocked(phase: ChatStreamPhase): boolean {
+  return phase !== "idle" && phase !== "error";
 }
 
 function formatItem(i: Item): string {
@@ -687,14 +648,8 @@ function PlayContent() {
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
-  const storeInputMode = useGameStore((s) => s.inputMode ?? "options");
-  const persistInputMode = usePersistStore((s) => s.inputMode ?? "options");
-  const persistCurrentOptions = usePersistStore((s) => s.currentOptions ?? []);
-  const setPersistCurrentOptions = usePersistStore((s) => s.setCurrentOptions);
-  const logsLen = logs.length;
-  const currentOptions =
-    persistCurrentOptions.length > 0 ? persistCurrentOptions : currentOptionsFromStore;
-  const inputMode = logsLen > 0 ? persistInputMode : storeInputMode;
+  const inputMode = useGameStore((s) => s.inputMode ?? "options");
+  const currentOptions = currentOptionsFromStore;
   const originium = useGameStore((s) => s.originium ?? 0);
   const tasks = useGameStore((s) => s.tasks ?? []);
   const addOriginium = useGameStore((s) => s.addOriginium);
@@ -710,15 +665,14 @@ function PlayContent() {
   const guestId = useGameStore((s) => s.guestId ?? null);
   const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
-  const activeMenu = usePersistStore((s) => s.activeMenu);
-  const setActiveMenu = usePersistStore((s) => s.setActiveMenu);
+  const activeMenu = useGameStore((s) => s.activeMenu);
+  const setActiveMenu = useGameStore((s) => s.setActiveMenu);
   const toggleInputMode = useGameStore((s) => s.toggleInputMode);
-  const setPersistInputMode = usePersistStore((s) => s.setInputMode);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamPhase, setStreamPhase] = useState<ChatStreamPhase>("idle");
   const [liveNarrative, setLiveNarrative] = useState("");
   const narrativeRef = useRef("");
   const rawDmBufferRef = useRef("");
@@ -726,7 +680,7 @@ function PlayContent() {
   const [showApocalypseOverlay, setShowApocalypseOverlay] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
-  const volume = usePersistStore((s) => s.volume ?? 50);
+  const volume = useGameStore((s) => s.volume ?? 50);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
@@ -747,6 +701,21 @@ function PlayContent() {
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
   const sendActionInFlightRef = useRef(false);
+  const streamPhaseRef = useRef<ChatStreamPhase>("idle");
+  /** 主链路开场：在助手首条叙事落库前为 true；用于超时降级闸门，避免与正常 SSE 并行抢写。 */
+  /** 已为「首条助手叙事」发起主链路请求（含系统开场）；用于超时降级，不与 SSE 并行抢写。 */
+  const openingAwaitingAssistantRef = useRef(false);
+  const openingStartedAtRef = useRef(0);
+
+  useEffect(() => {
+    streamPhaseRef.current = streamPhase;
+  }, [streamPhase]);
+
+  const streamVisualActive =
+    streamPhase === "waiting_upstream" ||
+    streamPhase === "streaming_body" ||
+    streamPhase === "turn_committing";
+  const streamBusy = isStreamInteractionLocked(streamPhase);
 
   const day = time.day ?? 0;
   const hour = time.hour ?? 0;
@@ -777,10 +746,6 @@ function PlayContent() {
 
 const LOCAL_FALLBACK_OPENING =
   "一股庞大的知识粗暴地灌进了我的脑子，像有人拎着铁锤敲击颅骨——疼痛顺着脊椎一路炸开，我在冰冷的地面上大口喘气。\n\n眼前是熟悉又陌生的灰色石墙，裂缝里渗出暗色的水渍；头顶昏黄灯管时明时暗，嗡嗡声像压在耳边的低语。空气里混杂着潮湿霉味、金属锈味，还有一丝若有若无的血腥。\n\n我勉强抬起头，意识到这里不是普通的地下室，而是名为「如月公寓」的某个角落——一栋被改造成消化器官的建筑，七层之上盘踞着无法徒手杀死的诡异，而我只是在地下一层的安全阴影里苟延残喘。\n\n某种理性在耳边低语，提醒我：\n^^你可以先跟随直觉点击屏幕上的选项，顺着故事一步步试探这个地方的规则。若擅自输入不可能发生的事情，那些东西会毫不犹豫地抹杀你的念头。^^\n^^当你逐渐理解这里的生存方式时，可以在设置里，用「原石」为自己的属性加点、或在理智崩溃前勉强把自己拉回来——那也许是你唯一能干预命运的筹码。^^";
-
-  useEffect(() => {
-    ensureRuntimeActions();
-  }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -846,7 +811,7 @@ const LOCAL_FALLBACK_OPENING =
 
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
-    isStreaming,
+    streamVisualActive,
     onFrameScroll
   );
 
@@ -865,7 +830,7 @@ const LOCAL_FALLBACK_OPENING =
   }, [logs]);
 
   const latestAssistantRaw = useMemo(() => {
-    if (isStreaming) {
+    if (streamVisualActive) {
       return typeof smoothNarrative === "string" && smoothNarrative.length > 0
         ? smoothNarrative
         : narrativeRef.current ?? "";
@@ -873,7 +838,7 @@ const LOCAL_FALLBACK_OPENING =
     if (liveNarrative) return liveNarrative;
     if (assistantOnlyMessages.length > 0) return assistantOnlyMessages[assistantOnlyMessages.length - 1] ?? "";
     return "";
-  }, [isStreaming, smoothNarrative, liveNarrative, assistantOnlyMessages]);
+  }, [streamVisualActive, smoothNarrative, liveNarrative, assistantOnlyMessages]);
 
   const greenTips = useMemo(() => extractGreenTips(latestAssistantRaw), [latestAssistantRaw]);
 
@@ -890,7 +855,7 @@ const LOCAL_FALLBACK_OPENING =
     if (!scrollRef.current) return;
     const el = scrollRef.current;
     if (userScrolledUpRef.current) return;
-    if (isStreaming) {
+    if (streamVisualActive) {
       el.scrollTop = el.scrollHeight;
     } else {
       if (prevIsStreamingRef.current) {
@@ -899,8 +864,8 @@ const LOCAL_FALLBACK_OPENING =
         el.scrollTop = el.scrollHeight;
       }
     }
-    prevIsStreamingRef.current = isStreaming;
-  }, [smoothNarrative, isStreaming]);
+    prevIsStreamingRef.current = streamVisualActive;
+  }, [smoothNarrative, streamVisualActive]);
 
   useEffect(() => {
     if (intrusionFlashUntil <= Date.now()) {
@@ -981,46 +946,50 @@ const LOCAL_FALLBACK_OPENING =
   }, [isHydrated]);
 
   useEffect(() => {
-    if (!isHydrated || isStreaming || hasTriggeredOpening.current) return;
+    if (!isHydrated || streamBusy || hasTriggeredOpening.current) return;
     const currentLogs = useGameStore.getState().logs ?? [];
     const turn = currentLogs.length;
-    // 仅在还没有任何助手叙事时触发一次 300 字开场白
+    // 仅在还没有任何助手叙事时触发一次主链路开场（单一真相源；本地叙事仅作下方超时降级）
     if (turn > 0) return;
     hasTriggeredOpening.current = true;
+    openingAwaitingAssistantRef.current = true;
+    openingStartedAtRef.current = Date.now();
     void sendAction(OPENING_ACTION, true, false, true);
-  }, [isHydrated, isStreaming]);
+  }, [isHydrated, streamBusy]);
 
-  // 后端长时间无响应或前几次失败时，本地兜底注入一段开场白，避免玩家看到纯黑屏
+  // 开场超时降级：仅当主链路已结束且仍无助手叙事时注入本地开场；若仍在等待上游/流式吐字，则顺延，不与 SSE 竞争。
   useEffect(() => {
     if (!isHydrated) return;
-    let timeoutId: number | undefined;
-    timeoutId = window.setTimeout(() => {
+    const tick = window.setInterval(() => {
+      const logs = useGameStore.getState().logs ?? [];
+      if (logs.some((l) => l && l.role === "assistant")) {
+        openingAwaitingAssistantRef.current = false;
+        return;
+      }
+      if (!openingAwaitingAssistantRef.current) return;
+      const phase = streamPhaseRef.current;
+      if (phase === "waiting_upstream" || phase === "streaming_body" || phase === "turn_committing") {
+        return;
+      }
+      if (Date.now() - openingStartedAtRef.current < 8000) return;
+      openingAwaitingAssistantRef.current = false;
       const state = useGameStore.getState();
-      const logsNow = state.logs ?? [];
-      const hasAssistant = logsNow.some((l) => l && l.role === "assistant");
-      if (hasAssistant) return;
-      // 仅在完全没有助手叙事时注入一次本地开场白
       state.pushLog({ role: "assistant", content: LOCAL_FALLBACK_OPENING });
-
-      // 开场兜底叙事也必须配套给出可点击选项（仅写 UI 层文案，不改任何底层机制）
       const safeDefaultOptions = [
         "查看周围环境",
         "检查背包与随身物品",
         "尝试与附近原住民搭话",
         "谨慎前往下一处房间",
       ];
-      setCurrentOptions(safeDefaultOptions);
-      setPersistCurrentOptions(safeDefaultOptions);
-    }, 8000);
-    return () => {
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-    };
+      state.setCurrentOptions(safeDefaultOptions);
+    }, 400);
+    return () => clearInterval(tick);
   }, [isHydrated]);
 
   // 兜底：若开场叙事已出现但选项为空，补齐 4 个默认选项（避免首次进入看到“无选项”）
   const hasSeededOpeningOptions = useRef(false);
   useEffect(() => {
-    if (!isHydrated || isStreaming) return;
+    if (!isHydrated || streamBusy) return;
     if (hasSeededOpeningOptions.current) return;
     const state = useGameStore.getState();
     const logsNow = state.logs ?? [];
@@ -1037,14 +1006,13 @@ const LOCAL_FALLBACK_OPENING =
       "谨慎前往下一处房间",
     ];
     setCurrentOptions(safeDefaultOptions);
-    setPersistCurrentOptions(safeDefaultOptions);
-  }, [currentOptions.length, inputMode, isHydrated, isStreaming, setCurrentOptions, setPersistCurrentOptions]);
+  }, [currentOptions.length, inputMode, isHydrated, streamBusy, setCurrentOptions]);
 
   useEffect(() => {
     if (
       !isHydrated ||
       !isGameStarted ||
-      isStreaming ||
+      streamBusy ||
       hasTriggeredResume.current
     )
       return;
@@ -1055,7 +1023,7 @@ const LOCAL_FALLBACK_OPENING =
     if (hasTriggeredOpening.current && logs.length === 1) return;
     hasTriggeredResume.current = true;
     void sendAction(last.content, true, true);
-  }, [isHydrated, isGameStarted, isStreaming]);
+  }, [isHydrated, isGameStarted, streamBusy]);
 
   const autoSaveProgress = useCallback(() => {
     if (!isHydrated || !isGameStarted) return;
@@ -1100,7 +1068,7 @@ const LOCAL_FALLBACK_OPENING =
     isResume?: boolean,
     isSystemAction?: boolean
   ) {
-    if (isStreaming || sendActionInFlightRef.current) return;
+    if (streamBusy || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
     if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
       setShowDialoguePaywall(true);
@@ -1118,7 +1086,7 @@ const LOCAL_FALLBACK_OPENING =
     }
 
     sendActionInFlightRef.current = true;
-    setIsStreaming(true);
+    setStreamPhase("waiting_upstream");
     narrativeRef.current = "";
     rawDmBufferRef.current = "";
     setLiveNarrative("");
@@ -1169,7 +1137,7 @@ const LOCAL_FALLBACK_OPENING =
       });
     } catch (fetchErr) {
       streamAbortRef.current = null;
-      setIsStreaming(false);
+      setStreamPhase("idle");
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         return;
       }
@@ -1180,7 +1148,7 @@ const LOCAL_FALLBACK_OPENING =
     }
 
     if (!res.ok || !res.body) {
-      setIsStreaming(false);
+      setStreamPhase("idle");
       const errorText = await res.text().catch(() => "");
       const contentType = res.headers.get("content-type") ?? "";
       let parsedError: unknown = null;
@@ -1195,10 +1163,11 @@ const LOCAL_FALLBACK_OPENING =
         parsedError = null;
       }
 
-      const maybeObj = parsedError as { code?: unknown; upstreamStatus?: unknown } | null;
-      const upstreamStatus =
-        maybeObj && typeof maybeObj === "object" ? Number((maybeObj as any).upstreamStatus ?? 0) : 0;
-      const code = maybeObj && typeof maybeObj === "object" ? String((maybeObj as any).code ?? "") : "";
+      const maybeObj = parsedError as Record<string, unknown> | null;
+      const errRec =
+        maybeObj && typeof maybeObj === "object" && !Array.isArray(maybeObj) ? maybeObj : null;
+      const upstreamStatus = errRec ? Number(errRec["upstreamStatus"] ?? 0) : 0;
+      const code = errRec ? String(errRec["code"] ?? "") : "";
 
       // Print a guaranteed-visible line first (DevTools sometimes shows `{}` for objects).
       const isAuthFailed =
@@ -1251,6 +1220,7 @@ const LOCAL_FALLBACK_OPENING =
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let raw = "";
+    let sawStreamChunk = false;
 
     let streamCancelled = false;
     try {
@@ -1269,6 +1239,10 @@ const LOCAL_FALLBACK_OPENING =
           for (const line of lines) {
             if (!line.startsWith("data:")) continue;
             const chunk = line.slice(5).trimStart();
+            if (!sawStreamChunk && chunk.length > 0) {
+              sawStreamChunk = true;
+              setStreamPhase("streaming_body");
+            }
             raw += chunk;
             rawDmBufferRef.current = raw;
             try {
@@ -1299,7 +1273,7 @@ const LOCAL_FALLBACK_OPENING =
         rawDmBufferRef.current = "";
         narrativeRef.current = "";
         setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
-        setIsStreaming(false);
+        setStreamPhase("idle");
         return;
       }
     } finally {
@@ -1312,7 +1286,7 @@ const LOCAL_FALLBACK_OPENING =
     }
 
     if (streamCancelled) {
-      setIsStreaming(false);
+      setStreamPhase("idle");
       // Could be user abort OR upstream safety cut-off. If we already received a broken JSON fragment, treat as safety intercept.
       const looksLikeJsonFragment = typeof raw === "string" && raw.includes("{") && raw.includes("\"narrative\"");
       const looksTruncated = looksLikeJsonFragment && !raw.trimEnd().endsWith("}");
@@ -1329,9 +1303,10 @@ const LOCAL_FALLBACK_OPENING =
       return;
     }
 
+    setStreamPhase("turn_committing");
     const parsed = tryParseDM(raw);
     if (!parsed) {
-      setIsStreaming(false);
+      setStreamPhase("idle");
       // Potential upstream guardrail cut-off: broken/truncated JSON stream.
       try {
         useGameStore.getState().triggerSecurityFallback("dm_json_parse_failed_or_truncated");
@@ -1535,7 +1510,6 @@ const LOCAL_FALLBACK_OPENING =
 
       if (merged.length > 0) {
         setCurrentOptions(merged.slice(0, 4));
-        setPersistCurrentOptions(merged.slice(0, 4));
       }
     }
 
@@ -1585,8 +1559,7 @@ const LOCAL_FALLBACK_OPENING =
     const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
 
     if (parsed.is_action_legal && !parsed.is_death && shouldAdvanceTime) {
-      const storeAny = useGameStore as any;
-      storeAny.getState().decrementCooldowns();
+      useGameStore.getState().decrementCooldowns();
       const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
       advanceTime();
       const nextTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
@@ -1598,7 +1571,7 @@ const LOCAL_FALLBACK_OPENING =
       }
     }
 
-    setIsStreaming(false);
+    setStreamPhase("idle");
 
     const sanityAfter = useGameStore.getState().stats?.sanity ?? 0;
 
@@ -1635,10 +1608,7 @@ const LOCAL_FALLBACK_OPENING =
   function onUseTalent() {
     if (!talent) return;
     if (talentCdLeft > 0) return;
-    const storeAny = useGameStore as unknown as {
-      getState: () => { useTalent: (t: EchoTalent) => boolean };
-    };
-    const ok = storeAny.getState().useTalent(talent);
+    const ok = useGameStore.getState().useTalent(talent);
     if (!ok) return;
 
     triggerTalentEffect(talent);
@@ -1779,11 +1749,11 @@ const LOCAL_FALLBACK_OPENING =
       >
       {showDialoguePaywall && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 backdrop-blur-xl"
+          className={`fixed inset-0 z-[70] flex items-center justify-center ${glassModalOverlay}`}
           role="dialog"
           aria-modal
         >
-          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/15 bg-slate-900/60 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.85)] backdrop-blur-2xl">
+          <div className={`${glassPlayDialogSurface} p-8`}>
             <h2 className="text-lg font-semibold tracking-wide text-white">
               体验次数已耗尽
             </h2>
@@ -1808,12 +1778,14 @@ const LOCAL_FALLBACK_OPENING =
       )}
       {showExitModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className={`fixed inset-0 z-50 flex items-center justify-center ${glassModalOverlay}`}
           role="dialog"
           aria-modal
           aria-labelledby="exit-modal-title"
         >
-          <div className="mx-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/70 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
+          <div
+            className={`${glassPlayDialogSurface} border-white/10 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)]`}
+          >
             <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
               意识脱离申请
             </h2>
@@ -1873,7 +1845,6 @@ const LOCAL_FALLBACK_OPENING =
                     onClick={() => {
                       const nextMode = inputMode === "options" ? "text" : "options";
                       toggleInputMode();
-                      setPersistInputMode(nextMode);
                       if (nextMode === "text" && !hasShownManualInputComplianceHintRef.current) {
                         hasShownManualInputComplianceHintRef.current = true;
                         triggerComplianceHint();
@@ -1895,7 +1866,7 @@ const LOCAL_FALLBACK_OPENING =
                   </button>
                   <div className="shrink-0 min-w-0">
                     <div className="relative group">
-                      {talent && talentCdLeft === 0 && !isStreaming && (
+                      {talent && talentCdLeft === 0 && !streamBusy && (
                         <div
                           className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
                           aria-hidden
@@ -1904,9 +1875,9 @@ const LOCAL_FALLBACK_OPENING =
                       <button
                         type="button"
                         onClick={onUseTalent}
-                        disabled={!talent || talentCdLeft > 0 || isStreaming}
+                        disabled={!talent || talentCdLeft > 0 || streamBusy}
                         className={`relative truncate rounded-full px-3 py-1.5 text-sm font-bold tracking-wider drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] transition-all md:text-base ${
-                          talent && talentCdLeft === 0 && !isStreaming
+                          talent && talentCdLeft === 0 && !streamBusy
                             ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
                             : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
                         }`}
@@ -1940,18 +1911,6 @@ const LOCAL_FALLBACK_OPENING =
                     >
                       {displayEntries.map((entry, idx) => {
                         const safeContent = typeof entry.content === "string" ? entry.content : "";
-                        if (entry.role === "user") {
-                          return (
-                            <p
-                              key={idx}
-                              className={`mb-6 whitespace-pre-wrap break-words text-[18px] leading-[1.8] ${
-                                isLowSanity ? "text-white/90" : isDarkMoon ? "text-slate-200" : "text-slate-800"
-                              }`}
-                            >
-                              {safeContent}
-                            </p>
-                          );
-                        }
                         return safeContent.includes("获得了新物品，已放入书包") ? (
                           <p
                             key={idx}
@@ -1972,7 +1931,7 @@ const LOCAL_FALLBACK_OPENING =
                     </div>
                   )}
 
-                  {isStreaming ? (
+                  {streamVisualActive ? (
                     <div className="min-h-[100px] animate-[fadeIn_0.8s_ease-out] space-y-3">
                       {smoothThinking ? (
                         // 阶段 1：纯“正在推演...”阶段，只显示一个统一样式的小圈圈
@@ -2028,7 +1987,7 @@ const LOCAL_FALLBACK_OPENING =
                         isLowSanity={isLowSanity}
                       />
                     </div>
-                  ) : displayEntries.length === 0 && !isStreaming ? (
+                  ) : displayEntries.length === 0 && !streamVisualActive ? (
                     <div
                       className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`}
                     />
@@ -2091,11 +2050,10 @@ const LOCAL_FALLBACK_OPENING =
                               }
                               // 点击后立即清空当前选项，让玩家感知到已提交
                               setCurrentOptions([]);
-                              setPersistCurrentOptions([]);
                               playUIClick();
                               void sendAction(option, true);
                             }}
-                            disabled={isStreaming || isGuestDialogueExhausted}
+                            disabled={streamBusy || isGuestDialogueExhausted}
                             className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-medium tracking-wide shadow-sm transition-all duration-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 md:text-base ${optionTextColor} ${optionBorderAndBg}`}
                           >
                             {option}
@@ -2138,12 +2096,12 @@ const LOCAL_FALLBACK_OPENING =
                               ? "bg-red-950/40 text-red-100 placeholder:text-red-400/50 focus:bg-red-950/60"
                               : "bg-white/90 text-slate-800 placeholder:text-slate-500 focus:bg-white"
                         }`}
-                        disabled={isStreaming || isGuestDialogueExhausted}
+                        disabled={streamBusy || isGuestDialogueExhausted}
                       />
                       <button
                         type="button"
                         onClick={onSubmit}
-                        disabled={isStreaming || input.trim().length === 0 || isGuestDialogueExhausted}
+                        disabled={streamBusy || input.trim().length === 0 || isGuestDialogueExhausted}
                         className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition disabled:opacity-40 touch-manipulation ${
                           isLowSanity
                             ? "bg-white/20 text-white"
@@ -2176,7 +2134,7 @@ const LOCAL_FALLBACK_OPENING =
                               ? (showRegisterPrompt ? "体验次数已耗尽，可注册账号以继续执笔创作。" : "")
                               : input.trim().length > MAX_INPUT
                                 ? "文本过长：将被叙事拒绝。"
-                                : isStreaming
+                                : streamBusy
                                   ? "正在生成..."
                                   : "保持简短。保持真实。"}
                           </span>
@@ -2221,7 +2179,7 @@ const LOCAL_FALLBACK_OPENING =
         activeMenu={activeMenu}
         onClose={() => setActiveMenu(null)}
         onUseItem={onUseItem}
-        isStreaming={isStreaming}
+        isStreaming={streamBusy}
         audioMuted={audioMuted}
         onToggleMute={() => {
           toggleMute();

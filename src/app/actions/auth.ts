@@ -3,7 +3,6 @@
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { AuthError } from "next-auth";
-import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signIn } from "../../../auth";
@@ -13,6 +12,13 @@ type AuthActionState = {
   message?: string;
   error?: string;
 };
+
+/** Avoid importing `next/dist/*`; Next.js uses digest-prefixed errors for redirects from server actions. */
+function isNextRedirectError(error: unknown): boolean {
+  if (error == null || typeof error !== "object") return false;
+  const digest = (error as { digest?: unknown }).digest;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -120,7 +126,7 @@ export async function registerUser(
     });
     return { success: true, message: "注册成功" };
   } catch (error) {
-    if (isRedirectError(error)) {
+    if (isNextRedirectError(error)) {
       throw error;
     }
     console.error("Registration Auto SignIn Error:", error);
@@ -167,7 +173,7 @@ export async function loginUser(
           return { success: false, error: "登录验证时发生未知错误" };
       }
     }
-    if (isRedirectError(error)) {
+    if (isNextRedirectError(error)) {
       throw error;
     }
     console.error("Login Backend Error:", error);

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
-import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { BGM_TRACKS, DEFAULT_BGM, isValidBgmTrack } from "@/config/audio";
 import { isMuted } from "@/lib/audioEngine";
 
@@ -23,7 +22,7 @@ export function BgmPlayer() {
   const activeRef = useRef<"a" | "b">("a");
   const rafRef = useRef<number | null>(null);
   const [muted, setMuted] = useState(false);
-  const volume = usePersistStore((s) => s.volume ?? 50);
+  const volume = useGameStore((s) => s.volume ?? 50);
   const targetVolume = (volume / 100) * BASE_VOLUME;
 
   useEffect(() => {

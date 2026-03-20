@@ -3,7 +3,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
-import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
 import { deleteCloudSaveSlot } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
@@ -335,15 +334,10 @@ export default function SettlementPage() {
 
   async function handleRestart() {
     useGameStore.getState().destroySaveData();
-    usePersistStore.getState().destroySaveData();
     await deleteCloudSaveSlot("auto_save");
     const p = useGameStore.persist.clearStorage() as unknown;
     if (p && typeof (p as Promise<unknown>).then === "function") {
       await (p as Promise<void>);
-    }
-    const persistP = (usePersistStore as unknown as { persist?: { clearStorage?: () => void | Promise<void> } }).persist?.clearStorage?.();
-    if (persistP && typeof (persistP as Promise<unknown>).then === "function") {
-      await (persistP as Promise<void>);
     }
     window.location.href = "/";
   }

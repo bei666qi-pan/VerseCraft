@@ -6,8 +6,7 @@ import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2,
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { NPCS } from "@/lib/registry/npcs";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
-import { useGameStore, type CodexEntry, type GameTask } from "@/store/useGameStore";
-import { useGameStore as usePersistStore, type ActiveMenu } from "@/store/gameStore";
+import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import {
   useAchievementsStore,
   type AchievementRecord,
@@ -848,8 +847,8 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
 
-  const volume = usePersistStore((s) => s.volume);
-  const setVolume = usePersistStore((s) => s.setVolume);
+  const volume = useGameStore((s) => s.volume);
+  const setVolume = useGameStore((s) => s.setVolume);
   const achievementRecords = useAchievementsStore((s) => s.records ?? []);
 
   const currentTab = activeMenu ?? "settings";
@@ -873,7 +872,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isStreaming, 
     }
     if (id === "warehouse") onViewedTab?.("warehouse");
     if (id === "tasks") onViewedTab?.("tasks");
-    usePersistStore.getState().setActiveMenu(id);
+    useGameStore.getState().setActiveMenu(id);
   }
 
   const isOpen = activeMenu !== null;

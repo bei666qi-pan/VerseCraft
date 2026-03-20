@@ -63,7 +63,13 @@ export function checksumMiddleware<
   config: StateCreator<T, Mps, Mcs>
 ): StateCreator<T, Mps, Mcs> {
   return ((set, get, api) => {
-    const wrappedSet: typeof set = (partial, replace) => {
+    // Zustand v5 `setState` overloads are strict; runtime paths here match upstream `set`.
+    const applySet = set as (
+      partial: T | Partial<T> | ((state: T) => T | Partial<T>) | null | undefined,
+      replace?: boolean | undefined
+    ) => void;
+
+    const wrappedSet: StoreApi<T>["setState"] = (partial, replace) => {
       const prevState = get();
       const currentFingerprint = prevState._checksum_fingerprint;
       const nextPartial =
@@ -72,7 +78,7 @@ export function checksumMiddleware<
           : partial;
 
       if (nextPartial === undefined || nextPartial === null) {
-        set(nextPartial as T | Partial<T>, replace);
+        applySet(nextPartial, replace);
         return;
       }
 
@@ -88,14 +94,14 @@ export function checksumMiddleware<
       ) as T | Partial<T>;
 
       if (!replace && currentFingerprint === nextFingerprint) {
-        set(nextPartial as T | Partial<T>, replace);
+        applySet(nextPartial as T | Partial<T>, replace);
         return;
       }
 
-      set(withFingerprint, replace);
+      applySet(withFingerprint, replace);
     };
 
-    const state = config(wrappedSet, get, api as StoreApi<T>);
+    const state = config(wrappedSet as typeof set, get, api);
     const seededFingerprint = createStateChecksum(state);
     return { ...state, _checksum_fingerprint: seededFingerprint };
   }) as StateCreator<T, Mps, Mcs>;

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn, signOut } from "next-auth/react";
+import { signOut } from "next-auth/react";
 import { Lightbulb } from "lucide-react";
 import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
@@ -52,9 +52,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [authWarn, setAuthWarn] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
-  const [registerName, setRegisterName] = useState("");
-  const [registerPassword, setRegisterPassword] = useState("");
-  const [registerAutoLoginPending, setRegisterAutoLoginPending] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackContent, setFeedbackContent] = useState("");
   const [feedbackPending, setFeedbackPending] = useState(false);
@@ -108,43 +105,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     return () => window.clearTimeout(t);
   }, [feedbackOpen, feedbackSuccess]);
 
-  useEffect(() => {
-    if (!registerState.success) return;
-    if (registerAutoLoginPending) return;
-    const name = registerName.trim();
-    if (!name || !registerPassword) return;
-
-    let active = true;
-    const run = async () => {
-      setRegisterAutoLoginPending(true);
-      const result = await signIn("credentials", {
-        name,
-        password: registerPassword,
-        redirect: false,
-      });
-      if (!active) return;
-      setRegisterAutoLoginPending(false);
-      if (result?.error) {
-        setToast("注册成功，但系统接入失败，请手动登录。");
-        return;
-      }
-      setAuthOpen(false);
-      setMode("login");
-      setRegisterName("");
-      setRegisterPassword("");
-      router.refresh();
-    };
-
-    void run();
-    return () => {
-      active = false;
-    };
-  }, [registerAutoLoginPending, registerName, registerPassword, registerState.success, router]);
-
-  function requireLoginOrWarn(): boolean {
-    return true;
-  }
-
   function openAuthModal() {
     setAuthOpen((prev) => {
       const next = !prev;
@@ -171,7 +131,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   async function handleContinueAdventure() {
-    if (!requireLoginOrWarn()) return;
     unlockBgmOnUserGesture();
     const rows = await fetchCloudSaves().catch(() => []);
     const auto = (rows as SaveRow[]).find((r) => r.slotId === "auto_save");
@@ -323,7 +282,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   <button
                     type="submit"
                     disabled={loginPending}
-                    className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg白 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
                       loginPending ? "halo-nerve" : ""
                     }`}
                   >
@@ -349,29 +308,27 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     name="name"
                     placeholder="账号（至少2位）"
                     className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                    value={registerName}
-                    onChange={(event) => setRegisterName(event.target.value)}
                   />
                   <input
                     name="password"
                     type="password"
                     placeholder="密码（至少6位）"
                     className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                    value={registerPassword}
-                    onChange={(event) => setRegisterPassword(event.target.value)}
                   />
                   <button
                     type="submit"
-                    disabled={registerPending || registerAutoLoginPending}
+                    disabled={registerPending}
                     className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
-                      registerPending || registerAutoLoginPending ? "halo-nerve" : ""
+                      registerPending ? "halo-nerve" : ""
                     }`}
                   >
-                    {registerPending || registerAutoLoginPending ? "正在连接..." : "注册"}
+                    {registerPending ? "正在连接..." : "注册"}
                   </button>
                   {(registerState.message || registerState.error) && (
                     registerState.success ? (
-                      <p className="mt-2 text-xs text-emerald-400">{registerState.message}</p>
+                      <p className="mt-2 text-xs text-emerald-400">
+                        注册成功，正在接入会话…
+                      </p>
                     ) : (
                       <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
                         {registerState.error}
@@ -411,7 +368,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           <button
             type="button"
             onClick={() => {
-              if (!requireLoginOrWarn()) return;
               unlockBgmOnUserGesture();
               resetForNewGame();
               router.push("/intro");

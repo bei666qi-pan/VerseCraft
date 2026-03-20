@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { ensureStorageReady } from "@/lib/resilientStorage";
+import { migrateLegacyVersecraftGameStateVolume } from "@/lib/migrateLegacyGameState";
 import { useGameStore } from "@/store/useGameStore";
-import { useGameStore as usePersistStore } from "@/store/gameStore";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
 
 export default function HydrationProvider({
@@ -23,17 +23,11 @@ export default function HydrationProvider({
     const runRehydrate = async () => {
       await ensureStorageReady();
       const rehydrateMain = useGameStore.persist.rehydrate();
-      const rehydratePersist =
-        (usePersistStore as { persist?: { rehydrate: () => Promise<unknown> } })
-          .persist?.rehydrate?.() ?? Promise.resolve();
       const rehydrateAchievements =
         (useAchievementsStore as { persist?: { rehydrate: () => Promise<unknown> } }).persist?.rehydrate?.() ??
         Promise.resolve();
-      await Promise.all([
-        Promise.resolve(rehydrateMain),
-        Promise.resolve(rehydratePersist),
-        Promise.resolve(rehydrateAchievements),
-      ]);
+      await Promise.all([Promise.resolve(rehydrateMain), Promise.resolve(rehydrateAchievements)]);
+      await migrateLegacyVersecraftGameStateVolume();
     };
 
     const done = () => setHydrated(true);

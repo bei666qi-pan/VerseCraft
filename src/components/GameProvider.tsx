@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useGameStore } from "@/store/gameStore";
+import { useGameStore } from "@/store/useGameStore";
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const isHydrated = useGameStore((s) => s.isHydrated);
