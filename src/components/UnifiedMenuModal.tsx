@@ -155,8 +155,7 @@ const ACCEL_INTERVAL_MS = 50;
 
 function useUpgradeStepper(
   onUpgradeAttr: (attr: StatType) => void,
-  canUpgrade: (attr: StatType) => boolean,
-  stats: Record<StatType, number>
+  canUpgrade: (attr: StatType) => boolean
 ) {
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -315,7 +314,7 @@ function SettingsPanel({
     if (cur >= 50) return false;
     return originium >= costPerPoint;
   };
-  const stepper = useUpgradeStepper(onUpgradeAttr, canUpgrade, stats);
+  const stepper = useUpgradeStepper(onUpgradeAttr, canUpgrade);
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 overflow-y-auto max-h-[calc(100dvh-120px)]">
       <div>
@@ -699,7 +698,7 @@ function WarehousePanel({ warehouse }: { warehouse: WarehouseItem[] }) {
       <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">仓库</h3>
       <p className="mb-3 text-xs text-slate-500">物品存放于此，无叙事维度要求。使用时有正向作用与对应副作用，收益略大于副作用。</p>
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
-        {(warehouse ?? []).map((w, idx) => (
+        {(warehouse ?? []).map((w) => (
           <button
             key={w.id}
             type="button"

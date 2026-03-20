@@ -21,12 +21,11 @@ export function BgmPlayer() {
   const bRef = useRef<HTMLAudioElement | null>(null);
   const activeRef = useRef<"a" | "b">("a");
   const rafRef = useRef<number | null>(null);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(() => isMuted());
   const volume = useGameStore((s) => s.volume ?? 50);
   const targetVolume = (volume / 100) * BASE_VOLUME;
 
   useEffect(() => {
-    setMuted(isMuted());
     const id = setInterval(() => setMuted(isMuted()), 500);
     return () => clearInterval(id);
   }, []);
@@ -40,7 +39,6 @@ export function BgmPlayer() {
 
   useEffect(() => {
     if (track === prevTrackRef.current) return;
-    const prevTrack = prevTrackRef.current;
     prevTrackRef.current = track;
 
     const a = aRef.current;

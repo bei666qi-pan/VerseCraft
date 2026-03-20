@@ -8,7 +8,7 @@ import type { Item, StatType } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
 import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
-import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
+import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
@@ -22,7 +22,6 @@ import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
 import { injectLocalOpeningFallback } from "@/features/play/opening/injectLocalOpeningFallback";
 import { DEFAULT_FOUR_ACTION_OPTIONS, OPENING_SYSTEM_PROMPT } from "@/features/play/opening/openingCopy";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
-import { formatLocationLabel } from "@/features/play/render/locationLabels";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
@@ -55,21 +54,14 @@ function PlayContent() {
   const setStats = useGameStore((s) => s.setStats);
   const rewindTime = useGameStore((s) => s.rewindTime);
   const popLastNLogs = useGameStore((s) => s.popLastNLogs);
-  const codex = useGameStore((s) => s.codex ?? {});
   const mergeCodex = useGameStore((s) => s.mergeCodex);
-  const hasCheckedCodex = useGameStore((s) => s.hasCheckedCodex ?? false);
-  const warehouse = useGameStore((s) => s.warehouse ?? []);
-  const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
   const currentOptions = currentOptionsFromStore;
-  const originium = useGameStore((s) => s.originium ?? 0);
-  const tasks = useGameStore((s) => s.tasks ?? []);
   const addOriginium = useGameStore((s) => s.addOriginium);
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
-  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
   const setBgm = useGameStore((s) => s.setBgm);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
@@ -101,7 +93,6 @@ function PlayContent() {
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
   const [talentEffectType, setTalentEffectType] = useState<EchoTalent | null>(null);
   const [firstTimeHint, setFirstTimeHint] = useState<string | null>(null);
-  const firstHintShownRef = useRef<Set<string>>(new Set());
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
@@ -112,10 +103,15 @@ function PlayContent() {
   const hasShownManualInputComplianceHintRef = useRef(false);
   const complianceHintTimerRef = useRef<number | null>(null);
   const userScrolledUpRef = useRef(false);
+  const autoScrollRafRef = useRef<number | null>(null);
+  const lastAutoScrollAtRef = useRef(0);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
   const sendActionInFlightRef = useRef(false);
+  const sendActionRef = useRef<
+    (action: string, bypassLengthCheck?: boolean, isResume?: boolean, isSystemAction?: boolean) => Promise<void>
+  >(async () => {});
   const streamPhaseRef = useRef<ChatStreamPhase>("idle");
   /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
   const openingAwaitingAssistantRef = useRef(false);
@@ -130,20 +126,13 @@ function PlayContent() {
   const isChatBusy = doesChatPhaseLockInteraction(streamPhase);
 
   const day = time.day ?? 0;
-  const hour = time.hour ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
-  const isApocalypse = day >= 10;
   const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted);
 
   const isGuestDialogueExhausted = isGuest && dialogueCount >= 50;
 
   const sanity = stats?.sanity ?? 0;
-  const displayLocation = useMemo(() => formatLocationLabel(playerLocation), [playerLocation]);
-
-  const codexKeys = Object.keys(codex ?? {});
-  const warehouseList = warehouse ?? [];
-  const tasksList = tasks ?? [];
   /** 已移除羊皮纸强制引导，不再阻塞对话 */
   const hasAnyGate = false;
   const gateMessage = "";
@@ -210,15 +199,33 @@ function PlayContent() {
     }
   }, [isHydrated, showApocalypseOverlay]);
 
-  const onFrameScroll = useCallback(() => {
+  const scheduleAutoScroll = useCallback((smooth = false) => {
     if (userScrolledUpRef.current || !scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (autoScrollRafRef.current != null) return;
+    autoScrollRafRef.current = requestAnimationFrame(() => {
+      autoScrollRafRef.current = null;
+      const el = scrollRef.current;
+      if (!el || userScrolledUpRef.current) return;
+      const now = performance.now();
+      if (!smooth && now - lastAutoScrollAtRef.current < 48) return;
+      lastAutoScrollAtRef.current = now;
+      if (smooth) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
   }, []);
 
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
     isStreamVisualActive,
-    onFrameScroll
+    () => scheduleAutoScroll(false),
+    {
+      minTickMs: 22,
+      maxTickMs: 140,
+      burstCharsWhenBacklog: 30,
+    }
   );
 
   const displayEntries = useMemo(() => {
@@ -258,20 +265,20 @@ function PlayContent() {
   }, []);
 
   useEffect(() => {
-    if (!scrollRef.current) return;
-    const el = scrollRef.current;
-    if (userScrolledUpRef.current) return;
-    if (isStreamVisualActive) {
-      el.scrollTop = el.scrollHeight;
-    } else {
-      if (prevIsStreamVisualActiveRef.current) {
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      } else {
-        el.scrollTop = el.scrollHeight;
-      }
-    }
+    if (!scrollRef.current || userScrolledUpRef.current) return;
+    if (isStreamVisualActive) scheduleAutoScroll(false);
+    else if (prevIsStreamVisualActiveRef.current) scheduleAutoScroll(true);
+    else scheduleAutoScroll(false);
     prevIsStreamVisualActiveRef.current = isStreamVisualActive;
-  }, [smoothNarrative, isStreamVisualActive]);
+  }, [smoothNarrative, isStreamVisualActive, scheduleAutoScroll]);
+
+  useEffect(() => {
+    return () => {
+      if (autoScrollRafRef.current != null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (intrusionFlashUntil <= Date.now()) {
@@ -360,7 +367,7 @@ function PlayContent() {
     hasTriggeredOpening.current = true;
     openingAwaitingAssistantRef.current = true;
     openingStartedAtRef.current = Date.now();
-    void sendAction(OPENING_SYSTEM_PROMPT, true, false, true);
+    void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
   }, [isHydrated, isChatBusy]);
 
   // 开场超时降级：仅当主链路已结束且仍无助手叙事时注入本地开场；若仍在等待上游/流式吐字，则顺延，不与 SSE 竞争。
@@ -414,7 +421,7 @@ function PlayContent() {
     if (!last || last.role !== "user") return;
     if (hasTriggeredOpening.current && logs.length === 1) return;
     hasTriggeredResume.current = true;
-    void sendAction(last.content, true, true);
+    void sendActionRef.current(last.content, true, true);
   }, [isHydrated, isGameStarted, isChatBusy]);
 
   const autoSaveProgress = useCallback(() => {
@@ -969,6 +976,8 @@ function PlayContent() {
     }
   }
 
+  sendActionRef.current = sendAction;
+
   function onSubmit() {
     const trimmed = input.trim();
     if (trimmed.length > MAX_INPUT) {
@@ -1261,17 +1270,18 @@ export default function PlayPageWrapper() {
   const isHydrated = useGameStore((s) => s.isHydrated);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
 
-  if (!isHydrated || !isGameStarted) {
-    return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-[#0f172a] text-white">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
-          <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
-          <p className="text-sm text-slate-400">读取世界线中...</p>
+  return (
+    <div className="relative min-h-[100dvh]">
+      <PlayContent />
+      {(!isHydrated || !isGameStarted) && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#0f172a]/65 backdrop-blur-xl">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
+            <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
+            <p className="text-sm text-slate-300">读取世界线中...</p>
+          </div>
         </div>
-      </main>
-    );
-  }
-
-  return <PlayContent />;
+      )}
+    </div>
+  );
 }

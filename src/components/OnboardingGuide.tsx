@@ -44,12 +44,12 @@ export function OnboardingGuide({
     if (!step) return;
     const r = getTargetRect(step.targetSelector);
     setRect(r);
-  }, [step?.targetSelector]);
+  }, [step]);
 
   useEffect(() => {
     if (!step) return;
     onBeforeStep?.(currentStep);
-    updateRect();
+    const firstRaf = requestAnimationFrame(updateRect);
 
     const el = document.querySelector(step.targetSelector);
     if (el && typeof ResizeObserver !== "undefined") {
@@ -57,10 +57,12 @@ export function OnboardingGuide({
       obs.observe(el);
       resizeObsRef.current = obs;
       return () => {
+        cancelAnimationFrame(firstRaf);
         obs.disconnect();
         resizeObsRef.current = null;
       };
     }
+    return () => cancelAnimationFrame(firstRaf);
   }, [step, currentStep, onBeforeStep, updateRect]);
 
   useEffect(() => {

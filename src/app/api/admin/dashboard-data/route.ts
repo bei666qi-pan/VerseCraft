@@ -31,9 +31,10 @@ export async function GET() {
 
     const { ids: onlineIds } = await getOnlineUsersFromPresence().catch((error) => {
       const err = error as Error;
+      const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
       console.error(
         `\x1b[31m[api/admin/dashboard-data] Redis presence failed\x1b[0m`,
-        { message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+        { message: err?.message, cause, stack: err?.stack, error }
       );
       return { ids: [], count: 0 };
     });
@@ -169,9 +170,10 @@ export async function GET() {
     });
   } catch (error) {
     const err = error as Error;
+    const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/admin/dashboard-data] handler failed\x1b[0m`,
-      { message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      { message: err?.message, cause, stack: err?.stack, error }
     );
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

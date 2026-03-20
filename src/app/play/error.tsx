@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 
 export default function PlayError({
   error,
@@ -26,9 +27,9 @@ export default function PlayError({
       >
         重试
       </button>
-      <a href="/" className="mt-4 text-sm text-slate-500 hover:text-slate-300">
+      <Link href="/" className="mt-4 text-sm text-slate-500 hover:text-slate-300">
         返回首页
-      </a>
+      </Link>
     </main>
   );
 }

@@ -1,6 +1,5 @@
 // src/app/play/layout.tsx
 import { type ReactNode } from "react";
-import { auth } from "../../../auth";
 import { PlayAuthGuard } from "@/components/PlayAuthGuard";
 import { GuestSoftNudge } from "@/components/GuestSoftNudge";
 

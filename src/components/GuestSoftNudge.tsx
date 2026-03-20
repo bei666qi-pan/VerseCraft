@@ -12,9 +12,6 @@ type GuestSoftNudgeProps = {
 const THIRTY_MINUTES_SECONDS = 30 * 60;
 
 export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
-  // 避免在核心游戏界面长期遮挡视野：暂时关闭 /play 里的游客软提示
-  if (context === "play") return null;
-
   const pathname = usePathname();
 
   const isGuest = useGameStore((s) => s.isGuest);
@@ -54,14 +51,17 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
     if (context !== "settlement") return;
     if (hasShownGuestSoftNudge) return;
 
-    setVisible(true);
+    const openTimer = window.setTimeout(() => setVisible(true), 0);
     markGuestSoftNudgeShown();
 
     const timer = window.setTimeout(() => {
       setVisible(false);
     }, 2000);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(openTimer);
+      window.clearTimeout(timer);
+    };
   }, [context, hasShownGuestSoftNudge, isGuest, markGuestSoftNudgeShown]);
 
   // 基于 playTime / visitCount 的全局触发
@@ -74,7 +74,7 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
 
     if (!reachedPlayTime && !isSecondVisit) return;
 
-    setVisible(true);
+    const openTimer = window.setTimeout(() => setVisible(true), 0);
     markGuestSoftNudgeShown();
 
     const timer = window.setTimeout(() => {
@@ -82,11 +82,13 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
     }, 2000);
 
     return () => {
+      window.clearTimeout(openTimer);
       window.clearTimeout(timer);
     };
   }, [hasShownGuestSoftNudge, isGuest, markGuestSoftNudgeShown, playTimeSeconds, visitCount]);
 
-  if (!visible || !isGuest) return null;
+  // 避免在核心游戏界面长期遮挡视野：暂时关闭 /play 里的游客软提示
+  if (context === "play" || !visible || !isGuest) return null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center">

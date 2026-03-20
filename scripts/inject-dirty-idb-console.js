@@ -14,8 +14,6 @@
   const DB_NAME = "keyval-store";
   const STORE_NAME = "keyval";
   const KEY_MAIN = "versecraft-storage";
-  const KEY_PERSIST = "versecraft-game-state";
-
   // 场景 A：version: 0 的旧结构（缺少 dynamicNpcStates、tasks 等新字段）
   const dirtyStateV0 = {
     state: {

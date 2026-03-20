@@ -20,9 +20,11 @@ const idbStorage = createResilientIdbStorage();
 
 /** 防御性迁移：当本地持久化数据版本不匹配时，直接丢弃旧数据，使用初始状态，避免旧 Schema 缺少 NPC/物品字段导致渲染崩溃 */
 function migratePersistedState(
-  _persistedState: unknown,
-  _fromVersion: number
+  persistedState: unknown,
+  fromVersion: number
 ): Record<string, unknown> {
+  void persistedState;
+  void fromVersion;
   return {};
 }
 
@@ -510,7 +512,8 @@ export const useGameStore = create<GameState>()(
 
       markGameOver: () =>
         set((s) => {
-          const { auto_save, ...rest } = s.saveSlots ?? {};
+          const { auto_save: _autoSave, ...rest } = s.saveSlots ?? {};
+          void _autoSave;
           return {
             isGameStarted: false,
             saveSlots: rest,
@@ -530,7 +533,7 @@ export const useGameStore = create<GameState>()(
         })),
 
       clearSaveDataKeepLogs: () =>
-        set((s) => ({
+        set(() => ({
           isGameStarted: false,
           saveSlots: {},
           inventory: [],
@@ -969,6 +972,7 @@ export const useGameStore = create<GameState>()(
         set((s) => {
           const loadedLogs = data.logs ?? [];
           const hasProgress = Array.isArray(loadedLogs) && loadedLogs.length > 0;
+          void hasProgress;
           return {
             currentSaveSlot: slotId,
             saveSlots: { ...s.saveSlots, [slotId]: data },

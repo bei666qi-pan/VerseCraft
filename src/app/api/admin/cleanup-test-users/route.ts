@@ -34,9 +34,10 @@ export async function POST() {
     });
   } catch (error) {
     const err = error as Error;
+    const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/admin/cleanup-test-users] DB operation failed\x1b[0m`,
-      { message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      { message: err?.message, cause, stack: err?.stack, error }
     );
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

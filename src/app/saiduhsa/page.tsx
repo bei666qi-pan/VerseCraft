@@ -149,11 +149,12 @@ export default async function ShadowAdminPage() {
       />
     );
   } catch (error) {
-    const err = error as any;
+    const err = error as Record<string, unknown> | null;
     // Print a guaranteed-visible line first (DevTools/Overlay may show `{}` for objects).
     const errText = (() => {
       try {
-        return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        if (error instanceof Error) return `${error.name}: ${error.message}`;
+        return String(error);
       } catch {
         return "Unknown error";
       }
@@ -163,13 +164,13 @@ export default async function ShadowAdminPage() {
     console.warn(`[saiduhsa] admin page render failed: ${errText}`);
     console.warn("[saiduhsa] admin page render failed detail", {
       text: errText,
-      name: err?.name,
-      message: err?.message,
-      code: err?.code,
-      detail: err?.detail,
-      hint: err?.hint,
+      name: typeof err?.name === "string" ? err.name : undefined,
+      message: typeof err?.message === "string" ? err.message : undefined,
+      code: typeof err?.code === "string" ? err.code : undefined,
+      detail: typeof err?.detail === "string" ? err.detail : undefined,
+      hint: typeof err?.hint === "string" ? err.hint : undefined,
       cause: err?.cause,
-      stack: err?.stack,
+      stack: typeof err?.stack === "string" ? err.stack : undefined,
     });
 
     // Avoid falling into the global error boundary (which misleadingly suggests clearing browser cache).

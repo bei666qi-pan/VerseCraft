@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearVersecraftStorage } from "@/lib/resilientStorage";
 
@@ -43,12 +44,9 @@ export default function Error({
       >
         清除进度并返回首页
       </button>
-      <a
-        href="/"
-        className="mt-4 text-sm text-slate-500 hover:text-slate-300"
-      >
+      <Link href="/" className="mt-4 text-sm text-slate-500 hover:text-slate-300">
         返回首页
-      </a>
+      </Link>
     </main>
   );
 }

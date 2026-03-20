@@ -13,7 +13,7 @@ import { compressMemory } from "@/lib/memoryCompress";
 import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
 import { markUserActive } from "@/lib/presence";
 import { resolveDeepSeekConfig } from "@/lib/env";
-import { validateChatRequest, type IncomingMessage } from "@/lib/security/chatValidation";
+import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
 import { safeBlockedDmJson } from "@/lib/security/policy";
@@ -159,6 +159,7 @@ function buildSystemPrompt(
     "",
     "请严格以 JSON 格式输出，Schema 如下：",
     '{ "is_action_legal": boolean, "sanity_damage": number, "narrative": "以第一人称视角推进的恐怖悬疑剧情", "is_death": boolean, "consumes_time": boolean, "consumed_items": [], "codex_updates": [可选], "awarded_items": [可选,道具→行囊], "awarded_warehouse_items": [可选,物品→仓库], "options": ["选项1","选项2","选项3","选项4"], "currency_change": 0, "new_tasks": [可选], "task_updates": [可选], "player_location": "玩家行动后所处的房间节点ID", "npc_location_updates": [可选,{id:"N-xxx",to_location:"房间节点ID"}], "bgm_track": "bgm_1_calm 或其他BGM键" }',
+    "为提升流式可读性，JSON 字段顺序请优先输出 narrative（即在合法字段后尽早给出 narrative 的内容）。",
     "",
     "## 【BGM 背景音乐法则（绝对执行）】",
     "",
@@ -359,9 +360,10 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
       .where(eq(users.id, userId));
   } catch (error) {
     const err = error as Error;
+    const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/chat] persistTokenUsage failed\x1b[0m`,
-      { userId, tokenDelta, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      { userId, tokenDelta, message: err?.message, cause, stack: err?.stack, error }
     );
   }
 }
@@ -488,9 +490,10 @@ export async function POST(req: Request) {
       }
     } catch (error) {
       const err = error as Error;
+      const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
       console.error(
         `\x1b[31m[api/chat] failed to load session memory\x1b[0m`,
-        { userId, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+        { userId, message: err?.message, cause, stack: err?.stack, error }
       );
     }
   }
@@ -682,10 +685,11 @@ export async function POST(req: Request) {
   } catch (error) {
     clearTimeout(timeoutId);
     const err = error as Error;
+    const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     const isTimeout = err?.name === "AbortError" || /abort|timeout/i.test(err?.message ?? "");
     console.error(
       `\x1b[31m[api/chat] upstream fetch failed\x1b[0m`,
-      { apiUrl, model, isTimeout, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      { apiUrl, model, isTimeout, message: err?.message, cause, stack: err?.stack, error }
     );
     return NextResponse.json(
       { error: isTimeout ? "Upstream Timeout" : "Upstream Error" },
@@ -774,9 +778,10 @@ export async function POST(req: Request) {
       if (userId && toPersist > 0) {
         await incrementQuota(userId, toPersist).catch((error) => {
           const err = error as Error;
+          const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
           console.error(
             `\x1b[31m[api/chat] failed to increment quota\x1b[0m`,
-            { userId, toPersist, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+            { userId, toPersist, message: err?.message, cause, stack: err?.stack, error }
           );
         });
       }
@@ -992,9 +997,10 @@ export async function POST(req: Request) {
       }
     } catch (error) {
       const err = error as Error;
+      const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
       console.error(
         `\x1b[31m[api/chat] stream pipe failed\x1b[0m`,
-        { apiUrl, model, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+        { apiUrl, model, message: err?.message, cause, stack: err?.stack, error }
       );
       try {
         await reader.cancel();
@@ -1005,9 +1011,10 @@ export async function POST(req: Request) {
     }
   })().catch((error) => {
     const err = error as Error;
+    const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/chat] background task crashed\x1b[0m`,
-      { apiUrl, model, message: err?.message, cause: (err as any)?.cause, stack: err?.stack, error }
+      { apiUrl, model, message: err?.message, cause, stack: err?.stack, error }
     );
   });
 

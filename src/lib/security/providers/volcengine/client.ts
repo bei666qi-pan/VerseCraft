@@ -35,9 +35,10 @@ export async function callVolcengineModeration(input: string, context: Moderatio
     });
 
     const txt = await res.text();
-    let parsed: any = null;
+    let parsed: Record<string, unknown> | null = null;
     try {
-      parsed = txt ? JSON.parse(txt) : null;
+      const value = txt ? JSON.parse(txt) : null;
+      parsed = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
     } catch {
       parsed = null;
     }
@@ -46,21 +47,21 @@ export async function callVolcengineModeration(input: string, context: Moderatio
       return {
         ok: false,
         status: res.status,
-        providerRequestId: parsed?.request_id ?? undefined,
-        error: parsed?.error ?? `http_${res.status}`,
+        providerRequestId: typeof parsed?.request_id === "string" ? parsed.request_id : undefined,
+        error: typeof parsed?.error === "string" ? parsed.error : `http_${res.status}`,
       };
     }
 
     return {
       ok: true,
       status: res.status,
-      providerRequestId: parsed?.request_id ?? undefined,
+      providerRequestId: typeof parsed?.request_id === "string" ? parsed.request_id : undefined,
       result: {
-        decision: parsed?.decision ?? "review",
+        decision: typeof parsed?.decision === "string" ? parsed.decision : "review",
         score: Number(parsed?.score ?? 50),
-        labels: Array.isArray(parsed?.labels) ? parsed.labels : [],
+        labels: Array.isArray(parsed?.labels) ? parsed.labels.map(String) : [],
         reason: typeof parsed?.reason === "string" ? parsed.reason : "provider_response",
-        requestId: parsed?.request_id,
+        requestId: typeof parsed?.request_id === "string" ? parsed.request_id : undefined,
       },
     };
   } catch (error) {

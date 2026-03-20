@@ -49,8 +49,7 @@ function generateSettlementReview(
   grade: SettlementGrade,
   isDead: boolean,
   kills: number,
-  maxFloor: number,
-  survivalHours: number
+  maxFloor: number
 ): [string, string] {
   if (grade === "S") {
     if (kills >= 8) {
@@ -220,8 +219,7 @@ export default function SettlementPage() {
     grade,
     isDead,
     kills,
-    maxFloor,
-    survivalHours
+    maxFloor
   );
 
   const handleSubmit = useCallback(async () => {

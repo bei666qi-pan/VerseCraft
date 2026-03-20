@@ -1,12 +1,115 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import { memo, type ReactNode, type RefObject } from "react";
 import type { CSSProperties } from "react";
 import { DMNarrativeBlock, renderNarrativeText } from "../render/narrative";
 
 export type PlayStoryDisplayEntry = { role: "assistant"; content: string };
 
-export function PlayStoryScroll({
+const StoryHistory = memo(function StoryHistory({
+  displayEntries,
+  isLowSanity,
+  isDarkMoon,
+}: {
+  displayEntries: PlayStoryDisplayEntry[];
+  isLowSanity: boolean;
+  isDarkMoon: boolean;
+}) {
+  if (displayEntries.length === 0) return null;
+  return (
+    <div
+      className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
+    >
+      {displayEntries.map((entry, idx) => {
+        const safeContent = typeof entry.content === "string" ? entry.content : "";
+        return safeContent.includes("获得了新物品，已放入书包") ? (
+          <p
+            key={idx}
+            className="mb-6 text-base font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+          >
+            {safeContent.replace(/\*\*/g, "")}
+          </p>
+        ) : (
+          <div key={idx} className="mb-6">
+            <DMNarrativeBlock
+              content={safeContent}
+              isDarkMoon={isDarkMoon}
+              isLowSanity={isLowSanity}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
+const StreamPanel = memo(function StreamPanel({
+  isStreamVisualActive,
+  smoothThinking,
+  smoothNarrative,
+  smoothComplete,
+  inputMode,
+  isLowSanity,
+  isDarkMoon,
+}: {
+  isStreamVisualActive: boolean;
+  smoothThinking: boolean;
+  smoothNarrative: string;
+  smoothComplete: boolean;
+  inputMode: string;
+  isLowSanity: boolean;
+  isDarkMoon: boolean;
+}) {
+  if (!isStreamVisualActive) return null;
+  return (
+    <div className="min-h-[140px] animate-[fadeIn_0.35s_ease-out] space-y-3">
+      {smoothThinking ? (
+        <div className="flex items-center gap-3 py-3">
+          <div className="relative flex h-6 w-6 items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+          </div>
+          <span className="bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
+            正在生成...
+          </span>
+        </div>
+      ) : (
+        <>
+          <div
+            className={
+              isLowSanity
+                ? "space-y-6 text-[18px] leading-[1.8] text-white"
+                : isDarkMoon
+                  ? "space-y-6 text-[18px] leading-[1.8] text-slate-200"
+                  : "space-y-6 text-[18px] leading-[1.8] text-slate-800"
+            }
+          >
+            <span className="whitespace-pre-wrap">
+              {renderNarrativeText(smoothNarrative, { plainOnly: true })}
+            </span>
+            {!smoothComplete && smoothNarrative.length > 0 && (
+              <span
+                className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+                aria-hidden
+              />
+            )}
+          </div>
+          {smoothComplete && inputMode === "options" && (
+            <div className="flex items-center gap-3 pt-2 text-xs text-slate-400">
+              <div className="relative flex h-6 w-6 items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
+                <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+              </div>
+              <span>生成选项中...</span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+});
+
+export const PlayStoryScroll = memo(function PlayStoryScroll({
   scrollRef,
   onScrollContainer,
   displayEntries,
@@ -45,78 +148,19 @@ export function PlayStoryScroll({
       style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as CSSProperties}
     >
       <div className="space-y-6">
-        {displayEntries.length > 0 && (
-          <div
-            className={`animate-[fadeIn_0.8s_ease-out] ${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}
-          >
-            {displayEntries.map((entry, idx) => {
-              const safeContent = typeof entry.content === "string" ? entry.content : "";
-              return safeContent.includes("获得了新物品，已放入书包") ? (
-                <p
-                  key={idx}
-                  className="mb-6 text-base font-bold text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]"
-                >
-                  {safeContent.replace(/\*\*/g, "")}
-                </p>
-              ) : (
-                <div key={idx} className="mb-6">
-                  <DMNarrativeBlock
-                    content={safeContent}
-                    isDarkMoon={isDarkMoon}
-                    isLowSanity={isLowSanity}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <StoryHistory displayEntries={displayEntries} isDarkMoon={isDarkMoon} isLowSanity={isLowSanity} />
 
-        {isStreamVisualActive ? (
-          <div className="min-h-[100px] animate-[fadeIn_0.8s_ease-out] space-y-3">
-            {smoothThinking ? (
-              <div className="flex items-center gap-3 py-4">
-                <div className="relative flex h-6 w-6 items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
-                  <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-                </div>
-                <span className="animate-pulse bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
-                  正在生成...
-                </span>
-              </div>
-            ) : (
-              <>
-                <div
-                  className={
-                    isLowSanity
-                      ? "space-y-6 text-[18px] leading-[1.8] text-white"
-                      : isDarkMoon
-                        ? "space-y-6 text-[18px] leading-[1.8] text-slate-200"
-                        : "space-y-6 text-[18px] leading-[1.8] text-slate-800"
-                  }
-                >
-                  <span className="whitespace-pre-wrap">
-                    {renderNarrativeText(smoothNarrative, { plainOnly: true })}
-                  </span>
-                  {!smoothComplete && (
-                    <span
-                      className="ml-1 inline-block h-5 w-1.5 align-middle bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"
-                      aria-hidden
-                    />
-                  )}
-                </div>
-                {smoothComplete && inputMode === "options" && (
-                  <div className="flex items-center gap-3 pt-2 text-xs text-slate-400">
-                    <div className="relative flex h-6 w-6 items-center justify-center">
-                      <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
-                      <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-                    </div>
-                    <span>生成选项中...</span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        ) : liveNarrative ? (
+        <StreamPanel
+          isStreamVisualActive={isStreamVisualActive}
+          smoothThinking={smoothThinking}
+          smoothNarrative={smoothNarrative}
+          smoothComplete={smoothComplete}
+          inputMode={inputMode}
+          isDarkMoon={isDarkMoon}
+          isLowSanity={isLowSanity}
+        />
+
+        {!isStreamVisualActive && liveNarrative ? (
           <div className="animate-[fadeIn_0.8s_ease-out]">
             <DMNarrativeBlock
               content={liveNarrative}
@@ -165,4 +209,4 @@ export function PlayStoryScroll({
       </div>
     </div>
   );
-}
+});

@@ -52,15 +52,13 @@
   - `src/lib/idbDebouncedStorage.ts`
   - `src/lib/resilientStorage.ts`
 
-### 双 Store 架构（绝对保留）
-1. **主游戏 Store**
+### 单一主 Store 架构（统一后）
+1. **主游戏 Store（唯一事实源）**
    - `src/store/useGameStore.ts`
-   - 承载：角色、时间、存档、日志、图鉴、任务、行囊、仓库、位置、原石、游客限制等核心游戏状态
-2. **轻量 UI / 输入模式 Store**
-   - `src/store/gameStore.ts`
-   - 承载：`inputMode`、`currentOptions`、`activeMenu`、`volume` 等轻 UI 状态
-
-**除非用户明确要求，不要合并这两个 Store。**
+   - 承载：角色、时间、存档、日志、图鉴、任务、行囊、仓库、位置、原石、游客限制，以及 UI 侧输入模式/当前选项/菜单等状态
+2. **禁止恢复旧双 Store**
+   - `src/store/gameStore.ts` 已移除，后续实现不得重新引入“轻 UI 独立 store”
+   - 若涉及输入模式、选项、菜单、音量等状态，统一在 `useGameStore` 扩展
 
 ### 后端与基础设施
 - Route Handlers：`src/app/api/**/route.ts`
@@ -100,7 +98,7 @@
 ---
 
 ## 5. 绝对禁止事项
-1. 不要把双 Store 合并成单 Store
+1. 不要把单一主 Store 拆回双 Store
 2. 不要把 registry 内容硬编码到页面 JSX 里
 3. 不要无授权替换 Zustand、Tailwind、Drizzle、NextAuth、Redis 方案
 4. 不要改动现有路由语义与页面职责
@@ -220,6 +218,10 @@
 ## 9. 流式叙事与前端承接规则
 如果任务涉及 `/play` 页、SSE 承接、流式文本展示，必须遵守：
 
+### Stream phase 单一语义源
+- 交互锁定与流式视觉必须由显式 `stream phase` 驱动（如 `idle / waiting_upstream / streaming_body / turn_committing / error`）。
+- 不要在页面内散落新的“临时布尔状态机”替代 phase 语义。
+
 1. narrative / JSON 提取优先使用 **`indexOf` + `slice`** 这类可控方案
 2. 不要使用脆弱的复杂正则去“猜” JSON 边界
 3. 增量文本渲染优先使用队列 + `requestAnimationFrame`
@@ -227,6 +229,14 @@
 5. 流式过程中禁止滥用 `scrollTo({ behavior: "smooth" })`
 6. 流式过程中优先使用即时滚动；完成后再平滑滚动
 7. 修复问题时优先保持现有视觉节奏，不要顺手改整套交互
+
+### 开场链路准则（统一后）
+- 开场只允许一个主链路请求（主 `/api/chat`）。
+- 本地开场文案仅允许作为“超时降级”，且必须避免与正在进行的 SSE 流竞争写入。
+
+### 注册会话准则（统一后）
+- 注册成功后由服务端直接建立会话。
+- 禁止恢复旧的“注册后客户端自动登录补丁”描述与实现。
 
 ---
 
@@ -286,8 +296,7 @@ NPC / 诡异的状态必须保持实体级隔离，尤其是：
 
 - 页面：`src/app/*`
 - 组件：`src/components/*`
-- 主游戏状态：`src/store/useGameStore.ts`
-- 轻 UI 状态：`src/store/gameStore.ts`
+- 主游戏与 UI 统一状态：`src/store/useGameStore.ts`
 - 注册表 / 世界观：`src/lib/registry/*`
 - 工具与基础能力：`src/lib/*`
 - API：`src/app/api/**/route.ts`
@@ -380,15 +389,14 @@ NPC / 诡异的状态必须保持实体级隔离，尤其是：
 以下区域一旦改坏，影响范围会很大，必须谨慎：
 
 1. `src/store/useGameStore.ts`
-2. `src/store/gameStore.ts`
-3. `src/components/HydrationProvider.tsx`
-4. `src/lib/resilientStorage.ts`
-5. `src/app/api/chat/route.ts`
-6. `src/app/play/page.tsx`
-7. `src/db/schema.ts`
-8. `next.config.ts`
-9. `Dockerfile`
-10. `docker-compose.yml`
+2. `src/components/HydrationProvider.tsx`
+3. `src/lib/resilientStorage.ts`
+4. `src/app/api/chat/route.ts`
+5. `src/app/play/page.tsx`
+6. `src/db/schema.ts`
+7. `next.config.ts`
+8. `Dockerfile`
+9. `docker-compose.yml`
 
 这些文件的修改必须是**强理由、强自检、强兼容**。
 
@@ -411,7 +419,7 @@ NPC / 诡异的状态必须保持实体级隔离，尤其是：
 
 - 代码与仓库当前技术栈一致
 - 不破坏 Next.js 16 / React 19 / SSR / hydration
-- 不破坏双 Store 架构
+- 不破坏单一主 Store 架构（`useGameStore`）
 - 不破坏 `/api/chat` 的 JSON 契约
 - 不破坏现有 route topology
 - UI / 文案 / 叙事保持中文与产品气质

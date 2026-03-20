@@ -15,9 +15,10 @@ const MAX_MESSAGE_CHARS = 4000;
 const MAX_PLAYER_CONTEXT_CHARS = 6000;
 
 export function validateChatRequest(body: unknown): ChatValidationResult {
-  const rawMessages = (body as any)?.messages;
-  const rawPlayerContext = (body as any)?.playerContext;
-  const rawSessionId = (body as any)?.sessionId;
+  const bodyObj = (body ?? {}) as Record<string, unknown>;
+  const rawMessages = bodyObj.messages;
+  const rawPlayerContext = bodyObj.playerContext;
+  const rawSessionId = bodyObj.sessionId;
 
   if (!Array.isArray(rawMessages)) {
     return { ok: false, status: 400, error: "messages must be an array" };

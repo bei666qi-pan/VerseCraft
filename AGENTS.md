@@ -3,7 +3,7 @@
 ## Cursor Cloud specific instructions
 
 ### Project overview
-VerseCraft (文界工坊) is a single-player browser-based text adventure game (Next.js 15 + React 19 + Tailwind CSS v4 + Zustand 5). All UI text is in Simplified Chinese. There is no database — state is persisted client-side via IndexedDB (`idb-keyval`).
+VerseCraft (文界工坊) is a single-player browser-based text adventure game (Next.js 15 + React 19 + Tailwind CSS v4 + Zustand 5). All UI text is in Simplified Chinese. The project uses PostgreSQL + Drizzle for account/session and server data, while gameplay state remains client-first persisted via IndexedDB (`idb-keyval`).
 
 ### Key dev commands
 See `package.json` scripts. Summary:
@@ -45,6 +45,23 @@ useEffect(() => {
 }, []);
 ```
 Render a skeleton/loader while `isHydrated === false`. **Never** use `useSyncExternalStore` for this.
+
+### 3.1 Single store convention (play flow)
+- Use **one unified store**: `src/store/useGameStore.ts`.
+- Do not re-introduce `src/store/gameStore.ts` or split play state back into dual stores.
+- Input mode / current options / active menu related state belongs to `useGameStore`.
+
+### 3.2 Stream phase convention
+- Play interaction lock and streaming visuals must be driven by explicit chat phases.
+- Keep phase helpers centralized and avoid ad-hoc boolean scattering in page components.
+
+### 3.3 Opening flow convention
+- Opening must have **one primary chain** (main `/api/chat` request).
+- Local fallback narrative is timeout-only degradation, and must never race-write against active SSE streaming.
+
+### 3.4 Registration/session convention
+- Registration success should establish server-side session directly.
+- Do not add client-side “auto-login after register” workaround paths unless explicitly requested.
 
 ### 4. DeepSeek API message sanitization
 Before sending multi-turn chat history to the Volcengine DeepSeek endpoint, **strip `reasoning_content`** (chain-of-thought) from every message using `.map()`:

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { LOCATION_LABELS } from "./locationLabels";
 
 export const BLOOD_MARKER = "{{BLOOD}}";
@@ -152,7 +152,7 @@ export function extractGreenTips(text: string): string[] {
   return tips;
 }
 
-export function DMNarrativeBlock({
+export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   content,
   isDarkMoon,
   isLowSanity,
@@ -186,4 +186,4 @@ export function DMNarrativeBlock({
       )}
     </div>
   );
-}
+});

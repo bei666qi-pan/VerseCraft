@@ -123,6 +123,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     return () => window.clearTimeout(timer);
   }, [isConnecting]);
 
+  function closeAuthModal() {
+    setAuthOpen(false);
+    setIsConnecting(false);
+    setMode("login");
+  }
+
   async function handleLogout() {
     await signOut({ redirect: false });
     setUser(null);
@@ -225,7 +231,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
             <div
               className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-              onClick={() => setAuthOpen(false)}
+              onClick={closeAuthModal}
             />
             <div className="relative w-full max-w-md rounded-3xl border border-white/20 bg-slate-900/85 px-6 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.9)] backdrop-blur-2xl">
               <div className="flex items-center justify-between gap-4">
@@ -251,7 +257,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setAuthOpen(false)}
+                  onClick={closeAuthModal}
                   className="rounded-full border border-slate-600/60 bg-slate-800/80 px-3 py-1 text-xs text-slate-300 hover:border-slate-400 hover:text-slate-100"
                 >
                   关闭
@@ -286,7 +292,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       loginPending ? "halo-nerve" : ""
                     }`}
                   >
-                    {loginPending ? "正在连接..." : "登录"}
+                    {loginPending ? "处理中..." : "登录"}
                   </button>
                   {!loginState.success && loginState.error && (
                     <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
@@ -322,18 +328,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       registerPending ? "halo-nerve" : ""
                     }`}
                   >
-                    {registerPending ? "正在连接..." : "注册"}
+                    {registerPending ? "处理中..." : "注册"}
                   </button>
-                  {(registerState.message || registerState.error) && (
-                    registerState.success ? (
-                      <p className="mt-2 text-xs text-emerald-400">
-                        注册成功，正在接入会话…
-                      </p>
-                    ) : (
-                      <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
-                        {registerState.error}
-                      </div>
-                    )
+                  {!registerState.success && registerState.error && (
+                    <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
+                      {registerState.error}
+                    </div>
                   )}
                 </form>
               )}

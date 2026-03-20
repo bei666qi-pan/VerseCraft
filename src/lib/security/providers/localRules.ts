@@ -1,5 +1,5 @@
 import { sanitizeInputText } from "@/lib/security/helpers";
-import type { ModerationContext, ModerationProvider, ModerationResult, RiskCategory, RiskSeverity } from "@/lib/security/types";
+import type { ModerationProvider, ModerationResult, RiskCategory, RiskSeverity } from "@/lib/security/types";
 
 const CRITICAL_PATTERNS: Array<{ pattern: RegExp; category: RiskCategory; reason: string }> = [
   { pattern: /(制作炸弹|爆炸物|恐怖袭击|恐袭|极端组织|枪支制造|化学武器)/i, category: "illegal_extreme", reason: "命中极端违法指令" },
@@ -46,7 +46,7 @@ function buildResult(
 
 export const localRulesProvider: ModerationProvider = {
   name: "local-rules",
-  async moderate(input: string, _context: ModerationContext): Promise<ModerationResult> {
+  async moderate(input: string): Promise<ModerationResult> {
     const sanitized = sanitizeInputText(input, 6000);
     if (!sanitized) {
       return buildResult("allow", 0, ["none"], "empty_input", sanitized);
