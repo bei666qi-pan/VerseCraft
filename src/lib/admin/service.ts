@@ -2,7 +2,7 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsEvents, feedbacks, userDailyActivity, users } from "@/db/schema";
+import { adminMetricsDaily, analyticsEvents, feedbacks, gameRecords, userDailyActivity, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
@@ -31,6 +31,15 @@ export async function getDashboardTableData() {
     })
     .from(feedbacks)
     .orderBy(desc(feedbacks.createdAt));
+  const latestGameRows = await db
+    .select({
+      userId: gameRecords.userId,
+      maxFloorScore: gameRecords.maxFloorScore,
+      survivalTimeSeconds: gameRecords.survivalTimeSeconds,
+      createdAt: gameRecords.createdAt,
+    })
+    .from(gameRecords)
+    .orderBy(desc(gameRecords.createdAt));
 
   const latestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
   for (const item of latestFeedbackRows) {
@@ -38,10 +47,21 @@ export async function getDashboardTableData() {
       latestFeedbackMap.set(item.userId, { content: item.content, createdAt: item.createdAt });
     }
   }
+  const latestGameMap = new Map<string, { maxFloorScore: number; survivalTimeSeconds: number; createdAt: Date | null }>();
+  for (const item of latestGameRows) {
+    if (!latestGameMap.has(item.userId)) {
+      latestGameMap.set(item.userId, {
+        maxFloorScore: Number(item.maxFloorScore ?? 0),
+        survivalTimeSeconds: Number(item.survivalTimeSeconds ?? 0),
+        createdAt: item.createdAt,
+      });
+    }
+  }
 
   const onlineSet = new Set(onlineIds);
   const tableRows = rows.map((u) => {
     const latest = latestFeedbackMap.get(u.id);
+    const latestGame = latestGameMap.get(u.id);
     return {
       ...u,
       lastActive: u.lastActive instanceof Date ? u.lastActive.toISOString() : String(u.lastActive),
@@ -49,6 +69,9 @@ export async function getDashboardTableData() {
       feedbackPreview: latest ? latest.content.slice(0, 6) : "",
       feedbackContent: latest?.content ?? "",
       feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
+      latestGameMaxFloor: latestGame?.maxFloorScore ?? null,
+      latestGameSurvivalSec: latestGame?.survivalTimeSeconds ?? null,
+      latestGameAt: latestGame?.createdAt ? new Date(latestGame.createdAt).toISOString() : null,
     };
   });
 
@@ -77,6 +100,17 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
     })
     .from(adminMetricsDaily)
     .where(sql`${adminMetricsDaily.dateKey} >= ${range.startDateKey}::date AND ${adminMetricsDaily.dateKey} <= ${range.endDateKey}::date`);
+  const [latestDayAgg] = await db
+    .select({
+      dau: adminMetricsDaily.dau,
+      wau: adminMetricsDaily.wau,
+      mau: adminMetricsDaily.mau,
+      newUsers: adminMetricsDaily.newUsers,
+      tokenCost: adminMetricsDaily.totalTokenCost,
+    })
+    .from(adminMetricsDaily)
+    .where(sql`${adminMetricsDaily.dateKey} = ${range.endDateKey}::date`)
+    .limit(1);
 
   const avgTokenPerActive =
     Number(dailyAgg?.dau ?? 0) > 0 ? Number(dailyAgg?.tokenCost ?? 0) / Number(dailyAgg?.dau ?? 1) : 0;
@@ -92,8 +126,22 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
       avgTokenPerActive,
       feedbackCountRange: Number(dailyAgg?.feedbackCount ?? 0),
       gameCompletedRange: Number(dailyAgg?.gameCompleted ?? 0),
+      todayNewUsers: Number(latestDayAgg?.newUsers ?? 0),
+      todayTokenCost: Number(latestDayAgg?.tokenCost ?? 0),
+      dau: Number(latestDayAgg?.dau ?? 0),
+      wau: Number(latestDayAgg?.wau ?? 0),
+      mau: Number(latestDayAgg?.mau ?? 0),
     },
-    chartData: await getAdminChartData(14),
+    chartData: await getAdminChartData(
+      Math.max(
+        1,
+        Math.min(
+          60,
+          Math.ceil((range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+        )
+      ),
+      range.end
+    ),
   };
 }
 

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { AdminShadowGate } from "@/components/admin/AdminShadowGate";
-import AdminDashboardClient from "@/components/admin/AdminDashboardClient";
+import AdminDashboardV2 from "@/components/admin/AdminDashboardV2";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
 import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { getDashboardTableData } from "@/lib/admin/service";
@@ -28,7 +28,7 @@ export default async function ShadowAdminPage() {
     const chartData = await getAdminChartData(14);
 
     return (
-      <AdminDashboardClient
+      <AdminDashboardV2
         rows={base.rows}
         onlineCount={base.onlineCount}
         totalUsers={base.totalUsers}
