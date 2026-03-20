@@ -8,15 +8,15 @@ export default defineConfig({
   workers: 1,
   reporter: "list",
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.PORT ?? "3000"}`,
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666",
     trace: "on-first-retry",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    command: process.env.PORT ? `PORT=${process.env.PORT} pnpm dev` : "pnpm dev",
-    url: process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${process.env.PORT ?? "3000"}`,
+    command: "pnpm dev",
+    url: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666",
     reuseExistingServer: true,
     timeout: 60_000,
   },

@@ -12,7 +12,7 @@
 |------|------|
 | 自动化框架 | Playwright |
 | 浏览器 | Chromium |
-| 应用地址 | http://localhost:3000 |
+| 应用地址 | http://localhost:666 |
 | 测试文件 | `e2e/idb-hydration.spec.ts` |
 | 手动脚本 | `scripts/inject-dirty-idb-console.js` |
 
@@ -52,7 +52,7 @@
 若需在真实浏览器中复现验证：
 
 1. 启动应用：`pnpm dev`
-2. 打开 http://localhost:3000，登录后进入 /play（可选）
+2. 打开 http://localhost:666，登录后进入 /play（可选）
 3. 打开 DevTools Console，粘贴并执行 `scripts/inject-dirty-idb-console.js` 内容
 4. 脚本会注入脏数据并刷新；观察「读取世界线中...」是否瞬间消失
 5. 可选：在 Console 中检查是否出现 `[useGameStore] Rehydration error` 警告（当 JSON 解析失败时）

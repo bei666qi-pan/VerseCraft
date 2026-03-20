@@ -17,6 +17,15 @@ pnpm install
 pnpm dev
 ```
 
+3. 浏览器访问：**http://localhost:666**（本地开发固定 666，不再使用 3000）。**请使用 `http://`（勿用 `https://`，除非显式启用实验性 HTTPS）。**
+
+## 排障（打不开 / 白屏）
+
+- **连接被拒绝**：确认已执行 `pnpm dev` 且终端无 `EADDRINUSE`；可尝试 **http://127.0.0.1:666**（部分环境下 `localhost` 会优先走 IPv6）。
+- **登录/跳转异常**：将 `AUTH_URL` / `NEXTAUTH_URL` 设为当前浏览器地址（含端口 666），避免仍指向 `:3000`。
+- **VPN / 代理（如 Clash）**：`next dev` 可能打印 `Network: http://198.18.x.x:666`。若必须用该地址访问，在 `.env.local` 中设置 `NEXT_DEV_ALLOWED_ORIGINS`（逗号分隔主机名，勿含端口），与 `next.config.ts` 中 `allowedDevOrigins` 扩展一致。
+- **Windows + Playwright**：`webServer` 已使用 `pnpm dev`，勿依赖 `PORT=... pnpm dev` 类 Unix 写法。
+
 ## 必填变量
 
 - `DATABASE_URL`: 本地/测试 PostgreSQL 连接串

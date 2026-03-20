@@ -9,6 +9,21 @@
 - Health Check: `GET /api/health`
 - Auto Deploy: 可开启（按团队流程）
 
+### 反代与 `csrf_check_failed`
+
+若前面仍有反代（Nginx / Traefik 等），请确保转发头正确，否则浏览器 `Origin` 与 Next 侧推断的公共 origin 会不一致，中间件会返回 `403 csrf_check_failed`：
+
+- `X-Forwarded-Proto`：客户端实际使用的协议（如 `https`）
+- `X-Forwarded-Host`：客户端实际访问的主机（含端口，如 `14.103.217.111:3000`）
+
+应用已优先用上述头计算「期望 origin」，与 POST 请求的 `Origin` 比对。
+
+### 部署版本与长开标签页
+
+建议每次部署设置 **`NEXT_PUBLIC_BUILD_ID` 或 `BUILD_ID`**（与上次不同，例如 Git commit SHA）。客户端会轮询 `GET /api/build-id`，发现变化后自动 `reload`，避免旧 `_next` 壳与 Server Action 映射错位。
+
+- 验证：`GET /api/build-id` 返回的 `buildId` 在每次部署后应变化。
+
 ## 方案 A：使用 Dockerfile
 
 仓库已提供 `Dockerfile`，Coolify 触发构建即可。

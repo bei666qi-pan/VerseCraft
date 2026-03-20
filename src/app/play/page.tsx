@@ -1157,6 +1157,8 @@ const LOCAL_FALLBACK_OPENING =
     try {
       res = await fetch("/api/chat", {
         method: "POST",
+        credentials: "include",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages,

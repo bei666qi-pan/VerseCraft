@@ -1,5 +1,26 @@
 import type { NextRequest, NextResponse } from "next/server";
 
+/**
+ * Public URL as seen by the browser when behind a reverse proxy.
+ * Uses X-Forwarded-Host / X-Forwarded-Proto when present (trusted edge only).
+ */
+export function getExpectedRequestOrigin(req: NextRequest): string {
+  const xfHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const xfProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim()?.toLowerCase();
+  const xfSsl = req.headers.get("x-forwarded-ssl");
+  const hostHeader = req.headers.get("host")?.trim();
+
+  const host = xfHost || hostHeader || "";
+  if (!host) return req.nextUrl.origin;
+
+  let protocol = xfProto;
+  if (!protocol) {
+    if (xfSsl === "on") protocol = "https";
+    else protocol = req.nextUrl.protocol === "https:" ? "https" : "http";
+  }
+  return `${protocol}://${host}`;
+}
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
@@ -40,6 +61,6 @@ export function isCrossSiteStateChangingRequest(req: NextRequest): boolean {
 
   const origin = req.headers.get("origin");
   if (!origin) return false;
-  const expected = req.nextUrl.origin;
+  const expected = getExpectedRequestOrigin(req);
   return origin !== expected;
 }

@@ -67,7 +67,7 @@ cp .env.example .env.local
 - `VOLCENGINE_API_KEY`
 - `VOLCENGINE_ENDPOINT_ID`
 
-访问 [http://localhost:3000](http://localhost:3000)，进入「铸造角色」创建角色后即可开始游戏。
+本地开发默认端口为 **666**（见 `package.json` 的 `pnpm dev`）。访问 [http://localhost:666](http://localhost:666)，进入「铸造角色」创建角色后即可开始游戏。
 
 ## 部署（Coolify 优先）
 

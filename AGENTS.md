@@ -7,7 +7,7 @@ VerseCraft (文界工坊) is a single-player browser-based text adventure game (
 
 ### Key dev commands
 See `package.json` scripts. Summary:
-- `pnpm dev` — dev server with Turbopack on port 3000
+- `pnpm dev` — dev server on **port 666** (`next dev --webpack -p 666`; production/Docker still listens on `3000`)
 - `pnpm build` — production build
 - `npx eslint .` — lint (**`pnpm lint` / `next lint` does not work in Next.js 16 CLI**; use `npx eslint .` directly)
 

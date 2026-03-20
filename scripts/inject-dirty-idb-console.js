@@ -3,7 +3,7 @@
  * 用途：模拟 beiqi 等老账号的旧版/损坏 IDB 数据，验证 Hydration 修复
  *
  * 使用步骤：
- * 1. 打开应用 (http://localhost:3000 或生产地址)
+ * 1. 打开应用 (http://localhost:666 或生产地址)
  * 2. 如需测试 /play，请先登录
  * 3. 打开 DevTools Console，粘贴并执行本脚本
  * 4. 脚本会注入脏数据并刷新页面
