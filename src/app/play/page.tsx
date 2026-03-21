@@ -245,6 +245,13 @@ function PlayContent() {
     }
   }, [isHydrated, showApocalypseOverlay]);
 
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+      void streamReaderRef.current?.cancel().catch(() => {});
+    };
+  }, []);
+
   const scheduleAutoScroll = useCallback((smooth = false) => {
     if (!scrollRef.current) return;
     if (autoScrollRafRef.current != null) return;
@@ -474,6 +481,7 @@ function PlayContent() {
       openingAwaitingAssistantRef.current = false;
       openingTimeoutRetryRef.current = false;
       injectLocalOpeningFallback();
+      setOpeningAiBusy(false);
       setLiveNarrative("【开局】仍无法获取选项，请检查网络或刷新页面；也可切换为手动输入后重试。");
     }, 400);
     return () => clearInterval(tick);
@@ -590,6 +598,7 @@ function PlayContent() {
     }
 
     sendActionInFlightRef.current = true;
+    try {
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
     const isOpeningOptionsOnlyRound = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
@@ -601,7 +610,6 @@ function PlayContent() {
     narrativeRef.current = "";
     setLiveNarrative("");
 
-    try {
     const sanityAtStart = useGameStore.getState().stats?.sanity ?? 0;
     const prevPending = pendingHallucinationCheck;
     setPendingHallucinationCheck(false);
@@ -1113,6 +1121,10 @@ function PlayContent() {
         if (merged.includes(d)) continue;
         merged.push(d);
       }
+    }
+
+    if (merged.length === 0 && isFirstAssistantTurn) {
+      merged.push(...DEFAULT_FOUR_ACTION_OPTIONS);
     }
 
     if (merged.length > 0) {

@@ -9,6 +9,7 @@ import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
+import { GlassCtaButton } from "@/components/GlassCtaButton";
 import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
@@ -357,30 +358,26 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         <div className="mt-14 flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
           {user && (hasLocalAutoSave || hasCloudAutoSave) && (
             <GlassEntryFrame variant="pill">
-              <button
-                type="button"
+              <GlassCtaButton
+                variant="pill"
+                label="继续冒险"
+                trailing="→"
                 onClick={() => void handleContinueAdventure()}
-                className="group relative flex items-center gap-3 rounded-full bg-transparent px-10 py-4 font-bold tracking-widest text-slate-800 transition-all duration-500 hover:scale-[1.02] active:scale-[0.99]"
-              >
-                <span className="relative z-10">继续冒险</span>
-                <span className="relative z-10 text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
-              </button>
+              />
             </GlassEntryFrame>
           )}
 
           <GlassEntryFrame variant="pill">
-            <button
-              type="button"
+            <GlassCtaButton
+              variant="pill"
+              label="进入世界"
+              trailing="→"
               onClick={() => {
                 unlockBgmOnUserGesture();
                 resetForNewGame();
                 router.push("/intro");
               }}
-              className="group relative flex items-center gap-3 rounded-full bg-transparent px-12 py-5 font-bold tracking-widest text-slate-800 transition-all duration-500 hover:scale-[1.02] active:scale-[0.99]"
-            >
-              <span className="relative z-10">进入世界</span>
-              <span className="relative z-10 text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
-            </button>
+            />
           </GlassEntryFrame>
         </div>
         <div className="flex flex-col items-center gap-2 text-sm text-slate-400/80 mt-8">
