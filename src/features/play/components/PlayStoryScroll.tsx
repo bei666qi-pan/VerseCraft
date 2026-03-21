@@ -87,8 +87,14 @@ const StreamPanel = memo(function StreamPanel({
           <div className="relative flex h-6 w-6 items-center justify-center">
             <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
             <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-            <div className="absolute inset-[3px] overflow-hidden rounded-full">
-              <Image src="/logo.svg" alt="文界工坊" fill sizes="16px" className="object-cover scale-[1.08]" />
+            <div className="relative h-[18px] w-[18px] shrink-0 overflow-hidden rounded-full">
+              <Image
+                src="/logo.svg"
+                alt="文界工坊"
+                width={18}
+                height={18}
+                className="object-cover scale-[1.08]"
+              />
             </div>
           </div>
           <span className="bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
@@ -183,8 +189,14 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
             <div className="relative flex h-6 w-6 items-center justify-center">
               <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
               <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-              <div className="absolute inset-[3px] overflow-hidden rounded-full">
-                <Image src="/logo.svg" alt="文界工坊" fill sizes="16px" className="object-cover scale-[1.08]" />
+              <div className="relative h-[18px] w-[18px] shrink-0 overflow-hidden rounded-full">
+                <Image
+                  src="/logo.svg"
+                  alt="文界工坊"
+                  width={18}
+                  height={18}
+                  className="object-cover scale-[1.08]"
+                />
               </div>
             </div>
           </div>

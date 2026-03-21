@@ -192,12 +192,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                   <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-200 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_18px_rgba(148,163,184,0.95)]" />
                   <div className="absolute inset-[3px] rounded-full bg-slate-900/90 backdrop-blur-sm border border-white/15" />
-                  <div className="relative h-8 w-8">
+                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full">
                     <Image
                       src="/logo.svg"
                       alt="VerseCraft"
-                      fill
-                      sizes="32px"
+                      width={32}
+                      height={32}
                       className="object-cover scale-[1.12]"
                     />
                   </div>

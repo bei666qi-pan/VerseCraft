@@ -42,6 +42,8 @@ import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps"
 const STREAM_CHUNK_STALL_MS = 120_000;
 /** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
 const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
+/** Abort /api/chat if response headers never arrive (avoids infinite “正在生成…” + stuck inFlight). */
+const FETCH_CHAT_RESPONSE_DEADLINE_MS = 95_000;
 
 function PlayContent() {
   const router = useRouter();
@@ -584,7 +586,17 @@ function PlayContent() {
     streamAbortRef.current = ac;
 
     let res: Response;
+    const fetchDeadlineState = { hit: false };
+    let fetchDeadlineTimer: ReturnType<typeof window.setTimeout> | undefined;
     try {
+      fetchDeadlineTimer = window.setTimeout(() => {
+        fetchDeadlineState.hit = true;
+        try {
+          ac.abort();
+        } catch {
+          /* ignore */
+        }
+      }, FETCH_CHAT_RESPONSE_DEADLINE_MS);
       res = await fetch("/api/chat", {
         method: "POST",
         credentials: "include",
@@ -598,14 +610,21 @@ function PlayContent() {
         signal: ac.signal,
       });
     } catch (fetchErr) {
-      streamAbortRef.current = null;
       setStreamPhase("idle");
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+        if (fetchDeadlineState.hit) {
+          setLiveNarrative(
+            "等待深渊回应超时（长时间未收到服务器响应）。请确认本机数据库已启动、`.env.local` 中已配置大模型 Key，或稍后重试。"
+          );
+        }
         return;
       }
       setLiveNarrative("连接深渊时发生了波动，请稍后再试。");
       return;
     } finally {
+      if (fetchDeadlineTimer !== undefined) {
+        window.clearTimeout(fetchDeadlineTimer);
+      }
       streamAbortRef.current = null;
     }
 
