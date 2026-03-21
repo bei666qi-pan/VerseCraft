@@ -185,8 +185,8 @@
 ### 绝对要求
 1. 运行时保持 `nodejs`
 2. 保持 SSE / 流式输出能力
-3. 使用 Volcengine / DeepSeek 配置兼容逻辑
-4. `model` 优先使用 **Endpoint ID (`ep-xxx`)**
+3. 使用 DeepSeek 官方 API 配置（无 Volcano/ARK 兼容）
+4. `model` 优先使用 **模型名字符串**（如 `deepseek-v3.2` / `deepseek-reasoner`）
 5. 上游请求前必须剥离历史消息中的 `reasoning_content`
 6. 维持 JSON-only 输出协议
 7. 维持配额、记忆压缩、DB 写入、presence 更新的兼容性

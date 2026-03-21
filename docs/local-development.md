@@ -33,20 +33,18 @@ pnpm dev
 - `AUTH_SECRET`: NextAuth 签名密钥
 - `ADMIN_PASSWORD`: 管理员影子入口密码
 - `ALTCHA_HMAC_KEY`: Altcha HMAC 密钥（不填则使用 `AUTH_SECRET`）
-- `VOLCENGINE_API_KEY`: 大模型 API Key
-- `VOLCENGINE_ENDPOINT_ID`: 大模型 Endpoint / Model Id
+- `DEEPSEEK_API_KEY`: DeepSeek 官方 API Key
 
 ## 可选变量
 
-- `VOLCENGINE_DEEPSEEK_API_URL`（默认官方网关）
-- `VOLCENGINE_DEEPSEEK_MODEL`（默认 `deepseek-v3.2`）
-- `ARK_*` / `DEEPSEEK_*` 兼容变量
+- `DEEPSEEK_API_URL`（默认 `https://api.deepseek.com/chat/completions`；可选覆盖）
+- `DEEPSEEK_MODEL`（默认 `deepseek-v3.2`）
 - `MIGRATE_ON_BOOT`（默认 `1`）
 - `RUNTIME_SCHEMA_ENSURE`（默认 `1`）
 - `DAILY_TOKEN_LIMIT`（默认 `50000`）
 - `DAILY_ACTION_LIMIT`（默认 `200`）
 - `SECURITY_MODERATION_ENABLED`（默认 `true`）
-- `SECURITY_MODERATION_PROVIDER`（`auto | local-rules | volcengine`）
+- `SECURITY_MODERATION_PROVIDER`（`auto | local-rules`）
 - `SECURITY_MODERATION_TIMEOUT_MS`（默认 `3000`）
 - `SECURITY_MODERATION_FAIL_OPEN`（默认 `true`）
 - `SECURITY_AUDIT_LOG_LEVEL`（`silent | warn | info | debug`）
@@ -56,4 +54,4 @@ pnpm dev
 - `SECURITY_USER_LIMIT_PER_MINUTE`（默认 `20`）
 - `SECURITY_HIGH_RISK_STRIKE_THRESHOLD`（默认 `3`）
 - `SECURITY_TEMP_BLOCK_SECONDS`（默认 `600`）
-- `VOLCENGINE_SAFETY_*`（可留空；留空时自动使用 `local-rules`）
+- 安全审核仅使用本地规则（`SECURITY_MODERATION_PROVIDER=local-rules`）

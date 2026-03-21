@@ -656,7 +656,7 @@ function PlayContent() {
         : res.status === 403
           ? "深渊拒绝了你。请确认你的身份后再试。"
           : (res.status === 502 && (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403))
-            ? "深渊鉴权失败：请检查 VOLCENGINE_API_KEY / Endpoint 权限 / 模型ID。"
+            ? "深渊鉴权失败：请检查各厂商 API Key（DEEPSEEK / ZHIPU / MINIMAX）及白名单模型 ID。"
           : res.status === 504
             ? "深渊回应超时（504），请稍后再试。"
           : "连接深渊时发生了波动，请稍后再试。";

@@ -29,7 +29,7 @@ alwaysApply: true
 - `git add .` — 暂存所有变更
 - `git commit -m "..."` — 提交
 - `git push origin main` — 推送到 GitHub
-- 输出服务器部署提示（需在火山引擎服务器上手动或通过 SSH 执行 Docker 重建）
+- 输出服务器部署提示（需在部署服务器上手动或通过 SSH 执行 Docker 重建）
 
 ## 示例
 

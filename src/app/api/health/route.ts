@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { resolveDeepSeekConfig } from "@/lib/env";
+import { anyAiProviderConfigured } from "@/lib/ai/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await db.execute(sql`SELECT 1`);
-    const deepSeek = resolveDeepSeekConfig();
-    const hasAiKey = deepSeek.apiKey.length > 0;
+    const hasAiKey = anyAiProviderConfigured();
 
     return NextResponse.json(
       {

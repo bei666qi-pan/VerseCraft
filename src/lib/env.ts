@@ -1,5 +1,7 @@
 import "server-only";
 
+import { resolveDeepSeekLegacyConfig } from "@/lib/ai/config/env";
+
 type EnvValue = string | undefined;
 
 function readEnv(name: string): EnvValue {
@@ -41,11 +43,6 @@ export const env = {
   securityModerationTimeoutMs: readEnvAsNumber("MODERATION_TIMEOUT_MS", readEnvAsNumber("SECURITY_MODERATION_TIMEOUT_MS", 3000)),
   securityModerationFailOpen: (readEnv("MODERATION_FAIL_OPEN") ?? readEnv("SECURITY_MODERATION_FAIL_OPEN") ?? "true") === "true",
   securityAuditLogLevel: readEnv("SECURITY_LOG_LEVEL") ?? readEnv("SECURITY_AUDIT_LOG_LEVEL") ?? "warn",
-  volcengineSafetyEndpoint: readEnv("VOLCENGINE_SAFETY_ENDPOINT"),
-  volcengineSafetyApiKey: readEnv("VOLCENGINE_SAFETY_API_KEY"),
-  volcengineSafetyApiSecret: readEnv("VOLCENGINE_SAFETY_API_SECRET"),
-  volcengineSafetyAppId: readEnv("VOLCENGINE_SAFETY_APP_ID"),
-  volcengineSafetyRegion: readEnv("VOLCENGINE_SAFETY_REGION"),
   securityIpLimitPerMinute: readEnvAsNumber("SECURITY_IP_LIMIT_PER_MINUTE", 30),
   securitySessionLimitPerMinute: readEnvAsNumber("SECURITY_SESSION_LIMIT_PER_MINUTE", 24),
   securityUserLimitPerMinute: readEnvAsNumber("SECURITY_USER_LIMIT_PER_MINUTE", 20),
@@ -59,21 +56,8 @@ export type DeepSeekConfig = {
   model: string;
 };
 
+/** Delegates to unified AI env (whitelist + defaults). */
 export function resolveDeepSeekConfig(): DeepSeekConfig {
-  const apiUrl =
-    readEnv("VOLCENGINE_DEEPSEEK_API_URL") ??
-    readEnv("ARK_API_URL") ??
-    "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
-
-  const apiKey = readEnv("VOLCENGINE_API_KEY") ?? readEnv("ARK_API_KEY") ?? readEnv("DEEPSEEK_API_KEY") ?? "";
-
-  const model =
-    readEnv("VOLCENGINE_ENDPOINT_ID") ??
-    readEnv("ARK_ENDPOINT_ID") ??
-    readEnv("VOLCENGINE_DEEPSEEK_MODEL") ??
-    readEnv("ARK_MODEL") ??
-    readEnv("DEEPSEEK_MODEL") ??
-    "deepseek-v3.2";
-
-  return { apiUrl, apiKey, model };
+  const x = resolveDeepSeekLegacyConfig();
+  return { apiUrl: x.apiUrl, apiKey: x.apiKey, model: x.model };
 }

@@ -2,15 +2,19 @@ import { env } from "@/lib/env";
 import { auditModeration } from "@/lib/security/audit";
 import { createRequestId, safeErrorMessage } from "@/lib/security/helpers";
 import { localRulesProvider } from "@/lib/security/providers/localRules";
-import { canUseVolcengineProvider, volcengineProvider } from "@/lib/security/providers/volcengine";
 import { riskDecision } from "@/lib/security/policy";
 import type { ModerationContext, ModerationProvider, ModerationResult } from "@/lib/security/types";
 
 function getProvider(): ModerationProvider {
   const configured = env.securityModerationProvider;
   if (configured === "local-rules") return localRulesProvider;
-  if (configured === "volcengine") return canUseVolcengineProvider() ? volcengineProvider : localRulesProvider;
-  return canUseVolcengineProvider() ? volcengineProvider : localRulesProvider;
+  if (configured === "auto") return localRulesProvider;
+  if (configured === "volcengine") {
+    // Deprecated: Volcano safety provider has been removed.
+    console.warn("[security][moderation] volcengine provider has been removed; fallback to local-rules");
+    return localRulesProvider;
+  }
+  return localRulesProvider;
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

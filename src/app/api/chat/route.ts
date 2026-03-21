@@ -15,7 +15,9 @@ import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
-import { resolveDeepSeekConfig } from "@/lib/env";
+import { DEFAULT_PLAYER_CHAIN } from "@/lib/ai/config/env";
+import type { PlayerChatStreamResult } from "@/lib/ai/router/execute";
+import { anyAiProviderConfigured, executePlayerChatStream, sanitizeMessagesForUpstream } from "@/lib/ai/service";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -552,8 +554,8 @@ export async function POST(req: Request) {
     void markUserActive(userId).catch(() => {});
   }
 
-  // Architecture mandate: strip reasoning_content to prevent Volcengine 400 Bad Request.
-  // DeepSeek-V3.2 returns reasoning_content; must never send it back in subsequent turns.
+  // Provider compatibility mandate: only send role/content back to the upstream.
+  // Even if upstream supports reasoning_content (e.g. deepseek-reasoner), we never forward it.
   const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
     .map((m) => {
@@ -619,12 +621,12 @@ export async function POST(req: Request) {
       .catch(() => {});
   }
 
-  const safeMessages = [
-    { role: "system" as const, content: systemPrompt },
+  const safeMessages = sanitizeMessagesForUpstream([
+    { role: "system", content: systemPrompt },
     ...messagesToSend,
-  ];
+  ]);
 
-  const { apiUrl, apiKey, model } = resolveDeepSeekConfig();
+  const telemetryPreferredModel = DEFAULT_PLAYER_CHAIN[0];
   void recordGenericAnalyticsEvent({
     eventId: `${requestId}:chat_request_started`,
     idempotencyKey: `${requestId}:chat_request_started`,
@@ -639,21 +641,20 @@ export async function POST(req: Request) {
     playDurationDeltaSec: 0,
     payload: {
       requestId,
-      model,
+      model: telemetryPreferredModel,
       isFirstAction,
     },
   }).catch(() => {});
-  if (!apiKey) {
+  if (!anyAiProviderConfigured()) {
     console.error(
-      `\x1b[31m[api/chat] VOLCENGINE_API_KEY is empty. Checked: VOLCENGINE_API_KEY | ARK_API_KEY | DEEPSEEK_API_KEY\x1b[0m`,
-      { apiUrl, model }
+      `\x1b[31m[api/chat] No AI provider keys configured. Set DEEPSEEK_API_KEY and/or ZHIPU_API_KEY and/or MINIMAX_API_KEY\x1b[0m`
     );
     return new Response(
       sseText(
         JSON.stringify({
           is_action_legal: false,
           sanity_damage: 0,
-          narrative: "系统异常：未配置 Volcengine API Key，无法连接深渊 DM。",
+          narrative: "系统异常：未配置大模型 API Key，无法连接深渊 DM。",
           is_death: false,
           consumes_time: true,
         })
@@ -690,34 +691,31 @@ export async function POST(req: Request) {
   const ac = new AbortController();
   const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
 
-  let upstream: Response;
+  let streamResult: PlayerChatStreamResult;
   try {
-    upstream = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    streamResult = await executePlayerChatStream({
+      messages: safeMessages,
+      ctx: {
+        requestId,
+        task: "player_chat_stream",
+        userId,
+        sessionId,
+        path: "/api/chat",
       },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        // Keep output compact: DM schema requires short narrative/options.
-        max_tokens: 1536,
-        response_format: { type: "json_object" },
-        messages: safeMessages,
-        stream_options: { include_usage: true },
-      }),
       signal: ac.signal,
+      timeoutMs: TIMEOUT_MS,
     });
-  } catch (error) {
+  } finally {
     clearTimeout(timeoutId);
-    const err = error as Error;
-    const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
-    const isTimeout = err?.name === "AbortError" || /abort|timeout/i.test(err?.message ?? "");
-    console.error(
-      `\x1b[31m[api/chat] upstream fetch failed\x1b[0m`,
-      { apiUrl, model, isTimeout, message: err?.message, cause, stack: err?.stack, error }
-    );
+  }
+
+  if (!streamResult.ok) {
+    const isTimeout = streamResult.code === "ABORTED";
+    console.error(`\x1b[31m[api/chat] AI router failed\x1b[0m`, {
+      code: streamResult.code,
+      message: streamResult.message,
+      lastHttpStatus: streamResult.lastHttpStatus,
+    });
     void recordGenericAnalyticsEvent({
       eventId: `${requestId}:chat_request_finished_error`,
       idempotencyKey: `${requestId}:chat_request_finished_error`,
@@ -732,66 +730,25 @@ export async function POST(req: Request) {
       playDurationDeltaSec: 0,
       payload: {
         requestId,
-        model,
+        model: telemetryPreferredModel,
         success: false,
-        stage: "fetch",
+        stage: "ai_router",
         isTimeout,
+        routerCode: streamResult.code,
         totalLatencyMs: Date.now() - requestStartedAt,
       },
     }).catch(() => {});
-    return NextResponse.json(
-      { error: isTimeout ? "Upstream Timeout" : "Upstream Error" },
-      { status: isTimeout ? 504 : 500 }
-    );
-  } finally {
-    clearTimeout(timeoutId);
-  }
 
-  if (!upstream.ok || !upstream.body) {
-    const text = await upstream.text().catch(() => "");
-    const upstreamStatus = upstream.status;
-    const isAuthError = upstreamStatus === 401 || upstreamStatus === 403;
-    console.error(
-      `\x1b[31m[api/chat] upstream non-OK\x1b[0m`,
-      {
-        status: upstreamStatus,
-        statusText: upstream.statusText,
-        apiUrl,
-        model,
-        body: text,
-        hint: isAuthError
-          ? "Upstream returned 401/403. Check VOLCENGINE_API_KEY + endpoint permissions/model id."
-          : undefined,
-      }
-    );
-    void recordGenericAnalyticsEvent({
-      eventId: `${requestId}:chat_request_finished_non_ok`,
-      idempotencyKey: `${requestId}:chat_request_finished_non_ok`,
-      userId,
-      sessionId: sessionId ?? "unknown_session",
-      eventName: "chat_request_finished",
-      eventTime: new Date(),
-      page: "/play",
-      source: "chat",
-      platform,
-      tokenCost: 0,
-      playDurationDeltaSec: 0,
-      payload: {
-        requestId,
-        model,
-        success: false,
-        stage: "upstream_non_ok",
-        upstreamStatus,
-        totalLatencyMs: Date.now() - requestStartedAt,
-      },
-    }).catch(() => {});
+    if (isTimeout) {
+      return NextResponse.json({ error: "Upstream Timeout", code: "AI_TIMEOUT" }, { status: 504 });
+    }
+    const upstreamStatus = streamResult.lastHttpStatus ?? 0;
     if (upstreamStatus === 429) {
       return NextResponse.json(
         {
           error: "Upstream Rate Limited",
           code: "UPSTREAM_RATE_LIMITED",
           upstreamStatus,
-          retryAfter: upstream.headers.get("retry-after"),
         },
         { status: 429 }
       );
@@ -802,17 +759,26 @@ export async function POST(req: Request) {
         { status: 503 }
       );
     }
+    const isAuthError = upstreamStatus === 401 || upstreamStatus === 403;
     if (isAuthError) {
       return NextResponse.json(
-        { error: "Upstream Auth Failed", code: "UPSTREAM_AUTH_FAILED", upstreamStatus },
+        {
+          error: "Upstream Auth Failed",
+          code: "UPSTREAM_AUTH_FAILED",
+          upstreamStatus,
+          hint: "检查各厂商 API Key 与模型白名单权限。",
+        },
         { status: 502 }
       );
     }
     return NextResponse.json(
-      { error: "Upstream Error", code: "UPSTREAM_ERROR", upstreamStatus },
+      { error: "Upstream Error", code: "AI_ROUTER_FAILED", upstreamStatus },
       { status: 502 }
     );
   }
+
+  const upstream = streamResult.response;
+  const model = streamResult.modelId;
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
@@ -1113,7 +1079,7 @@ export async function POST(req: Request) {
       const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
       console.error(
         `\x1b[31m[api/chat] stream pipe failed\x1b[0m`,
-        { apiUrl, model, message: err?.message, cause, stack: err?.stack, error }
+        { model, message: err?.message, cause, stack: err?.stack, error }
       );
       try {
         await reader.cancel();
@@ -1127,7 +1093,7 @@ export async function POST(req: Request) {
     const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/chat] background task crashed\x1b[0m`,
-      { apiUrl, model, message: err?.message, cause, stack: err?.stack, error }
+      { model, message: err?.message, cause, stack: err?.stack, error }
     );
   });
 

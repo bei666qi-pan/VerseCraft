@@ -1,6 +1,7 @@
 import "server-only";
 
-import { resolveDeepSeekConfig } from "@/lib/env";
+import { executeChatCompletion } from "@/lib/ai/service";
+import { createRequestId } from "@/lib/security/helpers";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getFeedbackInsights, getFunnelMetrics, getOverviewMetrics, getRealtimeMetrics, getRetentionMetrics } from "@/lib/admin/service";
 import { validateAiInsightOutput } from "@/lib/admin/aiInsightSchema";
@@ -76,8 +77,7 @@ function fallbackFromInput(input: AiInsightInput): AiInsightOutput {
 
 export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ input: AiInsightInput; output: AiInsightOutput; model: string; degraded: boolean }> {
   const input = await buildAiInsightInput(range);
-  const { apiKey, apiUrl, model } = resolveDeepSeekConfig();
-  if (!apiKey) return { input, output: fallbackFromInput(input), model: "none", degraded: true };
+  const requestId = createRequestId("admin_insight");
 
   const schemaHint = {
     executiveSummary: "string",
@@ -95,29 +95,37 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
   const systemPrompt = ["你是VerseCraft后台AI运营分析官。", "你只能依据输入数据给出建议，禁止编造证据。", "当证据不足时，必须明确写出“证据不足”。", "建议必须按优先级：immediate / this_week / mid_term。", "请严格以 JSON 格式输出。", `输出结构必须匹配：${JSON.stringify(schemaHint)}`].join("\n");
 
   try {
-    const resp = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `以下是结构化输入数据：\n${JSON.stringify(input)}` },
-        ],
-      }),
+    const ai = await executeChatCompletion({
+      task: "admin_insight",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `以下是结构化输入数据：\n${JSON.stringify(input)}` },
+      ],
+      ctx: {
+        requestId,
+        task: "admin_insight",
+        path: "/lib/admin/aiInsights",
+      },
+      maxTokens: 4096,
+      temperature: 0.2,
+      responseFormatJsonObject: true,
     });
-    if (!resp.ok) return { input, output: fallbackFromInput(input), model, degraded: true };
-    const data = await resp.json();
-    const content = String(data?.choices?.[0]?.message?.content ?? "{}");
+
+    if (!ai.ok) {
+      return { input, output: fallbackFromInput(input), model: "none", degraded: true };
+    }
+
+    const content = String(ai.content ?? "{}");
     const parsedRaw = JSON.parse(content) as unknown;
     const parsed = validateAiInsightOutput(parsedRaw);
-    if (!parsed) return { input, output: fallbackFromInput(input), model, degraded: true };
+    if (!parsed) {
+      return { input, output: fallbackFromInput(input), model: ai.modelId, degraded: true };
+    }
     parsed.generatedAt = parsed.generatedAt || new Date().toISOString();
     parsed.evidenceSufficiency = parsed.evidenceSufficiency || input.evidenceQuality;
-    return { input, output: parsed, model, degraded: false };
+    return { input, output: parsed, model: ai.modelId, degraded: false };
   } catch {
-    return { input, output: fallbackFromInput(input), model, degraded: true };
+    return { input, output: fallbackFromInput(input), model: "none", degraded: true };
   }
 }
 
