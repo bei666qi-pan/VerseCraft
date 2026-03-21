@@ -5,11 +5,13 @@ import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow
 import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { getDashboardTableData } from "@/lib/admin/service";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
+import { unwrapPageDynamicOnServer, type AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function ShadowAdminPage() {
+export default async function ShadowAdminPage(props: AppPageDynamicProps) {
+  await unwrapPageDynamicOnServer(props);
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
   const hasAccess = verifyAdminShadowSession(shadowCookie);

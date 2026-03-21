@@ -35,6 +35,8 @@ import {
   takeCompleteSseEvents,
 } from "@/features/play/stream/sseFrame";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
 const STREAM_CHUNK_STALL_MS = 120_000;
@@ -1410,7 +1412,8 @@ function PlayContent() {
   );
 }
 
-export default function PlayPageWrapper() {
+export default function PlayPageWrapper(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const router = useRouter();
   const isHydrated = useGameStore((s) => s.isHydrated);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);

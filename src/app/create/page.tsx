@@ -8,6 +8,8 @@ import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 type GenderOption = "男" | "女" | "其他";
 
@@ -187,7 +189,8 @@ function useStatStepper(
   return { handlePointerDown, handlePointerUp };
 }
 
-export default function CreatePage() {
+export default function CreatePage(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const router = useRouter();
   const user = useGameStore((s) => s.user);
   const guestId = useGameStore((s) => s.guestId ?? "guest_create");

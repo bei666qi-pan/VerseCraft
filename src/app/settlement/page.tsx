@@ -8,6 +8,8 @@ import { deleteCloudSaveSlot } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
 import { GuestSoftNudge } from "@/components/GuestSoftNudge";
 import { useMounted } from "@/hooks/useMounted";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 
@@ -193,7 +195,8 @@ function estimateKilledAnomalies(logs: LogEntry[]): number {
   return matches ? Math.max(0, matches.length) : 0;
 }
 
-export default function SettlementPage() {
+export default function SettlementPage(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const mounted = useMounted();
   const [onLeaderboardToast, setOnLeaderboardToast] = useState(false);
   const [fitScale, setFitScale] = useState(1);
