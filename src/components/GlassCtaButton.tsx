@@ -60,7 +60,7 @@ export function GlassCtaButton({
     <div className={`${wrap} ${className}`.trim()}>
       {prominent && variant === "card" ? (
         <div
-          className="pointer-events-none absolute -inset-[3px] rounded-[2.1rem] bg-gradient-to-r from-indigo-400/45 via-violet-400/40 to-indigo-400/45 opacity-90 blur-md animate-[pulse_2.4s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -inset-[3px] rounded-[2.1rem] bg-gradient-to-r from-indigo-400/45 via-violet-400/40 to-indigo-400/45 opacity-90 blur-md animate-[var(--animate-halo-pulse)]"
           aria-hidden
         />
       ) : null}
