@@ -18,6 +18,10 @@ type SmoothStreamOptions = {
   backlogThreshold?: number;
   backlogMaxLen?: number;
   burstCharsWhenBacklog?: number; // backward compat with previous name
+  /** 匀速按码位吐出（忽略标点停顿与突发加速），适合叙事全程统一节奏 */
+  uniformPacing?: boolean;
+  /** 匀速模式下每吐出一个码位的间隔（毫秒） */
+  uniformTickMs?: number;
 };
 
 const DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
@@ -29,6 +33,8 @@ const DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
   backlogThreshold: 220,
   backlogMaxLen: 36,
   burstCharsWhenBacklog: 26,
+  uniformPacing: false,
+  uniformTickMs: 40,
 };
 
 const CLAUSE_PUNCT = new Set([",", "，", "、", "：", "；", "…"]);
@@ -199,6 +205,7 @@ export function useSmoothStreamFromRef(
     let rafId: number;
 
     function tick() {
+      const mergedOptions = mergedOptionsRef.current;
       const src = narrativeRef.current;
       if (src.length > prevLenRef.current) {
         const delta = src.slice(prevLenRef.current);
@@ -207,8 +214,43 @@ export function useSmoothStreamFromRef(
       }
 
       const q = queueRef.current;
+
+      if (mergedOptions.uniformPacing) {
+        const now = performance.now();
+        const tickMs = Math.max(12, mergedOptions.uniformTickMs);
+        if (q.length > 0) {
+          if (!hasShownMeaningfulRef.current) {
+            const trimmed = q.replace(/^\s+/, "");
+            if (trimmed !== q) {
+              queueRef.current = trimmed;
+              rafId = requestAnimationFrame(tick);
+              return;
+            }
+          }
+          if (lastEmitAtRef.current === 0 || now - lastEmitAtRef.current >= tickMs) {
+            const head = q[0] ?? "";
+            let len = 1;
+            const c0 = head.charCodeAt(0);
+            if (c0 >= 0xd800 && c0 <= 0xdbff && q.length > 1) {
+              len = 2;
+            }
+            const chunk = q.slice(0, len);
+            queueRef.current = q.slice(len);
+            const nonWsAdd = chunk.replace(/\s/g, "").length;
+            if (nonWsAdd > 0) {
+              emittedNonWsLenRef.current += nonWsAdd;
+              hasShownMeaningfulRef.current = true;
+            }
+            setDisplayed((prev) => prev + chunk);
+            onChunkRendered?.();
+            lastEmitAtRef.current = now;
+          }
+        }
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+
       if (q.length > 0) {
-        const mergedOptions = mergedOptionsRef.current;
         // Determine 4-stage speed strategy.
         const now = performance.now();
         const backlog = q.length;

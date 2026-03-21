@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import { SoftRouteTransitionLayer } from "@/components/SoftRouteTransitionLayer";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
@@ -14,6 +16,7 @@ const RULES: { title: string }[] = [
 export default function IntroPage(props: AppPageDynamicProps) {
   useClientPageDynamicProps(props);
   const router = useRouter();
+  const [createTransition, setCreateTransition] = useState<null | (() => void)>(null);
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 text-slate-800">
@@ -66,7 +69,7 @@ export default function IntroPage(props: AppPageDynamicProps) {
             </p>
             <GlassCtaButton
               label="创建形象"
-              onClick={() => router.push("/create")}
+              onClick={() => setCreateTransition(() => () => router.push("/create"))}
             />
           </footer>
         </div>
@@ -85,6 +88,18 @@ export default function IntroPage(props: AppPageDynamicProps) {
           </p>
         </section>
       </div>
+
+      <SoftRouteTransitionLayer
+        open={createTransition != null}
+        hint="即将前往创建形象"
+        continueLabel="确认前往"
+        onDismiss={() => setCreateTransition(null)}
+        onContinue={() => {
+          const run = createTransition;
+          setCreateTransition(null);
+          run?.();
+        }}
+      />
     </main>
   );
 }

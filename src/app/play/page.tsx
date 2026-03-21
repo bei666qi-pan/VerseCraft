@@ -21,7 +21,11 @@ import { PlayOptionsList } from "@/features/play/components/PlayOptionsList";
 import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
 import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
 import { injectLocalOpeningFallback } from "@/features/play/opening/injectLocalOpeningFallback";
-import { DEFAULT_FOUR_ACTION_OPTIONS, OPENING_SYSTEM_PROMPT } from "@/features/play/opening/openingCopy";
+import {
+  DEFAULT_FOUR_ACTION_OPTIONS,
+  FIXED_OPENING_NARRATIVE,
+  OPENING_SYSTEM_PROMPT,
+} from "@/features/play/opening/openingCopy";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
@@ -136,6 +140,8 @@ function PlayContent() {
   /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
   const openingAwaitingAssistantRef = useRef(false);
   const openingStartedAtRef = useRef(0);
+  /** 开局回合：叙事固定为本地文案，不从 SSE 的 narrative 字段增量覆盖 */
+  const openingOptionsOnlyRoundRef = useRef(false);
 
   useEffect(() => {
     streamPhaseRef.current = streamPhase;
@@ -255,10 +261,8 @@ function PlayContent() {
 
   const smoothStreamOptions = useMemo(
     () => ({
-      minTickMs: 28,
-      maxTickMs: 36,
-      burstCharsWhenBacklog: 16,
-      // keep defaults for the rest (Gemini pacing)
+      uniformPacing: true,
+      uniformTickMs: 42,
     }),
     []
   );
@@ -556,7 +560,9 @@ function PlayContent() {
     sendActionInFlightRef.current = true;
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
-    narrativeRef.current = "";
+    const isOpeningOptionsOnlyRound = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
+    openingOptionsOnlyRoundRef.current = isOpeningOptionsOnlyRound;
+    narrativeRef.current = isOpeningOptionsOnlyRound ? FIXED_OPENING_NARRATIVE : "";
     setLiveNarrative("");
 
     try {
@@ -741,10 +747,12 @@ function PlayContent() {
         sawStreamChunk = true;
         setStreamPhase("streaming_body");
       }
-      try {
-        narrativeRef.current = extractNarrative(raw);
-      } catch {
-        narrativeRef.current = "";
+      if (!openingOptionsOnlyRoundRef.current) {
+        try {
+          narrativeRef.current = extractNarrative(raw);
+        } catch {
+          narrativeRef.current = "";
+        }
       }
       const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
       if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
@@ -889,10 +897,14 @@ function PlayContent() {
 
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
     let narrativeToPush: string;
-    try {
-      narrativeToPush = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
-    } catch {
-      narrativeToPush = rawNarrative.slice(0, 50000);
+    if (openingOptionsOnlyRoundRef.current) {
+      narrativeToPush = FIXED_OPENING_NARRATIVE;
+    } else {
+      try {
+        narrativeToPush = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
+      } catch {
+        narrativeToPush = rawNarrative.slice(0, 50000);
+      }
     }
     useGameStore.getState().pushLog({
       role: "assistant",
@@ -1138,6 +1150,7 @@ function PlayContent() {
       setLiveNarrative("剧情结算时发生错误，请重试本回合。");
     }
     } finally {
+      openingOptionsOnlyRoundRef.current = false;
       sendActionInFlightRef.current = false;
     }
   }
