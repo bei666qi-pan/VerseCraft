@@ -26,6 +26,7 @@ See `package.json` scripts. Summary:
 - **Port 666 requires root**: The default `pnpm dev` listens on port 666 which requires elevated privileges. In Cloud Agent VMs, use `npx next dev --webpack -p 3000` instead or run with sudo.
 - **System `DATABASE_URL` takes precedence**: Next.js does not override env vars already set in the shell. If a `DATABASE_URL` secret is injected at the VM level, `.env.local` values for that key are ignored. Start Docker PostgreSQL with matching credentials (user/password/db parsed from the injected `DATABASE_URL`) or unset the system var before starting the dev server.
 - **Database auto-migration**: `scripts/migrate.js` runs the base schema; `pnpm db:push` (via drizzle-kit) syncs the Drizzle schema. Both must use the same `DATABASE_URL`. The `db-push.mjs` script loads `.env.local` via dotenv, but system-level env vars take precedence.
+- **AI model `apiModel` vs display ID**: The model registry (`src/lib/ai/models/registry.ts`) uses logical IDs internally (e.g. `deepseek-v3.2`, `glm-5-air`), but the `apiModel` field sent to vendors must match their **actual upstream API model identifiers**. If you see "Model Not Exist" errors from providers, verify `apiModel` values in the registry against each provider's official docs.
 
 ---
 
