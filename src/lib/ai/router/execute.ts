@@ -104,6 +104,11 @@ export async function executePlayerChatStream(params: {
   signal?: AbortSignal;
   timeoutMs?: number;
 }): Promise<PlayerChatStreamResult> {
+  if (params.ctx.task !== "PLAYER_CHAT") {
+    console.warn(
+      `[ai] executePlayerChatStream: ctx.task should be PLAYER_CHAT (got ${params.ctx.task}); telemetry may be misleading.`
+    );
+  }
   const env = resolveAiEnv();
   const taskBinding = getTaskBinding("PLAYER_CHAT");
   const policy = resolveFallbackPolicy("PLAYER_CHAT");
