@@ -9,12 +9,12 @@ import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 let analyticsTableMissingWarned = false;
 
 function isPgUndefinedTable(err: unknown): boolean {
-  return Boolean(
-    err &&
-      typeof err === "object" &&
-      "code" in err &&
-      (err as { code?: string }).code === "42P01"
-  );
+  if (!err || typeof err !== "object") return false;
+  const code = (err as { code?: string }).code;
+  if (code === "42P01") return true;
+  const cause = (err as { cause?: { code?: string } }).cause;
+  if (cause && typeof cause === "object" && cause.code === "42P01") return true;
+  return false;
 }
 
 /** Avoid log spam when DB predates analytics_events; gameplay must not depend on inserts. */
