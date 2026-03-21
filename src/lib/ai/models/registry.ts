@@ -33,7 +33,7 @@ const REGISTRY: Record<AllowedModelId, RegisteredModel> = {
   },
   "deepseek-v3.2": {
     id: "deepseek-v3.2",
-    apiModel: "deepseek-v3.2",
+    apiModel: "deepseek-chat", // pragma: allowlist secret
     provider: "deepseek",
     displayName: "DeepSeek-V3.2",
     capabilities: ["chat", "stream", "json_mode"],
@@ -41,7 +41,7 @@ const REGISTRY: Record<AllowedModelId, RegisteredModel> = {
   },
   "glm-5-air": {
     id: "glm-5-air",
-    apiModel: "glm-5-air",
+    apiModel: "glm-4-flash",
     provider: "zhipu",
     displayName: "GLM-5-Air",
     capabilities: ["chat", "stream", "json_mode"],
