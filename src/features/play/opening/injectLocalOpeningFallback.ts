@@ -1,9 +1,9 @@
 import { useGameStore } from "@/store/useGameStore";
-import { DEFAULT_FOUR_ACTION_OPTIONS, LOCAL_FALLBACK_OPENING_NARRATIVE } from "./openingCopy";
+import { LOCAL_FALLBACK_OPENING_NARRATIVE } from "./openingCopy";
 
-/** Same imperative as the opening timeout interval body: one assistant log + default options. */
+/** 开场超时：仅注入固定叙事，选项保持为空，避免非 AI 选项混入首回合 */
 export function injectLocalOpeningFallback(): void {
   const state = useGameStore.getState();
   state.pushLog({ role: "assistant", content: LOCAL_FALLBACK_OPENING_NARRATIVE });
-  state.setCurrentOptions([...DEFAULT_FOUR_ACTION_OPTIONS]);
+  state.setCurrentOptions([]);
 }

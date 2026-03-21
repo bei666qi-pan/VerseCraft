@@ -119,6 +119,8 @@ function PlayContent() {
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
+  /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
+  const [openingAiBusy, setOpeningAiBusy] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -291,6 +293,14 @@ function PlayContent() {
       .map((l) => String(l.content));
   }, [logs]);
 
+  const hasAssistantMessage = useMemo(
+    () => (logs ?? []).some((l) => l && l.role === "assistant"),
+    [logs]
+  );
+
+  const showEmbeddedOpening =
+    isHydrated && isGameStarted && !hasAssistantMessage;
+
   const latestAssistantRaw = useMemo(() => {
     if (isStreamVisualActive) {
       return typeof smoothNarrative === "string" && smoothNarrative.length > 0
@@ -444,11 +454,14 @@ function PlayContent() {
       if (Date.now() - openingStartedAtRef.current < 8000) return;
       openingAwaitingAssistantRef.current = false;
       injectLocalOpeningFallback();
+      setLiveNarrative(
+        "连接迟迟未返回，已载入本地开场文本。选项需由主笔生成，请稍后重试发送或刷新页面。"
+      );
     }, 400);
     return () => clearInterval(tick);
   }, [isHydrated]);
 
-  // 兜底：若开场叙事已出现但选项为空，补齐 4 个默认选项（避免首次进入看到“无选项”）
+  // 兜底：若已有助手叙事但选项仍为空，补齐默认（首条助手回合不注入，仅信模型 options）
   const hasSeededOpeningOptions = useRef(false);
   useEffect(() => {
     if (!isHydrated || !isGameStarted || isChatBusy) return;
@@ -471,8 +484,9 @@ function PlayContent() {
     if (hasSeededOpeningOptions.current) return;
     const state = useGameStore.getState();
     const logsNow = state.logs ?? [];
-    const hasAssistant = logsNow.some((l) => l && l.role === "assistant");
-    if (!hasAssistant) return;
+    const assistantCount = logsNow.filter((l) => l && l.role === "assistant").length;
+    if (assistantCount === 0) return;
+    if (assistantCount <= 1) return;
     if (inputMode !== "options") return;
     if (currentOptions.length > 0) return;
 
@@ -562,7 +576,11 @@ function PlayContent() {
     setStreamPhase("waiting_upstream");
     const isOpeningOptionsOnlyRound = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
     openingOptionsOnlyRoundRef.current = isOpeningOptionsOnlyRound;
-    narrativeRef.current = isOpeningOptionsOnlyRound ? FIXED_OPENING_NARRATIVE : "";
+    if (isOpeningOptionsOnlyRound) {
+      setOpeningAiBusy(true);
+      setCurrentOptions([]);
+    }
+    narrativeRef.current = "";
     setLiveNarrative("");
 
     try {
@@ -895,6 +913,10 @@ function PlayContent() {
       }
     }
 
+    const logsBeforeAssistant = useGameStore.getState().logs ?? [];
+    const assistantCountBeforePush = logsBeforeAssistant.filter((l) => l && l.role === "assistant").length;
+    const isFirstAssistantTurn = assistantCountBeforePush === 0;
+
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
     let narrativeToPush: string;
     if (openingOptionsOnlyRoundRef.current) {
@@ -1067,10 +1089,12 @@ function PlayContent() {
       : [];
 
     const merged = [...validOpts];
-    for (const d of DEFAULT_FOUR_ACTION_OPTIONS) {
-      if (merged.length >= 4) break;
-      if (merged.includes(d)) continue;
-      merged.push(d);
+    if (!isFirstAssistantTurn) {
+      for (const d of DEFAULT_FOUR_ACTION_OPTIONS) {
+        if (merged.length >= 4) break;
+        if (merged.includes(d)) continue;
+        merged.push(d);
+      }
     }
 
     if (merged.length > 0) {
@@ -1151,6 +1175,7 @@ function PlayContent() {
     }
     } finally {
       openingOptionsOnlyRoundRef.current = false;
+      setOpeningAiBusy(false);
       sendActionInFlightRef.current = false;
     }
   }
@@ -1371,6 +1396,7 @@ function PlayContent() {
                 onScrollContainer={onScrollContainer}
                 displayEntries={displayEntries}
                 isStreamVisualActive={isStreamVisualActive}
+                suppressStreamVisual={openingAiBusy}
                 smoothThinking={smoothThinking}
                 smoothNarrative={smoothNarrative}
                 smoothComplete={smoothComplete}
@@ -1382,9 +1408,11 @@ function PlayContent() {
                 greenTips={greenTips}
                 firstTimeHint={firstTimeHint}
                 plainOnlyNewTurn={false}
-              plainOnlyLogIndexMin={streamLogsBaselineRef.current}
+                plainOnlyLogIndexMin={streamLogsBaselineRef.current}
+                embeddedOpeningContent={showEmbeddedOpening ? FIXED_OPENING_NARRATIVE : null}
+                openingAiBusy={openingAiBusy}
               >
-                {inputMode === "options" && !isChatBusy && (
+                {inputMode === "options" && !isChatBusy && hasAssistantMessage && currentOptions.length > 0 && (
                   <PlayOptionsList
                     key={`opts:${currentOptions.join("||")}`}
                     options={currentOptions}

@@ -8,7 +8,6 @@ import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
-import { SoftRouteTransitionLayer } from "@/components/SoftRouteTransitionLayer";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
@@ -203,7 +202,6 @@ export default function CreatePage(props: AppPageDynamicProps) {
   const [personality, setPersonality] = useState("");
   const [heightFocused, setHeightFocused] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [diveTransitionOpen, setDiveTransitionOpen] = useState(false);
   const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
 
   const [stats, setStats] = useState<Record<StatType, number>>({ ...BASE_STATS });
@@ -234,15 +232,7 @@ export default function CreatePage(props: AppPageDynamicProps) {
 
   const stepper = useStatStepper(inc, dec, remaining, stats);
 
-  function requestDiveTransition() {
-    if (!canSubmit || !selectedTalent) {
-      setSubmitAttempted(true);
-      return;
-    }
-    setDiveTransitionOpen(true);
-  }
-
-  function commitCharacterAndPlay() {
+  function handleSubmit() {
     if (!canSubmit || !selectedTalent) {
       setSubmitAttempted(true);
       return;
@@ -524,7 +514,7 @@ export default function CreatePage(props: AppPageDynamicProps) {
         <section className="mt-8">
           <GlassCtaButton
             label="意识潜入"
-            onClick={requestDiveTransition}
+            onClick={handleSubmit}
             error={
               submitAttempted && !canSubmit
                 ? "检查必填项、性格格式、点数用尽、天赋已选。"
@@ -533,17 +523,6 @@ export default function CreatePage(props: AppPageDynamicProps) {
           />
         </section>
       </div>
-
-      <SoftRouteTransitionLayer
-        open={diveTransitionOpen}
-        hint="即将意识潜入叙事世界"
-        continueLabel="确认潜入"
-        onDismiss={() => setDiveTransitionOpen(false)}
-        onContinue={() => {
-          setDiveTransitionOpen(false);
-          commitCharacterAndPlay();
-        }}
-      />
     </main>
   );
 }

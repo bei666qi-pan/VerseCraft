@@ -128,6 +128,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   onScrollContainer,
   displayEntries,
   isStreamVisualActive,
+  suppressStreamVisual,
   smoothThinking,
   smoothNarrative,
   smoothComplete,
@@ -140,12 +141,16 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   firstTimeHint,
   plainOnlyNewTurn,
   plainOnlyLogIndexMin,
+  embeddedOpeningContent,
+  openingAiBusy,
   children,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   onScrollContainer: () => void;
   displayEntries: PlayStoryDisplayEntry[];
   isStreamVisualActive: boolean;
+  /** 开局仅拉 options 时隐藏流式条，避免空叙事占位与正文抢视觉 */
+  suppressStreamVisual?: boolean;
   smoothThinking: boolean;
   smoothNarrative: string;
   smoothComplete: boolean;
@@ -158,8 +163,14 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   firstTimeHint: string | null;
   plainOnlyNewTurn: boolean;
   plainOnlyLogIndexMin: number;
+  /** 尚无助手日志时由前端静态渲染的固定开场正文 */
+  embeddedOpeningContent?: string | null;
+  /** 正在向模型请求首回合 options */
+  openingAiBusy?: boolean;
   children?: ReactNode;
 }) {
+  const streamOn = isStreamVisualActive && !suppressStreamVisual;
+
   return (
     <div
       ref={scrollRef}
@@ -168,6 +179,26 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
       style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as CSSProperties}
     >
       <div className="space-y-6">
+        {embeddedOpeningContent ? (
+          <div className="animate-[fadeIn_0.8s_ease-out]">
+            <DMNarrativeBlock
+              content={embeddedOpeningContent}
+              isDarkMoon={isDarkMoon}
+              isLowSanity={isLowSanity}
+            />
+            {openingAiBusy ? (
+              <div
+                className={`mt-4 flex items-center gap-2 text-sm ${
+                  isLowSanity ? "text-white/55" : isDarkMoon ? "text-slate-300/80" : "text-slate-500"
+                }`}
+              >
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400/90 shadow-[0_0_8px_rgba(99,102,241,0.7)]" />
+                选项正在由主笔实时推演…
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <StoryHistory
           displayEntries={displayEntries}
           isDarkMoon={isDarkMoon}
@@ -177,14 +208,14 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
         />
 
         <StreamPanel
-          isStreamVisualActive={isStreamVisualActive}
+          isStreamVisualActive={streamOn}
           smoothThinking={smoothThinking}
           smoothNarrative={smoothNarrative}
           smoothComplete={smoothComplete}
           isDarkMoon={isDarkMoon}
           isLowSanity={isLowSanity}
         />
-        {inputMode === "options" && isChatBusy && smoothComplete && (
+        {inputMode === "options" && isChatBusy && smoothComplete && streamOn && (
           <div className="pt-2">
             <div className="relative flex h-6 w-6 items-center justify-center">
               <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
@@ -210,7 +241,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
               isLowSanity={isLowSanity}
             />
           </div>
-        ) : displayEntries.length === 0 && !isStreamVisualActive ? (
+        ) : !embeddedOpeningContent && displayEntries.length === 0 && !isStreamVisualActive ? (
           <div
             className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`}
           />

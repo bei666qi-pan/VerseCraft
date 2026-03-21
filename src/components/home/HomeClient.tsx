@@ -9,7 +9,6 @@ import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
-import { SoftRouteTransitionLayer } from "@/components/SoftRouteTransitionLayer";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 import { unlockBgmOnUserGesture } from "@/config/audio";
@@ -58,8 +57,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [feedbackContent, setFeedbackContent] = useState("");
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const [worldEntryTransition, setWorldEntryTransition] = useState<null | (() => void)>(null);
-
   const [loginState, loginAction, loginPending] = useActionState(loginUser, INITIAL_AUTH_ACTION_STATE);
 
   const [registerState, registerAction, registerPending] = useActionState(
@@ -371,16 +368,18 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           <button
             type="button"
             onClick={() => {
-              setWorldEntryTransition(() => () => {
-                unlockBgmOnUserGesture();
-                resetForNewGame();
-                router.push("/intro");
-              });
+              unlockBgmOnUserGesture();
+              resetForNewGame();
+              router.push("/intro");
             }}
-            className="group relative flex items-center gap-3 rounded-full bg-white/40 px-12 py-5 font-bold tracking-widest text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-2xl border border-white/60 transition-all duration-500 hover:bg-white/60 hover:scale-105 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_12px_40px_rgba(0,0,0,0.06)]"
+            className="group relative flex items-center gap-3 rounded-full px-12 py-5 font-bold tracking-widest text-slate-800 transition-all duration-500 hover:scale-[1.02] active:scale-[0.99]"
           >
-            <span className="relative">进入世界</span>
-            <span className="relative text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
+            <span
+              className="pointer-events-none absolute inset-0 rounded-full bg-white/45 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_40px_rgba(148,163,184,0.15)]"
+              aria-hidden
+            />
+            <span className="relative z-10">进入世界</span>
+            <span className="relative z-10 text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
           </button>
         </div>
         <div className="flex flex-col items-center gap-2 text-sm text-slate-400/80 mt-8">
@@ -462,18 +461,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     </main>
 
     <Leaderboard userId={user?.id} />
-
-    <SoftRouteTransitionLayer
-      open={worldEntryTransition != null}
-      hint="即将进入如月公寓引导"
-      continueLabel="确认进入"
-      onDismiss={() => setWorldEntryTransition(null)}
-      onContinue={() => {
-        const run = worldEntryTransition;
-        setWorldEntryTransition(null);
-        run?.();
-      }}
-    />
     </>
   );
 }
