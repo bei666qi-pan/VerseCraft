@@ -35,8 +35,17 @@ export function resolveVerseCraftProjectRoot(): string {
 /** Idempotent; safe to call from instrumentation and from `/api/chat` before reading AI keys. */
 export function loadVerseCraftEnvFilesOnce(): void {
   if (versecraftEnvLoaded) return;
-  versecraftEnvLoaded = true;
   if (process.env.NEXT_RUNTIME === "edge") return;
   const root = resolveVerseCraftProjectRoot();
   loadEnvConfig(root);
+  versecraftEnvLoaded = true;
+}
+
+/**
+ * Always re-merge `.env` / `.env.local` from the resolved project root (no "loaded" short-circuit).
+ * Use when keys still appear missing after `loadVerseCraftEnvFilesOnce` — e.g. first tick ordering in dev.
+ */
+export function reloadVerseCraftProcessEnv(): void {
+  if (process.env.NEXT_RUNTIME === "edge") return;
+  loadEnvConfig(resolveVerseCraftProjectRoot());
 }
