@@ -29,6 +29,7 @@ import { runPlayerControlPreflight } from "@/lib/playRealtime/controlPreflight";
 import { tryEnhanceDmAfterMainStream } from "@/lib/playRealtime/narrativeEnhancement";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
+import { loadVerseCraftEnvFilesOnce } from "@/lib/config/loadVerseCraftEnv";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -406,6 +407,9 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+
+  // Merge `.env.local` from the real package root (cwd can differ from app root under some launchers).
+  loadVerseCraftEnvFilesOnce();
 
   const validated = validateChatRequest(body);
   if (!validated.ok) {
