@@ -11,7 +11,17 @@ import "server-only";
 
 import fs from "node:fs";
 import path from "node:path";
-import { loadEnvConfig } from "@next/env";
+type LoadEnvConfigFn = (dir: string) => void;
+
+function loadEnvConfigSync(root: string): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("@next/env") as { loadEnvConfig: LoadEnvConfigFn };
+    mod.loadEnvConfig(root);
+  } catch {
+    /* @next/env unavailable at build time; rely on Next.js built-in env loading */
+  }
+}
 
 /** Env names used by `envCore.resolveAiEnv` / `anyAiProviderConfigured`. */
 const AI_SECRET_ENV_NAMES = [
@@ -107,7 +117,7 @@ export function loadVerseCraftEnvFilesOnce(): void {
   if (versecraftEnvLoaded) return;
   if (process.env.NEXT_RUNTIME === "edge") return;
   const root = resolveVerseCraftProjectRoot();
-  loadEnvConfig(root);
+  loadEnvConfigSync(root);
   mergeAiSecretsFromProjectEnvFiles(root);
   versecraftEnvLoaded = true;
 }
@@ -119,6 +129,6 @@ export function loadVerseCraftEnvFilesOnce(): void {
 export function reloadVerseCraftProcessEnv(): void {
   if (process.env.NEXT_RUNTIME === "edge") return;
   const root = resolveVerseCraftProjectRoot();
-  loadEnvConfig(root);
+  loadEnvConfigSync(root);
   mergeAiSecretsFromProjectEnvFiles(root);
 }
