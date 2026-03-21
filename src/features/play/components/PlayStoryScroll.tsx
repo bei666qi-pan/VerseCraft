@@ -165,7 +165,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   plainOnlyLogIndexMin: number;
   /** 尚无助手日志时由前端静态渲染的固定开场正文 */
   embeddedOpeningContent?: string | null;
-  /** 正在向模型请求首回合 options */
+  /** 嵌入区「主笔推演」提示：请传入已与 `streamPhase` 交叉校验后的值（如父组件中的 openingBusyUi） */
   openingAiBusy?: boolean;
   children?: ReactNode;
 }) {

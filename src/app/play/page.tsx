@@ -22,6 +22,10 @@ import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
 import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
 import { injectLocalOpeningFallback } from "@/features/play/opening/injectLocalOpeningFallback";
 import {
+  computeOpeningBusyUi,
+  shouldRecoverStaleSendActionFlight,
+} from "@/features/play/opening/openingStreamUi";
+import {
   DEFAULT_FOUR_ACTION_OPTIONS,
   FIXED_OPENING_NARRATIVE,
   OPENING_SYSTEM_PROMPT,
@@ -154,6 +158,11 @@ function PlayContent() {
   /** True while the live narrative strip / typewriter should run (covers upstream wait + token drain + commit tick). */
   const isStreamVisualActive = isStreamVisualActivePhase(streamPhase);
   const isChatBusy = doesChatPhaseLockInteraction(streamPhase);
+  /** 开局嵌入区提示 / 流式抑制：与 `streamPhase` 交叉校验，避免单项状态卡住导致文案悬挂 */
+  const openingBusyUi = useMemo(
+    () => computeOpeningBusyUi(openingAiBusy, streamPhase),
+    [openingAiBusy, streamPhase]
+  );
 
   const day = time.day ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
@@ -249,8 +258,17 @@ function PlayContent() {
     return () => {
       streamAbortRef.current?.abort();
       void streamReaderRef.current?.cancel().catch(() => {});
+      setOpeningAiBusy(false);
+      sendActionInFlightRef.current = false;
+      openingOptionsOnlyRoundRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (streamPhase === "idle") {
+      setOpeningAiBusy(false);
+    }
+  }, [streamPhase]);
 
   const scheduleAutoScroll = useCallback((smooth = false) => {
     if (!scrollRef.current) return;
@@ -457,6 +475,11 @@ function PlayContent() {
     if (!isHydrated) return;
     const OPENING_STALL_MS = 24_000;
     const tick = window.setInterval(() => {
+      if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
+        sendActionInFlightRef.current = false;
+        openingOptionsOnlyRoundRef.current = false;
+        setOpeningAiBusy(false);
+      }
       const logs = useGameStore.getState().logs ?? [];
       if (logs.some((l) => l && l.role === "assistant")) {
         openingAwaitingAssistantRef.current = false;
@@ -1426,7 +1449,7 @@ function PlayContent() {
                 onScrollContainer={onScrollContainer}
                 displayEntries={displayEntries}
                 isStreamVisualActive={isStreamVisualActive}
-                suppressStreamVisual={openingAiBusy}
+                suppressStreamVisual={openingBusyUi}
                 smoothThinking={smoothThinking}
                 smoothNarrative={smoothNarrative}
                 smoothComplete={smoothComplete}
@@ -1440,7 +1463,7 @@ function PlayContent() {
                 plainOnlyNewTurn={false}
                 plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                 embeddedOpeningContent={showEmbeddedOpening ? FIXED_OPENING_NARRATIVE : null}
-                openingAiBusy={openingAiBusy}
+                openingAiBusy={openingBusyUi}
               >
                 {inputMode === "options" && !isChatBusy && hasAssistantMessage && currentOptions.length > 0 && (
                   <PlayOptionsList

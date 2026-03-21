@@ -513,8 +513,9 @@ export default function CreatePage(props: AppPageDynamicProps) {
         </section>
 
         <section className="mt-8">
-          <GlassEntryFrame variant="card" className="w-full">
+          <GlassEntryFrame variant="card" className="w-full shadow-[0_20px_72px_rgba(79,70,229,0.22)]">
             <GlassCtaButton
+              prominent
               className="w-full"
               label="意识潜入"
               onClick={handleSubmit}
