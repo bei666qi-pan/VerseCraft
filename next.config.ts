@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+/**
+ * Next.js loads env files in this order (later overrides earlier): `.env` → `.env.local` → `.env.[mode].local`.
+ * Local: put secrets in `.env.local` (gitignored). Coolify: set the same variable names in the UI (runtime injection).
+ * Application code must use `@/lib/config/envRaw` / `serverConfig` — not raw `process.env` in `src/`.
+ */
 const envDevOrigins =
   process.env.NEXT_DEV_ALLOWED_ORIGINS?.split(",")
     .map((s) => s.trim())

@@ -1,7 +1,5 @@
 // src/lib/ai/fallback/circuitBreaker.ts
-import "server-only";
-
-import { resolveAiEnv } from "@/lib/ai/config/env";
+import { resolveAiEnv } from "@/lib/ai/config/envCore";
 import type { AiProviderId } from "@/lib/ai/types";
 
 type Bucket = { failures: number; openedUntil: number };
@@ -34,4 +32,9 @@ export function recordProviderFailure(provider: AiProviderId): void {
   const openedUntil =
     failures >= env.circuitFailureThreshold ? Date.now() + env.circuitCooldownMs : prev.openedUntil;
   state.set(k, { failures, openedUntil });
+}
+
+/** Clears provider-level circuit counters (integration tests only). */
+export function resetProviderCircuitsForTests(): void {
+  state.clear();
 }

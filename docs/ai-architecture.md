@@ -4,9 +4,11 @@
 
 | 路径 | 职责 |
 |------|------|
-| `config/env.ts` | 解析 `DEEPSEEK_*` / `ZHIPU_*` / `MINIMAX_*` / `AI_*` 路由与韧性参数 |
+| `config/env.ts` | 服务端入口（`server-only`），再导出 `envCore` |
+| `config/envCore.ts` | 同上逻辑，供 `tsx` 单测直接引用（无 `server-only`） |
 | `models/registry.ts` | **白名单**模型注册表（唯一合法 `model` 出口） |
-| `tasks/taskPolicy.ts` | **任务分工总表**：`TaskType` → 主模型 / fallback / 限额 / 禁止路由 |
+| `tasks/taskPolicy.ts` | **任务分工总表**（直接依赖 `envCore`/`modeCore`，无 `server-only`，便于单测与 Next 服务端共用） |
+| `playRealtime/*` | 玩家实时链路：**控制面预检**（`PLAYER_CONTROL_PREFLIGHT`）+ 规则快照 + 可选 MiniMax 局部增强 |
 | `tasks/routing.ts` | 兼容 re-export（新代码请用 `taskPolicy`） |
 | `router/execute.ts` | 超时 + 重试 + 熔断 + 埋点 + 流式/非流式执行 |
 | `providers/*` | 各厂商官方 HTTP 请求体构造（无 SDK 耦合点） |
@@ -14,8 +16,15 @@
 | `stream/openaiLike.ts` | OpenAI 形态 SSE / JSON 解析归一 |
 | `resilience/fetchWithRetry.ts` | 可重试 `fetch` |
 | `fallback/circuitBreaker.ts` | 按 provider 进程内熔断 |
+| `fallback/modelCircuit.ts` | 按 **modelId** 进程内熔断（与 provider 熔断联动） |
+| `degrade/mode.ts` | 服务端入口；`modeCore.ts` 为无 `server-only` 实现（单测可用） |
+| `errors/classify.ts` | 标准化失败类型（超时/429/5xx/JSON/空/流中断等） |
+| `debug/routingRing.ts` | 近期路由报告环形缓冲（日志 + 管理端） |
 | `telemetry/log.ts` | 结构化 `ai.telemetry` 日志（成本字段见 `usage`） |
 | `service.ts` | **业务唯一推荐入口**（再导出 router / 配置工具） |
+
+**Fallback / 熔断 / 降级** 的语义与状态机见 **`docs/ai-fallback.md`**。  
+**成本、门控、缓存与观测** 见 **`docs/ai-governance.md`**。
 
 ## 核心入口
 
@@ -33,25 +42,29 @@
 
 ## 任务 → 模型映射（代码源：`tasks/taskPolicy.ts`）
 
+> 与源码逐字一致；玩家链还会在 `full` 模式下并入 `AI_PLAYER_MODEL_CHAIN`（非法模型由禁止表剔除）。
+
 | Task | Primary | Fallbacks | Stream | max_tokens | timeout_ms | budget | json_mode |
 |------|---------|-----------|--------|------------|------------|--------|-----------|
-| PLAYER_CHAT | deepseek-v3.2 | glm-5-air | true | 1536 | 60000 | critical | true |
-| INTENT_PARSE | glm-5-air | deepseek-v3.2 | false | 1024 | 15000 | low | true |
-| SAFETY_PREFILTER | glm-5-air | deepseek-v3.2 | false | 512 | 10000 | low | true |
-| RULE_RESOLUTION | deepseek-v3.2 | glm-5-air | false | 2048 | 45000 | high | true |
-| COMBAT_NARRATION | deepseek-v3.2 | glm-5-air | false | 1536 | 45000 | high | true |
-| SCENE_ENHANCEMENT | MiniMax-M2.7-highspeed | deepseek-v3.2 | false | 800 | 25000 | high | false |
-| NPC_EMOTION_POLISH | MiniMax-M2.7-highspeed | deepseek-v3.2, glm-5-air | false | 600 | 20000 | high | false |
-| WORLDBUILD_OFFLINE | deepseek-reasoner | deepseek-v3.2, glm-5-air | false | 4096 | 120000 | medium | true |
-| STORYLINE_SIMULATION | deepseek-reasoner | deepseek-v3.2 | false | 8192 | 120000 | medium | true |
-| DEV_ASSIST | deepseek-reasoner | deepseek-v3.2, glm-5-air | false | 4096 | 90000 | medium | true |
-| MEMORY_COMPRESSION | deepseek-v3.2 | deepseek-reasoner, glm-5-air | false | 2048 | 30000 | medium | true |
+| PLAYER_CHAT | deepseek-v3.2 | *(空；额外候选来自 env 链)* | true | 1408 | 60000 | critical | true |
+| PLAYER_CONTROL_PREFLIGHT | glm-5-air | deepseek-v3.2 | false | 512 | 12000 | low | true |
+| INTENT_PARSE | glm-5-air | deepseek-v3.2 | false | 640 | 15000 | low | true |
+| SAFETY_PREFILTER | glm-5-air | deepseek-v3.2 | false | 384 | 10000 | low | true |
+| RULE_RESOLUTION | deepseek-v3.2 | glm-5-air | false | 1792 | 45000 | high | true |
+| COMBAT_NARRATION | deepseek-v3.2 | glm-5-air | false | 1280 | 45000 | high | true |
+| SCENE_ENHANCEMENT | MiniMax-M2.7-highspeed | deepseek-v3.2 | false | 448 | 22000 | high | false |
+| NPC_EMOTION_POLISH | MiniMax-M2.7-highspeed | deepseek-v3.2, glm-5-air | false | 384 | 18000 | high | false |
+| WORLDBUILD_OFFLINE | deepseek-reasoner | deepseek-v3.2, glm-5-air | false | 3072 | 120000 | medium | true |
+| STORYLINE_SIMULATION | deepseek-reasoner | deepseek-v3.2 | false | 6144 | 120000 | medium | true |
+| DEV_ASSIST | deepseek-reasoner | deepseek-v3.2, glm-5-air | false | 3072 | 90000 | medium | true |
+| MEMORY_COMPRESSION | deepseek-v3.2 | deepseek-reasoner, glm-5-air | false | 1792 | 30000 | medium | true |
 
 ### 禁止路由（模型 × 任务）
 
 | Task | Forbidden models |
 |------|------------------|
 | PLAYER_CHAT | deepseek-reasoner, MiniMax-M2.7-highspeed |
+| PLAYER_CONTROL_PREFLIGHT | deepseek-reasoner, MiniMax-M2.7-highspeed |
 | INTENT_PARSE | deepseek-reasoner, MiniMax-M2.7-highspeed |
 | SAFETY_PREFILTER | deepseek-reasoner, MiniMax-M2.7-highspeed |
 | RULE_RESOLUTION | deepseek-reasoner, MiniMax-M2.7-highspeed |
@@ -75,6 +88,8 @@
 - `AI_PLAYER_MODEL_CHAIN`：默认仅 `deepseek-v3.2,glm-5-air`（**不含** MiniMax；MiniMax 进主链路会被禁止表剔除）
 - `AI_MEMORY_MODEL`、`AI_ADMIN_MODEL`
 - 韧性：`AI_TIMEOUT_MS`、`AI_MAX_RETRIES`、`AI_CIRCUIT_FAILURE_THRESHOLD`、`AI_CIRCUIT_COOLDOWN_MS`
+- 降级：`AI_OPERATION_MODE` 或 `AI_DEGRADE_MODE` = `full` | `safe` | `emergency`
+- 调试：`AI_EXPOSE_ROUTING_HEADER=1` → 响应头携带路由快照（勿在生产对公网长期开启）
 
 ## 迁移与约束
 

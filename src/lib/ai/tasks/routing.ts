@@ -1,5 +1,5 @@
 // src/lib/ai/tasks/routing.ts
-/** Re-exports task policy + PLAYER_CHAT guard (legacy import path). */
+/** Compatibility barrel: prefer `@/lib/ai/tasks/taskPolicy` in new code. */
 import "server-only";
 
 import type { AllowedModelId } from "@/lib/ai/models/registry";

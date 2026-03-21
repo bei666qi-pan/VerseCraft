@@ -14,7 +14,9 @@
     "diagnose:play": "pnpm dlx tsx scripts/diagnose-play-error.ts",
     "db:delete-test-accounts": "pnpm dlx tsx scripts/delete-test-accounts.ts",
     "test:play": "playwright test e2e/play.spec.ts",
-    "test:unit": "tsx --test src/lib/admin/*.test.ts",
+    "test:unit": "tsx --test \"src/**/*.test.ts\"",
+    "test:e2e:chat": "playwright test e2e/chat-sse-contract.spec.ts",
+    "test:ci": "npx eslint \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" --max-warnings 0 && pnpm test:unit && pnpm build",
     "test:admin:api": "playwright test e2e/admin-api.spec.ts",
     "test:admin:perf": "playwright test e2e/admin-performance.spec.ts",
     "analyze:admin-sql": "tsx scripts/admin-explain-baseline.ts",
@@ -36,6 +38,7 @@
     "react-dom": "19.2.3",
     "recharts": "^3.8.0",
     "redis": "^5.11.0",
+    "server-only": "^0.0.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

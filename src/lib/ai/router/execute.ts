@@ -1,8 +1,14 @@
 // src/lib/ai/router/execute.ts
-import "server-only";
-
-import { resolveAiEnv } from "@/lib/ai/config/env";
-import { recordProviderFailure, recordProviderSuccess, isCircuitOpen } from "@/lib/ai/fallback/circuitBreaker";
+import { resolveAiEnv } from "@/lib/ai/config/envCore";
+import { resolveOperationMode, type OperationMode } from "@/lib/ai/degrade/modeCore";
+import {
+  classifyFetchThrowable,
+  classifyHttpStatus,
+  shouldAdvanceToNextModel,
+  shouldCountTowardCircuit,
+} from "@/lib/ai/errors/classify";
+import { isCircuitOpen } from "@/lib/ai/fallback/circuitBreaker";
+import { isModelCircuitOpen, recordModelFailure, recordModelSuccess } from "@/lib/ai/fallback/modelCircuit";
 import type { AllowedModelId } from "@/lib/ai/models/registry";
 import { ALLOWED_MODEL_IDS, getRegisteredModel } from "@/lib/ai/models/registry";
 import { getProviderFactory } from "@/lib/ai/providers";
@@ -13,15 +19,23 @@ import {
   assertModelAllowedForTask,
   getTaskBinding,
   resolveFallbackPolicy,
+  resolveOrderedModelChain,
   type TaskBinding,
 } from "@/lib/ai/tasks/taskPolicy";
+import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
+import {
+  completionCacheTtlSec,
+  isCompletionTaskCacheable,
+  readCompletionCache,
+  writeCompletionCache,
+} from "@/lib/ai/governance/responseCache";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
 import type { AIRequestContext, AiProviderId, ChatMessage, TaskType } from "@/lib/ai/types/core";
+import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
+import { isValidJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 
-function providerEndpoint(
-  provider: AiProviderId
-): { url: string; key: string } {
+function providerEndpoint(provider: AiProviderId): { url: string; key: string } {
   const env = resolveAiEnv();
   if (provider === "deepseek") {
     return { url: env.deepseek.apiUrl, key: env.deepseek.apiKey };
@@ -37,7 +51,6 @@ function asAllowedModelId(id: string): AllowedModelId | null {
 }
 
 function streamUsageFlag(provider: AiProviderId): boolean {
-  // Zhipu: keep off by default to avoid vendor rejects; DeepSeek + MiniMax support usage in stream.
   return provider === "deepseek" || provider === "minimax";
 }
 
@@ -77,32 +90,42 @@ function buildNonStreamBody(
   };
 }
 
+function countFallbacks(attempts: AiRoutingAttempt[]): number {
+  return attempts.filter((a) => a.failureKind !== undefined).length;
+}
+
 export type PlayerChatStreamSuccess = {
   ok: true;
   response: Response;
   modelId: AllowedModelId;
   providerId: AiProviderId;
+  intendedModelId: AllowedModelId;
+  operationMode: OperationMode;
+  httpAttempts: AiRoutingAttempt[];
 };
 
 export type PlayerChatStreamFailure = {
   ok: false;
   code: "NO_CREDENTIALS" | "CHAIN_EXHAUSTED" | "ABORTED";
   message: string;
-  /** Populated for HTTP failures from last attempted upstream. */
   lastHttpStatus?: number;
+  intendedModelId?: AllowedModelId;
+  operationMode?: OperationMode;
+  httpAttempts?: AiRoutingAttempt[];
 };
 
 export type PlayerChatStreamResult = PlayerChatStreamSuccess | PlayerChatStreamFailure;
 
 /**
- * Player-facing SSE chat: tries fallback chain with timeout/retry/circuit + telemetry.
- * Never uses offline-only models (e.g. deepseek-reasoner) — enforced in routing + runtime assert.
+ * Player-facing SSE: ordered chain, model+provider circuits, classified failures.
+ * Use `skipModels` for stream-layer retries without re-hitting the same model.
  */
 export async function executePlayerChatStream(params: {
   messages: ChatMessage[];
   ctx: AIRequestContext;
   signal?: AbortSignal;
   timeoutMs?: number;
+  skipModels?: readonly AllowedModelId[];
 }): Promise<PlayerChatStreamResult> {
   if (params.ctx.task !== "PLAYER_CHAT") {
     console.warn(
@@ -110,16 +133,24 @@ export async function executePlayerChatStream(params: {
     );
   }
   const env = resolveAiEnv();
+  const mode = resolveOperationMode();
   const taskBinding = getTaskBinding("PLAYER_CHAT");
-  const policy = resolveFallbackPolicy("PLAYER_CHAT");
+  const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
   const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
   const maxRetries = env.maxRetries;
+  const skip = new Set(params.skipModels ?? []);
+  const fullChain = resolveOrderedModelChain("PLAYER_CHAT", env, mode);
+  const intendedModelId = fullChain[0] ?? ("deepseek-v3.2" as AllowedModelId);
+  const attempts: AiRoutingAttempt[] = [];
 
   if (policy.chain.length === 0) {
     return {
       ok: false,
       code: "NO_CREDENTIALS",
       message: "未配置任何可用的大模型 API Key（玩家链路需要至少一个厂商密钥）。",
+      intendedModelId,
+      operationMode: mode,
+      httpAttempts: attempts,
     };
   }
 
@@ -128,22 +159,41 @@ export async function executePlayerChatStream(params: {
   for (const mid of policy.chain) {
     const modelId = asAllowedModelId(mid);
     if (!modelId) continue;
+    if (skip.has(modelId)) continue;
+
     assertModelAllowedForTask("PLAYER_CHAT", modelId);
     const reg = getRegisteredModel(modelId);
 
-    if (policy.tripCircuitOnFailure && isCircuitOpen(reg.provider)) {
+    if (policy.tripCircuitOnFailure && (isCircuitOpen(reg.provider) || isModelCircuitOpen(modelId))) {
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: "CIRCUIT_SKIP",
+        severity: "soft",
+        message: "provider_or_model_circuit_open",
+      });
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: reg.provider,
         modelId,
         phase: "circuit_skip",
+        errorCode: "CIRCUIT_SKIP",
       });
       continue;
     }
 
     const { url, key } = providerEndpoint(reg.provider);
     if (!key) {
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: "UNKNOWN",
+        severity: "soft",
+        message: "missing_api_key",
+      });
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
@@ -167,11 +217,20 @@ export async function executePlayerChatStream(params: {
       modelId,
       phase: "start",
       attempt: 0,
+      stream: true,
+      userId: params.ctx.userId,
     });
 
     try {
       if (params.signal?.aborted) {
-        return { ok: false, code: "ABORTED", message: "请求已取消。" };
+        return {
+          ok: false,
+          code: "ABORTED",
+          message: "请求已取消。",
+          intendedModelId,
+          operationMode: mode,
+          httpAttempts: attempts,
+        };
       }
 
       const res = await resilientFetch(url, init, {
@@ -182,7 +241,13 @@ export async function executePlayerChatStream(params: {
       lastHttpStatus = res.status;
 
       if (res.ok && res.body) {
-        recordProviderSuccess(reg.provider);
+        recordModelSuccess(modelId, reg.provider);
+        attempts.push({
+          modelId,
+          providerId: reg.provider,
+          phase: "http",
+          latencyMs: Date.now() - t0,
+        });
         logAiTelemetry({
           requestId: params.ctx.requestId,
           task: params.ctx.task,
@@ -191,14 +256,36 @@ export async function executePlayerChatStream(params: {
           phase: "success",
           latencyMs: Date.now() - t0,
           httpStatus: res.status,
+          stream: true,
+          fallbackCount: countFallbacks(attempts),
+          userId: params.ctx.userId,
         });
-        return { ok: true, response: res, modelId, providerId: reg.provider };
+        return {
+          ok: true,
+          response: res,
+          modelId,
+          providerId: reg.provider,
+          intendedModelId,
+          operationMode: mode,
+          httpAttempts: attempts,
+        };
       }
 
-      if (policy.tripCircuitOnFailure) {
-        recordProviderFailure(reg.provider);
-      }
+      const { kind, severity } = classifyHttpStatus(res.status);
       const errText = await res.text().catch(() => "");
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: kind,
+        severity,
+        httpStatus: res.status,
+        message: errText.slice(0, 400),
+        latencyMs: Date.now() - t0,
+      });
+      if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
+        recordModelFailure(modelId, reg.provider);
+      }
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
@@ -207,25 +294,37 @@ export async function executePlayerChatStream(params: {
         phase: "error",
         latencyMs: Date.now() - t0,
         httpStatus: res.status,
+        errorCode: kind,
         message: errText.slice(0, 500),
+        stream: true,
+        fallbackCount: countFallbacks(attempts),
+        userId: params.ctx.userId,
       });
     } catch (e) {
-      if (e instanceof Error && e.name === "AbortError") {
-        logAiTelemetry({
-          requestId: params.ctx.requestId,
-          task: params.ctx.task,
-          providerId: reg.provider,
-          modelId,
-          phase: "error",
-          latencyMs: Date.now() - t0,
-          message: "aborted",
-        });
-        return { ok: false, code: "ABORTED", message: "请求超时或已被取消。" };
+      const { kind, severity } = classifyFetchThrowable(e);
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: kind,
+        severity,
+        message: e instanceof Error ? e.message : String(e),
+        latencyMs: Date.now() - t0,
+      });
+      if (kind === "ABORTED" || !shouldAdvanceToNextModel(kind)) {
+        return {
+          ok: false,
+          code: "ABORTED",
+          message: "请求超时或已被取消。",
+          lastHttpStatus,
+          intendedModelId,
+          operationMode: mode,
+          httpAttempts: attempts,
+        };
       }
-      if (policy.tripCircuitOnFailure) {
-        recordProviderFailure(reg.provider);
+      if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
+        recordModelFailure(modelId, reg.provider);
       }
-      const msg = e instanceof Error ? e.message : String(e);
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
@@ -233,7 +332,11 @@ export async function executePlayerChatStream(params: {
         modelId,
         phase: "error",
         latencyMs: Date.now() - t0,
-        message: msg,
+        errorCode: kind,
+        message: e instanceof Error ? e.message : String(e),
+        stream: true,
+        fallbackCount: countFallbacks(attempts),
+        userId: params.ctx.userId,
       });
     }
   }
@@ -243,6 +346,9 @@ export async function executePlayerChatStream(params: {
     code: "CHAIN_EXHAUSTED",
     message: "所有候选模型均调用失败，请稍后重试或检查密钥与配额。",
     lastHttpStatus,
+    intendedModelId,
+    operationMode: mode,
+    httpAttempts: attempts,
   };
 }
 
@@ -251,17 +357,18 @@ export async function executeChatCompletion(params: {
   messages: ChatMessage[];
   ctx: AIRequestContext;
   signal?: AbortSignal;
-  /** Per-call timeout (e.g. memory compress); does not log as dev override. */
   requestTimeoutMs?: number;
-  /** Escape hatch for experiments; avoid in production paths. */
+  /** When true, skip offline response cache (DEV_ASSIST / worldbuild / storyline). */
+  skipCache?: boolean;
   devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
 }): Promise<AIResponse | AIErrorResponse> {
   if (params.task === "PLAYER_CHAT") {
     throw new Error("[ai] PLAYER_CHAT must use executePlayerChatStream(), not executeChatCompletion()");
   }
   const env = resolveAiEnv();
+  const mode = resolveOperationMode();
   const baseBinding = getTaskBinding(params.task);
-  const policy = resolveFallbackPolicy(params.task);
+  const policy = resolveFallbackPolicy(params.task, env, mode);
   if (params.devOverrides && Object.keys(params.devOverrides).length > 0) {
     console.warn(`[ai] devOverrides applied for task=${params.task}`, params.devOverrides);
   }
@@ -276,13 +383,67 @@ export async function executeChatCompletion(params: {
   const timeoutMs = binding.timeoutMs;
   const maxRetries = env.maxRetries;
   const jsonObject = binding.responseFormatJsonObject;
+  const fullChain = resolveOrderedModelChain(params.task, env, mode);
+  const intendedModelId = fullChain[0] ?? ("deepseek-v3.2" as AllowedModelId);
+  const attempts: AiRoutingAttempt[] = [];
 
   if (policy.chain.length === 0) {
     return {
       ok: false,
       code: "NO_CREDENTIALS",
       message: "No AI provider API keys configured for this task.",
+      routing: {
+        requestId: params.ctx.requestId,
+        task: params.task,
+        operationMode: mode,
+        intendedModel: intendedModelId,
+        actualModel: null,
+        fallbackCount: 0,
+        attempts,
+        finalStatus: "upstream_exhausted",
+        lastFailureSummary: "no_credentials",
+      },
     };
+  }
+
+  if (params.skipCache !== true && isCompletionTaskCacheable(params.task)) {
+    const cached = await readCompletionCache(params.task, params.messages);
+    if (cached) {
+      const est = estimateUsdForUsage(cached.modelId, cached.usage);
+      logAiTelemetry({
+        requestId: params.ctx.requestId,
+        task: params.ctx.task,
+        providerId: cached.providerId,
+        modelId: cached.modelId,
+        phase: "success",
+        latencyMs: 0,
+        usage: cached.usage,
+        stream: false,
+        cacheHit: true,
+        fallbackCount: 0,
+        estCostUsd: est,
+        userId: params.ctx.userId,
+      });
+      return {
+        ok: true,
+        providerId: cached.providerId,
+        modelId: cached.modelId,
+        content: cached.content,
+        usage: cached.usage,
+        latencyMs: 0,
+        fromCache: true,
+        routing: {
+          requestId: params.ctx.requestId,
+          task: params.task,
+          operationMode: mode,
+          intendedModel: intendedModelId,
+          actualModel: cached.modelId,
+          fallbackCount: 0,
+          attempts: [],
+          finalStatus: "success",
+        },
+      };
+    }
   }
 
   for (const mid of policy.chain) {
@@ -290,19 +451,28 @@ export async function executeChatCompletion(params: {
     if (!modelId) continue;
     const reg = getRegisteredModel(modelId);
 
-    if (policy.tripCircuitOnFailure && isCircuitOpen(reg.provider)) {
-      logAiTelemetry({
-        requestId: params.ctx.requestId,
-        task: params.ctx.task,
-        providerId: reg.provider,
+    if (policy.tripCircuitOnFailure && (isCircuitOpen(reg.provider) || isModelCircuitOpen(modelId))) {
+      attempts.push({
         modelId,
-        phase: "circuit_skip",
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: "CIRCUIT_SKIP",
+        severity: "soft",
+        message: "circuit_open",
       });
       continue;
     }
 
     const { url, key } = providerEndpoint(reg.provider);
     if (!key) {
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: "UNKNOWN",
+        severity: "soft",
+        message: "missing_api_key",
+      });
       continue;
     }
 
@@ -323,6 +493,8 @@ export async function executeChatCompletion(params: {
       providerId: reg.provider,
       modelId,
       phase: "start",
+      stream: false,
+      userId: params.ctx.userId,
     });
 
     try {
@@ -332,64 +504,149 @@ export async function executeChatCompletion(params: {
         parentSignal: params.signal,
       });
 
-      if (res.ok) {
-        const raw = (await res.json()) as unknown;
-        const { content, usage } = extractNonStreamContent(raw);
-        recordProviderSuccess(reg.provider);
-        logAiTelemetry({
-          requestId: params.ctx.requestId,
-          task: params.ctx.task,
-          providerId: reg.provider,
+      if (!res.ok) {
+        const { kind, severity } = classifyHttpStatus(res.status);
+        const errText = await res.text().catch(() => "");
+        attempts.push({
           modelId,
-          phase: "success",
-          latencyMs: Date.now() - t0,
+          providerId: reg.provider,
+          phase: "http",
+          failureKind: kind,
+          severity,
           httpStatus: res.status,
-          usage,
-        });
-        return {
-          ok: true,
-          providerId: reg.provider,
-          modelId,
-          content,
-          usage,
+          message: errText.slice(0, 300),
           latencyMs: Date.now() - t0,
-        };
+        });
+        if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
+          recordModelFailure(modelId, reg.provider);
+        }
+        continue;
       }
 
-      if (policy.tripCircuitOnFailure) {
-        recordProviderFailure(reg.provider);
+      const raw = (await res.json()) as unknown;
+      const { content, usage } = extractNonStreamContent(raw);
+      const trimmed = (content ?? "").trim();
+
+      if (!trimmed) {
+        attempts.push({
+          modelId,
+          providerId: reg.provider,
+          phase: "http",
+          failureKind: "EMPTY_CONTENT",
+          severity: "soft",
+          message: "empty_message_content",
+          latencyMs: Date.now() - t0,
+        });
+        continue;
       }
-      const errText = await res.text().catch(() => "");
+
+      if (jsonObject && !isValidJsonObjectString(trimmed)) {
+        attempts.push({
+          modelId,
+          providerId: reg.provider,
+          phase: "http",
+          failureKind: "JSON_PARSE",
+          severity: "soft",
+          message: "invalid_json_object",
+          latencyMs: Date.now() - t0,
+        });
+        continue;
+      }
+
+      recordModelSuccess(modelId, reg.provider);
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        latencyMs: Date.now() - t0,
+      });
+
+      const routing: AiRoutingReport = {
+        requestId: params.ctx.requestId,
+        task: params.task,
+        operationMode: mode,
+        intendedModel: intendedModelId,
+        actualModel: modelId,
+        fallbackCount: countFallbacks(attempts),
+        attempts,
+        finalStatus: "success",
+      };
+
+      const estOk = estimateUsdForUsage(modelId, usage);
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: reg.provider,
         modelId,
-        phase: "error",
+        phase: "success",
         latencyMs: Date.now() - t0,
         httpStatus: res.status,
-        message: errText.slice(0, 300),
+        usage,
+        stream: false,
+        cacheHit: false,
+        fallbackCount: countFallbacks(attempts),
+        estCostUsd: estOk,
+        userId: params.ctx.userId,
       });
-    } catch (e) {
-      if (policy.tripCircuitOnFailure) {
-        recordProviderFailure(reg.provider);
+
+      if (params.skipCache !== true && isCompletionTaskCacheable(params.task)) {
+        const ttl = completionCacheTtlSec(params.task);
+        void writeCompletionCache(
+          params.task,
+          params.messages,
+          {
+            content,
+            modelId,
+            providerId: reg.provider,
+            usage,
+          },
+          ttl
+        ).catch(() => {});
       }
-      const msg = e instanceof Error ? e.message : String(e);
-      logAiTelemetry({
-        requestId: params.ctx.requestId,
-        task: params.ctx.task,
+
+      return {
+        ok: true,
         providerId: reg.provider,
         modelId,
-        phase: "error",
+        content,
+        usage,
         latencyMs: Date.now() - t0,
-        message: msg,
+        routing,
+      };
+    } catch (e) {
+      const { kind, severity } = classifyFetchThrowable(e);
+      attempts.push({
+        modelId,
+        providerId: reg.provider,
+        phase: "http",
+        failureKind: kind,
+        severity,
+        message: e instanceof Error ? e.message : String(e),
+        latencyMs: Date.now() - t0,
       });
+      if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
+        recordModelFailure(modelId, reg.provider);
+      }
     }
   }
 
+  const lastFail = [...attempts].reverse().find((a) => a.failureKind);
   return {
     ok: false,
     code: "CHAIN_EXHAUSTED",
     message: "All models in fallback chain failed.",
+    routing: {
+      requestId: params.ctx.requestId,
+      task: params.task,
+      operationMode: mode,
+      intendedModel: intendedModelId,
+      actualModel: null,
+      fallbackCount: countFallbacks(attempts),
+      attempts,
+      finalStatus: "upstream_exhausted",
+      lastFailureSummary: lastFail
+        ? `${lastFail.failureKind ?? "unknown"}:${lastFail.modelId}`
+        : "unknown",
+    },
   };
 }

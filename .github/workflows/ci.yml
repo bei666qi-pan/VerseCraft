@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, unit tests, production build
+        run: pnpm test:ci
+        env:
+          # next build may read optional AI keys; CI image has none — placeholders satisfy any stray reads.
+          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          REDIS_URL: redis://127.0.0.1:6379

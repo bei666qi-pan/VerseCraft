@@ -9,11 +9,6 @@ function getProvider(): ModerationProvider {
   const configured = env.securityModerationProvider;
   if (configured === "local-rules") return localRulesProvider;
   if (configured === "auto") return localRulesProvider;
-  if (configured === "volcengine") {
-    // Deprecated: Volcano safety provider has been removed.
-    console.warn("[security][moderation] volcengine provider has been removed; fallback to local-rules");
-    return localRulesProvider;
-  }
   return localRulesProvider;
 }
 

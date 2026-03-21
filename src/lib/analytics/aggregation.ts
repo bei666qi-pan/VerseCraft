@@ -1,8 +1,8 @@
 import "server-only";
 
-import { asc, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsEvents, userDailyActivity, userDailyTokens } from "@/db/schema";
+import { analyticsEvents, userDailyActivity, userDailyTokens } from "@/db/schema";
 import { getUtcDateKey, parseUtcDateKeyToDate } from "@/lib/analytics/dateKeys";
 
 export type AdminMetricsDailyRebuildResult = {

@@ -6,13 +6,15 @@ export type AiProviderId = "deepseek" | "zhipu" | "minimax";
 /**
  * Task taxonomy for routing. Policy table: `src/lib/ai/tasks/taskPolicy.ts`.
  * - PLAYER_CHAT: only online DM / SSE main path (no reasoner / no MiniMax).
- * - GLM-heavy control tasks: INTENT_PARSE, SAFETY_PREFILTER.
+ * - GLM-heavy control tasks: PLAYER_CONTROL_PREFLIGHT, INTENT_PARSE, SAFETY_PREFILTER.
  * - DeepSeek-V3.2 adjudication: RULE_RESOLUTION, COMBAT_NARRATION.
  * - MiniMax sensory-only: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH.
  * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION (async).
  */
 export type TaskType =
   | "PLAYER_CHAT"
+  /** GLM-first control plane for realtime play: intent, slots, risk tags, enhancement flags (no story text). */
+  | "PLAYER_CONTROL_PREFLIGHT"
   | "INTENT_PARSE"
   | "SAFETY_PREFILTER"
   | "RULE_RESOLUTION"

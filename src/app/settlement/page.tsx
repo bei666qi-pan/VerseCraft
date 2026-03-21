@@ -236,7 +236,7 @@ export default function SettlementPage() {
       setOnLeaderboardToast(true);
       setTimeout(() => setOnLeaderboardToast(false), 5000);
     }
-  }, [kills, maxFloor, survivalHours]);
+  }, [kills, maxFloor, survivalHours, isDead]);
 
   useEffect(() => {
     if (!mounted) return;

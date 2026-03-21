@@ -28,7 +28,17 @@ import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
 import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/features/play/stream/chatPhase";
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
+import {
+  accumulateDmFromSseEvent,
+  normalizeSseNewlines,
+  takeCompleteSseEvents,
+} from "@/features/play/stream/sseFrame";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
+
+/** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
+const STREAM_CHUNK_STALL_MS = 120_000;
+/** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
+const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
 
 function PlayContent() {
   const router = useRouter();
@@ -656,7 +666,7 @@ function PlayContent() {
         : res.status === 403
           ? "深渊拒绝了你。请确认你的身份后再试。"
           : (res.status === 502 && (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403))
-            ? "深渊鉴权失败：请检查各厂商 API Key（DEEPSEEK / ZHIPU / MINIMAX）及白名单模型 ID。"
+            ? "深渊鉴权失败：请检查服务端大模型密钥与环境配置。"
           : res.status === 504
             ? "深渊回应超时（504），请稍后再试。"
           : "连接深渊时发生了波动，请稍后再试。";
@@ -671,43 +681,69 @@ function PlayContent() {
     let raw = "";
     let sawStreamChunk = false;
 
+    const applySseEvent = (eventText: string) => {
+      const { raw: nextRaw, sawNonEmptyData } = accumulateDmFromSseEvent(eventText, raw);
+      raw = nextRaw;
+      if (sawNonEmptyData && !sawStreamChunk) {
+        sawStreamChunk = true;
+        setStreamPhase("streaming_body");
+      }
+      try {
+        narrativeRef.current = extractNarrative(raw);
+      } catch {
+        narrativeRef.current = "";
+      }
+      const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
+      if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
+        setBgm(bgmMatch[1]);
+      }
+    };
+
+    const readNextWithStallGuard = async (stallMs: number) => {
+      let timer: ReturnType<typeof window.setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error("STREAM_STALL_TIMEOUT")), stallMs);
+      });
+      try {
+        const out = await Promise.race([reader.read(), timeoutPromise]);
+        if (timer !== undefined) window.clearTimeout(timer);
+        return out;
+      } catch (e) {
+        if (timer !== undefined) window.clearTimeout(timer);
+        throw e;
+      }
+    };
+
     let streamCancelled = false;
     try {
       while (true) {
-        const { value, done } = await reader.read();
+        const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : STREAM_FIRST_CHUNK_STALL_MS;
+        const { value, done } = await readNextWithStallGuard(stallMs);
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-
-        while (true) {
-          const idx = buf.indexOf("\n\n");
-          if (idx === -1) break;
-          const event = buf.slice(0, idx);
-          buf = buf.slice(idx + 2);
-
-          const lines = event.split("\n");
-          for (const line of lines) {
-            if (!line.startsWith("data:")) continue;
-            const chunk = line.slice(5).trimStart();
-            if (!sawStreamChunk && chunk.length > 0) {
-              sawStreamChunk = true;
-              setStreamPhase("streaming_body");
-            }
-            raw += chunk;
-            try {
-              narrativeRef.current = extractNarrative(raw);
-            } catch {
-              // Defensive: never crash UI on malformed stream
-              narrativeRef.current = "";
-            }
-            const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
-            if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
-              setBgm(bgmMatch[1]);
-            }
-          }
+        const { events, rest } = takeCompleteSseEvents(buf);
+        buf = rest;
+        for (const event of events) {
+          applySseEvent(event);
         }
       }
+      const tail = takeCompleteSseEvents(buf);
+      buf = tail.rest;
+      for (const event of tail.events) {
+        applySseEvent(event);
+      }
+      const orphan = normalizeSseNewlines(buf).trim();
+      if (orphan.length > 0 && orphan.startsWith("data:")) {
+        applySseEvent(orphan);
+      }
     } catch (readErr) {
-      const err = readErr as Error & { name?: string };
+      const err = readErr as Error & { name?: string; message?: string };
+      if (err?.message === "STREAM_STALL_TIMEOUT") {
+        console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
+        setStreamPhase("idle");
+        setLiveNarrative("上游长时间无响应，已停止等待。请检查网络或稍后重试。");
+        return;
+      }
       if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
         streamCancelled = true;
       } else {
@@ -750,6 +786,7 @@ function PlayContent() {
     }
 
     setStreamPhase("turn_committing");
+    try {
     const parsed = tryParseDM(raw);
     if (!parsed) {
       setStreamPhase("idle");
@@ -1040,6 +1077,12 @@ function PlayContent() {
 
     if (parsed.is_death || sanityAfter <= 0) {
       setTimeout(() => router.push("/settlement"), 2000);
+    }
+    } catch (commitErr: unknown) {
+      console.error("[/play] turn commit failed", commitErr);
+      setStreamPhase("idle");
+      narrativeRef.current = "";
+      setLiveNarrative("剧情结算时发生错误，请重试本回合。");
     }
     } finally {
       sendActionInFlightRef.current = false;

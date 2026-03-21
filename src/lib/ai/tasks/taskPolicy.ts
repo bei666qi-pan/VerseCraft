@@ -3,10 +3,9 @@
  * Single source of truth: task → model roles, limits, and forbidden routes.
  * Debug: use `explainTaskRouting()` or `exportTaskModelMatrixMarkdown()` (dev logs).
  */
-import "server-only";
-
-import type { ResolvedAiEnv } from "@/lib/ai/config/env";
-import { resolveAiEnv } from "@/lib/ai/config/env";
+import type { ResolvedAiEnv } from "@/lib/ai/config/envCore";
+import { resolveAiEnv } from "@/lib/ai/config/envCore";
+import { resolveOperationMode, type OperationMode } from "@/lib/ai/degrade/modeCore";
 import type { AllowedModelId } from "@/lib/ai/models/registry";
 import type { FallbackPolicy, TaskType } from "@/lib/ai/types/core";
 
@@ -35,11 +34,23 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   PLAYER_CHAT: {
     task: "PLAYER_CHAT",
     primaryModel: V32,
-    fallbackModels: [GLM],
+    /** Stream narrative only from V32 first; extra models come from `AI_PLAYER_MODEL_CHAIN` env merge only. */
+    fallbackModels: [],
     stream: true,
-    maxTokens: 1536,
+    maxTokens: 1408,
     timeoutMs: 60_000,
     budgetLevel: "critical",
+    responseFormatJsonObject: true,
+  },
+  PLAYER_CONTROL_PREFLIGHT: {
+    task: "PLAYER_CONTROL_PREFLIGHT",
+    primaryModel: GLM,
+    fallbackModels: [V32],
+    stream: false,
+    maxTokens: 512,
+    temperature: 0,
+    timeoutMs: 12_000,
+    budgetLevel: "low",
     responseFormatJsonObject: true,
   },
   INTENT_PARSE: {
@@ -47,7 +58,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: GLM,
     fallbackModels: [V32],
     stream: false,
-    maxTokens: 1024,
+    maxTokens: 640,
     temperature: 0.1,
     timeoutMs: 15_000,
     budgetLevel: "low",
@@ -58,7 +69,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: GLM,
     fallbackModels: [V32],
     stream: false,
-    maxTokens: 512,
+    maxTokens: 384,
     temperature: 0,
     timeoutMs: 10_000,
     budgetLevel: "low",
@@ -69,7 +80,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: V32,
     fallbackModels: [GLM],
     stream: false,
-    maxTokens: 2048,
+    maxTokens: 1792,
     temperature: 0.2,
     timeoutMs: 45_000,
     budgetLevel: "high",
@@ -80,7 +91,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: V32,
     fallbackModels: [GLM],
     stream: false,
-    maxTokens: 1536,
+    maxTokens: 1280,
     temperature: 0.3,
     timeoutMs: 45_000,
     budgetLevel: "high",
@@ -91,9 +102,9 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: MMX,
     fallbackModels: [V32],
     stream: false,
-    maxTokens: 800,
-    temperature: 0.8,
-    timeoutMs: 25_000,
+    maxTokens: 448,
+    temperature: 0.75,
+    timeoutMs: 22_000,
     budgetLevel: "high",
     responseFormatJsonObject: false,
   },
@@ -102,9 +113,9 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: MMX,
     fallbackModels: [V32, GLM],
     stream: false,
-    maxTokens: 600,
-    temperature: 0.85,
-    timeoutMs: 20_000,
+    maxTokens: 384,
+    temperature: 0.82,
+    timeoutMs: 18_000,
     budgetLevel: "high",
     responseFormatJsonObject: false,
   },
@@ -113,7 +124,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: R,
     fallbackModels: [V32, GLM],
     stream: false,
-    maxTokens: 4096,
+    maxTokens: 3072,
     temperature: 0.3,
     timeoutMs: 120_000,
     budgetLevel: "medium",
@@ -124,7 +135,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: R,
     fallbackModels: [V32],
     stream: false,
-    maxTokens: 8192,
+    maxTokens: 6144,
     temperature: 0.25,
     timeoutMs: 120_000,
     budgetLevel: "medium",
@@ -135,7 +146,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: R,
     fallbackModels: [V32, GLM],
     stream: false,
-    maxTokens: 4096,
+    maxTokens: 3072,
     temperature: 0.2,
     timeoutMs: 90_000,
     budgetLevel: "medium",
@@ -146,7 +157,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryModel: V32,
     fallbackModels: [R, GLM],
     stream: false,
-    maxTokens: 2048,
+    maxTokens: 1792,
     timeoutMs: 30_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
@@ -156,6 +167,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
 /** Models that must never run under a given task (enforced before network). */
 export const TASK_MODEL_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AllowedModelId>>> = {
   PLAYER_CHAT: new Set([R, MMX]),
+  PLAYER_CONTROL_PREFLIGHT: new Set([R, MMX]),
   INTENT_PARSE: new Set([R, MMX]),
   SAFETY_PREFILTER: new Set([R, MMX]),
   RULE_RESOLUTION: new Set([R, MMX]),
@@ -203,12 +215,22 @@ function applyForbidden(task: TaskType, chain: AllowedModelId[]): AllowedModelId
 /**
  * Builds ordered candidate list: env overrides for PLAYER_CHAT / MEMORY / DEV_ASSIST, then policy order, minus forbidden.
  */
-export function resolveOrderedModelChain(task: TaskType, env: ResolvedAiEnv = resolveAiEnv()): AllowedModelId[] {
+export function resolveOrderedModelChain(
+  task: TaskType,
+  env: ResolvedAiEnv = resolveAiEnv(),
+  mode: OperationMode = resolveOperationMode()
+): AllowedModelId[] {
   const b = getTaskBinding(task);
   let base: AllowedModelId[] = [b.primaryModel, ...b.fallbackModels];
 
   if (task === "PLAYER_CHAT") {
-    base = uniqueModels([b.primaryModel, ...b.fallbackModels, ...env.playerChatFallbackChain]);
+    if (mode === "emergency") {
+      base = [V32];
+    } else if (mode === "safe") {
+      base = uniqueModels([b.primaryModel, ...b.fallbackModels]);
+    } else {
+      base = uniqueModels([b.primaryModel, ...b.fallbackModels, ...env.playerChatFallbackChain]);
+    }
   } else if (task === "MEMORY_COMPRESSION") {
     const p = env.memoryCompressionModel;
     base = uniqueModels([p, b.primaryModel, ...b.fallbackModels.filter((x) => x !== p)]);
@@ -227,8 +249,12 @@ export function resolveOrderedModelChain(task: TaskType, env: ResolvedAiEnv = re
   return filterByConfiguredKeys(allowed, env);
 }
 
-export function resolveFallbackPolicy(task: TaskType, env: ResolvedAiEnv = resolveAiEnv()): FallbackPolicy {
-  const chain = resolveOrderedModelChain(task, env);
+export function resolveFallbackPolicy(
+  task: TaskType,
+  env: ResolvedAiEnv = resolveAiEnv(),
+  mode: OperationMode = resolveOperationMode()
+): FallbackPolicy {
+  const chain = resolveOrderedModelChain(task, env, mode);
   return {
     chain,
     stopOnFirstSuccess: true,
@@ -243,11 +269,21 @@ export interface RoutingTraceLine {
 }
 
 /** For logs / admin debug: why each model was kept or skipped (pre-key filter). */
-export function explainTaskRouting(task: TaskType, env: ResolvedAiEnv = resolveAiEnv()): RoutingTraceLine[] {
+export function explainTaskRouting(
+  task: TaskType,
+  env: ResolvedAiEnv = resolveAiEnv(),
+  mode: OperationMode = resolveOperationMode()
+): RoutingTraceLine[] {
   const b = getTaskBinding(task);
   let base: AllowedModelId[] = [b.primaryModel, ...b.fallbackModels];
   if (task === "PLAYER_CHAT") {
-    base = uniqueModels([b.primaryModel, ...b.fallbackModels, ...env.playerChatFallbackChain]);
+    if (mode === "emergency") {
+      base = [V32];
+    } else if (mode === "safe") {
+      base = uniqueModels([b.primaryModel, ...b.fallbackModels]);
+    } else {
+      base = uniqueModels([b.primaryModel, ...b.fallbackModels, ...env.playerChatFallbackChain]);
+    }
   } else if (task === "MEMORY_COMPRESSION") {
     const p = env.memoryCompressionModel;
     base = uniqueModels([p, b.primaryModel, ...b.fallbackModels.filter((x) => x !== p)]);

@@ -5,10 +5,17 @@
 ### Project overview
 VerseCraft (文界工坊) is a single-player browser-based text adventure game (Next.js 15 + React 19 + Tailwind CSS v4 + Zustand 5). All UI text is in Simplified Chinese. The project uses PostgreSQL + Drizzle for account/session and server data, while gameplay state remains client-first persisted via IndexedDB (`idb-keyval`).
 
+### Environment configuration
+- **Single source**: server vars validated in `src/lib/config/serverConfig.ts`; raw reads only via `src/lib/config/envRaw.ts`. AI vars: `src/lib/ai/config/env.ts`. Public (browser): `src/lib/config/publicRuntime.ts` (`NEXT_PUBLIC_*` only).
+- **Templates**: `.env.example`, `docs/environment.md`. Local = `.env.local`; production = Coolify env panel (same keys).
+
 ### Key dev commands
 See `package.json` scripts. Summary:
 - `pnpm dev` — dev server on **port 666** (`next dev --webpack -p 666`; production/Docker still listens on `3000`)
 - `pnpm build` — production build
+- `pnpm test:unit` — Node test runner over `src/**/*.test.ts` (AI routing, env, providers, stream fallback mock)
+- `pnpm test:e2e:chat` — Playwright `/api/chat` SSE contract (`e2e/chat-sse-contract.spec.ts`)
+- `pnpm test:ci` — same checks as GitHub `ci.yml` (eslint scoped + unit)
 - `npx eslint .` — lint (**`pnpm lint` / `next lint` does not work in Next.js 16 CLI**; use `npx eslint .` directly)
 
 ### Non-obvious caveats

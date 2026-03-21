@@ -1,6 +1,4 @@
 // src/lib/ai/resilience/fetchWithRetry.ts
-import "server-only";
-
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }

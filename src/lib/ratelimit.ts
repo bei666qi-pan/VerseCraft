@@ -2,7 +2,7 @@
 // Local Redis-based rate limiting + hot IP cache.
 
 import { createClient, type RedisClientType } from "redis";
-import { env } from "@/lib/env";
+import { envRaw } from "@/lib/config/envRaw";
 
 type CacheEntry = { allowed: boolean; resetAt: number };
 const HOT_IP_CACHE_TTL_MS = 2000;
@@ -56,8 +56,9 @@ const llmFallback = createInMemoryLimiter(10, 60000);
 
 let clientPromise: Promise<RedisClientType> | null = null;
 
-async function getRedisClient(): Promise<RedisClientType | null> {
-  const url = env.redisUrl;
+/** Shared Redis connection for rate limits, AI cache, and governance (optional). */
+export async function getAppRedisClient(): Promise<RedisClientType | null> {
+  const url = envRaw("REDIS_URL");
   if (!url || url.trim().length === 0) return null;
   if (!clientPromise) {
     clientPromise = (async () => {
@@ -84,7 +85,7 @@ async function checkWithRedis(
   limit: number,
   intervalMs: number
 ): Promise<boolean | null> {
-  const client = await getRedisClient();
+  const client = await getAppRedisClient();
   if (!client) return null;
 
   const now = Date.now();

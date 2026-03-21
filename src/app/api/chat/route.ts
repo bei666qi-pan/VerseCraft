@@ -15,9 +15,20 @@ import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
-import { DEFAULT_PLAYER_CHAIN } from "@/lib/ai/config/env";
-import type { PlayerChatStreamResult } from "@/lib/ai/router/execute";
+import { DEFAULT_PLAYER_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
+import { allowControlPreflightForSession } from "@/lib/ai/governance/sessionBudget";
+import { resolveOperationMode } from "@/lib/ai/degrade/mode";
+import { pushAiRoutingReport } from "@/lib/ai/debug/routingRing";
+import type { AllowedModelId } from "@/lib/ai/models/registry";
+import { getRegisteredModel } from "@/lib/ai/models/registry";
+import type { PlayerChatStreamSuccess, PlayerChatStreamResult } from "@/lib/ai/router/execute";
+import type { AiRoutingReport } from "@/lib/ai/routing/types";
 import { anyAiProviderConfigured, executePlayerChatStream, sanitizeMessagesForUpstream } from "@/lib/ai/service";
+import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
+import { runPlayerControlPreflight } from "@/lib/playRealtime/controlPreflight";
+import { tryEnhanceDmAfterMainStream } from "@/lib/playRealtime/narrativeEnhancement";
+import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
+import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -305,12 +316,23 @@ function buildSystemPrompt(
   return base.join("\n");
 }
 
+/**
+ * Encode one SSE event. Payload may contain literal newlines (e.g. streamed JSON); a single `data: ...`
+ * line would break framing — use one `data:` line per LF-separated segment (WHATWG SSE).
+ */
+function encodeSseEventPayload(data: string): string {
+  const normalized = data.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+  const fields = lines.map((line) => `data: ${line}`);
+  return `${fields.join("\n")}\n\n`;
+}
+
 function sse(data: string): Uint8Array {
-  return new TextEncoder().encode(`data: ${data}\n\n`);
+  return new TextEncoder().encode(encodeSseEventPayload(data));
 }
 
 function sseText(data: string): string {
-  return `data: ${data}\n\n`;
+  return encodeSseEventPayload(data);
 }
 
 function isLikelyValidDMJson(content: string): boolean {
@@ -621,8 +643,43 @@ export async function POST(req: Request) {
       .catch(() => {});
   }
 
+  const pipelineRule = buildRuleSnapshot(playerContext, latestUserInput);
+  let pipelineControl: PlayerControlPlane | null = null;
+  let pipelinePreflightFailed = true;
+  if (resolveOperationMode() !== "emergency") {
+    const preAc = new AbortController();
+    const preTimer = setTimeout(() => preAc.abort(), 11_000);
+    try {
+      if (allowControlPreflightForSession(sessionId)) {
+        const pf = await runPlayerControlPreflight({
+          latestUserInput,
+          playerContext,
+          ruleSnapshot: pipelineRule,
+          ctx: { requestId, userId, sessionId, path: "/api/chat" },
+          signal: preAc.signal,
+        });
+        if (pf.ok) {
+          pipelineControl = pf.control;
+          pipelinePreflightFailed = false;
+        }
+      }
+    } catch (e) {
+      console.warn("[api/chat] control preflight failed", e);
+    } finally {
+      clearTimeout(preTimer);
+    }
+  }
+
+  const augmentedSystemPrompt =
+    systemPrompt +
+    buildControlAugmentationBlock({
+      control: pipelineControl,
+      rule: pipelineRule,
+      preflightFailed: pipelinePreflightFailed,
+    });
+
   const safeMessages = sanitizeMessagesForUpstream([
-    { role: "system", content: systemPrompt },
+    { role: "system", content: augmentedSystemPrompt },
     ...messagesToSend,
   ]);
 
@@ -646,9 +703,7 @@ export async function POST(req: Request) {
     },
   }).catch(() => {});
   if (!anyAiProviderConfigured()) {
-    console.error(
-      `\x1b[31m[api/chat] No AI provider keys configured. Set DEEPSEEK_API_KEY and/or ZHIPU_API_KEY and/or MINIMAX_API_KEY\x1b[0m`
-    );
+    console.error(`\x1b[31m[api/chat] No AI provider API keys configured (see .env.example / Coolify env).\x1b[0m`);
     return new Response(
       sseText(
         JSON.stringify({
@@ -777,8 +832,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const upstream = streamResult.response;
-  const model = streamResult.modelId;
+  const srOk = streamResult as PlayerChatStreamSuccess;
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
@@ -791,19 +845,68 @@ export async function POST(req: Request) {
     }
   };
 
-  (async () => {
-    const reader = upstream.body!.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-    let accumulated = "";
-    let streamBlocked = false;
-    let latestTotalTokens = 0;
-    let tokenUsageFlushed = false;
-    let firstChunkAt = 0;
+  const MIN_STREAM_OUTPUT_CHARS = 24;
+  const MAX_STREAM_SOURCE_ROUNDS = 3;
+  const routingReport: AiRoutingReport = {
+    requestId,
+    task: "PLAYER_CHAT",
+    operationMode: srOk.operationMode,
+    intendedModel: srOk.intendedModelId,
+    actualModel: srOk.modelId,
+    fallbackCount: srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length,
+    attempts: [...srOk.httpAttempts],
+    finalStatus: "success",
+  };
+  const skippedStreamModels: AllowedModelId[] = [];
+  let streamSource: PlayerChatStreamSuccess = srOk;
+  let streamRound = 0;
+  let tokenUsageFlushedGlobal = false;
 
-    const flushTokenUsage = async () => {
-      if (tokenUsageFlushed) return;
-      tokenUsageFlushed = true;
+  (async () => {
+    const scheduleStreamReconnect = async (
+      failedModel: AllowedModelId,
+      kind: "STREAM_INTERRUPTED" | "EMPTY_CONTENT"
+    ): Promise<boolean> => {
+      if (streamRound >= MAX_STREAM_SOURCE_ROUNDS) return false;
+      const reg = getRegisteredModel(failedModel);
+      routingReport.attempts.push({
+        modelId: failedModel,
+        providerId: reg.provider,
+        phase: "stream_body",
+        failureKind: kind,
+        severity: "soft",
+        message: kind,
+      });
+      routingReport.fallbackCount = routingReport.attempts.filter((a) => a.failureKind !== undefined).length;
+      skippedStreamModels.push(failedModel);
+      const next = await executePlayerChatStream({
+        messages: safeMessages,
+        ctx: {
+          requestId,
+          task: "PLAYER_CHAT",
+          userId,
+          sessionId,
+          path: "/api/chat",
+        },
+        signal: ac.signal,
+        timeoutMs: TIMEOUT_MS,
+        skipModels: skippedStreamModels,
+      });
+      if (!next.ok) return false;
+      streamSource = next;
+      return true;
+    };
+
+    const flushTokenUsage = async (args: {
+      streamModel: AllowedModelId;
+      accumulated: string;
+      streamBlocked: boolean;
+      firstChunkAt: number;
+      latestTotalTokens: number;
+    }) => {
+      if (tokenUsageFlushedGlobal) return;
+      tokenUsageFlushedGlobal = true;
+      const { latestTotalTokens, accumulated } = args;
       const toPersist =
         latestTotalTokens > 0
           ? latestTotalTokens
@@ -838,7 +941,7 @@ export async function POST(req: Request) {
 
         payload: {
           requestId,
-          upstreamModel: model,
+          upstreamModel: routingReport.actualModel ?? args.streamModel,
         },
       }).catch(() => {});
 
@@ -856,56 +959,136 @@ export async function POST(req: Request) {
         playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
         payload: {
           requestId,
-          model,
-          success: !streamBlocked,
-          firstChunkLatencyMs: firstChunkAt > 0 ? firstChunkAt - requestStartedAt : null,
+          model: routingReport.actualModel ?? args.streamModel,
+          success: !args.streamBlocked,
+          firstChunkLatencyMs: args.firstChunkAt > 0 ? args.firstChunkAt - requestStartedAt : null,
           totalLatencyMs: Date.now() - requestStartedAt,
           isFirstAction,
+          aiOperationMode: routingReport.operationMode,
+          aiIntendedModel: routingReport.intendedModel,
+          aiFallbackCount: routingReport.fallbackCount,
         },
       }).catch(() => {});
     };
+
+    const runStreamFinalHooks = async (
+      accumulatedText: string,
+      blockedAuditSummary: string
+    ): Promise<boolean> => {
+      let moderationBody = accumulatedText;
+      let finalizePayload: string | null = null;
+      try {
+        const enhancedDm = await tryEnhanceDmAfterMainStream({
+          accumulatedJsonText: accumulatedText,
+          control: pipelineControl,
+          rule: pipelineRule,
+          mode: routingReport.operationMode,
+          baseCtx: { requestId, userId, sessionId, path: "/api/chat" },
+          signal: ac.signal,
+          isFirstAction,
+          playerContext,
+          latestUserInput,
+        });
+        if (enhancedDm) {
+          finalizePayload = JSON.stringify(enhancedDm);
+          moderationBody = finalizePayload;
+        }
+      } catch (e) {
+        console.warn("[api/chat] optional narrative enhancement skipped", e);
+      }
+
+      const finalModeration = await finalOutputModeration({
+        input: moderationBody,
+        userId,
+        ip: clientIp,
+        path: "/api/chat",
+        requestId,
+      });
+      if (finalModeration.policy.blocked) {
+        recordHighRisk({ ip: clientIp, sessionId, userId }, finalModeration.result.reason);
+        writeAuditTrail({
+          requestId,
+          sessionId,
+          userId,
+          ip: clientIp,
+          stage: "final_output",
+          riskLevel: "black",
+          action: "degrade",
+          triggeredRule: finalModeration.result.reason,
+          provider: finalModeration.provider,
+          summary: blockedAuditSummary,
+        });
+        await writer.write(
+          sse(
+            safeBlockedDmJson(finalModeration.policy.userMessage, {
+              action: "degrade",
+              stage: "final_output",
+              riskLevel: "black",
+              requestId,
+              reason: finalModeration.result.reason,
+            })
+          )
+        );
+        await writer.close();
+        return true;
+      }
+      if (finalizePayload) {
+        await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
+      }
+      return false;
+    };
+
+    stream_pass: while (streamRound < MAX_STREAM_SOURCE_ROUNDS) {
+      streamRound += 1;
+      const model = streamSource.modelId;
+      routingReport.actualModel = model;
+      const reader = streamSource.response.body!.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let accumulated = "";
+      let streamBlocked = false;
+      let latestTotalTokens = 0;
+      let firstChunkAt = 0;
+
+      const flushThisRound = () =>
+        flushTokenUsage({
+          streamModel: model,
+          accumulated,
+          streamBlocked,
+          firstChunkAt,
+          latestTotalTokens,
+        });
 
     try {
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
-          if (!streamBlocked) {
-            const finalModeration = await finalOutputModeration({
-              input: accumulated,
-              userId,
-              ip: clientIp,
-              path: "/api/chat",
-              requestId,
-            });
-            if (finalModeration.policy.blocked) {
-              recordHighRisk({ ip: clientIp, sessionId, userId }, finalModeration.result.reason);
-              writeAuditTrail({
-                requestId,
-                sessionId,
-                userId,
-                ip: clientIp,
-                stage: "final_output",
-                riskLevel: "black",
-                action: "degrade",
-                triggeredRule: finalModeration.result.reason,
-                provider: finalModeration.provider,
-                summary: "blocked_after_stream_done",
-              });
-              await writer.write(
-                sse(
-                  safeBlockedDmJson(finalModeration.policy.userMessage, {
-                    action: "degrade",
-                    stage: "final_output",
-                    riskLevel: "black",
-                    requestId,
-                    reason: finalModeration.result.reason,
-                  })
-                )
-              );
+          if (
+            !streamBlocked &&
+            accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
+            streamRound < MAX_STREAM_SOURCE_ROUNDS
+          ) {
+            await reader.cancel().catch(() => {});
+            const reconnected = await scheduleStreamReconnect(model, "EMPTY_CONTENT");
+            if (reconnected) {
+              continue stream_pass;
             }
+            routingReport.finalStatus = "fallback_sse_payload";
+            routingReport.lastFailureSummary = "stream_empty_exhausted";
+            pushAiRoutingReport(routingReport);
+            await flushThisRound();
+            await closeWithFallback();
+            return;
           }
-          await flushTokenUsage();
-          await writer.close();
+          let closedByFinalHooks = false;
+          if (!streamBlocked) {
+            closedByFinalHooks = await runStreamFinalHooks(accumulated, "blocked_after_stream_done");
+          }
+          pushAiRoutingReport(routingReport);
+          await flushThisRound();
+          if (!closedByFinalHooks) {
+            await writer.close();
+          }
           return;
         }
 
@@ -923,43 +1106,32 @@ export async function POST(req: Request) {
           if (!data) continue;
           if (firstChunkAt === 0) firstChunkAt = Date.now();
           if (data === "[DONE]") {
-            if (!streamBlocked) {
-              const finalModeration = await finalOutputModeration({
-                input: accumulated,
-                userId,
-                ip: clientIp,
-                path: "/api/chat",
-                requestId,
-              });
-              if (finalModeration.policy.blocked) {
-                recordHighRisk({ ip: clientIp, sessionId, userId }, finalModeration.result.reason);
-                writeAuditTrail({
-                  requestId,
-                  sessionId,
-                  userId,
-                  ip: clientIp,
-                  stage: "final_output",
-                  riskLevel: "black",
-                  action: "degrade",
-                  triggeredRule: finalModeration.result.reason,
-                  provider: finalModeration.provider,
-                  summary: "blocked_on_done_event",
-                });
-                await writer.write(
-                  sse(
-                    safeBlockedDmJson(finalModeration.policy.userMessage, {
-                      action: "degrade",
-                      stage: "final_output",
-                      riskLevel: "black",
-                      requestId,
-                      reason: finalModeration.result.reason,
-                    })
-                  )
-                );
+            if (
+              !streamBlocked &&
+              accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
+              streamRound < MAX_STREAM_SOURCE_ROUNDS
+            ) {
+              await reader.cancel().catch(() => {});
+              const reconnected = await scheduleStreamReconnect(model, "EMPTY_CONTENT");
+              if (reconnected) {
+                continue stream_pass;
               }
+              routingReport.finalStatus = "fallback_sse_payload";
+              routingReport.lastFailureSummary = "stream_done_empty_exhausted";
+              pushAiRoutingReport(routingReport);
+              await flushThisRound();
+              await closeWithFallback();
+              return;
             }
-            await flushTokenUsage();
-            await writer.close();
+            let closedByFinalHooksDone = false;
+            if (!streamBlocked) {
+              closedByFinalHooksDone = await runStreamFinalHooks(accumulated, "blocked_on_done_event");
+            }
+            pushAiRoutingReport(routingReport);
+            await flushThisRound();
+            if (!closedByFinalHooksDone) {
+              await writer.close();
+            }
             return;
           }
 
@@ -1004,7 +1176,8 @@ export async function POST(req: Request) {
                   })
                 )
               );
-              await flushTokenUsage();
+              pushAiRoutingReport(routingReport);
+              await flushThisRound();
               await reader.cancel().catch(() => {});
               await writer.close();
               return;
@@ -1051,7 +1224,8 @@ export async function POST(req: Request) {
                   })
                 )
               );
-              await flushTokenUsage();
+              pushAiRoutingReport(routingReport);
+              await flushThisRound();
               await reader.cancel().catch(() => {});
               await writer.close();
               return;
@@ -1086,20 +1260,60 @@ export async function POST(req: Request) {
       } catch {
         // ignore
       }
+      if (
+        accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
+        streamRound < MAX_STREAM_SOURCE_ROUNDS
+      ) {
+        const reconnected = await scheduleStreamReconnect(model, "STREAM_INTERRUPTED");
+        if (reconnected) {
+          continue stream_pass;
+        }
+      }
+      routingReport.finalStatus = "fallback_sse_payload";
+      routingReport.lastFailureSummary = `stream_catch:${err?.message?.slice(0, 120) ?? "unknown"}`;
+      pushAiRoutingReport(routingReport);
+      await flushThisRound();
       await closeWithFallback();
+      return;
     }
-  })().catch((error) => {
+    }
+  })().catch(async (error) => {
     const err = error as Error;
     const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/chat] background task crashed\x1b[0m`,
-      { model, message: err?.message, cause, stack: err?.stack, error }
+      { model: routingReport.actualModel, message: err?.message, cause, stack: err?.stack, error }
     );
+    try {
+      await writer.write(sse(fallbackPayload));
+    } catch {
+      /* stream may already be closed or errored */
+    }
+    try {
+      await writer.close();
+    } catch {
+      try {
+        await writer.abort(err);
+      } catch {
+        /* ignore */
+      }
+    }
   });
+
+  const sseHeadersOut: Record<string, string> = { ...SSE_HEADERS, "X-Accel-Buffering": "no" };
+  if (resolveAiEnv().exposeAiRoutingHeader) {
+    const snap = {
+      intendedModel: routingReport.intendedModel,
+      firstConnectedModel: srOk.modelId,
+      operationMode: routingReport.operationMode,
+      httpFallbackCount: srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length,
+    };
+    sseHeadersOut["X-AI-Routing-Http-Snapshot"] = Buffer.from(JSON.stringify(snap), "utf8").toString("base64url");
+  }
 
   return new Response(readable, {
     status: 200,
-    headers: { ...SSE_HEADERS, "X-Accel-Buffering": "no" },
+    headers: sseHeadersOut,
   });
 }
 

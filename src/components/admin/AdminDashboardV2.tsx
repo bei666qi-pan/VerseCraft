@@ -87,6 +87,8 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
   const [feedbackInsights, setFeedbackInsights] = useState<FeedbackData>(null);
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiRouting, setAiRouting] = useState<unknown>(null);
+  const [aiRoutingLoading, setAiRoutingLoading] = useState(false);
   const [realtimeSeries, setRealtimeSeries] = useState<Array<{ t: string; online: number; sessions: number }>>([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -177,6 +179,21 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
       setAiLoading(false);
     }
   }, [range]);
+
+  const loadAiRouting = useCallback(async () => {
+    setAiRoutingLoading(true);
+    try {
+      const resp = await fetch("/api/admin/ai-routing", { credentials: "include" });
+      const data = await resp.json().catch(() => null);
+      if (resp.status === 403 && typeof window !== "undefined" && window.location.pathname !== "/saiduhsa") {
+        window.location.href = "/saiduhsa";
+        return;
+      }
+      setAiRouting(data);
+    } finally {
+      setAiRoutingLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void fetchAll(false);
@@ -431,6 +448,19 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm">大模型路由与熔断</p>
+            <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" type="button" onClick={() => void loadAiRouting()} disabled={aiRoutingLoading}>
+              {aiRoutingLoading ? "加载中..." : "刷新"}
+            </button>
+          </div>
+          <p className="mb-2 text-xs text-slate-300">近期路由样本与按模型熔断快照（进程内存，重启清空）。</p>
+          <pre className="max-h-64 overflow-auto rounded-xl bg-black/20 p-3 text-[11px] leading-relaxed text-slate-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
+            {aiRouting === null ? "点击「刷新」拉取。" : JSON.stringify(aiRouting, null, 2)}
+          </pre>
         </div>
 
         <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">

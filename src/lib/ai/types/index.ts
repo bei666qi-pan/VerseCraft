@@ -1,5 +1,6 @@
 // src/lib/ai/types/index.ts
 import type { AllowedModelId } from "@/lib/ai/models/registry";
+import type { AiRoutingReport } from "@/lib/ai/routing/types";
 
 export type {
   AiProviderId,
@@ -25,6 +26,9 @@ export interface AIResponse {
   content: string;
   usage: import("@/lib/ai/types/core").TokenUsage | null;
   latencyMs: number;
+  routing?: AiRoutingReport;
+  /** Populated when `executeChatCompletion` served a cached payload. */
+  fromCache?: boolean;
 }
 
 export interface AIErrorResponse {
@@ -35,6 +39,7 @@ export interface AIErrorResponse {
   modelId?: AllowedModelId;
   status?: number;
   latencyMs?: number;
+  routing?: AiRoutingReport;
 }
 
 export type AIResult = AIResponse | AIErrorResponse;

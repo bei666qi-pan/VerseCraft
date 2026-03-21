@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import type {
   AuditInputEvent,
@@ -59,7 +60,7 @@ function signPayload(payload: {
   clientTimestamp: number;
   stateSnapshot: Record<string, unknown>;
 }): string {
-  const secret = process.env.SECRET_KEY ?? "";
+  const secret = env.auditHmacSecret;
   if (!secret) return "";
   const canonical = stableStringify(payload);
   return createHmac("sha256", secret).update(canonical).digest("hex");
