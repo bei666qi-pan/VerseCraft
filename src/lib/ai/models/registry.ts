@@ -33,7 +33,7 @@ const REGISTRY: Record<AllowedModelId, RegisteredModel> = {
   },
   "deepseek-v3.2": {
     id: "deepseek-v3.2",
-    apiModel: "deepseek-v3.2",
+    apiModel: "deepseek-chat", // pragma: allowlist secret
     provider: "deepseek",
     displayName: "DeepSeek-V3.2",
     capabilities: ["chat", "stream", "json_mode"],
@@ -60,6 +60,7 @@ const REGISTRY: Record<AllowedModelId, RegisteredModel> = {
 const ALIASES: Record<string, AllowedModelId> = {
   "deepseek-reasoner": "deepseek-reasoner",
   "deepseek-v3.2": "deepseek-v3.2",
+  "deepseek-chat": "deepseek-v3.2",
   "deepseek-v3.2-chat": "deepseek-v3.2",
   "DeepSeek-V3.2": "deepseek-v3.2",
   "glm-5-air": "glm-5-air",
@@ -73,8 +74,9 @@ export function normalizeAllowedModelId(raw: string | undefined | null): Allowed
   const direct = ALIASES[trimmed];
   if (direct) return direct;
   const lower = trimmed.toLowerCase();
-  if (lower === "deepseek-v3.2" || lower === "deepseek-reasoner") {
-    return lower === "deepseek-reasoner" ? "deepseek-reasoner" : "deepseek-v3.2";
+  if (lower === "deepseek-chat" || lower === "deepseek-v3.2" || lower === "deepseek-reasoner") {
+    if (lower === "deepseek-reasoner") return "deepseek-reasoner";
+    return "deepseek-v3.2";
   }
   if (ALLOWED_MODEL_IDS.includes(trimmed as AllowedModelId)) {
     return trimmed as AllowedModelId;

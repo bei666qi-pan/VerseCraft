@@ -703,7 +703,7 @@ export async function POST(req: Request) {
     },
   }).catch(() => {});
   if (!anyAiProviderConfigured()) {
-    console.error(`\x1b[31m[api/chat] No AI provider API keys configured (see .env.example / Coolify env).\x1b[0m`);
+    console.warn(`[api/chat] No AI provider API keys configured (see .env.example / Coolify env). Returning degraded SSE with 200.`);
     return new Response(
       sseText(
         JSON.stringify({
@@ -715,11 +715,12 @@ export async function POST(req: Request) {
         })
       ),
       {
-        status: 500,
+        status: 200,
         headers: {
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
+          "X-VerseCraft-Ai-Status": "keys_missing",
         },
       }
     );

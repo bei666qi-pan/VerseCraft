@@ -32,7 +32,7 @@ function assertDmContractShape(parsed: unknown) {
 
 /**
  * Contract: /api/chat returns SSE; full body must yield parseable DM JSON (narrative + is_action_legal).
- * Covers no-key 500 degradation and normal 200 stream completion.
+ * Covers no-key degraded 200 SSE and normal upstream stream completion.
  */
 test.describe("/api/chat SSE contract", () => {
   test("responds with event-stream, non-empty body, and DM-shaped JSON", async ({ request }) => {

@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   accumulateDmFromSseEvent,
+  foldSseTextToDmRaw,
   normalizeSseNewlines,
   takeCompleteSseEvents,
 } from "@/features/play/stream/sseFrame";
@@ -35,4 +36,15 @@ data: line2"}`;
   const { raw, sawNonEmptyData } = accumulateDmFromSseEvent(event, "");
   assert.equal(sawNonEmptyData, true);
   assert.equal(raw, '{"narrative":"line1\nline2"}');
+});
+
+test("foldSseTextToDmRaw folds one event and trailing orphan", () => {
+  assert.equal(foldSseTextToDmRaw('data: {"x":1}\n\n'), '{"x":1}');
+  assert.equal(foldSseTextToDmRaw('data: {"x":1}'), '{"x":1}');
+});
+
+test("foldSseTextToDmRaw joins multiline data fields in one event", () => {
+  const doc = `data: {"n":"a
+data: b"}\n\n`;
+  assert.equal(foldSseTextToDmRaw(doc), '{"n":"a\nb"}');
 });
