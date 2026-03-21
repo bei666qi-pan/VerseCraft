@@ -42,8 +42,12 @@ import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps"
 const STREAM_CHUNK_STALL_MS = 120_000;
 /** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
 const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
-/** Abort /api/chat if response headers never arrive (avoids infinite “正在生成…” + stuck inFlight). */
-const FETCH_CHAT_RESPONSE_DEADLINE_MS = 95_000;
+/**
+ * Max wait for the **first byte / response headers** from our own `/api/chat`.
+ * The handler runs moderation + DB + control preflight (≤~11s) before calling upstream; `resilientFetch`
+ * may retry several times with `AI_TIMEOUT_MS` (~60s) each — 95s was too low and caused false timeouts.
+ */
+const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
 
 function PlayContent() {
   const router = useRouter();
@@ -614,7 +618,7 @@ function PlayContent() {
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         if (fetchDeadlineState.hit) {
           setLiveNarrative(
-            "等待深渊回应超时（长时间未收到服务器响应）。请确认本机数据库已启动、`.env.local` 中已配置大模型 Key，或稍后重试。"
+            "等待服务器首包超时：本回合在服务端会依次经过安全审查、数据库与控制预检，再连接大模型（上游失败时还会自动重试，整体可能超过数分钟）。若多次出现，请检查本机 PostgreSQL、网络与 `.env.local` 中的大模型 Key；也可稍后再试。"
           );
         }
         return;
