@@ -697,7 +697,7 @@ export async function POST(req: Request) {
       messages: safeMessages,
       ctx: {
         requestId,
-        task: "player_chat_stream",
+        task: "PLAYER_CHAT",
         userId,
         sessionId,
         path: "/api/chat",

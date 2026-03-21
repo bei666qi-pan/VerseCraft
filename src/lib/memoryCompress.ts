@@ -1,6 +1,6 @@
 /**
  * Dynamic memory compression for AI-driven game sessions.
- * Routed via unified AI layer (task: memory_compression).
+ * Routed via unified AI layer (task: MEMORY_COMPRESSION).
  */
 
 import { executeChatCompletion } from "@/lib/ai/service";
@@ -64,19 +64,17 @@ export async function compressMemory(
 
   const requestId = createRequestId("mem_compress");
   const result = await executeChatCompletion({
-    task: "memory_compression",
+    task: "MEMORY_COMPRESSION",
     messages: [
       { role: "system", content: COMPRESSION_PROMPT },
       { role: "user", content: userContent },
     ],
     ctx: {
       requestId,
-      task: "memory_compression",
+      task: "MEMORY_COMPRESSION",
       path: "/lib/memoryCompress",
     },
-    timeoutMs,
-    maxTokens: 2048,
-    responseFormatJsonObject: true,
+    requestTimeoutMs: timeoutMs,
   });
 
   if (!result.ok) {

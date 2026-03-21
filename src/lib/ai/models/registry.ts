@@ -18,7 +18,7 @@ export interface RegisteredModel {
   provider: AiProviderId;
   displayName: string;
   capabilities: ModelCapability[];
-  /** If true, router rejects use on `player_chat_stream`. */
+  /** If true, router rejects use on `PLAYER_CHAT` and other realtime tasks. */
   offlineOnly: boolean;
 }
 

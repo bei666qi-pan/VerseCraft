@@ -61,11 +61,8 @@ export interface ResolvedAiEnv {
   circuitCooldownMs: number;
 }
 
-export const DEFAULT_PLAYER_CHAIN: AllowedModelId[] = [
-  "deepseek-v3.2",
-  "glm-5-air",
-  "MiniMax-M2.7-highspeed",
-];
+/** Extra candidates merged after policy primaries for PLAYER_CHAT only; MiniMax excluded by task forbid list. */
+export const DEFAULT_PLAYER_CHAIN: AllowedModelId[] = ["deepseek-v3.2", "glm-5-air"];
 
 export function resolveAiEnv(): ResolvedAiEnv {
   const deepseekKey = readEnv("DEEPSEEK_API_KEY") ?? "";

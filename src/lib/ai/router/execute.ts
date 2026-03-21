@@ -9,7 +9,12 @@ import { getProviderFactory } from "@/lib/ai/providers";
 import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
 import { resilientFetch } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
-import { resolveFallbackPolicy, assertPlayerChatModelAllowed } from "@/lib/ai/tasks/routing";
+import {
+  assertModelAllowedForTask,
+  getTaskBinding,
+  resolveFallbackPolicy,
+  type TaskBinding,
+} from "@/lib/ai/tasks/taskPolicy";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
 import type { AIRequestContext, AiProviderId, ChatMessage, TaskType } from "@/lib/ai/types/core";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
@@ -36,14 +41,19 @@ function streamUsageFlag(provider: AiProviderId): boolean {
   return provider === "deepseek" || provider === "minimax";
 }
 
-function buildPlayerStreamBody(modelId: AllowedModelId, messages: ChatMessage[]): NormalizedCompletionRequest {
+function buildPlayerStreamBody(
+  modelId: AllowedModelId,
+  messages: ChatMessage[],
+  binding: TaskBinding
+): NormalizedCompletionRequest {
   const reg = getRegisteredModel(modelId);
   return {
     modelApiName: reg.apiModel,
     messages,
-    stream: true,
-    maxTokens: 1536,
-    responseFormatJsonObject: reg.provider !== "minimax",
+    stream: binding.stream,
+    maxTokens: binding.maxTokens,
+    temperature: binding.temperature,
+    responseFormatJsonObject: binding.responseFormatJsonObject && reg.provider !== "minimax",
     streamIncludeUsage: streamUsageFlag(reg.provider),
   };
 }
@@ -95,8 +105,9 @@ export async function executePlayerChatStream(params: {
   timeoutMs?: number;
 }): Promise<PlayerChatStreamResult> {
   const env = resolveAiEnv();
-  const policy = resolveFallbackPolicy("player_chat_stream");
-  const timeoutMs = params.timeoutMs ?? env.defaultTimeoutMs;
+  const taskBinding = getTaskBinding("PLAYER_CHAT");
+  const policy = resolveFallbackPolicy("PLAYER_CHAT");
+  const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
   const maxRetries = env.maxRetries;
 
   if (policy.chain.length === 0) {
@@ -112,7 +123,7 @@ export async function executePlayerChatStream(params: {
   for (const mid of policy.chain) {
     const modelId = asAllowedModelId(mid);
     if (!modelId) continue;
-    assertPlayerChatModelAllowed(modelId);
+    assertModelAllowedForTask("PLAYER_CHAT", modelId);
     const reg = getRegisteredModel(modelId);
 
     if (policy.tripCircuitOnFailure && isCircuitOpen(reg.provider)) {
@@ -140,7 +151,7 @@ export async function executePlayerChatStream(params: {
     }
 
     const factory = getProviderFactory(reg.provider);
-    const body = buildPlayerStreamBody(modelId, params.messages);
+    const body = buildPlayerStreamBody(modelId, params.messages, taskBinding);
     const init = factory.buildInit(key, body);
     const t0 = Date.now();
 
@@ -235,16 +246,31 @@ export async function executeChatCompletion(params: {
   messages: ChatMessage[];
   ctx: AIRequestContext;
   signal?: AbortSignal;
-  timeoutMs?: number;
-  maxTokens: number;
-  temperature?: number;
-  responseFormatJsonObject?: boolean;
+  /** Per-call timeout (e.g. memory compress); does not log as dev override. */
+  requestTimeoutMs?: number;
+  /** Escape hatch for experiments; avoid in production paths. */
+  devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
 }): Promise<AIResponse | AIErrorResponse> {
+  if (params.task === "PLAYER_CHAT") {
+    throw new Error("[ai] PLAYER_CHAT must use executePlayerChatStream(), not executeChatCompletion()");
+  }
   const env = resolveAiEnv();
+  const baseBinding = getTaskBinding(params.task);
   const policy = resolveFallbackPolicy(params.task);
-  const timeoutMs = params.timeoutMs ?? (params.task === "memory_compression" ? 30_000 : env.defaultTimeoutMs);
+  if (params.devOverrides && Object.keys(params.devOverrides).length > 0) {
+    console.warn(`[ai] devOverrides applied for task=${params.task}`, params.devOverrides);
+  }
+  const binding: TaskBinding = {
+    ...baseBinding,
+    ...params.devOverrides,
+    timeoutMs:
+      params.requestTimeoutMs ??
+      params.devOverrides?.timeoutMs ??
+      baseBinding.timeoutMs,
+  };
+  const timeoutMs = binding.timeoutMs;
   const maxRetries = env.maxRetries;
-  const jsonObject = params.responseFormatJsonObject ?? true;
+  const jsonObject = binding.responseFormatJsonObject;
 
   if (policy.chain.length === 0) {
     return {
@@ -279,8 +305,8 @@ export async function executeChatCompletion(params: {
     const body = buildNonStreamBody(
       modelId,
       params.messages,
-      params.maxTokens,
-      params.temperature,
+      binding.maxTokens,
+      binding.temperature,
       jsonObject
     );
     const init = factory.buildInit(key, body);

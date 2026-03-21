@@ -13,6 +13,16 @@ export {
 export { resolveAiEnv, anyAiProviderConfigured, resolveDeepSeekLegacyConfig } from "@/lib/ai/config/env";
 export { sanitizeMessagesForUpstream } from "@/lib/ai/stream/sanitize";
 export { ALLOWED_MODEL_IDS, getRegisteredModel, normalizeAllowedModelId, type AllowedModelId } from "@/lib/ai/models/registry";
+export {
+  TASK_POLICY,
+  TASK_MODEL_FORBIDDEN,
+  getTaskBinding,
+  explainTaskRouting,
+  exportTaskModelMatrixMarkdown,
+  isModelForbiddenForTask,
+  assertModelAllowedForTask,
+} from "@/lib/ai/tasks/taskPolicy";
+export type { TaskBinding, BudgetLevel } from "@/lib/ai/tasks/taskPolicy";
 export type {
   TaskType,
   ChatMessage,

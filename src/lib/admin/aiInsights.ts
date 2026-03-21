@@ -96,19 +96,16 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
 
   try {
     const ai = await executeChatCompletion({
-      task: "admin_insight",
+      task: "DEV_ASSIST",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `以下是结构化输入数据：\n${JSON.stringify(input)}` },
       ],
       ctx: {
         requestId,
-        task: "admin_insight",
+        task: "DEV_ASSIST",
         path: "/lib/admin/aiInsights",
       },
-      maxTokens: 4096,
-      temperature: 0.2,
-      responseFormatJsonObject: true,
     });
 
     if (!ai.ok) {

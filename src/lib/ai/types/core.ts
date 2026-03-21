@@ -3,12 +3,26 @@
 /** Upstream vendor implementing chat completions. */
 export type AiProviderId = "deepseek" | "zhipu" | "minimax";
 
-/** High-level use case; routing maps task → model chain (never reasoner on player realtime). */
+/**
+ * Task taxonomy for routing. Policy table: `src/lib/ai/tasks/taskPolicy.ts`.
+ * - PLAYER_CHAT: only online DM / SSE main path (no reasoner / no MiniMax).
+ * - GLM-heavy control tasks: INTENT_PARSE, SAFETY_PREFILTER.
+ * - DeepSeek-V3.2 adjudication: RULE_RESOLUTION, COMBAT_NARRATION.
+ * - MiniMax sensory-only: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH.
+ * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION (async).
+ */
 export type TaskType =
-  | "player_chat_stream"
-  | "memory_compression"
-  | "admin_insight"
-  | "generic_json_completion";
+  | "PLAYER_CHAT"
+  | "INTENT_PARSE"
+  | "SAFETY_PREFILTER"
+  | "RULE_RESOLUTION"
+  | "COMBAT_NARRATION"
+  | "SCENE_ENHANCEMENT"
+  | "NPC_EMOTION_POLISH"
+  | "WORLDBUILD_OFFLINE"
+  | "STORYLINE_SIMULATION"
+  | "DEV_ASSIST"
+  | "MEMORY_COMPRESSION";
 
 /** Declared abilities for registry entries (extensible for future tools / vision). */
 export type ModelCapability =
