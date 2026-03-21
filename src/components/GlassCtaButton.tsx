@@ -14,11 +14,12 @@ type Props = {
   label: string;
   onClick: () => void;
   error?: string | null;
+  className?: string;
 };
 
-export function GlassCtaButton({ label, onClick, error }: Props) {
+export function GlassCtaButton({ label, onClick, error, className = "" }: Props) {
   return (
-    <div className={WRAP}>
+    <div className={`${WRAP} ${className}`.trim()}>
       <span className={UNDERLAY} aria-hidden />
       <button type="button" onClick={onClick} className={BUTTON_BASE}>
         {label}

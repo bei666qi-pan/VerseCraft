@@ -142,6 +142,8 @@ function PlayContent() {
   /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
   const openingAwaitingAssistantRef = useRef(false);
   const openingStartedAtRef = useRef(0);
+  /** 开场首段等待超时后是否已自动重试过一次拉取 options */
+  const openingTimeoutRetryRef = useRef(false);
   /** 开局回合：叙事固定为本地文案，不从 SSE 的 narrative 字段增量覆盖 */
   const openingOptionsOnlyRoundRef = useRef(false);
 
@@ -437,26 +439,42 @@ function PlayContent() {
     void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
   }, [isHydrated, isChatBusy]);
 
-  // 开场超时降级：仅当主链路已结束且仍无助手叙事时注入本地开场；若仍在等待上游/流式吐字，则顺延，不与 SSE 竞争。
+  /** 成功拿到选项后清掉【开局】类提示，避免与正常对局并存 */
+  useEffect(() => {
+    if (currentOptions.length === 0) return;
+    setLiveNarrative((prev) => (typeof prev === "string" && prev.startsWith("【开局】") ? "" : prev));
+  }, [currentOptions.length]);
+
+  // 开场超时：须避免请求仍在飞行时误判；先静默自动重试一次拉 options，仍失败再提示（不重复 push 开场正文）
   useEffect(() => {
     if (!isHydrated) return;
+    const OPENING_STALL_MS = 24_000;
     const tick = window.setInterval(() => {
       const logs = useGameStore.getState().logs ?? [];
       if (logs.some((l) => l && l.role === "assistant")) {
         openingAwaitingAssistantRef.current = false;
+        openingTimeoutRetryRef.current = false;
         return;
       }
       if (!openingAwaitingAssistantRef.current) return;
+      if (sendActionInFlightRef.current) return;
       const phase = streamPhaseRef.current;
       if (phase === "waiting_upstream" || phase === "streaming_body" || phase === "turn_committing") {
         return;
       }
-      if (Date.now() - openingStartedAtRef.current < 8000) return;
+      if (Date.now() - openingStartedAtRef.current < OPENING_STALL_MS) return;
+
+      if (!openingTimeoutRetryRef.current) {
+        openingTimeoutRetryRef.current = true;
+        openingStartedAtRef.current = Date.now();
+        void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
+        return;
+      }
+
       openingAwaitingAssistantRef.current = false;
+      openingTimeoutRetryRef.current = false;
       injectLocalOpeningFallback();
-      setLiveNarrative(
-        "连接迟迟未返回，已载入本地开场文本。选项需由主笔生成，请稍后重试发送或刷新页面。"
-      );
+      setLiveNarrative("【开局】仍无法获取选项，请检查网络或刷新页面；也可切换为手动输入后重试。");
     }, 400);
     return () => clearInterval(tick);
   }, [isHydrated]);

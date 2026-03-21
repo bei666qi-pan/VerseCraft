@@ -8,6 +8,7 @@ import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
@@ -512,15 +513,18 @@ export default function CreatePage(props: AppPageDynamicProps) {
         </section>
 
         <section className="mt-8">
-          <GlassCtaButton
-            label="意识潜入"
-            onClick={handleSubmit}
-            error={
-              submitAttempted && !canSubmit
-                ? "检查必填项、性格格式、点数用尽、天赋已选。"
-                : null
-            }
-          />
+          <GlassEntryFrame variant="card" className="w-full">
+            <GlassCtaButton
+              className="w-full"
+              label="意识潜入"
+              onClick={handleSubmit}
+              error={
+                submitAttempted && !canSubmit
+                  ? "检查必填项、性格格式、点数用尽、天赋已选。"
+                  : null
+              }
+            />
+          </GlassEntryFrame>
         </section>
       </div>
     </main>

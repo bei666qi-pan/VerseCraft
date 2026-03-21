@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
@@ -64,7 +65,9 @@ export default function IntroPage(props: AppPageDynamicProps) {
             <p className="text-xs text-slate-500 sm:text-sm">
               祝各位内测用户执笔顺利。
             </p>
-            <GlassCtaButton label="创建形象" onClick={() => router.push("/create")} />
+            <GlassEntryFrame variant="card" className="w-full max-w-sm">
+              <GlassCtaButton className="w-full" label="创建形象" onClick={() => router.push("/create")} />
+            </GlassEntryFrame>
           </footer>
         </div>
         <section

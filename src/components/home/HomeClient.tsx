@@ -9,6 +9,7 @@ import { fetchCloudSaves } from "@/app/actions/save";
 import { loginUser, registerUser } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
+import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 import { unlockBgmOnUserGesture } from "@/config/audio";
@@ -355,32 +356,32 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
         <div className="mt-14 flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
           {user && (hasLocalAutoSave || hasCloudAutoSave) && (
-            <button
-              type="button"
-              onClick={() => void handleContinueAdventure()}
-              className="group relative flex items-center gap-3 rounded-full bg-white/40 px-10 py-4 font-bold tracking-widest text-slate-800 shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-2xl border border-white/60 transition-all duration-500 hover:bg-white/60 hover:scale-105 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,1),0_12px_40px_rgba(0,0,0,0.06)]"
-            >
-              <span className="relative">继续冒险</span>
-              <span className="relative text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
-            </button>
+            <GlassEntryFrame variant="pill">
+              <button
+                type="button"
+                onClick={() => void handleContinueAdventure()}
+                className="group relative flex items-center gap-3 rounded-full bg-transparent px-10 py-4 font-bold tracking-widest text-slate-800 transition-all duration-500 hover:scale-[1.02] active:scale-[0.99]"
+              >
+                <span className="relative z-10">继续冒险</span>
+                <span className="relative z-10 text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
+              </button>
+            </GlassEntryFrame>
           )}
 
-          <button
-            type="button"
-            onClick={() => {
-              unlockBgmOnUserGesture();
-              resetForNewGame();
-              router.push("/intro");
-            }}
-            className="group relative flex items-center gap-3 rounded-full px-12 py-5 font-bold tracking-widest text-slate-800 transition-all duration-500 hover:scale-[1.02] active:scale-[0.99]"
-          >
-            <span
-              className="pointer-events-none absolute inset-0 rounded-full bg-white/45 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_40px_rgba(148,163,184,0.15)]"
-              aria-hidden
-            />
-            <span className="relative z-10">进入世界</span>
-            <span className="relative z-10 text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
-          </button>
+          <GlassEntryFrame variant="pill">
+            <button
+              type="button"
+              onClick={() => {
+                unlockBgmOnUserGesture();
+                resetForNewGame();
+                router.push("/intro");
+              }}
+              className="group relative flex items-center gap-3 rounded-full bg-transparent px-12 py-5 font-bold tracking-widest text-slate-800 transition-all duration-500 hover:scale-[1.02] active:scale-[0.99]"
+            >
+              <span className="relative z-10">进入世界</span>
+              <span className="relative z-10 text-slate-400 transition-transform duration-300 group-hover:translate-x-1">→</span>
+            </button>
+          </GlassEntryFrame>
         </div>
         <div className="flex flex-col items-center gap-2 text-sm text-slate-400/80 mt-8">
           <p>欢迎第一批内测用户加入QQ群 <span className="font-mono text-slate-300">377493954</span> 交流</p>

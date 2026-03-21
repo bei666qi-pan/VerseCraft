@@ -1,9 +1,9 @@
 import { useGameStore } from "@/store/useGameStore";
-import { LOCAL_FALLBACK_OPENING_NARRATIVE } from "./openingCopy";
 
-/** 开场超时：仅注入固定叙事，选项保持为空，避免非 AI 选项混入首回合 */
+/**
+ * 开场在仍无助手日志时的最后降级：不 pushLog（正文已由前端嵌入式展示），仅清空选项。
+ * 避免重复叙事段落与错误提示长期误显。
+ */
 export function injectLocalOpeningFallback(): void {
-  const state = useGameStore.getState();
-  state.pushLog({ role: "assistant", content: LOCAL_FALLBACK_OPENING_NARRATIVE });
-  state.setCurrentOptions([]);
+  useGameStore.getState().setCurrentOptions([]);
 }
