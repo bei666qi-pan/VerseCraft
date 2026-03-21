@@ -41,7 +41,7 @@ const REGISTRY: Record<AllowedModelId, RegisteredModel> = {
   },
   "glm-5-air": {
     id: "glm-5-air",
-    apiModel: "glm-5-air",
+    apiModel: "glm-4-flash",
     provider: "zhipu",
     displayName: "GLM-5-Air",
     capabilities: ["chat", "stream", "json_mode"],
