@@ -6,6 +6,31 @@ import { sql } from "drizzle-orm";
 import type { AnalyticsEventInsertInput } from "@/lib/analytics/types";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 
+let analyticsTableMissingWarned = false;
+
+function isPgUndefinedTable(err: unknown): boolean {
+  return Boolean(
+    err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code?: string }).code === "42P01"
+  );
+}
+
+/** Avoid log spam when DB predates analytics_events; gameplay must not depend on inserts. */
+function suppressOrLogAnalyticsError(err: unknown, logLabel: string): void {
+  if (isPgUndefinedTable(err)) {
+    if (!analyticsTableMissingWarned) {
+      analyticsTableMissingWarned = true;
+      console.warn(
+        "[analytics] analytics_events missing (42P01). Set MIGRATE_ON_BOOT=1 or run scripts/migrate.js on the server; further 42P01 noise suppressed."
+      );
+    }
+    return;
+  }
+  console.error(logLabel, err);
+}
+
 /**
  * Insert analytics event only (idempotent).
  * Used by non-chat actions where aggregate rollups are not required yet.
@@ -30,8 +55,7 @@ export async function insertAnalyticsEventIdempotent(input: AnalyticsEventInsert
       })
       .onConflictDoNothing({ target: analyticsEvents.idempotencyKey });
   } catch (err) {
-    // Best-effort telemetry: never break gameplay flow.
-    console.error("[analytics][insertAnalyticsEventIdempotent] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][insertAnalyticsEventIdempotent] failed");
   }
 }
 
@@ -69,7 +93,7 @@ export async function touchUserSessionHeartbeat(input: {
         updated_at = CURRENT_TIMESTAMP
     `);
   } catch (err) {
-    console.error("[analytics][touchUserSessionHeartbeat] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][touchUserSessionHeartbeat] failed");
   }
 }
 
@@ -196,7 +220,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
       SELECT 1;
     `);
   } catch (err) {
-    console.error("[analytics][recordChatActionCompletedAnalytics] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][recordChatActionCompletedAnalytics] failed");
   }
 }
 
@@ -237,7 +261,7 @@ export async function recordUserRegisteredAnalytics(input: Omit<AnalyticsEventIn
         updated_at = CURRENT_TIMESTAMP;
     `);
   } catch (err) {
-    console.error("[analytics][recordUserRegisteredAnalytics] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][recordUserRegisteredAnalytics] failed");
   }
 }
 
@@ -278,7 +302,7 @@ export async function recordFeedbackSubmittedAnalytics(input: Omit<AnalyticsEven
         updated_at = CURRENT_TIMESTAMP;
     `);
   } catch (err) {
-    console.error("[analytics][recordFeedbackSubmittedAnalytics] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][recordFeedbackSubmittedAnalytics] failed");
   }
 }
 
@@ -319,7 +343,7 @@ export async function recordGameRecordSubmittedAnalytics(input: Omit<AnalyticsEv
         updated_at = CURRENT_TIMESTAMP;
     `);
   } catch (err) {
-    console.error("[analytics][recordGameRecordSubmittedAnalytics] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][recordGameRecordSubmittedAnalytics] failed");
   }
 }
 
@@ -341,7 +365,7 @@ export async function recordOnboardingViewedAnalytics(input: Omit<AnalyticsEvent
       payload: input.payload ?? {},
     });
   } catch (err) {
-    console.error("[analytics][recordOnboardingViewedAnalytics] failed", err);
+    suppressOrLogAnalyticsError(err, "[analytics][recordOnboardingViewedAnalytics] failed");
   }
 }
 

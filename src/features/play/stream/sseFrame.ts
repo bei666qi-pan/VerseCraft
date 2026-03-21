@@ -53,3 +53,25 @@ export function accumulateDmFromSseEvent(eventText: string, prevRaw: string): Ss
   raw += joined;
   return { raw, sawNonEmptyData: true };
 }
+
+/**
+ * Fold a full SSE document (e.g. from `await res.text()` on a closed response) into the DM JSON
+ * buffer string consumed by `tryParseDM`. Handles multi-`data:` events and trailing partial events.
+ */
+export function foldSseTextToDmRaw(sseDocument: string): string {
+  let buf = normalizeSseNewlines(sseDocument);
+  let raw = "";
+  while (true) {
+    const { events, rest } = takeCompleteSseEvents(buf);
+    buf = rest;
+    for (const ev of events) {
+      ({ raw } = accumulateDmFromSseEvent(ev, raw));
+    }
+    if (events.length === 0) break;
+  }
+  const orphan = buf.trim();
+  if (orphan.length > 0 && orphan.startsWith("data:")) {
+    ({ raw } = accumulateDmFromSseEvent(orphan, raw));
+  }
+  return raw;
+}

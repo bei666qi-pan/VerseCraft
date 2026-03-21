@@ -31,6 +31,42 @@ async function markMigration(client, name) {
   await client.query(`INSERT INTO _vc_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING;`, [name]);
 }
 
+/**
+ * Idempotent analytics tables — run on every boot as well as inside schema_v1.
+ * Older deployments may have `schema_v1` marked applied before `analytics_events` existed.
+ */
+async function ensureAnalyticsFoundationTables(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      event_id VARCHAR(191) PRIMARY KEY,
+      user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_id VARCHAR(191) NOT NULL,
+      event_name VARCHAR(64) NOT NULL,
+      event_time TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      page TEXT NULL,
+      source TEXT NULL,
+      platform TEXT NULL,
+      token_cost INTEGER NOT NULL DEFAULT 0,
+      play_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      idempotency_key VARCHAR(191) NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_user_event_time_idx ON analytics_events (user_id, event_time);
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_event_name_event_time_idx ON analytics_events (event_name, event_time);
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_session_id_idx ON analytics_events (session_id);
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_page_time_idx ON analytics_events (page, event_time);
+  `);
+}
+
 async function applySchemaV1(client) {
   // Minimal idempotent schema to prevent runtime "relation does not exist".
   // This is NOT a replacement for Drizzle migrations, but a safety net for first boot on Coolify.
@@ -127,32 +163,7 @@ async function applySchemaV1(client) {
   `);
 
   // ========= Analytics Data Foundation =========
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS analytics_events (
-      event_id VARCHAR(191) PRIMARY KEY,
-      user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE CASCADE,
-      session_id VARCHAR(191) NOT NULL,
-      event_name VARCHAR(64) NOT NULL,
-      event_time TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      page TEXT NULL,
-      source TEXT NULL,
-      platform TEXT NULL,
-      token_cost INTEGER NOT NULL DEFAULT 0,
-      play_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
-      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-      idempotency_key VARCHAR(191) NOT NULL UNIQUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS analytics_events_user_event_time_idx ON analytics_events (user_id, event_time);
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS analytics_events_event_name_event_time_idx ON analytics_events (event_name, event_time);
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS analytics_events_session_id_idx ON analytics_events (session_id);
-  `);
+  await ensureAnalyticsFoundationTables(client);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS user_sessions (
@@ -230,15 +241,18 @@ async function main() {
 
     const name = "schema_v1";
     const already = await hasMigration(client, name);
-    if (already) {
+    if (!already) {
+      console.log(`[migrate] applying ${name} ...`);
+      await applySchemaV1(client);
+      await markMigration(client, name);
+      console.log(`[migrate] applied ${name} in ${Date.now() - start}ms`);
+    } else {
       console.log(`[migrate] ${name} already applied`);
-      return;
     }
 
-    console.log(`[migrate] applying ${name} ...`);
-    await applySchemaV1(client);
-    await markMigration(client, name);
-    console.log(`[migrate] applied ${name} in ${Date.now() - start}ms`);
+    // Reconcile analytics for DBs where schema_v1 predates analytics_events (migration row already set).
+    await ensureAnalyticsFoundationTables(client);
+    console.log("[migrate] ensureAnalyticsFoundationTables ok");
   } finally {
     await client.end();
   }

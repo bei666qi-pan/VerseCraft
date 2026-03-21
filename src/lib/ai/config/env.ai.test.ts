@@ -60,12 +60,74 @@ test("anyAiProviderConfigured is false when all keys missing", () => {
   withEnv(
     {
       DEEPSEEK_API_KEY: undefined,
+      DEEPSEEK_KEY: undefined,
+      DEEPSEEK_API_TOKEN: undefined,
+      NEXT_PUBLIC_DEEPSEEK_API_KEY: undefined,
+      ZHIPU_API_KEY: undefined,
+      BIGMODEL_API_KEY: undefined,
+      GLM_API_KEY: undefined,
+      ZHIPU_KEY: undefined,
+      MINIMAX_API_KEY: undefined,
+      MINIMAX_KEY: undefined,
+    },
+    () => {
+      assert.equal(anyAiProviderConfigured(), false);
+    }
+  );
+});
+
+test("resolveAiEnv maps DEEPSEEK_BASE_URL to chat completions URL", () => {
+  withEnv(
+    {
+      DEEPSEEK_API_KEY: "k",
+      DEEPSEEK_API_URL: undefined,
+      DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.equal(e.deepseek.apiUrl, "https://api.deepseek.com/chat/completions");
+    }
+  );
+});
+
+test("resolveAiEnv reads AI_DEFAULT_MODEL for DeepSeek logical model", () => {
+  withEnv(
+    {
+      DEEPSEEK_API_KEY: "k",
+      DEEPSEEK_MODEL: undefined,
+      AI_DEFAULT_MODEL: "deepseek-chat",
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.equal(e.deepseek.defaultModel, "deepseek-v3.2");
+    }
+  );
+});
+
+test("resolveAiEnv reads AI_REQUEST_TIMEOUT_MS when AI_TIMEOUT_MS unset", () => {
+  withEnv(
+    {
+      DEEPSEEK_API_KEY: "k",
+      AI_TIMEOUT_MS: undefined,
+      AI_REQUEST_TIMEOUT_MS: "15000",
+    },
+    () => {
+      assert.equal(resolveAiEnv().defaultTimeoutMs, 15_000);
+    }
+  );
+});
+
+test("anyAiProviderConfigured is true when only DEEPSEEK_KEY is set", () => {
+  withEnv(
+    {
+      DEEPSEEK_API_KEY: undefined,
+      DEEPSEEK_KEY: "sk-test",
       ZHIPU_API_KEY: undefined,
       BIGMODEL_API_KEY: undefined,
       MINIMAX_API_KEY: undefined,
     },
     () => {
-      assert.equal(anyAiProviderConfigured(), false);
+      assert.equal(anyAiProviderConfigured(), true);
     }
   );
 });

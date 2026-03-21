@@ -8,6 +8,8 @@ import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 type GenderOption = "男" | "女" | "其他";
 
@@ -187,7 +189,8 @@ function useStatStepper(
   return { handlePointerDown, handlePointerUp };
 }
 
-export default function CreatePage() {
+export default function CreatePage(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const router = useRouter();
   const user = useGameStore((s) => s.user);
   const guestId = useGameStore((s) => s.guestId ?? "guest_create");
@@ -320,14 +323,14 @@ export default function CreatePage() {
                 <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
                 <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
-                <div className="relative absolute inset-[6px]">
+                <div className="relative z-[1] flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
                   <Image
                     src="/logo.svg"
                     alt="VerseCraft"
-                    fill
+                    width={20}
+                    height={20}
                     draggable={false}
                     className="object-cover scale-[1.12]"
-                    sizes="64px"
                   />
                 </div>
               </div>

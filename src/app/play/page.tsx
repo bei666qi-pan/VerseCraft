@@ -30,15 +30,24 @@ import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/featu
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
 import {
   accumulateDmFromSseEvent,
+  foldSseTextToDmRaw,
   normalizeSseNewlines,
   takeCompleteSseEvents,
 } from "@/features/play/stream/sseFrame";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
 const STREAM_CHUNK_STALL_MS = 120_000;
 /** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
 const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
+/**
+ * Max wait for the **first byte / response headers** from our own `/api/chat`.
+ * The handler runs moderation + DB + control preflight (≤~11s) before calling upstream; `resilientFetch`
+ * may retry several times with `AI_TIMEOUT_MS` (~60s) each — 95s was too low and caused false timeouts.
+ */
+const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
 
 function PlayContent() {
   const router = useRouter();
@@ -581,7 +590,17 @@ function PlayContent() {
     streamAbortRef.current = ac;
 
     let res: Response;
+    const fetchDeadlineState = { hit: false };
+    let fetchDeadlineTimer: ReturnType<typeof window.setTimeout> | undefined;
     try {
+      fetchDeadlineTimer = window.setTimeout(() => {
+        fetchDeadlineState.hit = true;
+        try {
+          ac.abort();
+        } catch {
+          /* ignore */
+        }
+      }, FETCH_CHAT_RESPONSE_DEADLINE_MS);
       res = await fetch("/api/chat", {
         method: "POST",
         credentials: "include",
@@ -595,28 +614,56 @@ function PlayContent() {
         signal: ac.signal,
       });
     } catch (fetchErr) {
-      streamAbortRef.current = null;
       setStreamPhase("idle");
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+        if (fetchDeadlineState.hit) {
+          setLiveNarrative(
+            "等待服务器首包超时：本回合在服务端会依次经过安全审查、数据库与控制预检，再连接大模型（上游失败时还会自动重试，整体可能超过数分钟）。若多次出现，请检查本机 PostgreSQL、网络与 `.env.local` 中的大模型 Key；也可稍后再试。"
+          );
+        }
         return;
       }
       setLiveNarrative("连接深渊时发生了波动，请稍后再试。");
       return;
     } finally {
+      if (fetchDeadlineTimer !== undefined) {
+        window.clearTimeout(fetchDeadlineTimer);
+      }
       streamAbortRef.current = null;
     }
 
-    if (!res.ok || !res.body) {
+    const responseContentType = res.headers.get("content-type") ?? "";
+    const responseIsSse = responseContentType.includes("text/event-stream");
+
+    if (!res.ok) {
       setStreamPhase("idle");
       const errorText = await res.text().catch(() => "");
-      const contentType = res.headers.get("content-type") ?? "";
+      // Legacy / misconfigured proxies may return 4xx/5xx while body is still valid SSE + DM JSON.
+      if (responseIsSse && errorText) {
+        const dmRawFromError = foldSseTextToDmRaw(errorText);
+        const degradedDm = tryParseDM(dmRawFromError);
+        if (degradedDm && typeof degradedDm.narrative === "string" && degradedDm.narrative.trim().length > 0) {
+          useGameStore.getState().pushLog({
+            role: "assistant",
+            content: degradedDm.narrative.slice(0, 50000),
+            reasoning: undefined,
+          });
+          setLiveNarrative("");
+          console.warn("[/api/chat] non-OK HTTP but SSE body parsed as DM; showing narrative.", {
+            status: res.status,
+            aiStatus: res.headers.get("X-VerseCraft-Ai-Status"),
+          });
+          return;
+        }
+      }
       let parsedError: unknown = null;
       try {
-        if (contentType.includes("application/json") && errorText) {
+        if (responseContentType.includes("application/json") && errorText) {
           parsedError = JSON.parse(errorText);
-        } else if (contentType.includes("text/event-stream") && errorText) {
-          const m = errorText.match(/(^|\\n)data:\\s*(\\{[\\s\\S]*\\})(\\n|$)/);
-          if (m?.[2]) parsedError = JSON.parse(m[2]);
+        } else if (responseIsSse && errorText) {
+          const dmRaw = foldSseTextToDmRaw(errorText);
+          const dmParsed = tryParseDM(dmRaw);
+          if (dmParsed) parsedError = dmParsed;
         }
       } catch {
         parsedError = null;
@@ -633,7 +680,7 @@ function PlayContent() {
         res.status === 502 &&
         (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403);
 
-      const logLine = `[/api/chat] non-OK status=${res.status} statusText=${res.statusText} contentType=${contentType} body=${errorText.slice(0, 800)}`;
+      const logLine = `[/api/chat] non-OK status=${res.status} statusText=${res.statusText} contentType=${responseContentType} body=${errorText.slice(0, 800)}`;
 
       if (isAuthFailed) {
         console.warn(logLine);
@@ -644,7 +691,7 @@ function PlayContent() {
       const detail = {
         status: res.status,
         statusText: res.statusText,
-        contentType,
+        contentType: responseContentType,
         parsedError,
         body: errorText,
       };
@@ -671,6 +718,12 @@ function PlayContent() {
             ? "深渊回应超时（504），请稍后再试。"
           : "连接深渊时发生了波动，请稍后再试。";
       setLiveNarrative(msg);
+      return;
+    }
+
+    if (!res.body) {
+      setStreamPhase("idle");
+      setLiveNarrative("连接深渊时发生了波动，请稍后再试。");
       return;
     }
 
@@ -1382,7 +1435,8 @@ function PlayContent() {
   );
 }
 
-export default function PlayPageWrapper() {
+export default function PlayPageWrapper(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const router = useRouter();
   const isHydrated = useGameStore((s) => s.isHydrated);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);

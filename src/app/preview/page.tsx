@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 const DEFAULT_STATS = {
   sanity: 10,
@@ -12,7 +14,8 @@ const DEFAULT_STATS = {
   background: 7,
 };
 
-export default function PreviewLandingPage() {
+export default function PreviewLandingPage(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const router = useRouter();
 
   const isDev = process.env.NODE_ENV === "development";

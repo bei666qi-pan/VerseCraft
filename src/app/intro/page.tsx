@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 const RULES: { title: string }[] = [
   { title: "诡异类型世界，微恐，难度高" },
@@ -9,7 +11,8 @@ const RULES: { title: string }[] = [
   { title: "右上角的键盘按钮可切换至手动输入" },
 ];
 
-export default function IntroPage() {
+export default function IntroPage(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   const router = useRouter();
 
   return (

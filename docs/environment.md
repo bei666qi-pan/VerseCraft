@@ -25,3 +25,8 @@
 - **推荐（文档与 `.env.example`）**：`MODERATION_*`、`SECURITY_LOG_LEVEL`、`AUDIT_HMAC_SECRET`。
 - **仍受支持（Coolify 旧配置无需立即改）**：`SECURITY_MODERATION_*`、`SECURITY_AUDIT_LOG_LEVEL`、`SECRET_KEY`（审计 HMAC，优先使用 `AUDIT_HMAC_SECRET`）。
 - **智谱**：`ZHIPU_API_KEY` 为主；`BIGMODEL_API_KEY` 为别名，在 `resolveAiEnv` 中解析。
+
+## Coolify / 生产部署 checklist
+
+- **大模型**：镜像内**没有** `.env.local`，必须在 Coolify **Environment Variables** 中至少配置其一：`DEEPSEEK_API_KEY`、`ZHIPU_API_KEY` / `BIGMODEL_API_KEY`、`MINIMAX_API_KEY`（名称与 `.env.example` 一致）。未配置时 `/api/chat` 会降级并打印 `[api/chat] No AI provider API keys configured`。
+- **数据库表**：保持 **`MIGRATE_ON_BOOT=1`**（默认），以便容器启动时执行 `scripts/migrate.js`。若历史库已存在 `schema_v1` 记录但缺少 `analytics_events` 表，当前迁移脚本会在每次启动时额外执行 `ensureAnalyticsFoundationTables` 做幂等补齐；`instrumentation` 中也会调用 `ensureRuntimeSchema`（除非 `RUNTIME_SCHEMA_ENSURE=0`）。

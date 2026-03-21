@@ -29,6 +29,11 @@ import { runPlayerControlPreflight } from "@/lib/playRealtime/controlPreflight";
 import { tryEnhanceDmAfterMainStream } from "@/lib/playRealtime/narrativeEnhancement";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
+import {
+  loadVerseCraftEnvFilesOnce,
+  reloadVerseCraftProcessEnv,
+  resolveVerseCraftProjectRoot,
+} from "@/lib/config/loadVerseCraftEnv";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -407,6 +412,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Merge `.env.local` from the real package root (cwd can differ from app root under some launchers).
+  loadVerseCraftEnvFilesOnce();
+
   const validated = validateChatRequest(body);
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: validated.status });
@@ -703,7 +711,18 @@ export async function POST(req: Request) {
     },
   }).catch(() => {});
   if (!anyAiProviderConfigured()) {
-    console.error(`\x1b[31m[api/chat] No AI provider API keys configured (see .env.example / Coolify env).\x1b[0m`);
+    reloadVerseCraftProcessEnv();
+  }
+  if (!anyAiProviderConfigured()) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[api/chat] AI keys still missing after env reload", {
+        cwd: process.cwd(),
+        projectRoot: resolveVerseCraftProjectRoot(),
+        hasDeepseekName: typeof process.env.DEEPSEEK_API_KEY === "string",
+        deepseekLen: process.env.DEEPSEEK_API_KEY?.length ?? 0,
+      });
+    }
+    console.warn(`[api/chat] No AI provider API keys configured (see .env.example / Coolify env). Returning degraded SSE with 200.`);
     return new Response(
       sseText(
         JSON.stringify({
@@ -715,11 +734,12 @@ export async function POST(req: Request) {
         })
       ),
       {
-        status: 500,
+        status: 200,
         headers: {
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
+          "X-VerseCraft-Ai-Status": "keys_missing",
         },
       }
     );

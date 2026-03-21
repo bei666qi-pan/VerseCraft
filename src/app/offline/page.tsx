@@ -1,6 +1,10 @@
 "use client";
 
-export default function OfflinePage() {
+import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
+import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
+
+export default function OfflinePage(props: AppPageDynamicProps) {
+  useClientPageDynamicProps(props);
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0f172a] text-white">
       <div className="relative mb-6">

@@ -5,10 +5,24 @@
  * Do not call `process.env[...]` elsewhere in application code.
  */
 
+function stripWrappingQuotesAndBom(value: string): string {
+  let s = value.trim();
+  if (s.length > 0 && s.charCodeAt(0) === 0xfeff) {
+    s = s.slice(1).trim();
+  }
+  if (
+    s.length >= 2 &&
+    ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 export function envRaw(name: string): string | undefined {
   const raw = process.env[name];
   if (typeof raw !== "string") return undefined;
-  const trimmed = raw.trim();
+  const trimmed = stripWrappingQuotesAndBom(raw);
   return trimmed.length > 0 ? trimmed : undefined;
 }
 

@@ -23,6 +23,7 @@ test("ALLOWED_MODEL_IDS is exactly four logical models", () => {
 
 test("normalizeAllowedModelId maps aliases and rejects unknown", () => {
   assert.equal(normalizeAllowedModelId("DeepSeek-V3.2"), "deepseek-v3.2");
+  assert.equal(normalizeAllowedModelId("deepseek-chat"), "deepseek-v3.2");
   assert.equal(normalizeAllowedModelId("deepseek-v3.2-chat"), "deepseek-v3.2");
   assert.equal(normalizeAllowedModelId("glm-5-air"), "glm-5-air");
   assert.equal(normalizeAllowedModelId("gpt-4"), null);
