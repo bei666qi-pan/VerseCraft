@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Settings, Keyboard, List } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
@@ -59,6 +59,7 @@ const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
 
 function PlayContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const lastAutoSaveRef = useRef(0);
 
   const isHydrated = useGameStore((s) => s.isHydrated);
@@ -253,16 +254,6 @@ function PlayContent() {
       setShowApocalypseOverlay(true);
     }
   }, [isHydrated, showApocalypseOverlay]);
-
-  useEffect(() => {
-    return () => {
-      streamAbortRef.current?.abort();
-      void streamReaderRef.current?.cancel().catch(() => {});
-      setOpeningAiBusy(false);
-      sendActionInFlightRef.current = false;
-      openingOptionsOnlyRoundRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (streamPhase === "idle") {
@@ -578,7 +569,9 @@ function PlayContent() {
 
   useEffect(() => {
     if (!isHydrated || !isGameStarted) return;
-    const handlePageHide = () => autoSaveProgress();
+    const handlePageHide = () => {
+      autoSaveProgress();
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         autoSaveProgress();
@@ -589,13 +582,21 @@ function PlayContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       autoSaveProgress();
-      streamAbortRef.current?.abort();
-      streamReaderRef.current?.cancel().catch(() => {});
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handlePageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [autoSaveProgress, isGameStarted, isHydrated]);
+
+  const prevPathnameForAbortRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevPathnameForAbortRef.current;
+    if (prev !== null && prev === "/play" && pathname !== "/play") {
+      streamAbortRef.current?.abort();
+      void streamReaderRef.current?.cancel().catch(() => {});
+    }
+    prevPathnameForAbortRef.current = pathname;
+  }, [pathname]);
 
   async function sendAction(
     action: string,
