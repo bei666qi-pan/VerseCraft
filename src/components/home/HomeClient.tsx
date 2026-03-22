@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Lightbulb } from "lucide-react";
 import { fetchCloudSaves } from "@/app/actions/save";
-import { loginUser, registerUser } from "@/app/actions/auth";
+import { signInOrRegister } from "@/app/actions/auth";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
@@ -51,7 +51,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   const [authOpen, setAuthOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [authWarn, setAuthWarn] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
@@ -59,12 +58,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [feedbackContent, setFeedbackContent] = useState("");
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const [loginState, loginAction, loginPending] = useActionState(loginUser, INITIAL_AUTH_ACTION_STATE);
-
-  const [registerState, registerAction, registerPending] = useActionState(
-    registerUser,
-    INITIAL_AUTH_ACTION_STATE
-  );
+  const [authState, authFormAction, authPending] = useActionState(signInOrRegister, INITIAL_AUTH_ACTION_STATE);
 
   const hasLocalAutoSave = useMemo(() => Boolean(saveSlots.auto_save), [saveSlots]);
   const hasCloudAutoSave = useMemo(
@@ -128,7 +122,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   function closeAuthModal() {
     setAuthOpen(false);
     setIsConnecting(false);
-    setMode("login");
   }
 
   async function handleLogout() {
@@ -183,7 +176,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
         <div className="fixed right-4 top-4 sm:right-8 sm:top-8 z-50" style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}>
           {!user ? (
-            <button type="button" onClick={openAuthModal} aria-label="注册或登录账户">
+            <button type="button" onClick={openAuthModal} aria-label="执笔登入账户">
               <div
                 className={`group relative flex items-center gap-2.5 rounded-full border border-white/10 bg-slate-900/40 px-4 py-2 backdrop-blur-2xl shadow-[0_0_34px_rgba(15,23,42,0.7)] transition-all duration-500 hover:scale-105 hover:border-cyan-300/60 hover:shadow-[0_0_45px_rgba(56,189,248,0.75)] active:scale-95 ${
                   authWarn ? "ring-2 ring-red-500/80 animate-pulse" : ""
@@ -208,7 +201,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     isConnecting ? "opacity-80" : ""
                   }`}
                 >
-                  注册 / 登录
+                  执笔登入
                 </span>
               </div>
             </button>
@@ -236,109 +229,59 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               onClick={closeAuthModal}
             />
             <div className="relative w-full max-w-md rounded-3xl border border-white/20 bg-slate-900/85 px-6 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.9)] backdrop-blur-2xl">
-              <div className="flex items-center justify-between gap-4">
-                <div className="inline-flex rounded-full bg-slate-800/90 p-1 text-xs text-slate-300">
-                  <button
-                    type="button"
-                    onClick={() => setMode("login")}
-                    className={`rounded-full px-3 py-1 ${
-                      mode === "login" ? "bg-slate-100 text-slate-900" : "text-slate-300"
-                    }`}
-                  >
-                    登录
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMode("register")}
-                    className={`rounded-full px-3 py-1 ${
-                      mode === "register" ? "bg-slate-100 text-slate-900" : "text-slate-300"
-                    }`}
-                  >
-                    注册
-                  </button>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold tracking-widest text-slate-100">执笔登入</h2>
+                  <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+                    新笔名将自动建档；已有笔名请输入密码。
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeAuthModal}
-                  className="rounded-full border border-slate-600/60 bg-slate-800/80 px-3 py-1 text-xs text-slate-300 hover:border-slate-400 hover:text-slate-100"
+                  className="shrink-0 rounded-full border border-slate-600/60 bg-slate-800/80 px-3 py-1 text-xs text-slate-300 hover:border-slate-400 hover:text-slate-100"
                 >
                   关闭
                 </button>
               </div>
 
-              {mode === "login" ? (
-                <form key="login-form" className="mt-5 space-y-3" action={loginAction}>
-                  <input
-                    name="fax_number"
-                    type="text"
-                    autoComplete="off"
-                    aria-hidden={true}
-                    tabIndex={-1}
-                    className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
-                  />
-                  <input
-                    name="name"
-                    placeholder="账号"
-                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <input
-                    name="password"
-                    type="password"
-                    placeholder="密码"
-                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={loginPending}
-                    className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
-                      loginPending ? "halo-nerve" : ""
-                    }`}
-                  >
-                    {loginPending ? "处理中..." : "登录"}
-                  </button>
-                  {!loginState.success && loginState.error && (
-                    <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
-                      {loginState.error}
-                    </div>
-                  )}
-                </form>
-              ) : (
-                <form key="register-form" className="mt-5 space-y-3" action={registerAction}>
-                  <input
-                    name="fax_number"
-                    type="text"
-                    autoComplete="off"
-                    aria-hidden={true}
-                    tabIndex={-1}
-                    className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
-                  />
-                  <input
-                    name="name"
-                    placeholder="账号（至少2位）"
-                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <input
-                    name="password"
-                    type="password"
-                    placeholder="密码（至少6位）"
-                    className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={registerPending}
-                    className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
-                      registerPending ? "halo-nerve" : ""
-                    }`}
-                  >
-                    {registerPending ? "处理中..." : "注册"}
-                  </button>
-                  {!registerState.success && registerState.error && (
-                    <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
-                      {registerState.error}
-                    </div>
-                  )}
-                </form>
-              )}
+              <form key="auth-unified-form" className="relative mt-5 space-y-3" action={authFormAction}>
+                <input
+                  name="fax_number"
+                  type="text"
+                  autoComplete="off"
+                  aria-hidden={true}
+                  tabIndex={-1}
+                  className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
+                />
+                <input
+                  name="name"
+                  autoComplete="username"
+                  placeholder="笔名（至少 2 字）"
+                  className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                />
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="密码（至少 6 位）"
+                  className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                />
+                <button
+                  type="submit"
+                  disabled={authPending}
+                  className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                    authPending ? "halo-nerve" : ""
+                  }`}
+                >
+                  {authPending ? "处理中..." : "进入文界"}
+                </button>
+                {!authState.success && authState.error && (
+                  <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
+                    {authState.error}
+                  </div>
+                )}
+              </form>
             </div>
           </div>
         )}
@@ -370,7 +313,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           <GlassEntryFrame variant="pill">
             <GlassCtaButton
               variant="pill"
-              label="进入世界"
+              label="执笔书写"
               trailing="→"
               onClick={() => {
                 unlockBgmOnUserGesture();

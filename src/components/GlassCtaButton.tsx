@@ -21,6 +21,12 @@ const BUTTON_CARD =
 const BUTTON_CARD_PROMINENT =
   "group relative z-10 flex min-h-[6rem] w-full flex-1 items-center justify-center bg-transparent px-6 py-8 text-lg font-bold tracking-[0.22em] text-slate-900 transition-all duration-300 hover:text-indigo-950 active:scale-[0.99] md:min-h-[6.75rem] md:text-xl touch-manipulation";
 
+const WRAP_CARD_COMPACT =
+  "relative flex min-h-[4.25rem] flex-col overflow-hidden rounded-[2rem] shadow-[0_0_20px_rgba(148,163,184,0.1)] transition-all duration-300 hover:shadow-[0_0_28px_rgba(148,163,184,0.15)] md:min-h-[4.75rem]";
+
+const BUTTON_CARD_COMPACT =
+  "group relative z-10 flex min-h-[4.25rem] w-full flex-1 items-center justify-center bg-transparent px-5 py-5 text-sm font-semibold tracking-[0.18em] text-slate-600 transition-all duration-300 hover:text-slate-800 active:scale-[0.99] md:min-h-[4.75rem] md:text-base touch-manipulation";
+
 const WRAP_PILL =
   "relative flex w-full min-h-0 flex-col overflow-hidden rounded-full shadow-[0_0_24px_rgba(148,163,184,0.14)] transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_32px_rgba(148,163,184,0.2)] active:scale-[0.99]";
 
@@ -38,6 +44,8 @@ type Props = {
   variant?: "card" | "pill";
   /** 强化主路径 CTA：更大体量、靛紫光晕与更高对比（仍无硬描边） */
   prominent?: boolean;
+  /** card 专用：更小高度与字号（与 prominent 互斥时以 prominent 为准） */
+  compact?: boolean;
   /** 仅 pill：右侧箭头等 */
   trailing?: ReactNode;
 };
@@ -49,13 +57,28 @@ export function GlassCtaButton({
   className = "",
   variant = "card",
   prominent = false,
+  compact = false,
   trailing,
 }: Props) {
+  const cardCompact = variant === "card" && compact && !prominent;
   const wrap =
-    variant === "pill" ? WRAP_PILL : prominent ? WRAP_CARD_PROMINENT : WRAP_CARD;
+    variant === "pill"
+      ? WRAP_PILL
+      : prominent
+        ? WRAP_CARD_PROMINENT
+        : cardCompact
+          ? WRAP_CARD_COMPACT
+          : WRAP_CARD;
   const underlay =
     variant === "pill" ? UNDERLAY_PILL : prominent ? UNDERLAY_CARD_PROMINENT : UNDERLAY_CARD;
-  const btn = variant === "pill" ? BUTTON_PILL : prominent ? BUTTON_CARD_PROMINENT : BUTTON_CARD;
+  const btn =
+    variant === "pill"
+      ? BUTTON_PILL
+      : prominent
+        ? BUTTON_CARD_PROMINENT
+        : cardCompact
+          ? BUTTON_CARD_COMPACT
+          : BUTTON_CARD;
   return (
     <div className={`${wrap} ${className}`.trim()}>
       {prominent && variant === "card" ? (

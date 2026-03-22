@@ -89,19 +89,27 @@ function resolveCredentialsError(error: AuthError): string | null {
   return null;
 }
 
-export async function registerUser(
-  _prevState: AuthActionState,
-  formData: FormData
-) : Promise<AuthActionState> {
-  if (isHoneypotTriggered(formData)) {
-    return { success: false, error: "系统异常，注册中止。" };
-  }
-  const name = String(formData.get("name") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
-  if (name.length < 2 || password.length < 6) {
-    return { success: false, error: "注册失败：账号至少 2 位且密码至少 6 位" };
-  }
+async function recordLoginSuccess(name: string): Promise<void> {
+  const found = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
+  const uid = found[0]?.id ?? null;
+  void recordGenericAnalyticsEvent({
+    eventId: `${uid ?? name}:user_login_success:${Date.now()}`,
+    idempotencyKey: `user_login_success:${uid ?? name}:${Date.now()}`,
+    userId: uid,
+    sessionId: "system",
+    eventName: "user_login_success",
+    eventTime: new Date(),
+    page: "/",
+    source: "auth",
+    platform: "unknown",
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {},
+  }).catch(() => {});
+}
 
+/** 插入新用户 + 注册分析 + 凭证登录（档案须尚不存在）。 */
+async function performRegisterNewUser(name: string, password: string): Promise<AuthActionState> {
   try {
     const hashed = await bcrypt.hash(password, 10);
     const newUserId = randomUUID();
@@ -111,7 +119,6 @@ export async function registerUser(
       password: hashed,
     });
 
-    // Analytics best-effort: user registration (idempotent by user id).
     void recordUserRegisteredAnalytics({
       eventId: `${newUserId}:user_registered`,
       idempotencyKey: `${newUserId}:user_registered`,
@@ -156,41 +163,15 @@ export async function registerUser(
   }
 }
 
-export async function loginUser(
-  _prevState: AuthActionState,
-  formData: FormData
-): Promise<AuthActionState> {
-  if (isHoneypotTriggered(formData)) {
-    return { success: false, error: "系统异常，登录中止。" };
-  }
-  const name = String(formData.get("name") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
-  if (!name || !password) {
-    return { success: false, error: "登录失败：请输入账号和密码" };
-  }
-
+/** 已存在用户：仅凭证登录 + 登录分析。 */
+async function performCredentialsLogin(name: string, password: string): Promise<AuthActionState> {
   try {
     await signIn("credentials", {
       name,
       password,
       redirectTo: "/",
     });
-    const found = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
-    const uid = found[0]?.id ?? null;
-    void recordGenericAnalyticsEvent({
-      eventId: `${uid ?? name}:user_login_success:${Date.now()}`,
-      idempotencyKey: `user_login_success:${uid ?? name}:${Date.now()}`,
-      userId: uid,
-      sessionId: "system",
-      eventName: "user_login_success",
-      eventTime: new Date(),
-      page: "/",
-      source: "auth",
-      platform: "unknown",
-      tokenCost: 0,
-      playDurationDeltaSec: 0,
-      payload: {},
-    }).catch(() => {});
+    await recordLoginSuccess(name);
     return { success: true, message: "登录成功" };
   } catch (error) {
     if (error instanceof AuthError) {
@@ -227,4 +208,65 @@ export async function loginUser(
     console.error("Login Backend Error:", error);
     return { success: false, error: "系统异常，登录中止。" };
   }
+}
+
+/** 单一表单：库中无此名则注册，有则登录。 */
+export async function signInOrRegister(
+  _prevState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  if (isHoneypotTriggered(formData)) {
+    return { success: false, error: "系统异常，认证中止。" };
+  }
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (name.length < 2 || password.length < 6) {
+    return { success: false, error: "账号至少 2 位且密码至少 6 位" };
+  }
+
+  try {
+    const existing = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
+    if (!existing[0]) {
+      return performRegisterNewUser(name, password);
+    }
+    return performCredentialsLogin(name, password);
+  } catch (error) {
+    console.error("signInOrRegister lookup error:", error);
+    if (isDatabaseConnectionError(error)) {
+      return { success: false, error: "深渊意志干扰了数据库连接，请稍后再试。" };
+    }
+    return { success: false, error: "系统异常，认证中止。" };
+  }
+}
+
+export async function registerUser(
+  _prevState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  if (isHoneypotTriggered(formData)) {
+    return { success: false, error: "系统异常，注册中止。" };
+  }
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (name.length < 2 || password.length < 6) {
+    return { success: false, error: "注册失败：账号至少 2 位且密码至少 6 位" };
+  }
+
+  return performRegisterNewUser(name, password);
+}
+
+export async function loginUser(
+  _prevState: AuthActionState,
+  formData: FormData
+): Promise<AuthActionState> {
+  if (isHoneypotTriggered(formData)) {
+    return { success: false, error: "系统异常，登录中止。" };
+  }
+  const name = String(formData.get("name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!name || !password) {
+    return { success: false, error: "登录失败：请输入账号和密码" };
+  }
+
+  return performCredentialsLogin(name, password);
 }

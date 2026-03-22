@@ -9,7 +9,7 @@ const ROUTES = [
   { href: "/intro", label: "入局指南" },
   { href: "/world/apartment", label: "公寓档案" },
   { href: "/create", label: "铸造角色" },
-  { href: "/play", label: "意识潜入" },
+  { href: "/play", label: "开卷" },
   { href: "/settlement", label: "结算导出" },
 ] as const;
 

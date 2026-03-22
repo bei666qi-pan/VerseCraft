@@ -9,7 +9,7 @@ type GlassEntryFrameProps = {
   className?: string;
 };
 
-/** 淡液态玻璃外框，统一「进入世界 / 创建形象 / 意识潜入」等主入口视觉 */
+/** 淡液态玻璃外框，统一「执笔书写 / 书写想象 / 开卷」等主入口视觉 */
 export function GlassEntryFrame({ children, variant = "card", className = "" }: GlassEntryFrameProps) {
   const radius = variant === "pill" ? "rounded-full" : "rounded-[2rem]";
   return (

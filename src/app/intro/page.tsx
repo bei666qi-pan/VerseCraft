@@ -65,11 +65,11 @@ export default function IntroPage(props: AppPageDynamicProps) {
             <p className="text-xs text-slate-500 sm:text-sm">
               祝各位内测用户执笔顺利。
             </p>
-            <GlassEntryFrame variant="card" className="w-full max-w-md shadow-[0_20px_72px_rgba(79,70,229,0.22)]">
+            <GlassEntryFrame variant="card" className="w-full max-w-sm shadow-[0_12px_40px_rgba(148,163,184,0.2)]">
               <GlassCtaButton
-                prominent
+                compact
                 className="w-full"
-                label="创建形象"
+                label="书写想象"
                 onClick={() => router.push("/create")}
               />
             </GlassEntryFrame>
