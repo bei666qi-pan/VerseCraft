@@ -34,7 +34,7 @@ pnpm test:unit
 
 ## 必填变量
 
-- `DATABASE_URL`: 本地/测试 PostgreSQL 连接串
+- `DATABASE_URL`: 本地/测试 PostgreSQL 连接串（Docker 共用实例分库时可先执行 `pnpm postgres:local`，见 [`local-one-api.md`](local-one-api.md)）
 - `REDIS_URL`: 本地/测试 Redis 连接串（可选，留空会退化为内存限流）
 - `AUTH_SECRET`: NextAuth 签名密钥
 - `ADMIN_PASSWORD`: 管理员影子入口密码

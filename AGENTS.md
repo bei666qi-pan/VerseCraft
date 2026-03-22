@@ -19,6 +19,7 @@ See `package.json` scripts. Summary:
 - `pnpm test:ci` — eslint + unit + production build（与 `ci.yml` 前半段一致；完整 verify job 另含 Playwright，见 `ci.yml`）
 - `pnpm run ship -- "feat: 说明"` — 跨平台调用 `node deploy.sh`（**勿**使用 `bash ./deploy.sh`：`deploy.sh` 为 Node 脚本，在无 bash 的 Windows 上会失败；勿单独用 `pnpm deploy`，会与 pnpm 内置命令冲突）
 - `pnpm verify:ai-gateway` / `pnpm probe:ai-gateway` — 网关配置检查 / 极小连通探测
+- `pnpm postgres:local` — Docker Desktop 已启动时，一键起 `versecraft-pg` 并创建 `versecraft` + `oneapi` 库（见 `docs/local-one-api.md`）
 - `npx eslint .` — lint (**`pnpm lint` / `next lint` does not work in Next.js 16 CLI**; use `npx eslint .` directly)
 
 ### Non-obvious caveats

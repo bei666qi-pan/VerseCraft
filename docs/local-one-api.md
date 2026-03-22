@@ -53,9 +53,17 @@ flowchart TB
 
 ### 1）启动 Postgres 并映射 5432
 
-前提：**Docker Desktop 已运行**；本机 **5432 未被其他服务占用**。若已被占用，可改用例如 `-p 5433:5432`，并把下文所有连接串里的端口改为 `5433`。
+前提：**Docker Desktop 已运行**；本机 **5432 未被其他服务占用**。若已被占用，可设置环境变量 **`VERSECRAFT_PG_PORT=5433`** 后执行一键脚本，并把下文所有连接串里的端口改为 `5433`。
 
-**示例**（密码请自行替换；镜像标签可按团队规范改为 `postgres:16` 等）。整行复制即可（PowerShell / cmd / Git Bash 均可）：
+**推荐（操作最少）**：在 VerseCraft 仓库根目录执行：
+
+```bash
+pnpm postgres:local
+```
+
+脚本会创建/启动名为 `versecraft-pg` 的容器（默认用户 `postgres`、密码 `change_me`、镜像 `postgres:16-alpine`），并确保存在 **`versecraft`** 与 **`oneapi`** 两个库。若守护进程未启动，会提示先打开 Docker Desktop。
+
+**手动等价命令**（密码请自行替换；镜像标签可按团队规范改为 `postgres:16` 等）。整行复制即可（PowerShell / cmd / Git Bash 均可）：
 
 ```bash
 docker run -d --name versecraft-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=change_me -p 5432:5432 postgres:16-alpine

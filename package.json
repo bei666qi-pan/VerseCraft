@@ -24,6 +24,7 @@
     "ship": "node deploy.sh",
     "probe:ai-gateway": "tsx scripts/probe-ai-gateway.ts",
     "patch:env-local-ai": "node scripts/patch-env-local-ai.mjs",
+    "postgres:local": "node scripts/start-local-postgres.mjs",
     "test:ci": "npx eslint \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" --max-warnings 0 && pnpm test:unit && pnpm build",
     "test:admin:api": "playwright test e2e/admin-api.spec.ts",
     "test:admin:perf": "playwright test e2e/admin-performance.spec.ts",
