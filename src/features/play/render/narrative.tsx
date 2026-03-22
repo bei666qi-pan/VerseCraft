@@ -6,6 +6,35 @@ import { LOCATION_LABELS } from "./locationLabels";
 export const BLOOD_MARKER = "{{BLOOD}}";
 export const BLOOD_END = "{{/BLOOD}}";
 
+/**
+ * 流式阶段：去掉未闭合的 {{BLOOD}} 起始标记（避免半段血块撑满布局），
+ * 并去掉未成对的最后一个 `**`（避免半段加粗吞掉后续正文）。
+ */
+export function prepareStreamingNarrativeForRender(s: string): string {
+  let t = typeof s === "string" ? s : "";
+  const open = "{{BLOOD}}";
+  const close = "{{/BLOOD}}";
+  for (;;) {
+    const lastOpen = t.lastIndexOf(open);
+    if (lastOpen === -1) break;
+    const rest = t.slice(lastOpen + open.length);
+    if (!rest.includes(close)) {
+      t = t.slice(0, lastOpen) + rest;
+      continue;
+    }
+    break;
+  }
+  const segments = t.split("**");
+  const starPairs = segments.length - 1;
+  if (starPairs > 0 && starPairs % 2 === 1) {
+    const last = t.lastIndexOf("**");
+    if (last !== -1) {
+      t = t.slice(0, last) + t.slice(last + 2);
+    }
+  }
+  return t;
+}
+
 export function applyBloodErase(narrative: string): string {
   const parts = narrative.split(/([。！？\n]+)/);
   const sentences: string[] = [];
@@ -34,10 +63,14 @@ export function applyBloodErase(narrative: string): string {
   return `${narrative.slice(0, idx0)}${BLOOD_MARKER}${narrative.slice(idx0, end)}${BLOOD_END}${narrative.slice(end)}`;
 }
 
-export function renderNarrativeText(text: string, options?: { plainOnly?: boolean }): ReactNode {
+export function renderNarrativeText(
+  text: string,
+  options?: { plainOnly?: boolean; streamSafe?: boolean }
+): ReactNode {
   try {
     const safeText = typeof text === "string" ? text.slice(0, 15000) : "";
     const plainOnly = options?.plainOnly ?? false;
+    const streamSafe = options?.streamSafe ?? false;
     const localized = (() => {
       try {
         if (!safeText) return safeText;
@@ -71,9 +104,12 @@ export function renderNarrativeText(text: string, options?: { plainOnly?: boolea
         return safeText;
       }
     })();
-    const normalized = localized
+    let normalized = localized
       .replace(/\{\{blood\}\}/gi, "{{BLOOD}}")
       .replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
+    if (streamSafe) {
+      normalized = prepareStreamingNarrativeForRender(normalized);
+    }
     const stripOrphans = (s: string) =>
       s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "").replace(/\*\*/g, "");
     if (plainOnly) {
@@ -154,8 +190,8 @@ export function extractGreenTips(text: string): string[] {
 
 export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   content,
-  isDarkMoon,
-  isLowSanity,
+  isDarkMoon: _isDarkMoon,
+  isLowSanity: _isLowSanity,
   plainOnly,
 }: {
   content: string;
@@ -163,12 +199,11 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   isLowSanity?: boolean;
   plainOnly?: boolean;
 }) {
+  void _isDarkMoon;
+  void _isLowSanity;
   const safeContent = typeof content === "string" ? content : "";
-  const baseClass = isLowSanity
-    ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-white"
-    : isDarkMoon
-      ? "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-200"
-      : "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800";
+  const baseClass =
+    "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800";
   let paras: string[] = [];
   try {
     paras = safeContent.split(/\n\n+/).filter(Boolean);

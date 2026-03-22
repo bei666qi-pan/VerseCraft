@@ -9,7 +9,7 @@ import { canUseItem } from "@/lib/registry/itemUtils";
 import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
-import { useSmoothStreamFromRef } from "@/hooks/useSmoothStream";
+import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
@@ -30,6 +30,7 @@ import {
   FIXED_OPENING_NARRATIVE,
   OPENING_SYSTEM_PROMPT,
 } from "@/features/play/opening/openingCopy";
+import { pickEmbeddedOpeningOptions } from "@/features/play/opening/openingOptionPools";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
@@ -56,6 +57,8 @@ const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
  * may retry several times with `AI_TIMEOUT_MS` (~60s) each — 95s was too low and caused false timeouts.
  */
 const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
+/** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
+const SCROLL_STICKY_BOTTOM_PX = 96;
 
 function PlayContent() {
   const router = useRouter();
@@ -133,6 +136,9 @@ function PlayContent() {
   const hasShownManualInputComplianceHintRef = useRef(false);
   const complianceHintTimerRef = useRef<number | null>(null);
   const userScrolledUpRef = useRef(false);
+  const tailDrainTargetRef = useRef<string | null>(null);
+  const parsedPostDrainRef = useRef<{ isDeath: boolean } | null>(null);
+  const [tailAlignKey, setTailAlignKey] = useState(0);
   const autoScrollRafRef = useRef<number | null>(null);
   const lastAutoScrollAtRef = useRef(0);
   const streamLogsBaselineRef = useRef(0);
@@ -164,6 +170,27 @@ function PlayContent() {
     () => computeOpeningBusyUi(openingAiBusy, streamPhase),
     [openingAiBusy, streamPhase]
   );
+
+  const onTailDrainComplete = useCallback(() => {
+    if (streamPhaseRef.current !== "tail_draining") return;
+    tailDrainTargetRef.current = null;
+    setStreamPhase("idle");
+    const sanityAfter = useGameStore.getState().stats?.sanity ?? 0;
+    const pending = parsedPostDrainRef.current;
+    parsedPostDrainRef.current = null;
+    if (pending?.isDeath || sanityAfter <= 0) {
+      setTimeout(() => router.push("/settlement"), 2000);
+    }
+  }, [router]);
+
+  const streamTailDrain = useMemo<SmoothStreamTailDrainConfig | null>(() => {
+    if (streamPhase !== "tail_draining") return null;
+    return {
+      targetRef: tailDrainTargetRef,
+      alignKey: tailAlignKey,
+      onReached: onTailDrainComplete,
+    };
+  }, [streamPhase, tailAlignKey, onTailDrainComplete]);
 
   const day = time.day ?? 0;
   const isDarkMoon = day >= 3 && day < 10;
@@ -279,6 +306,14 @@ function PlayContent() {
     });
   }, []);
 
+  const scheduleAutoScrollIfPinned = useCallback(
+    (smooth = false) => {
+      if (userScrolledUpRef.current) return;
+      scheduleAutoScroll(smooth);
+    },
+    [scheduleAutoScroll]
+  );
+
   const smoothStreamOptions = useMemo(
     () => ({
       uniformPacing: true,
@@ -290,8 +325,9 @@ function PlayContent() {
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
     isStreamVisualActive,
-    () => scheduleAutoScroll(false),
-    smoothStreamOptions
+    () => scheduleAutoScrollIfPinned(false),
+    smoothStreamOptions,
+    streamTailDrain
   );
 
   const displayEntries = useMemo(() => {
@@ -334,28 +370,24 @@ function PlayContent() {
 
   const prevIsStreamVisualActiveRef = useRef(false);
   const onScrollContainer = useCallback(() => {
-    // 始终保持跟随底部，避免流式阅读中断。
-    userScrolledUpRef.current = false;
+    const el = scrollRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    userScrolledUpRef.current = gap > SCROLL_STICKY_BOTTOM_PX;
   }, []);
 
   useEffect(() => {
     if (!scrollRef.current || userScrolledUpRef.current) return;
-    if (isStreamVisualActive) scheduleAutoScroll(false);
-    else if (prevIsStreamVisualActiveRef.current) scheduleAutoScroll(true);
-    else scheduleAutoScroll(false);
+    if (isStreamVisualActive) scheduleAutoScrollIfPinned(false);
+    else if (prevIsStreamVisualActiveRef.current) scheduleAutoScrollIfPinned(true);
+    else scheduleAutoScrollIfPinned(false);
     prevIsStreamVisualActiveRef.current = isStreamVisualActive;
-  }, [smoothNarrative, isStreamVisualActive, scheduleAutoScroll]);
+  }, [smoothNarrative, isStreamVisualActive, scheduleAutoScrollIfPinned]);
 
   useLayoutEffect(() => {
-    // Pin to bottom before paint to avoid end-of-stream flicker.
-    scheduleAutoScroll(false);
-  }, [displayEntries.length, liveNarrative, scheduleAutoScroll]);
-
-  useEffect(() => {
-    if (!isChatBusy) return;
-    const id = window.setInterval(() => scheduleAutoScroll(false), 80);
-    return () => window.clearInterval(id);
-  }, [isChatBusy, scheduleAutoScroll]);
+    if (userScrolledUpRef.current) return;
+    scheduleAutoScrollIfPinned(false);
+  }, [displayEntries.length, liveNarrative, scheduleAutoScrollIfPinned]);
 
   useEffect(() => {
     return () => {
@@ -480,7 +512,12 @@ function PlayContent() {
       if (!openingAwaitingAssistantRef.current) return;
       if (sendActionInFlightRef.current) return;
       const phase = streamPhaseRef.current;
-      if (phase === "waiting_upstream" || phase === "streaming_body" || phase === "turn_committing") {
+      if (
+        phase === "waiting_upstream" ||
+        phase === "streaming_body" ||
+        phase === "turn_committing" ||
+        phase === "tail_draining"
+      ) {
         return;
       }
       if (Date.now() - openingStartedAtRef.current < OPENING_STALL_MS) return;
@@ -501,7 +538,7 @@ function PlayContent() {
     return () => clearInterval(tick);
   }, [isHydrated]);
 
-  // 兜底：若已有助手叙事但选项仍为空，补齐默认（首条助手回合不注入，仅信模型 options）
+  // 兜底：优先从存档恢复 options；无存档且仍处于嵌入式开场时注入本地多池随机四条
   const hasSeededOpeningOptions = useRef(false);
   useEffect(() => {
     if (!isHydrated || !isGameStarted || isChatBusy) return;
@@ -516,8 +553,20 @@ function PlayContent() {
       : [];
     if (savedOptions.length > 0) {
       setCurrentOptions([...savedOptions]);
+      return;
     }
-  }, [currentOptions.length, isChatBusy, isGameStarted, isHydrated, setCurrentOptions]);
+    if (!hasAssistantMessage && inputMode === "options") {
+      setCurrentOptions([...pickEmbeddedOpeningOptions()]);
+    }
+  }, [
+    currentOptions.length,
+    hasAssistantMessage,
+    inputMode,
+    isChatBusy,
+    isGameStarted,
+    isHydrated,
+    setCurrentOptions,
+  ]);
 
   useEffect(() => {
     if (!isHydrated || isChatBusy) return;
@@ -531,7 +580,7 @@ function PlayContent() {
     if (currentOptions.length > 0) return;
 
     hasSeededOpeningOptions.current = true;
-    setCurrentOptions([...DEFAULT_FOUR_ACTION_OPTIONS]);
+    setCurrentOptions([...pickEmbeddedOpeningOptions()]);
   }, [currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
 
   useEffect(() => {
@@ -629,9 +678,11 @@ function PlayContent() {
     openingOptionsOnlyRoundRef.current = isOpeningOptionsOnlyRound;
     if (isOpeningOptionsOnlyRound) {
       setOpeningAiBusy(true);
-      setCurrentOptions([]);
+      setCurrentOptions([...pickEmbeddedOpeningOptions()]);
     }
     narrativeRef.current = "";
+    tailDrainTargetRef.current = null;
+    parsedPostDrainRef.current = null;
     setLiveNarrative("");
 
     const sanityAtStart = useGameStore.getState().stats?.sanity ?? 0;
@@ -919,14 +970,11 @@ function PlayContent() {
     const parsed = tryParseDM(raw);
     if (!parsed) {
       setStreamPhase("idle");
-      // Potential upstream guardrail cut-off: broken/truncated JSON stream.
-      try {
-        useGameStore.getState().triggerSecurityFallback("dm_json_parse_failed_or_truncated");
-      } catch {
-        // ignore
-      }
+      // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
       narrativeRef.current = "";
-      setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
+      setLiveNarrative(
+        "本回合剧情数据格式异常，未写入日志与结算。请重试同一行动，或切换到手动输入后再试。"
+      );
       return;
     }
 
@@ -1214,15 +1262,24 @@ function PlayContent() {
       }
     }
 
-    setStreamPhase("idle");
-
-    const sanityAfter = useGameStore.getState().stats?.sanity ?? 0;
-
-    if (parsed.is_death || sanityAfter <= 0) {
-      setTimeout(() => router.push("/settlement"), 2000);
+    const skipTailDrain = openingOptionsOnlyRoundRef.current;
+    if (skipTailDrain) {
+      setStreamPhase("idle");
+      const sanityAfterOpening = useGameStore.getState().stats?.sanity ?? 0;
+      if (parsed.is_death || sanityAfterOpening <= 0) {
+        setTimeout(() => router.push("/settlement"), 2000);
+      }
+    } else {
+      parsedPostDrainRef.current = { isDeath: !!parsed.is_death };
+      narrativeRef.current = narrativeToPush;
+      tailDrainTargetRef.current = narrativeToPush;
+      setTailAlignKey((n) => n + 1);
+      setStreamPhase("tail_draining");
     }
     } catch (commitErr: unknown) {
       console.error("[/play] turn commit failed", commitErr);
+      tailDrainTargetRef.current = null;
+      parsedPostDrainRef.current = null;
       setStreamPhase("idle");
       narrativeRef.current = "";
       setLiveNarrative("剧情结算时发生错误，请重试本回合。");
@@ -1331,15 +1388,7 @@ function PlayContent() {
   }
 
   return (
-    <main
-      className={`flex h-[100dvh] flex-col overflow-hidden transition-all duration-1000 ${
-        isLowSanity
-          ? "bg-black text-white"
-          : isDarkMoon
-            ? "bg-gradient-to-b from-red-950/20 via-red-950/10 to-black text-red-100"
-            : "bg-background text-foreground"
-      }`}
-    >
+    <main className="flex h-[100dvh] flex-col overflow-hidden bg-white text-slate-900 transition-all duration-1000">
       <PlayAmbientOverlays
         showDarkMoonOverlay={showDarkMoonOverlay}
         showApocalypseOverlay={showApocalypseOverlay}
@@ -1362,12 +1411,8 @@ function PlayContent() {
 
         <div className="flex min-h-0 flex-1 flex-col">
           <section className="flex min-h-0 flex-1 flex-col">
-            <div
-              className={`relative flex h-full min-h-0 flex-1 flex-col overflow-hidden ${
-                isLowSanity ? "bg-black" : isDarkMoon ? "bg-red-950/30" : "bg-white"
-              }`}
-            >
-              <div className={`shrink-0 px-3 py-2 ${isLowSanity ? "bg-white/5" : isDarkMoon ? "bg-red-950/20" : "bg-slate-900/10"}`}>
+            <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
+              <div className="shrink-0 bg-slate-900/10 px-3 py-2">
                 <div className="flex min-h-[40px] items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <button
@@ -1384,7 +1429,7 @@ function PlayContent() {
                         <Settings className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
                       </div>
                     </button>
-                    <h2 className={`truncate text-base font-bold tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg ${isLowSanity ? "text-white" : isDarkMoon ? "text-red-200" : "text-slate-800"}`}>
+                    <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
                       叙事主视窗
                     </h2>
                   </div>
@@ -1466,10 +1511,17 @@ function PlayContent() {
                 embeddedOpeningContent={showEmbeddedOpening ? FIXED_OPENING_NARRATIVE : null}
                 openingAiBusy={openingBusyUi}
               >
-                {inputMode === "options" && !isChatBusy && hasAssistantMessage && currentOptions.length > 0 && (
+                {inputMode === "options" &&
+                  (showEmbeddedOpening
+                    ? isChatBusy || currentOptions.length > 0
+                    : hasAssistantMessage &&
+                      currentOptions.length > 0 &&
+                      !isChatBusy) && (
                   <PlayOptionsList
-                    key={`opts:${currentOptions.join("||")}`}
                     options={currentOptions}
+                    revealed={
+                      currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)
+                    }
                     isLowSanity={isLowSanity}
                     isDarkMoon={isDarkMoon}
                     disabled={isChatBusy || isGuestDialogueExhausted}

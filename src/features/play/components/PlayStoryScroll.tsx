@@ -30,7 +30,7 @@ const StoryHistory = memo(function StoryHistory({
 }) {
   if (displayEntries.length === 0) return null;
   return (
-    <div className={`${isLowSanity ? "text-white" : isDarkMoon ? "text-slate-200" : "text-slate-800"}`}>
+    <div className="text-slate-800">
       {displayEntries.map((entry) => {
         const safeContent = typeof entry.content === "string" ? entry.content : "";
         return safeContent.includes("获得了新物品，已放入书包") ? (
@@ -43,9 +43,7 @@ const StoryHistory = memo(function StoryHistory({
         ) : entry.role === "user" ? (
           <p
             key={entry.logIndex}
-            className={`mb-5 text-[18px] leading-[1.8] ${
-              isLowSanity ? "text-white/92" : isDarkMoon ? "text-slate-200" : "text-slate-800"
-            }`}
+            className="mb-5 text-[18px] leading-[1.8] text-slate-800"
           >
             {renderUserNarrative(safeContent)}
           </p>
@@ -69,15 +67,11 @@ const StreamPanel = memo(function StreamPanel({
   smoothThinking,
   smoothNarrative,
   smoothComplete,
-  isLowSanity,
-  isDarkMoon,
 }: {
   isStreamVisualActive: boolean;
   smoothThinking: boolean;
   smoothNarrative: string;
   smoothComplete: boolean;
-  isLowSanity: boolean;
-  isDarkMoon: boolean;
 }) {
   if (!isStreamVisualActive) return null;
   return (
@@ -103,17 +97,9 @@ const StreamPanel = memo(function StreamPanel({
         </div>
       ) : (
         <>
-          <div
-            className={
-              isLowSanity
-                ? "space-y-6 text-[18px] leading-[1.8] text-white"
-                : isDarkMoon
-                  ? "space-y-6 text-[18px] leading-[1.8] text-slate-200"
-                  : "space-y-6 text-[18px] leading-[1.8] text-slate-800"
-            }
-          >
+          <div className="space-y-6 text-[18px] leading-[1.8] text-slate-800">
             <span className="whitespace-pre-wrap">
-              {renderNarrativeText(smoothNarrative, { plainOnly: true })}
+              {renderNarrativeText(smoothNarrative, { streamSafe: true })}
             </span>
           </div>
           {smoothComplete ? <div className="pt-2" /> : null}
@@ -187,11 +173,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
               isLowSanity={isLowSanity}
             />
             {openingAiBusy ? (
-              <div
-                className={`mt-4 flex items-center gap-2 text-sm ${
-                  isLowSanity ? "text-white/55" : isDarkMoon ? "text-slate-300/80" : "text-slate-500"
-                }`}
-              >
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
                 <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400/90 shadow-[0_0_8px_rgba(99,102,241,0.7)]" />
                 选项正在由主笔实时推演…
               </div>
@@ -212,8 +194,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
           smoothThinking={smoothThinking}
           smoothNarrative={smoothNarrative}
           smoothComplete={smoothComplete}
-          isDarkMoon={isDarkMoon}
-          isLowSanity={isLowSanity}
         />
         {inputMode === "options" && isChatBusy && smoothComplete && streamOn && (
           <div className="pt-2">
@@ -242,37 +222,18 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
             />
           </div>
         ) : !embeddedOpeningContent && displayEntries.length === 0 && !isStreamVisualActive ? (
-          <div
-            className={`h-24 ${isLowSanity ? "text-white/30" : isDarkMoon ? "text-red-300/30" : "text-slate-400"}`}
-          />
+          <div className="h-24 text-slate-400" />
         ) : null}
 
         {(greenTips.length > 0 || firstTimeHint) && (
           <div className="mt-2 space-y-1">
             {firstTimeHint && (
-              <p
-                className={`text-sm font-semibold ${
-                  isLowSanity
-                    ? "text-emerald-200"
-                    : isDarkMoon
-                      ? "text-emerald-300"
-                      : "text-emerald-600"
-                }`}
-              >
+              <p className="text-sm font-semibold text-emerald-600">
                 {firstTimeHint}
               </p>
             )}
             {greenTips.map((tip, idx) => (
-              <p
-                key={idx}
-                className={`text-sm font-semibold ${
-                  isLowSanity
-                    ? "text-white/85"
-                    : isDarkMoon
-                      ? "text-slate-200"
-                      : "text-slate-700"
-                }`}
-              >
+              <p key={idx} className="text-sm font-semibold text-slate-700">
                 {tip}
               </p>
             ))}

@@ -1,40 +1,56 @@
 "use client";
 
+const OPTION_SLOT_COUNT = 4;
+
 export function PlayOptionsList({
   options,
-  isLowSanity,
-  isDarkMoon,
+  isLowSanity: _isLowSanity,
+  isDarkMoon: _isDarkMoon,
   disabled,
   onPick,
+  revealed = true,
 }: {
   options: string[];
   isLowSanity: boolean;
   isDarkMoon: boolean;
   disabled: boolean;
   onPick: (option: string) => void;
+  /** 为 false 时槽位边框/背景保持，仅文案淡出，减轻一帧布局跳变 */
+  revealed?: boolean;
 }) {
-  if (options.length === 0) return <div className="mt-2 min-h-[70px]" />;
+  void _isLowSanity;
+  void _isDarkMoon;
+  const slots = Array.from({ length: OPTION_SLOT_COUNT }, (_, i) => {
+    const t = options[i];
+    return typeof t === "string" ? t.trim() : "";
+  });
+
+  const optionTextColor = "text-slate-900";
+  const optionBorderAndBg = "border border-slate-200 bg-white hover:bg-slate-50";
+
   return (
-    <div className="mt-2 min-h-[70px] space-y-2">
-      {options.map((option, idx) => {
-        const optionTextColor = isLowSanity
-          ? "text-white"
-          : isDarkMoon
-            ? "text-red-100"
-            : "text-slate-900";
-        const optionBorderAndBg =
-          isLowSanity || isDarkMoon
-            ? "border border-white/15 bg-slate-900/40 hover:bg-slate-900/60"
-            : "border border-slate-200 bg-white hover:bg-slate-50";
+    <div className="mt-2 space-y-2">
+      {slots.map((label, idx) => {
+        const hasLabel = label.length > 0;
+        const showText = revealed && hasLabel;
         return (
           <button
             key={idx}
             type="button"
-            onClick={() => onPick(option)}
-            disabled={disabled}
-            className={`w-full rounded-2xl px-4 py-4 text-left text-sm font-medium tracking-wide shadow-sm transition-all duration-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 md:text-base ${optionTextColor} ${optionBorderAndBg}`}
+            onClick={() => onPick(label)}
+            disabled={disabled || !showText}
+            aria-hidden={!showText}
+            className={`w-full min-h-[52px] rounded-2xl px-4 py-4 text-left shadow-sm transition-shadow duration-300 md:min-h-[56px] ${
+              optionBorderAndBg
+            } ${showText ? "hover:shadow-md" : "pointer-events-none"} disabled:cursor-not-allowed disabled:opacity-60`}
           >
-            {option}
+            <span
+              className={`block text-sm font-medium tracking-wide transition-opacity duration-300 ease-out md:text-base ${optionTextColor} ${
+                showText ? "opacity-100" : "opacity-0 select-none"
+              }`}
+            >
+              {hasLabel ? label : "\u00a0"}
+            </span>
           </button>
         );
       })}

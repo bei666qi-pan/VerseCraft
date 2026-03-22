@@ -6,8 +6,8 @@ export function PlayTextInputBar({
   inputMode,
   hasAnyGate,
   gateMessage,
-  isLowSanity,
-  isDarkMoon,
+  isLowSanity: _isLowSanity,
+  isDarkMoon: _isDarkMoon,
   input,
   inputError,
   onInputChange,
@@ -33,16 +33,12 @@ export function PlayTextInputBar({
   showRegisterPrompt: boolean;
   isGuestDialogueExhausted: boolean;
 }) {
+  void _isLowSanity;
+  void _isDarkMoon;
   return (
-    <div
-      className={`shrink-0 px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${isLowSanity ? "bg-white/5" : isDarkMoon ? "bg-red-950/20" : "bg-slate-900/10"}`}
-    >
+    <div className="shrink-0 bg-slate-900/10 px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {hasAnyGate ? (
-        <p
-          className={`py-3 text-center text-sm font-medium ${
-            isLowSanity ? "text-white/80" : isDarkMoon ? "text-red-400/90" : "text-neutral-600"
-          }`}
-        >
+        <p className="py-3 text-center text-sm font-medium text-neutral-600">
           {gateMessage}
         </p>
       ) : inputMode === "text" ? (
@@ -57,34 +53,20 @@ export function PlayTextInputBar({
               placeholder="输入你的创作动作/对白（最多20字）"
               inputMode="text"
               enterKeyHint="done"
-              className={`min-h-[44px] w-full rounded-xl px-3 text-base outline-none transition touch-manipulation ${
-                isLowSanity
-                  ? "bg-white/10 text-white placeholder:text-white/50 focus:bg-white/15"
-                  : isDarkMoon
-                    ? "bg-red-950/40 text-red-100 placeholder:text-red-400/50 focus:bg-red-950/60"
-                    : "bg-white/90 text-slate-800 placeholder:text-slate-500 focus:bg-white"
-              }`}
+              className="min-h-[44px] w-full rounded-xl bg-white/90 px-3 text-base text-slate-800 outline-none transition placeholder:text-slate-500 focus:bg-white touch-manipulation"
               disabled={chatBusy || isGuestDialogueExhausted}
             />
             <button
               type="button"
               onClick={onSubmitClick}
               disabled={chatBusy || input.trim().length === 0 || isGuestDialogueExhausted}
-              className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition disabled:opacity-40 touch-manipulation ${
-                isLowSanity
-                  ? "bg-white/20 text-white"
-                  : isDarkMoon
-                    ? "bg-red-900 text-red-100"
-                    : "bg-foreground text-background"
-              }`}
+              className="min-h-[44px] shrink-0 rounded-lg bg-foreground px-5 text-base font-semibold text-background transition disabled:opacity-40 touch-manipulation"
             >
               提交
             </button>
           </div>
           <div
-            className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs ${
-              isLowSanity ? "text-white/70" : isDarkMoon ? "text-red-300/80" : "text-neutral-600"
-            }`}
+            className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-600"
           >
             <span>
               字数：{input.trim().length}/{MAX_INPUT}
@@ -117,11 +99,7 @@ export function PlayTextInputBar({
         </div>
       )}
       <div className="mt-2 text-center">
-        <span
-          className={`text-[10px] tracking-wide ${
-            isLowSanity ? "text-white/45" : isDarkMoon ? "text-red-200/45" : "text-slate-500/55"
-          }`}
-        >
+        <span className="text-[10px] tracking-wide text-slate-500/55">
           内容由 AI 演算生成，纯属虚构，请注意甄别，切勿代入现实。
         </span>
       </div>
