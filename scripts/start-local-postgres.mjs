@@ -12,6 +12,7 @@
  * 用法：pnpm postgres:local
  */
 import { execSync } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const CONTAINER = "versecraft-pg";
 
@@ -23,20 +24,53 @@ function run(cmd, inherit = true) {
   });
 }
 
-function runOut(cmd) {
-  return execSync(cmd, { encoding: "utf8", shell: true }).trim();
+function runOut(cmd, inherit = false) {
+  return execSync(cmd, {
+    encoding: "utf8",
+    stdio: inherit ? "inherit" : "pipe",
+    shell: true,
+  }).trim();
 }
 
 function containerExists() {
   try {
-    runOut(`docker inspect -f "{{.Id}}" ${CONTAINER}`);
+    execSync(`docker inspect -f "{{.Id}}" ${CONTAINER}`, {
+      encoding: "utf8",
+      stdio: "pipe",
+      shell: true,
+    });
     return true;
   } catch {
     return false;
   }
 }
 
-function main() {
+/** @param {string} user */
+async function waitForPostgresReady(user) {
+  const deadline = Date.now() + 90_000;
+  let dots = false;
+  while (Date.now() < deadline) {
+    try {
+      execSync(`docker exec ${CONTAINER} pg_isready -U ${user}`, {
+        stdio: "pipe",
+        shell: true,
+      });
+      if (dots) process.stdout.write("\n");
+      return;
+    } catch {
+      if (!dots) {
+        process.stdout.write("[postgres:local] 等待 PostgreSQL 就绪");
+        dots = true;
+      }
+      process.stdout.write(".");
+      await sleep(1000);
+    }
+  }
+  if (dots) process.stdout.write("\n");
+  throw new Error("[postgres:local] 超时：容器内 PostgreSQL 未就绪。");
+}
+
+async function main() {
   try {
     runOut("docker info");
   } catch {
@@ -67,6 +101,8 @@ function main() {
     }
   }
 
+  await waitForPostgresReady(user);
+
   /** @param {string} db */
   function ensureDb(db) {
     if (!/^[a-zA-Z0-9_]+$/.test(db)) {
@@ -90,8 +126,17 @@ function main() {
   console.log("[postgres:local] 完成。连接串示例（密码含特殊字符时请自行 URL 编码）：");
   console.log(`  VerseCraft DATABASE_URL → postgresql://${user}:***@127.0.0.1:${port}/versecraft`);
   console.log(`  one-api SQL_DSN（宿主机跑网关）→ postgresql://${user}:***@127.0.0.1:${port}/oneapi`);
+  if (port !== "5432") {
+    console.log("");
+    console.log(
+      `[postgres:local] 提示：宿主机端口为 ${port}（因 5432 常被占用）。请把 DATABASE_URL / SQL_DSN 中的端口改为 ${port}。`
+    );
+  }
   console.log("");
   console.log("下一步：配置 one-api 与 .env.local，见 docs/local-one-api.md。");
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});
