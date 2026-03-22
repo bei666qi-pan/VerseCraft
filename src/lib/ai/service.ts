@@ -12,15 +12,24 @@ export {
 } from "@/lib/ai/router/execute";
 export { resolveAiEnv, anyAiProviderConfigured, resolveDeepSeekLegacyConfig } from "@/lib/ai/config/env";
 export { sanitizeMessagesForUpstream } from "@/lib/ai/stream/sanitize";
-export { ALLOWED_MODEL_IDS, getRegisteredModel, normalizeAllowedModelId, type AllowedModelId } from "@/lib/ai/models/registry";
+export {
+  AI_LOGICAL_ROLES,
+  isAiLogicalRole,
+  legacyVendorModelIdToRole,
+  normalizeAiLogicalRole,
+  parseRoleChain,
+  type AiLogicalRole,
+} from "@/lib/ai/models/logicalRoles";
 export {
   TASK_POLICY,
   TASK_MODEL_FORBIDDEN,
+  TASK_ROLE_FORBIDDEN,
   getTaskBinding,
   explainTaskRouting,
   exportTaskModelMatrixMarkdown,
   isModelForbiddenForTask,
   assertModelAllowedForTask,
+  resolveOrderedRoleChain,
 } from "@/lib/ai/tasks/taskPolicy";
 export type { TaskBinding, BudgetLevel } from "@/lib/ai/tasks/taskPolicy";
 export type {

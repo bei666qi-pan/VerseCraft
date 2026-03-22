@@ -9,8 +9,7 @@ import {
 } from "@/lib/ai/errors/classify";
 import { isCircuitOpen } from "@/lib/ai/fallback/circuitBreaker";
 import { isModelCircuitOpen, recordModelFailure, recordModelSuccess } from "@/lib/ai/fallback/modelCircuit";
-import type { AllowedModelId } from "@/lib/ai/models/registry";
-import { ALLOWED_MODEL_IDS, getRegisteredModel } from "@/lib/ai/models/registry";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { getProviderFactory } from "@/lib/ai/providers";
 import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
 import { resilientFetch } from "@/lib/ai/resilience/fetchWithRetry";
@@ -19,7 +18,7 @@ import {
   assertModelAllowedForTask,
   getTaskBinding,
   resolveFallbackPolicy,
-  resolveOrderedModelChain,
+  resolveOrderedRoleChain,
   type TaskBinding,
 } from "@/lib/ai/tasks/taskPolicy";
 import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
@@ -35,57 +34,44 @@ import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 
-function providerEndpoint(provider: AiProviderId): { url: string; key: string } {
-  const env = resolveAiEnv();
-  if (provider === "deepseek") {
-    return { url: env.deepseek.apiUrl, key: env.deepseek.apiKey };
-  }
-  if (provider === "zhipu") {
-    return { url: env.zhipu.apiUrl, key: env.zhipu.apiKey };
-  }
-  return { url: env.minimax.apiUrl, key: env.minimax.apiKey };
-}
+const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
 
-function asAllowedModelId(id: string): AllowedModelId | null {
-  return ALLOWED_MODEL_IDS.includes(id as AllowedModelId) ? (id as AllowedModelId) : null;
-}
-
-function streamUsageFlag(provider: AiProviderId): boolean {
-  return provider === "deepseek" || provider === "minimax";
+function gatewayEndpoint(env: ReturnType<typeof resolveAiEnv>): { url: string; key: string } {
+  return { url: env.gatewayBaseUrl, key: env.gatewayApiKey };
 }
 
 function buildPlayerStreamBody(
-  modelId: AllowedModelId,
+  gatewayModel: string,
   messages: ChatMessage[],
-  binding: TaskBinding
+  binding: TaskBinding,
+  enableStream: boolean
 ): NormalizedCompletionRequest {
-  const reg = getRegisteredModel(modelId);
+  const stream = binding.stream && enableStream;
   return {
-    modelApiName: reg.apiModel,
+    modelApiName: gatewayModel,
     messages,
-    stream: binding.stream,
+    stream,
     maxTokens: binding.maxTokens,
     temperature: binding.temperature,
-    responseFormatJsonObject: binding.responseFormatJsonObject && reg.provider !== "minimax",
-    streamIncludeUsage: streamUsageFlag(reg.provider),
+    responseFormatJsonObject: binding.responseFormatJsonObject,
+    streamIncludeUsage: stream,
   };
 }
 
 function buildNonStreamBody(
-  modelId: AllowedModelId,
+  gatewayModel: string,
   messages: ChatMessage[],
   maxTokens: number,
   temperature: number | undefined,
   jsonObject: boolean
 ): NormalizedCompletionRequest {
-  const reg = getRegisteredModel(modelId);
   return {
-    modelApiName: reg.apiModel,
+    modelApiName: gatewayModel,
     messages,
     stream: false,
     maxTokens,
     temperature,
-    responseFormatJsonObject: jsonObject && reg.provider !== "minimax",
+    responseFormatJsonObject: jsonObject,
     streamIncludeUsage: false,
   };
 }
@@ -97,9 +83,10 @@ function countFallbacks(attempts: AiRoutingAttempt[]): number {
 export type PlayerChatStreamSuccess = {
   ok: true;
   response: Response;
-  modelId: AllowedModelId;
+  logicalRole: AiLogicalRole;
   providerId: AiProviderId;
-  intendedModelId: AllowedModelId;
+  intendedLogicalRole: AiLogicalRole;
+  gatewayModel: string;
   operationMode: OperationMode;
   httpAttempts: AiRoutingAttempt[];
 };
@@ -109,7 +96,7 @@ export type PlayerChatStreamFailure = {
   code: "NO_CREDENTIALS" | "CHAIN_EXHAUSTED" | "ABORTED";
   message: string;
   lastHttpStatus?: number;
-  intendedModelId?: AllowedModelId;
+  intendedLogicalRole?: AiLogicalRole;
   operationMode?: OperationMode;
   httpAttempts?: AiRoutingAttempt[];
 };
@@ -117,15 +104,15 @@ export type PlayerChatStreamFailure = {
 export type PlayerChatStreamResult = PlayerChatStreamSuccess | PlayerChatStreamFailure;
 
 /**
- * Player-facing SSE: ordered chain, model+provider circuits, classified failures.
- * Use `skipModels` for stream-layer retries without re-hitting the same model.
+ * Player-facing SSE: ordered role chain, circuits, classified failures.
+ * Use `skipRoles` for stream-layer retries without re-hitting the same role.
  */
 export async function executePlayerChatStream(params: {
   messages: ChatMessage[];
   ctx: AIRequestContext;
   signal?: AbortSignal;
   timeoutMs?: number;
-  skipModels?: readonly AllowedModelId[];
+  skipRoles?: readonly AiLogicalRole[];
 }): Promise<PlayerChatStreamResult> {
   if (params.ctx.task !== "PLAYER_CHAT") {
     console.warn(
@@ -138,36 +125,37 @@ export async function executePlayerChatStream(params: {
   const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
   const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
   const maxRetries = env.maxRetries;
-  const skip = new Set(params.skipModels ?? []);
-  const fullChain = resolveOrderedModelChain("PLAYER_CHAT", env, mode);
-  const intendedModelId = fullChain[0] ?? ("deepseek-v3.2" as AllowedModelId);
+  const skip = new Set(params.skipRoles ?? []);
+  const fullChain = resolveOrderedRoleChain("PLAYER_CHAT", env, mode);
+  const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
   const attempts: AiRoutingAttempt[] = [];
 
   if (policy.chain.length === 0) {
     return {
       ok: false,
       code: "NO_CREDENTIALS",
-      message: "未配置任何可用的大模型 API Key（玩家链路需要至少一个厂商密钥）。",
-      intendedModelId,
+      message: "未配置可用的 AI 网关或主模型（需要 AI_GATEWAY_BASE_URL、AI_GATEWAY_API_KEY、AI_MODEL_MAIN）。",
+      intendedLogicalRole,
       operationMode: mode,
       httpAttempts: attempts,
     };
   }
 
   let lastHttpStatus: number | undefined;
+  const { url, key } = gatewayEndpoint(env);
 
-  for (const mid of policy.chain) {
-    const modelId = asAllowedModelId(mid);
-    if (!modelId) continue;
-    if (skip.has(modelId)) continue;
+  for (const role of policy.chain) {
+    if (skip.has(role)) continue;
 
-    assertModelAllowedForTask("PLAYER_CHAT", modelId);
-    const reg = getRegisteredModel(modelId);
+    assertModelAllowedForTask("PLAYER_CHAT", role);
+    const gatewayModel = env.modelsByRole[role];
+    if (!gatewayModel) continue;
 
-    if (policy.tripCircuitOnFailure && (isCircuitOpen(reg.provider) || isModelCircuitOpen(modelId))) {
+    if (policy.tripCircuitOnFailure && (isCircuitOpen(PROVIDER_ID) || isModelCircuitOpen(role))) {
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: "CIRCUIT_SKIP",
         severity: "soft",
@@ -176,19 +164,20 @@ export async function executePlayerChatStream(params: {
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: reg.provider,
-        modelId,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
         phase: "circuit_skip",
         errorCode: "CIRCUIT_SKIP",
       });
       continue;
     }
 
-    const { url, key } = providerEndpoint(reg.provider);
     if (!key) {
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: "UNKNOWN",
         severity: "soft",
@@ -197,24 +186,31 @@ export async function executePlayerChatStream(params: {
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: reg.provider,
-        modelId,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
         phase: "fallback",
         message: "missing_api_key",
       });
       continue;
     }
 
-    const factory = getProviderFactory(reg.provider);
-    const body = buildPlayerStreamBody(modelId, params.messages, taskBinding);
+    const factory = getProviderFactory();
+    const body = buildPlayerStreamBody(
+      gatewayModel,
+      params.messages,
+      taskBinding,
+      env.enableStream
+    );
     const init = factory.buildInit(key, body);
     const t0 = Date.now();
 
     logAiTelemetry({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
-      providerId: reg.provider,
-      modelId,
+      providerId: PROVIDER_ID,
+      logicalRole: role,
+      gatewayModel,
       phase: "start",
       attempt: 0,
       stream: true,
@@ -227,7 +223,7 @@ export async function executePlayerChatStream(params: {
           ok: false,
           code: "ABORTED",
           message: "请求已取消。",
-          intendedModelId,
+          intendedLogicalRole,
           operationMode: mode,
           httpAttempts: attempts,
         };
@@ -241,18 +237,20 @@ export async function executePlayerChatStream(params: {
       lastHttpStatus = res.status;
 
       if (res.ok && res.body) {
-        recordModelSuccess(modelId, reg.provider);
+        recordModelSuccess(role, PROVIDER_ID);
         attempts.push({
-          modelId,
-          providerId: reg.provider,
+          logicalRole: role,
+          providerId: PROVIDER_ID,
+          gatewayModel,
           phase: "http",
           latencyMs: Date.now() - t0,
         });
         logAiTelemetry({
           requestId: params.ctx.requestId,
           task: params.ctx.task,
-          providerId: reg.provider,
-          modelId,
+          providerId: PROVIDER_ID,
+          logicalRole: role,
+          gatewayModel,
           phase: "success",
           latencyMs: Date.now() - t0,
           httpStatus: res.status,
@@ -263,9 +261,10 @@ export async function executePlayerChatStream(params: {
         return {
           ok: true,
           response: res,
-          modelId,
-          providerId: reg.provider,
-          intendedModelId,
+          logicalRole: role,
+          providerId: PROVIDER_ID,
+          intendedLogicalRole,
+          gatewayModel,
           operationMode: mode,
           httpAttempts: attempts,
         };
@@ -274,8 +273,9 @@ export async function executePlayerChatStream(params: {
       const { kind, severity } = classifyHttpStatus(res.status);
       const errText = await res.text().catch(() => "");
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: kind,
         severity,
@@ -284,13 +284,14 @@ export async function executePlayerChatStream(params: {
         latencyMs: Date.now() - t0,
       });
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(modelId, reg.provider);
+        recordModelFailure(role, PROVIDER_ID);
       }
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: reg.provider,
-        modelId,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
         phase: "error",
         latencyMs: Date.now() - t0,
         httpStatus: res.status,
@@ -303,8 +304,9 @@ export async function executePlayerChatStream(params: {
     } catch (e) {
       const { kind, severity } = classifyFetchThrowable(e);
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: kind,
         severity,
@@ -317,19 +319,20 @@ export async function executePlayerChatStream(params: {
           code: "ABORTED",
           message: "请求超时或已被取消。",
           lastHttpStatus,
-          intendedModelId,
+          intendedLogicalRole,
           operationMode: mode,
           httpAttempts: attempts,
         };
       }
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(modelId, reg.provider);
+        recordModelFailure(role, PROVIDER_ID);
       }
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: reg.provider,
-        modelId,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
         phase: "error",
         latencyMs: Date.now() - t0,
         errorCode: kind,
@@ -344,9 +347,9 @@ export async function executePlayerChatStream(params: {
   return {
     ok: false,
     code: "CHAIN_EXHAUSTED",
-    message: "所有候选模型均调用失败，请稍后重试或检查密钥与配额。",
+    message: "所有候选逻辑角色均调用失败，请稍后重试或检查网关与模型配置。",
     lastHttpStatus,
-    intendedModelId,
+    intendedLogicalRole,
     operationMode: mode,
     httpAttempts: attempts,
   };
@@ -383,21 +386,21 @@ export async function executeChatCompletion(params: {
   const timeoutMs = binding.timeoutMs;
   const maxRetries = env.maxRetries;
   const jsonObject = binding.responseFormatJsonObject;
-  const fullChain = resolveOrderedModelChain(params.task, env, mode);
-  const intendedModelId = fullChain[0] ?? ("deepseek-v3.2" as AllowedModelId);
+  const fullChain = resolveOrderedRoleChain(params.task, env, mode);
+  const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
   const attempts: AiRoutingAttempt[] = [];
 
   if (policy.chain.length === 0) {
     return {
       ok: false,
       code: "NO_CREDENTIALS",
-      message: "No AI provider API keys configured for this task.",
+      message: "No AI gateway or role models configured for this task.",
       routing: {
         requestId: params.ctx.requestId,
         task: params.task,
         operationMode: mode,
-        intendedModel: intendedModelId,
-        actualModel: null,
+        intendedRole: intendedLogicalRole,
+        actualLogicalRole: null,
         fallbackCount: 0,
         attempts,
         finalStatus: "upstream_exhausted",
@@ -409,12 +412,13 @@ export async function executeChatCompletion(params: {
   if (params.skipCache !== true && isCompletionTaskCacheable(params.task)) {
     const cached = await readCompletionCache(params.task, params.messages);
     if (cached) {
-      const est = estimateUsdForUsage(cached.modelId, cached.usage);
+      const est = estimateUsdForUsage(cached.logicalRole, cached.usage);
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
         providerId: cached.providerId,
-        modelId: cached.modelId,
+        logicalRole: cached.logicalRole,
+        gatewayModel: cached.gatewayModel,
         phase: "success",
         latencyMs: 0,
         usage: cached.usage,
@@ -427,7 +431,7 @@ export async function executeChatCompletion(params: {
       return {
         ok: true,
         providerId: cached.providerId,
-        modelId: cached.modelId,
+        logicalRole: cached.logicalRole,
         content: cached.content,
         usage: cached.usage,
         latencyMs: 0,
@@ -436,8 +440,8 @@ export async function executeChatCompletion(params: {
           requestId: params.ctx.requestId,
           task: params.task,
           operationMode: mode,
-          intendedModel: intendedModelId,
-          actualModel: cached.modelId,
+          intendedRole: intendedLogicalRole,
+          actualLogicalRole: cached.logicalRole,
           fallbackCount: 0,
           attempts: [],
           finalStatus: "success",
@@ -446,15 +450,17 @@ export async function executeChatCompletion(params: {
     }
   }
 
-  for (const mid of policy.chain) {
-    const modelId = asAllowedModelId(mid);
-    if (!modelId) continue;
-    const reg = getRegisteredModel(modelId);
+  const { url, key } = gatewayEndpoint(env);
 
-    if (policy.tripCircuitOnFailure && (isCircuitOpen(reg.provider) || isModelCircuitOpen(modelId))) {
+  for (const role of policy.chain) {
+    const gatewayModel = env.modelsByRole[role];
+    if (!gatewayModel) continue;
+
+    if (policy.tripCircuitOnFailure && (isCircuitOpen(PROVIDER_ID) || isModelCircuitOpen(role))) {
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: "CIRCUIT_SKIP",
         severity: "soft",
@@ -463,11 +469,11 @@ export async function executeChatCompletion(params: {
       continue;
     }
 
-    const { url, key } = providerEndpoint(reg.provider);
     if (!key) {
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: "UNKNOWN",
         severity: "soft",
@@ -476,9 +482,9 @@ export async function executeChatCompletion(params: {
       continue;
     }
 
-    const factory = getProviderFactory(reg.provider);
+    const factory = getProviderFactory();
     const body = buildNonStreamBody(
-      modelId,
+      gatewayModel,
       params.messages,
       binding.maxTokens,
       binding.temperature,
@@ -490,8 +496,9 @@ export async function executeChatCompletion(params: {
     logAiTelemetry({
       requestId: params.ctx.requestId,
       task: params.ctx.task,
-      providerId: reg.provider,
-      modelId,
+      providerId: PROVIDER_ID,
+      logicalRole: role,
+      gatewayModel,
       phase: "start",
       stream: false,
       userId: params.ctx.userId,
@@ -508,8 +515,9 @@ export async function executeChatCompletion(params: {
         const { kind, severity } = classifyHttpStatus(res.status);
         const errText = await res.text().catch(() => "");
         attempts.push({
-          modelId,
-          providerId: reg.provider,
+          logicalRole: role,
+          providerId: PROVIDER_ID,
+          gatewayModel,
           phase: "http",
           failureKind: kind,
           severity,
@@ -518,7 +526,7 @@ export async function executeChatCompletion(params: {
           latencyMs: Date.now() - t0,
         });
         if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-          recordModelFailure(modelId, reg.provider);
+          recordModelFailure(role, PROVIDER_ID);
         }
         continue;
       }
@@ -529,8 +537,9 @@ export async function executeChatCompletion(params: {
 
       if (!trimmed) {
         attempts.push({
-          modelId,
-          providerId: reg.provider,
+          logicalRole: role,
+          providerId: PROVIDER_ID,
+          gatewayModel,
           phase: "http",
           failureKind: "EMPTY_CONTENT",
           severity: "soft",
@@ -542,8 +551,9 @@ export async function executeChatCompletion(params: {
 
       if (jsonObject && !isValidJsonObjectString(trimmed)) {
         attempts.push({
-          modelId,
-          providerId: reg.provider,
+          logicalRole: role,
+          providerId: PROVIDER_ID,
+          gatewayModel,
           phase: "http",
           failureKind: "JSON_PARSE",
           severity: "soft",
@@ -553,10 +563,11 @@ export async function executeChatCompletion(params: {
         continue;
       }
 
-      recordModelSuccess(modelId, reg.provider);
+      recordModelSuccess(role, PROVIDER_ID);
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         latencyMs: Date.now() - t0,
       });
@@ -565,19 +576,20 @@ export async function executeChatCompletion(params: {
         requestId: params.ctx.requestId,
         task: params.task,
         operationMode: mode,
-        intendedModel: intendedModelId,
-        actualModel: modelId,
+        intendedRole: intendedLogicalRole,
+        actualLogicalRole: role,
         fallbackCount: countFallbacks(attempts),
         attempts,
         finalStatus: "success",
       };
 
-      const estOk = estimateUsdForUsage(modelId, usage);
+      const estOk = estimateUsdForUsage(role, usage);
       logAiTelemetry({
         requestId: params.ctx.requestId,
         task: params.ctx.task,
-        providerId: reg.provider,
-        modelId,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
+        gatewayModel,
         phase: "success",
         latencyMs: Date.now() - t0,
         httpStatus: res.status,
@@ -596,8 +608,9 @@ export async function executeChatCompletion(params: {
           params.messages,
           {
             content,
-            modelId,
-            providerId: reg.provider,
+            logicalRole: role,
+            gatewayModel,
+            providerId: PROVIDER_ID,
             usage,
           },
           ttl
@@ -606,8 +619,8 @@ export async function executeChatCompletion(params: {
 
       return {
         ok: true,
-        providerId: reg.provider,
-        modelId,
+        providerId: PROVIDER_ID,
+        logicalRole: role,
         content,
         usage,
         latencyMs: Date.now() - t0,
@@ -616,8 +629,9 @@ export async function executeChatCompletion(params: {
     } catch (e) {
       const { kind, severity } = classifyFetchThrowable(e);
       attempts.push({
-        modelId,
-        providerId: reg.provider,
+        logicalRole: role,
+        providerId: PROVIDER_ID,
+        gatewayModel,
         phase: "http",
         failureKind: kind,
         severity,
@@ -625,7 +639,7 @@ export async function executeChatCompletion(params: {
         latencyMs: Date.now() - t0,
       });
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(modelId, reg.provider);
+        recordModelFailure(role, PROVIDER_ID);
       }
     }
   }
@@ -634,18 +648,18 @@ export async function executeChatCompletion(params: {
   return {
     ok: false,
     code: "CHAIN_EXHAUSTED",
-    message: "All models in fallback chain failed.",
+    message: "All roles in fallback chain failed.",
     routing: {
       requestId: params.ctx.requestId,
       task: params.task,
       operationMode: mode,
-      intendedModel: intendedModelId,
-      actualModel: null,
+      intendedRole: intendedLogicalRole,
+      actualLogicalRole: null,
       fallbackCount: countFallbacks(attempts),
       attempts,
       finalStatus: "upstream_exhausted",
       lastFailureSummary: lastFail
-        ? `${lastFail.failureKind ?? "unknown"}:${lastFail.modelId}`
+        ? `${lastFail.failureKind ?? "unknown"}:${lastFail.logicalRole}`
         : "unknown",
     },
   };

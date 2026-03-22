@@ -1,19 +1,20 @@
 // src/lib/ai/types/core.ts
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 
-/** Upstream vendor implementing chat completions. */
-export type AiProviderId = "deepseek" | "zhipu" | "minimax";
+/** Unified gateway (one-api OpenAI-compatible). */
+export type AiProviderId = "oneapi";
 
 /**
  * Task taxonomy for routing. Policy table: `src/lib/ai/tasks/taskPolicy.ts`.
- * - PLAYER_CHAT: only online DM / SSE main path (no reasoner / no MiniMax).
- * - GLM-heavy control tasks: PLAYER_CONTROL_PREFLIGHT, INTENT_PARSE, SAFETY_PREFILTER.
- * - DeepSeek-V3.2 adjudication: RULE_RESOLUTION, COMBAT_NARRATION.
- * - MiniMax sensory-only: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH.
- * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION (async).
+ * - PLAYER_CHAT: online DM / SSE (forbidden roles: reasoner, enhance).
+ * - Control-plane tasks: PLAYER_CONTROL_PREFLIGHT, INTENT_PARSE, SAFETY_PREFILTER (control role).
+ * - Adjudication / combat text: RULE_RESOLUTION, COMBAT_NARRATION (main role).
+ * - Sensory polish: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH (enhance role).
+ * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION.
  */
 export type TaskType =
   | "PLAYER_CHAT"
-  /** GLM-first control plane for realtime play: intent, slots, risk tags, enhancement flags (no story text). */
+  /** Control-plane for realtime play: intent, slots, risk tags, enhancement flags (no story text). */
   | "PLAYER_CONTROL_PREFLIGHT"
   | "INTENT_PARSE"
   | "SAFETY_PREFILTER"
@@ -63,9 +64,9 @@ export type StreamChunk =
   | { kind: "usage"; usage: TokenUsage }
   | { kind: "done" };
 
-/** Ordered fallback description (resolved models only). */
+/** Ordered fallback description (logical roles with configured gateway models). */
 export interface FallbackPolicy {
-  chain: readonly string[];
+  chain: readonly AiLogicalRole[];
   stopOnFirstSuccess: boolean;
   tripCircuitOnFailure: boolean;
 }

@@ -116,11 +116,11 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
     const parsedRaw = JSON.parse(content) as unknown;
     const parsed = validateAiInsightOutput(parsedRaw);
     if (!parsed) {
-      return { input, output: fallbackFromInput(input), model: ai.modelId, degraded: true };
+      return { input, output: fallbackFromInput(input), model: ai.logicalRole, degraded: true };
     }
     parsed.generatedAt = parsed.generatedAt || new Date().toISOString();
     parsed.evidenceSufficiency = parsed.evidenceSufficiency || input.evidenceQuality;
-    return { input, output: parsed, model: ai.modelId, degraded: false };
+    return { input, output: parsed, model: ai.logicalRole, degraded: false };
   } catch {
     return { input, output: fallbackFromInput(input), model: "none", degraded: true };
   }

@@ -3,108 +3,132 @@
  * AI env resolution without `server-only` so Node unit tests (tsx) can import safely.
  * App code should import `@/lib/ai/config/env` (adds server-only guard).
  */
-import { envBoolean, envNumber, envRaw, envRawFirst } from "@/lib/config/envRaw";
-import { normalizeAllowedModelId, type AllowedModelId } from "@/lib/ai/models/registry";
+import {
+  type AiLogicalRole,
+  AI_LOGICAL_ROLES,
+  legacyVendorModelIdToRole,
+  normalizeAiLogicalRole,
+  parseRoleChain,
+} from "@/lib/ai/models/logicalRoles";
+import { envBoolean, envEnum, envNumber, envRaw } from "@/lib/config/envRaw";
 
-function parseModelChain(raw: string | undefined, fallback: AllowedModelId[]): AllowedModelId[] {
-  if (!raw) return fallback;
-  const parts = raw
-    .split(/[,;\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const out: AllowedModelId[] = [];
-  for (const p of parts) {
-    const id = normalizeAllowedModelId(p);
-    if (id) out.push(id);
-  }
-  return out.length > 0 ? out : fallback;
-}
+export type AiGatewayProviderId = "oneapi";
 
 export interface ResolvedAiEnv {
-  deepseek: {
-    apiUrl: string;
-    apiKey: string;
-    /** Default model id when env does not override (must be allowed). */
-    defaultModel: AllowedModelId;
-  };
-  zhipu: {
-    apiUrl: string;
-    apiKey: string;
-    defaultModel: AllowedModelId;
-  };
-  minimax: {
-    apiUrl: string;
-    apiKey: string;
-    defaultModel: AllowedModelId;
-  };
-  /** Player realtime fallback order (excludes offline-only models). */
-  playerChatFallbackChain: AllowedModelId[];
-  memoryCompressionModel: AllowedModelId;
-  adminInsightModel: AllowedModelId;
-  /** Global defaults for resilience */
+  gatewayProvider: AiGatewayProviderId;
+  /** Resolved chat/completions URL (includes /v1/chat/completions when base is root). */
+  gatewayBaseUrl: string;
+  gatewayApiKey: string;
+  /** Upstream model name per logical role (from AI_MODEL_*). Empty if unset. */
+  modelsByRole: Record<AiLogicalRole, string>;
+  /** Extra ordering for PLAYER_CHAT merges (after policy primaries). */
+  playerRoleFallbackChain: AiLogicalRole[];
+  /** Prepended role for MEMORY_COMPRESSION chain. */
+  memoryPrimaryRole: AiLogicalRole;
+  /** Prepended role for DEV_ASSIST chain. */
+  devAssistPrimaryRole: AiLogicalRole;
   defaultTimeoutMs: number;
   maxRetries: number;
   circuitFailureThreshold: number;
   circuitCooldownMs: number;
-  /** When true, `/api/chat` may attach routing debug header. */
   exposeAiRoutingHeader: boolean;
+  /** Task requests stream only if binding.stream && enableStream. */
+  enableStream: boolean;
+  logLevel: "silent" | "error" | "info" | "debug";
 }
 
-/** Extra candidates merged after policy primaries for PLAYER_CHAT only; MiniMax excluded by task forbid list. */
-export const DEFAULT_PLAYER_CHAIN: AllowedModelId[] = ["deepseek-v3.2", "glm-5-air"];
+/** Default player SSE fallback role order when env omits chain. */
+export const DEFAULT_PLAYER_ROLE_CHAIN: AiLogicalRole[] = ["main", "control"];
 
-function resolveDeepseekChatCompletionsUrl(): string {
-  const explicit = envRaw("DEEPSEEK_API_URL");
-  if (explicit) return explicit;
-  const base = envRaw("DEEPSEEK_BASE_URL");
-  if (!base) return "https://api.deepseek.com/chat/completions";
-  const normalized = base.replace(/\/+$/, "");
-  if (normalized.endsWith("/chat/completions")) return normalized;
-  return `${normalized}/chat/completions`;
+/** @deprecated Use DEFAULT_PLAYER_ROLE_CHAIN */
+export const DEFAULT_PLAYER_CHAIN = DEFAULT_PLAYER_ROLE_CHAIN;
+
+function resolveGatewayChatCompletionsUrl(): string {
+  const raw = envRaw("AI_GATEWAY_BASE_URL")?.trim() ?? "";
+  if (!raw) return "";
+  const normalized = raw.replace(/\/+$/, "");
+  if (normalized.toLowerCase().endsWith("/chat/completions")) {
+    return normalized;
+  }
+  return `${normalized}/v1/chat/completions`;
+}
+
+function readModelForRole(role: AiLogicalRole): string {
+  const key =
+    role === "main"
+      ? "AI_MODEL_MAIN"
+      : role === "control"
+        ? "AI_MODEL_CONTROL"
+        : role === "enhance"
+          ? "AI_MODEL_ENHANCE"
+          : "AI_MODEL_REASONER";
+  return (envRaw(key) ?? "").trim();
+}
+
+function resolvePlayerRoleFallbackChain(): AiLogicalRole[] {
+  const roleExplicit = envRaw("AI_PLAYER_ROLE_CHAIN");
+  if (roleExplicit?.trim()) {
+    return parseRoleChain(roleExplicit, DEFAULT_PLAYER_ROLE_CHAIN);
+  }
+  const legacy = envRaw("AI_PLAYER_MODEL_CHAIN");
+  if (legacy?.trim()) {
+    const parts = legacy
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const out: AiLogicalRole[] = [];
+    const seen = new Set<AiLogicalRole>();
+    for (const p of parts) {
+      const r = legacyVendorModelIdToRole(p);
+      if (!r || seen.has(r)) continue;
+      seen.add(r);
+      out.push(r);
+    }
+    return out.length > 0 ? out : DEFAULT_PLAYER_ROLE_CHAIN;
+  }
+  return DEFAULT_PLAYER_ROLE_CHAIN;
+}
+
+function resolveMemoryPrimaryRole(): AiLogicalRole {
+  const fromRole = normalizeAiLogicalRole(envRaw("AI_MEMORY_PRIMARY_ROLE"));
+  if (fromRole) return fromRole;
+  const legacy = envRaw("AI_MEMORY_MODEL");
+  if (legacy?.trim()) {
+    const r = legacyVendorModelIdToRole(legacy.trim());
+    if (r) return r;
+  }
+  return "main";
+}
+
+function resolveDevAssistPrimaryRole(): AiLogicalRole {
+  const fromRole = normalizeAiLogicalRole(envRaw("AI_DEV_ASSIST_PRIMARY_ROLE"));
+  if (fromRole) return fromRole;
+  const legacy = envRaw("AI_ADMIN_MODEL");
+  if (legacy?.trim()) {
+    const r = legacyVendorModelIdToRole(legacy.trim());
+    if (r) return r;
+  }
+  return "reasoner";
 }
 
 export function resolveAiEnv(): ResolvedAiEnv {
-  // Canonical names first. Extra keys reduce false "no provider" when .env uses common aliases or mistaken NEXT_PUBLIC_ prefix.
-  const deepseekKey =
-    envRawFirst([
-      "DEEPSEEK_API_KEY",
-      "DEEPSEEK_KEY",
-      "DEEPSEEK_API_TOKEN",
-      "NEXT_PUBLIC_DEEPSEEK_API_KEY",
-    ]) ?? "";
-  const zhipuKey =
-    envRawFirst(["ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY", "ZHIPU_KEY"]) ?? "";
-  const minimaxKey = envRawFirst(["MINIMAX_API_KEY", "MINIMAX_KEY"]) ?? "";
+  const gatewayProvider = envEnum("AI_GATEWAY_PROVIDER", ["oneapi"] as const, "oneapi");
+  const gatewayBaseUrl = resolveGatewayChatCompletionsUrl();
+  const gatewayApiKey = (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
 
-  const deepseekModel =
-    normalizeAllowedModelId(envRawFirst(["DEEPSEEK_MODEL", "AI_DEFAULT_MODEL"])) ??
-    ("deepseek-v3.2" as AllowedModelId);
-  const zhipuModel =
-    normalizeAllowedModelId(envRaw("ZHIPU_MODEL")) ?? ("glm-5-air" as AllowedModelId);
-  const minimaxModel =
-    normalizeAllowedModelId(envRaw("MINIMAX_MODEL")) ?? ("MiniMax-M2.7-highspeed" as AllowedModelId);
+  const modelsByRole = {} as Record<AiLogicalRole, string>;
+  for (const r of AI_LOGICAL_ROLES) {
+    modelsByRole[r] = readModelForRole(r);
+  }
 
   return {
-    deepseek: {
-      apiUrl: resolveDeepseekChatCompletionsUrl(),
-      apiKey: deepseekKey,
-      defaultModel: deepseekModel,
-    },
-    zhipu: {
-      apiUrl: envRaw("ZHIPU_API_URL") ?? "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-      apiKey: zhipuKey,
-      defaultModel: zhipuModel,
-    },
-    minimax: {
-      apiUrl: envRaw("MINIMAX_API_URL") ?? "https://api.minimax.io/v1/text/chatcompletion_v2",
-      apiKey: minimaxKey,
-      defaultModel: minimaxModel,
-    },
-    playerChatFallbackChain: parseModelChain(envRaw("AI_PLAYER_MODEL_CHAIN"), DEFAULT_PLAYER_CHAIN),
-    memoryCompressionModel:
-      normalizeAllowedModelId(envRaw("AI_MEMORY_MODEL")) ?? ("deepseek-v3.2" as AllowedModelId),
-    adminInsightModel:
-      normalizeAllowedModelId(envRaw("AI_ADMIN_MODEL")) ?? ("deepseek-reasoner" as AllowedModelId),
+    gatewayProvider,
+    gatewayBaseUrl,
+    gatewayApiKey,
+    modelsByRole,
+    playerRoleFallbackChain: resolvePlayerRoleFallbackChain(),
+    memoryPrimaryRole: resolveMemoryPrimaryRole(),
+    devAssistPrimaryRole: resolveDevAssistPrimaryRole(),
     defaultTimeoutMs: (() => {
       const primary = envNumber("AI_TIMEOUT_MS", NaN);
       return Number.isFinite(primary) ? primary : envNumber("AI_REQUEST_TIMEOUT_MS", 60_000);
@@ -116,21 +140,29 @@ export function resolveAiEnv(): ResolvedAiEnv {
     circuitFailureThreshold: envNumber("AI_CIRCUIT_FAILURE_THRESHOLD", 4),
     circuitCooldownMs: envNumber("AI_CIRCUIT_COOLDOWN_MS", 60_000),
     exposeAiRoutingHeader: envBoolean("AI_EXPOSE_ROUTING_HEADER", false),
+    enableStream: envBoolean("AI_ENABLE_STREAM", true),
+    logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
   };
 }
 
+/** True when gateway URL, key, and main model name are configured (minimum for player chat). */
 export function anyAiProviderConfigured(): boolean {
   const e = resolveAiEnv();
-  return e.deepseek.apiKey.length > 0 || e.zhipu.apiKey.length > 0 || e.minimax.apiKey.length > 0;
+  return (
+    e.gatewayApiKey.length > 0 &&
+    e.gatewayBaseUrl.length > 0 &&
+    e.modelsByRole.main.length > 0
+  );
 }
 
-/** Resolves DeepSeek endpoint for narrow legacy call sites. */
+/**
+ * @deprecated Call sites should use resolveAiEnv(). Narrow legacy shape for admin/diagnostics only.
+ */
 export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string; model: string } {
   const e = resolveAiEnv();
-  const reg = e.deepseek.defaultModel;
   return {
-    apiUrl: e.deepseek.apiUrl,
-    apiKey: e.deepseek.apiKey,
-    model: reg,
+    apiUrl: e.gatewayBaseUrl,
+    apiKey: e.gatewayApiKey,
+    model: e.modelsByRole.main,
   };
 }

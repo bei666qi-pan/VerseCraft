@@ -1,6 +1,5 @@
-// src/lib/ai/governance/responseCache.ts
 import { createHash } from "node:crypto";
-import type { AllowedModelId } from "@/lib/ai/models/registry";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { aiGovernanceEnv } from "@/lib/ai/governance/governanceEnvCore";
 import type { AiProviderId } from "@/lib/ai/types/core";
 import type { TaskType } from "@/lib/ai/types/core";
@@ -36,7 +35,8 @@ export function completionCacheTtlSec(task: TaskType): number {
 
 export interface CachedCompletionPayload {
   content: string;
-  modelId: AllowedModelId;
+  logicalRole: AiLogicalRole;
+  gatewayModel: string;
   providerId: AiProviderId;
   usage: TokenUsage | null;
 }

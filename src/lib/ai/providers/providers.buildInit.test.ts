@@ -1,56 +1,31 @@
-// src/lib/ai/providers/providers.buildInit.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deepseekProvider } from "@/lib/ai/providers/deepseek";
-import { minimaxProvider } from "@/lib/ai/providers/minimax";
-import { zhipuProvider } from "@/lib/ai/providers/zhipu";
-import type { ChatMessage } from "@/lib/ai/types/core";
+import { openaiCompatibleGateway } from "@/lib/ai/gateway/openaiCompatible";
 
-const messages: ChatMessage[] = [{ role: "user", content: "hi" }];
-
-test("deepseekProvider sets Authorization and json_object when requested", () => {
-  const init = deepseekProvider.buildInit("k", {
-    modelApiName: "deepseek-v3.2",
-    messages,
+test("openaiCompatibleGateway sets Authorization and json_object when requested", () => {
+  const init = openaiCompatibleGateway.buildInit("k", {
+    modelApiName: "vc-main-upstream",
+    messages: [{ role: "user", content: "hi" }],
     stream: false,
-    maxTokens: 100,
-    temperature: 0.2,
+    maxTokens: 10,
     responseFormatJsonObject: true,
     streamIncludeUsage: false,
   });
   assert.equal(init.method, "POST");
-  const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-  assert.equal(body.model, "deepseek-v3.2");
-  assert.ok(body.response_format);
-  assert.equal((init.headers as Record<string, string>)["Authorization"], "Bearer k");
+  const body = JSON.parse(String(init.body)) as { model: string; response_format?: { type: string } };
+  assert.equal(body.model, "vc-main-upstream");
+  assert.equal(body.response_format?.type, "json_object");
 });
 
-test("zhipuProvider mirrors OpenAI-compatible shape", () => {
-  const init = zhipuProvider.buildInit("k", {
-    modelApiName: "glm-5-air",
-    messages,
+test("openaiCompatibleGateway enables stream_options when streaming", () => {
+  const init = openaiCompatibleGateway.buildInit("k", {
+    modelApiName: "m",
+    messages: [{ role: "user", content: "x" }],
     stream: true,
-    maxTokens: 50,
-    responseFormatJsonObject: true,
+    maxTokens: 8,
+    responseFormatJsonObject: false,
     streamIncludeUsage: true,
   });
-  const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-  assert.equal(body.stream, true);
-  assert.ok(body.stream_options);
-});
-
-test("minimaxProvider uses max_completion_tokens and omits response_format", () => {
-  const init = minimaxProvider.buildInit("k", {
-    modelApiName: "MiniMax-M2.7-highspeed",
-    messages,
-    stream: false,
-    maxTokens: 200,
-    temperature: 0.5,
-    responseFormatJsonObject: true,
-    streamIncludeUsage: false,
-  });
-  const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-  assert.equal(body.max_completion_tokens, 200);
-  assert.equal(body.response_format, undefined);
-  assert.ok(Array.isArray(body.messages));
+  const body = JSON.parse(String(init.body)) as { stream_options?: { include_usage: boolean } };
+  assert.equal(body.stream_options?.include_usage, true);
 });

@@ -1,7 +1,11 @@
 // src/lib/ai/config/env.ai.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { anyAiProviderConfigured, DEFAULT_PLAYER_CHAIN, resolveAiEnv } from "@/lib/ai/config/envCore";
+import {
+  anyAiProviderConfigured,
+  DEFAULT_PLAYER_ROLE_CHAIN,
+  resolveAiEnv,
+} from "@/lib/ai/config/envCore";
 import { resolveOperationMode } from "@/lib/ai/degrade/modeCore";
 
 function withEnv(patch: Record<string, string | undefined>, fn: () => void): void {
@@ -29,46 +33,66 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void): voi
   }
 }
 
-test("resolveAiEnv parses AI_PLAYER_MODEL_CHAIN and drops unknown ids", () => {
+const gatewayBase = {
+  AI_GATEWAY_BASE_URL: "https://oneapi.example.com",
+  AI_GATEWAY_API_KEY: "sk-gateway",
+  AI_MODEL_MAIN: "upstream-main",
+  AI_MODEL_CONTROL: "upstream-control",
+  AI_MODEL_ENHANCE: "upstream-enhance",
+  AI_MODEL_REASONER: "upstream-reasoner",
+};
+
+test("resolveAiEnv maps legacy AI_PLAYER_MODEL_CHAIN to roles when AI_PLAYER_ROLE_CHAIN unset", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: "a",
-      ZHIPU_API_KEY: "b",
+      ...gatewayBase,
+      AI_PLAYER_ROLE_CHAIN: undefined,
       AI_PLAYER_MODEL_CHAIN: "glm-5-air,deepseek-v3.2,gpt-4",
     },
     () => {
       const e = resolveAiEnv();
-      assert.deepEqual(e.playerChatFallbackChain, ["glm-5-air", "deepseek-v3.2"]);
+      assert.deepEqual(e.playerRoleFallbackChain, ["control", "main"]);
     }
   );
 });
 
-test("resolveAiEnv falls back to DEFAULT_PLAYER_CHAIN when chain empty after parse", () => {
+test("resolveAiEnv uses AI_PLAYER_ROLE_CHAIN when set", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: "a",
+      ...gatewayBase,
+      AI_PLAYER_ROLE_CHAIN: "control, main",
+      AI_PLAYER_MODEL_CHAIN: undefined,
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.deepEqual(e.playerRoleFallbackChain, ["control", "main"]);
+    }
+  );
+});
+
+test("resolveAiEnv falls back to DEFAULT_PLAYER_ROLE_CHAIN when legacy chain yields nothing", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_PLAYER_ROLE_CHAIN: undefined,
       AI_PLAYER_MODEL_CHAIN: "gpt-4",
     },
     () => {
       const e = resolveAiEnv();
-      assert.deepEqual(e.playerChatFallbackChain, DEFAULT_PLAYER_CHAIN);
+      assert.deepEqual(e.playerRoleFallbackChain, DEFAULT_PLAYER_ROLE_CHAIN);
     }
   );
 });
 
-test("anyAiProviderConfigured is false when all keys missing", () => {
+test("anyAiProviderConfigured is false when gateway or main model missing", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: undefined,
-      DEEPSEEK_KEY: undefined,
-      DEEPSEEK_API_TOKEN: undefined,
-      NEXT_PUBLIC_DEEPSEEK_API_KEY: undefined,
-      ZHIPU_API_KEY: undefined,
-      BIGMODEL_API_KEY: undefined,
-      GLM_API_KEY: undefined,
-      ZHIPU_KEY: undefined,
-      MINIMAX_API_KEY: undefined,
-      MINIMAX_KEY: undefined,
+      AI_GATEWAY_BASE_URL: undefined,
+      AI_GATEWAY_API_KEY: undefined,
+      AI_MODEL_MAIN: undefined,
+      AI_MODEL_CONTROL: undefined,
+      AI_MODEL_ENHANCE: undefined,
+      AI_MODEL_REASONER: undefined,
     },
     () => {
       assert.equal(anyAiProviderConfigured(), false);
@@ -76,30 +100,45 @@ test("anyAiProviderConfigured is false when all keys missing", () => {
   );
 });
 
-test("resolveAiEnv maps DEEPSEEK_BASE_URL to chat completions URL", () => {
+test("anyAiProviderConfigured is true when gateway URL, key, and AI_MODEL_MAIN set", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: "k",
-      DEEPSEEK_API_URL: undefined,
-      DEEPSEEK_BASE_URL: "https://api.deepseek.com",
+      AI_GATEWAY_BASE_URL: "https://x.com",
+      AI_GATEWAY_API_KEY: "k",
+      AI_MODEL_MAIN: "m",
     },
     () => {
-      const e = resolveAiEnv();
-      assert.equal(e.deepseek.apiUrl, "https://api.deepseek.com/chat/completions");
+      assert.equal(anyAiProviderConfigured(), true);
     }
   );
 });
 
-test("resolveAiEnv reads AI_DEFAULT_MODEL for DeepSeek logical model", () => {
+test("resolveAiEnv normalizes AI_GATEWAY_BASE_URL to /v1/chat/completions", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: "k",
-      DEEPSEEK_MODEL: undefined,
-      AI_DEFAULT_MODEL: "deepseek-chat",
+      ...gatewayBase,
+      AI_GATEWAY_BASE_URL: "https://oneapi.example.com/",
     },
     () => {
-      const e = resolveAiEnv();
-      assert.equal(e.deepseek.defaultModel, "deepseek-v3.2");
+      assert.equal(
+        resolveAiEnv().gatewayBaseUrl,
+        "https://oneapi.example.com/v1/chat/completions"
+      );
+    }
+  );
+});
+
+test("resolveAiEnv keeps full chat completions URL when already suffixed", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_GATEWAY_BASE_URL: "https://oneapi.example.com/v1/chat/completions",
+    },
+    () => {
+      assert.equal(
+        resolveAiEnv().gatewayBaseUrl,
+        "https://oneapi.example.com/v1/chat/completions"
+      );
     }
   );
 });
@@ -107,7 +146,7 @@ test("resolveAiEnv reads AI_DEFAULT_MODEL for DeepSeek logical model", () => {
 test("resolveAiEnv reads AI_REQUEST_TIMEOUT_MS when AI_TIMEOUT_MS unset", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: "k",
+      ...gatewayBase,
       AI_TIMEOUT_MS: undefined,
       AI_REQUEST_TIMEOUT_MS: "15000",
     },
@@ -117,38 +156,27 @@ test("resolveAiEnv reads AI_REQUEST_TIMEOUT_MS when AI_TIMEOUT_MS unset", () => 
   );
 });
 
-test("anyAiProviderConfigured is true when only DEEPSEEK_KEY is set", () => {
+test("resolveAiEnv maps AI_MEMORY_MODEL legacy id to memoryPrimaryRole", () => {
   withEnv(
     {
-      DEEPSEEK_API_KEY: undefined,
-      DEEPSEEK_KEY: "sk-test",
-      ZHIPU_API_KEY: undefined,
-      BIGMODEL_API_KEY: undefined,
-      MINIMAX_API_KEY: undefined,
+      ...gatewayBase,
+      AI_MEMORY_PRIMARY_ROLE: undefined,
+      AI_MEMORY_MODEL: "deepseek-reasoner",
     },
     () => {
-      assert.equal(anyAiProviderConfigured(), true);
+      assert.equal(resolveAiEnv().memoryPrimaryRole, "reasoner");
     }
   );
 });
 
 test("resolveOperationMode reads AI_OPERATION_MODE aliases", () => {
-  withEnv(
-    { AI_OPERATION_MODE: "emergency", AI_DEGRADE_MODE: undefined },
-    () => {
-      assert.equal(resolveOperationMode(), "emergency");
-    }
-  );
-  withEnv(
-    { AI_OPERATION_MODE: undefined, AI_DEGRADE_MODE: "safe" },
-    () => {
-      assert.equal(resolveOperationMode(), "safe");
-    }
-  );
-  withEnv(
-    { AI_OPERATION_MODE: undefined, AI_DEGRADE_MODE: undefined },
-    () => {
-      assert.equal(resolveOperationMode(), "full");
-    }
-  );
+  withEnv({ AI_OPERATION_MODE: "emergency", AI_DEGRADE_MODE: undefined }, () => {
+    assert.equal(resolveOperationMode(), "emergency");
+  });
+  withEnv({ AI_OPERATION_MODE: undefined, AI_DEGRADE_MODE: "safe" }, () => {
+    assert.equal(resolveOperationMode(), "safe");
+  });
+  withEnv({ AI_OPERATION_MODE: undefined, AI_DEGRADE_MODE: undefined }, () => {
+    assert.equal(resolveOperationMode(), "full");
+  });
 });

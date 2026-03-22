@@ -1,21 +1,21 @@
 // src/lib/ai/tasks/taskPolicy.ts
 /**
- * Single source of truth: task → model roles, limits, and forbidden routes.
- * Debug: use `explainTaskRouting()` or `exportTaskModelMatrixMarkdown()` (dev logs).
+ * Single source of truth: task → logical roles, limits, and forbidden routes.
+ * Upstream model names are resolved in env (AI_MODEL_*), not here.
  */
 import type { ResolvedAiEnv } from "@/lib/ai/config/envCore";
 import { resolveAiEnv } from "@/lib/ai/config/envCore";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { resolveOperationMode, type OperationMode } from "@/lib/ai/degrade/modeCore";
-import type { AllowedModelId } from "@/lib/ai/models/registry";
 import type { FallbackPolicy, TaskType } from "@/lib/ai/types/core";
 
 export type BudgetLevel = "low" | "medium" | "high" | "critical";
 
 export interface TaskBinding {
   task: TaskType;
-  /** Default first hop when keys exist; env may prepend overrides for MEMORY_COMPRESSION / DEV_ASSIST. */
-  primaryModel: AllowedModelId;
-  fallbackModels: readonly AllowedModelId[];
+  /** First logical role for this task; env may prepend for MEMORY / DEV_ASSIST. */
+  primaryRole: AiLogicalRole;
+  fallbackRoles: readonly AiLogicalRole[];
   stream: boolean;
   maxTokens: number;
   temperature?: number;
@@ -24,18 +24,16 @@ export interface TaskBinding {
   responseFormatJsonObject: boolean;
 }
 
-const R = "deepseek-reasoner" as const;
-const V32 = "deepseek-v3.2" as const;
-const GLM = "glm-5-air" as const;
-const MMX = "MiniMax-M2.7-highspeed" as const;
+const MAIN = "main" as const satisfies AiLogicalRole;
+const CONTROL = "control" as const satisfies AiLogicalRole;
+const ENHANCE = "enhance" as const satisfies AiLogicalRole;
+const REASONER = "reasoner" as const satisfies AiLogicalRole;
 
-/** Canonical per-task defaults (traffic stays on V3.2 unless task explicitly names GLM/MiniMax/Reasoner). */
 export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   PLAYER_CHAT: {
     task: "PLAYER_CHAT",
-    primaryModel: V32,
-    /** Stream narrative only from V32 first; extra models come from `AI_PLAYER_MODEL_CHAIN` env merge only. */
-    fallbackModels: [],
+    primaryRole: MAIN,
+    fallbackRoles: [],
     stream: true,
     maxTokens: 1408,
     timeoutMs: 60_000,
@@ -44,8 +42,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   PLAYER_CONTROL_PREFLIGHT: {
     task: "PLAYER_CONTROL_PREFLIGHT",
-    primaryModel: GLM,
-    fallbackModels: [V32],
+    primaryRole: CONTROL,
+    fallbackRoles: [MAIN],
     stream: false,
     maxTokens: 512,
     temperature: 0,
@@ -55,8 +53,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   INTENT_PARSE: {
     task: "INTENT_PARSE",
-    primaryModel: GLM,
-    fallbackModels: [V32],
+    primaryRole: CONTROL,
+    fallbackRoles: [MAIN],
     stream: false,
     maxTokens: 640,
     temperature: 0.1,
@@ -66,8 +64,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   SAFETY_PREFILTER: {
     task: "SAFETY_PREFILTER",
-    primaryModel: GLM,
-    fallbackModels: [V32],
+    primaryRole: CONTROL,
+    fallbackRoles: [MAIN],
     stream: false,
     maxTokens: 384,
     temperature: 0,
@@ -77,8 +75,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   RULE_RESOLUTION: {
     task: "RULE_RESOLUTION",
-    primaryModel: V32,
-    fallbackModels: [GLM],
+    primaryRole: MAIN,
+    fallbackRoles: [CONTROL],
     stream: false,
     maxTokens: 1792,
     temperature: 0.2,
@@ -88,8 +86,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   COMBAT_NARRATION: {
     task: "COMBAT_NARRATION",
-    primaryModel: V32,
-    fallbackModels: [GLM],
+    primaryRole: MAIN,
+    fallbackRoles: [CONTROL],
     stream: false,
     maxTokens: 1280,
     temperature: 0.3,
@@ -99,8 +97,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   SCENE_ENHANCEMENT: {
     task: "SCENE_ENHANCEMENT",
-    primaryModel: MMX,
-    fallbackModels: [V32],
+    primaryRole: ENHANCE,
+    fallbackRoles: [MAIN],
     stream: false,
     maxTokens: 448,
     temperature: 0.75,
@@ -110,8 +108,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   NPC_EMOTION_POLISH: {
     task: "NPC_EMOTION_POLISH",
-    primaryModel: MMX,
-    fallbackModels: [V32, GLM],
+    primaryRole: ENHANCE,
+    fallbackRoles: [MAIN, CONTROL],
     stream: false,
     maxTokens: 384,
     temperature: 0.82,
@@ -121,8 +119,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   WORLDBUILD_OFFLINE: {
     task: "WORLDBUILD_OFFLINE",
-    primaryModel: R,
-    fallbackModels: [V32, GLM],
+    primaryRole: REASONER,
+    fallbackRoles: [MAIN, CONTROL],
     stream: false,
     maxTokens: 3072,
     temperature: 0.3,
@@ -132,8 +130,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   STORYLINE_SIMULATION: {
     task: "STORYLINE_SIMULATION",
-    primaryModel: R,
-    fallbackModels: [V32],
+    primaryRole: REASONER,
+    fallbackRoles: [MAIN],
     stream: false,
     maxTokens: 6144,
     temperature: 0.25,
@@ -143,8 +141,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   DEV_ASSIST: {
     task: "DEV_ASSIST",
-    primaryModel: R,
-    fallbackModels: [V32, GLM],
+    primaryRole: REASONER,
+    fallbackRoles: [MAIN, CONTROL],
     stream: false,
     maxTokens: 3072,
     temperature: 0.2,
@@ -154,8 +152,8 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
   MEMORY_COMPRESSION: {
     task: "MEMORY_COMPRESSION",
-    primaryModel: V32,
-    fallbackModels: [R, GLM],
+    primaryRole: MAIN,
+    fallbackRoles: [REASONER, CONTROL],
     stream: false,
     maxTokens: 1792,
     timeoutMs: 30_000,
@@ -164,33 +162,41 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   },
 };
 
-/** Models that must never run under a given task (enforced before network). */
-export const TASK_MODEL_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AllowedModelId>>> = {
-  PLAYER_CHAT: new Set([R, MMX]),
-  PLAYER_CONTROL_PREFLIGHT: new Set([R, MMX]),
-  INTENT_PARSE: new Set([R, MMX]),
-  SAFETY_PREFILTER: new Set([R, MMX]),
-  RULE_RESOLUTION: new Set([R, MMX]),
-  COMBAT_NARRATION: new Set([R, MMX]),
-  SCENE_ENHANCEMENT: new Set([R]),
-  NPC_EMOTION_POLISH: new Set([R]),
-  WORLDBUILD_OFFLINE: new Set([MMX]),
-  STORYLINE_SIMULATION: new Set([MMX]),
-  DEV_ASSIST: new Set([MMX]),
-  MEMORY_COMPRESSION: new Set([MMX]),
+/** Roles that must never run under a given task (enforced before network). */
+export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogicalRole>>> = {
+  PLAYER_CHAT: new Set([REASONER, ENHANCE]),
+  PLAYER_CONTROL_PREFLIGHT: new Set([REASONER, ENHANCE]),
+  INTENT_PARSE: new Set([REASONER, ENHANCE]),
+  SAFETY_PREFILTER: new Set([REASONER, ENHANCE]),
+  RULE_RESOLUTION: new Set([REASONER, ENHANCE]),
+  COMBAT_NARRATION: new Set([REASONER, ENHANCE]),
+  SCENE_ENHANCEMENT: new Set([REASONER]),
+  NPC_EMOTION_POLISH: new Set([REASONER]),
+  WORLDBUILD_OFFLINE: new Set([ENHANCE]),
+  STORYLINE_SIMULATION: new Set([ENHANCE]),
+  DEV_ASSIST: new Set([ENHANCE]),
+  MEMORY_COMPRESSION: new Set([ENHANCE]),
 };
+
+/** @deprecated Use TASK_ROLE_FORBIDDEN */
+export const TASK_MODEL_FORBIDDEN = TASK_ROLE_FORBIDDEN;
 
 export function getTaskBinding(task: TaskType): TaskBinding {
   return TASK_POLICY[task];
 }
 
-export function isModelForbiddenForTask(task: TaskType, model: AllowedModelId): boolean {
-  return TASK_MODEL_FORBIDDEN[task].has(model);
+export function isRoleForbiddenForTask(task: TaskType, role: AiLogicalRole): boolean {
+  return TASK_ROLE_FORBIDDEN[task].has(role);
 }
 
-function uniqueModels(ids: readonly AllowedModelId[]): AllowedModelId[] {
-  const out: AllowedModelId[] = [];
-  const seen = new Set<AllowedModelId>();
+/** @deprecated Use isRoleForbiddenForTask */
+export function isModelForbiddenForTask(task: TaskType, role: AiLogicalRole): boolean {
+  return isRoleForbiddenForTask(task, role);
+}
+
+function uniqueRoles(ids: readonly AiLogicalRole[]): AiLogicalRole[] {
+  const out: AiLogicalRole[] = [];
+  const seen = new Set<AiLogicalRole>();
   for (const id of ids) {
     if (seen.has(id)) continue;
     seen.add(id);
@@ -199,62 +205,60 @@ function uniqueModels(ids: readonly AllowedModelId[]): AllowedModelId[] {
   return out;
 }
 
-function filterByConfiguredKeys(chain: AllowedModelId[], env: ResolvedAiEnv): AllowedModelId[] {
-  return chain.filter((id) => {
-    if (id === V32 || id === R) return env.deepseek.apiKey.length > 0;
-    if (id === GLM) return env.zhipu.apiKey.length > 0;
-    if (id === MMX) return env.minimax.apiKey.length > 0;
-    return false;
-  });
+function filterRolesWithConfiguredModel(chain: AiLogicalRole[], env: ResolvedAiEnv): AiLogicalRole[] {
+  return chain.filter((r) => (env.modelsByRole[r] ?? "").trim().length > 0);
 }
 
-function applyForbidden(task: TaskType, chain: AllowedModelId[]): AllowedModelId[] {
-  return chain.filter((id) => !isModelForbiddenForTask(task, id));
+function applyForbidden(task: TaskType, chain: AiLogicalRole[]): AiLogicalRole[] {
+  return chain.filter((r) => !isRoleForbiddenForTask(task, r));
 }
 
 /**
- * Builds ordered candidate list: env overrides for PLAYER_CHAT / MEMORY / DEV_ASSIST, then policy order, minus forbidden.
+ * Ordered candidate logical roles for the task (before resolving to gateway model strings).
  */
-export function resolveOrderedModelChain(
+export function resolveOrderedRoleChain(
   task: TaskType,
   env: ResolvedAiEnv = resolveAiEnv(),
   mode: OperationMode = resolveOperationMode()
-): AllowedModelId[] {
+): AiLogicalRole[] {
   const b = getTaskBinding(task);
-  let base: AllowedModelId[] = [b.primaryModel, ...b.fallbackModels];
+  let base: AiLogicalRole[] = [b.primaryRole, ...b.fallbackRoles];
 
   if (task === "PLAYER_CHAT") {
     if (mode === "emergency") {
-      base = [V32];
+      base = [MAIN];
     } else if (mode === "safe") {
-      base = uniqueModels([b.primaryModel, ...b.fallbackModels]);
+      base = uniqueRoles([b.primaryRole, ...b.fallbackRoles]);
     } else {
-      base = uniqueModels([b.primaryModel, ...b.fallbackModels, ...env.playerChatFallbackChain]);
+      base = uniqueRoles([b.primaryRole, ...b.fallbackRoles, ...env.playerRoleFallbackChain]);
     }
   } else if (task === "MEMORY_COMPRESSION") {
-    const p = env.memoryCompressionModel;
-    base = uniqueModels([p, b.primaryModel, ...b.fallbackModels.filter((x) => x !== p)]);
+    const p = env.memoryPrimaryRole;
+    base = uniqueRoles([p, b.primaryRole, ...b.fallbackRoles.filter((x) => x !== p)]);
   } else if (task === "DEV_ASSIST") {
-    const p = env.adminInsightModel;
-    base = uniqueModels([p, b.primaryModel, ...b.fallbackModels.filter((x) => x !== p)]);
+    const p = env.devAssistPrimaryRole;
+    base = uniqueRoles([p, b.primaryRole, ...b.fallbackRoles.filter((x) => x !== p)]);
   }
 
   const allowed = applyForbidden(task, base);
   if (allowed.length < base.length) {
     const dropped = base.filter((id) => !allowed.includes(id));
     console.warn(
-      `[ai/taskPolicy] Dropped models for task=${task} (forbidden or duplicate): ${dropped.join(", ") || "(none)"}`
+      `[ai/taskPolicy] Dropped roles for task=${task} (forbidden or duplicate): ${dropped.join(", ") || "(none)"}`
     );
   }
-  return filterByConfiguredKeys(allowed, env);
+  return filterRolesWithConfiguredModel(allowed, env);
 }
+
+/** @deprecated Use resolveOrderedRoleChain */
+export const resolveOrderedModelChain = resolveOrderedRoleChain;
 
 export function resolveFallbackPolicy(
   task: TaskType,
   env: ResolvedAiEnv = resolveAiEnv(),
   mode: OperationMode = resolveOperationMode()
 ): FallbackPolicy {
-  const chain = resolveOrderedModelChain(task, env, mode);
+  const chain = resolveOrderedRoleChain(task, env, mode);
   return {
     chain,
     stopOnFirstSuccess: true,
@@ -263,53 +267,53 @@ export function resolveFallbackPolicy(
 }
 
 export interface RoutingTraceLine {
-  model: AllowedModelId;
+  role: AiLogicalRole;
   excluded: boolean;
-  reason?: "forbidden" | "no_api_key" | "duplicate";
+  reason?: "forbidden" | "no_model_config" | "duplicate";
 }
 
-/** For logs / admin debug: why each model was kept or skipped (pre-key filter). */
+/** For logs / admin debug: why each role was kept or skipped (pre-model filter). */
 export function explainTaskRouting(
   task: TaskType,
   env: ResolvedAiEnv = resolveAiEnv(),
   mode: OperationMode = resolveOperationMode()
 ): RoutingTraceLine[] {
   const b = getTaskBinding(task);
-  let base: AllowedModelId[] = [b.primaryModel, ...b.fallbackModels];
+  let base: AiLogicalRole[] = [b.primaryRole, ...b.fallbackRoles];
   if (task === "PLAYER_CHAT") {
     if (mode === "emergency") {
-      base = [V32];
+      base = [MAIN];
     } else if (mode === "safe") {
-      base = uniqueModels([b.primaryModel, ...b.fallbackModels]);
+      base = uniqueRoles([b.primaryRole, ...b.fallbackRoles]);
     } else {
-      base = uniqueModels([b.primaryModel, ...b.fallbackModels, ...env.playerChatFallbackChain]);
+      base = uniqueRoles([b.primaryRole, ...b.fallbackRoles, ...env.playerRoleFallbackChain]);
     }
   } else if (task === "MEMORY_COMPRESSION") {
-    const p = env.memoryCompressionModel;
-    base = uniqueModels([p, b.primaryModel, ...b.fallbackModels.filter((x) => x !== p)]);
+    const p = env.memoryPrimaryRole;
+    base = uniqueRoles([p, b.primaryRole, ...b.fallbackRoles.filter((x) => x !== p)]);
   } else if (task === "DEV_ASSIST") {
-    const p = env.adminInsightModel;
-    base = uniqueModels([p, b.primaryModel, ...b.fallbackModels.filter((x) => x !== p)]);
+    const p = env.devAssistPrimaryRole;
+    base = uniqueRoles([p, b.primaryRole, ...b.fallbackRoles.filter((x) => x !== p)]);
   }
 
-  const seen = new Set<AllowedModelId>();
+  const seen = new Set<AiLogicalRole>();
   const lines: RoutingTraceLine[] = [];
-  for (const model of base) {
-    if (seen.has(model)) {
-      lines.push({ model, excluded: true, reason: "duplicate" });
+  for (const role of base) {
+    if (seen.has(role)) {
+      lines.push({ role, excluded: true, reason: "duplicate" });
       continue;
     }
-    seen.add(model);
-    if (isModelForbiddenForTask(task, model)) {
-      lines.push({ model, excluded: true, reason: "forbidden" });
+    seen.add(role);
+    if (isRoleForbiddenForTask(task, role)) {
+      lines.push({ role, excluded: true, reason: "forbidden" });
       continue;
     }
-    const afterKeys = filterByConfiguredKeys([model], env);
-    if (afterKeys.length === 0) {
-      lines.push({ model, excluded: true, reason: "no_api_key" });
+    const after = filterRolesWithConfiguredModel([role], env);
+    if (after.length === 0) {
+      lines.push({ role, excluded: true, reason: "no_model_config" });
       continue;
     }
-    lines.push({ model, excluded: false });
+    lines.push({ role, excluded: false });
   }
   return lines;
 }
@@ -317,25 +321,30 @@ export function explainTaskRouting(
 /** Markdown table for docs / copy-paste into runbooks. */
 export function exportTaskModelMatrixMarkdown(): string {
   const rows: string[] = [
-    "| Task | Primary | Fallbacks | Stream | max_tokens | timeout_ms | budget | json_mode |",
-    "|------|---------|-----------|--------|------------|------------|--------|-----------|",
+    "| Task | PrimaryRole | FallbackRoles | Stream | max_tokens | timeout_ms | budget | json_mode |",
+    "|------|-------------|---------------|--------|------------|------------|--------|-----------|",
   ];
   for (const t of Object.keys(TASK_POLICY) as TaskType[]) {
     const b = TASK_POLICY[t];
     rows.push(
-      `| ${b.task} | ${b.primaryModel} | ${b.fallbackModels.join(", ")} | ${b.stream} | ${b.maxTokens} | ${b.timeoutMs} | ${b.budgetLevel} | ${b.responseFormatJsonObject} |`
+      `| ${b.task} | ${b.primaryRole} | ${b.fallbackRoles.join(", ")} | ${b.stream} | ${b.maxTokens} | ${b.timeoutMs} | ${b.budgetLevel} | ${b.responseFormatJsonObject} |`
     );
   }
-  rows.push("", "## Forbidden model × task", "", "| Task | Forbidden models |", "|------|------------------|");
-  for (const t of Object.keys(TASK_MODEL_FORBIDDEN) as TaskType[]) {
-    const s = [...TASK_MODEL_FORBIDDEN[t]].join(", ");
+  rows.push("", "## Forbidden role × task", "", "| Task | Forbidden roles |", "|------|-----------------|");
+  for (const t of Object.keys(TASK_ROLE_FORBIDDEN) as TaskType[]) {
+    const s = [...TASK_ROLE_FORBIDDEN[t]].join(", ");
     rows.push(`| ${t} | ${s} |`);
   }
   return rows.join("\n");
 }
 
-export function assertModelAllowedForTask(task: TaskType, modelId: AllowedModelId): void {
-  if (isModelForbiddenForTask(task, modelId)) {
-    throw new Error(`[ai] Model ${modelId} is forbidden for task ${task}`);
+export function assertRoleAllowedForTask(task: TaskType, role: AiLogicalRole): void {
+  if (isRoleForbiddenForTask(task, role)) {
+    throw new Error(`[ai] Logical role ${role} is forbidden for task ${task}`);
   }
+}
+
+/** @deprecated Use assertRoleAllowedForTask */
+export function assertModelAllowedForTask(task: TaskType, role: AiLogicalRole): void {
+  assertRoleAllowedForTask(task, role);
 }

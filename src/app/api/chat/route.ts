@@ -15,12 +15,11 @@ import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
-import { DEFAULT_PLAYER_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
+import { DEFAULT_PLAYER_ROLE_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
 import { allowControlPreflightForSession } from "@/lib/ai/governance/sessionBudget";
 import { resolveOperationMode } from "@/lib/ai/degrade/mode";
 import { pushAiRoutingReport } from "@/lib/ai/debug/routingRing";
-import type { AllowedModelId } from "@/lib/ai/models/registry";
-import { getRegisteredModel } from "@/lib/ai/models/registry";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { PlayerChatStreamSuccess, PlayerChatStreamResult } from "@/lib/ai/router/execute";
 import type { AiRoutingReport } from "@/lib/ai/routing/types";
 import { anyAiProviderConfigured, executePlayerChatStream, sanitizeMessagesForUpstream } from "@/lib/ai/service";
@@ -691,7 +690,7 @@ export async function POST(req: Request) {
     ...messagesToSend,
   ]);
 
-  const telemetryPreferredModel = DEFAULT_PLAYER_CHAIN[0];
+  const telemetryPreferredModel = DEFAULT_PLAYER_ROLE_CHAIN[0];
   void recordGenericAnalyticsEvent({
     eventId: `${requestId}:chat_request_started`,
     idempotencyKey: `${requestId}:chat_request_started`,
@@ -715,14 +714,18 @@ export async function POST(req: Request) {
   }
   if (!anyAiProviderConfigured()) {
     if (process.env.NODE_ENV === "development") {
-      console.warn("[api/chat] AI keys still missing after env reload", {
+      const ai = resolveAiEnv();
+      console.warn("[api/chat] AI gateway still missing after env reload", {
         cwd: process.cwd(),
         projectRoot: resolveVerseCraftProjectRoot(),
-        hasDeepseekName: typeof process.env.DEEPSEEK_API_KEY === "string",
-        deepseekLen: process.env.DEEPSEEK_API_KEY?.length ?? 0,
+        gatewayConfigured: Boolean(ai.gatewayBaseUrl && ai.gatewayApiKey),
+        gatewayKeyLen: ai.gatewayApiKey.length,
+        mainModelConfigured: ai.modelsByRole.main.length > 0,
       });
     }
-    console.warn(`[api/chat] No AI provider API keys configured (see .env.example / Coolify env). Returning degraded SSE with 200.`);
+    console.warn(
+      `[api/chat] No AI gateway configured (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_MAIN). See .env.example. Returning degraded SSE with 200.`
+    );
     return new Response(
       sseText(
         JSON.stringify({
@@ -871,34 +874,35 @@ export async function POST(req: Request) {
     requestId,
     task: "PLAYER_CHAT",
     operationMode: srOk.operationMode,
-    intendedModel: srOk.intendedModelId,
-    actualModel: srOk.modelId,
+    intendedRole: srOk.intendedLogicalRole,
+    actualLogicalRole: srOk.logicalRole,
     fallbackCount: srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length,
     attempts: [...srOk.httpAttempts],
     finalStatus: "success",
   };
-  const skippedStreamModels: AllowedModelId[] = [];
+  const skippedStreamRoles: AiLogicalRole[] = [];
   let streamSource: PlayerChatStreamSuccess = srOk;
   let streamRound = 0;
   let tokenUsageFlushedGlobal = false;
 
   (async () => {
     const scheduleStreamReconnect = async (
-      failedModel: AllowedModelId,
+      failedRole: AiLogicalRole,
       kind: "STREAM_INTERRUPTED" | "EMPTY_CONTENT"
     ): Promise<boolean> => {
       if (streamRound >= MAX_STREAM_SOURCE_ROUNDS) return false;
-      const reg = getRegisteredModel(failedModel);
+      const envSnap = resolveAiEnv();
       routingReport.attempts.push({
-        modelId: failedModel,
-        providerId: reg.provider,
+        logicalRole: failedRole,
+        providerId: "oneapi",
+        gatewayModel: envSnap.modelsByRole[failedRole],
         phase: "stream_body",
         failureKind: kind,
         severity: "soft",
         message: kind,
       });
       routingReport.fallbackCount = routingReport.attempts.filter((a) => a.failureKind !== undefined).length;
-      skippedStreamModels.push(failedModel);
+      skippedStreamRoles.push(failedRole);
       const next = await executePlayerChatStream({
         messages: safeMessages,
         ctx: {
@@ -910,7 +914,7 @@ export async function POST(req: Request) {
         },
         signal: ac.signal,
         timeoutMs: TIMEOUT_MS,
-        skipModels: skippedStreamModels,
+        skipRoles: skippedStreamRoles,
       });
       if (!next.ok) return false;
       streamSource = next;
@@ -918,7 +922,7 @@ export async function POST(req: Request) {
     };
 
     const flushTokenUsage = async (args: {
-      streamModel: AllowedModelId;
+      streamRole: AiLogicalRole;
       accumulated: string;
       streamBlocked: boolean;
       firstChunkAt: number;
@@ -961,7 +965,7 @@ export async function POST(req: Request) {
 
         payload: {
           requestId,
-          upstreamModel: routingReport.actualModel ?? args.streamModel,
+          upstreamLogicalRole: routingReport.actualLogicalRole ?? args.streamRole,
         },
       }).catch(() => {});
 
@@ -979,13 +983,13 @@ export async function POST(req: Request) {
         playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
         payload: {
           requestId,
-          model: routingReport.actualModel ?? args.streamModel,
+          model: routingReport.actualLogicalRole ?? args.streamRole,
           success: !args.streamBlocked,
           firstChunkLatencyMs: args.firstChunkAt > 0 ? args.firstChunkAt - requestStartedAt : null,
           totalLatencyMs: Date.now() - requestStartedAt,
           isFirstAction,
           aiOperationMode: routingReport.operationMode,
-          aiIntendedModel: routingReport.intendedModel,
+          aiIntendedRole: routingReport.intendedRole,
           aiFallbackCount: routingReport.fallbackCount,
         },
       }).catch(() => {});
@@ -1060,8 +1064,8 @@ export async function POST(req: Request) {
 
     stream_pass: while (streamRound < MAX_STREAM_SOURCE_ROUNDS) {
       streamRound += 1;
-      const model = streamSource.modelId;
-      routingReport.actualModel = model;
+      const logicalRole = streamSource.logicalRole;
+      routingReport.actualLogicalRole = logicalRole;
       const reader = streamSource.response.body!.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
@@ -1072,7 +1076,7 @@ export async function POST(req: Request) {
 
       const flushThisRound = () =>
         flushTokenUsage({
-          streamModel: model,
+          streamRole: logicalRole,
           accumulated,
           streamBlocked,
           firstChunkAt,
@@ -1089,7 +1093,7 @@ export async function POST(req: Request) {
             streamRound < MAX_STREAM_SOURCE_ROUNDS
           ) {
             await reader.cancel().catch(() => {});
-            const reconnected = await scheduleStreamReconnect(model, "EMPTY_CONTENT");
+            const reconnected = await scheduleStreamReconnect(logicalRole, "EMPTY_CONTENT");
             if (reconnected) {
               continue stream_pass;
             }
@@ -1132,7 +1136,7 @@ export async function POST(req: Request) {
               streamRound < MAX_STREAM_SOURCE_ROUNDS
             ) {
               await reader.cancel().catch(() => {});
-              const reconnected = await scheduleStreamReconnect(model, "EMPTY_CONTENT");
+              const reconnected = await scheduleStreamReconnect(logicalRole, "EMPTY_CONTENT");
               if (reconnected) {
                 continue stream_pass;
               }
@@ -1273,7 +1277,7 @@ export async function POST(req: Request) {
       const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
       console.error(
         `\x1b[31m[api/chat] stream pipe failed\x1b[0m`,
-        { model, message: err?.message, cause, stack: err?.stack, error }
+        { logicalRole, message: err?.message, cause, stack: err?.stack, error }
       );
       try {
         await reader.cancel();
@@ -1284,7 +1288,7 @@ export async function POST(req: Request) {
         accumulated.trim().length < MIN_STREAM_OUTPUT_CHARS &&
         streamRound < MAX_STREAM_SOURCE_ROUNDS
       ) {
-        const reconnected = await scheduleStreamReconnect(model, "STREAM_INTERRUPTED");
+        const reconnected = await scheduleStreamReconnect(logicalRole, "STREAM_INTERRUPTED");
         if (reconnected) {
           continue stream_pass;
         }
@@ -1302,7 +1306,13 @@ export async function POST(req: Request) {
     const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
     console.error(
       `\x1b[31m[api/chat] background task crashed\x1b[0m`,
-      { model: routingReport.actualModel, message: err?.message, cause, stack: err?.stack, error }
+      {
+        logicalRole: routingReport.actualLogicalRole,
+        message: err?.message,
+        cause,
+        stack: err?.stack,
+        error,
+      }
     );
     try {
       await writer.write(sse(fallbackPayload));
@@ -1323,8 +1333,8 @@ export async function POST(req: Request) {
   const sseHeadersOut: Record<string, string> = { ...SSE_HEADERS, "X-Accel-Buffering": "no" };
   if (resolveAiEnv().exposeAiRoutingHeader) {
     const snap = {
-      intendedModel: routingReport.intendedModel,
-      firstConnectedModel: srOk.modelId,
+      intendedRole: routingReport.intendedRole,
+      firstConnectedRole: srOk.logicalRole,
       operationMode: routingReport.operationMode,
       httpFallbackCount: srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length,
     };

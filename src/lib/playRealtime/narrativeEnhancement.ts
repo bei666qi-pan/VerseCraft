@@ -168,7 +168,7 @@ export async function tryEnhanceDmAfterMainStream(args: {
   pushAiObservability({
     requestId: args.baseCtx.requestId,
     task,
-    modelId: res.modelId,
+    logicalRole: res.logicalRole,
     providerId: res.providerId,
     phase: "enhance_applied",
     latencyMs: res.latencyMs,

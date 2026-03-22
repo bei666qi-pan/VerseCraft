@@ -1,5 +1,5 @@
 // src/lib/ai/types/index.ts
-import type { AllowedModelId } from "@/lib/ai/models/registry";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { AiRoutingReport } from "@/lib/ai/routing/types";
 
 export type {
@@ -22,7 +22,8 @@ export type { ProviderClient } from "@/lib/ai/providers/types";
 export interface AIResponse {
   ok: true;
   providerId: import("@/lib/ai/types/core").AiProviderId;
-  modelId: AllowedModelId;
+  /** Logical role that served the response (e.g. main, control). */
+  logicalRole: AiLogicalRole;
   content: string;
   usage: import("@/lib/ai/types/core").TokenUsage | null;
   latencyMs: number;
@@ -36,7 +37,7 @@ export interface AIErrorResponse {
   code: string;
   message: string;
   providerId?: import("@/lib/ai/types/core").AiProviderId;
-  modelId?: AllowedModelId;
+  logicalRole?: AiLogicalRole;
   status?: number;
   latencyMs?: number;
   routing?: AiRoutingReport;

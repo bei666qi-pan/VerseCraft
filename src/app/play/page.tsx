@@ -665,7 +665,7 @@ function PlayContent() {
 
     let res: Response;
     const fetchDeadlineState = { hit: false };
-    let fetchDeadlineTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let fetchDeadlineTimer: number | undefined;
     try {
       fetchDeadlineTimer = window.setTimeout(() => {
         fetchDeadlineState.hit = true;
@@ -829,7 +829,7 @@ function PlayContent() {
     };
 
     const readNextWithStallGuard = async (stallMs: number) => {
-      let timer: ReturnType<typeof window.setTimeout> | undefined;
+      let timer: number | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = window.setTimeout(() => reject(new Error("STREAM_STALL_TIMEOUT")), stallMs);
       });

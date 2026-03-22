@@ -1,6 +1,6 @@
 // src/lib/ai/debug/observabilityRing.ts
 import { createHash } from "node:crypto";
-import type { AllowedModelId } from "@/lib/ai/models/registry";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { TaskType } from "@/lib/ai/types/core";
 
 const MAX = 120;
@@ -12,7 +12,8 @@ export const AI_OBSERVABILITY_LOG_TYPE = "ai.observability" as const;
 export interface AiObservabilityRecord {
   requestId: string;
   task: TaskType;
-  modelId?: AllowedModelId;
+  logicalRole?: AiLogicalRole;
+  gatewayModel?: string;
   providerId?: string;
   phase: string;
   latencyMs?: number;

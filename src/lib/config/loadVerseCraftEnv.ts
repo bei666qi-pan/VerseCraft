@@ -4,7 +4,7 @@
  * using the real app root — not whatever `process.cwd()` happens to be when the
  * process was spawned (subfolder starts, PM2, IDEs, etc.).
  *
- * Also re-reads `.env` / `.env.local` for **AI provider secrets** and assigns them to
+ * Also re-reads `.env` / `.env.local` for **AI gateway** secrets and assigns them to
  * `process.env`, so local dev is not blocked when `@next/env` + bundler omit keys.
  */
 import "server-only";
@@ -25,16 +25,23 @@ function loadEnvConfigSync(root: string): void {
 
 /** Env names used by `envCore.resolveAiEnv` / `anyAiProviderConfigured`. */
 const AI_SECRET_ENV_NAMES = [
-  "DEEPSEEK_API_KEY",
-  "DEEPSEEK_KEY",
-  "DEEPSEEK_API_TOKEN",
-  "NEXT_PUBLIC_DEEPSEEK_API_KEY",
-  "ZHIPU_API_KEY",
-  "BIGMODEL_API_KEY",
-  "GLM_API_KEY",
-  "ZHIPU_KEY",
-  "MINIMAX_API_KEY",
-  "MINIMAX_KEY",
+  "AI_GATEWAY_BASE_URL",
+  "AI_GATEWAY_API_KEY",
+  "AI_GATEWAY_PROVIDER",
+  "AI_MODEL_MAIN",
+  "AI_MODEL_CONTROL",
+  "AI_MODEL_ENHANCE",
+  "AI_MODEL_REASONER",
+  "AI_PLAYER_ROLE_CHAIN",
+  "AI_PLAYER_MODEL_CHAIN",
+  "AI_MEMORY_PRIMARY_ROLE",
+  "AI_MEMORY_MODEL",
+  "AI_DEV_ASSIST_PRIMARY_ROLE",
+  "AI_ADMIN_MODEL",
+  "AI_REQUEST_TIMEOUT_MS",
+  "AI_TIMEOUT_MS",
+  "AI_ENABLE_STREAM",
+  "AI_LOG_LEVEL",
 ] as const;
 
 function stripBom(s: string): string {

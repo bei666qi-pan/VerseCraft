@@ -1,6 +1,5 @@
-// src/lib/ai/fallback/modelCircuit.ts
 import { resolveAiEnv } from "@/lib/ai/config/envCore";
-import type { AllowedModelId } from "@/lib/ai/models/registry";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { recordProviderFailure, recordProviderSuccess } from "@/lib/ai/fallback/circuitBreaker";
 import type { AiProviderId } from "@/lib/ai/types/core";
 
@@ -8,8 +7,8 @@ type Bucket = { failures: number; openedUntil: number };
 
 const modelState = new Map<string, Bucket>();
 
-function key(modelId: AllowedModelId): string {
-  return modelId;
+function key(role: AiLogicalRole): string {
+  return role;
 }
 
 function threshold(): number {
@@ -20,23 +19,23 @@ function cooldownMs(): number {
   return resolveAiEnv().circuitCooldownMs;
 }
 
-export function isModelCircuitOpen(modelId: AllowedModelId, now = Date.now()): boolean {
-  const b = modelState.get(key(modelId));
+export function isModelCircuitOpen(role: AiLogicalRole, now = Date.now()): boolean {
+  const b = modelState.get(key(role));
   if (!b) return false;
   if (now >= b.openedUntil) {
-    modelState.delete(key(modelId));
+    modelState.delete(key(role));
     return false;
   }
   return b.failures >= threshold();
 }
 
-export function recordModelSuccess(modelId: AllowedModelId, provider: AiProviderId): void {
-  modelState.delete(key(modelId));
+export function recordModelSuccess(role: AiLogicalRole, provider: AiProviderId): void {
+  modelState.delete(key(role));
   recordProviderSuccess(provider);
 }
 
-export function recordModelFailure(modelId: AllowedModelId, provider: AiProviderId): void {
-  const k = key(modelId);
+export function recordModelFailure(role: AiLogicalRole, provider: AiProviderId): void {
+  const k = key(role);
   const prev = modelState.get(k) ?? { failures: 0, openedUntil: 0 };
   const failures = prev.failures + 1;
   const openedUntil =
@@ -45,10 +44,10 @@ export function recordModelFailure(modelId: AllowedModelId, provider: AiProvider
   recordProviderFailure(provider);
 }
 
-export function snapshotModelCircuits(): Array<{ modelId: AllowedModelId; failures: number; openedUntil: number }> {
-  const out: Array<{ modelId: AllowedModelId; failures: number; openedUntil: number }> = [];
+export function snapshotModelCircuits(): Array<{ logicalRole: AiLogicalRole; failures: number; openedUntil: number }> {
+  const out: Array<{ logicalRole: AiLogicalRole; failures: number; openedUntil: number }> = [];
   for (const [mid, b] of modelState.entries()) {
-    out.push({ modelId: mid as AllowedModelId, failures: b.failures, openedUntil: b.openedUntil });
+    out.push({ logicalRole: mid as AiLogicalRole, failures: b.failures, openedUntil: b.openedUntil });
   }
   return out;
 }

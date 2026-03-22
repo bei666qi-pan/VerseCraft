@@ -78,8 +78,7 @@ cp .env.example .env.local
 - `AUTH_SECRET`
 - `ADMIN_PASSWORD`
 - `ALTCHA_HMAC_KEY`
-- `DEEPSEEK_API_KEY`（推荐）
-- `ZHIPU_API_KEY` / `MINIMAX_API_KEY`（fallback 与增强，见 `.env.example`）
+- `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_MODEL_MAIN`（及 `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`，见 `.env.example`）
 
 本地开发默认端口为 **666**（见 `package.json` 的 `pnpm dev`）。访问 [http://localhost:666](http://localhost:666)，进入「铸造角色」创建角色后即可开始游戏。
 

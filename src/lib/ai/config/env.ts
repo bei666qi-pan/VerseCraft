@@ -5,6 +5,7 @@ export type { ResolvedAiEnv } from "@/lib/ai/config/envCore";
 export {
   anyAiProviderConfigured,
   DEFAULT_PLAYER_CHAIN,
+  DEFAULT_PLAYER_ROLE_CHAIN,
   resolveAiEnv,
   resolveDeepSeekLegacyConfig,
 } from "@/lib/ai/config/envCore";

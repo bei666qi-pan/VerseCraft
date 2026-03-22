@@ -1,5 +1,6 @@
 // src/lib/ai/telemetry/log.ts
-import type { AllowedModelId } from "@/lib/ai/models/registry";
+import { resolveAiEnv } from "@/lib/ai/config/envCore";
+import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { pushAiObservability } from "@/lib/ai/debug/observabilityRing";
 import type { AIRequestContext, AiProviderId, TokenUsage } from "@/lib/ai/types/core";
 
@@ -9,7 +10,9 @@ export interface AiCostRecord {
   requestId: string;
   task: AIRequestContext["task"];
   providerId: AiProviderId;
-  modelId: AllowedModelId;
+  logicalRole: AiLogicalRole;
+  /** Optional upstream model name (debug; may be omitted in high-volume logs). */
+  gatewayModel?: string;
   phase: AiLogPhase;
   latencyMs?: number;
   usage?: TokenUsage | null;
@@ -33,6 +36,20 @@ function totalTokensOf(u: TokenUsage | null | undefined): number | undefined {
   return a > 0 ? Math.trunc(a) : undefined;
 }
 
+function shouldEmitConsole(phase: AiLogPhase): boolean {
+  const level = resolveAiEnv().logLevel;
+  if (level === "silent") return false;
+  if (level === "error") return phase === "error";
+  return true;
+}
+
+function shouldRecordObservability(phase: AiLogPhase): boolean {
+  const level = resolveAiEnv().logLevel;
+  if (level === "silent") return false;
+  if (level === "error") return phase === "error";
+  return phase === "success" || phase === "error";
+}
+
 /** Stable log envelope type for log drains / CI assertions. */
 export const AI_TELEMETRY_LOG_TYPE = "ai.telemetry" as const;
 
@@ -44,7 +61,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     requestId: rec.requestId,
     task: rec.task,
     providerId: rec.providerId,
-    modelId: rec.modelId,
+    logicalRole: rec.logicalRole,
+    gatewayModel: rec.gatewayModel,
     phase: rec.phase,
     latencyMs: rec.latencyMs,
     usage: rec.usage,
@@ -58,17 +76,20 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     estCostUsd:
       rec.estCostUsd != null ? Math.round(rec.estCostUsd * 1_000_000) / 1_000_000 : undefined,
   };
-  if (rec.phase === "error") {
-    console.error(JSON.stringify(payload));
-  } else {
-    console.info(JSON.stringify(payload));
+  if (shouldEmitConsole(rec.phase)) {
+    if (rec.phase === "error") {
+      console.error(JSON.stringify(payload));
+    } else {
+      console.info(JSON.stringify(payload));
+    }
   }
 
-  if (rec.phase === "success" || rec.phase === "error") {
+  if (shouldRecordObservability(rec.phase)) {
     pushAiObservability({
       requestId: rec.requestId,
       task: rec.task,
-      modelId: rec.modelId,
+      logicalRole: rec.logicalRole,
+      gatewayModel: rec.gatewayModel,
       providerId: rec.providerId,
       phase: rec.phase,
       latencyMs: rec.latencyMs,

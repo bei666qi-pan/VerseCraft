@@ -5,13 +5,13 @@
 ## 状态机（请求级）
 
 1. **解析运行模式** `resolveOperationMode()` → `full` | `safe` | `emergency`（`AI_OPERATION_MODE` / `AI_DEGRADE_MODE`）。
-2. **按任务取有序模型链** `resolveOrderedModelChain(task, mode)`：主模型优先 **DeepSeek-V3.2**（`deepseek-v3.2`），再按任务白名单与禁止表追加次优模型；`emergency` 下玩家主链路可收缩为仅 V3.2。
-3. **逐模型尝试**（流式：`executePlayerChatStream`；非流式：`executeChatCompletion`）  
-   - 若模型处于**熔断打开**（provider 或 **modelId** 维度），记为跳过类失败，**不发起 HTTP**，直接下一模型。  
+2. **按任务取有序角色链** `resolveOrderedRoleChain(task, mode)`：主角色优先 **main**，再按任务策略与禁止表追加；`emergency` 下玩家主链路仅 **main**（且需 `AI_MODEL_MAIN` 已配置）。
+3. **逐角色尝试**（流式：`executePlayerChatStream`；非流式：`executeChatCompletion`），请求均发往 **同一** `AI_GATEWAY_BASE_URL`，`model` 字段来自对应 `AI_MODEL_*`。  
+   - 若角色处于**熔断打开**（网关 provider 或 **logicalRole** 维度），记为跳过类失败，**不发起 HTTP**，直接下一角色。  
    - 发起请求；失败则 `classifyAiFailure` 标准化原因（超时 / 429 / 5xx / 解析 / 空内容 / 流中断等）。  
    - 若判定为**应计入熔断**的失败，写入 `recordModelFailure` / provider 熔断器。  
-   - 若判定为**应换模型**（如可重试类已用尽、或 JSON/空内容无效），**换链上下一模型**，fallback 计数 +1。  
-4. **成功**时 `recordModelSuccess`，返回内容 + **路由报告**（目标模型、实际模型、fallback 次数、失败摘要、运行模式）。
+   - 若判定为**应换角色**（如可重试类已用尽、或 JSON/空内容无效），**换链上下一角色**，fallback 计数 +1。  
+4. **成功**时 `recordModelSuccess`，返回内容 + **路由报告**（intendedRole、actualLogicalRole、fallback 次数、失败摘要、运行模式）。
 
 **约束**：不在单请求内做「多模型串联润色」；仅 **failover**，避免延迟叠加。
 
@@ -21,27 +21,26 @@
 |------|-----------|----------|
 | 可恢复 / 限流 | 429、部分 5xx、超时（在重试策略内） | 重试当前模型或换模型（由 `shouldAdvanceToNextModel` 等决定） |
 | 不可恢复内容 | 空正文、非法 JSON（需 JSON 的任务）、流式无有效增量 | 尽快换下一模型，不阻塞玩家 |
-| 熔断跳过 | provider/model 熔断打开 | 不撞上游，直接下一候选 |
+| 熔断跳过 | provider / logicalRole 熔断打开 | 不撞上游，直接下一候选 |
 
 具体枚举与规则见 `src/lib/ai/errors/classify.ts`、`src/lib/ai/types/routingErrors.ts`。
 
 ## 任务接管示例
 
 1. **PLAYER_CHAT（流式）**  
-   - 首选 `deepseek-v3.2`；失败或无效输出 → `glm-5-air`（若链中有且未熔断）。  
-   - 多 pass 流式重连时携带 `skipModels`，避免重复打已判定失败的模型。  
-   - **DeepSeek 临时故障**：结构化侧可由 GLM 先行（若任务为 `INTENT_PARSE` 等），主叙事仍由链上下一可用模型补齐（以 `taskPolicy` 为准）。
+   - 首选 **main**；失败或无效输出 → **control**（若链中有且未熔断）。  
+   - 多 pass 流式重连时携带 `skipRoles`，避免重复打已判定失败的角色。
 
 2. **INTENT_PARSE / SAFETY_PREFILTER**  
-   - 主：`glm-5-air`；GLM 失败 → **DeepSeek-V3.2** 接管 JSON 结构化（同任务链内 fallback）。
+   - 主 **control**；失败 → **main** 同任务链内 fallback。
 
-3. **SCENE_ENHANCEMENT / NPC_EMOTION_POLISH（MiniMax）**  
-   - MiniMax 失败：**不阻塞主流程**；降级为跳过增强层或由链上 `deepseek-v3.2` 直接出基础文本（实现以调用方 `executeChatCompletion` 结果为准，增强失败不得抛死锁）。
+3. **SCENE_ENHANCEMENT / NPC_EMOTION_POLISH**  
+   - 主 **enhance**；失败 → **main**（及必要时 **control**）。增强失败不阻塞主流程（调用方处理 `executeChatCompletion` 结果）。
 
 4. **运行模式**  
-   - `full`：主模型 + 增强层（若调用方启用）。  
-   - `safe`：主叙事/规则为主，收缩环境扩展链。  
-   - `emergency`：保核心规则与可读文本，关闭或弱化润色层；玩家聊天链可仅 V3.2。
+   - `full`：主角色 + env 玩家链合并。  
+   - `safe`：策略内主备，不合并 `AI_PLAYER_ROLE_CHAIN` 额外项。  
+   - `emergency`：玩家链仅 **main**。
 
 ## 可观测性
 

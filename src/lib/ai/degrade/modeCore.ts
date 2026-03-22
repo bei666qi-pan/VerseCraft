@@ -8,9 +8,9 @@ import { envRawFirst } from "@/lib/config/envRaw";
 export type OperationMode = "full" | "safe" | "emergency";
 
 /**
- * - full: default chain (DeepSeek-V3.2 first + policy fallbacks + env extras).
- * - safe: primary + policy fallbacks only (no AI_PLAYER_MODEL_CHAIN extras).
- * - emergency: DeepSeek-V3.2 only when key exists (max availability).
+ * - full: default chain (main role first + policy fallbacks + AI_PLAYER_ROLE_CHAIN extras).
+ * - safe: primary + policy fallbacks only (no env player chain merge).
+ * - emergency: main role only (max availability).
  */
 export function resolveOperationMode(): OperationMode {
   const v = (envRawFirst(["AI_OPERATION_MODE", "AI_DEGRADE_MODE"]) ?? "").toLowerCase();
