@@ -10,6 +10,9 @@
 !.yarn/releases
 !.yarn/versions
 
+# Cursor debug NDJSON (local ingest)
+.cursor/debug-*.log
+
 # testing
 /coverage
 /test-results/
