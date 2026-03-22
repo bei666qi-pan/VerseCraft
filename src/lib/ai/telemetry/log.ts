@@ -4,7 +4,16 @@ import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { pushAiObservability } from "@/lib/ai/debug/observabilityRing";
 import type { AIRequestContext, AiProviderId, TokenUsage } from "@/lib/ai/types/core";
 
-export type AiLogPhase = "start" | "retry" | "success" | "error" | "circuit_skip" | "fallback";
+export type AiLogPhase =
+  | "start"
+  | "retry"
+  | "success"
+  | "error"
+  | "circuit_skip"
+  | "fallback"
+  | "stream_first_token"
+  | "stream_complete"
+  | "preflight_budget";
 
 export interface AiCostRecord {
   requestId: string;
@@ -26,6 +35,11 @@ export interface AiCostRecord {
   fallbackCount?: number;
   estCostUsd?: number;
   userId?: string | null;
+  /** First model token / first SSE payload latency for PLAYER_CHAT streams. */
+  ttftMs?: number;
+  stableCharLen?: number;
+  dynamicCharLen?: number;
+  cachedPromptTokens?: number;
 }
 
 function totalTokensOf(u: TokenUsage | null | undefined): number | undefined {
@@ -40,6 +54,9 @@ function shouldEmitConsole(phase: AiLogPhase): boolean {
   const level = resolveAiEnv().logLevel;
   if (level === "silent") return false;
   if (level === "error") return phase === "error";
+  if (phase === "stream_complete") return false;
+  if (phase === "stream_first_token") return level === "debug";
+  if (phase === "preflight_budget") return level === "debug";
   return true;
 }
 
@@ -47,7 +64,13 @@ function shouldRecordObservability(phase: AiLogPhase): boolean {
   const level = resolveAiEnv().logLevel;
   if (level === "silent") return false;
   if (level === "error") return phase === "error";
-  return phase === "success" || phase === "error";
+  return (
+    phase === "success" ||
+    phase === "error" ||
+    phase === "stream_complete" ||
+    phase === "stream_first_token" ||
+    phase === "preflight_budget"
+  );
 }
 
 /** Stable log envelope type for log drains / CI assertions. */
@@ -75,6 +98,10 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     fallbackCount: rec.fallbackCount,
     estCostUsd:
       rec.estCostUsd != null ? Math.round(rec.estCostUsd * 1_000_000) / 1_000_000 : undefined,
+    ttftMs: rec.ttftMs,
+    stableCharLen: rec.stableCharLen,
+    dynamicCharLen: rec.dynamicCharLen,
+    cachedPromptTokens: rec.cachedPromptTokens ?? rec.usage?.cachedPromptTokens,
   };
   if (shouldEmitConsole(rec.phase)) {
     if (rec.phase === "error") {
@@ -100,6 +127,10 @@ export function logAiTelemetry(rec: AiCostRecord): void {
       estCostUsd: rec.estCostUsd,
       message: rec.message?.slice(0, 200),
       userId: rec.userId,
+      ttftMs: rec.ttftMs,
+      stableCharLen: rec.stableCharLen,
+      dynamicCharLen: rec.dynamicCharLen,
+      cachedPromptTokens: rec.cachedPromptTokens ?? rec.usage?.cachedPromptTokens,
     });
   }
 }

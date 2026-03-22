@@ -1,0 +1,13 @@
+{
+  "scenario": "long_context",
+  "description": "模拟偏长 playerContext（重复段落保证体积），压测 prompt 与配额估算",
+  "latestUserInput": "我深呼吸一次，重新整理刚才收集到的线索，在脑子里过一遍时间线。",
+  "playerContext": "player_location: 公寓顶楼\\ninventory: 笔记本, 手电\\n---\\n最近事件摘要（重复以拉长上下文）：\\n你在三楼听见滴水声。\\n你在电梯里感到短暂失重。\\n你在楼梯间看到墙皮剥落。\\n你在四楼闻到霉味。\\n你在天台发现铁门虚掩。\\n你在地下室找到旧配电箱。\\n你在走廊尽头看到人影一闪。\\n你在消防栓旁摸到潮湿痕迹。\\n你在管道井听到敲击。\\n你在弱电间发现线路被剪。\\n你在三楼听见滴水声。\\n你在电梯里感到短暂失重。\\n你在楼梯间看到墙皮剥落。\\n你在四楼闻到霉味。\\n你在天台发现铁门虚掩。\\n你在地下室找到旧配电箱。\\n你在走廊尽头看到人影一闪。\\n你在消防栓旁摸到潮湿痕迹。\\n你在管道井听到敲击。\\n你在弱电间发现线路被剪。\\n你在三楼听见滴水声。\\n你在电梯里感到短暂失重。\\n你在楼梯间看到墙皮剥落。\\n你在四楼闻到霉味。\\n你在天台发现铁门虚掩。\\n你在地下室找到旧配电箱。\\n你在走廊尽头看到人影一闪。\\n你在消防栓旁摸到潮湿痕迹。\\n你在管道井听到敲击。\\n你在弱电间发现线路被剪。",
+  "ruleSnapshot": {
+    "in_combat_hint": false,
+    "in_dialogue_hint": false,
+    "location_changed_hint": true,
+    "high_value_scene": false
+  },
+  "observabilityNotes": "stable/dynamic 字符长度与 estimateTokensFromInput 压力；analytics payload 仍不含全文"
+}

@@ -1,0 +1,13 @@
+{
+  "scenario": "normal_action",
+  "description": "走廊探索类短指令，主模型与预检负载中等",
+  "latestUserInput": "我放慢脚步，贴着墙根往走廊深处摸过去，注意听有没有脚步声。",
+  "playerContext": "player_location: 公寓三楼走廊\\ninventory: 手电筒, 手机\\nhp: 78\\nsanity: 65",
+  "ruleSnapshot": {
+    "in_combat_hint": false,
+    "in_dialogue_hint": false,
+    "location_changed_hint": false,
+    "high_value_scene": false
+  },
+  "observabilityNotes": "preflight 常走 LLM；增强多因 narrative 未达长度或门控跳过"
+}

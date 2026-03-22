@@ -32,8 +32,20 @@
 | `AI_ENABLE_STREAM` | 否 | 默认 `true`；与任务 `stream` 组合 |
 | `AI_LOG_LEVEL` | 否 | `silent` \| `error` \| `info` \| `debug` |
 | `AI_MAX_RETRIES` 等 | 否 | 重试与熔断，见 `.env.example` |
+| `VERSECRAFT_DM_STABLE_PROMPT_VERSION` | 否 | 变更后使玩家 DM **稳定 system 前缀**进程内 memo 失效（静态规则/世界观更新时 bump） |
+| `AI_PLAYER_CHAT_SPLIT_SYSTEM` | 否 | `1` 时 PLAYER_CHAT 使用两条 `system`（stable + dynamic）；默认单条拼接 |
+| `AI_GATEWAY_MERGE_EXTRA_BODY` | 否 | `1` 时把 `AI_GATEWAY_EXTRA_BODY_JSON` 解析为对象并**浅合并**进请求体（不覆盖 `messages`/`model`/`stream`/`max_tokens` 等保留键） |
+| `AI_CONTROL_PREFLIGHT_BUDGET_MS` | 否 | 见 §7 预检墙钟预算；`0` 表示不截断 |
+| `AI_NARRATIVE_ENHANCE_BUDGET_MS` | 否 | 见 §7 尾段增强墙钟预算；`0` 表示仅用任务内超时 |
+| `AI_STREAM_MODERATION_THROTTLE_MS` | 否 | 见 §7 流式输出审核节流；`0` 表示每 delta 必审 |
 
 \*：`anyAiProviderConfigured()` 要求至少 **网关 URL + Key + `AI_MODEL_MAIN`** 非空；其他角色若未配置，对应任务链会自动跳过该角色。
+
+### 玩家 DM：稳定前缀 + 动态后缀（前缀缓存友好）
+
+- 实现：`src/lib/playRealtime/playerChatSystemPrompt.ts`。**Stable** = 全量静态规则与 lore + 固定标题 `## 【本回合动态上下文】`（memo + `VERSECRAFT_DM_STABLE_PROMPT_VERSION`）；**dynamic** = 压缩记忆、`当前玩家状态`、首局约束、`buildControlAugmentationBlock`。
+- 路由：`src/app/api/chat/route.ts` 组装后交给 `sanitizeMessagesForUpstream`；配额估算使用 stable+dynamic（**不含**控制面 augmentation 的旧口径对齐：仅 stable + 记忆/状态/首局，即 `controlAugmentation: ""` 的 dynamic）。
+- **观测**：分析事件 `chat_request_finished` payload 含 `stableCharLen`、`dynamicCharLen`、`cachedPromptTokens`（上游支持时）；结构化日志见下文与 `docs/ai-governance.md`。
 
 ### 超时说明：`/api/chat` 外层与 `execute` 内层
 
@@ -89,9 +101,98 @@
 
 更细的分类与日志字段说明见 [`docs/troubleshooting-ai.md`](troubleshooting-ai.md)。
 
-## 7. 测试与回归
+## 7. 流式 PLAYER_CHAT 观测字段（摘要）
 
-- **单元**：`pnpm test:unit`（含 `envCore`、`taskPolicy`、流式 fallback mock、`openaiCompatible` 请求体）。
+- **`ai.telemetry`**：`phase: stream_first_token` 记录首包 TTFT（`ttftMs`）及 `stableCharLen` / `dynamicCharLen`（默认不写控制台，仅 `AI_LOG_LEVEL=debug` 打印 JSON）；`phase: stream_complete` 记录结束时的 `usage`（含 `cachedPromptTokens` 若上游返回）；`phase: preflight_budget` 表示控制面预检在 **`AI_CONTROL_PREFLIGHT_BUDGET_MS`** 内未完成已放弃（等价于控制面不可用路径）。
+- **`ai.observability`**：同上部分字段进入环形缓冲，便于 `GET /api/admin/ai-routing` 排障。
+- **TokenUsage**：`normalizeUsage`（`src/lib/ai/stream/openaiLike.ts`）会解析 `usage.prompt_tokens_details.cached_tokens`、`cached_prompt_tokens` 等别名。
+- **分析事件**：`chat_request_started` 的 `payload.controlPreflightBudgetHit` 标记本回合是否触发预检预算截断。
+
+### `/api/chat` 延迟与顺滑（第三轮，默认与旧行为一致）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `AI_CONTROL_PREFLIGHT_BUDGET_MS` | `0` | `>0` 时预检最多等待该毫秒；超时则与「预检失败」相同，继续主模型流式（缩短 TTFT 尾部）。上限 10000。 |
+| `AI_NARRATIVE_ENHANCE_BUDGET_MS` | `0` | `>0` 时尾段感官增强 LLM 额外墙钟上限；超时放弃增强，仍发主模型 JSON（缩短终帧延迟）。上限 60000。 |
+| `AI_STREAM_MODERATION_THROTTLE_MS` | `0` | `>0` 时对 **JSON delta** 的 `postModelModeration` 按最小间隔节流（中间 delta 先直出，**削弱**分块审核密度；终帧仍有 `finalOutputModeration`）。上限 2000。 |
+
+另见治理项 **`AI_ENHANCE_GATE_MIN_SCORE`**（[`docs/ai-governance.md`](ai-governance.md)）：提高后增强门控更严，默认 `32` 与历史一致。
+
+- **功能等价**：预检/增强超时均走既有「控制面不可用」「增强失败」路径；`__VERSECRAFT_FINAL__` 与客户端解析不变。
+- **成本与网关**：调用次数逻辑不变；预算截断会多产生被中止的上游请求，可在网关观察并调预算。
+
+### `analytics_events`：`chat_request_finished`（DB 可聚合）
+
+以下字段写入 **`analytics_events.payload`（jsonb）**，不含剧情正文，便于量化 TTFT、token、预检与尾段增强（实现见 `src/lib/analytics/chatRequestFinishedPayload.ts`）。
+
+| 字段 | 说明 |
+|------|------|
+| `firstChunkLatencyMs` | TTFT（毫秒）或 null |
+| `totalLatencyMs` | 回合总墙钟（含流式结束后的终帧钩子等） |
+| `promptTokens` / `completionTokens` / `totalTokens` / `cachedPromptTokens` | 流末 `TokenUsage`；上游未返回则为 null |
+| `gatewayModelMain` | 主跳实际上游模型名（若有） |
+| `preflightRan` | 是否进入控制面预检执行路径 |
+| `preflightSkippedReason` | 未跑预检时：`emergency`、`session_budget` 或 null |
+| `preflightCacheHit` | 预检缓存命中；未跑预检为 null |
+| `preflightLatencyMs` | 预检墙钟毫秒（缓存命中多为 0） |
+| `preflightOk` | 是否得到可用 control |
+| `preflightBudgetHit` | 是否触发 `AI_CONTROL_PREFLIGHT_BUDGET_MS` |
+| `enhanceAttempted` | 是否进入尾段增强路径（已解析出可处理的 DM JSON） |
+| `enhanceOutcome` | `none`、`applied`、`skipped`、`error` |
+| `enhanceSkipReason` | 跳过原因；成功为 null |
+| `enhanceLatencyMs` | 增强墙钟 |
+| `enhancePromptTokens` / `enhanceCompletionTokens` / `enhanceTotalTokens` | 仅增强 **applied** 且上游返回 usage 时有值 |
+
+`chat_request_started` 的 `payload` 另含：`preflightRan`、`preflightSkippedReason`、`preflightCacheHit`、`preflightLatencyMs`、`preflightOk`、`controlPreflightBudgetHit`。
+
+**示例 SQL**（表不存在或 42P01 时与现有 analytics 降级一致，查询可能无数据）：
+
+```sql
+-- 近 7 日按天平均 TTFT / 总耗时（成功回合）
+SELECT
+  date_trunc('day', event_time) AS d,
+  AVG((payload->>'firstChunkLatencyMs')::numeric) AS avg_ttft_ms,
+  AVG((payload->>'totalLatencyMs')::numeric) AS avg_total_ms
+FROM analytics_events
+WHERE event_name = 'chat_request_finished'
+  AND (payload->>'success')::boolean = true
+  AND event_time > NOW() - INTERVAL '7 days'
+GROUP BY 1
+ORDER BY 1;
+
+-- 按最终逻辑角色聚合延迟与 prompt tokens
+SELECT
+  payload->>'aiActualLogicalRole' AS role,
+  AVG((payload->>'totalLatencyMs')::numeric) AS avg_total_ms,
+  AVG((payload->>'promptTokens')::numeric) AS avg_prompt_tok
+FROM analytics_events
+WHERE event_name = 'chat_request_finished'
+  AND event_time > NOW() - INTERVAL '7 days'
+GROUP BY 1;
+
+-- 预检耗时与缓存命中率（仅 ran=true 子集）
+SELECT
+  AVG((payload->>'preflightLatencyMs')::numeric) FILTER (WHERE (payload->>'preflightRan')::boolean) AS avg_preflight_ms,
+  SUM(CASE WHEN (payload->>'preflightCacheHit')::boolean THEN 1 ELSE 0 END)::float
+    / NULLIF(COUNT(*) FILTER (WHERE (payload->>'preflightRan')::boolean), 0) AS preflight_cache_rate
+FROM analytics_events
+WHERE event_name = 'chat_request_finished'
+  AND event_time > NOW() - INTERVAL '7 days';
+```
+
+### 基准样本与脚本
+
+- 目录：[benchmarks/chat-turns/README.md](../benchmarks/chat-turns/README.md)
+- 打印体积与说明：`pnpm benchmark:chat-metrics`
+- 实机首包探针：`E2E_AI_LIVE=1 pnpm benchmark:chat-metrics`（默认 `http://localhost:666`，可用环境变量 `BENCHMARK_BASE_URL` 覆盖）
+
+### 本地预览端口
+
+- `pnpm dev` / `pnpm preview` 使用 **666** 端口；浏览器或 Cursor Simple Browser 打开 `http://localhost:666`。
+
+## 8. 测试与回归
+
+- **单元**：`pnpm test:unit`（含 `envCore`、`taskPolicy`、流式 fallback mock、`openaiCompatible` 请求体、`normalizeUsage` 缓存字段、`playerChatSystemPrompt` stable memo、`chatRequestFinishedPayload`、`benchmarks/chat-turns` fixture 形状）。
 - **网关验证脚本**：`pnpm verify:ai-gateway`（配置完整性，不扣费）；严格模式见上文。
 - **CI 契约 E2E**：`pnpm test:e2e:contract`（`chat-sse-contract` + `play-open`）：在 **未配置网关** 时期望 `X-VerseCraft-Ai-Status: keys_missing` 的降级 SSE；GitHub `ci.yml` 已接入（CI 内用 `PLAYWRIGHT_BASE_URL` + `PLAYWRIGHT_WEB_SERVER_COMMAND` 在 **3000** 端口起 dev，避免与本机 666 占用冲突）。
 - **真网关冒烟**：本机导出 `E2E_AI_LIVE=1` 并确保 shell 与 `pnpm dev` 均能读到 `AI_GATEWAY_*`、`AI_MODEL_MAIN` 后运行 `pnpm test:e2e:chat` 或 `pnpm test:e2e:contract`，将额外跑「非 keys_missing」断言（易超时/耗额度，勿在 CI 默认开启）。

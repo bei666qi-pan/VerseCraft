@@ -56,6 +56,7 @@ export type DMJson = {
  * - `waiting_upstream` — Request issued; awaiting first SSE `data:` payload (no narrative tokens yet).
  * - `streaming_body` — SSE chunks arriving; raw JSON buffer grows; narrative ref updates; typewriter may run.
  * - `turn_committing` — Stream ended; parsing DM JSON and mutating inventory/options/logs before unlock.
+ * - `tail_draining` — Commit done; typewriter must finish the final narrative before unlocking UI (no more SSE).
  * - `error` — Reserved; UI treats like `idle` for interaction lock (turn aborted, controls re-enabled).
  */
 export type ChatStreamPhase =
@@ -63,4 +64,5 @@ export type ChatStreamPhase =
   | "waiting_upstream"
   | "streaming_body"
   | "turn_committing"
+  | "tail_draining"
   | "error";

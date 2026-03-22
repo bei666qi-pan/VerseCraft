@@ -26,6 +26,11 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     exposeAiRoutingHeader: false,
     enableStream: true,
     logLevel: "info",
+    splitPlayerChatDualSystem: false,
+    gatewayExtraBody: undefined,
+    controlPreflightBudgetMs: 0,
+    narrativeEnhanceBudgetMs: 0,
+    streamModerationThrottleMs: 0,
   };
   return {
     ...defaults,
@@ -36,6 +41,10 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
 
 test("PLAYER_CHAT primary role is main", () => {
   assert.equal(getTaskBinding("PLAYER_CHAT").primaryRole, "main");
+});
+
+test("PLAYER_CHAT maxTokens aligned with short DM JSON budget", () => {
+  assert.equal(getTaskBinding("PLAYER_CHAT").maxTokens, 896);
 });
 
 test("reasoner forbidden on PLAYER_CHAT and online control tasks", () => {

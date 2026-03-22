@@ -30,7 +30,8 @@
     "test:admin:api": "playwright test e2e/admin-api.spec.ts",
     "test:admin:perf": "playwright test e2e/admin-performance.spec.ts",
     "analyze:admin-sql": "tsx scripts/admin-explain-baseline.ts",
-    "analyze:admin-sql:strict": "tsx scripts/admin-explain-baseline.ts --strict"
+    "analyze:admin-sql:strict": "tsx scripts/admin-explain-baseline.ts --strict",
+    "benchmark:chat-metrics": "tsx scripts/benchmark-chat-metrics.ts"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
@@ -40,6 +41,7 @@
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.1",
     "idb-keyval": "^6.2.2",
+    "jsonrepair": "^3.13.3",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",

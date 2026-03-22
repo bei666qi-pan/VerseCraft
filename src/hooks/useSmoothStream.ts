@@ -24,6 +24,13 @@ type SmoothStreamOptions = {
   uniformTickMs?: number;
 };
 
+export type SmoothStreamTailDrainConfig = {
+  targetRef: MutableRefObject<string | null>;
+  /** Increment when entering `tail_draining` so the hook can realign queue vs final narrative. */
+  alignKey: number;
+  onReached: () => void;
+};
+
 const DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
   minTickMs: 24,
   maxTickMs: 140,
@@ -158,27 +165,33 @@ export function useSmoothStreamFromRef(
   narrativeRef: MutableRefObject<string>,
   isStreamVisualActive: boolean,
   onChunkRendered?: () => void,
-  options?: SmoothStreamOptions
+  streamOptions?: SmoothStreamOptions,
+  tailDrain?: SmoothStreamTailDrainConfig | null
 ): { text: string; isComplete: boolean; isThinking: boolean } {
   const [displayed, setDisplayed] = useState("");
+  const displayedRef = useRef("");
   const queueRef = useRef("");
   const prevLenRef = useRef(0);
   const lastEmitAtRef = useRef(0);
   const emittedNonWsLenRef = useRef(0);
   const turnStartAtRef = useRef(0);
   const hasShownMeaningfulRef = useRef(false);
+  const tailDrainFiredRef = useRef(false);
+  const onReachedRef = useRef<(() => void) | null>(null);
 
   const mergedOptionsRef = useRef<Required<SmoothStreamOptions>>({
     ...DEFAULT_OPTIONS,
-    ...(options ?? {}),
+    ...(streamOptions ?? {}),
   });
 
   useLayoutEffect(() => {
     mergedOptionsRef.current = {
       ...DEFAULT_OPTIONS,
-      ...(options ?? {}),
+      ...(streamOptions ?? {}),
     };
-  }, [options]);
+  }, [streamOptions]);
+
+  onReachedRef.current = tailDrain?.onReached ?? null;
 
   useLayoutEffect(() => {
     // Reset for each new visual turn, so StreamPanel never shows stale text.
@@ -189,6 +202,8 @@ export function useSmoothStreamFromRef(
       queueRef.current = "";
       prevLenRef.current = 0;
       lastEmitAtRef.current = 0;
+      tailDrainFiredRef.current = false;
+      displayedRef.current = "";
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplayed("");
     } else {
@@ -197,8 +212,31 @@ export function useSmoothStreamFromRef(
       lastEmitAtRef.current = 0;
       emittedNonWsLenRef.current = 0;
       hasShownMeaningfulRef.current = false;
+      tailDrainFiredRef.current = false;
+      displayedRef.current = "";
     }
   }, [isStreamVisualActive]);
+
+  useLayoutEffect(() => {
+    if (!isStreamVisualActive || !tailDrain || tailDrain.alignKey <= 0) return;
+    const T = tailDrain.targetRef.current;
+    if (!T) return;
+    if (narrativeRef.current !== T) {
+      narrativeRef.current = T;
+    }
+    const d = displayedRef.current;
+    if (T.startsWith(d)) {
+      queueRef.current = T.slice(d.length);
+      prevLenRef.current = T.length;
+    } else {
+      queueRef.current = T;
+      prevLenRef.current = T.length;
+      displayedRef.current = "";
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplayed("");
+    }
+    tailDrainFiredRef.current = false;
+  }, [isStreamVisualActive, tailDrain, narrativeRef]);
 
   useEffect(() => {
     if (!isStreamVisualActive) return;
@@ -213,7 +251,7 @@ export function useSmoothStreamFromRef(
         prevLenRef.current = src.length;
       }
 
-      const q = queueRef.current;
+      let q = queueRef.current;
 
       if (mergedOptions.uniformPacing) {
         const now = performance.now();
@@ -223,11 +261,26 @@ export function useSmoothStreamFromRef(
             const trimmed = q.replace(/^\s+/, "");
             if (trimmed !== q) {
               queueRef.current = trimmed;
-              rafId = requestAnimationFrame(tick);
-              return;
+            } else if (lastEmitAtRef.current === 0 || now - lastEmitAtRef.current >= tickMs) {
+              const head = trimmed[0] ?? "";
+              let len = 1;
+              const c0 = head.charCodeAt(0);
+              if (c0 >= 0xd800 && c0 <= 0xdbff && trimmed.length > 1) {
+                len = 2;
+              }
+              const chunk = trimmed.slice(0, len);
+              queueRef.current = trimmed.slice(len);
+              const nonWsAdd = chunk.replace(/\s/g, "").length;
+              if (nonWsAdd > 0) {
+                emittedNonWsLenRef.current += nonWsAdd;
+                hasShownMeaningfulRef.current = true;
+              }
+              displayedRef.current = displayedRef.current + chunk;
+              setDisplayed((prev) => prev + chunk);
+              onChunkRendered?.();
+              lastEmitAtRef.current = now;
             }
-          }
-          if (lastEmitAtRef.current === 0 || now - lastEmitAtRef.current >= tickMs) {
+          } else if (lastEmitAtRef.current === 0 || now - lastEmitAtRef.current >= tickMs) {
             const head = q[0] ?? "";
             let len = 1;
             const c0 = head.charCodeAt(0);
@@ -241,71 +294,85 @@ export function useSmoothStreamFromRef(
               emittedNonWsLenRef.current += nonWsAdd;
               hasShownMeaningfulRef.current = true;
             }
+            displayedRef.current = displayedRef.current + chunk;
             setDisplayed((prev) => prev + chunk);
             onChunkRendered?.();
             lastEmitAtRef.current = now;
           }
         }
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
+      } else {
+        q = queueRef.current;
+        if (q.length > 0) {
+          const now = performance.now();
+          const backlog = q.length;
+          const elapsedTurnMs = now - turnStartAtRef.current;
 
-      if (q.length > 0) {
-        // Determine 4-stage speed strategy.
-        const now = performance.now();
-        const backlog = q.length;
-        const elapsedTurnMs = now - turnStartAtRef.current;
+          const isInitial = elapsedTurnMs < mergedOptions.initialBurstWindowMs && !hasShownMeaningfulRef.current;
+          const isBacklog = backlog > Math.max(mergedOptions.backlogThreshold, 120);
 
-        const isInitial = elapsedTurnMs < mergedOptions.initialBurstWindowMs && !hasShownMeaningfulRef.current;
-        const isBacklog = backlog > Math.max(mergedOptions.backlogThreshold, 120);
+          const stage: "initial" | "steady" | "backlog" = isBacklog ? "backlog" : isInitial ? "initial" : "steady";
 
-        const stage: "initial" | "steady" | "backlog" = isBacklog ? "backlog" : isInitial ? "initial" : "steady";
+          if (!hasShownMeaningfulRef.current) {
+            const trimmed = q.replace(/^\s+/, "");
+            if (trimmed !== q) {
+              queueRef.current = trimmed;
+            }
+          }
 
-        // Spinner back-flash defense: do not emit-only-whitespace until first meaningful char.
-        if (!hasShownMeaningfulRef.current) {
-          const trimmed = q.replace(/^\s+/, "");
-          if (trimmed !== q) {
-            queueRef.current = trimmed;
-            rafId = requestAnimationFrame(tick);
-            return;
+          q = queueRef.current;
+          const minGateMs = mergedOptions.minTickMs;
+          const elapsedGate = now - lastEmitAtRef.current;
+          if (q.length > 0 && (lastEmitAtRef.current === 0 || elapsedGate >= minGateMs)) {
+            const maxLen =
+              stage === "initial"
+                ? mergedOptions.initialBurstMaxLen
+                : stage === "backlog"
+                  ? (() => {
+                      const over = Math.max(0, q.length - mergedOptions.backlogThreshold);
+                      const t = Math.max(0, Math.min(1, over / 240));
+                      const target =
+                        mergedOptions.steadyMaxLen +
+                        Math.round(t * (mergedOptions.backlogMaxLen - mergedOptions.steadyMaxLen));
+                      return Math.min(target, mergedOptions.backlogMaxLen, q.length);
+                    })()
+                  : mergedOptions.steadyMaxLen;
+
+            let chunk = takeSemanticChunk(q, maxLen);
+            chunk = adjustChunkBoundaryForMarkers(chunk);
+            if (!chunk) {
+              queueRef.current = q.slice(1);
+            } else {
+              const remain = q.slice(chunk.length);
+              queueRef.current = remain;
+              const nonWsAdd = chunk.replace(/\s/g, "").length;
+              if (nonWsAdd > 0) {
+                emittedNonWsLenRef.current += nonWsAdd;
+                hasShownMeaningfulRef.current = true;
+              }
+              displayedRef.current = displayedRef.current + chunk;
+              setDisplayed((prev) => prev + chunk);
+              onChunkRendered?.();
+              const pause = computePauseMs({ chunk, backlog: remain.length, stage, options: mergedOptions });
+              lastEmitAtRef.current = now - minGateMs + pause;
+            }
           }
         }
+      }
 
-        const minGateMs = mergedOptions.minTickMs;
-        const elapsedGate = now - lastEmitAtRef.current;
-        if (lastEmitAtRef.current === 0 || elapsedGate >= minGateMs) {
-          const maxLen =
-            stage === "initial"
-              ? mergedOptions.initialBurstMaxLen
-              : stage === "backlog"
-                ? (() => {
-                    const over = Math.max(0, backlog - mergedOptions.backlogThreshold);
-                    const t = Math.max(0, Math.min(1, over / 240));
-                    const target =
-                      mergedOptions.steadyMaxLen +
-                      Math.round(t * (mergedOptions.backlogMaxLen - mergedOptions.steadyMaxLen));
-                    return Math.min(target, mergedOptions.backlogMaxLen, backlog);
-                  })()
-                : mergedOptions.steadyMaxLen;
-
-          let chunk = takeSemanticChunk(q, maxLen);
-          chunk = adjustChunkBoundaryForMarkers(chunk);
-          if (!chunk) {
-            queueRef.current = q.slice(1);
-          } else {
-            const remain = q.slice(chunk.length);
-            queueRef.current = remain;
-            const nonWsAdd = chunk.replace(/\s/g, "").length;
-            if (nonWsAdd > 0) {
-              emittedNonWsLenRef.current += nonWsAdd;
-              hasShownMeaningfulRef.current = true;
-            }
-            setDisplayed((prev) => prev + chunk);
-            onChunkRendered?.();
-            const pause = computePauseMs({ chunk, backlog: remain.length, stage, options: mergedOptions });
-            // Gate next emission by pause (works even when pause < minTickMs).
-            lastEmitAtRef.current = now - minGateMs + pause;
-          }
+      const target = tailDrain?.targetRef.current ?? null;
+      if (!target) {
+        tailDrainFiredRef.current = false;
+      } else if (
+        narrativeRef.current === target &&
+        queueRef.current.length === 0 &&
+        displayedRef.current === target &&
+        prevLenRef.current === target.length
+      ) {
+        if (!tailDrainFiredRef.current) {
+          tailDrainFiredRef.current = true;
+          queueMicrotask(() => {
+            onReachedRef.current?.();
+          });
         }
       }
 
@@ -313,7 +380,7 @@ export function useSmoothStreamFromRef(
     }
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [isStreamVisualActive, narrativeRef, onChunkRendered]);
+  }, [isStreamVisualActive, narrativeRef, onChunkRendered, tailDrain]);
 
   const text = isStreamVisualActive ? displayed : "";
   const isComplete = !isStreamVisualActive;

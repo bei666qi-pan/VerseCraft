@@ -1,0 +1,13 @@
+{
+  "scenario": "npc_dialogue",
+  "description": "与 NPC 对话，易触发 dialogue 相关规则快照",
+  "latestUserInput": "我压低声音问：你昨晚在这层楼有没有听到奇怪的声音？",
+  "playerContext": "player_location: 电梯厅\\nactive_npc: 夜班保安老李\\nconversation_state: 初次接触\\nhp: 78",
+  "ruleSnapshot": {
+    "in_combat_hint": false,
+    "in_dialogue_hint": true,
+    "location_changed_hint": false,
+    "high_value_scene": true
+  },
+  "observabilityNotes": "high_value_scene 可能提高增强门控命中；预检 intent 偏 dialogue"
+}

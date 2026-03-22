@@ -5,7 +5,19 @@ function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
-function normalizeUsage(raw: unknown): TokenUsage | null {
+function readCachedPromptTokens(u: Record<string, unknown>): number | undefined {
+  const details = asRecord(u.prompt_tokens_details ?? u.promptTokensDetails);
+  if (details) {
+    const c = Number(details.cached_tokens ?? details.cachedTokens ?? 0);
+    if (Number.isFinite(c) && c > 0) return Math.trunc(c);
+  }
+  const alt = Number(u.cached_prompt_tokens ?? u.cachedPromptTokens ?? 0);
+  if (Number.isFinite(alt) && alt > 0) return Math.trunc(alt);
+  return undefined;
+}
+
+/** Best-effort normalization for OpenAI-compatible usage objects (stream + non-stream). */
+export function normalizeUsage(raw: unknown): TokenUsage | null {
   const u = asRecord(raw);
   if (!u) return null;
   const total = Number(u.total_tokens ?? u.totalTokens ?? 0);
@@ -20,11 +32,13 @@ function normalizeUsage(raw: unknown): TokenUsage | null {
       : (promptTokens ?? 0) + (completionTokens ?? 0) > 0
         ? (promptTokens ?? 0) + (completionTokens ?? 0)
         : 0;
-  if (mergedTotal <= 0 && !promptTokens && !completionTokens) return null;
+  const cachedPromptTokens = readCachedPromptTokens(u);
+  if (mergedTotal <= 0 && !promptTokens && !completionTokens && cachedPromptTokens === undefined) return null;
   return {
     totalTokens: mergedTotal > 0 ? mergedTotal : undefined,
     promptTokens,
     completionTokens,
+    ...(cachedPromptTokens !== undefined ? { cachedPromptTokens } : {}),
   };
 }
 

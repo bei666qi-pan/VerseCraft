@@ -90,13 +90,17 @@ const CONTROL_SYSTEM = [
   "请严格以 JSON 格式输出",
 ].join("\n");
 
+export type ControlPreflightResult =
+  | { ok: true; control: PlayerControlPlane; fromCache: boolean; latencyMs: number }
+  | { ok: false; error: string; fromCache: boolean; latencyMs: number };
+
 export async function runPlayerControlPreflight(args: {
   latestUserInput: string;
   playerContext: string;
   ruleSnapshot: PlayerRuleSnapshot;
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path">;
   signal?: AbortSignal;
-}): Promise<{ ok: true; control: PlayerControlPlane } | { ok: false; error: string }> {
+}): Promise<ControlPreflightResult> {
   const ruleJson = JSON.stringify(args.ruleSnapshot);
   const cached = await readPreflightPlane({
     latestUserInput: args.latestUserInput,
@@ -115,7 +119,7 @@ export async function runPlayerControlPreflight(args: {
       stream: false,
       userId: args.ctx.userId,
     });
-    return { ok: true, control: cached };
+    return { ok: true, control: cached, fromCache: true, latencyMs: 0 };
   }
 
   const userPayload = [
@@ -149,12 +153,23 @@ export async function runPlayerControlPreflight(args: {
   });
 
   if (!res.ok) {
-    return { ok: false, error: res.message ?? "control_preflight_failed" };
+    const lat = res.latencyMs;
+    return {
+      ok: false,
+      error: res.message ?? "control_preflight_failed",
+      fromCache: false,
+      latencyMs: lat != null && Number.isFinite(lat) ? Math.max(0, Math.trunc(lat)) : 0,
+    };
   }
+
+  const apiLatency =
+    res.latencyMs != null && Number.isFinite(res.latencyMs)
+      ? Math.max(0, Math.trunc(res.latencyMs))
+      : 0;
 
   const control = parseControlPlaneJson(res.content ?? "");
   if (!control) {
-    return { ok: false, error: "control_parse_failed" };
+    return { ok: false, error: "control_parse_failed", fromCache: false, latencyMs: apiLatency };
   }
 
   void writePreflightPlane({
@@ -166,5 +181,5 @@ export async function runPlayerControlPreflight(args: {
     control,
   }).catch(() => {});
 
-  return { ok: true, control };
+  return { ok: true, control, fromCache: false, latencyMs: apiLatency };
 }

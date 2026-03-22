@@ -12,6 +12,21 @@ import {
 } from "@/lib/ai/models/logicalRoles";
 import { envBoolean, envEnum, envNumber, envRaw } from "@/lib/config/envRaw";
 
+function resolveGatewayExtraBody(): Record<string, unknown> | undefined {
+  if (!envBoolean("AI_GATEWAY_MERGE_EXTRA_BODY", false)) return undefined;
+  const raw = envRaw("AI_GATEWAY_EXTRA_BODY_JSON")?.trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    /* invalid JSON → no merge */
+  }
+  return undefined;
+}
+
 export type AiGatewayProviderId = "oneapi";
 
 export interface ResolvedAiEnv {
@@ -35,6 +50,23 @@ export interface ResolvedAiEnv {
   /** Task requests stream only if binding.stream && enableStream. */
   enableStream: boolean;
   logLevel: "silent" | "error" | "info" | "debug";
+  /** Two role=system messages (stable + dynamic) for PLAYER_CHAT when true. */
+  splitPlayerChatDualSystem: boolean;
+  /** Parsed AI_GATEWAY_EXTRA_BODY_JSON when AI_GATEWAY_MERGE_EXTRA_BODY=1. */
+  gatewayExtraBody?: Record<string, unknown>;
+  /**
+   * Wall-clock cap to wait for control preflight before treating as unavailable (same as API failure).
+   * 0 = wait for full upstream timeout (legacy).
+   */
+  controlPreflightBudgetMs: number;
+  /**
+   * Max time for optional narrative enhancement LLM; 0 = wait for task timeout only (legacy).
+   */
+  narrativeEnhanceBudgetMs: number;
+  /**
+   * Min interval between postModelModeration calls on stream deltas; 0 = moderate every delta (legacy).
+   */
+  streamModerationThrottleMs: number;
 }
 
 /** Default player SSE fallback role order when env omits chain. */
@@ -156,6 +188,20 @@ export function resolveAiEnv(): ResolvedAiEnv {
     exposeAiRoutingHeader: envBoolean("AI_EXPOSE_ROUTING_HEADER", false),
     enableStream: envBoolean("AI_ENABLE_STREAM", true),
     logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
+    splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
+    gatewayExtraBody: resolveGatewayExtraBody(),
+    controlPreflightBudgetMs: Math.max(
+      0,
+      Math.min(10_000, envNumber("AI_CONTROL_PREFLIGHT_BUDGET_MS", 0))
+    ),
+    narrativeEnhanceBudgetMs: Math.max(
+      0,
+      Math.min(60_000, envNumber("AI_NARRATIVE_ENHANCE_BUDGET_MS", 0))
+    ),
+    streamModerationThrottleMs: Math.max(
+      0,
+      Math.min(2000, envNumber("AI_STREAM_MODERATION_THROTTLE_MS", 0))
+    ),
   };
 }
 

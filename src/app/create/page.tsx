@@ -320,18 +320,17 @@ export default function CreatePage(props: AppPageDynamicProps) {
               }}
               className="group relative inline-flex items-center gap-3 rounded-full border border-white/15 bg-slate-900/40 px-3 py-2 text-xs font-semibold text-slate-50 shadow-[0_0_30px_rgba(15,23,42,0.7)] backdrop-blur-2xl transition-all duration-300 hover:scale-105 hover:border-cyan-300/70 hover:shadow-[0_0_45px_rgba(56,189,248,0.85)] sm:px-4"
             >
-              <div className="relative flex h-8 w-8 items-center justify-center">
+              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
                 <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
-                <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm" />
-                <div className="relative z-[1] flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                <div className="relative z-[1] h-8 w-8 overflow-hidden rounded-full ring-1 ring-white/20">
                   <Image
                     src="/logo.svg"
                     alt="VerseCraft"
-                    width={20}
-                    height={20}
+                    fill
+                    sizes="32px"
                     draggable={false}
-                    className="object-cover scale-[1.12]"
+                    className="object-cover"
                   />
                 </div>
               </div>

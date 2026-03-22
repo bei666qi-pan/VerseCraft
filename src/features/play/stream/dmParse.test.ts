@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractFirstBalancedJsonObject, tryParseDM } from "./dmParse";
+import {
+  extractBalancedJsonObjectFrom,
+  extractFirstBalancedJsonObject,
+  tryParseDM,
+} from "./dmParse";
 
 test("extractFirstBalancedJsonObject: nested braces in string", () => {
   const s = '{"a":"{x}","b":1}';
@@ -28,4 +32,35 @@ test("tryParseDM: markdown fence still works", () => {
   const dm = tryParseDM(wrapped);
   assert.ok(dm);
   assert.equal(dm?.narrative, "y");
+});
+
+test("tryParseDM: garbage prefix before JSON object", () => {
+  const inner =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"prefixed","is_death":false,"consumes_time":true}';
+  const dm = tryParseDM(`模型输出：\n${inner}`);
+  assert.ok(dm);
+  assert.equal(dm?.narrative, "prefixed");
+});
+
+test("tryParseDM: first object not valid JSON, second object is valid DM", () => {
+  const good =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"second","is_death":false,"consumes_time":true}';
+  const dm = tryParseDM(`{oops}${good}`);
+  assert.ok(dm);
+  assert.equal(dm?.narrative, "second");
+});
+
+test("extractBalancedJsonObjectFrom: slice from inner brace offset", () => {
+  const good =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"x","is_death":false,"consumes_time":true}';
+  const at = good.indexOf("{");
+  assert.equal(extractBalancedJsonObjectFrom(good, at), good);
+});
+
+test("tryParseDM: trailing comma repaired via jsonrepair", () => {
+  const raw =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"z","is_death":false,"consumes_time":true,}';
+  const dm = tryParseDM(raw);
+  assert.ok(dm);
+  assert.equal(dm?.narrative, "z");
 });

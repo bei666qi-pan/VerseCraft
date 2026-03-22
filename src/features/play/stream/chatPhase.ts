@@ -11,6 +11,9 @@ export function doesChatPhaseLockInteraction(phase: ChatStreamPhase): boolean {
  */
 export function isStreamVisualActivePhase(phase: ChatStreamPhase): boolean {
   return (
-    phase === "waiting_upstream" || phase === "streaming_body" || phase === "turn_committing"
+    phase === "waiting_upstream" ||
+    phase === "streaming_body" ||
+    phase === "turn_committing" ||
+    phase === "tail_draining"
   );
 }

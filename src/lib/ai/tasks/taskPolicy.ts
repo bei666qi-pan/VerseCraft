@@ -35,7 +35,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryRole: MAIN,
     fallbackRoles: [],
     stream: true,
-    maxTokens: 1408,
+    maxTokens: 896,
     timeoutMs: 60_000,
     budgetLevel: "critical",
     responseFormatJsonObject: true,

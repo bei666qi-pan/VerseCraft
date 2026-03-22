@@ -56,6 +56,8 @@ export interface TokenUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  /** OpenAI-style prompt cache / KV hits when upstream exposes them. */
+  cachedPromptTokens?: number;
 }
 
 /** Normalized chunk from any vendor stream before business SSE. */

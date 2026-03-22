@@ -11,6 +11,8 @@ import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { AIRequestContext, ChatMessage, TaskType } from "@/lib/ai/types/core";
 import type { TaskBinding } from "@/lib/ai/tasks/taskPolicy";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
+import type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
+import type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
 
 /** 主叙事 / 玩家 SSE：固定 PLAYER_CHAT，由 taskPolicy 解析逻辑角色与 one-api 模型名。 */
@@ -44,7 +46,7 @@ export async function parsePlayerIntent(args: {
   ruleSnapshot: PlayerRuleSnapshot;
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path">;
   signal?: AbortSignal;
-}): Promise<{ ok: true; control: PlayerControlPlane } | { ok: false; error: string }> {
+}): Promise<ControlPreflightResult> {
   const { runPlayerControlPreflight } = await import("@/lib/playRealtime/controlPreflight");
   return runPlayerControlPreflight(args);
 }
@@ -60,10 +62,15 @@ export async function enhanceScene(args: {
   isFirstAction: boolean;
   playerContext: string;
   latestUserInput: string;
-}): Promise<Record<string, unknown> | null> {
+  /** 0 = use upstream task timeout only. */
+  enhanceBudgetMs?: number;
+}): Promise<EnhanceAfterMainStreamResult> {
   const { tryEnhanceDmAfterMainStream } = await import("@/lib/playRealtime/narrativeEnhancement");
   return tryEnhanceDmAfterMainStream(args);
 }
+
+export type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
+export type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
 
 export type OfflineReasonerKind = "worldbuild" | "storyline" | "dev_assist";
 

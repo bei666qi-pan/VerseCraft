@@ -24,6 +24,10 @@ export interface AiObservabilityRecord {
   estCostUsd?: number;
   userIdHash?: string;
   message?: string;
+  ttftMs?: number;
+  stableCharLen?: number;
+  dynamicCharLen?: number;
+  cachedPromptTokens?: number;
 }
 
 function hashUser(userId: string | null | undefined): string | undefined {

@@ -1,13 +1,14 @@
 // src/lib/playRealtime/narrativeEnhancement.ts
 import { pushAiObservability } from "@/lib/ai/debug/observabilityRing";
 import { evaluateNarrativeEnhancementGate, sampleEnhancementAttempt } from "@/lib/ai/governance/enhancementRules";
+import { aiGovernanceEnv } from "@/lib/ai/governance/governanceEnvCore";
 import {
   commitNarrativeEnhancementBudget,
   isNarrativeEnhancementBudgetAvailable,
 } from "@/lib/ai/governance/sessionBudget";
 import { executeChatCompletion } from "@/lib/ai/service";
 import type { OperationMode } from "@/lib/ai/degrade/mode";
-import type { AIRequestContext, ChatMessage } from "@/lib/ai/types/core";
+import type { AIRequestContext, ChatMessage, TokenUsage } from "@/lib/ai/types/core";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
 
 function extractJsonObject(raw: string): Record<string, unknown> | null {
@@ -38,6 +39,10 @@ function logEnhanceSkip(args: {
   });
 }
 
+export type EnhanceAfterMainStreamResult =
+  | { kind: "applied"; dm: Record<string, unknown>; wallMs: number; usage: TokenUsage | null }
+  | { kind: "skipped"; reason: string; wallMs: number };
+
 /**
  * Post-stream, single-shot enhancement: rewrites only the opening fragment via enhance-role completion (or policy fallback).
  * Gated by code rules + session budget + sampling — never required for a valid turn.
@@ -52,7 +57,12 @@ export async function tryEnhanceDmAfterMainStream(args: {
   isFirstAction: boolean;
   playerContext: string;
   latestUserInput: string;
-}): Promise<Record<string, unknown> | null> {
+  /** Wall-clock cap for enhance-role completion; 0 = task timeout only. */
+  enhanceBudgetMs?: number;
+}): Promise<EnhanceAfterMainStreamResult> {
+  const t0 = Date.now();
+  const wallMs = () => Math.max(0, Date.now() - t0);
+
   if (args.mode !== "full") {
     logEnhanceSkip({
       requestId: args.baseCtx.requestId,
@@ -60,14 +70,18 @@ export async function tryEnhanceDmAfterMainStream(args: {
       sessionId: args.baseCtx.sessionId,
       reason: "mode_not_full",
     });
-    return null;
+    return { kind: "skipped", reason: "mode_not_full", wallMs: wallMs() };
   }
 
   const dm = extractJsonObject(args.accumulatedJsonText);
-  if (!dm || typeof dm.narrative !== "string") return null;
+  if (!dm || typeof dm.narrative !== "string") {
+    return { kind: "skipped", reason: "no_valid_dm_json", wallMs: wallMs() };
+  }
 
   const narrative = dm.narrative.trim();
-  if (narrative.length < 96) return null;
+  if (narrative.length < 96) {
+    return { kind: "skipped", reason: "narrative_too_short", wallMs: wallMs() };
+  }
 
   const gate = evaluateNarrativeEnhancementGate({
     control: args.control,
@@ -76,6 +90,7 @@ export async function tryEnhanceDmAfterMainStream(args: {
     latestUserInput: args.latestUserInput,
     isFirstAction: args.isFirstAction,
     accumulatedDmJson: args.accumulatedJsonText,
+    gateMinScore: aiGovernanceEnv.enhanceGateMinScore,
   });
 
   if (!gate.allowed) {
@@ -86,7 +101,7 @@ export async function tryEnhanceDmAfterMainStream(args: {
       reason: gate.reasons.join(","),
       score: gate.score,
     });
-    return null;
+    return { kind: "skipped", reason: `gate:${gate.reasons.join(",")}`, wallMs: wallMs() };
   }
 
   if (!isNarrativeEnhancementBudgetAvailable(args.baseCtx.sessionId)) {
@@ -97,7 +112,7 @@ export async function tryEnhanceDmAfterMainStream(args: {
       reason: "session_budget",
       score: gate.score,
     });
-    return null;
+    return { kind: "skipped", reason: "session_budget", wallMs: wallMs() };
   }
 
   if (!sampleEnhancementAttempt(gate.forceAttempt, gate.score)) {
@@ -108,7 +123,7 @@ export async function tryEnhanceDmAfterMainStream(args: {
       reason: "sampled_out",
       score: gate.score,
     });
-    return null;
+    return { kind: "skipped", reason: "sampled_out", wallMs: wallMs() };
   }
 
   const task =
@@ -140,9 +155,15 @@ export async function tryEnhanceDmAfterMainStream(args: {
     { role: "user", content: prefix },
   ];
 
-  commitNarrativeEnhancementBudget(args.baseCtx.sessionId);
+  const enhanceAc = new AbortController();
+  const parentSig = args.signal;
+  const onParentAbort = (): void => enhanceAc.abort();
+  if (parentSig) {
+    if (parentSig.aborted) enhanceAc.abort();
+    else parentSig.addEventListener("abort", onParentAbort, { once: true });
+  }
 
-  const res = await executeChatCompletion({
+  const completionP = executeChatCompletion({
     task,
     messages,
     ctx: {
@@ -152,18 +173,60 @@ export async function tryEnhanceDmAfterMainStream(args: {
       sessionId: args.baseCtx.sessionId,
       path: args.baseCtx.path ?? "/api/chat",
     },
-    signal: args.signal,
+    signal: enhanceAc.signal,
     requestTimeoutMs: 12_000,
   });
 
-  if (!res.ok) return null;
+  const budgetMs = args.enhanceBudgetMs ?? 0;
+  let res: Awaited<typeof completionP>;
+  if (budgetMs > 0) {
+    let budgetTid: ReturnType<typeof setTimeout> | undefined;
+    const budgetPromise = new Promise<"timeout">((resolve) => {
+      budgetTid = setTimeout(() => resolve("timeout"), budgetMs);
+    });
+    const winner = await Promise.race([
+      completionP.then((r) => ({ tag: "done" as const, r })),
+      budgetPromise.then(() => ({ tag: "timeout" as const })),
+    ]);
+    if (budgetTid !== undefined) clearTimeout(budgetTid);
+    if (winner.tag === "timeout") {
+      enhanceAc.abort();
+      if (parentSig) parentSig.removeEventListener("abort", onParentAbort);
+      logEnhanceSkip({
+        requestId: args.baseCtx.requestId,
+        userId: args.baseCtx.userId,
+        sessionId: args.baseCtx.sessionId,
+        reason: "enhance_budget_timeout",
+        score: gate.score,
+      });
+      return { kind: "skipped", reason: "enhance_budget_timeout", wallMs: wallMs() };
+    }
+    res = winner.r;
+  } else {
+    res = await completionP;
+  }
+  if (parentSig) parentSig.removeEventListener("abort", onParentAbort);
+
+  if (!res.ok) {
+    return { kind: "skipped", reason: "enhance_api_failed", wallMs: wallMs() };
+  }
+
+  commitNarrativeEnhancementBudget(args.baseCtx.sessionId);
   const out = (res.content ?? "").trim();
-  if (out.length < 12) return null;
-  if (out.startsWith("{") || out.includes('"narrative"')) return null;
-  if (out.length > prefix.length * 1.35 + 8) return null;
+  if (out.length < 12) {
+    return { kind: "skipped", reason: "enhance_output_too_short", wallMs: wallMs() };
+  }
+  if (out.startsWith("{") || out.includes('"narrative"')) {
+    return { kind: "skipped", reason: "enhance_output_json_like", wallMs: wallMs() };
+  }
+  if (out.length > prefix.length * 1.35 + 8) {
+    return { kind: "skipped", reason: "enhance_output_too_long", wallMs: wallMs() };
+  }
 
   const merged = `${out}${suffix}`;
-  if (merged.length > narrative.length * 2.2) return null;
+  if (merged.length > narrative.length * 2.2) {
+    return { kind: "skipped", reason: "enhance_merged_too_long", wallMs: wallMs() };
+  }
 
   pushAiObservability({
     requestId: args.baseCtx.requestId,
@@ -178,5 +241,5 @@ export async function tryEnhanceDmAfterMainStream(args: {
     userId: args.baseCtx.userId,
   });
 
-  return { ...dm, narrative: merged };
+  return { kind: "applied", dm: { ...dm, narrative: merged }, wallMs: wallMs(), usage: res.usage };
 }

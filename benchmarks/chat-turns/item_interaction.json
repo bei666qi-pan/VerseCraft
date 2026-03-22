@@ -1,0 +1,13 @@
+{
+  "scenario": "item_interaction",
+  "description": "使用道具 / 调查物品，槽位与 intent 偏 use_item / investigate",
+  "latestUserInput": "我用钥匙试开防火门上的挂锁，同时用手机灯照锁孔周围有没有刮痕。",
+  "playerContext": "player_location: 楼梯间\\ninventory: 铜钥匙, 手机, 绷带\\nquest_flags: 寻找逃生通道",
+  "ruleSnapshot": {
+    "in_combat_hint": false,
+    "in_dialogue_hint": false,
+    "location_changed_hint": false,
+    "high_value_scene": false
+  },
+  "observabilityNotes": "预检 extracted_slots 可能出现 item_hint / location_hint"
+}

@@ -6,7 +6,7 @@
 
 | TaskType | 主角色 | 预算等级 | max_tokens（策略上限） | 流式 | 备注 |
 |----------|--------|----------|-------------------------|------|------|
-| PLAYER_CHAT | main | critical | 1408 | 是 | 在线主链路；禁止 reasoner / enhance |
+| PLAYER_CHAT | main | critical | 896 | 是 | 在线主链路；禁止 reasoner / enhance；上限贴近短 narrative+JSON 实际体积 |
 | PLAYER_CONTROL_PREFLIGHT | control → main | low | 512 | 否 | 控制面；可短缓存 |
 | INTENT_PARSE | control | low | 640 | 否 | |
 | SAFETY_PREFILTER | control | low | 384 | 否 | |
@@ -20,6 +20,8 @@
 | MEMORY_COMPRESSION | main | medium | 1792 | 否 | **不缓存**（状态演进） |
 
 `reasoner` 角色仅出现在离线类任务；在线路径由 `TASK_ROLE_FORBIDDEN` 硬禁止。上游具体模型由 `AI_MODEL_*` + one-api 决定。
+
+**玩家 DM 终帧**：`src/app/api/chat/route.ts` 在主流式成功结束且 JSON 可解析时，经 `normalizePlayerDmJson` 补齐缺省数组/数值后发送 `__VERSECRAFT_FINAL__:`，与客户端 `sseFrame` 折叠逻辑一致；便于模型省略默认可补字段以降低 output token。
 
 ## 高价值增强触发规则（enhance 角色 / 感官层）
 
@@ -64,12 +66,17 @@ Redis 可用时走 `SETEX`/`GET`；否则进程内 Map（容量有界）。
 | `requestId` | 请求关联 ID |
 | `task` | TaskType |
 | `modelId` / `providerId` | 实际模型与厂商 |
-| `phase` | start / success / error / preflight_cache_hit / enhance_skip:* / enhance_applied |
+| `phase` | start / success / error / circuit_skip / fallback / **stream_first_token** / **stream_complete** / **preflight_budget** / preflight_cache_hit / enhance_skip:* / enhance_applied |
 | `latencyMs` | 毫秒 |
+| `ttftMs` | 玩家流首包相对请求开始的毫秒（telemetry，常与 `stream_first_token` 同发） |
+
+回合级汇总另见 DB 事件 **`chat_request_finished`** 的 `payload` 字段表（[`docs/ai-gateway.md`](ai-gateway.md) §7）：含 `preflight*`、`enhance*`、`promptTokens` / `cachedPromptTokens` 等，便于与 `ai.telemetry` 交叉验证。
+| `stableCharLen` / `dynamicCharLen` | 玩家 DM system 稳定前缀与动态后缀字符长度（telemetry / observability） |
+| `cachedPromptTokens` | 上游提示缓存命中 token 数（若 `usage` 或根级透出；observability） |
 | `stream` | 是否流式主链路 |
 | `cacheHit` | 是否命中缓存 |
 | `fallbackCount` | 模型 fallback 次数 |
-| `usage` | 上游 token 结构（telemetry） |
+| `usage` | 上游 token 结构（telemetry）；可含 **`cachedPromptTokens`** |
 | `totalTokens` | 汇总（observability） |
 | `estCostUsd` | **启发式**美元估算（telemetry success） |
 | `userIdHash` | `sha256(userId)` 前 12 位，**非明文** |
@@ -79,4 +86,4 @@ Redis 可用时走 `SETEX`/`GET`；否则进程内 Map（容量有界）。
 
 ## 环境变量（可选调参）
 
-见根目录 `.env.example` 中 `AI_CACHE_*` / `AI_PREFLIGHT_*` / `AI_ENHANCE_*` / `VERSECRAFT_AI_CACHE_VERSION`。
+见根目录 `.env.example` 中 `AI_CACHE_*` / `AI_PREFLIGHT_*` / `AI_ENHANCE_*` / `VERSECRAFT_AI_CACHE_VERSION`。叙事增强门控最低分可调 **`AI_ENHANCE_GATE_MIN_SCORE`**（默认 `32`，与历史一致；调高则更少回合进入增强采样）。

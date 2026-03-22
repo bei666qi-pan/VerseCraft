@@ -1,12 +1,15 @@
+import { jsonrepair } from "jsonrepair";
 import type { DMJson } from "./types";
 
+const MAX_BRACE_SCAN = 64;
+const LOG_HEAD_CHARS = 180;
+const LOG_TAIL_CHARS = 100;
+
 /**
- * 从文本中截取**第一个**顶层 JSON 对象（`{`…`}`），正确处理字符串内的括号与转义。
- * 用于模型重复输出两段相同 `{...}{...}` 时避免贪婪正则把两段拼成非法 JSON。
+ * 从 `start`（须为 `{`）起截取**一个**平衡顶层对象，正确处理字符串内的括号与转义。
  */
-export function extractFirstBalancedJsonObject(s: string): string | null {
-  const start = s.indexOf("{");
-  if (start === -1) return null;
+export function extractBalancedJsonObjectFrom(s: string, start: number): string | null {
+  if (start < 0 || start >= s.length || s[start] !== "{") return null;
   let depth = 0;
   let inString = false;
   let escapeNext = false;
@@ -32,6 +35,57 @@ export function extractFirstBalancedJsonObject(s: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * 从文本中截取**第一个**顶层 JSON 对象（`{`…`}`）。
+ * 用于模型重复输出两段相同 `{...}{...}` 时避免把两段拼成非法 JSON。
+ */
+export function extractFirstBalancedJsonObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  return extractBalancedJsonObjectFrom(s, start);
+}
+
+function isValidDmShape(data: unknown): data is DMJson {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    typeof (data as DMJson).is_action_legal === "boolean" &&
+    typeof (data as DMJson).sanity_damage === "number" &&
+    typeof (data as DMJson).narrative === "string" &&
+    typeof (data as DMJson).is_death === "boolean"
+  );
+}
+
+function parseSliceToDm(slice: string): DMJson | null {
+  try {
+    const data = JSON.parse(slice) as unknown;
+    if (isValidDmShape(data)) return data;
+  } catch {
+    /* try repair */
+  }
+  try {
+    const repaired = jsonrepair(slice);
+    const data = JSON.parse(repaired) as unknown;
+    if (isValidDmShape(data)) return data;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function logTryParseFailure(cleanContent: string, candidateCount: number): void {
+  const head = cleanContent.slice(0, LOG_HEAD_CHARS);
+  const tail =
+    cleanContent.length > LOG_HEAD_CHARS + LOG_TAIL_CHARS
+      ? cleanContent.slice(-LOG_TAIL_CHARS)
+      : "";
+  console.error(
+    `[tryParseDM] JSON parse failed after ${candidateCount} candidate object(s), totalLength=${cleanContent.length}, head=${JSON.stringify(head)}${
+      tail ? `, tail=${JSON.stringify(tail)}` : ""
+    }`
+  );
 }
 
 /**
@@ -135,30 +189,29 @@ export const FALLBACK_DM: DMJson = {
 
 export function tryParseDM(raw: string): DMJson | null {
   const cleanContent = raw
+    .replace(/^\uFEFF/, "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
 
-  const objectSlice = extractFirstBalancedJsonObject(cleanContent);
-  if (!objectSlice) {
-    return null;
+  const bracePositions: number[] = [];
+  for (let i = 0; i < cleanContent.length && bracePositions.length < MAX_BRACE_SCAN; i++) {
+    if (cleanContent[i] === "{") bracePositions.push(i);
   }
 
-  let parsedData: DMJson;
-  try {
-    parsedData = JSON.parse(objectSlice) as DMJson;
-  } catch {
-    console.error("JSON Parsing Failed, raw content:", raw);
-    return null;
+  let candidatesTried = 0;
+  for (const pos of bracePositions) {
+    const objectSlice = extractBalancedJsonObjectFrom(cleanContent, pos);
+    if (!objectSlice || objectSlice.length < 2) continue;
+    candidatesTried++;
+    const dm = parseSliceToDm(objectSlice);
+    if (dm) return dm;
   }
 
-  if (
-    typeof parsedData?.is_action_legal === "boolean" &&
-    typeof parsedData?.sanity_damage === "number" &&
-    typeof parsedData?.narrative === "string" &&
-    typeof parsedData?.is_death === "boolean"
-  ) {
-    return parsedData;
+  if (candidatesTried === 0) {
+    console.error("[tryParseDM] no balanced `{...}` slice found");
+    return null;
   }
+  logTryParseFailure(cleanContent, candidatesTried);
   return null;
 }

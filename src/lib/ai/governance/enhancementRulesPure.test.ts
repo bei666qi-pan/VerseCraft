@@ -64,6 +64,38 @@ test("evaluateNarrativeEnhancementGate allows high-value stack", () => {
   assert.ok(r.score >= 32);
 });
 
+test("evaluateNarrativeEnhancementGate gateMinScore can block borderline scores", () => {
+  const control: PlayerControlPlane = {
+    intent: "explore",
+    confidence: 0.9,
+    extracted_slots: {},
+    risk_tags: [],
+    risk_level: "low",
+    dm_hints: "",
+    enhance_scene: true,
+    enhance_npc_emotion: false,
+    block_dm: false,
+    block_reason: "",
+  };
+  const narrowRule: PlayerRuleSnapshot = {
+    in_combat_hint: false,
+    in_dialogue_hint: false,
+    location_changed_hint: false,
+    high_value_scene: true,
+  };
+  const r = evaluateNarrativeEnhancementGate({
+    control,
+    rule: narrowRule,
+    playerContext: "",
+    latestUserInput: "",
+    isFirstAction: true,
+    accumulatedDmJson: "{}",
+    gateMinScore: 50,
+  });
+  assert.equal(r.allowed, false);
+  assert.equal(r.score, 45);
+});
+
 test("sampleEnhancementAttempt respects forceAttempt", () => {
   const orig = Math.random;
   Math.random = () => 0.99;

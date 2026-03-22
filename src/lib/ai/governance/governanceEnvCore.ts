@@ -10,4 +10,6 @@ export const aiGovernanceEnv = {
   preflightMaxPerMinutePerSession: envNumber("AI_PREFLIGHT_MAX_PER_MINUTE", 48),
   enhanceCooldownSec: envNumber("AI_ENHANCE_COOLDOWN_SEC", 90),
   enhanceMaxPerHourPerSession: envNumber("AI_ENHANCE_MAX_PER_HOUR", 10),
+  /** Min score (inclusive) to allow narrative enhancement gate; default matches historical 32. */
+  enhanceGateMinScore: Math.max(20, Math.min(80, envNumber("AI_ENHANCE_GATE_MIN_SCORE", 32))),
 };

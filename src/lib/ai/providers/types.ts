@@ -10,6 +10,8 @@ export interface NormalizedCompletionRequest {
   temperature?: number;
   responseFormatJsonObject?: boolean;
   streamIncludeUsage?: boolean;
+  /** Shallow-merged into JSON body when set (PLAYER_CHAT + gateway switch); cannot override reserved keys. */
+  extraBody?: Record<string, unknown>;
 }
 
 export interface ProviderRequestFactory {

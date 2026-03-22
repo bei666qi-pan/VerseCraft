@@ -34,6 +34,8 @@ export function evaluateNarrativeEnhancementGate(args: {
   latestUserInput: string;
   isFirstAction: boolean;
   accumulatedDmJson: string;
+  /** Minimum score to allow enhancement (default 32, historical). */
+  gateMinScore?: number;
 }): EnhancementGateResult {
   const reasons: string[] = [];
   let score = 0;
@@ -73,8 +75,9 @@ export function evaluateNarrativeEnhancementGate(args: {
     reasons.push("combat_atmosphere");
   }
 
+  const minScore = args.gateMinScore ?? 32;
   const forceAttempt = score >= 68;
-  const allowed = score >= 32;
+  const allowed = score >= minScore;
   if (!allowed) {
     reasons.push("below_min_score");
     return { allowed: false, score, reasons, forceAttempt: false };

@@ -44,7 +44,8 @@ function buildPlayerStreamBody(
   gatewayModel: string,
   messages: ChatMessage[],
   binding: TaskBinding,
-  enableStream: boolean
+  enableStream: boolean,
+  extraBody?: Record<string, unknown>
 ): NormalizedCompletionRequest {
   const stream = binding.stream && enableStream;
   return {
@@ -55,6 +56,7 @@ function buildPlayerStreamBody(
     temperature: binding.temperature,
     responseFormatJsonObject: binding.responseFormatJsonObject,
     streamIncludeUsage: stream,
+    ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
   };
 }
 
@@ -200,7 +202,8 @@ export async function executePlayerChatStream(params: {
       gatewayModel,
       params.messages,
       taskBinding,
-      env.enableStream
+      env.enableStream,
+      env.gatewayExtraBody
     );
     const init = factory.buildInit(key, body);
     const t0 = Date.now();

@@ -1,7 +1,11 @@
 // src/lib/ai/stream/openaiLike.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractNonStreamContent, parseOpenAiLikeStreamData } from "@/lib/ai/stream/openaiLike";
+import {
+  extractNonStreamContent,
+  normalizeUsage,
+  parseOpenAiLikeStreamData,
+} from "@/lib/ai/stream/openaiLike";
 
 test("parseOpenAiLikeStreamData handles [DONE] and empty", () => {
   const done = parseOpenAiLikeStreamData("[DONE]");
@@ -34,4 +38,25 @@ test("extractNonStreamContent reads message.content", () => {
   });
   assert.equal(content, '{"ok":true}');
   assert.equal(usage?.totalTokens, 1);
+});
+
+test("normalizeUsage reads prompt_tokens_details.cached_tokens", () => {
+  const u = normalizeUsage({
+    prompt_tokens: 1000,
+    completion_tokens: 50,
+    total_tokens: 1050,
+    prompt_tokens_details: { cached_tokens: 800 },
+  });
+  assert.equal(u?.cachedPromptTokens, 800);
+  assert.equal(u?.totalTokens, 1050);
+});
+
+test("normalizeUsage reads cached_prompt_tokens alias", () => {
+  const u = normalizeUsage({
+    prompt_tokens: 10,
+    completion_tokens: 2,
+    total_tokens: 12,
+    cached_prompt_tokens: 7,
+  });
+  assert.equal(u?.cachedPromptTokens, 7);
 });

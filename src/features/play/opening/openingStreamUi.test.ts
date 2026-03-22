@@ -11,6 +11,7 @@ test("computeOpeningBusyUi：等待上游或流式中且标记为 true 时显示
   assert.equal(computeOpeningBusyUi(true, "waiting_upstream"), true);
   assert.equal(computeOpeningBusyUi(true, "streaming_body"), true);
   assert.equal(computeOpeningBusyUi(true, "turn_committing"), true);
+  assert.equal(computeOpeningBusyUi(true, "tail_draining"), true);
 });
 
 test("computeOpeningBusyUi：未标记开局 busy 时不显示", () => {

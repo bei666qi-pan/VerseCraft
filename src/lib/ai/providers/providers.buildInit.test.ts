@@ -29,3 +29,25 @@ test("openaiCompatibleGateway enables stream_options when streaming", () => {
   const body = JSON.parse(String(init.body)) as { stream_options?: { include_usage: boolean } };
   assert.equal(body.stream_options?.include_usage, true);
 });
+
+test("openaiCompatibleGateway shallow-merges extraBody without overriding reserved keys", () => {
+  const init = openaiCompatibleGateway.buildInit("k", {
+    modelApiName: "m",
+    messages: [{ role: "user", content: "x" }],
+    stream: false,
+    maxTokens: 8,
+    extraBody: {
+      user: "versecraft-test",
+      model: "evil-override",
+      messages: [{ role: "system", content: "nope" }],
+    },
+  });
+  const body = JSON.parse(String(init.body)) as {
+    model: string;
+    messages: unknown[];
+    user?: string;
+  };
+  assert.equal(body.model, "m");
+  assert.equal(body.messages.length, 1);
+  assert.equal(body.user, "versecraft-test");
+});
