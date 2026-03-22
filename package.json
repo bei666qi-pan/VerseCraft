@@ -5,7 +5,10 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "dev": "next dev --webpack -p 666",
+    "dev:fresh": "npx --yes kill-port 666 && next dev --webpack -p 666",
     "build": "next build",
+    "preview": "next build && next start -p 666",
+    "preview:fresh": "npx --yes kill-port 666 && next build && next start -p 666",
     "start": "next start",
     "lint": "next lint",
     "db:push": "node ./scripts/db-push.mjs",
