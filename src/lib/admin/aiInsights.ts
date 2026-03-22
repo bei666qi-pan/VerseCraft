@@ -1,6 +1,6 @@
 import "server-only";
 
-import { executeChatCompletion } from "@/lib/ai/service";
+import { runOfflineReasonerTask } from "@/lib/ai/logicalTasks";
 import { createRequestId } from "@/lib/security/helpers";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getFeedbackInsights, getFunnelMetrics, getOverviewMetrics, getRealtimeMetrics, getRetentionMetrics } from "@/lib/admin/service";
@@ -95,15 +95,14 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
   const systemPrompt = ["你是VerseCraft后台AI运营分析官。", "你只能依据输入数据给出建议，禁止编造证据。", "当证据不足时，必须明确写出“证据不足”。", "建议必须按优先级：immediate / this_week / mid_term。", "请严格以 JSON 格式输出。", `输出结构必须匹配：${JSON.stringify(schemaHint)}`].join("\n");
 
   try {
-    const ai = await executeChatCompletion({
-      task: "DEV_ASSIST",
+    const ai = await runOfflineReasonerTask({
+      kind: "dev_assist",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `以下是结构化输入数据：\n${JSON.stringify(input)}` },
       ],
       ctx: {
         requestId,
-        task: "DEV_ASSIST",
         path: "/lib/admin/aiInsights",
       },
     });

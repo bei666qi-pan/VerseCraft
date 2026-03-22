@@ -139,7 +139,7 @@ interface GameState extends IntegrityMetaState {
   /** 是否已经展示过游客软引导提示，防止重复打扰 */
   hasShownGuestSoftNudge: boolean;
 
-  /** 游客体验对话次数（DeepSeek 行动指令次数） */
+  /** 游客体验对话次数（玩家有效行动轮次） */
   dialogueCount: number;
 
   playerName: string;

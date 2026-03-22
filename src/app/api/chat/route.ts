@@ -22,10 +22,9 @@ import { pushAiRoutingReport } from "@/lib/ai/debug/routingRing";
 import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { PlayerChatStreamSuccess, PlayerChatStreamResult } from "@/lib/ai/router/execute";
 import type { AiRoutingReport } from "@/lib/ai/routing/types";
-import { anyAiProviderConfigured, executePlayerChatStream, sanitizeMessagesForUpstream } from "@/lib/ai/service";
+import { anyAiProviderConfigured, sanitizeMessagesForUpstream } from "@/lib/ai/service";
+import { enhanceScene, generateMainReply, parsePlayerIntent } from "@/lib/ai/logicalTasks";
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
-import { runPlayerControlPreflight } from "@/lib/playRealtime/controlPreflight";
-import { tryEnhanceDmAfterMainStream } from "@/lib/playRealtime/narrativeEnhancement";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import {
@@ -584,7 +583,7 @@ export async function POST(req: Request) {
   }
 
   // Provider compatibility mandate: only send role/content back to the upstream.
-  // Even if upstream emits reasoning_content, we never forward it to the model.
+  // 部分上游会在消息中带思维链等扩展字段；转发给模型前仅保留 role/content。
   const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
     .map((m) => {
@@ -658,7 +657,7 @@ export async function POST(req: Request) {
     const preTimer = setTimeout(() => preAc.abort(), 11_000);
     try {
       if (allowControlPreflightForSession(sessionId)) {
-        const pf = await runPlayerControlPreflight({
+        const pf = await parsePlayerIntent({
           latestUserInput,
           playerContext,
           ruleSnapshot: pipelineRule,
@@ -771,11 +770,10 @@ export async function POST(req: Request) {
 
   let streamResult: PlayerChatStreamResult;
   try {
-    streamResult = await executePlayerChatStream({
+    streamResult = await generateMainReply({
       messages: safeMessages,
       ctx: {
         requestId,
-        task: "PLAYER_CHAT",
         userId,
         sessionId,
         path: "/api/chat",
@@ -903,11 +901,10 @@ export async function POST(req: Request) {
       });
       routingReport.fallbackCount = routingReport.attempts.filter((a) => a.failureKind !== undefined).length;
       skippedStreamRoles.push(failedRole);
-      const next = await executePlayerChatStream({
+      const next = await generateMainReply({
         messages: safeMessages,
         ctx: {
           requestId,
-          task: "PLAYER_CHAT",
           userId,
           sessionId,
           path: "/api/chat",
@@ -1002,7 +999,7 @@ export async function POST(req: Request) {
       let moderationBody = accumulatedText;
       let finalizePayload: string | null = null;
       try {
-        const enhancedDm = await tryEnhanceDmAfterMainStream({
+        const enhancedDm = await enhanceScene({
           accumulatedJsonText: accumulatedText,
           control: pipelineControl,
           rule: pipelineRule,

@@ -169,14 +169,23 @@ export function anyAiProviderConfigured(): boolean {
   );
 }
 
-/**
- * @deprecated Call sites should use resolveAiEnv(). Narrow legacy shape for admin/diagnostics only.
- */
-export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string; model: string } {
+/** 主对话网关 URL、密钥、主逻辑角色在 one-api 侧的模型 id（opaque 字符串）。 */
+export function resolveGatewayPrimaryBinding(): {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+} {
   const e = resolveAiEnv();
   return {
     apiUrl: e.gatewayBaseUrl,
     apiKey: e.gatewayApiKey,
     model: e.modelsByRole.main,
   };
+}
+
+/**
+ * @deprecated 使用 `resolveGatewayPrimaryBinding`（名称历史原因，与厂商无关）。
+ */
+export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string; model: string } {
+  return resolveGatewayPrimaryBinding();
 }

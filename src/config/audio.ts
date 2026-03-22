@@ -1,5 +1,5 @@
 // src/config/audio.ts
-// BGM track mapping for DeepSeek-driven background music system.
+// BGM 曲目映射（由叙事标签驱动，与具体大模型厂商无关）。
 // Paths reference public folder; Next.js serves from /.
 
 import { resumeAudio } from "@/lib/audioEngine";

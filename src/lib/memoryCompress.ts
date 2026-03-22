@@ -3,7 +3,7 @@
  * Routed via unified AI layer (task: MEMORY_COMPRESSION).
  */
 
-import { executeChatCompletion } from "@/lib/ai/service";
+import { compressSessionMemory } from "@/lib/ai/logicalTasks";
 import { createRequestId } from "@/lib/security/helpers";
 
 export interface CompressedMemory {
@@ -63,15 +63,13 @@ export async function compressMemory(
   const userContent = `【旧的剧情摘要】\n${oldBlock}\n\n【最新的 5 轮对话】\n${chatsBlock}`;
 
   const requestId = createRequestId("mem_compress");
-  const result = await executeChatCompletion({
-    task: "MEMORY_COMPRESSION",
+  const result = await compressSessionMemory({
     messages: [
       { role: "system", content: COMPRESSION_PROMPT },
       { role: "user", content: userContent },
     ],
     ctx: {
       requestId,
-      task: "MEMORY_COMPRESSION",
       path: "/lib/memoryCompress",
     },
     requestTimeoutMs: timeoutMs,

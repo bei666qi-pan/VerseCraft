@@ -17,7 +17,7 @@ export interface PlayerControlSlots {
 }
 
 /**
- * Structured output from control-plane model (GLM-first). Must not contain playable story text.
+ * 控制面结构化输出（逻辑角色 control，经 one-api 映射上游）。不得包含可玩剧情正文。
  */
 export interface PlayerControlPlane {
   intent: PlayerIntentKind;

@@ -9,6 +9,7 @@
 - **业务只认逻辑角色**：`main` / `control` / `enhance` / `reasoner`（见 [`logicalRoles.ts`](../src/lib/ai/models/logicalRoles.ts)）。角色到上游模型名的映射 **仅** 来自环境变量 `AI_MODEL_*`，不在业务 TS 里写死厂商型号字符串。
 - **任务路由**见 [`taskPolicy.ts`](../src/lib/ai/tasks/taskPolicy.ts)；玩家流式 fallback 顺序可由 `AI_PLAYER_ROLE_CHAIN`（或兼容旧 `AI_PLAYER_MODEL_CHAIN`）调整。
 - **配置读取**统一走 [`envCore.ts`](../src/lib/ai/config/envCore.ts) / [`envRaw.ts`](../src/lib/config/envRaw.ts)；`src/` 内除配置层与 Next 框架约定（如 `NODE_ENV`）外不应直接读 `process.env`。
+- **旧 .env 迁移**：[`legacyVendorModelIdToRole`](../src/lib/ai/models/logicalRoles.ts) 仅解析历史 `AI_PLAYER_MODEL_CHAIN` 等，**不属于 one-api 协议层**，与业务语义入口 [`logicalTasks.ts`](../src/lib/ai/logicalTasks.ts) 解耦。
 
 ## 2. 环境变量说明
 

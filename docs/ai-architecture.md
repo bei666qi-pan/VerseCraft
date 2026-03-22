@@ -6,6 +6,7 @@
 
 | 路径 | 职责 |
 |------|------|
+| `logicalTasks.ts` | **玩法 / 业务推荐入口**：`generateMainReply`、`parsePlayerIntent`、`enhanceScene`、`runOfflineReasonerTask` 等（内部固定 `TaskType`） |
 | `config/env.ts` | 服务端入口（`server-only`），再导出 `envCore` |
 | `config/envCore.ts` | 网关 URL/Key、`AI_MODEL_*` 解析（无 `server-only`，供单测） |
 | `models/logicalRoles.ts` | 逻辑角色 `main` / `control` / `enhance` / `reasoner` |
@@ -25,16 +26,16 @@
 | `errors/classify.ts` | 标准化失败类型 |
 | `debug/routingRing.ts` | 近期路由报告环形缓冲 |
 | `telemetry/log.ts` | 结构化 `ai.telemetry` 日志 |
-| `service.ts` | **业务唯一推荐入口** |
+| `service.ts` | 再导出 `logicalTasks` + 路由层 `execute*` + 配置/工具（兼容旧 import） |
 
 **Fallback / 熔断 / 降级** 见 **`docs/ai-fallback.md`**（语义仍适用，变量名已改为网关与角色）。  
 **成本、门控、缓存** 见 **`docs/ai-governance.md`**。
 
 ## 核心入口
 
-- **玩家实时 SSE**：`executePlayerChatStream`（固定 `PLAYER_CHAT` 策略）
-- **后台/异步 JSON**：`executeChatCompletion({ task })`（**禁止**对 `PLAYER_CHAT` 调用）
-- **环境**：`resolveAiEnv`、`anyAiProviderConfigured`（需网关 URL + Key + `AI_MODEL_MAIN`）
+- **玩法与业务（首选）**：[`logicalTasks.ts`](../src/lib/ai/logicalTasks.ts) — `generateMainReply`、`parsePlayerIntent`、`enhanceScene`、`runOfflineReasonerTask`、`compressSessionMemory`；规则/战斗预留 `resolveRuleOutcome`、`narrateCombat`。
+- **路由内核（测试 / 高级场景）**：`executePlayerChatStream`（仅 `PLAYER_CHAT`）、`executeChatCompletion({ task })`（**禁止**对 `PLAYER_CHAT` 调用）。
+- **环境**：`resolveAiEnv`、`anyAiProviderConfigured`、`resolveGatewayPrimaryBinding`（需网关 URL + Key + `AI_MODEL_MAIN`）
 - **调试**：`explainTaskRouting(task)`、`exportTaskModelMatrixMarkdown()`
 
 ## 逻辑角色（业务与路由唯一标识）

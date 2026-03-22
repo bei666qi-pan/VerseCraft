@@ -7,5 +7,6 @@ export {
   DEFAULT_PLAYER_CHAIN,
   DEFAULT_PLAYER_ROLE_CHAIN,
   resolveAiEnv,
+  resolveGatewayPrimaryBinding,
   resolveDeepSeekLegacyConfig,
 } from "@/lib/ai/config/envCore";
