@@ -51,6 +51,30 @@ function getCodexCanonicalNamesBlock(): string {
 const ROUNDS_THRESHOLD = 10;
 const SHORT_TERM_ROUNDS = 5;
 
+/** 从 one-api / OpenAI 形态 JSON 错误体提取简短说明（不含密钥）。 */
+function parseUpstreamErrorFields(lastBodySnippet: string | undefined): {
+  upstreamHint?: string;
+  upstreamCode?: string;
+} {
+  if (!lastBodySnippet?.trim()) return {};
+  try {
+    const j = JSON.parse(lastBodySnippet) as {
+      error?: { message?: string; code?: string };
+    };
+    const message = j.error?.message?.trim();
+    const code = j.error?.code?.trim();
+    if (message || code) {
+      return {
+        ...(message ? { upstreamHint: message.slice(0, 500) } : {}),
+        ...(code ? { upstreamCode: code.slice(0, 128) } : {}),
+      };
+    }
+  } catch {
+    /* 非 JSON 时退回纯文本前缀 */
+  }
+  return { upstreamHint: lastBodySnippet.slice(0, 280) };
+}
+
 function buildMemoryBlock(mem: { plot_summary: string; player_status: Record<string, unknown>; npc_relationships: Record<string, unknown> } | null): string {
   if (!mem?.plot_summary) return "";
   return [
@@ -847,8 +871,19 @@ export async function POST(req: Request) {
         { status: 502 }
       );
     }
+    const attemptsForHint = streamResult.httpAttempts ?? [];
+    const lastWithBody = [...attemptsForHint]
+      .reverse()
+      .find((a) => typeof a.httpStatus === "number" && a.message);
+    const hintFields = parseUpstreamErrorFields(lastWithBody?.message);
+
     return NextResponse.json(
-      { error: "Upstream Error", code: "AI_ROUTER_FAILED", upstreamStatus },
+      {
+        error: "Upstream Error",
+        code: "AI_ROUTER_FAILED",
+        upstreamStatus,
+        ...hintFields,
+      },
       { status: 502 }
     );
   }

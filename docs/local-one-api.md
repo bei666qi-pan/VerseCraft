@@ -231,7 +231,8 @@ pnpm dev
 1. **令牌** → `AI_GATEWAY_API_KEY`  
 2. **渠道 + 上游密钥** → 只在 one-api 后台  
 3. **模型名字符串** → one-api 与 `AI_MODEL_*` **逐字相同**  
-4. **验证** → `pnpm verify:ai-gateway` → `pnpm probe:ai-gateway` → `pnpm dev`
+4. **（New API）模型倍率/价格** → 控制台为每个逻辑模型配置**倍率或售价**，或启用**自用模式**；否则上游会返回 `model_price_error`（游戏侧表现为 502 / `AI_ROUTER_FAILED`）  
+5. **验证** → `pnpm verify:ai-gateway` → `pnpm probe:ai-gateway` → `pnpm dev`
 
 ---
 
@@ -243,6 +244,7 @@ pnpm dev
 | 连接被拒绝 / fetch failed | one-api 是否已启动；`AI_GATEWAY_BASE_URL` 端口是否与实际一致；可本机 `curl` 网关根路径试连通 |
 | 401 / 403 | 令牌错误或未生效；在 one-api 重新生成令牌并更新 `AI_GATEWAY_API_KEY` |
 | 模型不存在 / model not found | one-api 中模型 id 与 `AI_MODEL_*` 不一致；或渠道未绑定到该模型 |
+| 浏览器 502，`AI_ROUTER_FAILED`，`upstreamCode: model_price_error`（或控制台 JSON 含「倍率或价格未配置」） | **New API**：到「模型」/「倍率」相关菜单为 `vc-main` 等逻辑名配置价格或倍率，或按文档开启自用模式；与 VerseCraft 代码无关 |
 | 游戏内长期「未配置大模型」降级 | `anyAiProviderConfigured` 为 false：缺 URL、Key、`AI_MODEL_MAIN` 之一 |
 | 有输出但 JSON/SSE 异常 | 上游是否支持流式或 `json_object`；见 [`troubleshooting-ai.md`](troubleshooting-ai.md) |
 
