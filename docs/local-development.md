@@ -39,13 +39,11 @@ pnpm test:unit
 - `AUTH_SECRET`: NextAuth 签名密钥
 - `ADMIN_PASSWORD`: 管理员影子入口密码
 - `ALTCHA_HMAC_KEY`: Altcha HMAC 密钥（不填则使用 `AUTH_SECRET`）
-- `DEEPSEEK_API_KEY`: DeepSeek 官方 API Key（推荐，玩家主叙事优先）
+- **大模型（one-api）**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，以及 `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`（与 `.env.example` 一致；说明见 [`docs/ai-gateway.md`](ai-gateway.md)）
 
 ## 可选变量
 
-- `ZHIPU_API_KEY` / `BIGMODEL_API_KEY`、`MINIMAX_API_KEY`（fallback 与局部增强，见 `docs/ai-architecture.md`）
-- `DEEPSEEK_API_URL`（默认 `https://api.deepseek.com/chat/completions`；可选覆盖）
-- `DEEPSEEK_MODEL`（默认 `deepseek-v3.2`）
+- `AI_PLAYER_ROLE_CHAIN`、`AI_REQUEST_TIMEOUT_MS`、`AI_ENABLE_STREAM`、`AI_LOG_LEVEL` 等（见 `.env.example`）
 - `MIGRATE_ON_BOOT`（默认 `1`）
 - `RUNTIME_SCHEMA_ENSURE`（默认 `1`）
 - `DAILY_TOKEN_LIMIT`（默认 `50000`）

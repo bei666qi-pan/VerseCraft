@@ -39,7 +39,7 @@ function logEnhanceSkip(args: {
 }
 
 /**
- * Post-stream, single-shot enhancement: rewrites only the opening fragment via MiniMax (or policy fallback).
+ * Post-stream, single-shot enhancement: rewrites only the opening fragment via enhance-role completion (or policy fallback).
  * Gated by code rules + session budget + sampling — never required for a valid turn.
  */
 export async function tryEnhanceDmAfterMainStream(args: {

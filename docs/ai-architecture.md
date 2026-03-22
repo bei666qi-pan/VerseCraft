@@ -1,5 +1,7 @@
 # VerseCraft 统一大模型基础设施（`src/lib/ai`）
 
+**运维与切模型**：请先阅读 [`docs/ai-gateway.md`](ai-gateway.md)（网关架构、环境变量、本地/Coolify、故障排查）。
+
 ## 目录
 
 | 路径 | 职责 |

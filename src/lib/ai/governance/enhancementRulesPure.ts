@@ -84,7 +84,7 @@ export function evaluateNarrativeEnhancementGate(args: {
 }
 
 /**
- * Stochastic layer on top of gate (reduces steady-state MiniMax spend).
+ * Stochastic layer on top of gate (reduces steady-state enhancement upstream spend).
  * `forceAttempt` bypasses sampling.
  */
 export function sampleEnhancementAttempt(forceAttempt: boolean, score: number): boolean {

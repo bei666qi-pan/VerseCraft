@@ -584,7 +584,7 @@ export async function POST(req: Request) {
   }
 
   // Provider compatibility mandate: only send role/content back to the upstream.
-  // Even if upstream supports reasoning_content (e.g. deepseek-reasoner), we never forward it.
+  // Even if upstream emits reasoning_content, we never forward it to the model.
   const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
     .map((m) => {

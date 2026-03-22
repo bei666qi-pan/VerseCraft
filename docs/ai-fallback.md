@@ -52,7 +52,7 @@
 
 1. **控制面**：`POST /api/chat` 在组装 DM system prompt 前调用 `PLAYER_CONTROL_PREFLIGHT`（GLM→V3.2），将意图/槽位/风险标签写入 system 的「控制层」小节（非并行抢答）。`emergency` 模式跳过预检以缩短首包路径。  
 2. **主模型**：仅 **DeepSeek-V3.2 优先**流式生成整段 JSON；失败时仍按 `PLAYER_CHAT` 链 failover（默认含 GLM）。  
-3. **增强层**：`full` 模式且规则命中时，在**上游流结束且输出合法**后，单次调用 MiniMax（或策略 fallback）改写**开头片段**；通过 `__VERSECRAFT_FINAL__:` 一条 SSE **整体替换**客户端缓冲，避免多源 token 交错。
+3. **增强层**：`full` 模式且规则命中时，在**上游流结束且输出合法**后，单次调用 **`enhance` 角色**对应上游（或链上 fallback 至 `main`）改写**开头片段**；通过 `__VERSECRAFT_FINAL__:` 一条 SSE **整体替换**客户端缓冲，避免多源 token 交错。
 
 ## 相关源码索引
 

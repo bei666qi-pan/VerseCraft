@@ -1,36 +1,35 @@
-# 上线前验收报告 — 多模型重构（VerseCraft）
+# 上线前验收报告 — AI 网关（one-api）与逻辑角色
 
-**日期**：2026-03-21（文档随仓库迭代）  
-**范围**：`src/lib/ai/*`、配置层、内容安全、CI/E2E、文档与 `pnpm test:unit`。
+**日期**：2026-03-22（文档随仓库迭代）  
+**范围**：`src/lib/ai/*`（统一网关）、配置层、内容安全、CI/E2E、文档与 `pnpm test:unit` / `pnpm verify:ai-gateway`。
 
 ## 结论总表
 
 | 验收项 | 状态 | 说明 |
 |--------|------|------|
-| 彻底移除火山引擎（Volcengine）专用代码与审核分支 | **已完成** | 全仓库 `volcengine`/`VOLCENGINE` 字符串检索为 0；`moderation.ts` 不再分支 `volcengine`。 |
-| 仅保留 4 个指定逻辑模型 | **已完成** | `models/registry.ts` 中 `ALLOWED_MODEL_IDS` 长度恒为 4；单测 `registry.test.ts` 断言。 |
-| 默认优先 DeepSeek-V3.2（玩家主叙事） | **已完成** | `TASK_POLICY.PLAYER_CHAT.primaryModel === "deepseek-v3.2"`；`taskPolicy.test.ts`。 |
-| `deepseek-reasoner` 不进入在线主链路（PLAYER_CHAT 等） | **已完成** | `TASK_MODEL_FORBIDDEN` 禁止 reasoner 参与 `PLAYER_CHAT` / 控制面 / 意图 / 安全预筛等；单测覆盖。 |
-| MiniMax 仅用于少数高价值增强 | **已完成** | 任务绑定仅为 `SCENE_ENHANCEMENT` / `NPC_EMOTION_POLISH`；禁止表排除主链路；门控在 `enhancementRulesPure.ts` + 预算（见 `ai-governance.md`）。 |
-| GLM-5-Air 主要承担控制流前置 | **已完成** | `PLAYER_CONTROL_PREFLIGHT` / `INTENT_PARSE` / `SAFETY_PREFILTER` 的 `primaryModel` 为 `glm-5-air`。 |
-| 模型故障可平滑接管 | **已完成** | `execute.playerStream.fallback.test.ts`：mock DeepSeek 503 → GLM 流式 200；`errors/classify` 与熔断单测；预发仍建议人工过一遍（`regression-checklist.md`）。 |
-| 本地与 Coolify 环境变量均可生效 | **已完成** | 统一经 `envRaw` / `resolveAiEnv` / `serverConfig` 读取；Coolify 注入 `process.env` 与 Next 加载 `.env.local` 行为一致（见 `environment.md`）。 |
+| 全部大模型 HTTP 经 **单一 OpenAI 兼容端点** | **已完成** | `execute.ts` + `openaiCompatible.ts`；`AI_GATEWAY_BASE_URL` / `AI_GATEWAY_API_KEY`。 |
+| 业务只依赖 **逻辑角色**（非散落厂商型号） | **已完成** | `main` / `control` / `enhance` / `reasoner`；`taskPolicy.ts` + `envCore` 的 `AI_MODEL_*`。 |
+| `reasoner` 不进入在线玩家主链路 | **已完成** | `TASK_ROLE_FORBIDDEN`；单测覆盖。 |
+| `enhance` 仅用于门控任务 | **已完成** | `SCENE_ENHANCEMENT` / `NPC_EMOTION_POLISH`；`enhancementRulesPure` + 会话预算。 |
+| 本地 `.env.local` 与 Coolify **同名变量** | **已完成** | 无「仅本地 / 仅线上」分支；见 `docs/ai-gateway.md`、`environment.md`。 |
+| 切模型优先 one-api / 次选改 env | **已完成** | 见 `docs/ai-gateway.md` 第五节；`.env.example` 中 `AI_MODEL_*` 为占位 id。 |
+| 链失败可降级与友好错误 | **已完成** | `execute.gateway-contract.test.ts`、`errors/classify`；人工清单 `regression-checklist.md`。 |
 
 ## 自动化
 
 - **命令**：`pnpm test:unit`
-- **覆盖要点**：`validateCriticalEnv`、`registry` 白名单、`taskPolicy` 链/禁止表、`errors/classify`、`stream/openaiLike`、`providers` 请求体、`envCore`/`modeCore` 链解析与降级模式、`enhancementRulesPure` 门控、**`execute.playerStream.fallback`（SSE 多模型切换 mock）**。
-- **E2E 契约**：`pnpm test:e2e:chat` — 校验 `/api/chat` 为 `text/event-stream`，消费完整 SSE 后 JSON 含 `narrative` + `is_action_legal`；可选 `E2E_USER`/`E2E_PASS` 时追加登录态 `page.request` 用例。
-- **CI**：`.github/workflows/ci.yml` — `pnpm test:ci`（eslint + `pnpm test:unit` + `pnpm build`）；`main` 推送与 PR 均触发。
-- **实现说明**：`router/execute` 与熔断/缓存/telemetry 等子模块已去掉 `server-only` 以便 Node 集成测；对外仍通过 `service.ts`（`server-only`）与 `config/env.ts` 入口收敛。
-- **SSE 多行载荷**：`/api/chat` 的 `sse()` 对含换行的增量按规范拆成多行 `data:`，浏览器端按事件内多字段用 `\n` 拼接，避免 `\n\n` 误分帧导致 DM JSON 截断、界面长期「正在生成」。
+- **覆盖要点**：`envCore`、`taskPolicy` 链/禁止表、`errors/classify`、`stream/openaiLike`、`openaiCompatible` 请求体、玩家流式 fallback mock、**网关契约**（链耗尽、首跳 `model` 与 `AI_MODEL_MAIN`、URL 归一化）。
+- **网关自检**：`pnpm verify:ai-gateway`（加载 `.env` / `.env.local`，不发起扣费请求；`VERIFY_AI_GATEWAY_STRICT=1` 可在 CI 中强制非空）。
+- **E2E 契约**：`pnpm test:e2e:chat` — 校验 `/api/chat` 为 `text/event-stream`，消费完整 SSE 后 JSON 含 `narrative` + `is_action_legal`；需可访问网关。
+- **CI**：`.github/workflows/ci.yml` — `pnpm test:ci`（eslint + `pnpm test:unit` + `pnpm build`）。
+- **实现说明**：`router/execute` 等子模块可脱离 `server-only` 以便 Node 单测；对外仍通过 `service.ts` 收敛。
 
 ## 未完成 / 待办（非阻塞项）
 
 | 项 | 状态 | 风险 |
 |----|------|------|
-| Playwright 全链路（真实密钥 + 完整游玩） | **未完成** | 低：SSE 契约已断言 DM JSON 形状；全量仍依赖密钥与 `regression-checklist.md`。 |
-| Coolify Build 阶段跑 `pnpm test:ci` | **建议** | 中：与 `ci.yml` 一致；仅镜像同步时需在 Coolify 构建命令中显式加入（见 `deployment-coolify.md`）。 |
+| Playwright 全链路（真实密钥 + 完整游玩） | **未完成** | 低：SSE 与网关契约已测；全量仍依赖环境与 `regression-checklist.md`。 |
+| Coolify Build 阶段跑 `pnpm test:ci` | **建议** | 中：与 `ci.yml` 一致；需在构建命令中显式加入（见 `deployment-coolify.md`）。 |
 
 ## 签署说明
 

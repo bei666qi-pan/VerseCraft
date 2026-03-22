@@ -18,6 +18,7 @@
     "db:delete-test-accounts": "pnpm dlx tsx scripts/delete-test-accounts.ts",
     "test:play": "playwright test e2e/play.spec.ts",
     "test:unit": "tsx --test \"src/**/*.test.ts\"",
+    "verify:ai-gateway": "tsx scripts/verify-ai-gateway.ts",
     "test:e2e:chat": "playwright test e2e/chat-sse-contract.spec.ts",
     "test:ci": "npx eslint \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" --max-warnings 0 && pnpm test:unit && pnpm build",
     "test:admin:api": "playwright test e2e/admin-api.spec.ts",

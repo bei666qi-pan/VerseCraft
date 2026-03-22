@@ -29,7 +29,7 @@ function normalizeUsage(raw: unknown): TokenUsage | null {
 }
 
 /**
- * Parse one SSE `data:` JSON payload from OpenAI-compatible vendors (incl. DeepSeek, Zhipu v4, MiniMax stream).
+ * Parse one SSE `data:` JSON payload from OpenAI-compatible streams (e.g. one-api / upstream chat).
  */
 export function parseOpenAiLikeStreamData(data: string): OpenAiStreamFrame | null {
   const trimmed = data.trim();

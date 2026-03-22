@@ -36,17 +36,11 @@
 - `AUTH_TRUST_HOST=true`
 - `ADMIN_PASSWORD`
 - `ALTCHA_HMAC_KEY`
-- `DEEPSEEK_API_KEY`（玩家主叙事优先使用）
-- `DEEPSEEK_MODEL`（可选，默认 `deepseek-v3.2`）
-- `DEEPSEEK_API_URL`（可选，默认 `https://api.deepseek.com/chat/completions`）
-- `ZHIPU_API_KEY`（或 `BIGMODEL_API_KEY`；控制面 / 意图 / 安全预筛 / fallback）
-- `ZHIPU_MODEL`（可选，默认 `glm-5-air`）
-- `ZHIPU_API_URL`（可选）
-- `MINIMAX_API_KEY`（仅增强类任务；勿期望进入 `PLAYER_CHAT` 主链）
-- `MINIMAX_MODEL`（可选，默认 `MiniMax-M2.7-highspeed`）
-- `MINIMAX_API_URL`（可选）
-- `AI_PLAYER_MODEL_CHAIN`（可选；默认 `deepseek-v3.2,glm-5-air`）
-- `AI_OPERATION_MODE`：`full` \| `safe` \| `emergency`（紧急模式仅 DeepSeek-V3.2）
+- **one-api 网关**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`
+- **逻辑模型名（与 one-api 配置一致）**：`AI_MODEL_MAIN`、`AI_MODEL_CONTROL`、`AI_MODEL_ENHANCE`、`AI_MODEL_REASONER`
+- `AI_PLAYER_ROLE_CHAIN`（可选，如 `main,control`）；遗留 `AI_PLAYER_MODEL_CHAIN` 仍可映射为角色
+- `AI_OPERATION_MODE`：`full` \| `safe` \| `emergency`（紧急模式玩家链仅 `main` 角色）
+- 详见 [`docs/ai-gateway.md`](ai-gateway.md)
 - `MIGRATE_ON_BOOT=1`
 - `RUNTIME_SCHEMA_ENSURE=1`
 - `DAILY_TOKEN_LIMIT=50000`（可选）

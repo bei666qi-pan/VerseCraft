@@ -24,7 +24,7 @@
 
 - **推荐（文档与 `.env.example`）**：`MODERATION_*`、`SECURITY_LOG_LEVEL`、`AUDIT_HMAC_SECRET`。
 - **仍受支持（Coolify 旧配置无需立即改）**：`SECURITY_MODERATION_*`、`SECURITY_AUDIT_LOG_LEVEL`、`SECRET_KEY`（审计 HMAC，优先使用 `AUDIT_HMAC_SECRET`）。
-- **智谱**：`ZHIPU_API_KEY` 为主；`BIGMODEL_API_KEY` 为别名，在 `resolveAiEnv` 中解析。
+- **大模型（one-api）**：统一使用 `AI_GATEWAY_*` 与 `AI_MODEL_*`，详见 [`docs/ai-gateway.md`](ai-gateway.md) 与 `.env.example`。不再通过应用内多厂商 Key 直连。
 
 ## Coolify / 生产部署 checklist
 

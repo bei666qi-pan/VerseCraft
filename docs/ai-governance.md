@@ -4,24 +4,24 @@
 
 ## 成本控制规则表（代码约束）
 
-| TaskType | 主模型倾向 | 预算等级 | max_tokens（策略上限） | 流式 | 备注 |
-|----------|------------|----------|-------------------------|------|------|
-| PLAYER_CHAT | DeepSeek-V3.2 | critical | 1408 | 是 | 在线主链路；禁止 reasoner / MiniMax |
-| PLAYER_CONTROL_PREFLIGHT | GLM → V3.2 | low | 512 | 否 | 控制面；可短缓存 |
-| INTENT_PARSE | GLM | low | 640 | 否 | |
-| SAFETY_PREFILTER | GLM | low | 384 | 否 | |
-| RULE_RESOLUTION | V3.2 | high | 1792 | 否 | |
-| COMBAT_NARRATION | V3.2 | high | 1280 | 否 | |
-| SCENE_ENHANCEMENT | MiniMax → V3.2 | high | 448 | 否 | **仅门控命中 + 采样 + 会话预算** |
-| NPC_EMOTION_POLISH | MiniMax | high | 384 | 否 | 同上 |
+| TaskType | 主角色 | 预算等级 | max_tokens（策略上限） | 流式 | 备注 |
+|----------|--------|----------|-------------------------|------|------|
+| PLAYER_CHAT | main | critical | 1408 | 是 | 在线主链路；禁止 reasoner / enhance |
+| PLAYER_CONTROL_PREFLIGHT | control → main | low | 512 | 否 | 控制面；可短缓存 |
+| INTENT_PARSE | control | low | 640 | 否 | |
+| SAFETY_PREFILTER | control | low | 384 | 否 | |
+| RULE_RESOLUTION | main | high | 1792 | 否 | |
+| COMBAT_NARRATION | main | high | 1280 | 否 | |
+| SCENE_ENHANCEMENT | enhance → main | high | 448 | 否 | **仅门控命中 + 采样 + 会话预算** |
+| NPC_EMOTION_POLISH | enhance | high | 384 | 否 | 同上 |
 | WORLDBUILD_OFFLINE | reasoner | medium | 3072 | 否 | 离线；可版本缓存 |
 | STORYLINE_SIMULATION | reasoner | medium | 6144 | 否 | 离线；可版本缓存 |
 | DEV_ASSIST | reasoner | medium | 3072 | 否 | 管理分析；可缓存 |
-| MEMORY_COMPRESSION | V3.2 | medium | 1792 | 否 | **不缓存**（状态演进） |
+| MEMORY_COMPRESSION | main | medium | 1792 | 否 | **不缓存**（状态演进） |
 
-`deepseek-reasoner` 仅出现在离线类任务；在线路径由 `TASK_MODEL_FORBIDDEN` 硬禁止。
+`reasoner` 角色仅出现在离线类任务；在线路径由 `TASK_ROLE_FORBIDDEN` 硬禁止。上游具体模型由 `AI_MODEL_*` + one-api 决定。
 
-## 高价值增强触发规则（MiniMax / 感官层）
+## 高价值增强触发规则（enhance 角色 / 感官层）
 
 须**同时**满足：
 
@@ -32,7 +32,7 @@
 5. **会话预算**：冷却（默认 90s）+ 每小时次数上限（默认 10）；由 `sessionBudget.ts` 执行。
 6. **运行模式**：仅 `AI_OPERATION_MODE=full` 时启用增强层。
 
-平凡轮次（评分不足、无控制面信号、被采样剔除、或预算用尽）**不会**调用 MiniMax。
+平凡轮次（评分不足、无控制面信号、被采样剔除、或预算用尽）**不会**调用 enhance 上游。
 
 ## 缓存策略表
 

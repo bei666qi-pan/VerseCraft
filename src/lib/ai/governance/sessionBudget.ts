@@ -43,7 +43,7 @@ export function isNarrativeEnhancementBudgetAvailable(sessionId: string | null |
   return hourly.length < cap;
 }
 
-/** Call only when about to invoke MiniMax / enhancement upstream. */
+/** Call only when about to invoke enhancement-role upstream completion. */
 export function commitNarrativeEnhancementBudget(sessionId: string | null | undefined): void {
   const sid = sessionKey(sessionId);
   const now = Date.now();
