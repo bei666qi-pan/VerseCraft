@@ -171,6 +171,18 @@ function PlayContent() {
     [openingAiBusy, streamPhase]
   );
 
+  const hasAssistantMessage = useMemo(
+    () => (logs ?? []).some((l) => l && l.role === "assistant"),
+    [logs]
+  );
+  const showEmbeddedOpening = isHydrated && isGameStarted && !hasAssistantMessage;
+  /** 首屏选项已就绪时仍隐藏「正在生成」：嵌入式开场 + 任意会话忙（含开局 API 飞行中）均不驱动 typewriter 思考态 */
+  const suppressEmbeddedOpeningStreamUi = useMemo(
+    () => openingBusyUi || (showEmbeddedOpening && isChatBusy),
+    [openingBusyUi, showEmbeddedOpening, isChatBusy]
+  );
+  const streamVisualForTypewriter = isStreamVisualActive && !suppressEmbeddedOpeningStreamUi;
+
   const onTailDrainComplete = useCallback(() => {
     if (streamPhaseRef.current !== "tail_draining") return;
     tailDrainTargetRef.current = null;
@@ -324,7 +336,7 @@ function PlayContent() {
 
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
-    isStreamVisualActive,
+    streamVisualForTypewriter,
     () => scheduleAutoScrollIfPinned(false),
     smoothStreamOptions,
     streamTailDrain
@@ -347,16 +359,8 @@ function PlayContent() {
       .map((l) => String(l.content));
   }, [logs]);
 
-  const hasAssistantMessage = useMemo(
-    () => (logs ?? []).some((l) => l && l.role === "assistant"),
-    [logs]
-  );
-
-  const showEmbeddedOpening =
-    isHydrated && isGameStarted && !hasAssistantMessage;
-
   const latestAssistantRaw = useMemo(() => {
-    if (isStreamVisualActive) {
+    if (streamVisualForTypewriter) {
       return typeof smoothNarrative === "string" && smoothNarrative.length > 0
         ? smoothNarrative
         : narrativeRef.current ?? "";
@@ -364,7 +368,7 @@ function PlayContent() {
     if (liveNarrative) return liveNarrative;
     if (assistantOnlyMessages.length > 0) return assistantOnlyMessages[assistantOnlyMessages.length - 1] ?? "";
     return "";
-  }, [isStreamVisualActive, smoothNarrative, liveNarrative, assistantOnlyMessages]);
+  }, [streamVisualForTypewriter, smoothNarrative, liveNarrative, assistantOnlyMessages]);
 
   const greenTips = useMemo(() => extractGreenTips(latestAssistantRaw), [latestAssistantRaw]);
 
@@ -1499,7 +1503,7 @@ function PlayContent() {
                 onScrollContainer={onScrollContainer}
                 displayEntries={displayEntries}
                 isStreamVisualActive={isStreamVisualActive}
-                suppressStreamVisual={openingBusyUi}
+                suppressStreamVisual={suppressEmbeddedOpeningStreamUi}
                 smoothThinking={smoothThinking}
                 smoothNarrative={smoothNarrative}
                 smoothComplete={smoothComplete}
