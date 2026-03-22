@@ -39,7 +39,7 @@ pnpm test:unit
 - `AUTH_SECRET`: NextAuth 签名密钥
 - `ADMIN_PASSWORD`: 管理员影子入口密码
 - `ALTCHA_HMAC_KEY`: Altcha HMAC 密钥（不填则使用 `AUTH_SECRET`）
-- **大模型（one-api）**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，以及 `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`（与 `.env.example` 一致；说明见 [`docs/ai-gateway.md`](ai-gateway.md)）
+- **大模型（one-api）**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，以及 `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`（与 `.env.example` 一致；说明见 [`docs/ai-gateway.md`](ai-gateway.md)）。**逐步对接本地网关**：[`docs/local-one-api.md`](local-one-api.md)；可复制 [`.env.local.oneapi.example`](../.env.local.oneapi.example) 或运行 `pnpm patch:env-local-ai`。
 
 ## 可选变量
 

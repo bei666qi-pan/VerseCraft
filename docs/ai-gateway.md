@@ -2,6 +2,8 @@
 
 本文是 **AI 统一网关** 的单一入口文档，与 `docs/ai-architecture.md`（模块目录）互补。
 
+> **本地对接 one-api**：逐步操作、端口约定、排障表见 **[`local-one-api.md`](local-one-api.md)**（推荐先读）。
+
 ## 1. 架构说明
 
 - **所有大模型 HTTP 调用**经 [`src/lib/ai/router/execute.ts`](../src/lib/ai/router/execute.ts) 发往 **一个** OpenAI 兼容端点：`AI_GATEWAY_BASE_URL` 解析为 `…/v1/chat/completions`（或你提供的完整 `…/chat/completions` URL）。
@@ -48,6 +50,8 @@
 完整列表以仓库根目录 [`.env.example`](../.env.example) 为准（含「迁移附录」示例）。
 
 ## 3. 本地运行说明
+
+**傻瓜路径（本机 one-api）**：见 **[`local-one-api.md`](local-one-api.md)**；可配合根目录 [`.env.local.oneapi.example`](../.env.local.oneapi.example) 或 `pnpm patch:env-local-ai`。
 
 1. `cp .env.example .env.local`
 2. 将 `AI_GATEWAY_BASE_URL` 指向 **本机 one-api**（例如 `http://127.0.0.1:3000`，应用会自动补 `/v1/chat/completions`，除非已写完整路径）。
