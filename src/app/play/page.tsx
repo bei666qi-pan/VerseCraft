@@ -1199,7 +1199,10 @@ function PlayContent() {
       merged.push(...DEFAULT_FOUR_ACTION_OPTIONS);
     }
 
-    if (merged.length > 0) {
+    if (openingOptionsOnlyRoundRef.current) {
+      // 首屏四条已由 pickEmbeddedOpeningOptions 写入，禁止用模型 options 覆盖
+      useGameStore.getState().saveGame("auto_save");
+    } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
       useGameStore.getState().saveGame("auto_save");
     }
