@@ -52,7 +52,7 @@ function shuffleInPlace<T>(arr: T[]): void {
   }
 }
 
-/** 嵌入式开场与等待主笔 options 时展示的本地四条，互异、随机、多倾向。 */
+/** 嵌入式开场首屏展示的本地四条（互异、随机、多倾向）；与模型返回的 options 无关。 */
 export function pickEmbeddedOpeningOptions(): string[] {
   const poolOrder = OPENING_OPTION_POOLS.map((_, i) => i);
   shuffleInPlace(poolOrder);

@@ -1490,6 +1490,7 @@ function PlayContent() {
                 </div>
               </div>
 
+              {/* 嵌入式开场首屏选项来自 pickEmbeddedOpeningOptions；该阶段不展示「主笔实时推演」以免与前端随机冲突 */}
               <PlayStoryScroll
                 scrollRef={scrollRef}
                 onScrollContainer={onScrollContainer}
@@ -1509,7 +1510,7 @@ function PlayContent() {
                 plainOnlyNewTurn={false}
                 plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                 embeddedOpeningContent={showEmbeddedOpening ? FIXED_OPENING_NARRATIVE : null}
-                openingAiBusy={openingBusyUi}
+                openingAiBusy={openingBusyUi && !showEmbeddedOpening}
               >
                 {inputMode === "options" &&
                   (showEmbeddedOpening
