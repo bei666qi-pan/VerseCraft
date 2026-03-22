@@ -15,7 +15,10 @@ See `package.json` scripts. Summary:
 - `pnpm build` — production build
 - `pnpm test:unit` — Node test runner over `src/**/*.test.ts` (AI routing, env, providers, stream fallback mock)
 - `pnpm test:e2e:chat` — Playwright `/api/chat` SSE contract (`e2e/chat-sse-contract.spec.ts`)
-- `pnpm test:ci` — same checks as GitHub `ci.yml` (eslint scoped + unit)
+- `pnpm test:e2e:contract` — CI 同款：`chat-sse-contract` + `play-open`（无网关时期望 `keys_missing` 降级 SSE）
+- `pnpm test:ci` — eslint + unit + production build（与 `ci.yml` 前半段一致；完整 verify job 另含 Playwright，见 `ci.yml`）
+- `pnpm run ship -- "feat: 说明"` — 跨平台调用 `node deploy.sh`（**勿**使用 `bash ./deploy.sh`：`deploy.sh` 为 Node 脚本，在无 bash 的 Windows 上会失败；勿单独用 `pnpm deploy`，会与 pnpm 内置命令冲突）
+- `pnpm verify:ai-gateway` / `pnpm probe:ai-gateway` — 网关配置检查 / 极小连通探测
 - `npx eslint .` — lint (**`pnpm lint` / `next lint` does not work in Next.js 16 CLI**; use `npx eslint .` directly)
 
 ### Non-obvious caveats

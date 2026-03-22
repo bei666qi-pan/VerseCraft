@@ -1,7 +1,7 @@
 # 多模型改造 — 回归场景清单
 
-**自动化**：`pnpm test:unit`（关键路由/配置/流解析/网关契约）。  
-**配置自检**：`pnpm verify:ai-gateway`（可选 `VERIFY_AI_GATEWAY_STRICT=1`）。  
+**自动化**：`pnpm test:unit`（关键路由/配置/流解析/网关契约）；`pnpm test:e2e:contract`（CI 同款：无网关降级 SSE + `/play` 访客冒烟）。  
+**配置自检**：`pnpm verify:ai-gateway`（可选 `VERIFY_AI_GATEWAY_STRICT=1`）；真连通可选 `pnpm probe:ai-gateway`。  
 **人工**：下列场景在 staging / 预发走一遍；记录环境与 `AI_OPERATION_MODE`。
 
 架构与变量以 **`docs/ai-gateway.md`** 为准；所有调用经 **one-api**，业务侧只认 **逻辑角色**（`main` / `control` / `enhance` / `reasoner`）。

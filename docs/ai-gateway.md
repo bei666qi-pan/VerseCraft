@@ -32,7 +32,19 @@
 
 \*：`anyAiProviderConfigured()` 要求至少 **网关 URL + Key + `AI_MODEL_MAIN`** 非空；其他角色若未配置，对应任务链会自动跳过该角色。
 
-完整列表以仓库根目录 [`.env.example`](../.env.example) 为准。
+### 超时说明：`/api/chat` 外层与 `execute` 内层
+
+- **玩家 SSE 路由**在 [`src/app/api/chat/route.ts`](../src/app/api/chat/route.ts) 内对 `executePlayerChatStream` 使用 **硬编码 60s** 的 `AbortController`，用于防止浏览器长时间挂起；与 `AI_REQUEST_TIMEOUT_MS` / `AI_TIMEOUT_MS`（`resolveAiEnv().defaultTimeoutMs`，供 `execute` / 控制面预检等使用）**不是同一常量**。
+- 调整「上游等待多久」：优先改 **`AI_REQUEST_TIMEOUT_MS`**（或 `AI_TIMEOUT_MS`）；若仍觉得 `/play` 侧整体过长/过短，需改 route 中外层 `TIMEOUT_MS`（属代码单点，非多模块散落）。
+- 控制面预检在 route 内另有 **约 11s** 的独立上限，与上述两者独立。
+
+### Legacy 环境变量迁移（`#legacy-migration`）
+
+- **推荐**：只使用 **`AI_PLAYER_ROLE_CHAIN`**，值为 `main` / `control` / `enhance` / `reasoner` 的逗号分隔列表。
+- **遗留**：`AI_PLAYER_MODEL_CHAIN`、`AI_MEMORY_MODEL`、`AI_ADMIN_MODEL` 中的旧 id 仍可通过 [`legacyVendorModelIdToRole`](../src/lib/ai/models/logicalRoles.ts) 映射到角色；**计划在将来大版本移除字符串映射**，迁移前请改为 `AI_PLAYER_ROLE_CHAIN` + `AI_MODEL_*`。
+- 开发环境下若仍仅用 `AI_PLAYER_MODEL_CHAIN` 而未设 `AI_PLAYER_ROLE_CHAIN`，进程会在**首次** `resolveAiEnv()` 时打印一次弃用警告。
+
+完整列表以仓库根目录 [`.env.example`](../.env.example) 为准（含「迁移附录」示例）。
 
 ## 3. 本地运行说明
 
@@ -40,7 +52,8 @@
 2. 将 `AI_GATEWAY_BASE_URL` 指向 **本机 one-api**（例如 `http://127.0.0.1:3000`，应用会自动补 `/v1/chat/completions`，除非已写完整路径）。
 3. 填写 `AI_GATEWAY_API_KEY` 与四个 `AI_MODEL_*`（与 one-api 中配置的模型名一致）。
 4. `pnpm dev`，浏览器访问 `http://localhost:666`（见 `docs/local-development.md`）。
-5. 可选：`pnpm verify:ai-gateway` 快速检查当前 shell + `.env.local` 下网关配置是否齐全（不发起真实对话）。
+5. 可选：`pnpm verify:ai-gateway` 快速检查配置是否齐全（不发起真实请求）；`VERIFY_AI_GATEWAY_STRICT=1` 时缺项则退出码 1。
+6. 可选：`pnpm probe:ai-gateway` 对已配置网关发起 **极小** 非流式补全以验证连通（可能产生极少费用）。
 
 ## 4. Coolify / 生产配置说明
 
@@ -74,5 +87,7 @@
 ## 7. 测试与回归
 
 - **单元**：`pnpm test:unit`（含 `envCore`、`taskPolicy`、流式 fallback mock、`openaiCompatible` 请求体）。
-- **网关验证脚本**：`pnpm verify:ai-gateway`（配置完整性，不扣费）。
-- **端到端**：配置好 env 后可用 Playwright `e2e/chat-sse-contract.spec.ts` 等（需可访问的网关）。
+- **网关验证脚本**：`pnpm verify:ai-gateway`（配置完整性，不扣费）；严格模式见上文。
+- **CI 契约 E2E**：`pnpm test:e2e:contract`（`chat-sse-contract` + `play-open`）：在 **未配置网关** 时期望 `X-VerseCraft-Ai-Status: keys_missing` 的降级 SSE；GitHub `ci.yml` 已接入（CI 内用 `PLAYWRIGHT_BASE_URL` + `PLAYWRIGHT_WEB_SERVER_COMMAND` 在 **3000** 端口起 dev，避免与本机 666 占用冲突）。
+- **真网关冒烟**：本机导出 `E2E_AI_LIVE=1` 并确保 shell 与 `pnpm dev` 均能读到 `AI_GATEWAY_*`、`AI_MODEL_MAIN` 后运行 `pnpm test:e2e:chat` 或 `pnpm test:e2e:contract`，将额外跑「非 keys_missing」断言（易超时/耗额度，勿在 CI 默认开启）。
+- **手动可选**：仓库提供 [ai-gateway-verify.yml](../.github/workflows/ai-gateway-verify.yml)（`workflow_dispatch`）：在仓库 **Settings → Secrets** 添加与 `.env.example` 同名的 `AI_GATEWAY_*`、`AI_MODEL_*` 后手动运行，执行 `VERIFY_AI_GATEWAY_STRICT=1`（不向 fork PR 注入密钥）。

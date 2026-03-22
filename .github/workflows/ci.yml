@@ -31,3 +31,25 @@ jobs:
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
           REDIS_URL: redis://127.0.0.1:6379
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: E2E contract (no AI gateway — degraded SSE)
+        run: pnpm run test:e2e:contract
+        env:
+          CI: "true"
+          E2E_EXPECT_KEYS_MISSING: "1"
+          # 避免与开发者本机已占用的 666 冲突；CI 内单独起 3000
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
+          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          REDIS_URL: redis://127.0.0.1:6379
+          # Ensure PR / fork runs do not pick up accidental AI_* from the shell
+          AI_GATEWAY_BASE_URL: ""
+          AI_GATEWAY_API_KEY: ""
+          AI_MODEL_MAIN: ""
+          AI_MODEL_CONTROL: ""
+          AI_MODEL_ENHANCE: ""
+          AI_MODEL_REASONER: ""

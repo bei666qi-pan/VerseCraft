@@ -111,7 +111,21 @@ function resolveDevAssistPrimaryRole(): AiLogicalRole {
   return "reasoner";
 }
 
+let warnedLegacyPlayerModelChain = false;
+
 export function resolveAiEnv(): ResolvedAiEnv {
+  if (
+    process.env.NODE_ENV === "development" &&
+    !warnedLegacyPlayerModelChain &&
+    envRaw("AI_PLAYER_MODEL_CHAIN")?.trim() &&
+    !envRaw("AI_PLAYER_ROLE_CHAIN")?.trim()
+  ) {
+    warnedLegacyPlayerModelChain = true;
+    console.warn(
+      "[VerseCraft AI] 检测到 AI_PLAYER_MODEL_CHAIN；建议迁移为 AI_PLAYER_ROLE_CHAIN（main/control/enhance/reasoner）。说明见 docs/ai-gateway.md#legacy-migration"
+    );
+  }
+
   const gatewayProvider = envEnum("AI_GATEWAY_PROVIDER", ["oneapi"] as const, "oneapi");
   const gatewayBaseUrl = resolveGatewayChatCompletionsUrl();
   const gatewayApiKey = (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();

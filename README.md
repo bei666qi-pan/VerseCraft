@@ -82,6 +82,10 @@ cp .env.example .env.local
 
 本地开发默认端口为 **666**（见 `package.json` 的 `pnpm dev`）。访问 [http://localhost:666](http://localhost:666)，进入「铸造角色」创建角色后即可开始游戏。
 
+### 提交与部署（跨平台）
+
+- 使用 **`pnpm run ship -- "feat: 说明"`**（内部为 `node deploy.sh`）。请勿执行 `bash ./deploy.sh`：`deploy.sh` 为 Node 脚本，在仅 PowerShell/cmd 的 Windows 环境会报错。也请勿使用裸命令 **`pnpm deploy`**（会与 pnpm 内置 `deploy` 子命令冲突）；应使用 **`pnpm run ship`**。
+
 ## 部署（Coolify 优先）
 
 - Coolify 中通过 **Environment Variables 面板** 配置所有密码、密钥与连接串。

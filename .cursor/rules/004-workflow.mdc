@@ -16,10 +16,16 @@ alwaysApply: true
 
 ## 执行指令
 
-在集成终端中运行：
+在集成终端中运行（**跨平台**：`deploy.sh` 实为 Node 脚本，Windows 请用 `node` 或 `pnpm run ship`，勿用 `bash ./deploy.sh`）：
 
 ```bash
-./deploy.sh "feat: 更新说明"
+node deploy.sh "feat: 更新说明"
+```
+
+或：
+
+```bash
+pnpm run ship -- "feat: 更新说明"
 ```
 
 将 `"更新说明"` 替换为本次改动的一句话描述（中文或英文均可）。
@@ -36,7 +42,7 @@ alwaysApply: true
 任务完成后的典型调用：
 
 ```bash
-./deploy.sh "feat: 完成动态 BGM 与移动端 UI 适配"
-./deploy.sh "fix: 修复原石掉落概率计算"
-./deploy.sh "chore: 文案与规则更新"
+node deploy.sh "feat: 完成动态 BGM 与移动端 UI 适配"
+pnpm run ship -- "fix: 修复原石掉落概率计算"
+pnpm run ship -- "chore: 文案与规则更新"
 ```

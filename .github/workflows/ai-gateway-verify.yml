@@ -1,0 +1,36 @@
+# 手动触发：在仓库 Secrets 中配置与 .env.example 同名的 AI_* 变量后，
+# 运行严格网关配置检查（不向 fork PR 暴露密钥；默认 workflow 不自动跑）。
+name: AI gateway verify (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  strict-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Strict one-api env check
+        env:
+          VERIFY_AI_GATEWAY_STRICT: "1"
+          AI_GATEWAY_PROVIDER: ${{ secrets.AI_GATEWAY_PROVIDER }}
+          AI_GATEWAY_BASE_URL: ${{ secrets.AI_GATEWAY_BASE_URL }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          AI_MODEL_MAIN: ${{ secrets.AI_MODEL_MAIN }}
+          AI_MODEL_CONTROL: ${{ secrets.AI_MODEL_CONTROL }}
+          AI_MODEL_ENHANCE: ${{ secrets.AI_MODEL_ENHANCE }}
+          AI_MODEL_REASONER: ${{ secrets.AI_MODEL_REASONER }}
+        run: pnpm verify:ai-gateway
