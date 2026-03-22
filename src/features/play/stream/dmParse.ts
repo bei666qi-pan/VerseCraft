@@ -1,6 +1,40 @@
 import type { DMJson } from "./types";
 
 /**
+ * 从文本中截取**第一个**顶层 JSON 对象（`{`…`}`），正确处理字符串内的括号与转义。
+ * 用于模型重复输出两段相同 `{...}{...}` 时避免贪婪正则把两段拼成非法 JSON。
+ */
+export function extractFirstBalancedJsonObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (inString) {
+      if (c === "\\") escapeNext = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
  * Extract narrative from streaming JSON by finding the exact JSON string boundaries.
  * Scans for the closing unescaped double-quote to avoid ALL JSON key leakage,
  * regardless of key ordering or mid-stream truncation.
@@ -100,19 +134,19 @@ export const FALLBACK_DM: DMJson = {
 };
 
 export function tryParseDM(raw: string): DMJson | null {
-  let cleanContent = raw
+  const cleanContent = raw
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
 
-  const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    cleanContent = jsonMatch[0];
+  const objectSlice = extractFirstBalancedJsonObject(cleanContent);
+  if (!objectSlice) {
+    return null;
   }
 
   let parsedData: DMJson;
   try {
-    parsedData = JSON.parse(cleanContent) as DMJson;
+    parsedData = JSON.parse(objectSlice) as DMJson;
   } catch {
     console.error("JSON Parsing Failed, raw content:", raw);
     return null;
