@@ -1128,6 +1128,10 @@ export async function POST(req: Request) {
         }
         finalizePayload = JSON.stringify(dmRecord);
         moderationBody = finalizePayload;
+      } else {
+        // 当上游返回非严格 JSON 或重复拼接对象时，强制回落到标准 DM JSON 形状，保证 SSE 契约稳定。
+        finalizePayload = sanitizeAssistantContent(accumulatedText);
+        moderationBody = finalizePayload;
       }
 
       const finalModeration = await finalOutputModeration({

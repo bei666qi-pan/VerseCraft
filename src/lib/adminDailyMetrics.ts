@@ -21,9 +21,19 @@ export const DAILY_ACTIVE_SET_TTL_SECONDS = 3 * 24 * 60 * 60; // keep a few days
 const DAILY_METRICS_LOOKBACK_DEFAULT = 14;
 
 let redis: ReturnType<typeof Redis.fromEnv> | null = null;
+let missingEnvWarned = false;
 
 function getRedis(): ReturnType<typeof Redis.fromEnv> | null {
   if (redis) return redis;
+  const url = (process.env.UPSTASH_REDIS_REST_URL ?? "").trim();
+  const token = (process.env.UPSTASH_REDIS_REST_TOKEN ?? "").trim();
+  if (!url || !token) {
+    if (!missingEnvWarned) {
+      console.warn("[adminDailyMetrics] Upstash env missing, redis metrics fallback disabled");
+      missingEnvWarned = true;
+    }
+    return null;
+  }
   try {
     redis = Redis.fromEnv();
     return redis;

@@ -57,6 +57,13 @@
 2. 关注单次 DB round trips 是否触顶（守卫常量限制）。  
 3. 若慢查询持续，先调小每次召回上限，再做索引优化。  
 
+### 7.1 pgvector / vector 扩展检查（上线前必做）
+
+- 生产库需确保 `vector` 扩展可用，否则向量检索路径会自动降级为非向量策略。  
+- 检查命令：`SELECT extname FROM pg_extension WHERE extname='vector';`  
+- 安装命令（具备权限时）：`CREATE EXTENSION IF NOT EXISTS vector;`  
+- 本地建议用 `pnpm postgres:local` + `VERSECRAFT_PG_IMAGE=pgvector/pgvector:pg16`，避免容器缺扩展。  
+
 ## 8. 如何审核 shared candidate
 
 1. 拉取候选：`GET /api/admin/world-knowledge/candidates`。  
@@ -84,3 +91,20 @@ WHERE conflict_status IS NOT NULL
 ```
 
 清理后可按需执行一次检索基准，确认性能恢复。
+
+## 10. Redis / Upstash 环境缺失处理
+
+- 若 `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` 未配置，系统会进入降级模式：  
+  - 在线人数/DAU 的 Redis 快路径关闭；  
+  - 管理后台部分实时指标可能为空或 degraded；  
+  - 核心聊天链路不受阻断。  
+- 上线前请补齐上述环境变量，并观察 15~30 分钟管理指标是否恢复。
+
+## 11. `Failed to find Server Action` 警告说明
+
+- 该告警常见于 Next.js 热更新、部署切换或浏览器缓存旧 action id，通常不影响接口功能。  
+- 若在生产持续出现且伴随功能异常，按顺序排查：  
+  1. 重新部署并确保同一版本静态资源全部更新；  
+  2. 清理 CDN/反向代理缓存；  
+  3. 浏览器强制刷新（`Ctrl+F5`）并清理站点缓存；  
+  4. 比对服务端日志与前端版本号是否一致。  

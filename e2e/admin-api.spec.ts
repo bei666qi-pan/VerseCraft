@@ -15,6 +15,8 @@ function buildAdminShadowCookie(adminPassword: string): string {
 }
 
 test.describe("Admin API integration", () => {
+  test.setTimeout(90_000);
+
   test("unauthorized requests should be rejected", async ({ request }) => {
     const targets = [
       "/api/admin/overview?range=7d",
@@ -39,6 +41,7 @@ test.describe("Admin API integration", () => {
 
     const overview = await request.get("/api/admin/overview?range=7d", {
       headers: { Cookie: cookie },
+      timeout: 20_000,
     });
     expect([200, 500]).toContain(overview.status());
     if (overview.status() === 200) {
@@ -49,11 +52,13 @@ test.describe("Admin API integration", () => {
 
     const realtime = await request.get("/api/admin/realtime", {
       headers: { Cookie: cookie },
+      timeout: 20_000,
     });
     expect([200, 500]).toContain(realtime.status());
 
     const aiReport = await request.post("/api/admin/ai-insights?range=7d", {
       headers: { Cookie: cookie },
+      timeout: 40_000,
     });
     expect([200, 500]).toContain(aiReport.status());
     const aiBody = await aiReport.json();

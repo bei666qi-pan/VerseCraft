@@ -7,7 +7,7 @@
  *   VERSECRAFT_PG_USER（默认 postgres）
  *   VERSECRAFT_PG_PASSWORD（默认 change_me，与文档示例一致）
  *   VERSECRAFT_PG_PORT（默认 5432；若占用可改为 5433）
- *   VERSECRAFT_PG_IMAGE（默认 postgres:16-alpine）
+ *   VERSECRAFT_PG_IMAGE（默认 pgvector/pgvector:pg16，内置 vector 扩展）
  *
  * 用法：pnpm postgres:local
  */
@@ -84,7 +84,7 @@ async function main() {
   const user = process.env.VERSECRAFT_PG_USER || "postgres";
   const password = process.env.VERSECRAFT_PG_PASSWORD || "change_me";
   const port = process.env.VERSECRAFT_PG_PORT || "5432";
-  const image = process.env.VERSECRAFT_PG_IMAGE || "postgres:16-alpine";
+  const image = process.env.VERSECRAFT_PG_IMAGE || "pgvector/pgvector:pg16";
 
   if (!containerExists()) {
     console.log(`[postgres:local] 创建容器 ${CONTAINER}（镜像 ${image}，映射 ${port}:5432）…`);
@@ -121,6 +121,22 @@ async function main() {
 
   ensureDb("versecraft");
   ensureDb("oneapi");
+
+  /** @param {string} db */
+  function ensureVectorExtension(db) {
+    try {
+      run(`docker exec ${CONTAINER} psql -U ${user} -d ${db} -c "CREATE EXTENSION IF NOT EXISTS vector;"`);
+      console.log(`[postgres:local] 数据库 ${db} 已确保 vector 扩展可用。`);
+    } catch {
+      console.warn(
+        `[postgres:local] 警告：数据库 ${db} 无法启用 vector 扩展。` +
+          ` 若需本地向量检索，请使用镜像 pgvector/pgvector:pg16 重建容器。`
+      );
+    }
+  }
+
+  ensureVectorExtension("versecraft");
+  ensureVectorExtension("oneapi");
 
   console.log("");
   console.log("[postgres:local] 完成。连接串示例（密码含特殊字符时请自行 URL 编码）：");

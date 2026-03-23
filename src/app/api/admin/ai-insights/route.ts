@@ -7,6 +7,23 @@ import { generateAiInsightReport } from "@/lib/admin/aiInsights";
 import { invalidateCompletionCacheByTask } from "@/lib/ai/governance/responseCache";
 
 export const dynamic = "force-dynamic";
+const ADMIN_AI_INSIGHTS_DISABLE = process.env.ADMIN_AI_INSIGHTS_DISABLE === "1";
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("admin_ai_insights_timeout")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
 
 export async function GET(req: Request) {
   const cookieStore = await cookies();
@@ -17,6 +34,12 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
+  if (ADMIN_AI_INSIGHTS_DISABLE) {
+    return NextResponse.json(
+      { error: "ai_insights_disabled", degraded: true, range },
+      { status: 500, headers: { "Cache-Control": "private, max-age=10" } }
+    );
+  }
   try {
     const data = await getAiInsights(range);
     return NextResponse.json(data, {
@@ -44,9 +67,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, task: "DEV_ASSIST", deleted });
   }
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
+  if (ADMIN_AI_INSIGHTS_DISABLE) {
+    return NextResponse.json(
+      {
+        error: "ai_insights_disabled",
+        degraded: true,
+        range,
+      },
+      { status: 500, headers: { "Cache-Control": "private, max-age=5" } }
+    );
+  }
 
   try {
-    const report = await generateAiInsightReport(range);
+    const report = await withTimeout(generateAiInsightReport(range), 12_000);
     return NextResponse.json(
       {
         range,

@@ -8,9 +8,19 @@ const ACTIVE_USERS_KEY = "active_users";
 const ONLINE_WINDOW_MS = 10 * 60_000; // 10 min for better visibility
 
 let redis: ReturnType<typeof Redis.fromEnv> | null = null;
+let missingEnvWarned = false;
 
 function getRedis(): ReturnType<typeof Redis.fromEnv> | null {
   if (redis) return redis;
+  const url = (process.env.UPSTASH_REDIS_REST_URL ?? "").trim();
+  const token = (process.env.UPSTASH_REDIS_REST_TOKEN ?? "").trim();
+  if (!url || !token) {
+    if (!missingEnvWarned) {
+      console.warn("[presence] Upstash env missing, presence metrics fallback to disabled mode");
+      missingEnvWarned = true;
+    }
+    return null;
+  }
   try {
     redis = Redis.fromEnv();
     return redis;
