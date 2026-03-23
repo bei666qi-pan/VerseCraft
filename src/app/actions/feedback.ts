@@ -12,9 +12,16 @@ type FeedbackActionResult = {
   message: string;
 };
 
-export async function submitFeedback(content: string): Promise<FeedbackActionResult> {
+export async function submitFeedback(
+  content: string,
+  consent?: { userAgreement: boolean; privacyPolicy: boolean }
+): Promise<FeedbackActionResult> {
   const session = await auth();
   const userId = session?.user?.id;
+
+  if (!consent || !consent.userAgreement || !consent.privacyPolicy) {
+    return { success: false, message: "请先勾选用户协议与隐私政策后再提交。" };
+  }
 
   const trimmed = content.trim();
   if (!trimmed) {

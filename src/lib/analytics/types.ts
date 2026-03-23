@@ -21,7 +21,12 @@ export type AnalyticsEventName =
   | "kg_cache_write"
   | "kg_job_claimed"
   | "kg_job_succeeded"
-  | "kg_job_failed";
+  | "kg_job_failed"
+  | "survey_entry_exposed"
+  | "survey_entry_clicked"
+  | "survey_modal_opened"
+  | "survey_submitted"
+  | "survey_external_link_opened";
 
 export type AnalyticsPlatform = "mobile" | "desktop" | "unknown";
 

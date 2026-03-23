@@ -220,6 +220,11 @@ export async function signInOrRegister(
   }
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const consentUserAgreement = String(formData.get("consent_user_agreement") ?? "").trim() === "1";
+  const consentPrivacyPolicy = String(formData.get("consent_privacy_policy") ?? "").trim() === "1";
+  if (!consentUserAgreement || !consentPrivacyPolicy) {
+    return { success: false, error: "请先勾选用户协议与隐私政策，才能进入文界工坊。" };
+  }
   if (name.length < 2 || password.length < 6) {
     return { success: false, error: "账号至少 2 位且密码至少 6 位" };
   }

@@ -7,11 +7,14 @@ import { signOut } from "next-auth/react";
 import { Lightbulb } from "lucide-react";
 import { fetchCloudSaves } from "@/app/actions/save";
 import { signInOrRegister } from "@/app/actions/auth";
+import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { submitFeedback } from "@/app/actions/feedback";
 import Leaderboard from "@/components/Leaderboard";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 import { GlassEntryFrame } from "@/components/GlassEntryFrame";
+import { ComplianceFooter } from "@/components/compliance/ComplianceFooter";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
+import { getPublicRuntimeConfig } from "@/lib/config/publicRuntime";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
 import { unlockBgmOnUserGesture } from "@/config/audio";
 
@@ -26,6 +29,20 @@ type SaveRow = {
 };
 
 const INITIAL_AUTH_ACTION_STATE = { success: false, message: "", error: "" };
+const SURVEY_SUBMITTED_SESSION_KEY = "vc_survey_submitted_v1";
+const SURVEY_COPY = {
+  entryLabel: "问卷调查",
+  title: "问卷调查",
+  subtitle: "你的反馈会直接影响文界工坊后续优化",
+  estimate: "问卷约 1-3 分钟，完成后可获得测试奖励（如有）。",
+  later: "稍后再说",
+  openNow: "立即填写",
+  feedbackSecondary: "问题反馈",
+  feedbackBack: "返回问卷入口",
+  privacyHint: "提交即表示你已阅读《隐私政策》，我们仅将问卷内容用于产品优化与测试联络。",
+  alreadySubmitted: "你已提交过问卷，感谢支持。",
+  noLink: "问卷暂未开放，请稍后再试。",
+} as const;
 
 function isSaveSlotData(data: unknown): data is SaveSlotData {
   const d = data as Record<string, unknown> | null;
@@ -52,13 +69,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [authWarn, setAuthWarn] = useState(false);
+  const [authConsentUserAgreement, setAuthConsentUserAgreement] = useState(false);
+  const [authConsentPrivacyPolicy, setAuthConsentPrivacyPolicy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [surveyOpen, setSurveyOpen] = useState(false);
+  const [showBugFeedback, setShowBugFeedback] = useState(false);
+  const [surveyConsentUserAgreement, setSurveyConsentUserAgreement] = useState(false);
+  const [surveyConsentPrivacyPolicy, setSurveyConsentPrivacyPolicy] = useState(false);
   const [feedbackContent, setFeedbackContent] = useState("");
+  const [feedbackConsentUserAgreement, setFeedbackConsentUserAgreement] = useState(false);
+  const [feedbackConsentPrivacyPolicy, setFeedbackConsentPrivacyPolicy] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+  const [surveySubmitted, setSurveySubmitted] = useState(false);
   const [authState, authFormAction, authPending] = useActionState(signInOrRegister, INITIAL_AUTH_ACTION_STATE);
+  const surveyUrl = getPublicRuntimeConfig().surveyUrl;
 
   const hasLocalAutoSave = useMemo(() => Boolean(saveSlots.auto_save), [saveSlots]);
   const hasCloudAutoSave = useMemo(
@@ -92,14 +118,36 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [toast]);
 
   useEffect(() => {
-    if (!feedbackSuccess || !feedbackOpen) return;
+    if (!feedbackSuccess || !surveyOpen) return;
     const t = window.setTimeout(() => {
-      setFeedbackOpen(false);
+      setSurveyOpen(false);
+      setShowBugFeedback(false);
       setFeedbackSuccess(false);
       setFeedbackContent("");
     }, 3000);
     return () => window.clearTimeout(t);
-  }, [feedbackOpen, feedbackSuccess]);
+  }, [surveyOpen, feedbackSuccess]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSurveySubmitted(window.sessionStorage.getItem(SURVEY_SUBMITTED_SESSION_KEY) === "1");
+    void trackGameplayEvent({
+      eventName: "survey_entry_exposed",
+      page: "/",
+      source: "survey",
+      payload: { placement: "home_fab" },
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!surveyOpen) return;
+    void trackGameplayEvent({
+      eventName: "survey_modal_opened",
+      page: "/",
+      source: "survey",
+      payload: { mode: showBugFeedback ? "bug_feedback" : "external_link_confirm" },
+    }).catch(() => {});
+  }, [surveyOpen, showBugFeedback]);
 
   function openAuthModal() {
     setAuthOpen((prev) => {
@@ -122,6 +170,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   function closeAuthModal() {
     setAuthOpen(false);
     setIsConnecting(false);
+    setAuthConsentUserAgreement(false);
+    setAuthConsentPrivacyPolicy(false);
   }
 
   async function handleLogout() {
@@ -147,8 +197,16 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
 
+    if (!feedbackConsentUserAgreement || !feedbackConsentPrivacyPolicy) {
+      setToast("请先勾选用户协议与隐私政策后再提交。");
+      return;
+    }
+
     setFeedbackPending(true);
-    const result = await submitFeedback(feedbackContent);
+    const result = await submitFeedback(feedbackContent, {
+      userAgreement: feedbackConsentUserAgreement,
+      privacyPolicy: feedbackConsentPrivacyPolicy,
+    });
     setFeedbackPending(false);
     if (!result.success) {
       setToast(result.message);
@@ -156,6 +214,63 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     }
     setFeedbackSuccess(true);
     setFeedbackContent("");
+  }
+
+  function openSurveyEntry() {
+    setSurveyOpen(true);
+    setShowBugFeedback(false);
+    setFeedbackSuccess(false);
+    setFeedbackConsentUserAgreement(false);
+    setFeedbackConsentPrivacyPolicy(false);
+    setSurveyConsentUserAgreement(false);
+    setSurveyConsentPrivacyPolicy(false);
+    void trackGameplayEvent({
+      eventName: "survey_entry_clicked",
+      page: "/",
+      source: "survey",
+      payload: { placement: "home_fab" },
+    }).catch(() => {});
+  }
+
+  function closeSurveyModal() {
+    if (feedbackPending) return;
+    setSurveyOpen(false);
+    setShowBugFeedback(false);
+    setFeedbackSuccess(false);
+  }
+
+  function openExternalSurvey() {
+    if (!surveyUrl) {
+      setToast(SURVEY_COPY.noLink);
+      return;
+    }
+    if (!surveyConsentUserAgreement || !surveyConsentPrivacyPolicy) {
+      setToast("请先勾选用户协议与隐私政策后再立即填写。");
+      return;
+    }
+    if (surveySubmitted) {
+      setToast(SURVEY_COPY.alreadySubmitted);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(SURVEY_SUBMITTED_SESSION_KEY, "1");
+      setSurveySubmitted(true);
+      window.open(surveyUrl, "_blank", "noopener,noreferrer");
+    }
+    void trackGameplayEvent({
+      eventName: "survey_submitted",
+      page: "/",
+      source: "survey",
+      payload: { mode: "external_link" },
+    }).catch(() => {});
+    void trackGameplayEvent({
+      eventName: "survey_external_link_opened",
+      page: "/",
+      source: "survey",
+      payload: { mode: "external_link", hasUrl: true },
+    }).catch(() => {});
+    closeSurveyModal();
   }
 
   return (
@@ -267,6 +382,42 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   placeholder="密码（至少 6 位）"
                   className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                 />
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      name="consent_user_agreement"
+                      value="1"
+                      checked={authConsentUserAgreement}
+                      onChange={(e) => setAuthConsentUserAgreement(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-slate-600/60"
+                    />
+                    <span className="leading-relaxed">
+                      我已阅读并同意{" "}
+                      <a className="underline underline-offset-2 hover:text-slate-100" href="/legal/user-agreement">
+                        用户协议
+                      </a>
+                      。
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      name="consent_privacy_policy"
+                      value="1"
+                      checked={authConsentPrivacyPolicy}
+                      onChange={(e) => setAuthConsentPrivacyPolicy(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-slate-600/60"
+                    />
+                    <span className="leading-relaxed">
+                      我已阅读并同意{" "}
+                      <a className="underline underline-offset-2 hover:text-slate-100" href="/legal/privacy-policy">
+                        隐私政策
+                      </a>
+                      。
+                    </span>
+                  </label>
+                </div>
                 <button
                   type="submit"
                   disabled={authPending}
@@ -337,71 +488,181 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <button
         type="button"
         className="fixed bottom-8 right-8 z-[90]"
-        onClick={() => {
-          setFeedbackOpen(true);
-          setFeedbackSuccess(false);
+        style={{
+          right: "max(2rem, env(safe-area-inset-right))",
+          bottom: "max(2rem, env(safe-area-inset-bottom))",
         }}
-        aria-label="打开意见采集"
+        onClick={openSurveyEntry}
+        aria-label={`打开${SURVEY_COPY.entryLabel}`}
       >
         <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
           <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
           <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
           <div className="absolute inset-1 rounded-full bg-white/85 backdrop-blur-sm transition-all group-hover:bg-white" />
           <Lightbulb className="relative z-10 text-slate-700 drop-shadow-[0_0_6px_rgba(71,85,105,0.55)]" size={24} />
+          <span className="pointer-events-none absolute right-[calc(100%+10px)] top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-full border border-white/60 bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow-[0_0_20px_rgba(148,163,184,0.2)] md:block">
+            {SURVEY_COPY.entryLabel}
+          </span>
         </div>
       </button>
 
       <div
         className={`fixed inset-0 z-[80] flex items-center justify-center p-6 transition-all duration-500 ${
-          feedbackOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          surveyOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
         <div
           className={`absolute inset-0 bg-slate-200/50 backdrop-blur-sm transition-all duration-500 ${
-            feedbackOpen ? "opacity-100" : "opacity-0"
+            surveyOpen ? "opacity-100" : "opacity-0"
           }`}
-          onClick={() => {
-            if (feedbackPending) return;
-            setFeedbackOpen(false);
-            setFeedbackSuccess(false);
-          }}
+          onClick={closeSurveyModal}
         />
         <div
           className={`relative w-full max-w-2xl rounded-[2rem] border border-white bg-slate-100/90 p-10 shadow-[0_0_40px_rgba(200,200,200,0.5)] backdrop-blur-3xl transition-all duration-500 ${
-            feedbackOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
+            surveyOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
-          <h3 className="text-2xl font-semibold tracking-wide text-slate-700">意见采集</h3>
-          {!feedbackSuccess ? (
+          <h3 className="text-2xl font-semibold tracking-wide text-slate-700">{SURVEY_COPY.title}</h3>
+          {!showBugFeedback ? (
             <>
-              <p className="mt-3 text-sm text-slate-500">把你的建议告诉我们，我们会认真阅读每一条反馈。</p>
-              <textarea
-                value={feedbackContent}
-                onChange={(event) => setFeedbackContent(event.target.value)}
-                placeholder="请输入你的建议或反馈..."
-                className="mt-6 h-56 w-full resize-none rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 outline-none transition-all focus:border-slate-400 focus:shadow-[0_0_0_4px_rgba(148,163,184,0.15)]"
-              />
-              <div className="mt-6 flex justify-end">
+              <p className="mt-3 text-sm text-slate-500">{SURVEY_COPY.subtitle}</p>
+              <p className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-600">
+                {SURVEY_COPY.estimate}
+              </p>
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4">
+                  <label className="flex items-start gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={surveyConsentUserAgreement}
+                      onChange={(e) => setSurveyConsentUserAgreement(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300"
+                    />
+                    <span>
+                      我已阅读并同意{" "}
+                      <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/user-agreement">
+                        用户协议
+                      </a>
+                      。
+                    </span>
+                  </label>
+                  <label className="mt-2 flex items-start gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={surveyConsentPrivacyPolicy}
+                      onChange={(e) => setSurveyConsentPrivacyPolicy(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300"
+                    />
+                    <span>
+                      我已阅读并同意{" "}
+                      <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/privacy-policy">
+                        隐私政策
+                      </a>
+                      。
+                    </span>
+                  </label>
+                </div>
+              <div className="mt-7 flex flex-wrap items-center justify-end gap-3">
                 <button
                   type="button"
-                  disabled={feedbackPending}
-                  onClick={() => void handleFeedbackSubmit()}
-                  className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={closeSurveyModal}
+                  className="rounded-full border border-slate-300 bg-white/70 px-5 py-2.5 text-sm font-semibold text-slate-600 transition-all hover:bg-white"
                 >
-                  {feedbackPending ? "提交中..." : "提交意见"}
+                  {SURVEY_COPY.later}
+                </button>
+                <button
+                  type="button"
+                  onClick={openExternalSurvey}
+                  disabled={!surveyConsentUserAgreement || !surveyConsentPrivacyPolicy}
+                  className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700"
+                >
+                  {SURVEY_COPY.openNow}
+                </button>
+              </div>
+              <p className="mt-4 text-right text-xs text-slate-500">{SURVEY_COPY.privacyHint}</p>
+              <div className="mt-4 text-right">
+                <button
+                  type="button"
+                  onClick={() => setShowBugFeedback(true)}
+                  className="text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline"
+                >
+                  {SURVEY_COPY.feedbackSecondary}
                 </button>
               </div>
             </>
           ) : (
-            <div className="mt-8 flex min-h-44 items-center justify-center">
-              <p className="text-center text-xl font-medium text-slate-700">谢谢您的意见，游戏会因您变得更好！</p>
-            </div>
+            <>
+              {!feedbackSuccess ? (
+                <>
+                  <p className="mt-3 text-sm text-slate-500">把你的建议告诉我们，我们会认真阅读每一条反馈。</p>
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4">
+                    <label className="flex items-start gap-2 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={feedbackConsentUserAgreement}
+                        onChange={(e) => setFeedbackConsentUserAgreement(e.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                      />
+                      <span>
+                        我已阅读并同意{" "}
+                        <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/user-agreement">
+                          用户协议
+                        </a>
+                        。
+                      </span>
+                    </label>
+                    <label className="mt-2 flex items-start gap-2 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={feedbackConsentPrivacyPolicy}
+                        onChange={(e) => setFeedbackConsentPrivacyPolicy(e.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                      />
+                      <span>
+                        我已阅读并同意{" "}
+                        <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/privacy-policy">
+                          隐私政策
+                        </a>
+                        。
+                      </span>
+                    </label>
+                  </div>
+                  <textarea
+                    value={feedbackContent}
+                    onChange={(event) => setFeedbackContent(event.target.value)}
+                    placeholder="请输入你的建议或反馈..."
+                    className="mt-6 h-56 w-full resize-none rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 outline-none transition-all focus:border-slate-400 focus:shadow-[0_0_0_4px_rgba(148,163,184,0.15)]"
+                  />
+                  <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowBugFeedback(false)}
+                      className="rounded-full border border-slate-300 bg-white/70 px-5 py-2.5 text-sm font-semibold text-slate-600 transition-all hover:bg-white"
+                    >
+                      {SURVEY_COPY.feedbackBack}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={feedbackPending || !feedbackConsentUserAgreement || !feedbackConsentPrivacyPolicy}
+                      onClick={() => void handleFeedbackSubmit()}
+                      className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {feedbackPending ? "提交中..." : "提交意见"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-8 flex min-h-44 items-center justify-center">
+                  <p className="text-center text-xl font-medium text-slate-700">谢谢您的意见，游戏会因您变得更好！</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
     </main>
 
     <Leaderboard userId={user?.id} />
+    <ComplianceFooter />
     </>
   );
 }
