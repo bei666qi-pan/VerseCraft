@@ -120,11 +120,11 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   WORLDBUILD_OFFLINE: {
     task: "WORLDBUILD_OFFLINE",
     primaryRole: REASONER,
-    fallbackRoles: [MAIN, CONTROL],
+    fallbackRoles: [MAIN],
     stream: false,
-    maxTokens: 3072,
+    maxTokens: 2048,
     temperature: 0.3,
-    timeoutMs: 120_000,
+    timeoutMs: 75_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
@@ -142,11 +142,11 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   DEV_ASSIST: {
     task: "DEV_ASSIST",
     primaryRole: REASONER,
-    fallbackRoles: [MAIN, CONTROL],
+    fallbackRoles: [MAIN],
     stream: false,
-    maxTokens: 3072,
+    maxTokens: 2048,
     temperature: 0.2,
-    timeoutMs: 90_000,
+    timeoutMs: 60_000,
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
@@ -182,7 +182,31 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
 export const TASK_MODEL_FORBIDDEN = TASK_ROLE_FORBIDDEN;
 
 export function getTaskBinding(task: TaskType): TaskBinding {
-  return TASK_POLICY[task];
+  const base = TASK_POLICY[task];
+  const env = resolveAiEnv();
+  if (env.offlineBudgetProfile !== "peak") return base;
+  if (task === "WORLDBUILD_OFFLINE") {
+    return {
+      ...base,
+      maxTokens: Math.min(base.maxTokens, 1536),
+      timeoutMs: Math.min(base.timeoutMs, 45_000),
+    };
+  }
+  if (task === "DEV_ASSIST") {
+    return {
+      ...base,
+      maxTokens: Math.min(base.maxTokens, 1536),
+      timeoutMs: Math.min(base.timeoutMs, 35_000),
+    };
+  }
+  if (task === "STORYLINE_SIMULATION") {
+    return {
+      ...base,
+      maxTokens: Math.min(base.maxTokens, 4096),
+      timeoutMs: Math.min(base.timeoutMs, 75_000),
+    };
+  }
+  return base;
 }
 
 export function isRoleForbiddenForTask(task: TaskType, role: AiLogicalRole): boolean {
@@ -238,6 +262,10 @@ export function resolveOrderedRoleChain(
   } else if (task === "DEV_ASSIST") {
     const p = env.devAssistPrimaryRole;
     base = uniqueRoles([p, b.primaryRole, ...b.fallbackRoles.filter((x) => x !== p)]);
+  }
+
+  if (env.offlineFailFast && (task === "WORLDBUILD_OFFLINE" || task === "DEV_ASSIST")) {
+    base = [REASONER, ...(env.offlineAllowMainFallback ? [MAIN] : [])];
   }
 
   const allowed = applyForbidden(task, base);

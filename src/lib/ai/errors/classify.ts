@@ -36,6 +36,19 @@ export function shouldCountTowardCircuit(kind: AiFailureKind): boolean {
   );
 }
 
+export type AiFailureScope = "online" | "offline";
+
+/** Offline tasks can be isolated from provider-level circuit to protect /api/chat. */
+export function shouldCountTowardProviderCircuit(
+  kind: AiFailureKind,
+  scope: AiFailureScope,
+  offlineAffectsProviderCircuit: boolean
+): boolean {
+  if (!shouldCountTowardCircuit(kind)) return false;
+  if (scope === "offline" && !offlineAffectsProviderCircuit) return false;
+  return true;
+}
+
 /** Whether we should try the next model in chain (not a client abort). */
 export function shouldAdvanceToNextModel(kind: AiFailureKind): boolean {
   return kind !== "ABORTED";

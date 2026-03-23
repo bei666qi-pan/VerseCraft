@@ -230,6 +230,196 @@ async function applySchemaV1(client) {
   `);
 }
 
+/**
+ * KG：pgvector + IVFFlat 语义缓存与世界元数据（幂等）。
+ * 无 pgvector 扩展时跳过（应用层对 42P01/缺扩展静默降级）。
+ */
+async function ensureKgSemanticLayer(client) {
+  try {
+    await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
+  } catch (e) {
+    console.warn("[migrate] CREATE EXTENSION vector skipped:", e?.message ?? e);
+    return;
+  }
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_world_meta (
+      id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      world_revision BIGINT NOT NULL DEFAULT 0
+    );
+  `);
+  await client.query(`
+    INSERT INTO vc_world_meta (id, world_revision) VALUES (1, 0)
+    ON CONFLICT (id) DO NOTHING;
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_semantic_cache (
+      id BIGSERIAL PRIMARY KEY,
+      cache_scope TEXT NOT NULL,
+      task TEXT NOT NULL,
+      user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
+      world_revision BIGINT NOT NULL,
+      request_embedding vector(256) NOT NULL,
+      request_norm TEXT,
+      request_text_preview TEXT,
+      request_hash TEXT NOT NULL UNIQUE,
+      response_text TEXT NOT NULL,
+      is_valid BOOLEAN NOT NULL DEFAULT TRUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      hit_count INTEGER NOT NULL DEFAULT 0,
+      last_hit_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_semantic_cache_ivfflat_global_codex
+    ON vc_semantic_cache USING ivfflat (request_embedding vector_cosine_ops)
+    WITH (lists = 100)
+    WHERE cache_scope = 'global' AND is_valid = TRUE AND task = 'codex';
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_user_fact (
+      id BIGSERIAL PRIMARY KEY,
+      user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      fact_text TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_user_fact_user_id_idx ON vc_user_fact (user_id);
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_world_candidate (
+      id BIGSERIAL PRIMARY KEY,
+      proposer_user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ghost',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+}
+
+/**
+ * Janitor / 共识 / 队列表（依赖 vector 扩展）。幂等 ALTER + CREATE。
+ */
+async function ensureKgWorkerLayer(client) {
+  try {
+    await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
+  } catch (e) {
+    console.warn("[migrate] ensureKgWorkerLayer: vector extension skipped:", e?.message ?? e);
+    return;
+  }
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_world_cluster (
+      cluster_id BIGSERIAL PRIMARY KEY,
+      centroid vector(256) NOT NULL,
+      unique_user_count INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT 'open',
+      promoted_fact_id BIGINT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_world_cluster_ivfflat_centroid
+    ON vc_world_cluster USING ivfflat (centroid vector_cosine_ops)
+    WITH (lists = 100)
+    WHERE state = 'open';
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_world_fact (
+      fact_id BIGSERIAL PRIMARY KEY,
+      canonical_text TEXT NOT NULL,
+      normalized_hash TEXT NOT NULL UNIQUE,
+      embedding vector(256) NOT NULL,
+      is_hot BOOLEAN NOT NULL DEFAULT TRUE,
+      last_hit_at TIMESTAMPTZ,
+      archived_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_world_fact_ivfflat_hot
+    ON vc_world_fact USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100)
+    WHERE is_hot = TRUE;
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_cluster_observation (
+      id BIGSERIAL PRIMARY KEY,
+      cluster_id BIGINT NOT NULL REFERENCES vc_world_cluster(cluster_id) ON DELETE CASCADE,
+      user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      candidate_id BIGINT REFERENCES vc_world_candidate(id) ON DELETE SET NULL,
+      embedding vector(256) NOT NULL,
+      similarity_to_centroid REAL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (cluster_id, user_id)
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_cluster_observation_cluster_idx ON vc_cluster_observation (cluster_id);
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_jobs (
+      job_id BIGSERIAL PRIMARY KEY,
+      job_type TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'pending',
+      run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      priority INTEGER NOT NULL DEFAULT 0,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 8,
+      locked_at TIMESTAMPTZ,
+      locked_by TEXT,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
+    ON vc_jobs (status, run_at, priority DESC, job_id);
+  `);
+
+  const candCols = [
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS janitor_status TEXT NOT NULL DEFAULT 'pending'",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS compliance_ok BOOLEAN",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS significance_score SMALLINT",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS janitor_action TEXT",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS canonical_text TEXT",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS normalized_text TEXT",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS janitor_violations JSONB",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS janitor_tags JSONB",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS janitor_model_meta JSONB",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS embedding vector(256)",
+    "ALTER TABLE vc_world_candidate ADD COLUMN IF NOT EXISTS cluster_id BIGINT REFERENCES vc_world_cluster(cluster_id) ON DELETE SET NULL",
+  ];
+  for (const sql of candCols) {
+    try {
+      await client.query(sql);
+    } catch (e) {
+      console.warn("[migrate] vc_world_candidate alter skipped:", e?.message ?? e);
+    }
+  }
+}
+
+async function ensureKgSchemaV1(client) {
+  // keep split functions for readability; unified entry for migration + reconcile.
+  await ensureKgSemanticLayer(client);
+  await ensureKgWorkerLayer(client);
+}
+
 async function main() {
   const url = getDatabaseUrl();
   const client = new Client({ connectionString: url });
@@ -253,6 +443,21 @@ async function main() {
     // Reconcile analytics for DBs where schema_v1 predates analytics_events (migration row already set).
     await ensureAnalyticsFoundationTables(client);
     console.log("[migrate] ensureAnalyticsFoundationTables ok");
+
+    const kgName = "kg_schema_v1";
+    const kgApplied = await hasMigration(client, kgName);
+    if (!kgApplied) {
+      console.log(`[migrate] applying ${kgName} ...`);
+      await ensureKgSchemaV1(client);
+      await markMigration(client, kgName);
+      console.log(`[migrate] applied ${kgName}`);
+    } else {
+      console.log(`[migrate] ${kgName} already applied`);
+    }
+
+    // Reconcile KG objects on every boot; idempotent and safe for drifted historical DBs.
+    await ensureKgSchemaV1(client);
+    console.log("[migrate] ensureKgSchemaV1 reconcile ok");
   } finally {
     await client.end();
   }

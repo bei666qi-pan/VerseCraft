@@ -25,6 +25,10 @@ function cacheKey(task: TaskType, messages: ChatMessage[]): string {
   return `vc:ai:${aiGovernanceEnv.cacheContentVersion}:${task}:${fingerprintMessages(messages)}`;
 }
 
+function cachePrefix(task: TaskType): string {
+  return `vc:ai:${aiGovernanceEnv.cacheContentVersion}:${task}:`;
+}
+
 export function isCompletionTaskCacheable(task: TaskType): boolean {
   return CACHEABLE_TASKS[task] != null;
 }
@@ -101,4 +105,38 @@ export async function writeCompletionCache(
 
   mem.set(key, { val, exp: Date.now() + ttlSec * 1000 });
   memPrune();
+}
+
+export async function invalidateCompletionCacheByTask(task: TaskType): Promise<number> {
+  if (!isCompletionTaskCacheable(task)) return 0;
+  const prefix = cachePrefix(task);
+  let deleted = 0;
+
+  for (const key of [...mem.keys()]) {
+    if (!key.startsWith(prefix)) continue;
+    mem.delete(key);
+    deleted += 1;
+  }
+
+  const redis = await getAppRedisClient();
+  if (!redis) return deleted;
+  try {
+    // Upstash/Redis clients differ; use dynamic calls best-effort.
+    const anyRedis = redis as unknown as {
+      scan?: (cursor: string, opts?: { match?: string; count?: number }) => Promise<[string, string[]]>;
+      del?: (...keys: string[]) => Promise<number>;
+    };
+    if (!anyRedis.scan || !anyRedis.del) return deleted;
+    let cursor = "0";
+    do {
+      const [next, keys] = await anyRedis.scan(cursor, { match: `${prefix}*`, count: 200 });
+      cursor = next;
+      if (keys.length > 0) {
+        deleted += await anyRedis.del(...keys);
+      }
+    } while (cursor !== "0");
+  } catch {
+    // ignore
+  }
+  return deleted;
 }

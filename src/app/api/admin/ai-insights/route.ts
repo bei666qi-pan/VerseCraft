@@ -4,6 +4,7 @@ import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getAiInsights } from "@/lib/admin/service";
 import { generateAiInsightReport } from "@/lib/admin/aiInsights";
+import { invalidateCompletionCacheByTask } from "@/lib/ai/governance/responseCache";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,10 @@ export async function POST(req: Request) {
   }
 
   const url = new URL(req.url);
+  if (url.searchParams.get("refresh_cache") === "1") {
+    const deleted = await invalidateCompletionCacheByTask("DEV_ASSIST");
+    return NextResponse.json({ ok: true, task: "DEV_ASSIST", deleted });
+  }
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
 
   try {
@@ -63,5 +68,20 @@ export async function POST(req: Request) {
       { status: 500, headers: { "Cache-Control": "private, max-age=5" } }
     );
   }
+}
+
+export async function DELETE(req: Request) {
+  const cookieStore = await cookies();
+  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
+  if (!verifyAdminShadowSession(shadowCookie)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+  const url = new URL(req.url);
+  const task = url.searchParams.get("task");
+  if (task !== "DEV_ASSIST") {
+    return NextResponse.json({ error: "unsupported_task" }, { status: 400 });
+  }
+  const deleted = await invalidateCompletionCacheByTask("DEV_ASSIST");
+  return NextResponse.json({ ok: true, task, deleted });
 }
 

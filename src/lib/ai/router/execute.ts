@@ -6,6 +6,7 @@ import {
   classifyHttpStatus,
   shouldAdvanceToNextModel,
   shouldCountTowardCircuit,
+  shouldCountTowardProviderCircuit,
 } from "@/lib/ai/errors/classify";
 import { isCircuitOpen } from "@/lib/ai/fallback/circuitBreaker";
 import { isModelCircuitOpen, recordModelFailure, recordModelSuccess } from "@/lib/ai/fallback/modelCircuit";
@@ -35,6 +36,56 @@ import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 
 const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
+
+function isOfflineTask(task: TaskType): boolean {
+  return task === "WORLDBUILD_OFFLINE" || task === "STORYLINE_SIMULATION" || task === "DEV_ASSIST";
+}
+
+function stripThinkBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const s = text.trim();
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1).trim();
+    }
+  }
+  return null;
+}
+
+function sanitizeReasonerJsonText(text: string): { content: string; sanitized: boolean } {
+  const noThink = stripThinkBlocks(text);
+  if (isValidJsonObjectString(noThink)) return { content: noThink, sanitized: noThink !== text.trim() };
+  const extracted = extractFirstJsonObject(noThink);
+  if (extracted && isValidJsonObjectString(extracted)) {
+    return { content: extracted, sanitized: true };
+  }
+  return { content: noThink, sanitized: noThink !== text.trim() };
+}
 
 function gatewayEndpoint(env: ReturnType<typeof resolveAiEnv>): { url: string; key: string } {
   return { url: env.gatewayBaseUrl, key: env.gatewayApiKey };
@@ -221,6 +272,7 @@ export async function executePlayerChatStream(params: {
     });
 
     try {
+      let retryCount = 0;
       if (params.signal?.aborted) {
         return {
           ok: false,
@@ -236,6 +288,9 @@ export async function executePlayerChatStream(params: {
         timeoutMs,
         maxRetries,
         parentSignal: params.signal,
+        onRetry: () => {
+          retryCount += 1;
+        },
       });
       lastHttpStatus = res.status;
 
@@ -259,6 +314,8 @@ export async function executePlayerChatStream(params: {
           httpStatus: res.status,
           stream: true,
           fallbackCount: countFallbacks(attempts),
+          retryCount,
+          failureScope: "online",
           userId: params.ctx.userId,
         });
         return {
@@ -287,7 +344,7 @@ export async function executePlayerChatStream(params: {
         latencyMs: Date.now() - t0,
       });
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(role, PROVIDER_ID);
+        recordModelFailure(role, PROVIDER_ID, { providerScope: "online", countProvider: true });
       }
       logAiTelemetry({
         requestId: params.ctx.requestId,
@@ -302,6 +359,8 @@ export async function executePlayerChatStream(params: {
         message: errText.slice(0, 500),
         stream: true,
         fallbackCount: countFallbacks(attempts),
+        retryCount,
+        failureScope: "online",
         userId: params.ctx.userId,
       });
     } catch (e) {
@@ -328,7 +387,7 @@ export async function executePlayerChatStream(params: {
         };
       }
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(role, PROVIDER_ID);
+        recordModelFailure(role, PROVIDER_ID, { providerScope: "online", countProvider: true });
       }
       logAiTelemetry({
         requestId: params.ctx.requestId,
@@ -342,6 +401,7 @@ export async function executePlayerChatStream(params: {
         message: e instanceof Error ? e.message : String(e),
         stream: true,
         fallbackCount: countFallbacks(attempts),
+        failureScope: "online",
         userId: params.ctx.userId,
       });
     }
@@ -389,6 +449,7 @@ export async function executeChatCompletion(params: {
   const timeoutMs = binding.timeoutMs;
   const maxRetries = env.maxRetries;
   const jsonObject = binding.responseFormatJsonObject;
+  const failureScope = isOfflineTask(params.task) ? "offline" : "online";
   const fullChain = resolveOrderedRoleChain(params.task, env, mode);
   const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
   const attempts: AiRoutingAttempt[] = [];
@@ -508,10 +569,14 @@ export async function executeChatCompletion(params: {
     });
 
     try {
+      let retryCount = 0;
       const res = await resilientFetch(url, init, {
         timeoutMs,
         maxRetries,
         parentSignal: params.signal,
+        onRetry: () => {
+          retryCount += 1;
+        },
       });
 
       if (!res.ok) {
@@ -529,7 +594,15 @@ export async function executeChatCompletion(params: {
           latencyMs: Date.now() - t0,
         });
         if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-          recordModelFailure(role, PROVIDER_ID);
+          const countProvider = shouldCountTowardProviderCircuit(
+            kind,
+            failureScope,
+            env.offlineAffectsProviderCircuit
+          );
+          recordModelFailure(role, PROVIDER_ID, {
+            providerScope: failureScope,
+            countProvider,
+          });
         }
         continue;
       }
@@ -552,7 +625,15 @@ export async function executeChatCompletion(params: {
         continue;
       }
 
-      if (jsonObject && !isValidJsonObjectString(trimmed)) {
+      let processed = trimmed;
+      let jsonSanitized = false;
+      if (jsonObject && isOfflineTask(params.task)) {
+        const s = sanitizeReasonerJsonText(trimmed);
+        processed = s.content;
+        jsonSanitized = s.sanitized;
+      }
+
+      if (jsonObject && !isValidJsonObjectString(processed)) {
         attempts.push({
           logicalRole: role,
           providerId: PROVIDER_ID,
@@ -566,7 +647,7 @@ export async function executeChatCompletion(params: {
         continue;
       }
 
-      recordModelSuccess(role, PROVIDER_ID);
+      recordModelSuccess(role, PROVIDER_ID, { providerScope: failureScope });
       attempts.push({
         logicalRole: role,
         providerId: PROVIDER_ID,
@@ -600,6 +681,9 @@ export async function executeChatCompletion(params: {
         stream: false,
         cacheHit: false,
         fallbackCount: countFallbacks(attempts),
+        retryCount,
+        failureScope,
+        jsonSanitized,
         estCostUsd: estOk,
         userId: params.ctx.userId,
       });
@@ -610,7 +694,7 @@ export async function executeChatCompletion(params: {
           params.task,
           params.messages,
           {
-            content,
+            content: processed,
             logicalRole: role,
             gatewayModel,
             providerId: PROVIDER_ID,
@@ -624,7 +708,7 @@ export async function executeChatCompletion(params: {
         ok: true,
         providerId: PROVIDER_ID,
         logicalRole: role,
-        content,
+        content: processed,
         usage,
         latencyMs: Date.now() - t0,
         routing,
@@ -642,7 +726,15 @@ export async function executeChatCompletion(params: {
         latencyMs: Date.now() - t0,
       });
       if (policy.tripCircuitOnFailure && shouldCountTowardCircuit(kind)) {
-        recordModelFailure(role, PROVIDER_ID);
+        const countProvider = shouldCountTowardProviderCircuit(
+          kind,
+          failureScope,
+          env.offlineAffectsProviderCircuit
+        );
+        recordModelFailure(role, PROVIDER_ID, {
+          providerScope: failureScope,
+          countProvider,
+        });
       }
     }
   }

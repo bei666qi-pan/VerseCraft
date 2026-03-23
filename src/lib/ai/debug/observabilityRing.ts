@@ -28,6 +28,19 @@ export interface AiObservabilityRecord {
   stableCharLen?: number;
   dynamicCharLen?: number;
   cachedPromptTokens?: number;
+  retryCount?: number;
+  failureScope?: "online" | "offline";
+  jsonSanitized?: boolean;
+  retrievalLatencyMs?: number;
+  retrievalCacheHit?: boolean;
+  retrievalSourceCounts?: Record<string, number>;
+  retrievalScopeCounts?: Record<string, number>;
+  lorePacketChars?: number;
+  lorePacketTokenEstimate?: number;
+  fallbackRegistryUsed?: boolean;
+  factIngestionCount?: number;
+  factConflictCount?: number;
+  privateFactHitCount?: number;
 }
 
 function hashUser(userId: string | null | undefined): string | undefined {

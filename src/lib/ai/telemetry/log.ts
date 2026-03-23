@@ -40,6 +40,19 @@ export interface AiCostRecord {
   stableCharLen?: number;
   dynamicCharLen?: number;
   cachedPromptTokens?: number;
+  retryCount?: number;
+  failureScope?: "online" | "offline";
+  jsonSanitized?: boolean;
+  retrievalLatencyMs?: number;
+  retrievalCacheHit?: boolean;
+  retrievalSourceCounts?: Record<string, number>;
+  retrievalScopeCounts?: Record<string, number>;
+  lorePacketChars?: number;
+  lorePacketTokenEstimate?: number;
+  fallbackRegistryUsed?: boolean;
+  factIngestionCount?: number;
+  factConflictCount?: number;
+  privateFactHitCount?: number;
 }
 
 function totalTokensOf(u: TokenUsage | null | undefined): number | undefined {
@@ -102,6 +115,19 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     stableCharLen: rec.stableCharLen,
     dynamicCharLen: rec.dynamicCharLen,
     cachedPromptTokens: rec.cachedPromptTokens ?? rec.usage?.cachedPromptTokens,
+    retryCount: rec.retryCount,
+    failureScope: rec.failureScope,
+    jsonSanitized: rec.jsonSanitized,
+    retrievalLatencyMs: rec.retrievalLatencyMs,
+    retrievalCacheHit: rec.retrievalCacheHit,
+    retrievalSourceCounts: rec.retrievalSourceCounts,
+    retrievalScopeCounts: rec.retrievalScopeCounts,
+    lorePacketChars: rec.lorePacketChars,
+    lorePacketTokenEstimate: rec.lorePacketTokenEstimate,
+    fallbackRegistryUsed: rec.fallbackRegistryUsed,
+    factIngestionCount: rec.factIngestionCount,
+    factConflictCount: rec.factConflictCount,
+    privateFactHitCount: rec.privateFactHitCount,
   };
   if (shouldEmitConsole(rec.phase)) {
     if (rec.phase === "error") {
@@ -131,6 +157,19 @@ export function logAiTelemetry(rec: AiCostRecord): void {
       stableCharLen: rec.stableCharLen,
       dynamicCharLen: rec.dynamicCharLen,
       cachedPromptTokens: rec.cachedPromptTokens ?? rec.usage?.cachedPromptTokens,
+      retryCount: rec.retryCount,
+      failureScope: rec.failureScope,
+      jsonSanitized: rec.jsonSanitized,
+      retrievalLatencyMs: rec.retrievalLatencyMs,
+      retrievalCacheHit: rec.retrievalCacheHit,
+      retrievalSourceCounts: rec.retrievalSourceCounts,
+      retrievalScopeCounts: rec.retrievalScopeCounts,
+      lorePacketChars: rec.lorePacketChars,
+      lorePacketTokenEstimate: rec.lorePacketTokenEstimate,
+      fallbackRegistryUsed: rec.fallbackRegistryUsed,
+      factIngestionCount: rec.factIngestionCount,
+      factConflictCount: rec.factConflictCount,
+      privateFactHitCount: rec.privateFactHitCount,
     });
   }
 }

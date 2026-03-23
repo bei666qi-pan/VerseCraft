@@ -10,6 +10,7 @@ import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota
 import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
+import type { AnalyticsPlatform } from "@/lib/analytics/types";
 import {
   buildChatRequestFinishedPayload,
   toEnhanceTurnMetrics,
@@ -36,6 +37,8 @@ import {
   composePlayerChatSystemMessages,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
+import { getRuntimeLore } from "@/lib/worldKnowledge/runtime/getRuntimeLore";
+import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
 import {
   normalizePlayerDmJson,
   parseAccumulatedPlayerDmJson,
@@ -47,6 +50,7 @@ import {
   reloadVerseCraftProcessEnv,
   resolveVerseCraftProjectRoot,
 } from "@/lib/config/loadVerseCraftEnv";
+import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { validateChatRequest } from "@/lib/security/chatValidation";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -56,6 +60,12 @@ import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { normalizeUsage } from "@/lib/ai/stream/openaiLike";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
 import type { TokenUsage } from "@/lib/ai/types/core";
+import { isGlobalCacheSafe } from "@/lib/kg/cacheGate";
+import { embedText } from "@/lib/kg/embed";
+import { ingestUserKnowledge } from "@/lib/kg/ingest";
+import { normalizeForHash, sha256Hex } from "@/lib/kg/normalize";
+import { routeUserInput, type RouteResult } from "@/lib/kg/routing";
+import { getWorldRevision, putSemanticCache, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,6 +134,20 @@ function sanitizeAssistantContent(content: string): string {
     is_death: false,
     consumes_time: true,
   });
+}
+
+const LOCATION_NODE_RE = /\b(B2_Passage|B2_GatekeeperDomain|B1_SafeZone|B1_Storage|B1_Laundry|B1_PowerRoom|1F_Lobby|1F_PropertyOffice|1F_GuardRoom|1F_Mailboxes|2F_Clinic201|2F_Room202|2F_Room203|2F_Corridor|3F_Room301|3F_Room302|3F_Stairwell|4F_Room401|4F_Room402|4F_CorridorEnd|5F_Room501|5F_Room502|5F_Studio503|6F_Room601|6F_Room602|6F_Stairwell|7F_Room701|7F_Bench|7F_Kitchen|7F_SealedDoor)\b/i;
+const ENTITY_CODE_RE = /\b([NA]-\d{3})\b/gi;
+
+function guessPlayerLocation(playerContext: string): string | null {
+  const m = playerContext.match(LOCATION_NODE_RE);
+  return m?.[1] ?? null;
+}
+
+function extractRecentEntities(latestUserInput: string): string[] {
+  const out = new Set<string>();
+  for (const m of latestUserInput.matchAll(ENTITY_CODE_RE)) out.add(m[1].toUpperCase());
+  return [...out];
 }
 
 type SessionMemoryRow = {
@@ -309,6 +333,12 @@ export async function POST(req: Request) {
         Connection: "keep-alive",
       },
     });
+  }
+
+  const kgEnabled = isKgLayerEnabled();
+  const kgRoute = routeUserInput(latestUserInput);
+  if (kgEnabled) {
+    void ingestUserKnowledge({ userId, latestUserInput, route: kgRoute });
   }
 
   // Overlap session-memory DB read with local chat message shaping (stable prefix + raw slice + dice).
@@ -601,11 +631,80 @@ export async function POST(req: Request) {
     rule: pipelineRule,
     preflightFailed: pipelinePreflightFailed,
   });
+  let runtimeLoreCompact = "";
+  let loreRetrievalLatencyMs = 0;
+  let loreCacheHit = false;
+  let loreSourceCount = 0;
+  let loreTokenEstimate = 0;
+  let loreFallbackPath: "none" | "db_partial" | "registry" = "none";
+  let lorePacketChars = 0;
+  let retrievalSourceCounts: Record<string, number> = {};
+  let retrievalScopeCounts: Record<string, number> = {};
+  let privateFactHitCount = 0;
+  try {
+    const loreT0 = Date.now();
+    const runtimeLore = await getRuntimeLore({
+      latestUserInput,
+      userId,
+      sessionId: sessionId ?? null,
+      worldRevision: BigInt(0),
+      playerLocation: guessPlayerLocation(playerContext),
+      recentlyEncounteredEntities: extractRecentEntities(latestUserInput),
+      taskType: "PLAYER_CHAT",
+      tokenBudget: 420,
+      worldScope: ["core", "shared", "user", "session"],
+    });
+    loreRetrievalLatencyMs = Math.max(0, Date.now() - loreT0);
+    runtimeLoreCompact = runtimeLore.compactPromptText;
+    lorePacketChars = runtimeLoreCompact.length;
+    loreCacheHit = runtimeLore.debugMeta.cache.level0MemoHit || runtimeLore.debugMeta.cache.redisHit;
+    loreSourceCount = runtimeLore.retrievedFacts.length;
+    loreTokenEstimate = Math.ceil(runtimeLoreCompact.length / 4);
+    retrievalSourceCounts = runtimeLore.debugMeta.hitSources.reduce<Record<string, number>>((acc, src) => {
+      acc[src] = (acc[src] ?? 0) + 1;
+      return acc;
+    }, {});
+    retrievalScopeCounts = runtimeLore.retrievedFacts.reduce<Record<string, number>>((acc, fact) => {
+      const key = fact.layer;
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    privateFactHitCount = runtimeLore.retrievedFacts.filter((f) => f.layer === "user_private_lore").length;
+    if ((runtimeLore.debugMeta.trimReason ?? "").startsWith("registry_fallback")) {
+      loreFallbackPath = "registry";
+    } else if (runtimeLore.debugMeta.trimmedByBudget) {
+      loreFallbackPath = "db_partial";
+    }
+    logAiTelemetry({
+      requestId,
+      task: "PLAYER_CHAT",
+      providerId: "oneapi",
+      logicalRole: "control",
+      phase: "preflight_budget",
+      latencyMs: loreRetrievalLatencyMs,
+      cacheHit: loreCacheHit,
+      message: `lore_retrieval sources=${loreSourceCount} fallback=${loreFallbackPath}`,
+      userId,
+      retrievalLatencyMs: loreRetrievalLatencyMs,
+      retrievalCacheHit: loreCacheHit,
+      retrievalSourceCounts,
+      retrievalScopeCounts,
+      lorePacketChars,
+      lorePacketTokenEstimate: loreTokenEstimate,
+      fallbackRegistryUsed: loreFallbackPath === "registry",
+      privateFactHitCount,
+    });
+  } catch (e) {
+    console.warn("[api/chat] world knowledge runtime lore skipped", e);
+    loreFallbackPath = "registry";
+  }
+
+  const controlAndLoreAugmentation = [controlAugmentation, runtimeLoreCompact].filter(Boolean).join("\n\n");
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext,
     isFirstAction,
-    controlAugmentation,
+    controlAugmentation: controlAndLoreAugmentation,
   });
   const aiEnvForSystem = resolveAiEnv();
   const systemChatMessages = composePlayerChatSystemMessages(
@@ -641,8 +740,31 @@ export async function POST(req: Request) {
       preflightCacheHit: preflightTurnMetrics.cacheHit,
       preflightLatencyMs: preflightTurnMetrics.latencyMs,
       preflightOk: preflightTurnMetrics.ok,
+      loreRetrievalLatencyMs,
+      loreCacheHit,
+      loreSourceCount,
+      loreTokenEstimate,
+      loreFallbackPath,
     },
   }).catch(() => {});
+
+  /** 供终帧写入 global cache 时对齐 world_revision（方案 B：preflight 后读取）。Pool max=10，仅短查询。 */
+  const kgCacheWorldRevision: { current: bigint | null } = { current: null };
+  const codexCacheEarly = kgEnabled
+    ? await tryServeCodexFromGlobalCache({
+        kgRoute,
+        latestUserInput,
+        requestId,
+        userId,
+        sessionId,
+        platform,
+        onWorldRevision: (rev) => {
+          kgCacheWorldRevision.current = rev;
+        },
+      })
+    : null;
+  if (codexCacheEarly) return codexCacheEarly;
+
   if (!anyAiProviderConfigured()) {
     reloadVerseCraftProcessEnv();
   }
@@ -756,53 +878,35 @@ export async function POST(req: Request) {
       },
     }).catch(() => {});
 
-    if (isTimeout) {
-      return NextResponse.json({ error: "Upstream Timeout", code: "AI_TIMEOUT" }, { status: 504 });
-    }
     const upstreamStatus = streamResult.lastHttpStatus ?? 0;
-    if (upstreamStatus === 429) {
-      return NextResponse.json(
-        {
-          error: "Upstream Rate Limited",
-          code: "UPSTREAM_RATE_LIMITED",
-          upstreamStatus,
-        },
-        { status: 429 }
-      );
-    }
-    if (upstreamStatus === 503) {
-      return NextResponse.json(
-        { error: "Upstream Service Unavailable", code: "UPSTREAM_UNAVAILABLE", upstreamStatus },
-        { status: 503 }
-      );
-    }
-    const isAuthError = upstreamStatus === 401 || upstreamStatus === 403;
-    if (isAuthError) {
-      return NextResponse.json(
-        {
-          error: "Upstream Auth Failed",
-          code: "UPSTREAM_AUTH_FAILED",
-          upstreamStatus,
-          hint: "检查各厂商 API Key 与模型白名单权限。",
-        },
-        { status: 502 }
-      );
-    }
     const attemptsForHint = streamResult.httpAttempts ?? [];
     const lastWithBody = [...attemptsForHint]
       .reverse()
       .find((a) => typeof a.httpStatus === "number" && a.message);
     const hintFields = parseUpstreamErrorFields(lastWithBody?.message);
-
-    return NextResponse.json(
-      {
-        error: "Upstream Error",
-        code: "AI_ROUTER_FAILED",
-        upstreamStatus,
-        ...hintFields,
+    const degraded = {
+      is_action_legal: false,
+      sanity_damage: 0,
+      narrative: isTimeout
+        ? "深渊回声超时，请稍后重试。"
+        : "深渊主脑暂时离线，请稍后重试。",
+      is_death: false,
+      consumes_time: true,
+      security_meta: {
+        action: "degrade",
+        stage: "ai_router",
+        reason: streamResult.code,
+        upstream_status: upstreamStatus || undefined,
+        ...(hintFields.upstreamCode ? { upstream_code: hintFields.upstreamCode } : {}),
       },
-      { status: 502 }
-    );
+    };
+    return new Response(sseText(JSON.stringify(degraded)), {
+      status: 200,
+      headers: {
+        ...SSE_HEADERS,
+        "X-VerseCraft-Ai-Status": "degraded",
+      },
+    });
   }
 
   const srOk = streamResult as PlayerChatStreamSuccess;
@@ -948,7 +1052,7 @@ export async function POST(req: Request) {
             operationMode: routingReport.operationMode,
             intendedRole: routingReport.intendedRole,
             fallbackCount: routingReport.fallbackCount,
-            actualLogicalRole: routingReport.actualLogicalRole,
+            actualLogicalRole: routingReport.actualLogicalRole ?? undefined,
           },
           stableCharLen,
           dynamicCharLen,
@@ -1063,6 +1167,85 @@ export async function POST(req: Request) {
       }
       if (finalizePayload) {
         await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
+        if (dmRecord && userId && sessionId) {
+          void persistTurnFacts({
+            requestId,
+            latestUserInput,
+            dmRecord,
+            sessionMemorySummary: sessionMemory?.plot_summary ?? null,
+            ruleHits: preflightTurnMetrics.ran
+              ? [`preflight:${preflightTurnMetrics.ok ? "ok" : "not_ok"}`]
+              : ["preflight:skipped"],
+            userId,
+            sessionId,
+            maxFacts: 10,
+          })
+            .then((writeback) => {
+              logAiTelemetry({
+                requestId,
+                task: "PLAYER_CHAT",
+                providerId: "oneapi",
+                logicalRole: "control",
+                phase: "success",
+                userId,
+                factIngestionCount: writeback.extractedCount,
+                factConflictCount: writeback.rejectedCount,
+              });
+            })
+            .catch((error) => {
+            const err = error as Error;
+            console.warn("[api/chat] world writeback skipped", {
+              requestId,
+              userId,
+              sessionId,
+              message: err?.message,
+            });
+          });
+        }
+        if (
+          kgEnabled &&
+          dmRecord &&
+          typeof dmRecord.narrative === "string" &&
+          kgRoute.kind === "CODEX_QUERY" &&
+          isGlobalCacheSafe(latestUserInput, kgRoute)
+        ) {
+          const norm = normalizeForHash(latestUserInput);
+          const reqHash = `g:codex:${sha256Hex(norm)}`;
+          const wr = kgCacheWorldRevision.current ?? (await getWorldRevision());
+          void putSemanticCache({
+            scope: "global",
+            userId: null,
+            task: "codex",
+            worldRevision: wr,
+            requestText: latestUserInput,
+            requestNorm: norm,
+            requestHash: reqHash,
+            requestEmbedding: embedText(latestUserInput),
+            responseText: String(dmRecord.narrative),
+            ttlSec: 86_400,
+          })
+            .then(() => {
+              void recordGenericAnalyticsEvent({
+                eventId: `${requestId}:kg_cache_write`,
+                idempotencyKey: `${requestId}:kg_cache_write`,
+                userId,
+                sessionId: sessionId ?? "unknown_session",
+                eventName: "kg_cache_write",
+                eventTime: new Date(),
+                page: "/play",
+                source: "chat",
+                platform,
+                tokenCost: 0,
+                playDurationDeltaSec: 0,
+                payload: {
+                  requestId,
+                  scope: "global",
+                  worldRevision: wr.toString(),
+                },
+              }).catch(() => {});
+            })
+            .catch(() => {});
+        }
       }
       return false;
     };
@@ -1380,6 +1563,104 @@ export async function POST(req: Request) {
   return new Response(readable, {
     status: 200,
     headers: sseHeadersOut,
+  });
+}
+
+/** IVFFlat 默认 probes=5；向量维 256。勿提高 @/db pool max（当前 10），缓存路径仅短事务。 */
+const KG_SEMANTIC_DEFAULT_PROBES = 5;
+const KG_SEMANTIC_DEFAULT_K = 5;
+const KG_SEMANTIC_MIN_SIMILARITY = 0.78;
+
+async function tryServeCodexFromGlobalCache(args: {
+  kgRoute: RouteResult;
+  latestUserInput: string;
+  requestId: string;
+  userId: string | null;
+  sessionId: string | null;
+  platform: AnalyticsPlatform;
+  onWorldRevision: (rev: bigint) => void;
+}): Promise<Response | null> {
+  if (args.kgRoute.kind !== "CODEX_QUERY") return null;
+
+  const queryEmbedding = embedText(args.latestUserInput);
+  const worldRevision = await getWorldRevision();
+  args.onWorldRevision(worldRevision);
+
+  const got = await tryGetSemanticCache({
+    scope: "global",
+    userId: null,
+    task: "codex",
+    queryEmbedding,
+    worldRevision,
+    probes: KG_SEMANTIC_DEFAULT_PROBES,
+    k: KG_SEMANTIC_DEFAULT_K,
+    minSimilarity: KG_SEMANTIC_MIN_SIMILARITY,
+  });
+
+  if (!got.hit || !got.responseText) {
+    void recordGenericAnalyticsEvent({
+      eventId: `${args.requestId}:kg_cache_miss`,
+      idempotencyKey: `${args.requestId}:kg_cache_miss`,
+      userId: args.userId,
+      sessionId: args.sessionId ?? "unknown_session",
+      eventName: "kg_cache_miss",
+      eventTime: new Date(),
+      page: "/play",
+      source: "chat",
+      platform: args.platform,
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        requestId: args.requestId,
+        scope: "global",
+        worldRevision: worldRevision.toString(),
+      },
+    }).catch(() => {});
+    return null;
+  }
+
+  if (got.cacheId && Number.isFinite(got.cacheId) && got.cacheId > 0) {
+    void touchSemanticCacheHit(got.cacheId);
+  }
+
+  void recordGenericAnalyticsEvent({
+    eventId: `${args.requestId}:kg_cache_hit`,
+    idempotencyKey: `${args.requestId}:kg_cache_hit`,
+    userId: args.userId,
+    sessionId: args.sessionId ?? "unknown_session",
+    eventName: "kg_cache_hit",
+    eventTime: new Date(),
+    page: "/play",
+    source: "chat",
+    platform: args.platform,
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {
+      requestId: args.requestId,
+      scope: "global",
+      worldRevision: worldRevision.toString(),
+      similarity: got.similarity,
+    },
+  }).catch(() => {});
+
+  const dmNorm = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: got.responseText,
+    is_death: false,
+    consumes_time: false,
+  });
+  if (!dmNorm) return null;
+
+  const headers = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  } as const;
+
+  return new Response(sseText(`__VERSECRAFT_FINAL__:${JSON.stringify(dmNorm)}`), {
+    status: 200,
+    headers,
   });
 }
 

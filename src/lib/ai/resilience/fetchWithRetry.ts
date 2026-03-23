@@ -16,6 +16,7 @@ export interface ResilientFetchOptions {
   maxRetries: number;
   parentSignal?: AbortSignal;
   isRetryable?: (response: Response | null, error: unknown) => boolean;
+  onRetry?: (ctx: { attempt: number; waitMs: number; cause: "http" | "error"; status?: number }) => void;
 }
 
 /**
@@ -58,7 +59,9 @@ export async function resilientFetch(
         return lastResponse;
       }
       if (attempt < maxRetries) {
-        await sleep(400 * 2 ** attempt);
+        const waitMs = 400 * 2 ** attempt;
+        options.onRetry?.({ attempt, waitMs, cause: "http", status: lastResponse.status });
+        await sleep(waitMs);
         continue;
       }
       return lastResponse;
@@ -69,7 +72,9 @@ export async function resilientFetch(
         throw e;
       }
       if (attempt < maxRetries) {
-        await sleep(400 * 2 ** attempt);
+        const waitMs = 400 * 2 ** attempt;
+        options.onRetry?.({ attempt, waitMs, cause: "error" });
+        await sleep(waitMs);
         continue;
       }
       throw e;

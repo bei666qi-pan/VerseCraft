@@ -20,11 +20,17 @@ export function isCircuitOpen(provider: AiProviderId, now = Date.now()): boolean
   return b.failures >= resolveAiEnv().circuitFailureThreshold;
 }
 
-export function recordProviderSuccess(provider: AiProviderId): void {
+export function recordProviderSuccess(
+  provider: AiProviderId,
+  _opts?: { scope?: "online" | "offline" }
+): void {
   state.delete(key(provider));
 }
 
-export function recordProviderFailure(provider: AiProviderId): void {
+export function recordProviderFailure(
+  provider: AiProviderId,
+  _opts?: { scope?: "online" | "offline" }
+): void {
   const env = resolveAiEnv();
   const k = key(provider);
   const prev = state.get(k) ?? { failures: 0, openedUntil: 0 };

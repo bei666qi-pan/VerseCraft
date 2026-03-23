@@ -31,7 +31,13 @@
     "test:admin:perf": "playwright test e2e/admin-performance.spec.ts",
     "analyze:admin-sql": "tsx scripts/admin-explain-baseline.ts",
     "analyze:admin-sql:strict": "tsx scripts/admin-explain-baseline.ts --strict",
-    "benchmark:chat-metrics": "tsx scripts/benchmark-chat-metrics.ts"
+    "benchmark:chat-metrics": "tsx scripts/benchmark-chat-metrics.ts",
+    "benchmark:world-retrieval": "tsx scripts/benchmark-world-retrieval.ts",
+    "worker:kg": "tsx scripts/vc-worker.ts",
+    "worker:kg:once": "tsx scripts/vc-worker.ts --once",
+    "kg:compact": "tsx scripts/vc-compaction.ts",
+    "kg:self-check": "tsx scripts/kg-self-check.ts",
+    "seed:world-knowledge": "tsx scripts/seed-world-knowledge.ts"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

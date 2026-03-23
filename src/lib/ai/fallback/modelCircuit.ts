@@ -29,19 +29,29 @@ export function isModelCircuitOpen(role: AiLogicalRole, now = Date.now()): boole
   return b.failures >= threshold();
 }
 
-export function recordModelSuccess(role: AiLogicalRole, provider: AiProviderId): void {
+export function recordModelSuccess(
+  role: AiLogicalRole,
+  provider: AiProviderId,
+  opts?: { providerScope?: "online" | "offline" }
+): void {
   modelState.delete(key(role));
-  recordProviderSuccess(provider);
+  recordProviderSuccess(provider, opts);
 }
 
-export function recordModelFailure(role: AiLogicalRole, provider: AiProviderId): void {
+export function recordModelFailure(
+  role: AiLogicalRole,
+  provider: AiProviderId,
+  opts?: { providerScope?: "online" | "offline"; countProvider?: boolean }
+): void {
   const k = key(role);
   const prev = modelState.get(k) ?? { failures: 0, openedUntil: 0 };
   const failures = prev.failures + 1;
   const openedUntil =
     failures >= threshold() ? Date.now() + cooldownMs() : prev.openedUntil;
   modelState.set(k, { failures, openedUntil });
-  recordProviderFailure(provider);
+  if (opts?.countProvider !== false) {
+    recordProviderFailure(provider, { scope: opts?.providerScope });
+  }
 }
 
 export function snapshotModelCircuits(): Array<{ logicalRole: AiLogicalRole; failures: number; openedUntil: number }> {

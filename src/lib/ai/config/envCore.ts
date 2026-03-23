@@ -67,6 +67,14 @@ export interface ResolvedAiEnv {
    * Min interval between postModelModeration calls on stream deltas; 0 = moderate every delta (legacy).
    */
   streamModerationThrottleMs: number;
+  /** Fail-fast guard for offline reasoner tasks to avoid long tail multiplier. */
+  offlineFailFast: boolean;
+  /** Allow WORLDBUILD/DEV_ASSIST to fallback from reasoner to main. */
+  offlineAllowMainFallback: boolean;
+  /** Whether offline failures should count toward provider-level circuit. */
+  offlineAffectsProviderCircuit: boolean;
+  /** Peak budget mode tightens offline timeouts/token caps. */
+  offlineBudgetProfile: "default" | "peak";
 }
 
 /** Default player SSE fallback role order when env omits chain. */
@@ -202,6 +210,10 @@ export function resolveAiEnv(): ResolvedAiEnv {
       0,
       Math.min(2000, envNumber("AI_STREAM_MODERATION_THROTTLE_MS", 0))
     ),
+    offlineFailFast: envBoolean("AI_OFFLINE_FAILFAST", true),
+    offlineAllowMainFallback: envBoolean("AI_OFFLINE_ALLOW_MAIN_FALLBACK", false),
+    offlineAffectsProviderCircuit: envBoolean("AI_OFFLINE_AFFECTS_PROVIDER_CIRCUIT", false),
+    offlineBudgetProfile: envEnum("AI_OFFLINE_BUDGET_PROFILE", ["default", "peak"] as const, "default"),
   };
 }
 

@@ -15,7 +15,13 @@ export type AnalyticsEventName =
   | "game_record_submitted"
   | "onboarding_viewed"
   | "admin_login_success"
-  | "session_heartbeat";
+  | "session_heartbeat"
+  | "kg_cache_hit"
+  | "kg_cache_miss"
+  | "kg_cache_write"
+  | "kg_job_claimed"
+  | "kg_job_succeeded"
+  | "kg_job_failed";
 
 export type AnalyticsPlatform = "mobile" | "desktop" | "unknown";
 

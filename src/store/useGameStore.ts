@@ -11,7 +11,7 @@ import {
 } from "@/store/middleware/checksumMiddleware";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
-import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
+import { NPC_HOME_LOCATION_SEED } from "@/lib/registry/runtimeBoundary";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -806,7 +806,10 @@ export const useGameStore = create<GameState>()(
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,
           dynamicNpcStates: Object.fromEntries(
-            Object.entries(NPC_SOCIAL_GRAPH).map(([id, p]) => [id, { currentLocation: p.homeLocation, isAlive: true }])
+            Object.entries(NPC_HOME_LOCATION_SEED).map(([id, homeLocation]) => [
+              id,
+              { currentLocation: homeLocation, isAlive: true },
+            ])
           ),
           intrusionFlashUntil: 0,
           isGameStarted: true,
