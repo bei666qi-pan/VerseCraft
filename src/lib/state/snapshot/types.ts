@@ -1,4 +1,4 @@
-import type { Item, NpcRelationStateV2, StatType, WarehouseItem } from "@/lib/registry/types";
+import type { Item, NpcRelationStateV2, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
@@ -60,6 +60,7 @@ export interface SnapshotPlayer {
   currentLocation: string;
   alive: boolean;
   deathCount: number;
+  equippedWeapon: Weapon | null;
 }
 
 export interface SnapshotTime {
@@ -74,6 +75,18 @@ export interface SnapshotWorld {
   anchorUnlocks: Record<"B1" | "1" | "7", boolean>;
   pendingEvents: string[];
   floorThreatTier: Record<string, number>;
+  mainThreatByFloor: Record<string, SnapshotMainThreatState>;
+}
+
+export type SnapshotMainThreatPhase = "idle" | "active" | "suppressed" | "breached";
+
+export interface SnapshotMainThreatState {
+  threatId: string;
+  floorId: string;
+  phase: SnapshotMainThreatPhase;
+  suppressionProgress: number;
+  lastResolvedAtHour: number | null;
+  counterHintsUsed: string[];
 }
 
 export interface SnapshotTasks {
@@ -137,5 +150,6 @@ export interface LegacySaveSurface {
   gender?: string;
   height?: number;
   personality?: string;
+  equippedWeapon?: Weapon | null;
   runSnapshotV2?: RunSnapshotV2;
 }

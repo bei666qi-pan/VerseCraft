@@ -123,6 +123,8 @@ export type BuildChatRequestFinishedPayloadInput = {
   streamInterruptedCount?: number;
   streamEmptyCount?: number;
   finalJsonParseSuccess?: boolean;
+  settlementGuardApplied?: boolean;
+  settlementAwardPruned?: number;
 };
 
 /**
@@ -185,5 +187,8 @@ export function buildChatRequestFinishedPayload(
     streamEmptyCount: optionalFiniteInt(input.streamEmptyCount),
     finalJsonParseSuccess:
       typeof input.finalJsonParseSuccess === "boolean" ? input.finalJsonParseSuccess : null,
+    settlementGuardApplied:
+      typeof input.settlementGuardApplied === "boolean" ? input.settlementGuardApplied : null,
+    settlementAwardPruned: optionalFiniteInt(input.settlementAwardPruned),
   };
 }

@@ -1,10 +1,12 @@
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
+import type { Weapon } from "@/lib/registry/types";
 import { createDefaultAnchorUnlocks } from "./anchors";
 import { createDefaultDeathState } from "./death";
 import { buildNpcSnapshotMap } from "./npcs";
 import { splitTasksByStatus } from "./tasks";
 import {
   RUN_SNAPSHOT_V2_VERSION,
+  type SnapshotMainThreatState,
   type RunSnapshotV2,
   type SnapshotCodexEntry,
   type SnapshotTask,
@@ -27,6 +29,7 @@ export interface BuildRunSnapshotV2Input {
   currentLocation: string;
   alive: boolean;
   deathCount?: number;
+  equippedWeapon?: Weapon | null;
   day: number;
   hour: number;
   worldFlags?: Record<string, boolean>;
@@ -34,6 +37,7 @@ export interface BuildRunSnapshotV2Input {
   anchorUnlocks?: Record<"B1" | "1" | "7", boolean>;
   pendingEvents?: string[];
   floorThreatTier?: Record<string, number>;
+  mainThreatByFloor?: Record<string, SnapshotMainThreatState>;
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
   homeSeed: Record<string, string>;
   tasks: SnapshotTask[];
@@ -68,6 +72,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       currentLocation: input.currentLocation ?? "B1_SafeZone",
       alive: input.alive !== false,
       deathCount: Math.max(0, Number(input.deathCount ?? 0)),
+      equippedWeapon: input.equippedWeapon ?? null,
     },
     time: {
       day: Math.max(0, Number(input.day ?? 0)),
@@ -80,6 +85,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       anchorUnlocks: { ...(input.anchorUnlocks ?? createDefaultAnchorUnlocks()) },
       pendingEvents: [...(input.pendingEvents ?? [])],
       floorThreatTier: { ...(input.floorThreatTier ?? {}) },
+      mainThreatByFloor: { ...(input.mainThreatByFloor ?? {}) },
     },
     npcs: buildNpcSnapshotMap({
       dynamicNpcStates: input.dynamicNpcStates ?? {},

@@ -1,4 +1,12 @@
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
+import {
+  buildFloorProgressionPacket,
+  buildForgePacket,
+  buildTacticalContextPacket,
+  buildThreatPacket,
+  buildWeaponPacket,
+  inferFloorThreatTier,
+} from "./stage2Packets";
 
 type ServiceStateInput = {
   shopUnlocked?: boolean;
@@ -15,6 +23,8 @@ const REVIVE_RE = /最近复活：死亡地点\[([^\]]*)]，死因\[([^\]]*)]，
 const TASKS_RE = /任务追踪：([^。]+)。/;
 const NPC_POS_RE = /NPC当前位置：([^。]+)。/;
 const CODEX_RE = /图鉴已解锁：([^。]+)。/;
+const MAIN_THREAT_RE = /主威胁状态：([^。]+)。/;
+const EQUIPPED_WEAPON_RE = /主手武器\[([^\]|]+)\|稳定(\d+)\|反制([^|\]]*)(?:\|模组([^|\]]*))?(?:\|灌注([^|\]]*))?(?:\|污染(\d+))?(?:\|可修复([01]))?\]/;
 
 function parseLocation(playerContext: string, fallbackLocation: string | null): string | null {
   const fromContext = playerContext.match(LOCATION_RE)?.[1]?.trim();
@@ -96,6 +106,72 @@ function parseRelationshipHints(playerContext: string): string[] {
     .slice(0, 12);
 }
 
+function parseMainThreatMap(playerContext: string): Record<string, {
+  threatId: string;
+  phase: MainThreatPhase;
+  suppressionProgress: number;
+}> {
+  const raw = playerContext.match(MAIN_THREAT_RE)?.[1]?.trim();
+  if (!raw) return {};
+  const out: Record<string, { threatId: string; phase: MainThreatPhase; suppressionProgress: number }> = {};
+  const chunks = raw.split("，").map((x) => x.trim()).filter(Boolean);
+  for (const c of chunks) {
+    const m = c.match(/^([A-Za-z0-9]+)\[([^|\]]+)\|([^|\]]+)\|(\d+)\]$/);
+    if (!m) continue;
+    const floorId = m[1] ?? "";
+    const threatId = m[2] ?? "";
+    const phaseRaw = m[3] ?? "idle";
+    const phase: MainThreatPhase =
+      phaseRaw === "idle" || phaseRaw === "active" || phaseRaw === "suppressed" || phaseRaw === "breached"
+        ? phaseRaw
+        : "idle";
+    const suppressionProgress = Math.max(0, Math.min(100, Number(m[4] ?? "0") || 0));
+    if (!floorId || !threatId) continue;
+    out[floorId] = { threatId, phase, suppressionProgress };
+  }
+  return out;
+}
+
+function parseEquippedWeapon(playerContext: string): {
+  weaponId: string | null;
+  stability: number | null;
+  counterTags: string[];
+  mods: string[];
+  infusions: string[];
+  contamination: number | null;
+  repairable: boolean | null;
+} {
+  const m = playerContext.match(EQUIPPED_WEAPON_RE);
+  if (!m) return { weaponId: null, stability: null, counterTags: [], mods: [], infusions: [], contamination: null, repairable: null };
+  const weaponId = (m[1] ?? "").trim() || null;
+  const stability = Number(m[2] ?? "0");
+  const tags = (m[3] ?? "")
+    .split("/")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const mods = (m[4] ?? "")
+    .split("/")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((x) => x !== "无");
+  const infusions = (m[5] ?? "")
+    .split("/")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((x) => x !== "无");
+  const contamination = Number(m[6] ?? "NaN");
+  const repairable = m[7] === "1" ? true : m[7] === "0" ? false : null;
+  return {
+    weaponId,
+    stability: Number.isFinite(stability) ? Math.max(0, Math.min(100, stability)) : null,
+    counterTags: tags,
+    mods,
+    infusions,
+    contamination: Number.isFinite(contamination) ? Math.max(0, Math.min(100, contamination)) : null,
+    repairable,
+  };
+}
+
 function inferFloorThreatTier(location: string | null): "b1_safe" | "low" | "mid" | "high" | "extreme" {
   if (!location) return "low";
   if (location.startsWith("B1_")) return "b1_safe";
@@ -115,6 +191,8 @@ function compactRuntimeLore(runtimeLoreCompact: string): string[] {
     .slice(0, 10);
 }
 
+type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
+
 export function buildRuntimeContextPackets(args: {
   playerContext: string;
   latestUserInput: string;
@@ -131,6 +209,8 @@ export function buildRuntimeContextPackets(args: {
   const tasks = parseTasks(args.playerContext);
   const npcPositions = parseNpcPositions(args.playerContext);
   const relationshipHints = parseRelationshipHints(args.playerContext);
+  const mainThreatMap = parseMainThreatMap(args.playerContext);
+  const equippedWeapon = parseEquippedWeapon(args.playerContext);
   const services = getServicesForLocation(location, args.serviceState ?? {}).map((svc) => ({
     id: svc.id,
     kind: svc.kind,
@@ -139,6 +219,20 @@ export function buildRuntimeContextPackets(args: {
   }));
   const nearbyNpcIds = npcPositions.filter((x) => x.location === location).map((x) => x.npcId);
   const loreLines = compactRuntimeLore(args.runtimeLoreCompact ?? "");
+  const threatPacket = buildThreatPacket({
+    location,
+    contextThreatMap: mainThreatMap,
+  });
+  const weaponPacket = buildWeaponPacket({
+    weapon: equippedWeapon,
+    threatName: threatPacket.activeThreatName,
+    threatId: threatPacket.activeThreatId,
+  });
+  const forgePacket = buildForgePacket({
+    location,
+    serviceState: args.serviceState,
+    contextThreatPhase: threatPacket.phase,
+  });
 
   const packets = {
     current_location_packet: {
@@ -146,6 +240,15 @@ export function buildRuntimeContextPackets(args: {
       time,
       floorThreatTier: inferFloorThreatTier(location),
     },
+    main_threat_packet: threatPacket,
+    weapon_packet: weaponPacket,
+    forge_packet: forgePacket,
+    floor_progression_packet: buildFloorProgressionPacket({
+      location,
+      worldFlags,
+      recentEvents: revive ? [`recent_revive@${String(revive.lastReviveAnchorId ?? "unknown")}`] : [],
+      discoveredTruths: worldFlags.filter((x) => x.includes("truth") || x.includes("conspiracy")),
+    }),
     nearby_npc_packet: nearbyNpcIds,
     active_tasks_packet: tasks,
     anchor_revive_packet: {
@@ -157,20 +260,13 @@ export function buildRuntimeContextPackets(args: {
       services,
     },
     relationship_packet: relationshipHints,
-    world_state_packet: {
-      worldFlags,
-      recentWorldEvents: revive ? [`recent_revive@${String(revive.lastReviveAnchorId ?? "unknown")}`] : [],
-      discoveredTruths: worldFlags.filter((x) => x.includes("truth") || x.includes("conspiracy")),
-    },
-    high_priority_constraints_packet: {
-      latestUserInput: args.latestUserInput.slice(0, 200),
+    tactical_context_packet: buildTacticalContextPacket({
+      latestUserInput: args.latestUserInput,
+      activeTasks: tasks,
       runtimeLoreHints: loreLines,
-      immutableRules: [
-        "严格输出单个 JSON 对象并满足契约字段",
-        "运行时动态注入事实优先于静态记忆",
-        "禁止凭空新增节点/NPC/道具ID",
-      ],
-    },
+      nearbyNpcIds,
+      threatPhase: threatPacket.phase,
+    }),
   };
   const text = [
     "## 【运行时结构化上下文包（权威事实源）】",
@@ -181,21 +277,17 @@ export function buildRuntimeContextPackets(args: {
   if (text.length <= maxChars) return text;
   const compactPackets = {
     current_location_packet: packets.current_location_packet,
+    main_threat_packet: packets.main_threat_packet,
+    weapon_packet: packets.weapon_packet,
+    forge_packet: packets.forge_packet,
+    floor_progression_packet: packets.floor_progression_packet,
     active_tasks_packet: packets.active_tasks_packet.slice(0, 4),
     anchor_revive_packet: packets.anchor_revive_packet,
     service_nodes_packet: {
       location: packets.service_nodes_packet.location,
       services: packets.service_nodes_packet.services.slice(0, 4),
     },
-    world_state_packet: {
-      worldFlags: packets.world_state_packet.worldFlags.slice(0, 8),
-      recentWorldEvents: packets.world_state_packet.recentWorldEvents.slice(0, 3),
-      discoveredTruths: packets.world_state_packet.discoveredTruths.slice(0, 4),
-    },
-    high_priority_constraints_packet: {
-      latestUserInput: packets.high_priority_constraints_packet.latestUserInput,
-      immutableRules: packets.high_priority_constraints_packet.immutableRules,
-    },
+    tactical_context_packet: packets.tactical_context_packet,
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

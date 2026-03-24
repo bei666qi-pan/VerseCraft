@@ -12,4 +12,5 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   for (const key of required) {
     assert.ok(content.includes(key), `missing contract key marker: ${key}`);
   }
+  assert.ok(content.includes("maxChars: 2400"), "runtime packet budget changed unexpectedly");
 });

@@ -8,8 +8,10 @@ import type {
   LegacySaveSurface,
   RunSnapshotV2,
   SnapshotCodexEntry,
+  SnapshotMainThreatState,
   SnapshotTask,
 } from "./types";
+import { ANOMALIES } from "@/lib/registry/anomalies";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -35,6 +37,34 @@ function normalizeTasks(v: unknown): SnapshotTask[] {
   return v.map((t) => normalizeGameTaskDraft(t)).filter((t): t is SnapshotTask => !!t);
 }
 
+function normalizeMainThreatByFloor(v: unknown): Record<string, SnapshotMainThreatState> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, SnapshotMainThreatState> = {};
+  for (const [floorId, raw] of Object.entries(v as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    const phaseRaw = typeof row.phase === "string" ? row.phase : "idle";
+    const phase =
+      phaseRaw === "idle" || phaseRaw === "active" || phaseRaw === "suppressed" || phaseRaw === "breached"
+        ? phaseRaw
+        : "idle";
+    out[floorId] = {
+      threatId: typeof row.threatId === "string" ? row.threatId : "",
+      floorId,
+      phase,
+      suppressionProgress: Math.max(0, Math.min(100, Number(row.suppressionProgress ?? 0) || 0)),
+      lastResolvedAtHour:
+        typeof row.lastResolvedAtHour === "number" && Number.isFinite(row.lastResolvedAtHour)
+          ? Math.trunc(row.lastResolvedAtHour)
+          : null,
+      counterHintsUsed: Array.isArray(row.counterHintsUsed)
+        ? row.counterHintsUsed.filter((x): x is string => typeof x === "string")
+        : [],
+    };
+  }
+  return out;
+}
+
 export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnapshotV2 {
   return buildRunSnapshotV2({
     runId: createRunId(),
@@ -51,6 +81,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     codex: normalizeCodex(legacy.codex),
     currentLocation: legacy.playerLocation ?? "B1_SafeZone",
     alive: (legacy.stats?.sanity ?? DEFAULT_STATS.sanity) > 0,
+    equippedWeapon: legacy.equippedWeapon ?? null,
     day: legacy.time?.day ?? 0,
     hour: legacy.time?.hour ?? 0,
     dynamicNpcStates: legacy.dynamicNpcStates ?? {},
@@ -101,6 +132,10 @@ export function normalizeRunSnapshotV2(
         number
       >,
       codex: normalizeCodex(s.player?.codex),
+      equippedWeapon:
+        s.player?.equippedWeapon && typeof s.player.equippedWeapon === "object" && !Array.isArray(s.player.equippedWeapon)
+          ? (s.player.equippedWeapon as RunSnapshotV2["player"]["equippedWeapon"])
+          : null,
     },
     time: {
       ...fromLegacy.time,
@@ -124,6 +159,10 @@ export function normalizeRunSnapshotV2(
         ? s.world.pendingEvents.filter((x): x is string => typeof x === "string")
         : fromLegacy.world.pendingEvents,
       floorThreatTier: asRecord(s.world?.floorThreatTier) as Record<string, number>,
+      mainThreatByFloor: (() => {
+        const parsed = normalizeMainThreatByFloor(s.world?.mainThreatByFloor);
+        return Object.keys(parsed).length > 0 ? parsed : createDefaultMainThreatByFloor();
+      })(),
     },
     npcs: asRecord(s.npcs) as RunSnapshotV2["npcs"],
     tasks: {
@@ -180,6 +219,7 @@ export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurf
     gender: snapshot.player.profile.gender,
     height: snapshot.player.profile.height,
     personality: snapshot.player.profile.personality,
+    equippedWeapon: snapshot.player.equippedWeapon,
     runSnapshotV2: snapshot,
   };
 }
@@ -206,12 +246,28 @@ export function createDefaultFloorThreatTier(): Record<string, number> {
   };
 }
 
+export function createDefaultMainThreatByFloor(): Record<string, SnapshotMainThreatState> {
+  const out: Record<string, SnapshotMainThreatState> = {};
+  for (const anomaly of ANOMALIES) {
+    out[anomaly.floor] = {
+      threatId: anomaly.id,
+      floorId: anomaly.floor,
+      phase: "idle",
+      suppressionProgress: 0,
+      lastResolvedAtHour: null,
+      counterHintsUsed: [],
+    };
+  }
+  return out;
+}
+
 export function createDefaultWorldOverlay(): {
   worldFlags: Record<string, boolean>;
   discoveredSecrets: string[];
   anchorUnlocks: Record<"B1" | "1" | "7", boolean>;
   pendingEvents: string[];
   floorThreatTier: Record<string, number>;
+  mainThreatByFloor: Record<string, SnapshotMainThreatState>;
 } {
   return {
     worldFlags: createDefaultWorldFlags(),
@@ -219,5 +275,6 @@ export function createDefaultWorldOverlay(): {
     anchorUnlocks: createDefaultAnchorUnlocks(),
     pendingEvents: [],
     floorThreatTier: createDefaultFloorThreatTier(),
+    mainThreatByFloor: createDefaultMainThreatByFloor(),
   };
 }

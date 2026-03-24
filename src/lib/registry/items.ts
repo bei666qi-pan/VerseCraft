@@ -134,6 +134,9 @@ export const ITEMS: readonly Item[] = [
     statRequirements: { agility: 7 },
     ownerId: "N-008",
     effectType: "purify",
+    forgeTags: ["conductive", "pollution"],
+    materialValue: 1,
+    compatibleOperations: ["mod", "infuse"],
   },
   {
     id: "I-C02",
@@ -146,6 +149,9 @@ export const ITEMS: readonly Item[] = [
     statRequirements: { sanity: 7 },
     ownerId: "A-006",
     effectType: "binding",
+    forgeTags: ["mirror"],
+    materialValue: 1,
+    compatibleOperations: ["mod", "infuse"],
   },
   {
     id: "I-C03",
@@ -158,6 +164,9 @@ export const ITEMS: readonly Item[] = [
     statRequirements: { agility: 5 },
     ownerId: "N-018",
     effectType: "purify",
+    forgeTags: ["conductive", "sound"],
+    materialValue: 1,
+    compatibleOperations: ["repair", "mod"],
   },
   {
     id: "I-C04",
@@ -220,6 +229,9 @@ export const ITEMS: readonly Item[] = [
     statRequirements: { sanity: 5 },
     ownerId: "N-005",
     effectType: "shield",
+    forgeTags: ["sound", "insulation"],
+    materialValue: 1,
+    compatibleOperations: ["mod"],
   },
   {
     id: "I-C09",
@@ -826,6 +838,9 @@ export const ITEMS: readonly Item[] = [
     statRequirements: { background: 5 },
     ownerId: "N-010",
     effectType: "consumable",
+    forgeTags: ["conductive"],
+    materialValue: 1,
+    compatibleOperations: ["repair", "mod"],
   },
   {
     id: "I-C13",
@@ -862,6 +877,9 @@ export const ITEMS: readonly Item[] = [
     statRequirements: { agility: 5 },
     ownerId: "N-014",
     effectType: "shield",
+    forgeTags: ["insulation", "pollution"],
+    materialValue: 1,
+    compatibleOperations: ["repair", "infuse"],
   },
   {
     id: "I-C16",

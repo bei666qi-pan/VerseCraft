@@ -8,9 +8,9 @@ export const NIGHT_WATCHMAN_ID = "N-018";
 
 export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   // === B1 层 6 件（最弱）===
-  { id: "W-B101", name: "配电间的绝缘胶带", description: "电工遗留的胶带。", benefit: "封闭漏电线路，房间安全2小时。", sideEffect: "2小时后失效，焦味吸引诡异。", ownerId: "N-008", floor: "B1" },
+  { id: "W-B101", name: "配电间的绝缘胶带", description: "电工遗留的胶带。", benefit: "封闭漏电线路，房间安全2小时。", sideEffect: "2小时后失效，焦味吸引诡异。", ownerId: "N-008", floor: "B1", forgeTags: ["insulation", "sealant"], materialValue: 1, compatibleOperations: ["repair", "mod"] },
   { id: "W-B102", name: "褪色的洗衣标签", description: "从床单上扯下的标签。", benefit: "隔绝腐臭2小时，理智消耗减半。", sideEffect: "吸收体味，易被追踪。", ownerId: "N-014", floor: "B1" },
-  { id: "W-B103", name: "锈蚀的保险丝", description: "配电箱拆下的废保险丝。", benefit: "投许愿池换「短路避灾」，下次遭遇争取撤离。", sideEffect: "2小时内灯光闪烁。", ownerId: "N-008", floor: "B1" },
+  { id: "W-B103", name: "锈蚀的保险丝", description: "配电箱拆下的废保险丝。", benefit: "投许愿池换「短路避灾」，下次遭遇争取撤离。", sideEffect: "2小时内灯光闪烁。", ownerId: "N-008", floor: "B1", forgeTags: ["conductive"], materialValue: 1, compatibleOperations: ["repair", "mod"] },
   { id: "W-B104", name: "发黄的漂洗剂瓶", description: "洗衣房用剩的漂洗剂。", benefit: "泼向污染源净化2小时，腐蚀液态诡异。", sideEffect: "瓶身渗液，携带可灼伤。", ownerId: "N-014", floor: "B1" },
   { id: "W-B105", name: "储物间的旧钥匙", description: "一把无法辨认编号的钥匙。", benefit: "开B1任意废弃储物间门。", sideEffect: "2小时后门锁死，门内则被困。", ownerId: "N-008", floor: "B1" },
   { id: "W-B106", name: "洗衣液空瓶", description: "印有物业 Logo 的空瓶。", benefit: "装液体隔绝气息3小时。", sideEffect: "装过红水一夜后会蠕动。", ownerId: "N-014", floor: "B1" },
@@ -21,7 +21,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-104", name: "门厅的枯萎盆栽", description: "一盆枯死的绿植。", benefit: "吸收认知污染，理智+3约5小时。", sideEffect: "会复活并朝你生长。", ownerId: "N-001", floor: "1" },
   { id: "W-105", name: "信箱区的铁夹子", description: "夹报纸用的铁夹。", benefit: "夹门缝阻止自动关闭3小时。", sideEffect: "3小时后夹紧难取。", ownerId: "N-003", floor: "1" },
   { id: "W-106", name: "实习徽章的别针", description: "引导员遗落的别针。", benefit: "部分NPC误认为内部人员，可通过一次低风险检查。", sideEffect: "1天内会刺入皮肤，需取下。", ownerId: "N-020", floor: "1" },
-  { id: "W-107", name: "保安室的镜子碎片", description: "从破碎镜子上剥落的碎片。", benefit: "见无面保安五官，获得1次识破机会。", sideEffect: "割伤手掌，镜中脸会扭曲。", ownerId: "N-018", floor: "1" },
+  { id: "W-107", name: "保安室的镜子碎片", description: "从破碎镜子上剥落的碎片。", benefit: "见无面保安五官，获得1次识破机会。", sideEffect: "割伤手掌，镜中脸会扭曲。", ownerId: "N-018", floor: "1", forgeTags: ["mirror"], materialValue: 1, compatibleOperations: ["mod", "infuse"] },
   { id: "W-108", name: "守夜人的复活烛芯", description: "浸过油脂的蜡烛芯。", benefit: "复活1名死亡NPC/诡异，并触发一次关键关系事件。", sideEffect: "1天内遭遇生命威胁试炼。", ownerId: "N-018", floor: "1", isResurrection: true },
   // === 2 楼 6 件 ===
   { id: "W-201", name: "诊室的消毒棉", description: "林医生诊室遗落的棉球。", benefit: "止血，理智+3。", sideEffect: "吸血膨胀，2小时内丢弃。", ownerId: "N-002", floor: "2" },
@@ -41,7 +41,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-401", name: "盲人的墨镜链", description: "导盲者常用的眼镜链。", benefit: "幸运+4约3小时。", sideEffect: "3小时内勒紧后颈需取下。", ownerId: "N-005", floor: "4" },
   { id: "W-402", name: "无头猎犬的项圈残骸", description: "猎犬颈间脱落的金属项圈。", benefit: "摇响吸引听觉诡异，争取撤离。", sideEffect: "猎犬会记住声音，下次易锁定。", ownerId: "A-002", floor: "4" },
   { id: "W-403", name: "张先生的报纸角", description: "无日期报纸撕下的边角。", benefit: "锚定时间感3小时，免疫时差混乱。", sideEffect: "会浮现你的死期日期。", ownerId: "N-006", floor: "4" },
-  { id: "W-404", name: "管道屠夫的骨渣", description: "屠夫凝聚体脱落的骨渣。", benefit: "撒水源污染管道，液态诡异3小时内无法凝聚。", sideEffect: "2小时内会生长，需清理。", ownerId: "A-004", floor: "4" },
+  { id: "W-404", name: "管道屠夫的骨渣", description: "屠夫凝聚体脱落的骨渣。", benefit: "撒水源污染管道，液态诡异3小时内无法凝聚。", sideEffect: "2小时内会生长，需清理。", ownerId: "A-004", floor: "4", forgeTags: ["pollution", "sealant"], materialValue: 2, compatibleOperations: ["repair", "infuse"] },
   { id: "W-405", name: "导盲杖的橡胶头", description: "导盲杖底部的橡胶套。", benefit: "塞门缝减脚步声，敏捷+4约3小时。", sideEffect: "吸附地面残留变重。", ownerId: "N-005", floor: "4" },
   { id: "W-406", name: "狗叫的录音残片", description: "录有狗叫的磁带碎片。", benefit: "混淆听觉诡异，争取撤离。", sideEffect: "猎犬会追踪声源，需迅速撤离。", ownerId: "A-002", floor: "4" },
   { id: "W-407", name: "401 室的旧算盘", description: "张先生用过的算盘。", benefit: "出身+4约3小时。", sideEffect: "算珠会显示不愿见的数字。", ownerId: "N-006", floor: "4" },
@@ -57,7 +57,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-601", name: "双胞胎的共用手帕", description: "两人共用过的旧手帕。", benefit: "选择机制诡异无法选定你2次。", sideEffect: "会分裂成两半，各映半张脸。", ownerId: "N-009", floor: "6" },
   { id: "W-602", name: "倒行者的脚印拓片", description: "楼梯上拓下的倒行脚印。", benefit: "倒转方向感2小时，规避方向混乱诡异。", sideEffect: "取下后短暂分不清上下左右。", ownerId: "A-006", floor: "6" },
   { id: "W-603", name: "失眠者的眼罩", description: "失眠症患者用过的眼罩。", benefit: "屏蔽视觉污染3小时，理智消耗减半。", sideEffect: "摘下后短暂看到墙吞咽幻象。", ownerId: "N-016", floor: "6" },
-  { id: "W-604", name: "镜像维度的碎片", description: "倒行者身上剥离的镜面碎片。", benefit: "见镜像诡异真实倒影2小时，可造成伤害。", sideEffect: "倒影会试图与你交换位置。", ownerId: "A-006", floor: "6" },
+  { id: "W-604", name: "镜像维度的碎片", description: "倒行者身上剥离的镜面碎片。", benefit: "见镜像诡异真实倒影2小时，可造成伤害。", sideEffect: "倒影会试图与你交换位置。", ownerId: "A-006", floor: "6", forgeTags: ["mirror"], materialValue: 2, compatibleOperations: ["mod", "infuse"] },
   { id: "W-605", name: "共鸣水晶的碎屑", description: "双胞胎水晶上掉落的碎屑。", benefit: "预知双胞胎位置2小时。", sideEffect: "听见两人心声，可能混淆自我。", ownerId: "N-009", floor: "6" },
   { id: "W-606", name: "失眠者手记的残页", description: "手记上撕下的字迹。", benefit: "保持清醒3小时，免疫睡眠攻击。", sideEffect: "字迹变你的笔迹，写满你的秘密。", ownerId: "N-016", floor: "6" },
   // === 7 楼 10 件（最强）===
@@ -70,7 +70,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-707", name: "消化日志的目录页", description: "记录消化进度的目录。", benefit: "获知当前消化阶段，出身+5约2.5小时。", sideEffect: "目录会新增一条是你。", ownerId: "N-011", floor: "7" },
   { id: "W-708", name: "管道屠夫的恐惧结晶", description: "厨师与屠夫对抗时凝结的结晶。", benefit: "驱散8米内水源凝聚诡异2小时并伤害。", sideEffect: "屠夫记住气息，下次更狂暴。", ownerId: "N-012", floor: "7" },
   { id: "W-709", name: "前调查员的录音带", description: "记录调查结论的磁带。", benefit: "获知1条公寓核心情报。", sideEffect: "内容与所知矛盾，引发认知混乱。", ownerId: "N-019", floor: "7" },
-  { id: "W-710", name: "门扉封印的裂痕", description: "13楼门扉上剥离的封印碎片。", benefit: "欺骗门扉2小时，不触发必杀。", sideEffect: "裂痕扩散，门扉执念+1。", ownerId: "A-007", floor: "7" },
+  { id: "W-710", name: "门扉封印的裂痕", description: "13楼门扉上剥离的封印碎片。", benefit: "欺骗门扉2小时，不触发必杀。", sideEffect: "裂痕扩散，门扉执念+1。", ownerId: "A-007", floor: "7", forgeTags: ["sealant"], materialValue: 2, compatibleOperations: ["mod", "infuse"] },
   // === B2 层 4 件（最强层）===
   { id: "W-B201", name: "守门人的残影碎片", description: "深渊守门人脱落的残影。", benefit: "守门人威压，诡异2小时内不主动攻击。", sideEffect: "2小时内会与影子融合，需丢弃。", ownerId: "A-008", floor: "B2" },
   { id: "W-B202", name: "出口通道的锈迹", description: "B2出口门上的锈迹。", benefit: "腐蚀两扇门锁，强行打开。", sideEffect: "锈迹蔓延到下一个触碰的金属。", ownerId: "A-008", floor: "B2" },

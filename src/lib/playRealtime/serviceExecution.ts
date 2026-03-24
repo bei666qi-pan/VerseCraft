@@ -1,4 +1,6 @@
-import { FORGE_CATALOG_MINIMAL, SHOP_CATALOG_MINIMAL } from "@/lib/registry/serviceNodes";
+import { FORGE_CATALOG_MINIMAL, SHOP_CATALOG_MINIMAL, getServicesForLocation } from "@/lib/registry/serviceNodes";
+import { getWeaponById } from "@/lib/registry/weapons";
+import { buildLightForgePreview, executeLightForge } from "./forgeService";
 import { guessPlayerLocationFromContext } from "./b1Safety";
 
 type DmRecord = Record<string, unknown>;
@@ -19,11 +21,81 @@ function parseInventoryItemIds(playerContext: string): string[] {
   return [...out];
 }
 
+function parseWarehouseItemIds(playerContext: string): string[] {
+  const m = playerContext.match(/仓库物品：([^。]+)/);
+  const segment = m?.[1] ?? "";
+  const out = new Set<string>();
+  for (const hit of segment.matchAll(/\[([A-Z]-[A-Z]\d{2,3})]/g)) {
+    if (hit[1]) out.add(hit[1]);
+  }
+  return [...out];
+}
+
+function parseNpcIdsAtLocation(playerContext: string, location: string): string[] {
+  const m = playerContext.match(/NPC当前位置：([^。]+)/);
+  const seg = m?.[1] ?? "";
+  if (!seg) return [];
+  return seg
+    .split("，")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((x) => x.split("@"))
+    .filter((x) => (x[1] ?? "").trim() === location)
+    .map((x) => (x[0] ?? "").trim())
+    .filter(Boolean);
+}
+
+function parseEquippedWeaponFromPlayerContext(playerContext: string): {
+  weaponId: string | null;
+  stability: number | null;
+  mods: string[];
+  infusions: Array<{ threatTag: "liquid" | "mirror" | "cognition" | "seal"; turnsLeft: number }>;
+  contamination: number;
+  repairable: boolean;
+} {
+  const m = playerContext.match(/主手武器\[([^\]|]+)\|稳定(\d+)\|反制([^|\]]*)(?:\|模组([^|\]]*))?(?:\|灌注([^|\]]*))?(?:\|污染(\d+))?(?:\|可修复([01]))?\]/);
+  if (!m) return { weaponId: null, stability: null, mods: [], infusions: [], contamination: 0, repairable: true };
+  const weaponId = (m[1] ?? "").trim() || null;
+  const stability = Number(m[2] ?? "0");
+  const mods = (m[4] ?? "")
+    .split("/")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((x) => x !== "无");
+  const infusions = (m[5] ?? "")
+    .split("/")
+    .map((x) => x.trim())
+    .filter((x) => x.includes(":"))
+    .map((x) => {
+      const [threatTag, turnsLeft] = x.split(":");
+      return { threatTag: threatTag as "liquid" | "mirror" | "cognition" | "seal", turnsLeft: Number(turnsLeft ?? "0") || 0 };
+    });
+  const contamination = Number(m[6] ?? "0");
+  const repairable = m[7] === "0" ? false : true;
+  return {
+    weaponId,
+    stability: Number.isFinite(stability) ? Math.max(0, Math.min(100, Math.trunc(stability))) : null,
+    mods,
+    infusions,
+    contamination: Number.isFinite(contamination) ? Math.max(0, Math.min(100, Math.trunc(contamination))) : 0,
+    repairable,
+  };
+}
+
 function appendArrayField(record: DmRecord, field: string, values: string[]) {
   const prev = Array.isArray(record[field])
     ? (record[field] as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
   record[field] = [...new Set([...prev, ...values])];
+}
+
+function appendObjectArrayField(record: DmRecord, field: string, values: Array<Record<string, unknown>>) {
+  const prev = Array.isArray(record[field])
+    ? (record[field] as unknown[]).filter(
+        (x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)
+      )
+    : [];
+  record[field] = [...prev, ...values];
 }
 
 function addNarrativeLine(record: DmRecord, line: string) {
@@ -93,6 +165,71 @@ function applyForgeAction(
   return true;
 }
 
+function applyLightForgeWeaponAction(args: {
+  record: DmRecord;
+  actionText: string;
+  originium: number;
+  inventoryIds: string[];
+  warehouseIds: string[];
+  equippedWeapon: ReturnType<typeof parseEquippedWeaponFromPlayerContext>;
+}): boolean {
+  const text = args.actionText;
+  const mentionsPreview = text.includes("查看锻造") || text.includes("锻造台") || text.includes("整备");
+  const mentionsForgeAction =
+    text.includes("修复") || text.includes("维护") || text.includes("改装") || text.includes("灌注") ||
+    text.toLowerCase().includes("repair") || text.toLowerCase().includes("mod") || text.toLowerCase().includes("infuse");
+  if (!mentionsPreview && !mentionsForgeAction) return false;
+  if (mentionsPreview && !mentionsForgeAction) {
+    const preview = buildLightForgePreview({
+      weapon: args.equippedWeapon,
+      inventoryIds: args.inventoryIds,
+      warehouseIds: args.warehouseIds,
+    });
+    addNarrativeLine(args.record, `你检查了配电间锻造台：${preview}`);
+    args.record.options = [
+      "执行修复（forge_repair_basic）",
+      "执行静音改装（forge_mod_silent）",
+      "执行镜像灌注（forge_infuse_mirror）",
+      "返回储物间补材料",
+    ];
+    return true;
+  }
+  const weaponIdFromText = [...text.matchAll(/\b(WPN-\d{3})\b/g)][0]?.[1] ?? null;
+  const weaponId = weaponIdFromText ?? args.equippedWeapon.weaponId;
+  const weapon = (() => {
+    if (!weaponId) return null;
+    const base = getWeaponById(weaponId);
+    if (!base) return null;
+    return {
+      ...base,
+      stability: args.equippedWeapon.stability ?? base.stability,
+      currentMods: (args.equippedWeapon.mods as typeof base.currentMods) ?? base.currentMods,
+      currentInfusions: args.equippedWeapon.infusions ?? base.currentInfusions,
+      contamination: args.equippedWeapon.contamination,
+      repairable: args.equippedWeapon.repairable,
+    };
+  })();
+  const result = executeLightForge({
+    actionText: text,
+    originium: args.originium,
+    inventoryIds: args.inventoryIds,
+    warehouseIds: args.warehouseIds,
+    weapon,
+  });
+  if (!result) return false;
+  if (!result.ok) {
+    args.record.is_action_legal = false;
+    addNarrativeLine(args.record, result.narrative);
+    return true;
+  }
+  if (result.consumedItemIds.length > 0) appendArrayField(args.record, "consumed_items", result.consumedItemIds);
+  if (result.consumedWarehouseIds.length > 0) appendArrayField(args.record, "consumed_items", result.consumedWarehouseIds);
+  if (result.currencyChange !== 0) sumCurrencyChange(args.record, result.currencyChange);
+  if (result.weaponUpdates.length > 0) appendObjectArrayField(args.record, "weapon_updates", result.weaponUpdates as Array<Record<string, unknown>>);
+  addNarrativeLine(args.record, result.narrative);
+  return true;
+}
+
 /**
  * Stage-1 minimal service execution guard:
  * - B1_Storage shop buy
@@ -114,12 +251,33 @@ export function applyB1ServiceExecutionGuard(args: {
 
   const originium = parseOriginiumFromPlayerContext(args.playerContext);
   const inventoryIds = parseInventoryItemIds(args.playerContext);
+  const warehouseIds = parseWarehouseItemIds(args.playerContext);
+  const equippedWeapon = parseEquippedWeaponFromPlayerContext(args.playerContext);
+  const presentNpcIds = parseNpcIdsAtLocation(args.playerContext, location);
 
   let handled = false;
   if (location === "B1_Storage") {
     handled = applyShopAction(record, actionText, originium);
   } else if (location === "B1_PowerRoom") {
-    handled = applyForgeAction(record, actionText, originium, inventoryIds);
+    const forgeServices = getServicesForLocation(location, { forgeUnlocked: true }).filter(
+      (x) => (x.kind === "forge_upgrade" || x.kind === "forge_repair") && x.available
+    );
+    const npcGatePassed = forgeServices.some((svc) => svc.npcIds.some((id) => presentNpcIds.includes(id)));
+    if (!npcGatePassed) {
+      record.is_action_legal = false;
+      addNarrativeLine(record, "配电间锻造服务当前无人值守，无法执行操作。");
+      handled = true;
+    } else {
+    handled =
+      applyLightForgeWeaponAction({
+        record,
+        actionText,
+        originium,
+        inventoryIds,
+        warehouseIds,
+        equippedWeapon,
+      }) || applyForgeAction(record, actionText, originium, inventoryIds);
+    }
   }
   if (!handled) return record;
 

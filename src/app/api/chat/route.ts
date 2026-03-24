@@ -74,6 +74,8 @@ import {
   guessPlayerLocationFromContext,
 } from "@/lib/playRealtime/b1Safety";
 import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
+import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
+import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 import {
   applyNpcProactiveGrantGuard,
@@ -1033,6 +1035,8 @@ export async function POST(req: Request) {
   let lastEnhanceAnalytics: EnhanceAfterMainStreamResult | null = null;
   let enhancePathDmParsed = false;
   let finalJsonParseSuccess = false;
+  let settlementGuardApplied = false;
+  let settlementAwardPruned = 0;
 
   (async () => {
     const scheduleStreamReconnect = async (
@@ -1168,6 +1172,8 @@ export async function POST(req: Request) {
           streamInterruptedCount,
           streamEmptyCount,
           finalJsonParseSuccess,
+          settlementGuardApplied,
+          settlementAwardPruned,
         }),
       }).catch(() => {});
 
@@ -1213,6 +1219,10 @@ export async function POST(req: Request) {
           dmRecord,
           fallbackLocation: guessPlayerLocationFromContext(playerContext),
         });
+        dmRecord = applyMainThreatUpdateGuard({
+          dmRecord,
+          playerContext,
+        });
         dmRecord = normalizeDmTaskPayload(dmRecord);
         dmRecord = ensure7FConspiracyTask(dmRecord, {
           playerContext,
@@ -1256,6 +1266,14 @@ export async function POST(req: Request) {
             wallMs: Math.max(0, Date.now() - enhanceWallStart),
           };
         }
+        dmRecord = applyStage2SettlementGuard(dmRecord);
+        const guardMeta =
+          dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
+            ? (dmRecord.security_meta as Record<string, unknown>)
+            : null;
+        settlementGuardApplied = typeof guardMeta?.settlement_guard === "string";
+        const prunedRaw = Number(guardMeta?.settlement_award_pruned ?? 0);
+        settlementAwardPruned = Number.isFinite(prunedRaw) ? Math.max(0, Math.trunc(prunedRaw)) : 0;
         finalizePayload = JSON.stringify(dmRecord);
         moderationBody = finalizePayload;
       } else {

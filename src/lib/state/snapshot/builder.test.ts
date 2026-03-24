@@ -36,4 +36,5 @@ test("buildRunSnapshotV2 creates required stage-1 sections", () => {
   assert.equal(snapshot.npcs["N-001"]?.discoveredByPlayer, true);
   assert.equal(snapshot.npcs["N-002"]?.alive, true);
   assert.equal(snapshot.time.darkMoonStarted, false);
+  assert.equal(snapshot.player.equippedWeapon, null);
 });

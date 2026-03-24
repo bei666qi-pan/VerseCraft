@@ -31,6 +31,8 @@ test("normalizePlayerDmJson fills array defaults and consumes_time true", () => 
   assert.deepEqual(n!.awarded_items, []);
   assert.deepEqual(n!.codex_updates, []);
   assert.deepEqual(n!.relationship_updates, []);
+  assert.deepEqual(n!.main_threat_updates, []);
+  assert.deepEqual(n!.weapon_updates, []);
   assert.equal(n!.currency_change, 0);
   assert.equal(n!.consumes_time, true);
   assert.ok(!("options" in n!));

@@ -50,6 +50,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "consumes_time：默认 true（本次耗 1 游戏小时）；极速反应场景可为 false。",
     "",
     "【物品/奖励/任务回写】剧情中一旦发生消耗、获得、任务发布或任务推进，必须同步写入 consumed_items / awarded_items / awarded_warehouse_items / new_tasks / task_updates，避免“叙事发生但状态未落盘”。",
+    "【系统状态回写】叙事中若发生系统状态变化，必须同步输出结构字段（如 main_threat_updates / weapon_updates / task_updates），不得只写 narrative。",
     "【关系回写】若关系变化发生，优先输出 relationship_updates；可同步 codex_updates 用于展示。",
     "【图鉴一致性】实体出场后应更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。",
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",

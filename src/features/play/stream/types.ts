@@ -57,6 +57,23 @@ export type DMJson = {
     romanceStage?: "none" | "hint" | "bonded" | "committed";
     betrayalFlagAdd?: string;
   }>;
+  main_threat_updates?: Array<{
+    floorId?: string;
+    threatId?: string;
+    phase?: "idle" | "active" | "suppressed" | "breached";
+    suppressionProgress?: number;
+    lastResolvedAtHour?: number;
+    counterHintsUsed?: string[];
+  }>;
+  weapon_updates?: Array<{
+    weaponId?: string;
+    stability?: number;
+    calibratedThreatId?: string | null;
+    currentMods?: string[];
+    currentInfusions?: Array<{ threatTag?: string; turnsLeft?: number }>;
+    contamination?: number;
+    repairable?: boolean;
+  }>;
   options?: string[];
   currency_change?: number;
   new_tasks?: Array<{

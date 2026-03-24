@@ -17,11 +17,21 @@ test("legacy save can migrate to RunSnapshotV2 without crashing", () => {
     time: { day: 2, hour: 22 },
     originium: 17,
     playerLocation: "1F_Lobby",
+    equippedWeapon: {
+      id: "WPN-001",
+      name: "静默短棍",
+      description: "test",
+      counterThreatIds: ["A-002"],
+      counterTags: ["sound"],
+      stability: 80,
+      calibratedThreatId: null,
+    },
   });
   assert.equal(snapshot.schemaVersion, 2);
   assert.equal(snapshot.player.profile.name, "测试玩家");
   assert.equal(snapshot.time.day, 2);
   assert.equal(snapshot.player.currentLocation, "1F_Lobby");
+  assert.equal(snapshot.player.equippedWeapon?.id, "WPN-001");
 });
 
 test("normalizeRunSnapshotV2 fills defaults for partial snapshot", () => {
@@ -35,6 +45,7 @@ test("normalizeRunSnapshotV2 fills defaults for partial snapshot", () => {
   assert.equal(normalized.time.darkMoonStarted, true);
   assert.ok(Array.isArray(normalized.world.discoveredSecrets));
   assert.ok(typeof normalized.services.anchorUnlocked === "boolean");
+  assert.ok(typeof normalized.world.mainThreatByFloor["1"]?.threatId === "string");
 });
 
 test("snapshot projection keeps legacy surface usable", () => {

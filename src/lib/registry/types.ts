@@ -59,6 +59,12 @@ export interface Item {
   tempStatEffect?: { stat: StatType; value: number };
   /** For tempFavor: base favor gain */
   tempFavorEffect?: number;
+  /** Stage-2 light forge: optional material tags reused by forge recipes. */
+  forgeTags?: string[];
+  /** Stage-2 light forge: generic material value (default 1). */
+  materialValue?: number;
+  /** Stage-2 light forge: recommended operations for this material. */
+  compatibleOperations?: ForgeOperation[];
 }
 
 export interface NPC {
@@ -162,6 +168,89 @@ export interface WarehouseItem {
   floor: FloorId;
   /** Resurrection item: revives any NPC/anomaly except player. SideEffect: 1天内玩家遭遇生命威胁试炼 */
   isResurrection?: boolean;
+  /** Stage-2 light forge: optional material tags reused by forge recipes. */
+  forgeTags?: string[];
+  /** Stage-2 light forge: generic material value (default 1). */
+  materialValue?: number;
+  /** Stage-2 light forge: recommended operations for this material. */
+  compatibleOperations?: ForgeOperation[];
+}
+
+export type ForgeOperation = "repair" | "mod" | "infuse";
+export type ForgeMaterialTag =
+  | "conductive"
+  | "mirror"
+  | "insulation"
+  | "sealant"
+  | "sound"
+  | "fiber"
+  | "pollution";
+
+export type WeaponModSlot = "core" | "surface";
+
+export type WeaponModKind =
+  | "silent"
+  | "mirror"
+  | "conductive"
+  | "anti_pollution"
+  | "grappling"
+  | "echo_lure";
+
+export interface InfusionState {
+  threatTag: "liquid" | "mirror" | "cognition" | "seal";
+  turnsLeft: number;
+}
+
+export interface ForgeRecipe {
+  id: string;
+  operation: ForgeOperation;
+  name: string;
+  description: string;
+  costOriginium: number;
+  requiredItemIds?: string[];
+  requiredWarehouseIds?: string[];
+  requiredMaterialTags?: ForgeMaterialTag[];
+}
+
+export interface ForgeResult {
+  ok: boolean;
+  operation: ForgeOperation;
+  narrative: string;
+  consumedItemIds: string[];
+  consumedWarehouseIds: string[];
+  currencyChange: number;
+  weaponUpdates: Array<{
+    weaponId: string;
+    stability?: number;
+    calibratedThreatId?: string | null;
+    currentMods?: WeaponModKind[];
+    currentInfusions?: InfusionState[];
+    contamination?: number;
+    repairable?: boolean;
+  }>;
+}
+
+export interface Weapon {
+  id: string;
+  name: string;
+  description: string;
+  /** Threat IDs this weapon is good at countering (e.g. A-002). */
+  counterThreatIds: string[];
+  /** Lightweight tags for packet/prompt hints. */
+  counterTags: string[];
+  /** Stage-2 minimal stability value (0-100). */
+  stability: number;
+  /** Optional calibration target from light forge system. */
+  calibratedThreatId?: string | null;
+  /** Light forge structure: available slots and currently installed mods. */
+  modSlots: WeaponModSlot[];
+  currentMods: WeaponModKind[];
+  /** Short-lived infusions that boost specific threat tag response. */
+  currentInfusions: InfusionState[];
+  /** 0-100 contamination load; high values reduce reliability until repaired. */
+  contamination: number;
+  /** Whether this weapon can be repaired/maintained now. */
+  repairable: boolean;
 }
 
 /** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */

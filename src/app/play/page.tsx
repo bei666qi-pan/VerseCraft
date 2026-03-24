@@ -102,6 +102,8 @@ function PlayContent() {
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
   const setBgm = useGameStore((s) => s.setBgm);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
+  const applyMainThreatUpdates = useGameStore((s) => s.applyMainThreatUpdates);
+  const applyWeaponUpdates = useGameStore((s) => s.applyWeaponUpdates);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const isGuest = useGameStore((s) => s.isGuest ?? false);
@@ -1322,6 +1324,67 @@ function PlayContent() {
           updateNpcLocation(u.id, u.to_location);
         }
       }
+    }
+
+    if (Array.isArray((parsed as { main_threat_updates?: unknown[] }).main_threat_updates)) {
+      const updates = ((parsed as { main_threat_updates?: unknown[] }).main_threat_updates ?? [])
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
+        .map((u) => ({
+          floorId: typeof u.floorId === "string" ? u.floorId : undefined,
+          threatId: typeof u.threatId === "string" ? u.threatId : undefined,
+          phase: typeof u.phase === "string" ? u.phase : undefined,
+          suppressionProgress:
+            typeof u.suppressionProgress === "number" && Number.isFinite(u.suppressionProgress)
+              ? u.suppressionProgress
+              : undefined,
+          lastResolvedAtHour:
+            typeof u.lastResolvedAtHour === "number" && Number.isFinite(u.lastResolvedAtHour)
+              ? u.lastResolvedAtHour
+              : undefined,
+          counterHintsUsed: Array.isArray(u.counterHintsUsed)
+            ? u.counterHintsUsed.filter((x): x is string => typeof x === "string")
+            : undefined,
+        }));
+      if (updates.length > 0) applyMainThreatUpdates(updates);
+    }
+
+    if (Array.isArray((parsed as { weapon_updates?: unknown[] }).weapon_updates)) {
+      const updates = ((parsed as { weapon_updates?: unknown[] }).weapon_updates ?? [])
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
+        .map((u) => ({
+          weaponId: typeof u.weaponId === "string" ? u.weaponId : undefined,
+          stability:
+            typeof u.stability === "number" && Number.isFinite(u.stability)
+              ? u.stability
+              : undefined,
+          calibratedThreatId:
+            u.calibratedThreatId === null || typeof u.calibratedThreatId === "string"
+              ? (u.calibratedThreatId as string | null)
+              : undefined,
+          currentMods: Array.isArray(u.currentMods)
+            ? u.currentMods.filter((x): x is string => typeof x === "string")
+            : undefined,
+          currentInfusions: Array.isArray(u.currentInfusions)
+            ? u.currentInfusions
+                .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
+                .map((x) => ({
+                  threatTag:
+                    x.threatTag === "liquid" ||
+                    x.threatTag === "mirror" ||
+                    x.threatTag === "cognition" ||
+                    x.threatTag === "seal"
+                      ? x.threatTag
+                      : "liquid",
+                  turnsLeft: typeof x.turnsLeft === "number" && Number.isFinite(x.turnsLeft) ? x.turnsLeft : 0,
+                }))
+            : undefined,
+          contamination:
+            typeof u.contamination === "number" && Number.isFinite(u.contamination)
+              ? u.contamination
+              : undefined,
+          repairable: typeof u.repairable === "boolean" ? u.repairable : undefined,
+        }));
+      if (updates.length > 0) applyWeaponUpdates(updates);
     }
 
     const isItemUse = trimmed.startsWith("我使用了道具：");

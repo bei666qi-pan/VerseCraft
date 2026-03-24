@@ -9,8 +9,9 @@ import {
   createStateChecksum,
   type IntegrityMetaState,
 } from "@/store/middleware/checksumMiddleware";
-import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
+import type { Item, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
+import { getWeaponById } from "@/lib/registry/weapons";
 import { NPC_HOME_LOCATION_SEED } from "@/lib/registry/runtimeBoundary";
 import {
   buildRunSnapshotV2,
@@ -31,8 +32,13 @@ import {
   normalizeRunSnapshotV2,
   projectSnapshotToLegacy,
 } from "@/lib/state/snapshot/migration";
-import type { RunSnapshotV2, SnapshotCodexEntry } from "@/lib/state/snapshot/types";
+import type {
+  RunSnapshotV2,
+  SnapshotCodexEntry,
+  SnapshotMainThreatState,
+} from "@/lib/state/snapshot/types";
 import { runReviveSyncPipeline, type ReviveOption } from "@/lib/revive/pipeline";
+import { tickInfusions } from "@/lib/playRealtime/weaponInfusion";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -152,6 +158,8 @@ export interface SaveSlotData {
   tasks?: GameTask[];
   playerLocation?: string;
   dynamicNpcStates?: Record<string, { currentLocation: string; isAlive: boolean }>;
+  mainThreatByFloor?: Record<string, SnapshotMainThreatState>;
+  equippedWeapon?: Weapon | null;
   appliedRelationshipTaskIds?: string[];
   reviveContext?: {
     pending: boolean;
@@ -242,6 +250,10 @@ interface GameState extends IntegrityMetaState {
   historicalMaxFloorScore: number;
   /** NPC 动态状态（位置 + 存活） */
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
+  /** 楼层主威胁状态（第二阶段） */
+  mainThreatByFloor: Record<string, SnapshotMainThreatState>;
+  /** 第二阶段武器最小版：主手唯一槽位 */
+  equippedWeapon: Weapon | null;
   /** 非法闯入警戒闪烁计时 */
   intrusionFlashUntil: number;
   /** 是否已开始游戏（角色初始化完成后为 true） */
@@ -293,6 +305,16 @@ interface GameState extends IntegrityMetaState {
   updateTask: (taskPatch: { id: string } & Partial<GameTask>) => void;
   setPlayerLocation: (loc: string) => void;
   updateNpcLocation: (npcId: string, location: string) => void;
+  applyMainThreatUpdates: (updates: Array<Partial<SnapshotMainThreatState> & { floorId?: string }>) => void;
+  applyWeaponUpdates: (updates: Array<{
+    weaponId?: string;
+    stability?: number;
+    calibratedThreatId?: string | null;
+    currentMods?: Weapon["currentMods"];
+    currentInfusions?: Weapon["currentInfusions"];
+    contamination?: number;
+    repairable?: boolean;
+  }>) => void;
   killNpc: (npcId: string) => void;
   triggerIntrusionFlash: () => void;
   setHasCheckedCodex: (v: boolean) => void;
@@ -445,6 +467,8 @@ function clampVolume(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+const DEFAULT_WORLD_OVERLAY = createDefaultWorldOverlay();
+
 export const useGameStore = create<GameState>()(
   persist(
     checksumMiddleware((set, get) => ({
@@ -480,6 +504,8 @@ export const useGameStore = create<GameState>()(
       playerLocation: "B1_SafeZone",
       historicalMaxFloorScore: 0,
       dynamicNpcStates: {},
+      mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
+      equippedWeapon: null,
       intrusionFlashUntil: 0,
       isGameStarted: false,
       currentBgm: "bgm_1_calm",
@@ -566,7 +592,14 @@ export const useGameStore = create<GameState>()(
             const safe = Number.isFinite(v) ? v : 0;
             next[k] = safe > 0 ? safe - 1 : 0;
           }
-          return { talentCooldowns: next };
+          const w = s.equippedWeapon;
+          const nextWeapon = w
+            ? {
+                ...w,
+                currentInfusions: tickInfusions(w.currentInfusions),
+              }
+            : w;
+          return { talentCooldowns: next, equippedWeapon: nextWeapon };
         }),
       triggerSecurityFallback: (reason) =>
         set((s) => {
@@ -610,6 +643,7 @@ export const useGameStore = create<GameState>()(
           codex: {},
           hasCheckedCodex: false,
           warehouse: [],
+          equippedWeapon: null,
           currentOptions: [],
           recentOptions: [],
           inputMode: "options" as const,
@@ -618,6 +652,8 @@ export const useGameStore = create<GameState>()(
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,
           dynamicNpcStates: {},
+          mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
+          equippedWeapon: null,
           intrusionFlashUntil: 0,
           isGameStarted: false,
           currentBgm: "bgm_1_calm",
@@ -650,6 +686,7 @@ export const useGameStore = create<GameState>()(
           inventory: [],
           tasks: [],
           warehouse: [],
+          equippedWeapon: null,
           currentOptions: [],
           recentOptions: [],
           appliedRelationshipTaskIds: [],
@@ -740,6 +777,7 @@ export const useGameStore = create<GameState>()(
           logs: [],
           inventory: [],
           warehouse: [],
+          equippedWeapon: null,
           saveSlots: {},
           isGameStarted: false,
           currentOptions: [],
@@ -885,6 +923,85 @@ export const useGameStore = create<GameState>()(
             [npcId]: { ...(s.dynamicNpcStates[npcId] ?? { currentLocation: "", isAlive: true }), currentLocation: location },
           },
         })),
+      applyMainThreatUpdates: (updates) =>
+        set((s) => {
+          const safe = Array.isArray(updates) ? updates : [];
+          if (safe.length === 0) return {};
+          const next = { ...(s.mainThreatByFloor ?? {}) };
+          for (const row of safe) {
+            const floorId = typeof row.floorId === "string" ? row.floorId : "";
+            if (!floorId) continue;
+            const prev = next[floorId] ?? {
+              threatId: "",
+              floorId,
+              phase: "idle" as const,
+              suppressionProgress: 0,
+              lastResolvedAtHour: null,
+              counterHintsUsed: [],
+            };
+            const phaseRaw = typeof row.phase === "string" ? row.phase : prev.phase;
+            const phase =
+              phaseRaw === "idle" || phaseRaw === "active" || phaseRaw === "suppressed" || phaseRaw === "breached"
+                ? phaseRaw
+                : prev.phase;
+            next[floorId] = {
+              ...prev,
+              ...(typeof row.threatId === "string" ? { threatId: row.threatId } : {}),
+              phase,
+              ...(typeof row.suppressionProgress === "number"
+                ? { suppressionProgress: Math.max(0, Math.min(100, Math.trunc(row.suppressionProgress))) }
+                : {}),
+              ...(typeof row.lastResolvedAtHour === "number" && Number.isFinite(row.lastResolvedAtHour)
+                ? { lastResolvedAtHour: Math.trunc(row.lastResolvedAtHour) }
+                : {}),
+              ...(Array.isArray(row.counterHintsUsed)
+                ? {
+                    counterHintsUsed: row.counterHintsUsed.filter(
+                      (x): x is string => typeof x === "string"
+                    ),
+                  }
+                : {}),
+            };
+          }
+          return { mainThreatByFloor: next };
+        }),
+      applyWeaponUpdates: (updates) =>
+        set((s) => {
+          const safe = Array.isArray(updates) ? updates : [];
+          if (safe.length === 0) return {};
+          let next = s.equippedWeapon ?? null;
+          for (const row of safe) {
+            if (row.weaponId) {
+              const fromCatalog = getWeaponById(row.weaponId);
+              if (fromCatalog) next = { ...fromCatalog };
+            }
+            if (!next) continue;
+            if (typeof row.stability === "number" && Number.isFinite(row.stability)) {
+              next.stability = Math.max(0, Math.min(100, Math.trunc(row.stability)));
+            }
+            if (row.calibratedThreatId === null || typeof row.calibratedThreatId === "string") {
+              next.calibratedThreatId = row.calibratedThreatId;
+            }
+            if (Array.isArray(row.currentMods)) {
+              next.currentMods = row.currentMods.filter((x): x is Weapon["currentMods"][number] => typeof x === "string");
+            }
+            if (Array.isArray(row.currentInfusions)) {
+              next.currentInfusions = row.currentInfusions
+                .filter((x): x is Weapon["currentInfusions"][number] => !!x && typeof x === "object")
+                .map((x) => ({
+                  threatTag: x.threatTag,
+                  turnsLeft: Math.max(0, Math.trunc(Number(x.turnsLeft ?? 0))),
+                }));
+            }
+            if (typeof row.contamination === "number" && Number.isFinite(row.contamination)) {
+              next.contamination = Math.max(0, Math.min(100, Math.trunc(row.contamination)));
+            }
+            if (typeof row.repairable === "boolean") {
+              next.repairable = row.repairable;
+            }
+          }
+          return { equippedWeapon: next };
+        }),
       killNpc: (npcId) =>
         set((s) => ({
           dynamicNpcStates: {
@@ -1081,6 +1198,8 @@ export const useGameStore = create<GameState>()(
               { currentLocation: homeLocation, isAlive: true },
             ])
           ),
+          mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
+          equippedWeapon: null,
           intrusionFlashUntil: 0,
           isGameStarted: true,
         });
@@ -1153,6 +1272,21 @@ export const useGameStore = create<GameState>()(
                 .map(([k]) => k)
                 .join("，") || "无"}。锚点解锁：B1[${activeSnapshot.world.anchorUnlocks.B1 ? "1" : "0"}]，1F[${activeSnapshot.world.anchorUnlocks["1"] ? "1" : "0"}]，7F[${activeSnapshot.world.anchorUnlocks["7"] ? "1" : "0"}]。`
             : "") +
+          (() => {
+            const threatMap = s.mainThreatByFloor ?? {};
+            const chunks = Object.values(threatMap)
+              .filter((x) => x && typeof x.floorId === "string")
+              .map((x) => `${x.floorId}[${x.threatId}|${x.phase}|${x.suppressionProgress}]`);
+            return chunks.length > 0 ? ` 主威胁状态：${chunks.join("，")}。` : "";
+          })() +
+          (() => {
+            const w = s.equippedWeapon;
+            if (!w) return " 主手武器[未装备]。";
+            const tags = (w.counterTags ?? []).join("/");
+            const mods = (w.currentMods ?? []).join("/");
+            const infusions = (w.currentInfusions ?? []).map((x) => `${x.threatTag}:${x.turnsLeft}`).join("/");
+            return ` 主手武器[${w.id}|稳定${w.stability}|反制${tags || "无"}|模组${mods || "无"}|灌注${infusions || "无"}|污染${w.contamination ?? 0}|可修复${w.repairable ? "1" : "0"}]。`;
+          })() +
           (s.reviveContext?.deathLocation
             ? ` 最近复活：死亡地点[${s.reviveContext.deathLocation}]，死因[${s.reviveContext.deathCause ?? "未知"}]，掉落数量[${s.reviveContext.droppedLootLedger.length}]，最近锚点[${s.reviveContext.lastReviveAnchorId ?? "未知"}]。`
             : "") +
@@ -1232,6 +1366,7 @@ export const useGameStore = create<GameState>()(
           codex: (s.codex ?? {}) as Record<string, SnapshotCodexEntry>,
           currentLocation: s.playerLocation ?? "B1_SafeZone",
           alive: (safeStats.sanity ?? 0) > 0,
+          equippedWeapon: s.equippedWeapon ?? null,
           deathCount:
             s.saveSlots?.[slotId]?.runSnapshotV2?.player?.deathCount ?? 0,
           day: s.time?.day ?? 0,
@@ -1250,6 +1385,9 @@ export const useGameStore = create<GameState>()(
           floorThreatTier:
             s.saveSlots?.[slotId]?.runSnapshotV2?.world?.floorThreatTier ??
             overlay.floorThreatTier,
+          mainThreatByFloor:
+            s.mainThreatByFloor ??
+            overlay.mainThreatByFloor,
           dynamicNpcStates: s.dynamicNpcStates ?? {},
           homeSeed: NPC_HOME_LOCATION_SEED,
           tasks: (s.tasks ?? []).map((t) => ({
@@ -1277,6 +1415,10 @@ export const useGameStore = create<GameState>()(
           tasks: JSON.parse(JSON.stringify(s.tasks ?? [])),
           playerLocation: s.playerLocation ?? "B1_SafeZone",
           dynamicNpcStates: JSON.parse(JSON.stringify(s.dynamicNpcStates ?? {})),
+          mainThreatByFloor: JSON.parse(
+            JSON.stringify(s.mainThreatByFloor ?? overlay.mainThreatByFloor)
+          ),
+          equippedWeapon: JSON.parse(JSON.stringify(s.equippedWeapon ?? null)),
           reviveContext: JSON.parse(
             JSON.stringify(
               s.reviveContext ?? {
@@ -1346,6 +1488,20 @@ export const useGameStore = create<GameState>()(
               projected.dynamicNpcStates ??
                 data.dynamicNpcStates ??
                 {}
+            )
+          ),
+          mainThreatByFloor: JSON.parse(
+            JSON.stringify(
+              normalizedSnapshot.world.mainThreatByFloor ??
+                data.mainThreatByFloor ??
+                DEFAULT_WORLD_OVERLAY.mainThreatByFloor
+            )
+          ),
+          equippedWeapon: JSON.parse(
+            JSON.stringify(
+              normalizedSnapshot.player.equippedWeapon ??
+                data.equippedWeapon ??
+                null
             )
           ),
           reviveContext: JSON.parse(
@@ -1426,6 +1582,22 @@ export const useGameStore = create<GameState>()(
                   {}
               )
             ),
+            mainThreatByFloor: JSON.parse(
+              JSON.stringify(
+                normalizedSnapshot.world.mainThreatByFloor ??
+                  data.mainThreatByFloor ??
+                  s.mainThreatByFloor ??
+                  DEFAULT_WORLD_OVERLAY.mainThreatByFloor
+              )
+            ),
+            equippedWeapon: JSON.parse(
+              JSON.stringify(
+                normalizedSnapshot.player.equippedWeapon ??
+                  data.equippedWeapon ??
+                  s.equippedWeapon ??
+                  null
+              )
+            ),
             reviveContext: JSON.parse(
               JSON.stringify(
                 data.reviveContext ??
@@ -1493,6 +1665,8 @@ export const useGameStore = create<GameState>()(
         playerLocation: s.playerLocation ?? "B1_SafeZone",
         historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
         dynamicNpcStates: s.dynamicNpcStates ?? {},
+        mainThreatByFloor: s.mainThreatByFloor ?? DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
+        equippedWeapon: s.equippedWeapon ?? null,
         reviveContext: s.reviveContext ?? {
           pending: false,
           deathLocation: null,

@@ -61,6 +61,8 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
     streamInterruptedCount: 0,
     streamEmptyCount: 1,
     finalJsonParseSuccess: true,
+    settlementGuardApplied: true,
+    settlementAwardPruned: 2,
   };
   const p = buildChatRequestFinishedPayload(base);
   assert.equal(p.promptTokens, 100);
@@ -74,6 +76,8 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
   assert.equal(p.streamReconnectCount, 1);
   assert.equal(p.streamEmptyCount, 1);
   assert.equal(p.finalJsonParseSuccess, true);
+  assert.equal(p.settlementGuardApplied, true);
+  assert.equal(p.settlementAwardPruned, 2);
 });
 
 test("toEnhanceTurnMetrics maps applied and exception", () => {
@@ -149,8 +153,12 @@ test("buildChatRequestFinishedPayload derives totalTokens from prompt+completion
     streamInterruptedCount: 0,
     streamEmptyCount: 0,
     finalJsonParseSuccess: false,
+    settlementGuardApplied: false,
+    settlementAwardPruned: 0,
   });
   assert.equal(p.totalTokens, 13);
   assert.equal(p.firstChunkLatencyMs, null);
   assert.equal(p.finalJsonParseSuccess, false);
+  assert.equal(p.settlementGuardApplied, false);
+  assert.equal(p.settlementAwardPruned, 0);
 });

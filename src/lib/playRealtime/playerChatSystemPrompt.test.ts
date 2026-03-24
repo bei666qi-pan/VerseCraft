@@ -32,6 +32,9 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(s.includes("narrative"));
   assert.ok(s.includes("is_death"));
   assert.ok(s.includes("运行时注入事实优先"));
+  assert.ok(!s.includes("forge_mod_"));
+  assert.ok(!s.includes("液态威胁"));
+  assert.ok(!s.includes("镜像灌注"));
 });
 
 test("首回合与普通回合都可注入 lore", () => {
