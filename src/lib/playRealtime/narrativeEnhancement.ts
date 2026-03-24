@@ -7,6 +7,7 @@ import {
   isNarrativeEnhancementBudgetAvailable,
 } from "@/lib/ai/governance/sessionBudget";
 import { executeChatCompletion } from "@/lib/ai/service";
+import { resolveAiEnv } from "@/lib/ai/config/env";
 import type { OperationMode } from "@/lib/ai/degrade/mode";
 import type { AIRequestContext, ChatMessage, TokenUsage } from "@/lib/ai/types/core";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
@@ -62,6 +63,17 @@ export async function tryEnhanceDmAfterMainStream(args: {
 }): Promise<EnhanceAfterMainStreamResult> {
   const t0 = Date.now();
   const wallMs = () => Math.max(0, Date.now() - t0);
+
+  const aiEnv = resolveAiEnv();
+  if (!aiEnv.enableNarrativeEnhancement) {
+    logEnhanceSkip({
+      requestId: args.baseCtx.requestId,
+      userId: args.baseCtx.userId,
+      sessionId: args.baseCtx.sessionId,
+      reason: "feature_disabled",
+    });
+    return { kind: "skipped", reason: "feature_disabled", wallMs: wallMs() };
+  }
 
   if (args.mode !== "full") {
     logEnhanceSkip({

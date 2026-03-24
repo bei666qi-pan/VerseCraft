@@ -29,7 +29,7 @@ const FULLWIDTH_PUNCT_MAP: Record<string, string> = {
  * 用于 request_hash 幂等，不改变语义检索用原文（embed 可另取 input）。
  */
 export function normalizeForHash(input: string): string {
-  let s = input.normalize("NFKC");
+  const s = input.normalize("NFKC");
   let out = "";
   for (const ch of s) {
     out += FULLWIDTH_PUNCT_MAP[ch] ?? ch;

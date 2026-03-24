@@ -27,10 +27,12 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     enableStream: true,
     logLevel: "info",
     splitPlayerChatDualSystem: false,
+    enableNarrativeEnhancement: false,
     gatewayExtraBody: undefined,
     controlPreflightBudgetMs: 0,
     narrativeEnhanceBudgetMs: 0,
     streamModerationThrottleMs: 0,
+    loreRetrievalBudgetMs: 600,
   };
   return {
     ...defaults,

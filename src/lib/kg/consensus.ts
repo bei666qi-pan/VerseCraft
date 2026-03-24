@@ -238,7 +238,7 @@ export async function runConsensusForCandidate(args: { candidateId: number; requ
       );
 
       let factId: string | null = insFact.rows[0]?.fact_id ?? null;
-      let inserted = Boolean(factId);
+      const inserted = Boolean(factId);
 
       if (!factId) {
         const ex = await client.query<{ fact_id: string }>(

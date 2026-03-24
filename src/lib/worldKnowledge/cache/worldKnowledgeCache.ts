@@ -38,7 +38,7 @@ function isHighRiskPacket(packet: LorePacket): boolean {
   });
 }
 
-export function readRequestMemo(key: string): LorePacket | null {
+function readRequestMemo(key: string): LorePacket | null {
   return requestMemo.get(key) ?? null;
 }
 
@@ -111,6 +111,3 @@ export async function writeWorldLoreCache(args: {
   return { wroteRedis: false, ttlSec };
 }
 
-export function buildEntitySnapshotKey(code: string): string {
-  return `vc:wk:${WORLD_KNOWLEDGE_CACHE_VERSION}:entity:${code}`;
-}

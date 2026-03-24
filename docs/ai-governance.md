@@ -36,6 +36,8 @@
 
 平凡轮次（评分不足、无控制面信号、被采样剔除、或预算用尽）**不会**调用 enhance 上游。
 
+Phase 1 默认策略：`AI_ENABLE_NARRATIVE_ENHANCEMENT=0`，增强链路默认不触发；逻辑角色与任务仍保留，避免破坏兼容与观测维度。
+
 ## 缓存策略表
 
 | 数据类型 | 键空间 | TTL | 条件 |
@@ -86,4 +88,4 @@ Redis 可用时走 `SETEX`/`GET`；否则进程内 Map（容量有界）。
 
 ## 环境变量（可选调参）
 
-见根目录 `.env.example` 中 `AI_CACHE_*` / `AI_PREFLIGHT_*` / `AI_ENHANCE_*` / `VERSECRAFT_AI_CACHE_VERSION`。叙事增强门控最低分可调 **`AI_ENHANCE_GATE_MIN_SCORE`**（默认 `32`，与历史一致；调高则更少回合进入增强采样）。
+见根目录 `.env.example` 中 `AI_CACHE_*` / `AI_PREFLIGHT_*` / `AI_ENHANCE_*` / `VERSECRAFT_AI_CACHE_VERSION`。叙事增强门控最低分可调 **`AI_ENHANCE_GATE_MIN_SCORE`**（默认 `32`，与历史一致；调高则更少回合进入增强采样），并可用 **`AI_ENABLE_NARRATIVE_ENHANCEMENT`** 做总开关。

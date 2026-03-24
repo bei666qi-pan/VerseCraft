@@ -109,6 +109,31 @@ export async function runOfflineReasonerTask(params: {
   });
 }
 
+/**
+ * 后台分析统一入口：DEV_ASSIST + json_object + 默认禁用缓存（避免旧快照错配新数据）。
+ * 用于 admin 洞察、结算复盘等“证据驱动”的离线分析任务。
+ */
+export async function runBackofficeReasonerJsonTask(params: {
+  messages: ChatMessage[];
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  requestTimeoutMs?: number;
+  skipCache?: boolean;
+  devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
+}): Promise<AIResponse | AIErrorResponse> {
+  return runOfflineReasonerTask({
+    kind: "dev_assist",
+    messages: params.messages,
+    ctx: params.ctx,
+    requestTimeoutMs: params.requestTimeoutMs,
+    skipCache: params.skipCache ?? true,
+    devOverrides: {
+      responseFormatJsonObject: true,
+      temperature: 0.2,
+      ...(params.devOverrides ?? {}),
+    },
+  });
+}
+
 /** 会话记忆压缩（长对话摘要），固定 MEMORY_COMPRESSION。 */
 export async function compressSessionMemory(params: {
   messages: ChatMessage[];

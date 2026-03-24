@@ -4,7 +4,11 @@ export type ChatRole = "user" | "assistant";
 
 export type ChatMessage = { role: ChatRole; content: string };
 
-/** DM JSON shape returned in streaming completion (client parse only; do not rename keys). */
+/**
+ * DM JSON 协议（线缆名）定义。
+ * 注意：这里的 snake_case 字段属于 /api/chat 对外契约，不能为“代码整洁”直接改名。
+ * 如需内部语义化，请在消费端做局部映射（wire -> internal）。
+ */
 export type DMJson = {
   is_action_legal: boolean;
   sanity_damage: number;

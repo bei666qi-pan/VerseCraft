@@ -117,6 +117,10 @@ export type BuildChatRequestFinishedPayloadInput = {
   latestUsage: TokenUsage | null;
   preflight: PreflightTurnMetrics;
   enhance: EnhanceTurnMetrics;
+  streamReconnectCount?: number;
+  streamInterruptedCount?: number;
+  streamEmptyCount?: number;
+  finalJsonParseSuccess?: boolean;
 };
 
 /**
@@ -172,5 +176,10 @@ export function buildChatRequestFinishedPayload(
     enhancePromptTokens: input.enhance.promptTokens,
     enhanceCompletionTokens: input.enhance.completionTokens,
     enhanceTotalTokens: input.enhance.totalTokens,
+    streamReconnectCount: optionalFiniteInt(input.streamReconnectCount),
+    streamInterruptedCount: optionalFiniteInt(input.streamInterruptedCount),
+    streamEmptyCount: optionalFiniteInt(input.streamEmptyCount),
+    finalJsonParseSuccess:
+      typeof input.finalJsonParseSuccess === "boolean" ? input.finalJsonParseSuccess : null,
   };
 }

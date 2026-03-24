@@ -52,6 +52,8 @@ export interface ResolvedAiEnv {
   logLevel: "silent" | "error" | "info" | "debug";
   /** Two role=system messages (stable + dynamic) for PLAYER_CHAT when true. */
   splitPlayerChatDualSystem: boolean;
+  /** Keep enhancement pipeline compatible but disabled by default in Phase 1. */
+  enableNarrativeEnhancement: boolean;
   /** Parsed AI_GATEWAY_EXTRA_BODY_JSON when AI_GATEWAY_MERGE_EXTRA_BODY=1. */
   gatewayExtraBody?: Record<string, unknown>;
   /**
@@ -67,6 +69,11 @@ export interface ResolvedAiEnv {
    * Min interval between postModelModeration calls on stream deltas; 0 = moderate every delta (legacy).
    */
   streamModerationThrottleMs: number;
+  /**
+   * Wall-clock cap for runtime lore retrieval before degrading to fallback path.
+   * 0 = no extra budget cap (legacy).
+   */
+  loreRetrievalBudgetMs: number;
   /** Fail-fast guard for offline reasoner tasks to avoid long tail multiplier. */
   offlineFailFast: boolean;
   /** Allow WORLDBUILD/DEV_ASSIST to fallback from reasoner to main. */
@@ -102,7 +109,14 @@ function readModelForRole(role: AiLogicalRole): string {
         : role === "enhance"
           ? "AI_MODEL_ENHANCE"
           : "AI_MODEL_REASONER";
-  return (envRaw(key) ?? "").trim();
+  const direct = (envRaw(key) ?? "").trim();
+  if (role === "enhance") {
+    // Phase 1: physical deployment keeps 3 model names. When AI_MODEL_ENHANCE is unset,
+    // transparently map enhance-role traffic to main model deployment.
+    if (direct.length > 0) return direct;
+    return (envRaw("AI_MODEL_MAIN") ?? "").trim();
+  }
+  return direct;
 }
 
 function resolvePlayerRoleFallbackChain(): AiLogicalRole[] {
@@ -197,6 +211,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     enableStream: envBoolean("AI_ENABLE_STREAM", true),
     logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
     splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
+    enableNarrativeEnhancement: envBoolean("AI_ENABLE_NARRATIVE_ENHANCEMENT", false),
     gatewayExtraBody: resolveGatewayExtraBody(),
     controlPreflightBudgetMs: Math.max(
       0,
@@ -210,6 +225,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
       0,
       Math.min(2000, envNumber("AI_STREAM_MODERATION_THROTTLE_MS", 0))
     ),
+    loreRetrievalBudgetMs: Math.max(0, Math.min(5000, envNumber("AI_LORE_RETRIEVAL_BUDGET_MS", 600))),
     offlineFailFast: envBoolean("AI_OFFLINE_FAILFAST", true),
     offlineAllowMainFallback: envBoolean("AI_OFFLINE_ALLOW_MAIN_FALLBACK", false),
     offlineAffectsProviderCircuit: envBoolean("AI_OFFLINE_AFFECTS_PROVIDER_CIRCUIT", false),

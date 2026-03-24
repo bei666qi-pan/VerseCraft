@@ -22,8 +22,9 @@
 | `AI_GATEWAY_API_KEY` | 是* | 网关访问令牌（勿 `NEXT_PUBLIC_*`） |
 | `AI_MODEL_MAIN` | 是* | 主叙事、多数裁决类任务 |
 | `AI_MODEL_CONTROL` | 建议 | 控制面 / 意图 / 安全预筛 |
-| `AI_MODEL_ENHANCE` | 建议 | 场景增强、情绪润色 |
+| `AI_MODEL_ENHANCE` | 建议 | 场景增强、情绪润色（Phase 1 可直接映射到 `AI_MODEL_MAIN`） |
 | `AI_MODEL_REASONER` | 建议 | 离线推演、管理洞察 |
+| `AI_ENABLE_NARRATIVE_ENHANCEMENT` | 否 | 叙事增强总开关；默认关闭（`false`） |
 | `AI_PLAYER_ROLE_CHAIN` | 否 | 玩家 SSE 候选顺序，如 `main,control` |
 | `AI_PLAYER_MODEL_CHAIN` | 否 | **遗留**：旧厂商 id 会映射为角色 |
 | `AI_MEMORY_PRIMARY_ROLE` / `AI_MEMORY_MODEL` | 否 | 记忆压缩链首选 |
@@ -36,6 +37,7 @@
 | `AI_PLAYER_CHAT_SPLIT_SYSTEM` | 否 | `1` 时 PLAYER_CHAT 使用两条 `system`（stable + dynamic）；默认单条拼接 |
 | `AI_GATEWAY_MERGE_EXTRA_BODY` | 否 | `1` 时把 `AI_GATEWAY_EXTRA_BODY_JSON` 解析为对象并**浅合并**进请求体（不覆盖 `messages`/`model`/`stream`/`max_tokens` 等保留键） |
 | `AI_CONTROL_PREFLIGHT_BUDGET_MS` | 否 | 见 §7 预检墙钟预算；`0` 表示不截断 |
+| `AI_LORE_RETRIEVAL_BUDGET_MS` | 否 | 见 §7 lore 检索墙钟预算；`0` 表示不截断 |
 | `AI_NARRATIVE_ENHANCE_BUDGET_MS` | 否 | 见 §7 尾段增强墙钟预算；`0` 表示仅用任务内超时 |
 | `AI_STREAM_MODERATION_THROTTLE_MS` | 否 | 见 §7 流式输出审核节流；`0` 表示每 delta 必审 |
 
@@ -43,7 +45,7 @@
 
 ### 玩家 DM：稳定前缀 + 动态后缀（前缀缓存友好）
 
-- 实现：`src/lib/playRealtime/playerChatSystemPrompt.ts`。**Stable** = 全量静态规则与 lore + 固定标题 `## 【本回合动态上下文】`（memo + `VERSECRAFT_DM_STABLE_PROMPT_VERSION`）；**dynamic** = 压缩记忆、`当前玩家状态`、首局约束、`buildControlAugmentationBlock`。
+- 实现：`src/lib/playRealtime/playerChatSystemPrompt.ts`。**Stable** = 核心规则与稳定锚点（含固定标题 `## 【本回合动态上下文】`，memo + `VERSECRAFT_DM_STABLE_PROMPT_VERSION`）；**dynamic** = 压缩记忆、`当前玩家状态`、控制增强与运行时检索 lore 注入（RAG block）。
 - 路由：`src/app/api/chat/route.ts` 组装后交给 `sanitizeMessagesForUpstream`；配额估算使用 stable+dynamic（**不含**控制面 augmentation 的旧口径对齐：仅 stable + 记忆/状态/首局，即 `controlAugmentation: ""` 的 dynamic）。
 - **观测**：分析事件 `chat_request_finished` payload 含 `stableCharLen`、`dynamicCharLen`、`cachedPromptTokens`（上游支持时）；结构化日志见下文与 `docs/ai-governance.md`。
 
@@ -79,6 +81,7 @@
 - `DATABASE_URL`、`AUTH_SECRET`、及其他已有生产项
 - `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`
 - `AI_MODEL_MAIN`、`AI_MODEL_CONTROL`、`AI_MODEL_ENHANCE`、`AI_MODEL_REASONER`
+- Phase 1 推荐三部署映射：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-main`、`AI_MODEL_REASONER=vc-reasoner`
 
 容器内应用与本地共用同一套代码路径；**无**「仅线上」或「仅本地」分支。
 
@@ -103,7 +106,7 @@
 
 ## 7. 流式 PLAYER_CHAT 观测字段（摘要）
 
-- **`ai.telemetry`**：`phase: stream_first_token` 记录首包 TTFT（`ttftMs`）及 `stableCharLen` / `dynamicCharLen`（默认不写控制台，仅 `AI_LOG_LEVEL=debug` 打印 JSON）；`phase: stream_complete` 记录结束时的 `usage`（含 `cachedPromptTokens` 若上游返回）；`phase: preflight_budget` 表示控制面预检在 **`AI_CONTROL_PREFLIGHT_BUDGET_MS`** 内未完成已放弃（等价于控制面不可用路径）。
+- **`ai.telemetry`**：`phase: stream_first_token` 记录首包 TTFT（`ttftMs`）及 `stableCharLen` / `dynamicCharLen`（默认不写控制台，仅 `AI_LOG_LEVEL=debug` 打印 JSON）；`phase: stream_complete` 记录结束时的 `usage`（含 `cachedPromptTokens` 若上游返回）；`phase: preflight_budget` 同时用于记录控制面预检预算命中（`AI_CONTROL_PREFLIGHT_BUDGET_MS`）与 lore 检索预算命中（`AI_LORE_RETRIEVAL_BUDGET_MS`）。
 - **`ai.observability`**：同上部分字段进入环形缓冲，便于 `GET /api/admin/ai-routing` 排障。
 - **TokenUsage**：`normalizeUsage`（`src/lib/ai/stream/openaiLike.ts`）会解析 `usage.prompt_tokens_details.cached_tokens`、`cached_prompt_tokens` 等别名。
 - **分析事件**：`chat_request_started` 的 `payload.controlPreflightBudgetHit` 标记本回合是否触发预检预算截断。
@@ -113,6 +116,7 @@
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `AI_CONTROL_PREFLIGHT_BUDGET_MS` | `0` | `>0` 时预检最多等待该毫秒；超时则与「预检失败」相同，继续主模型流式（缩短 TTFT 尾部）。上限 10000。 |
+| `AI_LORE_RETRIEVAL_BUDGET_MS` | `600` | `>0` 时 lore 最多等待该毫秒；超时走 fallback lore 路径，不阻塞主模型开流。上限 5000。 |
 | `AI_NARRATIVE_ENHANCE_BUDGET_MS` | `0` | `>0` 时尾段感官增强 LLM 额外墙钟上限；超时放弃增强，仍发主模型 JSON（缩短终帧延迟）。上限 60000。 |
 | `AI_STREAM_MODERATION_THROTTLE_MS` | `0` | `>0` 时对 **JSON delta** 的 `postModelModeration` 按最小间隔节流（中间 delta 先直出，**削弱**分块审核密度；终帧仍有 `finalOutputModeration`）。上限 2000。 |
 
@@ -142,6 +146,8 @@
 | `enhanceSkipReason` | 跳过原因；成功为 null |
 | `enhanceLatencyMs` | 增强墙钟 |
 | `enhancePromptTokens` / `enhanceCompletionTokens` / `enhanceTotalTokens` | 仅增强 **applied** 且上游返回 usage 时有值 |
+| `streamReconnectCount` / `streamInterruptedCount` / `streamEmptyCount` | 流重连总次数、由中断触发次数、由空流触发次数 |
+| `finalJsonParseSuccess` | 终帧前是否成功解析出合法 DM JSON（失败时会走安全回落 JSON） |
 
 `chat_request_started` 的 `payload` 另含：`preflightRan`、`preflightSkippedReason`、`preflightCacheHit`、`preflightLatencyMs`、`preflightOk`、`controlPreflightBudgetHit`。
 

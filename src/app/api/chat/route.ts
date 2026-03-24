@@ -66,6 +66,8 @@ import { ingestUserKnowledge } from "@/lib/kg/ingest";
 import { normalizeForHash, sha256Hex } from "@/lib/kg/normalize";
 import { routeUserInput, type RouteResult } from "@/lib/kg/routing";
 import { getWorldRevision, putSemanticCache, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
+import { detectWorldEngineTriggers } from "@/lib/worldEngine/contracts";
+import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -624,80 +626,111 @@ export async function POST(req: Request) {
     }
   })();
 
-  await Promise.all([deleteSessionMemoryP, runControlPreflightP]);
-
-  const controlAugmentation = buildControlAugmentationBlock({
-    control: pipelineControl,
-    rule: pipelineRule,
-    preflightFailed: pipelinePreflightFailed,
-  });
   let runtimeLoreCompact = "";
   let loreRetrievalLatencyMs = 0;
   let loreCacheHit = false;
   let loreSourceCount = 0;
   let loreTokenEstimate = 0;
   let loreFallbackPath: "none" | "db_partial" | "registry" = "none";
+  let loreBudgetHit = false;
   let lorePacketChars = 0;
   let retrievalSourceCounts: Record<string, number> = {};
   let retrievalScopeCounts: Record<string, number> = {};
   let privateFactHitCount = 0;
-  try {
-    const loreT0 = Date.now();
-    const runtimeLore = await getRuntimeLore({
-      latestUserInput,
-      userId,
-      sessionId: sessionId ?? null,
-      worldRevision: BigInt(0),
-      playerLocation: guessPlayerLocation(playerContext),
-      recentlyEncounteredEntities: extractRecentEntities(latestUserInput),
-      taskType: "PLAYER_CHAT",
-      tokenBudget: 420,
-      worldScope: ["core", "shared", "user", "session"],
-    });
-    loreRetrievalLatencyMs = Math.max(0, Date.now() - loreT0);
-    runtimeLoreCompact = runtimeLore.compactPromptText;
-    lorePacketChars = runtimeLoreCompact.length;
-    loreCacheHit = runtimeLore.debugMeta.cache.level0MemoHit || runtimeLore.debugMeta.cache.redisHit;
-    loreSourceCount = runtimeLore.retrievedFacts.length;
-    loreTokenEstimate = Math.ceil(runtimeLoreCompact.length / 4);
-    retrievalSourceCounts = runtimeLore.debugMeta.hitSources.reduce<Record<string, number>>((acc, src) => {
-      acc[src] = (acc[src] ?? 0) + 1;
-      return acc;
-    }, {});
-    retrievalScopeCounts = runtimeLore.retrievedFacts.reduce<Record<string, number>>((acc, fact) => {
-      const key = fact.layer;
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {});
-    privateFactHitCount = runtimeLore.retrievedFacts.filter((f) => f.layer === "user_private_lore").length;
-    if ((runtimeLore.debugMeta.trimReason ?? "").startsWith("registry_fallback")) {
+
+  const loreRetrievalP = (async (): Promise<void> => {
+    try {
+      const loreT0 = Date.now();
+      const loreBudgetMs = preflightEnv.loreRetrievalBudgetMs;
+      const lorePromise = getRuntimeLore({
+        latestUserInput,
+        userId,
+        sessionId: sessionId ?? null,
+        worldRevision: BigInt(0),
+        playerLocation: guessPlayerLocation(playerContext),
+        recentlyEncounteredEntities: extractRecentEntities(latestUserInput),
+        taskType: "PLAYER_CHAT",
+        tokenBudget: 420,
+        worldScope: ["core", "shared", "user", "session"],
+      });
+      const runtimeLore =
+        loreBudgetMs > 0
+          ? await Promise.race([
+              lorePromise,
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), loreBudgetMs)),
+            ])
+          : await lorePromise;
+      loreRetrievalLatencyMs = Math.max(0, Date.now() - loreT0);
+      if (!runtimeLore) {
+        loreBudgetHit = true;
+        loreFallbackPath = "registry";
+        logAiTelemetry({
+          requestId,
+          task: "PLAYER_CHAT",
+          providerId: "oneapi",
+          logicalRole: "control",
+          phase: "preflight_budget",
+          latencyMs: loreRetrievalLatencyMs,
+          message: `lore_budget_hit budget_ms=${loreBudgetMs}`,
+          userId,
+          retrievalLatencyMs: loreRetrievalLatencyMs,
+          retrievalCacheHit: false,
+          fallbackRegistryUsed: true,
+        });
+        return;
+      }
+      runtimeLoreCompact = runtimeLore.compactPromptText;
+      lorePacketChars = runtimeLoreCompact.length;
+      loreCacheHit = runtimeLore.debugMeta.cache.level0MemoHit || runtimeLore.debugMeta.cache.redisHit;
+      loreSourceCount = runtimeLore.retrievedFacts.length;
+      loreTokenEstimate = Math.ceil(runtimeLoreCompact.length / 4);
+      retrievalSourceCounts = runtimeLore.debugMeta.hitSources.reduce<Record<string, number>>((acc, src) => {
+        acc[src] = (acc[src] ?? 0) + 1;
+        return acc;
+      }, {});
+      retrievalScopeCounts = runtimeLore.retrievedFacts.reduce<Record<string, number>>((acc, fact) => {
+        const key = fact.layer;
+        acc[key] = (acc[key] ?? 0) + 1;
+        return acc;
+      }, {});
+      privateFactHitCount = runtimeLore.retrievedFacts.filter((f) => f.layer === "user_private_lore").length;
+      if ((runtimeLore.debugMeta.trimReason ?? "").startsWith("registry_fallback")) {
+        loreFallbackPath = "registry";
+      } else if (runtimeLore.debugMeta.trimmedByBudget) {
+        loreFallbackPath = "db_partial";
+      }
+      logAiTelemetry({
+        requestId,
+        task: "PLAYER_CHAT",
+        providerId: "oneapi",
+        logicalRole: "control",
+        phase: "preflight_budget",
+        latencyMs: loreRetrievalLatencyMs,
+        cacheHit: loreCacheHit,
+        message: `lore_retrieval sources=${loreSourceCount} fallback=${loreFallbackPath}`,
+        userId,
+        retrievalLatencyMs: loreRetrievalLatencyMs,
+        retrievalCacheHit: loreCacheHit,
+        retrievalSourceCounts,
+        retrievalScopeCounts,
+        lorePacketChars,
+        lorePacketTokenEstimate: loreTokenEstimate,
+        fallbackRegistryUsed: loreFallbackPath === "registry",
+        privateFactHitCount,
+      });
+    } catch (e) {
+      console.warn("[api/chat] world knowledge runtime lore skipped", e);
       loreFallbackPath = "registry";
-    } else if (runtimeLore.debugMeta.trimmedByBudget) {
-      loreFallbackPath = "db_partial";
     }
-    logAiTelemetry({
-      requestId,
-      task: "PLAYER_CHAT",
-      providerId: "oneapi",
-      logicalRole: "control",
-      phase: "preflight_budget",
-      latencyMs: loreRetrievalLatencyMs,
-      cacheHit: loreCacheHit,
-      message: `lore_retrieval sources=${loreSourceCount} fallback=${loreFallbackPath}`,
-      userId,
-      retrievalLatencyMs: loreRetrievalLatencyMs,
-      retrievalCacheHit: loreCacheHit,
-      retrievalSourceCounts,
-      retrievalScopeCounts,
-      lorePacketChars,
-      lorePacketTokenEstimate: loreTokenEstimate,
-      fallbackRegistryUsed: loreFallbackPath === "registry",
-      privateFactHitCount,
-    });
-  } catch (e) {
-    console.warn("[api/chat] world knowledge runtime lore skipped", e);
-    loreFallbackPath = "registry";
-  }
+  })();
+
+  await Promise.all([deleteSessionMemoryP, runControlPreflightP, loreRetrievalP]);
+
+  const controlAugmentation = buildControlAugmentationBlock({
+    control: pipelineControl,
+    rule: pipelineRule,
+    preflightFailed: pipelinePreflightFailed,
+  });
 
   const controlAndLoreAugmentation = [controlAugmentation, runtimeLoreCompact].filter(Boolean).join("\n\n");
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
@@ -745,6 +778,7 @@ export async function POST(req: Request) {
       loreSourceCount,
       loreTokenEstimate,
       loreFallbackPath,
+      loreBudgetHit,
     },
   }).catch(() => {});
 
@@ -937,9 +971,13 @@ export async function POST(req: Request) {
   const skippedStreamRoles: AiLogicalRole[] = [];
   let streamSource: PlayerChatStreamSuccess = srOk;
   let streamRound = 0;
+  let streamReconnectCount = 0;
+  let streamInterruptedCount = 0;
+  let streamEmptyCount = 0;
   let tokenUsageFlushedGlobal = false;
   let lastEnhanceAnalytics: EnhanceAfterMainStreamResult | null = null;
   let enhancePathDmParsed = false;
+  let finalJsonParseSuccess = false;
 
   (async () => {
     const scheduleStreamReconnect = async (
@@ -947,6 +985,9 @@ export async function POST(req: Request) {
       kind: "STREAM_INTERRUPTED" | "EMPTY_CONTENT"
     ): Promise<boolean> => {
       if (streamRound >= MAX_STREAM_SOURCE_ROUNDS) return false;
+      streamReconnectCount += 1;
+      if (kind === "STREAM_INTERRUPTED") streamInterruptedCount += 1;
+      if (kind === "EMPTY_CONTENT") streamEmptyCount += 1;
       const envSnap = resolveAiEnv();
       routingReport.attempts.push({
         logicalRole: failedRole,
@@ -1066,6 +1107,10 @@ export async function POST(req: Request) {
             budgetHit: preflightTurnMetrics.budgetHit,
           },
           enhance: toEnhanceTurnMetrics(enhancePathDmParsed, lastEnhanceAnalytics),
+          streamReconnectCount,
+          streamInterruptedCount,
+          streamEmptyCount,
+          finalJsonParseSuccess,
         }),
       }).catch(() => {});
 
@@ -1094,6 +1139,7 @@ export async function POST(req: Request) {
       const parsedRoot = parseAccumulatedPlayerDmJson(accumulatedText);
       let dmRecord =
         parsedRoot !== null ? normalizePlayerDmJson(parsedRoot) : null;
+      finalJsonParseSuccess = dmRecord !== null;
 
       let moderationBody = accumulatedText;
       let finalizePayload: string | null = null;
@@ -1205,6 +1251,58 @@ export async function POST(req: Request) {
               message: err?.message,
             });
           });
+        }
+        if (dmRecord && sessionId) {
+          const triggers = detectWorldEngineTriggers({
+            turnIndex: totalRounds,
+            latestUserInput,
+            playerLocation:
+              typeof dmRecord.player_location === "string" ? dmRecord.player_location : null,
+            npcLocationUpdateCount: Array.isArray(dmRecord.npc_location_updates)
+              ? dmRecord.npc_location_updates.length
+              : 0,
+            dmRecord,
+            preflightRiskTags: pipelineControl?.risk_tags ?? [],
+          });
+          if (triggers.length > 0) {
+            void enqueueWorldEngineTick({
+              requestId,
+              userId,
+              sessionId,
+              latestUserInput,
+              triggerSignals: triggers,
+              controlRiskTags: pipelineControl?.risk_tags ?? [],
+              dmNarrativePreview: String(dmRecord.narrative ?? "").slice(0, 1200),
+              playerLocation:
+                typeof dmRecord.player_location === "string" ? dmRecord.player_location : null,
+              npcLocationUpdateCount: Array.isArray(dmRecord.npc_location_updates)
+                ? dmRecord.npc_location_updates.length
+                : 0,
+              turnIndex: totalRounds,
+            })
+              .then((r) => {
+                if (!r.enqueued) return;
+                void recordGenericAnalyticsEvent({
+                  eventId: `${requestId}:world_engine_enqueued`,
+                  idempotencyKey: `${requestId}:world_engine_enqueued`,
+                  userId,
+                  sessionId: sessionId ?? "unknown_session",
+                  eventName: "world_engine_enqueued",
+                  eventTime: new Date(),
+                  page: "/play",
+                  source: "chat",
+                  platform,
+                  tokenCost: 0,
+                  playDurationDeltaSec: 0,
+                  payload: {
+                    requestId,
+                    dedupKey: r.dedupKey,
+                    triggers,
+                  },
+                }).catch(() => {});
+              })
+              .catch(() => {});
+          }
         }
         if (
           kgEnabled &&

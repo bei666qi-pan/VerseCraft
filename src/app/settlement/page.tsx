@@ -12,6 +12,16 @@ import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
+type SettlementAiReview = {
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  nextActions: string[];
+  confidence: { score: number; level: "high" | "medium" | "low"; reason: string };
+  evidence: Array<{ metric: string; value: string; source: string }>;
+  evidenceSufficiency: "enough" | "insufficient";
+  generatedAt: string;
+};
 
 export type SettlementGrade = "S" | "A" | "B" | "C" | "D" | "E";
 
@@ -210,6 +220,9 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const historicalMaxFloorScore = useGameStore((s) => s.historicalMaxFloorScore ?? 0);
+  const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "auto_save");
+  const [aiReview, setAiReview] = useState<SettlementAiReview | null>(null);
+  const [aiReviewLoading, setAiReviewLoading] = useState(false);
 
   const sanity = stats?.sanity ?? 0;
   const isDead = sanity <= 0;
@@ -224,6 +237,30 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     kills,
     maxFloor
   );
+
+  const buildAiReviewPayload = useCallback(() => {
+    const keyEvents = logs
+      .slice(-10)
+      .filter((x) => x.role === "user" || x.role === "assistant")
+      .map((x) => String(x.content ?? "").trim())
+      .filter(Boolean)
+      .slice(-6);
+    return {
+      sessionId: currentSaveSlot,
+      player: {
+        grade,
+        survivalHours,
+        maxFloor,
+        kills,
+        isDead,
+      },
+      signals: {
+        playerLocation,
+        keyEvents,
+      },
+      evidenceQuality: keyEvents.length >= 3 ? "enough" : "insufficient",
+    } as const;
+  }, [currentSaveSlot, grade, survivalHours, maxFloor, kills, isDead, playerLocation, logs]);
 
   const handleSubmit = useCallback(async () => {
     if (hasUploadedRef.current) return;
@@ -249,6 +286,46 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       await deleteCloudSaveSlot("auto_save");
     })();
   }, [mounted, handleSubmit]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    let cancelled = false;
+    const sessionId = currentSaveSlot;
+    const loadAiReview = async () => {
+      setAiReviewLoading(true);
+      try {
+        const getResp = await fetch(
+          `/api/settlement/analysis?sessionId=${encodeURIComponent(sessionId)}`,
+          { credentials: "include" }
+        );
+        if (getResp.ok) {
+          const data = (await getResp.json().catch(() => null)) as
+            | { output?: SettlementAiReview }
+            | null;
+          if (!cancelled && data?.output) setAiReview(data.output);
+          return;
+        }
+        const postResp = await fetch("/api/settlement/analysis", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildAiReviewPayload()),
+        });
+        const postData = (await postResp.json().catch(() => null)) as
+          | { output?: SettlementAiReview }
+          | null;
+        if (!cancelled && postData?.output) setAiReview(postData.output);
+      } catch {
+        // AI复盘为非阻塞增强，失败时静默保底为规则文案。
+      } finally {
+        if (!cancelled) setAiReviewLoading(false);
+      }
+    };
+    void loadAiReview();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, currentSaveSlot, buildAiReviewPayload]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -390,6 +467,23 @@ export default function SettlementPage(props: AppPageDynamicProps) {
           <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-4">
             <p className="text-sm leading-relaxed text-slate-300">{reviewLine1}</p>
             <p className="mt-1 text-sm leading-relaxed text-slate-400">{reviewLine2}</p>
+          </section>
+
+          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-4">
+            <p className="text-xs text-slate-500">AI 复盘（后台离线生成）</p>
+            {aiReviewLoading && !aiReview ? (
+              <p className="mt-1 text-sm text-slate-400">正在加载复盘快照...</p>
+            ) : aiReview ? (
+              <div className="mt-1 space-y-2">
+                <p className="text-sm leading-relaxed text-slate-300">{aiReview.summary}</p>
+                <p className="text-xs text-slate-400">
+                  置信度：{aiReview.confidence.level} ({Math.round(aiReview.confidence.score * 100)}%) ·
+                  证据充分性：{aiReview.evidenceSufficiency === "enough" ? "充足" : "不足"}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-slate-400">暂无 AI 复盘快照，已使用规则结算文案。</p>
+            )}
           </section>
 
           <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-5">

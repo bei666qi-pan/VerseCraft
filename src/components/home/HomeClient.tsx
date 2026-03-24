@@ -82,7 +82,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [feedbackConsentPrivacyPolicy, setFeedbackConsentPrivacyPolicy] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const [surveySubmitted, setSurveySubmitted] = useState(false);
+  const [surveySubmitted] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.sessionStorage.getItem(SURVEY_SUBMITTED_SESSION_KEY) === "1";
+  });
   const [authState, authFormAction, authPending] = useActionState(signInOrRegister, INITIAL_AUTH_ACTION_STATE);
   const surveyUrl = getPublicRuntimeConfig().surveyUrl;
 
@@ -129,8 +132,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [surveyOpen, feedbackSuccess]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    setSurveySubmitted(window.sessionStorage.getItem(SURVEY_SUBMITTED_SESSION_KEY) === "1");
     void trackGameplayEvent({
       eventName: "survey_entry_exposed",
       page: "/",

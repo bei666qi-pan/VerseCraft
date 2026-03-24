@@ -1,10 +1,11 @@
 import "server-only";
 
-import { runOfflineReasonerTask } from "@/lib/ai/logicalTasks";
+import { runBackofficeReasonerJsonTask } from "@/lib/ai/logicalTasks";
 import { createRequestId } from "@/lib/security/helpers";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getFeedbackInsights, getFunnelMetrics, getOverviewMetrics, getRealtimeMetrics, getRetentionMetrics } from "@/lib/admin/service";
 import { validateAiInsightOutput } from "@/lib/admin/aiInsightSchema";
+import { readLatestAiAnalysisSnapshot, upsertAiAnalysisSnapshot } from "@/lib/ai/analysis/snapshotStore";
 
 export type AiInsightInput = {
   range: { preset: string; startDateKey: string; endDateKey: string; label: string };
@@ -27,6 +28,24 @@ export type AiInsightOutput = {
   generatedAt: string;
   evidenceSufficiency: "enough" | "insufficient";
 };
+
+const ADMIN_ANALYSIS_TTL_MS = 15 * 60 * 1000;
+
+function buildAdminScopeKey(range: AdminTimeRange): string {
+  return `range:${range.preset}:${range.startDateKey}:${range.endDateKey}`;
+}
+
+function buildAdminDataRevision(input: AiInsightInput): string {
+  const m = input.metrics.overview as { activeUsersRange?: number; tokenCostRange?: number };
+  return [
+    input.range.startDateKey,
+    input.range.endDateKey,
+    String(m.activeUsersRange ?? 0),
+    String(m.tokenCostRange ?? 0),
+    String(input.feedback.totalFeedback),
+    String(input.feedback.negativeFeedback),
+  ].join("|");
+}
 
 function cleanFeedbackText(input: string): string {
   return input.replace(/\s+/g, " ").replace(/[^\u4e00-\u9fa5a-zA-Z0-9,.;:!?()\-\s]/g, "").trim().slice(0, 200);
@@ -95,8 +114,7 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
   const systemPrompt = ["你是VerseCraft后台AI运营分析官。", "你只能依据输入数据给出建议，禁止编造证据。", "当证据不足时，必须明确写出“证据不足”。", "建议必须按优先级：immediate / this_week / mid_term。", "请严格以 JSON 格式输出。", `输出结构必须匹配：${JSON.stringify(schemaHint)}`].join("\n");
 
   try {
-    const ai = await runOfflineReasonerTask({
-      kind: "dev_assist",
+    const ai = await runBackofficeReasonerJsonTask({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `以下是结构化输入数据：\n${JSON.stringify(input)}` },
@@ -123,5 +141,64 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
   } catch {
     return { input, output: fallbackFromInput(input), model: "none", degraded: true };
   }
+}
+
+export async function getCachedAiInsightReport(range: AdminTimeRange): Promise<{
+  range: AdminTimeRange;
+  model: string;
+  degraded: boolean;
+  stale: boolean;
+  input: AiInsightInput;
+  output: AiInsightOutput;
+} | null> {
+  const scopeKey = buildAdminScopeKey(range);
+  const row = await readLatestAiAnalysisSnapshot({
+    task: "admin_insight",
+    scopeKey,
+  });
+  if (!row) return null;
+  const input = row.inputJson as AiInsightInput;
+  const output = validateAiInsightOutput(row.outputJson) ?? fallbackFromInput(input);
+  const stale = Date.now() >= new Date(row.staleAt).getTime();
+  return {
+    range,
+    model: row.modelRole,
+    degraded: false,
+    stale,
+    input,
+    output,
+  };
+}
+
+export async function refreshAiInsightReport(range: AdminTimeRange): Promise<{
+  range: AdminTimeRange;
+  model: string;
+  degraded: boolean;
+  stale: boolean;
+  input: AiInsightInput;
+  output: AiInsightOutput;
+}> {
+  const report = await generateAiInsightReport(range);
+  const scopeKey = buildAdminScopeKey(range);
+  const generatedAt = new Date();
+  const staleAt = new Date(generatedAt.getTime() + ADMIN_ANALYSIS_TTL_MS);
+  await upsertAiAnalysisSnapshot({
+    task: "admin_insight",
+    scopeKey,
+    inputJson: report.input as unknown as Record<string, unknown>,
+    outputJson: report.output as unknown as Record<string, unknown>,
+    modelRole: report.model,
+    dataRevision: buildAdminDataRevision(report.input),
+    staleAt,
+    generatedAt,
+  });
+  return {
+    range,
+    model: report.model,
+    degraded: report.degraded,
+    stale: false,
+    input: report.input,
+    output: report.output,
+  };
 }
 

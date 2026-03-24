@@ -1,9 +1,12 @@
 import type { AiInsightOutput } from "@/lib/admin/aiInsights";
+import { validateAnalysisOutputBase } from "@/lib/ai/analysis/schema";
 
 const PRIORITY = new Set(["immediate", "this_week", "mid_term"]);
 const CONF_LEVEL = new Set(["high", "medium", "low"]);
 
 export function validateAiInsightOutput(input: unknown): AiInsightOutput | null {
+  const base = validateAnalysisOutputBase(input);
+  if (!base) return null;
   if (!input || typeof input !== "object") return null;
   const x = input as Record<string, unknown>;
   if (typeof x.executiveSummary !== "string") return null;

@@ -78,6 +78,7 @@ async function processOne(
     runConsensusForCandidate: typeof import("../src/lib/kg/consensus").runConsensusForCandidate;
     enqueueConsensusSweepBatch: typeof import("../src/lib/kg/consensus").enqueueConsensusSweepBatch;
     runWeeklyFactCompaction: typeof import("../src/lib/kg/compaction").runWeeklyFactCompaction;
+    runWorldEngineTick: typeof import("../src/lib/worldEngine/engine").runWorldEngineTick;
     completeJob: typeof import("../src/lib/kg/jobs").completeJob;
     failJob: typeof import("../src/lib/kg/jobs").failJob;
   },
@@ -118,6 +119,19 @@ async function processOne(
       case "COMPACTION_WEEKLY": {
         const n = await deps.runWeeklyFactCompaction();
         logJson({ level: "info", msg: "compaction_rows", jobId: job.jobId, archived: n });
+        break;
+      }
+      case "WORLD_ENGINE_TICK": {
+        const payload = job.payload as import("../src/lib/worldEngine/contracts").WorldEngineTickPayload;
+        const result = await deps.runWorldEngineTick(payload);
+        if (!result.ok) throw new Error(result.reason);
+        logJson({
+          level: "info",
+          msg: "world_engine_tick_succeeded",
+          jobId: job.jobId,
+          runId: result.runId,
+          worldRevision: result.worldRevision.toString(),
+        });
         break;
       }
       default:
@@ -174,6 +188,7 @@ async function main(): Promise<void> {
   const { pool } = await import("../src/db/index");
   const { recordGenericAnalyticsEvent } = await import("../src/lib/analytics/repository");
   const { runWeeklyFactCompaction } = await import("../src/lib/kg/compaction");
+  const { runWorldEngineTick } = await import("../src/lib/worldEngine/engine");
   const { enqueueConsensusSweepBatch, runConsensusForCandidate } = await import("../src/lib/kg/consensus");
   const { runJanitorForCandidate } = await import("../src/lib/kg/janitor");
   const { claimJobs, completeJob, failJob, releaseStaleRunningJobs } = await import("../src/lib/kg/jobs");
@@ -184,6 +199,7 @@ async function main(): Promise<void> {
     runConsensusForCandidate,
     enqueueConsensusSweepBatch,
     runWeeklyFactCompaction,
+    runWorldEngineTick,
     completeJob,
     failJob,
   };

@@ -169,6 +169,59 @@ test("resolveAiEnv maps AI_MEMORY_MODEL legacy id to memoryPrimaryRole", () => {
   );
 });
 
+test("resolveAiEnv maps enhance model to main when AI_MODEL_ENHANCE is unset", () => {
+  withEnv(
+    {
+      AI_GATEWAY_BASE_URL: "https://oneapi.example.com",
+      AI_GATEWAY_API_KEY: "sk-gateway",
+      AI_MODEL_MAIN: "vc-main",
+      AI_MODEL_CONTROL: "vc-control",
+      AI_MODEL_ENHANCE: undefined,
+      AI_MODEL_REASONER: "vc-reasoner",
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.equal(e.modelsByRole.enhance, "vc-main");
+    }
+  );
+});
+
+test("resolveAiEnv keeps narrative enhancement disabled by default", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_ENABLE_NARRATIVE_ENHANCEMENT: undefined,
+    },
+    () => {
+      assert.equal(resolveAiEnv().enableNarrativeEnhancement, false);
+    }
+  );
+});
+
+test("resolveAiEnv enables narrative enhancement when explicitly set", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_ENABLE_NARRATIVE_ENHANCEMENT: "1",
+    },
+    () => {
+      assert.equal(resolveAiEnv().enableNarrativeEnhancement, true);
+    }
+  );
+});
+
+test("resolveAiEnv uses default lore retrieval budget", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_LORE_RETRIEVAL_BUDGET_MS: undefined,
+    },
+    () => {
+      assert.equal(resolveAiEnv().loreRetrievalBudgetMs, 600);
+    }
+  );
+});
+
 test("resolveOperationMode reads AI_OPERATION_MODE aliases", () => {
   withEnv({ AI_OPERATION_MODE: "emergency", AI_DEGRADE_MODE: undefined }, () => {
     assert.equal(resolveOperationMode(), "emergency");

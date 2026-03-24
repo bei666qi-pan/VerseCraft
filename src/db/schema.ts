@@ -495,3 +495,91 @@ export const worldRetrievalCacheSnapshots = pgTable(
     expiresAtIdx: index("world_retrieval_cache_snapshots_expires_at_idx").on(table.expiresAt),
   })
 );
+
+export const worldEngineRuns = pgTable(
+  "world_engine_runs",
+  {
+    runId: serial("run_id").primaryKey(),
+    dedupKey: varchar("dedup_key", { length: 128 }).notNull(),
+    requestId: varchar("request_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    triggerSignals: jsonb("trigger_signals").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    modelTask: varchar("model_task", { length: 64 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    outputJson: jsonb("output_json").$type<Record<string, unknown>>(),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    dedupUnique: uniqueIndex("world_engine_runs_dedup_unique").on(table.dedupKey),
+    sessionCreatedIdx: index("world_engine_runs_session_created_idx").on(table.sessionId, table.createdAt),
+    statusCreatedIdx: index("world_engine_runs_status_created_idx").on(table.status, table.createdAt),
+  })
+);
+
+export const worldEngineEventQueue = pgTable(
+  "world_engine_event_queue",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    eventCode: varchar("event_code", { length: 128 }).notNull(),
+    title: text("title").notNull(),
+    dueInTurns: integer("due_in_turns").notNull().default(1),
+    priority: varchar("priority", { length: 16 }).notNull().default("low"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    status: varchar("status", { length: 32 }).notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionStatusDueIdx: index("world_engine_event_queue_session_status_due_idx").on(table.sessionId, table.status, table.dueInTurns),
+    eventCodeIdx: index("world_engine_event_queue_event_code_idx").on(table.eventCode),
+  })
+);
+
+export const worldEngineAgendaSnapshots = pgTable(
+  "world_engine_agenda_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id").notNull().references(() => worldEngineRuns.runId, { onDelete: "cascade" }),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    agendaRevision: integer("agenda_revision").notNull(),
+    snapshotJson: jsonb("snapshot_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionRevisionUnique: uniqueIndex("world_engine_agenda_session_revision_unique").on(table.sessionId, table.agendaRevision),
+    sessionCreatedIdx: index("world_engine_agenda_session_created_idx").on(table.sessionId, table.createdAt),
+  })
+);
+
+export const aiAnalysisSnapshots = pgTable(
+  "ai_analysis_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    task: varchar("task", { length: 64 }).notNull(),
+    scopeKey: varchar("scope_key", { length: 191 }).notNull(),
+    inputJson: jsonb("input_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    outputJson: jsonb("output_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    modelRole: varchar("model_role", { length: 32 }).notNull().default("none"),
+    dataRevision: varchar("data_revision", { length: 128 }).notNull().default(""),
+    staleAt: timestamp("stale_at", { withTimezone: true }).notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    taskScopeUnique: uniqueIndex("ai_analysis_task_scope_unique").on(table.task, table.scopeKey),
+    staleIdx: index("ai_analysis_stale_idx").on(table.staleAt),
+  })
+);

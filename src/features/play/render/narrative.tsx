@@ -4,7 +4,7 @@ import { memo, type ReactNode } from "react";
 import { LOCATION_LABELS } from "./locationLabels";
 
 export const BLOOD_MARKER = "{{BLOOD}}";
-export const BLOOD_END = "{{/BLOOD}}";
+const BLOOD_END = "{{/BLOOD}}";
 
 /**
  * 流式阶段：去掉未闭合的 {{BLOOD}} 起始标记（避免半段血块撑满布局），
@@ -74,7 +74,7 @@ export function renderNarrativeText(
     const localized = (() => {
       try {
         if (!safeText) return safeText;
-        const normalizePlatformWords = (s: string) => {
+        const normalizeNarrativeTerms = (s: string) => {
           let out = s;
           out = out.replace(/游戏玩法/g, "创作设定");
           out = out.replace(/游戏/g, "创作");
@@ -89,7 +89,7 @@ export function renderNarrativeText(
           out = out.replace(/使用道具/g, "消耗灵感");
           return out;
         };
-        const base = normalizePlatformWords(safeText);
+        const base = normalizeNarrativeTerms(safeText);
         const keys = Object.keys(LOCATION_LABELS ?? {});
         if (keys.length === 0) return safeText;
         keys.sort((a, b) => b.length - a.length);

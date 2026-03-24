@@ -85,15 +85,15 @@
 - 默认第一人称、规则怪谈 / 网文惊悚叙事节奏
 - 前端展示、叙事文本、模拟数据、用户提示默认使用简体中文
 
-### Registry 是事实源
-以下内容必须继续由注册表集中管理，不要把静态世界观写死到页面组件里：
+### worldKnowledge 是运行时事实源，Registry 仅 bootstrap/fallback
+以下内容可以继续由注册表维护为 seed/fallback，不要把静态世界观写死到页面组件里：
 - NPC
 - 诡异 / 异常
 - 道具
 - 仓库物品
 - 世界规则 / 固化真相
 
-核心目录：`src/lib/registry/*`
+核心目录：`src/lib/worldKnowledge/*`（运行时）与 `src/lib/registry/*`（bootstrap/fallback）
 
 ---
 
@@ -185,8 +185,8 @@
 ### 绝对要求
 1. 运行时保持 `nodejs`
 2. 保持 SSE / 流式输出能力
-3. 使用 DeepSeek 官方 API 配置（无 Volcano/ARK 兼容）
-4. `model` 优先使用 **模型名字符串**（如 `deepseek-v3.2` / `deepseek-reasoner`）
+3. 使用 one-api/OpenAI 兼容网关配置（`AI_GATEWAY_*` + `AI_MODEL_*`）
+4. `model` 由逻辑角色与 `AI_MODEL_*` 映射决定，避免在业务代码写死厂商型号
 5. 上游请求前必须剥离历史消息中的 `reasoning_content`
 6. 维持 JSON-only 输出协议
 7. 维持配额、记忆压缩、DB 写入、presence 更新的兼容性
@@ -219,7 +219,7 @@
 如果任务涉及 `/play` 页、SSE 承接、流式文本展示，必须遵守：
 
 ### Stream phase 单一语义源
-- 交互锁定与流式视觉必须由显式 `stream phase` 驱动（如 `idle / waiting_upstream / streaming_body / turn_committing / error`）。
+- 交互锁定与流式视觉必须由显式 `stream phase` 驱动（如 `idle / waiting_upstream / streaming_body / turn_committing / tail_draining / error`）。
 - 不要在页面内散落新的“临时布尔状态机”替代 phase 语义。
 
 1. narrative / JSON 提取优先使用 **`indexOf` + `slice`** 这类可控方案

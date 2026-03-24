@@ -9,9 +9,6 @@ export const FIXED_OPENING_NARRATIVE =
 export const OPENING_SYSTEM_PROMPT =
   "【开局·会话初始化】客户端已向玩家展示固定开场叙事（约三百字）与本地随机四条行动选项，你禁止复述苏醒、环境描写或如月公寓设定。请严格以 JSON 格式输出：narrative 仅填单个全角句号「。」作为占位；options 填空数组 []（客户端会忽略你输出的 options）。其余字段按常规模板填合理默认值（is_action_legal:true，sanity_damage:0，is_death:false，consumes_time:true，consumed_items:[]，player_location:\"B1_SafeZone\"，bgm_track:\"bgm_1_calm\" 等）。请严格以 JSON 格式输出。";
 
-/** 超时降级：叙事仍由前端嵌入式展示；选项由本地降级函数注入默认可玩四条 */
-export const LOCAL_FALLBACK_OPENING_NARRATIVE = FIXED_OPENING_NARRATIVE;
-
 /** 模型缺省选项时的兜底（非首条助手回合合并用） */
 export const DEFAULT_FOUR_ACTION_OPTIONS: readonly string[] = [
   "查看周围环境",

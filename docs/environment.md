@@ -28,7 +28,7 @@
 
 ## Coolify / 生产部署 checklist
 
-- **大模型**：镜像内**没有** `.env.local`，必须在 Coolify **Environment Variables** 中配置 **one-api 网关**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，以及 `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`（与 `.env.example` 一致）。未配置时 `/api/chat` 会降级并提示未配置网关。
+- **大模型**：镜像内**没有** `.env.local`，必须在 Coolify **Environment Variables** 中配置 **one-api 网关**：`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`，以及 `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER`（与 `.env.example` 一致）。Phase 1 推荐三部署映射：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-main`、`AI_MODEL_REASONER=vc-reasoner`。未配置时 `/api/chat` 会降级并提示未配置网关。
 - **数据库表**：保持 **`MIGRATE_ON_BOOT=1`**（默认），以便容器启动时执行 `scripts/migrate.js`。若历史库已存在 `schema_v1` 记录但缺少 `analytics_events` 表，当前迁移脚本会在每次启动时额外执行 `ensureAnalyticsFoundationTables` 做幂等补齐；`instrumentation` 中也会调用 `ensureRuntimeSchema`（除非 `RUNTIME_SCHEMA_ENSURE=0`）。
 
 ## KG 相关环境变量

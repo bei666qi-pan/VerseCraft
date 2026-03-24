@@ -3,7 +3,7 @@
 ## Cursor Cloud specific instructions
 
 ### Project overview
-VerseCraft (文界工坊) is a single-player browser-based text adventure game (Next.js 15 + React 19 + Tailwind CSS v4 + Zustand 5). All UI text is in Simplified Chinese. The project uses PostgreSQL + Drizzle for account/session and server data, while gameplay state remains client-first persisted via IndexedDB (`idb-keyval`).
+VerseCraft (文界工坊) is a single-player browser-based text adventure game (Next.js 16 + React 19 + Tailwind CSS v4 + Zustand 5). All UI text is in Simplified Chinese. The project uses PostgreSQL + Drizzle for account/session and server data, while gameplay state remains client-first persisted via IndexedDB (`idb-keyval`).
 
 ### Environment configuration
 - **Single source**: server vars validated in `src/lib/config/serverConfig.ts`; raw reads only via `src/lib/config/envRaw.ts`. AI vars: `src/lib/ai/config/env.ts`. Public (browser): `src/lib/config/publicRuntime.ts` (`NEXT_PUBLIC_*` only).
@@ -39,10 +39,10 @@ See `package.json` scripts. Summary:
 These rules are **non-negotiable**. Every future agent session must respect them.
 
 ### 1. Framework versions
-- **Next.js 15** (App Router) + **React 19** + **Tailwind CSS v4** (CSS-first config via `@theme` in `globals.css`).
+- **Next.js 16** (App Router) + **React 19** + **Tailwind CSS v4** (CSS-first config via `@theme` in `globals.css`).
 - Package manager: **pnpm 10+**. Lockfile: `pnpm-lock.yaml`.
 
-### 2. Next.js 15+ async data access
+### 2. Next.js 16+ async data access
 In the App Router, request-scoped APIs (`params`, `searchParams`, `cookies()`, `headers()`) are **asynchronous**. Always `await` them:
 ```ts
 const { id } = await params;
@@ -78,12 +78,12 @@ Render a skeleton/loader while `isHydrated === false`. **Never** use `useSyncExt
 - Registration success should establish server-side session directly.
 - Do not add client-side “auto-login after register” workaround paths unless explicitly requested.
 
-### 4. DeepSeek API message sanitization
-Before sending multi-turn chat history to the DeepSeek endpoint, **strip `reasoning_content`** (chain-of-thought) from every message using `.map()`:
+### 4. Upstream message sanitization
+Before sending multi-turn chat history to the one-api/OpenAI-compatible upstream, **strip `reasoning_content`** (chain-of-thought) from every message using `.map()`:
 ```ts
 const safeMessages = messages.map(m => ({ role: m.role, content: m.content }));
 ```
-Failing to do so triggers a **400 Bad Request** from the upstream API.
+Failing to do so may trigger upstream **400 Bad Request** or schema mismatch.
 
 ### 5. JSON output enforcement
-When the system prompt requests structured JSON output from DeepSeek, it **must** include the literal Chinese string **"请严格以 JSON 格式输出"**. Without this, the model may produce infinite blank tokens or malformed output.
+When the system prompt requests structured JSON output for DM/control tasks, it **must** include the literal Chinese string **"请严格以 JSON 格式输出"**. Without this, the model may produce malformed output.

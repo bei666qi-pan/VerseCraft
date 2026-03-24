@@ -191,7 +191,9 @@ export function useSmoothStreamFromRef(
     };
   }, [streamOptions]);
 
-  onReachedRef.current = tailDrain?.onReached ?? null;
+  useLayoutEffect(() => {
+    onReachedRef.current = tailDrain?.onReached ?? null;
+  }, [tailDrain]);
 
   useLayoutEffect(() => {
     // Reset for each new visual turn, so StreamPanel never shows stale text.

@@ -3,8 +3,9 @@ import { cookies } from "next/headers";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getAiInsights } from "@/lib/admin/service";
-import { generateAiInsightReport } from "@/lib/admin/aiInsights";
+import { getCachedAiInsightReport, refreshAiInsightReport } from "@/lib/admin/aiInsights";
 import { invalidateCompletionCacheByTask } from "@/lib/ai/governance/responseCache";
+import { invalidateAiAnalysisSnapshot } from "@/lib/ai/analysis/snapshotStore";
 
 export const dynamic = "force-dynamic";
 const ADMIN_AI_INSIGHTS_DISABLE = process.env.ADMIN_AI_INSIGHTS_DISABLE === "1";
@@ -41,6 +42,13 @@ export async function GET(req: Request) {
     );
   }
   try {
+    const cached = await getCachedAiInsightReport(range);
+    if (cached) {
+      return NextResponse.json(
+        { ...cached, source: "snapshot" },
+        { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } }
+      );
+    }
     const data = await getAiInsights(range);
     return NextResponse.json(data, {
       headers: { "Cache-Control": "private, max-age=180, stale-while-revalidate=300" },
@@ -63,8 +71,9 @@ export async function POST(req: Request) {
 
   const url = new URL(req.url);
   if (url.searchParams.get("refresh_cache") === "1") {
-    const deleted = await invalidateCompletionCacheByTask("DEV_ASSIST");
-    return NextResponse.json({ ok: true, task: "DEV_ASSIST", deleted });
+    const deletedCompletion = await invalidateCompletionCacheByTask("DEV_ASSIST");
+    const deletedSnapshot = await invalidateAiAnalysisSnapshot({ task: "admin_insight" });
+    return NextResponse.json({ ok: true, task: "DEV_ASSIST", deletedCompletion, deletedSnapshot });
   }
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
   if (ADMIN_AI_INSIGHTS_DISABLE) {
@@ -79,14 +88,22 @@ export async function POST(req: Request) {
   }
 
   try {
-    const report = await withTimeout(generateAiInsightReport(range), 12_000);
+    if (url.searchParams.get("warmup") === "1") {
+      const presets: Array<"today" | "7d" | "30d"> = ["today", "7d", "30d"];
+      const refreshed: Array<{ preset: string; degraded: boolean; model: string }> = [];
+      for (const preset of presets) {
+        const sp = new URLSearchParams();
+        sp.set("range", preset);
+        const r = await withTimeout(refreshAiInsightReport(parseAdminTimeRangeFromSearchParams(sp)), 12_000);
+        refreshed.push({ preset, degraded: r.degraded, model: r.model });
+      }
+      return NextResponse.json({ ok: true, refreshed, source: "warmup" });
+    }
+    const report = await withTimeout(refreshAiInsightReport(range), 12_000);
     return NextResponse.json(
       {
-        range,
-        model: report.model,
-        degraded: report.degraded,
-        input: report.input,
-        output: report.output,
+        ...report,
+        source: "refresh",
       },
       { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" } }
     );
@@ -111,10 +128,11 @@ export async function DELETE(req: Request) {
   }
   const url = new URL(req.url);
   const task = url.searchParams.get("task");
-  if (task !== "DEV_ASSIST") {
+  if (task !== "DEV_ASSIST" && task !== "admin_insight") {
     return NextResponse.json({ error: "unsupported_task" }, { status: 400 });
   }
-  const deleted = await invalidateCompletionCacheByTask("DEV_ASSIST");
-  return NextResponse.json({ ok: true, task, deleted });
+  const deletedCompletion = task === "DEV_ASSIST" ? await invalidateCompletionCacheByTask("DEV_ASSIST") : 0;
+  const deletedSnapshot = task === "admin_insight" ? await invalidateAiAnalysisSnapshot({ task: "admin_insight" }) : 0;
+  return NextResponse.json({ ok: true, task, deletedCompletion, deletedSnapshot });
 }
 

@@ -22,6 +22,8 @@
 
 真实上游由 **one-api** + 环境变量 `AI_MODEL_*` 决定；应用内只使用下列 **角色**：
 
+> Phase 1（稳态过渡）：生产仅需 3 个实际部署名 `vc-main` / `vc-control` / `vc-reasoner`；`enhance` 逻辑角色保留，但默认映射到 `vc-main`，且增强触发默认关闭。
+
 | 逻辑角色 | 典型任务 |
 |----------|----------|
 | `main` | 玩家主叙事 `PLAYER_CHAT`、规则/战斗 JSON 类 |

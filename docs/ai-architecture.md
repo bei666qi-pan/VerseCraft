@@ -46,7 +46,7 @@
 |------|----------|----------|
 | `main` | 玩家主叙事、规则裁决、战斗叙述、记忆压缩默认 | `AI_MODEL_MAIN` |
 | `control` | 控制面预检、意图、安全预筛 | `AI_MODEL_CONTROL` |
-| `enhance` | 场景增强、情绪润色 | `AI_MODEL_ENHANCE` |
+| `enhance` | 场景增强、情绪润色（过渡兼容角色） | `AI_MODEL_ENHANCE`（Phase 1 推荐映射到 `vc-main`） |
 | `reasoner` | 离线世界构建、剧情推演、管理洞察 | `AI_MODEL_REASONER` |
 
 ## 任务 → 角色映射（源码：`tasks/taskPolicy.ts`）
@@ -82,6 +82,8 @@
 
 - **网关**：`AI_GATEWAY_PROVIDER`（默认 `oneapi`）、`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`
 - **角色 → 上游模型名**：`AI_MODEL_MAIN`、`AI_MODEL_CONTROL`、`AI_MODEL_ENHANCE`、`AI_MODEL_REASONER`
+- **Phase 1 三部署推荐映射**：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-main`、`AI_MODEL_REASONER=vc-reasoner`
+- **增强触发开关**：`AI_ENABLE_NARRATIVE_ENHANCEMENT`（默认关闭；仅控制“是否触发增强”，不删除逻辑角色与任务矩阵）
 - **玩家链**：`AI_PLAYER_ROLE_CHAIN`；兼容旧 `AI_PLAYER_MODEL_CHAIN`（旧 id 映射为角色）
 - **覆盖链首**：`AI_MEMORY_PRIMARY_ROLE` / 旧 `AI_MEMORY_MODEL`；`AI_DEV_ASSIST_PRIMARY_ROLE` / 旧 `AI_ADMIN_MODEL`
 - **行为**：`AI_ENABLE_STREAM`、`AI_LOG_LEVEL`、`AI_REQUEST_TIMEOUT_MS`、`AI_MAX_RETRIES`、熔断与 `AI_OPERATION_MODE`
@@ -91,3 +93,21 @@
 - 业务禁止直接 `fetch` 大模型；须通过 `executePlayerChatStream` / `executeChatCompletion`。
 - 新增任务：扩展 `TaskType` → `TASK_POLICY` + `TASK_ROLE_FORBIDDEN`。
 - 换模型：优先改 **one-api**；必须改应用时只动 **环境变量**（或极少数集中配置），不动业务文件。
+
+## Phase 3：World Engine 后台化（离线 reasoner）
+
+- `reasoner` 仅用于离线任务：`WORLDBUILD_OFFLINE` / `STORYLINE_SIMULATION`，不进入 `PLAYER_CHAT` 主链路。
+- `/api/chat` 在终帧后仅异步入队 `WORLD_ENGINE_TICK`，不等待 reasoner 返回。
+- worker（`scripts/vc-worker.ts`）消费 `WORLD_ENGINE_TICK`，调用 `runOfflineReasonerTask({ kind: "worldbuild" })`。
+- reasoner 输出必须为严格 JSON，结构包括：
+  - `npc_next_actions[]`
+  - `world_events_to_schedule[]`
+  - `story_branch_seeds[]`
+  - `consistency_warnings[]`
+  - `player_private_hooks[]`
+- 结果落库：
+  - `world_engine_runs`（运行记录、状态、去重键）
+  - `world_engine_event_queue`（可查询事件队列）
+  - `world_engine_agenda_snapshots`（会话 agenda 快照）
+- Redis 仅用于去重锁/热缓存协调；长期事实源为 PostgreSQL。
+- 成功写入后递增 `vc_world_meta.world_revision`，供在线 retrieval 对齐后台增量版本。

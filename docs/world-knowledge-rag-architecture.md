@@ -1,6 +1,6 @@
 # 世界知识 RAG 架构设计（VerseCraft）
 
-> 本文档用于把“世界观事实源”从前端/静态硬编码升级为“服务端知识层 + PostgreSQL 持久化 + Redis 热缓存 + RAG 检索注入”，并且在不破坏现有 `/api/chat` JSON 契约、SSE 流式链路与单一主 store 的前提下完成最小骨架准备。
+> 本文档最初是迁移设计稿；当前代码已落地其中的关键链路。阅读本文件时，以“运行时现状 + 兼容边界”为准，不以“未来式计划”作为当前事实。
 
 ## 1. 当前问题审计
 
@@ -36,7 +36,7 @@
   - 把 `getStablePlayerDmSystemPrefix()`（稳定前缀，含全量 lore）与 `buildDynamicPlayerDmSystemSuffix()`（动态记忆与回合上下文）拼成 system messages
   - SSE 流式输出与 DM JSON 契约本身并未在此阶段改变
 
-因此，当前架构是“静态全量 lore -> prompt”，并没有把 lore facts 从“事实存储层”按需召回后注入。
+当前架构已演进为“稳定规则前缀 + 动态检索 lore 注入（RAG）”并存：`/api/chat` 运行时会调用 `getRuntimeLore(...)` 并把结果拼入动态后缀，registry 继续承担 bootstrap/fallback。
 
 ### 1.3 Prompt 体积、可维护性、扩展性、动态更新与记忆扩展风险
 
@@ -50,10 +50,10 @@
      - prompt 中 lore 块位置与长度是否影响模型遵循
 3. 动态更新风险
    - 当前动态记忆只来自 `src/app/api/chat/route.ts` 对 `game_session_memory` 的压缩快照（`buildMemoryBlock()`），并非从“知识层检索事实”
-   - `src/lib/kg` 已实现用户知识候选/共识/写入 `vc_world_fact` 的流程，但当前 `/api/chat` 中尚未把 `vc_world_fact` 以 RAG 方式注入 prompt 动态层
+   - `src/lib/kg` 已实现用户知识候选/共识/写入 `vc_world_fact` 的流程；`/api/chat` 也已接入运行时检索注入链路，当前重点是继续治理检索预算与兼容边界
 4. 玩家私有记忆与共享世界扩展风险
    - 玩家私有记忆目前只有 session 级 `plot_summary/player_status/npc_relationships`（由 DB 快照提供）
-   - 共享世界增量知识目前存在 `vc_world_fact`，但尚未成为 prompt 的事实源
+   - 共享世界增量知识已进入运行时事实链路，但仍需通过预算/优先级/fallback 策略控制注入规模
    - 一旦直接把“所有 registry + 所有知识”都塞入 prompt，将导致新的 token 成本与泄露/一致性风险
 
 ## 2. 目标企业化架构
@@ -310,7 +310,7 @@
 
 ## 9. 模块落位规划（配合最小骨架）
 
-本阶段新增空文件/类型骨架，为后续第 1/2 步接入检索与注入提供明确落点：
+相关模块现已存在并承担运行时职责，下列目录用于说明模块边界与落位：
 
 - `src/lib/worldKnowledge/types.ts`
 - `src/lib/worldKnowledge/constants.ts`

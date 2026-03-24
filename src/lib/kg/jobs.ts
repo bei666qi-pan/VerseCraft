@@ -12,7 +12,8 @@ export type JobType =
   | "JANITOR_REVIEW_CANDIDATE"
   | "CONSENSUS_SWEEP"
   | "CONSENSUS_ONE"
-  | "COMPACTION_WEEKLY";
+  | "COMPACTION_WEEKLY"
+  | "WORLD_ENGINE_TICK";
 
 export type ClaimedJob = {
   jobId: number;

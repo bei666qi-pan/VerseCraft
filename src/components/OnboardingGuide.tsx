@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-export interface OnboardingStep {
+interface OnboardingStep {
   /** CSS selector for the element to spotlight */
   targetSelector: string;
   /** Tip text shown near the spotlight */

@@ -503,6 +503,92 @@ export async function ensureRuntimeSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS world_retrieval_cache_snapshots_expires_at_idx ON world_retrieval_cache_snapshots (expires_at);`
     );
 
+    // ========= World Engine（离线 reasoner 产物）=========
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS world_engine_runs (
+        run_id SERIAL PRIMARY KEY,
+        dedup_key VARCHAR(128) NOT NULL UNIQUE,
+        request_id VARCHAR(191) NOT NULL,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
+        session_id VARCHAR(191) NOT NULL,
+        trigger_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
+        model_task VARCHAR(64) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        output_json JSONB,
+        error_message TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_runs_session_created_idx ON world_engine_runs (session_id, created_at);`
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_runs_status_created_idx ON world_engine_runs (status, created_at);`
+    );
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS world_engine_event_queue (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
+        session_id VARCHAR(191) NOT NULL,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
+        event_code VARCHAR(128) NOT NULL,
+        title TEXT NOT NULL,
+        due_in_turns INTEGER NOT NULL DEFAULT 1,
+        priority VARCHAR(16) NOT NULL DEFAULT 'low',
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_event_queue_session_status_due_idx
+       ON world_engine_event_queue (session_id, status, due_in_turns);`
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_event_queue_event_code_idx
+       ON world_engine_event_queue (event_code);`
+    );
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS world_engine_agenda_snapshots (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES world_engine_runs(run_id) ON DELETE CASCADE,
+        session_id VARCHAR(191) NOT NULL,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
+        agenda_revision INTEGER NOT NULL,
+        snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT world_engine_agenda_session_revision_unique UNIQUE (session_id, agenda_revision)
+      );
+    `);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_agenda_session_created_idx
+       ON world_engine_agenda_snapshots (session_id, created_at);`
+    );
+
+    // ========= AI 后台分析快照（admin + settlement）=========
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_analysis_snapshots (
+        id SERIAL PRIMARY KEY,
+        task VARCHAR(64) NOT NULL,
+        scope_key VARCHAR(191) NOT NULL,
+        input_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        output_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        model_role VARCHAR(32) NOT NULL DEFAULT 'none',
+        data_revision VARCHAR(128) NOT NULL DEFAULT '',
+        stale_at TIMESTAMPTZ NOT NULL,
+        generated_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT ai_analysis_task_scope_unique UNIQUE (task, scope_key)
+      );
+    `);
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS ai_analysis_stale_idx ON ai_analysis_snapshots (stale_at);`
+    );
+
     ensured = true;
   } finally {
     client.release();

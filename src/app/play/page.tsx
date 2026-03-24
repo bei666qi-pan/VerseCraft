@@ -1237,6 +1237,7 @@ function PlayContent() {
       }
     }
 
+    // wire name `player_location` -> store 内部语义 `playerLocation`
     if (typeof parsed.player_location === "string" && parsed.player_location.length > 0) {
       setPlayerLocation(parsed.player_location);
     }
@@ -1245,6 +1246,7 @@ function PlayContent() {
       setBgm(parsed.bgm_track);
     }
 
+    // wire name `npc_location_updates[].to_location` -> store 内部语义 `currentLocation`
     if (Array.isArray(parsed.npc_location_updates) && parsed.npc_location_updates.length > 0) {
       for (const u of parsed.npc_location_updates) {
         if (u && typeof u.id === "string" && typeof u.to_location === "string") {

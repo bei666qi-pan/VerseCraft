@@ -57,6 +57,10 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
       completionTokens: null,
       totalTokens: null,
     },
+    streamReconnectCount: 1,
+    streamInterruptedCount: 0,
+    streamEmptyCount: 1,
+    finalJsonParseSuccess: true,
   };
   const p = buildChatRequestFinishedPayload(base);
   assert.equal(p.promptTokens, 100);
@@ -67,6 +71,9 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
   assert.equal(p.totalLatencyMs, 450);
   assert.equal(p.preflightCacheHit, true);
   assert.equal(p.enhanceSkipReason, "sampled_out");
+  assert.equal(p.streamReconnectCount, 1);
+  assert.equal(p.streamEmptyCount, 1);
+  assert.equal(p.finalJsonParseSuccess, true);
 });
 
 test("toEnhanceTurnMetrics maps applied and exception", () => {
@@ -138,7 +145,12 @@ test("buildChatRequestFinishedPayload derives totalTokens from prompt+completion
       completionTokens: null,
       totalTokens: null,
     },
+    streamReconnectCount: 0,
+    streamInterruptedCount: 0,
+    streamEmptyCount: 0,
+    finalJsonParseSuccess: false,
   });
   assert.equal(p.totalTokens, 13);
   assert.equal(p.firstChunkLatencyMs, null);
+  assert.equal(p.finalJsonParseSuccess, false);
 });
