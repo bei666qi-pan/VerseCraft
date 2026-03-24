@@ -34,6 +34,10 @@ import { pickEmbeddedOpeningOptions } from "@/features/play/opening/openingOptio
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
+import {
+  normalizeGameTaskDraft,
+  normalizeTaskUpdateDraft,
+} from "@/lib/tasks/taskV2";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
 import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/features/play/stream/chatPhase";
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
@@ -94,6 +98,7 @@ function PlayContent() {
   const addOriginium = useGameStore((s) => s.addOriginium);
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
+  const updateTask = useGameStore((s) => s.updateTask);
   const setPlayerLocation = useGameStore((s) => s.setPlayerLocation);
   const setBgm = useGameStore((s) => s.setBgm);
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
@@ -1140,7 +1145,16 @@ function PlayContent() {
         name: string;
         type: "npc" | "anomaly";
         favorability?: unknown;
+        trust?: unknown;
+        fear?: unknown;
+        debt?: unknown;
+        affection?: unknown;
+        desire?: unknown;
+        romanceEligible?: unknown;
+        romanceStage?: unknown;
+        betrayalFlags?: unknown;
         combatPower?: unknown;
+        combatPowerDisplay?: unknown;
         personality?: unknown;
         traits?: unknown;
         rules_discovered?: unknown;
@@ -1157,7 +1171,21 @@ function PlayContent() {
         name: u.name,
         type: u.type,
         favorability: typeof u.favorability === "number" ? u.favorability : undefined,
+        trust: typeof u.trust === "number" ? u.trust : undefined,
+        fear: typeof u.fear === "number" ? u.fear : undefined,
+        debt: typeof u.debt === "number" ? u.debt : undefined,
+        affection: typeof u.affection === "number" ? u.affection : undefined,
+        desire: typeof u.desire === "number" ? u.desire : undefined,
+        romanceEligible: typeof u.romanceEligible === "boolean" ? u.romanceEligible : undefined,
+        romanceStage:
+          u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
+            ? u.romanceStage
+            : undefined,
+        betrayalFlags: Array.isArray(u.betrayalFlags)
+          ? u.betrayalFlags.filter((x): x is string => typeof x === "string")
+          : undefined,
         combatPower: typeof u.combatPower === "number" ? u.combatPower : undefined,
+        combatPowerDisplay: typeof u.combatPowerDisplay === "string" ? u.combatPowerDisplay : undefined,
         personality: typeof u.personality === "string" ? u.personality : undefined,
         traits: typeof u.traits === "string" ? u.traits : undefined,
         rules_discovered: typeof u.rules_discovered === "string" ? u.rules_discovered : undefined,
@@ -1173,6 +1201,47 @@ function PlayContent() {
         if (firstNewAnomaly) {
           setFirstTimeHint(`新的异常记录已加入：${firstNewAnomaly.name}。`);
         }
+      }
+    }
+
+    if (Array.isArray((parsed as { relationship_updates?: unknown[] }).relationship_updates)) {
+      type RawRelUpdate = {
+        npcId?: unknown;
+        favorability?: unknown;
+        trust?: unknown;
+        fear?: unknown;
+        debt?: unknown;
+        affection?: unknown;
+        desire?: unknown;
+        romanceEligible?: unknown;
+        romanceStage?: unknown;
+        betrayalFlagAdd?: unknown;
+      };
+      const relCodexEntries: CodexEntry[] = ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])
+        .filter((x): x is RawRelUpdate => !!x && typeof x === "object" && !Array.isArray(x))
+        .map((u) => {
+          const npcId = typeof u.npcId === "string" ? u.npcId : "";
+          if (!npcId) return null;
+          return {
+            id: npcId,
+            name: npcId,
+            type: "npc" as const,
+            ...(typeof u.favorability === "number" ? { favorability: u.favorability } : {}),
+            ...(typeof u.trust === "number" ? { trust: u.trust } : {}),
+            ...(typeof u.fear === "number" ? { fear: u.fear } : {}),
+            ...(typeof u.debt === "number" ? { debt: u.debt } : {}),
+            ...(typeof u.affection === "number" ? { affection: u.affection } : {}),
+            ...(typeof u.desire === "number" ? { desire: u.desire } : {}),
+            ...(typeof u.romanceEligible === "boolean" ? { romanceEligible: u.romanceEligible } : {}),
+            ...(u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
+              ? { romanceStage: u.romanceStage }
+              : {}),
+            ...(typeof u.betrayalFlagAdd === "string" ? { betrayalFlags: [u.betrayalFlagAdd] } : {}),
+          } as CodexEntry;
+        })
+        .filter((x): x is CodexEntry => !!x);
+      if (relCodexEntries.length > 0) {
+        mergeCodex(relCodexEntries);
       }
     }
 
@@ -1217,23 +1286,23 @@ function PlayContent() {
 
     if (Array.isArray(parsed.new_tasks) && parsed.new_tasks.length > 0) {
       for (const t of parsed.new_tasks) {
-        if (t && typeof t.id === "string" && typeof t.title === "string") {
-          addTask({
-            id: t.id,
-            title: t.title,
-            desc: typeof t.desc === "string" ? t.desc : "",
-            issuer: normalizeIssuerName(t.issuer, t.id),
-            reward: typeof t.reward === "string" ? t.reward : "",
-          });
-        }
+        const normalized = normalizeGameTaskDraft({
+          ...t,
+          issuerName:
+            typeof t?.issuerName === "string"
+              ? t.issuerName
+              : normalizeIssuerName((t as { issuer?: unknown })?.issuer, (t as { id?: string })?.id ?? ""),
+        });
+        if (normalized) addTask(normalized);
       }
     }
 
     if (Array.isArray(parsed.task_updates) && parsed.task_updates.length > 0) {
       for (const u of parsed.task_updates) {
-        if (u && typeof u.id === "string" && (u.status === "active" || u.status === "completed" || u.status === "failed")) {
-          updateTaskStatus(u.id, u.status);
-        }
+        const patch = normalizeTaskUpdateDraft(u);
+        if (!patch) continue;
+        if (patch.status) updateTaskStatus(patch.id, patch.status);
+        updateTask(patch);
       }
     }
 

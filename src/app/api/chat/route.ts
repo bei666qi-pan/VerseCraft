@@ -68,6 +68,20 @@ import { routeUserInput, type RouteResult } from "@/lib/kg/routing";
 import { getWorldRevision, putSemanticCache, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
 import { detectWorldEngineTriggers } from "@/lib/worldEngine/contracts";
 import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
+import {
+  applyB1SafetyGuard,
+  buildB1ServiceContextBlock,
+  guessPlayerLocationFromContext,
+} from "@/lib/playRealtime/b1Safety";
+import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
+import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
+import {
+  applyNpcProactiveGrantGuard,
+  buildNpcGrantFallbackNarrativeBlock,
+  buildNpcProactiveGrantNarrativeBlock,
+  normalizeDmTaskPayload,
+} from "@/lib/tasks/taskV2";
+import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,13 +152,7 @@ function sanitizeAssistantContent(content: string): string {
   });
 }
 
-const LOCATION_NODE_RE = /\b(B2_Passage|B2_GatekeeperDomain|B1_SafeZone|B1_Storage|B1_Laundry|B1_PowerRoom|1F_Lobby|1F_PropertyOffice|1F_GuardRoom|1F_Mailboxes|2F_Clinic201|2F_Room202|2F_Room203|2F_Corridor|3F_Room301|3F_Room302|3F_Stairwell|4F_Room401|4F_Room402|4F_CorridorEnd|5F_Room501|5F_Room502|5F_Studio503|6F_Room601|6F_Room602|6F_Stairwell|7F_Room701|7F_Bench|7F_Kitchen|7F_SealedDoor)\b/i;
 const ENTITY_CODE_RE = /\b([NA]-\d{3})\b/gi;
-
-function guessPlayerLocation(playerContext: string): string | null {
-  const m = playerContext.match(LOCATION_NODE_RE);
-  return m?.[1] ?? null;
-}
 
 function extractRecentEntities(latestUserInput: string): string[] {
   const out = new Set<string>();
@@ -382,6 +390,7 @@ export async function POST(req: Request) {
     memoryBlock,
     playerContext,
     isFirstAction,
+    runtimePackets: "",
     controlAugmentation: "",
   });
   const systemPromptForQuota = `${playerDmStablePrefix}\n\n${dynamicCoreForQuota}`;
@@ -634,6 +643,8 @@ export async function POST(req: Request) {
   let loreFallbackPath: "none" | "db_partial" | "registry" = "none";
   let loreBudgetHit = false;
   let lorePacketChars = 0;
+  let runtimePacketChars = 0;
+  let runtimePacketTokenEstimate = 0;
   let retrievalSourceCounts: Record<string, number> = {};
   let retrievalScopeCounts: Record<string, number> = {};
   let privateFactHitCount = 0;
@@ -647,7 +658,7 @@ export async function POST(req: Request) {
         userId,
         sessionId: sessionId ?? null,
         worldRevision: BigInt(0),
-        playerLocation: guessPlayerLocation(playerContext),
+        playerLocation: guessPlayerLocationFromContext(playerContext),
         recentlyEncounteredEntities: extractRecentEntities(latestUserInput),
         taskType: "PLAYER_CHAT",
         tokenBudget: 420,
@@ -732,11 +743,53 @@ export async function POST(req: Request) {
     preflightFailed: pipelinePreflightFailed,
   });
 
-  const controlAndLoreAugmentation = [controlAugmentation, runtimeLoreCompact].filter(Boolean).join("\n\n");
+  const serviceContextBlock = buildB1ServiceContextBlock({
+    playerLocation: guessPlayerLocationFromContext(playerContext),
+    playerContext,
+    serviceState: {
+      shopUnlocked: true,
+      forgeUnlocked: true,
+      anchorUnlocked: true,
+      unlockFlags: {},
+    },
+  });
+  const npcTaskNarrativeBlock = buildNpcProactiveGrantNarrativeBlock({
+    playerContext,
+    latestUserInput,
+  });
+  const conspiracyNarrativeBlock = build7FConspiracyNarrativeBlock({
+    playerContext,
+    latestUserInput,
+  });
+  const controlAndLoreAugmentation = [
+    controlAugmentation,
+    runtimeLoreCompact,
+    serviceContextBlock,
+    npcTaskNarrativeBlock,
+    conspiracyNarrativeBlock,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const runtimePackets = buildRuntimeContextPackets({
+    playerContext,
+    latestUserInput,
+    playerLocation: guessPlayerLocationFromContext(playerContext),
+    serviceState: {
+      shopUnlocked: true,
+      forgeUnlocked: true,
+      anchorUnlocked: true,
+      unlockFlags: {},
+    },
+    runtimeLoreCompact,
+    maxChars: 2400,
+  });
+  runtimePacketChars = runtimePackets.length;
+  runtimePacketTokenEstimate = Math.ceil(runtimePacketChars / 4);
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext,
     isFirstAction,
+    runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
   });
   const aiEnvForSystem = resolveAiEnv();
@@ -779,6 +832,8 @@ export async function POST(req: Request) {
       loreTokenEstimate,
       loreFallbackPath,
       loreBudgetHit,
+      runtimePacketChars,
+      runtimePacketTokenEstimate,
     },
   }).catch(() => {});
 
@@ -1097,6 +1152,8 @@ export async function POST(req: Request) {
           },
           stableCharLen,
           dynamicCharLen,
+          runtimePacketChars,
+          runtimePacketTokenEstimate,
           latestUsage: args.latestUsage,
           preflight: {
             ran: preflightTurnMetrics.ran,
@@ -1126,6 +1183,8 @@ export async function POST(req: Request) {
         ttftMs: args.firstChunkAt > 0 ? args.firstChunkAt - requestStartedAt : undefined,
         stableCharLen,
         dynamicCharLen,
+        runtimePacketChars,
+        runtimePacketTokenEstimate,
         cachedPromptTokens: args.latestUsage?.cachedPromptTokens,
         stream: true,
         userId,
@@ -1145,6 +1204,31 @@ export async function POST(req: Request) {
       let finalizePayload: string | null = null;
 
       if (dmRecord) {
+        dmRecord = applyB1ServiceExecutionGuard({
+          dmRecord,
+          latestUserInput,
+          playerContext,
+        });
+        dmRecord = applyB1SafetyGuard({
+          dmRecord,
+          fallbackLocation: guessPlayerLocationFromContext(playerContext),
+        });
+        dmRecord = normalizeDmTaskPayload(dmRecord);
+        dmRecord = ensure7FConspiracyTask(dmRecord, {
+          playerContext,
+          latestUserInput,
+        });
+        dmRecord = applyNpcProactiveGrantGuard({
+          dmRecord,
+          playerContext,
+        });
+        const npcGrantFallbackBlock = buildNpcGrantFallbackNarrativeBlock(dmRecord);
+        if (npcGrantFallbackBlock && typeof dmRecord.narrative === "string") {
+          const existing = String(dmRecord.narrative ?? "");
+          if (!existing.includes("系统发放任务")) {
+            dmRecord.narrative = `${existing}\n\n${npcGrantFallbackBlock}`;
+          }
+        }
         enhancePathDmParsed = true;
         const enhanceWallStart = Date.now();
         try {

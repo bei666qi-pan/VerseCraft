@@ -50,6 +50,7 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     awarded_items: asUnknownArray(o.awarded_items),
     awarded_warehouse_items: asUnknownArray(o.awarded_warehouse_items),
     codex_updates: asUnknownArray(o.codex_updates),
+    relationship_updates: asUnknownArray(o.relationship_updates),
     new_tasks: asUnknownArray(o.new_tasks),
     task_updates: asUnknownArray(o.task_updates),
     npc_location_updates: asUnknownArray(o.npc_location_updates),

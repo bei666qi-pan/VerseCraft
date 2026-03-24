@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
-import { deleteCloudSaveSlot } from "@/app/actions/save";
+import { deleteCloudSaveSlot, enqueueReviveWorldAdvanceJob } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
 import { GuestSoftNudge } from "@/components/GuestSoftNudge";
 import { useMounted } from "@/hooks/useMounted";
@@ -223,6 +223,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "auto_save");
   const [aiReview, setAiReview] = useState<SettlementAiReview | null>(null);
   const [aiReviewLoading, setAiReviewLoading] = useState(false);
+  const reviveContext = useGameStore((s) => s.reviveContext);
 
   const sanity = stats?.sanity ?? 0;
   const isDead = sanity <= 0;
@@ -282,10 +283,14 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     if (!mounted) return;
     void (async () => {
       await handleSubmit();
-      useGameStore.getState().clearSaveForDeath();
-      await deleteCloudSaveSlot("auto_save");
     })();
   }, [mounted, handleSubmit]);
+
+  useEffect(() => {
+    if (!mounted || !isDead) return;
+    if (reviveContext?.pending || reviveContext?.deathLocation) return;
+    useGameStore.getState().recordDeathForRevive("精神锚点归零");
+  }, [mounted, isDead, reviveContext]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -412,6 +417,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   }
 
   async function handleRestart() {
+    useGameStore.getState().chooseReviveOption("restart");
     useGameStore.getState().destroySaveData();
     await deleteCloudSaveSlot("auto_save");
     const p = useGameStore.persist.clearStorage() as unknown;
@@ -419,6 +425,19 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       await (p as Promise<void>);
     }
     window.location.href = "/";
+  }
+
+  async function handleReviveNow() {
+    useGameStore.getState().chooseReviveOption("revive");
+    const st = useGameStore.getState();
+    const slotId = st.currentSaveSlot || "auto_save";
+    st.saveGame(slotId);
+    void enqueueReviveWorldAdvanceJob({
+      slotId,
+      playerLocation: st.playerLocation ?? "B1_SafeZone",
+      turnIndex: (st.time.day ?? 0) * 24 + (st.time.hour ?? 0),
+    }).catch(() => undefined);
+    window.location.href = "/play";
   }
 
   return (
@@ -525,6 +544,15 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             >
               导出写作记录 (.md)
             </button>
+            {isDead && (
+              <button
+                type="button"
+                onClick={handleReviveNow}
+                className="h-12 rounded-xl bg-emerald-200 px-6 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-100"
+              >
+                立即复活（时间 +12h，物品遗失）
+              </button>
+            )}
             <button
               type="button"
               onClick={handleRestart}

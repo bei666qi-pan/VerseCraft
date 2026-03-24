@@ -20,9 +20,9 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-103", name: "物业的空白表单", description: "物业办公室的空白表格。", benefit: "伪造合规身份，通过物业检查。", sideEffect: "无人注视时会自动填死因。", ownerId: "N-010", floor: "1" },
   { id: "W-104", name: "门厅的枯萎盆栽", description: "一盆枯死的绿植。", benefit: "吸收认知污染，理智+3约5小时。", sideEffect: "会复活并朝你生长。", ownerId: "N-001", floor: "1" },
   { id: "W-105", name: "信箱区的铁夹子", description: "夹报纸用的铁夹。", benefit: "夹门缝阻止自动关闭3小时。", sideEffect: "3小时后夹紧难取。", ownerId: "N-003", floor: "1" },
-  { id: "W-106", name: "实习徽章的别针", description: "引导员遗落的别针。", benefit: "部分NPC误认为内部人员，好感+5。", sideEffect: "1天内会刺入皮肤，需取下。", ownerId: "N-020", floor: "1" },
+  { id: "W-106", name: "实习徽章的别针", description: "引导员遗落的别针。", benefit: "部分NPC误认为内部人员，可通过一次低风险检查。", sideEffect: "1天内会刺入皮肤，需取下。", ownerId: "N-020", floor: "1" },
   { id: "W-107", name: "保安室的镜子碎片", description: "从破碎镜子上剥落的碎片。", benefit: "见无面保安五官，获得1次识破机会。", sideEffect: "割伤手掌，镜中脸会扭曲。", ownerId: "N-018", floor: "1" },
-  { id: "W-108", name: "守夜人的复活烛芯", description: "浸过油脂的蜡烛芯。", benefit: "复活1名死亡NPC/诡异，对你好感+10。", sideEffect: "1天内遭遇生命威胁试炼。", ownerId: "N-018", floor: "1", isResurrection: true },
+  { id: "W-108", name: "守夜人的复活烛芯", description: "浸过油脂的蜡烛芯。", benefit: "复活1名死亡NPC/诡异，并触发一次关键关系事件。", sideEffect: "1天内遭遇生命威胁试炼。", ownerId: "N-018", floor: "1", isResurrection: true },
   // === 2 楼 6 件 ===
   { id: "W-201", name: "诊室的消毒棉", description: "林医生诊室遗落的棉球。", benefit: "止血，理智+3。", sideEffect: "吸血膨胀，2小时内丢弃。", ownerId: "N-002", floor: "2" },
   { id: "W-202", name: "时差症候群的表盘", description: "从扭曲时钟脱落的表盘。", benefit: "免疫时间扭曲4小时。", sideEffect: "指针倒转，影响时间感。", ownerId: "A-001", floor: "2" },
@@ -31,11 +31,11 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-205", name: "药柜的干燥剂", description: "药柜中的硅胶干燥剂。", benefit: "延缓水源凝聚诡异3小时。", sideEffect: "吸够湿气后现出眼球。", ownerId: "N-002", floor: "2" },
   { id: "W-206", name: "影子延迟的残影", description: "时差症候群的延迟影子碎片。", benefit: "下一次攻击推迟，争取撤离。", sideEffect: "影子脱离身体，2小时内需找回。", ownerId: "A-001", floor: "2" },
   // === 3 楼 6 件 ===
-  { id: "W-301", name: "阿花的旧发绳", description: "小女孩用过的发绳。", benefit: "魅力+5约3小时，孩童NPC好感+12。", sideEffect: "3小时后收紧需剪断。", ownerId: "N-004", floor: "3" },
+  { id: "W-301", name: "阿花的旧发绳", description: "小女孩用过的发绳。", benefit: "魅力+5约3小时，并触发孩童线索窗口。", sideEffect: "3小时后收紧需剪断。", ownerId: "N-004", floor: "3" },
   { id: "W-302", name: "认知腐蚀者的记忆残片", description: "从扭曲记忆剥离的碎片。", benefit: "混淆记忆追踪诡异2小时。", sideEffect: "忘记1件重要记忆24小时。", ownerId: "A-003", floor: "3" },
   { id: "W-303", name: "楼梯间的毽羽", description: "黑色毽子上脱落的羽毛。", benefit: "吸引幼童执念诡异，争取逃脱。", sideEffect: "阿花会记住气味，下次更执著。", ownerId: "N-004", floor: "3" },
   { id: "W-304", name: "扭曲文字的拓片", description: "从墙上拓下的扭曲符号。", benefit: "读懂认知污染含义。", sideEffect: "书写扭曲2小时。", ownerId: "A-003", floor: "3" },
-  { id: "W-305", name: "陈婆婆的线头", description: "陈婆婆织毛衣时掉落的线头。", benefit: "赠阿花好感+12。", sideEffect: "线头会长回陈婆婆处。", ownerId: "N-004", floor: "3" },
+  { id: "W-305", name: "陈婆婆的线头", description: "陈婆婆织毛衣时掉落的线头。", benefit: "可开启阿花相关隐藏对话。", sideEffect: "线头会长回陈婆婆处。", ownerId: "N-004", floor: "3" },
   { id: "W-306", name: "虚假记忆的结晶", description: "认知腐蚀留下的透明结晶。", benefit: "免疫认知污染2小时。", sideEffect: "注入虚假记忆影响判断。", ownerId: "A-003", floor: "3" },
   // === 4 楼 8 件 ===
   { id: "W-401", name: "盲人的墨镜链", description: "导盲者常用的眼镜链。", benefit: "幸运+4约3小时。", sideEffect: "3小时内勒紧后颈需取下。", ownerId: "N-005", floor: "4" },
@@ -49,7 +49,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   // === 5 楼 6 件 ===
   { id: "W-501", name: "画室的褪色颜料", description: "画家用剩的颜料管。", benefit: "改变外观2小时，迷惑视觉诡异。", sideEffect: "会显现画家脸，凝视会吸引她。", ownerId: "N-007", floor: "5" },
   { id: "W-502", name: "器官拟态墙的眼睑", description: "拟态墙剥落的肉膜。", benefit: "拟态为墙2小时，逃避视觉追踪。", sideEffect: "2小时内会与皮肤融合。", ownerId: "A-005", floor: "5" },
-  { id: "W-503", name: "未完成的自画像碎片", description: "画家画布上撕下的碎片。", benefit: "魅力+5约3小时，画家好感+15。", sideEffect: "碎片上的眼睛会转向你。", ownerId: "N-007", floor: "5" },
+  { id: "W-503", name: "未完成的自画像碎片", description: "画家画布上撕下的碎片。", benefit: "魅力+5约3小时，并触发画室真相分支。", sideEffect: "碎片上的眼睛会转向你。", ownerId: "N-007", floor: "5" },
   { id: "W-504", name: "墙眼的分泌物", description: "拟态墙眼睛分泌的透明液。", benefit: "涂镜面遮蔽镜像诡异2小时。", sideEffect: "腐蚀镜面，用后可能碎裂。", ownerId: "A-005", floor: "5" },
   { id: "W-505", name: "调色盘上的混色", description: "调色盘上的混合颜料。", benefit: "改面容2小时，混淆面容识别诡异。", sideEffect: "洗掉后面容短暂模糊。", ownerId: "N-007", floor: "5" },
   { id: "W-506", name: "拟态墙的血管丝", description: "墙内抽出的细小血管。", benefit: "点燃驱散5米内污染2小时，灼伤低阶诡异。", sideEffect: "燃烧惨叫吸引其他诡异。", ownerId: "A-005", floor: "5" },

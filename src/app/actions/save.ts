@@ -5,6 +5,17 @@ import { auth } from "../../../auth";
 import { db } from "@/db";
 import { saveSlots } from "@/db/schema";
 import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
+
+function normalizeSavePayload(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  try {
+    // Defensive clone to strip prototypes/functions while preserving snapshot payloads.
+    return JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 export async function syncSaveToCloud(slotId: string, data: unknown) {
   try {
@@ -13,8 +24,8 @@ export async function syncSaveToCloud(slotId: string, data: unknown) {
     if (!userId) return { ok: false };
     if (!slotId) return { ok: false };
 
-    const payload = data ?? {};
-    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    const payload = normalizeSavePayload(data ?? {});
+    if (!payload) {
       return { ok: false };
     }
 
@@ -23,13 +34,13 @@ export async function syncSaveToCloud(slotId: string, data: unknown) {
       .values({
         userId,
         slotId,
-        data: payload as Record<string, unknown>,
+        data: payload,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: [saveSlots.userId, saveSlots.slotId],
         set: {
-          data: payload as Record<string, unknown>,
+          data: payload,
           updatedAt: sql`CURRENT_TIMESTAMP`,
         },
       });
@@ -126,6 +137,34 @@ export async function deleteCloudSaveSlot(slotId: string) {
       .where(and(eq(saveSlots.userId, userId), eq(saveSlots.slotId, slotId)));
 
     return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function enqueueReviveWorldAdvanceJob(input: {
+  slotId: string;
+  playerLocation: string;
+  turnIndex: number;
+}) {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
+    if (!input?.slotId) return { ok: false };
+    const requestId = `revive_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const res = await enqueueWorldEngineTick({
+      requestId,
+      userId,
+      sessionId: input.slotId,
+      latestUserInput: "[system] revive_fast_forward_12h",
+      triggerSignals: ["in_game_day_elapsed", "world_fact_threshold_reached"],
+      controlRiskTags: ["revive_fast_forward"],
+      dmNarrativePreview: "玩家通过锚点复活，世界已快进12小时。",
+      playerLocation: input.playerLocation,
+      npcLocationUpdateCount: 0,
+      turnIndex: Math.max(0, Number(input.turnIndex ?? 0)),
+    });
+    return { ok: true, enqueued: res.enqueued, dedupKey: res.dedupKey };
   } catch {
     return { ok: false };
   }

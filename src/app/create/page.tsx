@@ -11,8 +11,7 @@ import { GlassCtaButton } from "@/components/GlassCtaButton";
 import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
-
-type GenderOption = "男" | "女" | "其他";
+import { GENDER_OPTIONS, type GenderOption } from "./constants";
 
 const PERSONALITY_RE = /^[\u4e00-\u9fa5]{2,6}$/;
 
@@ -295,7 +294,7 @@ export default function CreatePage(props: AppPageDynamicProps) {
                   arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!;
 
                 const randomName = pick(namePool);
-                const randomGender: GenderOption = pick(["男", "女", "其他"] as const);
+                const randomGender: GenderOption = pick(GENDER_OPTIONS);
                 const randomHeight = 160 + Math.floor(Math.random() * 41);
                 const randomPersonality = pick(personalityPool);
 
@@ -356,9 +355,11 @@ export default function CreatePage(props: AppPageDynamicProps) {
                 onChange={(e) => setGender(e.target.value as GenderOption)}
                 className={`h-11 w-full ${GLASS_INPUT}`}
               >
-                <option value="男">男</option>
-                <option value="女">女</option>
-                <option value="其他">其他</option>
+                {GENDER_OPTIONS.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
               </select>
             </label>
 

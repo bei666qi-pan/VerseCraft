@@ -61,8 +61,8 @@ B1: B1_SafeZone, B1_Storage, B1_Laundry, B1_PowerRoom
 7 楼: A-007 13楼门扉
 B2: A-008 深渊守门人
 
-【NPC 数量与身份（固定）】
-公寓内仅有 20 个 NPC（N-001 至 N-020）。无第 21 个 NPC。每个 NPC 有固定 homeLocation、personality、taboo。严禁创造新 NPC 或改变既有 NPC 的核心设定。
+【NPC 数量与身份（固定ID + 可重塑层）】
+第一阶段仍使用 N-001 至 N-020 作为固定角色 ID 集。允许在不改 ID 的前提下进行“展示层/交互层/深层秘密层”的重塑升级；严禁随意新增无来源角色或改坏核心因果链。
 `;
 
 /** Build the apartment truth block for DM injection */

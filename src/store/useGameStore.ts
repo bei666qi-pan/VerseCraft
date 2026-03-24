@@ -12,6 +12,27 @@ import {
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { ITEMS } from "@/lib/registry/items";
 import { NPC_HOME_LOCATION_SEED } from "@/lib/registry/runtimeBoundary";
+import {
+  buildRunSnapshotV2,
+  createRunId,
+} from "@/lib/state/snapshot/builder";
+import {
+  createStageOneStarterTasks,
+  normalizeGameTaskDraft,
+  normalizeTaskUpdateDraft,
+  applyTaskUpdateToTask,
+  activateClaimableHiddenTasks,
+  extractRelationshipPatchesFromConsequences,
+  type GameTaskV2,
+  type GameTaskStatus,
+} from "@/lib/tasks/taskV2";
+import {
+  createDefaultWorldOverlay,
+  normalizeRunSnapshotV2,
+  projectSnapshotToLegacy,
+} from "@/lib/state/snapshot/migration";
+import type { RunSnapshotV2, SnapshotCodexEntry } from "@/lib/state/snapshot/types";
+import { runReviveSyncPipeline, type ReviveOption } from "@/lib/revive/pipeline";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -23,9 +44,33 @@ function migratePersistedState(
   persistedState: unknown,
   fromVersion: number
 ): Record<string, unknown> {
-  void persistedState;
   void fromVersion;
-  return {};
+  if (!persistedState || typeof persistedState !== "object" || Array.isArray(persistedState)) {
+    return {};
+  }
+  const raw = persistedState as Record<string, unknown>;
+  const saveSlotsRaw =
+    raw.saveSlots && typeof raw.saveSlots === "object" && !Array.isArray(raw.saveSlots)
+      ? (raw.saveSlots as Record<string, unknown>)
+      : {};
+  const migratedSlots: Record<string, unknown> = {};
+  for (const [slotId, slotPayload] of Object.entries(saveSlotsRaw)) {
+    if (!slotPayload || typeof slotPayload !== "object" || Array.isArray(slotPayload)) continue;
+    const legacy = slotPayload as SaveSlotData;
+    const snapshot = normalizeRunSnapshotV2(
+      legacy.runSnapshotV2,
+      legacy
+    );
+    migratedSlots[slotId] = {
+      ...legacy,
+      runSnapshotV2: snapshot,
+      ...projectSnapshotToLegacy(snapshot),
+    };
+  }
+  return {
+    ...raw,
+    saveSlots: migratedSlots,
+  };
 }
 
 interface PerformCheckResult {
@@ -70,23 +115,26 @@ export interface CodexEntry {
   name: string;
   type: "npc" | "anomaly";
   favorability?: number;
+  trust?: number;
+  fear?: number;
+  debt?: number;
+  affection?: number;
+  desire?: number;
+  romanceEligible?: boolean;
+  romanceStage?: "none" | "hint" | "bonded" | "committed";
+  betrayalFlags?: string[];
   combatPower?: number;
+  combatPowerDisplay?: string;
   personality?: string;
   traits?: string;
   rules_discovered?: string;
   weakness?: string;
 }
 
-export interface GameTask {
-  id: string;
-  title: string;
-  desc: string;
-  issuer: string;
-  reward: string;
-  status: "active" | "completed" | "failed";
-}
+export type GameTask = GameTaskV2;
 
 export interface SaveSlotData {
+  runSnapshotV2?: RunSnapshotV2;
   stats: Record<StatType, number>;
   inventory: Item[];
   warehouse?: WarehouseItem[];
@@ -101,6 +149,18 @@ export interface SaveSlotData {
   originium?: number;
   currentBgm?: string;
   currentOptions?: string[];
+  tasks?: GameTask[];
+  playerLocation?: string;
+  dynamicNpcStates?: Record<string, { currentLocation: string; isAlive: boolean }>;
+  appliedRelationshipTaskIds?: string[];
+  reviveContext?: {
+    pending: boolean;
+    deathLocation: string | null;
+    deathCause: string | null;
+    droppedLootLedger: string[];
+    droppedLootOwnerLedger: Array<{ looterId: string; itemIds: string[] }>;
+    lastReviveAnchorId?: string;
+  };
 }
 
 export interface AuthUser {
@@ -194,6 +254,8 @@ interface GameState extends IntegrityMetaState {
   activeMenu: ActiveMenu;
   /** 安全降级：当上游安全拦截/流破损导致解析失败时，强制覆盖叙事并扣理智 */
   securityFallback: { active: boolean; message: string; at: number; reason?: string };
+  reviveContext: SaveSlotData["reviveContext"];
+  appliedRelationshipTaskIds: string[];
   _integrity_dirty: boolean;
   verifyStateIntegrity: () => Promise<boolean>;
   triggerSecurityFallback: (reason?: string) => void;
@@ -213,6 +275,8 @@ interface GameState extends IntegrityMetaState {
   markGameOver: () => void;
   /** 死亡专用：强制 isGameStarted=false，清空进度数据，保留日志/时间/位置用于结算展示 */
   clearSaveForDeath: () => void;
+  recordDeathForRevive: (cause?: string, killerId?: string | null) => void;
+  chooseReviveOption: (option: ReviveOption) => void;
   /** 结算页用：清空存档与物品，仅保留日志/时间/位置用于展示 */
   clearSaveDataKeepLogs: () => void;
   /** 物理级销毁存档：清空 logs、inventory、saveSlots，强制 isGameStarted=false。离开结算页时调用。 */
@@ -224,8 +288,9 @@ interface GameState extends IntegrityMetaState {
   upgradeAttribute: (attr: StatType) => boolean;
   /** 用原石恢复理智：当理智低于历史最高时，1原石=1理智 */
   restoreSanity: () => boolean;
-  addTask: (task: Omit<GameTask, "status"> & { status?: GameTask["status"] }) => void;
-  updateTaskStatus: (taskId: string, status: GameTask["status"]) => void;
+  addTask: (task: Partial<GameTask> & { id: string; title: string }) => void;
+  updateTaskStatus: (taskId: string, status: GameTaskStatus) => void;
+  updateTask: (taskPatch: { id: string } & Partial<GameTask>) => void;
   setPlayerLocation: (loc: string) => void;
   updateNpcLocation: (npcId: string, location: string) => void;
   killNpc: (npcId: string) => void;
@@ -281,6 +346,46 @@ const DEFAULT_STATS: Record<StatType, number> = {
   charm: 0,
   background: 0,
 };
+
+function clampRelation(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-100, Math.min(100, Math.trunc(n)));
+}
+
+function applyTaskRelationshipConsequencesToCodex(
+  codex: Record<string, CodexEntry>,
+  tasks: GameTask[],
+  appliedTaskIds: string[]
+): { codex: Record<string, CodexEntry>; appliedTaskIds: string[] } {
+  const newlyCompleted = tasks.filter((t) => t.status === "completed" && !appliedTaskIds.includes(t.id));
+  if (newlyCompleted.length === 0) return { codex, appliedTaskIds };
+  const patches = extractRelationshipPatchesFromConsequences(newlyCompleted);
+  if (patches.length === 0) {
+    return { codex, appliedTaskIds: [...appliedTaskIds, ...newlyCompleted.map((t) => t.id)] };
+  }
+  const next = { ...codex };
+  for (const p of patches) {
+    const prev = next[p.npcId] ?? { id: p.npcId, name: p.npcId, type: "npc" as const };
+    const betrayalFlags = Array.isArray(prev.betrayalFlags) ? [...prev.betrayalFlags] : [];
+    if (p.betrayalFlagAdd && !betrayalFlags.includes(p.betrayalFlagAdd)) betrayalFlags.push(p.betrayalFlagAdd);
+    next[p.npcId] = {
+      ...prev,
+      favorability: clampRelation((prev.favorability ?? 0) + (p.favorability ?? 0)),
+      trust: clampRelation((prev.trust ?? 0) + (p.trust ?? 0)),
+      fear: clampRelation((prev.fear ?? 0) + (p.fear ?? 0)),
+      debt: clampRelation((prev.debt ?? 0) + (p.debt ?? 0)),
+      affection: clampRelation((prev.affection ?? 0) + (p.affection ?? 0)),
+      desire: clampRelation((prev.desire ?? 0) + (p.desire ?? 0)),
+      ...(typeof p.romanceEligible === "boolean" ? { romanceEligible: p.romanceEligible } : {}),
+      ...(p.romanceStage ? { romanceStage: p.romanceStage } : {}),
+      ...(betrayalFlags.length > 0 ? { betrayalFlags } : {}),
+    };
+  }
+  return {
+    codex: next,
+    appliedTaskIds: [...appliedTaskIds, ...newlyCompleted.map((t) => t.id)],
+  };
+}
 
 function resolveFloorScore(loc: string): number {
   if (!loc) return 0;
@@ -381,6 +486,14 @@ export const useGameStore = create<GameState>()(
       volume: 50,
       activeMenu: null,
       securityFallback: { active: false, message: "", at: 0 },
+      reviveContext: {
+        pending: false,
+        deathLocation: null,
+        deathCause: null,
+        droppedLootLedger: [],
+        droppedLootOwnerLedger: [],
+      },
+      appliedRelationshipTaskIds: [],
       _checksum_fingerprint: "",
       _integrity_dirty: false,
       verifyStateIntegrity: async () => {
@@ -509,6 +622,14 @@ export const useGameStore = create<GameState>()(
           isGameStarted: false,
           currentBgm: "bgm_1_calm",
           activeMenu: null,
+          appliedRelationshipTaskIds: [],
+          reviveContext: {
+            pending: false,
+            deathLocation: null,
+            deathCause: null,
+            droppedLootLedger: [],
+            droppedLootOwnerLedger: [],
+          },
         }),
 
       markGameOver: () =>
@@ -531,7 +652,77 @@ export const useGameStore = create<GameState>()(
           warehouse: [],
           currentOptions: [],
           recentOptions: [],
+          appliedRelationshipTaskIds: [],
         })),
+      recordDeathForRevive: (cause, killerId) =>
+        set((s) => {
+          const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
+          const safeStats = s.stats ?? DEFAULT_STATS;
+          const pipeline = runReviveSyncPipeline({
+            death: {
+              deathLocation: s.playerLocation ?? "B1_SafeZone",
+              deathCause: cause ?? "未知死因",
+              inventory: s.inventory ?? [],
+              hourIndex: nowHour,
+            },
+            anchorUnlocks:
+              s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2?.world?.anchorUnlocks ??
+              { B1: true, "1": true, "7": false },
+            currentTime: { day: s.time?.day ?? 0, hour: s.time?.hour ?? 0 },
+            tasks: s.tasks ?? [],
+            dynamicNpcStates: s.dynamicNpcStates ?? {},
+            killerId: killerId ?? null,
+          });
+          const patchedTasks = (s.tasks ?? []).map((t) => {
+            const patch = pipeline.taskUpdates.find((u) => u.id === t.id);
+            return patch ? { ...t, status: patch.status } : t;
+          });
+          return {
+            time: pipeline.nextTime,
+            playerLocation: pipeline.respawnAnchor.nodeId,
+            inventory: [],
+            stats: { ...safeStats, sanity: Math.max(1, safeStats.sanity) },
+            tasks: patchedTasks,
+            reviveContext: {
+              pending: true,
+              deathLocation: s.playerLocation ?? "B1_SafeZone",
+              deathCause: cause ?? "未知死因",
+              droppedLootLedger: [
+                ...(pipeline.lostPool ?? []),
+                ...pipeline.droppedLootOwnership.flatMap((x) => x.itemIds),
+              ],
+              droppedLootOwnerLedger: pipeline.droppedLootOwnership,
+              lastReviveAnchorId: pipeline.respawnAnchor.id,
+            },
+          };
+        }),
+      chooseReviveOption: (option) =>
+        set((s) => {
+          if (option === "restart") {
+            return {
+              reviveContext: {
+                pending: false,
+                deathLocation: null,
+                deathCause: null,
+                droppedLootLedger: [],
+                droppedLootOwnerLedger: [],
+              },
+            };
+          }
+          return {
+            isGameStarted: true,
+            reviveContext: {
+              ...(s.reviveContext ?? {
+                pending: true,
+                deathLocation: s.playerLocation ?? "B1_SafeZone",
+                deathCause: "未知死因",
+                droppedLootLedger: [],
+                droppedLootOwnerLedger: [],
+              }),
+              pending: false,
+            },
+          };
+        }),
 
       clearSaveDataKeepLogs: () =>
         set(() => ({
@@ -541,6 +732,7 @@ export const useGameStore = create<GameState>()(
           warehouse: [],
           currentOptions: [],
           recentOptions: [],
+          appliedRelationshipTaskIds: [],
         })),
 
       destroySaveData: () =>
@@ -553,6 +745,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           historicalMaxFloorScore: 0,
+          appliedRelationshipTaskIds: [],
         }),
 
       setCurrentOptions: (options) =>
@@ -603,13 +796,79 @@ export const useGameStore = create<GameState>()(
         return true;
       },
       addTask: (task) =>
-        set((s) => ({
-          tasks: [...s.tasks, { ...task, status: task.status ?? "active" }],
-        })),
+        set((s) => {
+          const normalized = normalizeGameTaskDraft(task);
+          if (!normalized) return {};
+          const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
+          const withLedger =
+            normalized.claimMode === "npc_grant" && normalized.npcProactiveGrant.enabled
+              ? { ...normalized, npcProactiveGrantLastIssuedHour: nowHour }
+              : normalized;
+          const exists = (s.tasks ?? []).find((t) => t.id === normalized.id);
+          if (exists) {
+            const merged = (s.tasks ?? []).map((t) =>
+              t.id === normalized.id ? applyTaskUpdateToTask(t, withLedger) : t
+            );
+            const activated = activateClaimableHiddenTasks(merged);
+            const rel = applyTaskRelationshipConsequencesToCodex(
+              s.codex ?? {},
+              activated,
+              s.appliedRelationshipTaskIds ?? []
+            );
+            return {
+              tasks: activated,
+              codex: rel.codex,
+              appliedRelationshipTaskIds: rel.appliedTaskIds,
+            };
+          }
+          const activated = activateClaimableHiddenTasks([...(s.tasks ?? []), withLedger]);
+          const rel = applyTaskRelationshipConsequencesToCodex(
+            s.codex ?? {},
+            activated,
+            s.appliedRelationshipTaskIds ?? []
+          );
+          return {
+            tasks: activated,
+            codex: rel.codex,
+            appliedRelationshipTaskIds: rel.appliedTaskIds,
+          };
+        }),
       updateTaskStatus: (taskId, status) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
-        })),
+        set((s) => {
+          const next = (s.tasks ?? []).map((t) =>
+            t.id === taskId ? { ...t, status } : t
+          );
+          const activated = activateClaimableHiddenTasks(next);
+          const rel = applyTaskRelationshipConsequencesToCodex(
+            s.codex ?? {},
+            activated,
+            s.appliedRelationshipTaskIds ?? []
+          );
+          return {
+            tasks: activated,
+            codex: rel.codex,
+            appliedRelationshipTaskIds: rel.appliedTaskIds,
+          };
+        }),
+      updateTask: (taskPatch) =>
+        set((s) => {
+          const patch = normalizeTaskUpdateDraft(taskPatch);
+          if (!patch) return {};
+          const next = (s.tasks ?? []).map((t) =>
+            t.id === patch.id ? applyTaskUpdateToTask(t, patch) : t
+          );
+          const activated = activateClaimableHiddenTasks(next);
+          const rel = applyTaskRelationshipConsequencesToCodex(
+            s.codex ?? {},
+            activated,
+            s.appliedRelationshipTaskIds ?? []
+          );
+          return {
+            tasks: activated,
+            codex: rel.codex,
+            appliedRelationshipTaskIds: rel.appliedTaskIds,
+          };
+        }),
       setPlayerLocation: (loc) =>
         set((s) => {
           const nextScore = resolveFloorScore(loc);
@@ -657,7 +916,18 @@ export const useGameStore = create<GameState>()(
               name: name ?? prev?.name ?? "",
               type: (u.type === "npc" || u.type === "anomaly" ? u.type : prev?.type ?? "npc") as "npc" | "anomaly",
               ...(typeof u.favorability === "number" ? { favorability: u.favorability } : {}),
+              ...(typeof u.trust === "number" ? { trust: u.trust } : {}),
+              ...(typeof u.fear === "number" ? { fear: u.fear } : {}),
+              ...(typeof u.debt === "number" ? { debt: u.debt } : {}),
+              ...(typeof u.affection === "number" ? { affection: u.affection } : {}),
+              ...(typeof u.desire === "number" ? { desire: u.desire } : {}),
+              ...(typeof u.romanceEligible === "boolean" ? { romanceEligible: u.romanceEligible } : {}),
+              ...(u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
+                ? { romanceStage: u.romanceStage }
+                : {}),
+              ...(Array.isArray(u.betrayalFlags) ? { betrayalFlags: u.betrayalFlags.filter((x): x is string => typeof x === "string") } : {}),
               ...(typeof u.combatPower === "number" ? { combatPower: u.combatPower } : {}),
+              ...(typeof u.combatPowerDisplay === "string" ? { combatPowerDisplay: u.combatPowerDisplay } : {}),
               ...(typeof u.personality === "string" ? { personality: u.personality } : {}),
               ...(typeof u.traits === "string" ? { traits: u.traits } : {}),
               ...(typeof u.rules_discovered === "string" ? { rules_discovered: u.rules_discovered } : {}),
@@ -802,7 +1072,7 @@ export const useGameStore = create<GameState>()(
           recentOptions: [],
           inputMode: "options" as const,
           originium: 10 + background,
-          tasks: [],
+          tasks: createStageOneStarterTasks(),
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,
           dynamicNpcStates: Object.fromEntries(
@@ -818,6 +1088,7 @@ export const useGameStore = create<GameState>()(
 
       getPromptContext: () => {
         const s = get();
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
         const inv = (s.inventory ?? [])
           .map((i) => `${i.name}[${i.id}|${i.tier}]`)
           .join("，");
@@ -858,11 +1129,32 @@ export const useGameStore = create<GameState>()(
           })() +
           `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
           `原石[${s.originium}]。` +
-          (s.tasks.filter((t) => t.status === "active").length > 0
-            ? `进行中的任务：${s.tasks.filter((t) => t.status === "active").map((t) => `${t.title}[来自${t.issuer}]`).join("，")}。`
+          (s.tasks.filter((t) => t.status === "active" || t.status === "available").length > 0
+            ? `任务追踪：${s.tasks
+                .filter((t) => t.status === "active" || t.status === "available")
+                .map((t) => `${t.title}[${t.type}|${t.status}|委托${t.issuerName}|层级${t.floorTier}|领取${t.claimMode}]`)
+                .join("，")}。`
             : "") +
+          (() => {
+            const proactive = (s.tasks ?? [])
+              .filter((t) => t.npcProactiveGrant.enabled && (t.status === "available" || t.status === "active" || t.status === "hidden"))
+              .map(
+                (t) =>
+                  `${t.issuerName}:${t.title}[ID${t.npcProactiveGrant.npcId || t.issuerId}|好感>=${t.npcProactiveGrant.minFavorability}|地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|冷却${t.npcProactiveGrant.cooldownHours}h|状态${t.status}|上次发放H${typeof t.npcProactiveGrantLastIssuedHour === "number" ? t.npcProactiveGrantLastIssuedHour : "NA"}]`
+              );
+            return proactive.length > 0 ? `任务发放线索：${proactive.join("；")}。` : "";
+          })() +
           (Object.keys(s.codex ?? {}).length > 0
             ? ` 图鉴已解锁：${Object.values(s.codex ?? {}).map((e) => `${e.name}[${e.type}|好感${e.favorability ?? 0}]`).join("，")}。`
+            : "") +
+          (activeSnapshot
+            ? ` 世界标记：${Object.entries(activeSnapshot.world.worldFlags ?? {})
+                .filter(([, v]) => v === true)
+                .map(([k]) => k)
+                .join("，") || "无"}。锚点解锁：B1[${activeSnapshot.world.anchorUnlocks.B1 ? "1" : "0"}]，1F[${activeSnapshot.world.anchorUnlocks["1"] ? "1" : "0"}]，7F[${activeSnapshot.world.anchorUnlocks["7"] ? "1" : "0"}]。`
+            : "") +
+          (s.reviveContext?.deathLocation
+            ? ` 最近复活：死亡地点[${s.reviveContext.deathLocation}]，死因[${s.reviveContext.deathCause ?? "未知"}]，掉落数量[${s.reviveContext.droppedLootLedger.length}]，最近锚点[${s.reviveContext.lastReviveAnchorId ?? "未知"}]。`
             : "") +
           (npcPositions ? ` NPC当前位置：${npcPositions}。` : "") +
           (s.recentOptions?.length
@@ -921,7 +1213,53 @@ export const useGameStore = create<GameState>()(
       saveGame: (slotId) => {
         const s = get();
         const safeStats = s.stats ?? DEFAULT_STATS;
+        const overlay = createDefaultWorldOverlay();
+        const snapshot = buildRunSnapshotV2({
+          runId:
+            s.saveSlots?.[slotId]?.runSnapshotV2?.meta?.runId ??
+            createRunId(),
+          startedAt: s.saveSlots?.[slotId]?.runSnapshotV2?.meta?.startedAt,
+          player: {
+            name: s.playerName ?? "",
+            gender: s.gender ?? "",
+            height: s.height ?? 170,
+            personality: s.personality ?? "",
+          },
+          stats: safeStats,
+          originium: s.originium ?? 0,
+          inventory: s.inventory ?? [],
+          warehouse: s.warehouse ?? [],
+          codex: (s.codex ?? {}) as Record<string, SnapshotCodexEntry>,
+          currentLocation: s.playerLocation ?? "B1_SafeZone",
+          alive: (safeStats.sanity ?? 0) > 0,
+          deathCount:
+            s.saveSlots?.[slotId]?.runSnapshotV2?.player?.deathCount ?? 0,
+          day: s.time?.day ?? 0,
+          hour: s.time?.hour ?? 0,
+          worldFlags: {
+            ...overlay.worldFlags,
+            darkMoonActive: (s.time?.day ?? 0) >= 3,
+          },
+          discoveredSecrets:
+            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.discoveredSecrets ?? [],
+          anchorUnlocks:
+            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.anchorUnlocks ??
+            overlay.anchorUnlocks,
+          pendingEvents:
+            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.pendingEvents ?? [],
+          floorThreatTier:
+            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.floorThreatTier ??
+            overlay.floorThreatTier,
+          dynamicNpcStates: s.dynamicNpcStates ?? {},
+          homeSeed: NPC_HOME_LOCATION_SEED,
+          tasks: (s.tasks ?? []).map((t) => ({
+            ...t,
+            status: t.status ?? "active",
+          })),
+        });
+        const legacyProjection = projectSnapshotToLegacy(snapshot);
         const data: SaveSlotData = {
+          runSnapshotV2: snapshot,
           stats: JSON.parse(JSON.stringify(safeStats)),
           inventory: JSON.parse(JSON.stringify(s.inventory)),
           warehouse: JSON.parse(JSON.stringify(s.warehouse ?? [])),
@@ -936,6 +1274,24 @@ export const useGameStore = create<GameState>()(
           originium: s.originium ?? 0,
           currentBgm: s.currentBgm ?? "bgm_1_calm",
           currentOptions: Array.isArray(s.currentOptions) ? JSON.parse(JSON.stringify(s.currentOptions)) : [],
+          tasks: JSON.parse(JSON.stringify(s.tasks ?? [])),
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          dynamicNpcStates: JSON.parse(JSON.stringify(s.dynamicNpcStates ?? {})),
+          reviveContext: JSON.parse(
+            JSON.stringify(
+              s.reviveContext ?? {
+                pending: false,
+                deathLocation: null,
+                deathCause: null,
+                droppedLootLedger: [],
+                droppedLootOwnerLedger: [],
+              }
+            )
+          ),
+          appliedRelationshipTaskIds: JSON.parse(
+            JSON.stringify(s.appliedRelationshipTaskIds ?? [])
+          ),
+          ...legacyProjection,
         };
         set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
         void import("@/app/actions/save")
@@ -946,56 +1302,149 @@ export const useGameStore = create<GameState>()(
       loadGame: (slotId) => {
         const data = get().saveSlots[slotId];
         if (!data) return;
+        const normalizedSnapshot = normalizeRunSnapshotV2(
+          data.runSnapshotV2,
+          data
+        );
+        const projected = projectSnapshotToLegacy(normalizedSnapshot);
         const talentCooldowns =
           data.talentCooldowns && typeof data.talentCooldowns === "object"
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
-        const safeStats = data.stats ?? DEFAULT_STATS;
+        const safeStats = projected.stats ?? data.stats ?? DEFAULT_STATS;
         set({
+          saveSlots: {
+            ...get().saveSlots,
+            [slotId]: {
+              ...data,
+              runSnapshotV2: normalizedSnapshot,
+              ...projected,
+            },
+          },
           stats: JSON.parse(JSON.stringify(safeStats)),
-          inventory: JSON.parse(JSON.stringify(data.inventory)),
-          warehouse: Array.isArray(data.warehouse) ? JSON.parse(JSON.stringify(data.warehouse)) : [],
+          inventory: JSON.parse(JSON.stringify(projected.inventory ?? data.inventory)),
+          warehouse: Array.isArray(projected.warehouse ?? data.warehouse)
+            ? JSON.parse(JSON.stringify(projected.warehouse ?? data.warehouse))
+            : [],
           logs: JSON.parse(JSON.stringify(data.logs)),
-          time: JSON.parse(JSON.stringify(data.time)),
-          codex: JSON.parse(JSON.stringify(data.codex)),
+          time: JSON.parse(JSON.stringify(projected.time ?? data.time)),
+          codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex)),
           historicalMaxSanity: data.historicalMaxSanity,
           historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
           talent: data.talent ?? null,
           talentCooldowns,
           hasCheckedCodex: data.hasCheckedCodex ?? false,
-          originium: data.originium ?? get().originium ?? 0,
+          originium:
+            projected.originium ?? data.originium ?? get().originium ?? 0,
           currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
           currentOptions: Array.isArray(data.currentOptions) ? JSON.parse(JSON.stringify(data.currentOptions)) : [],
+          tasks: JSON.parse(JSON.stringify(projected.tasks ?? data.tasks ?? [])),
+          playerLocation:
+            projected.playerLocation ?? data.playerLocation ?? "B1_SafeZone",
+          dynamicNpcStates: JSON.parse(
+            JSON.stringify(
+              projected.dynamicNpcStates ??
+                data.dynamicNpcStates ??
+                {}
+            )
+          ),
+          reviveContext: JSON.parse(
+            JSON.stringify(
+              data.reviveContext ?? {
+                pending: false,
+                deathLocation: null,
+                deathCause: null,
+                droppedLootLedger: [],
+                droppedLootOwnerLedger: [],
+              }
+            )
+          ),
+          appliedRelationshipTaskIds: JSON.parse(
+            JSON.stringify(data.appliedRelationshipTaskIds ?? [])
+          ),
+          playerName: projected.playerName ?? get().playerName,
+          gender: projected.gender ?? get().gender,
+          height: projected.height ?? get().height,
+          personality: projected.personality ?? get().personality,
         });
       },
       hydrateFromCloud: (slotId, data) => {
         if (!data) return;
+        const normalizedSnapshot = normalizeRunSnapshotV2(
+          data.runSnapshotV2,
+          data
+        );
+        const projected = projectSnapshotToLegacy(normalizedSnapshot);
         const talentCooldowns =
           data.talentCooldowns && typeof data.talentCooldowns === "object"
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
-        const safeStats = data.stats ?? DEFAULT_STATS;
+        const safeStats = projected.stats ?? data.stats ?? DEFAULT_STATS;
         set((s) => {
           const loadedLogs = data.logs ?? [];
           const hasProgress = Array.isArray(loadedLogs) && loadedLogs.length > 0;
           void hasProgress;
           return {
             currentSaveSlot: slotId,
-            saveSlots: { ...s.saveSlots, [slotId]: data },
+            saveSlots: {
+              ...s.saveSlots,
+              [slotId]: {
+                ...data,
+                runSnapshotV2: normalizedSnapshot,
+                ...projected,
+              },
+            },
             stats: JSON.parse(JSON.stringify(safeStats)),
-            inventory: JSON.parse(JSON.stringify(data.inventory)),
-            warehouse: Array.isArray(data.warehouse) ? JSON.parse(JSON.stringify(data.warehouse)) : [],
+            inventory: JSON.parse(JSON.stringify(projected.inventory ?? data.inventory)),
+            warehouse: Array.isArray(projected.warehouse ?? data.warehouse)
+              ? JSON.parse(JSON.stringify(projected.warehouse ?? data.warehouse))
+              : [],
             logs: JSON.parse(JSON.stringify(data.logs ?? [])),
-            time: JSON.parse(JSON.stringify(data.time ?? { day: 0, hour: 0 })),
-            codex: JSON.parse(JSON.stringify(data.codex ?? {})),
+            time: JSON.parse(JSON.stringify(projected.time ?? data.time ?? { day: 0, hour: 0 })),
+            codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex ?? {})),
             historicalMaxSanity: data.historicalMaxSanity ?? 50,
             historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
             talent: data.talent ?? s.talent ?? null,
             talentCooldowns,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
-            originium: data.originium ?? s.originium ?? 0,
+            originium: projected.originium ?? data.originium ?? s.originium ?? 0,
             currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
             currentOptions: Array.isArray(data.currentOptions) ? JSON.parse(JSON.stringify(data.currentOptions)) : [],
+            tasks: JSON.parse(
+              JSON.stringify(projected.tasks ?? data.tasks ?? s.tasks ?? [])
+            ),
+            playerLocation:
+              projected.playerLocation ??
+              data.playerLocation ??
+              s.playerLocation ??
+              "B1_SafeZone",
+            dynamicNpcStates: JSON.parse(
+              JSON.stringify(
+                projected.dynamicNpcStates ??
+                  data.dynamicNpcStates ??
+                  s.dynamicNpcStates ??
+                  {}
+              )
+            ),
+            reviveContext: JSON.parse(
+              JSON.stringify(
+                data.reviveContext ??
+                  s.reviveContext ?? {
+                    pending: false,
+                    deathLocation: null,
+                    deathCause: null,
+                    droppedLootLedger: [],
+                    droppedLootOwnerLedger: [],
+                  }
+              )
+            ),
+            appliedRelationshipTaskIds: JSON.parse(
+              JSON.stringify(data.appliedRelationshipTaskIds ?? s.appliedRelationshipTaskIds ?? [])
+            ),
+            playerName: projected.playerName ?? s.playerName,
+            gender: projected.gender ?? s.gender,
+            height: projected.height ?? s.height,
+            personality: projected.personality ?? s.personality,
             isGameStarted: true,
           };
         });
@@ -1044,6 +1493,14 @@ export const useGameStore = create<GameState>()(
         playerLocation: s.playerLocation ?? "B1_SafeZone",
         historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
         dynamicNpcStates: s.dynamicNpcStates ?? {},
+        reviveContext: s.reviveContext ?? {
+          pending: false,
+          deathLocation: null,
+          deathCause: null,
+          droppedLootLedger: [],
+          droppedLootOwnerLedger: [],
+        },
+        appliedRelationshipTaskIds: s.appliedRelationshipTaskIds ?? [],
         isGameStarted: s.isGameStarted ?? false,
         volume: clampVolume(s.volume ?? 50),
       }),

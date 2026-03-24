@@ -18,7 +18,12 @@ export type ItemEffectType =
   | "shield"        // Blocks one lethal attack
   | "ruleKill"     // Rule-based kill, ignores combatPower gap
   | "tempStat"     // Temporarily boost a stat (e.g. +5 agility for 1h)
-  | "tempFavor"    // Temporarily boost NPC/anomaly favor
+  | "intel"        // Reveal intel / clue packets
+  | "access"       // Open route / pass checks
+  | "disguise"     // Temporary identity disguise
+  | "amnesty"      // Temporary hostility waiver / checkpoint pass
+  | "trigger"      // Trigger hidden window / event seed
+  | "tempFavor"    // Legacy: no longer recommended
   | "transform"    // Transform into specific NPC appearance
   | "purify"       // Purify pollution / drive away low-tier anomaly
   | "key"          // Open doors / bypass locks
@@ -74,6 +79,52 @@ export interface NPC {
   lore: string;
 }
 
+export interface NpcDisplayLayer {
+  name: string;
+  appearance: string;
+  floor: FloorId | "random";
+  publicPersonality: string;
+  specialty: string;
+  combatPower: number;
+  combatPowerDisplay?: string;
+}
+
+export interface NpcInteractionLayer {
+  speechPattern: string;
+  taboo: string;
+  relationshipHooks: string[];
+  questHooks: string[];
+  surfaceSecrets: string[];
+}
+
+export interface NpcDeepSecretLayer {
+  trueMotives: string[];
+  trueCombatPower?: number;
+  dragonWorldLink?: string;
+  conspiracyRole?: string;
+  revealConditions: string[];
+}
+
+export interface NpcProfileV2 {
+  id: string;
+  homeNode: string;
+  display: NpcDisplayLayer;
+  interaction: NpcInteractionLayer;
+  deepSecret: NpcDeepSecretLayer;
+}
+
+export interface NpcRelationStateV2 {
+  favorability: number;
+  trust: number;
+  fear: number;
+  debt: number;
+  affection: number;
+  desire: number;
+  romanceEligible: boolean;
+  romanceStage: "none" | "hint" | "bonded" | "committed";
+  betrayalFlags: string[];
+}
+
 /** Immutable emotion/relationship thread — e.g. "secretly in love with X" or "blood feud with Y" */
 export type ImmutableRelationship = string;
 
@@ -126,3 +177,40 @@ export interface Anomaly {
   survivalMethod: string;
   sanityDamage: number;
 }
+
+export type ServiceNodeId =
+  | "B1_SafeZone"
+  | "B1_Storage"
+  | "B1_Laundry"
+  | "B1_PowerRoom";
+
+export type ServiceKind =
+  | "revive_anchor"
+  | "safe_restore"
+  | "gatekeeper_meeting"
+  | "shop_trade"
+  | "salary_settlement"
+  | "forge_upgrade"
+  | "forge_repair"
+  | "cleanse"
+  | "rumor"
+  | "soft_guidance";
+
+export interface ServiceDefinition {
+  id: string;
+  kind: ServiceKind;
+  name: string;
+  description: string;
+  npcIds: string[];
+  enabledByDefault: boolean;
+}
+
+export interface ServiceNodeDefinition {
+  nodeId: ServiceNodeId;
+  label: string;
+  isAbsoluteSafeZone: boolean;
+  services: ServiceDefinition[];
+}
+
+// Stage-1 snapshot base (re-export for legacy import compatibility).
+export type { RunSnapshotV2 } from "@/lib/state/snapshot/types";

@@ -122,7 +122,16 @@ export const MAP_ROOMS: Record<string, readonly string[]> = {
   "7": ["7F_Room701", "7F_Bench", "7F_Kitchen", "7F_SealedDoor"],
 };
 
+/** Stage-1: B1 keeps absolute safe-zone guarantee and serves as service hub. */
+export const B1_ABSOLUTE_SAFE_ROOMS = [
+  "B1_SafeZone",
+  "B1_Storage",
+  "B1_Laundry",
+  "B1_PowerRoom",
+] as const;
+
 import type { NpcSocialProfile } from "./types";
+import { CORE_NPC_PROFILES_V2 } from "./npcProfiles";
 
 /** NPC social graph — relationships, weaknesses, fixed lore, core desires */
 export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
@@ -415,6 +424,19 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     ],
   },
 };
+
+for (const profile of CORE_NPC_PROFILES_V2) {
+  const existing = NPC_SOCIAL_GRAPH[profile.id];
+  if (!existing) continue;
+  NPC_SOCIAL_GRAPH[profile.id] = {
+    ...existing,
+    homeLocation: profile.homeNode,
+    fixed_lore: profile.interaction.surfaceSecrets.join("；"),
+    core_desires: profile.deepSecret.trueMotives.join("；"),
+    emotional_traits: profile.display.publicPersonality,
+    speech_patterns: profile.interaction.speechPattern,
+  };
+}
 
 /** Build lore context block for DM injection — single source of truth for worldview consistency */
 export function buildLoreContextForDM(): string {

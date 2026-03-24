@@ -4,9 +4,13 @@ import { Activity, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2, VolumeX } from "lucide-react";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
-import { NPCS } from "@/lib/registry/npcs";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
+import {
+  formatTaskRewardSummary,
+  getRewardCurveHintByFloorTier,
+  getTaskStatusLabel,
+} from "@/lib/tasks/taskV2";
 import {
   useAchievementsStore,
   type AchievementRecord,
@@ -74,32 +78,6 @@ const LOCATION_LABELS: Record<string, string> = {
   "7F_Kitchen": "七楼厨房",
   "7F_SealedDoor": "七楼封闭门区",
 };
-
-const NPC_NAME_BY_ID = new Map(NPCS.map((npc) => [npc.id, npc.name]));
-const NPC_NAMES = NPCS.map((npc) => npc.name).filter(Boolean);
-
-function toSeed(input: string): number {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-}
-
-function pickNpcNameBySeed(seedText: string): string {
-  if (NPC_NAMES.length === 0) return "无名委托人";
-  const idx = toSeed(seedText || String(Date.now())) % NPC_NAMES.length;
-  return NPC_NAMES[idx] ?? NPC_NAMES[0] ?? "无名委托人";
-}
-
-function normalizeIssuerName(rawIssuer: unknown, seedText: string): string {
-  const issuer = typeof rawIssuer === "string" ? rawIssuer.trim() : "";
-  if (!issuer) return pickNpcNameBySeed(seedText);
-  if (issuer === "未知" || issuer.toLowerCase() === "unknown") return pickNpcNameBySeed(seedText);
-  if (NPC_NAME_BY_ID.has(issuer)) return NPC_NAME_BY_ID.get(issuer) ?? pickNpcNameBySeed(seedText);
-  if (NPC_NAMES.includes(issuer)) return issuer;
-  return pickNpcNameBySeed(seedText);
-}
 
 function formatLocationLabel(location: string): string {
   if (!location) return "未知区域";
@@ -652,7 +630,24 @@ function CodexPanel({
               {typeof selectedEntry.combatPower === "number" && (
                 <div>
                   <span className="text-xs text-slate-500">剧情张力</span>
-                  <p className="mt-1 font-semibold text-slate-200">{selectedEntry.combatPower}</p>
+                  <p className="mt-1 font-semibold text-slate-200">{selectedEntry.combatPowerDisplay ?? selectedEntry.combatPower}</p>
+                </div>
+              )}
+              {(typeof selectedEntry.trust === "number" || typeof selectedEntry.fear === "number" || typeof selectedEntry.debt === "number") && (
+                <div>
+                  <span className="text-xs text-slate-500">关系向量</span>
+                  <p className="mt-1 text-xs text-slate-300">
+                    信任 {selectedEntry.trust ?? 0} / 恐惧 {selectedEntry.fear ?? 0} / 债务 {selectedEntry.debt ?? 0}
+                  </p>
+                </div>
+              )}
+              {(typeof selectedEntry.affection === "number" || typeof selectedEntry.desire === "number" || typeof selectedEntry.romanceEligible === "boolean") && (
+                <div>
+                  <span className="text-xs text-slate-500">亲密状态</span>
+                  <p className="mt-1 text-xs text-fuchsia-300">
+                    好感倾向 {selectedEntry.affection ?? 0} / 欲望张力 {selectedEntry.desire ?? 0} / 可发展{" "}
+                    {selectedEntry.romanceEligible ? "是" : "否"} / 阶段 {selectedEntry.romanceStage ?? "none"}
+                  </p>
                 </div>
               )}
               {selectedEntry.personality && (
@@ -783,6 +778,7 @@ function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
 }
 
 function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number }) {
+  const visibleTasks = tasks.filter((t) => t.status !== "hidden");
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -794,10 +790,10 @@ function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number
         </div>
       </div>
       <div className="max-h-[50vh] space-y-3 overflow-y-auto">
-        {tasks.length === 0 ? (
+        {visibleTasks.length === 0 ? (
           <p className="py-8 text-center text-xs text-slate-500">暂无任务。与 NPC 互动或探索可获取任务。</p>
         ) : (
-          tasks.map((t) => (
+          visibleTasks.map((t) => (
             <div
               key={t.id}
               className={`rounded-xl border p-4 ${
@@ -805,21 +801,40 @@ function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number
                   ? "border-amber-400/30 bg-amber-500/5"
                   : t.status === "completed"
                     ? "border-emerald-400/30 bg-emerald-500/5 opacity-70"
+                    : t.status === "available"
+                      ? "border-indigo-400/30 bg-indigo-500/5"
                     : "border-red-400/30 bg-red-500/5 opacity-50"
               }`}
             >
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-sm font-semibold text-white">{t.title}</span>
                 <span className={`text-[10px] font-medium uppercase tracking-wider ${
-                  t.status === "active" ? "text-amber-400" : t.status === "completed" ? "text-emerald-400" : "text-red-400"
+                  t.status === "active"
+                    ? "text-amber-400"
+                    : t.status === "completed"
+                      ? "text-emerald-400"
+                      : t.status === "available"
+                        ? "text-indigo-300"
+                        : "text-red-400"
                 }`}>
-                  {t.status === "active" ? "进行中" : t.status === "completed" ? "已完成" : "已失败"}
+                  {getTaskStatusLabel(t.status)}
                 </span>
               </div>
               <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
-              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-                <span>委托人：{normalizeIssuerName(t.issuer, t.id)}</span>
-                <span>奖励：{t.reward}</span>
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                <span>委托人：{t.issuerName}</span>
+                <span>任务线：{t.type}</span>
+                <span>楼层带：{t.floorTier}</span>
+                <span>引导强度：{t.guidanceLevel}</span>
+                <span>领取方式：{t.claimMode === "npc_grant" ? "NPC主动发放" : t.claimMode === "auto" ? "自动领取" : "手动领取"}</span>
+                <span>{t.npcProactiveGrant.enabled ? `发放NPC：${t.npcProactiveGrant.npcId || "待定"}` : "发放NPC：无"}</span>
+                <span className="col-span-2">奖励：{formatTaskRewardSummary(t.reward)}</span>
+                <span className="col-span-2">奖励曲线：{getRewardCurveHintByFloorTier(t.floorTier)}</span>
+                {t.nextHint ? <span className="col-span-2 text-indigo-300">下一步提示：{t.nextHint}</span> : null}
+                {t.hiddenTriggerConditions.length > 0 ? (
+                  <span className="col-span-2 text-fuchsia-300">隐藏触发：{t.hiddenTriggerConditions.join(" / ")}</span>
+                ) : null}
+                {t.highRiskHighReward ? <span className="col-span-2 text-rose-300">高风险高收益任务</span> : null}
               </div>
             </div>
           ))

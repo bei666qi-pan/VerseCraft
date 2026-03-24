@@ -37,6 +37,8 @@ export interface AiObservabilityRecord {
   retrievalScopeCounts?: Record<string, number>;
   lorePacketChars?: number;
   lorePacketTokenEstimate?: number;
+  runtimePacketChars?: number;
+  runtimePacketTokenEstimate?: number;
   fallbackRegistryUsed?: boolean;
   factIngestionCount?: number;
   factConflictCount?: number;

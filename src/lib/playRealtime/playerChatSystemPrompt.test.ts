@@ -25,12 +25,13 @@ test("getStablePlayerDmSystemPrefix returns identical string instance for same v
 test("stable prefix 体积已降到可控范围", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  assert.ok(s.length < 12000, `stable prefix too large: ${s.length}`);
+  assert.ok(s.length < 6500, `stable prefix too large: ${s.length}`);
   assert.ok(s.includes("【JSON】单个对象"));
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));
   assert.ok(s.includes("narrative"));
   assert.ok(s.includes("is_death"));
+  assert.ok(s.includes("运行时注入事实优先"));
 });
 
 test("首回合与普通回合都可注入 lore", () => {
@@ -39,12 +40,14 @@ test("首回合与普通回合都可注入 lore", () => {
     memoryBlock: "",
     playerContext: "当前位置=1F_Lobby",
     isFirstAction: true,
+    runtimePackets: "{\"k\":\"v\"}",
     controlAugmentation: lore,
   });
   const normal = buildDynamicPlayerDmSystemSuffix({
     memoryBlock: "记忆块",
     playerContext: "当前位置=2F_Corridor",
     isFirstAction: false,
+    runtimePackets: "{\"k\":\"v\"}",
     controlAugmentation: lore,
   });
   assert.ok(first.includes(lore));

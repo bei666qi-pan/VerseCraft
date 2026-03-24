@@ -17,7 +17,12 @@ export const EFFECT_TYPE_LABELS: Record<string, string> = {
   shield: "护盾",
   ruleKill: "规则击杀",
   tempStat: "临时属性",
-  tempFavor: "好感加成",
+  intel: "情报",
+  access: "通行",
+  disguise: "伪装",
+  amnesty: "豁免",
+  trigger: "触发",
+  tempFavor: "旧版好感",
   transform: "幻形",
   purify: "净化",
   key: "开锁",
@@ -41,7 +46,12 @@ export function getItemEffectSummary(item: Item | null | undefined): string | nu
     const s = STAT_LABELS[stat] ?? stat;
     return value >= 0 ? `${s}+${value}` : `${s}${value}`;
   }
-  if (t === "tempFavor") return `好感+${item.tempFavorEffect ?? "?"}`;
+  if (t === "intel") return "触发线索/情报包";
+  if (t === "access") return "获得一次通行或检查豁免";
+  if (t === "disguise") return "临时身份伪装";
+  if (t === "amnesty") return "临时敌意豁免";
+  if (t === "trigger") return "触发隐藏窗口/事件";
+  if (t === "tempFavor") return "旧版兼容效果（建议迁移）";
   if (t === "transform") return "幻形为指定角色";
   if (t === "purify") return "净化污染/驱散低阶诡异";
   if (t === "key") return "开门/解锁";

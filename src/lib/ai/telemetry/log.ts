@@ -49,6 +49,8 @@ export interface AiCostRecord {
   retrievalScopeCounts?: Record<string, number>;
   lorePacketChars?: number;
   lorePacketTokenEstimate?: number;
+  runtimePacketChars?: number;
+  runtimePacketTokenEstimate?: number;
   fallbackRegistryUsed?: boolean;
   factIngestionCount?: number;
   factConflictCount?: number;
@@ -124,6 +126,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     retrievalScopeCounts: rec.retrievalScopeCounts,
     lorePacketChars: rec.lorePacketChars,
     lorePacketTokenEstimate: rec.lorePacketTokenEstimate,
+    runtimePacketChars: rec.runtimePacketChars,
+    runtimePacketTokenEstimate: rec.runtimePacketTokenEstimate,
     fallbackRegistryUsed: rec.fallbackRegistryUsed,
     factIngestionCount: rec.factIngestionCount,
     factConflictCount: rec.factConflictCount,
@@ -166,6 +170,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
       retrievalScopeCounts: rec.retrievalScopeCounts,
       lorePacketChars: rec.lorePacketChars,
       lorePacketTokenEstimate: rec.lorePacketTokenEstimate,
+      runtimePacketChars: rec.runtimePacketChars,
+      runtimePacketTokenEstimate: rec.runtimePacketTokenEstimate,
       fallbackRegistryUsed: rec.fallbackRegistryUsed,
       factIngestionCount: rec.factIngestionCount,
       factConflictCount: rec.factConflictCount,

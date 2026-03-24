@@ -3,8 +3,9 @@
 // 玩家无法徒手对抗 NPC 或诡异，须通过高好感度或使用特定道具击杀 NPC 获取道具。
 
 import type { NPC } from "./types";
+import { applyNpcProfileOverrides } from "./npcProfiles";
 
-export const NPCS: readonly NPC[] = [
+const NPCS_BASE: readonly NPC[] = [
   {
     id: "N-001",
     name: "陈婆婆",
@@ -286,3 +287,5 @@ export const NPCS: readonly NPC[] = [
     lore: "她是公寓的「诱饵」。新住户见她年轻无害，容易放松警惕。她会热情地介绍规则，但会「不小心」漏掉最关键的几条。她的实习徽章永远不会换成正式的——因为正式员工，都已经被消化了。",
   },
 ];
+
+export const NPCS: readonly NPC[] = applyNpcProfileOverrides(NPCS_BASE);

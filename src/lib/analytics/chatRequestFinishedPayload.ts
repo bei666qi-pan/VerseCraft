@@ -114,6 +114,8 @@ export type BuildChatRequestFinishedPayloadInput = {
   routing: ChatRoutingSnapshot;
   stableCharLen: number;
   dynamicCharLen: number;
+  runtimePacketChars?: number;
+  runtimePacketTokenEstimate?: number;
   latestUsage: TokenUsage | null;
   preflight: PreflightTurnMetrics;
   enhance: EnhanceTurnMetrics;
@@ -159,6 +161,8 @@ export function buildChatRequestFinishedPayload(
     aiActualLogicalRole: input.routing.actualLogicalRole ?? input.model,
     stableCharLen: input.stableCharLen,
     dynamicCharLen: input.dynamicCharLen,
+    runtimePacketChars: optionalFiniteInt(input.runtimePacketChars),
+    runtimePacketTokenEstimate: optionalFiniteInt(input.runtimePacketTokenEstimate),
     promptTokens,
     completionTokens,
     totalTokens,
