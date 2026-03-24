@@ -11,16 +11,12 @@ import "server-only";
 
 import fs from "node:fs";
 import path from "node:path";
-type LoadEnvConfigFn = (dir: string) => void;
 
 function loadEnvConfigSync(root: string): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("@next/env") as { loadEnvConfig: LoadEnvConfigFn };
-    mod.loadEnvConfig(root);
-  } catch {
-    /* @next/env unavailable at build time; rely on Next.js built-in env loading */
-  }
+  // Intentionally avoid importing `@next/env` because Turbopack may try to bundle
+  // and resolve it in server route builds, which fails on some CI/Docker hosts.
+  // Next.js already loads env files during app bootstrap.
+  void root;
 }
 
 /** Env names used by `envCore.resolveAiEnv` / `anyAiProviderConfigured`. */

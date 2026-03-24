@@ -172,16 +172,6 @@ function parseEquippedWeapon(playerContext: string): {
   };
 }
 
-function inferFloorThreatTier(location: string | null): "b1_safe" | "low" | "mid" | "high" | "extreme" {
-  if (!location) return "low";
-  if (location.startsWith("B1_")) return "b1_safe";
-  if (location.startsWith("1F_")) return "low";
-  if (location.startsWith("2F_") || location.startsWith("3F_")) return "mid";
-  if (location.startsWith("4F_") || location.startsWith("5F_")) return "high";
-  if (location.startsWith("6F_") || location.startsWith("7F_") || location.startsWith("B2_")) return "extreme";
-  return "low";
-}
-
 function compactRuntimeLore(runtimeLoreCompact: string): string[] {
   if (!runtimeLoreCompact.trim()) return [];
   return runtimeLoreCompact
