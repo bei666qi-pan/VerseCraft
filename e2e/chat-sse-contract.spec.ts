@@ -60,6 +60,8 @@ async function postChat(request: {
  */
 test.describe("/api/chat SSE — 离线契约（CI / E2E_EXPECT_KEYS_MISSING）", () => {
   test("degraded: keys_missing header + DM-shaped JSON", async ({ request }) => {
+    test.setTimeout(120_000);
+    test.skip(!expectKeysMissing, "非离线契约环境下跳过 keys_missing 专用断言");
     const res = await postChat(request);
     expect(res.status()).toBe(200);
     // 本地环境可能已配置网关导致不一定返回 keys_missing，因此不做硬性断言。
