@@ -149,6 +149,7 @@ export function buildTacticalContextPacket(args: {
   runtimeLoreHints: string[];
   nearbyNpcIds: string[];
   threatPhase?: MainThreatPhase;
+  currentProfession?: string | null;
 }) {
   const text = String(args.latestUserInput ?? "");
   const requiredWritebacks = new Set<string>();
@@ -174,6 +175,19 @@ export function buildTacticalContextPacket(args: {
   if (text.includes("任务") || text.includes("委托") || text.includes("目标")) {
     requiredWritebacks.add("task_updates");
   }
+  const profession = (args.currentProfession ?? "").trim();
+  const professionFocus =
+    profession === "守灯人"
+      ? "守灯人优先确认主威胁相位与压制窗口，避免硬拼。"
+      : profession === "巡迹客"
+        ? "巡迹客优先规划低耗路线，先保撤离窗口再推进。"
+        : profession === "觅兆者"
+          ? "觅兆者优先验证前兆与反制线索，再决定投入资源。"
+          : profession === "齐日角"
+            ? "齐日角优先通过交涉降低敌意，争取关系侧突破。"
+            : profession === "溯源师"
+              ? "溯源师优先串联图鉴/锻造证据链，避免无效探索。"
+              : "未认证职业时优先做低风险验证，避免盲目押注。";
   return {
     latestUserInput: args.latestUserInput.slice(0, 200),
     activeTasks: args.activeTasks.slice(0, 6),
@@ -183,7 +197,9 @@ export function buildTacticalContextPacket(args: {
       "威胁状态推进需同步 main_threat_updates",
       "武器/锻造变化需同步 weapon_updates",
       "叙事变化要与状态回写一致",
+      professionFocus,
     ],
+    professionTacticalBias: profession || null,
     requiredWritebacks: [...requiredWritebacks],
   };
 }

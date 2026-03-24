@@ -81,9 +81,9 @@ export function renderNarrativeText(
           out = out.replace(/属性面板/g, "叙事维度");
           out = out.replace(/属性/g, "叙事维度");
           out = out.replace(/加点/g, "潜能赋予");
-          out = out.replace(/理智值\/生命值|理智值|生命值|理智/g, "精神锚点");
-          out = out.replace(/敏捷/g, "思维敏锐度");
-          out = out.replace(/幸运/g, "灵感直觉");
+          out = out.replace(/理智值\/生命值|理智值|生命值|理智/g, "精神");
+          out = out.replace(/敏捷/g, "敏捷");
+          out = out.replace(/幸运/g, "幸运");
           out = out.replace(/战斗力/g, "剧情张力");
           out = out.replace(/背包|行囊|道具/g, "灵感手记");
           out = out.replace(/使用道具/g, "消耗灵感");
@@ -160,13 +160,13 @@ export function extractGreenTips(text: string): string[] {
       .replace(/\s+/g, "")
       .replace(/[，。、“”‘’：；！？,.!?:;'"()（）【】\[\]—\-]/g, "")
       .replace(/属性面板|属性|加点/g, "潜能赋予")
-      .replace(/理智值\/生命值|理智值|理智|生命值/g, "精神锚点")
+      .replace(/理智值\/生命值|理智值|理智|生命值/g, "精神")
       .replace(/选项输入切换为手动输入|将选项切换为手动输入|切换到手动输入/g, "手动输入")
-      .replace(/回理智|恢复理智|回精神锚点|恢复精神锚点/g, "回精神锚点")
+      .replace(/回理智|恢复理智|回精神锚点|恢复精神锚点/g, "回精神")
       .trim();
   };
   const MANUAL_INPUT_COMPLIANCE_KEY =
-    "你可以选择手动输入自由书写你的意志若手动输入不可能的事情则会被抹杀原石可在设置中用于潜能赋予或回精神锚点";
+    "你可以选择手动输入自由书写你的意志若手动输入不可能的事情则会被抹杀原石可在设置中用于潜能赋予或回精神";
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     const tip = match[1]?.trim();
@@ -179,7 +179,7 @@ export function extractGreenTips(text: string): string[] {
       key.includes("抹杀") &&
       key.includes("原石") &&
       key.includes("潜能赋予") &&
-      key.includes("精神锚点");
+      key.includes("精神");
     const dedupeKey = isManualInputComplianceTip ? MANUAL_INPUT_COMPLIANCE_KEY : key;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);

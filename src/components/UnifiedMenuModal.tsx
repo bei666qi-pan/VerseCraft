@@ -16,6 +16,13 @@ import {
   type AchievementRecord,
   type AchievementGrade,
 } from "@/store/useAchievementsStore";
+import type { ProfessionId, ProfessionStateV1 } from "@/lib/profession/types";
+import { PROFESSION_IDS } from "@/lib/profession/registry";
+import {
+  evaluateProfessionActiveReadiness,
+  getProfessionActiveSummary,
+  getProfessionPassiveSummary,
+} from "@/lib/profession/benefits";
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
 const FALLBACK_STATS: Record<StatType, number> = {
@@ -26,11 +33,11 @@ const FALLBACK_STATS: Record<StatType, number> = {
   background: 0,
 };
 const STAT_LABELS: Record<StatType, string> = {
-  sanity: "精神锚点",
-  agility: "思维敏锐度",
-  luck: "灵感直觉",
-  charm: "表达感染力",
-  background: "创作底色",
+  sanity: "精神",
+  agility: "敏捷",
+  luck: "幸运",
+  charm: "魅力",
+  background: "出身",
 };
 const STAT_MAX = 50;
 
@@ -262,6 +269,20 @@ function SettingsPanel({
   onToggleMute,
   onSaveAndExit,
   onAbandonAndDie,
+  currentSaveSlot,
+  saveSlots,
+  onCreateBranch,
+  onLoadSlot,
+  onDeleteSlot,
+  onRenameSlot,
+  professionState,
+  onRefreshProfessionState,
+  onCertifyProfession,
+  onSwitchProfession,
+  onActivateProfessionActive,
+  mainThreatByFloor,
+  codex,
+  tasks,
 }: {
   stats: Record<StatType, number>;
   historicalMaxSanity: number;
@@ -275,6 +296,20 @@ function SettingsPanel({
   onToggleMute: () => void;
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
+  currentSaveSlot: string;
+  saveSlots: ReturnType<typeof useGameStore.getState>["saveSlots"];
+  onCreateBranch: () => void;
+  onLoadSlot: (slotId: string) => void;
+  onDeleteSlot: (slotId: string) => void;
+  onRenameSlot: (slotId: string, label: string) => void;
+  professionState: ProfessionStateV1;
+  onRefreshProfessionState: () => void;
+  onCertifyProfession: (profession: ProfessionId) => boolean;
+  onSwitchProfession: (profession: ProfessionId) => boolean;
+  onActivateProfessionActive: () => { ok: boolean; reason?: string; tip?: string };
+  mainThreatByFloor: ReturnType<typeof useGameStore.getState>["mainThreatByFloor"];
+  codex: Record<string, CodexEntry>;
+  tasks: GameTask[];
 }) {
   const [showSealActions, setShowSealActions] = useState(false);
   const displayLocation = formatLocationLabel(playerLocation);
@@ -293,6 +328,13 @@ function SettingsPanel({
     return originium >= costPerPoint;
   };
   const stepper = useUpgradeStepper(onUpgradeAttr, canUpgrade);
+  const readiness = evaluateProfessionActiveReadiness(professionState.currentProfession, {
+    location: playerLocation,
+    hasHotThreat: Object.values(mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
+    activeTasksCount: (tasks ?? []).filter((t) => t.status === "active" || t.status === "available").length,
+    relationshipUpdatable: Object.values(codex ?? {}).some((x) => x.type === "npc"),
+    hasAnomalyCodex: Object.values(codex ?? {}).some((x) => x.type === "anomaly"),
+  });
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 overflow-y-auto max-h-[calc(100dvh-120px)]">
       <div>
@@ -370,6 +412,129 @@ function SettingsPanel({
       </div>
 
       <div className="pt-2">
+        <div className="mb-4 rounded-xl border border-white/15 bg-white/5 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs text-slate-300">职业 / 转职 V1（中途认证）</p>
+            <button
+              type="button"
+              onClick={onRefreshProfessionState}
+              className="rounded-lg border border-slate-300/30 bg-white/10 px-2 py-1 text-[11px] text-slate-200"
+            >
+              刷新资格
+            </button>
+          </div>
+          <p className="mb-2 text-[11px] text-slate-400">
+            当前职业：{professionState.currentProfession ?? "无"}；已认证：{professionState.unlockedProfessions.join("/") || "无"}
+          </p>
+          <div className="mb-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-[10px] text-slate-300">
+            <div>被动：{getProfessionPassiveSummary(professionState.currentProfession)}</div>
+            <div className="mt-1">主动：{getProfessionActiveSummary(professionState.currentProfession)}</div>
+            <div className="mt-1 text-amber-200">当前场景命中率：{readiness.hitRate}%</div>
+            <div className="mt-1 text-slate-400">{readiness.hint}</div>
+            <button
+              type="button"
+              onClick={() => {
+                const res = onActivateProfessionActive();
+                if (!res.ok) {
+                  window.alert(res.reason ?? "当前无法发动职业主动。");
+                  return;
+                }
+                if (res.tip) window.alert(`职业主动已就绪。\n${res.tip}`);
+              }}
+              className="mt-2 rounded border border-indigo-300/30 bg-indigo-500/15 px-2 py-1 text-[10px] text-indigo-100"
+            >
+              发动职业主动
+            </button>
+          </div>
+          <div className="max-h-40 space-y-1 overflow-y-auto">
+            {PROFESSION_IDS.map((id) => {
+              const eligible = professionState.eligibilityByProfession[id];
+              const unlocked = professionState.unlockedProfessions.includes(id);
+              const isCurrent = professionState.currentProfession === id;
+              return (
+                <div key={id} className={`flex items-center justify-between rounded-lg px-2 py-1 ${isCurrent ? "bg-indigo-500/20" : "bg-white/5"}`}>
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] text-slate-200">{id}{isCurrent ? "（当前）" : ""}</div>
+                    <div className="truncate text-[10px] text-slate-400">
+                      资格:{eligible ? "可认证" : "未达成"} / 状态:{unlocked ? "已认证" : "未认证"}
+                    </div>
+                  </div>
+                  <div className="ml-2 flex shrink-0 items-center gap-2">
+                    {!unlocked ? (
+                      <button
+                        type="button"
+                        disabled={!eligible}
+                        onClick={() => {
+                          const ok = onCertifyProfession(id);
+                          if (!ok) window.alert("当前资格不足，无法认证。");
+                        }}
+                        className="text-[10px] text-emerald-200 disabled:opacity-40"
+                      >
+                        认证
+                      </button>
+                    ) : !isCurrent ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ok = onSwitchProfession(id);
+                          if (!ok) window.alert("转职冷却中或条件不满足。");
+                        }}
+                        className="text-[10px] text-amber-200"
+                      >
+                        转职
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mb-4 rounded-xl border border-white/15 bg-white/5 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs text-slate-300">分支存档 V1</p>
+            <button
+              type="button"
+              onClick={onCreateBranch}
+              className="rounded-lg border border-indigo-300/40 bg-indigo-500/20 px-2 py-1 text-[11px] text-indigo-100"
+            >
+              新建分支
+            </button>
+          </div>
+          <div className="max-h-36 space-y-1 overflow-y-auto">
+            {Object.entries(saveSlots ?? {}).filter(([id]) => !id.startsWith("auto_")).map(([id, slot]) => {
+              const meta = slot?.slotMeta;
+              const active = id === currentSaveSlot;
+              const summary = meta?.snapshotSummary;
+              return (
+                <div key={id} className={`flex items-center justify-between rounded-lg px-2 py-1 ${active ? "bg-emerald-500/15" : "bg-white/5"}`}>
+                  <button type="button" onClick={() => onLoadSlot(id)} className="min-w-0 flex-1 text-left text-[11px] text-slate-200">
+                    <div className="truncate">{meta?.label ?? id} {active ? "（当前）" : ""}</div>
+                    <div className="truncate text-[10px] text-slate-400">
+                      D{summary?.day ?? 0} H{summary?.hour ?? 0} · {summary?.playerLocation ?? "B1_SafeZone"} · 任务{summary?.activeTasksCount ?? 0}
+                    </div>
+                    <div className="truncate text-[10px] text-slate-500">
+                      威胁{summary?.keyThreatStates.length ?? 0} · 关键NPC{summary?.keyNpcFlags.length ?? 0} · 复活待处理{summary?.revivePending ? "是" : "否"}
+                    </div>
+                  </button>
+                  <div className="ml-2 flex shrink-0 items-center gap-2">
+                    <button type="button" onClick={() => {
+                      const next = window.prompt("请输入分支名称", meta?.label ?? id);
+                      if (next && next.trim()) onRenameSlot(id, next.trim());
+                    }} className="text-[10px] text-indigo-200">
+                      改名
+                    </button>
+                    {!active ? (
+                      <button type="button" onClick={() => onDeleteSlot(id)} className="text-[10px] text-rose-300">
+                        删除
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <div className="flex">
           <button
             type="button"
@@ -860,7 +1025,19 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
   const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
+  const mainThreatByFloor = useGameStore((s) => s.mainThreatByFloor ?? {});
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
+  const saveSlots = useGameStore((s) => s.saveSlots ?? {});
+  const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "main_slot");
+  const createBranchSlot = useGameStore((s) => s.createBranchSlot);
+  const loadGame = useGameStore((s) => s.loadGame);
+  const deleteSaveSlot = useGameStore((s) => s.deleteSaveSlot);
+  const renameSaveSlot = useGameStore((s) => s.renameSaveSlot);
+  const professionState = useGameStore((s) => s.professionState);
+  const refreshProfessionState = useGameStore((s) => s.refreshProfessionState);
+  const certifyProfession = useGameStore((s) => s.certifyProfession);
+  const switchProfession = useGameStore((s) => s.switchProfession);
+  const activateProfessionActive = useGameStore((s) => s.activateProfessionActive);
 
   const volume = useGameStore((s) => s.volume);
   const setVolume = useGameStore((s) => s.setVolume);
@@ -869,7 +1046,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
   const currentTab = activeMenu ?? "settings";
 
   function handleSaveAndExit() {
-    useGameStore.getState().saveGame("auto_save");
+    useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     onClose();
     router.push("/");
   }
@@ -957,6 +1134,31 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
               onToggleMute={onToggleMute}
               onSaveAndExit={handleSaveAndExit}
               onAbandonAndDie={handleAbandonAndDie}
+              currentSaveSlot={currentSaveSlot}
+              saveSlots={saveSlots}
+              onCreateBranch={() => {
+                const res = createBranchSlot();
+                if (!res.ok) {
+                  window.alert(res.reason ?? "当前无法创建分支");
+                }
+              }}
+              onLoadSlot={(slotId) => {
+                loadGame(slotId);
+              }}
+              onDeleteSlot={(slotId) => {
+                deleteSaveSlot(slotId);
+              }}
+              onRenameSlot={(slotId, label) => {
+                renameSaveSlot(slotId, label);
+              }}
+              professionState={professionState}
+              onRefreshProfessionState={refreshProfessionState}
+              onCertifyProfession={certifyProfession}
+              onSwitchProfession={switchProfession}
+              onActivateProfessionActive={activateProfessionActive}
+              mainThreatByFloor={mainThreatByFloor}
+              codex={codex}
+              tasks={tasks}
             />
           </Activity>
           <Activity mode={currentTab === "backpack" ? "visible" : "hidden"}>

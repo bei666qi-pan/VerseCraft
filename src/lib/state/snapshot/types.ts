@@ -1,5 +1,7 @@
 import type { Item, NpcRelationStateV2, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
+import type { SaveSlotKind } from "./branch";
+import type { ProfessionStateV1 } from "@/lib/profession/types";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
 
@@ -48,6 +50,14 @@ export interface SnapshotMeta {
   worldVersion: number;
   startedAt: string;
   lastSavedAt: string;
+  branchMeta?: {
+    slotId: string;
+    label: string;
+    kind: SaveSlotKind;
+    parentSlotId: string | null;
+    branchFromDecisionId: string | null;
+    createdAt: string;
+  };
 }
 
 export interface SnapshotPlayer {
@@ -128,6 +138,7 @@ export interface RunSnapshotV2 {
   tasks: SnapshotTasks;
   death: SnapshotDeath;
   services: SnapshotServiceState;
+  profession: ProfessionStateV1;
   compatibility: SnapshotCompatibility;
 }
 
@@ -151,5 +162,6 @@ export interface LegacySaveSurface {
   height?: number;
   personality?: string;
   equippedWeapon?: Weapon | null;
+  professionState?: ProfessionStateV1;
   runSnapshotV2?: RunSnapshotV2;
 }

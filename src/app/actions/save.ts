@@ -17,12 +17,16 @@ function normalizeSavePayload(data: unknown): Record<string, unknown> | null {
   }
 }
 
+function isValidSlotId(slotId: string): boolean {
+  return /^[a-z0-9_:-]{2,64}$/i.test(slotId);
+}
+
 export async function syncSaveToCloud(slotId: string, data: unknown) {
   try {
     const session = await auth();
     const userId = session?.user?.id;
     if (!userId) return { ok: false };
-    if (!slotId) return { ok: false };
+    if (!slotId || !isValidSlotId(slotId)) return { ok: false };
 
     const payload = normalizeSavePayload(data ?? {});
     if (!payload) {
@@ -95,7 +99,7 @@ export async function fetchCloudSaveBySlot(slotId: string) {
   try {
     const session = await auth();
     const userId = session?.user?.id;
-    if (!userId || !slotId) return null;
+    if (!userId || !slotId || !isValidSlotId(slotId)) return null;
 
     const rows = await db
       .select({ data: saveSlots.data })
@@ -130,7 +134,7 @@ export async function deleteCloudSaveSlot(slotId: string) {
   try {
     const session = await auth();
     const userId = session?.user?.id;
-    if (!userId || !slotId) return { ok: false };
+    if (!userId || !slotId || !isValidSlotId(slotId)) return { ok: false };
 
     await db
       .delete(saveSlots)

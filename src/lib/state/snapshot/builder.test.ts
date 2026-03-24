@@ -30,7 +30,9 @@ test("buildRunSnapshotV2 creates required stage-1 sections", () => {
     ],
   });
   assert.equal(snapshot.schemaVersion, 2);
+  assert.equal(snapshot.meta.branchMeta?.slotId, undefined);
   assert.equal(snapshot.player.currentLocation, "1F_Lobby");
+  assert.equal(snapshot.profession.currentProfession, null);
   assert.equal(snapshot.tasks.active.length, 1);
   assert.equal(snapshot.tasks.completed.length, 0);
   assert.equal(snapshot.npcs["N-001"]?.discoveredByPlayer, true);

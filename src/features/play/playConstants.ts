@@ -36,11 +36,11 @@ export const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string 
 export const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
 
 export const STAT_LABELS: Record<StatType, string> = {
-  sanity: "精神锚点",
-  agility: "思维敏锐度",
-  luck: "灵感直觉",
-  charm: "表达感染力",
-  background: "创作底色",
+  sanity: "精神",
+  agility: "敏捷",
+  luck: "幸运",
+  charm: "魅力",
+  background: "出身",
 };
 
 export const FALLBACK_STATS: Record<StatType, number> = {

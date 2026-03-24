@@ -32,6 +32,7 @@ import {
 } from "@/features/play/opening/openingCopy";
 import { pickEmbeddedOpeningOptions } from "@/features/play/opening/openingOptionPools";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
+import { PROFESSION_IDS } from "@/lib/profession/registry";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
 import {
@@ -113,6 +114,7 @@ function PlayContent() {
   const activeMenu = useGameStore((s) => s.activeMenu);
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
   const toggleInputMode = useGameStore((s) => s.toggleInputMode);
+  const professionState = useGameStore((s) => s.professionState);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -141,6 +143,7 @@ function PlayContent() {
   const hasTriggeredOpening = useRef(false);
   const hasTriggeredResume = useRef(false);
   const hasShownManualInputComplianceHintRef = useRef(false);
+  const hasShownProfessionEligibleHintRef = useRef(false);
   const complianceHintTimerRef = useRef<number | null>(null);
   const userScrolledUpRef = useRef(false);
   const tailDrainTargetRef = useRef<string | null>(null);
@@ -229,6 +232,18 @@ function PlayContent() {
     if (!talent) return 0;
     return safeNumber(talentCooldowns?.[talent], 0);
   }, [talent, talentCooldowns]);
+  const eligibleProfessionCount = useMemo(
+    () => PROFESSION_IDS.filter((id) => professionState?.eligibilityByProfession?.[id]).length,
+    [professionState]
+  );
+
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted) return;
+    if (hasShownProfessionEligibleHintRef.current) return;
+    if (eligibleProfessionCount <= 0) return;
+    hasShownProfessionEligibleHintRef.current = true;
+    setFirstTimeHint(`你已满足 ${eligibleProfessionCount} 条职业认证条件，可在设置中完成认证。`);
+  }, [eligibleProfessionCount, isGameStarted, isHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -557,7 +572,7 @@ function PlayContent() {
     const state = useGameStore.getState();
     const slot =
       state.saveSlots?.[state.currentSaveSlot] ??
-      state.saveSlots?.["auto_save"] ??
+      state.saveSlots?.["main_slot"] ??
       null;
     const savedOptions = Array.isArray(slot?.currentOptions)
       ? slot.currentOptions.filter((x) => typeof x === "string" && x.trim().length > 0).slice(0, 4)
@@ -616,7 +631,7 @@ function PlayContent() {
     const now = Date.now();
     if (now - lastAutoSaveRef.current < 800) return;
     lastAutoSaveRef.current = now;
-    useGameStore.getState().saveGame("auto_save");
+    useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
   }, [isGameStarted, isHydrated]);
 
   useEffect(() => {
@@ -1206,6 +1221,9 @@ function PlayContent() {
       }
     }
 
+    const stateBeforeProfessionTurn = useGameStore.getState();
+    const consumedProfessionActive = stateBeforeProfessionTurn.consumeProfessionActiveForTurn();
+
     if (Array.isArray((parsed as { relationship_updates?: unknown[] }).relationship_updates)) {
       type RawRelUpdate = {
         npcId?: unknown;
@@ -1219,7 +1237,7 @@ function PlayContent() {
         romanceStage?: unknown;
         betrayalFlagAdd?: unknown;
       };
-      const relCodexEntries: CodexEntry[] = ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])
+      let relCodexEntries: CodexEntry[] = ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])
         .filter((x): x is RawRelUpdate => !!x && typeof x === "object" && !Array.isArray(x))
         .map((u) => {
           const npcId = typeof u.npcId === "string" ? u.npcId : "";
@@ -1242,12 +1260,31 @@ function PlayContent() {
           } as CodexEntry;
         })
         .filter((x): x is CodexEntry => !!x);
+      if (consumedProfessionActive === "齐日角") {
+        relCodexEntries = relCodexEntries.map((e) =>
+          typeof e.favorability === "number"
+            ? { ...e, favorability: Math.min(100, e.favorability + 1) }
+            : e
+        );
+      }
       if (relCodexEntries.length > 0) {
         mergeCodex(relCodexEntries);
       }
     }
 
-    const dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
+    let dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
+    const threatIsHot = Array.isArray((parsed as { main_threat_updates?: unknown[] }).main_threat_updates)
+      && ((parsed as { main_threat_updates?: unknown[] }).main_threat_updates ?? []).some((u) => {
+        if (!u || typeof u !== "object" || Array.isArray(u)) return false;
+        const phase = (u as { phase?: unknown }).phase;
+        return phase === "active" || phase === "suppressed" || phase === "breached";
+      });
+    if (stateBeforeProfessionTurn.professionState.currentProfession === "守灯人" && threatIsHot && dmg > 0) {
+      dmg = Math.max(0, dmg - 1);
+    }
+    if (consumedProfessionActive === "守灯人" && dmg > 0) {
+      dmg = Math.max(0, dmg - 1);
+    }
     if (dmg > 0) {
       const cur = useGameStore.getState().stats?.sanity ?? 0;
       useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
@@ -1276,10 +1313,10 @@ function PlayContent() {
 
     if (openingOptionsOnlyRoundRef.current) {
       // 首屏四条已由 pickEmbeddedOpeningOptions 写入，禁止用模型 options 覆盖
-      useGameStore.getState().saveGame("auto_save");
+      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
-      useGameStore.getState().saveGame("auto_save");
+      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -1317,6 +1354,9 @@ function PlayContent() {
       setBgm(parsed.bgm_track);
     }
 
+    // Recompute profession eligibility and issue short certification trials when gates are met.
+    useGameStore.getState().refreshProfessionState();
+
     // wire name `npc_location_updates[].to_location` -> store 内部语义 `currentLocation`
     if (Array.isArray(parsed.npc_location_updates) && parsed.npc_location_updates.length > 0) {
       for (const u of parsed.npc_location_updates) {
@@ -1345,6 +1385,16 @@ function PlayContent() {
             ? u.counterHintsUsed.filter((x): x is string => typeof x === "string")
             : undefined,
         }));
+      if (
+        consumedProfessionActive === "觅兆者" &&
+        updates.length > 0 &&
+        !updates.some((u) => Array.isArray(u.counterHintsUsed) && u.counterHintsUsed.length > 0)
+      ) {
+        updates[0] = {
+          ...updates[0],
+          counterHintsUsed: ["profession.omenseeker.focus_hint"],
+        };
+      }
       if (updates.length > 0) applyMainThreatUpdates(updates);
     }
 
@@ -1387,8 +1437,27 @@ function PlayContent() {
       if (updates.length > 0) applyWeaponUpdates(updates);
     }
 
+    if (consumedProfessionActive === "溯源师" && Array.isArray(parsed.codex_updates)) {
+      const traced = parsed.codex_updates
+        .filter((x): x is CodexEntry => !!x && typeof x === "object" && !Array.isArray(x))
+        .map((x) =>
+          x.type === "anomaly" && !x.rules_discovered
+            ? { ...x, rules_discovered: "溯源注记：该线索可继续拼接为真相链。" }
+            : x
+        );
+      if (traced.length > 0) mergeCodex(traced);
+    }
+
     const isItemUse = trimmed.startsWith("我使用了道具：");
-    const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse;
+    const movedThisTurn =
+      typeof parsed.player_location === "string" &&
+      parsed.player_location.length > 0 &&
+      parsed.player_location !== stateBeforeProfessionTurn.playerLocation;
+    const quickStepNoTime =
+      consumedProfessionActive === "巡迹客" &&
+      parsed.is_action_legal &&
+      movedThisTurn;
+    const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse && !quickStepNoTime;
 
     if (parsed.is_action_legal && !parsed.is_death && shouldAdvanceTime) {
       useGameStore.getState().decrementCooldowns();
@@ -1517,7 +1586,7 @@ function PlayContent() {
   }
 
   function onSaveAndExit() {
-    useGameStore.getState().saveGame("auto_save");
+    useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     setShowExitModal(false);
     router.push("/");
   }
@@ -1573,6 +1642,21 @@ function PlayContent() {
                     <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
                       叙事主视窗
                     </h2>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMenu("settings")}
+                      className="hidden min-w-0 items-center gap-2 rounded-full border border-white/30 bg-white/50 px-2 py-0.5 transition hover:bg-white/70 sm:flex"
+                      title="打开设置并查看职业/转职"
+                    >
+                      <span className="truncate rounded-full border border-indigo-300/40 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                        职业：{professionState?.currentProfession ?? "未认证"}
+                      </span>
+                      {eligibleProfessionCount > 0 ? (
+                        <span className="rounded-full border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-800">
+                          可认证 {eligibleProfessionCount}
+                        </span>
+                      ) : null}
+                    </button>
                   </div>
                   <button
                     type="button"

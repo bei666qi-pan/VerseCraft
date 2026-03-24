@@ -1,5 +1,6 @@
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import type { Weapon } from "@/lib/registry/types";
+import type { SaveSlotMeta } from "./branch";
 import { createDefaultAnchorUnlocks } from "./anchors";
 import { createDefaultDeathState } from "./death";
 import { buildNpcSnapshotMap } from "./npcs";
@@ -11,10 +12,13 @@ import {
   type SnapshotCodexEntry,
   type SnapshotTask,
 } from "./types";
+import { createDefaultProfessionState } from "@/lib/profession/registry";
+import type { ProfessionStateV1 } from "@/lib/profession/types";
 
 export interface BuildRunSnapshotV2Input {
   runId?: string;
   startedAt?: string;
+  slotMeta?: SaveSlotMeta | null;
   player: {
     name: string;
     gender: string;
@@ -41,6 +45,7 @@ export interface BuildRunSnapshotV2Input {
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
   homeSeed: Record<string, string>;
   tasks: SnapshotTask[];
+  profession?: ProfessionStateV1;
 }
 
 export function createRunId(): string {
@@ -56,6 +61,18 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       worldVersion: RUN_SNAPSHOT_V2_VERSION,
       startedAt: input.startedAt ?? nowIso,
       lastSavedAt: nowIso,
+      ...(input.slotMeta
+        ? {
+            branchMeta: {
+              slotId: input.slotMeta.slotId,
+              label: input.slotMeta.label,
+              kind: input.slotMeta.kind,
+              parentSlotId: input.slotMeta.parentSlotId,
+              branchFromDecisionId: input.slotMeta.branchFromDecisionId,
+              createdAt: input.slotMeta.createdAt,
+            },
+          }
+        : {}),
     },
     player: {
       profile: {
@@ -100,6 +117,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       anchorUnlocked: true,
       unlockFlags: {},
     },
+    profession: input.profession ?? createDefaultProfessionState(),
     compatibility: {
       legacyVersion: 1,
       source: "snapshot_v2",

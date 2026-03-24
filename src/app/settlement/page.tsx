@@ -220,7 +220,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const historicalMaxFloorScore = useGameStore((s) => s.historicalMaxFloorScore ?? 0);
-  const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "auto_save");
+  const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "main_slot");
   const [aiReview, setAiReview] = useState<SettlementAiReview | null>(null);
   const [aiReviewLoading, setAiReviewLoading] = useState(false);
   const reviveContext = useGameStore((s) => s.reviveContext);
@@ -417,9 +417,11 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   }
 
   async function handleRestart() {
+    const slotId = useGameStore.getState().currentSaveSlot || "main_slot";
     useGameStore.getState().chooseReviveOption("restart");
     useGameStore.getState().destroySaveData();
-    await deleteCloudSaveSlot("auto_save");
+    await deleteCloudSaveSlot(slotId);
+    await deleteCloudSaveSlot(slotId === "main_slot" ? "auto_main" : `auto_${slotId}`);
     const p = useGameStore.persist.clearStorage() as unknown;
     if (p && typeof (p as Promise<unknown>).then === "function") {
       await (p as Promise<void>);
@@ -430,7 +432,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   async function handleReviveNow() {
     useGameStore.getState().chooseReviveOption("revive");
     const st = useGameStore.getState();
-    const slotId = st.currentSaveSlot || "auto_save";
+    const slotId = st.currentSaveSlot || "main_slot";
     st.saveGame(slotId);
     void enqueueReviveWorldAdvanceJob({
       slotId,

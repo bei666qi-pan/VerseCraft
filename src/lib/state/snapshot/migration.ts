@@ -12,6 +12,8 @@ import type {
   SnapshotTask,
 } from "./types";
 import { ANOMALIES } from "@/lib/registry/anomalies";
+import { inferSaveSlotKind } from "./branch";
+import { createDefaultProfessionState } from "@/lib/profession/registry";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -87,6 +89,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     dynamicNpcStates: legacy.dynamicNpcStates ?? {},
     homeSeed: {},
     tasks: normalizeTasks(legacy.tasks),
+    profession: legacy.professionState ?? createDefaultProfessionState(),
   });
 }
 
@@ -119,6 +122,41 @@ export function normalizeRunSnapshotV2(
           ? s.meta.startedAt
           : fromLegacy.meta.startedAt,
       lastSavedAt: new Date().toISOString(),
+      branchMeta: (() => {
+        const raw = s.meta?.branchMeta;
+        const slotId =
+          raw && typeof raw === "object" && !Array.isArray(raw) && typeof raw.slotId === "string" && raw.slotId
+            ? raw.slotId
+            : "main_slot";
+        const kind =
+          raw && typeof raw === "object" && !Array.isArray(raw) && (raw.kind === "main" || raw.kind === "branch" || raw.kind === "auto_branch")
+            ? raw.kind
+            : inferSaveSlotKind(slotId);
+        return {
+          slotId,
+          label:
+            raw && typeof raw === "object" && !Array.isArray(raw) && typeof raw.label === "string" && raw.label
+              ? raw.label
+              : "主线存档",
+          kind,
+          parentSlotId:
+            raw && typeof raw === "object" && !Array.isArray(raw) && typeof raw.parentSlotId === "string" && raw.parentSlotId
+              ? raw.parentSlotId
+              : null,
+          branchFromDecisionId:
+            raw &&
+            typeof raw === "object" &&
+            !Array.isArray(raw) &&
+            typeof raw.branchFromDecisionId === "string" &&
+            raw.branchFromDecisionId
+              ? raw.branchFromDecisionId
+              : null,
+          createdAt:
+            raw && typeof raw === "object" && !Array.isArray(raw) && typeof raw.createdAt === "string" && raw.createdAt
+              ? raw.createdAt
+              : fromLegacy.meta.startedAt,
+        };
+      })(),
     },
     player: {
       ...fromLegacy.player,
@@ -182,6 +220,32 @@ export function normalizeRunSnapshotV2(
           : true,
       unlockFlags: asRecord(s.services?.unlockFlags) as Record<string, boolean>,
     },
+    profession: (() => {
+      const raw = s.profession;
+      const base = createDefaultProfessionState();
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+      const o = raw as Record<string, unknown>;
+      const currentProfession =
+        o.currentProfession === "守灯人" ||
+        o.currentProfession === "巡迹客" ||
+        o.currentProfession === "觅兆者" ||
+        o.currentProfession === "齐日角" ||
+        o.currentProfession === "溯源师"
+          ? o.currentProfession
+          : null;
+      const unlockedProfessions = Array.isArray(o.unlockedProfessions)
+        ? o.unlockedProfessions.filter(
+            (x): x is "守灯人" | "巡迹客" | "觅兆者" | "齐日角" | "溯源师" =>
+              x === "守灯人" || x === "巡迹客" || x === "觅兆者" || x === "齐日角" || x === "溯源师"
+          )
+        : [];
+      return {
+        ...base,
+        ...(typeof o === "object" ? (o as typeof base) : {}),
+        currentProfession,
+        unlockedProfessions,
+      };
+    })(),
     compatibility: {
       legacyVersion:
         typeof s.compatibility?.legacyVersion === "number"
@@ -220,6 +284,7 @@ export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurf
     height: snapshot.player.profile.height,
     personality: snapshot.player.profile.personality,
     equippedWeapon: snapshot.player.equippedWeapon,
+    professionState: snapshot.profession,
     runSnapshotV2: snapshot,
   };
 }

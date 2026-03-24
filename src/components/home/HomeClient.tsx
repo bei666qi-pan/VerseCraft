@@ -65,6 +65,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const saveSlots = useGameStore((s) => s.saveSlots ?? {});
   const resetForNewGame = useGameStore((s) => s.resetForNewGame);
   const hydrateFromCloud = useGameStore((s) => s.hydrateFromCloud);
+  const loadGame = useGameStore((s) => s.loadGame);
 
   const [authOpen, setAuthOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -82,6 +83,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [feedbackConsentPrivacyPolicy, setFeedbackConsentPrivacyPolicy] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+  const [selectedContinueSlotId, setSelectedContinueSlotId] = useState<string>("");
   const [surveySubmitted] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.sessionStorage.getItem(SURVEY_SUBMITTED_SESSION_KEY) === "1";
@@ -89,11 +91,73 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [authState, authFormAction, authPending] = useActionState(signInOrRegister, INITIAL_AUTH_ACTION_STATE);
   const surveyUrl = getPublicRuntimeConfig().surveyUrl;
 
-  const hasLocalAutoSave = useMemo(() => Boolean(saveSlots.auto_save), [saveSlots]);
-  const hasCloudAutoSave = useMemo(
-    () => cloudRows.some((row) => row.slotId === "auto_save"),
+  const hasLocalAnySave = useMemo(() => Object.keys(saveSlots ?? {}).length > 0, [saveSlots]);
+  const hasCloudAnySave = useMemo(
+    () => cloudRows.length > 0,
     [cloudRows]
   );
+  const continueSlotOptions = useMemo(() => {
+    const local = Object.entries(saveSlots ?? {})
+      .filter(([id]) => !id.startsWith("auto_"))
+      .map(([id, data]) => ({
+        slotId: id,
+        label: data?.slotMeta?.label ?? id,
+        updatedAt: data?.slotMeta?.updatedAt ?? null,
+        summary: data?.slotMeta?.snapshotSummary
+          ? {
+              day: data.slotMeta.snapshotSummary.day,
+              hour: data.slotMeta.snapshotSummary.hour,
+              playerLocation: data.slotMeta.snapshotSummary.playerLocation,
+              activeTasksCount: data.slotMeta.snapshotSummary.activeTasksCount,
+            }
+          : null,
+      }));
+    const cloud = cloudRows
+      .filter((row) => !row.slotId.startsWith("auto_"))
+      .map((row) => {
+        const raw = row.data as Record<string, unknown> | null;
+        const slotMeta =
+          raw && typeof raw.slotMeta === "object" && raw.slotMeta !== null && !Array.isArray(raw.slotMeta)
+            ? (raw.slotMeta as Record<string, unknown>)
+            : null;
+        const label = slotMeta && typeof slotMeta.label === "string" ? slotMeta.label : row.slotId;
+        return {
+          slotId: row.slotId,
+          label,
+          updatedAt: row.updatedAt,
+          summary: null as { day: number; hour: number; playerLocation: string; activeTasksCount: number } | null,
+        };
+      });
+    const map = new Map<string, {
+      slotId: string;
+      label: string;
+      updatedAt: string | null;
+      summary: { day: number; hour: number; playerLocation: string; activeTasksCount: number } | null;
+    }>();
+    for (const item of [...local, ...cloud]) {
+      const prev = map.get(item.slotId);
+      if (!prev) map.set(item.slotId, item);
+      else {
+        const prevTs = prev.updatedAt ? Date.parse(prev.updatedAt) : 0;
+        const curTs = item.updatedAt ? Date.parse(item.updatedAt) : 0;
+        if (curTs > prevTs) map.set(item.slotId, item);
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      return tb - ta;
+    });
+  }, [saveSlots, cloudRows]);
+
+  useEffect(() => {
+    if (continueSlotOptions.length === 0) {
+      if (selectedContinueSlotId !== "") setSelectedContinueSlotId("");
+      return;
+    }
+    if (selectedContinueSlotId && continueSlotOptions.some((x) => x.slotId === selectedContinueSlotId)) return;
+    setSelectedContinueSlotId(continueSlotOptions[0]!.slotId);
+  }, [continueSlotOptions, selectedContinueSlotId]);
 
   useEffect(() => {
     setUser(user ? { name: user.name } : null);
@@ -185,9 +249,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   async function handleContinueAdventure() {
     unlockBgmOnUserGesture();
     const rows = await fetchCloudSaves().catch(() => []);
-    const auto = (rows as SaveRow[]).find((r) => r.slotId === "auto_save");
-    if (auto && isSaveSlotData(auto.data)) {
-      hydrateFromCloud("auto_save", auto.data);
+    const sorted = [...(rows as SaveRow[])].filter((x) => !x.slotId.startsWith("auto_")).sort((a, b) => {
+      const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      return tb - ta;
+    });
+    const preferred = selectedContinueSlotId
+      ? sorted.find((r) => r.slotId === selectedContinueSlotId) ?? null
+      : null;
+    const selected = preferred ?? sorted[0] ?? null;
+    if (selected && isSaveSlotData(selected.data)) {
+      hydrateFromCloud(selected.slotId, selected.data);
+    } else if (selectedContinueSlotId && saveSlots[selectedContinueSlotId]) {
+      loadGame(selectedContinueSlotId);
     }
     router.push("/play");
   }
@@ -451,15 +525,35 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         <p className="mt-10 text-sm font-medium tracking-widest text-slate-500 md:text-base">锻造可能，实现梦想</p>
 
         <div className="mt-14 flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
-          {user && (hasLocalAutoSave || hasCloudAutoSave) && (
-            <GlassEntryFrame variant="pill">
-              <GlassCtaButton
-                variant="pill"
-                label="继续冒险"
-                trailing="→"
-                onClick={() => void handleContinueAdventure()}
-              />
-            </GlassEntryFrame>
+          {user && (hasLocalAnySave || hasCloudAnySave) && (
+            <div className="flex flex-col items-center gap-2">
+              {continueSlotOptions.length > 0 ? (
+                <select
+                  value={selectedContinueSlotId}
+                  onChange={(e) => setSelectedContinueSlotId(e.target.value)}
+                  className="h-9 min-w-[220px] rounded-xl border border-white/60 bg-white/70 px-3 text-xs text-slate-700"
+                  aria-label="选择继续的分支存档"
+                  title="选择要继续的人生分支"
+                >
+                  {continueSlotOptions.map((opt) => (
+                    <option key={opt.slotId} value={opt.slotId}>
+                      {opt.label} ({opt.slotId})
+                      {opt.summary
+                        ? ` · D${opt.summary.day}H${opt.summary.hour} · ${opt.summary.playerLocation} · 任务${opt.summary.activeTasksCount}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <GlassEntryFrame variant="pill">
+                <GlassCtaButton
+                  variant="pill"
+                  label="继续冒险"
+                  trailing="→"
+                  onClick={() => void handleContinueAdventure()}
+                />
+              </GlassEntryFrame>
+            </div>
           )}
 
           <GlassEntryFrame variant="pill">

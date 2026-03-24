@@ -16,32 +16,33 @@ import { GENDER_OPTIONS, type GenderOption } from "./constants";
 const PERSONALITY_RE = /^[\u4e00-\u9fa5]{2,6}$/;
 
 const STAT_LABELS: Record<StatType, string> = {
-  sanity: "精神锚点",
-  agility: "思维敏锐度",
-  luck: "灵感直觉",
-  charm: "表达感染力",
-  background: "创作底色",
+  sanity: "精神",
+  agility: "敏捷",
+  luck: "幸运",
+  charm: "魅力",
+  background: "出身",
 };
 
 const STAT_DESCRIPTIONS: Record<StatType, string[]> = {
   sanity: [
-    "精神稳定度的锚点。越稳，越能抵抗叙事侵蚀。",
-    ">20 质变：更容易捕捉隐藏线索与规则裂缝。",
+    "精神越稳，越能抵抗叙事侵蚀。",
+    ">20 可能开启「守灯人」认证路径。",
   ],
   agility: [
-    "思维反应与叙事转折速度。越高，越容易在危机中找到转机。",
-    ">20 质变：有概率触发“灵感闪回”，本轮不消耗时间。",
+    "敏捷越高，越容易在危机中找到转机。",
+    ">20 可能开启「巡迹客」认证路径。",
   ],
   luck: [
-    "灵感与偶然性偏向。越高，越容易得到关键提示。",
-    ">20 质变：探索有机会直接获得更高阶线索。",
+    "幸运越高，越容易得到关键提示。",
+    ">20 可能开启「觅兆者」认证路径。",
   ],
   charm: [
-    "表达感染力。越高，越可能改变对话走向。",
-    ">20 质变：某些对峙会出现“转圜窗口”。",
+    "魅力越高，越可能改变对话走向。",
+    ">20 可能开启「齐日角」认证路径。",
   ],
   background: [
-    "创作底色会影响初始资源与灵感积累倾向。初始原石=10+创作底色。",
+    "出身会影响初始资源与灵感积累倾向。初始原石=10+出身。",
+    ">20 可能开启「溯源师」认证路径。",
   ],
 };
 
@@ -63,7 +64,7 @@ const TALENTS: readonly {
   { key: "时间回溯", title: "时间回溯", cd: "冷却：6 小时", desc: "回溯 1 小时，移除最后两条文本记录。" },
   { key: "命运馈赠", title: "命运馈赠", cd: "冷却：10 小时", desc: "在不改动底层规则的前提下，触发一次高风险的灵感夺取。" },
   { key: "主角光环", title: "主角光环", cd: "冷却：8 小时", desc: "短时间内大幅提高“叙事容错”，并触发 1 次确定性收益事件。" },
-  { key: "生命汇源", title: "生命汇源", cd: "冷却：10 小时", desc: "一次最多恢复 20 点精神锚点。" },
+  { key: "生命汇源", title: "生命汇源", cd: "冷却：10 小时", desc: "一次最多恢复 20 点精神。" },
   { key: "洞察之眼", title: "洞察之眼", cd: "冷却：8 小时", desc: "在叙事中标记一条高确定性的推进路径。" },
   { key: "丧钟回响", title: "丧钟回响", cd: "冷却：30 小时", desc: "对当前场景中的恶意实体施加强制终止（部分存在免疫）。" },
 ] as const;
@@ -409,7 +410,7 @@ export default function CreatePage(props: AppPageDynamicProps) {
             <div>
               <h2 className="text-base font-semibold text-slate-800">叙事维度 · 潜能赋予</h2>
               <p className="mt-1 text-sm text-slate-600">
-                可用点数 {EXTRA_POINTS}，精神锚点初值 10，其余 0。必须刚好用完。初始原石=10+创作底色。
+                可用点数 {EXTRA_POINTS}，精神初值 10，其余 0。必须刚好用完。初始原石=10+出身。
               </p>
             </div>
             <div className={`rounded-xl ${GLASS_INPUT} py-3`}>

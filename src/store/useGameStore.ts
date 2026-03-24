@@ -32,6 +32,15 @@ import {
   normalizeRunSnapshotV2,
   projectSnapshotToLegacy,
 } from "@/lib/state/snapshot/migration";
+import {
+  buildSnapshotSummary,
+  canCreateManualBranch,
+  createAutoSlotIdFor,
+  createBranchSlotId,
+  inferSaveSlotKind,
+  normalizeSaveSlotMeta,
+  type SaveSlotMeta,
+} from "@/lib/state/snapshot/branch";
 import type {
   RunSnapshotV2,
   SnapshotCodexEntry,
@@ -39,6 +48,23 @@ import type {
 } from "@/lib/state/snapshot/types";
 import { runReviveSyncPipeline, type ReviveOption } from "@/lib/revive/pipeline";
 import { tickInfusions } from "@/lib/playRealtime/weaponInfusion";
+import type { ProfessionId, ProfessionStateV1 } from "@/lib/profession/types";
+import { createDefaultProfessionState, PROFESSION_IDS, PROFESSION_REGISTRY } from "@/lib/profession/registry";
+import { certifyProfession, computeProfessionState } from "@/lib/profession/engine";
+import { buildProfessionTrialTask, getProfessionTrialTaskId } from "@/lib/profession/trials";
+import {
+  buildProfessionImprintCodex,
+  buildProfessionIssuerRelationshipDelta,
+  getProfessionImprintFlag,
+} from "@/lib/profession/imprint";
+import {
+  evaluateProfessionActiveReadiness,
+  getProfessionActiveCooldownHours,
+  getProfessionActiveCooldownKey,
+  getProfessionActiveFlagKey,
+  getProfessionActiveSummary,
+  getProfessionPassiveSummary,
+} from "@/lib/profession/benefits";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -67,8 +93,22 @@ function migratePersistedState(
       legacy.runSnapshotV2,
       legacy
     );
+    const professionState = resolveProfessionStateFromSlot(legacy);
+    const slotMeta = normalizeSaveSlotMeta(legacy.slotMeta, {
+      slotId,
+      label: slotId === "main_slot" ? "主线存档" : slotId,
+      kind: inferSaveSlotKind(slotId),
+      createdAt: snapshot.meta.startedAt,
+      updatedAt: snapshot.meta.lastSavedAt,
+      runId: snapshot.meta.runId,
+      parentSlotId: snapshot.meta.branchMeta?.parentSlotId ?? null,
+      branchFromDecisionId: snapshot.meta.branchMeta?.branchFromDecisionId ?? null,
+      snapshotSummary: buildFallbackSummaryFromLegacy(legacy),
+    });
     migratedSlots[slotId] = {
       ...legacy,
+      professionState,
+      slotMeta,
       runSnapshotV2: snapshot,
       ...projectSnapshotToLegacy(snapshot),
     };
@@ -140,6 +180,7 @@ export interface CodexEntry {
 export type GameTask = GameTaskV2;
 
 export interface SaveSlotData {
+  slotMeta?: SaveSlotMeta;
   runSnapshotV2?: RunSnapshotV2;
   stats: Record<StatType, number>;
   inventory: Item[];
@@ -169,6 +210,7 @@ export interface SaveSlotData {
     droppedLootOwnerLedger: Array<{ looterId: string; itemIds: string[] }>;
     lastReviveAnchorId?: string;
   };
+  professionState?: ProfessionStateV1;
 }
 
 export interface AuthUser {
@@ -268,6 +310,7 @@ interface GameState extends IntegrityMetaState {
   securityFallback: { active: boolean; message: string; at: number; reason?: string };
   reviveContext: SaveSlotData["reviveContext"];
   appliedRelationshipTaskIds: string[];
+  professionState: ProfessionStateV1;
   _integrity_dirty: boolean;
   verifyStateIntegrity: () => Promise<boolean>;
   triggerSecurityFallback: (reason?: string) => void;
@@ -359,6 +402,19 @@ interface GameState extends IntegrityMetaState {
   saveGame: (slotId: string) => void;
   loadGame: (slotId: string) => void;
   hydrateFromCloud: (slotId: string, data: SaveSlotData) => void;
+  refreshProfessionState: () => void;
+  certifyProfession: (profession: ProfessionId) => boolean;
+  switchProfession: (profession: ProfessionId) => boolean;
+  activateProfessionActive: () => { ok: boolean; reason?: string; tip?: string };
+  consumeProfessionActiveForTurn: () => ProfessionId | null;
+  createBranchSlot: (input?: { label?: string; branchFromDecisionId?: string | null }) => {
+    ok: boolean;
+    slotId?: string;
+    reason?: string;
+  };
+  renameSaveSlot: (slotId: string, label: string) => boolean;
+  deleteSaveSlot: (slotId: string) => boolean;
+  setCurrentSaveSlot: (slotId: string) => void;
 }
 
 const DEFAULT_STATS: Record<StatType, number> = {
@@ -469,10 +525,43 @@ function clampVolume(n: number): number {
 
 const DEFAULT_WORLD_OVERLAY = createDefaultWorldOverlay();
 
+function buildFallbackSummaryFromLegacy(legacy: SaveSlotData): ReturnType<typeof buildSnapshotSummary> {
+  return buildSnapshotSummary({
+    day: legacy.time?.day ?? 0,
+    hour: legacy.time?.hour ?? 0,
+    playerLocation: legacy.playerLocation ?? "B1_SafeZone",
+    activeTasksCount: (legacy.tasks ?? []).filter((t) => t.status === "active" || t.status === "available").length,
+    mainThreatByFloor: legacy.mainThreatByFloor ?? DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
+    dynamicNpcStates: legacy.dynamicNpcStates ?? {},
+    reviveContext: legacy.reviveContext,
+  });
+}
+
+function buildProfessionWorldFlags(base: Record<string, boolean>, profession: ProfessionStateV1): Record<string, boolean> {
+  const next = { ...base };
+  for (const id of PROFESSION_IDS) {
+    if (profession.progressByProfession?.[id]?.certified) {
+      next[getProfessionImprintFlag(id)] = true;
+    }
+  }
+  if (profession.currentProfession) {
+    next[`profession.current.${profession.currentProfession}`] = true;
+  }
+  return next;
+}
+
+function resolveProfessionStateFromSlot(data: SaveSlotData | undefined): ProfessionStateV1 {
+  const fromSlot = data?.professionState;
+  if (fromSlot && typeof fromSlot === "object" && !Array.isArray(fromSlot)) return fromSlot;
+  const fromSnapshot = data?.runSnapshotV2?.profession;
+  if (fromSnapshot && typeof fromSnapshot === "object" && !Array.isArray(fromSnapshot)) return fromSnapshot;
+  return createDefaultProfessionState();
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     checksumMiddleware((set, get) => ({
-      currentSaveSlot: "slot_1",
+      currentSaveSlot: "main_slot",
       saveSlots: {},
       isHydrated: false,
       user: null,
@@ -520,6 +609,7 @@ export const useGameStore = create<GameState>()(
         droppedLootOwnerLedger: [],
       },
       appliedRelationshipTaskIds: [],
+      professionState: createDefaultProfessionState(),
       _checksum_fingerprint: "",
       _integrity_dirty: false,
       verifyStateIntegrity: async () => {
@@ -629,6 +719,7 @@ export const useGameStore = create<GameState>()(
         })),
       resetForNewGame: () =>
         set({
+          currentSaveSlot: "main_slot",
           playerName: "",
           gender: "",
           height: 170,
@@ -653,12 +744,12 @@ export const useGameStore = create<GameState>()(
           historicalMaxFloorScore: 0,
           dynamicNpcStates: {},
           mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
-          equippedWeapon: null,
           intrusionFlashUntil: 0,
           isGameStarted: false,
           currentBgm: "bgm_1_calm",
           activeMenu: null,
           appliedRelationshipTaskIds: [],
+          professionState: createDefaultProfessionState(),
           reviveContext: {
             pending: false,
             deathLocation: null,
@@ -670,11 +761,12 @@ export const useGameStore = create<GameState>()(
 
       markGameOver: () =>
         set((s) => {
-          const { auto_save: _autoSave, ...rest } = s.saveSlots ?? {};
-          void _autoSave;
+          const autoSlot = createAutoSlotIdFor(s.currentSaveSlot || "main_slot");
+          const next = { ...(s.saveSlots ?? {}) };
+          delete next[autoSlot];
           return {
             isGameStarted: false,
-            saveSlots: rest,
+            saveSlots: next,
           };
         }),
 
@@ -690,6 +782,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           appliedRelationshipTaskIds: [],
+          professionState: createDefaultProfessionState(),
         })),
       recordDeathForRevive: (cause, killerId) =>
         set((s) => {
@@ -770,6 +863,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           appliedRelationshipTaskIds: [],
+          professionState: createDefaultProfessionState(),
         })),
 
       destroySaveData: () =>
@@ -853,10 +947,22 @@ export const useGameStore = create<GameState>()(
               activated,
               s.appliedRelationshipTaskIds ?? []
             );
+            const professionState = computeProfessionState({
+              prev: s.professionState,
+              stats: s.stats ?? DEFAULT_STATS,
+              tasks: activated,
+              historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+              mainThreatByFloor: s.mainThreatByFloor ?? {},
+              codex: rel.codex ?? {},
+              inventoryCount: (s.inventory ?? []).length,
+              warehouseCount: (s.warehouse ?? []).length,
+              equippedWeapon: s.equippedWeapon ?? null,
+            });
             return {
               tasks: activated,
               codex: rel.codex,
               appliedRelationshipTaskIds: rel.appliedTaskIds,
+              professionState,
             };
           }
           const activated = activateClaimableHiddenTasks([...(s.tasks ?? []), withLedger]);
@@ -865,10 +971,22 @@ export const useGameStore = create<GameState>()(
             activated,
             s.appliedRelationshipTaskIds ?? []
           );
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: activated,
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: rel.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
           return {
             tasks: activated,
             codex: rel.codex,
             appliedRelationshipTaskIds: rel.appliedTaskIds,
+            professionState,
           };
         }),
       updateTaskStatus: (taskId, status) =>
@@ -882,10 +1000,22 @@ export const useGameStore = create<GameState>()(
             activated,
             s.appliedRelationshipTaskIds ?? []
           );
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: activated,
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: rel.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
           return {
             tasks: activated,
             codex: rel.codex,
             appliedRelationshipTaskIds: rel.appliedTaskIds,
+            professionState,
           };
         }),
       updateTask: (taskPatch) =>
@@ -901,19 +1031,43 @@ export const useGameStore = create<GameState>()(
             activated,
             s.appliedRelationshipTaskIds ?? []
           );
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: activated,
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: rel.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
           return {
             tasks: activated,
             codex: rel.codex,
             appliedRelationshipTaskIds: rel.appliedTaskIds,
+            professionState,
           };
         }),
       setPlayerLocation: (loc) =>
         set((s) => {
           const nextScore = resolveFloorScore(loc);
           const prevMax = s.historicalMaxFloorScore ?? 0;
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: s.tasks ?? [],
+            historicalMaxFloorScore: Math.max(prevMax, nextScore),
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: s.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
           return {
             playerLocation: loc,
             historicalMaxFloorScore: Math.max(prevMax, nextScore),
+            professionState,
           };
         }),
       updateNpcLocation: (npcId, location) =>
@@ -963,7 +1117,18 @@ export const useGameStore = create<GameState>()(
                 : {}),
             };
           }
-          return { mainThreatByFloor: next };
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: s.tasks ?? [],
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: next,
+            codex: s.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
+          return { mainThreatByFloor: next, professionState };
         }),
       applyWeaponUpdates: (updates) =>
         set((s) => {
@@ -1000,7 +1165,18 @@ export const useGameStore = create<GameState>()(
               next.repairable = row.repairable;
             }
           }
-          return { equippedWeapon: next };
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: s.tasks ?? [],
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: s.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: next,
+          });
+          return { equippedWeapon: next, professionState };
         }),
       killNpc: (npcId) =>
         set((s) => ({
@@ -1052,7 +1228,18 @@ export const useGameStore = create<GameState>()(
             };
             next[key] = merged;
           }
-          return { codex: next };
+          const professionState = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: s.tasks ?? [],
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: next,
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
+          return { codex: next, professionState };
         }),
 
       pushLog: (entry) =>
@@ -1202,6 +1389,7 @@ export const useGameStore = create<GameState>()(
           equippedWeapon: null,
           intrusionFlashUntil: 0,
           isGameStarted: true,
+          professionState: createDefaultProfessionState(),
         });
       },
 
@@ -1214,13 +1402,31 @@ export const useGameStore = create<GameState>()(
 
         const stats = s.stats ?? DEFAULT_STATS;
         const statsText =
-          `理智[${stats.sanity}]，` +
+          `精神[${stats.sanity}]，` +
           `敏捷[${stats.agility}]，` +
           `幸运[${stats.luck}]，` +
           `魅力[${stats.charm}]，` +
           `出身[${stats.background}]`;
 
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
+        const prof = computeProfessionState({
+          prev: s.professionState,
+          stats,
+          tasks: s.tasks ?? [],
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+          codex: s.codex ?? {},
+          inventoryCount: (s.inventory ?? []).length,
+          warehouseCount: (s.warehouse ?? []).length,
+          equippedWeapon: s.equippedWeapon ?? null,
+        });
+        const readiness = evaluateProfessionActiveReadiness(prof.currentProfession, {
+          location: s.playerLocation ?? "B1_SafeZone",
+          hasHotThreat: Object.values(s.mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
+          activeTasksCount: (s.tasks ?? []).filter((t) => t.status === "active" || t.status === "available").length,
+          relationshipUpdatable: Object.values(s.codex ?? {}).some((x) => x.type === "npc"),
+          hasAnomalyCodex: Object.values(s.codex ?? {}).some((x) => x.type === "anomaly"),
+        });
 
         const time = s.time ?? { day: 0, hour: 0 };
         const npcStates = s.dynamicNpcStates ?? {};
@@ -1240,6 +1446,30 @@ export const useGameStore = create<GameState>()(
           `用户位置[${s.playerLocation}]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
+          `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]，可认证[${
+            PROFESSION_IDS.filter((id) => prof.eligibilityByProfession[id]).join("/") || "无"
+          }]，被动[${prof.activePerks.join("/") || "无"}]。` +
+          `职业收益：当前[${prof.currentProfession ?? "无"}]，被动摘要[${getProfessionPassiveSummary(prof.currentProfession)}]，主动摘要[${getProfessionActiveSummary(
+            prof.currentProfession
+          )}]，主动可用[${
+            (() => {
+              if (!prof.currentProfession) return "0";
+              const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
+              const cdKey = getProfessionActiveCooldownKey(prof.currentProfession);
+              const cd = Number(prof.professionCooldowns?.[cdKey] ?? 0);
+              return cd <= nowHour ? "1" : "0";
+            })()
+          }]，命中率[${readiness.hitRate}]，提示[${readiness.hint}]。` +
+          `职业进度：${PROFESSION_IDS.map((id) => {
+            const p = prof.progressByProfession[id] ?? {
+              statQualified: false,
+              behaviorEvidenceCount: 0,
+              behaviorEvidenceTarget: 2,
+              trialTaskCompleted: false,
+              certified: false,
+            };
+            return `${id}[属性${p.statQualified ? "1" : "0"}|行为${p.behaviorEvidenceCount}/${p.behaviorEvidenceTarget}|试炼${p.trialTaskCompleted ? "1" : "0"}|认证${p.certified ? "1" : "0"}]`;
+          }).join("，")}。` +
           `行囊道具：${inv || "空"}。` +
           (() => {
             const wh = s.warehouse ?? [];
@@ -1343,16 +1573,315 @@ export const useGameStore = create<GameState>()(
           narrative: "一切陷入黑暗，致命的危机正在向你逼近。",
         };
       },
+      refreshProfessionState: () =>
+        set((s) => {
+          const computed = computeProfessionState({
+            prev: s.professionState,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: s.tasks ?? [],
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: s.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
+          let nextTasks = [...(s.tasks ?? [])];
+          for (const id of PROFESSION_IDS) {
+            const p = computed.progressByProfession[id];
+            const taskId = p.trialTaskId ?? getProfessionTrialTaskId(id);
+            const exists = nextTasks.some((t) => t.id === taskId);
+            if (!exists && p.statQualified && p.behaviorQualified && !p.trialTaskCompleted) {
+              nextTasks.push(buildProfessionTrialTask(id));
+            }
+          }
+          const recomputed = computeProfessionState({
+            prev: computed,
+            stats: s.stats ?? DEFAULT_STATS,
+            tasks: nextTasks,
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            mainThreatByFloor: s.mainThreatByFloor ?? {},
+            codex: s.codex ?? {},
+            inventoryCount: (s.inventory ?? []).length,
+            warehouseCount: (s.warehouse ?? []).length,
+            equippedWeapon: s.equippedWeapon ?? null,
+          });
+          return { professionState: recomputed, tasks: nextTasks };
+        }),
+      certifyProfession: (profession) => {
+        const s = get();
+        const computed = computeProfessionState({
+          prev: s.professionState,
+          stats: s.stats ?? DEFAULT_STATS,
+          tasks: s.tasks ?? [],
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+          codex: s.codex ?? {},
+          inventoryCount: (s.inventory ?? []).length,
+          warehouseCount: (s.warehouse ?? []).length,
+          equippedWeapon: s.equippedWeapon ?? null,
+        });
+        if (!computed.eligibilityByProfession[profession]) return false;
+        const nextRaw = certifyProfession(computed, profession);
+        const next: ProfessionStateV1 = {
+          ...nextRaw,
+          professionFlags: {
+            ...(nextRaw.professionFlags ?? {}),
+            [getProfessionImprintFlag(profession)]: true,
+          },
+        };
+        const imprint = buildProfessionImprintCodex(profession);
+        const rel = buildProfessionIssuerRelationshipDelta(profession);
+        const codexPrev = s.codex ?? {};
+        const relPrev = codexPrev[rel.npcId] ?? {
+          id: rel.npcId,
+          name: rel.npcName,
+          type: "npc" as const,
+        };
+        const codex = {
+          ...codexPrev,
+          [imprint.id]: {
+            ...(codexPrev[imprint.id] ?? {
+              id: imprint.id,
+              name: imprint.name,
+              type: imprint.type,
+            }),
+            ...imprint,
+          },
+          [rel.npcId]: {
+            ...relPrev,
+            favorability: clampRelation((relPrev.favorability ?? 0) + rel.favorabilityDelta),
+          },
+        };
+        set({ professionState: next, codex });
+        return true;
+      },
+      switchProfession: (profession) => {
+        const s = get();
+        const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
+        const curCd = Number(s.professionState?.professionCooldowns?.switchProfession ?? 0);
+        if (Number.isFinite(curCd) && curCd > nowHour) return false;
+        const state = s.professionState ?? createDefaultProfessionState();
+        if (!state.unlockedProfessions.includes(profession)) return false;
+        const next: ProfessionStateV1 = {
+          ...state,
+          currentProfession: profession,
+          activePerks: [PROFESSION_REGISTRY[profession].passivePerkId],
+          professionCooldowns: {
+            ...(state.professionCooldowns ?? {}),
+            switchProfession: nowHour + 24,
+          },
+        };
+        set({ professionState: next });
+        return true;
+      },
+      activateProfessionActive: () => {
+        const s = get();
+        const prof = s.professionState ?? createDefaultProfessionState();
+        const current = prof.currentProfession;
+        if (!current) return { ok: false, reason: "当前无职业，无法发动主动。" };
+        const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
+        const cdKey = getProfessionActiveCooldownKey(current);
+        const flagKey = getProfessionActiveFlagKey(current);
+        const cooldownTo = Number(prof.professionCooldowns?.[cdKey] ?? 0);
+        if (cooldownTo > nowHour) return { ok: false, reason: `职业主动冷却中（剩余${cooldownTo - nowHour}小时）` };
+        const location = s.playerLocation ?? "B1_SafeZone";
+        const inSafeFloor = location.startsWith("B1_");
+        const highThreatPresent = Object.values(s.mainThreatByFloor ?? {}).some(
+          (x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"
+        );
+        const contextTip =
+          current === "守灯人"
+            ? (highThreatPresent ? "建议本回合执行压制/侦测动作，最大化减压收益。" : "当前威胁压力较低，建议在高压回合前再启用。")
+            : current === "巡迹客"
+              ? (inSafeFloor ? "建议在跨楼层移动或撤离前启用，收益更高。" : "建议本回合优先执行移动或撤离动作。")
+              : current === "觅兆者"
+                ? "建议本回合进行前兆识别/弱点验证，触发额外线索补记。"
+                : current === "齐日角"
+                  ? "建议本回合走交涉/关系更新动作，触发好感微增益。"
+                  : "建议本回合推进调查或图鉴更新，触发溯源注记。";
+        const next: ProfessionStateV1 = {
+          ...prof,
+          professionFlags: {
+            ...(prof.professionFlags ?? {}),
+            [flagKey]: true,
+          },
+          professionCooldowns: {
+            ...(prof.professionCooldowns ?? {}),
+            [cdKey]: nowHour + getProfessionActiveCooldownHours(current),
+          },
+        };
+        set({ professionState: next });
+        return { ok: true, tip: contextTip };
+      },
+      consumeProfessionActiveForTurn: () => {
+        const s = get();
+        const prof = s.professionState ?? createDefaultProfessionState();
+        const current = prof.currentProfession;
+        if (!current) return null;
+        const flagKey = getProfessionActiveFlagKey(current);
+        if (!prof.professionFlags?.[flagKey]) return null;
+        const next: ProfessionStateV1 = {
+          ...prof,
+          professionFlags: {
+            ...(prof.professionFlags ?? {}),
+            [flagKey]: false,
+          },
+        };
+        set({ professionState: next });
+        return current;
+      },
+
+      setCurrentSaveSlot: (slotId) =>
+        set((s) => {
+          if (!slotId || !s.saveSlots?.[slotId]) return {};
+          return { currentSaveSlot: slotId };
+        }),
+      renameSaveSlot: (slotId, label) => {
+        const name = String(label ?? "").trim();
+        if (!slotId || !name) return false;
+        const s = get();
+        const slot = s.saveSlots?.[slotId];
+        if (!slot) return false;
+        const nextMeta = normalizeSaveSlotMeta(slot.slotMeta, {
+          slotId,
+          label: name,
+          kind: inferSaveSlotKind(slotId),
+          createdAt: slot.runSnapshotV2?.meta?.startedAt ?? new Date().toISOString(),
+          runId: slot.runSnapshotV2?.meta?.runId ?? createRunId(),
+          parentSlotId: slot.runSnapshotV2?.meta?.branchMeta?.parentSlotId ?? null,
+          branchFromDecisionId: slot.runSnapshotV2?.meta?.branchMeta?.branchFromDecisionId ?? null,
+          snapshotSummary: buildFallbackSummaryFromLegacy(slot),
+        });
+        set((prev) => ({
+          saveSlots: {
+            ...prev.saveSlots,
+            [slotId]: {
+              ...slot,
+              slotMeta: { ...nextMeta, label: name, updatedAt: new Date().toISOString() },
+            },
+          },
+        }));
+        return true;
+      },
+      deleteSaveSlot: (slotId) => {
+        const s = get();
+        if (!slotId || !s.saveSlots?.[slotId]) return false;
+        const ids = Object.keys(s.saveSlots ?? {}).filter((id) => !id.startsWith("auto_"));
+        if (ids.length <= 1) return false;
+        if (slotId === s.currentSaveSlot) return false;
+        const next = { ...s.saveSlots };
+        delete next[slotId];
+        const autoPair = createAutoSlotIdFor(slotId);
+        if (autoPair !== slotId) delete next[autoPair];
+        set({ saveSlots: next });
+        return true;
+      },
+      createBranchSlot: (input) => {
+        const s = get();
+        const location = s.playerLocation ?? "B1_SafeZone";
+        const floorId = location.startsWith("B1_")
+          ? "B1"
+          : location.startsWith("B2_")
+            ? "B2"
+            : location.match(/^(\d)F_/)?.[1] ?? "";
+        const currentThreat = floorId ? (s.mainThreatByFloor?.[floorId] ?? null) : null;
+        const anchorUnlocks =
+          s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2?.world?.anchorUnlocks ??
+          { B1: true, "1": true, "7": false };
+        const guard = canCreateManualBranch({
+          playerLocation: location,
+          revivePending: Boolean(s.reviveContext?.pending),
+          isAlive: (s.stats?.sanity ?? 0) > 0,
+          anchorUnlocks,
+          currentFloorThreat: currentThreat,
+        });
+        if (!guard.ok) return { ok: false, reason: guard.reason ?? "当前状态不可创建分支" };
+        const existing = Object.keys(s.saveSlots ?? {});
+        const slotId = createBranchSlotId(existing);
+        const nowIso = new Date().toISOString();
+        const branchLabel = String(input?.label ?? "").trim() || `分支 ${slotId.replace("branch_", "")}`;
+        const parentSlotId = s.currentSaveSlot || "main_slot";
+        set((prev) => ({ currentSaveSlot: slotId, saveSlots: { ...prev.saveSlots } }));
+        get().saveGame(slotId);
+        set((prev) => {
+          const slot = prev.saveSlots?.[slotId];
+          if (!slot) return {};
+          const normalized = normalizeSaveSlotMeta(slot.slotMeta, {
+            slotId,
+            label: branchLabel,
+            kind: inferSaveSlotKind(slotId),
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            runId: slot.runSnapshotV2?.meta?.runId ?? createRunId(),
+            parentSlotId,
+            branchFromDecisionId: input?.branchFromDecisionId ?? null,
+            snapshotSummary: buildFallbackSummaryFromLegacy(slot),
+          });
+          return {
+            saveSlots: {
+              ...prev.saveSlots,
+              [slotId]: {
+                ...slot,
+                slotMeta: normalized,
+              },
+            },
+          };
+        });
+        return { ok: true, slotId };
+      },
 
       saveGame: (slotId) => {
         const s = get();
+        const effectiveSlotId = slotId || s.currentSaveSlot || "main_slot";
         const safeStats = s.stats ?? DEFAULT_STATS;
+        const computedProfession = computeProfessionState({
+          prev: s.professionState,
+          stats: safeStats,
+          tasks: s.tasks ?? [],
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+          codex: s.codex ?? {},
+          inventoryCount: (s.inventory ?? []).length,
+          warehouseCount: (s.warehouse ?? []).length,
+          equippedWeapon: s.equippedWeapon ?? null,
+        });
         const overlay = createDefaultWorldOverlay();
-        const snapshot = buildRunSnapshotV2({
+        const summary = buildSnapshotSummary({
+          day: s.time?.day ?? 0,
+          hour: s.time?.hour ?? 0,
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          activeTasksCount: (s.tasks ?? []).filter((t) => t.status === "active" || t.status === "available").length,
+          mainThreatByFloor: s.mainThreatByFloor ?? overlay.mainThreatByFloor,
+          dynamicNpcStates: s.dynamicNpcStates ?? {},
+          reviveContext: s.reviveContext,
+        });
+        const prevMeta = s.saveSlots?.[effectiveSlotId]?.slotMeta;
+        const baseMeta = normalizeSaveSlotMeta(prevMeta, {
+          slotId: effectiveSlotId,
+          label:
+            prevMeta?.label ??
+            (effectiveSlotId === "main_slot"
+              ? "主线存档"
+              : effectiveSlotId.startsWith("branch_")
+                ? `分支 ${effectiveSlotId.replace("branch_", "")}`
+                : effectiveSlotId),
+          kind: inferSaveSlotKind(effectiveSlotId),
+          createdAt: prevMeta?.createdAt ?? new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           runId:
-            s.saveSlots?.[slotId]?.runSnapshotV2?.meta?.runId ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.runId ??
             createRunId(),
-          startedAt: s.saveSlots?.[slotId]?.runSnapshotV2?.meta?.startedAt,
+          parentSlotId: prevMeta?.parentSlotId ?? null,
+          branchFromDecisionId: prevMeta?.branchFromDecisionId ?? null,
+          snapshotSummary: summary,
+        });
+        const snapshot = buildRunSnapshotV2({
+          slotMeta: baseMeta,
+          runId:
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.runId ??
+            createRunId(),
+          startedAt: s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.startedAt,
           player: {
             name: s.playerName ?? "",
             gender: s.gender ?? "",
@@ -1368,22 +1897,26 @@ export const useGameStore = create<GameState>()(
           alive: (safeStats.sanity ?? 0) > 0,
           equippedWeapon: s.equippedWeapon ?? null,
           deathCount:
-            s.saveSlots?.[slotId]?.runSnapshotV2?.player?.deathCount ?? 0,
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.player?.deathCount ?? 0,
           day: s.time?.day ?? 0,
           hour: s.time?.hour ?? 0,
           worldFlags: {
-            ...overlay.worldFlags,
+            ...buildProfessionWorldFlags(overlay.worldFlags, computedProfession),
+            ...buildProfessionWorldFlags(
+              s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.worldFlags ?? {},
+              computedProfession
+            ),
             darkMoonActive: (s.time?.day ?? 0) >= 3,
           },
           discoveredSecrets:
-            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.discoveredSecrets ?? [],
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.discoveredSecrets ?? [],
           anchorUnlocks:
-            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.anchorUnlocks ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.anchorUnlocks ??
             overlay.anchorUnlocks,
           pendingEvents:
-            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.pendingEvents ?? [],
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.pendingEvents ?? [],
           floorThreatTier:
-            s.saveSlots?.[slotId]?.runSnapshotV2?.world?.floorThreatTier ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.floorThreatTier ??
             overlay.floorThreatTier,
           mainThreatByFloor:
             s.mainThreatByFloor ??
@@ -1394,9 +1927,16 @@ export const useGameStore = create<GameState>()(
             ...t,
             status: t.status ?? "active",
           })),
+          profession: computedProfession,
         });
         const legacyProjection = projectSnapshotToLegacy(snapshot);
         const data: SaveSlotData = {
+          slotMeta: {
+            ...baseMeta,
+            runId: snapshot.meta.runId,
+            updatedAt: snapshot.meta.lastSavedAt,
+            snapshotSummary: summary,
+          },
           runSnapshotV2: snapshot,
           stats: JSON.parse(JSON.stringify(safeStats)),
           inventory: JSON.parse(JSON.stringify(s.inventory)),
@@ -1433,11 +1973,51 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: JSON.parse(
             JSON.stringify(s.appliedRelationshipTaskIds ?? [])
           ),
+          professionState: JSON.parse(JSON.stringify(computedProfession)),
           ...legacyProjection,
         };
-        set((prev) => ({ saveSlots: { ...prev.saveSlots, [slotId]: data } }));
+        const summaryWithProfession = {
+          ...summary,
+          activeProfession: computedProfession.currentProfession ?? null,
+        };
+        data.slotMeta = {
+          ...(data.slotMeta ?? baseMeta),
+          snapshotSummary: summaryWithProfession,
+        };
+        set((prev) => ({ saveSlots: { ...prev.saveSlots, [effectiveSlotId]: data } }));
+        const autoSlotId = createAutoSlotIdFor(effectiveSlotId);
+        if (autoSlotId !== effectiveSlotId) {
+          const autoMeta: SaveSlotMeta = {
+            ...data.slotMeta!,
+            slotId: autoSlotId,
+            kind: "auto_branch",
+            label: `${data.slotMeta?.label ?? "自动分支"}（自动）`,
+            updatedAt: snapshot.meta.lastSavedAt,
+          };
+          set((prev) => ({
+            saveSlots: {
+              ...prev.saveSlots,
+              [autoSlotId]: { ...data, slotMeta: autoMeta },
+            },
+          }));
+        }
         void import("@/app/actions/save")
-          .then(({ syncSaveToCloud }) => syncSaveToCloud(slotId, data))
+          .then(({ syncSaveToCloud }) =>
+            Promise.all([
+              syncSaveToCloud(effectiveSlotId, data),
+              autoSlotId !== effectiveSlotId
+                ? syncSaveToCloud(autoSlotId, {
+                    ...data,
+                    slotMeta: {
+                      ...data.slotMeta!,
+                      slotId: autoSlotId,
+                      kind: "auto_branch",
+                      label: `${data.slotMeta?.label ?? "自动分支"}（自动）`,
+                    },
+                  })
+                : Promise.resolve({ ok: true }),
+            ])
+          )
           .catch(() => undefined);
       },
 
@@ -1449,16 +2029,41 @@ export const useGameStore = create<GameState>()(
           data
         );
         const projected = projectSnapshotToLegacy(normalizedSnapshot);
+        const professionStateRaw = resolveProfessionStateFromSlot(data);
+        const professionState = computeProfessionState({
+          prev: professionStateRaw,
+          stats: (projected.stats ?? data.stats ?? DEFAULT_STATS),
+          tasks: (projected.tasks ?? data.tasks ?? []),
+          historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
+          mainThreatByFloor: normalizedSnapshot.world.mainThreatByFloor ?? {},
+          codex: (projected.codex ?? data.codex ?? {}),
+          inventoryCount: (projected.inventory ?? data.inventory ?? []).length,
+          warehouseCount: (projected.warehouse ?? data.warehouse ?? []).length,
+          equippedWeapon: normalizedSnapshot.player.equippedWeapon ?? data.equippedWeapon ?? null,
+        });
         const talentCooldowns =
           data.talentCooldowns && typeof data.talentCooldowns === "object"
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
         const safeStats = projected.stats ?? data.stats ?? DEFAULT_STATS;
+        const slotMeta = normalizeSaveSlotMeta(data.slotMeta, {
+          slotId,
+          label: slotId === "main_slot" ? "主线存档" : slotId,
+          kind: inferSaveSlotKind(slotId),
+          createdAt: normalizedSnapshot.meta.branchMeta?.createdAt ?? normalizedSnapshot.meta.startedAt,
+          updatedAt: normalizedSnapshot.meta.lastSavedAt,
+          runId: normalizedSnapshot.meta.runId,
+          parentSlotId: normalizedSnapshot.meta.branchMeta?.parentSlotId ?? null,
+          branchFromDecisionId: normalizedSnapshot.meta.branchMeta?.branchFromDecisionId ?? null,
+          snapshotSummary: buildFallbackSummaryFromLegacy(data),
+        });
         set({
+          currentSaveSlot: slotId,
           saveSlots: {
             ...get().saveSlots,
             [slotId]: {
               ...data,
+              slotMeta,
               runSnapshotV2: normalizedSnapshot,
               ...projected,
             },
@@ -1518,6 +2123,7 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: JSON.parse(
             JSON.stringify(data.appliedRelationshipTaskIds ?? [])
           ),
+          professionState: JSON.parse(JSON.stringify(professionState)),
           playerName: projected.playerName ?? get().playerName,
           gender: projected.gender ?? get().gender,
           height: projected.height ?? get().height,
@@ -1531,11 +2137,34 @@ export const useGameStore = create<GameState>()(
           data
         );
         const projected = projectSnapshotToLegacy(normalizedSnapshot);
+        const professionStateRaw = resolveProfessionStateFromSlot(data);
+        const professionState = computeProfessionState({
+          prev: professionStateRaw,
+          stats: (projected.stats ?? data.stats ?? DEFAULT_STATS),
+          tasks: (projected.tasks ?? data.tasks ?? []),
+          historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
+          mainThreatByFloor: normalizedSnapshot.world.mainThreatByFloor ?? {},
+          codex: (projected.codex ?? data.codex ?? {}),
+          inventoryCount: (projected.inventory ?? data.inventory ?? []).length,
+          warehouseCount: (projected.warehouse ?? data.warehouse ?? []).length,
+          equippedWeapon: normalizedSnapshot.player.equippedWeapon ?? data.equippedWeapon ?? null,
+        });
         const talentCooldowns =
           data.talentCooldowns && typeof data.talentCooldowns === "object"
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
         const safeStats = projected.stats ?? data.stats ?? DEFAULT_STATS;
+        const slotMeta = normalizeSaveSlotMeta(data.slotMeta, {
+          slotId,
+          label: slotId === "main_slot" ? "主线存档" : slotId,
+          kind: inferSaveSlotKind(slotId),
+          createdAt: normalizedSnapshot.meta.branchMeta?.createdAt ?? normalizedSnapshot.meta.startedAt,
+          updatedAt: normalizedSnapshot.meta.lastSavedAt,
+          runId: normalizedSnapshot.meta.runId,
+          parentSlotId: normalizedSnapshot.meta.branchMeta?.parentSlotId ?? null,
+          branchFromDecisionId: normalizedSnapshot.meta.branchMeta?.branchFromDecisionId ?? null,
+          snapshotSummary: buildFallbackSummaryFromLegacy(data),
+        });
         set((s) => {
           const loadedLogs = data.logs ?? [];
           const hasProgress = Array.isArray(loadedLogs) && loadedLogs.length > 0;
@@ -1546,6 +2175,7 @@ export const useGameStore = create<GameState>()(
               ...s.saveSlots,
               [slotId]: {
                 ...data,
+                slotMeta,
                 runSnapshotV2: normalizedSnapshot,
                 ...projected,
               },
@@ -1613,6 +2243,7 @@ export const useGameStore = create<GameState>()(
             appliedRelationshipTaskIds: JSON.parse(
               JSON.stringify(data.appliedRelationshipTaskIds ?? s.appliedRelationshipTaskIds ?? [])
             ),
+            professionState: JSON.parse(JSON.stringify(professionState)),
             playerName: projected.playerName ?? s.playerName,
             gender: projected.gender ?? s.gender,
             height: projected.height ?? s.height,
@@ -1675,6 +2306,7 @@ export const useGameStore = create<GameState>()(
           droppedLootOwnerLedger: [],
         },
         appliedRelationshipTaskIds: s.appliedRelationshipTaskIds ?? [],
+        professionState: s.professionState ?? createDefaultProfessionState(),
         isGameStarted: s.isGameStarted ?? false,
         volume: clampVolume(s.volume ?? 50),
       }),

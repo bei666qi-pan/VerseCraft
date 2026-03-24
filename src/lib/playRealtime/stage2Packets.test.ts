@@ -50,11 +50,14 @@ test("stage2 floor/tactical packets are compact and scenario-scoped", () => {
     runtimeLoreHints: ["- [rule] x"],
     nearbyNpcIds: ["N-008"],
     threatPhase: "active",
+    currentProfession: "守灯人",
   });
   assert.ok(Array.isArray(tactical.nextTurnFocus));
   assert.ok(Array.isArray(tactical.requiredWritebacks));
   assert.ok(tactical.requiredWritebacks.includes("weapon_updates"));
   assert.ok(tactical.requiredWritebacks.includes("main_threat_updates"));
   assert.ok(tactical.requiredWritebacks.includes("task_updates"));
+  assert.equal(tactical.professionTacticalBias, "守灯人");
+  assert.ok(tactical.nextTurnFocus.some((x) => x.includes("守灯人")));
 });
 
