@@ -32,7 +32,8 @@ export function buildWorldKnowledgeRetrievalResultKey(args: {
   return `${CACHE_PREFIX}:retrieval:${args.userId ?? "anon"}:wr${args.worldRevision.toString()}:${args.requestHash}`;
 }
 
-export function buildWorldKnowledgeQueryKey(_query: RetrievalQuery): string {
+export function buildWorldKnowledgeQueryKey(query: RetrievalQuery): string {
+  void query;
   // scaffold：后续由上层提供 requestHash（或按 query 结构 hash）
   return `${CACHE_PREFIX}:queryKey:todo`;
 }

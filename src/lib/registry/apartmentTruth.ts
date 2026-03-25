@@ -1,71 +1,31 @@
 // src/lib/registry/apartmentTruth.ts
-// 如月公寓真相档案 — 唯一真相来源，DM 必须严格遵循，严禁自行脑补或发挥
+// 如月公寓真相档案（Root Canon）：仅保留不可变根因果。
 
-/** 公寓真相：固定事实、地理、机制、时间线。DM 只能据此演绎，不可新增或修改。 */
+import { buildImmutableRootCanonBlock, buildStableMechanismAnchorBlock } from "./rootCanon";
+import { buildSystemCanonBlock } from "./worldOrderRegistry";
+
+/** 公寓根真相：保持短小、稳定、不可变。更多事实走结构化 registry + reveal tiers。 */
 export const APARTMENT_TRUTH = `
-## 【如月公寓真相档案（固化·不可变更）】
+## 【如月公寓根真相（不可变）】
 
-【公寓本质】
-如月公寓是一栋高维拟态消化器官。建筑本体即「肠胃」，所有房间、走廊、管道均为其消化系统的一部分。红色自来水是胃酸；墙壁内是肠壁与血管；NPC 被同化是消化过程。出口在地下二层，由深渊守门人把守。
+${buildImmutableRootCanonBlock()}
 
-【世界观真相（根源·DM 必知·严禁主动泄露）】
-公寓诡异化受规则权柄【空间】碎片泄露引发。空间泄露使整栋公寓被转移至龙的胃中。龙的魔力侵蚀公寓与其中居民。诡异是彻底疯掉的徘徊者（徘徊者被完全同化后失去人性，沦为杀戮机器）。深渊守门人（A-008）曾是人类，担任公寓门卫。玩家走出公寓（通过地下二层出口门离开）即返回现实世界，完成通关。公寓的集体意识源自龙意识的残留；【暗月】与【终焉】之所以成为禁忌词，因龙的意识对这两词极度敏感。
+【稳定机制锚点】
+${buildStableMechanismAnchorBlock()}
+`.trim();
 
-【建筑结构（固定）】
-- 地下二层：出口通道、守门人结界。唯一实体为 A-008 深渊守门人。
-- 地下一层：储物间、洗衣房、配电间。绝对安全区，无诡异。玩家初始复苏地。
-- 1 楼：门厅、物业办公室、保安室、信箱区。陈婆婆长椅、物业经理办公室、新住户引导台。
-- 2 楼：201 诊室（林医生）、202 室、203 室、走廊。
-- 3 楼：301 室、302 室、楼梯间。阿花踢毽子的回响。
-- 4 楼：401 室（张先生）、402 室、走廊尽头。盲人呼唤大黄之处。
-- 5 楼：501 室、502 室、503 画室（独居画家）。
-- 6 楼：601 室、602 室（双胞胎）、楼梯间。
-- 7 楼：701 室、走廊长椅（夜读老人）、厨房（厨师）、紧闭门扉区。
+/** 系统因果档案：解释玩法为何成立（给 world knowledge 与检索层使用）。 */
+export const APARTMENT_SYSTEM_CANON = `
+## 【如月公寓系统因果档案】
 
-【房间节点（固定，严禁新增）】
-B2: B2_Passage, B2_GatekeeperDomain
-B1: B1_SafeZone, B1_Storage, B1_Laundry, B1_PowerRoom
-1: 1F_Lobby, 1F_PropertyOffice, 1F_GuardRoom, 1F_Mailboxes
-2: 2F_Clinic201, 2F_Room202, 2F_Room203, 2F_Corridor
-3: 3F_Room301, 3F_Room302, 3F_Stairwell
-4: 4F_Room401, 4F_Room402, 4F_CorridorEnd
-5: 5F_Room501, 5F_Room502, 5F_Studio503
-6: 6F_Room601, 6F_Room602, 6F_Stairwell
-7: 7F_Room701, 7F_Bench, 7F_Kitchen, 7F_SealedDoor
-
-【时间线与秩序起源】
-约 3 年前公寓诡异化。当时住户众多，逐渐变为徘徊者；彼此厮杀后夜读老人胜出，把控原石矿脉，建立楼层秩序。所有 NPC 认识夜读老人，他是秩序建立者。各 NPC 攒下 8–20 个原石不等，反映存活时长。
-
-【红色自来水机制】
-红色自来水是公寓胃酸。静置 12 小时可让胃酸稀释、沉淀物析出后使用。直接饮用会触发管道屠夫或加速消化。洗衣房阿姨知道真相。
-
-【13 楼真相】
-物理上不存在第 13 层。电梯若显示 13 楼，是公寓的「食管残留区」入口。夜读老人设下封印，电梯维修工是最后物理封锁。踏入 13 楼走廊即进入未消化层，被困时间闭环。13 楼门扉（A-007）是第 7 层诡异。
-
-【地下二层与出口】
-地下二层是唯一出口。地下二层入口木门不可物理破坏，只能用出口钥匙打开。钥匙在夜读老人手中。到达门前必须说出暗号「暗月」方可进门。守门人（A-008）凌晨 1 点消失 1 小时，可潜行通过；或抵挡其 3 次攻击后通过。
-
-【暗月阶段】
-游戏时间第 3 日 0 时起为暗月阶段。所有诡异好感 -5、战力 +2，伤害阶梯加成，索敌概率大幅增加。叙事氛围极度压抑。
-
-【原石矿脉】
-位于第 7 层，由夜读老人把守，玩家不可进入。夜读老人拥有几百个原石，是公寓管理者地位的根源。NPC 每月从夜读老人处领取薪水（薪水=战斗力）。
-
-【诡异固定分布（严禁变更）】
-1 楼: A-001 时差症候群
-2 楼: A-002 无头猎犬（狗叫声可从 4 楼方向传来，其为听觉锁定型）
-3 楼: A-003 认知腐蚀者
-4 楼: A-004 管道屠夫
-5 楼: A-005 器官拟态墙
-6 楼: A-006 楼梯间倒行者
-7 楼: A-007 13楼门扉
-B2: A-008 深渊守门人
-
-【NPC 数量与身份（固定ID + 可重塑层）】
-第一阶段仍使用 N-001 至 N-020 作为固定角色 ID 集。允许在不改 ID 的前提下进行“展示层/交互层/深层秘密层”的重塑升级；严禁随意新增无来源角色或改坏核心因果链。
-`;
+${buildSystemCanonBlock()}
+`.trim();
 
 /** Build the apartment truth block for DM injection */
 export function buildApartmentTruthBlock(): string {
   return APARTMENT_TRUTH;
+}
+
+export function buildApartmentSystemCanonBlock(): string {
+  return APARTMENT_SYSTEM_CANON;
 }

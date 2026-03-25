@@ -436,7 +436,6 @@ export async function POST(req: Request) {
   if (totalRounds > ROUNDS_THRESHOLD && userId) {
     const keepCount = SHORT_TERM_ROUNDS * 2 + 1;
     const toCompressCount = 5 * 2;
-    const shortTerm = chatMsgs.slice(-keepCount);
     const toCompress = chatMsgs.slice(-keepCount - toCompressCount, -keepCount);
 
     void (async () => {
@@ -661,6 +660,7 @@ export async function POST(req: Request) {
         sessionId: sessionId ?? null,
         worldRevision: BigInt(0),
         playerLocation: guessPlayerLocationFromContext(playerContext),
+        playerContext,
         recentlyEncounteredEntities: extractRecentEntities(latestUserInput),
         taskType: "PLAYER_CHAT",
         tokenBudget: 420,

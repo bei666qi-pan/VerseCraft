@@ -40,6 +40,10 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
   assert.ok(packet.includes("\"level\":"));
   assert.ok(packet.includes("professionTacticalBias"));
   assert.ok(packet.includes("b1-safe-zone"));
+  assert.ok(packet.includes("reveal_tier_packet"));
+  assert.ok(packet.includes("floor_lore_packet"));
+  assert.ok(packet.includes("threat_lore_packet"));
+  assert.ok(packet.includes("maxRevealRank"));
 });
 
 test("buildRuntimeContextPackets respects maxChars budget", () => {

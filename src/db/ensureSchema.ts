@@ -46,6 +46,28 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS compliance_inquiries (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        topic VARCHAR(32) NOT NULL,
+        contact_line VARCHAR(512),
+        body TEXT NOT NULL,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
+        ip_hash VARCHAR(64),
+        client_meta JSONB NOT NULL DEFAULT '{}'::jsonb
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS compliance_inquiries_created_idx ON compliance_inquiries (created_at);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS compliance_inquiries_topic_idx ON compliance_inquiries (topic);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS compliance_inquiries_ip_created_idx ON compliance_inquiries (ip_hash, created_at);
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS game_records (
         id SERIAL PRIMARY KEY,
         user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,

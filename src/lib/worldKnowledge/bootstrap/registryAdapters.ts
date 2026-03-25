@@ -1,10 +1,11 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
-import { APARTMENT_TRUTH } from "@/lib/registry/apartmentTruth";
+import { APARTMENT_SYSTEM_CANON, APARTMENT_TRUTH } from "@/lib/registry/apartmentTruth";
 import { ITEMS } from "@/lib/registry/items";
 import { NPCS } from "@/lib/registry/npcs";
 import { APARTMENT_RULES } from "@/lib/registry/rules";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { FLOORS, MAP_ROOMS, NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
+import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 
 export type WorldScope = "global" | "user" | "session";
 export type WorldEntityType = "npc" | "anomaly" | "item" | "rule" | "truth" | "location";
@@ -122,9 +123,32 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
     sourceRef: "registry/apartmentTruth.ts",
     importance: 100,
     version: 1,
-    tags: ["core", "truth", "apartment", "world_mechanism"],
+    tags: ["core", "truth", "apartment", "world_mechanism", "reveal_surface"],
   });
   addChunksForEntity("truth:apartment", splitChunksByMaxLen(APARTMENT_TRUTH.split("\n\n"), 1000), 100, chunks);
+
+  entities.push({
+    entityType: "truth",
+    code: "truth:apartment_system",
+    canonicalName: "apartment_system_canon",
+    title: "如月公寓系统因果档案",
+    summary: "解释 B1、复活、原石、秩序与任务筛选为何成立。",
+    detail: APARTMENT_SYSTEM_CANON.trim(),
+    scope: "global",
+    ownerUserId: null,
+    status: "active",
+    sourceType: "bootstrap",
+    sourceRef: "registry/apartmentTruth.ts",
+    importance: 98,
+    version: 1,
+    tags: ["core", "truth", "system_causality", "apartment", "reveal_fracture"],
+  });
+  addChunksForEntity(
+    "truth:apartment_system",
+    splitChunksByMaxLen(APARTMENT_SYSTEM_CANON.split("\n\n"), 1000),
+    98,
+    chunks
+  );
 
   entities.push({
     entityType: "rule",
@@ -201,6 +225,63 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
         strength: 80,
       });
     }
+  }
+
+  for (const [floorId, axis] of Object.entries(FLOOR_DIGESTION_AXES)) {
+    const code = `location:floor_axis:${floorId}`;
+    entities.push({
+      entityType: "location",
+      code,
+      canonicalName: `floor_axis_${floorId}`,
+      title: `${floorId}F 消化轴`,
+      summary: `${axis.publicTheme} / ${axis.hiddenTheme}`,
+      detail: [
+        `公开主题：${axis.publicTheme}`,
+        `隐秘主题：${axis.hiddenTheme}`,
+        `消化阶段：${axis.digestionStage}`,
+        `主威胁映射：${axis.mainThreatMapping}`,
+        `真相进度：${axis.truthProgress}`,
+        `系统自然化：${axis.systemNaturalization.join("；")}`,
+      ].join("\n"),
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/worldCanon.ts:FLOOR_DIGESTION_AXES",
+      importance: 84,
+      version: 1,
+      tags: uniqueTags(["location", "floor_axis", floorId, "digestion", "threat", "reveal_fracture"]),
+    });
+    addChunksForEntity(
+      code,
+      [
+        `楼层 ${floorId} 消化轴\n公开主题：${axis.publicTheme}\n隐秘主题：${axis.hiddenTheme}`,
+        `主威胁映射：${axis.mainThreatMapping}\n阶段：${axis.digestionStage}\n真相进度：${axis.truthProgress}`,
+      ],
+      84,
+      chunks
+    );
+  }
+
+  for (const tier of REVEAL_TIERS) {
+    const code = `truth:reveal_tier:${tier.id}`;
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: `reveal_tier_${tier.id}`,
+      title: `揭露层级：${tier.title}`,
+      summary: tier.revealPolicy,
+      detail: `触发信号：${tier.unlockSignals.join("；")}\n披露策略：${tier.revealPolicy}`,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/worldCanon.ts:REVEAL_TIERS",
+      importance: 72,
+      version: 1,
+      tags: uniqueTags(["reveal", "tier", tier.id, "reveal_surface"]),
+    });
+    addChunksForEntity(code, [`揭露层 ${tier.title}\n${tier.revealPolicy}`], 72, chunks);
   }
 
   for (const npc of NPCS) {

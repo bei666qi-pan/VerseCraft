@@ -9,6 +9,10 @@
   - 原始读取：`@/lib/config/envRaw`（仅限配置层）
   - 浏览器：仅 `NEXT_PUBLIC_*`，通过 `@/lib/config/publicRuntime` 的 `getPublicRuntimeConfig()`
 
+## 合规公示类 `NEXT_PUBLIC_*`
+
+- `NEXT_PUBLIC_CONTACT_PHONE`：可选。未设置时，法律页与页脚使用 `legalDefaults.DEFAULT_CONTACT_PHONE`（与仓库默认公示电话一致）；生产若更换号码请显式配置。
+
 ## 启动校验
 
 `src/lib/config/serverConfig.ts` 在进程加载时校验 **必填**：`DATABASE_URL`（PostgreSQL URL）、`AUTH_SECRET`（≥16 字符）。缺失或非法会在启动阶段抛出 `EnvValidationError`，避免首请求才失败。

@@ -55,7 +55,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【图鉴一致性】实体出场后应更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。",
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
     "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",
-    "【动态上下文声明】楼层细节、NPC细节、任务经济、服务节点、锚点复活、最近事件、可揭露秘密等均由运行时 packet/retrieval 决定，不在 stable prompt 重复展开。",
+    "【动态上下文声明】楼层细节、NPC 细节、任务经济、服务节点、锚点复活、最近事件、揭露层级（reveal_tier_packet）等均由运行时 JSON packet 与 registry 决定；若额外注入如月公寓根档案，仅作不可变根目录，细则以 packet 为准且 packet 优先。",
     "",
     "仅输出合法 JSON 对象，禁止 JSON 外任何文字或代码围栏。",
   ];

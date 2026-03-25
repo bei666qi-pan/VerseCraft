@@ -13,7 +13,7 @@ import { NPCS } from "@/lib/registry/npcs";
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { ITEMS } from "@/lib/registry/items";
 import { APARTMENT_RULES } from "@/lib/registry/rules";
-import { APARTMENT_TRUTH } from "@/lib/registry/apartmentTruth";
+import { APARTMENT_SYSTEM_CANON, APARTMENT_TRUTH } from "@/lib/registry/apartmentTruth";
 import {
   FLOORS,
   MAP_ROOMS,
@@ -23,6 +23,7 @@ import {
   B2_BOSS_ID,
   B2_BOSS_LOCKED_FAVORABILITY,
 } from "@/lib/registry/world";
+import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 
 function mkFactIdentity(factKey: string): { factKey: string } {
   return { factKey };
@@ -66,7 +67,17 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
       factType: "world_mechanism",
       factKey: "core:apartment_truth",
       canonicalText: APARTMENT_TRUTH,
-      tags: ["core", "truth", "mechanism", "apartment"],
+      tags: ["core", "truth", "mechanism", "apartment", "reveal_surface"],
+      source: mkSource("registry"),
+    })
+  );
+  facts.push(
+    mkFact({
+      layer: "core_canon",
+      factType: "world_mechanism",
+      factKey: "core:apartment_system_canon",
+      canonicalText: APARTMENT_SYSTEM_CANON,
+      tags: ["core", "system_causality", "apartment", "reveal_fracture"],
       source: mkSource("registry"),
     })
   );
@@ -105,6 +116,45 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
         canonicalText: `楼层 ${floorId} 可遍历房间节点：${nodes.join("，")}`,
         tags: ["map_rooms", floorId],
         source: mkSource("registry", floorId),
+      })
+    );
+  }
+
+  for (const [floorId, axis] of Object.entries(FLOOR_DIGESTION_AXES)) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: factKeyForEntity("floor:digestion_axis", floorId),
+        canonicalText: [
+          `楼层 ${floorId} 消化轴`,
+          `公开主题：${axis.publicTheme}`,
+          `隐秘主题：${axis.hiddenTheme}`,
+          `阶段：${axis.digestionStage}`,
+          `主威胁映射：${axis.mainThreatMapping}`,
+          `真相进度：${axis.truthProgress}`,
+          `系统自然化：${axis.systemNaturalization.join("；")}`,
+          `职业偏好：${axis.professionBias.join("、")}`,
+        ].join("\n"),
+        tags: ["floor_axis", floorId, "digestion", "threat", "reveal_fracture"],
+        source: mkSource("registry", floorId),
+      })
+    );
+  }
+
+  for (const tier of REVEAL_TIERS) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "system_hint",
+        factKey: factKeyForEntity("reveal:tier", tier.id),
+        canonicalText: [
+          `揭露层：${tier.title}`,
+          `触发信号：${tier.unlockSignals.join("；")}`,
+          `披露策略：${tier.revealPolicy}`,
+        ].join("\n"),
+        tags: ["reveal_tier", tier.id, "reveal_surface"],
+        source: mkSource("registry"),
       })
     );
   }

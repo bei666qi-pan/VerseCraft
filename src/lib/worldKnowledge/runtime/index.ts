@@ -27,11 +27,13 @@ export async function retrieveLoreFactsForTurn(ctx: {
   userId: string | null;
   worldRevision: bigint;
 }): Promise<PromptInjectionPayload> {
+  const loc = ctx.playerContext.match(/用户位置\[([^\]]+)\]/)?.[1] ?? null;
   const packet = await getRuntimeLore({
     latestUserInput: ctx.latestUserInput,
     userId: ctx.userId,
     sessionId: null,
-    playerLocation: null,
+    playerLocation: loc,
+    playerContext: ctx.playerContext,
     recentlyEncounteredEntities: [],
     taskType: "PLAYER_CHAT",
     tokenBudget: DEFAULT_RETRIEVAL_BUDGET.maxFacts * 35,

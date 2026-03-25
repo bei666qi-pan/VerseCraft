@@ -40,6 +40,26 @@ export const feedbacks = pgTable("feedbacks", {
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+/** 合规联系 / 举报 / 数据权利请求等最小留痕（非完整工单系统）。 */
+export const complianceInquiries = pgTable(
+  "compliance_inquiries",
+  {
+    id: serial("id").primaryKey(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    topic: varchar("topic", { length: 32 }).notNull(),
+    contactLine: varchar("contact_line", { length: 512 }),
+    body: text("body").notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    ipHash: varchar("ip_hash", { length: 64 }),
+    clientMeta: jsonb("client_meta").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  },
+  (table) => ({
+    createdIdx: index("compliance_inquiries_created_idx").on(table.createdAt),
+    topicIdx: index("compliance_inquiries_topic_idx").on(table.topic),
+    ipCreatedIdx: index("compliance_inquiries_ip_created_idx").on(table.ipHash, table.createdAt),
+  })
+);
+
 export const gameRecords = pgTable("game_records", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id", { length: 191 })

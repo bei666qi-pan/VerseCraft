@@ -7,7 +7,8 @@
 
 import type { RetrievalCandidate, RetrievalQuery } from "../types";
 
-export async function exactKeyLookup(_query: RetrievalQuery): Promise<RetrievalCandidate[]> {
+export async function exactKeyLookup(query: RetrievalQuery): Promise<RetrievalCandidate[]> {
+  void query;
   return [];
 }
 

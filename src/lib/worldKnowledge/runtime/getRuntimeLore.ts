@@ -4,6 +4,7 @@ import { rerankCandidates } from "@/lib/worldKnowledge/retrieval/rerank";
 import { retrieveWorldKnowledge } from "@/lib/worldKnowledge/retrieval/retrieveWorldKnowledge";
 import { readWorldLoreCache, writeWorldLoreCache } from "@/lib/worldKnowledge/cache/worldKnowledgeCache";
 import { buildRegistryFallbackLorePacket } from "./fallbackFromRegistry";
+import { gateCandidatesForLorePacket } from "../reveal/revealGate";
 import { DEFAULT_RUNTIME_LORE_TOKEN_BUDGET, WORLD_KNOWLEDGE_RETRIEVAL_TIMEOUT_MS } from "../constants";
 import type { LorePacket, RuntimeLoreRequest } from "../types";
 
@@ -98,9 +99,12 @@ export async function getRuntimeLore(input: RuntimeLoreRequest, deps: RuntimeLor
     recentlyEncounteredEntities: normalizedInput.recentlyEncounteredEntities,
   });
 
+  const maxRevealRank = plan.maxRevealRank;
+  const gated = gateCandidatesForLorePacket(reranked, maxRevealRank);
+
   const packet = deps.buildLorePacket({
     input: normalizedInput,
-    candidates: reranked,
+    candidates: gated,
     queryFingerprint: plan.fingerprint,
     cache: {
       level0MemoHit: false,

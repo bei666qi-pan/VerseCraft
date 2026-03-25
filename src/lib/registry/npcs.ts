@@ -163,7 +163,7 @@ const NPCS_BASE: readonly NPC[] = [
   {
     id: "N-012",
     name: "半夜剁肉的厨师",
-    location: "8 楼 812 室厨房",
+    location: "7 楼厨房",
     floor: "7",
     personality: "疲惫",
     specialty: "战斗辅助",

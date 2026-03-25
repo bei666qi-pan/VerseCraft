@@ -73,6 +73,10 @@ export interface RuntimeLoreRequest {
   sessionId: string | null;
   worldRevision?: bigint;
   playerLocation: string | null;
+  /**
+   * 客户端同步的「玩家状态原文快照」，用于揭露层级与进度门槛（不用用户自然语言推断，避免抬层剧透）。
+   */
+  playerContext?: string | null;
   recentlyEncounteredEntities: string[];
   taskType: RuntimeLoreTaskType;
   tokenBudget: number;
@@ -86,6 +90,8 @@ export interface RetrievalPlan {
   floorHints: string[];
   locationHints: string[];
   tagHints: string[];
+  /** 允许注入的世界知识最高揭露层级（0 surface … 3 abyss） */
+  maxRevealRank: number;
   ftsQuery: string;
   scope: RuntimeWorldScope[];
   tokenBudget: number;

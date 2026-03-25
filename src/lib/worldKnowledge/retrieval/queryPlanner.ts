@@ -6,6 +6,7 @@ import { MAP_ROOMS } from "@/lib/registry/world";
 import { normalizeForHash } from "@/lib/kg/normalize";
 import { DEFAULT_RETRIEVAL_BUDGET } from "../constants";
 import type { RetrievalIntentType, RetrievalPlan, RuntimeLoreRequest } from "../types";
+import { inferMaxRevealRank } from "../reveal/revealGate";
 
 function addIfIncludes(target: Set<string>, text: string, tests: string[]): void {
   for (const t of tests) {
@@ -69,7 +70,13 @@ function detectIntents(normalizedInput: string): RetrievalIntentType[] {
   return [...intents];
 }
 
-function buildFingerprint(input: RuntimeLoreRequest, normalizedInput: string, locationHints: string[], exactCodes: string[]): string {
+function buildFingerprint(
+  input: RuntimeLoreRequest,
+  normalizedInput: string,
+  locationHints: string[],
+  exactCodes: string[],
+  maxRevealRank: number
+): string {
   const body = [
     normalizedInput,
     input.userId ?? "anon",
@@ -80,12 +87,14 @@ function buildFingerprint(input: RuntimeLoreRequest, normalizedInput: string, lo
     input.recentlyEncounteredEntities.join(","),
     locationHints.join(","),
     exactCodes.join(","),
+    String(maxRevealRank),
   ].join("|");
   return createHash("sha256").update(body).digest("hex");
 }
 
 export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPlan {
   const normalizedInput = normalizeForHash(input.latestUserInput);
+  const maxRevealRank = inferMaxRevealRank(input.playerContext, input.playerLocation);
   const floorHints = collectFloorHints(normalizedInput);
   const locationHints = collectLocationHints(normalizedInput);
   const entityHints = collectEntityHints(normalizedInput);
@@ -104,7 +113,7 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     ...DEFAULT_RETRIEVAL_BUDGET,
     maxFacts: Math.max(6, Math.min(DEFAULT_RETRIEVAL_BUDGET.maxFacts, Math.floor(input.tokenBudget / 35))),
   };
-  const fingerprint = buildFingerprint(input, normalizedInput, locationHints, entityHints.exactCodes);
+  const fingerprint = buildFingerprint(input, normalizedInput, locationHints, entityHints.exactCodes, maxRevealRank);
   const entitiesFingerprint = createHash("sha256")
     .update([...entityHints.exactCodes, ...input.recentlyEncounteredEntities].sort().join("|"))
     .digest("hex");
@@ -116,6 +125,7 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     floorHints,
     locationHints,
     tagHints: [...tagHints],
+    maxRevealRank,
     ftsQuery,
     scope: input.worldScope,
     tokenBudget: input.tokenBudget,

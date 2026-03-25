@@ -1,4 +1,5 @@
 import { buildCoreCanonFactsFromRegistry } from "@/lib/worldKnowledge/bootstrap/coreCanonMapping";
+import { gateCandidatesForLorePacket } from "../reveal/revealGate";
 import type { LoreFact, LorePacket, RetrievalPlan, RuntimeLoreRequest } from "../types";
 
 function scoreFallbackFact(f: LoreFact, req: RuntimeLoreRequest, plan: RetrievalPlan): number {
@@ -27,11 +28,13 @@ export function buildRegistryFallbackLorePacket(args: {
   reason: "db_error" | "db_empty";
 }): LorePacket {
   const all = buildCoreCanonFactsFromRegistry();
-  const ranked = [...all]
+  const scored = [...all]
     .map((f) => ({ fact: f, score: scoreFallbackFact(f, args.input, args.plan) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(6, Math.floor(args.input.tokenBudget / 40)))
-    .map((x) => x.fact);
+    .slice(0, Math.max(24, Math.floor(args.input.tokenBudget / 15)));
+
+  const gated = gateCandidatesForLorePacket(scored, args.plan.maxRevealRank);
+  const ranked = gated.map((x) => x.fact).slice(0, Math.max(6, Math.floor(args.input.tokenBudget / 40)));
 
   const coreAnchors = ranked.filter((f) => f.layer === "core_canon" && (f.factType === "rule" || f.factType === "world_mechanism"));
   const sceneFacts = ranked.filter((f) => f.factType === "location" || f.factType === "npc" || f.factType === "anomaly");

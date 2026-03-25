@@ -115,6 +115,7 @@ function migratePersistedState(
   }
   return {
     ...raw,
+    deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: migratedSlots,
   };
 }
@@ -290,6 +291,8 @@ interface GameState extends IntegrityMetaState {
   playerLocation: string;
   /** 历史最高抵达楼层分数（B1=0, 1F=1, ..., B2=99），用于结算与排行榜 */
   historicalMaxFloorScore: number;
+  /** 累计死亡次数：供 prompt / 揭露门闸；与存档 snapshot.player.deathCount 同步 */
+  deathCount: number;
   /** NPC 动态状态（位置 + 存活） */
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
   /** 楼层主威胁状态（第二阶段） */
@@ -592,6 +595,7 @@ export const useGameStore = create<GameState>()(
       tasks: [],
       playerLocation: "B1_SafeZone",
       historicalMaxFloorScore: 0,
+      deathCount: 0,
       dynamicNpcStates: {},
       mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
       equippedWeapon: null,
@@ -742,6 +746,7 @@ export const useGameStore = create<GameState>()(
           tasks: [],
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,
+          deathCount: 0,
           dynamicNpcStates: {},
           mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
           intrusionFlashUntil: 0,
@@ -813,6 +818,7 @@ export const useGameStore = create<GameState>()(
             inventory: [],
             stats: { ...safeStats, sanity: Math.max(1, safeStats.sanity) },
             tasks: patchedTasks,
+            deathCount: (s.deathCount ?? 0) + 1,
             reviveContext: {
               pending: true,
               deathLocation: s.playerLocation ?? "B1_SafeZone",
@@ -877,6 +883,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           historicalMaxFloorScore: 0,
+          deathCount: 0,
           appliedRelationshipTaskIds: [],
         }),
 
@@ -1379,6 +1386,7 @@ export const useGameStore = create<GameState>()(
           tasks: createStageOneStarterTasks(),
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,
+          deathCount: 0,
           dynamicNpcStates: Object.fromEntries(
             Object.entries(NPC_HOME_LOCATION_SEED).map(([id, homeLocation]) => [
               id,
@@ -1478,6 +1486,8 @@ export const useGameStore = create<GameState>()(
           })() +
           `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
           `原石[${s.originium}]。` +
+          `进度[最高层分${s.historicalMaxFloorScore ?? 0}]。` +
+          `死亡累计[${s.deathCount ?? 0}]。` +
           (s.tasks.filter((t) => t.status === "active" || t.status === "available").length > 0
             ? `任务追踪：${s.tasks
                 .filter((t) => t.status === "active" || t.status === "available")
@@ -1586,7 +1596,7 @@ export const useGameStore = create<GameState>()(
             warehouseCount: (s.warehouse ?? []).length,
             equippedWeapon: s.equippedWeapon ?? null,
           });
-          let nextTasks = [...(s.tasks ?? [])];
+          const nextTasks = [...(s.tasks ?? [])];
           for (const id of PROFESSION_IDS) {
             const p = computed.progressByProfession[id];
             const taskId = p.trialTaskId ?? getProfessionTrialTaskId(id);
@@ -1896,8 +1906,7 @@ export const useGameStore = create<GameState>()(
           currentLocation: s.playerLocation ?? "B1_SafeZone",
           alive: (safeStats.sanity ?? 0) > 0,
           equippedWeapon: s.equippedWeapon ?? null,
-          deathCount:
-            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.player?.deathCount ?? 0,
+          deathCount: s.deathCount ?? 0,
           day: s.time?.day ?? 0,
           hour: s.time?.hour ?? 0,
           worldFlags: {
@@ -2078,6 +2087,7 @@ export const useGameStore = create<GameState>()(
           codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex)),
           historicalMaxSanity: data.historicalMaxSanity,
           historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
+          deathCount: normalizedSnapshot.player.deathCount ?? 0,
           talent: data.talent ?? null,
           talentCooldowns,
           hasCheckedCodex: data.hasCheckedCodex ?? false,
@@ -2190,6 +2200,7 @@ export const useGameStore = create<GameState>()(
             codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex ?? {})),
             historicalMaxSanity: data.historicalMaxSanity ?? 50,
             historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
+            deathCount: normalizedSnapshot.player.deathCount ?? 0,
             talent: data.talent ?? s.talent ?? null,
             talentCooldowns,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
@@ -2295,6 +2306,7 @@ export const useGameStore = create<GameState>()(
         tasks: s.tasks ?? [],
         playerLocation: s.playerLocation ?? "B1_SafeZone",
         historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+        deathCount: s.deathCount ?? 0,
         dynamicNpcStates: s.dynamicNpcStates ?? {},
         mainThreatByFloor: s.mainThreatByFloor ?? DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
         equippedWeapon: s.equippedWeapon ?? null,

@@ -6,7 +6,8 @@
 
 import type { RetrievalCandidate, RetrievalQuery } from "../types";
 
-export async function ftsSearch(_query: RetrievalQuery): Promise<RetrievalCandidate[]> {
+export async function ftsSearch(query: RetrievalQuery): Promise<RetrievalCandidate[]> {
+  void query;
   return [];
 }
 

@@ -22,15 +22,17 @@ export function isCircuitOpen(provider: AiProviderId, now = Date.now()): boolean
 
 export function recordProviderSuccess(
   provider: AiProviderId,
-  _opts?: { scope?: "online" | "offline" }
+  opts?: { scope?: "online" | "offline" }
 ): void {
+  void opts;
   state.delete(key(provider));
 }
 
 export function recordProviderFailure(
   provider: AiProviderId,
-  _opts?: { scope?: "online" | "offline" }
+  opts?: { scope?: "online" | "offline" }
 ): void {
+  void opts;
   const env = resolveAiEnv();
   const k = key(provider);
   const prev = state.get(k) ?? { failures: 0, openedUntil: 0 };

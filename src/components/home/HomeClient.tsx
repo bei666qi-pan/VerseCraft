@@ -13,6 +13,7 @@ import Leaderboard from "@/components/Leaderboard";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import { ComplianceFooter } from "@/components/compliance/ComplianceFooter";
+import { HomeIcpBeianBar } from "@/components/compliance/HomeIcpBeianBar";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { getPublicRuntimeConfig } from "@/lib/config/publicRuntime";
 import { useGameStore, type SaveSlotData } from "@/store/useGameStore";
@@ -150,13 +151,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     });
   }, [saveSlots, cloudRows]);
 
-  useEffect(() => {
-    if (continueSlotOptions.length === 0) {
-      if (selectedContinueSlotId !== "") setSelectedContinueSlotId("");
-      return;
+  const resolvedContinueSlotId = useMemo(() => {
+    if (continueSlotOptions.length === 0) return "";
+    if (selectedContinueSlotId && continueSlotOptions.some((x) => x.slotId === selectedContinueSlotId)) {
+      return selectedContinueSlotId;
     }
-    if (selectedContinueSlotId && continueSlotOptions.some((x) => x.slotId === selectedContinueSlotId)) return;
-    setSelectedContinueSlotId(continueSlotOptions[0]!.slotId);
+    return continueSlotOptions[0]!.slotId;
   }, [continueSlotOptions, selectedContinueSlotId]);
 
   useEffect(() => {
@@ -529,7 +529,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <div className="flex flex-col items-center gap-2">
               {continueSlotOptions.length > 0 ? (
                 <select
-                  value={selectedContinueSlotId}
+                  value={resolvedContinueSlotId}
                   onChange={(e) => setSelectedContinueSlotId(e.target.value)}
                   className="h-9 min-w-[220px] rounded-xl border border-white/60 bg-white/70 px-3 text-xs text-slate-700"
                   aria-label="选择继续的分支存档"
@@ -758,6 +758,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
     <Leaderboard userId={user?.id} />
     <ComplianceFooter />
+    <HomeIcpBeianBar />
     </>
   );
 }

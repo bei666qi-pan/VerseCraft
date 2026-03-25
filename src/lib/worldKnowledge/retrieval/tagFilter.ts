@@ -11,14 +11,16 @@ import type { LoreFact, RetrievalCandidate, RetrievalQuery } from "../types";
 
 export function filterByTags(
   candidates: RetrievalCandidate[],
-  _query: RetrievalQuery
+  query: RetrievalQuery
 ): RetrievalCandidate[] {
+  void query;
   // scaffold: 暂不做过滤逻辑
   return candidates;
 }
 
-export function filterFactsByTags(_facts: LoreFact[], _tags: string[]): LoreFact[] {
+export function filterFactsByTags(facts: LoreFact[], tags: string[]): LoreFact[] {
+  void tags;
   // scaffold
-  return _facts;
+  return facts;
 }
 

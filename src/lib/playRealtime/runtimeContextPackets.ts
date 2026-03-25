@@ -1,12 +1,27 @@
+import { getFloorLoreByLocation } from "@/lib/registry/floorLoreRegistry";
+import { computeMaxRevealRankFromSignals, listFiredRevealRuleIds } from "@/lib/registry/revealRegistry";
+import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
+import {
+  buildB1OrderPacket,
+  buildFloorLorePacket,
+  buildKeyNpcLorePacket,
+  buildOriginiumEconomyPacket,
+  buildRecentWorldEventPacket,
+  buildReviveAnchorLorePacket,
+  buildRevealTierPacket,
+  buildThreatLorePacket,
+} from "./worldLorePacketBuilders";
 import {
   buildFloorProgressionPacket,
   buildForgePacket,
   buildTacticalContextPacket,
   buildThreatPacket,
+  buildWorldviewPacket,
   buildWeaponPacket,
   inferFloorThreatTier,
 } from "./stage2Packets";
+import type { ThreatSnapshot } from "./stage2Packets";
 
 type ServiceStateInput = {
   shopUnlocked?: boolean;
@@ -405,10 +420,90 @@ export function buildRuntimeContextPackets(args: {
     threatPhase: threatPacket.phase,
     hasWeapon: Boolean(equippedWeapon.weaponId),
   });
+
+  const signals = parsePlayerWorldSignals(args.playerContext, args.playerLocation);
+  const maxRevealRank = computeMaxRevealRankFromSignals(signals);
+  const firedRevealRuleIds = listFiredRevealRuleIds(signals);
+  const floorLore = getFloorLoreByLocation(location);
+  const threatSnapshotForLore: ThreatSnapshot = {
+    floorId: threatPacket.floorId,
+    threatId: threatPacket.activeThreatId,
+    threatName: threatPacket.activeThreatName,
+    phase: threatPacket.phase,
+    suppressionProgress: threatPacket.suppressionProgress,
+  };
+  const serviceKinds = services.map((svc) => svc.kind);
+  const worldLorePackets = {
+    reveal_tier_packet: buildRevealTierPacket({ signals, maxRevealRank, firedRuleIds: firedRevealRuleIds }),
+    floor_lore_packet: buildFloorLorePacket({ signals, floorLore, maxRevealRank }),
+    threat_lore_packet: buildThreatLorePacket({ threat: threatSnapshotForLore, floorLore, maxRevealRank }),
+    b1_order_packet: buildB1OrderPacket({ signals, servicesAtLocation: serviceKinds }),
+    revive_anchor_lore_packet: buildReviveAnchorLorePacket({
+      signals,
+      anchorUnlocks,
+      revive,
+      maxRevealRank,
+    }),
+    originium_economy_packet: buildOriginiumEconomyPacket({ signals, maxRevealRank }),
+    key_npc_lore_packet: buildKeyNpcLorePacket({
+      nearbyNpcIds,
+      relationshipHints,
+      worldFlags,
+      maxRevealRank,
+    }),
+    recent_world_event_packet: buildRecentWorldEventPacket({
+      worldFlags,
+      revive,
+      activeTaskTitles: signals.activeTaskTitles.length > 0 ? signals.activeTaskTitles : tasks,
+    }),
+  };
+  const flFull = worldLorePackets.floor_lore_packet;
+  const thFull = worldLorePackets.threat_lore_packet;
+  const worldLorePacketsCompact = {
+    reveal_tier_packet: worldLorePackets.reveal_tier_packet,
+    floor_lore_packet: {
+      floorId: flFull.floorId,
+      publicTheme: flFull.publicTheme,
+      publicOmen: flFull.publicOmen,
+      digestionStage: flFull.digestionStage,
+    },
+    threat_lore_packet: {
+      floorId: thFull.floorId,
+      activeThreatId: thFull.activeThreatId,
+      phase: thFull.phase,
+      suppressionProgress: thFull.suppressionProgress,
+    },
+    b1_order_packet: {
+      isB1: worldLorePackets.b1_order_packet.isB1,
+      surfaceSnippet: worldLorePackets.b1_order_packet.surfaceSnippet,
+    },
+    revive_anchor_lore_packet: {
+      hasRecentRevive: worldLorePackets.revive_anchor_lore_packet.hasRecentRevive,
+      deathCount: worldLorePackets.revive_anchor_lore_packet.deathCount,
+      anchors: worldLorePackets.revive_anchor_lore_packet.anchors,
+    },
+    originium_economy_packet: {
+      originiumCount: worldLorePackets.originium_economy_packet.originiumCount,
+      surfaceRumor: worldLorePackets.originium_economy_packet.surfaceRumor,
+    },
+    key_npc_lore_packet: {
+      nearbyNpcIds: (worldLorePackets.key_npc_lore_packet.nearbyNpcIds as string[]).slice(0, 4),
+    },
+    recent_world_event_packet: {
+      activeTaskTitles: (worldLorePackets.recent_world_event_packet.activeTaskTitles as string[]).slice(0, 3),
+      flaggedEvents: (worldLorePackets.recent_world_event_packet.flaggedEvents as string[]).slice(0, 4),
+    },
+  };
+
   const weaponPacket = buildWeaponPacket({
     weapon: equippedWeapon,
     threatName: threatPacket.activeThreatName,
     threatId: threatPacket.activeThreatId,
+  });
+  const worldviewPacket = buildWorldviewPacket({
+    location,
+    threatPhase: threatPacket.phase,
+    activeTasks: tasks,
   });
   const forgePacket = buildForgePacket({
     location,
@@ -423,6 +518,7 @@ export function buildRuntimeContextPackets(args: {
       floorThreatTier: inferFloorThreatTier(location),
     },
     main_threat_packet: threatPacket,
+    worldview_packet: worldviewPacket,
     weapon_packet: weaponPacket,
     forge_packet: forgePacket,
     floor_progression_packet: buildFloorProgressionPacket({
@@ -454,6 +550,7 @@ export function buildRuntimeContextPackets(args: {
       threatPhase: threatPacket.phase,
       currentProfession: professionPacket.currentProfession,
     }),
+    ...worldLorePackets,
   };
   const text = [
     "## 【运行时结构化上下文包（权威事实源）】",
@@ -465,6 +562,7 @@ export function buildRuntimeContextPackets(args: {
   const compactPackets = {
     current_location_packet: packets.current_location_packet,
     main_threat_packet: packets.main_threat_packet,
+    worldview_packet: packets.worldview_packet,
     weapon_packet: packets.weapon_packet,
     forge_packet: packets.forge_packet,
     floor_progression_packet: packets.floor_progression_packet,
@@ -479,6 +577,7 @@ export function buildRuntimeContextPackets(args: {
     profession_progress_packet: packets.profession_progress_packet.slice(0, 5),
     profession_identity_packet: packets.profession_identity_packet,
     tactical_context_packet: packets.tactical_context_packet,
+    ...worldLorePacketsCompact,
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

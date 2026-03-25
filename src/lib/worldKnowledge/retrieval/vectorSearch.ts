@@ -6,7 +6,8 @@
 
 import type { RetrievalCandidate, RetrievalQuery } from "../types";
 
-export async function vectorSearch(_query: RetrievalQuery): Promise<RetrievalCandidate[]> {
+export async function vectorSearch(query: RetrievalQuery): Promise<RetrievalCandidate[]> {
+  void query;
   return [];
 }
 

@@ -1,6 +1,7 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { LIGHT_FORGE_RECIPES } from "@/lib/registry/forge";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
+import { FLOOR_DIGESTION_AXES } from "@/lib/registry/worldCanon";
 
 type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
@@ -201,6 +202,41 @@ export function buildTacticalContextPacket(args: {
     ],
     professionTacticalBias: profession || null,
     requiredWritebacks: [...requiredWritebacks],
+  };
+}
+
+export function buildWorldviewPacket(args: {
+  location: string | null;
+  threatPhase: MainThreatPhase;
+  activeTasks: string[];
+}) {
+  const floorId = inferFloorIdFromLocation(args.location);
+  const floorAxis =
+    floorId && floorId !== "B1" && floorId !== "B2"
+      ? FLOOR_DIGESTION_AXES[floorId]
+      : null;
+  const b1Meaning =
+    floorId === "B1"
+      ? "B1 是迟滞稳定带：人类维护行为叠加配电噪声，暂时压低消化律。此处的交易、锻造与修整是幸存者秩序，不是系统菜单。"
+      : null;
+  const b2Meaning =
+    floorId === "B2"
+      ? "B2 是夹层出口喉管，守门人负责筛除不稳定个体，任何离开都属于高代价结算。"
+      : null;
+
+  return {
+    floorId,
+    threatPhase: args.threatPhase,
+    publicTheme: floorAxis?.publicTheme ?? null,
+    hiddenTheme: floorAxis?.hiddenTheme ?? null,
+    digestionStage: floorAxis?.digestionStage ?? null,
+    mainThreatMapping: floorAxis?.mainThreatMapping ?? null,
+    truthProgress: floorAxis?.truthProgress ?? null,
+    systemNaturalization: floorAxis?.systemNaturalization ?? [],
+    professionBias: floorAxis?.professionBias ?? [],
+    b1Meaning,
+    b2Meaning,
+    taskPressure: args.activeTasks.length >= 3 ? "high" : args.activeTasks.length > 0 ? "mid" : "low",
   };
 }
 

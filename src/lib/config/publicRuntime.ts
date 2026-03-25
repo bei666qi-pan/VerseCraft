@@ -4,6 +4,14 @@
  * Never import server secrets or `serverConfig` from client components.
  */
 
+import {
+  DEFAULT_BEIAN_NUMBER,
+  DEFAULT_BEIAN_URL,
+  DEFAULT_CONTACT_PHONE,
+  DEFAULT_OFFICIAL_DOMAIN,
+  DEFAULT_OFFICIAL_SITE_URL,
+} from "@/lib/compliance/legalDefaults";
+
 export interface PublicRuntimeConfig {
   buildId: string | null;
   surveyUrl: string | null;
@@ -11,10 +19,16 @@ export interface PublicRuntimeConfig {
     productName: string | null;
     operatingSubject: string | null;
     contactEmail: string | null;
+    /** 公示电话：未配置 NEXT_PUBLIC_CONTACT_PHONE 时使用 legalDefaults 默认值 */
+    contactPhone: string;
     customerWechat: string | null;
     customerPublicAccount: string | null;
-    beianNumber: string | null;
-    beianUrl: string | null;
+    /** 公示用主域名，如 versecraft.cn */
+    officialDomain: string;
+    /** 含协议的官方网站入口，用于法律页引用 */
+    officialSiteUrl: string;
+    beianNumber: string;
+    beianUrl: string;
     legalEffectiveDate: string | null;
     showMinors: boolean;
     showAiDisclaimer: boolean;
@@ -36,6 +50,10 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
   const contactEmailRaw = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim();
   const contactEmail = contactEmailRaw && contactEmailRaw.length > 0 ? contactEmailRaw : null;
 
+  const contactPhoneRaw = process.env.NEXT_PUBLIC_CONTACT_PHONE?.trim();
+  const contactPhone =
+    contactPhoneRaw && contactPhoneRaw.length > 0 ? contactPhoneRaw : DEFAULT_CONTACT_PHONE;
+
   const customerWechatRaw = process.env.NEXT_PUBLIC_CUSTOMER_WECHAT?.trim();
   const customerWechat =
     customerWechatRaw && customerWechatRaw.length > 0 ? customerWechatRaw : null;
@@ -44,11 +62,18 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
   const customerPublicAccount =
     customerPublicAccountRaw && customerPublicAccountRaw.length > 0 ? customerPublicAccountRaw : null;
 
+  const officialDomainRaw = process.env.NEXT_PUBLIC_OFFICIAL_DOMAIN?.trim();
+  const officialDomain = officialDomainRaw && officialDomainRaw.length > 0 ? officialDomainRaw : DEFAULT_OFFICIAL_DOMAIN;
+
+  const officialSiteUrlRaw = process.env.NEXT_PUBLIC_OFFICIAL_SITE_URL?.trim();
+  const officialSiteUrl =
+    officialSiteUrlRaw && officialSiteUrlRaw.length > 0 ? officialSiteUrlRaw : DEFAULT_OFFICIAL_SITE_URL;
+
   const beianNumberRaw = process.env.NEXT_PUBLIC_BEIAN_NUMBER?.trim();
-  const beianNumber = beianNumberRaw && beianNumberRaw.length > 0 ? beianNumberRaw : null;
+  const beianNumber = beianNumberRaw && beianNumberRaw.length > 0 ? beianNumberRaw : DEFAULT_BEIAN_NUMBER;
 
   const beianUrlRaw = process.env.NEXT_PUBLIC_BEIAN_URL?.trim();
-  const beianUrl = beianUrlRaw && beianUrlRaw.length > 0 ? beianUrlRaw : null;
+  const beianUrl = beianUrlRaw && beianUrlRaw.length > 0 ? beianUrlRaw : DEFAULT_BEIAN_URL;
 
   const legalEffectiveDateRaw = process.env.NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE?.trim();
   const legalEffectiveDate =
@@ -66,8 +91,11 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
       productName,
       operatingSubject,
       contactEmail,
+      contactPhone,
       customerWechat,
       customerPublicAccount,
+      officialDomain,
+      officialSiteUrl,
       beianNumber,
       beianUrl,
       legalEffectiveDate,

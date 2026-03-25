@@ -5,7 +5,7 @@ import { pool } from "@/db/index";
 import { runOfflineReasonerTask } from "@/lib/ai/logicalTasks";
 import { embedText, toPgVectorLiteral } from "./embed";
 import { enqueueJob } from "./jobs";
-import { normalizeForHash, sha256Hex } from "./normalize";
+import { normalizeForHash } from "./normalize";
 
 export type JanitorAction = "discard" | "demote_private" | "enter_consensus";
 
