@@ -71,6 +71,35 @@
   50% { opacity: 1; transform: scale(1.02); }
 }
 
+/* VerseCraft loading: fast, smooth, restrained (modern AI UI vibe; not a 1:1 copy). */
+@keyframes vc-wait-rotate {
+  0% { transform: rotate(0deg); }
+  /* fast → slower (continuous, no “卡住”段) */
+  26% { transform: rotate(210deg); }
+  62% { transform: rotate(305deg); }
+  82% { transform: rotate(340deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes vc-wait-breath {
+  0%, 100% { opacity: 0.62; }
+  35% { opacity: 0.92; }
+  60% { opacity: 0.82; }
+  78% { opacity: 0.96; }
+}
+
+.vc-wait-breath {
+  animation: vc-wait-breath 1.85s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.vc-wait-rotate {
+  animation: vc-wait-rotate 1.65s cubic-bezier(0.2, 0, 0.15, 1) infinite;
+  will-change: transform;
+  /* Fix SVG transform drift: ensure rotation around visual center. */
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
 @keyframes spotlight-arrow {
   0%, 100% { transform: translateY(0); opacity: 0.9; }
   50% { transform: translateY(6px); opacity: 1; }

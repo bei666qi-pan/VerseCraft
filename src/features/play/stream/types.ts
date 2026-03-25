@@ -29,6 +29,8 @@ export type DMJson = {
     id: string;
     name: string;
     type: "npc" | "anomaly";
+    /** 我目前掌握的、可展示的情报（由 DM 生成；不要求每次都有） */
+    known_info?: string;
     favorability?: number;
     trust?: number;
     fear?: number;

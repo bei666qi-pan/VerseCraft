@@ -1,21 +1,24 @@
 // src/lib/ai/governance/preflightCache.ts
 import "server-only";
 
-import { createHash } from "node:crypto";
 import { aiGovernanceEnv } from "@/lib/ai/governance/env";
+import type { ControlDigestLike, ControlRuleFlagsCompact } from "@/lib/ai/governance/preflightCacheKey";
+import { buildPreflightFingerprintLegacy, buildPreflightFingerprintV2 } from "@/lib/ai/governance/preflightCacheKey";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import { getAppRedisClient } from "@/lib/ratelimit";
 
 const mem = new Map<string, { exp: number; val: string }>();
 
-function fp(latestUserInput: string, playerContext: string, ruleJson: string): string {
-  return createHash("sha256")
-    .update(latestUserInput.slice(0, 4000))
-    .update("|")
-    .update(playerContext.slice(0, 4000))
-    .update("|")
-    .update(ruleJson)
-    .digest("hex");
+function fpV2(args: {
+  latestUserInput: string;
+  digest?: ControlDigestLike | null;
+  ruleFlags?: ControlRuleFlagsCompact | null;
+}): string {
+  return buildPreflightFingerprintV2(args);
+}
+
+function fpLegacy(latestUserInput: string, playerContext: string, ruleJson: string): string {
+  return buildPreflightFingerprintLegacy({ latestUserInput, playerContext, ruleJson });
 }
 
 function key(
@@ -30,11 +33,23 @@ export async function readPreflightPlane(args: {
   latestUserInput: string;
   playerContext: string;
   ruleJson: string;
+  /** Optional: control-level digest (preferred, stable). */
+  digest?: ControlDigestLike | null;
+  /** Optional: compact rule flags (preferred, stable). */
+  ruleFlags?: ControlRuleFlagsCompact | null;
   userId: string | null | undefined;
   sessionId: string | null | undefined;
 }): Promise<PlayerControlPlane | null> {
   if (!aiGovernanceEnv.responseCacheEnabled) return null;
-  const fingerprint = fp(args.latestUserInput, args.playerContext, args.ruleJson);
+  // Prefer semantic, stable key; fall back to legacy key for compatibility when digest/rules are unavailable.
+  const fingerprint =
+    args.digest || args.ruleFlags
+      ? fpV2({
+          latestUserInput: args.latestUserInput,
+          digest: args.digest ?? null,
+          ruleFlags: args.ruleFlags ?? null,
+        })
+      : fpLegacy(args.latestUserInput, args.playerContext, args.ruleJson);
   const k = key(args.userId, args.sessionId, fingerprint);
 
   const redis = await getAppRedisClient();
@@ -61,6 +76,8 @@ export async function writePreflightPlane(args: {
   latestUserInput: string;
   playerContext: string;
   ruleJson: string;
+  digest?: ControlDigestLike | null;
+  ruleFlags?: ControlRuleFlagsCompact | null;
   userId: string | null | undefined;
   sessionId: string | null | undefined;
   control: PlayerControlPlane;
@@ -68,7 +85,14 @@ export async function writePreflightPlane(args: {
   if (!aiGovernanceEnv.responseCacheEnabled) return;
   if (args.control.risk_level === "high") return;
 
-  const fingerprint = fp(args.latestUserInput, args.playerContext, args.ruleJson);
+  const fingerprint =
+    args.digest || args.ruleFlags
+      ? fpV2({
+          latestUserInput: args.latestUserInput,
+          digest: args.digest ?? null,
+          ruleFlags: args.ruleFlags ?? null,
+        })
+      : fpLegacy(args.latestUserInput, args.playerContext, args.ruleJson);
   const k = key(args.userId, args.sessionId, fingerprint);
   const ttl = Math.max(15, Math.min(180, aiGovernanceEnv.controlPreflightCacheTtlSec));
   const val = JSON.stringify(args.control);

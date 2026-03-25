@@ -8,6 +8,7 @@ import { deleteCloudSaveSlot, enqueueReviveWorldAdvanceJob } from "@/app/actions
 import { useAchievementsStore } from "@/store/useAchievementsStore";
 import { GuestSoftNudge } from "@/components/GuestSoftNudge";
 import { useMounted } from "@/hooks/useMounted";
+import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 
@@ -22,6 +23,15 @@ type SettlementAiReview = {
   evidenceSufficiency: "enough" | "insufficient";
   generatedAt: string;
 };
+
+function replaceLocationIdsForDisplay(text: string): string {
+  let out = String(text ?? "");
+  for (const [id, label] of Object.entries(LOCATION_LABELS)) {
+    if (!id || !label) continue;
+    out = out.replaceAll(id, label);
+  }
+  return out;
+}
 
 export type SettlementGrade = "S" | "A" | "B" | "C" | "D" | "E";
 
@@ -137,21 +147,21 @@ function buildMarkdown(logs: LogEntry[]): string {
     if (entry.role === "user") {
       lines.push("## 用户动作");
       lines.push("");
-      lines.push(entry.content);
+      lines.push(replaceLocationIdsForDisplay(entry.content));
       lines.push("");
       lines.push("---");
       lines.push("");
     } else if (entry.role === "assistant") {
       lines.push("## DM 叙事");
       lines.push("");
-      lines.push(entry.content);
+      lines.push(replaceLocationIdsForDisplay(entry.content));
       lines.push("");
 
       if (entry.reasoning && entry.reasoning.trim().length > 0) {
         lines.push("<details>");
         lines.push("<summary>推理过程（折叠）</summary>");
         lines.push("");
-        lines.push(entry.reasoning);
+        lines.push(replaceLocationIdsForDisplay(entry.reasoning));
         lines.push("");
         lines.push("</details>");
         lines.push("");
@@ -163,7 +173,7 @@ function buildMarkdown(logs: LogEntry[]): string {
       lines.push("## 系统指令");
       lines.push("");
       lines.push("```");
-      lines.push(entry.content);
+      lines.push(replaceLocationIdsForDisplay(entry.content));
       lines.push("```");
       lines.push("");
       lines.push("---");

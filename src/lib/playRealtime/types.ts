@@ -13,7 +13,6 @@ export interface PlayerControlSlots {
   target?: string;
   item_hint?: string;
   location_hint?: string;
-  notes?: string;
 }
 
 /**

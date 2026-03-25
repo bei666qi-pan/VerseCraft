@@ -63,9 +63,9 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
         aria-label="打开深渊排行榜"
       >
         <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
-          <div className="absolute -inset-1 rounded-full bg-slate-300/45 blur-md animate-pulse" />
-          <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-300 border-t-slate-400 animate-[spin_1.2s_linear_infinite] drop-shadow-[0_0_14px_rgba(148,163,184,0.95)]" />
-          <div className="absolute inset-1 rounded-full bg-white/85 backdrop-blur-sm transition-all group-hover:bg-white" />
+          {/* 移除转圈：改为灰白淡光晕（统一全站入口风格） */}
+          <div className="absolute -inset-1 rounded-full bg-white/70 blur-[12px] opacity-70 transition group-hover:opacity-90 vc-wait-breath" />
+          <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_18px_rgba(226,232,240,0.7)]" />
           <Trophy className="relative z-10 text-slate-700 drop-shadow-[0_0_6px_rgba(71,85,105,0.55)]" size={22} />
         </div>
       </button>

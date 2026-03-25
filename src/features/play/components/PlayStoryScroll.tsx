@@ -4,6 +4,8 @@ import { memo, type ReactNode, type RefObject } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import { DMNarrativeBlock, renderNarrativeText } from "../render/narrative";
+import { PlaySemanticWaitingHint, type PlaySemanticWaitingKind } from "./PlaySemanticWaitingHint";
+import { VcSpinner } from "./VcSpinner";
 
 export type PlayStoryDisplayEntry = { role: "assistant" | "user"; content: string; logIndex: number };
 
@@ -67,33 +69,42 @@ const StreamPanel = memo(function StreamPanel({
   smoothThinking,
   smoothNarrative,
   smoothComplete,
+  semanticWaitingKind,
 }: {
   isStreamVisualActive: boolean;
   smoothThinking: boolean;
   smoothNarrative: string;
   smoothComplete: boolean;
+  semanticWaitingKind: PlaySemanticWaitingKind | null;
 }) {
   if (!isStreamVisualActive) return null;
   return (
     <div className="min-h-[140px] space-y-3">
       {smoothThinking ? (
-        <div className="flex items-center gap-3 py-3">
-          <div className="relative flex h-6 w-6 items-center justify-center">
-            <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
-            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-            <div className="relative h-[18px] w-[18px] shrink-0 overflow-hidden rounded-full">
-              <Image
-                src="/logo.svg"
-                alt="文界工坊"
-                width={18}
-                height={18}
-                className="object-cover scale-[1.08]"
-              />
+        <div className="space-y-1 py-3">
+          <div className="flex items-center gap-3">
+            <div className="vc-wait-breath relative h-6 w-6 shrink-0">
+              <VcSpinner size={24} strokeWidth={3} tone="blackblue" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="h-[14px] w-[14px] overflow-hidden rounded-full">
+                  <Image
+                    src="/logo.svg"
+                    alt="文界工坊"
+                    width={14}
+                    height={14}
+                    className="object-cover scale-[1.06]"
+                    priority={false}
+                  />
+                </div>
+              </div>
             </div>
+            <span className="text-sm font-medium tracking-widest text-slate-700">
+              正在构造回应
+            </span>
           </div>
-          <span className="bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-sm font-medium tracking-widest text-transparent">
-            正在生成...
-          </span>
+          {semanticWaitingKind && semanticWaitingKind !== "unknown" ? (
+            <PlaySemanticWaitingHint kind={semanticWaitingKind} />
+          ) : null}
         </div>
       ) : (
         <>
@@ -129,6 +140,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   plainOnlyLogIndexMin,
   embeddedOpeningContent,
   openingAiBusy,
+  semanticWaitingKind,
   children,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -153,6 +165,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   embeddedOpeningContent?: string | null;
   /** 嵌入区「主笔推演」提示：请传入已与 `streamPhase` 交叉校验后的值（如父组件中的 openingBusyUi） */
   openingAiBusy?: boolean;
+  /** waiting_upstream 阶段的语义化过渡提示（不伪造剧情，仅减轻心理空白）。 */
+  semanticWaitingKind?: PlaySemanticWaitingKind | null;
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
@@ -194,20 +208,23 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
           smoothThinking={smoothThinking}
           smoothNarrative={smoothNarrative}
           smoothComplete={smoothComplete}
+          semanticWaitingKind={semanticWaitingKind ?? null}
         />
         {inputMode === "options" && isChatBusy && smoothComplete && streamOn && (
           <div className="pt-2">
-            <div className="relative flex h-6 w-6 items-center justify-center">
-              <div className="absolute inset-0 rounded-full border-[3px] border-slate-200/20" />
-              <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 border-r-purple-500 animate-spin drop-shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-              <div className="relative h-[18px] w-[18px] shrink-0 overflow-hidden rounded-full">
-                <Image
-                  src="/logo.svg"
-                  alt="文界工坊"
-                  width={18}
-                  height={18}
-                  className="object-cover scale-[1.08]"
-                />
+            <div className="vc-wait-breath relative h-6 w-6">
+              <VcSpinner size={24} strokeWidth={3} tone="blackblue" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="h-[14px] w-[14px] overflow-hidden rounded-full">
+                  <Image
+                    src="/logo.svg"
+                    alt="文界工坊"
+                    width={14}
+                    height={14}
+                    className="object-cover scale-[1.06]"
+                    priority={false}
+                  />
+                </div>
               </div>
             </div>
           </div>

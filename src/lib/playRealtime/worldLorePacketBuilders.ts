@@ -2,9 +2,16 @@ import { PLAYER_SURFACE_LORE } from "@/lib/registry/playerSurfaceLore";
 import { REVEAL_TIER_METAS } from "@/lib/registry/revealRegistry";
 import type { RevealTierRank } from "@/lib/registry/revealTierRank";
 import { WORLD_ORDER_CANON } from "@/lib/registry/worldOrderRegistry";
+import { NPCS } from "@/lib/registry/npcs";
 import type { FloorLoreEntry } from "@/lib/registry/floorLoreRegistry";
 import type { PlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import type { ThreatSnapshot } from "./stage2Packets";
+
+function normalizeNpcAppearanceForPacket(text: string): string {
+  const t = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  return t.slice(0, 120);
+}
 
 export function buildFloorLorePacket(args: {
   signals: PlayerWorldSignals;
@@ -116,8 +123,21 @@ export function buildKeyNpcLorePacket(args: {
   const includeElder =
     args.nearbyNpcIds.includes("N-011") || args.relationshipHints.some((h) => h.includes("夜读"));
   const includeMerchant = args.worldFlags.includes("merchant_seen");
+  const nearbyNpcBriefs = args.nearbyNpcIds
+    .map((id) => {
+      const npc = NPCS.find((x) => x.id === id);
+      if (!npc) return null;
+      return {
+        id: npc.id,
+        name: npc.name,
+        appearance: normalizeNpcAppearanceForPacket(npc.appearance),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 6);
   return {
     nearbyNpcIds: args.nearbyNpcIds.slice(0, 8),
+    nearbyNpcBriefs,
     codexHintsTruncated: args.relationshipHints.slice(0, 8),
     elderOrderHint:
       includeElder && args.maxRevealRank >= 2 && elder ? elder.worldLogic.slice(0, 200) : null,

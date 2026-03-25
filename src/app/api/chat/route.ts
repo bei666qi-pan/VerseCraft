@@ -586,6 +586,8 @@ export async function POST(req: Request) {
         ruleSnapshot: pipelineRule,
         ctx: { requestId, userId, sessionId, path: "/api/chat" },
         signal: hardAc.signal,
+        // Budget must be stricter than task timeout: once hit, abandon preflight immediately.
+        budgetMs: budgetMs > 0 ? Math.min(budgetMs, 10_000) : 0,
       });
 
       if (budgetMs > 0) {

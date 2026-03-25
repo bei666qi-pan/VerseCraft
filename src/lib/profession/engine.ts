@@ -23,43 +23,8 @@ function countNpcCodexEntries(codex: Record<string, CodexLite>): number {
 }
 
 function statQualified(stats: Record<StatType, number>, stat: StatType): boolean {
-  return safeNum(stats?.[stat]) >= 20;
-}
-
-function behaviorEvidenceByProfession(args: {
-  id: ProfessionId;
-  tasks: TaskLite[];
-  historicalMaxFloorScore: number;
-  mainThreatByFloor: Record<string, SnapshotMainThreatState>;
-  codex: Record<string, CodexLite>;
-  inventoryCount: number;
-  warehouseCount: number;
-  equippedWeapon: Weapon | null;
-}): number {
-  const completed = countCompletedTasks(args.tasks);
-  if (args.id === "守灯人") {
-    const a = countSuppressedThreats(args.mainThreatByFloor) >= 1 ? 1 : 0;
-    const b = completed >= 3 ? 1 : 0;
-    return a + b;
-  }
-  if (args.id === "巡迹客") {
-    const a = safeNum(args.historicalMaxFloorScore) >= 3 ? 1 : 0;
-    const b = safeNum(args.historicalMaxFloorScore) >= 5 ? 1 : 0;
-    return a + b;
-  }
-  if (args.id === "觅兆者") {
-    const a = (safeNum(args.inventoryCount) + safeNum(args.warehouseCount)) >= 6 ? 1 : 0;
-    const b = Object.values(args.mainThreatByFloor ?? {}).some((x) => (x.counterHintsUsed ?? []).length > 0) ? 1 : 0;
-    return a + b;
-  }
-  if (args.id === "齐日角") {
-    const a = countNpcCodexEntries(args.codex) >= 3 ? 1 : 0;
-    const b = completed >= 2 ? 1 : 0;
-    return a + b;
-  }
-  const a = Boolean(args.equippedWeapon && ((args.equippedWeapon.currentMods ?? []).length > 0 || (args.equippedWeapon.currentInfusions ?? []).length > 0)) ? 1 : 0;
-  const b = countNpcCodexEntries(args.codex) >= 2 ? 1 : 0;
-  return a + b;
+  // 单职业认证门槛：任一维度 > 20；职业本身按其 primaryStat 是否 > 20 来决定可选列表。
+  return safeNum(stats?.[stat]) > 20;
 }
 
 export function computeProfessionState(input: {
@@ -79,32 +44,22 @@ export function computeProfessionState(input: {
   for (const id of PROFESSION_IDS) {
     const stat = PROFESSION_REGISTRY[id].primaryStat;
     const statOk = statQualified(input.stats, stat);
-    const behaviorEvidenceCount = behaviorEvidenceByProfession({
-      id,
-      tasks: input.tasks,
-      historicalMaxFloorScore: input.historicalMaxFloorScore,
-      mainThreatByFloor: input.mainThreatByFloor,
-      codex: input.codex,
-      inventoryCount: input.inventoryCount,
-      warehouseCount: input.warehouseCount,
-      equippedWeapon: input.equippedWeapon,
-    });
-    const behaviorEvidenceTarget = 2;
-    const behaviorOk = behaviorEvidenceCount >= behaviorEvidenceTarget;
+    // V2：职业认证从“行为证据+试炼任务”简化为“primaryStat > 20 的职业可被选择”。
+    // “遇到认证NPC/好感”等触发条件属于剧情/位置层信号，放在交互层处理，不在这里引入世界观耦合。
+    const behaviorEvidenceTarget = 0;
+    const behaviorEvidenceCount = 0;
+    const behaviorOk = true;
     const prev = progressByProfession[id] ?? {
       statQualified: false,
       behaviorQualified: false,
       behaviorEvidenceCount: 0,
-      behaviorEvidenceTarget: 2,
+      behaviorEvidenceTarget: 0,
       trialTaskId: null,
       trialTaskCompleted: false,
       certified: false,
     };
-    const trialTaskId = prev.trialTaskId ?? null;
-    const trialTaskCompleted = Boolean(
-      trialTaskId &&
-      input.tasks.some((t) => t.id === trialTaskId && t.status === "completed")
-    );
+    const trialTaskId = null;
+    const trialTaskCompleted = true;
     progressByProfession[id] = {
       ...prev,
       statQualified: statOk,

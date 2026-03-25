@@ -33,6 +33,9 @@ import {
 import { pickEmbeddedOpeningOptions } from "@/features/play/opening/openingOptionPools";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
+import { PROFESSION_REGISTRY } from "@/lib/profession/registry";
+import type { ProfessionId } from "@/lib/profession/types";
+import { getProfessionActiveSkillName } from "@/lib/profession/benefits";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
 import {
@@ -51,6 +54,8 @@ import {
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
+import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
+import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, isNightHour } from "@/features/play/endgame/endgame";
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
 const STREAM_CHUNK_STALL_MS = 120_000;
@@ -64,6 +69,29 @@ const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
 const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
 /** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
 const SCROLL_STICKY_BOTTOM_PX = 96;
+
+/**
+ * UI-only heuristic for waiting-upstream semantic hints.
+ * Must remain conservative and stable; it must not affect server control-plane decisions.
+ */
+function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
+  const t = String(action ?? "").trim();
+  if (!t) return "unknown";
+  const s = t.replace(/\s+/g, "");
+  if (/^(保存|读档|回档|设置|帮助|退出|重开|暂停|继续)$/.test(s) || /(背包|任务|属性|菜单|静音|音量)/.test(s)) {
+    return "meta";
+  }
+  if (/^(我)?使用了道具[:：]/.test(s) || /^(我)?(使用|服用|喝下|喝|吃下|吃|装备|点燃|注射)/.test(s)) {
+    return "use_item";
+  }
+  if (/^(查看|观察|调查|搜索|检查|翻找)/.test(s)) return "investigate";
+  if (/^(我)?对.+(说|问|喊|解释|回答|道歉|打招呼)/.test(s) || /^(我)?(询问|请求|交谈|沟通)/.test(s)) {
+    return "dialogue";
+  }
+  if (/(攻击|砍|刺|射击|开火|格挡|闪避|躲开|反击)/.test(s)) return "combat";
+  if (/^(我)?(去|前往|走向|进入|回到|返回)/.test(s) || /^(探索|移动到)/.test(s)) return "explore";
+  return "unknown";
+}
 
 function PlayContent() {
   const router = useRouter();
@@ -115,6 +143,9 @@ function PlayContent() {
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
   const toggleInputMode = useGameStore((s) => s.toggleInputMode);
   const professionState = useGameStore((s) => s.professionState);
+  const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
+  const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
+  const certifyProfession = useGameStore((s) => s.certifyProfession);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -138,6 +169,23 @@ function PlayContent() {
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
+  /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
+  const [waitingHintKind, setWaitingHintKind] = useState<PlaySemanticWaitingKind | null>(null);
+  const [endgameState, setEndgameState] = useState<{ active: boolean; awaitingEnding: boolean }>({
+    active: false,
+    awaitingEnding: false,
+  });
+  const endgameTriggeredRef = useRef(false);
+  const ENDGAME_SYSTEM_PROMPT =
+    '【系统强制干预：终局】当前已是第10日0时。请直接输出本局最终结局，narrative 必须≥600字，风格克制但压迫，收束所有悬念并给出“终焉”的不可逆结论。' +
+    '严格输出合法 DM JSON：is_action_legal=true，sanity_damage=0，is_death=false，consumes_time=false，options 只能是 ["迎接终焉"]。' +
+    "禁止发放/消耗任何道具、禁止新增/更新任务、禁止修改 player_location、禁止 relationship_updates/codex_updates/npc_location_updates/main_threat_updates/weapon_updates 等写回。";
+  /** 单职业认证：当满足触发条件时，用下一次 options 强制让玩家选择职业 */
+  const [pendingProfessionChoice, setPendingProfessionChoice] = useState<{
+    enabled: boolean;
+    options: string[];
+    mapping: Record<string, ProfessionId>;
+  }>({ enabled: false, options: [], mapping: {} });
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -215,6 +263,8 @@ function PlayContent() {
   }, [streamPhase, tailAlignKey, onTailDrainComplete]);
 
   const day = time.day ?? 0;
+  const hour = time.hour ?? 0;
+  const isNight = isNightHour(hour);
   const isDarkMoon = day >= 3 && day < 10;
   const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted, guestId ?? "guest_play", "/play");
@@ -222,6 +272,7 @@ function PlayContent() {
   const hasFirstEffectiveActionRef = useRef(false);
 
   const isGuestDialogueExhausted = isGuest && dialogueCount >= 50;
+  const endgameLocked = endgameState.active && !endgameState.awaitingEnding;
 
   const sanity = stats?.sanity ?? 0;
   /** 已移除羊皮纸强制引导，不再阻塞对话 */
@@ -240,10 +291,12 @@ function PlayContent() {
   useEffect(() => {
     if (!isHydrated || !isGameStarted) return;
     if (hasShownProfessionEligibleHintRef.current) return;
+    // 单职业 V2：未遇到 1F 认证NPC 前，不提示“可认证”（避免误导）
+    if (!hasMetProfessionCertifier) return;
     if (eligibleProfessionCount <= 0) return;
     hasShownProfessionEligibleHintRef.current = true;
-    setFirstTimeHint(`你已满足 ${eligibleProfessionCount} 条职业认证条件，可在设置中完成认证。`);
-  }, [eligibleProfessionCount, isGameStarted, isHydrated]);
+    setFirstTimeHint(`你已满足职业认证条件，可在一楼完成认证。`);
+  }, [eligibleProfessionCount, hasMetProfessionCertifier, isGameStarted, isHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -311,14 +364,15 @@ function PlayContent() {
   useEffect(() => {
     if (!isHydrated) return;
     const t = useGameStore.getState().time ?? { day: 0, hour: 0 };
-    if (t.day >= 10 && !showApocalypseOverlay) {
-      setShowApocalypseOverlay(true);
-    }
+    // 终局不再自动扣理智/跳结算：仅作为氛围层，在终局态展示。
+    if (endgameState.active && !showApocalypseOverlay) setShowApocalypseOverlay(true);
+    if (!endgameState.active && showApocalypseOverlay) setShowApocalypseOverlay(false);
   }, [isHydrated, showApocalypseOverlay]);
 
   useEffect(() => {
     if (streamPhase === "idle") {
       setOpeningAiBusy(false);
+      setWaitingHintKind(null);
     }
   }, [streamPhase]);
 
@@ -477,13 +531,24 @@ function PlayContent() {
   }, [showDarkMoonOverlay]);
 
   useEffect(() => {
-    if (!showApocalypseOverlay) return;
-    const t = setTimeout(() => {
-      setStats({ sanity: 0 });
-      router.push("/settlement");
-    }, 3000);
-    return () => clearTimeout(t);
-  }, [showApocalypseOverlay, setStats, router]);
+    // 终局态不再通过 overlay 强制结算；结算由玩家点击“迎接终焉”触发。
+  }, []);
+
+  useEffect(() => {
+    if (!endgameState.active) return;
+    // 终局态：强制关闭菜单，避免任何分支交互入口残留
+    if (useGameStore.getState().activeMenu !== null) {
+      useGameStore.getState().setActiveMenu(null);
+    }
+  }, [endgameState.active]);
+
+  // 终局触发后：等待当前回合完全结束，再发起一次系统回合请求生成结局文案。
+  useEffect(() => {
+    if (!endgameState.awaitingEnding) return;
+    if (streamPhase !== "idle") return;
+    if (sendActionInFlightRef.current) return;
+    void sendActionRef.current(ENDGAME_SYSTEM_PROMPT, true, false, true);
+  }, [endgameState.awaitingEnding, streamPhase]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -600,8 +665,9 @@ function PlayContent() {
     const state = useGameStore.getState();
     const logsNow = state.logs ?? [];
     const assistantCount = logsNow.filter((l) => l && l.role === "assistant").length;
-    if (assistantCount === 0) return;
-    if (assistantCount <= 1) return;
+    // Opening-only policy: never inject embedded opening options once the session has entered normal turns.
+    // The first turn is already covered by the earlier effect when !hasAssistantMessage.
+    if (assistantCount > 0) return;
     if (inputMode !== "options") return;
     if (currentOptions.length > 0) return;
 
@@ -700,11 +766,18 @@ function PlayContent() {
     try {
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
+    // Only compute hint at request start; keep stable during waiting_upstream.
+    setWaitingHintKind(guessSemanticWaitingKind(trimmed));
     const isOpeningOptionsOnlyRound = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
+    const isEndgameSystemRound = Boolean(isSystemAction && trimmed === ENDGAME_SYSTEM_PROMPT);
     openingOptionsOnlyRoundRef.current = isOpeningOptionsOnlyRound;
     if (isOpeningOptionsOnlyRound) {
       setOpeningAiBusy(true);
       setCurrentOptions([...pickEmbeddedOpeningOptions()]);
+    }
+    if (isEndgameSystemRound) {
+      // 终局回合强制以唯一选项推进
+      setCurrentOptions([ENDGAME_ONLY_OPTION]);
     }
     narrativeRef.current = "";
     tailDrainTargetRef.current = null;
@@ -1161,6 +1234,7 @@ function PlayContent() {
         id: string;
         name: string;
         type: "npc" | "anomaly";
+        known_info?: unknown;
         favorability?: unknown;
         trust?: unknown;
         fear?: unknown;
@@ -1187,6 +1261,7 @@ function PlayContent() {
         id: u.id,
         name: u.name,
         type: u.type,
+        known_info: typeof u.known_info === "string" ? u.known_info : undefined,
         favorability: typeof u.favorability === "number" ? u.favorability : undefined,
         trust: typeof u.trust === "number" ? u.trust : undefined,
         fear: typeof u.fear === "number" ? u.fear : undefined,
@@ -1311,7 +1386,20 @@ function PlayContent() {
       merged.push(...DEFAULT_FOUR_ACTION_OPTIONS);
     }
 
-    if (openingOptionsOnlyRoundRef.current) {
+    if (isEndgameSystemRound) {
+      // 终局：强制唯一选项 + 结局字数兜底（避免模型没达到≥600字）
+      const ensured = ensureMinChars(narrativeToPush, 600);
+      if (ensured !== narrativeToPush) {
+        // 覆盖最新推入日志的内容：追加补段。保持实现克制，不改协议字段。
+        useGameStore.getState().popLastNLogs(1);
+        useGameStore.getState().pushLog({ role: "assistant", content: ensured, reasoning: undefined });
+        narrativeToPush = ensured;
+      }
+      setCurrentOptions([ENDGAME_ONLY_OPTION]);
+      setEndgameState({ active: true, awaitingEnding: false });
+      setActiveMenu(null);
+      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+    } else if (openingOptionsOnlyRoundRef.current) {
       // 首屏四条已由 pickEmbeddedOpeningOptions 写入，禁止用模型 options 覆盖
       useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     } else if (merged.length > 0) {
@@ -1357,12 +1445,127 @@ function PlayContent() {
     // Recompute profession eligibility and issue short certification trials when gates are met.
     useGameStore.getState().refreshProfessionState();
 
+    // ---- 单职业认证触发（N-010 认证NPC + 1F + 好感>=0 + 任一属性>20 + 当前无职业）----
+    // 设计：不解析叙事文本；仅依赖结构化回写（codex/relationship/npc_location_updates）做“遇到”近似。
+    {
+      const currentLoc =
+        typeof parsed.player_location === "string" && parsed.player_location.trim().length > 0
+          ? parsed.player_location.trim()
+          : (useGameStore.getState().playerLocation ?? "B1_SafeZone");
+      const in1F = currentLoc.startsWith("1F_");
+
+      // 本回合“出现过的NPC”集合：复用下方外貌去重的 ids 收集逻辑，但这里保持独立避免顺序耦合。
+      const seenNpcIds = new Set<string>();
+      if (Array.isArray(parsed.codex_updates)) {
+        for (const u of parsed.codex_updates as unknown[]) {
+          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
+          if ((u as { type?: unknown }).type !== "npc") continue;
+          const id = (u as { id?: unknown }).id;
+          if (typeof id === "string" && id.trim()) seenNpcIds.add(id.trim());
+        }
+      }
+      if (Array.isArray((parsed as { relationship_updates?: unknown[] }).relationship_updates)) {
+        for (const u of ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])) {
+          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
+          const id = (u as { npcId?: unknown }).npcId;
+          if (typeof id === "string" && id.trim()) seenNpcIds.add(id.trim());
+        }
+      }
+      if (Array.isArray(parsed.npc_location_updates)) {
+        for (const u of parsed.npc_location_updates) {
+          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
+          const id = (u as { id?: unknown }).id;
+          if (typeof id === "string" && id.trim()) seenNpcIds.add(id.trim());
+        }
+      }
+
+      // 遇到认证NPC：只在 1F 触发（避免其它楼层的误判）
+      if (in1F && (seenNpcIds.has("N-010") || useGameStore.getState().dynamicNpcStates?.["N-010"]?.currentLocation?.startsWith("1F_"))) {
+        if (!useGameStore.getState().hasMetProfessionCertifier) markMetProfessionCertifier();
+      }
+
+      const stateNow = useGameStore.getState();
+      const alreadyHasProfession = Boolean(stateNow.professionState?.currentProfession);
+      const metNpc = Boolean(stateNow.hasMetProfessionCertifier);
+      const favor =
+        typeof stateNow.codex?.["N-010"]?.favorability === "number"
+          ? (stateNow.codex["N-010"]!.favorability as number)
+          : 0;
+      const favorOk = favor >= 0;
+
+      const statsNow = stateNow.stats ?? FALLBACK_STATS;
+      const anyStatOver20 =
+        (statsNow.sanity ?? 0) > 20 ||
+        (statsNow.agility ?? 0) > 20 ||
+        (statsNow.luck ?? 0) > 20 ||
+        (statsNow.charm ?? 0) > 20 ||
+        (statsNow.background ?? 0) > 20;
+
+      if (!alreadyHasProfession && in1F && metNpc && favorOk && anyStatOver20) {
+        // 可选职业：仅展示 primaryStat > 20 的职业，避免“任意职业随便点”造成违和。
+        const eligible: ProfessionId[] = PROFESSION_IDS.filter((id) => {
+          const key = PROFESSION_REGISTRY[id].primaryStat;
+          return (statsNow as Record<string, number | undefined>)[key] > 20;
+        });
+        if (eligible.length > 0) {
+          const optionTextById: Record<ProfessionId, string> = {
+            守灯人: "认证职业：守灯人",
+            巡迹客: "认证职业：巡迹客",
+            觅兆者: "认证职业：觅兆者",
+            齐日角: "认证职业：齐日角",
+            溯源师: "认证职业：溯源师",
+          };
+          const opts = eligible.map((id) => optionTextById[id]);
+          const mapping = Object.fromEntries(eligible.map((id) => [optionTextById[id], id])) as Record<string, ProfessionId>;
+          setPendingProfessionChoice({ enabled: true, options: opts.slice(0, 5), mapping });
+          // 强制下一次以 options 形式推进
+          if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
+          setCurrentOptions([...opts.slice(0, 4)]);
+          setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
+        }
+      }
+    }
+
     // wire name `npc_location_updates[].to_location` -> store 内部语义 `currentLocation`
     if (Array.isArray(parsed.npc_location_updates) && parsed.npc_location_updates.length > 0) {
       for (const u of parsed.npc_location_updates) {
         if (u && typeof u.id === "string" && typeof u.to_location === "string") {
           updateNpcLocation(u.id, u.to_location);
         }
+      }
+    }
+
+    // 场景内首次出场外貌描写去重：用结构化回写的 npcId 粗略判定“本回合出现过的 NPC”
+    {
+      const ids: string[] = [];
+      if (Array.isArray(parsed.codex_updates)) {
+        for (const u of parsed.codex_updates as unknown[]) {
+          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
+          const type = (u as { type?: unknown }).type;
+          const id = (u as { id?: unknown }).id;
+          if (type === "npc" && typeof id === "string" && id.trim()) ids.push(id.trim());
+        }
+      }
+      if (Array.isArray((parsed as { relationship_updates?: unknown[] }).relationship_updates)) {
+        for (const u of ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])) {
+          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
+          const id = (u as { npcId?: unknown }).npcId;
+          if (typeof id === "string" && id.trim()) ids.push(id.trim());
+        }
+      }
+      if (Array.isArray(parsed.npc_location_updates)) {
+        for (const u of parsed.npc_location_updates as unknown[]) {
+          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
+          const id = (u as { id?: unknown }).id;
+          if (typeof id === "string" && id.trim()) ids.push(id.trim());
+        }
+      }
+      const loc =
+        typeof parsed.player_location === "string" && parsed.player_location.trim().length > 0
+          ? parsed.player_location.trim()
+          : (useGameStore.getState().playerLocation ?? "B1_SafeZone");
+      if (ids.length > 0) {
+        useGameStore.getState().markSceneNpcAppearanceWritten(loc, ids);
       }
     }
 
@@ -1468,7 +1671,15 @@ function PlayContent() {
         setShowDarkMoonOverlay(true);
       }
       if (nextTime.day >= 10) {
-        setShowApocalypseOverlay(true);
+        // 终局以“第10日0时”作为强制结局点；不在这里做扣理智/跳结算。
+        if (isEndgameMoment(nextTime) && !endgameTriggeredRef.current) {
+          endgameTriggeredRef.current = true;
+          setEndgameState({ active: true, awaitingEnding: true });
+          // 强制下一步只能推进终局：切到 options + 唯一占位选项（结局生成后会再覆盖为唯一选项）
+          if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
+          setCurrentOptions([ENDGAME_ONLY_OPTION]);
+          setFirstTimeHint("十日已至。你只能迎接终焉。");
+        }
       }
     }
 
@@ -1624,43 +1835,69 @@ function PlayContent() {
             <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
               <div className="shrink-0 bg-slate-900/10 px-3 py-2">
                 <div className="flex min-h-[40px] items-center justify-between gap-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 items-baseline">
                     <button
                       type="button"
-                      onClick={() => setActiveMenu("settings")}
+                      onClick={() => {
+                        if (endgameState.active) return;
+                        setActiveMenu("settings");
+                      }}
                       data-onboarding="settings-btn"
                       className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
                       aria-label="设置"
                     >
                       <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                        <div className="absolute -inset-0.5 rounded-full bg-slate-300/60 blur-sm animate-pulse" />
-                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-200 border-t-white animate-[spin_1.2s_linear_infinite]" />
-                        <div className="absolute inset-0.5 rounded-full bg-white/95 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_12px_rgba(255,255,255,0.6)]" />
-                        <Settings className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
+                        {/* 移除“圈圈旋转”：改为灰白淡光晕（更显眼但更克制） */}
+                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
+                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
+                        <Settings className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
                       </div>
                     </button>
                     <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
                       叙事主视窗
                     </h2>
-                    <button
-                      type="button"
-                      onClick={() => setActiveMenu("settings")}
-                      className="hidden min-w-0 items-center gap-2 rounded-full border border-white/30 bg-white/50 px-2 py-0.5 transition hover:bg-white/70 sm:flex"
-                      title="打开设置并查看职业/转职"
-                    >
-                      <span className="truncate rounded-full border border-indigo-300/40 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                        职业：{professionState?.currentProfession ?? "未认证"}
-                      </span>
-                      {eligibleProfessionCount > 0 ? (
-                        <span className="rounded-full border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-800">
-                          可认证 {eligibleProfessionCount}
+                    {professionState?.currentProfession ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (endgameState.active) return;
+                          setActiveMenu("settings");
+                        }}
+                        className="hidden min-w-0 items-center gap-2 rounded-full border border-white/30 bg-white/50 px-2 py-0.5 transition hover:bg-white/70 sm:flex"
+                        title="打开设置并查看职业"
+                      >
+                        <div className="relative h-6 w-6 shrink-0">
+                          <div className="absolute -inset-0.5 rounded-full bg-white/70 blur-[10px] opacity-60 vc-wait-breath" />
+                          <div className="absolute inset-0 rounded-full bg-white/90 shadow-[0_0_14px_rgba(148,163,184,0.35)]" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            {/* 极简职业徽记：内联 SVG，避免外部资源与抖动 */}
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              aria-hidden
+                              className="text-slate-700"
+                            >
+                              <path
+                                d="M12 3.5l2.3 5.3 5.7.5-4.3 3.7 1.3 5.6L12 15.9 7 18.6l1.3-5.6-4.3-3.7 5.7-.5L12 3.5z"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                        <span className="truncate text-base font-bold tracking-widest text-slate-800">
+                          {getProfessionActiveSkillName(professionState.currentProfession)}
                         </span>
-                      ) : null}
-                    </button>
+                      </button>
+                    ) : null}
                   </div>
                   <button
                     type="button"
                     onClick={() => {
+                      if (endgameState.active) return;
                       const nextMode = inputMode === "options" ? "text" : "options";
                       toggleInputMode();
                       if (nextMode === "text" && !hasShownManualInputComplianceHintRef.current) {
@@ -1672,13 +1909,12 @@ function PlayContent() {
                     aria-label={inputMode === "options" ? "切换到手动输入" : "切换到选项"}
                   >
                     <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                      <div className="absolute -inset-0.5 rounded-full bg-slate-300/60 blur-sm animate-pulse" />
-                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-r-slate-200 border-t-white animate-[spin_1.2s_linear_infinite]" />
-                      <div className="absolute inset-0.5 rounded-full bg-white/95 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_12px_rgba(255,255,255,0.6)]" />
+                      <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
+                      <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
                       {inputMode === "options" ? (
-                        <Keyboard className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
+                        <Keyboard className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
                       ) : (
-                        <List className="relative z-10 text-slate-600 group-hover:text-slate-800" size={18} strokeWidth={1.8} />
+                        <List className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
                       )}
                     </div>
                   </button>
@@ -1686,14 +1922,14 @@ function PlayContent() {
                     <div className="relative group">
                       {talent && talentCdLeft === 0 && !isChatBusy && (
                         <div
-                          className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 opacity-70 blur transition-opacity duration-500 group-hover:opacity-100 animate-[pulse_3s_ease-in-out_infinite]"
+                          className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-blue-500/25 via-slate-300/20 to-indigo-500/25 opacity-70 blur transition-opacity duration-500 group-hover:opacity-95 animate-[pulse_3s_ease-in-out_infinite]"
                           aria-hidden
                         />
                       )}
                       <button
                         type="button"
                         onClick={onUseTalent}
-                        disabled={!talent || talentCdLeft > 0 || isChatBusy}
+                        disabled={endgameState.active || !talent || talentCdLeft > 0 || isChatBusy}
                         className={`relative truncate rounded-full px-3 py-1.5 text-sm font-bold tracking-wider drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] transition-all md:text-base ${
                           talent && talentCdLeft === 0 && !isChatBusy
                             ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
@@ -1736,6 +1972,7 @@ function PlayContent() {
                 plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                 embeddedOpeningContent={showEmbeddedOpening ? FIXED_OPENING_NARRATIVE : null}
                 openingAiBusy={openingBusyUi && !showEmbeddedOpening}
+                semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
               >
                 {inputMode === "options" &&
                   (showEmbeddedOpening
@@ -1750,13 +1987,33 @@ function PlayContent() {
                     }
                     isLowSanity={isLowSanity}
                     isDarkMoon={isDarkMoon}
-                    disabled={isChatBusy || isGuestDialogueExhausted}
+                    disabled={isChatBusy || isGuestDialogueExhausted || (endgameState.active && !endgameLocked)}
                     onPick={(option) => {
+                      if (endgameState.active) {
+                        if (!endgameLocked) return;
+                        if (option === ENDGAME_ONLY_OPTION) {
+                          router.push("/settlement");
+                        }
+                        return;
+                      }
                       if (isGuestDialogueExhausted) {
                         setShowDialoguePaywall(true);
                         return;
                       }
                       playUIClick();
+                      // 职业认证选项：本地落盘后再把“选择结果”送入叙事，保持剧情连贯。
+                      if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
+                        const chosen = pendingProfessionChoice.mapping[option]!;
+                        const ok = certifyProfession(chosen);
+                        setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
+                        if (!ok) {
+                          setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
+                          return;
+                        }
+                        // 让 DM 自然写“姐姐帮你办手续”，但不要求 DM 输出新的协议字段。
+                        void sendAction(`我选择认证职业：【${chosen}】`, true);
+                        return;
+                      }
                       void sendAction(option, true);
                     }}
                   />
@@ -1777,8 +2034,12 @@ function PlayContent() {
                 }}
                 onSubmitKey={onSubmit}
                 onSubmitClick={onSubmit}
-                chatBusy={isChatBusy}
-                helperText={isChatBusy ? "正在生成..." : "保持简短。保持真实。"}
+                chatBusy={isChatBusy || endgameState.active}
+                helperText={
+                  endgameState.active
+                    ? (endgameLocked ? "终局已至。" : "正在生成终局…")
+                    : (isChatBusy ? "正在生成..." : "保持简短。保持真实。")
+                }
                 showRegisterPrompt={showRegisterPrompt}
                 isGuestDialogueExhausted={isGuestDialogueExhausted}
               />

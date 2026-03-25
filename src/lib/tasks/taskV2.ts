@@ -344,22 +344,16 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       issuerId: "N-008",
       issuerName: "电工老刘",
       floorTier: "1",
-      guidanceLevel: "standard",
       status: "available",
       claimMode: "manual",
-      hiddenTriggerConditions: ["visited:1F_Lobby", "talked_to:N-008"],
-      npcProactiveGrant: {
-        enabled: true,
-        npcId: "N-008",
-        minFavorability: 5,
-        preferredLocations: ["B1_SafeZone", "1F_Lobby"],
-        cooldownHours: 4,
-      },
+      // 该任务对玩家是“可接取”的显式委托：触发/隐藏条件不展示在 UI，避免出戏。
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "先去1F门厅观察，再决定是否深入。",
       reward: {
-        originium: 3,
-        items: ["I-D01"],
+        // 按需求：奖励只保留一种（道具 1 件）
+        items: ["I-C12"],
       },
       worldConsequences: ["unlock_floor_2f_path"],
     }),

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { MAX_INPUT } from "../playConstants";
 
 export function PlayTextInputBar({
@@ -35,6 +36,20 @@ export function PlayTextInputBar({
 }) {
   void _isLowSanity;
   void _isDarkMoon;
+
+  const [submitFlash, setSubmitFlash] = useState(false);
+  const flashTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current != null) {
+        window.clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const canSubmitNow = !chatBusy && !isGuestDialogueExhausted && input.trim().length > 0;
+
   return (
     <div className="shrink-0 bg-slate-900/10 px-3 py-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {hasAnyGate ? (
@@ -58,9 +73,22 @@ export function PlayTextInputBar({
             />
             <button
               type="button"
-              onClick={onSubmitClick}
+              onClick={() => {
+                if (!canSubmitNow) return;
+                setSubmitFlash(true);
+                if (flashTimerRef.current != null) window.clearTimeout(flashTimerRef.current);
+                flashTimerRef.current = window.setTimeout(() => {
+                  setSubmitFlash(false);
+                  flashTimerRef.current = null;
+                }, 650);
+                onSubmitClick();
+              }}
               disabled={chatBusy || input.trim().length === 0 || isGuestDialogueExhausted}
-              className="min-h-[44px] shrink-0 rounded-lg bg-foreground px-5 text-base font-semibold text-background transition disabled:opacity-40 touch-manipulation"
+              className={`min-h-[44px] shrink-0 rounded-lg px-5 text-base font-semibold transition-colors duration-700 touch-manipulation disabled:opacity-40 ${
+                canSubmitNow && !submitFlash
+                  ? "bg-white/90 text-blue-700 hover:bg-white"
+                  : "bg-foreground text-white"
+              }`}
             >
               提交
             </button>

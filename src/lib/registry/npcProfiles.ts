@@ -5,7 +5,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     id: "N-015",
     homeNode: "B1_SafeZone",
     display: {
-      name: "守门骑士",
+      name: "麟泽",
       appearance: "黑色旧制式外套，披肩常带雨痕，站姿笔直，眼神克制而冷峻。",
       floor: "B1",
       publicPersonality: "忧郁、寡言、善良",
@@ -30,7 +30,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     id: "N-020",
     homeNode: "B1_Storage",
     display: {
-      name: "售卖员少女",
+      name: "灵伤",
       appearance: "整洁制服与明亮笑容，语速轻快，眼神偶有短暂空白。",
       floor: "B1",
       publicPersonality: "天真、浪漫、纯真",
@@ -54,7 +54,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     id: "N-010",
     homeNode: "1F_PropertyOffice",
     display: {
-      name: "路线引导大姐姐",
+      name: "欣蓝",
       appearance: "气质温和，衣着得体，目光沉稳，像总能提前看见你的犹豫。",
       floor: "1",
       publicPersonality: "温柔、克制、御姐",
@@ -78,7 +78,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     id: "N-018",
     homeNode: "1F_GuardRoom",
     display: {
-      name: "游荡商人",
+      name: "北夏",
       appearance: "外套轻扬、笑意明亮，步伐像在旅行而非逃命。",
       floor: "random",
       publicPersonality: "开朗、潇洒、中立",
@@ -105,7 +105,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     id: "N-013",
     homeNode: "7F_Room701",
     display: {
-      name: "七层少年",
+      name: "枫",
       appearance: "笑起来无害，眼尾却总有一点不合时宜的冷意。",
       floor: "7",
       publicPersonality: "讨喜、机灵、依附感强",
@@ -129,7 +129,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     id: "N-007",
     homeNode: "5F_Studio503",
     display: {
-      name: "五层妹妹",
+      name: "叶",
       appearance: "神情冷淡，常抱臂站在门边，话少却会偷偷看你反应。",
       floor: "5",
       publicPersonality: "冷淡、自私、警惕",

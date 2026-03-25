@@ -26,7 +26,6 @@ export function buildControlAugmentationBlock(args: {
     slots.target ? `target=${slots.target}` : "",
     slots.item_hint ? `item_hint=${slots.item_hint}` : "",
     slots.location_hint ? `location_hint=${slots.location_hint}` : "",
-    slots.notes ? `notes=${slots.notes}` : "",
   ]
     .filter(Boolean)
     .join("；");

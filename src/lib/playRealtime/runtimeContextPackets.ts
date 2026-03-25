@@ -38,6 +38,7 @@ const REVIVE_RE = /最近复活：死亡地点\[([^\]]*)]，死因\[([^\]]*)]，
 const TASKS_RE = /任务追踪：([^。]+)。/;
 const NPC_POS_RE = /NPC当前位置：([^。]+)。/;
 const CODEX_RE = /图鉴已解锁：([^。]+)。/;
+const SCENE_APPEAR_RE = /场景外貌已描写：([^。]+)。/;
 const MAIN_THREAT_RE = /主威胁状态：([^。]+)。/;
 const EQUIPPED_WEAPON_RE = /主手武器\[([^\]|]+)\|稳定(\d+)\|反制([^|\]]*)(?:\|模组([^|\]]*))?(?:\|灌注([^|\]]*))?(?:\|污染(\d+))?(?:\|可修复([01]))?\]/;
 const PROFESSION_RE = /职业状态：当前\[([^\]]+)]，已认证\[([^\]]*)]，可认证\[([^\]]*)]，被动\[([^\]]*)]/;
@@ -119,6 +120,16 @@ function parseRelationshipHints(playerContext: string): string[] {
   if (!raw) return [];
   return raw
     .split("，")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function parseSceneNpcAppearanceWritten(playerContext: string): string[] {
+  const raw = playerContext.match(SCENE_APPEAR_RE)?.[1]?.trim();
+  if (!raw || raw === "无") return [];
+  return raw
+    .split("/")
     .map((x) => x.trim())
     .filter(Boolean)
     .slice(0, 12);
@@ -392,6 +403,7 @@ export function buildRuntimeContextPackets(args: {
   const tasks = parseTasks(args.playerContext);
   const npcPositions = parseNpcPositions(args.playerContext);
   const relationshipHints = parseRelationshipHints(args.playerContext);
+  const sceneNpcAppearanceWritten = parseSceneNpcAppearanceWritten(args.playerContext);
   const professionPacket = parseProfessionPacket(args.playerContext);
   const professionProgressPacket = parseProfessionProgressPacket(args.playerContext);
   const mainThreatMap = parseMainThreatMap(args.playerContext);
@@ -488,6 +500,7 @@ export function buildRuntimeContextPackets(args: {
     },
     key_npc_lore_packet: {
       nearbyNpcIds: (worldLorePackets.key_npc_lore_packet.nearbyNpcIds as string[]).slice(0, 4),
+      nearbyNpcBriefs: (worldLorePackets.key_npc_lore_packet.nearbyNpcBriefs as unknown[] | undefined)?.slice(0, 3),
     },
     recent_world_event_packet: {
       activeTaskTitles: (worldLorePackets.recent_world_event_packet.activeTaskTitles as string[]).slice(0, 3),
@@ -550,6 +563,7 @@ export function buildRuntimeContextPackets(args: {
       threatPhase: threatPacket.phase,
       currentProfession: professionPacket.currentProfession,
     }),
+    scene_npc_appearance_written_packet: sceneNpcAppearanceWritten,
     ...worldLorePackets,
   };
   const text = [
@@ -577,6 +591,7 @@ export function buildRuntimeContextPackets(args: {
     profession_progress_packet: packets.profession_progress_packet.slice(0, 5),
     profession_identity_packet: packets.profession_identity_packet,
     tactical_context_packet: packets.tactical_context_packet,
+    scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
     ...worldLorePacketsCompact,
   };
   const compactText = [

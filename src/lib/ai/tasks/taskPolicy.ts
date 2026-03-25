@@ -43,11 +43,15 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   PLAYER_CONTROL_PREFLIGHT: {
     task: "PLAYER_CONTROL_PREFLIGHT",
     primaryRole: CONTROL,
-    fallbackRoles: [MAIN],
+    // 控制预检是「辅助快判层」：用于意图/风险/槽位的结构化提示，帮助主笔更稳更快进入叙事。
+    // 它不是必须成功的前置大脑：一旦不可用，应立刻降级放行主链路，绝不能靠 main 兜底造成更长等待。
+    fallbackRoles: [],
     stream: false,
-    maxTokens: 512,
+    // Short JSON only (intent + a few fields). Keep tight to avoid long-tail generation.
+    maxTokens: 192,
     temperature: 0,
-    timeoutMs: 12_000,
+    // Fast classification task; should fail fast rather than block first packet.
+    timeoutMs: 6_000,
     budgetLevel: "low",
     responseFormatJsonObject: true,
   },

@@ -6,6 +6,7 @@ import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2,
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
+import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
 import {
   formatTaskRewardSummary,
   getRewardCurveHintByFloorTier,
@@ -21,6 +22,7 @@ import { PROFESSION_IDS } from "@/lib/profession/registry";
 import {
   evaluateProfessionActiveReadiness,
   getProfessionActiveSummary,
+  getProfessionActiveSkillName,
   getProfessionPassiveSummary,
 } from "@/lib/profession/benefits";
 
@@ -269,12 +271,6 @@ function SettingsPanel({
   onToggleMute,
   onSaveAndExit,
   onAbandonAndDie,
-  currentSaveSlot,
-  saveSlots,
-  onCreateBranch,
-  onLoadSlot,
-  onDeleteSlot,
-  onRenameSlot,
   professionState,
   onRefreshProfessionState,
   onCertifyProfession,
@@ -296,12 +292,6 @@ function SettingsPanel({
   onToggleMute: () => void;
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
-  currentSaveSlot: string;
-  saveSlots: ReturnType<typeof useGameStore.getState>["saveSlots"];
-  onCreateBranch: () => void;
-  onLoadSlot: (slotId: string) => void;
-  onDeleteSlot: (slotId: string) => void;
-  onRenameSlot: (slotId: string, label: string) => void;
   professionState: ProfessionStateV1;
   onRefreshProfessionState: () => void;
   onCertifyProfession: (profession: ProfessionId) => boolean;
@@ -414,126 +404,46 @@ function SettingsPanel({
       <div className="pt-2">
         <div className="mb-4 rounded-xl border border-white/15 bg-white/5 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs text-slate-300">职业 / 转职 V1（中途认证）</p>
+            <p className="text-xs text-slate-300">职业</p>
             <button
               type="button"
               onClick={onRefreshProfessionState}
               className="rounded-lg border border-slate-300/30 bg-white/10 px-2 py-1 text-[11px] text-slate-200"
+              title="同步本地职业资格（不影响剧情）"
             >
-              刷新资格
+              刷新
             </button>
           </div>
-          <p className="mb-2 text-[11px] text-slate-400">
-            当前职业：{professionState.currentProfession ?? "无"}；已认证：{professionState.unlockedProfessions.join("/") || "无"}
-          </p>
-          <div className="mb-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-[10px] text-slate-300">
-            <div>被动：{getProfessionPassiveSummary(professionState.currentProfession)}</div>
-            <div className="mt-1">主动：{getProfessionActiveSummary(professionState.currentProfession)}</div>
-            <div className="mt-1 text-amber-200">当前场景命中率：{readiness.hitRate}%</div>
-            <div className="mt-1 text-slate-400">{readiness.hint}</div>
-            <button
-              type="button"
-              onClick={() => {
-                const res = onActivateProfessionActive();
-                if (!res.ok) {
-                  window.alert(res.reason ?? "当前无法发动职业主动。");
-                  return;
-                }
-                if (res.tip) window.alert(`职业主动已就绪。\n${res.tip}`);
-              }}
-              className="mt-2 rounded border border-indigo-300/30 bg-indigo-500/15 px-2 py-1 text-[10px] text-indigo-100"
-            >
-              发动职业主动
-            </button>
-          </div>
-          <div className="max-h-40 space-y-1 overflow-y-auto">
-            {PROFESSION_IDS.map((id) => {
-              const eligible = professionState.eligibilityByProfession[id];
-              const unlocked = professionState.unlockedProfessions.includes(id);
-              const isCurrent = professionState.currentProfession === id;
-              return (
-                <div key={id} className={`flex items-center justify-between rounded-lg px-2 py-1 ${isCurrent ? "bg-indigo-500/20" : "bg-white/5"}`}>
-                  <div className="min-w-0">
-                    <div className="truncate text-[11px] text-slate-200">{id}{isCurrent ? "（当前）" : ""}</div>
-                    <div className="truncate text-[10px] text-slate-400">
-                      资格:{eligible ? "可认证" : "未达成"} / 状态:{unlocked ? "已认证" : "未认证"}
-                    </div>
-                  </div>
-                  <div className="ml-2 flex shrink-0 items-center gap-2">
-                    {!unlocked ? (
-                      <button
-                        type="button"
-                        disabled={!eligible}
-                        onClick={() => {
-                          const ok = onCertifyProfession(id);
-                          if (!ok) window.alert("当前资格不足，无法认证。");
-                        }}
-                        className="text-[10px] text-emerald-200 disabled:opacity-40"
-                      >
-                        认证
-                      </button>
-                    ) : !isCurrent ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const ok = onSwitchProfession(id);
-                          if (!ok) window.alert("转职冷却中或条件不满足。");
-                        }}
-                        className="text-[10px] text-amber-200"
-                      >
-                        转职
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="mb-4 rounded-xl border border-white/15 bg-white/5 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs text-slate-300">分支存档 V1</p>
-            <button
-              type="button"
-              onClick={onCreateBranch}
-              className="rounded-lg border border-indigo-300/40 bg-indigo-500/20 px-2 py-1 text-[11px] text-indigo-100"
-            >
-              新建分支
-            </button>
-          </div>
-          <div className="max-h-36 space-y-1 overflow-y-auto">
-            {Object.entries(saveSlots ?? {}).filter(([id]) => !id.startsWith("auto_")).map(([id, slot]) => {
-              const meta = slot?.slotMeta;
-              const active = id === currentSaveSlot;
-              const summary = meta?.snapshotSummary;
-              return (
-                <div key={id} className={`flex items-center justify-between rounded-lg px-2 py-1 ${active ? "bg-emerald-500/15" : "bg-white/5"}`}>
-                  <button type="button" onClick={() => onLoadSlot(id)} className="min-w-0 flex-1 text-left text-[11px] text-slate-200">
-                    <div className="truncate">{meta?.label ?? id} {active ? "（当前）" : ""}</div>
-                    <div className="truncate text-[10px] text-slate-400">
-                      D{summary?.day ?? 0} H{summary?.hour ?? 0} · {summary?.playerLocation ?? "B1_SafeZone"} · 任务{summary?.activeTasksCount ?? 0}
-                    </div>
-                    <div className="truncate text-[10px] text-slate-500">
-                      威胁{summary?.keyThreatStates.length ?? 0} · 关键NPC{summary?.keyNpcFlags.length ?? 0} · 复活待处理{summary?.revivePending ? "是" : "否"}
-                    </div>
-                  </button>
-                  <div className="ml-2 flex shrink-0 items-center gap-2">
-                    <button type="button" onClick={() => {
-                      const next = window.prompt("请输入分支名称", meta?.label ?? id);
-                      if (next && next.trim()) onRenameSlot(id, next.trim());
-                    }} className="text-[10px] text-indigo-200">
-                      改名
-                    </button>
-                    {!active ? (
-                      <button type="button" onClick={() => onDeleteSlot(id)} className="text-[10px] text-rose-300">
-                        删除
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+
+          {!professionState.currentProfession ? (
+            <p className="text-[11px] leading-relaxed text-slate-400">暂无职业，请去1楼认证。</p>
+          ) : (
+            <>
+              <p className="mb-2 text-[11px] text-slate-400">
+                当前职业：{professionState.currentProfession}
+              </p>
+              <div className="mb-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-[10px] text-slate-300">
+                <div>被动：{getProfessionPassiveSummary(professionState.currentProfession)}</div>
+                <div className="mt-1">主动：{getProfessionActiveSummary(professionState.currentProfession)}</div>
+                <div className="mt-1 text-amber-200">当前场景命中率：{readiness.hitRate}%</div>
+                <div className="mt-1 text-slate-400">{readiness.hint}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = onActivateProfessionActive();
+                    if (!res.ok) {
+                      window.alert(res.reason ?? "当前无法使用该技能。");
+                      return;
+                    }
+                    if (res.tip) window.alert(`${getProfessionActiveSkillName(professionState.currentProfession)} 已就绪。\n${res.tip}`);
+                  }}
+                  className="mt-2 rounded border border-slate-300/30 bg-white/10 px-2 py-1 text-[10px] text-slate-100 hover:bg-white/15"
+                >
+                  {getProfessionActiveSkillName(professionState.currentProfession)}
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <div className="flex">
           <button
@@ -751,7 +661,7 @@ function CodexPanel({
                         : "bg-white/5 text-slate-300 hover:bg-indigo-500/10"
                   }`}
                 >
-                  {e.name}
+                  {resolveCodexDisplayName(e)}
                 </button>
               ))}
             </div>
@@ -781,16 +691,14 @@ function CodexPanel({
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
         {selectedEntry ? (
           <>
-            <h3 className="text-xl font-bold text-white">{selectedEntry.name}</h3>
+            <h3 className="text-xl font-bold text-white">{resolveCodexDisplayName(selectedEntry)}</h3>
             <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">
               {selectedEntry.type === "npc" ? "徘徊者" : "诡异"}
             </p>
             <div className="mt-6 space-y-4">
               <div>
-                <span className="text-xs text-slate-500">好感度</span>
-                <p className={`mt-1 font-bold ${(selectedEntry.favorability ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                  {selectedEntry.favorability ?? 0}
-                </p>
+                <span className="text-xs text-slate-500">关系</span>
+                <p className="mt-1 text-sm font-semibold text-slate-200">{computeRelationshipLabel(selectedEntry)}</p>
               </div>
               {typeof selectedEntry.combatPower === "number" && (
                 <div>
@@ -798,23 +706,18 @@ function CodexPanel({
                   <p className="mt-1 font-semibold text-slate-200">{selectedEntry.combatPowerDisplay ?? selectedEntry.combatPower}</p>
                 </div>
               )}
-              {(typeof selectedEntry.trust === "number" || typeof selectedEntry.fear === "number" || typeof selectedEntry.debt === "number") && (
-                <div>
-                  <span className="text-xs text-slate-500">关系向量</span>
-                  <p className="mt-1 text-xs text-slate-300">
-                    信任 {selectedEntry.trust ?? 0} / 恐惧 {selectedEntry.fear ?? 0} / 债务 {selectedEntry.debt ?? 0}
-                  </p>
-                </div>
-              )}
-              {(typeof selectedEntry.affection === "number" || typeof selectedEntry.desire === "number" || typeof selectedEntry.romanceEligible === "boolean") && (
-                <div>
-                  <span className="text-xs text-slate-500">亲密状态</span>
-                  <p className="mt-1 text-xs text-fuchsia-300">
-                    好感倾向 {selectedEntry.affection ?? 0} / 欲望张力 {selectedEntry.desire ?? 0} / 可发展{" "}
-                    {selectedEntry.romanceEligible ? "是" : "否"} / 阶段 {selectedEntry.romanceStage ?? "none"}
-                  </p>
-                </div>
-              )}
+              <div>
+                <span className="text-xs text-slate-500">简单介绍</span>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">
+                  {buildCodexIntro(selectedEntry) || "暂无"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-slate-500">我目前掌握的信息</span>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">
+                  {(selectedEntry.known_info ?? "").trim() || "暂无"}
+                </p>
+              </div>
               {selectedEntry.personality && (
                 <div>
                   <span className="text-xs text-slate-500">性格</span>
@@ -944,6 +847,7 @@ function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
 
 function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number }) {
   const visibleTasks = tasks.filter((t) => t.status !== "hidden");
+  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -988,19 +892,27 @@ function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number
               <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-500">
                 <span>委托人：{t.issuerName}</span>
-                <span>任务线：{t.type}</span>
-                <span>楼层带：{t.floorTier}</span>
-                <span>引导强度：{t.guidanceLevel}</span>
-                <span>领取方式：{t.claimMode === "npc_grant" ? "NPC主动发放" : t.claimMode === "auto" ? "自动领取" : "手动领取"}</span>
-                <span>{t.npcProactiveGrant.enabled ? `发放NPC：${t.npcProactiveGrant.npcId || "待定"}` : "发放NPC：无"}</span>
-                <span className="col-span-2">奖励：{formatTaskRewardSummary(t.reward)}</span>
-                <span className="col-span-2">奖励曲线：{getRewardCurveHintByFloorTier(t.floorTier)}</span>
-                {t.nextHint ? <span className="col-span-2 text-indigo-300">下一步提示：{t.nextHint}</span> : null}
-                {t.hiddenTriggerConditions.length > 0 ? (
-                  <span className="col-span-2 text-fuchsia-300">隐藏触发：{t.hiddenTriggerConditions.join(" / ")}</span>
-                ) : null}
-                {t.highRiskHighReward ? <span className="col-span-2 text-rose-300">高风险高收益任务</span> : null}
+                <span>楼层：{t.floorTier}</span>
+                <span className="col-span-2">
+                  领取方式：{t.claimMode === "npc_grant" ? "NPC提出委托" : t.claimMode === "auto" ? "自动记录" : "手动领取"}
+                  {t.claimMode === "manual" && t.issuerId ? `（发放：${t.issuerId}）` : ""}
+                </span>
+                <span className="col-span-2">
+                  奖励：{t.reward?.items?.length ? `道具 ${t.reward.items.length} 件` : (t.reward?.originium ? `原石 +${t.reward.originium}` : "线索")}
+                </span>
+                {t.nextHint ? <span className="col-span-2 text-indigo-300">下一步：{t.nextHint}</span> : null}
               </div>
+              {t.status === "available" && t.claimMode === "manual" ? (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => updateTaskStatus(t.id, "active")}
+                    className="rounded-lg border border-indigo-300/30 bg-indigo-500/15 px-3 py-1.5 text-[11px] font-semibold text-indigo-100 hover:bg-indigo-500/20"
+                  >
+                    接取
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))
         )}
@@ -1027,12 +939,7 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const mainThreatByFloor = useGameStore((s) => s.mainThreatByFloor ?? {});
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
-  const saveSlots = useGameStore((s) => s.saveSlots ?? {});
-  const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "main_slot");
-  const createBranchSlot = useGameStore((s) => s.createBranchSlot);
-  const loadGame = useGameStore((s) => s.loadGame);
-  const deleteSaveSlot = useGameStore((s) => s.deleteSaveSlot);
-  const renameSaveSlot = useGameStore((s) => s.renameSaveSlot);
+  // 单线时间线：不再暴露分支存档 UI
   const professionState = useGameStore((s) => s.professionState);
   const refreshProfessionState = useGameStore((s) => s.refreshProfessionState);
   const certifyProfession = useGameStore((s) => s.certifyProfession);
@@ -1134,23 +1041,6 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
               onToggleMute={onToggleMute}
               onSaveAndExit={handleSaveAndExit}
               onAbandonAndDie={handleAbandonAndDie}
-              currentSaveSlot={currentSaveSlot}
-              saveSlots={saveSlots}
-              onCreateBranch={() => {
-                const res = createBranchSlot();
-                if (!res.ok) {
-                  window.alert(res.reason ?? "当前无法创建分支");
-                }
-              }}
-              onLoadSlot={(slotId) => {
-                loadGame(slotId);
-              }}
-              onDeleteSlot={(slotId) => {
-                deleteSaveSlot(slotId);
-              }}
-              onRenameSlot={(slotId, label) => {
-                renameSaveSlot(slotId, label);
-              }}
               professionState={professionState}
               onRefreshProfessionState={refreshProfessionState}
               onCertifyProfession={certifyProfession}

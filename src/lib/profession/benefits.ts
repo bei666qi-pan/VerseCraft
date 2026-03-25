@@ -74,6 +74,19 @@ export function getProfessionActiveCooldownHours(profession: ProfessionId | null
   return PROFESSION_BENEFITS_V1[profession].activeCooldownHours;
 }
 
+export function getProfessionActiveSkillName(profession: ProfessionId | null): string {
+  if (!profession) return "";
+  // 更“酷”的短名：用于顶栏徽记与按钮文案，避免出现“发动职业主动”等系统措辞。
+  const table: Record<ProfessionId, string> = {
+    守灯人: "稳心定灯",
+    巡迹客: "疾行断压",
+    觅兆者: "征兆聚焦",
+    齐日角: "缓锋陈词",
+    溯源师: "断链重组",
+  };
+  return table[profession] ?? String(profession);
+}
+
 export function getProfessionActiveFlagKey(profession: ProfessionId): string {
   return `profession.active.pending.${profession}`;
 }

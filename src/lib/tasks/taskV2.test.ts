@@ -115,7 +115,7 @@ test("activateClaimableHiddenTasks unlocks hidden task by completed consequences
 test("buildNpcProactiveGrantNarrativeBlock builds natural narrative constraints", () => {
   const block = buildNpcProactiveGrantNarrativeBlock({
     playerContext:
-      "任务发放线索：电工老刘:在B1建立生存节奏[好感>=0|地点B1_SafeZone/B1_Storage|冷却2h|状态active]。",
+      "任务发放线索：电工老刘:在B1建立生存节奏[地点B1_SafeZone/B1_Storage|状态进行中]。",
     latestUserInput: "我去找老刘聊聊",
   });
   assert.ok(block.includes("NPC主动发放叙事约束"));

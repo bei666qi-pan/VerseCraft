@@ -87,6 +87,26 @@ function sanitizeReasonerJsonText(text: string): { content: string; sanitized: b
   return { content: noThink, sanitized: noThink !== text.trim() };
 }
 
+/**
+ * Lightweight sanitization for ONLINE short JSON tasks (control-plane style).
+ * Conservative by design: only strips <think> blocks and extracts the first JSON object.
+ * Avoid applying heavy offline-reasoner heuristics to prevent unintended side effects.
+ */
+function sanitizeOnlineShortJsonText(text: string): { content: string; sanitized: boolean } {
+  const trimmed = (text ?? "").trim();
+  const noThink = stripThinkBlocks(trimmed);
+  if (isValidJsonObjectString(noThink)) return { content: noThink, sanitized: noThink !== trimmed };
+  const extracted = extractFirstJsonObject(noThink);
+  if (extracted && isValidJsonObjectString(extracted)) return { content: extracted, sanitized: true };
+  return { content: noThink, sanitized: noThink !== trimmed };
+}
+
+const ONLINE_SHORT_JSON_TASKS = new Set<TaskType>([
+  "PLAYER_CONTROL_PREFLIGHT",
+  "INTENT_PARSE",
+  "SAFETY_PREFILTER",
+]);
+
 function gatewayEndpoint(env: ReturnType<typeof resolveAiEnv>): { url: string; key: string } {
   return { url: env.gatewayBaseUrl, key: env.gatewayApiKey };
 }
@@ -627,10 +647,16 @@ export async function executeChatCompletion(params: {
 
       let processed = trimmed;
       let jsonSanitized = false;
-      if (jsonObject && isOfflineTask(params.task)) {
-        const s = sanitizeReasonerJsonText(trimmed);
-        processed = s.content;
-        jsonSanitized = s.sanitized;
+      if (jsonObject) {
+        if (isOfflineTask(params.task)) {
+          const s = sanitizeReasonerJsonText(trimmed);
+          processed = s.content;
+          jsonSanitized = s.sanitized;
+        } else if (ONLINE_SHORT_JSON_TASKS.has(params.task)) {
+          const s = sanitizeOnlineShortJsonText(trimmed);
+          processed = s.content;
+          jsonSanitized = s.sanitized;
+        }
       }
 
       if (jsonObject && !isValidJsonObjectString(processed)) {

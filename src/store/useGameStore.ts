@@ -161,6 +161,8 @@ export interface CodexEntry {
   id: string;
   name: string;
   type: "npc" | "anomaly";
+  /** 我目前掌握的、可展示的情报（由 DM 生成并通过 codex_updates 下发；为空则视为暂无） */
+  known_info?: string;
   favorability?: number;
   trust?: number;
   fear?: number;
@@ -272,6 +274,11 @@ interface GameState extends IntegrityMetaState {
 
   /** 图鉴：NPC/诡异情报，由 DM 通过 codex_updates 推送 */
   codex: Record<string, CodexEntry>;
+  /**
+   * 场景级外貌描写去重账本（key=player_location，value=该场景内已写过外貌的 npcId 列表）。
+   * 只用于提示词去重，不参与世界观真相与判定。
+   */
+  sceneNpcAppearanceLedger?: Record<string, string[]>;
 
   /** 新手引导：是否已查看图鉴（羊皮纸引导已移除） */
   hasCheckedCodex: boolean;
@@ -314,8 +321,11 @@ interface GameState extends IntegrityMetaState {
   reviveContext: SaveSlotData["reviveContext"];
   appliedRelationshipTaskIds: string[];
   professionState: ProfessionStateV1;
+  /** 是否已在叙事中遇到 1F 认证 NPC（路线引导大姐姐 N-010） */
+  hasMetProfessionCertifier: boolean;
   _integrity_dirty: boolean;
   verifyStateIntegrity: () => Promise<boolean>;
+  markMetProfessionCertifier: () => void;
   triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
   setVolume: (volume: number) => void;
@@ -365,6 +375,7 @@ interface GameState extends IntegrityMetaState {
   triggerIntrusionFlash: () => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
+  markSceneNpcAppearanceWritten: (playerLocation: string, npcIds: string[]) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
   popLastNLogs: (n: number) => void;
   advanceTime: () => void;
@@ -614,6 +625,7 @@ export const useGameStore = create<GameState>()(
       },
       appliedRelationshipTaskIds: [],
       professionState: createDefaultProfessionState(),
+      hasMetProfessionCertifier: false,
       _checksum_fingerprint: "",
       _integrity_dirty: false,
       verifyStateIntegrity: async () => {
@@ -755,6 +767,7 @@ export const useGameStore = create<GameState>()(
           activeMenu: null,
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
+          hasMetProfessionCertifier: false,
           reviveContext: {
             pending: false,
             deathLocation: null,
@@ -788,6 +801,7 @@ export const useGameStore = create<GameState>()(
           recentOptions: [],
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
+          hasMetProfessionCertifier: false,
         })),
       recordDeathForRevive: (cause, killerId) =>
         set((s) => {
@@ -870,6 +884,7 @@ export const useGameStore = create<GameState>()(
           recentOptions: [],
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
+          hasMetProfessionCertifier: false,
         })),
 
       destroySaveData: () =>
@@ -885,6 +900,7 @@ export const useGameStore = create<GameState>()(
           historicalMaxFloorScore: 0,
           deathCount: 0,
           appliedRelationshipTaskIds: [],
+          hasMetProfessionCertifier: false,
         }),
 
       setCurrentOptions: (options) =>
@@ -1194,6 +1210,24 @@ export const useGameStore = create<GameState>()(
         })),
       triggerIntrusionFlash: () => set({ intrusionFlashUntil: Date.now() + 2000 }),
       setHasCheckedCodex: (v) => set({ hasCheckedCodex: v }),
+      markSceneNpcAppearanceWritten: (playerLocation, npcIds) =>
+        set((s) => {
+          const loc = String(playerLocation ?? "").trim();
+          if (!loc) return {};
+          const ids = Array.isArray(npcIds)
+            ? npcIds
+                .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+                .map((x) => x.trim())
+                .slice(0, 12)
+            : [];
+          if (ids.length === 0) return {};
+          const base = s.sceneNpcAppearanceLedger ?? {};
+          const prev = Array.isArray(base[loc]) ? base[loc] : [];
+          const setIds = new Set(prev);
+          for (const id of ids) setIds.add(id);
+          const next = Array.from(setIds).slice(0, 24);
+          return { sceneNpcAppearanceLedger: { ...base, [loc]: next } };
+        }),
 
       mergeCodex: (updates) =>
         set((s) => {
@@ -1215,6 +1249,9 @@ export const useGameStore = create<GameState>()(
               id: prev?.id ?? id ?? name ?? key,
               name: name ?? prev?.name ?? "",
               type: (u.type === "npc" || u.type === "anomaly" ? u.type : prev?.type ?? "npc") as "npc" | "anomaly",
+              ...(typeof (u as { known_info?: unknown }).known_info === "string"
+                ? { known_info: ((u as { known_info: string }).known_info ?? "").trim().slice(0, 800) }
+                : {}),
               ...(typeof u.favorability === "number" ? { favorability: u.favorability } : {}),
               ...(typeof u.trust === "number" ? { trust: u.trust } : {}),
               ...(typeof u.fear === "number" ? { fear: u.fear } : {}),
@@ -1256,14 +1293,8 @@ export const useGameStore = create<GameState>()(
         set((s) => ({ logs: (s.logs ?? []).slice(0, -n) })),
 
       rewindTime: () =>
-        set((s) => {
-          const { day, hour } = s.time ?? { day: 0, hour: 0 };
-          if (hour <= 0) {
-            if (day <= 0) return {};
-            return { time: { day: day - 1, hour: 23 } };
-          }
-          return { time: { day, hour: hour - 1 } };
-        }),
+        // 单线时间线：不允许回溯
+        set(() => ({})),
 
       advanceTime: () =>
         set((s) => {
@@ -1398,6 +1429,8 @@ export const useGameStore = create<GameState>()(
           intrusionFlashUntil: 0,
           isGameStarted: true,
           professionState: createDefaultProfessionState(),
+          hasMetProfessionCertifier: false,
+          sceneNpcAppearanceLedger: {},
         });
       },
 
@@ -1491,7 +1524,8 @@ export const useGameStore = create<GameState>()(
           (s.tasks.filter((t) => t.status === "active" || t.status === "available").length > 0
             ? `任务追踪：${s.tasks
                 .filter((t) => t.status === "active" || t.status === "available")
-                .map((t) => `${t.title}[${t.type}|${t.status}|委托${t.issuerName}|层级${t.floorTier}|领取${t.claimMode}]`)
+                // 仅保留“玩家友好”的任务摘要，避免暴露内部字段（如隐藏触发/引导强度等）。
+                .map((t) => `${t.title}[${t.status === "available" ? "可接取" : "进行中"}|委托${t.issuerName}|地点${t.floorTier}]`)
                 .join("，")}。`
             : "") +
           (() => {
@@ -1499,7 +1533,8 @@ export const useGameStore = create<GameState>()(
               .filter((t) => t.npcProactiveGrant.enabled && (t.status === "available" || t.status === "active" || t.status === "hidden"))
               .map(
                 (t) =>
-                  `${t.issuerName}:${t.title}[ID${t.npcProactiveGrant.npcId || t.issuerId}|好感>=${t.npcProactiveGrant.minFavorability}|地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|冷却${t.npcProactiveGrant.cooldownHours}h|状态${t.status}|上次发放H${typeof t.npcProactiveGrantLastIssuedHour === "number" ? t.npcProactiveGrantLastIssuedHour : "NA"}]`
+                  // 这段仅作为 DM 的“自然引出委托”参考线索，不展示触发码；保持简短。
+                  `${t.issuerName}:${t.title}[地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|状态${t.status === "hidden" ? "未触发" : t.status === "available" ? "可接取" : "进行中"}]`
               );
             return proactive.length > 0 ? `任务发放线索：${proactive.join("；")}。` : "";
           })() +
@@ -1531,6 +1566,12 @@ export const useGameStore = create<GameState>()(
             ? ` 最近复活：死亡地点[${s.reviveContext.deathLocation}]，死因[${s.reviveContext.deathCause ?? "未知"}]，掉落数量[${s.reviveContext.droppedLootLedger.length}]，最近锚点[${s.reviveContext.lastReviveAnchorId ?? "未知"}]。`
             : "") +
           (npcPositions ? ` NPC当前位置：${npcPositions}。` : "") +
+          (() => {
+            const loc = s.playerLocation ?? "B1_SafeZone";
+            const ledger = s.sceneNpcAppearanceLedger ?? {};
+            const ids = Array.isArray(ledger[loc]) ? ledger[loc] : [];
+            return ` 场景外貌已描写：${ids.length > 0 ? ids.slice(0, 12).join("/") : "无"}。`;
+          })() +
           (s.recentOptions?.length
             ? ` 【最近生成的选项历史】：${s.recentOptions.join("；")}。`
             : " 【最近生成的选项历史】：（无）。")
@@ -1596,30 +1637,13 @@ export const useGameStore = create<GameState>()(
             warehouseCount: (s.warehouse ?? []).length,
             equippedWeapon: s.equippedWeapon ?? null,
           });
-          const nextTasks = [...(s.tasks ?? [])];
-          for (const id of PROFESSION_IDS) {
-            const p = computed.progressByProfession[id];
-            const taskId = p.trialTaskId ?? getProfessionTrialTaskId(id);
-            const exists = nextTasks.some((t) => t.id === taskId);
-            if (!exists && p.statQualified && p.behaviorQualified && !p.trialTaskCompleted) {
-              nextTasks.push(buildProfessionTrialTask(id));
-            }
-          }
-          const recomputed = computeProfessionState({
-            prev: computed,
-            stats: s.stats ?? DEFAULT_STATS,
-            tasks: nextTasks,
-            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
-            mainThreatByFloor: s.mainThreatByFloor ?? {},
-            codex: s.codex ?? {},
-            inventoryCount: (s.inventory ?? []).length,
-            warehouseCount: (s.warehouse ?? []).length,
-            equippedWeapon: s.equippedWeapon ?? null,
-          });
-          return { professionState: recomputed, tasks: nextTasks };
+          // 单职业 V2：不再注入“试炼任务”，资格仅作为“可选职业”的展示依据。
+          return { professionState: computed };
         }),
       certifyProfession: (profession) => {
         const s = get();
+        // 单职业：一局只能认证一次，认证后不可再认证/转职
+        if (s.professionState?.currentProfession) return false;
         const computed = computeProfessionState({
           prev: s.professionState,
           stats: s.stats ?? DEFAULT_STATS,
@@ -1667,23 +1691,9 @@ export const useGameStore = create<GameState>()(
         return true;
       },
       switchProfession: (profession) => {
-        const s = get();
-        const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
-        const curCd = Number(s.professionState?.professionCooldowns?.switchProfession ?? 0);
-        if (Number.isFinite(curCd) && curCd > nowHour) return false;
-        const state = s.professionState ?? createDefaultProfessionState();
-        if (!state.unlockedProfessions.includes(profession)) return false;
-        const next: ProfessionStateV1 = {
-          ...state,
-          currentProfession: profession,
-          activePerks: [PROFESSION_REGISTRY[profession].passivePerkId],
-          professionCooldowns: {
-            ...(state.professionCooldowns ?? {}),
-            switchProfession: nowHour + 24,
-          },
-        };
-        set({ professionState: next });
-        return true;
+        void profession;
+        // 单职业：禁止转职（UI 与状态层双重兜底）
+        return false;
       },
       activateProfessionActive: () => {
         const s = get();
@@ -1741,12 +1751,34 @@ export const useGameStore = create<GameState>()(
         set({ professionState: next });
         return current;
       },
+      markMetProfessionCertifier: () => set({ hasMetProfessionCertifier: true }),
 
       setCurrentSaveSlot: (slotId) =>
         set((s) => {
-          if (!slotId || !s.saveSlots?.[slotId]) return {};
-          return { currentSaveSlot: slotId };
+          // 单线时间线：仅允许 main_slot
+          if (slotId !== "main_slot") return {};
+          if (!s.saveSlots?.[slotId]) return {};
+          return { currentSaveSlot: "main_slot" };
         }),
+      renameSaveSlot: (slotId, label) => {
+        // 单线时间线：不允许改名（避免用户将其误认为是多存档）
+        void slotId;
+        void label;
+        return false;
+      },
+      deleteSaveSlot: (slotId) => {
+        // 单线时间线：不允许删除存档槽（避免误操作丢进度）
+        void slotId;
+        return false;
+      },
+      createBranchSlot: (input) => {
+        void input;
+        return { ok: false, reason: "已禁用分支存档" };
+      },
+
+      // ---- legacy multi-slot actions (disabled) ----
+      // 下面的旧实现保留在 git 历史中；当前版本强制单线推进。
+      /*
       renameSaveSlot: (slotId, label) => {
         const name = String(label ?? "").trim();
         if (!slotId || !name) return false;
@@ -1840,10 +1872,13 @@ export const useGameStore = create<GameState>()(
         });
         return { ok: true, slotId };
       },
+      */
 
       saveGame: (slotId) => {
         const s = get();
-        const effectiveSlotId = slotId || s.currentSaveSlot || "main_slot";
+        // 单线时间线：只写 main_slot
+        void slotId;
+        const effectiveSlotId = "main_slot";
         const safeStats = s.stats ?? DEFAULT_STATS;
         const computedProfession = computeProfessionState({
           prev: s.professionState,
@@ -1871,11 +1906,7 @@ export const useGameStore = create<GameState>()(
           slotId: effectiveSlotId,
           label:
             prevMeta?.label ??
-            (effectiveSlotId === "main_slot"
-              ? "主线存档"
-              : effectiveSlotId.startsWith("branch_")
-                ? `分支 ${effectiveSlotId.replace("branch_", "")}`
-                : effectiveSlotId),
+            "主线存档",
           kind: inferSaveSlotKind(effectiveSlotId),
           createdAt: prevMeta?.createdAt ?? new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -2031,6 +2062,8 @@ export const useGameStore = create<GameState>()(
       },
 
       loadGame: (slotId) => {
+        // 单线时间线：禁止读取其它分支/槽位，避免时间线回退
+        if (slotId !== "main_slot") return;
         const data = get().saveSlots[slotId];
         if (!data) return;
         const normalizedSnapshot = normalizeRunSnapshotV2(
