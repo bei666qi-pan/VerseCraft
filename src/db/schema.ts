@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   date,
   index,
@@ -269,6 +270,38 @@ export const adminMetricsDaily = pgTable(
   },
   (table) => ({
     dateKeyIdx: index("admin_metrics_daily_date_key_idx").on(table.dateKey),
+  })
+);
+
+/**
+ * Safety audit events (Phase 3+).
+ * Append-only, minimal necessary fields. Raw user text must not be stored by default.
+ *
+ * NOTE: Runtime table creation fallback is implemented in `src/db/ensureSchema.ts`.
+ */
+export const safetyAuditEvents = pgTable(
+  "safety_audit_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    traceId: varchar("trace_id", { length: 191 }).notNull(),
+    scene: varchar("scene", { length: 64 }).notNull(),
+    stage: varchar("stage", { length: 16 }).notNull(),
+    decision: varchar("decision", { length: 16 }).notNull(),
+    riskLevel: varchar("risk_level", { length: 16 }).notNull(),
+    reasonCode: varchar("reason_code", { length: 128 }).notNull(),
+    contentFingerprint: varchar("content_fingerprint", { length: 64 }).notNull(),
+
+    actor: jsonb("actor").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    providerSummary: jsonb("provider_summary").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    whitelist: jsonb("whitelist").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  },
+  (table) => ({
+    createdIdx: index("safety_audit_events_created_idx").on(table.createdAt),
+    sceneCreatedIdx: index("safety_audit_events_scene_created_idx").on(table.scene, table.createdAt),
+    traceIdx: index("safety_audit_events_trace_idx").on(table.traceId),
+    fingerprintIdx: index("safety_audit_events_fingerprint_idx").on(table.contentFingerprint),
   })
 );
 

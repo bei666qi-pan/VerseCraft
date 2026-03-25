@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { feedbacks } from "@/db/schema";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { recordFeedbackSubmittedAnalytics } from "@/lib/analytics/repository";
+import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
 
 type FeedbackActionResult = {
   success: boolean;
@@ -29,6 +30,16 @@ export async function submitFeedback(
   }
   if (trimmed.length > 2000) {
     return { success: false, message: "意见内容请控制在 2000 字以内。" };
+  }
+
+  const safety = await moderateInputOnServer({
+    scene: "feedback_input",
+    text: trimmed,
+    userId: userId ?? undefined,
+    sessionId: "system",
+  });
+  if (safety.decision !== "allow") {
+    return { success: false, message: safety.userMessage };
   }
 
   if (!userId) {

@@ -12,8 +12,8 @@ export default function AiDisclaimerPage() {
   const contactEmail = c.contactEmail;
   const contactLine =
     contactEmail !== null
-      ? `纠错与举报联系邮箱：${contactEmail}。`
-      : `请通过「联系我们」页面提交，主题注明「AI 内容纠错」或「AI 安全举报」。`;
+      ? `AI 相关纠错与安全举报联系邮箱：${contactEmail}。`
+      : `请通过「联系我们」页面选择「举报投诉」或「测试反馈」提交，并在正文中注明 AI 输出安全/纠错相关内容。`;
 
   return (
     <LegalDocShell title="人工智能（AI）生成内容说明">
@@ -61,16 +61,16 @@ export default function AiDisclaimerPage() {
           <p>我们会在产品架构与运营流程中叠加多类控制措施，包括但不限于（以实际部署为准）：</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
-              <strong>输入与输出策略：</strong>通过系统提示、规则与模型参数降低违规与高风险内容出现概率；
+              <strong>输入与输出策略：</strong>通过系统提示、规则与场景化安全策略，对用户输入与模型输出进行限制与审查；
             </li>
             <li>
-              <strong>自动拦截与过滤：</strong>对接内容安全服务或自建策略，对疑似违法违规内容进行阻断、替换或拒绝响应；
+              <strong>自动拦截与过滤：</strong>可能对接外部内容安全服务（例如百度文本审核/司南相关能力）作为风险信号之一，结合本地场景裁决逻辑，对疑似违法违规内容进行阻断、改写或回退，并在必要时记录最小审计元数据；
             </li>
             <li>
               <strong>限流与滥用防护：</strong>对异常流量、高频请求与可疑账号进行限速、熔断或人机验证等处置；
             </li>
             <li>
-              <strong>日志与审计：</strong>在合理范围内记录请求元数据、策略命中摘要与错误信息，用于排障、风控与合规留痕；
+              <strong>日志与审计：</strong>在合理范围内记录请求元数据、策略命中摘要与错误信息，用于排障、风控与合规留痕；具体记录范围以实际系统配置为准（通常不保存完整明文对话原文）；
             </li>
             <li>
               <strong>人工介入：</strong>在重大安全事件、投诉升级或监管要求场景下，可能启动人工核查。
@@ -94,17 +94,23 @@ export default function AiDisclaimerPage() {
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-slate-900">六、举报、纠错与申诉</h2>
           <p>
-            若您认为 AI 输出涉嫌违法违规、侵害权益或严重偏离产品应有调性，请通过「联系我们」提交材料，说明时间、场景、对话片段与您的诉求。{contactLine}
+            若您认为 AI 输出涉嫌违法违规、侵害权益或严重偏离产品应有调性，请通过「联系我们」提交材料，说明发生时间、页面/场景、对话片段或截图以及您的诉求。{contactLine}
           </p>
-          <p>我们将在合理期限内评估并采取删除、屏蔽、调整策略或模型路由等措施之一或多项；复杂案件可能需多次沟通。</p>
+          <p className="text-xs text-slate-500">
+            通常提交成功后系统会生成<strong className="font-medium text-slate-800">受理参考号（VC-COMP-编号）</strong>，便于您后续跟进同一事项。
+          </p>
+          <p>
+            我们将在合理期限内评估并采取删除、屏蔽、调整策略、改写/回退呈现方式或变更模型路由等措施之一或多项；复杂案件可能需多次沟通。若您对安全处置存在异议，可选择「申诉与复核」提交说明并等待人工复核。
+          </p>
         </section>
 
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-slate-900">七、AI 辅助审核或风控的披露</h2>
           <p>
             部分场景下，我们可能使用自动化规则、统计模型或 AI 辅助工具对内容、行为或风险信号进行排序、标注或建议，
-            <strong className="font-medium text-slate-800"> 最终是否采取措施仍由我们的运营与安全策略在人工监督下决定（视案件等级而定）</strong>。
-            该等辅助决策可能影响您的使用体验或账号状态；您享有《内容规范》所载申诉权利。
+            并在必要时结合外部安全审核信号与本地场景策略做综合裁决。
+            <strong className="font-medium text-slate-800"> 最终是否采取措施仍由我们的安全策略与运营在人工监督或复核机制下决定（视案件等级而定）</strong>。
+            该等辅助决策可能影响您的使用体验或账号状态；您享有《内容规范》所载申诉权利。我们不会以单一外部审核结果作为唯一裁判依据。
           </p>
         </section>
       </article>

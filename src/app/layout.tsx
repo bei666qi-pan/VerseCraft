@@ -5,6 +5,7 @@ import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
 import ChunkErrorHandler from "@/components/ChunkErrorHandler";
+import { envRawFirst } from "@/lib/config/envRaw";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,6 +20,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "文界工坊 (VerseCraft)",
   description: "锻造可能，实现幻想 - 规则怪谈文字冒险",
+  metadataBase: new URL(envRawFirst(["APP_URL", "NEXT_PUBLIC_APP_URL"]) ?? "https://versecraft.cn"),
 };
 
 export const viewport: Viewport = {

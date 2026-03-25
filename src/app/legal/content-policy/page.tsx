@@ -27,6 +27,15 @@ export default function ContentPolicyPage() {
         </p>
 
         <section className="space-y-2">
+          <h2 className="text-base font-semibold text-slate-900">0、与安全策略体系的关系（重要）</h2>
+          <p>
+            我们会对<strong>用户输入</strong>与<strong>系统输出</strong>进行内容安全审查。审查可能综合使用外部文本审核引擎信号（例如百度文本审核/司南相关能力）与本地场景化策略，并结合白名单与安全回退机制进行综合裁决。
+            外部审核结果并非唯一判断依据；平台可能采取阻断、改写、安全回退或拒绝展示等措施，并保留必要的安全留痕用于风控与争议处理。
+            对于争议或疑似误判，我们也可能基于投诉举报与申诉复核结果进行进一步处理。
+          </p>
+        </section>
+
+        <section className="space-y-2">
           <h2 className="text-base font-semibold text-slate-900">一、违规内容分类</h2>
           <p className="font-medium text-slate-800">1.1 违法违规类</p>
           <ul className="list-disc space-y-1 pl-5">
@@ -56,11 +65,12 @@ export default function ContentPolicyPage() {
           <h2 className="text-base font-semibold text-slate-900">二、违规输入、违规生成与违规传播</h2>
           <p>
             <strong className="font-medium text-slate-800">2.1 违规输入：</strong>
-            您不得以提示词、剧情引导、选项设计等方式故意诱导系统输出上条所述内容；不得上传含有违法违规信息的原始文本用于生成或传播。
+            您不得以提示词、剧情引导、选项设计等方式故意诱导系统输出本规范所述违法违规内容；不得以角色扮演、剧情包装等方式诱导绕过审核。
+            不得上传含有违法违规、可用于引流/诈骗/骚扰/攻击的原始文本用于生成或传播。
           </p>
           <p>
             <strong className="font-medium text-slate-800">2.2 违规生成：</strong>
-            即便由 AI 自动生成，一旦内容落入禁止类别，您不得继续要求重复生成、变体生成或截图传播以规避拦截。
+            即便由 AI 自动生成，一旦内容落入禁止类别，您不得继续要求重复生成、变体生成或截图传播以规避拦截或引发违规传播。
           </p>
           <p>
             <strong className="font-medium text-slate-800">2.3 违规传播：</strong>
@@ -119,6 +129,10 @@ export default function ContentPolicyPage() {
               <strong>终止服务：</strong>永久拒绝向特定账号提供本服务，并依法留存必要记录。
             </li>
           </ul>
+          <p>
+            在发现违规输入或违规输出传播风险时，我们可能还会采取“安全改写/回退呈现”的方式在尽量保留体验的同时降低风险；严重违规或恶意滥用将可能导致更严格的处置。
+            具体措施与处置等级以我们核查结果与适用法律为准，并遵循必要的最小留痕原则。
+          </p>
           <p className="text-xs text-slate-500">
             上述措施不构成对任何刑事、行政或民事责任的豁免或替代；我们在适用法律范围内配合有权机关调查。
           </p>

@@ -83,6 +83,14 @@ export function ContactPageClient() {
             该路径<strong>不是</strong>纯邮件跳转，便于我们在无完整工单后台阶段仍可追溯。
           </p>
           <p className="text-xs text-slate-600">
+            提交的正文内容可能经过自动化安全审核与风控检查（包括但不限于本地策略、必要的风险信号与最小审计元数据）。
+            在适用配置下，我们也可能调用外部文本审核能力作为风险信号之一，并结合本地场景策略做综合裁决。
+          </p>
+          <p className="text-xs text-slate-600">
+            我们将尽力在<strong>合理期限内</strong>完成初筛与答复，通常以隐私政策所述为准（例如力争在 15 个工作日内首次答复，复杂事项可能延长）。
+            安全与合规义务下，部分数据权利请求可能需要身份核验或被限制在适用范围内。
+          </p>
+          <p className="text-xs text-slate-600">
             我们<strong>不</strong>在成功页回显您的账号密码或完整存档 JSON；请勿在正文中主动粘贴敏感凭证。处理进度依赖您填写的回联方式或注册账号关联信息。
           </p>
         </section>
@@ -150,16 +158,16 @@ export function ContactPageClient() {
               <strong>测试反馈：</strong>缺陷、体验、平衡与文档问题。
             </li>
             <li>
-              <strong>举报投诉：</strong>违法违规、侵权、诈骗、漏洞线索等。
+              <strong>举报投诉：</strong>违法违规、侵权、诈骗、违规引流/骚扰/攻击、疑似脚本滥用等。
             </li>
             <li>
               <strong>商务合作：</strong>媒体与渠道等合作意向。
             </li>
             <li>
-              <strong>数据权利请求：</strong>删除、更正、导出、撤回同意等（需可核验身份）。
+              <strong>数据权利请求：</strong>删除、更正、导出、撤回同意等（通常需要身份核验与合规评估，处理以实际范围为准）。
             </li>
             <li>
-              <strong>申诉与复核：</strong>对处置、限权、风控有异议。
+              <strong>申诉与复核：</strong>对安全处置、限制功能或风控措施提出异议，我们将进行人工复核（是否调整以核查结果为准）。
             </li>
           </ul>
         </section>

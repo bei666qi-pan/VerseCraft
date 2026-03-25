@@ -87,18 +87,22 @@ export function ComplianceFooter() {
               >
                 内容规范
               </a>
-              <a
-                className="text-xs text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                href="/legal/ai-disclaimer"
-              >
-                AI 说明
-              </a>
-              <a
-                className="text-xs text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                href="/legal/minors"
-              >
-                未成年人
-              </a>
+              {c.showAiDisclaimer ? (
+                <a
+                  className="text-xs text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                  href="/legal/ai-disclaimer"
+                >
+                  AI 说明
+                </a>
+              ) : null}
+              {c.showMinors ? (
+                <a
+                  className="text-xs text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                  href="/legal/minors"
+                >
+                  未成年人
+                </a>
+              ) : null}
               <a
                 className="text-xs text-slate-700 underline underline-offset-2 hover:text-slate-900"
                 href="/legal/data-handling"

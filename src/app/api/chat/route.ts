@@ -57,6 +57,8 @@ import { finalOutputModeration, postModelModeration, preInputModeration } from "
 import { safeBlockedDmJson } from "@/lib/security/policy";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
+import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
+import { auditDmOutputCandidateOnServer } from "@/lib/safety/output/pipeline";
 import { normalizeUsage } from "@/lib/ai/stream/openaiLike";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
 import type { TokenUsage } from "@/lib/ai/types/core";
@@ -260,7 +262,7 @@ export async function POST(req: Request) {
   }
   const messages = validated.messages;
   const playerContext = validated.playerContext;
-  const latestUserInput = validated.latestUserInput;
+  let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
   const clientIp = getClientIpFromHeaders(req.headers);
   const requestId = createRequestId("chat");
@@ -304,6 +306,46 @@ export async function POST(req: Request) {
         },
       }
     );
+  }
+
+  // Phase3: input moderation for private story action.
+  // Important: do not feed unsafe raw input to control/main model.
+  const inputSafety = await moderateInputOnServer({
+    scene: "private_story_action",
+    text: latestUserInput,
+    userId: userId ?? undefined,
+    sessionId: sessionId ?? undefined,
+    ip: clientIp ? String(clientIp) : undefined,
+    traceId: requestId,
+  });
+  if (inputSafety.decision === "reject") {
+    recordHighRisk({ ip: clientIp, sessionId, userId }, `input_reject:${inputSafety.traceId}`);
+    return new Response(
+      sseText(
+        safeBlockedDmJson(inputSafety.narrativeFallback ?? inputSafety.userMessage, {
+          action: "degrade",
+          stage: "pre_input",
+          riskLevel: "gray",
+          requestId,
+          reason: "input_reject",
+        })
+      ),
+      {
+        status: 403,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      }
+    );
+  }
+  if (inputSafety.decision === "fallback") {
+    // Use fallback text to keep session progressing without exposing unsafe details.
+    latestUserInput = inputSafety.text;
+  }
+  if (inputSafety.decision === "rewrite") {
+    latestUserInput = inputSafety.text;
   }
 
   const preCheck = await preInputModeration({
@@ -369,7 +411,8 @@ export async function POST(req: Request) {
 
   const lastUserIdx = rawChatMessages.map((m) => m.role).lastIndexOf("user");
   if (lastUserIdx >= 0) {
-    const rawAction = String(rawChatMessages[lastUserIdx]!.content ?? "").trim();
+    // Replace last user message with moderated input (avoid feeding unsafe raw text downstream).
+    const rawAction = String(latestUserInput ?? "").trim();
     const dice = randomInt(1, 101);
     rawChatMessages[lastUserIdx] = {
       role: "user",
@@ -1274,6 +1317,7 @@ export async function POST(req: Request) {
         settlementGuardApplied = typeof guardMeta?.settlement_guard === "string";
         const prunedRaw = Number(guardMeta?.settlement_award_pruned ?? 0);
         settlementAwardPruned = Number.isFinite(prunedRaw) ? Math.max(0, Math.trunc(prunedRaw)) : 0;
+        // Finalize payload candidate first; output moderation must inspect the complete DM narrative.
         finalizePayload = JSON.stringify(dmRecord);
         moderationBody = finalizePayload;
       } else {
@@ -1282,41 +1326,115 @@ export async function POST(req: Request) {
         moderationBody = finalizePayload;
       }
 
-      const finalModeration = await finalOutputModeration({
-        input: moderationBody,
-        userId,
-        ip: clientIp,
-        path: "/api/chat",
-        requestId,
-      });
-      if (finalModeration.policy.blocked) {
-        recordHighRisk({ ip: clientIp, sessionId, userId }, finalModeration.result.reason);
-        writeAuditTrail({
-          requestId,
-          sessionId,
-          userId,
-          ip: clientIp,
-          stage: "final_output",
-          riskLevel: "black",
-          action: "degrade",
-          triggeredRule: finalModeration.result.reason,
-          provider: finalModeration.provider,
-          summary: blockedAuditSummary,
-        });
-        await writer.write(
-          sse(
-            safeBlockedDmJson(finalModeration.policy.userMessage, {
-              action: "degrade",
+      // Output audit: external provider only once per candidate DM (and never skip on malformed DM fallback).
+      if (finalizePayload && isLikelyValidDMJson(finalizePayload)) {
+        const dmObj: Record<string, unknown> =
+          dmRecord && typeof dmRecord.narrative === "string"
+            ? dmRecord
+            : (JSON.parse(finalizePayload) as Record<string, unknown>);
+
+        try {
+          const outputAudit = await auditDmOutputCandidateOnServer({
+            dmRecord: dmObj,
+            sceneKind: "private_story_output",
+            traceId: requestId,
+            routeContext: { path: "/api/chat" },
+            userId: userId ?? undefined,
+            sessionId: sessionId ?? undefined,
+            ip: clientIp,
+          });
+
+          dmRecord = outputAudit.updatedDmRecord;
+          finalizePayload = JSON.stringify(dmRecord);
+          moderationBody = finalizePayload;
+
+          if (outputAudit.verdict === "reject") {
+            const narrative = typeof dmRecord.narrative === "string" ? dmRecord.narrative : "当前内容无法处理。";
+            const reason = outputAudit.reasonCode || "output_reject";
+
+            recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
+            writeAuditTrail({
+              requestId,
+              sessionId,
+              userId,
+              ip: clientIp,
               stage: "final_output",
               riskLevel: "black",
-              requestId,
-              reason: finalModeration.result.reason,
-            })
-          )
-        );
-        await writer.close();
-        return true;
+              action: "degrade",
+              triggeredRule: reason,
+              provider: outputAudit.providerRiskSummary?.providers?.join(",") ?? "none",
+              summary: blockedAuditSummary,
+            });
+
+            await writer.write(
+              sse(
+                safeBlockedDmJson(narrative, {
+                  action: "degrade",
+                  stage: "final_output",
+                  riskLevel: "black",
+                  requestId,
+                  reason,
+                })
+              )
+            );
+            await writer.close();
+            return true;
+          }
+        } catch (e: unknown) {
+          console.warn("[api/chat] output audit skipped due to error", e);
+          // If output audit fails unexpectedly, keep the existing finalized payload.
+          // Streaming chunks already passed local moderation.
+        }
       }
+
+      // 最终兜底：保留原产品的“本地规则最终合规拦截”（不调用百度，避免破坏既有产品能力）。
+      // 这里必须在输出审核之后，确保安全策略改写/fallback 后仍接受最后一刀规则检查。
+      if (finalizePayload) {
+        const finalModeration = await finalOutputModeration({
+          input: moderationBody,
+          userId,
+          ip: clientIp,
+          path: "/api/chat",
+          requestId,
+        });
+
+        if (finalModeration.policy.blocked) {
+          recordHighRisk(
+            { ip: clientIp, sessionId: sessionId ?? undefined, userId: userId ?? undefined },
+            finalModeration.result.reason
+          );
+          writeAuditTrail({
+            requestId,
+            sessionId,
+            userId,
+            ip: clientIp,
+            stage: "final_output",
+            riskLevel: "black",
+            action: "degrade",
+            triggeredRule: finalModeration.result.reason,
+            provider: finalModeration.provider,
+            summary: blockedAuditSummary,
+          });
+
+          const narrative =
+            typeof finalModeration.policy.userMessage === "string" ? finalModeration.policy.userMessage : "该内容无法呈现。";
+
+          await writer.write(
+            sse(
+              safeBlockedDmJson(narrative, {
+                action: "degrade",
+                stage: "final_output",
+                riskLevel: "black",
+                requestId,
+                reason: finalModeration.result.reason,
+              })
+            )
+          );
+          await writer.close();
+          return true;
+        }
+      }
+
       if (finalizePayload) {
         await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
         if (dmRecord && userId && sessionId) {

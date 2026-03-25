@@ -19,6 +19,7 @@ import {
 import { env } from "@/lib/env";
 import { sanitizeInputText } from "@/lib/security/helpers";
 import { getClientIpFromHeaders } from "@/lib/security/helpers";
+import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
 
 export type SubmitComplianceInquiryInput = {
   topic: string;
@@ -76,6 +77,19 @@ export async function submitComplianceInquiry(input: SubmitComplianceInquiryInpu
 
   const session = await auth();
   const userId = session?.user?.id ?? null;
+
+  // Input safety: moderate body for report/complaint channel. Do not moderate contactLine here,
+  // because users may legitimately provide联系方式 in the dedicated field.
+  const safety = await moderateInputOnServer({
+    scene: "report_input",
+    text: body,
+    userId: userId ?? undefined,
+    sessionId: ipHash,
+    ip: ip,
+  });
+  if (safety.decision !== "allow") {
+    return { ok: false, message: safety.userMessage };
+  }
 
   const clientMeta: Record<string, unknown> = {
     page: "/legal/contact",

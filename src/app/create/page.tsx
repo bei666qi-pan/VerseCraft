@@ -6,6 +6,7 @@ import Image from "next/image";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
+import { validateCharacterProfile } from "@/app/actions/characterProfile";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 import { GlassEntryFrame } from "@/components/GlassEntryFrame";
@@ -204,6 +205,8 @@ export default function CreatePage(props: AppPageDynamicProps) {
   const [heightFocused, setHeightFocused] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [stats, setStats] = useState<Record<StatType, number>>({ ...BASE_STATS });
 
@@ -233,7 +236,8 @@ export default function CreatePage(props: AppPageDynamicProps) {
 
   const stepper = useStatStepper(inc, dec, remaining, stats);
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    setSubmitError(null);
     if (!canSubmit || !selectedTalent) {
       setSubmitAttempted(true);
       return;
@@ -243,11 +247,26 @@ export default function CreatePage(props: AppPageDynamicProps) {
     const cleanPersonality = personality.trim();
     const cleanHeight = clampInt(height, 140, 220);
 
-    useGameStore.getState().initCharacter(
-      { name: cleanName, gender, height: cleanHeight, personality: cleanPersonality },
-      stats,
-      selectedTalent
-    );
+    setSubmitting(true);
+    try {
+      const validated = await validateCharacterProfile({
+        name: cleanName,
+        personality: cleanPersonality,
+      });
+      if (!validated.ok) {
+        setSubmitError(validated.message);
+        return;
+      }
+
+      useGameStore.getState().initCharacter(
+        { name: validated.name, gender, height: cleanHeight, personality: validated.personality },
+        stats,
+        selectedTalent
+      );
+    } finally {
+      setSubmitting(false);
+    }
+
     void trackGameplayEvent({
       eventName: "create_character_success",
       sessionId: guestId,
@@ -519,10 +538,12 @@ export default function CreatePage(props: AppPageDynamicProps) {
               className="w-full"
               label="开卷"
               onClick={handleSubmit}
+              disabled={submitting}
               error={
-                submitAttempted && !canSubmit
+                submitError ??
+                (submitAttempted && !canSubmit
                   ? "检查必填项、性格格式、点数用尽、天赋已选。"
-                  : null
+                  : null)
               }
             />
           </GlassEntryFrame>

@@ -8,6 +8,7 @@ import { users } from "@/db/schema";
 import { signIn } from "../../../auth";
 import { recordGenericAnalyticsEvent, recordUserRegisteredAnalytics } from "@/lib/analytics/repository";
 import { eq } from "drizzle-orm";
+import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
 
 type AuthActionState = {
   success: boolean;
@@ -110,6 +111,15 @@ async function recordLoginSuccess(name: string): Promise<void> {
 
 /** 插入新用户 + 注册分析 + 凭证登录（档案须尚不存在）。 */
 async function performRegisterNewUser(name: string, password: string): Promise<AuthActionState> {
+  const safety = await moderateInputOnServer({
+    scene: "profile_input",
+    text: name,
+    sessionId: "system",
+  });
+  if (safety.decision !== "allow") {
+    return { success: false, error: safety.userMessage };
+  }
+
   try {
     const hashed = await bcrypt.hash(password, 10);
     const newUserId = randomUUID();
@@ -227,6 +237,16 @@ export async function signInOrRegister(
   }
   if (name.length < 2 || password.length < 6) {
     return { success: false, error: "账号至少 2 位且密码至少 6 位" };
+  }
+
+  // Moderate profile name before hitting DB (avoid storing abusive/advertising names).
+  const safety = await moderateInputOnServer({
+    scene: "profile_input",
+    text: name,
+    sessionId: "system",
+  });
+  if (safety.decision !== "allow") {
+    return { success: false, error: safety.userMessage };
   }
 
   try {

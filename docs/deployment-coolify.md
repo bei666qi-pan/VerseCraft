@@ -14,7 +14,7 @@
 若前面仍有反代（Nginx / Traefik 等），请确保转发头正确，否则浏览器 `Origin` 与 Next 侧推断的公共 origin 会不一致，中间件会返回 `403 csrf_check_failed`：
 
 - `X-Forwarded-Proto`：客户端实际使用的协议（如 `https`）
-- `X-Forwarded-Host`：客户端实际访问的主机（含端口，如 `14.103.217.111:3000`）
+- `X-Forwarded-Host`：客户端实际访问的主机（含端口，如 `versecraft.cn`）
 
 应用已优先用上述头计算「期望 origin」，与 POST 请求的 `Origin` 比对。
 
@@ -58,6 +58,27 @@
 - `SECURITY_HIGH_RISK_STRIKE_THRESHOLD=3`
 - `SECURITY_TEMP_BLOCK_SECONDS=600`
 - 安全审核仅使用本地规则（无需第三方安全厂商密钥）
+
+### 可选：接入外部文本审核（百度文本审核/司南能力）作为风险信号
+如果需要将外部文本审核能力纳入“风险信号之一”（但不作为唯一裁判），可在 Coolify 配置以下环境变量：
+
+- `BAIDU_SINAN_ENABLED=true|false`
+  - `false`：外部审核跳过（仍保留本地场景化策略与回退能力）
+- 阶段开关：
+  - `BAIDU_SINAN_INPUT_ENABLED=true|false`
+  - `BAIDU_SINAN_OUTPUT_ENABLED=true|false`
+  - `BAIDU_SINAN_PUBLIC_CONTENT_ENABLED=true|false`
+- 失败模式（kill-switch / fail mode）：
+  - `BAIDU_SINAN_FAIL_MODE_PRIVATE=fail_soft`（私密：优先降级回退，避免拖死体验）
+  - `BAIDU_SINAN_FAIL_MODE_PUBLIC=fail_closed`（公开展示：外部审核不可用时更严格）
+- 熔断（circuit breaker，避免并发故障时拖垮服务）：
+  - `BAIDU_SINAN_CIRCUIT_FAILURE_THRESHOLD`（连续失败阈值，默认 3）
+  - `BAIDU_SINAN_CIRCUIT_WINDOW_MS`（统计窗口，默认 60000）
+  - `BAIDU_SINAN_CIRCUIT_COOLDOWN_MS`（打开后冷却，默认 60000）
+- 严格度配置（影响外部审核策略映射）：
+  - `BAIDU_SINAN_STRICTNESS_PROFILE=balanced|strict|loose`
+
+> 注意：外部审核结果仅作为风险信号之一。最终裁决仍由 VerseCraft 的场景化策略引擎（白名单、回退叙事、JSON 契约保序）决定。
 
 ## 方案 B：使用命令构建/启动
 

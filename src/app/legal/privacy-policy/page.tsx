@@ -68,19 +68,22 @@ export default function PrivacyPolicyPage() {
           <p>
             <strong className="font-medium text-slate-800">3.1 云存档：</strong>
             当您使用账号并触发保存或同步时，您的存档数据可能加密或封装后经网络传输并存储于我们控制或委托的服务器与数据库中。
+            相关数据通常存储于数据库表（例如 <code className="text-xs">save_slots</code>），用于提供云存档与跨设备同步。
             存档内容可能包含玩法状态及与剧情/对话相关的文本，其体量与结构随产品演进可能变化。
           </p>
           <p>
             <strong className="font-medium text-slate-800">3.2 交互日志与遥测：</strong>
-            为排查故障、统计用量、改进体验与安全审计，我们可能记录与单次请求或会话关联的技术与业务事件。
-            部分事件可与您的账户关联；我们将在实现处理目的所必需的期限内保留，超出期限的将在可行时删除、匿名化或归档。
+            为排查故障、统计用量、改进体验与安全审计，我们可能记录与单次请求或会话关联的技术与业务事件（例如请求标识、性能指标、限流/风控触发摘要等）。
+            其中包括访问日志、错误日志与性能稳定性相关事件；<strong className="font-medium text-slate-800">在默认配置下</strong>，安全审计与风控通常以脱敏后的元数据/摘要形式留痕（例如风险等级、决策原因码、指纹或哈希摘要），一般不保存完整明文输入/输出文本。
+            此外，为提供部分检索/缓存能力（例如图鉴/知识检索相关功能），系统可能在设置的有效期内保存必要的文本副本（如请求预览与对应的响应文本片段）以便复用检索结果。
+            部分场景下您提交的反馈与举报内容会被用于受理核查：系统会在入库前进行安全审核，并通常以您提交的正文内容为依据进行保存（在适用范围内可能进行长度/格式清理），其保存范围以服务器侧实现与合规要求为准。
           </p>
           <p>
             <strong className="font-medium text-slate-800">3.3 AI 处理：</strong>
             为实现叙事生成、意图解析、内容安全与风控，您输入的内容及必要的上文语境可能被传送至我们接入的模型服务提供方进行处理。
             具体路由、模型提供方与地域可能随基础设施与合规评估调整；我们采取合同与技术与组织措施约束受托方，但
             <strong className="font-medium text-slate-800"> 无法保证第三方在每一时点的处理细节完全不变</strong>。
-            详见下文「第三方与 AI 服务披露」。
+            另外，内容安全引擎可能包含外部文本审核能力（例如百度文本审核/司南相关能力）作为风险信号之一，并结合本地场景策略做综合裁决；详见下文「第三方与 AI 服务披露」。
           </p>
         </section>
 
@@ -97,6 +100,10 @@ export default function PrivacyPolicyPage() {
           <p>
             本产品依赖典型的云服务与数据库、缓存、对象存储等基础设施以提供在线能力；具体供应商与部署区域可能随版本与部署架构调整。
             为提供 AI 能力，我们会将必要文本发送至与 OpenAI 接口兼容的网关及网关后端的模型服务（可能包括境内或境外模型提供方，取决于您部署环境配置）。
+          </p>
+          <p>
+            本产品的内容安全体系可能还会调用外部文本审核服务作为风险信号之一（例如百度文本审核/司南能力），并结合本地规则与业务场景策略作最终裁决。
+            相关能力并非单一判定依据，我们也可能因场景与合规需要采取改写、回退或拒绝展示等措施。
           </p>
           <p>
             <strong className="font-medium text-slate-800">
@@ -132,10 +139,7 @@ export default function PrivacyPolicyPage() {
             </a>{" "}
             ，使用「在线提交」选择相应主题（含数据权利请求、申诉等）。提交成功后系统将生成<strong>受理参考号</strong>（形如{" "}
             <code className="text-xs">VC-COMP-编号</code>），并写入服务端数据库用于留痕与后续处理。
-            <strong className="font-medium text-slate-800">
-              {" "}
-              当前阶段无完整工单流转后台，处理以人工核查为主，参考号便于您与我们就同一事项沟通。
-            </strong>
+            <strong className="font-medium text-slate-800">我们以人工核查与数据库留痕为主</strong>，参考号便于您与我们就同一事项沟通；由于安全与合规义务，部分请求可能需要补充身份信息或被限制在适用范围内。
           </p>
           <p>
             <strong className="font-medium text-slate-800">邮件或其他渠道：</strong>
@@ -152,7 +156,7 @@ export default function PrivacyPolicyPage() {
           <p>
             <strong className="font-medium text-slate-800">导出：</strong>
             若法律赋予数据可携带权且技术上可行，我们将在合理范围内提供结构化、通用格式的副本；导出范围以实际存储的数据为准，不包含依法不得提供的内容。
-            <strong className="font-medium text-slate-800"> 我们不承诺即时、全自动打包全量历史日志。</strong>
+            <strong className="font-medium text-slate-800">我们不承诺即时、全自动打包全量历史日志</strong>；与安全审计、争议解决及监管合规相关的数据可能需要保留最小必要信息。
           </p>
           <p>
             <strong className="font-medium text-slate-800">账号注销：</strong>

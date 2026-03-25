@@ -231,6 +231,29 @@ export async function ensureRuntimeSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS admin_metrics_daily_date_key_idx ON admin_metrics_daily (date_key);
     `);
 
+    // ========= Safety audit events (append-only, minimal) =========
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS safety_audit_events (
+        id BIGSERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        trace_id VARCHAR(191) NOT NULL,
+        scene VARCHAR(64) NOT NULL,
+        stage VARCHAR(16) NOT NULL,
+        decision VARCHAR(16) NOT NULL,
+        risk_level VARCHAR(16) NOT NULL,
+        reason_code VARCHAR(128) NOT NULL,
+        content_fingerprint VARCHAR(64) NOT NULL,
+        actor JSONB NOT NULL DEFAULT '{}'::jsonb,
+        provider_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        whitelist JSONB NOT NULL DEFAULT '{}'::jsonb,
+        meta JSONB NOT NULL DEFAULT '{}'::jsonb
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS safety_audit_events_created_idx ON safety_audit_events (created_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS safety_audit_events_scene_created_idx ON safety_audit_events (scene, created_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS safety_audit_events_trace_idx ON safety_audit_events (trace_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS safety_audit_events_fingerprint_idx ON safety_audit_events (content_fingerprint);`);
+
     // ========= KG / 语义缓存（pgvector + IVFFlat；无扩展时跳过，与 /api/chat 降级一致）=========
     try {
       await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
