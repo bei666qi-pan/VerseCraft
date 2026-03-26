@@ -1,21 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
 import ChunkErrorHandler from "@/components/ChunkErrorHandler";
 import { envRawFirst } from "@/lib/config/envRaw";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "文界工坊 (VerseCraft)",
@@ -39,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased min-h-screen flex flex-col`}
+        className="bg-background text-foreground antialiased min-h-screen flex flex-col"
       >
         <svg aria-hidden className="absolute size-0 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
           <defs>
