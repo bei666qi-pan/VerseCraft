@@ -1923,11 +1923,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <footer className="relative z-20 mx-auto w-full max-w-5xl px-6 pb-8 sm:px-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
         <div className="border-t border-slate-200/70 pt-5 text-xs text-slate-500">
-          <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-            <div id="home-leaderboard" className="flex items-center justify-center">
+          <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+            <div id="home-leaderboard" className="flex w-full items-center justify-start sm:w-auto sm:justify-center">
               <Leaderboard userId={user?.id} triggerPlacement="inline" defaultOpen={leaderboardAutoOpen} />
             </div>
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500/90 sm:gap-x-4 sm:text-xs">
+            <div className="flex w-full flex-wrap items-center justify-start gap-x-3 gap-y-1 text-[11px] text-slate-500/90 sm:w-auto sm:justify-center sm:gap-x-4 sm:text-xs">
               <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/user-agreement">
                 用户协议
               </Link>
@@ -1954,9 +1954,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 未成年人说明
               </Link>
             </div>
-            <FooterHaloIconButton onClick={openSurveyEntry} ariaLabel="产品问卷" tone="blue">
+            <div className="flex w-full justify-end sm:w-auto sm:justify-start">
+              <FooterHaloIconButton onClick={openSurveyEntry} ariaLabel="产品问卷" tone="blue">
               <BulbIconSvg />
-            </FooterHaloIconButton>
+              </FooterHaloIconButton>
+            </div>
           </div>
 
           <div className="mt-3 grid w-full grid-cols-1 items-center gap-2 text-slate-500 sm:grid-cols-3 sm:gap-3">
