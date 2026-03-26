@@ -34,6 +34,7 @@ export interface BuildRunSnapshotV2Input {
   alive: boolean;
   deathCount?: number;
   equippedWeapon?: Weapon | null;
+  weaponBag?: Weapon[];
   day: number;
   hour: number;
   worldFlags?: Record<string, boolean>;
@@ -90,6 +91,9 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       alive: input.alive !== false,
       deathCount: Math.max(0, Number(input.deathCount ?? 0)),
       equippedWeapon: input.equippedWeapon ?? null,
+      weaponBag: Array.isArray(input.weaponBag)
+        ? input.weaponBag.filter((w): w is Weapon => !!w && typeof w === "object" && !Array.isArray(w))
+        : [],
     },
     time: {
       day: Math.max(0, Number(input.day ?? 0)),

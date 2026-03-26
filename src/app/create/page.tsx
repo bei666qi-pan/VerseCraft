@@ -249,10 +249,19 @@ export default function CreatePage(props: AppPageDynamicProps) {
 
     setSubmitting(true);
     try {
-      const validated = await validateCharacterProfile({
-        name: cleanName,
-        personality: cleanPersonality,
-      });
+      const e2eBypass =
+        process.env.NODE_ENV === "development" &&
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("e2e") === "1";
+      // 说明：该分支仅用于端到端冒烟测试，避免在本地/CI 依赖外部审核与数据库链路导致不稳定。
+      // 生产环境永远走 validateCharacterProfile（含安全审核）。
+
+      const validated = e2eBypass
+        ? { ok: true as const, name: cleanName, personality: cleanPersonality }
+        : await validateCharacterProfile({
+            name: cleanName,
+            personality: cleanPersonality,
+          });
       if (!validated.ok) {
         setSubmitError(validated.message);
         return;

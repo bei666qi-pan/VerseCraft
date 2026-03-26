@@ -2,6 +2,7 @@ import type {
   ForgeMaterialTag,
   ForgeOperation,
   ForgeRecipe,
+  WeaponTier,
   WeaponModKind,
 } from "./types";
 
@@ -9,6 +10,17 @@ export type LightForgeRecipe = ForgeRecipe & {
   operation: ForgeOperation;
   weaponMod?: WeaponModKind;
   infusionTag?: "liquid" | "mirror" | "cognition" | "seal";
+  /**
+   * 高级道具→武器化 配方元数据（新增）
+   * - 兼容策略：作为可选字段挂在现有配方结构上，不影响 repair/mod/infuse。
+   */
+  weaponize?: {
+    targetTier: WeaponTier;
+    requiredItemCount: number;
+    requiredMinItemTier: WeaponTier;
+    /** 仅在 B1_PowerRoom 锻造台允许 */
+    onlyAtNodeId: "B1_PowerRoom";
+  };
 };
 
 export const LIGHT_FORGE_RECIPES: readonly LightForgeRecipe[] = [
@@ -109,6 +121,62 @@ export const LIGHT_FORGE_RECIPES: readonly LightForgeRecipe[] = [
     costOriginium: 1,
     requiredMaterialTags: ["sealant"],
     infusionTag: "seal",
+  },
+  // ---------------------------
+  // Stage-3: 高级道具→武器化（严格费用 + 严格数量 + 严格品级）
+  // 命名约定：forge_weaponize_{tier}
+  // ---------------------------
+  {
+    id: "forge_weaponize_c",
+    operation: "weaponize",
+    name: "道具武器化（C）",
+    description: "将 3 个 C 级及以上道具武器化为 1 把 C 级武器（自动装备）。",
+    costOriginium: 5,
+    weaponize: {
+      targetTier: "C",
+      requiredItemCount: 3,
+      requiredMinItemTier: "C",
+      onlyAtNodeId: "B1_PowerRoom",
+    },
+  },
+  {
+    id: "forge_weaponize_b",
+    operation: "weaponize",
+    name: "道具武器化（B）",
+    description: "将 2 个 B 级及以上道具武器化为 1 把 B 级武器（自动装备）。",
+    costOriginium: 10,
+    weaponize: {
+      targetTier: "B",
+      requiredItemCount: 2,
+      requiredMinItemTier: "B",
+      onlyAtNodeId: "B1_PowerRoom",
+    },
+  },
+  {
+    id: "forge_weaponize_a",
+    operation: "weaponize",
+    name: "道具武器化（A）",
+    description: "将 1 个 A 级道具武器化为 1 把 A 级武器（自动装备）。",
+    costOriginium: 20,
+    weaponize: {
+      targetTier: "A",
+      requiredItemCount: 1,
+      requiredMinItemTier: "A",
+      onlyAtNodeId: "B1_PowerRoom",
+    },
+  },
+  {
+    id: "forge_weaponize_s",
+    operation: "weaponize",
+    name: "道具武器化（S）",
+    description: "将 1 个 S 级道具武器化为 1 把 S 级武器（自动装备）。",
+    costOriginium: 50,
+    weaponize: {
+      targetTier: "S",
+      requiredItemCount: 1,
+      requiredMinItemTier: "S",
+      onlyAtNodeId: "B1_PowerRoom",
+    },
   },
 ] as const;
 

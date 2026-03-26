@@ -84,6 +84,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     currentLocation: legacy.playerLocation ?? "B1_SafeZone",
     alive: (legacy.stats?.sanity ?? DEFAULT_STATS.sanity) > 0,
     equippedWeapon: legacy.equippedWeapon ?? null,
+    weaponBag: (legacy as LegacySaveSurface & { weaponBag?: unknown }).weaponBag as any,
     day: legacy.time?.day ?? 0,
     hour: legacy.time?.hour ?? 0,
     dynamicNpcStates: legacy.dynamicNpcStates ?? {},
@@ -174,6 +175,11 @@ export function normalizeRunSnapshotV2(
         s.player?.equippedWeapon && typeof s.player.equippedWeapon === "object" && !Array.isArray(s.player.equippedWeapon)
           ? (s.player.equippedWeapon as RunSnapshotV2["player"]["equippedWeapon"])
           : null,
+      weaponBag: Array.isArray((s.player as unknown as { weaponBag?: unknown }).weaponBag)
+        ? ((s.player as unknown as { weaponBag?: unknown }).weaponBag as unknown[])
+            .filter((w): w is RunSnapshotV2["player"]["equippedWeapon"] => !!w && typeof w === "object" && !Array.isArray(w))
+            .slice(0, 24)
+        : [],
     },
     time: {
       ...fromLegacy.time,
@@ -284,6 +290,7 @@ export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurf
     height: snapshot.player.profile.height,
     personality: snapshot.player.profile.personality,
     equippedWeapon: snapshot.player.equippedWeapon,
+    weaponBag: snapshot.player.weaponBag ?? [],
     professionState: snapshot.profession,
     runSnapshotV2: snapshot,
   };

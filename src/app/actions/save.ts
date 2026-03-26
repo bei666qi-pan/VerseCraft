@@ -11,7 +11,34 @@ function normalizeSavePayload(data: unknown): Record<string, unknown> | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   try {
     // Defensive clone to strip prototypes/functions while preserving snapshot payloads.
-    return JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+    const cloned = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+
+    // 服务端净化（反作弊/稳定性）：云存档属于“可被客户端提交”的输入，必须做最小约束。
+    // 注意：这不是强权威服务器，但能显著降低“写入明显非法状态”导致的回档作弊与后续崩溃。
+    const slot = cloned;
+
+    // originium 必须是非负整数
+    if (typeof (slot as any).originium === "number") {
+      const v = Math.trunc((slot as any).originium);
+      (slot as any).originium = Number.isFinite(v) ? Math.max(0, v) : 0;
+    }
+
+    // inventory / warehouse 只保留基本数组形状，避免注入超大对象
+    const inv = Array.isArray((slot as any).inventory) ? (slot as any).inventory : [];
+    (slot as any).inventory = inv.slice(0, 128);
+    const wh = Array.isArray((slot as any).warehouse) ? (slot as any).warehouse : [];
+    (slot as any).warehouse = wh.slice(0, 128);
+
+    // equippedWeapon / weaponBag 限制形状与大小（避免云端存储被滥用）
+    const eq = (slot as any).equippedWeapon;
+    (slot as any).equippedWeapon =
+      eq && typeof eq === "object" && !Array.isArray(eq) ? eq : null;
+    const bag = Array.isArray((slot as any).weaponBag) ? (slot as any).weaponBag : [];
+    (slot as any).weaponBag = bag
+      .filter((x: unknown) => x && typeof x === "object" && !Array.isArray(x))
+      .slice(0, 24);
+
+    return slot;
   } catch {
     return null;
   }

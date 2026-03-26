@@ -3,7 +3,7 @@
 import { Activity, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2, VolumeX } from "lucide-react";
-import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
+import type { Item, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
@@ -25,6 +25,7 @@ import {
   getProfessionActiveSkillName,
   getProfessionPassiveSummary,
 } from "@/lib/profession/benefits";
+import { WeaponSlotPanel } from "@/components/WeaponSlotPanel";
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
 const FALLBACK_STATS: Record<StatType, number> = {
@@ -279,6 +280,9 @@ function SettingsPanel({
   mainThreatByFloor,
   codex,
   tasks,
+  equippedWeapon,
+  weaponBag,
+  isChatBusy,
 }: {
   stats: Record<StatType, number>;
   historicalMaxSanity: number;
@@ -300,6 +304,9 @@ function SettingsPanel({
   mainThreatByFloor: ReturnType<typeof useGameStore.getState>["mainThreatByFloor"];
   codex: Record<string, CodexEntry>;
   tasks: GameTask[];
+  equippedWeapon: Weapon | null;
+  weaponBag: Weapon[];
+  isChatBusy: boolean;
 }) {
   const [showSealActions, setShowSealActions] = useState(false);
   const displayLocation = formatLocationLabel(playerLocation);
@@ -366,6 +373,11 @@ function SettingsPanel({
             <p className={valueClass}>{day} 日 {hour} 时</p>
           </div>
         </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">武器栏</h3>
+        <WeaponSlotPanel equippedWeapon={equippedWeapon} weaponBag={weaponBag} busy={isChatBusy} />
       </div>
 
       <div>
@@ -488,6 +500,8 @@ function BackpackPanel({
   onUseItem,
   isChatBusy,
   stats,
+  equippedWeapon,
+  weaponBag,
 }: {
   inventory: Item[];
   originium: number;
@@ -496,14 +510,23 @@ function BackpackPanel({
   onUseItem: (item: Item) => void;
   isChatBusy: boolean;
   stats: Record<StatType, number>;
+  equippedWeapon: Weapon | null;
+  weaponBag: Weapon[];
 }) {
   const safeInventory = Array.isArray(inventory) ? inventory : [];
   const slotItems = Array.from({ length: 6 }, (_, idx) => safeInventory[idx] ?? null);
   const selectedItem = selectedId ? safeInventory.find((i) => i && i.id === selectedId) ?? null : null;
+  const equippedId = equippedWeapon?.id ?? null;
 
   useEffect(() => {
     if (selectedId && !selectedItem) onSelect(null);
   }, [selectedId, selectedItem, onSelect]);
+
+  const weaponizableHintCount = safeInventory.filter((it) => {
+    const tier = it?.tier;
+    const eligible = (it as any)?.weaponization?.eligible;
+    return (tier === "S" || tier === "A" || tier === "B" || tier === "C") && eligible !== false;
+  }).length;
 
   return (
     <div className="flex h-full flex-row overflow-hidden">
@@ -517,6 +540,23 @@ function BackpackPanel({
             <span className="text-sm font-bold tabular-nums text-amber-300">{originium}</span>
             <span className="text-xs text-amber-400/90">原石</span>
           </div>
+          <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-slate-400">
+            <div className="flex items-center justify-between">
+              <span>武器栏</span>
+              <span className="font-mono text-slate-300">{equippedWeapon ? "已装备" : "空槽"}</span>
+            </div>
+            <div className="mt-1 truncate text-slate-300">
+              {equippedWeapon ? `${equippedWeapon.name ?? equippedWeapon.id}` : "未装备武器"}
+            </div>
+            <div className="mt-1 text-[10px] text-slate-500">
+              卸下/更换需耗费 1 回合（请在主界面提交指令）。
+            </div>
+          </div>
+          {weaponizableHintCount > 0 ? (
+            <div className="mt-2 rounded-xl border border-amber-400/15 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">
+              你有可武器化道具。去「配电间」查看锻造台，可将 C+ 道具武器化为主手装备。
+            </div>
+          ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {slotItems.every((s) => s === null) ? (
@@ -544,6 +584,16 @@ function BackpackPanel({
                       <span className="block truncate">
                         {item.name}
                         {count > 1 ? ` × ${count}` : ""}
+                        {(() => {
+                          const tier = item.tier;
+                          const eligible = (item as any)?.weaponization?.eligible;
+                          const isWeaponizable = (tier === "S" || tier === "A" || tier === "B" || tier === "C") && eligible !== false;
+                          return isWeaponizable ? (
+                            <span className="ml-2 rounded-full border border-amber-400/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-200">
+                              可武器化
+                            </span>
+                          ) : null;
+                        })()}
                       </span>
                     ) : (
                       <span className="block truncate">空</span>
@@ -553,9 +603,31 @@ function BackpackPanel({
               })}
             </div>
           )}
+          {Array.isArray(weaponBag) && weaponBag.length > 0 ? (
+            <div className="mt-4">
+              <div className="mb-2 text-xs tracking-widest text-slate-500">已武器化（未装备）</div>
+              <div className="space-y-2">
+                {weaponBag.slice(0, 6).map((w) => (
+                  <div
+                    key={w.id}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-semibold">{w.name ?? w.id}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-slate-500">{w.id}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">更换需耗费 1 回合：更换武器：{w.id}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
+        <div className="mb-4">
+          <WeaponSlotPanel equippedWeapon={equippedWeapon} weaponBag={weaponBag} busy={isChatBusy} />
+        </div>
         {selectedItem && typeof selectedItem === "object" ? (
           <>
             <h3 className="text-xl font-bold text-white">{selectedItem.name ?? "未知"}</h3>
@@ -563,6 +635,12 @@ function BackpackPanel({
               {selectedItem.tier ?? "D"}
             </p>
             <div className="mt-6 space-y-4">
+              {equippedId && selectedItem.id === equippedId ? (
+                <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2">
+                  <span className="text-[10px] uppercase tracking-wider text-amber-300">已装备</span>
+                  <p className="mt-0.5 text-sm font-medium text-amber-200">该条目为当前主手武器。</p>
+                </div>
+              ) : null}
               {getItemEffectSummary(selectedItem) && (
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
                   <span className="text-[10px] uppercase tracking-wider text-emerald-400">效果</span>
@@ -945,6 +1023,8 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
   const certifyProfession = useGameStore((s) => s.certifyProfession);
   const switchProfession = useGameStore((s) => s.switchProfession);
   const activateProfessionActive = useGameStore((s) => s.activateProfessionActive);
+  const equippedWeapon = useGameStore((s) => s.equippedWeapon ?? null);
+  const weaponBag = useGameStore((s) => s.weaponBag ?? []);
 
   const volume = useGameStore((s) => s.volume);
   const setVolume = useGameStore((s) => s.setVolume);
@@ -1049,6 +1129,9 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
               mainThreatByFloor={mainThreatByFloor}
               codex={codex}
               tasks={tasks}
+              equippedWeapon={equippedWeapon}
+              weaponBag={weaponBag}
+              isChatBusy={isChatBusy}
             />
           </Activity>
           <Activity mode={currentTab === "backpack" ? "visible" : "hidden"}>
@@ -1060,6 +1143,8 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
               onUseItem={onUseItem}
               isChatBusy={isChatBusy}
               stats={stats}
+              equippedWeapon={equippedWeapon}
+              weaponBag={weaponBag}
             />
           </Activity>
           <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>

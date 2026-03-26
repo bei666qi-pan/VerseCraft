@@ -204,6 +204,8 @@ export interface SaveSlotData {
   dynamicNpcStates?: Record<string, { currentLocation: string; isAlive: boolean }>;
   mainThreatByFloor?: Record<string, SnapshotMainThreatState>;
   equippedWeapon?: Weapon | null;
+  /** 武器背包：未装备武器列表（装备系统 V3） */
+  weaponBag?: Weapon[];
   appliedRelationshipTaskIds?: string[];
   reviveContext?: {
     pending: boolean;
@@ -306,6 +308,12 @@ interface GameState extends IntegrityMetaState {
   mainThreatByFloor: Record<string, SnapshotMainThreatState>;
   /** 第二阶段武器最小版：主手唯一槽位 */
   equippedWeapon: Weapon | null;
+  /**
+   * 武器背包（未装备武器列表）。
+   * - 背包里的武器不生效，只能作为“待装备物品”。
+   * - 装备/卸下/更换都应通过服务端裁决回写落地，前端不得瞬间切换绕过回合成本。
+   */
+  weaponBag: Weapon[];
   /** 非法闯入警戒闪烁计时 */
   intrusionFlashUntil: number;
   /** 是否已开始游戏（角色初始化完成后为 true） */
@@ -364,6 +372,8 @@ interface GameState extends IntegrityMetaState {
   applyMainThreatUpdates: (updates: Array<Partial<SnapshotMainThreatState> & { floorId?: string }>) => void;
   applyWeaponUpdates: (updates: Array<{
     weaponId?: string;
+    weapon?: Weapon | null;
+    unequip?: boolean;
     stability?: number;
     calibratedThreatId?: string | null;
     currentMods?: Weapon["currentMods"];
@@ -371,6 +381,11 @@ interface GameState extends IntegrityMetaState {
     contamination?: number;
     repairable?: boolean;
   }>) => void;
+  applyWeaponBagUpdates: (updates: Array<
+    | { removeWeaponId: string }
+    | { addWeapon: Weapon }
+    | { addEquippedWeaponId: string }
+  >) => void;
   killNpc: (npcId: string) => void;
   triggerIntrusionFlash: () => void;
   setHasCheckedCodex: (v: boolean) => void;
@@ -406,6 +421,26 @@ interface GameState extends IntegrityMetaState {
 
   // 终极逻辑闭环：为大模型生成系统提示词的上下文
   getPromptContext: () => string;
+
+  /**
+   * 发往 `/api/chat` 的结构化上下文（用于服务端裁决输入，降低 `playerContext` 文本自报作弊面）。
+   * 兼容策略：`playerContext` 仍会发送给模型看，但服务端 guard 将优先使用该结构化字段。
+   */
+  getStructuredClientStateForServer: () => {
+    v: 1;
+    turnIndex: number;
+    playerLocation: string;
+    time: { day: number; hour: number };
+    stats: Record<StatType, number>;
+    originium: number;
+    inventoryItemIds: string[];
+    warehouseItemIds: string[];
+    equippedWeapon: Weapon | null;
+    weaponBag: Weapon[];
+    currentProfession: ProfessionId | null;
+    worldFlags: string[];
+    presentNpcIds: string[];
+  };
 
   performCheck: (
     baseStat: StatType,
@@ -610,6 +645,7 @@ export const useGameStore = create<GameState>()(
       dynamicNpcStates: {},
       mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
       equippedWeapon: null,
+      weaponBag: [],
       intrusionFlashUntil: 0,
       isGameStarted: false,
       currentBgm: "bgm_1_calm",
@@ -751,6 +787,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: false,
           warehouse: [],
           equippedWeapon: null,
+          weaponBag: [],
           currentOptions: [],
           recentOptions: [],
           inputMode: "options" as const,
@@ -893,6 +930,7 @@ export const useGameStore = create<GameState>()(
           inventory: [],
           warehouse: [],
           equippedWeapon: null,
+          weaponBag: [],
           saveSlots: {},
           isGameStarted: false,
           currentOptions: [],
@@ -1159,6 +1197,18 @@ export const useGameStore = create<GameState>()(
           if (safe.length === 0) return {};
           let next = s.equippedWeapon ?? null;
           for (const row of safe) {
+            if (row.unequip) {
+              next = null;
+              continue;
+            }
+            if (Object.prototype.hasOwnProperty.call(row, "weapon")) {
+              const w = (row as { weapon?: Weapon | null }).weapon;
+              if (w && typeof w === "object" && !Array.isArray(w)) {
+                next = JSON.parse(JSON.stringify(w)) as Weapon;
+              } else if (w === null) {
+                next = null;
+              }
+            }
             if (row.weaponId) {
               const fromCatalog = getWeaponById(row.weaponId);
               if (fromCatalog) next = { ...fromCatalog };
@@ -1200,6 +1250,38 @@ export const useGameStore = create<GameState>()(
             equippedWeapon: next,
           });
           return { equippedWeapon: next, professionState };
+        }),
+      applyWeaponBagUpdates: (updates) =>
+        set((s) => {
+          const safe = Array.isArray(updates) ? updates : [];
+          if (safe.length === 0) return {};
+          const bag = Array.isArray(s.weaponBag) ? [...s.weaponBag] : [];
+          for (const u of safe as Array<any>) {
+            if (!u || typeof u !== "object") continue;
+            if (typeof u.removeWeaponId === "string" && u.removeWeaponId) {
+              const id = u.removeWeaponId;
+              for (let i = bag.length - 1; i >= 0; i--) {
+                if (bag[i]?.id === id) bag.splice(i, 1);
+              }
+              continue;
+            }
+            if (u.addWeapon && typeof u.addWeapon === "object" && !Array.isArray(u.addWeapon)) {
+              const w = u.addWeapon as Weapon;
+              if (w.id && !bag.some((x) => x.id === w.id)) {
+                bag.push(JSON.parse(JSON.stringify(w)) as Weapon);
+              }
+              continue;
+            }
+            if (typeof u.addEquippedWeaponId === "string" && u.addEquippedWeaponId) {
+              const id = u.addEquippedWeaponId;
+              const eq = s.equippedWeapon;
+              if (eq && eq.id === id && !bag.some((x) => x.id === id)) {
+                bag.push(JSON.parse(JSON.stringify(eq)) as Weapon);
+              }
+              continue;
+            }
+          }
+          return { weaponBag: bag.slice(0, 24) };
         }),
       killNpc: (npcId) =>
         set((s) => ({
@@ -1426,6 +1508,7 @@ export const useGameStore = create<GameState>()(
           ),
           mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
           equippedWeapon: null,
+          weaponBag: [],
           intrusionFlashUntil: 0,
           isGameStarted: true,
           professionState: createDefaultProfessionState(),
@@ -1562,6 +1645,15 @@ export const useGameStore = create<GameState>()(
             const infusions = (w.currentInfusions ?? []).map((x) => `${x.threatTag}:${x.turnsLeft}`).join("/");
             return ` 主手武器[${w.id}|稳定${w.stability}|反制${tags || "无"}|模组${mods || "无"}|灌注${infusions || "无"}|污染${w.contamination ?? 0}|可修复${w.repairable ? "1" : "0"}]。`;
           })() +
+          (() => {
+            const bag = s.weaponBag ?? [];
+            if (!Array.isArray(bag) || bag.length === 0) return " 武器背包：无。";
+            const text = bag
+              .slice(0, 8)
+              .map((w) => `${w.id}[${w.tier ?? "?"}]`)
+              .join("，");
+            return ` 武器背包：${text}。`;
+          })() +
           (s.reviveContext?.deathLocation
             ? ` 最近复活：死亡地点[${s.reviveContext.deathLocation}]，死因[${s.reviveContext.deathCause ?? "未知"}]，掉落数量[${s.reviveContext.droppedLootLedger.length}]，最近锚点[${s.reviveContext.lastReviveAnchorId ?? "未知"}]。`
             : "") +
@@ -1576,6 +1668,53 @@ export const useGameStore = create<GameState>()(
             ? ` 【最近生成的选项历史】：${s.recentOptions.join("；")}。`
             : " 【最近生成的选项历史】：（无）。")
         );
+      },
+
+      getStructuredClientStateForServer: () => {
+        const s = get();
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+        const time = s.time ?? { day: 0, hour: 0 };
+        const location = s.playerLocation ?? "B1_SafeZone";
+        const stats = s.stats ?? DEFAULT_STATS;
+        const inventoryIds = (s.inventory ?? [])
+          .map((i) => String(i?.id ?? "").trim())
+          .filter((x) => x.length > 0)
+          .slice(0, 96);
+        const warehouseIds = (s.warehouse ?? [])
+          .map((w) => String(w?.id ?? "").trim())
+          .filter((x) => x.length > 0)
+          .slice(0, 96);
+        const worldFlags = activeSnapshot
+          ? Object.entries(activeSnapshot.world.worldFlags ?? {})
+              .filter(([, v]) => v === true)
+              .map(([k]) => k)
+              .slice(0, 128)
+          : [];
+        const presentNpcIds = Object.entries(s.dynamicNpcStates ?? {})
+          .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
+          .map(([id]) => id)
+          .slice(0, 32);
+        return {
+          v: 1 as const,
+          turnIndex: (s.logs ?? []).length,
+          playerLocation: location,
+          time: { day: time.day ?? 0, hour: time.hour ?? 0 },
+          stats: {
+            sanity: Number(stats.sanity ?? 0) || 0,
+            agility: Number(stats.agility ?? 0) || 0,
+            luck: Number(stats.luck ?? 0) || 0,
+            charm: Number(stats.charm ?? 0) || 0,
+            background: Number(stats.background ?? 0) || 0,
+          },
+          originium: Math.max(0, Math.trunc(Number(s.originium ?? 0) || 0)),
+          inventoryItemIds: inventoryIds,
+          warehouseItemIds: warehouseIds,
+          equippedWeapon: s.equippedWeapon ?? null,
+          weaponBag: Array.isArray(s.weaponBag) ? s.weaponBag.slice(0, 24) : [],
+          currentProfession: (s.professionState?.currentProfession ?? null) as ProfessionId | null,
+          worldFlags,
+          presentNpcIds,
+        };
       },
 
       performCheck: (
@@ -1937,6 +2076,7 @@ export const useGameStore = create<GameState>()(
           currentLocation: s.playerLocation ?? "B1_SafeZone",
           alive: (safeStats.sanity ?? 0) > 0,
           equippedWeapon: s.equippedWeapon ?? null,
+          weaponBag: s.weaponBag ?? [],
           deathCount: s.deathCount ?? 0,
           day: s.time?.day ?? 0,
           hour: s.time?.hour ?? 0,
@@ -1999,6 +2139,7 @@ export const useGameStore = create<GameState>()(
             JSON.stringify(s.mainThreatByFloor ?? overlay.mainThreatByFloor)
           ),
           equippedWeapon: JSON.parse(JSON.stringify(s.equippedWeapon ?? null)),
+          weaponBag: JSON.parse(JSON.stringify(s.weaponBag ?? [])),
           reviveContext: JSON.parse(
             JSON.stringify(
               s.reviveContext ?? {
@@ -2152,6 +2293,13 @@ export const useGameStore = create<GameState>()(
                 null
             )
           ),
+          weaponBag: JSON.parse(
+            JSON.stringify(
+              normalizedSnapshot.player.weaponBag ??
+                data.weaponBag ??
+                []
+            )
+          ),
           reviveContext: JSON.parse(
             JSON.stringify(
               data.reviveContext ?? {
@@ -2272,6 +2420,14 @@ export const useGameStore = create<GameState>()(
                   null
               )
             ),
+            weaponBag: JSON.parse(
+              JSON.stringify(
+                normalizedSnapshot.player.weaponBag ??
+                  data.weaponBag ??
+                  s.weaponBag ??
+                  []
+              )
+            ),
             reviveContext: JSON.parse(
               JSON.stringify(
                 data.reviveContext ??
@@ -2343,6 +2499,7 @@ export const useGameStore = create<GameState>()(
         dynamicNpcStates: s.dynamicNpcStates ?? {},
         mainThreatByFloor: s.mainThreatByFloor ?? DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
         equippedWeapon: s.equippedWeapon ?? null,
+        weaponBag: s.weaponBag ?? [],
         reviveContext: s.reviveContext ?? {
           pending: false,
           deathLocation: null,

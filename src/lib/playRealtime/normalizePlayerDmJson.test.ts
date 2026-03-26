@@ -33,6 +33,7 @@ test("normalizePlayerDmJson fills array defaults and consumes_time true", () => 
   assert.deepEqual(n!.relationship_updates, []);
   assert.deepEqual(n!.main_threat_updates, []);
   assert.deepEqual(n!.weapon_updates, []);
+  assert.deepEqual(n!.weapon_bag_updates, []);
   assert.equal(n!.currency_change, 0);
   assert.equal(n!.consumes_time, true);
   assert.ok(!("options" in n!));
@@ -54,6 +55,38 @@ test("normalizePlayerDmJson preserves consumes_time false and optional strings",
   assert.equal(n!.player_location, "B1_SafeZone");
   assert.equal(n!.bgm_track, "bgm_2_suspense");
   assert.equal(n!.currency_change, -2);
+});
+
+test("normalizePlayerDmJson sanitizes weapon_updates to whitelist shape", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "x",
+    is_death: false,
+    weapon_updates: [
+      { weaponId: "WPN-001", stability: 999, contamination: -5, hacked: true, weapon: { id: "WZ-1" } },
+      { hacked: "x" },
+    ],
+    weapon_bag_updates: [
+      { removeWeaponId: "WZ-001", extra: 1 },
+      { addEquippedWeaponId: "WPN-001", nope: true },
+      { addWeapon: { id: "WZ-002" }, x: 1 },
+      { nonsense: 1 },
+    ],
+    currency_change: 99999999,
+    security_meta: { big: "x".repeat(5000) },
+  });
+  assert.ok(n);
+  const wu = Array.isArray(n!.weapon_updates) ? n!.weapon_updates : [];
+  assert.equal(wu.length, 1);
+  assert.equal((wu[0] as any).weaponId, "WPN-001");
+  assert.equal((wu[0] as any).stability, 100);
+  assert.equal((wu[0] as any).contamination, 0);
+  assert.equal((wu[0] as any).hacked, undefined);
+  const wbu = Array.isArray(n!.weapon_bag_updates) ? n!.weapon_bag_updates : [];
+  assert.equal(wbu.length, 3);
+  assert.equal(n!.currency_change, 999999);
+  assert.deepEqual(n!.security_meta, { trimmed: true });
 });
 
 test("parseAccumulatedPlayerDmJson extracts first balanced object", () => {

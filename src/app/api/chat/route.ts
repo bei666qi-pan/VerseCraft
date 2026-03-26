@@ -76,7 +76,9 @@ import {
   guessPlayerLocationFromContext,
 } from "@/lib/playRealtime/b1Safety";
 import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
+import { applyEquipmentExecutionGuard } from "@/lib/playRealtime/equipmentExecution";
 import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
+import { applyWeaponTacticalAdjudication } from "@/lib/playRealtime/weaponAdjudication";
 import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 import {
@@ -262,6 +264,7 @@ export async function POST(req: Request) {
   }
   const messages = validated.messages;
   const playerContext = validated.playerContext;
+  const clientState = validated.clientState;
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
   const clientIp = getClientIpFromHeaders(req.headers);
@@ -1259,6 +1262,13 @@ export async function POST(req: Request) {
           dmRecord,
           latestUserInput,
           playerContext,
+          clientState,
+        });
+        dmRecord = applyEquipmentExecutionGuard({
+          dmRecord,
+          latestUserInput,
+          playerContext,
+          clientState,
         });
         dmRecord = applyB1SafetyGuard({
           dmRecord,
@@ -1267,6 +1277,12 @@ export async function POST(req: Request) {
         dmRecord = applyMainThreatUpdateGuard({
           dmRecord,
           playerContext,
+        });
+        dmRecord = applyWeaponTacticalAdjudication({
+          dmRecord,
+          playerContext,
+          latestUserInput,
+          requestId,
         });
         dmRecord = normalizeDmTaskPayload(dmRecord);
         dmRecord = ensure7FConspiracyTask(dmRecord, {

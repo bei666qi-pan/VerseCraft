@@ -1,10 +1,11 @@
 import type { SnapshotMainThreatState } from "@/lib/state/snapshot/types";
-import type { ProfessionId, ProfessionProgress, ProfessionStateV1 } from "./types";
+import type { ProfessionEvidenceKey, ProfessionId, ProfessionProgress, ProfessionStateV1 } from "./types";
 import { PROFESSION_IDS, PROFESSION_REGISTRY, createDefaultProfessionState } from "./registry";
 import type { StatType, Weapon } from "@/lib/registry/types";
+import { getProfessionTrialTaskId } from "./trials";
 
 type TaskLite = { id: string; status: "active" | "completed" | "failed" | "hidden" | "available" };
-type CodexLite = { type: "npc" | "anomaly" };
+type CodexLite = { type: "npc" | "anomaly"; favorability?: number };
 
 function safeNum(n: unknown): number {
   return typeof n === "number" && Number.isFinite(n) ? n : 0;
@@ -18,13 +19,89 @@ function countSuppressedThreats(map: Record<string, SnapshotMainThreatState>): n
   return Object.values(map ?? {}).filter((x) => x.phase === "suppressed").length;
 }
 
+function hasHighSuppressionProgress(map: Record<string, SnapshotMainThreatState>, minProgress: number): boolean {
+  return Object.values(map ?? {}).some((x) => safeNum((x as any).suppressionProgress) >= minProgress);
+}
+
 function countNpcCodexEntries(codex: Record<string, CodexLite>): number {
   return Object.values(codex ?? {}).filter((x) => x.type === "npc").length;
 }
 
-function statQualified(stats: Record<StatType, number>, stat: StatType): boolean {
-  // 单职业认证门槛：任一维度 > 20；职业本身按其 primaryStat 是否 > 20 来决定可选列表。
-  return safeNum(stats?.[stat]) > 20;
+function countAnomalyCodexEntries(codex: Record<string, CodexLite>): number {
+  return Object.values(codex ?? {}).filter((x) => x.type === "anomaly").length;
+}
+
+function countHighFavorabilityNpcs(codex: Record<string, CodexLite>, minFavorability: number): number {
+  return Object.values(codex ?? {}).filter((x) => x.type === "npc" && safeNum(x.favorability) >= minFavorability).length;
+}
+
+function statQualified(stats: Record<StatType, number>, stat: StatType, min: number): boolean {
+  return safeNum(stats?.[stat]) >= min;
+}
+
+function weaponHasDiscipline(w: Weapon | null): boolean {
+  if (!w) return false;
+  const stability = safeNum((w as any).stability);
+  const contamination = safeNum((w as any).contamination);
+  return stability >= 65 && contamination <= 45;
+}
+
+function weaponHasModOrInfusion(w: Weapon | null): boolean {
+  if (!w) return false;
+  const mods = Array.isArray((w as any).currentMods) ? (w as any).currentMods : [];
+  const infusions = Array.isArray((w as any).currentInfusions) ? (w as any).currentInfusions : [];
+  return mods.length > 0 || infusions.length > 0;
+}
+
+function computeBehaviorEvidenceKeys(profession: ProfessionId, input: {
+  tasks: TaskLite[];
+  historicalMaxFloorScore: number;
+  mainThreatByFloor: Record<string, SnapshotMainThreatState>;
+  codex: Record<string, CodexLite>;
+  inventoryCount: number;
+  warehouseCount: number;
+  equippedWeapon: Weapon | null;
+}): ProfessionEvidenceKey[] {
+  const completedTasks = countCompletedTasks(input.tasks);
+  const suppressed = countSuppressedThreats(input.mainThreatByFloor);
+  const hasSupp60 = hasHighSuppressionProgress(input.mainThreatByFloor, 60);
+  const npcCodex = countNpcCodexEntries(input.codex);
+  const anomalyCodex = countAnomalyCodexEntries(input.codex);
+  const highFavNpc = countHighFavorabilityNpcs(input.codex, 10);
+  const weaponDisc = weaponHasDiscipline(input.equippedWeapon);
+  const weaponModInf = weaponHasModOrInfusion(input.equippedWeapon);
+
+  const keys: ProfessionEvidenceKey[] = [];
+
+  if (profession === "守灯人") {
+    if (suppressed > 0 || hasSupp60) keys.push("threat_suppression_window");
+    if (weaponDisc) keys.push("weapon_discipline");
+    if (completedTasks >= 2) keys.push("threat_pressure_survival");
+    return keys;
+  }
+  if (profession === "巡迹客") {
+    if (safeNum(input.historicalMaxFloorScore) >= 2) keys.push("mobility_progress");
+    if (completedTasks >= 2) keys.push("escape_discipline");
+    if (weaponModInf) keys.push("weapon_discipline");
+    return keys;
+  }
+  if (profession === "觅兆者") {
+    if (anomalyCodex >= 2) keys.push("anomaly_codex_work");
+    if (weaponModInf) keys.push("omen_validation");
+    if (completedTasks >= 2) keys.push("omen_validation");
+    return keys;
+  }
+  if (profession === "齐日角") {
+    if (npcCodex >= 3) keys.push("negotiation_results");
+    if (highFavNpc >= 1) keys.push("relationship_growth");
+    if (completedTasks >= 2) keys.push("negotiation_results");
+    return keys;
+  }
+  // 溯源师
+  if (safeNum(input.warehouseCount) >= 3) keys.push("forge_maintenance");
+  if (weaponDisc || weaponModInf) keys.push("weapon_discipline");
+  if (anomalyCodex >= 2) keys.push("truth_chain_progress");
+  return keys;
 }
 
 export function computeProfessionState(input: {
@@ -42,34 +119,39 @@ export function computeProfessionState(input: {
   const progressByProfession = { ...base.progressByProfession } as Record<ProfessionId, ProfessionProgress>;
   const eligibilityByProfession = { ...base.eligibilityByProfession } as Record<ProfessionId, boolean>;
   for (const id of PROFESSION_IDS) {
-    const stat = PROFESSION_REGISTRY[id].primaryStat;
-    const statOk = statQualified(input.stats, stat);
-    // V2：职业认证从“行为证据+试炼任务”简化为“primaryStat > 20 的职业可被选择”。
-    // “遇到认证NPC/好感”等触发条件属于剧情/位置层信号，放在交互层处理，不在这里引入世界观耦合。
-    const behaviorEvidenceTarget = 0;
-    const behaviorEvidenceCount = 0;
-    const behaviorOk = true;
+    const def = PROFESSION_REGISTRY[id];
+    const stat = def.primaryStat;
+    const statOk = statQualified(input.stats, stat, def.certification.primaryStatMin);
+
+    // 行为证据：轻量、可验证、与玩法系统联动（威胁/移动/图鉴/关系/锻造/武器可靠性）
+    const behaviorEvidenceTarget = def.certification.behaviorEvidenceTarget;
+    const behaviorEvidenceKeys = computeBehaviorEvidenceKeys(id, input);
+    const behaviorEvidenceCount = behaviorEvidenceKeys.length;
+    const behaviorOk = behaviorEvidenceCount >= behaviorEvidenceTarget;
     const prev = progressByProfession[id] ?? {
       statQualified: false,
       behaviorQualified: false,
       behaviorEvidenceCount: 0,
       behaviorEvidenceTarget: 0,
+      behaviorEvidenceKeys: [],
       trialTaskId: null,
       trialTaskCompleted: false,
       certified: false,
     };
-    const trialTaskId = null;
-    const trialTaskCompleted = true;
+    const trialTaskId = getProfessionTrialTaskId(id);
+    const trialTaskCompleted = (input.tasks ?? []).some((t) => t.id === trialTaskId && t.status === "completed");
     progressByProfession[id] = {
       ...prev,
       statQualified: statOk,
       behaviorQualified: behaviorOk,
       behaviorEvidenceCount,
       behaviorEvidenceTarget,
+      behaviorEvidenceKeys,
       trialTaskId,
       trialTaskCompleted,
     };
-    eligibilityByProfession[id] = statOk && behaviorOk && trialTaskCompleted;
+    // 单职业制：如果已经有 currentProfession，则只保留“进度展示”，不再对其它职业开放认证资格。
+    eligibilityByProfession[id] = !base.currentProfession && statOk && behaviorOk && trialTaskCompleted;
   }
   const unlocked = [...new Set(base.unlockedProfessions.filter((x) => PROFESSION_IDS.includes(x)))];
   const activePerks = base.currentProfession ? [PROFESSION_REGISTRY[base.currentProfession].passivePerkId] : [];

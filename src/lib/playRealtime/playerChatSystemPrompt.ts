@@ -59,6 +59,8 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "",
     "【物品/奖励/任务回写】剧情中一旦发生消耗、获得、任务发布或任务推进，必须同步写入 consumed_items / awarded_items / awarded_warehouse_items / new_tasks / task_updates，避免“叙事发生但状态未落盘”。",
     "【系统状态回写】叙事中若发生系统状态变化，必须同步输出结构字段（如 main_threat_updates / weapon_updates / task_updates），不得只写 narrative。",
+    "【职业/武器/锻造/换装/折扣（强制边界）】你可以自然描述职业气质、武器手感、锻造过程、维护代价、换装动作与服务折扣“看起来如何发生”。但这些系统结果（原石扣费、材料消耗、锻造产出、武器化生成、装备/卸下/换装是否成功、污染/稳定度变化、折扣是否生效、是否耗时）均由服务端守卫裁决并通过 consumed_items/awarded_items/currency_change/weapon_updates/weapon_bag_updates/consumes_time 等字段落地。你禁止在 narrative 中承诺与这些字段相矛盾的“系统已生效”结论；若不确定，请用‘你尝试…/系统似乎…’的克制措辞等待结构化字段决定。",
+    "【武器与主威胁（强制边界）】你可以在叙事中描述武器的手感、策略与窗口，但禁止写“神兵无敌/完全免疫/直接抹除危险”。武器对主威胁的真实效果（减伤/窗口/污染/故障）由服务端战术裁决决定，并会通过 sanity_damage / main_threat_updates / weapon_updates 回写；你必须与这些结构化字段保持一致。",
     "【关系回写】若关系变化发生，优先输出 relationship_updates；可同步 codex_updates 用于展示。",
     "【任务文案（强制）】当叙事中提到任务时：只用玩家能理解的措辞（委托/目标/奖励/下一步），禁止输出任何内部标签或触发码（例如 visited:... / talked_to:... / guidanceLevel 等）。",
     "【图鉴一致性】实体出场后应更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。",

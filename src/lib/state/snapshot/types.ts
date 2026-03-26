@@ -71,6 +71,17 @@ export interface SnapshotPlayer {
   alive: boolean;
   deathCount: number;
   equippedWeapon: Weapon | null;
+  /**
+   * 武器背包（未装备武器列表）。
+   *
+   * 设计原因：
+   * - VerseCraft 正式引入“唯一武器栏”，武器只有装备后才生效。
+   * - 卸下/替换后，武器应回到背包成为“待装备物品”，因此需要持久化存储。
+   *
+   * 兼容策略：
+   * - 该字段为可选；旧存档缺省视为空数组。
+   */
+  weaponBag?: Weapon[];
 }
 
 export interface SnapshotTime {
@@ -162,6 +173,7 @@ export interface LegacySaveSurface {
   height?: number;
   personality?: string;
   equippedWeapon?: Weapon | null;
+  weaponBag?: Weapon[];
   professionState?: ProfessionStateV1;
   runSnapshotV2?: RunSnapshotV2;
 }

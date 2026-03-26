@@ -9,7 +9,40 @@ type DmRecord = Record<string, unknown>;
 
 function runFinalGuards(input: DmRecord, latestUserInput: string, playerContext: string): DmRecord {
   let dm = { ...input };
-  dm = applyB1ServiceExecutionGuard({ dmRecord: dm, latestUserInput, playerContext });
+  // Stage2 tests now feed structured clientState; playerContext 仅作叙事提示，不再用于关键裁决。
+  dm = applyB1ServiceExecutionGuard({
+    dmRecord: dm,
+    latestUserInput,
+    playerContext,
+    clientState: {
+      v: 1,
+      turnIndex: 0,
+      playerLocation: typeof input.player_location === "string" ? String(input.player_location) : "B1_PowerRoom",
+      time: { day: 1, hour: 8 },
+      stats: { sanity: 60, agility: 60, luck: 60, charm: 60, background: 60 },
+      originium: 8,
+      inventoryItemIds: ["I-C03", "I-C12", "I-C02"],
+      warehouseItemIds: ["W-B101", "W-107"],
+      equippedWeapon: {
+        id: "WPN-001",
+        name: "旧武器",
+        description: "d",
+        counterThreatIds: [],
+        counterTags: ["sound", "silence", "mirror", "direction"],
+        stability: 55,
+        calibratedThreatId: null,
+        modSlots: ["core", "surface"],
+        currentMods: [],
+        currentInfusions: [],
+        contamination: 30,
+        repairable: true,
+      },
+      weaponBag: [],
+      currentProfession: null,
+      worldFlags: [],
+      presentNpcIds: ["N-008"],
+    },
+  });
   dm = applyMainThreatUpdateGuard({ dmRecord: dm, playerContext });
   dm = applyStage2SettlementGuard(dm);
   return dm;

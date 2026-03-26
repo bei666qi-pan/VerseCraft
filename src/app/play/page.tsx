@@ -133,6 +133,7 @@ function PlayContent() {
   const updateNpcLocation = useGameStore((s) => s.updateNpcLocation);
   const applyMainThreatUpdates = useGameStore((s) => s.applyMainThreatUpdates);
   const applyWeaponUpdates = useGameStore((s) => s.applyWeaponUpdates);
+  const applyWeaponBagUpdates = useGameStore((s) => s.applyWeaponBagUpdates);
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const isGuest = useGameStore((s) => s.isGuest ?? false);
@@ -809,6 +810,7 @@ function PlayContent() {
       : [...baseMessages, { role: "user", content: trimmed }];
 
     const playerContext = useGameStore.getState().getPromptContext();
+    const clientState = useGameStore.getState().getStructuredClientStateForServer();
 
     const ac = new AbortController();
     streamAbortRef.current = ac;
@@ -833,6 +835,7 @@ function PlayContent() {
         body: JSON.stringify({
           messages,
           playerContext,
+          clientState,
           sessionId: guestId ?? "browser_session",
         }),
         signal: ac.signal,
@@ -1502,11 +1505,11 @@ function PlayContent() {
         (statsNow.background ?? 0) > 20;
 
       if (!alreadyHasProfession && in1F && metNpc && favorOk && anyStatOver20) {
-        // 可选职业：仅展示 primaryStat > 20 的职业，避免“任意职业随便点”造成违和。
-        const eligible: ProfessionId[] = PROFESSION_IDS.filter((id) => {
-          const key = PROFESSION_REGISTRY[id].primaryStat;
-          return (statsNow as Record<string, number | undefined>)[key] > 20;
-        });
+        // 可选职业：以 `professionState.eligibilityByProfession` 为准（stat + 行为证据 + 试炼任务），
+        // 避免“前端提示可认证，但 engine 实际不可认证”的矛盾。
+        const eligible: ProfessionId[] = PROFESSION_IDS.filter(
+          (id) => Boolean(stateNow.professionState?.eligibilityByProfession?.[id])
+        );
         if (eligible.length > 0) {
           const optionTextById: Record<ProfessionId, string> = {
             守灯人: "认证职业：守灯人",
@@ -1606,6 +1609,11 @@ function PlayContent() {
         .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
         .map((u) => ({
           weaponId: typeof u.weaponId === "string" ? u.weaponId : undefined,
+          weapon:
+            (u as { weapon?: unknown }).weapon && typeof (u as { weapon?: unknown }).weapon === "object" && !Array.isArray((u as { weapon?: unknown }).weapon)
+              ? ((u as { weapon: Record<string, unknown> }).weapon as any)
+              : ((u as { weapon?: unknown }).weapon === null ? null : undefined),
+          unequip: typeof (u as { unequip?: unknown }).unequip === "boolean" ? (u as { unequip: boolean }).unequip : undefined,
           stability:
             typeof u.stability === "number" && Number.isFinite(u.stability)
               ? u.stability
@@ -1638,6 +1646,24 @@ function PlayContent() {
           repairable: typeof u.repairable === "boolean" ? u.repairable : undefined,
         }));
       if (updates.length > 0) applyWeaponUpdates(updates);
+    }
+
+    if (Array.isArray((parsed as { weapon_bag_updates?: unknown[] }).weapon_bag_updates)) {
+      const safe = ((parsed as { weapon_bag_updates?: unknown[] }).weapon_bag_updates ?? [])
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x));
+      const mapped = safe.map((u) => {
+        if (typeof (u as { removeWeaponId?: unknown }).removeWeaponId === "string") {
+          return { removeWeaponId: (u as { removeWeaponId: string }).removeWeaponId };
+        }
+        if ((u as { addWeapon?: unknown }).addWeapon && typeof (u as { addWeapon?: unknown }).addWeapon === "object" && !Array.isArray((u as { addWeapon?: unknown }).addWeapon)) {
+          return { addWeapon: (u as { addWeapon: any }).addWeapon };
+        }
+        if (typeof (u as { addEquippedWeaponId?: unknown }).addEquippedWeaponId === "string") {
+          return { addEquippedWeaponId: (u as { addEquippedWeaponId: string }).addEquippedWeaponId };
+        }
+        return null;
+      }).filter((x): x is any => !!x);
+      if (mapped.length > 0) applyWeaponBagUpdates(mapped);
     }
 
     if (consumedProfessionActive === "溯源师" && Array.isArray(parsed.codex_updates)) {

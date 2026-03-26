@@ -7,7 +7,7 @@ test("profession eligibility follows stat + behavior gates", () => {
   const state = computeProfessionState({
     prev: createDefaultProfessionState(),
     stats: { sanity: 22, agility: 5, luck: 5, charm: 5, background: 5 },
-    tasks: [{ id: "a", status: "completed" }, { id: "b", status: "completed" }],
+    tasks: [{ id: "prof_trial_lampkeeper", status: "completed" }, { id: "b", status: "completed" }],
     historicalMaxFloorScore: 1,
     mainThreatByFloor: {
       "1": { floorId: "1", threatId: "A-001", phase: "suppressed", suppressionProgress: 100, lastResolvedAtHour: 1, counterHintsUsed: [] },
@@ -25,7 +25,7 @@ test("certify profession sets current and perk", () => {
   const computed = computeProfessionState({
     prev: createDefaultProfessionState(),
     stats: { sanity: 25, agility: 1, luck: 1, charm: 1, background: 1 },
-    tasks: [{ id: "a", status: "completed" }, { id: "b", status: "completed" }],
+    tasks: [{ id: "prof_trial_lampkeeper", status: "completed" }, { id: "b", status: "completed" }],
     historicalMaxFloorScore: 1,
     mainThreatByFloor: {
       "1": { floorId: "1", threatId: "A-001", phase: "suppressed", suppressionProgress: 100, lastResolvedAtHour: 1, counterHintsUsed: [] },

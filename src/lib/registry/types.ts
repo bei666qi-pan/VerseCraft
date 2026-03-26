@@ -10,6 +10,12 @@ export type StatType =
 
 export type ItemTier = "S" | "A" | "B" | "C" | "D";
 
+/**
+ * 可武器化品级（核心设定：武器来自“高级道具武器化”，因此只有 C 及以上能作为原料）。
+ * - 兼容策略：不改变 `ItemTier`，只新增一个“可武器化”子集类型。
+ */
+export type WeaponTier = Exclude<ItemTier, "D">; // "S" | "A" | "B" | "C"
+
 /** Floor IDs: B2=exit, B1=spawn, 1-7=above ground */
 export type FloorId = "B2" | "B1" | "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
@@ -65,7 +71,30 @@ export interface Item {
   materialValue?: number;
   /** Stage-2 light forge: recommended operations for this material. */
   compatibleOperations?: ForgeOperation[];
+
+  /**
+   * 武器化声明（可选字段，兼容旧存档/旧表）
+   *
+   * 设计目的：
+   * - 让“普通道具”与“可武器化道具”在数据层可区分，而不强迫马上改动所有道具表。
+   * - 规则默认：tier 为 C/B/A/S 的道具“理论上可武器化”；若某个道具应被禁止（叙事关键物/破坏平衡），可显式标记为不可。
+   *
+   * 注意：
+   * - 本字段只是“资格声明”，真正的裁决（数量、费用、折扣、地点=锻造台）应由服务端权威链路执行。
+   */
+  weaponization?: {
+    /** 默认 undefined 视为：按 tier 推断；true/false 可强制覆盖 */
+    eligible?: boolean;
+    /** 可选：用于 UI/DM 的拒绝原因（例如“剧情关键物不可拆解”） */
+    reason?: string;
+  };
 }
+
+/**
+ * 可武器化道具：C/B/A/S（高级道具）。
+ * - 兼容策略：这是“类型层区分”，不要求运行时一定带 `weaponization` 字段。
+ */
+export type WeaponizableItem = Item & { tier: WeaponTier };
 
 export interface NPC {
   id: string;
@@ -176,7 +205,12 @@ export interface WarehouseItem {
   compatibleOperations?: ForgeOperation[];
 }
 
-export type ForgeOperation = "repair" | "mod" | "infuse";
+/**
+ * 锻造操作类型：
+ * - repair/mod/infuse：现有“轻锻造”能力（必须保持兼容）
+ * - weaponize：新增“高级道具→武器化”能力（只能在锻造台，且必须权威裁决消耗/费用/折扣）
+ */
+export type ForgeOperation = "repair" | "mod" | "infuse" | "weaponize";
 export type ForgeMaterialTag =
   | "conductive"
   | "mirror"
@@ -220,7 +254,15 @@ export interface ForgeResult {
   consumedWarehouseIds: string[];
   currencyChange: number;
   weaponUpdates: Array<{
-    weaponId: string;
+    /**
+     * 兼容字段：旧链路用 weaponId 从固定表取武器。
+     * 新链路（weaponize）允许直接回写完整 weapon 对象（用于“武器继承原道具效果/门槛/来源”）。
+     * - 注意：前端消费点若尚未支持 `weapon`，服务端应回退到 weaponId 模板绑定模式。
+     */
+    weaponId?: string;
+    weapon?: Weapon;
+    /** 装备系统：明确卸下（清空武器栏）。 */
+    unequip?: boolean;
     stability?: number;
     calibratedThreatId?: string | null;
     currentMods?: WeaponModKind[];
@@ -251,6 +293,158 @@ export interface Weapon {
   contamination: number;
   /** Whether this weapon can be repaired/maintained now. */
   repairable: boolean;
+
+  // ---------------------------
+  // Stage-3: “道具→武器化”扩展字段（全部可选，确保不破坏现有消费点）
+  // ---------------------------
+
+  /**
+   * 武器品级/阶级。
+   *
+   * 设计原因：
+   * - 武器不是独立掉落体系，而是由 C+ 高级道具武器化而来，因此武器必然有一个对应的品级。
+   * - 旧系统里的 `WEAPONS` 固定表可视作“兼容层/模板”，也需要被赋予 tier 语义以便迁移。
+   */
+  tier?: WeaponTier;
+
+  /**
+   * 装备位语义（单武器栏）。
+   *
+   * 设计原因：
+   * - “单武器栏”强制玩家做取舍，避免多装备叠加导致叙事行动无限泛化，也便于反作弊与裁决闭环。
+   * - 兼容策略：现有存档字段 `equippedWeapon?: Weapon | null` 继续可用；未来可将“武器栏状态”从 `Weapon` 里剥离到权威状态，但这里先提供语义锚点。
+   */
+  equipSlot?: "weapon_main";
+
+  /**
+   * 换装耗时规则（以“回合/行动轮次”为单位）。
+   *
+   * 设计原因：
+   * - 若换装不耗时，玩家可在同一回合通过换装来规避风险/刷收益，削弱决策张力并显著提高作弊空间。
+   * - 兼容策略：不强制所有武器具备；默认逻辑可在规则层用缺省=1。
+   */
+  equipTimeCostTurns?: number; // 默认建议=1
+
+  /**
+   * 效果来源映射：武器继承原道具的“主要效果与使用门槛”，但改为可反复使用（不再消耗）。
+   *
+   * 设计原因：
+   * - 让“武器=高级道具武器化”在数据上可追溯、可解释（UI/DM 均可读）。
+   * - 同时保持旧字段不变：旧系统仍可继续只看 counterTags / stability 等字段。
+   */
+  effectSource?: {
+    /** 原始道具的 effectType（若存在） */
+    effectType?: ItemEffectType;
+    /** 原始道具的 effectSummary（若存在） */
+    effectSummary?: string;
+    /** 原始道具的 statRequirements（若存在） */
+    statRequirements?: StatRequirement;
+    /**
+     * 原始道具“主要效果”的归因描述（可选，供叙事与 UI 展示）
+     * 例：shield/ruleKill/transform 等效果在武器化后表现为“可重复触发的装备能力”。
+     */
+    primaryEffectNote?: string;
+  };
+
+  /**
+   * 来源追踪：由哪些道具武器化而来，以及在何处/以何种折扣生成。
+   *
+   * 设计原因：
+   * - 反作弊：能够追溯“这把武器为什么存在、是否满足配方与费用”。
+   * - 玩法：允许后续设计“某些 NPC 只承认在他们见证下锻造的武器”之类的叙事/系统钩子。
+   *
+   * 兼容策略：
+   - 老的固定武器表（`WEAPONS`）没有来源，默认可视作 `kind=legacy_catalog`。
+   */
+  provenance?: WeaponProvenance;
+}
+
+/**
+ * 武器生成/流转追踪信息（只定义结构；裁决由服务端权威链路写入）。
+ */
+export type WeaponProvenance =
+  | {
+      /**
+       * 由“高级道具→武器化”生成。
+       *
+       * 命名约定：
+       * - `weaponize`：当前规范字段（对齐 forge operation 名称，便于全链路搜索与审计）。
+       * - `weaponized_item`：历史兼容别名（早期实现遗留）。读取时应视作等价。
+       */
+      kind: "weaponize" | "weaponized_item";
+      /** 本次武器化消耗的道具 ID 列表（C:3 / B:2 / A:1 / S:1） */
+      sourceItemIds: string[];
+      /** 本次武器化配方目标阶级 */
+      targetTier: WeaponTier;
+      /** 生成发生的服务节点（必须是锻造台所在节点；兼容：可空） */
+      forgedAtNodeId?: ServiceNodeId;
+      /** 对应锻造服务定义 ID（兼容：可空） */
+      forgedByServiceId?: string;
+      /** 支付信息（用于折扣追溯/审计） */
+      payment?: {
+        baseCostOriginium: number;
+        finalCostOriginium: number;
+        discountApplied: boolean;
+        discountReasonCodes?: string[];
+        discountSource?: WeaponizationDiscountSource;
+      };
+    }
+  | {
+      kind: "legacy_catalog";
+      /** 兼容层标注：来自旧的固定武器表。 */
+      legacyTag?: string;
+    };
+
+/**
+ * 折扣来源（只描述“来源类型与可追踪条件”，不在类型层实现判定）。
+ */
+export type WeaponizationDiscountSource =
+  | {
+      kind: "npc_relationship";
+      npcId: string;
+      /** 例如：好感阈值、盟友关系标记等 */
+      requiredRelation?: { favorabilityGte?: number; ally?: boolean };
+    }
+  | {
+      kind: "service_unlock";
+      serviceId: string;
+    }
+  | {
+      kind: "composite";
+      allOf: WeaponizationDiscountSource[];
+    };
+
+/**
+ * “道具→武器化”配方结构（数据模型）。
+ *
+ * 设计目标：
+ * - 明确：目标阶级、数量、费用、是否允许折扣与折扣条件。
+ * - 兼容：不要求立刻改动旧 forge 系统；可作为新一代锻造台/服务裁决的注册表输入。
+ */
+export interface WeaponizationRecipe {
+  id: string;
+  /** 目标武器阶级（也是目标武器的 tier） */
+  targetTier: WeaponTier;
+  /** 所需道具数量（C=3, B=2, A=1, S=1） */
+  requiredItemCount: number;
+  /** 所需道具最低品级（核心设定：必须 C 及以上） */
+  requiredMinItemTier: WeaponTier;
+  /** 基础原石费用（C=5, B=10, A=20, S=50） */
+  baseCostOriginium: number;
+  /** 是否允许折扣（默认允许；某些配方可关掉以保护节奏） */
+  discountAllowed: boolean;
+  /** 折扣来源条件（满足任一/全部由执行器解释；这里仅表达“可追踪”） */
+  discountSources?: WeaponizationDiscountSource[];
+  /**
+   * 武器生成策略（不在 types.ts 写具体算法；只定义策略枚举/参数）。
+   * - inherit_primary: 继承原道具的主效果与门槛；counterTags/反制标签由道具 tags/forgeTags 推导。
+   * - template_bind: 绑定到某个基础武器模板（例如“镜背匕”类），但仍记录 provenance。
+   */
+  generationStrategy:
+    | { kind: "inherit_primary"; allowMixedSources: boolean }
+    | { kind: "template_bind"; templateId: string };
+  /** 是否允许重复锻造成同类武器（影响“刷同款”与审计策略） */
+  canRepeatForge: boolean;
 }
 
 /** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */
