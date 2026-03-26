@@ -63,12 +63,25 @@ export function applyBloodErase(narrative: string): string {
   return `${narrative.slice(0, idx0)}${BLOOD_MARKER}${narrative.slice(idx0, end)}${BLOOD_END}${narrative.slice(end)}`;
 }
 
+/**
+ * 清除模型偶尔泄漏到 narrative 中的代码格式：
+ * - ```json ... ``` / ``` ... ``` 代码围栏
+ * - `...` 行内代码反引号
+ * - 残留 JSON key/value 格式片段（如 "is_action_legal": true）
+ */
+function stripCodeArtifacts(s: string): string {
+  let out = s;
+  out = out.replace(/```[\s\S]*?```/g, "");
+  out = out.replace(/`([^`\n]{1,80})`/g, "$1");
+  return out;
+}
+
 export function renderNarrativeText(
   text: string,
   options?: { plainOnly?: boolean; streamSafe?: boolean }
 ): ReactNode {
   try {
-    const safeText = typeof text === "string" ? text.slice(0, 15000) : "";
+    const safeText = typeof text === "string" ? stripCodeArtifacts(text).slice(0, 15000) : "";
     const plainOnly = options?.plainOnly ?? false;
     const streamSafe = options?.streamSafe ?? false;
     const localized = (() => {

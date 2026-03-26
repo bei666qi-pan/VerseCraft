@@ -205,7 +205,12 @@ export function tryParseDM(raw: string): DMJson | null {
     if (!objectSlice || objectSlice.length < 2) continue;
     candidatesTried++;
     const dm = parseSliceToDm(objectSlice);
-    if (dm) return dm;
+    if (dm) {
+      dm.narrative = dm.narrative
+        .replace(/```[\s\S]*?```/g, "")
+        .replace(/`([^`\n]{1,80})`/g, "$1");
+      return dm;
+    }
   }
 
   if (candidatesTried === 0) {
