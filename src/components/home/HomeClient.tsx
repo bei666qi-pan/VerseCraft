@@ -1923,11 +1923,18 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <footer className="relative z-20 mx-auto w-full max-w-5xl px-6 pb-8 sm:px-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
         <div className="border-t border-slate-200/70 pt-5 text-xs text-slate-500">
-          <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-            <div id="home-leaderboard" className="flex w-full items-center justify-start sm:w-auto sm:justify-center">
+          <div className="grid grid-cols-[1fr_auto] items-center gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
+            <div id="home-leaderboard" className="flex min-w-0 items-center justify-start sm:w-auto sm:justify-center">
               <Leaderboard userId={user?.id} triggerPlacement="inline" defaultOpen={leaderboardAutoOpen} />
             </div>
-            <div className="flex w-full flex-wrap items-center justify-start gap-x-3 gap-y-1 text-[11px] text-slate-500/90 sm:w-auto sm:justify-center sm:gap-x-4 sm:text-xs">
+            <div className="flex justify-end sm:w-auto sm:justify-start">
+              <FooterHaloIconButton onClick={openSurveyEntry} ariaLabel="产品问卷" tone="blue">
+                <BulbIconSvg />
+              </FooterHaloIconButton>
+            </div>
+            <div
+              className="col-span-2 flex w-full items-center justify-start gap-x-3 pt-1 text-[11px] text-slate-500/90 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:col-span-1 sm:w-auto sm:flex-wrap sm:justify-center sm:gap-x-4 sm:pt-0 sm:text-xs sm:whitespace-normal sm:overflow-visible"
+            >
               <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/user-agreement">
                 用户协议
               </Link>
@@ -1953,11 +1960,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/minors">
                 未成年人说明
               </Link>
-            </div>
-            <div className="flex w-full justify-end sm:w-auto sm:justify-start">
-              <FooterHaloIconButton onClick={openSurveyEntry} ariaLabel="产品问卷" tone="blue">
-              <BulbIconSvg />
-              </FooterHaloIconButton>
             </div>
           </div>
 

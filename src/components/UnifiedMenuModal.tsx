@@ -517,8 +517,6 @@ function BackpackPanel({
   onUseItem,
   isChatBusy,
   stats,
-  equippedWeapon,
-  weaponBag,
 }: {
   inventory: Item[];
   originium: number;
@@ -527,13 +525,10 @@ function BackpackPanel({
   onUseItem: (item: Item) => void;
   isChatBusy: boolean;
   stats: Record<StatType, number>;
-  equippedWeapon: Weapon | null;
-  weaponBag: Weapon[];
 }) {
   const safeInventory = Array.isArray(inventory) ? inventory : [];
   const slotItems = Array.from({ length: 6 }, (_, idx) => safeInventory[idx] ?? null);
   const selectedItem = selectedId ? safeInventory.find((i) => i && i.id === selectedId) ?? null : null;
-  const equippedId = equippedWeapon?.id ?? null;
 
   useEffect(() => {
     if (selectedId && !selectedItem) onSelect(null);
@@ -608,31 +603,9 @@ function BackpackPanel({
               })}
             </div>
           )}
-          {Array.isArray(weaponBag) && weaponBag.length > 0 ? (
-            <div className="mt-4">
-              <div className="mb-2 text-xs tracking-widest text-slate-500">已武器化（未装备）</div>
-              <div className="space-y-2">
-                {weaponBag.slice(0, 6).map((w) => (
-                  <div
-                    key={w.id}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-semibold">{w.name ?? w.id}</span>
-                      <span className="shrink-0 font-mono text-[10px] text-slate-500">{w.id}</span>
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-500">更换需耗费 1 回合：更换武器：{w.id}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
       <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        <div className="mb-4">
-          <WeaponSlotPanel equippedWeapon={equippedWeapon} weaponBag={weaponBag} busy={isChatBusy} />
-        </div>
         {selectedItem && typeof selectedItem === "object" ? (
           <>
             <h3 className="text-xl font-bold text-white">{selectedItem.name ?? "未知"}</h3>
@@ -640,12 +613,6 @@ function BackpackPanel({
               {selectedItem.tier ?? "D"}
             </p>
             <div className="mt-6 space-y-4">
-              {equippedId && selectedItem.id === equippedId ? (
-                <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2">
-                  <span className="text-[10px] uppercase tracking-wider text-amber-300">已装备</span>
-                  <p className="mt-0.5 text-sm font-medium text-amber-200">该条目为当前主手武器。</p>
-                </div>
-              ) : null}
               {getItemEffectSummary(selectedItem) && (
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
                   <span className="text-[10px] uppercase tracking-wider text-emerald-400">效果</span>
@@ -1384,8 +1351,6 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
               onUseItem={onUseItem}
               isChatBusy={isChatBusy}
               stats={stats}
-              equippedWeapon={equippedWeapon}
-              weaponBag={weaponBag}
             />
           </Activity>
           <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>
