@@ -36,6 +36,12 @@ const UNDERLAY_PILL =
 const BUTTON_PILL =
   "group relative z-10 flex w-full min-h-0 items-center justify-center gap-3 rounded-full bg-transparent px-10 py-4 text-base font-bold tracking-widest text-slate-800 transition-all duration-300 hover:text-slate-900 active:scale-[0.99] md:px-12 md:py-5 touch-manipulation";
 
+const WRAP_PILL_SM =
+  "relative flex w-full min-h-0 flex-col overflow-hidden rounded-full shadow-[0_0_18px_rgba(148,163,184,0.12)] transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_0_26px_rgba(148,163,184,0.18)] active:scale-[0.99]";
+
+const BUTTON_PILL_SM =
+  "group relative z-10 flex w-full min-h-0 items-center justify-center gap-3 rounded-full bg-transparent px-7 py-3 text-sm font-bold tracking-widest text-slate-800 transition-all duration-300 hover:text-slate-900 active:scale-[0.99] md:px-9 md:py-3.5 touch-manipulation";
+
 type Props = {
   label: string;
   onClick: () => void;
@@ -48,6 +54,8 @@ type Props = {
   compact?: boolean;
   /** 仅 pill：右侧箭头等 */
   trailing?: ReactNode;
+  /** 仅 pill：更小的胶囊尺寸（保证触控高度） */
+  pillSize?: "md" | "sm";
 };
 
 export function GlassCtaButton({
@@ -59,11 +67,12 @@ export function GlassCtaButton({
   prominent = false,
   compact = false,
   trailing,
+  pillSize = "md",
 }: Props) {
   const cardCompact = variant === "card" && compact && !prominent;
   const wrap =
     variant === "pill"
-      ? WRAP_PILL
+      ? (pillSize === "sm" ? WRAP_PILL_SM : WRAP_PILL)
       : prominent
         ? WRAP_CARD_PROMINENT
         : cardCompact
@@ -73,7 +82,7 @@ export function GlassCtaButton({
     variant === "pill" ? UNDERLAY_PILL : prominent ? UNDERLAY_CARD_PROMINENT : UNDERLAY_CARD;
   const btn =
     variant === "pill"
-      ? BUTTON_PILL
+      ? (pillSize === "sm" ? BUTTON_PILL_SM : BUTTON_PILL)
       : prominent
         ? BUTTON_CARD_PROMINENT
         : cardCompact

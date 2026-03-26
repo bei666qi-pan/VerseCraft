@@ -12,6 +12,9 @@ export const DEFAULT_BEIAN_URL = "https://beian.miit.gov.cn";
 /** 公示用客服/联络电话；可通过 NEXT_PUBLIC_CONTACT_PHONE 覆盖。 */
 export const DEFAULT_CONTACT_PHONE = "18163616407";
 
+/** 公示用联系邮箱；可通过 NEXT_PUBLIC_CONTACT_EMAIL 覆盖。 */
+export const DEFAULT_CONTACT_EMAIL = "bei666qi@gmail.com";
+
 /** 各法律页底部统一展示的严谨边界说明（禁止替换为「零风险」类表述）。 */
 export const LEGAL_SCOPE_BOUNDARY_FOOTNOTE =
   "【重要说明】本页面及本产品其他合规文档用于说明我们在当前认知与产品能力范围内的规则、流程与信息处理方式，不构成正式法律意见或承诺。" +

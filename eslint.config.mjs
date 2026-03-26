@@ -6,6 +6,15 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    files: ["**/*.{ts,tsx}"],
+    rules: {
+      // Project-wide: allow gradual typing migration.
+      "@typescript-eslint/no-explicit-any": "off",
+      // React 19 + complex UI flows: allow state sync in effects where needed.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/app/api/**", "src/lib/ai/**/*.ts", "**/*.test.ts"],
     rules: {

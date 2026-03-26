@@ -7,6 +7,7 @@
 import {
   DEFAULT_BEIAN_NUMBER,
   DEFAULT_BEIAN_URL,
+  DEFAULT_CONTACT_EMAIL,
   DEFAULT_CONTACT_PHONE,
   DEFAULT_OFFICIAL_DOMAIN,
   DEFAULT_OFFICIAL_SITE_URL,
@@ -48,7 +49,8 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
   const operatingSubject = operatingSubjectRaw && operatingSubjectRaw.length > 0 ? operatingSubjectRaw : null;
 
   const contactEmailRaw = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim();
-  const contactEmail = contactEmailRaw && contactEmailRaw.length > 0 ? contactEmailRaw : null;
+  const contactEmail =
+    contactEmailRaw && contactEmailRaw.length > 0 ? contactEmailRaw : DEFAULT_CONTACT_EMAIL;
 
   const contactPhoneRaw = process.env.NEXT_PUBLIC_CONTACT_PHONE?.trim();
   const contactPhone =

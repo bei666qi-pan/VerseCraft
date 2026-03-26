@@ -1,8 +1,9 @@
 "use client";
 
 import { Activity, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Settings, Package, BookOpen, Warehouse, ClipboardList, Trophy, Volume2, VolumeX } from "lucide-react";
+import { Settings, Package, BookOpen, Book, Warehouse, ClipboardList, Trophy, Volume2, VolumeX } from "lucide-react";
 import type { Item, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
@@ -98,6 +99,7 @@ function formatLocationLabel(location: string): string {
 
 const TAB_ICONS: Record<NonNullable<ActiveMenu>, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
   settings: Settings,
+  guide: Book,
   backpack: Package,
   codex: BookOpen,
   warehouse: Warehouse,
@@ -107,6 +109,7 @@ const TAB_ICONS: Record<NonNullable<ActiveMenu>, React.ComponentType<{ className
 
 const TABS: { id: NonNullable<ActiveMenu>; label: string }[] = [
   { id: "settings", label: "设置" },
+  { id: "guide", label: "指南" },
   { id: "backpack", label: "灵感手记" },
   { id: "codex", label: "图鉴" },
   { id: "warehouse", label: "仓库" },
@@ -116,6 +119,7 @@ const TABS: { id: NonNullable<ActiveMenu>; label: string }[] = [
 
 const TAB_ONBOARDING_ATTR: Record<NonNullable<ActiveMenu>, string> = {
   settings: "settings-tab",
+  guide: "guide-tab",
   backpack: "backpack-tab",
   codex: "codex-tab",
   warehouse: "warehouse-tab",
@@ -375,6 +379,19 @@ function SettingsPanel({
         </div>
       </div>
 
+      <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">书写履历</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+          每次结算摘要与导出用的写作快照可随账号同步。在历史中心集中查看与再次下载。
+        </p>
+        <Link
+          href="/history"
+          className="mt-3 inline-flex text-xs font-semibold text-cyan-300/90 underline-offset-4 hover:underline"
+        >
+          打开历史中心 →
+        </Link>
+      </div>
+
       <div>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">武器栏</h3>
         <WeaponSlotPanel equippedWeapon={equippedWeapon} weaponBag={weaponBag} busy={isChatBusy} />
@@ -539,18 +556,6 @@ function BackpackPanel({
             <div className="h-4 w-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
             <span className="text-sm font-bold tabular-nums text-amber-300">{originium}</span>
             <span className="text-xs text-amber-400/90">原石</span>
-          </div>
-          <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-slate-400">
-            <div className="flex items-center justify-between">
-              <span>武器栏</span>
-              <span className="font-mono text-slate-300">{equippedWeapon ? "已装备" : "空槽"}</span>
-            </div>
-            <div className="mt-1 truncate text-slate-300">
-              {equippedWeapon ? `${equippedWeapon.name ?? equippedWeapon.id}` : "未装备武器"}
-            </div>
-            <div className="mt-1 text-[10px] text-slate-500">
-              卸下/更换需耗费 1 回合（请在主界面提交指令）。
-            </div>
           </div>
           {weaponizableHintCount > 0 ? (
             <div className="mt-2 rounded-xl border border-amber-400/15 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">
@@ -887,11 +892,244 @@ const ACHIEVEMENT_GRADE_STYLES: Record<AchievementGrade, string> = {
   E: "text-slate-500",
 };
 
+function GameGuidePanel() {
+  return (
+    <div className="p-6 sm:p-8 overflow-y-auto max-h-[85vh]">
+      <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">游戏指南</h3>
+      <div className="space-y-6 text-sm leading-relaxed text-slate-300">
+        <section className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">30 秒快速上手</h4>
+          <ul className="mt-3 list-disc space-y-1.5 pl-5 text-slate-300">
+            <li>每回合你只做一件事：<span className="font-semibold text-slate-100">选一个行动</span>，让故事继续。</li>
+            <li>新手优先用<span className="font-semibold text-slate-100">选项模式</span>推进；有明确想法再切<span className="font-semibold text-slate-100">手动输入</span>。</li>
+            <li>遇到风险时先<span className="font-semibold text-slate-100">看信息</span>（地点 / 时间 / 任务 / 图鉴 / 背包），再决定要不要冒险。</li>
+          </ul>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">1）这游戏怎么玩</h4>
+          <p className="mt-2 text-slate-300">
+            核心循环很简单：<span className="font-semibold text-slate-100">每回合选择一个行动</span> → 主笔给出剧情反馈 → 局势变化 → 进入下一回合。
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">选项模式</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>适合：刚入门、没思路、想稳稳推进。</li>
+                <li>优点：不容易做出无效操作，节奏更清晰。</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">手动输入</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>适合：你有明确策略、想做更细的动作。</li>
+                <li>建议：一句话即可，越具体越好。</li>
+              </ul>
+              <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[12px] text-slate-300">
+                例：我先不进去，只观察门口。<br />
+                例：我试着和她谈条件。<br />
+                例：我把道具藏起来再靠近。
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">2）开局要做什么（创建角色）</h4>
+          <p className="mt-2 text-slate-300">
+            进入正式游戏前你会创建角色：名字与外观设定、<span className="font-semibold text-slate-100">五项叙事维度</span>、以及一个<span className="font-semibold text-slate-100">回响天赋</span>。
+          </p>
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">五项叙事维度怎么理解</p>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5">
+              <li><span className="font-semibold text-slate-100">精神</span>：承受危险、异常与叙事压力的核心。</li>
+              <li><span className="font-semibold text-slate-100">敏捷</span>：行动、躲避、移动与反应。</li>
+              <li><span className="font-semibold text-slate-100">幸运</span>：偶然收益、关键机会与部分随机结果。</li>
+              <li><span className="font-semibold text-slate-100">魅力</span>：交涉、交流与人物互动。</li>
+              <li><span className="font-semibold text-slate-100">出身</span>：资源倾向，也会影响初始原石数量。</li>
+            </ul>
+            <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-200">
+              新手建议：精神不要点太低；不确定时尽量别极端偏科。
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">3）主界面怎么读</h4>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">上方</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>左侧齿轮：打开完整菜单（设置/背包/图鉴等）。</li>
+                <li>书本：打开本页游戏指南。</li>
+                <li>输入切换：选项 / 手动输入。</li>
+                <li>天赋：右上角回响按钮（有冷却）。</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">中间</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>你的行动与主笔反馈会在这里持续滚动。</li>
+                <li>局势变化与提示信息也会出现。</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">下方</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>选项模式：点选行动。</li>
+                <li>手动输入：输入一句短行动提交。</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">4）每回合你通常能做什么</h4>
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4">
+            <ul className="list-disc space-y-1.5 pl-5">
+              <li><span className="font-semibold text-slate-100">探索</span>：去某地、进入房间、查看周围。</li>
+              <li><span className="font-semibold text-slate-100">调查</span>：观察、检查、翻找、确认细节。</li>
+              <li><span className="font-semibold text-slate-100">对话</span>：询问、试探、交涉、解释。</li>
+              <li><span className="font-semibold text-slate-100">使用道具</span>：消耗灵感手记里的道具。</li>
+              <li><span className="font-semibold text-slate-100">应对危险</span>：撤离、试探、硬闯、处理异常。</li>
+            </ul>
+            <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-500/5 px-3 py-2 text-[12px] text-emerald-200">
+              新手最稳节奏：先观察 → 再判断 → 再行动。不要一上来就连续冒险推进。
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">5）设置菜单：你的玩法中枢</h4>
+          <p className="mt-2 text-slate-300">
+            打开齿轮后，你会看到多个标签页。你最常用的是：<span className="font-semibold text-slate-100">设置、灵感手记、图鉴、仓库、任务</span>。
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">设置页（状态总览）</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>五项叙事维度、原石数量。</li>
+                <li>当前地点与时间（很多风险与它们强相关）。</li>
+                <li>武器栏、职业信息、音量控制。</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">原石是什么</p>
+              <p className="mt-2 text-slate-300">
+                原石是重要资源，会影响成长与部分系统。看到原石变多不代表立刻乱花，先根据当前局势决定更关键。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">6）武器栏：不是拿到就自动生效</h4>
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4">
+            <ul className="list-disc space-y-1.5 pl-5">
+              <li>你同时只能装备 <span className="font-semibold text-slate-100">1</span> 把武器。</li>
+              <li>只有放进<span className="font-semibold text-slate-100">武器栏</span>的武器才算真正生效。</li>
+              <li>卸下 / 更换武器需要 <span className="font-semibold text-slate-100">1 回合</span>（要当作一次正式行动来考虑）。</li>
+            </ul>
+            <p className="mt-2 text-[12px] text-slate-400">
+              核心不是“有没有”，而是：现在该不该装、值不值得换、这回合要不要为换装付出代价。
+            </p>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">7）灵感手记：你的背包</h4>
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4">
+            <ul className="list-disc space-y-1.5 pl-5">
+              <li>查看你拥有的道具（重复会显示数量）。</li>
+              <li>点开看详情：品级、效果、描述、使用条件与加成。</li>
+              <li>满足条件时可直接使用：系统会把“使用这个道具”作为本回合行动提交。</li>
+            </ul>
+            <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-200">
+              新手建议：别拿到就乱用；先看使用条件，再判断是否真的需要。高级道具往往更适合留到关键局面。
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">8）“可武器化道具”是什么</h4>
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-slate-300">
+              如果背包里某些高阶道具旁边出现“可武器化”，说明它们后续可能被做成武器（系统也会提示你去配电间查看锻造台）。
+            </p>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5">
+              <li>不是所有道具都只用来消耗。</li>
+              <li>有些道具更适合留着，用于武器化或更高级用途。</li>
+            </ul>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">9）图鉴 / 仓库 / 任务：迷茫时优先看它们</h4>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">图鉴（情报中心）</p>
+              <p className="mt-2 text-slate-300">记录你遇到的 NPC 与诡异：已知信息、规则、弱点、关系状态等。</p>
+              <p className="mt-2 text-[12px] text-slate-400">关键信息越完整，越容易做出正确选择。</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">仓库（另一类物品）</p>
+              <p className="mt-2 text-slate-300">通常有正向效果，也可能带副作用；使用前务必同时看收益与代价。</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">任务（方向提示）</p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                <li>当前任务、状态、委托人、楼层、奖励与下一步提示。</li>
+                <li>不知道做什么：先看任务，再决定去哪探索。</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">10）职业与回响：关键回合能力</h4>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">职业系统</p>
+              <p className="mt-2 text-slate-300">
+                职业更像玩法方向，不是“必胜按钮”。建议先理解它擅长帮助你处理什么局面，再决定是否启用主动技能。
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">回响天赋</p>
+              <p className="mt-2 text-slate-300">
+                右上角天赋有冷却，适合关键时刻使用：危险时保命/破局，迷茫时洞察；不要因为按钮亮了就顺手按掉。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">新手最容易踩的坑</h4>
+          <ul className="mt-3 list-disc space-y-1.5 pl-5">
+            <li>不看图鉴：只靠感觉推进，关键处容易犯错。</li>
+            <li>道具乱用：很多道具“留着更值”。</li>
+            <li>忽视武器栏：背包里不等于生效，换装还要花 1 回合。</li>
+            <li>不看任务：迷路时最直接的提示往往在任务页。</li>
+            <li>不会切输入模式：没思路用选项；有策略再手动输入。</li>
+          </ul>
+        </section>
+
+        <section className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <h4 className="text-sm font-semibold tracking-widest text-slate-200">一句话总结</h4>
+          <p className="mt-2 text-slate-300">
+            文界工坊的核心不是乱冲，而是<span className="font-semibold text-slate-100">读信息 → 做判断 → 再行动</span>。
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
   return (
     <div className="p-6">
-      <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">历史成就</h3>
-      <p className="mb-4 text-xs text-slate-500">展示评级最高的 5 次封卷记录</p>
+      <h3 className="mb-4 text-sm font-semibold tracking-widest text-slate-400">本机成就预览</h3>
+      <p className="mb-4 text-xs text-slate-500">仅用于快速回看（缓存）。完整「书写履历」在历史中心。</p>
       <div className="max-h-[55vh] space-y-4 overflow-y-auto">
         {records.length === 0 ? (
           <p className="py-8 text-center text-xs text-slate-500">暂无成就记录。完成封卷后可在此查看。</p>
@@ -1133,6 +1371,9 @@ export function UnifiedMenuModal({ activeMenu, onClose, onUseItem, isChatBusy, a
               weaponBag={weaponBag}
               isChatBusy={isChatBusy}
             />
+          </Activity>
+          <Activity mode={currentTab === "guide" ? "visible" : "hidden"}>
+            <GameGuidePanel />
           </Activity>
           <Activity mode={currentTab === "backpack" ? "visible" : "hidden"}>
             <BackpackPanel

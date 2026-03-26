@@ -32,14 +32,57 @@ export const users = pgTable(
   })
 );
 
-export const feedbacks = pgTable("feedbacks", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id", { length: 191 })
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
+export const feedbacks = pgTable(
+  "feedbacks",
+  {
+    id: serial("id").primaryKey(),
+    /** 登录用户；与 guestId 至少其一存在（应用层校验） */
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    /** 与 useGameStore.guestId 对齐，用于游客开放反馈落库 */
+    guestId: varchar("guest_id", { length: 128 }),
+    content: text("content").notNull(),
+    kind: varchar("kind", { length: 24 }).notNull().default("open"),
+    clientMeta: jsonb("client_meta").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    userIdx: index("feedbacks_user_id_idx").on(table.userId),
+    guestIdx: index("feedbacks_guest_id_idx").on(table.guestId),
+    createdIdx: index("feedbacks_created_idx").on(table.createdAt),
+  })
+);
+
+/**
+ * 结构化产品问卷答卷（站内主路径）；与 feedbacks 开放文本分流。
+ * surveyKey + surveyVersion 由代码常量驱动，便于按波次分析。
+ */
+export const surveyResponses = pgTable(
+  "survey_responses",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    guestId: varchar("guest_id", { length: 128 }),
+    surveyKey: varchar("survey_key", { length: 64 }).notNull(),
+    surveyVersion: varchar("survey_version", { length: 32 }).notNull(),
+    source: varchar("source", { length: 64 }).notNull().default("home_modal"),
+    answers: jsonb("answers").$type<Record<string, unknown>>().notNull(),
+    freeText: text("free_text"),
+    /** 总体满意度 1–5 */
+    overallRating: integer("overall_rating"),
+    /** 推荐意愿 0–10，可为空 */
+    recommendScore: integer("recommend_score"),
+    contactIntent: boolean("contact_intent").notNull().default(false),
+    userAgreement: boolean("user_agreement").notNull().default(false),
+    privacyPolicy: boolean("privacy_policy").notNull().default(false),
+    clientMeta: jsonb("client_meta").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    keyUserIdx: index("survey_responses_key_user_idx").on(table.surveyKey, table.userId),
+    keyGuestIdx: index("survey_responses_key_guest_idx").on(table.surveyKey, table.guestId),
+    createdIdx: index("survey_responses_created_idx").on(table.createdAt),
+  })
+);
 
 /** 合规联系 / 举报 / 数据权利请求等最小留痕（非完整工单系统）。 */
 export const complianceInquiries = pgTable(
@@ -71,6 +114,38 @@ export const gameRecords = pgTable("game_records", {
   survivalTimeSeconds: integer("survival_time_seconds").notNull().default(0),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+/** 账号级结算履历摘要（跨设备）；非完整回放，便于回流与写作导出留档 */
+export const settlementHistories = pgTable(
+  "settlement_histories",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id", { length: 191 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    grade: varchar("grade", { length: 2 }).notNull(),
+    survivalTimeSeconds: integer("survival_time_seconds").notNull(),
+    survivalDay: integer("survival_day").notNull().default(0),
+    survivalHour: integer("survival_hour").notNull().default(0),
+    killedAnomalies: integer("killed_anomalies").notNull().default(0),
+    maxFloorScore: integer("max_floor_score").notNull().default(0),
+    maxFloorLabel: varchar("max_floor_label", { length: 64 }).notNull().default(""),
+    profession: varchar("profession", { length: 64 }),
+    recapSummary: text("recap_summary").notNull(),
+    aiRecapSummary: text("ai_recap_summary"),
+    isDead: boolean("is_dead").notNull(),
+    hasEscaped: boolean("has_escaped").notNull().default(false),
+    outcome: varchar("outcome", { length: 16 }).notNull(),
+    /** 与结算页「导出写作记录」同源 snapshot，服务端截断防爆库 */
+    writingMarkdown: text("writing_markdown"),
+  },
+  (table) => ({
+    userCreatedIdx: index("settlement_histories_user_created_idx").on(table.userId, table.createdAt),
+  })
+);
 
 export const gameSessionMemory = pgTable("game_session_memory", {
   userId: varchar("user_id", { length: 191 })

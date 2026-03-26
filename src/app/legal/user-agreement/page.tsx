@@ -10,11 +10,10 @@ export default function UserAgreementPage() {
   const cfg = getPublicRuntimeConfig();
   const c = cfg.compliance;
   const productName = c.productName ?? "VerseCraft（文界工坊）";
-  const contactEmail = c.contactEmail;
-  const contactPhoneLine = `公示联系电话：${c.contactPhone}。`;
+  const contactEmail = "bei666qi@gmail.com";
+  const contactEmailLine = `官方联系邮箱：${contactEmail}。`;
   const contactBlock = [
-    contactPhoneLine,
-    contactEmail ? `官方联系邮箱：${contactEmail}。` : null,
+    contactEmailLine,
     `请优先通过「联系我们」页面（${c.officialSiteUrl}/legal/contact）在线提交以便生成受理参考号。`,
   ]
     .filter(Boolean)

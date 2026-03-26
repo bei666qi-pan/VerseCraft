@@ -79,9 +79,9 @@ export default function LegalIndexPage() {
             </a>
           </p>
           <p>
-            联系电话：{" "}
-            <a className="underline underline-offset-2" href={`tel:${c.contactPhone}`}>
-              {c.contactPhone}
+            联系邮箱：{" "}
+            <a className="underline underline-offset-2" href="mailto:bei666qi@gmail.com">
+              bei666qi@gmail.com
             </a>
           </p>
         </div>

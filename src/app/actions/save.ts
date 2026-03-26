@@ -112,11 +112,17 @@ export async function fetchCloudSaves() {
       .from(saveSlots)
       .where(eq(saveSlots.userId, userId));
 
-    return rows.map((row) => ({
+    const mapped = rows.map((row) => ({
       slotId: row.slotId,
       data: row.data as Record<string, unknown>,
       updatedAt: row.updatedAt?.toISOString() ?? null,
     }));
+    // 首页合并列表时优先展示最近写入的槽位（仅影响顺序，不改变字段）
+    return mapped.sort((a, b) => {
+      const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      return tb - ta;
+    });
   } catch {
     return [];
   }

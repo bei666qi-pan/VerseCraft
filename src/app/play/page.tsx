@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Keyboard, List } from "lucide-react";
+import { Settings, Keyboard, List, Book } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { Item, StatType } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
@@ -26,11 +26,11 @@ import {
   shouldRecoverStaleSendActionFlight,
 } from "@/features/play/opening/openingStreamUi";
 import {
-  DEFAULT_FOUR_ACTION_OPTIONS,
   FIXED_OPENING_NARRATIVE,
   OPENING_SYSTEM_PROMPT,
 } from "@/features/play/opening/openingCopy";
 import { pickEmbeddedOpeningOptions } from "@/features/play/opening/openingOptionPools";
+import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
 import { PROFESSION_REGISTRY } from "@/lib/profession/registry";
@@ -45,6 +45,7 @@ import {
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
 import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/features/play/stream/chatPhase";
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
+import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import {
   accumulateDmFromSseEvent,
   foldSseTextToDmRaw,
@@ -234,7 +235,11 @@ function PlayContent() {
     () => (logs ?? []).some((l) => l && l.role === "assistant"),
     [logs]
   );
-  const showEmbeddedOpening = isHydrated && isGameStarted && !hasAssistantMessage;
+  const coldPlayOpening = useMemo(
+    () => isColdPlayOpening({ logs, time }),
+    [logs, time]
+  );
+  const showEmbeddedOpening = isHydrated && isGameStarted && coldPlayOpening;
   /** 首屏选项已就绪时仍隐藏「正在生成」：嵌入式开场 + 任意会话忙（含开局 API 飞行中）均不驱动 typewriter 思考态 */
   const suppressEmbeddedOpeningStreamUi = useMemo(
     () => openingBusyUi || (showEmbeddedOpening && isChatBusy),
@@ -647,12 +652,9 @@ function PlayContent() {
       setCurrentOptions([...savedOptions]);
       return;
     }
-    if (!hasAssistantMessage && inputMode === "options") {
-      setCurrentOptions([...pickEmbeddedOpeningOptions()]);
-    }
   }, [
     currentOptions.length,
-    hasAssistantMessage,
+    coldPlayOpening,
     inputMode,
     isChatBusy,
     isGameStarted,
@@ -662,19 +664,19 @@ function PlayContent() {
 
   useEffect(() => {
     if (!isHydrated || isChatBusy) return;
+    if (!coldPlayOpening) {
+      hasSeededOpeningOptions.current = true;
+      return;
+    }
     if (hasSeededOpeningOptions.current) return;
-    const state = useGameStore.getState();
-    const logsNow = state.logs ?? [];
-    const assistantCount = logsNow.filter((l) => l && l.role === "assistant").length;
-    // Opening-only policy: never inject embedded opening options once the session has entered normal turns.
-    // The first turn is already covered by the earlier effect when !hasAssistantMessage.
-    if (assistantCount > 0) return;
     if (inputMode !== "options") return;
     if (currentOptions.length > 0) return;
 
     hasSeededOpeningOptions.current = true;
-    setCurrentOptions([...pickEmbeddedOpeningOptions()]);
-  }, [currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
+    // 更严格：开场白之后的预置四选项只出现一次。
+    // 后续回合若没有 options，就保持为空，引导玩家切换到手动输入继续。
+    setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
+  }, [coldPlayOpening, currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
 
   useEffect(() => {
     if (
@@ -1299,6 +1301,20 @@ function PlayContent() {
       }
     }
 
+    // 兜底：若叙事中提及了已注册的 NPC/诡异，但 DM 未回写 codex_updates，也自动写入图鉴目录。
+    try {
+      const autoEntries = extractCodexMentionsFromNarrative(narrativeToPush, { maxMatches: 10 });
+      if (autoEntries.length > 0) {
+        const curCodex = useGameStore.getState().codex ?? {};
+        const missing = autoEntries.filter((e) => !(String(e.id) in curCodex));
+        if (missing.length > 0) {
+          mergeCodex(missing as CodexEntry[]);
+        }
+      }
+    } catch {
+      // ignore: capture is best-effort
+    }
+
     const stateBeforeProfessionTurn = useGameStore.getState();
     const consumedProfessionActive = stateBeforeProfessionTurn.consumeProfessionActiveForTurn();
 
@@ -1377,17 +1393,6 @@ function PlayContent() {
       : [];
 
     const merged = [...validOpts];
-    if (!isFirstAssistantTurn) {
-      for (const d of DEFAULT_FOUR_ACTION_OPTIONS) {
-        if (merged.length >= 4) break;
-        if (merged.includes(d)) continue;
-        merged.push(d);
-      }
-    }
-
-    if (merged.length === 0 && isFirstAssistantTurn) {
-      merged.push(...DEFAULT_FOUR_ACTION_OPTIONS);
-    }
 
     if (isEndgameSystemRound) {
       // 终局：强制唯一选项 + 结局字数兜底（避免模型没达到≥600字）
@@ -1408,6 +1413,9 @@ function PlayContent() {
     } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
       useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+    } else if (!isFirstAssistantTurn) {
+      // 更严格：不开启任何预置选项兜底；只提示玩家改用手动输入。
+      setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -1879,6 +1887,21 @@ function PlayContent() {
                         <Settings className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
                       </div>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (endgameState.active) return;
+                        setActiveMenu("guide");
+                      }}
+                      className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
+                      aria-label="游戏指南"
+                    >
+                      <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
+                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
+                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
+                        <Book className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
+                      </div>
+                    </button>
                     <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
                       叙事主视窗
                     </h2>
@@ -1947,10 +1970,18 @@ function PlayContent() {
                   <div className="shrink-0 min-w-0">
                     <div className="relative group">
                       {talent && talentCdLeft === 0 && !isChatBusy && (
-                        <div
-                          className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-blue-500/25 via-slate-300/20 to-indigo-500/25 opacity-70 blur transition-opacity duration-500 group-hover:opacity-95 animate-[pulse_3s_ease-in-out_infinite]"
-                          aria-hidden
-                        />
+                        <>
+                          {/* 外圈：更夺目的扩散光晕（低频脉冲，避免闪烁） */}
+                          <div
+                            className="pointer-events-none absolute -inset-2 rounded-full bg-gradient-to-r from-indigo-500/35 via-cyan-200/25 to-blue-600/35 opacity-95 blur-[18px] transition-opacity duration-500 group-hover:opacity-100 animate-[halo-pulse_2.4s_ease-in-out_infinite]"
+                            aria-hidden
+                          />
+                          {/* 内圈：高亮边缘，让按钮在亮背景上也“立起来” */}
+                          <div
+                            className="pointer-events-none absolute -inset-0.5 rounded-full ring-1 ring-white/35 shadow-[0_0_18px_rgba(99,102,241,0.55),0_0_26px_rgba(34,211,238,0.35)] opacity-85 transition-opacity duration-500 group-hover:opacity-100"
+                            aria-hidden
+                          />
+                        </>
                       )}
                       <button
                         type="button"
@@ -2003,8 +2034,7 @@ function PlayContent() {
                 {inputMode === "options" &&
                   (showEmbeddedOpening
                     ? isChatBusy || currentOptions.length > 0
-                    : hasAssistantMessage &&
-                      currentOptions.length > 0 &&
+                    : currentOptions.length > 0 &&
                       !isChatBusy) && (
                   <PlayOptionsList
                     options={currentOptions}

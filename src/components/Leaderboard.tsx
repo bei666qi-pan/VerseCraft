@@ -9,6 +9,10 @@ import {
 
 type LeaderboardProps = {
   userId?: string;
+  /** Where to place the trigger button. `fixed` shows bottom-left floating button. */
+  triggerPlacement?: "fixed" | "inline";
+  /** When true, open the leaderboard modal on mount (useful for #hash deep links). */
+  defaultOpen?: boolean;
 };
 
 function topRankClass(rank: number): string {
@@ -18,10 +22,19 @@ function topRankClass(rank: number): string {
   return "text-slate-300";
 }
 
-export default function Leaderboard({ userId }: LeaderboardProps) {
+export default function Leaderboard({
+  userId,
+  triggerPlacement = "fixed",
+  defaultOpen = false,
+}: LeaderboardProps) {
   const [open, setOpen] = useState(false);
   const [exploreData, setExploreData] = useState<ExplorationLeaderboardResult>({ top10: [], currentUser: null });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!defaultOpen) return;
+    setOpen(true);
+  }, [defaultOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +71,7 @@ export default function Leaderboard({ userId }: LeaderboardProps) {
     <>
       <button
         type="button"
-        className="fixed bottom-8 left-8 z-50"
+        className={triggerPlacement === "fixed" ? "fixed bottom-8 left-8 z-50" : "relative"}
         onClick={() => setOpen(true)}
         aria-label="打开深渊排行榜"
       >

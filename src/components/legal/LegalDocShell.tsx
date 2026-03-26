@@ -54,9 +54,9 @@ export function LegalDocShell({
             </a>
           </p>
           <p>
-            联系电话：
-            <a className="ml-1 text-slate-800 underline underline-offset-2 hover:text-slate-950" href={`tel:${c.contactPhone}`}>
-              {c.contactPhone}
+            联系邮箱：
+            <a className="ml-1 text-slate-800 underline underline-offset-2 hover:text-slate-950" href="mailto:bei666qi@gmail.com">
+              bei666qi@gmail.com
             </a>
           </p>
         </div>

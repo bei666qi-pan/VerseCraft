@@ -44,7 +44,7 @@ export default function IntroPage(props: AppPageDynamicProps) {
         <div className="rounded-3xl border border-slate-200/80 bg-white/95 px-5 py-6 shadow-[0_26px_80px_rgba(15,23,42,0.35)] backdrop-blur-2xl sm:px-7 sm:py-7">
           <header className="text-center">
             <h1 className="text-xl font-bold tracking-[0.24em] text-slate-900 sm:text-2xl sm:tracking-[0.3em]">
-              如月公寓
+              暗月已至
             </h1>
           </header>
 
@@ -80,13 +80,7 @@ export default function IntroPage(props: AppPageDynamicProps) {
           aria-label="免责声明"
         >
           <p>
-            本系统接入生成式人工智能，文本与剧情为 AI 生成，仅供娱乐参考，不代表平台立场。
-          </p>
-          <p className="mt-2">
-            《文界工坊》含悬疑与超现实虚构内容，请勿与现实混淆或模仿；如感不适，请立即停止体验。
-          </p>
-          <p className="mt-2">
-            请对交互指令负责，严禁输入违法违规内容；系统已启用违规拦截与必要记录机制。
+            【合规提示】本世界由AI虚构（含微恐），不代表平台立场。请合规交互，违规将被拦截记录。
           </p>
         </section>
       </div>

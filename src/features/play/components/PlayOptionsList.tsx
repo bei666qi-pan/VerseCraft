@@ -1,6 +1,23 @@
 "use client";
 
+import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
+
 const OPTION_SLOT_COUNT = 4;
+
+const LOCATION_KEYS_DESC = Object.keys(LOCATION_LABELS).sort((a, b) => b.length - a.length);
+
+function localizeOptionLabel(label: string): string {
+  const base = typeof label === "string" ? label : "";
+  if (!base) return "";
+  let out = base;
+  for (const k of LOCATION_KEYS_DESC) {
+    const zh = LOCATION_LABELS[k];
+    if (!zh) continue;
+    // Keep floor shorthands (B1 / 1F / F1 ...) intact; only replace full location keys.
+    out = out.split(k).join(zh);
+  }
+  return out;
+}
 
 export function PlayOptionsList({
   options,
@@ -32,6 +49,7 @@ export function PlayOptionsList({
     <div className="mt-2 space-y-2">
       {slots.map((label, idx) => {
         const hasLabel = label.length > 0;
+        const displayLabel = hasLabel ? localizeOptionLabel(label) : "";
         const showText = revealed && hasLabel;
         return (
           <button
@@ -49,7 +67,7 @@ export function PlayOptionsList({
                 showText ? "opacity-100" : "opacity-0 select-none"
               }`}
             >
-              {hasLabel ? label : "\u00a0"}
+              {hasLabel ? displayLabel : "\u00a0"}
             </span>
           </button>
         );

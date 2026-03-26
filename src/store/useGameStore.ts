@@ -223,7 +223,15 @@ export interface AuthUser {
 }
 
 /** Unified modal / panel: null = all closed. Pure UI; not bundled into save slots. */
-export type ActiveMenu = "settings" | "backpack" | "codex" | "warehouse" | "tasks" | "achievements" | null;
+export type ActiveMenu =
+  | "settings"
+  | "guide"
+  | "backpack"
+  | "codex"
+  | "warehouse"
+  | "tasks"
+  | "achievements"
+  | null;
 
 /**
  * Cooldown rounds after activating a talent (must stay in sync with play-page talent UX).
@@ -2515,3 +2523,86 @@ export const useGameStore = create<GameState>()(
     }
   )
 );
+
+/** 首页继续冒险：存档来源标签（本地 / 云端 / 两端一致 / 需用户选择） */
+export type HomeContinueSourceTag = "local" | "cloud" | "synced" | "conflict";
+
+export type HomeContinueSummary = {
+  label: string;
+  updatedAtIso: string | null;
+  day: number;
+  hour: number;
+  locationId: string;
+  activeTasksCount: number;
+  professionLabel: string | null;
+};
+
+/** 从槽位 JSON（本地 SaveSlotData 或云端 data）抽取首页展示用摘要；不改变 hydrate/load 行为 */
+export function extractHomeContinueSummaryFromPayload(data: unknown): HomeContinueSummary | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const d = data as Record<string, unknown>;
+  const slotMeta =
+    d.slotMeta && typeof d.slotMeta === "object" && !Array.isArray(d.slotMeta)
+      ? (d.slotMeta as Record<string, unknown>)
+      : null;
+  const label =
+    slotMeta && typeof slotMeta.label === "string" && slotMeta.label.trim()
+      ? slotMeta.label.trim()
+      : "存档";
+  const updatedAtIso =
+    slotMeta && typeof slotMeta.updatedAt === "string" ? slotMeta.updatedAt : null;
+
+  let day = 0;
+  let hour = 0;
+  let locationId = "B1_SafeZone";
+  let activeTasksCount = 0;
+
+  const snap =
+    slotMeta?.snapshotSummary && typeof slotMeta.snapshotSummary === "object" && !Array.isArray(slotMeta.snapshotSummary)
+      ? (slotMeta.snapshotSummary as Record<string, unknown>)
+      : null;
+  if (snap) {
+    if (typeof snap.day === "number" && Number.isFinite(snap.day)) day = Math.trunc(snap.day);
+    if (typeof snap.hour === "number" && Number.isFinite(snap.hour)) hour = Math.trunc(snap.hour);
+    if (typeof snap.playerLocation === "string" && snap.playerLocation) locationId = snap.playerLocation;
+    if (typeof snap.activeTasksCount === "number" && Number.isFinite(snap.activeTasksCount)) {
+      activeTasksCount = Math.max(0, Math.trunc(snap.activeTasksCount));
+    }
+  }
+
+  const time = d.time && typeof d.time === "object" && !Array.isArray(d.time) ? (d.time as Record<string, unknown>) : null;
+  if (time) {
+    if (typeof time.day === "number" && Number.isFinite(time.day)) day = Math.trunc(time.day);
+    if (typeof time.hour === "number" && Number.isFinite(time.hour)) hour = Math.trunc(time.hour);
+  }
+  if (typeof d.playerLocation === "string" && d.playerLocation.trim()) locationId = d.playerLocation;
+
+  const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+  if (activeTasksCount === 0 && tasks.length > 0) {
+    activeTasksCount = tasks.filter(
+      (t): t is { status?: string } => !!t && typeof t === "object" && !Array.isArray(t)
+    ).filter((t) => t.status === "active" || t.status === "available").length;
+  }
+
+  let professionLabel: string | null = null;
+  const ps =
+    d.professionState && typeof d.professionState === "object" && !Array.isArray(d.professionState)
+      ? (d.professionState as { currentProfession?: string | null })
+      : null;
+  if (ps?.currentProfession && typeof ps.currentProfession === "string") professionLabel = ps.currentProfession;
+  if (!professionLabel && d.runSnapshotV2 && typeof d.runSnapshotV2 === "object" && !Array.isArray(d.runSnapshotV2)) {
+    const rs = d.runSnapshotV2 as { profession?: { currentProfession?: string | null } };
+    const cp = rs.profession?.currentProfession;
+    if (typeof cp === "string" && cp) professionLabel = cp;
+  }
+
+  return {
+    label,
+    updatedAtIso,
+    day,
+    hour,
+    locationId,
+    activeTasksCount,
+    professionLabel,
+  };
+}

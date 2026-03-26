@@ -17,6 +17,7 @@ const client = new Client({ connectionString: url });
 const required = [
   "users",
   "feedbacks",
+  "survey_responses",
   "save_slots",
   "users_quota",
   "admin_stats_snapshots",
@@ -25,6 +26,7 @@ const required = [
   "user_daily_activity",
   "user_daily_tokens",
   "admin_metrics_daily",
+  "settlement_histories",
 ];
 const kgRequired = [
   "vc_world_meta",

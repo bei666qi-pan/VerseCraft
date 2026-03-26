@@ -20,7 +20,6 @@ export function ContactPageClient() {
 
   const productName = c.productName ?? "VerseCraft（文界工坊）";
   const contactEmail = c.contactEmail;
-  const contactPhone = c.contactPhone;
   const customerWechat = c.customerWechat;
   const customerPublicAccount = c.customerPublicAccount;
 
@@ -110,11 +109,11 @@ export function ContactPageClient() {
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-slate-900">官方联系方式</h2>
           <p>
-            <strong>联系电话：</strong>
-            <a className="text-slate-800 underline underline-offset-2" href={`tel:${contactPhone}`}>
-              {contactPhone}
+            <strong>联系邮箱：</strong>
+            <a className="text-slate-800 underline underline-offset-2" href="mailto:bei666qi@gmail.com">
+              bei666qi@gmail.com
             </a>
-            <span className="text-xs text-slate-500">（紧急或需语音沟通时可拨打；受理与留痕仍以在线提交为准）</span>
+            <span className="text-xs text-slate-500">（受理与留痕优先以在线提交为准）</span>
           </p>
           {contactEmail ? (
             <p>

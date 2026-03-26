@@ -419,7 +419,11 @@ export async function POST(req: Request) {
     const dice = randomInt(1, 101);
     rawChatMessages[lastUserIdx] = {
       role: "user",
-      content: `【系统暗骰：本次行动检定值为 ${dice}/100 (1为大成功，100为大失败)】\n玩家行动：${rawAction}`,
+      content: [
+        `【系统暗骰：本次行动检定值为 ${dice}/100 (1为大成功，100为大失败)】`,
+        `【玩家输入原文】${rawAction}`,
+        "【写作要求】将“玩家输入原文”转写为小说叙事中的第一人称动作与对白（如有对话意图请用自然对白呈现），并在叙事开头两句内承接上回合结尾形成连贯段落。禁止在 narrative 中复述任何系统标签（如“系统暗骰/玩家行动/玩家输入原文/写作要求”等）。",
+      ].join("\n"),
     };
   }
 

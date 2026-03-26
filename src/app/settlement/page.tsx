@@ -2,8 +2,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useGameStore } from "@/store/useGameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
+import { enrichSettlementHistoryAiRecap } from "@/app/actions/history";
+import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { deleteCloudSaveSlot, enqueueReviveWorldAdvanceJob } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
 import { GuestSoftNudge } from "@/components/GuestSoftNudge";
@@ -215,13 +218,23 @@ function estimateKilledAnomalies(logs: LogEntry[]): number {
   return matches ? Math.max(0, matches.length) : 0;
 }
 
+type UploadOutcome = {
+  cloudOk: boolean;
+  historyId: number | null;
+  onLeaderboard: boolean;
+};
+
 export default function SettlementPage(props: AppPageDynamicProps) {
   useClientPageDynamicProps(props);
   const mounted = useMounted();
   const [onLeaderboardToast, setOnLeaderboardToast] = useState(false);
   const [fitScale, setFitScale] = useState(1);
+  const [uploadOutcome, setUploadOutcome] = useState<UploadOutcome | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const hasUploadedRef = useRef(false);
   const hasAchievementPushedRef = useRef(false);
+  const lastSettlementHistoryIdRef = useRef<number | null>(null);
+  const aiEnrichedHistoryIdRef = useRef<number | null>(null);
   const fitWrapRef = useRef<HTMLDivElement | null>(null);
   const fitCardRef = useRef<HTMLDivElement | null>(null);
 
@@ -234,6 +247,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const [aiReview, setAiReview] = useState<SettlementAiReview | null>(null);
   const [aiReviewLoading, setAiReviewLoading] = useState(false);
   const reviveContext = useGameStore((s) => s.reviveContext);
+  const professionState = useGameStore((s) => s.professionState);
 
   const sanity = stats?.sanity ?? 0;
   const isDead = sanity <= 0;
@@ -277,17 +291,51 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     if (hasUploadedRef.current) return;
     hasUploadedRef.current = true;
     const survivalTimeSeconds = Math.max(0, survivalHours * 3600);
+    const profession = professionState?.currentProfession ?? null;
+    const recapSummary = [reviewLine1, reviewLine2].filter(Boolean).join("\n");
+    const writingMarkdown = buildMarkdown(logs);
     const res = await submitGameRecord({
       killedAnomalies: kills,
       maxFloorScore: maxFloor,
       survivalTimeSeconds,
       outcome: isDead ? "death" : maxFloor >= 99 ? "victory" : "abandon",
+      history: {
+        grade,
+        survivalDay: time.day ?? 0,
+        survivalHour: time.hour ?? 0,
+        maxFloorLabel: formatFloorDisplay(maxFloor),
+        profession: profession ? String(profession) : null,
+        recapSummary,
+        isDead,
+        hasEscaped: !isDead && maxFloor >= 99,
+        writingMarkdown,
+      },
+    });
+    if (typeof res.historyId === "number") {
+      lastSettlementHistoryIdRef.current = res.historyId;
+    }
+    setUploadOutcome({
+      cloudOk: !!res.success,
+      historyId: typeof res.historyId === "number" ? res.historyId : null,
+      onLeaderboard: !!res.onLeaderboard,
     });
     if (res.success && res.onLeaderboard) {
       setOnLeaderboardToast(true);
-      setTimeout(() => setOnLeaderboardToast(false), 5000);
+      window.setTimeout(() => setOnLeaderboardToast(false), 9500);
     }
-  }, [kills, maxFloor, survivalHours, isDead]);
+  }, [
+    kills,
+    maxFloor,
+    survivalHours,
+    isDead,
+    grade,
+    professionState?.currentProfession,
+    reviewLine1,
+    reviewLine2,
+    logs,
+    time.day,
+    time.hour,
+  ]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -295,6 +343,22 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       await handleSubmit();
     })();
   }, [mounted, handleSubmit]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    void trackGameplayEvent({
+      eventName: "settlement_viewed",
+      page: "/settlement",
+      source: "settlement",
+      payload: {
+        isDead,
+        grade,
+        kills,
+        maxFloor,
+        survivalHours,
+      },
+    }).catch(() => {});
+  }, [mounted, isDead, grade, kills, maxFloor, survivalHours]);
 
   useEffect(() => {
     if (!mounted || !isDead) return;
@@ -341,6 +405,14 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       cancelled = true;
     };
   }, [mounted, currentSaveSlot, buildAiReviewPayload]);
+
+  useEffect(() => {
+    if (!mounted || !aiReview?.summary?.trim()) return;
+    const hid = lastSettlementHistoryIdRef.current;
+    if (hid == null || aiEnrichedHistoryIdRef.current === hid) return;
+    aiEnrichedHistoryIdRef.current = hid;
+    void enrichSettlementHistoryAiRecap({ historyId: hid, aiSummary: aiReview.summary });
+  }, [mounted, aiReview?.summary]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -410,7 +482,21 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       window.removeEventListener("resize", recomputeFitScale);
       window.removeEventListener("orientationchange", recomputeFitScale);
     };
-  }, [mounted, reviewLine1, reviewLine2, isDead, grade, sanity, kills, maxFloor, time.day, time.hour]);
+  }, [
+    mounted,
+    reviewLine1,
+    reviewLine2,
+    isDead,
+    grade,
+    sanity,
+    kills,
+    maxFloor,
+    time.day,
+    time.hour,
+    archiveOpen,
+    uploadOutcome,
+    aiReview,
+  ]);
 
   if (!mounted) {
     return (
@@ -423,10 +509,22 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   function handleExport() {
     const md = buildMarkdown(logs);
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    void trackGameplayEvent({
+      eventName: "settlement_export_clicked",
+      page: "/settlement",
+      source: "settlement",
+      payload: { isDead, grade, maxFloor },
+    }).catch(() => {});
     triggerDownload(md, `versecraft-写作记录-${ts}.md`);
   }
 
   async function handleRestart() {
+    void trackGameplayEvent({
+      eventName: "settlement_restart_clicked",
+      page: "/settlement",
+      source: "settlement",
+      payload: { isDead, grade, maxFloor },
+    }).catch(() => {});
     const slotId = useGameStore.getState().currentSaveSlot || "main_slot";
     useGameStore.getState().chooseReviveOption("restart");
     useGameStore.getState().destroySaveData();
@@ -440,6 +538,12 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   }
 
   async function handleReviveNow() {
+    void trackGameplayEvent({
+      eventName: "settlement_revive_clicked",
+      page: "/settlement",
+      source: "settlement",
+      payload: { isDead, grade, maxFloor },
+    }).catch(() => {});
     useGameStore.getState().chooseReviveOption("revive");
     const st = useGameStore.getState();
     const slotId = st.currentSaveSlot || "main_slot";
@@ -452,16 +556,57 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     window.location.href = "/play";
   }
 
+  const persistLine =
+    uploadOutcome == null ? (
+      <p className="text-center text-[11px] leading-relaxed text-slate-500">
+        正在把你的本局结果写入记录（若已登录则同步账号）…
+      </p>
+    ) : uploadOutcome.cloudOk && uploadOutcome.historyId != null ? (
+      <p className="text-center text-[11px] leading-relaxed text-emerald-200/85">
+        <span className="font-semibold text-emerald-100/95">本局已写入你的「书写履历」。</span>
+        摘要与写作稿快照已归档，可随时在历史中心回看或再次下载。
+      </p>
+    ) : uploadOutcome.cloudOk ? (
+      <p className="text-center text-[11px] leading-relaxed text-amber-200/80">
+        本局成绩已同步至服务器（含排行榜统计）。
+        <span className="text-amber-100/90"> 若「书写履历」暂未显示本条，可稍后在历史页刷新。</span>
+      </p>
+    ) : (
+      <p className="text-center text-[11px] leading-relaxed text-slate-400">
+        <span className="font-semibold text-slate-300">本局目前仅保存在本机浏览器。</span>
+        登录同一笔名后，可把摘要与写作稿同步到云端、跨设备查看；若清除本站数据或更换设备，本机记录有丢失风险。
+      </p>
+    );
+
+  /** 在确认未写入云端后再提示，避免误伤“登录了但网络失败”的极少数情况下面子过于绝对 */
+  const guestLoginHint =
+    uploadOutcome !== null && !uploadOutcome.cloudOk ? (
+      <p className="rounded-lg border border-slate-600/35 bg-slate-950/40 px-3 py-2 text-center text-[11px] leading-relaxed text-slate-500">
+        若希望这一局随账号留下痕迹：回到首页登录同一笔名后再来游玩，此后结算会自动进入「书写履历」，换设备也能回看。
+      </p>
+    ) : null;
+
   return (
     <main className="relative h-[100dvh] overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-foreground">
       <GuestSoftNudge context="settlement" />
       {onLeaderboardToast && (
         <div
-          className="fixed inset-x-4 top-8 z-50 mx-auto max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900/95 px-5 py-4 shadow-[0_0_30px_rgba(34,211,238,0.15)] backdrop-blur-xl"
+          className="fixed inset-x-3 top-6 z-50 mx-auto max-w-lg rounded-2xl border border-cyan-400/40 bg-slate-950/95 px-5 py-4 shadow-[0_0_40px_rgba(34,211,238,0.22)] backdrop-blur-xl sm:inset-x-6"
           role="alert"
         >
-          <p className="text-center text-sm font-medium text-cyan-200">
-            强大的冒险者，您已上榜，可前往首页排行榜查看。
+          <p className="text-center text-xs font-semibold uppercase tracking-[0.12em] text-cyan-300/90">
+            探索榜 · 前十
+          </p>
+          <p className="mt-2 text-center text-sm font-medium leading-relaxed text-cyan-50">
+            你已进入或保持在首页「探索榜」前列；这是公开维度里对这一局的额外注脚。
+          </p>
+          <p className="mt-2 text-center text-xs text-cyan-200/80">
+            <Link
+              href="/#home-leaderboard"
+              className="font-semibold underline decoration-cyan-400/60 underline-offset-4 hover:text-white"
+            >
+              去首页查看完整榜单
+            </Link>
           </p>
         </div>
       )}
@@ -495,25 +640,46 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             </p>
           </header>
 
-          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-4">
-            <p className="text-sm leading-relaxed text-slate-300">{reviewLine1}</p>
+          <div className="space-y-2">
+            {persistLine}
+            {guestLoginHint}
+          </div>
+
+          <section className="rounded-xl border border-slate-600/45 bg-slate-800/35 px-4 py-3 sm:px-5 sm:py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              规则结算 · 定调
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              以下内容由本局数值与规则直接生成，用于评级与历史摘要；情绪与氛围以这里为准。
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-slate-200">{reviewLine1}</p>
             <p className="mt-1 text-sm leading-relaxed text-slate-400">{reviewLine2}</p>
           </section>
 
-          <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-4">
-            <p className="text-xs text-slate-500">AI 复盘（后台离线生成）</p>
+          <section className="rounded-xl border border-indigo-500/20 bg-slate-800/25 px-4 py-3 sm:px-5 sm:py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-300/80">
+              叙事补充 · 读后感
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              在规则结算之上，用本局对话片段生成的<strong className="font-medium text-slate-400">可读性总结</strong>
+              ，仅供回味与梳理，
+              <span className="text-slate-500">不参与评级、也不会替代上文定调。</span>
+              生成完成后会自动附在「书写履历」里，方便以后回看。
+            </p>
             {aiReviewLoading && !aiReview ? (
-              <p className="mt-1 text-sm text-slate-400">正在加载复盘快照...</p>
-            ) : aiReview ? (
-              <div className="mt-1 space-y-2">
-                <p className="text-sm leading-relaxed text-slate-300">{aiReview.summary}</p>
-                <p className="text-xs text-slate-400">
-                  置信度：{aiReview.confidence.level} ({Math.round(aiReview.confidence.score * 100)}%) ·
-                  证据充分性：{aiReview.evidenceSufficiency === "enough" ? "充足" : "不足"}
+              <p className="mt-3 text-sm text-indigo-100/70">正在根据本局文本生成补充总结…</p>
+            ) : aiReview?.summary?.trim() ? (
+              <div className="mt-3 space-y-2 border-t border-indigo-500/15 pt-3">
+                <p className="text-sm leading-relaxed text-slate-200">{aiReview.summary}</p>
+                <p className="text-[10px] text-slate-500">
+                  模型置信：{aiReview.confidence.level}（{Math.round(aiReview.confidence.score * 100)}%） ·
+                  素材充分性：{aiReview.evidenceSufficiency === "enough" ? "较好" : "有限"}
                 </p>
               </div>
             ) : (
-              <p className="mt-1 text-sm text-slate-400">暂无 AI 复盘快照，已使用规则结算文案。</p>
+              <p className="mt-3 text-sm text-slate-500">
+                本局暂未生成可用的补充总结；你仍拥有完整的规则结算与下方的数据归档。
+              </p>
             )}
           </section>
 
@@ -548,29 +714,92 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             </div>
           </section>
 
-          <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:justify-center">
-            <button
-              type="button"
-              onClick={handleExport}
-              className="h-12 rounded-xl border border-slate-600 bg-slate-800 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
+          {archiveOpen ? (
+            <section
+              id="settlement-archive"
+              className="rounded-xl border border-slate-700/50 bg-slate-900/40"
             >
-              导出写作记录 (.md)
-            </button>
-            {isDead && (
+              <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  本局归档摘要
+                </p>
+                <ul className="space-y-2 text-xs leading-relaxed text-slate-400">
+                  <li>
+                    <span className="text-slate-500">评级：</span>
+                    <span className="font-semibold text-slate-200">{grade}</span>
+                  </li>
+                  <li>
+                    <span className="text-slate-500">这一局的时间坐标：</span>
+                    {time.day} 日 {time.hour} 时（约 {survivalHours} 小时跨度）
+                  </li>
+                  <li>
+                    <span className="text-slate-500">战绩：</span>
+                    消灭诡异 {kills} 只 · 最高抵达 {formatFloorDisplay(maxFloor)}
+                    {professionState?.currentProfession ? (
+                      <> · 职业 {String(professionState.currentProfession)}</>
+                    ) : null}
+                  </li>
+                  <li>
+                    <span className="text-slate-500">结局：</span>
+                    {isDead ? "死亡封卷" : maxFloor >= 99 ? "逃离" : "暂未以逃离收束"}
+                  </li>
+                  <li className="text-slate-500">
+                    {uploadOutcome?.cloudOk && uploadOutcome.historyId != null
+                      ? "以上内容已随本局一并写入「书写履历」，可在历史页下载与本次相同的写作稿快照。"
+                      : "以上内容已记入本机成就预览；登录后可同步到历史中心。"}
+                  </li>
+                </ul>
+              </div>
+            </section>
+          ) : null}
+
+          <div className="flex flex-col gap-3 sm:gap-4">
+            {isDead ? (
               <button
                 type="button"
                 onClick={handleReviveNow}
-                className="h-12 rounded-xl bg-emerald-200 px-6 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-100"
+                className="min-h-[52px] w-full rounded-2xl bg-gradient-to-r from-emerald-300 to-teal-200 px-6 py-3.5 text-base font-bold tracking-wide text-emerald-950 shadow-[0_0_24px_rgba(52,211,153,0.35)] transition hover:from-emerald-200 hover:to-teal-100"
               >
-                立即复活（时间 +12h，物品遗失）
+                继续行动：回拨时间复活
+                <span className="mt-0.5 block text-center text-[11px] font-medium normal-case tracking-normal text-emerald-950/80">
+                  +12h · 物品遗失 · 回到对局
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleRestart()}
+                className="min-h-[52px] w-full rounded-2xl bg-gradient-to-r from-slate-100 to-slate-200 px-6 py-3.5 text-base font-bold tracking-wide text-slate-900 shadow-[0_0_20px_rgba(226,232,240,0.25)] transition hover:from-white hover:to-slate-100"
+              >
+                继续行动：封卷回首页
+                <span className="mt-0.5 block text-center text-[11px] font-medium normal-case tracking-normal text-slate-700">
+                  清空本局存档后回到主页，再决定开新篇或查看履历
+                </span>
               </button>
             )}
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:justify-center sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setArchiveOpen((o) => !o)}
+                className="min-h-[44px] flex-1 rounded-xl border border-slate-500/50 bg-slate-800/80 px-4 text-sm font-semibold text-slate-100 transition hover:border-slate-400 hover:bg-slate-800"
+              >
+                {archiveOpen ? "收起本局归档" : "查看本局归档"}
+              </button>
+              <Link
+                href="/history"
+                className="flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-500/50 bg-slate-800/50 px-4 text-sm font-semibold text-slate-100 transition hover:border-indigo-400/40 hover:bg-slate-800/90"
+              >
+                书写履历（全部对局）
+              </Link>
+            </div>
+
             <button
               type="button"
-              onClick={handleRestart}
-              className="h-12 rounded-xl bg-slate-100 px-6 text-sm font-semibold text-slate-900 transition hover:bg-white"
+              onClick={handleExport}
+              className="min-h-[40px] w-full rounded-xl border border-dashed border-slate-600/70 bg-transparent px-4 text-xs font-medium text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
             >
-              回到主页
+              导出本局写作稿（.md · 与履历快照同源）
             </button>
           </div>
         </div>

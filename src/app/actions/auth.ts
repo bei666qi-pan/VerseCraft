@@ -109,6 +109,18 @@ async function recordLoginSuccess(name: string): Promise<void> {
   }).catch(() => {});
 }
 
+function readConsentFromFormData(formData: FormData): { userAgreement: boolean; privacyPolicy: boolean } {
+  const consentUserAgreement = String(formData.get("consent_user_agreement") ?? "").trim() === "1";
+  const consentPrivacyPolicy = String(formData.get("consent_privacy_policy") ?? "").trim() === "1";
+  return { userAgreement: consentUserAgreement, privacyPolicy: consentPrivacyPolicy };
+}
+
+function validateAuthInputs(name: string, password: string): string | null {
+  if (name.length < 2) return "笔名至少 2 个字符。";
+  if (password.length < 6) return "密码至少 6 位。";
+  return null;
+}
+
 /** 插入新用户 + 注册分析 + 凭证登录（档案须尚不存在）。 */
 async function performRegisterNewUser(name: string, password: string): Promise<AuthActionState> {
   const safety = await moderateInputOnServer({
@@ -121,6 +133,12 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
   }
 
   try {
+    // 显式注册：先查重，给出“已被占用”的确定性反馈
+    const existing = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
+    if (existing[0]) {
+      return { success: false, error: "该笔名已被占用，请换一个。" };
+    }
+
     const hashed = await bcrypt.hash(password, 10);
     const newUserId = randomUUID();
     await db.insert(users).values({
@@ -155,7 +173,7 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
     await signIn("credentials", {
       name,
       password,
-      redirectTo: "/",
+      redirectTo: "/?auth=registered",
     });
     return { success: true, message: "注册成功" };
   } catch (error) {
@@ -175,11 +193,17 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
 
 /** 已存在用户：仅凭证登录 + 登录分析。 */
 async function performCredentialsLogin(name: string, password: string): Promise<AuthActionState> {
+  // 显式登录：先确认账号存在，避免“输错当注册”的不确定性
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1).catch(() => []);
+  if (!existing[0]) {
+    return { success: false, error: "账号不存在：该笔名尚未创建，请先注册。" };
+  }
+
   try {
     await signIn("credentials", {
       name,
       password,
-      redirectTo: "/",
+      redirectTo: "/?auth=logged_in",
     });
     await recordLoginSuccess(name);
     return { success: true, message: "登录成功" };
@@ -230,14 +254,12 @@ export async function signInOrRegister(
   }
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const consentUserAgreement = String(formData.get("consent_user_agreement") ?? "").trim() === "1";
-  const consentPrivacyPolicy = String(formData.get("consent_privacy_policy") ?? "").trim() === "1";
-  if (!consentUserAgreement || !consentPrivacyPolicy) {
-    return { success: false, error: "请先勾选用户协议与隐私政策，才能进入文界工坊。" };
+  const consent = readConsentFromFormData(formData);
+  if (!consent.userAgreement || !consent.privacyPolicy) {
+    return { success: false, error: "请先勾选用户协议与隐私政策后继续。" };
   }
-  if (name.length < 2 || password.length < 6) {
-    return { success: false, error: "账号至少 2 位且密码至少 6 位" };
-  }
+  const inputErr = validateAuthInputs(name, password);
+  if (inputErr) return { success: false, error: inputErr };
 
   // Moderate profile name before hitting DB (avoid storing abusive/advertising names).
   const safety = await moderateInputOnServer({
@@ -273,9 +295,12 @@ export async function registerUser(
   }
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  if (name.length < 2 || password.length < 6) {
-    return { success: false, error: "注册失败：账号至少 2 位且密码至少 6 位" };
+  const consent = readConsentFromFormData(formData);
+  if (!consent.userAgreement || !consent.privacyPolicy) {
+    return { success: false, error: "注册需要先同意用户协议与隐私政策。" };
   }
+  const inputErr = validateAuthInputs(name, password);
+  if (inputErr) return { success: false, error: inputErr };
 
   return performRegisterNewUser(name, password);
 }
@@ -289,9 +314,39 @@ export async function loginUser(
   }
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  if (!name || !password) {
-    return { success: false, error: "登录失败：请输入账号和密码" };
+  const consent = readConsentFromFormData(formData);
+  if (!consent.userAgreement || !consent.privacyPolicy) {
+    return { success: false, error: "登录需要先同意用户协议与隐私政策。" };
   }
+  const inputErr = validateAuthInputs(name, password);
+  if (inputErr) return { success: false, error: inputErr };
 
   return performCredentialsLogin(name, password);
+}
+
+export async function checkNameAvailability(input: { name: string }): Promise<{
+  ok: boolean;
+  available: boolean;
+  message: string;
+}> {
+  const name = String(input?.name ?? "").trim();
+  if (name.length < 2) return { ok: true, available: false, message: "笔名至少 2 个字符。" };
+
+  const safety = await moderateInputOnServer({
+    scene: "profile_input",
+    text: name,
+    sessionId: "system",
+  });
+  if (safety.decision !== "allow") {
+    return { ok: false, available: false, message: safety.userMessage };
+  }
+
+  try {
+    const existing = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1);
+    if (existing[0]) return { ok: true, available: false, message: "已被占用" };
+    return { ok: true, available: true, message: "可用" };
+  } catch (error) {
+    console.error("[auth] checkNameAvailability failed", error);
+    return { ok: false, available: false, message: "暂时无法校验，请稍后重试。" };
+  }
 }

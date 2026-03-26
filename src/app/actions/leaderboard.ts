@@ -4,8 +4,12 @@ import { revalidatePath } from "next/cache";
 import { sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
+import { settlementHistories } from "@/db/schema";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { recordGameRecordSubmittedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+
+const SETTLEMENT_MARKDOWN_MAX_CHARS = 200_000;
+const SETTLEMENT_RECAP_MAX_CHARS = 12_000;
 
 type ExploreRow = {
   userId: string;
@@ -89,7 +93,19 @@ export async function submitGameRecord(input: {
   maxFloorScore: number;
   survivalTimeSeconds: number;
   outcome?: "victory" | "death" | "abandon";
-}): Promise<{ success: boolean; onLeaderboard?: boolean }> {
+  /** 登录用户写入 settlement_histories，与排行榜行同属一次结算 */
+  history?: {
+    grade: string;
+    survivalDay: number;
+    survivalHour: number;
+    maxFloorLabel: string;
+    profession: string | null;
+    recapSummary: string;
+    isDead: boolean;
+    hasEscaped: boolean;
+    writingMarkdown?: string | null;
+  };
+}): Promise<{ success: boolean; onLeaderboard?: boolean; historyId?: number | null }> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return { success: false };
@@ -103,6 +119,39 @@ export async function submitGameRecord(input: {
     INSERT INTO game_records (user_id, killed_anomalies, max_floor_score, survival_time_seconds, created_at)
     VALUES (${userId}, ${killedAnomalies}, ${maxFloorScore}, ${survivalTimeSeconds}, NOW())
   `);
+
+  let historyId: number | null = null;
+  const h = input.history;
+  if (h) {
+    const grade = (h.grade ?? "E").slice(0, 2);
+    const recap = (h.recapSummary ?? "").slice(0, SETTLEMENT_RECAP_MAX_CHARS);
+    const floorLabel = (h.maxFloorLabel ?? "").slice(0, 64);
+    const profession = h.profession ? h.profession.slice(0, 64) : null;
+    let md: string | null = null;
+    if (typeof h.writingMarkdown === "string" && h.writingMarkdown.length > 0) {
+      md = h.writingMarkdown.slice(0, SETTLEMENT_MARKDOWN_MAX_CHARS);
+    }
+    const inserted = await db
+      .insert(settlementHistories)
+      .values({
+        userId,
+        grade,
+        survivalTimeSeconds,
+        survivalDay: Math.max(0, Math.trunc(h.survivalDay)),
+        survivalHour: Math.max(0, Math.trunc(h.survivalHour)),
+        killedAnomalies,
+        maxFloorScore,
+        maxFloorLabel: floorLabel,
+        profession,
+        recapSummary: recap || "（无复盘摘要）",
+        isDead: !!h.isDead,
+        hasEscaped: !!h.hasEscaped,
+        outcome,
+        writingMarkdown: md,
+      })
+      .returning({ id: settlementHistories.id });
+    historyId = inserted[0]?.id ?? null;
+  }
 
   // Analytics best-effort: game completion (idempotent by day + score tuple).
   void recordGameRecordSubmittedAnalytics({
@@ -147,15 +196,17 @@ export async function submitGameRecord(input: {
 
   const qualifiesExplore = maxFloorScore >= 1;
   if (!qualifiesExplore) {
-    return { success: true, onLeaderboard: false };
+    revalidatePath("/history");
+    return { success: true, onLeaderboard: false, historyId };
   }
 
   const exploreRes = await getExplorationLeaderboard(userId);
   const onLeaderboard = exploreRes.currentUser != null && exploreRes.currentUser.rank <= 10;
 
   revalidatePath("/");
+  revalidatePath("/history");
 
-  return { success: true, onLeaderboard };
+  return { success: true, onLeaderboard, historyId };
 }
 
 export async function getExplorationLeaderboard(userId?: string): Promise<ExplorationLeaderboardResult> {
