@@ -24,7 +24,6 @@ import {
   IMMERSION_ISSUE_OPTIONS,
   CORE_FUN_POINT_OPTIONS,
   QUIT_REASON_OPTIONS,
-  IMPROVE_WILLINGNESS_BOOST_OPTIONS,
   SAVE_LOSS_CONCERN_OPTIONS,
   RECOMMEND_WILLINGNESS_OPTIONS,
 } from "@/lib/survey/productSurveyHomeV1";
@@ -262,7 +261,6 @@ type HomeSurveyQuestionId =
   | "immersionIssue"
   | "coreFunPoint"
   | "quitReason"
-  | "improveWillingnessBoosts"
   | "topFixOne"
   | "saveLossConcern"
   | "recommendWillingness"
@@ -270,20 +268,11 @@ type HomeSurveyQuestionId =
 
 type HomeSurveyQuestionConfig =
   | {
-      id: Exclude<HomeSurveyQuestionId, "topFixOne" | "finalSuggestion" | "improveWillingnessBoosts">;
+      id: Exclude<HomeSurveyQuestionId, "topFixOne" | "finalSuggestion">;
       kind: "single";
       title: string;
       subtitle?: string;
       required: true;
-      options: Array<{ value: string; label: string }>;
-    }
-  | {
-      id: "improveWillingnessBoosts";
-      kind: "multi";
-      title: string;
-      subtitle?: string;
-      required: true;
-      maxSelect: 3;
       options: Array<{ value: string; label: string }>;
     }
   | {
@@ -304,15 +293,6 @@ const HOME_SURVEY_FLOW: HomeSurveyQuestionConfig[] = [
   { id: "immersionIssue", kind: "single", required: true, title: "在正式游玩过程中，哪一种问题最影响你的沉浸感？", options: IMMERSION_ISSUE_OPTIONS },
   { id: "coreFunPoint", kind: "single", required: true, title: "你觉得文界工坊当前“最好玩”的核心点是什么？", options: CORE_FUN_POINT_OPTIONS },
   { id: "quitReason", kind: "single", required: true, title: "如果你中途退出或今天不继续玩，最主要的原因会是什么？", options: QUIT_REASON_OPTIONS },
-  {
-    id: "improveWillingnessBoosts",
-    kind: "multi",
-    required: true,
-    maxSelect: 3,
-    title: "下面哪些能力如果补强，会最明显提高你继续玩的意愿？",
-    subtitle: "最多选 3 项。",
-    options: IMPROVE_WILLINGNESS_BOOST_OPTIONS,
-  },
   {
     id: "topFixOne",
     kind: "text",
@@ -419,7 +399,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [svImmersionIssue, setSvImmersionIssue] = useState("");
   const [svCoreFunPoint, setSvCoreFunPoint] = useState("");
   const [svQuitReason, setSvQuitReason] = useState("");
-  const [svImproveWillingnessBoosts, setSvImproveWillingnessBoosts] = useState<string[]>([]);
   const [svTopFixOne, setSvTopFixOne] = useState("");
   const [svSaveLossConcern, setSvSaveLossConcern] = useState("");
   const [svRecommendWillingness, setSvRecommendWillingness] = useState("");
@@ -1036,16 +1015,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       !svImmersionIssue ||
       !svCoreFunPoint ||
       !svQuitReason ||
-      svImproveWillingnessBoosts.length === 0 ||
       !svTopFixOne.trim() ||
       !svSaveLossConcern ||
       !svRecommendWillingness
     ) {
       setToast("请把本问卷必答题补全后再提交。");
-      return;
-    }
-    if (svImproveWillingnessBoosts.length > 3) {
-      setToast("第 7 题最多选择 3 项。");
       return;
     }
     setSurveySubmitPending(true);
@@ -1061,7 +1035,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         immersionIssue: svImmersionIssue,
         coreFunPoint: svCoreFunPoint,
         quitReason: svQuitReason,
-        improveWillingnessBoosts: svImproveWillingnessBoosts,
         topFixOne: svTopFixOne.trim(),
         saveLossConcern: svSaveLossConcern,
         recommendWillingness: svRecommendWillingness,
@@ -1254,8 +1227,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         return svCoreFunPoint;
       case "quitReason":
         return svQuitReason;
-      case "improveWillingnessBoosts":
-        return svImproveWillingnessBoosts.join(",");
       case "topFixOne":
         return svTopFixOne;
       case "saveLossConcern":
@@ -1313,7 +1284,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   function canGoNext(): boolean {
     if (curQ.kind === "text") return curQ.required ? getSurveyValue(curQ.id).trim().length > 0 : true;
-    if (curQ.kind === "multi") return svImproveWillingnessBoosts.length > 0;
     return getSurveyValue(curQ.id) !== "";
   }
 
@@ -2057,42 +2027,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                             </option>
                           ))}
                         </select>
-                      ) : curQ.kind === "multi" ? (
-                        <div className="mt-3 space-y-2">
-                          {curQ.options.map((o) => {
-                            const checked = svImproveWillingnessBoosts.includes(o.value);
-                            return (
-                              <label
-                                key={o.value}
-                                className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    const nextChecked = e.target.checked;
-                                    setSvImproveWillingnessBoosts((prev) => {
-                                      if (nextChecked) {
-                                        if (prev.includes(o.value)) return prev;
-                                        if (prev.length >= 3) {
-                                          setToast("第 7 题最多选择 3 项。");
-                                          return prev;
-                                        }
-                                        return [...prev, o.value];
-                                      }
-                                      return prev.filter((v) => v !== o.value);
-                                    });
-                                  }}
-                                  className="h-4 w-4 rounded border-slate-300"
-                                />
-                                <span>{o.label}</span>
-                              </label>
-                            );
-                          })}
-                          <div className="text-right text-[11px] text-slate-500">
-                            已选 {svImproveWillingnessBoosts.length}/3
-                          </div>
-                        </div>
                       ) : (
                         <div className="mt-3 space-y-3">
                           <textarea

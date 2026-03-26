@@ -13,6 +13,13 @@ type DashboardUserRow = {
   isOnline: number;
   feedbackContent: string;
   feedbackCreatedAt: string | null;
+  latestSurveyKey?: string | null;
+  latestSurveyVersion?: string | null;
+  latestSurveyAnswers?: Record<string, unknown> | null;
+  latestSurveyFreeText?: string | null;
+  latestSurveyOverallRating?: number | null;
+  latestSurveyRecommendScore?: number | null;
+  latestSurveyCreatedAt?: string | null;
   latestGameMaxFloor?: number | null;
   latestGameSurvivalSec?: number | null;
 };
@@ -34,6 +41,18 @@ type RealtimeData = { onlineUsers?: number; activeSessions?: number; avgSessionD
 type RetentionData = { d1?: { rate?: number }; d3?: { rate?: number }; d7?: { rate?: number }; cohortSize?: number } | null;
 type FunnelData = { stages?: Array<{ eventName?: string; users?: number; conversionRate?: number }> } | null;
 type FeedbackData = { totalFeedback?: number; negativeFeedback?: number; topics?: Array<{ topic?: string; count?: number }> } | null;
+type SurveyAggregateData = {
+  range?: { label?: string };
+  totalResponses?: number;
+  questions?: Array<{
+    id?: string;
+    title?: string;
+    kind?: "single" | "text";
+    sampleCount?: number;
+    options?: Array<{ value?: string; label?: string; count?: number; pct?: number }>;
+    textCount?: number;
+  }>;
+} | null;
 
 const PAGE_SIZE = 12;
 const REFRESH_MS = 15000;
@@ -85,6 +104,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
   const [retention, setRetention] = useState<RetentionData>(null);
   const [funnel, setFunnel] = useState<FunnelData>(null);
   const [feedbackInsights, setFeedbackInsights] = useState<FeedbackData>(null);
+  const [surveyAgg, setSurveyAgg] = useState<SurveyAggregateData>(null);
   const [aiReport, setAiReport] = useState<AiReport | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRouting, setAiRouting] = useState<unknown>(null);
@@ -98,31 +118,43 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
   const [search, setSearch] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [detail, setDetail] = useState<{ userName: string; content: string; createdAt: string | null } | null>(null);
+  const [surveyDetail, setSurveyDetail] = useState<{
+    userName: string;
+    createdAt: string | null;
+    surveyKey: string | null;
+    surveyVersion: string | null;
+    answers: Record<string, unknown> | null;
+    freeText: string | null;
+    overallRating: number | null;
+    recommendScore: number | null;
+  } | null>(null);
 
   const fetchAll = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setRefreshing(true);
     setErr(null);
     try {
-      const [o, r, rt, f, fi, d] = await Promise.all([
+      const [o, r, rt, f, fi, sa, d] = await Promise.all([
         fetch(`/api/admin/overview?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/retention?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/realtime`, { credentials: "include" }),
         fetch(`/api/admin/funnel?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/feedback-insights?range=${range}`, { credentials: "include" }),
+        fetch(`/api/admin/survey-aggregate?range=${range}`, { credentials: "include" }),
         fetch(`/api/admin/dashboard-data`, { credentials: "include" }),
       ]);
 
-      const [ov, re, rtj, fu, fb, dj] = await Promise.all([
+      const [ov, re, rtj, fu, fb, saj, dj] = await Promise.all([
         o.json().catch(() => null),
         r.json().catch(() => null),
         rt.json().catch(() => null),
         f.json().catch(() => null),
         fi.json().catch(() => null),
+        sa.json().catch(() => null),
         d.json().catch(() => null),
       ]);
 
-      const statuses = [o.status, r.status, rt.status, f.status, fi.status, d.status];
+      const statuses = [o.status, r.status, rt.status, f.status, fi.status, sa.status, d.status];
       if (statuses.some((s) => s === 403)) {
         // Avoid self-redirect loop on /saiduhsa causing full page reload + hydration flicker.
         const pathname = typeof window !== "undefined" ? window.location.pathname : "";
@@ -135,7 +167,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
         return;
       }
 
-      const hasAnySuccess = [o.ok, r.ok, rt.ok, f.ok, fi.ok, d.ok].some(Boolean);
+      const hasAnySuccess = [o.ok, r.ok, rt.ok, f.ok, fi.ok, sa.ok, d.ok].some(Boolean);
       if (!hasAnySuccess) throw new Error("后台数据读取失败");
 
       if (ov) {
@@ -156,6 +188,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
       }
       if (fu) setFunnel(fu as FunnelData);
       if (fb) setFeedbackInsights(fb as FeedbackData);
+      if (saj) setSurveyAgg(saj as SurveyAggregateData);
       if (dj?.rows) setRows(dj.rows);
       if (Array.isArray(dj?.chartData) && !ov?.chartData) setChartData(dj.chartData);
     } catch {
@@ -398,6 +431,75 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
           </div>
         </div>
 
+        <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm">问卷聚合（{range}）</p>
+              <p className="mt-1 text-xs text-slate-300">
+                样本 {Number(surveyAgg?.totalResponses ?? 0)} · 口径 {String(surveyAgg?.range?.label ?? "")}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {(surveyAgg?.questions ?? []).map((q) => {
+              const title = String(q.title ?? q.id ?? "unknown");
+              if (q.kind === "text") {
+                return (
+                  <div key={String(q.id)} className="rounded-2xl bg-black/20 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold">{title}</p>
+                      <p className="text-xs text-slate-300">文本条数 {Number(q.textCount ?? 0)}</p>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">文本题不做选项聚合；建议在“按用户查看问卷”里抽样阅读。</p>
+                  </div>
+                );
+              }
+              const opts = Array.isArray(q.options) ? q.options : [];
+              const top = opts.slice(0, 5);
+              const rest = opts.slice(5);
+              const restCount = rest.reduce((s, x) => s + Number(x.count ?? 0), 0);
+              const restPct = rest.reduce((s, x) => s + Number(x.pct ?? 0), 0);
+              const rowsToShow =
+                rest.length > 0
+                  ? [...top, { label: "其他", count: restCount, pct: Math.round(restPct * 10) / 10 }]
+                  : top;
+              const sample = Number(q.sampleCount ?? 0);
+              return (
+                <div key={String(q.id)} className="rounded-2xl bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">{title}</p>
+                    <p className="text-xs text-slate-300">有效样本 {sample}</p>
+                  </div>
+                  {sample <= 0 ? (
+                    <p className="mt-3 text-xs text-slate-400">样本不足</p>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {rowsToShow.map((o, idx) => {
+                        const label = String((o as { label?: string }).label ?? "");
+                        const count = Number((o as { count?: number }).count ?? 0);
+                        const pct = Number((o as { pct?: number }).pct ?? 0);
+                        return (
+                          <div key={`${String(q.id)}:${idx}`} className="space-y-1">
+                            <div className="flex items-center justify-between text-xs text-slate-200">
+                              <span className="truncate pr-2">{label}</span>
+                              <span className="shrink-0 text-slate-300">
+                                {count}（{pct.toFixed(1)}%）
+                              </span>
+                            </div>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                              <div className="h-full rounded-full bg-sky-400/70" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] xl:col-span-2">
             <p className="mb-2 text-sm">反馈与问题洞察</p>
@@ -480,6 +582,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
                   <th className="px-3 py-2">累计 Token</th>
                   <th className="px-3 py-2">累计时长</th>
                   <th className="px-3 py-2">最近活跃</th>
+                  <th className="px-3 py-2">最近问卷</th>
                   <th className="px-3 py-2">最近反馈</th>
                   <th className="px-3 py-2">最近一局</th>
                 </tr>
@@ -492,6 +595,31 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
                     <td className="px-3 py-2">{Number(u.tokensUsed ?? 0).toLocaleString()}</td>
                     <td className="px-3 py-2">{formatPlayTime(Number(u.playTime ?? 0))}</td>
                     <td className="px-3 py-2">{formatLastOnline(u.lastActive)}</td>
+                    <td className="px-3 py-2">
+                      {u.latestSurveyAnswers ? (
+                        <button
+                          className="rounded-lg bg-white/10 px-2 py-1 text-xs"
+                          onClick={() =>
+                            setSurveyDetail({
+                              userName: u.name,
+                              createdAt: u.latestSurveyCreatedAt ?? null,
+                              surveyKey: u.latestSurveyKey ?? null,
+                              surveyVersion: u.latestSurveyVersion ?? null,
+                              answers: u.latestSurveyAnswers ?? null,
+                              freeText: u.latestSurveyFreeText ?? null,
+                              overallRating:
+                                typeof u.latestSurveyOverallRating === "number" ? u.latestSurveyOverallRating : null,
+                              recommendScore:
+                                typeof u.latestSurveyRecommendScore === "number" ? u.latestSurveyRecommendScore : null,
+                            })
+                          }
+                        >
+                          查看
+                        </button>
+                      ) : (
+                        "暂无"
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       {u.feedbackContent ? <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => setDetail({ userName: u.name, content: u.feedbackContent, createdAt: u.feedbackCreatedAt })}>查看</button> : "暂无"}
                     </td>
@@ -519,6 +647,56 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
               <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => setDetail(null)}>关闭</button>
             </div>
             <p className="mt-2 text-sm text-slate-200">{detail.content}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {surveyDetail ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-slate-900 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm">问卷详情 · {surveyDetail.userName}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {surveyDetail.createdAt ? `提交时间：${new Date(surveyDetail.createdAt).toLocaleString("zh-CN")}` : "提交时间：未知"}
+                  {surveyDetail.surveyKey ? ` · key=${surveyDetail.surveyKey}` : ""}
+                  {surveyDetail.surveyVersion ? ` · v=${surveyDetail.surveyVersion}` : ""}
+                </p>
+              </div>
+              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => setSurveyDetail(null)}>
+                关闭
+              </button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
+                <div className="text-slate-400">overallRating</div>
+                <div className="mt-1 text-sm font-semibold">{surveyDetail.overallRating ?? "null"}</div>
+              </div>
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
+                <div className="text-slate-400">recommendScore</div>
+                <div className="mt-1 text-sm font-semibold">{surveyDetail.recommendScore ?? "null"}</div>
+              </div>
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
+                <div className="text-slate-400">freeText</div>
+                <div className="mt-1 text-sm font-semibold">{surveyDetail.freeText ? "有" : "无"}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-xl bg-black/20 p-3">
+                <p className="mb-2 text-xs text-slate-300">answers</p>
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-100">
+                  {surveyDetail.answers ? JSON.stringify(surveyDetail.answers, null, 2) : "null"}
+                </pre>
+              </div>
+              <div className="rounded-xl bg-black/20 p-3">
+                <p className="mb-2 text-xs text-slate-300">freeText</p>
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-100">
+                  {surveyDetail.freeText ?? ""}
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

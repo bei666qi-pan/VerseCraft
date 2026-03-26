@@ -46,6 +46,35 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS survey_responses (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
+        guest_id VARCHAR(128),
+        survey_key VARCHAR(64) NOT NULL,
+        survey_version VARCHAR(32) NOT NULL,
+        source VARCHAR(64) NOT NULL DEFAULT 'home_modal',
+        answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+        free_text TEXT,
+        overall_rating INTEGER,
+        recommend_score INTEGER,
+        contact_intent BOOLEAN NOT NULL DEFAULT FALSE,
+        user_agreement BOOLEAN NOT NULL DEFAULT FALSE,
+        privacy_policy BOOLEAN NOT NULL DEFAULT FALSE,
+        client_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS survey_responses_key_user_idx ON survey_responses (survey_key, user_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS survey_responses_key_guest_idx ON survey_responses (survey_key, guest_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS survey_responses_created_idx ON survey_responses (created_at);
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS compliance_inquiries (
         id SERIAL PRIMARY KEY,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

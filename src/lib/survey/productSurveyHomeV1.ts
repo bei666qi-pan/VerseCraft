@@ -15,8 +15,6 @@ export type HomeSurveyAnswers = {
   coreFunPoint: string;
   /** 中途退出/不继续玩的主要原因 */
   quitReason: string;
-  /** 若补强可显著提高继续意愿的能力（最多3项） */
-  improveWillingnessBoosts: string[];
   /** 如果只能提一个最该优先修掉的问题 */
   topFixOne: string;
   /** 是否担心进度/历史/存档丢失 */
@@ -85,18 +83,6 @@ export const QUIT_REASON_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "other", label: "其他" },
 ];
 
-export const IMPROVE_WILLINGNESS_BOOST_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "clear_auth_system", label: "更清楚的登录 / 注册 / 账号体系" },
-  { value: "reliable_continue_save_history", label: "更可靠的继续冒险 / 云存档 / 历史记录" },
-  { value: "complete_profession_system", label: "更完整的职业系统" },
-  { value: "complete_weapon_item_forge", label: "更完整的武器 / 道具 /锻造系统" },
-  { value: "faster_generation_wait", label: "更丝滑的生成速度和等待体验" },
-  { value: "better_newbie_guide", label: "更强的新手引导" },
-  { value: "complete_settlement_history", label: "更完整的结算 / 历史中心" },
-  { value: "more_long_term_goals", label: "更多可持续目标（任务、成长、成就）" },
-  { value: "stable_text_feedback_logic", label: "更稳定的文本质量和反馈逻辑" },
-];
-
 export const SAVE_LOSS_CONCERN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "not_worried_at_all", label: "完全不担心" },
   { value: "slightly_worried_acceptable", label: "有一点担心，但还能接受" },
@@ -122,9 +108,6 @@ export function normalizeHomeSurveyAnswers(raw: unknown): HomeSurveyAnswers | nu
   const immersionIssue = typeof o.immersionIssue === "string" ? o.immersionIssue : "";
   const coreFunPoint = typeof o.coreFunPoint === "string" ? o.coreFunPoint : "";
   const quitReason = typeof o.quitReason === "string" ? o.quitReason : "";
-  const improveWillingnessBoosts = Array.isArray(o.improveWillingnessBoosts)
-    ? Array.from(new Set(o.improveWillingnessBoosts.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean)))
-    : [];
   const topFixOne = typeof o.topFixOne === "string" ? o.topFixOne.trim() : "";
   const saveLossConcern = typeof o.saveLossConcern === "string" ? o.saveLossConcern : "";
   const recommendWillingness = typeof o.recommendWillingness === "string" ? o.recommendWillingness : "";
@@ -136,13 +119,6 @@ export function normalizeHomeSurveyAnswers(raw: unknown): HomeSurveyAnswers | nu
   if (!IMMERSION_ISSUE_OPTIONS.some((x) => x.value === immersionIssue)) return null;
   if (!CORE_FUN_POINT_OPTIONS.some((x) => x.value === coreFunPoint)) return null;
   if (!QUIT_REASON_OPTIONS.some((x) => x.value === quitReason)) return null;
-  if (
-    improveWillingnessBoosts.length < 1 ||
-    improveWillingnessBoosts.length > 3 ||
-    improveWillingnessBoosts.some((v) => !IMPROVE_WILLINGNESS_BOOST_OPTIONS.some((x) => x.value === v))
-  ) {
-    return null;
-  }
   if (!topFixOne) return null;
   if (!SAVE_LOSS_CONCERN_OPTIONS.some((x) => x.value === saveLossConcern)) return null;
   if (!RECOMMEND_WILLINGNESS_OPTIONS.some((x) => x.value === recommendWillingness)) return null;
@@ -153,7 +129,6 @@ export function normalizeHomeSurveyAnswers(raw: unknown): HomeSurveyAnswers | nu
     immersionIssue,
     coreFunPoint,
     quitReason,
-    improveWillingnessBoosts,
     topFixOne: topFixOne.slice(0, 500),
     saveLossConcern,
     recommendWillingness,

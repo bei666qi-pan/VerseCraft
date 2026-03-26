@@ -2,17 +2,165 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsEvents, feedbacks, users } from "@/db/schema";
+import { adminMetricsDaily, analyticsEvents, feedbacks, surveyResponses, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
 import { computeFunnel, computeTokenStats } from "@/lib/admin/metricsUtils";
+import {
+  PRODUCT_SURVEY_KEY_HOME,
+  DISCOVERY_SOURCE_OPTIONS,
+  EXPERIENCE_STAGE_OPTIONS,
+  CREATE_FRICTION_OPTIONS,
+  IMMERSION_ISSUE_OPTIONS,
+  CORE_FUN_POINT_OPTIONS,
+  QUIT_REASON_OPTIONS,
+  SAVE_LOSS_CONCERN_OPTIONS,
+  RECOMMEND_WILLINGNESS_OPTIONS,
+} from "@/lib/survey/productSurveyHomeV1";
 
 function normalizeExecuteRows(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
   const rows = (result as { rows?: unknown })?.rows;
   return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+}
+
+type SurveyOption = { value: string; label: string };
+type SurveyQuestionId =
+  | "discoverySource"
+  | "experienceStage"
+  | "createFriction"
+  | "immersionIssue"
+  | "coreFunPoint"
+  | "quitReason"
+  | "saveLossConcern"
+  | "recommendWillingness"
+  | "topFixOne"
+  | "finalSuggestion";
+
+type SurveyAggregateQuestion = {
+  id: SurveyQuestionId;
+  title: string;
+  kind: "single" | "text";
+  sampleCount: number;
+  options?: Array<{ value: string; label: string; count: number; pct: number }>;
+  textCount?: number;
+};
+
+export type SurveyAggregateReport = {
+  range: Pick<AdminTimeRange, "preset" | "start" | "end" | "startDateKey" | "endDateKey" | "label">;
+  surveyKey: string;
+  totalResponses: number;
+  questions: SurveyAggregateQuestion[];
+};
+
+const HOME_SURVEY_META: Array<
+  | { id: Exclude<SurveyQuestionId, "topFixOne" | "finalSuggestion">; kind: "single"; title: string; options: SurveyOption[] }
+  | { id: "topFixOne" | "finalSuggestion"; kind: "text"; title: string }
+> = [
+  { id: "discoverySource", kind: "single", title: "你从哪里知道 VerseCraft？", options: DISCOVERY_SOURCE_OPTIONS },
+  { id: "experienceStage", kind: "single", title: "你现在属于哪种体验阶段？", options: EXPERIENCE_STAGE_OPTIONS },
+  { id: "createFriction", kind: "single", title: "角色创建流程里，哪个部分最容易让你犹豫或烦？", options: CREATE_FRICTION_OPTIONS },
+  { id: "immersionIssue", kind: "single", title: "在正式游玩过程中，哪一种问题最影响你的沉浸感？", options: IMMERSION_ISSUE_OPTIONS },
+  { id: "coreFunPoint", kind: "single", title: "你觉得当前“最好玩”的核心点是什么？", options: CORE_FUN_POINT_OPTIONS },
+  { id: "quitReason", kind: "single", title: "如果你中途退出或今天不继续玩，最主要的原因会是什么？", options: QUIT_REASON_OPTIONS },
+  { id: "topFixOne", kind: "text", title: "如果只能提一个最该优先修掉的问题" },
+  { id: "saveLossConcern", kind: "single", title: "是否担心进度/历史/存档丢失？", options: SAVE_LOSS_CONCERN_OPTIONS },
+  { id: "recommendWillingness", kind: "single", title: "是否愿意推荐朋友来玩？", options: RECOMMEND_WILLINGNESS_OPTIONS },
+  { id: "finalSuggestion", kind: "text", title: "最后补充（可选）" },
+];
+
+function toPct(count: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((count / total) * 1000) / 10; // 1 decimal
+}
+
+export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyAggregateReport> {
+  const raw = await db.execute(sql`
+    SELECT answers
+    FROM survey_responses
+    WHERE survey_key = ${PRODUCT_SURVEY_KEY_HOME}
+      AND created_at >= ${range.start}
+      AND created_at <= ${range.end}
+    ORDER BY created_at DESC
+    LIMIT 5000
+  `);
+  const rows = normalizeExecuteRows(raw);
+  const totalResponses = rows.length;
+
+  const countsByQ = new Map<SurveyQuestionId, Map<string, number>>();
+  const textCountByQ = new Map<Extract<SurveyQuestionId, "topFixOne" | "finalSuggestion">, number>();
+
+  for (const row of rows) {
+    const ans = row.answers;
+    const a =
+      ans && typeof ans === "object" && !Array.isArray(ans) ? (ans as Record<string, unknown>) : null;
+    if (!a) continue;
+
+    for (const q of HOME_SURVEY_META) {
+      if (q.kind === "single") {
+        const v = a[q.id];
+        if (typeof v !== "string" || !v) continue;
+        let m = countsByQ.get(q.id);
+        if (!m) {
+          m = new Map<string, number>();
+          countsByQ.set(q.id, m);
+        }
+        m.set(v, (m.get(v) ?? 0) + 1);
+      } else {
+        const v = a[q.id];
+        if (typeof v !== "string") continue;
+        const t = v.trim();
+        if (!t) continue;
+        textCountByQ.set(q.id, (textCountByQ.get(q.id) ?? 0) + 1);
+      }
+    }
+  }
+
+  const questions: SurveyAggregateQuestion[] = HOME_SURVEY_META.map((q) => {
+    if (q.kind === "text") {
+      const c = textCountByQ.get(q.id) ?? 0;
+      return {
+        id: q.id,
+        title: q.title,
+        kind: "text",
+        sampleCount: totalResponses,
+        textCount: c,
+      };
+    }
+    const m = countsByQ.get(q.id) ?? new Map<string, number>();
+    const answered = [...m.values()].reduce((s, n) => s + n, 0);
+    const options = q.options
+      .map((opt) => {
+        const count = m.get(opt.value) ?? 0;
+        return { value: opt.value, label: opt.label, count, pct: toPct(count, answered) };
+      })
+      .filter((x) => x.count > 0 || answered === 0)
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      id: q.id,
+      title: q.title,
+      kind: "single",
+      sampleCount: answered,
+      options,
+    };
+  });
+
+  return {
+    range: {
+      preset: range.preset,
+      start: range.start,
+      end: range.end,
+      startDateKey: range.startDateKey,
+      endDateKey: range.endDateKey,
+      label: range.label,
+    },
+    surveyKey: PRODUCT_SURVEY_KEY_HOME,
+    totalResponses,
+    questions,
+  };
 }
 
 export async function getDashboardTableData() {
@@ -39,6 +187,21 @@ export async function getDashboardTableData() {
     FROM feedbacks
     ORDER BY user_id, created_at DESC
   `);
+  const latestSurveyRowsRaw = await db.execute(sql`
+    SELECT DISTINCT ON (user_id)
+      user_id AS "userId",
+      survey_key AS "surveyKey",
+      survey_version AS "surveyVersion",
+      answers,
+      free_text AS "freeText",
+      overall_rating AS "overallRating",
+      recommend_score AS "recommendScore",
+      created_at AS "createdAt"
+    FROM survey_responses
+    WHERE user_id IS NOT NULL
+    ORDER BY user_id, created_at DESC
+  `);
+
   const latestGameRowsRaw = await db
     .execute(sql`
       SELECT DISTINCT ON (user_id)
@@ -67,6 +230,35 @@ export async function getDashboardTableData() {
       createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
     });
   }
+  const latestSurveyMap = new Map<
+    string,
+    {
+      surveyKey: string;
+      surveyVersion: string;
+      answers: Record<string, unknown>;
+      freeText: string | null;
+      overallRating: number | null;
+      recommendScore: number | null;
+      createdAt: Date | null;
+    }
+  >();
+  const latestSurveyRows = normalizeExecuteRows(latestSurveyRowsRaw);
+  for (const row of latestSurveyRows) {
+    const userId = String(row.userId ?? "");
+    if (!userId || latestSurveyMap.has(userId)) continue;
+    latestSurveyMap.set(userId, {
+      surveyKey: String(row.surveyKey ?? ""),
+      surveyVersion: String(row.surveyVersion ?? ""),
+      answers:
+        row.answers && typeof row.answers === "object" && !Array.isArray(row.answers)
+          ? (row.answers as Record<string, unknown>)
+          : {},
+      freeText: row.freeText ? String(row.freeText) : null,
+      overallRating: Number.isFinite(Number(row.overallRating)) ? Number(row.overallRating) : null,
+      recommendScore: Number.isFinite(Number(row.recommendScore)) ? Number(row.recommendScore) : null,
+      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+    });
+  }
   const latestGameMap = new Map<string, { maxFloorScore: number; survivalTimeSeconds: number; createdAt: Date | null }>();
   for (const row of latestGameRows) {
     const userId = String(row.userId ?? "");
@@ -82,6 +274,7 @@ export async function getDashboardTableData() {
   const tableRows = rows.map((u) => {
     const latest = latestFeedbackMap.get(u.id);
     const latestGame = latestGameMap.get(u.id);
+    const latestSurvey = latestSurveyMap.get(u.id);
     return {
       ...u,
       lastActive: u.lastActive instanceof Date ? u.lastActive.toISOString() : String(u.lastActive),
@@ -89,6 +282,13 @@ export async function getDashboardTableData() {
       feedbackPreview: latest ? latest.content.slice(0, 6) : "",
       feedbackContent: latest?.content ?? "",
       feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
+      latestSurveyKey: latestSurvey?.surveyKey ?? null,
+      latestSurveyVersion: latestSurvey?.surveyVersion ?? null,
+      latestSurveyAnswers: latestSurvey?.answers ?? null,
+      latestSurveyFreeText: latestSurvey?.freeText ?? null,
+      latestSurveyOverallRating: latestSurvey?.overallRating ?? null,
+      latestSurveyRecommendScore: latestSurvey?.recommendScore ?? null,
+      latestSurveyCreatedAt: latestSurvey?.createdAt ? new Date(latestSurvey.createdAt).toISOString() : null,
       latestGameMaxFloor: latestGame?.maxFloorScore ?? null,
       latestGameSurvivalSec: latestGame?.survivalTimeSeconds ?? null,
       latestGameAt: latestGame?.createdAt ? new Date(latestGame.createdAt).toISOString() : null,

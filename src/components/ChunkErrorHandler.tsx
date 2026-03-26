@@ -19,6 +19,19 @@ function isChunkLoadError(err: unknown): boolean {
   return false;
 }
 
+function isStaleServerActionError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = String(err.message ?? "");
+    return (
+      err.name === "UnrecognizedActionError" ||
+      msg.includes("failed-to-find-server-action") ||
+      msg.includes("Server Action") && msg.includes("was not found")
+    );
+  }
+  const s = String(err ?? "");
+  return s.includes("failed-to-find-server-action") || (s.includes("Server Action") && s.includes("was not found"));
+}
+
 export default function ChunkErrorHandler() {
   useEffect(() => {
     const recoverFromChunkError = async () => {
@@ -67,13 +80,13 @@ export default function ChunkErrorHandler() {
 
     const handler = (event: ErrorEvent) => {
       const err = event?.error ?? event?.message;
-      if (!isChunkLoadError(err)) return;
+      if (!isChunkLoadError(err) && !isStaleServerActionError(err)) return;
       attemptRecovery(err, event);
     };
 
     const unhandled = (event: PromiseRejectionEvent) => {
       const err = event?.reason;
-      if (!isChunkLoadError(err)) return;
+      if (!isChunkLoadError(err) && !isStaleServerActionError(err)) return;
       attemptRecovery(err, event);
     };
 

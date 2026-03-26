@@ -8,7 +8,6 @@ import {
   IMMERSION_ISSUE_OPTIONS,
   CORE_FUN_POINT_OPTIONS,
   QUIT_REASON_OPTIONS,
-  IMPROVE_WILLINGNESS_BOOST_OPTIONS,
   SAVE_LOSS_CONCERN_OPTIONS,
   RECOMMEND_WILLINGNESS_OPTIONS,
 } from "./productSurveyHomeV1";
@@ -25,9 +24,6 @@ test("normalizeHomeSurveyAnswers accepts valid v1.1 payload", () => {
     immersionIssue: pick(IMMERSION_ISSUE_OPTIONS),
     coreFunPoint: pick(CORE_FUN_POINT_OPTIONS),
     quitReason: pick(QUIT_REASON_OPTIONS),
-    improveWillingnessBoosts: [
-      pick(IMPROVE_WILLINGNESS_BOOST_OPTIONS),
-    ],
     topFixOne: "先把新手引导做得更清楚",
     saveLossConcern: pick(SAVE_LOSS_CONCERN_OPTIONS),
     recommendWillingness: pick(RECOMMEND_WILLINGNESS_OPTIONS),
@@ -51,9 +47,6 @@ test("normalizeHomeSurveyAnswers rejects unknown option values", () => {
     immersionIssue: pick(IMMERSION_ISSUE_OPTIONS),
     coreFunPoint: pick(CORE_FUN_POINT_OPTIONS),
     quitReason: pick(QUIT_REASON_OPTIONS),
-    improveWillingnessBoosts: [
-      pick(IMPROVE_WILLINGNESS_BOOST_OPTIONS),
-    ],
     topFixOne: "先把新手引导做得更清楚",
     saveLossConcern: pick(SAVE_LOSS_CONCERN_OPTIONS),
     recommendWillingness: pick(RECOMMEND_WILLINGNESS_OPTIONS),

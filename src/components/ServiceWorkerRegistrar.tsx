@@ -7,12 +7,30 @@ const LAST_RELOAD_AT_KEY = "versecraft:lastBuildReloadAt";
 const CHECK_INTERVAL_MS = 30_000;
 const MIN_RELOAD_GAP_MS = 5 * 60 * 1000;
 
+async function cleanupServiceWorkerAndCaches(): Promise<void> {
+  try {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister().catch(() => false)));
+    }
+  } catch {
+    // ignore cleanup failures
+  }
+  try {
+    if (typeof caches !== "undefined" && "keys" in caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k).catch(() => false)));
+    }
+  } catch {
+    // ignore cleanup failures
+  }
+}
+
 export default function ServiceWorkerRegistrar() {
   useEffect(() => {
     let mounted = true;
     const isProd = process.env.NODE_ENV === "production";
     const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-    const isAdminRoute = pathname.startsWith("/saiduhsa");
     const safeGet = (key: string): string | null => {
       try {
         return localStorage.getItem(key);
@@ -49,8 +67,8 @@ export default function ServiceWorkerRegistrar() {
       });
     }
 
-    // Dev/HMR and admin console should not auto-reload by build-id polling.
-    if (!isProd || isAdminRoute) {
+    // Dev/HMR should not auto-reload by build-id polling.
+    if (!isProd) {
       return () => {
         mounted = false;
       };
@@ -79,10 +97,13 @@ export default function ServiceWorkerRegistrar() {
             safeSet(BUILD_ID_STORAGE_KEY, serverBuildId);
             return;
           }
-          // Record build change only; avoid auto reload loops in client runtime.
+          // Clean SW/cache and reload once to avoid stale action/chunk mappings after deploy.
           safeSet(LAST_RELOAD_AT_KEY, String(now));
           safeSet(BUILD_ID_STORAGE_KEY, serverBuildId);
-          return;
+          await cleanupServiceWorkerAndCaches();
+          const url = new URL(window.location.href);
+          url.searchParams.set("__build_reload", String(now));
+          window.location.replace(url.toString());
         }
       } catch {
         /* ignore */
