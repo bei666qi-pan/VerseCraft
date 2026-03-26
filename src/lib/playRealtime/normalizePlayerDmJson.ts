@@ -130,10 +130,17 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   const sd = o.sanity_damage;
   if (typeof sd !== "number" || !Number.isFinite(sd)) return null;
 
+  const narrativeRaw = String(o.narrative ?? "");
+  const narrative = narrativeRaw
+    // Remove markdown code fences and inline backticks to reduce “code leakage”.
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`{1,3}[^`\n]{1,120}`{1,3}/g, "")
+    .trim();
+
   const out: Record<string, unknown> = {
     is_action_legal: o.is_action_legal,
     sanity_damage: sd,
-    narrative: o.narrative,
+    narrative,
     is_death: o.is_death,
     consumes_time: typeof o.consumes_time === "boolean" ? o.consumes_time : true,
     consumed_items: asStringArray(o.consumed_items),
@@ -147,6 +154,8 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     new_tasks: asUnknownArray(o.new_tasks),
     task_updates: asUnknownArray(o.task_updates),
     npc_location_updates: asUnknownArray(o.npc_location_updates),
+    // Always emit options (possibly empty) so clients can reliably clear stale options.
+    options: [],
   };
 
   if (typeof o.currency_change === "number" && Number.isFinite(o.currency_change)) {
@@ -160,7 +169,7 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
       .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
       .map((x) => x.trim())
       .slice(0, 4);
-    if (opts.length > 0) out.options = opts;
+    out.options = opts;
   }
 
   if (typeof o.player_location === "string" && o.player_location.length > 0) {

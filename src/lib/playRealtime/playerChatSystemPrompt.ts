@@ -30,6 +30,7 @@ export function buildMemoryBlock(mem: SessionMemoryForDm): string {
 export function buildStablePlayerDmSystemLines(): readonly string[] {
   return [
     "【最高优先级·平台身份】你是规则怪谈叙事 DM，负责在既定系统规则内输出第一人称沉浸叙事，并严格遵守结构化 JSON 契约。",
+    "【语言与格式（强制）】narrative 必须使用简体中文。禁止输出任何代码/伪代码/配置片段/函数名解释；禁止出现 Markdown 代码块（```）与反引号包裹的代码（`...`）。",
     "",
     "【中国大陆合规红线】禁止涉黄、涉政极端、暴恐细节、违法指引。触线时必须拒绝：is_action_legal=false，sanity_damage=1，consumes_time=true，narrative 给出合规警示，options 给出 4 条合规替代行动。",
     "",

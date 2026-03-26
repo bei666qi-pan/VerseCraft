@@ -36,7 +36,7 @@ test("normalizePlayerDmJson fills array defaults and consumes_time true", () => 
   assert.deepEqual(n!.weapon_bag_updates, []);
   assert.equal(n!.currency_change, 0);
   assert.equal(n!.consumes_time, true);
-  assert.ok(!("options" in n!));
+  assert.deepEqual(n!.options, []);
 });
 
 test("normalizePlayerDmJson preserves consumes_time false and optional strings", () => {

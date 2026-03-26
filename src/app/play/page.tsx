@@ -20,7 +20,6 @@ import { PlayComplianceToast } from "@/features/play/components/PlayComplianceTo
 import { PlayOptionsList } from "@/features/play/components/PlayOptionsList";
 import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
 import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
-import { injectLocalOpeningFallback } from "@/features/play/opening/injectLocalOpeningFallback";
 import {
   computeOpeningBusyUi,
   shouldRecoverStaleSendActionFlight,
@@ -628,7 +627,8 @@ function PlayContent() {
 
       openingAwaitingAssistantRef.current = false;
       openingTimeoutRetryRef.current = false;
-      injectLocalOpeningFallback();
+      // 不再注入本地预置选项池：若上游无法生成 options，应保持为空并引导玩家切换手动输入。
+      setCurrentOptions([]);
       setOpeningAiBusy(false);
       setLiveNarrative("【开局】仍无法获取选项，请检查网络或刷新页面；也可切换为手动输入后重试。");
     }, 400);
@@ -1415,6 +1415,8 @@ function PlayContent() {
       useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     } else if (!isFirstAssistantTurn) {
       // 更严格：不开启任何预置选项兜底；只提示玩家改用手动输入。
+      // 必须清空上一回合残留 options，避免“本回合没生成却沿用旧选项”的假象。
+      setCurrentOptions([]);
       setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
     }
 
