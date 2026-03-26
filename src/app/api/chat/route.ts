@@ -27,6 +27,7 @@ import { anyAiProviderConfigured, sanitizeMessagesForUpstream } from "@/lib/ai/s
 import {
   enhanceScene,
   generateMainReply,
+  generateOptionsOnlyFallback,
   parsePlayerIntent,
   type EnhanceAfterMainStreamResult,
 } from "@/lib/ai/logicalTasks";
@@ -267,12 +268,14 @@ export async function POST(req: Request) {
   const clientState = validated.clientState;
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
+  const openingOptionsOnlyRound = validated.openingOptionsOnlyRound;
   const clientIp = getClientIpFromHeaders(req.headers);
   const requestId = createRequestId("chat");
   const platform = derivePlatformFromUserAgent(req.headers.get("user-agent"));
   const requestStartedAt = Date.now();
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
+  const shouldApplyFirstActionConstraint = Boolean(isFirstAction && openingOptionsOnlyRound);
   const session = await auth();
   const userId = session?.user?.id ?? null;
 
@@ -441,7 +444,7 @@ export async function POST(req: Request) {
   const dynamicCoreForQuota = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext,
-    isFirstAction,
+    isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets: "",
     controlAugmentation: "",
   });
@@ -842,7 +845,7 @@ export async function POST(req: Request) {
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext,
-    isFirstAction,
+    isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
   });
@@ -1332,6 +1335,29 @@ export async function POST(req: Request) {
           };
         }
         dmRecord = applyStage2SettlementGuard(dmRecord);
+
+        // 补救：主笔回合若未生成 options，则快速二次生成仅 options（非硬编码、不沿用旧选项）。
+        try {
+          const opts = Array.isArray((dmRecord as { options?: unknown }).options)
+            ? ((dmRecord as { options?: unknown }).options as unknown[])
+                .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+            : [];
+          if (opts.length === 0) {
+            const regen = await generateOptionsOnlyFallback({
+              narrative: String(dmRecord.narrative ?? ""),
+              latestUserInput,
+              playerContext,
+              ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
+              signal: ac.signal,
+            });
+            if (regen.ok) {
+              (dmRecord as Record<string, unknown>).options = regen.options;
+            }
+          }
+        } catch (e) {
+          console.warn("[api/chat] options regen skipped", e);
+        }
+
         const guardMeta =
           dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
             ? (dmRecord.security_meta as Record<string, unknown>)

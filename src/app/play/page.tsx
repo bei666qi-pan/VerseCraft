@@ -573,6 +573,12 @@ function PlayContent() {
 
   useEffect(() => {
     if (!isHydrated || isChatBusy || hasTriggeredOpening.current) return;
+    // 嵌入式开场：首屏叙事已由前端固定块展示，且选项来自本地池；禁止发起 OPENING_SYSTEM_PROMPT，
+    // 否则会把 streamPhase 锁成 busy，导致首屏四选项不可点击。
+    if (showEmbeddedOpening) {
+      hasTriggeredOpening.current = true;
+      return;
+    }
     const currentLogs = useGameStore.getState().logs ?? [];
     const turn = currentLogs.length;
     // 仅在还没有任何助手叙事时触发一次主链路开场（单一真相源；本地叙事仅作下方超时降级）
@@ -581,7 +587,7 @@ function PlayContent() {
     openingAwaitingAssistantRef.current = true;
     openingStartedAtRef.current = Date.now();
     void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
-  }, [isHydrated, isChatBusy]);
+  }, [isHydrated, isChatBusy, showEmbeddedOpening]);
 
   /** 成功拿到选项后清掉【开局】类提示，避免与正常对局并存 */
   useEffect(() => {
@@ -677,6 +683,15 @@ function PlayContent() {
     // 后续回合若没有 options，就保持为空，引导玩家切换到手动输入继续。
     setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
   }, [coldPlayOpening, currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
+
+  // 嵌入式开场：首屏四选项必须由前端立刻注入，确保可点击（不依赖 /api/chat 的 OPENING_SYSTEM_PROMPT）。
+  useEffect(() => {
+    if (!isHydrated || !showEmbeddedOpening) return;
+    if (isChatBusy) return;
+    if (inputMode !== "options") return;
+    if (currentOptions.length > 0) return;
+    setCurrentOptions([...pickEmbeddedOpeningOptions()]);
+  }, [currentOptions.length, inputMode, isChatBusy, isHydrated, setCurrentOptions, showEmbeddedOpening]);
 
   useEffect(() => {
     if (
@@ -839,6 +854,7 @@ function PlayContent() {
           playerContext,
           clientState,
           sessionId: guestId ?? "browser_session",
+          openingOptionsOnlyRound: Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT),
         }),
         signal: ac.signal,
       });

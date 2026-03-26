@@ -72,6 +72,94 @@ export async function enhanceScene(args: {
 export type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 export type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
 
+function asStringArrayOptions(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x !== "string") continue;
+    const t = x.trim();
+    if (!t) continue;
+    if (t.length < 2 || t.length > 40) continue;
+    out.push(t);
+    if (out.length >= 4) break;
+  }
+  // De-dupe while preserving order
+  const uniq: string[] = [];
+  const seen = new Set<string>();
+  for (const s of out) {
+    const k = s.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(s);
+  }
+  return uniq.slice(0, 4);
+}
+
+/**
+ * 当主 DM JSON 没给出 options 时的补救：快速二次调用，仅生成 {options:[...]}（非硬编码、非沿用旧选项）。
+ * 复用在线短 JSON 任务（INTENT_PARSE / control 角色），避免拉长主链路。
+ */
+export async function generateOptionsOnlyFallback(args: {
+  narrative: string;
+  latestUserInput: string;
+  playerContext: string;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+}): Promise<{ ok: true; options: string[] } | { ok: false; reason: string }> {
+  const system: ChatMessage = {
+    role: "system",
+    content: [
+      "你是规则怪谈文字冒险的控制面助手，任务是为玩家生成下一步可点击行动选项。",
+      "你必须只输出一个 JSON 对象，形如：{\"options\":[\"...\",\"...\",\"...\",\"...\"]}。",
+      "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
+      "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
+    ].join("\n"),
+  };
+  const user: ChatMessage = {
+    role: "user",
+    content: [
+      `【本回合玩家输入】${String(args.latestUserInput ?? "").slice(0, 400)}`,
+      `【本回合叙事（narrative）】${String(args.narrative ?? "").slice(0, 1200)}`,
+      `【玩家状态摘要】${String(args.playerContext ?? "").slice(0, 1200)}`,
+    ].join("\n"),
+  };
+
+  const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+    task: "INTENT_PARSE",
+    messages: [system, user],
+    ctx: {
+      requestId: args.ctx.requestId,
+      task: "INTENT_PARSE",
+      userId: args.ctx.userId,
+      sessionId: args.ctx.sessionId,
+      path: args.ctx.path,
+      tags: { ...(args.ctx.tags ?? {}), purpose: "options_regen" },
+    },
+    signal: args.signal,
+    requestTimeoutMs: 9_000,
+    skipCache: true,
+    devOverrides: {
+      maxTokens: 256,
+      temperature: 0.4,
+      timeoutMs: 9_000,
+      responseFormatJsonObject: true,
+    },
+  });
+
+  if (!res.ok) {
+    return { ok: false, reason: `ai_error:${res.code}` };
+  }
+
+  try {
+    const obj = JSON.parse(res.content) as Record<string, unknown>;
+    const options = asStringArrayOptions(obj.options);
+    if (options.length === 4) return { ok: true, options };
+    return { ok: false, reason: "invalid_options_shape" };
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+}
+
 export type OfflineReasonerKind = "worldbuild" | "storyline" | "dev_assist";
 
 function offlineReasonerTaskType(kind: OfflineReasonerKind): TaskType {
