@@ -39,11 +39,17 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS feedbacks (
         id SERIAL PRIMARY KEY,
-        user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
+        guest_id VARCHAR(128),
         content TEXT NOT NULL,
+        kind VARCHAR(24) NOT NULL DEFAULT 'open',
+        client_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_user_id_idx ON feedbacks (user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_guest_id_idx ON feedbacks (guest_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_created_idx ON feedbacks (created_at);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS survey_responses (
@@ -203,6 +209,17 @@ export async function ensureRuntimeSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // ========= Admin guest aliases =========
+    // Global stable mapping: guest_id -> 游客N
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS guest_aliases (
+        guest_id VARCHAR(128) PRIMARY KEY,
+        guest_no BIGSERIAL NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS guest_aliases_guest_no_unique ON guest_aliases (guest_no);`);
     await client.query(`
       CREATE INDEX IF NOT EXISTS user_sessions_user_last_seen_idx ON user_sessions (user_id, last_seen_at);
     `);

@@ -39,7 +39,7 @@ type OverviewData = {
 } | null;
 type RealtimeData = { onlineUsers?: number; activeSessions?: number; avgSessionDurationSec?: number; trends?: { eventsLast5m?: number; eventsLast15m?: number } } | null;
 type RetentionData = { d1?: { rate?: number }; d3?: { rate?: number }; d7?: { rate?: number }; cohortSize?: number } | null;
-type FunnelData = { stages?: Array<{ eventName?: string; users?: number; conversionRate?: number }> } | null;
+type FunnelData = { stages?: Array<{ eventName?: string; eventLabel?: string; users?: number; conversionRate?: number }> } | null;
 type FeedbackData = { totalFeedback?: number; negativeFeedback?: number; topics?: Array<{ topic?: string; count?: number }> } | null;
 type SurveyAggregateData = {
   range?: { label?: string };
@@ -415,14 +415,14 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
             <p className="text-sm">D1：{((Number(retention?.d1?.rate ?? 0)) * 100).toFixed(1)}%</p>
             <p className="text-sm">D3：{((Number(retention?.d3?.rate ?? 0)) * 100).toFixed(1)}%</p>
             <p className="text-sm">D7：{((Number(retention?.d7?.rate ?? 0)) * 100).toFixed(1)}%</p>
-            <p className="mt-1 text-xs text-slate-300">Cohort：{Number(retention?.cohortSize ?? 0)}</p>
+            <p className="mt-1 text-xs text-slate-300">样本：{Number(retention?.cohortSize ?? 0)}</p>
           </div>
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] xl:col-span-2">
             <p className="mb-2 text-sm">漏斗</p>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               {(funnel?.stages ?? []).map((s) => (
                 <div key={String(s.eventName)} className="rounded-xl bg-white/10 p-2">
-                  <p className="text-xs text-slate-300">{String(s.eventName)}</p>
+                  <p className="text-xs text-slate-300">{String(s.eventLabel ?? s.eventName ?? "")}</p>
                   <p className="text-lg font-semibold">{Number(s.users ?? 0)}</p>
                   <p className="text-xs text-slate-400">{(Number(s.conversionRate ?? 0) * 100).toFixed(1)}%</p>
                 </div>

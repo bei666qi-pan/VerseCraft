@@ -164,7 +164,7 @@ export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyA
 }
 
 export async function getDashboardTableData() {
-  const rows = await db
+  const userRows = await db
     .select({
       id: users.id,
       name: users.name,
@@ -187,6 +187,15 @@ export async function getDashboardTableData() {
     FROM feedbacks
     ORDER BY user_id, created_at DESC
   `);
+  const latestGuestFeedbackRowsRaw = await db.execute(sql`
+    SELECT DISTINCT ON (guest_id)
+      guest_id AS "guestId",
+      content,
+      created_at AS "createdAt"
+    FROM feedbacks
+    WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+    ORDER BY guest_id, created_at DESC
+  `);
   const latestSurveyRowsRaw = await db.execute(sql`
     SELECT DISTINCT ON (user_id)
       user_id AS "userId",
@@ -200,6 +209,20 @@ export async function getDashboardTableData() {
     FROM survey_responses
     WHERE user_id IS NOT NULL
     ORDER BY user_id, created_at DESC
+  `);
+  const latestGuestSurveyRowsRaw = await db.execute(sql`
+    SELECT DISTINCT ON (guest_id)
+      guest_id AS "guestId",
+      survey_key AS "surveyKey",
+      survey_version AS "surveyVersion",
+      answers,
+      free_text AS "freeText",
+      overall_rating AS "overallRating",
+      recommend_score AS "recommendScore",
+      created_at AS "createdAt"
+    FROM survey_responses
+    WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+    ORDER BY guest_id, created_at DESC
   `);
 
   const latestGameRowsRaw = await db
@@ -219,6 +242,7 @@ export async function getDashboardTableData() {
     });
 
   const latestFeedbackRows = normalizeExecuteRows(latestFeedbackRowsRaw);
+  const latestGuestFeedbackRows = normalizeExecuteRows(latestGuestFeedbackRowsRaw);
   const latestGameRows = normalizeExecuteRows(latestGameRowsRaw);
 
   const latestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
@@ -226,6 +250,15 @@ export async function getDashboardTableData() {
     const userId = String(row.userId ?? "");
     if (!userId) continue;
     latestFeedbackMap.set(userId, {
+      content: String(row.content ?? ""),
+      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+    });
+  }
+  const latestGuestFeedbackMap = new Map<string, { content: string; createdAt: Date | null }>();
+  for (const row of latestGuestFeedbackRows) {
+    const guestId = String(row.guestId ?? "");
+    if (!guestId) continue;
+    latestGuestFeedbackMap.set(guestId, {
       content: String(row.content ?? ""),
       createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
     });
@@ -259,6 +292,36 @@ export async function getDashboardTableData() {
       createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
     });
   }
+
+  const latestGuestSurveyMap = new Map<
+    string,
+    {
+      surveyKey: string;
+      surveyVersion: string;
+      answers: Record<string, unknown>;
+      freeText: string | null;
+      overallRating: number | null;
+      recommendScore: number | null;
+      createdAt: Date | null;
+    }
+  >();
+  const latestGuestSurveyRows = normalizeExecuteRows(latestGuestSurveyRowsRaw);
+  for (const row of latestGuestSurveyRows) {
+    const guestId = String(row.guestId ?? "");
+    if (!guestId || latestGuestSurveyMap.has(guestId)) continue;
+    latestGuestSurveyMap.set(guestId, {
+      surveyKey: String(row.surveyKey ?? ""),
+      surveyVersion: String(row.surveyVersion ?? ""),
+      answers:
+        row.answers && typeof row.answers === "object" && !Array.isArray(row.answers)
+          ? (row.answers as Record<string, unknown>)
+          : {},
+      freeText: row.freeText ? String(row.freeText) : null,
+      overallRating: Number.isFinite(Number(row.overallRating)) ? Number(row.overallRating) : null,
+      recommendScore: Number.isFinite(Number(row.recommendScore)) ? Number(row.recommendScore) : null,
+      createdAt: row.createdAt ? new Date(String(row.createdAt)) : null,
+    });
+  }
   const latestGameMap = new Map<string, { maxFloorScore: number; survivalTimeSeconds: number; createdAt: Date | null }>();
   for (const row of latestGameRows) {
     const userId = String(row.userId ?? "");
@@ -271,7 +334,7 @@ export async function getDashboardTableData() {
   }
 
   const onlineSet = new Set(onlineIds);
-  const tableRows = rows.map((u) => {
+  const tableRows = userRows.map((u) => {
     const latest = latestFeedbackMap.get(u.id);
     const latestGame = latestGameMap.get(u.id);
     const latestSurvey = latestSurveyMap.get(u.id);
@@ -295,11 +358,80 @@ export async function getDashboardTableData() {
     };
   });
 
-  const onlineCount = tableRows.filter((r) => r.isOnline === 1).length;
-  const totalUsers = tableRows.length;
-  const totalTokens = tableRows.reduce((sum, r) => sum + Number(r.tokensUsed ?? 0), 0);
+  // ---- Guests (anonymous) ----
+  const guestAggRaw = await db.execute(sql`
+    WITH guest_src AS (
+      SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+      UNION ALL
+      SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+    ),
+    guest_ids AS (
+      SELECT guest_id, MAX(created_at) AS last_active
+      FROM guest_src
+      GROUP BY guest_id
+    )
+    INSERT INTO guest_aliases (guest_id)
+    SELECT guest_id FROM guest_ids
+    ON CONFLICT (guest_id) DO NOTHING
+    RETURNING guest_id
+  `);
+  void guestAggRaw;
 
-  return { rows: tableRows, onlineCount, totalUsers, totalTokens };
+  const guestRowsRaw = await db.execute(sql`
+    WITH guest_src AS (
+      SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+      UNION ALL
+      SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+    ),
+    guest_ids AS (
+      SELECT guest_id, MAX(created_at) AS last_active
+      FROM guest_src
+      GROUP BY guest_id
+    )
+    SELECT g.guest_id AS "guestId", a.guest_no AS "guestNo", g.last_active AS "lastActive"
+    FROM guest_ids g
+    INNER JOIN guest_aliases a ON a.guest_id = g.guest_id
+    ORDER BY a.guest_no ASC
+    LIMIT 2000
+  `);
+  const guestRows = normalizeExecuteRows(guestRowsRaw);
+  const guestTableRows = guestRows.map((g) => {
+    const guestId = String(g.guestId ?? "");
+    const guestNo = Number(g.guestNo ?? 0);
+    const lastActive = g.lastActive ? new Date(String(g.lastActive)).toISOString() : new Date(0).toISOString();
+    const latest = latestGuestFeedbackMap.get(guestId);
+    const latestSurvey = latestGuestSurveyMap.get(guestId);
+    return {
+      id: `guest:${guestId}`,
+      name: guestNo > 0 ? `游客${guestNo}` : "游客",
+      tokensUsed: 0,
+      todayTokensUsed: 0,
+      playTime: 0,
+      todayPlayTime: 0,
+      lastActive,
+      isOnline: 0,
+      feedbackPreview: latest ? latest.content.slice(0, 6) : "",
+      feedbackContent: latest?.content ?? "",
+      feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
+      latestSurveyKey: latestSurvey?.surveyKey ?? null,
+      latestSurveyVersion: latestSurvey?.surveyVersion ?? null,
+      latestSurveyAnswers: latestSurvey?.answers ?? null,
+      latestSurveyFreeText: latestSurvey?.freeText ?? null,
+      latestSurveyOverallRating: latestSurvey?.overallRating ?? null,
+      latestSurveyRecommendScore: latestSurvey?.recommendScore ?? null,
+      latestSurveyCreatedAt: latestSurvey?.createdAt ? new Date(latestSurvey.createdAt).toISOString() : null,
+      latestGameMaxFloor: null,
+      latestGameSurvivalSec: null,
+      latestGameAt: null,
+    };
+  });
+
+  const allRows = [...guestTableRows, ...tableRows];
+  const onlineCount = allRows.filter((r) => r.isOnline === 1).length;
+  const totalUsers = allRows.length;
+  const totalTokens = allRows.reduce((sum, r) => sum + Number(r.tokensUsed ?? 0), 0);
+
+  return { rows: allRows, onlineCount, totalUsers, totalTokens };
 }
 
 export async function getOverviewMetrics(range: AdminTimeRange) {
@@ -500,6 +632,15 @@ export async function getFunnelMetrics(range: AdminTimeRange) {
     "feedback_submitted",
   ] as const;
 
+  const EVENT_ZH: Record<(typeof eventNames)[number], string> = {
+    user_registered: "注册成功",
+    create_character_success: "创建角色成功",
+    enter_main_game: "进入主游戏",
+    first_effective_action: "首次有效行动",
+    game_settlement: "结算到达",
+    feedback_submitted: "提交反馈",
+  };
+
   const rows = await db
     .select({
       eventName: analyticsEvents.eventName,
@@ -517,7 +658,15 @@ export async function getFunnelMetrics(range: AdminTimeRange) {
   for (const r of rows) byEvent[String(r.eventName)] = Number(r.users ?? 0);
   const stages = computeFunnel([...eventNames], byEvent);
 
-  return { range, stages };
+  return {
+    range,
+    stages: stages.map((s) => ({
+      ...s,
+      eventLabel:
+        (s.eventName && (EVENT_ZH as Record<string, string | undefined>)[String(s.eventName)]) ??
+        String(s.eventName ?? ""),
+    })),
+  };
 }
 
 export async function getFeedbackInsights(range: AdminTimeRange) {
