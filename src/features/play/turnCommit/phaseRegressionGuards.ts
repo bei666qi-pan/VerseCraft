@@ -3,25 +3,11 @@
  * - 道具获得叙事一致性判定
  * - text -> options 自动补拉触发条件
  * - options 再生成结果规范化
+ *
+ * 注意：acquire 语义相关逻辑已提纯到 `semanticGuards.ts`，这里保持旧导出名以完全向后兼容。
  */
 
-export function hasStrongAcquireSemantics(text: string): boolean {
-  const t = String(text ?? "");
-  if (!t) return false;
-  return /(获得|拿到|拾起|收下|找到|得到|入手|获得了|拿到了)/.test(t);
-}
-
-export function shouldWarnAcquireMismatch(input: {
-  narrative: string;
-  awardedItemWriteCount: number;
-  awardedWarehouseWriteCount: number;
-}): boolean {
-  return (
-    hasStrongAcquireSemantics(input.narrative) &&
-    Math.max(0, Math.trunc(input.awardedItemWriteCount ?? 0)) === 0 &&
-    Math.max(0, Math.trunc(input.awardedWarehouseWriteCount ?? 0)) === 0
-  );
-}
+export { hasStrongAcquireSemantics, shouldWarnAcquireMismatch } from "./semanticGuards";
 
 export function shouldAutoRegenerateOptionsOnModeSwitch(input: {
   prevMode: "text" | "options";

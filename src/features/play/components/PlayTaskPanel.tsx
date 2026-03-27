@@ -10,6 +10,7 @@ type PlayTaskPanelProps = {
   originium: number;
   onClose: () => void;
   onClaimTask: (taskId: string) => void;
+  highlightTaskIds?: string[];
 };
 
 function statusStyle(status: GameTask["status"]): string {
@@ -19,12 +20,13 @@ function statusStyle(status: GameTask["status"]): string {
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
-export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask }: PlayTaskPanelProps) {
+export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask, highlightTaskIds }: PlayTaskPanelProps) {
   const visibleTasks = useMemo(
     () => (tasks ?? []).filter((t) => t && t.status !== "hidden"),
     [tasks]
   );
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const highlightSet = useMemo(() => new Set((highlightTaskIds ?? []).filter((x) => typeof x === "string")), [highlightTaskIds]);
 
   if (!open) return null;
 
@@ -58,6 +60,7 @@ export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask }: 
           <div className="space-y-2.5">
             {visibleTasks.map((t) => {
               const expanded = !!expandedIds[t.id];
+              const highlighted = highlightSet.has(t.id);
               const reward =
                 t.reward?.items?.length && t.reward.items.length > 0
                   ? `道具 ${t.reward.items.length} 件`
@@ -65,14 +68,23 @@ export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask }: 
                   ? `原石 +${t.reward.originium}`
                   : "线索奖励";
               return (
-                <article key={t.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                <article
+                  key={t.id}
+                  className={`rounded-xl border bg-white p-3 transition ${
+                    highlighted
+                      ? "border-amber-200 ring-2 ring-amber-200/60 shadow-[0_0_0_3px_rgba(251,191,36,0.12)] animate-[halo-pulse_1.8s_ease-in-out_2]"
+                      : "border-slate-200"
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="line-clamp-1 text-sm font-semibold text-slate-800">{t.title}</h4>
                     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusStyle(t.status)}`}>
                       {getTaskStatusLabel(t.status)}
                     </span>
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs text-slate-600">{t.nextHint || t.desc}</p>
+                  <p className="mt-1.5 line-clamp-2 text-xs text-slate-600">
+                    {(t as any).urgencyReason || (t as any).playerHook || t.nextHint || t.desc}
+                  </p>
                   <div className="mt-2 grid grid-cols-2 gap-y-1 text-[11px] text-slate-500">
                     <span>委托人：{t.issuerName}</span>
                     <span>楼层：{t.floorTier}</span>
@@ -99,6 +111,8 @@ export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask }: 
                   {expanded ? (
                     <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-600">
                       <p>任务描述：{t.desc}</p>
+                      {(t as any).riskNote ? <p className="mt-1">风险提示：{(t as any).riskNote}</p> : null}
+                      {(t as any).taboo ? <p className="mt-1">禁区：{(t as any).taboo}</p> : null}
                       <p className="mt-1">领取方式：{t.claimMode === "npc_grant" ? "NPC提出委托" : t.claimMode === "auto" ? "自动记录" : "手动领取"}</p>
                     </div>
                   ) : null}

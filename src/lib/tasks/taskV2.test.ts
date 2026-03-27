@@ -115,11 +115,29 @@ test("activateClaimableHiddenTasks unlocks hidden task by completed consequences
 test("buildNpcProactiveGrantNarrativeBlock builds natural narrative constraints", () => {
   const block = buildNpcProactiveGrantNarrativeBlock({
     playerContext:
-      "任务发放线索：电工老刘:在B1建立生存节奏[地点B1_SafeZone/B1_Storage|状态进行中]。",
+      "用户位置[B1_SafeZone]。任务发放线索：电工老刘:在B1建立生存节奏[IDN-008|地点B1_SafeZone/B1_Storage|状态active|上次发放HNA]。",
     latestUserInput: "我去找老刘聊聊",
   });
   assert.ok(block.includes("NPC主动发放叙事约束"));
   assert.ok(block.includes("自然融入强度：高"));
+});
+
+test("normalizeGameTaskDraft accepts phase-3 dramatic fields safely", () => {
+  const task = normalizeGameTaskDraft({
+    id: "char_x",
+    title: "测试立体任务",
+    issuerId: "N-008",
+    dramaticType: "survival",
+    urgencyReason: "现在不做就会出事。",
+    relatedNpcIds: ["N-008", "N-010", "", 123],
+    backfireConsequences: ["rel:N-008:trust:-2", "x", "rel:N-010:fear:+1"],
+    canBackfire: true,
+  });
+  assert.ok(task);
+  assert.equal(task!.dramaticType, "survival");
+  assert.equal(typeof task!.urgencyReason, "string");
+  assert.ok(Array.isArray(task!.relatedNpcIds) || task!.relatedNpcIds === undefined);
+  assert.ok(Array.isArray(task!.backfireConsequences) || task!.backfireConsequences === undefined);
 });
 
 test("applyNpcProactiveGrantGuard keeps only matching location and one npc grant", () => {

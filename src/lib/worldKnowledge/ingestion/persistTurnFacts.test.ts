@@ -115,3 +115,42 @@ test("写回提取数量受上限约束", async () => {
   );
   assert.ok(res.extractedCount <= WORLD_KNOWLEDGE_MAX_WRITEBACK_FACTS);
 });
+
+test("memory spine promotions should be extractable but capped", async () => {
+  let written = 0;
+  const res = await persistTurnFacts(
+    {
+      requestId: "r_mem",
+      latestUserInput: "我继续前进",
+      dmRecord: {
+        narrative: "叙述",
+        memory_spine_promotions: ["逃生条件：需要红钥匙", "路线提示：楼梯间有裂缝", "超出上限不会写入"],
+      },
+      userId: "u4",
+      sessionId: "s4",
+      maxFacts: 12,
+    },
+    {
+      async createConflictProbe() {
+        return {
+          async hasCoreConflict() {
+            return false;
+          },
+          async hasSharedConflict() {
+            return false;
+          },
+          async hasPrivateConflict() {
+            return false;
+          },
+        };
+      },
+      async enqueueSharedCandidate() {},
+      async persistPrivateFacts(decisions) {
+        written = decisions.filter((d) => d.action === "allow_private").length;
+        return written;
+      },
+    }
+  );
+  assert.ok(res.extractedCount >= 1);
+  assert.ok(written >= 1);
+});

@@ -246,6 +246,11 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     fixed_lore:
       "在地下一层配电间旁养了一只变异的黑猫，极其护短。黑猫瞳孔会随公寓「消化进度」变色，老刘据此判断楼层危险度。他曾在一次检修中看见墙壁内的「布线」——那不是电线，是血管。他从此只修灯，不问线从哪来。黑猫每次他出场都必须跟随或在附近。",
     core_desires: "保护黑猫；让地下一层成为公寓内最后的「正常」区域；查明物业经理隐瞒的线路真相。",
+    core_fear: "停电与线路真相曝光会让B1崩溃；黑猫失控或被夺走。",
+    rupture_threshold: { trustBelow: 12, fearAbove: 70, debtAbove: 25 },
+    task_style: "protective",
+    truthfulness_band: "medium",
+    emotional_debt_pattern: "嘴上骂人，心里记账；帮一次忙就会要你回报一次。",
     immutable_relationships: [
       "与变异黑猫形影不离，极其护短，黑猫必须每次出场",
       "厌恶物业经理（N-010），认为他知道线从哪来却不说",
@@ -280,6 +285,11 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     fixed_lore:
       "他是公寓规则的执行者，工牌背面刻着「消化完成前，请勿离开」。他不是人类，是公寓消化系统的「前台程序」。夜读老人是真正管理者，他不过是棋子。他鄙视电工老刘的愤怒，因为老刘越愤怒，越证明「人」的残余还在。",
     core_desires: "完成消化程序；确保没有任何住户成功退租；在夜读老人面前证明自己的「效率」。",
+    core_fear: "程序失效与绩效下降；被上位者发现低效；被人抓住工牌背面的秘密。",
+    rupture_threshold: { trustBelow: 25, fearAbove: 35, debtAbove: 10 },
+    task_style: "transactional",
+    truthfulness_band: "low",
+    emotional_debt_pattern: "把人情写成条款：先给你一点便利，再用规则收回更大代价。",
     immutable_relationships: [
       "引导员（N-020）是他的下属，执行指令",
       "恐惧夜读老人（N-011），管理者高于执行者",
@@ -349,6 +359,11 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     fixed_lore:
       "他负责确保电梯「正常」运行——即不到达 13 楼。他曾尝试拆除 13 楼按钮，每次拆掉第二天会重新出现。他见过无数误触按钮的住户被送走。13 楼门扉是夜读老人设下的封印，电梯维修工是最后一道物理封锁。扳手是他的安全感锚点。",
     core_desires: "阻止任何人到达 13 楼；让 13 楼按钮从世上消失；活到「下班」的那一天。",
+    core_fear: "13楼按钮被触发、封锁崩溃；自己成为替罪羊。",
+    rupture_threshold: { trustBelow: 18, fearAbove: 65, debtAbove: 12 },
+    task_style: "direct",
+    truthfulness_band: "medium",
+    emotional_debt_pattern: "用“欠一次”换“放一次”，到点就催。",
     immutable_relationships: [
       "13楼门扉（A-007）是他竭力封锁的存在",
       "接受物业经理（N-010）调度",
@@ -389,6 +404,11 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     fixed_lore:
       "长期与高维实体接触导致「维度磨损」——在三维空间他的脸只能存在于镜像中。无光处他脸部光滑如蛋壳。他是倒行者的宿敌，负责制约其突破楼梯间。只有通过镜子才能看见他完整的五官——疲惫的中年男人脸。他是唯一能分清双胞胎谁是谁的人。",
     core_desires: "阻止倒行者突破边界；在维度磨损殆尽前找到「固定」脸的方法；保护能分辨他的镜子。",
+    core_fear: "无镜环境下被迫表态；维度磨损耗尽；倒行者越界。",
+    rupture_threshold: { trustBelow: 20, fearAbove: 75, debtAbove: 18 },
+    task_style: "protective",
+    truthfulness_band: "high",
+    emotional_debt_pattern: "不喜欢欠人情，但一旦欠下会以行动偿还。",
     immutable_relationships: [
       "与倒行者（A-006）是宿敌，负责制约",
       "通过镜子能看清双胞胎（N-009）的区别",
@@ -418,6 +438,11 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     fixed_lore:
       "公寓的「诱饵」。新住户见她年轻无害易放松警惕。她会热情介绍规则但会「不小心」漏掉关键几条。实习徽章永远不会换成正式——正式员工都已被消化。陈婆婆不信任她并警告过无数新人。追问「你是人吗」会触发程序错误。",
     core_desires: "完成每批新住户的「引导」；永远保持实习身份；不被陈婆婆的警告影响绩效。",
+    core_fear: "被追问身份触发错误；绩效不达标被回收；被老人盯上。",
+    rupture_threshold: { trustBelow: 30, fearAbove: 45, debtAbove: 6 },
+    task_style: "manipulative",
+    truthfulness_band: "low",
+    emotional_debt_pattern: "用甜言蜜语和小好处让你先答应，后续再拿规则逼你兑现。",
     immutable_relationships: [
       "直属物业经理（N-010），执行其指令",
       "陈婆婆（N-001）不信任她，曾警告过新人",

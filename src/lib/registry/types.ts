@@ -172,6 +172,16 @@ export interface NpcSocialProfile {
   fixed_lore: string;
   /** Core desires that drive the NPC's behavior. */
   core_desires: string;
+  /** Optional: core fear (phase-3 NPC heart). */
+  core_fear?: string;
+  /** Optional: rupture threshold hints (phase-3). */
+  rupture_threshold?: { trustBelow?: number; fearAbove?: number; debtAbove?: number };
+  /** Optional: task issuing style hint (phase-3). */
+  task_style?: "direct" | "transactional" | "manipulative" | "avoidant" | "protective";
+  /** Optional: truthfulness band (phase-3). */
+  truthfulness_band?: "low" | "medium" | "high";
+  /** Optional: emotional debt collection pattern (phase-3). */
+  emotional_debt_pattern?: string;
   /** Immutable emotion threads — cannot be retconned. */
   immutable_relationships: ImmutableRelationship[];
   /** Emotional traits, quirks, habits — makes NPC feel like a real person. DM MUST weave into dialogue. */

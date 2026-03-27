@@ -12,6 +12,8 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   for (const key of required) {
     assert.ok(content.includes(key), `missing contract key marker: ${key}`);
   }
+  // Phase-1: 终帧必须经过 resolver 收口为“可提交对象”
+  assert.ok(content.includes("resolveDmTurn"), "final envelope resolver must be applied");
   assert.ok(
     content.includes("maxChars: 2400") ||
       content.includes("contextMode === \"minimal\" ? 1400 : 2400"),

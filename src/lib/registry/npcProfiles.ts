@@ -1,4 +1,6 @@
 import type { NPC, NpcProfileV2 } from "./types";
+import { CONTENT_PACKS } from "@/lib/contentSpec/packs";
+import { buildNpcProfileV2FromSpec } from "@/lib/contentSpec/builders";
 
 export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
   {
@@ -151,9 +153,15 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
   },
 ] as const;
 
+// Phase-6: ContentSpec packs -> ProfileV2 overlays（增量迁移；不破坏旧数据）
+export const CONTENT_SPEC_NPC_PROFILES_V2: readonly NpcProfileV2[] = CONTENT_PACKS
+  .flatMap((p) => p.npcSpecs ?? [])
+  .map((s) => buildNpcProfileV2FromSpec(s))
+  .filter((x): x is NpcProfileV2 => !!x);
+
 export function applyNpcProfileOverrides(base: readonly NPC[]): NPC[] {
   const map = new Map(base.map((x) => [x.id, { ...x }]));
-  for (const p of CORE_NPC_PROFILES_V2) {
+  for (const p of [...CORE_NPC_PROFILES_V2, ...CONTENT_SPEC_NPC_PROFILES_V2]) {
     const prev = map.get(p.id);
     if (!prev) continue;
     map.set(p.id, {

@@ -2,6 +2,7 @@ import type { Item, NpcRelationStateV2, StatType, WarehouseItem, Weapon } from "
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { SaveSlotKind } from "./branch";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
+import type { MemorySpineState } from "@/lib/memorySpine/types";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
 
@@ -95,6 +96,10 @@ export interface SnapshotWorld {
   discoveredSecrets: string[];
   anchorUnlocks: Record<"B1" | "1" | "7", boolean>;
   pendingEvents: string[];
+  /** Phase-4: 轻量剧情导演层状态（可选；旧存档缺省应平滑加载） */
+  storyDirector?: unknown;
+  /** Phase-4: 轻量突发事件队列（可选；旧存档缺省应平滑加载） */
+  incidentQueue?: unknown;
   floorThreatTier: Record<string, number>;
   mainThreatByFloor: Record<string, SnapshotMainThreatState>;
 }
@@ -145,6 +150,20 @@ export interface RunSnapshotV2 {
   player: SnapshotPlayer;
   time: SnapshotTime;
   world: SnapshotWorld;
+  /**
+   * Phase-2: World Memory Spine（热记忆脊柱）
+   * - 可选：旧存档缺省应平滑加载
+   * - 目标：run-private 高相关低 token 的记忆提要，不是日志全文
+   */
+  memory?: {
+    spine: MemorySpineState;
+  };
+  /**
+   * Phase-5: Escape Mainline（出口主线骨架）
+   * - 可选：旧存档缺省应平滑加载
+   * - 目标：结构固定、可追踪的“走出去”真相源，不依赖 narrative
+   */
+  escape?: unknown;
   npcs: Record<string, SnapshotNpcState>;
   tasks: SnapshotTasks;
   death: SnapshotDeath;

@@ -11,6 +11,16 @@ export function isEndgameMoment(t: GameTimeLite): boolean {
   return (t?.day ?? 0) === 10 && (t?.hour ?? 0) === 0;
 }
 
+/**
+ * Phase-5: Doomline 仍然是 fail-safe，但若玩家已完成逃离结局，则不应再被 Doomline 覆盖。
+ * 注意：这里只做“是否允许触发 Doomline”判定，不引入新的主线写作逻辑。
+ */
+export function shouldAllowDoomline(args: { escapeStage?: string | null }): boolean {
+  const st = String(args.escapeStage ?? "");
+  if (st === "escaped_true" || st === "escaped_false" || st === "escaped_costly") return false;
+  return true;
+}
+
 export const ENDGAME_ONLY_OPTION = "迎接终焉" as const;
 
 const ENDGAME_LOCAL_TAIL = [

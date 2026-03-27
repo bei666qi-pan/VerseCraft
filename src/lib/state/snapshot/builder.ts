@@ -12,8 +12,12 @@ import {
   type SnapshotCodexEntry,
   type SnapshotTask,
 } from "./types";
+import type { MemorySpineState } from "@/lib/memorySpine/types";
+import { createEmptyMemorySpine } from "@/lib/memorySpine/types";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
+import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
+import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
 
 export interface BuildRunSnapshotV2Input {
   runId?: string;
@@ -41,12 +45,16 @@ export interface BuildRunSnapshotV2Input {
   discoveredSecrets?: string[];
   anchorUnlocks?: Record<"B1" | "1" | "7", boolean>;
   pendingEvents?: string[];
+  storyDirector?: unknown;
+  incidentQueue?: unknown;
   floorThreatTier?: Record<string, number>;
   mainThreatByFloor?: Record<string, SnapshotMainThreatState>;
   dynamicNpcStates: Record<string, { currentLocation: string; isAlive: boolean }>;
   homeSeed: Record<string, string>;
   tasks: SnapshotTask[];
   profession?: ProfessionStateV1;
+  memorySpine?: MemorySpineState;
+  escapeMainline?: unknown;
 }
 
 export function createRunId(): string {
@@ -55,6 +63,8 @@ export function createRunId(): string {
 
 export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV2 {
   const nowIso = new Date().toISOString();
+  const nowTurn = 0;
+  const nowHour = Math.max(0, Math.floor(Date.now() / 3600000));
   return {
     schemaVersion: RUN_SNAPSHOT_V2_VERSION,
     meta: {
@@ -105,9 +115,15 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
       discoveredSecrets: [...(input.discoveredSecrets ?? [])],
       anchorUnlocks: { ...(input.anchorUnlocks ?? createDefaultAnchorUnlocks()) },
       pendingEvents: [...(input.pendingEvents ?? [])],
+      storyDirector: input.storyDirector ?? createEmptyDirectorState(nowTurn),
+      incidentQueue: input.incidentQueue ?? createEmptyIncidentQueue(),
       floorThreatTier: { ...(input.floorThreatTier ?? {}) },
       mainThreatByFloor: { ...(input.mainThreatByFloor ?? {}) },
     },
+    memory: {
+      spine: input.memorySpine ?? createEmptyMemorySpine(),
+    },
+    escape: input.escapeMainline ?? createDefaultEscapeMainlineTemplate(nowHour),
     npcs: buildNpcSnapshotMap({
       dynamicNpcStates: input.dynamicNpcStates ?? {},
       homeSeed: input.homeSeed ?? {},

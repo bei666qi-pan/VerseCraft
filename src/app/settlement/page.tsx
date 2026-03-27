@@ -14,6 +14,8 @@ import { useMounted } from "@/hooks/useMounted";
 import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
+import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
+import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 type SettlementAiReview = {
@@ -51,10 +53,11 @@ function computeGrade(
   isDead: boolean,
   maxFloor: number,
   kills: number,
-  survivalHours: number
+  survivalHours: number,
+  escapeOutcome: "none" | "true_escape" | "false_escape" | "costly_escape" | "doom"
 ): SettlementGrade {
   if (isDead) return "E";
-  const escaped = maxFloor >= 99;
+  const escaped = escapeOutcome === "true_escape" || escapeOutcome === "costly_escape" || maxFloor >= 99;
   const killAll = kills >= 8;
   if (escaped || killAll) return "S";
   if (maxFloor >= 7 || kills >= 5 || (maxFloor >= 6 && survivalHours >= 48)) return "A";
@@ -255,7 +258,10 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const floorFromLocation = resolveFloorScore(playerLocation);
   const maxFloor = Math.max(floorFromLocation, historicalMaxFloorScore);
   const survivalHours = (time.day ?? 0) * 24 + (time.hour ?? 0);
-  const grade = computeGrade(isDead, maxFloor, kills, survivalHours);
+  const escapeStateRaw = useGameStore((s) => (s as any).escapeMainline);
+  const escapeState = normalizeEscapeMainline(escapeStateRaw, survivalHours);
+  const escapeOutcome = computeEscapeOutcomeForSettlement(escapeState);
+  const grade = computeGrade(isDead, maxFloor, kills, survivalHours, escapeOutcome);
   const [reviewLine1, reviewLine2] = generateSettlementReview(
     grade,
     isDead,
@@ -298,7 +304,11 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       killedAnomalies: kills,
       maxFloorScore: maxFloor,
       survivalTimeSeconds,
-      outcome: isDead ? "death" : maxFloor >= 99 ? "victory" : "abandon",
+      outcome: isDead
+        ? "death"
+        : escapeOutcome === "true_escape" || escapeOutcome === "costly_escape"
+          ? "victory"
+          : "abandon",
       history: {
         grade,
         survivalDay: time.day ?? 0,
@@ -307,7 +317,8 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         profession: profession ? String(profession) : null,
         recapSummary,
         isDead,
-        hasEscaped: !isDead && maxFloor >= 99,
+        hasEscaped: !isDead && (escapeOutcome === "true_escape" || escapeOutcome === "costly_escape" || maxFloor >= 99),
+        escapeOutcome,
         writingMarkdown,
       },
     });
@@ -631,12 +642,28 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             >
               {isDead
                 ? "精神锚点归零"
-                : "你暂时逃离了高维肠胃"}
+                : escapeOutcome === "true_escape"
+                  ? "你走出去了（真正逃离）"
+                  : escapeOutcome === "costly_escape"
+                    ? "你走出去了（代价逃离）"
+                    : escapeOutcome === "false_escape"
+                      ? "你走出去了（但那是假的）"
+                      : escapeOutcome === "doom"
+                        ? "你没能走出去（终焉）"
+                        : "你暂时逃离了高维肠胃"}
             </h1>
             <p className="mt-3 text-sm text-slate-500">
               {isDead
                 ? ""
-                : "你暂时离开了那栋楼，但规则会记住你。"}
+                : escapeOutcome === "true_escape"
+                  ? "你完成了逃离；这局的规则已被你撕开。"
+                  : escapeOutcome === "costly_escape"
+                    ? "你完成了逃离，但你付出的代价会在身后回响。"
+                    : escapeOutcome === "false_escape"
+                      ? "你以为走出去了；但真正的门仍未为你打开。"
+                      : escapeOutcome === "doom"
+                        ? "末日闸门落下；你被迫以终焉收束。"
+                        : "你暂时离开了那栋楼，但规则会记住你。"}
             </p>
           </header>
 
@@ -741,7 +768,19 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                   </li>
                   <li>
                     <span className="text-slate-500">结局：</span>
-                    {isDead ? "死亡结算" : maxFloor >= 99 ? "逃离" : "暂未以逃离收束"}
+                    {isDead
+                      ? "死亡结算"
+                      : escapeOutcome === "true_escape"
+                        ? "真正逃离"
+                        : escapeOutcome === "costly_escape"
+                          ? "代价逃离"
+                          : escapeOutcome === "false_escape"
+                            ? "假逃离"
+                            : escapeOutcome === "doom"
+                              ? "终焉"
+                              : maxFloor >= 99
+                                ? "（旧规则）逃离"
+                                : "暂未以逃离收束"}
                   </li>
                   <li className="text-slate-500">
                     {uploadOutcome?.cloudOk && uploadOutcome.historyId != null

@@ -32,6 +32,29 @@ import {
   normalizeRunSnapshotV2,
   projectSnapshotToLegacy,
 } from "@/lib/state/snapshot/migration";
+import type { MemorySpineState } from "@/lib/memorySpine/types";
+import { createEmptyMemorySpine } from "@/lib/memorySpine/types";
+import { extractMemoryCandidates } from "@/lib/memorySpine/extract";
+import { reduceMemoryCandidates } from "@/lib/memorySpine/reducer";
+import type { MemoryCandidateDraft } from "@/lib/memorySpine/reducer";
+import { pruneMemorySpine } from "@/lib/memorySpine/prune";
+import { buildRecallContext, selectMemoryRecallPacket } from "@/lib/memorySpine/selectors";
+import { buildMemoryRecallBlock } from "@/lib/memorySpine/prompt";
+import { selectPromotionFactTexts } from "@/lib/memorySpine/promote";
+import { buildTaskDramaPacket } from "@/lib/tasks/drama";
+import { buildNpcHeartPromptBlock } from "@/lib/npcHeart/prompt";
+import { buildNpcHeartRuntimeView, selectRelevantNpcHearts } from "@/lib/npcHeart/selectors";
+import type { IncidentQueueState, StoryDirectorState } from "@/lib/storyDirector/types";
+import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
+import { postTurnStoryDirectorUpdate } from "@/lib/storyDirector/postTurn";
+import { buildDirectorDigestForServer, buildDirectorPromptBlock } from "@/lib/storyDirector/prompt";
+import { buildIncidentDigest, normalizeIncidentQueue } from "@/lib/storyDirector/queue";
+import type { EscapeMainlineState } from "@/lib/escapeMainline/types";
+import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
+import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
+import { advanceEscapeMainlineFromResolvedTurn } from "@/lib/escapeMainline/integration";
+import { buildEscapePromptBlock } from "@/lib/escapeMainline/prompt";
+import { getEscapeObjectiveSummary } from "@/lib/escapeMainline/selectors";
 import {
   buildSnapshotSummary,
   canCreateManualBranch,
@@ -293,6 +316,17 @@ interface GameState extends IntegrityMetaState {
    */
   sceneNpcAppearanceLedger?: Record<string, string[]>;
 
+  /** Phase-2: run-local hot memory spine（热记忆脊柱） */
+  memorySpine: MemorySpineState;
+
+  /** Phase-4: 轻量剧情导演层 */
+  storyDirector: StoryDirectorState;
+  /** Phase-4: 轻量突发事件队列 */
+  incidentQueue: IncidentQueueState;
+
+  /** Phase-5: 出口主线骨架（Escape Mainline） */
+  escapeMainline: EscapeMainlineState;
+
   /** 新手引导：是否已查看图鉴（羊皮纸引导已移除） */
   hasCheckedCodex: boolean;
   /** 仓库：物品（非道具），仅存仓库。无属性要求，有正向作用与对应副作用。 */
@@ -329,6 +363,8 @@ interface GameState extends IntegrityMetaState {
   intrusionFlashUntil: number;
   /** 是否已开始游戏（角色初始化完成后为 true） */
   isGameStarted: boolean;
+  /** 固定开场白是否钉在顶部（本局永久展示）。不改 UI 结构，仅控制是否渲染 `FIXED_OPENING_NARRATIVE`。 */
+  openingNarrativePinned: boolean;
   /** BGM track key (bgm_1_calm by default). Not persisted to avoid write amplification; restored from save on load. */
   currentBgm: string;
   /** Master BGM volume 0–100 for audio engine binding. */
@@ -451,7 +487,61 @@ interface GameState extends IntegrityMetaState {
     currentProfession: ProfessionId | null;
     worldFlags: string[];
     presentNpcIds: string[];
+    /** Phase-2: 极短记忆摘要（不上传完整记忆数组） */
+    memoryDigest?: string;
+    /** Phase-2: 可选投影到 facts 的少量短文本（best-effort / budgeted） */
+    memoryPromotions?: string[];
+    /** Phase-2: 本回合 recall 的轻量 tag（用于未来 hooks 对齐） */
+    memoryHintCodes?: string[];
+    /** Phase-4: 极简导演摘要（不上传完整队列/长文本） */
+    directorDigest?: {
+      tension: number;
+      stallCount: number;
+      beatModeHint: string;
+      pressureFlags: string[];
+      pendingIncidentCodes: string[];
+      mustRecallHookCodes: string[];
+      digest: string;
+    };
   };
+
+  /** Phase-2: 提交回合后写入记忆脊柱（基于结构化回写，避免 narrative 抽取成为主路径） */
+  appendResolvedTurnMemories: (args: {
+    resolvedTurn: any;
+    before: {
+      playerLocation: string;
+      activeTaskIds: string[];
+      presentNpcIds: string[];
+      mainThreatByFloor: Record<string, { floorId: string; phase: string }>;
+    };
+  }) => void;
+
+  /** Phase-2: 构建 prompt 用的短 recall block（300~600 中文字符级） */
+  buildMemoryRecallBlock: () => { text: string; digest: string; hintCodes: string[]; promotions: string[] };
+
+  /** Phase-3: 允许任务/NPC 后果链补写少量结构化记忆候选（不走 narrative） */
+  applyMemoryCandidates: (candidates: import("@/lib/memorySpine/reducer").MemoryCandidateDraft[], nowHourOverride?: number) => void;
+
+  /** Phase-4: 回合 commit 后推进导演与事件队列（确定性） */
+  postTurnStoryDirectorUpdate: (args: {
+    resolvedTurn: any;
+    pre: {
+      playerLocation: string;
+      tasks: import("@/lib/tasks/taskV2").GameTaskV2[];
+      mainThreatByFloor: Record<string, { phase?: string }>;
+      memoryEntries: import("@/lib/memorySpine/types").MemorySpineEntry[];
+    };
+    preTurnIndex?: number;
+  }) => void;
+
+  /** Phase-5: 回合 commit 后推进出口主线（确定性） */
+  advanceEscapeMainlineFromResolvedTurn: (args: {
+    resolvedTurn: any;
+    nowTurnOverride?: number;
+    nowHourOverride?: number;
+  }) => void;
+  buildEscapePromptBlock: () => string;
+  getEscapeObjectiveSummary: () => { stage: string; nextObjective: string; blockers: string[] };
 
   performCheck: (
     baseStat: StatType,
@@ -649,6 +739,7 @@ export const useGameStore = create<GameState>()(
       inventory: [],
       logs: [],
       codex: {},
+      memorySpine: createEmptyMemorySpine(),
       hasCheckedCodex: false,
       warehouse: [],
       currentOptions: [],
@@ -818,6 +909,7 @@ export const useGameStore = create<GameState>()(
           mainThreatByFloor: DEFAULT_WORLD_OVERLAY.mainThreatByFloor,
           intrusionFlashUntil: 0,
           isGameStarted: false,
+          openingNarrativePinned: false,
           currentBgm: "bgm_1_calm",
           activeMenu: null,
           appliedRelationshipTaskIds: [],
@@ -1553,9 +1645,14 @@ export const useGameStore = create<GameState>()(
           weaponBag: [],
           intrusionFlashUntil: 0,
           isGameStarted: true,
+          openingNarrativePinned: true,
           professionState: createDefaultProfessionState(),
           hasMetProfessionCertifier: false,
           sceneNpcAppearanceLedger: {},
+          memorySpine: createEmptyMemorySpine(),
+          storyDirector: createEmptyDirectorState(0),
+          incidentQueue: createEmptyIncidentQueue(),
+          escapeMainline: createDefaultEscapeMainlineTemplate(0),
         });
       },
 
@@ -1595,6 +1692,41 @@ export const useGameStore = create<GameState>()(
         });
 
         const time = s.time ?? { day: 0, hour: 0 };
+        const nowHour = (time.day ?? 0) * 24 + (time.hour ?? 0);
+        const memoryPacket = (() => {
+          try {
+            const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+            const worldFlags = activeSnapshot
+              ? Object.entries(activeSnapshot.world.worldFlags ?? {})
+                  .filter(([, v]) => v === true)
+                  .map(([k]) => k)
+                  .slice(0, 128)
+              : [];
+            const location = s.playerLocation ?? "B1_SafeZone";
+            const presentNpcIds = Object.entries(s.dynamicNpcStates ?? {})
+              .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
+              .map(([id]) => id)
+              .slice(0, 32);
+            const activeTaskIds = (s.tasks ?? [])
+              .filter((t) => t.status === "active" || t.status === "available")
+              .map((t) => t.id)
+              .filter((x) => typeof x === "string" && x.trim().length > 0)
+              .slice(0, 32);
+            const ctx = buildRecallContext({
+              nowHour,
+              playerLocation: location,
+              presentNpcIds,
+              activeTaskIds,
+              mainThreatByFloor: s.mainThreatByFloor ?? {},
+              worldFlags,
+              professionId: (s.professionState?.currentProfession ?? null) as any,
+            });
+            const recalled = selectMemoryRecallPacket(s.memorySpine ?? createEmptyMemorySpine(), ctx, { maxItems: 8 });
+            return buildMemoryRecallBlock({ recalled, maxChars: 520 });
+          } catch {
+            return { text: "", digest: "", usedIds: [] as string[] };
+          }
+        })();
         const npcStates = s.dynamicNpcStates ?? {};
         const npcPositions = typeof npcStates === "object" && npcStates !== null
           ? Object.entries(npcStates)
@@ -1602,6 +1734,94 @@ export const useGameStore = create<GameState>()(
               .map(([id, v]) => `${id}@${(v as { currentLocation?: string }).currentLocation ?? "?"}`)
               .join("，")
           : "";
+
+        const taskDramaBlock = (() => {
+          try {
+            return buildTaskDramaPacket({
+              tasks: s.tasks ?? [],
+              maxTasks: 2,
+              maxChars: 360,
+            });
+          } catch {
+            return "";
+          }
+        })();
+
+        const escapeBlock = (() => {
+          try {
+            const escape = normalizeEscapeMainline((s as any).escapeMainline, nowHour);
+            return buildEscapePromptBlock({ state: escape, maxChars: 260 });
+          } catch {
+            return "";
+          }
+        })();
+
+        const directorBlock = (() => {
+          try {
+            const director = (s as any).storyDirector ?? createEmptyDirectorState((s.logs ?? []).length);
+            const incidentQueue = normalizeIncidentQueue((s as any).incidentQueue ?? createEmptyIncidentQueue());
+            const nowTurn = Math.max(0, (s.logs ?? []).length);
+            const fired = (incidentQueue.items ?? [])
+              .filter((x) => x.status === "fired" && x.dueTurn <= nowTurn)
+              .sort((a, b) => (b.dueTurn ?? 0) - (a.dueTurn ?? 0))[0] ?? null;
+            const preview = buildIncidentDigest(incidentQueue, nowTurn);
+            const plan = {
+              beatMode: ((director as any).lastBeatMode as any) || (director.tension >= 65 ? "pressure" : director.stallCount >= 2 ? "pressure" : "quiet"),
+              mustAdvance: (director.stallCount ?? 0) >= 2,
+              mustRecallHookCodes: Array.isArray((director as any).lastRecallHooks) ? (director as any).lastRecallHooks : [],
+              preferredIncidentCode: (director as any).lastFiredIncidentCode ?? null,
+              softPressureHint: null,
+              hardConstraint: null,
+              suppressions: [],
+              pressureFlags: Array.isArray((director as any).lastPressureFlags) ? (director as any).lastPressureFlags : [],
+            } as any;
+            return buildDirectorPromptBlock({
+              plan,
+              armedIncident: fired,
+              incidentPreviewCodes: [...(preview.armedCodes ?? []), ...(preview.pendingCodes ?? [])],
+              maxChars: 360,
+            });
+          } catch {
+            return "";
+          }
+        })();
+
+        const npcHeartBlock = (() => {
+          try {
+            const location = s.playerLocation ?? "B1_SafeZone";
+            const presentNpcIds = Object.entries(s.dynamicNpcStates ?? {})
+              .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
+              .map(([id]) => id)
+              .slice(0, 32);
+            const issuerNpcIds = (s.tasks ?? [])
+              .filter((t) => t.status === "active" || t.status === "available")
+              .map((t) => t.issuerId)
+              .filter((x) => typeof x === "string" && x.trim().length > 0)
+              .slice(0, 16);
+            const volatileNpcIds = (memoryPacket.usedIds ?? []).filter((x) => typeof x === "string");
+            const ids = selectRelevantNpcHearts({
+              locationId: location,
+              presentNpcIds,
+              issuerNpcIds,
+              volatileNpcIds,
+              maxNpc: 3,
+            });
+            const views = ids
+              .map((npcId) =>
+                buildNpcHeartRuntimeView({
+                  npcId,
+                  relationPartial: (s.codex as any)?.[npcId] ?? null,
+                  locationId: location,
+                  activeTaskIds: (s.tasks ?? []).filter((t) => t.status === "active").map((t) => t.id).slice(0, 16),
+                  hotThreatPresent: Object.values(s.mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
+                })
+              )
+              .filter((x): x is NonNullable<typeof x> => !!x);
+            return buildNpcHeartPromptBlock({ views, maxChars: 420 });
+          } catch {
+            return "";
+          }
+        })();
 
         return (
           `用户档案：姓名[${s.playerName || "未命名"}]，` +
@@ -1659,7 +1879,7 @@ export const useGameStore = create<GameState>()(
               .map(
                 (t) =>
                   // 这段仅作为 DM 的“自然引出委托”参考线索，不展示触发码；保持简短。
-                  `${t.issuerName}:${t.title}[地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|状态${t.status === "hidden" ? "未触发" : t.status === "available" ? "可接取" : "进行中"}]`
+                  `${t.issuerName}:${t.title}[ID${t.npcProactiveGrant.npcId || t.issuerId}|地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|状态${t.status === "hidden" ? "hidden" : t.status === "available" ? "available" : "active"}|上次发放H${t.npcProactiveGrantLastIssuedHour ?? "NA"}]`
               );
             return proactive.length > 0 ? `任务发放线索：${proactive.join("；")}。` : "";
           })() +
@@ -1672,6 +1892,11 @@ export const useGameStore = create<GameState>()(
                 .map(([k]) => k)
                 .join("，") || "无"}。锚点解锁：B1[${activeSnapshot.world.anchorUnlocks.B1 ? "1" : "0"}]，1F[${activeSnapshot.world.anchorUnlocks["1"] ? "1" : "0"}]，7F[${activeSnapshot.world.anchorUnlocks["7"] ? "1" : "0"}]。`
             : "") +
+          (escapeBlock ? ` ${escapeBlock}` : "") +
+          (directorBlock ? ` ${directorBlock}` : "") +
+          (npcHeartBlock ? ` ${npcHeartBlock}` : "") +
+          (taskDramaBlock ? ` ${taskDramaBlock}` : "") +
+          (memoryPacket.text ? ` ${memoryPacket.text}` : "") +
           (() => {
             const threatMap = s.mainThreatByFloor ?? {};
             const chunks = Object.values(threatMap)
@@ -1716,6 +1941,7 @@ export const useGameStore = create<GameState>()(
         const s = get();
         const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
         const time = s.time ?? { day: 0, hour: 0 };
+        const nowHour = (time.day ?? 0) * 24 + (time.hour ?? 0);
         const location = s.playerLocation ?? "B1_SafeZone";
         const stats = s.stats ?? DEFAULT_STATS;
         const inventoryIds = (s.inventory ?? [])
@@ -1736,6 +1962,37 @@ export const useGameStore = create<GameState>()(
           .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
           .map(([id]) => id)
           .slice(0, 32);
+        const activeTaskIds = (s.tasks ?? [])
+          .filter((t) => t.status === "active" || t.status === "available")
+          .map((t) => t.id)
+          .filter((x) => typeof x === "string" && x.trim().length > 0)
+          .slice(0, 32);
+        const ctx = buildRecallContext({
+          nowHour,
+          playerLocation: location,
+          presentNpcIds,
+          activeTaskIds,
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+          worldFlags,
+          professionId: (s.professionState?.currentProfession ?? null) as any,
+        });
+        const recalled = selectMemoryRecallPacket(s.memorySpine ?? createEmptyMemorySpine(), ctx, { maxItems: 6 });
+        const recallBlock = buildMemoryRecallBlock({ recalled, maxChars: 360 });
+        const hintCodes = recalled.flatMap((r) => (r.entry.recallTags ?? [])).slice(0, 12);
+        const promotions = selectPromotionFactTexts(s.memorySpine?.entries ?? []);
+
+        // Phase-4: director / incident digests (strictly small; no full queue upload)
+        const director = (s as any).storyDirector ?? createEmptyDirectorState((s.logs ?? []).length);
+        const incidentQueue = normalizeIncidentQueue((s as any).incidentQueue ?? createEmptyIncidentQueue());
+        const incDigest = buildIncidentDigest(incidentQueue, (s.logs ?? []).length);
+        const directorDigest = buildDirectorDigestForServer({
+          tension: director.tension ?? 0,
+          stallCount: director.stallCount ?? 0,
+          beatModeHint: ((director as any).lastBeatMode as string) || "quiet",
+          pressureFlags: Array.isArray((director as any).lastPressureFlags) ? (director as any).lastPressureFlags : [],
+          pendingIncidentCodes: [...(incDigest.armedCodes ?? []), ...(incDigest.pendingCodes ?? [])],
+          mustRecallHookCodes: Array.isArray((director as any).lastRecallHooks) ? (director as any).lastRecallHooks : [],
+        });
         return {
           v: 1 as const,
           turnIndex: (s.logs ?? []).length,
@@ -1756,7 +2013,170 @@ export const useGameStore = create<GameState>()(
           currentProfession: (s.professionState?.currentProfession ?? null) as ProfessionId | null,
           worldFlags,
           presentNpcIds,
+          ...(recallBlock.digest ? { memoryDigest: recallBlock.digest } : {}),
+          ...(hintCodes.length ? { memoryHintCodes: hintCodes } : {}),
+          ...(promotions.length ? { memoryPromotions: promotions } : {}),
+          ...(directorDigest.digest ? { directorDigest } : {}),
         };
+      },
+
+      appendResolvedTurnMemories: (args) => {
+        const s = get();
+        const time = s.time ?? { day: 0, hour: 0 };
+        const nowHour = (time.day ?? 0) * 24 + (time.hour ?? 0);
+        const before = args.before;
+        const after = {
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          tasks: s.tasks ?? [],
+          codex: s.codex ?? {},
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+        };
+        const candidates = extractMemoryCandidates({
+          nowHour,
+          resolvedTurn: args.resolvedTurn,
+          before,
+          after,
+          enableNarrativeMicroPatterns: false,
+        });
+        const next = reduceMemoryCandidates({
+          prev: s.memorySpine ?? createEmptyMemorySpine(),
+          candidates,
+          nowHour,
+          maxEntries: 64,
+          perTurnInsertCap: 10,
+        });
+        set({ memorySpine: pruneMemorySpine(next, nowHour, { maxEntries: 64 }) });
+      },
+
+      applyMemoryCandidates: (candidates: MemoryCandidateDraft[], nowHourOverride?: number) => {
+        const s = get();
+        const time = s.time ?? { day: 0, hour: 0 };
+        const nowHour = typeof nowHourOverride === "number" && Number.isFinite(nowHourOverride)
+          ? Math.trunc(nowHourOverride)
+          : (time.day ?? 0) * 24 + (time.hour ?? 0);
+        const next = reduceMemoryCandidates({
+          prev: s.memorySpine ?? createEmptyMemorySpine(),
+          candidates: Array.isArray(candidates) ? candidates : [],
+          nowHour,
+          maxEntries: 64,
+          perTurnInsertCap: 10,
+        });
+        set({ memorySpine: pruneMemorySpine(next, nowHour, { maxEntries: 64 }) });
+      },
+
+      postTurnStoryDirectorUpdate: (args) => {
+        const s = get();
+        const nowTurn = typeof args.preTurnIndex === "number" && Number.isFinite(args.preTurnIndex)
+          ? Math.max(0, Math.trunc(args.preTurnIndex) + 1)
+          : Math.max(0, (s.logs ?? []).length);
+        const pre = args.pre;
+        const post = {
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          tasks: s.tasks ?? [],
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+          memoryEntries: s.memorySpine?.entries ?? [],
+        };
+        const updated = postTurnStoryDirectorUpdate({
+          directorRaw: (s as any).storyDirector ?? createEmptyDirectorState(nowTurn),
+          incidentQueueRaw: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
+          nowTurn,
+          pre,
+          post,
+          resolvedTurn: args.resolvedTurn,
+        });
+        set({
+          storyDirector: {
+            ...updated.director,
+            // cache tiny hints for digests (do not persist huge text)
+            lastBeatMode: updated.plan.beatMode,
+            lastPressureFlags: updated.plan.pressureFlags,
+            lastRecallHooks: updated.plan.mustRecallHookCodes,
+            lastFiredIncidentCode: updated.armedIncident?.incidentCode ?? null,
+          } as any,
+          incidentQueue: updated.incidentQueue,
+        });
+      },
+
+      advanceEscapeMainlineFromResolvedTurn: (args) => {
+        const s = get();
+        const time = s.time ?? { day: 0, hour: 0 };
+        const nowHour = typeof args.nowHourOverride === "number" && Number.isFinite(args.nowHourOverride)
+          ? Math.max(0, Math.trunc(args.nowHourOverride))
+          : (time.day ?? 0) * 24 + (time.hour ?? 0);
+        const nowTurn = typeof args.nowTurnOverride === "number" && Number.isFinite(args.nowTurnOverride)
+          ? Math.max(0, Math.trunc(args.nowTurnOverride))
+          : Math.max(0, (s.logs ?? []).length);
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+        const worldFlags = activeSnapshot
+          ? Object.entries(activeSnapshot.world.worldFlags ?? {})
+              .filter(([, v]) => v === true)
+              .map(([k]) => k)
+              .slice(0, 128)
+          : [];
+        const invIds = (s.inventory ?? []).map((i) => String((i as any)?.id ?? "").trim()).filter((x) => x.length > 0).slice(0, 96);
+        const next = advanceEscapeMainlineFromResolvedTurn({
+          prevEscapeRaw: (s as any).escapeMainline ?? activeSnapshot?.escape ?? createDefaultEscapeMainlineTemplate(nowHour),
+          nowHour,
+          nowTurn,
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          tasks: (s.tasks ?? []) as any,
+          codex: s.codex ?? {},
+          inventoryItemIds: invIds,
+          worldFlags,
+          memoryEntries: s.memorySpine?.entries ?? [],
+          resolvedTurn: args.resolvedTurn,
+          changedBy: "resolved_turn",
+        });
+        set({ escapeMainline: next as any });
+      },
+
+      buildEscapePromptBlock: () => {
+        const s = get();
+        const state = normalizeEscapeMainline((s as any).escapeMainline, (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0));
+        return buildEscapePromptBlock({ state, maxChars: 260 });
+      },
+
+      getEscapeObjectiveSummary: () => {
+        const s = get();
+        const state = normalizeEscapeMainline((s as any).escapeMainline, (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0));
+        return getEscapeObjectiveSummary(state);
+      },
+
+      buildMemoryRecallBlock: () => {
+        const s = get();
+        const time = s.time ?? { day: 0, hour: 0 };
+        const nowHour = (time.day ?? 0) * 24 + (time.hour ?? 0);
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+        const worldFlags = activeSnapshot
+          ? Object.entries(activeSnapshot.world.worldFlags ?? {})
+              .filter(([, v]) => v === true)
+              .map(([k]) => k)
+              .slice(0, 128)
+          : [];
+        const location = s.playerLocation ?? "B1_SafeZone";
+        const presentNpcIds = Object.entries(s.dynamicNpcStates ?? {})
+          .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
+          .map(([id]) => id)
+          .slice(0, 32);
+        const activeTaskIds = (s.tasks ?? [])
+          .filter((t) => t.status === "active" || t.status === "available")
+          .map((t) => t.id)
+          .filter((x) => typeof x === "string" && x.trim().length > 0)
+          .slice(0, 32);
+        const ctx = buildRecallContext({
+          nowHour,
+          playerLocation: location,
+          presentNpcIds,
+          activeTaskIds,
+          mainThreatByFloor: s.mainThreatByFloor ?? {},
+          worldFlags,
+          professionId: (s.professionState?.currentProfession ?? null) as any,
+        });
+        const recalled = selectMemoryRecallPacket(s.memorySpine ?? createEmptyMemorySpine(), ctx, { maxItems: 8 });
+        const block = buildMemoryRecallBlock({ recalled, maxChars: 520 });
+        const hintCodes = recalled.flatMap((r) => (r.entry.recallTags ?? [])).slice(0, 12);
+        const promotions = selectPromotionFactTexts(s.memorySpine?.entries ?? []);
+        return { text: block.text, digest: block.digest, hintCodes, promotions };
       },
 
       performCheck: (
@@ -2137,6 +2557,14 @@ export const useGameStore = create<GameState>()(
             overlay.anchorUnlocks,
           pendingEvents:
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.pendingEvents ?? [],
+          storyDirector:
+            (s as any).storyDirector ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.storyDirector ??
+            createEmptyDirectorState(0),
+          incidentQueue:
+            (s as any).incidentQueue ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.incidentQueue ??
+            createEmptyIncidentQueue(),
           floorThreatTier:
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.floorThreatTier ??
             overlay.floorThreatTier,
@@ -2150,6 +2578,7 @@ export const useGameStore = create<GameState>()(
             status: t.status ?? "active",
           })),
           profession: computedProfession,
+          memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
         });
         const legacyProjection = projectSnapshotToLegacy(snapshot);
         const data: SaveSlotData = {
@@ -2303,6 +2732,10 @@ export const useGameStore = create<GameState>()(
           logs: JSON.parse(JSON.stringify(data.logs)),
           time: JSON.parse(JSON.stringify(projected.time ?? data.time)),
           codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex)),
+          memorySpine: JSON.parse(JSON.stringify(normalizedSnapshot.memory?.spine ?? createEmptyMemorySpine())),
+          storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
+          incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
+          escapeMainline: JSON.parse(JSON.stringify((normalizedSnapshot as any).escape ?? createDefaultEscapeMainlineTemplate(0))),
           historicalMaxSanity: data.historicalMaxSanity,
           historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
           deathCount: normalizedSnapshot.player.deathCount ?? 0,
@@ -2423,6 +2856,10 @@ export const useGameStore = create<GameState>()(
             logs: JSON.parse(JSON.stringify(data.logs ?? [])),
             time: JSON.parse(JSON.stringify(projected.time ?? data.time ?? { day: 0, hour: 0 })),
             codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex ?? {})),
+            memorySpine: JSON.parse(JSON.stringify(normalizedSnapshot.memory?.spine ?? createEmptyMemorySpine())),
+            storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
+            incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
+            escapeMainline: JSON.parse(JSON.stringify((normalizedSnapshot as any).escape ?? createDefaultEscapeMainlineTemplate(0))),
             historicalMaxSanity: data.historicalMaxSanity ?? 50,
             historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
             deathCount: normalizedSnapshot.player.deathCount ?? 0,
@@ -2516,6 +2953,22 @@ export const useGameStore = create<GameState>()(
             shadow.codex && typeof shadow.codex === "object" && !Array.isArray(shadow.codex)
               ? JSON.parse(JSON.stringify(shadow.codex))
               : {},
+          memorySpine:
+            (shadow as any).memorySpine && typeof (shadow as any).memorySpine === "object" && !Array.isArray((shadow as any).memorySpine)
+              ? JSON.parse(JSON.stringify((shadow as any).memorySpine))
+              : s.memorySpine ?? createEmptyMemorySpine(),
+          storyDirector:
+            (shadow as any).storyDirector && typeof (shadow as any).storyDirector === "object" && !Array.isArray((shadow as any).storyDirector)
+              ? JSON.parse(JSON.stringify((shadow as any).storyDirector))
+              : (s as any).storyDirector ?? createEmptyDirectorState(0),
+          incidentQueue:
+            (shadow as any).incidentQueue && typeof (shadow as any).incidentQueue === "object" && !Array.isArray((shadow as any).incidentQueue)
+              ? JSON.parse(JSON.stringify((shadow as any).incidentQueue))
+              : (s as any).incidentQueue ?? createEmptyIncidentQueue(),
+          escapeMainline:
+            (shadow as any).escapeMainline && typeof (shadow as any).escapeMainline === "object" && !Array.isArray((shadow as any).escapeMainline)
+              ? JSON.parse(JSON.stringify((shadow as any).escapeMainline))
+              : (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
           currentOptions: Array.isArray(shadow.currentOptions) ? JSON.parse(JSON.stringify(shadow.currentOptions)) : [],
           inputMode: shadow.inputMode === "text" ? "text" : "options",
           currentBgm: typeof shadow.currentBgm === "string" ? shadow.currentBgm : "bgm_1_calm",
@@ -2525,6 +2978,10 @@ export const useGameStore = create<GameState>()(
             shadow.professionState && typeof shadow.professionState === "object" && !Array.isArray(shadow.professionState)
               ? JSON.parse(JSON.stringify(shadow.professionState))
               : s.professionState,
+          openingNarrativePinned:
+            typeof (shadow as any).openingNarrativePinned === "boolean"
+              ? (shadow as any).openingNarrativePinned
+              : (s as any).openingNarrativePinned ?? true,
         }));
         // 恢复后立刻落一次正式 main_slot，让首页/云同步后续都回到正式真相源。
         get().saveGame("main_slot");
@@ -2570,6 +3027,10 @@ export const useGameStore = create<GameState>()(
         inventory: s.inventory,
         logs: s.logs ?? [],
         codex: s.codex ?? {},
+        memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
+        storyDirector: (s as any).storyDirector ?? createEmptyDirectorState(0),
+        incidentQueue: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
+        escapeMainline: (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
         hasCheckedCodex: s.hasCheckedCodex ?? false,
         warehouse: s.warehouse ?? [],
         originium: s.originium ?? 0,
@@ -2591,6 +3052,7 @@ export const useGameStore = create<GameState>()(
         appliedRelationshipTaskIds: s.appliedRelationshipTaskIds ?? [],
         professionState: s.professionState ?? createDefaultProfessionState(),
         isGameStarted: s.isGameStarted ?? false,
+        openingNarrativePinned: (s as any).openingNarrativePinned ?? false,
         volume: clampVolume(s.volume ?? 50),
       }),
     }

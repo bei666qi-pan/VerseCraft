@@ -48,6 +48,9 @@ test("normalizeRunSnapshotV2 fills defaults for partial snapshot", () => {
   assert.ok(Array.isArray(normalized.world.discoveredSecrets));
   assert.ok(typeof normalized.services.anchorUnlocked === "boolean");
   assert.ok(typeof normalized.world.mainThreatByFloor["1"]?.threatId === "string");
+  assert.ok(normalized.memory);
+  assert.equal(normalized.memory!.spine.v, 1);
+  assert.ok(Array.isArray(normalized.memory!.spine.entries));
 });
 
 test("snapshot projection keeps legacy surface usable", () => {

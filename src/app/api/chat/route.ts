@@ -44,6 +44,8 @@ import {
   normalizePlayerDmJson,
   parseAccumulatedPlayerDmJson,
 } from "@/lib/playRealtime/normalizePlayerDmJson";
+import { resolveDmTurn } from "@/features/play/turnCommit/resolveDmTurn";
+import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import {
   hasProtocolLeakSignature,
   sanitizeNarrativeLeakageForFinal,
@@ -95,6 +97,7 @@ import {
   normalizeDmTaskPayload,
 } from "@/lib/tasks/taskV2";
 import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
+import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -212,12 +215,6 @@ function buildMinimalPlayerContextSnapshot(playerContext: string): string {
   }
   if (picks.length > 0) return picks.join("\n");
   return src.slice(0, 420);
-}
-
-function hasStrongAcquireSemantics(text: string): boolean {
-  const t = String(text ?? "");
-  if (!t) return false;
-  return /(获得|拿到|拾起|收下|找到|得到|入手|获得了|拿到了)/.test(t);
 }
 
 /** 从 one-api / OpenAI 形态 JSON 错误体提取简短说明（不含密钥）。 */
@@ -1085,10 +1082,22 @@ export async function POST(req: Request) {
           latestUserInput,
         })
       : "";
+  const directorHintBlock = (() => {
+    try {
+      const d =
+        clientState && typeof clientState === "object" && !Array.isArray(clientState)
+          ? ((clientState as any).directorDigest ?? null)
+          : null;
+      return buildServerDirectorHintBlock(d);
+    } catch {
+      return "";
+    }
+  })();
   const controlAndLoreAugmentation = [
     contextMode === "minimal" ? "" : controlAugmentation,
     contextMode === "minimal" ? "" : runtimeLoreCompact,
     contextMode === "minimal" ? "" : serviceContextBlock,
+    contextMode === "minimal" ? "" : directorHintBlock,
     npcTaskNarrativeBlock,
     conspiracyNarrativeBlock,
   ]
@@ -1811,33 +1820,7 @@ export async function POST(req: Request) {
           console.warn("[api/chat] options regen skipped", e);
         }
 
-        // 一致性守卫（轻量）：叙事出现“获得”强语义但 awarded_* 为空时记告警，避免静默假成功。
-        try {
-          const narrative = String(dmRecord.narrative ?? "");
-          const awardedItemsLen = Array.isArray((dmRecord as { awarded_items?: unknown }).awarded_items)
-            ? ((dmRecord as { awarded_items?: unknown[] }).awarded_items ?? []).length
-            : 0;
-          const awardedWarehouseLen = Array.isArray((dmRecord as { awarded_warehouse_items?: unknown }).awarded_warehouse_items)
-            ? ((dmRecord as { awarded_warehouse_items?: unknown[] }).awarded_warehouse_items ?? []).length
-            : 0;
-          if (hasStrongAcquireSemantics(narrative) && awardedItemsLen === 0 && awardedWarehouseLen === 0) {
-            console.warn("[api/chat] consistency warning: narrative acquire semantics without awarded fields", {
-              requestId,
-              sessionId,
-              userId,
-            });
-            const prevMeta =
-              dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
-                ? (dmRecord.security_meta as Record<string, unknown>)
-                : {};
-            dmRecord.security_meta = {
-              ...prevMeta,
-              consistency_warning: "acquire_without_awards",
-            };
-          }
-        } catch (e) {
-          console.warn("[api/chat] consistency guard skipped", e);
-        }
+        // Phase-1 一致性收口在最终 envelope 中统一裁决（含 acquire 语义降级），此处不再仅打 warning。
 
         const guardMeta =
           dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
@@ -1846,8 +1829,54 @@ export async function POST(req: Request) {
         settlementGuardApplied = typeof guardMeta?.settlement_guard === "string";
         const prunedRaw = Number(guardMeta?.settlement_award_pruned ?? 0);
         settlementAwardPruned = Number.isFinite(prunedRaw) ? Math.max(0, Math.trunc(prunedRaw)) : 0;
+        // Phase-1: 统一收口为“服务端最终裁决后的可提交对象”，避免前端从零散字段脑补。
+        // 顺序约束：options fallback 必须先发生；然后再做一致性收口与最终 stringify。
+        let resolved = resolveDmTurn(dmRecord);
+
+        // 二次补救：即便 dmRecord.options 非空，也可能在 resolver 裁剪/去重后变成空或不足 2 条。
+        // 为避免前端进入“无 options”死胡同：对正常主笔回合补齐一次 options（仍不沿用旧选项）。
+        // 重要：不影响开场 options-only round / 结算守卫 / 终局唯一选项等路径。
+        try {
+          const shouldSkipRegen =
+            validated.clientPurpose === "options_regen_only" ||
+            Boolean(shouldApplyFirstActionConstraint) ||
+            Boolean(settlementGuardApplied);
+          const resolvedOpts = Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : [];
+          const resolvedOptCount = resolvedOpts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+          if (!shouldSkipRegen && resolvedOptCount === 0) {
+            const regen = await generateOptionsOnlyFallback({
+              narrative: String((resolved as any).narrative ?? ""),
+              latestUserInput,
+              playerContext,
+              ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
+              signal: ac.signal,
+            });
+            if (regen.ok) {
+              (dmRecord as Record<string, unknown>).options = regen.options;
+              resolved = resolveDmTurn(dmRecord);
+            }
+          }
+        } catch (e) {
+          console.warn("[api/chat] options regen (post-resolve) skipped", e);
+        }
+        // Optional telemetry: keep a lightweight warning for analysis, but do not block.
+        try {
+          const narrative = String(resolved.narrative ?? "");
+          const awardedItemsLen = Array.isArray(resolved.awarded_items) ? resolved.awarded_items.length : 0;
+          const awardedWarehouseLen = Array.isArray(resolved.awarded_warehouse_items) ? resolved.awarded_warehouse_items.length : 0;
+          if (hasStrongAcquireSemantics(narrative) && awardedItemsLen === 0 && awardedWarehouseLen === 0) {
+            console.warn("[api/chat] consistency: acquire semantics present but awards empty (resolved)", {
+              requestId,
+              sessionId,
+              userId,
+              downgraded: resolved.ui_hints?.consistency_flags?.includes("acquire_without_awards_downgraded") ?? false,
+            });
+          }
+        } catch {
+          // ignore
+        }
         // Finalize payload candidate first; output moderation must inspect the complete DM narrative.
-        finalizePayload = JSON.stringify(dmRecord);
+        finalizePayload = JSON.stringify(resolved);
         moderationBody = finalizePayload;
       } else {
         // 当上游返回非严格 JSON 或重复拼接对象时，强制回落到标准 DM JSON 形状，保证 SSE 契约稳定。
@@ -1857,10 +1886,8 @@ export async function POST(req: Request) {
 
       // Output audit: external provider only once per candidate DM (and never skip on malformed DM fallback).
       if (finalizePayload && isLikelyValidDMJson(finalizePayload)) {
-        const dmObj: Record<string, unknown> =
-          dmRecord && typeof dmRecord.narrative === "string"
-            ? dmRecord
-            : (JSON.parse(finalizePayload) as Record<string, unknown>);
+        // 审核应基于“最终候选输出”（已经过 phase-1 resolver 收口），避免审核对象与实际发送对象不一致。
+        const dmObj: Record<string, unknown> = JSON.parse(finalizePayload) as Record<string, unknown>;
 
         try {
           const outputAudit = await auditDmOutputCandidateOnServer({
@@ -1874,7 +1901,9 @@ export async function POST(req: Request) {
           });
 
           dmRecord = outputAudit.updatedDmRecord;
-          finalizePayload = JSON.stringify(dmRecord);
+          // 输出审核可能改写 narrative/security_meta；改写后必须再次进入 phase-1 resolver
+          // 以保证数组缺省、裁剪、task 规范化、acquire 降级等不变式仍成立。
+          finalizePayload = JSON.stringify(resolveDmTurn(dmRecord));
           moderationBody = finalizePayload;
 
           if (outputAudit.verdict === "reject") {
@@ -1968,10 +1997,31 @@ export async function POST(req: Request) {
         await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
         if (dmRecord && userId && sessionId) {
           // 结果外化节点（可影响企业化资产）：在这里保留更强写回链路与冲突处理，不放到首字前阻塞。
+          const dmForWriteback = (() => {
+            try {
+              const parsed = JSON.parse(finalizePayload) as Record<string, unknown>;
+              const promotions =
+                clientState &&
+                typeof clientState === "object" &&
+                !Array.isArray(clientState) &&
+                Array.isArray((clientState as any).memoryPromotions)
+                  ? ((clientState as any).memoryPromotions as unknown[])
+                      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+                      .map((x) => x.trim())
+                      .slice(0, 2)
+                  : [];
+              if (promotions.length > 0) {
+                return { ...parsed, memory_spine_promotions: promotions };
+              }
+              return parsed;
+            } catch {
+              return dmRecord;
+            }
+          })();
           void persistTurnFacts({
             requestId,
             latestUserInput,
-            dmRecord,
+            dmRecord: dmForWriteback,
             sessionMemorySummary: sessionMemory?.plot_summary ?? null,
             ruleHits: preflightTurnMetrics.ran
               ? [`preflight:${preflightTurnMetrics.ok ? "ok" : "not_ok"}`]

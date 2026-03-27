@@ -83,6 +83,8 @@ test.describe("/api/chat SSE — 离线契约（CI / E2E_EXPECT_KEYS_MISSING）"
  */
 test.describe("/api/chat SSE — 通用形状", () => {
   test("responds with event-stream, non-empty body, and DM-shaped JSON", async ({ request }) => {
+    // 本地 dev 环境可能首次编译较慢；该测试只验证 SSE + DM JSON 形状，应允许更长的墙钟时间。
+    test.setTimeout(120_000);
     const res = await postChat(request);
     const status = res.status();
     expect(status, await res.text()).toBeLessThan(600);
@@ -127,6 +129,8 @@ test.describe("/api/chat SSE — 真网关（E2E_AI_LIVE）", () => {
 
 test.describe("/api/chat SSE — 登录态（可选）", () => {
   test("logged-in browser context still yields DM-shaped SSE (or anonymous fallback)", async ({ page, request }) => {
+    // 本地 dev 首次编译/冷启动可能偏慢；该测试只验证 SSE 契约，允许更长墙钟时间。
+    test.setTimeout(120_000);
     if (!E2E_USER || !E2E_PASS) {
       // 无账号环境时，退化为匿名调用仍验证 SSE 契约，保证“无跳过项”。
       const res = await postChat(request);

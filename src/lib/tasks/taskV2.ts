@@ -1,3 +1,6 @@
+import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
+import { buildNpcProactiveGrantStyleHints } from "@/lib/npcHeart/prompt";
+
 export type GameTaskType = "main" | "floor" | "character" | "conspiracy";
 export type GameTaskStatus =
   | "active"
@@ -6,6 +9,16 @@ export type GameTaskStatus =
   | "hidden"
   | "available";
 export type GuidanceLevel = "none" | "light" | "standard" | "strong";
+export type TaskDramaticType =
+  | "survival"
+  | "trust"
+  | "leverage"
+  | "betrayal"
+  | "delivery"
+  | "investigation"
+  | "coverup"
+  | "escape"
+  | "debt_payment";
 export type RelationshipDelta =
   | "trust_up"
   | "trust_down"
@@ -48,6 +61,26 @@ export interface GameTaskV2 {
   nextHint: string;
   worldConsequences: string[];
   highRiskHighReward: boolean;
+
+  // Phase-3: 任务立体化（可选字段；保持向后兼容）
+  dramaticType?: TaskDramaticType;
+  issuerIntent?: string;
+  playerHook?: string;
+  urgencyReason?: string;
+  riskNote?: string;
+  taboo?: string;
+  hiddenMotive?: string;
+  deadlineHint?: string;
+  residueOnComplete?: string;
+  residueOnFail?: string;
+  relatedNpcIds?: string[];
+  relatedLocationIds?: string[];
+  relatedEscapeProgress?: string;
+  trustImpactHint?: string;
+  canBackfire?: boolean;
+  backfireConsequences?: string[];
+  followupSeedCodes?: string[];
+  spokenDeliveryStyle?: string;
 }
 
 export interface RelationshipStatePatch {
@@ -114,6 +147,31 @@ function normalizeGuidanceLevel(v: unknown): GuidanceLevel {
   return v === "none" || v === "light" || v === "standard" || v === "strong"
     ? v
     : "standard";
+}
+
+function normalizeDramaticType(v: unknown): TaskDramaticType | undefined {
+  return v === "survival" ||
+    v === "trust" ||
+    v === "leverage" ||
+    v === "betrayal" ||
+    v === "delivery" ||
+    v === "investigation" ||
+    v === "coverup" ||
+    v === "escape" ||
+    v === "debt_payment"
+    ? v
+    : undefined;
+}
+
+function clampShortText(v: unknown, max = 120): string | undefined {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return undefined;
+  return s.length <= max ? s : s.slice(0, max);
+}
+
+function clampShortCodes(v: unknown, max = 8): string[] | undefined {
+  const arr = asStringArray(v).slice(0, max);
+  return arr.length > 0 ? arr : undefined;
 }
 
 function normalizeTaskType(v: unknown, taskId: string): GameTaskType {
@@ -230,6 +288,25 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
     nextHint: asString(d.nextHint),
     worldConsequences: asStringArray(d.worldConsequences),
     highRiskHighReward: asBoolean(d.highRiskHighReward, false),
+
+    dramaticType: normalizeDramaticType((d as any).dramaticType),
+    issuerIntent: clampShortText((d as any).issuerIntent, 140),
+    playerHook: clampShortText((d as any).playerHook, 120),
+    urgencyReason: clampShortText((d as any).urgencyReason, 120),
+    riskNote: clampShortText((d as any).riskNote, 140),
+    taboo: clampShortText((d as any).taboo, 120),
+    hiddenMotive: clampShortText((d as any).hiddenMotive, 140),
+    deadlineHint: clampShortText((d as any).deadlineHint, 80),
+    residueOnComplete: clampShortText((d as any).residueOnComplete, 140),
+    residueOnFail: clampShortText((d as any).residueOnFail, 140),
+    relatedNpcIds: clampShortCodes((d as any).relatedNpcIds, 8),
+    relatedLocationIds: clampShortCodes((d as any).relatedLocationIds, 8),
+    relatedEscapeProgress: clampShortText((d as any).relatedEscapeProgress, 80),
+    trustImpactHint: clampShortText((d as any).trustImpactHint, 120),
+    canBackfire: (d as any).canBackfire !== undefined ? asBoolean((d as any).canBackfire, false) : undefined,
+    backfireConsequences: clampShortCodes((d as any).backfireConsequences, 6),
+    followupSeedCodes: clampShortCodes((d as any).followupSeedCodes, 6),
+    spokenDeliveryStyle: clampShortText((d as any).spokenDeliveryStyle, 120),
   };
 }
 
@@ -248,6 +325,24 @@ export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> &
   if (d.reward !== undefined) out.reward = normalizeReward(d.reward);
   if (d.betrayalPossible !== undefined) out.betrayalPossible = asBoolean(d.betrayalPossible);
   if (d.highRiskHighReward !== undefined) out.highRiskHighReward = asBoolean(d.highRiskHighReward);
+  if ((d as any).dramaticType !== undefined) out.dramaticType = normalizeDramaticType((d as any).dramaticType);
+  if ((d as any).issuerIntent !== undefined) out.issuerIntent = clampShortText((d as any).issuerIntent, 140) ?? "";
+  if ((d as any).playerHook !== undefined) out.playerHook = clampShortText((d as any).playerHook, 120) ?? "";
+  if ((d as any).urgencyReason !== undefined) out.urgencyReason = clampShortText((d as any).urgencyReason, 120) ?? "";
+  if ((d as any).riskNote !== undefined) out.riskNote = clampShortText((d as any).riskNote, 140) ?? "";
+  if ((d as any).taboo !== undefined) out.taboo = clampShortText((d as any).taboo, 120) ?? "";
+  if ((d as any).hiddenMotive !== undefined) out.hiddenMotive = clampShortText((d as any).hiddenMotive, 140) ?? "";
+  if ((d as any).deadlineHint !== undefined) out.deadlineHint = clampShortText((d as any).deadlineHint, 80) ?? "";
+  if ((d as any).residueOnComplete !== undefined) out.residueOnComplete = clampShortText((d as any).residueOnComplete, 140) ?? "";
+  if ((d as any).residueOnFail !== undefined) out.residueOnFail = clampShortText((d as any).residueOnFail, 140) ?? "";
+  if ((d as any).relatedNpcIds !== undefined) out.relatedNpcIds = asStringArray((d as any).relatedNpcIds).slice(0, 8);
+  if ((d as any).relatedLocationIds !== undefined) out.relatedLocationIds = asStringArray((d as any).relatedLocationIds).slice(0, 8);
+  if ((d as any).relatedEscapeProgress !== undefined) out.relatedEscapeProgress = clampShortText((d as any).relatedEscapeProgress, 80) ?? "";
+  if ((d as any).trustImpactHint !== undefined) out.trustImpactHint = clampShortText((d as any).trustImpactHint, 120) ?? "";
+  if ((d as any).canBackfire !== undefined) out.canBackfire = asBoolean((d as any).canBackfire);
+  if ((d as any).backfireConsequences !== undefined) out.backfireConsequences = asStringArray((d as any).backfireConsequences).slice(0, 6);
+  if ((d as any).followupSeedCodes !== undefined) out.followupSeedCodes = asStringArray((d as any).followupSeedCodes).slice(0, 6);
+  if ((d as any).spokenDeliveryStyle !== undefined) out.spokenDeliveryStyle = clampShortText((d as any).spokenDeliveryStyle, 120) ?? "";
   if ((d as { hiddenTriggerConditions?: unknown }).hiddenTriggerConditions !== undefined) {
     out.hiddenTriggerConditions = asStringArray((d as { hiddenTriggerConditions?: unknown }).hiddenTriggerConditions);
   }
@@ -309,10 +404,113 @@ export function getRewardCurveHintByFloorTier(floorTier: string): string {
 
 export function createStageOneStarterTasks(): GameTaskV2[] {
   return [
+    // Phase-5（示范）：出口主线骨架任务（不改 UI 结构：仍走现有任务系统）
+    normalizeGameTaskDraft({
+      id: "main_escape_spine",
+      title: "走出去（出口主线）",
+      desc: "把“出口”从传闻变成可执行的路线：路线碎片、门槛条件、代价与假出口都要被确认。",
+      type: "main",
+      issuerId: "SYSTEM",
+      issuerName: "规则",
+      floorTier: "B1",
+      guidanceLevel: "strong",
+      status: "active",
+      claimMode: "auto",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "先从可信 NPC 拿到路线碎片，再确认进入地下二层的门槛与代价。",
+      dramaticType: "escape",
+      issuerIntent: "让你把“活下去”从挣扎变成行动：出口不是楼层尽头，而是规则的缝。",
+      playerHook: "你要的不是活久一点，而是离开这栋楼。",
+      urgencyReason: "第十日的闸门不会等你。",
+      riskNote: "别把第一个听来的“出口”当真；公寓喜欢喂假希望。",
+      taboo: "别把‘走出去’当作免费通关；代价必然存在。",
+      relatedEscapeProgress: "spine:escape_mainline",
+      followupSeedCodes: ["escape.route.fragments", "escape.cost.trial"],
+      worldConsequences: ["escape:spine_seeded"],
+    }),
+    normalizeGameTaskDraft({
+      id: "main_escape_route_fragments",
+      title: "拼出出口路线碎片",
+      desc: "收集至少两条可验证的路线碎片：来自任务线索、可信 NPC、或可验证的物证。",
+      type: "main",
+      issuerId: "N-008",
+      issuerName: "电工老刘",
+      floorTier: "B1",
+      guidanceLevel: "strong",
+      status: "available",
+      claimMode: "npc_grant",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_PowerRoom"], cooldownHours: 4 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "问清楚：谁见过‘地下二层’的门？谁能证明自己没撒谎？",
+      dramaticType: "investigation",
+      issuerIntent: "把你从‘听故事’推到‘拿证据’；他讨厌空话。",
+      playerHook: "别把命押在传闻上，押在能验证的东西上。",
+      urgencyReason: "B1 的灯随时会灭；灯一灭，路就会变。",
+      residueOnComplete: "你获得了第一组可信路线碎片；出口不再只是传说。",
+      relatedEscapeProgress: "cond:get_exit_route_map",
+      relatedNpcIds: ["N-008", "N-010"],
+      followupSeedCodes: ["escape.b2.access", "escape.key.item"],
+      worldConsequences: ["escape:route_fragment_seeded"],
+    }),
+    normalizeGameTaskDraft({
+      id: "main_escape_b2_access",
+      title: "拿到进入地下二层的权限",
+      desc: "不靠蛮力进入地下二层：拿到许可、通行、或让某个守门人愿意放你过去。",
+      type: "main",
+      issuerId: "N-010",
+      issuerName: "欣蓝",
+      floorTier: "1",
+      status: "hidden",
+      claimMode: "npc_grant",
+      hiddenTriggerConditions: ["escape.route.fragments>=2"],
+      npcProactiveGrant: { enabled: true, npcId: "N-010", minFavorability: 0, preferredLocations: ["1F_PropertyOffice"], cooldownHours: 6 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "问她：‘我要去地下二层，你手里有没有“许可”的替代品？’",
+      dramaticType: "leverage",
+      issuerIntent: "用通行把你绑进她的账本：你每一步，都得拿信息换。",
+      playerHook: "你想进 B2，就得先交出你的一部分自由。",
+      urgencyReason: "路线窗口不会长期开放；等门缝闭合再求许可只会更贵。",
+      residueOnComplete: "你拿到了进入地下二层的权限线索；门槛开始具象化。",
+      relatedEscapeProgress: "cond:obtain_b2_access",
+      canBackfire: true,
+      backfireConsequences: ["rel:N-010:trust:-3"],
+      worldConsequences: ["escape:b2_access_granted"],
+      reward: { unlocks: ["b2_access_granted"] },
+    }),
+    normalizeGameTaskDraft({
+      id: "main_escape_cost_trial",
+      title: "支付出口代价（代价试炼）",
+      desc: "出口不是免费的。完成一次代价试炼，证明你愿意‘失去’来换取离开。",
+      type: "main",
+      issuerId: "N-018",
+      issuerName: "北夏",
+      floorTier: "1",
+      status: "hidden",
+      claimMode: "npc_grant",
+      hiddenTriggerConditions: ["escape.b2.access"],
+      npcProactiveGrant: { enabled: true, npcId: "N-018", minFavorability: 0, preferredLocations: ["1F_Lobby", "6F_Stairwell"], cooldownHours: 8 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "先问他：‘出口要付什么？我能付到哪一步？’",
+      dramaticType: "debt_payment",
+      issuerIntent: "他不相信白来的胜利；他要你用一次割肉证明决心。",
+      playerHook: "你敢付代价，他就敢给你看门缝。",
+      urgencyReason: "越接近门，越会被盯上。",
+      taboo: "别试图用花言巧语绕过代价。",
+      residueOnComplete: "你付过一次代价；出口不再把你当作观众。",
+      residueOnFail: "你会被当作‘只想占便宜’的人，门槛会更硬。",
+      relatedEscapeProgress: "cond:survive_cost_trial",
+      canBackfire: true,
+      backfireConsequences: ["rel:N-018:trust:-2", "rel:N-018:fear:+2"],
+      followupSeedCodes: ["escape.final.window"],
+      worldConsequences: ["escape:cost_trial_seeded"],
+    }),
     normalizeGameTaskDraft({
       id: "main_b1_orientation",
       title: "在B1建立生存节奏",
-      desc: "与B1服务NPC完成首次对话，了解商店、锻造与锚点复活规则。",
+      desc: "与B1服务NPC完成首次对话，建立“承诺—回报—代价”的生存节奏。",
       type: "main",
       issuerId: "N-008",
       issuerName: "电工老刘",
@@ -330,6 +528,20 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "先去储物间问补给，再去配电间问维护。",
+      dramaticType: "survival",
+      issuerIntent: "把你留在B1的安全边界里活过第一天，同时让你欠下一点人情。",
+      playerHook: "你想往上走，就得先学会在B1把命稳住。",
+      urgencyReason: "停电与混乱会吞人；老刘不想再多一具尸体。",
+      riskNote: "别乱碰开关；别在他工作时插话。",
+      taboo: "别追问‘线从哪来’。",
+      residueOnComplete: "你欠老刘一次；他会更愿意提醒你危险细节。",
+      residueOnFail: "他会认为你不听劝，后续帮助会变成冷淡的‘按规矩来’。",
+      relatedNpcIds: ["N-008", "N-014"],
+      relatedLocationIds: ["B1_PowerRoom", "B1_Storage"],
+      canBackfire: true,
+      backfireConsequences: ["rel:N-008:trust:-4", "rel:N-008:fear:+2"],
+      followupSeedCodes: ["b1.power.ledger", "b1.cat.tells"],
+      spokenDeliveryStyle: "嘴硬心软，骂两句再给实用提醒。",
       reward: {
         originium: 2,
         unlocks: ["guide.b1.service_hub", "task.floor.1f.intro"],
@@ -339,7 +551,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "floor_1f_probe",
       title: "一楼试探性探索",
-      desc: "在1F完成一次安全探索并带回可验证线索。",
+      desc: "在1F完成一次试探性探索，带回‘可验证’的线索或物证。",
       type: "floor",
       issuerId: "N-008",
       issuerName: "电工老刘",
@@ -351,11 +563,107 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "先去1F门厅观察，再决定是否深入。",
+      dramaticType: "investigation",
+      issuerIntent: "用一条可验证线索换取你继续留在B1互助圈的资格。",
+      playerHook: "你带回来的不是‘故事’，是能落地的证据。",
+      urgencyReason: "上行路线的风险越来越高，B1需要早一点知道哪里开始‘不对’。",
+      riskNote: "别把你最关键的保命资源暴露给陌生NPC。",
+      residueOnComplete: "B1的人会更愿意把你当‘能合作的人’。",
+      residueOnFail: "你会被当作‘冲动的新手’，别人会更谨慎地跟你交换信息。",
+      relatedNpcIds: ["N-008", "N-010"],
+      relatedLocationIds: ["1F_Lobby", "1F_PropertyOffice"],
       reward: {
         // 按需求：奖励只保留一种（道具 1 件）
         items: ["I-C12"],
       },
       worldConsequences: ["unlock_floor_2f_path"],
+    }),
+    normalizeGameTaskDraft({
+      id: "char_1f_stamp_leverage",
+      title: "借到一枚“通行印章”",
+      desc: "从物业体系里拿到一次性的“许可”——不一定是明文的印章，也可以是口头放行。",
+      type: "character",
+      issuerId: "N-010",
+      issuerName: "欣蓝",
+      floorTier: "1",
+      status: "available",
+      claimMode: "manual",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "先说明你的目标，再问‘有没有更稳妥的通行方式’。",
+      dramaticType: "leverage",
+      issuerIntent: "用‘许可’把你绑定进她的路线账本里：你每前进一步，都要回报一次信息。",
+      playerHook: "你想省一次命，就得先交一次信息。",
+      urgencyReason: "有些门不是打不开，而是‘不该由你去开’。",
+      taboo: "别让她替你做选择再推卸后果。",
+      hiddenMotive: "她在筛选你是否值得进入更高层路线。",
+      residueOnComplete: "你欠她一条能验证的线索；她会更直白地给你路线建议。",
+      residueOnFail: "她会把你归类为‘不稳定变量’，建议会变得更保守。",
+      relatedNpcIds: ["N-010"],
+      relatedLocationIds: ["1F_PropertyOffice"],
+      canBackfire: true,
+      backfireConsequences: ["rel:N-010:trust:-3", "rel:N-010:fear:+4"],
+      spokenDeliveryStyle: "温柔但强势：先确认你的目标，再给你一条能落地的路。",
+      reward: { unlocks: ["permit.one_time"] },
+      worldConsequences: ["route.permit.seeded"],
+    }),
+    normalizeGameTaskDraft({
+      id: "char_mirror_patrol_debt",
+      title: "在镜面旁留下巡逻记录",
+      desc: "帮无面保安把倒行者的痕迹记下来：地点、时间、反光面状态。",
+      type: "character",
+      issuerId: "N-018",
+      issuerName: "北夏",
+      floorTier: "1",
+      status: "available",
+      claimMode: "manual",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "找一个有镜子的角落；先问他‘你在巡什么’再接话。",
+      dramaticType: "debt_payment",
+      issuerIntent: "他不喜欢欠人情，但这次需要你的眼睛——欠下就会记得还。",
+      playerHook: "你帮他稳住边界，他会在关键时刻帮你避开一刀。",
+      urgencyReason: "倒行者靠近时，楼梯间的边界会变薄。",
+      riskNote: "不要在无镜处和他对话；那会让你误判他的情绪。",
+      residueOnComplete: "你与他之间形成一次可兑现的人情。",
+      residueOnFail: "他会更冷淡、更程序化地拒绝你在无镜处的任何请求。",
+      relatedNpcIds: ["N-018", "N-009"],
+      relatedLocationIds: ["6F_Stairwell"],
+      spokenDeliveryStyle: "会讲玩笑，但每句都留后路；关键提醒很短很硬。",
+      reward: { originium: 1, unlocks: ["mirror.patrol.log"] },
+      worldConsequences: ["hook:mirror_patrol_seeded"],
+    }),
+    normalizeGameTaskDraft({
+      id: "char_newcomer_coverup",
+      title: "帮她把‘漏掉的规则’圆过去",
+      desc: "当引导员‘不小心’漏掉关键规则时，用不露痕迹的方式替她补上，避免她被上级追责。",
+      type: "character",
+      issuerId: "N-020",
+      issuerName: "灵伤",
+      floorTier: "B1",
+      status: "available",
+      claimMode: "manual",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "别直接纠正她；先顺着她的话补一句‘有人跟我提过…’。",
+      dramaticType: "coverup",
+      issuerIntent: "她要绩效，也要你继续相信她；让你先答应，再用规则催你兑现。",
+      playerHook: "你帮她一次，她就会在某个细节上放你一马。",
+      urgencyReason: "她的上级会查漏；查到就会‘回收’她。",
+      taboo: "别追问‘你是人吗’。",
+      hiddenMotive: "她在执行上级指令，同时害怕程序错误。",
+      residueOnComplete: "她会更愿意给你‘看起来无害’但关键的小提醒。",
+      residueOnFail: "她会变得更甜、更假，也更危险；对你的话会开始记录。",
+      relatedNpcIds: ["N-020", "N-010"],
+      relatedLocationIds: ["1F_Lobby", "1F_PropertyOffice"],
+      canBackfire: true,
+      backfireConsequences: ["rel:N-020:trust:-4", "rel:N-010:trust:-2"],
+      spokenDeliveryStyle: "句尾上扬、像在哄人；漏掉关键规则时会装作‘忘了’。",
+      reward: { originium: 1 },
+      worldConsequences: ["hook:newcomer_coverup_seeded"],
     }),
   ].filter((x): x is GameTaskV2 => !!x);
 }
@@ -469,19 +777,26 @@ export function buildNpcProactiveGrantNarrativeBlock(args: {
   const mentionText = args.latestUserInput ?? "";
   const wantsTalk = /聊|问|打听|对话|交谈|委托|任务/.test(mentionText);
   const tone = wantsTalk ? "高" : "中";
-  const styleHints = [
-    "N-008:语气务实、带一点老油条式提醒，用生活细节抛出委托。",
-    "N-009:语气温和但绕弯子，先闲聊再提出交换。",
-    "N-011:语气克制权威，以秩序与代价框定任务。",
-  ].join(" ");
+  const npcIdMatch = hintLine.match(/\[ID([^\|\]]+)\|/);
+  const npcId = npcIdMatch?.[1]?.trim() ?? "";
+  const view = npcId
+    ? buildNpcHeartRuntimeView({
+        npcId,
+        relationPartial: { trust: 0, fear: 0, debt: 0, favorability: 0 },
+        locationId: parseCurrentLocationFromContext(ctx) || "B1_SafeZone",
+        activeTaskIds: [],
+        hotThreatPresent: false,
+      })
+    : null;
+  const styleHints = buildNpcProactiveGrantStyleHints(view);
   return [
     "## 【NPC主动发放叙事约束】",
     `发放候选（仅作剧情约束，不直接念给玩家）：${hintLine}`,
     `自然融入强度：${tone}。当满足条件时，用NPC的动作/语气/场景细节引出委托，避免系统提示口吻。`,
-    `叙事语气模板：${styleHints}`,
+    styleHints ? `叙事语气模板：${styleHints}` : "",
     "禁止写法：'系统发放任务'、'你已接取任务'这类出戏文案。",
     "推荐写法：先写NPC观察与试探，再在对白里给出委托与风险交换条件。",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function parseCurrentLocationFromContext(playerContext: string): string {

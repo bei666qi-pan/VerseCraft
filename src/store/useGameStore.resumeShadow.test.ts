@@ -35,6 +35,7 @@ test("phase4: successful saveGame writes resume shadow synchronously", () => {
     playerLocation: "1F_Corridor",
     time: { day: 2, hour: 3 },
     tasks: [{ id: "t1", title: "T", status: "active" }] as never,
+    memorySpine: { v: 1, entries: [{ id: "m1", kind: "route_hint", scope: "location_local", summary: "你已抵达1F_Corridor。", salience: 0.4, confidence: 0.9, status: "active", createdAtHour: 3, lastTouchedAtHour: 3, ttlHours: 12, mergeKey: "loc:1F_Corridor", anchors: { locationIds: ["1F_Corridor"], floorIds: ["1"] }, recallTags: ["loc_arrival"], source: "location_change", promoteToLore: false }] },
   });
   useGameStore.getState().saveGame("main_slot");
   const raw = mem.get(RESUME_SHADOW_KEY);
@@ -42,6 +43,7 @@ test("phase4: successful saveGame writes resume shadow synchronously", () => {
   const j = JSON.parse(raw!);
   assert.equal(j.playerLocation, "1F_Corridor");
   assert.equal(j.inputMode, "text");
+  assert.ok(j.memorySpine);
 });
 
 test("phase4: hydrateFromResumeShadow restores options/inputMode/log/time", () => {
@@ -66,6 +68,7 @@ test("phase4: hydrateFromResumeShadow restores options/inputMode/log/time", () =
       currentBgm: "bgm_1_calm",
       stats: { sanity: 11, agility: 2, luck: 2, charm: 2, background: 2 },
       originium: 7,
+      memorySpine: { v: 1, entries: [{ id: "m1", kind: "hook", scope: "run_private", summary: "短期钩子。", salience: 0.6, confidence: 0.9, status: "active", createdAtHour: 0, lastTouchedAtHour: 0, ttlHours: 6, mergeKey: "hook:x", anchors: {}, recallTags: ["hook"], source: "system_hook", promoteToLore: false }] },
     })
   );
   const ok = useGameStore.getState().hydrateFromResumeShadow();
@@ -76,4 +79,5 @@ test("phase4: hydrateFromResumeShadow restores options/inputMode/log/time", () =
   assert.equal(s.logs.length > 0, true);
   assert.deepEqual(s.currentOptions.slice(0, 2), ["看向门口", "检查脚印"]);
   assert.equal(s.inputMode, "options");
+  assert.equal((s.memorySpine?.entries ?? []).length, 1);
 });

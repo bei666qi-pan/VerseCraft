@@ -4,6 +4,11 @@ import { normalizeDeathState } from "./death";
 import { buildRunSnapshotV2, createRunId } from "./builder";
 import { flattenTasks } from "./tasks";
 import { normalizeGameTaskDraft } from "@/lib/tasks/taskV2";
+import { createEmptyMemorySpine, type MemorySpineState } from "@/lib/memorySpine/types";
+import { pruneMemorySpine } from "@/lib/memorySpine/prune";
+import { normalizeDirectorState } from "@/lib/storyDirector/postTurn";
+import { normalizeIncidentQueue } from "@/lib/storyDirector/queue";
+import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import type {
   LegacySaveSurface,
   RunSnapshotV2,
@@ -67,6 +72,20 @@ function normalizeMainThreatByFloor(v: unknown): Record<string, SnapshotMainThre
   return out;
 }
 
+function normalizeMemorySpine(raw: unknown, nowHour: number): MemorySpineState {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return createEmptyMemorySpine();
+  const o = raw as Record<string, unknown>;
+  const spineRaw = o.spine;
+  if (!spineRaw || typeof spineRaw !== "object" || Array.isArray(spineRaw)) return createEmptyMemorySpine();
+  const s = spineRaw as { v?: unknown; entries?: unknown };
+  const entries = Array.isArray(s.entries) ? s.entries : [];
+  const state: MemorySpineState = {
+    v: 1,
+    entries: entries as any,
+  };
+  return pruneMemorySpine(state, nowHour, { maxEntries: 64 });
+}
+
 export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnapshotV2 {
   return buildRunSnapshotV2({
     runId: createRunId(),
@@ -91,6 +110,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     homeSeed: {},
     tasks: normalizeTasks(legacy.tasks),
     profession: legacy.professionState ?? createDefaultProfessionState(),
+    memorySpine: createEmptyMemorySpine(),
   });
 }
 
@@ -104,6 +124,8 @@ export function normalizeRunSnapshotV2(
   const s = input as RunSnapshotV2;
   const legacyBase = fallbackLegacy ?? {};
   const fromLegacy = migrateLegacySaveToSnapshot(legacyBase);
+  const now = new Date();
+  const nowHour = Math.max(0, Math.floor(now.getTime() / 3600000));
   const normalized: RunSnapshotV2 = {
     ...fromLegacy,
     ...s,
@@ -202,12 +224,21 @@ export function normalizeRunSnapshotV2(
       pendingEvents: Array.isArray(s.world?.pendingEvents)
         ? s.world.pendingEvents.filter((x): x is string => typeof x === "string")
         : fromLegacy.world.pendingEvents,
+      storyDirector: normalizeDirectorState((s.world as any)?.storyDirector, 0),
+      incidentQueue: normalizeIncidentQueue((s.world as any)?.incidentQueue),
       floorThreatTier: asRecord(s.world?.floorThreatTier) as Record<string, number>,
       mainThreatByFloor: (() => {
         const parsed = normalizeMainThreatByFloor(s.world?.mainThreatByFloor);
         return Object.keys(parsed).length > 0 ? parsed : createDefaultMainThreatByFloor();
       })(),
     },
+    memory: (() => {
+      const spine = normalizeMemorySpine((s as any).memory, nowHour);
+      return { spine: spine.entries.length > 0 ? spine : createEmptyMemorySpine() };
+    })(),
+    escape: (() => {
+      return normalizeEscapeMainline((s as any).escape, nowHour);
+    })(),
     npcs: asRecord(s.npcs) as RunSnapshotV2["npcs"],
     tasks: {
       active: normalizeTasks(s.tasks?.active),

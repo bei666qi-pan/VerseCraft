@@ -6,6 +6,22 @@ import { LOCATION_LABELS } from "./locationLabels";
 export const BLOOD_MARKER = "{{BLOOD}}";
 const BLOOD_END = "{{/BLOOD}}";
 
+export function splitNarrativeIntoParas(text: string): string[] {
+  const safe = typeof text === "string" ? text : "";
+  try {
+    const byBlank = safe.split(/\n\n+/).map((s) => s.trim()).filter(Boolean);
+    if (byBlank.length > 1) return byBlank;
+    // 若没有空行，但存在单换行：按换行分段，提升自然阅读性（仍保守：合并连续换行）。
+    if (safe.includes("\n")) {
+      const byLine = safe.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+      if (byLine.length > 1) return byLine;
+    }
+    return safe.trim() ? [safe] : [];
+  } catch {
+    return safe ? [safe] : [];
+  }
+}
+
 /**
  * 流式阶段：去掉未闭合的 {{BLOOD}} 起始标记（避免半段血块撑满布局），
  * 并去掉未成对的最后一个 `**`（避免半段加粗吞掉后续正文）。
@@ -217,12 +233,7 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   const safeContent = typeof content === "string" ? content : "";
   const baseClass =
     "space-y-6 leading-[1.8] tracking-wide text-[18px] text-slate-800";
-  let paras: string[] = [];
-  try {
-    paras = safeContent.split(/\n\n+/).filter(Boolean);
-  } catch {
-    paras = [safeContent];
-  }
+  const paras = splitNarrativeIntoParas(safeContent);
   return (
     <div className={`${baseClass} whitespace-pre-wrap`}>
       {paras.length > 1 ? (

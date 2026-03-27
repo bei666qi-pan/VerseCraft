@@ -1,5 +1,10 @@
 "use client";
 
+import { pruneMemorySpine } from "@/lib/memorySpine/prune";
+import { normalizeDirectorState } from "@/lib/storyDirector/postTurn";
+import { normalizeIncidentQueue } from "@/lib/storyDirector/queue";
+import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
+
 export const RESUME_SHADOW_KEY = "versecraft-resume-shadow";
 const RESUME_SHADOW_VERSION = 1;
 
@@ -15,6 +20,16 @@ export type ResumeShadowSnapshot = {
   warehouse: unknown[];
   tasks: unknown[];
   codex: Record<string, unknown>;
+  /** Phase-2: hot memory spine snapshot (small & pruned). */
+  memorySpine?: unknown;
+  /** Phase-4: story director snapshot (small). */
+  storyDirector?: unknown;
+  /** Phase-4: incident queue snapshot (small). */
+  incidentQueue?: unknown;
+  /** Phase-5: escape mainline snapshot (small). */
+  escapeMainline?: unknown;
+  /** 固定开场白是否钉在顶部（本局永久展示）。 */
+  openingNarrativePinned?: unknown;
   currentOptions: string[];
   inputMode: "options" | "text";
   currentBgm: string;
@@ -89,6 +104,7 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     day: clampInt(timeObj.day, 0, 999),
     hour: clampInt(timeObj.hour, 0, 23),
   };
+  const nowHour = time.day * 24 + time.hour;
 
   const currentOptions = (Array.isArray(state.currentOptions) ? state.currentOptions : [])
     .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
@@ -104,6 +120,58 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     background: clampInt(statsObj.background, 0, 999),
   };
 
+  // Phase-2: memory spine (best-effort, capped) — must not bloat localStorage.
+  const memorySpine = (() => {
+    const raw = toPlainObject((state as any).memorySpine);
+    if (!raw) return undefined;
+    try {
+      const pruned = pruneMemorySpine(raw as any, nowHour, { maxEntries: 48 });
+      // extra hard cap on serialized size
+      const json = JSON.stringify(pruned);
+      if (json.length > 6000) return { v: 1, entries: (pruned as any).entries?.slice(0, 24) ?? [] };
+      return pruned;
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const storyDirector = (() => {
+    const raw = toPlainObject((state as any).storyDirector);
+    if (!raw) return undefined;
+    try {
+      return normalizeDirectorState(raw as any, 0);
+    } catch {
+      return undefined;
+    }
+  })();
+  const incidentQueue = (() => {
+    const raw = toPlainObject((state as any).incidentQueue);
+    if (!raw) return undefined;
+    try {
+      const q = normalizeIncidentQueue(raw as any);
+      const json = JSON.stringify(q);
+      if (json.length > 5200) return { v: 1, items: (q as any).items?.slice(0, 6) ?? [] };
+      return q;
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const escapeMainline = (() => {
+    const raw = toPlainObject((state as any).escapeMainline);
+    if (!raw) return undefined;
+    try {
+      const timeObj = toPlainObject((state as any).time) ?? { day: 0, hour: 0 };
+      const nowHour = clampInt((timeObj as any).day, 0, 999) * 24 + clampInt((timeObj as any).hour, 0, 23);
+      const s = normalizeEscapeMainline(raw as any, nowHour);
+      const json = JSON.stringify(s);
+      if (json.length > 5200) return { ...s, routeFragments: (s as any).routeFragments?.slice(0, 4) ?? [] };
+      return s;
+    } catch {
+      return undefined;
+    }
+  })();
+
   return {
     version: RESUME_SHADOW_VERSION,
     updatedAt: new Date().toISOString(),
@@ -117,6 +185,13 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     warehouse: (Array.isArray(state.warehouse) ? state.warehouse : []).slice(-120),
     tasks,
     codex,
+    ...(memorySpine ? { memorySpine } : {}),
+    ...(storyDirector ? { storyDirector } : {}),
+    ...(incidentQueue ? { incidentQueue } : {}),
+    ...(escapeMainline ? { escapeMainline } : {}),
+    ...(typeof (state as any).openingNarrativePinned === "boolean"
+      ? { openingNarrativePinned: (state as any).openingNarrativePinned }
+      : {}),
     currentOptions,
     inputMode: state.inputMode === "text" ? "text" : "options",
     currentBgm: typeof state.currentBgm === "string" && state.currentBgm ? state.currentBgm : "bgm_1_calm",
@@ -166,6 +241,11 @@ export function readResumeShadowSnapshot(): ResumeShadowSnapshot | null {
       warehouse: Array.isArray(obj.warehouse) ? obj.warehouse : [],
       tasks: Array.isArray(obj.tasks) ? obj.tasks : [],
       codex: toPlainObject(obj.codex) ?? {},
+      ...(obj.memorySpine ? { memorySpine: obj.memorySpine } : {}),
+      ...(obj.storyDirector ? { storyDirector: obj.storyDirector } : {}),
+      ...(obj.incidentQueue ? { incidentQueue: obj.incidentQueue } : {}),
+      ...(obj.escapeMainline ? { escapeMainline: obj.escapeMainline } : {}),
+      ...(obj.openingNarrativePinned !== undefined ? { openingNarrativePinned: obj.openingNarrativePinned } : {}),
       currentOptions: Array.isArray(obj.currentOptions)
         ? obj.currentOptions.filter((x): x is string => typeof x === "string").slice(0, 8)
         : [],

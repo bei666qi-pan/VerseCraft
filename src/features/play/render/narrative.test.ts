@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { prepareStreamingNarrativeForRender } from "./narrative";
+import { prepareStreamingNarrativeForRender, splitNarrativeIntoParas } from "./narrative";
 
 test("prepareStreamingNarrativeForRender: strips trailing unclosed BLOOD open", () => {
   assert.equal(
@@ -31,4 +31,14 @@ test("prepareStreamingNarrativeForRender: keeps paired **", () => {
 
 test("prepareStreamingNarrativeForRender: leading lone **", () => {
   assert.equal(prepareStreamingNarrativeForRender("**x"), "x");
+});
+
+test("splitNarrativeIntoParas: prefers blank line paragraphs", () => {
+  const p = splitNarrativeIntoParas("a\n\nb\n\nc");
+  assert.deepEqual(p, ["a", "b", "c"]);
+});
+
+test("splitNarrativeIntoParas: falls back to single newline paragraphs when no blank lines", () => {
+  const p = splitNarrativeIntoParas("a\nb\nc");
+  assert.deepEqual(p, ["a", "b", "c"]);
 });

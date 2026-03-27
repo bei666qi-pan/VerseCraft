@@ -38,11 +38,11 @@ import { PROFESSION_REGISTRY } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
 import { getProfessionActiveSkillName } from "@/lib/profession/benefits";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
-import { normalizeIssuerName } from "@/features/play/render/npcIssuers";
 import {
   normalizeGameTaskDraft,
   normalizeTaskUpdateDraft,
 } from "@/lib/tasks/taskV2";
+import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
 import {
   sanitizeDisplayedNarrative,
@@ -61,7 +61,7 @@ import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/str
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
-import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, isNightHour } from "@/features/play/endgame/endgame";
+import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, isNightHour, shouldAllowDoomline } from "@/features/play/endgame/endgame";
 import {
   hasStrongAcquireSemantics,
   normalizeRegeneratedOptions,
@@ -196,6 +196,8 @@ function PlayContent() {
   const [guideAutoOpenDismissed, setGuideAutoOpenDismissed] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false);
+  const [highlightTaskIds, setHighlightTaskIds] = useState<string[]>([]);
+  const highlightTaskTimerRef = useRef<number | null>(null);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
@@ -271,6 +273,8 @@ function PlayContent() {
     [logs, time]
   );
   const showEmbeddedOpening = isHydrated && isGameStarted && coldPlayOpening;
+  const openingNarrativePinned = useGameStore((s) => (s as any).openingNarrativePinned ?? false);
+  const showPinnedOpeningNarrative = isHydrated && isGameStarted && openingNarrativePinned;
   /** 首屏选项已就绪时仍隐藏「正在生成」：嵌入式开场 + 任意会话忙（含开局 API 飞行中）均不驱动 typewriter 思考态 */
   const suppressEmbeddedOpeningStreamUi = useMemo(
     () => openingBusyUi || (showEmbeddedOpening && isChatBusy),
@@ -394,6 +398,15 @@ function PlayContent() {
     const t = setTimeout(() => setFirstTimeHint(null), 3000);
     return () => clearTimeout(t);
   }, [firstTimeHint]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTaskTimerRef.current != null) {
+        window.clearTimeout(highlightTaskTimerRef.current);
+        highlightTaskTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const triggerComplianceHint = useCallback(() => {
     if (complianceHintTimerRef.current) {
@@ -1286,7 +1299,7 @@ function PlayContent() {
 
     setStreamPhase("turn_committing");
     try {
-    const parsed = tryParseDM(raw);
+    const parsed = tryParseDM(raw) as any;
     if (!parsed) {
       setStreamPhase("idle");
       // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
@@ -1354,6 +1367,9 @@ function PlayContent() {
     });
 
     setLiveNarrative("");
+
+    // Phase-1 UI hints（轻量）：仅在“回合 commit 成功后”触发。这里先读取，后面按顺序执行。
+    const uiHints = (parsed && typeof parsed === "object") ? (parsed as { ui_hints?: any }).ui_hints : undefined;
 
     const consumedNames = Array.isArray(parsed.consumed_items)
       ? (parsed.consumed_items as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0)
@@ -1588,6 +1604,23 @@ function PlayContent() {
 
     const stateBeforeProfessionTurn = useGameStore.getState();
     const consumedProfessionActive = stateBeforeProfessionTurn.consumeProfessionActiveForTurn();
+    const memoryBefore = {
+      playerLocation: stateBeforeProfessionTurn.playerLocation ?? "B1_SafeZone",
+      activeTaskIds: (stateBeforeProfessionTurn.tasks ?? [])
+        .filter((t) => t.status === "active" || t.status === "available")
+        .map((t) => t.id)
+        .filter((x) => typeof x === "string" && x.trim().length > 0)
+        .slice(0, 32),
+      presentNpcIds: (() => {
+        const loc = stateBeforeProfessionTurn.playerLocation ?? "B1_SafeZone";
+        const npcStates = stateBeforeProfessionTurn.dynamicNpcStates ?? {};
+        return Object.entries(npcStates)
+          .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === loc)
+          .map(([id]) => id)
+          .slice(0, 32);
+      })(),
+      mainThreatByFloor: stateBeforeProfessionTurn.mainThreatByFloor ?? {},
+    };
 
     if (Array.isArray((parsed as { relationship_updates?: unknown[] }).relationship_updates)) {
       type RawRelUpdate = {
@@ -1696,13 +1729,8 @@ function PlayContent() {
 
     if (Array.isArray(parsed.new_tasks) && parsed.new_tasks.length > 0) {
       for (const t of parsed.new_tasks) {
-        const normalized = normalizeGameTaskDraft({
-          ...t,
-          issuerName:
-            typeof t?.issuerName === "string"
-              ? t.issuerName
-              : normalizeIssuerName((t as { issuer?: unknown })?.issuer, (t as { id?: string })?.id ?? ""),
-        });
+        // 兼容旧服务端：仍允许 draft；但优先信任服务端已裁决/规范化后的任务对象。
+        const normalized = normalizeGameTaskDraft(t);
         if (normalized) addTask(normalized);
       }
     }
@@ -1714,6 +1742,75 @@ function PlayContent() {
         if (patch.status) updateTaskStatus(patch.id, patch.status);
         updateTask(patch);
       }
+    }
+
+    // Phase-3: 任务结果的结构化后果（关系 + 记忆残响）。不依赖 narrative；best-effort。
+    try {
+      const stateNow = useGameStore.getState();
+      const time = stateNow.time ?? { day: 0, hour: 0 };
+      const nowHour = (time.day ?? 0) * 24 + (time.hour ?? 0);
+      const taskUpdatesRaw = Array.isArray(parsed.task_updates) ? (parsed.task_updates as any[]) : [];
+      const { relationshipPatches, memoryCandidates, toastHint } = deriveTaskConsequences({
+        beforeTasks: stateBeforeProfessionTurn.tasks ?? [],
+        afterTasks: stateNow.tasks ?? [],
+        taskUpdates: taskUpdatesRaw
+          .filter((x) => x && typeof x === "object" && !Array.isArray(x))
+          .map((x) => ({ id: String((x as any).id ?? ""), status: (x as any).status })),
+        nowHour,
+        playerLocation: stateNow.playerLocation ?? "B1_SafeZone",
+      });
+      if (relationshipPatches.length > 0) {
+        const relCodexEntries: CodexEntry[] = relationshipPatches.map((p) => ({
+          id: p.npcId,
+          name: p.npcId,
+          type: "npc" as const,
+          ...(typeof p.favorability === "number" ? { favorability: p.favorability } : {}),
+          ...(typeof p.trust === "number" ? { trust: p.trust } : {}),
+          ...(typeof p.fear === "number" ? { fear: p.fear } : {}),
+          ...(typeof p.debt === "number" ? { debt: p.debt } : {}),
+          ...(typeof p.affection === "number" ? { affection: p.affection } : {}),
+          ...(typeof p.desire === "number" ? { desire: p.desire } : {}),
+          ...(typeof p.romanceEligible === "boolean" ? { romanceEligible: p.romanceEligible } : {}),
+          ...(p.romanceStage ? { romanceStage: p.romanceStage } : {}),
+          ...(typeof p.betrayalFlagAdd === "string" && p.betrayalFlagAdd.trim().length > 0 ? { betrayalFlags: [p.betrayalFlagAdd] } : {}),
+        }));
+        mergeCodex(relCodexEntries);
+      }
+      if (memoryCandidates.length > 0) {
+        useGameStore.getState().applyMemoryCandidates(memoryCandidates, nowHour);
+      }
+      if (toastHint && !openingOptionsOnlyRoundRef.current && !endgameState.active) {
+        // 轻提示：避免轰炸；仅当服务端未提供 toast_hint 时补一次。
+        if (!(typeof uiHints?.toast_hint === "string" && uiHints.toast_hint.trim().length > 0)) {
+          setFirstTimeHint(toastHint);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // UI hints: tasks panel auto-open + highlight (must not affect opening options-only or endgame)
+    try {
+      const autoOpen = uiHints?.auto_open_panel === "task";
+      const highlightIds: string[] = Array.isArray(uiHints?.highlight_task_ids)
+        ? uiHints.highlight_task_ids.filter((x: unknown): x is string => typeof x === "string" && x.trim().length > 0)
+        : [];
+      const toastHint = typeof uiHints?.toast_hint === "string" ? uiHints.toast_hint.trim() : "";
+      if (toastHint) setFirstTimeHint(toastHint);
+
+      if (!openingOptionsOnlyRoundRef.current && !endgameState.active) {
+        if (autoOpen) setIsTaskPanelOpen(true);
+        if (highlightIds.length > 0) {
+          setHighlightTaskIds(highlightIds);
+          if (highlightTaskTimerRef.current != null) window.clearTimeout(highlightTaskTimerRef.current);
+          highlightTaskTimerRef.current = window.setTimeout(() => {
+            setHighlightTaskIds([]);
+            highlightTaskTimerRef.current = null;
+          }, 3500);
+        }
+      }
+    } catch {
+      // ignore: hints are best-effort
     }
 
     // wire name `player_location` -> store 内部语义 `playerLocation`
@@ -1978,7 +2075,14 @@ function PlayContent() {
       }
       if (nextTime.day >= 10) {
         // 终局以“第10日0时”作为强制结局点；不在这里做扣理智/跳结算。
-        if (isEndgameMoment(nextTime) && !endgameTriggeredRef.current) {
+        const escapeStage = (() => {
+          try {
+            return (useGameStore.getState() as any).escapeMainline?.stage ?? null;
+          } catch {
+            return null;
+          }
+        })();
+        if (isEndgameMoment(nextTime) && !endgameTriggeredRef.current && shouldAllowDoomline({ escapeStage })) {
           endgameTriggeredRef.current = true;
           setEndgameState({ active: true, awaitingEnding: true });
           // 强制下一步只能推进终局：切到 options + 唯一占位选项（结局生成后会再覆盖为唯一选项）
@@ -1987,6 +2091,42 @@ function PlayContent() {
           setFirstTimeHint("十日已至。你只能迎接终焉。");
         }
       }
+    }
+
+    // Phase-2: 世界记忆脊柱写入（必须在真实状态写入完成后，再根据结构化回写生成记忆）
+    try {
+      useGameStore.getState().appendResolvedTurnMemories({
+        resolvedTurn: parsed,
+        before: memoryBefore,
+      });
+    } catch (e) {
+      console.warn("[play][memorySpine] append failed", e);
+    }
+
+    // Phase-4: 剧情导演层与突发事件队列推进（必须在真实状态写入完成后）
+    try {
+      useGameStore.getState().postTurnStoryDirectorUpdate({
+        resolvedTurn: parsed,
+        preTurnIndex: (stateBeforeProfessionTurn.logs ?? []).length,
+        pre: {
+          playerLocation: stateBeforeProfessionTurn.playerLocation ?? "B1_SafeZone",
+          tasks: (stateBeforeProfessionTurn.tasks ?? []) as any,
+          mainThreatByFloor: (stateBeforeProfessionTurn.mainThreatByFloor ?? {}) as any,
+          memoryEntries: (stateBeforeProfessionTurn.memorySpine?.entries ?? []) as any,
+        },
+      });
+    } catch (e) {
+      console.warn("[play][storyDirector] postTurn update failed", e);
+    }
+
+    // Phase-5: 出口主线推进（必须在真实状态写入完成后）
+    try {
+      useGameStore.getState().advanceEscapeMainlineFromResolvedTurn({
+        resolvedTurn: parsed,
+        nowTurnOverride: (stateBeforeProfessionTurn.logs ?? []).length + 1,
+      });
+    } catch (e) {
+      console.warn("[play][escapeMainline] advance failed", e);
     }
 
     // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
@@ -2342,7 +2482,7 @@ function PlayContent() {
                 firstTimeHint={firstTimeHint}
                 plainOnlyNewTurn={false}
                 plainOnlyLogIndexMin={streamLogsBaselineRef.current}
-                embeddedOpeningContent={showEmbeddedOpening ? FIXED_OPENING_NARRATIVE : null}
+                embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
                 openingAiBusy={openingBusyUi && !showEmbeddedOpening}
                 semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
               >
@@ -2441,6 +2581,7 @@ function PlayContent() {
         open={isTaskPanelOpen}
         tasks={tasks}
         originium={originium}
+        highlightTaskIds={highlightTaskIds}
         onClose={() => setIsTaskPanelOpen(false)}
         onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
       />

@@ -9,6 +9,7 @@ export type FactSource =
   | "npc_location_update"
   | "task_event"
   | "award_item"
+  | "memory_spine"
   | "session_memory"
   | "rule_hit";
 
@@ -163,6 +164,25 @@ export function extractFactsFromTurn(input: ExtractFactsInput): ExtractedFact[] 
       source: "award_item",
       confidence: 0.88,
       evidence: ["dm_record.awarded_items|awarded_warehouse_items"],
+      userId: input.userId,
+      sessionId: input.sessionId,
+    });
+    if (out.length >= maxFacts) break;
+  }
+
+  // Phase-2: memory spine promotions (best-effort, highly selective)
+  const promotions = Array.isArray((dm as any).memory_spine_promotions)
+    ? ((dm as any).memory_spine_promotions as unknown[])
+        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        .map((x) => x.trim())
+        .slice(0, 4)
+    : [];
+  for (const t of promotions) {
+    pushFact(out, {
+      text: t.slice(0, 160),
+      source: "memory_spine",
+      confidence: 0.78,
+      evidence: ["dm_record.memory_spine_promotions"],
       userId: input.userId,
       sessionId: input.sessionId,
     });
