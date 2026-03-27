@@ -1429,11 +1429,12 @@ function PlayContent() {
     } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
       useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
-    } else if (!isFirstAssistantTurn) {
-      // 更严格：不开启任何预置选项兜底；只提示玩家改用手动输入。
-      // 必须清空上一回合残留 options，避免“本回合没生成却沿用旧选项”的假象。
+    } else {
+      // 无论是否首次 assistant 回合，都必须清空旧选项，避免沿用上一回合残留。
       setCurrentOptions([]);
-      setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
+      if (!isFirstAssistantTurn) {
+        setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
+      }
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {

@@ -10,18 +10,23 @@ import type { AnalyticsEventName } from "@/lib/analytics/types";
 export async function pingPresence(sessionId?: string, page?: string, userAgent?: string | null) {
   const session = await auth();
   const userId = session?.user?.id;
-  if (!userId) {
+
+  // 支持游客心跳：sessionId 以 guest_ 开头时也写入 Redis presence
+  const isGuest = !userId && typeof sessionId === "string" && sessionId.startsWith("guest_");
+  if (!userId && !isGuest) {
     return { ok: false };
   }
 
-  await markUserActive(userId);
-  const sid = sessionId && sessionId.trim().length > 0 ? sessionId : `hb_${userId}`;
+  const memberId = userId ?? sessionId!;
+  await markUserActive(memberId);
+
+  const sid = sessionId && sessionId.trim().length > 0 ? sessionId : `hb_${memberId}`;
   const now = Date.now();
   const minuteBucket = Math.floor(now / 60_000);
   void recordGenericAnalyticsEvent({
-    eventId: `${userId}:session_heartbeat:${minuteBucket}`,
-    idempotencyKey: `${userId}:session_heartbeat:${minuteBucket}`,
-    userId,
+    eventId: `${memberId}:session_heartbeat:${minuteBucket}`,
+    idempotencyKey: `${memberId}:session_heartbeat:${minuteBucket}`,
+    userId: userId ?? null,
     sessionId: sid,
     eventName: "session_heartbeat",
     eventTime: new Date(now),
@@ -32,11 +37,14 @@ export async function pingPresence(sessionId?: string, page?: string, userAgent?
     playDurationDeltaSec: 0,
     payload: {},
   }).catch(() => {});
-  void touchUserSessionHeartbeat({
-    sessionId: sid,
-    userId,
-    page: page ?? null,
-  }).catch(() => {});
+
+  if (userId) {
+    void touchUserSessionHeartbeat({
+      sessionId: sid,
+      userId,
+      page: page ?? null,
+    }).catch(() => {});
+  }
 
   return { ok: true };
 }

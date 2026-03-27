@@ -52,3 +52,4 @@ redis_data/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+dump.rdb

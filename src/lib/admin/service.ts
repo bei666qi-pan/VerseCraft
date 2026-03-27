@@ -409,7 +409,7 @@ export async function getDashboardTableData() {
       playTime: 0,
       todayPlayTime: 0,
       lastActive,
-      isOnline: 0,
+      isOnline: onlineSet.has(guestId) || onlineSet.has(`guest_${guestId}`) ? 1 : 0,
       feedbackPreview: latest ? latest.content.slice(0, 6) : "",
       feedbackContent: latest?.content ?? "",
       feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
