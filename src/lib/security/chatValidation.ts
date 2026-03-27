@@ -55,6 +55,8 @@ export type ChatValidationResult =
       clientState: ClientStructuredContextV1 | null;
       /** 开局“仅要 options”的特殊回合：允许服务端应用 FIRST_ACTION_CONSTRAINT。 */
       openingOptionsOnlyRound: boolean;
+      /** 请求用途标记：用于区分正常剧情推进 vs 系统辅助请求（如仅刷新 options）。 */
+      clientPurpose: "normal" | "options_regen_only";
     }
   | { ok: false; status: number; error: string };
 
@@ -166,6 +168,7 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const rawSessionId = bodyObj.sessionId;
   const rawClientState = bodyObj.clientState;
   const rawOpeningOptionsOnlyRound = bodyObj.openingOptionsOnlyRound;
+  const rawClientPurpose = bodyObj.clientPurpose;
 
   if (!Array.isArray(rawMessages)) {
     return { ok: false, status: 400, error: "messages must be an array" };
@@ -199,6 +202,7 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
 
   const clientState = validateClientState(rawClientState);
   const openingOptionsOnlyRound = rawOpeningOptionsOnlyRound === true;
+  const clientPurpose = rawClientPurpose === "options_regen_only" ? "options_regen_only" : "normal";
 
   return {
     ok: true,
@@ -208,5 +212,6 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
     sessionId,
     clientState,
     openingOptionsOnlyRound,
+    clientPurpose,
   };
 }

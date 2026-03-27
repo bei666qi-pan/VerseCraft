@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } fr
 import { usePathname, useRouter } from "next/navigation";
 import { Settings, Keyboard, List, Book } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
-import type { Item, StatType } from "@/lib/registry/types";
+import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
 import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
@@ -56,6 +56,12 @@ import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
 import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, isNightHour } from "@/features/play/endgame/endgame";
+import {
+  hasStrongAcquireSemantics,
+  normalizeRegeneratedOptions,
+  shouldAutoRegenerateOptionsOnModeSwitch,
+  shouldWarnAcquireMismatch,
+} from "@/features/play/turnCommit/phaseRegressionGuards";
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
 const STREAM_CHUNK_STALL_MS = 120_000;
@@ -93,6 +99,13 @@ function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
   return "unknown";
 }
 
+const OPTIONS_REGEN_SYSTEM_PROMPT =
+  '【系统辅助请求：仅生成可选行动】本请求只用于刷新 options，不推进剧情。' +
+  "你必须输出合法 DM JSON，且严格满足：" +
+  "is_action_legal=true，sanity_damage=0，is_death=false，consumes_time=false；" +
+  'narrative 必须为空字符串；options 必须是 4 条简体中文、可执行、互不重复的第一人称行动句；' +
+  "禁止发放/消耗道具，禁止更新任务、图鉴、地点、关系、武器、威胁等任何世界状态字段。";
+
 function PlayContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -121,7 +134,9 @@ function PlayContent() {
   const popLastNLogs = useGameStore((s) => s.popLastNLogs);
   const mergeCodex = useGameStore((s) => s.mergeCodex);
   const currentOptionsFromStore = useGameStore((s) => s.currentOptions ?? []);
+  const recentOptions = useGameStore((s) => s.recentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
+  const writeResumeShadow = useGameStore((s) => s.writeResumeShadow);
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
   const currentOptions = currentOptionsFromStore;
   const addOriginium = useGameStore((s) => s.addOriginium);
@@ -172,6 +187,7 @@ function PlayContent() {
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
   const [waitingHintKind, setWaitingHintKind] = useState<PlaySemanticWaitingKind | null>(null);
+  const [optionsRegenBusy, setOptionsRegenBusy] = useState(false);
   const [endgameState, setEndgameState] = useState<{ active: boolean; awaitingEnding: boolean }>({
     active: false,
     awaitingEnding: false,
@@ -216,6 +232,8 @@ function PlayContent() {
   const openingTimeoutRetryRef = useRef(false);
   /** 开局回合：叙事固定为本地文案，不从 SSE 的 narrative 字段增量覆盖 */
   const openingOptionsOnlyRoundRef = useRef(false);
+  const optionsRegenInFlightRef = useRef(false);
+  const modeSwitchByUserRef = useRef(false);
 
   useEffect(() => {
     streamPhaseRef.current = streamPhase;
@@ -684,6 +702,41 @@ function PlayContent() {
     setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
   }, [coldPlayOpening, currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
 
+  const prevInputModeRef = useRef<"options" | "text">(inputMode);
+  useEffect(() => {
+    const prev = prevInputModeRef.current;
+    prevInputModeRef.current = inputMode;
+    if (!isHydrated) return;
+    // 自动触发场景：玩家从 text -> options，且当前没有可用 options，且当前不 busy。
+    if (prev === "text" && inputMode === "options") {
+      const switchedByUser = modeSwitchByUserRef.current;
+      modeSwitchByUserRef.current = false;
+      if (!switchedByUser) return;
+      if (shouldAutoRegenerateOptionsOnModeSwitch({
+        prevMode: prev,
+        nextMode: inputMode,
+        switchedByUser,
+        currentOptionsLength: currentOptions.length,
+        isChatBusy,
+        optionsRegenBusy,
+        endgameActive: endgameState.active,
+        showEmbeddedOpening,
+        isGuestDialogueExhausted,
+      })) {
+        void requestFreshOptions("auto_switch");
+      }
+    }
+  }, [
+    currentOptions.length,
+    endgameState.active,
+    inputMode,
+    isChatBusy,
+    isGuestDialogueExhausted,
+    isHydrated,
+    optionsRegenBusy,
+    showEmbeddedOpening,
+  ]);
+
   // 嵌入式开场：首屏四选项必须由前端立刻注入，确保可点击（不依赖 /api/chat 的 OPENING_SYSTEM_PROMPT）。
   useEffect(() => {
     if (!isHydrated || !showEmbeddedOpening) return;
@@ -730,10 +783,13 @@ function PlayContent() {
     if (!isHydrated || !isGameStarted) return;
     const handlePageHide = () => {
       autoSaveProgress();
+      // 同步 shadow：不依赖异步防抖持久化，确保突然关闭时仍有“继续执笔”兜底。
+      writeResumeShadow();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         autoSaveProgress();
+        writeResumeShadow();
       }
     };
     window.addEventListener("pagehide", handlePageHide);
@@ -741,11 +797,12 @@ function PlayContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       autoSaveProgress();
+      writeResumeShadow();
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handlePageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [autoSaveProgress, isGameStarted, isHydrated]);
+  }, [autoSaveProgress, isGameStarted, isHydrated, writeResumeShadow]);
 
   const prevPathnameForAbortRef = useRef<string | null>(null);
   useEffect(() => {
@@ -756,6 +813,92 @@ function PlayContent() {
     }
     prevPathnameForAbortRef.current = pathname;
   }, [pathname]);
+
+  async function requestFreshOptions(trigger: "auto_switch" | "manual_button") {
+    // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
+    if (optionsRegenInFlightRef.current || isChatBusy || sendActionInFlightRef.current) return;
+    if (endgameState.active || showEmbeddedOpening) return;
+    if (isGuestDialogueExhausted) {
+      setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+      return;
+    }
+    optionsRegenInFlightRef.current = true;
+    setOptionsRegenBusy(true);
+    if (trigger === "auto_switch") {
+      setFirstTimeHint("主笔正在整理可选行动…");
+    }
+    try {
+      const history = (useGameStore.getState().logs ?? [])
+        .filter((l) => l && (l.role === "user" || l.role === "assistant"))
+        .slice(-12)
+        .map((l) => ({ role: l.role as ChatRole, content: String(l.content ?? "") }));
+      const messages: ChatMessage[] = [
+        ...history,
+        {
+          role: "user",
+          content:
+            `${OPTIONS_REGEN_SYSTEM_PROMPT}\n` +
+            `【仅刷新选项原因】${trigger === "auto_switch" ? "用户切回选项模式且当前无可用项" : "用户手动点击刷新选项按钮"}`,
+        },
+      ];
+      const playerContext = useGameStore.getState().getPromptContext();
+      const clientState = useGameStore.getState().getStructuredClientStateForServer();
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          playerContext,
+          clientState,
+          sessionId: guestId ?? "browser_session",
+          openingOptionsOnlyRound: false,
+          clientPurpose: "options_regen_only",
+        }),
+      });
+      if (!res.ok || !res.body) {
+        setCurrentOptions([]);
+        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let text = "";
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+      } finally {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
+      }
+      const dmRaw = foldSseTextToDmRaw(text);
+      const parsed = tryParseDM(dmRaw);
+      const normalized = normalizeRegeneratedOptions(parsed?.options, recentOptions);
+      if (normalized.length === 0) {
+        setCurrentOptions([]);
+        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+        return;
+      }
+      // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
+      setCurrentOptions(normalized);
+      setLiveNarrative((prev) =>
+        typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
+      );
+    } catch {
+      setCurrentOptions([]);
+      setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+    } finally {
+      setOptionsRegenBusy(false);
+      optionsRegenInFlightRef.current = false;
+    }
+  }
 
   async function sendAction(
     action: string,
@@ -1168,6 +1311,8 @@ function PlayContent() {
 
     const validTiers = ["S", "A", "B", "C", "D"] as const;
     const itemById = new Map(ITEMS.map((i) => [i.id, i]));
+    let awardedItemWriteCount = 0;
+    let awardedWarehouseWriteCount = 0;
     if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
       const resolved: Item[] = [];
       for (let idx = 0; idx < parsed.awarded_items.length; idx++) {
@@ -1211,43 +1356,95 @@ function PlayContent() {
       }
       const items = resolved;
       if (items.length > 0) {
-        const prevInvIds = new Set(useGameStore.getState().inventory.map((i) => i.id));
+        const prevInvIds = new Set((useGameStore.getState().inventory ?? []).map((i) => i.id));
         useGameStore.getState().addItems(items);
-        useGameStore.getState().pushLog({
-          role: "assistant",
-          content: "**获得了新道具，已放入行囊**",
-          reasoning: undefined,
-        });
-        const firstNew = items.find((it) => !prevInvIds.has(it.id));
-        if (firstNew) {
-          setFirstTimeHint(`你记下了新道具【${firstNew.name}】。`);
+        const afterInv = useGameStore.getState().inventory ?? [];
+        const afterInvIds = new Set(afterInv.map((i) => i.id));
+        const writtenIds = items
+          .map((it) => it.id)
+          .filter((id) => !!id && afterInvIds.has(id));
+        awardedItemWriteCount = writtenIds.length;
+        // 只有真实写入 inventory 后才输出“已放入行囊”提示，避免叙事假成功。
+        if (awardedItemWriteCount > 0) {
+          useGameStore.getState().pushLog({
+            role: "assistant",
+            content: "**获得了新道具，已放入行囊**",
+            reasoning: undefined,
+          });
+          const firstNew = items.find((it) => !prevInvIds.has(it.id));
+          if (firstNew) {
+            setFirstTimeHint(`你记下了新道具【${firstNew.name}】。`);
+          }
         }
       }
     }
 
     const warehouseById = new Map(WAREHOUSE_ITEMS.map((w) => [w.id, w]));
     if (Array.isArray(parsed.awarded_warehouse_items) && parsed.awarded_warehouse_items.length > 0) {
-      const whIds: string[] = [];
+      const whItemsResolved: WarehouseItem[] = [];
       for (const r of parsed.awarded_warehouse_items as unknown[]) {
-        if (typeof r === "string" && r.trim()) whIds.push(r.trim());
-        else if (r && typeof r === "object" && typeof (r as { id?: string }).id === "string") whIds.push((r as { id: string }).id);
+        if (typeof r === "string" && r.trim()) {
+          const fromRegistry = warehouseById.get(r.trim());
+          if (fromRegistry) whItemsResolved.push(fromRegistry);
+          continue;
+        }
+        if (r && typeof r === "object" && typeof (r as { id?: string }).id === "string") {
+          const row = r as Record<string, unknown>;
+          const id = String(row.id ?? "").trim();
+          if (!id) continue;
+          const fromRegistry = warehouseById.get(id);
+          if (fromRegistry) {
+            whItemsResolved.push(fromRegistry);
+            continue;
+          }
+          // 兼容未注册但结构化回写的仓库物品，避免“叙事获得但状态丢失”。
+          whItemsResolved.push({
+            id,
+            name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : "未知物品",
+            description: typeof row.description === "string" ? row.description : "临时写回物品",
+            benefit: typeof row.benefit === "string" ? row.benefit : "未知",
+            sideEffect: typeof row.sideEffect === "string" ? row.sideEffect : "未知",
+            ownerId: typeof row.ownerId === "string" ? row.ownerId : "N-019",
+            floor: "B1",
+            isResurrection: typeof row.isResurrection === "boolean" ? row.isResurrection : undefined,
+          });
+        }
       }
-      const whItems = whIds
-        .map((id) => warehouseById.get(id))
-        .filter((w): w is NonNullable<typeof w> => !!w);
+      const whItems = whItemsResolved;
       if (whItems.length > 0) {
         const prevWhIds = new Set((useGameStore.getState().warehouse ?? []).map((w) => w.id));
         useGameStore.getState().addWarehouseItems(whItems);
-        useGameStore.getState().pushLog({
-          role: "assistant",
-          content: "**获得了新物品，已放入仓库**",
-          reasoning: undefined,
-        });
-        const firstNew = whItems.find((w) => !prevWhIds.has(w.id));
-        if (firstNew) {
-          setFirstTimeHint(`你在仓库中发现了新物品【${firstNew.name}】。`);
+        const afterWh = useGameStore.getState().warehouse ?? [];
+        const afterWhIds = new Set(afterWh.map((w) => w.id));
+        const writtenIds = whItems
+          .map((w) => w.id)
+          .filter((id) => !!id && afterWhIds.has(id));
+        awardedWarehouseWriteCount = writtenIds.length;
+        // 只有真实写入 warehouse 后才输出“已放入仓库”提示，避免叙事假成功。
+        if (awardedWarehouseWriteCount > 0) {
+          useGameStore.getState().pushLog({
+            role: "assistant",
+            content: "**获得了新物品，已放入仓库**",
+            reasoning: undefined,
+          });
+          const firstNew = whItems.find((w) => !prevWhIds.has(w.id));
+          if (firstNew) {
+            setFirstTimeHint(`你在仓库中发现了新物品【${firstNew.name}】。`);
+          }
         }
       }
+    }
+
+    // 一致性兜底：叙事有“获得”强语义，但结构化 awarded_* 为空时不能静默通过。
+    if (shouldWarnAcquireMismatch({
+      narrative: narrativeToPush,
+      awardedItemWriteCount,
+      awardedWarehouseWriteCount,
+    })) {
+      console.warn("[play][consistency] narrative suggests acquisition but awarded fields wrote nothing", {
+        action: trimmed.slice(0, 120),
+        narrativeHead: narrativeToPush.slice(0, 180),
+      });
     }
 
     if (Array.isArray(parsed.codex_updates) && parsed.codex_updates.length > 0) {
@@ -1422,13 +1619,10 @@ function PlayContent() {
       setCurrentOptions([ENDGAME_ONLY_OPTION]);
       setEndgameState({ active: true, awaitingEnding: false });
       setActiveMenu(null);
-      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     } else if (openingOptionsOnlyRoundRef.current) {
       // 首屏四条已由 pickEmbeddedOpeningOptions 写入，禁止用模型 options 覆盖
-      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
-      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     } else {
       // 无论是否首次 assistant 回合，都必须清空旧选项，避免沿用上一回合残留。
       setCurrentOptions([]);
@@ -1736,6 +1930,12 @@ function PlayContent() {
       }
     }
 
+    // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
+    // 这能覆盖“手动输入且无 options”的场景，避免首页“继续执笔”失真。
+    useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+    // 双层恢复：正式存档之外，同步写入 shadow，避免浏览器突发退出时仅依赖 IDB 防抖刷盘。
+    writeResumeShadow();
+
     const skipTailDrain = openingOptionsOnlyRoundRef.current;
     if (skipTailDrain) {
       setStreamPhase("idle");
@@ -1851,6 +2051,7 @@ function PlayContent() {
 
   function onSaveAndExit() {
     useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+    writeResumeShadow();
     setShowExitModal(false);
     router.push("/");
   }
@@ -1966,6 +2167,7 @@ function PlayContent() {
                     type="button"
                     onClick={() => {
                       if (endgameState.active) return;
+                      modeSwitchByUserRef.current = true;
                       const nextMode = inputMode === "options" ? "text" : "options";
                       toggleInputMode();
                       if (nextMode === "text" && !hasShownManualInputComplianceHintRef.current) {
@@ -2050,19 +2252,13 @@ function PlayContent() {
                 openingAiBusy={openingBusyUi && !showEmbeddedOpening}
                 semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
               >
-                {inputMode === "options" &&
-                  (showEmbeddedOpening
-                    ? isChatBusy || currentOptions.length > 0
-                    : currentOptions.length > 0 &&
-                      !isChatBusy) && (
+                {inputMode === "options" && currentOptions.length > 0 && (
                   <PlayOptionsList
                     options={currentOptions}
-                    revealed={
-                      currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)
-                    }
+                    revealed={currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)}
                     isLowSanity={isLowSanity}
                     isDarkMoon={isDarkMoon}
-                    disabled={isChatBusy || isGuestDialogueExhausted || (endgameState.active && !endgameLocked)}
+                    disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
                     onPick={(option) => {
                       if (endgameState.active) {
                         if (!endgameLocked) return;
@@ -2092,6 +2288,21 @@ function PlayContent() {
                       void sendAction(option, true);
                     }}
                   />
+                )}
+                {inputMode === "options" && currentOptions.length === 0 && !showEmbeddedOpening && !endgameState.active && (
+                  <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
+                    <p className="text-sm text-slate-600 md:text-base">
+                      {optionsRegenBusy ? "主笔正在整理可选行动…" : "当前暂无可用选项。"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void requestFreshOptions("manual_button")}
+                      disabled={isChatBusy || optionsRegenBusy || isGuestDialogueExhausted}
+                      className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
+                    >
+                      让主笔给出选项
+                    </button>
+                  </div>
                 )}
               </PlayStoryScroll>
 

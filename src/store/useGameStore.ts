@@ -65,6 +65,11 @@ import {
   getProfessionActiveSummary,
   getProfessionPassiveSummary,
 } from "@/lib/profession/benefits";
+import {
+  clearResumeShadowSnapshot,
+  readResumeShadowSnapshot,
+  writeResumeShadowFromState,
+} from "@/lib/state/resumeShadow";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -459,6 +464,12 @@ interface GameState extends IntegrityMetaState {
   saveGame: (slotId: string) => void;
   loadGame: (slotId: string) => void;
   hydrateFromCloud: (slotId: string, data: SaveSlotData) => void;
+  /** 同步写入崩溃恢复 shadow，避免仅靠 IDB 防抖刷盘导致“突然退出后无继续执笔”。 */
+  writeResumeShadow: () => void;
+  /** 从本地 shadow 直接恢复可继续状态（兜底入口，不覆盖云端）。 */
+  hydrateFromResumeShadow: () => boolean;
+  /** 清理本地 shadow（例如开新局/死亡清档后）。 */
+  clearResumeShadow: () => void;
   refreshProfessionState: () => void;
   certifyProfession: (profession: ProfessionId) => boolean;
   switchProfession: (profession: ProfessionId) => boolean;
@@ -777,7 +788,8 @@ export const useGameStore = create<GameState>()(
           isGuest: true,
           guestId: createGuestId(),
         })),
-      resetForNewGame: () =>
+      resetForNewGame: () => {
+        clearResumeShadowSnapshot();
         set({
           currentSaveSlot: "main_slot",
           playerName: "",
@@ -820,9 +832,11 @@ export const useGameStore = create<GameState>()(
             droppedLootLedger: [],
             droppedLootOwnerLedger: [],
           },
-        }),
+        });
+      },
 
-      markGameOver: () =>
+      markGameOver: () => {
+        clearResumeShadowSnapshot();
         set((s) => {
           const autoSlot = createAutoSlotIdFor(s.currentSaveSlot || "main_slot");
           const next = { ...(s.saveSlots ?? {}) };
@@ -831,9 +845,11 @@ export const useGameStore = create<GameState>()(
             isGameStarted: false,
             saveSlots: next,
           };
-        }),
+        });
+      },
 
-      clearSaveForDeath: () =>
+      clearSaveForDeath: () => {
+        clearResumeShadowSnapshot();
         set((s) => ({
           ...s,
           isGameStarted: false,
@@ -847,7 +863,8 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
           hasMetProfessionCertifier: false,
-        })),
+        }));
+      },
       recordDeathForRevive: (cause, killerId) =>
         set((s) => {
           const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
@@ -919,7 +936,8 @@ export const useGameStore = create<GameState>()(
           };
         }),
 
-      clearSaveDataKeepLogs: () =>
+      clearSaveDataKeepLogs: () => {
+        clearResumeShadowSnapshot();
         set(() => ({
           isGameStarted: false,
           saveSlots: {},
@@ -930,9 +948,11 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
           hasMetProfessionCertifier: false,
-        })),
+        }));
+      },
 
-      destroySaveData: () =>
+      destroySaveData: () => {
+        clearResumeShadowSnapshot();
         set({
           logs: [],
           inventory: [],
@@ -947,7 +967,8 @@ export const useGameStore = create<GameState>()(
           deathCount: 0,
           appliedRelationshipTaskIds: [],
           hasMetProfessionCertifier: false,
-        }),
+        });
+      },
 
       setCurrentOptions: (options) =>
         set((s) => {
@@ -1429,11 +1450,17 @@ export const useGameStore = create<GameState>()(
       addItems: (items) =>
         set((s) => {
           const inv = (s.inventory ?? []).filter((i): i is NonNullable<typeof i> => !!i);
-          const existingIds = new Set(inv.map((i) => i.id).filter(Boolean));
-          const safeItems = Array.isArray(items) ? items : [];
-          const toAdd = safeItems.filter((it) => it && it.id && it.name && !existingIds.has(it.id));
-          for (const it of toAdd) existingIds.add(it.id);
-          return { inventory: [...inv, ...toAdd] };
+          const safeItems = (Array.isArray(items) ? items : []).filter(
+            (it): it is Item => !!it && typeof it.id === "string" && !!it.id && typeof it.name === "string" && !!it.name
+          );
+          if (safeItems.length === 0) return {};
+          const byId = new Map(inv.map((i) => [i.id, i]));
+          for (const it of safeItems) {
+            const prev = byId.get(it.id);
+            // 同 id 视为同一条目更新（而非吞掉）：保证 DM 回写增强字段时能落到状态层。
+            byId.set(it.id, prev ? { ...prev, ...it } : it);
+          }
+          return { inventory: Array.from(byId.values()) };
         }),
 
       removeFromInventory: (itemId: string) =>
@@ -1460,9 +1487,18 @@ export const useGameStore = create<GameState>()(
 
       addWarehouseItems: (items) =>
         set((s) => {
-          const existingIds = new Set((s.warehouse ?? []).map((w) => w.id));
-          const toAdd = items.filter((w) => w?.id && w?.name && !existingIds.has(w.id));
-          return { warehouse: [...(s.warehouse ?? []), ...toAdd] };
+          const current = s.warehouse ?? [];
+          const safeItems = (Array.isArray(items) ? items : []).filter(
+            (w): w is WarehouseItem => !!w && typeof w.id === "string" && !!w.id && typeof w.name === "string" && !!w.name
+          );
+          if (safeItems.length === 0) return {};
+          const byId = new Map(current.map((w) => [w.id, w]));
+          for (const w of safeItems) {
+            const prev = byId.get(w.id);
+            // 仓库同理：同 id 走覆盖合并，避免“已存在 id 导致新字段回写丢失”。
+            byId.set(w.id, prev ? { ...prev, ...w } : w);
+          }
+          return { warehouse: Array.from(byId.values()) };
         }),
 
       addPlayTimeSeconds: (deltaSeconds) =>
@@ -2208,6 +2244,8 @@ export const useGameStore = create<GameState>()(
             ])
           )
           .catch(() => undefined);
+        // 正式存档写入成功后，同步写一份本地 shadow（不走防抖），用于崩溃恢复兜底。
+        writeResumeShadowFromState(get() as unknown as Record<string, unknown>);
       },
 
       loadGame: (slotId) => {
@@ -2459,6 +2497,43 @@ export const useGameStore = create<GameState>()(
             isGameStarted: true,
           };
         });
+      },
+      writeResumeShadow: () => {
+        const s = get() as unknown as Record<string, unknown>;
+        writeResumeShadowFromState(s);
+      },
+      hydrateFromResumeShadow: () => {
+        const shadow = readResumeShadowSnapshot();
+        if (!shadow || shadow.isGameStarted !== true) return false;
+        set((s) => ({
+          currentSaveSlot: shadow.currentSaveSlot || "main_slot",
+          isGameStarted: true,
+          playerLocation: shadow.playerLocation ?? "B1_SafeZone",
+          time: { day: shadow.time?.day ?? 0, hour: shadow.time?.hour ?? 0 },
+          logs: Array.isArray(shadow.logs) ? JSON.parse(JSON.stringify(shadow.logs)) : [],
+          inventory: Array.isArray(shadow.inventory) ? JSON.parse(JSON.stringify(shadow.inventory)) : [],
+          warehouse: Array.isArray(shadow.warehouse) ? JSON.parse(JSON.stringify(shadow.warehouse)) : [],
+          tasks: Array.isArray(shadow.tasks) ? JSON.parse(JSON.stringify(shadow.tasks)) : [],
+          codex:
+            shadow.codex && typeof shadow.codex === "object" && !Array.isArray(shadow.codex)
+              ? JSON.parse(JSON.stringify(shadow.codex))
+              : {},
+          currentOptions: Array.isArray(shadow.currentOptions) ? JSON.parse(JSON.stringify(shadow.currentOptions)) : [],
+          inputMode: shadow.inputMode === "text" ? "text" : "options",
+          currentBgm: typeof shadow.currentBgm === "string" ? shadow.currentBgm : "bgm_1_calm",
+          stats: shadow.stats && typeof shadow.stats === "object" ? JSON.parse(JSON.stringify(shadow.stats)) : s.stats,
+          originium: typeof shadow.originium === "number" ? shadow.originium : s.originium,
+          professionState:
+            shadow.professionState && typeof shadow.professionState === "object" && !Array.isArray(shadow.professionState)
+              ? JSON.parse(JSON.stringify(shadow.professionState))
+              : s.professionState,
+        }));
+        // 恢复后立刻落一次正式 main_slot，让首页/云同步后续都回到正式真相源。
+        get().saveGame("main_slot");
+        return true;
+      },
+      clearResumeShadow: () => {
+        clearResumeShadowSnapshot();
       },
     })),
     {

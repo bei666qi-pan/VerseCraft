@@ -96,6 +96,12 @@ export const dynamic = "force-dynamic";
 const ROUNDS_THRESHOLD = 10;
 const SHORT_TERM_ROUNDS = 5;
 
+function hasStrongAcquireSemantics(text: string): boolean {
+  const t = String(text ?? "");
+  if (!t) return false;
+  return /(获得|拿到|拾起|收下|找到|得到|入手|获得了|拿到了)/.test(t);
+}
+
 /** 从 one-api / OpenAI 形态 JSON 错误体提取简短说明（不含密钥）。 */
 function parseUpstreamErrorFields(lastBodySnippet: string | undefined): {
   upstreamHint?: string;
@@ -269,6 +275,7 @@ export async function POST(req: Request) {
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
   const openingOptionsOnlyRound = validated.openingOptionsOnlyRound;
+  const clientPurpose = validated.clientPurpose;
   const clientIp = getClientIpFromHeaders(req.headers);
   const requestId = createRequestId("chat");
   const platform = derivePlatformFromUserAgent(req.headers.get("user-agent"));
@@ -980,6 +987,7 @@ export async function POST(req: Request) {
         userId,
         sessionId,
         path: "/api/chat",
+        tags: { clientPurpose },
       },
       signal: ac.signal,
       timeoutMs: TIMEOUT_MS,
@@ -1121,6 +1129,7 @@ export async function POST(req: Request) {
           userId,
           sessionId,
           path: "/api/chat",
+          tags: { clientPurpose },
         },
         signal: ac.signal,
         timeoutMs: TIMEOUT_MS,
@@ -1356,6 +1365,34 @@ export async function POST(req: Request) {
           }
         } catch (e) {
           console.warn("[api/chat] options regen skipped", e);
+        }
+
+        // 一致性守卫（轻量）：叙事出现“获得”强语义但 awarded_* 为空时记告警，避免静默假成功。
+        try {
+          const narrative = String(dmRecord.narrative ?? "");
+          const awardedItemsLen = Array.isArray((dmRecord as { awarded_items?: unknown }).awarded_items)
+            ? ((dmRecord as { awarded_items?: unknown[] }).awarded_items ?? []).length
+            : 0;
+          const awardedWarehouseLen = Array.isArray((dmRecord as { awarded_warehouse_items?: unknown }).awarded_warehouse_items)
+            ? ((dmRecord as { awarded_warehouse_items?: unknown[] }).awarded_warehouse_items ?? []).length
+            : 0;
+          if (hasStrongAcquireSemantics(narrative) && awardedItemsLen === 0 && awardedWarehouseLen === 0) {
+            console.warn("[api/chat] consistency warning: narrative acquire semantics without awarded fields", {
+              requestId,
+              sessionId,
+              userId,
+            });
+            const prevMeta =
+              dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
+                ? (dmRecord.security_meta as Record<string, unknown>)
+                : {};
+            dmRecord.security_meta = {
+              ...prevMeta,
+              consistency_warning: "acquire_without_awards",
+            };
+          }
+        } catch (e) {
+          console.warn("[api/chat] consistency guard skipped", e);
         }
 
         const guardMeta =

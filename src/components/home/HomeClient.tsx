@@ -39,8 +39,14 @@ import {
   type HomeContinueSummary,
   type HomeContinueSourceTag,
 } from "@/store/useGameStore";
+import {
+  extractResumeShadowSummary,
+  isResumeShadowPlayable,
+  readResumeShadowSnapshot,
+} from "@/lib/state/resumeShadow";
 import { unlockBgmOnUserGesture } from "@/config/audio";
 import { formatLocationLabel } from "@/features/play/render/locationLabels";
+import { resolveHomeEntryState, shouldUseResumeShadowFallback } from "@/components/home/continueFallback";
 
 type HomeClientProps = {
   initialUser: { id: string; name: string } | null;
@@ -355,6 +361,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const resetForNewGame = useGameStore((s) => s.resetForNewGame);
   const hydrateFromCloud = useGameStore((s) => s.hydrateFromCloud);
   const loadGame = useGameStore((s) => s.loadGame);
+  const hydrateFromResumeShadow = useGameStore((s) => s.hydrateFromResumeShadow);
 
   const [authOpen, setAuthOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -378,6 +385,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
   const [historyTotal, setHistoryTotal] = useState<number | null>(null);
   const [historyLatestIso, setHistoryLatestIso] = useState<string | null>(null);
+  const [shadowTick, setShadowTick] = useState(0);
   const [surveyOpen, setSurveyOpen] = useState(false);
   const [showBugFeedback, setShowBugFeedback] = useState(false);
   const [surveyConsentUserAgreement, setSurveyConsentUserAgreement] = useState(false);
@@ -432,6 +440,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     });
     return { hasAny: true, bestSlotId: sorted[0]!.slotId, bestUpdatedAt: sorted[0]!.updatedAt ?? null };
   }, [saveSlots]);
+
+  const resumeShadowSnapshot = useMemo(() => {
+    void shadowTick;
+    return readResumeShadowSnapshot();
+  }, [shadowTick]);
+  const resumeShadowSummary = useMemo(
+    () => extractResumeShadowSummary(resumeShadowSnapshot),
+    [resumeShadowSnapshot]
+  );
+  const hasPlayableResumeShadow = useMemo(
+    () => isResumeShadowPlayable(resumeShadowSnapshot),
+    [resumeShadowSnapshot]
+  );
 
   const hasLocalAnySave = useMemo(() => Object.keys(saveSlots ?? {}).length > 0, [saveSlots]);
   const hasCloudAnySave = useMemo(
@@ -551,14 +572,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [deleteTargetRow]);
 
   const entryState: EntryState = useMemo(() => {
-    const authed = !!user;
-    const localHas = localProgressInfo.hasAny || hasLocalAnySave;
-    const cloudHas = hasCloudAnySave;
-    if (!authed && !localHas) return "guest_fresh";
-    if (!authed && localHas) return "guest_has_progress";
-    if (authed && (cloudHas || localHas)) return "authed_has_progress";
-    return "authed_no_progress";
-  }, [user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave]);
+    return resolveHomeEntryState({
+      authed: !!user,
+      localHasAny: localProgressInfo.hasAny || hasLocalAnySave,
+      hasCloudAnySave,
+      hasPlayableResumeShadow,
+    });
+  }, [user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow]);
 
   useEffect(() => {
     if (homeViewTrackedRef.current) return;
@@ -570,11 +590,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       payload: {
         entryState,
         loggedIn: !!user,
-        hasLocalProgress: localProgressInfo.hasAny || hasLocalAnySave,
+        hasLocalProgress: localProgressInfo.hasAny || hasLocalAnySave || hasPlayableResumeShadow,
         hasCloud: hasCloudAnySave,
       },
     }).catch(() => {});
-  }, [entryState, user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave]);
+  }, [entryState, user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow]);
+
+  useEffect(() => {
+    const refreshShadow = () => setShadowTick((n) => n + 1);
+    refreshShadow();
+    window.addEventListener("focus", refreshShadow);
+    window.addEventListener("pageshow", refreshShadow);
+    return () => {
+      window.removeEventListener("focus", refreshShadow);
+      window.removeEventListener("pageshow", refreshShadow);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -876,7 +907,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   function openContinuePicker() {
     if (continueRows.length === 0) {
-      void handleContinueAdventure("");
+      if (hasPlayableResumeShadow) {
+        void handleContinueAdventure("__resume_shadow__");
+      } else {
+        void handleContinueAdventure("");
+      }
       return;
     }
     setContinuePickerSelectedSlotId(resolvedContinueSlotId || continueRows[0]?.slotId || "");
@@ -887,6 +922,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     unlockBgmOnUserGesture();
     const slotId = (slotIdOverride ?? "").trim() || resolvedContinueSlotId;
     const row = continueRows.find((r) => r.slotId === slotId) ?? null;
+    const useShadowFallback = shouldUseResumeShadowFallback({
+      slotId,
+      rowExists: !!row,
+      hasPlayableResumeShadow,
+    });
 
     void trackGameplayEvent({
       eventName: "home_continue_clicked",
@@ -895,9 +935,20 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       payload: {
         slotId: slotId || null,
         userLoggedIn: !!user,
-        tag: row?.tag ?? null,
+        tag: useShadowFallback ? "resume_shadow" : (row?.tag ?? null),
+        resumeShadowUpdatedAt: useShadowFallback ? (resumeShadowSummary?.updatedAtIso ?? null) : null,
       },
     }).catch(() => {});
+
+    if (useShadowFallback) {
+      const ok = hydrateFromResumeShadow();
+      if (ok) {
+        router.push("/play");
+        return;
+      }
+      setToast("本地紧急恢复快照不可用。");
+      return;
+    }
 
     if (!slotId || !row) {
       if (!user) {
@@ -907,6 +958,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           router.push("/play");
           return;
         }
+      }
+      if (hasPlayableResumeShadow && hydrateFromResumeShadow()) {
+        router.push("/play");
+        return;
       }
       resetForNewGame();
       router.push("/intro");

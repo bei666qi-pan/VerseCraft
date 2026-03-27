@@ -30,8 +30,14 @@ export function createDebouncedStorage(
     const onUnload = () => {
       flush();
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flush();
+      }
+    };
     window.addEventListener("pagehide", onUnload);
     window.addEventListener("beforeunload", onUnload);
+    document.addEventListener("visibilitychange", onVisibilityChange);
   }
 
   return {
