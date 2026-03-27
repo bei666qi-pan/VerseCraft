@@ -187,15 +187,21 @@ export async function getDashboardTableData() {
     FROM feedbacks
     ORDER BY user_id, created_at DESC
   `);
-  const latestGuestFeedbackRowsRaw = await db.execute(sql`
-    SELECT DISTINCT ON (guest_id)
-      guest_id AS "guestId",
-      content,
-      created_at AS "createdAt"
-    FROM feedbacks
-    WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-    ORDER BY guest_id, created_at DESC
-  `);
+  const latestGuestFeedbackRowsRaw = await db
+    .execute(sql`
+      SELECT DISTINCT ON (guest_id)
+        guest_id AS "guestId",
+        content,
+        created_at AS "createdAt"
+      FROM feedbacks
+      WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+      ORDER BY guest_id, created_at DESC
+    `)
+    .catch((error) => {
+      // 旧库可能还没有 guest_id 字段（42703）；此时后台降级为无游客反馈，不阻断页面。
+      console.warn("[admin][getDashboardTableData] guest feedback query failed, fallback empty", error);
+      return { rows: [] };
+    });
   const latestSurveyRowsRaw = await db.execute(sql`
     SELECT DISTINCT ON (user_id)
       user_id AS "userId",
@@ -210,20 +216,25 @@ export async function getDashboardTableData() {
     WHERE user_id IS NOT NULL
     ORDER BY user_id, created_at DESC
   `);
-  const latestGuestSurveyRowsRaw = await db.execute(sql`
-    SELECT DISTINCT ON (guest_id)
-      guest_id AS "guestId",
-      survey_key AS "surveyKey",
-      survey_version AS "surveyVersion",
-      answers,
-      free_text AS "freeText",
-      overall_rating AS "overallRating",
-      recommend_score AS "recommendScore",
-      created_at AS "createdAt"
-    FROM survey_responses
-    WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-    ORDER BY guest_id, created_at DESC
-  `);
+  const latestGuestSurveyRowsRaw = await db
+    .execute(sql`
+      SELECT DISTINCT ON (guest_id)
+        guest_id AS "guestId",
+        survey_key AS "surveyKey",
+        survey_version AS "surveyVersion",
+        answers,
+        free_text AS "freeText",
+        overall_rating AS "overallRating",
+        recommend_score AS "recommendScore",
+        created_at AS "createdAt"
+      FROM survey_responses
+      WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+      ORDER BY guest_id, created_at DESC
+    `)
+    .catch((error) => {
+      console.warn("[admin][getDashboardTableData] guest survey query failed, fallback empty", error);
+      return { rows: [] };
+    });
 
   const latestGameRowsRaw = await db
     .execute(sql`
@@ -359,41 +370,51 @@ export async function getDashboardTableData() {
   });
 
   // ---- Guests (anonymous) ----
-  const guestAggRaw = await db.execute(sql`
-    WITH guest_src AS (
-      SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-      UNION ALL
-      SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-    ),
-    guest_ids AS (
-      SELECT guest_id, MAX(created_at) AS last_active
-      FROM guest_src
-      GROUP BY guest_id
-    )
-    INSERT INTO guest_aliases (guest_id)
-    SELECT guest_id FROM guest_ids
-    ON CONFLICT (guest_id) DO NOTHING
-    RETURNING guest_id
-  `);
+  const guestAggRaw = await db
+    .execute(sql`
+      WITH guest_src AS (
+        SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+        UNION ALL
+        SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+      ),
+      guest_ids AS (
+        SELECT guest_id, MAX(created_at) AS last_active
+        FROM guest_src
+        GROUP BY guest_id
+      )
+      INSERT INTO guest_aliases (guest_id)
+      SELECT guest_id FROM guest_ids
+      ON CONFLICT (guest_id) DO NOTHING
+      RETURNING guest_id
+    `)
+    .catch((error) => {
+      console.warn("[admin][getDashboardTableData] guest alias upsert failed, fallback empty", error);
+      return { rows: [] };
+    });
   void guestAggRaw;
 
-  const guestRowsRaw = await db.execute(sql`
-    WITH guest_src AS (
-      SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-      UNION ALL
-      SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-    ),
-    guest_ids AS (
-      SELECT guest_id, MAX(created_at) AS last_active
-      FROM guest_src
-      GROUP BY guest_id
-    )
-    SELECT g.guest_id AS "guestId", a.guest_no AS "guestNo", g.last_active AS "lastActive"
-    FROM guest_ids g
-    INNER JOIN guest_aliases a ON a.guest_id = g.guest_id
-    ORDER BY a.guest_no ASC
-    LIMIT 2000
-  `);
+  const guestRowsRaw = await db
+    .execute(sql`
+      WITH guest_src AS (
+        SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+        UNION ALL
+        SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+      ),
+      guest_ids AS (
+        SELECT guest_id, MAX(created_at) AS last_active
+        FROM guest_src
+        GROUP BY guest_id
+      )
+      SELECT g.guest_id AS "guestId", a.guest_no AS "guestNo", g.last_active AS "lastActive"
+      FROM guest_ids g
+      INNER JOIN guest_aliases a ON a.guest_id = g.guest_id
+      ORDER BY a.guest_no ASC
+      LIMIT 2000
+    `)
+    .catch((error) => {
+      console.warn("[admin][getDashboardTableData] guest rows query failed, fallback empty", error);
+      return { rows: [] };
+    });
   const guestRows = normalizeExecuteRows(guestRowsRaw);
   const guestTableRows = guestRows.map((g) => {
     const guestId = String(g.guestId ?? "");
