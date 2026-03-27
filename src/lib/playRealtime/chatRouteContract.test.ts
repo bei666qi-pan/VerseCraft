@@ -12,5 +12,20 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   for (const key of required) {
     assert.ok(content.includes(key), `missing contract key marker: ${key}`);
   }
-  assert.ok(content.includes("maxChars: 2400"), "runtime packet budget changed unexpectedly");
+  assert.ok(
+    content.includes("maxChars: 2400") ||
+      content.includes("contextMode === \"minimal\" ? 1400 : 2400"),
+    "runtime packet budget changed unexpectedly"
+  );
+  assert.ok(content.includes("finalOutputModeration"), "final output safety must be retained");
+  assert.ok(content.includes("runStreamFinalHooks"), "final hooks must stay enabled");
+  const idxInputSafety = content.indexOf("const inputSafety = await moderateInputOnServer");
+  const idxRiskLane = content.indexOf("const laneDecision =");
+  assert.equal(idxInputSafety >= 0 && idxRiskLane >= 0 && idxInputSafety < idxRiskLane, true, "content safety must run before risk lane split");
+  assert.ok(content.includes("AI_CHAT_ENABLE_RISK_LANE_SPLIT"), "risk lane split should be configurable");
+  assert.ok(content.includes("AI_CHAT_ENABLE_LIGHTWEIGHT_FAST_PATH"), "lightweight fast path should be configurable");
+  assert.ok(content.includes("AI_CHAT_ENABLE_PROMPT_SLIMMING"), "prompt slimming should be configurable");
+  assert.ok(content.includes("AI_CHAT_CONTROL_PREFLIGHT_BUDGET_MS_CAP"), "preflight budget cap should be configurable");
+  assert.ok(content.includes("AI_CHAT_LORE_RETRIEVAL_BUDGET_MS_CAP"), "lore budget cap should be configurable");
+  assert.ok(content.includes("Promise.race([") && content.includes("loreBudgetMs"), "lore timeout degrade guard missing");
 });

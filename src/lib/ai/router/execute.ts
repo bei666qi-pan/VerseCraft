@@ -204,6 +204,27 @@ export async function executePlayerChatStream(params: {
   const attempts: AiRoutingAttempt[] = [];
 
   if (policy.chain.length === 0) {
+    // #region agent log
+    fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
+      body: JSON.stringify({
+        sessionId: "5f6062",
+        runId: "pre-fix",
+        hypothesisId: "H3",
+        location: "src/lib/ai/router/execute.ts:playerChatPolicyEmpty",
+        message: "player chat policy chain resolved empty",
+        data: {
+          requestId: params.ctx.requestId,
+          mode,
+          task: "PLAYER_CHAT",
+          intendedLogicalRole,
+          configuredMainModels: env.modelsByRole.main.length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     return {
       ok: false,
       code: "NO_CREDENTIALS",
@@ -427,6 +448,33 @@ export async function executePlayerChatStream(params: {
     }
   }
 
+  // #region agent log
+  fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
+    body: JSON.stringify({
+      sessionId: "5f6062",
+      runId: "pre-fix",
+      hypothesisId: "H4",
+      location: "src/lib/ai/router/execute.ts:playerChatChainExhausted",
+      message: "all upstream attempts exhausted for player chat",
+      data: {
+        requestId: params.ctx.requestId,
+        mode,
+        attempts: attempts.map((a) => ({
+          logicalRole: a.logicalRole,
+          providerId: a.providerId,
+          gatewayModel: a.gatewayModel,
+          phase: a.phase,
+          httpStatus: a.httpStatus ?? null,
+          failureKind: a.failureKind ?? null,
+          severity: a.severity ?? null,
+        })),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   return {
     ok: false,
     code: "CHAIN_EXHAUSTED",

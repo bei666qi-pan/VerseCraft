@@ -14,7 +14,6 @@ import {
   submitFeedback,
   submitProductSurvey,
 } from "@/app/actions/feedback";
-import { fetchSettlementHistoryPage } from "@/app/actions/history";
 import {
   PRODUCT_SURVEY_KEY_HOME,
   PRODUCT_SURVEY_VERSION_HOME,
@@ -383,8 +382,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTargetSlotId, setDeleteTargetSlotId] = useState<string>("");
   const [cloudRows, setCloudRows] = useState<SaveRow[]>([]);
-  const [historyTotal, setHistoryTotal] = useState<number | null>(null);
-  const [historyLatestIso, setHistoryLatestIso] = useState<string | null>(null);
   const [shadowTick, setShadowTick] = useState(0);
   const [surveyOpen, setSurveyOpen] = useState(false);
   const [showBugFeedback, setShowBugFeedback] = useState(false);
@@ -680,22 +677,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     }
   }
 
-  function formatHistoryLatest(iso: string | null): string {
-    if (!iso) return "暂无";
-    const t = Date.parse(iso);
-    if (!Number.isFinite(t)) return "暂无";
-    try {
-      return new Intl.DateTimeFormat("zh-CN", {
-        month: "numeric",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(t);
-    } catch {
-      return iso.slice(0, 16);
-    }
-  }
-
   function summarizeLine(sum: HomeContinueSummary | null): string {
     if (!sum) return "摘要暂缺";
     const loc = formatLocationLabel(sum.locationId);
@@ -730,27 +711,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       .then((rows) => setCloudRows(rows as SaveRow[]))
       .catch(() => setCloudRows([]));
   }, [user]);
-
-  useEffect(() => {
-    if (!user) {
-      setHistoryTotal(null);
-      setHistoryLatestIso(null);
-      return;
-    }
-    let cancelled = false;
-    void fetchSettlementHistoryPage({ limit: 1, offset: 0 })
-      .then((res) => {
-        if (cancelled) return;
-        setHistoryTotal(Number.isFinite(res.total) ? res.total : 0);
-        setHistoryLatestIso(res.items[0]?.createdAt ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setHistoryTotal(0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
 
   useEffect(() => {
     if (!authWarn) return;
@@ -1450,9 +1410,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     可跨设备继续
                   </span>
                   <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                    履历 {historyTotal == null ? "…" : `${historyTotal}`}
-                  </span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                     云 {hasCloudAnySave ? `${cloudRows.length}` : "0"}
                   </span>
                   <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
@@ -1464,12 +1421,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href="/history"
-                  className="rounded-full border border-slate-200 bg-white/75 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white"
-                >
-                  书写履历 →
-                </a>
                 <button
                   type="button"
                   onClick={handleLogout}

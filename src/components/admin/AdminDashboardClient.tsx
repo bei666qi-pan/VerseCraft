@@ -12,6 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { formatDurationHoursMinutes } from "@/lib/admin/timeFormat";
 
 type DashboardUserRow = {
   id: string;
@@ -39,10 +40,7 @@ type AdminDashboardClientProps = {
 };
 
 function formatPlayTime(totalSeconds: number): string {
-  const sec = Number.isFinite(totalSeconds) ? Math.max(0, Math.trunc(totalSeconds)) : 0;
-  const hours = Math.floor(sec / 3600);
-  const minutes = Math.floor((sec % 3600) / 60);
-  return `${hours}小时${minutes}分`;
+  return formatDurationHoursMinutes(totalSeconds);
 }
 
 function formatTokenCost(tokens: number): string {

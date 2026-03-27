@@ -563,13 +563,13 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       </p>
     ) : uploadOutcome.cloudOk && uploadOutcome.historyId != null ? (
       <p className="text-center text-[11px] leading-relaxed text-emerald-200/85">
-        <span className="font-semibold text-emerald-100/95">本局已写入你的「书写履历」。</span>
-        摘要与写作稿快照已归档，可随时在历史中心回看或再次下载。
+        <span className="font-semibold text-emerald-100/95">本局结果已完成云端归档。</span>
+        排行榜与结算数据已同步，可直接继续下一局。
       </p>
     ) : uploadOutcome.cloudOk ? (
       <p className="text-center text-[11px] leading-relaxed text-amber-200/80">
         本局成绩已同步至服务器（含排行榜统计）。
-        <span className="text-amber-100/90"> 若「书写履历」暂未显示本条，可稍后在历史页刷新。</span>
+        <span className="text-amber-100/90"> 若短时未刷新，请稍后重试。</span>
       </p>
     ) : (
       <p className="text-center text-[11px] leading-relaxed text-slate-400">
@@ -582,7 +582,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const guestLoginHint =
     uploadOutcome !== null && !uploadOutcome.cloudOk ? (
       <p className="rounded-lg border border-slate-600/35 bg-slate-950/40 px-3 py-2 text-center text-[11px] leading-relaxed text-slate-500">
-        若希望这一局随账号留下痕迹：回到首页登录同一笔名后再来游玩，此后结算会自动进入「书写履历」，换设备也能回看。
+        若希望这一局随账号同步：回到首页登录同一笔名后再游玩，后续结算会自动归档到云端。
       </p>
     ) : null;
 
@@ -664,7 +664,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
               在规则结算之上，用本局对话片段生成的<strong className="font-medium text-slate-400">可读性总结</strong>
               ，仅供回味与梳理，
               <span className="text-slate-500">不参与评级、也不会替代上文定调。</span>
-              生成完成后会自动附在「书写履历」里，方便以后回看。
+              生成完成后会随本局结果归档。
             </p>
             {aiReviewLoading && !aiReview ? (
               <p className="mt-3 text-sm text-indigo-100/70">正在根据本局文本生成补充总结…</p>
@@ -741,12 +741,12 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                   </li>
                   <li>
                     <span className="text-slate-500">结局：</span>
-                    {isDead ? "死亡封卷" : maxFloor >= 99 ? "逃离" : "暂未以逃离收束"}
+                    {isDead ? "死亡结算" : maxFloor >= 99 ? "逃离" : "暂未以逃离收束"}
                   </li>
                   <li className="text-slate-500">
                     {uploadOutcome?.cloudOk && uploadOutcome.historyId != null
-                      ? "以上内容已随本局一并写入「书写履历」，可在历史页下载与本次相同的写作稿快照。"
-                      : "以上内容已记入本机成就预览；登录后可同步到历史中心。"}
+                      ? "以上内容已随本局一并归档到云端。"
+                      : "以上内容已记入本机成就预览；登录后可同步到云端。"}
                   </li>
                 </ul>
               </div>
@@ -771,9 +771,9 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                 onClick={() => void handleRestart()}
                 className="min-h-[52px] w-full rounded-2xl bg-gradient-to-r from-slate-100 to-slate-200 px-6 py-3.5 text-base font-bold tracking-wide text-slate-900 shadow-[0_0_20px_rgba(226,232,240,0.25)] transition hover:from-white hover:to-slate-100"
               >
-                继续行动：封卷回首页
+                继续行动：返回首页
                 <span className="mt-0.5 block text-center text-[11px] font-medium normal-case tracking-normal text-slate-700">
-                  清空本局存档后回到主页，再决定开新篇或查看履历
+                  清空本局存档后回到主页，再决定开新篇或继续执笔
                 </span>
               </button>
             )}
@@ -786,12 +786,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
               >
                 {archiveOpen ? "收起本局归档" : "查看本局归档"}
               </button>
-              <Link
-                href="/history"
-                className="flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-500/50 bg-slate-800/50 px-4 text-sm font-semibold text-slate-100 transition hover:border-indigo-400/40 hover:bg-slate-800/90"
-              >
-                书写履历（全部对局）
-              </Link>
             </div>
 
             <button
@@ -799,7 +793,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
               onClick={handleExport}
               className="min-h-[40px] w-full rounded-xl border border-dashed border-slate-600/70 bg-transparent px-4 text-xs font-medium text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
             >
-              导出本局写作稿（.md · 与履历快照同源）
+              导出本局写作稿（.md）
             </button>
           </div>
         </div>

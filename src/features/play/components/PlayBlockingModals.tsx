@@ -56,10 +56,10 @@ export function PlayBlockingModals({
             className={`${glassPlayDialogSurface} border-white/10 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)]`}
           >
             <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
-              意识脱离申请
+              退出确认
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-slate-300">
-              选择保存并退出可保存进度并返回首页；选择直接退出将直接封卷。
+              选择“存档并退出”会先保存当前进度再返回首页；选择“直接退出”将不再额外保存本次进度。
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-end">
               <button
@@ -67,14 +67,14 @@ export function PlayBlockingModals({
                 onClick={onSaveAndExit}
                 className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
               >
-                保存并封卷
+                存档并退出
               </button>
               <button
                 type="button"
                 onClick={onAbandonAndDie}
                 className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
               >
-                直接封卷
+                直接退出
               </button>
             </div>
           </div>

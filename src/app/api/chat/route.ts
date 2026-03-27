@@ -55,8 +55,10 @@ import {
   reloadVerseCraftProcessEnv,
   resolveVerseCraftProjectRoot,
 } from "@/lib/config/loadVerseCraftEnv";
+import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { validateChatRequest } from "@/lib/security/chatValidation";
+import { classifyChatRiskLane } from "@/lib/security/chatRiskLane";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
 import { safeBlockedDmJson } from "@/lib/security/policy";
@@ -99,6 +101,118 @@ export const dynamic = "force-dynamic";
 
 const ROUNDS_THRESHOLD = 10;
 const SHORT_TERM_ROUNDS = 5;
+// 首字优化硬预算：即使 env 配置更大，也不允许这些步骤长期阻塞 TTFT。
+const TTFT_HARD_CAP_CONTROL_PREFLIGHT_MS = 260;
+const TTFT_HARD_CAP_LORE_MS = 220;
+const TTFT_HARD_CAP_SESSION_MEMORY_MS = 140;
+
+type ChatPerfFlags = {
+  enableRiskLaneSplit: boolean;
+  enableLightweightFastPath: boolean;
+  enablePromptSlimming: boolean;
+  controlPreflightBudgetMsCap: number;
+  loreRetrievalBudgetMsCap: number;
+};
+
+type TtftAggregatePoint = {
+  t: number;
+  totalTTFT: number;
+  slowestStage: string;
+  slowestMs: number;
+};
+
+const ttftAggregateRing: TtftAggregatePoint[] = [];
+const TTFT_AGGREGATE_RING_MAX = 120;
+
+function resolveChatPerfFlags(): ChatPerfFlags {
+  return {
+    enableRiskLaneSplit: envBoolean("AI_CHAT_ENABLE_RISK_LANE_SPLIT", true),
+    enableLightweightFastPath: envBoolean("AI_CHAT_ENABLE_LIGHTWEIGHT_FAST_PATH", true),
+    enablePromptSlimming: envBoolean("AI_CHAT_ENABLE_PROMPT_SLIMMING", true),
+    controlPreflightBudgetMsCap: Math.max(
+      0,
+      Math.min(2000, envNumber("AI_CHAT_CONTROL_PREFLIGHT_BUDGET_MS_CAP", TTFT_HARD_CAP_CONTROL_PREFLIGHT_MS))
+    ),
+    loreRetrievalBudgetMsCap: Math.max(
+      0,
+      Math.min(2000, envNumber("AI_CHAT_LORE_RETRIEVAL_BUDGET_MS_CAP", TTFT_HARD_CAP_LORE_MS))
+    ),
+  };
+}
+
+function p95(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+  return sorted[idx] ?? 0;
+}
+
+function pushAndSummarizeTtft(point: TtftAggregatePoint): {
+  avg: number;
+  p95: number;
+  slowestStageTop: string;
+  sampleCount: number;
+} {
+  ttftAggregateRing.push(point);
+  if (ttftAggregateRing.length > TTFT_AGGREGATE_RING_MAX) {
+    ttftAggregateRing.splice(0, ttftAggregateRing.length - TTFT_AGGREGATE_RING_MAX);
+  }
+  const totals = ttftAggregateRing.map((x) => x.totalTTFT);
+  const avg = totals.length > 0 ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
+  const p95v = p95(totals);
+  const stageCount = new Map<string, number>();
+  for (const x of ttftAggregateRing) {
+    stageCount.set(x.slowestStage, (stageCount.get(x.slowestStage) ?? 0) + 1);
+  }
+  const slowestStageTop =
+    [...stageCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "unknown";
+  return { avg, p95: p95v, slowestStageTop, sampleCount: ttftAggregateRing.length };
+}
+
+type ChatTtftProfile = {
+  requestReceivedAt: number;
+  validateChatRequestMs: number | null;
+  moderateInputOnServerMs: number | null;
+  preInputModerationMs: number | null;
+  quotaCheckMs: number | null;
+  sessionMemoryReadMs: number | null;
+  controlPreflightMs: number | null;
+  loreRetrievalMs: number | null;
+  promptBuildMs: number | null;
+  generateMainReplyStartedAt: number | null;
+  firstValidStreamChunkAt: number | null;
+  firstSseWriteAt: number | null;
+  lane: "fast" | "slow";
+};
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function elapsedMs(startAt: number): number {
+  return Math.max(0, nowMs() - startAt);
+}
+
+function buildMinimalPlayerContextSnapshot(playerContext: string): string {
+  const src = String(playerContext ?? "");
+  if (!src) return "";
+  const picks: string[] = [];
+  const patterns = [
+    /用户位置\[[^\]]+\]/,
+    /游戏时间\[[^\]]+\]/,
+    /任务追踪：[^。]+。/,
+    /NPC当前位置：[^。]+。/,
+    /主威胁状态：[^。]+。/,
+    /职业状态：[^。]+。/,
+    /图鉴已解锁：[^。]+。/,
+  ];
+  for (const re of patterns) {
+    const m = src.match(re);
+    if (m?.[0]) picks.push(m[0]);
+  }
+  if (picks.length > 0) return picks.join("\n");
+  return src.slice(0, 420);
+}
 
 function hasStrongAcquireSemantics(text: string): boolean {
   const t = String(text ?? "");
@@ -259,6 +373,8 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
 }
 
 export async function POST(req: Request) {
+  // TTFT 起点：从服务端收到请求开始计时，避免遗漏首字前阻塞步骤。
+  const requestReceivedAt = nowMs();
   let body: unknown;
   try {
     body = await req.json();
@@ -269,7 +385,25 @@ export async function POST(req: Request) {
   // Merge `.env.local` from the real package root (cwd can differ from app root under some launchers).
   loadVerseCraftEnvFilesOnce();
 
+  const ttftProfile: ChatTtftProfile = {
+    requestReceivedAt,
+    validateChatRequestMs: null,
+    moderateInputOnServerMs: null,
+    preInputModerationMs: null,
+    quotaCheckMs: null,
+    sessionMemoryReadMs: null,
+    controlPreflightMs: null,
+    loreRetrievalMs: null,
+    promptBuildMs: null,
+    generateMainReplyStartedAt: null,
+    firstValidStreamChunkAt: null,
+    firstSseWriteAt: null,
+    lane: "slow",
+  };
+  // 请求验证是首字前同步阻塞段，必须单独量化。
+  const validateStartAt = nowMs();
   const validated = validateChatRequest(body);
+  ttftProfile.validateChatRequestMs = elapsedMs(validateStartAt);
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: validated.status });
   }
@@ -283,7 +417,8 @@ export async function POST(req: Request) {
   const clientIp = getClientIpFromHeaders(req.headers);
   const requestId = createRequestId("chat");
   const platform = derivePlatformFromUserAgent(req.headers.get("user-agent"));
-  const requestStartedAt = Date.now();
+  const requestStartedAt = requestReceivedAt;
+  const perfFlags = resolveChatPerfFlags();
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
   const shouldApplyFirstActionConstraint = Boolean(isFirstAction && openingOptionsOnlyRound);
@@ -327,6 +462,8 @@ export async function POST(req: Request) {
 
   // Phase3: input moderation for private story action.
   // Important: do not feed unsafe raw input to control/main model.
+  // 输入安全审核：模型前必经步骤，通常是 TTFT 的第一层阻塞来源。
+  const inputSafetyStartAt = nowMs();
   const inputSafety = await moderateInputOnServer({
     scene: "private_story_action",
     text: latestUserInput,
@@ -335,6 +472,7 @@ export async function POST(req: Request) {
     ip: clientIp ? String(clientIp) : undefined,
     traceId: requestId,
   });
+  ttftProfile.moderateInputOnServerMs = elapsedMs(inputSafetyStartAt);
   if (inputSafety.decision === "reject") {
     recordHighRisk({ ip: clientIp, sessionId, userId }, `input_reject:${inputSafety.traceId}`);
     return new Response(
@@ -365,44 +503,75 @@ export async function POST(req: Request) {
     latestUserInput = inputSafety.text;
   }
 
-  const preCheck = await preInputModeration({
-    input: `${latestUserInput}\n${playerContext}`,
-    userId,
-    ip: clientIp,
-    path: "/api/chat",
-    requestId,
-  });
-  writeAuditTrail({
-    requestId,
-    sessionId,
-    userId,
-    ip: clientIp,
-    stage: "pre_input",
-    riskLevel: preCheck.result.severity === "high" || preCheck.result.severity === "critical" ? "gray" : "normal",
-    action: preCheck.policy.blocked ? "degrade" : preCheck.result.decision === "review" ? "review" : "allow",
-    triggeredRule: preCheck.result.reason,
-    provider: preCheck.provider,
-    summary: preCheck.result.categories.join(","),
-  });
-  if (preCheck.policy.blocked) {
-    recordHighRisk({ ip: clientIp, sessionId, userId }, preCheck.result.reason);
-    return new Response(
-      sseText(
-        safeBlockedDmJson(preCheck.policy.userMessage, {
-          action: "degrade",
-          stage: "pre_input",
-          riskLevel: "gray",
-          requestId,
-          reason: preCheck.result.reason,
-        })
-      ),
-      {
-      status: preCheck.policy.statusCode,
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-      },
+  /**
+   * 快慢车道判定（仅工程规则，零额外模型开销）：
+   * - fast：普通叙事动作，保留基础安全入口后尽快进主模型；
+   * - slow：灰区/高风险/复杂系统指令，走完整重链路。
+   */
+  const laneDecision = perfFlags.enableRiskLaneSplit
+    ? classifyChatRiskLane(latestUserInput)
+    : { lane: "slow" as const, reasons: ["multi_clause_complex_action" as const] };
+  const riskLane = laneDecision.lane;
+  ttftProfile.lane = riskLane;
+  const shouldRunHeavyPreInput = riskLane === "slow";
+
+  // 深度 preInputModeration 仅在慢车道首字前阻塞，避免普通请求双重安全阻塞。
+  if (shouldRunHeavyPreInput) {
+    const preInputStartAt = nowMs();
+    const preCheck = await preInputModeration({
+      input: `${latestUserInput}\n${playerContext}`,
+      userId,
+      ip: clientIp,
+      path: "/api/chat",
+      requestId,
+    });
+    ttftProfile.preInputModerationMs = elapsedMs(preInputStartAt);
+    writeAuditTrail({
+      requestId,
+      sessionId,
+      userId,
+      ip: clientIp,
+      stage: "pre_input",
+      riskLevel: preCheck.result.severity === "high" || preCheck.result.severity === "critical" ? "gray" : "normal",
+      action: preCheck.policy.blocked ? "degrade" : preCheck.result.decision === "review" ? "review" : "allow",
+      triggeredRule: preCheck.result.reason,
+      provider: preCheck.provider,
+      summary: preCheck.result.categories.join(","),
+    });
+    if (preCheck.policy.blocked) {
+      recordHighRisk({ ip: clientIp, sessionId, userId }, preCheck.result.reason);
+      return new Response(
+        sseText(
+          safeBlockedDmJson(preCheck.policy.userMessage, {
+            action: "degrade",
+            stage: "pre_input",
+            riskLevel: "gray",
+            requestId,
+            reason: preCheck.result.reason,
+          })
+        ),
+        {
+          status: preCheck.policy.statusCode,
+          headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+          },
+        }
+      );
+    }
+  } else {
+    ttftProfile.preInputModerationMs = 0;
+    writeAuditTrail({
+      requestId,
+      sessionId,
+      userId,
+      ip: clientIp,
+      stage: "pre_input",
+      riskLevel: "normal",
+      action: "allow",
+      triggeredRule: "fast_lane",
+      summary: `pre_input_skipped:${laneDecision.reasons.join("|")}`,
     });
   }
 
@@ -413,8 +582,16 @@ export async function POST(req: Request) {
   }
 
   // Overlap session-memory DB read with local chat message shaping (stable prefix + raw slice + dice).
+  // session memory 可提升质量，但不应无限阻塞首字；超预算时先按无记忆继续。
+  const sessionMemoryStartAt = nowMs();
   const sessionMemoryPromise: Promise<SessionMemoryRow | null> =
-    !isFirstAction && userId ? loadSessionMemoryForUser(userId) : Promise.resolve(null);
+    !isFirstAction && userId
+      ? loadSessionMemoryForUser(userId).finally(() => {
+          ttftProfile.sessionMemoryReadMs = elapsedMs(sessionMemoryStartAt);
+        })
+      : Promise.resolve(null).finally(() => {
+          ttftProfile.sessionMemoryReadMs = 0;
+        });
 
   const playerDmStablePrefix = getStablePlayerDmSystemPrefix();
 
@@ -450,21 +627,50 @@ export async function POST(req: Request) {
     messagesToSend = chatMsgs.slice(-keepCount);
   }
 
-  const sessionMemory: SessionMemoryRow | null = await sessionMemoryPromise;
-  const memoryBlock = buildMemoryBlock(sessionMemory);
+  // 首字前等待 session memory 设置硬上限；超时则降级为 null，避免 DB 抖动放大 TTFT。
+  const sessionMemoryBudgetMs = TTFT_HARD_CAP_SESSION_MEMORY_MS;
+  const sessionMemory: SessionMemoryRow | null = await Promise.race([
+    sessionMemoryPromise,
+    new Promise<SessionMemoryRow | null>((resolve) => setTimeout(() => resolve(null), sessionMemoryBudgetMs)),
+  ]);
+  if (ttftProfile.sessionMemoryReadMs === null) {
+    ttftProfile.sessionMemoryReadMs = elapsedMs(sessionMemoryStartAt);
+  }
+  // 上下文分层：快车道只保留首字必需信息，慢车道保留更完整增强信息。
+  const contextMode =
+    perfFlags.enablePromptSlimming && perfFlags.enableLightweightFastPath && riskLane === "fast"
+      ? "minimal"
+      : "full";
+  const memoryBlock = buildMemoryBlock(
+    sessionMemory,
+    contextMode === "minimal"
+      ? {
+          summaryMaxChars: 420,
+          playerStatusMaxChars: 220,
+          npcRelationsMaxChars: 140,
+        }
+      : undefined
+  );
+  const playerContextForPrompt =
+    contextMode === "minimal"
+      ? buildMinimalPlayerContextSnapshot(playerContext)
+      : playerContext;
   const dynamicCoreForQuota = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
-    playerContext,
+    playerContext: playerContextForPrompt,
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets: "",
     controlAugmentation: "",
   });
   const systemPromptForQuota = `${playerDmStablePrefix}\n\n${dynamicCoreForQuota}`;
 
-  if (userId) {
+  const shouldRunStrictQuotaBeforeFirstToken = !(perfFlags.enableLightweightFastPath && riskLane === "fast");
+  if (userId && shouldRunStrictQuotaBeforeFirstToken) {
     try {
       const estimated = estimateTokensFromInput(systemPromptForQuota, messages);
+      const quotaCheckStartAt = nowMs();
       const quotaResult = await checkQuota(userId, estimated);
+      ttftProfile.quotaCheckMs = elapsedMs(quotaCheckStartAt);
       if (!quotaResult.ok) {
         const msg =
           quotaResult.reason === "banned"
@@ -494,7 +700,17 @@ export async function POST(req: Request) {
       }
     } catch (quotaErr) {
       console.error("[api/chat] quota check failed, proceeding without quota", quotaErr);
+      if (ttftProfile.quotaCheckMs === null) ttftProfile.quotaCheckMs = 0;
     }
+  } else if (userId) {
+    /**
+     * 单机叙事过程分层策略：
+     * - 快车道不做“重型配额 DB 校验”首字前阻塞，避免把普通回合当成高价值对外提交处理；
+     * - 基础限流（riskControl）与内容安全（moderateInputOnServer）仍然保留；
+     * - 实际 token 记账与额度消耗仍在首字后 flush 阶段执行；
+     * - 企业化强校验应聚焦在云同步/排行榜/成就上传等“外部可见结果”节点。
+     */
+    ttftProfile.quotaCheckMs = 0;
   }
 
   if (totalRounds > ROUNDS_THRESHOLD && userId) {
@@ -560,9 +776,23 @@ export async function POST(req: Request) {
     isFirstAction && userId
       ? db.delete(gameSessionMemory).where(eq(gameSessionMemory.userId, userId)).catch(() => {})
       : Promise.resolve();
+  // 首字前不等待清理动作：这是维护性步骤，不影响本回合首字正确性。
+  void deleteSessionMemoryP;
 
   const preflightEnv = resolveAiEnv();
   const runControlPreflightP = (async (): Promise<void> => {
+    // 快车道跳过 control preflight：保留安全底线同时减少首字前重计算。
+    if (perfFlags.enableLightweightFastPath && riskLane === "fast") {
+      preflightTurnMetrics = {
+        ran: false,
+        skippedReason: "fast_lane",
+        cacheHit: null,
+        latencyMs: 0,
+        ok: false,
+        budgetHit: false,
+      };
+      return;
+    }
     if (resolveOperationMode() === "emergency") {
       preflightTurnMetrics = {
         ran: false,
@@ -588,7 +818,11 @@ export async function POST(req: Request) {
 
     const hardAc = new AbortController();
     const hardTimer = setTimeout(() => hardAc.abort(), 11_000);
-    const budgetMs = preflightEnv.controlPreflightBudgetMs;
+    // 慢车道也必须硬限时：预算化降级而不是让 preflight 无上限拖慢首字。
+    const budgetMs = Math.max(
+      0,
+      Math.min(preflightEnv.controlPreflightBudgetMs, perfFlags.controlPreflightBudgetMsCap)
+    );
     const pfWallStart = Date.now();
 
     try {
@@ -717,9 +951,19 @@ export async function POST(req: Request) {
   let privateFactHitCount = 0;
 
   const loreRetrievalP = (async (): Promise<void> => {
+    // 快车道跳过重型 lore retrieval，慢车道保留完整知识检索能力。
+    if (perfFlags.enableLightweightFastPath && riskLane === "fast") {
+      loreRetrievalLatencyMs = 0;
+      loreFallbackPath = "none";
+      return;
+    }
     try {
       const loreT0 = Date.now();
-      const loreBudgetMs = preflightEnv.loreRetrievalBudgetMs;
+      // lore 属于“可预算化降级”步骤：超时直接降级为无 lore，不允许长期挡首字。
+      const loreBudgetMs = Math.max(
+        0,
+        Math.min(preflightEnv.loreRetrievalBudgetMs, perfFlags.loreRetrievalBudgetMsCap)
+      );
       const lorePromise = getRuntimeLore({
         latestUserInput,
         userId,
@@ -803,8 +1047,13 @@ export async function POST(req: Request) {
     }
   })();
 
-  await Promise.all([deleteSessionMemoryP, runControlPreflightP, loreRetrievalP]);
+  await Promise.all([runControlPreflightP, loreRetrievalP]);
+  ttftProfile.controlPreflightMs =
+    typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
+  ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
 
+  // Prompt/runtime packet 组装：纯本地执行但在首字前，复杂字符串拼装会拖慢 TTFT。
+  const promptBuildStartAt = nowMs();
   const controlAugmentation = buildControlAugmentationBlock({
     control: pipelineControl,
     rule: pipelineRule,
@@ -821,18 +1070,25 @@ export async function POST(req: Request) {
       unlockFlags: {},
     },
   });
-  const npcTaskNarrativeBlock = buildNpcProactiveGrantNarrativeBlock({
-    playerContext,
-    latestUserInput,
-  });
-  const conspiracyNarrativeBlock = build7FConspiracyNarrativeBlock({
-    playerContext,
-    latestUserInput,
-  });
+  // 快车道优先首字：可延后质量增强块（任务主动发放叙事/阴谋叙事）不参与首字前拼装。
+  const npcTaskNarrativeBlock =
+    riskLane === "slow"
+      ? buildNpcProactiveGrantNarrativeBlock({
+          playerContext,
+          latestUserInput,
+        })
+      : "";
+  const conspiracyNarrativeBlock =
+    riskLane === "slow"
+      ? build7FConspiracyNarrativeBlock({
+          playerContext,
+          latestUserInput,
+        })
+      : "";
   const controlAndLoreAugmentation = [
-    controlAugmentation,
-    runtimeLoreCompact,
-    serviceContextBlock,
+    contextMode === "minimal" ? "" : controlAugmentation,
+    contextMode === "minimal" ? "" : runtimeLoreCompact,
+    contextMode === "minimal" ? "" : serviceContextBlock,
     npcTaskNarrativeBlock,
     conspiracyNarrativeBlock,
   ]
@@ -848,14 +1104,15 @@ export async function POST(req: Request) {
       anchorUnlocked: true,
       unlockFlags: {},
     },
-    runtimeLoreCompact,
-    maxChars: 2400,
+    runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
+    contextMode,
+    maxChars: contextMode === "minimal" ? 1400 : 2400,
   });
   runtimePacketChars = runtimePackets.length;
   runtimePacketTokenEstimate = Math.ceil(runtimePacketChars / 4);
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
-    playerContext,
+    playerContext: playerContextForPrompt,
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
@@ -870,6 +1127,7 @@ export async function POST(req: Request) {
   const dynamicCharLen = dynamicSuffixFull.length;
 
   const safeMessages = sanitizeMessagesForUpstream([...systemChatMessages, ...messagesToSend]);
+  ttftProfile.promptBuildMs = elapsedMs(promptBuildStartAt);
 
   const telemetryPreferredModel = DEFAULT_PLAYER_ROLE_CHAIN[0];
   void recordGenericAnalyticsEvent({
@@ -935,6 +1193,26 @@ export async function POST(req: Request) {
         gatewayKeyLen: ai.gatewayApiKey.length,
         mainModelConfigured: ai.modelsByRole.main.length > 0,
       });
+      // #region agent log
+      fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
+        body: JSON.stringify({
+          sessionId: "5f6062",
+          runId: "pre-fix",
+          hypothesisId: "H1",
+          location: "src/app/api/chat/route.ts:anyAiProviderConfigured",
+          message: "provider configuration missing after reload",
+          data: {
+            requestId,
+            gatewayConfigured: Boolean(ai.gatewayBaseUrl && ai.gatewayApiKey),
+            gatewayKeyLen: ai.gatewayApiKey.length,
+            mainModelConfigured: ai.modelsByRole.main.length > 0,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
     }
     console.warn(
       `[api/chat] No AI gateway configured (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_MAIN). See .env.example. Returning degraded SSE with 200.`
@@ -984,6 +1262,8 @@ export async function POST(req: Request) {
 
   let streamResult: PlayerChatStreamResult;
   try {
+    // 上游主模型调用起点：用于计算 upstream connect 到首包的纯网络/上游等待耗时。
+    ttftProfile.generateMainReplyStartedAt = nowMs();
     streamResult = await generateMainReply({
       messages: safeMessages,
       ctx: {
@@ -991,7 +1271,7 @@ export async function POST(req: Request) {
         userId,
         sessionId,
         path: "/api/chat",
-        tags: { clientPurpose },
+        tags: { clientPurpose, riskLane },
       },
       signal: ac.signal,
       timeoutMs: TIMEOUT_MS,
@@ -1002,6 +1282,34 @@ export async function POST(req: Request) {
 
   if (!streamResult.ok) {
     const isTimeout = streamResult.code === "ABORTED";
+    // #region agent log
+    fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
+      body: JSON.stringify({
+        sessionId: "5f6062",
+        runId: "pre-fix",
+        hypothesisId: "H2",
+        location: "src/app/api/chat/route.ts:streamResultNotOk",
+        message: "player chat stream returned degraded path",
+        data: {
+          requestId,
+          code: streamResult.code,
+          message: streamResult.message?.slice(0, 220),
+          lastHttpStatus: streamResult.lastHttpStatus ?? null,
+          attempts: (streamResult.httpAttempts ?? []).map((a) => ({
+            logicalRole: a.logicalRole,
+            providerId: a.providerId,
+            gatewayModel: a.gatewayModel,
+            phase: a.phase,
+            httpStatus: a.httpStatus ?? null,
+            failureKind: a.failureKind ?? null,
+          })),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     console.error(`\x1b[31m[api/chat] AI router failed\x1b[0m`, {
       code: streamResult.code,
       message: streamResult.message,
@@ -1071,7 +1379,81 @@ export async function POST(req: Request) {
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
-  const writeToStream = async (data: string) => writer.write(sse(data));
+  const emitTtftProfileSummary = (phase: "first_sse_write" | "stream_end", finishedAt?: number): void => {
+    if (process.env.NODE_ENV === "production") return;
+    const firstWriteAt = ttftProfile.firstSseWriteAt;
+    const firstChunkAt = ttftProfile.firstValidStreamChunkAt;
+    const connectStart = ttftProfile.generateMainReplyStartedAt;
+    const totalTTFT = firstWriteAt !== null ? Math.max(0, firstWriteAt - ttftProfile.requestReceivedAt) : null;
+    const upstreamConnectMs =
+      connectStart !== null && firstChunkAt !== null ? Math.max(0, firstChunkAt - connectStart) : null;
+    const blockingBeforeFirstTokenMs = totalTTFT;
+    const postFirstTokenMs =
+      finishedAt !== undefined && firstWriteAt !== null ? Math.max(0, finishedAt - firstWriteAt) : null;
+    const stagePairs: Array<[string, number]> = [
+      ["validate", ttftProfile.validateChatRequestMs ?? 0],
+      ["input_safety", ttftProfile.moderateInputOnServerMs ?? 0],
+      ["pre_input", ttftProfile.preInputModerationMs ?? 0],
+      ["quota", ttftProfile.quotaCheckMs ?? 0],
+      ["session_memory", ttftProfile.sessionMemoryReadMs ?? 0],
+      ["preflight", ttftProfile.controlPreflightMs ?? 0],
+      ["lore", ttftProfile.loreRetrievalMs ?? 0],
+      ["prompt_build", ttftProfile.promptBuildMs ?? 0],
+      ["upstream_connect", upstreamConnectMs ?? 0],
+    ];
+    const slowest = stagePairs.sort((a, b) => b[1] - a[1])[0] ?? ["unknown", 0];
+    // 结构化首字画像：用于快速定位“首字前阻塞”与“首字后耗时”边界。
+    console.info("[api/chat][ttft_profile]", {
+      phase,
+      requestId,
+      totalTTFT,
+      blockingBeforeFirstTokenMs,
+      postFirstTokenMs,
+      validateMs: ttftProfile.validateChatRequestMs,
+      inputSafetyMs: ttftProfile.moderateInputOnServerMs,
+      preInputModerationMs: ttftProfile.preInputModerationMs,
+      lane: ttftProfile.lane,
+      laneReasons: laneDecision.reasons,
+      quotaCheckMs: ttftProfile.quotaCheckMs,
+      sessionMemoryMs: ttftProfile.sessionMemoryReadMs,
+      preflightMs: ttftProfile.controlPreflightMs,
+      loreMs: ttftProfile.loreRetrievalMs,
+      promptBuildMs: ttftProfile.promptBuildMs,
+      generateMainReplyStartDeltaMs:
+        connectStart !== null ? Math.max(0, connectStart - ttftProfile.requestReceivedAt) : null,
+      upstreamConnectMs,
+      firstChunkDeltaMs:
+        firstChunkAt !== null ? Math.max(0, firstChunkAt - ttftProfile.requestReceivedAt) : null,
+      firstSseWriteDeltaMs:
+        firstWriteAt !== null ? Math.max(0, firstWriteAt - ttftProfile.requestReceivedAt) : null,
+      perfFlags,
+    });
+    if (phase === "first_sse_write" && totalTTFT !== null) {
+      const agg = pushAndSummarizeTtft({
+        t: nowMs(),
+        totalTTFT,
+        slowestStage: slowest[0],
+        slowestMs: slowest[1],
+      });
+      // 开发态统一汇总：用于“优化前/后”横向对比（avg / p95 / 最慢阶段）。
+      console.info("[api/chat][ttft_aggregate]", {
+        sampleCount: agg.sampleCount,
+        avgTTFT: Math.round(agg.avg),
+        p95TTFT: Math.round(agg.p95),
+        slowestStage: agg.slowestStageTop,
+        latestSlowestStage: slowest[0],
+        latestSlowestMs: Math.round(slowest[1]),
+      });
+    }
+  };
+  const writeToStream = async (data: string) => {
+    if (ttftProfile.firstSseWriteAt === null) {
+      // 首字写入 SSE：这是玩家实际感知到“开始响应”的时刻。
+      ttftProfile.firstSseWriteAt = nowMs();
+      emitTtftProfileSummary("first_sse_write");
+    }
+    return writer.write(sse(data));
+  };
   const closeWithFallback = async () => {
     try {
       await writeToStream(fallbackPayload);
@@ -1133,7 +1515,7 @@ export async function POST(req: Request) {
           userId,
           sessionId,
           path: "/api/chat",
-          tags: { clientPurpose },
+          tags: { clientPurpose, riskLane },
         },
         signal: ac.signal,
         timeoutMs: TIMEOUT_MS,
@@ -1164,6 +1546,7 @@ export async function POST(req: Request) {
             : 0;
       await persistTokenUsage(userId, toPersist);
       if (userId && toPersist > 0) {
+        // 快车道即使跳过了首字前配额校验，这里仍会在首字后进行真实额度扣减与留痕。
         await incrementQuota(userId, toPersist).catch((error) => {
           const err = error as Error;
           const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
@@ -1195,6 +1578,8 @@ export async function POST(req: Request) {
       }).catch(() => {});
 
       const finishedAt = Date.now();
+      // 终帧阶段（首字后）耗时画像：用于与首字前阻塞拆分，避免误把后处理当 TTFT 问题。
+      emitTtftProfileSummary("stream_end", finishedAt);
       void recordGenericAnalyticsEvent({
         eventId: `${requestId}:chat_request_finished`,
         idempotencyKey: `${requestId}:chat_request_finished`,
@@ -1582,6 +1967,7 @@ export async function POST(req: Request) {
       if (finalizePayload) {
         await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
         if (dmRecord && userId && sessionId) {
+          // 结果外化节点（可影响企业化资产）：在这里保留更强写回链路与冲突处理，不放到首字前阻塞。
           void persistTurnFacts({
             requestId,
             latestUserInput,
@@ -1789,6 +2175,10 @@ export async function POST(req: Request) {
           const data = line.slice(5).trim();
 
           if (!data) continue;
+          if (ttftProfile.firstValidStreamChunkAt === null) {
+            // 第一条有效 chunk 到达：可用于判断上游连接/排队是否是 TTFT 主因。
+            ttftProfile.firstValidStreamChunkAt = nowMs();
+          }
           if (firstChunkAt === 0) {
             firstChunkAt = Date.now();
             if (!streamTtftTelemetrySent) {

@@ -8,20 +8,29 @@ export type SessionMemoryForDm = {
   npc_relationships: Record<string, unknown>;
 } | null;
 
-export function buildMemoryBlock(mem: SessionMemoryForDm): string {
+export interface MemoryBlockBuildOptions {
+  summaryMaxChars?: number;
+  playerStatusMaxChars?: number;
+  npcRelationsMaxChars?: number;
+}
+
+export function buildMemoryBlock(mem: SessionMemoryForDm, options?: MemoryBlockBuildOptions): string {
   if (!mem?.plot_summary) return "";
+  const summaryMaxChars = Math.max(80, options?.summaryMaxChars ?? 1200);
+  const playerStatusMaxChars = Math.max(80, options?.playerStatusMaxChars ?? 500);
+  const npcRelationsMaxChars = Math.max(80, options?.npcRelationsMaxChars ?? 300);
   return [
     "",
     "## 【动态记忆（压缩剧情摘要）】",
     "",
     "【剧情摘要】",
-    mem.plot_summary,
+    mem.plot_summary.slice(0, summaryMaxChars),
     "",
     "【玩家状态快照】",
-    JSON.stringify(mem.player_status, null, 0).slice(0, 500),
+    JSON.stringify(mem.player_status, null, 0).slice(0, playerStatusMaxChars),
     "",
     "【NPC 关系快照】",
-    JSON.stringify(mem.npc_relationships, null, 0).slice(0, 300),
+    JSON.stringify(mem.npc_relationships, null, 0).slice(0, npcRelationsMaxChars),
     "",
   ].join("\n");
 }

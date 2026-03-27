@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { clearAdminShadowSession } from "@/app/actions/admin";
+import { formatDurationHoursMinutes } from "@/lib/admin/timeFormat";
 
 type DashboardUserRow = {
   id: string;
@@ -85,8 +86,7 @@ function toPriorityLabel(v: string): string {
 }
 
 function formatPlayTime(totalSeconds: number): string {
-  const sec = Math.max(0, Math.trunc(Number(totalSeconds) || 0));
-  return `${Math.floor(sec / 3600)}小时${Math.floor((sec % 3600) / 60)}分`;
+  return formatDurationHoursMinutes(Number(totalSeconds) || 0);
 }
 
 function formatLastOnline(value: string | Date): string {
@@ -345,7 +345,7 @@ export default function AdminDashboardV2({ rows: initialRows, onlineCount, total
             ["WAU", cards.wau],
             ["MAU", cards.mau],
             ["今日Token", cards.todayToken],
-            ["平均会话时长", `${Math.floor(cards.avgSessionSec / 60)}分`],
+            ["平均会话时长", formatDurationHoursMinutes(cards.avgSessionSec)],
           ].map(([k, v]) => (
             <div key={String(k)} className="rounded-2xl bg-white/10 p-3 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
               <p className="text-xs text-slate-300">{k}</p>

@@ -394,6 +394,7 @@ export function buildRuntimeContextPackets(args: {
   serviceState?: ServiceStateInput;
   runtimeLoreCompact?: string;
   maxChars?: number;
+  contextMode?: "minimal" | "full";
 }): string {
   const location = parseLocation(args.playerContext, args.playerLocation);
   const time = parseTime(args.playerContext);
@@ -566,12 +567,28 @@ export function buildRuntimeContextPackets(args: {
     scene_npc_appearance_written_packet: sceneNpcAppearanceWritten,
     ...worldLorePackets,
   };
+  const contextMode = args.contextMode ?? "full";
+  const packetsForPrompt =
+    contextMode === "minimal"
+      ? {
+          // 首字必需：地点/主威胁/当前任务/关键NPC/职业状态，避免世界观错位。
+          current_location_packet: packets.current_location_packet,
+          main_threat_packet: packets.main_threat_packet,
+          active_tasks_packet: packets.active_tasks_packet.slice(0, 3),
+          nearby_npc_packet: packets.nearby_npc_packet.slice(0, 4),
+          profession_packet: packets.profession_packet,
+          tactical_context_packet: packets.tactical_context_packet,
+          scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
+          ...worldLorePacketsCompact,
+        }
+      : packets;
   const text = [
     "## 【运行时结构化上下文包（权威事实源）】",
     "你必须优先遵从以下 JSON packet；若与静态记忆冲突，以 packet 为准。",
-    JSON.stringify(packets),
+    JSON.stringify(packetsForPrompt),
   ].join("\n");
-  const maxChars = args.maxChars && args.maxChars > 300 ? args.maxChars : 2600;
+  const modeDefaultMax = contextMode === "minimal" ? 1400 : 2600;
+  const maxChars = args.maxChars && args.maxChars > 300 ? args.maxChars : modeDefaultMax;
   if (text.length <= maxChars) return text;
   const compactPackets = {
     current_location_packet: packets.current_location_packet,

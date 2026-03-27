@@ -376,6 +376,20 @@ export async function getDashboardTableData() {
         SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
         UNION ALL
         SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+        UNION ALL
+        SELECT session_id AS guest_id, event_time AS created_at
+        FROM analytics_events
+        WHERE user_id IS NULL
+          AND session_id IS NOT NULL
+          AND session_id <> ''
+          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
+        UNION ALL
+        SELECT session_id AS guest_id, last_seen_at AS created_at
+        FROM user_sessions
+        WHERE user_id IS NULL
+          AND session_id IS NOT NULL
+          AND session_id <> ''
+          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
       ),
       guest_ids AS (
         SELECT guest_id, MAX(created_at) AS last_active
@@ -399,6 +413,20 @@ export async function getDashboardTableData() {
         SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
         UNION ALL
         SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
+        UNION ALL
+        SELECT session_id AS guest_id, event_time AS created_at
+        FROM analytics_events
+        WHERE user_id IS NULL
+          AND session_id IS NOT NULL
+          AND session_id <> ''
+          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
+        UNION ALL
+        SELECT session_id AS guest_id, last_seen_at AS created_at
+        FROM user_sessions
+        WHERE user_id IS NULL
+          AND session_id IS NOT NULL
+          AND session_id <> ''
+          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
       ),
       guest_ids AS (
         SELECT guest_id, MAX(created_at) AS last_active
@@ -539,87 +567,127 @@ export async function getRealtimeMetrics() {
 }
 
 export async function getRetentionMetrics(range: AdminTimeRange) {
-  const [newUsers] = await db
-    .select({ count: sql<number>`COUNT(*)` })
-    .from(analyticsEvents)
-    .where(sql`${analyticsEvents.eventName} = 'user_registered' AND ${analyticsEvents.eventTime} >= ${range.start} AND ${analyticsEvents.eventTime} <= ${range.end}`);
-
-  const d1Res = await db.execute(sql`
-    WITH cohort AS (
-      SELECT DISTINCT user_id, DATE(event_time) AS reg_day
+  /**
+   * 留存口径修复：
+   * - 历史只按注册用户（user_registered + user_daily_activity）统计，游客会被忽略导致“后台留存无数据”。
+   * - 这里改为“用户 + 游客会话”统一活跃口径：
+   *   user -> u:<user_id>, guest -> g:<session_id>。
+   */
+  const cohortRes = await db.execute(sql`
+    WITH reg_users AS (
+      SELECT DISTINCT
+        ('u:' || user_id) AS actor_key,
+        DATE(event_time) AS cohort_day
       FROM analytics_events
       WHERE event_name = 'user_registered'
+        AND user_id IS NOT NULL
         AND event_time >= ${range.start}
         AND event_time <= ${range.end}
-    )
-    SELECT COUNT(*)::int AS count
-    FROM cohort c
-    WHERE EXISTS (
-      SELECT 1 FROM user_daily_activity a
-      WHERE a.user_id = c.user_id
-        AND a.date_key = c.reg_day + INTERVAL '1 day'
-    )
-  `);
-  const d3Res = await db.execute(sql`
-    WITH cohort AS (
-      SELECT DISTINCT user_id, DATE(event_time) AS reg_day
+    ),
+    guest_first_seen AS (
+      SELECT
+        ('g:' || session_id) AS actor_key,
+        MIN(DATE(event_time)) AS cohort_day
       FROM analytics_events
-      WHERE event_name = 'user_registered'
-        AND event_time >= ${range.start}
-        AND event_time <= ${range.end}
-    )
-    SELECT COUNT(*)::int AS count
-    FROM cohort c
-    WHERE EXISTS (
-      SELECT 1 FROM user_daily_activity a
-      WHERE a.user_id = c.user_id
-        AND a.date_key = c.reg_day + INTERVAL '3 day'
-    )
-  `);
-  const d7Res = await db.execute(sql`
-    WITH cohort AS (
-      SELECT DISTINCT user_id, DATE(event_time) AS reg_day
+      WHERE user_id IS NULL
+        AND session_id IS NOT NULL
+        AND session_id <> ''
+        AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
+      GROUP BY session_id
+      HAVING MIN(event_time) >= ${range.start}
+         AND MIN(event_time) <= ${range.end}
+    ),
+    cohort AS (
+      SELECT actor_key, cohort_day FROM reg_users
+      UNION
+      SELECT actor_key, cohort_day FROM guest_first_seen
+    ),
+    active_days AS (
+      SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
+      FROM user_daily_activity
+      UNION
+      SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
       FROM analytics_events
-      WHERE event_name = 'user_registered'
-        AND event_time >= ${range.start}
-        AND event_time <= ${range.end}
+      WHERE user_id IS NULL
+        AND session_id IS NOT NULL
+        AND session_id <> ''
+        AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
     )
-    SELECT COUNT(*)::int AS count
+    SELECT
+      COUNT(*)::int AS cohort_size,
+      COUNT(*) FILTER (
+        WHERE EXISTS (
+          SELECT 1 FROM active_days a
+          WHERE a.actor_key = c.actor_key
+            AND a.active_day = c.cohort_day + INTERVAL '1 day'
+        )
+      )::int AS d1_count,
+      COUNT(*) FILTER (
+        WHERE EXISTS (
+          SELECT 1 FROM active_days a
+          WHERE a.actor_key = c.actor_key
+            AND a.active_day = c.cohort_day + INTERVAL '3 day'
+        )
+      )::int AS d3_count,
+      COUNT(*) FILTER (
+        WHERE EXISTS (
+          SELECT 1 FROM active_days a
+          WHERE a.actor_key = c.actor_key
+            AND a.active_day = c.cohort_day + INTERVAL '7 day'
+        )
+      )::int AS d7_count
     FROM cohort c
-    WHERE EXISTS (
-      SELECT 1 FROM user_daily_activity a
-      WHERE a.user_id = c.user_id
-        AND a.date_key = c.reg_day + INTERVAL '7 day'
-    )
   `);
 
   const returningRes = await db.execute(sql`
-    WITH active_window AS (
-      SELECT DISTINCT user_id FROM user_daily_activity
-      WHERE date_key >= ${range.startDateKey}::date AND date_key <= ${range.endDateKey}::date
+    WITH active_days AS (
+      SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
+      FROM user_daily_activity
+      UNION
+      SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
+      FROM analytics_events
+      WHERE user_id IS NULL
+        AND session_id IS NOT NULL
+        AND session_id <> ''
+        AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
+    ),
+    active_window AS (
+      SELECT DISTINCT actor_key FROM active_days
+      WHERE active_day >= ${range.startDateKey}::date AND active_day <= ${range.endDateKey}::date
     ),
     active_before AS (
-      SELECT DISTINCT user_id FROM user_daily_activity
-      WHERE date_key < ${range.startDateKey}::date - INTERVAL '7 day'
+      SELECT DISTINCT actor_key FROM active_days
+      WHERE active_day < ${range.startDateKey}::date - INTERVAL '7 day'
     )
     SELECT COUNT(*)::int AS count
     FROM active_window w
-    INNER JOIN active_before b ON b.user_id = w.user_id
+    INNER JOIN active_before b ON b.actor_key = w.actor_key
   `);
 
   const churnRes = await db.execute(sql`
-    WITH active_before AS (
-      SELECT DISTINCT user_id FROM user_daily_activity
-      WHERE date_key >= ${range.startDateKey}::date - INTERVAL '30 day'
-        AND date_key < ${range.startDateKey}::date
+    WITH active_days AS (
+      SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
+      FROM user_daily_activity
+      UNION
+      SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
+      FROM analytics_events
+      WHERE user_id IS NULL
+        AND session_id IS NOT NULL
+        AND session_id <> ''
+        AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
+    ),
+    active_before AS (
+      SELECT DISTINCT actor_key FROM active_days
+      WHERE active_day >= ${range.startDateKey}::date - INTERVAL '30 day'
+        AND active_day < ${range.startDateKey}::date
     ),
     active_window AS (
-      SELECT DISTINCT user_id FROM user_daily_activity
-      WHERE date_key >= ${range.startDateKey}::date AND date_key <= ${range.endDateKey}::date
+      SELECT DISTINCT actor_key FROM active_days
+      WHERE active_day >= ${range.startDateKey}::date AND active_day <= ${range.endDateKey}::date
     )
     SELECT COUNT(*)::int AS count
     FROM active_before b
-    WHERE NOT EXISTS (SELECT 1 FROM active_window w WHERE w.user_id = b.user_id)
+    WHERE NOT EXISTS (SELECT 1 FROM active_window w WHERE w.actor_key = b.actor_key)
   `);
 
   const pickCount = (res: unknown): number => {
@@ -628,10 +696,12 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
     return Number(value ?? 0);
   };
 
-  const cohortSize = Number(newUsers?.count ?? 0);
-  const d1Count = pickCount(d1Res);
-  const d3Count = pickCount(d3Res);
-  const d7Count = pickCount(d7Res);
+  const cohortRows = normalizeExecuteRows(cohortRes);
+  const cohortFirst = cohortRows[0] ?? {};
+  const cohortSize = Number(cohortFirst.cohort_size ?? 0);
+  const d1Count = Number(cohortFirst.d1_count ?? 0);
+  const d3Count = Number(cohortFirst.d3_count ?? 0);
+  const d7Count = Number(cohortFirst.d7_count ?? 0);
   return {
     range,
     cohortSize,

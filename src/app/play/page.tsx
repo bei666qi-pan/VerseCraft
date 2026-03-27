@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Keyboard, List, Book } from "lucide-react";
+import { Settings, Keyboard, List, Book, ClipboardList } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
@@ -17,8 +17,10 @@ import { isValidBgmTrack } from "@/config/audio";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
+import { PlayGuideModal } from "@/features/play/components/PlayGuideModal";
 import { PlayOptionsList } from "@/features/play/components/PlayOptionsList";
 import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
+import { PlayTaskPanel } from "@/features/play/components/PlayTaskPanel";
 import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
 import {
   computeOpeningBusyUi,
@@ -79,6 +81,7 @@ const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
 const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
 /** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
 const SCROLL_STICKY_BOTTOM_PX = 96;
+const GUIDE_AUTO_OPEN_DISMISSED_KEY = "versecraft-guide-auto-open-dismissed-v1";
 
 /**
  * UI-only heuristic for waiting-upstream semantic hints.
@@ -144,6 +147,8 @@ function PlayContent() {
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
   const currentOptions = currentOptionsFromStore;
   const addOriginium = useGameStore((s) => s.addOriginium);
+  const originium = useGameStore((s) => s.originium ?? 0);
+  const tasks = useGameStore((s) => s.tasks ?? []);
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const updateTask = useGameStore((s) => s.updateTask);
@@ -188,6 +193,9 @@ function PlayContent() {
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
   const [highlightSettingsBtn, setHighlightSettingsBtn] = useState(false);
+  const [guideAutoOpenDismissed, setGuideAutoOpenDismissed] = useState(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
@@ -351,14 +359,35 @@ function PlayContent() {
   useEffect(() => {
     if (!isHydrated || !isGameStarted) return;
     if (hasAutoOpenedGuideRef.current) return;
+    if (guideAutoOpenDismissed) return;
     hasAutoOpenedGuideRef.current = true;
     /**
      * 首次进入游戏时先打开“游戏指南”，把“只是有按钮”升级为“先看得到入口”。
      * 同时高亮设置按钮，提示玩家后续从设置进入完整控制中枢。
      */
-    setActiveMenu("guide");
+    setIsGuideModalOpen(true);
     setHighlightSettingsBtn(true);
-  }, [isGameStarted, isHydrated, setActiveMenu]);
+  }, [guideAutoOpenDismissed, isGameStarted, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    try {
+      const raw = window.localStorage.getItem(GUIDE_AUTO_OPEN_DISMISSED_KEY);
+      if (raw === "1") setGuideAutoOpenDismissed(true);
+    } catch {
+      // ignore localStorage read failure
+    }
+  }, [isHydrated]);
+
+  const markGuideAutoOpenDismissed = useCallback(() => {
+    setHighlightSettingsBtn(false);
+    setGuideAutoOpenDismissed(true);
+    try {
+      window.localStorage.setItem(GUIDE_AUTO_OPEN_DISMISSED_KEY, "1");
+    } catch {
+      // ignore localStorage write failure
+    }
+  }, []);
 
   useEffect(() => {
     if (!firstTimeHint) return;
@@ -2160,7 +2189,7 @@ function PlayContent() {
                       type="button"
                       onClick={() => {
                         if (endgameState.active) return;
-                        setActiveMenu("guide");
+                        setIsGuideModalOpen(true);
                       }}
                       className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
                       aria-label="游戏指南"
@@ -2169,6 +2198,21 @@ function PlayContent() {
                         <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
                         <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
                         <Book className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (endgameState.active) return;
+                        setIsTaskPanelOpen((v) => !v);
+                      }}
+                      className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
+                      aria-label="任务栏"
+                    >
+                      <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
+                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
+                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
+                        <ClipboardList className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
                       </div>
                     </button>
                     <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
@@ -2385,10 +2429,30 @@ function PlayContent() {
       </div>
 
       <PlayComplianceToast visible={showComplianceHint} />
+      <PlayGuideModal
+        open={isGuideModalOpen}
+        onClose={() => {
+          // 独立指南窗口关闭后即视为“已看过”，后续不再自动弹出。
+          markGuideAutoOpenDismissed();
+          setIsGuideModalOpen(false);
+        }}
+      />
+      <PlayTaskPanel
+        open={isTaskPanelOpen}
+        tasks={tasks}
+        originium={originium}
+        onClose={() => setIsTaskPanelOpen(false)}
+        onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
+      />
 
       <UnifiedMenuModal
         activeMenu={activeMenu}
-        onClose={() => setActiveMenu(null)}
+        onClose={() => {
+          setActiveMenu(null);
+        }}
+        onRequestExit={() => {
+          setShowExitModal(true);
+        }}
         onUseItem={onUseItem}
         isChatBusy={isChatBusy}
         audioMuted={audioMuted}

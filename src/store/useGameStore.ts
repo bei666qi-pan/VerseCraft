@@ -230,11 +230,9 @@ export interface AuthUser {
 /** Unified modal / panel: null = all closed. Pure UI; not bundled into save slots. */
 export type ActiveMenu =
   | "settings"
-  | "guide"
   | "backpack"
   | "codex"
   | "warehouse"
-  | "tasks"
   | "achievements"
   | null;
 

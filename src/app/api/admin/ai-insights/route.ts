@@ -109,6 +109,20 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("[api/admin/ai-insights:post] failed", error);
+    // 运营分析官兜底：即使 AI 刷新失败，也返回规则版可读报告，避免后台“不可用”。
+    try {
+      const fallback = await getAiInsights(range);
+      return NextResponse.json(
+        {
+          ...fallback,
+          source: "rule_fallback",
+          degraded: true,
+        },
+        { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
+      );
+    } catch {
+      // fallback failed too, keep original degraded error response.
+    }
     return NextResponse.json(
       {
         error: "ai_insights_generation_failed",
