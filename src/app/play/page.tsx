@@ -187,6 +187,7 @@ function PlayContent() {
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
+  const [highlightSettingsBtn, setHighlightSettingsBtn] = useState(false);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
@@ -210,6 +211,7 @@ function PlayContent() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
+  const hasAutoOpenedGuideRef = useRef(false);
   const hasTriggeredResume = useRef(false);
   const hasShownManualInputComplianceHintRef = useRef(false);
   const hasShownProfessionEligibleHintRef = useRef(false);
@@ -345,6 +347,18 @@ function PlayContent() {
       payload: { isGuest },
     }).catch(() => {});
   }, [guestId, isGameStarted, isGuest, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted) return;
+    if (hasAutoOpenedGuideRef.current) return;
+    hasAutoOpenedGuideRef.current = true;
+    /**
+     * 首次进入游戏时先打开“游戏指南”，把“只是有按钮”升级为“先看得到入口”。
+     * 同时高亮设置按钮，提示玩家后续从设置进入完整控制中枢。
+     */
+    setActiveMenu("guide");
+    setHighlightSettingsBtn(true);
+  }, [isGameStarted, isHydrated, setActiveMenu]);
 
   useEffect(() => {
     if (!firstTimeHint) return;
@@ -2110,6 +2124,7 @@ function PlayContent() {
                       type="button"
                       onClick={() => {
                         if (endgameState.active) return;
+                        setHighlightSettingsBtn(false);
                         setActiveMenu("settings");
                       }}
                       data-onboarding="settings-btn"
@@ -2117,10 +2132,28 @@ function PlayContent() {
                       aria-label="设置"
                     >
                       <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                        {/* 移除“圈圈旋转”：改为灰白淡光晕（更显眼但更克制） */}
-                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
-                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
-                        <Settings className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
+                        {/* 进入游戏后引导期高亮“设置”，帮助玩家定位左侧控制中枢入口。 */}
+                        <div
+                          className={`absolute -inset-0.5 rounded-full blur-[12px] transition group-hover:opacity-90 ${
+                            highlightSettingsBtn
+                              ? "bg-amber-300/85 opacity-95 animate-[halo-pulse_2.2s_ease-in-out_infinite]"
+                              : "bg-white/75 opacity-60 vc-wait-breath"
+                          }`}
+                        />
+                        <div
+                          className={`absolute inset-0.5 rounded-full backdrop-blur-sm transition-all ${
+                            highlightSettingsBtn
+                              ? "bg-amber-50 shadow-[0_0_16px_rgba(245,158,11,0.45)]"
+                              : "bg-white/92 group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]"
+                          }`}
+                        />
+                        <Settings
+                          className={`relative z-10 ${
+                            highlightSettingsBtn ? "text-amber-700" : "text-blue-700 group-hover:text-blue-800"
+                          }`}
+                          size={18}
+                          strokeWidth={2.0}
+                        />
                       </div>
                     </button>
                     <button
@@ -2146,6 +2179,7 @@ function PlayContent() {
                         type="button"
                         onClick={() => {
                           if (endgameState.active) return;
+                          setHighlightSettingsBtn(false);
                           setActiveMenu("settings");
                         }}
                         className="hidden min-w-0 items-center gap-2 rounded-full border border-white/30 bg-white/50 px-2 py-0.5 transition hover:bg-white/70 sm:flex"
