@@ -42,6 +42,10 @@ import {
   normalizeTaskUpdateDraft,
 } from "@/lib/tasks/taskV2";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
+import {
+  sanitizeDisplayedNarrative,
+  sanitizeDisplayedOptionText,
+} from "@/features/play/render/sanitizeDisplayedNarrative";
 import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/features/play/stream/chatPhase";
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
@@ -1031,9 +1035,10 @@ function PlayContent() {
         const dmRawFromError = foldSseTextToDmRaw(errorText);
         const degradedDm = tryParseDM(dmRawFromError);
         if (degradedDm && typeof degradedDm.narrative === "string" && degradedDm.narrative.trim().length > 0) {
+          const shown = sanitizeDisplayedNarrative(degradedDm.narrative);
           useGameStore.getState().pushLog({
             role: "assistant",
-            content: degradedDm.narrative.slice(0, 50000),
+            content: shown.text.slice(0, 50000),
             reasoning: undefined,
           });
           setLiveNarrative("");
@@ -1131,7 +1136,15 @@ function PlayContent() {
       }
       if (!openingOptionsOnlyRoundRef.current) {
         try {
-          narrativeRef.current = extractNarrative(raw);
+          const preview = extractNarrative(raw);
+          /**
+           * 展示层 fail-closed：
+           * - 仅影响屏幕实时预览，不参与状态提交；
+           * - 命中协议污染时不展示原文，改为克制的统一提示。
+           * - 这层只能兜底“显示”，不能兜底“状态”，禁止前端脑补 DM 结构。
+           */
+          const shown = sanitizeDisplayedNarrative(preview);
+          narrativeRef.current = shown.text;
         } catch {
           narrativeRef.current = "";
         }
@@ -1284,9 +1297,11 @@ function PlayContent() {
       narrativeToPush = FIXED_OPENING_NARRATIVE;
     } else {
       try {
-        narrativeToPush = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
+        const prepared = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
+        const shown = sanitizeDisplayedNarrative(prepared);
+        narrativeToPush = shown.text;
       } catch {
-        narrativeToPush = rawNarrative.slice(0, 50000);
+        narrativeToPush = sanitizeDisplayedNarrative(rawNarrative.slice(0, 50000)).text;
       }
     }
     useGameStore.getState().pushLog({
@@ -1601,7 +1616,8 @@ function PlayContent() {
     const validOpts = Array.isArray(parsed.options)
       ? parsed.options
           .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
-          .map((o) => o.trim())
+          .map((o) => sanitizeDisplayedOptionText(o))
+          .filter((o) => o.length > 0)
           .slice(0, 4)
       : [];
 

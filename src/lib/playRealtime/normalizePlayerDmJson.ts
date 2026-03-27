@@ -3,6 +3,7 @@
  * 目的：允许模型省略默认可补字段以降低 output token；终帧与解析结果一致。
  */
 import { extractFirstBalancedJsonObject } from "@/features/play/stream/dmParse";
+import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -131,11 +132,17 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   if (typeof sd !== "number" || !Number.isFinite(sd)) return null;
 
   const narrativeRaw = String(o.narrative ?? "");
-  const narrative = narrativeRaw
+  const narrativeTrimmed = narrativeRaw
     // Remove markdown code fences and inline backticks to reduce “code leakage”.
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`{1,3}[^`\n]{1,120}`{1,3}/g, "")
     .trim();
+  // 结构标准化阶段即做一次协议净化；若仍异常，返回 null 交由上层降级，不放行脏 narrative。
+  const narrativeGuard = sanitizeNarrativeLeakageForFinal(narrativeTrimmed);
+  if (narrativeGuard.degraded) {
+    return null;
+  }
+  const narrative = narrativeGuard.narrative;
 
   const out: Record<string, unknown> = {
     is_action_legal: o.is_action_legal,

@@ -1,5 +1,11 @@
 import { jsonrepair } from "jsonrepair";
 import type { DMJson } from "./types";
+import {
+  hasProtocolLeakSignature,
+  sanitizeNarrativeLeakageForFinal,
+  stripTrailingLeakedObject,
+} from "@/lib/playRealtime/protocolGuard";
+import { sanitizeDisplayedNarrative } from "@/features/play/render/sanitizeDisplayedNarrative";
 
 const MAX_BRACE_SCAN = 64;
 const LOG_HEAD_CHARS = 180;
@@ -176,7 +182,15 @@ export function extractNarrative(raw: string): string {
       out.push(text[i] ?? "");
     }
   }
-  return out.join("");
+  const narrativePreview = out.join("");
+  /**
+   * 展示层兜底（仅用于流式预览）：
+   * - 这里不做状态写回，只防止“半截协议/二段 JSON”在屏幕上裸露。
+   * - 若命中协议污染，预览直接 fail-closed 返回统一提示，不透传脏原文。
+   */
+  const shown = sanitizeDisplayedNarrative(stripTrailingLeakedObject(narrativePreview));
+  if (shown.blocked) return shown.text;
+  return shown.text;
 }
 
 export const FALLBACK_DM: DMJson = {
@@ -206,9 +220,19 @@ export function tryParseDM(raw: string): DMJson | null {
     candidatesTried++;
     const dm = parseSliceToDm(objectSlice);
     if (dm) {
+      /**
+       * 协议修复（状态层）：
+       * - 允许 code fence/反引号清理这类“格式污染”；
+       * - 命中协议泄漏特征时不做“脑补修复”，而是保守拒绝写回（fail-closed）。
+       */
       dm.narrative = dm.narrative
         .replace(/```[\s\S]*?```/g, "")
         .replace(/`([^`\n]{1,80})`/g, "$1");
+      const sanitized = sanitizeNarrativeLeakageForFinal(dm.narrative);
+      if (sanitized.degraded || hasProtocolLeakSignature(sanitized.narrative)) {
+        return null;
+      }
+      dm.narrative = sanitized.narrative;
       return dm;
     }
   }

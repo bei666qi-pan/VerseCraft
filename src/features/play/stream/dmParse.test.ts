@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  extractNarrative,
   extractBalancedJsonObjectFrom,
   extractFirstBalancedJsonObject,
   tryParseDM,
@@ -25,6 +26,17 @@ test("tryParseDM: parses first object when model emits two identical JSON blobs"
   assert.ok(dm);
   assert.equal(dm?.narrative, "x");
   assert.equal(dm?.is_action_legal, true);
+});
+
+test("tryParseDM: only first legal object is effective when second object is appended", () => {
+  const first =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"第一段合法叙事","is_death":false,"consumes_time":true}';
+  const second =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"第二段不应生效","is_death":false,"consumes_time":false,"player_location":"B1_Hacked"}';
+  const dm = tryParseDM(`${first}${second}`);
+  assert.ok(dm);
+  assert.equal(dm?.narrative, "第一段合法叙事");
+  assert.equal((dm as unknown as { player_location?: string }).player_location, undefined);
 });
 
 test("tryParseDM: markdown fence still works", () => {
@@ -63,4 +75,12 @@ test("tryParseDM: trailing comma repaired via jsonrepair", () => {
   const dm = tryParseDM(raw);
   assert.ok(dm);
   assert.equal(dm?.narrative, "z");
+});
+
+test("extractNarrative: screenshot-like leakage should not be rendered as raw JSON fragment", () => {
+  const raw =
+    '{"narrative":"你沿着走廊前行，灯光忽明忽暗。,\\"is_death\\":false,\\"consumes_time\\":true}{"is_action_legal":true,\\"sanity_damage\\":0}","is_action_legal":true,"sanity_damage":0,"is_death":false}';
+  const shown = extractNarrative(raw);
+  assert.equal(shown.includes('"is_death":'), false);
+  assert.equal(shown.includes('{"is_action_legal"'), false);
 });

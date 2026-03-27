@@ -44,6 +44,10 @@ import {
   normalizePlayerDmJson,
   parseAccumulatedPlayerDmJson,
 } from "@/lib/playRealtime/normalizePlayerDmJson";
+import {
+  hasProtocolLeakSignature,
+  sanitizeNarrativeLeakageForFinal,
+} from "@/lib/playRealtime/protocolGuard";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import {
@@ -1344,6 +1348,61 @@ export async function POST(req: Request) {
           };
         }
         dmRecord = applyStage2SettlementGuard(dmRecord);
+        /**
+         * 最终输出强裁决层（服务端）：
+         * - 任何发送到前端的 narrative 必须先过净化；
+         * - 结构字段（inventory/task/location 等）只信 JSON 结构，不信 narrative 文本；
+         * - 命中泄漏并无法净化时直接降级，不把协议片段透传给玩家。
+         */
+        try {
+          const narrative = String(dmRecord.narrative ?? "");
+          const sanitized = sanitizeNarrativeLeakageForFinal(narrative);
+          if (sanitized.degraded) {
+            const prevMeta =
+              dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
+                ? (dmRecord.security_meta as Record<string, unknown>)
+                : {};
+            dmRecord.narrative = sanitized.narrative;
+            dmRecord.is_action_legal = false;
+            dmRecord.consumes_time = false;
+            dmRecord.security_meta = {
+              ...prevMeta,
+              action: "degrade",
+              stage: "final_output",
+              protocol_guard: "narrative_contaminated",
+              protocol_guard_flags: sanitized.flags,
+            };
+            console.warn("[api/chat] narrative protocol leakage degraded", {
+              requestId,
+              sessionId,
+              userId,
+              flags: sanitized.flags,
+              role: routingReport.actualLogicalRole ?? args.streamRole,
+            });
+            void recordGenericAnalyticsEvent({
+              eventId: `${requestId}:narrative_protocol_leak`,
+              idempotencyKey: `${requestId}:narrative_protocol_leak`,
+              userId,
+              sessionId: sessionId ?? "unknown_session",
+              eventName: "narrative_protocol_leak",
+              eventTime: new Date(),
+              page: "/play",
+              source: "chat",
+              platform,
+              tokenCost: 0,
+              playDurationDeltaSec: 0,
+              payload: {
+                requestId,
+                flags: sanitized.flags,
+                role: routingReport.actualLogicalRole ?? args.streamRole,
+              },
+            }).catch(() => {});
+          } else {
+            dmRecord.narrative = sanitized.narrative;
+          }
+        } catch (e) {
+          console.warn("[api/chat] protocol guard skipped", e);
+        }
 
         // 补救：主笔回合若未生成 options，则快速二次生成仅 options（非硬编码、不沿用旧选项）。
         try {

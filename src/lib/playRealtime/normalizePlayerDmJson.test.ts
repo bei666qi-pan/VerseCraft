@@ -113,3 +113,32 @@ test("normalized JSON string remains parseable by client tryParseDM", () => {
   assert.equal(parsed!.narrative, "测试");
   assert.deepEqual(parsed!.consumed_items ?? [], []);
 });
+
+test("normalizePlayerDmJson: protocol leakage in narrative should be rejected", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: '正常句子后拼接 {"is_death":false,"consumes_time":true}',
+    is_death: false,
+  });
+  assert.equal(n, null);
+});
+
+test("normalizePlayerDmJson: dirty narrative must not mutate structural state fields", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative:
+      '叙事正文 {"awarded_items":[{"id":"hack_item"}],"awarded_warehouse_items":[{"id":"hack_wh"}],"task_updates":[{"id":"hack_task"}],"player_location":"B1_Hacked"}',
+    is_death: false,
+    awarded_items: [],
+    awarded_warehouse_items: [],
+    task_updates: [],
+  });
+  // 叙事里即使“长得像结构字段”，也不允许透传到结构写回。
+  assert.ok(n);
+  assert.deepEqual(n!.awarded_items, []);
+  assert.deepEqual(n!.awarded_warehouse_items, []);
+  assert.deepEqual(n!.task_updates, []);
+  assert.equal((n as { player_location?: unknown }).player_location, undefined);
+});

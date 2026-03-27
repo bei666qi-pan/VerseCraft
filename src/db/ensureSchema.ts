@@ -47,13 +47,13 @@ export async function ensureRuntimeSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_user_id_idx ON feedbacks (user_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_guest_id_idx ON feedbacks (guest_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_created_idx ON feedbacks (created_at);`);
     // 兼容旧库：历史版本 feedbacks 可能缺少游客相关列。
     await client.query(`ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS guest_id VARCHAR(128);`);
     await client.query(`ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS kind VARCHAR(24) NOT NULL DEFAULT 'open';`);
     await client.query(`ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS client_meta JSONB NOT NULL DEFAULT '{}'::jsonb;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_user_id_idx ON feedbacks (user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_guest_id_idx ON feedbacks (guest_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS feedbacks_created_idx ON feedbacks (created_at);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS survey_responses (
@@ -74,6 +74,9 @@ export async function ensureRuntimeSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // 兼容旧库：历史版本 survey_responses 可能缺少 guest_id。
+    await client.query(`ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS guest_id VARCHAR(128);`);
+    // 注意顺序：必须先补列再建 guest_id 相关索引，避免旧库在建索引时报 42703。
     await client.query(`
       CREATE INDEX IF NOT EXISTS survey_responses_key_user_idx ON survey_responses (survey_key, user_id);
     `);
@@ -83,8 +86,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS survey_responses_created_idx ON survey_responses (created_at);
     `);
-    // 兼容旧库：历史版本 survey_responses 可能缺少 guest_id。
-    await client.query(`ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS guest_id VARCHAR(128);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS compliance_inquiries (
