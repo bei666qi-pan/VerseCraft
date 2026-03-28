@@ -375,46 +375,6 @@ function SettingsPanel({
         <WeaponSlotPanel equippedWeapon={equippedWeapon} weaponBag={weaponBag} busy={isChatBusy} />
       </div>
 
-      <div>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={volume}
-              onChange={(e) => setVolume(Number(e.target.value))}
-              disabled={audioMuted}
-              className="h-3 min-h-[24px] w-full min-w-0 flex-1 appearance-none rounded-full bg-slate-700 disabled:opacity-50 touch-manipulation [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
-            />
-            <span className="w-10 text-right font-mono text-sm text-slate-400">{volume}</span>
-            <button
-              type="button"
-              onClick={onToggleMute}
-              aria-label={audioMuted ? "开启声音" : "静音"}
-              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation ${
-                audioMuted
-                  ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
-                  : "border-white/20 bg-white/10 text-slate-100"
-              }`}
-            >
-              {audioMuted ? (
-                <VolumeX size={16} strokeWidth={2} />
-              ) : (
-                <Volume2 size={16} strokeWidth={2} />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={onRequestExit}
-              className="inline-flex h-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 px-3 text-xs font-semibold text-slate-100 backdrop-blur-xl transition-all duration-200 hover:scale-105 hover:bg-white/15 active:scale-95 touch-manipulation"
-            >
-              退出
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="pt-2">
         <div className="mb-4 rounded-xl border border-white/15 bg-white/5 p-3">
           <div className="mb-2 flex items-center justify-between">
@@ -458,6 +418,46 @@ function SettingsPanel({
               </div>
             </>
           )}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              disabled={audioMuted}
+              className="h-3 min-h-[24px] w-full min-w-0 flex-1 appearance-none rounded-full bg-slate-700 disabled:opacity-50 touch-manipulation [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.6)]"
+            />
+            <span className="w-10 text-right font-mono text-sm text-slate-400">{volume}</span>
+            <button
+              type="button"
+              onClick={onToggleMute}
+              aria-label={audioMuted ? "开启声音" : "静音"}
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-200 hover:scale-105 active:scale-95 touch-manipulation ${
+                audioMuted
+                  ? "border-amber-500/40 bg-amber-500/15 text-amber-300"
+                  : "border-white/20 bg-white/10 text-slate-100"
+              }`}
+            >
+              {audioMuted ? (
+                <VolumeX size={16} strokeWidth={2} />
+              ) : (
+                <Volume2 size={16} strokeWidth={2} />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onRequestExit}
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 px-3 text-xs font-semibold text-slate-100 backdrop-blur-xl transition-all duration-200 hover:scale-105 hover:bg-white/15 active:scale-95 touch-manipulation"
+            >
+              退出
+            </button>
+          </div>
         </div>
       </div>
     </div>

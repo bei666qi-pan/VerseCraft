@@ -6,6 +6,16 @@ import { APARTMENT_RULES } from "@/lib/registry/rules";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { FLOORS, MAP_ROOMS, NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
+import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
+import { SCHOOL_CYCLE_LORE_SLICES } from "@/lib/registry/schoolCycleCanon";
+import { WORLD_ARC_BOOTSTRAP_SLICES } from "@/lib/registry/worldArcBootstrapSlices";
+
+function schoolCycleRevealTag(rank: RevealTierRank): string {
+  if (rank >= REVEAL_TIER_RANK.abyss) return "reveal_abyss";
+  if (rank >= REVEAL_TIER_RANK.deep) return "reveal_deep";
+  if (rank >= REVEAL_TIER_RANK.fracture) return "reveal_fracture";
+  return "reveal_surface";
+}
 
 export type WorldScope = "global" | "user" | "session";
 export type WorldEntityType = "npc" | "anomaly" | "item" | "rule" | "truth" | "location";
@@ -282,6 +292,50 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
       tags: uniqueTags(["reveal", "tier", tier.id, "reveal_surface"]),
     });
     addChunksForEntity(code, [`揭露层 ${tier.title}\n${tier.revealPolicy}`], 72, chunks);
+  }
+
+  for (const slice of SCHOOL_CYCLE_LORE_SLICES) {
+    const code = `truth:school_cycle:${slice.id}`;
+    const rTag = schoolCycleRevealTag(slice.revealMinRank);
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: `school_cycle_${slice.id}`,
+      title: `学制循环：${slice.title}`,
+      summary: slice.body.slice(0, 120),
+      detail: `${slice.title}\n${slice.body}`,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/schoolCycleCanon.ts",
+      importance: 83,
+      version: 1,
+      tags: uniqueTags(["truth", "school_cycle", "yeliri", slice.id, rTag]),
+    });
+    addChunksForEntity(code, [`${slice.title}\n${slice.body}`], 83, chunks);
+  }
+
+  for (const slice of WORLD_ARC_BOOTSTRAP_SLICES) {
+    const code = `truth:world_arc:${slice.id}`;
+    const rTag = schoolCycleRevealTag(slice.revealMinRank);
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: `world_arc_${slice.id}`,
+      title: `世界弧：${slice.title}`,
+      summary: slice.body.slice(0, 120),
+      detail: `${slice.title}\n${slice.body}`,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/worldArcBootstrapSlices.ts",
+      importance: 86,
+      version: 1,
+      tags: uniqueTags(["truth", "world_arc", "school_cycle", "major_npc", "yeliri", slice.id, rTag]),
+    });
+    addChunksForEntity(code, [`${slice.title}\n${slice.body}`], 86, chunks);
   }
 
   for (const npc of NPCS) {

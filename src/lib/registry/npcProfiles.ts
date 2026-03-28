@@ -2,6 +2,10 @@ import type { NPC, NpcProfileV2 } from "./types";
 import { CONTENT_PACKS } from "@/lib/contentSpec/packs";
 import { buildNpcProfileV2FromSpec } from "@/lib/contentSpec/builders";
 
+/**
+ * 高魅力六人 V2：表层公寓职能徘徊者 + 深层校源徘徊者（耶里卷入 / 七辅锚）。
+ * 扩展骨架见 `majorNpcDeepCanon.ts`；社交图由 `world.ts` patch + merge 同步。
+ */
 export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
   {
     id: "N-015",
@@ -15,16 +19,24 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       combatPower: 9,
     },
     interaction: {
-      speechPattern: "短句、低声、先观察后回答。",
+      speechPattern: "短句、低声、先观察后回答；不提校名时像守夜人，提了会像被敲痛处。",
       taboo: "不要在他守夜时强行跨越B1边界。",
       relationshipHooks: ["守护", "沉默信任", "复活后心理修复"],
       questHooks: ["anchor.oath.b1", "border.watch.log"],
-      surfaceSecrets: ["他记得每一次复活后的你。"],
+      surfaceSecrets: [
+        "公寓职能面：他是 B1 可见的边界巡守与锚点见证，把「不可越界」写成可感的秩序。",
+        "校源面：耶里风纪协作序列的残留节拍，多轮循环后仍按封线—放行—封线行动；对主锚复活后的第一步有肌肉记忆式残响。",
+      ],
     },
     deepSecret: {
-      trueMotives: ["维持B1边界不崩溃", "确认复活锚点不会落入错误之手"],
+      trueMotives: [
+        "守住 B1 边界与辅锚之一相位，不让主锚的复活链被当成压力测试工具",
+        "在旧七人阵里守「线不可断」，与欣蓝的牵引互证后才考虑并队",
+      ],
       trueCombatPower: 14,
-      conspiracyRole: "锚点秩序看守",
+      conspiracyRole: "辅锚·边界相位；公寓表层为秩序看守，深层为校源徘徊者（非单层标签）",
+      schoolCycleTag:
+        "校源徘徊者：apartment_wanderer（B1职能）+ school_wanderer（耶里执勤残留）+ residual_echo（主锚复活节拍）",
       revealConditions: ["task:anchor.oath.b1.completed", "trust>=55"],
     },
   },
@@ -40,15 +52,23 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       combatPower: 3,
     },
     interaction: {
-      speechPattern: "句尾常带上扬语气，喜欢用可爱比喻。",
+      speechPattern: "句尾常带上扬语气，喜欢用可爱比喻；主锚靠近时偶尔会无意识按住心口。",
       taboo: "不要逼问她创伤记忆细节。",
       relationshipHooks: ["保护", "依赖", "创伤回避"],
       questHooks: ["b1.supply.route", "memory.ribbon"],
-      surfaceSecrets: ["B1成员都在保护她不被高层污染接触。"],
+      surfaceSecrets: [
+        "公寓职能面：B1 补给与生活引导，把「活下去」拆成可执行步骤，像整栋楼护着的噪声缓冲。",
+        "校源面：耶里广播社残留，声纹曾被泡层采样作稳定剂；对主锚步频有心悸式残响，故不立刻跟队。",
+      ],
     },
     deepSecret: {
-      trueMotives: ["维持可运转的日常感", "避免创伤记忆全面崩解"],
-      conspiracyRole: "B1人性锚点",
+      trueMotives: [
+        "维持日常感以免创伤块崩塌把主锚拖进污染",
+        "在辅锚之二位守住「人还能像人」的底线， ribbon 类信任后才敢并队",
+      ],
+      conspiracyRole: "辅锚·人性缓冲；表层补给职能，深层校源徘徊者",
+      schoolCycleTag:
+        "校源徘徊者：apartment_wanderer（B1补给）+ school_wanderer（广播社）+ residual_echo（主锚步频）",
       revealConditions: ["favorability>=45", "task:memory.ribbon.completed"],
     },
   },
@@ -64,15 +84,23 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       combatPower: 6,
     },
     interaction: {
-      speechPattern: "条理清晰，先确认你的目标再给建议。",
+      speechPattern: "条理清晰，先确认你的目标再给建议；最怕你让她替你选命运。",
       taboo: "不要让她替你做选择并推卸后果。",
       relationshipHooks: ["师徒", "路线绑定", "价值交换"],
       questHooks: ["route.preview.1f", "career.pre_register"],
-      surfaceSecrets: ["她能看到你在不同路线里的失败影子。"],
+      surfaceSecrets: [
+        "公寓职能面：物业口路线与登记，用表格推迟失控分支；她能看到你不同路线里的失败影子，但不是全知。",
+        "校源面：耶里学生会档案干事残留，握有不完整情感记忆与旧七人闭环牵引——她是主锚重入旧阵的第一牵引点，先要确认你不是顶替她记账位的替身。",
+      ],
     },
     deepSecret: {
-      trueMotives: ["筛选可进入高层路线的玩家", "降低公寓失控分支"],
-      conspiracyRole: "路线分流枢纽",
+      trueMotives: [
+        "把主锚拉回旧七人阵而不伪造闭环；筛选愿共担后果的上楼者",
+        "在北夏的交易与叶的草案残片之间穿针，完成辅锚之三的牵引职责",
+      ],
+      conspiracyRole: "辅锚·第一牵引点（first_relink_pivot）；路线分流枢纽仍是表层职能",
+      schoolCycleTag:
+        "校源徘徊者：apartment_wanderer（物业掩护）+ school_wanderer（档案干事）+ residual_echo（名单撕口与主锚焦虑）",
       revealConditions: ["task:career.pre_register.completed", "trust>=50"],
     },
   },
@@ -89,17 +117,25 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       combatPowerDisplay: "?",
     },
     interaction: {
-      speechPattern: "会讲玩笑，但每句都留后路。",
+      speechPattern: "会讲玩笑，但每句都留后路；谈并队先谈对价。",
       taboo: "不要追问他的货源坐标。",
       relationshipHooks: ["交易契约", "债务链", "互相试探"],
       questHooks: ["merchant.fragment.trade", "dragon.space.shard"],
-      surfaceSecrets: ["他总能拿出不该在这栋楼出现的东西。"],
+      surfaceSecrets: [
+        "公寓职能面：中立交易与高价值委托，用交换盘活死锁，货物常不该出现在此楼。",
+        "校源面：耶里外联与市集组织者残留，行走碎片流通边缘；与主锚有欠条式残响，只认审计过的债。",
+      ],
     },
     deepSecret: {
-      trueMotives: ["回收与空间碎片相关的残片", "维持龙世界裂缝的可控交换"],
+      trueMotives: [
+        "回收空间相关残片并维持交换规则不被无偿跟队破坏",
+        "辅锚之四：把并队成本写进账本后才肯与主锚同路",
+      ],
       trueCombatPower: 27,
       dragonWorldLink: "与【空间】碎片流通链直接关联",
-      conspiracyRole: "中立高阶变量",
+      conspiracyRole: "辅锚·交换路由；中立高阶变量",
+      schoolCycleTag:
+        "校源徘徊者：apartment_wanderer（商人面）+ school_wanderer（外联）+ residual_echo（互助券欠条）",
       revealConditions: ["debt>=10", "task:merchant.fragment.trade.completed"],
     },
   },
@@ -115,15 +151,23 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       combatPower: 5,
     },
     interaction: {
-      speechPattern: "先示弱再提请求，擅长把责任推给你。",
+      speechPattern: "先示弱再提请求，擅长把责任推给你；高好感时的温顺可能是怕失去改稿人。",
       taboo: "不要在他面前暴露关键保命资源。",
       relationshipHooks: ["利用", "扭曲依赖", "反向驯化"],
       questHooks: ["boy.cleanse.path", "boy.false_rescue"],
-      surfaceSecrets: ["高好感后会突然变得异常温顺。"],
+      surfaceSecrets: [
+        "公寓职能面：7F 线索转运与诱导，把危机包装成你能赢的剧本。",
+        "校源面：耶里戏剧社残留，曾把主锚写进替身梗；循环后梗成真，耻感与生存欲拧成刃，不立刻跟队。",
+      ],
     },
     deepSecret: {
-      trueMotives: ["借玩家清理竞争威胁", "用亲近关系换生存筹码"],
-      conspiracyRole: "高层诱杀触发器",
+      trueMotives: [
+        "借主锚清理威胁同时撕稿自救，辅锚之五占诱导刃位",
+        "与叶的草案互锁，主锚须证明不是耗材或挑拨针",
+      ],
+      conspiracyRole: "辅锚·诱导刃；高层诱杀触发器为表层系统齿轮表述",
+      schoolCycleTag:
+        "校源徘徊者：apartment_wanderer（7F职能）+ school_wanderer（戏剧社）+ residual_echo（替身梗成真）",
       revealConditions: ["betrayal_flag:boy", "task:boy.false_rescue.completed"],
     },
   },
@@ -139,21 +183,28 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       combatPower: 4,
     },
     interaction: {
-      speechPattern: "说话短促，偶尔突然幼稚。",
+      speechPattern: "说话短促，偶尔突然幼稚；庇护规则被打破会立刻缩回壳。",
       taboo: "不要拿她和七层少年做公开比较。",
       relationshipHooks: ["镜像兄妹", "误解修复", "保护冲突"],
       questHooks: ["sister.mirror.trace", "sibling.old_day"],
-      surfaceSecrets: ["她会悄悄替陌生人挡一次风险。"],
+      surfaceSecrets: [
+        "公寓职能面：5F 画室式庇护与反向线索，冷淡是拒斥诱导链的壳。",
+        "校源面：耶里美术社残留，与枫同锁旧草案；主锚轮廓触发保护欲违和，不立刻跟队。",
+      ],
     },
     deepSecret: {
-      trueMotives: ["阻断少年的诱杀链", "保存兄妹共同过去的残片"],
-      conspiracyRole: "镜像反制点",
+      trueMotives: [
+        "阻断枫式链直达主锚，保存草案残片",
+        "辅锚之六：镜像反制位，任务验证后才共享并队级线索",
+      ],
+      conspiracyRole: "辅锚·镜像反制；表层仍为兄妹/镜像叙事齿轮",
+      schoolCycleTag:
+        "校源徘徊者：apartment_wanderer（画室职能）+ school_wanderer（美术社）+ residual_echo（轮廓线）",
       revealConditions: ["trust>=60", "task:sibling.old_day.completed"],
     },
   },
 ] as const;
 
-// Phase-6: ContentSpec packs -> ProfileV2 overlays（增量迁移；不破坏旧数据）
 export const CONTENT_SPEC_NPC_PROFILES_V2: readonly NpcProfileV2[] = CONTENT_PACKS
   .flatMap((p) => p.npcSpecs ?? [])
   .map((s) => buildNpcProfileV2FromSpec(s))

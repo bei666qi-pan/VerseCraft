@@ -14,6 +14,7 @@
     "db:push": "node ./scripts/db-push.mjs",
     "db:check": "node ./scripts/db-check.mjs",
     "db:check:optional": "node ./scripts/db-check-optional.mjs",
+    "db:ensure-schema": "node scripts/ensure-runtime-schema.mjs",
     "db:generate": "drizzle-kit generate",
     "diagnose:play": "pnpm dlx tsx scripts/diagnose-play-error.ts",
     "db:delete-test-accounts": "pnpm dlx tsx scripts/delete-test-accounts.ts",

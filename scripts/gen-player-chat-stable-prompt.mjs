@@ -5,7 +5,12 @@ const outPath = "src/lib/playRealtime/playerChatSystemPrompt.ts";
 
 const s = fs.readFileSync(routePath, "utf8");
 const fn = s.indexOf("function buildSystemPrompt(");
-if (fn < 0) throw new Error("buildSystemPrompt not found");
+if (fn < 0) {
+  console.warn(
+    "[gen-player-chat-stable-prompt] buildSystemPrompt not found in route.ts — playerChatSystemPrompt.ts is hand-maintained. Skip."
+  );
+  process.exit(0);
+}
 const baseStart = s.indexOf("const base = [", fn);
 const baseEnd = s.indexOf("\n  ];", baseStart);
 if (baseStart < 0 || baseEnd < 0) throw new Error("base array bounds");
@@ -21,7 +26,7 @@ inner = filtered.join("\n");
 
 const file =
   [
-    "// Generated in-repo from route buildSystemPrompt static lines (see scripts/gen-player-chat-stable-prompt.mjs).",
+    "// NOTE: Regenerated from route buildSystemPrompt static lines — overwrites file. Prefer hand-editing playerChatSystemPrompt.ts unless intentionally syncing legacy base[].",
     'import { NPCS } from "@/lib/registry/npcs";',
     'import { ANOMALIES } from "@/lib/registry/anomalies";',
     `import {

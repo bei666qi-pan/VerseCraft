@@ -137,6 +137,8 @@ export interface NpcDeepSecretLayer {
   trueCombatPower?: number;
   dragonWorldLink?: string;
   conspiracyRole?: string;
+  /** 学制循环：公寓侧运行态归类（如校源徘徊者），与出身叙事区分 */
+  schoolCycleTag?: string;
   revealConditions: string[];
 }
 

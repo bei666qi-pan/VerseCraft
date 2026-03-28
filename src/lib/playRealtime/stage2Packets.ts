@@ -2,6 +2,7 @@ import { ANOMALIES } from "@/lib/registry/anomalies";
 import { LIGHT_FORGE_RECIPES } from "@/lib/registry/forge";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
 import { FLOOR_DIGESTION_AXES } from "@/lib/registry/worldCanon";
+import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 
 type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
@@ -209,15 +210,22 @@ export function buildWorldviewPacket(args: {
   location: string | null;
   threatPhase: MainThreatPhase;
   activeTasks: string[];
+  /** 与学制循环 packet 对齐；缺省为 surface */
+  maxRevealRank?: RevealTierRank;
 }) {
   const floorId = inferFloorIdFromLocation(args.location);
+  const maxR = args.maxRevealRank ?? REVEAL_TIER_RANK.surface;
   const floorAxis =
     floorId && floorId !== "B1" && floorId !== "B2"
       ? FLOOR_DIGESTION_AXES[floorId]
       : null;
   const b1Meaning =
     floorId === "B1"
-      ? "B1 是迟滞稳定带：人类维护行为叠加配电噪声，暂时压低消化律。此处的交易、锻造与修整是幸存者秩序，不是系统菜单。"
+      ? maxR >= REVEAL_TIER_RANK.deep
+        ? "B1 是迟滞稳定带，也是七锚收容回路的服务前端：配电噪声、洗涤碱液与人类维护压低局部熵增，使交易、锻造、修整与锚点重构可运作。"
+        : maxR >= REVEAL_TIER_RANK.fracture
+          ? "B1 是迟滞稳定带：人类维护、配电噪声与后勤服务压低局部熵增，使交易、锻造与锚点重构可运作（勿在此档直述七锚命名）。"
+          : "B1 是迟滞稳定带：人类维护行为叠加配电噪声，暂时压低消化律。此处的交易、锻造与修整是幸存者秩序，不是系统菜单。"
       : null;
   const b2Meaning =
     floorId === "B2"

@@ -34,8 +34,8 @@ function fallbackSettlementOutput(input: SettlementAnalysisInput): SettlementAna
   return {
     summary:
       input.evidenceQuality === "insufficient"
-        ? "证据不足：当前结算样本偏少，建议补充更多关键事件后再复盘。"
-        : "本局复盘建议以生存路径与风险决策为主，优先稳定资源和关键节点推进。",
+        ? "记忆碎片过碎，难以拼出完整十日：先记下关键抉择与谁说了什么，下一局再谈真假。"
+        : "本局宜以「守住生机、辨清规则、少押无解之赌」为轴复盘：先稳住作息与资源，再在关键楼层做可验证的推进，别让谎言替你签字。",
     strengths: [],
     risks: [],
     nextActions: [],
@@ -102,6 +102,7 @@ export async function refreshSettlementAnalysis(input: SettlementAnalysisInput):
           role: "system",
           content: [
             "你是 VerseCraft 结算复盘分析官。",
+            "文风宜贴近高悬念、封闭空间、规则博弈式生存叙事（可参考《十日终焉》一类作品的节奏：困局、博弈、信任与谎言），但必须留在 VerseCraft 公寓设定内，勿照搬原作人物、组织或专有剧情。",
             "必须证据优先，不得编造；证据不足时明确写“证据不足”。",
             "输出必须是单个 JSON 对象，不要 markdown。",
             `结构必须匹配：${JSON.stringify(schemaHint)}`,

@@ -2368,6 +2368,7 @@ function PlayContent() {
           showRegisterPrompt={showRegisterPrompt}
           onPaywallRegister={() => router.push("/")}
           showExitModal={showExitModal}
+          onDismissExitModal={() => setShowExitModal(false)}
           onSaveAndExit={onSaveAndExit}
           onAbandonAndDie={onAbandonAndDie}
         />

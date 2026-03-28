@@ -44,6 +44,12 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
   assert.ok(packet.includes("floor_lore_packet"));
   assert.ok(packet.includes("threat_lore_packet"));
   assert.ok(packet.includes("maxRevealRank"));
+  assert.ok(packet.includes("school_cycle_arc_packet"));
+  assert.ok(packet.includes("major_npc_relink_packet"));
+  assert.ok(packet.includes("major_npc_arc_packet"));
+  assert.ok(packet.includes("cycle_loop_packet"));
+  assert.ok(packet.includes("school_source_packet"));
+  assert.ok(packet.includes("team_relink_packet"));
 });
 
 test("buildRuntimeContextPackets respects maxChars budget", () => {

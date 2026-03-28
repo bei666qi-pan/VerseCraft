@@ -1147,6 +1147,7 @@ export async function POST(req: Request) {
     perfFlags.fastLaneSkipRuntimePackets &&
     riskLane === "fast";
 
+  // Runtime JSON：full 含完整 lore 子包；minimal 仍含 worldLorePacketsCompact（含 reveal_tier、school_cycle_arc、major_npc_arc / cycle_loop / school_source / team_relink、major_npc_relink 等缩写），与 stable prompt 中的 packet 名对齐。快车道为空包时由 stable 【高魅力 NPC…】第 4 条约束兜底。
   const runtimePackets = shouldSkipRuntimePacketsForFastLane
     ? ""
     : buildRuntimeContextPackets({

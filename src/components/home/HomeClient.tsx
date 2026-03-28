@@ -1365,7 +1365,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               <Image src="/logo.svg" alt="VerseCraft" width={30} height={30} className="object-cover scale-[1.12]" />
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-[0.5em] text-slate-700">VERSECRAFT</div>
+              <div className="text-sm font-semibold tracking-[0.22em] text-slate-700 sm:tracking-[0.5em]">
+                VERSECRAFT
+              </div>
             </div>
           </div>
 
@@ -1899,71 +1901,67 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <footer className="relative z-20 mx-auto w-full max-w-5xl px-6 pb-8 sm:px-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
         <div className="border-t border-slate-200/70 pt-5 text-xs text-slate-500">
-          <div className="grid grid-cols-[1fr_auto] items-center gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
-            <div id="home-leaderboard" className="flex min-w-0 items-center justify-start sm:w-auto sm:justify-center">
+          <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-2">
+            <div id="home-leaderboard" className="flex min-w-0 items-center justify-self-start">
               <Leaderboard userId={user?.id} triggerPlacement="inline" defaultOpen={leaderboardAutoOpen} />
             </div>
-            <div className="flex justify-end sm:w-auto sm:justify-start">
+            <div className="justify-self-center whitespace-nowrap text-center text-[11px] text-slate-500 sm:text-xs">
+              QQ群 <span className="font-mono text-slate-600">377493954</span>
+            </div>
+            <div className="flex justify-self-end">
               <FooterHaloIconButton onClick={openSurveyEntry} ariaLabel="产品问卷" tone="blue">
                 <BulbIconSvg />
               </FooterHaloIconButton>
             </div>
-            <div
-              className="col-span-2 flex w-full items-center justify-start gap-x-3 pt-1 text-[11px] text-slate-500/90 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:col-span-1 sm:w-auto sm:flex-wrap sm:justify-center sm:gap-x-4 sm:pt-0 sm:text-xs sm:whitespace-normal sm:overflow-visible"
-            >
-              <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/user-agreement">
-                用户协议
-              </Link>
-              <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/privacy-policy">
-                隐私政策
-              </Link>
-              <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/contact">
-                联系我们
-              </Link>
-              <button
-                type="button"
-                onClick={openFooterFeedback}
-                className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500"
-              >
-                测试反馈 / 举报
-              </button>
-              <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/content-policy">
-                内容规范
-              </Link>
-              <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/ai-disclaimer">
-                AI 生成说明
-              </Link>
-              <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/minors">
-                未成年人说明
-              </Link>
-            </div>
           </div>
 
-          <div className="mt-3 grid w-full grid-cols-1 items-center gap-2 text-slate-500 sm:grid-cols-3 sm:gap-3">
-            <div className="text-center sm:text-left">
-              QQ群 <span className="font-mono text-slate-600">377493954</span>
-            </div>
-            <div className="text-center">
-              {(() => {
-                const c = getPublicRuntimeConfig().compliance;
-                const beianNumber = (c.beianNumber ?? "").trim();
-                const beianUrl = (c.beianUrl ?? "").trim();
-                if (!beianNumber) return <span className="text-slate-400">—</span>;
-                return (
-                  <a
-                    className="text-slate-600 underline underline-offset-4 decoration-slate-300/90 transition hover:text-slate-900 hover:decoration-slate-500"
-                    href={beianUrl || "https://beian.miit.gov.cn"}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    {beianNumber}
-                  </a>
-                );
-              })()}
-            </div>
-            <div className="text-center sm:text-right">
-              <span className="tracking-widest text-slate-500">v1.1 先行版</span>
-            </div>
+          <div
+            className="mt-3 flex w-full items-center justify-start gap-x-3 overflow-x-auto whitespace-nowrap text-[11px] text-slate-500/90 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:justify-center sm:gap-x-4 sm:text-xs sm:whitespace-normal sm:overflow-visible"
+          >
+            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/user-agreement">
+              用户协议
+            </Link>
+            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/privacy-policy">
+              隐私政策
+            </Link>
+            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/contact">
+              联系我们
+            </Link>
+            <button
+              type="button"
+              onClick={openFooterFeedback}
+              className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500"
+            >
+              测试反馈 / 举报
+            </button>
+            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/content-policy">
+              内容规范
+            </Link>
+            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/ai-disclaimer">
+              AI 生成说明
+            </Link>
+            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/minors">
+              未成年人说明
+            </Link>
+          </div>
+
+          <div className="mt-3 text-center text-slate-500">
+            {(() => {
+              const c = getPublicRuntimeConfig().compliance;
+              const beianNumber = (c.beianNumber ?? "").trim();
+              const beianUrl = (c.beianUrl ?? "").trim();
+              if (!beianNumber) return <span className="text-slate-400">—</span>;
+              return (
+                <a
+                  className="text-slate-600 underline underline-offset-4 decoration-slate-300/90 transition hover:text-slate-900 hover:decoration-slate-500"
+                  href={beianUrl || "https://beian.miit.gov.cn"}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {beianNumber}
+                </a>
+              );
+            })()}
           </div>
         </div>
       </footer>

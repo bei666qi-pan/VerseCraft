@@ -6,6 +6,8 @@ import {
   buildB1OrderPacket,
   buildFloorLorePacket,
   buildKeyNpcLorePacket,
+  buildMajorNpcRelinkPacket,
+  buildMajorNpcRelinkPacketCompact,
   buildOriginiumEconomyPacket,
   buildRecentWorldEventPacket,
   buildReviveAnchorLorePacket,
@@ -21,6 +23,21 @@ import {
   buildWeaponPacket,
   inferFloorThreatTier,
 } from "./stage2Packets";
+import {
+  buildSchoolCycleArcPacket,
+  buildSchoolCycleArcPacketCompact,
+  buildSchoolCycleArcPacketMicro,
+} from "@/lib/registry/schoolCycleCanon";
+import {
+  buildCycleLoopPacket,
+  buildCycleLoopPacketCompact,
+  buildMajorNpcArcPacket,
+  buildMajorNpcArcPacketCompact,
+  buildSchoolSourcePacket,
+  buildSchoolSourcePacketCompact,
+  buildTeamRelinkPacket,
+  buildTeamRelinkPacketCompact,
+} from "@/lib/registry/worldSchoolRuntimePackets";
 import type { ThreatSnapshot } from "./stage2Packets";
 
 type ServiceStateInput = {
@@ -446,6 +463,21 @@ export function buildRuntimeContextPackets(args: {
     suppressionProgress: threatPacket.suppressionProgress,
   };
   const serviceKinds = services.map((svc) => svc.kind);
+  const majorNpcRelinkPacket = buildMajorNpcRelinkPacket({
+    playerContext: args.playerContext,
+    signals,
+    nearbyNpcIds,
+    maxRevealRank,
+  });
+  const majorNpcRelinkPacketCompact = buildMajorNpcRelinkPacketCompact(majorNpcRelinkPacket);
+  const majorNpcArcPacket = buildMajorNpcArcPacket({
+    nearbyNpcIds,
+    maxRevealRank,
+    relinkEntries: majorNpcRelinkPacket.entries,
+  });
+  const cycleLoopPacket = buildCycleLoopPacket(maxRevealRank);
+  const schoolSourcePacket = buildSchoolSourcePacket(maxRevealRank);
+  const teamRelinkPacket = buildTeamRelinkPacket({ majorNpcRelinkPacket, nearbyNpcIds });
   const worldLorePackets = {
     reveal_tier_packet: buildRevealTierPacket({ signals, maxRevealRank, firedRuleIds: firedRevealRuleIds }),
     floor_lore_packet: buildFloorLorePacket({ signals, floorLore, maxRevealRank }),
@@ -469,9 +501,15 @@ export function buildRuntimeContextPackets(args: {
       revive,
       activeTaskTitles: signals.activeTaskTitles.length > 0 ? signals.activeTaskTitles : tasks,
     }),
+    major_npc_arc_packet: majorNpcArcPacket,
+    cycle_loop_packet: cycleLoopPacket,
+    school_source_packet: schoolSourcePacket,
+    team_relink_packet: teamRelinkPacket,
   };
   const flFull = worldLorePackets.floor_lore_packet;
   const thFull = worldLorePackets.threat_lore_packet;
+  const schoolCycleArcPacketCompact = buildSchoolCycleArcPacketCompact(maxRevealRank);
+  const schoolCycleArcPacketMicro = buildSchoolCycleArcPacketMicro(maxRevealRank);
   const worldLorePacketsCompact = {
     reveal_tier_packet: worldLorePackets.reveal_tier_packet,
     floor_lore_packet: {
@@ -502,11 +540,25 @@ export function buildRuntimeContextPackets(args: {
     key_npc_lore_packet: {
       nearbyNpcIds: (worldLorePackets.key_npc_lore_packet.nearbyNpcIds as string[]).slice(0, 4),
       nearbyNpcBriefs: (worldLorePackets.key_npc_lore_packet.nearbyNpcBriefs as unknown[] | undefined)?.slice(0, 3),
+      major_npc_bridge_hints: (
+        worldLorePackets.key_npc_lore_packet.major_npc_bridge_hints as unknown[] | undefined
+      )?.slice(0, 2),
     },
     recent_world_event_packet: {
       activeTaskTitles: (worldLorePackets.recent_world_event_packet.activeTaskTitles as string[]).slice(0, 3),
       flaggedEvents: (worldLorePackets.recent_world_event_packet.flaggedEvents as string[]).slice(0, 4),
     },
+    major_npc_relink_packet: {
+      schema: majorNpcRelinkPacketCompact.schema,
+      xinlanPivotOpen: majorNpcRelinkPacketCompact.xinlanPivotOpen,
+      crisisJoinWindowActive: majorNpcRelinkPacketCompact.crisisJoinWindowActive,
+      xinlanPh: majorNpcRelinkPacketCompact.xinlanPh,
+      rows: majorNpcRelinkPacketCompact.rows.slice(0, 6),
+    },
+    major_npc_arc_packet: buildMajorNpcArcPacketCompact(majorNpcArcPacket),
+    cycle_loop_packet: buildCycleLoopPacketCompact(cycleLoopPacket),
+    school_source_packet: buildSchoolSourcePacketCompact(schoolSourcePacket),
+    team_relink_packet: buildTeamRelinkPacketCompact(teamRelinkPacket),
   };
 
   const weaponPacket = buildWeaponPacket({
@@ -514,10 +566,12 @@ export function buildRuntimeContextPackets(args: {
     threatName: threatPacket.activeThreatName,
     threatId: threatPacket.activeThreatId,
   });
+  const schoolCycleArcPacket = buildSchoolCycleArcPacket(maxRevealRank);
   const worldviewPacket = buildWorldviewPacket({
     location,
     threatPhase: threatPacket.phase,
     activeTasks: tasks,
+    maxRevealRank,
   });
   const forgePacket = buildForgePacket({
     location,
@@ -533,6 +587,7 @@ export function buildRuntimeContextPackets(args: {
     },
     main_threat_packet: threatPacket,
     worldview_packet: worldviewPacket,
+    school_cycle_arc_packet: schoolCycleArcPacket,
     weapon_packet: weaponPacket,
     forge_packet: forgePacket,
     floor_progression_packet: buildFloorProgressionPacket({
@@ -565,6 +620,7 @@ export function buildRuntimeContextPackets(args: {
       currentProfession: professionPacket.currentProfession,
     }),
     scene_npc_appearance_written_packet: sceneNpcAppearanceWritten,
+    major_npc_relink_packet: majorNpcRelinkPacket,
     ...worldLorePackets,
   };
   const contextMode = args.contextMode ?? "full";
@@ -579,6 +635,7 @@ export function buildRuntimeContextPackets(args: {
           profession_packet: packets.profession_packet,
           tactical_context_packet: packets.tactical_context_packet,
           scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
+          school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
         }
       : packets;
@@ -593,9 +650,9 @@ export function buildRuntimeContextPackets(args: {
   const compactPackets = {
     current_location_packet: packets.current_location_packet,
     main_threat_packet: packets.main_threat_packet,
-    worldview_packet: packets.worldview_packet,
     weapon_packet: packets.weapon_packet,
     forge_packet: packets.forge_packet,
+    worldview_packet: packets.worldview_packet,
     floor_progression_packet: packets.floor_progression_packet,
     active_tasks_packet: packets.active_tasks_packet.slice(0, 4),
     anchor_revive_packet: packets.anchor_revive_packet,
@@ -610,6 +667,7 @@ export function buildRuntimeContextPackets(args: {
     tactical_context_packet: packets.tactical_context_packet,
     scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
     ...worldLorePacketsCompact,
+    school_cycle_arc_packet: schoolCycleArcPacketMicro,
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

@@ -24,6 +24,8 @@ import {
   B2_BOSS_LOCKED_FAVORABILITY,
 } from "@/lib/registry/world";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
+import { buildSchoolCycleLoreFactsForCanon } from "@/lib/registry/schoolCycleCanon";
+import { buildWorldArcBootstrapFactsForCanon } from "@/lib/registry/worldArcBootstrapSlices";
 
 function mkFactIdentity(factKey: string): { factKey: string } {
   return { factKey };
@@ -154,6 +156,32 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
           `披露策略：${tier.revealPolicy}`,
         ].join("\n"),
         tags: ["reveal_tier", tier.id, "reveal_surface"],
+        source: mkSource("registry"),
+      })
+    );
+  }
+
+  for (const sc of buildSchoolCycleLoreFactsForCanon()) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: sc.factKey,
+        canonicalText: sc.canonicalText,
+        tags: sc.tags,
+        source: mkSource("registry"),
+      })
+    );
+  }
+
+  for (const wa of buildWorldArcBootstrapFactsForCanon()) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: wa.factKey,
+        canonicalText: wa.canonicalText,
+        tags: wa.tags,
         source: mkSource("registry"),
       })
     );

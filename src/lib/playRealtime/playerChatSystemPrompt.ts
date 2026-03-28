@@ -1,4 +1,4 @@
-// Generated in-repo from route buildSystemPrompt static lines (see scripts/gen-player-chat-stable-prompt.mjs).
+// Stable DM 规则：以本文件为权威。脚本 scripts/gen-player-chat-stable-prompt.mjs 仅在 route 中存在可抽取的 legacy buildSystemPrompt 时用于同步；否则跳过。
 import type { ChatMessage } from "@/lib/ai/types/core";
 import { envRaw } from "@/lib/config/envRaw";
 
@@ -81,7 +81,13 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【图鉴一致性】实体出场后应更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。",
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
     "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",
-    "【动态上下文声明】楼层细节、NPC 细节、任务经济、服务节点、锚点复活、最近事件、揭露层级（reveal_tier_packet）等均由运行时 JSON packet 与 registry 决定；若额外注入如月公寓根档案，仅作不可变根目录，细则以 packet 为准且 packet 优先。",
+    "【动态上下文声明】楼层细节、NPC 细节、任务经济、服务节点、锚点复活、最近事件、揭露层级（reveal_tier_packet）等均由运行时 JSON packet 与 registry 决定；高魅力 NPC 拱门闩与重连态势见 major_npc_arc_packet、major_npc_relink_packet、team_relink_packet；学制/校源/节律见 school_cycle_arc_packet、school_source_packet、cycle_loop_packet（有包则优先，无包勿臆补）。若额外注入如月公寓根档案，仅作不可变根目录，细则以 packet 为准且 packet 优先。",
+    "",
+    "【高魅力 NPC 与旧阵（硬边界）】",
+    "1) 双层身份：先稳写公寓职能壳（物业/B1/补给/交易/7F/画室等）；校源残响、辅锚语义仅当 packet 与 reveal_tier_packet 已允许时渐进露出，禁止用静态记忆抢跑深层真相。",
+    "2) 禁止 instant party：不得开场全员亲近、默认跟队或一口认定旧队友；旧闭环重连须渐进，以 major_npc_relink_packet / team_relink_packet 阶段为准。",
+    "3) 欣蓝（N-010）可有异常熟悉与牵引感，不得替她向玩家完整剧透世界观根因或七锚全貌；旧阵第一牵引以 packet 为准，勿让他人替她抢跑全盘真相。",
+    "4) 极快手路径若本回合未附带运行时 JSON 包：不得以自由发挥补全七锚、校源、旧阵；待有包回合再对齐。",
     "",
     "仅输出合法 JSON 对象，禁止 JSON 外任何文字或代码围栏。",
   ];

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useGameStore } from "@/store/useGameStore";
 import { submitGameRecord } from "@/app/actions/leaderboard";
-import { enrichSettlementHistoryAiRecap } from "@/app/actions/history";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { deleteCloudSaveSlot, enqueueReviveWorldAdvanceJob } from "@/app/actions/save";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
@@ -18,16 +17,6 @@ import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selector
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
-type SettlementAiReview = {
-  summary: string;
-  strengths: string[];
-  risks: string[];
-  nextActions: string[];
-  confidence: { score: number; level: "high" | "medium" | "low"; reason: string };
-  evidence: Array<{ metric: string; value: string; source: string }>;
-  evidenceSufficiency: "enough" | "insufficient";
-  generatedAt: string;
-};
 
 function replaceLocationIdsForDisplay(text: string): string {
   let out = String(text ?? "");
@@ -136,8 +125,8 @@ function generateSettlementReview(
     ];
   }
   return [
-    "你的存在为公寓增添了一点微不足道的熵。",
-    "下次，试着多活一会儿，或者多杀几只。",
+    "终焉尚未落槌，你却已在规则的缝隙里蹭出一道浅痕。",
+    "下一循环里，先护住自己的道心，再谈破局；别用谎话给公寓递刀。",
   ];
 }
 
@@ -233,11 +222,8 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const [onLeaderboardToast, setOnLeaderboardToast] = useState(false);
   const [fitScale, setFitScale] = useState(1);
   const [uploadOutcome, setUploadOutcome] = useState<UploadOutcome | null>(null);
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const hasUploadedRef = useRef(false);
   const hasAchievementPushedRef = useRef(false);
-  const lastSettlementHistoryIdRef = useRef<number | null>(null);
-  const aiEnrichedHistoryIdRef = useRef<number | null>(null);
   const fitWrapRef = useRef<HTMLDivElement | null>(null);
   const fitCardRef = useRef<HTMLDivElement | null>(null);
 
@@ -247,8 +233,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const historicalMaxFloorScore = useGameStore((s) => s.historicalMaxFloorScore ?? 0);
   const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "main_slot");
-  const [aiReview, setAiReview] = useState<SettlementAiReview | null>(null);
-  const [aiReviewLoading, setAiReviewLoading] = useState(false);
   const reviveContext = useGameStore((s) => s.reviveContext);
   const professionState = useGameStore((s) => s.professionState);
 
@@ -268,30 +252,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     kills,
     maxFloor
   );
-
-  const buildAiReviewPayload = useCallback(() => {
-    const keyEvents = logs
-      .slice(-10)
-      .filter((x) => x.role === "user" || x.role === "assistant")
-      .map((x) => String(x.content ?? "").trim())
-      .filter(Boolean)
-      .slice(-6);
-    return {
-      sessionId: currentSaveSlot,
-      player: {
-        grade,
-        survivalHours,
-        maxFloor,
-        kills,
-        isDead,
-      },
-      signals: {
-        playerLocation,
-        keyEvents,
-      },
-      evidenceQuality: keyEvents.length >= 3 ? "enough" : "insufficient",
-    } as const;
-  }, [currentSaveSlot, grade, survivalHours, maxFloor, kills, isDead, playerLocation, logs]);
 
   const handleSubmit = useCallback(async () => {
     if (hasUploadedRef.current) return;
@@ -318,13 +278,9 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         recapSummary,
         isDead,
         hasEscaped: !isDead && (escapeOutcome === "true_escape" || escapeOutcome === "costly_escape" || maxFloor >= 99),
-        escapeOutcome,
         writingMarkdown,
       },
     });
-    if (typeof res.historyId === "number") {
-      lastSettlementHistoryIdRef.current = res.historyId;
-    }
     setUploadOutcome({
       cloudOk: !!res.success,
       historyId: typeof res.historyId === "number" ? res.historyId : null,
@@ -340,6 +296,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     survivalHours,
     isDead,
     grade,
+    escapeOutcome,
     professionState?.currentProfession,
     reviewLine1,
     reviewLine2,
@@ -376,54 +333,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     if (reviveContext?.pending || reviveContext?.deathLocation) return;
     useGameStore.getState().recordDeathForRevive("精神锚点归零");
   }, [mounted, isDead, reviveContext]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    let cancelled = false;
-    const sessionId = currentSaveSlot;
-    const loadAiReview = async () => {
-      setAiReviewLoading(true);
-      try {
-        const getResp = await fetch(
-          `/api/settlement/analysis?sessionId=${encodeURIComponent(sessionId)}`,
-          { credentials: "include" }
-        );
-        if (getResp.ok) {
-          const data = (await getResp.json().catch(() => null)) as
-            | { output?: SettlementAiReview }
-            | null;
-          if (!cancelled && data?.output) setAiReview(data.output);
-          return;
-        }
-        const postResp = await fetch("/api/settlement/analysis", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildAiReviewPayload()),
-        });
-        const postData = (await postResp.json().catch(() => null)) as
-          | { output?: SettlementAiReview }
-          | null;
-        if (!cancelled && postData?.output) setAiReview(postData.output);
-      } catch {
-        // AI复盘为非阻塞增强，失败时静默保底为规则文案。
-      } finally {
-        if (!cancelled) setAiReviewLoading(false);
-      }
-    };
-    void loadAiReview();
-    return () => {
-      cancelled = true;
-    };
-  }, [mounted, currentSaveSlot, buildAiReviewPayload]);
-
-  useEffect(() => {
-    if (!mounted || !aiReview?.summary?.trim()) return;
-    const hid = lastSettlementHistoryIdRef.current;
-    if (hid == null || aiEnrichedHistoryIdRef.current === hid) return;
-    aiEnrichedHistoryIdRef.current = hid;
-    void enrichSettlementHistoryAiRecap({ historyId: hid, aiSummary: aiReview.summary });
-  }, [mounted, aiReview?.summary]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -504,9 +413,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     maxFloor,
     time.day,
     time.hour,
-    archiveOpen,
     uploadOutcome,
-    aiReview,
   ]);
 
   if (!mounted) {
@@ -568,11 +475,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   }
 
   const persistLine =
-    uploadOutcome == null ? (
-      <p className="text-center text-[11px] leading-relaxed text-slate-500">
-        正在把你的本局结果写入记录（若已登录则同步账号）…
-      </p>
-    ) : uploadOutcome.cloudOk && uploadOutcome.historyId != null ? (
+    uploadOutcome == null ? null : uploadOutcome.cloudOk && uploadOutcome.historyId != null ? (
       <p className="text-center text-[11px] leading-relaxed text-emerald-200/85">
         <span className="font-semibold text-emerald-100/95">本局结果已完成云端归档。</span>
         排行榜与结算数据已同步，可直接继续下一局。
@@ -650,7 +553,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                       ? "你走出去了（但那是假的）"
                       : escapeOutcome === "doom"
                         ? "你没能走出去（终焉）"
-                        : "你暂时逃离了高维肠胃"}
+                        : "你的意识渐渐消散，但一切还未终焉"}
             </h1>
             <p className="mt-3 text-sm text-slate-500">
               {isDead
@@ -663,7 +566,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                       ? "你以为走出去了；但真正的门仍未为你打开。"
                       : escapeOutcome === "doom"
                         ? "末日闸门落下；你被迫以终焉收束。"
-                        : "你暂时离开了那栋楼，但规则会记住你。"}
+                        : ""}
             </p>
           </header>
 
@@ -671,44 +574,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             {persistLine}
             {guestLoginHint}
           </div>
-
-          <section className="rounded-xl border border-slate-600/45 bg-slate-800/35 px-4 py-3 sm:px-5 sm:py-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              规则结算 · 定调
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              以下内容由本局数值与规则直接生成，用于评级与历史摘要；情绪与氛围以这里为准。
-            </p>
-            <p className="mt-3 text-sm leading-relaxed text-slate-200">{reviewLine1}</p>
-            <p className="mt-1 text-sm leading-relaxed text-slate-400">{reviewLine2}</p>
-          </section>
-
-          <section className="rounded-xl border border-indigo-500/20 bg-slate-800/25 px-4 py-3 sm:px-5 sm:py-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-300/80">
-              叙事补充 · 读后感
-            </p>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              在规则结算之上，用本局对话片段生成的<strong className="font-medium text-slate-400">可读性总结</strong>
-              ，仅供回味与梳理，
-              <span className="text-slate-500">不参与评级、也不会替代上文定调。</span>
-              生成完成后会随本局结果归档。
-            </p>
-            {aiReviewLoading && !aiReview ? (
-              <p className="mt-3 text-sm text-indigo-100/70">正在根据本局文本生成补充总结…</p>
-            ) : aiReview?.summary?.trim() ? (
-              <div className="mt-3 space-y-2 border-t border-indigo-500/15 pt-3">
-                <p className="text-sm leading-relaxed text-slate-200">{aiReview.summary}</p>
-                <p className="text-[10px] text-slate-500">
-                  模型置信：{aiReview.confidence.level}（{Math.round(aiReview.confidence.score * 100)}%） ·
-                  素材充分性：{aiReview.evidenceSufficiency === "enough" ? "较好" : "有限"}
-                </p>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500">
-                本局暂未生成可用的补充总结；你仍拥有完整的规则结算与下方的数据归档。
-              </p>
-            )}
-          </section>
 
           <section className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 sm:px-5 sm:py-5">
             <div className="grid grid-cols-2 gap-2 sm:gap-4 sm:grid-cols-4">
@@ -741,57 +606,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             </div>
           </section>
 
-          {archiveOpen ? (
-            <section
-              id="settlement-archive"
-              className="rounded-xl border border-slate-700/50 bg-slate-900/40"
-            >
-              <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  本局归档摘要
-                </p>
-                <ul className="space-y-2 text-xs leading-relaxed text-slate-400">
-                  <li>
-                    <span className="text-slate-500">评级：</span>
-                    <span className="font-semibold text-slate-200">{grade}</span>
-                  </li>
-                  <li>
-                    <span className="text-slate-500">这一局的时间坐标：</span>
-                    {time.day} 日 {time.hour} 时（约 {survivalHours} 小时跨度）
-                  </li>
-                  <li>
-                    <span className="text-slate-500">战绩：</span>
-                    消灭诡异 {kills} 只 · 最高抵达 {formatFloorDisplay(maxFloor)}
-                    {professionState?.currentProfession ? (
-                      <> · 职业 {String(professionState.currentProfession)}</>
-                    ) : null}
-                  </li>
-                  <li>
-                    <span className="text-slate-500">结局：</span>
-                    {isDead
-                      ? "死亡结算"
-                      : escapeOutcome === "true_escape"
-                        ? "真正逃离"
-                        : escapeOutcome === "costly_escape"
-                          ? "代价逃离"
-                          : escapeOutcome === "false_escape"
-                            ? "假逃离"
-                            : escapeOutcome === "doom"
-                              ? "终焉"
-                              : maxFloor >= 99
-                                ? "（旧规则）逃离"
-                                : "暂未以逃离收束"}
-                  </li>
-                  <li className="text-slate-500">
-                    {uploadOutcome?.cloudOk && uploadOutcome.historyId != null
-                      ? "以上内容已随本局一并归档到云端。"
-                      : "以上内容已记入本机成就预览；登录后可同步到云端。"}
-                  </li>
-                </ul>
-              </div>
-            </section>
-          ) : null}
-
           <div className="flex flex-col gap-3 sm:gap-4">
             {isDead ? (
               <button
@@ -816,16 +630,6 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                 </span>
               </button>
             )}
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:justify-center sm:gap-3">
-              <button
-                type="button"
-                onClick={() => setArchiveOpen((o) => !o)}
-                className="min-h-[44px] flex-1 rounded-xl border border-slate-500/50 bg-slate-800/80 px-4 text-sm font-semibold text-slate-100 transition hover:border-slate-400 hover:bg-slate-800"
-              >
-                {archiveOpen ? "收起本局归档" : "查看本局归档"}
-              </button>
-            </div>
 
             <button
               type="button"

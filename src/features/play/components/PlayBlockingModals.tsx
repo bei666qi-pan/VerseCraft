@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { glassModalOverlay, glassPlayDialogSurface } from "@/lib/ui/glassStyles";
 
 export function PlayBlockingModals({
@@ -7,6 +8,7 @@ export function PlayBlockingModals({
   showRegisterPrompt,
   onPaywallRegister,
   showExitModal,
+  onDismissExitModal,
   onSaveAndExit,
   onAbandonAndDie,
 }: {
@@ -14,6 +16,7 @@ export function PlayBlockingModals({
   showRegisterPrompt: boolean;
   onPaywallRegister: () => void;
   showExitModal: boolean;
+  onDismissExitModal: () => void;
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
 }) {
@@ -53,9 +56,17 @@ export function PlayBlockingModals({
           aria-labelledby="exit-modal-title"
         >
           <div
-            className={`${glassPlayDialogSurface} border-white/10 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)]`}
+            className={`relative ${glassPlayDialogSurface} border-white/10 p-6 sm:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)]`}
           >
-            <h2 id="exit-modal-title" className="text-lg font-semibold text-slate-100">
+            <button
+              type="button"
+              onClick={onDismissExitModal}
+              aria-label="取消退出"
+              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-slate-200 transition hover:bg-white/15 hover:text-white sm:right-4 sm:top-4"
+            >
+              <X size={18} strokeWidth={2} aria-hidden />
+            </button>
+            <h2 id="exit-modal-title" className="pr-10 text-lg font-semibold text-slate-100 sm:pr-12">
               退出确认
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-slate-300">

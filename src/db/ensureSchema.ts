@@ -119,6 +119,11 @@ export async function ensureRuntimeSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await client.query(`
+      ALTER TABLE game_records
+      ALTER COLUMN survival_time_seconds TYPE INTEGER
+      USING survival_time_seconds::integer;
+    `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS game_session_memory (

@@ -2,6 +2,7 @@ import { PLAYER_SURFACE_LORE } from "@/lib/registry/playerSurfaceLore";
 import { REVEAL_TIER_METAS } from "@/lib/registry/revealRegistry";
 import type { RevealTierRank } from "@/lib/registry/revealTierRank";
 import { WORLD_ORDER_CANON } from "@/lib/registry/worldOrderRegistry";
+import { buildMajorNpcKeyHintsForPacket } from "@/lib/registry/majorNpcDeepCanon";
 import { NPCS } from "@/lib/registry/npcs";
 import type { FloorLoreEntry } from "@/lib/registry/floorLoreRegistry";
 import type { PlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
@@ -138,6 +139,10 @@ export function buildKeyNpcLorePacket(args: {
   return {
     nearbyNpcIds: args.nearbyNpcIds.slice(0, 8),
     nearbyNpcBriefs,
+    major_npc_bridge_hints: buildMajorNpcKeyHintsForPacket({
+      nearbyNpcIds: args.nearbyNpcIds,
+      maxRevealRank: args.maxRevealRank,
+    }),
     codexHintsTruncated: args.relationshipHints.slice(0, 8),
     elderOrderHint:
       includeElder && args.maxRevealRank >= 2 && elder ? elder.worldLogic.slice(0, 200) : null,
@@ -177,3 +182,11 @@ export function buildRevealTierPacket(args: {
       : null,
   };
 }
+
+export { buildMajorNpcRelinkPacket, buildMajorNpcRelinkPacketCompact } from "@/lib/registry/majorNpcRelinkRegistry";
+export {
+  buildCycleLoopPacket,
+  buildMajorNpcArcPacket,
+  buildSchoolSourcePacket,
+  buildTeamRelinkPacket,
+} from "@/lib/registry/worldSchoolRuntimePackets";

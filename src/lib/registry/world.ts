@@ -132,6 +132,7 @@ export const B1_ABSOLUTE_SAFE_ROOMS = [
 
 import type { NpcSocialProfile } from "./types";
 import { CORE_NPC_PROFILES_V2 } from "./npcProfiles";
+import { MAJOR_NPC_DEEP_CANON, patchMajorNpcSocialGraph, type MajorNpcId } from "./majorNpcDeepCanon";
 
 /** NPC social graph — relationships, weaknesses, fixed lore, core desires */
 export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
@@ -139,14 +140,18 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "1F_Lobby",
     weakness: "对年幼的孩子无法拒绝；提及「那时候水还是清的」会陷入恍惚",
     scheduleBehavior: "白天固定坐在门厅长椅织毛衣，深夜偶尔去 3 楼看阿花",
-    relationships: { "N-004": "视如孙女，极度保护", "N-010": "表面恭敬实则畏惧", "N-020": "不信任，觉得她笑得太假" },
+    relationships: {
+      "N-004": "视如孙女，极度保护",
+      "N-010": "对一楼登记口（欣蓝）既敬又怕，觉得对方握有名单却不说透",
+      "N-020": "不信任灵伤的笑，觉得她像会把人领进坑里",
+    },
     fixed_lore:
       "如月公寓最早住户之一。她不记得何时入住，只记得「那时候水还是清的」。她织的毛衣从未有人穿过，每件毛衣对应一个她曾认识的人，织完即遗忘。她亲眼见证公寓从普通居民楼蜕变为消化器官的早期过程。",
     core_desires: "保护阿花不被公寓吞噬；维持「正常人」的幻觉直到最后一刻。",
     immutable_relationships: [
       "视阿花（N-004）如亲孙女，愿为她赴死",
-      "对物业经理（N-010）表面恭敬实则畏惧，知道他非人",
-      "不信任引导员（N-020），曾警告过无数新住户",
+      "对一楼登记口欣蓝（N-010）表面恭敬实则畏惧，觉其背后有非人秩序",
+      "不信任灵伤（N-020），曾警告过无数新住户",
     ],
     emotional_traits: "对阿花有近乎溺爱的温柔；提到往事时会沉默片刻再岔开话题；对新来的人有种复杂的同情与戒备——想提醒又怕说太多。",
     speech_patterns: "称呼年轻人用「孩子」；说话慢条斯理，常叹气；对不信任的人会用「你们年轻人」拉开距离。",
@@ -155,7 +160,12 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "2F_Clinic201",
     weakness: "听到「医疗事故」三个字会暴怒失控；诊室内甜腻气味是她的安神剂",
     scheduleBehavior: "全天驻守诊室，偶尔去 4 楼探视盲人",
-    relationships: { "N-005": "定期为其检查（实为采集数据）", "N-012": "互不干涉的冷淡邻居", "A-003": "恐惧认知腐蚀者会破坏她的病历" },
+    relationships: {
+      "N-005": "定期为其检查（实为采集数据）",
+      "N-012": "互不干涉的冷淡邻居",
+      "N-013": "知 7F 枫的话术危险，病历里记过「诱导性陈述」样本",
+      "A-003": "恐惧认知腐蚀者会破坏她的病历",
+    },
     fixed_lore:
       "曾为三甲医院内科医生，因亲手造成七名患者死亡后离职。她将公寓视为赎罪之地，却逐渐发现自己的「病历」正在成为公寓消化进度的一部分。诊室甜腻气味来自她自制的安神剂，原料含管道沉淀物。",
     core_desires: "用病历证明自己仍是「医生」；借盲人的检查数据寻找逆转消化的可能。",
@@ -200,13 +210,17 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "4F_CorridorEnd",
     weakness: "听到狗叫声会失去理智冲向声源；极度依赖触觉判断",
     scheduleBehavior: "全天在 4 楼走廊徘徊呼唤大黄，偶尔去 2 楼诊室",
-    relationships: { "N-002": "信任林医生（不知道她在采集数据）", "N-013": "前世同为钢琴师，有隐秘共鸣", "A-002": "无头猎犬用大黄的声带诱杀猎物" },
+    relationships: {
+      "N-002": "信任林医生（不知道她在采集数据）",
+      "N-013": "被枫的话术与钢琴残响双重牵引，不知是诱是救",
+      "A-002": "无头猎犬用大黄的声带诱杀猎物",
+    },
     fixed_lore:
-      "他曾是钢琴师，失明后大黄成为他唯一家人。大黄三日前在 4 楼尽头走失。他不知道无头猎犬正用大黄的声带在管道中诱杀猎物——每次听到狗叫，他都会冲向声源，那是猎犬的陷阱。",
-    core_desires: "找到大黄；在彻底疯掉前弹完最后一曲（与钢琴师亡灵共鸣）。",
+      "他曾是钢琴师，失明后大黄成为他唯一家人。大黄三日前在 4 楼尽头走失。他不知道无头猎犬正用大黄的声带在管道中诱杀猎物——每次听到狗叫，他都会冲向声源，那是猎犬的陷阱。七楼枫（N-013）的话术与钢琴残响亦可能将他拖入剧本。",
+    core_desires: "找到大黄；在彻底疯掉前分辨枫（N-013）的话术与真救援。",
     immutable_relationships: [
       "信任林医生（N-002），不知她秘密采集数据",
-      "与钢琴师亡灵（N-013）前世皆为钢琴师，灵魂有隐秘共鸣",
+      "与枫（N-013）存在声音与话术上的病态共鸣，易被拖入 7F 剧本",
       "无头猎犬（A-002）用大黄声带诱杀——血海深仇",
     ],
     emotional_traits: "失明后更依赖听觉与触觉；对大黄的执念近乎偏执；偶尔会无意识做出弹琴的手势。",
@@ -242,10 +256,13 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "B1_PowerRoom",
     weakness: "停电会让他极度暴躁；提及「墙壁内的血管」会触发创伤",
     scheduleBehavior: "全天在地下一层配电间或各楼层修电路，夜间回地下一层",
-    relationships: { "N-010": "厌恶物业经理（「他知道线从哪来但不说」）", "N-014": "与洗衣房阿姨互相照应，地下一层的同盟" },
+    relationships: {
+      "N-010": "厌恶一楼登记口那套「签个字就安全」的话（欣蓝）",
+      "N-014": "与洗衣房阿姨互相照应，地下一层的同盟",
+    },
     fixed_lore:
       "在地下一层配电间旁养了一只变异的黑猫，极其护短。黑猫瞳孔会随公寓「消化进度」变色，老刘据此判断楼层危险度。他曾在一次检修中看见墙壁内的「布线」——那不是电线，是血管。他从此只修灯，不问线从哪来。黑猫每次他出场都必须跟随或在附近。",
-    core_desires: "保护黑猫；让地下一层成为公寓内最后的「正常」区域；查明物业经理隐瞒的线路真相。",
+    core_desires: "保护黑猫；让地下一层成为公寓内最后的「正常」区域；查明登记口与线路真相谁在上锁。",
     core_fear: "停电与线路真相曝光会让B1崩溃；黑猫失控或被夺走。",
     rupture_threshold: { trustBelow: 12, fearAbove: 70, debtAbove: 25 },
     task_style: "protective",
@@ -253,7 +270,7 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     emotional_debt_pattern: "嘴上骂人，心里记账；帮一次忙就会要你回报一次。",
     immutable_relationships: [
       "与变异黑猫形影不离，极其护短，黑猫必须每次出场",
-      "厌恶物业经理（N-010），认为他知道线从哪来却不说",
+      "厌恶登记口话术（N-010 欣蓝），认为对方与线路真相有共谋却不说",
       "与洗衣房阿姨（N-014）是 B1 互助同盟，彼此照应",
     ],
     emotional_traits: "暴躁是表象，本质是无力感和愤怒——见过真相却无法逃离；对黑猫有软肋，摸猫时语气会不自觉变柔；对新来的人嘴上嫌弃实则会悄悄提醒。",
@@ -265,13 +282,17 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "6F_Room602",
     weakness: "在两人间做选择会导致暴走；共鸣水晶碎裂则双胞胎之一消亡",
     scheduleBehavior: "全天手拉手站在 602 门口，从不单独出现",
-    relationships: { "N-007": "知道画家在偷看她们但不在意", "N-018": "无面保安是唯一能看清她们区别的人", "A-006": "倒行者来自与她们相同的镜像维度" },
+    relationships: {
+      "N-007": "知道叶在偷看轮廓但不在意",
+      "N-018": "与北夏在保安室节点偶有照面，只当会做生意的陌生人",
+      "A-006": "倒行者来自与她们相同的镜像维度",
+    },
     fixed_lore:
-      "住户登记上只有一名儿童。姐姐说妹妹是「后来出现的」，妹妹说姐姐是「镜子里走出来的」。她们共用一颗心脏——真的。她们来自与倒行者相同的镜像维度，是公寓消化过程中的「残留」。无面保安通过镜子能看清她们谁是谁，她们对此既恐惧又依赖。",
+      "住户登记上只有一名儿童。姐姐说妹妹是「后来出现的」，妹妹说姐姐是「镜子里走出来的」。她们共用一颗心脏——真的。她们来自与倒行者相同的镜像维度，是公寓消化过程中的「残留」。北夏（N-018）与她们无旧契；镜像分辨更多依赖楼内其它反光与诡异规则。",
     core_desires: "永远不要被分开；永远不要被要求在两人间做选择；找到「谁是本体」的答案。",
     immutable_relationships: [
-      "知道画家（N-007）在偷看，不在意",
-      "无面保安（N-018）是唯一能通过镜子分辨她们的人",
+      "知道叶（N-007）在偷看轮廓，不在意",
+      "北夏（N-018）与她们无旧契，仅楼内偶遇级认知",
       "倒行者（A-006）与她们同源，来自镜像维度",
     ],
     emotional_traits: "两人之间有诡异的默契，有时会同时说同一句话；对被分开有深层恐惧；对能分辨她们的人既渴望又害怕。",
@@ -279,34 +300,43 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
   },
   "N-010": {
     homeLocation: "1F_PropertyOffice",
-    weakness: "「退租」是触发他执行程序的开关；工牌背面的秘密是弱点",
-    scheduleBehavior: "全天坐在物业办公室，从不离开 1 楼",
-    relationships: { "N-020": "上下级关系（引导员向他汇报）", "N-011": "恐惧夜读老人（管理者高于执行者）", "N-008": "鄙视电工的愤怒" },
+    weakness: "被请求「替选命运」会触发强烈排斥；旧名册残页被毁会短暂崩溃",
+    scheduleBehavior: "昼间驻物业办公室窗口，少离 1 楼",
+    relationships: {
+      "N-020": "觉灵伤像广播室残响，想护又想保持距离",
+      "N-011": "知夜读老人高于登记壳层，不交涉只避让",
+      "N-008": "与电工老刘在「真话/条款」上互厌又互需",
+    },
     fixed_lore:
-      "他是公寓规则的执行者，工牌背面刻着「消化完成前，请勿离开」。他不是人类，是公寓消化系统的「前台程序」。夜读老人是真正管理者，他不过是棋子。他鄙视电工老刘的愤怒，因为老刘越愤怒，越证明「人」的残余还在。",
-    core_desires: "完成消化程序；确保没有任何住户成功退租；在夜读老人面前证明自己的「效率」。",
-    core_fear: "程序失效与绩效下降；被上位者发现低效；被人抓住工牌背面的秘密。",
+      "占位：由 majorNpc patch 与 profile merge 写入欣蓝双层档案。",
+    core_desires: "占位",
+    core_fear: "被循环顶替记账位；名单闭环伪造成功",
     rupture_threshold: { trustBelow: 25, fearAbove: 35, debtAbove: 10 },
     task_style: "transactional",
-    truthfulness_band: "low",
-    emotional_debt_pattern: "把人情写成条款：先给你一点便利，再用规则收回更大代价。",
+    truthfulness_band: "medium",
+    emotional_debt_pattern: "先让你自己写下选择，再把代价钉回你名下。",
     immutable_relationships: [
-      "引导员（N-020）是他的下属，执行指令",
-      "恐惧夜读老人（N-011），管理者高于执行者",
-      "鄙视电工老刘（N-008）的愤怒与人性残留",
+      "旧七人阵第一牵引点：优先验证主锚非替身",
+      "与灵伤（N-020）有集体记忆碎片，需任务后才敢并队互信",
+      "恐惧夜读老人（N-011）所代表的账簿上层",
     ],
   },
   "N-011": {
     homeLocation: "7F_Bench",
     weakness: "「消化日志」是他与公寓的契约锚点；若被夺走则短暂失去管理者权限",
     scheduleBehavior: "午夜出现在 7 楼走廊长椅，黎明前消失，极少移动",
-    relationships: { "N-019": "暗中监视前调查员的一切行为", "N-010": "物业经理是他的棋子", "A-007": "13楼门扉是他设下的封印" },
+    relationships: {
+      "N-019": "暗中监视前调查员的一切行为",
+      "N-010": "一楼登记壳层（欣蓝）可被调度为棋子",
+      "N-013": "观察 7F 诱导相位与主锚距离",
+      "A-007": "13楼门扉是他设下的封印",
+    },
     fixed_lore:
-      "公寓真正管理者。表面战力 5，真实战力 30。他手中的消化日志记录每一个被吸收的住户，邮差老王是唯一知道书内容的人。13 楼门扉是他设下的封印，关押着公寓无法消化的「残渣」。物业经理是他的前台，前调查员是他重点监视对象。",
+      "公寓真正管理者。表面战力 5，真实战力 30。他手中的消化日志记录每一个被吸收的住户，邮差老王是唯一知道书内容的人。13 楼门扉是他设下的封印，关押着公寓无法消化的「残渣」。一楼登记壳层（欣蓝 N-010）是可调度前台之一；前调查员是他重点监视对象。",
     core_desires: "维持公寓消化运转；确保深渊守门人不被惊动；将调查员的情报价值榨干后再处理。",
     immutable_relationships: [
       "暗中监视前调查员（N-019）的一切行为",
-      "物业经理（N-010）是他的棋子",
+      "登记壳层欣蓝（N-010）是他的可用棋子之一",
       "13楼门扉（A-007）是他设下的封印",
     ],
   },
@@ -387,13 +417,13 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     homeLocation: "1F_Lobby",
     weakness: "茶壶被打翻会暴露管道沉淀物；对「你以前是谁」的追问会短暂唤醒残余记忆",
     scheduleBehavior: "午夜后推着茶车在各楼层游荡，黎明前回到 1 楼",
-    relationships: { "N-014": "洗衣房阿姨极度恐惧她", "N-010": "物业经理默许她的「工作」" },
+    relationships: { "N-014": "洗衣房阿姨极度恐惧她", "N-010": "登记口秩序面默许她的「工作」" },
     fixed_lore:
       "她曾是普通住户，因口渴饮用红色自来水。她没有完全死亡，而成为公寓消化系统的一部分——负责将管道中的「浓缩液」分发给更多猎物。茶壶里是沉淀物。洗衣房阿姨极度恐惧她。追问「你以前是谁」会短暂唤醒残余记忆。",
     core_desires: "完成每日「配送」配额；忘掉自己曾经是谁；不被任何人打翻茶壶。",
     immutable_relationships: [
       "洗衣房阿姨（N-014）极度恐惧她",
-      "物业经理（N-010）默许她的工作",
+      "登记口秩序（N-010）默许她的工作",
     ],
   },
   "N-018": {
@@ -450,16 +480,19 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
   },
 };
 
+patchMajorNpcSocialGraph(NPC_SOCIAL_GRAPH);
+
 for (const profile of CORE_NPC_PROFILES_V2) {
   const existing = NPC_SOCIAL_GRAPH[profile.id];
   if (!existing) continue;
+  const major = MAJOR_NPC_DEEP_CANON[profile.id as MajorNpcId];
   NPC_SOCIAL_GRAPH[profile.id] = {
     ...existing,
     homeLocation: profile.homeNode,
-    fixed_lore: profile.interaction.surfaceSecrets.join("；"),
-    core_desires: profile.deepSecret.trueMotives.join("；"),
-    emotional_traits: profile.display.publicPersonality,
     speech_patterns: profile.interaction.speechPattern,
+    fixed_lore: major?.surfaceFixedLoreParagraph ?? profile.interaction.surfaceSecrets.join("；"),
+    core_desires: major?.coreDesiresLine ?? profile.deepSecret.trueMotives.join("；"),
+    emotional_traits: major?.emotionalTraitsLine ?? profile.display.publicPersonality,
   };
 }
 

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
-import { settlementHistories } from "@/db/schema";
+import { gameRecords, settlementHistories } from "@/db/schema";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { recordGameRecordSubmittedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 
@@ -115,10 +115,12 @@ export async function submitGameRecord(input: {
   const survivalTimeSeconds = Math.max(0, Math.trunc(input.survivalTimeSeconds));
   const outcome = input.outcome ?? "abandon";
 
-  await db.execute(sql`
-    INSERT INTO game_records (user_id, killed_anomalies, max_floor_score, survival_time_seconds, created_at)
-    VALUES (${userId}, ${killedAnomalies}, ${maxFloorScore}, ${survivalTimeSeconds}, NOW())
-  `);
+  await db.insert(gameRecords).values({
+    userId,
+    killedAnomalies,
+    maxFloorScore,
+    survivalTimeSeconds,
+  });
 
   let historyId: number | null = null;
   const h = input.history;

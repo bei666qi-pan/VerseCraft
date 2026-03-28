@@ -17,25 +17,28 @@ export const REVEAL_TIER_METAS: readonly RevealTierMeta[] = [
     id: "surface",
     title: "表层传言",
     unlockSignals: ["初入 B1", "低后果探索", "未触发深层标记"],
-    revealPolicy: "仅可生存规则、传言与矛盾线索；不解释龙胃或回声体根因。",
+    revealPolicy:
+      "仅可生存规则、公寓传言与矛盾线索；高魅力 NPC 只呈现职能壳（物业/B1/交易等）。不解释龙胃、回声体根因、七锚、校源身份或循环纠错。",
   },
   {
     id: "fracture",
     title: "裂缝真相",
     unlockSignals: ["次日以后", "复活或推进标记", "主威胁压制进展", "较高图鉴好感"],
-    revealPolicy: "可给机制切片：锚点代价、原石社会功能、楼层为何像阶段。",
+    revealPolicy:
+      "可给机制切片：锚点代价、原石社会功能、楼层阶段感。可暗示数名关键住户「不像普通徘徊者」与职能—记忆耦合违和；仍不可直述七锚、校源标签、十日闪烁全貌。",
   },
   {
     id: "deep",
     title: "深层机制",
     unlockSignals: ["7F 锚或身处 7F", "阴谋类世界标记", "职业认证线索"],
-    revealPolicy: "可谈秩序悖论、管理者筛选；仍不直给通关步骤。",
+    revealPolicy:
+      "可谈七锚结构、学制循环窗口、校源徘徊者运行态、龙月校准与泄露—收容双端因果；仍不直给通关步骤与出口对账链。",
   },
   {
     id: "abyss",
     title: "深渊对账",
     unlockSignals: ["B2 现身", "出口类世界标记"],
-    revealPolicy: "允许对齐根因果链条与离开代价叙事。",
+    revealPolicy: "允许对齐根因果、出口代价与七锚在终筛中的可能结算；禁止因单句追问一次性倾倒全部设定。",
   },
 ] as const;
 
