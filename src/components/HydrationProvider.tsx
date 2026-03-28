@@ -30,15 +30,11 @@ export default function HydrationProvider({
       await migrateLegacyVersecraftGameStateVolume();
     };
 
-    const done = () => setHydrated(true);
-    const timeout = setTimeout(done, 8000);
-
+    // 禁止在 rehydrate 完成前 setHydrated(true)：否则 isGameStarted 等仍为初始 false，
+    // /play 会立刻 replace 离开，表现为「进 play 又回首页/去铸造」。
     void runRehydrate().finally(() => {
-      clearTimeout(timeout);
-      done();
+      setHydrated(true);
     });
-
-    return () => clearTimeout(timeout);
   }, [setHydrated]);
 
   if (!isHydrated) {

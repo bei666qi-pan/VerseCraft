@@ -18,7 +18,8 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
     latestUserInput: "我要去找守门骑士补给并问锚点",
     playerLocation: "B1_Storage",
     runtimeLoreCompact: "【RAG-Lore精简片段】\n- [rule] b1-safe-zone",
-    maxChars: 6000,
+    /** 完整 packet 体积常超 6k；此处用充足预算断言非截断路径下的键齐全 */
+    maxChars: 14000,
   });
   assert.ok(packet.includes("运行时结构化上下文包"));
   assert.ok(packet.includes("current_location_packet"));
@@ -48,6 +49,8 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
   assert.ok(packet.includes("major_npc_relink_packet"));
   assert.ok(packet.includes("major_npc_arc_packet"));
   assert.ok(packet.includes("cycle_loop_packet"));
+  assert.ok(packet.includes("cycle_time_packet"));
+  assert.ok(packet.includes("school_cycle_experience_packet"));
   assert.ok(packet.includes("school_source_packet"));
   assert.ok(packet.includes("team_relink_packet"));
 });

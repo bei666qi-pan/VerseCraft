@@ -14,7 +14,8 @@ export function shouldAutoRegenerateOptionsOnModeSwitch(input: {
   nextMode: "text" | "options";
   switchedByUser: boolean;
   currentOptionsLength: number;
-  isChatBusy: boolean;
+  /** 主链路 wait/stream/commit 阶段；与「全文 isChatBusy」不同，tail_draining 时为 false。 */
+  blocksOptionsRegen: boolean;
   optionsRegenBusy: boolean;
   endgameActive: boolean;
   showEmbeddedOpening: boolean;
@@ -23,7 +24,7 @@ export function shouldAutoRegenerateOptionsOnModeSwitch(input: {
   if (!input.switchedByUser) return false;
   if (!(input.prevMode === "text" && input.nextMode === "options")) return false;
   if ((input.currentOptionsLength ?? 0) > 0) return false;
-  if (input.isChatBusy || input.optionsRegenBusy) return false;
+  if (input.blocksOptionsRegen || input.optionsRegenBusy) return false;
   if (input.endgameActive || input.showEmbeddedOpening) return false;
   if (input.isGuestDialogueExhausted) return false;
   return true;

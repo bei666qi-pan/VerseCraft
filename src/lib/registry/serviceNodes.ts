@@ -18,7 +18,7 @@ const B1_SAFEZONE_SERVICES: ServiceDefinition[] = [
     kind: "revive_anchor",
     name: "复活锚点",
     description: "死亡后可在此触发安全复活流程。",
-    npcIds: ["N-008", "N-014"],
+    npcIds: ["N-008", "N-014", "N-015"],
     enabledByDefault: true,
   },
   {
@@ -44,8 +44,8 @@ const B1_STORAGE_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_shop",
     kind: "shop_trade",
     name: "基础商店",
-    description: "售卖基础补给与工具，支持最小交易闭环。",
-    npcIds: ["N-008", "N-014"],
+    description: "售卖基础补给与工具，支持最小交易闭环；补给联络（灵伤）可与后勤并发出现。",
+    npcIds: ["N-008", "N-014", "N-020"],
     enabledByDefault: true,
   },
   {
@@ -90,8 +90,8 @@ const B1_LAUNDRY_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_rumor",
     kind: "rumor",
     name: "谣言情报",
-    description: "获取柔性情报与楼层传闻。",
-    npcIds: ["N-014"],
+    description: "获取柔性情报与楼层传闻；常与 B1 补给面孔交叉验证。",
+    npcIds: ["N-014", "N-020"],
     enabledByDefault: true,
   },
   {
@@ -99,7 +99,7 @@ const B1_LAUNDRY_SERVICES: ServiceDefinition[] = [
     kind: "soft_guidance",
     name: "柔性引导",
     description: "以生活化叙事方式引导玩家推进。",
-    npcIds: ["N-014", "N-008"],
+    npcIds: ["N-014", "N-008", "N-020"],
     enabledByDefault: true,
   },
 ];

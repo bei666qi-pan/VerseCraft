@@ -1,102 +1,155 @@
-# 学制循环与高魅力 NPC：Runtime Packet 与 Bootstrap 接入
+# 学制与校源：Runtime Packet 与 Bootstrap 接入说明
 
-本文说明世界观/校源/七锚/重连叙事如何经 **registry → reveal 门闸 → runtime packet → world knowledge bootstrap** 进入模型可见域，且**不堆进固定 prompt**。
+本文说明 **VerseCraft** 如何将「耶里—如月—七锚—旧阵」世界观接入 **运行时 JSON**，同时保持 **stable prompt 只做边界**、**真相走 registry / packet / retrieval**，并控制 **体积与首包延迟**。
 
-## 设计原则
+---
 
-- **真相主路径**：`schoolCycleCanon`、`worldArcBootstrapSlices`、`majorNpcDeepCanon`、`majorNpcRelinkRegistry` + 各 packet builder。
-- **Stable prompt**：仍只保留最小硬约束；本批改动不增加长文静态 prompt。
-- **防剧透**：`maxRevealRank`（`computeMaxRevealRankFromSignals`）统一裁剪；`REVEAL_TIER_METAS` 已写明各档对高魅力 NPC / 校源的边界。
-- **体积**：`full` 模式给完整 JSON；`minimal` 与超长截断沿用 `worldLorePacketsCompact` 内的缩写子包，避免首字明显膨胀。
+## 1. 设计哲学（必须遵守）
 
-## 揭露分层（与 packet 对齐）
+| 原则 | 做法 |
+|------|------|
+| 真相来源 | `schoolCycleCanon`、`majorNpcDeepCanon`、`cycleMoonFlashRegistry`、`worldOrderRegistry`、专条 seed；不在 stable 里堆长文。 |
+| Stable prompt | `playerChatSystemPrompt` 等只声明「有 packet 则以 packet 为准」、禁止抢跑深层。 |
+| Runtime | `buildRuntimeContextPackets` 输出结构化子包；按 `maxRevealRank` 裁剪。 |
+| 检索 | `registryAdapters` + `coreCanonMapping` 双轨写入同内容事实，带 `reveal_*` tag。 |
+| 防剧透 | `revealRegistry` 仅根据 **playerContext 解析信号** 抬档；**不**根据玩家上一句台词。 |
 
-| 档位 | `maxRevealRank` | 模型可见边界（摘要） |
-|------|-----------------|----------------------|
-| surface | 0 | 生存规则、邻校**传言**、职能壳 NPC；无七锚/校源/循环机制直述 |
-| fracture | 1 | 锚点代价、原石与楼层阶段感；**可暗示**关键住户「不像普通徘徊者」；`school_source` 开始注入（仍无七锚/校籍点名） |
-| deep | 2 | 七锚结构、校源徘徊者、泄露—收容双端、龙月与十日闪烁提纲、欣蓝情绪锚等 |
-| abyss | 3 | 出口对账链提纲；仍带 `antiDumpPolicy`，禁止单句追问一次性倾倒 |
+---
 
-### 三档 `maxRevealRank` 行为示例（同一玩家位置、不同信号）
+## 2. Packet 定义（schema 与职责）
 
-**1. surface（第 1 日、无复活、无阴谋标记、无 7F）**
+### 2.1 `major_npc_arc_packet`（`major_npc_arc_v1`）
 
-- `school_cycle_arc_packet.slices`：仅含「邻校传言」等 surface 切片。
-- `cycle_loop_packet.visibleBand`：`rumor`；`hints` 只有短传言。
-- `school_source_packet.injected`：`false`，`lines` 空。
-- `major_npc_arc_packet.nearby[]`：若有高魅力 NPC 在场，仅 `surfaceIdentity`（`publicMaskRole`），无 `dutyEchoHint`。
-- `key_npc_lore_packet.major_npc_bridge_hints`：仅 `publicMaskRole` + surface 档 `revealHints`，无 `wandererSubtype`。
+| 字段 | 说明 |
+|------|------|
+| `maxRevealRankInjected` | 当前注入档位数值 |
+| `revealTierAllowed` | `surface` / `fracture` / `deep` / `abyss` |
+| `nearbySignalAggregate` | 邻近高魅力条目聚合：`anyLoopPartial`、`anyDeepEchoLicensed`、`anyTraction`、`anyFractureLineOpen` |
+| `nearby[]` | `id`、`displayName`、`surfaceIdentity`、`surfaceDutyOneLiner`；fracture+ `dutyEchoHint`；deep+ `schoolResidueHint` / `residualEchoHint`；abyss+ `joinVectorHint`；fracture+ 且存在 relink 时 `relinkSignals`（阶段、闭环片段、牵引等） |
+| `antiDumpPolicy` | 分步交付提示 |
 
-**2. fracture（例如 `day>=2` 或 `deathCount>=1`）**
+与 `major_npc_relink_packet` 分工：arc 偏「是谁 + 允许说到哪一层」，relink 偏门闸与任务态。
 
-- `school_cycle_arc_packet`：含「非普通徘徊者耦合」「主锚特性」等，**不含**「七锚分担」「泄露与收容壳层」（已抬到 deep）。
-- `school_source_packet.injected`：`true`，`lines` 含传言 + 裂缝耦合说明，**不含**七锚/校源定义长条。
-- `major_npc_arc_packet`：含 `dutyEchoHint`、`relinkSignals`（若重连阶段 ≥2）。
-- `worldview_packet.b1Meaning`（在 B1）：描述稳定带与服务，**不**写「七锚」字样（七锚用语仅在 deep+）。
+### 2.2 `cycle_loop_packet`（`cycle_loop_v1`）
 
-**3. deep（例如 `anchor7F` 或 `is7F` 或阴谋类 worldFlags）**
+| 字段 | 说明 |
+|------|------|
+| `visibleBand` | `rumor` / `rhythm` / `mechanism` |
+| `hints` | 短句数组（来自 `SCHOOL_CYCLE_LORE_SLICES`，截断） |
+| `timeDigest` | fracture+ 且 runtime 传入 `signals` 时存在：短键 `pos`、`phase`、`moon`、`fp`、`pre`、`rt`（见 `buildCycleLoopTimeDigest`）；surface 为 `null` |
+| `companionStructuredPacket` | deep 机制带指向 `cycle_time_packet` |
 
-- `school_cycle_arc_packet`：可含七锚、泄露壳层、校源徘徊者、龙月、十日闪烁、原石闭环等切片。
-- `school_source_packet.lines`：追加泄露/校源/七锚提纲（截断）。
-- `cycle_loop_packet.visibleBand`：`mechanism`。
-- `major_npc_arc_packet`：可含 `schoolResidueHint`、`residualEchoHint`。
+### 2.3 `school_source_packet`（`school_source_v1`）
 
-## 新增 / 强化的 Packet
+| 字段 | 说明 |
+|------|------|
+| `injected` | surface 为 `false`，fracture+ 为 `true` |
+| `topicIds` | 本包覆盖的 slice id（供检索对齐，非玩家 UI 必填） |
+| `revealBand` | `none` / `fracture` / `deep` / `abyss` |
+| `lines` | 截断后的标题+正文摘要 |
 
-| Packet | 职责 | 与旧包关系 |
-|--------|------|------------|
-| `major_npc_arc_v1` | 邻近高魅力 NPC：**是谁**（表层身份 + 分档深提示 + 重连信号） | 与 `key_npc_lore_packet.major_npc_bridge_hints` 互补；本包结构化、按人聚合 |
-| `cycle_loop_v1` | 轮回/节律/龙月**可见层**分段（rumor → rhythm → mechanism） | 与 `school_cycle_arc_packet` 互补；本包更短、偏「时间—节律」叙事预算 |
-| `school_source_v1` | 校端线索与校源提示；surface 不注入 | 与 `school_cycle_arc_packet` 切片同源，按档**选摘**行，避免重复堆全文 |
-| `team_relink_v1` | 邻近 NPC 的**旧闭环重连质感**（阶段、纹理一行） | 与 `major_npc_relink_packet`（规则骨架）互补；本包偏叙事压强 |
-| `school_cycle_arc_v1`（既有） | 学制循环切片总表 | `SCHOOL_CYCLE_LORE_SLICES` 已调整：`seven_anchor_loop`、`school_leak_apartment_shell` 最低档改为 **deep**；新增 fracture 切片 `not_ordinary_wanderer_coupling` |
-| `major_npc_relink_v1`（既有） | 重连阶段系统裁决 | 不变；`major_npc_arc` / `team_relink` 消费其 `entries` |
+### 2.4 `team_relink_packet`（`team_relink_v1`）
 
-紧凑形态（`minimal` / 预算截断）：`worldLorePacketsCompact` 内含 `major_npc_arc_packet`（缩写键）、`cycle_loop_packet`（`band`+`h`）、`school_source_packet`（`inj`+`L`）、`team_relink_packet`（`x`/`cr`/`t`）。
+| 字段 | 说明 |
+|------|------|
+| `xinlanPivotOpen`、`crisisJoinWindowActive`、`xinlanRelinkPhase` | 阵眼与危机窗 |
+| `aggregate` | 全队聚合：`oldLoopAny`、`deepEchoAny`、`fractureLineAny`、`deepLineAny`、`corePartyGateAny` |
+| `nearbyTextures` | 邻近 NPC 的精简关系纹理 |
 
-## World knowledge bootstrap 变更
+### 2.5 关联包（已存在，本文不重复定义全文）
 
-- 新文件：`src/lib/registry/worldArcBootstrapSlices.ts`  
-  - 实体前缀：`truth:world_arc:{id}`  
-  - `sourceRef`：`registry/worldArcBootstrapSlices.ts`  
-  - `tags`：含 `world_arc`、`school_cycle`、`major_npc`、`yeliri`、对应 `reveal_fracture` / `reveal_deep` 等  
-- `registryAdapters.ts`：遍历 `WORLD_ARC_BOOTSTRAP_SLICES` 写入实体与 chunk。  
-- `coreCanonMapping.ts`：`buildWorldArcBootstrapFactsForCanon()` 写入 `LoreFact`（`factKey` 前缀 `world_arc_bootstrap:`）。
+- `cycle_time_packet`（`cycle_time_v1`）：日历日、位相、前兆、锚点重构标记等，见 `docs/cycle-moon-flash-system.md`。
+- `school_cycle_arc_packet`：按档裁剪的 arc 切片列表（长 hint 仍受预算约束）。
+- `key_npc_lore_packet.major_npc_bridge_hints`：`buildMajorNpcKeyHintsForPacket` — **fracture 档不再带出 `resonanceSlot` / `wandererSubtype`**，避免口语套话叠 deep。
 
-专条主题：高魅力 NPC 职能壳边界（fracture）、七锚循环、校源徘徊者定义、欣蓝情绪记忆锚、龙月与十日闪烁、学校泄露与公寓收容双端因果。
+### 2.6 `worldview_packet.structuredSchoolCycleRefs`
 
-## 相关源码索引
+仅 **包名字符串数组**，不嵌正文；提醒模型「学制相关事实以这些子包为准」。
 
-- `src/lib/registry/schoolCycleCanon.ts` — 切片与 `school_cycle_arc_*` packet  
-- `src/lib/registry/worldSchoolRuntimePackets.ts` — `major_npc_arc` / `cycle_loop` / `school_source` / `team_relink`  
-- `src/lib/registry/worldArcBootstrapSlices.ts` — bootstrap 专条  
-- `src/lib/registry/revealRegistry.ts` — `REVEAL_TIER_METAS` + `REVEAL_GATE_RULES`  
-- `src/lib/registry/majorNpcDeepCanon.ts` — `buildMajorNpcKeyHintsForPacket` surface 裁剪  
-- `src/lib/playRealtime/runtimeContextPackets.ts` — 注入与 compact  
-- `src/lib/playRealtime/stage2Packets.ts` — `b1Meaning` 分档（七锚用语仅 deep+）
+---
 
-## Packet 示例 JSON（节选）
+## 3. Reveal 分层样例
 
-### `major_npc_arc_packet`（deep，邻近欣蓝）
+| 档位 | `maxRevealRank` | 玩家可见叙事边界 | Packet 行为摘要 |
+|------|-----------------|------------------|----------------|
+| surface | 0 | 生存规则、公寓传言、NPC 职能壳 | `school_source` 不注入；`cycle_loop` rumor；`major_npc_arc` 无 dutyEcho / 无 relinkSignals |
+| fracture | 1 | 锚点代价、原石、「不像普通徘徊者」违和 | `school_source` 注入 rumor+违和行；`cycle_loop` rhythm + `timeDigest`；arc 有 `dutyEchoHint` 与 `relinkSignals` |
+| deep | 2 | 七锚、校源徘徊者、龙月—十日链（仍不直给通关） | `school_source` 增泄露/七锚/校源行；`cycle_loop` mechanism；`key_npc` 带出辅锚槽与 wanderer 等 |
+| abyss | 3 | 出口对账、终筛 | `school_source` 可增 `abyss_alignment` 摘要 |
+
+**门闸信号**见 `revealRegistry.REVEAL_GATE_RULES`（次日、暗月、复活、7F、阴谋 flag、职业认证、B2 等）。**没有**「玩家问是不是同学」规则 — 模型须在 `reveal_tier_packet.tierPolicy` 约束下拒绝代答。
+
+---
+
+## 4. 注入策略
+
+1. `runtimeContextPackets.ts` 解析 `playerContext` → `PlayerWorldSignals` → `computeMaxRevealRankFromSignals`。
+2. 同文件组装 `worldLorePackets`（full）与 `worldLorePacketsCompact`（minimal）。
+3. `buildCycleLoopPacket(maxRevealRank, signals)` **必须传 signals**，`timeDigest` 才有位相数值；否则模型不得编造轮次。
+4. 长设定默认 **RAG**：`SCHOOL_CYCLE_RETRIEVAL_SEEDS`（bootstrap 实体）+ `buildSchoolCycleRetrievalFactsForCanon`（coreCanon facts）。
+
+---
+
+## 5. minimal / full 模式差异
+
+| 模式 | 行为 |
+|------|------|
+| **full** | 完整 `major_npc_arc_packet`、`cycle_loop_packet`、`school_source_packet`、`team_relink_packet` 等 |
+| **minimal** | 使用 `build*Compact`：`nearby` 截断为 2 人、`hints`/`lines` 截断、`cycle_loop` 保留 `td`（若有）、键名缩写（如 `sg`、`tid`、`ag`） |
+
+截断路径下 `compactPackets` 顺序已优化：优先 **学制弧 + lore 紧凑块 + 锻造/武器**，大字段靠后，避免 `slice(maxChars)` 砍掉世界观键（见 `runtimeContextPackets.ts` 注释）。
+
+---
+
+## 6. Bootstrap 变更说明
+
+新增 **`src/lib/registry/schoolCycleRetrievalSeeds.ts`**：
+
+- 八条专类种子：学校事故、七锚、校源徘徊者、六人双层身份、欣蓝第一牵引、十日闪烁、龙月、旧阵重连。
+- 每条含：`code`、`canonicalName`、`title`、`summary`、`detail`、`sourceRef`、`importance`、`revealMinRank`、`tags`。
+- **registryAdapters**：写入 `truth` 实体，`tags` 含 `reveal_fracture` / `reveal_deep` 等 + `bootstrap_pkg` + `scope:global`。
+- **coreCanonMapping**：`factKey` 前缀 `school_cycle_pkg:*`，`factType: world_mechanism`，供同源向量索引。
+
+检索侧应按 **reveal tag + 会话已解锁档位** 过滤，避免把 deep 种子在 surface 回合喂给模型。
+
+---
+
+## 7. 防剧透策略（工程 + 叙事）
+
+1. **门闸只认状态**，不认台词（`revealRegistry` 注释与 `tierPolicy` 明文）。
+2. **fracture** 的 `key_npc` hints 不再包含辅锚槽位/校源类型，减少「一句问出设定」。
+3. **arc packet** 用 `revealTierAllowed` + `antiDumpPolicy` 双重提示。
+4. **school_source** 用 `topicIds` 对齐 slice，便于审计「本回合是否允许谈到该主题」。
+5. Stable 中禁止替欣蓝或他人 **一次性倾倒** 七锚（原有高魅力边界句保留）。
+
+---
+
+## 8. 示例 JSON（节选）
+
+### 8.1 `major_npc_arc_packet`（fracture，邻近 N-010）
 
 ```json
 {
   "schema": "major_npc_arc_v1",
-  "maxRevealRankInjected": 2,
+  "maxRevealRankInjected": 1,
+  "revealTierAllowed": "fracture",
+  "nearbySignalAggregate": {
+    "anyLoopPartial": false,
+    "anyDeepEchoLicensed": false,
+    "anyTraction": true,
+    "anyFractureLineOpen": true
+  },
   "nearby": [
     {
       "id": "N-010",
       "displayName": "欣蓝",
-      "surfaceIdentity": "物业口路线预告 / 转职登记（公寓职能掩护）",
-      "dutyEchoHint": "把上楼路径与风险包装成「可签字的未来」，让失控分支在表格层被推迟。",
-      "schoolResidueHint": "耶里学生会档案干事：旧七人里负责记名单、记承诺、记谁欠谁一次的人。",
-      "residualEchoHint": "她会在主锚身上闻到「旧阵缺一角」的焦虑——像名单末行被撕掉，而主锚是那道撕口。",
+      "surfaceIdentity": "物业登记与上楼许可（公寓职能）",
+      "surfaceDutyOneLiner": "…",
+      "dutyEchoHint": "…",
       "relinkSignals": {
-        "phase": 2,
-        "deepEchoLicensed": true,
+        "phase": "fracture_open",
         "loopPartiallyActive": false,
-        "dejaToneOk": true
+        "traction": "…"
       }
     }
   ],
@@ -104,66 +157,95 @@
 }
 ```
 
-### `cycle_loop_packet`（fracture）
+### 8.2 `cycle_loop_packet`（deep + signals 第 8 日）
 
 ```json
 {
   "schema": "cycle_loop_v1",
-  "maxRevealRankInjected": 1,
-  "visibleBand": "rhythm",
-  "hints": [
-    "住户闲聊里偶尔提到邻校「耶里」：那边曾出过「整栋楼像被拧进另一层空间」的怪谈；如月公寓则被说成「折进时间褶皱里的另一栋」。真相未证，仅作传言。",
-    "数名与关键服务节点强绑定的住户，其反应节律更像被楼「认可」的长期职能节点，而非临时登记人口或普通污染残留。可描写违和与既视感，但不要在此档点名「辅锚」「校籍」或七人闭环。",
-    "第 3 日 0 时起环境节律可能收紧（可感知后果，根因此档不直述）。"
-  ],
+  "maxRevealRankInjected": 2,
+  "visibleBand": "mechanism",
+  "hints": ["约十日量级的封闭窗口内…", "月亮＝龙之外置魔力调度面…"],
+  "timeDigest": {
+    "pos": 8,
+    "phase": "precursor",
+    "moon": "dragon_moon_calibration",
+    "fp": "precursor_band",
+    "pre": true,
+    "rt": true
+  },
+  "companionStructuredPacket": "cycle_time_packet",
   "antiDumpPolicy": "即使玩家追问，亦须分步交付；本包为预算上限，非一次性必答清单。"
 }
 ```
 
-### `school_source_packet`（deep）
+### 8.3 `school_source_packet`（deep）
 
 ```json
 {
   "schema": "school_source_v1",
   "injected": true,
   "maxRevealRankInjected": 2,
-  "lines": [
-    "邻校传言：住户闲聊里偶尔提到邻校「耶里」…",
-    "非普通徘徊者耦合：数名与关键服务节点强绑定的住户…",
-    "泄露与收容壳层：耶里学校是【空间】权柄碎片初次大规模异动的缘起侧之一…",
-    "校源徘徊者：六名共鸣辅锚原为耶里学校学生…",
-    "七锚分担：泡层内嵌固定七锚结构…"
-  ],
+  "topicIds": ["rumor_yeliri_echo", "not_ordinary_wanderer_coupling", "school_leak_apartment_shell", "school_wanderer_state", "seven_anchor_loop"],
+  "revealBand": "deep",
+  "lines": ["邻校传言：…", "非普通徘徊者耦合：…", "泄露与收容壳层：…"],
   "antiDumpPolicy": "即使玩家追问，亦须分步交付；本包为预算上限，非一次性必答清单。"
 }
 ```
 
-### `team_relink_packet`（邻近两人）
+### 8.4 `team_relink_packet`（节选）
 
 ```json
 {
   "schema": "team_relink_v1",
   "xinlanPivotOpen": true,
   "crisisJoinWindowActive": false,
-  "xinlanRelinkPhase": 3,
-  "nearbyTextures": [
-    {
-      "id": "N-010",
-      "displayName": "欣蓝",
-      "relinkPhase": 3,
-      "oldLoopPartial": true,
-      "dutyEchoOn": true,
-      "textureLine": "欣蓝：阶段3（旧阵第一牵引入位）；残响叙事已许可；旧阵槽位已激活（非全程跟队）"
-    }
-  ],
+  "xinlanRelinkPhase": "fracture",
+  "aggregate": {
+    "oldLoopAny": true,
+    "deepEchoAny": false,
+    "fractureLineAny": true,
+    "deepLineAny": false,
+    "corePartyGateAny": false
+  },
+  "nearbyTextures": [{ "id": "N-010", "relinkPhase": "fracture_open", "oldLoopPartial": false, "textureLine": "…" }],
   "note": "供叙事质感与关系压强；不等于全员跟队或 UI 队友状态。",
-  "antiDumpPolicy": "即使玩家追问，亦须分步交付；本包为预算上限，非一次性必答清单。"
+  "antiDumpPolicy": "…"
 }
 ```
 
-## 防剧透策略（实现向）
+### 8.5 minimal 缩写示例（`major_npc_arc_packet` compact）
 
-1. **门闸单一来源**：`computeMaxRevealRankFromSignals`；packet 只读注入档，模型不应自抬档。  
-2. **切片最低档**：`schoolCycleCanon` / `worldArcBootstrapSlices` 的 `revealMinRank` 与 `reveal_*` tag 一致。  
-3. **bridge_hints 裁剪**：surface 不输出 `wandererSubtype` / `teamBridgeRole`。  
-4. **叙事预算句**：各包含 `antiDumpPolicy`；检索 chunk 仍可能被 RAG 命中，故检索层需按 tag/档位过滤（沿用项目既有检索策略）。  
+```json
+{
+  "schema": "major_npc_arc_v1",
+  "maxRevealRankInjected": 1,
+  "rt": "fracture",
+  "sg": { "lp": false, "de": false, "tr": true, "fo": true },
+  "nearby": [{ "id": "N-010", "d": "欣蓝", "s": "物业登记…", "sd": "…", "du": "…", "rs": { } }]
+}
+```
+
+---
+
+## 9. 代码接入点一览
+
+| 环节 | 路径 |
+|------|------|
+| Packet 构建 | `src/lib/registry/worldSchoolRuntimePackets.ts` |
+| 时间位相 digest | `src/lib/registry/cycleMoonFlashRegistry.ts` → `buildCycleLoopTimeDigest` |
+| Runtime 组装 | `src/lib/playRealtime/runtimeContextPackets.ts` |
+| Floor / threat lore | `src/lib/playRealtime/worldLorePacketBuilders.ts`（`buildFloorLorePacket` 注释见 `floorLoreRegistry.ts`） |
+| 世界观短指针 | `src/lib/playRealtime/stage2Packets.ts` → `buildWorldviewPacket` → `structuredSchoolCycleRefs` |
+| NPC key hints 分档 | `src/lib/registry/majorNpcDeepCanon.ts` → `buildMajorNpcKeyHintsForPacket` |
+| Reveal 门闸 | `src/lib/registry/revealRegistry.ts` |
+| 玩家信号 | `src/lib/registry/playerWorldSignals.ts` |
+| Bootstrap 实体 | `src/lib/worldKnowledge/bootstrap/registryAdapters.ts` |
+| CoreCanon facts | `src/lib/worldKnowledge/bootstrap/coreCanonMapping.ts` |
+| 专条种子定义 | `src/lib/registry/schoolCycleRetrievalSeeds.ts` |
+| Stable 边界 | `src/lib/playRealtime/playerChatSystemPrompt.ts`（packet 名列表） |
+
+---
+
+## 10. 与 `cycle-moon-flash-system.md` 的关系
+
+时间闭环、闪烁前兆、`cycle_time_packet` 字段细则见 **`docs/cycle-moon-flash-system.md`**。本文侧重 **学制/校源/高魅力/重连** 的 **packet 契约与 bootstrap**；二者共用同一 reveal 哲学，不得拆成互不相干的设定。

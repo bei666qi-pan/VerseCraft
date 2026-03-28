@@ -49,7 +49,11 @@ import {
   sanitizeDisplayedNarrative,
   sanitizeDisplayedOptionText,
 } from "@/features/play/render/sanitizeDisplayedNarrative";
-import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/features/play/stream/chatPhase";
+import {
+  doesChatPhaseLockInteraction,
+  doesPhaseBlockOptionsRegen,
+  isStreamVisualActivePhase,
+} from "@/features/play/stream/chatPhase";
 import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import {
@@ -271,6 +275,10 @@ function PlayContent() {
   /** True while the live narrative strip / typewriter should run (covers upstream wait + token drain + commit tick). */
   const isStreamVisualActive = isStreamVisualActivePhase(streamPhase);
   const isChatBusy = doesChatPhaseLockInteraction(streamPhase);
+  const optionsRegenPhaseBlocked = useMemo(
+    () => doesPhaseBlockOptionsRegen(streamPhase),
+    [streamPhase]
+  );
   /** 开局嵌入区提示 / 流式抑制：与 `streamPhase` 交叉校验，避免单项状态卡住导致文案悬挂 */
   const openingBusyUi = useMemo(
     () => computeOpeningBusyUi(openingAiBusy, streamPhase),
@@ -351,13 +359,6 @@ function PlayContent() {
     hasShownProfessionEligibleHintRef.current = true;
     setFirstTimeHint(`你已满足职业认证条件，可在一楼完成认证。`);
   }, [eligibleProfessionCount, hasMetProfessionCertifier, isGameStarted, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    if (!isGameStarted) {
-      router.replace("/");
-    }
-  }, [isHydrated, isGameStarted, router]);
 
   useEffect(() => {
     if (!isHydrated || !isGameStarted) return;
@@ -799,7 +800,7 @@ function PlayContent() {
         nextMode: inputMode,
         switchedByUser,
         currentOptionsLength: currentOptions.length,
-        isChatBusy,
+        blocksOptionsRegen: optionsRegenPhaseBlocked,
         optionsRegenBusy,
         endgameActive: endgameState.active,
         showEmbeddedOpening,
@@ -812,10 +813,10 @@ function PlayContent() {
     currentOptions.length,
     endgameState.active,
     inputMode,
-    isChatBusy,
     isGuestDialogueExhausted,
     isHydrated,
     optionsRegenBusy,
+    optionsRegenPhaseBlocked,
     showEmbeddedOpening,
   ]);
 
@@ -910,7 +911,7 @@ function PlayContent() {
       if (manual) setFirstTimeHint("正在整理可选行动，请稍候再试。");
       return;
     }
-    if (isChatBusy) {
+    if (doesPhaseBlockOptionsRegen(streamPhaseRef.current)) {
       if (manual) setFirstTimeHint("主笔仍在生成本回合内容，请稍后再刷新选项。");
       return;
     }
@@ -929,10 +930,6 @@ function PlayContent() {
     if (isGuestDialogueExhausted) {
       setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
       return;
-    }
-
-    if (manual) {
-      setCurrentOptions([]);
     }
 
     optionsRegenInFlightRef.current = true;
@@ -973,7 +970,6 @@ function PlayContent() {
         }),
       });
       if (!res.ok || !res.body) {
-        setCurrentOptions([]);
         setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
         return;
       }
@@ -1002,7 +998,6 @@ function PlayContent() {
       }
       const normalized = normalizeRegeneratedOptions(rawOpts, []);
       if (normalized.length === 0) {
-        setCurrentOptions([]);
         setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
         return;
       }
@@ -1012,7 +1007,6 @@ function PlayContent() {
         typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
       );
     } catch {
-      setCurrentOptions([]);
       setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
     } finally {
       setOptionsRegenBusy(false);
@@ -1089,7 +1083,9 @@ function PlayContent() {
           const isLastUser = idx === baseMessages.length - 1 && m.role === "user";
           return { ...m, content: isLastUser ? trimmed : m.content };
         })
-      : [...baseMessages, { role: "user", content: trimmed }];
+      : isSystemAction
+        ? [...baseMessages, { role: "user" as const, content: trimmed }]
+        : baseMessages;
 
     const playerContext = useGameStore.getState().getPromptContext();
     const clientState = useGameStore.getState().getStructuredClientStateForServer();
@@ -2247,9 +2243,9 @@ function PlayContent() {
       setLiveNarrative("剧情结算时发生错误，请重试本回合。");
     }
     } finally {
+      sendActionInFlightRef.current = false;
       openingOptionsOnlyRoundRef.current = false;
       setOpeningAiBusy(false);
-      sendActionInFlightRef.current = false;
     }
   }
 
@@ -2659,7 +2655,7 @@ function PlayContent() {
                         <button
                           type="button"
                           onClick={() => void requestFreshOptions("manual_button")}
-                          disabled={isChatBusy || optionsRegenBusy || isGuestDialogueExhausted}
+                          disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
                           className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
                         >
                           让主笔重新整理选项
@@ -2680,7 +2676,7 @@ function PlayContent() {
                       <button
                         type="button"
                         onClick={() => void requestFreshOptions("manual_button")}
-                        disabled={isChatBusy || optionsRegenBusy || isGuestDialogueExhausted}
+                        disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
                         className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
                       >
                         让主笔重新整理选项
@@ -2768,7 +2764,7 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
   useEffect(() => {
     if (!isHydrated) return;
     if (isGameStarted) return;
-    router.replace("/");
+    router.replace("/create?from=play");
   }, [isHydrated, isGameStarted, router]);
 
   return (

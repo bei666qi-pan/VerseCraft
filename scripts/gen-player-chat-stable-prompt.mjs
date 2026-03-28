@@ -1,3 +1,9 @@
+/**
+ * 历史用途：从 route.ts 内联的 buildSystemPrompt 抽取 static lines 写回 TS。
+ * 当前权威源为 **手维护** 的 `src/lib/playRealtime/playerChatSystemPrompt.ts`（含学制/高魅力边界等）；
+ * route 已不再内嵌该函数时本脚本 **跳过**（exit 0），请勿用本脚本覆盖 TS。
+ * 修改 stable 后请 bump 环境变量 `VERSECRAFT_DM_STABLE_PROMPT_VERSION` 以失效 KV 前缀缓存。
+ */
 import fs from "node:fs";
 
 const routePath = "src/app/api/chat/route.ts";
@@ -7,7 +13,7 @@ const s = fs.readFileSync(routePath, "utf8");
 const fn = s.indexOf("function buildSystemPrompt(");
 if (fn < 0) {
   console.warn(
-    "[gen-player-chat-stable-prompt] buildSystemPrompt not found in route.ts — playerChatSystemPrompt.ts is hand-maintained. Skip."
+    "[gen-player-chat-stable-prompt] buildSystemPrompt not found in route.ts — playerChatSystemPrompt.ts is hand-maintained; skipping sync."
   );
   process.exit(0);
 }

@@ -70,3 +70,40 @@ test("shouldSuppressUserDisplayEntry: legacy 脱口而出 formatted line still m
     true
   );
 });
+
+test("shouldSuppressUserDisplayEntry: first-person option echoed verbatim in narrative", () => {
+  const raw = "我走向电梯，按下上行键。";
+  const formatted = formatUserNarrativeForDisplay(raw);
+  assert.equal(formatted, raw);
+  assert.equal(
+    shouldSuppressUserDisplayEntry(
+      formatted,
+      "我走向电梯，按下上行键。金属门缓缓合上，灯带闪了一下。",
+      raw
+    ),
+    true
+  );
+});
+
+test("shouldSuppressUserDisplayEntry: first-person raw not in narrative keeps user", () => {
+  const raw = "我走向电梯，按下上行键。";
+  const formatted = formatUserNarrativeForDisplay(raw);
+  assert.equal(
+    shouldSuppressUserDisplayEntry(formatted, "走廊尽头传来滴水声，你没有动。", raw),
+    false
+  );
+});
+
+test("filterDisplayEntriesForUserQuoteDedup: drops user when narrative embeds first-person action", () => {
+  const entries = [
+    { role: "user" as const, content: "我检查门锁是否锁好。", logIndex: 0 },
+    {
+      role: "assistant" as const,
+      content: "我检查门锁是否锁好。咔哒一声，锁舌归位。",
+      logIndex: 1,
+    },
+  ];
+  const out = filterDisplayEntriesForUserQuoteDedup(entries);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.role, "assistant");
+});

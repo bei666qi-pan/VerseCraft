@@ -18,7 +18,7 @@ export const REVEAL_TIER_METAS: readonly RevealTierMeta[] = [
     title: "表层传言",
     unlockSignals: ["初入 B1", "低后果探索", "未触发深层标记"],
     revealPolicy:
-      "仅可生存规则、公寓传言与矛盾线索；高魅力 NPC 只呈现职能壳（物业/B1/交易等）。不解释龙胃、回声体根因、七锚、校源身份或循环纠错。",
+      "仅可生存规则、公寓传言与矛盾线索；高魅力 NPC 只呈现职能壳（物业/B1/交易等）。不解释龙胃、回声体根因、七锚、校源身份或循环纠错。玩家仅以口语追问（如「你们是不是同学」）而未满足 worldFlags/进度信号时，不得抬高 reveal，不得用 deep 包代答。",
   },
   {
     id: "fracture",
@@ -64,6 +64,7 @@ export interface RevealGateRule {
 /**
  * 规则按顺序求 max；同一信号可匹配多条，结果取最高 bumpTo。
  * 扩展时只追加规则，避免改 imperative 大块逻辑。
+ * 注意：不得根据「玩家上一句台词」抬档；只认 playerContext 解析出的持久信号与世界标记。
  */
 export const REVEAL_GATE_RULES: readonly RevealGateRule[] = [
   { id: "day_ge_2", bumpTo: REVEAL_TIER_RANK.fracture, when: (s) => s.day >= 2 },

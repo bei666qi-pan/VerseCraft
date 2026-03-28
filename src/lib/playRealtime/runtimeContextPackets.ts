@@ -1,6 +1,12 @@
 import { getFloorLoreByLocation } from "@/lib/registry/floorLoreRegistry";
 import { computeMaxRevealRankFromSignals, listFiredRevealRuleIds } from "@/lib/registry/revealRegistry";
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
+import { buildCycleTimePacket, buildCycleTimePacketCompact } from "@/lib/registry/cycleMoonFlashRegistry";
+import {
+  buildSchoolCycleExperiencePacket,
+  buildSchoolCycleExperiencePacketCompact,
+} from "@/lib/registry/playerExperienceSchoolCycleRegistry";
+import { MAJOR_NPC_IDS, type MajorNpcId } from "@/lib/registry/majorNpcDeepCanon";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
 import {
   buildB1OrderPacket,
@@ -475,7 +481,20 @@ export function buildRuntimeContextPackets(args: {
     maxRevealRank,
     relinkEntries: majorNpcRelinkPacket.entries,
   });
-  const cycleLoopPacket = buildCycleLoopPacket(maxRevealRank);
+  const cycleLoopPacket = buildCycleLoopPacket(maxRevealRank, signals);
+  const nearbyMajorForCycle = nearbyNpcIds.filter((id): id is MajorNpcId =>
+    MAJOR_NPC_IDS.includes(id as MajorNpcId)
+  );
+  const cycleTimePacket = buildCycleTimePacket({
+    signals,
+    nearbyMajorNpcIds: nearbyMajorForCycle,
+    maxRevealRank,
+  });
+  const schoolCycleExperiencePacket = buildSchoolCycleExperiencePacket({
+    signals,
+    nearbyMajorNpcIds: nearbyMajorForCycle,
+    maxRevealRank,
+  });
   const schoolSourcePacket = buildSchoolSourcePacket(maxRevealRank);
   const teamRelinkPacket = buildTeamRelinkPacket({ majorNpcRelinkPacket, nearbyNpcIds });
   const worldLorePackets = {
@@ -503,6 +522,8 @@ export function buildRuntimeContextPackets(args: {
     }),
     major_npc_arc_packet: majorNpcArcPacket,
     cycle_loop_packet: cycleLoopPacket,
+    cycle_time_packet: cycleTimePacket,
+    school_cycle_experience_packet: schoolCycleExperiencePacket,
     school_source_packet: schoolSourcePacket,
     team_relink_packet: teamRelinkPacket,
   };
@@ -557,6 +578,8 @@ export function buildRuntimeContextPackets(args: {
     },
     major_npc_arc_packet: buildMajorNpcArcPacketCompact(majorNpcArcPacket),
     cycle_loop_packet: buildCycleLoopPacketCompact(cycleLoopPacket),
+    cycle_time_packet: buildCycleTimePacketCompact(cycleTimePacket),
+    school_cycle_experience_packet: buildSchoolCycleExperiencePacketCompact(schoolCycleExperiencePacket),
     school_source_packet: buildSchoolSourcePacketCompact(schoolSourcePacket),
     team_relink_packet: buildTeamRelinkPacketCompact(teamRelinkPacket),
   };
@@ -644,14 +667,19 @@ export function buildRuntimeContextPackets(args: {
     "你必须优先遵从以下 JSON packet；若与静态记忆冲突，以 packet 为准。",
     JSON.stringify(packetsForPrompt),
   ].join("\n");
-  const modeDefaultMax = contextMode === "minimal" ? 1400 : 2600;
+  /** full 默认预算：学制/高魅力子包加入后 compact 串常 >3k；过低会导致 slice 切掉 stage2 战术键 */
+  const modeDefaultMax = contextMode === "minimal" ? 1400 : 4200;
   const maxChars = args.maxChars && args.maxChars > 300 ? args.maxChars : modeDefaultMax;
   if (text.length <= maxChars) return text;
   const compactPackets = {
     current_location_packet: packets.current_location_packet,
     main_threat_packet: packets.main_threat_packet,
+    /** 截断路径下优先保留武器/锻造/战术上下文（原在 JSON 尾部易被 slice 截断） */
     weapon_packet: packets.weapon_packet,
     forge_packet: packets.forge_packet,
+    tactical_context_packet: packets.tactical_context_packet,
+    school_cycle_arc_packet: schoolCycleArcPacketMicro,
+    ...worldLorePacketsCompact,
     worldview_packet: packets.worldview_packet,
     floor_progression_packet: packets.floor_progression_packet,
     active_tasks_packet: packets.active_tasks_packet.slice(0, 4),
@@ -664,10 +692,7 @@ export function buildRuntimeContextPackets(args: {
     profession_system_hints_packet: packets.profession_system_hints_packet.slice(0, 4),
     profession_progress_packet: packets.profession_progress_packet.slice(0, 5),
     profession_identity_packet: packets.profession_identity_packet,
-    tactical_context_packet: packets.tactical_context_packet,
     scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
-    ...worldLorePacketsCompact,
-    school_cycle_arc_packet: schoolCycleArcPacketMicro,
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

@@ -3,7 +3,7 @@
  * 揭露档位与 runtime packet 一致：surface 不写入深条；检索侧仍应按 reveal 过滤。
  */
 
-import { REVEAL_TIER_RANK, type RevealTierRank } from "./revealTierRank";
+import { REVEAL_TIER_RANK, revealKnowledgeTagFromRank, type RevealTierRank } from "./revealTierRank";
 
 export interface WorldArcBootstrapSlice {
   id: string;
@@ -46,7 +46,7 @@ export const WORLD_ARC_BOOTSTRAP_SLICES: readonly WorldArcBootstrapSlice[] = [
     revealMinRank: REVEAL_TIER_RANK.deep,
     title: "龙月校准与十日闪烁",
     body:
-      "月亮可理解为龙之外置魔力调度面；泡层借龙月辐照校准节律，第 3 日 0 时起的暗月阶段对应可观测威胁抬升。约十日量级窗口末可出现纠错式「闪烁」：失败轮次被回收、叙事收紧，不等于单纯死亡重置——细则仍受深渊档约束。",
+      "单一闭环：龙月＝外置校准能量源；第 3 日起暗月阶段为其可观测相位偏移。封闭十日窗口内顺序为校准→前兆四轴→执行型闪烁→失败分支回收；与锚点重构（回写/时间推进/代价）语义同构、触发不同。详见 registry cycleMoonFlashRegistry 与运行时 cycle_time_packet。",
   },
   {
     id: "school_leak_apartment_shelter_deep",
@@ -56,13 +56,6 @@ export const WORLD_ARC_BOOTSTRAP_SLICES: readonly WorldArcBootstrapSlice[] = [
       "耶里学校侧为【空间】碎片大规模异动缘起侧之一；公寓是沿旧裂隙生长的收容泡层，把消化锁进可运维楼层并以服务节点维持最低秩序。双端因果在深档可谈，不可因玩家一句追问就拼成完整通关链。",
   },
 ];
-
-function revealTagForRank(rank: RevealTierRank): string {
-  if (rank >= REVEAL_TIER_RANK.abyss) return "reveal_abyss";
-  if (rank >= REVEAL_TIER_RANK.deep) return "reveal_deep";
-  if (rank >= REVEAL_TIER_RANK.fracture) return "reveal_fracture";
-  return "reveal_surface";
-}
 
 /** Core canon / ingestion：与 school_cycle 事实并列 */
 export function buildWorldArcBootstrapFactsForCanon(): Array<{
@@ -79,7 +72,7 @@ export function buildWorldArcBootstrapFactsForCanon(): Array<{
       "major_npc",
       "yeliri",
       s.id,
-      revealTagForRank(s.revealMinRank),
+      revealKnowledgeTagFromRank(s.revealMinRank),
     ],
   }));
 }

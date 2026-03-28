@@ -232,6 +232,15 @@ export function buildWorldviewPacket(args: {
       ? "B2 是夹层出口喉管，守门人负责筛除不稳定个体，任何离开都属于高代价结算。"
       : null;
 
+  const structuredSchoolCycleRefs =
+    maxR >= REVEAL_TIER_RANK.abyss
+      ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
+      : maxR >= REVEAL_TIER_RANK.deep
+        ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
+        : maxR >= REVEAL_TIER_RANK.fracture
+          ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
+          : ([] as readonly string[]);
+
   return {
     floorId,
     threatPhase: args.threatPhase,
@@ -245,6 +254,8 @@ export function buildWorldviewPacket(args: {
     b1Meaning,
     b2Meaning,
     taskPressure: args.activeTasks.length >= 3 ? "high" : args.activeTasks.length > 0 ? "mid" : "low",
+    /** 仅包名指针，不嵌正文；学制真相以对应 JSON 子包为准 */
+    structuredSchoolCycleRefs: [...structuredSchoolCycleRefs],
   };
 }
 

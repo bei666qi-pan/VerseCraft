@@ -15,9 +15,9 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   // Phase-1: 终帧必须经过 resolver 收口为“可提交对象”
   assert.ok(content.includes("resolveDmTurn"), "final envelope resolver must be applied");
   assert.ok(
-    content.includes("maxChars: 2400") ||
-      content.includes("contextMode === \"minimal\" ? 1400 : 2400"),
-    "runtime packet budget changed unexpectedly"
+    content.includes("maxChars: 4000") ||
+      content.includes("contextMode === \"minimal\" ? 1400 : 4000"),
+    "runtime packet budget must stay aligned with buildRuntimeContextPackets full default (stage2 + 学制子包)"
   );
   assert.ok(content.includes("finalOutputModeration"), "final output safety must be retained");
   assert.ok(content.includes("runStreamFinalHooks"), "final hooks must stay enabled");

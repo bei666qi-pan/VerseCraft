@@ -1,6 +1,6 @@
 import { PLAYER_SURFACE_LORE } from "@/lib/registry/playerSurfaceLore";
 import { REVEAL_TIER_METAS } from "@/lib/registry/revealRegistry";
-import type { RevealTierRank } from "@/lib/registry/revealTierRank";
+import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 import { WORLD_ORDER_CANON } from "@/lib/registry/worldOrderRegistry";
 import { buildMajorNpcKeyHintsForPacket } from "@/lib/registry/majorNpcDeepCanon";
 import { NPCS } from "@/lib/registry/npcs";
@@ -91,6 +91,9 @@ export function buildReviveAnchorLorePacket(args: {
     hasRecentRevive: args.signals.hasReviveLine,
     deathCount: args.signals.deathCount,
     lastReviveSummary: args.revive,
+    anchorRebuiltThisCycle: args.signals.anchorRebuiltThisCycle,
+    structuredCrossRef:
+      args.maxRevealRank >= REVEAL_TIER_RANK.deep ? "cycle_time_packet" : null,
     narrativeBudget:
       args.maxRevealRank >= 1 && reviveEntry
         ? reviveEntry.worldLogic.slice(0, 240)
@@ -184,6 +187,7 @@ export function buildRevealTierPacket(args: {
 }
 
 export { buildMajorNpcRelinkPacket, buildMajorNpcRelinkPacketCompact } from "@/lib/registry/majorNpcRelinkRegistry";
+export { PARTY_RELINK_REGISTRY } from "@/lib/registry/partyRelinkRegistry";
 export {
   buildCycleLoopPacket,
   buildMajorNpcArcPacket,

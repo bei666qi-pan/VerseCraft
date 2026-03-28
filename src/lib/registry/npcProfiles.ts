@@ -4,7 +4,7 @@ import { buildNpcProfileV2FromSpec } from "@/lib/contentSpec/builders";
 
 /**
  * 高魅力六人 V2：表层公寓职能徘徊者 + 深层校源徘徊者（耶里卷入 / 七辅锚）。
- * 扩展骨架见 `majorNpcDeepCanon.ts`；社交图由 `world.ts` patch + merge 同步。
+ * 扩展骨架见 `majorNpcDeepCanon.ts`；结构化切片见 `majorNpcCanon.ts`；社交图由 `world.ts` patch + merge 同步。
  */
 export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
   {

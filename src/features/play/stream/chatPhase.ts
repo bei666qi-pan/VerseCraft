@@ -17,3 +17,12 @@ export function isStreamVisualActivePhase(phase: ChatStreamPhase): boolean {
     phase === "tail_draining"
   );
 }
+
+/** 仅拦「主链路仍在等包/流式/结算」；tail_draining 时允许并行刷新选项（只读 logs，独立 fetch）。 */
+export function doesPhaseBlockOptionsRegen(phase: ChatStreamPhase): boolean {
+  return (
+    phase === "waiting_upstream" ||
+    phase === "streaming_body" ||
+    phase === "turn_committing"
+  );
+}

@@ -13,6 +13,8 @@ const ORIGINIUM_RE = /原石\[(\d+)\]/;
 const MAIN_THREAT_RE = /主威胁状态：([^。]+)。/;
 const CODEX_RE = /图鉴已解锁：([^。]+)。/;
 const FLOOR_SCORE_RE = /进度\[最高层分(\d+)\]/;
+/** 本轮是否已发生锚点重构（回写）；与 worldFlags `cycle.anchor_rebuild` 二选一或并存 */
+const ANCHOR_REBUILT_CYCLE_RE = /本轮锚点重构\[1\]/;
 
 export type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
@@ -39,6 +41,8 @@ export interface PlayerWorldSignals {
   professionAnyCertified: boolean;
   historicalMaxFloorScore: number;
   activeTaskTitles: string[];
+  /** 当前十日窗口内是否已触发锚点重构（叙事/服务端可写入上文或 flag） */
+  anchorRebuiltThisCycle: boolean;
 }
 
 function inferResidentialFloorFromNode(node: string | null): number | null {
@@ -146,6 +150,11 @@ export function parsePlayerWorldSignals(
   const oriM = ctx.match(ORIGINIUM_RE);
   const originium = oriM ? Number.parseInt(oriM[1] ?? "", 10) : null;
 
+  const anchorRebuiltThisCycle =
+    ANCHOR_REBUILT_CYCLE_RE.test(ctx) ||
+    worldFlags.includes("cycle.anchor_rebuild") ||
+    worldFlags.includes("cycle.anchor_rebuilt_this_cycle");
+
   return {
     day,
     hour,
@@ -168,5 +177,6 @@ export function parsePlayerWorldSignals(
     professionAnyCertified,
     historicalMaxFloorScore,
     activeTaskTitles: parseActiveTaskTitles(ctx),
+    anchorRebuiltThisCycle,
   };
 }

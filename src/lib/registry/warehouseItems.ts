@@ -3,7 +3,7 @@
 
 import type { WarehouseItem } from "./types";
 
-/** 守夜人（无面保安 N-018）拥有复活物品 */
+/** 辅锚交换节点（北夏 N-018）在仓库叙事中持有高代价复活材料；id 不变 */
 export const NIGHT_WATCHMAN_ID = "N-018";
 
 export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
@@ -20,9 +20,9 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-103", name: "物业的空白表单", description: "物业办公室的空白表格。", benefit: "伪造合规身份，通过物业检查。", sideEffect: "无人注视时会自动填死因。", ownerId: "N-010", floor: "1" },
   { id: "W-104", name: "门厅的枯萎盆栽", description: "一盆枯死的绿植。", benefit: "吸收认知污染，理智+3约5小时。", sideEffect: "会复活并朝你生长。", ownerId: "N-001", floor: "1" },
   { id: "W-105", name: "信箱区的铁夹子", description: "夹报纸用的铁夹。", benefit: "夹门缝阻止自动关闭3小时。", sideEffect: "3小时后夹紧难取。", ownerId: "N-003", floor: "1" },
-  { id: "W-106", name: "实习徽章的别针", description: "引导员遗落的别针。", benefit: "部分NPC误认为内部人员，可通过一次低风险检查。", sideEffect: "1天内会刺入皮肤，需取下。", ownerId: "N-020", floor: "1" },
-  { id: "W-107", name: "保安室的镜子碎片", description: "从破碎镜子上剥落的碎片。", benefit: "见无面保安五官，获得1次识破机会。", sideEffect: "割伤手掌，镜中脸会扭曲。", ownerId: "N-018", floor: "1", forgeTags: ["mirror"], materialValue: 1, compatibleOperations: ["mod", "infuse"] },
-  { id: "W-108", name: "守夜人的复活烛芯", description: "浸过油脂的蜡烛芯。", benefit: "复活1名死亡NPC/诡异，并触发一次关键关系事件。", sideEffect: "1天内遭遇生命威胁试炼。", ownerId: "N-018", floor: "1", isResurrection: true },
+  { id: "W-106", name: "实习徽章的别针", description: "灵伤落在登记动线旁的别针。", benefit: "部分NPC误认为内部人员，可通过一次低风险检查。", sideEffect: "1天内会刺入皮肤，需取下。", ownerId: "N-020", floor: "1" },
+  { id: "W-107", name: "保安室的镜子碎片", description: "从破碎镜子上剥落的碎片。", benefit: "借镜面折光看清北夏此刻表情，获得1次识破机会。", sideEffect: "割伤手掌，镜中脸会扭曲。", ownerId: "N-018", floor: "1", forgeTags: ["mirror"], materialValue: 1, compatibleOperations: ["mod", "infuse"] },
+  { id: "W-108", name: "交换节点的复活烛芯", description: "浸过油脂的蜡烛芯。", benefit: "复活1名死亡NPC/诡异，并触发一次关键关系事件。", sideEffect: "1天内遭遇生命威胁试炼。", ownerId: "N-018", floor: "1", isResurrection: true },
   // === 2 楼 6 件 ===
   { id: "W-201", name: "诊室的消毒棉", description: "林医生诊室遗落的棉球。", benefit: "止血，理智+3。", sideEffect: "吸血膨胀，2小时内丢弃。", ownerId: "N-002", floor: "2" },
   { id: "W-202", name: "时差症候群的表盘", description: "从扭曲时钟脱落的表盘。", benefit: "免疫时间扭曲4小时。", sideEffect: "指针倒转，影响时间感。", ownerId: "A-001", floor: "2" },
@@ -47,11 +47,11 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-407", name: "401 室的旧算盘", description: "张先生用过的算盘。", benefit: "出身+4约3小时。", sideEffect: "算珠会显示不愿见的数字。", ownerId: "N-006", floor: "4" },
   { id: "W-408", name: "屠夫的刀锈", description: "屠夫刀刃上的锈迹。", benefit: "涂门缝，水管诡异无法从该门凝聚。", sideEffect: "24小时后门无法打开。", ownerId: "A-004", floor: "4" },
   // === 5 楼 6 件 ===
-  { id: "W-501", name: "画室的褪色颜料", description: "画家用剩的颜料管。", benefit: "改变外观2小时，迷惑视觉诡异。", sideEffect: "会显现画家脸，凝视会吸引她。", ownerId: "N-007", floor: "5" },
+  { id: "W-501", name: "画室的褪色颜料", description: "叶用剩的颜料管。", benefit: "改变外观2小时，迷惑视觉诡异。", sideEffect: "会短暂映出她的轮廓，凝视会吸引她注意。", ownerId: "N-007", floor: "5" },
   { id: "W-502", name: "器官拟态墙的眼睑", description: "拟态墙剥落的肉膜。", benefit: "拟态为墙2小时，逃避视觉追踪。", sideEffect: "2小时内会与皮肤融合。", ownerId: "A-005", floor: "5" },
-  { id: "W-503", name: "未完成的自画像碎片", description: "画家画布上撕下的碎片。", benefit: "魅力+5约3小时，并触发画室真相分支。", sideEffect: "碎片上的眼睛会转向你。", ownerId: "N-007", floor: "5" },
+  { id: "W-503", name: "未完成的自画像碎片", description: "叶的画布上撕下的碎片。", benefit: "魅力+5约3小时，并触发画室真相分支。", sideEffect: "碎片上的眼睛会转向你。", ownerId: "N-007", floor: "5" },
   { id: "W-504", name: "墙眼的分泌物", description: "拟态墙眼睛分泌的透明液。", benefit: "涂镜面遮蔽镜像诡异2小时。", sideEffect: "腐蚀镜面，用后可能碎裂。", ownerId: "A-005", floor: "5" },
-  { id: "W-505", name: "调色盘上的混色", description: "调色盘上的混合颜料。", benefit: "改面容2小时，混淆面容识别诡异。", sideEffect: "洗掉后面容短暂模糊。", ownerId: "N-007", floor: "5" },
+  { id: "W-505", name: "调色盘上的混色", description: "叶调色盘上未干的混色。", benefit: "改面容2小时，混淆面容识别诡异。", sideEffect: "洗掉后面容短暂模糊。", ownerId: "N-007", floor: "5" },
   { id: "W-506", name: "拟态墙的血管丝", description: "墙内抽出的细小血管。", benefit: "点燃驱散5米内污染2小时，灼伤低阶诡异。", sideEffect: "燃烧惨叫吸引其他诡异。", ownerId: "A-005", floor: "5" },
   // === 6 楼 6 件 ===
   { id: "W-601", name: "双胞胎的共用手帕", description: "两人共用过的旧手帕。", benefit: "选择机制诡异无法选定你2次。", sideEffect: "会分裂成两半，各映半张脸。", ownerId: "N-009", floor: "6" },
@@ -64,7 +64,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-701", name: "夜读老人的书页", description: "消化日志脱落的泛黄书页。", benefit: "获知1名已消化住户死因，理智+5。", sideEffect: "会显现你名字，完成则被记录。", ownerId: "N-011", floor: "7" },
   { id: "W-702", name: "厨师的刀柄缠布", description: "屠夫菜刀柄上的缠布。", benefit: "敏捷+5约2.5小时。", sideEffect: "2.5小时后吸满血污难解。", ownerId: "N-012", floor: "7" },
   { id: "W-703", name: "13 楼门扉的灰尘", description: "门缝中扫出的尘埃。", benefit: "标记13楼入口1.5小时，避免误入。", sideEffect: "灰尘聚拢成脚印指向你。", ownerId: "A-007", floor: "7" },
-  { id: "W-704", name: "钢琴师的无声琴键", description: "亡灵钢琴上取下的琴键。", benefit: "理智+8约2小时。", sideEffect: "旋律在脑中循环24小时。", ownerId: "N-013", floor: "7" },
+  { id: "W-704", name: "7F 无声琴键残片", description: "枫所在动线上剥离的琴键残片，带诱导相位余音。", benefit: "理智+8约2小时。", sideEffect: "旋律在脑中循环24小时。", ownerId: "N-013", floor: "7" },
   { id: "W-705", name: "调查员的暗码表", description: "前调查员用的密码对照表。", benefit: "破译1次加密信息，出身+8约3小时。", sideEffect: "部分记忆被加密24小时。", ownerId: "N-019", floor: "7" },
   { id: "W-706", name: "门扉内的呼唤残响", description: "13楼门内传出的声音残片。", benefit: "吸引门扉注意，为他人争取撤离。", sideEffect: "听久会被门扉标记。", ownerId: "A-007", floor: "7" },
   { id: "W-707", name: "消化日志的目录页", description: "记录消化进度的目录。", benefit: "获知当前消化阶段，出身+5约2.5小时。", sideEffect: "目录会新增一条是你。", ownerId: "N-011", floor: "7" },

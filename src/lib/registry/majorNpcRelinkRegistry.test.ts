@@ -79,3 +79,35 @@ test("majorNpcRelink: buildMajorNpcRelinkPacket 六人 entries", () => {
   assert.equal(p.schema, "major_npc_relink_v1");
   assert.equal(p.entries.length, 6);
 });
+
+test("majorNpcRelink: 系统摘要字段与 deepReveal 裁剪", () => {
+  const ctx =
+    "游戏时间[第2日 0时]。用户位置[B1_SafeZone]。图鉴已解锁：麟泽[npc|好感20]。世界标记：无。任务追踪：边界[进行中|委托麟泽]。";
+  const signals = parsePlayerWorldSignals(ctx, null);
+  // surface：欣蓝牵引未开，任务命中仅抬到阶段 2，便于断言摘要字段
+  const entriesSurface = computeMajorNpcRelinkStates({
+    playerContext: ctx,
+    signals,
+    nearbyNpcIds: [],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+  const lin2 = entriesSurface.find((e) => e.npcId === "N-015");
+  assert.equal(lin2?.relinkPhase, 2);
+  assert.equal(lin2?.canEnterCoreParty, false);
+  assert.equal(lin2?.fractureRelationshipLineOpen, false);
+  assert.equal(lin2?.emotionalMemoryFlashLicensed, false);
+  assert.deepStrictEqual(lin2?.deepRevealUnlocksActive, []);
+
+  const entriesFrac = computeMajorNpcRelinkStates({
+    playerContext: ctx,
+    signals,
+    nearbyNpcIds: [],
+    maxRevealRank: REVEAL_TIER_RANK.fracture,
+  });
+  const linF = entriesFrac.find((e) => e.npcId === "N-015");
+  assert.equal(linF?.relinkPhase, 3);
+  assert.equal(linF?.fractureRelationshipLineOpen, true);
+  assert.equal(linF?.emotionalMemoryFlashLicensed, true);
+  assert.ok((linF?.deepRevealUnlocksActive?.length ?? 0) >= 1);
+  assert.ok(linF?.fractureHintStyle);
+});

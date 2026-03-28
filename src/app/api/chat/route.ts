@@ -1147,7 +1147,8 @@ export async function POST(req: Request) {
     perfFlags.fastLaneSkipRuntimePackets &&
     riskLane === "fast";
 
-  // Runtime JSON：full 含完整 lore 子包；minimal 仍含 worldLorePacketsCompact（含 reveal_tier、school_cycle_arc、major_npc_arc / cycle_loop / school_source / team_relink、major_npc_relink 等缩写），与 stable prompt 中的 packet 名对齐。快车道为空包时由 stable 【高魅力 NPC…】第 4 条约束兜底。
+  // Runtime JSON：full 含完整 lore 子包；minimal 仍含 worldLorePacketsCompact（reveal_tier、school_cycle_arc、major_npc_arc、cycle_loop、school_source、team_relink、major_npc_relink、cycle_time、school_cycle_experience 等缩写），与 stable 中 packet 名及「四条边界」一致。
+  // 快车道在 fastLaneSkipRuntimePackets 下可能得到空字符串：stable「学制/高魅力·四条边界」末条仍禁止六人初见即全盘相熟。
   const runtimePackets = shouldSkipRuntimePacketsForFastLane
     ? ""
     : buildRuntimeContextPackets({
@@ -1157,7 +1158,7 @@ export async function POST(req: Request) {
         serviceState,
         runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
         contextMode,
-        maxChars: contextMode === "minimal" ? 1400 : 2400,
+        maxChars: contextMode === "minimal" ? 1400 : 4000,
       });
   runtimePacketChars = runtimePackets.length;
   runtimePacketTokenEstimate = Math.ceil(runtimePacketChars / 4);

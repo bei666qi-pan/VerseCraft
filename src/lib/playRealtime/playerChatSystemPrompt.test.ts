@@ -33,7 +33,11 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(s.includes("is_death"));
   assert.ok(s.includes("运行时注入事实优先"));
   assert.ok(s.includes("major_npc_arc_packet"));
-  assert.ok(s.includes("禁止 instant party"));
+  assert.ok(s.includes("school_cycle_experience_packet"));
+  assert.ok(s.includes("dual-identity"));
+  assert.ok(s.includes("no-instant-party"));
+  assert.ok(s.includes("reveal-first"));
+  assert.ok(s.includes("xinlan-anchor"));
   assert.ok(s.includes("欣蓝（N-010）"));
   assert.ok(s.includes("第一牵引"));
   assert.ok(!s.includes("forge_mod_"));

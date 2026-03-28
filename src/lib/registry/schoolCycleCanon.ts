@@ -4,7 +4,12 @@
  * - 不在此文件堆长文；细则见 docs/worldview-school-cycle-canon.md
  */
 
-import { REVEAL_TIER_RANK, type RevealTierRank } from "./revealTierRank";
+import {
+  REVEAL_TIER_RANK,
+  revealKnowledgeTagFromRank,
+  type RevealTierRank,
+} from "./revealTierRank";
+import { clipPacketLine } from "./runtimePacketStrings";
 import { SCHOOL_CYCLE_RESONANCE_NPC_IDS } from "./schoolCycleIds";
 
 export { SCHOOL_CYCLE_RESONANCE_NPC_IDS } from "./schoolCycleIds";
@@ -52,14 +57,14 @@ export const SCHOOL_CYCLE_LORE_SLICES: readonly SchoolCycleLoreSlice[] = [
     revealMinRank: REVEAL_TIER_RANK.deep,
     title: "十日纠错",
     body:
-      "约十日量级的循环窗口末尾，泡层会出现「闪烁」式纠错：失败轮次被回收、叙事线被收紧，不等同于单纯死亡叙事。系统借此清掉不可收敛分支，并把主锚回写到最近稳定拓扑。",
+      "约十日量级的封闭窗口内，泡层以「校准—前兆—纠错闪烁—回收」单链运行：窗口末的执行型闪烁会裁剪不可收敛分支并把主锚回写到最近稳定拓扑；每一轮不是同一剧本重演，而是失败结果被校准回收。死亡叙事 alone 不足以解释此链。",
   },
   {
     id: "dragon_moon_calibration",
     revealMinRank: REVEAL_TIER_RANK.deep,
     title: "龙月校准",
     body:
-      "月亮在此世界观下可理解为龙之外置魔力调度面。公寓借龙月辐照校准泡层节律；游戏内第3日0时起的暗月阶段对应校准相位偏移，威胁整体抬升是「节律收紧」的可观测后果。",
+      "月亮＝龙之外置魔力调度面，向泡层提供校准辐照；与游戏内第3日起的暗月/威胁抬升同一闭环——是能量与节律源，不是天空贴图。位相推进中带宽收紧，至纠错窗口与闪烁强耦合。",
   },
   {
     id: "protagonist_echo_traits",
@@ -91,13 +96,6 @@ export const SCHOOL_CYCLE_LORE_SLICES: readonly SchoolCycleLoreSlice[] = [
   },
 ];
 
-function revealTagForRank(rank: RevealTierRank): string {
-  if (rank >= REVEAL_TIER_RANK.abyss) return "reveal_abyss";
-  if (rank >= REVEAL_TIER_RANK.deep) return "reveal_deep";
-  if (rank >= REVEAL_TIER_RANK.fracture) return "reveal_fracture";
-  return "reveal_surface";
-}
-
 /** RAG / coreCanon：逐条事实（带揭露标签） */
 export function buildSchoolCycleLoreFactsForCanon(): Array<{
   factKey: string;
@@ -107,7 +105,7 @@ export function buildSchoolCycleLoreFactsForCanon(): Array<{
   return SCHOOL_CYCLE_LORE_SLICES.map((s) => ({
     factKey: `school_cycle:${s.id}`,
     canonicalText: `【${s.title}】${s.body}`,
-    tags: ["school_cycle", "yeliri", s.id, revealTagForRank(s.revealMinRank)],
+    tags: ["school_cycle", "yeliri", s.id, revealKnowledgeTagFromRank(s.revealMinRank)],
   }));
 }
 
@@ -124,7 +122,7 @@ export function buildSchoolCycleArcPacket(maxRevealRank: RevealTierRank): School
   const slices = SCHOOL_CYCLE_LORE_SLICES.filter((s) => s.revealMinRank <= maxRevealRank).map((s) => ({
     id: s.id,
     title: s.title,
-    hint: s.body.length > 160 ? `${s.body.slice(0, 157)}…` : s.body,
+    hint: clipPacketLine(s.body, 160),
   }));
   return {
     schema: "school_cycle_arc_v1",
@@ -161,7 +159,7 @@ export function buildSchoolCycleArcPacketMicro(maxRevealRank: RevealTierRank): P
 export function buildSchoolCycleRootEpigraph(): string {
   return [
     "耶里学校为【空间】碎片异动缘起侧；如月公寓为沿旧裂隙生长的七锚收容泡层（主锚＝卷入的回声体，六辅锚＝固定共鸣位）。",
-    "十日量级窗口末可出现纠错式「闪烁」；龙月提供外置校准面；原石无矿脉，来自壁析与秩序再分配。",
+    "十日封闭窗口＝校准—前兆—闪烁纠错—失败回收之单链；龙月为校准能量源；锚点重构为付费回写支路（时间推进/代价/局势改写）；原石无矿脉。",
     "完整机制分层揭露，禁止开局直述通关链。",
   ].join("");
 }

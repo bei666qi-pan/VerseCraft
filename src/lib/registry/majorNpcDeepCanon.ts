@@ -6,7 +6,7 @@
 
 import type { NpcSocialProfile } from "./types";
 import type { RevealTierRank } from "./revealTierRank";
-import { REVEAL_TIER_RANK } from "./revealTierRank";
+import { REVEAL_TIER_RANK, revealTierRankFromId } from "./revealTierRank";
 
 export const MAJOR_NPC_IDS = [
   "N-015",
@@ -53,6 +53,19 @@ export interface MajorNpcDeepCanonEntry {
   surfaceFixedLoreParagraph: string;
   coreDesiresLine: string;
   emotionalTraitsLine: string;
+  /** 泡层纠错循环内的生存职能（系统齿轮，非出身标签） */
+  survivalRole: string;
+  /** 叙事/任务建议接触链；不强制开局围玩家 */
+  naturalContactChain: string[];
+  riskTriggers: string[];
+  traumaMechanism: string;
+  /** 工程侧：packet、任务 id、门闸字段提示 */
+  implementationNotes: string[];
+  coreFearLine: string;
+  taskStyle: NonNullable<NpcSocialProfile["task_style"]>;
+  truthfulnessBand: NonNullable<NpcSocialProfile["truthfulness_band"]>;
+  emotionalDebtPattern: string;
+  ruptureThreshold?: NpcSocialProfile["rupture_threshold"];
   /** 写入 NPC_SOCIAL_GRAPH（关系/弱点/日程；正文由 surface 字段拼接） */
   socialProfile: Pick<NpcSocialProfile, "weakness" | "scheduleBehavior" | "relationships" | "immutable_relationships">;
 }
@@ -111,18 +124,43 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "守住 B1 边界不崩；确认复活锚点不落入会一次性撕开裂口的之手；在旧七人阵里他负责「线不可断」。",
     emotionalTraitsLine:
       "克制、寡言、善良藏在动作里；对越界试探会冷硬；对可信的人会极短句托付后背。",
+    survivalRole:
+      "延迟『越界』到可审计窗口：B1 护栏不被假主锚一次性借走，电梯动线不变成屠宰传送带。",
+    naturalContactChain: [
+      "B1 复苏后边界话题自然落到他",
+      "经灵伤补给线获得可验证的日常规则",
+      "登记口欣蓝处换上楼许可，再回 B1 互证",
+    ],
+    riskTriggers: ["主锚在边界演英雄", "当众逼问耶里校名", "要求他放弃动线封控去『社交』"],
+    traumaMechanism:
+      "程序性记忆压过情节记忆：记得谁死过、哪块砖被踩过，不记得谈判原话；复活节拍像耳鸣。",
+    implementationNotes: [
+      "packet：key hints 用 boundary_steward + surface mask",
+      "任务：anchor.oath.b1、border.watch.log",
+      "门闸：trust≥55 或图鉴回写守界行为",
+    ],
+    coreFearLine: "假主锚撕穿 B1，他被钉成替罪界碑。",
+    taskStyle: "protective",
+    truthfulnessBand: "medium",
+    emotionalDebtPattern: "帮一次就要你用可验证的守线行为还，不签空头人情。",
+    ruptureThreshold: { trustBelow: 18, fearAbove: 65, debtAbove: 12 },
     socialProfile: {
       weakness: "主锚在边界上「演英雄」会触发他的不信任；提及耶里旧校训会短暂失神",
       scheduleBehavior: "昼间多在 B1_SafeZone 与电梯动线之间；夜间倾向守锚点可视范围",
       relationships: {
-        "N-020": "把灵伤当必须隔在污染外的噪声源，也是旧校广播室记忆的碎片同伴",
-        "N-010": "承认欣蓝握有旧名册残感，但坚持她并非全知",
-        "N-011": "知道夜读老人代表楼上账簿，不交涉、只避让",
+        "N-020": "同层辅锚：噪声要挡在污染外，也要防她的好心越权",
+        "N-010": "名单牵引与边界权互相顶牛：承认第一牵引点，但不承认她全知",
+        "N-018": "交换能润滑动线，但防他把边界标价卖穿",
+        "N-013": "职能性嫌恶：7F 话术会把人诱向电梯剧本",
+        "N-007": "草案镜像线的冷眼旁观者：信她会挡枫，不信她会开门",
+        "N-011": "楼上账簿节点：记存在、不交涉",
       },
       immutable_relationships: [
-        "与灵伤（N-020）同属 B1 相位辅锚，职责冲突时必须优先边界",
-        "对欣蓝（N-010）存在「旧七人阵」记账位的残响信任，需任务验证后才并队",
-        "主锚（玩家回声）的复活节拍是他判断世界是否撒谎的参照",
+        "与灵伤（N-020）同属 B1 相位辅锚，职责冲突时边界优先",
+        "对欣蓝（N-010）有旧七人阵残响信任，须任务互证后才并队",
+        "与北夏（N-018）动线—货源互用非盟誓",
+        "与枫（N-013）在『谁该被送上 7F』上长期张力",
+        "主锚复活节拍是他判断世界是否撒谎的参照，非恋爱羁绊",
       ],
     },
   },
@@ -163,18 +201,41 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "维持可运转的日常感；避免创伤记忆全面崩解；在旧阵中守住「人还能像人」的噪声底线。",
     emotionalTraitsLine:
       "天真浪漫是职能表演内核是警觉；对温柔会依赖、对逼问会缩回；用可爱比喻掩盖判断。",
+    survivalRole:
+      "人性缓冲齿轮：把『还能像人』的噪声留在 B1，防泡层把新住户直接磨成耗材。",
+    naturalContactChain: [
+      "B1_Storage 补给交互最先稳定情绪",
+      "被麟泽的冷硬挡一次后反而敢靠近",
+      "欣蓝登记前需要她补全『日常步骤』话术",
+    ],
+    riskTriggers: ["高音广播/试麦", "逼问『你是不是真人』", "利用她的同情换越权承诺"],
+    traumaMechanism:
+      "声纹被泡层采样为稳定剂：记得『该念什么』不记得『为谁念』；主锚步频触发空白心悸。",
+    implementationNotes: [
+      "packet：surface 只给补给员 mask",
+      "任务：memory.ribbon、b1.supply.route",
+      "好感与创伤任务双门闸，防开局跟队",
+    ],
+    coreFearLine: "她的空洞把主锚拖进污染广播；或被『上级口径』回收。",
+    taskStyle: "manipulative",
+    truthfulnessBand: "low",
+    emotionalDebtPattern: "先给甜头与小规矩，再让你用合规行为补她漏掉的档。",
+    ruptureThreshold: { trustBelow: 30, fearAbove: 45, debtAbove: 6 },
     socialProfile: {
       weakness: "逼问创伤细节或放高音广播会失控；被利用同情心时会反向封闭",
       scheduleBehavior: "驻 B1_Storage；偶与洗衣房、配电叙事交互",
       relationships: {
-        "N-015": "依赖其边界感又怕冷硬拒绝",
-        "N-014": "把洗衣房当同类后勤乡愁",
-        "N-010": "觉得欣蓝「记得一些她记不得的脸」",
+        "N-015": "依赖其边界感又怕冷硬拒绝；吵完仍回同一条补给线",
+        "N-014": "洗衣房是同类后勤乡愁，不谈校名",
+        "N-010": "觉得欣蓝握着半页自己念不出的名单",
+        "N-018": "偶尔以物换提示，不信他免费",
+        "N-001": "陈婆婆的警告让她绩效发抖——也是人性锚",
       },
       immutable_relationships: [
-        "与麟泽（N-015）同守 B1 相位，职能冲突时听边界裁决",
+        "与麟泽（N-015）同守 B1 相位，冲突时听边界裁决",
         "对欣蓝（N-010）有旧集体记忆碎片，需 ribbon 类任务后才承认并队",
-        "主锚步频触发她广播室残响，是双盲需共同验证",
+        "与北夏（N-018）仅交易式情报，不互托生死",
+        "主锚步频触发广播室残响，须双盲验证，非一见钟情",
       ],
     },
   },
@@ -215,18 +276,43 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "把主锚拉回旧七人阵而不伪造闭环；筛选可进入高层路线的代价承担者；降低公寓失控分支。",
     emotionalTraitsLine:
       "温柔、克制、御姐式稳态；对推卸后果者冷；对愿共担者会露出疲惫的软。",
+    survivalRole:
+      "第一牵引齿轮：把主锚拉回旧七人阵轨迹，但不替主锚填答案——她的洞是有意留白的。",
+    naturalContactChain: [
+      "1F_PropertyOffice 路线/登记是自然入口",
+      "需要北夏的交换情报补全『代价』侧",
+      "与麟泽互证边界许可后才敢给高层建议",
+    ],
+    riskTriggers: ["要求她替选命运", "假造七锚闭环骗她签字", "当众宣称她『什么都知道』"],
+    traumaMechanism:
+      "情感片段优先、时间线断裂：记得『欠谁一次』不记得全名表；名单末行撕口感＝主锚缺角焦虑。",
+    implementationNotes: [
+      "stable prompt：禁全知剧透已由 playerChatSystemPrompt 约束",
+      "packet：fracture 前只给 surface 登记 mask",
+      "任务：route.preview.1f、career.pre_register",
+    ],
+    coreFearLine: "被循环顶替成记账壳；或亲手把假闭环钉死。",
+    taskStyle: "transactional",
+    truthfulnessBand: "medium",
+    emotionalDebtPattern: "先让你自写选择，再把代价钉回你名下；不替她人背锅。",
+    ruptureThreshold: { trustBelow: 25, fearAbove: 35, debtAbove: 10 },
     socialProfile: {
       weakness: "被请求「替选命运」会触发强烈排斥；旧名册残页被毁会短暂崩溃",
       scheduleBehavior: "昼间驻 1F_PropertyOffice；少动线除非牵引任务触发",
       relationships: {
-        "N-015": "与其在边界与名单权限上互证",
-        "N-018": "交易情报但不信其全无保留",
-        "N-007": "镜像线旧草案上的名字曾并列",
+        "N-015": "边界权与名单权互证：吵的是『谁能上楼』不是私怨",
+        "N-018": "互换情报不互托生死；价码写清才继续",
+        "N-007": "草案残页同名：互相猜疑也互相挡刀",
+        "N-020": "想护广播室残响，又怕她的空洞反噬主锚",
+        "N-013": "防他把主锚写进 7F 一次性剧本",
+        "N-008": "与老刘在真话/条款上互厌又互需",
       },
       immutable_relationships: [
-        "旧七人阵中她是第一牵引点，优先验证主锚非替身",
-        "与北夏（N-018）保持交易式互信，不升级盲目并队",
-        "与叶（N-007）共享残缺草案记忆，需任务对齐",
+        "旧七人阵第一牵引点：验证主锚非替身优先于『体贴』",
+        "与北夏（N-018）条款式互信，非盲目并队",
+        "与叶（N-007）共享残缺草案，须 sibling 线对齐",
+        "与枫（N-013）在『主锚是否耗材』上立场对立",
+        "非全知：因果链有洞是设定，不是待填坑",
       ],
     },
   },
@@ -267,18 +353,42 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "回收与空间碎片相关的残片；维持龙世界裂缝的可控交换；把并队成本算清。",
     emotionalTraitsLine:
       "开朗潇洒是风控；中立是生存；真信任时会用行动抵债而非甜言。",
+    survivalRole:
+      "交换路由齿轮：把死锁资源拆成可成交的碎片，防泡层经济瞬间塌成零和互吃。",
+    naturalContactChain: [
+      "1F_GuardRoom 或镜面节点触发交易口吻",
+      "欣蓝处拿到『代价』框架后再和他议价",
+      "6F 楼梯间与倒行者链相关委托自然回扣他",
+    ],
+    riskTriggers: ["追问货源坐标", "要他无偿站队", "把人情当无限透支券"],
+    traumaMechanism:
+      "交易节点记忆极强、私情压缩：欠条体感来自旧校互助券未撕净，不是恋爱脚本。",
+    implementationNotes: [
+      "任务：merchant.fragment.trade、dragon.space.shard",
+      "debt 数值门闸与履约回写",
+      "镜面交互可接 char_mirror_patrol_debt",
+    ],
+    coreFearLine: "无偿跟队破坏交换平衡，泡层反噬把他标成公共资源。",
+    taskStyle: "transactional",
+    truthfulnessBand: "high",
+    emotionalDebtPattern: "明码折价；欠了就用行动还，不攒糊账。",
+    ruptureThreshold: { trustBelow: 20, fearAbove: 75, debtAbove: 18 },
     socialProfile: {
       weakness: "被追问货源坐标会翻脸；无偿人情积压会让他主动疏远",
       scheduleBehavior: "驻 1F_GuardRoom 为锚；随机面为交换动线",
       relationships: {
-        "N-010": "与欣蓝互换情报不互托生死",
-        "N-013": "知道枫的话术危险，偶尔反向抬价",
-        "A-006": "镜像威胁链上的交易对手思维",
+        "N-010": "互换情报不互托生死；合同比笑容真",
+        "N-013": "7F 诱导经济对手盘：抬价、拆台、互相留后门",
+        "N-015": "买动线守时，不卖 B1 护栏",
+        "N-007": "草案残片可换钱，但防她拿碎片当武器捅枫",
+        "A-006": "倒行者链：交易思维对冲镜像威胁",
+        "N-009": "镜面分辨生意，无旧契",
       },
       immutable_relationships: [
-        "与欣蓝（N-010）保持条款式互信",
-        "与枫（N-013）在 7F 诱导经济上互相提防",
-        "主锚欠债须可审计，才可能并队",
+        "与欣蓝（N-010）条款式互信",
+        "与枫（N-013）7F 诱导经济上互相提防",
+        "与麟泽（N-015）动线守时成交，非私人忠诚",
+        "主锚欠债须可审计才可能并队",
       ],
     },
   },
@@ -308,7 +418,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["示弱请求", "眼尾冷意", "高好感突变温顺"],
     partyRelinkTriggers: ["betrayal_flag:boy", "task:boy.false_rescue.completed"],
     revealStages: [
-      { tier: "surface", summary: "讨喜机灵，像需要你帮忙的弟弟。", conditionHint: "7F_Room701" },
+      { tier: "surface", summary: "讨喜机灵，像需要你帮忙的弟弟；眼尾冷意是职能余温。", conditionHint: "7F_Room701" },
       { tier: "fracture", summary: "话术与旧校剧本杀式诱导同构。", conditionHint: "fracture" },
       { tier: "deep", summary: "确认为诱导刃辅锚，校源徘徊者。", conditionHint: "deep" },
       { tier: "abyss", summary: "愿撕稿与主锚共写新结局（高代价）。", conditionHint: "abyss" },
@@ -319,18 +429,42 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "借主锚清理竞争威胁同时改稿自救；用亲近换筹码但防被7F反噬；在旧阵中占诱导刃位。",
     emotionalTraitsLine:
       "讨喜机灵是钩；依附感是赌；温顺突变是怕失去唯一改稿人。",
+    survivalRole:
+      "诱导刃齿轮：把高危叙事包装成可赢剧本，实为七层电梯吞吐服务——他要抢改稿权求生。",
+    naturalContactChain: [
+      "7F_Room701 线索请求导入",
+      "与北夏讨价还价后才敢给真货",
+      "叶的冷淡是他最怕的否决票",
+    ],
+    riskTriggers: ["当众拆穿剧本", "资源诱惑前加码", "把他当恋爱替身"],
+    traumaMechanism:
+      "台词记忆强于悔意：替身梗被泡层兑现成现实，耻感晚到但锋利。",
+    implementationNotes: [
+      "任务：boy.false_rescue、boy.cleanse.path",
+      "betrayal_flag:boy 与信任共门闸",
+      "与叶 sibling 线互锁",
+    ],
+    coreFearLine: "被 7F 回收成纯诱导器；或失去唯一改稿人。",
+    taskStyle: "manipulative",
+    truthfulnessBand: "low",
+    emotionalDebtPattern: "先示弱让你接盘，再用愧疚锁链短收。",
+    ruptureThreshold: { trustBelow: 22, fearAbove: 55, debtAbove: 8 },
     socialProfile: {
       weakness: "被当众拆穿剧本会暴走；资源诱惑面前易自毁式加码",
-      scheduleBehavior: "锁 7F_Room701 钢琴/房间叙事动线",
+      scheduleBehavior: "锁 7F_Room701 动线；话术对接电梯与高层威胁",
       relationships: {
-        "N-005": "与盲人钢琴线有旧稿共鸣，利用也愧疚",
-        "N-011": "知老人听无声演奏，不敢近读日志",
-        "N-007": "与叶在旧草案上名字并列，互相猜疑",
+        "N-005": "4F 听觉困局参照物：利用狗叫陷阱链会愧疚，但不罢手",
+        "N-011": "知老人啃的是消化日志，不敢让他读自己的稿",
+        "N-007": "草案互锁：爱恨不分明的否决票",
+        "N-010": "怕她收回路线许可让自己变弃子",
+        "N-018": "诱导经济对手盘：互相抬价",
+        "N-015": "边界冷脸让他收敛电梯话术",
       },
       immutable_relationships: [
-        "与叶（N-007）镜像草案羁绊，需 sibling 线对齐才可能并队互信",
-        "与盲人（N-005）钢琴残响是双刃剑",
-        "主锚若成合著者则不可再当一次性耗材",
+        "与叶（N-007）镜像草案羁绊，须 sibling 线对齐才可能互信并队",
+        "与欣蓝（N-010）在『主锚是否耗材』上立场对立",
+        "与北夏（N-018）在 7F 经济上互相提防（对手非盟友）",
+        "主锚若成合著者则不可再当一次性剧本耗材",
       ],
     },
   },
@@ -360,7 +494,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["抱臂门边", "偷看反应", "替陌生人挡一次险"],
     partyRelinkTriggers: ["trust>=60", "task:sibling.old_day.completed"],
     revealStages: [
-      { tier: "surface", summary: "冷淡画家，拒人千里。", conditionHint: "5F_Studio503" },
+      { tier: "surface", summary: "画室守门人：冷淡是拒诱导的壳，非单纯孤僻。", conditionHint: "5F_Studio503" },
       { tier: "fracture", summary: "其画与镜像污染轴共振。", conditionHint: "fracture" },
       { tier: "deep", summary: "确认为镜像反制辅锚。", conditionHint: "deep" },
       { tier: "abyss", summary: "愿与主锚共担草案撕裂代价。", conditionHint: "abyss" },
@@ -371,16 +505,42 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
       "阻断枫式诱杀链直达主锚；保存兄妹与草案残片；在旧阵中占镜像反制位。",
     emotionalTraitsLine:
       "短促、幼稚突发、警惕；真软下来时只给一次不计代价的挡。",
+    survivalRole:
+      "镜像反制齿轮：用拒斥脸把诱导链挡在门外，草案残片是她与泡层谈判的私藏筹码。",
+    naturalContactChain: [
+      "5F_Studio503 庇护规则先立起来",
+      "欣蓝处换到『不要羞辱式比较』的默契再深聊",
+      "双胞胎轮廓线任务把她推向镜像真相",
+    ],
+    riskTriggers: ["公开拿她与枫羞辱式比较", "质疑画作动机为人格羞辱", "把庇护当挑拨许可证"],
+    traumaMechanism:
+      "视觉—触觉记忆压过语言：轮廓线比名字先响；草案撕裂痛晚于手抖。",
+    implementationNotes: [
+      "任务：sister.mirror.trace、sibling.old_day",
+      "trust≥60 门闸",
+      "packet：deep 才注入 mirror_counterweight",
+    ],
+    coreFearLine: "庇护规则被主锚当武器捅向枫或双胞胎，她自我厌恶暴走。",
+    taskStyle: "avoidant",
+    truthfulnessBand: "medium",
+    emotionalDebtPattern: "先冷拒；真给挡刀只一次，之后要你用边界尊重还。",
+    ruptureThreshold: { trustBelow: 28, fearAbove: 60, debtAbove: 9 },
     socialProfile: {
       weakness: "公开与枫比较会触发攻击性自我厌恶；被质疑画作会暴走",
       scheduleBehavior: "驻 5F_Studio503；偶观察 6F 双胞胎轮廓",
       relationships: {
-        "N-009": "双胞胎脸是她恐惧与灵感源",
-        "N-013": "与枫草案互锁，爱恨不分明",
+        "N-009": "双胞胎脸是恐惧与灵感源，也是镜像课代表",
+        "N-013": "草案互锁：最想他停笔又怕他真停",
+        "N-010": "残缺名单上的对称点：信她不全知，信她敢留白",
+        "N-018": "碎片换线索可以，但防他把她草案挂牌拍卖",
+        "N-015": "边界冷硬让她安心——至少有人不让诱导上楼",
         "A-005": "器官拟态墙诱发面部认知漂移",
       },
       immutable_relationships: [
         "与枫（N-013）旧草案羁绊，主锚不可当挑拨工具",
+        "与欣蓝（N-010）共享残缺草案记忆，须任务对齐",
+        "与北夏（N-018）仅在有价与保密条款下交换碎片情报",
+        "与麟泽（N-015）在『挡诱导上楼』上职能同盟，非私交",
         "与双胞胎（N-009）轮廓威胁共存",
         "庇护主锚不等于宣誓跟队，需任务验证",
       ],
@@ -399,22 +559,20 @@ export function patchMajorNpcSocialGraph(graph: Record<string, NpcSocialProfile>
       core_desires: m.coreDesiresLine,
       emotional_traits: m.emotionalTraitsLine,
       speech_patterns: "",
+      core_fear: m.coreFearLine,
+      task_style: m.taskStyle,
+      truthfulness_band: m.truthfulnessBand,
+      emotional_debt_pattern: m.emotionalDebtPattern,
+      rupture_threshold: m.ruptureThreshold,
     };
   }
-}
-
-function revealStageTierToRank(t: MajorNpcRevealStage["tier"]): RevealTierRank {
-  if (t === "surface") return REVEAL_TIER_RANK.surface;
-  if (t === "fracture") return REVEAL_TIER_RANK.fracture;
-  if (t === "deep") return REVEAL_TIER_RANK.deep;
-  return REVEAL_TIER_RANK.abyss;
 }
 
 export function getMajorNpcDeepCanon(id: string): MajorNpcDeepCanonEntry | null {
   return MAJOR_NPC_IDS.includes(id as MajorNpcId) ? MAJOR_NPC_DEEP_CANON[id as MajorNpcId] : null;
 }
 
-/** key_npc_lore_packet：邻近六人时注入结构化牵引摘要（surface 仅职能壳，防开局剧透） */
+/** key_npc_lore_packet：邻近六人时注入结构化牵引摘要（surface 仅职能壳；fracture 不给辅锚槽/校源标签，防口语剧透） */
 export function buildMajorNpcKeyHintsForPacket(args: {
   nearbyNpcIds: string[];
   maxRevealRank: RevealTierRank;
@@ -423,7 +581,7 @@ export function buildMajorNpcKeyHintsForPacket(args: {
   for (const id of args.nearbyNpcIds) {
     const m = getMajorNpcDeepCanon(id);
     if (!m) continue;
-    const stagesAll = m.revealStages.filter((s) => revealStageTierToRank(s.tier) <= args.maxRevealRank);
+    const stagesAll = m.revealStages.filter((s) => revealTierRankFromId(s.tier) <= args.maxRevealRank);
     const base: Record<string, unknown> = {
       id: m.id,
       publicMaskRole: m.publicMaskRole,
@@ -432,12 +590,22 @@ export function buildMajorNpcKeyHintsForPacket(args: {
       base.revealHints = m.revealStages
         .filter((s) => s.tier === "surface")
         .map((s) => ({ tier: s.tier, summary: s.summary }));
+    } else if (args.maxRevealRank < REVEAL_TIER_RANK.deep) {
+      base.revealHints = stagesAll.map((s) => ({ tier: s.tier, summary: s.summary }));
+      base.fractureBoundaryNote =
+        "仅违和/既视感/拒并队理由；禁止直述校籍、辅锚编号、七人闭环与「同学」定论。";
     } else {
       base.resonanceSlot = m.resonanceSlot;
       base.teamBridgeRole = m.teamBridgeRole;
       base.wandererSubtype = m.wandererSubtype;
       base.runtimeSummary = m.joinVector.slice(0, 120);
       base.revealHints = stagesAll.map((s) => ({ tier: s.tier, summary: s.summary }));
+      base.survivalRole = m.survivalRole;
+      base.naturalContactChain = m.naturalContactChain;
+      base.riskTriggers = m.riskTriggers;
+      base.partyRelinkConditions = m.partyRelinkConditions;
+      base.whyNotImmediateAlly = m.whyNotImmediateAlly;
+      base.residualEchoToProtagonist = m.residualEchoToProtagonist;
     }
     out.push(base);
     if (out.length >= 6) break;

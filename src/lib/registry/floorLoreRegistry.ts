@@ -1,3 +1,7 @@
+/**
+ * 地上层消化轴与诡异绑定（floor_lore_packet）。
+ * 学制/七锚/校源/旧阵重连等真相由 `school_*`、`cycle_*`、`major_npc_*` runtime 子包与 RAG bootstrap 专条承载，不在此重复长文。
+ */
 import type { FloorId } from "./types";
 
 export type ThreatAxisFloorId = Exclude<FloorId, "B1" | "B2">;

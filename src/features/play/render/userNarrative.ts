@@ -67,6 +67,29 @@ export function formatUserNarrativeForDisplay(content: string): string {
 const QUOTE_ONLY_DISPLAY = /^“([^”]+)”\s*$/;
 const LEGACY_BLURT_DISPLAY = /^“([^”]+)”我脱口而出。\s*$/;
 const MIN_QUOTED_UTTERANCE_LEN = 3;
+/** 叙事已复述第一人称行动句时，隐藏独立 user 行（与引号短句去重并列）。 */
+const MIN_RAW_ACTION_EMBED_LEN = 4;
+
+function collapseWhitespace(s: string): string {
+  return String(s ?? "").trim().replace(/\s+/g, " ");
+}
+
+function narrativeEmbedsRawFirstPersonAction(rawUser: string, narrative: string): boolean {
+  const raw = collapseWhitespace(rawUser);
+  if (raw.length < MIN_RAW_ACTION_EMBED_LEN) return false;
+  if (!/^我/.test(raw)) return false;
+  const nar = collapseWhitespace(narrative);
+  if (nar.includes(raw)) return true;
+  const stripped = raw.replace(/[。！？…]+$/u, "");
+  return stripped.length >= MIN_RAW_ACTION_EMBED_LEN && nar.includes(stripped);
+}
+
+function quoteBasedUserSuppression(prevFormattedUser: string, nextAssistantNarrative: string): boolean {
+  const inner = extractQuotedUtteranceForDedup(prevFormattedUser);
+  if (!inner || inner.trim().length < MIN_QUOTED_UTTERANCE_LEN) return false;
+  const narrative = String(nextAssistantNarrative ?? "");
+  return narrative.includes(`“${inner}”`);
+}
 
 /**
  * Inner text between curly quotes for display lines produced by {@link formatUserNarrativeForDisplay}
@@ -78,14 +101,20 @@ export function extractQuotedUtteranceForDedup(displayedUserLine: string): strin
   return m?.[1] ?? null;
 }
 
+/**
+ * When the following assistant narrative already reflects the player's line (quoted short line, or
+ * verbatim first-person action echoed in prose), the standalone user row is redundant.
+ */
 export function shouldSuppressUserDisplayEntry(
   prevFormattedUser: string,
-  nextAssistantNarrative: string
+  nextAssistantNarrative: string,
+  rawUserContent?: string
 ): boolean {
-  const inner = extractQuotedUtteranceForDedup(prevFormattedUser);
-  if (!inner || inner.trim().length < MIN_QUOTED_UTTERANCE_LEN) return false;
-  const narrative = String(nextAssistantNarrative ?? "");
-  return narrative.includes(`“${inner}”`);
+  if (quoteBasedUserSuppression(prevFormattedUser, nextAssistantNarrative)) return true;
+  if (rawUserContent != null) {
+    if (narrativeEmbedsRawFirstPersonAction(rawUserContent, nextAssistantNarrative)) return true;
+  }
+  return false;
 }
 
 export type PlayStoryDisplayEntryForDedup = {
@@ -106,7 +135,7 @@ export function filterDisplayEntriesForUserQuoteDedup(
       const next = entries[i + 1];
       if (
         next?.role === "assistant" &&
-        shouldSuppressUserDisplayEntry(formatted, next.content)
+        shouldSuppressUserDisplayEntry(formatted, next.content, e.content)
       ) {
         continue;
       }

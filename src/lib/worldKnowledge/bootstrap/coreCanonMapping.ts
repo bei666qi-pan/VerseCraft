@@ -25,7 +25,11 @@ import {
 } from "@/lib/registry/world";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 import { buildSchoolCycleLoreFactsForCanon } from "@/lib/registry/schoolCycleCanon";
+import { buildCycleMoonFlashFactsForCanon } from "@/lib/registry/cycleMoonFlashRegistry";
 import { buildWorldArcBootstrapFactsForCanon } from "@/lib/registry/worldArcBootstrapSlices";
+import { buildSchoolCycleRetrievalFactsForCanon } from "@/lib/registry/schoolCycleRetrievalSeeds";
+import { buildMajorNpcBranchFactsForCanon } from "@/lib/registry/majorNpcBranchSeeds";
+import { buildPlayerExperienceSchoolCycleFactsForCanon } from "@/lib/registry/playerExperienceSchoolCycleRegistry";
 
 function mkFactIdentity(factKey: string): { factKey: string } {
   return { factKey };
@@ -170,6 +174,58 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
         canonicalText: sc.canonicalText,
         tags: sc.tags,
         source: mkSource("registry"),
+      })
+    );
+  }
+
+  for (const cm of buildCycleMoonFlashFactsForCanon()) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: cm.factKey,
+        canonicalText: cm.canonicalText,
+        tags: cm.tags,
+        source: mkSource("registry"),
+      })
+    );
+  }
+
+  for (const pk of buildSchoolCycleRetrievalFactsForCanon()) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: pk.factKey,
+        canonicalText: pk.canonicalText,
+        tags: pk.tags,
+        source: mkSource("registry", "schoolCycleRetrievalSeeds"),
+      })
+    );
+  }
+
+  for (const br of buildMajorNpcBranchFactsForCanon()) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: br.factKey,
+        canonicalText: br.canonicalText,
+        tags: br.tags,
+        source: mkSource("registry", "majorNpcBranchSeeds"),
+      })
+    );
+  }
+
+  for (const xp of buildPlayerExperienceSchoolCycleFactsForCanon()) {
+    facts.push(
+      mkFact({
+        layer: "shared_public_lore",
+        factType: "world_mechanism",
+        factKey: xp.factKey,
+        canonicalText: xp.canonicalText,
+        tags: xp.tags,
+        source: mkSource("registry", "playerExperienceSchoolCycleRegistry"),
       })
     );
   }

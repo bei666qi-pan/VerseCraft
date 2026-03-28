@@ -945,7 +945,7 @@ export const ITEMS: readonly Item[] = [
   },
   {
     id: "I-B09",
-    name: "保安的巡逻表",
+    name: "边界巡视记录表",
     tier: "B",
     description: "4小时内规避巡逻，并可触发一次敌对检查豁免。",
     effectSummary: "豁免：规避巡逻4小时",

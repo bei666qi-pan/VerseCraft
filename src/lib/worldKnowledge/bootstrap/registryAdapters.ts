@@ -6,15 +6,27 @@ import { APARTMENT_RULES } from "@/lib/registry/rules";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { FLOORS, MAP_ROOMS, NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
-import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
+import { REVEAL_TIER_RANK, revealKnowledgeTagFromRank, type RevealTierRank } from "@/lib/registry/revealTierRank";
 import { SCHOOL_CYCLE_LORE_SLICES } from "@/lib/registry/schoolCycleCanon";
+import { buildCycleMoonFlashFactsForCanon } from "@/lib/registry/cycleMoonFlashRegistry";
+import {
+  SCHOOL_CYCLE_RETRIEVAL_SEEDS,
+  schoolCycleRetrievalRevealTag,
+} from "@/lib/registry/schoolCycleRetrievalSeeds";
+import { buildPlayerExperienceSchoolCycleFactsForCanon } from "@/lib/registry/playerExperienceSchoolCycleRegistry";
 import { WORLD_ARC_BOOTSTRAP_SLICES } from "@/lib/registry/worldArcBootstrapSlices";
+import { MAJOR_NPC_IDS, type MajorNpcId } from "@/lib/registry/majorNpcDeepCanon";
+import { MAJOR_NPC_BRANCH_SEEDS } from "@/lib/registry/majorNpcBranchSeeds";
 
-function schoolCycleRevealTag(rank: RevealTierRank): string {
-  if (rank >= REVEAL_TIER_RANK.abyss) return "reveal_abyss";
-  if (rank >= REVEAL_TIER_RANK.deep) return "reveal_deep";
-  if (rank >= REVEAL_TIER_RANK.fracture) return "reveal_fracture";
-  return "reveal_surface";
+/** 公寓生态分层标签：检索时区分消化住户 / 校源耦合辅锚 / 秩序节点 */
+function npcEcologyTags(npcId: string): string[] {
+  if (MAJOR_NPC_IDS.includes(npcId as MajorNpcId)) {
+    return ["ecology:yeliri_coupled", "ecology:seven_anchor_satellite", "apartment_coexists_digestion"];
+  }
+  if (npcId === "N-011") {
+    return ["ecology:order_ledger", "ecology:digestion_manager"];
+  }
+  return ["ecology:digestion_resident", "apartment_coexists_digestion"];
 }
 
 export type WorldScope = "global" | "user" | "session";
@@ -294,9 +306,10 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
     addChunksForEntity(code, [`揭露层 ${tier.title}\n${tier.revealPolicy}`], 72, chunks);
   }
 
+  // --- 学制 / 时间闭环 / 高魅力：truth 实体（与 coreCanonMapping 事实行一一对应）---
   for (const slice of SCHOOL_CYCLE_LORE_SLICES) {
     const code = `truth:school_cycle:${slice.id}`;
-    const rTag = schoolCycleRevealTag(slice.revealMinRank);
+    const rTag = revealKnowledgeTagFromRank(slice.revealMinRank);
     entities.push({
       entityType: "truth",
       code,
@@ -316,9 +329,101 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
     addChunksForEntity(code, [`${slice.title}\n${slice.body}`], 83, chunks);
   }
 
+  for (const cm of buildCycleMoonFlashFactsForCanon()) {
+    const code = `truth:${cm.factKey}`;
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: cm.factKey.replace(/:/g, "_"),
+      title: `时间闭环：${cm.factKey}`,
+      summary: cm.canonicalText.slice(0, 120),
+      detail: cm.canonicalText,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/cycleMoonFlashRegistry.ts",
+      importance: 84,
+      version: 1,
+      tags: uniqueTags(cm.tags),
+    });
+    addChunksForEntity(code, [cm.canonicalText], 84, chunks);
+  }
+
+  for (const seed of SCHOOL_CYCLE_RETRIEVAL_SEEDS) {
+    const code = seed.code;
+    const rTag = schoolCycleRetrievalRevealTag(seed.revealMinRank);
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: seed.canonicalName,
+      title: seed.title,
+      summary: seed.summary.slice(0, 120),
+      detail: `${seed.summary}\n${seed.detail}`,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: seed.sourceRef,
+      importance: seed.importance,
+      version: 1,
+      tags: uniqueTags([...seed.tags, rTag, "bootstrap_pkg", "scope:global", "school_cycle_pkg"]),
+    });
+    addChunksForEntity(code, [`${seed.title}\n${seed.summary}\n${seed.detail}`], seed.importance, chunks);
+  }
+
+  for (const br of MAJOR_NPC_BRANCH_SEEDS) {
+    const code = br.code;
+    const rTag = revealKnowledgeTagFromRank(br.revealMinRank);
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: br.canonicalName,
+      title: br.title,
+      summary: br.summary.slice(0, 120),
+      detail: `${br.summary}\n${br.detail}`,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: br.sourceRef,
+      importance: br.importance,
+      version: 1,
+      tags: uniqueTags([
+        ...br.tags,
+        rTag,
+        "scope:global",
+        "major_npc_branch",
+        `hook:${br.relatedQuestHook}`,
+      ]),
+    });
+    addChunksForEntity(code, [`${br.title}\n${br.summary}\n${br.detail}`], br.importance, chunks);
+  }
+
+  for (const xp of buildPlayerExperienceSchoolCycleFactsForCanon()) {
+    const code = `truth:${xp.factKey.replace(/:/g, "_")}`;
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: xp.factKey.replace(/:/g, "_"),
+      title: `玩家体验层：${xp.factKey}`,
+      summary: xp.canonicalText.slice(0, 120),
+      detail: xp.canonicalText,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/playerExperienceSchoolCycleRegistry.ts",
+      importance: 82,
+      version: 1,
+      tags: uniqueTags([...xp.tags, "scope:global"]),
+    });
+    addChunksForEntity(code, [xp.canonicalText], 82, chunks);
+  }
+
   for (const slice of WORLD_ARC_BOOTSTRAP_SLICES) {
     const code = `truth:world_arc:${slice.id}`;
-    const rTag = schoolCycleRevealTag(slice.revealMinRank);
+    const rTag = revealKnowledgeTagFromRank(slice.revealMinRank);
     entities.push({
       entityType: "truth",
       code,
@@ -354,7 +459,14 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
       sourceRef: "registry/npcs.ts",
       importance: npc.id === "N-011" ? 95 : 80,
       version: 1,
-      tags: uniqueTags(["npc", npc.id, npc.floor, npc.personality, npc.specialty]),
+      tags: uniqueTags([
+        "npc",
+        npc.id,
+        npc.floor,
+        npc.personality,
+        npc.specialty,
+        ...npcEcologyTags(npc.id),
+      ]),
     });
 
     const social = NPC_SOCIAL_GRAPH[npc.id];
@@ -376,6 +488,11 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
             `不可变关系：${social.immutable_relationships.join("；")}`,
           ].join("\n")
         : "",
+      MAJOR_NPC_IDS.includes(npc.id as MajorNpcId)
+        ? "【生态缝合】与同楼消化住户共用动线与规则；校源辅锚非局外副本，受任务、relink、reveal 门闸约束。"
+        : npc.id === "N-011"
+          ? "【生态缝合】消化账簿秩序面；与登记口、交换节点存在权限张力。"
+          : "【生态缝合】消化链住户或污染残留；可产出传言、偏见、见证、旁证，与辅锚同楼共存。",
     ].filter(Boolean);
     addChunksForEntity(code, npcChunks, npc.id === "N-011" ? 95 : 80, chunks);
 
