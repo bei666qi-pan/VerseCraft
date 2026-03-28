@@ -72,7 +72,8 @@ export async function enhanceScene(args: {
 export type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 export type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
 
-function asStringArrayOptions(v: unknown): string[] {
+/** 与 resolveDmTurn clamp 对齐：单条选项最长 40 字。 */
+export function parseOptionsArrayFromAiJson(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   const out: string[] = [];
   for (const x of v) {
@@ -83,7 +84,6 @@ function asStringArrayOptions(v: unknown): string[] {
     out.push(t);
     if (out.length >= 4) break;
   }
-  // De-dupe while preserving order
   const uniq: string[] = [];
   const seen = new Set<string>();
   for (const s of out) {
@@ -95,17 +95,51 @@ function asStringArrayOptions(v: unknown): string[] {
   return uniq.slice(0, 4);
 }
 
+const OPTIONS_FALLBACK_GENERIC_PAD: readonly string[] = [
+  "我先停下观察周围。",
+  "我压低声音确认情况。",
+  "我换一个更稳妥的做法。",
+  "我暂时保持不动，等待变化。",
+];
+
 /**
- * 当主 DM JSON 没给出 options 时的补救：快速二次调用，仅生成 {options:[...]}（非硬编码、非沿用旧选项）。
- * 复用在线短 JSON 任务（INTENT_PARSE / control 角色），避免拉长主链路。
+ * 将 0–4 条模型选项与通用短句合并为恰好 4 条（去重），仅用于服务端 options 补救，不写入叙事正文。
  */
-export async function generateOptionsOnlyFallback(args: {
+export function padOptionsFallbackToFour(options: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const pushUnique = (s: string) => {
+    const t = String(s ?? "").trim();
+    if (t.length < 2) return;
+    const k = t.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(t);
+  };
+  for (const s of options) pushUnique(s);
+  for (const g of OPTIONS_FALLBACK_GENERIC_PAD) {
+    if (out.length >= 4) break;
+    pushUnique(g);
+  }
+  return out.slice(0, 4);
+}
+
+function finalizeOptionsFallbackParsed(parsed: string[]): { ok: true; options: string[] } | null {
+  if (parsed.length >= 4) return { ok: true, options: parsed.slice(0, 4) };
+  if (parsed.length >= 2) return { ok: true, options: padOptionsFallbackToFour(parsed) };
+  if (parsed.length === 1) return { ok: true, options: padOptionsFallbackToFour(parsed) };
+  return null;
+}
+
+async function runOptionsOnlyAiOnce(args: {
   narrative: string;
   latestUserInput: string;
   playerContext: string;
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
   signal?: AbortSignal;
-}): Promise<{ ok: true; options: string[] } | { ok: false; reason: string }> {
+  temperature: number;
+  systemExtra?: string;
+}): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const system: ChatMessage = {
     role: "system",
     content: [
@@ -113,7 +147,10 @@ export async function generateOptionsOnlyFallback(args: {
       "你必须只输出一个 JSON 对象，形如：{\"options\":[\"...\",\"...\",\"...\",\"...\"]}。",
       "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
       "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
-    ].join("\n"),
+      args.systemExtra ?? "",
+    ]
+      .filter((s) => s.length > 0)
+      .join("\n"),
   };
   const user: ChatMessage = {
     role: "user",
@@ -140,24 +177,58 @@ export async function generateOptionsOnlyFallback(args: {
     skipCache: true,
     devOverrides: {
       maxTokens: 256,
-      temperature: 0.4,
+      temperature: args.temperature,
       timeoutMs: 9_000,
       responseFormatJsonObject: true,
     },
   });
 
-  if (!res.ok) {
-    return { ok: false, reason: `ai_error:${res.code}` };
+  if (!res.ok) return { ok: false, reason: `ai_error:${res.code}` };
+  return { ok: true, content: res.content };
+}
+
+/**
+ * 当主 DM JSON 没给出 options 时的补救：快速二次调用，仅生成 {options:[...]}（非硬编码、非沿用旧选项）。
+ * 复用在线短 JSON 任务（INTENT_PARSE / control 角色），避免拉长主链路。
+ */
+export async function generateOptionsOnlyFallback(args: {
+  narrative: string;
+  latestUserInput: string;
+  playerContext: string;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+}): Promise<{ ok: true; options: string[] } | { ok: false; reason: string }> {
+  const tryParse = (content: string): { ok: true; options: string[] } | null => {
+    try {
+      const obj = JSON.parse(content) as Record<string, unknown>;
+      const parsed = parseOptionsArrayFromAiJson(obj.options);
+      return finalizeOptionsFallbackParsed(parsed);
+    } catch {
+      return null;
+    }
+  };
+
+  const first = await runOptionsOnlyAiOnce({
+    ...args,
+    temperature: 0.4,
+  });
+  if (first.ok) {
+    const done = tryParse(first.content);
+    if (done) return done;
   }
 
-  try {
-    const obj = JSON.parse(res.content) as Record<string, unknown>;
-    const options = asStringArrayOptions(obj.options);
-    if (options.length === 4) return { ok: true, options };
-    return { ok: false, reason: "invalid_options_shape" };
-  } catch {
-    return { ok: false, reason: "invalid_json" };
+  const second = await runOptionsOnlyAiOnce({
+    ...args,
+    temperature: 0.65,
+    systemExtra: "若你上次容易少给条目：本次必须输出恰好 4 条 options，不要省略。",
+  });
+  if (second.ok) {
+    const done = tryParse(second.content);
+    if (done) return done;
   }
+
+  // 两次模型均不可用或 JSON 无效：用通用短句填满，避免 options 模式死胡同。
+  return { ok: true, options: padOptionsFallbackToFour([]) };
 }
 
 export type OfflineReasonerKind = "worldbuild" | "storyline" | "dev_assist";

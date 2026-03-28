@@ -38,6 +38,10 @@ async function probeOne(baseUrl: string, f: Fixture): Promise<void> {
   };
   const t0 = Date.now();
   let firstMs: number | null = null;
+  let firstStatusMs: number | null = null;
+  let firstTokenMs: number | null = null;
+  let statusFrameCount = 0;
+  let finalMs: number | null = null;
   const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
@@ -55,9 +59,24 @@ async function probeOne(baseUrl: string, f: Fixture): Promise<void> {
       const { value, done } = await reader.read();
       if (done) break;
       buf += dec.decode(value, { stream: true });
-      if (firstMs == null && buf.includes("data:")) {
-        firstMs = Date.now() - t0;
-        break;
+      if (firstMs == null && buf.includes("data:")) firstMs = Date.now() - t0;
+      const normalized = buf.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const events = normalized.split("\n\n");
+      for (const ev of events) {
+        for (const line of ev.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const chunk = line.slice(5).trimStart();
+          if (!chunk) continue;
+          if (chunk.startsWith("__VERSECRAFT_STATUS__:")) {
+            statusFrameCount += 1;
+            if (firstStatusMs == null) firstStatusMs = Date.now() - t0;
+            continue;
+          }
+          if (firstTokenMs == null) firstTokenMs = Date.now() - t0;
+          if (chunk.startsWith("__VERSECRAFT_FINAL__:") && finalMs == null) {
+            finalMs = Date.now() - t0;
+          }
+        }
       }
       if (Date.now() - t0 > 120_000) break;
     }
@@ -65,7 +84,7 @@ async function probeOne(baseUrl: string, f: Fixture): Promise<void> {
     await reader.cancel().catch(() => {});
   }
   console.log(
-    `  ${f.scenario}: http=${res.status} firstSseMs=${firstMs ?? "n/a"} charsIn=${f.latestUserInput.length + f.playerContext.length}`
+    `  ${f.scenario}: http=${res.status} firstSseMs=${firstMs ?? "n/a"} firstStatusMs=${firstStatusMs ?? "n/a"} firstTokenMs=${firstTokenMs ?? "n/a"} finalMs=${finalMs ?? "n/a"} statusFrames=${statusFrameCount} charsIn=${f.latestUserInput.length + f.playerContext.length}`
   );
 }
 

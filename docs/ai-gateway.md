@@ -35,6 +35,12 @@
 | `AI_MAX_RETRIES` 等 | 否 | 重试与熔断，见 `.env.example` |
 | `VERSECRAFT_DM_STABLE_PROMPT_VERSION` | 否 | 变更后使玩家 DM **稳定 system 前缀**进程内 memo 失效（静态规则/世界观更新时 bump） |
 | `AI_PLAYER_CHAT_SPLIT_SYSTEM` | 否 | `1` 时 PLAYER_CHAT 使用两条 `system`（stable + dynamic）；默认单条拼接 |
+| `AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE` | 否 | PLAYER_CHAT 流式是否请求上游 `stream_options.include_usage`；关闭可减小上游负担与 payload（usage 仍 best-effort） |
+| `AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES` | 否 | PLAYER_CHAT 候选角色链最大长度（默认 2），避免 fallback 链过长拖慢首响 |
+| `AI_PLAYER_CHAT_MAX_RETRIES` | 否 | PLAYER_CHAT 单角色上游 HTTP 重试次数（默认 1），降低首包长尾放大 |
+| `AI_ONLINE_SHORT_JSON_MAX_RETRIES` | 否 | 在线短 JSON 任务（预检/意图/安全）HTTP 重试次数（默认 0），避免 TTFT 放大 |
+| `AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT` | 否 | 在线短 JSON 任务不发送 `response_format=json_object`，但仍本地 sanitize+validate（默认开） |
+| `AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK` | 否 | 在线短 JSON 任务禁止 fallback 到 main（默认开），避免控制面慢链拖首响 |
 | `AI_GATEWAY_MERGE_EXTRA_BODY` | 否 | `1` 时把 `AI_GATEWAY_EXTRA_BODY_JSON` 解析为对象并**浅合并**进请求体（不覆盖 `messages`/`model`/`stream`/`max_tokens` 等保留键） |
 | `AI_CONTROL_PREFLIGHT_BUDGET_MS` | 否 | 见 §7 预检墙钟预算；`0` 表示不截断 |
 | `AI_LORE_RETRIEVAL_BUDGET_MS` | 否 | 见 §7 lore 检索墙钟预算；`0` 表示不截断 |
@@ -148,6 +154,9 @@
 | `enhancePromptTokens` / `enhanceCompletionTokens` / `enhanceTotalTokens` | 仅增强 **applied** 且上游返回 usage 时有值 |
 | `streamReconnectCount` / `streamInterruptedCount` / `streamEmptyCount` | 流重连总次数、由中断触发次数、由空流触发次数 |
 | `finalJsonParseSuccess` | 终帧前是否成功解析出合法 DM JSON（失败时会走安全回落 JSON） |
+| `fallbackRate` | `aiFallbackCount>0` 的 0/1 派生字段，便于 SQL 直接聚合 |
+| `emptyFirstChunkRate` | `streamEmptyCount>0` 的 0/1 派生字段 |
+| `statusFrameCount` / `statusShownRate` | 本回合发送状态帧数量，以及是否展示过状态帧（0/1） |
 
 `chat_request_started` 的 `payload` 另含：`preflightRan`、`preflightSkippedReason`、`preflightCacheHit`、`preflightLatencyMs`、`preflightOk`、`controlPreflightBudgetHit`。
 

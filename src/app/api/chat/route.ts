@@ -59,7 +59,7 @@ import {
 } from "@/lib/config/loadVerseCraftEnv";
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
-import { validateChatRequest } from "@/lib/security/chatValidation";
+import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { classifyChatRiskLane } from "@/lib/security/chatRiskLane";
 import { createRequestId, getClientIpFromHeaders } from "@/lib/security/helpers";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -79,6 +79,11 @@ import { routeUserInput, type RouteResult } from "@/lib/kg/routing";
 import { getWorldRevision, putSemanticCache, touchSemanticCacheHit, tryGetSemanticCache } from "@/lib/kg/semanticCache";
 import { detectWorldEngineTriggers } from "@/lib/worldEngine/contracts";
 import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
+import {
+  isSafeVerseCraftRequestId,
+  VERSECRAFT_REQUEST_ID_HEADER,
+  VERSECRAFT_REQUEST_ID_RESPONSE_HEADER,
+} from "@/lib/telemetry/requestId";
 import {
   applyB1SafetyGuard,
   buildB1ServiceContextBlock,
@@ -113,6 +118,8 @@ type ChatPerfFlags = {
   enableRiskLaneSplit: boolean;
   enableLightweightFastPath: boolean;
   enablePromptSlimming: boolean;
+  fastLaneSkipRuntimePackets: boolean;
+  tieredContextBuild: boolean;
   controlPreflightBudgetMsCap: number;
   loreRetrievalBudgetMsCap: number;
 };
@@ -132,6 +139,8 @@ function resolveChatPerfFlags(): ChatPerfFlags {
     enableRiskLaneSplit: envBoolean("AI_CHAT_ENABLE_RISK_LANE_SPLIT", true),
     enableLightweightFastPath: envBoolean("AI_CHAT_ENABLE_LIGHTWEIGHT_FAST_PATH", true),
     enablePromptSlimming: envBoolean("AI_CHAT_ENABLE_PROMPT_SLIMMING", true),
+    fastLaneSkipRuntimePackets: envBoolean("AI_CHAT_FASTLANE_SKIP_RUNTIME_PACKETS", true),
+    tieredContextBuild: envBoolean("AI_CHAT_TIERED_CONTEXT_BUILD", true),
     controlPreflightBudgetMsCap: Math.max(
       0,
       Math.min(2000, envNumber("AI_CHAT_CONTROL_PREFLIGHT_BUDGET_MS_CAP", TTFT_HARD_CAP_CONTROL_PREFLIGHT_MS))
@@ -174,6 +183,8 @@ function pushAndSummarizeTtft(point: TtftAggregatePoint): {
 
 type ChatTtftProfile = {
   requestReceivedAt: number;
+  jsonParseMs: number | null;
+  authSessionMs: number | null;
   validateChatRequestMs: number | null;
   moderateInputOnServerMs: number | null;
   preInputModerationMs: number | null;
@@ -373,17 +384,21 @@ export async function POST(req: Request) {
   // TTFT 起点：从服务端收到请求开始计时，避免遗漏首字前阻塞步骤。
   const requestReceivedAt = nowMs();
   let body: unknown;
+  const jsonParseStartAt = nowMs();
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const jsonParseMs = elapsedMs(jsonParseStartAt);
 
   // Merge `.env.local` from the real package root (cwd can differ from app root under some launchers).
   loadVerseCraftEnvFilesOnce();
 
   const ttftProfile: ChatTtftProfile = {
     requestReceivedAt,
+    jsonParseMs,
+    authSessionMs: null,
     validateChatRequestMs: null,
     moderateInputOnServerMs: null,
     preInputModerationMs: null,
@@ -412,14 +427,17 @@ export async function POST(req: Request) {
   const openingOptionsOnlyRound = validated.openingOptionsOnlyRound;
   const clientPurpose = validated.clientPurpose;
   const clientIp = getClientIpFromHeaders(req.headers);
-  const requestId = createRequestId("chat");
+  const inboundRid = req.headers.get(VERSECRAFT_REQUEST_ID_HEADER);
+  const requestId = isSafeVerseCraftRequestId(inboundRid) ? inboundRid : createRequestId("chat");
   const platform = derivePlatformFromUserAgent(req.headers.get("user-agent"));
   const requestStartedAt = requestReceivedAt;
   const perfFlags = resolveChatPerfFlags();
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
   const shouldApplyFirstActionConstraint = Boolean(isFirstAction && openingOptionsOnlyRound);
+  const authStartAt = nowMs();
   const session = await auth();
+  ttftProfile.authSessionMs = elapsedMs(authStartAt);
   const userId = session?.user?.id ?? null;
 
   const riskControl = checkRiskControl({ ip: clientIp, sessionId, userId });
@@ -452,6 +470,7 @@ export async function POST(req: Request) {
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
+          [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
         },
       }
     );
@@ -460,10 +479,11 @@ export async function POST(req: Request) {
   // Phase3: input moderation for private story action.
   // Important: do not feed unsafe raw input to control/main model.
   // 输入安全审核：模型前必经步骤，通常是 TTFT 的第一层阻塞来源。
+  const dmLatestUserInput = latestUserInput;
   const inputSafetyStartAt = nowMs();
   const inputSafety = await moderateInputOnServer({
     scene: "private_story_action",
-    text: latestUserInput,
+    text: moderationTextForPrivateStoryChat(clientPurpose, dmLatestUserInput),
     userId: userId ?? undefined,
     sessionId: sessionId ?? undefined,
     ip: clientIp ? String(clientIp) : undefined,
@@ -488,15 +508,18 @@ export async function POST(req: Request) {
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
+          [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
         },
       }
     );
   }
-  if (inputSafety.decision === "fallback") {
+  if (clientPurpose === "options_regen_only") {
+    // 审核入参为固定短句；禁止用 rewrite/fallback 覆盖真实 options 刷新 prompt。
+    latestUserInput = dmLatestUserInput;
+  } else if (inputSafety.decision === "fallback") {
     // Use fallback text to keep session progressing without exposing unsafe details.
     latestUserInput = inputSafety.text;
-  }
-  if (inputSafety.decision === "rewrite") {
+  } else if (inputSafety.decision === "rewrite") {
     latestUserInput = inputSafety.text;
   }
 
@@ -553,6 +576,7 @@ export async function POST(req: Request) {
             "Content-Type": "text/event-stream; charset=utf-8",
             "Cache-Control": "no-cache, no-transform",
             Connection: "keep-alive",
+            [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
           },
         }
       );
@@ -691,6 +715,7 @@ export async function POST(req: Request) {
               "Content-Type": "text/event-stream; charset=utf-8",
               "Cache-Control": "no-cache, no-transform",
               Connection: "keep-alive",
+              [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
             },
           }
         );
@@ -1044,18 +1069,9 @@ export async function POST(req: Request) {
     }
   })();
 
-  await Promise.all([runControlPreflightP, loreRetrievalP]);
-  ttftProfile.controlPreflightMs =
-    typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
-  ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
-
   // Prompt/runtime packet 组装：纯本地执行但在首字前，复杂字符串拼装会拖慢 TTFT。
+  // Phase-1 优化：把“等待 preflight/lore 完成”与“本地 prompt 拼装”并行重叠（不改变语义，只减少墙钟）。
   const promptBuildStartAt = nowMs();
-  const controlAugmentation = buildControlAugmentationBlock({
-    control: pipelineControl,
-    rule: pipelineRule,
-    preflightFailed: pipelinePreflightFailed,
-  });
 
   const serviceContextBlock = buildB1ServiceContextBlock({
     playerLocation: guessPlayerLocationFromContext(playerContext),
@@ -1093,6 +1109,28 @@ export async function POST(req: Request) {
       return "";
     }
   })();
+
+  // Tier0 先行：先构造不依赖 preflight/lore 的部分（让 CPU 拼装与网络/LLM 并行步骤重叠）
+  // 注意：Tier0 不改变最终消息形状；Tier1 仍会在首字前拼回 control/lore/runtimePackets（语义保持一致）。
+  const serviceState = {
+    shopUnlocked: true,
+    forgeUnlocked: true,
+    anchorUnlocked: true,
+    unlockFlags: {},
+  };
+
+  // 等待可预算链路完成（它们早已启动），并把等待与上方字符串构造重叠。
+  await Promise.all([runControlPreflightP, loreRetrievalP]);
+  ttftProfile.controlPreflightMs =
+    typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
+  ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
+
+  const controlAugmentation = buildControlAugmentationBlock({
+    control: pipelineControl,
+    rule: pipelineRule,
+    preflightFailed: pipelinePreflightFailed,
+  });
+
   const controlAndLoreAugmentation = [
     contextMode === "minimal" ? "" : controlAugmentation,
     contextMode === "minimal" ? "" : runtimeLoreCompact,
@@ -1103,20 +1141,23 @@ export async function POST(req: Request) {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const runtimePackets = buildRuntimeContextPackets({
-    playerContext,
-    latestUserInput,
-    playerLocation: guessPlayerLocationFromContext(playerContext),
-    serviceState: {
-      shopUnlocked: true,
-      forgeUnlocked: true,
-      anchorUnlocked: true,
-      unlockFlags: {},
-    },
-    runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
-    contextMode,
-    maxChars: contextMode === "minimal" ? 1400 : 2400,
-  });
+
+  const shouldSkipRuntimePacketsForFastLane =
+    perfFlags.enableLightweightFastPath &&
+    perfFlags.fastLaneSkipRuntimePackets &&
+    riskLane === "fast";
+
+  const runtimePackets = shouldSkipRuntimePacketsForFastLane
+    ? ""
+    : buildRuntimeContextPackets({
+        playerContext,
+        latestUserInput,
+        playerLocation: guessPlayerLocationFromContext(playerContext),
+        serviceState,
+        runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
+        contextMode,
+        maxChars: contextMode === "minimal" ? 1400 : 2400,
+      });
   runtimePacketChars = runtimePackets.length;
   runtimePacketTokenEstimate = Math.ceil(runtimePacketChars / 4);
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
@@ -1243,6 +1284,7 @@ export async function POST(req: Request) {
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
           "X-VerseCraft-Ai-Status": "keys_missing",
+          [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
         },
       }
     );
@@ -1250,10 +1292,12 @@ export async function POST(req: Request) {
 
   const FALLBACK_NARRATIVE =
     "游戏主脑暂时离线，请稍后再试。";
+  const enableStatusFrames = envBoolean("AI_CHAT_ENABLE_STATUS_FRAMES", true);
   const SSE_HEADERS = {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
+    [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
   } as const;
 
   const fallbackPayload = JSON.stringify({
@@ -1463,6 +1507,28 @@ export async function POST(req: Request) {
     }
     return writer.write(sse(data));
   };
+  const writeControlToStream = async (data: string) => writer.write(sse(data));
+  const writeStatusFrame = async (
+    stage:
+      | "request_sent"
+      | "routing"
+      | "context_building"
+      | "generating"
+      | "streaming"
+      | "finalizing",
+    message: string
+  ) => {
+    if (!enableStatusFrames) return;
+    statusFrameCount += 1;
+    return writeControlToStream(
+      `__VERSECRAFT_STATUS__:${JSON.stringify({
+        stage,
+        message,
+        requestId,
+        at: Date.now(),
+      })}`
+    );
+  };
   const closeWithFallback = async () => {
     try {
       await writeToStream(fallbackPayload);
@@ -1489,6 +1555,7 @@ export async function POST(req: Request) {
   let streamReconnectCount = 0;
   let streamInterruptedCount = 0;
   let streamEmptyCount = 0;
+  let statusFrameCount = 0;
   let tokenUsageFlushedGlobal = false;
   let lastEnhanceAnalytics: EnhanceAfterMainStreamResult | null = null;
   let enhancePathDmParsed = false;
@@ -1497,6 +1564,8 @@ export async function POST(req: Request) {
   let settlementAwardPruned = 0;
 
   (async () => {
+    // 单帧开局：避免首包内连跳多段；其余阶段由前端时间兜底 + 下游首 token / finalizing 控制帧衔接。
+    await writeStatusFrame("request_sent", "行动已送出");
     const scheduleStreamReconnect = async (
       failedRole: AiLogicalRole,
       kind: "STREAM_INTERRUPTED" | "EMPTY_CONTENT"
@@ -1601,7 +1670,8 @@ export async function POST(req: Request) {
         platform,
         tokenCost: toPersist,
         playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
-        payload: buildChatRequestFinishedPayload({
+        payload: (() => {
+          const base = buildChatRequestFinishedPayload({
           requestId,
           model: routingReport.actualLogicalRole ?? args.streamRole,
           gatewayModel: args.gatewayModel,
@@ -1633,10 +1703,48 @@ export async function POST(req: Request) {
           streamReconnectCount,
           streamInterruptedCount,
           streamEmptyCount,
+          statusFrameCount,
           finalJsonParseSuccess,
           settlementGuardApplied,
           settlementAwardPruned,
-        }),
+          });
+
+          const diagEnabled = envBoolean(
+            "AI_CHAT_ENABLE_DIAGNOSTICS",
+            process.env.NODE_ENV === "development"
+          );
+          if (!diagEnabled) return base;
+
+          const firstWriteAt = ttftProfile.firstSseWriteAt;
+          const firstChunkAt = ttftProfile.firstValidStreamChunkAt;
+          const connectStart = ttftProfile.generateMainReplyStartedAt;
+          const upstreamConnectMs =
+            connectStart !== null && firstChunkAt !== null ? Math.max(0, firstChunkAt - connectStart) : null;
+          const totalTtftMs =
+            firstWriteAt !== null ? Math.max(0, firstWriteAt - ttftProfile.requestReceivedAt) : null;
+
+          return {
+            ...base,
+            serverPerf: {
+              requestReceivedAt: ttftProfile.requestReceivedAt,
+              jsonParseMs: ttftProfile.jsonParseMs,
+              authSessionMs: ttftProfile.authSessionMs,
+              validateChatRequestMs: ttftProfile.validateChatRequestMs,
+              moderateInputOnServerMs: ttftProfile.moderateInputOnServerMs,
+              preInputModerationMs: ttftProfile.preInputModerationMs,
+              quotaCheckMs: ttftProfile.quotaCheckMs,
+              sessionMemoryReadMs: ttftProfile.sessionMemoryReadMs,
+              controlPreflightMs: ttftProfile.controlPreflightMs,
+              loreRetrievalMs: ttftProfile.loreRetrievalMs,
+              promptBuildMs: ttftProfile.promptBuildMs,
+              upstreamConnectMs,
+              firstSseWriteDeltaMs:
+                firstWriteAt !== null ? Math.max(0, firstWriteAt - ttftProfile.requestReceivedAt) : null,
+              totalTtftMs,
+              lane: ttftProfile.lane,
+            },
+          };
+        })(),
       }).catch(() => {});
 
       logAiTelemetry({
@@ -1663,6 +1771,7 @@ export async function POST(req: Request) {
       accumulatedText: string,
       blockedAuditSummary: string
     ): Promise<boolean> => {
+      await writeStatusFrame("finalizing", "正在收束本回合");
       const parsedRoot = parseAccumulatedPlayerDmJson(accumulatedText);
       let dmRecord =
         parsedRoot !== null ? normalizePlayerDmJson(parsedRoot) : null;
@@ -1804,7 +1913,13 @@ export async function POST(req: Request) {
             ? ((dmRecord as { options?: unknown }).options as unknown[])
                 .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
             : [];
-          if (opts.length === 0) {
+          const preResolveGuard =
+            dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
+              ? (dmRecord.security_meta as Record<string, unknown>)
+              : null;
+          const preResolveFreeze = preResolveGuard?.settlement_guard === "stage2_freeze_on_illegal_or_death";
+          // 与后置 resolve 一致：仅 1 条或 0 条时补足，避免前端长期只有「半套」旧选项。
+          if (opts.length < 2 && !preResolveFreeze) {
             const regen = await generateOptionsOnlyFallback({
               narrative: String(dmRecord.narrative ?? ""),
               latestUserInput,
@@ -1837,13 +1952,16 @@ export async function POST(req: Request) {
         // 为避免前端进入“无 options”死胡同：对正常主笔回合补齐一次 options（仍不沿用旧选项）。
         // 重要：不影响开场 options-only round / 结算守卫 / 终局唯一选项等路径。
         try {
+          // settlement_guard 在合法回合也会写入 stage2_ordered_resolution；仅非法/死亡冻结应跳过后置补选项。
+          const settlementFreeze =
+            guardMeta?.settlement_guard === "stage2_freeze_on_illegal_or_death";
           const shouldSkipRegen =
             validated.clientPurpose === "options_regen_only" ||
             Boolean(shouldApplyFirstActionConstraint) ||
-            Boolean(settlementGuardApplied);
+            settlementFreeze;
           const resolvedOpts = Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : [];
           const resolvedOptCount = resolvedOpts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
-          if (!shouldSkipRegen && resolvedOptCount === 0) {
+          if (!shouldSkipRegen && resolvedOptCount < 2) {
             const regen = await generateOptionsOnlyFallback({
               narrative: String((resolved as any).narrative ?? ""),
               latestUserInput,
@@ -2153,6 +2271,7 @@ export async function POST(req: Request) {
     };
 
     let streamTtftTelemetrySent = false;
+    let streamStatusSent = false;
     let latestStreamUsage: TokenUsage | null = null;
 
     stream_pass: while (streamRound < MAX_STREAM_SOURCE_ROUNDS) {
@@ -2231,6 +2350,10 @@ export async function POST(req: Request) {
           }
           if (firstChunkAt === 0) {
             firstChunkAt = Date.now();
+            if (!streamStatusSent) {
+              streamStatusSent = true;
+              await writeStatusFrame("streaming", "正文流动中");
+            }
             if (!streamTtftTelemetrySent) {
               streamTtftTelemetrySent = true;
               logAiTelemetry({

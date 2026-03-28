@@ -116,6 +116,7 @@ function buildPlayerStreamBody(
   messages: ChatMessage[],
   binding: TaskBinding,
   enableStream: boolean,
+  streamIncludeUsage: boolean,
   extraBody?: Record<string, unknown>
 ): NormalizedCompletionRequest {
   const stream = binding.stream && enableStream;
@@ -126,7 +127,7 @@ function buildPlayerStreamBody(
     maxTokens: binding.maxTokens,
     temperature: binding.temperature,
     responseFormatJsonObject: binding.responseFormatJsonObject,
-    streamIncludeUsage: stream,
+    streamIncludeUsage: stream && streamIncludeUsage,
     ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
   };
 }
@@ -136,7 +137,7 @@ function buildNonStreamBody(
   messages: ChatMessage[],
   maxTokens: number,
   temperature: number | undefined,
-  jsonObject: boolean
+  requestJsonObject: boolean
 ): NormalizedCompletionRequest {
   return {
     modelApiName: gatewayModel,
@@ -144,7 +145,7 @@ function buildNonStreamBody(
     stream: false,
     maxTokens,
     temperature,
-    responseFormatJsonObject: jsonObject,
+    responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: false,
   };
 }
@@ -197,7 +198,7 @@ export async function executePlayerChatStream(params: {
   const taskBinding = getTaskBinding("PLAYER_CHAT");
   const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
   const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
-  const maxRetries = env.maxRetries;
+  const maxRetries = env.playerChatMaxRetries;
   const skip = new Set(params.skipRoles ?? []);
   const fullChain = resolveOrderedRoleChain("PLAYER_CHAT", env, mode);
   const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
@@ -290,14 +291,19 @@ export async function executePlayerChatStream(params: {
     }
 
     const factory = getProviderFactory();
+    const bodyT0 = Date.now();
     const body = buildPlayerStreamBody(
       gatewayModel,
       params.messages,
       taskBinding,
       env.enableStream,
+      env.playerChatStreamIncludeUsage,
       env.gatewayExtraBody
     );
+    const bodyBuildMs = Math.max(0, Date.now() - bodyT0);
+    const initT0 = Date.now();
     const init = factory.buildInit(key, body);
+    const providerInitMs = Math.max(0, Date.now() - initT0);
     const t0 = Date.now();
 
     logAiTelemetry({
@@ -309,6 +315,8 @@ export async function executePlayerChatStream(params: {
       phase: "start",
       attempt: 0,
       stream: true,
+      bodyBuildMs,
+      providerInitMs,
       userId: params.ctx.userId,
     });
 
@@ -354,6 +362,8 @@ export async function executePlayerChatStream(params: {
           latencyMs: Date.now() - t0,
           httpStatus: res.status,
           stream: true,
+          bodyBuildMs,
+          providerInitMs,
           fallbackCount: countFallbacks(attempts),
           retryCount,
           failureScope: "online",
@@ -399,6 +409,8 @@ export async function executePlayerChatStream(params: {
         errorCode: kind,
         message: errText.slice(0, 500),
         stream: true,
+        bodyBuildMs,
+        providerInitMs,
         fallbackCount: countFallbacks(attempts),
         retryCount,
         failureScope: "online",
@@ -441,6 +453,8 @@ export async function executePlayerChatStream(params: {
         errorCode: kind,
         message: e instanceof Error ? e.message : String(e),
         stream: true,
+        bodyBuildMs,
+        providerInitMs,
         fallbackCount: countFallbacks(attempts),
         failureScope: "online",
         userId: params.ctx.userId,
@@ -515,8 +529,8 @@ export async function executeChatCompletion(params: {
       baseBinding.timeoutMs,
   };
   const timeoutMs = binding.timeoutMs;
-  const maxRetries = env.maxRetries;
-  const jsonObject = binding.responseFormatJsonObject;
+  const maxRetries = ONLINE_SHORT_JSON_TASKS.has(params.task) ? env.onlineShortJsonMaxRetries : env.maxRetries;
+  const expectJsonObject = binding.responseFormatJsonObject;
   const failureScope = isOfflineTask(params.task) ? "offline" : "online";
   const fullChain = resolveOrderedRoleChain(params.task, env, mode);
   const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
@@ -615,12 +629,14 @@ export async function executeChatCompletion(params: {
     }
 
     const factory = getProviderFactory();
+    const requestJsonObject =
+      expectJsonObject && !(env.onlineShortJsonRelaxResponseFormat && ONLINE_SHORT_JSON_TASKS.has(params.task));
     const body = buildNonStreamBody(
       gatewayModel,
       params.messages,
       binding.maxTokens,
       binding.temperature,
-      jsonObject
+      requestJsonObject
     );
     const init = factory.buildInit(key, body);
     const t0 = Date.now();
@@ -695,7 +711,7 @@ export async function executeChatCompletion(params: {
 
       let processed = trimmed;
       let jsonSanitized = false;
-      if (jsonObject) {
+      if (expectJsonObject) {
         if (isOfflineTask(params.task)) {
           const s = sanitizeReasonerJsonText(trimmed);
           processed = s.content;
@@ -707,7 +723,7 @@ export async function executeChatCompletion(params: {
         }
       }
 
-      if (jsonObject && !isValidJsonObjectString(processed)) {
+      if (expectJsonObject && !isValidJsonObjectString(processed)) {
         attempts.push({
           logicalRole: role,
           providerId: PROVIDER_ID,

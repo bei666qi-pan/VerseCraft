@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   accumulateDmFromSseEvent,
+  extractStatusFrameFromSseEvent,
   foldSseTextToDmRaw,
   normalizeSseNewlines,
   takeCompleteSseEvents,
@@ -36,6 +37,16 @@ data: line2"}`;
   const { raw, sawNonEmptyData } = accumulateDmFromSseEvent(event, "");
   assert.equal(sawNonEmptyData, true);
   assert.equal(raw, '{"narrative":"line1\nline2"}');
+});
+
+test("status frame can be parsed and is ignored by DM accumulator", () => {
+  const ev =
+    'data: __VERSECRAFT_STATUS__:{"stage":"routing","message":"x","requestId":"r1","at":1}';
+  const st = extractStatusFrameFromSseEvent(ev);
+  assert.equal(st?.stage, "routing");
+  const out = accumulateDmFromSseEvent(ev, '{"n":1}');
+  assert.equal(out.raw, '{"n":1}');
+  assert.equal(out.sawNonEmptyData, false);
 });
 
 test("foldSseTextToDmRaw folds one event and trailing orphan", () => {

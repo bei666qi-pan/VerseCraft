@@ -75,6 +75,10 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
   assert.equal(p.enhanceSkipReason, "sampled_out");
   assert.equal(p.streamReconnectCount, 1);
   assert.equal(p.streamEmptyCount, 1);
+  assert.equal(p.fallbackRate, 0);
+  assert.equal(p.emptyFirstChunkRate, 1);
+  assert.equal(p.statusFrameCount, null);
+  assert.equal(p.statusShownRate, 0);
   assert.equal(p.finalJsonParseSuccess, true);
   assert.equal(p.settlementGuardApplied, true);
   assert.equal(p.settlementAwardPruned, 2);
@@ -158,6 +162,8 @@ test("buildChatRequestFinishedPayload derives totalTokens from prompt+completion
   });
   assert.equal(p.totalTokens, 13);
   assert.equal(p.firstChunkLatencyMs, null);
+  assert.equal(p.fallbackRate, 0);
+  assert.equal(p.emptyFirstChunkRate, 0);
   assert.equal(p.finalJsonParseSuccess, false);
   assert.equal(p.settlementGuardApplied, false);
   assert.equal(p.settlementAwardPruned, 0);

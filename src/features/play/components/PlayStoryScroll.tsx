@@ -1,20 +1,20 @@
 "use client";
 
-import { memo, type ReactNode, type RefObject } from "react";
+import { memo, useMemo, type ReactNode, type RefObject } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import { DMNarrativeBlock, renderNarrativeText } from "../render/narrative";
+import {
+  filterDisplayEntriesForUserQuoteDedup,
+  formatUserNarrativeForDisplay,
+} from "../render/userNarrative";
 import { PlaySemanticWaitingHint, type PlaySemanticWaitingKind } from "./PlaySemanticWaitingHint";
 import { VcSpinner } from "./VcSpinner";
 
 export type PlayStoryDisplayEntry = { role: "assistant" | "user"; content: string; logIndex: number };
 
 function renderUserNarrative(content: string): string {
-  const text = String(content ?? "").trim();
-  if (!text) return "";
-  if (/^我[\u4e00-\u9fa5a-zA-Z0-9，。！？!?,.;:：\s]+$/.test(text)) return text;
-  if (/^[\u4e00-\u9fa5a-zA-Z0-9，。！？!?,.;:：\s]{1,40}$/.test(text)) return `你顺着思路推进：${text}。`;
-  return `你调整了行动节奏，继续向前推进。`;
+  return formatUserNarrativeForDisplay(content);
 }
 
 const StoryHistory = memo(function StoryHistory({
@@ -30,10 +30,14 @@ const StoryHistory = memo(function StoryHistory({
   plainOnlyNewTurn: boolean;
   plainOnlyLogIndexMin: number;
 }) {
-  if (displayEntries.length === 0) return null;
+  const visibleEntries = useMemo(
+    () => filterDisplayEntriesForUserQuoteDedup(displayEntries),
+    [displayEntries]
+  );
+  if (visibleEntries.length === 0) return null;
   return (
     <div className="text-slate-800">
-      {displayEntries.map((entry) => {
+      {visibleEntries.map((entry) => {
         const safeContent = typeof entry.content === "string" ? entry.content : "";
         return safeContent.includes("获得了新物品，已放入书包") ? (
           <p
@@ -70,39 +74,43 @@ const StreamPanel = memo(function StreamPanel({
   smoothNarrative,
   smoothComplete,
   semanticWaitingKind,
+  waitUxPrimaryLine,
+  waitUxSecondaryLine,
+  streamStalledHintOn,
 }: {
   isStreamVisualActive: boolean;
   smoothThinking: boolean;
   smoothNarrative: string;
   smoothComplete: boolean;
   semanticWaitingKind: PlaySemanticWaitingKind | null;
+  /** 等待期主文案（空则回退默认短句） */
+  waitUxPrimaryLine?: string;
+  /** 等待期副文案（更轻、可选） */
+  waitUxSecondaryLine?: string | null;
+  streamStalledHintOn?: boolean;
 }) {
   if (!isStreamVisualActive) return null;
+  const primaryThinkingLine =
+    waitUxPrimaryLine && waitUxPrimaryLine.trim().length > 0
+      ? waitUxPrimaryLine.trim()
+      : "正在继续处理你的行动";
+  const useLegacySemanticHint =
+    !waitUxSecondaryLine &&
+    (!waitUxPrimaryLine || waitUxPrimaryLine.trim().length === 0) &&
+    semanticWaitingKind &&
+    semanticWaitingKind !== "unknown";
+
   return (
     <div className="min-h-[140px] space-y-3">
       {smoothThinking ? (
-        <div className="space-y-1 py-3">
-          <div className="flex items-center gap-3">
-            <div className="vc-wait-breath relative h-6 w-6 shrink-0">
-              <VcSpinner size={24} strokeWidth={3} tone="blackblue" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-[14px] w-[14px] overflow-hidden rounded-full">
-                  <Image
-                    src="/logo.svg"
-                    alt="文界工坊"
-                    width={14}
-                    height={14}
-                    className="object-cover scale-[1.06]"
-                    priority={false}
-                  />
-                </div>
-              </div>
-            </div>
-            <span className="text-sm font-medium tracking-widest text-slate-700">
-              正在构造回应
-            </span>
+        <div className="space-y-1 py-2 transition-opacity duration-300 ease-out">
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400/90 vc-wait-breath" />
+            <span className="text-sm font-medium tracking-wide text-slate-700">{primaryThinkingLine}</span>
           </div>
-          {semanticWaitingKind && semanticWaitingKind !== "unknown" ? (
+          {waitUxSecondaryLine && waitUxSecondaryLine.trim().length > 0 ? (
+            <div className="text-[11px] text-slate-500/90 tracking-wide">{waitUxSecondaryLine.trim()}</div>
+          ) : useLegacySemanticHint ? (
             <PlaySemanticWaitingHint kind={semanticWaitingKind} />
           ) : null}
         </div>
@@ -113,6 +121,12 @@ const StreamPanel = memo(function StreamPanel({
               {renderNarrativeText(smoothNarrative, { streamSafe: true })}
             </span>
           </div>
+          {streamStalledHintOn ? (
+            <div className="flex items-center gap-2 text-[12px] text-slate-500/90">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400/80 vc-wait-breath" />
+              内容仍在继续形成
+            </div>
+          ) : null}
           {smoothComplete ? <div className="pt-2" /> : null}
         </>
       )}
@@ -141,6 +155,9 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   embeddedOpeningContent,
   openingAiBusy,
   semanticWaitingKind,
+  waitUxPrimaryLine,
+  waitUxSecondaryLine,
+  streamStalledHintOn,
   children,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -167,6 +184,9 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   openingAiBusy?: boolean;
   /** waiting_upstream 阶段的语义化过渡提示（不伪造剧情，仅减轻心理空白）。 */
   semanticWaitingKind?: PlaySemanticWaitingKind | null;
+  waitUxPrimaryLine?: string;
+  waitUxSecondaryLine?: string | null;
+  streamStalledHintOn?: boolean;
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
@@ -209,6 +229,9 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
           smoothNarrative={smoothNarrative}
           smoothComplete={smoothComplete}
           semanticWaitingKind={semanticWaitingKind ?? null}
+          waitUxPrimaryLine={waitUxPrimaryLine}
+          waitUxSecondaryLine={waitUxSecondaryLine}
+          streamStalledHintOn={streamStalledHintOn}
         />
         {inputMode === "options" && isChatBusy && smoothComplete && streamOn && (
           <div className="pt-2">

@@ -252,6 +252,15 @@ export function resolveOrderedRoleChain(
   const b = getTaskBinding(task);
   let base: AiLogicalRole[] = [b.primaryRole, ...b.fallbackRoles];
 
+  // Online short tasks must remain fast: optionally disable main fallback to avoid long tail.
+  if (
+    env.onlineShortJsonDisableMainFallback &&
+    (task === "PLAYER_CONTROL_PREFLIGHT" || task === "INTENT_PARSE" || task === "SAFETY_PREFILTER")
+  ) {
+    base = base.filter((r) => r !== MAIN);
+    if (!base.includes(CONTROL)) base.unshift(CONTROL);
+  }
+
   if (task === "PLAYER_CHAT") {
     if (mode === "emergency") {
       base = [MAIN];
@@ -279,7 +288,11 @@ export function resolveOrderedRoleChain(
       `[ai/taskPolicy] Dropped roles for task=${task} (forbidden or duplicate): ${dropped.join(", ") || "(none)"}`
     );
   }
-  return filterRolesWithConfiguredModel(allowed, env);
+  const configured = filterRolesWithConfiguredModel(allowed, env);
+  if (task === "PLAYER_CHAT" && env.playerChatMaxRoleCandidates > 0) {
+    return configured.slice(0, env.playerChatMaxRoleCandidates);
+  }
+  return configured;
 }
 
 /** @deprecated Use resolveOrderedRoleChain */

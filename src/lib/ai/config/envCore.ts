@@ -54,6 +54,32 @@ export interface ResolvedAiEnv {
   splitPlayerChatDualSystem: boolean;
   /** Keep enhancement pipeline compatible but disabled by default in Phase 1. */
   enableNarrativeEnhancement: boolean;
+  /**
+   * PLAYER_CHAT: whether to request stream_options.include_usage from upstream.
+   * Disabled can reduce vendor overhead and payload size; usage still best-effort via fallback estimation.
+   */
+  playerChatStreamIncludeUsage: boolean;
+  /**
+   * PLAYER_CHAT: cap candidate role count (after forbidden + configured-model filter).
+   * 0 = no cap (legacy).
+   */
+  playerChatMaxRoleCandidates: number;
+  /**
+   * PLAYER_CHAT: max retries per upstream HTTP attempt (per role).
+   * Lower reduces first-byte tail amplification; fallback/circuit still applies.
+   */
+  playerChatMaxRetries: number;
+  /** Online short JSON tasks: max retries (default 0 to avoid TTFT amplification). */
+  onlineShortJsonMaxRetries: number;
+  /**
+   * Online short JSON tasks: when true, do not send response_format=json_object to upstream,
+   * but still sanitize + validate JSON locally.
+   */
+  onlineShortJsonRelaxResponseFormat: boolean;
+  /**
+   * Online short JSON tasks: when true, disallow falling back to MAIN (keep control-plane fast).
+   */
+  onlineShortJsonDisableMainFallback: boolean;
   /** Parsed AI_GATEWAY_EXTRA_BODY_JSON when AI_GATEWAY_MERGE_EXTRA_BODY=1. */
   gatewayExtraBody?: Record<string, unknown>;
   /**
@@ -212,6 +238,23 @@ export function resolveAiEnv(): ResolvedAiEnv {
     logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
     splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
     enableNarrativeEnhancement: envBoolean("AI_ENABLE_NARRATIVE_ENHANCEMENT", false),
+    playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", true),
+    playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
+    playerChatMaxRetries: (() => {
+      const override = envNumber("AI_PLAYER_CHAT_MAX_RETRIES", NaN);
+      const base = Number.isFinite(override) ? override : envNumber("AI_MAX_RETRIES", NaN);
+      const resolved = Number.isFinite(base) ? base : envNumber("AI_RETRY_COUNT", 2);
+      // Conservative cap for player-facing TTFT: allow explicit override, but never exceed 4.
+      return Math.max(0, Math.min(4, resolved));
+    })(),
+    onlineShortJsonMaxRetries: (() => {
+      const override = envNumber("AI_ONLINE_SHORT_JSON_MAX_RETRIES", NaN);
+      // Default to 0 (fast fail), but allow explicit override.
+      const resolved = Number.isFinite(override) ? override : 0;
+      return Math.max(0, Math.min(3, resolved));
+    })(),
+    onlineShortJsonRelaxResponseFormat: envBoolean("AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT", true),
+    onlineShortJsonDisableMainFallback: envBoolean("AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK", true),
     gatewayExtraBody: resolveGatewayExtraBody(),
     controlPreflightBudgetMs: Math.max(
       0,

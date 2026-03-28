@@ -125,6 +125,7 @@ export type BuildChatRequestFinishedPayloadInput = {
   finalJsonParseSuccess?: boolean;
   settlementGuardApplied?: boolean;
   settlementAwardPruned?: number;
+  statusFrameCount?: number;
 };
 
 /**
@@ -160,6 +161,7 @@ export function buildChatRequestFinishedPayload(
     aiOperationMode: input.routing.operationMode,
     aiIntendedRole: input.routing.intendedRole,
     aiFallbackCount: input.routing.fallbackCount,
+    fallbackRate: input.routing.fallbackCount > 0 ? 1 : 0,
     aiActualLogicalRole: input.routing.actualLogicalRole ?? input.model,
     stableCharLen: input.stableCharLen,
     dynamicCharLen: input.dynamicCharLen,
@@ -185,10 +187,13 @@ export function buildChatRequestFinishedPayload(
     streamReconnectCount: optionalFiniteInt(input.streamReconnectCount),
     streamInterruptedCount: optionalFiniteInt(input.streamInterruptedCount),
     streamEmptyCount: optionalFiniteInt(input.streamEmptyCount),
+    emptyFirstChunkRate: (input.streamEmptyCount ?? 0) > 0 ? 1 : 0,
     finalJsonParseSuccess:
       typeof input.finalJsonParseSuccess === "boolean" ? input.finalJsonParseSuccess : null,
     settlementGuardApplied:
       typeof input.settlementGuardApplied === "boolean" ? input.settlementGuardApplied : null,
     settlementAwardPruned: optionalFiniteInt(input.settlementAwardPruned),
+    statusFrameCount: optionalFiniteInt(input.statusFrameCount),
+    statusShownRate: (input.statusFrameCount ?? 0) > 0 ? 1 : 0,
   };
 }

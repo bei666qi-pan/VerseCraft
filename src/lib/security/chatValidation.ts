@@ -215,3 +215,15 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
     clientPurpose,
   };
 }
+
+/**
+ * 送入 moderateInputOnServer 的文本：`options_regen_only` 时最后一条 user 含 DM 协议模板词，易误触审核。
+ * 模型仍消费完整 messages；仅审核用短固定句。
+ */
+export function moderationTextForPrivateStoryChat(
+  clientPurpose: "normal" | "options_regen_only",
+  latestUserInput: string
+): string {
+  if (clientPurpose === "options_regen_only") return "刷新可选行动";
+  return latestUserInput;
+}

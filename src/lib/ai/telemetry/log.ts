@@ -55,6 +55,10 @@ export interface AiCostRecord {
   factIngestionCount?: number;
   factConflictCount?: number;
   privateFactHitCount?: number;
+  /** Provider request body build (local CPU) */
+  bodyBuildMs?: number;
+  /** Provider init/header build (local CPU) */
+  providerInitMs?: number;
 }
 
 function totalTokensOf(u: TokenUsage | null | undefined): number | undefined {
@@ -132,6 +136,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     factIngestionCount: rec.factIngestionCount,
     factConflictCount: rec.factConflictCount,
     privateFactHitCount: rec.privateFactHitCount,
+    bodyBuildMs: rec.bodyBuildMs,
+    providerInitMs: rec.providerInitMs,
   };
   if (shouldEmitConsole(rec.phase)) {
     if (rec.phase === "error") {
@@ -176,6 +182,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
       factIngestionCount: rec.factIngestionCount,
       factConflictCount: rec.factConflictCount,
       privateFactHitCount: rec.privateFactHitCount,
+      bodyBuildMs: rec.bodyBuildMs,
+      providerInitMs: rec.providerInitMs,
     });
   }
 }

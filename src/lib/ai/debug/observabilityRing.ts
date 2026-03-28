@@ -43,6 +43,8 @@ export interface AiObservabilityRecord {
   factIngestionCount?: number;
   factConflictCount?: number;
   privateFactHitCount?: number;
+  bodyBuildMs?: number;
+  providerInitMs?: number;
 }
 
 function hashUser(userId: string | null | undefined): string | undefined {

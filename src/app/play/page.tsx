@@ -10,6 +10,7 @@ import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
+import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
@@ -49,14 +50,16 @@ import {
   sanitizeDisplayedOptionText,
 } from "@/features/play/render/sanitizeDisplayedNarrative";
 import { doesChatPhaseLockInteraction, isStreamVisualActivePhase } from "@/features/play/stream/chatPhase";
-import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
+import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import {
   accumulateDmFromSseEvent,
+  extractStatusFrameFromSseEvent,
   foldSseTextToDmRaw,
   normalizeSseNewlines,
   takeCompleteSseEvents,
 } from "@/features/play/stream/sseFrame";
+import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/waitUx/waitUxStages";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
@@ -250,9 +253,19 @@ function PlayContent() {
   const openingOptionsOnlyRoundRef = useRef(false);
   const optionsRegenInFlightRef = useRef(false);
   const modeSwitchByUserRef = useRef(false);
+  /** SSE `__VERSECRAFT_STATUS__` 最新阶段（仅展示层） */
+  const waitUxBackendStageRef = useRef<PlayWaitUxStage | null>(null);
+  const [waitUxStartedAt, setWaitUxStartedAt] = useState<number | null>(null);
 
   useEffect(() => {
     streamPhaseRef.current = streamPhase;
+  }, [streamPhase]);
+
+  useEffect(() => {
+    if (streamPhase === "idle" || streamPhase === "error") {
+      setWaitUxStartedAt(null);
+      waitUxBackendStageRef.current = null;
+    }
   }, [streamPhase]);
 
   /** True while the live narrative strip / typewriter should run (covers upstream wait + token drain + commit tick). */
@@ -501,6 +514,13 @@ function PlayContent() {
     streamTailDrain
   );
 
+  const { primaryLine: waitUxPrimaryLine, secondaryLine: waitUxSecondaryLine } = usePlayWaitUx({
+    thinking: smoothThinking && streamVisualForTypewriter,
+    requestStartedAt: waitUxStartedAt,
+    backendStageRef: waitUxBackendStageRef,
+    semanticKind: waitingHintKind,
+  });
+
   const displayEntries = useMemo(() => {
     const baseLogs = logs ?? [];
     const cutoff = isStreamVisualActive ? streamLogsBaselineRef.current : baseLogs.length;
@@ -719,11 +739,13 @@ function PlayContent() {
     return () => clearInterval(tick);
   }, [isHydrated]);
 
-  // 兜底：优先从存档恢复 options；无存档且仍处于嵌入式开场时注入本地多池随机四条
+  // 兜底：仅在「冷开场」从存档恢复 options。对局中主笔若本轮未返回 options，内存已清空，
+  // 但 saveSlots 可能尚未 autosave，若此处读 slot 会误把上一回合既定选项填回，导致不出现「让主笔给出选项」。
   const hasSeededOpeningOptions = useRef(false);
   useEffect(() => {
     if (!isHydrated || !isGameStarted || isChatBusy) return;
     if (currentOptions.length > 0) return;
+    if (!coldPlayOpening) return;
     const state = useGameStore.getState();
     const slot =
       state.saveSlots?.[state.currentSaveSlot] ??
@@ -876,16 +898,49 @@ function PlayContent() {
 
   async function requestFreshOptions(trigger: "auto_switch" | "manual_button") {
     // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
-    if (optionsRegenInFlightRef.current || isChatBusy || sendActionInFlightRef.current) return;
-    if (endgameState.active || showEmbeddedOpening) return;
+    const manual = trigger === "manual_button";
+
+    if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
+      sendActionInFlightRef.current = false;
+      openingOptionsOnlyRoundRef.current = false;
+      setOpeningAiBusy(false);
+    }
+
+    if (optionsRegenInFlightRef.current) {
+      if (manual) setFirstTimeHint("正在整理可选行动，请稍候再试。");
+      return;
+    }
+    if (isChatBusy) {
+      if (manual) setFirstTimeHint("主笔仍在生成本回合内容，请稍后再刷新选项。");
+      return;
+    }
+    if (sendActionInFlightRef.current) {
+      if (manual) setFirstTimeHint("上一回合请求仍在处理中，请稍后再刷新选项。");
+      return;
+    }
+    if (endgameState.active) {
+      if (manual) setFirstTimeHint("终局阶段请使用终局选项推进，无法在此刷新。");
+      return;
+    }
+    if (showEmbeddedOpening) {
+      if (manual) setFirstTimeHint("开场选项由本地预置提供，无需在此刷新。");
+      return;
+    }
     if (isGuestDialogueExhausted) {
       setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
       return;
     }
+
+    if (manual) {
+      setCurrentOptions([]);
+    }
+
     optionsRegenInFlightRef.current = true;
     setOptionsRegenBusy(true);
     if (trigger === "auto_switch") {
       setFirstTimeHint("主笔正在整理可选行动…");
+    } else {
+      setFirstTimeHint("主笔正在按当前剧情重新整理可选行动…");
     }
     try {
       const history = (useGameStore.getState().logs ?? [])
@@ -940,7 +995,12 @@ function PlayContent() {
       }
       const dmRaw = foldSseTextToDmRaw(text);
       const parsed = tryParseDM(dmRaw);
-      const normalized = normalizeRegeneratedOptions(parsed?.options, recentOptions);
+      let rawOpts: unknown = parsed?.options;
+      if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
+        const loose = extractRegenOptionsFromRaw(dmRaw);
+        if (loose && loose.length > 0) rawOpts = loose;
+      }
+      const normalized = normalizeRegeneratedOptions(rawOpts, []);
       if (normalized.length === 0) {
         setCurrentOptions([]);
         setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
@@ -987,6 +1047,8 @@ function PlayContent() {
     try {
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
+    waitUxBackendStageRef.current = null;
+    setWaitUxStartedAt(performance.now());
     // Only compute hint at request start; keep stable during waiting_upstream.
     setWaitingHintKind(guessSemanticWaitingKind(trimmed));
     const isOpeningOptionsOnlyRound = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
@@ -1184,6 +1246,11 @@ function PlayContent() {
     let sawStreamChunk = false;
 
     const applySseEvent = (eventText: string) => {
+      const statusFrame = extractStatusFrameFromSseEvent(eventText);
+      if (statusFrame?.stage) {
+        const parsedStage = parseBackendWaitStage(statusFrame.stage);
+        if (parsedStage) waitUxBackendStageRef.current = parsedStage;
+      }
       const { raw: nextRaw, sawNonEmptyData } = accumulateDmFromSseEvent(eventText, raw);
       raw = nextRaw;
       if (sawNonEmptyData && !sawStreamChunk) {
@@ -1718,9 +1785,31 @@ function PlayContent() {
     } else {
       // 无论是否首次 assistant 回合，都必须清空旧选项，避免沿用上一回合残留。
       setCurrentOptions([]);
+      // 立刻同步槽位与 shadow，缩短「内存已空但 saveSlots 仍为旧四条」窗口，避免其它 effect 误回填。
+      queueMicrotask(() => {
+        const slot = useGameStore.getState().currentSaveSlot;
+        useGameStore.getState().saveGame(slot);
+        writeResumeShadow();
+      });
       if (!isFirstAssistantTurn) {
         setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
       }
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      const branch = isEndgameSystemRound
+        ? "endgame"
+        : openingOptionsOnlyRoundRef.current
+          ? "opening_skip"
+          : merged.length > 0
+            ? "merged"
+            : "cleared";
+      console.debug("[versecraft/play] options commit", {
+        branch,
+        parsedOptionsLen: Array.isArray(parsed.options) ? parsed.options.length : 0,
+        mergedLen: merged.length,
+        storeLen: (useGameStore.getState().currentOptions ?? []).length,
+      });
     }
 
     if (typeof parsed.currency_change === "number" && parsed.currency_change !== 0) {
@@ -2463,6 +2552,11 @@ function PlayContent() {
                 </div>
               </div>
 
+              {/*
+                选项区：PlayOptionsList 渲染四条槽位（zustand currentOptions）；
+                「让主笔重新整理选项」→ requestFreshOptions("manual_button") → /api/chat（clientPurpose: options_regen_only）。
+                嵌入式开场与终局仅使用 PlayOptionsList，不展示整理区。
+              */}
               {/* 嵌入式开场首屏选项来自 pickEmbeddedOpeningOptions；该阶段不展示「主笔实时推演」以免与前端随机冲突 */}
               <PlayStoryScroll
                 scrollRef={scrollRef}
@@ -2485,59 +2579,113 @@ function PlayContent() {
                 embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
                 openingAiBusy={openingBusyUi && !showEmbeddedOpening}
                 semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
+                waitUxPrimaryLine={waitUxPrimaryLine}
+                waitUxSecondaryLine={waitUxSecondaryLine}
               >
-                {inputMode === "options" && currentOptions.length > 0 && (
-                  <PlayOptionsList
-                    options={currentOptions}
-                    revealed={currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)}
-                    isLowSanity={isLowSanity}
-                    isDarkMoon={isDarkMoon}
-                    disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
-                    onPick={(option) => {
-                      if (endgameState.active) {
-                        if (!endgameLocked) return;
-                        if (option === ENDGAME_ONLY_OPTION) {
-                          router.push("/settlement");
-                        }
-                        return;
-                      }
-                      if (isGuestDialogueExhausted) {
-                        setShowDialoguePaywall(true);
-                        return;
-                      }
-                      playUIClick();
-                      // 职业认证选项：本地落盘后再把“选择结果”送入叙事，保持剧情连贯。
-                      if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
-                        const chosen = pendingProfessionChoice.mapping[option]!;
-                        const ok = certifyProfession(chosen);
-                        setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
-                        if (!ok) {
-                          setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
+                {inputMode === "options" &&
+                  currentOptions.length > 0 &&
+                  (showEmbeddedOpening || endgameState.active) && (
+                    <PlayOptionsList
+                      options={currentOptions}
+                      revealed={currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)}
+                      isLowSanity={isLowSanity}
+                      isDarkMoon={isDarkMoon}
+                      disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
+                      onPick={(option) => {
+                        if (endgameState.active) {
+                          if (!endgameLocked) return;
+                          if (option === ENDGAME_ONLY_OPTION) {
+                            router.push("/settlement");
+                          }
                           return;
                         }
-                        // 让 DM 自然写“姐姐帮你办手续”，但不要求 DM 输出新的协议字段。
-                        void sendAction(`我选择认证职业：【${chosen}】`, true);
-                        return;
-                      }
-                      void sendAction(option, true);
-                    }}
-                  />
-                )}
-                {inputMode === "options" && currentOptions.length === 0 && !showEmbeddedOpening && !endgameState.active && (
-                  <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
-                    <p className="text-sm text-slate-600 md:text-base">
-                      {optionsRegenBusy ? "主笔正在整理可选行动…" : "当前暂无可用选项。"}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void requestFreshOptions("manual_button")}
-                      disabled={isChatBusy || optionsRegenBusy || isGuestDialogueExhausted}
-                      className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
-                    >
-                      让主笔给出选项
-                    </button>
-                  </div>
-                )}
+                        if (isGuestDialogueExhausted) {
+                          setShowDialoguePaywall(true);
+                          return;
+                        }
+                        playUIClick();
+                        if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
+                          const chosen = pendingProfessionChoice.mapping[option]!;
+                          const ok = certifyProfession(chosen);
+                          setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
+                          if (!ok) {
+                            setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
+                            return;
+                          }
+                          void sendAction(`我选择认证职业：【${chosen}】`, true);
+                          return;
+                        }
+                        void sendAction(option, true);
+                      }}
+                    />
+                  )}
+                {inputMode === "options" &&
+                  currentOptions.length > 0 &&
+                  !showEmbeddedOpening &&
+                  !endgameState.active &&
+                  !optionsRegenBusy && (
+                    <>
+                      <PlayOptionsList
+                        options={currentOptions}
+                        revealed={currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)}
+                        isLowSanity={isLowSanity}
+                        isDarkMoon={isDarkMoon}
+                        disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
+                        onPick={(option) => {
+                          if (isGuestDialogueExhausted) {
+                            setShowDialoguePaywall(true);
+                            return;
+                          }
+                          playUIClick();
+                          if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
+                            const chosen = pendingProfessionChoice.mapping[option]!;
+                            const ok = certifyProfession(chosen);
+                            setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
+                            if (!ok) {
+                              setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
+                              return;
+                            }
+                            void sendAction(`我选择认证职业：【${chosen}】`, true);
+                            return;
+                          }
+                          void sendAction(option, true);
+                        }}
+                      />
+                      <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
+                        <p className="text-sm text-slate-600 md:text-base">
+                          若当前四条与剧情不符，可请主笔按最新叙事重新生成（将覆盖上方列表）。
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void requestFreshOptions("manual_button")}
+                          disabled={isChatBusy || optionsRegenBusy || isGuestDialogueExhausted}
+                          className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
+                        >
+                          让主笔重新整理选项
+                        </button>
+                      </div>
+                    </>
+                  )}
+                {inputMode === "options" &&
+                  !showEmbeddedOpening &&
+                  !endgameState.active &&
+                  (currentOptions.length === 0 || optionsRegenBusy) && (
+                    <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
+                      <p className="text-sm text-slate-600 md:text-base">
+                        {optionsRegenBusy
+                          ? "主笔正在按当前剧情重新整理可选行动…"
+                          : "当前暂无可用选项。"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void requestFreshOptions("manual_button")}
+                        disabled={isChatBusy || optionsRegenBusy || isGuestDialogueExhausted}
+                        className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
+                      >
+                        让主笔重新整理选项
+                      </button>
+                    </div>
+                  )}
               </PlayStoryScroll>
 
               <PlayTextInputBar

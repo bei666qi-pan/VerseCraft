@@ -81,6 +81,55 @@ function parseSliceToDm(slice: string): DMJson | null {
   return null;
 }
 
+function optionsArrayFromUnknownPayload(data: unknown): unknown[] | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const o = data as Record<string, unknown>;
+  return Array.isArray(o.options) ? o.options : null;
+}
+
+function parseSliceToRegenOptions(slice: string): unknown[] | null {
+  try {
+    const data = JSON.parse(slice) as unknown;
+    const arr = optionsArrayFromUnknownPayload(data);
+    return arr && arr.length > 0 ? arr : null;
+  } catch {
+    /* try repair */
+  }
+  try {
+    const repaired = jsonrepair(slice);
+    const data = JSON.parse(repaired) as unknown;
+    const arr = optionsArrayFromUnknownPayload(data);
+    return arr && arr.length > 0 ? arr : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `options_regen_only` 等场景下模型常只输出 `{"options":[...]}`，不满足 {@link tryParseDM} 的完整 DM 形态；
+ * 从 SSE 折叠后的原文中扫描 JSON 对象并提取非空 `options` 数组。
+ */
+export function extractRegenOptionsFromRaw(raw: string): unknown[] | null {
+  const cleanContent = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const bracePositions: number[] = [];
+  for (let i = 0; i < cleanContent.length && bracePositions.length < MAX_BRACE_SCAN; i++) {
+    if (cleanContent[i] === "{") bracePositions.push(i);
+  }
+
+  for (const pos of bracePositions) {
+    const objectSlice = extractBalancedJsonObjectFrom(cleanContent, pos);
+    if (!objectSlice || objectSlice.length < 2) continue;
+    const opts = parseSliceToRegenOptions(objectSlice);
+    if (opts && opts.length > 0) return opts;
+  }
+  return null;
+}
+
 function logTryParseFailure(cleanContent: string, candidateCount: number): void {
   const head = cleanContent.slice(0, LOG_HEAD_CHARS);
   const tail =

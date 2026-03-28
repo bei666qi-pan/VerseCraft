@@ -5,6 +5,81 @@ import { LOCATION_LABELS } from "./locationLabels";
 
 export const BLOOD_MARKER = "{{BLOOD}}";
 const BLOOD_END = "{{/BLOOD}}";
+const AUTO_PARAGRAPH_ENABLED = process.env.NEXT_PUBLIC_CHAT_AUTO_PARAGRAPH !== "0";
+const AUTO_PARAGRAPH_MIN_CHARS = (() => {
+  const raw = Number(process.env.NEXT_PUBLIC_CHAT_AUTO_PARAGRAPH_MIN_CHARS ?? "100");
+  if (!Number.isFinite(raw)) return 100;
+  return Math.min(220, Math.max(60, Math.floor(raw)));
+})();
+
+function isListLikeLine(line: string): boolean {
+  const t = line.trim();
+  if (!t) return false;
+  return /^([-*•]\s+|\d+[.)]\s+|[一二三四五六七八九十]+、)/.test(t);
+}
+
+function nextNonWhitespaceChar(s: string, from: number): string {
+  let i = from;
+  while (i < s.length) {
+    const ch = s[i] ?? "";
+    if (!/\s/.test(ch)) return ch;
+    i += 1;
+  }
+  return "";
+}
+
+export function autoParagraphizeNarrative(
+  text: string,
+  opts?: { minParaChars?: number }
+): string {
+  const safe = typeof text === "string" ? text : "";
+  if (!safe) return "";
+  if (safe.includes("\n\n")) return safe;
+  const minParaChars = Math.max(40, Math.floor(opts?.minParaChars ?? 100));
+  if (safe.length < minParaChars + 30) return safe;
+
+  const lines = safe.split("\n");
+  if (lines.some((line) => isListLikeLine(line))) return safe;
+
+  const sentencePunct = new Set(["。", "！", "？", "!", "?"]);
+  const closePunct = new Set(["”", "’", "」", "』", "\"", "'"]);
+  const openQuote = new Set(["“", "‘", "「", "『", "\"", "'"]);
+  let quoteDepth = 0;
+  let bracketDepth = 0;
+  let segLen = 0;
+  let out = "";
+
+  for (let i = 0; i < safe.length; i += 1) {
+    const ch = safe[i] ?? "";
+    out += ch;
+    segLen += 1;
+
+    if (ch === "“" || ch === "‘" || ch === "「" || ch === "『") quoteDepth += 1;
+    else if ((ch === "”" || ch === "’" || ch === "」" || ch === "』") && quoteDepth > 0) quoteDepth -= 1;
+    else if (ch === "（" || ch === "(" || ch === "[" || ch === "【") bracketDepth += 1;
+    else if ((ch === "）" || ch === ")" || ch === "]" || ch === "】") && bracketDepth > 0) bracketDepth -= 1;
+
+    if (!sentencePunct.has(ch)) continue;
+    if (quoteDepth > 0 || bracketDepth > 0) continue;
+    if (segLen < minParaChars) continue;
+
+    let j = i + 1;
+    while (j < safe.length && closePunct.has(safe[j] ?? "")) {
+      out += safe[j] ?? "";
+      j += 1;
+      i += 1;
+    }
+    const next = nextNonWhitespaceChar(safe, j);
+    // Keep dialogue beat cohesive: avoid hard split right before a new quote opener.
+    if (openQuote.has(next)) continue;
+    if (next !== "\n" && next !== "") {
+      out += "\n\n";
+    }
+    segLen = 0;
+  }
+
+  return out;
+}
 
 export function splitNarrativeIntoParas(text: string): string[] {
   const safe = typeof text === "string" ? text : "";
@@ -138,6 +213,11 @@ export function renderNarrativeText(
       .replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
     if (streamSafe) {
       normalized = prepareStreamingNarrativeForRender(normalized);
+    }
+    if (AUTO_PARAGRAPH_ENABLED) {
+      normalized = autoParagraphizeNarrative(normalized, {
+        minParaChars: AUTO_PARAGRAPH_MIN_CHARS,
+      });
     }
     const stripOrphans = (s: string) =>
       s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "").replace(/\*\*/g, "");

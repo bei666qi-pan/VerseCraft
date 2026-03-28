@@ -23,6 +23,9 @@ function extractDmJsonTextFromSseBody(bodyText: string): string {
       if (!line.startsWith("data:")) continue;
       const chunk = line.slice(5).trimStart();
       if (!chunk.length) continue;
+      if (chunk.startsWith("__VERSECRAFT_STATUS__:")) {
+        continue;
+      }
       if (chunk.startsWith("__VERSECRAFT_FINAL__:")) {
         raw = chunk.slice("__VERSECRAFT_FINAL__:".length);
       } else {

@@ -26,6 +26,7 @@ export type AnalyticsEventName =
   | "chat_action_completed"
   | "chat_request_started"
   | "chat_request_finished"
+  | "chat_client_perf"
   | "user_registered"
   | "user_login_success"
   | "create_character_success"

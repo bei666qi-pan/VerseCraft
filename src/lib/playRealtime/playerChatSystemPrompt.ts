@@ -127,7 +127,8 @@ const FIRST_ACTION_CONSTRAINT =
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {
   const parts: string[] = [];
   if (input.memoryBlock) parts.push(input.memoryBlock);
-  parts.push("## 【玩家状态原文快照（兼容）】");
+  // TTFT/成本优化：保持字段语义不变，但减少无信息密度的 wrapper 文案体积。
+  // 注意：stable prefix 仍负责规则与格式约束；这里仅是动态上下文。
   parts.push(`当前玩家状态：${input.playerContext}`);
   if (input.runtimePackets) parts.push("", input.runtimePackets);
   if (input.isFirstAction) {

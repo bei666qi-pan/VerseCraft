@@ -26,6 +26,35 @@ export interface SseDmAccumulateResult {
   sawNonEmptyData: boolean;
 }
 
+export const VERSECRAFT_STATUS_PREFIX = "__VERSECRAFT_STATUS__:";
+
+export interface VerseCraftStatusFrame {
+  stage: string;
+  message?: string;
+  requestId?: string;
+  at?: number;
+}
+
+export function extractStatusFrameFromSseEvent(eventText: string): VerseCraftStatusFrame | null {
+  const lines = eventText.split("\n");
+  const payloads: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith("data:")) continue;
+    payloads.push(line.slice(5).trimStart());
+  }
+  if (payloads.length === 0) return null;
+  const joined = payloads.join("\n");
+  if (!joined.startsWith(VERSECRAFT_STATUS_PREFIX)) return null;
+  const body = joined.slice(VERSECRAFT_STATUS_PREFIX.length);
+  try {
+    const parsed = JSON.parse(body) as VerseCraftStatusFrame;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.stage !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Apply one SSE event block (may contain multiple `data:` lines). Per SSE, consecutive `data:` fields
  * are joined with `\n` before appending to the running buffer.
@@ -46,6 +75,10 @@ export function accumulateDmFromSseEvent(eventText: string, prevRaw: string): Ss
     return { raw, sawNonEmptyData: false };
   }
   const joined = payloads.join("\n");
+  if (joined.startsWith(VERSECRAFT_STATUS_PREFIX)) {
+    // 控制帧：保持对旧 JSON 累积器兼容（忽略即可，不进入 DM 原文）。
+    return { raw, sawNonEmptyData: false };
+  }
   if (joined.startsWith("__VERSECRAFT_FINAL__:")) {
     raw = joined.slice("__VERSECRAFT_FINAL__:".length);
     return { raw, sawNonEmptyData: true };

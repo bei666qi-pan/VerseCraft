@@ -4,6 +4,7 @@ import {
   extractNarrative,
   extractBalancedJsonObjectFrom,
   extractFirstBalancedJsonObject,
+  extractRegenOptionsFromRaw,
   tryParseDM,
 } from "./dmParse";
 
@@ -84,3 +85,15 @@ test("extractNarrative: screenshot-like leakage should not be rendered as raw JS
   assert.equal(shown.includes('"is_death":'), false);
   assert.equal(shown.includes('{"is_action_legal"'), false);
 });
+
+test("extractRegenOptionsFromRaw: minimal options-only JSON without full DM shape", () => {
+  const raw = '{"options":["观察门缝","退回拐角","轻声呼喊","检查手机"]}';
+  assert.deepEqual(extractRegenOptionsFromRaw(raw), ["观察门缝", "退回拐角", "轻声呼喊", "检查手机"]);
+});
+
+test("tryParseDM returns null for options-only JSON but extractRegenOptionsFromRaw succeeds", () => {
+  const raw = '{"options":["a","b","c","d"]}';
+  assert.equal(tryParseDM(raw), null);
+  assert.deepEqual(extractRegenOptionsFromRaw(raw), ["a", "b", "c", "d"]);
+});
+
