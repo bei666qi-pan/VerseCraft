@@ -1,7 +1,12 @@
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcProactiveGrantStyleHints } from "@/lib/npcHeart/prompt";
+import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
+import { normalizeNarrativeTrace, type NarrativeTraceV1 } from "@/lib/domain/narrativeDomain";
 
 export type GameTaskType = "main" | "floor" | "character" | "conspiracy";
+
+/** 正式目标语义类（产品层）；缺省时由适配器按 id/type 推断 */
+export type GameGoalKind = "main" | "promise" | "commission";
 export type GameTaskStatus =
   | "active"
   | "completed"
@@ -81,6 +86,21 @@ export interface GameTaskV2 {
   backfireConsequences?: string[];
   followupSeedCodes?: string[];
   spokenDeliveryStyle?: string;
+  /** 可选：DM/注册表显式标注的正式目标类（旧存档无此字段） */
+  goalKind?: GameGoalKind;
+
+  /** 阶段 6：推进所需注册表/结构化物品 id（叙事门槛，非自动战斗检定） */
+  requiredItemIds?: string[];
+  /** 与线索升格/变更集对应的谱系 */
+  narrativeTrace?: NarrativeTraceV1;
+  /** 由哪些手记 id 衍生（弱引用） */
+  sourceClueIds?: string[];
+  /** 承诺类目标：玩家表态锚点（需叙事与结构化一致） */
+  promiseBinding?: {
+    npcId: string;
+    boundAtGameHour?: number;
+    utteranceRef?: string;
+  };
 }
 
 export interface RelationshipStatePatch {
@@ -147,6 +167,10 @@ function normalizeGuidanceLevel(v: unknown): GuidanceLevel {
   return v === "none" || v === "light" || v === "standard" || v === "strong"
     ? v
     : "standard";
+}
+
+function normalizeGoalKind(v: unknown): GameGoalKind | undefined {
+  return v === "main" || v === "promise" || v === "commission" ? v : undefined;
 }
 
 function normalizeDramaticType(v: unknown): TaskDramaticType | undefined {
@@ -240,6 +264,30 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
   if (!id || !title) return null;
   const issuerNameLegacy = asString(d.issuer);
   const reward = normalizeReward(d.reward);
+  const requiredItemIds = asStringArray(
+    (d as { requiredItemIds?: unknown }).requiredItemIds ?? (d as { required_item_ids?: unknown }).required_item_ids
+  ).slice(0, 12);
+  const narrativeTrace = normalizeNarrativeTrace(
+    (d as { narrativeTrace?: unknown }).narrativeTrace ?? (d as { narrative_trace?: unknown }).narrative_trace
+  );
+  const sourceClueIds = asStringArray(
+    (d as { sourceClueIds?: unknown }).sourceClueIds ?? (d as { source_clue_ids?: unknown }).source_clue_ids
+  ).slice(0, 8);
+  const promiseBinding = (() => {
+    const raw = (d as { promiseBinding?: unknown }).promiseBinding ?? (d as { promise_binding?: unknown }).promise_binding;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    const pb = raw as Record<string, unknown>;
+    const npcId = asString(pb.npcId ?? pb.npc_id);
+    if (!npcId) return undefined;
+    const hourRaw = pb.boundAtGameHour ?? pb.bound_at_game_hour;
+    return {
+      npcId,
+      ...(typeof hourRaw === "number" && Number.isFinite(hourRaw) ? { boundAtGameHour: Math.trunc(hourRaw) } : {}),
+      ...(clampShortText(pb.utteranceRef ?? pb.utterance_ref, 200)
+        ? { utteranceRef: clampShortText(pb.utteranceRef ?? pb.utterance_ref, 200) }
+        : {}),
+    };
+  })();
   return {
     id,
     title,
@@ -307,6 +355,11 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
     backfireConsequences: clampShortCodes((d as any).backfireConsequences, 6),
     followupSeedCodes: clampShortCodes((d as any).followupSeedCodes, 6),
     spokenDeliveryStyle: clampShortText((d as any).spokenDeliveryStyle, 120),
+    goalKind: normalizeGoalKind((d as { goalKind?: unknown }).goalKind),
+    ...(requiredItemIds.length > 0 ? { requiredItemIds } : {}),
+    ...(narrativeTrace ? { narrativeTrace } : {}),
+    ...(sourceClueIds.length > 0 ? { sourceClueIds } : {}),
+    ...(promiseBinding ? { promiseBinding } : {}),
   };
 }
 
@@ -343,6 +396,43 @@ export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> &
   if ((d as any).backfireConsequences !== undefined) out.backfireConsequences = asStringArray((d as any).backfireConsequences).slice(0, 6);
   if ((d as any).followupSeedCodes !== undefined) out.followupSeedCodes = asStringArray((d as any).followupSeedCodes).slice(0, 6);
   if ((d as any).spokenDeliveryStyle !== undefined) out.spokenDeliveryStyle = clampShortText((d as any).spokenDeliveryStyle, 120) ?? "";
+  if ((d as { goalKind?: unknown }).goalKind !== undefined) {
+    const gk = normalizeGoalKind((d as { goalKind?: unknown }).goalKind);
+    if (gk) out.goalKind = gk;
+  }
+  {
+    const reqRaw =
+      (d as { requiredItemIds?: unknown }).requiredItemIds !== undefined
+        ? (d as { requiredItemIds?: unknown }).requiredItemIds
+        : (d as { required_item_ids?: unknown }).required_item_ids;
+    if (reqRaw !== undefined) {
+      out.requiredItemIds = asStringArray(reqRaw).slice(0, 12);
+    }
+  }
+  if ((d as { narrativeTrace?: unknown }).narrativeTrace !== undefined) {
+    const nt = normalizeNarrativeTrace((d as { narrativeTrace?: unknown }).narrativeTrace);
+    if (nt) out.narrativeTrace = nt;
+  }
+  if ((d as { sourceClueIds?: unknown }).sourceClueIds !== undefined) {
+    out.sourceClueIds = asStringArray((d as { sourceClueIds?: unknown }).sourceClueIds).slice(0, 8);
+  }
+  if ((d as { promiseBinding?: unknown }).promiseBinding !== undefined) {
+    const raw = (d as { promiseBinding?: unknown }).promiseBinding;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const pb = raw as Record<string, unknown>;
+      const npcId = asString(pb.npcId ?? pb.npc_id);
+      if (npcId) {
+        const hourRaw = pb.boundAtGameHour ?? pb.bound_at_game_hour;
+        out.promiseBinding = {
+          npcId,
+          ...(typeof hourRaw === "number" && Number.isFinite(hourRaw) ? { boundAtGameHour: Math.trunc(hourRaw) } : {}),
+          ...(clampShortText(pb.utteranceRef ?? pb.utterance_ref, 200)
+            ? { utteranceRef: clampShortText(pb.utteranceRef ?? pb.utterance_ref, 200) }
+            : {}),
+        };
+      }
+    }
+  }
   if ((d as { hiddenTriggerConditions?: unknown }).hiddenTriggerConditions !== undefined) {
     out.hiddenTriggerConditions = asStringArray((d as { hiddenTriggerConditions?: unknown }).hiddenTriggerConditions);
   }
@@ -681,6 +771,7 @@ export function normalizeDmTaskPayload(record: Record<string, unknown>): Record<
     .map((u) => normalizeTaskUpdateDraft(u))
     .filter((u): u is { id: string } & Partial<GameTaskV2> => !!u);
   next.task_updates = normalizedUpdates;
+  next.clue_updates = normalizeClueUpdateArray(record.clue_updates, new Date().toISOString());
   return next;
 }
 

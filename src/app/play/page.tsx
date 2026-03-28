@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } fr
 import { usePathname, useRouter } from "next/navigation";
 import { Settings, Keyboard, List, Book, ClipboardList } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
-import type { Item, StatType, WarehouseItem } from "@/lib/registry/types";
+import type { Item, ItemDomainLayer, StatType, WarehouseItem } from "@/lib/registry/types";
 import { canUseItem } from "@/lib/registry/itemUtils";
+import { buildItemUseStructuredIntent } from "@/lib/play/itemGameplay";
 import { ITEMS } from "@/lib/registry/items";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
@@ -75,6 +76,28 @@ import {
   shouldAutoRegenerateOptionsOnModeSwitch,
   shouldWarnAcquireMismatch,
 } from "@/features/play/turnCommit/phaseRegressionGuards";
+import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
+import {
+  extractFilteredHintsFromTrace,
+  isNarrativeSystemsDebugEnabled,
+  pushNarrativeSystemsDebugEvent,
+} from "@/lib/debug/narrativeSystemsDebugRing";
+import { NarrativeSystemsDebugPanel } from "@/features/play/components/NarrativeSystemsDebugPanel";
+
+const ITEM_DOMAIN_LAYERS = new Set<ItemDomainLayer>([
+  "key",
+  "tool",
+  "consumable",
+  "evidence",
+  "social_token",
+  "material",
+]);
+
+function pickItemDomainLayer(v: unknown): ItemDomainLayer | undefined {
+  return typeof v === "string" && ITEM_DOMAIN_LAYERS.has(v as ItemDomainLayer)
+    ? (v as ItemDomainLayer)
+    : undefined;
+}
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
 const STREAM_CHUNK_STALL_MS = 120_000;
@@ -156,6 +179,8 @@ function PlayContent() {
   const addOriginium = useGameStore((s) => s.addOriginium);
   const originium = useGameStore((s) => s.originium ?? 0);
   const tasks = useGameStore((s) => s.tasks ?? []);
+  const journalClues = useGameStore((s) => s.journalClues ?? []);
+  const codex = useGameStore((s) => s.codex ?? {});
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const updateTask = useGameStore((s) => s.updateTask);
@@ -1363,6 +1388,8 @@ function PlayContent() {
     setStreamPhase("turn_committing");
     try {
     const parsed = tryParseDM(raw) as any;
+    /** 同回合多条「获得类」反馈合并为一条顶栏提示，避免互相覆盖 */
+    const acquireHudHints: string[] = [];
     if (!parsed) {
       setStreamPhase("idle");
       // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
@@ -1481,6 +1508,7 @@ function PlayContent() {
           ) as [StatType, number][];
           if (entries.length > 0) statBonus = Object.fromEntries(entries) as Item["statBonus"];
         }
+        const layer = pickItemDomainLayer(o.domainLayer);
         resolved.push({
           id,
           name,
@@ -1489,6 +1517,7 @@ function PlayContent() {
           tags: typeof o.tags === "string" ? o.tags : "loot",
           statBonus,
           ownerId: "N-019",
+          ...(layer ? { domainLayer: layer } : {}),
         } satisfies Item);
       }
       const items = resolved;
@@ -1665,6 +1694,22 @@ function PlayContent() {
       // ignore: capture is best-effort
     }
 
+    // 手记线索：DM clue_updates → 与快照 journal 同步（经 normalizeClueUpdateArray 防空/截断）
+    if (Array.isArray((parsed as { clue_updates?: unknown }).clue_updates)) {
+      const clueRows = normalizeClueUpdateArray(
+        (parsed as { clue_updates?: unknown }).clue_updates,
+        new Date().toISOString()
+      );
+      if (clueRows.length > 0) {
+        const prevClueIds = new Set((useGameStore.getState().journalClues ?? []).map((c) => c.id));
+        useGameStore.getState().mergeJournalClueUpdates(clueRows);
+        const freshTitles = clueRows.filter((c) => c.id && !prevClueIds.has(c.id)).map((c) => c.title);
+        if (freshTitles.length > 0) {
+          acquireHudHints.push(`手记更新：${freshTitles.slice(0, 2).join("、")}${freshTitles.length > 2 ? "…" : ""}`);
+        }
+      }
+    }
+
     const stateBeforeProfessionTurn = useGameStore.getState();
     const consumedProfessionActive = stateBeforeProfessionTurn.consumeProfessionActiveForTurn();
     const memoryBefore = {
@@ -1813,11 +1858,21 @@ function PlayContent() {
     }
 
     if (Array.isArray(parsed.new_tasks) && parsed.new_tasks.length > 0) {
+      const taskIdsBefore = new Set((useGameStore.getState().tasks ?? []).map((t) => t.id));
       for (const t of parsed.new_tasks) {
         // 兼容旧服务端：仍允许 draft；但优先信任服务端已裁决/规范化后的任务对象。
         const normalized = normalizeGameTaskDraft(t);
         if (normalized) addTask(normalized);
       }
+      const afterTasks = useGameStore.getState().tasks ?? [];
+      const newTitles = afterTasks.filter((t) => !taskIdsBefore.has(t.id)).map((t) => t.title);
+      if (newTitles.length > 0) {
+        acquireHudHints.push(`新目标：${newTitles.slice(0, 2).join("、")}${newTitles.length > 2 ? "…" : ""}`);
+      }
+    }
+
+    if (acquireHudHints.length > 0) {
+      setFirstTimeHint(acquireHudHints.join("；"));
     }
 
     if (Array.isArray(parsed.task_updates) && parsed.task_updates.length > 0) {
@@ -2214,6 +2269,33 @@ function PlayContent() {
       console.warn("[play][escapeMainline] advance failed", e);
     }
 
+    if (isNarrativeSystemsDebugEnabled()) {
+      const sm = parsed.security_meta as Record<string, unknown> | undefined;
+      const traceRaw = sm?.change_set_trace;
+      const trace = Array.isArray(traceRaw)
+        ? traceRaw.filter((x): x is string => typeof x === "string")
+        : [];
+      const st = useGameStore.getState();
+      pushNarrativeSystemsDebugEvent({
+        kind: "turn_commit",
+        at: Date.now(),
+        changeSetApplied: sm?.change_set_applied === true,
+        changeSetTrace: trace.slice(0, 48),
+        filteredHints: extractFilteredHintsFromTrace(trace),
+        clueUpdatesInTurn: Array.isArray(parsed.clue_updates) ? parsed.clue_updates.length : 0,
+        newTasksInTurn: Array.isArray(parsed.new_tasks) ? parsed.new_tasks.length : 0,
+        taskUpdatesInTurn: Array.isArray(parsed.task_updates) ? parsed.task_updates.length : 0,
+        awardedItemsInTurn: Array.isArray(parsed.awarded_items) ? parsed.awarded_items.length : 0,
+        awardedWarehouseInTurn: Array.isArray(parsed.awarded_warehouse_items)
+          ? parsed.awarded_warehouse_items.length
+          : 0,
+        journalClueTotal: (st.journalClues ?? []).length,
+        taskTotal: (st.tasks ?? []).length,
+        inventoryCount: (st.inventory ?? []).length,
+        warehouseCount: (st.warehouse ?? []).length,
+      });
+    }
+
     // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
     // 这能覆盖“手动输入且无 options”的场景，避免首页“继续执笔”失真。
     useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
@@ -2328,8 +2410,7 @@ function PlayContent() {
   function onUseItem(item: Item) {
     const check = canUseItem(item, stats);
     if (!check.ok) return; // UI should block, but guard here
-    const text = `我使用了道具：【${item.name}】`;
-    void sendAction(text);
+    void sendAction(buildItemUseStructuredIntent(item));
     setActiveMenu(null);
   }
 
@@ -2713,6 +2794,7 @@ function PlayContent() {
         </div>
       </div>
 
+      <NarrativeSystemsDebugPanel />
       <PlayComplianceToast visible={showComplianceHint} />
       <PlayGuideModal
         open={isGuideModalOpen}
@@ -2727,6 +2809,8 @@ function PlayContent() {
         tasks={tasks}
         originium={originium}
         highlightTaskIds={highlightTaskIds}
+        journalClues={journalClues}
+        codex={codex}
         onClose={() => setIsTaskPanelOpen(false)}
         onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
       />

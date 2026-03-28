@@ -1,16 +1,15 @@
 "use client";
 
-import { Activity, useCallback, useEffect, useRef, useState } from "react";
+import { Activity, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Settings, Package, BookOpen, Warehouse, Trophy, Volume2, VolumeX } from "lucide-react";
 import type { Item, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/registry/itemUtils";
+import { getItemGameplayUiHints, getItemUiRoleTags } from "@/lib/play/itemGameplay";
+import { groupCluesByPrimarySection, journalSectionLabel, orderedJournalSections } from "@/lib/play/journalBoardUi";
+import type { ClueEntry as JournalClueEntry } from "@/lib/domain/narrativeDomain";
+import { PlayNarrativeTaskBoard } from "@/features/play/components/PlayNarrativeTaskBoard";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
-import {
-  formatTaskRewardSummary,
-  getRewardCurveHintByFloorTier,
-  getTaskStatusLabel,
-} from "@/lib/tasks/taskV2";
 import {
   useAchievementsStore,
   type AchievementRecord,
@@ -320,6 +319,8 @@ function SettingsPanel({
     return originium >= costPerPoint;
   };
   const stepper = useUpgradeStepper(onUpgradeAttr, canUpgrade);
+  const journalClues = useGameStore((s) => s.journalClues ?? []);
+  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const readiness = evaluateProfessionActiveReadiness(professionState.currentProfession, {
     location: playerLocation,
     hasHotThreat: Object.values(mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
@@ -421,6 +422,17 @@ function SettingsPanel({
         </div>
       </div>
 
+      <div className="border-t border-white/10 pt-4">
+        <PlayNarrativeTaskBoard
+          tasks={tasks}
+          originium={originium}
+          journalClues={journalClues}
+          codex={codex}
+          onClaimTask={(id) => updateTaskStatus(id, "active")}
+          density="embedded"
+        />
+      </div>
+
       <div>
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
@@ -464,6 +476,14 @@ function SettingsPanel({
   );
 }
 
+function formatJournalNpcRefs(ids: string[] | undefined, codex: Record<string, CodexEntry>): string {
+  if (!ids?.length) return "";
+  return ids
+    .slice(0, 4)
+    .map((id) => (codex[id] ? resolveCodexDisplayName(codex[id]) : id))
+    .join("、");
+}
+
 function BackpackPanel({
   inventory,
   originium,
@@ -472,6 +492,8 @@ function BackpackPanel({
   onUseItem,
   isChatBusy,
   stats,
+  journalClues,
+  codex,
 }: {
   inventory: Item[];
   originium: number;
@@ -480,10 +502,18 @@ function BackpackPanel({
   onUseItem: (item: Item) => void;
   isChatBusy: boolean;
   stats: Record<StatType, number>;
+  journalClues: JournalClueEntry[];
+  codex: Record<string, CodexEntry>;
 }) {
+  const [journalOpen, setJournalOpen] = useState(true);
   const safeInventory = Array.isArray(inventory) ? inventory : [];
   const slotItems = Array.from({ length: 6 }, (_, idx) => safeInventory[idx] ?? null);
   const selectedItem = selectedId ? safeInventory.find((i) => i && i.id === selectedId) ?? null : null;
+  const groupedClues = useMemo(() => groupCluesByPrimarySection(journalClues ?? []), [journalClues]);
+  const journalTotal = useMemo(
+    () => orderedJournalSections().reduce((n, k) => n + (groupedClues[k]?.length ?? 0), 0),
+    [groupedClues]
+  );
 
   useEffect(() => {
     if (selectedId && !selectedItem) onSelect(null);
@@ -512,6 +542,58 @@ function BackpackPanel({
               你有可武器化道具。去「配电间」查看锻造台，可将 C+ 道具武器化为主手装备。
             </div>
           ) : null}
+          {journalTotal > 0 ? (
+            <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
+              <button
+                type="button"
+                onClick={() => setJournalOpen((v) => !v)}
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-semibold text-cyan-100"
+              >
+                <span>手记线索（{journalTotal}）</span>
+                <span className="text-cyan-300/80">{journalOpen ? "收起" : "展开"}</span>
+              </button>
+              {journalOpen ? (
+                <div className="max-h-44 space-y-2 overflow-y-auto border-t border-cyan-500/15 px-2 py-2">
+                  {orderedJournalSections().map((sec) => {
+                    const rows = groupedClues[sec];
+                    if (!rows?.length) return null;
+                    return (
+                      <div key={sec}>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-400/90">
+                          {journalSectionLabel(sec)}
+                        </p>
+                        <ul className="space-y-1">
+                          {rows.slice(0, 14).map((c) => {
+                            const npcHint = formatJournalNpcRefs(c.relatedNpcIds, codex);
+                            return (
+                              <li key={c.id} className="rounded-lg bg-black/25 px-2 py-1.5 text-[11px] text-slate-300">
+                                <span className="font-medium text-slate-100">{c.title}</span>
+                                {c.relatedObjectiveId ? (
+                                  <span className="ml-1 text-[10px] text-indigo-300">· 关联目标</span>
+                                ) : null}
+                                {c.detail ? (
+                                  <span className="mt-0.5 block line-clamp-2 text-slate-500">{c.detail}</span>
+                                ) : null}
+                                {npcHint ? (
+                                  <span className="mt-0.5 block text-[10px] text-amber-200/85">指向：{npcHint}</span>
+                                ) : null}
+                                {(c.relatedItemIds?.length ?? 0) > 0 ? (
+                                  <span className="mt-0.5 block text-[10px] text-emerald-200/80">
+                                    物证 id：{c.relatedItemIds!.slice(0, 3).join("、")}
+                                  </span>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">行囊槽位</p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {slotItems.every((s) => s === null) ? (
@@ -536,19 +618,31 @@ function BackpackPanel({
                     }`}
                   >
                     {item ? (
-                      <span className="block truncate">
-                        {item.name}
-                        {count > 1 ? ` × ${count}` : ""}
-                        {(() => {
-                          const tier = item.tier;
-                          const eligible = (item as any)?.weaponization?.eligible;
-                          const isWeaponizable = (tier === "S" || tier === "A" || tier === "B" || tier === "C") && eligible !== false;
-                          return isWeaponizable ? (
-                            <span className="ml-2 rounded-full border border-amber-400/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-200">
-                              可武器化
+                      <span className="block">
+                        <span className="block truncate">
+                          {item.name}
+                          {count > 1 ? ` × ${count}` : ""}
+                        </span>
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {getItemUiRoleTags(item).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] text-slate-400"
+                            >
+                              {tag}
                             </span>
-                          ) : null;
-                        })()}
+                          ))}
+                          {(() => {
+                            const tier = item.tier;
+                            const eligible = (item as any)?.weaponization?.eligible;
+                            const isWeaponizable = (tier === "S" || tier === "A" || tier === "B" || tier === "C") && eligible !== false;
+                            return isWeaponizable ? (
+                              <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-200">
+                                可武器化
+                              </span>
+                            ) : null;
+                          })()}
+                        </span>
                       </span>
                     ) : (
                       <span className="block truncate">空</span>
@@ -567,6 +661,16 @@ function BackpackPanel({
             <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">
               {selectedItem.tier ?? "D"}
             </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {getItemUiRoleTags(selectedItem).map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-200"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
             <div className="mt-6 space-y-4">
               {getItemEffectSummary(selectedItem) && (
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
@@ -584,6 +688,20 @@ function BackpackPanel({
                   <p className="mt-1 text-sm text-amber-300">{formatStatRequirements(selectedItem)}</p>
                 </div>
               )}
+              {(() => {
+                const hints = getItemGameplayUiHints(selectedItem);
+                if (hints.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2">
+                    <span className="text-[10px] uppercase tracking-wider text-cyan-400">玩法要点</span>
+                    <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-cyan-100/90">
+                      {hints.map((h) => (
+                        <li key={h}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
               {selectedItem?.statBonus && typeof selectedItem.statBonus === "object" && Object.keys(selectedItem.statBonus).length > 0 && (
                 <div>
                   <span className="text-xs text-slate-500">叙事维度</span>
@@ -776,6 +894,7 @@ function WarehousePanel({ warehouse }: { warehouse: WarehouseItem[] }) {
             }`}
           >
             <span className="truncate w-full text-center text-xs font-semibold text-white">{w.name}</span>
+            <span className="mt-1 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] text-slate-400">材料</span>
             <span className="mt-0.5 text-[10px] text-slate-500">{"floor" in w && w.floor ? FLOOR_LABELS[String(w.floor)] ?? String(w.floor) : ""}</span>
           </button>
         ))}
@@ -783,6 +902,9 @@ function WarehousePanel({ warehouse }: { warehouse: WarehouseItem[] }) {
       {selected && (
         <div className="mt-4 rounded-xl border border-white/10 bg-slate-800/60 p-4">
           <h4 className="text-sm font-semibold text-white">{selected.name}</h4>
+          <span className="mt-1 inline-block rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">
+            材料 · 可交易/应急
+          </span>
           <p className="mt-1 text-xs text-slate-400">{selected.description}</p>
           {"benefit" in selected && selected.benefit && (
             <div className="mt-2">
@@ -850,82 +972,6 @@ function AchievementsPanel({ records }: { records: AchievementRecord[] }) {
   );
 }
 
-function TasksPanel({ tasks, originium }: { tasks: GameTask[]; originium: number }) {
-  const visibleTasks = tasks.filter((t) => t.status !== "hidden");
-  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
-  return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold tracking-widest text-slate-400">契约追踪</h3>
-        <div className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1">
-          <div className="h-3 w-3 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-          <span className="text-xs font-bold tabular-nums text-amber-300">{originium}</span>
-          <span className="text-[10px] text-amber-400/70">原石</span>
-        </div>
-      </div>
-      <div className="max-h-[50vh] space-y-3 overflow-y-auto">
-        {visibleTasks.length === 0 ? (
-          <p className="py-8 text-center text-xs text-slate-500">暂无任务。与 NPC 互动或探索可获取任务。</p>
-        ) : (
-          visibleTasks.map((t) => (
-            <div
-              key={t.id}
-              className={`rounded-xl border p-4 ${
-                t.status === "active"
-                  ? "border-amber-400/30 bg-amber-500/5"
-                  : t.status === "completed"
-                    ? "border-emerald-400/30 bg-emerald-500/5 opacity-70"
-                    : t.status === "available"
-                      ? "border-indigo-400/30 bg-indigo-500/5"
-                    : "border-red-400/30 bg-red-500/5 opacity-50"
-              }`}
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-sm font-semibold text-white">{t.title}</span>
-                <span className={`text-[10px] font-medium uppercase tracking-wider ${
-                  t.status === "active"
-                    ? "text-amber-400"
-                    : t.status === "completed"
-                      ? "text-emerald-400"
-                      : t.status === "available"
-                        ? "text-indigo-300"
-                        : "text-red-400"
-                }`}>
-                  {getTaskStatusLabel(t.status)}
-                </span>
-              </div>
-              <p className="text-xs leading-relaxed text-slate-300">{t.desc}</p>
-              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-500">
-                <span>委托人：{t.issuerName}</span>
-                <span>楼层：{t.floorTier}</span>
-                <span className="col-span-2">
-                  领取方式：{t.claimMode === "npc_grant" ? "NPC提出委托" : t.claimMode === "auto" ? "自动记录" : "手动领取"}
-                  {t.claimMode === "manual" && t.issuerId ? `（发放：${t.issuerId}）` : ""}
-                </span>
-                <span className="col-span-2">
-                  奖励：{t.reward?.items?.length ? `道具 ${t.reward.items.length} 件` : (t.reward?.originium ? `原石 +${t.reward.originium}` : "线索")}
-                </span>
-                {t.nextHint ? <span className="col-span-2 text-indigo-300">下一步：{t.nextHint}</span> : null}
-              </div>
-              {t.status === "available" && t.claimMode === "manual" ? (
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => updateTaskStatus(t.id, "active")}
-                    className="rounded-lg border border-indigo-300/30 bg-indigo-500/15 px-3 py-1.5 text-[11px] font-semibold text-indigo-100 hover:bg-indigo-500/20"
-                  >
-                    接取
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function UnifiedMenuModal({
   activeMenu,
   onClose,
@@ -946,6 +992,7 @@ export function UnifiedMenuModal({
   const codex = useGameStore((s) => s.codex ?? {});
   const warehouse = useGameStore((s) => s.warehouse ?? []);
   const tasks = useGameStore((s) => s.tasks ?? []);
+  const journalClues = useGameStore((s) => s.journalClues ?? []);
   const originium = useGameStore((s) => s.originium ?? 0);
   const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
@@ -1070,6 +1117,8 @@ export function UnifiedMenuModal({
               onUseItem={onUseItem}
               isChatBusy={isChatBusy}
               stats={stats}
+              journalClues={journalClues}
+              codex={codex}
             />
           </Activity>
           <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>

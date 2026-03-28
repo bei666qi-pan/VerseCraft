@@ -43,6 +43,8 @@ export type ClientStructuredContextV1 = {
   worldFlags: string[];
   /** 在场 NPC：客户端可提供，服务端仍会以自身链路更新为准（暂时降权，不作为唯一真相） */
   presentNpcIds?: string[];
+  /** 阶段 6：目标↔物证↔手记升格的短摘要（供路由/守卫日志，非权威） */
+  narrativeLinkageDigest?: string;
 };
 
 export type ChatValidationResult =
@@ -144,6 +146,12 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
 
   const presentNpcIds = obj.presentNpcIds ? asStringArray(obj.presentNpcIds, 32) : undefined;
 
+  const digestRaw = obj.narrativeLinkageDigest;
+  const narrativeLinkageDigest =
+    typeof digestRaw === "string" && digestRaw.trim()
+      ? sanitizeInputText(digestRaw.trim(), 260)
+      : undefined;
+
   return {
     v: 1,
     turnIndex,
@@ -158,6 +166,7 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
     currentProfession,
     worldFlags,
     ...(presentNpcIds ? { presentNpcIds } : {}),
+    ...(narrativeLinkageDigest ? { narrativeLinkageDigest } : {}),
   };
 }
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { GameTask } from "@/store/useGameStore";
-import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
+import type { ClueEntry } from "@/lib/domain/narrativeDomain";
+import type { CodexEntry, GameTask } from "@/store/useGameStore";
+import { PlayNarrativeTaskBoard } from "@/features/play/components/PlayNarrativeTaskBoard";
 
 type PlayTaskPanelProps = {
   open: boolean;
@@ -11,23 +11,20 @@ type PlayTaskPanelProps = {
   onClose: () => void;
   onClaimTask: (taskId: string) => void;
   highlightTaskIds?: string[];
+  journalClues?: ClueEntry[];
+  codex?: Record<string, CodexEntry>;
 };
 
-function statusStyle(status: GameTask["status"]): string {
-  if (status === "active") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "available") return "border-indigo-200 bg-indigo-50 text-indigo-800";
-  return "border-rose-200 bg-rose-50 text-rose-800";
-}
-
-export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask, highlightTaskIds }: PlayTaskPanelProps) {
-  const visibleTasks = useMemo(
-    () => (tasks ?? []).filter((t) => t && t.status !== "hidden"),
-    [tasks]
-  );
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const highlightSet = useMemo(() => new Set((highlightTaskIds ?? []).filter((x) => typeof x === "string")), [highlightTaskIds]);
-
+export function PlayTaskPanel({
+  open,
+  tasks,
+  originium,
+  onClose,
+  onClaimTask,
+  highlightTaskIds,
+  journalClues,
+  codex,
+}: PlayTaskPanelProps) {
   if (!open) return null;
 
   return (
@@ -35,94 +32,28 @@ export function PlayTaskPanel({ open, tasks, originium, onClose, onClaimTask, hi
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold tracking-wider text-slate-800">任务栏</h3>
-          <p className="text-[11px] text-slate-500">仅显示核心目标与奖励</p>
+          <p className="text-[11px] text-slate-500">头等事 · 可推进路径 · 承诺与风险</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-            原石 {originium}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-          >
-            收起
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+        >
+          收起
+        </button>
       </div>
 
       <div className="max-h-[58vh] overflow-y-auto p-3">
-        {visibleTasks.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">
-            当前没有可追踪任务，继续探索会触发新线索。
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {visibleTasks.map((t) => {
-              const expanded = !!expandedIds[t.id];
-              const highlighted = highlightSet.has(t.id);
-              const reward =
-                t.reward?.items?.length && t.reward.items.length > 0
-                  ? `道具 ${t.reward.items.length} 件`
-                  : t.reward?.originium
-                  ? `原石 +${t.reward.originium}`
-                  : "线索奖励";
-              return (
-                <article
-                  key={t.id}
-                  className={`rounded-xl border bg-white p-3 transition ${
-                    highlighted
-                      ? "border-amber-200 ring-2 ring-amber-200/60 shadow-[0_0_0_3px_rgba(251,191,36,0.12)] animate-[halo-pulse_1.8s_ease-in-out_2]"
-                      : "border-slate-200"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h4 className="line-clamp-1 text-sm font-semibold text-slate-800">{t.title}</h4>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusStyle(t.status)}`}>
-                      {getTaskStatusLabel(t.status)}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs text-slate-600">
-                    {(t as any).urgencyReason || (t as any).playerHook || t.nextHint || t.desc}
-                  </p>
-                  <div className="mt-2 grid grid-cols-2 gap-y-1 text-[11px] text-slate-500">
-                    <span>委托人：{t.issuerName}</span>
-                    <span>楼层：{t.floorTier}</span>
-                    <span className="col-span-2">奖励：{reward}</span>
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedIds((prev) => ({ ...prev, [t.id]: !expanded }))}
-                      className="text-[11px] font-medium text-slate-500 transition hover:text-slate-700"
-                    >
-                      {expanded ? "收起详情" : "展开详情"}
-                    </button>
-                    {t.status === "available" && t.claimMode === "manual" ? (
-                      <button
-                        type="button"
-                        onClick={() => onClaimTask(t.id)}
-                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                      >
-                        接取
-                      </button>
-                    ) : null}
-                  </div>
-                  {expanded ? (
-                    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-600">
-                      <p>任务描述：{t.desc}</p>
-                      {(t as any).riskNote ? <p className="mt-1">风险提示：{(t as any).riskNote}</p> : null}
-                      {(t as any).taboo ? <p className="mt-1">禁区：{(t as any).taboo}</p> : null}
-                      <p className="mt-1">领取方式：{t.claimMode === "npc_grant" ? "NPC提出委托" : t.claimMode === "auto" ? "自动记录" : "手动领取"}</p>
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        )}
+        <PlayNarrativeTaskBoard
+          tasks={tasks}
+          originium={originium}
+          journalClues={journalClues}
+          codex={codex}
+          highlightTaskIds={highlightTaskIds}
+          onClaimTask={onClaimTask}
+          density="overlay"
+        />
       </div>
     </aside>
   );
 }
-

@@ -4,6 +4,8 @@ import {
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
+import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
+import type { ClueEntry } from "@/lib/domain/narrativeDomain";
 
 export type ResolvedTurnUiHints = {
   auto_open_panel?: "task" | null;
@@ -31,6 +33,8 @@ export type ResolvedDmTurn = {
   relationship_updates: unknown[];
   new_tasks: unknown[];
   task_updates: unknown[];
+  /** 手记线索增量（阶段 2+）；旧前端可忽略 */
+  clue_updates: ClueEntry[];
   player_location?: string;
   npc_location_updates: unknown[];
   main_threat_updates: unknown[];
@@ -206,6 +210,9 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     .map((u) => normalizeTaskUpdateDraft(u))
     .filter((u): u is NonNullable<ReturnType<typeof normalizeTaskUpdateDraft>> => !!u);
 
+  const nowIso = new Date().toISOString();
+  const normalizedClueUpdates = normalizeClueUpdateArray((input as { clue_updates?: unknown }).clue_updates, nowIso);
+
   if (normalizedNewTasks.length > 0) {
     ui_hints.auto_open_panel = "task";
     ui_hints.highlight_task_ids = normalizedNewTasks.map((t) => t.id);
@@ -251,6 +258,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     relationship_updates: asUnknownArray(input.relationship_updates),
     new_tasks: normalizedNewTasks,
     task_updates: normalizedTaskUpdates,
+    clue_updates: normalizedClueUpdates,
     ...(typeof input.player_location === "string" && input.player_location.trim()
       ? { player_location: clampString(input.player_location.trim(), 80) }
       : {}),

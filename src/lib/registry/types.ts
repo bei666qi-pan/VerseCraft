@@ -19,6 +19,17 @@ export type WeaponTier = Exclude<ItemTier, "D">; // "S" | "A" | "B" | "C"
 /** Floor IDs: B2=exit, B1=spawn, 1-7=above ground */
 export type FloorId = "B2" | "B1" | "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
+/**
+ * 叙事/玩法分层（可选）：用于手记同步与 DM 发奖路由；旧道具无此字段则按 effectType/forgeTags 推断。
+ */
+export type ItemDomainLayer =
+  | "key"
+  | "tool"
+  | "consumable"
+  | "evidence"
+  | "social_token"
+  | "material";
+
 /** Item effect types — direct, observable effects (not clue-based) */
 export type ItemEffectType =
   | "shield"        // Blocks one lethal attack
@@ -88,6 +99,8 @@ export interface Item {
     /** 可选：用于 UI/DM 的拒绝原因（例如“剧情关键物不可拆解”） */
     reason?: string;
   };
+  /** 可选：领域分层（阶段 2 起 DM/注册表可写） */
+  domainLayer?: ItemDomainLayer;
 }
 
 /**

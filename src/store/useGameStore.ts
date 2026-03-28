@@ -71,6 +71,7 @@ import type {
 } from "@/lib/state/snapshot/types";
 import { runReviveSyncPipeline, type ReviveOption } from "@/lib/revive/pipeline";
 import { tickInfusions } from "@/lib/playRealtime/weaponInfusion";
+import { buildItemGameplayPromptBlock } from "@/lib/play/itemGameplay";
 import type { ProfessionId, ProfessionStateV1 } from "@/lib/profession/types";
 import { createDefaultProfessionState, PROFESSION_IDS, PROFESSION_REGISTRY } from "@/lib/profession/registry";
 import { certifyProfession, computeProfessionState } from "@/lib/profession/engine";
@@ -93,9 +94,51 @@ import {
   readResumeShadowSnapshot,
   writeResumeShadowFromState,
 } from "@/lib/state/resumeShadow";
+import type { ClueEntry } from "@/lib/domain/narrativeDomain";
+import { createEmptyJournalState, JOURNAL_STATE_VERSION } from "@/lib/domain/narrativeDomain";
+import { mergeCluesWithDedupe } from "@/lib/domain/clueMerge";
+import { repairNarrativeCrossRefs } from "@/lib/domain/narrativeIntegrity";
+import type { NarrativeIntegrityReport } from "@/lib/domain/narrativeIntegrity";
+import { narrativeDebugEnabled } from "@/lib/domain/narrativeDebug";
+import { buildNarrativeLinkagePromptBlock } from "@/lib/domain/narrativeLinkagePrompt";
+import type { GameTaskV2 } from "@/lib/tasks/taskV2";
+import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
+
+/** 读档/云拉取后：修剪非法物证门槛、清理失效的 clue→objective 指针，并写回 journal。 */
+function applyNarrativeIntegrityOnBundle(args: {
+  normalizedSnapshot: RunSnapshotV2;
+  projectedTasks: GameTaskV2[];
+  inventory: Array<{ id?: string }>;
+  warehouse: Array<{ id?: string }>;
+}): {
+  normalizedSnapshot: RunSnapshotV2;
+  tasks: GameTaskV2[];
+  report: NarrativeIntegrityReport;
+} {
+  const clues = args.normalizedSnapshot.journal?.clues ?? [];
+  const { tasks, clues: cluesOut, report } = repairNarrativeCrossRefs({
+    tasks: args.projectedTasks,
+    clues,
+    inventoryItemIds: args.inventory.map((i) => String(i?.id ?? "").trim()).filter(Boolean),
+    warehouseItemIds: args.warehouse.map((w) => String(w?.id ?? "").trim()).filter(Boolean),
+  });
+  const baseJournal = args.normalizedSnapshot.journal ?? createEmptyJournalState();
+  return {
+    normalizedSnapshot: {
+      ...args.normalizedSnapshot,
+      journal: {
+        ...baseJournal,
+        version: baseJournal.version ?? JOURNAL_STATE_VERSION,
+        clues: cluesOut,
+      },
+    },
+    tasks,
+    report,
+  };
+}
 
 const idbStorage = createResilientIdbStorage();
 
@@ -341,6 +384,8 @@ interface GameState extends IntegrityMetaState {
   originium: number;
   /** 任务追踪系统 */
   tasks: GameTask[];
+  /** 手记/线索簿（与 runSnapshotV2.journal 同步） */
+  journalClues: ClueEntry[];
   /** 用户当前位置 */
   playerLocation: string;
   /** 历史最高抵达楼层分数（B1=0, 1F=1, ..., B2=99），用于结算与排行榜 */
@@ -437,6 +482,10 @@ interface GameState extends IntegrityMetaState {
   triggerIntrusionFlash: () => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
+  /**
+   * DM `clue_updates` 经 resolveDmTurn 规范化后的合并入口：按 id 去重、状态晋升、上限裁剪。
+   */
+  mergeJournalClueUpdates: (incoming: ClueEntry[]) => void;
   markSceneNpcAppearanceWritten: (playerLocation: string, npcIds: string[]) => void;
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
   popLastNLogs: (n: number) => void;
@@ -493,6 +542,10 @@ interface GameState extends IntegrityMetaState {
     memoryPromotions?: string[];
     /** Phase-2: 本回合 recall 的轻量 tag（用于未来 hooks 对齐） */
     memoryHintCodes?: string[];
+    /** 手记线索条数（shown），供服务端守卫与 prompt 预算 */
+    journalClueCount?: number;
+    /** 少量线索 id，供对齐检定（非全文） */
+    journalClueIds?: string[];
     /** Phase-4: 极简导演摘要（不上传完整队列/长文本） */
     directorDigest?: {
       tension: number;
@@ -747,6 +800,7 @@ export const useGameStore = create<GameState>()(
       inputMode: "options" as const,
       originium: 0,
       tasks: [],
+      journalClues: [],
       playerLocation: "B1_SafeZone",
       historicalMaxFloorScore: 0,
       deathCount: 0,
@@ -915,6 +969,7 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
           hasMetProfessionCertifier: false,
+          journalClues: [],
           reviveContext: {
             pending: false,
             deathLocation: null,
@@ -1487,6 +1542,14 @@ export const useGameStore = create<GameState>()(
           return { codex: next, professionState };
         }),
 
+      mergeJournalClueUpdates: (incoming) =>
+        set((s) => {
+          const safe = Array.isArray(incoming) ? incoming : [];
+          if (safe.length === 0) return {};
+          const prev = s.journalClues ?? [];
+          return { journalClues: mergeCluesWithDedupe(prev, safe, 200) };
+        }),
+
       pushLog: (entry) =>
         set((s) => ({ logs: [...(s.logs ?? []), entry] })),
 
@@ -1653,6 +1716,7 @@ export const useGameStore = create<GameState>()(
           storyDirector: createEmptyDirectorState(0),
           incidentQueue: createEmptyIncidentQueue(),
           escapeMainline: createDefaultEscapeMainlineTemplate(0),
+          journalClues: [],
         });
       },
 
@@ -1862,6 +1926,28 @@ export const useGameStore = create<GameState>()(
             if (wh.length === 0) return "";
             return ` 仓库物品：${wh.map((w) => `${w.name}[${w.id}]`).join("，")}。`;
           })() +
+          (() => {
+            try {
+              const threatMap = s.mainThreatByFloor ?? {};
+              const chunks = Object.values(threatMap)
+                .filter((x) => x && typeof x.floorId === "string")
+                .map((x) => `${x.floorId}[${x.phase}]`);
+              const block = buildItemGameplayPromptBlock({
+                inventoryItems: s.inventory ?? [],
+                warehouseItems: s.warehouse ?? [],
+                playerLocation: s.playerLocation ?? "B1_SafeZone",
+                nowHour,
+                presentNpcIds: Object.entries(s.dynamicNpcStates ?? {})
+                  .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === (s.playerLocation ?? "B1_SafeZone"))
+                  .map(([id]) => id)
+                  .slice(0, 32),
+                threatChunks: chunks.slice(0, 6),
+              });
+              return block ? ` ${block}` : "";
+            } catch {
+              return "";
+            }
+          })() +
           `天赋冷却：${ECHO_TALENTS.map((t) => `${t}[剩余${s.talentCooldowns[t]}]`).join("，")}。` +
           `原石[${s.originium}]。` +
           `进度[最高层分${s.historicalMaxFloorScore ?? 0}]。` +
@@ -1930,6 +2016,19 @@ export const useGameStore = create<GameState>()(
             const ledger = s.sceneNpcAppearanceLedger ?? {};
             const ids = Array.isArray(ledger[loc]) ? ledger[loc] : [];
             return ` 场景外貌已描写：${ids.length > 0 ? ids.slice(0, 12).join("/") : "无"}。`;
+          })() +
+          (() => {
+            try {
+              const link = buildNarrativeLinkagePromptBlock({
+                tasks: s.tasks ?? [],
+                clues: s.journalClues ?? [],
+                inventoryItemIds: (s.inventory ?? []).map((i) => i.id),
+                warehouseItemIds: (s.warehouse ?? []).map((w) => w.id),
+              });
+              return link ? ` ${link}` : "";
+            } catch {
+              return "";
+            }
           })() +
           (s.recentOptions?.length
             ? ` 【最近生成的选项历史】：${s.recentOptions.join("；")}。`
@@ -2017,6 +2116,32 @@ export const useGameStore = create<GameState>()(
           ...(hintCodes.length ? { memoryHintCodes: hintCodes } : {}),
           ...(promotions.length ? { memoryPromotions: promotions } : {}),
           ...(directorDigest.digest ? { directorDigest } : {}),
+          ...(() => {
+            const clues = s.journalClues ?? [];
+            const shown = clues.filter((c) => c.visibility !== "hidden");
+            const ids = shown
+              .map((c) => String(c.id ?? "").trim())
+              .filter(Boolean)
+              .slice(0, 24);
+            return {
+              journalClueCount: shown.length,
+              ...(ids.length ? { journalClueIds: ids } : {}),
+            };
+          })(),
+          ...(() => {
+            try {
+              const t = buildNarrativeLinkagePromptBlock({
+                tasks: s.tasks ?? [],
+                clues: s.journalClues ?? [],
+                inventoryItemIds: inventoryIds,
+                warehouseItemIds: warehouseIds,
+                maxChars: 220,
+              });
+              return t ? { narrativeLinkageDigest: t } : {};
+            } catch {
+              return {};
+            }
+          })(),
         };
       },
 
@@ -2579,6 +2704,10 @@ export const useGameStore = create<GameState>()(
           })),
           profession: computedProfession,
           memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
+          journal: {
+            version: JOURNAL_STATE_VERSION,
+            clues: mergeCluesWithDedupe([], s.journalClues ?? [], 200),
+          },
         });
         const legacyProjection = projectSnapshotToLegacy(snapshot);
         const data: SaveSlotData = {
@@ -2680,11 +2809,22 @@ export const useGameStore = create<GameState>()(
         if (slotId !== "main_slot") return;
         const data = get().saveSlots[slotId];
         if (!data) return;
-        const normalizedSnapshot = normalizeRunSnapshotV2(
+        let normalizedSnapshot = normalizeRunSnapshotV2(
           data.runSnapshotV2,
           data
         );
-        const projected = projectSnapshotToLegacy(normalizedSnapshot);
+        let projected = projectSnapshotToLegacy(normalizedSnapshot);
+        const integ = applyNarrativeIntegrityOnBundle({
+          normalizedSnapshot,
+          projectedTasks: (projected.tasks ?? data.tasks ?? []) as GameTaskV2[],
+          inventory: (projected.inventory ?? data.inventory ?? []) as Array<{ id?: string }>,
+          warehouse: (projected.warehouse ?? data.warehouse ?? []) as Array<{ id?: string }>,
+        });
+        if (narrativeDebugEnabled() && integ.report.repairsApplied.length > 0) {
+          console.info("[versecraft/narrative_integrity] loadGame", integ.report);
+        }
+        normalizedSnapshot = integ.normalizedSnapshot;
+        projected = { ...projected, tasks: integ.tasks };
         const professionStateRaw = resolveProfessionStateFromSlot(data);
         const professionState = computeProfessionState({
           prev: professionStateRaw,
@@ -2736,6 +2876,9 @@ export const useGameStore = create<GameState>()(
           storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
           incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
           escapeMainline: JSON.parse(JSON.stringify((normalizedSnapshot as any).escape ?? createDefaultEscapeMainlineTemplate(0))),
+          journalClues: JSON.parse(
+            JSON.stringify(normalizedSnapshot.journal?.clues ?? [])
+          ),
           historicalMaxSanity: data.historicalMaxSanity,
           historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
           deathCount: normalizedSnapshot.player.deathCount ?? 0,
@@ -2800,11 +2943,22 @@ export const useGameStore = create<GameState>()(
       },
       hydrateFromCloud: (slotId, data) => {
         if (!data) return;
-        const normalizedSnapshot = normalizeRunSnapshotV2(
+        let normalizedSnapshot = normalizeRunSnapshotV2(
           data.runSnapshotV2,
           data
         );
-        const projected = projectSnapshotToLegacy(normalizedSnapshot);
+        let projected = projectSnapshotToLegacy(normalizedSnapshot);
+        const integ = applyNarrativeIntegrityOnBundle({
+          normalizedSnapshot,
+          projectedTasks: (projected.tasks ?? data.tasks ?? []) as GameTaskV2[],
+          inventory: (projected.inventory ?? data.inventory ?? []) as Array<{ id?: string }>,
+          warehouse: (projected.warehouse ?? data.warehouse ?? []) as Array<{ id?: string }>,
+        });
+        if (narrativeDebugEnabled() && integ.report.repairsApplied.length > 0) {
+          console.info("[versecraft/narrative_integrity] hydrateFromCloud", integ.report);
+        }
+        normalizedSnapshot = integ.normalizedSnapshot;
+        projected = { ...projected, tasks: integ.tasks };
         const professionStateRaw = resolveProfessionStateFromSlot(data);
         const professionState = computeProfessionState({
           prev: professionStateRaw,
@@ -2860,6 +3014,9 @@ export const useGameStore = create<GameState>()(
             storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
             incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
             escapeMainline: JSON.parse(JSON.stringify((normalizedSnapshot as any).escape ?? createDefaultEscapeMainlineTemplate(0))),
+            journalClues: JSON.parse(
+              JSON.stringify(normalizedSnapshot.journal?.clues ?? [])
+            ),
             historicalMaxSanity: data.historicalMaxSanity ?? 50,
             historicalMaxFloorScore: data.historicalMaxFloorScore ?? 0,
             deathCount: normalizedSnapshot.player.deathCount ?? 0,
@@ -3035,6 +3192,7 @@ export const useGameStore = create<GameState>()(
         warehouse: s.warehouse ?? [],
         originium: s.originium ?? 0,
         tasks: s.tasks ?? [],
+        journalClues: s.journalClues ?? [],
         playerLocation: s.playerLocation ?? "B1_SafeZone",
         historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
         deathCount: s.deathCount ?? 0,

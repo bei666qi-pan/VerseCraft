@@ -44,7 +44,11 @@ import {
   normalizePlayerDmJson,
   parseAccumulatedPlayerDmJson,
 } from "@/lib/playRealtime/normalizePlayerDmJson";
-import { resolveDmTurn } from "@/features/play/turnCommit/resolveDmTurn";
+import { resolveDmTurn, type ResolvedDmTurn } from "@/features/play/turnCommit/resolveDmTurn";
+import {
+  applyItemGameplayOptionInjection,
+  shouldSkipItemOptionInjection,
+} from "@/lib/play/itemGameplay";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import {
   hasProtocolLeakSignature,
@@ -101,6 +105,7 @@ import {
   buildNpcProactiveGrantNarrativeBlock,
   normalizeDmTaskPayload,
 } from "@/lib/tasks/taskV2";
+import { applyDmChangeSetToDmRecord } from "@/lib/dmChangeSet/applyChangeSet";
 import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
 import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
 
@@ -1783,6 +1788,10 @@ export async function POST(req: Request) {
       let finalizePayload: string | null = null;
 
       if (dmRecord) {
+        dmRecord = applyDmChangeSetToDmRecord(dmRecord, {
+          clientState,
+          requestId,
+        });
         dmRecord = applyB1ServiceExecutionGuard({
           dmRecord,
           latestUserInput,
@@ -1996,7 +2005,11 @@ export async function POST(req: Request) {
           // ignore
         }
         // Finalize payload candidate first; output moderation must inspect the complete DM narrative.
-        finalizePayload = JSON.stringify(resolved);
+        let resolvedForClient: ResolvedDmTurn = resolved;
+        if (!shouldSkipItemOptionInjection({ resolved, clientPurpose: validated.clientPurpose })) {
+          resolvedForClient = applyItemGameplayOptionInjection(resolved, clientState);
+        }
+        finalizePayload = JSON.stringify(resolvedForClient);
         moderationBody = finalizePayload;
       } else {
         // 当上游返回非严格 JSON 或重复拼接对象时，强制回落到标准 DM JSON 形状，保证 SSE 契约稳定。
@@ -2023,7 +2036,11 @@ export async function POST(req: Request) {
           dmRecord = outputAudit.updatedDmRecord;
           // 输出审核可能改写 narrative/security_meta；改写后必须再次进入 phase-1 resolver
           // 以保证数组缺省、裁剪、task 规范化、acquire 降级等不变式仍成立。
-          finalizePayload = JSON.stringify(resolveDmTurn(dmRecord));
+          let auditedResolved = resolveDmTurn(dmRecord);
+          if (!shouldSkipItemOptionInjection({ resolved: auditedResolved, clientPurpose: validated.clientPurpose })) {
+            auditedResolved = applyItemGameplayOptionInjection(auditedResolved, clientState);
+          }
+          finalizePayload = JSON.stringify(auditedResolved);
           moderationBody = finalizePayload;
 
           if (outputAudit.verdict === "reject") {

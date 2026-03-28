@@ -19,6 +19,7 @@ import type {
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { inferSaveSlotKind } from "./branch";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
+import { normalizeJournalState } from "@/lib/domain/clueMerge";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -239,6 +240,7 @@ export function normalizeRunSnapshotV2(
     escape: (() => {
       return normalizeEscapeMainline((s as any).escape, nowHour);
     })(),
+    journal: normalizeJournalState((s as { journal?: unknown }).journal),
     npcs: asRecord(s.npcs) as RunSnapshotV2["npcs"],
     tasks: {
       active: normalizeTasks(s.tasks?.active),

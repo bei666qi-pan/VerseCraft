@@ -30,6 +30,7 @@ test("normalizePlayerDmJson fills array defaults and consumes_time true", () => 
   assert.deepEqual(n!.consumed_items, []);
   assert.deepEqual(n!.awarded_items, []);
   assert.deepEqual(n!.codex_updates, []);
+  assert.deepEqual(n!.clue_updates, []);
   assert.deepEqual(n!.relationship_updates, []);
   assert.deepEqual(n!.main_threat_updates, []);
   assert.deepEqual(n!.weapon_updates, []);
@@ -49,12 +50,14 @@ test("normalizePlayerDmJson preserves consumes_time false and optional strings",
     player_location: "B1_SafeZone",
     bgm_track: "bgm_2_suspense",
     currency_change: -2,
+    clue_updates: [{ title: "线索A", detail: "x" }],
   });
   assert.ok(n);
   assert.equal(n!.consumes_time, false);
   assert.equal(n!.player_location, "B1_SafeZone");
   assert.equal(n!.bgm_track, "bgm_2_suspense");
   assert.equal(n!.currency_change, -2);
+  assert.ok(Array.isArray(n!.clue_updates) && (n!.clue_updates as unknown[]).length >= 1);
 });
 
 test("normalizePlayerDmJson sanitizes weapon_updates to whitelist shape", () => {

@@ -3,6 +3,7 @@ import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { SaveSlotKind } from "./branch";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
+import type { JournalState } from "@/lib/domain/narrativeDomain";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
 
@@ -164,6 +165,10 @@ export interface RunSnapshotV2 {
    * - 目标：结构固定、可追踪的“走出去”真相源，不依赖 narrative
    */
   escape?: unknown;
+  /**
+   * 手记/线索簿（阶段 2+）：与任务、背包弱关联；旧存档缺省空。
+   */
+  journal?: JournalState;
   npcs: Record<string, SnapshotNpcState>;
   tasks: SnapshotTasks;
   death: SnapshotDeath;

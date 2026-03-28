@@ -21,6 +21,14 @@ function clampInt(n: unknown, min: number, max: number): number {
   return Math.max(min, Math.min(max, safe));
 }
 
+function safeJsonByteLength(v: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(v)).length;
+  } catch {
+    return 999_999;
+  }
+}
+
 function asObjectArray(v: unknown, maxLen: number): Array<Record<string, unknown>> {
   if (!Array.isArray(v)) return [];
   const out: Array<Record<string, unknown>> = [];
@@ -160,6 +168,7 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     weapon_bag_updates: normalizeWeaponBagUpdates((o as { weapon_bag_updates?: unknown }).weapon_bag_updates),
     new_tasks: asUnknownArray(o.new_tasks),
     task_updates: asUnknownArray(o.task_updates),
+    clue_updates: asUnknownArray(o.clue_updates).slice(0, 48),
     npc_location_updates: asUnknownArray(o.npc_location_updates),
     // Always emit options (possibly empty) so clients can reliably clear stale options.
     options: [],
@@ -185,6 +194,16 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   if (typeof o.bgm_track === "string" && o.bgm_track.length > 0) {
     out.bgm_track = o.bgm_track;
   }
+  const changeSetRaw = (o as { dm_change_set?: unknown }).dm_change_set;
+  if (
+    changeSetRaw &&
+    typeof changeSetRaw === "object" &&
+    !Array.isArray(changeSetRaw) &&
+    safeJsonByteLength(changeSetRaw) <= 16_384
+  ) {
+    out.dm_change_set = changeSetRaw;
+  }
+
   if (o.security_meta && typeof o.security_meta === "object" && !Array.isArray(o.security_meta)) {
     // 允许写入 security_meta，但限制大小，避免注入超大对象导致带宽/日志膨胀。
     try {

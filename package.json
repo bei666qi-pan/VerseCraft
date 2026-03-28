@@ -40,8 +40,7 @@
     "kg:compact": "tsx scripts/vc-compaction.ts",
     "kg:self-check": "tsx scripts/kg-self-check.ts",
     "seed:world-knowledge": "tsx scripts/seed-world-knowledge.ts",
-    "replay:phase3:e2e": "tsx scripts/replay-phase3-e2e.ts"
-    ,
+    "replay:phase3:e2e": "tsx scripts/replay-phase3-e2e.ts",
     "content:validate": "tsx scripts/validate-content-spec.ts"
   },
   "dependencies": {
@@ -62,6 +61,7 @@
     "recharts": "^3.8.0",
     "redis": "^5.11.0",
     "server-only": "^0.0.1",
+    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

@@ -40,6 +40,8 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(s.includes("xinlan-anchor"));
   assert.ok(s.includes("欣蓝（N-010）"));
   assert.ok(s.includes("第一牵引"));
+  assert.ok(s.includes("阶段6·系统咬合"));
+  assert.ok(s.includes("matures_to_objective_id"));
   assert.ok(!s.includes("forge_mod_"));
   assert.ok(!s.includes("液态威胁"));
   assert.ok(!s.includes("镜像灌注"));

@@ -16,6 +16,7 @@ test("resolveTurnConsistency: arrays default to empty and options stays array", 
   assert.deepEqual(out.awarded_warehouse_items, []);
   assert.deepEqual(out.new_tasks, []);
   assert.deepEqual(out.task_updates, []);
+  assert.deepEqual(out.clue_updates, []);
 });
 
 test("resolveTurnConsistency: acquire semantics without awards should be downgraded and flagged", () => {
@@ -78,5 +79,21 @@ test("resolveTurnConsistency: completed/failed task_updates may produce toast_hi
   } as any);
   assert.equal(typeof out.ui_hints?.toast_hint === "string", true);
   assert.equal((out.ui_hints?.toast_hint ?? "").length > 0, true);
+});
+
+test("resolveTurnConsistency: clue_updates normalizes to ClueEntry[]", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "你在告示边角看到一行铅笔字。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    clue_updates: [{ title: "告示旁字迹", detail: "写着别在子时按电梯", kind: "trace" }],
+  } as any);
+  assert.equal(Array.isArray(out.clue_updates), true);
+  assert.equal(out.clue_updates.length, 1);
+  assert.equal(out.clue_updates[0]?.title, "告示旁字迹");
+  assert.equal(out.clue_updates[0]?.kind, "trace");
 });
 

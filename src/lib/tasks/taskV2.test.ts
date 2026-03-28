@@ -70,6 +70,7 @@ test("normalizeDmTaskPayload normalizes both new_tasks and task_updates", () => 
   assert.equal(newTasks[0]?.id, "main_1");
   assert.equal(newTasks[0]?.reward.originium, 3);
   assert.equal(updates[0]?.status, "completed");
+  assert.deepEqual(out.clue_updates, []);
 });
 
 test("stage one starter tasks include main and floor", () => {
