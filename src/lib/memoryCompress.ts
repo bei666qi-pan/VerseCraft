@@ -5,7 +5,12 @@
 
 import { compressSessionMemory } from "@/lib/ai/logicalTasks";
 import { XINLAN_NPC_ID } from "@/lib/epistemic/policy";
-import type { NpcEpistemicSnapshotMin } from "@/lib/epistemic/types";
+import type {
+  ActorScopedMemorySnapshotRow,
+  NpcEpistemicSnapshotMin,
+  NpcPrivateMemoryIndex,
+  RevealTierSensitiveFactRef,
+} from "@/lib/epistemic/types";
 import { createRequestId } from "@/lib/security/helpers";
 
 /** 嵌在 playerStatus jsonb 内，无需新迁移列 */
@@ -37,6 +42,12 @@ export interface EpistemicCompressedMemory extends CompressedMemory {
   emotional_residue_markers?: Array<{ actorId?: string; note: string }>;
   /** 服务端维护：最近残响演出（用于 anti-repeat），勿写秘密正文 */
   epistemic_residue_recent_uses?: EpistemicResidueRecentEntry[];
+  /** 按 NPC 的短叙事提示（不含他者私域命题正文） */
+  actor_scoped_memory_snapshots?: ActorScopedMemorySnapshotRow[];
+  /** 审计：各 NPC 私有记忆键前缀索引（非正文） */
+  npc_private_memory_index?: NpcPrivateMemoryIndex;
+  /** 与揭露档位绑定的事实 id（压缩层引用） */
+  reveal_tier_sensitive_facts?: RevealTierSensitiveFactRef[];
 }
 
 export type EpistemicResidueRecentEntry = {
@@ -71,6 +82,9 @@ export type SessionMemoryForDm =
       unresolved_rumors?: string[];
       emotional_residue_markers?: Array<{ actorId?: string; note: string }>;
       epistemic_residue_recent_uses?: EpistemicResidueRecentEntry[];
+      actor_scoped_memory_snapshots?: ActorScopedMemorySnapshotRow[];
+      npc_private_memory_index?: NpcPrivateMemoryIndex;
+      reveal_tier_sensitive_facts?: RevealTierSensitiveFactRef[];
     }
   | null;
 
@@ -101,6 +115,11 @@ const COMPRESSION_PROMPT = `你是游戏剧情整理员。根据「旧分层记�
 - unresolved_rumors: 未证实传闻短句数组。
 - emotional_residue_markers: [ { "actorId": "N-xxx?", "note": "不安/熟悉感等" } ]（禁止写具体秘密内容）。
 - epistemic_residue_recent_uses: [ { "npcId": "N-xxx", "mode": "faint_familiarity", "iso": "ISO时间" } ]（若旧记忆已有则原样保留；服务端用于防重复演出，勿编造具体秘密）。
+
+可选（阶段 4+ 细粒度）：
+- actor_scoped_memory_snapshots: [ { "npcId": "N-xxx", "scopedNarrativeHint": "该 NPC 视角可引用的上限短句（不得含系统独占真相）" } ]
+- npc_private_memory_index: { "N-xxx": ["mem_key_prefix_1", "…"] }（仅键/前缀，禁止正文）
+- reveal_tier_sensitive_facts: [ { "id": "fact_id", "minRevealRank": 0 } ]（与 runtime reveal 档位对齐的引用）
 
 禁止：把 dm_only_truth_summary 中的命题复制进 npc_epistemic_snapshots 或 public_plot_summary。`;
 
@@ -191,6 +210,50 @@ function parseResidueRecentUses(raw: unknown): EpistemicResidueRecentEntry[] {
   return out.slice(0, 24);
 }
 
+function parseActorScopedSnapshots(raw: unknown): ActorScopedMemorySnapshotRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActorScopedMemorySnapshotRow[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const o = row as Record<string, unknown>;
+    const npcId = typeof o.npcId === "string" ? o.npcId.trim() : "";
+    if (!npcId) continue;
+    const hint = typeof o.scopedNarrativeHint === "string" ? o.scopedNarrativeHint.trim().slice(0, 280) : "";
+    out.push({ npcId, ...(hint ? { scopedNarrativeHint: hint } : {}) });
+  }
+  return out.slice(0, 24);
+}
+
+function parseNpcPrivateMemoryIndex(raw: unknown): NpcPrivateMemoryIndex {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const o = raw as Record<string, unknown>;
+  const out: NpcPrivateMemoryIndex = {};
+  for (const [k, v] of Object.entries(o)) {
+    const id = k.trim().slice(0, 32);
+    if (!id) continue;
+    out[id] = asStringArray(v)
+      .map((s) => s.slice(0, 64))
+      .slice(0, 24);
+  }
+  return out;
+}
+
+function parseRevealTierSensitiveFacts(raw: unknown): RevealTierSensitiveFactRef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RevealTierSensitiveFactRef[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const o = row as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id.trim().slice(0, 96) : "";
+    if (!id) continue;
+    const mr = o.minRevealRank;
+    const minRevealRank =
+      typeof mr === "number" && Number.isFinite(mr) ? Math.max(0, Math.min(12, Math.floor(mr))) : 0;
+    out.push({ id, minRevealRank });
+  }
+  return out.slice(0, 48);
+}
+
 export function parseCompressionResponseToEpistemic(content: string): EpistemicCompressedMemory | null {
   const trimmed = content.trim().replace(/^```json\s*|\s*```$/g, "");
   try {
@@ -220,6 +283,9 @@ export function parseCompressionResponseToEpistemic(content: string): EpistemicC
       unresolved_rumors: asStringArray(parsed.unresolved_rumors),
       emotional_residue_markers: parseEmotionalMarkers(parsed.emotional_residue_markers),
       epistemic_residue_recent_uses: parseResidueRecentUses(parsed.epistemic_residue_recent_uses),
+      actor_scoped_memory_snapshots: parseActorScopedSnapshots(parsed.actor_scoped_memory_snapshots),
+      npc_private_memory_index: parseNpcPrivateMemoryIndex(parsed.npc_private_memory_index),
+      reveal_tier_sensitive_facts: parseRevealTierSensitiveFacts(parsed.reveal_tier_sensitive_facts),
     };
     return sanitizeEpistemicCompressedMemory(ep);
   } catch {
@@ -272,7 +338,17 @@ export function sanitizeEpistemicCompressedMemory(ep: EpistemicCompressedMemory)
     };
   });
   const residueUses = (ep.epistemic_residue_recent_uses ?? []).slice(0, 16);
-  return { ...ep, npc_epistemic_snapshots: snapshots, epistemic_residue_recent_uses: residueUses };
+  const actorScoped = parseActorScopedSnapshots(ep.actor_scoped_memory_snapshots);
+  const npcIdx = parseNpcPrivateMemoryIndex(ep.npc_private_memory_index);
+  const revealRefs = parseRevealTierSensitiveFacts(ep.reveal_tier_sensitive_facts);
+  return {
+    ...ep,
+    npc_epistemic_snapshots: snapshots,
+    epistemic_residue_recent_uses: residueUses,
+    actor_scoped_memory_snapshots: actorScoped.length ? actorScoped : undefined,
+    npc_private_memory_index: Object.keys(npcIdx).length ? npcIdx : undefined,
+    reveal_tier_sensitive_facts: revealRefs.length ? revealRefs : undefined,
+  };
 }
 
 export function toLegacyCompressedMemory(ep: EpistemicCompressedMemory): LegacyCompressedMemory {
@@ -302,6 +378,9 @@ export type SessionMemoryEpistemicEmbedV1 = Pick<
   | "unresolved_rumors"
   | "emotional_residue_markers"
   | "epistemic_residue_recent_uses"
+  | "actor_scoped_memory_snapshots"
+  | "npc_private_memory_index"
+  | "reveal_tier_sensitive_facts"
 >;
 
 export function extractEpistemicEmbedPayload(ep: EpistemicCompressedMemory): SessionMemoryEpistemicEmbedV1 {
@@ -317,6 +396,9 @@ export function extractEpistemicEmbedPayload(ep: EpistemicCompressedMemory): Ses
     unresolved_rumors: ep.unresolved_rumors,
     emotional_residue_markers: ep.emotional_residue_markers,
     epistemic_residue_recent_uses: ep.epistemic_residue_recent_uses,
+    actor_scoped_memory_snapshots: ep.actor_scoped_memory_snapshots,
+    npc_private_memory_index: ep.npc_private_memory_index,
+    reveal_tier_sensitive_facts: ep.reveal_tier_sensitive_facts,
   };
 }
 
@@ -361,6 +443,9 @@ function embedToEpistemicFields(embed: unknown): Partial<EpistemicCompressedMemo
     unresolved_rumors: asStringArray(e.unresolved_rumors),
     emotional_residue_markers: parseEmotionalMarkers(e.emotional_residue_markers),
     epistemic_residue_recent_uses: parseResidueRecentUses(e.epistemic_residue_recent_uses),
+    actor_scoped_memory_snapshots: parseActorScopedSnapshots(e.actor_scoped_memory_snapshots),
+    npc_private_memory_index: parseNpcPrivateMemoryIndex(e.npc_private_memory_index),
+    reveal_tier_sensitive_facts: parseRevealTierSensitiveFacts(e.reveal_tier_sensitive_facts),
   };
 }
 
@@ -417,6 +502,9 @@ export function coerceRowToMemoryForDm(row: SessionMemoryRow | null): SessionMem
     (ep.recent_public_events?.length ?? 0) > 0 ||
     (ep.unresolved_rumors?.length ?? 0) > 0 ||
     (ep.epistemic_residue_recent_uses?.length ?? 0) > 0 ||
+    (ep.actor_scoped_memory_snapshots?.length ?? 0) > 0 ||
+    (ep.reveal_tier_sensitive_facts?.length ?? 0) > 0 ||
+    (ep.npc_private_memory_index && Object.keys(ep.npc_private_memory_index).length > 0) ||
     Object.keys(stripped).length > 0 ||
     Object.keys(ep.npc_relationships).length > 0;
   if (!has) return null;
@@ -435,6 +523,9 @@ export function coerceRowToMemoryForDm(row: SessionMemoryRow | null): SessionMem
     unresolved_rumors: ep.unresolved_rumors,
     emotional_residue_markers: ep.emotional_residue_markers,
     epistemic_residue_recent_uses: ep.epistemic_residue_recent_uses,
+    actor_scoped_memory_snapshots: ep.actor_scoped_memory_snapshots,
+    npc_private_memory_index: ep.npc_private_memory_index,
+    reveal_tier_sensitive_facts: ep.reveal_tier_sensitive_facts,
   };
 }
 
@@ -470,6 +561,15 @@ function formatPreviousMemoryForCompress(old: EpistemicCompressedMemory | Compre
     parts.push(`【旧 npc_epistemic_snapshots】\n${JSON.stringify(ep.npc_epistemic_snapshots)}`);
   }
   if (ep.unresolved_rumors?.length) parts.push(`【旧 unresolved_rumors】\n${JSON.stringify(ep.unresolved_rumors)}`);
+  if (ep.actor_scoped_memory_snapshots?.length) {
+    parts.push(`【旧 actor_scoped_memory_snapshots】\n${JSON.stringify(ep.actor_scoped_memory_snapshots)}`);
+  }
+  if (ep.npc_private_memory_index && Object.keys(ep.npc_private_memory_index).length) {
+    parts.push(`【旧 npc_private_memory_index】\n${JSON.stringify(ep.npc_private_memory_index)}`);
+  }
+  if (ep.reveal_tier_sensitive_facts?.length) {
+    parts.push(`【旧 reveal_tier_sensitive_facts】\n${JSON.stringify(ep.reveal_tier_sensitive_facts)}`);
+  }
   return parts.join("\n\n");
 }
 

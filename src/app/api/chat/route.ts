@@ -106,6 +106,7 @@ import { applyEquipmentExecutionGuard } from "@/lib/playRealtime/equipmentExecut
 import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
 import { applyWeaponTacticalAdjudication } from "@/lib/playRealtime/weaponAdjudication";
 import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
+import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 import {
   applyNpcProactiveGrantGuard,
@@ -118,20 +119,21 @@ import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/r
 import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
-import { detectEpistemicAnomaly } from "@/lib/epistemic/detector";
+import { detectCognitiveAnomaly } from "@/lib/epistemic/detector";
 import { epistemicDebugLog, getEpistemicRolloutFlags } from "@/lib/epistemic/featureFlags";
 import { loreFactsToKnowledgeFacts, mergeLorePacketSlices } from "@/lib/epistemic/loreFactBridge";
 import { buildNpcEpistemicAlertAugmentationBlock } from "@/lib/epistemic/reaction";
 import { sessionMemoryRowToKnowledgeFacts } from "@/lib/epistemic/sessionFactBridge";
 import { resolveEpistemicTargetNpcId } from "@/lib/epistemic/targetNpc";
-import {
-  applyEpistemicPostGenerationValidation,
-  type EpistemicValidatorTelemetry,
-} from "@/lib/epistemic/validator";
+import type { EpistemicValidatorTelemetry } from "@/lib/epistemic/validator";
+import { applyNpcConsistencyPostGeneration } from "@/lib/npcConsistency/validator";
 import type { EpistemicAnomalyResult, EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "@/lib/epistemic/types";
 import { buildEpistemicResiduePerformancePlan } from "@/lib/epistemic/residuePerformance";
 import { XINLAN_NPC_ID } from "@/lib/epistemic/policy";
 import type { LorePacket } from "@/lib/worldKnowledge/types";
+import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
+import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
+import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -709,7 +711,7 @@ export async function POST(req: Request) {
           compact: true as const,
         }
       : { compact: false as const };
-  let memoryBlock = buildActorScopedEpistemicMemoryBlock({
+  const earlyScoped = buildActorScopedEpistemicMemoryBlock({
     mem: coerceRowToMemoryForDm(sessionMemory),
     actorNpcId: focusNpcEarly,
     presentNpcIds: presentNpcIdsEarly,
@@ -718,7 +720,24 @@ export async function POST(req: Request) {
     anomalyResult: null,
     detectorRan: false,
     options: memoryCapsEarly,
-  }).block;
+  });
+  let memoryBlock = earlyScoped.block;
+  const earlyRevealRank = computeMaxRevealRankFromSignals(
+    parsePlayerWorldSignals(playerContext, playerLocEarly)
+  );
+  const npcConsistencyBoundaryEarly = buildNpcConsistencyBoundaryCompactBlock({
+    playerContext,
+    latestUserInput,
+    playerLocation: playerLocEarly,
+    focusNpcId: focusNpcEarly,
+    maxRevealRank: earlyRevealRank,
+    epistemic: {
+      actorKnownFactCount: earlyScoped.metrics.actorKnownFactCount,
+      publicFactCount: earlyScoped.metrics.publicFactCount,
+      forbiddenFactCount: earlyScoped.metrics.forbiddenFactCount,
+    },
+    maxChars: contextMode === "minimal" ? 900 : 1600,
+  });
   const playerContextForPrompt =
     contextMode === "minimal"
       ? buildMinimalPlayerContextSnapshot(playerContext)
@@ -729,6 +748,7 @@ export async function POST(req: Request) {
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets: "",
     controlAugmentation: "",
+    npcConsistencyBoundaryBlock: npcConsistencyBoundaryEarly.text,
   });
   const systemPromptForQuota = `${playerDmStablePrefix}\n\n${dynamicCoreForQuota}`;
 
@@ -1178,6 +1198,8 @@ export async function POST(req: Request) {
   const nowIsoForEpistemic = new Date().toISOString();
   const playerLocForEpistemic = guessPlayerLocationFromContext(playerContext);
   const presentNpcIdsForEpistemic = extractPresentNpcIds(playerContext, playerLocForEpistemic);
+  const signalsForEpistemicReveal = parsePlayerWorldSignals(playerContext, playerLocForEpistemic);
+  const maxRevealRankForMemory = computeMaxRevealRankFromSignals(signalsForEpistemicReveal);
   const epistemicRolloutFlags = getEpistemicRolloutFlags();
 
   let focusNpcForPrompt: string | null = null;
@@ -1211,13 +1233,15 @@ export async function POST(req: Request) {
             ? { remembersPlayerIdentity: "vague" }
             : undefined,
       });
-      epistemicAnomalyResult = detectEpistemicAnomaly({
+      epistemicAnomalyResult = detectCognitiveAnomaly({
         npcId: focusNpcId,
         playerInput: latestUserInput,
         allFacts: allEpistemicFactsForPrompt,
         scene: epistemicScene,
         profile: epistemicProfileForPrompt,
         nowIso: nowIsoForEpistemic,
+        maxRevealRank: maxRevealRankForMemory,
+        canonical: getNpcCanonicalIdentity(focusNpcId),
       });
       epistemicAlertAugmentation = buildNpcEpistemicAlertAugmentationBlock(epistemicAnomalyResult);
       if (epistemicRolloutFlags.epistemicDebugLog && epistemicAnomalyResult.anomaly) {
@@ -1249,6 +1273,11 @@ export async function POST(req: Request) {
   }
 
   const dmMemForEpistemic = coerceRowToMemoryForDm(sessionMemory);
+  const epistemicRuntimeCrossRef =
+    "同条 system：npc_player_baseline_packet、npc_scene_authority_packet、key_npc_lore_packet、worldLorePacketsCompact（reveal_tier）";
+  const actorCanonOneLinerForMemory = focusNpcForPrompt?.trim()
+    ? getNpcCanonicalIdentity(focusNpcForPrompt).canonicalPublicRole.trim().slice(0, 120)
+    : undefined;
   const epistemicResiduePlan = buildEpistemicResiduePerformancePlan({
     focusNpcId: focusNpcForPrompt,
     profile: epistemicProfileForPrompt,
@@ -1286,6 +1315,10 @@ export async function POST(req: Request) {
     ),
     options: memoryCapsFinal,
     nowIso: nowIsoForEpistemic,
+    maxRevealRank: maxRevealRankForMemory,
+    runtimeCrossRefNote: epistemicRuntimeCrossRef,
+    actorCanonOneLiner: actorCanonOneLinerForMemory,
+    actorScopedEpistemicEnabled: epistemicRolloutFlags.enableActorScopedEpistemic,
   });
   memoryBlock = scopedFinal.block;
   const epistemicPromptMetrics = scopedFinal.metrics;
@@ -1326,15 +1359,35 @@ export async function POST(req: Request) {
         runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
         contextMode,
         maxChars: contextMode === "minimal" ? 1400 : 4000,
+        focusNpcId: focusNpcForPrompt,
       });
   runtimePacketChars = runtimePackets.length;
   runtimePacketTokenEstimate = Math.ceil(runtimePacketChars / 4);
+  const npcConsistencyBoundaryFinal = buildNpcConsistencyBoundaryCompactBlock({
+    playerContext,
+    latestUserInput,
+    playerLocation: playerLocForEpistemic,
+    focusNpcId: focusNpcForPrompt,
+    maxRevealRank: maxRevealRankForMemory,
+    epistemic: {
+      actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
+      publicFactCount: epistemicPromptMetrics.publicFactCount,
+      forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
+    },
+    maxChars: contextMode === "minimal" ? 900 : 1600,
+    rollout: {
+      enableNpcCanonGuard: epistemicRolloutFlags.enableNpcCanonGuard,
+      enableNpcBaselineAttitude: epistemicRolloutFlags.enableNpcBaselineAttitude,
+      enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
+    },
+  });
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext: playerContextForPrompt,
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
+    npcConsistencyBoundaryBlock: npcConsistencyBoundaryFinal.text,
   });
   const aiEnvForSystem = resolveAiEnv();
   const systemChatMessages = composePlayerChatSystemMessages(
@@ -1382,10 +1435,14 @@ export async function POST(req: Request) {
       epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
       actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
       publicFactCount: epistemicPromptMetrics.publicFactCount,
+      forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
       anomalySeverity: epistemicPromptMetrics.anomalySeverity,
       validatorTriggered: epistemicPromptMetrics.validatorTriggered,
       promptCharsDelta: epistemicPromptMetrics.promptCharsDelta,
+      promptCharDelta: epistemicPromptMetrics.promptCharsDelta,
       actorScopedMemoryBlockChars: epistemicPromptMetrics.blockChars,
+      npcConsistencyBoundaryEnabled: npcConsistencyBoundaryFinal.npcConsistencyBoundaryEnabled,
+      npcConsistencyBoundaryChars: npcConsistencyBoundaryFinal.charCount,
       epistemicRollout: epistemicRolloutFlags,
     },
   }).catch(() => {});
@@ -1887,21 +1944,45 @@ export async function POST(req: Request) {
           settlementAwardPruned,
           });
 
+          const vTypes = epistemicPostValidatorTelemetry?.violationTypes ?? [];
           const epistemicRollupPayload = {
             rolloutFlags: epistemicRolloutFlags,
             actorNpcId: focusNpcForPrompt,
             actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
             publicFactCount: epistemicPromptMetrics.publicFactCount,
+            forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
             epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
             anomalyDetected: Boolean(epistemicAnomalyResult?.anomaly),
             anomalySeverity: epistemicAnomalyResult?.anomaly ? epistemicAnomalyResult.severity : "none",
             validatorTriggered: epistemicPostValidatorTelemetry?.validatorTriggered ?? false,
             rewriteTriggered: epistemicPostValidatorTelemetry?.rewriteTriggered ?? false,
             responseSafe: epistemicPostValidatorTelemetry?.finalResponseSafe ?? true,
+            promptCharsDelta: epistemicPromptMetrics.promptCharsDelta,
             promptCharDelta: epistemicPromptMetrics.promptCharsDelta,
             firstChunkLatencyMs: typeof base.firstChunkLatencyMs === "number" ? base.firstChunkLatencyMs : null,
             dynamicCharLen,
             actorScopedMemoryBlockChars: epistemicPromptMetrics.blockChars,
+            npcConsistencyBoundaryEnabled: npcConsistencyBoundaryFinal.npcConsistencyBoundaryEnabled,
+            npcConsistencyBoundaryChars: npcConsistencyBoundaryFinal.charCount,
+            npcConsistencyValidatorTriggered: epistemicPostValidatorTelemetry?.npcConsistencyValidatorTriggered ?? false,
+            npcConsistencyViolationTypes: vTypes,
+            npcCanonFallbackCount:
+              focusNpcForPrompt && !isRegisteredCanonicalNpcId(focusNpcForPrompt) ? 1 : 0,
+            npcLocationMismatchCount: vTypes.includes("offscreen_npc_dialogue") ? 1 : 0,
+            npcGenderMismatchCount: vTypes.includes("gender_pronoun_mismatch") ? 1 : 0,
+            npcAttitudeViolationCount:
+              vTypes.includes("normal_npc_old_friend_tone") || vTypes.includes("no_reaction_to_boundary_crossing")
+                ? 1
+                : 0,
+            npcPrivilegeViolationCount:
+              vTypes.includes("loop_truth_premature") ||
+              vTypes.includes("familiarity_overreach") ||
+              vTypes.includes("world_truth_premature") ||
+              vTypes.includes("private_fact_leak")
+                ? 1
+                : 0,
+            npcConsistencyRewriteCount: epistemicPostValidatorTelemetry?.rewriteTriggered ? 1 : 0,
+            residueTriggeredCount: Boolean(epistemicResiduePlan.packet) ? 1 : 0,
           };
           const withEpistemicCore = { ...base, epistemicRollup: epistemicRollupPayload };
           const withEpistemicPost =
@@ -2150,7 +2231,7 @@ export async function POST(req: Request) {
         settlementAwardPruned = Number.isFinite(prunedRaw) ? Math.max(0, Math.trunc(prunedRaw)) : 0;
 
         const runEpistemicPostGuard = (rec: Record<string, unknown>): Record<string, unknown> => {
-          const { dmRecord: next, telemetry } = applyEpistemicPostGenerationValidation({
+          const { dmRecord: next, telemetry } = applyNpcConsistencyPostGeneration({
             dmRecord: rec,
             actorNpcId: focusNpcForPrompt,
             presentNpcIds: presentNpcIdsForEpistemic,
@@ -2158,6 +2239,8 @@ export async function POST(req: Request) {
             profile: epistemicProfileForPrompt,
             anomalyResult: epistemicAnomalyResult,
             nowIso: nowIsoForEpistemic,
+            maxRevealRank: maxRevealRankForMemory,
+            canonical: focusNpcForPrompt ? getNpcCanonicalIdentity(focusNpcForPrompt) : null,
           });
           epistemicPostValidatorTelemetry = telemetry;
           return next;

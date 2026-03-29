@@ -102,7 +102,6 @@ test("anti-repeat：近期用过的 mode 会被轮换", () => {
     epistemic_residue_recent_uses: [
       { npcId: npc, mode: "faint_familiarity", iso: "2026-01-01T00:00:00.000Z" },
       { npcId: npc, mode: "aversion", iso: "2026-01-02T00:00:00.000Z" },
-      { npcId: npc, mode: "trust_without_reason", iso: "2026-01-03T00:00:00.000Z" },
     ],
   };
   let modes = new Set<string>();
@@ -138,6 +137,65 @@ test("retainsEmotionalResidue 为假时不产出 packet", () => {
     nowIso: iso,
   });
   assert.equal(plan.packet, null);
+});
+
+test("cooldown：同 NPC 近期触发过则本回合不再产出 packet", () => {
+  const prev = process.env.VERSECRAFT_NPC_RESIDUE_COOLDOWN_MS;
+  process.env.VERSECRAFT_NPC_RESIDUE_COOLDOWN_MS = "3600000";
+  try {
+    const npc = "N-888";
+    const profile = buildNpcEpistemicProfile(npc);
+    const mem = {
+      plot_summary: "p",
+      player_status: {},
+      npc_relationships: {},
+      epistemic_residue_recent_uses: [{ npcId: npc, mode: "dread", iso }],
+    };
+    for (let i = 0; i < 80; i++) {
+      const plan = buildEpistemicResiduePerformancePlan({
+        focusNpcId: npc,
+        profile,
+        anomalyResult: emptyAnomaly(npc),
+        mem,
+        latestUserInput: "七锚 档案 轮回",
+        playerContext: `{"hour":19}`,
+        presentNpcIds: [npc],
+        requestId: `cd${i}`,
+        nowIso: iso,
+      });
+      assert.equal(plan.packet, null);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.VERSECRAFT_NPC_RESIDUE_COOLDOWN_MS;
+    else process.env.VERSECRAFT_NPC_RESIDUE_COOLDOWN_MS = prev;
+  }
+});
+
+test("旧存档 mode trust_without_reason 与 protective_pull 同族防连刷", () => {
+  const npc = "N-778";
+  const profile = buildNpcEpistemicProfile(npc);
+  const mem = {
+    plot_summary: "p",
+    player_status: {},
+    npc_relationships: {},
+    epistemic_residue_recent_uses: [{ npcId: npc, mode: "trust_without_reason", iso: "2026-01-01T00:00:00.000Z" }],
+  };
+  let sawProtective = false;
+  for (let i = 0; i < 200; i++) {
+    const plan = buildEpistemicResiduePerformancePlan({
+      focusNpcId: npc,
+      profile,
+      anomalyResult: emptyAnomaly(npc),
+      mem,
+      latestUserInput: "你好。",
+      playerContext: '{"hour":10}',
+      presentNpcIds: [npc],
+      requestId: `leg${i}`,
+      nowIso: iso,
+    });
+    if (plan.packet?.residueMode === "protective_pull") sawProtective = true;
+  }
+  assert.equal(sawProtective, false, "protective_pull should be banned by legacy trust_without_reason row");
 });
 
 test("mergeEpistemicResidueUseIntoSessionDbRow 追加记录", () => {

@@ -2,8 +2,8 @@
  * 阶段 4：按「当前发言 NPC」权限化组装会话记忆块，避免把全局 DM 摘要当台词素材。
  */
 
-import { buildNpcEpistemicProfile } from "./builders";
-import { canActorKnowFact, filterFactsForActor } from "./guards";
+import { buildActorScopedEpistemicContext, buildNpcEpistemicProfile } from "./builders";
+import { canActorKnowFact, filterFactsForActor, forbiddenFactsForActor } from "./guards";
 import type { EpistemicResiduePromptPacket } from "./residuePerformance";
 import type { EpistemicAnomalyResult, EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "./types";
 import type { SessionMemoryForDm } from "@/lib/memoryCompress";
@@ -32,12 +32,21 @@ export type BuildActorScopedEpistemicInput = {
   detectorRan?: boolean;
   options?: ActorScopedMemoryCaps;
   nowIso?: string;
+  /** 与 runtime reveal_tier_packet 对齐 */
+  maxRevealRank?: number;
+  /** 指向同条 system 内 JSON：baseline / scene_authority / key_npc */
+  runtimeCrossRefNote?: string;
+  /** registry 职能壳一行，防身份漂移 */
+  actorCanonOneLiner?: string;
+  /** false 时降级为占位块（灰度 VERSECRAFT_ENABLE_ACTOR_SCOPED_EPISTEMIC=0） */
+  actorScopedEpistemicEnabled?: boolean;
 };
 
 export type ActorScopedMemoryMetrics = {
   epistemicFactCount: number;
   actorKnownFactCount: number;
   publicFactCount: number;
+  forbiddenFactCount: number;
   anomalySeverity: "none" | "low" | "medium" | "high";
   validatorTriggered: boolean;
   blockChars: number;
@@ -136,6 +145,36 @@ export function buildActorScopedEpistemicMemoryBlock(input: BuildActorScopedEpis
 } {
   const mem = input.mem;
   const caps = applyCompactCaps(input.options);
+  const scopedOn = input.actorScopedEpistemicEnabled !== false;
+
+  if (!scopedOn) {
+    const globalLegacyShadowChars = estimateGlobalUnscopedMemoryBlockChars(mem, input.options);
+    const stub = [
+      "",
+      "## 【actor_epistemic_scoped_packet】",
+      "rollout:actor_scoped_epistemic_disabled",
+      "instruction: 分层记忆裁剪已关闭（灰度）；仍以同条 system 的 npc_consistency_boundary_compact 与其它 JSON 为权威，不得越权认知。",
+      "",
+      "player_mechanics:",
+      clip(JSON.stringify(mem?.player_status ?? {}, null, 0), Math.min(caps.playerStatusMaxChars ?? 420, 200)),
+      "",
+    ].join("\n");
+    return {
+      block: stub,
+      metrics: {
+        epistemicFactCount: input.allKnowledgeFacts?.length ?? 0,
+        actorKnownFactCount: 0,
+        publicFactCount: 0,
+        forbiddenFactCount: 0,
+        anomalySeverity: "none",
+        validatorTriggered: false,
+        blockChars: stub.length,
+        globalLegacyShadowChars,
+        promptCharsDelta: globalLegacyShadowChars - stub.length,
+      },
+    };
+  }
+
   const actorId = input.actorNpcId?.trim() || null;
   const nowIso = input.nowIso ?? new Date().toISOString();
   const facts = input.allKnowledgeFacts ?? [];
@@ -144,6 +183,7 @@ export function buildActorScopedEpistemicMemoryBlock(input: BuildActorScopedEpis
   };
 
   const actorKnown = actorId ? filterFactsForActor(facts, actorId, scene, { nowIso }) : [];
+  const forbiddenFactCount = actorId ? forbiddenFactsForActor(facts, actorId, scene, { nowIso }).length : 0;
   const publicFactCount = facts.filter(
     (f) =>
       (f.scope === "public" || f.scope === "shared_scene") &&
@@ -152,28 +192,57 @@ export function buildActorScopedEpistemicMemoryBlock(input: BuildActorScopedEpis
 
   const profile = actorId ? (input.profile ?? buildNpcEpistemicProfile(actorId)) : null;
   const anomaly = input.anomalyResult ?? null;
+  const maxRevealRank = typeof input.maxRevealRank === "number" && Number.isFinite(input.maxRevealRank) ? input.maxRevealRank : 0;
+
+  const layers = buildActorScopedEpistemicContext({
+    actorId,
+    scene,
+    memory: mem,
+    allFacts: facts,
+    profile,
+    maxRevealRank,
+    nowIso,
+    runtimeCrossRefNote: input.runtimeCrossRefNote,
+    actorCanonOneLiner: input.actorCanonOneLiner,
+  });
 
   const lines: string[] = [
     "",
     "## 【actor_epistemic_scoped_packet】",
-    "【边界】下列字段为「当前 actor 视角允许参考的上限」；未列出者默认该 actor 不知，不得在对白中自然确认。系统/全局摘要≠角色已知。",
+    "【边界】下列为分层上下文；未列出者默认不知。系统/全局摘要≠角色已知。runtime 结构化包见 runtimeCrossRef。",
+    "",
+    "runtime_cross_ref:",
+    clip(layers.runtimeCrossRefNote || "npc_player_baseline_packet,npc_scene_authority_packet,key_npc_lore_packet@同条system JSON", caps.layerMaxChars!),
+    "",
+    layers.worldTruthOmittedNote,
+    "",
+    "layer_public_plot:",
+    clip(layers.publicPlotLayer, caps.layerMaxChars!),
+    "",
+    "layer_scene_public:",
+    clip(layers.scenePublicLayer, caps.layerMaxChars!),
+    "",
+    "layer_recent_public:",
+    clip(layers.recentPublicLayer, caps.layerMaxChars!),
+    "",
+    "layer_rumors_unconfirmed:",
+    clip(layers.rumorsLayer, caps.layerMaxChars!),
+    "",
+    layers.playerKnownExcludedNote,
+    "",
+    "layer_emotional_residue:",
+    clip(layers.residueLayer, caps.layerMaxChars!),
+    "",
+    layers.revealGateNote,
     "",
   ];
 
+  if (layers.actorCanonOneLiner?.trim()) {
+    lines.push("actor_canon_shell:", clip(layers.actorCanonOneLiner.trim(), caps.layerMaxChars!), "");
+  }
+
   if (!actorId) {
     lines.push("focus_npc:none", "mode:scene_or_soliloquy", "");
-    if (mem?.public_plot_summary?.trim()) {
-      lines.push("public_plot:", clip(mem.public_plot_summary.trim(), caps.layerMaxChars!), "");
-    }
-    if (mem?.scene_public_state?.trim()) {
-      lines.push("scene_public:", clip(mem.scene_public_state.trim(), caps.layerMaxChars!), "");
-    }
-    if (mem?.recent_public_events?.length) {
-      lines.push("recent_public:", clip(mem.recent_public_events.join("；"), caps.layerMaxChars!), "");
-    }
-    if (mem?.unresolved_rumors?.length) {
-      lines.push("rumors:", clip(mem.unresolved_rumors.join("；"), caps.layerMaxChars!), "");
-    }
     lines.push(
       "player_mechanics:",
       clip(JSON.stringify(mem?.player_status ?? {}, null, 0), Math.min(caps.playerStatusMaxChars!, 220)),
@@ -210,17 +279,17 @@ export function buildActorScopedEpistemicMemoryBlock(input: BuildActorScopedEpis
         ""
       );
     }
-    if (mem?.public_plot_summary?.trim()) {
-      lines.push("public_plot:", clip(mem.public_plot_summary.trim(), caps.layerMaxChars!), "");
-    }
-    if (mem?.scene_public_state?.trim()) {
-      lines.push("scene_public:", clip(mem.scene_public_state.trim(), caps.layerMaxChars!), "");
-    }
-    if (mem?.recent_public_events?.length) {
-      lines.push("recent_public:", clip(mem.recent_public_events.join("；"), caps.layerMaxChars!), "");
-    }
-    if (mem?.unresolved_rumors?.length) {
-      lines.push("rumors:", clip(mem.unresolved_rumors.join("；"), caps.layerMaxChars!), "");
+    lines.push(
+      "forbidden_fact_ids_hint:",
+      clip(layers.forbiddenFactsSummary, 220),
+      ""
+    );
+    if (layers.actorPrivateFactsLine.trim()) {
+      lines.push(
+        "actor_private_fact_contents:",
+        clip(layers.actorPrivateFactsLine, caps.summaryMaxChars!),
+        ""
+      );
     }
 
     const knownLines = actorKnown.slice(0, caps.actorKnownFactsMax!).map((f) => ({
@@ -266,6 +335,7 @@ export function buildActorScopedEpistemicMemoryBlock(input: BuildActorScopedEpis
     epistemicFactCount: facts.length,
     actorKnownFactCount: actorKnown.length,
     publicFactCount,
+    forbiddenFactCount,
     anomalySeverity: anomaly?.anomaly ? anomaly.severity : "none",
     validatorTriggered: Boolean(actorId && input.detectorRan),
     blockChars: block.length,

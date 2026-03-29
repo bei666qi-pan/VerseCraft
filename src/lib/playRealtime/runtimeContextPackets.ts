@@ -45,6 +45,13 @@ import {
   buildTeamRelinkPacketCompact,
 } from "@/lib/registry/worldSchoolRuntimePackets";
 import type { ThreatSnapshot } from "./stage2Packets";
+import { buildEmptyNpcPlayerBaselinePacket, buildNpcPlayerBaselinePacket } from "@/lib/npcBaselineAttitude/builders";
+import {
+  buildNpcSceneAuthority,
+  compactNpcSceneAuthorityPacket,
+  extractMentionedNpcIdsFromUserInput,
+  extractNpcIdsFromRelationshipHints,
+} from "@/lib/npcSceneAuthority/builders";
 
 type ServiceStateInput = {
   shopUnlocked?: boolean;
@@ -418,6 +425,8 @@ export function buildRuntimeContextPackets(args: {
   runtimeLoreCompact?: string;
   maxChars?: number;
   contextMode?: "minimal" | "full";
+  /** 优先用于 npc_player_baseline_packet；须在同场景 nearby 列表内 */
+  focusNpcId?: string | null;
 }): string {
   const location = parseLocation(args.playerContext, args.playerLocation);
   const time = parseTime(args.playerContext);
@@ -497,6 +506,30 @@ export function buildRuntimeContextPackets(args: {
   });
   const schoolSourcePacket = buildSchoolSourcePacket(maxRevealRank);
   const teamRelinkPacket = buildTeamRelinkPacket({ majorNpcRelinkPacket, nearbyNpcIds });
+  const focusRaw = args.focusNpcId?.trim() ?? "";
+  const focusNpcForBaseline =
+    focusRaw && nearbyNpcIds.includes(focusRaw) ? focusRaw : (nearbyNpcIds[0] ?? null);
+  const npcPlayerBaselinePacket = focusNpcForBaseline
+    ? buildNpcPlayerBaselinePacket({
+        npcId: focusNpcForBaseline,
+        relationPartial: {},
+        scene: {
+          locationId: location ?? "unknown",
+          hotThreatPresent: threatPacket.phase === "active" || threatPacket.phase === "breached",
+          maxRevealRank,
+        },
+      })
+    : buildEmptyNpcPlayerBaselinePacket();
+  const mentionedNpcIdsFromInput = extractMentionedNpcIdsFromUserInput(args.latestUserInput);
+  const codexNpcIdsFromHints = extractNpcIdsFromRelationshipHints(relationshipHints);
+  const npcSceneAuthorityPacket = buildNpcSceneAuthority({
+    currentSceneLocation: location,
+    npcPositions,
+    sceneAppearanceAlreadyWrittenIds: sceneNpcAppearanceWritten,
+    mentionedNpcIdsFromInput,
+    codexOrHintNpcIds: codexNpcIdsFromHints,
+    maxRevealRank,
+  });
   const worldLorePackets = {
     reveal_tier_packet: buildRevealTierPacket({ signals, maxRevealRank, firedRuleIds: firedRevealRuleIds }),
     floor_lore_packet: buildFloorLorePacket({ signals, floorLore, maxRevealRank }),
@@ -644,6 +677,8 @@ export function buildRuntimeContextPackets(args: {
     }),
     scene_npc_appearance_written_packet: sceneNpcAppearanceWritten,
     major_npc_relink_packet: majorNpcRelinkPacket,
+    npc_player_baseline_packet: npcPlayerBaselinePacket,
+    npc_scene_authority_packet: npcSceneAuthorityPacket,
     ...worldLorePackets,
   };
   const contextMode = args.contextMode ?? "full";
@@ -658,6 +693,8 @@ export function buildRuntimeContextPackets(args: {
           profession_packet: packets.profession_packet,
           tactical_context_packet: packets.tactical_context_packet,
           scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
+          npc_player_baseline_packet: packets.npc_player_baseline_packet,
+          npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
         }
@@ -693,6 +730,17 @@ export function buildRuntimeContextPackets(args: {
     profession_progress_packet: packets.profession_progress_packet.slice(0, 5),
     profession_identity_packet: packets.profession_identity_packet,
     scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
+    npc_player_baseline_packet: {
+      npcId: npcPlayerBaselinePacket.npcId,
+      mergedViewOfPlayer: npcPlayerBaselinePacket.mergedViewOfPlayer,
+      baselineViewOfPlayer: npcPlayerBaselinePacket.baselineViewOfPlayer,
+      canShowFamiliarity: npcPlayerBaselinePacket.canShowFamiliarity,
+      avoidMisalignment: npcPlayerBaselinePacket.avoidMisalignment.slice(0, 2),
+      crisisResponseStyle: npcPlayerBaselinePacket.crisisResponseStyle.slice(0, 100),
+      truthRevealCeiling: npcPlayerBaselinePacket.truthRevealCeiling,
+      baselineVersusRelationNote: npcPlayerBaselinePacket.baselineVersusRelationNote.slice(0, 100),
+    },
+    npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",
@@ -700,5 +748,18 @@ export function buildRuntimeContextPackets(args: {
     JSON.stringify(compactPackets),
   ].join("\n");
   return compactText.slice(0, maxChars);
+}
+
+/**
+ * 供 npc_consistency_boundary_compact 等复用：从 playerContext 解析 NPC/场景原语，避免与运行时大包逻辑分叉。
+ */
+export function parseRuntimeNpcPrimitives(playerContext: string, fallbackLocation: string | null) {
+  return {
+    location: parseLocation(playerContext, fallbackLocation),
+    npcPositions: parseNpcPositions(playerContext),
+    sceneNpcAppearanceWritten: parseSceneNpcAppearanceWritten(playerContext),
+    relationshipHints: parseRelationshipHints(playerContext),
+    mainThreatMap: parseMainThreatMap(playerContext),
+  };
 }
 

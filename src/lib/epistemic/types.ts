@@ -85,7 +85,7 @@ export interface EpistemicContext {
 
 export type EpistemicAlertSeverity = "low" | "medium" | "high";
 
-export type EpistemicReactionHint = "confused" | "suspicious" | "defensive" | "hostile";
+export type EpistemicReactionHint = "confused" | "suspicious" | "defensive" | "hostile" | "guarded";
 
 /**
  * 玩家越界或生成泄露风险的结构化提示（阶段 1 可先由规则产生占位）。
@@ -109,6 +109,8 @@ export interface EpistemicAnomalyResult {
   triggerFactIds: string[];
   requiredBehaviorTags: string[];
   forbiddenResponseTags: string[];
+  /** 与 forbiddenResponseTags 对齐（阶段6 对外命名） */
+  forbiddenBehaviorTags?: string[];
   mustInclude: string[];
   mustAvoid: string[];
 }
@@ -128,3 +130,36 @@ export interface NpcEpistemicSnapshotMin {
 export interface EpistemicSceneContext {
   presentNpcIds: string[];
 }
+
+/** 压缩层：按 NPC 切片的短提示（不含他者私域命题） */
+export type ActorScopedMemorySnapshotRow = {
+  npcId: string;
+  scopedNarrativeHint?: string;
+};
+
+/** 审计用：各 NPC 私有记忆键前缀（不存正文） */
+export type NpcPrivateMemoryIndex = Record<string, string[]>;
+
+/** 与揭露档位绑定的事实引用（压缩层） */
+export type RevealTierSensitiveFactRef = {
+  id: string;
+  minRevealRank: number;
+};
+
+/**
+ * actor 视角下注入 prompt 的分层字符串（由 buildActorScopedEpistemicContext 生成）。
+ */
+export type ActorScopedEpistemicContextLayers = {
+  worldTruthOmittedNote: string;
+  publicPlotLayer: string;
+  scenePublicLayer: string;
+  recentPublicLayer: string;
+  playerKnownExcludedNote: string;
+  rumorsLayer: string;
+  residueLayer: string;
+  actorPrivateFactsLine: string;
+  forbiddenFactsSummary: string;
+  revealGateNote: string;
+  runtimeCrossRefNote: string;
+  actorCanonOneLiner?: string;
+};

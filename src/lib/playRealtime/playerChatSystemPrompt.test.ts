@@ -6,6 +6,7 @@ import {
   buildDynamicPlayerDmSystemSuffix,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
+import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
 
 test("getStablePlayerDmSystemPrefix returns identical string instance for same version key", () => {
   __resetStablePlayerDmPrefixMemoForTests();
@@ -44,9 +45,39 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(s.includes("第一牵引"));
   assert.ok(s.includes("阶段6·系统咬合"));
   assert.ok(s.includes("matures_to_objective_id"));
+  assert.ok(s.includes("NPC 一致性·硬边界"));
+  assert.ok(s.includes("阶段5·强制"));
+  assert.ok(s.includes("误闯公寓"));
+  assert.ok(s.includes("夜读老人"));
   assert.ok(!s.includes("forge_mod_"));
   assert.ok(!s.includes("液态威胁"));
   assert.ok(!s.includes("镜像灌注"));
+});
+
+test("dynamic suffix 含 npc_consistency_boundary_compact（快车道亦适用）", () => {
+  const boundary = buildNpcConsistencyBoundaryCompactBlock({
+    playerContext: "用户位置[1F_Lobby]。NPC当前位置：N-001@1F_Lobby。",
+    latestUserInput: "你好",
+    playerLocation: "1F_Lobby",
+    focusNpcId: "N-001",
+    maxRevealRank: 0,
+    epistemic: { actorKnownFactCount: 1, publicFactCount: 2, forbiddenFactCount: 3 },
+    maxChars: 2000,
+  });
+  const dyn = buildDynamicPlayerDmSystemSuffix({
+    memoryBlock: "## 【actor_epistemic_scoped_packet】\nfocus",
+    playerContext: "ctx",
+    isFirstAction: false,
+    runtimePackets: "",
+    controlAugmentation: "",
+    npcConsistencyBoundaryBlock: boundary.text,
+  });
+  assert.ok(dyn.includes("npc_consistency_boundary_compact"));
+  assert.ok(dyn.includes('"actor_canon_packet"'));
+  assert.ok(dyn.includes('"actor_reveal_limit_packet"'));
+  const memIdx = dyn.indexOf("actor_epistemic_scoped_packet");
+  const bIdx = dyn.indexOf("npc_consistency_boundary_compact");
+  assert.ok(memIdx >= 0 && bIdx > memIdx, "boundary 应紧跟记忆块之后");
 });
 
 test("首回合与普通回合都可注入 lore", () => {

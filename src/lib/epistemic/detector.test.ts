@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildNpcEpistemicProfile } from "./builders";
-import { detectEpistemicAnomaly, inputMentionsFactContent } from "./detector";
+import { detectCognitiveAnomaly, detectEpistemicAnomaly, inputMentionsFactContent } from "./detector";
+import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 import type { EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "./types";
 import { XINLAN_NPC_ID } from "./policy";
 
@@ -173,6 +174,39 @@ describe("detectEpistemicAnomaly", () => {
     assert.equal(r.reactionStyle, "confused");
     assert.ok(r.mustInclude.some((s) => s.includes("莫名熟悉")));
     assert.ok(r.forbiddenResponseTags.includes("precise_secret_detail"));
+  });
+});
+
+describe("detectCognitiveAnomaly", () => {
+  it("普通 NPC 玩家输入旧识措辞 -> 规则层异常", () => {
+    const npcId = "N-003";
+    const r = detectCognitiveAnomaly({
+      npcId,
+      playerInput: "老相识，你终于来了",
+      allFacts: [],
+      scene: scene([npcId]),
+      profile: buildNpcEpistemicProfile(npcId),
+      nowIso: now,
+      maxRevealRank: 0,
+      canonical: getNpcCanonicalIdentity(npcId),
+    });
+    assert.equal(r.anomaly, true);
+    assert.ok(r.triggerFactIds.includes("rule:player_input_old_friend_language"));
+    assert.equal(r.reactionStyle, "guarded");
+  });
+
+  it("欣蓝玩家输入旧识措辞 -> 规则层不误报", () => {
+    const r = detectCognitiveAnomaly({
+      npcId: XINLAN_NPC_ID,
+      playerInput: "老相识，你终于来了",
+      allFacts: [],
+      scene: scene([XINLAN_NPC_ID]),
+      profile: buildNpcEpistemicProfile(XINLAN_NPC_ID),
+      nowIso: now,
+      maxRevealRank: 0,
+      canonical: getNpcCanonicalIdentity(XINLAN_NPC_ID),
+    });
+    assert.equal(r.anomaly, false);
   });
 });
 

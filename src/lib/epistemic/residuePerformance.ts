@@ -4,6 +4,8 @@
  */
 
 import { isNightHour } from "@/features/play/endgame/endgame";
+import { envNumber } from "@/lib/config/envRaw";
+import { getNpcMemoryPrivilege } from "@/lib/registry/npcCanon";
 import { enableNpcResidue } from "./featureFlags";
 import type { EpistemicResidueRecentEntry, SessionMemoryForDm } from "@/lib/memoryCompress";
 import type { EpistemicAnomalyResult, NpcEpistemicProfile } from "./types";
@@ -14,9 +16,9 @@ export type ResiduePerformanceMode =
   | "none"
   | "faint_familiarity"
   | "aversion"
-  | "trust_without_reason"
-  | "dread"
-  | "protective_pull";
+  /** 无由保护欲 / 莫名拉近（对外统一名；旧存档可能为 trust_without_reason） */
+  | "protective_pull"
+  | "dread";
 
 export type ResidueTriggerKind =
   | "proximity_dialogue"
@@ -49,9 +51,15 @@ export type EpistemicResiduePerformancePlan = {
 const TAGS: Record<Exclude<ResiduePerformanceMode, "none">, string[]> = {
   faint_familiarity: ["micro_pause", "eye_lingering", "deja_vague", "wrong_footed_warmth"],
   aversion: ["shoulders_brace", "half_step_back", "tone_cools", "cut_sentence_short"],
-  trust_without_reason: ["unearned_soften", "self_correct_suspicion", "proximity_pull_uncanny"],
+  protective_pull: [
+    "unearned_soften",
+    "self_correct_suspicion",
+    "proximity_pull_uncanny",
+    "body_blocks_hazard_vector",
+    "hand_half_stop",
+    "sharp_warn_then_soften",
+  ],
   dread: ["throat_tight", "scan_exits", "voice_low", "deflect_direct_answer"],
-  protective_pull: ["body_blocks_hazard_vector", "hand_half_stop", "sharp_warn_then_soften"],
 };
 
 const XINLAN_EXTRA = ["almost_named_you", "list_anxiety_spike", "holds_back_full_picture", "world_wrongness_sensed"];
@@ -104,12 +112,21 @@ export function detectResidueTriggers(args: {
   return [...t];
 }
 
+function normalizeStoredResidueMode(mode: string): Exclude<ResiduePerformanceMode, "none"> | "legacy_unknown" {
+  const m = String(mode ?? "").trim();
+  if (m === "trust_without_reason") return "protective_pull";
+  if (m === "faint_familiarity" || m === "aversion" || m === "protective_pull" || m === "dread") {
+    return m;
+  }
+  return "legacy_unknown";
+}
+
 function modePoolForProfile(profile: NpcEpistemicProfile): Exclude<ResiduePerformanceMode, "none">[] {
   if (profile.isXinlanException) {
-    return ["faint_familiarity", "trust_without_reason", "dread", "protective_pull", "aversion"];
+    return ["faint_familiarity", "protective_pull", "dread", "aversion"];
   }
   const bias = profile.suspicionBias ?? 0;
-  const base: Exclude<ResiduePerformanceMode, "none">[] = ["faint_familiarity", "aversion", "trust_without_reason"];
+  const base: Exclude<ResiduePerformanceMode, "none">[] = ["faint_familiarity", "aversion", "protective_pull"];
   if (bias > 0.05) base.push("dread");
   if (bias < -0.05) base.push("protective_pull");
   else base.push("dread", "protective_pull");
@@ -120,8 +137,12 @@ function pickMode(args: {
   pool: Exclude<ResiduePerformanceMode, "none">[];
   recentForNpc: EpistemicResidueRecentEntry[];
   seed: number;
+  antiRepeatDepth: number;
 }): Exclude<ResiduePerformanceMode, "none"> | null {
-  const banned = new Set(args.recentForNpc.slice(0, 3).map((e) => e.mode));
+  const depth = Math.max(1, Math.min(8, args.antiRepeatDepth));
+  const banned = new Set(
+    args.recentForNpc.slice(0, depth).map((e) => normalizeStoredResidueMode(e.mode)).filter((x) => x !== "legacy_unknown")
+  );
   const candidates = args.pool.filter((m) => !banned.has(m));
   const use = candidates.length ? candidates : args.pool;
   if (!use.length) return null;
@@ -130,6 +151,10 @@ function pickMode(args: {
 
 function residueStrength(profile: NpcEpistemicProfile, triggerCount: number, anomaly: boolean): number {
   let s = profile.isXinlanException ? 4 : 2;
+  const priv = getNpcMemoryPrivilege(profile.npcId);
+  if (!profile.isXinlanException && (priv === "major_charm" || priv === "night_reader")) {
+    s += 1;
+  }
   if ((profile.suspicionBias ?? 0) > 0.1) s += 1;
   if ((profile.suspicionBias ?? 0) < -0.1) s += 1;
   s += Math.min(2, Math.max(0, triggerCount - 1));
@@ -138,14 +163,28 @@ function residueStrength(profile: NpcEpistemicProfile, triggerCount: number, ano
 }
 
 function fireThreshold(profile: NpcEpistemicProfile, triggerCount: number, anomaly: boolean): number {
+  const priv = getNpcMemoryPrivilege(profile.npcId);
+  const charmBoost = !profile.isXinlanException && (priv === "major_charm" || priv === "night_reader") ? 6 : 0;
+
   if (profile.isXinlanException) {
     let t = 20 + triggerCount * 9;
     if (anomaly) t += 28;
     return Math.min(80, t);
   }
-  let t = 8 + triggerCount * 8;
+  let t = 8 + triggerCount * 8 + charmBoost;
   if (anomaly) t += 22;
   return Math.min(58, t);
+}
+
+function isWithinResidueCooldown(recentForNpc: EpistemicResidueRecentEntry[], nowIso: string, cooldownMs: number): boolean {
+  if (cooldownMs <= 0) return false;
+  const now = Date.parse(nowIso);
+  if (!Number.isFinite(now)) return false;
+  for (const e of recentForNpc) {
+    const t = Date.parse(e.iso);
+    if (Number.isFinite(t) && now - t >= 0 && now - t < cooldownMs) return true;
+  }
+  return false;
 }
 
 function recentForNpc(mem: SessionMemoryForDm | null, npcId: string): EpistemicResidueRecentEntry[] {
@@ -180,14 +219,18 @@ export function buildEpistemicResiduePerformancePlan(input: {
     anomaly,
   });
 
+  const cooldownMs = envNumber("VERSECRAFT_NPC_RESIDUE_COOLDOWN_MS", 90_000);
+  const antiRepeatDepth = Math.max(1, Math.min(8, envNumber("VERSECRAFT_NPC_RESIDUE_ANTI_REPEAT_DEPTH", 3)));
+  const recent = recentForNpc(input.mem, npcId);
+  if (isWithinResidueCooldown(recent, input.nowIso, cooldownMs)) return empty;
+
   const seed = djb2(`${npcId}|${input.requestId}|${input.latestUserInput.slice(0, 48)}`);
   const roll = seed % 100;
   const threshold = fireThreshold(profile, triggers.length, anomaly);
   if (roll >= threshold) return empty;
 
   const pool = modePoolForProfile(profile);
-  const recent = recentForNpc(input.mem, npcId);
-  const mode = pickMode({ pool, recentForNpc: recent, seed: seed >>> 3 });
+  const mode = pickMode({ pool, recentForNpc: recent, seed: seed >>> 3, antiRepeatDepth });
   if (!mode) return empty;
 
   const strength = residueStrength(profile, triggers.length, anomaly);

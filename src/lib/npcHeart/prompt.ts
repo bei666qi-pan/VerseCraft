@@ -27,6 +27,12 @@ export function buildNpcHeartPromptBlock(input: {
     lines.push(
       `说话：${speech}；任务风格=${p.taskStyle}；不明说：${clamp(p.whatNpcWillNeverAskOpenly, 60)}`
     );
+    if (v.baselineMerged) {
+      const b = v.baselineMerged;
+      lines.push(
+        `世界观基线：玩家视角=${b.effectiveViewOfPlayer}；熟悉表达=${b.canExpressFamiliarity ? "可克制" : "禁止套近乎"}；合成：${clamp(b.compactNarrativeHint, 140)}`
+      );
+    }
   }
   const text = lines.join("\n");
   return clamp(text, maxChars);

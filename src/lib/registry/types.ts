@@ -1,6 +1,8 @@
 // src/lib/registry/types.ts
 // 如月公寓规则怪谈实体注册表 - 基础类型定义
 
+import type { RevealTierRank } from "./revealTierRank";
+
 export type StatType =
   | "sanity"
   | "agility"
@@ -518,6 +520,73 @@ export interface ServiceNodeDefinition {
   label: string;
   isAbsoluteSafeZone: boolean;
   services: ServiceDefinition[];
+}
+
+// -----------------------------------------------------------------------------
+// NPC Canonical Identity Card（权威身份卡，供 DM / packet / 校验层使用）
+// -----------------------------------------------------------------------------
+
+/** 生理/社会性别表现锚点，禁止模型自由发挥改写 */
+export type CanonicalGender = "female" | "male" | "nonbinary" | "ambiguous" | "group" | "unknown";
+
+/** 记忆与叙事特权层（世界观硬规则） */
+export type NpcMemoryPrivilege = "normal" | "major_charm" | "night_reader" | "xinlan";
+
+/**
+ * 对玩家的认知/辨认模式上限（须与 memoryPrivilege 一致，由构建器纠偏）。
+ * - normal：不得高于 emotional_residue
+ * - major_charm：可到 familiar_pull，不等于全知
+ * - night_reader：偏观察与稳定熟悉感
+ * - xinlan：可接近全知认知，但真相揭露仍受 revealTierCap / packet 门闸约束
+ */
+export type NpcPlayerRecognitionMode = "none" | "emotional_residue" | "familiar_pull" | "exact_knowledge";
+
+export type NpcAgeBand = "child" | "teen" | "young_adult" | "middle" | "elder" | "ambiguous";
+
+/** 与「误闯学生 / 校源碎片」叙事的亲和类型，用于后续上下文裁切 */
+export type NpcStudentAffinityType =
+  | "surface_stranger_student"
+  | "ye_li_school_echo"
+  | "major_anchor_resonant"
+  | "night_reader_observer"
+  | "xinlan_anchor"
+  | "child_wanderer"
+  | "service_staff"
+  | "edge_merchant";
+
+/**
+ * NPC 权威身份卡：单一事实源，用于防性别/称谓/地点/人设错位。
+ */
+export interface NpcCanonicalIdentity {
+  npcId: string;
+  canonicalName: string;
+  canonicalGender: CanonicalGender;
+  /** 称谓与代词策略（对白层必须服从） */
+  canonicalAddressing: string;
+  ageBand: NpcAgeBand;
+  studentAffinityType: NpcStudentAffinityType;
+  /** 公寓表层可见身份（职能壳） */
+  apartmentSurfaceIdentity: string;
+  /** 校源/碎片身份：无权限时写「不得编造」类约束句 */
+  fragmentSchoolIdentity: string;
+  canonicalAppearanceShort: string;
+  canonicalAppearanceLong: string;
+  canonicalPersonalityCore: string;
+  canonicalSpeechCore: string;
+  canonicalPublicRole: string;
+  canonicalDeepRole: string;
+  canonicalHomeLocation: string;
+  /** 合法出现/刷新的位置描述或节点 id（运行时纠偏白名单） */
+  allowedSpawnLocations: readonly string[];
+  memoryPrivilege: NpcMemoryPrivilege;
+  playerRecognitionMode: NpcPlayerRecognitionMode;
+  /** 对玩家的默认态度基线（普通 NPC：误闯学生之一） */
+  baselineViewOfPlayer: string;
+  canKnowPlayerCoreIdentity: boolean;
+  canKnowLoopTruth: boolean;
+  /** 数值越大可揭露越深；与 revealRegistry / packet 对齐 */
+  revealTierCap: RevealTierRank;
+  antiFabricationHints: readonly string[];
 }
 
 // Stage-1 snapshot base (re-export for legacy import compatibility).

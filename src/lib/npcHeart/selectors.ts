@@ -1,6 +1,7 @@
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import type { NpcProfileV2 } from "@/lib/registry/types";
+import { buildNpcBaselineAttitude, mergeNpcBaselineWithRelation } from "@/lib/npcBaselineAttitude/builders";
 import { buildNpcHeartProfile, normalizeRelationStatePartial } from "./build";
 import type { NpcHeartRuntimeView } from "./types";
 
@@ -24,12 +25,26 @@ export function buildNpcHeartRuntimeView(args: {
   locationId: string;
   activeTaskIds: string[];
   hotThreatPresent: boolean;
+  /** 与运行时 reveal 门闸对齐；缺省 0 */
+  maxRevealRank?: number;
 }): NpcHeartRuntimeView | null {
   const p = pickProfile(args.npcId);
   const social = NPC_SOCIAL_GRAPH[args.npcId] ?? null;
   const profile = buildNpcHeartProfile({ npcId: args.npcId, profileV2: p, social });
   if (!profile) return null;
   const relation = normalizeRelationStatePartial(args.relationPartial);
+  const maxRevealRank = typeof args.maxRevealRank === "number" && Number.isFinite(args.maxRevealRank) ? args.maxRevealRank : 0;
+  const baselineScene = {
+    locationId: args.locationId,
+    hotThreatPresent: args.hotThreatPresent,
+    maxRevealRank,
+  };
+  const baseline = buildNpcBaselineAttitude(args.npcId, baselineScene, relation);
+  const baselineMerged = mergeNpcBaselineWithRelation({
+    baseline,
+    relation,
+    scene: baselineScene,
+  });
   const floorId = floorFromLocation(args.locationId);
   const attitudeLabel =
     relation.trust >= 45 && relation.fear <= 15 ? "warm"
@@ -81,6 +96,7 @@ export function buildNpcHeartRuntimeView(args: {
       if (id === "N-020") return "liar";
       return undefined;
     })(),
+    baselineMerged,
   };
 }
 

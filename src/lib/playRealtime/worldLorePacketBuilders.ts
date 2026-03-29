@@ -3,6 +3,7 @@ import { REVEAL_TIER_METAS } from "@/lib/registry/revealRegistry";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 import { WORLD_ORDER_CANON } from "@/lib/registry/worldOrderRegistry";
 import { buildMajorNpcKeyHintsForPacket } from "@/lib/registry/majorNpcDeepCanon";
+import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 import { NPCS } from "@/lib/registry/npcs";
 import type { FloorLoreEntry } from "@/lib/registry/floorLoreRegistry";
 import type { PlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
@@ -131,10 +132,15 @@ export function buildKeyNpcLorePacket(args: {
     .map((id) => {
       const npc = NPCS.find((x) => x.id === id);
       if (!npc) return null;
+      const canon = getNpcCanonicalIdentity(id);
       return {
         id: npc.id,
         name: npc.name,
         appearance: normalizeNpcAppearanceForPacket(npc.appearance),
+        canonicalGender: canon.canonicalGender,
+        canonicalAddressing: canon.canonicalAddressing.slice(0, 160),
+        memoryPrivilege: canon.memoryPrivilege,
+        baselineViewOfPlayer: canon.baselineViewOfPlayer.slice(0, 120),
       };
     })
     .filter(Boolean)

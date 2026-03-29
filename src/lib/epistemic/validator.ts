@@ -27,6 +27,11 @@ export type EpistemicValidatorTelemetry = {
   rewriteReason: string | null;
   finalResponseSafe: boolean;
   involvedFields: string[];
+  /** 阶段6：NPC 一致性层（叙事规则） */
+  npcConsistencyValidatorTriggered?: boolean;
+  violationTypes?: string[];
+  consistencyViolations?: string[];
+  validatorLogs?: string[];
 };
 
 const CONFIRM_RE = /(?:没错|正是如此|我早知道|确实如此|你说得对|是对的|确实是的|就是这样|的确如此)/;

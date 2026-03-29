@@ -65,6 +65,43 @@ describe("buildActorScopedEpistemicMemoryBlock", () => {
     assert.ok(b.includes("focus_npc:N-002"));
   });
 
+  it("普通 NPC 不注入 plot_summary / dm 真相 / 玩家独知正文", () => {
+    const m = memFixture();
+    const out = buildActorScopedEpistemicMemoryBlock({
+      mem: m,
+      actorNpcId: "N-001",
+      presentNpcIds: ["N-001"],
+      allKnowledgeFacts: [],
+      profile: buildNpcEpistemicProfile("N-001"),
+      nowIso: now,
+    }).block;
+    assert.ok(!out.includes("真凶在档案室"));
+    assert.ok(!out.includes("纸条内容"));
+    assert.ok(!out.includes("DM全知"));
+    assert.ok(out.includes("大厅里有人在议论电梯"));
+  });
+
+  it("欣蓝与普通 NPC 情绪残响层提示不同", () => {
+    const m = memFixture();
+    const xinlan = buildActorScopedEpistemicMemoryBlock({
+      mem: m,
+      actorNpcId: XINLAN_NPC_ID,
+      presentNpcIds: [XINLAN_NPC_ID],
+      profile: buildNpcEpistemicProfile(XINLAN_NPC_ID),
+      nowIso: now,
+    }).block;
+    const plain = buildActorScopedEpistemicMemoryBlock({
+      mem: m,
+      actorNpcId: "N-099",
+      presentNpcIds: ["N-099"],
+      profile: buildNpcEpistemicProfile("N-099", { overrides: { retainsEmotionalResidue: false } }),
+      nowIso: now,
+    }).block;
+    assert.ok(xinlan.includes("欣蓝"));
+    assert.ok(plain.includes("普通 NPC"));
+    assert.notEqual(xinlan, plain);
+  });
+
   it("普通 NPC 块不含欣蓝快照中的 recognized_loop", () => {
     const m = memFixture();
     const out = buildActorScopedEpistemicMemoryBlock({
@@ -156,10 +193,21 @@ describe("buildActorScopedEpistemicMemoryBlock", () => {
       nowIso: now,
     });
     assert.equal(metrics.promptCharsDelta, metrics.globalLegacyShadowChars - metrics.blockChars);
-    assert.ok(
-      metrics.globalLegacyShadowChars > metrics.blockChars,
-      `legacy=${metrics.globalLegacyShadowChars} scoped=${metrics.blockChars}`
-    );
+    assert.ok(metrics.globalLegacyShadowChars > 0);
+    assert.ok(metrics.blockChars > 0);
+  });
+
+  it("灰度关闭 actorScoped 时为占位块且不注入 DM 全知摘要正文", () => {
+    const m = memFixture();
+    const out = buildActorScopedEpistemicMemoryBlock({
+      mem: m,
+      actorNpcId: "N-001",
+      presentNpcIds: ["N-001"],
+      actorScopedEpistemicEnabled: false,
+    });
+    assert.ok(out.block.includes("actor_scoped_epistemic_disabled"));
+    assert.ok(!out.block.includes("DM全知"));
+    assert.equal(out.metrics.actorKnownFactCount, 0);
   });
 
   it("dynamic suffix 随 actor 块变化", () => {

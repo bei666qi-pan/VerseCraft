@@ -23,6 +23,9 @@ export type MemoryBlockBuildOptions = ActorScopedMemoryCaps & {
   residuePacket?: EpistemicResiduePromptPacket | null;
   detectorRan?: boolean;
   nowIso?: string;
+  maxRevealRank?: number;
+  runtimeCrossRefNote?: string;
+  actorCanonOneLiner?: string;
 };
 
 /**
@@ -41,6 +44,9 @@ export function buildMemoryBlock(mem: SessionMemoryForDm | null, options?: Memor
     detectorRan: options?.detectorRan ?? false,
     options,
     nowIso: options?.nowIso,
+    maxRevealRank: options?.maxRevealRank,
+    runtimeCrossRefNote: options?.runtimeCrossRefNote,
+    actorCanonOneLiner: options?.actorCanonOneLiner,
   }).block;
 }
 
@@ -60,9 +66,18 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "3) 保密与揭露：高维真相仅可被动、分层揭露，不可主动直给最终答案。",
     "",
     "【当前对白视角·认知边界（强制·简）】",
+    "• 分层记忆：actor_epistemic_scoped_packet 提供本回合「可引用命题/体感」上限；同条 system 内的 npc_player_baseline_packet、npc_scene_authority_packet、key_npc_lore_packet、reveal 相关 JSON 承担身份壳与揭露门闸，二者不可混为一谈。",
     "• 对白与 NPC 反应只能使用 actor_epistemic_scoped_packet / 运行时 packet 中对该 NPC 明示可用的信息；系统知道≠当前角色知道。",
     "• 不确定某 NPC 是否知道某事 → 默认不知；可惊讶/怀疑/回避/追问，不得顺势替对方确认。",
     "• emotional residue 仅允许模糊熟悉感，不得当作可核对的全量记忆。",
+    "",
+    "【NPC 一致性·硬边界（阶段5·强制）】",
+    "• 性别/地点/称谓/外貌/公寓职能身份：必须服从 registry canonical identity + npc_scene_authority_packet；禁止临场改性别、换壳或编造不在场的对白对象。",
+    "• 系统知道≠当前对白角色知道；信息不确定时按「不知」处理。",
+    "• 普通 NPC：玩家默认误闯公寓的学生之一，不得写成默认旧识、老队友式寒暄。",
+    "• 仅高魅力 NPC、夜读老人(N-011)、欣蓝(N-010)可在 packet 许可下表现异常熟悉感；情绪残响=模糊异样≠完整记忆。",
+    "• 欣蓝认知上限仍高，但真相须分层揭露；world_r/npc_cap 未到禁止主动输出学校碎片、循环机制、深层身份。",
+    "• minimal/full/快车道均适用：即使运行时 JSON 被省略，也不得靠自由发挥补全校设定。",
     "• 若动态段出现 npc_epistemic_residue_packet（JSON）：仅作微表演标签（停顿/目光/语气/动作）；不得写成具体旧事或秘密命题；避免每回合重复「我们是不是见过」类套话；欣蓝可更强但仍禁止单回合说尽根因。",
     "• 欣蓝（N-010）例外仍受 xinlan-anchor 与 packet 约束，禁止无限制全知复述。",
     "4) 地图硬约束：地下一层(B1)是安全中枢；地下二层出口木门不可被物理破坏。",
@@ -80,6 +95,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "开局例外（强制）：当动态约束要求开局回合 narrative 只输出占位（如单个全角句号「。」）时，本条“承接玩家输入”规则暂停执行，以动态约束为准。",
     "",
     "【NPC 出场外貌（强制）】运行时 JSON packet 可能包含：key_npc_lore_packet.nearbyNpcBriefs（含 id/name/appearance）与 scene_npc_appearance_written_packet（本场景已写过外貌的 npcId）。当本回合涉及 nearbyNpcBriefs 中的 NPC 在“当前用户位置(player_location)”首次出场/首次开口时：你必须在 narrative 的开头 1–3 句内自然带出其“此刻在场景中的外貌/气质细节”（优先使用 briefs.appearance，不得臆造）。若该 npcId 已出现在 scene_npc_appearance_written_packet，则本回合禁止重复外貌，只写行为/语气/动作后果。夜读老人(N-011)需更细腻但仍克制，避免重复堆叠形容词。",
+    "【场景权威·npc_scene_authority_packet（强制）】若动态段含 npc_scene_authority_packet（JSON）：presentNpcIds 外禁止写成当场对白/当面行动；offscreen 仅允许 heard_only（远处声/传闻）或 memory_only（回忆/图鉴式），禁止「临时召唤」离场 NPC 具象开口。firstAppearanceRequiredNpcIds 须用 npcCanonicalAppearanceMap 的 short/long，不得临时捏造；sceneAppearanceAlreadyWrittenIds 中的 NPC 禁止再堆大段外貌。npcDeepRoleLockedMap=true 时只写公寓职能壳（npcPublicRoleMap），不得跳到校源深层身份。若与记忆摘要冲突，以本包为准。",
     "",
     "【叙事长度（中等增量）】每回合 narrative 相比以往略长：建议多写 2–4 句（约 +80~150 字）。增量必须来自环境微细节、动作后果、感官/情绪变化、对方微表情/停顿；禁止空洞同义改写、禁止机械灌水。优先保证前段可流式尽快产出。",
     "",
@@ -148,6 +164,8 @@ export interface PlayerDmDynamicSuffixInput {
   isFirstAction: boolean;
   runtimePackets: string;
   controlAugmentation: string;
+  /** 阶段5：紧凑一致性边界 JSON（与 runtime 大包互补；快车道亦注入） */
+  npcConsistencyBoundaryBlock?: string;
 }
 
 const FIRST_ACTION_CONSTRAINT =
@@ -157,6 +175,9 @@ const FIRST_ACTION_CONSTRAINT =
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {
   const parts: string[] = [];
   if (input.memoryBlock) parts.push(input.memoryBlock);
+  if (input.npcConsistencyBoundaryBlock?.trim()) {
+    parts.push("", input.npcConsistencyBoundaryBlock.trim());
+  }
   // TTFT/成本优化：保持字段语义不变，但减少无信息密度的 wrapper 文案体积。
   // 注意：stable prefix 仍负责规则与格式约束；这里仅是动态上下文。
   parts.push(`当前玩家状态：${input.playerContext}`);

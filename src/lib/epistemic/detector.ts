@@ -2,6 +2,9 @@
  * 认知越界检测：规则 + 字符串重叠（无额外模型调用）。
  */
 
+import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
+import { REVEAL_TIER_RANK } from "@/lib/registry/revealTierRank";
+import type { NpcCanonicalIdentity } from "@/lib/registry/types";
 import { canActorKnowFact, forbiddenFactsForActor } from "./guards";
 import type {
   EpistemicAlertSeverity,
@@ -64,13 +67,14 @@ export function emptyEpistemicAnomalyResult(npcId: string): EpistemicAnomalyResu
     triggerFactIds: [],
     requiredBehaviorTags: [],
     forbiddenResponseTags: [],
+    forbiddenBehaviorTags: [],
     mustInclude: [],
     mustAvoid: [],
   };
 }
 
 function emptyResult(npcId: string): EpistemicAnomalyResult {
-  return emptyEpistemicAnomalyResult(npcId);
+  return attachForbiddenBehaviorTags(emptyEpistemicAnomalyResult(npcId));
 }
 
 function buildAnomalyFromTriggered(
@@ -149,9 +153,104 @@ function buildAnomalyFromTriggered(
     triggerFactIds,
     requiredBehaviorTags,
     forbiddenResponseTags,
+    forbiddenBehaviorTags: forbiddenResponseTags,
     mustInclude,
     mustAvoid,
   };
+}
+
+function attachForbiddenBehaviorTags(r: EpistemicAnomalyResult): EpistemicAnomalyResult {
+  return { ...r, forbiddenBehaviorTags: r.forbiddenBehaviorTags ?? r.forbiddenResponseTags };
+}
+
+export type CognitiveAnomalyDetectorInput = {
+  npcId: string;
+  playerInput: string;
+  allFacts: KnowledgeFact[];
+  scene: EpistemicSceneContext;
+  profile: NpcEpistemicProfile;
+  nowIso?: string;
+  maxRevealRank?: number;
+  canonical?: NpcCanonicalIdentity | null;
+};
+
+function mergeAnomalyResults(a: EpistemicAnomalyResult, b: EpistemicAnomalyResult): EpistemicAnomalyResult {
+  const sev: EpistemicAlertSeverity =
+    a.severity === "high" || b.severity === "high"
+      ? "high"
+      : a.severity === "medium" || b.severity === "medium"
+        ? "medium"
+        : "low";
+  const fr = [...new Set([...a.forbiddenResponseTags, ...b.forbiddenResponseTags])];
+  return {
+    anomaly: true,
+    npcId: a.npcId,
+    severity: sev,
+    reactionStyle: b.reactionStyle !== "confused" ? b.reactionStyle : a.reactionStyle,
+    triggerFactIds: [...new Set([...a.triggerFactIds, ...b.triggerFactIds])].slice(0, 16),
+    requiredBehaviorTags: [...new Set([...a.requiredBehaviorTags, ...b.requiredBehaviorTags])].slice(0, 16),
+    forbiddenResponseTags: fr.slice(0, 16),
+    forbiddenBehaviorTags: fr.slice(0, 16),
+    mustInclude: [...new Set([...a.mustInclude, ...b.mustInclude])].slice(0, 12),
+    mustAvoid: [...new Set([...a.mustAvoid, ...b.mustAvoid])].slice(0, 12),
+  };
+}
+
+/**
+ * 玩家输入层规则：旧识措辞 / 深层真相抢跑（与事实池检测互补）。
+ */
+function detectPlayerInputRuleSignals(input: CognitiveAnomalyDetectorInput): EpistemicAnomalyResult | null {
+  const npcId = String(input.npcId ?? "").trim();
+  if (!npcId) return null;
+  const canon = input.canonical ?? getNpcCanonicalIdentity(npcId);
+  const priv = canon.memoryPrivilege;
+  const privileged = priv === "xinlan" || priv === "major_charm" || priv === "night_reader";
+
+  const OLD_FRIEND = /老相识|老朋友|又见面了|咱俩|当年一起|还记得我吗|旧友|老队友/;
+  if (!privileged && OLD_FRIEND.test(input.playerInput)) {
+    return {
+      ...emptyEpistemicAnomalyResult(npcId),
+      anomaly: true,
+      severity: "medium",
+      reactionStyle: "guarded",
+      triggerFactIds: ["rule:player_input_old_friend_language"],
+      requiredBehaviorTags: ["probe_source", "keep_distance"],
+      forbiddenResponseTags: ["warm_old_friend_recognition"],
+      forbiddenBehaviorTags: ["warm_old_friend_recognition"],
+      mustInclude: ["反问对方为何用旧识口吻", "把话题拉回当下场景"],
+      mustAvoid: ["顺势认下旧关系", "回忆具体共事细节"],
+    };
+  }
+
+  const mr = input.maxRevealRank ?? 0;
+  const DEEP = /七锚.*闭环|循环.*真相|读档.*世界|校源.*根因|纠错链.*全貌/;
+  if (mr < REVEAL_TIER_RANK.deep && priv === "normal" && DEEP.test(input.playerInput)) {
+    return {
+      ...emptyEpistemicAnomalyResult(npcId),
+      anomaly: true,
+      severity: "high",
+      reactionStyle: "suspicious",
+      triggerFactIds: ["rule:player_input_deep_truth_premature"],
+      requiredBehaviorTags: ["disbelief", "probe_source"],
+      forbiddenResponseTags: ["confirm_loop_canon"],
+      forbiddenBehaviorTags: ["confirm_loop_canon"],
+      mustInclude: ["表示听不懂或把话头截断", "追问对方从哪听来的"],
+      mustAvoid: ["顺势补齐循环/校源设定"],
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 认知异常检测（阶段6）：事实池 forbidden + 玩家输入规则层；供生成前 prompt / alert 包。
+ */
+export function detectCognitiveAnomaly(input: CognitiveAnomalyDetectorInput): EpistemicAnomalyResult {
+  const base = detectEpistemicAnomaly(input);
+  const rule = detectPlayerInputRuleSignals(input);
+  if (!rule) return base;
+  if (!base.anomaly) return rule;
+  return mergeAnomalyResults(base, rule);
 }
 
 export function detectEpistemicAnomaly(input: {
@@ -179,8 +278,8 @@ export function detectEpistemicAnomaly(input: {
   );
 
   if (triggered.length === 0) {
-    return emptyResult(npcId);
+    return attachForbiddenBehaviorTags(emptyResult(npcId));
   }
 
-  return buildAnomalyFromTriggered(npcId, triggered, input.profile);
+  return attachForbiddenBehaviorTags(buildAnomalyFromTriggered(npcId, triggered, input.profile));
 }

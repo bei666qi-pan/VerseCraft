@@ -1,4 +1,5 @@
 import type { NpcEpistemicProfile } from "@/lib/epistemic/types";
+import type { NpcBaselineMerged } from "@/lib/npcBaselineAttitude/types";
 import type { NpcProfileV2, NpcRelationStateV2, NpcSocialProfile } from "@/lib/registry/types";
 
 export type TruthfulnessBand = "low" | "medium" | "high";
@@ -52,6 +53,12 @@ export type NpcHeartRuntimeView = {
    * 由 `@/lib/epistemic/builders` 等在组装 prompt 前可选注入。
    */
   epistemicProfile?: NpcEpistemicProfile;
+
+  /**
+   * 世界观基础态度 + 关系叠加后的有效态度（阶段 3+）。
+   * 关系值不单独覆盖 baseline；叙事应同时参考本字段与 attitudeLabel。
+   */
+  baselineMerged?: NpcBaselineMerged;
 };
 
 export type NpcHeartDeps = {

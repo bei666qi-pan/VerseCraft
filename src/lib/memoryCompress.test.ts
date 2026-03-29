@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   coerceRowToMemoryForDm,
+  hydrateEpistemicFromSessionRow,
   parseCompressionResponseToEpistemic,
   safeFallbackEpistemicMemory,
   sanitizeEpistemicCompressedMemory,
@@ -127,6 +128,41 @@ describe("memoryCompress epistemic layering", () => {
 
   it("parseCompressionResponse invalid JSON yields null (caller uses fallback, no new NPC facts)", () => {
     assert.equal(parseCompressionResponseToEpistemic("not json {{{"), null);
+  });
+
+  it("parseCompressionResponseToEpistemic 解析 actor_scoped / npc_private_index / reveal_refs", () => {
+    const json = JSON.stringify({
+      plot_summary: "dm",
+      player_status: {},
+      npc_relationships: {},
+      actor_scoped_memory_snapshots: [{ npcId: "N-001", scopedNarrativeHint: "hint" }],
+      npc_private_memory_index: { "N-001": ["k1"] },
+      reveal_tier_sensitive_facts: [{ id: "fact_a", minRevealRank: 2 }],
+    });
+    const ep = parseCompressionResponseToEpistemic(json);
+    assert.ok(ep);
+    assert.equal(ep!.actor_scoped_memory_snapshots?.[0].npcId, "N-001");
+    assert.equal(ep!.npc_private_memory_index?.["N-001"]?.[0], "k1");
+    assert.equal(ep!.reveal_tier_sensitive_facts?.[0].id, "fact_a");
+  });
+
+  it("sessionMemoryToDbRow embed 含 actor_scoped 等并可 hydrate", () => {
+    const ep: EpistemicCompressedMemory = {
+      plot_summary: "x",
+      player_status: {},
+      npc_relationships: {},
+      actor_scoped_memory_snapshots: [{ npcId: "N-001", scopedNarrativeHint: "h" }],
+    };
+    const row = sessionMemoryToDbRow(ep);
+    const ps = row.playerStatus as Record<string, unknown>;
+    const emb = ps[SESSION_MEMORY_EPISTEMIC_EMBED_KEY] as Record<string, unknown>;
+    assert.ok(Array.isArray(emb.actor_scoped_memory_snapshots));
+    const back = hydrateEpistemicFromSessionRow({
+      plotSummary: row.plotSummary,
+      playerStatus: row.playerStatus,
+      npcRelationships: row.npcRelationships,
+    });
+    assert.ok(back?.actor_scoped_memory_snapshots?.length);
   });
 
   it("coerceRowToMemoryForDm lifts scene_public_state from embed and strips __vc key from player_status", () => {
