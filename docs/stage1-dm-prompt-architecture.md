@@ -28,4 +28,5 @@
 - `runtimePacketChars`
 - `runtimePacketTokenEstimate`
 - `firstChunkLatencyMs`（TTFT）
+- **阶段 4·认知权限化动态记忆**（`chat_request_started` payload）：`epistemicFactCount`、`actorKnownFactCount`、`publicFactCount`、`anomalySeverity`、`validatorTriggered`、`promptCharsDelta`、`actorScopedMemoryBlockChars`；动态段使用 `actor_epistemic_scoped_packet`（按焦点 NPC 裁剪，不全量注入 plot_summary / dm 真相 / 玩家独知 / 全量关系表）。
 

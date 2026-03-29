@@ -25,7 +25,8 @@ export function buildB1ServiceContextBlock(args: {
   );
 }
 
-function extractPresentNpcIds(playerContext: string, location: string | null): string[] {
+/** 与 playerContext 中「NPC当前位置」行格式一致：N-xxx@LocationNode */
+export function extractPresentNpcIds(playerContext: string, location: string | null): string[] {
   if (!location) return [];
   const result: string[] = [];
   const re = /\b(N-\d{3})@([A-Za-z0-9_]+)/g;

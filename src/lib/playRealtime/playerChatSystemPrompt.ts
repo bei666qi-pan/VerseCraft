@@ -2,39 +2,49 @@
 // scripts/gen-player-chat-stable-prompt.mjs 仅在 route 内仍存在 legacy buildSystemPrompt 时同步；当前通常跳过，勿覆盖本文件。
 import type { ChatMessage } from "@/lib/ai/types/core";
 import { envRaw } from "@/lib/config/envRaw";
+import {
+  buildActorScopedEpistemicMemoryBlock,
+  estimateGlobalUnscopedMemoryBlockChars,
+  type ActorScopedMemoryCaps,
+} from "@/lib/epistemic/actorScopedMemoryBlock";
+import type { EpistemicResiduePromptPacket } from "@/lib/epistemic/residuePerformance";
+import type { EpistemicAnomalyResult, KnowledgeFact, NpcEpistemicProfile } from "@/lib/epistemic/types";
+import type { SessionMemoryForDm } from "@/lib/memoryCompress";
 
-export type SessionMemoryForDm = {
-  plot_summary: string;
-  player_status: Record<string, unknown>;
-  npc_relationships: Record<string, unknown>;
-} | null;
+export type { SessionMemoryForDm } from "@/lib/memoryCompress";
 
-export interface MemoryBlockBuildOptions {
-  summaryMaxChars?: number;
-  playerStatusMaxChars?: number;
-  npcRelationsMaxChars?: number;
+/** 动态记忆块选项；默认走「当前 actor 权限化」组装（阶段 4） */
+export type MemoryBlockBuildOptions = ActorScopedMemoryCaps & {
+  actorNpcId?: string | null;
+  presentNpcIds?: string[];
+  allKnowledgeFacts?: KnowledgeFact[];
+  profile?: NpcEpistemicProfile | null;
+  anomalyResult?: EpistemicAnomalyResult | null;
+  residuePacket?: EpistemicResiduePromptPacket | null;
+  detectorRan?: boolean;
+  nowIso?: string;
+};
+
+/**
+ * 权限化会话记忆块。未传 actor 时仅注入公共层 + 极简玩家机械信息，不注入 plot_summary / dm 真相 / 玩家独知 / 全量关系表。
+ * 兼容旧调用：仍返回 string，由 route 传入 actorNpcId / facts / anomaly 等。
+ */
+export function buildMemoryBlock(mem: SessionMemoryForDm | null, options?: MemoryBlockBuildOptions): string {
+  return buildActorScopedEpistemicMemoryBlock({
+    mem,
+    actorNpcId: options?.actorNpcId ?? null,
+    presentNpcIds: options?.presentNpcIds ?? [],
+    allKnowledgeFacts: options?.allKnowledgeFacts,
+    profile: options?.profile,
+    anomalyResult: options?.anomalyResult,
+    residuePacket: options?.residuePacket ?? null,
+    detectorRan: options?.detectorRan ?? false,
+    options,
+    nowIso: options?.nowIso,
+  }).block;
 }
 
-export function buildMemoryBlock(mem: SessionMemoryForDm, options?: MemoryBlockBuildOptions): string {
-  if (!mem?.plot_summary) return "";
-  const summaryMaxChars = Math.max(80, options?.summaryMaxChars ?? 1200);
-  const playerStatusMaxChars = Math.max(80, options?.playerStatusMaxChars ?? 500);
-  const npcRelationsMaxChars = Math.max(80, options?.npcRelationsMaxChars ?? 300);
-  return [
-    "",
-    "## 【动态记忆（压缩剧情摘要）】",
-    "",
-    "【剧情摘要】",
-    mem.plot_summary.slice(0, summaryMaxChars),
-    "",
-    "【玩家状态快照】",
-    JSON.stringify(mem.player_status, null, 0).slice(0, playerStatusMaxChars),
-    "",
-    "【NPC 关系快照】",
-    JSON.stringify(mem.npc_relationships, null, 0).slice(0, npcRelationsMaxChars),
-    "",
-  ].join("\n");
-}
+export { estimateGlobalUnscopedMemoryBlockChars };
 
 /** Static DM rules + lore; no per-request variables. */
 export function buildStablePlayerDmSystemLines(): readonly string[] {
@@ -48,6 +58,13 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "1) 运行时注入事实优先：动态上下文包 / retrieval / 控制层高于静态记忆。",
     "2) 世界一致性：禁止凭空新增 NPC、诡异、节点、任务、道具ID、锚点与历史。",
     "3) 保密与揭露：高维真相仅可被动、分层揭露，不可主动直给最终答案。",
+    "",
+    "【当前对白视角·认知边界（强制·简）】",
+    "• 对白与 NPC 反应只能使用 actor_epistemic_scoped_packet / 运行时 packet 中对该 NPC 明示可用的信息；系统知道≠当前角色知道。",
+    "• 不确定某 NPC 是否知道某事 → 默认不知；可惊讶/怀疑/回避/追问，不得顺势替对方确认。",
+    "• emotional residue 仅允许模糊熟悉感，不得当作可核对的全量记忆。",
+    "• 若动态段出现 npc_epistemic_residue_packet（JSON）：仅作微表演标签（停顿/目光/语气/动作）；不得写成具体旧事或秘密命题；避免每回合重复「我们是不是见过」类套话；欣蓝可更强但仍禁止单回合说尽根因。",
+    "• 欣蓝（N-010）例外仍受 xinlan-anchor 与 packet 约束，禁止无限制全知复述。",
     "4) 地图硬约束：地下一层(B1)是安全中枢；地下二层出口木门不可被物理破坏。",
     "5) B1 安全护栏：B1 区域不允许 hostile 对玩家造成伤害（业务层会兜底，你也应主动避免）。",
     "",
@@ -86,6 +103,8 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
     "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",
     "【动态上下文声明】楼层细节、NPC 细节、任务经济、服务节点、锚点复活、最近事件、揭露层级（reveal_tier_packet）等均由运行时 JSON packet 与 registry 决定；worldview_packet.structuredSchoolCycleRefs 仅为子包名指针（无正文）。高魅力六人拱门闩与重连态势见 major_npc_arc_packet、major_npc_relink_packet、team_relink_packet；学制/校源/节律见 school_cycle_arc_packet、school_source_packet、cycle_loop_packet；十日位相与锚点见 cycle_time_packet；残响证据/失败增益元/前兆体验/高魅力主动推剧情钩见 school_cycle_experience_packet（无正文替代 packet）。根目录档案若注入仅作提纲，细则以 packet 为准。",
+    "【认知异常包】若动态段出现 npc_epistemic_alert_packet（JSON）：表示服务端规则判定玩家本回合措辞可能越过了该 NPC 的认知边界；你必须按其中的 reactionStyle、mustInclude、mustAvoid 与 forbiddenResponseTags 调整对白，不得自然承接并确认对方不应知道的信息。",
+    "【残响演出包】npc_epistemic_residue_packet 与 alert 可同时存在：alert 优先处理「越界措辞」；residue 只补充克制体感，不得用 residue 绕过 alert 的禁止项。",
     "",
     "【学制/高魅力·四条边界（仅规则，非设定正文；minimal/full/快车道均适用）】",
     "• dual-identity：叙事先落地公寓可见职能壳；校源/辅锚/七锚等深层语义仅当 reveal_tier_packet 与对应 JSON 子包已许可时渐进露出，禁止用本 stable 抢跑。",

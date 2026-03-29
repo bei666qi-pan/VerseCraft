@@ -1,3 +1,4 @@
+import type { NpcEpistemicProfile } from "@/lib/epistemic/types";
 import type { NpcProfileV2, NpcRelationStateV2, NpcSocialProfile } from "@/lib/registry/types";
 
 export type TruthfulnessBand = "low" | "medium" | "high";
@@ -45,6 +46,12 @@ export type NpcHeartRuntimeView = {
 
   /** Phase-5: 出口主线角色位（仅供 prompt/规则；不做 UI 面板） */
   escapeRole?: "route_holder" | "gatekeeper" | "liar" | "ally" | "sacrificer" | "blocker";
+
+  /**
+   * 认知边界（阶段 1+）：与 profile/relation 并行，默认未填不影响既有心核逻辑。
+   * 由 `@/lib/epistemic/builders` 等在组装 prompt 前可选注入。
+   */
+  epistemicProfile?: NpcEpistemicProfile;
 };
 
 export type NpcHeartDeps = {

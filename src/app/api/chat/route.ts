@@ -5,7 +5,15 @@ import { eq, sql } from "drizzle-orm";
 import { auth } from "../../../../auth";
 import { db } from "@/db";
 import { users, gameSessionMemory } from "@/db/schema";
-import { compressMemory } from "@/lib/memoryCompress";
+import {
+  compressMemory,
+  coerceRowToMemoryForDm,
+  mergeEpistemicResidueUseIntoSessionDbRow,
+  sessionMemoryToDbRow,
+  sessionMemoryRowLooksPresent,
+  type EpistemicResidueRecentEntry,
+  type SessionMemoryRow,
+} from "@/lib/memoryCompress";
 import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
 import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
@@ -34,7 +42,6 @@ import {
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
 import {
   buildDynamicPlayerDmSystemSuffix,
-  buildMemoryBlock,
   composePlayerChatSystemMessages,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
@@ -91,6 +98,7 @@ import {
 import {
   applyB1SafetyGuard,
   buildB1ServiceContextBlock,
+  extractPresentNpcIds,
   guessPlayerLocationFromContext,
 } from "@/lib/playRealtime/b1Safety";
 import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
@@ -108,6 +116,22 @@ import {
 import { applyDmChangeSetToDmRecord } from "@/lib/dmChangeSet/applyChangeSet";
 import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
 import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
+import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
+import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
+import { detectEpistemicAnomaly } from "@/lib/epistemic/detector";
+import { epistemicDebugLog, getEpistemicRolloutFlags } from "@/lib/epistemic/featureFlags";
+import { loreFactsToKnowledgeFacts, mergeLorePacketSlices } from "@/lib/epistemic/loreFactBridge";
+import { buildNpcEpistemicAlertAugmentationBlock } from "@/lib/epistemic/reaction";
+import { sessionMemoryRowToKnowledgeFacts } from "@/lib/epistemic/sessionFactBridge";
+import { resolveEpistemicTargetNpcId } from "@/lib/epistemic/targetNpc";
+import {
+  applyEpistemicPostGenerationValidation,
+  type EpistemicValidatorTelemetry,
+} from "@/lib/epistemic/validator";
+import type { EpistemicAnomalyResult, EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "@/lib/epistemic/types";
+import { buildEpistemicResiduePerformancePlan } from "@/lib/epistemic/residuePerformance";
+import { XINLAN_NPC_ID } from "@/lib/epistemic/policy";
+import type { LorePacket } from "@/lib/worldKnowledge/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -304,12 +328,6 @@ function extractRecentEntities(latestUserInput: string): string[] {
   return [...out];
 }
 
-type SessionMemoryRow = {
-  plot_summary: string;
-  player_status: Record<string, unknown>;
-  npc_relationships: Record<string, unknown>;
-};
-
 async function loadSessionMemoryForUser(userId: string): Promise<SessionMemoryRow | null> {
   try {
     const memRows = await db
@@ -322,12 +340,14 @@ async function loadSessionMemoryForUser(userId: string): Promise<SessionMemoryRo
       .where(eq(gameSessionMemory.userId, userId))
       .limit(1);
     const mr = memRows[0];
-    if (mr?.plotSummary) {
-      return {
-        plot_summary: String(mr.plotSummary),
-        player_status: (mr.playerStatus as Record<string, unknown>) ?? {},
-        npc_relationships: (mr.npcRelationships as Record<string, unknown>) ?? {},
-      };
+    if (!mr) return null;
+    const row: SessionMemoryRow = {
+      plot_summary: String(mr.plotSummary ?? ""),
+      player_status: (mr.playerStatus as Record<string, unknown>) ?? {},
+      npc_relationships: (mr.npcRelationships as Record<string, unknown>) ?? {},
+    };
+    if (sessionMemoryRowLooksPresent(row)) {
+      return row;
     }
     return null;
   } catch (error) {
@@ -667,16 +687,38 @@ export async function POST(req: Request) {
     perfFlags.enablePromptSlimming && perfFlags.enableLightweightFastPath && riskLane === "fast"
       ? "minimal"
       : "full";
-  const memoryBlock = buildMemoryBlock(
-    sessionMemory,
+  const playerLocEarly = guessPlayerLocationFromContext(playerContext);
+  const presentNpcIdsEarly = extractPresentNpcIds(playerContext, playerLocEarly);
+  const focusNpcEarly =
+    !shouldApplyFirstActionConstraint
+      ? resolveEpistemicTargetNpcId({
+          latestUserInput,
+          playerContext,
+          playerLocation: playerLocEarly,
+          controlTarget: null,
+        })
+      : null;
+  const memoryCapsEarly =
     contextMode === "minimal"
       ? {
           summaryMaxChars: 420,
           playerStatusMaxChars: 220,
           npcRelationsMaxChars: 140,
+          layerMaxChars: 220,
+          npcSnapshotsMaxChars: 180,
+          compact: true as const,
         }
-      : undefined
-  );
+      : { compact: false as const };
+  let memoryBlock = buildActorScopedEpistemicMemoryBlock({
+    mem: coerceRowToMemoryForDm(sessionMemory),
+    actorNpcId: focusNpcEarly,
+    presentNpcIds: presentNpcIdsEarly,
+    allKnowledgeFacts: [],
+    profile: focusNpcEarly ? buildNpcEpistemicProfile(focusNpcEarly) : null,
+    anomalyResult: null,
+    detectorRan: false,
+    options: memoryCapsEarly,
+  }).block;
   const playerContextForPrompt =
     contextMode === "minimal"
       ? buildMinimalPlayerContextSnapshot(playerContext)
@@ -749,20 +791,21 @@ export async function POST(req: Request) {
       try {
         const newMem = await compressMemory(sessionMemory, toCompress);
         if (newMem && userId) {
+          const dbRow = sessionMemoryToDbRow(newMem);
           await db
             .insert(gameSessionMemory)
             .values({
               userId,
-              plotSummary: newMem.plot_summary,
-              playerStatus: newMem.player_status,
-              npcRelationships: newMem.npc_relationships,
+              plotSummary: dbRow.plotSummary,
+              playerStatus: dbRow.playerStatus,
+              npcRelationships: dbRow.npcRelationships,
             })
             .onConflictDoUpdate({
               target: gameSessionMemory.userId,
               set: {
-                plotSummary: newMem.plot_summary,
-                playerStatus: newMem.player_status,
-                npcRelationships: newMem.npc_relationships,
+                plotSummary: dbRow.plotSummary,
+                playerStatus: dbRow.playerStatus,
+                npcRelationships: dbRow.npcRelationships,
               },
             });
         }
@@ -976,6 +1019,7 @@ export async function POST(req: Request) {
   let retrievalSourceCounts: Record<string, number> = {};
   let retrievalScopeCounts: Record<string, number> = {};
   let privateFactHitCount = 0;
+  let runtimeLorePacket: LorePacket | null = null;
 
   const loreRetrievalP = (async (): Promise<void> => {
     // 快车道跳过重型 lore retrieval，慢车道保留完整知识检索能力。
@@ -1029,6 +1073,7 @@ export async function POST(req: Request) {
         });
         return;
       }
+      runtimeLorePacket = runtimeLore;
       runtimeLoreCompact = runtimeLore.compactPromptText;
       lorePacketChars = runtimeLoreCompact.length;
       loreCacheHit = runtimeLore.debugMeta.cache.level0MemoHit || runtimeLore.debugMeta.cache.redisHit;
@@ -1130,6 +1175,121 @@ export async function POST(req: Request) {
     typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
   ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
 
+  const nowIsoForEpistemic = new Date().toISOString();
+  const playerLocForEpistemic = guessPlayerLocationFromContext(playerContext);
+  const presentNpcIdsForEpistemic = extractPresentNpcIds(playerContext, playerLocForEpistemic);
+  const epistemicRolloutFlags = getEpistemicRolloutFlags();
+
+  let focusNpcForPrompt: string | null = null;
+  let epistemicAnomalyResult: EpistemicAnomalyResult | null = null;
+  let epistemicProfileForPrompt: NpcEpistemicProfile | null = null;
+  let allEpistemicFactsForPrompt: KnowledgeFact[] = [];
+  let epistemicAlertAugmentation = "";
+
+  if (!shouldApplyFirstActionConstraint && epistemicRolloutFlags.enableEpistemicGuard) {
+    const loreSlice = runtimeLorePacket ? mergeLorePacketSlices(runtimeLorePacket) : [];
+    const fromLore = loreFactsToKnowledgeFacts(loreSlice.slice(0, 96), nowIsoForEpistemic);
+    const fromSession = sessionMemoryRowToKnowledgeFacts(sessionMemory, nowIsoForEpistemic);
+    const mergedFacts = new Map<string, KnowledgeFact>();
+    for (const f of [...fromLore, ...fromSession]) mergedFacts.set(f.id, f);
+    allEpistemicFactsForPrompt = [...mergedFacts.values()];
+
+    const focusNpcId = resolveEpistemicTargetNpcId({
+      latestUserInput,
+      playerContext,
+      playerLocation: playerLocForEpistemic,
+      controlTarget: pipelineControl?.extracted_slots?.target ?? null,
+    });
+    focusNpcForPrompt = focusNpcId;
+    if (focusNpcId) {
+      const epistemicScene: EpistemicSceneContext = {
+        presentNpcIds: [...new Set([...presentNpcIdsForEpistemic, focusNpcId])],
+      };
+      epistemicProfileForPrompt = buildNpcEpistemicProfile(focusNpcId, {
+        overrides:
+          pipelineRule.in_dialogue_hint && focusNpcId !== XINLAN_NPC_ID
+            ? { remembersPlayerIdentity: "vague" }
+            : undefined,
+      });
+      epistemicAnomalyResult = detectEpistemicAnomaly({
+        npcId: focusNpcId,
+        playerInput: latestUserInput,
+        allFacts: allEpistemicFactsForPrompt,
+        scene: epistemicScene,
+        profile: epistemicProfileForPrompt,
+        nowIso: nowIsoForEpistemic,
+      });
+      epistemicAlertAugmentation = buildNpcEpistemicAlertAugmentationBlock(epistemicAnomalyResult);
+      if (epistemicRolloutFlags.epistemicDebugLog && epistemicAnomalyResult.anomaly) {
+        epistemicDebugLog("anomaly_detected", {
+          npcId: focusNpcId,
+          severity: epistemicAnomalyResult.severity,
+          reactionStyle: epistemicAnomalyResult.reactionStyle,
+        });
+      }
+    }
+  } else if (!shouldApplyFirstActionConstraint) {
+    const focusNpcId = resolveEpistemicTargetNpcId({
+      latestUserInput,
+      playerContext,
+      playerLocation: playerLocForEpistemic,
+      controlTarget: pipelineControl?.extracted_slots?.target ?? null,
+    });
+    focusNpcForPrompt = focusNpcId;
+    if (focusNpcId) {
+      epistemicProfileForPrompt = buildNpcEpistemicProfile(focusNpcId, {
+        overrides:
+          pipelineRule.in_dialogue_hint && focusNpcId !== XINLAN_NPC_ID
+            ? { remembersPlayerIdentity: "vague" }
+            : undefined,
+      });
+      epistemicAnomalyResult = null;
+      epistemicAlertAugmentation = "";
+    }
+  }
+
+  const dmMemForEpistemic = coerceRowToMemoryForDm(sessionMemory);
+  const epistemicResiduePlan = buildEpistemicResiduePerformancePlan({
+    focusNpcId: focusNpcForPrompt,
+    profile: epistemicProfileForPrompt,
+    anomalyResult: epistemicAnomalyResult,
+    mem: dmMemForEpistemic,
+    latestUserInput,
+    playerContext,
+    presentNpcIds: presentNpcIdsForEpistemic,
+    requestId,
+    nowIso: nowIsoForEpistemic,
+  });
+
+  const memoryCapsFinal =
+    contextMode === "minimal"
+      ? {
+          summaryMaxChars: 420,
+          playerStatusMaxChars: 220,
+          npcRelationsMaxChars: 140,
+          layerMaxChars: 220,
+          npcSnapshotsMaxChars: 180,
+          compact: true as const,
+        }
+      : { compact: false as const };
+
+  const scopedFinal = buildActorScopedEpistemicMemoryBlock({
+    mem: dmMemForEpistemic,
+    actorNpcId: focusNpcForPrompt,
+    presentNpcIds: presentNpcIdsForEpistemic,
+    allKnowledgeFacts: allEpistemicFactsForPrompt,
+    profile: epistemicProfileForPrompt,
+    anomalyResult: epistemicAnomalyResult,
+    residuePacket: epistemicResiduePlan.packet,
+    detectorRan: Boolean(
+      focusNpcForPrompt && !shouldApplyFirstActionConstraint && epistemicRolloutFlags.enableEpistemicGuard
+    ),
+    options: memoryCapsFinal,
+    nowIso: nowIsoForEpistemic,
+  });
+  memoryBlock = scopedFinal.block;
+  const epistemicPromptMetrics = scopedFinal.metrics;
+
   const controlAugmentation = buildControlAugmentationBlock({
     control: pipelineControl,
     rule: pipelineRule,
@@ -1143,6 +1303,8 @@ export async function POST(req: Request) {
     contextMode === "minimal" ? "" : directorHintBlock,
     npcTaskNarrativeBlock,
     conspiracyNarrativeBlock,
+    epistemicAlertAugmentation,
+    epistemicResiduePlan.augmentationBlock,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1217,6 +1379,14 @@ export async function POST(req: Request) {
       loreBudgetHit,
       runtimePacketChars,
       runtimePacketTokenEstimate,
+      epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
+      actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
+      publicFactCount: epistemicPromptMetrics.publicFactCount,
+      anomalySeverity: epistemicPromptMetrics.anomalySeverity,
+      validatorTriggered: epistemicPromptMetrics.validatorTriggered,
+      promptCharsDelta: epistemicPromptMetrics.promptCharsDelta,
+      actorScopedMemoryBlockChars: epistemicPromptMetrics.blockChars,
+      epistemicRollout: epistemicRolloutFlags,
     },
   }).catch(() => {});
 
@@ -1569,6 +1739,7 @@ export async function POST(req: Request) {
   let finalJsonParseSuccess = false;
   let settlementGuardApplied = false;
   let settlementAwardPruned = 0;
+  let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
 
   (async () => {
     // 单帧开局：避免首包内连跳多段；其余阶段由前端时间兜底 + 下游首 token / finalizing 控制帧衔接。
@@ -1716,11 +1887,33 @@ export async function POST(req: Request) {
           settlementAwardPruned,
           });
 
+          const epistemicRollupPayload = {
+            rolloutFlags: epistemicRolloutFlags,
+            actorNpcId: focusNpcForPrompt,
+            actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
+            publicFactCount: epistemicPromptMetrics.publicFactCount,
+            epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
+            anomalyDetected: Boolean(epistemicAnomalyResult?.anomaly),
+            anomalySeverity: epistemicAnomalyResult?.anomaly ? epistemicAnomalyResult.severity : "none",
+            validatorTriggered: epistemicPostValidatorTelemetry?.validatorTriggered ?? false,
+            rewriteTriggered: epistemicPostValidatorTelemetry?.rewriteTriggered ?? false,
+            responseSafe: epistemicPostValidatorTelemetry?.finalResponseSafe ?? true,
+            promptCharDelta: epistemicPromptMetrics.promptCharsDelta,
+            firstChunkLatencyMs: typeof base.firstChunkLatencyMs === "number" ? base.firstChunkLatencyMs : null,
+            dynamicCharLen,
+            actorScopedMemoryBlockChars: epistemicPromptMetrics.blockChars,
+          };
+          const withEpistemicCore = { ...base, epistemicRollup: epistemicRollupPayload };
+          const withEpistemicPost =
+            epistemicPostValidatorTelemetry != null
+              ? { ...withEpistemicCore, epistemicPostValidator: epistemicPostValidatorTelemetry }
+              : withEpistemicCore;
+
           const diagEnabled = envBoolean(
             "AI_CHAT_ENABLE_DIAGNOSTICS",
             process.env.NODE_ENV === "development"
           );
-          if (!diagEnabled) return base;
+          if (!diagEnabled) return withEpistemicPost;
 
           const firstWriteAt = ttftProfile.firstSseWriteAt;
           const firstChunkAt = ttftProfile.firstValidStreamChunkAt;
@@ -1731,7 +1924,7 @@ export async function POST(req: Request) {
             firstWriteAt !== null ? Math.max(0, firstWriteAt - ttftProfile.requestReceivedAt) : null;
 
           return {
-            ...base,
+            ...withEpistemicPost,
             serverPerf: {
               requestReceivedAt: ttftProfile.requestReceivedAt,
               jsonParseMs: ttftProfile.jsonParseMs,
@@ -1955,6 +2148,22 @@ export async function POST(req: Request) {
         settlementGuardApplied = typeof guardMeta?.settlement_guard === "string";
         const prunedRaw = Number(guardMeta?.settlement_award_pruned ?? 0);
         settlementAwardPruned = Number.isFinite(prunedRaw) ? Math.max(0, Math.trunc(prunedRaw)) : 0;
+
+        const runEpistemicPostGuard = (rec: Record<string, unknown>): Record<string, unknown> => {
+          const { dmRecord: next, telemetry } = applyEpistemicPostGenerationValidation({
+            dmRecord: rec,
+            actorNpcId: focusNpcForPrompt,
+            presentNpcIds: presentNpcIdsForEpistemic,
+            allFacts: allEpistemicFactsForPrompt,
+            profile: epistemicProfileForPrompt,
+            anomalyResult: epistemicAnomalyResult,
+            nowIso: nowIsoForEpistemic,
+          });
+          epistemicPostValidatorTelemetry = telemetry;
+          return next;
+        };
+        dmRecord = runEpistemicPostGuard(dmRecord);
+
         // Phase-1: 统一收口为“服务端最终裁决后的可提交对象”，避免前端从零散字段脑补。
         // 顺序约束：options fallback 必须先发生；然后再做一致性收口与最终 stringify。
         let resolved = resolveDmTurn(dmRecord);
@@ -1982,6 +2191,7 @@ export async function POST(req: Request) {
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
+              dmRecord = runEpistemicPostGuard(dmRecord);
               resolved = resolveDmTurn(dmRecord);
             }
           }
@@ -2132,6 +2342,36 @@ export async function POST(req: Request) {
 
       if (finalizePayload) {
         await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
+        if (
+          epistemicResiduePlan.persistEntry &&
+          userId &&
+          sessionMemory &&
+          sessionMemoryRowLooksPresent(sessionMemory)
+        ) {
+          const nextDb = mergeEpistemicResidueUseIntoSessionDbRow(
+            sessionMemory,
+            epistemicResiduePlan.persistEntry
+          );
+          if (nextDb) {
+            void db
+              .insert(gameSessionMemory)
+              .values({
+                userId,
+                plotSummary: nextDb.plotSummary,
+                playerStatus: nextDb.playerStatus,
+                npcRelationships: nextDb.npcRelationships,
+              })
+              .onConflictDoUpdate({
+                target: gameSessionMemory.userId,
+                set: {
+                  plotSummary: nextDb.plotSummary,
+                  playerStatus: nextDb.playerStatus,
+                  npcRelationships: nextDb.npcRelationships,
+                },
+              })
+              .catch((e) => console.warn("[api/chat] epistemic residue recent persist skipped", e));
+          }
+        }
         if (dmRecord && userId && sessionId) {
           // 结果外化节点（可影响企业化资产）：在这里保留更强写回链路与冲突处理，不放到首字前阻塞。
           const dmForWriteback = (() => {

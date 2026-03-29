@@ -25,7 +25,7 @@ test("getStablePlayerDmSystemPrefix returns identical string instance for same v
 test("stable prefix 体积已降到可控范围", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  assert.ok(s.length < 6500, `stable prefix too large: ${s.length}`);
+  assert.ok(s.length < 8000, `stable prefix too large: ${s.length}`);
   assert.ok(s.includes("【JSON】单个对象"));
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));
@@ -38,6 +38,8 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(s.includes("no-instant-party"));
   assert.ok(s.includes("reveal-first"));
   assert.ok(s.includes("xinlan-anchor"));
+  assert.ok(s.includes("当前对白视角"));
+  assert.ok(s.includes("系统知道"));
   assert.ok(s.includes("欣蓝（N-010）"));
   assert.ok(s.includes("第一牵引"));
   assert.ok(s.includes("阶段6·系统咬合"));
