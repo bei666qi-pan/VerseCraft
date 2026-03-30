@@ -288,6 +288,8 @@ export function buildActorConstraintBundle(args: {
   hotThreatPresent: boolean;
   activeTaskIds: string[];
   pendingHourFraction: number;
+  /** 同场景 NPC id（用于彼此关系表演提示） */
+  presentNpcIds?: string[];
 }): ActorConstraintBundle {
   const layers = enableTaskModeLayer() ? parseRtTaskLayers(args.playerContext) : [];
 
@@ -300,6 +302,7 @@ export function buildActorConstraintBundle(args: {
       activeTaskIds: args.activeTaskIds,
       hotThreatPresent: args.hotThreatPresent,
       maxRevealRank: args.maxRevealRank,
+      presentNpcIds: args.presentNpcIds,
     });
     const displayName = stub?.profile.displayName ?? "";
     const rel = inferRelationStubFromFavorability(parseFavorabilityForDisplayName(args.playerContext, displayName));
@@ -310,6 +313,7 @@ export function buildActorConstraintBundle(args: {
       activeTaskIds: args.activeTaskIds,
       hotThreatPresent: args.hotThreatPresent,
       maxRevealRank: args.maxRevealRank,
+      presentNpcIds: args.presentNpcIds,
     });
   }
 

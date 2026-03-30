@@ -4,6 +4,10 @@ import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTier
 import { WORLD_ORDER_CANON } from "@/lib/registry/worldOrderRegistry";
 import { buildMajorNpcKeyHintsForPacket } from "@/lib/registry/majorNpcDeepCanon";
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
+import { MONTHLY_INTRUSION_HARD_RULES, MONTHLY_INTRUSION_RESIDENT_BASELINE } from "@/lib/registry/monthlyIntrusionModel";
+import { buildNearbyNpcRecognitionPacketRows } from "@/lib/registry/npcPlayerRecognition";
+import { buildPlayerArrivalPacketSlice } from "@/lib/registry/playerArrivalCanon";
+import { buildSpaceShardPacketSlice } from "@/lib/registry/spaceShardCanon";
 import { NPCS } from "@/lib/registry/npcs";
 import type { FloorLoreEntry } from "@/lib/registry/floorLoreRegistry";
 import type { PlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
@@ -101,6 +105,40 @@ export function buildReviveAnchorLorePacket(args: {
         : args.signals.hasReviveLine
           ? "重构伴随时间推进与随身物损耗，勿当作无代价重置。"
           : null,
+  };
+}
+
+/**
+ * 空间权柄 + 月初误入 + 玩家到达正典 + 邻近 NPC 认知切片（供 DM / 一致性守卫消费）。
+ */
+export function buildSpaceAuthorityBaselinePacket(args: {
+  maxRevealRank: RevealTierRank;
+  nearbyNpcIds: readonly string[];
+}): Record<string, unknown> {
+  return {
+    schema: "space_authority_baseline_v1",
+    space_shard: buildSpaceShardPacketSlice(args.maxRevealRank),
+    monthly_intrusion: MONTHLY_INTRUSION_HARD_RULES,
+    resident_common_sense: MONTHLY_INTRUSION_RESIDENT_BASELINE,
+    player_arrival: buildPlayerArrivalPacketSlice(),
+    nearby_npc_recognition: buildNearbyNpcRecognitionPacketRows(args.nearbyNpcIds, 6),
+  };
+}
+
+export function buildSpaceAuthorityBaselinePacketCompact(args: {
+  maxRevealRank: RevealTierRank;
+  nearbyNpcIds: readonly string[];
+}): Record<string, unknown> {
+  const full = buildSpaceAuthorityBaselinePacket(args);
+  const shard = full.space_shard as Record<string, unknown>;
+  return {
+    schema: "space_authority_baseline_compact_v1",
+    authorityRoot: "space",
+    unifiedPremise: shard.unifiedPremise,
+    fracturePremise: shard.fracturePremise,
+    playerArrivalType: (full.player_arrival as { playerArrivalType?: string }).playerArrivalType,
+    notChosenOneByDefault: (full.player_arrival as { notChosenOneByDefault?: boolean }).notChosenOneByDefault,
+    nearby_npc_recognition: full.nearby_npc_recognition,
   };
 }
 

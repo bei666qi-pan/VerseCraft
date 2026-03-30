@@ -51,6 +51,10 @@ export type NpcBaselineMerged = {
   avoidMisalignment: string[];
   /** 一句话合成提示（塞进 packet） */
   compactNarrativeHint: string;
+  /** 对玩家怎么称呼、先事务还是先套近乎 */
+  playerAddressCue: string;
+  /** 本回合可执行的互动姿态：试探 / 提醒 / 回避 / 利用（短句，非剧情正文） */
+  playerInteractionStanceCue: string;
   shouldAskHowPlayerKnowsThis: boolean;
   shouldAvoidOverfamiliarity: boolean;
   allowedFamiliarityCeiling: number;
@@ -74,6 +78,8 @@ export type NpcPlayerBaselinePacket = {
   truthRevealCeiling: number;
   greetingStyleRule: string;
   truthRevealRule: string;
+  playerAddressCue: string;
+  playerInteractionStanceCue: string;
   /** 关系修正量（示意，0–1） */
   relationModHint: {
     trustDelta: number;

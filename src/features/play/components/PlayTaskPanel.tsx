@@ -31,8 +31,8 @@ export function PlayTaskPanel({
     <aside className="pointer-events-auto fixed right-3 top-[84px] z-[72] w-[360px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200 bg-white/95 shadow-[0_24px_56px_rgba(15,23,42,0.2)] backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
-          <h3 className="text-sm font-semibold tracking-wider text-slate-800">任务栏</h3>
-          <p className="text-[11px] text-slate-500">头等事 · 可推进路径 · 承诺与风险</p>
+          <h3 className="text-sm font-semibold tracking-wider text-slate-800">待办手记</h3>
+          <p className="text-[11px] text-slate-500">正在推进 · 备选方向 · 约定与险情</p>
         </div>
         <button
           type="button"

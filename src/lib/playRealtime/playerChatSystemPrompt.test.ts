@@ -26,7 +26,7 @@ test("getStablePlayerDmSystemPrefix returns identical string instance for same v
 test("stable prefix 体积已降到可控范围", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  assert.ok(s.length < 8000, `stable prefix too large: ${s.length}`);
+  assert.ok(s.length < 8500, `stable prefix too large: ${s.length}`);
   assert.ok(s.includes("【JSON】单个对象"));
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));
@@ -101,6 +101,6 @@ test("首回合与普通回合都可注入 lore", () => {
   });
   assert.ok(first.includes(lore));
   assert.ok(normal.includes(lore));
-  assert.ok(first.includes("开局叙事强制约束"));
+  assert.ok(first.includes("首轮承接与行动选项"));
   assert.ok(!normal.includes("开局叙事强制约束"));
 });

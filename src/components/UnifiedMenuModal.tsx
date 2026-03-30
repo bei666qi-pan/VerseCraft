@@ -10,6 +10,7 @@ import type { ClueEntry as JournalClueEntry } from "@/lib/domain/narrativeDomain
 import { PlayNarrativeTaskBoard } from "@/features/play/components/PlayNarrativeTaskBoard";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
+import { resolveNpcRefListForPlayer } from "@/lib/ui/displayNameResolvers";
 import {
   useAchievementsStore,
   type AchievementRecord,
@@ -477,11 +478,7 @@ function SettingsPanel({
 }
 
 function formatJournalNpcRefs(ids: string[] | undefined, codex: Record<string, CodexEntry>): string {
-  if (!ids?.length) return "";
-  return ids
-    .slice(0, 4)
-    .map((id) => (codex[id] ? resolveCodexDisplayName(codex[id]) : id))
-    .join("、");
+  return resolveNpcRefListForPlayer(ids, codex);
 }
 
 function BackpackPanel({

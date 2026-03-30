@@ -42,9 +42,12 @@ import {
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
 import {
   buildDynamicPlayerDmSystemSuffix,
+  buildStyleGuidePacketBlock,
   composePlayerChatSystemMessages,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { recordPromptCharDelta } from "@/lib/observability/versecraftRolloutMetrics";
 import { getRuntimeLore } from "@/lib/worldKnowledge/runtime/getRuntimeLore";
 import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
 import {
@@ -61,6 +64,7 @@ import {
   hasProtocolLeakSignature,
   sanitizeNarrativeLeakageForFinal,
 } from "@/lib/playRealtime/protocolGuard";
+import { isOpeningSystemUserMessage } from "@/features/play/opening/openingCopy";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import {
@@ -451,7 +455,6 @@ export async function POST(req: Request) {
   const clientState = validated.clientState;
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
-  const openingOptionsOnlyRound = validated.openingOptionsOnlyRound;
   const clientPurpose = validated.clientPurpose;
   const clientIp = getClientIpFromHeaders(req.headers);
   const inboundRid = req.headers.get(VERSECRAFT_REQUEST_ID_HEADER);
@@ -461,7 +464,16 @@ export async function POST(req: Request) {
   const perfFlags = resolveChatPerfFlags();
 
   const isFirstAction = !messages.some((m) => m.role === "assistant");
-  const shouldApplyFirstActionConstraint = Boolean(isFirstAction && openingOptionsOnlyRound);
+  const lastUserMessageTrimmed = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m?.role === "user" && typeof m.content === "string") return m.content.trim();
+    }
+    return "";
+  })();
+  const shouldApplyFirstActionConstraint = Boolean(
+    isFirstAction && isOpeningSystemUserMessage(lastUserMessageTrimmed)
+  );
   const authStartAt = nowMs();
   const session = await auth();
   ttftProfile.authSessionMs = elapsedMs(authStartAt);
@@ -1381,6 +1393,8 @@ export async function POST(req: Request) {
       enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
     },
   });
+  const verseRollout = getVerseCraftRolloutFlags();
+  const styleGuideBlock = verseRollout.enableStyleGuidePacket ? buildStyleGuidePacketBlock() : "";
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext: playerContextForPrompt,
@@ -1388,6 +1402,7 @@ export async function POST(req: Request) {
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
     npcConsistencyBoundaryBlock: npcConsistencyBoundaryFinal.text,
+    styleGuideBlock,
   });
   const aiEnvForSystem = resolveAiEnv();
   const systemChatMessages = composePlayerChatSystemMessages(
@@ -1397,6 +1412,7 @@ export async function POST(req: Request) {
   );
   const stableCharLen = playerDmStablePrefix.length;
   const dynamicCharLen = dynamicSuffixFull.length;
+  recordPromptCharDelta(dynamicCharLen);
 
   const safeMessages = sanitizeMessagesForUpstream([...systemChatMessages, ...messagesToSend]);
   ttftProfile.promptBuildMs = elapsedMs(promptBuildStartAt);

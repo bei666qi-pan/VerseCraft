@@ -10,7 +10,7 @@ export function buildNpcHeartPromptBlock(input: {
   views: NpcHeartRuntimeView[];
   maxChars?: number;
 }): string {
-  const maxChars = Math.max(120, Math.min(900, input.maxChars ?? 460));
+  const maxChars = Math.max(120, Math.min(900, input.maxChars ?? 520));
   const views = (input.views ?? []).slice(0, 5);
   if (views.length === 0) return "";
   const lines: string[] = [];
@@ -35,8 +35,11 @@ export function buildNpcHeartPromptBlock(input: {
     if (v.baselineMerged) {
       const b = v.baselineMerged;
       lines.push(
-        `  基=${clamp(b.effectiveViewOfPlayer, 24)}｜熟=${b.canExpressFamiliarity ? "可" : "否"}｜${clamp(b.compactNarrativeHint, 72)}`
+        `  基=${clamp(b.effectiveViewOfPlayer, 20)}｜熟=${b.canExpressFamiliarity ? "可" : "否"}｜称=${clamp(b.playerAddressCue ?? "", 36)}｜行=${clamp(b.playerInteractionStanceCue ?? "", 36)}｜提=${clamp(b.compactNarrativeHint, 44)}`
       );
+    }
+    if (v.peerRelationalCues) {
+      lines.push(`  伴=${clamp(v.peerRelationalCues, 100)}`);
     }
   }
   const text = lines.join("\n");

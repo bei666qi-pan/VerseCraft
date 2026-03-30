@@ -1,6 +1,8 @@
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import type { NpcProfileV2 } from "@/lib/registry/types";
+import { buildPeerRelationalCuesForNpc } from "@/lib/playRealtime/npcSocialSurfacePackets";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { buildNpcBaselineAttitude, mergeNpcBaselineWithRelation } from "@/lib/npcBaselineAttitude/builders";
 import { buildNpcHeartProfile, normalizeRelationStatePartial } from "./build";
 import { buildPersonalityRuntimeHints, buildWhatNpcWantsFromScenarios } from "./personalityRuntime";
@@ -28,6 +30,8 @@ export function buildNpcHeartRuntimeView(args: {
   hotThreatPresent: boolean;
   /** 与运行时 reveal 门闸对齐；缺省 0 */
   maxRevealRank?: number;
+  /** 同场 NPC id（含自己亦可）；用于表层人际表演提示 */
+  presentNpcIds?: string[];
 }): NpcHeartRuntimeView | null {
   const p = pickProfile(args.npcId);
   const social = NPC_SOCIAL_GRAPH[args.npcId] ?? null;
@@ -70,6 +74,11 @@ export function buildNpcHeartRuntimeView(args: {
     charmTier: profile.charmTier,
   });
 
+  const rollout = getVerseCraftRolloutFlags();
+  const peerRelationalCues = rollout.enableNpcSocialSurface
+    ? buildPeerRelationalCuesForNpc(args.npcId, args.presentNpcIds)
+    : "";
+
   const suggestedTaskDramaticTypes =
     profile.taskStyle === "transactional"
       ? ["leverage", "debt_payment", "delivery"]
@@ -106,6 +115,7 @@ export function buildNpcHeartRuntimeView(args: {
       return undefined;
     })(),
     baselineMerged,
+    peerRelationalCues: peerRelationalCues || undefined,
   };
 }
 

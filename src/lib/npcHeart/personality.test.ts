@@ -109,8 +109,8 @@ test("prompt block 含禁同质化且长度受限", () => {
     hotThreatPresent: false,
   });
   assert.ok(vx && vy);
-  const block = buildNpcHeartPromptBlock({ views: [vx!, vy!], maxChars: 460 });
-  assert.ok(block.length <= 460);
+  const block = buildNpcHeartPromptBlock({ views: [vx!, vy!], maxChars: 540 });
+  assert.ok(block.length <= 540);
   assert.ok(block.includes("禁同质化"));
   assert.ok(block.includes("N-010"));
   assert.ok(block.includes("N-018"));

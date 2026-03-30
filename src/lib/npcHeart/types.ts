@@ -72,6 +72,9 @@ export type NpcHeartRuntimeView = {
    * 关系值不单独覆盖 baseline；叙事应同时参考本字段与 attitudeLabel。
    */
   baselineMerged?: NpcBaselineMerged;
+
+  /** 同场其他 NPC 与焦点 NPC 的表层关系表演提示（短句） */
+  peerRelationalCues?: string;
 };
 
 export type NpcHeartDeps = {

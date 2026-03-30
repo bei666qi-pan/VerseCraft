@@ -1,8 +1,10 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { NPCS } from "@/lib/registry/npcs";
+import { stripDeveloperFacingFragments } from "@/lib/ui/playerFacingText";
 import type { CodexEntry } from "@/store/useGameStore";
 
-function isLikelyRegistryIdName(name: string): boolean {
+/** 玩家可见名若长得像内部 id，则改用注册表或泛称兜底 */
+export function isLikelyRegistryIdName(name: string): boolean {
   const t = String(name ?? "").trim();
   if (!t) return false;
   return /^N-\d{3}$/i.test(t) || /^A-\d{3}$/i.test(t);
@@ -29,7 +31,10 @@ export function resolveCodexDisplayName(entry: Pick<CodexEntry, "id" | "name" | 
 
   const fromRegistry =
     entry.type === "npc" ? lookupNpcNameById(rawId) : entry.type === "anomaly" ? lookupAnomalyNameById(rawId) : null;
-  return fromRegistry ?? rawName ?? rawId ?? "";
+  if (fromRegistry) return fromRegistry;
+  if (entry.type === "npc") return "某位住户";
+  if (entry.type === "anomaly") return "某类异常";
+  return rawName || "未知条目";
 }
 
 export type CodexRelationshipLabel = "暂无" | "盟友" | "恋人" | "敌人";
@@ -66,18 +71,20 @@ export function buildCodexIntro(entry: Pick<CodexEntry, "id" | "type">): string 
   if (entry.type === "npc") {
     const npc = NPCS.find((x) => x.id === id);
     if (!npc) return "";
-    const a = toShortSentence(npc.appearance, 90);
-    const lore = toShortSentence(npc.lore, 70);
-    const taboo = toShortSentence(npc.taboo, 70);
-    return [a, lore ? `传闻：${lore}` : "", taboo ? `忌讳：${taboo}` : ""].filter(Boolean).join("\n");
+    const a = stripDeveloperFacingFragments(toShortSentence(npc.appearance, 90));
+    const lore = stripDeveloperFacingFragments(toShortSentence(npc.lore, 72));
+    const taboo = stripDeveloperFacingFragments(toShortSentence(npc.taboo, 72));
+    const lines = [a, lore ? `坊间印象：${lore}` : "", taboo ? `忌讳：${taboo}` : ""].filter(Boolean);
+    return stripDeveloperFacingFragments(lines.join("\n"));
   }
   if (entry.type === "anomaly") {
     const an = ANOMALIES.find((x) => x.id === id);
     if (!an) return "";
-    const a = toShortSentence(an.appearance, 100);
-    const rule = toShortSentence(an.killingRule, 70);
-    const survive = toShortSentence(an.survivalMethod, 70);
-    return [a, rule ? `触发规则：${rule}` : "", survive ? `避险要点：${survive}` : ""].filter(Boolean).join("\n");
+    const a = stripDeveloperFacingFragments(toShortSentence(an.appearance, 100));
+    const rule = stripDeveloperFacingFragments(toShortSentence(an.killingRule, 72));
+    const survive = stripDeveloperFacingFragments(toShortSentence(an.survivalMethod, 72));
+    const lines = [a, rule ? `出事征兆：${rule}` : "", survive ? `怎么躲：${survive}` : ""].filter(Boolean);
+    return stripDeveloperFacingFragments(lines.join("\n"));
   }
   return "";
 }

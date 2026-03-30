@@ -66,7 +66,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "3) 保密与揭露：高维真相仅可被动、分层揭露，不可主动直给最终答案。",
     "",
     "【当前对白视角·认知边界（强制·简）】",
-    "• 分层记忆：actor_epistemic_scoped_packet 提供本回合「可引用命题/体感」上限；同条 system 内的 npc_player_baseline_packet、npc_scene_authority_packet、key_npc_lore_packet、reveal 相关 JSON 承担身份壳与揭露门闸，二者不可混为一谈。",
+    "• 分层记忆：actor_epistemic_scoped_packet 提供本回合「可引用命题/体感」上限；同条 system 内的 npc_player_baseline_packet、npc_scene_authority_packet、npc_social_surface_packet（若有）、key_npc_lore_packet、reveal 相关 JSON 承担身份壳与揭露门闸，二者不可混为一谈。",
     "• 对白与 NPC 反应只能使用 actor_epistemic_scoped_packet / 运行时 packet 中对该 NPC 明示可用的信息；系统知道≠当前角色知道。",
     "• 不确定某 NPC 是否知道某事 → 默认不知；可惊讶/怀疑/回避/追问，不得顺势替对方确认。",
     "• emotional residue 仅允许模糊熟悉感，不得当作可核对的全量记忆。",
@@ -92,10 +92,11 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "对白写法（强制）：当玩家输入包含对话意图（如“我问/我对…说/我喊/我解释/我请求/我威胁/我道歉/我打招呼/我谈条件”等），你必须把其转写为自然对白（推荐使用中文引号“”），并在同一段落写出对方的即时反应（停顿、眼神、语气、回避、动作），禁止写成聊天记录标签（禁止“玩家说：/用户说：/你说：/他说：”）。",
     "动作写法（强制）：当玩家输入是行动（观察、调查、移动、使用道具、换装等），必须写成第一人称的连续叙述动作，并在第一段给出至少 1 个立即反馈（环境细节/阻力/结果/代价/对方反应）。避免“我做了X。然后……”的空转。",
     "示例（仅作写法参考，禁止在正文中复述示例字样）：玩家输入“我试着和她谈条件”→可写为“我压低声音开价：‘我们各退一步。’她指尖在桌沿轻轻一停，没立刻回答，只把目光移向门缝……”；反例：把“玩家行动：我试着和她谈条件”原样写入 narrative（禁止）。",
-    "开局例外（强制）：当动态约束要求开局回合 narrative 只输出占位（如单个全角句号「。」）时，本条“承接玩家输入”规则暂停执行，以动态约束为准。",
+    "开局例外（强制）：当动态段注入【首轮承接与行动选项】约束时：narrative 可仅为「。」或极短接续固定前文，可不按本条逐字转写“本回合玩家输入”（因该回合为系统开局请求）；其余回合仍须承接用户消息。",
     "",
     "【NPC 出场外貌（强制）】运行时 JSON packet 可能包含：key_npc_lore_packet.nearbyNpcBriefs（含 id/name/appearance）与 scene_npc_appearance_written_packet（本场景已写过外貌的 npcId）。当本回合涉及 nearbyNpcBriefs 中的 NPC 在“当前用户位置(player_location)”首次出场/首次开口时：你必须在 narrative 的开头 1–3 句内自然带出其“此刻在场景中的外貌/气质细节”（优先使用 briefs.appearance，不得臆造）。若该 npcId 已出现在 scene_npc_appearance_written_packet，则本回合禁止重复外貌，只写行为/语气/动作后果。夜读老人(N-011)需更细腻但仍克制，避免重复堆叠形容词。",
     "【场景权威·npc_scene_authority_packet（强制）】若动态段含 npc_scene_authority_packet（JSON）：presentNpcIds 外禁止写成当场对白/当面行动；offscreen 仅允许 heard_only（远处声/传闻）或 memory_only（回忆/图鉴式），禁止「临时召唤」离场 NPC 具象开口。firstAppearanceRequiredNpcIds 须用 npcCanonicalAppearanceMap 的 short/long，不得临时捏造；sceneAppearanceAlreadyWrittenIds 中的 NPC 禁止再堆大段外貌。npcDeepRoleLockedMap=true 时只写公寓职能壳（npcPublicRoleMap），不得跳到校源深层身份。若与记忆摘要冲突，以本包为准。",
+    "【同场人际·npc_social_surface_packet】若动态 JSON 含本键：只用于微表演（默契半句、轻拌嘴、回避、递眼神）；禁止当数据库逐条念名，禁止借机关联未在场者；有边的两人才演熟，未列边的仍算生分。",
     "",
     "【叙事长度（中等增量）】每回合 narrative 相比以往略长：建议多写 2–4 句（约 +80~150 字）。增量必须来自环境微细节、动作后果、感官/情绪变化、对方微表情/停顿；禁止空洞同义改写、禁止机械灌水。优先保证前段可流式尽快产出。",
     "",
@@ -119,7 +120,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【图鉴一致性】实体出场后应更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。",
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
     "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",
-    "【动态上下文声明】楼层细节、NPC 细节、任务经济、服务节点、锚点复活、最近事件、揭露层级（reveal_tier_packet）等均由运行时 JSON packet 与 registry 决定；worldview_packet.structuredSchoolCycleRefs 仅为子包名指针（无正文）。高魅力六人拱门闩与重连态势见 major_npc_arc_packet、major_npc_relink_packet、team_relink_packet；major_npc_foreshadow_packet 为近邻高魅力紧凑异常暗示（surface→deep 分层），非校籍全文；学制/校源/节律见 school_cycle_arc_packet、school_source_packet、cycle_loop_packet；十日位相与锚点见 cycle_time_packet；school_cycle_experience_packet 等为体验钩指针（无正文）。细则以各 JSON 子包为准。",
+    "【动态上下文声明】楼层细节、NPC 细节、任务经济、服务节点、锚点复活、最近事件、揭露层级（reveal_tier_packet）等均由运行时 JSON packet 与 registry 决定；worldview_packet.structuredSchoolCycleRefs 仅为子包名指针（无正文）。space_authority_baseline_packet 为空间权柄单一底层、月初误入硬规则、玩家到达正典与邻近 NPC 初遇认知切片（普通住户先视玩家为又一批误闯学生；特权 NPC 熟悉感风味各异，禁止开局同质化相认）。高魅力六人拱门闩与重连态势见 major_npc_arc_packet、major_npc_relink_packet、team_relink_packet；major_npc_foreshadow_packet 为近邻高魅力紧凑异常暗示（surface→deep 分层），非校籍全文；学制/校源/节律见 school_cycle_arc_packet、school_source_packet、cycle_loop_packet；十日位相与锚点见 cycle_time_packet；school_cycle_experience_packet 等为体验钩指针（无正文）。细则以各 JSON 子包为准。",
     "【认知异常包】若动态段出现 npc_epistemic_alert_packet（JSON）：表示服务端规则判定玩家本回合措辞可能越过了该 NPC 的认知边界；你必须按其中的 reactionStyle、mustInclude、mustAvoid 与 forbiddenResponseTags 调整对白，不得自然承接并确认对方不应知道的信息。",
     "【残响演出包】npc_epistemic_residue_packet 与 alert 可同时存在：alert 优先处理「越界措辞」；residue 只补充克制体感，不得用 residue 绕过 alert 的禁止项。",
     "",
@@ -168,10 +169,17 @@ export interface PlayerDmDynamicSuffixInput {
   controlAugmentation: string;
   /** 阶段5：紧凑一致性边界 JSON（与 runtime 大包互补；快车道亦注入） */
   npcConsistencyBoundaryBlock?: string;
+  /** 阶段9：文风质感短块（不模仿具体作品） */
+  styleGuideBlock?: string;
+}
+
+/** 动态 suffix 注入用；与 VERSECRAFT_ENABLE_STYLE_GUIDE_PACKET 联动 */
+export function buildStyleGuidePacketBlock(): string {
+  return "【文风·质感（packet）】感官具体、句长错落；禁止说明书罗列与客服腔；不引用现实作品篇名或名台词；原创向叙事质感但不抄袭。";
 }
 
 const FIRST_ACTION_CONSTRAINT =
-  "【开局叙事强制约束】对话历史为空，这是玩家的第一个动作！固定开场叙事已由客户端展示，你**禁止**在 narrative 中复述苏醒、头痛、环境细节或如月公寓设定。narrative 仅输出占位（如单个全角句号「。」）。**核心任务**：在 options 中输出恰好 4 条互不重复、符合地下一层安全区语境的第一人称行动建议（每条约五至二十字），每次开局随机变化、勿套模板；须覆盖探索、观察、社交、谨慎移动等不同倾向。";
+  "【首轮承接与行动选项（固定前文已展示）】对话历史中尚无助手回复。客户端已展示固定第一人称长文（教室灾变至如月公寓地下附近）。你**禁止**在 narrative 中整段复述教室、言灵、坠落过程或重复前文已有细节。narrative 可仅为全角句号「。」，或 1–3 句极短接续（头痛、灯管明灭、刮擦声、铁牌等择一二），须像同一段落自然续写，禁止系统播报腔。**options 必须恰好 4 条**非空、互异、第一人称短行动（约 5–20 字），贴合惊魂未稳、脚软但仍试图冷静的当下；优先稳住呼吸、观察墙地拐角、听人声脚步、循微光或声源试探、背靠墙找退路；**禁止空数组**，禁止一上来跨层宏大任务，禁止教程清单式罗列。";
 
 /** Per-turn tail: memory, player snapshot, optional first-action rule, control-plane augmentation. */
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {
@@ -184,6 +192,7 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   // 注意：stable prefix 仍负责规则与格式约束；这里仅是动态上下文。
   parts.push(`当前玩家状态：${input.playerContext}`);
   if (input.runtimePackets) parts.push("", input.runtimePackets);
+  if (input.styleGuideBlock?.trim()) parts.push("", input.styleGuideBlock.trim());
   if (input.isFirstAction) {
     parts.push("", FIRST_ACTION_CONSTRAINT, "");
   }

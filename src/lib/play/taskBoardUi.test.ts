@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { partitionTasksForBoard, pickPrimaryTask } from "./taskBoardUi";
+import { filterTasksForTaskBoardVisibilityV2, partitionTasksForBoard, pickPrimaryTask } from "./taskBoardUi";
 import type { GameTask } from "@/store/useGameStore";
 
 const task = (over: Partial<GameTask> & Pick<GameTask, "id" | "title">): GameTask =>
@@ -38,6 +38,18 @@ test("pickPrimaryTask prefers main goalKind", () => {
     task({ id: "b", title: "main", goalKind: "main", guidanceLevel: "none" }),
   ]);
   assert.equal(primary?.id, "b");
+});
+
+test("filterTasksForTaskBoardVisibilityV2 隐藏 soft_lead+available", () => {
+  const soft = task({
+    id: "s",
+    title: "软引线",
+    status: "available",
+    type: "character",
+    ...({ taskNarrativeLayer: "soft_lead" } as Record<string, unknown>),
+  });
+  const kept = filterTasksForTaskBoardVisibilityV2([soft], true);
+  assert.equal(kept.length, 0);
 });
 
 test("partitionTasksForBoard keeps overflow when promise/risk slots saturated", () => {

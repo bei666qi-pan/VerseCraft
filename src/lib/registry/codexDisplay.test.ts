@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { computeRelationshipLabel, resolveCodexDisplayName } from "./codexDisplay";
+import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "./codexDisplay";
 
 describe("codexDisplay", () => {
   it("resolveCodexDisplayName maps stable ids to registry names", () => {
@@ -12,6 +12,21 @@ describe("codexDisplay", () => {
       resolveCodexDisplayName({ id: "A-001", name: "A-001", type: "anomaly" }),
       "时差症候群"
     );
+    assert.equal(
+      resolveCodexDisplayName({ id: "N-999", name: "N-999", type: "npc" }),
+      "某位住户"
+    );
+    assert.equal(
+      resolveCodexDisplayName({ id: "A-999", name: "A-999", type: "anomaly" }),
+      "某类异常"
+    );
+  });
+
+  it("buildCodexIntro 不含文档指针类开发者残片", () => {
+    const intro = buildCodexIntro({ id: "N-010", type: "npc" });
+    assert.ok(intro.length > 0);
+    assert.ok(!intro.includes("majorNpcDeepCanon"));
+    assert.ok(!intro.includes("详情见"));
   });
 
   it("computeRelationshipLabel follows default rules", () => {

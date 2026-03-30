@@ -3,9 +3,14 @@
 import { useMemo, useState } from "react";
 import type { ClueEntry } from "@/lib/domain/narrativeDomain";
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
-import { findRegisteredItemById } from "@/lib/registry/itemLookup";
-import { resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
-import { goalKindLabel, partitionTasksForBoard } from "@/lib/play/taskBoardUi";
+import {
+  resolveFloorTierLabel,
+  resolveItemIdForPlayer,
+  resolveNpcIdForPlayer,
+  resolveTaskIssuerDisplay,
+} from "@/lib/ui/displayNameResolvers";
+import { filterTasksForTaskBoardVisibilityV2, goalKindLabel, partitionTasksForBoard } from "@/lib/play/taskBoardUi";
+import { getClientTaskVisibilityPolicyV2Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
 
 function taskSummaryLine(t: GameTask): string {
@@ -23,26 +28,21 @@ function cluesForTask(taskId: string, clues: ClueEntry[] | undefined): ClueEntry
 
 function itemLabelsForTask(task: GameTask): string[] {
   const ids = new Set<string>([...(task.relatedItemIds ?? []), ...(task.reward?.items ?? [])].filter(Boolean));
-  return [...ids]
-    .map((id) => findRegisteredItemById(id)?.name ?? id)
-    .slice(0, 4);
+  return [...ids].map((id) => resolveItemIdForPlayer(id)).slice(0, 4);
 }
 
 function requiredItemLabels(task: GameTask): string[] {
   const req = task.requiredItemIds;
   if (!req?.length) return [];
-  return [...new Set(req.filter(Boolean))].slice(0, 8).map((id) => findRegisteredItemById(id)?.name ?? id);
+  return [...new Set(req.filter(Boolean))].slice(0, 8).map((id) => resolveItemIdForPlayer(id));
 }
 
-function npcLine(task: GameTask, codex: Record<string, CodexEntry> | undefined): string | null {
-  const ids = [...new Set([task.issuerId, ...(task.relatedNpcIds ?? [])].filter(Boolean))].slice(0, 3);
+/** 与托付人不同的「还牵涉谁」，避免把 registry id 露给玩家 */
+function relatedPeopleLine(task: GameTask, codex: Record<string, CodexEntry> | undefined): string | null {
+  const issuer = String(task.issuerId ?? "").trim();
+  const ids = [...new Set((task.relatedNpcIds ?? []).filter(Boolean))].filter((id) => id !== issuer).slice(0, 4);
   if (ids.length === 0) return null;
-  const names = ids.map((id) => {
-    const e = codex?.[id];
-    if (e) return resolveCodexDisplayName(e);
-    return id;
-  });
-  return `关联人物：${names.join("、")}`;
+  return `还可能和谁有关：${ids.map((id) => resolveNpcIdForPlayer(id, codex)).join("、")}`;
 }
 
 function statusStyle(status: GameTask["status"], mode: "light" | "dark"): string {
@@ -81,10 +81,11 @@ export function PlayNarrativeTaskBoard({
   const [showClosed, setShowClosed] = useState(false);
   const mode = density === "overlay" ? "light" : "dark";
 
-  const { primary, paths, promiseRisk, overflow, completed, failed } = useMemo(
-    () => partitionTasksForBoard(tasks ?? [], 4),
-    [tasks]
-  );
+  const { primary, paths, promiseRisk, overflow, completed, failed } = useMemo(() => {
+    const v2 = getClientTaskVisibilityPolicyV2Enabled();
+    const forBoard = filterTasksForTaskBoardVisibilityV2(tasks ?? [], v2);
+    return partitionTasksForBoard(forBoard, 4);
+  }, [tasks]);
 
   const highlightSet = useMemo(
     () => new Set((highlightTaskIds ?? []).filter((x): x is string => typeof x === "string" && x.trim().length > 0)),
@@ -104,7 +105,7 @@ export function PlayNarrativeTaskBoard({
     const clueTitles = cluesForTask(t.id, journalClues).map((c) => c.title);
     const items = itemLabelsForTask(t);
     const requiredItems = requiredItemLabels(t);
-    const npc = npcLine(t, codex);
+    const relatedPeople = relatedPeopleLine(t, codex);
 
     const ring = highlighted
       ? isOverlay
@@ -131,7 +132,7 @@ export function PlayNarrativeTaskBoard({
                     isOverlay ? "bg-amber-100 text-amber-900" : "bg-amber-500/25 text-amber-100"
                   }`}
                 >
-                  当前头等事
+                  正在推进
                 </span>
               ) : null}
               <span
@@ -163,31 +164,31 @@ export function PlayNarrativeTaskBoard({
                 : "border-rose-500/30 bg-rose-500/10 text-rose-100"
             }`}
           >
-            风险：{String((t as { riskNote?: string }).riskNote).slice(0, 160)}
+            险情：{String((t as { riskNote?: string }).riskNote).slice(0, 160)}
             {String((t as { riskNote?: string }).riskNote).length > 160 ? "…" : ""}
           </p>
         ) : null}
         <div className={`mt-2 space-y-1 text-[11px] ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-            <span>委托人：{t.issuerName}</span>
-            <span>楼层：{t.floorTier}</span>
+            <span>谁托付给你：{resolveTaskIssuerDisplay(t.issuerId, t.issuerName, codex)}</span>
+            <span>大致位置：{resolveFloorTierLabel(t.floorTier)}</span>
           </div>
-          {npc ? <p>{npc}</p> : null}
+          {relatedPeople ? <p>{relatedPeople}</p> : null}
           {clueTitles.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>关联手记：</span>
+              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>手记里沾边的：</span>
               {clueTitles.join("；")}
             </p>
           ) : null}
           {requiredItems.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-amber-800" : "text-amber-200"}`}>推进物证门槛：</span>
+              <span className={`font-medium ${isOverlay ? "text-amber-800" : "text-amber-200"}`}>你还缺：</span>
               {requiredItems.join("、")}
             </p>
           ) : null}
           {items.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>关键物/奖励物：</span>
+              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>相关物与可能回报：</span>
               {items.join("、")}
             </p>
           ) : null}
@@ -221,7 +222,7 @@ export function PlayNarrativeTaskBoard({
             : "rounded-xl border border-white/10 bg-white/5 p-6 text-center text-xs text-slate-500"
         }
       >
-        当前没有可追踪目标。探索或与 NPC 互动可触发新契约。
+        暂时没有要跟的事。多走走、多问问，可能会有人把麻烦交到你手里。
       </div>
     );
   }
@@ -243,21 +244,21 @@ export function PlayNarrativeTaskBoard({
 
       {primary ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>当前头等事</p>
+          <p className={`mb-2 ${sectionTitle}`}>正在推进</p>
           {renderTaskCard(primary, { emphasize: true })}
         </div>
       ) : null}
 
       {paths.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>可推进路径</p>
+          <p className={`mb-2 ${sectionTitle}`}>还能试的方向</p>
           <div className="space-y-2.5">{paths.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
       {promiseRisk.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>承诺 / 委托 / 风险</p>
+          <p className={`mb-2 ${sectionTitle}`}>约定·托付·险情</p>
           <div className="space-y-2.5">{promiseRisk.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
@@ -273,7 +274,7 @@ export function PlayNarrativeTaskBoard({
                 : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
             }`}
           >
-            <span>更多契约（{overflow.length}）</span>
+            <span>更多在办（{overflow.length}）</span>
             <span className="text-slate-400">{showMore ? "收起" : "展开"}</span>
           </button>
           {showMore ? <div className="space-y-2.5">{overflow.map((t) => renderTaskCard(t, { emphasize: false }))}</div> : null}
@@ -292,7 +293,7 @@ export function PlayNarrativeTaskBoard({
             }`}
           >
             <span>
-              归档：已完成 {completed.length} · 失败 {failed.length}
+              收起的记录：已完成 {completed.length} · 落空 {failed.length}
             </span>
             <span className="text-slate-400">{showClosed ? "收起" : "展开"}</span>
           </button>

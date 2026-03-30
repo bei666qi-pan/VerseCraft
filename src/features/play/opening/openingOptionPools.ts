@@ -1,6 +1,8 @@
 import { DEFAULT_FOUR_ACTION_OPTIONS } from "./openingCopy";
 
 /**
+ * @deprecated 正式冷开场首轮选项已由主笔实时生成；本文件仅作历史兼容与工具引用，不得绑定生产首屏。
+ *
  * 多类开局选项池（探索 / 观察 / 社交 / 谨慎 / 休整等），与开局 prompt 倾向对齐。
  * 每次 {@link pickEmbeddedOpeningOptions} 尽量从**不同池**各抽一条再打乱，不足则用兜底池补位。
  */

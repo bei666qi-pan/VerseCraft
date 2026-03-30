@@ -1984,6 +1984,7 @@ export const useGameStore = create<GameState>()(
                   activeTaskIds: (s.tasks ?? []).filter((t) => t.status === "active").map((t) => t.id).slice(0, 16),
                   hotThreatPresent: Object.values(s.mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
                   maxRevealRank: maxRevealRankHeart,
+                  presentNpcIds,
                 })
               )
               .filter((x): x is NonNullable<typeof x> => !!x);

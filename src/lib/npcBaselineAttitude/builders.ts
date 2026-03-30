@@ -14,6 +14,7 @@ import type {
   NpcBaselineSceneContext,
   NpcPlayerBaselinePacket,
 } from "./types";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
@@ -105,10 +106,12 @@ export function buildNpcBaselineAttitude(
 
   const greetingStyleRule =
     priv === "xinlan"
-      ? "先确认对方目的，再短句回应；可表现牵引感，但禁止单回合全盘揭露根因。"
-      : priv === "major_charm" || priv === "night_reader"
-        ? "可先停顿、目光试探，再落句；熟悉感限于残响与护壳，不当旧友寒暄。"
-        : "默认陌生租户口吻：事务性、保持距离，不当客服推销或漫展网友。";
+      ? "公事壳先落地：登记事由、动线半步；名单边缘的不适藏顿句里，禁止客服推销与任务口播。"
+      : priv === "night_reader"
+        ? "像在翻别页：停顿、打量，少昵称；不默认玩家懂楼里账，也不解说消化链。"
+        : priv === "major_charm"
+          ? "熟得不对劲却说不清哪里熟；开口前多半拍迟疑，禁止一口老同学或旧队友寒暄。"
+          : "又一拨月初误闯的学生：先当路人事务，再谈帮不帮；禁止客服腔、禁止系统发单腔。";
 
   const truthRevealRule =
     priv === "xinlan"
@@ -203,8 +206,50 @@ export function mergeNpcBaselineWithRelation(input: MergeNpcBaselineInput): NpcB
   const compactNarrativeHint = [
     `视角:${effectiveView}`,
     `距离${Math.round(distance)}/熟悉上限${baseline.allowedFamiliarityCeiling}`,
-    baseline.greetingStyleRule.slice(0, 60),
+    baseline.greetingStyleRule.slice(0, 48),
   ].join("｜");
+
+  const monthlyEntry = getVerseCraftRolloutFlags().enableMonthlyStudentEntry;
+
+  const playerAddressCue = (() => {
+    if (priv === "xinlan") {
+      return "称「这边」「先登记」；名单像旧纸撕口的不适藏顿句。";
+    }
+    if (priv === "night_reader") {
+      return monthlyEntry
+        ? "像在别页里见过；少昵称、多停顿，不默认玩家懂楼里账。"
+        : "像在别页里见过；少昵称、多停顿。";
+    }
+    if (priv === "major_charm") {
+      return monthlyEntry
+        ? "迟疑后称「你」；熟得异常却说不清，禁一口旧识。"
+        : "迟疑后称「你」；熟得不对劲，禁一口旧识。";
+    }
+    if (!monthlyEntry && priv === "normal" && effectiveView === "intruded_student") {
+      return "称同学/年轻人；先事务再套近乎（不强调月初误入叙事）。";
+    }
+    return effectiveView === "intruded_student"
+      ? "又一拨月初误闯的学生；同学/年轻人，先事务再套近乎。"
+      : "保持距离，不套近乎。";
+  })();
+
+  const playerInteractionStanceCue = (() => {
+    if (priv === "xinlan") {
+      return "公事先行；可试探来处，不替玩家揭底；不适可藏半句。";
+    }
+    if (priv === "night_reader") {
+      return "多看少说；回避深问全貌；偶刺半句观察。";
+    }
+    if (priv === "major_charm") {
+      return "熟感用迟疑表现；可交换条件；禁解说校源与七锚。";
+    }
+    if (scene.hotThreatPresent) {
+      return "先自保与边界提醒；不默认与玩家结盟。";
+    }
+    return baseline.shouldAskHowPlayerKnowsThis
+      ? "可半句试探与规则提醒；禁系统发单腔与客服口播。"
+      : "保持距离；不主动兜售任务。";
+  })();
 
   return {
     npcId: baseline.npcId,
@@ -218,6 +263,8 @@ export function mergeNpcBaselineWithRelation(input: MergeNpcBaselineInput): NpcB
     canExpressFamiliarity,
     avoidMisalignment,
     compactNarrativeHint,
+    playerAddressCue,
+    playerInteractionStanceCue,
     shouldAskHowPlayerKnowsThis: baseline.shouldAskHowPlayerKnowsThis,
     shouldAvoidOverfamiliarity: baseline.shouldAvoidOverfamiliarity || (priv === "normal" && relation.trust > 70),
     allowedFamiliarityCeiling: baseline.allowedFamiliarityCeiling,
@@ -265,6 +312,8 @@ export function buildEmptyNpcPlayerBaselinePacket(): NpcPlayerBaselinePacket {
     truthRevealRule: "—",
     relationModHint: { trustDelta: 0, fearDelta: 0 },
     baselineVersusRelationNote: "无聚焦 NPC；关系修正不适用。",
+    playerAddressCue: "—",
+    playerInteractionStanceCue: "—",
   };
 }
 
@@ -303,6 +352,8 @@ export function buildNpcPlayerBaselinePacket(args: {
       fearDelta: clamp(relation.fear / 100, -1, 1),
     },
     baselineVersusRelationNote,
+    playerAddressCue: merged.playerAddressCue.slice(0, 120),
+    playerInteractionStanceCue: merged.playerInteractionStanceCue.slice(0, 96),
   };
 }
 

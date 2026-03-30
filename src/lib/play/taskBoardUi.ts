@@ -76,6 +76,19 @@ function isPromiseRiskSlot(t: GameTask): boolean {
   return false;
 }
 
+/**
+ * V2：soft_lead 且未接取（available）不进入任务板分区，避免「未正式授予却像已挂任务」。
+ */
+export function filterTasksForTaskBoardVisibilityV2(tasks: GameTask[], enabled: boolean): GameTask[] {
+  if (!enabled) return tasks ?? [];
+  return (tasks ?? []).filter((t) => {
+    if (!t || t.status === "hidden") return false;
+    const layer = inferEffectiveNarrativeLayer(t as unknown as GameTaskV2);
+    if (layer === "soft_lead" && t.status === "available") return false;
+    return true;
+  });
+}
+
 export type TaskBoardPartition = {
   primary: GameTask | null;
   /** 可推进路径（不含 primary，最多 4） */
@@ -124,7 +137,7 @@ export function partitionTasksForBoard(tasks: GameTask[], maxPaths = 4): TaskBoa
 
 export function goalKindLabel(t: GameTask): string {
   const k = inferObjectiveKind(t as GameTaskV2);
-  if (k === "main") return "主线";
-  if (k === "promise") return "承诺";
-  return "委托";
+  if (k === "main") return "主路";
+  if (k === "promise") return "约定";
+  return "托付";
 }

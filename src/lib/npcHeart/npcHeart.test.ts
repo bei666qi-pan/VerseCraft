@@ -37,6 +37,19 @@ test("NpcHeart selector only picks a few relevant NPCs", () => {
   assert.ok(ids.includes("N-008"));
 });
 
+test("同场 presentNpcIds 注入 peerRelationalCues", () => {
+  const v = buildNpcHeartRuntimeView({
+    npcId: "N-001",
+    relationPartial: {},
+    locationId: "1F_Lobby",
+    activeTaskIds: [],
+    hotThreatPresent: false,
+    presentNpcIds: ["N-001", "N-004"],
+  });
+  assert.ok(v?.peerRelationalCues);
+  assert.ok(v!.peerRelationalCues!.includes("阿花"));
+});
+
 test("NpcHeart prompt block is length-capped", () => {
   const v = buildNpcHeartRuntimeView({
     npcId: "N-018",

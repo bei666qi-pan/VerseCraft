@@ -32,7 +32,6 @@ import {
   FIXED_OPENING_NARRATIVE,
   OPENING_SYSTEM_PROMPT,
 } from "@/features/play/opening/openingCopy";
-import { pickEmbeddedOpeningOptions } from "@/features/play/opening/openingOptionPools";
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
@@ -278,7 +277,6 @@ function PlayContent() {
   /** 开场首段等待超时后是否已自动重试过一次拉取 options */
   const openingTimeoutRetryRef = useRef(false);
   /** 开局回合：叙事固定为本地文案，不从 SSE 的 narrative 字段增量覆盖 */
-  const openingOptionsOnlyRoundRef = useRef(false);
   const optionsRegenInFlightRef = useRef(false);
   const modeSwitchByUserRef = useRef(false);
   /** SSE `__VERSECRAFT_STATUS__` 最新阶段（仅展示层） */
@@ -321,10 +319,7 @@ function PlayContent() {
   const openingNarrativePinned = useGameStore((s) => (s as any).openingNarrativePinned ?? false);
   const showPinnedOpeningNarrative = isHydrated && isGameStarted && openingNarrativePinned;
   /** 首屏选项已就绪时仍隐藏「正在生成」：嵌入式开场 + 任意会话忙（含开局 API 飞行中）均不驱动 typewriter 思考态 */
-  const suppressEmbeddedOpeningStreamUi = useMemo(
-    () => openingBusyUi || (showEmbeddedOpening && isChatBusy),
-    [openingBusyUi, showEmbeddedOpening, isChatBusy]
-  );
+  const suppressEmbeddedOpeningStreamUi = useMemo(() => openingBusyUi, [openingBusyUi]);
   const streamVisualForTypewriter = isStreamVisualActive && !suppressEmbeddedOpeningStreamUi;
 
   const onTailDrainComplete = useCallback(() => {
@@ -696,12 +691,6 @@ function PlayContent() {
 
   useEffect(() => {
     if (!isHydrated || isChatBusy || hasTriggeredOpening.current) return;
-    // 嵌入式开场：首屏叙事已由前端固定块展示，且选项来自本地池；禁止发起 OPENING_SYSTEM_PROMPT，
-    // 否则会把 streamPhase 锁成 busy，导致首屏四选项不可点击。
-    if (showEmbeddedOpening) {
-      hasTriggeredOpening.current = true;
-      return;
-    }
     const currentLogs = useGameStore.getState().logs ?? [];
     const turn = currentLogs.length;
     // 仅在还没有任何助手叙事时触发一次主链路开场（单一真相源；本地叙事仅作下方超时降级）
@@ -710,7 +699,7 @@ function PlayContent() {
     openingAwaitingAssistantRef.current = true;
     openingStartedAtRef.current = Date.now();
     void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
-  }, [isHydrated, isChatBusy, showEmbeddedOpening]);
+  }, [isHydrated, isChatBusy]);
 
   /** 成功拿到选项后清掉【开局】类提示，避免与正常对局并存 */
   useEffect(() => {
@@ -725,7 +714,6 @@ function PlayContent() {
     const tick = window.setInterval(() => {
       if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
         sendActionInFlightRef.current = false;
-        openingOptionsOnlyRoundRef.current = false;
         setOpeningAiBusy(false);
       }
       const logs = useGameStore.getState().logs ?? [];
@@ -844,15 +832,6 @@ function PlayContent() {
     showEmbeddedOpening,
   ]);
 
-  // 嵌入式开场：首屏四选项必须由前端立刻注入，确保可点击（不依赖 /api/chat 的 OPENING_SYSTEM_PROMPT）。
-  useEffect(() => {
-    if (!isHydrated || !showEmbeddedOpening) return;
-    if (isChatBusy) return;
-    if (inputMode !== "options") return;
-    if (currentOptions.length > 0) return;
-    setCurrentOptions([...pickEmbeddedOpeningOptions()]);
-  }, [currentOptions.length, inputMode, isChatBusy, isHydrated, setCurrentOptions, showEmbeddedOpening]);
-
   useEffect(() => {
     if (
       !isHydrated ||
@@ -921,13 +900,14 @@ function PlayContent() {
     prevPathnameForAbortRef.current = pathname;
   }, [pathname]);
 
-  async function requestFreshOptions(trigger: "auto_switch" | "manual_button") {
+  async function requestFreshOptions(
+    trigger: "auto_switch" | "manual_button" | "opening_fallback"
+  ) {
     // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
     const manual = trigger === "manual_button";
 
     if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
       sendActionInFlightRef.current = false;
-      openingOptionsOnlyRoundRef.current = false;
       setOpeningAiBusy(false);
     }
 
@@ -947,10 +927,6 @@ function PlayContent() {
       if (manual) setFirstTimeHint("终局阶段请使用终局选项推进，无法在此刷新。");
       return;
     }
-    if (showEmbeddedOpening) {
-      if (manual) setFirstTimeHint("开场选项由本地预置提供，无需在此刷新。");
-      return;
-    }
     if (isGuestDialogueExhausted) {
       setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
       return;
@@ -958,7 +934,9 @@ function PlayContent() {
 
     optionsRegenInFlightRef.current = true;
     setOptionsRegenBusy(true);
-    if (trigger === "auto_switch") {
+    if (trigger === "opening_fallback") {
+      setFirstTimeHint("主笔正在补全首轮可选行动…");
+    } else if (trigger === "auto_switch") {
       setFirstTimeHint("主笔正在整理可选行动…");
     } else {
       setFirstTimeHint("主笔正在按当前剧情重新整理可选行动…");
@@ -974,7 +952,13 @@ function PlayContent() {
           role: "user",
           content:
             `${OPTIONS_REGEN_SYSTEM_PROMPT}\n` +
-            `【仅刷新选项原因】${trigger === "auto_switch" ? "用户切回选项模式且当前无可用项" : "用户手动点击刷新选项按钮"}`,
+            `【仅刷新选项原因】${
+              trigger === "opening_fallback"
+                ? "冷开场首轮主笔未返回 options，请仅补四条第一人称短选项（误闯后惊魂未稳，以稳住、观察、听声、找光/退路为主，勿空）"
+                : trigger === "auto_switch"
+                  ? "用户切回选项模式且当前无可用项"
+                  : "用户手动点击刷新选项按钮"
+            }`,
         },
       ];
       const playerContext = useGameStore.getState().getPromptContext();
@@ -1069,12 +1053,11 @@ function PlayContent() {
     setWaitUxStartedAt(performance.now());
     // Only compute hint at request start; keep stable during waiting_upstream.
     setWaitingHintKind(guessSemanticWaitingKind(trimmed));
-    const isOpeningOptionsOnlyRound = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
+    const isOpeningSystemRequest = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
     const isEndgameSystemRound = Boolean(isSystemAction && trimmed === ENDGAME_SYSTEM_PROMPT);
-    openingOptionsOnlyRoundRef.current = isOpeningOptionsOnlyRound;
-    if (isOpeningOptionsOnlyRound) {
+    if (isOpeningSystemRequest) {
       setOpeningAiBusy(true);
-      setCurrentOptions([...pickEmbeddedOpeningOptions()]);
+      setCurrentOptions([]);
     }
     if (isEndgameSystemRound) {
       // 终局回合强制以唯一选项推进
@@ -1139,7 +1122,7 @@ function PlayContent() {
           playerContext,
           clientState,
           sessionId: guestId ?? "browser_session",
-          openingOptionsOnlyRound: Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT),
+          openingOptionsOnlyRound: false,
         }),
         signal: ac.signal,
       });
@@ -1277,20 +1260,18 @@ function PlayContent() {
         sawStreamChunk = true;
         setStreamPhase("streaming_body");
       }
-      if (!openingOptionsOnlyRoundRef.current) {
-        try {
-          const preview = extractNarrative(raw);
-          /**
-           * 展示层 fail-closed：
-           * - 仅影响屏幕实时预览，不参与状态提交；
-           * - 命中协议污染时不展示原文，改为克制的统一提示。
-           * - 这层只能兜底“显示”，不能兜底“状态”，禁止前端脑补 DM 结构。
-           */
-          const shown = sanitizeDisplayedNarrative(preview);
-          narrativeRef.current = shown.text;
-        } catch {
-          narrativeRef.current = "";
-        }
+      try {
+        const preview = extractNarrative(raw);
+        /**
+         * 展示层 fail-closed：
+         * - 仅影响屏幕实时预览，不参与状态提交；
+         * - 命中协议污染时不展示原文，改为克制的统一提示。
+         * - 这层只能兜底“显示”，不能兜底“状态”，禁止前端脑补 DM 结构。
+         */
+        const shown = sanitizeDisplayedNarrative(preview);
+        narrativeRef.current = shown.text;
+      } catch {
+        narrativeRef.current = "";
       }
       const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
       if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
@@ -1438,16 +1419,12 @@ function PlayContent() {
 
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
     let narrativeToPush: string;
-    if (openingOptionsOnlyRoundRef.current) {
-      narrativeToPush = FIXED_OPENING_NARRATIVE;
-    } else {
-      try {
-        const prepared = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
-        const shown = sanitizeDisplayedNarrative(prepared);
-        narrativeToPush = shown.text;
-      } catch {
-        narrativeToPush = sanitizeDisplayedNarrative(rawNarrative.slice(0, 50000)).text;
-      }
+    try {
+      const prepared = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
+      const shown = sanitizeDisplayedNarrative(prepared);
+      narrativeToPush = shown.text;
+    } catch {
+      narrativeToPush = sanitizeDisplayedNarrative(rawNarrative.slice(0, 50000)).text;
     }
     useGameStore.getState().pushLog({
       role: "assistant",
@@ -1818,8 +1795,6 @@ function PlayContent() {
       setCurrentOptions([ENDGAME_ONLY_OPTION]);
       setEndgameState({ active: true, awaitingEnding: false });
       setActiveMenu(null);
-    } else if (openingOptionsOnlyRoundRef.current) {
-      // 首屏四条已由 pickEmbeddedOpeningOptions 写入，禁止用模型 options 覆盖
     } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
     } else {
@@ -1831,7 +1806,11 @@ function PlayContent() {
         useGameStore.getState().saveGame(slot);
         writeResumeShadow();
       });
-      if (!isFirstAssistantTurn) {
+      if (isOpeningSystemRequest) {
+        queueMicrotask(() => {
+          void requestFreshOptions("opening_fallback");
+        });
+      } else if (!isFirstAssistantTurn) {
         setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
       }
     }
@@ -1839,11 +1818,9 @@ function PlayContent() {
     if (process.env.NODE_ENV === "development") {
       const branch = isEndgameSystemRound
         ? "endgame"
-        : openingOptionsOnlyRoundRef.current
-          ? "opening_skip"
-          : merged.length > 0
-            ? "merged"
-            : "cleared";
+        : merged.length > 0
+          ? "merged"
+          : "cleared";
       console.debug("[versecraft/play] options commit", {
         branch,
         parsedOptionsLen: Array.isArray(parsed.options) ? parsed.options.length : 0,
@@ -1918,7 +1895,7 @@ function PlayContent() {
       if (memoryCandidates.length > 0) {
         useGameStore.getState().applyMemoryCandidates(memoryCandidates, nowHour);
       }
-      if (toastHint && !openingOptionsOnlyRoundRef.current && !endgameState.active) {
+      if (toastHint && !endgameState.active) {
         // 轻提示：避免轰炸；仅当服务端未提供 toast_hint 时补一次。
         if (!(typeof uiHints?.toast_hint === "string" && uiHints.toast_hint.trim().length > 0)) {
           setFirstTimeHint(toastHint);
@@ -1928,7 +1905,7 @@ function PlayContent() {
       // ignore
     }
 
-    // UI hints: tasks panel auto-open + highlight (must not affect opening options-only or endgame)
+    // UI hints: tasks panel auto-open + highlight（须避开终局态）
     try {
       const autoOpen = uiHints?.auto_open_panel === "task";
       const highlightIds: string[] = Array.isArray(uiHints?.highlight_task_ids)
@@ -1937,7 +1914,7 @@ function PlayContent() {
       const toastHint = typeof uiHints?.toast_hint === "string" ? uiHints.toast_hint.trim() : "";
       if (toastHint) setFirstTimeHint(toastHint);
 
-      if (!openingOptionsOnlyRoundRef.current && !endgameState.active) {
+      if (!endgameState.active) {
         if (autoOpen) setIsTaskPanelOpen(true);
         if (highlightIds.length > 0) {
           setHighlightTaskIds(highlightIds);
@@ -2306,20 +2283,11 @@ function PlayContent() {
     // 双层恢复：正式存档之外，同步写入 shadow，避免浏览器突发退出时仅依赖 IDB 防抖刷盘。
     writeResumeShadow();
 
-    const skipTailDrain = openingOptionsOnlyRoundRef.current;
-    if (skipTailDrain) {
-      setStreamPhase("idle");
-      const sanityAfterOpening = useGameStore.getState().stats?.sanity ?? 0;
-      if (parsed.is_death || sanityAfterOpening <= 0) {
-        setTimeout(() => router.push("/settlement"), 2000);
-      }
-    } else {
-      parsedPostDrainRef.current = { isDeath: !!parsed.is_death };
-      narrativeRef.current = narrativeToPush;
-      tailDrainTargetRef.current = narrativeToPush;
-      setTailAlignKey((n) => n + 1);
-      setStreamPhase("tail_draining");
-    }
+    parsedPostDrainRef.current = { isDeath: !!parsed.is_death };
+    narrativeRef.current = narrativeToPush;
+    tailDrainTargetRef.current = narrativeToPush;
+    setTailAlignKey((n) => n + 1);
+    setStreamPhase("tail_draining");
     } catch (commitErr: unknown) {
       console.error("[/play] turn commit failed", commitErr);
       tailDrainTargetRef.current = null;
@@ -2330,7 +2298,6 @@ function PlayContent() {
     }
     } finally {
       sendActionInFlightRef.current = false;
-      openingOptionsOnlyRoundRef.current = false;
       setOpeningAiBusy(false);
     }
   }
@@ -2636,10 +2603,8 @@ function PlayContent() {
 
               {/*
                 选项区：PlayOptionsList 渲染四条槽位（zustand currentOptions）；
-                「让主笔重新整理选项」→ requestFreshOptions("manual_button") → /api/chat（clientPurpose: options_regen_only）。
-                嵌入式开场与终局仅使用 PlayOptionsList，不展示整理区。
+                冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
               */}
-              {/* 嵌入式开场首屏选项来自 pickEmbeddedOpeningOptions；该阶段不展示「主笔实时推演」以免与前端随机冲突 */}
               <PlayStoryScroll
                 scrollRef={scrollRef}
                 onScrollContainer={onScrollContainer}
@@ -2659,7 +2624,7 @@ function PlayContent() {
                 plainOnlyNewTurn={false}
                 plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                 embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
-                openingAiBusy={openingBusyUi && !showEmbeddedOpening}
+                openingAiBusy={openingBusyUi}
                 semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                 waitUxPrimaryLine={waitUxPrimaryLine}
                 waitUxSecondaryLine={waitUxSecondaryLine}

@@ -17,7 +17,24 @@ import { MAJOR_NPC_DEEP_CANON } from "./majorNpcDeepCanon";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "./revealTierRank";
 
 export const DEFAULT_BASELINE_VIEW_OF_PLAYER =
-  "受空间碎片影响、误闯诡异公寓的学生之一；非天选唯一身份，默认与本人无旧识。";
+  "同一【空间】权柄裂口下、月初常被甩进公寓泡层的误闯学生之一；楼内住户对此不稀奇。非天选唯一，默认与本人无旧识。";
+
+function baselineViewOfPlayerForPrivilege(priv: NpcMemoryPrivilege): string {
+  const ordinaryMonthly =
+    "先当作「又一批掉进来的学生」：多数人慌、跑、乱试规则；若你更冷静，只说明你可能多撑几步，不是谜题答案。";
+  switch (priv) {
+    case "normal":
+      return `${DEFAULT_BASELINE_VIEW_OF_PLAYER} ${ordinaryMonthly}`;
+    case "xinlan":
+      return "误入学生；登记口对其有最强名单撕口焦虑与牵引感，像缺角必须对上。禁止单回合说尽根因；熟悉感可强，但不得替全员抢跑真相。";
+    case "night_reader":
+      return "误入者在其阅读边界里像重复出现的墨迹：熟悉感走「页缘压迫与停顿」，不走温情相认，也不与六人共用同一种心悸模板。";
+    case "major_charm":
+      return `${DEFAULT_BASELINE_VIEW_OF_PLAYER} 可有各异熟悉感残响（脚步、声纹、欠条、台词错位、轮廓），禁止开局直呼旧名或说尽过去。`;
+    default:
+      return DEFAULT_BASELINE_VIEW_OF_PLAYER;
+  }
+}
 
 const BASE_ANTI_FABRICATION: readonly string[] = [
   "禁止编造未在注册表出现的道具 ID、诡异编号、楼层节点与服务名。",
@@ -359,7 +376,7 @@ export function buildCanonicalIdentityCard(npc: NPC, profileV2: NpcProfileV2 | n
     allowedSpawnLocations: buildAllowedSpawnLocations(npc, home),
     memoryPrivilege: priv,
     playerRecognitionMode: recognition,
-    baselineViewOfPlayer: DEFAULT_BASELINE_VIEW_OF_PLAYER,
+    baselineViewOfPlayer: baselineViewOfPlayerForPrivilege(priv),
     canKnowPlayerCoreIdentity: canKnowIdentity,
     canKnowLoopTruth: canKnowLoop,
     revealTierCap: revealCap,

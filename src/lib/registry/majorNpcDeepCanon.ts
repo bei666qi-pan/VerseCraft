@@ -2,6 +2,7 @@
  * 六位高魅力 NPC 深层正典（Major NPC / 七辅锚）。
  * - 与 `npcProfiles.ts` 组合使用：本文件承载扩展骨架，profile 承载 UI 强依赖字段。
  * - 不向 `types.ts` 的 `NpcProfileV2` 强塞可选字段，避免破坏 ContentSpec；运行时通过 id 查表。
+ * - NPC 间同场可演关系（非深层真相泄底）见 `npcRelationalSurface.ts` + runtime `npc_social_surface_packet`。
  */
 
 import type { NpcSocialProfile } from "./types";
@@ -80,7 +81,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里学校风纪协作层成员：习惯在事件边缘把人从「集体越界」里拽回一步。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "碎片泄露当夜他在校侧执勤序列里；多轮循环后，校籍被泡层改写为「公寓巡逻者」，但肌肉记忆仍按「封线—放行—封线」节拍行动。",
+      "同一空间权柄裂口在校侧泡层先响时，他在执勤序列里；多轮循环后身份被改写为「公寓巡逻者」，肌肉记忆仍按「封线—放行—封线」节拍行动。",
     residualEchoToProtagonist:
       "对主锚有「你复活后的第一步总踩在同一块砖上」的残响，不是温柔，是警报重复太多次。",
     whyNotImmediateAlly:
@@ -99,12 +100,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     revealStages: [
       {
         tier: "surface",
-        summary: "寡言巡守，像把 B1 当成必须守住的承诺。",
+        summary: "寡言巡守，像守着同一道空间裂口在 B1 这一侧的皮层；承诺感来自界址而非私人温情。",
         conditionHint: "初见 B1 或锚点话题",
       },
       {
         tier: "fracture",
-        summary: "其职能与「邻校事故」传言同频，但他拒谈校名。",
+        summary: "邻处日常泡的传言与楼内渗漏同拍；他拒谈专名，却像见过裂口内外两种风声。",
         conditionHint: "耶里/学区流言与世界标记",
       },
       {
@@ -173,7 +174,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里校广播社成员：曾负责试音、念通知，声音被用来稳定集体情绪。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "泄露事件里她的声线最先被泡层采样；循环后她被标定为「人性缓冲辅锚」，天真笑容是职能面具。",
+      "空间权柄渗漏时她的声线最先被泡层采样；循环后她被标定为「人性缓冲辅锚」，天真笑容是职能面具。",
     residualEchoToProtagonist:
       "主锚靠近时她常心悸——像旧广播里某段空白噪声被填上了主锚的步频。",
     whyNotImmediateAlly:
@@ -190,8 +191,16 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["上扬句尾", "空白眼神半拍", "怕高音广播声"],
     partyRelinkTriggers: ["favorability>=45", "task:memory.ribbon.completed"],
     revealStages: [
-      { tier: "surface", summary: "热情补给员，像被整栋楼护着。", conditionHint: "B1_Storage" },
-      { tier: "fracture", summary: "其声音与邻校广播谣言共振。", conditionHint: "学区标记" },
+      {
+        tier: "surface",
+        summary: "补给员式热情，像在给又一批从裂口掉进来的外人贴「暂时像人」的胶纸。",
+        conditionHint: "B1_Storage",
+      },
+      {
+        tier: "fracture",
+        summary: "你的步频会牵动她的呼吸空白；她否认认得你，却像听过这段噪声被填满过。",
+        conditionHint: "学区标记",
+      },
       { tier: "deep", summary: "确认为人性缓冲辅锚，校源徘徊者状态。", conditionHint: "deep packet" },
       { tier: "abyss", summary: "知自己声纹曾被泡层采样作稳定剂。", conditionHint: "abyss" },
     ],
@@ -248,7 +257,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里学生会档案干事：旧七人里负责记名单、记承诺、记谁欠谁一次的人。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "她不是全知者；多轮循环后她保留的是不完整情感记忆与旧闭环牵引感，因果链有洞。",
+      "她不是全知者；多轮循环后她保留的是不完整情感记忆与同一权柄下的闭环牵引感，因果链有洞。",
     residualEchoToProtagonist:
       "她会在主锚身上闻到「旧阵缺一角」的焦虑——像名单末行被撕掉，而主锚是那道撕口。",
     whyNotImmediateAlly:
@@ -265,8 +274,16 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["先问目标再建议", "失败影子幻视", "物业表格下的铅笔痕"],
     partyRelinkTriggers: ["task:career.pre_register.completed", "trust>=50"],
     revealStages: [
-      { tier: "surface", summary: "可靠御姐式前台，擅长路线与登记。", conditionHint: "1F_PropertyOffice" },
-      { tier: "fracture", summary: "她的建议与邻校「名单」怪谈同形。", conditionHint: "fracture" },
+      {
+        tier: "surface",
+        summary: "登记口御姐壳：先问你去哪，像在核对裂口新掉进的一行，而不是先把你当谜语。",
+        conditionHint: "1F_PropertyOffice",
+      },
+      {
+        tier: "fracture",
+        summary: "名单焦虑最强：怕你像顶替的缺口，又怕你真是那道撕口本人——熟悉感强但仍关闸。",
+        conditionHint: "fracture",
+      },
       { tier: "deep", summary: "确认为旧七人阵第一牵引点，辅锚之三。", conditionHint: "deep" },
       { tier: "abyss", summary: "自知记忆有洞仍选择把主锚拉回阵心。", conditionHint: "abyss" },
     ],
@@ -325,7 +342,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里外联与二手市集组织者：最早习惯「货不对板的世界」的人。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "碎片流通链边缘的常驻者；循环后身份被写成游荡商人脸孔，仍保留对价本能。",
+      "同一权柄碎片流通链边缘的常驻者；循环后身份被写成游荡商人脸孔，仍保留对价本能。",
     residualEchoToProtagonist:
       "与主锚有未结清「欠条」体感——非恋爱，是旧校互助券没撕干净。",
     whyNotImmediateAlly:
@@ -342,8 +359,16 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["玩笑留后路", "货源不提", "镜面议价习惯"],
     partyRelinkTriggers: ["debt>=10", "task:merchant.fragment.trade.completed"],
     revealStages: [
-      { tier: "surface", summary: "潇洒商人，货来路不明。", conditionHint: "merchant_seen" },
-      { tier: "fracture", summary: "其货流与空间碎片传言相连。", conditionHint: "fracture" },
+      {
+        tier: "surface",
+        summary: "商人壳；货源糊得像从裂口另一头捞上来，却仍能成交。",
+        conditionHint: "merchant_seen",
+      },
+      {
+        tier: "fracture",
+        summary: "欠条与碎片传言同形：像同一空间权柄在经济层的渗出，他先锁价再动。",
+        conditionHint: "fracture",
+      },
       { tier: "deep", summary: "确认为交换路由辅锚。", conditionHint: "deep" },
       { tier: "abyss", summary: "知龙月校准下交换规则会变价。", conditionHint: "abyss" },
     ],
@@ -401,7 +426,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里戏剧社 / 辩论写手：擅长把别人写进替身位。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "曾把主锚写进旧剧本当替身梗；循环后梗成真，羞耻与生存欲拧成诱导刃。",
+      "曾把主锚写进旧剧本当替身梗；循环后梗被同一权柄泡层兑现，羞耻与生存欲拧成诱导刃。",
     residualEchoToProtagonist:
       "见主锚会像看见自己写坏的台词活了——既想毁稿又想借主锚改结局。",
     whyNotImmediateAlly:
@@ -418,8 +443,16 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["示弱请求", "眼尾冷意", "高好感突变温顺"],
     partyRelinkTriggers: ["betrayal_flag:boy", "task:boy.false_rescue.completed"],
     revealStages: [
-      { tier: "surface", summary: "讨喜机灵，像需要你帮忙的弟弟；眼尾冷意是职能余温。", conditionHint: "7F_Room701" },
-      { tier: "fracture", summary: "话术与旧校剧本杀式诱导同构。", conditionHint: "fracture" },
+      {
+        tier: "surface",
+        summary: "机灵求助型少年壳；眼尾冷意像读过同一场次太多次，却不说破场次名。",
+        conditionHint: "7F_Room701",
+      },
+      {
+        tier: "fracture",
+        summary: "你像活过来的错字：他既想改稿又想借稿求生，耻感晚到但锋利。",
+        conditionHint: "fracture",
+      },
       { tier: "deep", summary: "确认为诱导刃辅锚，校源徘徊者。", conditionHint: "deep" },
       { tier: "abyss", summary: "愿撕稿与主锚共写新结局（高代价）。", conditionHint: "abyss" },
     ],
@@ -477,7 +510,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里美术社：与枫不同班，却被绑进同一张同人阵草案。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "循环后她被标定为镜像反制辅锚，对「脸与轮廓」异常敏感。",
+      "循环后她被标定为镜像反制辅锚；同一权柄在轮廓层的残响让她对脸与线条异常敏感。",
     residualEchoToProtagonist:
       "主锚步态或虹膜会触发她保护欲违和——像旧草案上被涂掉又浮现的线。",
     whyNotImmediateAlly:
@@ -494,8 +527,16 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     fixedBondClues: ["抱臂门边", "偷看反应", "替陌生人挡一次险"],
     partyRelinkTriggers: ["trust>=60", "task:sibling.old_day.completed"],
     revealStages: [
-      { tier: "surface", summary: "画室守门人：冷淡是拒诱导的壳，非单纯孤僻。", conditionHint: "5F_Studio503" },
-      { tier: "fracture", summary: "其画与镜像污染轴共振。", conditionHint: "fracture" },
+      {
+        tier: "surface",
+        summary: "画室门神式冷淡，像防裂口里伸出的线缠到你身上，却先骂你不准靠近。",
+        conditionHint: "5F_Studio503",
+      },
+      {
+        tier: "fracture",
+        summary: "轮廓先响、语言后缩：像某条被涂掉的线又浮上你的侧脸，她立刻收声。",
+        conditionHint: "fracture",
+      },
       { tier: "deep", summary: "确认为镜像反制辅锚。", conditionHint: "deep" },
       { tier: "abyss", summary: "愿与主锚共担草案撕裂代价。", conditionHint: "abyss" },
     ],

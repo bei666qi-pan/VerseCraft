@@ -50,6 +50,20 @@ test("phase4: options regeneration should auto-trigger on user switch text->opti
     shouldAutoRegenerateOptionsOnModeSwitch({
       prevMode: "text",
       nextMode: "options",
+      switchedByUser: true,
+      currentOptionsLength: 0,
+      blocksOptionsRegen: false,
+      optionsRegenBusy: false,
+      endgameActive: false,
+      showEmbeddedOpening: true,
+      isGuestDialogueExhausted: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldAutoRegenerateOptionsOnModeSwitch({
+      prevMode: "text",
+      nextMode: "options",
       switchedByUser: false,
       currentOptionsLength: 0,
       blocksOptionsRegen: false,

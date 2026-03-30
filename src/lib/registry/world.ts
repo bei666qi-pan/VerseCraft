@@ -6,13 +6,13 @@ import { ITEMS } from "./items";
 import { WAREHOUSE_ITEMS } from "./warehouseItems";
 
 export const FLOORS: readonly { id: FloorId; label: string; description: string }[] = [
-  { id: "B2", label: "地下二层", description: "出口通道、守门人结界。第 8 诡异（深渊守门人）永驻此地。" },
+  { id: "B2", label: "地下二层", description: "出口通道与守门结界。传闻深渊守门人永驻此处，寻常手段打不开那扇木门。" },
   { id: "B1", label: "地下一层", description: "玩家初始复苏地。储物间、洗衣房、配电间。绝对安全区，无诡异。" },
   { id: "1", label: "1 楼", description: "门厅、登记与办公口、保安室、信箱区。陈婆婆长椅、一楼登记窗口、新住户接待动线。" },
   { id: "2", label: "2 楼", description: "201 诊室（林医生）、202 室、203 室、走廊。消毒水与甜腻气味弥漫。" },
   { id: "3", label: "3 楼", description: "301 室、302 室、楼梯间。小女孩阿花踢毽子的回响不绝于耳。" },
   { id: "4", label: "4 楼", description: "401 室（张先生）、402 室、走廊尽头。盲人徘徊此处呼唤大黄。" },
-  { id: "5", label: "5 楼", description: "501 室、502 室、503 画室（辅锚庇护节点）。未完成的自画像挂满墙壁。" },
+  { id: "5", label: "5 楼", description: "501 室、502 室、503 画室。住户口耳相传那里像能躲一躲的地方，墙上未完成的自画像特别多。" },
   { id: "6", label: "6 楼", description: "601 室、602 室（双胞胎）、楼梯间。失眠症患者整夜喃喃低语。" },
   { id: "7", label: "7 楼", description: "701 室、走廊长椅（夜读老人）、厨房（厨师）、紧闭门扉区。公寓最深层的秘密汇聚于此。" },
 ];
@@ -44,20 +44,20 @@ export const NPC_EXCLUSIVE_ITEMS: Record<string, string> = {
   "N-004": "黑色毽子（阿花专属）",
   "N-005": "导盲杖（盲人专属）",
   "N-006": "无日期报纸（张先生专属）",
-  "N-007": "颜料调色盘（画室守门人专属）",
+  "N-007": "颜料调色盘（叶专属）",
   "N-008": "万能螺丝刀（电工老刘专属）",
   "N-009": "共鸣水晶（双胞胎专属）",
-  "N-010": "登记铜章（路线与档案壳专属）",
-  "N-011": "消化日志（夜读老人专属·不可赠予）",
+  "N-010": "登记铜章（欣蓝专属）",
+  "N-011": "消化日志（夜读老人专属，不可转赠）",
   "N-012": "屠夫菜刀（厨师专属）",
-  "N-013": "无声琴键（7F 诱导相位纪念物专属）",
+  "N-013": "无声琴键（枫专属）",
   "N-014": "漂白剂（洗衣房阿姨专属）",
-  "N-015": "电梯应急钥匙（边界巡守专属）",
+  "N-015": "电梯应急钥匙（麟泽专属）",
   "N-016": "失眠者手记（失眠症患者专属）",
   "N-017": "茶壶（红制服保洁员专属·剧毒）",
-  "N-018": "交换账本副册（中立交易节点专属）",
+  "N-018": "交换账本副册（北夏专属）",
   "N-019": "调查笔记（前调查员专属）",
-  "N-020": "入住须知副页（补给与人性缓冲专属）",
+  "N-020": "入住须知副页（灵伤专属）",
 };
 
 /** Combat power tiers for anomalies (used in DM prompt as hard reference) */
@@ -133,11 +133,15 @@ export const B1_ABSOLUTE_SAFE_ROOMS = [
 import type { NpcSocialProfile } from "./types";
 import { CORE_NPC_PROFILES_V2 } from "./npcProfiles";
 import { MAJOR_NPC_DEEP_CANON, patchMajorNpcSocialGraph, type MajorNpcId } from "./majorNpcDeepCanon";
+import { buildMonthlyIntrusionCommonSenseLines } from "./monthlyIntrusionModel";
+import { REVEAL_TIER_RANK } from "./revealTierRank";
+import { getSpaceShardUnifiedExplanation } from "./spaceShardCanon";
 
 /**
  * NPC 社交图。六名辅锚（N-015/020/010/018/013/007）在模块加载时由 `patchMajorNpcSocialGraph` 整段覆盖，
  * 下方静态块若仍为「占位」则勿写入旧电梯工/诱饵/无面设定；普通住户节点在此维护并与辅锚缝合。
  */
+/** 住户关系叙事真源（偏档案/长 lore）。同场可表演的微互动与称呼见 `@/lib/registry/npcRelationalSurface`（runtime packet）。 */
 export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
   "N-001": {
     homeLocation: "1F_Lobby",
@@ -517,7 +521,18 @@ for (const profile of CORE_NPC_PROFILES_V2) {
 
 /** Build lore context block for DM injection — single source of truth for worldview consistency */
 export function buildLoreContextForDM(): string {
+  const spaceExplain = getSpaceShardUnifiedExplanation(REVEAL_TIER_RANK.deep);
   const lines: string[] = [
+    "",
+    "## 【空间权柄·单一底层（DM 编排真源）】",
+    "",
+    spaceExplain.surfaceLine,
+    spaceExplain.fractureLine ?? "",
+    spaceExplain.deepLine ?? "",
+    "",
+    "## 【月初误入·硬规则与住户共识】",
+    "",
+    ...buildMonthlyIntrusionCommonSenseLines(),
     "",
     "## 【世界观锚点绝对法则（Lore Anchor — 严禁违背）】",
     "",

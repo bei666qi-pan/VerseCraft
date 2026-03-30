@@ -22,6 +22,8 @@ import {
   buildRecentWorldEventPacket,
   buildReviveAnchorLorePacket,
   buildRevealTierPacket,
+  buildSpaceAuthorityBaselinePacket,
+  buildSpaceAuthorityBaselinePacketCompact,
   buildThreatLorePacket,
 } from "./worldLorePacketBuilders";
 import {
@@ -61,6 +63,9 @@ import {
   compactActorConstraintBundle,
   parseRtTaskLayers,
 } from "@/lib/playRealtime/actorConstraintPackets";
+import { buildNpcSocialSurfacePacketCompact } from "@/lib/playRealtime/npcSocialSurfacePackets";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { incrNpcSocialSurfaceUsageCount } from "@/lib/observability/versecraftRolloutMetrics";
 
 type ServiceStateInput = {
   shopUnlocked?: boolean;
@@ -464,6 +469,7 @@ export function buildRuntimeContextPackets(args: {
     npcIds: svc.npcIds,
   }));
   const nearbyNpcIds = npcPositions.filter((x) => x.location === location).map((x) => x.npcId);
+  const rollout = getVerseCraftRolloutFlags();
   const loreLines = compactRuntimeLore(args.runtimeLoreCompact ?? "");
   const professionIdentityPacket = buildProfessionIdentityPacket({
     worldFlags,
@@ -579,10 +585,34 @@ export function buildRuntimeContextPackets(args: {
       .filter((id) => typeof id === "string" && id.trim().length > 0)
       .slice(0, 16),
     pendingHourFraction,
+    presentNpcIds: nearbyNpcIds,
   });
   const actorConstraintCompact = compactActorConstraintBundle(actorConstraintBundle);
+  const spaceAuthorityBaselinePacket = rollout.enableSpaceAuthorityCanon
+    ? buildSpaceAuthorityBaselinePacket({
+        maxRevealRank,
+        nearbyNpcIds,
+      })
+    : {
+        schema: "space_authority_baseline_v1",
+        rolloutDisabled: true,
+        note: "VERSECRAFT_ENABLE_SPACE_AUTHORITY_CANON=false",
+      };
+  const npcSocialSurfacePacket = rollout.enableNpcSocialSurface
+    ? buildNpcSocialSurfacePacketCompact(nearbyNpcIds, 4)
+    : null;
+  if (npcSocialSurfacePacket) incrNpcSocialSurfaceUsageCount(1);
+  const playerWorldEntryPacket = rollout.enableWorldEntryPackets
+    ? {
+        schema: "player_world_entry_v1",
+        authorityLabel: "space",
+        unifiedShardLabel: "空间权柄碎片（校源与公寓叙事切口统一在权柄之下）",
+        monthlyIntrusionStudent: rollout.enableMonthlyStudentEntry,
+      }
+    : null;
   const worldLorePackets = {
     reveal_tier_packet: buildRevealTierPacket({ signals, maxRevealRank, firedRuleIds: firedRevealRuleIds }),
+    space_authority_baseline_packet: spaceAuthorityBaselinePacket,
     floor_lore_packet: buildFloorLorePacket({ signals, floorLore, maxRevealRank }),
     threat_lore_packet: buildThreatLorePacket({ threat: threatSnapshotForLore, floorLore, maxRevealRank }),
     b1_order_packet: buildB1OrderPacket({ signals, servicesAtLocation: serviceKinds }),
@@ -668,6 +698,13 @@ export function buildRuntimeContextPackets(args: {
     school_source_packet: buildSchoolSourcePacketCompact(schoolSourcePacket),
     major_npc_foreshadow_packet: buildMajorNpcForeshadowPacketCompact(majorNpcForeshadowPacket),
     team_relink_packet: buildTeamRelinkPacketCompact(teamRelinkPacket),
+    space_authority_baseline_packet: rollout.enableSpaceAuthorityCanon
+      ? buildSpaceAuthorityBaselinePacketCompact({
+          maxRevealRank,
+          nearbyNpcIds,
+        })
+      : { schema: "space_authority_baseline_compact_v1", rolloutDisabled: true },
+    ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
   };
 
   const weaponPacket = buildWeaponPacket({
@@ -734,6 +771,8 @@ export function buildRuntimeContextPackets(args: {
     npc_scene_authority_packet: npcSceneAuthorityPacket,
     ...actorConstraintBundle,
     ...worldLorePackets,
+    ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
+    ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
   };
   const contextMode = args.contextMode ?? "full";
   const packetsForPrompt =
@@ -794,9 +833,13 @@ export function buildRuntimeContextPackets(args: {
       crisisResponseStyle: npcPlayerBaselinePacket.crisisResponseStyle.slice(0, 100),
       truthRevealCeiling: npcPlayerBaselinePacket.truthRevealCeiling,
       baselineVersusRelationNote: npcPlayerBaselinePacket.baselineVersusRelationNote.slice(0, 100),
+      playerAddressCue: npcPlayerBaselinePacket.playerAddressCue.slice(0, 56),
+      playerInteractionStanceCue: npcPlayerBaselinePacket.playerInteractionStanceCue.slice(0, 56),
     },
     npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
     ...actorConstraintCompact,
+    ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
+    ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

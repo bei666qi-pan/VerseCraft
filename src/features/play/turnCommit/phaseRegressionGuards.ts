@@ -25,7 +25,7 @@ export function shouldAutoRegenerateOptionsOnModeSwitch(input: {
   if (!(input.prevMode === "text" && input.nextMode === "options")) return false;
   if ((input.currentOptionsLength ?? 0) > 0) return false;
   if (input.blocksOptionsRegen || input.optionsRegenBusy) return false;
-  if (input.endgameActive || input.showEmbeddedOpening) return false;
+  if (input.endgameActive) return false;
   if (input.isGuestDialogueExhausted) return false;
   return true;
 }
