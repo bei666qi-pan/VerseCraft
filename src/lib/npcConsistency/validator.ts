@@ -19,12 +19,18 @@ import {
   softenNarrativeWithHedge,
 } from "./rewrite";
 import { applyNarrativeRhythmGate } from "./narrativeRhythmGate";
+import { applyPovPostGeneration } from "./povValidator";
+import { applyGenderPronounPostGeneration } from "./genderPronounValidator";
+import { applyCompositeNarrativeGuard } from "./compositeNarrativeGuard";
+import { enableCompositeNarrativeGuard } from "./narrativeGuardFlags";
 
 export type NpcConsistencyViolationType =
   | "offscreen_npc_dialogue"
   | "normal_npc_old_friend_tone"
   | "loop_truth_premature"
   | "gender_pronoun_mismatch"
+  | "pov_drift"
+  | "narrative_continuity"
   | "familiarity_overreach"
   | "no_reaction_to_boundary_crossing";
 
@@ -156,6 +162,64 @@ export function applyNpcConsistencyPostGeneration(input: {
   const vtypes: string[] = [];
   const logs: string[] = [];
   let extraRewrite = false;
+  let compositeTelemetry: {
+    continuityValidatorTriggered: boolean;
+    povValidatorTriggered: boolean;
+    genderValidatorTriggered: boolean;
+    rewriteTriggered: boolean;
+    rewriteReason: string | null;
+    finalNarrativeSafe: boolean;
+    logs: string[];
+  } | null = null;
+
+  // 阶段10：统一叙事质量裁决层（continuity → POV → gender）
+  if (enableCompositeNarrativeGuard()) {
+    const c = applyCompositeNarrativeGuard({
+      narrative: narrativeWork,
+      latestUserInput: String(input.latestUserInput ?? ""),
+      previousTailSummary: null,
+      focusNpcId: actorId,
+      presentNpcIds: input.presentNpcIds,
+    });
+    compositeTelemetry = c.telemetry;
+    if (c.narrative !== narrativeWork) {
+      narrativeWork = c.narrative;
+      extraRewrite = true;
+      if (c.telemetry.povValidatorTriggered && !vtypes.includes("pov_drift")) vtypes.push("pov_drift");
+      if (c.telemetry.genderValidatorTriggered) {
+        violations.push("gender_pronoun_mismatch");
+        if (!vtypes.includes("gender_pronoun_mismatch")) vtypes.push("gender_pronoun_mismatch");
+      }
+      if (c.telemetry.continuityValidatorTriggered) {
+        violations.push("narrative_continuity");
+        if (!vtypes.includes("narrative_continuity")) vtypes.push("narrative_continuity");
+      }
+      logs.push(`composite:${c.telemetry.rewriteReason ?? "rewrite"}`);
+      logs.push(...c.telemetry.logs.slice(0, 3));
+    }
+  } else {
+    // 兼容：旧路径（逐项 guard）
+    const pov = applyPovPostGeneration(narrativeWork);
+    if (pov.triggered && pov.narrative !== narrativeWork) {
+      narrativeWork = pov.narrative;
+      extraRewrite = true;
+      logs.push(`pov:${pov.severity}:${pov.debug.secondPersonHits}`);
+      if (!vtypes.includes("pov_drift")) vtypes.push("pov_drift");
+      violations.push("pov_second_person_narration");
+    }
+    const genderFix = applyGenderPronounPostGeneration({
+      narrative: narrativeWork,
+      focusNpcId: actorId,
+      presentNpcIds: input.presentNpcIds,
+    });
+    if (genderFix.triggered && genderFix.narrative !== narrativeWork) {
+      narrativeWork = genderFix.narrative;
+      extraRewrite = true;
+      violations.push("gender_pronoun_mismatch");
+      if (!vtypes.includes("gender_pronoun_mismatch")) vtypes.push("gender_pronoun_mismatch");
+      logs.push(`gender:${genderFix.severity}:${genderFix.logs.slice(0, 2).join("|")}`);
+    }
+  }
 
   if (enableNpcConsistencyValidator()) {
     const off = findOffscreenNpcDialogueViolations(narrativeWork, input.presentNpcIds);
@@ -183,6 +247,7 @@ export function applyNpcConsistencyPostGeneration(input: {
       logs.push("loop_truth");
     }
 
+    // legacy 保守软化：保留，但优先级低于 canonical-based 局部纠错（阶段3）。
     if (narrativeHasLikelyGenderMismatch(narrativeWork, canon)) {
       violations.push("gender_pronoun_mismatch");
       vtypes.push("gender_pronoun_mismatch");
@@ -262,6 +327,11 @@ export function applyNpcConsistencyPostGeneration(input: {
     consistencyViolations: violations,
     validatorLogs: logs,
     finalResponseSafe: true,
+    continuityValidatorTriggered: compositeTelemetry?.continuityValidatorTriggered ?? false,
+    povValidatorTriggered: compositeTelemetry?.povValidatorTriggered ?? false,
+    genderValidatorTriggered: compositeTelemetry?.genderValidatorTriggered ?? false,
+    narrativeGuardRewriteReason: compositeTelemetry?.rewriteReason ?? null,
+    finalNarrativeSafe: compositeTelemetry?.finalNarrativeSafe ?? true,
     ...rhythmFields,
   };
 
@@ -277,6 +347,14 @@ export function applyNpcConsistencyPostGeneration(input: {
         types: vtypes,
         logs,
       },
+      ...(compositeTelemetry
+        ? {
+            narrative_quality_guard: {
+              version: 1,
+              ...compositeTelemetry,
+            },
+          }
+        : {}),
       ...(rhythmViolationHit || rhythmFields.narrativeRhythmRewriteTriggered
         ? { narrative_rhythm_validator: rhythmFields }
         : {}),

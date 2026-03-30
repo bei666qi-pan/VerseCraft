@@ -207,7 +207,8 @@ test("world knowledge bootstrap：world_arc 实体与 chunk、sourceRef、reveal
 
 test("prompt：stable 前缀体积可控且含 packet 边界句", () => {
   const s = getStablePlayerDmSystemPrefix();
-  assert.ok(s.length < 8500, `stable prefix length ${s.length}`);
+  // 阶段2：POV 硬约束加入后 stable 体积小幅上升；仍需保持可控。
+  assert.ok(s.length < 9000, `stable prefix length ${s.length}`);
   assert.ok(s.includes("major_npc_relink_packet"));
   assert.ok(s.includes("no-instant-party"));
   assert.ok(s.includes("reveal-first"));

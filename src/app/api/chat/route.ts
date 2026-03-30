@@ -138,6 +138,9 @@ import type { LorePacket } from "@/lib/worldKnowledge/types";
 import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
+import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativeStylePackets";
+import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
+import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -327,6 +330,48 @@ function sanitizeAssistantContent(content: string): string {
 }
 
 const ENTITY_CODE_RE = /\b([NA]-\d{3})\b/gi;
+
+function clampText(s: string, maxChars: number): string {
+  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  return t.length <= maxChars ? t : t.slice(0, maxChars);
+}
+
+/**
+ * 将玩家输入做“低可复写”的模型输入整形：
+ * - 去掉强标签（避免模型把它当待翻译/待复述材料）
+ * - 去掉显式写作要求（放到 system prompt 的 continuity packet 中）
+ * - 保留玩家意图（行动/对白）但避免逐字复刻
+ */
+function shapeUserActionForModel(rawAction: string): string {
+  const t = String(rawAction ?? "").trim();
+  if (!t) return "";
+  // 抑制常见“我做了……然后……”流水账外壳，把“动作发生”与“立即反馈”留给 DM 写。
+  const cleaned = t
+    .replace(/^【[^】]{1,20}】/g, "")
+    .replace(/^\s*(玩家行动|玩家输入|用户输入|动作)\s*[:：]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned;
+}
+
+function extractLastAssistantNarrativeTail(chatMsgs: Array<{ role: string; content: string }>): string | null {
+  for (let i = chatMsgs.length - 1; i >= 0; i--) {
+    const m = chatMsgs[i];
+    if (!m || m.role !== "assistant") continue;
+    const c = String(m.content ?? "");
+    try {
+      const j = JSON.parse(c) as { narrative?: unknown };
+      const nar = typeof j?.narrative === "string" ? j.narrative : "";
+      const t = nar.replace(/\s+/g, " ").trim();
+      if (t) return t.slice(Math.max(0, t.length - 180));
+    } catch {
+      const t = c.replace(/\s+/g, " ").trim();
+      if (t) return t.slice(Math.max(0, t.length - 180));
+    }
+  }
+  return null;
+}
 
 function extractRecentEntities(latestUserInput: string): string[] {
   const out = new Set<string>();
@@ -663,6 +708,9 @@ export async function POST(req: Request) {
       return { role: m.role, content } as { role: string; content: string };
     });
 
+  let turnDice: number | null = null;
+  let turnRawAction: string | null = null;
+
   const lastUserIdx = rawChatMessages.map((m) => m.role).lastIndexOf("user");
   if (lastUserIdx >= 0) {
     // Replace last user message with moderated input (avoid feeding unsafe raw text downstream).
@@ -670,12 +718,18 @@ export async function POST(req: Request) {
     const dice = randomInt(1, 101);
     rawChatMessages[lastUserIdx] = {
       role: "user",
-      content: [
-        `【系统暗骰：本次行动检定值为 ${dice}/100 (1为大成功，100为大失败)】`,
-        `【玩家输入原文】${rawAction}`,
-        "【写作要求】将“玩家输入原文”转写为小说叙事中的第一人称动作与对白（如有对话意图请用自然对白呈现），并在叙事开头两句内承接上回合结尾形成连贯段落。禁止在 narrative 中复述任何系统标签（如“系统暗骰/玩家行动/玩家输入原文/写作要求”等）。",
-      ].join("\n"),
+      content: shapeUserActionForModel(rawAction),
     };
+    /**
+     * 将“暗骰/承接规则”从 user message 挪出：
+     * - user：仅保留玩家本回合自然语言输入（低可复写）
+     * - system：由 continuity packet + augmentation 引导 DM 做“后果先行”的小说续写（避免解释腔）
+     *
+     * 注意：dice 数值仍可供模型决定成败倾向，但必须只作为 system-side 隐性提示，
+     * 禁止在 narrative 暴露“骰子/roll/数值/检定”等元机制词。
+     */
+    turnDice = dice;
+    turnRawAction = clampText(rawAction, 360);
   }
 
   const chatMsgs = rawChatMessages;
@@ -754,6 +808,18 @@ export async function POST(req: Request) {
     contextMode === "minimal"
       ? buildMinimalPlayerContextSnapshot(playerContext)
       : playerContext;
+  const narrativeContinuityBlockEarly = buildNarrativeContinuityPacketBlock({
+    previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
+    rawAction: turnRawAction ?? latestUserInput,
+    dice: turnDice,
+    maxChars: contextMode === "minimal" ? 520 : 900,
+  });
+  const povBlockEarly = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 280 : 420 });
+  const npcGenderPronounBlockEarly = buildNpcGenderPronounPacketBlock({
+    focusNpcId: focusNpcEarly,
+    presentNpcIds: presentNpcIdsEarly,
+    maxChars: contextMode === "minimal" ? 520 : 760,
+  });
   const dynamicCoreForQuota = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext: playerContextForPrompt,
@@ -761,6 +827,9 @@ export async function POST(req: Request) {
     runtimePackets: "",
     controlAugmentation: "",
     npcConsistencyBoundaryBlock: npcConsistencyBoundaryEarly.text,
+    narrativeContinuityBlock: narrativeContinuityBlockEarly,
+    povBlock: povBlockEarly,
+    npcGenderPronounBlock: npcGenderPronounBlockEarly,
   });
   const systemPromptForQuota = `${playerDmStablePrefix}\n\n${dynamicCoreForQuota}`;
 
@@ -1395,6 +1464,18 @@ export async function POST(req: Request) {
   });
   const verseRollout = getVerseCraftRolloutFlags();
   const styleGuideBlock = verseRollout.enableStyleGuidePacket ? buildStyleGuidePacketBlock() : "";
+  const narrativeContinuityBlock = buildNarrativeContinuityPacketBlock({
+    previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
+    rawAction: turnRawAction ?? latestUserInput,
+    dice: turnDice,
+    maxChars: contextMode === "minimal" ? 520 : 900,
+  });
+  const povBlock = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 280 : 420 });
+  const npcGenderPronounBlock = buildNpcGenderPronounPacketBlock({
+    focusNpcId: focusNpcForPrompt,
+    presentNpcIds: presentNpcIdsForEpistemic,
+    maxChars: contextMode === "minimal" ? 520 : 760,
+  });
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext: playerContextForPrompt,
@@ -1402,6 +1483,9 @@ export async function POST(req: Request) {
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
     npcConsistencyBoundaryBlock: npcConsistencyBoundaryFinal.text,
+    narrativeContinuityBlock,
+    povBlock,
+    npcGenderPronounBlock,
     styleGuideBlock,
   });
   const aiEnvForSystem = resolveAiEnv();

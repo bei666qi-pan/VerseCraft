@@ -46,6 +46,12 @@ export type EpistemicValidatorTelemetry = {
   fineTimeCostUsage?: number;
   personalityRewriteCount?: number;
   avgFormalTaskDelayFromFirstContact?: number | null;
+  /** 阶段10：统一叙事质量裁决层（连续性/POV/性别代词） */
+  continuityValidatorTriggered?: boolean;
+  povValidatorTriggered?: boolean;
+  genderValidatorTriggered?: boolean;
+  narrativeGuardRewriteReason?: string | null;
+  finalNarrativeSafe?: boolean;
 };
 
 const CONFIRM_RE = /(?:没错|正是如此|我早知道|确实如此|你说得对|是对的|确实是的|就是这样|的确如此)/;
