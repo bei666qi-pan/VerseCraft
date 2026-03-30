@@ -15,6 +15,7 @@ export type DMJson = {
   narrative: string;
   is_death: boolean;
   consumes_time?: boolean;
+  time_cost?: "free" | "light" | "standard" | "heavy" | "dangerous";
   consumed_items?: string[];
   awarded_items?: Array<{
     id?: string;

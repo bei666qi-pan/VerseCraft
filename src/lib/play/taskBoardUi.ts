@@ -2,6 +2,8 @@
 // 阶段 5：任务板信息分层（纯函数，可测、无 React）
 
 import { inferObjectiveKind } from "@/lib/domain/objectiveAdapters";
+import { inferEffectiveNarrativeLayer, pathDemotionBias, promiseRiskHumanSignals } from "@/lib/tasks/taskRoleModel";
+import { promiseRiskSortScore } from "@/lib/tasks/taskRevealModel";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { GameTask } from "@/store/useGameStore";
 
@@ -37,6 +39,9 @@ export function pickPrimaryTask(tasks: GameTask[]): GameTask | null {
   if (main) return main.t;
 
   return [...pool].sort((a, b) => {
+    const da = pathDemotionBias(a as GameTaskV2);
+    const db = pathDemotionBias(b as GameTaskV2);
+    if (da !== db) return da - db;
     const ga = guidanceKey(a);
     const gb = guidanceKey(b);
     if (ga !== gb) return ga - gb;
@@ -61,6 +66,14 @@ function hasRiskSignal(t: GameTask): boolean {
       t.dramaticType === "betrayal" ||
       t.dramaticType === "leverage"
   );
+}
+
+function isPromiseRiskSlot(t: GameTask): boolean {
+  const v = t as GameTaskV2;
+  if (isPromiseOrCommission(t) || hasRiskSignal(t)) return true;
+  if (inferEffectiveNarrativeLayer(v) === "conversation_promise") return true;
+  if (promiseRiskHumanSignals(v) >= 1.05) return true;
+  return false;
 }
 
 export type TaskBoardPartition = {
@@ -89,14 +102,19 @@ export function partitionTasksForBoard(tasks: GameTask[], maxPaths = 4): TaskBoa
 
   const restOpen = open.filter((t) => t.id !== primaryId);
   const paths = [...restOpen]
-    .sort((a, b) => guidanceKey(a) - guidanceKey(b) || a.title.localeCompare(b.title, "zh-Hans"))
+    .sort((a, b) => {
+      const da = pathDemotionBias(a as GameTaskV2);
+      const db = pathDemotionBias(b as GameTaskV2);
+      if (da !== db) return da - db;
+      return guidanceKey(a) - guidanceKey(b) || a.title.localeCompare(b.title, "zh-Hans");
+    })
     .slice(0, maxPaths);
 
   const pathIds = new Set(paths.map((p) => p.id));
-  const promiseRiskCandidates = restOpen.filter(
-    (t) => !pathIds.has(t.id) && (isPromiseOrCommission(t) || hasRiskSignal(t))
-  );
-  const promiseRisk = promiseRiskCandidates.slice(0, 6);
+  const promiseRiskCandidates = restOpen.filter((t) => !pathIds.has(t.id) && isPromiseRiskSlot(t));
+  const promiseRisk = [...promiseRiskCandidates]
+    .sort((a, b) => promiseRiskSortScore(b as GameTaskV2) - promiseRiskSortScore(a as GameTaskV2) || a.title.localeCompare(b.title, "zh-Hans"))
+    .slice(0, 6);
 
   const used = new Set<string>([...(primaryId ? [primaryId] : []), ...paths.map((p) => p.id), ...promiseRisk.map((p) => p.id)]);
   const overflow = restOpen.filter((t) => !used.has(t.id));

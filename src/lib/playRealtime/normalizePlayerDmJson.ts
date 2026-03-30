@@ -158,6 +158,7 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     narrative,
     is_death: o.is_death,
     consumes_time: typeof o.consumes_time === "boolean" ? o.consumes_time : true,
+    ...(typeof o.time_cost === "string" && o.time_cost.trim() ? { time_cost: o.time_cost.trim() } : {}),
     consumed_items: asStringArray(o.consumed_items),
     awarded_items: asUnknownArray(o.awarded_items),
     awarded_warehouse_items: asUnknownArray(o.awarded_warehouse_items),

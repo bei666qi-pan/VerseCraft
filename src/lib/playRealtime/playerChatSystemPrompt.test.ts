@@ -49,6 +49,9 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(s.includes("阶段5·强制"));
   assert.ok(s.includes("误闯公寓"));
   assert.ok(s.includes("夜读老人"));
+  assert.ok(s.includes("快车道若省略运行时 lore JSON"));
+  assert.ok(s.includes("actor-*"));
+  assert.ok(s.includes("personality/residue/foreshadow"));
   assert.ok(!s.includes("forge_mod_"));
   assert.ok(!s.includes("液态威胁"));
   assert.ok(!s.includes("镜像灌注"));

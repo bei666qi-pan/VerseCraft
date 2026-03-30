@@ -10,27 +10,32 @@ export function buildNpcHeartPromptBlock(input: {
   views: NpcHeartRuntimeView[];
   maxChars?: number;
 }): string {
-  const maxChars = Math.max(120, Math.min(900, input.maxChars ?? 420));
+  const maxChars = Math.max(120, Math.min(900, input.maxChars ?? 460));
   const views = (input.views ?? []).slice(0, 5);
   if (views.length === 0) return "";
   const lines: string[] = [];
-  lines.push("## 【NPC心脏约束（只供写作，不要像系统提示）】");
+  lines.push("## 【NPC心脏·行为锚（写作用，勿念设定）】");
+  const anyMajor = views.some((v) => v.profile.charmTier === "major_charm");
+  if (anyMajor) {
+    lines.push(
+      "【高魅力禁同质化】禁止六人揉成「温柔神秘解说」或「嘴毒高冷」统一模板；每人只服从下行锚点。"
+    );
+  }
   for (const v of views) {
     const p = v.profile;
-    const head = `${p.npcId}（${p.displayName}）态度=${v.attitudeLabel}`;
-    const speech = clamp(p.speechContract, 90);
-    const wants = clamp(v.whatNpcWantsFromPlayerNow, 60);
-    const taboo = clamp(p.tabooBoundary, 60);
+    const h = v.behavioralHints;
+    const star = p.charmTier === "major_charm" ? "★" : "·";
     lines.push(
-      `${head}；想要：${wants}；禁区：${taboo}`
+      `${star}${p.npcId}（${p.displayName}）态=${v.attitudeLabel}｜索：${clamp(v.whatNpcWantsFromPlayerNow, 52)}`
     );
     lines.push(
-      `说话：${speech}；任务风格=${p.taskStyle}；不明说：${clamp(p.whatNpcWillNeverAskOpenly, 60)}`
+      `  口=${clamp(h.speakThisRound, 92)}｜推拉=${clamp(h.pushPullThisRound, 72)}｜破绽=${clamp(h.likelySlip, 48)}`
     );
+    lines.push(`  禁=${clamp(h.forbiddenCaricature, 68)}｜密=${clamp(h.compactBehaviorLine, 100)}`);
     if (v.baselineMerged) {
       const b = v.baselineMerged;
       lines.push(
-        `世界观基线：玩家视角=${b.effectiveViewOfPlayer}；熟悉表达=${b.canExpressFamiliarity ? "可克制" : "禁止套近乎"}；合成：${clamp(b.compactNarrativeHint, 140)}`
+        `  基=${clamp(b.effectiveViewOfPlayer, 24)}｜熟=${b.canExpressFamiliarity ? "可" : "否"}｜${clamp(b.compactNarrativeHint, 72)}`
       );
     }
   }
@@ -41,18 +46,19 @@ export function buildNpcHeartPromptBlock(input: {
 export function buildNpcProactiveGrantStyleHints(view: NpcHeartRuntimeView | null): string {
   if (!view) return "";
   const p = view.profile;
+  const sc = p.personalityScenarios;
+  const base = `${clamp(sc.demandStyle, 56)}；${clamp(sc.probeStyle, 44)}`;
   if (p.taskStyle === "transactional") {
-    return "先试探，再开价，明确交换条件；说话留后路。";
+    return `${base}；先开价留后路。`;
   }
   if (p.taskStyle === "manipulative") {
-    return "先示弱再提请求，把风险和责任轻轻推给玩家；奖励/信息可能被延后。";
+    return `${base}；示弱后把风险推给玩家。`;
   }
   if (p.taskStyle === "avoidant") {
-    return "催促但回避关键细节；用含混词替代真相；越追问越冷。";
+    return `${base}；催进度但含糊关键。`;
   }
   if (p.taskStyle === "protective") {
-    return "强调安全边界与撤退方案；给出可执行提醒；语气克制但可靠。";
+    return `${base}；先边界再委托。`;
   }
-  return "直接给出委托与理由，但避免系统口吻。";
+  return `${base}；事务口吻引委托。`;
 }
-

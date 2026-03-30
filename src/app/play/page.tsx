@@ -165,7 +165,6 @@ function PlayContent() {
   const talentCooldowns = useGameStore((s) => s.talentCooldowns ?? {});
   const logs = useGameStore((s) => s.logs ?? []);
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
-  const advanceTime = useGameStore((s) => s.advanceTime);
   const setStats = useGameStore((s) => s.setStats);
   const rewindTime = useGameStore((s) => s.rewindTime);
   const popLastNLogs = useGameStore((s) => s.popLastNLogs);
@@ -2206,9 +2205,14 @@ function PlayContent() {
     const shouldAdvanceTime = parsed.consumes_time !== false && !isItemUse && !quickStepNoTime;
 
     if (parsed.is_action_legal && !parsed.is_death && shouldAdvanceTime) {
-      useGameStore.getState().decrementCooldowns();
       const prevTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
-      advanceTime();
+      useGameStore.getState().applyGameTimeFromResolvedTurn({
+        consumes_time: parsed.consumes_time !== false,
+        time_cost:
+          typeof (parsed as { time_cost?: unknown }).time_cost === "string"
+            ? (parsed as { time_cost: string }).time_cost
+            : undefined,
+      });
       const nextTime = useGameStore.getState().time ?? { day: 0, hour: 0 };
       if (prevTime.day < 3 && nextTime.day === 3 && nextTime.hour === 0) {
         setShowDarkMoonOverlay(true);

@@ -48,6 +48,6 @@ test("NpcHeart prompt block is length-capped", () => {
   assert.ok(v);
   const block = buildNpcHeartPromptBlock({ views: [v!], maxChars: 180 });
   assert.ok(block.length <= 180);
-  assert.ok(block.includes("NPC心脏约束"));
+  assert.ok(block.includes("NPC心脏"));
 });
 

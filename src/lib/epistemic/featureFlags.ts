@@ -3,6 +3,10 @@
  */
 
 import { envBoolean, envRaw } from "@/lib/config/envRaw";
+import {
+  getNpcNarrativeRolloutFlagsSnapshot,
+  type NpcNarrativeRolloutFlagsSnapshot,
+} from "@/lib/playRealtime/npcNarrativeRolloutFlags";
 import { getDefaultMemoryPolicyForNpc, isXinlanNpcId } from "./policy";
 import type { NpcEpistemicProfile } from "./types";
 
@@ -28,7 +32,7 @@ export type EpistemicRolloutFlagsSnapshot = {
   epistemicDebugLog: boolean;
   /** VERSECRAFT_NPC_DEBUG；未设时回退 EPISTEMIC_DEBUG_LOG */
   npcDebug: boolean;
-};
+} & NpcNarrativeRolloutFlagsSnapshot;
 
 /** 每请求快照一次即可，避免多次读 env */
 export function getEpistemicRolloutFlags(): EpistemicRolloutFlagsSnapshot {
@@ -46,6 +50,7 @@ export function getEpistemicRolloutFlags(): EpistemicRolloutFlagsSnapshot {
     enableXinlanStrongMemory: xinlan,
     epistemicDebugLog: readNpcDebugEnabled(),
     npcDebug: readNpcDebugEnabled(),
+    ...getNpcNarrativeRolloutFlagsSnapshot(),
   };
 }
 
@@ -78,6 +83,20 @@ function readNpcConsistencyValidatorEnabled(): boolean {
 
 export function enableNpcConsistencyValidator(): boolean {
   return readNpcConsistencyValidatorEnabled();
+}
+
+/**
+ * 阶段7：叙事节奏/人格/校源/任务层后置校验；未单独设置时跟随 NPC 一致性校验。
+ */
+function readNarrativeRhythmValidatorEnabled(): boolean {
+  if (envRaw("VERSECRAFT_ENABLE_NARRATIVE_RHYTHM_VALIDATOR") !== undefined) {
+    return envBoolean("VERSECRAFT_ENABLE_NARRATIVE_RHYTHM_VALIDATOR", true);
+  }
+  return readNpcConsistencyValidatorEnabled();
+}
+
+export function enableNarrativeRhythmValidator(): boolean {
+  return readNarrativeRhythmValidatorEnabled();
 }
 
 /** 新名优先；未设置时回退 VERSECRAFT_EPISTEMIC_RESIDUE_GAMEFEEL */

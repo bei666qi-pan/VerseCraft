@@ -2,6 +2,10 @@
 // 如月公寓规则怪谈实体注册表 - 基础类型定义
 
 import type { RevealTierRank } from "./revealTierRank";
+import type {
+  NpcPersonalityCore,
+  NpcPersonalityScenarioMatrix,
+} from "@/lib/npcHeart/personalityContracts";
 
 export type StatType =
   | "sanity"
@@ -163,6 +167,10 @@ export interface NpcProfileV2 {
   display: NpcDisplayLayer;
   interaction: NpcInteractionLayer;
   deepSecret: NpcDeepSecretLayer;
+  /** 可选：显式人格锚（优先于文本推断）；高魅力六人建议必填 */
+  personalityCore?: Partial<NpcPersonalityCore>;
+  /** 可选：情境行为差分；高魅力建议必填 */
+  personalityScenarios?: Partial<NpcPersonalityScenarioMatrix>;
 }
 
 export interface NpcRelationStateV2 {

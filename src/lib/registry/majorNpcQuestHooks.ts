@@ -1,5 +1,6 @@
 /**
  * 高魅力六人 questHooks 单一真源：与 npcProfiles 同步，供 branch seeds / relink 文档 / 任务注册对齐。
+ * 人物向任务风格默认值见 `src/lib/tasks/taskIssuerStyles.ts`（issuerPersonaMode 等）。
  */
 
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";

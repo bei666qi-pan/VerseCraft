@@ -32,6 +32,20 @@ export type EpistemicValidatorTelemetry = {
   violationTypes?: string[];
   consistencyViolations?: string[];
   validatorLogs?: string[];
+  /** 阶段7：人格/伏笔/任务层/时间感叙事保险丝 */
+  personalityDriftCount?: number;
+  foreshadowLeakCount?: number;
+  taskModeMismatchCount?: number;
+  timeFeelMismatchCount?: number;
+  narrativeRhythmRewriteTriggered?: boolean;
+  narrativeRhythmFinalSafe?: boolean;
+  narrativeRhythmLogs?: string[];
+  npcPersonalityPacketChars?: number;
+  majorNpcDifferentiationScore?: number | null;
+  taskModeDistribution?: Record<string, number>;
+  fineTimeCostUsage?: number;
+  personalityRewriteCount?: number;
+  avgFormalTaskDelayFromFirstContact?: number | null;
 };
 
 const CONFIRM_RE = /(?:没错|正是如此|我早知道|确实如此|你说得对|是对的|确实是的|就是这样|的确如此)/;

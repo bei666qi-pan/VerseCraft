@@ -97,3 +97,29 @@ test("resolveTurnConsistency: clue_updates normalizes to ClueEntry[]", () => {
   assert.equal(out.clue_updates[0]?.kind, "trace");
 });
 
+test("resolveTurnConsistency: time_cost normalizes to known kind", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "你试探着问了一句。",
+    is_death: false,
+    consumes_time: true,
+    time_cost: "light",
+    options: [],
+  } as any);
+  assert.equal(out.time_cost, "light");
+});
+
+test("resolveTurnConsistency: invalid time_cost omitted", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "x",
+    is_death: false,
+    consumes_time: true,
+    time_cost: "nope",
+    options: [],
+  } as any);
+  assert.equal(out.time_cost, undefined);
+});
+

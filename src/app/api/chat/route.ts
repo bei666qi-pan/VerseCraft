@@ -1982,6 +1982,19 @@ export async function POST(req: Request) {
                 ? 1
                 : 0,
             npcConsistencyRewriteCount: epistemicPostValidatorTelemetry?.rewriteTriggered ? 1 : 0,
+            personalityDriftCount: epistemicPostValidatorTelemetry?.personalityDriftCount ?? 0,
+            foreshadowLeakCount: epistemicPostValidatorTelemetry?.foreshadowLeakCount ?? 0,
+            taskModeMismatchCount: epistemicPostValidatorTelemetry?.taskModeMismatchCount ?? 0,
+            timeFeelMismatchCount: epistemicPostValidatorTelemetry?.timeFeelMismatchCount ?? 0,
+            narrativeRhythmRewriteTriggered: epistemicPostValidatorTelemetry?.narrativeRhythmRewriteTriggered ?? false,
+            narrativeRhythmFinalSafe: epistemicPostValidatorTelemetry?.narrativeRhythmFinalSafe ?? true,
+            npcPersonalityPacketChars: epistemicPostValidatorTelemetry?.npcPersonalityPacketChars ?? 0,
+            majorNpcDifferentiationScore: epistemicPostValidatorTelemetry?.majorNpcDifferentiationScore ?? null,
+            taskModeDistribution: epistemicPostValidatorTelemetry?.taskModeDistribution,
+            fineTimeCostUsage: epistemicPostValidatorTelemetry?.fineTimeCostUsage ?? 0,
+            personalityRewriteCount: epistemicPostValidatorTelemetry?.personalityRewriteCount ?? 0,
+            avgFormalTaskDelayFromFirstContact:
+              epistemicPostValidatorTelemetry?.avgFormalTaskDelayFromFirstContact ?? null,
             residueTriggeredCount: Boolean(epistemicResiduePlan.packet) ? 1 : 0,
           };
           const withEpistemicCore = { ...base, epistemicRollup: epistemicRollupPayload };
@@ -2241,6 +2254,8 @@ export async function POST(req: Request) {
             nowIso: nowIsoForEpistemic,
             maxRevealRank: maxRevealRankForMemory,
             canonical: focusNpcForPrompt ? getNpcCanonicalIdentity(focusNpcForPrompt) : null,
+            playerContext,
+            latestUserInput,
           });
           epistemicPostValidatorTelemetry = telemetry;
           return next;

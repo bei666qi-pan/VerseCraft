@@ -27,6 +27,10 @@ import {
   type GameTaskV2,
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
+import { inferEffectiveNarrativeLayer } from "@/lib/tasks/taskRoleModel";
+import { enableTaskModeLayer } from "@/lib/playRealtime/npcNarrativeRolloutFlags";
+import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
+import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
 import {
   createDefaultWorldOverlay,
   normalizeRunSnapshotV2,
@@ -103,6 +107,8 @@ import { narrativeDebugEnabled } from "@/lib/domain/narrativeDebug";
 import { buildNarrativeLinkagePromptBlock } from "@/lib/domain/narrativeLinkagePrompt";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
+import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
+import { resolveHourProgressDelta, splitProgress } from "@/lib/time/timeBudget";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -188,6 +194,10 @@ function migratePersistedState(
     ...raw,
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: migratedSlots,
+    pendingHourProgress:
+      typeof raw.pendingHourProgress === "number" && Number.isFinite(raw.pendingHourProgress)
+        ? Math.max(0, Math.min(0.999999, raw.pendingHourProgress))
+        : 0,
   };
 }
 
@@ -226,6 +236,38 @@ const DEFAULT_TALENT_COOLDOWNS: Record<EchoTalent, number> = {
 export interface GameTime {
   day: number;
   hour: number;
+}
+
+function applyWholeGameHourTicks(args: {
+  time: GameTime;
+  originium: number;
+  background: number;
+  talentCooldowns: Record<EchoTalent, number>;
+  equippedWeapon: Weapon | null;
+  hourTicks: number;
+}): {
+  time: GameTime;
+  originium: number;
+  talentCooldowns: Record<EchoTalent, number>;
+  equippedWeapon: Weapon | null;
+} {
+  let { time, originium, talentCooldowns, equippedWeapon } = args;
+  const prob = 0.1 + Math.max(0, args.background - 20) * 0.02;
+  for (let i = 0; i < args.hourTicks; i++) {
+    if (Math.random() < prob) originium += 1;
+    const nh = time.hour + 1;
+    time = nh >= 24 ? { day: time.day + 1, hour: 0 } : { day: time.day, hour: nh };
+    const nextCd = { ...talentCooldowns } as Record<EchoTalent, number>;
+    for (const k of ECHO_TALENTS) {
+      const v = Number(nextCd[k]);
+      nextCd[k] = Number.isFinite(v) && v > 0 ? v - 1 : 0;
+    }
+    talentCooldowns = nextCd;
+    equippedWeapon = equippedWeapon
+      ? { ...equippedWeapon, currentInfusions: tickInfusions(equippedWeapon.currentInfusions) }
+      : null;
+  }
+  return { time, originium, talentCooldowns, equippedWeapon };
 }
 
 export interface CodexEntry {
@@ -341,8 +383,12 @@ interface GameState extends IntegrityMetaState {
   talent: EchoTalent | null;
   talentCooldowns: Record<EchoTalent, number>;
 
-  /** Time tick: day 0-9+, hour 0-23. Advances 1h per successful action. */
+  /** Time tick: day 0-9+, hour 0-23.整点推进仍由「满 1 小时分数」触发。 */
   time: GameTime;
+  /**
+   * 当前游戏小时内的余量 [0,1)。与 `applyGameTimeFromResolvedTurn` 累计；不对玩家改 UI。
+   */
+  pendingHourProgress: number;
 
   stats: Record<StatType, number>;
   /** Max sanity ever reached; used by 生命汇源 talent */
@@ -490,6 +536,14 @@ interface GameState extends IntegrityMetaState {
   pushLog: (entry: { role: string; content: string; reasoning?: string }) => void;
   popLastNLogs: (n: number) => void;
   advanceTime: () => void;
+  /**
+   * 按 DM `consumes_time` + 可选 `time_cost` 计入小时分数，满 1 推进整点（含冷却/灌注/原石掷骰）。
+   * @returns 本回合实际推进的整小时数（供 UI 事件如「第三日」检测）
+   */
+  applyGameTimeFromResolvedTurn: (args: { consumes_time: boolean; time_cost?: string }) => {
+    hoursAdvanced: number;
+    deltaApplied: number;
+  };
   rewindTime: () => void;
   setTime: (time: GameTime) => void;
   setStats: (stats: Partial<Record<StatType, number>>) => void;
@@ -527,6 +581,8 @@ interface GameState extends IntegrityMetaState {
     turnIndex: number;
     playerLocation: string;
     time: { day: number; hour: number };
+    /** 当前游戏小时内已累积进度 0..1（未进位前的小时碎片） */
+    pendingHourFraction?: number;
     stats: Record<StatType, number>;
     originium: number;
     inventoryItemIds: string[];
@@ -787,6 +843,7 @@ export const useGameStore = create<GameState>()(
       talent: null,
       talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
       time: { day: 0, hour: 0 },
+      pendingHourProgress: 0,
       stats: { ...DEFAULT_STATS },
       historicalMaxSanity: 50,
       inventory: [],
@@ -942,6 +999,7 @@ export const useGameStore = create<GameState>()(
           talent: null,
           talentCooldowns: { ...DEFAULT_TALENT_COOLDOWNS },
           time: { day: 0, hour: 0 },
+          pendingHourProgress: 0,
           stats: { ...DEFAULT_STATS },
           historicalMaxSanity: DEFAULT_STATS.sanity,
           inventory: [],
@@ -1560,23 +1618,39 @@ export const useGameStore = create<GameState>()(
         // 单线时间线：不允许回溯
         set(() => ({})),
 
-      advanceTime: () =>
-        set((s) => {
-          const { day, hour } = s.time ?? { day: 0, hour: 0 };
-          const nextHour = hour + 1;
-          const nextTime = nextHour >= 24
-            ? { day: day + 1, hour: 0 }
-            : { day, hour: nextHour };
-          const bg = (s.stats ?? DEFAULT_STATS).background ?? 0;
-          const prob = 0.1 + Math.max(0, bg - 20) * 0.02;
-          const roll = Math.random();
-          const gain = roll < prob ? 1 : 0;
-          const nextOriginium = gain > 0 ? (s.originium ?? 0) + gain : s.originium ?? 0;
-          return {
-            time: nextTime,
-            ...(gain > 0 ? { originium: nextOriginium } : {}),
-          };
-        }),
+      applyGameTimeFromResolvedTurn: (args) => {
+        const cost = normalizeActionTimeCostKind(args.time_cost);
+        const consumes = args.consumes_time !== false;
+        const delta = resolveHourProgressDelta(consumes, cost);
+        const snap = get();
+        const pending = Number(snap.pendingHourProgress ?? 0);
+        const { wholeHours, newPending } = splitProgress(pending, delta);
+        if (wholeHours <= 0) {
+          set({ pendingHourProgress: newPending });
+          return { hoursAdvanced: 0, deltaApplied: delta };
+        }
+        const bg = (snap.stats ?? DEFAULT_STATS).background ?? 0;
+        const ticked = applyWholeGameHourTicks({
+          time: snap.time ?? { day: 0, hour: 0 },
+          originium: snap.originium ?? 0,
+          background: bg,
+          talentCooldowns: { ...(snap.talentCooldowns ?? DEFAULT_TALENT_COOLDOWNS) },
+          equippedWeapon: snap.equippedWeapon ?? null,
+          hourTicks: wholeHours,
+        });
+        set({
+          pendingHourProgress: newPending,
+          time: ticked.time,
+          originium: ticked.originium,
+          talentCooldowns: ticked.talentCooldowns,
+          equippedWeapon: ticked.equippedWeapon,
+        });
+        return { hoursAdvanced: wholeHours, deltaApplied: delta };
+      },
+
+      advanceTime: () => {
+        get().applyGameTimeFromResolvedTurn({ consumes_time: true });
+      },
 
       setTime: (time) => set({ time }),
 
@@ -1853,6 +1927,37 @@ export const useGameStore = create<GameState>()(
         const npcHeartBlock = (() => {
           try {
             const location = s.playerLocation ?? "B1_SafeZone";
+            const mainThreatSynth = (() => {
+              const threatMap = s.mainThreatByFloor ?? {};
+              const chunks = Object.values(threatMap)
+                .filter((x) => x && typeof (x as { floorId?: string }).floorId === "string")
+                .map(
+                  (x) =>
+                    `${(x as { floorId: string }).floorId}[${(x as { threatId?: string }).threatId ?? ""}|${(x as { phase?: string }).phase ?? "idle"}|${(x as { suppressionProgress?: number }).suppressionProgress ?? 0}]`
+                );
+              return chunks.length > 0 ? `主威胁状态：${chunks.join("，")}。` : "";
+            })();
+            const codexSynth =
+              Object.keys(s.codex ?? {}).length > 0
+                ? `图鉴已解锁：${Object.values(s.codex ?? {})
+                    .map((e) => `${e.name}[${e.type}|好感${e.favorability ?? 0}]`)
+                    .join("，")}。`
+                : "";
+            const maxRevealRankHeart = computeMaxRevealRankFromSignals(
+              parsePlayerWorldSignals(
+                `游戏时间[第${time.day}日 ${time.hour}时]。用户位置[${location}]。进度[最高层分${s.historicalMaxFloorScore ?? 0}]。死亡累计[${s.deathCount ?? 0}]。原石[${s.originium}]。` +
+                  (activeSnapshot
+                    ? `世界标记：${Object.entries(activeSnapshot.world.worldFlags ?? {})
+                        .filter(([, v]) => v === true)
+                        .map(([k]) => k)
+                        .join("，") || "无"}。锚点解锁：B1[${activeSnapshot.world.anchorUnlocks.B1 ? "1" : "0"}]，1F[${activeSnapshot.world.anchorUnlocks["1"] ? "1" : "0"}]，7F[${activeSnapshot.world.anchorUnlocks["7"] ? "1" : "0"}]。`
+                    : "") +
+                  mainThreatSynth +
+                  codexSynth +
+                  `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]。`,
+                location
+              )
+            );
             const presentNpcIds = Object.entries(s.dynamicNpcStates ?? {})
               .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
               .map(([id]) => id)
@@ -1878,10 +1983,11 @@ export const useGameStore = create<GameState>()(
                   locationId: location,
                   activeTaskIds: (s.tasks ?? []).filter((t) => t.status === "active").map((t) => t.id).slice(0, 16),
                   hotThreatPresent: Object.values(s.mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
+                  maxRevealRank: maxRevealRankHeart,
                 })
               )
               .filter((x): x is NonNullable<typeof x> => !!x);
-            return buildNpcHeartPromptBlock({ views, maxChars: 420 });
+            return buildNpcHeartPromptBlock({ views, maxChars: 460 });
           } catch {
             return "";
           }
@@ -1893,6 +1999,7 @@ export const useGameStore = create<GameState>()(
           `身高[${s.height || 0}cm]，` +
           `性格[${s.personality || "未设定"}]。` +
           `游戏时间[第${time.day}日 ${time.hour}时]。` +
+          ((s.pendingHourProgress ?? 0) > 1e-6 ? `【小时余量】${(s.pendingHourProgress ?? 0).toFixed(3)}。` : "") +
           `用户位置[${s.playerLocation}]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
@@ -1956,16 +2063,33 @@ export const useGameStore = create<GameState>()(
             ? `任务追踪：${s.tasks
                 .filter((t) => t.status === "active" || t.status === "available")
                 // 仅保留“玩家友好”的任务摘要，避免暴露内部字段（如隐藏触发/引导强度等）。
-                .map((t) => `${t.title}[${t.status === "available" ? "可接取" : "进行中"}|委托${t.issuerName}|地点${t.floorTier}]`)
-                .join("，")}。`
+                .map((t) => {
+                  const layer = inferEffectiveNarrativeLayer(t);
+                  const layerTag =
+                    layer === "conversation_promise" ? "人情约定" : layer === "soft_lead" ? "暗示" : "正式";
+                  return `${t.title}[${t.status === "available" ? "可接取" : "进行中"}|${layerTag}|${t.issuerName}|${t.floorTier}]`;
+                })
+                .join("，")}。${
+                enableTaskModeLayer()
+                  ? `【rt_task_layers】${s.tasks
+                      .filter((t) => t.status === "active" || t.status === "available")
+                      .slice(0, 14)
+                      .map((t) => `${encodeURIComponent(t.id)}=${inferEffectiveNarrativeLayer(t)}`)
+                      .join(",")}。`
+                  : ""
+              }`
             : "") +
           (() => {
             const proactive = (s.tasks ?? [])
-              .filter((t) => t.npcProactiveGrant.enabled && (t.status === "available" || t.status === "active" || t.status === "hidden"))
+              .filter(
+                (t) =>
+                  t.npcProactiveGrant.enabled &&
+                  (t.status === "available" || t.status === "active")
+              )
               .map(
                 (t) =>
                   // 这段仅作为 DM 的“自然引出委托”参考线索，不展示触发码；保持简短。
-                  `${t.issuerName}:${t.title}[ID${t.npcProactiveGrant.npcId || t.issuerId}|地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|状态${t.status === "hidden" ? "hidden" : t.status === "available" ? "available" : "active"}|上次发放H${t.npcProactiveGrantLastIssuedHour ?? "NA"}]`
+                  `${t.issuerName}:${t.title}[ID${t.npcProactiveGrant.npcId || t.issuerId}|地点${t.npcProactiveGrant.preferredLocations.join("/") || "任意"}|状态${t.status === "available" ? "available" : "active"}|上次发放H${t.npcProactiveGrantLastIssuedHour ?? "NA"}]`
               );
             return proactive.length > 0 ? `任务发放线索：${proactive.join("；")}。` : "";
           })() +
@@ -2097,6 +2221,9 @@ export const useGameStore = create<GameState>()(
           turnIndex: (s.logs ?? []).length,
           playerLocation: location,
           time: { day: time.day ?? 0, hour: time.hour ?? 0 },
+          ...((s.pendingHourProgress ?? 0) > 1e-6
+            ? { pendingHourFraction: Number((s.pendingHourProgress ?? 0).toFixed(4)) }
+            : {}),
           stats: {
             sanity: Number(stats.sanity ?? 0) || 0,
             agility: Number(stats.agility ?? 0) || 0,
@@ -3179,6 +3306,7 @@ export const useGameStore = create<GameState>()(
         talent: s.talent,
         talentCooldowns: s.talentCooldowns,
         time: s.time ?? { day: 0, hour: 0 },
+        pendingHourProgress: s.pendingHourProgress ?? 0,
         stats: s.stats ?? DEFAULT_STATS,
         historicalMaxSanity: s.historicalMaxSanity ?? 50,
         inventory: s.inventory,

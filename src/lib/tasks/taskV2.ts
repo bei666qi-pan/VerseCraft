@@ -2,6 +2,22 @@ import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcProactiveGrantStyleHints } from "@/lib/npcHeart/prompt";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import { normalizeNarrativeTrace, type NarrativeTraceV1 } from "@/lib/domain/narrativeDomain";
+import { applyIssuerDriveDefaults } from "@/lib/tasks/taskIssuerStyles";
+import {
+  clampUnit,
+  normalizeIssuerDemandStyle,
+  normalizeIssuerPersonaMode,
+  normalizeIssuerPressureStyle,
+  normalizeIssuerSoftRevealMode,
+  normalizeIssuerTrustTestMode,
+  normalizeTaskNarrativeLayer,
+  type IssuerDemandStyle,
+  type IssuerPersonaMode,
+  type IssuerPressureStyle,
+  type IssuerSoftRevealMode,
+  type IssuerTrustTestMode,
+  type TaskNarrativeLayerKind,
+} from "@/lib/tasks/taskRoleModel";
 
 export type GameTaskType = "main" | "floor" | "character" | "conspiracy";
 
@@ -55,6 +71,7 @@ export interface GameTaskV2 {
   hiddenOutcome: string;
   hiddenTriggerConditions: string[];
   claimMode: "auto" | "manual" | "npc_grant";
+  /** 发放冷却按游戏整点 hourIndex（day*24+hour）；轻量回合若不触发进位则冷却不涨，与阶段5时间分数层一致。 */
   npcProactiveGrant: {
     enabled: boolean;
     npcId: string;
@@ -101,6 +118,25 @@ export interface GameTaskV2 {
     boundAtGameHour?: number;
     utteranceRef?: string;
   };
+
+  /** 阶段 4：人物驱动层（可选；旧存档无此字段） */
+  issuerPersonaMode?: IssuerPersonaMode;
+  issuerPressureStyle?: IssuerPressureStyle;
+  issuerTrustTestMode?: IssuerTrustTestMode;
+  issuerDemandStyle?: IssuerDemandStyle;
+  issuerSoftRevealMode?: IssuerSoftRevealMode;
+  relationshipGateWeight?: number;
+  clueGateWeight?: number;
+  locationGateWeight?: number;
+  dangerGateWeight?: number;
+  revealValue?: number;
+  emotionalResidueValue?: number;
+  futureDebtValue?: number;
+  shouldBeFormalTask?: boolean;
+  shouldStayAsSoftLead?: boolean;
+  shouldStayAsConversationPromise?: boolean;
+  /** 叙事推进层：暗示 / 人情约定 / 正式结构化追踪 */
+  taskNarrativeLayer?: TaskNarrativeLayerKind;
 }
 
 export interface RelationshipStatePatch {
@@ -198,6 +234,10 @@ function clampShortCodes(v: unknown, max = 8): string[] | undefined {
   return arr.length > 0 ? arr : undefined;
 }
 
+function normalizeOptionalBool(v: unknown): boolean | undefined {
+  return typeof v === "boolean" ? v : undefined;
+}
+
 function normalizeTaskType(v: unknown, taskId: string): GameTaskType {
   if (v === "main" || v === "floor" || v === "character" || v === "conspiracy") return v;
   if (taskId.startsWith("main_")) return "main";
@@ -288,7 +328,25 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
         : {}),
     };
   })();
-  return {
+  const dr = d as Record<string, unknown>;
+  const issuerPersonaMode = normalizeIssuerPersonaMode(dr.issuerPersonaMode);
+  const issuerPressureStyle = normalizeIssuerPressureStyle(dr.issuerPressureStyle);
+  const issuerTrustTestMode = normalizeIssuerTrustTestMode(dr.issuerTrustTestMode);
+  const issuerDemandStyle = normalizeIssuerDemandStyle(dr.issuerDemandStyle);
+  const issuerSoftRevealMode = normalizeIssuerSoftRevealMode(dr.issuerSoftRevealMode);
+  const relationshipGateWeight = clampUnit(dr.relationshipGateWeight);
+  const clueGateWeight = clampUnit(dr.clueGateWeight);
+  const locationGateWeight = clampUnit(dr.locationGateWeight);
+  const dangerGateWeight = clampUnit(dr.dangerGateWeight);
+  const revealValue = clampUnit(dr.revealValue);
+  const emotionalResidueValue = clampUnit(dr.emotionalResidueValue);
+  const futureDebtValue = clampUnit(dr.futureDebtValue);
+  const shouldBeFormalTask = normalizeOptionalBool(dr.shouldBeFormalTask);
+  const shouldStayAsSoftLead = normalizeOptionalBool(dr.shouldStayAsSoftLead);
+  const shouldStayAsConversationPromise = normalizeOptionalBool(dr.shouldStayAsConversationPromise);
+  const taskNarrativeLayer = normalizeTaskNarrativeLayer(dr.taskNarrativeLayer);
+
+  return applyIssuerDriveDefaults({
     id,
     title,
     desc: asString(d.desc),
@@ -360,7 +418,23 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
     ...(narrativeTrace ? { narrativeTrace } : {}),
     ...(sourceClueIds.length > 0 ? { sourceClueIds } : {}),
     ...(promiseBinding ? { promiseBinding } : {}),
-  };
+    ...(issuerPersonaMode ? { issuerPersonaMode } : {}),
+    ...(issuerPressureStyle ? { issuerPressureStyle } : {}),
+    ...(issuerTrustTestMode ? { issuerTrustTestMode } : {}),
+    ...(issuerDemandStyle ? { issuerDemandStyle } : {}),
+    ...(issuerSoftRevealMode ? { issuerSoftRevealMode } : {}),
+    ...(relationshipGateWeight !== undefined ? { relationshipGateWeight } : {}),
+    ...(clueGateWeight !== undefined ? { clueGateWeight } : {}),
+    ...(locationGateWeight !== undefined ? { locationGateWeight } : {}),
+    ...(dangerGateWeight !== undefined ? { dangerGateWeight } : {}),
+    ...(revealValue !== undefined ? { revealValue } : {}),
+    ...(emotionalResidueValue !== undefined ? { emotionalResidueValue } : {}),
+    ...(futureDebtValue !== undefined ? { futureDebtValue } : {}),
+    ...(shouldBeFormalTask !== undefined ? { shouldBeFormalTask } : {}),
+    ...(shouldStayAsSoftLead !== undefined ? { shouldStayAsSoftLead } : {}),
+    ...(shouldStayAsConversationPromise !== undefined ? { shouldStayAsConversationPromise } : {}),
+    ...(taskNarrativeLayer ? { taskNarrativeLayer } : {}),
+  });
 }
 
 export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> & { id: string }) | null {
@@ -458,6 +532,62 @@ export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> &
     out.npcProactiveGrantLastIssuedHour =
       typeof raw === "number" && Number.isFinite(raw) ? asNonNegativeInt(raw, 0) : null;
   }
+  const du = d as Record<string, unknown>;
+  if (du.issuerPersonaMode !== undefined) {
+    const v = normalizeIssuerPersonaMode(du.issuerPersonaMode);
+    if (v) out.issuerPersonaMode = v;
+  }
+  if (du.issuerPressureStyle !== undefined) {
+    const v = normalizeIssuerPressureStyle(du.issuerPressureStyle);
+    if (v) out.issuerPressureStyle = v;
+  }
+  if (du.issuerTrustTestMode !== undefined) {
+    const v = normalizeIssuerTrustTestMode(du.issuerTrustTestMode);
+    if (v) out.issuerTrustTestMode = v;
+  }
+  if (du.issuerDemandStyle !== undefined) {
+    const v = normalizeIssuerDemandStyle(du.issuerDemandStyle);
+    if (v) out.issuerDemandStyle = v;
+  }
+  if (du.issuerSoftRevealMode !== undefined) {
+    const v = normalizeIssuerSoftRevealMode(du.issuerSoftRevealMode);
+    if (v) out.issuerSoftRevealMode = v;
+  }
+  if (du.relationshipGateWeight !== undefined) {
+    const v = clampUnit(du.relationshipGateWeight);
+    if (v !== undefined) out.relationshipGateWeight = v;
+  }
+  if (du.clueGateWeight !== undefined) {
+    const v = clampUnit(du.clueGateWeight);
+    if (v !== undefined) out.clueGateWeight = v;
+  }
+  if (du.locationGateWeight !== undefined) {
+    const v = clampUnit(du.locationGateWeight);
+    if (v !== undefined) out.locationGateWeight = v;
+  }
+  if (du.dangerGateWeight !== undefined) {
+    const v = clampUnit(du.dangerGateWeight);
+    if (v !== undefined) out.dangerGateWeight = v;
+  }
+  if (du.revealValue !== undefined) {
+    const v = clampUnit(du.revealValue);
+    if (v !== undefined) out.revealValue = v;
+  }
+  if (du.emotionalResidueValue !== undefined) {
+    const v = clampUnit(du.emotionalResidueValue);
+    if (v !== undefined) out.emotionalResidueValue = v;
+  }
+  if (du.futureDebtValue !== undefined) {
+    const v = clampUnit(du.futureDebtValue);
+    if (v !== undefined) out.futureDebtValue = v;
+  }
+  if (typeof du.shouldBeFormalTask === "boolean") out.shouldBeFormalTask = du.shouldBeFormalTask;
+  if (typeof du.shouldStayAsSoftLead === "boolean") out.shouldStayAsSoftLead = du.shouldStayAsSoftLead;
+  if (typeof du.shouldStayAsConversationPromise === "boolean") out.shouldStayAsConversationPromise = du.shouldStayAsConversationPromise;
+  if (du.taskNarrativeLayer !== undefined) {
+    const v = normalizeTaskNarrativeLayer(du.taskNarrativeLayer);
+    if (v) out.taskNarrativeLayer = v;
+  }
   return out;
 }
 
@@ -532,7 +662,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "available",
       claimMode: "npc_grant",
       hiddenTriggerConditions: [],
-      npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_PowerRoom"], cooldownHours: 4 },
+      npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_PowerRoom"], cooldownHours: 6 },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "问清楚：谁见过‘地下二层’的门？谁能证明自己没撒谎？",
       dramaticType: "investigation",
@@ -556,7 +686,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "hidden",
       claimMode: "npc_grant",
       hiddenTriggerConditions: ["escape.route.fragments>=2"],
-      npcProactiveGrant: { enabled: true, npcId: "N-010", minFavorability: 0, preferredLocations: ["1F_PropertyOffice"], cooldownHours: 6 },
+      npcProactiveGrant: { enabled: true, npcId: "N-010", minFavorability: 0, preferredLocations: ["1F_PropertyOffice"], cooldownHours: 8 },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "问她：‘我要去地下二层，你手里有没有“许可”的替代品？’",
       dramaticType: "leverage",
@@ -581,7 +711,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "hidden",
       claimMode: "npc_grant",
       hiddenTriggerConditions: ["escape.b2.access"],
-      npcProactiveGrant: { enabled: true, npcId: "N-018", minFavorability: 0, preferredLocations: ["1F_Lobby", "6F_Stairwell"], cooldownHours: 8 },
+      npcProactiveGrant: { enabled: true, npcId: "N-018", minFavorability: 0, preferredLocations: ["1F_Lobby", "6F_Stairwell"], cooldownHours: 10 },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "先问他：‘出口要付什么？我能付到哪一步？’",
       dramaticType: "debt_payment",
@@ -614,7 +744,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
         npcId: "N-008",
         minFavorability: 0,
         preferredLocations: ["B1_SafeZone", "B1_Storage"],
-        cooldownHours: 2,
+        cooldownHours: 3,
       },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "先去储物间问补给，再去配电间问维护。",
@@ -676,6 +806,17 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       issuerId: "N-010",
       issuerName: "欣蓝",
       floorTier: "1",
+      guidanceLevel: "light",
+      goalKind: "promise",
+      taskNarrativeLayer: "conversation_promise",
+      shouldBeFormalTask: true,
+      shouldStayAsConversationPromise: true,
+      revealValue: 0.26,
+      emotionalResidueValue: 0.55,
+      futureDebtValue: 0.72,
+      relationshipGateWeight: 0.78,
+      issuerDemandStyle: "explicit",
+      issuerSoftRevealMode: "ledger_shadow",
       status: "available",
       claimMode: "manual",
       hiddenTriggerConditions: [],
@@ -706,6 +847,17 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       issuerId: "N-018",
       issuerName: "北夏",
       floorTier: "1",
+      guidanceLevel: "light",
+      goalKind: "promise",
+      taskNarrativeLayer: "conversation_promise",
+      shouldBeFormalTask: true,
+      shouldStayAsConversationPromise: true,
+      revealValue: 0.3,
+      emotionalResidueValue: 0.42,
+      futureDebtValue: 0.78,
+      relationshipGateWeight: 0.58,
+      issuerDemandStyle: "transactional",
+      issuerSoftRevealMode: "receipt",
       status: "available",
       claimMode: "manual",
       hiddenTriggerConditions: [],
@@ -733,6 +885,17 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       issuerId: "N-020",
       issuerName: "灵伤",
       floorTier: "B1",
+      guidanceLevel: "light",
+      goalKind: "promise",
+      taskNarrativeLayer: "conversation_promise",
+      shouldBeFormalTask: true,
+      shouldStayAsConversationPromise: true,
+      revealValue: 0.22,
+      emotionalResidueValue: 0.58,
+      futureDebtValue: 0.52,
+      clueGateWeight: 0.62,
+      issuerDemandStyle: "soft",
+      issuerSoftRevealMode: "whisper",
       status: "available",
       claimMode: "manual",
       hiddenTriggerConditions: [],
@@ -885,6 +1048,7 @@ export function buildNpcProactiveGrantNarrativeBlock(args: {
     `发放候选（仅作剧情约束，不直接念给玩家）：${hintLine}`,
     `自然融入强度：${tone}。当满足条件时，用NPC的动作/语气/场景细节引出委托，避免系统提示口吻。`,
     styleHints ? `叙事语气模板：${styleHints}` : "",
+    "节奏：不要进门第一句就发单；先写共处、试探、交换条件，再把结构化目标收束成口头约定。",
     "禁止写法：'系统发放任务'、'你已接取任务'这类出戏文案。",
     "推荐写法：先写NPC观察与试探，再在对白里给出委托与风险交换条件。",
   ].filter(Boolean).join("\n");

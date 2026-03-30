@@ -60,6 +60,18 @@ test("normalizePlayerDmJson preserves consumes_time false and optional strings",
   assert.ok(Array.isArray(n!.clue_updates) && (n!.clue_updates as unknown[]).length >= 1);
 });
 
+test("normalizePlayerDmJson passes through time_cost string", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "你多看了一眼。",
+    is_death: false,
+    time_cost: "light",
+  });
+  assert.ok(n);
+  assert.equal((n as { time_cost?: string }).time_cost, "light");
+});
+
 test("normalizePlayerDmJson sanitizes weapon_updates to whitelist shape", () => {
   const n = normalizePlayerDmJson({
     is_action_legal: true,

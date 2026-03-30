@@ -1,5 +1,6 @@
 import type { NpcProfileV2, NpcRelationStateV2, NpcSocialProfile } from "@/lib/registry/types";
 import type { NpcHeartProfile, NpcTaskStyle, TruthfulnessBand, ManipulationMode } from "./types";
+import { resolvePersonalityBundle } from "./personalityCore";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
@@ -44,32 +45,49 @@ export function buildNpcHeartProfile(args: {
   const p = args.profileV2;
   const s = args.social;
   if (!p && !s) return null;
+
+  const bundle = resolvePersonalityBundle({
+    npcId: args.npcId,
+    profileV2: p,
+    social: s,
+  });
+  const { core, scenarios, charmTier } = bundle;
+
   const displayName = p?.display?.name ?? "";
   const surfaceMask = [
     asText(p?.display?.publicPersonality),
     asText(p?.display?.specialty),
   ].filter(Boolean).join(" / ");
   const coreDrive = asText(s?.core_desires) || asText(p?.deepSecret?.trueMotives?.join("；"));
-  const coreFear = asText((s as any)?.core_fear) || asText(s?.weakness) || asText(p?.interaction?.taboo);
+  const coreFear = asText(s?.core_fear) || asText(s?.weakness) || asText(p?.interaction?.taboo);
   const tabooBoundary = asText(p?.interaction?.taboo) || asText(s?.weakness);
-  const dependencyNeed = asText((s as any)?.emotional_debt_pattern) || "需要被证明/被照应/被交换";
-  const softSpot = asText(s?.emotional_traits) || asText(p?.interaction?.surfaceSecrets?.[0]) || "仍残留的人性软肋";
-  const taskStyle = (asText((s as any)?.task_style) as NpcTaskStyle) || deriveTaskStyleFromText(`${s?.relationships ? JSON.stringify(s.relationships) : ""} ${p?.interaction?.speechPattern ?? ""}`);
-  const truthfulnessBand = (asText((s as any)?.truthfulness_band) as TruthfulnessBand) || deriveTruthfulnessBand(asText(p?.interaction?.taboo), coreDrive);
+  const dependencyNeed = asText(s?.emotional_debt_pattern) || core.attachmentPattern;
+  const softSpot = asText(s?.emotional_traits) || asText(p?.interaction?.surfaceSecrets?.[0]) || core.contradictionSignature;
+  const taskStyle =
+    (asText(s?.task_style) as NpcTaskStyle) ||
+    deriveTaskStyleFromText(`${s?.relationships ? JSON.stringify(s.relationships) : ""} ${p?.interaction?.speechPattern ?? ""} ${core.speechCadence}`);
+  const truthfulnessBand =
+    (asText(s?.truthfulness_band) as TruthfulnessBand) || deriveTruthfulnessBand(asText(p?.interaction?.taboo), coreDrive);
   const manipulationMode = deriveManipulationMode(taskStyle, `${coreDrive} ${s?.fixed_lore ?? ""}`);
-  const rupture = (s as any)?.rupture_threshold;
+  const rupture = s?.rupture_threshold;
   const ruptureThreshold = {
     trustBelow: clampInt(rupture?.trustBelow, 20, 80),
     fearAbove: clampInt(rupture?.fearAbove, 10, 90),
     debtAbove: clampInt(rupture?.debtAbove, 5, 99),
   };
 
+  /** 话术契约：人格锚优先，原文案补充（非用正则替代显式核） */
   const speechContract = [
+    core.speechCadence,
+    core.recurringGesture,
     asText(s?.speech_patterns),
     asText(p?.interaction?.speechPattern),
-  ].filter(Boolean).join("；").slice(0, 180) || "保持角色一致的短句表达。";
+  ]
+    .filter(Boolean)
+    .join("；")
+    .slice(0, 200) || `${core.speechCadence}；${core.recurringGesture}`;
 
-  const emotionalDebtPattern = asText((s as any)?.emotional_debt_pattern) || "先给一点小好处，再用人情/规矩催收。";
+  const emotionalDebtPattern = asText(s?.emotional_debt_pattern) || `${core.attachmentPattern}；${core.controlNeed}`;
 
   const betrayalStyle = /诱饵|程序|执行/.test(`${coreDrive} ${s?.fixed_lore ?? ""}`)
     ? "表面温和，翻脸时像执行程序一样冷。"
@@ -77,21 +95,22 @@ export function buildNpcHeartProfile(args: {
       ? "先示弱再反咬，把责任推给你。"
       : "不轻易翻脸，但一旦破裂就不再回头。";
 
-  const rescueStyle = taskStyle === "protective"
-    ? "会给出可执行的撤退方案与提醒。"
-    : "救你之前先衡量代价，可能要求交换。";
+  const rescueStyle =
+    taskStyle === "protective"
+      ? `${core.rescueInstinctStyle}；给出可执行提醒。`
+      : `${core.rescueInstinctStyle}；可能要求交换。`;
 
   const whatNpcWillNeverAskOpenly =
     asText(p?.deepSecret?.conspiracyRole)
       ? `与${asText(p?.deepSecret?.conspiracyRole)}相关的事不会明说。`
-      : "不会公开承认自己的真实动机。";
+      : `真相用${core.truthEvasionStyle}处理，不摊牌根因。`;
 
   return {
     npcId: args.npcId,
     displayName: displayName || args.npcId,
     surfaceMask: surfaceMask || "表面平静",
     coreDrive: coreDrive || "维持自身存续与秩序",
-    coreFear: coreFear || "失控与暴露",
+    coreFear: coreFear || core.shameTrigger || "失控与暴露",
     dependencyNeed,
     softSpot,
     tabooBoundary: tabooBoundary || "触碰禁区会立刻翻脸",
@@ -104,6 +123,9 @@ export function buildNpcHeartProfile(args: {
     betrayalStyle,
     rescueStyle,
     whatNpcWillNeverAskOpenly,
+    personalityCore: core,
+    personalityScenarios: scenarios,
+    charmTier,
   };
 }
 
@@ -121,4 +143,3 @@ export function normalizeRelationStatePartial(input: Partial<NpcRelationStateV2>
     betrayalFlags: Array.isArray(o.betrayalFlags) ? o.betrayalFlags.filter((x): x is string => typeof x === "string").slice(0, 24) : [],
   };
 }
-

@@ -1,6 +1,16 @@
 import type { NPC, NpcProfileV2 } from "./types";
 import { CONTENT_PACKS } from "@/lib/contentSpec/packs";
 import { buildNpcProfileV2FromSpec } from "@/lib/contentSpec/builders";
+import { getProfileSurfaceAnomalyLine, majorNpcBootstrapLoreFromProfile } from "./majorNpcRevealLadder";
+import { MAJOR_NPC_IDS, type MajorNpcId } from "./majorNpcDeepCanon";
+import {
+  MAJOR_NPC_PERSONALITY_N007,
+  MAJOR_NPC_PERSONALITY_N010,
+  MAJOR_NPC_PERSONALITY_N013,
+  MAJOR_NPC_PERSONALITY_N015,
+  MAJOR_NPC_PERSONALITY_N018,
+  MAJOR_NPC_PERSONALITY_N020,
+} from "./majorNpcPersonalityPack";
 
 /**
  * 高魅力六人 V2：表层公寓职能徘徊者 + 深层校源徘徊者（耶里卷入 / 七辅锚）。
@@ -25,7 +35,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       questHooks: ["anchor.oath.b1", "border.watch.log"],
       surfaceSecrets: [
         "公寓职能面：他是 B1 可见的边界巡守与锚点见证，把「不可越界」写成可感的秩序。",
-        "校源面：耶里风纪协作序列的残留节拍，多轮循环后仍按封线—放行—封线行动；对主锚复活后的第一步有肌肉记忆式残响。",
+        getProfileSurfaceAnomalyLine("N-015"),
       ],
     },
     deepSecret: {
@@ -39,6 +49,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
         "校源徘徊者：apartment_wanderer（B1职能）+ school_wanderer（耶里执勤残留）+ residual_echo（主锚复活节拍）",
       revealConditions: ["task:anchor.oath.b1.completed", "trust>=55"],
     },
+    ...MAJOR_NPC_PERSONALITY_N015,
   },
   {
     id: "N-020",
@@ -58,7 +69,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       questHooks: ["b1.supply.route", "memory.ribbon"],
       surfaceSecrets: [
         "公寓职能面：B1 补给与生活引导，把「活下去」拆成可执行步骤，像整栋楼护着的噪声缓冲。",
-        "校源面：耶里广播社残留，声纹曾被泡层采样作稳定剂；对主锚步频有心悸式残响，故不立刻跟队。",
+        getProfileSurfaceAnomalyLine("N-020"),
       ],
     },
     deepSecret: {
@@ -71,6 +82,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
         "校源徘徊者：apartment_wanderer（B1补给）+ school_wanderer（广播社）+ residual_echo（主锚步频）",
       revealConditions: ["favorability>=45", "task:memory.ribbon.completed"],
     },
+    ...MAJOR_NPC_PERSONALITY_N020,
   },
   {
     id: "N-010",
@@ -90,7 +102,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       questHooks: ["route.preview.1f", "career.pre_register"],
       surfaceSecrets: [
         "公寓职能面：物业口路线与登记，用表格推迟失控分支；她能看到你不同路线里的失败影子，但不是全知。",
-        "校源面：耶里学生会档案干事残留，握有不完整情感记忆与旧七人闭环牵引——她是主锚重入旧阵的第一牵引点，先要确认你不是顶替她记账位的替身。",
+        getProfileSurfaceAnomalyLine("N-010"),
       ],
     },
     deepSecret: {
@@ -103,6 +115,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
         "校源徘徊者：apartment_wanderer（物业掩护）+ school_wanderer（档案干事）+ residual_echo（名单撕口与主锚焦虑）",
       revealConditions: ["task:career.pre_register.completed", "trust>=50"],
     },
+    ...MAJOR_NPC_PERSONALITY_N010,
   },
   {
     id: "N-018",
@@ -123,7 +136,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       questHooks: ["merchant.fragment.trade", "dragon.space.shard"],
       surfaceSecrets: [
         "公寓职能面：中立交易与高价值委托，用交换盘活死锁，货物常不该出现在此楼。",
-        "校源面：耶里外联与市集组织者残留，行走碎片流通边缘；与主锚有欠条式残响，只认审计过的债。",
+        getProfileSurfaceAnomalyLine("N-018"),
       ],
     },
     deepSecret: {
@@ -138,6 +151,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
         "校源徘徊者：apartment_wanderer（商人面）+ school_wanderer（外联）+ residual_echo（互助券欠条）",
       revealConditions: ["debt>=10", "task:merchant.fragment.trade.completed"],
     },
+    ...MAJOR_NPC_PERSONALITY_N018,
   },
   {
     id: "N-013",
@@ -157,7 +171,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       questHooks: ["boy.cleanse.path", "boy.false_rescue"],
       surfaceSecrets: [
         "公寓职能面：7F 线索转运与诱导，把危机包装成你能赢的剧本。",
-        "校源面：耶里戏剧社残留，曾把主锚写进替身梗；循环后梗成真，耻感与生存欲拧成刃，不立刻跟队。",
+        getProfileSurfaceAnomalyLine("N-013"),
       ],
     },
     deepSecret: {
@@ -170,6 +184,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
         "校源徘徊者：apartment_wanderer（7F职能）+ school_wanderer（戏剧社）+ residual_echo（替身梗成真）",
       revealConditions: ["betrayal_flag:boy", "task:boy.false_rescue.completed"],
     },
+    ...MAJOR_NPC_PERSONALITY_N013,
   },
   {
     id: "N-007",
@@ -189,7 +204,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
       questHooks: ["sister.mirror.trace", "sibling.old_day"],
       surfaceSecrets: [
         "公寓职能面：5F 画室式庇护与反向线索，冷淡是拒斥诱导链的壳。",
-        "校源面：耶里美术社残留，与枫同锁旧草案；主锚轮廓触发保护欲违和，不立刻跟队。",
+        getProfileSurfaceAnomalyLine("N-007"),
       ],
     },
     deepSecret: {
@@ -202,8 +217,9 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
         "校源徘徊者：apartment_wanderer（画室职能）+ school_wanderer（美术社）+ residual_echo（轮廓线）",
       revealConditions: ["trust>=60", "task:sibling.old_day.completed"],
     },
+    ...MAJOR_NPC_PERSONALITY_N007,
   },
-] as const;
+];
 
 export const CONTENT_SPEC_NPC_PROFILES_V2: readonly NpcProfileV2[] = CONTENT_PACKS
   .flatMap((p) => p.npcSpecs ?? [])
@@ -224,7 +240,9 @@ export function applyNpcProfileOverrides(base: readonly NPC[]): NPC[] {
       combatPower: p.display.combatPower,
       appearance: p.display.appearance,
       taboo: p.interaction.taboo,
-      lore: p.interaction.surfaceSecrets.join("；"),
+      lore: MAJOR_NPC_IDS.includes(p.id as MajorNpcId)
+        ? majorNpcBootstrapLoreFromProfile(p.interaction.surfaceSecrets[0], p.id as MajorNpcId)
+        : p.interaction.surfaceSecrets.join("；"),
       location: p.homeNode,
     });
   }

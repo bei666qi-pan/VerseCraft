@@ -234,11 +234,11 @@ export function buildWorldviewPacket(args: {
 
   const structuredSchoolCycleRefs =
     maxR >= REVEAL_TIER_RANK.abyss
-      ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
+      ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "major_npc_foreshadow_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
       : maxR >= REVEAL_TIER_RANK.deep
-        ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
+        ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "major_npc_foreshadow_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
         : maxR >= REVEAL_TIER_RANK.fracture
-          ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
+          ? (["school_source_packet", "cycle_loop_packet", "cycle_time_packet", "school_cycle_experience_packet", "major_npc_arc_packet", "major_npc_foreshadow_packet", "team_relink_packet", "major_npc_relink_packet"] as const)
           : ([] as readonly string[]);
 
   return {

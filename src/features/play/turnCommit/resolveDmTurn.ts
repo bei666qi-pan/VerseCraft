@@ -3,6 +3,7 @@ import {
   normalizeTaskUpdateDraft,
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
+import { normalizeActionTimeCostKind, type ActionTimeCostKind } from "@/lib/time/actionCost";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import type { ClueEntry } from "@/lib/domain/narrativeDomain";
@@ -21,6 +22,8 @@ export type ResolvedDmTurn = {
   narrative: string;
   is_death: boolean;
   consumes_time: boolean;
+  /** 可选：细粒度时间成本（与 consumes_time 组合见 timeBudget.resolveHourProgressDelta） */
+  time_cost?: ActionTimeCostKind;
 
   // Standardized fields (always present, never undefined)
   options: string[];
@@ -242,12 +245,15 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       : undefined;
   })();
 
+  const time_cost = normalizeActionTimeCostKind((input as { time_cost?: unknown }).time_cost);
+
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
     sanity_damage: asFiniteInt(input.sanity_damage, 0),
     narrative,
     is_death: asBoolean(input.is_death, false),
     consumes_time: asBoolean(input.consumes_time, true),
+    ...(time_cost ? { time_cost } : {}),
 
     options: clampOptions(input.options, 4, maxOptionChars),
     currency_change: asFiniteInt(input.currency_change, 0),

@@ -3,6 +3,7 @@ import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import type { NpcProfileV2 } from "@/lib/registry/types";
 import { buildNpcBaselineAttitude, mergeNpcBaselineWithRelation } from "@/lib/npcBaselineAttitude/builders";
 import { buildNpcHeartProfile, normalizeRelationStatePartial } from "./build";
+import { buildPersonalityRuntimeHints, buildWhatNpcWantsFromScenarios } from "./personalityRuntime";
 import type { NpcHeartRuntimeView } from "./types";
 
 function floorFromLocation(loc: string): string {
@@ -53,14 +54,21 @@ export function buildNpcHeartRuntimeView(args: {
     : "neutral";
 
   const canIssueTasksNow = attitudeLabel !== "hostile";
-  const whatNpcWantsFromPlayerNow =
-    attitudeLabel === "warm"
-      ? "兑现承诺、带来可验证线索，保持互惠。"
-      : attitudeLabel === "guarded"
-        ? "先交出一点可信证据或资源，证明你不是麻烦。"
-        : attitudeLabel === "hostile"
-          ? "避免触碰禁区；任何请求都要付出更高代价。"
-          : "把你的目标说清楚，他会按价码给出交换。";
+  const whatNpcWantsFromPlayerNow = buildWhatNpcWantsFromScenarios({
+    attitude: attitudeLabel,
+    scenarios: profile.personalityScenarios,
+    charmTier: profile.charmTier,
+  });
+
+  const behavioralHints = buildPersonalityRuntimeHints({
+    npcId: args.npcId,
+    core: profile.personalityCore,
+    scenarios: profile.personalityScenarios,
+    relation,
+    attitude: attitudeLabel,
+    hotThreatPresent: args.hotThreatPresent,
+    charmTier: profile.charmTier,
+  });
 
   const suggestedTaskDramaticTypes =
     profile.taskStyle === "transactional"
@@ -84,6 +92,7 @@ export function buildNpcHeartRuntimeView(args: {
     },
     attitudeLabel,
     whatNpcWantsFromPlayerNow,
+    behavioralHints,
     canIssueTasksNow,
     suggestedTaskDramaticTypes,
     escapeRole: (() => {

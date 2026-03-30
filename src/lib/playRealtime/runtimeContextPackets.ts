@@ -7,6 +7,10 @@ import {
   buildSchoolCycleExperiencePacketCompact,
 } from "@/lib/registry/playerExperienceSchoolCycleRegistry";
 import { MAJOR_NPC_IDS, type MajorNpcId } from "@/lib/registry/majorNpcDeepCanon";
+import {
+  buildMajorNpcForeshadowPacket,
+  buildMajorNpcForeshadowPacketCompact,
+} from "@/lib/registry/majorNpcForeshadowRegistry";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
 import {
   buildB1OrderPacket,
@@ -52,6 +56,11 @@ import {
   extractMentionedNpcIdsFromUserInput,
   extractNpcIdsFromRelationshipHints,
 } from "@/lib/npcSceneAuthority/builders";
+import {
+  buildActorConstraintBundle,
+  compactActorConstraintBundle,
+  parseRtTaskLayers,
+} from "@/lib/playRealtime/actorConstraintPackets";
 
 type ServiceStateInput = {
   shopUnlocked?: boolean;
@@ -394,7 +403,7 @@ function buildProfessionSystemHints(args: {
   if (p === "巡迹客") {
     return [
       `巡迹客提示：当前位置=${args.location ?? "未知"}，优先规划进退路径并控制耗时。`,
-      "系统联动：player_location + consumes_time + threat escalation。",
+      "系统联动：player_location + consumes_time/time_cost（小时分数）+ threat escalation。",
     ];
   }
   if (p === "觅兆者") {
@@ -416,6 +425,13 @@ function buildProfessionSystemHints(args: {
 }
 
 type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
+
+function parsePendingHourFractionFromContext(playerContext: string): number {
+  const m = playerContext.match(/【小时余量】([0-9]+(?:\.[0-9]+)?)/);
+  if (!m?.[1]) return 0;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+}
 
 export function buildRuntimeContextPackets(args: {
   playerContext: string;
@@ -458,13 +474,23 @@ export function buildRuntimeContextPackets(args: {
     location,
     contextThreatMap: mainThreatMap,
   });
-  const professionSystemHints = buildProfessionSystemHints({
-    professionPacket,
-    location,
-    tasks,
-    threatPhase: threatPacket.phase,
-    hasWeapon: Boolean(equippedWeapon.weaponId),
-  });
+  const pendingHourFraction = parsePendingHourFractionFromContext(args.playerContext);
+  const timeRhythmHints =
+    pendingHourFraction > 0.02
+      ? [
+          `时间节律：本游戏小时内已累积约 ${Math.round(pendingHourFraction * 100)}%（未进位）。短试探可设 time_cost=light；单场景完整推进用 standard；跨层移动/正式服务/危机用 heavy 或 dangerous；叙事占位但不走表观时钟可用 consumes_time=false 或 time_cost=free。`,
+        ]
+      : [];
+  const professionSystemHints = [
+    ...timeRhythmHints,
+    ...buildProfessionSystemHints({
+      professionPacket,
+      location,
+      tasks,
+      threatPhase: threatPacket.phase,
+      hasWeapon: Boolean(equippedWeapon.weaponId),
+    }),
+  ];
 
   const signals = parsePlayerWorldSignals(args.playerContext, args.playerLocation);
   const maxRevealRank = computeMaxRevealRankFromSignals(signals);
@@ -494,6 +520,17 @@ export function buildRuntimeContextPackets(args: {
   const nearbyMajorForCycle = nearbyNpcIds.filter((id): id is MajorNpcId =>
     MAJOR_NPC_IDS.includes(id as MajorNpcId)
   );
+  const majorNpcForeshadowPacket = buildMajorNpcForeshadowPacket({
+    nearbyMajorNpcIds: nearbyMajorForCycle,
+    maxRevealRank,
+    day: time.day && time.day > 0 ? time.day : 1,
+    ctx: {
+      activeTaskTitles: signals.activeTaskTitles,
+      worldFlags,
+      locationNode: location,
+      hotThreatPresent: threatPacket.phase === "active" || threatPacket.phase === "breached",
+    },
+  });
   const cycleTimePacket = buildCycleTimePacket({
     signals,
     nearbyMajorNpcIds: nearbyMajorForCycle,
@@ -530,6 +567,20 @@ export function buildRuntimeContextPackets(args: {
     codexOrHintNpcIds: codexNpcIdsFromHints,
     maxRevealRank,
   });
+  const actorConstraintBundle = buildActorConstraintBundle({
+    playerContext: args.playerContext,
+    latestUserInput: args.latestUserInput,
+    focusNpcId: focusNpcForBaseline,
+    location: location ?? "B1_SafeZone",
+    maxRevealRank,
+    hotThreatPresent: threatPacket.phase === "active" || threatPacket.phase === "breached",
+    activeTaskIds: parseRtTaskLayers(args.playerContext)
+      .map((x) => x.taskId)
+      .filter((id) => typeof id === "string" && id.trim().length > 0)
+      .slice(0, 16),
+    pendingHourFraction,
+  });
+  const actorConstraintCompact = compactActorConstraintBundle(actorConstraintBundle);
   const worldLorePackets = {
     reveal_tier_packet: buildRevealTierPacket({ signals, maxRevealRank, firedRuleIds: firedRevealRuleIds }),
     floor_lore_packet: buildFloorLorePacket({ signals, floorLore, maxRevealRank }),
@@ -558,6 +609,7 @@ export function buildRuntimeContextPackets(args: {
     cycle_time_packet: cycleTimePacket,
     school_cycle_experience_packet: schoolCycleExperiencePacket,
     school_source_packet: schoolSourcePacket,
+    major_npc_foreshadow_packet: majorNpcForeshadowPacket,
     team_relink_packet: teamRelinkPacket,
   };
   const flFull = worldLorePackets.floor_lore_packet;
@@ -614,6 +666,7 @@ export function buildRuntimeContextPackets(args: {
     cycle_time_packet: buildCycleTimePacketCompact(cycleTimePacket),
     school_cycle_experience_packet: buildSchoolCycleExperiencePacketCompact(schoolCycleExperiencePacket),
     school_source_packet: buildSchoolSourcePacketCompact(schoolSourcePacket),
+    major_npc_foreshadow_packet: buildMajorNpcForeshadowPacketCompact(majorNpcForeshadowPacket),
     team_relink_packet: buildTeamRelinkPacketCompact(teamRelinkPacket),
   };
 
@@ -679,6 +732,7 @@ export function buildRuntimeContextPackets(args: {
     major_npc_relink_packet: majorNpcRelinkPacket,
     npc_player_baseline_packet: npcPlayerBaselinePacket,
     npc_scene_authority_packet: npcSceneAuthorityPacket,
+    ...actorConstraintBundle,
     ...worldLorePackets,
   };
   const contextMode = args.contextMode ?? "full";
@@ -695,6 +749,7 @@ export function buildRuntimeContextPackets(args: {
           scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
           npc_player_baseline_packet: packets.npc_player_baseline_packet,
           npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
+          ...actorConstraintCompact,
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
         }
@@ -741,6 +796,7 @@ export function buildRuntimeContextPackets(args: {
       baselineVersusRelationNote: npcPlayerBaselinePacket.baselineVersusRelationNote.slice(0, 100),
     },
     npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
+    ...actorConstraintCompact,
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

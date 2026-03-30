@@ -1,3 +1,4 @@
+import { inferEffectiveNarrativeLayer } from "@/lib/tasks/taskRoleModel";
 import type { GameTaskV2 } from "./taskV2";
 
 function clamp(s: string, max: number): string {
@@ -40,13 +41,19 @@ export function buildTaskDramaPacket(args: {
     const intent = clamp(t.issuerIntent ?? "", 70);
     const residue = clamp(t.residueOnFail ?? t.residueOnComplete ?? "", 70);
     const dt = t.dramaticType ? `类型=${t.dramaticType}` : "";
-    lines.push(`${t.issuerName}委托《${t.title}》${dt}`.trim());
+    const layer = inferEffectiveNarrativeLayer(t);
+    const layerCn =
+      layer === "soft_lead" ? "暗示线" : layer === "conversation_promise" ? "人情约定" : "正式追踪";
+    const persona = t.issuerPersonaMode ? `人格模=${t.issuerPersonaMode}` : "";
+    const softReveal = t.issuerSoftRevealMode ? `揭露口=${t.issuerSoftRevealMode}` : "";
+    lines.push(`${t.issuerName}委托《${t.title}》${dt}[${layerCn}]${persona ? ` ${persona}` : ""}${softReveal ? ` ${softReveal}` : ""}`.trim());
     const bits = [
       intent ? `动机：${intent}` : "",
       hook ? `钩子：${hook}` : "",
       urgency ? `压力：${urgency}` : "",
       risk ? `代价/禁区：${risk}` : "",
       residue ? `残响：${residue}` : "",
+      typeof t.revealValue === "number" ? `过程揭露权重=${t.revealValue.toFixed(2)}` : "",
     ].filter(Boolean);
     if (bits.length > 0) lines.push(bits.join("；"));
   }

@@ -5,11 +5,16 @@ import type { DomainObjectiveView, ObjectiveKind, ObjectiveProgress, TaskStatusS
  * 从任务 id / type / goalKind 推断正式目标语义类（兼容旧档无 goalKind）。
  */
 export function inferObjectiveKind(
-  task: Pick<GameTaskV2, "id" | "type" | "goalKind" | "claimMode" | "reward" | "title" | "desc">
+  task: Pick<
+    GameTaskV2,
+    "id" | "type" | "goalKind" | "claimMode" | "reward" | "title" | "desc" | "taskNarrativeLayer"
+  >
 ): ObjectiveKind {
   if (task.goalKind === "main" || task.goalKind === "promise" || task.goalKind === "commission") {
     return task.goalKind;
   }
+  if (task.taskNarrativeLayer === "conversation_promise") return "promise";
+  if (task.taskNarrativeLayer === "soft_lead") return "commission";
   if (task.id.startsWith("main_") || task.type === "main") return "main";
   if (task.claimMode === "npc_grant" && (task.reward?.originium ?? 0) > 0) return "commission";
   if (task.type === "character" && /承诺|答应|欠|人情/.test(`${task.title}${task.desc}`)) return "promise";

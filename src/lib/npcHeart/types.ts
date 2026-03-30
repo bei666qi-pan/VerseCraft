@@ -1,6 +1,12 @@
 import type { NpcEpistemicProfile } from "@/lib/epistemic/types";
 import type { NpcBaselineMerged } from "@/lib/npcBaselineAttitude/types";
 import type { NpcProfileV2, NpcRelationStateV2, NpcSocialProfile } from "@/lib/registry/types";
+import type {
+  NpcCharmTier,
+  NpcHeartRuntimeBehavioralHints,
+  NpcPersonalityCore,
+  NpcPersonalityScenarioMatrix,
+} from "./personalityContracts";
 
 export type TruthfulnessBand = "low" | "medium" | "high";
 export type NpcTaskStyle = "direct" | "transactional" | "manipulative" | "avoidant" | "protective";
@@ -28,6 +34,11 @@ export type NpcHeartProfile = {
   rescueStyle: string;
 
   whatNpcWillNeverAskOpenly: string;
+
+  /** 解析后完整人格核（显式+补齐） */
+  personalityCore: NpcPersonalityCore;
+  personalityScenarios: NpcPersonalityScenarioMatrix;
+  charmTier: NpcCharmTier;
 };
 
 export type NpcHeartRuntimeView = {
@@ -42,6 +53,8 @@ export type NpcHeartRuntimeView = {
 
   attitudeLabel: "warm" | "neutral" | "guarded" | "hostile";
   whatNpcWantsFromPlayerNow: string;
+  /** 单回合行为引擎输出 */
+  behavioralHints: NpcHeartRuntimeBehavioralHints;
   canIssueTasksNow: boolean;
   suggestedTaskDramaticTypes: string[];
 

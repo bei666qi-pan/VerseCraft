@@ -5,7 +5,7 @@ import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPac
 test("buildRuntimeContextPackets includes stage-1 packets", () => {
   const packet = buildRuntimeContextPackets({
     playerContext:
-      "游戏时间[第2日 9时]。用户位置[B1_Storage]。任务追踪：清点补给[main|active|委托守门骑士|层级B1|领取auto]。" +
+      "游戏时间[第2日 9时]。用户位置[B1_Storage]。任务追踪：清点补给[main|active|委托守门骑士|层级B1|领取auto]。【rt_task_layers】starter_main=formal_task。" +
       "世界标记：conspiracy_seeded，merchant_seen。锚点解锁：B1[1]，1F[1]，7F[0]。" +
       "主威胁状态：1[A-001|active|20]，2[A-002|idle|0]。" +
       "主手武器[WPN-001|稳定80|反制sound/silence|模组silent|灌注mirror:2|污染15|可修复1]。" +
@@ -13,7 +13,7 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
       "职业收益：当前[守灯人]，被动摘要[高压主威胁场景下，精神损耗结算-1（最低为0）。]，主动摘要[稳心定灯：下回合若遭受精神损耗，额外-1并保留压制判断窗口提示。]，主动可用[1]。" +
       "职业进度：守灯人[属性1|行为2/2|试炼1|认证1]，巡迹客[属性0|行为1/2|试炼0|认证0]。" +
       "最近复活：死亡地点[3F_Stairwell]，死因[失血]，掉落数量[2]，最近锚点[anchor_b1_safe]。" +
-      "NPC当前位置：N-008@B1_Storage，N-014@B1_Laundry。" +
+      "NPC当前位置：N-008@B1_Storage，N-014@B1_Laundry，N-020@B1_Storage。" +
       "图鉴已解锁：守灯人认证纪要[anomaly|好感0]，电工老刘[npc|好感28]。",
     latestUserInput: "我要去找守门骑士补给并问锚点",
     playerLocation: "B1_Storage",
@@ -53,6 +53,10 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
   assert.ok(packet.includes("school_cycle_experience_packet"));
   assert.ok(packet.includes("school_source_packet"));
   assert.ok(packet.includes("team_relink_packet"));
+  assert.ok(packet.includes("major_npc_foreshadow_packet"));
+  assert.ok(packet.includes("actor_personality_packet"));
+  assert.ok(packet.includes("narrative_task_mode_packet"));
+  assert.ok(packet.includes("action_time_cost_packet"));
 });
 
 test("buildRuntimeContextPackets respects maxChars budget", () => {

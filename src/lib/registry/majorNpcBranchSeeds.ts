@@ -1,6 +1,7 @@
 /**
  * 高魅力六人：支线扩写用短种子（非完整剧本）。
  * relatedQuestHook 由 `questHooksForMajorNpc` 按索引派生，避免与 npcProfiles 字符串漂移。
+ * 与任务人物驱动模板对齐：`taskIssuerStyles.ts`（六人 issuerPersonaMode）。
  */
 
 import { REVEAL_TIER_RANK, revealKnowledgeTagFromRank, type RevealTierRank } from "./revealTierRank";
@@ -46,7 +47,7 @@ const BRANCH_SEED_TEMPLATES: readonly SeedTemplate[] = [
     title: "支线种子：B1 边界誓约与守界互证",
     summary: "麟泽需要可验证的守界行为，而非口号式跟队承诺。",
     detail:
-      "对齐 profile questHooks（锚点誓约 / 边界巡视）。叙事重点：锚点仪式中的「共同责任」、对越界试探的冷硬回应、与主锚复活节拍的肌肉记忆违和。禁止单回合写完辅锚全貌。",
+      "对齐 questHooks（锚点誓约 / 边界巡视）。叙事重点：共同责任、越界试探时的冷硬、复活后「第一步」相关的肌肉记忆违和。deep+ 才允许点名校籍与辅锚语义；禁止单回合写全貌。",
     sourceRef: "registry/majorNpcBranchSeeds.ts:n015",
     importance: 81,
     revealMinRank: REVEAL_TIER_RANK.fracture,
@@ -60,7 +61,7 @@ const BRANCH_SEED_TEMPLATES: readonly SeedTemplate[] = [
     title: "支线种子：补给线与 ribbon 信任",
     summary: "灵伤在「被听见」与「被消费伤口」之间摇摆，并队门槛在保护性选择。",
     detail:
-      "强调 profile 中 ribbon 向 hook；心悸式残响、句尾上扬与空白半拍、B1 噪声缓冲职能。deep+ 才点声纹/缓冲辅锚语义。",
+      "强调 ribbon 向 hook；心悸式残响、句尾上扬与空白半拍、B1 缓冲职能。fracture 只写播报感/底噪依赖，不写校名社团；deep+ 才点声纹与辅锚语义。",
     sourceRef: "registry/majorNpcBranchSeeds.ts:n020",
     importance: 80,
     revealMinRank: REVEAL_TIER_RANK.fracture,
@@ -74,7 +75,7 @@ const BRANCH_SEED_TEMPLATES: readonly SeedTemplate[] = [
     title: "支线种子：登记口与第一牵引",
     summary: "欣蓝验主锚非替身优先于体贴；表格是推迟失控的工具。",
     detail:
-      "对齐 profile 双 hook：路线预告与转职登记。重点：拒代选命运、名单焦虑、与夜读账簿的张力。可给异常熟悉感，不得当全知剧透机。",
+      "对齐双 hook：路线预告与转职登记。重点：拒代选命运、名单焦虑、与夜读账簿的张力。欣蓝可更强牵引，但 fracture 仍禁一口说尽旧身份；可给异常熟悉感，不得当全知剧透机。",
     sourceRef: "registry/majorNpcBranchSeeds.ts:n010",
     importance: 82,
     revealMinRank: REVEAL_TIER_RANK.fracture,
@@ -88,7 +89,7 @@ const BRANCH_SEED_TEMPLATES: readonly SeedTemplate[] = [
     title: "支线种子：交换账本与可持续对价",
     summary: "北夏并队必须计价；空头承诺会破坏他维持的平衡。",
     detail:
-      "对齐 profile 首 hook（碎片交易）与龙月/空间碎片类命名。重点：欠条体感、二手市集组织者壳、deep+ 外联边缘。",
+      "对齐首 hook（碎片交易）与龙月/空间碎片类命名。重点：欠条体感、审计式口吻、货源含糊；fracture 不写外联/市集组织者专名；deep+ 才收束边缘身份。",
     sourceRef: "registry/majorNpcBranchSeeds.ts:n018",
     importance: 79,
     revealMinRank: REVEAL_TIER_RANK.fracture,
@@ -102,7 +103,7 @@ const BRANCH_SEED_TEMPLATES: readonly SeedTemplate[] = [
     title: "支线种子：701 话术与诱导刃自救",
     summary: "枫把高危叙事包装成可赢剧本；并队需主锚证明非耗材。",
     detail:
-      "强调 false_rescue 向 hook；戏剧社残留、替身梗耻感、与厨师剁肉频段对抗。deep 门闸见 deepSecret.revealConditions。",
+      "强调 false_rescue 向 hook；剧本腔、替身隐喻、耻感外壳，与厨师剁肉频段对抗。fracture 不点名戏剧社；deep 门闸见 deepSecret.revealConditions。",
     sourceRef: "registry/majorNpcBranchSeeds.ts:n013",
     importance: 80,
     revealMinRank: REVEAL_TIER_RANK.fracture,
@@ -116,7 +117,7 @@ const BRANCH_SEED_TEMPLATES: readonly SeedTemplate[] = [
     title: "支线种子：画室庇护与草案互锁",
     summary: "叶用冷淡挡诱导链；与枫草案互锁，任务验证后才共享并队级线索。",
     detail:
-      "强调 sibling.old_day；轮廓触发保护欲违和、双胞胎镜像压力、辅锚之六镜像反制位。",
+      "强调 sibling.old_day；轮廓触发保护欲违和、镜像压力。fracture 不点名美术社/草案专名；deep+ 才收束辅锚镜像反制语义。",
     sourceRef: "registry/majorNpcBranchSeeds.ts:n007",
     importance: 79,
     revealMinRank: REVEAL_TIER_RANK.fracture,
