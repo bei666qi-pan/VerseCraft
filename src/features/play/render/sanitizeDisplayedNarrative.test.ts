@@ -37,3 +37,16 @@ test("display sanitizer blocks excessive escaped fragments", () => {
   assert.equal(out.blocked, true);
   assert.equal(out.text, DISPLAY_NARRATIVE_FALLBACK);
 });
+
+test("display sanitizer blocks minimax tool_call leakage", () => {
+  const raw = [
+    "我听见楼道里有脚步。",
+    "<minimax:tool_call>",
+    "<invoke name=\"npc_scene_authority_packet\"/>",
+    "</minimax:tool_call>",
+  ].join("\n");
+  const out = sanitizeDisplayedNarrative(raw);
+  assert.equal(out.blocked, true);
+  assert.equal(out.text, DISPLAY_NARRATIVE_FALLBACK);
+  assert.equal(sanitizeDisplayedOptionText(raw), "");
+});

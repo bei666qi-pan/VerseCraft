@@ -8,7 +8,8 @@ export type NarrativeLeakFlag =
   | "embedded_dm_key"
   | "second_object_tail"
   | "top_level_object_fragment"
-  | "excessive_escape_sequences";
+  | "excessive_escape_sequences"
+  | "tool_call_markup";
 
 export interface NarrativeLeakAnalysis {
   flags: NarrativeLeakFlag[];
@@ -24,6 +25,11 @@ export function analyzeNarrativeLeak(text: string): NarrativeLeakAnalysis {
   const t = String(text ?? "");
   const flags = new Set<NarrativeLeakFlag>();
   if (!t) return { flags: [], hasLeak: false };
+
+  // Tool-call / agent protocol leakage (e.g. MiniMax tool calls): should never be player-visible.
+  if (/<\s*minimax:tool_call\b/i.test(t) || /<\s*invoke\b/i.test(t) || /<\s*end_turn\s*>/i.test(t)) {
+    flags.add("tool_call_markup");
+  }
 
   if (
     /"is_death"\s*:/.test(t) ||
@@ -65,6 +71,27 @@ export function stripTrailingLeakedObject(text: string): string {
   return t.slice(0, marker).trimEnd();
 }
 
+function stripToolCallMarkup(text: string): string {
+  const t = String(text ?? "");
+  if (!t) return "";
+
+  // Remove full minimax tool_call blocks if present.
+  let out = t.replace(/<\s*minimax:tool_call\b[^>]*>[\s\S]*?<\s*\/\s*minimax:tool_call\s*>/gi, "");
+
+  // Remove any dangling invoke blocks (including self-closing forms).
+  out = out.replace(/<\s*invoke\b[^>]*\/\s*>/gi, "");
+  out = out.replace(/<\s*invoke\b[^>]*>[\s\S]*?<\s*\/\s*invoke\s*>/gi, "");
+
+  // Remove end_turn wrappers if leaked.
+  out = out.replace(/<\s*end_turn\s*>/gi, "").replace(/<\s*\/\s*end_turn\s*>/gi, "");
+
+  // If any tool-call marker remains, drop from first marker to end (avoid partial garbage).
+  const marker = out.search(/<\s*(minimax:tool_call|invoke|end_turn)\b/i);
+  if (marker >= 0) out = out.slice(0, marker);
+
+  return out.trim();
+}
+
 function decodeEscapesLight(text: string): string {
   return text
     .replace(/\\n/g, "\n")
@@ -89,6 +116,7 @@ export interface NarrativeSanitizeResult {
 export function sanitizeNarrativeLeakageForFinal(raw: string): NarrativeSanitizeResult {
   const original = String(raw ?? "");
   let cleaned = stripTrailingLeakedObject(original);
+  cleaned = stripToolCallMarkup(cleaned);
   cleaned = decodeEscapesLight(cleaned).trim();
 
   const post = analyzeNarrativeLeak(cleaned);

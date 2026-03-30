@@ -10,6 +10,10 @@ export function isProtocolLeakLikeText(text: string): boolean {
   if (!t) return false;
 
   if (/__VERSECRAFT_FINAL__/.test(t)) return true;
+  // Tool-call / agent protocol leakage (e.g. MiniMax tool calls): should never be player-visible.
+  if (/<\s*minimax:tool_call\b/i.test(t)) return true;
+  if (/<\s*invoke\b/i.test(t)) return true;
+  if (/<\s*end_turn\s*>/i.test(t)) return true;
   if (/\{\s*"is_action_legal"\s*:/.test(t)) return true;
   if (/"is_death"\s*:/.test(t)) return true;
   if (/"consumes_time"\s*:/.test(t)) return true;
