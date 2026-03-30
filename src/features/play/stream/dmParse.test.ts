@@ -97,3 +97,8 @@ test("tryParseDM returns null for options-only JSON but extractRegenOptionsFromR
   assert.deepEqual(extractRegenOptionsFromRaw(raw), ["a", "b", "c", "d"]);
 });
 
+test("extractRegenOptionsFromRaw: __VERSECRAFT_FINAL__ prefix still works", () => {
+  const raw = '__VERSECRAFT_FINAL__:{"options":["一","二","三","四"]}';
+  assert.deepEqual(extractRegenOptionsFromRaw(raw), ["一", "二", "三", "四"]);
+});
+

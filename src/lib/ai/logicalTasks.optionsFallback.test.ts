@@ -11,7 +11,7 @@ test("parseOptionsArrayFromAiJson: skips too-short and too-long", () => {
 });
 
 test("padOptionsFallbackToFour: fills from generics when empty", () => {
-  const out = padOptionsFallbackToFour([]);
+  const out = padOptionsFallbackToFour([], "用户位置[B1_SafeZone]。主威胁状态：B1[A-001|active|30]。");
   assert.equal(out.length, 4);
   assert.ok(out.every((s) => s.length >= 2));
 });

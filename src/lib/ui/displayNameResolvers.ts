@@ -60,6 +60,16 @@ export function resolveFloorTierLabel(floorTier: string): string {
   return FLOOR_TIER_LABEL[t] ?? `约 ${t} 一带`;
 }
 
+/** 保底：避免任何玩家可见文本残留内部 id token。 */
+export function scrubInternalEntityIdsForPlayer(text: string, codex?: Record<string, CodexEntry> | null): string {
+  let s = String(text ?? "");
+  if (!s) return "";
+  // 替换孤立 token（避免在中文段落中出现 N-013 这种“开发感”）
+  s = s.replace(/\bN-\d{3}\b/gi, (m) => resolveNpcIdForPlayer(m, codex));
+  s = s.replace(/\bA-\d{3}\b/gi, (m) => resolveAnomalyIdForPlayer(m, codex));
+  return s.trim();
+}
+
 /**
  * 手记/任务里出现的 npc id 列表 → 玩家可读名（不暴露 registry id）。
  */
@@ -85,5 +95,5 @@ export function resolveTaskIssuerDisplay(
     if (isRegistryAnomalyId(id)) return resolveAnomalyIdForPlayer(id, codex);
   }
   if (name === "SYSTEM" || id === "SYSTEM") return "公寓规则";
-  return name || "未知托付人";
+  return scrubInternalEntityIdsForPlayer(name || "未知托付人", codex);
 }

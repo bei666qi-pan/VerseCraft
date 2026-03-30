@@ -50,7 +50,7 @@ test("resolveTurnConsistency: awards without explicit acquire text should only r
   assert.equal(out.ui_hints?.consistency_flags?.includes("awards_without_explicit_acquire_text") ?? false, true);
 });
 
-test("resolveTurnConsistency: new_tasks should generate ui_hints auto_open_panel + highlight ids", () => {
+test("resolveTurnConsistency: new_tasks should only auto-open for accepted formal tasks", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,
     sanity_damage: 0,
@@ -59,7 +59,8 @@ test("resolveTurnConsistency: new_tasks should generate ui_hints auto_open_panel
     consumes_time: true,
     options: [],
     new_tasks: [
-      { id: "floor_1f_probe", title: "一楼试探性探索" },
+      // 仅“正式任务 + 已接下（active）”才触发自动打开与高亮
+      { id: "floor_1f_probe", title: "一楼试探性探索", status: "active", taskNarrativeLayer: "formal_task" },
     ],
   } as any);
   assert.equal(out.ui_hints?.auto_open_panel, "task");

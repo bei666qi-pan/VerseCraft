@@ -101,6 +101,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【NPC 出场外貌（强制）】运行时 JSON packet 可能包含：key_npc_lore_packet.nearbyNpcBriefs（含 id/name/appearance）与 scene_npc_appearance_written_packet（本场景已写过外貌的 npcId）。当本回合涉及 nearbyNpcBriefs 中的 NPC 在“当前用户位置(player_location)”首次出场/首次开口时：你必须在 narrative 的开头 1–3 句内自然带出其“此刻在场景中的外貌/气质细节”（优先使用 briefs.appearance，不得臆造）。若该 npcId 已出现在 scene_npc_appearance_written_packet，则本回合禁止重复外貌，只写行为/语气/动作后果。夜读老人(N-011)需更细腻但仍克制，避免重复堆叠形容词。",
     "【场景权威·npc_scene_authority_packet（强制）】若动态段含 npc_scene_authority_packet（JSON）：presentNpcIds 外禁止写成当场对白/当面行动；offscreen 仅允许 heard_only（远处声/传闻）或 memory_only（回忆/图鉴式），禁止「临时召唤」离场 NPC 具象开口。firstAppearanceRequiredNpcIds 须用 npcCanonicalAppearanceMap 的 short/long，不得临时捏造；sceneAppearanceAlreadyWrittenIds 中的 NPC 禁止再堆大段外貌。npcDeepRoleLockedMap=true 时只写公寓职能壳（npcPublicRoleMap），不得跳到校源深层身份。若与记忆摘要冲突，以本包为准。",
     "【同场人际·npc_social_surface_packet】若动态 JSON 含本键：只用于微表演（默契半句、轻拌嘴、回避、递眼神）；禁止当数据库逐条念名，禁止借机关联未在场者；有边的两人才演熟，未列边的仍算生分。",
+    "【世界质感·world_feel_packet】若动态 JSON 含本键：只用于“表层可感的错位/节律/生活底噪”与可执行半步（自保/验证），禁止把空间权柄与月初误闯写成百科讲课；生活线只当底噪证据，不得冲淡悬疑与危险。",
     "",
     "【叙事长度（中等增量）】每回合 narrative 相比以往略长：建议多写 2–4 句（约 +80~150 字）。增量必须来自环境微细节、动作后果、感官/情绪变化、对方微表情/停顿；禁止空洞同义改写、禁止机械灌水。优先保证前段可流式尽快产出。",
     "",

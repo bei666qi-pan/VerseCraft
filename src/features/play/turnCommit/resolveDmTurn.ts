@@ -3,6 +3,9 @@ import {
   normalizeTaskUpdateDraft,
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
+import { applyNarrativeAcceptanceDefaults, shouldAutoOpenTaskPanelForNewTask } from "@/lib/tasks/taskNarrativeGrant";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { incrFormalTaskNarrativeGrantAutoOpenCount } from "@/lib/observability/versecraftRolloutMetrics";
 import { normalizeActionTimeCostKind, type ActionTimeCostKind } from "@/lib/time/actionCost";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
@@ -216,9 +219,15 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const nowIso = new Date().toISOString();
   const normalizedClueUpdates = normalizeClueUpdateArray((input as { clue_updates?: unknown }).clue_updates, nowIso);
 
-  if (normalizedNewTasks.length > 0) {
-    ui_hints.auto_open_panel = "task";
-    ui_hints.highlight_task_ids = normalizedNewTasks.map((t) => t.id);
+  const grantNormalizedNewTasks = normalizedNewTasks.map((t) => applyNarrativeAcceptanceDefaults(t));
+  const rollout = getVerseCraftRolloutFlags();
+  if (rollout.enableTaskAutoOpenOnNarrativeGrant) {
+    if (grantNormalizedNewTasks.some((t) => shouldAutoOpenTaskPanelForNewTask(t))) {
+      const ids = grantNormalizedNewTasks.filter((t) => shouldAutoOpenTaskPanelForNewTask(t)).map((t) => t.id);
+      ui_hints.auto_open_panel = "task";
+      ui_hints.highlight_task_ids = ids;
+      incrFormalTaskNarrativeGrantAutoOpenCount(1);
+    }
   }
 
   const toastFromUpdates = deriveCompletedTaskToast(
@@ -262,7 +271,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     awarded_warehouse_items: awardedWarehouseItems,
     codex_updates: asUnknownArray(input.codex_updates),
     relationship_updates: asUnknownArray(input.relationship_updates),
-    new_tasks: normalizedNewTasks,
+    new_tasks: grantNormalizedNewTasks,
     task_updates: normalizedTaskUpdates,
     clue_updates: normalizedClueUpdates,
     ...(typeof input.player_location === "string" && input.player_location.trim()

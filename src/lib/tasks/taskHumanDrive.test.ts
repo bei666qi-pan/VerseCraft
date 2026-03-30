@@ -115,7 +115,7 @@ test("partitionTasksForBoard: 人情约定线进入 promiseRisk 并排序", () =
   });
   const part = partitionTasksForBoard([main, f1, f2, p1, p2], 2);
   assert.equal(part.primary?.id, "mainline");
-  const pr = part.promiseRisk.map((x) => x.id);
+  const pr = part.promises.map((x) => x.id);
   assert.ok(pr.includes("p2"));
   assert.ok(pr.includes("p1"));
   assert.equal(pr[0], "p2");

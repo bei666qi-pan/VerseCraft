@@ -64,8 +64,15 @@ import {
   parseRtTaskLayers,
 } from "@/lib/playRealtime/actorConstraintPackets";
 import { buildNpcSocialSurfacePacketCompact } from "@/lib/playRealtime/npcSocialSurfacePackets";
+import { buildNewPlayerGuidePacket } from "@/lib/playRealtime/newPlayerGuidePackets";
+import { buildWorldFeelPacket } from "@/lib/playRealtime/worldFeelPackets";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
-import { incrNpcSocialSurfaceUsageCount } from "@/lib/observability/versecraftRolloutMetrics";
+import {
+  incrMonthStartStudentRecognitionHitCount,
+  incrNewPlayerGuideDualCoreHitCount,
+  incrNpcSocialSurfaceUsageCount,
+  incrWorldFeelPacketUsageCount,
+} from "@/lib/observability/versecraftRolloutMetrics";
 
 type ServiceStateInput = {
   shopUnlocked?: boolean;
@@ -610,6 +617,30 @@ export function buildRuntimeContextPackets(args: {
         monthlyIntrusionStudent: rollout.enableMonthlyStudentEntry,
       }
     : null;
+  const newPlayerGuidePacket = rollout.enableNewPlayerGuideDualCoreV2
+    ? buildNewPlayerGuidePacket({
+        playerContext: args.playerContext,
+        playerLocation: location,
+        clientState: null,
+      })
+    : null;
+  if (newPlayerGuidePacket?.enabled) incrNewPlayerGuideDualCoreHitCount(1);
+
+  const worldFeelPacket = rollout.enableWorldFeelPackets
+    ? buildWorldFeelPacket({
+        locationId: location,
+        day: time.day && time.day > 0 ? time.day : 1,
+        hour: time.hour && time.hour >= 0 ? time.hour : 0,
+        maxRevealRank,
+        monthlyStudentEntryEnabled: rollout.enableMonthStartStudentWorldlogic && rollout.enableMonthlyStudentEntry,
+        nearbyNpcIds,
+        serviceKinds,
+      })
+    : null;
+  if (worldFeelPacket) {
+    incrWorldFeelPacketUsageCount(1);
+    if (worldFeelPacket.month_start_pressure.enabled) incrMonthStartStudentRecognitionHitCount(1);
+  }
   const worldLorePackets = {
     reveal_tier_packet: buildRevealTierPacket({ signals, maxRevealRank, firedRuleIds: firedRevealRuleIds }),
     space_authority_baseline_packet: spaceAuthorityBaselinePacket,
@@ -773,6 +804,8 @@ export function buildRuntimeContextPackets(args: {
     ...worldLorePackets,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
+    ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
+    ...(worldFeelPacket ? { world_feel_packet: worldFeelPacket } : {}),
   };
   const contextMode = args.contextMode ?? "full";
   const packetsForPrompt =
@@ -791,6 +824,8 @@ export function buildRuntimeContextPackets(args: {
           ...actorConstraintCompact,
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
+          ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
+          ...(worldFeelPacket ? { world_feel_packet: worldFeelPacket } : {}),
         }
       : packets;
   const text = [
@@ -840,6 +875,8 @@ export function buildRuntimeContextPackets(args: {
     ...actorConstraintCompact,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
+    ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
+    ...(worldFeelPacket ? { world_feel_packet: worldFeelPacket } : {}),
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

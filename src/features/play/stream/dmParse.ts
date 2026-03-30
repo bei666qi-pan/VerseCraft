@@ -112,6 +112,8 @@ function parseSliceToRegenOptions(slice: string): unknown[] | null {
 export function extractRegenOptionsFromRaw(raw: string): unknown[] | null {
   const cleanContent = raw
     .replace(/^\uFEFF/, "")
+    .replace(/__VERSECRAFT_FINAL__:/g, "")
+    .replace(/__VERSECRAFT_STATUS__:[^\n]*/g, "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
@@ -253,6 +255,8 @@ export const FALLBACK_DM: DMJson = {
 export function tryParseDM(raw: string): DMJson | null {
   const cleanContent = raw
     .replace(/^\uFEFF/, "")
+    .replace(/__VERSECRAFT_FINAL__:/g, "")
+    .replace(/__VERSECRAFT_STATUS__:[^\n]*/g, "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();

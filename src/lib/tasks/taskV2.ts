@@ -29,6 +29,18 @@ export type GameTaskStatus =
   | "failed"
   | "hidden"
   | "available";
+
+/**
+ * 阶段 3：任务「授予/可见」状态（可选字段；保持向后兼容）。
+ * 目的：让“系统里有任务”不等于“玩家已被叙事交付并知晓”。
+ */
+export type TaskGrantState =
+  | "discovered_but_unoffered"
+  | "narratively_offered"
+  | "accepted_in_story"
+  | "visible_on_board"
+  | "soft_tracked"
+  | "archived_hidden";
 export type GuidanceLevel = "none" | "light" | "standard" | "strong";
 export type TaskDramaticType =
   | "survival"
@@ -137,6 +149,17 @@ export interface GameTaskV2 {
   shouldStayAsConversationPromise?: boolean;
   /** 叙事推进层：暗示 / 人情约定 / 正式结构化追踪 */
   taskNarrativeLayer?: TaskNarrativeLayerKind;
+
+  /**
+   * 阶段 3：授予/可见状态（旧存档无此字段）。
+   * - discovered_but_unoffered: 系统知道有这件事，但叙事里还没人把它压到玩家头上
+   * - narratively_offered: NPC/事件在叙事里提出了这件事，但玩家尚未明确接下
+   * - accepted_in_story: 玩家在叙事里明确接下（或已形成“正在推进”的事实）
+   * - visible_on_board: 允许进入任务板主视图（通常由 accepted_in_story 推进而来）
+   * - soft_tracked: 轻追踪（承诺/风险层可见，但不抢主视图）
+   * - archived_hidden: 已归档隐藏（对玩家不再可见）
+   */
+  grantState?: TaskGrantState;
 }
 
 export interface RelationshipStatePatch {
@@ -253,6 +276,17 @@ function normalizeStatus(v: unknown): GameTaskStatus {
     : "active";
 }
 
+function normalizeGrantState(v: unknown): TaskGrantState | undefined {
+  return v === "discovered_but_unoffered" ||
+    v === "narratively_offered" ||
+    v === "accepted_in_story" ||
+    v === "visible_on_board" ||
+    v === "soft_tracked" ||
+    v === "archived_hidden"
+    ? v
+    : undefined;
+}
+
 function normalizeReward(raw: unknown): GameTaskRewardV2 {
   if (typeof raw === "string") {
     const txt = raw.trim();
@@ -345,8 +379,12 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
   const shouldStayAsSoftLead = normalizeOptionalBool(dr.shouldStayAsSoftLead);
   const shouldStayAsConversationPromise = normalizeOptionalBool(dr.shouldStayAsConversationPromise);
   const taskNarrativeLayer = normalizeTaskNarrativeLayer(dr.taskNarrativeLayer);
+  const grantStateRaw =
+    (dr as { grantState?: unknown }).grantState ??
+    (dr as { grant_state?: unknown }).grant_state;
+  const grantState = normalizeGrantState(grantStateRaw);
 
-  return applyIssuerDriveDefaults({
+  const normalized = applyIssuerDriveDefaults({
     id,
     title,
     desc: asString(d.desc),
@@ -434,7 +472,19 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
     ...(shouldStayAsSoftLead !== undefined ? { shouldStayAsSoftLead } : {}),
     ...(shouldStayAsConversationPromise !== undefined ? { shouldStayAsConversationPromise } : {}),
     ...(taskNarrativeLayer ? { taskNarrativeLayer } : {}),
+    ...(grantState ? { grantState } : {}),
   });
+
+  // 向后兼容 + 产品默认：没有 grantState 时不要把“系统任务”强行当作“玩家已知”。
+  // 仅当任务已经处于 active（正在推进的事实）时，默认可见；否则默认“尚未正式交付”。
+  if (!normalized.grantState) {
+    if (normalized.status === "active") {
+      normalized.grantState = "visible_on_board";
+    } else {
+      normalized.grantState = "discovered_but_unoffered";
+    }
+  }
+  return normalized;
 }
 
 export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> & { id: string }) | null {
@@ -588,6 +638,13 @@ export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> &
     const v = normalizeTaskNarrativeLayer(du.taskNarrativeLayer);
     if (v) out.taskNarrativeLayer = v;
   }
+  {
+    const raw = (du as { grantState?: unknown }).grantState ?? (du as { grant_state?: unknown }).grant_state;
+    if (raw !== undefined) {
+      const v = normalizeGrantState(raw);
+      if (v) out.grantState = v;
+    }
+  }
   return out;
 }
 
@@ -636,6 +693,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       guidanceLevel: "strong",
       status: "active",
       claimMode: "auto",
+      taskNarrativeLayer: "formal_task",
+      grantState: "visible_on_board",
       hiddenTriggerConditions: [],
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
@@ -661,6 +720,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       guidanceLevel: "strong",
       status: "available",
       claimMode: "npc_grant",
+      taskNarrativeLayer: "soft_lead",
+      grantState: "discovered_but_unoffered",
       hiddenTriggerConditions: [],
       npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_PowerRoom"], cooldownHours: 6 },
       npcProactiveGrantLastIssuedHour: null,
@@ -738,6 +799,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       guidanceLevel: "strong",
       status: "active",
       claimMode: "npc_grant",
+      taskNarrativeLayer: "formal_task",
+      grantState: "visible_on_board",
       hiddenTriggerConditions: [],
       npcProactiveGrant: {
         enabled: true,
@@ -769,6 +832,50 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       worldConsequences: ["b1_guidance_seeded"],
     }),
     normalizeGameTaskDraft({
+      id: "soft_survival_coach_liu",
+      title: "先活下来（别逞能）",
+      desc: "你被人从底下捞上来，不代表你能硬顶。先弄清楚工具、物资、退路与灯火的规矩。",
+      type: "floor",
+      issuerId: "N-008",
+      issuerName: "电工老刘",
+      floorTier: "B1",
+      guidanceLevel: "strong",
+      taskNarrativeLayer: "soft_lead",
+      grantState: "discovered_but_unoffered",
+      status: "available",
+      claimMode: "npc_grant",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_Storage", "B1_PowerRoom"], cooldownHours: 4 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "先问：哪儿能拿到最基础的灯、线、止血、与一条退路。",
+      dramaticType: "survival",
+      riskNote: "别把自己当英雄；你一逞能，楼就记住你。",
+      relatedNpcIds: ["N-008", "N-014"],
+      relatedLocationIds: ["B1_Storage", "B1_Laundry", "B1_PowerRoom"],
+    }),
+    normalizeGameTaskDraft({
+      id: "soft_border_coach_linz",
+      title: "别越界（先问代价）",
+      desc: "B1 能让你喘口气，但边界不是免费的。先弄清楚哪些事能做，哪些事一碰就回不了头。",
+      type: "floor",
+      issuerId: "N-015",
+      issuerName: "麟泽",
+      floorTier: "B1",
+      guidanceLevel: "standard",
+      taskNarrativeLayer: "soft_lead",
+      grantState: "discovered_but_unoffered",
+      status: "available",
+      claimMode: "npc_grant",
+      hiddenTriggerConditions: [],
+      npcProactiveGrant: { enabled: true, npcId: "N-015", minFavorability: 0, preferredLocations: ["B1_SafeZone"], cooldownHours: 5 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "先问清楚：B1 为什么安全？越界会触发什么？",
+      dramaticType: "trust",
+      taboo: "别在他守夜时强行跨线。",
+      relatedNpcIds: ["N-015", "N-008"],
+      relatedLocationIds: ["B1_SafeZone"],
+    }),
+    normalizeGameTaskDraft({
       id: "floor_1f_probe",
       title: "一楼试探性探索",
       desc: "在1F完成一次试探性探索，带回‘可验证’的线索或物证。",
@@ -776,6 +883,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       issuerId: "N-008",
       issuerName: "电工老刘",
       floorTier: "1",
+      taskNarrativeLayer: "conversation_promise",
+      grantState: "narratively_offered",
       status: "available",
       claimMode: "manual",
       // 该任务对玩家是“可接取”的显式委托：触发/隐藏条件不展示在 UI，避免出戏。

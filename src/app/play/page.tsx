@@ -82,6 +82,10 @@ import {
   pushNarrativeSystemsDebugEvent,
 } from "@/lib/debug/narrativeSystemsDebugRing";
 import { NarrativeSystemsDebugPanel } from "@/features/play/components/NarrativeSystemsDebugPanel";
+import {
+  getClientOptionsAutoRegenOnEmptyEnabled,
+  getClientOptionsOnlyRegenPathV2Enabled,
+} from "@/lib/rollout/versecraftClientRollout";
 
 const ITEM_DOMAIN_LAYERS = new Set<ItemDomainLayer>([
   "key",
@@ -136,11 +140,10 @@ function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
 }
 
 const OPTIONS_REGEN_SYSTEM_PROMPT =
-  '【系统辅助请求：仅生成可选行动】本请求只用于刷新 options，不推进剧情。' +
-  "你必须输出合法 DM JSON，且严格满足：" +
-  "is_action_legal=true，sanity_damage=0，is_death=false，consumes_time=false；" +
-  'narrative 必须为空字符串；options 必须是 4 条简体中文、可执行、互不重复的第一人称行动句；' +
-  "禁止发放/消耗道具，禁止更新任务、图鉴、地点、关系、武器、威胁等任何世界状态字段。";
+  "你是选项整理助手。你必须只输出一个 JSON 对象，且只包含 options 键：" +
+  '{"options":["...","...","...","..."]}。' +
+  "强制：options 恰好 4 条、简体中文、第一人称、5–20字、互不重复且差异明显；" +
+  "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
 
 function PlayContent() {
   const router = useRouter();
@@ -925,8 +928,10 @@ function PlayContent() {
     prevPathnameForAbortRef.current = pathname;
   }, [pathname]);
 
+  const autoMissingOptionsAttemptedRef = useRef(false);
+
   async function requestFreshOptions(
-    trigger: "auto_switch" | "manual_button" | "opening_fallback"
+    trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main"
   ) {
     // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
     const manual = trigger === "manual_button";
@@ -963,29 +968,49 @@ function PlayContent() {
       setFirstTimeHint("主笔正在补全首轮可选行动…");
     } else if (trigger === "auto_switch") {
       setFirstTimeHint("主笔正在整理可选行动…");
+    } else if (trigger === "auto_missing_main") {
+      setFirstTimeHint("本回合没有可选行动，正在补全…");
     } else {
       setFirstTimeHint("主笔正在按当前剧情重新整理可选行动…");
     }
     try {
-      const history = (useGameStore.getState().logs ?? [])
-        .filter((l) => l && (l.role === "user" || l.role === "assistant"))
-        .slice(-12)
-        .map((l) => ({ role: l.role as ChatRole, content: String(l.content ?? "") }));
-      const messages: ChatMessage[] = [
-        ...history,
-        {
-          role: "user",
-          content:
-            `${OPTIONS_REGEN_SYSTEM_PROMPT}\n` +
-            `【仅刷新选项原因】${
-              trigger === "opening_fallback"
-                ? "冷开场首轮主笔未返回 options，请仅补四条第一人称短选项（误闯后惊魂未稳，以稳住、观察、听声、找光/退路为主，勿空）"
-                : trigger === "auto_switch"
-                  ? "用户切回选项模式且当前无可用项"
-                  : "用户手动点击刷新选项按钮"
-            }`,
-        },
-      ];
+      const logsNow = useGameStore.getState().logs ?? [];
+      const lastAssistant = logsNow
+        .slice()
+        .reverse()
+        .find((l) => l?.role === "assistant")?.content ?? "";
+      const lastUser = logsNow
+        .slice()
+        .reverse()
+        .find((l) => l?.role === "user")?.content ?? "";
+
+      const reason =
+        trigger === "opening_fallback"
+          ? "冷开场首轮未返回 options"
+          : trigger === "auto_switch"
+            ? "用户切回选项模式且当前无可用项"
+            : trigger === "auto_missing_main"
+              ? "主回合 narrative 正常但 options 缺失"
+              : "用户手动点击刷新选项按钮";
+
+      const useOptionsOnlyPath = getClientOptionsOnlyRegenPathV2Enabled();
+      const messages: ChatMessage[] = useOptionsOnlyPath
+        ? [
+            // options-only V2：后端会注入严格 prompt 与上下文 packet
+            ...(lastAssistant ? [{ role: "assistant", content: lastAssistant }] : []),
+            ...(lastUser ? [{ role: "user", content: lastUser }] : []),
+          ]
+        : [
+            { role: "system", content: OPTIONS_REGEN_SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: [
+                `【为何需要整理选项】${reason}`,
+                `【最近玩家动作】${String(lastUser ?? "").slice(0, 260)}`,
+                `【最近叙事片段】${String(lastAssistant ?? "").slice(0, 900)}`,
+              ].join("\n"),
+            },
+          ];
       const playerContext = useGameStore.getState().getPromptContext();
       const clientState = useGameStore.getState().getStructuredClientStateForServer();
       const res = await fetch("/api/chat", {
@@ -1000,6 +1025,7 @@ function PlayContent() {
           sessionId: guestId ?? "browser_session",
           openingOptionsOnlyRound: false,
           clientPurpose: "options_regen_only",
+          clientReason: `【为何需要整理选项】${reason}`,
         }),
       });
       if (!res.ok || !res.body) {
@@ -1031,7 +1057,7 @@ function PlayContent() {
       }
       const normalized = normalizeRegeneratedOptions(rawOpts, []);
       if (normalized.length === 0) {
-        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+        setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
@@ -1040,7 +1066,7 @@ function PlayContent() {
         typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
       );
     } catch {
-      setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+      setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;
@@ -1828,6 +1854,7 @@ function PlayContent() {
       setActiveMenu(null);
     } else if (merged.length > 0) {
       setCurrentOptions([...merged.slice(0, 4)]);
+      autoMissingOptionsAttemptedRef.current = false;
     } else {
       // 无论是否首次 assistant 回合，都必须清空旧选项，避免沿用上一回合残留。
       setCurrentOptions([]);
@@ -1841,8 +1868,17 @@ function PlayContent() {
         queueMicrotask(() => {
           void requestFreshOptions("opening_fallback");
         });
+      } else if (
+        !isFirstAssistantTurn &&
+        getClientOptionsAutoRegenOnEmptyEnabled() &&
+        !autoMissingOptionsAttemptedRef.current
+      ) {
+        autoMissingOptionsAttemptedRef.current = true;
+        queueMicrotask(() => {
+          void requestFreshOptions("auto_missing_main");
+        });
       } else if (!isFirstAssistantTurn) {
-        setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
+        setFirstTimeHint("本回合仍没有可选行动，可切换为手动输入继续。");
       }
     }
 
@@ -2517,6 +2553,7 @@ function PlayContent() {
                       }}
                       className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
                       aria-label="任务栏"
+                      title="当前目标与承诺"
                     >
                       <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
                         <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />

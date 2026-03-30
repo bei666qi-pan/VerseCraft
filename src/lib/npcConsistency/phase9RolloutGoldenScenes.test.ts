@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { accumulateDmFromSseEvent } from "@/features/play/stream/sseFrame";
-import { tryParseDM } from "@/features/play/stream/dmParse";
+import { extractRegenOptionsFromRaw, tryParseDM } from "@/features/play/stream/dmParse";
 import { buildNpcPlayerBaselinePacket } from "@/lib/npcBaselineAttitude/builders";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 import { replaceInternalNpcIdsForDisplay } from "@/lib/play/playerFacingText";
@@ -51,6 +51,8 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
     assert.equal(typeof f.enableSpaceAuthorityCanon, "boolean");
     assert.equal(typeof f.enableWorldEntryPackets, "boolean");
     assert.equal(typeof f.enableNpcSocialSurface, "boolean");
+    assert.equal(typeof f.enableWorldFeelPackets, "boolean");
+    assert.equal(typeof f.enableMonthStartStudentWorldlogic, "boolean");
   });
 
   it("2 月初误闯：普通 NPC 基线 packet 含误闯语义（默认 monthly entry）", () => {
@@ -78,7 +80,7 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
     assert.ok(!text.includes("N-001"));
   });
 
-  it("6 任务板 V2：soft_lead+available 不进入分区", () => {
+  it("6 任务板 V3：soft_lead 只作为线索影子；formal 未叙事接下不入主视图", () => {
     const soft = {
       id: "soft1",
       title: "引线",
@@ -96,7 +98,21 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
     } as unknown as GameTask;
     const filtered = filterTasksForTaskBoardVisibilityV2([soft, formal], true);
     assert.equal(filtered.length, 1);
-    assert.equal(filtered[0]!.id, "f1");
+    assert.equal(filtered[0]!.id, "soft1");
+  });
+
+  it("6b runtime：world_feel_packet 默认存在（世界错位/月初/生活底噪）", () => {
+    const ctx = ["用户位置[B1_Storage]。", "游戏时间[第1日 2时]。", "NPC当前位置：N-008@B1_Storage，N-014@B1_Laundry。"].join("\n");
+    const json = buildRuntimeContextPackets({
+      playerContext: ctx,
+      latestUserInput: "测",
+      playerLocation: null,
+      maxChars: 60000,
+    });
+    assert.ok(json.includes("world_feel_packet"));
+    assert.ok(json.includes("space_authority_echo_v1"));
+    assert.ok(json.includes("month_start_student_pressure_v1"));
+    assert.ok(json.includes("living_world_surface_v1") || json.includes("\"living_surface\""));
   });
 
   it("7 promise 轻量仍可出现（conversation_promise）", () => {
@@ -107,9 +123,11 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
       status: "available",
       type: "character",
       goalKind: "promise",
+      taskNarrativeLayer: "conversation_promise",
+      grantState: "narratively_offered",
     } as unknown as GameTask;
     const part = partitionTasksForBoard([p], 4);
-    assert.ok(part.paths.length + (part.primary ? 1 : 0) >= 0);
+    assert.ok(part.promises.length >= 1);
   });
 
   it("8 开场：首轮 options 来源为主笔而非本地池", () => {
@@ -132,6 +150,12 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
     const { raw } = accumulateDmFromSseEvent(ev, "garbage{");
     const parsed = tryParseDM(raw);
     assert.ok(parsed?.narrative);
+  });
+
+  it("11b options-only：raw 解析对纯 options JSON 仍稳", () => {
+    const raw = JSON.stringify({ options: ["我停下来听声", "我沿墙摸过去", "我问一句谁在那", "我先找出口"] });
+    const opts = extractRegenOptionsFromRaw(raw);
+    assert.ok(opts?.length === 4);
   });
 
   it("12 观测：finalFrame commit 记录可写读", () => {

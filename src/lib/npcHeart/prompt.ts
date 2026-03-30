@@ -41,6 +41,12 @@ export function buildNpcHeartPromptBlock(input: {
     if (v.peerRelationalCues) {
       lines.push(`  伴=${clamp(v.peerRelationalCues, 100)}`);
     }
+    // 新手双主轴提示：仅作“写作锚”，不替代任务板、不当解说台词
+    if (p.npcId === "N-008") {
+      lines.push(`  新手轴=生存教官｜要点：工具/退路/电/别逞能（用骂人压住慌，给可执行半步）`);
+    } else if (p.npcId === "N-015") {
+      lines.push(`  新手轴=边界教官｜要点：秩序/越界代价/B1为何安全（先拦住越线冲动，再给规则半句）`);
+    }
   }
   const text = lines.join("\n");
   return clamp(text, maxChars);

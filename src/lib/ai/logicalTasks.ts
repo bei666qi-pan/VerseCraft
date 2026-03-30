@@ -95,17 +95,26 @@ export function parseOptionsArrayFromAiJson(v: unknown): string[] {
   return uniq.slice(0, 4);
 }
 
-const OPTIONS_FALLBACK_GENERIC_PAD: readonly string[] = [
-  "我先停下观察周围。",
-  "我压低声音确认情况。",
-  "我换一个更稳妥的做法。",
-  "我暂时保持不动，等待变化。",
-];
+function contextualFallbackPad(playerContext: string): readonly string[] {
+  const ctx = String(playerContext ?? "");
+  const loc = ctx.match(/用户位置\[([^\]]+)\]/)?.[1]?.trim() || "";
+  const hasThreat = /主威胁状态：/.test(ctx) && /(active|suppressed|breached|危险|压制|失控)/.test(ctx);
+  const npcLine = ctx.match(/NPC当前位置：([^。]+)。/)?.[1]?.trim() || "";
+  const npcHint = npcLine ? "我先确认附近是否有人在场。" : "我先侧耳听周围动静。";
+  const placeHint = loc ? `我朝${loc.includes("B1") ? "安全区" : "附近"}找一个更稳的位置。` : "我先找一处更稳的站位。";
+  const threatHint = hasThreat ? "我先确认危险来源与退路。" : "我先确认退路与可用遮蔽物。";
+  return [
+    threatHint,
+    npcHint,
+    placeHint,
+    "我先把刚才的细节问清楚再动。",
+  ];
+}
 
 /**
  * 将 0–4 条模型选项与通用短句合并为恰好 4 条（去重），仅用于服务端 options 补救，不写入叙事正文。
  */
-export function padOptionsFallbackToFour(options: string[]): string[] {
+export function padOptionsFallbackToFour(options: string[], playerContext?: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   const pushUnique = (s: string) => {
@@ -117,7 +126,8 @@ export function padOptionsFallbackToFour(options: string[]): string[] {
     out.push(t);
   };
   for (const s of options) pushUnique(s);
-  for (const g of OPTIONS_FALLBACK_GENERIC_PAD) {
+  // 兜底也要尽量贴近当前上下文：避免“四条都像同一种泛化观察”
+  for (const g of contextualFallbackPad(playerContext ?? "")) {
     if (out.length >= 4) break;
     pushUnique(g);
   }
@@ -146,6 +156,7 @@ async function runOptionsOnlyAiOnce(args: {
       "你是规则怪谈文字冒险的控制面助手，任务是为玩家生成下一步可点击行动选项。",
       "你必须只输出一个 JSON 对象，形如：{\"options\":[\"...\",\"...\",\"...\",\"...\"]}。",
       "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
+      "四条必须彼此差异明显：至少包含两种不同类型的行动（例如：对话/移动/检查/使用物品/退避/试探）。",
       "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
       args.systemExtra ?? "",
     ]
@@ -197,6 +208,7 @@ export async function generateOptionsOnlyFallback(args: {
   playerContext: string;
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
   signal?: AbortSignal;
+  systemExtra?: string;
 }): Promise<{ ok: true; options: string[] } | { ok: false; reason: string }> {
   const tryParse = (content: string): { ok: true; options: string[] } | null => {
     try {
@@ -211,6 +223,7 @@ export async function generateOptionsOnlyFallback(args: {
   const first = await runOptionsOnlyAiOnce({
     ...args,
     temperature: 0.4,
+    systemExtra: args.systemExtra,
   });
   if (first.ok) {
     const done = tryParse(first.content);
@@ -220,7 +233,7 @@ export async function generateOptionsOnlyFallback(args: {
   const second = await runOptionsOnlyAiOnce({
     ...args,
     temperature: 0.65,
-    systemExtra: "若你上次容易少给条目：本次必须输出恰好 4 条 options，不要省略。",
+    systemExtra: [args.systemExtra ?? "", "若你上次容易少给条目：本次必须输出恰好 4 条 options，不要省略。"].filter(Boolean).join("\n"),
   });
   if (second.ok) {
     const done = tryParse(second.content);
@@ -228,7 +241,7 @@ export async function generateOptionsOnlyFallback(args: {
   }
 
   // 两次模型均不可用或 JSON 无效：用通用短句填满，避免 options 模式死胡同。
-  return { ok: true, options: padOptionsFallbackToFour([]) };
+  return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
 }
 
 export type OfflineReasonerKind = "worldbuild" | "storyline" | "dev_assist";

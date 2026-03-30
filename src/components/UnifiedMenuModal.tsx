@@ -7,7 +7,6 @@ import { canUseItem, formatStatRequirements, getItemEffectSummary } from "@/lib/
 import { getItemGameplayUiHints, getItemUiRoleTags } from "@/lib/play/itemGameplay";
 import { groupCluesByPrimarySection, journalSectionLabel, orderedJournalSections } from "@/lib/play/journalBoardUi";
 import type { ClueEntry as JournalClueEntry } from "@/lib/domain/narrativeDomain";
-import { PlayNarrativeTaskBoard } from "@/features/play/components/PlayNarrativeTaskBoard";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
 import { resolveNpcRefListForPlayer } from "@/lib/ui/displayNameResolvers";
@@ -25,6 +24,9 @@ import {
   getProfessionPassiveSummary,
 } from "@/lib/profession/benefits";
 import { WeaponSlotPanel } from "@/components/WeaponSlotPanel";
+import { PlayNarrativeTaskBoard } from "@/features/play/components/PlayNarrativeTaskBoard";
+import { getClientSettingsTaskRemovalEnabled } from "@/lib/rollout/versecraftClientRollout";
+import { incrSettingsTaskBoardRenderedCount } from "@/lib/observability/versecraftRolloutMetrics";
 
 const STAT_ORDER: StatType[] = ["sanity", "agility", "luck", "charm", "background"];
 const FALLBACK_STATS: Record<StatType, number> = {
@@ -277,6 +279,8 @@ function SettingsPanel({
   mainThreatByFloor,
   codex,
   tasks,
+  journalClues,
+  onClaimTask,
   equippedWeapon,
   weaponBag,
   isChatBusy,
@@ -300,6 +304,8 @@ function SettingsPanel({
   mainThreatByFloor: ReturnType<typeof useGameStore.getState>["mainThreatByFloor"];
   codex: Record<string, CodexEntry>;
   tasks: GameTask[];
+  journalClues: JournalClueEntry[];
+  onClaimTask: (taskId: string) => void;
   equippedWeapon: Weapon | null;
   weaponBag: Weapon[];
   isChatBusy: boolean;
@@ -320,8 +326,6 @@ function SettingsPanel({
     return originium >= costPerPoint;
   };
   const stepper = useUpgradeStepper(onUpgradeAttr, canUpgrade);
-  const journalClues = useGameStore((s) => s.journalClues ?? []);
-  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const readiness = evaluateProfessionActiveReadiness(professionState.currentProfession, {
     location: playerLocation,
     hasHotThreat: Object.values(mainThreatByFloor ?? {}).some((x) => x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"),
@@ -423,17 +427,6 @@ function SettingsPanel({
         </div>
       </div>
 
-      <div className="border-t border-white/10 pt-4">
-        <PlayNarrativeTaskBoard
-          tasks={tasks}
-          originium={originium}
-          journalClues={journalClues}
-          codex={codex}
-          onClaimTask={(id) => updateTaskStatus(id, "active")}
-          density="embedded"
-        />
-      </div>
-
       <div>
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
@@ -473,6 +466,26 @@ function SettingsPanel({
           </div>
         </div>
       </div>
+
+      {(() => {
+        if (getClientSettingsTaskRemovalEnabled()) return null;
+        incrSettingsTaskBoardRenderedCount(1);
+        return (
+          <div className="pt-2">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">任务（旧入口·可回滚）</h3>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <PlayNarrativeTaskBoard
+                tasks={tasks ?? []}
+                originium={originium}
+                journalClues={journalClues ?? []}
+                codex={codex}
+                onClaimTask={onClaimTask}
+                density="embedded"
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -991,6 +1004,7 @@ export function UnifiedMenuModal({
   const tasks = useGameStore((s) => s.tasks ?? []);
   const journalClues = useGameStore((s) => s.journalClues ?? []);
   const originium = useGameStore((s) => s.originium ?? 0);
+  const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
@@ -1100,6 +1114,8 @@ export function UnifiedMenuModal({
               mainThreatByFloor={mainThreatByFloor}
               codex={codex}
               tasks={tasks}
+              journalClues={journalClues}
+              onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
               equippedWeapon={equippedWeapon}
               weaponBag={weaponBag}
               isChatBusy={isChatBusy}

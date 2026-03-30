@@ -47,7 +47,13 @@ import {
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
-import { recordPromptCharDelta } from "@/lib/observability/versecraftRolloutMetrics";
+import {
+  incrEmptyOptionsTurnCount,
+  incrOptionsOnlyRegenPathHitCount,
+  recordOptionsAutoRegenOutcome,
+  recordOptionsManualRegenOutcome,
+  recordPromptCharDelta,
+} from "@/lib/observability/versecraftRolloutMetrics";
 import { getRuntimeLore } from "@/lib/worldKnowledge/runtime/getRuntimeLore";
 import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
 import {
@@ -141,6 +147,7 @@ import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
 import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativeStylePackets";
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
+import { buildOptionsOnlySystemPrompt, buildOptionsOnlyUserPacket } from "@/lib/playRealtime/optionsOnlyPackets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -605,6 +612,60 @@ export async function POST(req: Request) {
     latestUserInput = inputSafety.text;
   } else if (inputSafety.decision === "rewrite") {
     latestUserInput = inputSafety.text;
+  }
+
+  // --- Options-only fast path (never mutates world state) ---
+  if (clientPurpose === "options_regen_only") {
+    const rollout = getVerseCraftRolloutFlags();
+    incrOptionsOnlyRegenPathHitCount(1);
+    const snapshot = buildMinimalPlayerContextSnapshot(playerContext);
+    const lastAssistant =
+      validated.messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === "assistant")?.content ?? "";
+    const clientReason =
+      typeof (validated as { clientReason?: unknown }).clientReason === "string"
+        ? String((validated as { clientReason?: string }).clientReason)
+        : "";
+    const lastUserReason =
+      validated.messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === "user")?.content ?? "";
+    const reason = (clientReason.trim() || lastUserReason.trim() || "用户请求重新整理选项").trim();
+
+    const packet = rollout.enableOptionsOnlyRegenPathV2
+      ? buildOptionsOnlyUserPacket({
+          reason,
+          lastNarrative: lastAssistant,
+          playerContextSnapshot: snapshot,
+          clientState: validated.clientState,
+        })
+      : reason;
+    const regen = await generateOptionsOnlyFallback({
+      narrative: lastAssistant,
+      latestUserInput: packet,
+      playerContext: snapshot,
+      ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
+      systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+    });
+    const ok = Boolean(regen.ok && Array.isArray(regen.options) && regen.options.length >= 4);
+    const payload = JSON.stringify({ options: ok ? regen.options : [] });
+    const isAuto =
+      /主回合|options\s*缺失|auto_missing_main/i.test(reason) ||
+      /auto/i.test(clientReason);
+    if (isAuto) recordOptionsAutoRegenOutcome(ok);
+    else recordOptionsManualRegenOutcome(ok);
+    return new Response(sseText(payload), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
+      },
+    });
   }
 
   /**
@@ -2370,6 +2431,7 @@ export async function POST(req: Request) {
         // 为避免前端进入“无 options”死胡同：对正常主笔回合补齐一次 options（仍不沿用旧选项）。
         // 重要：不影响开场 options-only round / 结算守卫 / 终局唯一选项等路径。
         try {
+          const rollout = getVerseCraftRolloutFlags();
           // settlement_guard 在合法回合也会写入 stage2_ordered_resolution；仅非法/死亡冻结应跳过后置补选项。
           const settlementFreeze =
             guardMeta?.settlement_guard === "stage2_freeze_on_illegal_or_death";
@@ -2379,13 +2441,15 @@ export async function POST(req: Request) {
             settlementFreeze;
           const resolvedOpts = Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : [];
           const resolvedOptCount = resolvedOpts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
-          if (!shouldSkipRegen && resolvedOptCount < 2) {
+          if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2) {
+            if (resolvedOptCount === 0) incrEmptyOptionsTurnCount(1);
             const regen = await generateOptionsOnlyFallback({
               narrative: String((resolved as any).narrative ?? ""),
               latestUserInput,
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
               signal: ac.signal,
+              systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;

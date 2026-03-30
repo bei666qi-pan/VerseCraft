@@ -49,16 +49,41 @@ test("filterTasksForTaskBoardVisibilityV2 隐藏 soft_lead+available", () => {
     ...({ taskNarrativeLayer: "soft_lead" } as Record<string, unknown>),
   });
   const kept = filterTasksForTaskBoardVisibilityV2([soft], true);
-  assert.equal(kept.length, 0);
+  // soft_lead 属于线索影子：可以进入“线索层”，但不应进入正式任务主视图；
+  // filter 负责“是否进入任务面板整体分区”，因此这里应保留。
+  assert.equal(kept.length, 1);
 });
 
 test("partitionTasksForBoard keeps overflow when promise/risk slots saturated", () => {
-  const commissions = Array.from({ length: 12 }, (_, i) =>
-    task({ id: `c${i}`, title: `委托${i}`, goalKind: "commission" })
+  const accepted = Array.from({ length: 12 }, (_, i) =>
+    task({ id: `a${i}`, title: `已接${i}`, goalKind: "commission", status: "active", grantState: "visible_on_board" as any })
   );
-  const p = partitionTasksForBoard([task({ id: "m", title: "主线", goalKind: "main" }), ...commissions], 4);
+  const promises = Array.from({ length: 12 }, (_, i) =>
+    task({
+      id: `p${i}`,
+      title: `承诺${i}`,
+      goalKind: "promise",
+      status: "available",
+      taskNarrativeLayer: "conversation_promise" as any,
+      grantState: "narratively_offered" as any,
+    })
+  );
+  const clues = Array.from({ length: 8 }, (_, i) =>
+    task({
+      id: `s${i}`,
+      title: `线索${i}`,
+      status: "available",
+      taskNarrativeLayer: "soft_lead" as any,
+      grantState: "discovered_but_unoffered" as any,
+    })
+  );
+  const p = partitionTasksForBoard(
+    [task({ id: "m", title: "主线", goalKind: "main", status: "active", grantState: "visible_on_board" as any }), ...accepted, ...promises, ...clues],
+    4
+  );
   assert.equal(p.primary?.id, "m");
-  assert.ok(p.paths.length <= 4);
-  assert.ok(p.promiseRisk.length <= 6);
+  assert.ok(p.accepted.length <= 4);
+  assert.ok(p.promises.length <= 6);
+  assert.ok(p.clues.length <= 3);
   assert.ok(p.overflow.length >= 1);
 });

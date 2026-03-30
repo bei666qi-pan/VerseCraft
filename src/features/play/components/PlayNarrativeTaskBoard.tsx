@@ -10,16 +10,10 @@ import {
   resolveTaskIssuerDisplay,
 } from "@/lib/ui/displayNameResolvers";
 import { filterTasksForTaskBoardVisibilityV2, goalKindLabel, partitionTasksForBoard } from "@/lib/play/taskBoardUi";
-import { getClientTaskVisibilityPolicyV2Enabled } from "@/lib/rollout/versecraftClientRollout";
+import { getClientTaskVisibilityPolicyV3Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
-
-function taskSummaryLine(t: GameTask): string {
-  const u = (t as { urgencyReason?: string }).urgencyReason;
-  const h = (t as { playerHook?: string }).playerHook;
-  const hint = t.nextHint;
-  const raw = (typeof u === "string" && u.trim()) || (typeof h === "string" && h.trim()) || (typeof hint === "string" && hint.trim()) || t.desc;
-  return raw.length > 120 ? `${raw.slice(0, 118)}…` : raw;
-}
+import { buildTaskAtAGlanceLine, inferTaskCardCopyKind, sanitizePlayerFacingInline } from "@/lib/ui/taskPlayerFacingText";
+import { getClientPlayerFacingTaskCopyV2Enabled } from "@/lib/rollout/versecraftClientRollout";
 
 function cluesForTask(taskId: string, clues: ClueEntry[] | undefined): ClueEntry[] {
   if (!clues?.length) return [];
@@ -80,11 +74,12 @@ export function PlayNarrativeTaskBoard({
   const [showMore, setShowMore] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const mode = density === "overlay" ? "light" : "dark";
+  const copyV2 = getClientPlayerFacingTaskCopyV2Enabled();
 
-  const { primary, paths, promiseRisk, overflow, completed, failed } = useMemo(() => {
-    const v2 = getClientTaskVisibilityPolicyV2Enabled();
-    const forBoard = filterTasksForTaskBoardVisibilityV2(tasks ?? [], v2);
-    return partitionTasksForBoard(forBoard, 4);
+  const { primary, accepted, promises, clues, overflow, completed, failed, _visibleCount } = useMemo(() => {
+    const v3 = getClientTaskVisibilityPolicyV3Enabled();
+    const forBoard = filterTasksForTaskBoardVisibilityV2(tasks ?? [], v3);
+    return { ...partitionTasksForBoard(forBoard, 4), _visibleCount: forBoard.length };
   }, [tasks]);
 
   const highlightSet = useMemo(
@@ -106,6 +101,7 @@ export function PlayNarrativeTaskBoard({
     const items = itemLabelsForTask(t);
     const requiredItems = requiredItemLabels(t);
     const relatedPeople = relatedPeopleLine(t, codex);
+    const kind = inferTaskCardCopyKind(t);
 
     const ring = highlighted
       ? isOverlay
@@ -149,13 +145,35 @@ export function PlayNarrativeTaskBoard({
               >
                 {rk}
               </span>
+              {kind === "promise" ? (
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                    isOverlay ? "border-rose-200 bg-rose-50 text-rose-700" : "border-rose-400/30 bg-rose-500/10 text-rose-200"
+                  }`}
+                >
+                  承诺
+                </span>
+              ) : null}
+              {kind === "clue" ? (
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                    isOverlay ? "border-cyan-200 bg-cyan-50 text-cyan-700" : "border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
+                  }`}
+                >
+                  线索
+                </span>
+              ) : null}
             </div>
             <h4 className={`mt-1.5 line-clamp-2 text-sm font-semibold ${isOverlay ? "text-slate-800" : "text-white"}`}>
-              {t.title}
+              {sanitizePlayerFacingInline(t.title, codex)}
             </h4>
           </div>
         </div>
-        <p className={`mt-1.5 line-clamp-3 text-xs ${isOverlay ? "text-slate-600" : "text-slate-300"}`}>{taskSummaryLine(t)}</p>
+        <p className={`mt-1.5 line-clamp-3 text-xs ${isOverlay ? "text-slate-600" : "text-slate-300"}`}>
+          {copyV2
+            ? buildTaskAtAGlanceLine(t, codex)
+            : sanitizePlayerFacingInline(String(t.desc ?? "").trim() || String(t.title ?? "").trim(), codex)}
+        </p>
         {(t as { riskNote?: string }).riskNote && (t.status === "active" || t.status === "available") ? (
           <p
             className={`mt-1.5 rounded-lg border px-2 py-1 text-[11px] ${
@@ -164,20 +182,20 @@ export function PlayNarrativeTaskBoard({
                 : "border-rose-500/30 bg-rose-500/10 text-rose-100"
             }`}
           >
-            险情：{String((t as { riskNote?: string }).riskNote).slice(0, 160)}
+            这事的代价/风险：{sanitizePlayerFacingInline(String((t as { riskNote?: string }).riskNote).slice(0, 160), codex)}
             {String((t as { riskNote?: string }).riskNote).length > 160 ? "…" : ""}
           </p>
         ) : null}
         <div className={`mt-2 space-y-1 text-[11px] ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-            <span>谁托付给你：{resolveTaskIssuerDisplay(t.issuerId, t.issuerName, codex)}</span>
-            <span>大致位置：{resolveFloorTierLabel(t.floorTier)}</span>
+            <span>谁把这事交给了我：{resolveTaskIssuerDisplay(t.issuerId, t.issuerName, codex)}</span>
+            <span>大概在哪：{resolveFloorTierLabel(t.floorTier)}</span>
           </div>
           {relatedPeople ? <p>{relatedPeople}</p> : null}
           {clueTitles.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>手记里沾边的：</span>
-              {clueTitles.join("；")}
+              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>哪些手记会推进它：</span>
+              {clueTitles.map((x) => sanitizePlayerFacingInline(x, codex)).join("；")}
             </p>
           ) : null}
           {requiredItems.length > 0 ? (
@@ -188,7 +206,7 @@ export function PlayNarrativeTaskBoard({
           ) : null}
           {items.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>相关物与可能回报：</span>
+              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>可能牵扯的物与回报：</span>
               {items.join("、")}
             </p>
           ) : null}
@@ -212,8 +230,7 @@ export function PlayNarrativeTaskBoard({
     );
   }
 
-  const visibleCount = (tasks ?? []).filter((t) => t && t.status !== "hidden").length;
-  if (visibleCount === 0) {
+  if (_visibleCount === 0) {
     return (
       <div
         className={
@@ -244,22 +261,29 @@ export function PlayNarrativeTaskBoard({
 
       {primary ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>正在推进</p>
+          <p className={`mb-2 ${sectionTitle}`}>头等事（先把这一步走完）</p>
           {renderTaskCard(primary, { emphasize: true })}
         </div>
       ) : null}
 
-      {paths.length > 0 ? (
+      {accepted.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>还能试的方向</p>
-          <div className="space-y-2.5">{paths.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <p className={`mb-2 ${sectionTitle}`}>已接下的事</p>
+          <div className="space-y-2.5">{accepted.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
-      {promiseRisk.length > 0 ? (
+      {promises.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>约定·托付·险情</p>
-          <div className="space-y-2.5">{promiseRisk.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <p className={`mb-2 ${sectionTitle}`}>承诺 / 风险</p>
+          <div className="space-y-2.5">{promises.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+        </div>
+      ) : null}
+
+      {clues.length > 0 ? (
+        <div>
+          <p className={`mb-2 ${sectionTitle}`}>线索（影子）</p>
+          <div className="space-y-2.5">{clues.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 

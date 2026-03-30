@@ -4,15 +4,27 @@
  */
 
 export type VerseCraftRolloutMetricsSnapshot = {
+  settingsTaskBoardRenderedCount: number;
   playerFacingIdLeakCount: number;
   hiddenTaskPrematureVisibleCount: number;
+  formalTaskNarrativeGrantAutoOpenCount: number;
+  playerFacingTaskCopyFallbackCount: number;
   openingLocalOptionUsageCount: number;
   dynamicOpeningOptionsSuccessCount: number;
   dynamicOpeningOptionsAttemptCount: number;
   monthlyStudentRecognitionMismatchCount: number;
   highCharmFamiliarityOverreachCount: number;
   npcSocialSurfaceUsageCount: number;
+  worldFeelPacketUsageCount: number;
   taskVisibilityPolicyFallbackCount: number;
+  emptyOptionsTurnCount: number;
+  optionsAutoRegenAttemptCount: number;
+  optionsAutoRegenSuccessCount: number;
+  optionsManualRegenAttemptCount: number;
+  optionsManualRegenSuccessCount: number;
+  optionsOnlyRegenPathHitCount: number;
+  newPlayerGuideDualCoreHitCount: number;
+  monthStartStudentRecognitionHitCount: number;
   finalFrameCommitSuccessCount: number;
   finalFrameCommitAttemptCount: number;
   rawFallbackCommitCount: number;
@@ -24,15 +36,27 @@ export type VerseCraftRolloutMetricsSnapshot = {
 };
 
 const m = {
+  settingsTaskBoardRenderedCount: 0,
   playerFacingIdLeakCount: 0,
   hiddenTaskPrematureVisibleCount: 0,
+  formalTaskNarrativeGrantAutoOpenCount: 0,
+  playerFacingTaskCopyFallbackCount: 0,
   openingLocalOptionUsageCount: 0,
   dynamicOpeningOptionsSuccessCount: 0,
   dynamicOpeningOptionsAttemptCount: 0,
   monthlyStudentRecognitionMismatchCount: 0,
   highCharmFamiliarityOverreachCount: 0,
   npcSocialSurfaceUsageCount: 0,
+  worldFeelPacketUsageCount: 0,
   taskVisibilityPolicyFallbackCount: 0,
+  emptyOptionsTurnCount: 0,
+  optionsAutoRegenAttemptCount: 0,
+  optionsAutoRegenSuccessCount: 0,
+  optionsManualRegenAttemptCount: 0,
+  optionsManualRegenSuccessCount: 0,
+  optionsOnlyRegenPathHitCount: 0,
+  newPlayerGuideDualCoreHitCount: 0,
+  monthStartStudentRecognitionHitCount: 0,
   finalFrameCommitSuccessCount: 0,
   finalFrameCommitAttemptCount: 0,
   rawFallbackCommitCount: 0,
@@ -52,8 +76,17 @@ export function resetVerseCraftRolloutMetrics(): void {
 export function incrPlayerFacingIdLeakCount(delta = 1): void {
   m.playerFacingIdLeakCount += delta;
 }
+export function incrSettingsTaskBoardRenderedCount(delta = 1): void {
+  m.settingsTaskBoardRenderedCount += delta;
+}
 export function incrHiddenTaskPrematureVisibleCount(delta = 1): void {
   m.hiddenTaskPrematureVisibleCount += delta;
+}
+export function incrFormalTaskNarrativeGrantAutoOpenCount(delta = 1): void {
+  m.formalTaskNarrativeGrantAutoOpenCount += delta;
+}
+export function incrPlayerFacingTaskCopyFallbackCount(delta = 1): void {
+  m.playerFacingTaskCopyFallbackCount += delta;
 }
 export function incrOpeningLocalOptionUsageCount(delta = 1): void {
   m.openingLocalOptionUsageCount += delta;
@@ -71,8 +104,31 @@ export function incrHighCharmFamiliarityOverreachCount(delta = 1): void {
 export function incrNpcSocialSurfaceUsageCount(delta = 1): void {
   m.npcSocialSurfaceUsageCount += delta;
 }
+export function incrWorldFeelPacketUsageCount(delta = 1): void {
+  m.worldFeelPacketUsageCount += delta;
+}
 export function incrTaskVisibilityPolicyFallbackCount(delta = 1): void {
   m.taskVisibilityPolicyFallbackCount += delta;
+}
+export function incrEmptyOptionsTurnCount(delta = 1): void {
+  m.emptyOptionsTurnCount += delta;
+}
+export function recordOptionsAutoRegenOutcome(success: boolean): void {
+  m.optionsAutoRegenAttemptCount += 1;
+  if (success) m.optionsAutoRegenSuccessCount += 1;
+}
+export function recordOptionsManualRegenOutcome(success: boolean): void {
+  m.optionsManualRegenAttemptCount += 1;
+  if (success) m.optionsManualRegenSuccessCount += 1;
+}
+export function incrOptionsOnlyRegenPathHitCount(delta = 1): void {
+  m.optionsOnlyRegenPathHitCount += delta;
+}
+export function incrNewPlayerGuideDualCoreHitCount(delta = 1): void {
+  m.newPlayerGuideDualCoreHitCount += delta;
+}
+export function incrMonthStartStudentRecognitionHitCount(delta = 1): void {
+  m.monthStartStudentRecognitionHitCount += delta;
 }
 export function recordFinalFrameCommitOutcome(args: { usedFinalFrame: boolean; parseOk: boolean }): void {
   m.finalFrameCommitAttemptCount += 1;
@@ -120,4 +176,14 @@ export function promptCharDeltaAverage(): number {
 export function firstChunkLatencyMsAverage(): number {
   if (m.firstChunkLatencySamples <= 0) return 0;
   return m.firstChunkLatencyMsSum / m.firstChunkLatencySamples;
+}
+
+export function optionsAutoRegenSuccessRate(): number {
+  if (m.optionsAutoRegenAttemptCount <= 0) return 0;
+  return m.optionsAutoRegenSuccessCount / m.optionsAutoRegenAttemptCount;
+}
+
+export function optionsManualRegenSuccessRate(): number {
+  if (m.optionsManualRegenAttemptCount <= 0) return 0;
+  return m.optionsManualRegenSuccessCount / m.optionsManualRegenAttemptCount;
 }

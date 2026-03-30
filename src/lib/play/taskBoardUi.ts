@@ -4,6 +4,7 @@
 import { inferObjectiveKind } from "@/lib/domain/objectiveAdapters";
 import { inferEffectiveNarrativeLayer, pathDemotionBias, promiseRiskHumanSignals } from "@/lib/tasks/taskRoleModel";
 import { promiseRiskSortScore } from "@/lib/tasks/taskRevealModel";
+import { getTaskVisibilityTier, isVisibleAsClue, isVisibleInPromiseLane, isVisibleOnBoard } from "@/lib/tasks/taskVisibilityPolicy";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { GameTask } from "@/store/useGameStore";
 
@@ -77,24 +78,28 @@ function isPromiseRiskSlot(t: GameTask): boolean {
 }
 
 /**
- * V2：soft_lead 且未接取（available）不进入任务板分区，避免「未正式授予却像已挂任务」。
+ * V3：统一可见策略后，任务板仅消费「应被玩家知晓的事」。
+ * - formal_task：必须已在叙事中接下（可见）才进主任务区
+ * - conversation_promise：进入承诺/风险带（不抢主视图）
+ * - soft_lead：只当线索，不进主任务区
  */
 export function filterTasksForTaskBoardVisibilityV2(tasks: GameTask[], enabled: boolean): GameTask[] {
   if (!enabled) return tasks ?? [];
   return (tasks ?? []).filter((t) => {
     if (!t || t.status === "hidden") return false;
-    const layer = inferEffectiveNarrativeLayer(t as unknown as GameTaskV2);
-    if (layer === "soft_lead" && t.status === "available") return false;
-    return true;
+    const tier = getTaskVisibilityTier(t as unknown as GameTaskV2);
+    return tier !== "hidden";
   });
 }
 
 export type TaskBoardPartition = {
   primary: GameTask | null;
-  /** 可推进路径（不含 primary，最多 4） */
-  paths: GameTask[];
-  /** 承诺 / 委托 / 风险信号 */
-  promiseRisk: GameTask[];
+  /** 已接下的事（不含 primary，最多 4） */
+  accepted: GameTask[];
+  /** 承诺 / 风险（轻追踪，不抢主视图） */
+  promises: GameTask[];
+  /** 线索影子（不当作任务腔；默认极少） */
+  clues: GameTask[];
   /** 其余可追踪（未列入上列） */
   overflow: GameTask[];
   completed: GameTask[];
@@ -110,11 +115,13 @@ export function partitionTasksForBoard(tasks: GameTask[], maxPaths = 4): TaskBoa
   const failed = vis.filter((t) => t.status === "failed");
   const open = vis.filter((t) => isTrackable(t.status));
 
-  const primary = pickPrimaryTask(tasks);
+  // 主任务区只允许 board_visible（正式任务已接下）
+  const boardOpen = open.filter((t) => isVisibleOnBoard(t as unknown as GameTaskV2));
+  const primary = pickPrimaryTask(boardOpen);
   const primaryId = primary?.id ?? null;
 
-  const restOpen = open.filter((t) => t.id !== primaryId);
-  const paths = [...restOpen]
+  const restOpen = boardOpen.filter((t) => t.id !== primaryId);
+  const accepted = [...restOpen]
     .sort((a, b) => {
       const da = pathDemotionBias(a as GameTaskV2);
       const db = pathDemotionBias(b as GameTaskV2);
@@ -123,16 +130,29 @@ export function partitionTasksForBoard(tasks: GameTask[], maxPaths = 4): TaskBoa
     })
     .slice(0, maxPaths);
 
-  const pathIds = new Set(paths.map((p) => p.id));
-  const promiseRiskCandidates = restOpen.filter((t) => !pathIds.has(t.id) && isPromiseRiskSlot(t));
-  const promiseRisk = [...promiseRiskCandidates]
+  const acceptedIds = new Set(accepted.map((p) => p.id));
+
+  // 承诺/风险：conversation_promise 且已被叙事提出（或 soft_tracked），并且不在主任务区
+  const promiseCandidates = open.filter(
+    (t) => t.id !== primaryId && !acceptedIds.has(t.id) && isVisibleInPromiseLane(t as unknown as GameTaskV2)
+  );
+  const promises = [...promiseCandidates]
     .sort((a, b) => promiseRiskSortScore(b as GameTaskV2) - promiseRiskSortScore(a as GameTaskV2) || a.title.localeCompare(b.title, "zh-Hans"))
     .slice(0, 6);
 
-  const used = new Set<string>([...(primaryId ? [primaryId] : []), ...paths.map((p) => p.id), ...promiseRisk.map((p) => p.id)]);
-  const overflow = restOpen.filter((t) => !used.has(t.id));
+  // 线索影子：soft_lead（clue_only），默认只展示少量，避免任务板塞满
+  const clueCandidates = open.filter((t) => isVisibleAsClue(t as unknown as GameTaskV2));
+  const clues = [...clueCandidates].sort((a, b) => guidanceKey(a) - guidanceKey(b) || a.title.localeCompare(b.title, "zh-Hans")).slice(0, 3);
 
-  return { primary, paths, promiseRisk, overflow, completed, failed };
+  const used = new Set<string>([
+    ...(primaryId ? [primaryId] : []),
+    ...accepted.map((p) => p.id),
+    ...promises.map((p) => p.id),
+    ...clues.map((p) => p.id),
+  ]);
+  const overflow = open.filter((t) => !used.has(t.id));
+
+  return { primary, accepted, promises, clues, overflow, completed, failed };
 }
 
 export function goalKindLabel(t: GameTask): string {

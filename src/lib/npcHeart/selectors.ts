@@ -109,6 +109,7 @@ export function buildNpcHeartRuntimeView(args: {
       // 仅硬编码少量高频 NPC，避免把规则散到全世界。
       const id = args.npcId;
       if (id === "N-008") return "route_holder";
+      if (id === "N-015") return "border_keeper";
       if (id === "N-010") return "gatekeeper";
       if (id === "N-018") return "sacrificer";
       if (id === "N-020") return "liar";
