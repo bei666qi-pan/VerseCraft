@@ -257,6 +257,12 @@ function PlayContent() {
   const hasShownProfessionEligibleHintRef = useRef(false);
   const complianceHintTimerRef = useRef<number | null>(null);
   const userScrolledUpRef = useRef(false);
+  /**
+   * 冷开场首次进入：默认停在开场白第一段（顶部），不要自动贴底。
+   * 一旦玩家做出第一次“继续执笔式”的真实行动（非 system action），解除锁并允许后续自动贴底。
+   */
+  const openingInitialScrollLockRef = useRef(false);
+  const openingInitialScrollLockArmedRef = useRef(false);
   const tailDrainTargetRef = useRef<string | null>(null);
   const parsedPostDrainRef = useRef<{ isDeath: boolean } | null>(null);
   const [tailAlignKey, setTailAlignKey] = useState(0);
@@ -492,6 +498,22 @@ function PlayContent() {
     }
   }, [streamPhase]);
 
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted) return;
+    if (!showEmbeddedOpening) return;
+    // 仅第一次进入冷开场且尚无助手正文时锁定顶部阅读视角
+    if (hasAssistantMessage) return;
+    if (openingInitialScrollLockArmedRef.current) return;
+    openingInitialScrollLockArmedRef.current = true;
+    openingInitialScrollLockRef.current = true;
+    userScrolledUpRef.current = true; // 阻止任何 scheduleAutoScrollIfPinned 贴底
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTop = 0;
+    });
+  }, [hasAssistantMessage, isGameStarted, isHydrated, showEmbeddedOpening]);
+
   const scheduleAutoScroll = useCallback((smooth = false) => {
     if (!scrollRef.current) return;
     if (autoScrollRafRef.current != null) return;
@@ -512,6 +534,7 @@ function PlayContent() {
 
   const scheduleAutoScrollIfPinned = useCallback(
     (smooth = false) => {
+      if (openingInitialScrollLockRef.current) return;
       if (userScrolledUpRef.current) return;
       scheduleAutoScroll(smooth);
     },
@@ -581,6 +604,7 @@ function PlayContent() {
 
   useEffect(() => {
     if (!scrollRef.current || userScrolledUpRef.current) return;
+    if (openingInitialScrollLockRef.current) return;
     if (isStreamVisualActive) scheduleAutoScrollIfPinned(false);
     else if (prevIsStreamVisualActiveRef.current) scheduleAutoScrollIfPinned(true);
     else scheduleAutoScrollIfPinned(false);
@@ -589,6 +613,7 @@ function PlayContent() {
 
   useLayoutEffect(() => {
     if (userScrolledUpRef.current) return;
+    if (openingInitialScrollLockRef.current) return;
     scheduleAutoScrollIfPinned(false);
   }, [displayEntries.length, liveNarrative, scheduleAutoScrollIfPinned]);
 
@@ -1047,6 +1072,12 @@ function PlayContent() {
 
     sendActionInFlightRef.current = true;
     try {
+      // 玩家第一次真实行动（非系统开局请求）视为“继续执笔”：解除冷开场顶部锁并允许贴底
+      if (!isSystemAction && openingInitialScrollLockRef.current) {
+        openingInitialScrollLockRef.current = false;
+        userScrolledUpRef.current = false;
+        scheduleAutoScroll(true);
+      }
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
     waitUxBackendStageRef.current = null;
@@ -2494,7 +2525,7 @@ function PlayContent() {
                       </div>
                     </button>
                     <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
-                      叙事主视窗
+                      故事
                     </h2>
                     {professionState?.currentProfession ? (
                       <button

@@ -43,7 +43,7 @@ export function buildUserFacingMessage(args: {
     if (v.decision === "reject") {
       return {
         message: "当前行动无法执行，请调整描述后重试。",
-        narrativeFallback: "你意识到这条行动的走向过于危险或不合适，选择收回念头，重新审视周围的线索。",
+        narrativeFallback: "我收回念头，重新审视周围的线索。",
       };
     }
     if (v.decision === "fallback") {
