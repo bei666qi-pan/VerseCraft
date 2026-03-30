@@ -26,16 +26,16 @@
 
 ## 方案 A：使用 Dockerfile
 
-仓库已提供 `Dockerfile`，Coolify 触发构建即可。建议使用 **Docker BuildKit**（Coolify 4.x 默认），以启用层缓存与 pnpm store 缓存挂载，加快重复部署。
+仓库已提供 `Dockerfile`，Coolify 触发构建即可。
+
+`Dockerfile` **不包含** `# syntax=docker/dockerfile:*`，避免构建机必须访问 Docker Hub 拉取 Dockerfile 前端镜像；在仅内网或 Docker Hub 超时的环境（常见报错：`registry-1.docker.io` / `docker/dockerfile` i/o timeout）下仍可构建。多阶段 `deps` / `builder` 层在 Docker 本地层缓存仍可用。
 
 ### 构建参数（可选，提升成功率与速度）
 
 | Build Arg | 说明 | 建议 |
 |-----------|------|------|
-| `DOCKER_IMAGE_BASE` | 基础镜像 | 默认 `node:20-alpine`（国际节点拉取快）。国内可改为自有镜像加速，例如原华为镜像：`swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20-alpine` |
-| `PNPM_REGISTRY` | npm 镜像 | **留空**使用官方 `registry.npmjs.org`（海外 Coolify 更快）。仅在国内构建慢时再设为 `https://registry.npmmirror.com` |
-
-重复部署时，`pnpm install` 与 store 目录使用缓存挂载，可明显缩短「装依赖」阶段耗时。首次构建仍需完整下载依赖。
+| `DOCKER_IMAGE_BASE` | 基础镜像 | 默认 `node:20-alpine`。国内若拉基础镜像慢，可改为镜像加速地址，例如：`swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:20-alpine` |
+| `PNPM_REGISTRY` | npm 镜像 | **留空**使用官方源。国内构建依赖慢时设为 `https://registry.npmmirror.com` |
 
 ### 健康检查
 

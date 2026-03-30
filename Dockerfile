@@ -1,17 +1,18 @@
-# syntax=docker/dockerfile:1.4
-# Coolify / 通用生产镜像：多阶段 + standalone；需 Docker BuildKit（Coolify 默认开启）。
+# Coolify / 通用生产镜像：多阶段 + standalone。
+#
+# 故意不使用 `# syntax=docker/dockerfile:1.x`：该指令会让构建机从 Docker Hub 拉取
+# `docker/dockerfile` 前端镜像；在无法访问 registry-1.docker.io 的网络下会超时失败。
+# 亦不使用 `RUN --mount=type=cache`（依赖上述语法），以保证默认 docker driver 可构建。
 #
 # 可选 Build Args（在 Coolify「Build Arguments」中设置）：
-# - DOCKER_IMAGE_BASE：默认 node:20-alpine（国际节点）；国内可换华为等镜像加速拉取
-# - PNPM_REGISTRY：留空=官方 registry.npmjs.org；国内可填 https://registry.npmmirror.com
-#
-# syntax 行启用 RUN --mount=type=cache，加速重复构建时的 pnpm 缓存命中。
+# - DOCKER_IMAGE_BASE：默认 node:20-alpine；国内可换镜像加速基础层拉取
+# - PNPM_REGISTRY：留空=官方 registry；国内可填 https://registry.npmmirror.com
 
 ARG DOCKER_IMAGE_BASE=node:20-alpine
 FROM ${DOCKER_IMAGE_BASE} AS base
 RUN apk add --no-cache ca-certificates libc6-compat
 
-# ---- 第一阶段：安装依赖（pnpm store 缓存挂载，重复构建更快）----
+# ---- 第一阶段：安装依赖 ----
 FROM base AS deps
 WORKDIR /app
 
@@ -24,8 +25,7 @@ RUN pnpm config set fetch-retry-mintimeout 20000
 RUN pnpm config set fetch-retry-maxtimeout 120000
 RUN if [ -n "$PNPM_REGISTRY" ]; then pnpm config set registry "$PNPM_REGISTRY"; fi
 
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # ---- 第二阶段：编译打包 ----
 FROM base AS builder
@@ -34,7 +34,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
-# 降低小内存 Coolify 构建机上 next build OOM 概率（可按机器调大/调小）
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
 RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
@@ -59,6 +58,5 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts/migrate.js ./scripts/migr
 
 USER nextjs
 EXPOSE 3000
-# start-period：给 migrate + Node 监听留足时间，减少 Coolify 首次健康检查误杀
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD node -e "require('http').get('http://127.0.0.1:3000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 CMD ["sh", "-c", "if [ \"${MIGRATE_ON_BOOT}\" = \"1\" ]; then node scripts/migrate.js; fi; node server.js"]
