@@ -1,8 +1,25 @@
+# 缩小 build context，加快 Coolify / docker build 上传与 COPY
 node_modules
 .next
 .git
+.gitignore
 .env*.local
+*.md
+docs
 *.md
 tests
 test-results
 .cursor
+.github
+e2e
+playwright-report
+playwright.config.ts
+coverage
+.vscode
+.idea
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+agent-transcripts
