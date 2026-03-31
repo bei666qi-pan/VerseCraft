@@ -88,7 +88,14 @@ import {
   getClientOptionsAutoRegenOnEmptyEnabled,
   getClientOptionsOnlyRegenPathV2Enabled,
   getClientContinueButtonEnabled,
+  getClientHiddenCombatV1Enabled,
 } from "@/lib/rollout/versecraftClientRollout";
+import { getHiddenNpcCombatProfile } from "@/lib/combat/npcCombatProfiles";
+import {
+  buildNpcCombatPowerDisplay,
+  dangerTierToPlayerText,
+  styleTagsToPlayerHint,
+} from "@/lib/combat/combatPresentation";
 import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 
@@ -2015,7 +2022,19 @@ function PlayContent() {
         traits: typeof u.traits === "string" ? u.traits : undefined,
         rules_discovered: typeof u.rules_discovered === "string" ? u.rules_discovered : undefined,
         weakness: typeof u.weakness === "string" ? u.weakness : undefined,
-      }));
+      })).map((e) => {
+        if (!getClientHiddenCombatV1Enabled()) return e;
+        if (e.type !== "npc") return e;
+        if (typeof e.combatPower !== "number") return e;
+        if (typeof e.combatPowerDisplay === "string" && e.combatPowerDisplay.trim()) return e;
+        const profile = getHiddenNpcCombatProfile({ npcId: e.id, codexEntry: e });
+        const dangerText = dangerTierToPlayerText(profile.dangerForPlayer);
+        const styleHint = styleTagsToPlayerHint(profile.styleTags);
+        return {
+          ...e,
+          combatPowerDisplay: buildNpcCombatPowerDisplay({ dangerText, styleHint }),
+        };
+      });
       const prevCodex = useGameStore.getState().codex ?? {};
       mergeCodex(entries);
       const firstNewNpc = entries.find((e) => e.type === "npc" && !(e.id in prevCodex));

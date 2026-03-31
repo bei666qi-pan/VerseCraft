@@ -157,7 +157,7 @@ export function partitionTasksForBoard(tasks: GameTask[], maxPaths = 4): TaskBoa
 
 export function goalKindLabel(t: GameTask): string {
   const k = inferObjectiveKind(t as GameTaskV2);
-  if (k === "main") return "主路";
+  if (k === "main") return "主线";
   if (k === "promise") return "约定";
-  return "托付";
+  return "委托";
 }

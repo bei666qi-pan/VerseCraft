@@ -42,6 +42,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableFinalFrameFirstCommit: boolean;
   /** UI 调试诊断（开发态；生产默认关） */
   enableUiDebugDiagnostics: boolean;
+  /** 隐藏战力系统 V1（纯计算/叙事结算锚点；默认关闭，灰度用） */
+  enableHiddenCombatV1: boolean;
 
   // -------- Phase6: long narrative + decision envelope + reality + anti-cheat --------
   /** 允许主笔产出/使用 turn_mode=narrative_only 的长叙事回合（禁回退为每回合四选一） */
@@ -127,6 +129,7 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableStyleGuidePacket: readFlag("VERSECRAFT_ENABLE_STYLE_GUIDE_PACKET", true),
     enableFinalFrameFirstCommit: readFlag("VERSECRAFT_ENABLE_FINAL_FRAME_FIRST_COMMIT", true),
     enableUiDebugDiagnostics: readFlag("VERSECRAFT_ENABLE_UI_DEBUG_DIAGNOSTICS", false),
+    enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false),
 
     enableLongNarrativeMode: readFlag("VERSECRAFT_ENABLE_LONG_NARRATIVE_MODE", true),
     enableDecisionTurnMode: readFlag("VERSECRAFT_ENABLE_DECISION_TURN_MODE", true),

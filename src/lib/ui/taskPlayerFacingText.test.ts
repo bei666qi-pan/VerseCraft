@@ -15,8 +15,8 @@ test("三层文案前缀差异明显：formal/promise/clue", () => {
   assert.equal(inferTaskCardCopyKind(formal), "formal");
   assert.equal(inferTaskCardCopyKind(promise), "promise");
   assert.equal(inferTaskCardCopyKind(clue), "clue");
-  assert.ok(buildTaskAtAGlanceLine(formal, {}).startsWith("下一步："));
-  assert.ok(buildTaskAtAGlanceLine(promise, {}).startsWith("你答应过："));
-  assert.ok(buildTaskAtAGlanceLine(clue, {}).startsWith("手记摘记："));
+  assert.ok(buildTaskAtAGlanceLine(formal, {}).startsWith("推进要点："));
+  assert.ok(buildTaskAtAGlanceLine(promise, {}).startsWith("承诺："));
+  assert.ok(buildTaskAtAGlanceLine(clue, {}).startsWith("线索："));
 });
 

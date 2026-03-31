@@ -36,7 +36,7 @@ function relatedPeopleLine(task: GameTask, codex: Record<string, CodexEntry> | u
   const issuer = String(task.issuerId ?? "").trim();
   const ids = [...new Set((task.relatedNpcIds ?? []).filter(Boolean))].filter((id) => id !== issuer).slice(0, 4);
   if (ids.length === 0) return null;
-  return `还可能和谁有关：${ids.map((id) => resolveNpcIdForPlayer(id, codex)).join("、")}`;
+  return `牵涉人物：${ids.map((id) => resolveNpcIdForPlayer(id, codex)).join("、")}`;
 }
 
 function statusStyle(status: GameTask["status"], mode: "light" | "dark"): string {
@@ -88,10 +88,12 @@ export function PlayNarrativeTaskBoard({
   );
 
   const isOverlay = density === "overlay";
-  const sectionTitle = isOverlay ? "text-[11px] font-semibold uppercase tracking-wider text-slate-500" : "text-[11px] font-semibold uppercase tracking-wider text-slate-400";
+  const sectionTitle = isOverlay
+    ? "text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500"
+    : "text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400";
   const cardBase = isOverlay
-    ? "rounded-xl border bg-white p-3"
-    : "rounded-xl border border-white/10 bg-white/5 p-3";
+    ? "relative rounded-xl border bg-white p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+    : "relative rounded-xl border border-white/10 bg-white/5 p-3";
 
   function renderTaskCard(t: GameTask, opts: { emphasize?: boolean }) {
     const emphasize = opts.emphasize ?? false;
@@ -103,22 +105,61 @@ export function PlayNarrativeTaskBoard({
     const relatedPeople = relatedPeopleLine(t, codex);
     const kind = inferTaskCardCopyKind(t);
 
+    // 高亮：更精致但不持续动画
     const ring = highlighted
       ? isOverlay
-        ? "ring-2 ring-amber-200/60 shadow-[0_0_0_3px_rgba(251,191,36,0.12)] animate-[halo-pulse_1.8s_ease-in-out_2]"
-        : "ring-2 ring-amber-400/40 shadow-[0_0_0_2px_rgba(251,191,36,0.15)]"
+        ? "ring-2 ring-amber-200/70 shadow-[0_0_0_3px_rgba(251,191,36,0.10),0_10px_28px_rgba(15,23,42,0.10)]"
+        : "ring-2 ring-amber-400/45 shadow-[0_0_0_2px_rgba(251,191,36,0.14)]"
       : "";
+
+    const isClosed = t.status === "completed" || t.status === "failed";
+    const closedDim = isClosed ? (isOverlay ? "opacity-[0.72]" : "opacity-[0.62]") : "";
+
+    // 视觉语言：头等事压迫感；承诺/风险轻微不安；线索半成形
+    const kindTone =
+      kind === "promise"
+        ? isOverlay
+          ? "border-rose-200/70 bg-gradient-to-br from-rose-50/80 via-white to-white"
+          : "border-rose-400/30 bg-gradient-to-br from-rose-500/12 via-white/5 to-white/5"
+        : kind === "clue"
+          ? isOverlay
+            ? "border-cyan-200/70 bg-gradient-to-br from-cyan-50/70 via-white to-white"
+            : "border-cyan-400/25 bg-gradient-to-br from-cyan-500/10 via-white/5 to-white/5"
+          : isOverlay
+            ? "border-slate-200"
+            : "border-white/10";
 
     const emphasis = emphasize
       ? isOverlay
-        ? "border-amber-300/80 bg-gradient-to-br from-amber-50 to-white shadow-sm"
-        : "border-amber-400/50 bg-gradient-to-br from-amber-500/15 to-white/5"
-      : isOverlay
-        ? "border-slate-200"
-        : "border-white/10";
+        ? "border-amber-300/80 bg-gradient-to-br from-amber-50 via-white to-white shadow-[0_12px_34px_rgba(2,6,23,0.10)]"
+        : "border-amber-400/55 bg-gradient-to-br from-amber-500/16 via-white/5 to-white/5"
+      : kindTone;
+
+    const leftAccent =
+      kind === "promise"
+        ? isOverlay
+          ? "from-rose-200/70 to-transparent"
+          : "from-rose-400/50 to-transparent"
+        : kind === "clue"
+          ? isOverlay
+            ? "from-cyan-200/70 to-transparent"
+            : "from-cyan-400/45 to-transparent"
+          : emphasize
+            ? isOverlay
+              ? "from-amber-200/80 to-transparent"
+              : "from-amber-400/55 to-transparent"
+            : isOverlay
+              ? "from-slate-200/70 to-transparent"
+              : "from-white/10 to-transparent";
 
     return (
-      <article key={t.id} className={`${cardBase} ${emphasis} ${ring} transition`}>
+      <article key={t.id} className={`${cardBase} ${emphasis} ${ring} ${closedDim} transition`}>
+        <div className={`pointer-events-none absolute left-0 top-0 h-full w-[10px] bg-gradient-to-r ${leftAccent}`} />
+        <div
+          className={`pointer-events-none absolute inset-x-0 top-0 h-[1px] ${
+            isOverlay ? "bg-gradient-to-r from-slate-200/70 via-white/50 to-slate-200/70" : "bg-white/10"
+          }`}
+        />
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -128,7 +169,7 @@ export function PlayNarrativeTaskBoard({
                     isOverlay ? "bg-amber-100 text-amber-900" : "bg-amber-500/25 text-amber-100"
                   }`}
                 >
-                  正在推进
+                  头等事
                 </span>
               ) : null}
               <span
@@ -151,7 +192,7 @@ export function PlayNarrativeTaskBoard({
                     isOverlay ? "border-rose-200 bg-rose-50 text-rose-700" : "border-rose-400/30 bg-rose-500/10 text-rose-200"
                   }`}
                 >
-                  承诺
+                  约定
                 </span>
               ) : null}
               {kind === "clue" ? (
@@ -164,7 +205,11 @@ export function PlayNarrativeTaskBoard({
                 </span>
               ) : null}
             </div>
-            <h4 className={`mt-1.5 line-clamp-2 text-sm font-semibold ${isOverlay ? "text-slate-800" : "text-white"}`}>
+            <h4
+              className={`mt-1.5 line-clamp-2 ${
+                emphasize ? "text-[15px] font-bold" : "text-sm font-semibold"
+              } ${isOverlay ? "text-slate-800" : "text-white"}`}
+            >
               {sanitizePlayerFacingInline(t.title, codex)}
             </h4>
           </div>
@@ -182,31 +227,31 @@ export function PlayNarrativeTaskBoard({
                 : "border-rose-500/30 bg-rose-500/10 text-rose-100"
             }`}
           >
-            这事的代价/风险：{sanitizePlayerFacingInline(String((t as { riskNote?: string }).riskNote).slice(0, 160), codex)}
+            风险提示：{sanitizePlayerFacingInline(String((t as { riskNote?: string }).riskNote).slice(0, 160), codex)}
             {String((t as { riskNote?: string }).riskNote).length > 160 ? "…" : ""}
           </p>
         ) : null}
         <div className={`mt-2 space-y-1 text-[11px] ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-            <span>谁把这事交给了我：{resolveTaskIssuerDisplay(t.issuerId, t.issuerName, codex)}</span>
-            <span>大概在哪：{resolveFloorTierLabel(t.floorTier)}</span>
+            <span>委托人：{resolveTaskIssuerDisplay(t.issuerId, t.issuerName, codex)}</span>
+            <span>地点：{resolveFloorTierLabel(t.floorTier)}</span>
           </div>
           {relatedPeople ? <p>{relatedPeople}</p> : null}
           {clueTitles.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>哪些手记会推进它：</span>
+              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>线索推进：</span>
               {clueTitles.map((x) => sanitizePlayerFacingInline(x, codex)).join("；")}
             </p>
           ) : null}
           {requiredItems.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-amber-800" : "text-amber-200"}`}>你还缺：</span>
+              <span className={`font-medium ${isOverlay ? "text-amber-800" : "text-amber-200"}`}>条件：</span>
               {requiredItems.join("、")}
             </p>
           ) : null}
           {items.length > 0 ? (
             <p>
-              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>可能牵扯的物与回报：</span>
+              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>相关物件：</span>
               {items.join("、")}
             </p>
           ) : null}
@@ -218,7 +263,7 @@ export function PlayNarrativeTaskBoard({
               onClick={() => onClaimTask(t.id)}
               className={
                 isOverlay
-                  ? "rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                  ? "rounded-lg border border-indigo-200/80 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100"
                   : "rounded-lg border border-indigo-300/30 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-semibold text-indigo-100 hover:bg-indigo-500/20"
               }
             >
@@ -235,7 +280,7 @@ export function PlayNarrativeTaskBoard({
       <div
         className={
           isOverlay
-            ? "rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500"
+            ? "rounded-xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-white p-4 text-center text-xs text-slate-500"
             : "rounded-xl border border-white/10 bg-white/5 p-6 text-center text-xs text-slate-500"
         }
       >
@@ -247,11 +292,11 @@ export function PlayNarrativeTaskBoard({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <p className={sectionTitle}>目标板</p>
+        <p className={sectionTitle}>目标</p>
         <span
           className={
             isOverlay
-              ? "rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+              ? "rounded-full border border-amber-200/80 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
               : "inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200"
           }
         >
@@ -268,22 +313,22 @@ export function PlayNarrativeTaskBoard({
 
       {accepted.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>已接下的事</p>
-          <div className="space-y-2.5">{accepted.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <p className={`mb-2 ${sectionTitle}`}>在办</p>
+          <div className="space-y-2">{accepted.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
       {promises.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>承诺 / 风险</p>
-          <div className="space-y-2.5">{promises.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <p className={`mb-2 ${sectionTitle}`}>约定与代价</p>
+          <div className="space-y-2">{promises.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
       {clues.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>线索（影子）</p>
-          <div className="space-y-2.5">{clues.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <p className={`mb-2 ${sectionTitle}`}>线索</p>
+          <div className="space-y-2">{clues.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
@@ -294,14 +339,14 @@ export function PlayNarrativeTaskBoard({
             onClick={() => setShowMore((v) => !v)}
             className={`mb-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[11px] font-medium transition ${
               isOverlay
-                ? "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                ? "border-slate-200/80 bg-gradient-to-b from-slate-50 to-white text-slate-700 hover:bg-slate-100"
                 : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
             }`}
           >
             <span>更多在办（{overflow.length}）</span>
             <span className="text-slate-400">{showMore ? "收起" : "展开"}</span>
           </button>
-          {showMore ? <div className="space-y-2.5">{overflow.map((t) => renderTaskCard(t, { emphasize: false }))}</div> : null}
+          {showMore ? <div className="space-y-2">{overflow.map((t) => renderTaskCard(t, { emphasize: false }))}</div> : null}
         </div>
       ) : null}
 
@@ -312,7 +357,7 @@ export function PlayNarrativeTaskBoard({
             onClick={() => setShowClosed((v) => !v)}
             className={`mb-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[11px] font-medium transition ${
               isOverlay
-                ? "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                ? "border-slate-200/80 bg-gradient-to-b from-slate-50 to-white text-slate-700 hover:bg-slate-100"
                 : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
             }`}
           >
@@ -322,7 +367,7 @@ export function PlayNarrativeTaskBoard({
             <span className="text-slate-400">{showClosed ? "收起" : "展开"}</span>
           </button>
           {showClosed ? (
-            <div className="space-y-2.5 opacity-80">
+            <div className="space-y-2 opacity-80">
               {[...completed, ...failed].map((t) => renderTaskCard(t, { emphasize: false }))}
             </div>
           ) : null}

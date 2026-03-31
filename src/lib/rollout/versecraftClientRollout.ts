@@ -53,6 +53,11 @@ export function getClientContinueButtonEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_CONTINUE_BUTTON", true);
 }
 
+/** 隐藏战力系统 V1（客户端：codex 展示等；默认关闭） */
+export function getClientHiddenCombatV1Enabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false);
+}
+
 export function getVerseCraftClientRolloutFlags(): {
   enableWeaponLifecycleV1: boolean;
   enableWeaponizationPreview: boolean;

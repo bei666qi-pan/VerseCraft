@@ -28,22 +28,22 @@ export function PlayTaskPanel({
   if (!open) return null;
 
   return (
-    <aside className="pointer-events-auto fixed right-3 top-[84px] z-[72] w-[360px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200 bg-white/95 shadow-[0_24px_56px_rgba(15,23,42,0.2)] backdrop-blur-xl">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+    <aside className="pointer-events-auto fixed right-3 top-[84px] z-[72] w-[352px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white/85 shadow-[0_28px_72px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
         <div>
-          <h3 className="text-sm font-semibold tracking-wider text-slate-800">手上这几件事</h3>
-          <p className="text-[11px] text-slate-500">头等事 · 已接下 · 承诺与代价 · 线索摘记</p>
+          <h3 className="text-sm font-semibold tracking-wider text-slate-800">目标与进展</h3>
+          <p className="text-[11px] text-slate-500">头等事 · 在办 · 约定与代价 · 线索</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+          className="rounded-lg border border-slate-200/80 bg-white/60 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
         >
           收起
         </button>
       </div>
 
-      <div className="max-h-[58vh] overflow-y-auto p-3">
+      <div className="max-h-[56vh] overflow-y-auto p-3">
         <PlayNarrativeTaskBoard
           tasks={tasks}
           originium={originium}

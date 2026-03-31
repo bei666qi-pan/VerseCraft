@@ -39,11 +39,15 @@ export function buildTaskAtAGlanceLine(task: GameTask, codex?: Record<string, Co
   const urgency = clip(sanitizePlayerFacingInline(String((task as any).urgencyReason ?? ""), codex), 72);
 
   const base = hint || urgency || hook || clip(sanitizePlayerFacingInline(task.desc ?? "", codex), 72);
-  if (!base) return kind === "clue" ? "你记下了这一点，但还说不上它会带来什么。" : "先把关键细节问清楚，再决定怎么动。";
+  if (!base) {
+    if (kind === "clue") return "线索先记着：它还没连上主线。";
+    if (kind === "promise") return "先把对方的期待与门槛问清楚。";
+    return "先确认关键门槛，再决定下一步。";
+  }
 
-  if (kind === "clue") return `手记摘记：${base}`;
-  if (kind === "promise") return `你答应过：${base}`;
-  return `下一步：${base}`;
+  if (kind === "clue") return `线索：${base}`;
+  if (kind === "promise") return `承诺：${base}`;
+  return `推进要点：${base}`;
 }
 
 export function buildTaskMetaLines(task: GameTask, args: { codex?: Record<string, CodexEntry> | null; journalClues?: ClueEntry[] }): string[] {
@@ -51,9 +55,9 @@ export function buildTaskMetaLines(task: GameTask, args: { codex?: Record<string
   const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
   const lines: string[] = [];
 
-  // “委托人/关联人物/门槛”等系统词统一改为玩家认知句式
+  // 玩家可见字段：短、准、产品化；避免“研发字段翻译腔”
   if (issuer) {
-    lines.push(`谁把这事交给了你：${issuer}`);
+    lines.push(`委托人：${issuer}`);
   }
 
   const relatedNpcIds = Array.isArray((task as any).relatedNpcIds) ? (task as any).relatedNpcIds : [];
@@ -63,20 +67,20 @@ export function buildTaskMetaLines(task: GameTask, args: { codex?: Record<string
     .slice(0, 4)
     .map((id) => resolveNpcIdForPlayer(id, codex ?? undefined));
   if (related.length > 0) {
-    lines.push(`这事大概还牵着：${related.join("、")}`);
+    lines.push(`牵涉人物：${related.join("、")}`);
   }
 
   const requiredItemIds = Array.isArray((task as any).requiredItemIds) ? (task as any).requiredItemIds : [];
   const req = [...new Set(requiredItemIds.map((x: any) => String(x ?? "").trim()).filter(Boolean))].slice(0, 6);
   if (req.length > 0) {
     // requiredItemLabels 在 UI 层会做 item name 解析；这里保守只输出“你还差什么”的提示句式
-    lines.push("你现在还差：一些关键物证/条件（见条目下方“你还缺”）");
+    lines.push("条件：仍缺关键物证/门槛（见“你还缺”）");
   }
 
   const clueRefs = (args.journalClues ?? []).filter((c) => c.relatedObjectiveId === task.id).slice(0, 3);
   if (clueRefs.length > 0) {
     const titles = clueRefs.map((c) => clip(sanitizePlayerFacingInline(c.title, codex), 20)).filter(Boolean).join("；");
-    if (titles) lines.push(`哪些手记会推进它：${titles}`);
+    if (titles) lines.push(`线索推进：${titles}`);
   }
 
   return lines
