@@ -586,6 +586,9 @@ export async function POST(req: Request) {
     firstSseWriteAt: null,
     lane: "slow",
   };
+  // 性能分层（首字前真实阻塞）：
+  // - validate/auth/safety/quota/db/preflight/lore/prompt_build 均属于“首字前阻塞链路”
+  // - writeToStream() 第一次写入才是服务端视角的“首个可感知响应”（不等于正文首字可见）
   // 请求验证是首字前同步阻塞段，必须单独量化。
   const validateStartAt = nowMs();
   const validated = validateChatRequest(body);
@@ -1476,7 +1479,16 @@ export async function POST(req: Request) {
   let allEpistemicFactsForPrompt: KnowledgeFact[] = [];
   let epistemicAlertAugmentation = "";
 
-  if (!shouldApplyFirstActionConstraint && epistemicRolloutFlags.enableEpistemicGuard) {
+  /**
+   * Epistemic 体系属于“质量增强层”而非“首字正确性底线”：
+   * - fast lane 首字优先：禁止进入该重计算分支，避免把普通回合拖慢到慢车道 TTFT
+   * - slow lane 可启用：用于 NPC 记忆/认知异常等一致性增强
+   *
+   * 为什么不会破坏安全/玩法：
+   * - 输入安全、协议守卫、npcConsistencyBoundary（compact）仍在 core prompt 里
+   * - 该分支主要影响“叙事一致性/记忆精度”，不负责内容安全与硬裁决
+   */
+  if (riskLane === "slow" && !shouldApplyFirstActionConstraint && epistemicRolloutFlags.enableEpistemicGuard) {
     const loreSlice = runtimeLorePacket ? mergeLorePacketSlices(runtimeLorePacket) : [];
     const fromLore = loreFactsToKnowledgeFacts(loreSlice.slice(0, 96), nowIsoForEpistemic);
     const fromSession = sessionMemoryRowToKnowledgeFacts(sessionMemory, nowIsoForEpistemic);
@@ -1520,7 +1532,7 @@ export async function POST(req: Request) {
         });
       }
     }
-  } else if (!shouldApplyFirstActionConstraint) {
+  } else if (riskLane === "slow" && !shouldApplyFirstActionConstraint) {
     const focusNpcId = resolveEpistemicTargetNpcId({
       latestUserInput,
       playerContext,
@@ -1768,20 +1780,58 @@ export async function POST(req: Request) {
 
   /** 供终帧写入 global cache 时对齐 world_revision（方案 B：preflight 后读取）。Pool max=10，仅短查询。 */
   const kgCacheWorldRevision: { current: bigint | null } = { current: null };
+  /**
+   * KG 全局语义缓存命中时可以直接返回（真实延迟优化）。
+   * 但 miss/慢查询不应成为 TTFT 的首字前阻塞项（首字优先）。
+   */
+  const KG_CACHE_EARLY_BUDGET_MS = 42;
+  const enableKgCacheEarlyBudget = envBoolean("AI_CHAT_ENABLE_KG_CACHE_EARLY_BUDGET", true);
+  let kgCacheEarlyBudgetHit = false;
   const codexCacheEarly = kgEnabled
-    ? await tryServeCodexFromGlobalCache({
-        kgRoute,
-        latestUserInput,
-        requestId,
-        userId,
-        sessionId,
-        platform,
-        onWorldRevision: (rev) => {
-          kgCacheWorldRevision.current = rev;
-        },
-      })
+    ? enableKgCacheEarlyBudget
+      ? await Promise.race([
+          tryServeCodexFromGlobalCache({
+            kgRoute,
+            latestUserInput,
+            requestId,
+            userId,
+            sessionId,
+            platform,
+            onWorldRevision: (rev) => {
+              kgCacheWorldRevision.current = rev;
+            },
+          }),
+          new Promise<null>((resolve) =>
+            setTimeout(() => {
+              kgCacheEarlyBudgetHit = true;
+              resolve(null);
+            }, KG_CACHE_EARLY_BUDGET_MS)
+          ),
+        ])
+      : await tryServeCodexFromGlobalCache({
+          kgRoute,
+          latestUserInput,
+          requestId,
+          userId,
+          sessionId,
+          platform,
+          onWorldRevision: (rev) => {
+            kgCacheWorldRevision.current = rev;
+          },
+        })
     : null;
   if (codexCacheEarly) return codexCacheEarly;
+  if (kgEnabled && kgCacheEarlyBudgetHit) {
+    logAiTelemetry({
+      requestId,
+      task: "PLAYER_CHAT",
+      providerId: "oneapi",
+      logicalRole: "control",
+      phase: "preflight_budget",
+      message: `kg_cache_early_budget_hit budget_ms=${KG_CACHE_EARLY_BUDGET_MS}`,
+      userId,
+    });
+  }
 
   if (!anyAiProviderConfigured()) {
     reloadVerseCraftProcessEnv();
@@ -1860,128 +1910,6 @@ export async function POST(req: Request) {
     is_death: false,
     consumes_time: true,
   });
-
-  // Prevent "hang for minutes" UX when upstream is slow or rate-limiting.
-  const TIMEOUT_MS = 60000;
-  const ac = new AbortController();
-  const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
-
-  let streamResult: PlayerChatStreamResult;
-  try {
-    // 上游主模型调用起点：用于计算 upstream connect 到首包的纯网络/上游等待耗时。
-    ttftProfile.generateMainReplyStartedAt = nowMs();
-    streamResult = await generateMainReply({
-      messages: safeMessages,
-      ctx: {
-        requestId,
-        userId,
-        sessionId,
-        path: "/api/chat",
-        tags: { clientPurpose, riskLane },
-      },
-      signal: ac.signal,
-      timeoutMs: TIMEOUT_MS,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!streamResult.ok) {
-    const isTimeout = streamResult.code === "ABORTED";
-    // #region agent log
-    fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
-      body: JSON.stringify({
-        sessionId: "5f6062",
-        runId: "pre-fix",
-        hypothesisId: "H2",
-        location: "src/app/api/chat/route.ts:streamResultNotOk",
-        message: "player chat stream returned degraded path",
-        data: {
-          requestId,
-          code: streamResult.code,
-          message: streamResult.message?.slice(0, 220),
-          lastHttpStatus: streamResult.lastHttpStatus ?? null,
-          attempts: (streamResult.httpAttempts ?? []).map((a) => ({
-            logicalRole: a.logicalRole,
-            providerId: a.providerId,
-            gatewayModel: a.gatewayModel,
-            phase: a.phase,
-            httpStatus: a.httpStatus ?? null,
-            failureKind: a.failureKind ?? null,
-          })),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    console.error(`\x1b[31m[api/chat] AI router failed\x1b[0m`, {
-      code: streamResult.code,
-      message: streamResult.message,
-      lastHttpStatus: streamResult.lastHttpStatus,
-    });
-    void recordGenericAnalyticsEvent({
-      eventId: `${requestId}:chat_request_finished_error`,
-      idempotencyKey: `${requestId}:chat_request_finished_error`,
-      userId,
-      sessionId: sessionId ?? "unknown_session",
-      eventName: "chat_request_finished",
-      eventTime: new Date(),
-      page: "/play",
-      source: "chat",
-      platform,
-      tokenCost: 0,
-      playDurationDeltaSec: 0,
-      payload: {
-        requestId,
-        model: telemetryPreferredModel,
-        success: false,
-        stage: "ai_router",
-        isTimeout,
-        routerCode: streamResult.code,
-        totalLatencyMs: Date.now() - requestStartedAt,
-        preflightRan: preflightTurnMetrics.ran,
-        preflightSkippedReason: preflightTurnMetrics.skippedReason,
-        preflightCacheHit: preflightTurnMetrics.cacheHit,
-        preflightLatencyMs: preflightTurnMetrics.latencyMs,
-        preflightOk: preflightTurnMetrics.ok,
-        preflightBudgetHit: controlPreflightBudgetHit,
-      },
-    }).catch(() => {});
-
-    const upstreamStatus = streamResult.lastHttpStatus ?? 0;
-    const attemptsForHint = streamResult.httpAttempts ?? [];
-    const lastWithBody = [...attemptsForHint]
-      .reverse()
-      .find((a) => typeof a.httpStatus === "number" && a.message);
-    const hintFields = parseUpstreamErrorFields(lastWithBody?.message);
-    const degraded = {
-      is_action_legal: false,
-      sanity_damage: 0,
-      narrative: isTimeout
-        ? "深渊回声超时，请稍后重试。"
-        : "深渊主脑暂时离线，请稍后重试。",
-      is_death: false,
-      consumes_time: true,
-      security_meta: {
-        action: "degrade",
-        stage: "ai_router",
-        reason: streamResult.code,
-        upstream_status: upstreamStatus || undefined,
-        ...(hintFields.upstreamCode ? { upstream_code: hintFields.upstreamCode } : {}),
-      },
-    };
-    return new Response(sseText(JSON.stringify(degraded)), {
-      status: 200,
-      headers: {
-        ...SSE_HEADERS,
-        "X-VerseCraft-Ai-Status": "degraded",
-      },
-    });
-  }
-
-  const srOk = streamResult as PlayerChatStreamSuccess;
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const writer = writable.getWriter();
@@ -2091,19 +2019,29 @@ export async function POST(req: Request) {
   };
 
   const MIN_STREAM_OUTPUT_CHARS = 24;
-  const MAX_STREAM_SOURCE_ROUNDS = 3;
+  // Phase-5：reconnect 是必要兜底，但容易放大极端等待；限制总轮数，优先快速 fallback。
+  const enableStreamReconnectLimits = envBoolean("AI_CHAT_ENABLE_STREAM_RECONNECT_LIMITS", true);
+  const MAX_STREAM_SOURCE_ROUNDS = enableStreamReconnectLimits ? 2 : 3;
+  /**
+   * Pipeline-level abort signal for non-upstream steps (enhance / options fix / post hooks).
+   *
+   * Phase-2 note:
+   * - Upstream `generateMainReply()` uses per-attempt AbortControllers with strict TIMEOUT_MS.
+   * - Everything else shares this signal so we can still cancel best-effort steps if needed later.
+   */
+  const pipelineAbort = new AbortController();
   const routingReport: AiRoutingReport = {
     requestId,
     task: "PLAYER_CHAT",
-    operationMode: srOk.operationMode,
-    intendedRole: srOk.intendedLogicalRole,
-    actualLogicalRole: srOk.logicalRole,
-    fallbackCount: srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length,
-    attempts: [...srOk.httpAttempts],
-    finalStatus: "success",
+    operationMode: resolveOperationMode(),
+    intendedRole: DEFAULT_PLAYER_ROLE_CHAIN[0] as AiLogicalRole,
+    actualLogicalRole: null,
+    fallbackCount: 0,
+    attempts: [],
+    finalStatus: "upstream_exhausted",
   };
   const skippedStreamRoles: AiLogicalRole[] = [];
-  let streamSource: PlayerChatStreamSuccess = srOk;
+  let streamSource: PlayerChatStreamSuccess | null = null;
   let streamRound = 0;
   let streamReconnectCount = 0;
   let streamInterruptedCount = 0;
@@ -2118,13 +2056,122 @@ export async function POST(req: Request) {
   let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
 
   (async () => {
-    // 单帧开局：避免首包内连跳多段；其余阶段由前端时间兜底 + 下游首 token / finalizing 控制帧衔接。
+    // Phase-2：先把 SSE 通道建立起来，再连接上游（减少“服务器无响应”窗口）。
     await writeStatusFrame("request_sent", "行动已送出");
+    await writeStatusFrame("routing", "正在连接深渊");
+
+    const TIMEOUT_MS = 60000;
+    const callUpstreamOnce = async (args: { skipRoles?: readonly AiLogicalRole[]; markStart?: boolean }) => {
+      const ac = new AbortController();
+      const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
+      try {
+        if (args.markStart) {
+          // 上游主模型调用起点：用于计算 upstream connect 到首包的纯网络/上游等待耗时。
+          ttftProfile.generateMainReplyStartedAt = nowMs();
+        }
+        return await generateMainReply({
+          messages: safeMessages,
+          ctx: {
+            requestId,
+            userId,
+            sessionId,
+            path: "/api/chat",
+            tags: { clientPurpose, riskLane },
+          },
+          signal: ac.signal,
+          timeoutMs: TIMEOUT_MS,
+          skipRoles: args.skipRoles,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    const first = await callUpstreamOnce({ markStart: true });
+    if (!first.ok) {
+      const isTimeout = first.code === "ABORTED";
+      console.error(`\x1b[31m[api/chat] AI router failed\x1b[0m`, {
+        code: first.code,
+        message: first.message,
+        lastHttpStatus: first.lastHttpStatus,
+      });
+      void recordGenericAnalyticsEvent({
+        eventId: `${requestId}:chat_request_finished_error`,
+        idempotencyKey: `${requestId}:chat_request_finished_error`,
+        userId,
+        sessionId: sessionId ?? "unknown_session",
+        eventName: "chat_request_finished",
+        eventTime: new Date(),
+        page: "/play",
+        source: "chat",
+        platform,
+        tokenCost: 0,
+        playDurationDeltaSec: 0,
+        payload: {
+          requestId,
+          model: telemetryPreferredModel,
+          success: false,
+          stage: "ai_router",
+          isTimeout,
+          routerCode: first.code,
+          totalLatencyMs: Date.now() - requestStartedAt,
+          preflightRan: preflightTurnMetrics.ran,
+          preflightSkippedReason: preflightTurnMetrics.skippedReason,
+          preflightCacheHit: preflightTurnMetrics.cacheHit,
+          preflightLatencyMs: preflightTurnMetrics.latencyMs,
+          preflightOk: preflightTurnMetrics.ok,
+          preflightBudgetHit: controlPreflightBudgetHit,
+        },
+      }).catch(() => {});
+
+      const upstreamStatus = first.lastHttpStatus ?? 0;
+      const attemptsForHint = first.httpAttempts ?? [];
+      const lastWithBody = [...attemptsForHint].reverse().find((a) => typeof a.httpStatus === "number" && a.message);
+      const hintFields = parseUpstreamErrorFields(lastWithBody?.message);
+      const degraded = {
+        is_action_legal: false,
+        sanity_damage: 0,
+        narrative: isTimeout ? "深渊回声超时，请稍后重试。" : "深渊主脑暂时离线，请稍后重试。",
+        is_death: false,
+        consumes_time: true,
+        security_meta: {
+          action: "degrade",
+          stage: "ai_router",
+          reason: first.code,
+          upstream_status: upstreamStatus || undefined,
+          ...(hintFields.upstreamCode ? { upstream_code: hintFields.upstreamCode } : {}),
+        },
+      };
+      try {
+        await writeStatusFrame("finalizing", "连接失败，正在降级");
+        await writeToStream(JSON.stringify(degraded));
+      } finally {
+        await writer.close();
+      }
+      return;
+    }
+
+    const srOk = first as PlayerChatStreamSuccess;
+    streamSource = srOk;
+    routingReport.operationMode = srOk.operationMode;
+    routingReport.intendedRole = srOk.intendedLogicalRole;
+    routingReport.actualLogicalRole = srOk.logicalRole;
+    routingReport.attempts = [...srOk.httpAttempts];
+    routingReport.fallbackCount = srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length;
+    routingReport.finalStatus = "success";
+
     const scheduleStreamReconnect = async (
       failedRole: AiLogicalRole,
       kind: "STREAM_INTERRUPTED" | "EMPTY_CONTENT"
     ): Promise<boolean> => {
       if (streamRound >= MAX_STREAM_SOURCE_ROUNDS) return false;
+      if (enableStreamReconnectLimits) {
+        // Avoid repeated same-kind reconnects in one turn.
+        if (kind === "STREAM_INTERRUPTED" && streamInterruptedCount >= 1) return false;
+        if (kind === "EMPTY_CONTENT" && streamEmptyCount >= 1) return false;
+        // Do not reconnect after long wall time; prefer fallback to avoid dragging minutes.
+        if (Date.now() - requestStartedAt > 40_000) return false;
+      }
       streamReconnectCount += 1;
       if (kind === "STREAM_INTERRUPTED") streamInterruptedCount += 1;
       if (kind === "EMPTY_CONTENT") streamEmptyCount += 1;
@@ -2140,21 +2187,9 @@ export async function POST(req: Request) {
       });
       routingReport.fallbackCount = routingReport.attempts.filter((a) => a.failureKind !== undefined).length;
       skippedStreamRoles.push(failedRole);
-      const next = await generateMainReply({
-        messages: safeMessages,
-        ctx: {
-          requestId,
-          userId,
-          sessionId,
-          path: "/api/chat",
-          tags: { clientPurpose, riskLane },
-        },
-        signal: ac.signal,
-        timeoutMs: TIMEOUT_MS,
-        skipRoles: skippedStreamRoles,
-      });
+      const next = await callUpstreamOnce({ skipRoles: skippedStreamRoles });
       if (!next.ok) return false;
-      streamSource = next;
+      streamSource = next as PlayerChatStreamSuccess;
       return true;
     };
 
@@ -2256,6 +2291,7 @@ export async function POST(req: Request) {
           requestStartedAt,
           finishedAt,
           isFirstAction,
+          riskLane: riskLane === "fast" ? "fast" : "slow",
           routing: {
             operationMode: routingReport.operationMode,
             intendedRole: routingReport.intendedRole,
@@ -2267,6 +2303,10 @@ export async function POST(req: Request) {
           runtimePacketChars,
           runtimePacketTokenEstimate,
           latestUsage: args.latestUsage,
+          upstreamConnectMs:
+            ttftProfile.generateMainReplyStartedAt !== null && args.firstChunkAt > 0
+              ? Math.max(0, args.firstChunkAt - ttftProfile.generateMainReplyStartedAt)
+              : null,
           preflight: {
             ran: preflightTurnMetrics.ran,
             skippedReason: preflightTurnMetrics.skippedReason,
@@ -2471,7 +2511,7 @@ export async function POST(req: Request) {
             rule: pipelineRule,
             mode: routingReport.operationMode,
             baseCtx: { requestId, userId, sessionId, path: "/api/chat" },
-            signal: ac.signal,
+            signal: pipelineAbort.signal,
             isFirstAction,
             playerContext,
             latestUserInput,
@@ -2564,7 +2604,8 @@ export async function POST(req: Request) {
               latestUserInput,
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
-              signal: ac.signal,
+              signal: pipelineAbort.signal,
+              budgetMs: 2200,
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
@@ -2637,7 +2678,8 @@ export async function POST(req: Request) {
                 latestUserInput,
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", purpose: "decision_options_fix" } },
-                signal: ac.signal,
+                signal: pipelineAbort.signal,
+                budgetMs: 2200,
               });
               if (regen.ok) {
                 recordDecisionOptionsFixOutcome(true);
@@ -2699,7 +2741,8 @@ export async function POST(req: Request) {
                 latestUserInput,
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "quality_gate", purpose: "decision_options_fix" } },
-                signal: ac.signal,
+                signal: pipelineAbort.signal,
+                budgetMs: 1800,
               });
               if (regen.ok) {
                 recordDecisionOptionsFixOutcome(true);
@@ -2736,8 +2779,9 @@ export async function POST(req: Request) {
               latestUserInput,
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
-              signal: ac.signal,
+              signal: pipelineAbort.signal,
               systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+              budgetMs: 2200,
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
@@ -3391,9 +3435,10 @@ export async function POST(req: Request) {
   if (resolveAiEnv().exposeAiRoutingHeader) {
     const snap = {
       intendedRole: routingReport.intendedRole,
-      firstConnectedRole: srOk.logicalRole,
       operationMode: routingReport.operationMode,
-      httpFallbackCount: srOk.httpAttempts.filter((a) => a.failureKind !== undefined).length,
+      // Phase-2：Response 在上游连接前就返回，因此这里不承诺“首个连接的 role”。
+      // 后续可从 SSE status frames / ai.telemetry / chat_request_finished 事件中回溯。
+      httpFallbackCount: routingReport.fallbackCount,
     };
     sseHeadersOut["X-AI-Routing-Http-Snapshot"] = Buffer.from(JSON.stringify(snap), "utf8").toString("base64url");
   }

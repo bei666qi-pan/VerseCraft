@@ -80,6 +80,15 @@ export interface ResolvedAiEnv {
    * Online short JSON tasks: when true, disallow falling back to MAIN (keep control-plane fast).
    */
   onlineShortJsonDisableMainFallback: boolean;
+  /**
+   * Phase-6 flags: can be toggled independently for safe rollback.
+   * Defaults are tuned for player-facing latency without obvious quality drop.
+   */
+  playerChatAggressiveFailover: boolean;
+  playerChatFastLaneZeroRetry: boolean;
+  playerChatFailFastOnAuth: boolean;
+  playerChatFailFastOnRateLimit: boolean;
+  onlineShortJsonRetryHardCap1: boolean;
   /** Parsed AI_GATEWAY_EXTRA_BODY_JSON when AI_GATEWAY_MERGE_EXTRA_BODY=1. */
   gatewayExtraBody?: Record<string, unknown>;
   /**
@@ -255,6 +264,11 @@ export function resolveAiEnv(): ResolvedAiEnv {
     })(),
     onlineShortJsonRelaxResponseFormat: envBoolean("AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT", true),
     onlineShortJsonDisableMainFallback: envBoolean("AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK", true),
+    playerChatAggressiveFailover: envBoolean("AI_PLAYER_CHAT_AGGRESSIVE_FAILOVER", true),
+    playerChatFastLaneZeroRetry: envBoolean("AI_PLAYER_CHAT_FASTLANE_ZERO_RETRY", true),
+    playerChatFailFastOnAuth: envBoolean("AI_PLAYER_CHAT_FAILFAST_AUTH", true),
+    playerChatFailFastOnRateLimit: envBoolean("AI_PLAYER_CHAT_FAILFAST_RATELIMIT", true),
+    onlineShortJsonRetryHardCap1: envBoolean("AI_ONLINE_SHORT_JSON_RETRY_HARDCAP_1", true),
     gatewayExtraBody: resolveGatewayExtraBody(),
     controlPreflightBudgetMs: Math.max(
       0,

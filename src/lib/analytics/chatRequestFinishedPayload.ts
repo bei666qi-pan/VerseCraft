@@ -111,6 +111,7 @@ export type BuildChatRequestFinishedPayloadInput = {
   requestStartedAt: number;
   finishedAt: number;
   isFirstAction: boolean;
+  riskLane?: "fast" | "slow" | "unknown";
   routing: ChatRoutingSnapshot;
   stableCharLen: number;
   dynamicCharLen: number;
@@ -122,6 +123,7 @@ export type BuildChatRequestFinishedPayloadInput = {
   streamReconnectCount?: number;
   streamInterruptedCount?: number;
   streamEmptyCount?: number;
+  upstreamConnectMs?: number | null;
   finalJsonParseSuccess?: boolean;
   settlementGuardApplied?: boolean;
   settlementAwardPruned?: number;
@@ -158,6 +160,7 @@ export function buildChatRequestFinishedPayload(
     firstChunkLatencyMs: ttft,
     totalLatencyMs: Math.max(0, input.finishedAt - input.requestStartedAt),
     isFirstAction: input.isFirstAction,
+    riskLane: input.riskLane ?? "unknown",
     aiOperationMode: input.routing.operationMode,
     aiIntendedRole: input.routing.intendedRole,
     aiFallbackCount: input.routing.fallbackCount,
@@ -187,6 +190,7 @@ export function buildChatRequestFinishedPayload(
     streamReconnectCount: optionalFiniteInt(input.streamReconnectCount),
     streamInterruptedCount: optionalFiniteInt(input.streamInterruptedCount),
     streamEmptyCount: optionalFiniteInt(input.streamEmptyCount),
+    upstreamConnectMs: optionalFiniteInt(input.upstreamConnectMs),
     emptyFirstChunkRate: (input.streamEmptyCount ?? 0) > 0 ? 1 : 0,
     finalJsonParseSuccess:
       typeof input.finalJsonParseSuccess === "boolean" ? input.finalJsonParseSuccess : null,

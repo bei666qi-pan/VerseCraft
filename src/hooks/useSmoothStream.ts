@@ -106,20 +106,29 @@ function computePauseMs(args: {
   const tail = chunk.trimEnd().slice(-1);
   let pause: number;
   // punctuation pause
-  if (tail && SENTENCE_PUNCT.has(tail)) pause = 150;
-  else if (tail && CLAUSE_PUNCT.has(tail)) pause = 90;
-  else pause = 52;
+  // Phase-4：中文长叙事标点密度高，过长停顿会造成“看起来慢于实际”的断续感。
+  // 规则：标点仍可停，但在小 backlog / 小 chunk 时显著收敛停顿。
+  if (tail && SENTENCE_PUNCT.has(tail)) pause = 120;
+  else if (tail && CLAUSE_PUNCT.has(tail)) pause = 72;
+  else pause = 44;
+
+  const nonWsLen = chunk.replace(/\s/g, "").length;
+  if (nonWsLen > 0 && nonWsLen <= 6) {
+    pause = Math.min(pause, 40);
+  } else if (nonWsLen > 0 && nonWsLen <= 12) {
+    pause = Math.min(pause, 54);
+  }
 
   // backlog catch-up reduces pauses
   if (stage === "backlog") {
     if (backlog > 420) pause = 24;
     else if (backlog > 300) pause = 30;
-    else pause = Math.max(options.minTickMs, Math.min(pause, 58));
+    else pause = Math.max(options.minTickMs, Math.min(pause, 54));
   }
 
   // initial burst keeps the first tokens snappy
   if (stage === "initial") {
-    pause = Math.min(pause, 36);
+    pause = Math.min(pause, 32);
   }
 
   return Math.max(options.minTickMs, Math.min(options.maxTickMs, pause));

@@ -14,6 +14,7 @@ import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
 import type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
 /** 主叙事 / 玩家 SSE：固定 PLAYER_CHAT，由 taskPolicy 解析逻辑角色与 one-api 模型名。 */
 export async function generateMainReply(params: {
@@ -149,6 +150,7 @@ async function runOptionsOnlyAiOnce(args: {
   signal?: AbortSignal;
   temperature: number;
   systemExtra?: string;
+  timeoutMs: number;
 }): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const system: ChatMessage = {
     role: "system",
@@ -184,12 +186,12 @@ async function runOptionsOnlyAiOnce(args: {
       tags: { ...(args.ctx.tags ?? {}), purpose: "options_regen" },
     },
     signal: args.signal,
-    requestTimeoutMs: 9_000,
+    requestTimeoutMs: args.timeoutMs,
     skipCache: true,
     devOverrides: {
       maxTokens: 256,
       temperature: args.temperature,
-      timeoutMs: 9_000,
+      timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
     },
   });
@@ -209,7 +211,23 @@ export async function generateOptionsOnlyFallback(args: {
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
   signal?: AbortSignal;
   systemExtra?: string;
+  /**
+   * Hard budget wall-clock for the entire fallback tool.
+   * When hit, skip upstream calls and return conservative padded options.
+   *
+   * 设计目标：让“补 options”更像低成本工具，而不是第二次长等待。
+   */
+  budgetMs?: number;
 }): Promise<{ ok: true; options: string[] } | { ok: false; reason: string }> {
+  const budgetMs = Math.max(0, Math.min(30_000, args.budgetMs ?? 0));
+  const t0 = Date.now();
+  const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
+
+  // If budget is too tight, skip any upstream attempt.
+  if (budgetMs > 0 && remainingMs() < 350) {
+    return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
+  }
+
   const tryParse = (content: string): { ok: true; options: string[] } | null => {
     try {
       const obj = JSON.parse(content) as Record<string, unknown>;
@@ -220,20 +238,43 @@ export async function generateOptionsOnlyFallback(args: {
     }
   };
 
+  const withBudgetSignal = (timeoutMs: number): AbortSignal | undefined => {
+    const base = args.signal;
+    if (budgetMs <= 0) return base;
+    const rem = remainingMs();
+    const t = Math.max(1, Math.min(timeoutMs, rem));
+    if (!Number.isFinite(t) || t <= 0) return base;
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), t);
+    // best-effort cleanup
+    void Promise.resolve().then(() => clearTimeout(tid));
+    const signals: AbortSignal[] = [ac.signal];
+    if (base) signals.push(base);
+    return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
+  };
+
   const first = await runOptionsOnlyAiOnce({
     ...args,
     temperature: 0.4,
     systemExtra: args.systemExtra,
+    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
+    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
   });
   if (first.ok) {
     const done = tryParse(first.content);
     if (done) return done;
   }
 
+  if (budgetMs > 0 && remainingMs() < 350) {
+    return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
+  }
+
   const second = await runOptionsOnlyAiOnce({
     ...args,
     temperature: 0.65,
     systemExtra: [args.systemExtra ?? "", "若你上次容易少给条目：本次必须输出恰好 4 条 options，不要省略。"].filter(Boolean).join("\n"),
+    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
+    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs),
   });
   if (second.ok) {
     const done = tryParse(second.content);
@@ -258,6 +299,7 @@ async function runDecisionOnlyAiOnce(args: {
   signal?: AbortSignal;
   temperature: number;
   systemExtra?: string;
+  timeoutMs: number;
 }): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const system: ChatMessage = {
     role: "system",
@@ -293,12 +335,12 @@ async function runDecisionOnlyAiOnce(args: {
       tags: { ...(args.ctx.tags ?? {}), purpose: "decision_options_regen" },
     },
     signal: args.signal,
-    requestTimeoutMs: 9_000,
+    requestTimeoutMs: args.timeoutMs,
     skipCache: true,
     devOverrides: {
       maxTokens: 256,
       temperature: args.temperature,
-      timeoutMs: 9_000,
+      timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
     },
   });
@@ -314,7 +356,17 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
   signal?: AbortSignal;
   systemExtra?: string;
+  /** See `generateOptionsOnlyFallback.budgetMs`. */
+  budgetMs?: number;
 }): Promise<{ ok: true; decision_options: string[] } | { ok: false; reason: string }> {
+  const budgetMs = Math.max(0, Math.min(30_000, args.budgetMs ?? 0));
+  const t0 = Date.now();
+  const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
+
+  if (budgetMs > 0 && remainingMs() < 350) {
+    return { ok: true, decision_options: padDecisionOptionsToTwo(args.playerContext) };
+  }
+
   const tryParse = (content: string): { ok: true; decision_options: string[] } | null => {
     try {
       const obj = JSON.parse(content) as Record<string, unknown>;
@@ -327,20 +379,42 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     }
   };
 
+  const withBudgetSignal = (timeoutMs: number): AbortSignal | undefined => {
+    const base = args.signal;
+    if (budgetMs <= 0) return base;
+    const rem = remainingMs();
+    const t = Math.max(1, Math.min(timeoutMs, rem));
+    if (!Number.isFinite(t) || t <= 0) return base;
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), t);
+    void Promise.resolve().then(() => clearTimeout(tid));
+    const signals: AbortSignal[] = [ac.signal];
+    if (base) signals.push(base);
+    return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
+  };
+
   const first = await runDecisionOnlyAiOnce({
     ...args,
     temperature: 0.35,
     systemExtra: args.systemExtra,
+    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
+    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
   });
   if (first.ok) {
     const done = tryParse(first.content);
     if (done) return done;
   }
 
+  if (budgetMs > 0 && remainingMs() < 350) {
+    return { ok: true, decision_options: padDecisionOptionsToTwo(args.playerContext) };
+  }
+
   const second = await runDecisionOnlyAiOnce({
     ...args,
     temperature: 0.6,
     systemExtra: [args.systemExtra ?? "", "本次必须输出 2–4 条 decision_options，至少 2 条。"].filter(Boolean).join("\n"),
+    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
+    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs),
   });
   if (second.ok) {
     const done = tryParse(second.content);

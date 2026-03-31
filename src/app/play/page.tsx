@@ -87,6 +87,8 @@ import {
   getClientOptionsOnlyRegenPathV2Enabled,
   getClientContinueButtonEnabled,
 } from "@/lib/rollout/versecraftClientRollout";
+import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
+import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 
 type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
 
@@ -106,15 +108,15 @@ function pickItemDomainLayer(v: unknown): ItemDomainLayer | undefined {
 }
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
-const STREAM_CHUNK_STALL_MS = 120_000;
+const STREAM_CHUNK_STALL_MS = VC_WAITING.playStreamChunkStallMs;
 /** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
-const STREAM_FIRST_CHUNK_STALL_MS = 45_000;
+const STREAM_FIRST_CHUNK_STALL_MS = VC_WAITING.playStreamFirstChunkStallMs;
 /**
  * Max wait for the **first byte / response headers** from our own `/api/chat`.
  * The handler runs moderation + DB + control preflight (≤~11s) before calling upstream; `resilientFetch`
  * may retry several times with `AI_TIMEOUT_MS` (~60s) each — 95s was too low and caused false timeouts.
  */
-const FETCH_CHAT_RESPONSE_DEADLINE_MS = 280_000;
+const FETCH_CHAT_RESPONSE_DEADLINE_MS = VC_WAITING.playFetchChatResponseDeadlineMs;
 /** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
 const SCROLL_STICKY_BOTTOM_PX = 96;
 const GUIDE_AUTO_OPEN_DISMISSED_KEY = "versecraft-guide-auto-open-dismissed-v1";
@@ -296,6 +298,27 @@ function PlayContent() {
   /** SSE `__VERSECRAFT_STATUS__` 最新阶段（仅展示层） */
   const waitUxBackendStageRef = useRef<PlayWaitUxStage | null>(null);
   const [waitUxStartedAt, setWaitUxStartedAt] = useState<number | null>(null);
+  const waitUxSignalsRef = useRef<{
+    requestId: string | null;
+    requestStartedAt: number | null;
+    responseHeadersAt: number | null;
+    firstSseDataAt: number | null;
+    firstVisibleTextAt: number | null;
+    lastSseDataAt: number | null;
+    maxInterChunkGapMs: number;
+    longGapCount: number;
+    sentPerf: boolean;
+  }>({
+    requestId: null,
+    requestStartedAt: null,
+    responseHeadersAt: null,
+    firstSseDataAt: null,
+    firstVisibleTextAt: null,
+    lastSseDataAt: null,
+    maxInterChunkGapMs: 0,
+    longGapCount: 0,
+    sentPerf: false,
+  });
 
   useEffect(() => {
     streamPhaseRef.current = streamPhase;
@@ -563,28 +586,97 @@ function PlayContent() {
     [scheduleAutoScroll]
   );
 
-  const smoothStreamOptions = useMemo(
-    () => ({
-      uniformPacing: true,
-      uniformTickMs: 42,
-    }),
-    []
-  );
+  const smoothStreamOptions = useMemo(() => {
+    if (!VC_PERF_FLAGS.clientSmoothStreamV2) {
+      return { uniformPacing: true, uniformTickMs: 42 };
+    }
+    return {
+      // Phase-4：放弃“纯匀速打字机”，使用语义分块 + 标点停顿（经收敛）+ backlog catch-up，
+      // 目标是更像自然稳定吐字而非机械卡顿。
+      uniformPacing: false,
+      minTickMs: 18,
+      maxTickMs: 110,
+      initialBurstWindowMs: 320,
+      initialBurstMaxLen: 54,
+      steadyMaxLen: 22,
+      backlogThreshold: 140,
+      backlogMaxLen: 44,
+    };
+  }, []);
 
   const { text: smoothNarrative, isComplete: smoothComplete, isThinking: smoothThinking } = useSmoothStreamFromRef(
     narrativeRef,
     streamVisualForTypewriter,
-    () => scheduleAutoScrollIfPinned(false),
+    () => {
+      scheduleAutoScrollIfPinned(false);
+      const p = waitUxSignalsRef.current;
+      if (p.requestStartedAt != null && p.firstVisibleTextAt == null) {
+        // Approximate "first visible text" by first typewriter commit callback.
+        p.firstVisibleTextAt = performance.now();
+      }
+    },
     smoothStreamOptions,
     streamTailDrain
   );
 
-  const { primaryLine: waitUxPrimaryLine, secondaryLine: waitUxSecondaryLine } = usePlayWaitUx({
+  const waitUxSignals = useMemo(() => {
+    if (!VC_PERF_FLAGS.clientWaitUxTimelineV2) return undefined;
+    return {
+      hasResponseHeaders: waitUxSignalsRef.current.responseHeadersAt != null,
+      hasAnySseData: waitUxSignalsRef.current.firstSseDataAt != null,
+      hasVisibleText: waitUxSignalsRef.current.firstVisibleTextAt != null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamPhase, smoothNarrative]);
+
+  const { primaryLine: waitUxPrimaryLine, secondaryLine: waitUxSecondaryLine, displayStage: waitUxDisplayStage } =
+    usePlayWaitUx({
     thinking: smoothThinking && streamVisualForTypewriter,
     requestStartedAt: waitUxStartedAt,
     backendStageRef: waitUxBackendStageRef,
     semanticKind: waitingHintKind,
+    signals: waitUxSignals,
   });
+
+  // Best-effort client perf event (no behavior changes).
+  useEffect(() => {
+    const p = waitUxSignalsRef.current;
+    if (p.sentPerf) return;
+    if (!p.requestId || p.requestStartedAt == null) return;
+    // Send when we either saw visible text, or we already exited visual stream (committed/errored).
+    if (p.firstVisibleTextAt == null && streamPhase !== "idle" && streamPhase !== "error") return;
+    p.sentPerf = true;
+    const firstStatusShownMs = 0; // stage is set at request start on client
+    const responseHeadersMs =
+      p.responseHeadersAt != null ? Math.max(0, p.responseHeadersAt - p.requestStartedAt) : null;
+    const firstChunkReceivedMs =
+      p.firstSseDataAt != null ? Math.max(0, p.firstSseDataAt - p.requestStartedAt) : null;
+    const firstVisibleTextMs =
+      p.firstVisibleTextAt != null ? Math.max(0, p.firstVisibleTextAt - p.requestStartedAt) : null;
+    const firstPerceivedFeedbackMs = Math.min(
+      ...[0, firstChunkReceivedMs ?? Infinity, firstVisibleTextMs ?? Infinity, responseHeadersMs ?? Infinity].filter(
+        (x) => Number.isFinite(x)
+      )
+    );
+    void trackGameplayEvent({
+      eventName: "chat_client_perf",
+      sessionId: guestId ?? "guest_play",
+      page: "/play",
+      source: "play_page",
+      idempotencyKey: `${p.requestId}:chat_client_perf`,
+      payload: {
+        requestId: p.requestId,
+        waitUxDisplayStage: waitUxDisplayStage,
+        firstStatusShownMs,
+        responseHeadersMs,
+        firstChunkReceivedMs,
+        firstVisibleTextMs,
+        firstPerceivedFeedbackMs,
+        maxInterChunkGapMs: p.maxInterChunkGapMs,
+        longGapCount: p.longGapCount,
+      },
+    }).catch(() => {});
+  }, [guestId, streamPhase, waitUxDisplayStage]);
 
   const displayEntries = useMemo(() => {
     const baseLogs = logs ?? [];
@@ -757,7 +849,8 @@ function PlayContent() {
   // 开场超时：须避免请求仍在飞行时误判；先静默自动重试一次拉 options，仍失败再提示（不重复 push 开场正文）
   useEffect(() => {
     if (!isHydrated) return;
-    const OPENING_STALL_MS = 24_000;
+    // Phase-5：开场要么尽快成功，要么尽快进入低成本兜底，避免“等很久→再重试→再补选项”的累加等待。
+    const OPENING_STALL_MS = 14_000;
     const tick = window.setInterval(() => {
       if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
         sendActionInFlightRef.current = false;
@@ -785,7 +878,13 @@ function PlayContent() {
       if (!openingTimeoutRetryRef.current) {
         openingTimeoutRetryRef.current = true;
         openingStartedAtRef.current = Date.now();
-        void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
+        if (VC_PERF_FLAGS.clientOpeningFastFallback) {
+          // 不再重复触发主链路开场（重链路 + 潜在长等待）。改为走低成本 options-only 补齐。
+          openingAwaitingAssistantRef.current = false;
+          void requestFreshOptions("opening_fallback");
+        } else {
+          void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
+        }
         return;
       }
 
@@ -845,6 +944,7 @@ function PlayContent() {
   }, [coldPlayOpening, currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
 
   const prevInputModeRef = useRef<"options" | "text">(inputMode);
+  const lastAutoSwitchOptionsRegenAtRef = useRef(0);
   useEffect(() => {
     const prev = prevInputModeRef.current;
     prevInputModeRef.current = inputMode;
@@ -865,6 +965,13 @@ function PlayContent() {
         showEmbeddedOpening,
         isGuestDialogueExhausted,
       }) && lastCommittedTurnModeRef.current === "decision_required") {
+        // Phase-5：避免“用户只是切回 options 就被拖进一次额外等待”。
+        // 自动补选项应严格限频：30s 内最多触发一次（可回滚开关）。
+        if (VC_PERF_FLAGS.clientModeSwitchCooldown) {
+          const now = Date.now();
+          if (now - lastAutoSwitchOptionsRegenAtRef.current < 30_000) return;
+          lastAutoSwitchOptionsRegenAtRef.current = now;
+        }
         void requestFreshOptions("auto_switch");
       }
     }
@@ -1048,6 +1155,13 @@ function PlayContent() {
           ];
       const playerContext = useGameStore.getState().getPromptContext();
       const clientState = useGameStore.getState().getStructuredClientStateForServer();
+      // Phase-5：options-only 补齐是“低成本工具”，不允许无上限等待。
+      const optionsOnlyDeadlineMs =
+        trigger === "opening_fallback" ? 12_000 : trigger === "auto_missing_main" ? 10_000 : 9_000;
+      const ac = new AbortController();
+      const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
+        ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
+        : undefined;
       const res = await fetch("/api/chat", {
         method: "POST",
         credentials: "include",
@@ -1062,7 +1176,9 @@ function PlayContent() {
           clientPurpose: "options_regen_only",
           clientReason: `【为何需要整理选项】${reason}`,
         }),
+        signal: ac.signal,
       });
+      if (tid !== undefined) window.clearTimeout(tid);
       if (!res.ok || !res.body) {
         setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
         return;
@@ -1070,11 +1186,41 @@ function PlayContent() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let text = "";
+      let buf = "";
       try {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          text += decoder.decode(value, { stream: true });
+          const part = decoder.decode(value, { stream: true });
+          text += part;
+          buf += part;
+          // options-only path typically returns a single SSE event; parse as soon as we have a complete event.
+          if (VC_PERF_FLAGS.clientOptionsOnlyDeadline) {
+            const taken = takeCompleteSseEvents(buf);
+            buf = taken.rest;
+            if (taken.events.length > 0) {
+              const dmRawEarly = foldSseTextToDmRaw(taken.events.join("\n\n"));
+              const parsedEarly = tryParseDM(dmRawEarly);
+              let rawOptsEarly: unknown = parsedEarly?.options;
+              if (!Array.isArray(rawOptsEarly) || rawOptsEarly.length === 0) {
+                const loose = extractRegenOptionsFromRaw(dmRawEarly);
+                if (loose && loose.length > 0) rawOptsEarly = loose;
+              }
+              const normalizedEarly = normalizeRegeneratedOptions(rawOptsEarly, []);
+              if (normalizedEarly.length > 0) {
+                setCurrentOptions(normalizedEarly);
+                setLiveNarrative((prev) =>
+                  typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
+                );
+                try {
+                  await reader.cancel();
+                } catch {
+                  // ignore
+                }
+                return;
+              }
+            }
+          }
         }
       } finally {
         try {
@@ -1142,7 +1288,22 @@ function PlayContent() {
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
     waitUxBackendStageRef.current = null;
-    setWaitUxStartedAt(performance.now());
+    {
+      const t0 = performance.now();
+      setWaitUxStartedAt(t0);
+      const rid = createVerseCraftRequestId("chat");
+      waitUxSignalsRef.current = {
+        requestId: rid,
+        requestStartedAt: t0,
+        responseHeadersAt: null,
+        firstSseDataAt: null,
+        firstVisibleTextAt: null,
+        lastSseDataAt: null,
+        maxInterChunkGapMs: 0,
+        longGapCount: 0,
+        sentPerf: false,
+      };
+    }
     // Only compute hint at request start; keep stable during waiting_upstream.
     setWaitingHintKind(guessSemanticWaitingKind(trimmed));
     const isOpeningSystemRequest = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
@@ -1208,7 +1369,10 @@ function PlayContent() {
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          [VERSECRAFT_REQUEST_ID_HEADER]: waitUxSignalsRef.current.requestId ?? createVerseCraftRequestId("chat"),
+        },
         body: JSON.stringify({
           messages,
           playerContext,
@@ -1239,6 +1403,16 @@ function PlayContent() {
 
     const responseContentType = res.headers.get("content-type") ?? "";
     const responseIsSse = responseContentType.includes("text/event-stream");
+    {
+      const p = waitUxSignalsRef.current;
+      if (p.requestStartedAt != null && p.responseHeadersAt == null) {
+        p.responseHeadersAt = performance.now();
+      }
+      const ridHeader = res.headers.get("x-versecraft-request-id");
+      if (isSafeVerseCraftRequestId(ridHeader)) {
+        p.requestId = ridHeader;
+      }
+    }
 
     if (!res.ok) {
       setStreamPhase("idle");
@@ -1352,6 +1526,19 @@ function PlayContent() {
         sawStreamChunk = true;
         setStreamPhase("streaming_body");
       }
+      if (sawNonEmptyData) {
+        const p = waitUxSignalsRef.current;
+        const now = performance.now();
+        if (p.requestStartedAt != null && p.firstSseDataAt == null) {
+          p.firstSseDataAt = now;
+        }
+        if (p.lastSseDataAt != null) {
+          const gap = Math.max(0, now - p.lastSseDataAt);
+          p.maxInterChunkGapMs = Math.max(p.maxInterChunkGapMs, gap);
+          if (gap >= 2500) p.longGapCount += 1;
+        }
+        p.lastSseDataAt = now;
+      }
       try {
         const preview = extractNarrative(raw);
         /**
@@ -1386,6 +1573,10 @@ function PlayContent() {
       }
     };
 
+    // 性能分层（首字后感知慢 / 卡住）：
+    // - 首个非空 SSE data: 到来前：使用 STREAM_FIRST_CHUNK_STALL_MS 限制“连接已建立但无正文 bytes”的等待上限
+    // - 首个 chunk 到来后：使用 STREAM_CHUNK_STALL_MS 限制“上游长停顿”的等待上限
+    // 这两者都不等于“真实延迟优化”，它们只是定义“何时判定卡死并收敛体验”。
     let streamCancelled = false;
     try {
       while (true) {

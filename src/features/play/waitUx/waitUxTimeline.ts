@@ -3,7 +3,8 @@ import { rankWaitUxStage, waitUxStageAtRank } from "./waitUxStages";
 
 const MS_ROUTING = 720;
 const MS_CONTEXT = 2000;
-const MS_GENERATING = 4800;
+// Longer than before: prevents premature "generating" when backend is silent.
+const MS_GENERATING = 5600;
 
 const MIN_HOLD_DEFAULT_MS = 440;
 const MIN_HOLD_BACKEND_MS = 260;
@@ -16,6 +17,40 @@ export function timeDerivedWaitStage(elapsedMs: number): PlayWaitUxStage {
   if (elapsedMs < MS_CONTEXT) return "routing";
   if (elapsedMs < MS_GENERATING) return "context_building";
   return "generating";
+}
+
+export type WaitUxClientSignals = {
+  /** 已拿到 response headers（说明已到本服务端，但不代表已收到正文 bytes） */
+  hasResponseHeaders?: boolean;
+  /** 已收到任意非空 SSE `data:`（说明 payload 已开始流动） */
+  hasAnySseData?: boolean;
+  /** 正文已出现可见字符（typewriter 已落屏） */
+  hasVisibleText?: boolean;
+};
+
+function deriveWaitUxTargetV2(args: {
+  elapsedMs: number;
+  backend: PlayWaitUxStage | null;
+  signals?: WaitUxClientSignals;
+}): PlayWaitUxStage {
+  const backend = args.backend && args.backend !== "idle" ? args.backend : null;
+  if (backend) return backend;
+
+  const elapsed = Math.max(0, args.elapsedMs);
+  const s = args.signals ?? {};
+  const hasHeaders = Boolean(s.hasResponseHeaders);
+  const hasSse = Boolean(s.hasAnySseData);
+  const hasVisible = Boolean(s.hasVisibleText);
+
+  // If SSE bytes are flowing but we still have no visible text, "streaming" is the most credible stage.
+  if (hasSse && !hasVisible) return "streaming";
+
+  // Without response headers, do not claim we're "generating".
+  if (!hasHeaders) {
+    return elapsed < MS_ROUTING ? "request_sent" : "routing";
+  }
+
+  return timeDerivedWaitStage(elapsed);
 }
 
 /**
@@ -45,9 +80,10 @@ export function advanceWaitUxDisplay(args: {
   requestStartedAt: number;
   backend: PlayWaitUxStage | null;
   prev: WaitUxDisplayState;
+  signals?: WaitUxClientSignals;
 }): WaitUxDisplayState {
   const elapsed = Math.max(0, args.now - args.requestStartedAt);
-  const target = mergeWaitUxTarget(elapsed, args.backend);
+  const target = deriveWaitUxTargetV2({ elapsedMs: elapsed, backend: args.backend, signals: args.signals });
   const prevRank = rankWaitUxStage(args.prev.stage);
   const targetRank = rankWaitUxStage(target);
 

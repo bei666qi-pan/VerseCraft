@@ -198,11 +198,17 @@ export async function executePlayerChatStream(params: {
   const taskBinding = getTaskBinding("PLAYER_CHAT");
   const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
   const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
-  const maxRetries = env.playerChatMaxRetries;
+  const tags = (params.ctx.tags ?? {}) as Record<string, unknown>;
+  const riskLane = typeof tags.riskLane === "string" ? tags.riskLane : (typeof tags.riskLane === "number" ? String(tags.riskLane) : "");
+  // Phase-3: fast lane prefers quicker failover to avoid long stalls.
+  const isFastLane = riskLane === "fast";
+  const maxRetriesBase = env.playerChatMaxRetries;
   const skip = new Set(params.skipRoles ?? []);
   const fullChain = resolveOrderedRoleChain("PLAYER_CHAT", env, mode);
   const intendedLogicalRole = fullChain[0] ?? ("main" as AiLogicalRole);
   const attempts: AiRoutingAttempt[] = [];
+  const failureCounts = new Map<string, number>();
+  const incFailure = (kind: string) => failureCounts.set(kind, (failureCounts.get(kind) ?? 0) + 1);
 
   if (policy.chain.length === 0) {
     // #region agent log
@@ -238,6 +244,11 @@ export async function executePlayerChatStream(params: {
 
   let lastHttpStatus: number | undefined;
   const { url, key } = gatewayEndpoint(env);
+
+  // Phase-3: avoid repeating provider-wide failures in the same turn.
+  // - rate limit: switching models won't help; fail fast
+  // - auth: switching models won't help; fail fast
+  let sawRateLimit = false;
 
   for (const role of policy.chain) {
     if (skip.has(role)) continue;
@@ -333,6 +344,17 @@ export async function executePlayerChatStream(params: {
         };
       }
 
+      // Phase-3: per-role retry budget. First role gets at most 1 retry (unless env already lower).
+      // Fallback roles get 0 retries to avoid long chain stalls.
+      const isFirstRole = attempts.length === 0;
+      const maxRetries = env.playerChatAggressiveFailover
+        ? (isFastLane && env.playerChatFastLaneZeroRetry)
+          ? 0
+          : isFirstRole
+            ? Math.min(1, maxRetriesBase)
+            : 0
+        : maxRetriesBase;
+
       const res = await resilientFetch(url, init, {
         timeoutMs,
         maxRetries,
@@ -383,6 +405,8 @@ export async function executePlayerChatStream(params: {
 
       const { kind, severity } = classifyHttpStatus(res.status);
       const errText = await res.text().catch(() => "");
+      incFailure(kind);
+      if (kind === "RATE_LIMIT") sawRateLimit = true;
       attempts.push({
         logicalRole: role,
         providerId: PROVIDER_ID,
@@ -416,8 +440,35 @@ export async function executePlayerChatStream(params: {
         failureScope: "online",
         userId: params.ctx.userId,
       });
+
+      // Phase-3: fail fast for auth errors; cycling models won't help.
+      if (kind === "HTTP_4XX_AUTH" && env.playerChatFailFastOnAuth) {
+        return {
+          ok: false,
+          code: "NO_CREDENTIALS",
+          message: "上游鉴权失败（401/403）。请检查 AI 网关密钥或上游权限配置。",
+          lastHttpStatus: res.status,
+          intendedLogicalRole,
+          operationMode: mode,
+          httpAttempts: attempts,
+        };
+      }
+
+      // Phase-3: provider-wide rate limit — stop early to avoid long chain stalls.
+      if (kind === "RATE_LIMIT" && env.playerChatFailFastOnRateLimit) {
+        return {
+          ok: false,
+          code: "CHAIN_EXHAUSTED",
+          message: "上游限流（429）。已停止继续切换模型，避免长时间等待，请稍后重试。",
+          lastHttpStatus: res.status,
+          intendedLogicalRole,
+          operationMode: mode,
+          httpAttempts: attempts,
+        };
+      }
     } catch (e) {
       const { kind, severity } = classifyFetchThrowable(e);
+      incFailure(kind);
       attempts.push({
         logicalRole: role,
         providerId: PROVIDER_ID,
@@ -459,6 +510,19 @@ export async function executePlayerChatStream(params: {
         failureScope: "online",
         userId: params.ctx.userId,
       });
+
+      // Phase-3: if we already saw rate limit earlier, don't keep cycling on subsequent errors.
+      if (sawRateLimit && env.playerChatFailFastOnRateLimit) {
+        return {
+          ok: false,
+          code: "CHAIN_EXHAUSTED",
+          message: "上游限流后出现连续失败，已停止继续切换模型以避免长等待。",
+          lastHttpStatus,
+          intendedLogicalRole,
+          operationMode: mode,
+          httpAttempts: attempts,
+        };
+      }
     }
   }
 
@@ -529,7 +593,16 @@ export async function executeChatCompletion(params: {
       baseBinding.timeoutMs,
   };
   const timeoutMs = binding.timeoutMs;
-  const maxRetries = ONLINE_SHORT_JSON_TASKS.has(params.task) ? env.onlineShortJsonMaxRetries : env.maxRetries;
+  /**
+   * Phase-2：在线短 JSON 任务（控制面类）优先“更快失败 + 更快 fallback”，避免把补救链拖成长尾等待。
+   * - 降低单 provider 的重试次数，让 role chain 更快推进
+   * - 不影响主 PLAYER_CHAT（仍使用 executePlayerChatStream 的 playerChatMaxRetries）
+   */
+  const maxRetries = ONLINE_SHORT_JSON_TASKS.has(params.task) && env.onlineShortJsonRetryHardCap1
+    ? Math.min(1, env.onlineShortJsonMaxRetries)
+    : ONLINE_SHORT_JSON_TASKS.has(params.task)
+      ? env.onlineShortJsonMaxRetries
+      : env.maxRetries;
   const expectJsonObject = binding.responseFormatJsonObject;
   const failureScope = isOfflineTask(params.task) ? "offline" : "online";
   const fullChain = resolveOrderedRoleChain(params.task, env, mode);

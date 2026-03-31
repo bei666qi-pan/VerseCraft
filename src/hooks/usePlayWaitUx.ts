@@ -9,8 +9,9 @@ import {
   initialWaitUxDisplay,
   type WaitUxDisplayState,
 } from "@/features/play/waitUx/waitUxTimeline";
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
-const TICK_MS = 160;
+const TICK_MS = VC_WAITING.playWaitUxTickMs;
 
 function isPlayWaitUxEnabled(): boolean {
   return process.env.NEXT_PUBLIC_CHAT_WAITING_UX !== "0";
@@ -24,6 +25,16 @@ export function usePlayWaitUx(args: {
   /** 由 SSE 控制帧更新的最新后端阶段 */
   backendStageRef: MutableRefObject<PlayWaitUxStage | null>;
   semanticKind: PlaySemanticWaitingKind | null;
+  /**
+   * 前端信号（不改变后端契约）：
+   * - 后端有 stage 时优先相信后端
+   * - 后端沉默时用这些信号让等待推进更可信且不闪烁
+   */
+  signals?: {
+    hasResponseHeaders?: boolean;
+    hasAnySseData?: boolean;
+    hasVisibleText?: boolean;
+  };
 }): { primaryLine: string; secondaryLine: string | null; displayStage: PlayWaitUxStage } {
   const [display, setDisplay] = useState<WaitUxDisplayState>(() => ({
     stage: "request_sent",
@@ -51,6 +62,7 @@ export function usePlayWaitUx(args: {
         requestStartedAt: args.requestStartedAt!,
         backend: args.backendStageRef.current,
         prev: displayRef.current,
+        signals: args.signals,
       });
       if (next.stage !== displayRef.current.stage || next.lastStageChangeAt !== displayRef.current.lastStageChangeAt) {
         displayRef.current = next;
@@ -68,7 +80,7 @@ export function usePlayWaitUx(args: {
   const primaryLine = primaryLineForWaitStage(display.stage);
   const elapsed = performance.now() - args.requestStartedAt;
   const showSub =
-    elapsed >= 2200 &&
+    elapsed >= VC_WAITING.playWaitUxSemanticSublineAfterMs &&
     (display.stage === "context_building" ||
       display.stage === "generating" ||
       display.stage === "streaming");
