@@ -44,6 +44,14 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableUiDebugDiagnostics: boolean;
   /** 隐藏战力系统 V1（纯计算/叙事结算锚点；默认关闭，灰度用） */
   enableHiddenCombatV1: boolean;
+  /** 隐藏战力裁决层 V1（NPC/玩家/场景/结果分级；默认关闭，灰度用） */
+  enableHiddenCombatAdjudicationV1: boolean;
+  /** NPC 战斗风格注册表 V1（结构化风格约束块；默认关闭，灰度用） */
+  enableNpcCombatStyleRegistryV1: boolean;
+  /** 战斗裁决 prompt block V1（冲突回合增强叙事约束；默认关闭，灰度用） */
+  enableCombatPromptBlockV1: boolean;
+  /** 可选 combat_summary 回写（解析端先兼容“读到就收”；默认关闭，灰度用） */
+  enableCombatSummaryV1: boolean;
 
   // -------- Phase6: long narrative + decision envelope + reality + anti-cheat --------
   /** 允许主笔产出/使用 turn_mode=narrative_only 的长叙事回合（禁回退为每回合四选一） */
@@ -65,6 +73,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableProfessionIdentityLoop: boolean;
   /** 阶段7：职业试炼叙事授予 */
   enableProfessionTrialNarrativeGrant: boolean;
+  /** 职业 prompt 降噪 V1：减少常驻“收益/命中率/进度表”以避免抢戏 */
+  enableProfessionPromptDietV1: boolean;
   /** 阶段7：武器生命周期（污染/维护/再锻） */
   enableWeaponLifecycleV1: boolean;
   /** 阶段7：武器化预览（不再依赖复制指令） */
@@ -130,6 +140,10 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableFinalFrameFirstCommit: readFlag("VERSECRAFT_ENABLE_FINAL_FRAME_FIRST_COMMIT", true),
     enableUiDebugDiagnostics: readFlag("VERSECRAFT_ENABLE_UI_DEBUG_DIAGNOSTICS", false),
     enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false),
+    enableHiddenCombatAdjudicationV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_ADJUDICATION_V1", false),
+    enableNpcCombatStyleRegistryV1: readFlag("VERSECRAFT_ENABLE_NPC_COMBAT_STYLE_REGISTRY_V1", false),
+    enableCombatPromptBlockV1: readFlag("VERSECRAFT_ENABLE_COMBAT_PROMPT_BLOCK_V1", false),
+    enableCombatSummaryV1: readFlag("VERSECRAFT_ENABLE_COMBAT_SUMMARY_V1", false),
 
     enableLongNarrativeMode: readFlag("VERSECRAFT_ENABLE_LONG_NARRATIVE_MODE", true),
     enableDecisionTurnMode: readFlag("VERSECRAFT_ENABLE_DECISION_TURN_MODE", true),
@@ -141,6 +155,7 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
 
     enableProfessionIdentityLoop: readFlag("VERSECRAFT_ENABLE_PROFESSION_IDENTITY_LOOP", true),
     enableProfessionTrialNarrativeGrant: readFlag("VERSECRAFT_ENABLE_PROFESSION_TRIAL_NARRATIVE_GRANT", true),
+    enableProfessionPromptDietV1: readFlag("VERSECRAFT_ENABLE_PROFESSION_PROMPT_DIET_V1", true),
     enableWeaponLifecycleV1: readFlag("VERSECRAFT_ENABLE_WEAPON_LIFECYCLE_V1", true),
     enableWeaponizationPreview: readFlag("VERSECRAFT_ENABLE_WEAPONIZATION_PREVIEW", true),
     enablePlayabilityCoreLoopsV1: readFlag("VERSECRAFT_ENABLE_PLAYABILITY_CORE_LOOPS_V1", true),

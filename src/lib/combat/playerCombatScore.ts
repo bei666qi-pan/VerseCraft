@@ -45,6 +45,12 @@ export function computePlayerCombatScore(args: {
   threatPhase: MainThreatPhase;
   /** 位置/退路是否清晰（由 scene context 给出，先留轻量输入） */
   footingQuality?: "good" | "ok" | "bad";
+  /** 是否掌握对方弱点（结构化信号，不是“必胜”开关） */
+  knowsWeakness?: boolean;
+  /** 人数优势：同伴数量（0..3）；不做无限堆叠 */
+  allyCount?: number;
+  /** 是否先手（例如伏击/提前卡位） */
+  initiative?: "none" | "soft" | "hard";
 }): CombatActorScore {
   const sanity = statVal(args.stats, "sanity");
   const agility = statVal(args.stats, "agility");
@@ -61,15 +67,21 @@ export function computePlayerCombatScore(args: {
 
   const { equipment, notes: eqNotes } = weaponEquipmentScore(args.equippedWeapon);
 
+  const knowsWeaknessBonus = args.knowsWeakness ? 0.8 : 0;
+  const ally = Math.max(0, Math.min(3, Math.trunc(args.allyCount ?? 0)));
+  // 人数优势：递减收益，且不把战斗变成“堆队友就赢”
+  const allyBonus = ally === 0 ? 0 : ally === 1 ? 0.7 : ally === 2 ? 1.0 : 1.2;
+  const initBonus = args.initiative === "hard" ? 1.0 : args.initiative === "soft" ? 0.45 : 0;
+
   const footing =
     args.footingQuality === "good" ? 0.8 : args.footingQuality === "bad" ? -0.9 : 0;
 
   const scene = threatPhasePressure(args.threatPhase) + footing;
 
-  const total = clamp(base + psyche + equipment + scene, 0, 60);
+  const total = clamp(base + psyche + equipment + scene + knowsWeaknessBonus + allyBonus + initBonus, 0, 60);
   const breakdown: CombatScoreBreakdown = {
     base,
-    scene,
+    scene: scene + knowsWeaknessBonus + allyBonus + initBonus,
     equipment,
     psyche,
     style: 0,
@@ -77,6 +89,9 @@ export function computePlayerCombatScore(args: {
     notes: [
       ...eqNotes,
       ...(args.footingQuality === "bad" ? ["退路不清：更容易被逼到墙角。"] : []),
+      ...(args.knowsWeakness ? ["掌握对方弱点：动作更敢收束到有效窗口。"] : []),
+      ...(ally > 0 ? [`有人在侧：人数优势（${ally}）更容易逼出退路窗口。`] : []),
+      ...(args.initiative && args.initiative !== "none" ? ["先手在握：更容易把冲突压成短促有效的一步。"] : []),
       ...(args.threatPhase === "active" || args.threatPhase === "breached" ? ["威胁相位升高：容错更低。"] : []),
     ],
   };

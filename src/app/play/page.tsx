@@ -89,6 +89,8 @@ import {
   getClientOptionsOnlyRegenPathV2Enabled,
   getClientContinueButtonEnabled,
   getClientHiddenCombatV1Enabled,
+  getClientProfessionChoiceInterruptV1Enabled,
+  getClientCombatSummaryV1Enabled,
 } from "@/lib/rollout/versecraftClientRollout";
 import { getHiddenNpcCombatProfile } from "@/lib/combat/npcCombatProfiles";
 import {
@@ -1812,6 +1814,46 @@ function PlayContent() {
     });
     committedNarrativeForRescue = narrativeToPush;
 
+    // ---- 可选 combat_summary（读到就收；默认忽略；不影响主链路）----
+    try {
+      if (getClientCombatSummaryV1Enabled() && parsed && typeof parsed === "object") {
+        const raw = (parsed as any).combat_summary;
+        let text = "";
+        let kind: string | undefined;
+        let outcomeTier: string | undefined;
+        let npcIds: string[] = [];
+        if (typeof raw === "string") {
+          text = raw;
+        } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          const o = raw as any;
+          text = typeof o.text === "string" ? o.text : String(o.text ?? "");
+          kind = typeof o.kind === "string" ? o.kind : undefined;
+          outcomeTier = typeof o.outcomeTier === "string" ? o.outcomeTier : (typeof o.outcome === "string" ? o.outcome : undefined);
+          npcIds = Array.isArray(o.npcIds) ? o.npcIds.filter((x: any) => typeof x === "string") : [];
+        }
+        const safe = String(text ?? "").trim();
+        if (safe) {
+          const nowHour = (useGameStore.getState().time?.day ?? 0) * 24 + (useGameStore.getState().time?.hour ?? 0);
+          const atTurn = useGameStore.getState().dialogueCount ?? 0;
+          const locationId =
+            typeof (parsed as any).player_location === "string" && String((parsed as any).player_location).trim()
+              ? String((parsed as any).player_location).trim()
+              : (useGameStore.getState().playerLocation ?? "unknown");
+          useGameStore.getState().pushCombatSummaryV1({
+            atTurn,
+            atHour: nowHour,
+            locationId,
+            npcIds,
+            kind,
+            outcomeTier,
+            text: safe,
+          });
+        }
+      }
+    } catch {
+      // ignore: optional field must never break turn commit
+    }
+
     setLiveNarrative("");
 
     // Phase-1 UI hints（轻量）：仅在“回合 commit 成功后”触发。这里先读取，后面按顺序执行。
@@ -2424,11 +2466,18 @@ function PlayContent() {
           };
           const opts = eligible.map((id) => optionTextById[id]);
           const mapping = Object.fromEntries(eligible.map((id) => [optionTextById[id], id])) as Record<string, ProfessionId>;
-          setPendingProfessionChoice({ enabled: true, options: opts.slice(0, 5), mapping });
-          // 强制下一次以 options 形式推进
-          if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
-          setCurrentOptions([...opts.slice(0, 4)]);
-          setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
+          // 默认不打断主叙事 options：只提示并高亮设置入口，让玩家自行决定是否在“设置→职业”里完成认证。
+          // 若灰度开启“打断式认证”，才覆盖 options（旧行为）。
+          if (getClientProfessionChoiceInterruptV1Enabled()) {
+            setPendingProfessionChoice({ enabled: true, options: opts.slice(0, 5), mapping });
+            if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
+            setCurrentOptions([...opts.slice(0, 4)]);
+            setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
+          } else {
+            setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
+            setHighlightSettingsBtn(true);
+            setFirstTimeHint("你已满足职业认证条件：可在【设置→职业】中完成认证（不必打断本回合推进）。");
+          }
         }
       }
     }

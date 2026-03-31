@@ -27,13 +27,16 @@ function outcomeFromDelta(delta: number, kind: CombatConflictKind, scene: SceneC
     // 安全区“脱离”窗口更大：同等优势更容易成功抽身
     const threshold = 2.4 - safeBias * 0.8;
     if (d >= threshold) return "withdraw";
-    if (d <= -4.0) return "collapse";
+    if (d <= -4.0) return "forced_retreat";
     return "pressured";
   }
 
   if (kind === "intimidate") {
+    if (d >= 7.2) return "crush";
     if (d >= 4.5) return "overwhelm";
-    if (d >= 2.2) return "advantage";
+    if (d >= 2.7) return "advantage";
+    if (d >= 1.4) return "edge";
+    if (d <= -5.6) return "collapse";
     if (d <= -3.8) return "pressured";
     return "stalemate";
   }
@@ -42,20 +45,25 @@ function outcomeFromDelta(delta: number, kind: CombatConflictKind, scene: SceneC
   const mutualHarmBias = (kind === "weapon_clash" ? 0.8 : 0) + (scene.threatPhase === "breached" ? 0.6 : 0);
   if (Math.abs(d) <= 1.1 && mutualHarmBias >= 1.0) return "mutual_harm";
 
+  if (d >= 8.0) return "crush";
   if (d >= 6.0) return "overwhelm";
-  if (d >= 2.2) return "advantage";
+  if (d >= 2.5) return "advantage";
+  if (d >= 1.2) return "edge";
   if (d <= -6.0) return "collapse";
-  if (d <= -2.2) return "pressured";
+  if (d <= -2.5) return "pressured";
   return "stalemate";
 }
 
 function likelyCostFromOutcome(outcome: CombatOutcomeTier, scene: SceneCombatContext): CombatResolution["explain"]["likelyCost"] {
   if (scene.isSafeZone && outcome === "withdraw") return "none";
+  if (outcome === "crush") return "light";
   if (outcome === "overwhelm") return "light";
   if (outcome === "advantage") return "light";
+  if (outcome === "edge") return "moderate";
   if (outcome === "stalemate") return "moderate";
   if (outcome === "pressured") return "moderate";
-  if (outcome === "mutual_harm") return "heavy";
+  if (outcome === "forced_retreat") return "heavy";
+  if (outcome === "mutual_harm" || outcome === "mutual_damage") return "heavy";
   return "heavy";
 }
 
@@ -82,8 +90,8 @@ export function resolveCombat(args: {
   const outcome = outcomeFromDelta(delta, args.kind, args.scene);
 
   const winner: CombatResolution["winner"] =
-    outcome === "overwhelm" || outcome === "advantage" ? "attacker" :
-    outcome === "collapse" || outcome === "pressured" ? "defender" :
+    outcome === "crush" || outcome === "overwhelm" || outcome === "advantage" || outcome === "edge" ? "attacker" :
+    outcome === "collapse" || outcome === "pressured" || outcome === "forced_retreat" ? "defender" :
     outcome === "withdraw" ? "attacker" :
     "none";
 
@@ -92,7 +100,9 @@ export function resolveCombat(args: {
   if (args.scene.threatPhase === "active" || args.scene.threatPhase === "breached") why.push("威胁相位升高，动作容错更低。");
   if (band === "huge") why.push("双方差距过大，几乎不需要长时间纠缠。");
   if (band === "thin") why.push("差距很细，胜负取决于一步退路或一次失误。");
-  if (outcome === "mutual_harm") why.push("对抗在狭窄窗口里互相擦伤，谁都没真正占到便宜。");
+  if (outcome === "edge") why.push("优势很薄：更像踩在一个窗口上赢来的。");
+  if (outcome === "mutual_harm" || outcome === "mutual_damage") why.push("对抗在狭窄窗口里互相擦伤，谁都没真正占到便宜。");
+  if (outcome === "forced_retreat") why.push("你没抓住脱离窗口，被对方逼着退走。");
 
   // 风格解释（避免裸数）
   const aStyle = attacker.styleTags.slice(0, 2).join("、");

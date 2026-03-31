@@ -11,7 +11,7 @@ test("resolveCombat: 明显优势 -> overwhelm/advantage", () => {
     scene,
     kind: "subdue",
   });
-  assert.ok(res.outcome === "overwhelm" || res.outcome === "advantage");
+  assert.ok(res.outcome === "crush" || res.outcome === "overwhelm" || res.outcome === "advantage");
   assert.ok(res.explain.why.length >= 1);
 });
 
@@ -24,5 +24,16 @@ test("resolveCombat: 安全区 escape 更倾向 withdraw", () => {
     kind: "escape",
   });
   assert.equal(res.outcome, "withdraw");
+});
+
+test("resolveCombat: 细小优势 -> edge", () => {
+  const scene = buildSceneCombatContext({ locationId: "2F_Corridor", threatPhase: "active", time: { day: 1, hour: 22 } as any });
+  const res = resolveCombat({
+    attacker: { kind: "player", actorId: "player", score: 6.2, breakdown: { base: 0, scene: 0, equipment: 0, psyche: 0, style: 0, total: 6.2, notes: [] }, styleTags: ["close_quarters"] },
+    defender: { kind: "npc", actorId: "N-xxx", score: 5.1, breakdown: { base: 0, scene: 0, equipment: 0, psyche: 0, style: 0, total: 5.1, notes: [] }, styleTags: ["unknown"] },
+    scene,
+    kind: "subdue",
+  });
+  assert.ok(res.outcome === "edge" || res.outcome === "stalemate");
 });
 

@@ -48,6 +48,8 @@ import { selectPromotionFactTexts } from "@/lib/memorySpine/promote";
 import { buildTaskDramaPacket } from "@/lib/tasks/drama";
 import { buildNpcHeartPromptBlock } from "@/lib/npcHeart/prompt";
 import { buildNpcHeartRuntimeView, selectRelevantNpcHearts } from "@/lib/npcHeart/selectors";
+import { buildCombatNarrativeStyleBlock } from "@/lib/combat/combatNarrativeStyleBlock";
+import { buildCombatPromptBlockV1 } from "@/lib/combat/combatPromptBlock";
 import type { IncidentQueueState, StoryDirectorState } from "@/lib/storyDirector/types";
 import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
 import { postTurnStoryDirectorUpdate } from "@/lib/storyDirector/postTurn";
@@ -93,6 +95,7 @@ import {
   getProfessionActiveCooldownHours,
   getProfessionActiveCooldownKey,
   getProfessionActiveFlagKey,
+  getProfessionActiveSkillName,
   getProfessionActiveSummary,
   getProfessionPassiveSummary,
 } from "@/lib/profession/benefits";
@@ -473,6 +476,17 @@ interface GameState extends IntegrityMetaState {
   professionState: ProfessionStateV1;
   /** Phase-2：职业叙事提示（仅运行时消费；不入存档）。 */
   professionNarrativeCues?: Array<{ code: string; title: string; line: string; profession: ProfessionId; npcId: string }>;
+  /** Phase-3.5：可选 combat_summary 回写（仅用于验证“冲突后局势怎么变”；不改变既有主链路结算）。 */
+  combatSummariesV1?: Array<{
+    v: 1;
+    atTurn: number;
+    atHour: number;
+    locationId: string;
+    npcIds: string[];
+    kind?: string;
+    outcomeTier?: string;
+    text: string;
+  }>;
   /** Phase-3：前台快捷行动（仅 UI 辅助；不入存档）。 */
   pendingClientAction?: { text: string; autoSend: boolean; source: "weapon" | "system" };
   /** 是否已在叙事中遇到 1F 认证 NPC（路线引导大姐姐 N-010） */
@@ -480,6 +494,15 @@ interface GameState extends IntegrityMetaState {
   _integrity_dirty: boolean;
   verifyStateIntegrity: () => Promise<boolean>;
   markMetProfessionCertifier: () => void;
+  pushCombatSummaryV1: (x: {
+    atTurn: number;
+    atHour: number;
+    locationId: string;
+    npcIds?: string[];
+    kind?: string;
+    outcomeTier?: string;
+    text: string;
+  }) => void;
   queueClientAction: (text: string, autoSend?: boolean, source?: "weapon" | "system") => void;
   consumeClientAction: () => { text: string; autoSend: boolean; source: "weapon" | "system" } | null;
   triggerSecurityFallback: (reason?: string) => void;
@@ -918,6 +941,7 @@ export const useGameStore = create<GameState>()(
       professionState: createDefaultProfessionState(),
       hasMetProfessionCertifier: false,
       professionNarrativeCues: [],
+      combatSummariesV1: [],
       pendingClientAction: null,
       _checksum_fingerprint: "",
       _integrity_dirty: false,
@@ -1985,6 +2009,7 @@ export const useGameStore = create<GameState>()(
           }
         })();
 
+        let npcHeartViewsCache: Array<ReturnType<typeof buildNpcHeartRuntimeView>> = [];
         const npcHeartBlock = (() => {
           try {
             const location = s.playerLocation ?? "B1_SafeZone";
@@ -2049,7 +2074,57 @@ export const useGameStore = create<GameState>()(
                 })
               )
               .filter((x): x is NonNullable<typeof x> => !!x);
+            npcHeartViewsCache = views;
             return buildNpcHeartPromptBlock({ views, maxChars: 460 });
+          } catch {
+            npcHeartViewsCache = [];
+            return "";
+          }
+        })();
+
+        const combatPromptBlock = (() => {
+          try {
+            const rollout = getVerseCraftRolloutFlags();
+            if (!rollout.enableCombatPromptBlockV1) return "";
+            if (!rollout.enableHiddenCombatAdjudicationV1) return "";
+            const lastUser =
+              (s.logs ?? [])
+                .slice()
+                .reverse()
+                .find((l) => l && l.role === "user")?.content ?? "";
+            return buildCombatPromptBlockV1({
+              lastUserInput: String(lastUser ?? ""),
+              locationId: s.playerLocation ?? "B1_SafeZone",
+              time: s.time ?? { day: 0, hour: 0 },
+              mainThreatByFloor: s.mainThreatByFloor ?? {},
+              tasks: s.tasks ?? [],
+              stats: s.stats ?? DEFAULT_STATS,
+              equippedWeapon: s.equippedWeapon ?? null,
+              codex: s.codex ?? {},
+              npcHeartViews: (npcHeartViewsCache as any) ?? [],
+              maxChars: 420,
+            });
+          } catch {
+            return "";
+          }
+        })();
+
+        const combatStyleBlock = (() => {
+          try {
+            const rollout = getVerseCraftRolloutFlags();
+            if (!rollout.enableNpcCombatStyleRegistryV1) return "";
+            // 只在“像冲突回合”的情况下附加风格块，避免每回合 prompt 膨胀。
+            if (!combatPromptBlock) return "";
+            const location = s.playerLocation ?? "B1_SafeZone";
+            return buildCombatNarrativeStyleBlock({
+              locationId: location,
+              time: s.time ?? { day: 0, hour: 0 },
+              mainThreatByFloor: s.mainThreatByFloor ?? {},
+              codex: s.codex ?? {},
+              equippedWeapon: s.equippedWeapon ?? null,
+              npcHeartViews: (npcHeartViewsCache as any) ?? [],
+              maxChars: 520,
+            });
           } catch {
             return "";
           }
@@ -2088,48 +2163,65 @@ export const useGameStore = create<GameState>()(
               : "";
             const eligible = PROFESSION_IDS.filter((id) => prof.eligibilityByProfession[id]).join("/") || "无";
             return `${digest}。${approachLine}` +
-              `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]，可认证[${eligible}]，被动[${prof.activePerks.join("/") || "无"}]。`;
+              `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]，可认证[${eligible}]。`;
           })() +
-          `职业收益：当前[${prof.currentProfession ?? "无"}]，被动摘要[${getProfessionPassiveSummary(prof.currentProfession)}]，主动摘要[${getProfessionActiveSummary(
-            prof.currentProfession
-          )}]，主动可用[${
-            (() => {
-              if (!prof.currentProfession) return "0";
+          (() => {
+            const rollout = getVerseCraftRolloutFlags();
+            if (!rollout.enableProfessionPromptDietV1) {
+              return (
+                `职业收益：当前[${prof.currentProfession ?? "无"}]，被动摘要[${getProfessionPassiveSummary(prof.currentProfession)}]，主动摘要[${getProfessionActiveSummary(
+                  prof.currentProfession
+                )}]，主动可用[${
+                  (() => {
+                    if (!prof.currentProfession) return "0";
+                    const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
+                    const cdKey = getProfessionActiveCooldownKey(prof.currentProfession);
+                    const cd = Number(prof.professionCooldowns?.[cdKey] ?? 0);
+                    return cd <= nowHour ? "1" : "0";
+                  })()
+                }]，命中率[${readiness.hitRate}]，提示[${readiness.hint}]。` +
+                `职业进度：${PROFESSION_IDS.map((id) => {
+                  const p = prof.progressByProfession[id] ?? {
+                    statQualified: false,
+                    behaviorEvidenceCount: 0,
+                    behaviorEvidenceTarget: 2,
+                    trialTaskCompleted: false,
+                    certified: false,
+                  };
+                  const stage = p.certified
+                    ? "认证"
+                    : p.trialTaskCompleted
+                      ? "可认证"
+                      : p.trialAccepted
+                        ? "证明中"
+                        : p.trialOffered
+                          ? "已授予"
+                          : p.observedByCertifier
+                            ? "被看见"
+                            : p.inclinationVisible
+                              ? "倾向"
+                              : "无";
+                  return `${id}[${stage}|属性${p.statQualified ? "1" : "0"}|行为${p.behaviorEvidenceCount}/${p.behaviorEvidenceTarget}|试炼${p.trialTaskCompleted ? "1" : "0"}]`;
+                }).join("，")}。`
+              );
+            }
+            // 降噪：不常驻“命中率/收益长摘要/逐职业进度表”，避免模型把职业当第二主线
+            if (!prof.currentProfession) return "";
+            return `职业主动：${getProfessionActiveSkillName(prof.currentProfession)}（可用=${(() => {
               const nowHour = (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0);
               const cdKey = getProfessionActiveCooldownKey(prof.currentProfession);
               const cd = Number(prof.professionCooldowns?.[cdKey] ?? 0);
               return cd <= nowHour ? "1" : "0";
-            })()
-          }]，命中率[${readiness.hitRate}]，提示[${readiness.hint}]。` +
-          `职业进度：${PROFESSION_IDS.map((id) => {
-            const p = prof.progressByProfession[id] ?? {
-              statQualified: false,
-              behaviorEvidenceCount: 0,
-              behaviorEvidenceTarget: 2,
-              trialTaskCompleted: false,
-              certified: false,
-            };
-            const stage = p.certified
-              ? "认证"
-              : p.trialTaskCompleted
-                ? "可认证"
-                : p.trialAccepted
-                  ? "证明中"
-                  : p.trialOffered
-                    ? "已授予"
-                    : p.observedByCertifier
-                      ? "被看见"
-                      : p.inclinationVisible
-                        ? "倾向"
-                        : "无";
-            return `${id}[${stage}|属性${p.statQualified ? "1" : "0"}|行为${p.behaviorEvidenceCount}/${p.behaviorEvidenceTarget}|试炼${p.trialTaskCompleted ? "1" : "0"}]`;
-          }).join("，")}。` +
+            })()}）`;
+          })() +
           `行囊道具：${inv || "空"}。` +
           (() => {
             const wh = s.warehouse ?? [];
             if (wh.length === 0) return "";
             return ` 仓库物品：${wh.map((w) => `${w.name}[${w.id}]`).join("，")}。`;
           })() +
+          (combatStyleBlock ? `\n${combatStyleBlock}\n` : "") +
+          (combatPromptBlock ? `\n${combatPromptBlock}\n` : "") +
           (() => {
             try {
               const threatMap = s.mainThreatByFloor ?? {};
@@ -2712,6 +2804,24 @@ export const useGameStore = create<GameState>()(
         return current;
       },
       markMetProfessionCertifier: () => set({ hasMetProfessionCertifier: true }),
+      pushCombatSummaryV1: (x) =>
+        set((s) => {
+          const cap = 12;
+          const prev = Array.isArray(s.combatSummariesV1) ? s.combatSummariesV1 : [];
+          const safeText = String(x?.text ?? "").trim().slice(0, 900);
+          if (!safeText) return {};
+          const row = {
+            v: 1 as const,
+            atTurn: Math.max(0, Math.trunc(x.atTurn ?? 0)),
+            atHour: Math.max(0, Math.trunc(x.atHour ?? 0)),
+            locationId: String(x.locationId ?? "").trim() || (s.playerLocation ?? "unknown"),
+            npcIds: (x.npcIds ?? []).map((id) => String(id ?? "").trim()).filter(Boolean).slice(0, 6),
+            kind: x.kind ? String(x.kind).slice(0, 32) : undefined,
+            outcomeTier: x.outcomeTier ? String(x.outcomeTier).slice(0, 32) : undefined,
+            text: safeText,
+          };
+          return { combatSummariesV1: [...prev, row].slice(-cap) };
+        }),
 
       setCurrentSaveSlot: (slotId) =>
         set((s) => {

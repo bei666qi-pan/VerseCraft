@@ -19,7 +19,9 @@ test("getVerseCraftRolloutFlags 默认全开（可逐项 env 关闭）", () => {
   assert.equal(f.enableUiDebugDiagnostics, false);
   assert.equal(f.enableProfessionIdentityLoop, true);
   assert.equal(f.enableProfessionTrialNarrativeGrant, true);
+  assert.equal(f.enableProfessionPromptDietV1, true);
   assert.equal(f.enableWeaponLifecycleV1, true);
+  assert.equal(f.enableCombatSummaryV1, false);
   assert.equal(f.enableWeaponizationPreview, true);
   assert.equal(f.enablePlayabilityCoreLoopsV1, true);
   assert.equal(f.enableWorldFeelLoopPackets, true);

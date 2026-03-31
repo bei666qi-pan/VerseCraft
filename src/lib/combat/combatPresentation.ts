@@ -19,10 +19,14 @@ export function dangerTierToPlayerText(tier: CombatDangerTierForPlayer): string 
 
 export function outcomeTierToConflictText(outcome: CombatOutcomeTier): string {
   switch (outcome) {
+    case "crush":
+      return "完全被压住，几乎没有回合";
     case "overwhelm":
       return "几乎瞬间分出高下";
     case "advantage":
       return "你能占到上风";
+    case "edge":
+      return "踩着窗口勉强压过";
     case "stalemate":
       return "短暂僵持";
     case "pressured":
@@ -30,9 +34,12 @@ export function outcomeTierToConflictText(outcome: CombatOutcomeTier): string {
     case "collapse":
       return "局面迅速崩盘";
     case "mutual_harm":
+    case "mutual_damage":
       return "互相擦伤，谁也没赚到";
     case "withdraw":
       return "抓住窗口脱离";
+    case "forced_retreat":
+      return "被迫退走，丢了位置";
     default:
       return "冲突结果不明";
   }
