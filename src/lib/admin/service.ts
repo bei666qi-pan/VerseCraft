@@ -2,12 +2,25 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsEvents, feedbacks, surveyResponses, users } from "@/db/schema";
+import {
+  actorDailyActivity,
+  actorDailyTokens,
+  analyticsActors,
+  adminMetricsDaily,
+  analyticsEvents,
+  feedbacks,
+  guestAliases,
+  surveyResponses,
+  users,
+} from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
 import { computeFunnel, computeTokenStats } from "@/lib/admin/metricsUtils";
+import { getActorAdvancedMetrics } from "@/lib/admin/actorMetrics";
+import { getProfessionWeaponMetrics } from "@/lib/admin/professionWeaponMetrics";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import {
   PRODUCT_SURVEY_KEY_HOME,
   DISCOVERY_SOURCE_OPTIONS,
@@ -370,72 +383,50 @@ export async function getDashboardTableData() {
   });
 
   // ---- Guests (anonymous) ----
-  const guestAggRaw = await db
-    .execute(sql`
-      WITH guest_src AS (
-        SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-        UNION ALL
-        SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-        UNION ALL
-        SELECT session_id AS guest_id, event_time AS created_at
-        FROM analytics_events
-        WHERE user_id IS NULL
-          AND session_id IS NOT NULL
-          AND session_id <> ''
-          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
-        UNION ALL
-        SELECT session_id AS guest_id, last_seen_at AS created_at
-        FROM user_sessions
-        WHERE user_id IS NULL
-          AND session_id IS NOT NULL
-          AND session_id <> ''
-          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
-      ),
-      guest_ids AS (
-        SELECT guest_id, MAX(created_at) AS last_active
-        FROM guest_src
-        GROUP BY guest_id
-      )
-      INSERT INTO guest_aliases (guest_id)
-      SELECT guest_id FROM guest_ids
-      ON CONFLICT (guest_id) DO NOTHING
-      RETURNING guest_id
-    `)
-    .catch((error) => {
-      console.warn("[admin][getDashboardTableData] guest alias upsert failed, fallback empty", error);
-      return { rows: [] };
-    });
-  void guestAggRaw;
-
   const guestRowsRaw = await db
     .execute(sql`
-      WITH guest_src AS (
-        SELECT guest_id, created_at FROM feedbacks WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-        UNION ALL
-        SELECT guest_id, created_at FROM survey_responses WHERE guest_id IS NOT NULL AND guest_id <> '' AND user_id IS NULL
-        UNION ALL
-        SELECT session_id AS guest_id, event_time AS created_at
-        FROM analytics_events
-        WHERE user_id IS NULL
-          AND session_id IS NOT NULL
-          AND session_id <> ''
-          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
-        UNION ALL
-        SELECT session_id AS guest_id, last_seen_at AS created_at
-        FROM user_sessions
-        WHERE user_id IS NULL
-          AND session_id IS NOT NULL
-          AND session_id <> ''
-          AND session_id NOT IN ('unknown_session', 'anon_session', 'browser_session', 'system')
+      WITH guests AS (
+        SELECT actor_id AS actorId, guest_id AS guestId, last_seen_at AS lastActive
+        FROM analytics_actors
+        WHERE actor_type = 'guest'
+          AND guest_id IS NOT NULL
+          AND guest_id <> ''
       ),
-      guest_ids AS (
-        SELECT guest_id, MAX(created_at) AS last_active
-        FROM guest_src
-        GROUP BY guest_id
+      upsert_alias AS (
+        INSERT INTO guest_aliases (guest_id)
+        SELECT guestId FROM guests
+        ON CONFLICT (guest_id) DO NOTHING
+        RETURNING guest_id
+      ),
+      totals AS (
+        SELECT
+          actor_id AS actorId,
+          COALESCE(SUM(daily_token_cost), 0)::int AS tokensUsed,
+          COALESCE(SUM(active_play_sec), 0)::int AS playTime
+        FROM actor_daily_tokens
+        GROUP BY actor_id
+      ),
+      today AS (
+        SELECT
+          actor_id AS actorId,
+          COALESCE(SUM(daily_token_cost), 0)::int AS todayTokensUsed,
+          COALESCE(SUM(active_play_sec), 0)::int AS todayPlayTime
+        FROM actor_daily_tokens
+        WHERE date_key = CURRENT_DATE
+        GROUP BY actor_id
       )
-      SELECT g.guest_id AS "guestId", a.guest_no AS "guestNo", g.last_active AS "lastActive"
-      FROM guest_ids g
-      INNER JOIN guest_aliases a ON a.guest_id = g.guest_id
+      SELECT
+        g.guestId AS "guestId",
+        a.guest_no AS "guestNo",
+        g.lastActive AS "lastActive",
+        COALESCE(t.tokensUsed, 0) AS "tokensUsed",
+        COALESCE(td.todayTokensUsed, 0) AS "todayTokensUsed",
+        COALESCE(t.playTime, 0) AS "playTime",
+        COALESCE(td.todayPlayTime, 0) AS "todayPlayTime"
+      FROM guests g
+      INNER JOIN guest_aliases a ON a.guest_id = g.guestId
+      LEFT JOIN totals t ON t.actorId = g.actorId
+      LEFT JOIN today td ON td.actorId = g.actorId
       ORDER BY a.guest_no ASC
       LIMIT 2000
     `)
@@ -453,12 +444,12 @@ export async function getDashboardTableData() {
     return {
       id: `guest:${guestId}`,
       name: guestNo > 0 ? `游客${guestNo}` : "游客",
-      tokensUsed: 0,
-      todayTokensUsed: 0,
-      playTime: 0,
-      todayPlayTime: 0,
+      tokensUsed: Number(g.tokensUsed ?? 0),
+      todayTokensUsed: Number(g.todayTokensUsed ?? 0),
+      playTime: Number(g.playTime ?? 0),
+      todayPlayTime: Number(g.todayPlayTime ?? 0),
       lastActive,
-      isOnline: onlineSet.has(guestId) || onlineSet.has(`guest_${guestId}`) ? 1 : 0,
+      isOnline: onlineSet.has(`g:${guestId}`) ? 1 : 0,
       feedbackPreview: latest ? latest.content.slice(0, 6) : "",
       feedbackContent: latest?.content ?? "",
       feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
@@ -809,11 +800,14 @@ export async function getFeedbackInsights(range: AdminTimeRange) {
 }
 
 export async function getAiInsights(range: AdminTimeRange) {
-  const [overview, retention, funnel, feedback] = await Promise.all([
+  const flags = getVerseCraftRolloutFlags();
+  const [overview, retention, funnel, feedback, actorAdv, pw] = await Promise.all([
     getOverviewMetrics(range),
     getRetentionMetrics(range),
     getFunnelMetrics(range),
     getFeedbackInsights(range),
+    flags.enableAdminPlaystyleMetrics ? getActorAdvancedMetrics(range).catch(() => null) : Promise.resolve(null),
+    flags.enableAdminPlaystyleMetrics ? getProfessionWeaponMetrics(range).catch(() => null) : Promise.resolve(null),
   ]);
 
   const topDrop = (() => {
@@ -850,6 +844,8 @@ export async function getAiInsights(range: AdminTimeRange) {
     trace: {
       topDrop,
       topFeedbackTopic: feedback.topics[0] ?? null,
+      actorAdv,
+      professionWeapon: pw,
     },
   };
 }

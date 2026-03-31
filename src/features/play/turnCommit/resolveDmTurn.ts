@@ -10,6 +10,7 @@ import { normalizeActionTimeCostKind, type ActionTimeCostKind } from "@/lib/time
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import type { ClueEntry } from "@/lib/domain/narrativeDomain";
+import type { NarrativeDensity, TurnEnvelope, TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
 export type ResolvedTurnUiHints = {
   auto_open_panel?: "task" | null;
@@ -18,44 +19,7 @@ export type ResolvedTurnUiHints = {
   consistency_flags?: string[];
 };
 
-export type ResolvedDmTurn = {
-  // Required base keys (client contract)
-  is_action_legal: boolean;
-  sanity_damage: number;
-  narrative: string;
-  is_death: boolean;
-  consumes_time: boolean;
-  /** 可选：细粒度时间成本（与 consumes_time 组合见 timeBudget.resolveHourProgressDelta） */
-  time_cost?: ActionTimeCostKind;
-
-  // Standardized fields (always present, never undefined)
-  options: string[];
-  currency_change: number;
-  consumed_items: string[];
-  consumed_time?: never;
-  awarded_items: unknown[];
-  awarded_warehouse_items: unknown[];
-  codex_updates: unknown[];
-  relationship_updates: unknown[];
-  new_tasks: unknown[];
-  task_updates: unknown[];
-  /** 手记线索增量（阶段 2+）；旧前端可忽略 */
-  clue_updates: ClueEntry[];
-  player_location?: string;
-  npc_location_updates: unknown[];
-  main_threat_updates: unknown[];
-  weapon_updates: Array<Record<string, unknown>>;
-  weapon_bag_updates: Array<Record<string, unknown>>;
-
-  // Security / audit info (kept small)
-  security_meta?: Record<string, unknown>;
-
-  // Phase-1 light interaction hints (optional)
-  ui_hints?: ResolvedTurnUiHints;
-
-  // Keep legacy optional keys if present
-  bgm_track?: string;
-};
+export type ResolvedDmTurn = TurnEnvelope;
 
 type ResolveTurnConsistencyOptions = {
   maxNarrativeChars?: number;
@@ -95,6 +59,16 @@ function asUnknownArray(v: unknown): unknown[] {
 function asObjectArray(v: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x));
+}
+
+function asTurnMode(v: unknown): TurnMode | null {
+  if (v === "narrative_only" || v === "decision_required" || v === "system_transition") return v;
+  return null;
+}
+
+function asNarrativeDensity(v: unknown): NarrativeDensity | null {
+  if (v === "low" || v === "medium" || v === "high") return v;
+  return null;
 }
 
 function clampString(s: string, maxChars: number): string {
@@ -256,6 +230,76 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
 
   const time_cost = normalizeActionTimeCostKind((input as { time_cost?: unknown }).time_cost);
 
+  // --- Phase-1: new envelope fields with backward-compatible defaults ---
+  const requestedMode = asTurnMode((input as { turn_mode?: unknown }).turn_mode);
+  // Default must preserve legacy semantics: old turns are treated as "decision_required" (even if options is empty),
+  // so route.ts auto-regeneration behavior remains unchanged unless the model explicitly opts into new modes.
+  const turn_mode: TurnMode = requestedMode ?? "decision_required";
+
+  const narrative_goal = clampString(asString((input as { narrative_goal?: unknown }).narrative_goal).trim(), 240);
+  const narrative_density: NarrativeDensity =
+    asNarrativeDensity((input as { narrative_density?: unknown }).narrative_density) ?? "medium";
+
+  const rawDecisionOptions = (input as { decision_options?: unknown }).decision_options;
+  const decisionOptionsFromWire = clampOptions(rawDecisionOptions, 4, maxOptionChars);
+  const legacyOptionsFromWire = clampOptions(input.options, 4, maxOptionChars);
+
+  // decision_options fallback strategy:
+  // - If decision_options exists, use it.
+  // - Else reuse legacy options (keeps compatibility for old DM JSON).
+  let decision_options = decisionOptionsFromWire.length > 0 ? decisionOptionsFromWire : legacyOptionsFromWire;
+
+  let decision_required = turn_mode === "decision_required";
+  let decision_required_strict = asBoolean((input as { decision_required_strict?: unknown }).decision_required_strict, false);
+
+  // Strict validation for decision_required:
+  // - Must have 2~4 decision_options. If invalid, downgrade to narrative_only unless legacy options already satisfy it.
+  if (turn_mode === "decision_required") {
+    const cnt = decision_options.length;
+    if (cnt < 2 || cnt > 4) {
+      // Try legacy options as last resort (old protocol).
+      const legacyCnt = legacyOptionsFromWire.length;
+      if (legacyCnt >= 2 && legacyCnt <= 4) {
+        decision_options = legacyOptionsFromWire;
+      } else {
+        // Fail-closed but non-crashing: downgrade semantics; keep legacy options as-is (may be empty) for compat.
+        consistency_flags.push("invalid_decision_options_downgraded");
+        decision_required = false;
+        decision_required_strict = false;
+        decision_options = [];
+        // Only change mode when the model explicitly set an invalid decision_required mode.
+        // If mode is defaulted (requestedMode=null), do NOT change it to avoid altering legacy behavior.
+        if (requestedMode) {
+          (ui_hints.consistency_flags ??= []).push("invalid_decision_required_payload");
+        }
+      }
+    } else {
+      decision_required = true;
+    }
+  } else {
+    decision_required = false;
+    decision_required_strict = false;
+    decision_options = [];
+  }
+
+  const auto_continue_hint_raw = asString((input as { auto_continue_hint?: unknown }).auto_continue_hint).trim();
+  const auto_continue_hint = auto_continue_hint_raw ? clampString(auto_continue_hint_raw, 60) : null;
+  const protagonist_anchor = clampString(asString((input as { protagonist_anchor?: unknown }).protagonist_anchor).trim(), 160);
+  const world_consistency_flags = asStringArray((input as { world_consistency_flags?: unknown }).world_consistency_flags).slice(0, 16);
+  const anti_cheat_meta =
+    (input as { anti_cheat_meta?: unknown }).anti_cheat_meta &&
+    typeof (input as { anti_cheat_meta?: unknown }).anti_cheat_meta === "object" &&
+    !Array.isArray((input as { anti_cheat_meta?: unknown }).anti_cheat_meta)
+      ? ((input as any).anti_cheat_meta as Record<string, unknown>)
+      : {};
+
+  // options normalization policy under new modes:
+  // - narrative_only: legacy options allowed but not required; keep whatever exists (compat).
+  // - decision_required: keep legacy options as usual.
+  // - system_transition: default forbid legacy options to prevent accidental clicks (unless explicitly provided via decision_options in future).
+  const normalizedLegacyOptions =
+    turn_mode === "system_transition" ? [] : legacyOptionsFromWire;
+
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
     sanity_damage: asFiniteInt(input.sanity_damage, 0),
@@ -264,7 +308,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     consumes_time: asBoolean(input.consumes_time, true),
     ...(time_cost ? { time_cost } : {}),
 
-    options: clampOptions(input.options, 4, maxOptionChars),
+    options: normalizedLegacyOptions,
     currency_change: asFiniteInt(input.currency_change, 0),
     consumed_items: asStringArray(input.consumed_items),
     awarded_items: awardedItems,
@@ -284,6 +328,18 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     ...(typeof (input as { bgm_track?: unknown }).bgm_track === "string" ? { bgm_track: (input as any).bgm_track } : {}),
     ...(security_meta ? { security_meta } : {}),
     ...(Object.keys(ui_hints).length > 0 ? { ui_hints } : {}),
+
+    // New envelope semantic fields
+    turn_mode,
+    narrative_goal,
+    narrative_density,
+    decision_required,
+    decision_options,
+    decision_required_strict,
+    auto_continue_hint,
+    protagonist_anchor,
+    world_consistency_flags,
+    anti_cheat_meta,
   };
 
   return out;

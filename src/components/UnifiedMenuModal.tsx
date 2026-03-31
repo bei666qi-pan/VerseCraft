@@ -17,6 +17,7 @@ import {
 } from "@/store/useAchievementsStore";
 import type { ProfessionId, ProfessionStateV1 } from "@/lib/profession/types";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
+import { buildProfessionApproachSnapshots, buildProfessionIdentityDigest } from "@/lib/profession/progressionUi";
 import {
   evaluateProfessionActiveReadiness,
   getProfessionActiveSummary,
@@ -396,7 +397,23 @@ function SettingsPanel({
           </div>
 
           {!professionState.currentProfession ? (
-            <p className="text-[11px] leading-relaxed text-slate-400">暂无职业，请去1楼认证。</p>
+            <>
+              <p className="text-[11px] leading-relaxed text-slate-400">你还没有正式职业，但你的玩法已经在“显露倾向”。</p>
+              {(() => {
+                const top = buildProfessionApproachSnapshots(professionState)[0];
+                if (!top) return null;
+                const next = top.next.length > 0 ? top.next.slice(0, 2).join("；") : "";
+                const why = top.why.length > 0 ? top.why.slice(0, 2).join("；") : "";
+                return (
+                  <div className="mt-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-[10px] text-slate-300">
+                    <div className="text-slate-200">更像：{top.profession}</div>
+                    {why ? <div className="mt-1 text-slate-400">依据：{why}</div> : null}
+                    {next ? <div className="mt-1 text-amber-200">还差：{next}</div> : null}
+                    <div className="mt-1 text-slate-500">{buildProfessionIdentityDigest(professionState)}</div>
+                  </div>
+                );
+              })()}
+            </>
           ) : (
             <>
               <p className="mb-2 text-[11px] text-slate-400">

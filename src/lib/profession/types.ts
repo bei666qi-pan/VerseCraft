@@ -50,6 +50,17 @@ export interface ProfessionProgress {
   trialTaskId: string | null;
   trialTaskCompleted: boolean;
   certified: boolean;
+
+  /**
+   * 玩家可见进度层（Phase-2：身份玩法闭环）。
+   * - 全部为可选字段，确保不破坏旧存档与既有消费点（ProfessionStateV1 兼容）。
+   */
+  inclinationVisible?: boolean;
+  observedByCertifier?: boolean;
+  trialOffered?: boolean;
+  trialAccepted?: boolean;
+  /** 认证后留下身份痕迹（可用于任务/提示/世界标记联动）。 */
+  identityImprinted?: boolean;
 }
 
 export interface ProfessionStateV1 {

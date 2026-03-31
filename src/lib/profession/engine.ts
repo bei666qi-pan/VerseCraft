@@ -3,6 +3,7 @@ import type { ProfessionEvidenceKey, ProfessionId, ProfessionProgress, Professio
 import { PROFESSION_IDS, PROFESSION_REGISTRY, createDefaultProfessionState } from "./registry";
 import type { StatType, Weapon } from "@/lib/registry/types";
 import { getProfessionTrialTaskId } from "./trials";
+import { getProfessionImprintFlag } from "./imprint";
 
 type TaskLite = { id: string; status: "active" | "completed" | "failed" | "hidden" | "available" };
 type CodexLite = { type: "npc" | "anomaly"; favorability?: number };
@@ -51,6 +52,17 @@ function weaponHasModOrInfusion(w: Weapon | null): boolean {
   const mods = Array.isArray((w as any).currentMods) ? (w as any).currentMods : [];
   const infusions = Array.isArray((w as any).currentInfusions) ? (w as any).currentInfusions : [];
   return mods.length > 0 || infusions.length > 0;
+}
+
+function taskExists(tasks: TaskLite[], id: string): TaskLite | null {
+  if (!id) return null;
+  return (tasks ?? []).find((t) => t.id === id) ?? null;
+}
+
+function codexHasNpc(codex: Record<string, CodexLite>, npcId: string): boolean {
+  if (!npcId) return false;
+  const entry = (codex ?? {})[npcId];
+  return Boolean(entry && entry.type === "npc");
 }
 
 function computeBehaviorEvidenceKeys(profession: ProfessionId, input: {
@@ -118,6 +130,8 @@ export function computeProfessionState(input: {
   const base = input.prev ?? createDefaultProfessionState();
   const progressByProfession = { ...base.progressByProfession } as Record<ProfessionId, ProfessionProgress>;
   const eligibilityByProfession = { ...base.eligibilityByProfession } as Record<ProfessionId, boolean>;
+  const nextFlags: Record<string, boolean> = { ...(base.professionFlags ?? {}) };
+
   for (const id of PROFESSION_IDS) {
     const def = PROFESSION_REGISTRY[id];
     const stat = def.primaryStat;
@@ -140,6 +154,45 @@ export function computeProfessionState(input: {
     };
     const trialTaskId = getProfessionTrialTaskId(id);
     const trialTaskCompleted = (input.tasks ?? []).some((t) => t.id === trialTaskId && t.status === "completed");
+
+    // -----------------------------
+    // Phase-2: 玩家可见进度层（5段闭环）
+    // 倾向显露 → 被签发者看见 → 试炼授予/接受 → 正式认证 → 身份痕迹
+    // -----------------------------
+    const inclinationVisible =
+      Boolean(prev.inclinationVisible) ||
+      statOk ||
+      behaviorEvidenceCount > 0 ||
+      trialTaskCompleted ||
+      Boolean(base.currentProfession);
+    const observedByCertifier =
+      Boolean(prev.observedByCertifier) ||
+      codexHasNpc(input.codex, def.certification.certifierNpcId) ||
+      Boolean(base.currentProfession);
+    const trialRow = taskExists(input.tasks, trialTaskId);
+    const trialOffered =
+      Boolean(prev.trialOffered) ||
+      (inclinationVisible && observedByCertifier) ||
+      Boolean(trialRow) ||
+      Boolean(base.currentProfession);
+    // trialAccepted：一旦出现为 active / completed / failed，视为叙事已接下（可追责）。
+    const trialAccepted =
+      Boolean(prev.trialAccepted) ||
+      (trialRow ? (trialRow.status === "active" || trialRow.status === "completed" || trialRow.status === "failed") : false) ||
+      Boolean(base.currentProfession);
+    const identityImprinted =
+      Boolean(prev.identityImprinted) ||
+      Boolean(base.professionFlags?.[getProfessionImprintFlag(id)]) ||
+      Boolean(base.currentProfession === id);
+
+    // 把阶段写成轻量 world flags，供 runtime packet / DM 约束直接消费（不破坏 SSE 结构）。
+    if (inclinationVisible) nextFlags[`profession.inclination.${id}`] = true;
+    if (observedByCertifier) nextFlags[`profession.observed.${id}`] = true;
+    if (trialOffered) nextFlags[`profession.trial.offered.${id}`] = true;
+    if (trialAccepted) nextFlags[`profession.trial.accepted.${id}`] = true;
+    if (trialTaskCompleted) nextFlags[`profession.trial.completed.${id}`] = true;
+    if (identityImprinted) nextFlags[`profession.imprinted.${id}`] = true;
+
     progressByProfession[id] = {
       ...prev,
       statQualified: statOk,
@@ -149,6 +202,11 @@ export function computeProfessionState(input: {
       behaviorEvidenceKeys,
       trialTaskId,
       trialTaskCompleted,
+      inclinationVisible,
+      observedByCertifier,
+      trialOffered,
+      trialAccepted,
+      identityImprinted,
     };
     // 单职业制：如果已经有 currentProfession，则只保留“进度展示”，不再对其它职业开放认证资格。
     eligibilityByProfession[id] = !base.currentProfession && statOk && behaviorOk && trialTaskCompleted;
@@ -161,6 +219,7 @@ export function computeProfessionState(input: {
     progressByProfession,
     eligibilityByProfession,
     activePerks,
+    professionFlags: nextFlags,
     professionCooldowns: { ...(base.professionCooldowns ?? {}) },
   };
 }

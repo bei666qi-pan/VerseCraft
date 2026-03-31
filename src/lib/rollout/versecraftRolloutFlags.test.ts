@@ -17,4 +17,14 @@ test("getVerseCraftRolloutFlags 默认全开（可逐项 env 关闭）", () => {
   assert.equal(f.enableWorldFeelPackets, true);
   assert.equal(f.enableMonthStartStudentWorldlogic, true);
   assert.equal(f.enableUiDebugDiagnostics, false);
+  assert.equal(f.enableProfessionIdentityLoop, true);
+  assert.equal(f.enableProfessionTrialNarrativeGrant, true);
+  assert.equal(f.enableWeaponLifecycleV1, true);
+  assert.equal(f.enableWeaponizationPreview, true);
+  assert.equal(f.enablePlayabilityCoreLoopsV1, true);
+  assert.equal(f.enableWorldFeelLoopPackets, true);
+  assert.equal(f.enableActorIdentityAnalytics, true);
+  assert.equal(f.enableGuestUnifiedMetrics, true);
+  assert.equal(f.enableSessionClockV1, true);
+  assert.equal(f.enableAdminPlaystyleMetrics, true);
 });

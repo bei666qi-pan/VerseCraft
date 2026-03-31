@@ -33,6 +33,37 @@ export type VerseCraftRolloutMetricsSnapshot = {
   promptCharDeltaSamples: number;
   firstChunkLatencyMsSum: number;
   firstChunkLatencySamples: number;
+
+  // -------- Phase6: turn mode / narrative / anti-cheat / post-rewrite --------
+  turnModeNarrativeOnlyCount: number;
+  turnModeDecisionRequiredCount: number;
+  turnModeSystemTransitionCount: number;
+  decisionRequiredHitCount: number;
+  narrativeCharsSum: number;
+  narrativeCharsSamples: number;
+  decisionOptionsFixAttemptCount: number;
+  decisionOptionsFixSuccessCount: number;
+  protagonistDriftRewriteCount: number;
+  worldPostRewriteCount: number;
+  languageAntiCheatRewriteCount: number;
+  languageAntiCheatFallbackCount: number;
+
+  // -------- Phase7: gameplay loops & admin playstyle --------
+  professionTrialOfferedCount: number;
+  professionCertifiedCount: number;
+  weaponizationPreviewShownCount: number;
+  weaponMaintenancePerformedCount: number;
+  weaponHighPollutionTurnCount: number;
+  survivalLoopPacketUsageCount: number;
+  relationshipLoopPacketUsageCount: number;
+  investigationLoopPacketUsageCount: number;
+  actorSessionMergeCount: number;
+  guestMetricsCompletenessCount: number;
+  guestMetricsSamples: number;
+  adminProfessionMetricsQueryMsSum: number;
+  adminProfessionMetricsQueryMsSamples: number;
+  adminWeaponMetricsQueryMsSum: number;
+  adminWeaponMetricsQueryMsSamples: number;
 };
 
 const m = {
@@ -65,6 +96,35 @@ const m = {
   promptCharDeltaSamples: 0,
   firstChunkLatencyMsSum: 0,
   firstChunkLatencySamples: 0,
+
+  turnModeNarrativeOnlyCount: 0,
+  turnModeDecisionRequiredCount: 0,
+  turnModeSystemTransitionCount: 0,
+  decisionRequiredHitCount: 0,
+  narrativeCharsSum: 0,
+  narrativeCharsSamples: 0,
+  decisionOptionsFixAttemptCount: 0,
+  decisionOptionsFixSuccessCount: 0,
+  protagonistDriftRewriteCount: 0,
+  worldPostRewriteCount: 0,
+  languageAntiCheatRewriteCount: 0,
+  languageAntiCheatFallbackCount: 0,
+
+  professionTrialOfferedCount: 0,
+  professionCertifiedCount: 0,
+  weaponizationPreviewShownCount: 0,
+  weaponMaintenancePerformedCount: 0,
+  weaponHighPollutionTurnCount: 0,
+  survivalLoopPacketUsageCount: 0,
+  relationshipLoopPacketUsageCount: 0,
+  investigationLoopPacketUsageCount: 0,
+  actorSessionMergeCount: 0,
+  guestMetricsCompletenessCount: 0,
+  guestMetricsSamples: 0,
+  adminProfessionMetricsQueryMsSum: 0,
+  adminProfessionMetricsQueryMsSamples: 0,
+  adminWeaponMetricsQueryMsSum: 0,
+  adminWeaponMetricsQueryMsSamples: 0,
 };
 
 export function resetVerseCraftRolloutMetrics(): void {
@@ -147,6 +207,82 @@ export function recordFirstChunkLatencyMs(ms: number): void {
   if (!Number.isFinite(ms) || ms < 0) return;
   m.firstChunkLatencyMsSum += ms;
   m.firstChunkLatencySamples += 1;
+}
+
+export function incrTurnModeCount(mode: "narrative_only" | "decision_required" | "system_transition", delta = 1): void {
+  if (mode === "narrative_only") m.turnModeNarrativeOnlyCount += delta;
+  else if (mode === "system_transition") m.turnModeSystemTransitionCount += delta;
+  else m.turnModeDecisionRequiredCount += delta;
+}
+
+export function incrDecisionRequiredHitCount(delta = 1): void {
+  m.decisionRequiredHitCount += delta;
+}
+
+export function recordNarrativeChars(n: number): void {
+  if (!Number.isFinite(n) || n < 0) return;
+  m.narrativeCharsSum += Math.trunc(n);
+  m.narrativeCharsSamples += 1;
+}
+
+export function recordDecisionOptionsFixOutcome(success: boolean): void {
+  m.decisionOptionsFixAttemptCount += 1;
+  if (success) m.decisionOptionsFixSuccessCount += 1;
+}
+
+export function incrProtagonistDriftRewriteCount(delta = 1): void {
+  m.protagonistDriftRewriteCount += delta;
+}
+
+export function incrWorldPostRewriteCount(delta = 1): void {
+  m.worldPostRewriteCount += delta;
+}
+
+export function recordLanguageAntiCheatOutcome(args: { rewritten: boolean; fallback: boolean }): void {
+  if (args.rewritten) m.languageAntiCheatRewriteCount += 1;
+  if (args.fallback) m.languageAntiCheatFallbackCount += 1;
+}
+
+export function incrProfessionTrialOfferedCount(delta = 1): void {
+  m.professionTrialOfferedCount += delta;
+}
+export function incrProfessionCertifiedCount(delta = 1): void {
+  m.professionCertifiedCount += delta;
+}
+export function incrWeaponizationPreviewShownCount(delta = 1): void {
+  m.weaponizationPreviewShownCount += delta;
+}
+export function incrWeaponMaintenancePerformedCount(delta = 1): void {
+  m.weaponMaintenancePerformedCount += delta;
+}
+export function incrWeaponHighPollutionTurnCount(delta = 1): void {
+  m.weaponHighPollutionTurnCount += delta;
+}
+export function incrSurvivalLoopPacketUsageCount(delta = 1): void {
+  m.survivalLoopPacketUsageCount += delta;
+}
+export function incrRelationshipLoopPacketUsageCount(delta = 1): void {
+  m.relationshipLoopPacketUsageCount += delta;
+}
+export function incrInvestigationLoopPacketUsageCount(delta = 1): void {
+  m.investigationLoopPacketUsageCount += delta;
+}
+export function incrActorSessionMergeCount(delta = 1): void {
+  m.actorSessionMergeCount += delta;
+}
+export function recordGuestMetricsCompleteness(args: { complete: boolean }): void {
+  m.guestMetricsSamples += 1;
+  if (args.complete) m.guestMetricsCompletenessCount += 1;
+}
+export function recordAdminProfessionMetricsQueryMs(ms: number): void {
+  if (!Number.isFinite(ms) || ms < 0) return;
+  m.adminProfessionMetricsQueryMsSum += ms;
+  m.adminProfessionMetricsQueryMsSamples += 1;
+}
+export function recordAdminWeaponMetricsQueryMs(ms: number): void {
+  if (!Number.isFinite(ms) || ms < 0) return;
+  m.adminWeaponMetricsQueryMsSum += ms;
+  m.adminWeaponMetricsQueryMsSamples += 1;
 }
 
 export function getVerseCraftRolloutMetricsSnapshot(): VerseCraftRolloutMetricsSnapshot {

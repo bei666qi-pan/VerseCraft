@@ -62,6 +62,11 @@ export type AnalyticsEventInsertInput = {
   eventId: string;
   idempotencyKey: string;
 
+  /** 统一 actor（阶段5）；可缺省，由 userId/guestId 推导 */
+  actorId?: string | null;
+  actorType?: "user" | "guest" | null;
+  /** 与 useGameStore.guestId 对齐（游客长期身份锚点） */
+  guestId?: string | null;
   userId: string | null;
   sessionId: string; // for non-session events, use "system"
   eventName: AnalyticsEventName;
@@ -73,6 +78,10 @@ export type AnalyticsEventInsertInput = {
 
   tokenCost: number;
   playDurationDeltaSec: number;
+  onlineDurationDeltaSec?: number;
+  activePlayDurationDeltaSec?: number;
+  readDurationDeltaSec?: number;
+  idleDurationDeltaSec?: number;
 
   payload: AnalyticsEventInsertPayload;
 };

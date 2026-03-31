@@ -78,6 +78,7 @@ export function buildProfessionTrialTask(profession: ProfessionId): GameTaskV2 {
   const task = normalizeGameTaskDraft({
     id: def.id,
     title: def.title,
+    // 试炼任务必须“像某人要你证明一件事”，而不是冷冰冰 checklist。
     desc: def.desc,
     type: "character",
     issuerId: def.issuerId,
@@ -89,6 +90,18 @@ export function buildProfessionTrialTask(profession: ProfessionId): GameTaskV2 {
     nextHint: def.nextHint,
     worldConsequences: [`profession:trial:${profession}`],
     highRiskHighReward: false,
+    // 叙事层：默认作为“口头约定/试作”，进入承诺/风险带，而非抢占主任务板中心。
+    taskNarrativeLayer: "conversation_promise",
+    goalKind: "promise",
+    grantState: "narratively_offered",
+    shouldBeFormalTask: true,
+    shouldStayAsConversationPromise: true,
+    issuerDemandStyle: "explicit",
+    issuerPressureStyle: "mid",
+    issuerTrustTestMode: "probe",
+    issuerSoftRevealMode: "receipt",
+    playerHook: "他要的不是漂亮话——是你做得到的证据。",
+    riskNote: "别把试炼当成打卡；它会在关键回合反过来咬你。",
   });
   if (!task) {
     throw new Error(`invalid profession trial task: ${profession}`);

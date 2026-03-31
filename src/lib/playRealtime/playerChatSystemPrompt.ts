@@ -178,6 +178,12 @@ export interface PlayerDmDynamicSuffixInput {
   isFirstAction: boolean;
   runtimePackets: string;
   controlAugmentation: string;
+  /** 阶段2：主角锚定包（禁止擅自新增主角背景设定）。 */
+  protagonistAnchorBlock?: string;
+  /** 阶段2：回合模式策略包（默认长叙事，仅关键节点给决策）。 */
+  turnModePolicyBlock?: string;
+  /** 阶段3：现实感约束包（地点/在场/时间/线索/威胁/关系硬边界）。 */
+  realityConstraintBlock?: string;
   /** 阶段5：紧凑一致性边界 JSON（与 runtime 大包互补；快车道亦注入） */
   npcConsistencyBoundaryBlock?: string;
   /** 阶段1：叙事连贯性紧凑 packet（吸收动作、防复述、镜头推进）。 */
@@ -202,6 +208,15 @@ const FIRST_ACTION_CONSTRAINT =
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {
   const parts: string[] = [];
   if (input.memoryBlock) parts.push(input.memoryBlock);
+  if (input.turnModePolicyBlock?.trim()) {
+    parts.push("", input.turnModePolicyBlock.trim());
+  }
+  if (input.protagonistAnchorBlock?.trim()) {
+    parts.push("", input.protagonistAnchorBlock.trim());
+  }
+  if (input.realityConstraintBlock?.trim()) {
+    parts.push("", input.realityConstraintBlock.trim());
+  }
   if (input.npcConsistencyBoundaryBlock?.trim()) {
     parts.push("", input.npcConsistencyBoundaryBlock.trim());
   }

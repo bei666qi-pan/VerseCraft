@@ -7,6 +7,7 @@ import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 import { enableEpistemicValidator, enableNpcConsistencyValidator, epistemicDebugLog } from "@/lib/epistemic/featureFlags";
 import { enableNarrativeRhythmGateAny } from "@/lib/playRealtime/npcNarrativeRolloutFlags";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import {
   applyEpistemicPostGenerationValidation,
   type EpistemicValidatorTelemetry,
@@ -23,6 +24,8 @@ import { applyPovPostGeneration } from "./povValidator";
 import { applyGenderPronounPostGeneration } from "./genderPronounValidator";
 import { applyCompositeNarrativeGuard } from "./compositeNarrativeGuard";
 import { enableCompositeNarrativeGuard } from "./narrativeGuardFlags";
+import { applyProtagonistDriftPostGeneration } from "./protagonistDriftValidator";
+import { incrProtagonistDriftRewriteCount, incrWorldPostRewriteCount } from "@/lib/observability/versecraftRolloutMetrics";
 
 export type NpcConsistencyViolationType =
   | "offscreen_npc_dialogue"
@@ -32,7 +35,8 @@ export type NpcConsistencyViolationType =
   | "pov_drift"
   | "narrative_continuity"
   | "familiarity_overreach"
-  | "no_reaction_to_boundary_crossing";
+  | "no_reaction_to_boundary_crossing"
+  | "protagonist_drift";
 
 function normalizeNpcId(id: string): string {
   return String(id ?? "")
@@ -124,6 +128,11 @@ export function applyNpcConsistencyPostGeneration(input: {
   playerContext?: string | null;
   latestUserInput?: string | null;
 }): { dmRecord: Record<string, unknown>; telemetry: EpistemicValidatorTelemetry } {
+  // Phase6 rollout: allow fast rollback of post-generation rewrites.
+  const rollout = getVerseCraftRolloutFlags();
+  if (!rollout.enableWorldPostGenerationRewrite) {
+    return { dmRecord: input.dmRecord, telemetry: IDLE_VALIDATOR_TELEMETRY };
+  }
   let baseTelemetry: EpistemicValidatorTelemetry = IDLE_VALIDATOR_TELEMETRY;
   let rec = { ...input.dmRecord };
 
@@ -221,6 +230,20 @@ export function applyNpcConsistencyPostGeneration(input: {
     }
   }
 
+  // 阶段11：主角身份漂移门闸（无二次大模型，尽量保守改写保持沉浸）
+  const drift = applyProtagonistDriftPostGeneration({
+    narrative: narrativeWork,
+    playerContext: input.playerContext ?? null,
+  });
+  if (drift.triggered && drift.narrative !== narrativeWork) {
+    narrativeWork = drift.narrative;
+    extraRewrite = true;
+    incrProtagonistDriftRewriteCount(1);
+    violations.push(...drift.reasons.map((r) => `protagonist_drift:${r}`));
+    if (!vtypes.includes("protagonist_drift")) vtypes.push("protagonist_drift");
+    logs.push(`protagonist_drift:${drift.reasons.slice(0, 2).join(",")}`);
+  }
+
   if (enableNpcConsistencyValidator()) {
     const off = findOffscreenNpcDialogueViolations(narrativeWork, input.presentNpcIds);
     if (off.length) {
@@ -298,6 +321,8 @@ export function applyNpcConsistencyPostGeneration(input: {
 
   if (narrativeWork !== originalNarrative) {
     rec.narrative = narrativeWork;
+    // Any post-generation rewrite counts toward world-consistency rewrite budget/observability.
+    incrWorldPostRewriteCount(1);
   }
 
   const layerHit = violations.length > 0;

@@ -85,7 +85,10 @@ import { NarrativeSystemsDebugPanel } from "@/features/play/components/Narrative
 import {
   getClientOptionsAutoRegenOnEmptyEnabled,
   getClientOptionsOnlyRegenPathV2Enabled,
+  getClientContinueButtonEnabled,
 } from "@/lib/rollout/versecraftClientRollout";
+
+type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
 
 const ITEM_DOMAIN_LAYERS = new Set<ItemDomainLayer>([
   "key",
@@ -204,6 +207,8 @@ function PlayContent() {
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
   const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
   const certifyProfession = useGameStore((s) => s.certifyProfession);
+  const pendingClientAction = useGameStore((s) => s.pendingClientAction ?? null);
+  const consumeClientAction = useGameStore((s) => s.consumeClientAction);
   const [showIntrusionFlash, setShowIntrusionFlash] = useState(false);
 
   const [input, setInput] = useState("");
@@ -295,6 +300,20 @@ function PlayContent() {
   useEffect(() => {
     streamPhaseRef.current = streamPhase;
   }, [streamPhase]);
+
+  // Phase-3: 面板快捷行动（插入输入框 / 一键发送），不改变权威裁决链路。
+  useEffect(() => {
+    if (!pendingClientAction) return;
+    const act = consumeClientAction();
+    if (!act) return;
+    setInput(act.text);
+    setInputError("");
+    if (act.autoSend) {
+      // bypassLengthCheck=true：面板生成的指令应短且结构化，但仍要过 localInputSafetyCheck。
+      void sendActionRef.current(act.text, true);
+      setInput("");
+    }
+  }, [consumeClientAction, pendingClientAction]);
 
   useEffect(() => {
     if (streamPhase === "idle" || streamPhase === "error") {
@@ -845,7 +864,7 @@ function PlayContent() {
         endgameActive: endgameState.active,
         showEmbeddedOpening,
         isGuestDialogueExhausted,
-      })) {
+      }) && lastCommittedTurnModeRef.current === "decision_required") {
         void requestFreshOptions("auto_switch");
       }
     }
@@ -929,6 +948,10 @@ function PlayContent() {
   }, [pathname]);
 
   const autoMissingOptionsAttemptedRef = useRef(false);
+  const lastCommittedTurnModeRef = useRef<ClientTurnMode>("decision_required");
+  const [lastCommittedTurnMode, setLastCommittedTurnMode] = useState<ClientTurnMode>("decision_required");
+  const lastAutoContinueHintRef = useRef<string | null>(null);
+  const [lastAutoContinueHint, setLastAutoContinueHint] = useState<string | null>(null);
 
   async function requestFreshOptions(
     trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main"
@@ -955,6 +978,18 @@ function PlayContent() {
     }
     if (endgameState.active) {
       if (manual) setFirstTimeHint("终局阶段请使用终局选项推进，无法在此刷新。");
+      return;
+    }
+    // Phase-4: narrative-only / transition turns may legitimately have no options.
+    // Only allow option regeneration when the last committed turn truly requires a decision.
+    if (lastCommittedTurnModeRef.current !== "decision_required") {
+      if (manual) {
+        setFirstTimeHint(
+          lastCommittedTurnModeRef.current === "system_transition"
+            ? "当前为过场推进回合，请直接继续推进剧情。"
+            : "当前为长叙事推进回合，请直接继续推进剧情。"
+        );
+      }
       return;
     }
     if (isGuestDialogueExhausted) {
@@ -1470,6 +1505,21 @@ function PlayContent() {
       }
     }
 
+    const parsedTurnMode: ClientTurnMode =
+      parsed.turn_mode === "narrative_only" ||
+      parsed.turn_mode === "decision_required" ||
+      parsed.turn_mode === "system_transition"
+        ? parsed.turn_mode
+        : (parsed.decision_required ? "decision_required" : "decision_required");
+    lastCommittedTurnModeRef.current = parsedTurnMode;
+    setLastCommittedTurnMode(parsedTurnMode);
+    const autoHint =
+      typeof parsed.auto_continue_hint === "string" && parsed.auto_continue_hint.trim().length > 0
+        ? parsed.auto_continue_hint.trim()
+        : null;
+    lastAutoContinueHintRef.current = autoHint;
+    setLastAutoContinueHint(autoHint);
+
     const logsBeforeAssistant = useGameStore.getState().logs ?? [];
     const assistantCountBeforePush = logsBeforeAssistant.filter((l) => l && l.role === "assistant").length;
     const isFirstAssistantTurn = assistantCountBeforePush === 0;
@@ -1869,6 +1919,7 @@ function PlayContent() {
           void requestFreshOptions("opening_fallback");
         });
       } else if (
+        parsedTurnMode === "decision_required" &&
         !isFirstAssistantTurn &&
         getClientOptionsAutoRegenOnEmptyEnabled() &&
         !autoMissingOptionsAttemptedRef.current
@@ -1878,7 +1929,11 @@ function PlayContent() {
           void requestFreshOptions("auto_missing_main");
         });
       } else if (!isFirstAssistantTurn) {
-        setFirstTimeHint("本回合仍没有可选行动，可切换为手动输入继续。");
+        setFirstTimeHint(
+          parsedTurnMode === "decision_required"
+            ? "本回合仍没有可选行动，可切换为手动输入继续。"
+            : "本回合为长叙事推进，可点击“继续推进”或切换为手动输入继续。"
+        );
       }
     }
 
@@ -2789,16 +2844,31 @@ function PlayContent() {
                       <p className="text-sm text-slate-600 md:text-base">
                         {optionsRegenBusy
                           ? "主笔正在按当前剧情重新整理可选行动…"
-                          : "当前暂无可用选项。"}
+                          : lastCommittedTurnMode === "system_transition"
+                            ? "当前为过场推进回合。"
+                            : lastCommittedTurnMode === "narrative_only"
+                              ? "当前为长叙事推进回合。"
+                              : "当前暂无可用选项。"}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => void requestFreshOptions("manual_button")}
-                        disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
-                        className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
-                      >
-                        让主笔重新整理选项
-                      </button>
+                      {lastCommittedTurnMode === "decision_required" ? (
+                        <button
+                          type="button"
+                          onClick={() => void requestFreshOptions("manual_button")}
+                          disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
+                          className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
+                        >
+                          让主笔重新整理选项
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void sendActionRef.current(lastAutoContinueHintRef.current ?? "继续", true)}
+                          disabled={isChatBusy || isGuestDialogueExhausted || !getClientContinueButtonEnabled()}
+                          className="mt-3 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
+                        >
+                          {lastAutoContinueHint ? lastAutoContinueHint : "继续推进"}
+                        </button>
+                      )}
                     </div>
                   )}
               </PlayStoryScroll>

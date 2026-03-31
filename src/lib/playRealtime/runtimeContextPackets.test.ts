@@ -37,6 +37,9 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
   assert.ok(packet.includes("behaviorEvidenceTarget"));
   assert.ok(packet.includes("profession_identity_packet"));
   assert.ok(packet.includes("profession.certified.守灯人"));
+  assert.ok(packet.includes("survival_loop_packet"));
+  assert.ok(packet.includes("relationship_loop_packet"));
+  assert.ok(packet.includes("investigation_loop_packet"));
   assert.ok(packet.includes("sourceConfidence"));
   assert.ok(packet.includes("\"level\":"));
   assert.ok(packet.includes("professionTacticalBias"));
@@ -84,6 +87,10 @@ test("buildRuntimeContextPackets respects maxChars budget", () => {
   assert.ok(packet.includes("运行时结构化上下文包"));
   assert.ok(packet.includes("main_threat_packet"));
   assert.ok(packet.includes("forge_packet"));
+  // 截断路径仍应保留“三主循环”最小咬合键
+  assert.ok(packet.includes("survival_loop_packet"));
+  assert.ok(packet.includes("relationship_loop_packet"));
+  assert.ok(packet.includes("investigation_loop_packet"));
 });
 
 test("new_player_guide_packet turns off outside early window", () => {

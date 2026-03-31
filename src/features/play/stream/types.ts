@@ -16,6 +16,20 @@ export type DMJson = {
   is_death: boolean;
   consumes_time?: boolean;
   time_cost?: "free" | "light" | "standard" | "heavy" | "dangerous";
+  /**
+   * Phase-1 envelope semantic fields (optional on wire; server resolver fills defaults).
+   * 前端解析必须容错：缺省时按旧行为工作。
+   */
+  turn_mode?: "narrative_only" | "decision_required" | "system_transition";
+  narrative_goal?: string;
+  narrative_density?: "low" | "medium" | "high";
+  decision_required?: boolean;
+  decision_options?: string[];
+  decision_required_strict?: boolean;
+  auto_continue_hint?: string | null;
+  protagonist_anchor?: string;
+  world_consistency_flags?: string[];
+  anti_cheat_meta?: Record<string, unknown>;
   consumed_items?: string[];
   awarded_items?: Array<{
     id?: string;

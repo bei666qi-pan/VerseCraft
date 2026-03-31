@@ -24,6 +24,7 @@ import {
   toEnhanceTurnMetrics,
 } from "@/lib/analytics/chatRequestFinishedPayload";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+import { buildPlayerContextDigest, inferWeaponizationAttempted } from "@/lib/analytics/playerContextDigest";
 import { DEFAULT_PLAYER_ROLE_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
 import { allowControlPreflightForSession } from "@/lib/ai/governance/sessionBudget";
 import { resolveOperationMode } from "@/lib/ai/degrade/mode";
@@ -35,6 +36,7 @@ import { anyAiProviderConfigured, sanitizeMessagesForUpstream } from "@/lib/ai/s
 import {
   enhanceScene,
   generateMainReply,
+  generateDecisionOptionsOnlyFallback,
   generateOptionsOnlyFallback,
   parsePlayerIntent,
   type EnhanceAfterMainStreamResult,
@@ -50,6 +52,11 @@ import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags"
 import {
   incrEmptyOptionsTurnCount,
   incrOptionsOnlyRegenPathHitCount,
+  incrTurnModeCount,
+  incrDecisionRequiredHitCount,
+  recordNarrativeChars,
+  recordDecisionOptionsFixOutcome,
+  recordLanguageAntiCheatOutcome,
   recordOptionsAutoRegenOutcome,
   recordOptionsManualRegenOutcome,
   recordPromptCharDelta,
@@ -148,6 +155,11 @@ import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativ
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 import { buildOptionsOnlySystemPrompt, buildOptionsOnlyUserPacket } from "@/lib/playRealtime/optionsOnlyPackets";
+import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonistAnchorPackets";
+import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePackets";
+import type { TurnMode } from "@/features/play/turnCommit/turnEnvelope";
+import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
+import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -386,6 +398,35 @@ function extractRecentEntities(latestUserInput: string): string[] {
   return [...out];
 }
 
+function inferPlannedTurnMode(args: {
+  latestUserInput: string;
+  shouldApplyFirstActionConstraint: boolean;
+  clientState: unknown;
+  pipelineControl: PlayerControlPlane | null;
+}): { mode: TurnMode; reason: string } {
+  if (args.shouldApplyFirstActionConstraint) {
+    return { mode: "decision_required", reason: "opening_first_action_constraint" };
+  }
+  // Prefer existing director digest hints (cheap, client-provided structured state).
+  const cs = args.clientState as any;
+  const beat = typeof cs?.directorDigest?.beatModeHint === "string" ? cs.directorDigest.beatModeHint : "";
+  const tension = Number(cs?.directorDigest?.tension ?? NaN);
+  const pendingIncCount = Array.isArray(cs?.directorDigest?.pendingIncidentCodes) ? cs.directorDigest.pendingIncidentCodes.length : 0;
+  if (beat === "collision" || beat === "countdown" || beat === "peak") {
+    return { mode: "decision_required", reason: `directorDigest.beat=${beat}` };
+  }
+  if (Number.isFinite(tension) && tension >= 85) {
+    return { mode: "decision_required", reason: `directorDigest.tension=${Math.trunc(tension)}` };
+  }
+  if (pendingIncCount >= 2 && (beat === "pressure" || beat === "aftershock")) {
+    return { mode: "decision_required", reason: `directorDigest.pending=${pendingIncCount}` };
+  }
+  // Default product strategy: narrative first, choices only at true junctions.
+  void args.latestUserInput;
+  void args.pipelineControl;
+  return { mode: "narrative_only", reason: "default_narrative" };
+}
+
 async function loadSessionMemoryForUser(userId: string): Promise<SessionMemoryRow | null> {
   try {
     const memRows = await db
@@ -612,6 +653,41 @@ export async function POST(req: Request) {
     latestUserInput = inputSafety.text;
   } else if (inputSafety.decision === "rewrite") {
     latestUserInput = inputSafety.text;
+  }
+
+  // Phase-5: language-based anti-cheat (lightweight, non-generative).
+  // Trust priority:
+  // 1) clientState (structured) for inventory/location/time snapshots
+  // 2) server-known session memory / save (handled by existing guards and writeback)
+  // 3) playerContext is display-only
+  // 4) user natural language expresses intent only, never facts
+  const verseRollout = getVerseCraftRolloutFlags();
+  const antiCheat = assessAndRewriteAntiCheatInput({
+    latestUserInput,
+    clientState,
+    clientPurpose,
+  });
+  if (antiCheat.decision !== "allow") {
+    if (verseRollout.enableLanguageAntiCheat) {
+      latestUserInput = antiCheat.text;
+      recordLanguageAntiCheatOutcome({
+        rewritten: antiCheat.decision === "rewrite",
+        fallback: antiCheat.decision === "fallback",
+      });
+    }
+    // Minimal audit: only log when we actually rewrote/fell back.
+    writeAuditTrail({
+      requestId,
+      sessionId,
+      userId,
+      ip: clientIp,
+      path: "/api/chat",
+      stage: "anti_cheat_input",
+      riskLevel: antiCheat.risk === "high" ? "gray" : "normal",
+      action: antiCheat.decision === "fallback" ? "degrade" : "review",
+      triggeredRule: antiCheat.reasons.slice(0, 4).join(",") || "anti_cheat_rewrite",
+      summary: `risk=${antiCheat.risk} len=${antiCheat.text.length}`,
+    });
   }
 
   // --- Options-only fast path (never mutates world state) ---
@@ -1523,7 +1599,6 @@ export async function POST(req: Request) {
       enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
     },
   });
-  const verseRollout = getVerseCraftRolloutFlags();
   const styleGuideBlock = verseRollout.enableStyleGuidePacket ? buildStyleGuidePacketBlock() : "";
   const narrativeContinuityBlock = buildNarrativeContinuityPacketBlock({
     previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
@@ -1537,12 +1612,45 @@ export async function POST(req: Request) {
     presentNpcIds: presentNpcIdsForEpistemic,
     maxChars: contextMode === "minimal" ? 520 : 760,
   });
+  const plannedTurnMode = inferPlannedTurnMode({
+    latestUserInput,
+    shouldApplyFirstActionConstraint,
+    clientState,
+    pipelineControl,
+  });
+  const turnModePolicyBlock =
+    (verseRollout.enableLongNarrativeMode || verseRollout.enableDecisionTurnMode)
+      ? buildTurnModePolicyPacketBlock({
+          plannedMode: plannedTurnMode.mode,
+          reason: plannedTurnMode.reason,
+          maxChars: contextMode === "minimal" ? 680 : 860,
+        })
+      : "";
+  const protagonistAnchorBlock = verseRollout.enableProtagonistAnchorPacket
+    ? buildProtagonistAnchorPacketBlock({
+        playerContext: playerContextForPrompt,
+        clientState,
+        maxChars: contextMode === "minimal" ? 760 : 980,
+      })
+    : "";
+  const realityConstraintBlock = verseRollout.enableRealityConstraintPacket
+    ? buildRealityConstraintPacketBlock({
+        playerContext: playerContextForPrompt,
+        latestUserInput,
+        playerLocationFallback: guessPlayerLocationFromContext(playerContext),
+        clientState,
+        maxChars: contextMode === "minimal" ? 980 : 1400,
+      })
+    : "";
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     playerContext: playerContextForPrompt,
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets,
     controlAugmentation: controlAndLoreAugmentation,
+    protagonistAnchorBlock,
+    turnModePolicyBlock,
+    realityConstraintBlock,
     npcConsistencyBoundaryBlock: npcConsistencyBoundaryFinal.text,
     narrativeContinuityBlock,
     povBlock,
@@ -2032,12 +2140,15 @@ export async function POST(req: Request) {
       }
 
       // Event-driven analytics rollups: best-effort and idempotent.
+      const digest = buildPlayerContextDigest(playerContext ?? "");
+      const lastUserText = safeMessages.slice().reverse().find((m) => m.role === "user")?.content ?? "";
       void recordChatActionCompletedAnalytics({
         eventId: `${requestId}:chat_action_completed`,
         idempotencyKey: `${requestId}:chat_action_completed`,
 
         userId,
         sessionId: sessionId ?? "unknown_session",
+        guestId: userId ? null : (sessionId ?? null),
         page: "/play",
         source: "chat",
         platform,
@@ -2048,6 +2159,25 @@ export async function POST(req: Request) {
         payload: {
           requestId,
           upstreamLogicalRole: routingReport.actualLogicalRole ?? args.streamRole,
+          actor: {
+            actorType: userId ? "user" : "guest",
+            professionCurrent: digest.professionCurrent,
+            professionCertified: digest.professionCertified ? 1 : 0,
+            professionTrialOffered: digest.professionTrialOffered ? 1 : 0,
+            professionTrialAccepted: digest.professionTrialAccepted ? 1 : 0,
+          },
+          weapon: {
+            weaponId: digest.weaponId,
+            contamination: digest.weaponContamination,
+            repairable: digest.weaponRepairable,
+            needsMaintenance: digest.weaponNeedsMaintenance ? 1 : 0,
+            pollutionHigh: digest.weaponPollutionHigh ? 1 : 0,
+            weaponizationAttempted: inferWeaponizationAttempted(lastUserText) ? 1 : 0,
+          },
+          guide: {
+            liuSeen: digest.guideHitLiu ? 1 : 0,
+            linzSeen: digest.guideHitLinz ? 1 : 0,
+          },
         },
       }).catch(() => {});
 
@@ -2423,9 +2553,78 @@ export async function POST(req: Request) {
         };
         dmRecord = runEpistemicPostGuard(dmRecord);
 
+        // Phase-2: 回合模式校正（轻量、无额外重型 preflight）
+        // - decision_required：若模型未给出可用 options，则仅补决策选项（低成本）。
+        // - narrative_only：若模型给了 options，则优先降级为无强制选项回合，避免前端误以为必须选择。
+        try {
+          const rollout = getVerseCraftRolloutFlags();
+          if (!rollout.enableLongNarrativeMode && !rollout.enableDecisionTurnMode) {
+            throw new Error("turn_mode_rollout_disabled");
+          }
+          const dm = dmRecord as Record<string, unknown>;
+          const opts = Array.isArray(dm.options) ? dm.options : [];
+          const optCount = opts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+          if (plannedTurnMode.mode === "narrative_only") {
+            if (optCount > 0) {
+              dm.turn_mode = "narrative_only";
+              dm.options = [];
+              dm.decision_options = [];
+              dm.decision_required = false;
+              dm.auto_continue_hint = typeof dm.auto_continue_hint === "string" && dm.auto_continue_hint.trim()
+                ? dm.auto_continue_hint
+                : "（继续）";
+            } else {
+              dm.turn_mode = typeof dm.turn_mode === "string" ? dm.turn_mode : "narrative_only";
+              dm.decision_required = false;
+            }
+          } else if (plannedTurnMode.mode === "decision_required") {
+            const decision = Array.isArray((dm as any).decision_options) ? ((dm as any).decision_options as unknown[]) : [];
+            const decCount = decision.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+            if (optCount < 2 && decCount < 2) {
+              recordDecisionOptionsFixOutcome(false);
+              const regen = await generateDecisionOptionsOnlyFallback({
+                narrative: String(dm.narrative ?? ""),
+                latestUserInput,
+                playerContext,
+                ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", purpose: "decision_options_fix" } },
+                signal: ac.signal,
+              });
+              if (regen.ok) {
+                recordDecisionOptionsFixOutcome(true);
+                dm.turn_mode = "decision_required";
+                dm.decision_required = true;
+                dm.decision_options = regen.decision_options;
+                // Backward-compatible: also mirror into legacy options for current UI.
+                dm.options = regen.decision_options;
+              }
+            } else {
+              dm.turn_mode = typeof dm.turn_mode === "string" ? dm.turn_mode : "decision_required";
+              dm.decision_required = true;
+            }
+          }
+        } catch (e) {
+          console.warn("[api/chat] turn mode correction skipped", e);
+        }
+
         // Phase-1: 统一收口为“服务端最终裁决后的可提交对象”，避免前端从零散字段脑补。
         // 顺序约束：options fallback 必须先发生；然后再做一致性收口与最终 stringify。
         let resolved = resolveDmTurn(dmRecord);
+        try {
+          const rollout = getVerseCraftRolloutFlags();
+          const mode = (resolved as any).turn_mode as string;
+          if (rollout.enableLongNarrativeMode || rollout.enableDecisionTurnMode) {
+            const tm =
+              mode === "narrative_only" || mode === "system_transition" || mode === "decision_required"
+                ? (mode as "narrative_only" | "decision_required" | "system_transition")
+                : "decision_required";
+            incrTurnModeCount(tm, 1);
+            if ((resolved as any).decision_required === true) incrDecisionRequiredHitCount(1);
+          }
+          const nar = String((resolved as any).narrative ?? "");
+          if (nar) recordNarrativeChars(nar.length);
+        } catch {
+          // ignore
+        }
 
         // 二次补救：即便 dmRecord.options 非空，也可能在 resolver 裁剪/去重后变成空或不足 2 条。
         // 为避免前端进入“无 options”死胡同：对正常主笔回合补齐一次 options（仍不沿用旧选项）。
@@ -2438,7 +2637,10 @@ export async function POST(req: Request) {
           const shouldSkipRegen =
             validated.clientPurpose === "options_regen_only" ||
             Boolean(shouldApplyFirstActionConstraint) ||
-            settlementFreeze;
+            settlementFreeze ||
+            (resolved as any).turn_mode === "narrative_only" ||
+            (resolved as any).turn_mode === "system_transition" ||
+            (resolved as any).decision_required === false;
           const resolvedOpts = Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : [];
           const resolvedOptCount = resolvedOpts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
           if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2) {

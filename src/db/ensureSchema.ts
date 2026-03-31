@@ -180,6 +180,9 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS analytics_events (
         event_id VARCHAR(191) PRIMARY KEY,
+        actor_id VARCHAR(191),
+        actor_type VARCHAR(16),
+        guest_id VARCHAR(128),
         user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE CASCADE,
         session_id VARCHAR(191) NOT NULL,
         event_name VARCHAR(64) NOT NULL,
@@ -189,11 +192,23 @@ export async function ensureRuntimeSchema(): Promise<void> {
         platform TEXT NULL,
         token_cost INTEGER NOT NULL DEFAULT 0,
         play_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
+        online_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
+        active_play_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
+        read_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
+        idle_duration_delta_sec INTEGER NOT NULL DEFAULT 0,
         payload JSONB NOT NULL DEFAULT '{}'::jsonb,
         idempotency_key VARCHAR(191) NOT NULL UNIQUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // 兼容旧库：逐列补齐（不依赖全量 migration）
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS actor_id VARCHAR(191);`);
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS actor_type VARCHAR(16);`);
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS guest_id VARCHAR(128);`);
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS online_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS active_play_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS read_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS idle_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS analytics_events_user_event_time_idx ON analytics_events (user_id, event_time);
@@ -206,6 +221,12 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS analytics_events_page_time_idx ON analytics_events (page, event_time);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS analytics_events_actor_event_time_idx ON analytics_events (actor_id, event_time);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS analytics_events_guest_event_time_idx ON analytics_events (guest_id, event_time);
     `);
 
     await client.query(`
@@ -235,6 +256,84 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS user_sessions_user_last_seen_idx ON user_sessions (user_id, last_seen_at);
     `);
+
+    // ========= Unified actor analytics (Phase 5) =========
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS analytics_actors (
+        actor_id VARCHAR(191) PRIMARY KEY,
+        actor_type VARCHAR(16) NOT NULL,
+        user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE SET NULL,
+        guest_id VARCHAR(128),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS analytics_actors_actor_type_idx ON analytics_actors (actor_type);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS analytics_actors_user_id_idx ON analytics_actors (user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS analytics_actors_guest_id_idx ON analytics_actors (guest_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS analytics_actors_last_seen_idx ON analytics_actors (last_seen_at);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS actor_sessions (
+        session_id VARCHAR(191) PRIMARY KEY,
+        actor_id VARCHAR(191) NOT NULL,
+        actor_type VARCHAR(16) NOT NULL,
+        user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE SET NULL,
+        guest_id VARCHAR(128),
+        started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_page TEXT NULL,
+        total_token_cost INTEGER NOT NULL DEFAULT 0,
+        chat_action_count INTEGER NOT NULL DEFAULT 0,
+        online_sec INTEGER NOT NULL DEFAULT 0,
+        active_play_sec INTEGER NOT NULL DEFAULT 0,
+        read_sec INTEGER NOT NULL DEFAULT 0,
+        idle_sec INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_sessions_actor_last_seen_idx ON actor_sessions (actor_id, last_seen_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_sessions_guest_last_seen_idx ON actor_sessions (guest_id, last_seen_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_sessions_user_last_seen_idx ON actor_sessions (user_id, last_seen_at);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS actor_daily_activity (
+        actor_id VARCHAR(191) NOT NULL,
+        actor_type VARCHAR(16) NOT NULL,
+        user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE SET NULL,
+        guest_id VARCHAR(128),
+        date_key DATE NOT NULL,
+        first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        session_count INTEGER NOT NULL DEFAULT 0,
+        chat_action_count INTEGER NOT NULL DEFAULT 0,
+        online_sec INTEGER NOT NULL DEFAULT 0,
+        active_play_sec INTEGER NOT NULL DEFAULT 0,
+        read_sec INTEGER NOT NULL DEFAULT 0,
+        idle_sec INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (actor_id, date_key)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_activity_date_idx ON actor_daily_activity (date_key);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_activity_actor_idx ON actor_daily_activity (actor_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_activity_guest_idx ON actor_daily_activity (guest_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS actor_daily_tokens (
+        actor_id VARCHAR(191) NOT NULL,
+        actor_type VARCHAR(16) NOT NULL,
+        user_id VARCHAR(191) NULL REFERENCES users(id) ON DELETE SET NULL,
+        guest_id VARCHAR(128),
+        date_key DATE NOT NULL,
+        daily_token_cost INTEGER NOT NULL DEFAULT 0,
+        chat_action_count INTEGER NOT NULL DEFAULT 0,
+        active_play_sec INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (actor_id, date_key)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_tokens_date_idx ON actor_daily_tokens (date_key);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_tokens_actor_idx ON actor_daily_tokens (actor_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS actor_daily_tokens_guest_idx ON actor_daily_tokens (guest_id);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_daily_activity (

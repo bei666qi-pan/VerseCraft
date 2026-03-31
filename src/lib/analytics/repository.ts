@@ -1,10 +1,11 @@
 import "server-only";
 
 import { db } from "@/db";
-import { analyticsEvents } from "@/db/schema";
+import { actorDailyActivity, actorDailyTokens, actorSessions, analyticsActors, analyticsEvents, userDailyActivity, userDailyTokens, userSessions } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import type { AnalyticsEventInsertInput } from "@/lib/analytics/types";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
+import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
 
 let analyticsTableMissingWarned = false;
 
@@ -36,11 +37,15 @@ function suppressOrLogAnalyticsError(err: unknown, logLabel: string): void {
  * Used by non-chat actions where aggregate rollups are not required yet.
  */
 export async function insertAnalyticsEventIdempotent(input: AnalyticsEventInsertInput): Promise<void> {
+  const actor = buildActorIdentity({ userId: input.userId, guestId: input.guestId ?? null });
   try {
     await db
       .insert(analyticsEvents)
       .values({
         eventId: input.eventId,
+        actorId: input.actorId ?? actor?.actorId ?? null,
+        actorType: input.actorType ?? actor?.actorType ?? null,
+        guestId: input.guestId ?? actor?.guestId ?? null,
         userId: input.userId,
         sessionId: input.sessionId,
         eventName: input.eventName,
@@ -50,6 +55,10 @@ export async function insertAnalyticsEventIdempotent(input: AnalyticsEventInsert
         platform: input.platform,
         tokenCost: input.tokenCost,
         playDurationDeltaSec: input.playDurationDeltaSec,
+        onlineDurationDeltaSec: Math.max(0, Math.trunc(input.onlineDurationDeltaSec ?? 0)),
+        activePlayDurationDeltaSec: Math.max(0, Math.trunc(input.activePlayDurationDeltaSec ?? 0)),
+        readDurationDeltaSec: Math.max(0, Math.trunc(input.readDurationDeltaSec ?? 0)),
+        idleDurationDeltaSec: Math.max(0, Math.trunc(input.idleDurationDeltaSec ?? 0)),
         payload: input.payload ?? {},
         idempotencyKey: input.idempotencyKey,
       })
@@ -105,14 +114,13 @@ export async function touchUserSessionHeartbeat(input: {
 export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEventInsertInput, "eventName" | "eventTime"> & { eventTime?: Date }): Promise<void> {
   const eventTime = input.eventTime ?? new Date();
   const dateKey = getUtcDateKey(eventTime);
+  const actor = buildActorIdentity({ userId: input.userId, guestId: input.guestId ?? null });
+  const actorId = actor?.actorId ?? null;
+  const actorType = actor?.actorType ?? null;
 
-  // Guests currently don't have authenticated `userId`, so we only insert the event log for traceability.
-  if (!input.userId) {
-    await insertAnalyticsEventIdempotent({
-      ...input,
-      eventName: "chat_action_completed",
-      eventTime,
-    });
+  // 统一：游客也要写入 session/日汇总；不再仅 event log。
+  if (!actorId || !actorType) {
+    await insertAnalyticsEventIdempotent({ ...input, eventName: "chat_action_completed", eventTime });
     return;
   }
 
@@ -122,16 +130,82 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
     await db.execute(sql`
       WITH ins_event AS (
         INSERT INTO analytics_events (
-          event_id, user_id, session_id, event_name, event_time, page, source, platform,
-          token_cost, play_duration_delta_sec, payload, idempotency_key
+          event_id, actor_id, actor_type, guest_id, user_id, session_id, event_name, event_time, page, source, platform,
+          token_cost, play_duration_delta_sec, active_play_duration_delta_sec, payload, idempotency_key
         ) VALUES (
-          ${input.eventId}, ${input.userId}, ${input.sessionId}, 'chat_action_completed',
+          ${input.eventId}, ${actorId}, ${actorType}, ${actor.guestId ?? null}, ${input.userId}, ${input.sessionId}, 'chat_action_completed',
           ${eventTime}, ${input.page}, ${input.source}, ${input.platform},
-          ${input.tokenCost}, ${input.playDurationDeltaSec}, ${JSON.stringify(input.payload ?? {})}::jsonb,
+          ${input.tokenCost}, ${input.playDurationDeltaSec}, ${input.playDurationDeltaSec}, ${JSON.stringify(input.payload ?? {})}::jsonb,
           ${input.idempotencyKey}
         )
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING event_id
+      ),
+      upsert_actor AS (
+        INSERT INTO analytics_actors (actor_id, actor_type, user_id, guest_id, created_at, last_seen_at)
+        SELECT ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null}, ${eventTime}, ${eventTime}
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+        ON CONFLICT (actor_id) DO UPDATE SET
+          user_id = COALESCE(EXCLUDED.user_id, analytics_actors.user_id),
+          guest_id = COALESCE(EXCLUDED.guest_id, analytics_actors.guest_id),
+          last_seen_at = GREATEST(analytics_actors.last_seen_at, EXCLUDED.last_seen_at)
+      ),
+      upsert_actor_session AS (
+        INSERT INTO actor_sessions (
+          session_id, actor_id, actor_type, user_id, guest_id,
+          started_at, last_seen_at, last_page,
+          total_token_cost, chat_action_count,
+          online_sec, active_play_sec, read_sec, idle_sec, updated_at
+        )
+        SELECT
+          ${input.sessionId}, ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null},
+          ${eventTime}, ${eventTime}, ${input.page},
+          ${input.tokenCost}, 1,
+          0, ${input.playDurationDeltaSec}, 0, 0, CURRENT_TIMESTAMP
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+        ON CONFLICT (session_id) DO UPDATE SET
+          actor_id = EXCLUDED.actor_id,
+          actor_type = EXCLUDED.actor_type,
+          user_id = COALESCE(EXCLUDED.user_id, actor_sessions.user_id),
+          guest_id = COALESCE(EXCLUDED.guest_id, actor_sessions.guest_id),
+          last_seen_at = GREATEST(actor_sessions.last_seen_at, EXCLUDED.last_seen_at),
+          last_page = COALESCE(EXCLUDED.last_page, actor_sessions.last_page),
+          total_token_cost = actor_sessions.total_token_cost + EXCLUDED.total_token_cost,
+          chat_action_count = actor_sessions.chat_action_count + 1,
+          active_play_sec = actor_sessions.active_play_sec + EXCLUDED.active_play_sec,
+          updated_at = CURRENT_TIMESTAMP
+      ),
+      upsert_actor_daily_activity AS (
+        INSERT INTO actor_daily_activity (
+          actor_id, actor_type, user_id, guest_id, date_key,
+          first_active_at, last_active_at,
+          session_count, chat_action_count,
+          online_sec, active_play_sec, read_sec, idle_sec
+        )
+        SELECT
+          ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null}, ${dateKey}::date,
+          ${eventTime}, ${eventTime},
+          0, 1,
+          0, ${input.playDurationDeltaSec}, 0, 0
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+        ON CONFLICT (actor_id, date_key) DO UPDATE SET
+          last_active_at = GREATEST(actor_daily_activity.last_active_at, EXCLUDED.last_active_at),
+          chat_action_count = actor_daily_activity.chat_action_count + 1,
+          active_play_sec = actor_daily_activity.active_play_sec + EXCLUDED.active_play_sec
+      ),
+      upsert_actor_daily_tokens AS (
+        INSERT INTO actor_daily_tokens (
+          actor_id, actor_type, user_id, guest_id, date_key,
+          daily_token_cost, chat_action_count, active_play_sec
+        )
+        SELECT
+          ${actorId}, ${actorType}, ${input.userId}, ${actor.guestId ?? null}, ${dateKey}::date,
+          ${input.tokenCost}, 1, ${input.playDurationDeltaSec}
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+        ON CONFLICT (actor_id, date_key) DO UPDATE SET
+          daily_token_cost = actor_daily_tokens.daily_token_cost + EXCLUDED.daily_token_cost,
+          chat_action_count = actor_daily_tokens.chat_action_count + 1,
+          active_play_sec = actor_daily_tokens.active_play_sec + EXCLUDED.active_play_sec
       ),
       ins_session AS (
         INSERT INTO user_sessions (
@@ -209,6 +283,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           0, 0,
           CURRENT_TIMESTAMP
         WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NOT NULL
         ON CONFLICT (date_key) DO UPDATE
         SET
           dau = admin_metrics_daily.dau + EXCLUDED.dau,

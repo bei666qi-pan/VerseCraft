@@ -66,12 +66,16 @@ import {
 import { buildNpcSocialSurfacePacketCompact } from "@/lib/playRealtime/npcSocialSurfacePackets";
 import { buildNewPlayerGuidePacket } from "@/lib/playRealtime/newPlayerGuidePackets";
 import { buildWorldFeelPacket } from "@/lib/playRealtime/worldFeelPackets";
+import { buildPlayabilityPacketsV1 } from "@/lib/gameplay/playabilityPackets";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
   incrNpcSocialSurfaceUsageCount,
   incrWorldFeelPacketUsageCount,
+  incrSurvivalLoopPacketUsageCount,
+  incrRelationshipLoopPacketUsageCount,
+  incrInvestigationLoopPacketUsageCount,
 } from "@/lib/observability/versecraftRolloutMetrics";
 
 type ServiceStateInput = {
@@ -174,6 +178,20 @@ function parseRelationshipHints(playerContext: string): string[] {
     .map((x) => x.trim())
     .filter(Boolean)
     .slice(0, 12);
+}
+
+function parseCodexCounts(playerContext: string): { npcCount: number; anomalyCount: number } {
+  const raw = playerContext.match(CODEX_RE)?.[1]?.trim();
+  if (!raw) return { npcCount: 0, anomalyCount: 0 };
+  let npcCount = 0;
+  let anomalyCount = 0;
+  for (const part of raw.split("，").map((x) => x.trim()).filter(Boolean)) {
+    const m = part.match(/\[([a-zA-Z_]+)\|/);
+    const t = (m?.[1] ?? "").trim();
+    if (t === "npc") npcCount += 1;
+    if (t === "anomaly") anomalyCount += 1;
+  }
+  return { npcCount, anomalyCount };
 }
 
 function parseSceneNpcAppearanceWritten(playerContext: string): string[] {
@@ -464,6 +482,7 @@ export function buildRuntimeContextPackets(args: {
   const tasks = parseTasks(args.playerContext);
   const npcPositions = parseNpcPositions(args.playerContext);
   const relationshipHints = parseRelationshipHints(args.playerContext);
+  const codexCounts = parseCodexCounts(args.playerContext);
   const sceneNpcAppearanceWritten = parseSceneNpcAppearanceWritten(args.playerContext);
   const professionPacket = parseProfessionPacket(args.playerContext);
   const professionProgressPacket = parseProfessionProgressPacket(args.playerContext);
@@ -673,6 +692,81 @@ export function buildRuntimeContextPackets(args: {
     major_npc_foreshadow_packet: majorNpcForeshadowPacket,
     team_relink_packet: teamRelinkPacket,
   };
+  const originiumCount =
+    typeof worldLorePackets.originium_economy_packet.originiumCount === "number"
+      ? worldLorePackets.originium_economy_packet.originiumCount
+      : 0;
+
+  const playability = rollout.enablePlayabilityCoreLoopsV1
+    ? buildPlayabilityPacketsV1({
+        day: time.day,
+        hour: time.hour,
+        locationId: location ?? "unknown",
+        safeZone: Boolean(location && location.startsWith("B1_")),
+        originium: originiumCount,
+        weapon: {
+          stability: equippedWeapon.stability,
+          contamination: equippedWeapon.contamination,
+          repairable: equippedWeapon.repairable,
+        },
+        mainThreatByFloor: Object.fromEntries(
+          Object.entries(mainThreatMap).map(([k, v]) => [k, { phase: v.phase, suppressionProgress: v.suppressionProgress }])
+        ),
+        tasks: parseRtTaskLayers(args.playerContext).map((x) => ({ id: x.taskId, layer: x.layer, status: "active" })),
+        codex: codexCounts,
+        profession: {
+          current: professionPacket.currentProfession,
+          certifierSeen:
+            worldFlags.some((x) => x.startsWith("profession.observed.")) ||
+            professionIdentityPacket.issuerRelationshipHints.length > 0,
+        },
+      })
+    : {
+        survival_loop_packet: {
+          version: 1,
+          safeZone: Boolean(location && location.startsWith("B1_")),
+          timePressure: "low",
+          hotThreatPresent: threatPacket.phase === "active" || threatPacket.phase === "breached",
+          weaponMaintenance: "ok",
+          nextReasons: [],
+          nextSuggestedActions: [],
+        },
+        relationship_loop_packet: {
+          version: 1,
+          promiseCount: 0,
+          activeTaskCount: tasks.length,
+          debtPressure: "low",
+          certifierPresenceHint: "",
+          nextReasons: [],
+          nextSuggestedActions: [],
+        },
+        investigation_loop_packet: {
+          version: 1,
+          codexNpcCount: codexCounts.npcCount,
+          codexAnomalyCount: codexCounts.anomalyCount,
+          hasHotThreat: threatPacket.phase === "active" || threatPacket.phase === "breached",
+          nextReasons: [],
+          nextSuggestedActions: [],
+        },
+        world_feel_extra_living_lines: [],
+      };
+  if (rollout.enablePlayabilityCoreLoopsV1) {
+    incrSurvivalLoopPacketUsageCount(1);
+    incrRelationshipLoopPacketUsageCount(1);
+    incrInvestigationLoopPacketUsageCount(1);
+  }
+  const worldFeelPacketMerged =
+    rollout.enableWorldFeelLoopPackets && worldFeelPacket && playability.world_feel_extra_living_lines.length > 0
+      ? {
+          ...worldFeelPacket,
+          living_surface: {
+            ...worldFeelPacket.living_surface,
+            living_lines: Array.from(
+              new Set([...worldFeelPacket.living_surface.living_lines, ...playability.world_feel_extra_living_lines])
+            ).slice(0, 6),
+          },
+        }
+      : worldFeelPacket;
   const flFull = worldLorePackets.floor_lore_packet;
   const thFull = worldLorePackets.threat_lore_packet;
   const schoolCycleArcPacketCompact = buildSchoolCycleArcPacketCompact(maxRevealRank);
@@ -788,6 +882,13 @@ export function buildRuntimeContextPackets(args: {
     profession_system_hints_packet: professionSystemHints,
     profession_progress_packet: professionProgressPacket,
     profession_identity_packet: professionIdentityPacket,
+    ...(rollout.enablePlayabilityCoreLoopsV1
+      ? {
+          survival_loop_packet: playability.survival_loop_packet,
+          relationship_loop_packet: playability.relationship_loop_packet,
+          investigation_loop_packet: playability.investigation_loop_packet,
+        }
+      : {}),
     tactical_context_packet: buildTacticalContextPacket({
       latestUserInput: args.latestUserInput,
       activeTasks: tasks,
@@ -805,7 +906,7 @@ export function buildRuntimeContextPackets(args: {
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
     ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
-    ...(worldFeelPacket ? { world_feel_packet: worldFeelPacket } : {}),
+    ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
   };
   const contextMode = args.contextMode ?? "full";
   const packetsForPrompt =
@@ -818,6 +919,13 @@ export function buildRuntimeContextPackets(args: {
           nearby_npc_packet: packets.nearby_npc_packet.slice(0, 4),
           profession_packet: packets.profession_packet,
           tactical_context_packet: packets.tactical_context_packet,
+          ...(rollout.enablePlayabilityCoreLoopsV1
+            ? {
+                survival_loop_packet: (packets as any).survival_loop_packet,
+                relationship_loop_packet: (packets as any).relationship_loop_packet,
+                investigation_loop_packet: (packets as any).investigation_loop_packet,
+              }
+            : {}),
           scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
           npc_player_baseline_packet: packets.npc_player_baseline_packet,
           npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
@@ -825,7 +933,7 @@ export function buildRuntimeContextPackets(args: {
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
           ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
-          ...(worldFeelPacket ? { world_feel_packet: worldFeelPacket } : {}),
+          ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
         }
       : packets;
   const text = [
@@ -840,6 +948,14 @@ export function buildRuntimeContextPackets(args: {
   const compactPackets = {
     current_location_packet: packets.current_location_packet,
     main_threat_packet: packets.main_threat_packet,
+    /** 阶段4：三主循环（优先靠前，避免 budget slice 截断丢失） */
+    ...(rollout.enablePlayabilityCoreLoopsV1
+      ? {
+          survival_loop_packet: (packets as any).survival_loop_packet,
+          relationship_loop_packet: (packets as any).relationship_loop_packet,
+          investigation_loop_packet: (packets as any).investigation_loop_packet,
+        }
+      : {}),
     /** 截断路径下优先保留武器/锻造/战术上下文（原在 JSON 尾部易被 slice 截断） */
     weapon_packet: packets.weapon_packet,
     forge_packet: packets.forge_packet,
@@ -876,7 +992,7 @@ export function buildRuntimeContextPackets(args: {
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
     ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
-    ...(worldFeelPacket ? { world_feel_packet: worldFeelPacket } : {}),
+    ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
   };
   const compactText = [
     "## 【运行时结构化上下文包（权威事实源）】",

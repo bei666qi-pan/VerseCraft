@@ -80,6 +80,9 @@ import type { ProfessionId, ProfessionStateV1 } from "@/lib/profession/types";
 import { createDefaultProfessionState, PROFESSION_IDS, PROFESSION_REGISTRY } from "@/lib/profession/registry";
 import { certifyProfession, computeProfessionState } from "@/lib/profession/engine";
 import { buildProfessionTrialTask, getProfessionTrialTaskId } from "@/lib/profession/trials";
+import { buildProfessionIdentityDigest, buildProfessionApproachSnapshots } from "@/lib/profession/progressionUi";
+import { computeProfessionVisibility } from "@/lib/profession/professionVisibilityPolicy";
+import { extractProfessionNarrativeCues } from "@/lib/profession/professionNarrativeHooks";
 import {
   buildProfessionImprintCodex,
   buildProfessionIssuerRelationshipDelta,
@@ -109,6 +112,7 @@ import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
 import { resolveHourProgressDelta, splitProgress } from "@/lib/time/timeBudget";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -467,11 +471,17 @@ interface GameState extends IntegrityMetaState {
   reviveContext: SaveSlotData["reviveContext"];
   appliedRelationshipTaskIds: string[];
   professionState: ProfessionStateV1;
+  /** Phase-2：职业叙事提示（仅运行时消费；不入存档）。 */
+  professionNarrativeCues?: Array<{ code: string; title: string; line: string; profession: ProfessionId; npcId: string }>;
+  /** Phase-3：前台快捷行动（仅 UI 辅助；不入存档）。 */
+  pendingClientAction?: { text: string; autoSend: boolean; source: "weapon" | "system" };
   /** 是否已在叙事中遇到 1F 认证 NPC（路线引导大姐姐 N-010） */
   hasMetProfessionCertifier: boolean;
   _integrity_dirty: boolean;
   verifyStateIntegrity: () => Promise<boolean>;
   markMetProfessionCertifier: () => void;
+  queueClientAction: (text: string, autoSend?: boolean, source?: "weapon" | "system") => void;
+  consumeClientAction: () => { text: string; autoSend: boolean; source: "weapon" | "system" } | null;
   triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
   setVolume: (volume: number) => void;
@@ -823,6 +833,32 @@ function resolveProfessionStateFromSlot(data: SaveSlotData | undefined): Profess
   return createDefaultProfessionState();
 }
 
+function ensureProfessionTrialTasks(tasks: GameTask[], professionState: ProfessionStateV1): GameTask[] {
+  const base = Array.isArray(tasks) ? tasks : [];
+  const rollout = getVerseCraftRolloutFlags();
+  if (!rollout.enableProfessionTrialNarrativeGrant) return base;
+  if (professionState?.currentProfession) return base;
+  const existing = new Set(base.map((t) => t.id));
+  const next = [...base];
+  for (const id of PROFESSION_IDS) {
+    const prog = professionState.progressByProfession?.[id];
+    if (!prog?.trialOffered || !prog.trialTaskId) continue;
+    if (existing.has(prog.trialTaskId)) continue;
+    // 叙事授予：以口头约定的形式进入“承诺/风险带”（由 taskV2 narrative layer/ grantState 承载）
+    next.push(buildProfessionTrialTask(id));
+    existing.add(prog.trialTaskId);
+  }
+  return next;
+}
+
+function attachProfessionNarrativeCues(prev: ProfessionStateV1 | null | undefined, next: ProfessionStateV1): Array<{ code: string; title: string; line: string; profession: ProfessionId; npcId: string }> {
+  try {
+    return extractProfessionNarrativeCues({ prev, next });
+  } catch {
+    return [];
+  }
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     checksumMiddleware((set, get) => ({
@@ -881,6 +917,8 @@ export const useGameStore = create<GameState>()(
       appliedRelationshipTaskIds: [],
       professionState: createDefaultProfessionState(),
       hasMetProfessionCertifier: false,
+      professionNarrativeCues: [],
+      pendingClientAction: null,
       _checksum_fingerprint: "",
       _integrity_dirty: false,
       verifyStateIntegrity: async () => {
@@ -932,6 +970,18 @@ export const useGameStore = create<GameState>()(
       setBgm: (track) => set({ currentBgm: track }),
       setVolume: (vol) => set({ volume: clampVolume(vol) }),
       setActiveMenu: (menu) => set({ activeMenu: menu }),
+      queueClientAction: (text, autoSend = false, source = "system") =>
+        set(() => {
+          const trimmed = String(text ?? "").trim();
+          if (!trimmed) return {};
+          return { pendingClientAction: { text: trimmed, autoSend: Boolean(autoSend), source } };
+        }),
+      consumeClientAction: () => {
+        const cur = get().pendingClientAction ?? null;
+        if (!cur) return null;
+        set({ pendingClientAction: null });
+        return cur;
+      },
       useTalent: (talent) => {
         const s = get();
         const cds = s.talentCooldowns ?? DEFAULT_TALENT_COOLDOWNS;
@@ -1240,6 +1290,7 @@ export const useGameStore = create<GameState>()(
               activated,
               s.appliedRelationshipTaskIds ?? []
             );
+            const prevProfession = s.professionState;
             const professionState = computeProfessionState({
               prev: s.professionState,
               stats: s.stats ?? DEFAULT_STATS,
@@ -1252,10 +1303,11 @@ export const useGameStore = create<GameState>()(
               equippedWeapon: s.equippedWeapon ?? null,
             });
             return {
-              tasks: activated,
+              tasks: ensureProfessionTrialTasks(activated, professionState),
               codex: rel.codex,
               appliedRelationshipTaskIds: rel.appliedTaskIds,
               professionState,
+              professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
             };
           }
           const activated = activateClaimableHiddenTasks([...(s.tasks ?? []), withLedger]);
@@ -1264,6 +1316,7 @@ export const useGameStore = create<GameState>()(
             activated,
             s.appliedRelationshipTaskIds ?? []
           );
+          const prevProfession = s.professionState;
           const professionState = computeProfessionState({
             prev: s.professionState,
             stats: s.stats ?? DEFAULT_STATS,
@@ -1276,10 +1329,11 @@ export const useGameStore = create<GameState>()(
             equippedWeapon: s.equippedWeapon ?? null,
           });
           return {
-            tasks: activated,
+            tasks: ensureProfessionTrialTasks(activated, professionState),
             codex: rel.codex,
             appliedRelationshipTaskIds: rel.appliedTaskIds,
             professionState,
+            professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
           };
         }),
       updateTaskStatus: (taskId, status) =>
@@ -1293,6 +1347,7 @@ export const useGameStore = create<GameState>()(
             activated,
             s.appliedRelationshipTaskIds ?? []
           );
+          const prevProfession = s.professionState;
           const professionState = computeProfessionState({
             prev: s.professionState,
             stats: s.stats ?? DEFAULT_STATS,
@@ -1305,10 +1360,11 @@ export const useGameStore = create<GameState>()(
             equippedWeapon: s.equippedWeapon ?? null,
           });
           return {
-            tasks: activated,
+            tasks: ensureProfessionTrialTasks(activated, professionState),
             codex: rel.codex,
             appliedRelationshipTaskIds: rel.appliedTaskIds,
             professionState,
+            professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
           };
         }),
       updateTask: (taskPatch) =>
@@ -1324,6 +1380,7 @@ export const useGameStore = create<GameState>()(
             activated,
             s.appliedRelationshipTaskIds ?? []
           );
+          const prevProfession = s.professionState;
           const professionState = computeProfessionState({
             prev: s.professionState,
             stats: s.stats ?? DEFAULT_STATS,
@@ -1336,10 +1393,11 @@ export const useGameStore = create<GameState>()(
             equippedWeapon: s.equippedWeapon ?? null,
           });
           return {
-            tasks: activated,
+            tasks: ensureProfessionTrialTasks(activated, professionState),
             codex: rel.codex,
             appliedRelationshipTaskIds: rel.appliedTaskIds,
             professionState,
+            professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
           };
         }),
       setPlayerLocation: (loc) =>
@@ -1586,6 +1644,7 @@ export const useGameStore = create<GameState>()(
             };
             next[key] = merged;
           }
+          const prevProfession = s.professionState;
           const professionState = computeProfessionState({
             prev: s.professionState,
             stats: s.stats ?? DEFAULT_STATS,
@@ -1597,7 +1656,9 @@ export const useGameStore = create<GameState>()(
             warehouseCount: (s.warehouse ?? []).length,
             equippedWeapon: s.equippedWeapon ?? null,
           });
-          return { codex: next, professionState };
+          const tasks = ensureProfessionTrialTasks(s.tasks ?? [], professionState);
+          const cues = attachProfessionNarrativeCues(prevProfession, professionState);
+          return { codex: next, professionState, tasks, professionNarrativeCues: cues };
         }),
 
       mergeJournalClueUpdates: (incoming) =>
@@ -2004,9 +2065,31 @@ export const useGameStore = create<GameState>()(
           `用户位置[${s.playerLocation}]。` +
           `当前属性：${statsText}。` +
           `${talentText}。` +
-          `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]，可认证[${
-            PROFESSION_IDS.filter((id) => prof.eligibilityByProfession[id]).join("/") || "无"
-          }]，被动[${prof.activePerks.join("/") || "无"}]。` +
+          (() => {
+            const rollout = getVerseCraftRolloutFlags();
+            if (!rollout.enableProfessionIdentityLoop) {
+              const eligible = PROFESSION_IDS.filter((id) => prof.eligibilityByProfession[id]).join("/") || "无";
+              return `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]，可认证[${eligible}]，被动[${prof.activePerks.join("/") || "无"}]。`;
+            }
+            const visibility = computeProfessionVisibility(prof);
+            const digest = buildProfessionIdentityDigest(prof);
+            const approaches = buildProfessionApproachSnapshots(prof);
+            const shown = approaches.filter((x) => visibility.visibleProfessions.includes(x.profession)).slice(0, 2);
+            const approachLine = shown.length > 0
+              ? `职业倾向：${shown.map((x) => {
+                  const stage =
+                    x.stage === "certified" ? "已认证" :
+                      x.stage === "eligible" ? "可认证" :
+                        x.stage === "trial" ? "证明中" :
+                          x.stage === "observed" ? "被看见" : "倾向";
+                  const next = x.next.slice(0, 2).join("；");
+                  return `${x.profession}[${stage}${next ? `|还差:${next}` : ""}]`;
+                }).join("，")}。`
+              : "";
+            const eligible = PROFESSION_IDS.filter((id) => prof.eligibilityByProfession[id]).join("/") || "无";
+            return `${digest}。${approachLine}` +
+              `职业状态：当前[${prof.currentProfession ?? "无"}]，已认证[${prof.unlockedProfessions.join("/") || "无"}]，可认证[${eligible}]，被动[${prof.activePerks.join("/") || "无"}]。`;
+          })() +
           `职业收益：当前[${prof.currentProfession ?? "无"}]，被动摘要[${getProfessionPassiveSummary(prof.currentProfession)}]，主动摘要[${getProfessionActiveSummary(
             prof.currentProfession
           )}]，主动可用[${
@@ -2026,7 +2109,20 @@ export const useGameStore = create<GameState>()(
               trialTaskCompleted: false,
               certified: false,
             };
-            return `${id}[属性${p.statQualified ? "1" : "0"}|行为${p.behaviorEvidenceCount}/${p.behaviorEvidenceTarget}|试炼${p.trialTaskCompleted ? "1" : "0"}|认证${p.certified ? "1" : "0"}]`;
+            const stage = p.certified
+              ? "认证"
+              : p.trialTaskCompleted
+                ? "可认证"
+                : p.trialAccepted
+                  ? "证明中"
+                  : p.trialOffered
+                    ? "已授予"
+                    : p.observedByCertifier
+                      ? "被看见"
+                      : p.inclinationVisible
+                        ? "倾向"
+                        : "无";
+            return `${id}[${stage}|属性${p.statQualified ? "1" : "0"}|行为${p.behaviorEvidenceCount}/${p.behaviorEvidenceTarget}|试炼${p.trialTaskCompleted ? "1" : "0"}]`;
           }).join("，")}。` +
           `行囊道具：${inv || "空"}。` +
           (() => {
@@ -2480,6 +2576,7 @@ export const useGameStore = create<GameState>()(
       },
       refreshProfessionState: () =>
         set((s) => {
+          const prevProfession = s.professionState;
           const computed = computeProfessionState({
             prev: s.professionState,
             stats: s.stats ?? DEFAULT_STATS,
@@ -2491,8 +2588,10 @@ export const useGameStore = create<GameState>()(
             warehouseCount: (s.warehouse ?? []).length,
             equippedWeapon: s.equippedWeapon ?? null,
           });
-          // 单职业 V2：不再注入“试炼任务”，资格仅作为“可选职业”的展示依据。
-          return { professionState: computed };
+          // Phase-2：试炼回归产品层，但以叙事授予方式进入（不抢主任务板中心）。
+          const nextTasks = ensureProfessionTrialTasks(s.tasks ?? [], computed);
+          const cues = attachProfessionNarrativeCues(prevProfession, computed);
+          return { professionState: computed, tasks: nextTasks, professionNarrativeCues: cues };
         }),
       certifyProfession: (profession) => {
         const s = get();

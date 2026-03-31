@@ -47,3 +47,18 @@ export function getClientSettingsTaskRemovalEnabled(): boolean {
 export function getClientPlayerFacingTaskCopyV2Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_PLAYER_FACING_TASK_COPY_V2", true);
 }
+
+/** Phase6: show low-disruption continue button on narrative-only turns */
+export function getClientContinueButtonEnabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_CONTINUE_BUTTON", true);
+}
+
+export function getVerseCraftClientRolloutFlags(): {
+  enableWeaponLifecycleV1: boolean;
+  enableWeaponizationPreview: boolean;
+} {
+  return {
+    enableWeaponLifecycleV1: readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_WEAPON_LIFECYCLE_V1", true),
+    enableWeaponizationPreview: readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_WEAPONIZATION_PREVIEW", true),
+  };
+}

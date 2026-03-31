@@ -2,6 +2,12 @@
 
 import { useMemo, useState } from "react";
 import type { StatType, Weapon } from "@/lib/registry/types";
+import { useGameStore } from "@/store/useGameStore";
+import { getVerseCraftClientRolloutFlags } from "@/lib/rollout/versecraftClientRollout";
+import { buildWeaponizationPreviews } from "@/lib/weapon/weaponizationPreview";
+import { computeWeaponLifecycleStages } from "@/lib/weapon/weaponLifecycle";
+import { buildWeaponStrategyDigest, buildWeaponizationWhyLine } from "@/lib/weapon/weaponPlayerFacingText";
+import { incrWeaponizationPreviewShownCount } from "@/lib/observability/versecraftRolloutMetrics";
 
 const STAT_LABELS: Record<StatType, string> = {
   sanity: "精神",
@@ -53,28 +59,6 @@ function formatSourceLine(weapon: Weapon | null): string {
   return "来源：未记录";
 }
 
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      const el = document.createElement("textarea");
-      el.value = text;
-      el.style.position = "fixed";
-      el.style.left = "-9999px";
-      document.body.appendChild(el);
-      el.focus();
-      el.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(el);
-      return ok;
-    } catch {
-      return false;
-    }
-  }
-}
-
 export function WeaponSlotPanel({
   equippedWeapon,
   weaponBag,
@@ -86,6 +70,19 @@ export function WeaponSlotPanel({
 }) {
   const [tip, setTip] = useState<string | null>(null);
   const hasWeapon = Boolean(equippedWeapon);
+  const queueClientAction = useGameStore((s) => s.queueClientAction);
+  const profession = useGameStore((s) => s.professionState?.currentProfession ?? null);
+  const inventory = useGameStore((s) => s.inventory ?? []);
+  const originium = useGameStore((s) => s.originium ?? 0);
+  const threatMap = useGameStore((s) => s.mainThreatByFloor ?? {});
+  const clientFlags = getVerseCraftClientRolloutFlags();
+
+  const mainThreatSummary = useMemo(() => {
+    const active = Object.values(threatMap).filter((x: any) => x && (x.phase === "active" || x.phase === "suppressed" || x.phase === "breached"));
+    if (active.length === 0) return "暂无高压主威胁";
+    const top = active[0] as any;
+    return `${String(top.floorId ?? "?")}相位[${String(top.phase ?? "?")}]`;
+  }, [threatMap]);
 
   const stability = clampInt((equippedWeapon as any)?.stability ?? 0, 0, 100);
   const contamination = clampInt((equippedWeapon as any)?.contamination ?? 0, 0, 100);
@@ -108,6 +105,22 @@ export function WeaponSlotPanel({
 
   const bagIds = useMemo(() => (Array.isArray(weaponBag) ? weaponBag.map((w) => w.id).filter(Boolean) : []).slice(0, 12), [weaponBag]);
 
+  const lifecycle = useMemo(
+    () => (clientFlags.enableWeaponLifecycleV1 ? computeWeaponLifecycleStages({ equippedWeapon, inventory, originium }) : { stages: [], notes: [], readiness: [] as any }),
+    [equippedWeapon, inventory, originium, clientFlags.enableWeaponLifecycleV1]
+  );
+  const strategy = useMemo(
+    () => buildWeaponStrategyDigest({ weapon: equippedWeapon, profession, mainThreatSummary }),
+    [equippedWeapon, profession, mainThreatSummary]
+  );
+  const previews = useMemo(
+    () => (clientFlags.enableWeaponizationPreview ? buildWeaponizationPreviews({ inventory, originium, equippedWeapon }) : []),
+    [inventory, originium, equippedWeapon, clientFlags.enableWeaponizationPreview]
+  );
+  if (clientFlags.enableWeaponizationPreview && previews.length > 0) {
+    incrWeaponizationPreviewShownCount(1);
+  }
+
   return (
     <div className="rounded-2xl border border-white/15 bg-white/5 p-4 shadow-[0_0_20px_rgba(0,0,0,0.35)]">
       <div className="flex items-center justify-between gap-3">
@@ -122,11 +135,40 @@ export function WeaponSlotPanel({
         </div>
       </div>
 
+      <div className="mt-3 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-[11px] text-slate-300">
+        <div className="text-[10px] tracking-wider text-slate-500">策略摘要</div>
+        <div className="mt-1 text-slate-100">{strategy.title}</div>
+        <div className="mt-1 text-slate-400">{strategy.whyCarry}</div>
+        <div className="mt-1 text-amber-200">{strategy.keepOrSwap}</div>
+        <div className="mt-1 text-slate-400">{strategy.maintenance}</div>
+        <div className="mt-1 text-slate-500">{strategy.professionBias}</div>
+        {lifecycle.notes.length > 0 ? (
+          <div className="mt-1 text-slate-500">提示：{lifecycle.notes.join("；")}</div>
+        ) : null}
+      </div>
+
       {!hasWeapon ? (
         <div className="mt-3 rounded-xl border border-dashed border-white/15 bg-black/10 px-3 py-3">
           <div className="text-sm font-semibold text-slate-200">主手武器：未装备</div>
           <div className="mt-1 text-[11px] leading-relaxed text-slate-400">
-            若你已有武器（武器背包），请使用“更换武器：{`<武器ID>`}”。若你有 C+ 道具，可去配电间锻造台进行武器化。
+            你可以通过背包换装，或去配电间把 C+ 道具武器化成“对策主手”。这不是免费升级：它会带来污染与维护债。
+          </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={busy || bagIds.length === 0}
+              onClick={() => {
+                const cmd = bagIds.length > 0 ? `装备武器：${bagIds[0]}` : "";
+                if (!cmd) return;
+                queueClientAction(cmd, true, "weapon");
+                setTip(`已发送：${cmd}`);
+                setTimeout(() => setTip(null), 2500);
+              }}
+              className="min-h-[40px] rounded-xl border border-indigo-300/25 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-100 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              title="通过主界面发送该动作（仍由系统裁决回写）"
+            >
+              装备背包首件（耗时1回合）
+            </button>
           </div>
         </div>
       ) : (
@@ -177,27 +219,27 @@ export function WeaponSlotPanel({
             <button
               type="button"
               disabled={busy}
-              onClick={async () => {
-                const ok = await copyText("卸下武器");
-                setTip(ok ? "已复制指令：卸下武器（需耗费1回合）" : "复制失败，请手动输入：卸下武器");
+              onClick={() => {
+                queueClientAction("卸下武器", true, "weapon");
+                setTip("已发送：卸下武器（需耗费1回合）");
                 setTimeout(() => setTip(null), 2500);
               }}
               className="min-h-[40px] rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
-              title="不会直接改状态；请在主界面提交该指令"
+              title="仍由系统裁决回写；不直接改状态"
             >
               卸下（耗时1回合）
             </button>
             <button
               type="button"
               disabled={busy}
-              onClick={async () => {
+              onClick={() => {
                 const hint = bagIds.length > 0 ? `更换武器：${bagIds[0]}` : "更换武器：<武器ID>";
-                const ok = await copyText(hint);
-                setTip(ok ? `已复制指令：${hint}（需耗费1回合）` : `复制失败，请手动输入：${hint}`);
+                queueClientAction(hint, true, "weapon");
+                setTip(`已发送：${hint}（需耗费1回合）`);
                 setTimeout(() => setTip(null), 2500);
               }}
               className="min-h-[40px] rounded-xl border border-indigo-300/25 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-100 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-              title="不会直接改状态；请在主界面提交该指令"
+              title="仍由系统裁决回写；不直接改状态"
             >
               更换（耗时1回合）
             </button>
@@ -214,7 +256,66 @@ export function WeaponSlotPanel({
           {bagIds.length > 0 ? bagIds.join("，") : "无"}
         </div>
         <div className="mt-1 text-[10px] text-slate-500">
-          有可武器化道具时：去「配电间」查看锻造台（不会在 UI 中直接合成）。
+          {buildWeaponizationWhyLine({ profession, inventory })}
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-white/10 bg-slate-900/20 px-3 py-3">
+        <div className="text-[10px] tracking-wider text-slate-500">武器化预览（配电间锻造台）</div>
+        <div className="mt-1 text-[11px] text-slate-300">
+          你可以先看“要消耗什么、要花多少钱、会更像哪种对策”，再决定是否把原料变成主手。
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2">
+          {previews.slice(0, 2).map((p) => (
+            <div key={p.recipeId} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-semibold text-slate-100">
+                  武器化 {p.targetTier}（耗原石 {p.costOriginium}）
+                </div>
+                <div className={`text-[10px] ${p.ready ? "text-emerald-200" : "text-amber-200"}`}>
+                  {p.ready ? "可尝试" : p.readyReason}
+                </div>
+              </div>
+              <div className="mt-1 text-[10px] text-slate-400">
+                候选原料：{p.candidateItems.length > 0 ? p.candidateItems.map((x) => `${x.id}[${x.tier}]`).join("，") : "无"}
+              </div>
+              <div className="mt-1 text-[10px] text-slate-400">
+                可能风格：{p.suggestedTemplate.name}（{p.suggestedTemplate.counterTags.join(" / ") || "未知"}）
+              </div>
+              <div className="mt-1 text-[10px] text-slate-500">{p.riskHint}</div>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    queueClientAction(p.suggestedCommand, false, "weapon");
+                    setTip(`已插入：${p.suggestedCommand}`);
+                    setTimeout(() => setTip(null), 2500);
+                  }}
+                  className="min-h-[38px] rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="插入到输入框（仍由系统裁决回写）"
+                >
+                  插入指令
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    queueClientAction(p.suggestedCommand, true, "weapon");
+                    setTip(`已发送：${p.suggestedCommand}`);
+                    setTimeout(() => setTip(null), 2500);
+                  }}
+                  className="min-h-[38px] rounded-xl border border-indigo-300/25 bg-indigo-500/15 px-3 py-2 text-xs font-semibold text-indigo-100 transition hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="一键发送（仍由系统裁决回写）"
+                >
+                  一键武器化
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 text-[10px] text-slate-500">
+          注：锻造台会要求你在指令里列出具体道具ID；系统会拒绝数量/品级不符或武器栏占用的尝试。
         </div>
       </div>
 

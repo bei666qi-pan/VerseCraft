@@ -244,6 +244,113 @@ export async function generateOptionsOnlyFallback(args: {
   return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
 }
 
+function padDecisionOptionsToTwo(playerContext?: string): string[] {
+  // Reuse contextual hints but do not force 4-choice UI for decision turns.
+  const base = contextualFallbackPad(playerContext ?? "");
+  return [...base].slice(0, 2).map((s) => String(s ?? "").trim()).filter(Boolean);
+}
+
+async function runDecisionOnlyAiOnce(args: {
+  narrative: string;
+  latestUserInput: string;
+  playerContext: string;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+  temperature: number;
+  systemExtra?: string;
+}): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
+  const system: ChatMessage = {
+    role: "system",
+    content: [
+      "你是规则怪谈文字冒险的决策整理助手，任务是为玩家生成关键节点的决策选项。",
+      "你必须只输出一个 JSON 对象，形如：{\"decision_options\":[\"...\",\"...\"]}。",
+      "严格要求：decision_options 只能有 2–4 条，中文简体，每条 5–24 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
+      "这 2–4 条必须真正分叉后果，不允许换皮同义句，不允许只是不同措辞的同一个行动。",
+      "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
+      args.systemExtra ?? "",
+    ]
+      .filter((s) => s.length > 0)
+      .join("\n"),
+  };
+  const user: ChatMessage = {
+    role: "user",
+    content: [
+      `【本回合玩家输入】${String(args.latestUserInput ?? "").slice(0, 400)}`,
+      `【本回合叙事（narrative）】${String(args.narrative ?? "").slice(0, 1400)}`,
+      `【玩家状态摘要】${String(args.playerContext ?? "").slice(0, 1200)}`,
+    ].join("\n"),
+  };
+
+  const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+    task: "INTENT_PARSE",
+    messages: [system, user],
+    ctx: {
+      requestId: args.ctx.requestId,
+      task: "INTENT_PARSE",
+      userId: args.ctx.userId,
+      sessionId: args.ctx.sessionId,
+      path: args.ctx.path,
+      tags: { ...(args.ctx.tags ?? {}), purpose: "decision_options_regen" },
+    },
+    signal: args.signal,
+    requestTimeoutMs: 9_000,
+    skipCache: true,
+    devOverrides: {
+      maxTokens: 256,
+      temperature: args.temperature,
+      timeoutMs: 9_000,
+      responseFormatJsonObject: true,
+    },
+  });
+
+  if (!res.ok) return { ok: false, reason: `ai_error:${res.code}` };
+  return { ok: true, content: res.content };
+}
+
+export async function generateDecisionOptionsOnlyFallback(args: {
+  narrative: string;
+  latestUserInput: string;
+  playerContext: string;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+  systemExtra?: string;
+}): Promise<{ ok: true; decision_options: string[] } | { ok: false; reason: string }> {
+  const tryParse = (content: string): { ok: true; decision_options: string[] } | null => {
+    try {
+      const obj = JSON.parse(content) as Record<string, unknown>;
+      const parsed = parseOptionsArrayFromAiJson((obj as any).decision_options);
+      const clipped = parsed.slice(0, 4);
+      if (clipped.length >= 2) return { ok: true, decision_options: clipped };
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const first = await runDecisionOnlyAiOnce({
+    ...args,
+    temperature: 0.35,
+    systemExtra: args.systemExtra,
+  });
+  if (first.ok) {
+    const done = tryParse(first.content);
+    if (done) return done;
+  }
+
+  const second = await runDecisionOnlyAiOnce({
+    ...args,
+    temperature: 0.6,
+    systemExtra: [args.systemExtra ?? "", "本次必须输出 2–4 条 decision_options，至少 2 条。"].filter(Boolean).join("\n"),
+  });
+  if (second.ok) {
+    const done = tryParse(second.content);
+    if (done) return done;
+  }
+
+  // 两次模型均不可用或 JSON 无效：给出 2 条保守兜底，避免“必须决策但无选项”。
+  return { ok: true, decision_options: padDecisionOptionsToTwo(args.playerContext) };
+}
+
 export type OfflineReasonerKind = "worldbuild" | "storyline" | "dev_assist";
 
 function offlineReasonerTaskType(kind: OfflineReasonerKind): TaskType {

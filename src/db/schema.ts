@@ -238,6 +238,15 @@ export const analyticsEvents = pgTable(
   "analytics_events",
   {
     eventId: varchar("event_id", { length: 191 }).primaryKey(),
+    /**
+     * 统一 actor 模型（阶段5）：
+     * - 登录用户：actorId = u:{userId}
+     * - 游客：actorId = g:{guestId}
+     */
+    actorId: varchar("actor_id", { length: 191 }),
+    actorType: varchar("actor_type", { length: 16 }),
+    /** 与 useGameStore.guestId 对齐（游客长期身份锚点） */
+    guestId: varchar("guest_id", { length: 128 }),
     userId: varchar("user_id", { length: 191 })
       .references(() => users.id, { onDelete: "cascade" })
       ,
@@ -251,6 +260,11 @@ export const analyticsEvents = pgTable(
 
     tokenCost: integer("token_cost").notNull().default(0),
     playDurationDeltaSec: integer("play_duration_delta_sec").notNull().default(0),
+    /** 在线/活跃/阅读/空闲：由 heartbeat 与回合结算累计（一期最小口径） */
+    onlineDurationDeltaSec: integer("online_duration_delta_sec").notNull().default(0),
+    activePlayDurationDeltaSec: integer("active_play_duration_delta_sec").notNull().default(0),
+    readDurationDeltaSec: integer("read_duration_delta_sec").notNull().default(0),
+    idleDurationDeltaSec: integer("idle_duration_delta_sec").notNull().default(0),
 
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
 
@@ -263,6 +277,114 @@ export const analyticsEvents = pgTable(
     eventNameTimeIdx: index("analytics_events_event_name_time_idx").on(table.eventName, table.eventTime),
     sessionIdx: index("analytics_events_session_id_idx").on(table.sessionId),
     pageTimeIdx: index("analytics_events_page_time_idx").on(table.page, table.eventTime),
+    actorEventTimeIdx: index("analytics_events_actor_event_time_idx").on(table.actorId, table.eventTime),
+    guestEventTimeIdx: index("analytics_events_guest_event_time_idx").on(table.guestId, table.eventTime),
+  })
+);
+
+/** 后台游客别名：稳定映射 guestId -> 游客N（仅 admin 展示用） */
+export const guestAliases = pgTable(
+  "guest_aliases",
+  {
+    guestId: varchar("guest_id", { length: 128 }).primaryKey(),
+    guestNo: bigserial("guest_no", { mode: "number" }).notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    guestNoUnique: uniqueIndex("guest_aliases_guest_no_unique").on(table.guestNo),
+  })
+);
+
+/**
+ * 统一 actor（人）表：一个 actor 对应多个 session。
+ * 注意：sessionId 只代表会话；actorId 才代表人。
+ */
+export const analyticsActors = pgTable(
+  "analytics_actors",
+  {
+    actorId: varchar("actor_id", { length: 191 }).primaryKey(),
+    actorType: varchar("actor_type", { length: 16 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    guestId: varchar("guest_id", { length: 128 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    actorTypeIdx: index("analytics_actors_actor_type_idx").on(table.actorType),
+    userIdx: index("analytics_actors_user_id_idx").on(table.userId),
+    guestIdx: index("analytics_actors_guest_id_idx").on(table.guestId),
+    lastSeenIdx: index("analytics_actors_last_seen_idx").on(table.lastSeenAt),
+  })
+);
+
+export const actorSessions = pgTable(
+  "actor_sessions",
+  {
+    sessionId: varchar("session_id", { length: 191 }).primaryKey(),
+    actorId: varchar("actor_id", { length: 191 }).notNull(),
+    actorType: varchar("actor_type", { length: 16 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    guestId: varchar("guest_id", { length: 128 }),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastPage: text("last_page"),
+    totalTokenCost: integer("total_token_cost").notNull().default(0),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+    onlineSec: integer("online_sec").notNull().default(0),
+    activePlaySec: integer("active_play_sec").notNull().default(0),
+    readSec: integer("read_sec").notNull().default(0),
+    idleSec: integer("idle_sec").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    actorLastSeenIdx: index("actor_sessions_actor_last_seen_idx").on(table.actorId, table.lastSeenAt),
+    guestLastSeenIdx: index("actor_sessions_guest_last_seen_idx").on(table.guestId, table.lastSeenAt),
+    userLastSeenIdx: index("actor_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
+  })
+);
+
+export const actorDailyActivity = pgTable(
+  "actor_daily_activity",
+  {
+    actorId: varchar("actor_id", { length: 191 }).notNull(),
+    actorType: varchar("actor_type", { length: 16 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    guestId: varchar("guest_id", { length: 128 }),
+    dateKey: date("date_key").notNull(),
+    firstActiveAt: timestamp("first_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    sessionCount: integer("session_count").notNull().default(0),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+    onlineSec: integer("online_sec").notNull().default(0),
+    activePlaySec: integer("active_play_sec").notNull().default(0),
+    readSec: integer("read_sec").notNull().default(0),
+    idleSec: integer("idle_sec").notNull().default(0),
+  },
+  (table) => ({
+    actorDateUnique: uniqueIndex("actor_daily_activity_actor_date_unique").on(table.actorId, table.dateKey),
+    dateIdx: index("actor_daily_activity_date_idx").on(table.dateKey),
+    actorIdx: index("actor_daily_activity_actor_idx").on(table.actorId),
+    guestIdx: index("actor_daily_activity_guest_idx").on(table.guestId),
+  })
+);
+
+export const actorDailyTokens = pgTable(
+  "actor_daily_tokens",
+  {
+    actorId: varchar("actor_id", { length: 191 }).notNull(),
+    actorType: varchar("actor_type", { length: 16 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    guestId: varchar("guest_id", { length: 128 }),
+    dateKey: date("date_key").notNull(),
+    dailyTokenCost: integer("daily_token_cost").notNull().default(0),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+    activePlaySec: integer("active_play_sec").notNull().default(0),
+  },
+  (table) => ({
+    actorDateUnique: uniqueIndex("actor_daily_tokens_actor_date_unique").on(table.actorId, table.dateKey),
+    dateIdx: index("actor_daily_tokens_date_idx").on(table.dateKey),
+    actorIdx: index("actor_daily_tokens_actor_idx").on(table.actorId),
+    guestIdx: index("actor_daily_tokens_guest_idx").on(table.guestId),
   })
 );
 
