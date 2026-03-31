@@ -109,7 +109,7 @@ export function PlayTextInputBar({
                   }
                 >
                   {isGuestDialogueExhausted
-                    ? (showRegisterPrompt ? "体验次数已耗尽，可注册账号以继续执笔创作。" : "")
+                    ? (showRegisterPrompt ? "体验次数已耗尽。若你仍要继续行动，请注册或登录。" : "")
                     : input.trim().length > MAX_INPUT
                       ? "文本过长：将被叙事拒绝。"
                       : helperText}

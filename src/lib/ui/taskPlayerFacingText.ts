@@ -40,14 +40,45 @@ export function buildTaskAtAGlanceLine(task: GameTask, codex?: Record<string, Co
 
   const base = hint || urgency || hook || clip(sanitizePlayerFacingInline(task.desc ?? "", codex), 72);
   if (!base) {
-    if (kind === "clue") return "线索先记着：它还没连上主线。";
-    if (kind === "promise") return "先把对方的期待与门槛问清楚。";
-    return "先确认关键门槛，再决定下一步。";
+    if (kind === "clue") return "线索还在逼近：先别惊动它，找一个可验证的切口。";
+    if (kind === "promise") return "牵连会累积利息：先把门槛与代价问清楚。";
+    return "别同时追太多线：先把关键一步走稳。";
   }
 
   if (kind === "clue") return `线索：${base}`;
-  if (kind === "promise") return `承诺：${base}`;
+  if (kind === "promise") return `牵连：${base}`;
   return `推进要点：${base}`;
+}
+
+function hasDeadline(task: GameTask): boolean {
+  const iso = typeof task.expiresAt === "string" ? task.expiresAt : null;
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  return Number.isFinite(t);
+}
+
+function hasRisk(task: GameTask): boolean {
+  const rn = (task as { riskNote?: string }).riskNote;
+  return Boolean(task.highRiskHighReward || (typeof rn === "string" && rn.trim()) || (task as any).canBackfire);
+}
+
+/** 任务卡牵引短句：只给一枪，避免把任务板写成小说。 */
+export function buildTaskPressureNudge(task: GameTask): string | null {
+  if (!task || (task.status !== "active" && task.status !== "available")) return null;
+  const kind = inferTaskCardCopyKind(task);
+  if (kind === "formal") {
+    if (hasDeadline(task) && hasRisk(task)) return "现在不动，后面会更难。";
+    if (hasDeadline(task)) return "拖久会落空。";
+    if (hasRisk(task)) return "做错会反噬。";
+    return null;
+  }
+  if (kind === "promise") {
+    if (hasDeadline(task)) return "拖久会变成欠账。";
+    return "不回应，人情会转成债。";
+  }
+  // clue
+  if (hasDeadline(task)) return "它在靠近。别等它先动手。";
+  return "它正在发酵。别等它长成麻烦。";
 }
 
 export function buildTaskMetaLines(task: GameTask, args: { codex?: Record<string, CodexEntry> | null; journalClues?: ClueEntry[] }): string[] {

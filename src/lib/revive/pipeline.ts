@@ -5,6 +5,9 @@ import { buildWorldGraph, shortestPathDistance } from "./graph";
 
 export type ReviveOption = "restart" | "revive";
 
+/** 复生契约：死亡后锚点强制拉回现实的时间代价（小时）。 */
+export const REVIVE_TIME_SKIP_HOURS = 12;
+
 export interface DeathRecord {
   deathLocation: string;
   deathCause: string;
@@ -127,7 +130,7 @@ export function evaluateEarly7FConspiracyTrigger(input: ReviveSyncInput): boolea
 
 export function runReviveSyncPipeline(input: ReviveSyncInput): ReviveSyncResult {
   const respawnAnchor = resolveNearestAnchor(input.death.deathLocation, input.anchorUnlocks);
-  const nextTime = addHours(input.currentTime.day, input.currentTime.hour, 12);
+  const nextTime = addHours(input.currentTime.day, input.currentTime.hour, REVIVE_TIME_SKIP_HOURS);
   const dropped = processDroppedLoot({
     inventory: input.death.inventory,
     killerId: input.killerId ?? null,
@@ -149,5 +152,24 @@ export function runReviveSyncPipeline(input: ReviveSyncInput): ReviveSyncResult 
       ...(conspiracyTriggered ? { conspiracy_7f_elder_trap_opened: true } : {}),
     },
     conspiracyTriggered,
+  };
+}
+
+export function summarizeRevivePenaltyForUi(input: ReviveSyncInput, result: ReviveSyncResult): {
+  timeSkipHours: number;
+  lostItemCount: number;
+  lootedItemCount: number;
+  failedTaskCount: number;
+} {
+  const lostItemCount = Array.isArray(input.death?.inventory) ? input.death.inventory.length : 0;
+  const lootedItemCount =
+    (result.lostPool?.length ?? 0) +
+    (result.droppedLootOwnership ?? []).reduce((acc, row) => acc + (row?.itemIds?.length ?? 0), 0);
+  const failedTaskCount = (result.taskUpdates ?? []).filter((u) => u.status === "failed").length;
+  return {
+    timeSkipHours: REVIVE_TIME_SKIP_HOURS,
+    lostItemCount,
+    lootedItemCount,
+    failedTaskCount,
   };
 }

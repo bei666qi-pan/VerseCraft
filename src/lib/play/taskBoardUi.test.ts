@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterTasksForTaskBoardVisibilityV2, partitionTasksForBoard, pickPrimaryTask } from "./taskBoardUi";
+import { computeTaskBoardPressureSummary, filterTasksForTaskBoardVisibilityV2, partitionTasksForBoard, pickPrimaryTask } from "./taskBoardUi";
 import type { GameTask } from "@/store/useGameStore";
 
 const task = (over: Partial<GameTask> & Pick<GameTask, "id" | "title">): GameTask =>
@@ -86,4 +86,18 @@ test("partitionTasksForBoard keeps overflow when promise/risk slots saturated", 
   assert.ok(p.promises.length <= 6);
   assert.ok(p.clues.length <= 3);
   assert.ok(p.overflow.length >= 1);
+});
+
+test("computeTaskBoardPressureSummary escalates with risk/deadlines/promises", () => {
+  const base = [
+    task({ id: "m", title: "主线", goalKind: "main", status: "active", grantState: "visible_on_board" as any }),
+    task({ id: "p", title: "牵连", status: "available", taskNarrativeLayer: "conversation_promise" as any, grantState: "narratively_offered" as any }),
+    task({ id: "r", title: "风险", status: "active", highRiskHighReward: true, grantState: "visible_on_board" as any }),
+    task({ id: "d", title: "期限", status: "active", expiresAt: "2026-01-01T00:00:00.000Z", grantState: "visible_on_board" as any }),
+  ];
+  const p = partitionTasksForBoard(base, 3);
+  const s = computeTaskBoardPressureSummary(base, { primary: p.primary, promises: p.promises });
+  assert.ok(s.line.length > 0);
+  assert.ok(["low", "medium", "high", "critical"].includes(s.tier));
+  assert.ok(s.signals.openCount >= 3);
 });

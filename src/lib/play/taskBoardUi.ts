@@ -106,6 +106,75 @@ export type TaskBoardPartition = {
   failed: GameTask[];
 };
 
+export type TaskBoardPressureTier = "low" | "medium" | "high" | "critical";
+
+export type TaskBoardPressureSummary = {
+  tier: TaskBoardPressureTier;
+  /** 单行可扫读摘要（避免 dashboard 化） */
+  line: string;
+  /** 数字信号：用于 UI 角标/小徽标 */
+  signals: {
+    openCount: number;
+    primaryExists: boolean;
+    promisePressure: number;
+    riskCount: number;
+    deadlineCount: number;
+  };
+};
+
+function safeDateMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+function isDeadlineTask(t: GameTask): boolean {
+  if (!t || (t.status !== "active" && t.status !== "available")) return false;
+  return typeof t.expiresAt === "string" && t.expiresAt.trim().length > 0 && safeDateMs(t.expiresAt) != null;
+}
+
+/**
+ * 任务板危险态势（UI-only）：只基于现有 taskV2 字段推导，不引入新系统。
+ * 目标：让玩家知道“楼在逼近”，而不是堆待办。
+ */
+export function computeTaskBoardPressureSummary(tasks: GameTask[], partition?: Pick<TaskBoardPartition, "primary" | "promises">): TaskBoardPressureSummary {
+  const open = (tasks ?? []).filter((t) => t && (t.status === "active" || t.status === "available"));
+  const primaryExists = Boolean(partition?.primary);
+
+  const promises = (partition?.promises ?? []).length;
+  const promisePressure = promises + open.filter((t) => inferEffectiveNarrativeLayer(t as GameTaskV2) === "conversation_promise").length;
+  const riskCount = open.filter((t) => hasRiskSignal(t) || isPromiseRiskSlot(t)).length;
+  const deadlineCount = open.filter((t) => isDeadlineTask(t)).length;
+
+  const tierScore =
+    (primaryExists ? 1 : 0) +
+    Math.min(6, Math.trunc(riskCount)) * 1.2 +
+    Math.min(6, Math.trunc(promisePressure)) * 0.9 +
+    Math.min(6, Math.trunc(deadlineCount)) * 0.8;
+
+  const tier: TaskBoardPressureTier =
+    tierScore >= 10 ? "critical" : tierScore >= 7 ? "high" : tierScore >= 4 ? "medium" : "low";
+
+  const parts: string[] = [];
+  if (primaryExists) parts.push("主线在前");
+  if (deadlineCount > 0) parts.push(`期限 ${deadlineCount}`);
+  if (riskCount > 0) parts.push(`高风险 ${riskCount}`);
+  if (promisePressure > 0) parts.push(`牵连 ${Math.min(99, promisePressure)}`);
+  if (parts.length === 0) parts.push("暂时平静，但别当作安全");
+
+  return {
+    tier,
+    line: parts.slice(0, 3).join(" · "),
+    signals: {
+      openCount: open.length,
+      primaryExists,
+      promisePressure,
+      riskCount,
+      deadlineCount,
+    },
+  };
+}
+
 /**
  * 将可见任务分层；低价值「已完成/失败」单独归档，默认不占主视野。
  */

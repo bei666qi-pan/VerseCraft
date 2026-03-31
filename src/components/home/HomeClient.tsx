@@ -46,6 +46,13 @@ import {
 import { unlockBgmOnUserGesture } from "@/config/audio";
 import { formatLocationLabel } from "@/features/play/render/locationLabels";
 import { resolveHomeEntryState, shouldUseResumeShadowFallback } from "@/components/home/continueFallback";
+import {
+  homeContinueConflictHint,
+  homeContinuePickerTitle,
+  homeContinuePrimaryCta,
+  homeContinueUnavailableToast,
+  homeRecoveryFallbackToast,
+} from "@/lib/ui/deathContractCopy";
 
 type HomeClientProps = {
   initialUser: { id: string; name: string } | null;
@@ -310,7 +317,7 @@ const HOME_SURVEY_FLOW: HomeSurveyQuestionConfig[] = [
     id: "saveLossConcern",
     kind: "single",
     required: true,
-    title: "你是否担心过“自己的进度、历史或存档会丢”？",
+    title: "你是否担心过“自己的记录、历史会丢”？",
     options: SAVE_LOSS_CONCERN_OPTIONS,
   },
   {
@@ -560,10 +567,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   const deleteTargetDisplay = useMemo(() => {
     if (!deleteTargetRow) return "";
-    const label =
+    const rawLabel =
       deleteTargetRow.localSummary?.label ??
       deleteTargetRow.cloudSummary?.label ??
-      (deleteTargetRow.slotId === "main_slot" ? "主线存档" : "未命名存档");
+      (deleteTargetRow.slotId === "main_slot" ? "主线记录" : "未命名记录");
+    const label = String(rawLabel ?? "").replaceAll("存档", "记录").replaceAll("进度", "记录");
     const tag = tagLabel(deleteTargetRow.tag);
     return `${label}（${tag}）`;
   }, [deleteTargetRow]);
@@ -681,19 +689,26 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     if (!sum) return "摘要暂缺";
     const loc = formatLocationLabel(sum.locationId);
     const prof = sum.professionLabel ? sum.professionLabel : "无";
-    return `第 ${sum.day} 日 ${sum.hour} 时 · ${loc} · 职业 ${prof} · 活跃任务 ${sum.activeTasksCount}`;
+    const tasks = Number.isFinite(sum.activeTasksCount) ? Math.max(0, Math.trunc(sum.activeTasksCount)) : 0;
+    return `第 ${sum.day} 日 ${sum.hour} 时 · ${loc} · 未了事项 ${tasks} · 身份 ${prof}`;
+  }
+
+  function normalizeContinueLabel(label: string | null | undefined): string {
+    const raw = typeof label === "string" ? label.trim() : "";
+    if (!raw) return "记录";
+    return raw.replaceAll("存档", "记录").replaceAll("进度", "记录");
   }
 
   function tagLabel(tag: HomeContinueSourceTag): string {
     switch (tag) {
       case "local":
-        return "本地";
+        return "记录";
       case "cloud":
-        return "云端";
+        return "记录";
       case "synced":
-        return "已同步";
+        return "记录";
       case "conflict":
-        return "冲突待处理";
+        return "需裁定";
       default:
         return "";
     }
@@ -729,8 +744,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const url = new URL(window.location.href);
     const flag = url.searchParams.get(AUTH_SUCCESS_QUERY_KEY);
     if (!flag) return;
-    if (flag === "logged_in") setToast("登录成功，欢迎回来。");
-    if (flag === "registered") setToast("注册成功，档案已建立。");
+    if (flag === "logged_in") setToast("已进入。");
+    if (flag === "registered") setToast("档案已建立。");
     url.searchParams.delete(AUTH_SUCCESS_QUERY_KEY);
     router.replace(url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : ""));
   }, [router]);
@@ -906,7 +921,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         router.push("/play");
         return;
       }
-      setToast("本地紧急恢复快照不可用。");
+      setToast(homeRecoveryFallbackToast());
       return;
     }
 
@@ -954,7 +969,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       if (choice === "local") {
         const data = saveSlots[slotId];
         if (!data) {
-          setToast("本地存档不可用。");
+          setToast("本机记录不可用。");
           return;
         }
         loadGame(slotId);
@@ -963,7 +978,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       } else {
         const cr = cloudRows.find((c) => c.slotId === slotId);
         if (!cr || !isSaveSlotData(cr.data)) {
-          setToast("云端存档不可用。");
+          setToast("云端记录不可用。");
           return;
         }
         hydrateFromCloud(slotId, cr.data);
@@ -982,7 +997,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     if (row.tag === "cloud") {
       const cr = cloudRows.find((c) => c.slotId === slotId);
       if (!cr || !isSaveSlotData(cr.data)) {
-        setToast("云端存档不可用。");
+        setToast("云端记录不可用。");
         return;
       }
       hydrateFromCloud(slotId, cr.data);
@@ -1003,7 +1018,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
 
-    setToast("无法载入该进度。");
+    setToast(homeContinueUnavailableToast());
   }
 
   async function handleSurveySubmit() {
@@ -1434,7 +1449,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             </div>
           ) : (
             <div className="text-xs font-medium text-slate-500">
-              {hasLocalAnySave ? "本机存在可继续进度。登录后可云端备份。" : "可直接以游客开始；登录可云端备份。"}
+              {hasLocalAnySave ? "本机留有可继续的记录。登录后可云端备份。" : "可直接以游客开始；登录可云端备份。"}
             </div>
           )}
         </div>
@@ -1645,7 +1660,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <div className="mx-auto flex w-full max-w-xl flex-col items-stretch justify-center gap-8 sm:max-w-2xl">
               {hasLoginSyncNotice ? (
                 <div className="rounded-xl bg-amber-50/60 px-3 py-2 text-left text-xs font-medium text-amber-950/80">
-                  同槽时间不一致：继续执笔时会在弹窗内让你选择来源。
+                  {homeContinueConflictHint()}
                 </div>
               ) : null}
 
@@ -1674,7 +1689,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   <GlassCtaButton
                     variant="pill"
                     pillSize="sm"
-                    label={"继续执笔"}
+                    label={homeContinuePrimaryCta()}
                     trailing="→"
                     onClick={openContinuePicker}
                   />
@@ -1703,7 +1718,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 text-left">
-              <h3 className="text-sm font-semibold tracking-widest text-slate-700">选择要继续的存档</h3>
+              <h3 className="text-sm font-semibold tracking-widest text-slate-700">{homeContinuePickerTitle()}</h3>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                这不是“回到上一刻”。你只是沿着同一条线继续往前走。
+              </p>
             </div>
             <button
               type="button"
@@ -1739,7 +1757,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold">
-                        [{tagLabel(r.tag)}] {sum?.label ?? r.slotId}
+                        [{tagLabel(r.tag)}] {normalizeContinueLabel(sum?.label ?? r.slotId)}
                       </div>
                       <div className={`mt-1 text-[11px] ${selected ? "text-white/80" : "text-slate-500"}`}>{line}</div>
                     </div>
@@ -1758,7 +1776,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                             ? "border-white/25 bg-white/10 text-white hover:bg-white/15"
                             : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                         }`}
-                        aria-label={`删除存档 ${sum?.label ?? r.slotId}`}
+                        aria-label={`删除记录 ${sum?.label ?? r.slotId}`}
                       >
                         删除
                       </button>
@@ -1820,7 +1838,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               }}
               className="rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              继续执笔 →
+              {homeContinuePrimaryCta()} →
             </button>
           </div>
         </div>
@@ -1843,14 +1861,14 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           }`}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold tracking-widest text-slate-800">确认删除存档？</div>
+            <div className="text-sm font-semibold tracking-widest text-slate-800">确认抹除记录？</div>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              {user ? "将同时删除本地与云端（含自动存档）。" : "将删除本地存档（游客模式无云端）。"}
+              {user ? "将同时抹除本机与云端（含自动记录）。" : "将抹除本机记录（游客模式无云端）。"}
             </p>
             <p className="mt-3 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-700">
               目标：
               <span className="ml-2 font-semibold text-slate-800">
-                {deleteTargetDisplay || (deleteTargetSlotId ? "该存档" : "—")}
+                {deleteTargetDisplay || (deleteTargetSlotId ? "该记录" : "—")}
               </span>
             </p>
           </div>

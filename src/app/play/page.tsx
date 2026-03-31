@@ -827,7 +827,7 @@ function PlayContent() {
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
       const confirmLeave = window.confirm(
-        "深渊的凝视正在干扰你的认知。你的进度尚未保存，确定要强行切断连接吗？"
+        "深渊的凝视正在干扰你的认知。连接被切断时，本回合记录可能来不及落地。仍要离开吗？"
       );
       if (confirmLeave) {
         window.location.href = "/";

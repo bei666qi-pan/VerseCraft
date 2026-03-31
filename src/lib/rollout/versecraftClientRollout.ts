@@ -48,6 +48,11 @@ export function getClientPlayerFacingTaskCopyV2Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_PLAYER_FACING_TASK_COPY_V2", true);
 }
 
+/** Phase-10: task board pressure header (player-facing, UI-only). */
+export function getClientTaskBoardPressureV1Enabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_TASK_BOARD_PRESSURE_V1", true);
+}
+
 /** Phase6: show low-disruption continue button on narrative-only turns */
 export function getClientContinueButtonEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_CONTINUE_BUTTON", true);

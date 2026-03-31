@@ -31,8 +31,8 @@ export function PlayTaskPanel({
     <aside className="pointer-events-auto fixed right-3 top-[84px] z-[72] w-[352px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white/85 shadow-[0_28px_72px_rgba(2,6,23,0.18)] backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
         <div>
-          <h3 className="text-sm font-semibold tracking-wider text-slate-800">目标与进展</h3>
-          <p className="text-[11px] text-slate-500">头等事 · 在办 · 约定与代价 · 线索</p>
+          <h3 className="text-sm font-semibold tracking-wider text-slate-800">目标与局势</h3>
+          <p className="text-[11px] text-slate-500">头等事 · 局势 · 在办 · 牵连 · 线索影子</p>
         </div>
         <button
           type="button"

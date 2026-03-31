@@ -32,7 +32,7 @@ export function PlayBlockingModals({
             <h2 className="text-lg font-semibold tracking-wide text-white">体验次数已耗尽</h2>
             {showRegisterPrompt && (
               <p className="mt-3 text-sm leading-relaxed text-slate-200">
-                体验次数已耗尽，可注册账号以继续执笔创作。
+                体验次数已耗尽。若你仍要继续行动，请注册或登录。
               </p>
             )}
             <div className="mt-8 flex justify-center">
@@ -70,7 +70,7 @@ export function PlayBlockingModals({
               退出确认
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-slate-300">
-              选择“存档并退出”会先保存当前进度再返回首页；选择“直接退出”将不再额外保存本次进度。
+              选择“记录并退出”会先写下这一刻再返回首页；选择“直接退出”将放弃本次新增记录。
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-end">
               <button
@@ -78,7 +78,7 @@ export function PlayBlockingModals({
                 onClick={onSaveAndExit}
                 className="rounded-xl border border-white/60 bg-white/5 px-6 py-3 text-sm font-medium text-slate-100 shadow-[0_0_12px_rgba(59,130,246,0.4)] transition hover:bg-white/10 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]"
               >
-                存档并退出
+                记录并退出
               </button>
               <button
                 type="button"

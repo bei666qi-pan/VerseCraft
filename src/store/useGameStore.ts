@@ -3476,7 +3476,7 @@ export function extractHomeContinueSummaryFromPayload(data: unknown): HomeContin
   const label =
     slotMeta && typeof slotMeta.label === "string" && slotMeta.label.trim()
       ? slotMeta.label.trim()
-      : "存档";
+      : "记录";
   const updatedAtIso =
     slotMeta && typeof slotMeta.updatedAt === "string" ? slotMeta.updatedAt : null;
 

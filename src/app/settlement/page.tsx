@@ -15,6 +15,14 @@ import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
+import { REVIVE_TIME_SKIP_HOURS } from "@/lib/revive/pipeline";
+import {
+  settlementReviveCtaSubtitle,
+  settlementReviveCtaTitle,
+  settlementReviveContractBody,
+  settlementReviveContractHeadline,
+  settlementRecoveryDisclaimer,
+} from "@/lib/ui/deathContractCopy";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 
@@ -252,6 +260,14 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     kills,
     maxFloor
   );
+
+  const revivePenaltyDigest = {
+    timeSkipHours: REVIVE_TIME_SKIP_HOURS,
+    lostItemCount: 0,
+    lootedItemCount: (reviveContext?.droppedLootLedger?.length ?? 0),
+    failedTaskCount: 0,
+    respawnAnchorLabel: reviveContext?.lastReviveAnchorId ?? null,
+  };
 
   const handleSubmit = useCallback(async () => {
     if (hasUploadedRef.current) return;
@@ -608,16 +624,25 @@ export default function SettlementPage(props: AppPageDynamicProps) {
 
           <div className="flex flex-col gap-3 sm:gap-4">
             {isDead ? (
-              <button
-                type="button"
-                onClick={handleReviveNow}
-                className="min-h-[52px] w-full rounded-2xl bg-gradient-to-r from-emerald-300 to-teal-200 px-6 py-3.5 text-base font-bold tracking-wide text-emerald-950 shadow-[0_0_24px_rgba(52,211,153,0.35)] transition hover:from-emerald-200 hover:to-teal-100"
-              >
-                继续行动：回拨时间复活
-                <span className="mt-0.5 block text-center text-[11px] font-medium normal-case tracking-normal text-emerald-950/80">
-                  +12h · 物品遗失 · 回到对局
-                </span>
-              </button>
+              <>
+                <section className="rounded-2xl border border-slate-700/55 bg-slate-950/30 px-4 py-3 text-left">
+                  <div className="text-xs font-semibold tracking-[0.22em] text-slate-300">{settlementReviveContractHeadline()}</div>
+                  <p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-slate-400">
+                    {settlementReviveContractBody()}
+                  </p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{settlementRecoveryDisclaimer()}</p>
+                </section>
+                <button
+                  type="button"
+                  onClick={handleReviveNow}
+                  className="min-h-[52px] w-full rounded-2xl bg-gradient-to-r from-emerald-300 to-teal-200 px-6 py-3.5 text-base font-bold tracking-wide text-emerald-950 shadow-[0_0_24px_rgba(52,211,153,0.35)] transition hover:from-emerald-200 hover:to-teal-100"
+                >
+                  {settlementReviveCtaTitle()}
+                  <span className="mt-0.5 block text-center text-[11px] font-medium normal-case tracking-normal text-emerald-950/80">
+                    {settlementReviveCtaSubtitle(revivePenaltyDigest)}
+                  </span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -626,7 +651,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
               >
                 继续行动：返回首页
                 <span className="mt-0.5 block text-center text-[11px] font-medium normal-case tracking-normal text-slate-700">
-                  清空本局存档后回到主页，再决定开新篇或继续执笔
+                  本局将被归档；回到主页，再决定开始新篇或继续行动
                 </span>
               </button>
             )}

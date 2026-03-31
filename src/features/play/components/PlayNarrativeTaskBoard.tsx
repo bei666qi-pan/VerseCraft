@@ -9,11 +9,21 @@ import {
   resolveNpcIdForPlayer,
   resolveTaskIssuerDisplay,
 } from "@/lib/ui/displayNameResolvers";
-import { filterTasksForTaskBoardVisibilityV2, goalKindLabel, partitionTasksForBoard } from "@/lib/play/taskBoardUi";
+import {
+  computeTaskBoardPressureSummary,
+  filterTasksForTaskBoardVisibilityV2,
+  goalKindLabel,
+  partitionTasksForBoard,
+} from "@/lib/play/taskBoardUi";
 import { getClientTaskVisibilityPolicyV3Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
-import { buildTaskAtAGlanceLine, inferTaskCardCopyKind, sanitizePlayerFacingInline } from "@/lib/ui/taskPlayerFacingText";
-import { getClientPlayerFacingTaskCopyV2Enabled } from "@/lib/rollout/versecraftClientRollout";
+import {
+  buildTaskAtAGlanceLine,
+  buildTaskPressureNudge,
+  inferTaskCardCopyKind,
+  sanitizePlayerFacingInline,
+} from "@/lib/ui/taskPlayerFacingText";
+import { getClientPlayerFacingTaskCopyV2Enabled, getClientTaskBoardPressureV1Enabled } from "@/lib/rollout/versecraftClientRollout";
 
 function cluesForTask(taskId: string, clues: ClueEntry[] | undefined): ClueEntry[] {
   if (!clues?.length) return [];
@@ -75,11 +85,12 @@ export function PlayNarrativeTaskBoard({
   const [showClosed, setShowClosed] = useState(false);
   const mode = density === "overlay" ? "light" : "dark";
   const copyV2 = getClientPlayerFacingTaskCopyV2Enabled();
+  const showPressure = getClientTaskBoardPressureV1Enabled();
 
   const { primary, accepted, promises, clues, overflow, completed, failed, _visibleCount } = useMemo(() => {
     const v3 = getClientTaskVisibilityPolicyV3Enabled();
     const forBoard = filterTasksForTaskBoardVisibilityV2(tasks ?? [], v3);
-    return { ...partitionTasksForBoard(forBoard, 4), _visibleCount: forBoard.length };
+    return { ...partitionTasksForBoard(forBoard, 3), _visibleCount: forBoard.length };
   }, [tasks]);
 
   const highlightSet = useMemo(
@@ -95,6 +106,19 @@ export function PlayNarrativeTaskBoard({
     ? "relative rounded-xl border bg-white p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
     : "relative rounded-xl border border-white/10 bg-white/5 p-3";
 
+  const pressure = useMemo(() => {
+    if (!showPressure) return null;
+    return computeTaskBoardPressureSummary(tasks ?? [], { primary, promises });
+  }, [showPressure, tasks, primary, promises]);
+
+  const pressureTone = (() => {
+    if (!pressure) return "";
+    if (pressure.tier === "critical") return isOverlay ? "border-rose-200 bg-rose-50 text-rose-800" : "border-rose-400/35 bg-rose-500/10 text-rose-100";
+    if (pressure.tier === "high") return isOverlay ? "border-amber-200 bg-amber-50 text-amber-800" : "border-amber-400/35 bg-amber-500/10 text-amber-100";
+    if (pressure.tier === "medium") return isOverlay ? "border-slate-200 bg-slate-50 text-slate-700" : "border-white/15 bg-white/10 text-slate-200";
+    return isOverlay ? "border-slate-200/80 bg-white text-slate-600" : "border-white/10 bg-white/5 text-slate-300";
+  })();
+
   function renderTaskCard(t: GameTask, opts: { emphasize?: boolean }) {
     const emphasize = opts.emphasize ?? false;
     const highlighted = highlightSet.has(t.id);
@@ -104,6 +128,7 @@ export function PlayNarrativeTaskBoard({
     const requiredItems = requiredItemLabels(t);
     const relatedPeople = relatedPeopleLine(t, codex);
     const kind = inferTaskCardCopyKind(t);
+    const nudge = buildTaskPressureNudge(t);
 
     // 高亮：更精致但不持续动画
     const ring = highlighted
@@ -219,6 +244,25 @@ export function PlayNarrativeTaskBoard({
             ? buildTaskAtAGlanceLine(t, codex)
             : sanitizePlayerFacingInline(String(t.desc ?? "").trim() || String(t.title ?? "").trim(), codex)}
         </p>
+        {nudge ? (
+          <p
+            className={`mt-1 line-clamp-1 text-[11px] font-semibold ${
+              kind === "promise"
+                ? isOverlay
+                  ? "text-rose-700/90"
+                  : "text-rose-200/90"
+                : kind === "clue"
+                  ? isOverlay
+                    ? "text-cyan-700/90"
+                    : "text-cyan-200/90"
+                  : isOverlay
+                    ? "text-amber-800/85"
+                    : "text-amber-200/85"
+            }`}
+          >
+            {nudge}
+          </p>
+        ) : null}
         {(t as { riskNote?: string }).riskNote && (t.status === "active" || t.status === "available") ? (
           <p
             className={`mt-1.5 rounded-lg border px-2 py-1 text-[11px] ${
@@ -304,30 +348,58 @@ export function PlayNarrativeTaskBoard({
         </span>
       </div>
 
+      {pressure ? (
+        <div className={`rounded-xl border px-3 py-2 text-[11px] ${pressureTone}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className={`font-semibold tracking-[0.18em] ${isOverlay ? "text-slate-500" : "text-slate-300"}`}>局势</div>
+              <div className="mt-1 line-clamp-2">
+                {pressure.tier === "critical"
+                  ? `墙在收紧。${pressure.line}`
+                  : pressure.tier === "high"
+                    ? `别分心。${pressure.line}`
+                    : pressure.tier === "medium"
+                      ? `风向不稳。${pressure.line}`
+                      : `暂时压住了。${pressure.line}`}
+              </div>
+            </div>
+            <div className="shrink-0 space-y-1 text-right">
+              <div className={`font-mono ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>在跟 {pressure.signals.openCount}</div>
+              {pressure.signals.riskCount > 0 ? (
+                <div className={`font-mono ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>反噬 {pressure.signals.riskCount}</div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {primary ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>头等事（先把这一步走完）</p>
+          <p className={`mb-2 ${sectionTitle}`}>头等事（现在就做）</p>
           {renderTaskCard(primary, { emphasize: true })}
+          <p className={`mt-2 text-[11px] leading-relaxed ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
+            先把这一步踩实。其它事会自己找上门。
+          </p>
         </div>
       ) : null}
 
       {accepted.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>在办</p>
+          <p className={`mb-2 ${sectionTitle}`}>在办（只留能推进的）</p>
           <div className="space-y-2">{accepted.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
       {promises.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>约定与代价</p>
+          <p className={`mb-2 ${sectionTitle}`}>牵连与风险（会计息）</p>
           <div className="space-y-2">{promises.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}
 
       {clues.length > 0 ? (
         <div>
-          <p className={`mb-2 ${sectionTitle}`}>线索</p>
+          <p className={`mb-2 ${sectionTitle}`}>线索影子（正在发酵）</p>
           <div className="space-y-2">{clues.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
         </div>
       ) : null}

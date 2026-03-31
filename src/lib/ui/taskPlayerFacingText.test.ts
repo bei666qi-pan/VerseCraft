@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sanitizePlayerFacingInline, buildTaskAtAGlanceLine, inferTaskCardCopyKind } from "./taskPlayerFacingText";
+import { sanitizePlayerFacingInline, buildTaskAtAGlanceLine, inferTaskCardCopyKind, buildTaskPressureNudge } from "./taskPlayerFacingText";
 
 test("sanitizePlayerFacingInline 不暴露 registry id", () => {
   const s = sanitizePlayerFacingInline("去找 N-008 以及 A-003。", {});
@@ -16,7 +16,16 @@ test("三层文案前缀差异明显：formal/promise/clue", () => {
   assert.equal(inferTaskCardCopyKind(promise), "promise");
   assert.equal(inferTaskCardCopyKind(clue), "clue");
   assert.ok(buildTaskAtAGlanceLine(formal, {}).startsWith("推进要点："));
-  assert.ok(buildTaskAtAGlanceLine(promise, {}).startsWith("承诺："));
+  assert.ok(buildTaskAtAGlanceLine(promise, {}).startsWith("牵连："));
   assert.ok(buildTaskAtAGlanceLine(clue, {}).startsWith("线索："));
+});
+
+test("buildTaskPressureNudge gives short hard hints", () => {
+  const formal = { id: "t1", status: "active", taskNarrativeLayer: "formal_task", expiresAt: "2026-01-01T00:00:00.000Z" } as any;
+  const promise = { id: "t2", status: "available", taskNarrativeLayer: "conversation_promise" } as any;
+  const clue = { id: "t3", status: "available", taskNarrativeLayer: "soft_lead" } as any;
+  assert.ok(typeof buildTaskPressureNudge(formal) === "string");
+  assert.ok(typeof buildTaskPressureNudge(promise) === "string");
+  assert.ok(typeof buildTaskPressureNudge(clue) === "string");
 });
 
