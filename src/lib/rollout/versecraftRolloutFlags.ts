@@ -56,6 +56,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableWorldPostGenerationRewrite: boolean;
   /** 语言输入反作弊（输入层 intent-only 重写） */
   enableLanguageAntiCheat: boolean;
+  /** decision_required 选项质量门闸（轻量去重/过滤换皮） */
+  enableDecisionOptionQualityGate: boolean;
 
   /** 阶段7：职业身份闭环 */
   enableProfessionIdentityLoop: boolean;
@@ -132,6 +134,7 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableRealityConstraintPacket: readFlag("VERSECRAFT_ENABLE_REALITY_CONSTRAINT_PACKET", true),
     enableWorldPostGenerationRewrite: readFlag("VERSECRAFT_ENABLE_WORLD_POST_GENERATION_REWRITE", true),
     enableLanguageAntiCheat: readFlag("VERSECRAFT_ENABLE_LANGUAGE_ANTI_CHEAT", true),
+    enableDecisionOptionQualityGate: readFlag("VERSECRAFT_ENABLE_DECISION_OPTION_QUALITY_GATE", true),
 
     enableProfessionIdentityLoop: readFlag("VERSECRAFT_ENABLE_PROFESSION_IDENTITY_LOOP", true),
     enableProfessionTrialNarrativeGrant: readFlag("VERSECRAFT_ENABLE_PROFESSION_TRIAL_NARRATIVE_GRANT", true),

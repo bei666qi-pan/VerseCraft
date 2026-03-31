@@ -43,6 +43,12 @@ export type ClientStructuredContextV1 = {
   worldFlags: string[];
   /** 在场 NPC：客户端可提供，服务端仍会以自身链路更新为准（暂时降权，不作为唯一真相） */
   presentNpcIds?: string[];
+  /** 阶段 7/6：任务权威摘要（用于反作弊与轻量路由；只传 id，不传正文） */
+  activeTaskIds?: string[];
+  completedTaskIds?: string[];
+  /** 阶段 6：手记线索权威摘要（可见线索 id 列表；只传 id） */
+  journalClueCount?: number;
+  journalClueIds?: string[];
   /** 阶段 6：目标↔物证↔手记升格的短摘要（供路由/守卫日志，非权威） */
   narrativeLinkageDigest?: string;
 };
@@ -146,6 +152,18 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
 
   const presentNpcIds = obj.presentNpcIds ? asStringArray(obj.presentNpcIds, 32) : undefined;
 
+  const activeTaskIds = obj.activeTaskIds ? asStringArray(obj.activeTaskIds, 48) : undefined;
+  const completedTaskIds = obj.completedTaskIds ? asStringArray(obj.completedTaskIds, 48) : undefined;
+
+  const journalClueCountRaw = obj.journalClueCount;
+  const journalClueCount =
+    typeof journalClueCountRaw === "number" && Number.isFinite(journalClueCountRaw)
+      ? Math.max(0, Math.trunc(journalClueCountRaw))
+      : typeof journalClueCountRaw === "string" && journalClueCountRaw.trim()
+        ? Math.max(0, Math.trunc(Number(journalClueCountRaw)))
+        : undefined;
+  const journalClueIds = obj.journalClueIds ? asStringArray(obj.journalClueIds, 48) : undefined;
+
   const digestRaw = obj.narrativeLinkageDigest;
   const narrativeLinkageDigest =
     typeof digestRaw === "string" && digestRaw.trim()
@@ -166,6 +184,10 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
     currentProfession,
     worldFlags,
     ...(presentNpcIds ? { presentNpcIds } : {}),
+    ...(activeTaskIds ? { activeTaskIds } : {}),
+    ...(completedTaskIds ? { completedTaskIds } : {}),
+    ...(typeof journalClueCount === "number" ? { journalClueCount } : {}),
+    ...(journalClueIds ? { journalClueIds } : {}),
     ...(narrativeLinkageDigest ? { narrativeLinkageDigest } : {}),
   };
 }

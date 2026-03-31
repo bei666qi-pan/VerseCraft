@@ -103,6 +103,39 @@ function detectForgedLocationClaims(args: { input: string; clientState: ClientSt
   return bad;
 }
 
+function detectForgedTaskClaims(args: { input: string; clientState: ClientStructuredContextV1 | null }): string[] {
+  const cs = args.clientState;
+  if (!cs) return [];
+  const active = new Set((cs.activeTaskIds ?? []).map(normalizeIdLike));
+  const completed = new Set((cs.completedTaskIds ?? []).map(normalizeIdLike));
+  const claims = extractBracketClaims(args.input);
+  const bad: string[] = [];
+  for (const c of claims) {
+    const m = c.match(/^(?:任务|委托)[:：]\s*([A-Za-z0-9_\-]{2,64})$/);
+    if (!m?.[1]) continue;
+    const id = normalizeIdLike(m[1]);
+    // Only flag when user tries to assert this task is already done by strong bracket claim,
+    // and the structured state doesn't contain it in known task sets.
+    if (!active.has(id) && !completed.has(id)) bad.push(`task:${id}`);
+  }
+  return bad;
+}
+
+function detectForgedClueClaims(args: { input: string; clientState: ClientStructuredContextV1 | null }): string[] {
+  const cs = args.clientState;
+  if (!cs) return [];
+  const clueIds = new Set((cs.journalClueIds ?? []).map(normalizeIdLike));
+  const claims = extractBracketClaims(args.input);
+  const bad: string[] = [];
+  for (const c of claims) {
+    const m = c.match(/^(?:线索|手记|证据)[:：]\s*([A-Za-z0-9_\-]{2,64})$/);
+    if (!m?.[1]) continue;
+    const id = normalizeIdLike(m[1]);
+    if (!clueIds.has(id)) bad.push(`clue:${id}`);
+  }
+  return bad;
+}
+
 function detectMetaOverrideAttempts(input: string): string[] {
   const t = String(input ?? "");
   const reasons: string[] = [];
@@ -138,6 +171,8 @@ export function assessAndRewriteAntiCheatInput(args: {
   const metaOverride = detectMetaOverrideAttempts(raw);
   const forgedItems = detectForgedInventoryClaims({ input: raw, clientState: args.clientState });
   const forgedLoc = detectForgedLocationClaims({ input: raw, clientState: args.clientState });
+  const forgedTasks = detectForgedTaskClaims({ input: raw, clientState: args.clientState });
+  const forgedClues = detectForgedClueClaims({ input: raw, clientState: args.clientState });
 
   const { text: noSystemLines, hit: sysHit } = stripSystemInjectionLines(raw);
   const { text: rewrittenResults, hits: resultHits } = rewriteForgedResultPhrases(noSystemLines);
@@ -147,6 +182,8 @@ export function assessAndRewriteAntiCheatInput(args: {
     ...metaOverride.map((x) => `meta:${x}`),
     ...forgedItems.map((x) => `claim:${x}`),
     ...forgedLoc.map((x) => `claim:${x}`),
+    ...forgedTasks.map((x) => `claim:${x}`),
+    ...forgedClues.map((x) => `claim:${x}`),
     ...resultHits.map((x) => `rewrite:${x}`),
   ];
 
@@ -155,7 +192,9 @@ export function assessAndRewriteAntiCheatInput(args: {
     sysHit ||
     metaOverride.length > 0 ||
     forgedItems.length > 0 ||
-    forgedLoc.length > 0;
+    forgedLoc.length > 0 ||
+    forgedTasks.length > 0 ||
+    forgedClues.length > 0;
 
   const medium =
     !high &&
@@ -169,6 +208,8 @@ export function assessAndRewriteAntiCheatInput(args: {
     metaOverride,
     forgedItems,
     forgedLoc,
+    forgedTasks,
+    forgedClues,
     resultHits,
     playerLocation: args.clientState?.playerLocation ?? null,
     turnIndex: typeof args.clientState?.turnIndex === "number" ? args.clientState.turnIndex : null,

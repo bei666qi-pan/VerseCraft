@@ -398,6 +398,44 @@ function extractRecentEntities(latestUserInput: string): string[] {
   return [...out];
 }
 
+function normalizeOptionText(s: string): string {
+  return String(s ?? "")
+    .replace(/[【】\[\]（）()]/g, " ")
+    .replace(/[，,。！？!?:：；;、“”"']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const ta = normalizeOptionText(a).split(" ").filter(Boolean);
+  const tb = normalizeOptionText(b).split(" ").filter(Boolean);
+  if (ta.length === 0 || tb.length === 0) return 0;
+  const sa = new Set(ta);
+  const sb = new Set(tb);
+  let inter = 0;
+  for (const x of sa) if (sb.has(x)) inter += 1;
+  const union = sa.size + sb.size - inter;
+  return union <= 0 ? 0 : inter / union;
+}
+
+function dedupeDecisionOptions(raw: unknown, max = 4): string[] {
+  const src = Array.isArray(raw) ? raw : [];
+  const out: string[] = [];
+  for (const x of src) {
+    if (out.length >= max) break;
+    if (typeof x !== "string") continue;
+    const s = x.trim();
+    if (!s) continue;
+    // Drop ultra-short fillers
+    if (s.length < 2) continue;
+    const dup = out.some((y) => y === s || jaccardSimilarity(y, s) >= 0.82);
+    if (dup) continue;
+    out.push(s);
+  }
+  return out;
+}
+
 function inferPlannedTurnMode(args: {
   latestUserInput: string;
   shouldApplyFirstActionConstraint: boolean;
@@ -407,8 +445,20 @@ function inferPlannedTurnMode(args: {
   if (args.shouldApplyFirstActionConstraint) {
     return { mode: "decision_required", reason: "opening_first_action_constraint" };
   }
-  // Prefer existing director digest hints (cheap, client-provided structured state).
+  // System transitions should be explicit and stable:
+  // settlement/endgame/revive flows should not accidentally fall back to "options missing => regen".
   const cs = args.clientState as any;
+  const day = Number(cs?.time?.day ?? NaN);
+  const hour = Number(cs?.time?.hour ?? NaN);
+  if (Number.isFinite(day) && Number.isFinite(hour) && day >= 10 && hour <= 0) {
+    return { mode: "system_transition", reason: `time_endgame(day=${Math.trunc(day)},hour=${Math.trunc(hour)})` };
+  }
+  const raw = String(args.latestUserInput ?? "").trim();
+  // Only treat highly specific short commands as transitions to avoid false positives in normal roleplay.
+  if (raw.length <= 16 && /^(迎接终焉|进入结算|查看结算|复活|确认复活)$/.test(raw)) {
+    return { mode: "system_transition", reason: "input_transition_command" };
+  }
+  // Prefer existing director digest hints (cheap, client-provided structured state).
   const beat = typeof cs?.directorDigest?.beatModeHint === "string" ? cs.directorDigest.beatModeHint : "";
   const tension = Number(cs?.directorDigest?.tension ?? NaN);
   const pendingIncCount = Array.isArray(cs?.directorDigest?.pendingIncidentCodes) ? cs.directorDigest.pendingIncidentCodes.length : 0;
@@ -2624,6 +2674,42 @@ export async function POST(req: Request) {
           if (nar) recordNarrativeChars(nar.length);
         } catch {
           // ignore
+        }
+
+        // Phase-6: decision_required option quality gate (cheap dedupe; no extra heavy calls).
+        // Goal: avoid "换皮同义选项" causing fake decisions, while keeping 2-4 options.
+        try {
+          const rollout = getVerseCraftRolloutFlags();
+          const tm = (resolved as any).turn_mode;
+          if (rollout.enableDecisionOptionQualityGate && tm === "decision_required") {
+            const before = Array.isArray((resolved as any).decision_options)
+              ? (resolved as any).decision_options
+              : Array.isArray((resolved as any).options)
+                ? (resolved as any).options
+                : [];
+            const deduped = dedupeDecisionOptions(before, 4);
+            (resolved as any).decision_options = deduped;
+            (resolved as any).options = deduped; // keep legacy UI aligned
+            (resolved as any).decision_required = true;
+            // If dedupe made it invalid, do the existing low-cost fix once.
+            if (deduped.length < 2) {
+              recordDecisionOptionsFixOutcome(false);
+              const regen = await generateDecisionOptionsOnlyFallback({
+                narrative: String((resolved as any).narrative ?? ""),
+                latestUserInput,
+                playerContext,
+                ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "quality_gate", purpose: "decision_options_fix" } },
+                signal: ac.signal,
+              });
+              if (regen.ok) {
+                recordDecisionOptionsFixOutcome(true);
+                (resolved as any).decision_options = regen.decision_options;
+                (resolved as any).options = regen.decision_options;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[api/chat] decision option quality gate skipped", e);
         }
 
         // 二次补救：即便 dmRecord.options 非空，也可能在 resolver 裁剪/去重后变成空或不足 2 条。

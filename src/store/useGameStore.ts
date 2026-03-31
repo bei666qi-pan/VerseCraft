@@ -2287,6 +2287,11 @@ export const useGameStore = create<GameState>()(
           .map((t) => t.id)
           .filter((x) => typeof x === "string" && x.trim().length > 0)
           .slice(0, 32);
+        const completedTaskIds = (s.tasks ?? [])
+          .filter((t) => t.status === "completed")
+          .map((t) => t.id)
+          .filter((x) => typeof x === "string" && x.trim().length > 0)
+          .slice(0, 32);
         const ctx = buildRecallContext({
           nowHour,
           playerLocation: location,
@@ -2336,6 +2341,8 @@ export const useGameStore = create<GameState>()(
           currentProfession: (s.professionState?.currentProfession ?? null) as ProfessionId | null,
           worldFlags,
           presentNpcIds,
+          ...(activeTaskIds.length ? { activeTaskIds } : {}),
+          ...(completedTaskIds.length ? { completedTaskIds } : {}),
           ...(recallBlock.digest ? { memoryDigest: recallBlock.digest } : {}),
           ...(hintCodes.length ? { memoryHintCodes: hintCodes } : {}),
           ...(promotions.length ? { memoryPromotions: promotions } : {}),
