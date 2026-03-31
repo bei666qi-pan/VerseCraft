@@ -25,6 +25,7 @@ import { applyGenderPronounPostGeneration } from "./genderPronounValidator";
 import { applyCompositeNarrativeGuard } from "./compositeNarrativeGuard";
 import { enableCompositeNarrativeGuard } from "./narrativeGuardFlags";
 import { applyProtagonistDriftPostGeneration } from "./protagonistDriftValidator";
+import { detectPersonaMixup, rewritePersonaMixupConservatively } from "./personaMixupValidator";
 import { incrProtagonistDriftRewriteCount, incrWorldPostRewriteCount } from "@/lib/observability/versecraftRolloutMetrics";
 
 export type NpcConsistencyViolationType =
@@ -36,7 +37,8 @@ export type NpcConsistencyViolationType =
   | "narrative_continuity"
   | "familiarity_overreach"
   | "no_reaction_to_boundary_crossing"
-  | "protagonist_drift";
+  | "protagonist_drift"
+  | "persona_mixup";
 
 function normalizeNpcId(id: string): string {
   return String(id ?? "")
@@ -245,6 +247,28 @@ export function applyNpcConsistencyPostGeneration(input: {
   }
 
   if (enableNpcConsistencyValidator()) {
+    // Phase-10.5: multi-NPC persona mixup detector (cheap string heuristics; no extra model calls).
+    // Detect: one NPC borrowing another's signature appearance/speech/role tokens.
+    try {
+      const mix = detectPersonaMixup({
+        narrative: narrativeWork,
+        presentNpcIds: input.presentNpcIds,
+        focusNpcId: actorId,
+      });
+      if (mix.hits.length > 0) {
+        violations.push(...mix.hits.map((h) => `persona_mixup:${h.victimNpcId}<=${h.leakedFromNpcId}:${h.kind}:${h.token}`));
+        if (!vtypes.includes("persona_mixup")) vtypes.push("persona_mixup");
+        logs.push(`persona_mixup:${mix.hits.slice(0, 3).map((h) => `${h.victimNpcId}<=${h.leakedFromNpcId}:${h.token}`).join("|")}`);
+        const rw = rewritePersonaMixupConservatively({ narrative: narrativeWork, hits: mix.hits });
+        if (rw.changed) {
+          narrativeWork = rw.narrative;
+          extraRewrite = true;
+        }
+      }
+    } catch (e) {
+      console.warn("[npc_consistency] persona mixup detection skipped", e);
+    }
+
     const off = findOffscreenNpcDialogueViolations(narrativeWork, input.presentNpcIds);
     if (off.length) {
       violations.push(...off);

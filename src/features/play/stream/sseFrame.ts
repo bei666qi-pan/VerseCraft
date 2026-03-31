@@ -108,3 +108,68 @@ export function foldSseTextToDmRaw(sseDocument: string): string {
   }
   return raw;
 }
+
+export const VERSECRAFT_FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
+
+export interface VerseCraftFinalExtractResult {
+  /** Raw DM buffer content (typically a JSON string) after `__VERSECRAFT_FINAL__:`. */
+  payload: string;
+  /** Whether a final marker was found in the SSE document. */
+  found: boolean;
+}
+
+function joinSseDataLines(eventText: string): string {
+  const lines = eventText.split("\n");
+  const payloads: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith("data:")) continue;
+    payloads.push(line.slice(5).trimStart());
+  }
+  return payloads.join("\n");
+}
+
+/**
+ * Explicitly extract the server `__VERSECRAFT_FINAL__:` frame payload from a full SSE document.
+ *
+ * Contract:
+ * - Streaming deltas may be noisy; final payload is the only truth source for turn commit.
+ * - Status/control frames are ignored.
+ * - If the final payload spans multiple SSE events, all non-status `data:` payloads after the first
+ *   final marker are appended until EOF.
+ */
+export function extractFinalPayloadFromSseDocument(sseDocument: string): VerseCraftFinalExtractResult {
+  let buf = normalizeSseNewlines(sseDocument);
+  let found = false;
+  let payload = "";
+  while (true) {
+    const { events, rest } = takeCompleteSseEvents(buf);
+    buf = rest;
+    for (const ev of events) {
+      const joined = joinSseDataLines(ev);
+      if (!joined) continue;
+      if (joined.startsWith(VERSECRAFT_STATUS_PREFIX)) continue;
+      if (!found && joined.startsWith(VERSECRAFT_FINAL_PREFIX)) {
+        found = true;
+        payload = joined.slice(VERSECRAFT_FINAL_PREFIX.length);
+        continue;
+      }
+      if (found) {
+        payload += joined;
+      }
+    }
+    if (events.length === 0) break;
+  }
+  const orphan = buf.trim();
+  if (orphan.length > 0 && orphan.startsWith("data:")) {
+    const joined = joinSseDataLines(orphan);
+    if (joined && !joined.startsWith(VERSECRAFT_STATUS_PREFIX)) {
+      if (!found && joined.startsWith(VERSECRAFT_FINAL_PREFIX)) {
+        found = true;
+        payload = joined.slice(VERSECRAFT_FINAL_PREFIX.length);
+      } else if (found) {
+        payload += joined;
+      }
+    }
+  }
+  return { payload, found };
+}

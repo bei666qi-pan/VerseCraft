@@ -152,6 +152,7 @@ import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/regis
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
 import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativeStylePackets";
+import { shapeUserActionForModelV2 } from "@/lib/playRealtime/actionIntent";
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
 import { buildOptionsOnlySystemPrompt, buildOptionsOnlyUserPacket } from "@/lib/playRealtime/optionsOnlyPackets";
@@ -160,6 +161,7 @@ import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePacke
 import type { TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
 import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
+import { buildOptionsRegenResponse } from "./optionsRegenPayload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -363,15 +365,9 @@ function clampText(s: string, maxChars: number): string {
  * - 保留玩家意图（行动/对白）但避免逐字复刻
  */
 function shapeUserActionForModel(rawAction: string): string {
-  const t = String(rawAction ?? "").trim();
-  if (!t) return "";
-  // 抑制常见“我做了……然后……”流水账外壳，把“动作发生”与“立即反馈”留给 DM 写。
-  const cleaned = t
-    .replace(/^【[^】]{1,20}】/g, "")
-    .replace(/^\s*(玩家行动|玩家输入|用户输入|动作)\s*[:：]\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return cleaned;
+  // Backward-compatible wrapper: keep the name stable for callsites,
+  // but upgrade implementation to structured intent shaping.
+  return shapeUserActionForModelV2(rawAction);
 }
 
 function extractLastAssistantNarrativeTail(chatMsgs: Array<{ role: string; content: string }>): string | null {
@@ -757,6 +753,7 @@ export async function POST(req: Request) {
       typeof (validated as { clientReason?: unknown }).clientReason === "string"
         ? String((validated as { clientReason?: string }).clientReason)
         : "";
+    const clientTurnModeHint = (validated as { clientTurnModeHint?: unknown }).clientTurnModeHint;
     const lastUserReason =
       validated.messages
         .slice()
@@ -779,8 +776,13 @@ export async function POST(req: Request) {
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
     });
-    const ok = Boolean(regen.ok && Array.isArray(regen.options) && regen.options.length >= 4);
-    const payload = JSON.stringify({ options: ok ? regen.options : [] });
+    const shaped = buildOptionsRegenResponse({
+      clientTurnModeHint,
+      options: regen.options,
+      generatorOk: regen.ok,
+    });
+    const ok = shaped.ok;
+    const payload = JSON.stringify(shaped);
     const isAuto =
       /主回合|options\s*缺失|auto_missing_main/i.test(reason) ||
       /auto/i.test(clientReason);

@@ -33,6 +33,25 @@ const META_RE = /(玩家输入|用户输入|写作要求|系统暗骰|检定|rol
 const EXPLAIN_RE = /(你刚才|你做了|你试图|系统判定|因此你|所以你)/;
 const CHAT_LABEL_RE = /(玩家说[:：]|用户说[:：]|你说[:：]|他说[:：]|她说[:：])/;
 
+function maskQuotedChineseDialogue(text: string): string {
+  const chars = [...String(text ?? "")];
+  let i = 0;
+  while (i < chars.length) {
+    if (chars[i] === "“") {
+      i++;
+      while (i < chars.length && chars[i] !== "”") {
+        chars[i] = " ";
+        i++;
+      }
+      // keep closing quote as boundary hint
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return chars.join("");
+}
+
 function scrubObviousMetaLines(n: string): { text: string; changed: boolean } {
   const lines = String(n ?? "").split("\n");
   const kept: string[] = [];
@@ -48,6 +67,50 @@ function scrubObviousMetaLines(n: string): { text: string; changed: boolean } {
   }
   const out = kept.join("\n");
   return { text: out, changed: changed || out !== n };
+}
+
+function rewriteChatLabelsToNaturalDialogueEverywhere(n: string): { text: string; changed: boolean } {
+  const src = String(n ?? "");
+  if (!src) return { text: src, changed: false };
+  // Only rewrite outside Chinese quotes to avoid damaging already-correct dialogue.
+  const masked = maskQuotedChineseDialogue(src);
+  if (!CHAT_LABEL_RE.test(masked) && !EXPLAIN_RE.test(masked)) {
+    return { text: src, changed: false };
+  }
+  let out = src;
+  // Convert `你说：xxx` / `玩家说：xxx` into Chinese quoted dialogue when it looks like a short utterance.
+  out = out.replace(/(?:玩家说|用户说|你说)[:：]\s*([^\n\r“”]{1,36})(?=($|[。！？\n\r]))/g, (_m, g1) => {
+    const t = String(g1 ?? "").trim();
+    return t ? `“${t}”` : "";
+  });
+  // Remove meta label glue when the content already uses quotes.
+  out = out.replace(/(?:玩家说|用户说|你说)[:：]\s*(?=“)/g, "");
+  // Fallback: drop any remaining chat labels (keep content), to avoid "你说/玩家说" tags lingering.
+  out = out.replace(/(?:玩家说|用户说|你说)[:：]\s*/g, "");
+  // Soften explanation-y glue phrases that scream "input echo".
+  out = out.replace(/(^|[。！？\n\r])\s*你刚才/g, "$1刚才");
+  out = out.replace(/(^|[。！？\n\r])\s*你做了/g, "$1我动作一顿");
+  out = out.replace(/(^|[。！？\n\r])\s*你试图/g, "$1我试着");
+  out = out.replace(/玩家输入[:：]\s*/g, "");
+  out = out.replace(/用户输入[:：]\s*/g, "");
+  return { text: out, changed: out !== src };
+}
+
+function scrubVerbatimUserInputEchoEverywhere(n: string, latestUserInput: string): { text: string; changed: boolean } {
+  const src = String(n ?? "");
+  const u = String(latestUserInput ?? "").trim();
+  if (!src || !u) return { text: src, changed: false };
+  // Only act on sufficiently long inputs; avoid damaging common short phrases.
+  const needle = u.length >= 14 ? u : "";
+  if (!needle) return { text: src, changed: false };
+  if (!src.includes(needle)) return { text: src, changed: false };
+  // Only scrub when the echo appears near explanation/meta markers.
+  const window = src.slice(Math.max(0, src.indexOf(needle) - 32), Math.min(src.length, src.indexOf(needle) + needle.length + 32));
+  if (!/(你刚才|你说|玩家说|用户说|玩家输入|用户输入)/.test(window)) {
+    return { text: src, changed: false };
+  }
+  const out = src.replace(needle, "那句话");
+  return { text: out, changed: out !== src };
 }
 
 function rewriteOpeningToContinuity(narrative: string): { text: string; changed: boolean } {
@@ -112,6 +175,20 @@ export function applyNarrativeContinuityPostGeneration(input: {
     work = scrubbed.text;
     changed = true;
     reason = reason ?? "scrub_meta_lines";
+  }
+
+  // 轻/中：全文去残留（标签式承接 / 解释腔胶水 / 复述玩家原句）
+  const residual1 = rewriteChatLabelsToNaturalDialogueEverywhere(work);
+  if (residual1.changed) {
+    work = residual1.text;
+    changed = true;
+    reason = reason ?? "scrub_residual_labels";
+  }
+  const residual2 = scrubVerbatimUserInputEchoEverywhere(work, input.latestUserInput);
+  if (residual2.changed) {
+    work = residual2.text;
+    changed = true;
+    reason = reason ?? "scrub_verbatim_input_echo";
   }
 
   // 中/重：开头仍像解释/高相似复述时，重写开头短锚

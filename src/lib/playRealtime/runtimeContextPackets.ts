@@ -68,6 +68,7 @@ import { buildNewPlayerGuidePacket } from "@/lib/playRealtime/newPlayerGuidePack
 import { buildWorldFeelPacket } from "@/lib/playRealtime/worldFeelPackets";
 import { buildPlayabilityPacketsV1 } from "@/lib/gameplay/playabilityPackets";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { buildMultiNpcCompactPersonaPacket } from "@/lib/playRealtime/multiNpcPersonaPackets";
 import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
@@ -614,6 +615,20 @@ export function buildRuntimeContextPackets(args: {
     presentNpcIds: nearbyNpcIds,
   });
   const actorConstraintCompact = compactActorConstraintBundle(actorConstraintBundle);
+  const contextMode = args.contextMode ?? "full";
+  const multiNpcPersonaPacket = buildMultiNpcCompactPersonaPacket({
+    npcIds: [
+      ...(focusNpcForBaseline ? [focusNpcForBaseline] : []),
+      ...nearbyNpcIds,
+      ...mentionedNpcIdsFromInput,
+      ...codexNpcIdsFromHints,
+    ],
+    npcPositions,
+    currentLocation: location,
+    sceneAppearanceAlreadyWrittenIds: sceneNpcAppearanceWritten,
+    maxCards: 4,
+    maxChars: contextMode === "minimal" ? 900 : 1400,
+  });
   const spaceAuthorityBaselinePacket = rollout.enableSpaceAuthorityCanon
     ? buildSpaceAuthorityBaselinePacket({
         maxRevealRank,
@@ -901,6 +916,7 @@ export function buildRuntimeContextPackets(args: {
     major_npc_relink_packet: majorNpcRelinkPacket,
     npc_player_baseline_packet: npcPlayerBaselinePacket,
     npc_scene_authority_packet: npcSceneAuthorityPacket,
+    multi_npc_persona_packet: multiNpcPersonaPacket,
     ...actorConstraintBundle,
     ...worldLorePackets,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
@@ -908,7 +924,6 @@ export function buildRuntimeContextPackets(args: {
     ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
     ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
   };
-  const contextMode = args.contextMode ?? "full";
   const packetsForPrompt =
     contextMode === "minimal"
       ? {
@@ -929,6 +944,7 @@ export function buildRuntimeContextPackets(args: {
           scene_npc_appearance_written_packet: packets.scene_npc_appearance_written_packet,
           npc_player_baseline_packet: packets.npc_player_baseline_packet,
           npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
+          multi_npc_persona_packet: multiNpcPersonaPacket,
           ...actorConstraintCompact,
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
@@ -988,6 +1004,7 @@ export function buildRuntimeContextPackets(args: {
       playerInteractionStanceCue: npcPlayerBaselinePacket.playerInteractionStanceCue.slice(0, 56),
     },
     npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
+    multi_npc_persona_packet: multiNpcPersonaPacket,
     ...actorConstraintCompact,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),

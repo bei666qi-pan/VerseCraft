@@ -39,6 +39,7 @@ test("advanceWaitUxDisplay: respects minimum hold between steps", () => {
     requestStartedAt: t0,
     backend: null,
     prev: state,
+    signals: { hasResponseHeaders: true },
   });
   assert.equal(state.stage, "context_building");
 });

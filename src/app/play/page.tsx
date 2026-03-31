@@ -63,6 +63,7 @@ import {
   normalizeSseNewlines,
   takeCompleteSseEvents,
 } from "@/features/play/stream/sseFrame";
+import { resolveTurnFromSse } from "@/features/play/stream/turnResolve";
 import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/waitUx/waitUxStages";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -75,6 +76,7 @@ import {
   shouldAutoRegenerateOptionsOnModeSwitch,
   shouldWarnAcquireMismatch,
 } from "@/features/play/turnCommit/phaseRegressionGuards";
+import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import {
   extractFilteredHintsFromTrace,
@@ -1088,15 +1090,8 @@ function PlayContent() {
       return;
     }
     // Phase-4: narrative-only / transition turns may legitimately have no options.
-    // Only allow option regeneration when the last committed turn truly requires a decision.
-    if (lastCommittedTurnModeRef.current !== "decision_required") {
-      if (manual) {
-        setFirstTimeHint(
-          lastCommittedTurnModeRef.current === "system_transition"
-            ? "当前为过场推进回合，请直接继续推进剧情。"
-            : "当前为长叙事推进回合，请直接继续推进剧情。"
-        );
-      }
+    // Manual refresh should still reach server once (server can reply with richer reason), do not swallow the click.
+    if (!manual && lastCommittedTurnModeRef.current !== "decision_required") {
       return;
     }
     if (isGuestDialogueExhausted) {
@@ -1175,6 +1170,8 @@ function PlayContent() {
           openingOptionsOnlyRound: false,
           clientPurpose: "options_regen_only",
           clientReason: `【为何需要整理选项】${reason}`,
+          // Hint only; server may ignore or override. Helps classify "legitimate no options" vs "regen failed".
+          clientTurnModeHint: lastCommittedTurnModeRef.current,
         }),
         signal: ac.signal,
       });
@@ -1200,8 +1197,9 @@ function PlayContent() {
             buf = taken.rest;
             if (taken.events.length > 0) {
               const dmRawEarly = foldSseTextToDmRaw(taken.events.join("\n\n"));
-              const parsedEarly = tryParseDM(dmRawEarly);
-              let rawOptsEarly: unknown = parsedEarly?.options;
+              const parsedEarly = tryParseDM(dmRawEarly) as any;
+              const pickedEarly = pickTurnOptionsFromResolvedDm(parsedEarly);
+              let rawOptsEarly: unknown = pickedEarly.options;
               if (!Array.isArray(rawOptsEarly) || rawOptsEarly.length === 0) {
                 const loose = extractRegenOptionsFromRaw(dmRawEarly);
                 if (loose && loose.length > 0) rawOptsEarly = loose;
@@ -1230,15 +1228,36 @@ function PlayContent() {
         }
       }
       const dmRaw = foldSseTextToDmRaw(text);
-      const parsed = tryParseDM(dmRaw);
-      let rawOpts: unknown = parsed?.options;
+      const parsed = tryParseDM(dmRaw) as any;
+      const picked = pickTurnOptionsFromResolvedDm(parsed);
+      let rawOpts: unknown = picked.options;
       if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
         const loose = extractRegenOptionsFromRaw(dmRaw);
         if (loose && loose.length > 0) rawOpts = loose;
       }
       const normalized = normalizeRegeneratedOptions(rawOpts, []);
       if (normalized.length === 0) {
+        // Try parse richer server response if present.
+        try {
+          const obj = JSON.parse(dmRaw) as any;
+          const ok = obj && typeof obj === "object" && obj.ok === false;
+          const turnMode = typeof obj?.turn_mode === "string" ? obj.turn_mode : "";
+          const reasonText = typeof obj?.reason === "string" ? obj.reason : "";
+          if (ok && (turnMode === "narrative_only" || turnMode === "system_transition")) {
+            setFirstTimeHint(turnMode === "system_transition" ? "当前为过场推进回合。请直接继续推进剧情。" : "当前为长叙事推进回合。请直接继续推进剧情。");
+            console.warn("[play][options_regen] no_options_expected", { trigger, turnMode });
+            return;
+          }
+          if (ok && reasonText) {
+            setFirstTimeHint(`当前无法补全可选行动：${reasonText}（可切换为手动输入继续）`);
+            console.warn("[play][options_regen] failed", { trigger, turnMode, reason: reasonText });
+            return;
+          }
+        } catch {
+          // ignore
+        }
         setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
+        console.warn("[play][options_regen] failed_unclassified", { trigger });
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
@@ -1512,6 +1531,7 @@ function PlayContent() {
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let raw = "";
+    let sseDocumentText = "";
     let sawStreamChunk = false;
 
     const applySseEvent = (eventText: string) => {
@@ -1583,7 +1603,9 @@ function PlayContent() {
         const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : STREAM_FIRST_CHUNK_STALL_MS;
         const { value, done } = await readNextWithStallGuard(stallMs);
         if (done) break;
-        buf += decoder.decode(value, { stream: true });
+        const chunkText = decoder.decode(value, { stream: true });
+        sseDocumentText += chunkText;
+        buf += chunkText;
         const { events, rest } = takeCompleteSseEvents(buf);
         buf = rest;
         for (const event of events) {
@@ -1649,17 +1671,69 @@ function PlayContent() {
     }
 
     setStreamPhase("turn_committing");
+    let committedNarrativeForRescue: string | null = null;
     try {
-    const parsed = tryParseDM(raw) as any;
+    const resolved = resolveTurnFromSse({ sseDocumentText, rawDm: raw });
+    if (process.env.NODE_ENV === "development") {
+      console.debug("[play][turn_resolve] summary", {
+        source: resolved.source,
+        failure: resolved.failure,
+        finalFound: resolved.debug.finalFound,
+        finalPayloadLen: resolved.debug.finalPayloadLen,
+        rawLen: resolved.debug.rawLen,
+        hasNarrative: Boolean(resolved.narrative && resolved.narrative.trim().length > 0),
+        hasDm: Boolean(resolved.dm),
+      });
+    }
+    if (resolved.failure) {
+      const kind = resolved.failure;
+      const debug = resolved.debug;
+      // 分类日志：便于追踪“正文回退/结算丢弃”问题根因
+      if (kind === "final_frame_missing") {
+        console.warn("[play][turn_resolve] final_frame_missing; falling back to raw DM", debug);
+      } else if (kind === "final_payload_invalid") {
+        console.warn("[play][turn_resolve] final_payload_invalid; falling back to raw DM", debug);
+      } else if (kind === "raw_dm_parse_failed") {
+        console.warn("[play][turn_resolve] raw_dm_parse_failed", debug);
+      } else if (kind === "protocol_guard_rejected") {
+        console.error("[play][turn_resolve] protocol_guard_rejected (fail-closed)", debug);
+      }
+    }
+
+    const parsed = (resolved.dm ?? null) as any;
     /** 同回合多条「获得类」反馈合并为一条顶栏提示，避免互相覆盖 */
     const acquireHudHints: string[] = [];
     if (!parsed) {
-      setStreamPhase("idle");
-      // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
-      narrativeRef.current = "";
-      setLiveNarrative(
-        "本回合剧情数据格式异常，未写入日志与结算。请重试同一行动，或切换到手动输入后再试。"
-      );
+      const salvage = (resolved.narrative ?? "").trim();
+      if (!salvage) {
+        setStreamPhase("idle");
+        // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
+        narrativeRef.current = "";
+        setLiveNarrative(
+          "本回合剧情数据格式异常，未写入日志与结算。请重试同一行动，或切换到手动输入后再试。"
+        );
+        return;
+      }
+      // 仅正文可恢复：先写入 assistant 日志，避免“回合白玩了”；结构化结算跳过，但不影响继续游玩。
+      useGameStore.getState().pushLog({
+        role: "assistant",
+        content: salvage.slice(0, 50000),
+        reasoning: undefined,
+      });
+      setLiveNarrative("");
+      setCurrentOptions([]);
+      setFirstTimeHint("本回合正文已保存，但部分状态结算未提交（格式异常）。可继续手动输入推进。");
+      try {
+        useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+        writeResumeShadow();
+      } catch (e) {
+        console.error("[play][turn_commit_exception] save after narrative-only failed", e);
+      }
+      parsedPostDrainRef.current = { isDeath: false };
+      narrativeRef.current = salvage;
+      tailDrainTargetRef.current = salvage;
+      setTailAlignKey((n) => n + 1);
+      setStreamPhase("tail_draining");
       return;
     }
 
@@ -1729,6 +1803,7 @@ function PlayContent() {
       content: narrativeToPush,
       reasoning: undefined,
     });
+    committedNarrativeForRescue = narrativeToPush;
 
     setLiveNarrative("");
 
@@ -2071,8 +2146,9 @@ function PlayContent() {
       setHitEffectUntil(Date.now() + 1200);
     }
 
-    const validOpts = Array.isArray(parsed.options)
-      ? parsed.options
+    const pickedTurnOpts = pickTurnOptionsFromResolvedDm(parsed);
+    const validOpts = Array.isArray(pickedTurnOpts.options)
+      ? pickedTurnOpts.options
           .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
           .map((o) => sanitizeDisplayedOptionText(o))
           .filter((o) => o.length > 0)
@@ -2097,34 +2173,35 @@ function PlayContent() {
       setCurrentOptions([...merged.slice(0, 4)]);
       autoMissingOptionsAttemptedRef.current = false;
     } else {
-      // 无论是否首次 assistant 回合，都必须清空旧选项，避免沿用上一回合残留。
-      setCurrentOptions([]);
-      // 立刻同步槽位与 shadow，缩短「内存已空但 saveSlots 仍为旧四条」窗口，避免其它 effect 误回填。
-      queueMicrotask(() => {
-        const slot = useGameStore.getState().currentSaveSlot;
-        useGameStore.getState().saveGame(slot);
-        writeResumeShadow();
-      });
+      // 无 options 的策略分流：
+      // - decision_required：优先补齐，不要立刻清空到用户眼前；保持旧选项但禁用（optionsRegenBusy）作为过渡。
+      // - narrative_only/system_transition：明确说明本回合本就不该有选项。
+      if (parsedTurnMode === "decision_required") {
+        if (getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
+          autoMissingOptionsAttemptedRef.current = true;
+          setFirstTimeHint("本回合需要做出选择，但主笔未生成可用选项，正在补全…");
+          queueMicrotask(() => {
+            void requestFreshOptions("auto_missing_main");
+          });
+        } else if (!isFirstAssistantTurn) {
+          setFirstTimeHint("本回合需要做出选择，但当前无法补全可选行动。可切换为手动输入继续，或稍后重试。");
+        }
+      } else {
+        // narrative_only / system_transition：清空旧选项是正确的（避免误点）。
+        setCurrentOptions([]);
+        queueMicrotask(() => {
+          const slot = useGameStore.getState().currentSaveSlot;
+          useGameStore.getState().saveGame(slot);
+          writeResumeShadow();
+        });
+        if (!isFirstAssistantTurn) {
+          setFirstTimeHint(parsedTurnMode === "system_transition" ? "当前为过场推进回合。" : "当前为长叙事推进回合。");
+        }
+      }
       if (isOpeningSystemRequest) {
         queueMicrotask(() => {
           void requestFreshOptions("opening_fallback");
         });
-      } else if (
-        parsedTurnMode === "decision_required" &&
-        !isFirstAssistantTurn &&
-        getClientOptionsAutoRegenOnEmptyEnabled() &&
-        !autoMissingOptionsAttemptedRef.current
-      ) {
-        autoMissingOptionsAttemptedRef.current = true;
-        queueMicrotask(() => {
-          void requestFreshOptions("auto_missing_main");
-        });
-      } else if (!isFirstAssistantTurn) {
-        setFirstTimeHint(
-          parsedTurnMode === "decision_required"
-            ? "本回合仍没有可选行动，可切换为手动输入继续。"
-            : "本回合为长叙事推进，可点击“继续推进”或切换为手动输入继续。"
-        );
       }
     }
 
@@ -2136,7 +2213,9 @@ function PlayContent() {
           : "cleared";
       console.debug("[versecraft/play] options commit", {
         branch,
+        parsedDecisionOptionsLen: Array.isArray((parsed as any).decision_options) ? (parsed as any).decision_options.length : 0,
         parsedOptionsLen: Array.isArray(parsed.options) ? parsed.options.length : 0,
+        pickSource: pickedTurnOpts.meta.source,
         mergedLen: merged.length,
         storeLen: (useGameStore.getState().currentOptions ?? []).length,
       });
@@ -2602,12 +2681,23 @@ function PlayContent() {
     setTailAlignKey((n) => n + 1);
     setStreamPhase("tail_draining");
     } catch (commitErr: unknown) {
-      console.error("[/play] turn commit failed", commitErr);
+      console.error("[play][turn_commit_exception] turn commit failed", commitErr);
       tailDrainTargetRef.current = null;
       parsedPostDrainRef.current = null;
-      setStreamPhase("idle");
-      narrativeRef.current = "";
-      setLiveNarrative("剧情结算时发生错误，请重试本回合。");
+      if (committedNarrativeForRescue && committedNarrativeForRescue.trim().length > 0) {
+        // 正文已写入日志时，结算失败不应“回退正文”。
+        setLiveNarrative("");
+        setCurrentOptions([]);
+        setFirstTimeHint("本回合正文已保存，但结算发生错误，部分状态可能未写入。可继续手动输入推进。");
+        narrativeRef.current = committedNarrativeForRescue;
+        tailDrainTargetRef.current = committedNarrativeForRescue;
+        setTailAlignKey((n) => n + 1);
+        setStreamPhase("tail_draining");
+      } else {
+        setStreamPhase("idle");
+        narrativeRef.current = "";
+        setLiveNarrative("剧情结算时发生错误，请重试本回合。");
+      }
     }
     } finally {
       sendActionInFlightRef.current = false;
@@ -2984,7 +3074,7 @@ function PlayContent() {
                   currentOptions.length > 0 &&
                   !showEmbeddedOpening &&
                   !endgameState.active &&
-                  !optionsRegenBusy && (
+                  (
                     <>
                       <PlayOptionsList
                         options={currentOptions}

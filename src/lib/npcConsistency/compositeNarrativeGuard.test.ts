@@ -80,6 +80,28 @@ test("composite：动作复述/解释腔会触发 continuity 开头重写", () =
   });
 });
 
+test("composite：对白类残留标签（玩家说/你说/玩家输入）会被全文清洗为自然对白", () => {
+  withGuardEnv(() => {
+    const latest = "我压低声音对灵伤说：别出声，我们先躲一下。";
+    const bad =
+      "玩家输入：我压低声音对灵伤说：别出声，我们先躲一下。\n" +
+      "玩家说：别出声，我们先躲一下。灵伤抬眼，你说：快点。\n" +
+      "你刚才说的“我压低声音对灵伤说：别出声，我们先躲一下。”在空中打了个折。";
+    const { narrative } = applyCompositeNarrativeGuard({
+      narrative: bad,
+      latestUserInput: latest,
+      previousTailSummary: "走廊深处像有东西在磨。",
+      focusNpcId: "N-020",
+      presentNpcIds: ["N-020"],
+    });
+    assert.equal(/玩家输入[:：]/.test(narrative), false);
+    assert.equal(/玩家说[:：]/.test(narrative), false);
+    assert.equal(/你说[:：]/.test(narrative), false);
+    // Must preserve immersion: dialogue should be in Chinese quotes.
+    assert.ok(narrative.includes("“别出声，我们先躲一下。”") || narrative.includes("“别出声"));
+  });
+});
+
 test("golden：玩家观察环境（短输入）— 不解释动作，不二人称旁白", () => {
   withGuardEnv(() => {
     const latest = "我查看墙角的铁牌。";

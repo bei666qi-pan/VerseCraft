@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   accumulateDmFromSseEvent,
+  extractFinalPayloadFromSseDocument,
   extractStatusFrameFromSseEvent,
   foldSseTextToDmRaw,
   normalizeSseNewlines,
@@ -58,4 +59,21 @@ test("foldSseTextToDmRaw joins multiline data fields in one event", () => {
   const doc = `data: {"n":"a
 data: b"}\n\n`;
   assert.equal(foldSseTextToDmRaw(doc), '{"n":"a\nb"}');
+});
+
+test("extractFinalPayloadFromSseDocument prefers __VERSECRAFT_FINAL__ even with dirty deltas before", () => {
+  const doc =
+    'data: {"narrative":"partial"\n\n' +
+    'data: __VERSECRAFT_FINAL__:{"narrative":"FINAL","is_action_legal":true,"sanity_damage":0,"is_death":false}\n\n';
+  const out = extractFinalPayloadFromSseDocument(doc);
+  assert.equal(out.found, true);
+  assert.equal(out.payload.includes('"narrative":"FINAL"'), true);
+  assert.equal(out.payload.includes("partial"), false);
+});
+
+test("extractFinalPayloadFromSseDocument returns found=false when final marker missing", () => {
+  const doc = 'data: {"narrative":"x"}\n\n';
+  const out = extractFinalPayloadFromSseDocument(doc);
+  assert.equal(out.found, false);
+  assert.equal(out.payload, "");
 });

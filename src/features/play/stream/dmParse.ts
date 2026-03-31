@@ -252,7 +252,21 @@ export const FALLBACK_DM: DMJson = {
   consumes_time: true,
 };
 
+export type DmParseFailureReason =
+  | "no_balanced_object"
+  | "json_parse_failed"
+  | "protocol_guard_rejected";
+
+export interface TryParseDmDetailedResult {
+  dm: DMJson | null;
+  reason: DmParseFailureReason | null;
+}
+
 export function tryParseDM(raw: string): DMJson | null {
+  return tryParseDMDetailed(raw).dm;
+}
+
+export function tryParseDMDetailed(raw: string): TryParseDmDetailedResult {
   const cleanContent = raw
     .replace(/^\uFEFF/, "")
     .replace(/__VERSECRAFT_FINAL__:/g, "")
@@ -283,17 +297,17 @@ export function tryParseDM(raw: string): DMJson | null {
         .replace(/`([^`\n]{1,80})`/g, "$1");
       const sanitized = sanitizeNarrativeLeakageForFinal(dm.narrative);
       if (sanitized.degraded || hasProtocolLeakSignature(sanitized.narrative)) {
-        return null;
+        return { dm: null, reason: "protocol_guard_rejected" };
       }
       dm.narrative = sanitized.narrative;
-      return dm;
+      return { dm, reason: null };
     }
   }
 
   if (candidatesTried === 0) {
     console.error("[tryParseDM] no balanced `{...}` slice found");
-    return null;
+    return { dm: null, reason: "no_balanced_object" };
   }
   logTryParseFailure(cleanContent, candidatesTried);
-  return null;
+  return { dm: null, reason: "json_parse_failed" };
 }

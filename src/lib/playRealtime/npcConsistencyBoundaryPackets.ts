@@ -14,6 +14,7 @@ import { getNpcCanonicalIdentity, isNpcAllowedToKnowRevealTier } from "@/lib/reg
 import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 import { parseRuntimeNpcPrimitives } from "./runtimeContextPackets";
 import { buildThreatPacket } from "./stage2Packets";
+import { buildMultiNpcPersonaBoundaryPacketObject } from "@/lib/playRealtime/multiNpcPersonaPackets";
 
 export type NpcConsistencyEpistemicCounts = {
   actorKnownFactCount: number;
@@ -101,6 +102,18 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
       })
     : null;
 
+  const multiNpcPersonaPacket = buildMultiNpcPersonaBoundaryPacketObject({
+    npcIds: [
+      ...(focusNpcForBaseline ? [focusNpcForBaseline] : []),
+      ...nearbyNpcIds,
+      ...extractMentionedNpcIdsFromUserInput(args.latestUserInput),
+      ...extractNpcIdsFromRelationshipHints(prim.relationshipHints),
+    ],
+    npcPositions: prim.npcPositions,
+    currentLocation: location,
+    sceneAppearanceAlreadyWrittenIds: prim.sceneNpcAppearanceWritten,
+  });
+
   const focus = focusNpcForBaseline;
   const canon = focus ? getNpcCanonicalIdentity(focus) : null;
 
@@ -169,6 +182,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
     actor_canon_packet,
     npc_player_baseline_packet,
     npc_scene_authority_packet,
+    multi_npc_persona_packet: multiNpcPersonaPacket,
     actor_epistemic_packet,
     actor_memory_privilege_packet,
     actor_reveal_limit_packet,
