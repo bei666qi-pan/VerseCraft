@@ -64,6 +64,8 @@ import {
   takeCompleteSseEvents,
 } from "@/features/play/stream/sseFrame";
 import { resolveTurnFromSse } from "@/features/play/stream/turnResolve";
+import { getCommitFailureRecovery } from "./commitFailureRecovery";
+import { getOptionsRegenSuccessHint } from "./optionsRegenUx";
 import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/waitUx/waitUxStages";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -1271,6 +1273,8 @@ function PlayContent() {
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
       setCurrentOptions(normalized);
+      const successHint = getOptionsRegenSuccessHint({ trigger, turnMode: lastCommittedTurnModeRef.current });
+      if (successHint) setFirstTimeHint(successHint);
       setLiveNarrative((prev) =>
         typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
       );
@@ -2752,19 +2756,20 @@ function PlayContent() {
       console.error("[play][turn_commit_exception] turn commit failed", commitErr);
       tailDrainTargetRef.current = null;
       parsedPostDrainRef.current = null;
-      if (committedNarrativeForRescue && committedNarrativeForRescue.trim().length > 0) {
+      const rec = getCommitFailureRecovery({ committedNarrativeForRescue });
+      if (rec.kind === "narrative_rescued") {
         // 正文已写入日志时，结算失败不应“回退正文”。
         setLiveNarrative("");
         setCurrentOptions([]);
-        setFirstTimeHint("本回合正文已保存，但结算发生错误，部分状态可能未写入。可继续手动输入推进。");
-        narrativeRef.current = committedNarrativeForRescue;
-        tailDrainTargetRef.current = committedNarrativeForRescue;
+        setFirstTimeHint(rec.hint);
+        narrativeRef.current = rec.narrative;
+        tailDrainTargetRef.current = rec.narrative;
         setTailAlignKey((n) => n + 1);
         setStreamPhase("tail_draining");
       } else {
         setStreamPhase("idle");
         narrativeRef.current = "";
-        setLiveNarrative("剧情结算时发生错误，请重试本回合。");
+        setLiveNarrative(rec.liveNarrative);
       }
     }
     } finally {

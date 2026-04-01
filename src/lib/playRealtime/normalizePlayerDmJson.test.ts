@@ -114,6 +114,28 @@ test("parseAccumulatedPlayerDmJson extracts first balanced object", () => {
   assert.equal(n!.narrative, "x");
 });
 
+test("parseAccumulatedPlayerDmJson: unrelated JSON first, full DM later -> should pick DM later", () => {
+  const junk = '{"status":"streaming","phase":"waiting"}';
+  const dm =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"后面的完整DM","is_death":false,"consumes_time":true}';
+  const p = parseAccumulatedPlayerDmJson(`${junk}\n${dm}`);
+  assert.ok(p && typeof p === "object");
+  const n = normalizePlayerDmJson(p);
+  assert.ok(n);
+  assert.equal(n!.narrative, "后面的完整DM");
+});
+
+test("parseAccumulatedPlayerDmJson: bad DM first, good DM later -> should pick later", () => {
+  const bad = '{"is_action_legal":true,"sanity_damage":0,"narrative":';
+  const good =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"good","is_death":false,"consumes_time":true}';
+  const p = parseAccumulatedPlayerDmJson(`${bad}${good}`);
+  assert.ok(p && typeof p === "object");
+  const n = normalizePlayerDmJson(p);
+  assert.ok(n);
+  assert.equal(n!.narrative, "good");
+});
+
 test("normalized JSON string remains parseable by client tryParseDM", () => {
   const n = normalizePlayerDmJson({
     is_action_legal: true,

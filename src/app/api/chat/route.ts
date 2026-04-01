@@ -162,6 +162,7 @@ import type { TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
 import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
 import { buildOptionsRegenResponse } from "./optionsRegenPayload";
+import { getPostResolveOptionsRegenSkipReason, shouldSkipPostResolveOptionsRegen } from "./postResolveOptionsRegenSkip";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -2765,15 +2766,29 @@ export async function POST(req: Request) {
           // settlement_guard 在合法回合也会写入 stage2_ordered_resolution；仅非法/死亡冻结应跳过后置补选项。
           const settlementFreeze =
             guardMeta?.settlement_guard === "stage2_freeze_on_illegal_or_death";
-          const shouldSkipRegen =
-            validated.clientPurpose === "options_regen_only" ||
-            Boolean(shouldApplyFirstActionConstraint) ||
-            settlementFreeze ||
-            (resolved as any).turn_mode === "narrative_only" ||
-            (resolved as any).turn_mode === "system_transition" ||
-            (resolved as any).decision_required === false;
+          const shouldSkipRegen = shouldSkipPostResolveOptionsRegen({
+            clientPurpose: validated.clientPurpose,
+            shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
+            settlementFreeze,
+            resolved: { turn_mode: (resolved as any).turn_mode },
+          });
+          const skipReason = getPostResolveOptionsRegenSkipReason({
+            clientPurpose: validated.clientPurpose,
+            shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
+            settlementFreeze,
+            resolved: { turn_mode: (resolved as any).turn_mode },
+          });
           const resolvedOpts = Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : [];
           const resolvedOptCount = resolvedOpts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+          if (process.env.NODE_ENV === "development") {
+            console.debug("[api/chat] options_regen_post_resolve_gate", {
+              requestId,
+              skipReason,
+              turn_mode: (resolved as any).turn_mode,
+              resolvedOptCount,
+              enable: rollout.enableOptionsAutoRegenOnEmpty,
+            });
+          }
           if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2) {
             if (resolvedOptCount === 0) incrEmptyOptionsTurnCount(1);
             const regen = await generateOptionsOnlyFallback({

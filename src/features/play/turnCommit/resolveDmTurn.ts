@@ -215,10 +215,6 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     ui_hints.toast_hint = toastFromUpdates;
   }
 
-  if (consistency_flags.length > 0) {
-    ui_hints.consistency_flags = consistency_flags;
-  }
-
   const security_meta = (() => {
     if (consistency_flags.includes("acquire_without_awards_downgraded")) {
       return mergeSecurityMeta(input.security_meta, { consistency_warning: "acquire_without_awards_downgraded" }, maxSecurityMetaChars);
@@ -234,7 +230,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const requestedMode = asTurnMode((input as { turn_mode?: unknown }).turn_mode);
   // Default must preserve legacy semantics: old turns are treated as "decision_required" (even if options is empty),
   // so route.ts auto-regeneration behavior remains unchanged unless the model explicitly opts into new modes.
-  const turn_mode: TurnMode = requestedMode ?? "decision_required";
+  let turn_mode: TurnMode = requestedMode ?? "decision_required";
 
   const narrative_goal = clampString(asString((input as { narrative_goal?: unknown }).narrative_goal).trim(), 240);
   const narrative_density: NarrativeDensity =
@@ -262,15 +258,22 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       if (legacyCnt >= 2 && legacyCnt <= 4) {
         decision_options = legacyOptionsFromWire;
       } else {
-        // Fail-closed but non-crashing: downgrade semantics; keep legacy options as-is (may be empty) for compat.
-        consistency_flags.push("invalid_decision_options_downgraded");
-        decision_required = false;
-        decision_required_strict = false;
-        decision_options = [];
-        // Only change mode when the model explicitly set an invalid decision_required mode.
-        // If mode is defaulted (requestedMode=null), do NOT change it to avoid altering legacy behavior.
-        if (requestedMode) {
-          (ui_hints.consistency_flags ??= []).push("invalid_decision_required_payload");
+        // 两类矛盾需要分流处理：
+        // 1) 模型显式声明 decision_required 但 payload 非法：允许降级，并明确打上 consistency flag。
+        // 2) 旧协议/默认协议下（requestedMode=null）缺 options：必须保留“本轮仍是决策回合”的语义，
+        //    只把 decision_options 置空，并打上 waiting_regen flag，交给 route.ts 后置补选项闭环。
+        if (requestedMode === "decision_required") {
+          consistency_flags.push("invalid_decision_options_downgraded");
+          consistency_flags.push("invalid_decision_required_payload");
+          turn_mode = "narrative_only";
+          decision_required = false;
+          decision_required_strict = false;
+          decision_options = [];
+        } else {
+          consistency_flags.push("invalid_decision_options_waiting_regen");
+          decision_required = true;
+          decision_required_strict = false;
+          decision_options = [];
         }
       }
     } else {
@@ -341,6 +344,10 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     world_consistency_flags,
     anti_cheat_meta,
   };
+
+  if (consistency_flags.length > 0) {
+    (out.ui_hints ??= {}).consistency_flags = consistency_flags;
+  }
 
   return out;
 }

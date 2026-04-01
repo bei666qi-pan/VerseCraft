@@ -101,15 +101,51 @@ function contextualFallbackPad(playerContext: string): readonly string[] {
   const loc = ctx.match(/用户位置\[([^\]]+)\]/)?.[1]?.trim() || "";
   const hasThreat = /主威胁状态：/.test(ctx) && /(active|suppressed|breached|危险|压制|失控)/.test(ctx);
   const npcLine = ctx.match(/NPC当前位置：([^。]+)。/)?.[1]?.trim() || "";
-  const npcHint = npcLine ? "我先确认附近是否有人在场。" : "我先侧耳听周围动静。";
-  const placeHint = loc ? `我朝${loc.includes("B1") ? "安全区" : "附近"}找一个更稳的位置。` : "我先找一处更稳的站位。";
-  const threatHint = hasThreat ? "我先确认危险来源与退路。" : "我先确认退路与可用遮蔽物。";
+  const npcHint = npcLine ? "我先压低声音，向附近的人确认情况。" : "我先侧耳听周围动静。";
+  const placeHint = loc ? `我先沿${loc.includes("B1") ? "安全区方向" : "走廊边缘"}调整站位，找遮蔽物。` : "我先找一处更稳的站位。";
+  const threatHint = hasThreat ? "我先拉开距离，确认退路与危险来源。" : "我先确认退路与可用遮蔽物。";
+  const probeHint = hasThreat ? "我先用小动作试探对方反应。" : "我先做个小试探，看看规则是否有变。";
   return [
     threatHint,
     npcHint,
     placeHint,
-    "我先把刚才的细节问清楚再动。",
+    probeHint,
   ];
+}
+
+type OptionActionKind = "dialogue" | "observe" | "move" | "item" | "avoid" | "probe" | "wait" | "other";
+
+function classifyOptionKind(text: string): OptionActionKind {
+  const s = String(text ?? "").trim();
+  if (!s) return "other";
+  const t = s.replace(/[。！？…,.!?\s]+/g, "");
+  if (/(询问|问清|打听|交涉|说服|呼喊|喊话|对话|打招呼|确认情况)/.test(t)) return "dialogue";
+  if (/(观察|查看|检查|搜寻|侧耳|倾听|翻找|辨认|记录|对照)/.test(t)) return "observe";
+  if (/(后撤|退回|撤到|躲开|绕开|避开|保持距离|找退路|掩体|遮蔽|拉开距离)/.test(t)) return "avoid";
+  if (/(移动|靠近|走向|前进|转移|换位|贴墙|贴近|进入|离开|调整站位)/.test(t)) return "move";
+  if (/(使用|拿出|点亮|打开|关上|拨打|拍照|照明|钥匙|手机|手电|符|药|绷带)/.test(t)) return "item";
+  if (/(试探|敲击|轻触|投石|小动作|测试|验证)/.test(t)) return "probe";
+  if (/(等待|拖延|按兵不动|停一停|稳住|深呼吸)/.test(t)) return "wait";
+  return "other";
+}
+
+function normalizeForLooseDedup(s: string): string {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[。！？…,.!?\s]+/g, "")
+    .replace(/^(我先|我就|我先把|我先去|先把|先去|先)/, "")
+    .replace(/(一下|一点|一会儿|一会|再说|再动|再走)$/, "");
+}
+
+function areOptionsTooSimilar(a: string, b: string): boolean {
+  const na = normalizeForLooseDedup(a);
+  const nb = normalizeForLooseDedup(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= 6 && nb.includes(na)) return true;
+  if (nb.length >= 6 && na.includes(nb)) return true;
+  return false;
 }
 
 /**
@@ -128,9 +164,72 @@ export function padOptionsFallbackToFour(options: string[], playerContext?: stri
   };
   for (const s of options) pushUnique(s);
   // 兜底也要尽量贴近当前上下文：避免“四条都像同一种泛化观察”
-  for (const g of contextualFallbackPad(playerContext ?? "")) {
+  const ctx = String(playerContext ?? "");
+  for (const g of contextualFallbackPad(ctx)) {
     if (out.length >= 4) break;
     pushUnique(g);
+  }
+  return out.slice(0, 4);
+}
+
+export function guardOptionsQualityToFour(args: {
+  options: string[];
+  playerContext?: string;
+  recentActionHint?: string;
+}): string[] {
+  const ctx = String(args.playerContext ?? "");
+  const recent = String(args.recentActionHint ?? "");
+  const npcPresent = /NPC当前位置：([^。]+)。/.test(ctx);
+  const hasThreat = /主威胁状态：/.test(ctx) && /(active|suppressed|breached|危险|压制|失控)/.test(ctx);
+
+  const base: string[] = [];
+  for (const s of args.options ?? []) {
+    const t = String(s ?? "").trim();
+    if (!t) continue;
+    if (base.some((x) => areOptionsTooSimilar(x, t))) continue;
+    base.push(t);
+    if (base.length >= 4) break;
+  }
+
+  const out: string[] = [];
+  const kinds = new Set<OptionActionKind>();
+  const push = (s: string) => {
+    const t = String(s ?? "").trim();
+    if (!t) return;
+    if (out.some((x) => areOptionsTooSimilar(x, t))) return;
+    out.push(t);
+    kinds.add(classifyOptionKind(t));
+  };
+  for (const s of base) push(s);
+
+  // 补齐缺失类型：优先规避/交涉（视上下文），再补信息/移动/道具/试探
+  const fallbacks = padOptionsFallbackToFour([], ctx);
+  const tryFillByKind = (kind: OptionActionKind) => {
+    for (const f of fallbacks) {
+      if (out.length >= 4) return;
+      if (classifyOptionKind(f) !== kind) continue;
+      push(f);
+    }
+  };
+
+  if (hasThreat && !kinds.has("avoid")) tryFillByKind("avoid");
+  if (npcPresent && !kinds.has("dialogue")) tryFillByKind("dialogue");
+  if (!kinds.has("observe")) tryFillByKind("observe");
+  if (!kinds.has("move")) tryFillByKind("move");
+  if (!kinds.has("item")) tryFillByKind("item");
+  if (!kinds.has("probe")) tryFillByKind("probe");
+  if (!kinds.has("wait")) tryFillByKind("wait");
+
+  // 轻量贴场景补句（基于最近动作的关键字，不做复杂 NLP）
+  if (recent && out.length < 4) {
+    if (/(手机|手电|照明|拍照)/.test(recent)) push("我先用手机灯照一下关键细节。");
+    if (/(钥匙|门锁|门把|门)/.test(recent)) push("我先检查门锁结构，确认能否快速撤离。");
+    if (/(电梯|楼梯|走廊)/.test(recent)) push("我先确认通道哪条更安全，再决定推进。");
+  }
+
+  for (const f of fallbacks) {
+    if (out.length >= 4) break;
+    push(f);
   }
   return out.slice(0, 4);
 }
@@ -158,7 +257,16 @@ async function runOptionsOnlyAiOnce(args: {
       "你是规则怪谈文字冒险的控制面助手，任务是为玩家生成下一步可点击行动选项。",
       "你必须只输出一个 JSON 对象，形如：{\"options\":[\"...\",\"...\",\"...\",\"...\"]}。",
       "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
-      "四条必须彼此差异明显：至少包含两种不同类型的行动（例如：对话/移动/检查/使用物品/退避/试探）。",
+      [
+        "四条必须彼此差异明显，禁止四条都变成同义弱变化（例如都以“我先看看/我先观察/我先确认”开头）。",
+        "你必须让四条在行动类型上分化，并尽量覆盖以下至少三类：",
+        "- 信息获取：观察/调查/检查/倾听/记录",
+        "- 推进剧情：进入/靠近/打开/触发/跟随/询问关键点",
+        "- 风险控制：后撤/绕开/找退路/保持距离/拖延",
+        "- 交涉：对话/喊话/确认在场者意图（若附近有人）",
+        "- 使用物品：手机/手电/钥匙等（若上下文可用）",
+        "最低要求：至少 1 条低风险 + 1 条推进性 + 1 条信息获取型行动。",
+      ].join("\n"),
       "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
       args.systemExtra ?? "",
     ]
@@ -225,14 +333,30 @@ export async function generateOptionsOnlyFallback(args: {
 
   // If budget is too tight, skip any upstream attempt.
   if (budgetMs > 0 && remainingMs() < 350) {
-    return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
+    return {
+      ok: true,
+      options: guardOptionsQualityToFour({
+        options: padOptionsFallbackToFour([], args.playerContext),
+        playerContext: args.playerContext,
+        recentActionHint: args.latestUserInput,
+      }),
+    };
   }
 
   const tryParse = (content: string): { ok: true; options: string[] } | null => {
     try {
       const obj = JSON.parse(content) as Record<string, unknown>;
       const parsed = parseOptionsArrayFromAiJson(obj.options);
-      return finalizeOptionsFallbackParsed(parsed);
+      const done = finalizeOptionsFallbackParsed(parsed);
+      if (!done) return null;
+      return {
+        ok: true,
+        options: guardOptionsQualityToFour({
+          options: done.options,
+          playerContext: args.playerContext,
+          recentActionHint: args.latestUserInput,
+        }),
+      };
     } catch {
       return null;
     }
@@ -266,7 +390,14 @@ export async function generateOptionsOnlyFallback(args: {
   }
 
   if (budgetMs > 0 && remainingMs() < 350) {
-    return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
+    return {
+      ok: true,
+      options: guardOptionsQualityToFour({
+        options: padOptionsFallbackToFour([], args.playerContext),
+        playerContext: args.playerContext,
+        recentActionHint: args.latestUserInput,
+      }),
+    };
   }
 
   const second = await runOptionsOnlyAiOnce({
@@ -282,7 +413,14 @@ export async function generateOptionsOnlyFallback(args: {
   }
 
   // 两次模型均不可用或 JSON 无效：用通用短句填满，避免 options 模式死胡同。
-  return { ok: true, options: padOptionsFallbackToFour([], args.playerContext) };
+  return {
+    ok: true,
+    options: guardOptionsQualityToFour({
+      options: padOptionsFallbackToFour([], args.playerContext),
+      playerContext: args.playerContext,
+      recentActionHint: args.latestUserInput,
+    }),
+  };
 }
 
 function padDecisionOptionsToTwo(playerContext?: string): string[] {

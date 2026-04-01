@@ -2,6 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveTurnConsistency } from "@/features/play/turnCommit/resolveDmTurn";
 
+/**
+ * ## 阶段1-4 验收清单（人工）
+ * - 正常决策回合主笔给出选项：应出现可点击选项。
+ * - 决策回合主笔漏给选项：应自动补齐（或允许手动“让主笔重新整理选项”补齐）。
+ * - 自动补齐失败：仍能手动刷新，或切到手动输入继续推进（不死锁）。
+ * - narrative_only / system_transition：不强行补选项；应有继续推进能力（或明确说明本回合无选项）。
+ * - 脏输出/重复 JSON：正文尽量保住，不出现明显“正文回退”。
+ * - 真正彻底坏掉：才显示“格式异常”提示。
+ */
+
 test("resolveTurnConsistency: arrays default to empty and options stays array", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,
@@ -122,5 +132,69 @@ test("resolveTurnConsistency: invalid time_cost omitted", () => {
     options: [],
   } as any);
   assert.equal(out.time_cost, undefined);
+});
+
+test("resolveTurnConsistency: legacy/default decision turn with missing options should keep decision_required true and wait regen", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "测试",
+    is_death: false,
+    consumes_time: true,
+    // legacy protocol: no turn_mode, no decision_options, options empty
+    options: [],
+  } as any);
+  assert.equal(out.turn_mode, "decision_required");
+  assert.equal(out.decision_required, true);
+  assert.deepEqual(out.decision_options, []);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_options_waiting_regen") ?? false, true);
+});
+
+test("resolveTurnConsistency: explicit narrative_only should disable decision_required", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "只是叙事推进。",
+    is_death: false,
+    consumes_time: true,
+    turn_mode: "narrative_only",
+    options: [],
+  } as any);
+  assert.equal(out.turn_mode, "narrative_only");
+  assert.equal(out.decision_required, false);
+  assert.deepEqual(out.decision_options, []);
+});
+
+test("resolveTurnConsistency: explicit system_transition should disable decision_required and options", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "系统切换。",
+    is_death: false,
+    consumes_time: true,
+    turn_mode: "system_transition",
+    options: ["不该出现的 legacy 选项"],
+  } as any);
+  assert.equal(out.turn_mode, "system_transition");
+  assert.equal(out.decision_required, false);
+  assert.deepEqual(out.decision_options, []);
+  assert.deepEqual(out.options, []);
+});
+
+test("resolveTurnConsistency: explicit decision_required with invalid payload should downgrade to narrative_only and flag", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "模型说这是决策回合，但没给出有效选项。",
+    is_death: false,
+    consumes_time: true,
+    turn_mode: "decision_required",
+    decision_options: ["只有一条"], // invalid (<2)
+    options: [],
+  } as any);
+  assert.equal(out.turn_mode, "narrative_only");
+  assert.equal(out.decision_required, false);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_options_downgraded") ?? false, true);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_required_payload") ?? false, true);
 });
 

@@ -1,6 +1,7 @@
 import type { DMJson } from "./types";
 import { extractNarrative, tryParseDMDetailed } from "./dmParse";
 import { extractFinalPayloadFromSseDocument } from "./sseFrame";
+import { hasProtocolLeakSignature, sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 
 export type TurnResolveFailureCategory =
   | "final_frame_missing"
@@ -79,7 +80,23 @@ export function resolveTurnFromSse(input: ResolveTurnInput): ResolveTurnResult {
     }
   }
 
-  const narrative = dm?.narrative ? String(dm.narrative) : extractNarrative(finalExtract.payload || rawDm);
+  const narrative = (() => {
+    if (dm?.narrative) return String(dm.narrative);
+    const fromRaw = extractNarrative(rawDm);
+    const fromFinal = extractNarrative(finalExtract.payload ?? "");
+    // 选择更可能“完整”的那一份正文（通常更长）；避免 final 无效但 raw 有效时丢正文。
+    const picked = (fromRaw.trim().length >= fromFinal.trim().length ? fromRaw : fromFinal).trim();
+    if (!picked) return "";
+    // narrative salvage 仍必须 fail-closed：不允许协议污染穿透到日志/状态层。
+    const sanitized = sanitizeNarrativeLeakageForFinal(picked);
+    // degraded=true 时 sanitize 会给出统一安全提示文本；此处保留该文本，避免“正文全空”造成回退感。
+    if (sanitized.degraded) return sanitized.narrative;
+    if (hasProtocolLeakSignature(sanitized.narrative)) {
+      const blocked = sanitizeNarrativeLeakageForFinal(`（协议污染）${sanitized.narrative}`);
+      return blocked.narrative;
+    }
+    return sanitized.narrative;
+  })();
   if (narrative && !dm) {
     source = "narrative_only";
   }

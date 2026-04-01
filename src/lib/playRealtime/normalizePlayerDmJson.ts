@@ -2,8 +2,8 @@
  * 将上游 DM JSON 规范为与客户端 `page.tsx` 消费逻辑等价的完整形状（缺省补 [] / 0 / true）。
  * 目的：允许模型省略默认可补字段以降低 output token；终帧与解析结果一致。
  */
-import { extractFirstBalancedJsonObject } from "@/features/play/stream/dmParse";
 import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
+import { extractBalancedJsonObjectCandidates } from "@/features/play/stream/dmParse";
 
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
@@ -117,13 +117,43 @@ function normalizeWeaponBagUpdates(v: unknown): Array<Record<string, unknown>> {
  * 从流式累积文本中提取第一个平衡 JSON 对象并 parse。
  */
 export function parseAccumulatedPlayerDmJson(accumulated: string): unknown | null {
-  const slice = extractFirstBalancedJsonObject(accumulated.trim());
-  if (!slice) return null;
-  try {
-    return JSON.parse(slice) as unknown;
-  } catch {
-    return null;
+  const raw = String(accumulated ?? "").trim();
+  if (!raw) return null;
+
+  const candidates = extractBalancedJsonObjectCandidates(raw, 64);
+  if (candidates.length === 0) return null;
+
+  const dmRootScore = (v: unknown): number => {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return 0;
+    const o = v as Record<string, unknown>;
+    let score = 0;
+    if (typeof o.is_action_legal === "boolean") score += 4;
+    if (typeof o.narrative === "string") score += 4;
+    if (typeof o.is_death === "boolean") score += 3;
+    if (typeof o.sanity_damage === "number" && Number.isFinite(o.sanity_damage)) score += 3;
+    if (typeof o.consumes_time === "boolean") score += 1;
+    if (Array.isArray(o.options)) score += 1;
+    return score;
+  };
+
+  let best: { obj: unknown; score: number; idx: number } | null = null;
+  let lastParseable: unknown | null = null;
+  for (let i = 0; i < candidates.length; i++) {
+    const slice = candidates[i]!;
+    try {
+      const obj = JSON.parse(slice) as unknown;
+      lastParseable = obj;
+      const score = dmRootScore(obj);
+      if (!best || score > best.score || (score === best.score && i < best.idx)) {
+        best = { obj, score, idx: i };
+      }
+    } catch {
+      // ignore: try next candidate
+    }
   }
+
+  if (best && best.score > 0) return best.obj;
+  return lastParseable;
 }
 
 /**

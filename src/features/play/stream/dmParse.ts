@@ -44,6 +44,30 @@ export function extractBalancedJsonObjectFrom(s: string, start: number): string 
 }
 
 /**
+ * 扫描文本中多个“平衡顶层 JSON 对象”候选（`{...}`），用于：
+ * - 模型重复输出多段 JSON
+ * - 前置状态帧 / wrapper 对象
+ * - 前段残缺对象 + 后段完整对象
+ *
+ * 注意：这里只做“对象切片”，不做 JSON.parse。
+ */
+export function extractBalancedJsonObjectCandidates(s: string, maxCandidates = MAX_BRACE_SCAN): string[] {
+  const src = String(s ?? "");
+  const out: string[] = [];
+  if (!src) return out;
+  const max = Math.max(1, Math.min(256, Math.trunc(maxCandidates)));
+  for (let i = 0; i < src.length && out.length < max; i++) {
+    if (src[i] !== "{") continue;
+    const slice = extractBalancedJsonObjectFrom(src, i);
+    if (!slice || slice.length < 2) continue;
+    out.push(slice);
+    // 跳过已消费对象，避免 O(n^2) 重复扫描
+    i += slice.length - 1;
+  }
+  return out;
+}
+
+/**
  * 从文本中截取**第一个**顶层 JSON 对象（`{`…`}`）。
  * 用于模型重复输出两段相同 `{...}{...}` 时避免把两段拼成非法 JSON。
  */
@@ -143,6 +167,24 @@ function logTryParseFailure(cleanContent: string, candidateCount: number): void 
       tail ? `, tail=${JSON.stringify(tail)}` : ""
     }`
   );
+}
+
+function dmRootKeyScoreFromSlice(slice: string): number {
+  // 纯字符串层评分：不做 parse，避免坏 JSON 直接抛异常。
+  // 目的：优先尝试更像“DM 根对象”的候选，减少把 wrapper/状态帧当成主对象。
+  const has = (k: string) => slice.includes(k);
+  let score = 0;
+  if (has('"is_action_legal"')) score += 4;
+  if (has('"narrative"')) score += 4;
+  if (has('"is_death"')) score += 3;
+  if (has('"sanity_damage"')) score += 3;
+  if (has('"consumes_time"')) score += 1;
+  if (has('"options"')) score += 1;
+  // 极端小对象更可能是 wrapper；极端大对象也可能是拼接污染。轻量倾向中等长度。
+  const len = slice.length;
+  if (len >= 80) score += 1;
+  if (len > 30_000) score -= 2;
+  return score;
 }
 
 /**
@@ -275,14 +317,19 @@ export function tryParseDMDetailed(raw: string): TryParseDmDetailedResult {
     .replace(/```/g, "")
     .trim();
 
-  const bracePositions: number[] = [];
-  for (let i = 0; i < cleanContent.length && bracePositions.length < MAX_BRACE_SCAN; i++) {
-    if (cleanContent[i] === "{") bracePositions.push(i);
-  }
+  const candidates = extractBalancedJsonObjectCandidates(cleanContent, MAX_BRACE_SCAN);
+  const ranked = candidates
+    .map((slice, idx) => ({ slice, idx, score: dmRootKeyScoreFromSlice(slice) }))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      // 同分时保守：优先更早出现的对象，避免后置拼接注入覆盖前置合法对象
+      return a.idx - b.idx;
+    });
 
   let candidatesTried = 0;
-  for (const pos of bracePositions) {
-    const objectSlice = extractBalancedJsonObjectFrom(cleanContent, pos);
+  let sawProtocolRejected = false;
+  for (const c of ranked) {
+    const objectSlice = c.slice;
     if (!objectSlice || objectSlice.length < 2) continue;
     candidatesTried++;
     const dm = parseSliceToDm(objectSlice);
@@ -297,7 +344,10 @@ export function tryParseDMDetailed(raw: string): TryParseDmDetailedResult {
         .replace(/`([^`\n]{1,80})`/g, "$1");
       const sanitized = sanitizeNarrativeLeakageForFinal(dm.narrative);
       if (sanitized.degraded || hasProtocolLeakSignature(sanitized.narrative)) {
-        return { dm: null, reason: "protocol_guard_rejected" };
+        // 重要：遇到一个“污染候选”不应立刻判死，避免浪费后面完整干净对象。
+        // 仍保持 fail-closed：若所有候选都被拒绝，最终返回 protocol_guard_rejected。
+        sawProtocolRejected = true;
+        continue;
       }
       dm.narrative = sanitized.narrative;
       return { dm, reason: null };
@@ -307,6 +357,10 @@ export function tryParseDMDetailed(raw: string): TryParseDmDetailedResult {
   if (candidatesTried === 0) {
     console.error("[tryParseDM] no balanced `{...}` slice found");
     return { dm: null, reason: "no_balanced_object" };
+  }
+  if (sawProtocolRejected) {
+    // 若曾命中协议污染拒绝，优先暴露该原因，便于上层区分“可重试解析”与“安全拦截”。
+    return { dm: null, reason: "protocol_guard_rejected" };
   }
   logTryParseFailure(cleanContent, candidatesTried);
   return { dm: null, reason: "json_parse_failed" };

@@ -4,6 +4,7 @@ import {
   extractNarrative,
   extractBalancedJsonObjectFrom,
   extractFirstBalancedJsonObject,
+  extractBalancedJsonObjectCandidates,
   extractRegenOptionsFromRaw,
   tryParseDM,
 } from "./dmParse";
@@ -61,6 +62,31 @@ test("tryParseDM: first object not valid JSON, second object is valid DM", () =>
   const dm = tryParseDM(`{oops}${good}`);
   assert.ok(dm);
   assert.equal(dm?.narrative, "second");
+});
+
+test("extractBalancedJsonObjectCandidates: can scan multiple top-level objects", () => {
+  const a = '{"x":1}';
+  const b = '{"is_action_legal":true,"sanity_damage":0,"narrative":"ok","is_death":false,"consumes_time":true}';
+  const cands = extractBalancedJsonObjectCandidates(`${a}\n${b}`);
+  assert.deepEqual(cands, [a, b]);
+});
+
+test("tryParseDM: protocol-rejected candidate should not block later clean DM", () => {
+  const bad =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"正常句子后拼接 {\\"is_death\\":false,\\"consumes_time\\":true}","is_death":false,"consumes_time":true}';
+  const good =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"clean","is_death":false,"consumes_time":true}';
+  const dm = tryParseDM(`${bad}${good}`);
+  assert.ok(dm);
+  assert.equal(dm?.narrative, "clean");
+});
+
+test("tryParseDM: narrative containing braces as plain text should not be killed", () => {
+  const raw =
+    '{"is_action_legal":true,"sanity_damage":0,"narrative":"你看到墙上涂着 {不要回头} 的字样。","is_death":false,"consumes_time":true}';
+  const dm = tryParseDM(raw);
+  assert.ok(dm);
+  assert.equal(dm?.narrative.includes("{不要回头}"), true);
 });
 
 test("extractBalancedJsonObjectFrom: slice from inner brace offset", () => {

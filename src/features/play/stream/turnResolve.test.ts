@@ -44,6 +44,16 @@ test("resolveTurnFromSse: keeps narrative when both final/raw DM parse fail but 
   assert.equal(out.narrative.includes("只保留正文"), true);
 });
 
+test("resolveTurnFromSse: salvage narrative should be dropped when protocol guard rejects", () => {
+  const sse = 'data: __VERSECRAFT_FINAL__:{"narrative":"正常句子后拼接 {\\"is_death\\":false,\\"consumes_time\\":true}","oops":\n\n';
+  const raw = '{"narrative":"正常句子后拼接 {\\"is_death\\":false,\\"consumes_time\\":true}","oops":';
+  const out = resolveTurnFromSse({ sseDocumentText: sse, rawDm: raw });
+  assert.equal(out.dm, null);
+  // fail-closed：不透传污染正文；但允许输出“已拦截”的安全提示，避免整回合空白。
+  assert.equal(out.narrative.includes("拦截") || out.narrative === "", true);
+  assert.equal(out.source === "none" || out.source === "narrative_only", true);
+});
+
 test("resolveTurnFromSse: returns none when narrative also missing", () => {
   const sse = "data: hello\n\n";
   const raw = "hello";
