@@ -20,14 +20,16 @@ test("combatPromptBlock V1: major NPC 风格可辨识且文本受 maxChars 限�
         attitudeLabel: "hostile",
       } as any,
     ],
-    maxChars: 380,
+    maxChars: 520,
   });
 
   assert.ok(text.length > 40);
-  assert.ok(text.length <= 380);
+  assert.ok(text.length <= 520);
   assert.ok(text.includes("【冲突回合·战斗裁决锚（V1）】"));
   assert.ok(text.includes("禁止："));
   assert.ok(text.includes("焦点："));
+  assert.ok(text.includes("当前态势："));
+  assert.ok(text.includes("结果层级："));
   // N-010 在注册表里是“登记口交易·条件与撤离窗口”
   assert.ok(text.includes("登记口交易"));
 });

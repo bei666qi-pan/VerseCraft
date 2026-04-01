@@ -3,51 +3,16 @@
 import { useMemo, useState } from "react";
 import type { ClueEntry } from "@/lib/domain/narrativeDomain";
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
+import { resolveFloorTierLabel } from "@/lib/ui/displayNameResolvers";
 import {
-  resolveFloorTierLabel,
-  resolveItemIdForPlayer,
-  resolveNpcIdForPlayer,
-  resolveTaskIssuerDisplay,
-} from "@/lib/ui/displayNameResolvers";
-import {
+  buildTaskStageCardViewModel,
   computeTaskBoardPressureSummary,
-  filterTasksForTaskBoardVisibilityV2,
-  goalKindLabel,
-  partitionTasksForBoard,
+  inferTaskStageRole,
+  projectTaskBoardStageProjection,
+  type TaskStageCardViewModel,
 } from "@/lib/play/taskBoardUi";
-import { getClientTaskVisibilityPolicyV3Enabled } from "@/lib/rollout/versecraftClientRollout";
+import { getClientTaskBoardPressureV1Enabled, getClientTaskVisibilityPolicyV3Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
-import {
-  buildTaskAtAGlanceLine,
-  buildTaskPressureNudge,
-  inferTaskCardCopyKind,
-  sanitizePlayerFacingInline,
-} from "@/lib/ui/taskPlayerFacingText";
-import { getClientPlayerFacingTaskCopyV2Enabled, getClientTaskBoardPressureV1Enabled } from "@/lib/rollout/versecraftClientRollout";
-
-function cluesForTask(taskId: string, clues: ClueEntry[] | undefined): ClueEntry[] {
-  if (!clues?.length) return [];
-  return clues.filter((c) => c.relatedObjectiveId === taskId).slice(0, 4);
-}
-
-function itemLabelsForTask(task: GameTask): string[] {
-  const ids = new Set<string>([...(task.relatedItemIds ?? []), ...(task.reward?.items ?? [])].filter(Boolean));
-  return [...ids].map((id) => resolveItemIdForPlayer(id)).slice(0, 4);
-}
-
-function requiredItemLabels(task: GameTask): string[] {
-  const req = task.requiredItemIds;
-  if (!req?.length) return [];
-  return [...new Set(req.filter(Boolean))].slice(0, 8).map((id) => resolveItemIdForPlayer(id));
-}
-
-/** 与托付人不同的「还牵涉谁」，避免把 registry id 露给玩家 */
-function relatedPeopleLine(task: GameTask, codex: Record<string, CodexEntry> | undefined): string | null {
-  const issuer = String(task.issuerId ?? "").trim();
-  const ids = [...new Set((task.relatedNpcIds ?? []).filter(Boolean))].filter((id) => id !== issuer).slice(0, 4);
-  if (ids.length === 0) return null;
-  return `牵涉人物：${ids.map((id) => resolveNpcIdForPlayer(id, codex)).join("、")}`;
-}
 
 function statusStyle(status: GameTask["status"], mode: "light" | "dark"): string {
   if (mode === "light") {
@@ -72,10 +37,49 @@ export type PlayNarrativeTaskBoardProps = {
   density: "overlay" | "embedded";
 };
 
+function roleShellClasses(
+  role: TaskStageCardViewModel["role"],
+  isOverlay: boolean,
+  size: "hero" | "standard"
+): { frame: string; accent: string; rolePill: string; roleLabel: string } {
+  if (role === "mainline") {
+    return {
+      frame: isOverlay
+        ? size === "hero"
+          ? "border-2 border-amber-300/90 bg-gradient-to-br from-amber-50 via-white to-white shadow-[0_14px_40px_rgba(15,23,42,0.12)]"
+          : "border border-amber-200/90 bg-gradient-to-br from-amber-50/90 via-white to-white"
+        : size === "hero"
+          ? "border-2 border-amber-400/70 bg-gradient-to-br from-amber-500/20 via-white/8 to-white/5 shadow-[0_0_0_1px_rgba(251,191,36,0.12)]"
+          : "border border-amber-400/45 bg-gradient-to-br from-amber-500/14 via-white/5 to-white/5",
+      accent: isOverlay ? "from-amber-300/85 to-transparent" : "from-amber-400/70 to-transparent",
+      rolePill: isOverlay ? "bg-amber-100 text-amber-950 ring-1 ring-amber-200/80" : "bg-amber-500/25 text-amber-50 ring-1 ring-amber-300/35",
+      roleLabel: "主线",
+    };
+  }
+  if (role === "opportunity") {
+    return {
+      frame: isOverlay
+        ? "border border-cyan-200/90 bg-gradient-to-br from-cyan-50/80 via-white to-white"
+        : "border border-cyan-400/35 bg-gradient-to-br from-cyan-500/12 via-white/5 to-white/5",
+      accent: isOverlay ? "from-cyan-300/75 to-transparent" : "from-cyan-400/55 to-transparent",
+      rolePill: isOverlay ? "bg-cyan-100 text-cyan-950 ring-1 ring-cyan-200/80" : "bg-cyan-500/20 text-cyan-50 ring-1 ring-cyan-300/30",
+      roleLabel: "机会",
+    };
+  }
+  return {
+    frame: isOverlay
+      ? "border border-indigo-200/85 bg-gradient-to-br from-indigo-50/70 via-white to-white"
+      : "border border-indigo-400/30 bg-gradient-to-br from-indigo-500/12 via-white/5 to-white/5",
+    accent: isOverlay ? "from-indigo-300/70 to-transparent" : "from-indigo-400/50 to-transparent",
+    rolePill: isOverlay ? "bg-indigo-100 text-indigo-950 ring-1 ring-indigo-200/80" : "bg-indigo-500/20 text-indigo-50 ring-1 ring-indigo-300/30",
+    roleLabel: "委托",
+  };
+}
+
 export function PlayNarrativeTaskBoard({
   tasks,
   originium,
-  journalClues,
+  journalClues: _journalClues, // 保留 API；舞台卡文案由投影层字段驱动，不在这里拼线索标题
   codex,
   highlightTaskIds,
   onClaimTask,
@@ -84,14 +88,25 @@ export function PlayNarrativeTaskBoard({
   const [showMore, setShowMore] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const mode = density === "overlay" ? "light" : "dark";
-  const copyV2 = getClientPlayerFacingTaskCopyV2Enabled();
   const showPressure = getClientTaskBoardPressureV1Enabled();
 
-  const { primary, accepted, promises, clues, overflow, completed, failed, _visibleCount } = useMemo(() => {
+  const { board, cards } = useMemo(() => {
     const v3 = getClientTaskVisibilityPolicyV3Enabled();
-    const forBoard = filterTasksForTaskBoardVisibilityV2(tasks ?? [], v3);
-    return { ...partitionTasksForBoard(forBoard, 3), _visibleCount: forBoard.length };
-  }, [tasks]);
+    return projectTaskBoardStageProjection(tasks ?? [], v3, codex);
+  }, [tasks, codex]);
+
+  const {
+    promises,
+    clues,
+    overflow,
+    completed,
+    failed,
+    visibleCount,
+    backgroundHiddenCount,
+    mainline,
+    commissions,
+    opportunity,
+  } = board;
 
   const highlightSet = useMemo(
     () => new Set((highlightTaskIds ?? []).filter((x): x is string => typeof x === "string" && x.trim().length > 0)),
@@ -108,8 +123,8 @@ export function PlayNarrativeTaskBoard({
 
   const pressure = useMemo(() => {
     if (!showPressure) return null;
-    return computeTaskBoardPressureSummary(tasks ?? [], { primary, promises });
-  }, [showPressure, tasks, primary, promises]);
+    return computeTaskBoardPressureSummary(tasks ?? [], { primary: mainline, promises });
+  }, [showPressure, tasks, mainline, promises]);
 
   const pressureTone = (() => {
     if (!pressure) return "";
@@ -119,196 +134,152 @@ export function PlayNarrativeTaskBoard({
     return isOverlay ? "border-slate-200/80 bg-white text-slate-600" : "border-white/10 bg-white/5 text-slate-300";
   })();
 
-  function renderTaskCard(t: GameTask, opts: { emphasize?: boolean }) {
-    const emphasize = opts.emphasize ?? false;
-    const highlighted = highlightSet.has(t.id);
-    const rk = goalKindLabel(t);
-    const clueTitles = cluesForTask(t.id, journalClues).map((c) => c.title);
-    const items = itemLabelsForTask(t);
-    const requiredItems = requiredItemLabels(t);
-    const relatedPeople = relatedPeopleLine(t, codex);
-    const kind = inferTaskCardCopyKind(t);
-    const nudge = buildTaskPressureNudge(t);
+  const overflowCards = useMemo(
+    () => overflow.map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex)),
+    [overflow, codex]
+  );
+  const promiseCards = useMemo(
+    () => promises.map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex)),
+    [promises, codex]
+  );
+  const clueCards = useMemo(() => clues.map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex)), [clues, codex]);
+  const closedCards = useMemo(
+    () => [...completed, ...failed].map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex)),
+    [completed, failed, codex]
+  );
 
-    // 高亮：更精致但不持续动画
+  function taskById(id: string): GameTask | undefined {
+    return (tasks ?? []).find((t) => t.id === id);
+  }
+
+  function renderStageCard(vm: TaskStageCardViewModel, opts: { size: "hero" | "standard"; dimmed?: boolean }) {
+    const t = taskById(vm.taskId);
+    const size = opts.size;
+    const dimmed = opts.dimmed ?? false;
+    const shell = roleShellClasses(vm.role, isOverlay, size);
+    const highlighted = highlightSet.has(vm.taskId);
     const ring = highlighted
       ? isOverlay
         ? "ring-2 ring-amber-200/70 shadow-[0_0_0_3px_rgba(251,191,36,0.10),0_10px_28px_rgba(15,23,42,0.10)]"
         : "ring-2 ring-amber-400/45 shadow-[0_0_0_2px_rgba(251,191,36,0.14)]"
       : "";
+    const closedDim = dimmed ? (isOverlay ? "opacity-[0.72]" : "opacity-[0.62]") : "";
+    const pad = size === "hero" ? "p-4 sm:p-5" : "p-3 sm:p-3.5";
+    const titleCls =
+      size === "hero"
+        ? `line-clamp-2 text-base font-bold sm:text-lg ${isOverlay ? "text-slate-900" : "text-white"}`
+        : `line-clamp-2 text-sm font-semibold ${isOverlay ? "text-slate-800" : "text-white"}`;
 
-    const isClosed = t.status === "completed" || t.status === "failed";
-    const closedDim = isClosed ? (isOverlay ? "opacity-[0.72]" : "opacity-[0.62]") : "";
+    const floorLine = t ? resolveFloorTierLabel(t.floorTier) : "";
 
-    // 视觉语言：头等事压迫感；承诺/风险轻微不安；线索半成形
-    const kindTone =
-      kind === "promise"
+    const labelMuted = isOverlay ? "text-slate-500" : "text-slate-400";
+    const bodyMuted = isOverlay ? "text-slate-600" : "text-slate-300";
+    const riskBox =
+      vm.riskBand === "hot"
         ? isOverlay
-          ? "border-rose-200/70 bg-gradient-to-br from-rose-50/80 via-white to-white"
-          : "border-rose-400/30 bg-gradient-to-br from-rose-500/12 via-white/5 to-white/5"
-        : kind === "clue"
+          ? "border-rose-200/55 bg-rose-50/70 text-rose-900"
+          : "border-rose-500/30 bg-rose-500/10 text-rose-100"
+        : vm.riskBand === "uneasy"
           ? isOverlay
-            ? "border-cyan-200/70 bg-gradient-to-br from-cyan-50/70 via-white to-white"
-            : "border-cyan-400/25 bg-gradient-to-br from-cyan-500/10 via-white/5 to-white/5"
+            ? "border-amber-200/60 bg-amber-50/75 text-amber-950"
+            : "border-amber-400/35 bg-amber-500/12 text-amber-50"
           : isOverlay
-            ? "border-slate-200"
-            : "border-white/10";
-
-    const emphasis = emphasize
-      ? isOverlay
-        ? "border-amber-300/80 bg-gradient-to-br from-amber-50 via-white to-white shadow-[0_12px_34px_rgba(2,6,23,0.10)]"
-        : "border-amber-400/55 bg-gradient-to-br from-amber-500/16 via-white/5 to-white/5"
-      : kindTone;
-
-    const leftAccent =
-      kind === "promise"
-        ? isOverlay
-          ? "from-rose-200/70 to-transparent"
-          : "from-rose-400/50 to-transparent"
-        : kind === "clue"
-          ? isOverlay
-            ? "from-cyan-200/70 to-transparent"
-            : "from-cyan-400/45 to-transparent"
-          : emphasize
-            ? isOverlay
-              ? "from-amber-200/80 to-transparent"
-              : "from-amber-400/55 to-transparent"
-            : isOverlay
-              ? "from-slate-200/70 to-transparent"
-              : "from-white/10 to-transparent";
+            ? "border-slate-200/70 bg-slate-50/80 text-slate-800"
+            : "border-white/15 bg-white/8 text-slate-100";
 
     return (
-      <article key={t.id} className={`${cardBase} ${emphasis} ${ring} ${closedDim} transition`}>
-        <div className={`pointer-events-none absolute left-0 top-0 h-full w-[10px] bg-gradient-to-r ${leftAccent}`} />
+      <article key={vm.taskId} className={`${cardBase} ${shell.frame} ${ring} ${closedDim} ${pad} transition`}>
+        <div className={`pointer-events-none absolute left-0 top-0 h-full w-[12px] bg-gradient-to-r ${shell.accent}`} />
         <div
-          className={`pointer-events-none absolute inset-x-0 top-0 h-[1px] ${
+          className={`pointer-events-none absolute inset-x-0 top-0 h-px ${
             isOverlay ? "bg-gradient-to-r from-slate-200/70 via-white/50 to-slate-200/70" : "bg-white/10"
           }`}
         />
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              {emphasize ? (
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    isOverlay ? "bg-amber-100 text-amber-900" : "bg-amber-500/25 text-amber-100"
-                  }`}
-                >
-                  头等事
-                </span>
-              ) : null}
-              <span
-                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusStyle(t.status, mode)}`}
-              >
-                {getTaskStatusLabel(t.status)}
-              </span>
-              <span
-                className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                  isOverlay
-                    ? "border-slate-200 bg-slate-50 text-slate-600"
-                    : "border-white/15 bg-white/10 text-slate-200"
-                }`}
-              >
-                {rk}
-              </span>
-              {kind === "promise" ? (
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                    isOverlay ? "border-rose-200 bg-rose-50 text-rose-700" : "border-rose-400/30 bg-rose-500/10 text-rose-200"
-                  }`}
-                >
-                  约定
-                </span>
-              ) : null}
-              {kind === "clue" ? (
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                    isOverlay ? "border-cyan-200 bg-cyan-50 text-cyan-700" : "border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
-                  }`}
-                >
-                  线索
+              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide ${shell.rolePill}`}>{shell.roleLabel}</span>
+              {t ? (
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusStyle(t.status, mode)}`}>
+                  {getTaskStatusLabel(t.status)}
                 </span>
               ) : null}
             </div>
-            <h4
-              className={`mt-1.5 line-clamp-2 ${
-                emphasize ? "text-[15px] font-bold" : "text-sm font-semibold"
-              } ${isOverlay ? "text-slate-800" : "text-white"}`}
-            >
-              {sanitizePlayerFacingInline(t.title, codex)}
-            </h4>
+            <h4 className={titleCls}>{vm.title}</h4>
           </div>
         </div>
-        <p className={`mt-1.5 line-clamp-3 text-xs ${isOverlay ? "text-slate-600" : "text-slate-300"}`}>
-          {copyV2
-            ? buildTaskAtAGlanceLine(t, codex)
-            : sanitizePlayerFacingInline(String(t.desc ?? "").trim() || String(t.title ?? "").trim(), codex)}
-        </p>
-        {nudge ? (
-          <p
-            className={`mt-1 line-clamp-1 text-[11px] font-semibold ${
-              kind === "promise"
+
+        <dl className={`mt-3 space-y-2 text-xs leading-snug sm:text-[13px] ${bodyMuted}`}>
+          <div className="grid gap-0.5">
+            <dt className={`text-[10px] font-semibold uppercase tracking-wider ${labelMuted}`}>谁给的</dt>
+            <dd className="font-medium text-[13px] sm:text-sm">{vm.issuerLine}</dd>
+          </div>
+          <div className="grid gap-0.5">
+            <dt className={`text-[10px] font-semibold uppercase tracking-wider ${labelMuted}`}>为何要紧</dt>
+            <dd className="line-clamp-3">{vm.whyMatters}</dd>
+          </div>
+          <div className="grid gap-0.5">
+            <dt className={`text-[10px] font-semibold uppercase tracking-wider ${labelMuted}`}>不做会怎样</dt>
+            <dd className="line-clamp-3">{vm.ifNotDone}</dd>
+          </div>
+          <div className="grid gap-0.5">
+            <dt className={`text-[10px] font-semibold uppercase tracking-wider ${labelMuted}`}>做成能得到</dt>
+            <dd className="line-clamp-3">{vm.payoffLine}</dd>
+          </div>
+        </dl>
+
+        <div className={`mt-3 rounded-lg border px-2.5 py-2 text-[11px] leading-relaxed sm:text-xs ${riskBox}`}>
+          <span
+            className={`font-semibold ${
+              vm.riskBand === "hot"
                 ? isOverlay
-                  ? "text-rose-700/90"
-                  : "text-rose-200/90"
-                : kind === "clue"
+                  ? "text-rose-800"
+                  : "text-rose-100"
+                : vm.riskBand === "uneasy"
                   ? isOverlay
-                    ? "text-cyan-700/90"
-                    : "text-cyan-200/90"
+                    ? "text-amber-900"
+                    : "text-amber-100"
                   : isOverlay
-                    ? "text-amber-800/85"
-                    : "text-amber-200/85"
+                    ? "text-slate-700"
+                    : "text-slate-200"
             }`}
           >
-            {nudge}
-          </p>
-        ) : null}
-        {(t as { riskNote?: string }).riskNote && (t.status === "active" || t.status === "available") ? (
-          <p
-            className={`mt-1.5 rounded-lg border px-2 py-1 text-[11px] ${
-              isOverlay
-                ? "border-rose-200/60 bg-rose-50/80 text-rose-800"
-                : "border-rose-500/30 bg-rose-500/10 text-rose-100"
-            }`}
+            风险感 ·{" "}
+          </span>
+          <span
+            className={
+              vm.riskBand === "hot"
+                ? isOverlay
+                  ? "text-rose-900/90"
+                  : "text-rose-50/95"
+                : vm.riskBand === "uneasy"
+                  ? isOverlay
+                    ? "text-amber-950/90"
+                    : "text-amber-50/95"
+                  : isOverlay
+                    ? "text-slate-800/95"
+                    : "text-slate-100/95"
+            }
           >
-            风险提示：{sanitizePlayerFacingInline(String((t as { riskNote?: string }).riskNote).slice(0, 160), codex)}
-            {String((t as { riskNote?: string }).riskNote).length > 160 ? "…" : ""}
-          </p>
-        ) : null}
-        <div className={`mt-2 space-y-1 text-[11px] ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-            <span>委托人：{resolveTaskIssuerDisplay(t.issuerId, t.issuerName, codex)}</span>
-            <span>地点：{resolveFloorTierLabel(t.floorTier)}</span>
-          </div>
-          {relatedPeople ? <p>{relatedPeople}</p> : null}
-          {clueTitles.length > 0 ? (
-            <p>
-              <span className={`font-medium ${isOverlay ? "text-cyan-700" : "text-cyan-300"}`}>线索推进：</span>
-              {clueTitles.map((x) => sanitizePlayerFacingInline(x, codex)).join("；")}
-            </p>
-          ) : null}
-          {requiredItems.length > 0 ? (
-            <p>
-              <span className={`font-medium ${isOverlay ? "text-amber-800" : "text-amber-200"}`}>条件：</span>
-              {requiredItems.join("、")}
-            </p>
-          ) : null}
-          {items.length > 0 ? (
-            <p>
-              <span className={`font-medium ${isOverlay ? "text-indigo-700" : "text-indigo-300"}`}>相关物件：</span>
-              {items.join("、")}
-            </p>
-          ) : null}
+            {vm.riskSense}
+          </span>
         </div>
-        <div className="mt-2.5 flex items-center justify-end gap-2">
-          {t.status === "available" && t.claimMode === "manual" ? (
+
+        {floorLine ? (
+          <p className={`mt-2 text-[10px] ${labelMuted}`}>
+            地点层级：<span className="font-medium">{floorLine}</span>
+          </p>
+        ) : null}
+
+        <div className="mt-3 flex items-center justify-end gap-2">
+          {t && t.status === "available" && t.claimMode === "manual" ? (
             <button
               type="button"
-              onClick={() => onClaimTask(t.id)}
+              onClick={() => onClaimTask(vm.taskId)}
               className={
                 isOverlay
-                  ? "rounded-lg border border-indigo-200/80 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                  : "rounded-lg border border-indigo-300/30 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-semibold text-indigo-100 hover:bg-indigo-500/20"
+                  ? "rounded-lg border border-indigo-200/80 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                  : "rounded-lg border border-indigo-300/30 bg-indigo-500/15 px-3 py-1.5 text-[11px] font-semibold text-indigo-100 hover:bg-indigo-500/20"
               }
             >
               接取
@@ -319,7 +290,7 @@ export function PlayNarrativeTaskBoard({
     );
   }
 
-  if (_visibleCount === 0) {
+  if (visibleCount === 0) {
     return (
       <div
         className={
@@ -334,9 +305,9 @@ export function PlayNarrativeTaskBoard({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
-        <p className={sectionTitle}>目标</p>
+        <p className={sectionTitle}>行动舞台</p>
         <span
           className={
             isOverlay
@@ -373,38 +344,54 @@ export function PlayNarrativeTaskBoard({
         </div>
       ) : null}
 
-      {primary ? (
-        <div>
-          <p className={`mb-2 ${sectionTitle}`}>头等事（现在就做）</p>
-          {renderTaskCard(primary, { emphasize: true })}
-          <p className={`mt-2 text-[11px] leading-relaxed ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
-            先把这一步踩实。其它事会自己找上门。
+      {/* 1. 置顶：主线（唯一） */}
+      {cards.mainline ? (
+        <section className="space-y-2" aria-label="主线">
+          <div className="flex items-end justify-between gap-2">
+            <p className={`${sectionTitle} !tracking-[0.22em]`}>现在最重要的事</p>
+            <span className={`hidden text-[10px] sm:inline ${isOverlay ? "text-slate-400" : "text-slate-500"}`}>唯一置顶</span>
+          </div>
+          {renderStageCard(cards.mainline, { size: "hero" })}
+          <p className={`text-[11px] leading-relaxed sm:max-w-prose ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
+            先把这张卡推进一格。其它线会围绕你的选择重新排队。
           </p>
-        </div>
+        </section>
       ) : null}
 
-      {accepted.length > 0 ? (
-        <div>
-          <p className={`mb-2 ${sectionTitle}`}>在办（只留能推进的）</p>
-          <div className="space-y-2">{accepted.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
-        </div>
+      {/* 2. 人物委托（最多两张） */}
+      {cards.commissions.length > 0 ? (
+        <section className="space-y-2" aria-label="人物委托">
+          <p className={sectionTitle}>人物委托</p>
+          <div className="grid gap-3 sm:grid-cols-1">{cards.commissions.map((vm) => renderStageCard(vm, { size: "standard" }))}</div>
+        </section>
       ) : null}
 
-      {promises.length > 0 ? (
+      {/* 3. 机会事件（最多一张） */}
+      {cards.opportunity ? (
+        <section className="space-y-2" aria-label="机会事件">
+          <p className={sectionTitle}>机会事件 · 窗口</p>
+          {renderStageCard(cards.opportunity, { size: "standard" })}
+          <p className={`text-[11px] leading-relaxed ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
+            与委托不同：更像短时岔路——高收益往往伴随更高不确定性。
+          </p>
+        </section>
+      ) : null}
+
+      {promiseCards.length > 0 ? (
         <div>
           <p className={`mb-2 ${sectionTitle}`}>牵连与风险（会计息）</p>
-          <div className="space-y-2">{promises.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <div className="space-y-2">{promiseCards.map((vm) => renderStageCard(vm, { size: "standard" }))}</div>
         </div>
       ) : null}
 
-      {clues.length > 0 ? (
+      {clueCards.length > 0 ? (
         <div>
           <p className={`mb-2 ${sectionTitle}`}>线索影子（正在发酵）</p>
-          <div className="space-y-2">{clues.map((t) => renderTaskCard(t, { emphasize: false }))}</div>
+          <div className="space-y-2">{clueCards.map((vm) => renderStageCard(vm, { size: "standard" }))}</div>
         </div>
       ) : null}
 
-      {overflow.length > 0 ? (
+      {overflowCards.length > 0 ? (
         <div>
           <button
             type="button"
@@ -415,11 +402,19 @@ export function PlayNarrativeTaskBoard({
                 : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
             }`}
           >
-            <span>更多在办（{overflow.length}）</span>
+            <span>更多在办（{overflowCards.length}）</span>
             <span className="text-slate-400">{showMore ? "收起" : "展开"}</span>
           </button>
-          {showMore ? <div className="space-y-2">{overflow.map((t) => renderTaskCard(t, { emphasize: false }))}</div> : null}
+          {showMore ? (
+            <div className="space-y-2">{overflowCards.map((vm) => renderStageCard(vm, { size: "standard" }))}</div>
+          ) : null}
         </div>
+      ) : null}
+
+      {backgroundHiddenCount > 0 ? (
+        <p className={`text-[11px] ${isOverlay ? "text-slate-500" : "text-slate-400"}`}>
+          另有 {backgroundHiddenCount} 条后台线索在发酵，未进入本轮行动板。
+        </p>
       ) : null}
 
       {completed.length + failed.length > 0 ? (
@@ -439,9 +434,7 @@ export function PlayNarrativeTaskBoard({
             <span className="text-slate-400">{showClosed ? "收起" : "展开"}</span>
           </button>
           {showClosed ? (
-            <div className="space-y-2 opacity-80">
-              {[...completed, ...failed].map((t) => renderTaskCard(t, { emphasize: false }))}
-            </div>
+            <div className="space-y-2 opacity-80">{closedCards.map((vm) => renderStageCard(vm, { size: "standard", dimmed: true }))}</div>
           ) : null}
         </div>
       ) : null}

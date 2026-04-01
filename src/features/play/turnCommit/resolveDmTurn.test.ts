@@ -27,6 +27,13 @@ test("resolveTurnConsistency: arrays default to empty and options stays array", 
   assert.deepEqual(out.new_tasks, []);
   assert.deepEqual(out.task_updates, []);
   assert.deepEqual(out.clue_updates, []);
+  assert.deepEqual(out.task_changes.new_tasks, []);
+  assert.deepEqual(out.task_changes.task_updates, []);
+  assert.deepEqual(out.relation_changes.relationship_updates, []);
+  assert.deepEqual(out.loot_changes.awarded_items, []);
+  assert.deepEqual(out.clue_changes.clue_updates, []);
+  assert.deepEqual(out.world_state_changes.npc_location_updates, []);
+  assert.equal(out.conflict_outcome, null);
 });
 
 test("resolveTurnConsistency: acquire semantics without awards should be downgraded and flagged", () => {
@@ -106,6 +113,29 @@ test("resolveTurnConsistency: clue_updates normalizes to ClueEntry[]", () => {
   assert.equal(out.clue_updates.length, 1);
   assert.equal(out.clue_updates[0]?.title, "告示旁字迹");
   assert.equal(out.clue_updates[0]?.kind, "trace");
+  assert.equal(out.clue_changes.clue_updates.length, 1);
+});
+
+test("resolveTurnConsistency: conflict_outcome derives from combat_summary", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "你在门厅逼退了对方。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    combat_summary: {
+      outcome: "edge",
+      layer: "narrow_pushback",
+      text: "你抢到半步位置，把他逼离门缝。",
+      cost: "moderate",
+      npcIds: ["N-010"],
+    },
+  } as any);
+  assert.equal(out.conflict_outcome?.outcomeTier, "edge");
+  assert.equal(out.conflict_outcome?.resultLayer, "narrow_pushback");
+  assert.equal(out.conflict_outcome?.likelyCost, "moderate");
+  assert.deepEqual(out.conflict_outcome?.linkedNpcIds, ["N-010"]);
 });
 
 test("resolveTurnConsistency: time_cost normalizes to known kind", () => {

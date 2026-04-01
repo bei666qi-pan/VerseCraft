@@ -3,6 +3,10 @@
 import { memo, useMemo, type ReactNode, type RefObject } from "react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
+import { getClientConflictFeedbackV1Enabled } from "@/lib/rollout/versecraftClientRollout";
+import { useGameStore } from "@/store/useGameStore";
+import { selectTurnResultState } from "@/store/useGameStoreSelectors";
+import { PlayConflictTurnWhisper } from "./PlayConflictTurnWhisper";
 import { DMNarrativeBlock, renderNarrativeText } from "../render/narrative";
 import {
   filterDisplayEntriesForUserQuoteDedup,
@@ -190,6 +194,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
+  const conflictFeedback = useGameStore((s) => selectTurnResultState(s).conflictTurnFeedback);
+  const showConflictWhisper = getClientConflictFeedbackV1Enabled() && Boolean(conflictFeedback) && !streamOn;
 
   return (
     <div
@@ -264,6 +270,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
         ) : !embeddedOpeningContent && displayEntries.length === 0 && !isStreamVisualActive ? (
           <div className="h-24 text-slate-400" />
         ) : null}
+
+        {showConflictWhisper && conflictFeedback ? <PlayConflictTurnWhisper vm={conflictFeedback} /> : null}
 
         {(greenTips.length > 0 || firstTimeHint) && (
           <div className="mt-2 space-y-1">

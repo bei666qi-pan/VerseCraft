@@ -28,6 +28,7 @@ import {
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
 import { inferEffectiveNarrativeLayer } from "@/lib/tasks/taskRoleModel";
+import type { ConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { enableTaskModeLayer } from "@/lib/playRealtime/npcNarrativeRolloutFlags";
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
@@ -364,7 +365,7 @@ const TALENT_ACTION_COOLDOWNS: Record<EchoTalent, number> = {
   丧钟回响: 30,
 };
 
-interface GameState extends IntegrityMetaState {
+export interface GameState extends IntegrityMetaState {
   currentSaveSlot: string;
   /** 最多 3 个存档位 */
   saveSlots: Record<string, SaveSlotData>;
@@ -503,6 +504,9 @@ interface GameState extends IntegrityMetaState {
     outcomeTier?: string;
     text: string;
   }) => void;
+  /** 关键冲突回合余音（不入存档；新回合无冲突时清空） */
+  conflictTurnFeedback: ConflictFeedbackViewModel | null;
+  setConflictTurnFeedback: (v: ConflictFeedbackViewModel | null) => void;
   queueClientAction: (text: string, autoSend?: boolean, source?: "weapon" | "system") => void;
   consumeClientAction: () => { text: string; autoSend: boolean; source: "weapon" | "system" } | null;
   triggerSecurityFallback: (reason?: string) => void;
@@ -942,6 +946,7 @@ export const useGameStore = create<GameState>()(
       hasMetProfessionCertifier: false,
       professionNarrativeCues: [],
       combatSummariesV1: [],
+      conflictTurnFeedback: null,
       pendingClientAction: null,
       _checksum_fingerprint: "",
       _integrity_dirty: false,
@@ -1102,6 +1107,7 @@ export const useGameStore = create<GameState>()(
           professionState: createDefaultProfessionState(),
           hasMetProfessionCertifier: false,
           journalClues: [],
+          conflictTurnFeedback: null,
           reviveContext: {
             pending: false,
             deathLocation: null,
@@ -1852,7 +1858,7 @@ export const useGameStore = create<GameState>()(
           recentOptions: [],
           inputMode: "options" as const,
           originium: 10 + background,
-          tasks: createStageOneStarterTasks(),
+          tasks: activateClaimableHiddenTasks(createStageOneStarterTasks()),
           playerLocation: "B1_SafeZone",
           historicalMaxFloorScore: 0,
           deathCount: 0,
@@ -2822,6 +2828,7 @@ export const useGameStore = create<GameState>()(
           };
           return { combatSummariesV1: [...prev, row].slice(-cap) };
         }),
+      setConflictTurnFeedback: (v) => set({ conflictTurnFeedback: v }),
 
       setCurrentSaveSlot: (slotId) =>
         set((s) => {

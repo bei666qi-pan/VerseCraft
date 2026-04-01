@@ -1,4 +1,12 @@
-import type { CombatDangerTierForPlayer, CombatOutcomeTier, CombatResolution, CombatStyleTag } from "./types";
+import type {
+  CombatDangerTierForPlayer,
+  CombatOutcomeTier,
+  CombatPrecheckVerdict,
+  CombatResolution,
+  CombatStyleTag,
+  ConflictResultLayer,
+  HiddenPostureTier,
+} from "./types";
 
 export function dangerTierToPlayerText(tier: CombatDangerTierForPlayer): string {
   switch (tier) {
@@ -43,6 +51,62 @@ export function outcomeTierToConflictText(outcome: CombatOutcomeTier): string {
     default:
       return "冲突结果不明";
   }
+}
+
+export function verdictToPostureTier(verdict: CombatPrecheckVerdict): HiddenPostureTier {
+  if (verdict === "favorable") return "upper_hand";
+  if (verdict === "contested") return "contested";
+  if (verdict === "risky") return "under_pressure";
+  if (verdict === "avoid") return "collapse_risk";
+  return "contested";
+}
+
+export function postureTierToThreatSense(tier: HiddenPostureTier): string {
+  if (tier === "dominant") return "你掌控节奏";
+  if (tier === "upper_hand") return "你有可争取的压制窗口";
+  if (tier === "contested") return "双方都在抢一步机会";
+  if (tier === "under_pressure") return "你在被动位，失误代价高";
+  return "再硬顶很可能直接崩盘";
+}
+
+export function postureTierToOpportunityWindow(tier: HiddenPostureTier): string {
+  if (tier === "dominant") return "窗口宽：可连动推进";
+  if (tier === "upper_hand") return "窗口短：先拿位置再求结果";
+  if (tier === "contested") return "窗口窄：只够换一步";
+  if (tier === "under_pressure") return "窗口碎：以止损或脱离为先";
+  return "窗口几乎关闭：优先撤离";
+}
+
+export function postureTierToActionDirection(tier: HiddenPostureTier): string {
+  if (tier === "dominant") return "压住后立刻收束局面，别恋战炫技。";
+  if (tier === "upper_hand") return "先卡退路再施压，争取低代价逼退。";
+  if (tier === "contested") return "用环境换位，不要赌单次硬拼。";
+  if (tier === "under_pressure") return "先保命与脱离，再找反制入口。";
+  return "停止正面冲突，立刻转撤离/交易/求援。";
+}
+
+export function postureTierToCostWarning(tier: HiddenPostureTier): string {
+  if (tier === "dominant" || tier === "upper_hand") return "代价可控，但仍可能留下关系与物资损耗。";
+  if (tier === "contested") return "代价中等：位置、关系或器物可能受损。";
+  if (tier === "under_pressure") return "代价偏高：容易被迫退位并丢资源。";
+  return "代价极高：存在失控与连续反噬风险。";
+}
+
+export function outcomeToResultLayer(outcome: CombatOutcomeTier): ConflictResultLayer {
+  if (outcome === "overwhelm" || outcome === "advantage" || outcome === "edge") return "suppress_success";
+  if (outcome === "withdraw" || outcome === "forced_retreat") return "narrow_pushback";
+  if (outcome === "mutual_harm" || outcome === "mutual_damage" || outcome === "stalemate") return "mutual_bruise";
+  if (outcome === "pressured") return "forced_withdraw";
+  if (outcome === "crush" || outcome === "collapse") return "runaway_collapse";
+  return "mutual_bruise";
+}
+
+export function resultLayerToPlayerText(layer: ConflictResultLayer): string {
+  if (layer === "suppress_success") return "结果层级：压制成功";
+  if (layer === "narrow_pushback") return "结果层级：勉强逼退";
+  if (layer === "mutual_bruise") return "结果层级：两败俱伤";
+  if (layer === "forced_withdraw") return "结果层级：被迫撤离";
+  return "结果层级：失控崩盘";
 }
 
 /**

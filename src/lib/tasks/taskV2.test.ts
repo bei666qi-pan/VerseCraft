@@ -14,6 +14,7 @@ import {
   normalizeGameTaskDraft,
   normalizeTaskUpdateDraft,
 } from "./taskV2";
+import { projectTaskBoardViewModel } from "@/lib/play/taskBoardUi";
 
 test("normalizeGameTaskDraft supports legacy reward string and defaults", () => {
   const task = normalizeGameTaskDraft({
@@ -35,12 +36,18 @@ test("normalizeTaskUpdateDraft keeps only patchable fields", () => {
     id: "t_1",
     status: "completed",
     nextHint: "去B1交付",
+    surfaceClass: "commission",
+    surfaceSlot: "commission",
+    surfacePriority: 88,
     unknown: "x",
   });
   assert.ok(patch);
   assert.equal(patch!.id, "t_1");
   assert.equal(patch!.status, "completed");
   assert.equal(patch!.nextHint, "去B1交付");
+  assert.equal((patch as any).surfaceClass, "commission");
+  assert.equal((patch as any).surfaceSlot, "commission");
+  assert.equal((patch as any).surfacePriority, 88);
   assert.ok(!("unknown" in patch!));
 });
 
@@ -78,7 +85,29 @@ test("stage one starter tasks include main and floor", () => {
   assert.ok(tasks.length >= 2);
   assert.ok(tasks.some((t) => t.type === "main"));
   assert.ok(tasks.some((t) => t.type === "floor"));
-  assert.ok(formatTaskRewardSummary(tasks[0]!.reward).length > 0);
+  assert.ok(tasks.some((t) => t.id === "b1_survival_rhythm"));
+  assert.ok(tasks.some((t) => t.id === "escape_route_fragments"));
+  assert.ok(formatTaskRewardSummary(tasks.find((x) => x.id === "b1_survival_rhythm")!.reward).length > 0);
+});
+
+test("starter: before b1 complete, route fragments stays hidden and board shows spine + b1", () => {
+  const tasks = activateClaimableHiddenTasks(createStageOneStarterTasks());
+  const route = tasks.find((t) => t.id === "escape_route_fragments");
+  assert.equal(route?.status, "hidden");
+  const vm = projectTaskBoardViewModel(tasks, true);
+  assert.equal(vm.mainline?.id, "main_escape_spine");
+  assert.ok(vm.commissions.some((t) => t.id === "b1_survival_rhythm"));
+});
+
+test("starter: completing b1 unlocks escape_route_fragments", () => {
+  const raw = createStageOneStarterTasks();
+  const b1 = raw.find((t) => t.id === "b1_survival_rhythm");
+  assert.ok(b1);
+  const doneB1 = applyTaskUpdateToTask(b1!, { status: "completed" });
+  const merged = raw.map((t) => (t.id === "b1_survival_rhythm" ? doneB1 : t));
+  const next = activateClaimableHiddenTasks(merged);
+  const route = next.find((t) => t.id === "escape_route_fragments");
+  assert.equal(route?.status, "available");
 });
 
 test("canClaimHiddenTask respects trigger conditions", () => {

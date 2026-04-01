@@ -117,6 +117,28 @@ export function computeCombatPrecheck(args: {
   return { verdict, dangerForPlayer: args.defenderDangerForPlayer, explain };
 }
 
+export function buildActorPostureLayers(score: CombatActorScore): {
+  staticBedrock: string;
+  dynamicPosture: string;
+} {
+  const b = score.breakdown;
+  const staticBedrock =
+    b.base + b.psyche >= 8
+      ? "底色稳定：长期能力能支撑短促对抗。"
+      : b.base + b.psyche >= 4
+        ? "底色一般：能抗一两步，但不适合硬拖。"
+        : "底色偏弱：长期硬拼容易被反咬。";
+  const dynamicPosture =
+    b.scene >= 1.2
+      ? "当前态势向你倾斜：有可利用窗口。"
+      : b.scene >= 0.2
+        ? "当前态势轻微有利：需要精确拿位。"
+        : b.scene > -0.8
+          ? "当前态势拉扯：谁先失位谁吃亏。"
+          : "当前态势不利：优先止损与脱离。";
+  return { staticBedrock, dynamicPosture };
+}
+
 export function adjudicateCombat(args: {
   kind: CombatConflictKind;
   scene: SceneCombatContext;

@@ -2,13 +2,24 @@ import type { StatType, Weapon } from "@/lib/registry/types";
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
 import type { NpcHeartRuntimeView } from "@/lib/npcHeart/types";
 import { buildSceneCombatContext } from "./sceneCombatContext";
-import { buildHiddenNpcCombatProfile, computeCombatPrecheck, computeNpcCombatScore } from "./combatAdjudication";
+import { buildActorPostureLayers, buildHiddenNpcCombatProfile, computeCombatPrecheck, computeNpcCombatScore } from "./combatAdjudication";
 import { computePlayerCombatScore } from "./playerCombatScore";
 import { resolveNpcCombatStyle } from "./combatStyleResolvers";
-import { dangerTierToPlayerText, styleTagsToPlayerHint } from "./combatPresentation";
+import {
+  dangerTierToPlayerText,
+  outcomeToResultLayer,
+  postureTierToActionDirection,
+  postureTierToCostWarning,
+  postureTierToOpportunityWindow,
+  postureTierToThreatSense,
+  resultLayerToPlayerText,
+  styleTagsToPlayerHint,
+  verdictToPostureTier,
+} from "./combatPresentation";
 import { NPCS } from "@/lib/registry/npcs";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import type { CombatConflictKind, CombatPrecheck, MainThreatPhase } from "./types";
+import { resolveCombat } from "./resolveCombat";
 
 function clampText(s: string, max: number): string {
   const t = String(s ?? "").trim();
@@ -130,6 +141,16 @@ export function buildCombatPromptBlockV1(args: {
     scene,
     kind: detect.kindHint,
   });
+  const predicted = resolveCombat({
+    attacker: playerScore,
+    defender: npcScore,
+    scene,
+    kind: detect.kindHint,
+  });
+  const posture = verdictToPostureTier(pre.verdict);
+  const resultLayer = outcomeToResultLayer(predicted.outcome);
+  const playerLayers = buildActorPostureLayers(playerScore);
+  const npcLayers = buildActorPostureLayers(npcScore);
 
   const npcRow = NPCS.find((x) => x.id === npcId) ?? null;
   const profileV2 = CORE_NPC_PROFILES_V2.find((p) => p.id === npcId) ?? null;
@@ -151,11 +172,23 @@ export function buildCombatPromptBlockV1(args: {
   lines.push(`触发原因：${detect.reasons.join("；")}`);
   lines.push(`焦点：${npcHidden.displayName}（危险印象：${dangerText}${styleHint ? ` · ${styleHint}` : ""}）`);
   lines.push(`压制倾向：${pre.verdict === "avoid" ? "对方压你（别硬顶）" : pre.verdict === "risky" ? "对方偏压你（代价高）" : pre.verdict === "contested" ? "势均力敌（一步窗口）" : "你更易压住局面"}`);
+  lines.push(`当前态势：${postureTierToThreatSense(posture)}`);
+  lines.push(`机会窗：${postureTierToOpportunityWindow(posture)}`);
+  lines.push(`代价预警：${postureTierToCostWarning(posture)}`);
+  lines.push(`建议动作方向：${postureTierToActionDirection(posture)}`);
+  lines.push(`${resultLayerToPlayerText(resultLayer)}（预估）`);
   lines.push(`为什么：${clampText(pre.explain.slice(0, 2).join("；"), 120)}`);
   lines.push(`环境参与：${clampText(scene.notes.slice(0, 2).join("；"), 120)}`);
+  lines.push(`底色/态势（玩家）：${clampText(`${playerLayers.staticBedrock} ${playerLayers.dynamicPosture}`, 90)}`);
+  lines.push(`底色/态势（对方）：${clampText(`${npcLayers.staticBedrock} ${npcLayers.dynamicPosture}`, 90)}`);
   lines.push(`风格：${style.def.label}｜压迫源=${clampText(style.def.pressureSource.slice(0, 2).join("；"), 80)}`);
   lines.push(`招牌拍子：${clampText(style.def.signatureBeats.slice(0, 2).join("；"), 90)}`);
   lines.push("冲突后局势：必须落到‘谁退了半步/谁丢了位置/谁获得退路或被卡退路/代价轻重’，不要空喊‘你赢了/他很强’。");
+  lines.push("联动要求：冲突结果至少命中一项结构化后果：relationship_updates / player_location / main_threat_updates / weapon_updates / task_updates。");
+  lines.push("文风约束：只写可感知态势，不出现裸数值、战力条、公式描述。");
+  lines.push(
+    "结构化收口：若本回合发生实质对抗，JSON 须带 conflict_outcome（或兼容 combat_summary 对象），字段与裁决一致：outcomeTier、resultLayer、summary（一两句怪谈风旁白）、likelyCost（none/light/moderate/heavy）、suggestedDirection；可带 linkedNpcIds。勿在 JSON 里复述分数或 breakdown。"
+  );
 
   return clampText(lines.join("\n"), maxChars);
 }

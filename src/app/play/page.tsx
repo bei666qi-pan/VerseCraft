@@ -93,7 +93,10 @@ import {
   getClientHiddenCombatV1Enabled,
   getClientProfessionChoiceInterruptV1Enabled,
   getClientCombatSummaryV1Enabled,
+  getClientConflictFeedbackV1Enabled,
 } from "@/lib/rollout/versecraftClientRollout";
+import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTurn";
+import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { getHiddenNpcCombatProfile } from "@/lib/combat/npcCombatProfiles";
 import {
   buildNpcCombatPowerDisplay,
@@ -1856,6 +1859,31 @@ function PlayContent() {
       }
     } catch {
       // ignore: optional field must never break turn commit
+    }
+
+    // ---- 冲突回合玩家反馈：conflict_outcome 优先，与 resolveDmTurn / combat_summary 线型一致 ----
+    try {
+      if (getClientConflictFeedbackV1Enabled() && parsed && typeof parsed === "object") {
+        const p = parsed as Record<string, unknown>;
+        const raw = p.conflict_outcome ?? p.combat_summary;
+        const env = normalizeConflictOutcome(raw);
+        const rel = Array.isArray(p.relationship_updates) ? p.relationship_updates.length : 0;
+        const sd = p.sanity_damage;
+        const sanityDamage =
+          typeof sd === "number" && Number.isFinite(sd)
+            ? Math.trunc(sd)
+            : Math.trunc(Number.parseInt(String(sd ?? "0"), 10)) || 0;
+        const vm = buildConflictFeedbackViewModel({
+          envelope: env,
+          sanityDamage,
+          relationUpdateCount: rel,
+        });
+        useGameStore.getState().setConflictTurnFeedback(vm);
+      } else {
+        useGameStore.getState().setConflictTurnFeedback(null);
+      }
+    } catch {
+      useGameStore.getState().setConflictTurnFeedback(null);
     }
 
     setLiveNarrative("");

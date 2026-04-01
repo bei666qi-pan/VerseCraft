@@ -83,6 +83,11 @@ export function getClientCombatSummaryV1Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_COMBAT_SUMMARY_V1", false);
 }
 
+/** 冲突回合「局势余音」轻量 UI（消费 conflict_outcome / combat_summary；默认开） */
+export function getClientConflictFeedbackV1Enabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_CONFLICT_FEEDBACK_V1", true);
+}
+
 /** 职业 prompt 降噪 V1（客户端镜像，用于本地 playerContext 组装；默认开） */
 export function getClientProfessionPromptDietV1Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_PROFESSION_PROMPT_DIET_V1", true);

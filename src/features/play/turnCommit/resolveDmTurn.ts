@@ -109,6 +109,54 @@ function mergeSecurityMeta(existing: unknown, patch: Record<string, unknown>, ma
   }
 }
 
+function asUnknownRecord(v: unknown): Record<string, unknown> | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  return v as Record<string, unknown>;
+}
+
+/** 供客户端与反馈层复用：统一解析 `conflict_outcome` / `combat_summary` 线型。 */
+export function normalizeConflictOutcome(raw: unknown): TurnEnvelope["conflict_outcome"] {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    return t ? { summary: clampString(t, 220), likelyCost: "unknown" } : null;
+  }
+  const o = asUnknownRecord(raw);
+  if (!o) return null;
+  const outcomeTier = typeof o.outcomeTier === "string"
+    ? clampString(o.outcomeTier, 40)
+    : (typeof o.outcome === "string" ? clampString(o.outcome, 40) : undefined);
+  const resultLayer = typeof o.resultLayer === "string"
+    ? clampString(o.resultLayer, 40)
+    : (typeof o.layer === "string" ? clampString(o.layer, 40) : undefined);
+  const summary = typeof o.summary === "string"
+    ? clampString(o.summary, 220)
+    : (typeof o.text === "string" ? clampString(o.text, 220) : undefined);
+  const likelyCostRaw =
+    typeof o.likelyCost === "string"
+      ? o.likelyCost
+      : typeof o.cost === "string"
+        ? o.cost
+        : "unknown";
+  const likelyCost: TurnEnvelope["conflict_outcome"]["likelyCost"] =
+    likelyCostRaw === "none" || likelyCostRaw === "light" || likelyCostRaw === "moderate" || likelyCostRaw === "heavy"
+      ? likelyCostRaw
+      : "unknown";
+  const suggestedDirection = typeof o.suggestedDirection === "string"
+    ? clampString(o.suggestedDirection, 120)
+    : (typeof o.actionDirection === "string" ? clampString(o.actionDirection, 120) : undefined);
+  const linkedNpcIds = asStringArray(o.linkedNpcIds ?? o.npcIds).slice(0, 6);
+  if (!outcomeTier && !resultLayer && !summary && !suggestedDirection && linkedNpcIds.length === 0) return null;
+  return {
+    ...(outcomeTier ? { outcomeTier } : {}),
+    ...(resultLayer ? { resultLayer } : {}),
+    ...(summary ? { summary } : {}),
+    ...(suggestedDirection ? { suggestedDirection } : {}),
+    likelyCost,
+    ...(linkedNpcIds.length > 0 ? { linkedNpcIds } : {}),
+  };
+}
+
 function deriveCompletedTaskToast(tasks: Array<{ id: string; status?: GameTaskStatus; title?: string }>): string | null {
   const closing = tasks.filter((t) => t.status === "completed" || t.status === "failed");
   if (closing.length === 0) return null;
@@ -302,6 +350,14 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   // - system_transition: default forbid legacy options to prevent accidental clicks (unless explicitly provided via decision_options in future).
   const normalizedLegacyOptions =
     turn_mode === "system_transition" ? [] : legacyOptionsFromWire;
+  const bgm_track =
+    typeof (input as { bgm_track?: unknown }).bgm_track === "string"
+      ? (input as { bgm_track: string }).bgm_track
+      : undefined;
+  const conflict_outcome = normalizeConflictOutcome(
+    (input as { conflict_outcome?: unknown }).conflict_outcome ??
+    (input as { combat_summary?: unknown }).combat_summary
+  );
 
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
@@ -328,7 +384,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     main_threat_updates: asUnknownArray(input.main_threat_updates),
     weapon_updates: asObjectArray(input.weapon_updates),
     weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
-    ...(typeof (input as { bgm_track?: unknown }).bgm_track === "string" ? { bgm_track: (input as any).bgm_track } : {}),
+    ...(bgm_track ? { bgm_track } : {}),
     ...(security_meta ? { security_meta } : {}),
     ...(Object.keys(ui_hints).length > 0 ? { ui_hints } : {}),
 
@@ -343,6 +399,33 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     protagonist_anchor,
     world_consistency_flags,
     anti_cheat_meta,
+    task_changes: {
+      new_tasks: grantNormalizedNewTasks,
+      task_updates: normalizedTaskUpdates,
+    },
+    relation_changes: {
+      relationship_updates: asUnknownArray(input.relationship_updates),
+    },
+    conflict_outcome,
+    loot_changes: {
+      currency_change: asFiniteInt(input.currency_change, 0),
+      consumed_items: asStringArray(input.consumed_items),
+      awarded_items: awardedItems,
+      awarded_warehouse_items: awardedWarehouseItems,
+    },
+    clue_changes: {
+      clue_updates: normalizedClueUpdates,
+    },
+    world_state_changes: {
+      ...(typeof input.player_location === "string" && input.player_location.trim()
+        ? { player_location: clampString(input.player_location.trim(), 80) }
+        : {}),
+      npc_location_updates: asUnknownArray(input.npc_location_updates),
+      main_threat_updates: asUnknownArray(input.main_threat_updates),
+      weapon_updates: asObjectArray(input.weapon_updates),
+      weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
+      ...(bgm_track ? { bgm_track } : {}),
+    },
   };
 
   if (consistency_flags.length > 0) {

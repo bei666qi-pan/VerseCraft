@@ -2,6 +2,15 @@ export type TurnMode = "narrative_only" | "decision_required" | "system_transiti
 
 export type NarrativeDensity = "low" | "medium" | "high";
 
+export type ConflictOutcomeEnvelope = {
+  outcomeTier?: string;
+  resultLayer?: string;
+  summary?: string;
+  likelyCost?: "none" | "light" | "moderate" | "heavy" | "unknown";
+  suggestedDirection?: string;
+  linkedNpcIds?: string[];
+};
+
 /**
  * TurnEnvelope：服务端最终回合输出协议（phase-1）。
  *
@@ -105,5 +114,36 @@ export type TurnEnvelope = {
 
   /** 反作弊/审计元信息（小体积），缺省 {} */
   anti_cheat_meta: Record<string, unknown>;
+
+  /**
+   * Phase-2（统一最终提交出口）：
+   * 这些字段是“前端优先消费的高层结构”，用于减少散字段脑补。
+   * 旧字段仍完整保留，确保兼容。
+   */
+  task_changes: {
+    new_tasks: unknown[];
+    task_updates: unknown[];
+  };
+  relation_changes: {
+    relationship_updates: unknown[];
+  };
+  conflict_outcome: ConflictOutcomeEnvelope | null;
+  loot_changes: {
+    currency_change: number;
+    consumed_items: string[];
+    awarded_items: unknown[];
+    awarded_warehouse_items: unknown[];
+  };
+  clue_changes: {
+    clue_updates: Array<Record<string, unknown>>;
+  };
+  world_state_changes: {
+    player_location?: string;
+    npc_location_updates: unknown[];
+    main_threat_updates: unknown[];
+    weapon_updates: Array<Record<string, unknown>>;
+    weapon_bag_updates: Array<Record<string, unknown>>;
+    bgm_track?: string;
+  };
 };
 

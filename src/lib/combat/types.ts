@@ -109,6 +109,20 @@ export type CombatPrecheckVerdict =
   | "favorable"    // 偏有利
   | "unknown";
 
+export type HiddenPostureTier =
+  | "dominant"
+  | "upper_hand"
+  | "contested"
+  | "under_pressure"
+  | "collapse_risk";
+
+export type ConflictResultLayer =
+  | "suppress_success"  // 压制成功
+  | "narrow_pushback"   // 勉强逼退
+  | "mutual_bruise"     // 两败俱伤
+  | "forced_withdraw"   // 被迫撤离
+  | "runaway_collapse"; // 失控崩盘
+
 export type CombatPrecheck = {
   verdict: CombatPrecheckVerdict;
   dangerForPlayer: CombatDangerTierForPlayer;
