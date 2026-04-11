@@ -1,6 +1,6 @@
-/** Play chat message roles sent to /api/chat (mirrors persisted log roles used here). */
+/** Play chat message roles sent to /api/chat. Logs usually use user/assistant; helper prompts may use system. */
 
-export type ChatRole = "user" | "assistant";
+export type ChatRole = "system" | "user" | "assistant";
 
 export type ChatMessage = { role: ChatRole; content: string };
 

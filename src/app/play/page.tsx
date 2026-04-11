@@ -1145,11 +1145,17 @@ function PlayContent() {
               : "用户手动点击刷新选项按钮";
 
       const useOptionsOnlyPath = getClientOptionsOnlyRegenPathV2Enabled();
+      const assistantContextMessages: ChatMessage[] = lastAssistant
+        ? [{ role: "assistant", content: lastAssistant }]
+        : [];
+      const userContextMessages: ChatMessage[] = lastUser
+        ? [{ role: "user", content: lastUser }]
+        : [];
       const messages: ChatMessage[] = useOptionsOnlyPath
         ? [
             // options-only V2：后端会注入严格 prompt 与上下文 packet
-            ...(lastAssistant ? [{ role: "assistant", content: lastAssistant }] : []),
-            ...(lastUser ? [{ role: "user", content: lastUser }] : []),
+            ...assistantContextMessages,
+            ...userContextMessages,
           ]
         : [
             { role: "system", content: OPTIONS_REGEN_SYSTEM_PROMPT },

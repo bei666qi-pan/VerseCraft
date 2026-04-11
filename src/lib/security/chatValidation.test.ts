@@ -48,6 +48,34 @@ test("validateChatRequest: clientPurpose accepts options_regen_only", () => {
   assert.equal(v.clientPurpose, "options_regen_only");
 });
 
+test("validateChatRequest: options regen metadata is sanitized and preserved", () => {
+  const v = validateChatRequest({
+    messages: [{ role: "user", content: "hi" }],
+    playerContext: "ctx",
+    sessionId: "s",
+    clientState: null,
+    clientPurpose: "options_regen_only",
+    clientReason: "  【为何需要整理选项】用户手动点击刷新选项按钮  ",
+    clientTurnModeHint: "decision_required",
+  });
+  assert.ok(v.ok);
+  assert.equal(v.clientReason, "【为何需要整理选项】用户手动点击刷新选项按钮");
+  assert.equal(v.clientTurnModeHint, "decision_required");
+});
+
+test("validateChatRequest: invalid options regen turn mode hint is dropped", () => {
+  const v = validateChatRequest({
+    messages: [{ role: "user", content: "hi" }],
+    playerContext: "ctx",
+    sessionId: "s",
+    clientState: null,
+    clientPurpose: "options_regen_only",
+    clientTurnModeHint: "bad_mode",
+  });
+  assert.ok(v.ok);
+  assert.equal(v.clientTurnModeHint, null);
+});
+
 test("moderationTextForPrivateStoryChat：options_regen_only 使用固定短句，不送审整段模板", () => {
   const long = "死亡 道具 抹杀 OPTIONS_REGEN 协议说明";
   assert.equal(

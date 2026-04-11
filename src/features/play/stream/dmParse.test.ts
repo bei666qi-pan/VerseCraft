@@ -128,3 +128,13 @@ test("extractRegenOptionsFromRaw: __VERSECRAFT_FINAL__ prefix still works", () =
   assert.deepEqual(extractRegenOptionsFromRaw(raw), ["一", "二", "三", "四"]);
 });
 
+test("extractRegenOptionsFromRaw: rich options-only payload can use decision_options", () => {
+  const raw =
+    '{"ok":true,"turn_mode":"decision_required","decision_required":true,"decision_options":["观察门缝","退回拐角","轻声呼喊","检查手机"]}';
+  assert.deepEqual(extractRegenOptionsFromRaw(raw), ["观察门缝", "退回拐角", "轻声呼喊", "检查手机"]);
+});
+
+test("extractRegenOptionsFromRaw: falls back to decision_options when legacy options is empty", () => {
+  const raw = '{"options":[],"decision_options":["一","二","三","四"]}';
+  assert.deepEqual(extractRegenOptionsFromRaw(raw), ["一", "二", "三", "四"]);
+});

@@ -750,11 +750,8 @@ export async function POST(req: Request) {
         .slice()
         .reverse()
         .find((m) => m.role === "assistant")?.content ?? "";
-    const clientReason =
-      typeof (validated as { clientReason?: unknown }).clientReason === "string"
-        ? String((validated as { clientReason?: string }).clientReason)
-        : "";
-    const clientTurnModeHint = (validated as { clientTurnModeHint?: unknown }).clientTurnModeHint;
+    const clientReason = validated.clientReason;
+    const clientTurnModeHint = validated.clientTurnModeHint;
     const lastUserReason =
       validated.messages
         .slice()
@@ -779,7 +776,7 @@ export async function POST(req: Request) {
     });
     const shaped = buildOptionsRegenResponse({
       clientTurnModeHint,
-      options: regen.options,
+      options: regen.ok ? regen.options : [],
       generatorOk: regen.ok,
     });
     const ok = shaped.ok;

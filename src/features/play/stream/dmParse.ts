@@ -108,7 +108,11 @@ function parseSliceToDm(slice: string): DMJson | null {
 function optionsArrayFromUnknownPayload(data: unknown): unknown[] | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   const o = data as Record<string, unknown>;
-  return Array.isArray(o.options) ? o.options : null;
+  const legacy = Array.isArray(o.options) ? o.options : null;
+  if (legacy && legacy.length > 0) return legacy;
+  const decision = Array.isArray(o.decision_options) ? o.decision_options : null;
+  if (decision && decision.length > 0) return decision;
+  return legacy ?? decision;
 }
 
 function parseSliceToRegenOptions(slice: string): unknown[] | null {
@@ -131,7 +135,7 @@ function parseSliceToRegenOptions(slice: string): unknown[] | null {
 
 /**
  * `options_regen_only` 等场景下模型常只输出 `{"options":[...]}`，不满足 {@link tryParseDM} 的完整 DM 形态；
- * 从 SSE 折叠后的原文中扫描 JSON 对象并提取非空 `options` 数组。
+ * 从 SSE 折叠后的原文中扫描 JSON 对象并提取非空 `options` / `decision_options` 数组。
  */
 export function extractRegenOptionsFromRaw(raw: string): unknown[] | null {
   const cleanContent = raw
