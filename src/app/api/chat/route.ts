@@ -622,6 +622,66 @@ export async function POST(req: Request) {
   ttftProfile.authSessionMs = elapsedMs(authStartAt);
   const userId = session?.user?.id ?? null;
 
+  // --- Options-only fast path (never mutates world state) ---
+  // This helper request is triggered by the UI button that asks the DM to refresh choices.
+  // It must not share the main story action risk-control / repeat-input moderation path,
+  // otherwise repeated clicks on the fixed helper text can escalate into 403 -> 429 blocks.
+  if (clientPurpose === "options_regen_only") {
+    const rollout = getVerseCraftRolloutFlags();
+    incrOptionsOnlyRegenPathHitCount(1);
+    const snapshot = buildMinimalPlayerContextSnapshot(playerContext);
+    const lastAssistant =
+      validated.messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === "assistant")?.content ?? "";
+    const clientReason = validated.clientReason;
+    const clientTurnModeHint = validated.clientTurnModeHint;
+    const lastUserReason =
+      validated.messages
+        .slice()
+        .reverse()
+        .find((m) => m.role === "user")?.content ?? "";
+    const reason = (clientReason.trim() || lastUserReason.trim() || "用户请求重新整理选项").trim();
+
+    const packet = rollout.enableOptionsOnlyRegenPathV2
+      ? buildOptionsOnlyUserPacket({
+          reason,
+          lastNarrative: lastAssistant,
+          playerContextSnapshot: snapshot,
+          clientState: validated.clientState,
+        })
+      : reason;
+    const regen = await generateOptionsOnlyFallback({
+      narrative: lastAssistant,
+      latestUserInput: packet,
+      playerContext: snapshot,
+      ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
+      systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+    });
+    const shaped = buildOptionsRegenResponse({
+      clientTurnModeHint,
+      options: regen.ok ? regen.options : [],
+      generatorOk: regen.ok,
+    });
+    const ok = shaped.ok;
+    const payload = JSON.stringify(shaped);
+    const isAuto =
+      /主回合|options\s*缺失|auto_missing_main/i.test(reason) ||
+      /auto/i.test(clientReason);
+    if (isAuto) recordOptionsAutoRegenOutcome(ok);
+    else recordOptionsManualRegenOutcome(ok);
+    return new Response(sseText(payload), {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
+      },
+    });
+  }
+
   const riskControl = checkRiskControl({ ip: clientIp, sessionId, userId });
   if (!riskControl.ok) {
     writeAuditTrail({
@@ -737,63 +797,6 @@ export async function POST(req: Request) {
       action: antiCheat.decision === "fallback" ? "degrade" : "review",
       triggeredRule: antiCheat.reasons.slice(0, 4).join(",") || "anti_cheat_rewrite",
       summary: `risk=${antiCheat.risk} len=${antiCheat.text.length}`,
-    });
-  }
-
-  // --- Options-only fast path (never mutates world state) ---
-  if (clientPurpose === "options_regen_only") {
-    const rollout = getVerseCraftRolloutFlags();
-    incrOptionsOnlyRegenPathHitCount(1);
-    const snapshot = buildMinimalPlayerContextSnapshot(playerContext);
-    const lastAssistant =
-      validated.messages
-        .slice()
-        .reverse()
-        .find((m) => m.role === "assistant")?.content ?? "";
-    const clientReason = validated.clientReason;
-    const clientTurnModeHint = validated.clientTurnModeHint;
-    const lastUserReason =
-      validated.messages
-        .slice()
-        .reverse()
-        .find((m) => m.role === "user")?.content ?? "";
-    const reason = (clientReason.trim() || lastUserReason.trim() || "用户请求重新整理选项").trim();
-
-    const packet = rollout.enableOptionsOnlyRegenPathV2
-      ? buildOptionsOnlyUserPacket({
-          reason,
-          lastNarrative: lastAssistant,
-          playerContextSnapshot: snapshot,
-          clientState: validated.clientState,
-        })
-      : reason;
-    const regen = await generateOptionsOnlyFallback({
-      narrative: lastAssistant,
-      latestUserInput: packet,
-      playerContext: snapshot,
-      ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
-      systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-    });
-    const shaped = buildOptionsRegenResponse({
-      clientTurnModeHint,
-      options: regen.ok ? regen.options : [],
-      generatorOk: regen.ok,
-    });
-    const ok = shaped.ok;
-    const payload = JSON.stringify(shaped);
-    const isAuto =
-      /主回合|options\s*缺失|auto_missing_main/i.test(reason) ||
-      /auto/i.test(clientReason);
-    if (isAuto) recordOptionsAutoRegenOutcome(ok);
-    else recordOptionsManualRegenOutcome(ok);
-    return new Response(sseText(payload), {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        [VERSECRAFT_REQUEST_ID_RESPONSE_HEADER]: requestId,
-      },
     });
   }
 
