@@ -300,12 +300,17 @@ async function runOptionsOnlyAiOnce(args: {
       tags: { ...(args.ctx.tags ?? {}), purpose: "options_regen" },
     },
     signal: args.signal,
-    requestTimeoutMs: args.timeoutMs,
+    // Reasoning models (e.g. MiniMax) need 8-10s for reasoning_content + content.
+    // The per-attempt timeout from VC_WAITING (6.5s) is too short; use 15s to avoid
+    // aborting mid-reasoning and falling through to hardcoded fallback options.
+    requestTimeoutMs: Math.max(args.timeoutMs, 15_000),
     skipCache: true,
     devOverrides: {
-      maxTokens: 256,
+      // Reasoning models spend most tokens on reasoning_content before emitting content.
+      // 256 is not enough — the model hits max_tokens with empty content.
+      maxTokens: 1024,
       temperature: args.temperature,
-      timeoutMs: args.timeoutMs,
+      timeoutMs: Math.max(args.timeoutMs, 15_000),
       responseFormatJsonObject: true,
     },
   });
@@ -351,8 +356,10 @@ export async function generateOptionsOnlyFallback(args: {
 
   const tryParse = (content: string): { ok: true; options: string[] } | null => {
     try {
-      const obj = JSON.parse(content) as Record<string, unknown>;
-      const parsed = parseOptionsArrayFromAiJson(obj.options);
+      // Strip markdown code fences that some models wrap around JSON
+      const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+      const obj = JSON.parse(cleaned) as Record<string, unknown>;
+      const parsed = parseOptionsArrayFromAiJson(obj.options ?? (obj as any).decision_options);
       const done = finalizeOptionsFallbackParsed(parsed);
       if (!done) return null;
       return {
@@ -383,19 +390,32 @@ export async function generateOptionsOnlyFallback(args: {
     return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
   };
 
+  // When budget is tight (< sum of both attempt timeouts), use single attempt with full budget
+  // to maximize chance of one successful AI call. Previous dual-attempt strategy caused the first
+  // attempt to consume nearly all budget, leaving the second with insufficient time.
+  const canFitBothAttempts = budgetMs <= 0 ||
+    budgetMs >= VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs + VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs + 500;
+
   const first = await runOptionsOnlyAiOnce({
     ...args,
     temperature: 0.4,
     systemExtra: args.systemExtra,
-    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
-    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
+    timeoutMs: canFitBothAttempts
+      ? VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs
+      : Math.max(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, budgetMs > 0 ? budgetMs - 300 : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
+    signal: withBudgetSignal(
+      canFitBothAttempts
+        ? VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs
+        : Math.max(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, budgetMs > 0 ? budgetMs - 300 : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs)
+    ),
   });
   if (first.ok) {
     const done = tryParse(first.content);
     if (done) return done;
   }
 
-  if (budgetMs > 0 && remainingMs() < 350) {
+  if (budgetMs > 0 && remainingMs() < 1500) {
+    // Not enough time for a meaningful second attempt; use padded fallback.
     return {
       ok: true,
       options: guardOptionsQualityToFour({
@@ -479,12 +499,12 @@ async function runDecisionOnlyAiOnce(args: {
       tags: { ...(args.ctx.tags ?? {}), purpose: "decision_options_regen" },
     },
     signal: args.signal,
-    requestTimeoutMs: args.timeoutMs,
+    requestTimeoutMs: Math.max(args.timeoutMs, 15_000),
     skipCache: true,
     devOverrides: {
-      maxTokens: 256,
+      maxTokens: 1024,
       temperature: args.temperature,
-      timeoutMs: args.timeoutMs,
+      timeoutMs: Math.max(args.timeoutMs, 15_000),
       responseFormatJsonObject: true,
     },
   });

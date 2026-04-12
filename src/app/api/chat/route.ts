@@ -652,16 +652,16 @@ export async function POST(req: Request) {
           clientState: validated.clientState,
         })
       : reason;
-    // Phase-5: hard budget cap so server always finishes before the client's 9 s deadline.
-    // Without this, two sequential AI attempts (6.5 s + 8.5 s = 15 s) exceeded the client
-    // abort timer, causing the fetch to throw AbortError before any response arrived.
+    // Let the client-side AbortController (9 s deadline) handle overall timeout.
+    // Server-side budgetMs is set to 0 (unlimited) so the single AI attempt gets the full
+    // time window. Reasoning models (e.g. MiniMax) may need 8–10 s for a complete response.
     const regen = await generateOptionsOnlyFallback({
       narrative: lastAssistant,
       latestUserInput: packet,
       playerContext: snapshot,
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-      budgetMs: 7_000,
+      budgetMs: 0,
       signal: req.signal,
     });
     const shaped = buildOptionsRegenResponse({
