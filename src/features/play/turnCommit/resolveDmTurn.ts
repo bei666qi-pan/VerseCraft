@@ -77,14 +77,23 @@ function clampString(s: string, maxChars: number): string {
   return t.length <= maxChars ? t : t.slice(0, maxChars);
 }
 
+function coerceOptionToString(x: unknown): string | null {
+  if (typeof x === "string") return x.trim() || null;
+  if (x && typeof x === "object" && !Array.isArray(x)) {
+    const o = x as Record<string, unknown>;
+    if (typeof o.label === "string" && o.label.trim()) return o.label.trim();
+    if (typeof o.text === "string" && o.text.trim()) return o.text.trim();
+  }
+  return null;
+}
+
 function clampOptions(raw: unknown, maxItems: number, maxChars: number): string[] {
   const src = Array.isArray(raw) ? raw : [];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const row of src) {
     if (out.length >= maxItems) break;
-    if (typeof row !== "string") continue;
-    const v = row.trim();
+    const v = coerceOptionToString(row);
     if (!v) continue;
     const clipped = clampString(v, maxChars);
     if (!clipped) continue;

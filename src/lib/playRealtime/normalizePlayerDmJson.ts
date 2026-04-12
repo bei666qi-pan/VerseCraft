@@ -5,6 +5,16 @@
 import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 import { extractBalancedJsonObjectCandidates } from "@/features/play/stream/dmParse";
 
+function coerceOptionToString(x: unknown): string | null {
+  if (typeof x === "string") return x.trim() || null;
+  if (x && typeof x === "object" && !Array.isArray(x)) {
+    const o = x as Record<string, unknown>;
+    if (typeof o.label === "string" && o.label.trim()) return o.label.trim();
+    if (typeof o.text === "string" && o.text.trim()) return o.text.trim();
+  }
+  return null;
+}
+
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim());
@@ -212,10 +222,12 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   }
 
   if (Array.isArray(o.options)) {
-    const opts = o.options
-      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-      .map((x) => x.trim())
-      .slice(0, 4);
+    const opts: string[] = [];
+    for (const x of o.options) {
+      if (opts.length >= 4) break;
+      const s = coerceOptionToString(x);
+      if (s) opts.push(s);
+    }
     out.options = opts;
   }
 

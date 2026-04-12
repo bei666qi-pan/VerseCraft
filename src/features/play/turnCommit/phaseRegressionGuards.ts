@@ -30,6 +30,16 @@ export function shouldAutoRegenerateOptionsOnModeSwitch(input: {
   return true;
 }
 
+function coerceOptionToString(x: unknown): string | null {
+  if (typeof x === "string") return x.trim() || null;
+  if (x && typeof x === "object" && !Array.isArray(x)) {
+    const o = x as Record<string, unknown>;
+    if (typeof o.label === "string" && o.label.trim()) return o.label.trim();
+    if (typeof o.text === "string" && o.text.trim()) return o.text.trim();
+  }
+  return null;
+}
+
 export function normalizeRegeneratedOptions(rawOptions: unknown, recent: string[]): string[] {
   const seen = new Set<string>();
   const recentSet = new Set(
@@ -41,8 +51,7 @@ export function normalizeRegeneratedOptions(rawOptions: unknown, recent: string[
   const fallback: string[] = [];
   const source = Array.isArray(rawOptions) ? rawOptions : [];
   for (const row of source) {
-    if (typeof row !== "string") continue;
-    const v = row.trim();
+    const v = coerceOptionToString(row);
     if (!v) continue;
     if (seen.has(v)) continue;
     seen.add(v);

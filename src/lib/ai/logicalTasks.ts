@@ -78,8 +78,14 @@ export function parseOptionsArrayFromAiJson(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   const out: string[] = [];
   for (const x of v) {
-    if (typeof x !== "string") continue;
-    const t = x.trim();
+    let t: string | null = null;
+    if (typeof x === "string") {
+      t = x.trim();
+    } else if (x && typeof x === "object" && !Array.isArray(x)) {
+      const o = x as Record<string, unknown>;
+      if (typeof o.label === "string" && o.label.trim()) t = o.label.trim();
+      else if (typeof o.text === "string" && o.text.trim()) t = o.text.trim();
+    }
     if (!t) continue;
     if (t.length < 2 || t.length > 40) continue;
     out.push(t);
