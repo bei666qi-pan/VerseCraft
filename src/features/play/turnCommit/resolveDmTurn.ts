@@ -6,10 +6,10 @@ import {
 import { applyNarrativeAcceptanceDefaults, shouldAutoOpenTaskPanelForNewTask } from "@/lib/tasks/taskNarrativeGrant";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { incrFormalTaskNarrativeGrantAutoOpenCount } from "@/lib/observability/versecraftRolloutMetrics";
-import { normalizeActionTimeCostKind, type ActionTimeCostKind } from "@/lib/time/actionCost";
+import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
+import { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
-import type { ClueEntry } from "@/lib/domain/narrativeDomain";
 import type { NarrativeDensity, TurnEnvelope, TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
 export type ResolvedTurnUiHints = {
@@ -95,6 +95,7 @@ function clampOptions(raw: unknown, maxItems: number, maxChars: number): string[
     if (out.length >= maxItems) break;
     const v = coerceOptionToString(row);
     if (!v) continue;
+    if (isNonNarrativeOptionLike(v)) continue;
     const clipped = clampString(v, maxChars);
     if (!clipped) continue;
     if (seen.has(clipped)) continue;

@@ -1,3 +1,5 @@
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
+
 export type TurnOptionsPickMeta = {
   source: "decision_options" | "legacy_options" | "none";
 };
@@ -25,7 +27,7 @@ export function pickTurnOptionsFromResolvedDm(parsed: unknown): { options: strin
       const s = coerceOptionToString(x);
       if (s) out.push(s);
     }
-    return out;
+    return filterNarrativeActionOptions(out, 4);
   };
 
   const decisionOpts = asOptionStringArray(decision);

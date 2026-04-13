@@ -14,6 +14,15 @@ test("pickTurnOptionsFromResolvedDm falls back to legacy options when decision_o
   assert.equal(out.meta.source, "legacy_options");
 });
 
+test("pickTurnOptionsFromResolvedDm filters journal/menu options before display", () => {
+  const out = pickTurnOptionsFromResolvedDm({
+    decision_options: ["查看灵感手记", "检查背包与随身物品"],
+    options: ["我用手电照向门缝", "我贴墙听走廊动静"],
+  });
+  assert.deepEqual(out.options, ["我用手电照向门缝", "我贴墙听走廊动静"]);
+  assert.equal(out.meta.source, "legacy_options");
+});
+
 test("pickTurnOptionsFromResolvedDm returns none when both missing", () => {
   const out = pickTurnOptionsFromResolvedDm({ turn_mode: "decision_required" });
   assert.deepEqual(out.options, []);

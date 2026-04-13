@@ -180,6 +180,22 @@ test("resolveTurnConsistency: legacy/default decision turn with missing options 
   assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_options_waiting_regen") ?? false, true);
 });
 
+test("resolveTurnConsistency: journal/menu options are invalid and trigger regen wait", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "你看见门缝里有一线冷光。",
+    is_death: false,
+    consumes_time: true,
+    options: ["查看灵感手记", "检查背包与随身物品"],
+  } as any);
+  assert.equal(out.turn_mode, "decision_required");
+  assert.equal(out.decision_required, true);
+  assert.deepEqual(out.options, []);
+  assert.deepEqual(out.decision_options, []);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_options_waiting_regen") ?? false, true);
+});
+
 test("resolveTurnConsistency: explicit narrative_only should disable decision_required", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,

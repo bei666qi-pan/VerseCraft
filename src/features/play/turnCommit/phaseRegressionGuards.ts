@@ -1,3 +1,5 @@
+import { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
+
 /**
  * 阶段回归守卫（纯函数）：
  * - 道具获得叙事一致性判定
@@ -53,6 +55,7 @@ export function normalizeRegeneratedOptions(rawOptions: unknown, recent: string[
   for (const row of source) {
     const v = coerceOptionToString(row);
     if (!v) continue;
+    if (isNonNarrativeOptionLike(v)) continue;
     if (seen.has(v)) continue;
     seen.add(v);
     if (v.length > 40) continue;

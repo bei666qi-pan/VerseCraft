@@ -84,4 +84,5 @@ test("phase4: regenerated options should be deduped and capped", () => {
   assert.equal(out.length <= 4, true);
   assert.equal(out[0], "观察门缝");
   assert.equal(out.includes("查看走廊"), true);
+  assert.equal(out.includes("检查背包"), false);
 });
