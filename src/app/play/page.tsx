@@ -398,8 +398,14 @@ function PlayContent() {
     parsedPostDrainRef.current = null;
     if (pending?.isDeath || sanityAfter <= 0) {
       setTimeout(() => router.push("/settlement"), 2000);
+      return;
     }
-  }, [router]);
+    // After every turn completes, auto-generate options if none are present.
+    const currentOpts = useGameStore.getState().currentOptions ?? [];
+    if (currentOpts.length === 0 && !endgameState.active) {
+      setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 300);
+    }
+  }, [router, endgameState.active]);
 
   const streamTailDrain = useMemo<SmoothStreamTailDrainConfig | null>(() => {
     if (streamPhase !== "tail_draining") return null;
@@ -1091,11 +1097,12 @@ function PlayContent() {
       if (manual) setFirstTimeHint("正在整理可选行动，请稍候再试。");
       return;
     }
-    if (doesPhaseBlockOptionsRegen(streamPhaseRef.current) && trigger !== "auto_missing_main") {
+    const isAutoTrigger = trigger === "auto_missing_main" || trigger === "opening_fallback";
+    if (doesPhaseBlockOptionsRegen(streamPhaseRef.current) && !isAutoTrigger) {
       if (manual) setFirstTimeHint("主笔仍在生成本回合内容，请稍后再刷新选项。");
       return;
     }
-    if (sendActionInFlightRef.current && trigger !== "auto_missing_main") {
+    if (sendActionInFlightRef.current && !isAutoTrigger) {
       if (manual) setFirstTimeHint("上一回合请求仍在处理中，请稍后再刷新选项。");
       return;
     }
@@ -1469,6 +1476,9 @@ function PlayContent() {
             status: res.status,
             aiStatus: res.headers.get("X-VerseCraft-Ai-Status"),
           });
+          // Auto-generate options even on degraded 403 responses so players
+          // always have clickable actions after narrative appears.
+          setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 300);
           return;
         }
       }
@@ -2274,35 +2284,25 @@ function PlayContent() {
         if (getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
           autoMissingOptionsAttemptedRef.current = true;
           setFirstTimeHint("正在为你生成可选行动…");
-          setTimeout(() => {
-            void requestFreshOptions("auto_missing_main");
-          }, 100);
-        } else if (!isFirstAssistantTurn) {
-          setFirstTimeHint("本回合需要做出选择，但当前无法补全可选行动。可切换为手动输入继续，或稍后重试。");
+          setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
         }
       } else {
-        // narrative_only / system_transition：清空旧选项，但立即请求新选项。
-        // 玩家每轮都应该有可点击的选项可用。
+        // narrative_only / system_transition：清空旧选项，自动请求新选项。
         setCurrentOptions([]);
         queueMicrotask(() => {
           const slot = useGameStore.getState().currentSaveSlot;
           useGameStore.getState().saveGame(slot);
           writeResumeShadow();
         });
-        if (!isFirstAssistantTurn) {
-          autoMissingOptionsAttemptedRef.current = true;
-          setFirstTimeHint("正在为你生成可选行动…");
-          // Use setTimeout to ensure sendAction's finally block has run
-          // (resetting sendActionInFlightRef) before regen starts.
-          setTimeout(() => {
-            void requestFreshOptions("auto_missing_main");
-          }, 100);
-        }
+        autoMissingOptionsAttemptedRef.current = true;
+        setFirstTimeHint("正在为你生成可选行动…");
+        setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
       }
+      // Opening first turn: also auto-generate options
       if (isOpeningSystemRequest) {
-        queueMicrotask(() => {
-          void requestFreshOptions("opening_fallback");
-        });
+        autoMissingOptionsAttemptedRef.current = true;
+        setFirstTimeHint("正在为你生成可选行动…");
+        setTimeout(() => { void requestFreshOptions("opening_fallback"); }, 200);
       }
     }
 
