@@ -21,14 +21,14 @@ test("post-resolve options regen: decision_required semantic turn should not be 
   );
 });
 
-test("post-resolve options regen: explicit narrative_only should be skipped", () => {
+test("post-resolve options regen: explicit narrative_only should still allow post-body model options", () => {
   const shouldSkip = shouldSkipPostResolveOptionsRegen({
     clientPurpose: null,
     shouldApplyFirstActionConstraint: false,
     settlementFreeze: false,
     resolved: { turn_mode: "narrative_only" },
   });
-  assert.equal(shouldSkip, true);
+  assert.equal(shouldSkip, false);
   assert.equal(
     getPostResolveOptionsRegenSkipReason({
       clientPurpose: null,
@@ -36,18 +36,18 @@ test("post-resolve options regen: explicit narrative_only should be skipped", ()
       settlementFreeze: false,
       resolved: { turn_mode: "narrative_only" },
     }),
-    "turn_mode_narrative_only"
+    "not_skipped"
   );
 });
 
-test("post-resolve options regen: explicit system_transition should be skipped", () => {
+test("post-resolve options regen: explicit system_transition should still allow post-body model options", () => {
   const shouldSkip = shouldSkipPostResolveOptionsRegen({
     clientPurpose: null,
     shouldApplyFirstActionConstraint: false,
     settlementFreeze: false,
     resolved: { turn_mode: "system_transition" },
   });
-  assert.equal(shouldSkip, true);
+  assert.equal(shouldSkip, false);
   assert.equal(
     getPostResolveOptionsRegenSkipReason({
       clientPurpose: null,
@@ -55,7 +55,7 @@ test("post-resolve options regen: explicit system_transition should be skipped",
       settlementFreeze: false,
       resolved: { turn_mode: "system_transition" },
     }),
-    "turn_mode_system_transition"
+    "not_skipped"
   );
 });
 

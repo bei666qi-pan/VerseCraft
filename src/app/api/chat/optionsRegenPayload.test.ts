@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildOptionsRegenResponse } from "./optionsRegenPayload";
 
-test("buildOptionsRegenResponse: narrative_only hint returns ok=false with explicit turn_mode", () => {
+test("buildOptionsRegenResponse: narrative_only hint still returns generated decision options", () => {
   const out = buildOptionsRegenResponse({ clientTurnModeHint: "narrative_only", options: ["a", "b"] });
-  assert.equal(out.ok, false);
-  assert.equal(out.turn_mode, "narrative_only");
-  assert.deepEqual(out.options, []);
+  assert.equal(out.ok, true);
+  assert.equal(out.turn_mode, "decision_required");
+  assert.deepEqual(out.options, ["a", "b"]);
+  assert.deepEqual(out.decision_options, ["a", "b"]);
 });
 
 test("buildOptionsRegenResponse: decision_required returns ok=true when >=2 options", () => {

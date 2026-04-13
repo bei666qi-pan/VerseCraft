@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { guardOptionsQualityToFour, padOptionsFallbackToFour, parseOptionsArrayFromAiJson } from "./logicalTasks";
+import { guardOptionsQualityToFour, isNonNarrativeOptionLike, padOptionsFallbackToFour, parseOptionsArrayFromAiJson } from "./logicalTasks";
 
 test("parseOptionsArrayFromAiJson: keeps 2–4 valid strings and dedupes", () => {
   assert.deepEqual(parseOptionsArrayFromAiJson(["a", "我走一步", "我走一步", "我停一下"]), ["我走一步", "我停一下"]);
@@ -8,6 +8,13 @@ test("parseOptionsArrayFromAiJson: keeps 2–4 valid strings and dedupes", () =>
 
 test("parseOptionsArrayFromAiJson: skips too-short and too-long", () => {
   assert.deepEqual(parseOptionsArrayFromAiJson(["x", "我走一步", "x".repeat(50)]), ["我走一步"]);
+});
+
+test("isNonNarrativeOptionLike: blocks journal and menu-like options", () => {
+  assert.equal(isNonNarrativeOptionLike("我查看灵感手记"), true);
+  assert.equal(isNonNarrativeOptionLike("检查背包与随身物品"), true);
+  assert.equal(isNonNarrativeOptionLike("我打开任务面板"), true);
+  assert.equal(isNonNarrativeOptionLike("我用手电照向门缝"), false);
 });
 
 test("padOptionsFallbackToFour: fills from generics when empty", () => {

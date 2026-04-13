@@ -161,9 +161,11 @@ function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
 }
 
 const OPTIONS_REGEN_SYSTEM_PROMPT =
-  "你是选项整理助手。你必须只输出一个 JSON 对象，且只包含 options 键：" +
+  "你是互动叙事平台的行动选项主笔助手。你必须只输出一个 JSON 对象，且只包含 options 键：" +
   '{"options":["...","...","...","..."]}。' +
   "强制：options 恰好 4 条、简体中文、第一人称、5–20字、互不重复且差异明显；" +
+  "必须承接正文之后的当前剧情，生成下一步可执行行动；" +
+  "禁止灵感手记/背包/任务/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
   "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
 
 function PlayContent() {

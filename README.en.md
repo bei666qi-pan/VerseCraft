@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#what-is-versecraft">What is VerseCraft</a> ·
   <a href="#live-demo">Live Demo</a> ·
-  <a href="#current-content-prologue-dark-moon">Current Content</a> ·
+  <a href="#current-example-world">Current Example</a> ·
   <a href="#30-second-gameplay">Gameplay</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#for-developers">For Developers</a>
@@ -44,7 +44,7 @@ In other words, **the player is not simply reading a novel. They are stepping in
 
 ## Why it is different
 
-- **It aims to be a platform, not a single story page**: today it can be supernatural horror; later it can support mystery, campus stories, cyberpunk, apocalypse, and more.
+- **It aims to be a platform, not a single story page**: the same interactive narrative foundation can support mystery, campus drama, science fiction, apocalypse, realistic fiction, history, fantasy, and more.
 - **AI acts as the story runtime**: it is not a chatbot companion, but the engine that advances plots, executes rules, and creates consequences.
 - **Interaction is natural-language action, not only multiple choice**: players can directly say what they want to do, as if they were really there.
 - **Worldbuilding is designed to grow**: every new world can define its own rules, characters, checks, and narrative rhythm.
@@ -56,22 +56,22 @@ If many AI products are building smarter chat, VerseCraft is trying to build **a
 
 Live demo: [versecraft.cn](https://versecraft.cn)
 
-## Current Content: Prologue · Dark Moon
+## Current Example World
 
-VerseCraft currently has one playable starting world:
+VerseCraft currently provides one playable starting world to validate the platform:
 
 ### Prologue · Dark Moon
 
-You are drawn into **Kisaragi Apartments**.
+You enter an interactive narrative scene continued by an AI story runner.
 
-It is a building where common sense is starting to fail.
+It is not VerseCraft's genre boundary. It is the first content sample:
 
-- Rules change, and they punish mistakes.
-- Time moves forward, and danger rises.
-- When the Dark Moon phase arrives, the whole apartment becomes even less reasonable.
-- All you can do is keep judging, probing, and trying to survive.
+- It validates how natural-language actions are received by AI.
+- It validates how world state, character state, and time progression work together.
+- It validates whether one platform layer can continuously incubate different interactive stories.
+- Future worlds can have completely different genres, rhythms, and play goals.
 
-This is the first content sample for VerseCraft, and the first interactive fiction world that demonstrates the platform idea: enterable, playable, and advanced by AI.
+In other words, "Prologue · Dark Moon" is the first door, not the only material type VerseCraft is built for.
 
 ## 30-Second Gameplay
 
@@ -95,10 +95,10 @@ This is the first content sample for VerseCraft, and the first interactive ficti
 
 ## Who it is for
 
-- Players who enjoy supernatural rules, horror storytelling, and interactive fiction.
+- Players who enjoy interactive fiction, branching narratives, role-playing, and text adventures.
 - Players who want choices to change outcomes instead of only reading fixed plots.
 - People interested in AI-native content and whether a novel platform can be redefined.
-- Anyone who wants to try a single-player, browser-based narrative adventure driven by AI.
+- Anyone who wants to try a single-player, browser-based narrative system driven by AI.
 
 ## Quick Start
 
@@ -111,7 +111,7 @@ Copy `.env.example` to `.env.local`, then fill in the required configuration. By
 
 ## Where the platform is going
 
-VerseCraft's ambition is not only to finish "Prologue · Dark Moon".
+VerseCraft's ambition is not only to finish one example world.
 
 The project is trying to validate whether:
 
@@ -128,7 +128,7 @@ What you see now is the first door, not the final floor.
 
 ### Project Positioning
 
-VerseCraft is a single-player Chinese interactive narrative project that runs in the browser. It currently starts with "Prologue · Dark Moon" and builds a platform prototype around AI-driven narration, rule checks, world knowledge retrieval, and client-side persistence.
+VerseCraft is a single-player Chinese interactive narrative project that runs in the browser. It currently uses "Prologue · Dark Moon" as the first demo world and builds a general platform prototype around AI-driven narration, rule checks, world knowledge retrieval, and client-side persistence.
 
 ### Tech Stack
 

@@ -102,6 +102,30 @@ export function parseOptionsArrayFromAiJson(v: unknown): string[] {
   return uniq.slice(0, 4);
 }
 
+export function isNonNarrativeOptionLike(text: string): boolean {
+  const s = String(text ?? "").trim().replace(/\s+/g, "");
+  if (!s) return true;
+  if (/(灵感手记|手记|背包|行囊|道具栏|物品栏|任务面板|属性面板|菜单|设置|保存|读档|回档|刷新选项|重新整理选项)/.test(s)) {
+    return true;
+  }
+  if (/^(我)?(查看|检查|打开|翻看|整理|阅读)(道具|任务|属性|图鉴)$/.test(s)) return true;
+  if (/^(我)?使用道具[:：]?$/.test(s)) return true;
+  return false;
+}
+
+function guardModelGeneratedOptions(options: string[], maxCount = 4): string[] {
+  const out: string[] = [];
+  for (const option of options) {
+    const t = String(option ?? "").trim();
+    if (!t) continue;
+    if (isNonNarrativeOptionLike(t)) continue;
+    if (out.some((x) => areOptionsTooSimilar(x, t))) continue;
+    out.push(t);
+    if (out.length >= maxCount) break;
+  }
+  return out;
+}
+
 function contextualFallbackPad(playerContext: string): readonly string[] {
   const ctx = String(playerContext ?? "");
   const loc = ctx.match(/用户位置\[([^\]]+)\]/)?.[1]?.trim() || "";
@@ -110,7 +134,7 @@ function contextualFallbackPad(playerContext: string): readonly string[] {
   const npcHint = npcLine ? "我先压低声音，向附近的人确认情况。" : "我先侧耳听周围动静。";
   const placeHint = loc ? `我先沿${loc.includes("B1") ? "安全区方向" : "走廊边缘"}调整站位，找遮蔽物。` : "我先找一处更稳的站位。";
   const threatHint = hasThreat ? "我先拉开距离，确认退路与危险来源。" : "我先确认退路与可用遮蔽物。";
-  const probeHint = hasThreat ? "我先用小动作试探对方反应。" : "我先做个小试探，看看规则是否有变。";
+  const probeHint = hasThreat ? "我先用小动作试探对方反应。" : "我先做个小试探，确认周围反应。";
   return [
     threatHint,
     npcHint,
@@ -155,7 +179,8 @@ function areOptionsTooSimilar(a: string, b: string): boolean {
 }
 
 /**
- * 将 0–4 条模型选项与通用短句合并为恰好 4 条（去重），仅用于服务端 options 补救，不写入叙事正文。
+ * 将 0–4 条候选选项与通用短句合并为恰好 4 条（去重）。
+ * 注意：实时 options-only 模型补救不再调用该本地补齐，避免用通用短句冒充大模型选项。
  */
 export function padOptionsFallbackToFour(options: string[], playerContext?: string): string[] {
   const out: string[] = [];
@@ -241,9 +266,8 @@ export function guardOptionsQualityToFour(args: {
 }
 
 function finalizeOptionsFallbackParsed(parsed: string[]): { ok: true; options: string[] } | null {
-  if (parsed.length >= 4) return { ok: true, options: parsed.slice(0, 4) };
-  if (parsed.length >= 2) return { ok: true, options: padOptionsFallbackToFour(parsed) };
-  if (parsed.length === 1) return { ok: true, options: padOptionsFallbackToFour(parsed) };
+  const guarded = guardModelGeneratedOptions(parsed, 4);
+  if (guarded.length >= 4) return { ok: true, options: guarded.slice(0, 4) };
   return null;
 }
 
@@ -260,7 +284,7 @@ async function runOptionsOnlyAiOnce(args: {
   const system: ChatMessage = {
     role: "system",
     content: [
-      "你是规则怪谈文字冒险的控制面助手，任务是为玩家生成下一步可点击行动选项。",
+      "你是互动叙事平台的行动选项主笔助手，任务是在正文生成之后，为玩家实时生成下一步可点击行动选项。",
       "你必须只输出一个 JSON 对象，形如：{\"options\":[\"...\",\"...\",\"...\",\"...\"]}。",
       "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
       [
@@ -272,6 +296,9 @@ async function runOptionsOnlyAiOnce(args: {
         "- 交涉：对话/喊话/确认在场者意图（若附近有人）",
         "- 使用物品：手机/手电/钥匙等（若上下文可用）",
         "最低要求：至少 1 条低风险 + 1 条推进性 + 1 条信息获取型行动。",
+        "禁止把选项写成 UI/面板/资料簿操作，例如“查看灵感手记”“检查背包”“打开任务/属性/菜单”“使用道具”。",
+        "若要用物品，必须写成具体场景动作，例如“我用手电照向门缝”，不能写泛化的“使用道具”。",
+        "选项只能承接刚生成的正文，推动下一步行动；不得复用开场固定选项，也不得给素材类型标签。",
       ].join("\n"),
       "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
       args.systemExtra ?? "",
@@ -302,7 +329,7 @@ async function runOptionsOnlyAiOnce(args: {
     signal: args.signal,
     // Reasoning models (e.g. MiniMax) need 8-10s for reasoning_content + content.
     // The per-attempt timeout from VC_WAITING (6.5s) is too short; use 15s to avoid
-    // aborting mid-reasoning and falling through to hardcoded fallback options.
+    // aborting mid-reasoning and returning no model-generated options.
     requestTimeoutMs: Math.max(args.timeoutMs, 15_000),
     skipCache: true,
     devOverrides: {
@@ -344,14 +371,7 @@ export async function generateOptionsOnlyFallback(args: {
 
   // If budget is too tight, skip any upstream attempt.
   if (budgetMs > 0 && remainingMs() < 350) {
-    return {
-      ok: true,
-      options: guardOptionsQualityToFour({
-        options: padOptionsFallbackToFour([], args.playerContext),
-        playerContext: args.playerContext,
-        recentActionHint: args.latestUserInput,
-      }),
-    };
+    return { ok: false, reason: "budget_exhausted_before_ai" };
   }
 
   const tryParse = (content: string): { ok: true; options: string[] } | null => {
@@ -383,10 +403,19 @@ export async function generateOptionsOnlyFallback(args: {
     if (!Number.isFinite(t) || t <= 0) return base;
     const ac = new AbortController();
     const tid = setTimeout(() => ac.abort(), t);
-    // best-effort cleanup
-    void Promise.resolve().then(() => clearTimeout(tid));
+    ac.signal.addEventListener("abort", () => clearTimeout(tid), { once: true });
     const signals: AbortSignal[] = [ac.signal];
-    if (base) signals.push(base);
+    if (base) {
+      base.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(tid);
+          ac.abort();
+        },
+        { once: true }
+      );
+      signals.push(base);
+    }
     return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
   };
 
@@ -415,15 +444,8 @@ export async function generateOptionsOnlyFallback(args: {
   }
 
   if (budgetMs > 0 && remainingMs() < 1500) {
-    // Not enough time for a meaningful second attempt; use padded fallback.
-    return {
-      ok: true,
-      options: guardOptionsQualityToFour({
-        options: padOptionsFallbackToFour([], args.playerContext),
-        playerContext: args.playerContext,
-        recentActionHint: args.latestUserInput,
-      }),
-    };
+    // 不注入本地罐头选项；客户端可在正文落地后再请求一次纯模型选项生成。
+    return { ok: false, reason: first.ok ? "invalid_model_options" : first.reason };
   }
 
   const second = await runOptionsOnlyAiOnce({
@@ -438,21 +460,7 @@ export async function generateOptionsOnlyFallback(args: {
     if (done) return done;
   }
 
-  // 两次模型均不可用或 JSON 无效：用通用短句填满，避免 options 模式死胡同。
-  return {
-    ok: true,
-    options: guardOptionsQualityToFour({
-      options: padOptionsFallbackToFour([], args.playerContext),
-      playerContext: args.playerContext,
-      recentActionHint: args.latestUserInput,
-    }),
-  };
-}
-
-function padDecisionOptionsToTwo(playerContext?: string): string[] {
-  // Reuse contextual hints but do not force 4-choice UI for decision turns.
-  const base = contextualFallbackPad(playerContext ?? "");
-  return [...base].slice(0, 2).map((s) => String(s ?? "").trim()).filter(Boolean);
+  return { ok: false, reason: second.ok ? "invalid_model_options" : second.reason };
 }
 
 async function runDecisionOnlyAiOnce(args: {
@@ -468,10 +476,11 @@ async function runDecisionOnlyAiOnce(args: {
   const system: ChatMessage = {
     role: "system",
     content: [
-      "你是规则怪谈文字冒险的决策整理助手，任务是为玩家生成关键节点的决策选项。",
+      "你是互动叙事平台的决策选项主笔助手，任务是在正文生成之后，为玩家生成关键节点的决策选项。",
       "你必须只输出一个 JSON 对象，形如：{\"decision_options\":[\"...\",\"...\"]}。",
       "严格要求：decision_options 只能有 2–4 条，中文简体，每条 5–24 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
       "这 2–4 条必须真正分叉后果，不允许换皮同义句，不允许只是不同措辞的同一个行动。",
+      "禁止把选项写成 UI/面板/资料簿操作，例如“查看灵感手记”“检查背包”“打开任务/属性/菜单”“使用道具”。",
       "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
       args.systemExtra ?? "",
     ]
@@ -528,14 +537,14 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
 
   if (budgetMs > 0 && remainingMs() < 350) {
-    return { ok: true, decision_options: padDecisionOptionsToTwo(args.playerContext) };
+    return { ok: false, reason: "budget_exhausted_before_ai" };
   }
 
   const tryParse = (content: string): { ok: true; decision_options: string[] } | null => {
     try {
       const obj = JSON.parse(content) as Record<string, unknown>;
       const parsed = parseOptionsArrayFromAiJson((obj as any).decision_options);
-      const clipped = parsed.slice(0, 4);
+      const clipped = guardModelGeneratedOptions(parsed, 4);
       if (clipped.length >= 2) return { ok: true, decision_options: clipped };
       return null;
     } catch {
@@ -551,9 +560,19 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     if (!Number.isFinite(t) || t <= 0) return base;
     const ac = new AbortController();
     const tid = setTimeout(() => ac.abort(), t);
-    void Promise.resolve().then(() => clearTimeout(tid));
+    ac.signal.addEventListener("abort", () => clearTimeout(tid), { once: true });
     const signals: AbortSignal[] = [ac.signal];
-    if (base) signals.push(base);
+    if (base) {
+      base.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(tid);
+          ac.abort();
+        },
+        { once: true }
+      );
+      signals.push(base);
+    }
     return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
   };
 
@@ -570,7 +589,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   }
 
   if (budgetMs > 0 && remainingMs() < 350) {
-    return { ok: true, decision_options: padDecisionOptionsToTwo(args.playerContext) };
+    return { ok: false, reason: first.ok ? "invalid_model_decision_options" : first.reason };
   }
 
   const second = await runDecisionOnlyAiOnce({
@@ -585,8 +604,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     if (done) return done;
   }
 
-  // 两次模型均不可用或 JSON 无效：给出 2 条保守兜底，避免“必须决策但无选项”。
-  return { ok: true, decision_options: padDecisionOptionsToTwo(args.playerContext) };
+  return { ok: false, reason: second.ok ? "invalid_model_decision_options" : second.reason };
 }
 
 export type OfflineReasonerKind = "worldbuild" | "storyline" | "dev_assist";
