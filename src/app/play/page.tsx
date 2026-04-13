@@ -1221,14 +1221,23 @@ function PlayContent() {
             buf = taken.rest;
             if (taken.events.length > 0) {
               const dmRawEarly = foldSseTextToDmRaw(taken.events.join("\n\n"));
-              const parsedEarly = tryParseDM(dmRawEarly) as any;
-              const pickedEarly = pickTurnOptionsFromResolvedDm(parsedEarly);
-              let rawOptsEarly: unknown = pickedEarly.options;
-              if (!Array.isArray(rawOptsEarly) || rawOptsEarly.length === 0) {
-                const loose = extractRegenOptionsFromRaw(dmRawEarly);
-                if (loose && loose.length > 0) rawOptsEarly = loose;
+              // Direct JSON parse — regen response is {ok, decision_options, options}
+              let normalizedEarly: string[] = [];
+              try {
+                const dp = JSON.parse(dmRawEarly) as Record<string, unknown>;
+                const dopts = Array.isArray(dp.decision_options) ? dp.decision_options : Array.isArray(dp.options) ? dp.options : [];
+                normalizedEarly = normalizeRegeneratedOptions(dopts, []);
+              } catch { /* fallback below */ }
+              if (normalizedEarly.length === 0) {
+                const parsedEarly = tryParseDM(dmRawEarly) as any;
+                const pickedEarly = pickTurnOptionsFromResolvedDm(parsedEarly);
+                let rawOptsEarly: unknown = pickedEarly.options;
+                if (!Array.isArray(rawOptsEarly) || rawOptsEarly.length === 0) {
+                  const loose = extractRegenOptionsFromRaw(dmRawEarly);
+                  if (loose && loose.length > 0) rawOptsEarly = loose;
+                }
+                normalizedEarly = normalizeRegeneratedOptions(rawOptsEarly, []);
               }
-              const normalizedEarly = normalizeRegeneratedOptions(rawOptsEarly, []);
               if (normalizedEarly.length > 0) {
                 setCurrentOptions(normalizedEarly);
                 setLiveNarrative((prev) =>
@@ -1252,34 +1261,42 @@ function PlayContent() {
         }
       }
       const dmRaw = foldSseTextToDmRaw(text);
-      const parsed = tryParseDM(dmRaw) as any;
-      const picked = pickTurnOptionsFromResolvedDm(parsed);
-      let rawOpts: unknown = picked.options;
-      if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
-        const loose = extractRegenOptionsFromRaw(dmRaw);
-        if (loose && loose.length > 0) rawOpts = loose;
-      }
-      const normalized = normalizeRegeneratedOptions(rawOpts, []);
-      if (normalized.length === 0) {
-        // Try parse richer server response if present.
-        try {
-          const obj = JSON.parse(dmRaw) as any;
-          const ok = obj && typeof obj === "object" && obj.ok === false;
-          const turnMode = typeof obj?.turn_mode === "string" ? obj.turn_mode : "";
-          const reasonText = typeof obj?.reason === "string" ? obj.reason : "";
-          // narrative_only / system_transition no longer block regen — server now
-          // generates options regardless of turn_mode. If we still got empty options,
-          // fall through to the generic "cannot generate" hint below.
-          if (ok && reasonText) {
+
+      // Options-regen responses have a different shape than full DM JSON.
+      // Try direct JSON parse first — this is the most reliable path.
+      let normalized: string[] = [];
+      try {
+        const directParsed = JSON.parse(dmRaw) as Record<string, unknown>;
+        const directOpts = (
+          Array.isArray(directParsed.decision_options) ? directParsed.decision_options :
+          Array.isArray(directParsed.options) ? directParsed.options : []
+        ) as unknown[];
+        normalized = normalizeRegeneratedOptions(directOpts, []);
+        if (normalized.length === 0 && directParsed.ok === false) {
+          const reasonText = typeof directParsed.reason === "string" ? String(directParsed.reason) : "";
+          if (reasonText) {
             setFirstTimeHint(`当前无法补全可选行动：${reasonText}（可切换为手动输入继续）`);
-            console.warn("[play][options_regen] failed", { trigger, turnMode, reason: reasonText });
             return;
           }
-        } catch {
-          // ignore
         }
+      } catch {
+        // Not valid JSON — fall through to legacy extraction paths.
+      }
+
+      // Fallback: try DM-style parsing (for backward compatibility).
+      if (normalized.length === 0) {
+        const parsed = tryParseDM(dmRaw) as any;
+        const picked = pickTurnOptionsFromResolvedDm(parsed);
+        let rawOpts: unknown = picked.options;
+        if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
+          const loose = extractRegenOptionsFromRaw(dmRaw);
+          if (loose && loose.length > 0) rawOpts = loose;
+        }
+        normalized = normalizeRegeneratedOptions(rawOpts, []);
+      }
+
+      if (normalized.length === 0) {
         setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
-        console.warn("[play][options_regen] failed_unclassified", { trigger });
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
