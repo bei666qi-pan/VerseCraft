@@ -1091,11 +1091,11 @@ function PlayContent() {
       if (manual) setFirstTimeHint("正在整理可选行动，请稍候再试。");
       return;
     }
-    if (doesPhaseBlockOptionsRegen(streamPhaseRef.current)) {
+    if (doesPhaseBlockOptionsRegen(streamPhaseRef.current) && trigger !== "auto_missing_main") {
       if (manual) setFirstTimeHint("主笔仍在生成本回合内容，请稍后再刷新选项。");
       return;
     }
-    if (sendActionInFlightRef.current) {
+    if (sendActionInFlightRef.current && trigger !== "auto_missing_main") {
       if (manual) setFirstTimeHint("上一回合请求仍在处理中，请稍后再刷新选项。");
       return;
     }
@@ -2273,10 +2273,10 @@ function PlayContent() {
       if (parsedTurnMode === "decision_required") {
         if (getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
           autoMissingOptionsAttemptedRef.current = true;
-          setFirstTimeHint("本回合需要做出选择，但主笔未生成可用选项，正在补全…");
-          queueMicrotask(() => {
+          setFirstTimeHint("正在为你生成可选行动…");
+          setTimeout(() => {
             void requestFreshOptions("auto_missing_main");
-          });
+          }, 100);
         } else if (!isFirstAssistantTurn) {
           setFirstTimeHint("本回合需要做出选择，但当前无法补全可选行动。可切换为手动输入继续，或稍后重试。");
         }
@@ -2292,9 +2292,11 @@ function PlayContent() {
         if (!isFirstAssistantTurn) {
           autoMissingOptionsAttemptedRef.current = true;
           setFirstTimeHint("正在为你生成可选行动…");
-          queueMicrotask(() => {
+          // Use setTimeout to ensure sendAction's finally block has run
+          // (resetting sendActionInFlightRef) before regen starts.
+          setTimeout(() => {
             void requestFreshOptions("auto_missing_main");
-          });
+          }, 100);
         }
       }
       if (isOpeningSystemRequest) {
