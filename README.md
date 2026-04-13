@@ -21,8 +21,14 @@
 </p>
 
 <p align="center">
+  <a href="https://versecraft.cn"><strong>在线演示：versecraft.cn</strong></a> ·
+  <a href="./README.en.md">English</a>
+</p>
+
+<p align="center">
   <a href="#什么是-versecraft">什么是 VerseCraft</a> ·
   <a href="#为什么它有开创性">为什么它有开创性</a> ·
+  <a href="#在线演示">在线演示</a> ·
   <a href="#当前内容序章暗月">当前内容</a> ·
   <a href="#30-秒玩法说明">玩法说明</a> ·
   <a href="#快速开始">快速开始</a> ·
@@ -53,6 +59,10 @@ VerseCraft 是一个面向互动叙事的 AI 平台原型。
 - **它不是传统文字游戏的复刻**：更像互动小说、规则系统和 AI 叙事引擎的结合体。
 
 如果说很多 AI 项目在做“更聪明的聊天”，VerseCraft 想做的是 **“更像活着的故事世界”**。
+
+## 在线演示
+
+演示网址：[versecraft.cn](https://versecraft.cn)
 
 ## 当前内容：序章·暗月
 
