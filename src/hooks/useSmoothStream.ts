@@ -240,11 +240,29 @@ export function useSmoothStreamFromRef(
       queueRef.current = T.slice(d.length);
       prevLenRef.current = T.length;
     } else {
-      queueRef.current = T;
+      // Find longest common prefix to avoid a visual "rollback" — the user has
+      // already read the streamed preview; resetting to empty and re-animating
+      // from scratch would cause the text to disappear and flicker back.
+      let commonLen = 0;
+      const minLen = Math.min(T.length, d.length);
+      while (commonLen < minLen && T[commonLen] === d[commonLen]) {
+        commonLen++;
+      }
+      if (commonLen > 0 && commonLen >= d.length * 0.5) {
+        // Substantial overlap — preserve the common prefix and queue remainder.
+        displayedRef.current = T.slice(0, commonLen);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setDisplayed(T.slice(0, commonLen));
+        queueRef.current = T.slice(commonLen);
+      } else {
+        // Texts diverge early — snap to the final target immediately rather
+        // than clearing the screen and slowly re-typing everything.
+        displayedRef.current = T;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setDisplayed(T);
+        queueRef.current = "";
+      }
       prevLenRef.current = T.length;
-      displayedRef.current = "";
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplayed("");
     }
     tailDrainFiredRef.current = false;
   }, [isStreamVisualActive, tailDrain, narrativeRef]);

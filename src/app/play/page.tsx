@@ -401,9 +401,18 @@ function PlayContent() {
       return;
     }
     // After every turn completes, auto-generate options if none are present.
+    // Use a slightly longer delay (500ms) to allow any in-flight options regen
+    // (e.g., opening_fallback triggered during turn commit) to complete first.
+    // If that regen succeeded, currentOptions will be non-empty and we skip.
     const currentOpts = useGameStore.getState().currentOptions ?? [];
     if (currentOpts.length === 0 && !endgameState.active) {
-      setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 300);
+      setTimeout(() => {
+        // Re-check after delay — the in-flight regen may have completed.
+        const rechecked = useGameStore.getState().currentOptions ?? [];
+        if (rechecked.length === 0 && !optionsRegenInFlightRef.current) {
+          void requestFreshOptions("auto_missing_main");
+        }
+      }, 500);
     }
   }, [router, endgameState.active]);
 
@@ -2295,9 +2304,16 @@ function PlayContent() {
       autoMissingOptionsAttemptedRef.current = false;
     } else {
       // 无 options 的策略分流：
+      // - 开场首轮请求：始终走 opening_fallback，不与 auto_missing_main 竞争。
       // - decision_required：优先补齐，不要立刻清空到用户眼前；保持旧选项但禁用（optionsRegenBusy）作为过渡。
       // - narrative_only/system_transition：明确说明本回合本就不该有选项。
-      if (parsedTurnMode === "decision_required") {
+      if (isOpeningSystemRequest) {
+        // 开场首轮：无论 turn_mode 如何，始终走 opening_fallback 补全选项。
+        // 使用 opening_fallback 作为唯一的 regen 触发，避免与 auto_missing_main 同时调度导致互锁。
+        autoMissingOptionsAttemptedRef.current = true;
+        setFirstTimeHint("正在为你生成可选行动…");
+        setTimeout(() => { void requestFreshOptions("opening_fallback"); }, 200);
+      } else if (parsedTurnMode === "decision_required") {
         if (getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
           autoMissingOptionsAttemptedRef.current = true;
           setFirstTimeHint("正在为你生成可选行动…");
@@ -2314,12 +2330,6 @@ function PlayContent() {
         autoMissingOptionsAttemptedRef.current = true;
         setFirstTimeHint("正在为你生成可选行动…");
         setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
-      }
-      // Opening first turn: also auto-generate options
-      if (isOpeningSystemRequest) {
-        autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你生成可选行动…");
-        setTimeout(() => { void requestFreshOptions("opening_fallback"); }, 200);
       }
     }
 
