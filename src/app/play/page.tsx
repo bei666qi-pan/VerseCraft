@@ -1103,11 +1103,8 @@ function PlayContent() {
       if (manual) setFirstTimeHint("终局阶段请使用终局选项推进，无法在此刷新。");
       return;
     }
-    // Phase-4: narrative-only / transition turns may legitimately have no options.
-    // Manual refresh should still reach server once (server can reply with richer reason), do not swallow the click.
-    if (!manual && lastCommittedTurnModeRef.current !== "decision_required") {
-      return;
-    }
+    // Always allow options generation regardless of turn_mode.
+    // Players should always have clickable options available after each turn.
     if (isGuestDialogueExhausted) {
       setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
       return;
@@ -1190,8 +1187,8 @@ function PlayContent() {
           openingOptionsOnlyRound: false,
           clientPurpose: "options_regen_only",
           clientReason: `【为何需要整理选项】${reason}`,
-          // Hint only; server may ignore or override. Helps classify "legitimate no options" vs "regen failed".
-          clientTurnModeHint: lastCommittedTurnModeRef.current,
+          // Always request options generation regardless of the current turn mode.
+          clientTurnModeHint: "decision_required",
         }),
         signal: ac.signal,
       });
@@ -1263,11 +1260,9 @@ function PlayContent() {
           const ok = obj && typeof obj === "object" && obj.ok === false;
           const turnMode = typeof obj?.turn_mode === "string" ? obj.turn_mode : "";
           const reasonText = typeof obj?.reason === "string" ? obj.reason : "";
-          if (ok && (turnMode === "narrative_only" || turnMode === "system_transition")) {
-            setFirstTimeHint(turnMode === "system_transition" ? "当前为过场推进回合。请直接继续推进剧情。" : "当前为长叙事推进回合。请直接继续推进剧情。");
-            console.warn("[play][options_regen] no_options_expected", { trigger, turnMode });
-            return;
-          }
+          // narrative_only / system_transition no longer block regen — server now
+          // generates options regardless of turn_mode. If we still got empty options,
+          // fall through to the generic "cannot generate" hint below.
           if (ok && reasonText) {
             setFirstTimeHint(`当前无法补全可选行动：${reasonText}（可切换为手动输入继续）`);
             console.warn("[play][options_regen] failed", { trigger, turnMode, reason: reasonText });
@@ -2286,7 +2281,8 @@ function PlayContent() {
           setFirstTimeHint("本回合需要做出选择，但当前无法补全可选行动。可切换为手动输入继续，或稍后重试。");
         }
       } else {
-        // narrative_only / system_transition：清空旧选项是正确的（避免误点）。
+        // narrative_only / system_transition：清空旧选项，但立即请求新选项。
+        // 玩家每轮都应该有可点击的选项可用。
         setCurrentOptions([]);
         queueMicrotask(() => {
           const slot = useGameStore.getState().currentSaveSlot;
@@ -2294,7 +2290,11 @@ function PlayContent() {
           writeResumeShadow();
         });
         if (!isFirstAssistantTurn) {
-          setFirstTimeHint(parsedTurnMode === "system_transition" ? "当前为过场推进回合。" : "当前为长叙事推进回合。");
+          autoMissingOptionsAttemptedRef.current = true;
+          setFirstTimeHint("正在为你生成可选行动…");
+          queueMicrotask(() => {
+            void requestFreshOptions("auto_missing_main");
+          });
         }
       }
       if (isOpeningSystemRequest) {

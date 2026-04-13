@@ -31,26 +31,10 @@ export function buildOptionsRegenResponse(args: {
       ? (args.clientTurnModeHint as OptionsRegenTurnModeHint)
       : "unknown";
 
-  if (hint === "narrative_only") {
-    return {
-      ok: false,
-      reason: "client_turn_mode_narrative_only",
-      turn_mode: "narrative_only",
-      decision_required: false,
-      decision_options: [],
-      options: [],
-    };
-  }
-  if (hint === "system_transition") {
-    return {
-      ok: false,
-      reason: "client_turn_mode_system_transition",
-      turn_mode: "system_transition",
-      decision_required: false,
-      decision_options: [],
-      options: [],
-    };
-  }
+  // Always allow options generation regardless of turn_mode.
+  // Players should always have clickable options available; they can switch to
+  // manual input if they prefer. Previously narrative_only / system_transition
+  // blocked regen entirely, leaving players with no actionable choices.
 
   const opts = Array.isArray(args.options)
     ? (args.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim()).slice(0, 4)
