@@ -1,6 +1,7 @@
 "use client";
 
 import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
 const OPTION_SLOT_COUNT = 4;
 
@@ -37,8 +38,9 @@ export function PlayOptionsList({
 }) {
   void _isLowSanity;
   void _isDarkMoon;
+  const safeOptions = filterNarrativeActionOptions(Array.isArray(options) ? options : [], OPTION_SLOT_COUNT);
   const slots = Array.from({ length: OPTION_SLOT_COUNT }, (_, i) => {
-    const t = options[i];
+    const t = safeOptions[i];
     return typeof t === "string" ? t.trim() : "";
   });
 

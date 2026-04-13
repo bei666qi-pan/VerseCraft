@@ -82,3 +82,22 @@ test("phase4: options-only update must not mutate dialogue/time/world state", ()
   assert.equal(after.tasks.length, before.tasks.length);
   assert.equal(after.logs.length, before.logs.length);
 });
+
+test("phase4: setCurrentOptions filters journal/menu-like options", () => {
+  resetStore();
+  useGameStore.getState().setCurrentOptions(["查看灵感手记", "检查背包", "我用手电照向门缝"]);
+  assert.deepEqual(useGameStore.getState().currentOptions, ["我用手电照向门缝"]);
+});
+
+test("phase4: saveGame does not persist journal/menu-like options", () => {
+  resetStore();
+  useGameStore.setState({
+    isGameStarted: true,
+    currentOptions: ["查看灵感手记", "我贴墙听走廊动静"],
+    logs: [{ role: "assistant", content: "推进到新回合" }],
+    time: { day: 1, hour: 3 },
+    playerLocation: "B1_SafeZone",
+  });
+  useGameStore.getState().saveGame("main_slot");
+  assert.deepEqual(useGameStore.getState().saveSlots.main_slot?.currentOptions, ["我贴墙听走廊动静"]);
+});

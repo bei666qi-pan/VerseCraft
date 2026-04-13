@@ -117,9 +117,18 @@ import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
 import { resolveHourProgressDelta, splitProgress } from "@/lib/time/timeBudget";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
+
+function normalizeStoredOptions(options: unknown, maxCount = 4): string[] {
+  if (!Array.isArray(options)) return [];
+  return filterNarrativeActionOptions(
+    options.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()),
+    maxCount
+  );
+}
 
 /** 读档/云拉取后：修剪非法物证门槛、清理失效的 clue→objective 指针，并写回 journal。 */
 function applyNarrativeIntegrityOnBundle(args: {
@@ -1255,9 +1264,10 @@ export const useGameStore = create<GameState>()(
 
       setCurrentOptions: (options) =>
         set((s) => {
-          const appended = [...(s.recentOptions ?? []), ...options];
+          const safeOptions = normalizeStoredOptions(options, 4);
+          const appended = [...(s.recentOptions ?? []), ...safeOptions];
           const trimmed = appended.slice(-8);
-          return { currentOptions: options, recentOptions: trimmed };
+          return { currentOptions: safeOptions, recentOptions: trimmed };
         }),
       toggleInputMode: () => set((s) => ({ inputMode: s.inputMode === "options" ? "text" : "options" })),
       setOriginium: (v) => set({ originium: Math.max(0, v) }),
@@ -3082,7 +3092,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: s.hasCheckedCodex ?? false,
           originium: s.originium ?? 0,
           currentBgm: s.currentBgm ?? "bgm_1_calm",
-          currentOptions: Array.isArray(s.currentOptions) ? JSON.parse(JSON.stringify(s.currentOptions)) : [],
+          currentOptions: normalizeStoredOptions(s.currentOptions, 4),
           tasks: JSON.parse(JSON.stringify(s.tasks ?? [])),
           playerLocation: s.playerLocation ?? "B1_SafeZone",
           dynamicNpcStates: JSON.parse(JSON.stringify(s.dynamicNpcStates ?? {})),
@@ -3239,7 +3249,7 @@ export const useGameStore = create<GameState>()(
           originium:
             projected.originium ?? data.originium ?? get().originium ?? 0,
           currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
-          currentOptions: Array.isArray(data.currentOptions) ? JSON.parse(JSON.stringify(data.currentOptions)) : [],
+          currentOptions: normalizeStoredOptions(data.currentOptions, 4),
           tasks: JSON.parse(JSON.stringify(projected.tasks ?? data.tasks ?? [])),
           playerLocation:
             projected.playerLocation ?? data.playerLocation ?? "B1_SafeZone",
@@ -3376,7 +3386,7 @@ export const useGameStore = create<GameState>()(
             hasCheckedCodex: data.hasCheckedCodex ?? false,
             originium: projected.originium ?? data.originium ?? s.originium ?? 0,
             currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
-            currentOptions: Array.isArray(data.currentOptions) ? JSON.parse(JSON.stringify(data.currentOptions)) : [],
+            currentOptions: normalizeStoredOptions(data.currentOptions, 4),
             tasks: JSON.parse(
               JSON.stringify(projected.tasks ?? data.tasks ?? s.tasks ?? [])
             ),
@@ -3477,7 +3487,7 @@ export const useGameStore = create<GameState>()(
             (shadow as any).escapeMainline && typeof (shadow as any).escapeMainline === "object" && !Array.isArray((shadow as any).escapeMainline)
               ? JSON.parse(JSON.stringify((shadow as any).escapeMainline))
               : (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
-          currentOptions: Array.isArray(shadow.currentOptions) ? JSON.parse(JSON.stringify(shadow.currentOptions)) : [],
+          currentOptions: normalizeStoredOptions(shadow.currentOptions, 4),
           inputMode: shadow.inputMode === "text" ? "text" : "options",
           currentBgm: typeof shadow.currentBgm === "string" ? shadow.currentBgm : "bgm_1_calm",
           stats: shadow.stats && typeof shadow.stats === "object" ? JSON.parse(JSON.stringify(shadow.stats)) : s.stats,

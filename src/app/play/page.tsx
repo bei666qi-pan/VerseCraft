@@ -97,6 +97,7 @@ import {
 } from "@/lib/rollout/versecraftClientRollout";
 import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTurn";
 import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { getHiddenNpcCombatProfile } from "@/lib/combat/npcCombatProfiles";
 import {
   buildNpcCombatPowerDisplay,
@@ -199,7 +200,10 @@ function PlayContent() {
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
   const writeResumeShadow = useGameStore((s) => s.writeResumeShadow);
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
-  const currentOptions = currentOptionsFromStore;
+  const currentOptions = useMemo(
+    () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
+    [currentOptionsFromStore]
+  );
   const addOriginium = useGameStore((s) => s.addOriginium);
   const originium = useGameStore((s) => s.originium ?? 0);
   const tasks = useGameStore((s) => s.tasks ?? []);
@@ -406,11 +410,11 @@ function PlayContent() {
     // Use a slightly longer delay (500ms) to allow any in-flight options regen
     // (e.g., opening_fallback triggered during turn commit) to complete first.
     // If that regen succeeded, currentOptions will be non-empty and we skip.
-    const currentOpts = useGameStore.getState().currentOptions ?? [];
+    const currentOpts = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
     if (currentOpts.length === 0 && !endgameState.active) {
       setTimeout(() => {
         // Re-check after delay — the in-flight regen may have completed.
-        const rechecked = useGameStore.getState().currentOptions ?? [];
+        const rechecked = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
         if (rechecked.length === 0 && !optionsRegenInFlightRef.current) {
           void requestFreshOptions("auto_missing_main");
         }
@@ -944,7 +948,10 @@ function PlayContent() {
       state.saveSlots?.["main_slot"] ??
       null;
     const savedOptions = Array.isArray(slot?.currentOptions)
-      ? slot.currentOptions.filter((x) => typeof x === "string" && x.trim().length > 0).slice(0, 4)
+      ? filterNarrativeActionOptions(
+          slot.currentOptions.filter((x) => typeof x === "string" && x.trim().length > 0),
+          4
+        )
       : [];
     if (savedOptions.length > 0) {
       setCurrentOptions([...savedOptions]);

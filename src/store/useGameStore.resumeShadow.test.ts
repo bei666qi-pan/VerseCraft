@@ -63,7 +63,7 @@ test("phase4: hydrateFromResumeShadow restores options/inputMode/log/time", () =
       warehouse: [{ id: "WH-1", name: "物品1" }],
       tasks: [{ id: "t1", title: "T1", status: "active" }],
       codex: { N1: { id: "N1", name: "角色", type: "npc" } },
-      currentOptions: ["看向门口", "检查脚印"],
+      currentOptions: ["查看灵感手记", "看向门口", "检查脚印"],
       inputMode: "options",
       currentBgm: "bgm_1_calm",
       stats: { sanity: 11, agility: 2, luck: 2, charm: 2, background: 2 },

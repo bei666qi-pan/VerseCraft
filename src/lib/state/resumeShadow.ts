@@ -4,6 +4,7 @@ import { pruneMemorySpine } from "@/lib/memorySpine/prune";
 import { normalizeDirectorState } from "@/lib/storyDirector/postTurn";
 import { normalizeIncidentQueue } from "@/lib/storyDirector/queue";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
 export const RESUME_SHADOW_KEY = "versecraft-resume-shadow";
 const RESUME_SHADOW_VERSION = 1;
@@ -63,6 +64,14 @@ function truncateText(v: unknown, maxLen: number): string {
   return s.slice(0, maxLen);
 }
 
+function normalizeResumeOptions(options: unknown, maxCount = 8): string[] {
+  if (!Array.isArray(options)) return [];
+  return filterNarrativeActionOptions(
+    options.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()),
+    maxCount
+  );
+}
+
 /**
  * 生成“崩溃恢复快照”：独立于 zustand 主 persist，且同步写 localStorage。
  * 该快照用于“突然刷新/崩溃”兜底，只保留继续执笔必需字段，避免全量 store 落盘过重。
@@ -106,10 +115,7 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
   };
   const nowHour = time.day * 24 + time.hour;
 
-  const currentOptions = (Array.isArray(state.currentOptions) ? state.currentOptions : [])
-    .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-    .map((x) => x.trim())
-    .slice(0, 8);
+  const currentOptions = normalizeResumeOptions(state.currentOptions, 8);
 
   const statsObj = toPlainObject(state.stats) ?? {};
   const stats = {
@@ -246,9 +252,7 @@ export function readResumeShadowSnapshot(): ResumeShadowSnapshot | null {
       ...(obj.incidentQueue ? { incidentQueue: obj.incidentQueue } : {}),
       ...(obj.escapeMainline ? { escapeMainline: obj.escapeMainline } : {}),
       ...(obj.openingNarrativePinned !== undefined ? { openingNarrativePinned: obj.openingNarrativePinned } : {}),
-      currentOptions: Array.isArray(obj.currentOptions)
-        ? obj.currentOptions.filter((x): x is string => typeof x === "string").slice(0, 8)
-        : [],
+      currentOptions: normalizeResumeOptions(obj.currentOptions, 8),
       inputMode: obj.inputMode === "text" ? "text" : "options",
       currentBgm: typeof obj.currentBgm === "string" && obj.currentBgm ? obj.currentBgm : "bgm_1_calm",
       stats: (toPlainObject(obj.stats) as Record<string, number> | null) ?? {},
