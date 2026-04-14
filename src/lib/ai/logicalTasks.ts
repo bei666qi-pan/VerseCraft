@@ -258,7 +258,7 @@ export function guardOptionsQualityToFour(args: {
 
 function finalizeOptionsFallbackParsed(parsed: string[]): { ok: true; options: string[] } | null {
   const guarded = guardModelGeneratedOptions(parsed, 4);
-  if (guarded.length >= 4) return { ok: true, options: guarded.slice(0, 4) };
+  if (guarded.length >= 2) return { ok: true, options: guarded.slice(0, 4) };
   return null;
 }
 

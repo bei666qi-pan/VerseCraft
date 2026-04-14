@@ -72,6 +72,7 @@ import {
   applyItemGameplayOptionInjection,
   shouldSkipItemOptionInjection,
 } from "@/lib/play/itemGameplay";
+import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import {
   hasProtocolLeakSignature,
@@ -2596,10 +2597,13 @@ export async function POST(req: Request) {
 
         // 补救：主笔回合若未生成 options，则快速二次生成仅 options（非硬编码、不沿用旧选项）。
         try {
-          const opts = Array.isArray((dmRecord as { options?: unknown }).options)
+          const rawOpts = Array.isArray((dmRecord as { options?: unknown }).options)
             ? ((dmRecord as { options?: unknown }).options as unknown[])
                 .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
             : [];
+          // Filter out non-narrative options (e.g. "查看灵感手记", "检查背包") before counting,
+          // so the regen triggers when the model only generated UI/menu-type options.
+          const opts = filterNarrativeActionOptions(rawOpts, 4);
           const preResolveGuard =
             dmRecord.security_meta && typeof dmRecord.security_meta === "object" && !Array.isArray(dmRecord.security_meta)
               ? (dmRecord.security_meta as Record<string, unknown>)
@@ -2661,8 +2665,12 @@ export async function POST(req: Request) {
             throw new Error("turn_mode_rollout_disabled");
           }
           const dm = dmRecord as Record<string, unknown>;
-          const opts = Array.isArray(dm.options) ? dm.options : [];
-          const optCount = opts.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+          const rawPhase2Opts = Array.isArray(dm.options) ? dm.options : [];
+          // Filter out non-narrative options (e.g. "查看灵感手记") so they don't prevent regen.
+          const optCount = filterNarrativeActionOptions(
+            rawPhase2Opts.filter((x): x is string => typeof x === "string" && x.trim().length > 0),
+            4
+          ).length;
           if (plannedTurnMode.mode === "narrative_only") {
             if (optCount > 0) {
               dm.turn_mode = "narrative_only";
@@ -2678,7 +2686,10 @@ export async function POST(req: Request) {
             }
           } else if (plannedTurnMode.mode === "decision_required") {
             const decision = Array.isArray((dm as any).decision_options) ? ((dm as any).decision_options as unknown[]) : [];
-            const decCount = decision.filter((x): x is string => typeof x === "string" && x.trim().length > 0).length;
+            const decCount = filterNarrativeActionOptions(
+              decision.filter((x): x is string => typeof x === "string" && x.trim().length > 0),
+              4
+            ).length;
             if (optCount < 2 && decCount < 2) {
               recordDecisionOptionsFixOutcome(false);
               const regen = await generateDecisionOptionsOnlyFallback({
