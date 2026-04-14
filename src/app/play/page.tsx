@@ -406,16 +406,18 @@ function PlayContent() {
       setTimeout(() => router.push("/settlement"), 2000);
       return;
     }
-    // After every turn completes, auto-generate options if none are present.
+    // After every turn completes, auto-generate options if insufficient.
     // Use a slightly longer delay (500ms) to allow any in-flight options regen
     // (e.g., opening_fallback triggered during turn commit) to complete first.
-    // If that regen succeeded, currentOptions will be non-empty and we skip.
+    // If that regen succeeded, currentOptions will have >= 2 and we skip.
+    // Threshold is < 2 (not === 0) because a single item-injection option
+    // (e.g. "【证】...") alone is not sufficient for meaningful player choice.
     const currentOpts = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
-    if (currentOpts.length === 0 && !endgameState.active) {
+    if (currentOpts.length < 2 && !endgameState.active) {
       setTimeout(() => {
         // Re-check after delay — the in-flight regen may have completed.
         const rechecked = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
-        if (rechecked.length === 0 && !optionsRegenInFlightRef.current) {
+        if (rechecked.length < 2 && !optionsRegenInFlightRef.current) {
           void requestFreshOptions("auto_missing_main");
         }
       }, 500);
@@ -2308,9 +2310,18 @@ function PlayContent() {
       setCurrentOptions([ENDGAME_ONLY_OPTION]);
       setEndgameState({ active: true, awaitingEnding: false });
       setActiveMenu(null);
-    } else if (merged.length > 0) {
+    } else if (merged.length >= 2) {
       setCurrentOptions([...merged.slice(0, 4)]);
       autoMissingOptionsAttemptedRef.current = false;
+    } else if (merged.length === 1) {
+      // Only 1 option (usually item injection like "【证】..." without model-generated actions).
+      // Show it as fallback but auto-request real model-generated options.
+      setCurrentOptions([...merged]);
+      if (!isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
+        autoMissingOptionsAttemptedRef.current = true;
+        setFirstTimeHint("正在为你生成可选行动…");
+        setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
+      }
     } else {
       // 无 options 的策略分流：
       // - 开场首轮请求：始终走 opening_fallback，不与 auto_missing_main 竞争。
@@ -2345,9 +2356,11 @@ function PlayContent() {
     if (process.env.NODE_ENV === "development") {
       const branch = isEndgameSystemRound
         ? "endgame"
-        : merged.length > 0
+        : merged.length >= 2
           ? "merged"
-          : "cleared";
+          : merged.length === 1
+            ? "merged_insufficient_regen"
+            : "cleared";
       console.debug("[versecraft/play] options commit", {
         branch,
         parsedDecisionOptionsLen: Array.isArray((parsed as any).decision_options) ? (parsed as any).decision_options.length : 0,

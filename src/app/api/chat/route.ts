@@ -2617,7 +2617,7 @@ export async function POST(req: Request) {
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
               signal: pipelineAbort.signal,
-              budgetMs: 2200,
+              budgetMs: 4500,
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
@@ -2814,7 +2814,7 @@ export async function POST(req: Request) {
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
               signal: pipelineAbort.signal,
               systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-              budgetMs: 2200,
+              budgetMs: 4500,
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
