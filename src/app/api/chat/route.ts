@@ -2441,6 +2441,43 @@ export async function POST(req: Request) {
             if (Array.isArray((resolved as any).decision_options)) {
               (resolved as any).decision_options = [...validatorReport.optionsOverride];
             }
+            // Phase 8.5 修复：validator 的 optionsOverride 现在只是“清空信号”，不再注入罐头短句。
+            // 若覆盖后 options 不足，立刻再调用一次大模型实时生成，确保玩家看到的是模型产物而非既定文案。
+            const overriddenOpts = Array.isArray((resolved as any).options)
+              ? ((resolved as any).options as unknown[]).filter(
+                  (x): x is string => typeof x === "string" && x.trim().length > 0
+                )
+              : [];
+            if (overriddenOpts.length < 2) {
+              try {
+                const rolloutForRegen = getVerseCraftRolloutFlags();
+                const regen = await generateOptionsOnlyFallback({
+                  narrative: String((resolved as any).narrative ?? ""),
+                  latestUserInput,
+                  playerContext,
+                  ctx: {
+                    requestId,
+                    userId,
+                    sessionId,
+                    path: "/api/chat",
+                    tags: { phase: "post_validator", purpose: "options_regen_after_override" },
+                  },
+                  signal: pipelineAbort.signal,
+                  systemExtra: rolloutForRegen.enableOptionsOnlyRegenPathV2
+                    ? buildOptionsOnlySystemPrompt()
+                    : "",
+                  budgetMs: 4500,
+                });
+                if (regen.ok && regen.options.length >= 2) {
+                  (resolved as any).options = [...regen.options];
+                  if (Array.isArray((resolved as any).decision_options)) {
+                    (resolved as any).decision_options = [...regen.options];
+                  }
+                }
+              } catch (regenErr) {
+                console.warn("[api/chat] post-validator options regen skipped", regenErr);
+              }
+            }
           }
           if (validatorReport.narrativeOverride) {
             try {

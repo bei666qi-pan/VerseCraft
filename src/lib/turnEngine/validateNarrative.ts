@@ -139,12 +139,14 @@ export type ValidateNarrativeArgs = {
   npcConsistencyIssueCount?: number;
 };
 
-const DEFAULT_SAFE_FALLBACK_OPTIONS = [
-  "退一步观察周围",
-  "记下刚才的异常",
-  "回到安全区整理思路",
-  "向同伴求证所见",
-];
+/**
+ * 选项覆盖策略：不再注入既定文案。
+ * 当验证器判断模型返回的 options 存在问题时，仅以“清空”形式下发覆盖信号
+ * （空数组 → caller 识别“需要重新向大模型请求实时选项”），避免用罐头短句
+ * 冒充实时模型输出，继而掩盖大模型链路真实故障。
+ * 下游 route 在 Phase-8.5 会在此信号后再调用 `generateOptionsOnlyFallback`。
+ */
+const CLEAR_OPTIONS_SIGNAL: readonly string[] = [];
 
 function isString(v: unknown): v is string {
   return typeof v === "string";
@@ -436,7 +438,10 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
       reason: "narrative_validator_high_severity",
     });
   } else if (hasMediumOptionsIssue || hasOptionsShapeIssue) {
-    optionsOverride = [...DEFAULT_SAFE_FALLBACK_OPTIONS];
+    // 不再注入罐头短句；用空数组作为“需要重新生成实时选项”的显式信号。
+    // caller（api/chat 的 Phase-8.5）会在看到非空 optionsOverride 为空数组时，
+    // 重新调用 `generateOptionsOnlyFallback` 以获得大模型实时输出。
+    optionsOverride = [...CLEAR_OPTIONS_SIGNAL];
   }
 
   const telemetry: NarrativeValidationTelemetry = {

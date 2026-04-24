@@ -183,7 +183,10 @@ test("validateNarrative flags offscreen NPC id in options", () => {
     })
   );
   assert.ok(report.issues.some((x) => x.code === "offscreen_npc_referenced_in_options"));
-  assert.ok(report.optionsOverride, "medium severity options issue proposes override");
+  // 修复后：optionsOverride 为空数组，表示“清空信号”——caller 需要再次调用大模型实时生成，
+  // 不再注入既定罐头短句冒充模型输出。
+  assert.ok(Array.isArray(report.optionsOverride), "options override signal should be present");
+  assert.equal(report.optionsOverride?.length, 0, "override is a clear-signal, not canned text");
 });
 
 test("validateNarrative flags empty and duplicate options", () => {
@@ -216,7 +219,8 @@ test("validateNarrative flags combat option on degraded turn", () => {
     })
   );
   assert.ok(report.issues.some((x) => x.code === "options_conflict_with_scene_affordance"));
-  assert.ok(report.optionsOverride);
+  assert.ok(Array.isArray(report.optionsOverride));
+  assert.equal(report.optionsOverride?.length, 0, "override is a clear-signal, not canned text");
 });
 
 test("validateNarrative flags inventory_conflict when narrative acquires without awards", () => {
