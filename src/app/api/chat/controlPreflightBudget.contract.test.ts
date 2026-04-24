@@ -4,12 +4,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 test("api/chat: control preflight 预算命中必须快速放行（不等待 task timeout）", () => {
-  const p = join(process.cwd(), "src/app/api/chat/route.ts");
-  const content = readFileSync(p, "utf8");
+  // Phase-3 起 control preflight 已从 route.ts 抽离到 turnEngine/preflight.ts。
+  // 契约仍有效：预算必须传进 parsePlayerIntent，winner 命中后立刻 abort。
+  const candidates = [
+    join(process.cwd(), "src/app/api/chat/route.ts"),
+    join(process.cwd(), "src/lib/turnEngine/preflight.ts"),
+  ];
+  const content = candidates.map((p) => readFileSync(p, "utf8")).join("\n/*-*/\n");
 
-  // 预算必须传递到 parsePlayerIntent（让预检本体可被更早 abort）。
   assert.ok(
-    content.includes("parsePlayerIntent({") && content.includes("budgetMs:"),
+    /parsePlayerIntent(?:Fn)?\(\{/.test(content) && content.includes("budgetMs:"),
     "missing budgetMs pass-through to parsePlayerIntent"
   );
 

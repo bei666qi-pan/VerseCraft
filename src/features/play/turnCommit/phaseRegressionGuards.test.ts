@@ -79,10 +79,53 @@ test("phase4: options regeneration should auto-trigger on user switch text->opti
 test("phase4: regenerated options should be deduped and capped", () => {
   const out = normalizeRegeneratedOptions(
     ["观察门缝", "观察门缝", "查看走廊", "检查背包", "测试超长选项测试超长选项测试超长选项测试超长选项"],
-    ["查看走廊"]
+    ["查看走廊"],
+    []
   );
   assert.equal(out.length <= 4, true);
   assert.equal(out[0], "观察门缝");
-  assert.equal(out.includes("查看走廊"), true);
+  assert.equal(out.includes("查看走廊"), false);
   assert.equal(out.includes("检查背包"), false);
+});
+
+test("phase4: regenerated options should filter near-duplicate semantics against recent options", () => {
+  const out = normalizeRegeneratedOptions(
+    ["查看门缝", "观察门缝", "前往楼道尽头"],
+    ["检查门缝"],
+    []
+  );
+  assert.equal(out.includes("查看门缝"), false);
+  assert.equal(out.includes("观察门缝"), false);
+  assert.equal(out.includes("前往楼道尽头"), true);
+});
+
+test("phase4: regenerated options should strongly exclude current options", () => {
+  const out = normalizeRegeneratedOptions(
+    ["贴近门缝听动静", "前往楼道尽头", "查看手电电量"],
+    [],
+    ["观察门缝", "检查背包"]
+  );
+  assert.equal(out.includes("贴近门缝听动静"), false);
+  assert.equal(out.includes("前往楼道尽头"), true);
+});
+
+test("phase4: regenerated options should not backfill recent options when candidate count is low", () => {
+  const out = normalizeRegeneratedOptions(
+    ["查看门缝", "重新整理选项", "观察门缝", "贴近门缝听动静"],
+    ["检查门缝", "观察门缝"],
+    []
+  );
+  assert.equal(out.length, 0);
+});
+
+test("phase4: regenerated options should drop high-similar candidates within same batch", () => {
+  const out = normalizeRegeneratedOptions(
+    ["观察门缝", "贴近门缝听动静", "前往楼道尽头", "靠近楼道尽头观察"],
+    [],
+    []
+  );
+  assert.equal(out.includes("观察门缝"), true);
+  assert.equal(out.includes("贴近门缝听动静"), false);
+  assert.equal(out.includes("前往楼道尽头"), true);
+  assert.equal(out.includes("靠近楼道尽头观察"), false);
 });

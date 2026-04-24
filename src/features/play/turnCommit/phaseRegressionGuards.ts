@@ -1,4 +1,5 @@
 import { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
+import { buildOptionSemanticFingerprint, isHighSimilarOptionAction } from "@/lib/play/optionsSemanticFingerprint";
 
 /**
  * 阶段回归守卫（纯函数）：
@@ -42,25 +43,46 @@ function coerceOptionToString(x: unknown): string | null {
   return null;
 }
 
-export function normalizeRegeneratedOptions(rawOptions: unknown, recent: string[]): string[] {
-  const seen = new Set<string>();
-  const recentSet = new Set(
+export function normalizeRegeneratedOptions(rawOptions: unknown, recent: string[], currentOptions: string[] = []): string[] {
+  const exactSeen = new Set<string>();
+  const recentExactSet = new Set(
     (Array.isArray(recent) ? recent : [])
       .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
       .map((x) => x.trim())
   );
-  const primary: string[] = [];
-  const fallback: string[] = [];
+  const currentExactSet = new Set(
+    (Array.isArray(currentOptions) ? currentOptions : [])
+      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      .map((x) => x.trim())
+  );
+  const blockedByCurrent = Array.from(currentExactSet);
+  const blockedByRecent = Array.from(recentExactSet);
+  const accepted: string[] = [];
+  const acceptedFingerprints = new Set<string>();
   const source = Array.isArray(rawOptions) ? rawOptions : [];
   for (const row of source) {
     const v = coerceOptionToString(row);
     if (!v) continue;
     if (isNonNarrativeOptionLike(v)) continue;
-    if (seen.has(v)) continue;
-    seen.add(v);
     if (v.length > 40) continue;
-    if (!recentSet.has(v)) primary.push(v);
-    else fallback.push(v);
+
+    // 1) 完全重复：同一批重生成里的重复值直接丢弃
+    if (exactSeen.has(v)) continue;
+    // 2) 当前选项复用：禁止把屏幕上已有项再次返回
+    if (currentExactSet.has(v)) continue;
+    // 3) 最近选项复用：默认强排除，不允许作为 fallback 回填
+    if (recentExactSet.has(v)) continue;
+
+    const fp = buildOptionSemanticFingerprint(v);
+    // 4) 高相似语义复用：与 current/recent/已接受项任一高相似都丢弃
+    if (blockedByCurrent.some((old) => isHighSimilarOptionAction(v, old))) continue;
+    if (blockedByRecent.some((old) => isHighSimilarOptionAction(v, old))) continue;
+    if (accepted.some((old) => isHighSimilarOptionAction(v, old))) continue;
+    if (acceptedFingerprints.has(fp.key)) continue;
+
+    exactSeen.add(v);
+    acceptedFingerprints.add(fp.key);
+    accepted.push(v);
   }
-  return [...primary, ...fallback].slice(0, 4);
+  return accepted.slice(0, 4);
 }

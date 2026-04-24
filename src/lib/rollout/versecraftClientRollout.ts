@@ -40,6 +40,18 @@ export function getClientOptionsOnlyRegenPathV2Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_ONLY_REGEN_PATH_V2", true);
 }
 
+export function getClientOptionsRegenSemanticGateEnabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_SEMANTIC_GATE", true);
+}
+
+export function getClientOptionsRegenRepairPassEnabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_REPAIR_PASS", true);
+}
+
+export function getClientOptionsRegenDeterministicFallbackEnabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_DETERMINISTIC_FALLBACK", true);
+}
+
 export function getClientSettingsTaskRemovalEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_SETTINGS_TASK_REMOVAL", true);
 }

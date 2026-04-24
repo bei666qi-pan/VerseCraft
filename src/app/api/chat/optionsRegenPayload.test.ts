@@ -23,5 +23,6 @@ test("buildOptionsRegenResponse: insufficient options yields ok=false and empty 
   assert.equal(out.ok, false);
   assert.equal(out.reason, "insufficient_options");
   assert.deepEqual(out.options, []);
+  assert.equal(Array.isArray(out.debug_reason_codes), true);
 });
 

@@ -16,6 +16,7 @@ export type OptionsRegenResponse = {
   turn_mode: OptionsRegenTurnModeHint;
   decision_required: boolean;
   decision_options: string[];
+  debug_reason_codes?: string[];
 };
 
 export function buildOptionsRegenResponse(args: {
@@ -23,6 +24,7 @@ export function buildOptionsRegenResponse(args: {
   options: unknown;
   // If the generator itself reported success; we still apply length gate.
   generatorOk?: boolean;
+  debugReasonCodes?: string[];
 }): OptionsRegenResponse {
   const hint =
     args.clientTurnModeHint === "decision_required" ||
@@ -50,6 +52,7 @@ export function buildOptionsRegenResponse(args: {
       decision_required: true,
       decision_options: [],
       options: [],
+      debug_reason_codes: Array.isArray(args.debugReasonCodes) ? args.debugReasonCodes.slice(0, 8) : [],
     };
   }
   return {
@@ -59,6 +62,7 @@ export function buildOptionsRegenResponse(args: {
     decision_required: true,
     decision_options: opts,
     options: opts, // legacy mirror
+    debug_reason_codes: Array.isArray(args.debugReasonCodes) ? args.debugReasonCodes.slice(0, 8) : [],
   };
 }
 

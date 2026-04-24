@@ -10,6 +10,7 @@ test("api/chat: options_regen_only fast path bypasses story-action risk and inpu
   const fastPathIdx = content.indexOf('clientPurpose === "options_regen_only"');
   const riskControlIdx = content.indexOf("checkRiskControl({ ip: clientIp, sessionId, userId })");
   const inputModerationIdx = content.indexOf("moderateInputOnServer({");
+  const contextPacketIdx = content.indexOf("optionsRegenContext: validated.optionsRegenContext");
 
   assert.ok(fastPathIdx >= 0, "missing options_regen_only fast path");
   assert.ok(riskControlIdx >= 0, "missing risk-control gate");
@@ -21,5 +22,9 @@ test("api/chat: options_regen_only fast path bypasses story-action risk and inpu
   assert.ok(
     fastPathIdx < inputModerationIdx,
     "options_regen_only must run before private story input moderation, or fixed helper text can return 403"
+  );
+  assert.ok(
+    contextPacketIdx >= 0,
+    "options_regen_only packet should consume dedicated optionsRegenContext to avoid context drift"
   );
 });

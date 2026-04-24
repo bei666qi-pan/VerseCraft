@@ -52,7 +52,11 @@ export type AnalyticsEventName =
   | "survey_entry_clicked"
   | "survey_modal_opened"
   | "survey_submitted"
-  | "survey_external_link_opened";
+  | "survey_external_link_opened"
+  | "world_engine_enqueued"
+  | "turn_lane_decided"
+  | "turn_commit_summary"
+  | "narrative_validator_issue";
 
 export type AnalyticsPlatform = "mobile" | "desktop" | "unknown";
 

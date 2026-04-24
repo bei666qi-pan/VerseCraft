@@ -56,6 +56,11 @@ import {
 } from "@/features/play/stream/chatPhase";
 import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
+import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
+import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
+import { generateDeterministicFallbackOptions } from "@/lib/play/optionsFallback";
+import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
+import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
   extractStatusFrameFromSseEvent,
@@ -89,6 +94,9 @@ import { NarrativeSystemsDebugPanel } from "@/features/play/components/Narrative
 import {
   getClientOptionsAutoRegenOnEmptyEnabled,
   getClientOptionsOnlyRegenPathV2Enabled,
+  getClientOptionsRegenDeterministicFallbackEnabled,
+  getClientOptionsRegenRepairPassEnabled,
+  getClientOptionsRegenSemanticGateEnabled,
   getClientContinueButtonEnabled,
   getClientHiddenCombatV1Enabled,
   getClientProfessionChoiceInterruptV1Enabled,
@@ -166,6 +174,7 @@ const OPTIONS_REGEN_SYSTEM_PROMPT =
   '{"options":["...","...","...","..."]}。' +
   "强制：options 恰好 4 条、简体中文、第一人称、5–20字、互不重复且差异明显；" +
   "必须承接正文之后的当前剧情，生成下一步可执行行动；" +
+  "必须避免复用当前与最近选项（含换说法的近似动作），至少 2 条直接锚定最近叙事中的实体或场景；" +
   "禁止灵感手记/背包/任务/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
   "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
 
@@ -1167,6 +1176,53 @@ function PlayContent() {
             : trigger === "auto_missing_main"
               ? "主回合 narrative 正常但 options 缺失"
               : "用户手动点击刷新选项按钮";
+      const regenCurrentOptions = Array.isArray(currentOptionsFromStore) ? currentOptionsFromStore : [];
+      const regenRecentOptions = Array.isArray(recentOptions) ? recentOptions : [];
+      const playerContext = useGameStore.getState().getPromptContext();
+      const clientState = useGameStore.getState().getStructuredClientStateForServer();
+      const inventoryHints = (Array.isArray(inventory) ? inventory : [])
+        .map((item) => {
+          if (!item || typeof item !== "object") return "";
+          const o = item as Record<string, unknown>;
+          const name = typeof o.name === "string" ? o.name : typeof o.title === "string" ? o.title : "";
+          const id = typeof o.id === "string" ? o.id : "";
+          return String(name || id).trim();
+        })
+        .filter((x): x is string => x.length > 0)
+        .slice(0, 3);
+      const optionsRegenContext = buildClientOptionsRegenContext({
+        latestPlayerAction: String(lastUser ?? ""),
+        latestNarrativeExcerpt: String(lastAssistant ?? ""),
+        currentOptions: regenCurrentOptions,
+        recentOptions: regenRecentOptions,
+        inventoryHints,
+        tasks: tasks
+          .filter((t) => t?.status === "active" || t?.status === "available")
+          .map((t) => ({ title: t?.title, status: t?.status })),
+      });
+      const reasonCodes = new Set<OptionsRegenReasonCode>();
+      const semanticGateEnabled = getClientOptionsRegenSemanticGateEnabled();
+      const repairPassEnabled = getClientOptionsRegenRepairPassEnabled();
+      const deterministicFallbackEnabled = getClientOptionsRegenDeterministicFallbackEnabled();
+      const runSemanticQualityGate = (
+        candidateOptions: string[],
+        extraBlocked: string[] = []
+      ): { accepted: string[]; rejectCodes: OptionsRegenReasonCode[] } => {
+        if (!semanticGateEnabled) {
+          return { accepted: candidateOptions.slice(0, 4), rejectCodes: [] };
+        }
+        const quality = evaluateOptionsSemanticQuality({
+          options: candidateOptions,
+          currentOptions: [...regenCurrentOptions, ...extraBlocked],
+          recentOptions: regenRecentOptions,
+          latestNarrative: optionsRegenContext.latestNarrativeExcerpt,
+          playerLocation: clientState?.playerLocation,
+        });
+        return {
+          accepted: quality.accepted.slice(0, 4),
+          rejectCodes: mapOptionRejectReasonToCodes(quality.rejected.map((r) => r.reason)),
+        };
+      };
 
       const useOptionsOnlyPath = getClientOptionsOnlyRegenPathV2Enabled();
       const assistantContextMessages: ChatMessage[] = lastAssistant
@@ -1175,25 +1231,6 @@ function PlayContent() {
       const userContextMessages: ChatMessage[] = lastUser
         ? [{ role: "user", content: lastUser }]
         : [];
-      const messages: ChatMessage[] = useOptionsOnlyPath
-        ? [
-            // options-only V2：后端会注入严格 prompt 与上下文 packet
-            ...assistantContextMessages,
-            ...userContextMessages,
-          ]
-        : [
-            { role: "system", content: OPTIONS_REGEN_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: [
-                `【为何需要整理选项】${reason}`,
-                `【最近玩家动作】${String(lastUser ?? "").slice(0, 260)}`,
-                `【最近叙事片段】${String(lastAssistant ?? "").slice(0, 900)}`,
-              ].join("\n"),
-            },
-          ];
-      const playerContext = useGameStore.getState().getPromptContext();
-      const clientState = useGameStore.getState().getStructuredClientStateForServer();
       // Phase-5：options-only 补齐是“低成本工具”，不允许无上限等待。
       const optionsOnlyDeadlineMs =
         trigger === "opening_fallback" ? 12_000 : trigger === "auto_missing_main" ? 10_000 : 9_000;
@@ -1201,126 +1238,182 @@ function PlayContent() {
       const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
         ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
         : undefined;
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages,
-          playerContext,
-          clientState,
-          sessionId: guestId ?? "browser_session",
-          openingOptionsOnlyRound: false,
-          clientPurpose: "options_regen_only",
-          clientReason: `【为何需要整理选项】${reason}`,
-          // Always request options generation regardless of the current turn mode.
-          clientTurnModeHint: "decision_required",
-        }),
-        signal: ac.signal,
-      });
-      if (tid !== undefined) window.clearTimeout(tid);
-      if (!res.ok || !res.body) {
-        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let text = "";
-      let buf = "";
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          const part = decoder.decode(value, { stream: true });
-          text += part;
-          buf += part;
-          // options-only path typically returns a single SSE event; parse as soon as we have a complete event.
-          if (VC_PERF_FLAGS.clientOptionsOnlyDeadline) {
-            const taken = takeCompleteSseEvents(buf);
-            buf = taken.rest;
-            if (taken.events.length > 0) {
-              const dmRawEarly = foldSseTextToDmRaw(taken.events.join("\n\n"));
-              // Direct JSON parse — regen response is {ok, decision_options, options}
-              let normalizedEarly: string[] = [];
-              try {
-                const dp = JSON.parse(dmRawEarly) as Record<string, unknown>;
-                const dopts = Array.isArray(dp.decision_options) ? dp.decision_options : Array.isArray(dp.options) ? dp.options : [];
-                normalizedEarly = normalizeRegeneratedOptions(dopts, []);
-              } catch { /* fallback below */ }
-              if (normalizedEarly.length === 0) {
-                const parsedEarly = tryParseDM(dmRawEarly) as any;
-                const pickedEarly = pickTurnOptionsFromResolvedDm(parsedEarly);
-                let rawOptsEarly: unknown = pickedEarly.options;
-                if (!Array.isArray(rawOptsEarly) || rawOptsEarly.length === 0) {
-                  const loose = extractRegenOptionsFromRaw(dmRawEarly);
-                  if (loose && loose.length > 0) rawOptsEarly = loose;
-                }
-                normalizedEarly = normalizeRegeneratedOptions(rawOptsEarly, []);
-              }
-              if (normalizedEarly.length > 0) {
-                setCurrentOptions(normalizedEarly);
-                setLiveNarrative((prev) =>
-                  typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
-                );
-                try {
-                  await reader.cancel();
-                } catch {
-                  // ignore
-                }
-                return;
-              }
-            }
-          }
-        }
-      } finally {
+      const parseOptionsFromSsePayload = (
+        payloadText: string,
+        extraBlocked: string[] = []
+      ): { options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } => {
+        const dmRaw = foldSseTextToDmRaw(payloadText);
+        let normalized: string[] = [];
+        let rejectCodes: OptionsRegenReasonCode[] = [];
+        let parseFailed = false;
         try {
-          await reader.cancel();
+          const directParsed = JSON.parse(dmRaw) as Record<string, unknown>;
+          const serverDebugCodes = Array.isArray(directParsed.debug_reason_codes)
+            ? directParsed.debug_reason_codes
+                .filter((x): x is string => typeof x === "string")
+                .filter(
+                  (x): x is OptionsRegenReasonCode =>
+                    x === "parse_failed" ||
+                    x === "duplicated_rejected" ||
+                    x === "anchor_miss_rejected" ||
+                    x === "generic_rejected" ||
+                    x === "homogeneity_rejected" ||
+                    x === "repair_pass_used" ||
+                    x === "fallback_used"
+                )
+            : [];
+          const directOpts = (
+            Array.isArray(directParsed.decision_options) ? directParsed.decision_options :
+            Array.isArray(directParsed.options) ? directParsed.options : []
+          ) as unknown[];
+          const q = runSemanticQualityGate(
+            normalizeRegeneratedOptions(directOpts, regenRecentOptions, regenCurrentOptions),
+            extraBlocked
+          );
+          normalized = q.accepted;
+          rejectCodes = [...serverDebugCodes, ...q.rejectCodes];
         } catch {
-          // ignore
+          parseFailed = true;
         }
-      }
-      const dmRaw = foldSseTextToDmRaw(text);
-
-      // Options-regen responses have a different shape than full DM JSON.
-      // Try direct JSON parse first — this is the most reliable path.
-      let normalized: string[] = [];
-      try {
-        const directParsed = JSON.parse(dmRaw) as Record<string, unknown>;
-        const directOpts = (
-          Array.isArray(directParsed.decision_options) ? directParsed.decision_options :
-          Array.isArray(directParsed.options) ? directParsed.options : []
-        ) as unknown[];
-        normalized = normalizeRegeneratedOptions(directOpts, []);
-        if (normalized.length === 0 && directParsed.ok === false) {
-          const reasonText = typeof directParsed.reason === "string" ? String(directParsed.reason) : "";
-          if (reasonText) {
-            setFirstTimeHint(`当前无法补全可选行动：${reasonText}（可切换为手动输入继续）`);
-            return;
-          }
-        }
-      } catch {
-        // Not valid JSON — fall through to legacy extraction paths.
-      }
-
-      // Fallback: try DM-style parsing (for backward compatibility).
-      if (normalized.length === 0) {
+        if (normalized.length > 0) return { options: normalized, parseFailed, rejectCodes };
         const parsed = tryParseDM(dmRaw) as any;
         const picked = pickTurnOptionsFromResolvedDm(parsed);
         let rawOpts: unknown = picked.options;
         if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
           const loose = extractRegenOptionsFromRaw(dmRaw);
           if (loose && loose.length > 0) rawOpts = loose;
+          else parseFailed = true;
         }
-        normalized = normalizeRegeneratedOptions(rawOpts, []);
+        const q = runSemanticQualityGate(
+          normalizeRegeneratedOptions(rawOpts, regenRecentOptions, regenCurrentOptions),
+          extraBlocked
+        );
+        return { options: q.accepted, parseFailed, rejectCodes: [...rejectCodes, ...q.rejectCodes] };
+      };
+      const runOptionsOnlyAttempt = async (
+        attemptReason: string,
+        attemptContext = optionsRegenContext,
+        extraBlocked: string[] = []
+      ): Promise<{ options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } | null> => {
+        const attemptMessages: ChatMessage[] = useOptionsOnlyPath
+          ? [
+              ...assistantContextMessages,
+              ...userContextMessages,
+            ]
+          : [
+              { role: "system", content: OPTIONS_REGEN_SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: [
+                  `【为何需要整理选项】${attemptReason}`,
+                  `【最近玩家动作】${String(lastUser ?? "").slice(0, 260)}`,
+                  `【最近叙事片段】${String(lastAssistant ?? "").slice(0, 900)}`,
+                ].join("\n"),
+              },
+            ];
+        const attemptRes = await fetch("/api/chat", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: attemptMessages,
+            playerContext,
+            clientState,
+            sessionId: guestId ?? "browser_session",
+            openingOptionsOnlyRound: false,
+            clientPurpose: "options_regen_only",
+            clientReason: `【为何需要整理选项】${attemptReason}`,
+            optionsRegenContext: attemptContext,
+            clientTurnModeHint: "decision_required",
+          }),
+          signal: ac.signal,
+        });
+        if (!attemptRes.ok || !attemptRes.body) return null;
+        const reader = attemptRes.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let text = "";
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            text += decoder.decode(value, { stream: true });
+          }
+        } finally {
+          try {
+            await reader.cancel();
+          } catch {
+            // ignore
+          }
+        }
+        return parseOptionsFromSsePayload(text, extraBlocked);
+      };
+      const firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      if (tid !== undefined) window.clearTimeout(tid);
+      if (firstPass === null) {
+        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+        return;
+      }
+      if (firstPass.parseFailed) reasonCodes.add("parse_failed");
+      for (const code of firstPass.rejectCodes) reasonCodes.add(code);
+      let finalOptions = [...firstPass.options];
+      if (repairPassEnabled && shouldTriggerOptionsRepairPass({ acceptedOptions: finalOptions, targetCount: 4 })) {
+        reasonCodes.add("repair_pass_used");
+        const missingCount = getRepairMissingCount({ acceptedOptions: finalOptions, targetCount: 4 });
+        const repairReason = buildOptionsRepairReason({
+          baseReason: reason,
+          acceptedOptions: finalOptions,
+          missingCount,
+        });
+        const repairContext = buildClientOptionsRegenContext({
+          latestPlayerAction: optionsRegenContext.latestPlayerAction,
+          latestNarrativeExcerpt: optionsRegenContext.latestNarrativeExcerpt,
+          currentOptions: optionsRegenContext.currentOptions,
+          recentOptions: optionsRegenContext.recentOptions,
+          inventoryHints,
+          tasks: tasks
+            .filter((t) => t?.status === "active" || t?.status === "available")
+            .map((t) => ({ title: t?.title, status: t?.status })),
+          repairNeedCount: missingCount,
+          repairLockedOptions: finalOptions,
+        });
+        const repaired = await runOptionsOnlyAttempt(repairReason, repairContext, finalOptions);
+        if (repaired) {
+          if (repaired.parseFailed) reasonCodes.add("parse_failed");
+          for (const code of repaired.rejectCodes) reasonCodes.add(code);
+        }
+        if (repaired && Array.isArray(repaired.options) && repaired.options.length > 0) {
+          finalOptions = [...finalOptions, ...repaired.options].slice(0, 4);
+        }
+      }
+      if (deterministicFallbackEnabled && finalOptions.length < 4) {
+        reasonCodes.add("fallback_used");
+        const fallbackCandidates = generateDeterministicFallbackOptions({
+          latestNarrative: optionsRegenContext.latestNarrativeExcerpt,
+          playerLocation: clientState?.playerLocation,
+          activeTaskSummaries: optionsRegenContext.activeTaskSummaries,
+          inventoryHints: optionsRegenContext.inventoryHints,
+          blockedOptions: [...regenCurrentOptions, ...regenRecentOptions, ...finalOptions],
+          existingOptions: finalOptions,
+          needCount: 4 - finalOptions.length,
+        });
+        const fallbackQuality = runSemanticQualityGate(fallbackCandidates, finalOptions);
+        for (const code of fallbackQuality.rejectCodes) reasonCodes.add(code);
+        if (fallbackQuality.accepted.length > 0) {
+          finalOptions = [...finalOptions, ...fallbackQuality.accepted].slice(0, 4);
+        }
       }
 
-      if (normalized.length === 0) {
+      if (finalOptions.length === 0) {
         setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
-      setCurrentOptions(normalized);
+      setCurrentOptions(finalOptions);
+      if (process.env.NODE_ENV === "development") {
+        const debugHint = formatOptionsRegenDebugHint(Array.from(reasonCodes));
+        if (debugHint) console.debug("[play][options_regen]", debugHint, { trigger, finalLen: finalOptions.length });
+      }
       const successHint = getOptionsRegenSuccessHint({ trigger, turnMode: lastCommittedTurnModeRef.current });
       if (successHint) setFirstTimeHint(successHint);
       setLiveNarrative((prev) =>
