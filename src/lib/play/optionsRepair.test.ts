@@ -17,6 +17,7 @@ test("options repair: should compute missing count and build constrained reason"
     missingCount: missing,
   });
   assert.equal(reason.includes("repair_missing_slots:3"), true);
-  assert.equal(reason.includes("不要重写已有候选"), true);
+  assert.equal(reason.includes("最终仍输出4条"), true);
+  assert.equal(reason.includes("仅新增3条"), true);
 });
 

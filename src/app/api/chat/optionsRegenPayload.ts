@@ -26,13 +26,6 @@ export function buildOptionsRegenResponse(args: {
   generatorOk?: boolean;
   debugReasonCodes?: string[];
 }): OptionsRegenResponse {
-  const hint =
-    args.clientTurnModeHint === "decision_required" ||
-    args.clientTurnModeHint === "narrative_only" ||
-    args.clientTurnModeHint === "system_transition"
-      ? (args.clientTurnModeHint as OptionsRegenTurnModeHint)
-      : "unknown";
-
   // Always allow options generation regardless of turn_mode.
   // Players should always have clickable options available; they can switch to
   // manual input if they prefer. Previously narrative_only / system_transition
@@ -42,7 +35,7 @@ export function buildOptionsRegenResponse(args: {
     ? (args.options as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim()).slice(0, 4)
     : [];
 
-  const ok = Boolean((args.generatorOk ?? true) && opts.length >= 2);
+  const ok = Boolean((args.generatorOk ?? true) && opts.length === 4);
   if (!ok) {
     const reason: OptionsRegenReason = (args.generatorOk ?? true) ? "insufficient_options" : "upstream_generate_failed";
     return {

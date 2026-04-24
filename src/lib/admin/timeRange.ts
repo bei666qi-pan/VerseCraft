@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getUtcDateKey } from "@/lib/analytics/dateKeys";
+
 export type AdminRangePreset = "today" | "yesterday" | "7d" | "30d" | "custom";
 
 export type AdminTimeRange = {
@@ -12,7 +14,7 @@ export type AdminTimeRange = {
 };
 
 function toDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return getUtcDateKey(d);
 }
 
 function utcStartOfDay(d: Date): Date {

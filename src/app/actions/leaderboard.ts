@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { gameRecords, settlementHistories } from "@/db/schema";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { recordGameRecordSubmittedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+import { formatDurationSeconds } from "@/lib/time/durationUnits";
 
 const SETTLEMENT_MARKDOWN_MAX_CHARS = 200_000;
 const SETTLEMENT_RECAP_MAX_CHARS = 12_000;
@@ -75,13 +76,6 @@ export type ExplorationLeaderboardResult = {
     rank: number;
   } | null;
 };
-
-function formatDuration(seconds: number): string {
-  const safe = Math.max(0, Math.trunc(seconds));
-  const mm = String(Math.floor(safe / 60)).padStart(2, "0");
-  const ss = String(safe % 60).padStart(2, "0");
-  return `${mm}:${ss}`;
-}
 
 function formatFloor(score: number): string {
   if (score >= 99) return "通关";
@@ -290,7 +284,7 @@ export async function getExplorationLeaderboard(userId?: string): Promise<Explor
         maxFloorScore,
         floorText: formatFloor(maxFloorScore),
         survivalTimeSeconds,
-        survivalText: formatDuration(survivalTimeSeconds),
+        survivalText: formatDurationSeconds(survivalTimeSeconds, { style: "compact_cn" }),
         rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
       };
     })
@@ -312,7 +306,7 @@ export async function getExplorationLeaderboard(userId?: string): Promise<Explor
           maxFloorScore,
           floorText: formatFloor(maxFloorScore),
           survivalTimeSeconds,
-          survivalText: formatDuration(survivalTimeSeconds),
+          survivalText: formatDurationSeconds(survivalTimeSeconds, { style: "compact_cn" }),
           rank: pickNumber(safeRow, ["rankPosition", "rank_position", "rankposition"]),
         };
         if (!parsed.userId || !parsed.userName || parsed.rank <= 0 || parsed.maxFloorScore <= 0) {

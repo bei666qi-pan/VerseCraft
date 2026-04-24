@@ -30,6 +30,7 @@ import Leaderboard from "@/components/Leaderboard";
 import { GlassCtaButton } from "@/components/GlassCtaButton";
 import { GlassEntryFrame } from "@/components/GlassEntryFrame";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
+import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { getPublicRuntimeConfig } from "@/lib/config/publicRuntime";
 import {
   useGameStore,
@@ -363,6 +364,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   const setUser = useGameStore((s) => s.setUser);
   const guestId = useGameStore((s) => s.guestId ?? "guest_home");
+  usePresenceHeartbeat({
+    enabled: true,
+    sessionId: user?.id ? `home_u_${user.id}` : guestId,
+    page: "/",
+    guestId: user ? null : guestId,
+  });
   const saveSlots = useGameStore((s) => s.saveSlots ?? {});
   const resetForNewGame = useGameStore((s) => s.resetForNewGame);
   const hydrateFromCloud = useGameStore((s) => s.hydrateFromCloud);

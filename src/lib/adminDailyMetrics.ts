@@ -3,7 +3,10 @@ import "server-only";
 import { Redis } from "@upstash/redis";
 import { asc, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { adminMetricsDaily, adminStatsSnapshots, users } from "@/db/schema";
+
+export { getUtcDateKey };
 
 export type AdminChartPoint = {
   date: string;
@@ -42,10 +45,6 @@ function getRedis(): ReturnType<typeof Redis.fromEnv> | null {
     redis = null;
     return null;
   }
-}
-
-export function getUtcDateKey(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
 }
 
 function addDaysUtc(date: Date, deltaDays: number): Date {
@@ -261,7 +260,7 @@ export async function getAdminChartData(daysBack: number = DAILY_METRICS_LOOKBAC
     const [dauRow] = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(users)
-      .where(sql`DATE(${users.lastActive}) = ${endKey}`);
+      .where(sql`(${users.lastActive} AT TIME ZONE 'UTC')::date = ${endKey}::date`);
     fallbackDaUFromDbToday = Number(dauRow?.count ?? 0);
   } catch {
     fallbackDaUFromDbToday = 0;

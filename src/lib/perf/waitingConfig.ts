@@ -61,7 +61,7 @@ export const VC_WAITING = {
    * - 二次尝试稍长：给模型一点纠错空间，但避免把“补救链”拖成主链路
    *
    * 为什么不会破坏玩法：
-   * - 两次均失败会回落到 `padOptionsFallbackToFour` / `padDecisionOptionsToTwo`，不会让 UI 卡死
+   * - 两次均失败会返回失败；UI 清空选项并提示重试/手动输入，不用模板冒充模型选项
    * - 主叙事 PLAYER_CHAT 不受影响
    */
   optionsOnlyFallbackAttempt1TimeoutMs: 6_500,

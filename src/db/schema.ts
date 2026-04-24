@@ -403,10 +403,12 @@ export const userSessions = pgTable(
     totalPlayDurationSec: integer("total_play_duration_sec").notNull().default(0),
     chatActionCount: integer("chat_action_count").notNull().default(0),
 
+    lastPresenceOkAt: timestamp("last_presence_ok_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     userLastSeenIdx: index("user_sessions_user_last_seen_idx").on(table.userId, table.lastSeenAt),
+    lastSeenAtIdx: index("user_sessions_last_seen_at_idx").on(table.lastSeenAt),
   })
 );
 
@@ -443,6 +445,54 @@ export const userDailyTokens = pgTable(
     userDateUnique: uniqueIndex("user_daily_tokens_user_date_unique").on(table.userId, table.dateKey),
     dateKeyIdx: index("user_daily_tokens_date_key_idx").on(table.dateKey),
     userIdx: index("user_daily_tokens_user_idx").on(table.userId),
+  })
+);
+
+/** One row per stable `guest_id` (aggregate profile; not browser-tab `guest_sessions`). */
+export const guestRegistry = pgTable(
+  "guest_registry",
+  {
+    guestId: varchar("guest_id", { length: 128 }).primaryKey(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    totalPlayDurationSec: integer("total_play_duration_sec").notNull().default(0),
+    ua: text("ua"),
+    ipHash: varchar("ip_hash", { length: 64 }),
+    platform: varchar("platform", { length: 32 }).notNull().default("unknown"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    lastSeenIdx: index("guest_registry_last_seen_at_idx").on(table.lastSeenAt),
+  })
+);
+
+export const guestDailyActivity = pgTable(
+  "guest_daily_activity",
+  {
+    guestId: varchar("guest_id", { length: 128 }).notNull(),
+    dateKey: date("date_key").notNull(),
+    firstActiveAt: timestamp("first_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+  },
+  (table) => ({
+    pk: uniqueIndex("guest_daily_activity_pk").on(table.guestId, table.dateKey),
+    dateKeyIdx: index("guest_daily_activity_date_key_idx").on(table.dateKey),
+  })
+);
+
+export const guestDailyTokens = pgTable(
+  "guest_daily_tokens",
+  {
+    guestId: varchar("guest_id", { length: 128 }).notNull(),
+    dateKey: date("date_key").notNull(),
+    dailyTokenCost: integer("daily_token_cost").notNull().default(0),
+    dailyPlayDurationSec: integer("daily_play_duration_sec").notNull().default(0),
+    chatActionCount: integer("chat_action_count").notNull().default(0),
+  },
+  (table) => ({
+    pk: uniqueIndex("guest_daily_tokens_pk").on(table.guestId, table.dateKey),
+    dateKeyIdx: index("guest_daily_tokens_date_key_idx").on(table.dateKey),
   })
 );
 

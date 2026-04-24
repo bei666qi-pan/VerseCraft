@@ -56,7 +56,9 @@ export type AnalyticsEventName =
   | "world_engine_enqueued"
   | "turn_lane_decided"
   | "turn_commit_summary"
-  | "narrative_validator_issue";
+  | "narrative_validator_issue"
+  | "narrative_protocol_leak"
+  | "presence_flaky";
 
 export type AnalyticsPlatform = "mobile" | "desktop" | "unknown";
 

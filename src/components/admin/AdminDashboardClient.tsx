@@ -12,7 +12,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatDurationHoursMinutes } from "@/lib/admin/timeFormat";
+import { formatZhCnUtcDateTime, formatUtcDateKeyLabel } from "@/lib/admin/formatDisplay";
+import { formatPlayTimeFromDbSeconds } from "@/lib/time/durationUnits";
 
 type DashboardUserRow = {
   id: string;
@@ -39,10 +40,6 @@ type AdminDashboardClientProps = {
   chartData?: ChartPoint[];
 };
 
-function formatPlayTime(totalSeconds: number): string {
-  return formatDurationHoursMinutes(totalSeconds);
-}
-
 function formatTokenCost(tokens: number): string {
   const fee = (tokens / 1_000_000) * 4;
   return fee.toFixed(4);
@@ -54,9 +51,7 @@ function normalizeToken(value: number): number {
 }
 
 function formatLastOnline(value: string | Date): string {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "未知";
-  return date.toLocaleString("zh-CN");
+  return formatZhCnUtcDateTime(value);
 }
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -256,7 +251,12 @@ export default function AdminDashboardClient({
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartWithDeltas}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 11 }}
+                        stroke="#94a3b8"
+                        tickFormatter={(v) => formatUtcDateKeyLabel(String(v))}
+                      />
                       <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}百万` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}千` : String(v))} />
                       <Tooltip
                         formatter={(v) => [
@@ -276,7 +276,12 @@ export default function AdminDashboardClient({
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartWithDeltas}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 11 }}
+                        stroke="#94a3b8"
+                        tickFormatter={(v) => formatUtcDateKeyLabel(String(v))}
+                      />
                       <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
                       <Tooltip
                         formatter={(v) => [typeof v === "number" ? v : Number(v ?? 0), "日活"]}
@@ -293,7 +298,12 @@ export default function AdminDashboardClient({
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 11 }}
+                        stroke="#94a3b8"
+                        tickFormatter={(v) => formatUtcDateKeyLabel(String(v))}
+                      />
                       <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" tickFormatter={(v) => `${(v / 1e6).toFixed(1)}百万`} />
                       <Tooltip
                         formatter={(v) => [
@@ -393,7 +403,7 @@ export default function AdminDashboardClient({
                           {user.name}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-slate-600">{formatPlayTime(user.playTimeValue)}</td>
+                      <td className="px-5 py-4 text-slate-600">{formatPlayTimeFromDbSeconds(user.playTimeValue)}</td>
                       <td className="px-5 py-4 text-slate-600">
                         {user.tokenValue.toLocaleString()}（约 ￥{cost}）
                         <div className="mt-1 text-xs text-slate-400">总计 {user.totalToken.toLocaleString()}</div>
@@ -487,7 +497,7 @@ export default function AdminDashboardClient({
                   来自账号：{detail.userName}
                   {detail.createdAt ? (
                     <span suppressHydrationWarning>
-                      {` · ${new Date(detail.createdAt).toLocaleString("zh-CN")}`}
+                      {` · ${formatZhCnUtcDateTime(detail.createdAt)}（UTC）`}
                     </span>
                   ) : (
                     ""

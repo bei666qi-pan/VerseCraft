@@ -16,7 +16,7 @@ test("options regen observability: should map reject reasons to required reason 
 });
 
 test("options regen observability: should format debug hint", () => {
-  const hint = formatOptionsRegenDebugHint(["parse_failed", "repair_pass_used", "fallback_used"]);
-  assert.equal(hint, "options_regen_debug: parse_failed,repair_pass_used,fallback_used");
+  const hint = formatOptionsRegenDebugHint(["parse_failed", "repair_pass_used"]);
+  assert.equal(hint, "options_regen_debug: parse_failed,repair_pass_used");
 });
 

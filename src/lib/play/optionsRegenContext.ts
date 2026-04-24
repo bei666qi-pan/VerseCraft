@@ -82,7 +82,7 @@ export function buildOptionsRegenContextPacket(args: {
       : "";
   const repairNeed =
     typeof ctx?.repairNeedCount === "number" && ctx.repairNeedCount > 0
-      ? `【修复目标】仅补齐 ${ctx.repairNeedCount} 条缺口，禁止整轮重写。`
+      ? `【修复目标】最终仍输出 4 条 options；原样保留已通过选项，只新增 ${ctx.repairNeedCount} 条缺口，禁止整轮重写。`
       : "";
   const repairLocked =
     ctx?.repairLockedOptions && ctx.repairLockedOptions.length > 0

@@ -48,10 +48,6 @@ export function getClientOptionsRegenRepairPassEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_REPAIR_PASS", true);
 }
 
-export function getClientOptionsRegenDeterministicFallbackEnabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_DETERMINISTIC_FALLBACK", true);
-}
-
 export function getClientSettingsTaskRemovalEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_SETTINGS_TASK_REMOVAL", true);
 }

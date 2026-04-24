@@ -53,6 +53,56 @@ export function computeFunnel(eventOrder: string[], eventUsers: Record<string, n
   });
 }
 
+export function computeFunnelTriColumn(
+  eventOrder: string[],
+  registered: Record<string, number>,
+  guest: Record<string, number>,
+  all: Record<string, number>
+): Array<{
+  eventName: string;
+  registered: number;
+  guest: number;
+  all: number;
+  conversionRateRegistered: number;
+  conversionRateGuest: number;
+  conversionRateAll: number;
+}> {
+  const regBase = Math.max(0, Number(registered[eventOrder[0] ?? ""] ?? 0));
+  let guestBase = 0;
+  for (const name of eventOrder) {
+    const gv = Math.max(0, Number(guest[name] ?? 0));
+    if (gv > 0) {
+      guestBase = gv;
+      break;
+    }
+  }
+  let allBase = Math.max(0, Number(all[eventOrder[0] ?? ""] ?? 0));
+  if (allBase === 0) {
+    for (const name of eventOrder) {
+      const av = Math.max(0, Number(all[name] ?? 0));
+      if (av > 0) {
+        allBase = av;
+        break;
+      }
+    }
+  }
+  if (allBase === 0) allBase = 1;
+  return eventOrder.map((eventName) => {
+    const r = Math.max(0, Number(registered[eventName] ?? 0));
+    const g = Math.max(0, Number(guest[eventName] ?? 0));
+    const a = Math.max(0, Number(all[eventName] ?? 0));
+    return {
+      eventName,
+      registered: r,
+      guest: g,
+      all: a,
+      conversionRateRegistered: regBase > 0 ? r / regBase : 0,
+      conversionRateGuest: guestBase > 0 ? g / guestBase : 0,
+      conversionRateAll: allBase > 0 ? a / allBase : 0,
+    };
+  });
+}
+
 export function computeTokenStats(totalTokenCost: number, activeUsers: number): { totalTokenCost: number; tokenPerActive: number } {
   const total = Number.isFinite(totalTokenCost) ? Math.max(0, Number(totalTokenCost)) : 0;
   const active = Number.isFinite(activeUsers) ? Math.max(0, Number(activeUsers)) : 0;

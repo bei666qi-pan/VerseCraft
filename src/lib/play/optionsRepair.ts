@@ -28,7 +28,7 @@ export function buildOptionsRepairReason(args: {
   return [
     `${String(args.baseReason ?? "").trim() || "重整选项修复"}`,
     `repair_missing_slots:${miss}`,
-    miss > 0 ? `仅补齐${miss}条，不要重写已有候选` : "",
+    miss > 0 ? `最终仍输出4条，原样保留已有候选，仅新增${miss}条` : "",
     locked.length > 0 ? `已有合格选项：${locked.join("；")}` : "",
   ]
     .filter((x) => x.length > 0)

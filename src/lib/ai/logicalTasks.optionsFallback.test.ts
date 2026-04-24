@@ -36,18 +36,23 @@ test("padOptionsFallbackToFour: four model options unchanged length", () => {
   assert.deepEqual(out, four);
 });
 
-test("guardOptionsQualityToFour: high-duplicate outputs should be deduped and padded", () => {
+test("guardOptionsQualityToFour: high-duplicate outputs should be deduped without local padding", () => {
   const ctx = "用户位置[B1_SafeZone]。主威胁状态：B1[A-001|active|30]。NPC当前位置：走廊尽头的保安室。";
   const out = guardOptionsQualityToFour({
     options: ["我先看看门。", "我先看看门。", "我先看看周围。", "我先看看周围。"],
     playerContext: ctx,
     recentActionHint: "我拿出手机照明",
   });
-  assert.equal(out.length, 4);
-  // 至少包含一个规避/退路类（威胁存在）
-  assert.equal(out.some((s) => /退路|后撤|避开|掩体|遮蔽|拉开距离/.test(s)), true);
-  // 至少包含一个交涉/确认类（NPC 在场）
-  assert.equal(out.some((s) => /问|确认|交涉|对话|喊话|打听/.test(s)), true);
+  assert.deepEqual(out, ["我先看看门。", "我先看看周围。"]);
+  assert.equal(out.some((s) => /退路|后撤|避开|掩体|遮蔽|拉开距离/.test(s)), false);
+  assert.equal(out.some((s) => /问|确认|交涉|对话|喊话|打听/.test(s)), false);
+});
+
+test("guardOptionsQualityToFour: fewer than four valid model options stay insufficient", () => {
+  const out = guardOptionsQualityToFour({
+    options: ["我用手电照向门缝", "我贴墙听走廊动静", "我退回楼梯口观察"],
+  });
+  assert.deepEqual(out, ["我用手电照向门缝", "我贴墙听走廊动静", "我退回楼梯口观察"]);
 });
 
 test("padOptionsFallbackToFour: npc present -> should include a dialogue/confirm hint", () => {

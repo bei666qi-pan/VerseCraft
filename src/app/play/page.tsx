@@ -13,6 +13,7 @@ import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameS
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
 import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
+import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 import { isValidBgmTrack } from "@/config/audio";
@@ -58,7 +59,6 @@ import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/feat
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
-import { generateDeterministicFallbackOptions } from "@/lib/play/optionsFallback";
 import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
@@ -84,6 +84,7 @@ import {
   shouldWarnAcquireMismatch,
 } from "@/features/play/turnCommit/phaseRegressionGuards";
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
+import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import {
   extractFilteredHintsFromTrace,
@@ -94,7 +95,6 @@ import { NarrativeSystemsDebugPanel } from "@/features/play/components/Narrative
 import {
   getClientOptionsAutoRegenOnEmptyEnabled,
   getClientOptionsOnlyRegenPathV2Enabled,
-  getClientOptionsRegenDeterministicFallbackEnabled,
   getClientOptionsRegenRepairPassEnabled,
   getClientOptionsRegenSemanticGateEnabled,
   getClientContinueButtonEnabled,
@@ -289,6 +289,8 @@ function PlayContent() {
     options: string[];
     mapping: Record<string, ProfessionId>;
   }>({ enabled: false, options: [], mapping: {} });
+  const hasModelChoiceOptions = currentOptions.length === 4;
+  const hasVisibleChoiceOptions = hasModelChoiceOptions || pendingProfessionChoice.enabled;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -415,23 +417,21 @@ function PlayContent() {
       setTimeout(() => router.push("/settlement"), 2000);
       return;
     }
-    // After every turn completes, auto-generate options if insufficient.
+    // After every turn completes, auto-generate options if fewer than four model actions survived.
     // Use a slightly longer delay (500ms) to allow any in-flight options regen
     // (e.g., opening_fallback triggered during turn commit) to complete first.
-    // If that regen succeeded, currentOptions will have >= 2 and we skip.
-    // Threshold is < 2 (not === 0) because a single item-injection option
-    // (e.g. "【证】...") alone is not sufficient for meaningful player choice.
+    // If that regen succeeded, currentOptions will have exactly four entries and we skip.
     const currentOpts = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
-    if (currentOpts.length < 2 && !endgameState.active) {
+    if (currentOpts.length < 4 && !endgameState.active && !pendingProfessionChoice.enabled) {
       setTimeout(() => {
         // Re-check after delay — the in-flight regen may have completed.
         const rechecked = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
-        if (rechecked.length < 2 && !optionsRegenInFlightRef.current) {
+        if (rechecked.length < 4 && !optionsRegenInFlightRef.current && !pendingProfessionChoice.enabled) {
           void requestFreshOptions("auto_missing_main");
         }
       }, 500);
     }
-  }, [router, endgameState.active]);
+  }, [router, endgameState.active, pendingProfessionChoice.enabled]);
 
   const streamTailDrain = useMemo<SmoothStreamTailDrainConfig | null>(() => {
     if (streamPhase !== "tail_draining") return null;
@@ -448,6 +448,12 @@ function PlayContent() {
   const isDarkMoon = day >= 3 && day < 10;
   const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted, guestId ?? "guest_play", "/play");
+  usePresenceHeartbeat({
+    enabled: isHydrated && isGameStarted,
+    sessionId: guestId ?? "browser_session",
+    page: "/play",
+    guestId: isGuest ? (guestId ?? "browser_session") : null,
+  });
   const hasEnteredGameEventRef = useRef(false);
   const hasFirstEffectiveActionRef = useRef(false);
 
@@ -890,9 +896,9 @@ function PlayContent() {
 
   /** 成功拿到选项后清掉【开局】类提示，避免与正常对局并存 */
   useEffect(() => {
-    if (currentOptions.length === 0) return;
+    if (!hasVisibleChoiceOptions && !endgameState.active) return;
     setLiveNarrative((prev) => (typeof prev === "string" && prev.startsWith("【开局】") ? "" : prev));
-  }, [currentOptions.length]);
+  }, [endgameState.active, hasVisibleChoiceOptions]);
 
   // 开场超时：须避免请求仍在飞行时误判；先静默自动重试一次拉 options，仍失败再提示（不重复 push 开场正文）
   useEffect(() => {
@@ -964,7 +970,7 @@ function PlayContent() {
           4
         )
       : [];
-    if (savedOptions.length > 0) {
+    if (savedOptions.length === 4) {
       setCurrentOptions([...savedOptions]);
       return;
     }
@@ -1009,7 +1015,7 @@ function PlayContent() {
         prevMode: prev,
         nextMode: inputMode,
         switchedByUser,
-        currentOptionsLength: currentOptions.length,
+        currentOptionsLength: hasModelChoiceOptions ? currentOptions.length : 0,
         blocksOptionsRegen: optionsRegenPhaseBlocked,
         optionsRegenBusy,
         endgameActive: endgameState.active,
@@ -1028,6 +1034,7 @@ function PlayContent() {
     }
   }, [
     currentOptions.length,
+    hasModelChoiceOptions,
     endgameState.active,
     inputMode,
     isGuestDialogueExhausted,
@@ -1112,7 +1119,8 @@ function PlayContent() {
   const [lastAutoContinueHint, setLastAutoContinueHint] = useState<string | null>(null);
 
   async function requestFreshOptions(
-    trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main"
+    trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main",
+    seedOptions: string[] = []
   ) {
     // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
     const manual = trigger === "manual_button";
@@ -1153,7 +1161,7 @@ function PlayContent() {
     } else if (trigger === "auto_switch") {
       setFirstTimeHint("主笔正在整理可选行动…");
     } else if (trigger === "auto_missing_main") {
-      setFirstTimeHint("本回合没有可选行动，正在补全…");
+      setFirstTimeHint(seedOptions.length > 0 ? "本回合选项不足，正在补全…" : "本回合没有可选行动，正在补全…");
     } else {
       setFirstTimeHint("主笔正在按当前剧情重新整理可选行动…");
     }
@@ -1168,13 +1176,16 @@ function PlayContent() {
         .reverse()
         .find((l) => l?.role === "user")?.content ?? "";
 
+      const modelSeedOptions = filterNarrativeActionOptions(seedOptions, 4).slice(0, 3);
       const reason =
         trigger === "opening_fallback"
           ? "冷开场首轮未返回 options"
           : trigger === "auto_switch"
             ? "用户切回选项模式且当前无可用项"
             : trigger === "auto_missing_main"
-              ? "主回合 narrative 正常但 options 缺失"
+              ? modelSeedOptions.length > 0
+                ? `主回合只返回 ${modelSeedOptions.length} 条有效模型选项，需要补齐到 4 条`
+                : "主回合 narrative 正常但 options 缺失"
               : "用户手动点击刷新选项按钮";
       const regenCurrentOptions = Array.isArray(currentOptionsFromStore) ? currentOptionsFromStore : [];
       const regenRecentOptions = Array.isArray(recentOptions) ? recentOptions : [];
@@ -1199,11 +1210,12 @@ function PlayContent() {
         tasks: tasks
           .filter((t) => t?.status === "active" || t?.status === "available")
           .map((t) => ({ title: t?.title, status: t?.status })),
+        repairNeedCount: modelSeedOptions.length > 0 ? 4 - modelSeedOptions.length : undefined,
+        repairLockedOptions: modelSeedOptions,
       });
       const reasonCodes = new Set<OptionsRegenReasonCode>();
       const semanticGateEnabled = getClientOptionsRegenSemanticGateEnabled();
       const repairPassEnabled = getClientOptionsRegenRepairPassEnabled();
-      const deterministicFallbackEnabled = getClientOptionsRegenDeterministicFallbackEnabled();
       const runSemanticQualityGate = (
         candidateOptions: string[],
         extraBlocked: string[] = []
@@ -1258,8 +1270,7 @@ function PlayContent() {
                     x === "anchor_miss_rejected" ||
                     x === "generic_rejected" ||
                     x === "homogeneity_rejected" ||
-                    x === "repair_pass_used" ||
-                    x === "fallback_used"
+                    x === "repair_pass_used"
                 )
             : [];
           const directOpts = (
@@ -1351,12 +1362,15 @@ function PlayContent() {
       const firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
       if (tid !== undefined) window.clearTimeout(tid);
       if (firstPass === null) {
+        setCurrentOptions([]);
         setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
         return;
       }
       if (firstPass.parseFailed) reasonCodes.add("parse_failed");
       for (const code of firstPass.rejectCodes) reasonCodes.add(code);
-      let finalOptions = [...firstPass.options];
+      const mergeModelOptions = (...groups: string[][]): string[] =>
+        normalizeRegeneratedOptions(groups.flat(), regenRecentOptions, regenCurrentOptions);
+      let finalOptions = mergeModelOptions(modelSeedOptions, firstPass.options);
       if (repairPassEnabled && shouldTriggerOptionsRepairPass({ acceptedOptions: finalOptions, targetCount: 4 })) {
         reasonCodes.add("repair_pass_used");
         const missingCount = getRepairMissingCount({ acceptedOptions: finalOptions, targetCount: 4 });
@@ -1383,28 +1397,12 @@ function PlayContent() {
           for (const code of repaired.rejectCodes) reasonCodes.add(code);
         }
         if (repaired && Array.isArray(repaired.options) && repaired.options.length > 0) {
-          finalOptions = [...finalOptions, ...repaired.options].slice(0, 4);
-        }
-      }
-      if (deterministicFallbackEnabled && finalOptions.length < 4) {
-        reasonCodes.add("fallback_used");
-        const fallbackCandidates = generateDeterministicFallbackOptions({
-          latestNarrative: optionsRegenContext.latestNarrativeExcerpt,
-          playerLocation: clientState?.playerLocation,
-          activeTaskSummaries: optionsRegenContext.activeTaskSummaries,
-          inventoryHints: optionsRegenContext.inventoryHints,
-          blockedOptions: [...regenCurrentOptions, ...regenRecentOptions, ...finalOptions],
-          existingOptions: finalOptions,
-          needCount: 4 - finalOptions.length,
-        });
-        const fallbackQuality = runSemanticQualityGate(fallbackCandidates, finalOptions);
-        for (const code of fallbackQuality.rejectCodes) reasonCodes.add(code);
-        if (fallbackQuality.accepted.length > 0) {
-          finalOptions = [...finalOptions, ...fallbackQuality.accepted].slice(0, 4);
+          finalOptions = mergeModelOptions(finalOptions, repaired.options);
         }
       }
 
-      if (finalOptions.length === 0) {
+      if (finalOptions.length !== 4) {
+        setCurrentOptions([]);
         setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
         return;
       }
@@ -1420,6 +1418,7 @@ function PlayContent() {
         typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
       );
     } catch {
+      setCurrentOptions([]);
       setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
     } finally {
       setOptionsRegenBusy(false);
@@ -2390,6 +2389,7 @@ function PlayContent() {
       : [];
 
     const merged = [...validOpts];
+    const deliveryDecision = decideModelOptionsDelivery({ options: merged });
 
     if (isEndgameSystemRound) {
       // 终局：强制唯一选项 + 结局字数兜底（避免模型没达到≥600字）
@@ -2403,17 +2403,21 @@ function PlayContent() {
       setCurrentOptions([ENDGAME_ONLY_OPTION]);
       setEndgameState({ active: true, awaitingEnding: false });
       setActiveMenu(null);
-    } else if (merged.length >= 2) {
-      setCurrentOptions([...merged.slice(0, 4)]);
+    } else if (deliveryDecision.action === "commit") {
+      setCurrentOptions(deliveryDecision.options);
       autoMissingOptionsAttemptedRef.current = false;
-    } else if (merged.length === 1) {
-      // Only 1 option (usually item injection like "【证】..." without model-generated actions).
-      // Show it as fallback but auto-request real model-generated options.
-      setCurrentOptions([...merged]);
+    } else if (deliveryDecision.action === "repair") {
+      setCurrentOptions([]);
       if (!isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你生成可选行动…");
-        setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
+        setFirstTimeHint("正在为你补全四条可选行动…");
+        setTimeout(() => { void requestFreshOptions("auto_missing_main", deliveryDecision.seedOptions); }, 200);
+      } else if (isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
+        autoMissingOptionsAttemptedRef.current = true;
+        setFirstTimeHint("正在为你补全首轮可选行动…");
+        setTimeout(() => { void requestFreshOptions("opening_fallback", deliveryDecision.seedOptions); }, 200);
+      } else {
+        setFirstTimeHint("当前选项不足四条，可切换为手动输入继续，或稍后再试一次。");
       }
     } else {
       // 无 options 的策略分流：
@@ -2449,9 +2453,9 @@ function PlayContent() {
     if (process.env.NODE_ENV === "development") {
       const branch = isEndgameSystemRound
         ? "endgame"
-        : merged.length >= 2
+        : deliveryDecision.action === "commit"
           ? "merged"
-          : merged.length === 1
+          : deliveryDecision.action === "repair"
             ? "merged_insufficient_regen"
             : "cleared";
       console.debug("[versecraft/play] options commit", {
@@ -3285,6 +3289,7 @@ function PlayContent() {
                 waitUxSecondaryLine={waitUxSecondaryLine}
               >
                 {inputMode === "options" &&
+                  (hasVisibleChoiceOptions || endgameState.active) &&
                   currentOptions.length > 0 &&
                   (showEmbeddedOpening || endgameState.active) && (
                     <PlayOptionsList
@@ -3322,6 +3327,7 @@ function PlayContent() {
                     />
                   )}
                 {inputMode === "options" &&
+                  hasVisibleChoiceOptions &&
                   currentOptions.length > 0 &&
                   !showEmbeddedOpening &&
                   !endgameState.active &&
@@ -3371,7 +3377,7 @@ function PlayContent() {
                 {inputMode === "options" &&
                   !showEmbeddedOpening &&
                   !endgameState.active &&
-                  (currentOptions.length === 0 || optionsRegenBusy) && (
+                  (!hasVisibleChoiceOptions || optionsRegenBusy) && (
                     <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
                       <p className="text-sm text-slate-600 md:text-base">
                         {optionsRegenBusy

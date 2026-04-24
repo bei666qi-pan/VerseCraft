@@ -216,6 +216,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           ${input.sessionId}, ${input.userId}, ${eventTime}, ${eventTime}, ${input.page},
           ${input.tokenCost}, ${input.playDurationDeltaSec}, 1, CURRENT_TIMESTAMP
         WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM user_sessions WHERE session_id = ${input.sessionId})
       ),
       upd_session AS (
@@ -228,6 +229,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           chat_action_count = chat_action_count + 1,
           updated_at = CURRENT_TIMESTAMP
         WHERE session_id = ${input.sessionId}
+          AND ${input.userId} IS NOT NULL
           AND EXISTS (SELECT 1 FROM ins_event)
       ),
       ins_daily_activity AS (
@@ -237,6 +239,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
         SELECT
           ${input.userId}, ${dateKey}::date, ${eventTime}, ${eventTime}, 1
         WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NOT NULL
           AND NOT EXISTS (
             SELECT 1
             FROM user_daily_activity
@@ -251,6 +254,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           chat_action_count = chat_action_count + 1
         WHERE user_id = ${input.userId}
           AND date_key = ${dateKey}::date
+          AND ${input.userId} IS NOT NULL
           AND EXISTS (SELECT 1 FROM ins_event)
           AND NOT EXISTS (SELECT 1 FROM ins_daily_activity)
       ),
@@ -261,11 +265,47 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
         SELECT
           ${input.userId}, ${dateKey}::date, ${input.tokenCost}, ${input.playDurationDeltaSec}, 1
         WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NOT NULL
         ON CONFLICT (user_id, date_key) DO UPDATE
         SET
           daily_token_cost = user_daily_tokens.daily_token_cost + EXCLUDED.daily_token_cost,
           daily_play_duration_sec = user_daily_tokens.daily_play_duration_sec + EXCLUDED.daily_play_duration_sec,
           chat_action_count = user_daily_tokens.chat_action_count + EXCLUDED.chat_action_count
+      ),
+      touch_guest_registry AS (
+        INSERT INTO guest_registry (guest_id, first_seen_at, last_seen_at, total_play_duration_sec, platform, updated_at)
+        SELECT
+          ${input.guestId}, ${eventTime}, ${eventTime}, 0, ${input.platform}, CURRENT_TIMESTAMP
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NULL
+          AND ${input.guestId} IS NOT NULL
+        ON CONFLICT (guest_id) DO UPDATE SET
+          last_seen_at = GREATEST(guest_registry.last_seen_at, EXCLUDED.last_seen_at),
+          platform = COALESCE(EXCLUDED.platform, guest_registry.platform),
+          updated_at = CURRENT_TIMESTAMP
+      ),
+      upsert_guest_daily_activity AS (
+        INSERT INTO guest_daily_activity (guest_id, date_key, first_active_at, last_active_at, chat_action_count)
+        SELECT
+          ${input.guestId}, ${dateKey}::date, ${eventTime}, ${eventTime}, 1
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NULL
+          AND ${input.guestId} IS NOT NULL
+        ON CONFLICT (guest_id, date_key) DO UPDATE SET
+          last_active_at = GREATEST(guest_daily_activity.last_active_at, EXCLUDED.last_active_at),
+          chat_action_count = guest_daily_activity.chat_action_count + EXCLUDED.chat_action_count
+      ),
+      upsert_guest_daily_tokens AS (
+        INSERT INTO guest_daily_tokens (guest_id, date_key, daily_token_cost, daily_play_duration_sec, chat_action_count)
+        SELECT
+          ${input.guestId}, ${dateKey}::date, ${input.tokenCost}, ${input.playDurationDeltaSec}, 1
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NULL
+          AND ${input.guestId} IS NOT NULL
+        ON CONFLICT (guest_id, date_key) DO UPDATE SET
+          daily_token_cost = guest_daily_tokens.daily_token_cost + EXCLUDED.daily_token_cost,
+          daily_play_duration_sec = guest_daily_tokens.daily_play_duration_sec + EXCLUDED.daily_play_duration_sec,
+          chat_action_count = guest_daily_tokens.chat_action_count + EXCLUDED.chat_action_count
       ),
       upsert_admin_daily AS (
         INSERT INTO admin_metrics_daily (
@@ -287,6 +327,30 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
         ON CONFLICT (date_key) DO UPDATE
         SET
           dau = admin_metrics_daily.dau + EXCLUDED.dau,
+          total_token_cost = admin_metrics_daily.total_token_cost + EXCLUDED.total_token_cost,
+          total_play_duration_sec = admin_metrics_daily.total_play_duration_sec + EXCLUDED.total_play_duration_sec,
+          chat_actions = admin_metrics_daily.chat_actions + EXCLUDED.chat_actions,
+          updated_at = CURRENT_TIMESTAMP
+      ),
+      upsert_admin_daily_guest AS (
+        INSERT INTO admin_metrics_daily (
+          date_key, dau, wau, mau, new_users,
+          total_token_cost, total_play_duration_sec, chat_actions,
+          feedback_submitted_count, game_completed_count, updated_at
+        )
+        SELECT
+          ${dateKey}::date,
+          0, 0, 0, 0,
+          ${input.tokenCost},
+          ${input.playDurationDeltaSec},
+          1,
+          0, 0,
+          CURRENT_TIMESTAMP
+        WHERE EXISTS (SELECT 1 FROM ins_event)
+          AND ${input.userId} IS NULL
+          AND ${input.guestId} IS NOT NULL
+        ON CONFLICT (date_key) DO UPDATE
+        SET
           total_token_cost = admin_metrics_daily.total_token_cost + EXCLUDED.total_token_cost,
           total_play_duration_sec = admin_metrics_daily.total_play_duration_sec + EXCLUDED.total_play_duration_sec,
           chat_actions = admin_metrics_daily.chat_actions + EXCLUDED.chat_actions,

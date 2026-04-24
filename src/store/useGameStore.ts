@@ -2428,6 +2428,8 @@ export const useGameStore = create<GameState>()(
         });
         return {
           v: 1 as const,
+          guestId: s.guestId ?? null,
+          isGuest: Boolean(s.isGuest ?? !s.user),
           turnIndex: (s.logs ?? []).length,
           playerLocation: location,
           time: { day: time.day ?? 0, hour: time.hour ?? 0 },

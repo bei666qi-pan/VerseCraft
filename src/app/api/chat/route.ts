@@ -1,4 +1,4 @@
-﻿// src/app/api/chat/route.ts
+// src/app/api/chat/route.ts
 import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
@@ -20,6 +20,7 @@ import {
   buildChatRequestFinishedPayload,
   toEnhanceTurnMetrics,
 } from "@/lib/analytics/chatRequestFinishedPayload";
+import { getGuestIdFromClientState } from "@/lib/chat/clientStateGuest";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 import { buildPlayerContextDigest, inferWeaponizationAttempted } from "@/lib/analytics/playerContextDigest";
 import { DEFAULT_PLAYER_ROLE_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
@@ -237,8 +238,7 @@ async function loadSessionMemoryForUser(userId: string): Promise<SessionMemoryRo
   }
 }
 
-const PLAY_TIME_PER_ACTION_SEC = 3600; // 1 game hour per chat action
-
+/** Play time is accumulated from `/api/presence/heartbeat` (see docs/design/presence-and-playtime.md), not from chat. */
 async function persistTokenUsage(userId: string | null, totalTokens: number) {
   if (!userId || !Number.isFinite(totalTokens) || totalTokens <= 0) return;
   const tokenDelta = Math.trunc(totalTokens);
@@ -253,12 +253,6 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
           THEN COALESCE(${users.todayTokensUsed}, 0) + ${tokenDelta}
           ELSE ${tokenDelta}
         END`,
-        playTime: sql`COALESCE(${users.playTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}`,
-        todayPlayTime: sql`CASE
-          WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
-          THEN COALESCE(${users.todayPlayTime}, 0) + ${PLAY_TIME_PER_ACTION_SEC}
-          ELSE ${PLAY_TIME_PER_ACTION_SEC}
-        END`,
         lastDataReset: sql`CASE
           WHEN DATE(COALESCE(${users.lastDataReset}, NOW())) = CURRENT_DATE
           THEN ${users.lastDataReset}
@@ -268,9 +262,8 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
       })
       .where(eq(users.id, userId));
 
-    // Best-effort telemetry for admin charts.
-    // Do not await to avoid impacting /api/chat latency.
-    void recordDailyTokenUsage(getUtcDateKey(), tokenDelta, PLAY_TIME_PER_ACTION_SEC).catch(() => {});
+    // Best-effort telemetry for admin charts: tokens only; play duration comes from presence heartbeat.
+    void recordDailyTokenUsage(getUtcDateKey(), tokenDelta, 0).catch(() => {});
   } catch (error) {
     const err = error as Error;
     const cause = err instanceof Error && "cause" in err ? (err as Error & { cause?: unknown }).cause : undefined;
@@ -307,6 +300,7 @@ export async function POST(req: Request) {
   const messages = validated.messages;
   const playerContext = validated.playerContext;
   const clientState = validated.clientState;
+  const chatGuestId = getGuestIdFromClientState(clientState);
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
   const clientPurpose = validated.clientPurpose;
@@ -1210,6 +1204,7 @@ export async function POST(req: Request) {
       eventId: `${requestId}:turn_lane_decided`,
       idempotencyKey: `${requestId}:turn_lane_decided`,
       userId,
+      guestId: userId ? null : chatGuestId,
       sessionId: capturedSessionIdLane,
       eventName: "turn_lane_decided",
       eventTime: new Date(),
@@ -1286,6 +1281,7 @@ export async function POST(req: Request) {
     eventId: `${requestId}:chat_request_started`,
     idempotencyKey: `${requestId}:chat_request_started`,
     userId,
+    guestId: userId ? null : chatGuestId,
     sessionId: sessionId ?? "unknown_session",
     eventName: "chat_request_started",
     eventTime: new Date(requestStartedAt),
@@ -1342,6 +1338,7 @@ export async function POST(req: Request) {
             latestUserInput,
             requestId,
             userId,
+            guestId: userId ? null : chatGuestId,
             sessionId,
             platform,
             onWorldRevision: (rev) => {
@@ -1360,6 +1357,7 @@ export async function POST(req: Request) {
           latestUserInput,
           requestId,
           userId,
+          guestId: userId ? null : chatGuestId,
           sessionId,
           platform,
           onWorldRevision: (rev) => {
@@ -1619,6 +1617,7 @@ export async function POST(req: Request) {
         eventId: `${requestId}:chat_request_finished_error`,
         idempotencyKey: `${requestId}:chat_request_finished_error`,
         userId,
+        guestId: userId ? null : chatGuestId,
         sessionId: sessionId ?? "unknown_session",
         eventName: "chat_request_finished",
         eventTime: new Date(),
@@ -1752,13 +1751,13 @@ export async function POST(req: Request) {
 
         userId,
         sessionId: sessionId ?? "unknown_session",
-        guestId: userId ? null : (sessionId ?? null),
+        guestId: userId ? null : chatGuestId,
         page: "/play",
         source: "chat",
         platform,
 
         tokenCost: toPersist,
-        playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
+        playDurationDeltaSec: 0,
 
         payload: {
           requestId,
@@ -1791,6 +1790,7 @@ export async function POST(req: Request) {
         eventId: `${requestId}:chat_request_finished`,
         idempotencyKey: `${requestId}:chat_request_finished`,
         userId,
+        guestId: userId ? null : chatGuestId,
         sessionId: sessionId ?? "unknown_session",
         eventName: "chat_request_finished",
         eventTime: new Date(),
@@ -1798,7 +1798,7 @@ export async function POST(req: Request) {
         source: "chat",
         platform,
         tokenCost: toPersist,
-        playDurationDeltaSec: toPersist > 0 ? PLAY_TIME_PER_ACTION_SEC : 0,
+        playDurationDeltaSec: 0,
         payload: (() => {
           const base = buildChatRequestFinishedPayload({
           requestId,
@@ -2107,12 +2107,13 @@ export async function POST(req: Request) {
               sessionId,
               userId,
               flags: sanitized.flags,
-              role: routingReport.actualLogicalRole ?? args.streamRole,
+              role: routingReport.actualLogicalRole ?? streamSource.logicalRole,
             });
             void recordGenericAnalyticsEvent({
               eventId: `${requestId}:narrative_protocol_leak`,
               idempotencyKey: `${requestId}:narrative_protocol_leak`,
               userId,
+              guestId: userId ? null : chatGuestId,
               sessionId: sessionId ?? "unknown_session",
               eventName: "narrative_protocol_leak",
               eventTime: new Date(),
@@ -2124,7 +2125,7 @@ export async function POST(req: Request) {
               payload: {
                 requestId,
                 flags: sanitized.flags,
-                role: routingReport.actualLogicalRole ?? args.streamRole,
+                role: routingReport.actualLogicalRole ?? streamSource.logicalRole,
               },
             }).catch(() => {});
           } else {
@@ -2492,6 +2493,7 @@ export async function POST(req: Request) {
               eventId: `${requestId}:turn_commit_summary`,
               idempotencyKey: `${requestId}:turn_commit_summary`,
               userId,
+              guestId: userId ? null : chatGuestId,
               sessionId: capturedSessionIdAnalytics,
               eventName: "turn_commit_summary",
               eventTime: new Date(),
@@ -2518,6 +2520,7 @@ export async function POST(req: Request) {
                 eventId: `${requestId}:narrative_validator_issue`,
                 idempotencyKey: `${requestId}:narrative_validator_issue`,
                 userId,
+                guestId: userId ? null : chatGuestId,
                 sessionId: capturedSessionIdAnalytics,
                 eventName: "narrative_validator_issue",
                 eventTime: new Date(),
@@ -2777,6 +2780,7 @@ export async function POST(req: Request) {
                 eventId: `${requestId}:world_engine_enqueued`,
                 idempotencyKey: `${requestId}:world_engine_enqueued`,
                 userId,
+                guestId: userId ? null : chatGuestId,
                 sessionId: capturedSessionId,
                 eventName: "world_engine_enqueued",
                 eventTime: new Date(),
@@ -2824,6 +2828,7 @@ export async function POST(req: Request) {
                 eventId: `${requestId}:kg_cache_write`,
                 idempotencyKey: `${requestId}:kg_cache_write`,
                 userId,
+                guestId: userId ? null : chatGuestId,
                 sessionId: sessionId ?? "unknown_session",
                 eventName: "kg_cache_write",
                 eventTime: new Date(),
@@ -3178,6 +3183,7 @@ async function tryServeCodexFromGlobalCache(args: {
   latestUserInput: string;
   requestId: string;
   userId: string | null;
+  guestId?: string | null;
   sessionId: string | null;
   platform: AnalyticsPlatform;
   onWorldRevision: (rev: bigint) => void;
@@ -3204,6 +3210,7 @@ async function tryServeCodexFromGlobalCache(args: {
       eventId: `${args.requestId}:kg_cache_miss`,
       idempotencyKey: `${args.requestId}:kg_cache_miss`,
       userId: args.userId,
+      guestId: args.userId ? null : (args.guestId ?? null),
       sessionId: args.sessionId ?? "unknown_session",
       eventName: "kg_cache_miss",
       eventTime: new Date(),
@@ -3229,6 +3236,7 @@ async function tryServeCodexFromGlobalCache(args: {
     eventId: `${args.requestId}:kg_cache_hit`,
     idempotencyKey: `${args.requestId}:kg_cache_hit`,
     userId: args.userId,
+    guestId: args.userId ? null : (args.guestId ?? null),
     sessionId: args.sessionId ?? "unknown_session",
     eventName: "kg_cache_hit",
     eventTime: new Date(),

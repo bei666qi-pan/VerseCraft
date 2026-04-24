@@ -6,8 +6,7 @@ export type OptionsRegenReasonCode =
   | "anchor_miss_rejected"
   | "generic_rejected"
   | "homogeneity_rejected"
-  | "repair_pass_used"
-  | "fallback_used";
+  | "repair_pass_used";
 
 const REJECT_REASON_TO_CODE: Partial<Record<OptionRejectReason, OptionsRegenReasonCode>> = {
   duplicate_current_recent: "duplicated_rejected",

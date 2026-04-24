@@ -256,6 +256,88 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS user_sessions_user_last_seen_idx ON user_sessions (user_id, last_seen_at);
     `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS user_sessions_last_seen_at_idx ON user_sessions (last_seen_at);
+    `);
+    await client.query(`ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS last_presence_ok_at TIMESTAMPTZ NULL;`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS guest_sessions (
+        session_id VARCHAR(191) PRIMARY KEY,
+        guest_id VARCHAR(128) NOT NULL,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_page TEXT NULL,
+        total_play_duration_sec INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS guest_sessions_guest_last_seen_idx ON guest_sessions (guest_id, last_seen_at);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS guest_sessions_last_seen_at_idx ON guest_sessions (last_seen_at);
+    `);
+    await client.query(`ALTER TABLE guest_sessions ADD COLUMN IF NOT EXISTS last_presence_ok_at TIMESTAMPTZ NULL;`);
+
+    // Per-guest master row (first-class guest): distinct from per-tab `guest_sessions`.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS guest_registry (
+        guest_id VARCHAR(128) PRIMARY KEY,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        total_play_duration_sec INTEGER NOT NULL DEFAULT 0,
+        ua TEXT,
+        ip_hash VARCHAR(64),
+        platform VARCHAR(32) NOT NULL DEFAULT 'unknown',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS guest_registry_last_seen_at_idx ON guest_registry (last_seen_at);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS guest_daily_activity (
+        guest_id VARCHAR(128) NOT NULL,
+        date_key DATE NOT NULL,
+        first_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_active_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        chat_action_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (guest_id, date_key)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS guest_daily_activity_date_key_idx ON guest_daily_activity (date_key);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS guest_daily_tokens (
+        guest_id VARCHAR(128) NOT NULL,
+        date_key DATE NOT NULL,
+        daily_token_cost INTEGER NOT NULL DEFAULT 0,
+        daily_play_duration_sec INTEGER NOT NULL DEFAULT 0,
+        chat_action_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (guest_id, date_key)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS guest_daily_tokens_date_key_idx ON guest_daily_tokens (date_key);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS presence_heartbeat_dedupe (
+        session_id VARCHAR(191) NOT NULL,
+        bucket_start TIMESTAMPTZ NOT NULL,
+        event_time TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT presence_heartbeat_session_bucket_unique UNIQUE (session_id, bucket_start)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS presence_heartbeat_session_event_time_idx
+      ON presence_heartbeat_dedupe (session_id, event_time);
+    `);
 
     // ========= Unified actor analytics (Phase 5) =========
     await client.query(`

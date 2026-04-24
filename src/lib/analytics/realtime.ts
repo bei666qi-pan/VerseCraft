@@ -3,36 +3,62 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { userSessions } from "@/db/schema";
-import { getOnlineUsersFromPresence } from "@/lib/presence";
+import { getOnlinePresenceReport } from "@/lib/presence";
+import { ONLINE_WINDOW_SECONDS } from "@/lib/presence/onlineWindow";
 
 export type AdminRealtimeMetrics = {
   onlineUsers: number;
+  /** Active guest **sessions** (rows in `guest_sessions`) within the online window. */
+  onlineGuests: number;
+  /** `COUNT(*)` from `user_sessions` with `last_seen_at` in the online window (indexed). */
   activeSessions: number;
   avgSessionDurationSec: number;
   updatedAt: string;
+  /** Dev-only: how online actors were merged (Redis vs DB vs overlap). */
+  presenceDebug?: {
+    redis: number;
+    db: number;
+    both: number;
+    dbOnly: number;
+    redisOnly: number;
+    redisDown: boolean;
+  };
 };
 
-const ACTIVE_SESSION_WINDOW_MIN = 10;
-
 export async function getAdminRealtimeMetrics(): Promise<AdminRealtimeMetrics> {
-  const [{ count: onlineUsers }] = await Promise.all([
-    getOnlineUsersFromPresence().catch(() => ({ ids: [], count: 0 })),
-  ]);
+  const win = ONLINE_WINDOW_SECONDS;
+  const report = await getOnlinePresenceReport();
+  const { mergedBreakdown, onlineUsersRegistered, onlineGuestSessionCount, activeUserSessionsCount } = report;
 
-  // Uses indexed user_sessions.last_seen_at for low-cost realtime reads.
-  const [row] = await db
+  const [avgRow] = await db
     .select({
-      activeSessions: sql<number>`COUNT(*)::int`,
-      avgSessionDurationSec: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${userSessions.lastSeenAt} - ${userSessions.startedAt}))), 0)::int`,
+      avgSessionDurationSec: sql<number>`COALESCE(
+        AVG(EXTRACT(EPOCH FROM (${userSessions.lastSeenAt} - ${userSessions.startedAt}))),
+        0
+      )::int`,
     })
     .from(userSessions)
-    .where(sql`${userSessions.lastSeenAt} >= NOW() - (${ACTIVE_SESSION_WINDOW_MIN} * INTERVAL '1 minute')`);
+    .where(
+      sql`${userSessions.lastSeenAt} >= (NOW() - (${win}::int * interval '1 second'))`
+    );
+
+  const isDev = process.env.NODE_ENV === "development";
 
   return {
-    onlineUsers: Number(onlineUsers ?? 0),
-    activeSessions: Number(row?.activeSessions ?? 0),
-    avgSessionDurationSec: Number(row?.avgSessionDurationSec ?? 0),
+    onlineUsers: onlineUsersRegistered,
+    onlineGuests: onlineGuestSessionCount,
+    activeSessions: activeUserSessionsCount,
+    avgSessionDurationSec: Number(avgRow?.avgSessionDurationSec ?? 0),
     updatedAt: new Date().toISOString(),
+    presenceDebug: isDev
+      ? {
+          redis: mergedBreakdown.inRedis.size,
+          db: mergedBreakdown.inDb.size,
+          both: mergedBreakdown.both,
+          dbOnly: mergedBreakdown.dbOnly,
+          redisOnly: mergedBreakdown.redisOnly,
+          redisDown: mergedBreakdown.redisDown,
+        }
+      : undefined,
   };
 }
-

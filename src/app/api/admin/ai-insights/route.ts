@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
+import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getAiInsights } from "@/lib/admin/service";
 import { getCachedAiInsightReport, refreshAiInsightReport } from "@/lib/admin/aiInsights";
@@ -30,35 +30,32 @@ export async function GET(req: Request) {
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
   if (!verifyAdminShadowSession(shadowCookie)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return adminUnauthorizedJson();
   }
 
   const url = new URL(req.url);
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
   if (ADMIN_AI_INSIGHTS_DISABLE) {
-    return NextResponse.json(
-      { error: "ai_insights_disabled", degraded: true, range },
-      { status: 500, headers: { "Cache-Control": "private, max-age=10" } }
-    );
+    return adminJson(adminFail<null>("ai_insights_disabled", null), {
+      status: 200,
+      headers: { "Cache-Control": "private, max-age=10" },
+    });
   }
   try {
     const cached = await getCachedAiInsightReport(range);
     if (cached) {
-      return NextResponse.json(
-        { ...cached, source: "snapshot" },
-        { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } }
-      );
+      return adminJson(adminOk({ ...cached, source: "snapshot" as const }), {
+        headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" },
+      });
     }
     const data = await getAiInsights(range);
-    return NextResponse.json(data, {
+    return adminJson(adminOk(data), {
       headers: { "Cache-Control": "private, max-age=180, stale-while-revalidate=300" },
     });
   } catch (error) {
     console.error("[api/admin/ai-insights] failed", error);
-    return NextResponse.json(
-      { error: "ai_insights_unavailable", degraded: true, range },
-      { status: 500, headers: { "Cache-Control": "private, max-age=10" } }
-    );
+    const reason = error instanceof Error ? error.message : "ai_insights_unavailable";
+    return adminJson(adminFail<null>(reason, null), { status: 200, headers: { "Cache-Control": "private, max-age=10" } });
   }
 }
 
@@ -66,25 +63,21 @@ export async function POST(req: Request) {
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
   if (!verifyAdminShadowSession(shadowCookie)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return adminUnauthorizedJson();
   }
 
   const url = new URL(req.url);
   if (url.searchParams.get("refresh_cache") === "1") {
     const deletedCompletion = await invalidateCompletionCacheByTask("DEV_ASSIST");
     const deletedSnapshot = await invalidateAiAnalysisSnapshot({ task: "admin_insight" });
-    return NextResponse.json({ ok: true, task: "DEV_ASSIST", deletedCompletion, deletedSnapshot });
+    return adminJson(adminOk({ ok: true, task: "DEV_ASSIST" as const, deletedCompletion, deletedSnapshot }));
   }
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
   if (ADMIN_AI_INSIGHTS_DISABLE) {
-    return NextResponse.json(
-      {
-        error: "ai_insights_disabled",
-        degraded: true,
-        range,
-      },
-      { status: 500, headers: { "Cache-Control": "private, max-age=5" } }
-    );
+    return adminJson(adminFail<null>("ai_insights_disabled", null), {
+      status: 200,
+      headers: { "Cache-Control": "private, max-age=5" },
+    });
   }
 
   try {
@@ -97,40 +90,38 @@ export async function POST(req: Request) {
         const r = await withTimeout(refreshAiInsightReport(parseAdminTimeRangeFromSearchParams(sp)), 12_000);
         refreshed.push({ preset, degraded: r.degraded, model: r.model });
       }
-      return NextResponse.json({ ok: true, refreshed, source: "warmup" });
+      return adminJson(adminOk({ ok: true as const, refreshed, source: "warmup" as const }));
     }
     const report = await withTimeout(refreshAiInsightReport(range), 12_000);
-    return NextResponse.json(
-      {
+    return adminJson(
+      adminOk({
         ...report,
-        source: "refresh",
-      },
+        source: "refresh" as const,
+      }),
       { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" } }
     );
   } catch (error) {
     console.error("[api/admin/ai-insights:post] failed", error);
-    // 运营分析官兜底：即使 AI 刷新失败，也返回规则版可读报告，避免后台“不可用”。
     try {
       const fallback = await getAiInsights(range);
-      return NextResponse.json(
-        {
-          ...fallback,
-          source: "rule_fallback",
-          degraded: true,
-        },
+      return adminJson(
+        adminOk(
+          {
+            ...fallback,
+            source: "rule_fallback" as const,
+            degraded: true,
+          },
+          { degraded: true, reason: "ai_refresh_failed_used_rule_fallback" }
+        ),
         { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
       );
     } catch {
-      // fallback failed too, keep original degraded error response.
+      // fall through
     }
-    return NextResponse.json(
-      {
-        error: "ai_insights_generation_failed",
-        degraded: true,
-        range,
-      },
-      { status: 500, headers: { "Cache-Control": "private, max-age=5" } }
-    );
+    return adminJson(adminFail<null>("ai_insights_generation_failed", null), {
+      status: 200,
+      headers: { "Cache-Control": "private, max-age=5" },
+    });
   }
 }
 
@@ -138,15 +129,14 @@ export async function DELETE(req: Request) {
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
   if (!verifyAdminShadowSession(shadowCookie)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return adminUnauthorizedJson();
   }
   const url = new URL(req.url);
   const task = url.searchParams.get("task");
   if (task !== "DEV_ASSIST" && task !== "admin_insight") {
-    return NextResponse.json({ error: "unsupported_task" }, { status: 400 });
+    return adminJson(adminFail<null>("unsupported_task", null), { status: 400 });
   }
   const deletedCompletion = task === "DEV_ASSIST" ? await invalidateCompletionCacheByTask("DEV_ASSIST") : 0;
   const deletedSnapshot = task === "admin_insight" ? await invalidateAiAnalysisSnapshot({ task: "admin_insight" }) : 0;
-  return NextResponse.json({ ok: true, task, deletedCompletion, deletedSnapshot });
+  return adminJson(adminOk({ ok: true as const, task, deletedCompletion, deletedSnapshot }));
 }
-

@@ -45,9 +45,10 @@ test.describe("Admin API integration", () => {
     });
     expect([200, 500]).toContain(overview.status());
     if (overview.status() === 200) {
-      const body = await overview.json();
-      expect(body).toHaveProperty("cards");
-      expect(body).toHaveProperty("range");
+      const body = (await overview.json()) as Record<string, unknown>;
+      const data = body.ok === true && body.data !== undefined ? (body.data as Record<string, unknown>) : body;
+      expect(data).toHaveProperty("cards");
+      expect(data).toHaveProperty("range");
     }
 
     const realtime = await request.get("/api/admin/realtime", {
@@ -61,12 +62,17 @@ test.describe("Admin API integration", () => {
       timeout: 40_000,
     });
     expect([200, 500]).toContain(aiReport.status());
-    const aiBody = await aiReport.json();
+    const aiBody = (await aiReport.json()) as Record<string, unknown>;
     if (aiReport.status() === 200) {
-      expect(aiBody).toHaveProperty("output");
-      expect(aiBody).toHaveProperty("input");
+      if (aiBody.ok === true && aiBody.data != null) {
+        const data = aiBody.data as Record<string, unknown>;
+        expect(data).toHaveProperty("output");
+        expect(data).toHaveProperty("input");
+      } else {
+        expect(aiBody.ok === false || aiBody.degraded === true).toBeTruthy();
+      }
     } else {
-      expect(aiBody).toHaveProperty("degraded");
+      expect(aiBody.ok === false || aiBody.degraded === true).toBeTruthy();
     }
   });
 });

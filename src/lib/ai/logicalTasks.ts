@@ -134,22 +134,6 @@ function contextualFallbackPad(playerContext: string): readonly string[] {
   ];
 }
 
-type OptionActionKind = "dialogue" | "observe" | "move" | "item" | "avoid" | "probe" | "wait" | "other";
-
-function classifyOptionKind(text: string): OptionActionKind {
-  const s = String(text ?? "").trim();
-  if (!s) return "other";
-  const t = s.replace(/[。！？…,.!?\s]+/g, "");
-  if (/(询问|问清|打听|交涉|说服|呼喊|喊话|对话|打招呼|确认情况)/.test(t)) return "dialogue";
-  if (/(观察|查看|检查|搜寻|侧耳|倾听|翻找|辨认|记录|对照)/.test(t)) return "observe";
-  if (/(后撤|退回|撤到|躲开|绕开|避开|保持距离|找退路|掩体|遮蔽|拉开距离)/.test(t)) return "avoid";
-  if (/(移动|靠近|走向|前进|转移|换位|贴墙|贴近|进入|离开|调整站位)/.test(t)) return "move";
-  if (/(使用|拿出|点亮|打开|关上|拨打|拍照|照明|钥匙|手机|手电|符|药|绷带)/.test(t)) return "item";
-  if (/(试探|敲击|轻触|投石|小动作|测试|验证)/.test(t)) return "probe";
-  if (/(等待|拖延|按兵不动|停一停|稳住|深呼吸)/.test(t)) return "wait";
-  return "other";
-}
-
 function normalizeForLooseDedup(s: string): string {
   return String(s ?? "")
     .trim()
@@ -199,66 +183,14 @@ export function guardOptionsQualityToFour(args: {
   playerContext?: string;
   recentActionHint?: string;
 }): string[] {
-  const ctx = String(args.playerContext ?? "");
-  const recent = String(args.recentActionHint ?? "");
-  const npcPresent = /NPC当前位置：([^。]+)。/.test(ctx);
-  const hasThreat = /主威胁状态：/.test(ctx) && /(active|suppressed|breached|危险|压制|失控)/.test(ctx);
-
-  const base: string[] = [];
-  for (const s of args.options ?? []) {
-    const t = String(s ?? "").trim();
-    if (!t) continue;
-    if (base.some((x) => areOptionsTooSimilar(x, t))) continue;
-    base.push(t);
-    if (base.length >= 4) break;
-  }
-
-  const out: string[] = [];
-  const kinds = new Set<OptionActionKind>();
-  const push = (s: string) => {
-    const t = String(s ?? "").trim();
-    if (!t) return;
-    if (out.some((x) => areOptionsTooSimilar(x, t))) return;
-    out.push(t);
-    kinds.add(classifyOptionKind(t));
-  };
-  for (const s of base) push(s);
-
-  // 补齐缺失类型：优先规避/交涉（视上下文），再补信息/移动/道具/试探
-  const fallbacks = padOptionsFallbackToFour([], ctx);
-  const tryFillByKind = (kind: OptionActionKind) => {
-    for (const f of fallbacks) {
-      if (out.length >= 4) return;
-      if (classifyOptionKind(f) !== kind) continue;
-      push(f);
-    }
-  };
-
-  if (hasThreat && !kinds.has("avoid")) tryFillByKind("avoid");
-  if (npcPresent && !kinds.has("dialogue")) tryFillByKind("dialogue");
-  if (!kinds.has("observe")) tryFillByKind("observe");
-  if (!kinds.has("move")) tryFillByKind("move");
-  if (!kinds.has("item")) tryFillByKind("item");
-  if (!kinds.has("probe")) tryFillByKind("probe");
-  if (!kinds.has("wait")) tryFillByKind("wait");
-
-  // 轻量贴场景补句（基于最近动作的关键字，不做复杂 NLP）
-  if (recent && out.length < 4) {
-    if (/(手机|手电|照明|拍照)/.test(recent)) push("我先用手机灯照一下关键细节。");
-    if (/(钥匙|门锁|门把|门)/.test(recent)) push("我先检查门锁结构，确认能否快速撤离。");
-    if (/(电梯|楼梯|走廊)/.test(recent)) push("我先确认通道哪条更安全，再决定推进。");
-  }
-
-  for (const f of fallbacks) {
-    if (out.length >= 4) break;
-    push(f);
-  }
-  return out.slice(0, 4);
+  void args.playerContext;
+  void args.recentActionHint;
+  return guardModelGeneratedOptions(args.options ?? [], 4);
 }
 
 function finalizeOptionsFallbackParsed(parsed: string[]): { ok: true; options: string[] } | null {
   const guarded = guardModelGeneratedOptions(parsed, 4);
-  if (guarded.length >= 2) return { ok: true, options: guarded.slice(0, 4) };
+  if (guarded.length === 4) return { ok: true, options: guarded };
   return null;
 }
 
@@ -350,7 +282,7 @@ export async function generateOptionsOnlyFallback(args: {
   systemExtra?: string;
   /**
    * Hard budget wall-clock for the entire fallback tool.
-   * When hit, skip upstream calls and return conservative padded options.
+   * When hit, skip upstream calls and return failure; callers must not synthesize visible options.
    *
    * 设计目标：让“补 options”更像低成本工具，而不是第二次长等待。
    */

@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
+import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getOverviewMetrics } from "@/lib/admin/service";
 
@@ -10,22 +10,22 @@ export async function GET(req: Request) {
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
   if (!verifyAdminShadowSession(shadowCookie)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return adminUnauthorizedJson();
   }
 
   const url = new URL(req.url);
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
   try {
     const data = await getOverviewMetrics(range);
-    return NextResponse.json(data, {
+    return adminJson(adminOk(data), {
       headers: { "Cache-Control": "private, max-age=20, stale-while-revalidate=20" },
     });
   } catch (error) {
     console.error("[api/admin/overview] failed", error);
-    return NextResponse.json(
-      { error: "overview_unavailable", degraded: true, range },
-      { status: 500, headers: { "Cache-Control": "private, max-age=5" } }
-    );
+    const reason = error instanceof Error ? error.message : "overview_unavailable";
+    return adminJson(adminFail<null>(reason, null), {
+      status: 200,
+      headers: { "Cache-Control": "private, max-age=5" },
+    });
   }
 }
-

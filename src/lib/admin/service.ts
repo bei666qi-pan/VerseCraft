@@ -10,14 +10,16 @@ import {
   analyticsEvents,
   feedbacks,
   guestAliases,
+  guestRegistry,
   surveyResponses,
+  userSessions,
   users,
 } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
-import { computeFunnel, computeTokenStats } from "@/lib/admin/metricsUtils";
+import { computeFunnelTriColumn, computeTokenStats } from "@/lib/admin/metricsUtils";
 import { getActorAdvancedMetrics } from "@/lib/admin/actorMetrics";
 import { getProfessionWeaponMetrics } from "@/lib/admin/professionWeaponMetrics";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
@@ -189,6 +191,39 @@ export async function getDashboardTableData() {
     })
     .from(users)
     .orderBy(desc(users.tokensUsed));
+
+  const sessionPlayByUserRaw = await db
+    .execute(sql`
+      SELECT user_id AS "userId", COALESCE(SUM(total_play_duration_sec), 0)::int AS "sessionPlaySec"
+      FROM user_sessions
+      WHERE user_id IS NOT NULL
+      GROUP BY user_id
+    `)
+    .catch((error) => {
+      console.warn("[admin][getDashboardTableData] user session play rollup failed, fallback empty", error);
+      return { rows: [] };
+    });
+  const sessionPlayByGuestRaw = await db
+    .execute(sql`
+      SELECT guest_id AS "guestId", COALESCE(SUM(total_play_duration_sec), 0)::int AS "sessionPlaySec"
+      FROM guest_sessions
+      GROUP BY guest_id
+    `)
+    .catch((error) => {
+      console.warn("[admin][getDashboardTableData] guest session play rollup failed, fallback empty", error);
+      return { rows: [] };
+    });
+
+  const sessionPlayByUser = new Map<string, number>();
+  for (const row of normalizeExecuteRows(sessionPlayByUserRaw)) {
+    const id = String(row.userId ?? "");
+    if (id) sessionPlayByUser.set(id, Number(row.sessionPlaySec ?? 0));
+  }
+  const sessionPlayByGuest = new Map<string, number>();
+  for (const row of normalizeExecuteRows(sessionPlayByGuestRaw)) {
+    const id = String(row.guestId ?? "");
+    if (id) sessionPlayByGuest.set(id, Number(row.sessionPlaySec ?? 0));
+  }
 
   const { ids: onlineIds } = await getOnlineUsersFromPresence().catch(() => ({ ids: [], count: 0 }));
   // 避免全表拉取后在内存去重：改为 DISTINCT ON 每用户一条最新记录。
@@ -379,6 +414,7 @@ export async function getDashboardTableData() {
       latestGameMaxFloor: latestGame?.maxFloorScore ?? null,
       latestGameSurvivalSec: latestGame?.survivalTimeSeconds ?? null,
       latestGameAt: latestGame?.createdAt ? new Date(latestGame.createdAt).toISOString() : null,
+      sessionPlaySec: sessionPlayByUser.get(u.id) ?? 0,
     };
   });
 
@@ -463,6 +499,7 @@ export async function getDashboardTableData() {
       latestGameMaxFloor: null,
       latestGameSurvivalSec: null,
       latestGameAt: null,
+      sessionPlaySec: sessionPlayByGuest.get(guestId) ?? 0,
     };
   });
 
@@ -506,6 +543,52 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
 
   const tokenStats = computeTokenStats(Number(dailyAgg?.tokenCost ?? 0), Number(dailyAgg?.dau ?? 0));
 
+  const [playWallRange] = await db
+    .select({
+      sec: sql<number>`COALESCE(SUM(${adminMetricsDaily.totalPlayDurationSec}), 0)`,
+    })
+    .from(adminMetricsDaily)
+    .where(
+      sql`${adminMetricsDaily.dateKey} >= ${range.startDateKey}::date AND ${adminMetricsDaily.dateKey} <= ${range.endDateKey}::date`
+    );
+
+  const [legacyPlaySum] = await db
+    .select({
+      sec: sql<number>`COALESCE(SUM(${users.playTime}), 0)`,
+    })
+    .from(users);
+
+  let sessionTotalLive: { sec: number } = { sec: 0 };
+  try {
+    const [r] = await db
+      .select({
+        sec: sql<number>`COALESCE(SUM(${userSessions.totalPlayDurationSec}), 0)`,
+      })
+      .from(userSessions)
+      .where(sql`${userSessions.userId} IS NOT NULL`);
+    sessionTotalLive = { sec: Number(r?.sec ?? 0) };
+  } catch {
+    sessionTotalLive = { sec: 0 };
+  }
+
+  let guestAgg = { total: 0, online: 0, playSec: 0 };
+  try {
+    const [gRow] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        playSec: sql<number>`coalesce(sum(${guestRegistry.totalPlayDurationSec}), 0)::bigint`,
+        online: sql<number>`count(*) filter (where ${guestRegistry.lastSeenAt} >= now() - interval '90 second')::int`,
+      })
+      .from(guestRegistry);
+    guestAgg = {
+      total: Number(gRow?.total ?? 0),
+      online: Number(gRow?.online ?? 0),
+      playSec: Number(gRow?.playSec ?? 0),
+    };
+  } catch {
+    guestAgg = { total: 0, online: 0, playSec: 0 };
+  }
+
   return {
     range,
     cards: {
@@ -522,6 +605,12 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
       dau: Number(latestDayAgg?.dau ?? 0),
       wau: Number(latestDayAgg?.wau ?? 0),
       mau: Number(latestDayAgg?.mau ?? 0),
+      playDurationRangeSec: Number(playWallRange?.sec ?? 0),
+      legacyUsersPlayTimeSecSum: Number(legacyPlaySum?.sec ?? 0),
+      sessionPlayLiveSecSum: Number(sessionTotalLive?.sec ?? 0),
+      guestsTotal: guestAgg.total,
+      guestsOnline: guestAgg.online,
+      guestsPlayDurationSec: guestAgg.playSec,
     },
     chartData: await getAdminChartData(
       Math.max(
@@ -687,12 +776,127 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
     return Number(value ?? 0);
   };
 
+  let regCohortRes: unknown = { rows: [] };
+  try {
+    regCohortRes = await db.execute(sql`
+      WITH reg_users AS (
+        SELECT DISTINCT
+          ('u:' || user_id) AS actor_key,
+          DATE(event_time) AS cohort_day
+        FROM analytics_events
+        WHERE event_name = 'user_registered'
+          AND user_id IS NOT NULL
+          AND event_time >= ${range.start}
+          AND event_time <= ${range.end}
+      ),
+      active_days AS (
+        SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
+        FROM user_daily_activity
+        UNION
+        SELECT DISTINCT ('u:' || user_id), DATE(event_time)
+        FROM analytics_events
+        WHERE user_id IS NOT NULL
+      )
+      SELECT
+        COUNT(*)::int AS cohort_size,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM active_days a
+            WHERE a.actor_key = c.actor_key
+              AND a.active_day = c.cohort_day + INTERVAL '1 day'
+          )
+        )::int AS d1_count,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM active_days a
+            WHERE a.actor_key = c.actor_key
+              AND a.active_day = c.cohort_day + INTERVAL '3 day'
+          )
+        )::int AS d3_count,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM active_days a
+            WHERE a.actor_key = c.actor_key
+              AND a.active_day = c.cohort_day + INTERVAL '7 day'
+          )
+        )::int AS d7_count
+      FROM reg_users c
+    `);
+  } catch (e) {
+    console.warn("[admin][getRetentionMetrics] registered segment failed", e);
+  }
+
+  let guestCohortRes: unknown = { rows: [] };
+  try {
+    guestCohortRes = await db.execute(sql`
+      WITH guest_cohort AS (
+        SELECT
+          ('g:' || guest_id) AS actor_key,
+          DATE(first_seen_at) AS cohort_day
+        FROM guest_registry
+        WHERE first_seen_at >= ${range.start}
+          AND first_seen_at <= ${range.end}
+      ),
+      active_days AS (
+        SELECT DISTINCT ('g:' || guest_id) AS actor_key, date_key::date AS active_day
+        FROM guest_daily_activity
+        UNION
+        SELECT DISTINCT ('g:' || guest_id), DATE(event_time)
+        FROM analytics_events
+        WHERE user_id IS NULL
+          AND guest_id IS NOT NULL
+          AND btrim(guest_id) <> ''
+      )
+      SELECT
+        COUNT(*)::int AS cohort_size,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM active_days a
+            WHERE a.actor_key = c.actor_key
+              AND a.active_day = c.cohort_day + INTERVAL '1 day'
+          )
+        )::int AS d1_count,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM active_days a
+            WHERE a.actor_key = c.actor_key
+              AND a.active_day = c.cohort_day + INTERVAL '3 day'
+          )
+        )::int AS d3_count,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM active_days a
+            WHERE a.actor_key = c.actor_key
+              AND a.active_day = c.cohort_day + INTERVAL '7 day'
+          )
+        )::int AS d7_count
+      FROM guest_cohort c
+    `);
+  } catch (e) {
+    console.warn("[admin][getRetentionMetrics] guest segment failed", e);
+  }
+
   const cohortRows = normalizeExecuteRows(cohortRes);
   const cohortFirst = cohortRows[0] ?? {};
   const cohortSize = Number(cohortFirst.cohort_size ?? 0);
   const d1Count = Number(cohortFirst.d1_count ?? 0);
   const d3Count = Number(cohortFirst.d3_count ?? 0);
   const d7Count = Number(cohortFirst.d7_count ?? 0);
+
+  const packCohort = (res: unknown) => {
+    const row = normalizeExecuteRows(res)[0] ?? {};
+    const n = Number(row.cohort_size ?? 0);
+    const d1c = Number(row.d1_count ?? 0);
+    const d3c = Number(row.d3_count ?? 0);
+    const d7c = Number(row.d7_count ?? 0);
+    return {
+      cohortSize: n,
+      d1: { count: d1c, rate: n > 0 ? d1c / n : 0 },
+      d3: { count: d3c, rate: n > 0 ? d3c / n : 0 },
+      d7: { count: d7c, rate: n > 0 ? d7c / n : 0 },
+    };
+  };
+
   return {
     range,
     cohortSize,
@@ -701,6 +905,16 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
     d7: { count: d7Count, rate: cohortSize > 0 ? d7Count / cohortSize : 0 },
     returningUsers: pickCount(returningRes),
     churnUsers: pickCount(churnRes),
+    byActorKind: {
+      registered: packCohort(regCohortRes),
+      guest: packCohort(guestCohortRes),
+      all: {
+        cohortSize,
+        d1: { count: d1Count, rate: cohortSize > 0 ? d1Count / cohortSize : 0 },
+        d3: { count: d3Count, rate: cohortSize > 0 ? d3Count / cohortSize : 0 },
+        d7: { count: d7Count, rate: cohortSize > 0 ? d7Count / cohortSize : 0 },
+      },
+    },
   };
 }
 
@@ -723,31 +937,57 @@ export async function getFunnelMetrics(range: AdminTimeRange) {
     feedback_submitted: "提交反馈",
   };
 
-  const rows = await db
-    .select({
-      eventName: analyticsEvents.eventName,
-      users: sql<number>`COUNT(DISTINCT ${analyticsEvents.userId})`,
-    })
-    .from(analyticsEvents)
-    .where(
-      sql`${analyticsEvents.eventTime} >= ${range.start}
-      AND ${analyticsEvents.eventTime} <= ${range.end}
-      AND ${analyticsEvents.eventName} IN (${sql.raw(eventNames.map((x) => `'${x}'`).join(","))})`
-    )
-    .groupBy(analyticsEvents.eventName);
+  const fraw = await db.execute(sql`
+    SELECT
+      event_name AS "eventName",
+      COUNT(DISTINCT user_id) FILTER (WHERE user_id IS NOT NULL)::int AS "regN",
+      COUNT(DISTINCT guest_id) FILTER (
+        WHERE user_id IS NULL AND guest_id IS NOT NULL AND btrim(guest_id::text) <> ''
+      )::int AS "gN",
+      COUNT(
+        DISTINCT COALESCE(
+          CASE WHEN user_id IS NOT NULL THEN 'u:' || user_id END,
+          CASE
+            WHEN user_id IS NULL AND guest_id IS NOT NULL AND btrim(guest_id::text) <> ''
+            THEN 'g:' || guest_id
+          END
+        )
+      )::int AS "allN"
+    FROM analytics_events
+    WHERE event_time >= ${range.start}
+      AND event_time <= ${range.end}
+      AND event_name IN (${sql.raw(eventNames.map((x) => `'${x}'`).join(","))})
+    GROUP BY event_name
+  `);
 
-  const byEvent: Record<string, number> = {};
-  for (const r of rows) byEvent[String(r.eventName)] = Number(r.users ?? 0);
-  const stages = computeFunnel([...eventNames], byEvent);
+  const byReg: Record<string, number> = {};
+  const byGuest: Record<string, number> = {};
+  const byAll: Record<string, number> = {};
+  for (const row of normalizeExecuteRows(fraw)) {
+    const name = String((row as { eventName?: string }).eventName ?? (row as { event_name?: string }).event_name ?? "");
+    if (!name) continue;
+    byReg[name] = Number((row as { regN?: number }).regN ?? 0);
+    byGuest[name] = Number((row as { gN?: number }).gN ?? 0);
+    byAll[name] = Number((row as { allN?: number }).allN ?? 0);
+  }
+  const tri = computeFunnelTriColumn([...eventNames], byReg, byGuest, byAll);
 
   return {
     range,
-    stages: stages.map((s) => ({
-      ...s,
-      eventLabel:
-        (s.eventName && (EVENT_ZH as Record<string, string | undefined>)[String(s.eventName)]) ??
-        String(s.eventName ?? ""),
-    })),
+    stages: tri.map((s) => {
+      const ev = s.eventName as (typeof eventNames)[number];
+      return {
+        eventName: s.eventName,
+        eventLabel: (EVENT_ZH[ev] ?? s.eventName) as string,
+        users: s.all,
+        registered: s.registered,
+        guest: s.guest,
+        all: s.all,
+        conversionRate: s.conversionRateAll,
+        conversionRateRegistered: s.conversionRateRegistered,
+        conversionRateGuest: s.conversionRateGuest,
+      };
+    }),
   };
 }
 
@@ -756,6 +996,8 @@ export async function getFeedbackInsights(range: AdminTimeRange) {
     .select({
       content: feedbacks.content,
       createdAt: feedbacks.createdAt,
+      userId: feedbacks.userId,
+      guestId: feedbacks.guestId,
     })
     .from(feedbacks)
     .where(sql`${feedbacks.createdAt} >= ${range.start} AND ${feedbacks.createdAt} <= ${range.end}`)
@@ -786,7 +1028,14 @@ export async function getFeedbackInsights(range: AdminTimeRange) {
     .map(([topic, count]) => ({ topic, count }))
     .sort((a, b) => b.count - a.count);
   const samples = rows
-    .map((r) => String(r.content ?? "").trim())
+    .map((r) => {
+      const body = String(r.content ?? "").trim();
+      if (!body) return "";
+      const uid = r.userId && String(r.userId).length > 0;
+      const gid = r.guestId && String(r.guestId).trim().length > 0;
+      const tag = uid ? "登录" : gid ? "游客" : "未知";
+      return `[${tag}] ${body}`;
+    })
     .filter(Boolean)
     .slice(0, 50);
 
