@@ -13,7 +13,7 @@ if (!process.env.DATABASE_URL) {
 
 try {
   execSync("node ./scripts/db-check.mjs", { stdio: "inherit" });
-} catch (e) {
+} catch {
   console.warn("[db:check:optional] DB check failed; skipping (optional).");
   process.exit(0);
 }

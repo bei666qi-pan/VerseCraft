@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
 import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
 import { reviewWorldKnowledgeCandidate } from "@/lib/admin/worldKnowledgeService";
 
@@ -9,7 +9,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const cookieStore = await cookies();
   const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
   if (!verifyAdminShadowSession(shadowCookie)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return adminUnauthorizedJson();
   }
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => null)) as
@@ -19,7 +19,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       }
     | null;
   if (!body?.source || !body?.decision) {
-    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+    return adminJson(adminFail<null>("invalid_payload", null), { status: 400 });
   }
   try {
     const updated = await reviewWorldKnowledgeCandidate({
@@ -27,10 +27,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       source: body.source,
       decision: body.decision,
     });
-    if (!updated) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    return NextResponse.json({ ok: true, updated });
+    if (!updated) return adminJson(adminFail<null>("not_found", null), { status: 404 });
+    return adminJson(adminOk({ updated }));
   } catch (error) {
     console.error("[api/admin/world-knowledge/candidates/:id/review] failed", error);
-    return NextResponse.json({ error: "world_knowledge_review_failed" }, { status: 500 });
+    return adminJson(adminFail<null>("world_knowledge_review_failed", null), { status: 200 });
   }
 }

@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { rebuildAdminMetricsDailyForDateKey } from "@/lib/analytics/aggregation";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ function addDaysUtc(date: Date, deltaDays: number): Date {
 export async function POST(req: Request) {
   const token = req.headers.get("x-cron-secret") ?? "";
   if (!token || token !== (env.adminPassword ?? "")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return adminJson(adminFail<null>("unauthorized", null), { status: 403 });
   }
 
   const url = new URL(req.url);
@@ -33,10 +33,12 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({
-    ok: results.every((r) => r.ok),
-    days,
-    results,
-  });
+  return adminJson(
+    adminOk({
+      ok: results.every((r) => r.ok),
+      days,
+      results,
+    })
+  );
 }
 

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/db";
-import { actorDailyActivity, actorDailyTokens, actorSessions, analyticsActors, analyticsEvents, userDailyActivity, userDailyTokens, userSessions } from "@/db/schema";
+import { analyticsEvents } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import type { AnalyticsEventInsertInput } from "@/lib/analytics/types";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
