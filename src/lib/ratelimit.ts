@@ -53,18 +53,62 @@ function createInMemoryLimiter(limit: number, intervalMs: number) {
 
 const generalFallback = createInMemoryLimiter(30, 60000);
 const llmFallback = createInMemoryLimiter(10, 60000);
+const REDIS_RETRY_AFTER_MS = 30000;
 
 let clientPromise: Promise<RedisClientType> | null = null;
+let redisUnavailableUrl: string | null = null;
+let redisUnavailableUntil = 0;
+let redisUnavailableLogKey: string | null = null;
+
+function redisBackoffActive(url: string): boolean {
+  if (redisUnavailableUrl !== url) {
+    redisUnavailableUrl = null;
+    redisUnavailableUntil = 0;
+    redisUnavailableLogKey = null;
+    return false;
+  }
+  return Date.now() < redisUnavailableUntil;
+}
+
+function errorCode(err: unknown): string | null {
+  if (!err || typeof err !== "object" || !("code" in err)) return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+function markRedisUnavailable(url: string, err: unknown): void {
+  redisUnavailableUrl = url;
+  redisUnavailableUntil = Date.now() + REDIS_RETRY_AFTER_MS;
+
+  const code = errorCode(err);
+  const logKey = code ? `${url}:${code}` : `${url}:unknown`;
+  if (redisUnavailableLogKey === logKey) return;
+
+  redisUnavailableLogKey = logKey;
+  const detail = code ? `${code}: ${errorMessage(err)}` : errorMessage(err);
+  console.warn(`[ratelimit] Redis unavailable; fallback to in-memory limiter (${detail})`);
+}
 
 /** Shared Redis connection for rate limits, AI cache, and governance (optional). */
 export async function getAppRedisClient(): Promise<RedisClientType | null> {
   const url = envRaw("REDIS_URL");
   if (!url || url.trim().length === 0) return null;
+  if (redisBackoffActive(url)) return null;
   if (!clientPromise) {
     clientPromise = (async () => {
-      const client: RedisClientType = createClient({ url });
+      const client: RedisClientType = createClient({
+        url,
+        socket: {
+          reconnectStrategy: false,
+        },
+      });
       client.on("error", (err) => {
-        console.error("[ratelimit] Redis client error", err);
+        markRedisUnavailable(url, err);
       });
       await client.connect();
       return client;
@@ -73,9 +117,24 @@ export async function getAppRedisClient(): Promise<RedisClientType | null> {
   try {
     return await clientPromise;
   } catch (err) {
-    console.error("[ratelimit] failed to connect Redis, fallback to in-memory", err);
+    markRedisUnavailable(url, err);
     clientPromise = null;
     return null;
+  }
+}
+
+export async function __resetRatelimitForTests(): Promise<void> {
+  const pendingClient = clientPromise;
+  clientPromise = null;
+  redisUnavailableUrl = null;
+  redisUnavailableUntil = 0;
+  redisUnavailableLogKey = null;
+  hotIpCache.clear();
+
+  if (!pendingClient) return;
+  const client = await pendingClient.catch(() => null);
+  if (client?.isOpen) {
+    await client.disconnect();
   }
 }
 

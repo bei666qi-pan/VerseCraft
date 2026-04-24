@@ -29,7 +29,8 @@ jobs:
           # next build may read optional AI keys; CI image has none — placeholders satisfy any stray reads.
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
-          REDIS_URL: redis://127.0.0.1:6379
+          # Redis is optional in CI. Keep it empty so rate limits and caches use in-memory fallback.
+          REDIS_URL: ""
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
@@ -44,7 +45,8 @@ jobs:
           PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
-          REDIS_URL: redis://127.0.0.1:6379
+          # Redis is optional in CI. Keep it empty so degraded SSE never tries 127.0.0.1:6379.
+          REDIS_URL: ""
           # Ensure PR / fork runs do not pick up accidental AI_* from the shell
           AI_GATEWAY_BASE_URL: ""
           AI_GATEWAY_API_KEY: ""
