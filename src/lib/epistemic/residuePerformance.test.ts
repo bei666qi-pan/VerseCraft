@@ -104,7 +104,7 @@ test("anti-repeat：近期用过的 mode 会被轮换", () => {
       { npcId: npc, mode: "aversion", iso: "2026-01-02T00:00:00.000Z" },
     ],
   };
-  let modes = new Set<string>();
+  const modes = new Set<string>();
   for (let i = 0; i < 120; i++) {
     const plan = buildEpistemicResiduePerformancePlan({
       focusNpcId: npc,

@@ -40,16 +40,22 @@ export function usePlayWaitUx(args: {
     stage: "request_sent",
     lastStageChangeAt: 0,
   }));
+  const [elapsedMs, setElapsedMs] = useState(0);
   const displayRef = useRef(display);
-  displayRef.current = display;
+
+  useEffect(() => {
+    displayRef.current = display;
+  }, [display]);
 
   const enabled = isPlayWaitUxEnabled() && args.thinking && args.requestStartedAt !== null;
 
   useLayoutEffect(() => {
     if (!enabled || args.requestStartedAt === null) return;
-    const init = initialWaitUxDisplay(performance.now());
+    const now = performance.now();
+    const init = initialWaitUxDisplay(now);
     displayRef.current = init;
     setDisplay(init);
+    setElapsedMs(now - args.requestStartedAt);
   }, [enabled, args.requestStartedAt]);
 
   useEffect(() => {
@@ -57,6 +63,7 @@ export function usePlayWaitUx(args: {
 
     const id = window.setInterval(() => {
       const now = performance.now();
+      setElapsedMs(now - args.requestStartedAt!);
       const next = advanceWaitUxDisplay({
         now,
         requestStartedAt: args.requestStartedAt!,
@@ -78,9 +85,8 @@ export function usePlayWaitUx(args: {
   }
 
   const primaryLine = primaryLineForWaitStage(display.stage);
-  const elapsed = performance.now() - args.requestStartedAt;
   const showSub =
-    elapsed >= VC_WAITING.playWaitUxSemanticSublineAfterMs &&
+    elapsedMs >= VC_WAITING.playWaitUxSemanticSublineAfterMs &&
     (display.stage === "context_building" ||
       display.stage === "generating" ||
       display.stage === "streaming");
