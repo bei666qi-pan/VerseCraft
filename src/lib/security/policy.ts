@@ -39,7 +39,9 @@ export function safeBlockedDmJson(
     is_death: false,
     consumes_time: true,
     consumed_items: [],
-    options: ["观察周围环境", "与附近住户沟通", "回到安全区整理思路", "检查行囊并重新行动"],
+    // 不再注入罐头短句冒充模型输出；客户端在 options 为空时会走
+    // `requestFreshOptions` 再调一次实时模型，保证选项始终来自大模型。
+    options: [] as string[],
     security_meta: {
       action: meta?.action ?? "degrade",
       stage: meta?.stage ?? "pre_input",

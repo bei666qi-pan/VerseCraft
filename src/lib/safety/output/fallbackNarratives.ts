@@ -1,6 +1,7 @@
 import type { RiskLevel, ModerationDecision, ModerationScene, ModerationStage } from "@/lib/safety/policy/model";
 
-const PRIVATE_SAFE_FOUR_OPTIONS = ["观察周围环境", "与附近住户沟通", "回到安全区整理思路", "检查行囊并重新行动"];
+// 降级场景不再内置罐头短句：options 留空，由客户端触发模型实时生成补齐。
+const EMPTY_OPTIONS: string[] = [];
 
 function truncate(s: string, max = 1200): string {
   const t = s.trim();
@@ -26,7 +27,7 @@ export function buildOutputFallback(args: {
           "外部校验暂不可用。你没有追着危险细节继续，而是把注意力收回到更稳妥的路径：先确认边界、再选择推进的方式。",
           900
         ),
-        options: [...PRIVATE_SAFE_FOUR_OPTIONS],
+        options: [...EMPTY_OPTIONS],
       };
     }
     if (stage === "public_display") {
@@ -43,13 +44,13 @@ export function buildOutputFallback(args: {
     if (decision === "fallback") {
       return {
         narrative: truncate("你的直觉提醒：继续深入可能越过边界。于是你改用更克制的方式，把危险留在阴影里，换取一条更安全的推进。", 900),
-        options: [...PRIVATE_SAFE_FOUR_OPTIONS],
+        options: [...EMPTY_OPTIONS],
       };
     }
     // reject should behave like fallback for private story, to preserve immersion.
     return {
       narrative: truncate("危险边界已被你确认。你收回了那条不该走的路，只保留更安全的后续选项。", 900),
-      options: [...PRIVATE_SAFE_FOUR_OPTIONS],
+      options: [...EMPTY_OPTIONS],
     };
   }
 

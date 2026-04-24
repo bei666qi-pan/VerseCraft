@@ -59,7 +59,7 @@ import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/feat
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
-import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
+import { buildOptionsRepairReason, getRepairMissingCount } from "@/lib/play/optionsRepair";
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
@@ -97,7 +97,6 @@ import {
   getClientOptionsOnlyRegenPathV2Enabled,
   getClientOptionsRegenRepairPassEnabled,
   getClientOptionsRegenSemanticGateEnabled,
-  getClientContinueButtonEnabled,
   getClientHiddenCombatV1Enabled,
   getClientProfessionChoiceInterruptV1Enabled,
   getClientCombatSummaryV1Enabled,
@@ -1113,10 +1112,9 @@ function PlayContent() {
   }, [pathname]);
 
   const autoMissingOptionsAttemptedRef = useRef(false);
+  // 已移除「长叙事自动续写」UI 功能：UI 不再基于 turn_mode 切换分支，
+  // 因此只保留 ref 供 requestFreshOptions 读取最近一次的 turn_mode（用于 telemetry/success hint）。
   const lastCommittedTurnModeRef = useRef<ClientTurnMode>("decision_required");
-  const [lastCommittedTurnMode, setLastCommittedTurnMode] = useState<ClientTurnMode>("decision_required");
-  const lastAutoContinueHintRef = useRef<string | null>(null);
-  const [lastAutoContinueHint, setLastAutoContinueHint] = useState<string | null>(null);
 
   async function requestFreshOptions(
     trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main",
@@ -1371,8 +1369,13 @@ function PlayContent() {
       const mergeModelOptions = (...groups: string[][]): string[] =>
         normalizeRegeneratedOptions(groups.flat(), regenRecentOptions, regenCurrentOptions);
       let finalOptions = mergeModelOptions(modelSeedOptions, firstPass.options);
-      if (repairPassEnabled && shouldTriggerOptionsRepairPass({ acceptedOptions: finalOptions, targetCount: 4 })) {
-        reasonCodes.add("repair_pass_used");
+
+      // 修复：原来的 `shouldTriggerOptionsRepairPass` 只在 0<accepted<4 时触发 repair；
+      // 当 firstPass 完全失败（accepted=0）或返回 3 条时，应一视同仁继续请求模型补齐到 4。
+      // 这里把 repair/retry 合并成一个“直到 4 条或达到上限”的循环，避免“生成 3 个/生成 0 个”失败静默。
+      const MAX_EXTRA_ROUNDS = 2;
+      for (let round = 0; round < MAX_EXTRA_ROUNDS && finalOptions.length < 4; round += 1) {
+        if (repairPassEnabled) reasonCodes.add("repair_pass_used");
         const missingCount = getRepairMissingCount({ acceptedOptions: finalOptions, targetCount: 4 });
         const repairReason = buildOptionsRepairReason({
           baseReason: reason,
@@ -1397,7 +1400,15 @@ function PlayContent() {
           for (const code of repaired.rejectCodes) reasonCodes.add(code);
         }
         if (repaired && Array.isArray(repaired.options) && repaired.options.length > 0) {
-          finalOptions = mergeModelOptions(finalOptions, repaired.options);
+          const merged = mergeModelOptions(finalOptions, repaired.options);
+          if (merged.length === finalOptions.length) {
+            // 本轮没有新贡献，避免无意义再发请求。
+            break;
+          }
+          finalOptions = merged;
+        } else {
+          // 本轮没有可用返回：停止继续请求，避免反复空转。
+          break;
         }
       }
 
@@ -1933,13 +1944,8 @@ function PlayContent() {
         ? parsed.turn_mode
         : (parsed.decision_required ? "decision_required" : "decision_required");
     lastCommittedTurnModeRef.current = parsedTurnMode;
-    setLastCommittedTurnMode(parsedTurnMode);
-    const autoHint =
-      typeof parsed.auto_continue_hint === "string" && parsed.auto_continue_hint.trim().length > 0
-        ? parsed.auto_continue_hint.trim()
-        : null;
-    lastAutoContinueHintRef.current = autoHint;
-    setLastAutoContinueHint(autoHint);
+    // 已移除长叙事自动续写功能：不再读取 parsed.auto_continue_hint；
+    // 无论 turn_mode 为何，玩家都通过选项（或手动输入）推进，不再显示“继续推进”按钮。
 
     const logsBeforeAssistant = useGameStore.getState().logs ?? [];
     const assistantCountBeforePush = logsBeforeAssistant.filter((l) => l && l.role === "assistant").length;
@@ -3382,31 +3388,18 @@ function PlayContent() {
                       <p className="text-sm text-slate-600 md:text-base">
                         {optionsRegenBusy
                           ? "主笔正在按当前剧情重新整理可选行动…"
-                          : lastCommittedTurnMode === "system_transition"
-                            ? "当前为过场推进回合。"
-                            : lastCommittedTurnMode === "narrative_only"
-                              ? "当前为长叙事推进回合。"
-                              : "当前暂无可用选项。"}
+                          : "当前暂无可用选项。"}
                       </p>
-                      {lastCommittedTurnMode === "decision_required" ? (
-                        <button
-                          type="button"
-                          onClick={() => void requestFreshOptions("manual_button")}
-                          disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
-                          className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
-                        >
-                          让主笔重新整理选项
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void sendActionRef.current(lastAutoContinueHintRef.current ?? "继续", true)}
-                          disabled={isChatBusy || isGuestDialogueExhausted || !getClientContinueButtonEnabled()}
-                          className="mt-3 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
-                        >
-                          {lastAutoContinueHint ? lastAutoContinueHint : "继续推进"}
-                        </button>
-                      )}
+                      {/* 已移除“长叙事自动续写”按钮。任何 turn_mode 下，玩家都通过
+                          “让主笔重新整理选项”或手动输入推进，不再有自动替代选项的路径。 */}
+                      <button
+                        type="button"
+                        onClick={() => void requestFreshOptions("manual_button")}
+                        disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
+                        className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
+                      >
+                        让主笔重新整理选项
+                      </button>
                     </div>
                   )}
               </PlayStoryScroll>
