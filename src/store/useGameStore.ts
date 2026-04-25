@@ -354,6 +354,7 @@ export interface AuthUser {
 
 /** Unified modal / panel: null = all closed. Pure UI; not bundled into save slots. */
 export type ActiveMenu =
+  | "character"
   | "settings"
   | "backpack"
   | "codex"

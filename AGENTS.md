@@ -442,6 +442,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
   - `MobileReadingHeader`：品牌、章节名、声音按钮。
   - `MobileStoryViewport`：正文滚动区域外壳，正文仍由 `PlayStoryScroll` / narrative renderer 负责。
   - `MobileActionDock`：底部输入胶囊、选项展开按钮、发送按钮。
+  - `MobileCharacterPanel`：底部“角色”页的移动端身份信息、原石余额和属性加点面板。
   - `EchoTalentButton`：天赋按钮的纯 UI 入口。
   - `MobileOptionsDropdown`：四条行动选项的移动端下拉展示。
   - `MobileBottomNav`：角色 / 剧情 / 图鉴 / 设置底部导航。
@@ -453,9 +454,9 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 行动选项仍来自 `currentOptions`，选择后走 `onPickOption`，不得绕过既有 `sendAction`、职业认证、终局选项和 guest gate。
 - 选项按钮只切换 `optionsExpanded`；缺选项时仍由 `requestFreshOptions("manual_button")` 触发既有 options regen 链路。
 - 天赋按钮只触发 `onUseTalent`；`onUseTalent` 仍留在 `page.tsx`，不要把天赋业务效果塞进 UI 图标组件。
+- 底部“角色”通过 `setActiveMenu("character")` 打开 `MobileCharacterPanel`，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`。属性加点只调用现有 `upgradeAttribute`，不要新建第二套加点规则。
 - 底部“剧情”只收起选项并回到阅读态。
 - 底部“图鉴”和“设置”仍通过现有 `UnifiedMenuModal` 打开：`setActiveMenu("codex")` / `setActiveMenu("settings")`。
-- 底部“角色”现阶段只保留视觉入口，暂时为空 / 不跳转 / 不打开其它旧面板。
 
 仍然禁止重新暴露这些主动 UI 入口：
 

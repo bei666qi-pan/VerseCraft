@@ -14,6 +14,28 @@ const allTalentCooldowns = {
   丧钟回响: 0,
 };
 
+const defaultProfessionState = {
+  currentProfession: null,
+  unlockedProfessions: [],
+  eligibilityByProfession: {
+    守灯人: false,
+    巡迹客: false,
+    觅兆者: false,
+    齐日角: false,
+    溯源师: false,
+  },
+  progressByProfession: {
+    守灯人: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_lampkeeper", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    巡迹客: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_pathfinder", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    觅兆者: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_omenseeker", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    齐日角: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_sunhorn", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    溯源师: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_traceorigin", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+  },
+  activePerks: [],
+  professionFlags: {},
+  professionCooldowns: {},
+};
+
 const narrative = [
   "海雾像未散的梦，将码头与灯塔都裹进潮湿的沉默里。",
   "你站在锈蚀的船杆边，手里攥着那封没有署名的信。",
@@ -65,7 +87,7 @@ function trackPageErrors(page: Page) {
 async function seedPlayableState(page: Page, overrides: SeedOverrides = {}) {
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 15_000 });
   await page.evaluate(
-    async ({ dbName, storeName, key, story, actionOptions, defaultCooldowns, stateOverrides }) => {
+    async ({ dbName, storeName, key, story, actionOptions, defaultCooldowns, defaultProfession, stateOverrides }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open(dbName);
         req.onupgradeneeded = () => {
@@ -106,6 +128,7 @@ async function seedPlayableState(page: Page, overrides: SeedOverrides = {}) {
           activeMenu: null,
           talent: null,
           talentCooldowns: { ...defaultCooldowns },
+          professionState: defaultProfession,
         };
         store.put(JSON.stringify({ state: { ...baseState, ...stateOverrides }, version: 1 }), key);
         tx.oncomplete = () => {
@@ -122,6 +145,7 @@ async function seedPlayableState(page: Page, overrides: SeedOverrides = {}) {
       story: narrative,
       actionOptions: options,
       defaultCooldowns: allTalentCooldowns,
+      defaultProfession: defaultProfessionState,
       stateOverrides: overrides,
     }
   );
@@ -161,6 +185,7 @@ async function openSeededPlay(page: Page, overrides: SeedOverrides = {}) {
   await seedPlayableState(page, overrides);
   const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
   expect(res?.status()).toBeLessThan(500);
+  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
   return res;
 }
 
@@ -301,13 +326,19 @@ test.describe("mobile reading UI", () => {
     expect(submittedActions).toEqual([options[1]]);
   });
 
-  test("keeps bottom navigation wired to story, character no-op, codex, and settings", async ({ page }) => {
+  test("keeps bottom navigation wired to character, story, codex, and settings", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await openSeededPlay(page);
+    await openSeededPlay(page, {
+      stats: { sanity: 12, agility: 17, luck: 14, charm: 21, background: 2 },
+      historicalMaxSanity: 19,
+      originium: 12,
+      time: { day: 0, hour: 0 },
+      playerLocation: "B1_SafeZone",
+    });
 
     const initialUrl = page.url();
     await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
-    await expect(page.getByTestId("bottom-nav-character")).toHaveAttribute("aria-label", "角色，暂未开放");
+    await expect(page.getByTestId("bottom-nav-character")).toHaveAttribute("aria-label", "打开角色");
     for (const testId of ["bottom-nav-character", "bottom-nav-story", "bottom-nav-codex", "bottom-nav-settings"]) {
       const iconCount = await page.getByTestId(testId).locator("svg").count();
       expect(iconCount).toBeGreaterThan(0);
@@ -316,6 +347,27 @@ test.describe("mobile reading UI", () => {
     await page.getByTestId("bottom-nav-character").click();
     expect(page.url()).toBe(initialUrl);
     await expect(page.locator("#unified-menu-content")).toBeHidden();
+    await expect(page.getByTestId("bottom-nav-character")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("mobile-character-panel")).toBeVisible();
+    await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
+    await expect(page.getByTestId("character-current-profession")).toHaveText("无");
+    await expect(page.getByTestId("character-current-time")).toHaveText("第 0 日 · 00:00");
+    await expect(page.getByTestId("character-current-location")).toHaveText("B1 安全中枢");
+    await expect(page.getByTestId("character-stat-sanity-value")).toHaveText("12 / 19");
+    await expect(page.getByTestId("character-stat-agility-value")).toHaveText("17 / 50");
+    await expect(page.getByTestId("character-originium-balance")).toHaveText("原石 12");
+
+    await page.getByTestId("character-upgrade-agility").click();
+    await expect(page.getByTestId("character-stat-agility-value")).toHaveText("18 / 50");
+    await expect(page.getByTestId("character-originium-balance")).toHaveText("原石 9");
+
+    await page.getByTestId("bottom-nav-story").click();
+    await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("mobile-character-panel")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+    await expect(page.getByTestId("manual-action-input")).toBeVisible();
+    await expect(page.getByTestId("options-toggle-button")).toBeVisible();
+    await expect(page.getByTestId("echo-talent-button")).toBeVisible();
 
     await page.getByTestId("bottom-nav-codex").click();
     const menu = page.locator("#unified-menu-content");
@@ -341,6 +393,21 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("bottom-nav-settings")).toHaveAttribute("aria-current", "page");
     await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(1);
     await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(1);
+  });
+
+  test("shows a certified profession in the mobile character panel", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openSeededPlay(page, {
+      professionState: {
+        ...defaultProfessionState,
+        currentProfession: "齐日角",
+        unlockedProfessions: ["齐日角"],
+      },
+    });
+
+    await page.getByTestId("bottom-nav-character").click();
+    await expect(page.getByTestId("mobile-character-panel")).toBeVisible();
+    await expect(page.getByTestId("character-current-profession")).toHaveText("齐日角");
   });
 
   test("does not expose pruned UI entries by selector, role, or Tab focus", async ({ page }) => {

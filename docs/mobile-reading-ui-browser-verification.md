@@ -33,7 +33,7 @@
 
 底部导航：
 
-- `bottom-nav-character` 可见，但现阶段不得跳转、不得打开旧任务 / 指南 / 手记 / 仓库 / 成就 / 武器面板。
+- `bottom-nav-character` 可见，点击后打开移动阅读壳层内的角色页，不跳转、不打开旧任务 / 指南 / 手记 / 仓库 / 成就 / 武器面板。
 - `bottom-nav-story` 只回到剧情阅读态。
 - `bottom-nav-codex` 打开现有 `UnifiedMenuModal` 的图鉴。
 - `bottom-nav-settings` 打开现有 `UnifiedMenuModal` 的设置。
@@ -107,7 +107,7 @@
 环境：Windows / Next dev via Playwright webServer
 验证方式：Playwright；Browser Use 已尝试但 runtime 不满足版本要求
 视口：390×844、393×852、430×932、1200×900、844×390
-结果：e2e/play-mobile-reading-ui.spec.ts 8 passed；追加 e2e/play.spec.ts + e2e/ui-pruning-browser-verification.spec.ts 后合计 19 passed；音量按钮 aria 状态随现有 mute 状态切换；生命汇源天赋走 useTalent 后进入冷却；手动输入和选项点击均触发 /api/chat；图鉴 / 设置走 UnifiedMenuModal 并高亮底栏；角色入口 no-op 且不跳转。
+结果：e2e/play-mobile-reading-ui.spec.ts 8 passed；追加 e2e/play.spec.ts + e2e/ui-pruning-browser-verification.spec.ts 后合计 19 passed；音量按钮 aria 状态随现有 mute 状态切换；生命汇源天赋走 useTalent 后进入冷却；手动输入和选项点击均触发 /api/chat；图鉴 / 设置走 UnifiedMenuModal 并高亮底栏；当时角色入口仅作为占位验证，后续已由移动角色页替代。
 截图路径：本阶段未保存正式截图
 异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间仍有本地 PostgreSQL 未启动导致的 presence / analytics ECONNREFUSED 日志，以及 Next.js middleware 弃用提示，不影响断言通过。
 ```
@@ -118,7 +118,7 @@
 环境：Windows / Next dev via Playwright webServer
 验证方式：Playwright；Browser Use 已按插件流程尝试但 runtime 不满足版本要求
 视口：390×844、393×852、430×932、1280×900
-结果：e2e/mobile-reading-ui.spec.ts 10 passed；e2e/play.spec.ts + e2e/mobile-reading-ui.spec.ts 19 passed；覆盖基础渲染、手动输入 SSE mock、选项直发、底栏图鉴 / 设置 UnifiedMenuModal、角色 no-op、音量、天赋、UI 裁剪和 Tab 焦点路径。
+结果：e2e/mobile-reading-ui.spec.ts 10 passed；e2e/play.spec.ts + e2e/mobile-reading-ui.spec.ts 19 passed；覆盖基础渲染、手动输入 SSE mock、选项直发、底栏图鉴 / 设置 UnifiedMenuModal、角色占位态、音量、天赋、UI 裁剪和 Tab 焦点路径。
 截图路径：Playwright test output 中由 test.info().outputPath 生成 mobile-reading-collapsed-390.png 与 mobile-reading-expanded-390.png；本地一次运行的产物为 test-results/mobile-reading-ui-mobile-r-5bca8-ed-and-expanded-screenshots-chromium/mobile-reading-collapsed-390.png 和 test-results/mobile-reading-ui-mobile-r-5bca8-ed-and-expanded-screenshots-chromium/mobile-reading-expanded-390.png。
 异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间若本地 PostgreSQL 未启动，presence / analytics ECONNREFUSED 日志属于已知噪声，不影响断言。
 ```
@@ -157,11 +157,32 @@
 默认阅读态结果：通过。人工查看 D:\versecraft\.runtime-data\phase7\manual-collapsed-390x844.png、manual-collapsed-393x852.png、manual-collapsed-430x932.png，确认深蓝黑背景、VerseCraft 标识、竖线、章节标题、音量按钮、正文暖金色叙事排版、输入胶囊、回响天赋按钮、placeholder、选项按钮、纸飞机按钮、四项底栏和剧情默认高亮仍保持截图目标风格；三个移动视口无横向滚动。
 选项下拉结果：通过。点击 options-toggle-button 后 mobile-options-dropdown 出现在输入条下方和底栏上方；390×844 实测 dockBottom=468、dropdownTop=468、dropdownBottom=734、navTop=746；4 个 mobile-option-item 均为可点击按钮样式，右箭头可见。点击“检查学生电子表”直接触发 /api/chat SSE mock，发送后下拉收起，提交次数为 1。
 手动输入验证结果：通过。manual-action-input 可聚焦；输入“靠近铁牌查看痕迹”后 send-action-button 可点击；点击纸飞机走 /api/chat SSE mock，final narrative 落到页面，输入框清空；pending 期间发送按钮禁用，强制二次点击未产生重复提交。
-底栏验证结果：通过。角色入口点击后不跳转、不打开新界面；剧情入口保持 / 返回阅读态；图鉴和设置分别打开现有 UnifiedMenuModal 的 codex / settings 视图；关闭 modal 后恢复剧情高亮，底栏仍可见且图标不变形。
+底栏验证结果：通过。阶段 6 时角色入口仍为占位；本次角色页补全后以最新浏览器验证记录为准。剧情入口保持 / 返回阅读态；图鉴和设置分别打开现有 UnifiedMenuModal 的 codex / settings 视图；关闭 modal 后恢复剧情高亮，底栏仍可见且图标不变形。
 旧功能入口回归结果：通过。浏览器检查 button / link / tab / menuitem / aria-label / data-testid / data-onboarding，并走 48 次 Tab 焦点路径，未发现任务栏、游戏指南、灵感手记、仓库、成就、武器等主动入口。旧路由均最终回到 /play，未打开旧功能 UI。
 截图路径：D:\versecraft\.runtime-data\phase7\manual-collapsed-390x844.png；D:\versecraft\.runtime-data\phase7\manual-collapsed-393x852.png；D:\versecraft\.runtime-data\phase7\manual-collapsed-430x932.png；D:\versecraft\.runtime-data\phase7\manual-expanded-390x844.png。
 手动验证产物：D:\versecraft\.runtime-data\phase7\manual-browser-check-result.json。
 测试命令与结果：npx eslint . 通过，0 errors / 145 warnings；pnpm test:unit 通过，987 pass；pnpm exec playwright test e2e/play.spec.ts e2e/mobile-reading-ui.spec.ts 通过，19 passed；pnpm build 通过；pnpm test:ci 通过；pnpm exec playwright test e2e/mobile-reading-ui.spec.ts 最终复查通过，10 passed。
 发现的问题和修复结果：最终单跑 mobile-reading-ui E2E 时发现截图用例偶发 mobile-option-item 为 0。原因是测试种子只写 root transient currentOptions，等待较久时可能被页面补选项流程清空；已修复为同时写入 saveSlots.main_slot.currentOptions，使测试夹具符合真实存档恢复路径，并已重新跑完整回归通过。
 噪声 / 无法验证项：Browser Use in-app browser 因本机 Node 版本低于插件要求无法初始化；已用 Playwright Chromium 真实浏览器兜底。未启动本地 PostgreSQL 时，dev / Playwright 输出包含 analytics / presence ECONNREFUSED 127.0.0.1:5432，以及 Next.js middleware 弃用提示；这些未导致测试失败。
+```
+
+```text
+日期：2026-04-25
+提交：feat: complete mobile character tab，提交号见本次最终提交
+启动命令：pnpm dev
+访问地址：http://localhost:666/play
+环境：Windows / Next dev server on port 666
+浏览器 / Playwright 使用方式：优先尝试 Browser Use in-app browser，但 node_repl 解析到 D:\node\node.exe v22.17.1，低于插件要求的 >=22.22.0；因此使用 Playwright Chromium headless real browser 连接真实 pnpm dev 服务完成验证。
+检查视口：390×844、393×852、430×932
+检查页面：/play
+角色页验证结果：通过。点击 bottom-nav-character 后 URL 不跳转，bottom-nav-character 获得 aria-current="page"，页面显示 mobile-character-panel、角色、身份信息、当前属性；默认职业显示“无”；seeded professionState.currentProfession="齐日角" 时显示“齐日角”；时间显示“第 0 日 · 00:00”；位置 B1_SafeZone 显示“B1 安全中枢”；精神显示“12 / 19”，敏捷等非精神属性显示“/ 50”；原石胶囊显示“原石 12”。
+加点验证结果：通过。点击 character-upgrade-agility 调用现有 upgradeAttribute，敏捷从 17 / 50 变为 18 / 50，原石从 原石 12 变为 原石 9，符合总属性点 >=20 时成本 3 的既有规则。
+剧情回退结果：通过。点击 bottom-nav-story 后回到阅读态，mobile-action-dock、manual-action-input、options-toggle-button、echo-talent-button 均恢复可见。
+图鉴 / 设置结果：通过。bottom-nav-codex 打开现有 UnifiedMenuModal 的 codex 视图，关闭后 bottom-nav-settings 打开现有 UnifiedMenuModal 的 settings 视图；没有新增第二套图鉴或设置 UI。
+旧功能入口回归结果：通过。浏览器检查 button / link / tab / menuitem / aria-label / data-testid / data-onboarding，并走 24 次 Tab 焦点路径，未发现任务栏、游戏指南、灵感手记、仓库、背包、库存、成就、武器、装备等主动入口。
+视觉核对结果：通过并修复过一处问题。首次截图发现 390×844 下属性描述列过窄，文本近似竖排；已收窄固定列、缩小描述字号并重新验证。复查截图中角色页保持深蓝黑背景、暖金色标题与边框、原石胶囊、身份信息面板、当前属性面板、加点按钮和底栏角色 active 光效。
+截图路径：D:\versecraft\.runtime-data\character-tab\character-390x844.png；D:\versecraft\.runtime-data\character-tab\character-393x852.png；D:\versecraft\.runtime-data\character-tab\character-430x932.png；D:\versecraft\.runtime-data\character-tab\character-profession-qirijiao-390x844.png
+测试命令与结果：npx eslint . 通过（0 errors / 145 warnings，warnings 来自既有代码与未跟踪 .claude/worktrees）；pnpm test:unit 通过（991 pass）；pnpm exec playwright test e2e/mobile-reading-ui.spec.ts e2e/play.spec.ts 通过（20 passed）；pnpm build 通过；pnpm test:ci 通过；最终复跑 pnpm exec playwright test e2e/mobile-reading-ui.spec.ts 通过（11 passed）。
+发现的问题和修复结果：真实截图复核发现 390×844 下属性描述列过窄，文本接近竖排，已修复为更窄固定列和更小描述字号后重验通过。完整 Playwright 首轮还暴露过一次 430×932 smoke 在本地 dev/DB 噪声下短暂停留“读取世界线中...”，已把 e2e openSeededPlay helper 改为等待 mobile-reading-shell 完成 hydration，再重跑 20 项和 11 项均通过。
+异常 / 噪声：本地 PostgreSQL 未启动时，dev server 输出 presence / analytics ECONNREFUSED 127.0.0.1:5432；Next.js 输出 middleware 弃用提示。这些噪声未导致本次断言失败。Browser Use in-app browser 无法初始化的原因如上，已用 Playwright Chromium 兜底。
 ```

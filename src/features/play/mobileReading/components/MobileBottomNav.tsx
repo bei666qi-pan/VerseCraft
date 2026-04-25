@@ -52,9 +52,10 @@ export function MobileBottomNav({
   const items: DockItem[] = [
     {
       label: "角色",
-      ariaLabel: "角色，暂未开放",
+      ariaLabel: "打开角色",
       icon: MobileReadingIcons.Character,
       testId: "bottom-nav-character",
+      active: activeItem === "character",
       disabled: !onOpenCharacter,
       onClick: onOpenCharacter,
     },

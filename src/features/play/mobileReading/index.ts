@@ -1,6 +1,7 @@
 export { EchoTalentButton } from "./components/EchoTalentButton";
 export { MobileActionDock } from "./components/MobileActionDock";
 export { MobileBottomNav } from "./components/MobileBottomNav";
+export { MobileCharacterPanel } from "./components/MobileCharacterPanel";
 export { MobileOptionsEmptyState } from "./components/MobileOptionsEmptyState";
 export { MobileOptionsDropdown } from "./components/MobileOptionsDropdown";
 export { MobileReadingHeader } from "./components/MobileReadingHeader";
@@ -27,6 +28,7 @@ export type {
   EchoTalentButtonProps,
   MobileActionDockProps,
   MobileBottomNavProps,
+  MobileCharacterPanelProps,
   MobileOptionsEmptyStateProps,
   MobileOptionsDropdownProps,
   MobileReadingHeaderProps,

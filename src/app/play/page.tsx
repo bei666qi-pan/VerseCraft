@@ -19,6 +19,7 @@ import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
 import {
   MobileActionDock,
   MobileBottomNav,
+  MobileCharacterPanel,
   MobileOptionsEmptyState,
   MobileOptionsDropdown,
   MobileReadingHeader,
@@ -185,6 +186,7 @@ function PlayContent() {
   const talentCooldowns = useGameStore((s) => s.talentCooldowns ?? {});
   const logs = useGameStore((s) => s.logs ?? []);
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
+  const historicalMaxSanity = useGameStore((s) => s.historicalMaxSanity ?? 50);
   const setStats = useGameStore((s) => s.setStats);
   const rewindTime = useGameStore((s) => s.rewindTime);
   const popLastNLogs = useGameStore((s) => s.popLastNLogs);
@@ -198,7 +200,10 @@ function PlayContent() {
     () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
     [currentOptionsFromStore]
   );
+  const originium = useGameStore((s) => s.originium ?? 0);
   const addOriginium = useGameStore((s) => s.addOriginium);
+  const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
+  const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
   const tasks = useGameStore((s) => s.tasks ?? []);
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
@@ -2864,12 +2869,16 @@ function PlayContent() {
     router.push("/settlement");
   }
 
-  const bottomNavActiveItem: "story" | "codex" | "settings" =
-    activeMenu === "codex" || activeMenu === "settings" ? activeMenu : "story";
+  const bottomNavActiveItem: "character" | "story" | "codex" | "settings" =
+    activeMenu === "character" || activeMenu === "codex" || activeMenu === "settings"
+      ? activeMenu
+      : "story";
+  const isCharacterPanelActive = activeMenu === "character";
 
   function onOpenCharacterNav() {
     playUIClick();
     setOptionsExpanded(false);
+    setActiveMenu("character");
   }
 
   function onFocusStoryNav() {
@@ -2920,103 +2929,119 @@ function PlayContent() {
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
-          <MobileStoryViewport>
-            {/*
-              选项区：MobileOptionsDropdown 渲染四条槽位（zustand currentOptions）；
-              冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
-            */}
-            <PlayStoryScroll
-              scrollRef={scrollRef}
-              onScrollContainer={onScrollContainer}
-              displayEntries={displayEntries}
-              isStreamVisualActive={isStreamVisualActive}
-              suppressStreamVisual={suppressEmbeddedOpeningStreamUi}
-              smoothThinking={smoothThinking}
-              smoothNarrative={smoothNarrative}
-              smoothComplete={smoothComplete}
-              isChatBusy={isChatBusy}
-              inputMode={inputMode}
-              isLowSanity={isLowSanity}
-              isDarkMoon={isDarkMoon}
-              liveNarrative={liveNarrative}
-              greenTips={greenTips}
-              firstTimeHint={firstTimeHint}
-              plainOnlyNewTurn={false}
-              plainOnlyLogIndexMin={streamLogsBaselineRef.current}
-              embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
-              openingAiBusy={openingBusyUi}
-              semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
-              waitUxPrimaryLine={waitUxPrimaryLine}
-              waitUxSecondaryLine={waitUxSecondaryLine}
+          {isCharacterPanelActive ? (
+            <MobileCharacterPanel
+              stats={stats}
+              historicalMaxSanity={historicalMaxSanity}
+              originium={originium}
+              time={time}
+              playerLocation={playerLocation}
+              currentProfession={professionState.currentProfession}
+              onUpgradeAttribute={(attr) => {
+                upgradeAttribute(attr);
+              }}
             />
-          </MobileStoryViewport>
+          ) : (
+            <>
+              <MobileStoryViewport>
+                {/*
+                  选项区：MobileOptionsDropdown 渲染四条槽位（zustand currentOptions）；
+                  冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
+                */}
+                <PlayStoryScroll
+                  scrollRef={scrollRef}
+                  onScrollContainer={onScrollContainer}
+                  displayEntries={displayEntries}
+                  isStreamVisualActive={isStreamVisualActive}
+                  suppressStreamVisual={suppressEmbeddedOpeningStreamUi}
+                  smoothThinking={smoothThinking}
+                  smoothNarrative={smoothNarrative}
+                  smoothComplete={smoothComplete}
+                  isChatBusy={isChatBusy}
+                  inputMode={inputMode}
+                  isLowSanity={isLowSanity}
+                  isDarkMoon={isDarkMoon}
+                  liveNarrative={liveNarrative}
+                  greenTips={greenTips}
+                  firstTimeHint={firstTimeHint}
+                  plainOnlyNewTurn={false}
+                  plainOnlyLogIndexMin={streamLogsBaselineRef.current}
+                  embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
+                  openingAiBusy={openingBusyUi}
+                  semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
+                  waitUxPrimaryLine={waitUxPrimaryLine}
+                  waitUxSecondaryLine={waitUxSecondaryLine}
+                />
+              </MobileStoryViewport>
 
-          <MobileActionDock
-            inputMode={inputMode}
-            hasAnyGate={hasAnyGate}
-            gateMessage={gateMessage}
-            isLowSanity={isLowSanity}
-            isDarkMoon={isDarkMoon}
-            input={input}
-            inputError={inputError}
-            onInputChange={(value) => {
-              setInput(value);
-              setInputError("");
-            }}
-            onTextIntent={noteManualTextIntent}
-            onSubmitKey={onSubmit}
-            onSubmitClick={onSubmit}
-            onToggleOptions={() => {
-              const nextExpanded = !optionsExpanded;
-              setOptionsExpanded(nextExpanded);
-              if (
-                nextExpanded &&
-                currentOptions.length === 0 &&
-                !optionsRegenBusy &&
-                !optionsRegenPhaseBlocked &&
-                !isGuestDialogueExhausted
-              ) {
-                void requestFreshOptions("manual_button");
-              }
-            }}
-            chatBusy={isChatBusy || endgameState.active}
-            helperText={
-              endgameState.active
-                ? (endgameLocked ? "终局已至。" : "正在生成终局…")
-                : (isChatBusy ? "正在生成..." : "保持简短。保持真实。")
-            }
-            showRegisterPrompt={showRegisterPrompt}
-            isGuestDialogueExhausted={isGuestDialogueExhausted}
-            optionsExpanded={optionsExpanded}
-            talentLabel={talent}
-            talentReady={Boolean(
-              talent &&
-              talentCdLeft === 0 &&
-              !isChatBusy &&
-              !sendActionInFlightRef.current &&
-              !endgameState.active &&
-              !isGuestDialogueExhausted
-            )}
-            talentCooldownText={talent && talentCdLeft > 0 ? `冷却:${talentCdLeft}` : null}
-            onUseTalent={onUseTalent}
-          />
-          {optionsExpanded && currentOptions.length > 0 ? (
-            <MobileOptionsDropdown
-              options={currentOptions}
-              revealed={currentOptions.length > 0 && !isChatBusy}
-              isLowSanity={isLowSanity}
-              isDarkMoon={isDarkMoon}
-              disabled={
-                isChatBusy ||
-                isGuestDialogueExhausted ||
-                optionsRegenBusy ||
-                (endgameState.active && !endgameLocked)
-              }
-              onPick={onPickOption}
-            />
-          ) : optionsExpanded ? (
-            <MobileOptionsEmptyState busy={optionsRegenBusy} />
-          ) : null}
+              <MobileActionDock
+                inputMode={inputMode}
+                hasAnyGate={hasAnyGate}
+                gateMessage={gateMessage}
+                isLowSanity={isLowSanity}
+                isDarkMoon={isDarkMoon}
+                input={input}
+                inputError={inputError}
+                onInputChange={(value) => {
+                  setInput(value);
+                  setInputError("");
+                }}
+                onTextIntent={noteManualTextIntent}
+                onSubmitKey={onSubmit}
+                onSubmitClick={onSubmit}
+                onToggleOptions={() => {
+                  const nextExpanded = !optionsExpanded;
+                  setOptionsExpanded(nextExpanded);
+                  if (
+                    nextExpanded &&
+                    currentOptions.length === 0 &&
+                    !optionsRegenBusy &&
+                    !optionsRegenPhaseBlocked &&
+                    !isGuestDialogueExhausted
+                  ) {
+                    void requestFreshOptions("manual_button");
+                  }
+                }}
+                chatBusy={isChatBusy || endgameState.active}
+                helperText={
+                  endgameState.active
+                    ? (endgameLocked ? "终局已至。" : "正在生成终局…")
+                    : (isChatBusy ? "正在生成..." : "保持简短。保持真实。")
+                }
+                showRegisterPrompt={showRegisterPrompt}
+                isGuestDialogueExhausted={isGuestDialogueExhausted}
+                optionsExpanded={optionsExpanded}
+                talentLabel={talent}
+                talentReady={Boolean(
+                  talent &&
+                  talentCdLeft === 0 &&
+                  !isChatBusy &&
+                  !sendActionInFlightRef.current &&
+                  !endgameState.active &&
+                  !isGuestDialogueExhausted
+                )}
+                talentCooldownText={talent && talentCdLeft > 0 ? `冷却:${talentCdLeft}` : null}
+                onUseTalent={onUseTalent}
+              />
+              {optionsExpanded && currentOptions.length > 0 ? (
+                <MobileOptionsDropdown
+                  options={currentOptions}
+                  revealed={currentOptions.length > 0 && !isChatBusy}
+                  isLowSanity={isLowSanity}
+                  isDarkMoon={isDarkMoon}
+                  disabled={
+                    isChatBusy ||
+                    isGuestDialogueExhausted ||
+                    optionsRegenBusy ||
+                    (endgameState.active && !endgameLocked)
+                  }
+                  onPick={onPickOption}
+                />
+              ) : optionsExpanded ? (
+                <MobileOptionsEmptyState busy={optionsRegenBusy} />
+              ) : null}
+            </>
+          )}
           <MobileBottomNav
             activeItem={bottomNavActiveItem}
             onOpenCharacter={onOpenCharacterNav}

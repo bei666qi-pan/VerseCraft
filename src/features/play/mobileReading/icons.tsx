@@ -214,6 +214,19 @@ function CharacterIcon(props: MobileReadingIconProps): ReactElement {
   );
 }
 
+function OriginiumIcon(props: MobileReadingIconProps): ReactElement {
+  return (
+    <IconSvg {...props}>
+      <path d="M12 3.4 19.2 7.6 17.4 17.1 12 20.6 6.6 17.1 4.8 7.6z" fill="currentColor" fillOpacity="0.14" />
+      <path d="M12 3.4 19.2 7.6 17.4 17.1 12 20.6 6.6 17.1 4.8 7.6z" />
+      <path d="m12 3.4-2.1 8.4 2.1 8.8 2.1-8.8z" opacity="0.74" />
+      <path d="M4.8 7.6 9.9 11.8 6.6 17.1" opacity="0.74" />
+      <path d="M19.2 7.6 14.1 11.8 17.4 17.1" opacity="0.74" />
+      <path d="M9.9 11.8h4.2" opacity="0.74" />
+    </IconSvg>
+  );
+}
+
 function StoryIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
@@ -320,6 +333,7 @@ export const MobileReadingIcons = {
   CollapseOptions: OptionsPanelIcon,
   ExpandOptions: OptionsListIcon,
   OptionChevron: OptionChevronIcon,
+  Originium: OriginiumIcon,
   SendAction: SendActionIcon,
   Settings: SettingsIcon,
   Story: StoryIcon,

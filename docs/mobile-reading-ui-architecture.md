@@ -31,6 +31,7 @@
 - `MobileStoryViewport`：正文滚动区域外壳和 `mobile-story-viewport`
 - `MobileActionDock`：底部输入胶囊、选项展开、发送按钮和 `mobile-action-dock`
 - `EchoTalentButton`：天赋按钮和 `echo-talent-button`
+- `MobileCharacterPanel`：角色页身份信息、原石余额、当前位置、当前职业和属性加点面板，使用 `mobile-character-panel`。
 - `MobileOptionsDropdown`：四条行动选项和 `mobile-options-dropdown` / `mobile-option-item`
 - `MobileOptionsEmptyState`：无选项或选项再生成时的克制空状态，仍使用 `mobile-options-dropdown` 稳定选择器。
 - `MobileBottomNav`：底部导航和 `mobile-bottom-nav`；`activeItem` 由 `/play` 的 `activeMenu` 映射，图鉴 / 设置打开时高亮对应入口，关闭后回到剧情高亮。
@@ -68,9 +69,9 @@
 底部导航：
 
 - `剧情`：收起选项，保留阅读态。
+- `角色`：`setActiveMenu("character")`，在阅读壳层内切换到 `MobileCharacterPanel`；不新增路由，不进入 `UnifiedMenuModal`。
 - `图鉴`：`setActiveMenu("codex")`，继续走 `UnifiedMenuModal`。
 - `设置`：`setActiveMenu("settings")`，继续走 `UnifiedMenuModal`。
-- `角色`：现阶段只保留视觉入口，`aria-label="角色，暂未开放"`，不跳转、不打开其它旧面板。
 
 ## 禁止事项
 
@@ -95,6 +96,7 @@
 - `mobile-options-dropdown`
 - `mobile-option-item`
 - `mobile-bottom-nav`
+- `mobile-character-panel`
 - `bottom-nav-character`
 - `bottom-nav-story`
 - `bottom-nav-codex`

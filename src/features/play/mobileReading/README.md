@@ -15,10 +15,13 @@ orchestrator for those business flows and passes only the required props into th
   `PlayStoryScroll`.
 - `MobileActionDock` owns the bottom input pill and uses `useMobileActionDock` for local UI
   state such as submit flash, helper text, and talent button labels.
+- `MobileCharacterPanel` owns the mobile character tab: identity, originium balance, location,
+  time, current profession, and attribute upgrade controls. It receives data and callbacks from
+  `/play`; it does not read the store directly.
 - `MobileOptionsDropdown` owns the visual list of four model-delivered options.
 - `MobileOptionsEmptyState` owns the restrained empty / regenerating state below the input dock.
 - `MobileBottomNav` owns the visual dock and receives `activeItem` from `/play`.
-  Character is intentionally non-routing for now; codex and settings continue through
+  Character opens the in-shell `MobileCharacterPanel`; codex and settings continue through
   `UnifiedMenuModal`.
 - `theme.ts` and `icons.tsx` keep visual tokens and icon choices in one place.
 

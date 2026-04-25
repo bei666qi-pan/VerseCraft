@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import type { StatType } from "@/lib/registry/types";
+import type { ProfessionId } from "@/lib/profession/types";
 
 export type MobileReadingShellProps = {
   children: ReactNode;
@@ -58,8 +60,18 @@ export type MobileOptionsEmptyStateProps = {
   busy: boolean;
 };
 
+export type MobileCharacterPanelProps = {
+  stats: Record<StatType, number>;
+  historicalMaxSanity: number;
+  originium: number;
+  time: { day: number; hour: number };
+  playerLocation: string;
+  currentProfession: ProfessionId | null;
+  onUpgradeAttribute: (attr: StatType) => void;
+};
+
 export type MobileBottomNavProps = {
-  activeItem: "story" | "codex" | "settings";
+  activeItem: "character" | "story" | "codex" | "settings";
   onOpenCharacter?: () => void;
   onFocusStory: () => void;
   onOpenCodex: () => void;
