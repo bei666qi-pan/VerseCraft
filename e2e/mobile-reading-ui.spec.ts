@@ -80,7 +80,13 @@ async function seedPlayableState(page: Page, overrides: SeedOverrides = {}) {
         const store = tx.objectStore(storeName);
         const baseState = {
           currentSaveSlot: "main_slot",
-          saveSlots: {},
+          saveSlots: {
+            main_slot: {
+              logs: [{ role: "assistant", content: story }],
+              currentOptions: actionOptions,
+              time: { day: 1, hour: 20 },
+            },
+          },
           isGameStarted: true,
           playerName: "测试读者",
           gender: "未说明",

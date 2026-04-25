@@ -144,3 +144,24 @@
 发现的问题和修复结果：未发现需要修改产品代码的问题。临时验证脚本本身做过两处稳定性修正：使用 @playwright/test 的 Chromium 入口，并将各验证段隔离到独立 browser context，随后重新执行通过。
 无法验证项：无法使用 Browser Use 的 in-app browser，原因是本机 node_repl Node 版本不满足插件要求；已用 Playwright Chromium 真实浏览器兜底。控制台噪声包括临时播种页的 404、未启动本地 PostgreSQL 时的 presence / analytics 500，以及 Next.js middleware 弃用提示；pageerror 为 0，不影响本次断言。
 ```
+
+```text
+日期：2026-04-25
+提交：Phase 7 最终代码审查、稳定性检查与测试全量回归，提交号见本次最终提交
+启动命令：pnpm dev
+访问地址：http://127.0.0.1:666
+环境：Windows / Next dev server on port 666
+浏览器 / Playwright 使用方式：Browser Use 已按插件流程尝试，但 node_repl 解析到 D:\node\node.exe v22.17.1，低于插件要求的 >=22.22.0；因此使用 Playwright Chromium headless real browser 连接真实 pnpm dev 服务完成最终浏览器复查。
+检查视口：390×844、393×852、430×932；自动 E2E 另覆盖 1280×900。
+检查页面：/play；旧路由 /guide、/help、/tutorial、/notes、/journal、/inspiration、/inventory、/warehouse、/storage、/achievements、/weapons、/armory、/equipment、/taskbar、/toolbar、/dock。
+默认阅读态结果：通过。人工查看 D:\versecraft\.runtime-data\phase7\manual-collapsed-390x844.png、manual-collapsed-393x852.png、manual-collapsed-430x932.png，确认深蓝黑背景、VerseCraft 标识、竖线、章节标题、音量按钮、正文暖金色叙事排版、输入胶囊、回响天赋按钮、placeholder、选项按钮、纸飞机按钮、四项底栏和剧情默认高亮仍保持截图目标风格；三个移动视口无横向滚动。
+选项下拉结果：通过。点击 options-toggle-button 后 mobile-options-dropdown 出现在输入条下方和底栏上方；390×844 实测 dockBottom=468、dropdownTop=468、dropdownBottom=734、navTop=746；4 个 mobile-option-item 均为可点击按钮样式，右箭头可见。点击“检查学生电子表”直接触发 /api/chat SSE mock，发送后下拉收起，提交次数为 1。
+手动输入验证结果：通过。manual-action-input 可聚焦；输入“靠近铁牌查看痕迹”后 send-action-button 可点击；点击纸飞机走 /api/chat SSE mock，final narrative 落到页面，输入框清空；pending 期间发送按钮禁用，强制二次点击未产生重复提交。
+底栏验证结果：通过。角色入口点击后不跳转、不打开新界面；剧情入口保持 / 返回阅读态；图鉴和设置分别打开现有 UnifiedMenuModal 的 codex / settings 视图；关闭 modal 后恢复剧情高亮，底栏仍可见且图标不变形。
+旧功能入口回归结果：通过。浏览器检查 button / link / tab / menuitem / aria-label / data-testid / data-onboarding，并走 48 次 Tab 焦点路径，未发现任务栏、游戏指南、灵感手记、仓库、成就、武器等主动入口。旧路由均最终回到 /play，未打开旧功能 UI。
+截图路径：D:\versecraft\.runtime-data\phase7\manual-collapsed-390x844.png；D:\versecraft\.runtime-data\phase7\manual-collapsed-393x852.png；D:\versecraft\.runtime-data\phase7\manual-collapsed-430x932.png；D:\versecraft\.runtime-data\phase7\manual-expanded-390x844.png。
+手动验证产物：D:\versecraft\.runtime-data\phase7\manual-browser-check-result.json。
+测试命令与结果：npx eslint . 通过，0 errors / 145 warnings；pnpm test:unit 通过，987 pass；pnpm exec playwright test e2e/play.spec.ts e2e/mobile-reading-ui.spec.ts 通过，19 passed；pnpm build 通过；pnpm test:ci 通过；pnpm exec playwright test e2e/mobile-reading-ui.spec.ts 最终复查通过，10 passed。
+发现的问题和修复结果：最终单跑 mobile-reading-ui E2E 时发现截图用例偶发 mobile-option-item 为 0。原因是测试种子只写 root transient currentOptions，等待较久时可能被页面补选项流程清空；已修复为同时写入 saveSlots.main_slot.currentOptions，使测试夹具符合真实存档恢复路径，并已重新跑完整回归通过。
+噪声 / 无法验证项：Browser Use in-app browser 因本机 Node 版本低于插件要求无法初始化；已用 Playwright Chromium 真实浏览器兜底。未启动本地 PostgreSQL 时，dev / Playwright 输出包含 analytics / presence ECONNREFUSED 127.0.0.1:5432，以及 Next.js middleware 弃用提示；这些未导致测试失败。
+```

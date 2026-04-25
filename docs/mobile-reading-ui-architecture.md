@@ -108,3 +108,43 @@
 - 需要完整 UI 裁剪回归时，加跑：
   - `pnpm exec playwright test e2e/play.spec.ts e2e/ui-pruning-browser-verification.spec.ts e2e/mobile-reading-ui.spec.ts`
 - 能使用 Browser Use 时，用 in-app browser 在 `390×844`、`393×852`、`430×932` 做折叠 / 展开态验证。
+
+## Phase 7 收口审查（2026-04-25）
+
+本阶段最终审查以 `8997ed8..HEAD` 作为移动阅读 UI 改造 diff 范围，并重新检查了结构、契约和测试稳定性。
+
+确认未改动或未破坏的核心边界：
+
+- 未改动 `src/app/api/chat/*`，`/api/chat` SSE / `__VERSECRAFT_FINAL__` 契约未被替换成假响应。
+- 未改动 `src/store/useGameStore.ts` 的 persist、hydration、存档字段、任务 / 仓库 / 成就 / 武器 / 手记 / 指南底层逻辑。
+- 未改动 `src/components/UnifiedMenuModal.tsx` 的 settings / codex 真实功能；移动底栏仍通过 `activeMenu="codex" | "settings"` 接入现有 modal。
+- 未改动 `package.json`、`pnpm-lock.yaml`，没有引入外部 UI 框架、外部字体、外部图标包或图片资源。
+- 没有新增多余路由；旧指南、手记、仓库、成就、武器、任务栏等路由仍按既有策略回到 `/play`。
+- 旧功能内容和底层状态仍保留；被裁剪的是主动 UI 入口，不是 store/schema/service 能力。
+
+当前移动阅读 UI 入口和接线：
+
+- `/play` 的视觉主入口是 `src/app/play/page.tsx` 中的 `MobileReadingShell`。
+- 壳层、header、正文 viewport、输入 dock、选项 dropdown、底栏、天赋按钮分别位于 `src/features/play/mobileReading/components/`。
+- `theme.ts` 维护核心色彩、边框、阴影、高度、间距和 safe area token；`icons.tsx` 维护移动阅读页专用 inline SVG 图标；`hooks/useMobileActionDock.ts` 只处理输入 dock 的局部 UI 状态。
+- `page.tsx` 仍负责 `sendAction`、`onPickOption`、`onUseTalent`、audio mute、`activeMenu`、guest gate、死亡 / 终局锁定、SSE 和 turn commit 主链路。
+- `MobileActionDock`、`MobileOptionsDropdown`、`MobileBottomNav` 等组件只消费 props，不直接复制 SSE 或 store mutation 业务。
+
+Phase 7 稳定性修复：
+
+- `e2e/mobile-reading-ui.spec.ts` 的种子状态现在同时写入 root transient `currentOptions` 和 `saveSlots.main_slot.currentOptions`。
+- 这样测试夹具与真实存档恢复路径一致，避免截图用例等待较久时 root 临时选项被页面补选项流程清空，导致展开态偶发空列表。
+
+最终回归命令：
+
+- `npx eslint .`：通过，0 errors / 145 warnings。warnings 来自既有源码和未跟踪 `.claude/worktrees`。
+- `pnpm test:unit`：通过，987 pass。
+- `pnpm exec playwright test e2e/play.spec.ts e2e/mobile-reading-ui.spec.ts`：通过，19 passed。
+- `pnpm build`：通过。
+- `pnpm test:ci`：通过；`db:check:optional` 在本地 PostgreSQL 未启动时按脚本设计跳过。
+- `pnpm exec playwright test e2e/mobile-reading-ui.spec.ts`：最终复查通过，10 passed。
+
+已知限制：
+
+- 当前本机 Browser Use in-app browser 初始化失败，因为 node_repl 解析到 `D:\node\node.exe v22.17.1`，低于插件要求的 `>=22.22.0`。本阶段使用 Playwright Chromium 真实浏览器完成等价验证。
+- 本地 PostgreSQL 未启动时，dev / Playwright 输出会出现 analytics / presence `ECONNREFUSED 127.0.0.1:5432` 噪声；相关 E2E 断言和 build 均通过。
