@@ -67,7 +67,7 @@ test("resolveTurnConsistency: awards without explicit acquire text should only r
   assert.equal(out.ui_hints?.consistency_flags?.includes("awards_without_explicit_acquire_text") ?? false, true);
 });
 
-test("resolveTurnConsistency: new_tasks should only auto-open for accepted formal tasks", () => {
+test("resolveTurnConsistency: accepted formal tasks produce narrative hint without task panel auto-open", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,
     sanity_damage: 0,
@@ -80,8 +80,9 @@ test("resolveTurnConsistency: new_tasks should only auto-open for accepted forma
       { id: "floor_1f_probe", title: "一楼试探性探索", status: "active", taskNarrativeLayer: "formal_task" },
     ],
   } as any);
-  assert.equal(out.ui_hints?.auto_open_panel, "task");
-  assert.deepEqual(out.ui_hints?.highlight_task_ids, ["floor_1f_probe"]);
+  assert.equal(out.ui_hints?.auto_open_panel, undefined);
+  assert.equal(out.ui_hints?.highlight_task_ids, undefined);
+  assert.equal(out.ui_hints?.toast_hint, "新的叙事线索已被记录。");
   assert.equal(Array.isArray(out.new_tasks) && out.new_tasks.length === 1, true);
 });
 

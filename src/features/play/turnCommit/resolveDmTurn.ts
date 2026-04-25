@@ -5,7 +5,6 @@ import {
 } from "@/lib/tasks/taskV2";
 import { applyNarrativeAcceptanceDefaults, shouldAutoOpenTaskPanelForNewTask } from "@/lib/tasks/taskNarrativeGrant";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
-import { incrFormalTaskNarrativeGrantAutoOpenCount } from "@/lib/observability/versecraftRolloutMetrics";
 import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
 import { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
@@ -148,7 +147,7 @@ export function normalizeConflictOutcome(raw: unknown): TurnEnvelope["conflict_o
       : typeof o.cost === "string"
         ? o.cost
         : "unknown";
-  const likelyCost: TurnEnvelope["conflict_outcome"]["likelyCost"] =
+  const likelyCost: NonNullable<TurnEnvelope["conflict_outcome"]>["likelyCost"] =
     likelyCostRaw === "none" || likelyCostRaw === "light" || likelyCostRaw === "moderate" || likelyCostRaw === "heavy"
       ? likelyCostRaw
       : "unknown";
@@ -250,15 +249,13 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
 
   const nowIso = new Date().toISOString();
   const normalizedClueUpdates = normalizeClueUpdateArray((input as { clue_updates?: unknown }).clue_updates, nowIso);
+  const normalizedClueUpdateRecords: Array<Record<string, unknown>> = normalizedClueUpdates.map((clue) => ({ ...clue }));
 
   const grantNormalizedNewTasks = normalizedNewTasks.map((t) => applyNarrativeAcceptanceDefaults(t));
   const rollout = getVerseCraftRolloutFlags();
   if (rollout.enableTaskAutoOpenOnNarrativeGrant) {
     if (grantNormalizedNewTasks.some((t) => shouldAutoOpenTaskPanelForNewTask(t))) {
-      const ids = grantNormalizedNewTasks.filter((t) => shouldAutoOpenTaskPanelForNewTask(t)).map((t) => t.id);
-      ui_hints.auto_open_panel = "task";
-      ui_hints.highlight_task_ids = ids;
-      incrFormalTaskNarrativeGrantAutoOpenCount(1);
+      ui_hints.toast_hint ??= "新的叙事线索已被记录。";
     }
   }
 
@@ -386,7 +383,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     relationship_updates: asUnknownArray(input.relationship_updates),
     new_tasks: grantNormalizedNewTasks,
     task_updates: normalizedTaskUpdates,
-    clue_updates: normalizedClueUpdates,
+    clue_updates: normalizedClueUpdateRecords,
     ...(typeof input.player_location === "string" && input.player_location.trim()
       ? { player_location: clampString(input.player_location.trim(), 80) }
       : {}),
@@ -424,7 +421,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       awarded_warehouse_items: awardedWarehouseItems,
     },
     clue_changes: {
-      clue_updates: normalizedClueUpdates,
+      clue_updates: normalizedClueUpdateRecords,
     },
     world_state_changes: {
       ...(typeof input.player_location === "string" && input.player_location.trim()

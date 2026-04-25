@@ -1,44 +1,49 @@
 import { test, expect } from "@playwright/test";
 
-async function createGuestCharacterWithWeaponizableStart(page: any) {
-  test.setTimeout(90_000);
-  // e2e=1 bypasses server moderation pipeline in dev, avoiding DB/AI dependency.
-  await page.goto("/create?e2e=1", { waitUntil: "domcontentloaded", timeout: 20_000 });
-  await page.getByPlaceholder("请输入 2-6 字").fill("测试者");
-  await page.getByPlaceholder("仅限 2-6 个中文字符").fill("冷静");
-
-  // Choose a talent (required).
-  await page.getByRole("button", { name: "时间回溯" }).click();
-
-  // Allocate all 30 points into 背景/出身 to force B/A starting item (weaponizable).
-  const incBackground = page.getByRole("button", { name: "增加出身" });
-  for (let i = 0; i < 30; i++) {
-    await incBackground.click();
+async function expectNoWeaponUi(page: import("@playwright/test").Page) {
+  for (const label of ["武器", "武器栏", "装备", "兵器库", "军械库", "Weapon", "Weapons", "Equipment", "Armory", "Arsenal"]) {
+    await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: label, exact: true })).toHaveCount(0);
   }
 
-  await page.locator("button", { hasText: "开卷" }).click({ force: true });
-  await page.waitForURL(/\/play/, { timeout: 60_000 });
+  for (const marker of ["weapon-tab", "equipment-tab", "armory-tab", "arsenal-tab"]) {
+    await expect(page.locator(`[data-onboarding="${marker}"]`)).toHaveCount(0);
+  }
+
+  for (const testId of ["weapon", "weapon-button", "weapon-panel", "weapons", "equipment", "equipment-button", "armory", "arsenal"]) {
+    await expect(page.locator(`[data-testid="${testId}"]`)).toHaveCount(0);
+  }
 }
 
-test.describe("Weapon UI smoke (guest)", () => {
-  test("settings: weapon slot panel renders and shows empty slot hint", async ({ page }) => {
-    await createGuestCharacterWithWeaponizableStart(page);
+test.describe("Pruned equipment and storage UI", () => {
+  test("play page does not expose backpack, warehouse, or weapon panels", async ({ page }) => {
+    const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    expect(res?.status()).toBeLessThan(500);
 
-    await page.getByRole("button", { name: "设置" }).click();
+    for (const label of ["背包", "仓库", "库存", "武器栏", "武器"]) {
+      await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: label, exact: true })).toHaveCount(0);
+      await expect(page.getByRole("tab", { name: label, exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: label, exact: true })).toHaveCount(0);
+    }
 
-    await expect(page.getByRole("heading", { name: "武器栏" })).toBeVisible();
-    await expect(page.getByText("空槽").first()).toBeVisible();
-    await expect(page.getByText("装备/卸下/更换均需消耗").first()).toBeVisible();
+    for (const marker of ["backpack-tab", "warehouse-tab", "weapon-tab"]) {
+      await expect(page.locator(`[data-onboarding="${marker}"]`)).toHaveCount(0);
+    }
+    await expectNoWeaponUi(page);
   });
 
-  test("backpack: weaponizable tag is visible for high-tier starting item", async ({ page }) => {
-    await createGuestCharacterWithWeaponizableStart(page);
-
-    await page.getByRole("button", { name: "设置" }).click();
-    await page.getByRole("button", { name: "灵感手记" }).click();
-
-    // High value regression: inventory item should be tagged as weaponizable (C+).
-    await expect(page.locator("span", { hasText: "可武器化" }).first()).toBeVisible();
+  test("legacy weapon routes do not expose weapon panels", async ({ page }) => {
+    for (const path of ["/weapon", "/weapons", "/armory", "/arsenal", "/equipment", "/equip"]) {
+      const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      expect(res?.status()).toBeLessThan(500);
+      await expect(page).toHaveURL(/\/play(?:$|[?#])/);
+      await expectNoWeaponUi(page);
+      await expect(page.locator("text=武器栏")).toHaveCount(0);
+      await expect(page.locator("text=主手武器")).toHaveCount(0);
+      await expect(page.locator("text=武器化预览")).toHaveCount(0);
+    }
   });
 });
-

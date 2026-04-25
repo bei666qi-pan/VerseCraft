@@ -27,7 +27,7 @@ export function taskNarrativeLayerOf(t: Pick<GameTaskV2, "taskNarrativeLayer" | 
  * 规则目标：
  * - soft_lead: 默认不进任务板主视图（只作为线索/影子存在）
  * - conversation_promise: 可轻追踪，但不抢主视图
- * - formal_task: 只有“叙事授予 + 叙事接下”后才可进入主任务栏
+ * - formal_task: 只有“叙事授予 + 叙事接下”后才可进入正式任务状态
  */
 export function getTaskVisibilityTier(t: GameTaskV2): TaskVisibilityTier {
   if (!t) return "hidden";

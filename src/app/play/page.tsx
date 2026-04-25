@@ -2,13 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Keyboard, List, Book, ClipboardList } from "lucide-react";
+import { Settings, Keyboard, List } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
-import type { Item, ItemDomainLayer, StatType, WarehouseItem } from "@/lib/registry/types";
-import { canUseItem } from "@/lib/registry/itemUtils";
-import { buildItemUseStructuredIntent } from "@/lib/play/itemGameplay";
-import { ITEMS } from "@/lib/registry/items";
-import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
 import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
@@ -20,10 +16,8 @@ import { isValidBgmTrack } from "@/config/audio";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
-import { PlayGuideModal } from "@/features/play/components/PlayGuideModal";
 import { PlayOptionsList } from "@/features/play/components/PlayOptionsList";
 import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
-import { PlayTaskPanel } from "@/features/play/components/PlayTaskPanel";
 import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
 import {
   computeOpeningBusyUi,
@@ -40,10 +34,6 @@ import { PROFESSION_REGISTRY } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
 import { getProfessionActiveSkillName } from "@/lib/profession/benefits";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
-import {
-  normalizeGameTaskDraft,
-  normalizeTaskUpdateDraft,
-} from "@/lib/tasks/taskV2";
 import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
 import {
@@ -90,12 +80,12 @@ import {
 } from "@/features/play/turnCommit/phaseRegressionGuards";
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
-import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import {
   extractFilteredHintsFromTrace,
   isNarrativeSystemsDebugEnabled,
   pushNarrativeSystemsDebugEvent,
 } from "@/lib/debug/narrativeSystemsDebugRing";
+import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTriggers";
 import { NarrativeSystemsDebugPanel } from "@/features/play/components/NarrativeSystemsDebugPanel";
 import {
   getClientOptionsAutoRegenOnEmptyEnabled,
@@ -118,22 +108,12 @@ import {
 } from "@/lib/combat/combatPresentation";
 import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
+import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
 
 type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
 
-const ITEM_DOMAIN_LAYERS = new Set<ItemDomainLayer>([
-  "key",
-  "tool",
-  "consumable",
-  "evidence",
-  "social_token",
-  "material",
-]);
-
-function pickItemDomainLayer(v: unknown): ItemDomainLayer | undefined {
-  return typeof v === "string" && ITEM_DOMAIN_LAYERS.has(v as ItemDomainLayer)
-    ? (v as ItemDomainLayer)
-    : undefined;
+function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undefined {
+  return raw === "idle" || raw === "active" || raw === "suppressed" || raw === "breached" ? raw : undefined;
 }
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
@@ -148,8 +128,6 @@ const STREAM_FIRST_CHUNK_STALL_MS = VC_WAITING.playStreamFirstChunkStallMs;
 const FETCH_CHAT_RESPONSE_DEADLINE_MS = VC_WAITING.playFetchChatResponseDeadlineMs;
 /** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
 const SCROLL_STICKY_BOTTOM_PX = 96;
-const GUIDE_AUTO_OPEN_DISMISSED_KEY = "versecraft-guide-auto-open-dismissed-v1";
-
 /**
  * UI-only heuristic for waiting-upstream semantic hints.
  * Must remain conservative and stable; it must not affect server control-plane decisions.
@@ -179,7 +157,7 @@ const OPTIONS_REGEN_SYSTEM_PROMPT =
   "强制：options 恰好 4 条、简体中文、第一人称、5–20字、互不重复且差异明显；" +
   "必须承接正文之后的当前剧情，生成下一步可执行行动；" +
   "必须避免复用当前与最近选项（含换说法的近似动作），至少 2 条直接锚定最近叙事中的实体或场景；" +
-  "禁止灵感手记/背包/任务/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
+  "禁止灵感手记/背包/任务/仓库/成就/武器栏/游戏指南/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
   "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
 
 function PlayContent() {
@@ -220,7 +198,6 @@ function PlayContent() {
   const addOriginium = useGameStore((s) => s.addOriginium);
   const originium = useGameStore((s) => s.originium ?? 0);
   const tasks = useGameStore((s) => s.tasks ?? []);
-  const journalClues = useGameStore((s) => s.journalClues ?? []);
   const codex = useGameStore((s) => s.codex ?? {});
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
@@ -267,12 +244,6 @@ function PlayContent() {
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
-  const [highlightSettingsBtn, setHighlightSettingsBtn] = useState(false);
-  const [guideAutoOpenDismissed, setGuideAutoOpenDismissed] = useState(false);
-  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
-  const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false);
-  const [highlightTaskIds, setHighlightTaskIds] = useState<string[]>([]);
-  const highlightTaskTimerRef = useRef<number | null>(null);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
@@ -298,7 +269,6 @@ function PlayContent() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
-  const hasAutoOpenedGuideRef = useRef(false);
   const hasTriggeredResume = useRef(false);
   const hasShownManualInputComplianceHintRef = useRef(false);
   const hasShownProfessionEligibleHintRef = useRef(false);
@@ -503,52 +473,10 @@ function PlayContent() {
   }, [guestId, isGameStarted, isGuest, isHydrated]);
 
   useEffect(() => {
-    if (!isHydrated || !isGameStarted) return;
-    if (hasAutoOpenedGuideRef.current) return;
-    if (guideAutoOpenDismissed) return;
-    hasAutoOpenedGuideRef.current = true;
-    /**
-     * 首次进入游戏时先打开“游戏指南”，把“只是有按钮”升级为“先看得到入口”。
-     * 同时高亮设置按钮，提示玩家后续从设置进入完整控制中枢。
-     */
-    setIsGuideModalOpen(true);
-    setHighlightSettingsBtn(true);
-  }, [guideAutoOpenDismissed, isGameStarted, isHydrated]);
-
-  useEffect(() => {
-    if (!isHydrated) return;
-    try {
-      const raw = window.localStorage.getItem(GUIDE_AUTO_OPEN_DISMISSED_KEY);
-      if (raw === "1") setGuideAutoOpenDismissed(true);
-    } catch {
-      // ignore localStorage read failure
-    }
-  }, [isHydrated]);
-
-  const markGuideAutoOpenDismissed = useCallback(() => {
-    setHighlightSettingsBtn(false);
-    setGuideAutoOpenDismissed(true);
-    try {
-      window.localStorage.setItem(GUIDE_AUTO_OPEN_DISMISSED_KEY, "1");
-    } catch {
-      // ignore localStorage write failure
-    }
-  }, []);
-
-  useEffect(() => {
     if (!firstTimeHint) return;
     const t = setTimeout(() => setFirstTimeHint(null), 3000);
     return () => clearTimeout(t);
   }, [firstTimeHint]);
-
-  useEffect(() => {
-    return () => {
-      if (highlightTaskTimerRef.current != null) {
-        window.clearTimeout(highlightTaskTimerRef.current);
-        highlightTaskTimerRef.current = null;
-      }
-    };
-  }, []);
 
   const triggerComplianceHint = useCallback(() => {
     if (complianceHintTimerRef.current) {
@@ -1197,9 +1125,8 @@ function PlayContent() {
       const inventoryHints = (Array.isArray(inventory) ? inventory : [])
         .map((item) => {
           if (!item || typeof item !== "object") return "";
-          const o = item as Record<string, unknown>;
-          const name = typeof o.name === "string" ? o.name : typeof o.title === "string" ? o.title : "";
-          const id = typeof o.id === "string" ? o.id : "";
+          const name = typeof item.name === "string" ? item.name : "";
+          const id = typeof item.id === "string" ? item.id : "";
           return String(name || id).trim();
         })
         .filter((x): x is string => x.length > 0)
@@ -2054,136 +1981,43 @@ function PlayContent() {
       setPendingHallucinationCheck((consumedNames.length > 0) || hadAnomaly);
     }
 
-    if (consumedNames.length > 0) {
-      useGameStore.getState().consumeItems(consumedNames);
-    }
-
-    const validTiers = ["S", "A", "B", "C", "D"] as const;
-    const itemById = new Map(ITEMS.map((i) => [i.id, i]));
     let awardedItemWriteCount = 0;
     let awardedWarehouseWriteCount = 0;
-    if (Array.isArray(parsed.awarded_items) && parsed.awarded_items.length > 0) {
-      const resolved: Item[] = [];
-      for (let idx = 0; idx < parsed.awarded_items.length; idx++) {
-        const r: unknown = parsed.awarded_items[idx];
-        let id: string | null = null;
-        let o: Record<string, unknown> | null = null;
-        if (typeof r === "string" && r.trim()) {
-          id = r.trim();
-        } else if (r && typeof r === "object") {
-          o = r as Record<string, unknown>;
-          id = typeof o.id === "string" && o.id ? o.id : null;
+
+    if (consumedNames.length > 0) {
+      applyNarrativeFeatureEvent(
+        { type: "inventory.consume", raw: consumedNames },
+        {
+          getInventoryItems: () => useGameStore.getState().inventory ?? [],
+          consumeInventoryItems: (itemKeys) => useGameStore.getState().consumeItems(itemKeys),
         }
-        if (!id) continue;
-        const registryItem = itemById.get(id);
-        if (registryItem) {
-          resolved.push(registryItem);
-          continue;
-        }
-        if (!o) continue;
-        const name = String(o.name ?? "未知道具");
-        const tier = validTiers.includes(String(o.tier) as (typeof validTiers)[number])
-          ? (String(o.tier) as Item["tier"])
-          : "B";
-        const rawStatBonus = o.statBonus;
-        let statBonus: Item["statBonus"] = undefined;
-        if (rawStatBonus && typeof rawStatBonus === "object" && !Array.isArray(rawStatBonus)) {
-          const entries = Object.entries(rawStatBonus as Record<string, unknown>).filter(
-            ([, v]) => typeof v === "number" && Number.isFinite(v)
-          ) as [StatType, number][];
-          if (entries.length > 0) statBonus = Object.fromEntries(entries) as Item["statBonus"];
-        }
-        const layer = pickItemDomainLayer(o.domainLayer);
-        resolved.push({
-          id,
-          name,
-          tier,
-          description: typeof o.description === "string" ? o.description : name,
-          tags: typeof o.tags === "string" ? o.tags : "loot",
-          statBonus,
-          ownerId: "N-019",
-          ...(layer ? { domainLayer: layer } : {}),
-        } satisfies Item);
-      }
-      const items = resolved;
-      if (items.length > 0) {
-        const prevInvIds = new Set((useGameStore.getState().inventory ?? []).map((i) => i.id));
-        useGameStore.getState().addItems(items);
-        const afterInv = useGameStore.getState().inventory ?? [];
-        const afterInvIds = new Set(afterInv.map((i) => i.id));
-        const writtenIds = items
-          .map((it) => it.id)
-          .filter((id) => !!id && afterInvIds.has(id));
-        awardedItemWriteCount = writtenIds.length;
-        // 只有真实写入 inventory 后才输出“已放入行囊”提示，避免叙事假成功。
-        if (awardedItemWriteCount > 0) {
-          useGameStore.getState().pushLog({
-            role: "assistant",
-            content: "**获得了新道具，已放入行囊**",
-            reasoning: undefined,
-          });
-          const firstNew = items.find((it) => !prevInvIds.has(it.id));
-          if (firstNew) {
-            setFirstTimeHint(`你记下了新道具【${firstNew.name}】。`);
-          }
-        }
-      }
+      );
     }
 
-    const warehouseById = new Map(WAREHOUSE_ITEMS.map((w) => [w.id, w]));
-    if (Array.isArray(parsed.awarded_warehouse_items) && parsed.awarded_warehouse_items.length > 0) {
-      const whItemsResolved: WarehouseItem[] = [];
-      for (const r of parsed.awarded_warehouse_items as unknown[]) {
-        if (typeof r === "string" && r.trim()) {
-          const fromRegistry = warehouseById.get(r.trim());
-          if (fromRegistry) whItemsResolved.push(fromRegistry);
-          continue;
-        }
-        if (r && typeof r === "object" && typeof (r as { id?: string }).id === "string") {
-          const row = r as Record<string, unknown>;
-          const id = String(row.id ?? "").trim();
-          if (!id) continue;
-          const fromRegistry = warehouseById.get(id);
-          if (fromRegistry) {
-            whItemsResolved.push(fromRegistry);
-            continue;
-          }
-          // 兼容未注册但结构化回写的仓库物品，避免“叙事获得但状态丢失”。
-          whItemsResolved.push({
-            id,
-            name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : "未知物品",
-            description: typeof row.description === "string" ? row.description : "临时写回物品",
-            benefit: typeof row.benefit === "string" ? row.benefit : "未知",
-            sideEffect: typeof row.sideEffect === "string" ? row.sideEffect : "未知",
-            ownerId: typeof row.ownerId === "string" ? row.ownerId : "N-019",
-            floor: "B1",
-            isResurrection: typeof row.isResurrection === "boolean" ? row.isResurrection : undefined,
-          });
-        }
+    const inventoryTrigger = applyNarrativeFeatureEvent(
+      { type: "inventory.award", raw: parsed.awarded_items, writeLog: true },
+      {
+        getInventoryItems: () => useGameStore.getState().inventory ?? [],
+        addInventoryItems: (items) => useGameStore.getState().addItems(items),
+        pushLog: (entry) => useGameStore.getState().pushLog(entry),
       }
-      const whItems = whItemsResolved;
-      if (whItems.length > 0) {
-        const prevWhIds = new Set((useGameStore.getState().warehouse ?? []).map((w) => w.id));
-        useGameStore.getState().addWarehouseItems(whItems);
-        const afterWh = useGameStore.getState().warehouse ?? [];
-        const afterWhIds = new Set(afterWh.map((w) => w.id));
-        const writtenIds = whItems
-          .map((w) => w.id)
-          .filter((id) => !!id && afterWhIds.has(id));
-        awardedWarehouseWriteCount = writtenIds.length;
-        // 只有真实写入 warehouse 后才输出“已放入仓库”提示，避免叙事假成功。
-        if (awardedWarehouseWriteCount > 0) {
-          useGameStore.getState().pushLog({
-            role: "assistant",
-            content: "**获得了新物品，已放入仓库**",
-            reasoning: undefined,
-          });
-          const firstNew = whItems.find((w) => !prevWhIds.has(w.id));
-          if (firstNew) {
-            setFirstTimeHint(`你在仓库中发现了新物品【${firstNew.name}】。`);
-          }
-        }
+    );
+    awardedItemWriteCount = inventoryTrigger.counts.inventoryItemsWritten ?? 0;
+    if (inventoryTrigger.hints.length > 0) {
+      setFirstTimeHint(inventoryTrigger.hints[0] ?? null);
+    }
+
+    const warehouseTrigger = applyNarrativeFeatureEvent(
+      { type: "warehouse.award", raw: parsed.awarded_warehouse_items },
+      {
+        getWarehouseItems: () => useGameStore.getState().warehouse ?? [],
+        addWarehouseItems: (items) => useGameStore.getState().addWarehouseItems(items),
+        pushLog: (entry) => useGameStore.getState().pushLog(entry),
       }
+    );
+    awardedWarehouseWriteCount = warehouseTrigger.counts.warehouseItemsWritten ?? 0;
+    if (warehouseTrigger.hints.length > 0) {
+      setFirstTimeHint(warehouseTrigger.hints[0] ?? null);
     }
 
     // 一致性兜底：叙事有“获得”强语义，但结构化 awarded_* 为空时不能静默通过。
@@ -2226,7 +2060,7 @@ function PlayContent() {
           typeof (u as { id?: unknown }).id === "string" &&
           typeof (u as { name?: unknown }).name === "string" &&
           (((u as { type?: unknown }).type === "npc") || ((u as { type?: unknown }).type === "anomaly"))
-      ).map((u) => ({
+      ).map((u): CodexEntry => ({
         id: u.id,
         name: u.name,
         type: u.type,
@@ -2251,7 +2085,7 @@ function PlayContent() {
         traits: typeof u.traits === "string" ? u.traits : undefined,
         rules_discovered: typeof u.rules_discovered === "string" ? u.rules_discovered : undefined,
         weakness: typeof u.weakness === "string" ? u.weakness : undefined,
-      })).map((e) => {
+      })).map((e): CodexEntry => {
         if (!getClientHiddenCombatV1Enabled()) return e;
         if (e.type !== "npc") return e;
         if (typeof e.combatPower !== "number") return e;
@@ -2291,21 +2125,18 @@ function PlayContent() {
       // ignore: capture is best-effort
     }
 
-    // 手记线索：DM clue_updates → 与快照 journal 同步（经 normalizeClueUpdateArray 防空/截断）
-    if (Array.isArray((parsed as { clue_updates?: unknown }).clue_updates)) {
-      const clueRows = normalizeClueUpdateArray(
-        (parsed as { clue_updates?: unknown }).clue_updates,
-        new Date().toISOString()
-      );
-      if (clueRows.length > 0) {
-        const prevClueIds = new Set((useGameStore.getState().journalClues ?? []).map((c) => c.id));
-        useGameStore.getState().mergeJournalClueUpdates(clueRows);
-        const freshTitles = clueRows.filter((c) => c.id && !prevClueIds.has(c.id)).map((c) => c.title);
-        if (freshTitles.length > 0) {
-          acquireHudHints.push(`手记更新：${freshTitles.slice(0, 2).join("、")}${freshTitles.length > 2 ? "…" : ""}`);
-        }
+    const journalTrigger = applyNarrativeFeatureEvent(
+      {
+        type: "journal.clue_updates",
+        raw: (parsed as { clue_updates?: unknown }).clue_updates,
+        nowIso: new Date().toISOString(),
+      },
+      {
+        getJournalClues: () => useGameStore.getState().journalClues ?? [],
+        mergeJournalClueUpdates: (incoming) => useGameStore.getState().mergeJournalClueUpdates(incoming),
       }
-    }
+    );
+    acquireHudHints.push(...journalTrigger.hints);
 
     const stateBeforeProfessionTurn = useGameStore.getState();
     const consumedProfessionActive = stateBeforeProfessionTurn.consumeProfessionActiveForTurn();
@@ -2487,32 +2318,26 @@ function PlayContent() {
       addOriginium(parsed.currency_change);
     }
 
-    if (Array.isArray(parsed.new_tasks) && parsed.new_tasks.length > 0) {
-      const taskIdsBefore = new Set((useGameStore.getState().tasks ?? []).map((t) => t.id));
-      for (const t of parsed.new_tasks) {
-        // 兼容旧服务端：仍允许 draft；但优先信任服务端已裁决/规范化后的任务对象。
-        const normalized = normalizeGameTaskDraft(t);
-        if (normalized) addTask(normalized);
+    const taskAddTrigger = applyNarrativeFeatureEvent(
+      { type: "task.add", raw: parsed.new_tasks },
+      {
+        getTasks: () => useGameStore.getState().tasks ?? [],
+        addTask,
       }
-      const afterTasks = useGameStore.getState().tasks ?? [];
-      const newTitles = afterTasks.filter((t) => !taskIdsBefore.has(t.id)).map((t) => t.title);
-      if (newTitles.length > 0) {
-        acquireHudHints.push(`新目标：${newTitles.slice(0, 2).join("、")}${newTitles.length > 2 ? "…" : ""}`);
-      }
-    }
+    );
+    acquireHudHints.push(...taskAddTrigger.hints);
 
     if (acquireHudHints.length > 0) {
       setFirstTimeHint(acquireHudHints.join("；"));
     }
 
-    if (Array.isArray(parsed.task_updates) && parsed.task_updates.length > 0) {
-      for (const u of parsed.task_updates) {
-        const patch = normalizeTaskUpdateDraft(u);
-        if (!patch) continue;
-        if (patch.status) updateTaskStatus(patch.id, patch.status);
-        updateTask(patch);
+    applyNarrativeFeatureEvent(
+      { type: "task.update", raw: parsed.task_updates },
+      {
+        updateTaskStatus,
+        updateTask,
       }
-    }
+    );
 
     // Phase-3: 任务结果的结构化后果（关系 + 记忆残响）。不依赖 narrative；best-effort。
     try {
@@ -2559,25 +2384,17 @@ function PlayContent() {
       // ignore
     }
 
-    // UI hints: tasks panel auto-open + highlight（须避开终局态）
+    // 服务端 UI 提示：仅轻量 toast，不打开侧栏或可点击管理面板
     try {
-      const autoOpen = uiHints?.auto_open_panel === "task";
-      const highlightIds: string[] = Array.isArray(uiHints?.highlight_task_ids)
-        ? uiHints.highlight_task_ids.filter((x: unknown): x is string => typeof x === "string" && x.trim().length > 0)
-        : [];
       const toastHint = typeof uiHints?.toast_hint === "string" ? uiHints.toast_hint.trim() : "";
-      if (toastHint) setFirstTimeHint(toastHint);
-
-      if (!endgameState.active) {
-        if (autoOpen) setIsTaskPanelOpen(true);
-        if (highlightIds.length > 0) {
-          setHighlightTaskIds(highlightIds);
-          if (highlightTaskTimerRef.current != null) window.clearTimeout(highlightTaskTimerRef.current);
-          highlightTaskTimerRef.current = window.setTimeout(() => {
-            setHighlightTaskIds([]);
-            highlightTaskTimerRef.current = null;
-          }, 3500);
-        }
+      const guideHint = applyNarrativeFeatureEvent({ type: "guide.hint", raw: uiHints }, {}).hints[0] ?? "";
+      const taskPanelHint = applyNarrativeFeatureEvent({ type: "task.panel_hint", raw: uiHints }, {}).hints[0] ?? "";
+      if (toastHint) {
+        setFirstTimeHint(toastHint);
+      } else if (guideHint) {
+        setFirstTimeHint(guideHint);
+      } else if (!endgameState.active) {
+        if (taskPanelHint) setFirstTimeHint(taskPanelHint);
       }
     } catch {
       // ignore: hints are best-effort
@@ -2676,7 +2493,6 @@ function PlayContent() {
             setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
           } else {
             setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
-            setHighlightSettingsBtn(true);
             setFirstTimeHint("你已满足职业认证条件：可在【设置→职业】中完成认证（不必打断本回合推进）。");
           }
         }
@@ -2732,7 +2548,7 @@ function PlayContent() {
         .map((u) => ({
           floorId: typeof u.floorId === "string" ? u.floorId : undefined,
           threatId: typeof u.threatId === "string" ? u.threatId : undefined,
-          phase: typeof u.phase === "string" ? u.phase : undefined,
+          phase: normalizeMainThreatPhase(u.phase),
           suppressionProgress:
             typeof u.suppressionProgress === "number" && Number.isFinite(u.suppressionProgress)
               ? u.suppressionProgress
@@ -2758,70 +2574,18 @@ function PlayContent() {
       if (updates.length > 0) applyMainThreatUpdates(updates);
     }
 
-    if (Array.isArray((parsed as { weapon_updates?: unknown[] }).weapon_updates)) {
-      const updates = ((parsed as { weapon_updates?: unknown[] }).weapon_updates ?? [])
-        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
-        .map((u) => ({
-          weaponId: typeof u.weaponId === "string" ? u.weaponId : undefined,
-          weapon:
-            (u as { weapon?: unknown }).weapon && typeof (u as { weapon?: unknown }).weapon === "object" && !Array.isArray((u as { weapon?: unknown }).weapon)
-              ? ((u as { weapon: Record<string, unknown> }).weapon as any)
-              : ((u as { weapon?: unknown }).weapon === null ? null : undefined),
-          unequip: typeof (u as { unequip?: unknown }).unequip === "boolean" ? (u as { unequip: boolean }).unequip : undefined,
-          stability:
-            typeof u.stability === "number" && Number.isFinite(u.stability)
-              ? u.stability
-              : undefined,
-          calibratedThreatId:
-            u.calibratedThreatId === null || typeof u.calibratedThreatId === "string"
-              ? (u.calibratedThreatId as string | null)
-              : undefined,
-          currentMods: Array.isArray(u.currentMods)
-            ? u.currentMods.filter((x): x is string => typeof x === "string")
-            : undefined,
-          currentInfusions: Array.isArray(u.currentInfusions)
-            ? u.currentInfusions
-                .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
-                .map((x) => ({
-                  threatTag:
-                    x.threatTag === "liquid" ||
-                    x.threatTag === "mirror" ||
-                    x.threatTag === "cognition" ||
-                    x.threatTag === "seal"
-                      ? x.threatTag
-                      : "liquid",
-                  turnsLeft: typeof x.turnsLeft === "number" && Number.isFinite(x.turnsLeft) ? x.turnsLeft : 0,
-                }))
-            : undefined,
-          contamination:
-            typeof u.contamination === "number" && Number.isFinite(u.contamination)
-              ? u.contamination
-              : undefined,
-          repairable: typeof u.repairable === "boolean" ? u.repairable : undefined,
-        }));
-      if (updates.length > 0) applyWeaponUpdates(updates);
-    }
+    applyNarrativeFeatureEvent(
+      { type: "weapon.update", raw: (parsed as { weapon_updates?: unknown[] }).weapon_updates },
+      { applyWeaponUpdates }
+    );
 
-    if (Array.isArray((parsed as { weapon_bag_updates?: unknown[] }).weapon_bag_updates)) {
-      const safe = ((parsed as { weapon_bag_updates?: unknown[] }).weapon_bag_updates ?? [])
-        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x));
-      const mapped = safe.map((u) => {
-        if (typeof (u as { removeWeaponId?: unknown }).removeWeaponId === "string") {
-          return { removeWeaponId: (u as { removeWeaponId: string }).removeWeaponId };
-        }
-        if ((u as { addWeapon?: unknown }).addWeapon && typeof (u as { addWeapon?: unknown }).addWeapon === "object" && !Array.isArray((u as { addWeapon?: unknown }).addWeapon)) {
-          return { addWeapon: (u as { addWeapon: any }).addWeapon };
-        }
-        if (typeof (u as { addEquippedWeaponId?: unknown }).addEquippedWeaponId === "string") {
-          return { addEquippedWeaponId: (u as { addEquippedWeaponId: string }).addEquippedWeaponId };
-        }
-        return null;
-      }).filter((x): x is any => !!x);
-      if (mapped.length > 0) applyWeaponBagUpdates(mapped);
-    }
+    applyNarrativeFeatureEvent(
+      { type: "weapon_bag.update", raw: (parsed as { weapon_bag_updates?: unknown[] }).weapon_bag_updates },
+      { applyWeaponBagUpdates }
+    );
 
     if (consumedProfessionActive === "溯源师" && Array.isArray(parsed.codex_updates)) {
-      const traced = parsed.codex_updates
+      const traced = (parsed.codex_updates as unknown[])
         .filter((x): x is CodexEntry => !!x && typeof x === "object" && !Array.isArray(x))
         .map((x) =>
           x.type === "anomaly" && !x.rules_discovered
@@ -3051,13 +2815,6 @@ function PlayContent() {
     }
   }
 
-  function onUseItem(item: Item) {
-    const check = canUseItem(item, stats);
-    if (!check.ok) return; // UI should block, but guard here
-    void sendAction(buildItemUseStructuredIntent(item));
-    setActiveMenu(null);
-  }
-
   function onSaveAndExit() {
     useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
     writeResumeShadow();
@@ -3104,7 +2861,6 @@ function PlayContent() {
                       type="button"
                       onClick={() => {
                         if (endgameState.active) return;
-                        setHighlightSettingsBtn(false);
                         setActiveMenu("settings");
                       }}
                       data-onboarding="settings-btn"
@@ -3112,59 +2868,13 @@ function PlayContent() {
                       aria-label="设置"
                     >
                       <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                        {/* 进入游戏后引导期高亮“设置”，帮助玩家定位左侧控制中枢入口。 */}
-                        <div
-                          className={`absolute -inset-0.5 rounded-full blur-[12px] transition group-hover:opacity-90 ${
-                            highlightSettingsBtn
-                              ? "bg-amber-300/85 opacity-95 animate-[halo-pulse_2.2s_ease-in-out_infinite]"
-                              : "bg-white/75 opacity-60 vc-wait-breath"
-                          }`}
-                        />
-                        <div
-                          className={`absolute inset-0.5 rounded-full backdrop-blur-sm transition-all ${
-                            highlightSettingsBtn
-                              ? "bg-amber-50 shadow-[0_0_16px_rgba(245,158,11,0.45)]"
-                              : "bg-white/92 group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]"
-                          }`}
-                        />
+                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-90 vc-wait-breath" />
+                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
                         <Settings
-                          className={`relative z-10 ${
-                            highlightSettingsBtn ? "text-amber-700" : "text-blue-700 group-hover:text-blue-800"
-                          }`}
+                          className="relative z-10 text-blue-700 group-hover:text-blue-800"
                           size={18}
                           strokeWidth={2.0}
                         />
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (endgameState.active) return;
-                        setIsGuideModalOpen(true);
-                      }}
-                      className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
-                      aria-label="游戏指南"
-                    >
-                      <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
-                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
-                        <Book className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (endgameState.active) return;
-                        setIsTaskPanelOpen((v) => !v);
-                      }}
-                      className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
-                      aria-label="任务栏"
-                      title="当前目标与承诺"
-                    >
-                      <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
-                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
-                        <ClipboardList className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
                       </div>
                     </button>
                     <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
@@ -3175,7 +2885,6 @@ function PlayContent() {
                         type="button"
                         onClick={() => {
                           if (endgameState.active) return;
-                          setHighlightSettingsBtn(false);
                           setActiveMenu("settings");
                         }}
                         className="hidden min-w-0 items-center gap-2 rounded-full border border-white/30 bg-white/50 px-2 py-0.5 transition hover:bg-white/70 sm:flex"
@@ -3443,25 +3152,6 @@ function PlayContent() {
 
       <NarrativeSystemsDebugPanel />
       <PlayComplianceToast visible={showComplianceHint} />
-      <PlayGuideModal
-        open={isGuideModalOpen}
-        onClose={() => {
-          // 独立指南窗口关闭后即视为“已看过”，后续不再自动弹出。
-          markGuideAutoOpenDismissed();
-          setIsGuideModalOpen(false);
-        }}
-      />
-      <PlayTaskPanel
-        open={isTaskPanelOpen}
-        tasks={tasks}
-        originium={originium}
-        highlightTaskIds={highlightTaskIds}
-        journalClues={journalClues}
-        codex={codex}
-        onClose={() => setIsTaskPanelOpen(false)}
-        onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
-      />
-
       <UnifiedMenuModal
         activeMenu={activeMenu}
         onClose={() => {
@@ -3470,8 +3160,6 @@ function PlayContent() {
         onRequestExit={() => {
           setShowExitModal(true);
         }}
-        onUseItem={onUseItem}
-        isChatBusy={isChatBusy}
         audioMuted={audioMuted}
         onToggleMute={() => {
           toggleMute();

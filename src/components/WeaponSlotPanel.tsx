@@ -91,7 +91,7 @@ export function WeaponSlotPanel({
 
   const mods = useMemo(() => {
     const m = (equippedWeapon as any)?.currentMods;
-    return Array.isArray(m) ? m.filter((x: unknown): x is string => typeof x === "string" && x.trim()).slice(0, 6) : [];
+    return Array.isArray(m) ? m.filter((x: unknown): x is string => typeof x === "string" && x.trim().length > 0).slice(0, 6) : [];
   }, [equippedWeapon]);
   const infusions = useMemo(() => {
     const arr = (equippedWeapon as any)?.currentInfusions;

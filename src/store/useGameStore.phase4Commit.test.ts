@@ -40,6 +40,78 @@ test("phase4: awarded_warehouse_items write should land in warehouse", () => {
   assert.equal(useGameStore.getState().warehouse.some((x) => x.id === "WH_AWARD_1"), true);
 });
 
+test("phase4: warehouse state supports narrative consume without changing save fields", () => {
+  resetStore();
+  const s = useGameStore.getState();
+  s.addWarehouseItems([
+    {
+      id: "WH_CONSUME_1",
+      name: "旧仓库钥匙",
+      description: "desc",
+      benefit: "benefit",
+      sideEffect: "side",
+      ownerId: "N-019",
+      floor: "B1",
+    } as never,
+  ]);
+  s.removeWarehouseItems(["WH_CONSUME_1"]);
+  assert.equal(useGameStore.getState().warehouse.some((x) => x.id === "WH_CONSUME_1"), false);
+});
+
+test("phase4: weapon save fields remain readable after UI entry pruning", () => {
+  resetStore();
+  const equippedWeapon = {
+    id: "WPN_SAVE_1",
+    name: "存档主手",
+    description: "旧存档中的主手武器。",
+    counterThreatIds: ["A-002"],
+    counterTags: ["sound"],
+    stability: 72,
+    calibratedThreatId: null,
+    modSlots: ["core", "surface"],
+    currentMods: ["silent"],
+    currentInfusions: [],
+    contamination: 11,
+    repairable: true,
+  } as never;
+  const weaponBag = [
+    {
+      id: "WPN_SAVE_BAG",
+      name: "存档备用",
+      description: "旧存档中的备用武器。",
+      counterThreatIds: ["A-006"],
+      counterTags: ["mirror"],
+      stability: 64,
+      calibratedThreatId: null,
+      modSlots: ["core", "surface"],
+      currentMods: [],
+      currentInfusions: [],
+      contamination: 3,
+      repairable: true,
+    },
+  ] as never;
+
+  useGameStore.setState({
+    isGameStarted: true,
+    currentSaveSlot: "main_slot",
+    logs: [{ role: "assistant", content: "武器存档兼容测试" }],
+    time: { day: 2, hour: 8 },
+    playerLocation: "2F_Corridor",
+    equippedWeapon,
+    weaponBag,
+  });
+  useGameStore.getState().saveGame("main_slot");
+  const saved = useGameStore.getState().saveSlots.main_slot;
+  assert.equal(saved?.equippedWeapon?.id, "WPN_SAVE_1");
+  assert.equal(saved?.weaponBag?.[0]?.id, "WPN_SAVE_BAG");
+
+  resetStore();
+  useGameStore.setState({ saveSlots: { main_slot: saved } as never });
+  useGameStore.getState().loadGame("main_slot");
+  assert.equal(useGameStore.getState().equippedWeapon?.id, "WPN_SAVE_1");
+  assert.equal(useGameStore.getState().weaponBag[0]?.id, "WPN_SAVE_BAG");
+});
+
 test("phase4: saveGame should update main_slot even when options are empty", () => {
   resetStore();
   useGameStore.setState({

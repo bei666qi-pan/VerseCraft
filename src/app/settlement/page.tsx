@@ -16,6 +16,7 @@ import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps"
 import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import { REVIVE_TIME_SKIP_HOURS } from "@/lib/revive/pipeline";
+import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTriggers";
 import {
   settlementReviveCtaSubtitle,
   settlementReviveCtaTitle,
@@ -363,15 +364,21 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   useEffect(() => {
     if (!mounted || hasAchievementPushedRef.current) return;
     hasAchievementPushedRef.current = true;
-    useAchievementsStore.getState().addRecord({
-      survivalTimeText: `${time.day} 日 ${time.hour} 时`,
-      grade,
-      kills,
-      maxFloor,
-      maxFloorDisplay: formatFloorDisplay(maxFloor),
-      reviewLine1,
-      reviewLine2,
-    });
+    applyNarrativeFeatureEvent(
+      {
+        type: "achievement.unlock",
+        record: {
+          survivalTimeText: `${time.day} 日 ${time.hour} 时`,
+          grade,
+          kills,
+          maxFloor,
+          maxFloorDisplay: formatFloorDisplay(maxFloor),
+          reviewLine1,
+          reviewLine2,
+        },
+      },
+      { addAchievementRecord: (record) => useAchievementsStore.getState().addRecord(record) }
+    );
   }, [
     mounted,
     grade,

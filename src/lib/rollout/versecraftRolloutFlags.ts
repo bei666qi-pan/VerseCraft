@@ -18,9 +18,9 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enablePlayerFacingTextCleanup: boolean;
   /** 任务板可见性策略 V3（soft_lead 不上主路径等） */
   enableTaskVisibilityPolicyV3: boolean;
-  /** 叙事中正式交付 formal_task 后自动打开/高亮任务栏 */
+  /** 叙事中正式交付 formal_task 后生成任务提示信号；旧环境变量名保留兼容，不再自动打开 UI */
   enableTaskAutoOpenOnNarrativeGrant: boolean;
-  /** 任务栏玩家友好文案 V2（更像“当前握着的事”，禁数据库腔/内部 id） */
+  /** 任务玩家友好文案 V2（更像“当前握着的事”，禁数据库腔/内部 id） */
   enablePlayerFacingTaskCopyV2: boolean;
   /** 普通回合 options 为空时自动走一次 options-only 补全 */
   enableOptionsAutoRegenOnEmpty: boolean;

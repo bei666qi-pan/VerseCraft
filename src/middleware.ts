@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { applySecurityHeaders, hasPotentialHeaderInjection, isCrossSiteStateChangingRequest, isSuspiciousPath } from "@/lib/security/http";
+import { getPrunedUiRedirectPath } from "@/lib/ui/prunedUiRoutes";
 
 type Entry = { count: number; resetAt: number };
 
@@ -65,6 +66,14 @@ export function middleware(req: NextRequest) {
     return applySecurityHeaders(NextResponse.json({ error: "csrf_check_failed" }, { status: 403 }));
   }
 
+  const prunedUiRedirectPath = getPrunedUiRedirectPath(pathname);
+  if (prunedUiRedirectPath) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = prunedUiRedirectPath;
+    redirectUrl.search = "";
+    return applySecurityHeaders(NextResponse.redirect(redirectUrl));
+  }
+
   if (isStream) {
     if (!llmLimiter(ip)) {
       return applySecurityHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }));
@@ -79,5 +88,43 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: [
+    "/api/:path*",
+    "/guide/:path*",
+    "/help/:path*",
+    "/tutorial/:path*",
+    "/manual/:path*",
+    "/notes/:path*",
+    "/journal/:path*",
+    "/inspiration/:path*",
+    "/memo/:path*",
+    "/inventory/:path*",
+    "/warehouse/:path*",
+    "/storage/:path*",
+    "/bag/:path*",
+    "/backpack/:path*",
+    "/items/:path*",
+    "/repository/:path*",
+    "/repositories/:path*",
+    "/achievement/:path*",
+    "/achievements/:path*",
+    "/badge/:path*",
+    "/badges/:path*",
+    "/trophy/:path*",
+    "/trophies/:path*",
+    "/weapon/:path*",
+    "/weapons/:path*",
+    "/armory/:path*",
+    "/arsenal/:path*",
+    "/equipment/:path*",
+    "/equip/:path*",
+    "/taskbar/:path*",
+    "/tasks/:path*",
+    "/task/:path*",
+    "/toolbar/:path*",
+    "/dock/:path*",
+    "/bottom-bar/:path*",
+    "/sidebar/:path*",
+    "/action-bar/:path*",
+  ],
 };

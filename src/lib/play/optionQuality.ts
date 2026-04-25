@@ -1,10 +1,14 @@
 export function isNonNarrativeOptionLike(text: string): boolean {
   const s = String(text ?? "").trim().replace(/\s+/g, "");
   if (!s) return true;
-  if (/(灵感手记|手记|背包|行囊|道具栏|物品栏|任务面板|属性面板|菜单|设置|保存|读档|回档|刷新选项|重新整理选项)/.test(s)) {
+  if (
+    /(灵感手记|手记|背包|行囊|道具栏|物品栏|任务面板|任务栏|查看任务|属性面板|菜单|设置|保存|读档|回档|刷新选项|重新整理选项|仓库|成就|武器栏|武器背包|游戏指南|打开指南)/.test(
+      s
+    )
+  ) {
     return true;
   }
-  if (/^(我)?(查看|检查|打开|翻看|整理|阅读)(道具|任务|属性|图鉴)$/.test(s)) return true;
+  if (/^(我)?(查看|检查|打开|翻看|整理|阅读)(道具|任务|属性|图鉴|仓库|成就|手记|指南)$/.test(s)) return true;
   if (/^(我)?使用道具[:：]?$/.test(s)) return true;
   return false;
 }

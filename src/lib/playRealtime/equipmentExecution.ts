@@ -131,7 +131,10 @@ export function applyEquipmentExecutionGuard(args: {
   const bag = (() => {
     const b = args.clientState?.weaponBag;
     if (Array.isArray(b) && b.length > 0) {
-      return b.filter((x): x is Weapon => !!x && typeof x === "object" && !Array.isArray(x)).slice(0, 24);
+      return b
+        .filter((x) => !!x && typeof x === "object" && !Array.isArray(x))
+        .map((x) => x as unknown as Weapon)
+        .slice(0, 24);
     }
     return parseWeaponBagFromPlayerContext(args.playerContext);
   })();

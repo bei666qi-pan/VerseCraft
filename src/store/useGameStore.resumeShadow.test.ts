@@ -77,6 +77,8 @@ test("phase4: hydrateFromResumeShadow restores options/inputMode/log/time", () =
   assert.equal(s.playerLocation, "B1_Archive");
   assert.equal(s.time.day, 4);
   assert.equal(s.logs.length > 0, true);
+  assert.equal(s.inventory.some((item) => item.id === "IT-1"), true);
+  assert.equal(s.warehouse.some((item) => item.id === "WH-1"), true);
   assert.deepEqual(s.currentOptions.slice(0, 2), ["看向门口", "检查脚印"]);
   assert.equal(s.inputMode, "options");
   assert.equal((s.memorySpine?.entries ?? []).length, 1);

@@ -599,6 +599,7 @@ export interface GameState extends IntegrityMetaState {
   removeFromInventory: (itemId: string) => void;
   consumeItems: (itemNames: string[]) => void;
   addWarehouseItems: (items: WarehouseItem[]) => void;
+  removeWarehouseItems: (itemKeys: string[]) => void;
 
   /** 游客模式辅助：增加游玩时长与访问次数 */
   addPlayTimeSeconds: (deltaSeconds: number) => void;
@@ -1827,6 +1828,22 @@ export const useGameStore = create<GameState>()(
             byId.set(w.id, prev ? { ...prev, ...w } : w);
           }
           return { warehouse: Array.from(byId.values()) };
+        }),
+
+      removeWarehouseItems: (itemKeys) =>
+        set((s) => {
+          const keys = Array.isArray(itemKeys)
+            ? itemKeys.filter((x) => typeof x === "string" && x.length > 0).map((x) => String(x).trim())
+            : [];
+          if (keys.length === 0) return {};
+          return {
+            warehouse: (s.warehouse ?? []).filter(
+              (w) =>
+                w &&
+                typeof w.name === "string" &&
+                !keys.some((k) => k === w.name || k === w.id)
+            ),
+          };
         }),
 
       addPlayTimeSeconds: (deltaSeconds) =>
