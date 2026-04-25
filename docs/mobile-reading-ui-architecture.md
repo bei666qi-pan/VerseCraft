@@ -104,7 +104,7 @@
 
 - `npx eslint .`
 - `pnpm test:unit`
-- `pnpm exec playwright test e2e/play-mobile-reading-ui.spec.ts`
+- `pnpm exec playwright test e2e/mobile-reading-ui.spec.ts`
 - 需要完整 UI 裁剪回归时，加跑：
-  - `pnpm exec playwright test e2e/play.spec.ts e2e/ui-pruning-browser-verification.spec.ts e2e/play-mobile-reading-ui.spec.ts`
+  - `pnpm exec playwright test e2e/play.spec.ts e2e/ui-pruning-browser-verification.spec.ts e2e/mobile-reading-ui.spec.ts`
 - 能使用 Browser Use 时，用 in-app browser 在 `390×844`、`393×852`、`430×932` 做折叠 / 展开态验证。

@@ -111,3 +111,14 @@
 截图路径：本阶段未保存正式截图
 异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间仍有本地 PostgreSQL 未启动导致的 presence / analytics ECONNREFUSED 日志，以及 Next.js middleware 弃用提示，不影响断言通过。
 ```
+
+```text
+日期：2026-04-25
+提交：阶段 5 移动端浏览器 E2E 回归测试补充
+环境：Windows / Next dev via Playwright webServer
+验证方式：Playwright；Browser Use 已按插件流程尝试但 runtime 不满足版本要求
+视口：390×844、393×852、430×932、1280×900
+结果：e2e/mobile-reading-ui.spec.ts 10 passed；e2e/play.spec.ts + e2e/mobile-reading-ui.spec.ts 19 passed；覆盖基础渲染、手动输入 SSE mock、选项直发、底栏图鉴 / 设置 UnifiedMenuModal、角色 no-op、音量、天赋、UI 裁剪和 Tab 焦点路径。
+截图路径：Playwright test output 中由 test.info().outputPath 生成 mobile-reading-collapsed-390.png 与 mobile-reading-expanded-390.png；本地一次运行的产物为 test-results/mobile-reading-ui-mobile-r-5bca8-ed-and-expanded-screenshots-chromium/mobile-reading-collapsed-390.png 和 test-results/mobile-reading-ui-mobile-r-5bca8-ed-and-expanded-screenshots-chromium/mobile-reading-expanded-390.png。
+异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间若本地 PostgreSQL 未启动，presence / analytics ECONNREFUSED 日志属于已知噪声，不影响断言。
+```
