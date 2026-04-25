@@ -15,10 +15,15 @@ import { isValidBgmTrack } from "@/config/audio";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
-import { PlayOptionsList } from "@/features/play/components/PlayOptionsList";
-import { PlayBottomNavigation, PlayReadingHeader } from "@/features/play/components/PlayReadingChrome";
 import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
-import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
+import {
+  MobileActionDock,
+  MobileBottomNav,
+  MobileOptionsDropdown,
+  MobileReadingHeader,
+  MobileReadingShell,
+  MobileStoryViewport,
+} from "@/features/play/mobileReading";
 import {
   computeOpeningBusyUi,
   shouldRecoverStaleSendActionFlight,
@@ -2854,7 +2859,7 @@ function PlayContent() {
   }
 
   return (
-    <main className="vc-reading-surface flex h-[100dvh] flex-col overflow-hidden text-[#e7bb8f] transition-all duration-1000">
+    <MobileReadingShell hitEffectActive={hitEffectUntil > Date.now()}>
       <PlayAmbientOverlays
         showDarkMoonOverlay={showDarkMoonOverlay}
         showApocalypseOverlay={showApocalypseOverlay}
@@ -2863,9 +2868,6 @@ function PlayContent() {
         talentEffectType={talentEffectType}
       />
 
-      <div
-        className={`relative flex min-h-0 flex-1 flex-col ${hitEffectUntil > Date.now() ? "animate-[sanity-hit-shake_0.5s_ease-out_2]" : ""}`}
-      >
         <PlayBlockingModals
           showDialoguePaywall={showDialoguePaywall}
           showRegisterPrompt={showRegisterPrompt}
@@ -2876,7 +2878,7 @@ function PlayContent() {
           onAbandonAndDie={onAbandonAndDie}
         />
 
-        <PlayReadingHeader
+        <MobileReadingHeader
           audioMuted={audioMuted}
           onToggleAudio={() => {
             toggleMute();
@@ -2885,11 +2887,11 @@ function PlayContent() {
         />
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <section className="flex min-h-0 flex-1 flex-col">
-            <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+          <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+            <MobileStoryViewport>
 
               {/*
-                选项区：PlayOptionsList 渲染四条槽位（zustand currentOptions）；
+                选项区：MobileOptionsDropdown 渲染四条槽位（zustand currentOptions）；
                 冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
               */}
               <PlayStoryScroll
@@ -2916,8 +2918,9 @@ function PlayContent() {
                 waitUxPrimaryLine={waitUxPrimaryLine}
                 waitUxSecondaryLine={waitUxSecondaryLine}
               />
+            </MobileStoryViewport>
 
-              <PlayTextInputBar
+              <MobileActionDock
                 inputMode={inputMode}
                 hasAnyGate={hasAnyGate}
                 gateMessage={gateMessage}
@@ -2960,7 +2963,7 @@ function PlayContent() {
                 onUseTalent={onUseTalent}
               />
               {optionsExpanded && currentOptions.length > 0 ? (
-                <PlayOptionsList
+                <MobileOptionsDropdown
                   options={currentOptions}
                   revealed={currentOptions.length > 0 && !isChatBusy}
                   isLowSanity={isLowSanity}
@@ -2969,20 +2972,21 @@ function PlayContent() {
                   onPick={onPickOption}
                 />
               ) : optionsExpanded ? (
-                <div className="mx-4 mb-3 rounded-[8px] border border-[#c4936d]/50 bg-[#0a1722]/96 px-6 py-5 vc-reading-serif text-[18px] text-[#d6a07b]">
+                <div
+                  data-testid="mobile-options-dropdown"
+                  className="mx-4 mb-3 rounded-[8px] border border-[#c4936d]/50 bg-[#0a1722]/96 px-6 py-5 vc-reading-serif text-[18px] text-[#d6a07b]"
+                >
                   {optionsRegenBusy ? "主笔正在按当前剧情整理可选行动…" : "当前暂无可用选项。"}
                 </div>
               ) : null}
-              <PlayBottomNavigation
-                onOpenCharacter={() => setActiveMenu("settings")}
+              <MobileBottomNav
+                onOpenCharacter={() => setOptionsExpanded(false)}
                 onFocusStory={() => setOptionsExpanded(false)}
                 onOpenCodex={() => setActiveMenu("codex")}
                 onOpenSettings={() => setActiveMenu("settings")}
               />
             </div>
-          </section>
         </div>
-      </div>
 
       <NarrativeSystemsDebugPanel />
       <PlayComplianceToast visible={showComplianceHint} />
@@ -3004,7 +3008,7 @@ function PlayContent() {
         }}
       />
 
-    </main>
+    </MobileReadingShell>
   );
 }
 

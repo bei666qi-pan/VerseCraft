@@ -83,17 +83,29 @@ test.describe("mobile reading UI", () => {
       const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
 
-      await expect(page.getByText("VerseCraft")).toBeVisible();
-      await expect(page.getByText("第六章：雾港来信")).toBeVisible();
-      await expect(page.getByPlaceholder("输入下一步行动或对白…")).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "阅读导航" })).toBeVisible();
+      await expect(page.getByTestId("mobile-reading-shell")).toBeVisible();
+      await expect(page.getByTestId("mobile-reading-header")).toContainText("VerseCraft");
+      await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
+      await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
+      await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+      await expect(page.getByTestId("echo-talent-button")).toBeVisible();
+      await expect(page.getByTestId("manual-action-input")).toBeVisible();
+      await expect(page.getByTestId("options-toggle-button")).toBeVisible();
+      await expect(page.getByTestId("send-action-button")).toBeVisible();
+      await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
+      await expect(page.getByTestId("bottom-nav-character")).toBeVisible();
+      await expect(page.getByTestId("bottom-nav-story")).toBeVisible();
+      await expect(page.getByTestId("bottom-nav-codex")).toBeVisible();
+      await expect(page.getByTestId("bottom-nav-settings")).toBeVisible();
       await expect(page.getByText(options[0])).toHaveCount(0);
 
-      await page.getByRole("button", { name: "展开行动选项" }).click();
+      await page.getByTestId("options-toggle-button").click();
+      await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
+      await expect(page.getByTestId("mobile-option-item")).toHaveCount(4);
       for (const option of options) {
         await expect(page.getByText(option)).toBeVisible();
       }
-      await expect(page.getByRole("button", { name: "收起行动选项" })).toBeVisible();
+      await expect(page.getByTestId("options-toggle-button")).toHaveAttribute("aria-pressed", "true");
 
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(1);

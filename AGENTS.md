@@ -429,6 +429,67 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 运行时事实源应继续向 **DB + retrieval + packet** 收敛
 - 不要把更多“完整世界事实”重新硬塞回前端静态 TS
 
+### 6.4 Mobile Reading UI / Play Shell 改造约定
+
+`/play` 的主视觉入口是移动端优先的阅读 / 游玩壳层，不是桌面后台页。后续改视觉与交互时，先从这些文件进入：
+
+- `src/app/play/page.tsx`
+  - 仍是 `/play` 全栈接线点：SSE、回合提交、状态写入、菜单状态、音频与天赋效果都在这里收口。
+  - 这里只应做必要接线，不要继续堆大段视觉 JSX。
+- `src/features/play/mobileReading/*`
+  - 移动端阅读壳层主目录。
+  - `MobileReadingShell`：`100dvh` 阅读表面与根测试选择器。
+  - `MobileReadingHeader`：品牌、章节名、声音按钮。
+  - `MobileStoryViewport`：正文滚动区域外壳，正文仍由 `PlayStoryScroll` / narrative renderer 负责。
+  - `MobileActionDock`：底部输入胶囊、选项展开按钮、发送按钮。
+  - `EchoTalentButton`：天赋按钮的纯 UI 入口。
+  - `MobileOptionsDropdown`：四条行动选项的移动端下拉展示。
+  - `MobileBottomNav`：角色 / 剧情 / 图鉴 / 设置底部导航。
+  - `theme.ts`、`icons.tsx`、`types.ts`、`hooks/useMobileActionDock.ts` 分别放视觉 token、图标选择、props 类型和输入栏局部 UI 状态。
+
+输入、选项、天赋、底部导航和菜单打开的责任边界：
+
+- 手动输入值仍来自 `useGameStore` / `src/app/play/page.tsx` 的 `input`、`setInput`、`onSubmit` 接线。
+- 行动选项仍来自 `currentOptions`，选择后走 `onPickOption`，不得绕过既有 `sendAction`、职业认证、终局选项和 guest gate。
+- 选项按钮只切换 `optionsExpanded`；缺选项时仍由 `requestFreshOptions("manual_button")` 触发既有 options regen 链路。
+- 天赋按钮只触发 `onUseTalent`；`onUseTalent` 仍留在 `page.tsx`，不要把天赋业务效果塞进 UI 图标组件。
+- 底部“剧情”只收起选项并回到阅读态。
+- 底部“图鉴”和“设置”仍通过现有 `UnifiedMenuModal` 打开：`setActiveMenu("codex")` / `setActiveMenu("settings")`。
+- 底部“角色”现阶段只保留视觉入口，暂时为空 / 不跳转 / 不打开其它旧面板。
+
+仍然禁止重新暴露这些主动 UI 入口：
+
+- 任务栏
+- 游戏指南
+- 灵感手记
+- 仓库
+- 成就
+- 武器
+
+移动端阅读壳层改动必须保留这些稳定测试选择器，并更新对应浏览器验证：
+
+- `mobile-reading-shell`
+- `mobile-reading-header`
+- `mobile-story-viewport`
+- `mobile-action-dock`
+- `echo-talent-button`
+- `manual-action-input`
+- `options-toggle-button`
+- `send-action-button`
+- `mobile-options-dropdown`
+- `mobile-option-item`
+- `mobile-bottom-nav`
+- `bottom-nav-character`
+- `bottom-nav-story`
+- `bottom-nav-codex`
+- `bottom-nav-settings`
+
+该区域改动的最低验证要求：
+
+- `npx eslint .`
+- 相关 `/play` 或 mobile reading E2E，至少覆盖 `390×844`、`393×852`、`430×932`
+- 能使用 Browser Use 时，必须用 in-app browser 做移动端截图 / DOM 验证；若本机插件运行环境不可用，必须记录阻塞原因并用 Playwright 浏览器验证兜底。
+
 ---
 
 ## 7. Prompt 与任务模式约定
