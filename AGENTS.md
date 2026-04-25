@@ -590,7 +590,23 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 
 ---
 
-## 10. 最后提醒
+## 10. `/play` 章节系统入口
+
+章节功能是 `/play` 移动阅读壳层内的状态层，不是新路由、小说目录或关卡大厅。
+
+- 纯逻辑入口在 `src/lib/chapters/*`：章节定义、进度计算、完成判断、章末总结、旧存档迁移都应在这里维护。
+- UI 入口在 `src/features/play/chapters/*`：`ChapterHeaderPill`、`ChapterNavigator`、`ChapterEndSheet`、`ChapterSummaryList` 只负责移动端呈现和调用 store action。
+- `src/app/play/page.tsx` 只负责在结构化回合提交完成后，把 `/api/chat` 已规范化的 DM JSON 与 store 前后状态信号传给 `recordChapterTurn`。
+- 章节推进不得要求 AI 新增必填字段；v1 默认不修改 `/api/chat` SSE / JSON 契约。
+- 不要通过解析 narrative 推进章节。可用信号包括有效回合数、选项/手输来源、位置变化、任务/图鉴/线索/关系/道具/理智/风险等结构化变化。
+- 章节状态进入 `useGameStore.chapterState`、存档槽与 `RunSnapshotV2.chapterState`；旧存档缺省迁移为第一章 active。
+- 回顾上一章是安全只读回顾，不回滚存档，不清空当前章节进度。
+- 章节导航不得重新暴露任务栏、游戏指南、灵感手记、仓库、成就、武器等已裁剪主动入口。
+- 修改章节区域后必须做移动端浏览器验证，至少覆盖 390×844、393×852、430×932。
+
+---
+
+## 11. 最后提醒
 
 VerseCraft 不是普通聊天应用，也不是只有 prompt 的 demo。它现在已经是一个带有：
 

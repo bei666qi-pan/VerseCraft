@@ -20,6 +20,7 @@ import { ANOMALIES } from "@/lib/registry/anomalies";
 import { inferSaveSlotKind } from "./branch";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
 import { normalizeJournalState } from "@/lib/domain/clueMerge";
+import { normalizeChapterState } from "@/lib/chapters";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -112,6 +113,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     tasks: normalizeTasks(legacy.tasks),
     profession: legacy.professionState ?? createDefaultProfessionState(),
     memorySpine: createEmptyMemorySpine(),
+    chapterState: normalizeChapterState(legacy.chapterState),
   });
 }
 
@@ -241,6 +243,7 @@ export function normalizeRunSnapshotV2(
       return normalizeEscapeMainline((s as any).escape, nowHour);
     })(),
     journal: normalizeJournalState((s as { journal?: unknown }).journal),
+    chapterState: normalizeChapterState((s as { chapterState?: unknown }).chapterState ?? legacyBase.chapterState),
     npcs: asRecord(s.npcs) as RunSnapshotV2["npcs"],
     tasks: {
       active: normalizeTasks(s.tasks?.active),
@@ -325,6 +328,7 @@ export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurf
     equippedWeapon: snapshot.player.equippedWeapon,
     weaponBag: snapshot.player.weaponBag ?? [],
     professionState: snapshot.profession,
+    chapterState: snapshot.chapterState,
     runSnapshotV2: snapshot,
   };
 }

@@ -4,6 +4,7 @@ import type { SaveSlotKind } from "./branch";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { JournalState } from "@/lib/domain/narrativeDomain";
+import type { ChapterState } from "@/lib/chapters/types";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
 
@@ -169,6 +170,11 @@ export interface RunSnapshotV2 {
    * 手记/线索簿（阶段 2+）：与任务、背包弱关联；旧存档缺省空。
    */
   journal?: JournalState;
+  /**
+   * Play chapter progression and safe review state.
+   * Optional for old saves; missing values normalize to chapter 1 active.
+   */
+  chapterState?: ChapterState;
   npcs: Record<string, SnapshotNpcState>;
   tasks: SnapshotTasks;
   death: SnapshotDeath;
@@ -199,5 +205,6 @@ export interface LegacySaveSurface {
   equippedWeapon?: Weapon | null;
   weaponBag?: Weapon[];
   professionState?: ProfessionStateV1;
+  chapterState?: ChapterState;
   runSnapshotV2?: RunSnapshotV2;
 }

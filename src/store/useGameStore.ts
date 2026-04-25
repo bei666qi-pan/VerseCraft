@@ -118,6 +118,19 @@ import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
 import { resolveHourProgressDelta, splitProgress } from "@/lib/time/timeBudget";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
+import {
+  CHAPTER_DEFINITIONS,
+  createInitialChapterState,
+  enterNextChapter,
+  getChapterDefinition,
+  normalizeChapterState,
+  recordChapterTurnInState,
+  returnToActiveChapter,
+  reviewCompletedChapter,
+  type ChapterId,
+  type ChapterState,
+  type ChapterTurnSignals,
+} from "@/lib/chapters";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -202,6 +215,7 @@ function migratePersistedState(
     migratedSlots[slotId] = {
       ...legacy,
       professionState,
+      chapterState: normalizeChapterState(legacy.chapterState ?? snapshot.chapterState),
       slotMeta,
       runSnapshotV2: snapshot,
       ...projectSnapshotToLegacy(snapshot),
@@ -209,6 +223,7 @@ function migratePersistedState(
   }
   return {
     ...raw,
+    chapterState: normalizeChapterState(raw.chapterState),
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: migratedSlots,
     pendingHourProgress:
@@ -346,6 +361,7 @@ export interface SaveSlotData {
     lastReviveAnchorId?: string;
   };
   professionState?: ProfessionStateV1;
+  chapterState?: ChapterState;
 }
 
 export interface AuthUser {
@@ -485,6 +501,7 @@ export interface GameState extends IntegrityMetaState {
   reviveContext: SaveSlotData["reviveContext"];
   appliedRelationshipTaskIds: string[];
   professionState: ProfessionStateV1;
+  chapterState: ChapterState;
   /** Phase-2：职业叙事提示（仅运行时消费；不入存档）。 */
   professionNarrativeCues?: Array<{ code: string; title: string; line: string; profession: ProfessionId; npcId: string }>;
   /** Phase-3.5：可选 combat_summary 回写（仅用于验证“冲突后局势怎么变”；不改变既有主链路结算）。 */
@@ -523,6 +540,11 @@ export interface GameState extends IntegrityMetaState {
   setHydrated: (state: boolean) => void;
   setVolume: (volume: number) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
+  recordChapterTurn: (signals: ChapterTurnSignals) => ChapterState;
+  enterNextChapter: () => void;
+  reviewChapter: (chapterId: ChapterId) => void;
+  returnToActiveChapter: () => void;
+  dismissChapterEnd: () => void;
   /** Activate talent for current round: applies cooldown; returns false if still on cooldown. */
   useTalent: (talent: EchoTalent) => boolean;
   /** Decrement all talent cooldowns by 1 after a successful advancing turn. */
@@ -954,6 +976,7 @@ export const useGameStore = create<GameState>()(
       },
       appliedRelationshipTaskIds: [],
       professionState: createDefaultProfessionState(),
+      chapterState: createInitialChapterState(),
       hasMetProfessionCertifier: false,
       professionNarrativeCues: [],
       combatSummariesV1: [],
@@ -1010,6 +1033,36 @@ export const useGameStore = create<GameState>()(
       setBgm: (track) => set({ currentBgm: track }),
       setVolume: (vol) => set({ volume: clampVolume(vol) }),
       setActiveMenu: (menu) => set({ activeMenu: menu }),
+      recordChapterTurn: (signals) => {
+        const state = get();
+        const chapterState = normalizeChapterState(state.chapterState);
+        const definition = getChapterDefinition(chapterState.activeChapterId);
+        if (!definition) return chapterState;
+        const nextState = recordChapterTurnInState({
+          state: chapterState,
+          definition,
+          signals,
+          runtime: { suppressCompletion: signals.isDeath === true },
+        });
+        set({ chapterState: nextState });
+        return nextState;
+      },
+      enterNextChapter: () =>
+        set((s) => ({
+          chapterState: enterNextChapter(normalizeChapterState(s.chapterState), CHAPTER_DEFINITIONS),
+        })),
+      reviewChapter: (chapterId) =>
+        set((s) => ({
+          chapterState: reviewCompletedChapter(normalizeChapterState(s.chapterState), chapterId),
+        })),
+      returnToActiveChapter: () =>
+        set((s) => ({
+          chapterState: returnToActiveChapter(normalizeChapterState(s.chapterState)),
+        })),
+      dismissChapterEnd: () =>
+        set((s) => ({
+          chapterState: { ...normalizeChapterState(s.chapterState), pendingChapterEndId: null },
+        })),
       queueClientAction: (text, autoSend = false, source = "system") =>
         set(() => {
           const trimmed = String(text ?? "").trim();
@@ -1116,6 +1169,7 @@ export const useGameStore = create<GameState>()(
           activeMenu: null,
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
+          chapterState: createInitialChapterState(),
           hasMetProfessionCertifier: false,
           journalClues: [],
           conflictTurnFeedback: null,
@@ -1156,6 +1210,7 @@ export const useGameStore = create<GameState>()(
           recentOptions: [],
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
+          chapterState: createInitialChapterState(),
           hasMetProfessionCertifier: false,
         }));
       },
@@ -1241,6 +1296,7 @@ export const useGameStore = create<GameState>()(
           recentOptions: [],
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
+          chapterState: createInitialChapterState(),
           hasMetProfessionCertifier: false,
         }));
       },
@@ -1260,6 +1316,7 @@ export const useGameStore = create<GameState>()(
           historicalMaxFloorScore: 0,
           deathCount: 0,
           appliedRelationshipTaskIds: [],
+          chapterState: createInitialChapterState(),
           hasMetProfessionCertifier: false,
         });
       },
@@ -2987,6 +3044,7 @@ export const useGameStore = create<GameState>()(
         void slotId;
         const effectiveSlotId = "main_slot";
         const safeStats = s.stats ?? DEFAULT_STATS;
+        const chapterState = normalizeChapterState(s.chapterState);
         const computedProfession = computeProfessionState({
           prev: s.professionState,
           stats: safeStats,
@@ -3085,6 +3143,7 @@ export const useGameStore = create<GameState>()(
           })),
           profession: computedProfession,
           memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
+          chapterState,
           journal: {
             version: JOURNAL_STATE_VERSION,
             clues: mergeCluesWithDedupe([], s.journalClues ?? [], 200),
@@ -3137,6 +3196,7 @@ export const useGameStore = create<GameState>()(
           ),
           professionState: JSON.parse(JSON.stringify(computedProfession)),
           ...legacyProjection,
+          chapterState: JSON.parse(JSON.stringify(chapterState)),
         };
         const summaryWithProfession = {
           ...summary,
@@ -3223,6 +3283,9 @@ export const useGameStore = create<GameState>()(
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
         const safeStats = projected.stats ?? data.stats ?? DEFAULT_STATS;
+        const chapterState = normalizeChapterState(
+          data.chapterState ?? projected.chapterState ?? normalizedSnapshot.chapterState
+        );
         const slotMeta = normalizeSaveSlotMeta(data.slotMeta, {
           slotId,
           label: slotId === "main_slot" ? "主线存档" : slotId,
@@ -3240,6 +3303,7 @@ export const useGameStore = create<GameState>()(
             ...get().saveSlots,
             [slotId]: {
               ...data,
+              chapterState,
               slotMeta,
               runSnapshotV2: normalizedSnapshot,
               ...projected,
@@ -3316,6 +3380,7 @@ export const useGameStore = create<GameState>()(
             JSON.stringify(data.appliedRelationshipTaskIds ?? [])
           ),
           professionState: JSON.parse(JSON.stringify(professionState)),
+          chapterState: JSON.parse(JSON.stringify(chapterState)),
           playerName: projected.playerName ?? get().playerName,
           gender: projected.gender ?? get().gender,
           height: projected.height ?? get().height,
@@ -3357,6 +3422,9 @@ export const useGameStore = create<GameState>()(
             ? { ...DEFAULT_TALENT_COOLDOWNS, ...data.talentCooldowns }
             : DEFAULT_TALENT_COOLDOWNS;
         const safeStats = projected.stats ?? data.stats ?? DEFAULT_STATS;
+        const chapterState = normalizeChapterState(
+          data.chapterState ?? projected.chapterState ?? normalizedSnapshot.chapterState
+        );
         const slotMeta = normalizeSaveSlotMeta(data.slotMeta, {
           slotId,
           label: slotId === "main_slot" ? "主线存档" : slotId,
@@ -3378,6 +3446,7 @@ export const useGameStore = create<GameState>()(
               ...s.saveSlots,
               [slotId]: {
                 ...data,
+                chapterState,
                 slotMeta,
                 runSnapshotV2: normalizedSnapshot,
                 ...projected,
@@ -3463,6 +3532,7 @@ export const useGameStore = create<GameState>()(
               JSON.stringify(data.appliedRelationshipTaskIds ?? s.appliedRelationshipTaskIds ?? [])
             ),
             professionState: JSON.parse(JSON.stringify(professionState)),
+            chapterState: JSON.parse(JSON.stringify(chapterState)),
             playerName: projected.playerName ?? s.playerName,
             gender: projected.gender ?? s.gender,
             height: projected.height ?? s.height,
@@ -3516,6 +3586,7 @@ export const useGameStore = create<GameState>()(
             shadow.professionState && typeof shadow.professionState === "object" && !Array.isArray(shadow.professionState)
               ? JSON.parse(JSON.stringify(shadow.professionState))
               : s.professionState,
+          chapterState: normalizeChapterState((shadow as { chapterState?: unknown }).chapterState ?? s.chapterState),
           openingNarrativePinned:
             typeof (shadow as any).openingNarrativePinned === "boolean"
               ? (shadow as any).openingNarrativePinned
@@ -3591,6 +3662,7 @@ export const useGameStore = create<GameState>()(
         },
         appliedRelationshipTaskIds: s.appliedRelationshipTaskIds ?? [],
         professionState: s.professionState ?? createDefaultProfessionState(),
+        chapterState: normalizeChapterState(s.chapterState),
         isGameStarted: s.isGameStarted ?? false,
         openingNarrativePinned: (s as any).openingNarrativePinned ?? false,
         volume: clampVolume(s.volume ?? 50),

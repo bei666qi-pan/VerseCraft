@@ -19,6 +19,7 @@ import type { ProfessionStateV1 } from "@/lib/profession/types";
 import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
 import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
 import { createEmptyJournalState, type JournalState } from "@/lib/domain/narrativeDomain";
+import { createInitialChapterState, normalizeChapterState, type ChapterState } from "@/lib/chapters";
 
 export interface BuildRunSnapshotV2Input {
   runId?: string;
@@ -58,6 +59,8 @@ export interface BuildRunSnapshotV2Input {
   escapeMainline?: unknown;
   /** 手记/线索簿；缺省空，兼容旧入口 */
   journal?: JournalState;
+  /** 章节状态；缺省第一章 active，兼容旧入口 */
+  chapterState?: ChapterState;
 }
 
 export function createRunId(): string {
@@ -128,6 +131,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
     },
     escape: input.escapeMainline ?? createDefaultEscapeMainlineTemplate(nowHour),
     journal: input.journal ?? createEmptyJournalState(),
+    chapterState: normalizeChapterState(input.chapterState ?? createInitialChapterState()),
     npcs: buildNpcSnapshotMap({
       dynamicNpcStates: input.dynamicNpcStates ?? {},
       homeSeed: input.homeSeed ?? {},

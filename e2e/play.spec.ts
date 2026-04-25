@@ -2,6 +2,122 @@ import { test, expect } from "@playwright/test";
 
 const TEST_USER = process.env.E2E_USER;
 const TEST_PASS = process.env.E2E_PASS;
+const DB_NAME = "keyval-store";
+const STORE_NAME = "keyval";
+const KEY_MAIN = "versecraft-storage";
+
+const seededOptions = ["靠近铁牌查看痕迹", "检查学生电子表", "沿血手印方向前进", "先躲进旁边教室"];
+
+const defaultProfessionState = {
+  currentProfession: null,
+  unlockedProfessions: [],
+  eligibilityByProfession: {
+    守灯人: false,
+    巡迹客: false,
+    觅兆者: false,
+    齐日角: false,
+    溯源师: false,
+  },
+  progressByProfession: {
+    守灯人: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_lampkeeper", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    巡迹客: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_pathfinder", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    觅兆者: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_omenseeker", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    齐日角: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_sunhorn", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+    溯源师: { statQualified: false, behaviorQualified: false, behaviorEvidenceCount: 0, behaviorEvidenceTarget: 2, trialTaskId: "profession_trial_traceorigin", trialTaskCompleted: false, certified: false, behaviorEvidenceKeys: [] },
+  },
+  activePerks: [],
+  professionFlags: {},
+  professionCooldowns: {},
+};
+
+async function seedPlayableState(page: import("@playwright/test").Page) {
+  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 15_000 });
+  await page.evaluate(
+    async ({ dbName, storeName, key, actionOptions, professionState }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open(dbName);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(storeName)) req.result.createObjectStore(storeName);
+        };
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => resolve(req.result);
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const logs = [
+          {
+            role: "assistant",
+            content: "你在安全中枢醒来，门缝外有细微回声。",
+          },
+        ];
+        const baseSlot = {
+          logs,
+          currentOptions: actionOptions,
+          time: { day: 0, hour: 0 },
+          stats: { sanity: 30, agility: 18, luck: 16, charm: 14, background: 12 },
+          inventory: [],
+          warehouse: [],
+          codex: {},
+          historicalMaxSanity: 30,
+          originium: 12,
+          tasks: [],
+          playerLocation: "B1_SafeZone",
+          talent: null,
+          talentCooldowns: {},
+          professionState,
+        };
+        const state = {
+          currentSaveSlot: "main_slot",
+          saveSlots: { main_slot: baseSlot },
+          isGameStarted: true,
+          playerName: "裁剪测试者",
+          gender: "未说明",
+          logs,
+          currentOptions: actionOptions,
+          recentOptions: actionOptions,
+          inputMode: "options",
+          stats: baseSlot.stats,
+          historicalMaxSanity: 30,
+          time: baseSlot.time,
+          playerLocation: "B1_SafeZone",
+          codex: {},
+          tasks: [],
+          warehouse: [],
+          journalClues: [],
+          weaponBag: [],
+          activeMenu: null,
+          talent: null,
+          talentCooldowns: {},
+          professionState,
+        };
+
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).put(JSON.stringify({ state, version: 1 }), key);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      });
+    },
+    {
+      dbName: DB_NAME,
+      storeName: STORE_NAME,
+      key: KEY_MAIN,
+      actionOptions: seededOptions,
+      professionState: defaultProfessionState,
+    }
+  );
+}
+
+async function installTelemetryMocks(page: import("@playwright/test").Page) {
+  await page.route("**/api/presence/heartbeat", (route) =>
+    route.fulfill({ status: 200, headers: { "Content-Type": "application/json" }, body: "{}" })
+  );
+  await page.route("**/api/analytics/heartbeat", (route) =>
+    route.fulfill({ status: 200, headers: { "Content-Type": "application/json" }, body: "{}" })
+  );
+}
 
 async function expectNoTaskbarEntry(page: import("@playwright/test").Page) {
   const selectors = [
@@ -175,6 +291,12 @@ async function expectNoWeaponEntry(page: import("@playwright/test").Page) {
 }
 
 test.describe("Play page", () => {
+  test.describe.configure({ timeout: 90_000 });
+
+  test.beforeEach(async ({ page }) => {
+    await installTelemetryMocks(page);
+  });
+
   test("loads without client-side exception", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (err) => {
@@ -205,6 +327,7 @@ test.describe("Play page", () => {
 
   test("首页与主游戏页不暴露任务栏入口", async ({ page }) => {
     for (const path of ["/", "/play"]) {
+      if (path === "/play") await seedPlayableState(page);
       const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
       await expectNoTaskbarEntry(page);
@@ -217,6 +340,7 @@ test.describe("Play page", () => {
 
   test("游玩页：移除目标功能入口；设置中枢仅保留可见标签页", async ({ page }) => {
     test.setTimeout(60_000);
+    await seedPlayableState(page);
     const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
     expect(res?.status()).toBeLessThan(500);
 
@@ -256,13 +380,14 @@ test.describe("Play page", () => {
       await expect(menu.locator(`[data-onboarding="${marker}"]`)).toHaveCount(0);
     }
     await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(1);
-    await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(1);
+    await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(0);
 
     await page.getByRole("button", { name: "关闭" }).click();
     await expect(page.locator("#unified-menu-content")).toBeHidden();
   });
 
   test("旧指南与手记路由不会打开独立 UI", async ({ page }) => {
+    await seedPlayableState(page);
     for (const path of ["/guide", "/help", "/tutorial", "/manual", "/notes", "/journal", "/inspiration", "/memo"]) {
       const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
@@ -277,6 +402,7 @@ test.describe("Play page", () => {
   });
 
   test("旧仓库与库存路由不会打开独立 UI", async ({ page }) => {
+    await seedPlayableState(page);
     for (const path of ["/inventory", "/warehouse", "/storage", "/bag", "/backpack", "/items", "/repository"]) {
       const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
@@ -292,6 +418,7 @@ test.describe("Play page", () => {
   });
 
   test("旧成就路由不会打开独立 UI", async ({ page }) => {
+    await seedPlayableState(page);
     for (const path of ["/achievement", "/achievements", "/badge", "/badges", "/trophy", "/trophies"]) {
       const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
@@ -306,6 +433,7 @@ test.describe("Play page", () => {
   });
 
   test("旧武器路由不会打开独立 UI", async ({ page }) => {
+    await seedPlayableState(page);
     for (const path of ["/weapon", "/weapons", "/armory", "/arsenal", "/equipment", "/equip"]) {
       const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
@@ -319,6 +447,7 @@ test.describe("Play page", () => {
   });
 
   test("旧任务栏与导航容器路由不会打开独立 UI", async ({ page }) => {
+    await seedPlayableState(page);
     for (const path of ["/taskbar", "/tasks", "/task", "/toolbar", "/dock", "/bottom-bar", "/sidebar", "/action-bar"]) {
       const res = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15_000 });
       expect(res?.status()).toBeLessThan(500);
@@ -332,6 +461,7 @@ test.describe("Play page", () => {
   });
 
   test("Tab 导航不会聚焦任务栏、指南、手记、仓库、成就或武器入口", async ({ page }) => {
+    await seedPlayableState(page);
     const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
     expect(res?.status()).toBeLessThan(500);
     await expectNoTaskbarEntry(page);

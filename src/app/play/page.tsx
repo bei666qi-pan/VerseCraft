@@ -28,6 +28,14 @@ import {
   MobileStoryViewport,
 } from "@/features/play/mobileReading";
 import {
+  ChapterEndSheet,
+  ChapterHeaderPill,
+  ChapterNavigator,
+  ChapterProgressHint,
+  ChapterSummaryList,
+  useChapterRuntime,
+} from "@/features/play/chapters";
+import {
   computeOpeningBusyUi,
   shouldRecoverStaleSendActionFlight,
 } from "@/features/play/opening/openingStreamUi";
@@ -165,6 +173,26 @@ const OPTIONS_REGEN_SYSTEM_PROMPT =
   "禁止灵感手记/背包/任务/仓库/成就/武器栏/游戏指南/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
   "禁止解释、禁止 markdown、禁止额外字段、禁止推进剧情结论、禁止修改世界状态。";
 
+function collectNamedLines(raw: unknown, fallbackPrefix: string): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (!item || typeof item !== "object" || Array.isArray(item)) return "";
+      const row = item as Record<string, unknown>;
+      const name = row.name ?? row.title ?? row.id ?? row.npcId ?? row.itemId;
+      return typeof name === "string" && name.trim().length > 0
+        ? `${fallbackPrefix}${name.trim()}`
+        : "";
+    })
+    .filter((line): line is string => line.length > 0)
+    .slice(0, 5);
+}
+
+function countArrayField(raw: unknown): number {
+  return Array.isArray(raw) ? raw.length : 0;
+}
+
 function PlayContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -223,6 +251,7 @@ function PlayContent() {
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
   const activeMenu = useGameStore((s) => s.activeMenu);
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
+  const recordChapterTurn = useGameStore((s) => s.recordChapterTurn);
   const codex = useGameStore((s) => s.codex ?? {});
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const professionState = useGameStore((s) => s.professionState);
@@ -236,6 +265,7 @@ function PlayContent() {
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState("");
   const [optionsExpanded, setOptionsExpanded] = useState(false);
+  const [chapterNavigatorOpen, setChapterNavigatorOpen] = useState(false);
   /** See `ChatStreamPhase` — drives `isChatBusy` (interaction) vs `isStreamVisualActive` (typewriter strip). */
   const [streamPhase, setStreamPhase] = useState<ChatStreamPhase>("idle");
   const [liveNarrative, setLiveNarrative] = useState("");
@@ -273,6 +303,7 @@ function PlayContent() {
     options: string[];
     mapping: Record<string, ProfessionId>;
   }>({ enabled: false, options: [], mapping: {} });
+  const chapterRuntime = useChapterRuntime();
   const hasModelChoiceOptions = currentOptions.length === 4;
   const hasVisibleChoiceOptions = hasModelChoiceOptions || pendingProfessionChoice.enabled;
 
@@ -1390,6 +1421,7 @@ function PlayContent() {
   ) {
     if (isChatBusy || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
+    if (!isSystemAction && currentState.chapterState?.pendingChapterEndId) return;
     if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
       setShowDialoguePaywall(true);
       return;
@@ -2707,6 +2739,49 @@ function PlayContent() {
       });
     }
 
+    if (parsed.is_action_legal && !isSystemAction) {
+      const afterChapterTurnState = useGameStore.getState();
+      recordChapterTurn({
+        source: isResume ? "resume" : bypassLengthCheck ? "option" : "manual",
+        isLegalAction: parsed.is_action_legal === true,
+        isDeath: parsed.is_death === true,
+        narrativeText: narrativeToPush,
+        logCountBefore: streamLogsBaselineRef.current,
+        logCountAfter: (afterChapterTurnState.logs ?? []).length,
+        previousLocation: stateBeforeProfessionTurn.playerLocation ?? null,
+        nextLocation: afterChapterTurnState.playerLocation ?? null,
+        newTaskCount: countArrayField(parsed.new_tasks),
+        taskUpdateCount: countArrayField(parsed.task_updates),
+        codexUpdateCount: countArrayField(parsed.codex_updates),
+        relationshipUpdateCount: countArrayField((parsed as { relationship_updates?: unknown }).relationship_updates),
+        awardedItemCount: awardedItemWriteCount,
+        awardedWarehouseItemCount: awardedWarehouseWriteCount,
+        clueUpdateCount: countArrayField((parsed as { clue_updates?: unknown }).clue_updates),
+        sanityDamage: dmg,
+        currencyChange: typeof parsed.currency_change === "number" ? parsed.currency_change : 0,
+        mainThreatUpdateCount: countArrayField((parsed as { main_threat_updates?: unknown }).main_threat_updates),
+        weaponUpdateCount: countArrayField((parsed as { weapon_updates?: unknown }).weapon_updates),
+        weaponBagUpdateCount: countArrayField((parsed as { weapon_bag_updates?: unknown }).weapon_bag_updates),
+        resultLines:
+          countArrayField(parsed.codex_updates) > 0 || countArrayField((parsed as { clue_updates?: unknown }).clue_updates) > 0
+            ? ["你让新的线索落到了当前记录里。"]
+            : [],
+        obtainedLines: [
+          ...collectNamedLines(parsed.awarded_items, "获得："),
+          ...collectNamedLines(parsed.awarded_warehouse_items, "入库："),
+        ],
+        lostLines: dmg > 0 ? [`精神承受了 ${dmg} 点损耗。`] : [],
+        relationshipLines: collectNamedLines(
+          (parsed as { relationship_updates?: unknown }).relationship_updates,
+          "关系变化："
+        ),
+        clueLines: [
+          ...collectNamedLines((parsed as { clue_updates?: unknown }).clue_updates, "线索："),
+          ...collectNamedLines(parsed.codex_updates, "记录："),
+        ],
+      });
+    }
+
     // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
     // 这能覆盖“手动输入且无 options”的场景，避免首页“继续执笔”失真。
     useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
@@ -2747,6 +2822,7 @@ function PlayContent() {
   sendActionRef.current = sendAction;
 
   function onSubmit() {
+    if (chapterInteractionLocked || isReviewingChapter) return;
     const trimmed = input.trim();
     if (trimmed.length > MAX_INPUT) {
       setInputError("输入不可超过20个字符");
@@ -2769,6 +2845,7 @@ function PlayContent() {
 
   function onPickOption(option: string) {
     setOptionsExpanded(false);
+    if (chapterInteractionLocked || isReviewingChapter) return;
     if (endgameState.active) {
       if (!endgameLocked) return;
       if (option === ENDGAME_ONLY_OPTION) {
@@ -2804,6 +2881,7 @@ function PlayContent() {
 
   function onUseTalent() {
     if (!talent) return;
+    if (chapterInteractionLocked || isReviewingChapter) return;
     if (talentCdLeft > 0) return;
     if (isChatBusy || sendActionInFlightRef.current || endgameState.active) return;
     if (isGuestDialogueExhausted) {
@@ -2878,6 +2956,15 @@ function PlayContent() {
       : "story";
   const isCharacterPanelActive = activeMenu === "character";
   const isCodexPanelActive = activeMenu === "codex";
+  const isStoryPanelActive = activeMenu === null;
+  const isReviewingChapter = chapterRuntime.isReviewing && isStoryPanelActive;
+  const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
+  const chapterInteractionLocked = Boolean(pendingChapterEnd);
+  const mobileHeaderTitle = isCodexPanelActive
+    ? "图鉴"
+    : isCharacterPanelActive
+      ? "角色"
+      : chapterRuntime.headerTitle;
 
   function onOpenCharacterNav() {
     playUIClick();
@@ -2888,6 +2975,9 @@ function PlayContent() {
   function onFocusStoryNav() {
     playUIClick();
     setOptionsExpanded(false);
+    if (chapterRuntime.isReviewing) {
+      chapterRuntime.returnToActiveChapter();
+    }
     setActiveMenu(null);
   }
 
@@ -2925,13 +3015,29 @@ function PlayContent() {
       />
 
       <MobileReadingHeader
-        title={isCodexPanelActive ? "图鉴" : "第六章：雾港来信"}
+        title={mobileHeaderTitle}
         audioMuted={audioMuted}
         onToggleAudio={() => {
           toggleMute();
           setAudioMuted(isMuted());
         }}
       />
+      {isStoryPanelActive ? (
+        <ChapterHeaderPill
+          definition={chapterRuntime.displayedDefinition}
+          progress={chapterRuntime.displayedProgress}
+          reviewing={isReviewingChapter}
+          onOpenNavigator={() => {
+            playUIClick();
+            setChapterNavigatorOpen(true);
+          }}
+          onReturnToActive={() => {
+            playUIClick();
+            chapterRuntime.returnToActiveChapter();
+            setChapterNavigatorOpen(false);
+          }}
+        />
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
@@ -2952,36 +3058,81 @@ function PlayContent() {
           ) : (
             <>
               <MobileStoryViewport>
-                {/*
-                  选项区：MobileOptionsDropdown 渲染四条槽位（zustand currentOptions）；
-                  冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
-                */}
-                <PlayStoryScroll
-                  scrollRef={scrollRef}
-                  onScrollContainer={onScrollContainer}
-                  displayEntries={displayEntries}
-                  isStreamVisualActive={isStreamVisualActive}
-                  suppressStreamVisual={suppressEmbeddedOpeningStreamUi}
-                  smoothThinking={smoothThinking}
-                  smoothNarrative={smoothNarrative}
-                  smoothComplete={smoothComplete}
-                  isChatBusy={isChatBusy}
-                  inputMode={inputMode}
-                  isLowSanity={isLowSanity}
-                  isDarkMoon={isDarkMoon}
-                  liveNarrative={liveNarrative}
-                  greenTips={greenTips}
-                  firstTimeHint={firstTimeHint}
-                  plainOnlyNewTurn={false}
-                  plainOnlyLogIndexMin={streamLogsBaselineRef.current}
-                  embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
-                  openingAiBusy={openingBusyUi}
-                  semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
-                  waitUxPrimaryLine={waitUxPrimaryLine}
-                  waitUxSecondaryLine={waitUxSecondaryLine}
-                />
+                {isReviewingChapter ? (
+                  <section
+                    data-testid="chapter-review-panel"
+                    className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    aria-label="章节回顾"
+                  >
+                    <div className="rounded-[12px] border border-[#d39a70]/55 bg-[#06131d]/82 p-4 shadow-[inset_0_0_24px_rgba(217,151,105,0.05)]">
+                      <div className="mb-4 border-b border-[#b98563]/25 pb-3">
+                        <p className="vc-reading-serif text-[15px] leading-none text-[#c99473]">安全回顾，不回滚当前进度</p>
+                        <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#ffd08b]">
+                          {chapterRuntime.displayedDefinition.title}
+                        </h2>
+                      </div>
+                      {chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id] ? (
+                        <ChapterSummaryList
+                          summary={chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id]}
+                        />
+                      ) : (
+                        <p className="vc-reading-serif text-[16px] leading-relaxed text-[#e7bb8f]">
+                          这一章尚无可回顾的章末沉淀。
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        data-testid="chapter-return-current"
+                        onClick={() => {
+                          playUIClick();
+                          chapterRuntime.returnToActiveChapter();
+                        }}
+                        className="mt-5 w-full rounded-full border border-[#e5ad78]/70 px-4 py-3 vc-reading-serif text-[17px] text-[#ffd08b]"
+                      >
+                        回到当前章
+                      </button>
+                    </div>
+                  </section>
+                ) : (
+                  <>
+                    {/*
+                      选项区：MobileOptionsDropdown 渲染四条槽位（zustand currentOptions）；
+                      冷开场首轮 options 来自主笔；缺失时 requestFreshOptions("opening_fallback"|"manual_button") 走 options_regen_only。
+                    */}
+                    <PlayStoryScroll
+                      scrollRef={scrollRef}
+                      onScrollContainer={onScrollContainer}
+                      displayEntries={displayEntries}
+                      isStreamVisualActive={isStreamVisualActive}
+                      suppressStreamVisual={suppressEmbeddedOpeningStreamUi}
+                      smoothThinking={smoothThinking}
+                      smoothNarrative={smoothNarrative}
+                      smoothComplete={smoothComplete}
+                      isChatBusy={isChatBusy}
+                      inputMode={inputMode}
+                      isLowSanity={isLowSanity}
+                      isDarkMoon={isDarkMoon}
+                      liveNarrative={liveNarrative}
+                      greenTips={greenTips}
+                      firstTimeHint={firstTimeHint}
+                      plainOnlyNewTurn={false}
+                      plainOnlyLogIndexMin={streamLogsBaselineRef.current}
+                      embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
+                      openingAiBusy={openingBusyUi}
+                      semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
+                      waitUxPrimaryLine={waitUxPrimaryLine}
+                      waitUxSecondaryLine={waitUxSecondaryLine}
+                    />
+                  </>
+                )}
               </MobileStoryViewport>
 
+              {!isReviewingChapter && !chapterInteractionLocked ? (
+                <>
+              <ChapterProgressHint
+                definition={chapterRuntime.activeDefinition}
+                progress={chapterRuntime.activeProgress}
+              />
               <MobileActionDock
                 inputMode={inputMode}
                 hasAnyGate={hasAnyGate}
@@ -3048,8 +3199,54 @@ function PlayContent() {
               ) : optionsExpanded ? (
                 <MobileOptionsEmptyState busy={optionsRegenBusy} />
               ) : null}
+                </>
+              ) : null}
             </>
           )}
+          <ChapterNavigator
+            open={chapterNavigatorOpen && isStoryPanelActive}
+            chapterState={chapterRuntime.chapterState}
+            onClose={() => setChapterNavigatorOpen(false)}
+            onReviewChapter={(chapterId) => {
+              playUIClick();
+              chapterRuntime.reviewChapter(chapterId);
+              setChapterNavigatorOpen(false);
+            }}
+            onReturnToActive={() => {
+              playUIClick();
+              chapterRuntime.returnToActiveChapter();
+              setChapterNavigatorOpen(false);
+            }}
+          />
+          <ChapterEndSheet
+            open={Boolean(pendingChapterEnd)}
+            definition={pendingChapterEnd?.definition ?? null}
+            summary={pendingChapterEnd?.summary ?? null}
+            hasNextChapter={Boolean(chapterRuntime.nextDefinition)}
+            hasPreviousChapter={Boolean(pendingChapterEnd?.definition.previousChapterId)}
+            onEnterNext={() => {
+              playUIClick();
+              chapterRuntime.enterNextChapter();
+              setChapterNavigatorOpen(false);
+            }}
+            onReviewChapter={() => {
+              if (!pendingChapterEnd) return;
+              playUIClick();
+              chapterRuntime.reviewChapter(pendingChapterEnd.id);
+              setChapterNavigatorOpen(false);
+            }}
+            onReviewPrevious={() => {
+              const previous = pendingChapterEnd?.definition.previousChapterId;
+              if (!previous) return;
+              playUIClick();
+              chapterRuntime.reviewChapter(previous);
+              setChapterNavigatorOpen(false);
+            }}
+            onDismiss={() => {
+              playUIClick();
+              chapterRuntime.dismissChapterEnd();
+            }}
+          />
           <MobileBottomNav
             activeItem={bottomNavActiveItem}
             onOpenCharacter={onOpenCharacterNav}

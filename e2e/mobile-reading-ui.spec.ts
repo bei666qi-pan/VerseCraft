@@ -318,7 +318,8 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-reading-shell")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toContainText("VerseCraft");
-    await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第一章：暗月初醒");
+    await expect(page.getByTestId("chapter-header-pill")).toBeVisible();
     await expect(page.getByTestId("audio-toggle-button")).toBeVisible();
     await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
