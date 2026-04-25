@@ -98,6 +98,8 @@ test.describe("mobile reading UI", () => {
       await expect(page.getByTestId("bottom-nav-codex")).toBeVisible();
       await expect(page.getByTestId("bottom-nav-settings")).toBeVisible();
       await expect(page.getByText(options[0])).toHaveCount(0);
+      await expect(page.getByText("当前为选项模式，请直接点击上方选项推进文本")).toHaveCount(0);
+      await expect(page.getByText("提交")).toHaveCount(0);
 
       await page.getByTestId("options-toggle-button").click();
       await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
@@ -111,4 +113,40 @@ test.describe("mobile reading UI", () => {
       expect(overflow).toBeLessThanOrEqual(1);
     });
   }
+
+  test("centers the phone shell on desktop without horizontal overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await seedPlayableState(page);
+
+    const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    expect(res?.status()).toBeLessThan(500);
+
+    const shell = page.getByTestId("mobile-reading-shell");
+    await expect(shell).toBeVisible();
+    const box = await shell.boundingBox();
+    expect(box?.width).toBeLessThanOrEqual(482);
+    expect(box?.x ?? 0).toBeGreaterThan(300);
+    await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+    await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
+  test("keeps core controls visible in landscape", async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await seedPlayableState(page);
+
+    const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    expect(res?.status()).toBeLessThan(500);
+
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
+    await expect(page.getByTestId("manual-action-input")).toBeVisible();
+    await expect(page.getByTestId("send-action-button")).toBeVisible();
+    await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
 });

@@ -26,12 +26,13 @@
 
 `src/features/play/mobileReading/` 只负责移动端阅读壳层 UI：
 
-- `MobileReadingShell`：页面阅读表面和 `mobile-reading-shell`
+- `MobileReadingShell`：页面阅读表面和 `mobile-reading-shell`；手机端使用 `100dvh`，桌面端居中限制为手机宽度，不让阅读壳层横向铺满。
 - `MobileReadingHeader`：品牌、章节、音频按钮和 `mobile-reading-header`
 - `MobileStoryViewport`：正文滚动区域外壳和 `mobile-story-viewport`
 - `MobileActionDock`：底部输入胶囊、选项展开、发送按钮和 `mobile-action-dock`
 - `EchoTalentButton`：天赋按钮和 `echo-talent-button`
 - `MobileOptionsDropdown`：四条行动选项和 `mobile-options-dropdown` / `mobile-option-item`
+- `MobileOptionsEmptyState`：无选项或选项再生成时的克制空状态，仍使用 `mobile-options-dropdown` 稳定选择器。
 - `MobileBottomNav`：底部导航和 `mobile-bottom-nav`
 - `hooks/useMobileActionDock.ts`：输入栏局部 UI 状态，例如 submit flash、helper text、天赋按钮 label
 - `theme.ts`：移动阅读页颜色、边框、间距、高度、安全区、阴影与组件 class token

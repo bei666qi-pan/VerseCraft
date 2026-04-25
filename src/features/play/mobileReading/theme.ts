@@ -47,6 +47,10 @@ export const mobileReadingTokens = {
     topPadding: "max(1.15rem, env(safe-area-inset-top))",
     bottomPadding: "max(1.2rem, env(safe-area-inset-bottom))",
   },
+  layout: {
+    maxShellWidth: "480px",
+    minViewportHeight: "100dvh",
+  },
   typography: {
     serifClassName: "vc-reading-serif",
     serifStack: "\"Times New Roman\", \"Songti SC\", \"SimSun\", \"Noto Serif CJK SC\", serif",
@@ -56,9 +60,11 @@ export const mobileReadingTokens = {
 export type MobileReadingTokens = typeof mobileReadingTokens;
 
 export const mobileReadingTheme = {
+  shellFrame:
+    "flex h-[100dvh] min-h-[100dvh] w-full justify-center overflow-hidden bg-[#03101a] overscroll-none",
   shell:
-    "vc-reading-surface flex h-[100dvh] flex-col overflow-hidden text-[#e7bb8f] transition-all duration-1000",
-  shellBody: "relative flex min-h-0 flex-1 flex-col",
+    "vc-reading-surface relative flex h-[100dvh] min-h-0 w-full max-w-[480px] flex-col overflow-hidden text-[#e7bb8f] shadow-[0_0_80px_rgba(0,0,0,0.32)] transition-all duration-1000 md:border-x md:border-[#d39a70]/14",
+  shellBody: "relative isolate flex min-h-0 flex-1 flex-col overflow-hidden",
 
   header:
     "shrink-0 border-b border-[#b98563]/15 bg-[#03101a]/95 px-4 pb-3 pt-[max(1.15rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
@@ -75,7 +81,7 @@ export const mobileReadingTheme = {
 
   iconButton:
     "flex shrink-0 items-center justify-center rounded-full border border-[#d99b6f]/75 bg-[#091722] text-[#efb17f] shadow-[inset_0_0_12px_rgba(217,151,105,0.08)] transition",
-  storyViewport: "flex min-h-0 flex-1 flex-col",
+  storyViewport: "relative flex min-h-0 flex-1 flex-col overflow-hidden",
 
   actionDock: "shrink-0 bg-[#03101a] px-4 pb-3 pt-3",
   actionDockPill:
@@ -94,7 +100,9 @@ export const mobileReadingTheme = {
   sendIcon: "ml-1 h-7 w-7",
 
   optionsDropdown:
-    "mx-4 mb-3 overflow-hidden rounded-[8px] border border-[#c4936d]/60 bg-[#0a1722]/96 shadow-[0_12px_34px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(236,181,137,0.06)]",
+    "mx-4 mb-3 shrink-0 overflow-hidden rounded-[8px] border border-[#c4936d]/60 bg-[#0a1722]/96 shadow-[0_12px_34px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(236,181,137,0.06)]",
+  optionsEmptyState:
+    "mx-4 mb-3 shrink-0 rounded-[8px] border border-[#c4936d]/50 bg-[#0a1722]/96 px-6 py-5 vc-reading-serif text-[18px] leading-normal text-[#d6a07b] shadow-[0_12px_34px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(236,181,137,0.05)]",
   optionRow:
     "flex min-h-[66px] w-full items-center justify-between gap-4 border-[#38505d]/55 px-6 text-left transition disabled:cursor-not-allowed disabled:opacity-70",
   optionRowDivider: "border-b",

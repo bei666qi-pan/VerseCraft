@@ -8,13 +8,15 @@ orchestrator for those business flows and passes only the required props into th
 
 ## Boundaries
 
-- `MobileReadingShell` provides the `100dvh` reading surface and root `data-testid`.
+- `MobileReadingShell` provides the `100dvh` reading surface and root `data-testid`. On desktop it
+  centers a phone-width shell instead of stretching the reading UI edge-to-edge.
 - `MobileReadingHeader` owns the brand/chapter/audio row.
 - `MobileStoryViewport` wraps the scrollable story area that still renders through
   `PlayStoryScroll`.
 - `MobileActionDock` owns the bottom input pill and uses `useMobileActionDock` for local UI
   state such as submit flash, helper text, and talent button labels.
 - `MobileOptionsDropdown` owns the visual list of four model-delivered options.
+- `MobileOptionsEmptyState` owns the restrained empty / regenerating state below the input dock.
 - `MobileBottomNav` owns the visual dock. Character is intentionally non-routing for now;
   codex and settings continue through `UnifiedMenuModal`.
 - `theme.ts` and `icons.tsx` keep visual tokens and icon choices in one place.

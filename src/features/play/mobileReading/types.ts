@@ -54,6 +54,10 @@ export type MobileOptionsDropdownProps = {
   revealed?: boolean;
 };
 
+export type MobileOptionsEmptyStateProps = {
+  busy: boolean;
+};
+
 export type MobileBottomNavProps = {
   onOpenCharacter?: () => void;
   onFocusStory: () => void;
