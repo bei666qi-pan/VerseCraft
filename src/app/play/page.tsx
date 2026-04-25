@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Settings, Keyboard, List } from "lucide-react";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
@@ -17,6 +16,7 @@ import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverl
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
 import { PlayOptionsList } from "@/features/play/components/PlayOptionsList";
+import { PlayBottomNavigation, PlayReadingHeader } from "@/features/play/components/PlayReadingChrome";
 import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
 import { PlayTextInputBar } from "@/features/play/components/PlayTextInputBar";
 import {
@@ -30,9 +30,7 @@ import {
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
-import { PROFESSION_REGISTRY } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
-import { getProfessionActiveSkillName } from "@/lib/profession/benefits";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
 import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
@@ -71,9 +69,8 @@ import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/str
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
-import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, isNightHour, shouldAllowDoomline } from "@/features/play/endgame/endgame";
+import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, shouldAllowDoomline } from "@/features/play/endgame/endgame";
 import {
-  hasStrongAcquireSemantics,
   normalizeRegeneratedOptions,
   shouldAutoRegenerateOptionsOnModeSwitch,
   shouldWarnAcquireMismatch,
@@ -196,9 +193,7 @@ function PlayContent() {
     [currentOptionsFromStore]
   );
   const addOriginium = useGameStore((s) => s.addOriginium);
-  const originium = useGameStore((s) => s.originium ?? 0);
   const tasks = useGameStore((s) => s.tasks ?? []);
-  const codex = useGameStore((s) => s.codex ?? {});
   const addTask = useGameStore((s) => s.addTask);
   const updateTaskStatus = useGameStore((s) => s.updateTaskStatus);
   const updateTask = useGameStore((s) => s.updateTask);
@@ -216,7 +211,6 @@ function PlayContent() {
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
   const activeMenu = useGameStore((s) => s.activeMenu);
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
-  const toggleInputMode = useGameStore((s) => s.toggleInputMode);
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
   const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
@@ -227,6 +221,7 @@ function PlayContent() {
 
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState("");
+  const [optionsExpanded, setOptionsExpanded] = useState(false);
   /** See `ChatStreamPhase` — drives `isChatBusy` (interaction) vs `isStreamVisualActive` (typewriter strip). */
   const [streamPhase, setStreamPhase] = useState<ChatStreamPhase>("idle");
   const [liveNarrative, setLiveNarrative] = useState("");
@@ -355,6 +350,9 @@ function PlayContent() {
   /** True while the live narrative strip / typewriter should run (covers upstream wait + token drain + commit tick). */
   const isStreamVisualActive = isStreamVisualActivePhase(streamPhase);
   const isChatBusy = doesChatPhaseLockInteraction(streamPhase);
+  useEffect(() => {
+    if (isChatBusy) setOptionsExpanded(false);
+  }, [isChatBusy]);
   const optionsRegenPhaseBlocked = useMemo(
     () => doesPhaseBlockOptionsRegen(streamPhase),
     [streamPhase]
@@ -417,8 +415,6 @@ function PlayContent() {
   }, [streamPhase, tailAlignKey, onTailDrainComplete]);
 
   const day = time.day ?? 0;
-  const hour = time.hour ?? 0;
-  const isNight = isNightHour(hour);
   const isDarkMoon = day >= 3 && day < 10;
   const isLowSanity = (stats?.sanity ?? 0) < 20;
   useHeartbeat(isHydrated && isGameStarted, guestId ?? "guest_play", "/play");
@@ -516,7 +512,6 @@ function PlayContent() {
 
   useEffect(() => {
     if (!isHydrated) return;
-    const t = useGameStore.getState().time ?? { day: 0, hour: 0 };
     // 终局不再自动扣理智/跳结算：仅作为氛围层，在终局态展示。
     if (endgameState.active && !showApocalypseOverlay) setShowApocalypseOverlay(true);
     if (!endgameState.active && showApocalypseOverlay) setShowApocalypseOverlay(false);
@@ -1883,10 +1878,6 @@ function PlayContent() {
     // 已移除长叙事自动续写功能：不再读取 parsed.auto_continue_hint；
     // 无论 turn_mode 为何，玩家都通过选项（或手动输入）推进，不再显示“继续推进”按钮。
 
-    const logsBeforeAssistant = useGameStore.getState().logs ?? [];
-    const assistantCountBeforePush = logsBeforeAssistant.filter((l) => l && l.role === "assistant").length;
-    const isFirstAssistantTurn = assistantCountBeforePush === 0;
-
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
     let narrativeToPush: string;
     try {
@@ -2756,6 +2747,40 @@ function PlayContent() {
     setInput("");
   }
 
+  function noteManualTextIntent() {
+    if (hasShownManualInputComplianceHintRef.current) return;
+    hasShownManualInputComplianceHintRef.current = true;
+    triggerComplianceHint();
+  }
+
+  function onPickOption(option: string) {
+    setOptionsExpanded(false);
+    if (endgameState.active) {
+      if (!endgameLocked) return;
+      if (option === ENDGAME_ONLY_OPTION) {
+        router.push("/settlement");
+      }
+      return;
+    }
+    if (isGuestDialogueExhausted) {
+      setShowDialoguePaywall(true);
+      return;
+    }
+    playUIClick();
+    if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
+      const chosen = pendingProfessionChoice.mapping[option]!;
+      const ok = certifyProfession(chosen);
+      setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
+      if (!ok) {
+        setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
+        return;
+      }
+      void sendAction(`我选择认证职业：【${chosen}】`, true);
+      return;
+    }
+    void sendAction(option, true);
+  }
+
   const TALENT_EFFECT_DURATION = 1400;
 
   function triggerTalentEffect(t: EchoTalent) {
@@ -2829,7 +2854,7 @@ function PlayContent() {
   }
 
   return (
-    <main className="flex h-[100dvh] flex-col overflow-hidden bg-white text-slate-900 transition-all duration-1000">
+    <main className="vc-reading-surface flex h-[100dvh] flex-col overflow-hidden text-[#e7bb8f] transition-all duration-1000">
       <PlayAmbientOverlays
         showDarkMoonOverlay={showDarkMoonOverlay}
         showApocalypseOverlay={showApocalypseOverlay}
@@ -2851,138 +2876,17 @@ function PlayContent() {
           onAbandonAndDie={onAbandonAndDie}
         />
 
+        <PlayReadingHeader
+          audioMuted={audioMuted}
+          onToggleAudio={() => {
+            toggleMute();
+            setAudioMuted(isMuted());
+          }}
+        />
+
         <div className="flex min-h-0 flex-1 flex-col">
           <section className="flex min-h-0 flex-1 flex-col">
-            <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
-              <div className="shrink-0 bg-slate-900/10 px-3 py-2">
-                <div className="flex min-h-[40px] items-center justify-between gap-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2 items-baseline">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (endgameState.active) return;
-                        setActiveMenu("settings");
-                      }}
-                      data-onboarding="settings-btn"
-                      className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
-                      aria-label="设置"
-                    >
-                      <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                        <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-90 vc-wait-breath" />
-                        <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
-                        <Settings
-                          className="relative z-10 text-blue-700 group-hover:text-blue-800"
-                          size={18}
-                          strokeWidth={2.0}
-                        />
-                      </div>
-                    </button>
-                    <h2 className="truncate text-base font-bold tracking-widest text-slate-800 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] md:text-lg">
-                      故事
-                    </h2>
-                    {professionState?.currentProfession ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (endgameState.active) return;
-                          setActiveMenu("settings");
-                        }}
-                        className="hidden min-w-0 items-center gap-2 rounded-full border border-white/30 bg-white/50 px-2 py-0.5 transition hover:bg-white/70 sm:flex"
-                        title="打开设置并查看职业"
-                      >
-                        <div className="relative h-6 w-6 shrink-0">
-                          <div className="absolute -inset-0.5 rounded-full bg-white/70 blur-[10px] opacity-60 vc-wait-breath" />
-                          <div className="absolute inset-0 rounded-full bg-white/90 shadow-[0_0_14px_rgba(148,163,184,0.35)]" />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            {/* 极简职业徽记：内联 SVG，避免外部资源与抖动 */}
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              aria-hidden
-                              className="text-slate-700"
-                            >
-                              <path
-                                d="M12 3.5l2.3 5.3 5.7.5-4.3 3.7 1.3 5.6L12 15.9 7 18.6l1.3-5.6-4.3-3.7 5.7-.5L12 3.5z"
-                                stroke="currentColor"
-                                strokeWidth="1.6"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </div>
-                        </div>
-                        <span className="truncate text-base font-bold tracking-widest text-slate-800">
-                          {getProfessionActiveSkillName(professionState.currentProfession)}
-                        </span>
-                      </button>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (endgameState.active) return;
-                      modeSwitchByUserRef.current = true;
-                      const nextMode = inputMode === "options" ? "text" : "options";
-                      toggleInputMode();
-                      if (nextMode === "text" && !hasShownManualInputComplianceHintRef.current) {
-                        hasShownManualInputComplianceHintRef.current = true;
-                        triggerComplianceHint();
-                      }
-                    }}
-                    className="shrink-0 min-h-[44px] min-w-[44px] max-h-[48px] max-w-[48px] touch-manipulation"
-                    aria-label={inputMode === "options" ? "切换到手动输入" : "切换到选项"}
-                  >
-                    <div className="group relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center">
-                      <div className="absolute -inset-0.5 rounded-full bg-white/75 blur-[12px] opacity-60 transition group-hover:opacity-80 vc-wait-breath" />
-                      <div className="absolute inset-0.5 rounded-full bg-white/92 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_14px_rgba(148,163,184,0.38)]" />
-                      {inputMode === "options" ? (
-                        <Keyboard className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
-                      ) : (
-                        <List className="relative z-10 text-blue-700 group-hover:text-blue-800" size={18} strokeWidth={2.0} />
-                      )}
-                    </div>
-                  </button>
-                  <div className="shrink-0 min-w-0">
-                    <div className="relative group">
-                      {talent && talentCdLeft === 0 && !isChatBusy && (
-                        <>
-                          {/* 外圈：更夺目的扩散光晕（低频脉冲，避免闪烁） */}
-                          <div
-                            className="pointer-events-none absolute -inset-2 rounded-full bg-gradient-to-r from-indigo-500/35 via-cyan-200/25 to-blue-600/35 opacity-95 blur-[18px] transition-opacity duration-500 group-hover:opacity-100 animate-[halo-pulse_2.4s_ease-in-out_infinite]"
-                            aria-hidden
-                          />
-                          {/* 内圈：高亮边缘，让按钮在亮背景上也“立起来” */}
-                          <div
-                            className="pointer-events-none absolute -inset-0.5 rounded-full ring-1 ring-white/35 shadow-[0_0_18px_rgba(99,102,241,0.55),0_0_26px_rgba(34,211,238,0.35)] opacity-85 transition-opacity duration-500 group-hover:opacity-100"
-                            aria-hidden
-                          />
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        onClick={onUseTalent}
-                        disabled={endgameState.active || !talent || talentCdLeft > 0 || isChatBusy}
-                        className={`relative truncate rounded-full px-3 py-1.5 text-sm font-bold tracking-wider drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)] transition-all md:text-base ${
-                          talent && talentCdLeft === 0 && !isChatBusy
-                            ? "bg-slate-900/80 backdrop-blur-xl border border-white/20 text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-slate-800/90"
-                            : "bg-slate-900/30 border border-slate-700/50 text-slate-500 cursor-not-allowed grayscale"
-                        }`}
-                      >
-                        {talent ? (
-                          talentCdLeft > 0 ? (
-                            <span className="truncate">{talent} (冷却:{talentCdLeft})</span>
-                          ) : (
-                            <span className="truncate">{talent}</span>
-                          )
-                        ) : (
-                          <span className="truncate">命运回响</span>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
 
               {/*
                 选项区：PlayOptionsList 渲染四条槽位（zustand currentOptions）；
@@ -3011,116 +2915,7 @@ function PlayContent() {
                 semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                 waitUxPrimaryLine={waitUxPrimaryLine}
                 waitUxSecondaryLine={waitUxSecondaryLine}
-              >
-                {inputMode === "options" &&
-                  (hasVisibleChoiceOptions || endgameState.active) &&
-                  currentOptions.length > 0 &&
-                  (showEmbeddedOpening || endgameState.active) && (
-                    <PlayOptionsList
-                      options={currentOptions}
-                      revealed={currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)}
-                      isLowSanity={isLowSanity}
-                      isDarkMoon={isDarkMoon}
-                      disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
-                      onPick={(option) => {
-                        if (endgameState.active) {
-                          if (!endgameLocked) return;
-                          if (option === ENDGAME_ONLY_OPTION) {
-                            router.push("/settlement");
-                          }
-                          return;
-                        }
-                        if (isGuestDialogueExhausted) {
-                          setShowDialoguePaywall(true);
-                          return;
-                        }
-                        playUIClick();
-                        if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
-                          const chosen = pendingProfessionChoice.mapping[option]!;
-                          const ok = certifyProfession(chosen);
-                          setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
-                          if (!ok) {
-                            setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
-                            return;
-                          }
-                          void sendAction(`我选择认证职业：【${chosen}】`, true);
-                          return;
-                        }
-                        void sendAction(option, true);
-                      }}
-                    />
-                  )}
-                {inputMode === "options" &&
-                  hasVisibleChoiceOptions &&
-                  currentOptions.length > 0 &&
-                  !showEmbeddedOpening &&
-                  !endgameState.active &&
-                  (
-                    <>
-                      <PlayOptionsList
-                        options={currentOptions}
-                        revealed={currentOptions.length > 0 && (showEmbeddedOpening || !isChatBusy)}
-                        isLowSanity={isLowSanity}
-                        isDarkMoon={isDarkMoon}
-                        disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
-                        onPick={(option) => {
-                          if (isGuestDialogueExhausted) {
-                            setShowDialoguePaywall(true);
-                            return;
-                          }
-                          playUIClick();
-                          if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
-                            const chosen = pendingProfessionChoice.mapping[option]!;
-                            const ok = certifyProfession(chosen);
-                            setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
-                            if (!ok) {
-                              setFirstTimeHint("职业认证失败：当前条件不足或已拥有职业。");
-                              return;
-                            }
-                            void sendAction(`我选择认证职业：【${chosen}】`, true);
-                            return;
-                          }
-                          void sendAction(option, true);
-                        }}
-                      />
-                      <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
-                        <p className="text-sm text-slate-600 md:text-base">
-                          若当前四条与剧情不符，可请主笔按最新叙事重新生成（将覆盖上方列表）。
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => void requestFreshOptions("manual_button")}
-                          disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
-                          className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
-                        >
-                          让主笔重新整理选项
-                        </button>
-                      </div>
-                    </>
-                  )}
-                {inputMode === "options" &&
-                  !showEmbeddedOpening &&
-                  !endgameState.active &&
-                  (!hasVisibleChoiceOptions || optionsRegenBusy) && (
-                    <div className="mt-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
-                      <p className="text-sm text-slate-600 md:text-base">
-                        {optionsRegenBusy
-                          ? "主笔正在按当前剧情重新整理可选行动…"
-                          : "当前暂无可用选项。"}
-                      </p>
-                      {/* 已移除“长叙事自动续写”按钮。任何 turn_mode 下，玩家都通过
-                          “让主笔重新整理选项”或手动输入推进，不再有自动替代选项的路径。 */}
-                      <button
-                        type="button"
-                        onClick={() => void requestFreshOptions("manual_button")}
-                        disabled={optionsRegenPhaseBlocked || optionsRegenBusy || isGuestDialogueExhausted}
-                        className="mt-3 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 md:text-base"
-                      >
-                        让主笔重新整理选项
-                      </button>
-                    </div>
-                  )}
-              </PlayStoryScroll>
+              />
 
               <PlayTextInputBar
                 inputMode={inputMode}
@@ -3134,8 +2929,22 @@ function PlayContent() {
                   setInput(value);
                   setInputError("");
                 }}
+                onTextIntent={noteManualTextIntent}
                 onSubmitKey={onSubmit}
                 onSubmitClick={onSubmit}
+                onToggleOptions={() => {
+                  const nextExpanded = !optionsExpanded;
+                  setOptionsExpanded(nextExpanded);
+                  if (
+                    nextExpanded &&
+                    currentOptions.length === 0 &&
+                    !optionsRegenBusy &&
+                    !optionsRegenPhaseBlocked &&
+                    !isGuestDialogueExhausted
+                  ) {
+                    void requestFreshOptions("manual_button");
+                  }
+                }}
                 chatBusy={isChatBusy || endgameState.active}
                 helperText={
                   endgameState.active
@@ -3144,6 +2953,31 @@ function PlayContent() {
                 }
                 showRegisterPrompt={showRegisterPrompt}
                 isGuestDialogueExhausted={isGuestDialogueExhausted}
+                optionsExpanded={optionsExpanded}
+                talentLabel={talent}
+                talentReady={Boolean(talent && talentCdLeft === 0 && !isChatBusy && !endgameState.active)}
+                talentCooldownText={talent && talentCdLeft > 0 ? `冷却:${talentCdLeft}` : null}
+                onUseTalent={onUseTalent}
+              />
+              {optionsExpanded && currentOptions.length > 0 ? (
+                <PlayOptionsList
+                  options={currentOptions}
+                  revealed={currentOptions.length > 0 && !isChatBusy}
+                  isLowSanity={isLowSanity}
+                  isDarkMoon={isDarkMoon}
+                  disabled={isChatBusy || isGuestDialogueExhausted || optionsRegenBusy || (endgameState.active && !endgameLocked)}
+                  onPick={onPickOption}
+                />
+              ) : optionsExpanded ? (
+                <div className="mx-4 mb-3 rounded-[8px] border border-[#c4936d]/50 bg-[#0a1722]/96 px-6 py-5 vc-reading-serif text-[18px] text-[#d6a07b]">
+                  {optionsRegenBusy ? "主笔正在按当前剧情整理可选行动…" : "当前暂无可用选项。"}
+                </div>
+              ) : null}
+              <PlayBottomNavigation
+                onOpenCharacter={() => setActiveMenu("settings")}
+                onFocusStory={() => setOptionsExpanded(false)}
+                onOpenCodex={() => setActiveMenu("codex")}
+                onOpenSettings={() => setActiveMenu("settings")}
               />
             </div>
           </section>

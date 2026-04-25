@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 
@@ -33,7 +34,7 @@ export function PlayOptionsList({
   isDarkMoon: boolean;
   disabled: boolean;
   onPick: (option: string) => void;
-  /** 为 false 时槽位边框/背景保持，仅文案淡出，减轻一帧布局跳变 */
+  /** When false, keep row geometry but fade text out to avoid a one-frame layout jump. */
   revealed?: boolean;
 }) {
   void _isLowSanity;
@@ -44,11 +45,8 @@ export function PlayOptionsList({
     return typeof t === "string" ? t.trim() : "";
   });
 
-  const optionTextColor = "text-slate-900";
-  const optionBorderAndBg = "border border-slate-200 bg-white hover:bg-slate-50";
-
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mx-4 mb-3 overflow-hidden rounded-[8px] border border-[#c4936d]/60 bg-[#0a1722]/96 shadow-[0_12px_34px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(236,181,137,0.06)]">
       {slots.map((label, idx) => {
         const hasLabel = label.length > 0;
         const displayLabel = hasLabel ? localizeOptionLabel(label) : "";
@@ -60,17 +58,22 @@ export function PlayOptionsList({
             onClick={() => onPick(label)}
             disabled={disabled || !showText}
             aria-hidden={!showText}
-            className={`w-full min-h-[52px] rounded-2xl px-4 py-4 text-left shadow-sm transition-shadow duration-300 md:min-h-[56px] ${
-              optionBorderAndBg
-            } ${showText ? "hover:shadow-md" : "pointer-events-none"} disabled:cursor-not-allowed disabled:opacity-60`}
+            className={`flex min-h-[66px] w-full items-center justify-between gap-4 border-[#38505d]/55 px-6 text-left transition ${
+              idx === slots.length - 1 ? "" : "border-b"
+            } ${showText ? "hover:bg-[#102232]/85" : "pointer-events-none"} disabled:cursor-not-allowed disabled:opacity-70`}
           >
             <span
-              className={`block text-sm font-medium tracking-wide transition-opacity duration-300 ease-out md:text-base ${optionTextColor} ${
-                showText ? "opacity-100" : "opacity-0 select-none"
+              className={`block min-w-0 flex-1 truncate vc-reading-serif text-[22px] leading-none text-[#e7bb8f] transition-opacity duration-300 ${
+                showText ? "opacity-100" : "select-none opacity-0"
               }`}
             >
               {hasLabel ? displayLabel : "\u00a0"}
             </span>
+            <ChevronRight
+              className={`h-6 w-6 shrink-0 text-[#d9a37c] transition-opacity ${showText ? "opacity-90" : "opacity-0"}`}
+              strokeWidth={1.7}
+              aria-hidden
+            />
           </button>
         );
       })}

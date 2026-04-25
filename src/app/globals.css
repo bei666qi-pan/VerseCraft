@@ -212,3 +212,14 @@ body {
   animation-duration: 0.4s;
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.vc-reading-serif {
+  font-family: "Times New Roman", "Songti SC", "SimSun", "Noto Serif CJK SC", serif;
+  letter-spacing: 0;
+}
+
+.vc-reading-surface {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 23%),
+    linear-gradient(180deg, rgba(3, 16, 26, 0.98), rgba(2, 13, 21, 0.98));
+}
