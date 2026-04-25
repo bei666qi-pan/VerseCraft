@@ -78,3 +78,14 @@
 截图路径：本阶段未保存正式截图
 异常 / 噪声：本地 PostgreSQL 未启动导致 presence / analytics ECONNREFUSED 日志；不影响该 E2E 断言。Browser Use 已按插件流程尝试，但 node_repl 指向 D:\node\node.exe v22.17.1，低于插件要求的 >=22.22.0，因此本阶段用 Playwright 浏览器验证兜底。
 ```
+
+```text
+日期：2026-04-25
+提交：阶段 2 本地视觉系统改造，提交号待定
+环境：Windows / Next dev via Playwright webServer
+验证方式：Playwright；Browser Use 已尝试但 runtime 不满足版本要求
+视口：390×844、393×852、430×932
+结果：e2e/play-mobile-reading-ui.spec.ts 3 passed；折叠态隐藏选项，展开态显示 4 个选项且无横向滚动。
+截图路径：本阶段未保存正式截图
+异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间仍有本地 PostgreSQL 未启动导致的 presence / analytics ECONNREFUSED 日志，不影响断言通过。
+```

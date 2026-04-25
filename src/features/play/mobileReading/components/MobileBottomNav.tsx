@@ -21,21 +21,20 @@ function DockButton({ item }: { item: DockItem }) {
       onClick={item.onClick}
       aria-disabled={item.disabled || undefined}
       data-testid={item.testId}
-      className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-none py-1 text-[#d6a07b] transition active:scale-95 ${
-        item.active ? "text-[#ffd28d]" : "hover:text-[#f1bf90]"
-      } ${item.disabled ? "cursor-default" : ""}`}
+      className={`${mobileReadingTheme.bottomNavItem} ${
+        item.active ? mobileReadingTheme.bottomNavItemActive : mobileReadingTheme.bottomNavItemInactive
+      } ${item.disabled ? mobileReadingTheme.bottomNavItemDisabled : ""}`}
     >
       {item.active ? (
-        <span
-          className="pointer-events-none absolute -bottom-6 h-20 w-24 rounded-full bg-[#d8863d]/25 blur-2xl"
-          aria-hidden
-        />
+        <span className={mobileReadingTheme.bottomNavActiveGlow} aria-hidden />
       ) : null}
       <Icon
-        className={`relative z-10 h-8 w-8 ${item.active ? "drop-shadow-[0_0_14px_rgba(255,200,128,0.85)]" : ""}`}
+        className={`${mobileReadingTheme.bottomNavIcon} ${
+          item.active ? mobileReadingTheme.bottomNavIconActive : ""
+        }`}
         strokeWidth={1.65}
       />
-      <span className="relative z-10 vc-reading-serif text-[18px] leading-none">{item.label}</span>
+      <span className={mobileReadingTheme.bottomNavLabel}>{item.label}</span>
     </button>
   );
 }
@@ -77,7 +76,7 @@ export function MobileBottomNav({
 
   return (
     <nav data-testid="mobile-bottom-nav" aria-label="阅读导航" className={mobileReadingTheme.bottomNav}>
-      <div className="grid grid-cols-4 items-end gap-1">
+      <div className={mobileReadingTheme.bottomNavGrid}>
         {items.map((item) => (
           <DockButton key={item.label} item={item} />
         ))}

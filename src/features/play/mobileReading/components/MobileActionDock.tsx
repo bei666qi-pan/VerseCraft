@@ -65,7 +65,12 @@ export function MobileActionDock({
           }}
         >
           <div className={mobileReadingTheme.actionDockPill}>
-            <EchoTalentButton label={talentButtonLabel} ready={talentReady} onUseTalent={onUseTalent} />
+            <EchoTalentButton
+              label={talentButtonLabel}
+              talentName={talentLabel}
+              ready={talentReady}
+              onUseTalent={onUseTalent}
+            />
             <input
               value={input}
               onFocus={onTextIntent}
@@ -93,20 +98,27 @@ export function MobileActionDock({
               aria-label={optionsExpanded ? "收起行动选项" : "展开行动选项"}
               aria-pressed={optionsExpanded}
               data-testid="options-toggle-button"
-              className={`${mobileReadingTheme.iconButton} h-[42px] w-[42px] hover:bg-[#0d1d2a] active:scale-95`}
+              className={`${mobileReadingTheme.iconButton} ${mobileReadingTheme.optionsToggleButton}`}
             >
-              <OptionsIcon className={optionsExpanded ? "h-6 w-6" : "h-7 w-7"} strokeWidth={1.8} />
+              <OptionsIcon
+                className={
+                  optionsExpanded
+                    ? mobileReadingTheme.optionsToggleIconExpanded
+                    : mobileReadingTheme.optionsToggleIconCollapsed
+                }
+                strokeWidth={1.8}
+              />
             </button>
             <button
               type="submit"
               disabled={!canSubmitNow}
               aria-label="提交行动"
               data-testid="send-action-button"
-              className={`flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-full border border-[#e5ad78]/85 bg-[#11161a] text-[#ffc37f] shadow-[0_0_20px_rgba(239,177,127,0.35),inset_0_0_16px_rgba(239,177,127,0.08)] transition duration-500 enabled:hover:bg-[#171b1f] enabled:active:scale-95 disabled:opacity-75 ${
-                submitFlash ? "scale-95" : ""
+              className={`${mobileReadingTheme.sendButton} ${
+                submitFlash ? mobileReadingTheme.sendButtonFlash : ""
               }`}
             >
-              <MobileReadingIcons.SendAction className="ml-1 h-7 w-7" strokeWidth={2.2} />
+              <MobileReadingIcons.SendAction className={mobileReadingTheme.sendIcon} strokeWidth={2.2} />
             </button>
           </div>
           <div id="play-input-status" className="sr-only" aria-live="polite">

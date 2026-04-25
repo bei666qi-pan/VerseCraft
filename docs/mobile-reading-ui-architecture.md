@@ -34,9 +34,16 @@
 - `MobileOptionsDropdown`：四条行动选项和 `mobile-options-dropdown` / `mobile-option-item`
 - `MobileBottomNav`：底部导航和 `mobile-bottom-nav`
 - `hooks/useMobileActionDock.ts`：输入栏局部 UI 状态，例如 submit flash、helper text、天赋按钮 label
-- `theme.ts`：颜色、边框、间距、阴影 class token
-- `icons.tsx`：lucide 图标选择
+- `theme.ts`：移动阅读页颜色、边框、间距、高度、安全区、阴影与组件 class token
+- `icons.tsx`：移动阅读页专用 inline SVG 图标体系与六种回响天赋图标映射
 - `types.ts`：壳层 props 类型
+
+主题与图标边界：
+
+- 截图级背景、暖金色、边框透明度、底栏高度、输入区高度、光晕、安全区 padding 等核心视觉值应先改 `mobileReadingTokens`。
+- 壳层组件实际消费的 Tailwind class 应集中在 `mobileReadingTheme`，不要在多个组件里复制第二套主视觉值。
+- 图标必须来自 `icons.tsx` 的自定义 SVG 组件，使用 `currentColor` 和统一线性描边；不要把移动阅读页再切回外部图标包。
+- 新增回响天赋时，同时更新 `MOBILE_READING_TALENT_ICON_NAMES`、`MobileReadingTalentIcons` 和 `getMobileReadingTalentIcon()` 的映射。
 
 ## 交互边界
 

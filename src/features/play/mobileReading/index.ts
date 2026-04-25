@@ -5,8 +5,23 @@ export { MobileOptionsDropdown } from "./components/MobileOptionsDropdown";
 export { MobileReadingHeader } from "./components/MobileReadingHeader";
 export { MobileReadingShell } from "./components/MobileReadingShell";
 export { MobileStoryViewport } from "./components/MobileStoryViewport";
-export { MobileReadingIcons } from "./icons";
-export { mobileReadingTheme } from "./theme";
+export {
+  getMobileReadingTalentIcon,
+  isMobileReadingTalentIconName,
+  MOBILE_READING_TALENT_ICON_NAMES,
+  MobileReadingIcons,
+  MobileReadingTalentIcon,
+  MobileReadingTalentIcons,
+} from "./icons";
+export { mobileReadingTheme, mobileReadingTokens } from "./theme";
+export type {
+  MobileReadingIcon,
+  MobileReadingIconProps,
+  MobileReadingTalentIconMap,
+  MobileReadingTalentIconName,
+  MobileReadingTalentIconProps,
+} from "./icons";
+export type { MobileReadingTokens } from "./theme";
 export type {
   EchoTalentButtonProps,
   MobileActionDockProps,

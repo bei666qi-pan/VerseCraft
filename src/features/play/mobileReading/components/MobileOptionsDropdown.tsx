@@ -53,19 +53,21 @@ export function MobileOptionsDropdown({
             aria-hidden={!showText}
             data-testid="mobile-option-item"
             data-option-index={idx}
-            className={`flex min-h-[66px] w-full items-center justify-between gap-4 border-[#38505d]/55 px-6 text-left transition ${
-              idx === slots.length - 1 ? "" : "border-b"
-            } ${showText ? "hover:bg-[#102232]/85" : "pointer-events-none"} disabled:cursor-not-allowed disabled:opacity-70`}
+            className={`${mobileReadingTheme.optionRow} ${
+              idx === slots.length - 1 ? "" : mobileReadingTheme.optionRowDivider
+            } ${showText ? mobileReadingTheme.optionRowInteractive : mobileReadingTheme.optionRowHidden}`}
           >
             <span
-              className={`block min-w-0 flex-1 truncate vc-reading-serif text-[22px] leading-none text-[#e7bb8f] transition-opacity duration-300 ${
-                showText ? "opacity-100" : "select-none opacity-0"
+              className={`${mobileReadingTheme.optionLabel} ${
+                showText ? mobileReadingTheme.optionLabelVisible : mobileReadingTheme.optionLabelHidden
               }`}
             >
               {hasLabel ? displayLabel : "\u00a0"}
             </span>
             <MobileReadingIcons.OptionChevron
-              className={`h-6 w-6 shrink-0 text-[#d9a37c] transition-opacity ${showText ? "opacity-90" : "opacity-0"}`}
+              className={`${mobileReadingTheme.optionChevron} ${
+                showText ? mobileReadingTheme.optionChevronVisible : mobileReadingTheme.optionChevronHidden
+              }`}
               strokeWidth={1.7}
               aria-hidden
             />

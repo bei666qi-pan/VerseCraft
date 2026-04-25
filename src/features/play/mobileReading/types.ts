@@ -41,6 +41,7 @@ export type MobileActionDockProps = {
 export type EchoTalentButtonProps = {
   label: string;
   ready: boolean;
+  talentName?: string | null;
   onUseTalent?: () => void;
 };
 
