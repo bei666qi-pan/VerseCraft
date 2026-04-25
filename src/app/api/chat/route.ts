@@ -1966,6 +1966,8 @@ export async function POST(req: Request) {
     ): Promise<boolean> => {
       await writeStatusFrame("finalizing", "正在收束本回合");
 
+      let commitSummaryForAnalytics: TurnCommitSummary | null = null;
+
       /**
        * Turn-compiler phases (Phase-2 of the structural refactor).
        *
@@ -2404,7 +2406,6 @@ export async function POST(req: Request) {
         // --- Phase 8.5: post-generation narrative validator + explicit commit ---
         // Pure, no-IO. Validator classifies issues; commitTurn applies overrides
         // and produces a structured commit summary for analytics/debug.
-        let commitSummaryForAnalytics: TurnCommitSummary | null = null;
         try {
           const candidateRec = resolved as unknown as Record<string, unknown>;
           // Phase-5: bridge upstream npcConsistency telemetry into the unified

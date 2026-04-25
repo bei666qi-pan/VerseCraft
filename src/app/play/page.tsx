@@ -63,6 +63,7 @@ import { buildOptionsRepairReason, getRepairMissingCount } from "@/lib/play/opti
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
+  extractFinalPayloadFromSseDocument,
   extractStatusFrameFromSseEvent,
   foldSseTextToDmRaw,
   normalizeSseNewlines,
@@ -70,7 +71,11 @@ import {
 } from "@/features/play/stream/sseFrame";
 import { resolveTurnFromSse } from "@/features/play/stream/turnResolve";
 import { getCommitFailureRecovery } from "./commitFailureRecovery";
-import { getOptionsRegenSuccessHint } from "./optionsRegenUx";
+import {
+  backfillAcceptedOptionsFromModel,
+  getOptionsOnlyDeadlineMs,
+  getOptionsRegenSuccessHint,
+} from "./optionsRegenUx";
 import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/waitUx/waitUxStages";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -1229,7 +1234,10 @@ function PlayContent() {
           playerLocation: clientState?.playerLocation,
         });
         return {
-          accepted: quality.accepted.slice(0, 4),
+          accepted: backfillAcceptedOptionsFromModel({
+            accepted: quality.accepted,
+            candidates: candidateOptions,
+          }),
           rejectCodes: mapOptionRejectReasonToCodes(quality.rejected.map((r) => r.reason)),
         };
       };
@@ -1242,8 +1250,7 @@ function PlayContent() {
         ? [{ role: "user", content: lastUser }]
         : [];
       // Phase-5：options-only 补齐是“低成本工具”，不允许无上限等待。
-      const optionsOnlyDeadlineMs =
-        trigger === "opening_fallback" ? 12_000 : trigger === "auto_missing_main" ? 10_000 : 9_000;
+      const optionsOnlyDeadlineMs = getOptionsOnlyDeadlineMs(trigger);
       const ac = new AbortController();
       const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
         ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
@@ -1252,8 +1259,8 @@ function PlayContent() {
         payloadText: string,
         extraBlocked: string[] = []
       ): { options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } => {
-        const dmRaw = foldSseTextToDmRaw(payloadText);
-        let normalized: string[] = [];
+        const finalPayload = extractFinalPayloadFromSseDocument(payloadText);
+        const dmRaw = finalPayload.found ? finalPayload.payload : foldSseTextToDmRaw(payloadText);
         let rejectCodes: OptionsRegenReasonCode[] = [];
         let parseFailed = false;
         try {
@@ -1279,12 +1286,13 @@ function PlayContent() {
             normalizeRegeneratedOptions(directOpts, regenRecentOptions, regenCurrentOptions),
             extraBlocked
           );
-          normalized = q.accepted;
           rejectCodes = [...serverDebugCodes, ...q.rejectCodes];
+          if (directOpts.length > 0) {
+            return { options: q.accepted, parseFailed: false, rejectCodes };
+          }
         } catch {
           parseFailed = true;
         }
-        if (normalized.length > 0) return { options: normalized, parseFailed, rejectCodes };
         const parsed = tryParseDM(dmRaw) as any;
         const picked = pickTurnOptionsFromResolvedDm(parsed);
         let rawOpts: unknown = picked.options;
@@ -1348,6 +1356,7 @@ function PlayContent() {
             if (done) break;
             text += decoder.decode(value, { stream: true });
           }
+          text += decoder.decode();
         } finally {
           try {
             await reader.cancel();

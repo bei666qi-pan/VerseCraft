@@ -19,21 +19,51 @@ function extractDmJsonTextFromSseBody(bodyText: string): string {
   const normalized = bodyText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const events = normalized.split("\n\n");
   for (const ev of events) {
-    for (const line of ev.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      const chunk = line.slice(5).trimStart();
-      if (!chunk.length) continue;
-      if (chunk.startsWith("__VERSECRAFT_STATUS__:")) {
-        continue;
-      }
-      if (chunk.startsWith("__VERSECRAFT_FINAL__:")) {
-        raw = chunk.slice("__VERSECRAFT_FINAL__:".length);
-      } else {
-        raw += chunk;
-      }
+    const chunks = ev
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart());
+    if (chunks.length === 0) continue;
+    const joined = chunks.join("\n");
+    if (!joined.length) continue;
+    if (joined.startsWith("__VERSECRAFT_STATUS__:")) continue;
+    if (joined.startsWith("__VERSECRAFT_FINAL__:")) {
+      raw = joined.slice("__VERSECRAFT_FINAL__:".length);
+      continue;
+    }
+    raw += joined;
+  }
+  return extractFirstBalancedJsonObject(raw.trim()) ?? raw.trim();
+}
+
+function extractFirstBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") escapeNext = true;
+      else if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
     }
   }
-  return raw.trim();
+  return null;
 }
 
 function assertDmContractShape(parsed: unknown) {

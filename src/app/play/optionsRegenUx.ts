@@ -1,5 +1,31 @@
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
+
 export type OptionsRegenTrigger = "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main";
 export type ClientTurnMode = "decision_required" | "narrative_only" | "system_transition";
+
+export function getOptionsOnlyDeadlineMs(trigger: OptionsRegenTrigger): number {
+  return trigger === "opening_fallback"
+    ? VC_WAITING.playOpeningOptionsOnlyClientDeadlineMs
+    : VC_WAITING.playOptionsOnlyClientDeadlineMs;
+}
+
+export function backfillAcceptedOptionsFromModel(args: {
+  accepted: string[];
+  candidates: string[];
+  targetCount?: number;
+}): string[] {
+  const targetCount = Math.max(1, Math.min(4, Math.trunc(args.targetCount ?? 4)));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const option of [...args.accepted, ...args.candidates]) {
+    const trimmed = typeof option === "string" ? option.trim() : "";
+    if (!trimmed || seen.has(trimmed)) continue;
+    out.push(trimmed);
+    seen.add(trimmed);
+    if (out.length >= targetCount) break;
+  }
+  return out;
+}
 
 export function getOptionsRegenSuccessHint(args: {
   trigger: OptionsRegenTrigger;

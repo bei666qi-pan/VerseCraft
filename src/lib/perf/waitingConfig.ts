@@ -36,6 +36,20 @@ export const VC_WAITING = {
     process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS === "0" ? 45_000 : 18_000,
 
   /**
+   * Play page: per-request client deadline for `/api/chat` options_regen_only.
+   * Keep this above the server options-only AI call floor (15s), otherwise the
+   * browser can abort before a reasoning model emits the JSON options payload.
+   */
+  playOptionsOnlyClientDeadlineMs:
+    process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS === "0" ? 45_000 : 20_000,
+
+  /**
+   * Opening fallback carries a colder context and often runs on first load.
+   */
+  playOpeningOptionsOnlyClientDeadlineMs:
+    process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS === "0" ? 60_000 : 24_000,
+
+  /**
    * Waiting UX: timer tick frequency for `usePlayWaitUx`.
    * 现值来自 `src/hooks/usePlayWaitUx.ts`。
    */
