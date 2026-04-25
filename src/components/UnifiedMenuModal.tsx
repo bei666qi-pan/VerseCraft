@@ -1,11 +1,10 @@
 "use client";
 
-import { Activity, useCallback, useEffect, useRef, useState } from "react";
-import { Settings, BookOpen, Volume2, VolumeX } from "lucide-react";
+import { Activity, useCallback, useEffect, useRef } from "react";
+import { Settings, Volume2, VolumeX } from "lucide-react";
 import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type ActiveMenu, type CodexEntry, type GameTask } from "@/store/useGameStore";
 import { formatLocationLabel } from "@/lib/ui/locationLabels";
-import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
 import { buildProfessionApproachSnapshots, buildProfessionIdentityDigest } from "@/lib/profession/progressionUi";
 import {
@@ -32,27 +31,24 @@ const STAT_LABELS: Record<StatType, string> = {
 };
 const STAT_MAX = 50;
 
-type VisibleMenuTab = "settings" | "codex";
+type VisibleMenuTab = "settings";
 
-export const VISIBLE_MENU_TABS: readonly VisibleMenuTab[] = ["settings", "codex"];
+export const VISIBLE_MENU_TABS: readonly VisibleMenuTab[] = ["settings"];
 
 const MENU_TABS: { id: VisibleMenuTab; label: string }[] = [
   { id: "settings", label: "设置" },
-  { id: "codex", label: "图鉴" },
 ];
 
 const TAB_ICONS: Record<VisibleMenuTab, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
   settings: Settings,
-  codex: BookOpen,
 };
 
 const TAB_ONBOARDING_ATTR: Record<VisibleMenuTab, string> = {
   settings: "settings-tab",
-  codex: "codex-tab",
 };
 
 function isVisibleMenuTab(menu: ActiveMenu): menu is VisibleMenuTab {
-  return menu === "settings" || menu === "codex";
+  return menu === "settings";
 }
 
 interface UnifiedMenuModalProps {
@@ -62,8 +58,6 @@ interface UnifiedMenuModalProps {
   onToggleMute: () => void;
   /** 打开外层退出确认浮窗；仅负责触发，不在设置面板里直接执行结算或跳转。 */
   onRequestExit: () => void;
-  /** Called when user views the remaining visible onboarding tab. */
-  onViewedTab?: (tab: "codex") => void;
 }
 
 const RAPID_CLICK_WINDOW_MS = 600;
@@ -398,158 +392,13 @@ function SettingsPanel({
   );
 }
 
-function CodexPanel({
-  codex,
-  selectedId,
-  onSelect,
-  page,
-  onPageChange,
-}: {
-  codex: Record<string, CodexEntry>;
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
-  page: number;
-  onPageChange: (p: number) => void;
-}) {
-  const allEntries = [
-    ...Object.values(codex).filter((e) => e.type === "npc"),
-    ...Object.values(codex).filter((e) => e.type === "anomaly"),
-  ];
-  const PAGE_SIZE = 6;
-  const totalPages = Math.max(1, Math.ceil(allEntries.length / PAGE_SIZE));
-  const pageEntries = allEntries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const selectedEntry = selectedId ? codex[selectedId] : null;
-
-  return (
-    <div className="flex h-full flex-row overflow-hidden">
-      <div className="flex w-2/5 flex-col border-r border-white/10">
-        <h3 className="border-b border-white/10 px-4 py-3 text-sm font-semibold tracking-widest text-slate-400">
-          图鉴 · 目录
-        </h3>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {pageEntries.length === 0 ? (
-            <p className="py-4 text-xs text-slate-500">暂无</p>
-          ) : (
-            <div className="space-y-2">
-              {pageEntries.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => onSelect(selectedId === e.id ? null : e.id)}
-                  className={`w-full rounded-xl px-4 py-3 text-left text-sm transition ${
-                    e.type === "anomaly"
-                      ? selectedId === e.id
-                        ? "bg-red-500/30 text-white"
-                        : "bg-white/5 text-slate-300 hover:bg-red-500/10"
-                      : selectedId === e.id
-                        ? "bg-indigo-500/30 text-white"
-                        : "bg-white/5 text-slate-300 hover:bg-indigo-500/10"
-                  }`}
-                >
-                  {resolveCodexDisplayName(e)}
-                </button>
-              ))}
-            </div>
-          )}
-          {allEntries.length > PAGE_SIZE && (
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => onPageChange(Math.max(0, page - 1))}
-                disabled={page <= 0}
-                className="rounded-lg bg-slate-700/80 px-3 py-1.5 text-xs text-white transition hover:bg-slate-700 disabled:opacity-40"
-              >
-                上一页
-              </button>
-              <button
-                type="button"
-                onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
-                disabled={page >= totalPages - 1}
-                className="rounded-lg bg-slate-700/80 px-3 py-1.5 text-xs text-white transition hover:bg-slate-700 disabled:opacity-40"
-              >
-                下一页
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="flex flex-1 flex-col overflow-y-auto p-6">
-        {selectedEntry ? (
-          <>
-            <h3 className="text-xl font-bold text-white">{resolveCodexDisplayName(selectedEntry)}</h3>
-            <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">
-              {selectedEntry.type === "npc" ? "徘徊者" : "诡异"}
-            </p>
-            <div className="mt-6 space-y-4">
-              <div>
-                <span className="text-xs text-slate-500">关系</span>
-                <p className="mt-1 text-sm font-semibold text-slate-200">{computeRelationshipLabel(selectedEntry)}</p>
-              </div>
-              {typeof selectedEntry.combatPower === "number" && (
-                <div>
-                  <span className="text-xs text-slate-500">剧情张力</span>
-                  <p className="mt-1 font-semibold text-slate-200">{selectedEntry.combatPowerDisplay ?? selectedEntry.combatPower}</p>
-                </div>
-              )}
-              <div>
-                <span className="text-xs text-slate-500">简单介绍</span>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">
-                  {buildCodexIntro(selectedEntry) || "暂无"}
-                </p>
-              </div>
-              <div>
-                <span className="text-xs text-slate-500">我目前掌握的信息</span>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">
-                  {(selectedEntry.known_info ?? "").trim() || "暂无"}
-                </p>
-              </div>
-              {selectedEntry.personality && (
-                <div>
-                  <span className="text-xs text-slate-500">性格</span>
-                  <p className="mt-1 text-sm text-slate-300">{selectedEntry.personality}</p>
-                </div>
-              )}
-              {selectedEntry.traits && (
-                <div>
-                  <span className="text-xs text-slate-500">特质</span>
-                  <p className="mt-1 text-sm text-slate-300">{selectedEntry.traits}</p>
-                </div>
-              )}
-              {selectedEntry.rules_discovered && (
-                <div>
-                  <span className="text-xs text-slate-500">已知规则</span>
-                  <p className="mt-1 text-sm text-amber-300">{selectedEntry.rules_discovered}</p>
-                </div>
-              )}
-              {selectedEntry.weakness && (
-                <div>
-                  <span className="text-xs text-slate-500">已知弱点</span>
-                  <p className="mt-1 font-semibold text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]">
-                    {selectedEntry.weakness}
-                  </p>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <p className="text-slate-500">选择左侧条目查看详情</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function UnifiedMenuModal({
   activeMenu,
   onClose,
   audioMuted,
   onToggleMute,
   onRequestExit,
-  onViewedTab,
 }: UnifiedMenuModalProps) {
-  const [codexPage, setCodexPage] = useState(0);
-  const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
-
   const stats = useGameStore((s) => s.stats) ?? { ...FALLBACK_STATS };
   const historicalMaxSanity = useGameStore((s) => s.historicalMaxSanity ?? 50);
   const codex = useGameStore((s) => s.codex ?? {});
@@ -559,7 +408,6 @@ export function UnifiedMenuModal({
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const mainThreatByFloor = useGameStore((s) => s.mainThreatByFloor ?? {});
-  const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const professionState = useGameStore((s) => s.professionState);
   const refreshProfessionState = useGameStore((s) => s.refreshProfessionState);
   const activateProfessionActive = useGameStore((s) => s.activateProfessionActive);
@@ -568,7 +416,7 @@ export function UnifiedMenuModal({
   const setVolume = useGameStore((s) => s.setVolume);
 
   useEffect(() => {
-    if (activeMenu !== null && activeMenu !== "character" && !isVisibleMenuTab(activeMenu)) {
+    if (activeMenu !== null && activeMenu !== "character" && activeMenu !== "codex" && !isVisibleMenuTab(activeMenu)) {
       useGameStore.getState().setActiveMenu(null);
     }
   }, [activeMenu]);
@@ -582,10 +430,6 @@ export function UnifiedMenuModal({
   }
 
   function handleTabSelect(id: VisibleMenuTab) {
-    if (id === "codex") {
-      setHasCheckedCodex(true);
-      onViewedTab?.("codex");
-    }
     useGameStore.getState().setActiveMenu(id);
   }
 
@@ -657,15 +501,6 @@ export function UnifiedMenuModal({
                 mainThreatByFloor={mainThreatByFloor}
                 codex={codex}
                 tasks={tasks}
-              />
-            </Activity>
-            <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>
-              <CodexPanel
-                codex={codex}
-                selectedId={selectedCodexId}
-                onSelect={setSelectedCodexId}
-                page={codexPage}
-                onPageChange={setCodexPage}
               />
             </Activity>
           </main>

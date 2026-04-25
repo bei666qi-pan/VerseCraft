@@ -49,6 +49,38 @@ const options = [
   "先躲进旁边教室",
 ];
 
+const b1Codex = {
+  "N-008": {
+    id: "N-008",
+    name: "N-008",
+    type: "npc",
+    known_info: "他是公寓里少数真正懂电路的人，常年穿梭在配电间与各楼层之间修理故障。",
+    personality: "脾气急，但会在关键时刻给出实际帮助。",
+    traits: "灰色工作服、机油味、细小伤痕。",
+    trust: 42,
+  },
+  "N-014": {
+    id: "N-014",
+    name: "洗衣房阿姨",
+    type: "npc",
+    known_info: "她经常在地下室洗衣房出现，能记住住户衣物上的异常痕迹。",
+  },
+  "N-015": {
+    id: "N-015",
+    name: "麟泽",
+    type: "npc",
+    known_info: "他在安全中枢附近停留，似乎一直关注楼内的异常变化。",
+    currentLocation: "B1_SafeZone",
+  },
+  "N-020": {
+    id: "N-020",
+    name: "灵伤",
+    type: "npc",
+    known_info: "她的线索与地下储物间有关。",
+    currentLocation: "B1_Storage",
+  },
+};
+
 const prunedLabels = ["任务栏", "游戏指南", "灵感手记", "仓库", "背包", "库存", "成就", "武器", "武器栏", "装备"];
 const prunedMarkers = [
   "taskbar",
@@ -107,6 +139,16 @@ async function seedPlayableState(page: Page, overrides: SeedOverrides = {}) {
               logs: [{ role: "assistant", content: story }],
               currentOptions: actionOptions,
               time: { day: 1, hour: 20 },
+              stats: { sanity: 30, agility: 20, luck: 20, charm: 20, background: 20 },
+              inventory: [],
+              codex: {},
+              historicalMaxSanity: 30,
+              originium: 0,
+              tasks: [],
+              playerLocation: "1F_Lobby",
+              talent: null,
+              talentCooldowns: { ...defaultCooldowns },
+              professionState: defaultProfession,
             },
           },
           isGameStarted: true,
@@ -130,7 +172,27 @@ async function seedPlayableState(page: Page, overrides: SeedOverrides = {}) {
           talentCooldowns: { ...defaultCooldowns },
           professionState: defaultProfession,
         };
-        store.put(JSON.stringify({ state: { ...baseState, ...stateOverrides }, version: 1 }), key);
+        const seededState = { ...baseState, ...stateOverrides };
+        seededState.saveSlots = {
+          ...seededState.saveSlots,
+          main_slot: {
+            ...seededState.saveSlots.main_slot,
+            logs: seededState.logs,
+            currentOptions: seededState.currentOptions,
+            time: seededState.time,
+            stats: seededState.stats,
+            inventory: seededState.inventory,
+            codex: seededState.codex,
+            historicalMaxSanity: seededState.historicalMaxSanity,
+            originium: seededState.originium,
+            tasks: seededState.tasks,
+            playerLocation: seededState.playerLocation,
+            talent: seededState.talent,
+            talentCooldowns: seededState.talentCooldowns,
+            professionState: seededState.professionState,
+          },
+        };
+        store.put(JSON.stringify({ state: seededState, version: 1 }), key);
         tx.oncomplete = () => {
           db.close();
           resolve();
@@ -185,7 +247,12 @@ async function openSeededPlay(page: Page, overrides: SeedOverrides = {}) {
   await seedPlayableState(page, overrides);
   const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
   expect(res?.status()).toBeLessThan(500);
-  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+  try {
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+  } catch {
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 });
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+  }
   return res;
 }
 
@@ -334,6 +401,7 @@ test.describe("mobile reading UI", () => {
       originium: 12,
       time: { day: 0, hour: 0 },
       playerLocation: "B1_SafeZone",
+      codex: b1Codex,
     });
 
     const initialUrl = page.url();
@@ -371,28 +439,35 @@ test.describe("mobile reading UI", () => {
 
     await page.getByTestId("bottom-nav-codex").click();
     const menu = page.locator("#unified-menu-content");
-    await expect(menu).toBeVisible();
-    await expect(menu).toHaveCount(1);
-    await expect(page.getByTestId("bottom-nav-codex")).toHaveAttribute("aria-current", "page");
-    await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(1);
-    await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(1);
-    await expect(menu.getByText("图鉴 · 目录")).toBeVisible();
-    await expect(menu.locator('[data-onboarding="task-tab"]')).toHaveCount(0);
-    await expect(menu.locator('[data-onboarding="guide-tab"]')).toHaveCount(0);
-    await expect(menu.locator('[data-onboarding="journal-tab"]')).toHaveCount(0);
-    await expect(menu.locator('[data-onboarding="warehouse-tab"]')).toHaveCount(0);
-    await expect(menu.locator('[data-onboarding="achievements-tab"]')).toHaveCount(0);
-    await expect(menu.locator('[data-onboarding="weapon-tab"]')).toHaveCount(0);
-
-    await menu.getByRole("button", { name: "关闭" }).click();
     await expect(menu).toBeHidden();
+    await expect(page.getByTestId("bottom-nav-codex")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("图鉴");
+    await expect(page.getByTestId("mobile-codex-count")).toHaveText("B1层已识别人物：4 / 4");
+    await expect(page.getByTestId("mobile-codex-card")).toHaveCount(5);
+    await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("人物简介");
+    await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("我所见");
+    await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("关系印象");
+    await expect(page.getByText("图鉴 · 目录")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "关闭", exact: true })).toBeHidden();
+
+    await page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-015"]').click();
+    await expect(page.getByTestId("mobile-codex-detail-location")).toHaveText("B1 安全中枢");
+    const codexText = await page.getByTestId("mobile-codex-panel").innerText();
+    expect(codexText).not.toContain("B1_SafeZone");
+    expect(codexText).not.toContain("B1_Storage");
+
+    await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("mobile-codex-panel")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
     await page.getByTestId("bottom-nav-settings").click();
     await expect(menu).toBeVisible();
     await expect(page.getByTestId("bottom-nav-settings")).toHaveAttribute("aria-current", "page");
     await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(1);
-    await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(1);
+    await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(0);
   });
 
   test("shows a certified profession in the mobile character panel", async ({ page }) => {

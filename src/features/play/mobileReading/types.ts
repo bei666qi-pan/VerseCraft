@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { StatType } from "@/lib/registry/types";
 import type { ProfessionId } from "@/lib/profession/types";
+import type { CodexEntry } from "@/store/useGameStore";
 
 export type MobileReadingShellProps = {
   children: ReactNode;
@@ -10,6 +11,7 @@ export type MobileReadingShellProps = {
 export type MobileReadingHeaderProps = {
   audioMuted: boolean;
   onToggleAudio: () => void;
+  title?: string;
 };
 
 export type MobileStoryViewportProps = {
@@ -68,6 +70,10 @@ export type MobileCharacterPanelProps = {
   playerLocation: string;
   currentProfession: ProfessionId | null;
   onUpgradeAttribute: (attr: StatType) => void;
+};
+
+export type MobileCodexPanelProps = {
+  codex: Record<string, CodexEntry>;
 };
 
 export type MobileBottomNavProps = {

@@ -4,7 +4,11 @@ import { MobileReadingIcons } from "../icons";
 import { mobileReadingTheme } from "../theme";
 import type { MobileReadingHeaderProps } from "../types";
 
-export function MobileReadingHeader({ audioMuted, onToggleAudio }: MobileReadingHeaderProps) {
+export function MobileReadingHeader({
+  audioMuted,
+  onToggleAudio,
+  title = "第六章：雾港来信",
+}: MobileReadingHeaderProps) {
   const AudioIcon = audioMuted ? MobileReadingIcons.AudioOff : MobileReadingIcons.AudioOn;
   return (
     <header data-testid="mobile-reading-header" className={mobileReadingTheme.header}>
@@ -15,7 +19,7 @@ export function MobileReadingHeader({ audioMuted, onToggleAudio }: MobileReading
             <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMark} strokeWidth={1.5} />
           </div>
           <span className={mobileReadingTheme.brandDivider} aria-hidden />
-          <span className={mobileReadingTheme.chapterTitle}>第六章：雾港来信</span>
+          <span className={mobileReadingTheme.chapterTitle}>{title}</span>
         </div>
 
         <button

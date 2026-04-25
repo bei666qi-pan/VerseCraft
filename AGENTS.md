@@ -443,6 +443,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
   - `MobileStoryViewport`：正文滚动区域外壳，正文仍由 `PlayStoryScroll` / narrative renderer 负责。
   - `MobileActionDock`：底部输入胶囊、选项展开按钮、发送按钮。
   - `MobileCharacterPanel`：底部“角色”页的移动端身份信息、原石余额和属性加点面板。
+  - `MobileCodexPanel`：底部“图鉴”页的 B1 人物卡片、识别计数、剪影占位和详情面板。
   - `EchoTalentButton`：天赋按钮的纯 UI 入口。
   - `MobileOptionsDropdown`：四条行动选项的移动端下拉展示。
   - `MobileBottomNav`：角色 / 剧情 / 图鉴 / 设置底部导航。
@@ -456,7 +457,8 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 天赋按钮只触发 `onUseTalent`；`onUseTalent` 仍留在 `page.tsx`，不要把天赋业务效果塞进 UI 图标组件。
 - 底部“角色”通过 `setActiveMenu("character")` 打开 `MobileCharacterPanel`，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`。属性加点只调用现有 `upgradeAttribute`，不要新建第二套加点规则。
 - 底部“剧情”只收起选项并回到阅读态。
-- 底部“图鉴”和“设置”仍通过现有 `UnifiedMenuModal` 打开：`setActiveMenu("codex")` / `setActiveMenu("settings")`。
+- 底部“图鉴”通过 `setActiveMenu("codex")` 打开 `MobileCodexPanel`，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`；图鉴展示 helper 位于 `codexCatalog.ts`、`codexPortraits.ts`、`codexFormat.ts`。
+- 底部“设置”通过 `setActiveMenu("settings")` 打开现有 `UnifiedMenuModal`；`UnifiedMenuModal` 当前只保留设置可见入口。
 
 仍然禁止重新暴露这些主动 UI 入口：
 
@@ -480,6 +482,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - `mobile-options-dropdown`
 - `mobile-option-item`
 - `mobile-bottom-nav`
+- `mobile-codex-panel`
 - `bottom-nav-character`
 - `bottom-nav-story`
 - `bottom-nav-codex`

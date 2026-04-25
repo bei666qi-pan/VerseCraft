@@ -18,11 +18,14 @@ orchestrator for those business flows and passes only the required props into th
 - `MobileCharacterPanel` owns the mobile character tab: identity, originium balance, location,
   time, current profession, and attribute upgrade controls. It receives data and callbacks from
   `/play`; it does not read the store directly.
+- `MobileCodexPanel` owns the mobile codex tab: B1 NPC cards, identified count, portrait
+  placeholders, and the detail panel. It receives codex data from `/play`; it does not read the
+  store directly or open the old modal.
 - `MobileOptionsDropdown` owns the visual list of four model-delivered options.
 - `MobileOptionsEmptyState` owns the restrained empty / regenerating state below the input dock.
 - `MobileBottomNav` owns the visual dock and receives `activeItem` from `/play`.
-  Character opens the in-shell `MobileCharacterPanel`; codex and settings continue through
-  `UnifiedMenuModal`.
+  Character opens the in-shell `MobileCharacterPanel`; codex opens the in-shell `MobileCodexPanel`;
+  settings continues through `UnifiedMenuModal`.
 - `theme.ts` and `icons.tsx` keep visual tokens and icon choices in one place.
 
 ## Theme Tokens
@@ -50,11 +53,20 @@ The main exports are:
 - `MobileReadingTalentIcons` for the six echo talents.
 - `MobileReadingTalentIcon` for rendering the correct echo talent glyph from a stored label.
 - `getMobileReadingTalentIcon()` for mapping a stored talent label to its icon with a safe default.
+- `MobileReadingIcons.CodexBook` / `CodexEye` / `CodexHeart` for the mobile codex detail sections.
 - `MobileReadingIconProps` / `MobileReadingIcon` / `MobileReadingTalentIconProps` for adding future
   icons consistently.
 
 Buttons should provide `aria-label`; icon components also accept a `title` prop for standalone
 accessible SVG use.
+
+Codex data helpers live next to the shell:
+
+- `codexCatalog.ts` lists the current B1 NPC display slots.
+- `codexPortraits.ts` is the only place to register future portrait image paths. The current UI
+  intentionally renders CSS silhouettes when no portrait is configured.
+- `codexFormat.ts` owns identified counts, default selection, player-facing location labels, and
+  detail text fallbacks.
 
 Do not add SSE parsing, final-frame handling, store persistence, task/codex/warehouse mutation,
 or option regeneration business logic here. Keep those in the existing play orchestration and

@@ -22,7 +22,7 @@
 - `sendAction`、`onSubmit`、`onPickOption`
 - `currentOptions`、`inputMode`、`activeMenu` 等 store 兼容字段接线
 - guest gate、终局选项、职业认证、天赋业务效果
-- `UnifiedMenuModal` 的图鉴 / 设置打开
+- 图鉴 / 角色 / 设置底部导航状态接线，其中设置仍通过 `UnifiedMenuModal` 打开
 
 `src/features/play/mobileReading/` 只负责移动端阅读壳层 UI：
 
@@ -32,9 +32,10 @@
 - `MobileActionDock`：底部输入胶囊、选项展开、发送按钮和 `mobile-action-dock`
 - `EchoTalentButton`：天赋按钮和 `echo-talent-button`
 - `MobileCharacterPanel`：角色页身份信息、原石余额、当前位置、当前职业和属性加点面板，使用 `mobile-character-panel`。
+- `MobileCodexPanel`：图鉴页 B1 人物横向卡片、识别计数、剪影占位和详情面板，使用 `mobile-codex-panel`。
 - `MobileOptionsDropdown`：四条行动选项和 `mobile-options-dropdown` / `mobile-option-item`
 - `MobileOptionsEmptyState`：无选项或选项再生成时的克制空状态，仍使用 `mobile-options-dropdown` 稳定选择器。
-- `MobileBottomNav`：底部导航和 `mobile-bottom-nav`；`activeItem` 由 `/play` 的 `activeMenu` 映射，图鉴 / 设置打开时高亮对应入口，关闭后回到剧情高亮。
+- `MobileBottomNav`：底部导航和 `mobile-bottom-nav`；`activeItem` 由 `/play` 的 `activeMenu` 映射，角色 / 图鉴为壳层内页面，设置打开时高亮对应入口，关闭后回到剧情高亮。
 - `hooks/useMobileActionDock.ts`：输入栏局部 UI 状态，例如 submit flash、helper text、天赋按钮 label
 - `theme.ts`：移动阅读页颜色、边框、间距、高度、安全区、阴影与组件 class token
 - `icons.tsx`：移动阅读页专用 inline SVG 图标体系与六种回响天赋图标映射
@@ -70,7 +71,7 @@
 
 - `剧情`：收起选项，保留阅读态。
 - `角色`：`setActiveMenu("character")`，在阅读壳层内切换到 `MobileCharacterPanel`；不新增路由，不进入 `UnifiedMenuModal`。
-- `图鉴`：`setActiveMenu("codex")`，继续走 `UnifiedMenuModal`。
+- `图鉴`：`setActiveMenu("codex")`，在阅读壳层内切换到 `MobileCodexPanel`；不新增路由，不进入 `UnifiedMenuModal`。
 - `设置`：`setActiveMenu("settings")`，继续走 `UnifiedMenuModal`。
 
 ## 禁止事项
@@ -97,6 +98,7 @@
 - `mobile-option-item`
 - `mobile-bottom-nav`
 - `mobile-character-panel`
+- `mobile-codex-panel`
 - `bottom-nav-character`
 - `bottom-nav-story`
 - `bottom-nav-codex`
@@ -119,7 +121,7 @@
 
 - 未改动 `src/app/api/chat/*`，`/api/chat` SSE / `__VERSECRAFT_FINAL__` 契约未被替换成假响应。
 - 未改动 `src/store/useGameStore.ts` 的 persist、hydration、存档字段、任务 / 仓库 / 成就 / 武器 / 手记 / 指南底层逻辑。
-- 未改动 `src/components/UnifiedMenuModal.tsx` 的 settings / codex 真实功能；移动底栏仍通过 `activeMenu="codex" | "settings"` 接入现有 modal。
+- `src/components/UnifiedMenuModal.tsx` 当前只保留 settings 可见入口；codex 已迁入移动阅读壳层。
 - 未改动 `package.json`、`pnpm-lock.yaml`，没有引入外部 UI 框架、外部字体、外部图标包或图片资源。
 - 没有新增多余路由；旧指南、手记、仓库、成就、武器、任务栏等路由仍按既有策略回到 `/play`。
 - 旧功能内容和底层状态仍保留；被裁剪的是主动 UI 入口，不是 store/schema/service 能力。
@@ -131,6 +133,7 @@
 - `theme.ts` 维护核心色彩、边框、阴影、高度、间距和 safe area token；`icons.tsx` 维护移动阅读页专用 inline SVG 图标；`hooks/useMobileActionDock.ts` 只处理输入 dock 的局部 UI 状态。
 - `page.tsx` 仍负责 `sendAction`、`onPickOption`、`onUseTalent`、audio mute、`activeMenu`、guest gate、死亡 / 终局锁定、SSE 和 turn commit 主链路。
 - `MobileActionDock`、`MobileOptionsDropdown`、`MobileBottomNav` 等组件只消费 props，不直接复制 SSE 或 store mutation 业务。
+- 图鉴页由 `MobileCodexPanel`、`codexCatalog.ts`、`codexPortraits.ts`、`codexFormat.ts` 组成。`UnifiedMenuModal` 现在只保留设置可见入口。
 
 Phase 7 稳定性修复：
 
@@ -150,3 +153,17 @@ Phase 7 稳定性修复：
 
 - 当前本机 Browser Use in-app browser 初始化失败，因为 node_repl 解析到 `D:\node\node.exe v22.17.1`，低于插件要求的 `>=22.22.0`。本阶段使用 Playwright Chromium 真实浏览器完成等价验证。
 - 本地 PostgreSQL 未启动时，dev / Playwright 输出会出现 analytics / presence `ECONNREFUSED 127.0.0.1:5432` 噪声；相关 E2E 断言和 build 均通过。
+
+## Mobile Codex Tab Redesign（2026-04-25）
+
+本阶段把底部“图鉴”从旧 `UnifiedMenuModal` 侧栏 / modal 迁移为移动阅读壳层内页面：
+
+- `/play` 中 `activeMenu === "codex"` 渲染 `MobileCodexPanel`，不显示 `MobileStoryViewport`、`MobileActionDock` 或选项下拉。
+- `MobileCodexPanel` 只接收 `/play` 透传的 `codex` 数据，不读写 store、不触碰 SSE、不生成回合状态。
+- `codexCatalog.ts` 维护当前 B1 人物槽位；`codexPortraits.ts` 是后续 NPC 头像配置入口；`codexFormat.ts` 负责识别计数、默认选中、地点 label、简介、观察和关系文案 fallback。
+- 旧 `UnifiedMenuModal` 当前只保留 settings 可见入口；`codex` 和 `character` 是合法壳层页面状态，不进入 modal。
+- 底部“图鉴”点击路径是 `setHasCheckedCodex(true)` + `setActiveMenu("codex")`；底部“剧情”只 `setActiveMenu(null)` 并收起选项，不清空日志或输入。
+- B1 人物图鉴当前不放真实图片；未配置头像时由 CSS 剪影占位，避免 broken image。未来头像放置约定见 `public/images/codex/npc/README.md`。
+- `MobileReadingHeader` 支持 `title` prop，图鉴页显示 `图鉴`，剧情页仍显示章节标题。
+
+本阶段仍未改动 `/api/chat`、AI prompt、数据库 schema、回合裁决链路、`useGameStore` 持久化结构或旧功能底层逻辑。

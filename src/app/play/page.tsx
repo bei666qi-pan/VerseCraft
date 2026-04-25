@@ -20,6 +20,7 @@ import {
   MobileActionDock,
   MobileBottomNav,
   MobileCharacterPanel,
+  MobileCodexPanel,
   MobileOptionsEmptyState,
   MobileOptionsDropdown,
   MobileReadingHeader,
@@ -222,6 +223,8 @@ function PlayContent() {
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
   const activeMenu = useGameStore((s) => s.activeMenu);
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
+  const codex = useGameStore((s) => s.codex ?? {});
+  const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
   const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
@@ -2874,6 +2877,7 @@ function PlayContent() {
       ? activeMenu
       : "story";
   const isCharacterPanelActive = activeMenu === "character";
+  const isCodexPanelActive = activeMenu === "codex";
 
   function onOpenCharacterNav() {
     playUIClick();
@@ -2890,6 +2894,7 @@ function PlayContent() {
   function onOpenCodexNav() {
     playUIClick();
     setOptionsExpanded(false);
+    setHasCheckedCodex(true);
     setActiveMenu("codex");
   }
 
@@ -2920,6 +2925,7 @@ function PlayContent() {
       />
 
       <MobileReadingHeader
+        title={isCodexPanelActive ? "图鉴" : "第六章：雾港来信"}
         audioMuted={audioMuted}
         onToggleAudio={() => {
           toggleMute();
@@ -2941,6 +2947,8 @@ function PlayContent() {
                 upgradeAttribute(attr);
               }}
             />
+          ) : isCodexPanelActive ? (
+            <MobileCodexPanel codex={codex} />
           ) : (
             <>
               <MobileStoryViewport>
@@ -3066,9 +3074,6 @@ function PlayContent() {
         onToggleMute={() => {
           toggleMute();
           setAudioMuted(isMuted());
-        }}
-        onViewedTab={() => {
-          // 保留回调签名以兼容现有 props，但不再做引导状态记录
         }}
       />
 
