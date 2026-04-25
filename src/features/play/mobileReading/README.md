@@ -17,8 +17,9 @@ orchestrator for those business flows and passes only the required props into th
   state such as submit flash, helper text, and talent button labels.
 - `MobileOptionsDropdown` owns the visual list of four model-delivered options.
 - `MobileOptionsEmptyState` owns the restrained empty / regenerating state below the input dock.
-- `MobileBottomNav` owns the visual dock. Character is intentionally non-routing for now;
-  codex and settings continue through `UnifiedMenuModal`.
+- `MobileBottomNav` owns the visual dock and receives `activeItem` from `/play`.
+  Character is intentionally non-routing for now; codex and settings continue through
+  `UnifiedMenuModal`.
 - `theme.ts` and `icons.tsx` keep visual tokens and icon choices in one place.
 
 ## Theme Tokens

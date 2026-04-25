@@ -33,7 +33,7 @@
 - `EchoTalentButton`：天赋按钮和 `echo-talent-button`
 - `MobileOptionsDropdown`：四条行动选项和 `mobile-options-dropdown` / `mobile-option-item`
 - `MobileOptionsEmptyState`：无选项或选项再生成时的克制空状态，仍使用 `mobile-options-dropdown` 稳定选择器。
-- `MobileBottomNav`：底部导航和 `mobile-bottom-nav`
+- `MobileBottomNav`：底部导航和 `mobile-bottom-nav`；`activeItem` 由 `/play` 的 `activeMenu` 映射，图鉴 / 设置打开时高亮对应入口，关闭后回到剧情高亮。
 - `hooks/useMobileActionDock.ts`：输入栏局部 UI 状态，例如 submit flash、helper text、天赋按钮 label
 - `theme.ts`：移动阅读页颜色、边框、间距、高度、安全区、阴影与组件 class token
 - `icons.tsx`：移动阅读页专用 inline SVG 图标体系与六种回响天赋图标映射
@@ -70,7 +70,7 @@
 - `剧情`：收起选项，保留阅读态。
 - `图鉴`：`setActiveMenu("codex")`，继续走 `UnifiedMenuModal`。
 - `设置`：`setActiveMenu("settings")`，继续走 `UnifiedMenuModal`。
-- `角色`：现阶段只保留视觉入口，不跳转、不打开其它旧面板。
+- `角色`：现阶段只保留视觉入口，`aria-label="角色，暂未开放"`，不跳转、不打开其它旧面板。
 
 ## 禁止事项
 

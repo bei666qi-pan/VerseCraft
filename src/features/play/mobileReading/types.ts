@@ -59,6 +59,7 @@ export type MobileOptionsEmptyStateProps = {
 };
 
 export type MobileBottomNavProps = {
+  activeItem: "story" | "codex" | "settings";
   onOpenCharacter?: () => void;
   onFocusStory: () => void;
   onOpenCodex: () => void;

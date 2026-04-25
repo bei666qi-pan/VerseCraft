@@ -2797,6 +2797,11 @@ function PlayContent() {
   function onUseTalent() {
     if (!talent) return;
     if (talentCdLeft > 0) return;
+    if (isChatBusy || sendActionInFlightRef.current || endgameState.active) return;
+    if (isGuestDialogueExhausted) {
+      setShowDialoguePaywall(true);
+      return;
+    }
     const ok = useGameStore.getState().useTalent(talent);
     if (!ok) return;
 
@@ -2857,6 +2862,32 @@ function PlayContent() {
     setStats({ sanity: 0 });
     setShowExitModal(false);
     router.push("/settlement");
+  }
+
+  const bottomNavActiveItem: "story" | "codex" | "settings" =
+    activeMenu === "codex" || activeMenu === "settings" ? activeMenu : "story";
+
+  function onOpenCharacterNav() {
+    playUIClick();
+    setOptionsExpanded(false);
+  }
+
+  function onFocusStoryNav() {
+    playUIClick();
+    setOptionsExpanded(false);
+    setActiveMenu(null);
+  }
+
+  function onOpenCodexNav() {
+    playUIClick();
+    setOptionsExpanded(false);
+    setActiveMenu("codex");
+  }
+
+  function onOpenSettingsNav() {
+    playUIClick();
+    setOptionsExpanded(false);
+    setActiveMenu("settings");
   }
 
   return (
@@ -2958,7 +2989,14 @@ function PlayContent() {
             isGuestDialogueExhausted={isGuestDialogueExhausted}
             optionsExpanded={optionsExpanded}
             talentLabel={talent}
-            talentReady={Boolean(talent && talentCdLeft === 0 && !isChatBusy && !endgameState.active)}
+            talentReady={Boolean(
+              talent &&
+              talentCdLeft === 0 &&
+              !isChatBusy &&
+              !sendActionInFlightRef.current &&
+              !endgameState.active &&
+              !isGuestDialogueExhausted
+            )}
             talentCooldownText={talent && talentCdLeft > 0 ? `冷却:${talentCdLeft}` : null}
             onUseTalent={onUseTalent}
           />
@@ -2980,10 +3018,11 @@ function PlayContent() {
             <MobileOptionsEmptyState busy={optionsRegenBusy} />
           ) : null}
           <MobileBottomNav
-            onOpenCharacter={() => setOptionsExpanded(false)}
-            onFocusStory={() => setOptionsExpanded(false)}
-            onOpenCodex={() => setActiveMenu("codex")}
-            onOpenSettings={() => setActiveMenu("settings")}
+            activeItem={bottomNavActiveItem}
+            onOpenCharacter={onOpenCharacterNav}
+            onFocusStory={onFocusStoryNav}
+            onOpenCodex={onOpenCodexNav}
+            onOpenSettings={onOpenSettingsNav}
           />
         </div>
       </div>

@@ -80,7 +80,7 @@ export const mobileReadingTheme = {
   audioIcon: "h-6 w-6",
 
   iconButton:
-    "flex shrink-0 items-center justify-center rounded-full border border-[#d99b6f]/75 bg-[#091722] text-[#efb17f] shadow-[inset_0_0_12px_rgba(217,151,105,0.08)] transition",
+    "flex shrink-0 items-center justify-center rounded-full border border-[#d99b6f]/75 bg-[#091722] text-[#efb17f] shadow-[inset_0_0_12px_rgba(217,151,105,0.08)] transition disabled:cursor-not-allowed disabled:opacity-45",
   storyViewport: "relative flex min-h-0 flex-1 flex-col overflow-hidden",
 
   actionDock: "shrink-0 bg-[#03101a] px-4 pb-3 pt-3",

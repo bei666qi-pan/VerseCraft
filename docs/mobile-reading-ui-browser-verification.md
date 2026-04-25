@@ -100,3 +100,14 @@
 截图路径：本阶段未保存正式截图
 异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间仍有本地 PostgreSQL 未启动导致的 presence / analytics ECONNREFUSED 日志，不影响断言通过。
 ```
+
+```text
+日期：2026-04-25
+提交：阶段 4 业务链路接入验证记录
+环境：Windows / Next dev via Playwright webServer
+验证方式：Playwright；Browser Use 已尝试但 runtime 不满足版本要求
+视口：390×844、393×852、430×932、1200×900、844×390
+结果：e2e/play-mobile-reading-ui.spec.ts 8 passed；追加 e2e/play.spec.ts + e2e/ui-pruning-browser-verification.spec.ts 后合计 19 passed；音量按钮 aria 状态随现有 mute 状态切换；生命汇源天赋走 useTalent 后进入冷却；手动输入和选项点击均触发 /api/chat；图鉴 / 设置走 UnifiedMenuModal 并高亮底栏；角色入口 no-op 且不跳转。
+截图路径：本阶段未保存正式截图
+异常 / 噪声：Browser Use 初始化失败，原因是 node_repl 解析到 D:\node\node.exe v22.17.1，插件要求 >=22.22.0；Playwright webServer 期间仍有本地 PostgreSQL 未启动导致的 presence / analytics ECONNREFUSED 日志，以及 Next.js middleware 弃用提示，不影响断言通过。
+```

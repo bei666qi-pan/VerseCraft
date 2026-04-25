@@ -22,6 +22,7 @@ export function MobileReadingHeader({ audioMuted, onToggleAudio }: MobileReading
           type="button"
           onClick={onToggleAudio}
           aria-label={audioMuted ? "开启声音" : "关闭声音"}
+          data-testid="audio-toggle-button"
           className={mobileReadingTheme.audioButton}
         >
           <AudioIcon className={mobileReadingTheme.audioIcon} strokeWidth={1.9} />

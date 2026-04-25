@@ -6,6 +6,7 @@ import type { MobileBottomNavProps } from "../types";
 
 type DockItem = {
   label: string;
+  ariaLabel?: string;
   icon: MobileReadingIcon;
   testId: string;
   active?: boolean;
@@ -19,6 +20,8 @@ function DockButton({ item }: { item: DockItem }) {
     <button
       type="button"
       onClick={item.onClick}
+      aria-label={item.ariaLabel ?? item.label}
+      aria-current={item.active ? "page" : undefined}
       aria-disabled={item.disabled || undefined}
       data-testid={item.testId}
       className={`${mobileReadingTheme.bottomNavItem} ${
@@ -40,6 +43,7 @@ function DockButton({ item }: { item: DockItem }) {
 }
 
 export function MobileBottomNav({
+  activeItem,
   onOpenCharacter,
   onFocusStory,
   onOpenCodex,
@@ -48,6 +52,7 @@ export function MobileBottomNav({
   const items: DockItem[] = [
     {
       label: "角色",
+      ariaLabel: "角色，暂未开放",
       icon: MobileReadingIcons.Character,
       testId: "bottom-nav-character",
       disabled: !onOpenCharacter,
@@ -57,19 +62,21 @@ export function MobileBottomNav({
       label: "剧情",
       icon: MobileReadingIcons.Story,
       testId: "bottom-nav-story",
-      active: true,
+      active: activeItem === "story",
       onClick: onFocusStory,
     },
     {
       label: "图鉴",
       icon: MobileReadingIcons.Codex,
       testId: "bottom-nav-codex",
+      active: activeItem === "codex",
       onClick: onOpenCodex,
     },
     {
       label: "设置",
       icon: MobileReadingIcons.Settings,
       testId: "bottom-nav-settings",
+      active: activeItem === "settings",
       onClick: onOpenSettings,
     },
   ];

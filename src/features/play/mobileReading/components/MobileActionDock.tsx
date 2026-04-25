@@ -87,6 +87,7 @@ export function MobileActionDock({
               placeholder="输入下一步行动或对白…"
               inputMode="text"
               enterKeyHint="send"
+              maxLength={MAX_INPUT}
               aria-describedby="play-input-status"
               data-testid="manual-action-input"
               className={mobileReadingTheme.actionInput}
@@ -98,6 +99,7 @@ export function MobileActionDock({
               aria-label={optionsExpanded ? "收起行动选项" : "展开行动选项"}
               aria-pressed={optionsExpanded}
               data-testid="options-toggle-button"
+              disabled={chatBusy || isGuestDialogueExhausted}
               className={`${mobileReadingTheme.iconButton} ${mobileReadingTheme.optionsToggleButton}`}
             >
               <OptionsIcon
