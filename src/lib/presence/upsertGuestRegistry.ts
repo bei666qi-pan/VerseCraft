@@ -3,6 +3,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 export type GuestRegistryMeta = {
   userAgent: string | null;
@@ -46,6 +47,10 @@ export async function upsertGuestRegistryRow(args: {
         updated_at = ${now}
     `);
   } catch (e) {
+    if (isPostgresUnavailableError(e)) {
+      warnOptionalPostgresUnavailableOnce("guestRegistry.upsert");
+      return;
+    }
     console.error("[guest_registry] upsert failed", e);
   }
 }

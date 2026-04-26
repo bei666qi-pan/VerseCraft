@@ -15,6 +15,11 @@ export async function register() {
       const { ensureRuntimeSchema } = await import("@/db/ensureSchema");
       await ensureRuntimeSchema();
     } catch (e) {
+      const { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } = await import("@/lib/db/postgresErrors");
+      if (isPostgresUnavailableError(e)) {
+        warnOptionalPostgresUnavailableOnce("instrumentation.ensureRuntimeSchema");
+        return;
+      }
       console.warn("[instrumentation] ensureRuntimeSchema failed (non-fatal)", e);
     }
   }

@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import type { AnalyticsEventInsertInput } from "@/lib/analytics/types";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 let analyticsTableMissingWarned = false;
 
@@ -20,6 +21,10 @@ function isPgUndefinedTable(err: unknown): boolean {
 
 /** Avoid log spam when DB predates analytics_events; gameplay must not depend on inserts. */
 function suppressOrLogAnalyticsError(err: unknown, logLabel: string): void {
+  if (isPostgresUnavailableError(err)) {
+    warnOptionalPostgresUnavailableOnce("analytics");
+    return;
+  }
   if (isPgUndefinedTable(err)) {
     if (!analyticsTableMissingWarned) {
       analyticsTableMissingWarned = true;

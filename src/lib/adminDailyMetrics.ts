@@ -5,6 +5,7 @@ import { asc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { adminMetricsDaily, adminStatsSnapshots, users } from "@/db/schema";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 export { getUtcDateKey };
 
@@ -85,6 +86,10 @@ export async function recordDailyTokenUsage(dateKey: string, tokenDelta: number,
       .exec();
   } catch (err) {
     // Best-effort telemetry: never break gameplay/admin flows.
+    if (isPostgresUnavailableError(err)) {
+      warnOptionalPostgresUnavailableOnce("adminDailyMetrics.recordDailyTokenUsage");
+      return;
+    }
     console.error("[adminDailyMetrics] recordDailyTokenUsage failed", err);
   }
 }

@@ -6,6 +6,7 @@ import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
 import { computeHeartbeatDelta } from "@/lib/analytics/sessionClock";
 import { markUserActive } from "@/lib/presence";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +139,10 @@ export async function POST(req: Request) {
       SELECT 1;
     `);
   } catch (err) {
+    if (isPostgresUnavailableError(err)) {
+      warnOptionalPostgresUnavailableOnce("api.analytics.heartbeat");
+      return NextResponse.json({ ok: true, skipped: true });
+    }
     // heartbeat 永不阻断体验
     console.warn("[api/analytics/heartbeat] failed", err);
   }

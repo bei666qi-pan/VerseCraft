@@ -4,6 +4,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 /**
  * Adds wall-clock play seconds to rollups. Always UTC `dateKey` (YYYY-MM-DD).
@@ -60,6 +61,10 @@ export async function recordPlayDurationToRollups(args: {
         updated_at = CURRENT_TIMESTAMP
     `);
   } catch (err) {
+    if (isPostgresUnavailableError(err)) {
+      warnOptionalPostgresUnavailableOnce("presence.recordPlayDurationToRollups");
+      return;
+    }
     console.error("[presence] recordPlayDurationToRollups failed", err);
   }
 }

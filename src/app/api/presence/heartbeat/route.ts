@@ -5,6 +5,7 @@ import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { applyPresenceHeartbeat } from "@/lib/presence/applyPresenceHeartbeat";
 import { shouldCountPresenceHeartbeat } from "@/lib/presence/heartbeatCore";
 import { hashClientIpForGuest, platformFromUserAgent } from "@/lib/privacy/guestIdentityHash";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,10 @@ function getRequestIp(request: Request): string | null {
 
 export async function POST(request: Request) {
   await ensureRuntimeSchema().catch((e) => {
+    if (isPostgresUnavailableError(e)) {
+      warnOptionalPostgresUnavailableOnce("api.presence.ensureRuntimeSchema");
+      return;
+    }
     console.warn("[api/presence/heartbeat] ensureRuntimeSchema", e);
   });
 
@@ -81,14 +86,23 @@ export async function POST(request: Request) {
     userId ? null : guestInBody && guestInBody.length > 0 ? guestInBody : null;
 
   const now = new Date();
-  const res = await applyPresenceHeartbeat({
-    sessionId,
-    userId,
-    guestId: guestIdForBody,
-    page,
-    now,
-    client,
-  });
+  let res: Awaited<ReturnType<typeof applyPresenceHeartbeat>>;
+  try {
+    res = await applyPresenceHeartbeat({
+      sessionId,
+      userId,
+      guestId: guestIdForBody,
+      page,
+      now,
+      client,
+    });
+  } catch (err) {
+    if (isPostgresUnavailableError(err)) {
+      warnOptionalPostgresUnavailableOnce("api.presence.heartbeat");
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+    throw err;
+  }
 
   if (res.kind === "bad_request") {
     return NextResponse.json({ error: res.message }, { status: 400 });

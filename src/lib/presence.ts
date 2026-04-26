@@ -13,6 +13,7 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
 }
 import { DAILY_ACTIVE_SET_TTL_SECONDS, dailyActiveSetKey, getUtcDateKey } from "@/lib/adminDailyMetrics";
 import { insertAnalyticsEventIdempotent } from "@/lib/analytics/repository";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 import { mergeOnlineActorKeys, type MergedOnlineBreakdown } from "@/lib/presence/mergeOnlineActorKeys";
 import { ONLINE_WINDOW_MS, ONLINE_WINDOW_SECONDS } from "@/lib/presence/onlineWindow";
 
@@ -69,11 +70,19 @@ export async function markUserActive(userId: string): Promise<void> {
     const gid = userId.slice(2);
     if (gid) {
       void touchGuestSessionsLastSeenByGuestId(gid).catch((err) => {
+        if (isPostgresUnavailableError(err)) {
+          warnOptionalPostgresUnavailableOnce("presence.touchGuest");
+          return;
+        }
         console.error("[presence] touch guest_sessions last_seen failed", err);
       });
     }
   } else {
     void touchUserSessionsLastSeenByUserId(userId).catch((err) => {
+      if (isPostgresUnavailableError(err)) {
+        warnOptionalPostgresUnavailableOnce("presence.touchUser");
+        return;
+      }
       console.error("[presence] touch user_sessions last_seen failed", err);
     });
   }

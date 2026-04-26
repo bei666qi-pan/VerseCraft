@@ -15,6 +15,7 @@ import {
   normalizeHomeSurveyAnswers,
   type HomeSurveyAnswers,
 } from "@/lib/survey/productSurveyHomeV1";
+import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
 type FeedbackActionResult = {
   success: boolean;
@@ -65,7 +66,16 @@ export async function getSurveyCompletionStatus(input: {
 }): Promise<{ completed: boolean }> {
   const session = await auth();
   const userId = session?.user?.id ?? null;
-  const completed = await hasSurveyResponse(input.surveyKey, userId, input.guestId);
+  let completed = false;
+  try {
+    completed = await hasSurveyResponse(input.surveyKey, userId, input.guestId);
+  } catch (err) {
+    if (isPostgresUnavailableError(err)) {
+      warnOptionalPostgresUnavailableOnce("feedback.surveyCompletion");
+      return { completed: false };
+    }
+    throw err;
+  }
   return { completed };
 }
 

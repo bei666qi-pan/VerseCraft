@@ -28,7 +28,7 @@
     "preview": "next build && next start -p 666",
     "preview:fresh": "npx --yes kill-port 666 && next build && next start -p 666",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "db:push": "node ./scripts/db-push.mjs",
     "db:check": "node ./scripts/db-check.mjs",
     "db:check:optional": "node ./scripts/db-check-optional.mjs",
