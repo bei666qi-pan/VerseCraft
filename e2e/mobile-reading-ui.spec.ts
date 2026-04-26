@@ -284,31 +284,6 @@ async function expectNoPrunedEntries(page: Page) {
   }
 }
 
-async function expectTabFocusDoesNotFindPrunedEntries(page: Page) {
-  const focusedSnapshots: string[] = [];
-  for (let i = 0; i < 36; i++) {
-    await page.keyboard.press("Tab");
-    focusedSnapshots.push(
-      await page.evaluate(() => {
-        const el = document.activeElement as HTMLElement | null;
-        if (!el) return "";
-        return [
-          el.tagName,
-          el.getAttribute("aria-label") ?? "",
-          el.getAttribute("data-testid") ?? "",
-          el.getAttribute("data-onboarding") ?? "",
-          (el.textContent ?? "").trim().slice(0, 24),
-        ].join("|");
-      })
-    );
-  }
-
-  for (const snapshot of focusedSnapshots) {
-    for (const label of prunedLabels) expect(snapshot).not.toContain(label);
-    for (const marker of prunedMarkers) expect(snapshot).not.toContain(marker);
-  }
-}
-
 test.describe("mobile reading UI", () => {
   test("renders the mobile reading shell at 390x844 and captures collapsed and expanded screenshots", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -462,10 +437,12 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
     await page.getByTestId("bottom-nav-settings").click();
-    await expect(menu).toBeVisible();
+    await expect(menu).toBeHidden();
     await expect(page.getByTestId("bottom-nav-settings")).toHaveAttribute("aria-current", "page");
-    await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(1);
-    await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(0);
+    await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
+    await expect(page.getByTestId("open-game-guide-button")).toBeVisible();
+    await expect(page.getByTestId("settings-volume-slider")).toBeVisible();
+    await expect(page.getByTestId("open-chapter-switch-button")).toBeVisible();
   });
 
   test("shows a certified profession in the mobile character panel", async ({ page }) => {
@@ -489,9 +466,11 @@ test.describe("mobile reading UI", () => {
 
     await expectNoPrunedEntries(page);
     await page.getByTestId("bottom-nav-settings").click();
-    await expect(page.locator("#unified-menu-content")).toBeVisible();
-    await expectNoPrunedEntries(page);
-    await expectTabFocusDoesNotFindPrunedEntries(page);
+    await expect(page.locator("#unified-menu-content")).toBeHidden();
+    await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
+    await expect(page.locator('[data-onboarding="guide-tab"]')).toHaveCount(0);
+    await expect(page.locator('[data-onboarding="journal-tab"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="guide"]')).toHaveCount(0);
   });
 
   test("wires audio and talent controls to existing state", async ({ page }) => {

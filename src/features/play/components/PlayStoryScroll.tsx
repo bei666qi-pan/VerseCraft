@@ -53,7 +53,7 @@ const StoryHistory = memo(function StoryHistory({
         ) : entry.role === "user" ? (
           <p
             key={entry.logIndex}
-            className="mb-10 vc-reading-serif text-[22px] leading-[2.12] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]"
+            className="mb-10 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]"
           >
             {renderUserNarrative(safeContent)}
           </p>
@@ -120,7 +120,7 @@ const StreamPanel = memo(function StreamPanel({
         </div>
       ) : (
         <>
-          <div className="space-y-6 vc-reading-serif text-[22px] leading-[2.12] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]">
+          <div className="space-y-6 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]">
             <span className="whitespace-pre-wrap">
               {renderNarrativeText(smoothNarrative, { streamSafe: true })}
             </span>

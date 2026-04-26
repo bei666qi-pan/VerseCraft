@@ -131,6 +131,13 @@ import {
   type ChapterState,
   type ChapterTurnSignals,
 } from "@/lib/chapters";
+import {
+  DEFAULT_READING_PREFERENCES,
+  normalizeReadingPreferences,
+  setReadingPreferenceValue,
+  type ReadingPreferenceKey,
+  type ReadingPreferences,
+} from "@/features/play/mobileReading/readingPreferences";
 
 const DB_KEY = "versecraft-storage";
 const PERSIST_VERSION = 1;
@@ -224,6 +231,7 @@ function migratePersistedState(
   return {
     ...raw,
     chapterState: normalizeChapterState(raw.chapterState),
+    readingPreferences: normalizeReadingPreferences(raw.readingPreferences),
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: migratedSlots,
     pendingHourProgress:
@@ -494,6 +502,8 @@ export interface GameState extends IntegrityMetaState {
   currentBgm: string;
   /** Master BGM volume 0–100 for audio engine binding. */
   volume: number;
+  /** Mobile reading display preferences. */
+  readingPreferences: ReadingPreferences;
   /** Unified in-game menu surface (pure UI). */
   activeMenu: ActiveMenu;
   /** 安全降级：当上游安全拦截/流破损导致解析失败时，强制覆盖叙事并扣理智 */
@@ -539,6 +549,7 @@ export interface GameState extends IntegrityMetaState {
   triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
   setVolume: (volume: number) => void;
+  setReadingPreference: <K extends ReadingPreferenceKey>(key: K, value: ReadingPreferences[K]) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
   recordChapterTurn: (signals: ChapterTurnSignals) => ChapterState;
   enterNextChapter: () => void;
@@ -965,6 +976,7 @@ export const useGameStore = create<GameState>()(
       isGameStarted: false,
       currentBgm: "bgm_1_calm",
       volume: 50,
+      readingPreferences: { ...DEFAULT_READING_PREFERENCES },
       activeMenu: null,
       securityFallback: { active: false, message: "", at: 0 },
       reviveContext: {
@@ -1032,6 +1044,14 @@ export const useGameStore = create<GameState>()(
       setHydrated: (state) => set({ isHydrated: state }),
       setBgm: (track) => set({ currentBgm: track }),
       setVolume: (vol) => set({ volume: clampVolume(vol) }),
+      setReadingPreference: (key, value) =>
+        set((s) => ({
+          readingPreferences: setReadingPreferenceValue(
+            normalizeReadingPreferences(s.readingPreferences),
+            key,
+            value
+          ),
+        })),
       setActiveMenu: (menu) => set({ activeMenu: menu }),
       recordChapterTurn: (signals) => {
         const state = get();
@@ -3666,6 +3686,7 @@ export const useGameStore = create<GameState>()(
         isGameStarted: s.isGameStarted ?? false,
         openingNarrativePinned: (s as any).openingNarrativePinned ?? false,
         volume: clampVolume(s.volume ?? 50),
+        readingPreferences: normalizeReadingPreferences(s.readingPreferences),
       }),
     }
   )

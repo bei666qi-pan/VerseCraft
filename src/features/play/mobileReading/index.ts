@@ -7,6 +7,7 @@ export { MobileOptionsEmptyState } from "./components/MobileOptionsEmptyState";
 export { MobileOptionsDropdown } from "./components/MobileOptionsDropdown";
 export { MobileReadingHeader } from "./components/MobileReadingHeader";
 export { MobileReadingShell } from "./components/MobileReadingShell";
+export { MobileSettingsPanel } from "./components/MobileSettingsPanel";
 export { MobileStoryViewport } from "./components/MobileStoryViewport";
 export {
   getMobileReadingTalentIcon,
@@ -43,6 +44,24 @@ export {
   resolveCodexPortrait,
   type CodexPortrait,
 } from "./codexPortraits";
+export {
+  DEFAULT_READING_PREFERENCES,
+  READING_PREFERENCE_GROUPS,
+  normalizeReadingPreferences,
+  readingPreferencesToCssVars,
+  setReadingPreferenceValue,
+  type ReadingDensity,
+  type ReadingLineHeight,
+  type ReadingPreferenceKey,
+  type ReadingPreferences,
+  type ReadingRhythm,
+  type ReadingTextSize,
+} from "./readingPreferences";
+export { GAME_GUIDE_SECTIONS, type GameGuideSection } from "./settingsCopy";
+export {
+  buildSettingsChapterItems,
+  type SettingsChapterItem,
+} from "./settingsChapters";
 export type {
   MobileReadingIcon,
   MobileReadingIconProps,
@@ -57,6 +76,7 @@ export type {
   MobileBottomNavProps,
   MobileCharacterPanelProps,
   MobileCodexPanelProps,
+  MobileSettingsPanelProps,
   MobileOptionsEmptyStateProps,
   MobileOptionsDropdownProps,
   MobileReadingHeaderProps,

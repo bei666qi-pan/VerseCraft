@@ -110,7 +110,7 @@ export const mobileReadingTheme = {
   optionRowInteractive: "hover:bg-[#102232]/85",
   optionRowHidden: "pointer-events-none",
   optionLabel:
-    "block min-w-0 flex-1 truncate vc-reading-serif text-[22px] leading-none text-[#f0a96b] transition-opacity duration-300",
+    "block min-w-0 flex-1 truncate vc-reading-serif text-[var(--vc-option-font-size)] leading-[var(--vc-option-line-height)] text-[#f0a96b] transition-opacity duration-300",
   optionLabelVisible: "opacity-100",
   optionLabelHidden: "select-none opacity-0",
   optionChevron: "h-6 w-6 shrink-0 text-[#d9a37c] transition-opacity",

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import { LOCATION_LABELS } from "./locationLabels";
 
 export const BLOOD_MARKER = "{{BLOOD}}";
@@ -312,10 +312,18 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   void _isLowSanity;
   const safeContent = typeof content === "string" ? content : "";
   const baseClass =
-    "vc-reading-serif space-y-10 text-[22px] leading-[2.12] tracking-normal text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]";
+    "vc-reading-serif space-y-10 text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] tracking-normal text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]";
   const paras = splitNarrativeIntoParas(safeContent);
+  const preferenceStyle = {
+    fontSize: "var(--vc-story-font-size, 22px)",
+    lineHeight: "var(--vc-story-line-height, 46.64px)",
+  } satisfies CSSProperties;
   return (
-    <div className={`${baseClass} whitespace-pre-wrap`}>
+    <div
+      data-testid="dm-narrative-block"
+      className={`${baseClass} whitespace-pre-wrap`}
+      style={preferenceStyle}
+    >
       {paras.length > 1 ? (
         paras.map((p, i) => (
           <p key={i} className="whitespace-pre-wrap">

@@ -26,11 +26,19 @@ orchestrator for those business flows and passes only the required props into th
 - `MobileCodexPanel` owns the mobile codex tab: B1 NPC cards, identified count, portrait
   placeholders, and the detail panel. It receives codex data from `/play`; it does not read the
   store directly or open the old modal.
+- `MobileSettingsPanel` owns the mobile settings tab: account display, game guide entry, real
+  volume/mute controls, persisted reading preferences, chapter switch entry, and the existing exit
+  confirmation callback. It is an in-shell page, not a `UnifiedMenuModal` sidebar.
+- `GameGuideModal` and `ChapterSwitchModal` are settings-only overlays. Guide content lives in
+  `settingsCopy.ts`; chapter rows come from the real chapter definitions/state through
+  `settingsChapters.ts`.
+- `readingPreferences.ts` owns the typed preference defaults, normalization, button labels, and CSS
+  variable mapping used by the story text and option labels.
 - `MobileOptionsDropdown` owns the visual list of four model-delivered options.
 - `MobileOptionsEmptyState` owns the restrained empty / regenerating state below the input dock.
 - `MobileBottomNav` owns the visual dock and receives `activeItem` from `/play`.
   Character opens the in-shell `MobileCharacterPanel`; codex opens the in-shell `MobileCodexPanel`;
-  settings continues through `UnifiedMenuModal`. When the story tab is already active, `/play`
+  settings opens the in-shell `MobileSettingsPanel`. When the story tab is already active, `/play`
   uses that visible tab as the lightweight chapter navigator trigger instead of showing a permanent
   chapter pill above the story text.
 - `theme.ts` and `icons.tsx` keep visual tokens and icon choices in one place.

@@ -298,9 +298,8 @@ test.describe("chapter flow", () => {
     await page.getByTestId("bottom-nav-codex").click();
     await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
     await page.getByTestId("bottom-nav-settings").click();
-    await expect(page.locator("#unified-menu-content")).toBeVisible();
-    await page.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(page.locator("#unified-menu-content")).toBeHidden();
+    await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 

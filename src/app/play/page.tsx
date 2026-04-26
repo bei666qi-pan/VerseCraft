@@ -10,7 +10,6 @@ import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
-import { UnifiedMenuModal } from "@/components/UnifiedMenuModal";
 import { isValidBgmTrack } from "@/config/audio";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
@@ -25,6 +24,7 @@ import {
   MobileOptionsDropdown,
   MobileReadingHeader,
   MobileReadingShell,
+  MobileSettingsPanel,
   MobileStoryViewport,
 } from "@/features/play/mobileReading";
 import {
@@ -270,6 +270,7 @@ function PlayContent() {
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const isGuest = useGameStore((s) => s.isGuest ?? false);
+  const playerName = useGameStore((s) => s.playerName ?? "");
   const guestId = useGameStore((s) => s.guestId ?? null);
   const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
@@ -299,6 +300,10 @@ function PlayContent() {
   const [showExitModal, setShowExitModal] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
   const volume = useGameStore((s) => s.volume ?? 50);
+  const setVolume = useGameStore((s) => s.setVolume);
+  const user = useGameStore((s) => s.user);
+  const readingPreferences = useGameStore((s) => s.readingPreferences);
+  const setReadingPreference = useGameStore((s) => s.setReadingPreference);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
@@ -2979,6 +2984,7 @@ function PlayContent() {
       : "story";
   const isCharacterPanelActive = activeMenu === "character";
   const isCodexPanelActive = activeMenu === "codex";
+  const isSettingsPanelActive = activeMenu === "settings";
   const isStoryPanelActive = activeMenu === null;
   const isReviewingChapter = chapterRuntime.isReviewing && isStoryPanelActive;
   const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
@@ -2988,6 +2994,7 @@ function PlayContent() {
     : isCharacterPanelActive
       ? "角色"
       : chapterRuntime.headerTitle;
+  const accountName = user?.name?.trim() || (isGuest ? "游客" : playerName.trim() || "游客");
 
   function onOpenCharacterNav() {
     playUIClick();
@@ -3041,7 +3048,7 @@ function PlayContent() {
         onAbandonAndDie={onAbandonAndDie}
       />
 
-      {!isStoryPanelActive ? (
+      {!isStoryPanelActive && !isSettingsPanelActive ? (
         <MobileReadingHeader
           title={mobileHeaderTitle}
           audioMuted={audioMuted}
@@ -3068,6 +3075,29 @@ function PlayContent() {
             />
           ) : isCodexPanelActive ? (
             <MobileCodexPanel codex={codex} />
+          ) : isSettingsPanelActive ? (
+            <MobileSettingsPanel
+              accountName={accountName}
+              audioMuted={audioMuted}
+              chapterState={chapterRuntime.chapterState}
+              onExitGame={() => setShowExitModal(true)}
+              onReturnToActiveChapter={() => {
+                chapterRuntime.returnToActiveChapter();
+                setActiveMenu(null);
+              }}
+              onReviewChapter={(chapterId) => {
+                chapterRuntime.reviewChapter(chapterId);
+                setActiveMenu(null);
+              }}
+              onSetReadingPreference={setReadingPreference}
+              onToggleMute={() => {
+                toggleMute();
+                setAudioMuted(isMuted());
+              }}
+              readingPreferences={readingPreferences}
+              setVolume={setVolume}
+              volume={volume}
+            />
           ) : (
             <>
               <MobileStoryViewport>
@@ -3273,20 +3303,6 @@ function PlayContent() {
 
       <NarrativeSystemsDebugPanel />
       <PlayComplianceToast visible={showComplianceHint} />
-      <UnifiedMenuModal
-        activeMenu={activeMenu}
-        onClose={() => {
-          setActiveMenu(null);
-        }}
-        onRequestExit={() => {
-          setShowExitModal(true);
-        }}
-        audioMuted={audioMuted}
-        onToggleMute={() => {
-          toggleMute();
-          setAudioMuted(isMuted());
-        }}
-      />
 
     </MobileReadingShell>
   );

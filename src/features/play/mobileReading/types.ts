@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import type { StatType } from "@/lib/registry/types";
 import type { ProfessionId } from "@/lib/profession/types";
+import type { ChapterId, ChapterState } from "@/lib/chapters";
 import type { CodexEntry } from "@/store/useGameStore";
+import type {
+  ReadingPreferenceKey,
+  ReadingPreferences,
+} from "./readingPreferences";
 
 export type MobileReadingShellProps = {
   children: ReactNode;
@@ -74,6 +79,20 @@ export type MobileCharacterPanelProps = {
 
 export type MobileCodexPanelProps = {
   codex: Record<string, CodexEntry>;
+};
+
+export type MobileSettingsPanelProps = {
+  accountName: string;
+  audioMuted: boolean;
+  chapterState: ChapterState;
+  onExitGame: () => void;
+  onReturnToActiveChapter: () => void;
+  onReviewChapter: (chapterId: ChapterId) => void;
+  onSetReadingPreference: (key: ReadingPreferenceKey, value: ReadingPreferences[ReadingPreferenceKey]) => void;
+  onToggleMute: () => void;
+  readingPreferences: ReadingPreferences;
+  setVolume: (value: number) => void;
+  volume: number;
 };
 
 export type MobileBottomNavProps = {

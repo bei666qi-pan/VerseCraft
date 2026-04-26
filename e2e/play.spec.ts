@@ -366,8 +366,9 @@ test.describe("Play page", () => {
     }
 
     await settingsBtn.click();
-    await expect(page.locator("#unified-menu-content")).toBeVisible();
-    const menu = page.locator("#unified-menu-content");
+    await expect(page.locator("#unified-menu-content")).toBeHidden();
+    await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
+    const menu = page.getByTestId("mobile-settings-panel");
     for (const marker of [
       "backpack-tab",
       "warehouse-tab",
@@ -379,11 +380,9 @@ test.describe("Play page", () => {
     ]) {
       await expect(menu.locator(`[data-onboarding="${marker}"]`)).toHaveCount(0);
     }
-    await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(1);
+    await expect(menu.locator('[data-onboarding="settings-tab"]')).toHaveCount(0);
     await expect(menu.locator('[data-onboarding="codex-tab"]')).toHaveCount(0);
-
-    await page.getByRole("button", { name: "关闭" }).click();
-    await expect(page.locator("#unified-menu-content")).toBeHidden();
+    await expect(page.getByTestId("open-game-guide-button")).toBeVisible();
   });
 
   test("旧指南与手记路由不会打开独立 UI", async ({ page }) => {
