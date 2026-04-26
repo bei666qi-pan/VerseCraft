@@ -34,14 +34,14 @@ export const mobileReadingTokens = {
     optionX: "1.5rem",
   },
   sizes: {
-    headerMinHeight: "62px",
+    headerMinHeight: "var(--vc-mobile-header-height)",
     audioButton: "50px",
     actionDockHeight: "4.4rem",
     actionButton: "2.8rem",
     talentButton: "2.9rem",
     sendButton: "3rem",
     bottomNavRadius: "0px",
-    bottomNavMinHeight: "5.15rem",
+    bottomNavMinHeight: "var(--vc-mobile-bottom-nav-height)",
   },
   safeArea: {
     topPadding: "max(1.15rem, env(safe-area-inset-top))",
@@ -67,14 +67,14 @@ export const mobileReadingTheme = {
   shellBody: "relative isolate min-h-[100svh] overflow-visible",
 
   header:
-    "sticky top-0 z-40 border-b border-[#b98563]/15 bg-[#03101a]/95 px-4 pb-3 pt-[max(1.15rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)] backdrop-blur-[10px]",
-  headerRow: "flex min-h-[62px] items-center justify-between gap-2.5",
+    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#b98563]/15 bg-[#03101a]/95 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)] backdrop-blur-[10px] min-[420px]:px-6",
+  headerRow: "flex h-full items-center justify-between gap-2.5",
   headerBrand: "flex min-w-0 items-center gap-2.5 vc-reading-serif",
   brandWordmark:
-    "whitespace-nowrap text-[25px] leading-none text-[#f1b586] drop-shadow-[0_0_10px_rgba(219,148,94,0.3)]",
-  brandMark: "mt-1 h-5 w-5 shrink-0 text-[#d89b6c]",
-  brandDivider: "h-10 w-px shrink-0 bg-[#d4a076]/55",
-  chapterTitle: "shrink-0 whitespace-nowrap text-[18px] leading-none text-[#e5bd93]",
+    "whitespace-nowrap text-[27px] leading-none text-[#f1b586] drop-shadow-[0_0_10px_rgba(219,148,94,0.3)] min-[420px]:text-[31px]",
+  brandMark: "mt-1 h-5 w-5 shrink-0 text-[#d89b6c] min-[420px]:h-6 min-[420px]:w-6",
+  brandDivider: "h-10 w-px shrink-0 bg-[#d4a076]/55 min-[420px]:h-12",
+  chapterTitle: "shrink-0 whitespace-nowrap text-[18px] leading-none text-[#e5bd93] min-[420px]:text-[24px]",
   audioButton:
     "flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full border border-[#d99769]/80 bg-[#07131d]/70 text-[#efb17f] shadow-[0_0_18px_rgba(217,151,105,0.2),inset_0_0_14px_rgba(217,151,105,0.08)] transition hover:bg-[#0b1924] active:scale-95",
   audioIcon: "h-6 w-6",
@@ -118,16 +118,16 @@ export const mobileReadingTheme = {
   optionChevronHidden: "opacity-0",
 
   bottomNav:
-    "fixed bottom-0 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 border-t border-[#d98655]/10 bg-[#03101a]/72 px-10 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(0,0,0,0.22)] backdrop-blur-[8px]",
-  bottomNavGrid: "grid grid-cols-4 items-end gap-1",
+    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#9a5b37]/48 bg-[#04111a]/88 px-8 pb-[max(0.55rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_38px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(220,142,79,0.12)] backdrop-blur-[10px] min-[420px]:px-10 min-[420px]:pt-4",
+  bottomNavGrid: "grid h-full grid-cols-4 items-end gap-1",
   bottomNavItem:
-    "relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-none py-1 text-[#d9986c] transition active:scale-95",
+    "relative flex h-full min-w-0 flex-col items-center justify-center gap-1 rounded-none text-[#d9986c] transition active:scale-95",
   bottomNavItemActive: "text-[#ffbf79]",
   bottomNavItemInactive: "hover:text-[#efb17f]",
   bottomNavItemDisabled: "cursor-default",
   bottomNavActiveGlow:
-    "pointer-events-none absolute -bottom-5 h-16 w-20 rounded-full bg-[#d8863d]/24 blur-2xl",
-  bottomNavIcon: "relative z-10 h-7 w-7",
-  bottomNavIconActive: "drop-shadow-[0_0_13px_rgba(255,184,106,0.82)]",
-  bottomNavLabel: "relative z-10 vc-reading-serif text-[15px] leading-none",
+    "pointer-events-none absolute -bottom-4 h-20 w-24 rounded-full bg-[#d8863d]/25 blur-2xl",
+  bottomNavIcon: "relative z-10 h-8 w-8 min-[420px]:h-10 min-[420px]:w-10",
+  bottomNavIconActive: "drop-shadow-[0_0_14px_rgba(255,184,106,0.86)]",
+  bottomNavLabel: "relative z-10 vc-reading-serif text-[17px] leading-none min-[420px]:text-[20px]",
 } as const;

@@ -203,9 +203,12 @@ body {
 
 html.vc-play-reading-page,
 body.vc-play-reading-page {
-  --vc-mobile-bottom-nav-height: 5.15rem;
+  --vc-mobile-header-height: clamp(5.45rem, 10.4svh, 6.15rem);
+  --vc-mobile-bottom-nav-height: clamp(6.75rem, 14.25svh, 8.25rem);
   --vc-mobile-action-dock-height: 4.4rem;
-  --vc-mobile-fixed-bottom-space: 11.1rem;
+  --vc-mobile-fixed-bottom-space: calc(
+    var(--vc-mobile-bottom-nav-height) + var(--vc-mobile-action-dock-height) + 1.25rem
+  );
   --vc-mobile-fixed-bottom-space-expanded: 27rem;
   min-height: 100%;
   min-height: 100svh;

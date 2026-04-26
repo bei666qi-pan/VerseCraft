@@ -3059,8 +3059,22 @@ function PlayContent() {
         />
       ) : null}
 
-      <div className="relative min-h-[100svh]">
-        <div className="relative bg-transparent">
+      <div
+        className={
+          isCharacterPanelActive
+            ? "relative h-[calc(100svh-var(--vc-mobile-header-height))] min-h-0 overflow-hidden"
+            : isSettingsPanelActive
+              ? "relative h-[100svh] min-h-0 overflow-hidden"
+              : "relative min-h-[100svh]"
+        }
+      >
+        <div
+          className={
+            isCharacterPanelActive || isSettingsPanelActive
+              ? "relative h-full min-h-0 overflow-hidden bg-transparent"
+              : "relative bg-transparent"
+          }
+        >
           {isCharacterPanelActive ? (
             <MobileCharacterPanel
               stats={stats}
