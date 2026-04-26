@@ -111,9 +111,12 @@ VerseCraft 是一个面向互动叙事的 AI 平台原型。
 ## 快速开始
 
 ```bash
+node -v # >= 22.22.0
 pnpm install
 pnpm dev
 ```
+
+Codex Browser Use 依赖 Node REPL 解析到合格 Node 运行时；若 PATH 中默认 `node.exe` 低于 `22.22.0`，请设置 `NODE_REPL_NODE_PATH` 指向合格的 Node 可执行文件。
 
 先把 `.env.example` 复制为 `.env.local` 并按模板填好配置。默认会在 `http://localhost:666` 启动，进入「铸造角色」后就可以直接开局。
 
@@ -140,6 +143,7 @@ VerseCraft 是一个单机、浏览器内运行的中文互动叙事项目。它
 
 ### 技术栈
 
+- Node.js >=22.22.0
 - Next.js 16 + React 19
 - Tailwind CSS v4
 - Zustand 5
