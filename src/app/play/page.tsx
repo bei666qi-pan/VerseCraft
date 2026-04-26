@@ -29,7 +29,6 @@ import {
 } from "@/features/play/mobileReading";
 import {
   ChapterEndSheet,
-  ChapterHeaderPill,
   ChapterNavigator,
   ChapterProgressHint,
   ChapterSummaryList,
@@ -2999,6 +2998,10 @@ function PlayContent() {
   function onFocusStoryNav() {
     playUIClick();
     setOptionsExpanded(false);
+    if (isStoryPanelActive && !chapterRuntime.isReviewing) {
+      setChapterNavigatorOpen(true);
+      return;
+    }
     if (chapterRuntime.isReviewing) {
       chapterRuntime.returnToActiveChapter();
     }
@@ -3038,27 +3041,13 @@ function PlayContent() {
         onAbandonAndDie={onAbandonAndDie}
       />
 
-      <MobileReadingHeader
-        title={mobileHeaderTitle}
-        audioMuted={audioMuted}
-        onToggleAudio={() => {
-          toggleMute();
-          setAudioMuted(isMuted());
-        }}
-      />
-      {isStoryPanelActive ? (
-        <ChapterHeaderPill
-          definition={chapterRuntime.displayedDefinition}
-          progress={chapterRuntime.displayedProgress}
-          reviewing={isReviewingChapter}
-          onOpenNavigator={() => {
-            playUIClick();
-            setChapterNavigatorOpen(true);
-          }}
-          onReturnToActive={() => {
-            playUIClick();
-            chapterRuntime.returnToActiveChapter();
-            setChapterNavigatorOpen(false);
+      {!isStoryPanelActive ? (
+        <MobileReadingHeader
+          title={mobileHeaderTitle}
+          audioMuted={audioMuted}
+          onToggleAudio={() => {
+            toggleMute();
+            setAudioMuted(isMuted());
           }}
         />
       ) : null}

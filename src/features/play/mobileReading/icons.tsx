@@ -87,10 +87,15 @@ function BrandMarkIcon(props: MobileReadingIconProps): ReactElement {
 function EchoDefaultIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M17.2 7.1a7.2 7.2 0 1 0 1.7 7.6" />
-      <path d="M18.9 4.7v4.8h-4.8" />
-      <path d="M12 7.5v4.8l3 1.7" />
-      <circle cx="12" cy="12" r="8.1" opacity="0.18" />
+      <path d="M7.4 15.4V10a4.6 4.6 0 0 1 9.2 0v5.4" />
+      <path d="M6.2 15.4h11.6" />
+      <path d="M9.8 18a2.3 2.3 0 0 0 4.4 0" />
+      <path d="M12 4.3V3" />
+      <path d="M4.7 9.2a7.6 7.6 0 0 0-.8 3.3" />
+      <path d="M19.3 9.2a7.6 7.6 0 0 1 .8 3.3" />
+      <path d="M5.1 5.2 3.8 3.8" />
+      <path d="M18.9 5.2 20.2 3.8" />
+      <circle cx="12" cy="10.7" r="7.9" opacity="0.14" />
     </IconSvg>
   );
 }

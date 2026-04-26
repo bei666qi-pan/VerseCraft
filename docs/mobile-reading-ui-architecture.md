@@ -26,8 +26,8 @@
 
 `src/features/play/mobileReading/` 只负责移动端阅读壳层 UI：
 
-- `MobileReadingShell`：页面阅读表面和 `mobile-reading-shell`；手机端使用 `100dvh`，桌面端居中限制为手机宽度，不让阅读壳层横向铺满。
-- `MobileReadingHeader`：品牌、章节、音频按钮和 `mobile-reading-header`
+- `MobileReadingShell`：页面阅读表面和 `mobile-reading-shell`；使用 document/window 级滚动，桌面端居中限制为手机宽度，不让阅读壳层横向铺满。
+- `MobileReadingHeader`：角色 / 图鉴 / 设置等壳层页的品牌、页面标题、音频按钮和 `mobile-reading-header`；默认剧情态为贴近手机浏览器参考图，不渲染常驻 header。
 - `MobileStoryViewport`：正文滚动区域外壳和 `mobile-story-viewport`
 - `MobileActionDock`：底部输入胶囊、选项展开、发送按钮和 `mobile-action-dock`
 - `EchoTalentButton`：天赋按钮和 `echo-talent-button`
@@ -69,7 +69,7 @@
 
 底部导航：
 
-- `剧情`：收起选项，保留阅读态。
+- `剧情`：从其他壳层页返回阅读态；如果已经在剧情态，作为克制的章节导航入口打开 `ChapterNavigator`，不额外显示常驻章节 pill。
 - `角色`：`setActiveMenu("character")`，在阅读壳层内切换到 `MobileCharacterPanel`；不新增路由，不进入 `UnifiedMenuModal`。
 - `图鉴`：`setActiveMenu("codex")`，在阅读壳层内切换到 `MobileCodexPanel`；不新增路由，不进入 `UnifiedMenuModal`。
 - `设置`：`setActiveMenu("settings")`，继续走 `UnifiedMenuModal`。
@@ -164,6 +164,6 @@ Phase 7 稳定性修复：
 - 旧 `UnifiedMenuModal` 当前只保留 settings 可见入口；`codex` 和 `character` 是合法壳层页面状态，不进入 modal。
 - 底部“图鉴”点击路径是 `setHasCheckedCodex(true)` + `setActiveMenu("codex")`；底部“剧情”只 `setActiveMenu(null)` 并收起选项，不清空日志或输入。
 - B1 人物图鉴当前不放真实图片；未配置头像时由 CSS 剪影占位，避免 broken image。未来头像放置约定见 `public/images/codex/npc/README.md`。
-- `MobileReadingHeader` 支持 `title` prop，图鉴页显示 `图鉴`，剧情页仍显示章节标题。
+- `MobileReadingHeader` 支持 `title` prop，图鉴页显示 `图鉴`；默认剧情页不再显示常驻 header，保持沉浸式正文阅读。
 
 本阶段仍未改动 `/api/chat`、AI prompt、数据库 schema、回合裁决链路、`useGameStore` 持久化结构或旧功能底层逻辑。

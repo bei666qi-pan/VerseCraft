@@ -156,10 +156,9 @@ test.describe("mobile browser chrome compatibility", () => {
       const root = document.scrollingElement ?? document.documentElement;
       const story = document.querySelector<HTMLElement>('[data-testid="play-story-document"]');
       const shell = document.querySelector<HTMLElement>('[data-testid="mobile-reading-shell"]');
-      const header = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header"]');
       const dock = document.querySelector<HTMLElement>('[data-testid="mobile-action-dock"]');
       const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
-      if (!story || !shell || !header || !dock || !nav) throw new Error("mobile reading controls missing");
+      if (!story || !shell || !dock || !nav) throw new Error("mobile reading controls missing");
 
       window.scrollTo(0, Math.floor(root.scrollHeight / 2));
 
@@ -176,7 +175,7 @@ test.describe("mobile browser chrome compatibility", () => {
         storyOverflowY: getComputedStyle(story).overflowY,
         storyIsInternalScroller:
           story.scrollHeight > story.clientHeight && ["auto", "scroll"].includes(getComputedStyle(story).overflowY),
-        headerPosition: getComputedStyle(header).position,
+        headerCount: document.querySelectorAll('[data-testid="mobile-reading-header"]').length,
         dockPosition: getComputedStyle(dock).position,
         navPosition: getComputedStyle(nav).position,
       };
@@ -193,7 +192,7 @@ test.describe("mobile browser chrome compatibility", () => {
     expect(metrics.storyOverflowY).not.toBe("scroll");
     expect(metrics.storyOverflowY).not.toBe("auto");
     expect(metrics.storyIsInternalScroller).toBe(false);
-    expect(metrics.headerPosition).toBe("sticky");
+    expect(metrics.headerCount).toBe(0);
     expect(metrics.dockPosition).toBe("fixed");
     expect(metrics.navPosition).toBe("fixed");
   });
@@ -208,7 +207,7 @@ test.describe("mobile browser chrome compatibility", () => {
       await page.setViewportSize(viewport);
       await openSeededPlay(page);
 
-      await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+      await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
       await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
       await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
 

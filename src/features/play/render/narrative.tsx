@@ -312,7 +312,7 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   void _isLowSanity;
   const safeContent = typeof content === "string" ? content : "";
   const baseClass =
-    "vc-reading-serif space-y-8 text-[21px] leading-[2.05] tracking-normal text-[#e7bb8f]";
+    "vc-reading-serif space-y-10 text-[22px] leading-[2.12] tracking-normal text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]";
   const paras = splitNarrativeIntoParas(safeContent);
   return (
     <div className={`${baseClass} whitespace-pre-wrap`}>

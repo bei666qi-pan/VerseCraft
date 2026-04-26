@@ -12,7 +12,9 @@ orchestrator for those business flows and passes only the required props into th
   desktop it centers a phone-width shell instead of stretching the reading UI edge-to-edge. It also
   toggles the `vc-play-reading-page` class on `html` / `body` so the browser safe areas inherit the
   same dark background without locking document scrolling.
-- `MobileReadingHeader` owns the brand/chapter/audio row.
+- `MobileReadingHeader` owns the brand/page/audio row for in-shell pages such as character and codex.
+  The default story state intentionally does not render this header so the reading surface can match
+  the mobile-browser reference screenshot.
 - `MobileStoryViewport` wraps the story area that still renders through `PlayStoryScroll`. It must
   not become the primary vertical scroll container; `/play` relies on document/window scrolling so
   mobile browser address bars can collapse naturally.
@@ -28,7 +30,9 @@ orchestrator for those business flows and passes only the required props into th
 - `MobileOptionsEmptyState` owns the restrained empty / regenerating state below the input dock.
 - `MobileBottomNav` owns the visual dock and receives `activeItem` from `/play`.
   Character opens the in-shell `MobileCharacterPanel`; codex opens the in-shell `MobileCodexPanel`;
-  settings continues through `UnifiedMenuModal`.
+  settings continues through `UnifiedMenuModal`. When the story tab is already active, `/play`
+  uses that visible tab as the lightweight chapter navigator trigger instead of showing a permanent
+  chapter pill above the story text.
 - `theme.ts` and `icons.tsx` keep visual tokens and icon choices in one place.
 
 ## Theme Tokens

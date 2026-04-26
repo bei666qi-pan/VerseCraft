@@ -16,7 +16,7 @@
 默认阅读态：
 
 - `mobile-reading-shell` 可见。
-- `mobile-reading-header` 可见，并包含 `VerseCraft` 与 `第六章：雾港来信`。
+- 剧情态不显示 `mobile-reading-header` 或 `chapter-header-pill`；正文从手机浏览器可视区上方自然开始。
 - `mobile-story-viewport` 可见。
 - `mobile-action-dock` 可见。
 - `manual-action-input` 可见。
@@ -34,7 +34,7 @@
 底部导航：
 
 - `bottom-nav-character` 可见，点击后打开移动阅读壳层内的角色页，不跳转、不打开旧任务 / 指南 / 手记 / 仓库 / 成就 / 武器面板。
-- `bottom-nav-story` 只回到剧情阅读态。
+- `bottom-nav-story` 从其他壳层页回到剧情阅读态；已在剧情态时作为轻量章节导航入口。
 - `bottom-nav-codex` 打开移动阅读壳层内的 `MobileCodexPanel`，不打开旧侧栏 / modal 图鉴。
 - `bottom-nav-settings` 打开现有 `UnifiedMenuModal` 的设置；`UnifiedMenuModal` 当前只保留设置可见入口。
 
@@ -77,6 +77,22 @@
 结果：e2e/play-mobile-reading-ui.spec.ts 3 passed；e2e/play.spec.ts + e2e/ui-pruning-browser-verification.spec.ts + e2e/play-mobile-reading-ui.spec.ts 14 passed
 截图路径：本阶段未保存正式截图
 异常 / 噪声：本地 PostgreSQL 未启动导致 presence / analytics ECONNREFUSED 日志；不影响该 E2E 断言。Browser Use 已按插件流程尝试，但 node_repl 指向 D:\node\node.exe v22.17.1，低于插件要求的 >=22.22.0，因此本阶段用 Playwright 浏览器验证兜底。
+```
+
+```text
+日期：2026-04-26
+提交：剧情界面截图级重做，本地提交前验证
+启动命令：pnpm dev
+访问地址：http://127.0.0.1:666/play
+环境：Windows / Next dev server on port 666
+验证方式：Browser Use 已按插件流程尝试，但 node_repl 解析到 D:\node\node.exe v22.17.1，低于插件要求的 >=22.22.0；因此使用 Playwright Chromium 连接真实 pnpm dev 服务完成浏览器截图验证。
+视口：390×844、393×852、430×932
+默认剧情态结果：通过。剧情态不渲染 mobile-reading-header 或 chapter-header-pill；390×844 实测 storyTop=66、storyLeft=32、正文 22px / 46.64px line-height、body 背景 rgb(3,16,26)、placeholder 为 `输入下一步行动或命令`、bottom-nav-story 为 active、无横向滚动。
+选项展开态结果：通过。390×844 点击 options-toggle-button 后 mobile-options-dropdown 可见，mobile-option-item 数量为 4，无横向滚动。
+截图路径：D:\versecraft\.runtime-data\story-ui\story-collapsed-390x844.png；D:\versecraft\.runtime-data\story-ui\story-collapsed-393x852.png；D:\versecraft\.runtime-data\story-ui\story-collapsed-430x932.png；D:\versecraft\.runtime-data\story-ui\story-expanded-390x844.png。
+手动验证产物：D:\versecraft\.runtime-data\story-ui\browser-check-result.json。
+测试命令与结果：pnpm lint 通过，0 errors / 43 warnings；npx eslint . 通过，0 errors / 43 warnings；pnpm test:unit 通过，1007 pass；pnpm exec playwright test e2e/play.spec.ts e2e/mobile-reading-ui.spec.ts e2e/chapter-flow.spec.ts e2e/mobile-browser-chrome.spec.ts e2e/mobile-story-visual.spec.ts 通过，33 passed；pnpm build 通过。
+异常 / 噪声：本地 PostgreSQL 未启动时 dev / Playwright 输出 optional database skipped 日志；有 Next.js middleware 弃用提示和 Playwright 关闭请求时的 ECONNRESET 噪声，均未导致 pageerror 或测试失败。
 ```
 
 ```text

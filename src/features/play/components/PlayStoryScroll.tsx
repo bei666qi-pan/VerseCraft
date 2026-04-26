@@ -40,7 +40,7 @@ const StoryHistory = memo(function StoryHistory({
   );
   if (visibleEntries.length === 0) return null;
   return (
-    <div className="text-[#e7bb8f]">
+    <div className="text-[#f0a96b]">
       {visibleEntries.map((entry) => {
         const safeContent = typeof entry.content === "string" ? entry.content : "";
         return safeContent.includes("获得了新物品，已放入书包") ? (
@@ -53,7 +53,7 @@ const StoryHistory = memo(function StoryHistory({
         ) : entry.role === "user" ? (
           <p
             key={entry.logIndex}
-            className="mb-8 vc-reading-serif text-[21px] leading-[2.05] text-[#e7bb8f]"
+            className="mb-10 vc-reading-serif text-[22px] leading-[2.12] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]"
           >
             {renderUserNarrative(safeContent)}
           </p>
@@ -120,7 +120,7 @@ const StreamPanel = memo(function StreamPanel({
         </div>
       ) : (
         <>
-          <div className="space-y-6 vc-reading-serif text-[21px] leading-[2.05] text-[#e7bb8f]">
+          <div className="space-y-6 vc-reading-serif text-[22px] leading-[2.12] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]">
             <span className="whitespace-pre-wrap">
               {renderNarrativeText(smoothNarrative, { streamSafe: true })}
             </span>
@@ -208,7 +208,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
       ref={scrollRef}
       onScroll={onScrollContainer}
       data-testid="play-story-document"
-      className="px-6 pt-6 md:px-8 md:pt-7"
+      className="px-[2rem] pt-[calc(env(safe-area-inset-top)+4.15rem)] md:px-8 md:pt-[calc(env(safe-area-inset-top)+4.15rem)]"
       style={
         {
           overflowAnchor: "auto",
@@ -216,7 +216,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
         } as CSSProperties
       }
     >
-      <div className="space-y-7">
+      <div className="space-y-10">
         {embeddedOpeningContent ? (
           <div className="animate-[fadeIn_0.8s_ease-out]">
             <DMNarrativeBlock

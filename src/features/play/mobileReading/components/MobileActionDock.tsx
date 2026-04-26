@@ -84,7 +84,7 @@ export function MobileActionDock({
                   onSubmitKey();
                 }
               }}
-              placeholder="输入下一步行动或对白…"
+              placeholder="输入下一步行动或命令"
               inputMode="text"
               enterKeyHint="send"
               maxLength={MAX_INPUT}
