@@ -158,7 +158,7 @@ export function MobileCodexPanel({ codex }: MobileCodexPanelProps) {
     <section
       data-testid="mobile-codex-panel"
       aria-label="图鉴"
-      className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-5 text-[#f1ad62] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      className="px-4 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5 text-[#f1ad62]"
     >
       <div className="vc-reading-serif px-1 text-[24px] font-semibold leading-none text-[#ff9850] drop-shadow-[0_0_10px_rgba(255,153,78,0.22)]">
         <span data-testid="mobile-codex-count">

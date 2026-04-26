@@ -201,6 +201,23 @@ body {
   overscroll-behavior-y: none;
 }
 
+html.vc-play-reading-page,
+body.vc-play-reading-page {
+  --vc-mobile-bottom-nav-height: 7.25rem;
+  --vc-mobile-action-dock-height: 5.75rem;
+  --vc-mobile-fixed-bottom-space: 14.75rem;
+  --vc-mobile-fixed-bottom-space-expanded: 31rem;
+  min-height: 100%;
+  min-height: 100svh;
+  background: #03101a;
+  color-scheme: dark;
+  overflow-x: hidden;
+}
+
+body.vc-play-reading-page {
+  overscroll-behavior-y: auto;
+}
+
 @media (max-width: 640px) {
   .touch-scroll {
     -webkit-overflow-scrolling: touch;

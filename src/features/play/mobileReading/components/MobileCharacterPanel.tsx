@@ -56,7 +56,7 @@ export function MobileCharacterPanel({
   return (
     <section
       data-testid="mobile-character-panel"
-      className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-6 text-[#f1ad62] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-6 text-[#f1ad62]"
       aria-label="角色"
     >
       <div className="mb-3 flex items-center justify-between gap-3">

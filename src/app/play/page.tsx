@@ -193,6 +193,31 @@ function countArrayField(raw: unknown): number {
   return Array.isArray(raw) ? raw.length : 0;
 }
 
+function getDocumentScroller(): Element | null {
+  if (typeof document === "undefined") return null;
+  return document.scrollingElement ?? document.documentElement;
+}
+
+function getDocumentDistanceToBottom(): number {
+  const root = getDocumentScroller();
+  if (!root || typeof window === "undefined") return Number.POSITIVE_INFINITY;
+  return root.scrollHeight - window.scrollY - window.innerHeight;
+}
+
+function scrollDocumentToBottom(smooth: boolean): void {
+  const root = getDocumentScroller();
+  if (!root || typeof window === "undefined") return;
+  window.scrollTo({
+    top: root.scrollHeight,
+    behavior: smooth ? "smooth" : "auto",
+  });
+}
+
+function scrollDocumentToTop(): void {
+  if (typeof window === "undefined") return;
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
 function PlayContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -579,27 +604,18 @@ function PlayContent() {
     openingInitialScrollLockRef.current = true;
     userScrolledUpRef.current = true; // 阻止任何 scheduleAutoScrollIfPinned 贴底
     requestAnimationFrame(() => {
-      const el = scrollRef.current;
-      if (!el) return;
-      el.scrollTop = 0;
+      scrollDocumentToTop();
     });
   }, [hasAssistantMessage, isGameStarted, isHydrated, showEmbeddedOpening]);
 
   const scheduleAutoScroll = useCallback((smooth = false) => {
-    if (!scrollRef.current) return;
     if (autoScrollRafRef.current != null) return;
     autoScrollRafRef.current = requestAnimationFrame(() => {
       autoScrollRafRef.current = null;
-      const el = scrollRef.current;
-      if (!el) return;
       const now = performance.now();
       if (!smooth && now - lastAutoScrollAtRef.current < 48) return;
       lastAutoScrollAtRef.current = now;
-      if (smooth) {
-        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      } else {
-        el.scrollTop = el.scrollHeight;
-      }
+      scrollDocumentToBottom(smooth);
     });
   }, []);
 
@@ -736,14 +752,22 @@ function PlayContent() {
 
   const prevIsStreamVisualActiveRef = useRef(false);
   const onScrollContainer = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const gap = getDocumentDistanceToBottom();
     userScrolledUpRef.current = gap > SCROLL_STICKY_BOTTOM_PX;
   }, []);
 
   useEffect(() => {
-    if (!scrollRef.current || userScrolledUpRef.current) return;
+    window.addEventListener("scroll", onScrollContainer, { passive: true });
+    window.addEventListener("resize", onScrollContainer);
+    onScrollContainer();
+    return () => {
+      window.removeEventListener("scroll", onScrollContainer);
+      window.removeEventListener("resize", onScrollContainer);
+    };
+  }, [onScrollContainer]);
+
+  useEffect(() => {
+    if (userScrolledUpRef.current) return;
     if (openingInitialScrollLockRef.current) return;
     if (isStreamVisualActive) scheduleAutoScrollIfPinned(false);
     else if (prevIsStreamVisualActiveRef.current) scheduleAutoScrollIfPinned(true);
@@ -3039,8 +3063,8 @@ function PlayContent() {
         />
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+      <div className="relative min-h-[100svh]">
+        <div className="relative bg-transparent">
           {isCharacterPanelActive ? (
             <MobileCharacterPanel
               stats={stats}
@@ -3061,7 +3085,7 @@ function PlayContent() {
                 {isReviewingChapter ? (
                   <section
                     data-testid="chapter-review-panel"
-                    className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5"
                     aria-label="章节回顾"
                   >
                     <div className="rounded-[12px] border border-[#d39a70]/55 bg-[#06131d]/82 p-4 shadow-[inset_0_0_24px_rgba(217,151,105,0.05)]">
@@ -3122,6 +3146,7 @@ function PlayContent() {
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                       waitUxPrimaryLine={waitUxPrimaryLine}
                       waitUxSecondaryLine={waitUxSecondaryLine}
+                      fixedBottomSpace={optionsExpanded ? "expanded" : "default"}
                     />
                   </>
                 )}
@@ -3291,7 +3316,7 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
   }, [isHydrated, isGameStarted, router]);
 
   return (
-    <div className="relative min-h-[100dvh]">
+    <div className="relative min-h-[100svh] bg-[#03101a]">
       {isHydrated && isGameStarted ? <PlayContent /> : null}
       {!isHydrated && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#0f172a]/65 backdrop-blur-xl">

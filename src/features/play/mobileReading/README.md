@@ -8,11 +8,14 @@ orchestrator for those business flows and passes only the required props into th
 
 ## Boundaries
 
-- `MobileReadingShell` provides the `100dvh` reading surface and root `data-testid`. On desktop it
-  centers a phone-width shell instead of stretching the reading UI edge-to-edge.
+- `MobileReadingShell` provides the document-scrolling reading surface and root `data-testid`. On
+  desktop it centers a phone-width shell instead of stretching the reading UI edge-to-edge. It also
+  toggles the `vc-play-reading-page` class on `html` / `body` so the browser safe areas inherit the
+  same dark background without locking document scrolling.
 - `MobileReadingHeader` owns the brand/chapter/audio row.
-- `MobileStoryViewport` wraps the scrollable story area that still renders through
-  `PlayStoryScroll`.
+- `MobileStoryViewport` wraps the story area that still renders through `PlayStoryScroll`. It must
+  not become the primary vertical scroll container; `/play` relies on document/window scrolling so
+  mobile browser address bars can collapse naturally.
 - `MobileActionDock` owns the bottom input pill and uses `useMobileActionDock` for local UI
   state such as submit flash, helper text, and talent button labels.
 - `MobileCharacterPanel` owns the mobile character tab: identity, originium balance, location,

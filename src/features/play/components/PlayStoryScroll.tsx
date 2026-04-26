@@ -162,6 +162,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   waitUxPrimaryLine,
   waitUxSecondaryLine,
   streamStalledHintOn,
+  fixedBottomSpace = "default",
   children,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -191,18 +192,29 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   waitUxPrimaryLine?: string;
   waitUxSecondaryLine?: string | null;
   streamStalledHintOn?: boolean;
+  fixedBottomSpace?: "default" | "expanded";
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
   const conflictFeedback = useGameStore((s) => selectTurnResultState(s).conflictTurnFeedback);
   const showConflictWhisper = getClientConflictFeedbackV1Enabled() && Boolean(conflictFeedback) && !streamOn;
+  const bottomSpaceVar =
+    fixedBottomSpace === "expanded"
+      ? "--vc-mobile-fixed-bottom-space-expanded"
+      : "--vc-mobile-fixed-bottom-space";
 
   return (
     <div
       ref={scrollRef}
       onScroll={onScrollContainer}
-      className="touch-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain px-6 pb-4 pt-6 md:px-8 md:py-7"
-      style={{ overflowAnchor: "auto", WebkitOverflowScrolling: "touch" } as CSSProperties}
+      data-testid="play-story-document"
+      className="px-6 pt-6 md:px-8 md:pt-7"
+      style={
+        {
+          overflowAnchor: "auto",
+          paddingBottom: `calc(var(${bottomSpaceVar}) + env(safe-area-inset-bottom))`,
+        } as CSSProperties
+      }
     >
       <div className="space-y-7">
         {embeddedOpeningContent ? (

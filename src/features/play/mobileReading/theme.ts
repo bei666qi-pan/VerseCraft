@@ -49,7 +49,7 @@ export const mobileReadingTokens = {
   },
   layout: {
     maxShellWidth: "480px",
-    minViewportHeight: "100dvh",
+    minViewportHeight: "100svh",
   },
   typography: {
     serifClassName: "vc-reading-serif",
@@ -61,13 +61,13 @@ export type MobileReadingTokens = typeof mobileReadingTokens;
 
 export const mobileReadingTheme = {
   shellFrame:
-    "flex h-[100dvh] min-h-[100dvh] w-full justify-center overflow-hidden bg-[#03101a] overscroll-none",
+    "flex min-h-[100svh] w-full justify-center overflow-x-hidden bg-[#03101a]",
   shell:
-    "vc-reading-surface relative flex h-[100dvh] min-h-0 w-full max-w-[480px] flex-col overflow-hidden text-[#e7bb8f] shadow-[0_0_80px_rgba(0,0,0,0.32)] transition-all duration-1000 md:border-x md:border-[#d39a70]/14",
-  shellBody: "relative isolate flex min-h-0 flex-1 flex-col overflow-hidden",
+    "vc-reading-surface relative flex min-h-[100svh] w-full max-w-[480px] flex-col overflow-x-hidden text-[#e7bb8f] shadow-[0_0_80px_rgba(0,0,0,0.32)] transition-all duration-1000 md:border-x md:border-[#d39a70]/14",
+  shellBody: "relative isolate min-h-[100svh] overflow-visible",
 
   header:
-    "shrink-0 border-b border-[#b98563]/15 bg-[#03101a]/95 px-4 pb-3 pt-[max(1.15rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
+    "sticky top-0 z-40 border-b border-[#b98563]/15 bg-[#03101a]/95 px-4 pb-3 pt-[max(1.15rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)] backdrop-blur-[10px]",
   headerRow: "flex min-h-[62px] items-center justify-between gap-2.5",
   headerBrand: "flex min-w-0 items-center gap-2.5 vc-reading-serif",
   brandWordmark:
@@ -81,9 +81,10 @@ export const mobileReadingTheme = {
 
   iconButton:
     "flex shrink-0 items-center justify-center rounded-full border border-[#d99b6f]/75 bg-[#091722] text-[#efb17f] shadow-[inset_0_0_12px_rgba(217,151,105,0.08)] transition disabled:cursor-not-allowed disabled:opacity-45",
-  storyViewport: "relative flex min-h-0 flex-1 flex-col overflow-hidden",
+  storyViewport: "relative flex flex-col",
 
-  actionDock: "shrink-0 bg-[#03101a] px-4 pb-3 pt-3",
+  actionDock:
+    "fixed bottom-[var(--vc-mobile-bottom-nav-height)] left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 bg-[#03101a]/96 px-4 pb-3 pt-3 backdrop-blur-[10px]",
   actionDockPill:
     "flex h-[64px] items-center gap-2 rounded-full border border-[#d79a6f]/75 bg-[#08141e]/95 px-3 shadow-[0_0_22px_rgba(221,151,96,0.2),inset_0_0_18px_rgba(221,151,96,0.06)]",
   talentButton:
@@ -100,9 +101,9 @@ export const mobileReadingTheme = {
   sendIcon: "ml-1 h-7 w-7",
 
   optionsDropdown:
-    "mx-4 mb-3 shrink-0 overflow-hidden rounded-[8px] border border-[#c4936d]/60 bg-[#0a1722]/96 shadow-[0_12px_34px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(236,181,137,0.06)]",
+    "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-action-dock-height)+0.5rem)] left-1/2 z-40 w-[calc(100%-2rem)] max-w-[448px] -translate-x-1/2 overflow-hidden rounded-[8px] border border-[#c4936d]/60 bg-[#0a1722]/96 shadow-[0_12px_34px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(236,181,137,0.06)]",
   optionsEmptyState:
-    "mx-4 mb-3 shrink-0 rounded-[8px] border border-[#c4936d]/50 bg-[#0a1722]/96 px-6 py-5 vc-reading-serif text-[18px] leading-normal text-[#d6a07b] shadow-[0_12px_34px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(236,181,137,0.05)]",
+    "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-action-dock-height)+0.5rem)] left-1/2 z-40 w-[calc(100%-2rem)] max-w-[448px] -translate-x-1/2 rounded-[8px] border border-[#c4936d]/50 bg-[#0a1722]/96 px-6 py-5 vc-reading-serif text-[18px] leading-normal text-[#d6a07b] shadow-[0_12px_34px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(236,181,137,0.05)]",
   optionRow:
     "flex min-h-[66px] w-full items-center justify-between gap-4 border-[#38505d]/55 px-6 text-left transition disabled:cursor-not-allowed disabled:opacity-70",
   optionRowDivider: "border-b",
@@ -117,7 +118,7 @@ export const mobileReadingTheme = {
   optionChevronHidden: "opacity-0",
 
   bottomNav:
-    "shrink-0 rounded-t-[28px] border border-b-0 border-[#d39a70]/18 bg-[#03101a]/95 px-5 pb-[max(1.2rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(233,177,132,0.1)]",
+    "fixed bottom-0 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#d39a70]/18 bg-[#03101a]/95 px-5 pb-[max(1.2rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(233,177,132,0.1)] backdrop-blur-[10px]",
   bottomNavGrid: "grid grid-cols-4 items-end gap-1",
   bottomNavItem:
     "relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-none py-1 text-[#d6a07b] transition active:scale-95",

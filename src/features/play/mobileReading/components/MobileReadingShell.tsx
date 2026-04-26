@@ -1,9 +1,21 @@
 "use client";
 
+import { useEffect } from "react";
 import { mobileReadingTheme } from "../theme";
 import type { MobileReadingShellProps } from "../types";
 
 export function MobileReadingShell({ children, hitEffectActive = false }: MobileReadingShellProps) {
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.classList.add("vc-play-reading-page");
+    body.classList.add("vc-play-reading-page");
+    return () => {
+      html.classList.remove("vc-play-reading-page");
+      body.classList.remove("vc-play-reading-page");
+    };
+  }, []);
+
   return (
     <main className={mobileReadingTheme.shellFrame}>
       <section data-testid="mobile-reading-shell" className={mobileReadingTheme.shell}>
