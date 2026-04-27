@@ -74,6 +74,28 @@
 - `SECURITY_TEMP_BLOCK_SECONDS=600`
 - 安全审核仅使用本地规则（无需第三方安全厂商密钥）
 
+### 预览站 `preview.versecraft.cn`
+
+预览站使用独立 Coolify 应用，从 Gitee `preview` 分支拉取并部署，端口与健康检查保持不变：
+
+- Port: `3000`
+- Health Check: `GET /api/health`
+
+预览站必须使用独立的数据库、Redis、Auth/Admin 密钥和 AI Key，不得复用生产值。建议额外配置：
+
+- `ENVIRONMENT_NAME=preview`
+- `APP_URL=https://preview.versecraft.cn`
+- `NEXT_PUBLIC_APP_URL=https://preview.versecraft.cn`
+- `PREVIEW_ACCESS_ENABLED=true`
+- `PREVIEW_ACCESS_HOSTS=preview.versecraft.cn`
+- `PREVIEW_ACCESS_PASSWORD=<preview access password>`
+- `PREVIEW_ACCESS_COOKIE_SECRET=<long random preview cookie secret>`
+- `PREVIEW_ACCESS_COOKIE_NAME=vc_preview_access`
+- `PRODUCTION_DATABASE_URL_FINGERPRINT=<optional production database sha256>`
+- `PREVIEW_DATABASE_URL_FINGERPRINT=<optional preview database sha256>`
+
+预览站访问门禁不会保护 `/api/health`，便于 Coolify 健康检查；其他 API 在未授权时会返回 `401`，不会进入 AI 主链路。
+
 ### 可选：接入外部文本审核（百度文本审核/司南能力）作为风险信号
 如果需要将外部文本审核能力纳入“风险信号之一”（但不作为唯一裁判），可在 Coolify 配置以下环境变量：
 

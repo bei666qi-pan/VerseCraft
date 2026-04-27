@@ -2,6 +2,7 @@
 import "server-only";
 
 import { envBoolean, envNumber, envRaw, envRawFirst } from "@/lib/config/envRaw";
+import { assertPreviewEnvironmentSafe } from "@/lib/config/previewGuards";
 import {
   EnvValidationError,
   normalizeDatabaseUrl,
@@ -53,6 +54,7 @@ function loadServerConfig(): ServerConfig {
   const nodeEnv = envRaw("NODE_ENV") ?? "development";
   const databaseUrl = normalizeDatabaseUrl(requireNonEmpty("DATABASE_URL"));
   validatePostgresDatabaseUrl(databaseUrl);
+  assertPreviewEnvironmentSafe(databaseUrl);
 
   const authSecret = requireNonEmpty("AUTH_SECRET");
   validateAuthSecretLength(authSecret);

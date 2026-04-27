@@ -9,7 +9,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { loadVerseCraftEnvFilesOnce } = await import("@/lib/config/loadVerseCraftEnv");
     loadVerseCraftEnvFilesOnce();
-    await import("@/lib/config/serverConfig");
+    const { assertServerConfigLoaded } = await import("@/lib/config/serverConfig");
+    assertServerConfigLoaded();
     // Coolify: `schema_v1` may be marked applied before analytics_events existed; migrate.js also reconciles on boot.
     try {
       const { ensureRuntimeSchema } = await import("@/db/ensureSchema");

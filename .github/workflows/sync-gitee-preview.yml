@@ -1,0 +1,58 @@
+name: Sync Gitee Preview
+
+on:
+  push:
+    branches: [preview]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview
+        uses: actions/checkout@v4
+        with:
+          ref: preview
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add Gitee remote
+        env:
+          GITEE_REPO_URL: ${{ secrets.GITEE_REPO_URL }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GITEE_REPO_URL}" ] || [ -z "${GITEE_TOKEN}" ]; then
+            echo "Missing GITEE_REPO_URL or GITEE_TOKEN."
+            exit 1
+          fi
+
+          case "${GITEE_REPO_URL}" in
+            https://*) repo_without_scheme="${GITEE_REPO_URL#https://}" ;;
+            *) echo "GITEE_REPO_URL must start with https://"; exit 1 ;;
+          esac
+
+          git remote add gitee "https://oauth2:${GITEE_TOKEN}@${repo_without_scheme}"
+
+      - name: Push preview branch to Gitee
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags gitee +refs/heads/preview:refs/remotes/gitee/preview || true
+          expected="$(git rev-parse --verify refs/remotes/gitee/preview 2>/dev/null || true)"
+
+          if [ -n "${expected}" ]; then
+            git push gitee HEAD:refs/heads/preview --force-with-lease=refs/heads/preview:"${expected}"
+          else
+            git push gitee HEAD:refs/heads/preview
+          fi
+
+          echo "Gitee preview branch sync completed."
