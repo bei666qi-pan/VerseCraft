@@ -195,7 +195,7 @@ test.describe("mobile settings UI", () => {
     const mute = page.getByTestId("settings-mute-button");
     const initialMuteLabel = await mute.getAttribute("aria-label");
     await mute.click();
-    await expect(mute).toHaveAttribute("aria-label", initialMuteLabel === "静音" ? "取消静音" : "静音");
+    await expect(mute).toHaveAttribute("aria-label", initialMuteLabel === "关闭声音" ? "开启声音" : "关闭声音");
 
     await page.getByTestId("open-game-guide-button").click();
     await expect(page.getByTestId("game-guide-modal")).toBeVisible();
@@ -210,7 +210,7 @@ test.describe("mobile settings UI", () => {
     await expect(page.locator('[data-testid="chapter-switch-item"][data-chapter-id="chapter-2"]')).toHaveAttribute("aria-current", "page");
     await page.getByTestId("chapter-switch-modal").getByRole("button", { name: "关闭", exact: true }).click();
 
-    await page.getByTestId("reading-preference-textSize").getByRole("button", { name: "大", exact: true }).click();
+    await page.getByTestId("reading-preference-textSize").getByRole("button", { name: "偏大", exact: true }).click();
     await page.getByTestId("reading-preference-lineHeight").getByRole("button", { name: "宽松", exact: true }).click();
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();

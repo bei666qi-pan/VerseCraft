@@ -35,7 +35,7 @@ function DockButton({ item }: { item: DockItem }) {
         className={`${mobileReadingTheme.bottomNavIcon} ${
           item.active ? mobileReadingTheme.bottomNavIconActive : ""
         }`}
-        strokeWidth={1.65}
+        strokeWidth={1.85}
       />
       <span className={mobileReadingTheme.bottomNavLabel}>{item.label}</span>
     </button>

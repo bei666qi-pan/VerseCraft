@@ -36,7 +36,7 @@ export function buildSettingsChapterItems(chapterState: ChapterState): SettingsC
             : "locked";
       return {
         id: definition.id,
-        title: CHAPTER_DISPLAY_TITLES[definition.id] ?? `第${definition.order}章·${definition.title}`,
+        title: CHAPTER_DISPLAY_TITLES[definition.id] ?? `第 ${definition.order} 章·${definition.title}`,
         status,
         statusLabel:
           status === "current"
@@ -46,7 +46,7 @@ export function buildSettingsChapterItems(chapterState: ChapterState): SettingsC
               : status === "unlocked"
                 ? "已解锁"
                 : "未解锁",
-        actionLabel: status === "current" ? "当前" : status === "locked" ? "锁定" : "›",
+        actionLabel: status === "current" ? "当前" : status === "locked" ? "锁定" : "进入",
         selectable: status === "completed" || (status === "unlocked" && definition.id === chapterState.activeChapterId),
       };
     });

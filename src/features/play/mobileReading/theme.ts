@@ -67,17 +67,17 @@ export const mobileReadingTheme = {
   shellBody: "relative isolate min-h-[100svh] overflow-visible",
 
   header:
-    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#b98563]/15 bg-[#03101a]/95 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)] backdrop-blur-[10px] min-[420px]:px-6",
-  headerRow: "flex h-full items-center justify-between gap-2.5",
-  headerBrand: "flex min-w-0 items-center gap-2.5 vc-reading-serif",
+    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#7b5a43]/35 bg-[#03101a]/96 px-5 pb-0 pt-[max(0.65rem,env(safe-area-inset-top))] text-[#f2c79d] shadow-[0_10px_24px_rgba(0,0,0,0.18)] backdrop-blur-[10px] min-[420px]:px-6",
+  headerRow: "flex h-full items-center justify-between gap-3",
+  headerBrand: "flex min-w-0 items-center gap-3 vc-reading-serif",
   brandWordmark:
-    "whitespace-nowrap text-[27px] leading-none text-[#f1b586] drop-shadow-[0_0_10px_rgba(219,148,94,0.3)] min-[420px]:text-[31px]",
-  brandMark: "mt-1 h-5 w-5 shrink-0 text-[#d89b6c] min-[420px]:h-6 min-[420px]:w-6",
-  brandDivider: "h-10 w-px shrink-0 bg-[#d4a076]/55 min-[420px]:h-12",
-  chapterTitle: "shrink-0 whitespace-nowrap text-[18px] leading-none text-[#e5bd93] min-[420px]:text-[24px]",
+    "whitespace-nowrap text-[32px] leading-none text-[#f2b179] drop-shadow-[0_0_12px_rgba(219,148,94,0.32)] min-[420px]:text-[42px]",
+  brandMark: "mt-1 h-6 w-6 shrink-0 text-[#e0a061] min-[420px]:h-7 min-[420px]:w-7",
+  brandDivider: "h-12 w-px shrink-0 bg-[#d99a61]/70 min-[420px]:h-[4.6rem]",
+  chapterTitle: "shrink-0 whitespace-nowrap text-[24px] leading-none text-[#f3b174] min-[420px]:text-[34px]",
   audioButton:
-    "flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full border border-[#d99769]/80 bg-[#07131d]/70 text-[#efb17f] shadow-[0_0_18px_rgba(217,151,105,0.2),inset_0_0_14px_rgba(217,151,105,0.08)] transition hover:bg-[#0b1924] active:scale-95",
-  audioIcon: "h-6 w-6",
+    "flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#b87343]/88 bg-[#07131d]/70 text-[#efb17f] shadow-[0_0_18px_rgba(217,151,105,0.2),inset_0_0_14px_rgba(217,151,105,0.08)] transition hover:bg-[#0b1924] active:scale-95 min-[420px]:h-[70px] min-[420px]:w-[70px]",
+  audioIcon: "h-7 w-7 min-[420px]:h-9 min-[420px]:w-9",
 
   iconButton:
     "flex shrink-0 items-center justify-center rounded-full border border-[#d99b6f]/75 bg-[#091722] text-[#efb17f] shadow-[inset_0_0_12px_rgba(217,151,105,0.08)] transition disabled:cursor-not-allowed disabled:opacity-45",
@@ -118,16 +118,16 @@ export const mobileReadingTheme = {
   optionChevronHidden: "opacity-0",
 
   bottomNav:
-    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#9a5b37]/48 bg-[#04111a]/88 px-8 pb-[max(0.55rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_38px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(220,142,79,0.12)] backdrop-blur-[10px] min-[420px]:px-10 min-[420px]:pt-4",
+    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[30px] border border-b-0 border-[#8b5a38]/62 bg-[#04111a]/92 px-8 pb-[max(0.55rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_38px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(220,142,79,0.14)] backdrop-blur-[10px] min-[420px]:rounded-t-[36px] min-[420px]:px-10 min-[420px]:pt-4",
   bottomNavGrid: "grid h-full grid-cols-4 items-end gap-1",
   bottomNavItem:
-    "relative flex h-full min-w-0 flex-col items-center justify-center gap-1 rounded-none text-[#d9986c] transition active:scale-95",
-  bottomNavItemActive: "text-[#ffbf79]",
+    "relative flex h-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-none text-[#d9986c] transition active:scale-95",
+  bottomNavItemActive: "text-[#ffc17f]",
   bottomNavItemInactive: "hover:text-[#efb17f]",
   bottomNavItemDisabled: "cursor-default",
   bottomNavActiveGlow:
-    "pointer-events-none absolute -bottom-4 h-20 w-24 rounded-full bg-[#d8863d]/25 blur-2xl",
-  bottomNavIcon: "relative z-10 h-8 w-8 min-[420px]:h-10 min-[420px]:w-10",
+    "pointer-events-none absolute -bottom-4 h-20 w-24 rounded-full bg-[#d8863d]/28 blur-2xl",
+  bottomNavIcon: "relative z-10 h-9 w-9 min-[420px]:h-11 min-[420px]:w-11",
   bottomNavIconActive: "drop-shadow-[0_0_14px_rgba(255,184,106,0.86)]",
-  bottomNavLabel: "relative z-10 vc-reading-serif text-[17px] leading-none min-[420px]:text-[20px]",
+  bottomNavLabel: "relative z-10 vc-reading-serif text-[18px] leading-none min-[420px]:text-[24px]",
 } as const;

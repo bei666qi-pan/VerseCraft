@@ -6,7 +6,7 @@ function OrnamentLine() {
   return (
     <div className="flex items-center gap-2 text-[#c97843]" aria-hidden>
       <span className="h-px flex-1 bg-[#a85d36]/80" />
-      <span className="text-[18px] leading-none">◇</span>
+      <span className="text-[14px] leading-none">◇</span>
       <span className="h-px flex-1 bg-[#a85d36]/80" />
     </div>
   );
@@ -56,7 +56,7 @@ export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () =
               ))}
             </div>
             <div className="mt-4 text-center text-[#c97843]" aria-hidden>
-              ˅
+              ◆
             </div>
           </div>
           <div className="mx-auto mt-5 w-[58%]">

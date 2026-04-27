@@ -16,7 +16,7 @@ export const GAME_GUIDE_SECTIONS: readonly GameGuideSection[] = [
     id: "objective",
     index: "02",
     title: "你的目标",
-    body: "当前世界为「序章·暗月」。你需要在异常公寓中活下来，理解规则，收集线索，处理人物关系，并寻找离开的可能。",
+    body: "当前世界为“序章·暗月”。你需要在异常公寓中活下来，理解规则，收集线索，处理人物关系，并寻找离开的可能。",
   },
   {
     id: "how-to-act",

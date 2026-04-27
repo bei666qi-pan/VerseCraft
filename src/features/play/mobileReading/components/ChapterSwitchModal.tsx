@@ -7,7 +7,7 @@ function OrnamentLine({ className = "" }: { className?: string }) {
   return (
     <div className={`flex items-center gap-2 text-[#c97843] ${className}`} aria-hidden>
       <span className="h-px flex-1 bg-[#9f5d35]/80" />
-      <span className="text-[17px] leading-none">◇</span>
+      <span className="text-[14px] leading-none">◇</span>
       <span className="h-px flex-1 bg-[#9f5d35]/80" />
     </div>
   );

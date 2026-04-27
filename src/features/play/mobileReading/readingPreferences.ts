@@ -24,11 +24,11 @@ export const DEFAULT_READING_PREFERENCES: ReadingPreferences = {
 export const READING_PREFERENCE_GROUPS = [
   {
     key: "textSize",
-    label: "文字大小",
+    label: "字体",
     options: [
-      { value: "small", label: "小" },
+      { value: "small", label: "偏小" },
       { value: "medium", label: "标准" },
-      { value: "large", label: "大" },
+      { value: "large", label: "偏大" },
     ],
   },
   {
