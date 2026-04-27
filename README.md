@@ -116,7 +116,7 @@ pnpm install
 pnpm dev
 ```
 
-Codex Browser Use 依赖 Node REPL 解析到合格 Node 运行时；若 PATH 中默认 `node.exe` 低于 `22.22.0`，请设置 `NODE_REPL_NODE_PATH` 指向合格的 Node 可执行文件。
+Codex Browser Use 依赖 Node REPL 解析到合格 Node 运行时；若 PATH 中默认 `node.exe` 低于 `22.22.0`，请设置 `NODE_REPL_NODE_PATH` 指向合格的 Node 可执行文件。Windows 本机可使用 `D:\node-v22.22.2\node.exe`；调整用户环境变量后如果 Browser Use 仍解析旧 Node，请重启 Codex app。
 
 先把 `.env.example` 复制为 `.env.local` 并按模板填好配置。默认会在 `http://localhost:666` 启动，进入「铸造角色」后就可以直接开局。
 

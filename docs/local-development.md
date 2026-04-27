@@ -31,6 +31,7 @@ pnpm test:unit
 - **登录/跳转异常**：将 `AUTH_URL` / `NEXTAUTH_URL` 设为当前浏览器地址（含端口 666），避免仍指向 `:3000`。
 - **VPN / 代理（如 Clash）**：`next dev` 可能打印 `Network: http://198.18.x.x:666`。若必须用该地址访问，在 `.env.local` 中设置 `NEXT_DEV_ALLOWED_ORIGINS`（逗号分隔主机名，勿含端口），与 `next.config.ts` 中 `allowedDevOrigins` 扩展一致。
 - **Windows + Playwright**：`webServer` 已使用 `pnpm dev`，勿依赖 `PORT=... pnpm dev` 类 Unix 写法。
+- **Codex Browser Use / node_repl**：必须解析到 Node `>=22.22.0`。若 `where node` 优先命中旧版 `D:\node\node.exe`，请将用户环境变量 `NODE_REPL_NODE_PATH` 指向 `D:\node-v22.22.2\node.exe` 或其他合格 Node；改完后重启 Codex app，确保 Browser Use 的 MCP 进程继承新环境。
 
 ## 必填变量
 
