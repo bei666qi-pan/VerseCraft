@@ -27,17 +27,20 @@ jobs:
         env:
           GITEE_REPO_URL: ${{ secrets.GITEE_REPO_URL }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          DEFAULT_GITEE_REPO_URL: https://gitee.com/bei-qi-luo/VerseCraft.git
         run: |
           set -euo pipefail
 
-          if [ -z "${GITEE_REPO_URL}" ] || [ -z "${GITEE_TOKEN}" ]; then
-            echo "Missing GITEE_REPO_URL or GITEE_TOKEN."
+          repo_url="${GITEE_REPO_URL:-${DEFAULT_GITEE_REPO_URL}}"
+
+          if [ -z "${repo_url}" ] || [ -z "${GITEE_TOKEN}" ]; then
+            echo "Missing GITEE_TOKEN or Gitee repository URL."
             exit 1
           fi
 
-          case "${GITEE_REPO_URL}" in
-            https://*) repo_without_scheme="${GITEE_REPO_URL#https://}" ;;
-            *) echo "GITEE_REPO_URL must start with https://"; exit 1 ;;
+          case "${repo_url}" in
+            https://*) repo_without_scheme="${repo_url#https://}" ;;
+            *) echo "Gitee repository URL must start with https://"; exit 1 ;;
           esac
 
           git remote add gitee "https://oauth2:${GITEE_TOKEN}@${repo_without_scheme}"
