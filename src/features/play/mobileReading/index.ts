@@ -19,25 +19,36 @@ export {
 } from "./icons";
 export { mobileReadingTheme, mobileReadingTokens } from "./theme";
 export {
+  ALL_CODEX_CATALOG_SLOTS,
   B1_NPC_CODEX_SLOTS,
   B1_NPC_CODEX_TOTAL,
+  type CodexCatalogSlotType,
   type CodexCatalogSlot,
 } from "./codexCatalog";
 export {
   buildMobileCodexCardModels,
   buildMobileCodexDetail,
+  buildMobileFloorCodexCardModels,
   buildMobileCodexIntro,
   buildMobileCodexObservation,
   buildMobileCodexRelationship,
+  formatMobileCodexFloorLabel,
   formatMobileCodexLocation,
   formatMobileCodexName,
+  getMobileCodexSlotsForFloor,
   getMobileCodexIdentifiedCount,
   isMobileCodexSlotIdentified,
+  resolveMobileCodexCurrentFloor,
   resolveMobileCodexEntryLocation,
+  resolveMobileCodexFloorId,
   resolveMobileCodexInitialSelection,
+  resolveMobileCodexSlotEffectiveFloor,
   shouldAppendMobileCodexMoreCard,
   type MobileCodexCardModel,
+  type MobileCodexDynamicNpcStates,
   type MobileCodexDetail,
+  type MobileCodexFloorOptions,
+  type MobileCodexMainThreatByFloor,
 } from "./codexFormat";
 export {
   CODEX_PORTRAITS,

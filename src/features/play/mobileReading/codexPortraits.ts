@@ -1,13 +1,29 @@
+import { ANOMALIES } from "@/lib/registry/anomalies";
+import { NPCS } from "@/lib/registry/npcs";
+
 export type CodexPortrait = {
   src: string;
   alt: string;
   objectPosition?: string;
 };
 
-export const CODEX_PORTRAITS: Partial<Record<string, CodexPortrait>> = {
-  // 后续补图示例：
-  // "N-008": { src: "/images/codex/npc/N-008.webp", alt: "电工老刘" },
-};
+const PORTRAIT_IDS = new Set<string>([
+  ...NPCS.map((npc) => npc.id),
+  ...ANOMALIES.map((anomaly) => anomaly.id),
+]);
+
+export const CODEX_PORTRAITS: Partial<Record<string, CodexPortrait>> = Object.fromEntries(
+  [...NPCS, ...ANOMALIES]
+    .filter((entry) => PORTRAIT_IDS.has(entry.id))
+    .map((entry) => [
+      entry.id,
+      {
+        src: `/assets/npc-avatars/${entry.id}.png`,
+        alt: entry.name,
+        objectPosition: "center top",
+      },
+    ])
+) as Partial<Record<string, CodexPortrait>>;
 
 export function resolveCodexPortrait(
   id: string,

@@ -256,6 +256,8 @@ function PlayContent() {
   const originium = useGameStore((s) => s.originium ?? 0);
   const addOriginium = useGameStore((s) => s.addOriginium);
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
+  const dynamicNpcStates = useGameStore((s) => s.dynamicNpcStates ?? {});
+  const mainThreatByFloor = useGameStore((s) => s.mainThreatByFloor ?? {});
   const upgradeAttribute = useGameStore((s) => s.upgradeAttribute);
   const tasks = useGameStore((s) => s.tasks ?? []);
   const addTask = useGameStore((s) => s.addTask);
@@ -3088,7 +3090,12 @@ function PlayContent() {
               }}
             />
           ) : isCodexPanelActive ? (
-            <MobileCodexPanel codex={codex} />
+            <MobileCodexPanel
+              codex={codex}
+              dynamicNpcStates={dynamicNpcStates}
+              mainThreatByFloor={mainThreatByFloor}
+              playerLocation={playerLocation}
+            />
           ) : isSettingsPanelActive ? (
             <MobileSettingsPanel
               accountName={accountName}

@@ -7,6 +7,10 @@ import type {
   ReadingPreferenceKey,
   ReadingPreferences,
 } from "./readingPreferences";
+import type {
+  MobileCodexDynamicNpcStates,
+  MobileCodexMainThreatByFloor,
+} from "./codexFormat";
 
 export type MobileReadingShellProps = {
   children: ReactNode;
@@ -79,6 +83,9 @@ export type MobileCharacterPanelProps = {
 
 export type MobileCodexPanelProps = {
   codex: Record<string, CodexEntry>;
+  dynamicNpcStates?: MobileCodexDynamicNpcStates;
+  mainThreatByFloor?: MobileCodexMainThreatByFloor;
+  playerLocation: string;
 };
 
 export type MobileSettingsPanelProps = {

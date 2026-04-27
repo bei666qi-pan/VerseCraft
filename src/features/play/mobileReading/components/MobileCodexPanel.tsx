@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  B1_NPC_CODEX_SLOTS,
-  B1_NPC_CODEX_TOTAL,
-  type CodexCatalogSlot,
-} from "../codexCatalog";
+import { type CodexCatalogSlot } from "../codexCatalog";
 import {
   buildMobileCodexCardModels,
   buildMobileCodexDetail,
+  formatMobileCodexFloorLabel,
+  getMobileCodexSlotsForFloor,
   getMobileCodexIdentifiedCount,
+  resolveMobileCodexCurrentFloor,
   resolveMobileCodexInitialSelection,
   type MobileCodexCardModel,
 } from "../codexFormat";
@@ -137,22 +136,45 @@ function DetailBlock({
   );
 }
 
-export function MobileCodexPanel({ codex }: MobileCodexPanelProps) {
-  const identifiedCount = getMobileCodexIdentifiedCount(codex);
-  const cards = useMemo(() => buildMobileCodexCardModels(codex), [codex]);
-  const [selectedId, setSelectedId] = useState<string | null>(() => resolveMobileCodexInitialSelection(codex));
+export function MobileCodexPanel({
+  codex,
+  dynamicNpcStates,
+  mainThreatByFloor,
+  playerLocation,
+}: MobileCodexPanelProps) {
+  const currentFloor = useMemo(() => resolveMobileCodexCurrentFloor(playerLocation), [playerLocation]);
+  const floorLabel = formatMobileCodexFloorLabel(currentFloor);
+  const floorSlots = useMemo(
+    () =>
+      getMobileCodexSlotsForFloor({
+        codex,
+        dynamicNpcStates,
+        floorId: currentFloor,
+        mainThreatByFloor,
+      }),
+    [codex, currentFloor, dynamicNpcStates, mainThreatByFloor]
+  );
+  const identifiedCount = getMobileCodexIdentifiedCount(codex, floorSlots);
+  const cards = useMemo(
+    () => buildMobileCodexCardModels(codex, floorSlots, { dynamicNpcStates }),
+    [codex, dynamicNpcStates, floorSlots]
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    const next = resolveMobileCodexInitialSelection(codex);
+    const next = resolveMobileCodexInitialSelection(codex, floorSlots);
     setSelectedId((current) => {
-      if (current && B1_NPC_CODEX_SLOTS.some((slot) => slot.id === current)) return current;
+      if (current && floorSlots.some((slot) => slot.id === current)) return current;
       return next;
     });
-  }, [codex]);
+  }, [codex, floorSlots]);
 
-  const selectedSlot =
-    B1_NPC_CODEX_SLOTS.find((slot) => slot.id === selectedId) ?? B1_NPC_CODEX_SLOTS[0];
-  const detail = buildMobileCodexDetail(codex, selectedSlot);
+  const selectedSlot = floorSlots.find((slot) => slot.id === selectedId) ?? floorSlots[0] ?? null;
+  const selectedIndex = selectedSlot ? Math.max(0, floorSlots.findIndex((slot) => slot.id === selectedSlot.id)) : 0;
+  const progressWidth =
+    floorSlots.length > 0 ? Math.max(25, ((selectedIndex + 1) / floorSlots.length) * 100) : 0;
+  const detail = selectedSlot ? buildMobileCodexDetail(codex, selectedSlot, { dynamicNpcStates }) : null;
+  const introTitle = selectedSlot?.type === "anomaly" ? "异常简介" : "人物简介";
 
   return (
     <section
@@ -162,7 +184,7 @@ export function MobileCodexPanel({ codex }: MobileCodexPanelProps) {
     >
       <div className="vc-reading-serif px-1 text-[24px] font-semibold leading-none text-[#ff9850] drop-shadow-[0_0_10px_rgba(255,153,78,0.22)]">
         <span data-testid="mobile-codex-count">
-          B1层已识别人物：{identifiedCount} / {B1_NPC_CODEX_TOTAL}
+          {floorLabel} 图鉴：{identifiedCount} / {floorSlots.length}
         </span>
       </div>
 
@@ -174,63 +196,76 @@ export function MobileCodexPanel({ codex }: MobileCodexPanelProps) {
           <CodexCard
             key={card.id}
             card={card}
-            selected={card.kind === "slot" && card.id === selectedSlot.id}
+            selected={card.kind === "slot" && card.id === selectedSlot?.id}
             onSelect={(slot) => setSelectedId(slot.id)}
           />
         ))}
       </div>
 
-      <div className="mx-auto mb-5 flex h-1.5 w-36 overflow-hidden rounded-full bg-[#31404a]/60" aria-hidden>
-        <span
-          className="rounded-full bg-[#ff9850] shadow-[0_0_10px_rgba(255,152,80,0.55)]"
-          style={{ width: `${Math.max(25, ((B1_NPC_CODEX_SLOTS.findIndex((slot) => slot.id === selectedSlot.id) + 1) / B1_NPC_CODEX_TOTAL) * 100)}%` }}
-        />
-      </div>
-
-      <article
-        data-testid="mobile-codex-detail-panel"
-        className="rounded-[14px] border border-[#cc6f36]/90 bg-[#071722]/72 px-5 py-5 shadow-[inset_0_0_28px_rgba(255,156,83,0.04),0_0_22px_rgba(0,0,0,0.22)]"
-      >
-        <header className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-3">
-          <MobileReadingIcons.BrandMark className="mt-1 h-8 w-8 text-[#f29d51]" strokeWidth={1.5} />
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-              <div>
-                <h2
-                  data-testid="mobile-codex-detail-name"
-                  className="vc-reading-serif text-[32px] font-semibold leading-tight text-[#ffad58]"
-                >
-                  {detail.name}
-                </h2>
-                <p
-                  data-testid="mobile-codex-detail-location"
-                  className="vc-reading-serif mt-1 text-[22px] leading-tight text-[#d99c68]"
-                >
-                  {detail.location}
-                </p>
-              </div>
-              {detail.quote ? (
-                <p className="vc-reading-serif max-w-[13rem] text-[17px] leading-relaxed text-[#ffad58]">
-                  “{detail.quote}”
-                </p>
-              ) : null}
-            </div>
+      {floorSlots.length === 0 ? (
+        <div
+          data-testid="mobile-codex-empty"
+          className="vc-reading-serif mt-4 rounded-[14px] border border-[#9a5e3f]/70 bg-[#071722]/72 px-5 py-8 text-center text-[20px] text-[#d99c68]"
+        >
+          当前楼层暂无可记录对象
+        </div>
+      ) : (
+        <>
+          <div className="mx-auto mb-5 flex h-1.5 w-36 overflow-hidden rounded-full bg-[#31404a]/60" aria-hidden>
+            <span
+              className="rounded-full bg-[#ff9850] shadow-[0_0_10px_rgba(255,152,80,0.55)]"
+              style={{ width: `${progressWidth}%` }}
+            />
           </div>
-        </header>
 
-        <DetailDivider />
-        <DetailBlock icon="book" title="人物简介">
-          {detail.intro}
-        </DetailBlock>
-        <DetailDivider />
-        <DetailBlock icon="eye" title="我所见">
-          {detail.observation}
-        </DetailBlock>
-        <DetailDivider />
-        <DetailBlock icon="heart" title="关系印象">
-          {detail.relationship}
-        </DetailBlock>
-      </article>
+          {detail && selectedSlot ? (
+            <article
+              data-testid="mobile-codex-detail-panel"
+              className="rounded-[14px] border border-[#cc6f36]/90 bg-[#071722]/72 px-5 py-5 shadow-[inset_0_0_28px_rgba(255,156,83,0.04),0_0_22px_rgba(0,0,0,0.22)]"
+            >
+              <header className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-3">
+                <MobileReadingIcons.BrandMark className="mt-1 h-8 w-8 text-[#f29d51]" strokeWidth={1.5} />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+                    <div>
+                      <h2
+                        data-testid="mobile-codex-detail-name"
+                        className="vc-reading-serif text-[32px] font-semibold leading-tight text-[#ffad58]"
+                      >
+                        {detail.name}
+                      </h2>
+                      <p
+                        data-testid="mobile-codex-detail-location"
+                        className="vc-reading-serif mt-1 text-[22px] leading-tight text-[#d99c68]"
+                      >
+                        {detail.location}
+                      </p>
+                    </div>
+                    {detail.quote ? (
+                      <p className="vc-reading-serif max-w-[13rem] text-[17px] leading-relaxed text-[#ffad58]">
+                        “{detail.quote}”
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </header>
+
+              <DetailDivider />
+              <DetailBlock icon="book" title={introTitle}>
+                {detail.intro}
+              </DetailBlock>
+              <DetailDivider />
+              <DetailBlock icon="eye" title="我所见">
+                {detail.observation}
+              </DetailBlock>
+              <DetailDivider />
+              <DetailBlock icon="heart" title={selectedSlot.type === "anomaly" ? "应对记录" : "关系印象"}>
+                {detail.relationship}
+              </DetailBlock>
+            </article>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
