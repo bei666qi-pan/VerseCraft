@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode, SVGProps } from "react";
+import { VerseCraftLogoMark } from "@/components/VerseCraftLogo";
 
 export type MobileReadingIconProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
   size?: number | string;
@@ -75,12 +76,24 @@ function AudioOffIcon(props: MobileReadingIconProps): ReactElement {
 }
 
 function BrandMarkIcon(props: MobileReadingIconProps): ReactElement {
+  const { className, size, style, title } = props;
+  const dimensionStyle =
+    size == null
+      ? style
+      : {
+          ...style,
+          height: size,
+          width: size,
+        };
+
   return (
-    <IconSvg {...props}>
-      <path d="M5 19.3c6.8-2.7 10.8-7.2 13.3-14.7" />
-      <path d="M8.1 17.4 6.3 13l4.5 1.5-1.5-4.4 4.2 1.1-.8-4.1 3.4.6" />
-      <path d="M5.2 19.2c2-5.5 6.4-9.8 13.1-13.9" />
-    </IconSvg>
+    <VerseCraftLogoMark
+      alt={title ?? "文界工坊"}
+      className={className}
+      decorative={!title}
+      sizes={typeof size === "number" ? `${size}px` : "40px"}
+      style={dimensionStyle}
+    />
   );
 }
 

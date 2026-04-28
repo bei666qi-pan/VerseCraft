@@ -76,6 +76,76 @@
 }
 
 /* VerseCraft loading: fast, smooth, restrained (modern AI UI vibe; not a 1:1 copy). */
+@keyframes vc-logo-loader-orbit {
+  0% { transform: rotate(0deg); opacity: 0.72; }
+  42% { opacity: 0.96; }
+  100% { transform: rotate(360deg); opacity: 0.72; }
+}
+
+@keyframes vc-logo-loader-morph {
+  0%, 100% {
+    opacity: 0.78;
+    transform: rotate(-4deg) scale(0.9);
+    filter: drop-shadow(0 0 0 rgba(22, 79, 77, 0));
+  }
+  38% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1.06);
+    filter: drop-shadow(0 5px 9px rgba(22, 79, 77, 0.22));
+  }
+  68% {
+    opacity: 0.92;
+    transform: rotate(5deg) scale(0.98);
+    filter: drop-shadow(0 2px 5px rgba(22, 79, 77, 0.15));
+  }
+}
+
+.vc-logo-loader {
+  display: inline-flex;
+  width: var(--vc-logo-loader-size, 24px);
+  height: var(--vc-logo-loader-size, 24px);
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex: 0 0 auto;
+  isolation: isolate;
+}
+
+.vc-logo-loader::before {
+  content: "";
+  position: absolute;
+  inset: -14%;
+  border-radius: 999px;
+  border: 1px solid rgba(143, 164, 162, 0.24);
+  border-right-color: rgba(22, 79, 77, 0.54);
+  border-bottom-color: transparent;
+  animation: vc-logo-loader-orbit 1.75s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
+  transform-origin: center;
+}
+
+.vc-logo-loader::after {
+  content: "";
+  position: absolute;
+  inset: 11%;
+  border-radius: 999px;
+  background: rgba(47, 116, 106, 0.09);
+  filter: blur(3px);
+  opacity: 0.76;
+  z-index: -1;
+}
+
+.vc-logo-loader[data-tone="neutral"]::before {
+  border-color: rgba(148, 163, 184, 0.34);
+  border-right-color: rgba(79, 112, 106, 0.74);
+  border-bottom-color: transparent;
+}
+
+.vc-logo-loader-mark {
+  animation: vc-logo-loader-morph 1.9s cubic-bezier(0.22, 0.78, 0.26, 1) infinite;
+  transform-origin: center;
+  z-index: 1;
+}
+
 @keyframes vc-wait-rotate {
   0% { transform: rotate(0deg); }
   /* fast → slower (continuous, no “卡住”段) */

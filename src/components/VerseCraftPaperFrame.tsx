@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { VerseCraftLogoMark } from "@/components/VerseCraftLogo";
 
 const PAPER_TEXT = "text-[#164f4d]";
 const PAPER_LINE = "border-[#d8d3ca]";
@@ -39,11 +40,10 @@ export function VerseCraftPaperFrame({
 export function VerseCraftPaperMark({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`relative grid shrink-0 place-items-center rounded-full border border-[#ded9d1] bg-[#f8f5ef] ${PAPER_SHADOW} ${className}`}
+      className={`relative grid shrink-0 place-items-center rounded-full border border-[#ded9d1] bg-[#f8f5ef]/72 ${PAPER_SHADOW} ${className}`}
       aria-hidden
     >
-      <span className="h-[46%] w-[46%] rotate-45 bg-[#164f4d] shadow-[inset_2px_0_0_rgba(255,255,255,0.28)]" />
-      <span className="absolute h-[42%] w-px bg-[#f7f3ec]/80" />
+      <VerseCraftLogoMark className="h-[118%] w-[118%]" sizes="64px" />
     </span>
   );
 }

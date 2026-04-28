@@ -2,7 +2,6 @@
 
 import { memo, useMemo, type ReactNode, type RefObject } from "react";
 import type { CSSProperties } from "react";
-import Image from "next/image";
 import { getClientConflictFeedbackV1Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { useGameStore } from "@/store/useGameStore";
 import { selectTurnResultState } from "@/store/useGameStoreSelectors";
@@ -109,7 +108,7 @@ const StreamPanel = memo(function StreamPanel({
       {smoothThinking ? (
         <div className="space-y-1 py-2 transition-opacity duration-300 ease-out">
           <div className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400/90 vc-wait-breath" />
+            <VcSpinner size={28} strokeWidth={2} className="shrink-0" />
             <span className="text-sm font-medium text-[#4f706a]">{primaryThinkingLine}</span>
           </div>
           {waitUxSecondaryLine && waitUxSecondaryLine.trim().length > 0 ? (
@@ -127,7 +126,7 @@ const StreamPanel = memo(function StreamPanel({
           </div>
           {streamStalledHintOn ? (
             <div className="flex items-center gap-2 text-[12px] text-[#8b8a84]">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400/80 vc-wait-breath" />
+              <VcSpinner size={20} strokeWidth={1.5} tone="neutral" className="shrink-0" />
               内容仍在继续形成
             </div>
           ) : null}
@@ -226,7 +225,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
             />
             {openingAiBusy ? (
               <div className="mt-4 flex items-center gap-2 text-sm text-[#4f706a]">
-                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#8fa79f]" />
+                <VcSpinner size={24} strokeWidth={1.6} className="shrink-0" />
                 选项正在由主笔实时推演…
               </div>
             ) : null}
@@ -253,21 +252,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
         />
         {inputMode === "options" && isChatBusy && smoothComplete && streamOn && (
           <div className="pt-2">
-            <div className="vc-wait-breath relative h-6 w-6">
-              <VcSpinner size={24} strokeWidth={3} tone="blackblue" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-[14px] w-[14px] overflow-hidden rounded-full">
-                  <Image
-                    src="/logo.svg"
-                    alt="文界工坊"
-                    width={14}
-                    height={14}
-                    className="object-cover scale-[1.06]"
-                    priority={false}
-                  />
-                </div>
-              </div>
-            </div>
+            <VcSpinner size={32} strokeWidth={2.4} tone="blackblue" />
           </div>
         )}
 

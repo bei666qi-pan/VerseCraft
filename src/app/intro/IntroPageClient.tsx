@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { VerseCraftLogoMark } from "@/components/VerseCraftLogo";
 import {
   INTRO_BRAND,
   INTRO_CTA,
@@ -18,16 +19,7 @@ function joinClass(...classes: Array<string | false | null | undefined>) {
 }
 
 function BrandMark() {
-  return (
-    <span
-      className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center"
-      aria-hidden
-    >
-      <span className="absolute h-9 w-3 rounded-full bg-[#114c47]" />
-      <span className="absolute h-3 w-9 rounded-full bg-[#114c47]" />
-      <span className="absolute h-6 w-6 rotate-45 rounded-[2px] bg-[#114c47]" />
-    </span>
-  );
+  return <VerseCraftLogoMark className="h-9 w-9" priority sizes="36px" />;
 }
 
 function SectionRule() {

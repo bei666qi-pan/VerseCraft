@@ -172,9 +172,7 @@ export function CreateCharacterForm() {
       >
         <header className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-2 text-[#164f4d]">
-            <span className="text-[27px] leading-none" aria-hidden>
-              ✦
-            </span>
+            <VerseCraftPaperMark className="h-8 w-8 border-[#d8d3ca] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
             <span className="vc-reading-serif text-[25px] font-semibold leading-none">VerseCraft</span>
           </div>
 
