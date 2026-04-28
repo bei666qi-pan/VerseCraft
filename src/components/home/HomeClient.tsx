@@ -123,7 +123,7 @@ function FooterHaloIconButton({
       onClick={onClick}
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
-      className="h-[70px] w-[70px]"
+      className="h-[64px] w-[64px]"
     >
       <span className="text-[#164f4d]">{children}</span>
     </VerseCraftPaperCircleButton>
@@ -471,6 +471,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       hasPlayableResumeShadow,
     });
   }, [user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow]);
+  const canContinueFromHome = entryState === "guest_has_progress" || entryState === "authed_has_progress";
 
   useEffect(() => {
     if (homeViewTrackedRef.current) return;
@@ -1238,7 +1239,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     <>
       <VerseCraftPaperFrame
         dataTestId="home-paper-page"
-        contentClassName="pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]"
+        contentClassName="pb-[max(0.95rem,env(safe-area-inset-bottom))] pt-[max(1.65rem,env(safe-area-inset-top))]"
       >
         <header className="relative z-20 flex w-full items-center justify-between gap-4">
           <VerseCraftPaperBrand
@@ -1254,7 +1255,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 type="button"
                 onClick={openAuthModal}
                 aria-label="登录或注册"
-                className={`inline-flex h-14 shrink-0 items-center justify-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 px-4 vc-reading-serif text-[20px] font-semibold leading-none text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.11),inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98] ${
+                className={`inline-flex h-[58px] min-w-[152px] shrink-0 items-center justify-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 px-6 vc-reading-serif text-[21px] font-semibold leading-none text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.11),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98] ${
                   authWarn ? "ring-2 ring-red-500/70" : ""
                 }`}
               >
@@ -1264,7 +1265,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           </div>
         </header>
 
-        <div className="relative z-20 mt-2 w-full">
+        <div className="relative z-20 mt-5 w-full">
           {user ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
@@ -1300,8 +1301,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               </div>
             </div>
           ) : (
-            <div className="vc-reading-serif text-[18px] leading-relaxed text-[#164f4d]">
-              {hasLocalAnySave ? "本机留有可继续的记录。登录后可云端备份。" : "可直接以游客开始；登录可云端备份。"}
+            <div className="vc-reading-serif text-[18px] leading-[1.85] text-[#164f4d]">
+              {canContinueFromHome ? "本机留有可继续的记录。登录后可云端备份。" : "可直接以游客开始。登录后可云端备份。"}
             </div>
           )}
         </div>
@@ -1495,19 +1496,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       )}
 
       <section className="relative z-10 flex w-full flex-1 flex-col items-center text-center">
-        <div className="w-full">
-          <div className="mx-auto mt-6 max-w-2xl">
+        <div className="flex w-full flex-1 flex-col">
+          <div className="mx-auto mt-[3.9rem] max-w-2xl">
             <h1 className="vc-reading-serif text-[58px] font-semibold leading-none text-[#0f4644] sm:text-[66px]">
               文界工坊
             </h1>
-            <VerseCraftPaperDivider className="mx-auto mt-7 w-48" />
+            <VerseCraftPaperDivider className="mx-auto mt-7 w-[13.6rem]" />
             <p className="mt-12 vc-reading-serif text-[27px] font-medium leading-none text-[#164f4d]">
               锻造可能，实现梦想
             </p>
           </div>
 
-          <div className="mx-auto mt-14 w-full">
-            <div className="mx-auto flex w-full flex-col items-stretch justify-center gap-8">
+          <div className="mx-auto mt-[4.7rem] w-full">
+            <div className="mx-auto flex w-full flex-col items-stretch justify-center gap-[2.15rem]">
               {hasLoginSyncNotice ? (
                 <div className="rounded-xl border border-[#d8d3ca] bg-[#f8f5ef]/70 px-3 py-2 text-left text-xs font-medium text-[#164f4d]">
                   {homeContinueConflictHint()}
@@ -1517,6 +1518,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               <VerseCraftPaperPillButton
                 type="button"
                 data-testid="home-start-new-button"
+                className="min-h-[68px] text-[29px]"
                 onClick={() => {
                   unlockBgmOnUserGesture();
                   void trackGameplayEvent({
@@ -1535,16 +1537,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </span>
               </VerseCraftPaperPillButton>
 
-              <VerseCraftPaperPillButton
-                type="button"
-                data-testid="home-continue-button"
-                onClick={openContinuePicker}
-              >
-                <span>{(entryState === "guest_has_progress" || entryState === "authed_has_progress") ? homeContinuePrimaryCta() : "继续行动"}</span>
-                <span className="text-[#8fa4a2]" aria-hidden>
-                  →
-                </span>
-              </VerseCraftPaperPillButton>
+              {canContinueFromHome ? (
+                <VerseCraftPaperPillButton
+                  type="button"
+                  data-testid="home-continue-button"
+                  className="min-h-[68px] text-[29px]"
+                  onClick={openContinuePicker}
+                >
+                  <span>{homeContinuePrimaryCta()}</span>
+                  <span className="text-[#8fa4a2]" aria-hidden>
+                    →
+                  </span>
+                </VerseCraftPaperPillButton>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1767,10 +1772,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <VerseCraftPaperDivider className="relative z-20 mt-10" />
 
-      <footer className="relative z-20 w-full pt-8 vc-reading-serif text-[#164f4d]" style={{ paddingBottom: "max(1.2rem, env(safe-area-inset-bottom))" }}>
+      <footer className="relative z-20 w-full pt-7 vc-reading-serif text-[#164f4d]" style={{ paddingBottom: "max(0.55rem, env(safe-area-inset-bottom))" }}>
         <div className="text-xs">
           <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-2">
-            <div id="home-leaderboard" className="flex min-w-0 items-center justify-self-start">
+            <div id="home-leaderboard" className="flex min-w-0 items-center justify-self-start [&_button>div]:h-[64px] [&_button>div]:w-[64px]">
               <Leaderboard userId={user?.id} triggerPlacement="inline" defaultOpen={leaderboardAutoOpen} />
             </div>
             <div className="justify-self-center whitespace-nowrap text-center text-[16px] text-[#164f4d]">
@@ -1784,7 +1789,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           </div>
 
           <div
-            className="mt-7 flex w-full items-center justify-start gap-x-6 overflow-x-auto whitespace-nowrap text-[16px] text-[#164f4d]/88 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:justify-center sm:gap-x-4 sm:whitespace-normal sm:overflow-visible"
+            className="mt-7 flex w-full items-center justify-between gap-x-2 whitespace-nowrap text-[13px] text-[#164f4d]/88 sm:flex-wrap sm:justify-center sm:gap-x-4 sm:text-[15px]"
           >
             <Link className="hover:text-[#0f3c3a]" href="/legal/user-agreement">
               用户协议
@@ -1800,20 +1805,14 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               onClick={openFooterFeedback}
               className="hover:text-[#0f3c3a]"
             >
-              测试反馈 / 举报
+              阅读反馈 / 举报
             </button>
             <Link className="hover:text-[#0f3c3a]" href="/legal/content-policy">
               内容规范
             </Link>
-            <Link className="hover:text-[#0f3c3a]" href="/legal/ai-disclaimer">
-              AI 生成说明
-            </Link>
-            <Link className="hover:text-[#0f3c3a]" href="/legal/minors">
-              未成年人说明
-            </Link>
           </div>
 
-          <div className="mt-3 text-center text-[#164f4d]/78">
+          <div className="mt-3 text-center text-[12px] text-[#164f4d]/78">
             {(() => {
               const c = getPublicRuntimeConfig().compliance;
               const beianNumber = (c.beianNumber ?? "").trim();
