@@ -116,7 +116,7 @@ function useStatStepper(
 }
 
 const stepButtonClass =
-  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d46f35]/95 bg-[#06141f]/38 vc-reading-serif text-[27px] leading-none text-[#ff9c4d] shadow-[0_0_12px_rgba(225,105,45,0.12),inset_0_0_10px_rgba(225,105,45,0.05)] transition enabled:hover:bg-[#111e27] enabled:active:scale-90 disabled:cursor-not-allowed disabled:opacity-35";
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#c8c3ba] bg-[#f7f3ec]/90 vc-reading-serif text-[24px] leading-none text-[#164f4d] shadow-[0_10px_20px_rgba(62,72,68,0.09),inset_0_1px_0_rgba(255,255,255,0.88)] transition enabled:hover:bg-[#fbf8f3] enabled:active:scale-90 disabled:cursor-not-allowed disabled:opacity-35";
 
 export function CreateStatAllocator({
   onDecrement,
@@ -132,28 +132,28 @@ export function CreateStatAllocator({
   const stepper = useStatStepper(onIncrement, onDecrement, remaining, stats);
 
   return (
-    <div className="mt-7 divide-y divide-[#7f4b32]/72">
+    <div className="mt-4 divide-y divide-[#d8d3ca]">
       {CREATE_STAT_ORDER.map((stat) => (
         <div
           key={stat}
           data-testid={`create-stat-row-${stat}`}
-          className="grid min-h-[104px] grid-cols-[minmax(0,1fr)_9.8rem] items-center gap-3 py-4"
+          className="grid min-h-[68px] grid-cols-[minmax(0,1fr)_8.5rem] items-center gap-3 py-2.5"
         >
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <h3 className="vc-reading-serif text-[28px] font-semibold leading-none text-[#ffb767]">
+              <h3 className="vc-reading-serif text-[22px] font-semibold leading-none text-[#164f4d]">
                 {STAT_LABELS[stat]}
               </h3>
-              <span className="vc-reading-serif text-[20px] font-semibold leading-none text-[#ffb767]">
+              <span className="vc-reading-serif text-[16px] font-semibold leading-none text-[#164f4d]">
                 当前：{stats[stat]}
               </span>
             </div>
-            <p className="mt-3 whitespace-pre-line vc-reading-serif text-[18px] leading-[1.45] text-[#d98b50]">
+            <p className="mt-1.5 whitespace-pre-line vc-reading-serif text-[14px] leading-[1.22] text-[#365f5d]">
               {STAT_DESCRIPTIONS[stat]}
             </p>
           </div>
 
-          <div className="grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3">
+          <div className="grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2">
             <button
               type="button"
               data-testid={`create-stat-decrement-${stat}`}
@@ -172,7 +172,7 @@ export function CreateStatAllocator({
             </button>
             <div
               data-testid={`create-stat-value-${stat}`}
-              className="vc-reading-serif text-center text-[28px] leading-none text-[#ffb767]"
+              className="vc-reading-serif text-center text-[26px] leading-none text-[#164f4d]"
             >
               {stats[stat]}
             </div>

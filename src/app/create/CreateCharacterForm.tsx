@@ -6,9 +6,13 @@ import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { validateCharacterProfile } from "@/app/actions/characterProfile";
-import { VerseCraftDarkPageFrame } from "@/components/VerseCraftDarkPageFrame";
-import { VerseCraftOrnament, VerseCraftSectionTitle } from "@/components/VerseCraftOrnament";
-import { MobileReadingIcons } from "@/features/play/mobileReading/icons";
+import {
+  VerseCraftPaperDivider,
+  VerseCraftPaperFrame,
+  VerseCraftPaperMark,
+  VerseCraftPaperPillButton,
+  VerseCraftPaperSectionTitle,
+} from "@/components/VerseCraftPaperFrame";
 import { useGameStore, type EchoTalent } from "@/store/useGameStore";
 import { CreateStatAllocator } from "./CreateStatAllocator";
 import { CreateTalentGrid } from "./CreateTalentGrid";
@@ -24,7 +28,7 @@ import {
 } from "./constants";
 
 const inputClass =
-  "h-12 w-full border-0 border-b border-[#c46d3d]/90 bg-transparent px-1 vc-reading-serif text-[22px] leading-none text-[#f0a061] outline-none transition placeholder:text-[#dc8c50]/90 focus:border-[#ffb767] focus:text-[#ffb767]";
+  "h-9 w-full border-0 border-b border-[#bdb8af] bg-transparent px-1 vc-reading-serif text-[18px] leading-none text-[#164f4d] outline-none transition placeholder:text-[17px] placeholder:text-[#365f5d]/78 focus:border-[#164f4d]";
 
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!;
@@ -157,21 +161,21 @@ export function CreateCharacterForm() {
   }
 
   return (
-    <VerseCraftDarkPageFrame contentClassName="pb-[calc(1.2rem+env(safe-area-inset-bottom))] pt-[max(1.3rem,env(safe-area-inset-top))]">
+    <VerseCraftPaperFrame contentClassName="pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">
       <form
         data-testid="create-character-page"
-        className="mx-auto flex min-h-[100dvh] w-full flex-col"
+        className="relative mx-auto flex min-h-[100dvh] w-full flex-col"
         onSubmit={(event) => {
           event.preventDefault();
           void handleSubmit();
         }}
       >
         <header className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2 text-[#ff9d54]">
-            <span className="vc-reading-serif text-[30px] font-semibold leading-none drop-shadow-[0_0_12px_rgba(255,132,62,0.24)]">
-              VerseCraft
+          <div className="flex min-w-0 items-center gap-2 text-[#164f4d]">
+            <span className="text-[27px] leading-none" aria-hidden>
+              ✦
             </span>
-            <MobileReadingIcons.BrandMark className="mt-1 h-6 w-6 shrink-0" strokeWidth={1.45} />
+            <span className="vc-reading-serif text-[25px] font-semibold leading-none">VerseCraft</span>
           </div>
 
           <button
@@ -179,20 +183,18 @@ export function CreateCharacterForm() {
             data-testid="quick-create-character"
             aria-label="一键注册角色（仅生成本地角色档案，不生成账号）"
             onClick={fillQuickCharacter}
-            className="mt-14 inline-flex h-12 shrink-0 items-center gap-2 rounded-full border border-[#de7a3e]/95 bg-[#06131d]/56 px-3.5 vc-reading-serif text-[18px] font-semibold leading-none text-[#ffb767] shadow-[0_0_16px_rgba(226,106,49,0.12),inset_0_0_12px_rgba(226,106,49,0.06)] transition hover:bg-[#0c1c28] active:scale-[0.98]"
+            className="absolute right-0 top-[3.55rem] inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-[#bdb8af] bg-[#f8f5ef]/90 px-3 vc-reading-serif text-[15px] font-semibold leading-none text-[#164f4d] shadow-[0_12px_24px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-[#fbf8f3] active:scale-[0.98]"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#8a5538]/90 bg-[#121923] text-[13px] text-[#f6c17f]">
-              ◆
-            </span>
+            <VerseCraftPaperMark className="h-7 w-7 border-[#d8d3ca] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
             <span className="whitespace-nowrap">一键注册角色</span>
           </button>
         </header>
 
-        <section className="mt-10">
-          <VerseCraftSectionTitle>基础档案</VerseCraftSectionTitle>
-          <div className="mt-7 grid grid-cols-2 gap-x-8 gap-y-7">
+        <section className="mt-[4.35rem]">
+          <VerseCraftPaperSectionTitle>基础档案</VerseCraftPaperSectionTitle>
+          <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-4">
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[20px] font-semibold leading-none text-[#e38d4f]">称呼</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">称呼</span>
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -202,20 +204,20 @@ export function CreateCharacterForm() {
             </label>
 
             <label className="relative min-w-0">
-              <span className="vc-reading-serif text-[20px] font-semibold leading-none text-[#e38d4f]">性别</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">性别</span>
               <select
                 value={gender}
                 onChange={(event) => setGender(event.target.value as GenderOption)}
                 className={`${inputClass} appearance-none pr-9`}
               >
                 {GENDER_OPTIONS.map((option) => (
-                  <option key={option} value={option} className="bg-[#08131d] text-[#ffb767]">
+                  <option key={option} value={option} className="bg-[#f7f3ec] text-[#164f4d]">
                     {option}
                   </option>
                 ))}
               </select>
               <span
-                className="pointer-events-none absolute bottom-3 right-1 text-[30px] leading-none text-[#ff9d54]"
+                className="pointer-events-none absolute bottom-1.5 right-1 text-[25px] leading-none text-[#164f4d]"
                 aria-hidden
               >
                 ⌄
@@ -223,7 +225,7 @@ export function CreateCharacterForm() {
             </label>
 
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[20px] font-semibold leading-none text-[#e38d4f]">身高</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">身高</span>
               <div className="relative">
                 <input
                   type="number"
@@ -235,43 +237,43 @@ export function CreateCharacterForm() {
                   onBlur={() => setHeightFocused(false)}
                   className={`${inputClass} pr-11 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
                 />
-                <span className="absolute bottom-3 right-0 vc-reading-serif text-[22px] leading-none text-[#f0a061]">
+                <span className="absolute bottom-2 right-0 vc-reading-serif text-[18px] leading-none text-[#164f4d]">
                   cm
                 </span>
               </div>
               {heightFocused ? (
-                <p className="mt-2 vc-reading-serif text-[14px] text-[#e05f52]">140 — 220</p>
+                <p className="mt-2 vc-reading-serif text-[14px] text-[#8d5854]">140 — 220</p>
               ) : null}
             </label>
 
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[20px] font-semibold leading-none text-[#e38d4f]">性格</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">性格</span>
               <input
                 value={personality}
                 onChange={(event) => setPersonality(event.target.value)}
-                placeholder="仅限 2-6 个中文字符"
+                placeholder="2-6 个中文字符"
                 className={`${inputClass} ${
-                  personality.length > 0 && !personalityValid ? "border-[#df5650] text-[#ff8b78]" : ""
+                  personality.length > 0 && !personalityValid ? "border-[#8d5854] text-[#8d5854]" : ""
                 }`}
               />
               {!personalityValid && personality.length > 0 ? (
-                <p className="mt-2 vc-reading-serif text-[14px] text-[#e05f52]">必须为 2-6 个中文字符。</p>
+                <p className="mt-2 vc-reading-serif text-[14px] text-[#8d5854]">必须为 2-6 个中文字符。</p>
               ) : null}
             </label>
           </div>
         </section>
 
-        <VerseCraftOrnament className="mt-10" />
+        <VerseCraftPaperDivider className="mt-6" />
 
-        <section className="mt-9">
+        <section className="mt-6">
           <div className="flex items-start justify-between gap-4">
-            <VerseCraftSectionTitle>潜能赋予</VerseCraftSectionTitle>
+            <VerseCraftPaperSectionTitle>潜能赋予</VerseCraftPaperSectionTitle>
             <div className="mt-1 flex shrink-0 items-baseline gap-4">
-              <span className="vc-reading-serif text-[22px] leading-none text-[#ffb767]">剩余</span>
+              <span className="vc-reading-serif text-[20px] leading-none text-[#164f4d]">剩余</span>
               <span
                 data-testid="create-remaining-points"
-                className={`vc-reading-serif text-[35px] font-semibold leading-none ${
-                  remaining === 0 ? "text-[#ffb767]" : "text-[#ff4747]"
+                className={`vc-reading-serif text-[30px] font-semibold leading-none ${
+                  remaining === 0 ? "text-[#164f4d]" : "text-[#274f4d]"
                 }`}
               >
                 {remaining}
@@ -286,34 +288,35 @@ export function CreateCharacterForm() {
           />
         </section>
 
-        <VerseCraftOrnament className="mt-7" />
+        <VerseCraftPaperDivider className="mt-4" />
 
-        <section className="mt-8">
-          <VerseCraftSectionTitle>回响天赋</VerseCraftSectionTitle>
+        <section className="mt-5">
+          <VerseCraftPaperSectionTitle>回响天赋</VerseCraftPaperSectionTitle>
           <CreateTalentGrid selectedTalent={selectedTalent} onSelectTalent={setSelectedTalent} />
         </section>
 
-        <footer className="mt-8">
+        <footer className="mt-5">
           {submitMessage ? (
-            <p data-testid="create-submit-error" className="mb-3 text-center vc-reading-serif text-[16px] leading-relaxed text-[#ff7468]">
+            <p data-testid="create-submit-error" className="mb-3 text-center vc-reading-serif text-[16px] leading-relaxed text-[#8d5854]">
               {submitMessage}
             </p>
           ) : null}
-            <button
-              type="submit"
-              data-testid="create-submit-button"
-              disabled={!canSubmit || submitting}
-            className={`relative flex h-[64px] w-full items-center justify-center overflow-hidden rounded-[16px] border vc-reading-serif text-[35px] font-semibold leading-none transition active:scale-[0.99] ${
-              canSubmit
-                ? "border-[#f0ad64]/95 bg-[#3a2113]/82 text-[#ffd18d] shadow-[0_0_24px_rgba(235,128,54,0.26),inset_0_0_28px_rgba(255,172,84,0.13)]"
-                : "border-[#8e5639]/80 bg-[#1d1714]/72 text-[#b9784c] shadow-[inset_0_0_20px_rgba(190,106,54,0.06)]"
-            } disabled:cursor-not-allowed disabled:opacity-70`}
+          <VerseCraftPaperPillButton
+            type="submit"
+            data-testid="create-submit-button"
+            disabled={!canSubmit || submitting}
+            className="h-[56px] min-h-[56px] rounded-[16px] text-[28px]"
           >
-            <span className="pointer-events-none absolute inset-x-10 bottom-0 h-5 bg-[#f28c38]/35 blur-xl" aria-hidden />
-            <span className="relative z-10">{submitting ? "开卷中" : "开卷"}</span>
-          </button>
+            <span className="absolute left-7 text-[#c8c5bd]" aria-hidden>
+              ✦
+            </span>
+            <span>{submitting ? "开卷中" : "开卷"}</span>
+            <span className="absolute right-7 text-[#c8c5bd]" aria-hidden>
+              ✦
+            </span>
+          </VerseCraftPaperPillButton>
         </footer>
       </form>
-    </VerseCraftDarkPageFrame>
+    </VerseCraftPaperFrame>
   );
 }

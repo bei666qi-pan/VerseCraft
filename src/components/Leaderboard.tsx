@@ -75,11 +75,8 @@ export default function Leaderboard({
         onClick={() => setOpen(true)}
         aria-label="打开深渊排行榜"
       >
-        <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
-          {/* 移除转圈：改为灰白淡光晕（统一全站入口风格） */}
-          <div className="absolute -inset-1 rounded-full bg-white/70 blur-[12px] opacity-70 transition group-hover:opacity-90 vc-wait-breath" />
-          <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_18px_rgba(226,232,240,0.7)]" />
-          <Trophy className="relative z-10 text-slate-700 drop-shadow-[0_0_6px_rgba(71,85,105,0.55)]" size={22} />
+        <div className="group relative flex h-[70px] w-[70px] cursor-pointer items-center justify-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 shadow-[0_18px_36px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98]">
+          <Trophy className="relative z-10 text-[#164f4d]" size={25} />
         </div>
       </button>
 

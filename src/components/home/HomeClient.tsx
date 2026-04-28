@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -27,8 +26,13 @@ import {
   RECOMMEND_WILLINGNESS_OPTIONS,
 } from "@/lib/survey/productSurveyHomeV1";
 import Leaderboard from "@/components/Leaderboard";
-import { GlassCtaButton } from "@/components/GlassCtaButton";
-import { GlassEntryFrame } from "@/components/GlassEntryFrame";
+import {
+  VerseCraftPaperBrand,
+  VerseCraftPaperCircleButton,
+  VerseCraftPaperDivider,
+  VerseCraftPaperFrame,
+  VerseCraftPaperPillButton,
+} from "@/components/VerseCraftPaperFrame";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { getPublicRuntimeConfig } from "@/lib/config/publicRuntime";
@@ -64,81 +68,6 @@ type SaveRow = {
   data: Record<string, unknown>;
   updatedAt: string | null;
 };
-
-function FooterIconButton({
-  onClick,
-  ariaLabel,
-  ariaExpanded,
-  children,
-}: {
-  onClick: () => void;
-  ariaLabel: string;
-  ariaExpanded?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      aria-expanded={ariaExpanded}
-      className="group relative grid h-12 w-12 place-items-center rounded-full bg-white/75 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl transition active:scale-[0.98]"
-    >
-      <span className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-b from-white/80 to-white/35 opacity-90" />
-      <span className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-slate-200/70 transition group-hover:ring-slate-300/70" />
-      <span className="relative text-slate-700/70">{children}</span>
-    </button>
-  );
-}
-
-function TrophyIconSvg() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M8 6h8v3a4 4 0 0 1-8 0V6Z"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7 6H5a2 2 0 0 0 2 5"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M17 6h2a2 2 0 0 1-2 5"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 13v3"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 19h6"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M10 16h4"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function BulbIconSvg() {
   return (
@@ -176,38 +105,10 @@ function BulbIconSvg() {
   );
 }
 
-function PenNibSvg({ className }: { className?: string }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-      className={className}
-    >
-      <path
-        d="M12 2l7.5 7.5-3.2 3.2a6.2 6.2 0 0 1-8.6 0L4.5 9.5 12 2Z"
-        fill="currentColor"
-        opacity="0.92"
-      />
-      <path
-        d="M10 13.5 12 22l2-8.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity="0.85"
-      />
-    </svg>
-  );
-}
-
 function FooterHaloIconButton({
   onClick,
   ariaLabel,
   ariaExpanded,
-  tone = "neutral",
   children,
 }: {
   onClick: () => void;
@@ -217,34 +118,15 @@ function FooterHaloIconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <VerseCraftPaperCircleButton
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
-      className="relative"
+      className="h-[70px] w-[70px]"
     >
-      <div className="group relative flex h-14 w-14 cursor-pointer items-center justify-center">
-        {tone === "blue" ? (
-          <>
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -inset-2 rounded-full bg-gradient-to-r from-indigo-500/30 via-cyan-200/20 to-blue-600/30 opacity-95 blur-[18px] transition-opacity duration-500 group-hover:opacity-100 animate-[halo-pulse_2.4s_ease-in-out_infinite]"
-            />
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -inset-0.5 rounded-full ring-1 ring-white/35 shadow-[0_0_18px_rgba(99,102,241,0.55),0_0_26px_rgba(34,211,238,0.35)] opacity-85 transition-opacity duration-500 group-hover:opacity-100"
-            />
-          </>
-        ) : (
-          <div className="absolute -inset-1 rounded-full bg-white/70 blur-[12px] opacity-70 transition group-hover:opacity-90 vc-wait-breath" />
-        )}
-        <div className="absolute inset-1 rounded-full bg-white/90 backdrop-blur-sm transition-all group-hover:bg-white shadow-[0_0_18px_rgba(226,232,240,0.7)]" />
-        <span className="relative z-10 text-slate-700 drop-shadow-[0_0_6px_rgba(71,85,105,0.55)]">
-          {children}
-        </span>
-      </div>
-    </button>
+      <span className="text-[#164f4d]">{children}</span>
+    </VerseCraftPaperCircleButton>
   );
 }
 
@@ -406,8 +288,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [feedbackConsentPrivacyPolicy, setFeedbackConsentPrivacyPolicy] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  // 灯泡点击直接打开问卷，不需要中间提示态
-  const [selectedContinueSlotId, setSelectedContinueSlotId] = useState<string>("");
   /** 同槽本地与云端时间不一致时，用户显式选择；禁止静默覆盖 */
   const [syncSourceBySlot, setSyncSourceBySlot] = useState<Record<string, "local" | "cloud">>({});
   const [surveyCompletion, setSurveyCompletion] = useState<"loading" | "open" | "done">("loading");
@@ -647,16 +527,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   const resolvedContinueSlotId = useMemo(() => {
     if (continueRows.length === 0) return "";
-    if (selectedContinueSlotId && continueRows.some((x) => x.slotId === selectedContinueSlotId)) {
-      return selectedContinueSlotId;
-    }
     return continueRows[0]!.slotId;
-  }, [continueRows, selectedContinueSlotId]);
-
-  const selectedContinueRow = useMemo(
-    () => continueRows.find((r) => r.slotId === resolvedContinueSlotId) ?? null,
-    [continueRows, resolvedContinueSlotId]
-  );
+  }, [continueRows]);
 
   const continuePickerSelectedRow = useMemo(() => {
     const id = continuePickerSelectedSlotId || resolvedContinueSlotId;
@@ -1364,34 +1236,17 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   return (
     <>
-      <main className="relative flex min-h-screen w-full flex-col overflow-hidden bg-[#f8fafc]">
-        <div
-          className="pointer-events-none absolute -z-10 top-[-8%] left-[10%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,oklch(0.9_0.06_195/0.4)_0%,transparent_70%)]"
-          style={{ animation: "haloFloat 14s ease-in-out infinite" }}
-        />
-        <div
-          className="pointer-events-none absolute -z-10 bottom-[-6%] right-[8%] h-[480px] w-[480px] rounded-full bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,oklch(0.88_0.08_320/0.35)_0%,transparent_70%)]"
-          style={{ animation: "haloFloat 18s ease-in-out infinite reverse" }}
-        />
-        <div
-          className="pointer-events-none absolute -z-10 top-[35%] left-[50%] h-[350px] w-[350px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,oklch(0.92_0.04_270/0.4)_0%,transparent_70%)]"
-          style={{ animation: "haloFloat 22s ease-in-out infinite 4s" }}
-        />
-
-        <header
-          className="relative z-20 mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5 sm:px-8"
-          style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/60 bg-white/70 shadow-[0_18px_60px_rgba(148,163,184,0.25)] backdrop-blur-2xl">
-              <Image src="/logo.svg" alt="VerseCraft" width={30} height={30} className="object-cover scale-[1.12]" />
-            </div>
-            <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-[0.22em] text-slate-700 sm:tracking-[0.5em]">
-                VERSECRAFT
-              </div>
-            </div>
-          </div>
+      <VerseCraftPaperFrame
+        dataTestId="home-paper-page"
+        contentClassName="pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]"
+      >
+        <header className="relative z-20 flex w-full items-center justify-between gap-4">
+          <VerseCraftPaperBrand
+            text="VERSECRAFT"
+            className="gap-2"
+            markClassName="h-10 w-10"
+            textClassName="text-[14px] tracking-[0.04em]"
+          />
 
           <div className="flex items-center gap-3">
             {!user ? (
@@ -1399,47 +1254,37 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 type="button"
                 onClick={openAuthModal}
                 aria-label="登录或注册"
-                className={`group relative inline-flex items-center justify-center rounded-full bg-slate-500/65 px-7 py-3 text-sm font-semibold text-white shadow-[0_18px_60px_rgba(148,163,184,0.25)] backdrop-blur-xl transition hover:bg-slate-500/75 ${
+                className={`inline-flex h-14 shrink-0 items-center justify-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 px-4 vc-reading-serif text-[20px] font-semibold leading-none text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.11),inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98] ${
                   authWarn ? "ring-2 ring-red-500/70" : ""
                 }`}
               >
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute -inset-2 rounded-full bg-gradient-to-r from-indigo-500/35 via-cyan-200/25 to-blue-600/35 opacity-95 blur-[18px] transition-opacity duration-500 group-hover:opacity-100 animate-[halo-pulse_2.4s_ease-in-out_infinite]"
-                />
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute -inset-0.5 rounded-full ring-1 ring-white/35 shadow-[0_0_18px_rgba(99,102,241,0.55),0_0_26px_rgba(34,211,238,0.35)] opacity-85 transition-opacity duration-500 group-hover:opacity-100"
-                />
-                <span className="relative tracking-[0.22em] text-slate-100/90 drop-shadow-[0_0_12px_rgba(226,232,240,0.65)]">
-                  执笔 登入
-                </span>
+                执笔　登录
               </button>
             ) : null}
           </div>
         </header>
 
-        <div className="relative z-20 mx-auto w-full max-w-5xl px-6 sm:px-8">
+        <div className="relative z-20 mt-2 w-full">
           {user ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
-                  <span className="max-w-[260px] truncate rounded-full bg-gradient-to-r from-indigo-500/15 via-cyan-300/20 to-blue-500/15 px-3 py-1 text-sm font-bold text-slate-800 shadow-[0_0_18px_rgba(99,102,241,0.2)] ring-1 ring-white/60">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#365f5d]">
+                  <span className="max-w-[260px] truncate rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 px-3 py-1 text-sm font-bold text-[#164f4d] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
                     {user.name}
                   </span>
-                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
+                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
                     已登录
                   </span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
                     可跨设备继续
                   </span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
                     云 {hasCloudAnySave ? `${cloudRows.length}` : "0"}
                   </span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
                     本地 {hasLocalAnySave ? `${Object.keys(saveSlots ?? {}).length}` : "0"}
                   </span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
                     问卷 {surveyCompletion === "done" ? "已提交" : "未提交"}
                   </span>
                 </div>
@@ -1448,14 +1293,14 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="rounded-full border border-slate-200 bg-white/75 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white"
+                  className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/85 px-5 py-2.5 text-sm font-semibold text-[#164f4d] transition hover:bg-[#fbf8f3]"
                 >
                   退出
                 </button>
               </div>
             </div>
           ) : (
-            <div className="text-xs font-medium text-slate-500">
+            <div className="vc-reading-serif text-[18px] leading-relaxed text-[#164f4d]">
               {hasLocalAnySave ? "本机留有可继续的记录。登录后可云端备份。" : "可直接以游客开始；登录可云端备份。"}
             </div>
           )}
@@ -1649,59 +1494,57 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
       )}
 
-      <section className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 pb-10 text-center sm:px-8">
-        <div className="w-full max-w-3xl animate-[fadeIn_0.8s_ease-out]">
-          <div className="mx-auto max-w-2xl">
-            <h1 className="text-4xl font-bold tracking-[0.28em] text-slate-800 drop-shadow-sm sm:text-5xl md:text-6xl">
+      <section className="relative z-10 flex w-full flex-1 flex-col items-center text-center">
+        <div className="w-full">
+          <div className="mx-auto mt-6 max-w-2xl">
+            <h1 className="vc-reading-serif text-[58px] font-semibold leading-none text-[#0f4644] sm:text-[66px]">
               文界工坊
             </h1>
-            <div className="mx-auto mt-6 h-px w-40 overflow-hidden rounded-full opacity-80 sm:mt-7 sm:w-48" aria-hidden>
-              <div className="h-full w-full bg-gradient-to-r from-transparent via-slate-300/55 to-transparent blur-[0.2px]" />
-            </div>
-            <p className="mt-12 text-sm font-medium tracking-widest text-slate-500 sm:mt-14">
+            <VerseCraftPaperDivider className="mx-auto mt-7 w-48" />
+            <p className="mt-12 vc-reading-serif text-[27px] font-medium leading-none text-[#164f4d]">
               锻造可能，实现梦想
             </p>
           </div>
 
-          <div className="mx-auto mt-14 w-full max-w-3xl sm:mt-16">
-            <div className="mx-auto flex w-full max-w-xl flex-col items-stretch justify-center gap-8 sm:max-w-2xl">
+          <div className="mx-auto mt-14 w-full">
+            <div className="mx-auto flex w-full flex-col items-stretch justify-center gap-8">
               {hasLoginSyncNotice ? (
-                <div className="rounded-xl bg-amber-50/60 px-3 py-2 text-left text-xs font-medium text-amber-950/80">
+                <div className="rounded-xl border border-[#d8d3ca] bg-[#f8f5ef]/70 px-3 py-2 text-left text-xs font-medium text-[#164f4d]">
                   {homeContinueConflictHint()}
                 </div>
               ) : null}
 
-              <GlassEntryFrame variant="pill" className="w-full sm:mx-auto">
-                <GlassCtaButton
-                  variant="pill"
-                  pillSize="sm"
-                  label={(entryState === "guest_has_progress" || entryState === "authed_has_progress") ? "开始新篇" : "执笔书写"}
-                  trailing="→"
-                  onClick={() => {
-                    unlockBgmOnUserGesture();
-                    void trackGameplayEvent({
-                      eventName: "home_start_new_clicked",
-                      page: "/",
-                      source: "home_start_new",
-                      payload: { entryState, loggedIn: !!user },
-                    }).catch(() => {});
-                    resetForNewGame();
-                    router.push("/intro");
-                  }}
-                />
-              </GlassEntryFrame>
+              <VerseCraftPaperPillButton
+                type="button"
+                data-testid="home-start-new-button"
+                onClick={() => {
+                  unlockBgmOnUserGesture();
+                  void trackGameplayEvent({
+                    eventName: "home_start_new_clicked",
+                    page: "/",
+                    source: "home_start_new",
+                    payload: { entryState, loggedIn: !!user },
+                  }).catch(() => {});
+                  resetForNewGame();
+                  router.push("/intro");
+                }}
+              >
+                <span>开始新篇</span>
+                <span className="text-[#8fa4a2]" aria-hidden>
+                  →
+                </span>
+              </VerseCraftPaperPillButton>
 
-              {(entryState === "guest_has_progress" || entryState === "authed_has_progress") ? (
-                <GlassEntryFrame variant="pill" className="w-full sm:mx-auto">
-                  <GlassCtaButton
-                    variant="pill"
-                    pillSize="sm"
-                    label={homeContinuePrimaryCta()}
-                    trailing="→"
-                    onClick={openContinuePicker}
-                  />
-                </GlassEntryFrame>
-              ) : null}
+              <VerseCraftPaperPillButton
+                type="button"
+                data-testid="home-continue-button"
+                onClick={openContinuePicker}
+              >
+                <span>{(entryState === "guest_has_progress" || entryState === "authed_has_progress") ? homeContinuePrimaryCta() : "继续行动"}</span>
+                <span className="text-[#8fa4a2]" aria-hidden>
+                  →
+                </span>
+              </VerseCraftPaperPillButton>
             </div>
           </div>
         </div>
@@ -1922,16 +1765,16 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-slate-200/60 to-transparent" />
+      <VerseCraftPaperDivider className="relative z-20 mt-10" />
 
-      <footer className="relative z-20 mx-auto w-full max-w-5xl px-6 pb-8 sm:px-8" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
-        <div className="border-t border-slate-200/70 pt-5 text-xs text-slate-500">
+      <footer className="relative z-20 w-full pt-8 vc-reading-serif text-[#164f4d]" style={{ paddingBottom: "max(1.2rem, env(safe-area-inset-bottom))" }}>
+        <div className="text-xs">
           <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-2">
             <div id="home-leaderboard" className="flex min-w-0 items-center justify-self-start">
               <Leaderboard userId={user?.id} triggerPlacement="inline" defaultOpen={leaderboardAutoOpen} />
             </div>
-            <div className="justify-self-center whitespace-nowrap text-center text-[11px] text-slate-500 sm:text-xs">
-              QQ群 <span className="font-mono text-slate-600">377493954</span>
+            <div className="justify-self-center whitespace-nowrap text-center text-[16px] text-[#164f4d]">
+              QQ群 <span className="font-mono">377493954</span>
             </div>
             <div className="flex justify-self-end">
               <FooterHaloIconButton onClick={openSurveyEntry} ariaLabel="产品问卷" tone="blue">
@@ -1941,44 +1784,44 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           </div>
 
           <div
-            className="mt-3 flex w-full items-center justify-start gap-x-3 overflow-x-auto whitespace-nowrap text-[11px] text-slate-500/90 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:justify-center sm:gap-x-4 sm:text-xs sm:whitespace-normal sm:overflow-visible"
+            className="mt-7 flex w-full items-center justify-start gap-x-6 overflow-x-auto whitespace-nowrap text-[16px] text-[#164f4d]/88 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:justify-center sm:gap-x-4 sm:whitespace-normal sm:overflow-visible"
           >
-            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/user-agreement">
+            <Link className="hover:text-[#0f3c3a]" href="/legal/user-agreement">
               用户协议
             </Link>
-            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/privacy-policy">
+            <Link className="hover:text-[#0f3c3a]" href="/legal/privacy-policy">
               隐私政策
             </Link>
-            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/contact">
+            <Link className="hover:text-[#0f3c3a]" href="/legal/contact">
               联系我们
             </Link>
             <button
               type="button"
               onClick={openFooterFeedback}
-              className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500"
+              className="hover:text-[#0f3c3a]"
             >
               测试反馈 / 举报
             </button>
-            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/content-policy">
+            <Link className="hover:text-[#0f3c3a]" href="/legal/content-policy">
               内容规范
             </Link>
-            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/ai-disclaimer">
+            <Link className="hover:text-[#0f3c3a]" href="/legal/ai-disclaimer">
               AI 生成说明
             </Link>
-            <Link className="underline underline-offset-4 decoration-slate-300/80 hover:text-slate-900 hover:decoration-slate-500" href="/legal/minors">
+            <Link className="hover:text-[#0f3c3a]" href="/legal/minors">
               未成年人说明
             </Link>
           </div>
 
-          <div className="mt-3 text-center text-slate-500">
+          <div className="mt-3 text-center text-[#164f4d]/78">
             {(() => {
               const c = getPublicRuntimeConfig().compliance;
               const beianNumber = (c.beianNumber ?? "").trim();
               const beianUrl = (c.beianUrl ?? "").trim();
-              if (!beianNumber) return <span className="text-slate-400">—</span>;
+              if (!beianNumber) return <span className="text-[#164f4d]/45">—</span>;
               return (
                 <a
-                  className="text-slate-600 underline underline-offset-4 decoration-slate-300/90 transition hover:text-slate-900 hover:decoration-slate-500"
+                  className="text-[#164f4d]/78 underline underline-offset-4 decoration-[#d8d3ca] transition hover:text-[#0f3c3a]"
                   href={beianUrl || "https://beian.miit.gov.cn"}
                   target="_blank"
                   rel="noreferrer noopener"
@@ -2282,7 +2125,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           )}
         </div>
       </div>
-    </main>
+    </VerseCraftPaperFrame>
 
     </>
   );
