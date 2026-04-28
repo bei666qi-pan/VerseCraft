@@ -275,6 +275,37 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(overflow).toBeLessThanOrEqual(1);
 }
 
+async function expectExpandedBottomStack(page: Page) {
+  const metrics = await page.evaluate(() => {
+    const dock = document.querySelector<HTMLElement>('[data-testid="mobile-action-dock"]');
+    const input = document.querySelector<HTMLInputElement>('[data-testid="manual-action-input"]');
+    const dropdown = document.querySelector<HTMLElement>('[data-testid="mobile-options-dropdown"]');
+    const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
+    if (!dock || !input || !dropdown || !nav) throw new Error("missing mobile bottom stack");
+    const dockRect = dock.getBoundingClientRect();
+    const inputRect = input.getBoundingClientRect();
+    const dropdownRect = dropdown.getBoundingClientRect();
+    const navRect = nav.getBoundingClientRect();
+    return {
+      dockBottom: dockRect.bottom,
+      dropdownTop: dropdownRect.top,
+      dropdownBottom: dropdownRect.bottom,
+      navTop: navRect.top,
+      navHeight: navRect.height,
+      inputWidth: inputRect.width,
+      placeholder: input.placeholder,
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+
+  expect(metrics.placeholder).toBe("输入下一步行动或对白…");
+  expect(metrics.inputWidth).toBeGreaterThanOrEqual(190);
+  expect(metrics.dockBottom).toBeLessThanOrEqual(metrics.dropdownTop - 8);
+  expect(metrics.dropdownBottom).toBeLessThanOrEqual(metrics.navTop - 8);
+  expect(metrics.navHeight).toBeLessThanOrEqual(105);
+  expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
 async function expectNoPrunedEntries(page: Page) {
   for (const label of prunedLabels) {
     await expect(page.locator(`[aria-label="${label}"]`)).toHaveCount(0);
@@ -303,6 +334,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
     await expect(page.getByTestId("manual-action-input")).toBeVisible();
+    await expect(page.getByTestId("manual-action-input")).toHaveAttribute("placeholder", "输入下一步行动或对白…");
     await expect(page.getByTestId("options-toggle-button")).toBeVisible();
     await expect(page.getByTestId("send-action-button")).toBeVisible();
     await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
@@ -319,6 +351,7 @@ test.describe("mobile reading UI", () => {
     await page.getByTestId("options-toggle-button").click();
     await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
     await expect(page.getByTestId("mobile-option-item")).toHaveCount(options.length);
+    await expectExpandedBottomStack(page);
 
     const expandedPath = test.info().outputPath("mobile-reading-expanded-390.png");
     await page.screenshot({ path: expandedPath, fullPage: false });
@@ -586,6 +619,12 @@ test.describe("mobile reading UI", () => {
       await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
       await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
       await expectNoHorizontalOverflow(page);
+
+      if (viewport.width <= 430) {
+        await page.getByTestId("options-toggle-button").click();
+        await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
+        await expectExpandedBottomStack(page);
+      }
 
       if (viewport.width >= 900) {
         const box = await shell.boundingBox();

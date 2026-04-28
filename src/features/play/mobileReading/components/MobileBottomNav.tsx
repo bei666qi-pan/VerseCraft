@@ -29,7 +29,7 @@ function DockButton({ item }: { item: DockItem }) {
       } ${item.disabled ? mobileReadingTheme.bottomNavItemDisabled : ""}`}
     >
       {item.active ? (
-        <span className={mobileReadingTheme.bottomNavActiveGlow} aria-hidden />
+        <span className={mobileReadingTheme.bottomNavActiveIndicator} aria-hidden />
       ) : null}
       <Icon
         className={`${mobileReadingTheme.bottomNavIcon} ${

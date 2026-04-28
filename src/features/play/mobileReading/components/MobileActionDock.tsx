@@ -51,7 +51,12 @@ export function MobileActionDock({
   const OptionsIcon = optionsExpanded ? MobileReadingIcons.CollapseOptions : MobileReadingIcons.ExpandOptions;
 
   return (
-    <div data-testid="mobile-action-dock" className={mobileReadingTheme.actionDock}>
+    <div
+      data-testid="mobile-action-dock"
+      className={`${mobileReadingTheme.actionDock} ${
+        optionsExpanded ? mobileReadingTheme.actionDockExpanded : mobileReadingTheme.actionDockCollapsed
+      }`}
+    >
       {hasAnyGate ? (
         <p className="py-3 text-center text-sm font-medium text-[#4f706a]">
           {gateMessage}
@@ -84,7 +89,7 @@ export function MobileActionDock({
                   onSubmitKey();
                 }
               }}
-              placeholder="输入下一步行动或对白..."
+              placeholder="输入下一步行动或对白…"
               inputMode="text"
               enterKeyHint="send"
               maxLength={MAX_INPUT}
@@ -108,7 +113,7 @@ export function MobileActionDock({
                     ? mobileReadingTheme.optionsToggleIconExpanded
                     : mobileReadingTheme.optionsToggleIconCollapsed
                 }
-                strokeWidth={1.8}
+                strokeWidth={1.7}
               />
             </button>
             <button
@@ -120,7 +125,7 @@ export function MobileActionDock({
                 submitFlash ? mobileReadingTheme.sendButtonFlash : ""
               }`}
             >
-              <MobileReadingIcons.SendAction className={mobileReadingTheme.sendIcon} strokeWidth={2.2} />
+              <MobileReadingIcons.SendAction className={mobileReadingTheme.sendIcon} strokeWidth={2} />
             </button>
           </div>
           <div id="play-input-status" className="sr-only" aria-live="polite">

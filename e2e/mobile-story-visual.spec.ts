@@ -120,9 +120,10 @@ test.describe("mobile story visual alignment", () => {
     expect(response?.status()).toBeLessThan(500);
 
     await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
     await expect(page.getByTestId("chapter-header-pill")).toHaveCount(0);
-    await expect(page.getByTestId("manual-action-input")).toHaveAttribute("placeholder", "输入下一步行动或命令");
+    await expect(page.getByTestId("manual-action-input")).toHaveAttribute("placeholder", "输入下一步行动或对白…");
     await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
     await expect(page.getByText("等我再睁开眼的时候")).toBeVisible();
 
@@ -132,7 +133,6 @@ test.describe("mobile story visual alignment", () => {
       const dock = document.querySelector<HTMLElement>('[data-testid="mobile-action-dock"]');
       const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
       if (!story || !firstPara || !dock || !nav) throw new Error("missing visual targets");
-      const storyRect = story.getBoundingClientRect();
       const firstRect = firstPara.getBoundingClientRect();
       const dockRect = dock.getBoundingClientRect();
       const navRect = nav.getBoundingClientRect();
@@ -149,8 +149,8 @@ test.describe("mobile story visual alignment", () => {
       };
     });
 
-    expect(metrics.storyTop).toBeGreaterThanOrEqual(58);
-    expect(metrics.storyTop).toBeLessThanOrEqual(78);
+    expect(metrics.storyTop).toBeGreaterThanOrEqual(112);
+    expect(metrics.storyTop).toBeLessThanOrEqual(150);
     expect(metrics.storyLeft).toBeGreaterThanOrEqual(28);
     expect(metrics.storyLeft).toBeLessThanOrEqual(36);
     expect(metrics.fontSize).toBeGreaterThanOrEqual(21);
@@ -167,6 +167,26 @@ test.describe("mobile story visual alignment", () => {
 
     await page.getByTestId("options-toggle-button").click();
     await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
+    const expandedMetrics = await page.evaluate(() => {
+      const dock = document.querySelector<HTMLElement>('[data-testid="mobile-action-dock"]');
+      const input = document.querySelector<HTMLInputElement>('[data-testid="manual-action-input"]');
+      const dropdown = document.querySelector<HTMLElement>('[data-testid="mobile-options-dropdown"]');
+      const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
+      if (!dock || !input || !dropdown || !nav) throw new Error("missing expanded controls");
+      const dockRect = dock.getBoundingClientRect();
+      const dropdownRect = dropdown.getBoundingClientRect();
+      const navRect = nav.getBoundingClientRect();
+      return {
+        dockBottom: dockRect.bottom,
+        dropdownTop: dropdownRect.top,
+        dropdownBottom: dropdownRect.bottom,
+        navTop: navRect.top,
+        inputWidth: input.getBoundingClientRect().width,
+      };
+    });
+    expect(expandedMetrics.inputWidth).toBeGreaterThanOrEqual(190);
+    expect(expandedMetrics.dockBottom).toBeLessThanOrEqual(expandedMetrics.dropdownTop - 8);
+    expect(expandedMetrics.dropdownBottom).toBeLessThanOrEqual(expandedMetrics.navTop - 8);
     const expandedPath = test.info().outputPath("story-reference-expanded-390.png");
     await page.screenshot({ path: expandedPath, fullPage: false });
     test.info().annotations.push({ type: "screenshot", description: expandedPath });

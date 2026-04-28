@@ -13,10 +13,10 @@ export const mobileReadingTokens = {
   },
   shadows: {
     header: "0 8px 22px rgba(67, 55, 42, 0.08)",
-    actionDock: "0 10px 24px rgba(73, 63, 51, 0.14)",
-    sendGlow: "0 8px 18px rgba(47, 116, 106, 0.18)",
-    bottomNav: "0 -14px 28px rgba(73, 63, 51, 0.12)",
-    activeNavGlow: "0 8px 22px rgba(47, 116, 106, 0.22)",
+    actionDock: "0 8px 18px rgba(73, 63, 51, 0.12)",
+    sendGlow: "0 5px 12px rgba(47, 116, 106, 0.12)",
+    bottomNav: "0 -10px 24px rgba(73, 63, 51, 0.09)",
+    activeNavGlow: "0 0 0 rgba(47, 116, 106, 0)",
   },
   spacing: {
     pageX: "1rem",
@@ -27,10 +27,10 @@ export const mobileReadingTokens = {
   sizes: {
     headerMinHeight: "var(--vc-mobile-header-height)",
     audioButton: "56px",
-    actionDockHeight: "4.4rem",
-    actionButton: "2.8rem",
-    talentButton: "3rem",
-    sendButton: "3rem",
+    actionDockHeight: "4.05rem",
+    actionButton: "2.35rem",
+    talentButton: "2.35rem",
+    sendButton: "2.35rem",
     bottomNavRadius: "32px",
     bottomNavMinHeight: "var(--vc-mobile-bottom-nav-height)",
   },
@@ -76,33 +76,37 @@ export const mobileReadingTheme = {
   storyViewport: "relative flex flex-col",
 
   actionDock:
-    "pointer-events-none fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+0.65rem)] left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 px-[1.45rem] pb-0 pt-0",
+    "pointer-events-none fixed left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 px-[1rem] pb-0 pt-0 min-[420px]:px-[1.35rem]",
+  actionDockCollapsed:
+    "bottom-[calc(var(--vc-mobile-bottom-nav-height)+0.65rem)]",
+  actionDockExpanded:
+    "bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-options-panel-height)+var(--vc-mobile-stack-gap)+var(--vc-mobile-stack-gap))]",
   actionDockPill:
-    "pointer-events-auto flex h-[3.95rem] items-center gap-2 rounded-full border border-[#d8d1c6] bg-[#fffdf8]/94 px-2.5 shadow-[0_10px_24px_rgba(73,63,51,0.14),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-[8px]",
+    "pointer-events-auto flex h-[3.9rem] items-center gap-1 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-2 shadow-[0_8px_18px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-[8px]",
   talentButton:
-    "h-[2.9rem] w-[2.9rem] enabled:hover:bg-white enabled:active:scale-95 disabled:opacity-95",
-  talentIcon: "h-6 w-6",
+    "h-[2.35rem] w-[2.35rem] enabled:hover:bg-white enabled:active:scale-95 disabled:opacity-95 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
+  talentIcon: "h-[1.25rem] w-[1.25rem] min-[420px]:h-[1.35rem] min-[420px]:w-[1.35rem]",
   actionInput:
-    "min-w-0 flex-1 rounded-full border border-[#d8d1c6] bg-[#fbf8f2] px-4 py-2.5 vc-reading-serif text-[15px] leading-none text-[#174d46] outline-none transition placeholder:text-[#9a9993] focus:border-[#2f746a]/65 focus:bg-white disabled:opacity-60",
-  optionsToggleButton: "h-[2.8rem] w-[2.8rem] hover:bg-white active:scale-95",
-  optionsToggleIconCollapsed: "h-6 w-6",
-  optionsToggleIconExpanded: "h-5 w-5",
+    "min-w-0 flex-1 rounded-full border border-[#d8d1c6] bg-[#fbf8f2] px-3 py-2.5 vc-reading-serif text-[14px] leading-none text-[#174d46] outline-none transition placeholder:text-[#9a9993] focus:border-[#2f746a]/65 focus:bg-white disabled:opacity-60 min-[420px]:px-4 min-[420px]:text-[15px]",
+  optionsToggleButton: "h-[2.35rem] w-[2.35rem] hover:bg-white active:scale-95 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
+  optionsToggleIconCollapsed: "h-[1.25rem] w-[1.25rem] min-[420px]:h-[1.35rem] min-[420px]:w-[1.35rem]",
+  optionsToggleIconExpanded: "h-[1.25rem] w-[1.25rem]",
   sendButton:
-    "flex h-[3rem] w-[3rem] shrink-0 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_8px_18px_rgba(47,116,106,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] transition duration-500 enabled:hover:bg-white enabled:active:scale-95 disabled:opacity-60",
+    "flex h-[2.35rem] w-[2.35rem] shrink-0 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_5px_12px_rgba(47,116,106,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] transition duration-500 enabled:hover:bg-white enabled:active:scale-95 disabled:opacity-60 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
   sendButtonFlash: "scale-95",
-  sendIcon: "ml-0.5 h-6 w-6",
+  sendIcon: "ml-0.5 h-[1.45rem] w-[1.45rem]",
 
   optionsDropdown:
-    "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-action-dock-height)+0.95rem)] left-1/2 z-40 w-[calc(100%-2.9rem)] max-w-[438px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/96 shadow-[0_14px_32px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.9)]",
+    "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-stack-gap))] left-1/2 z-40 h-[var(--vc-mobile-options-panel-height)] w-[calc(100%-2rem)] max-w-[448px] -translate-x-1/2 overflow-hidden rounded-[14px] border border-[#d8d1c6] bg-[#fffdf8] shadow-[0_8px_20px_rgba(73,63,51,0.11),inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:w-[calc(100%-2.7rem)]",
   optionsEmptyState:
-    "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-action-dock-height)+0.95rem)] left-1/2 z-40 w-[calc(100%-2.9rem)] max-w-[438px] -translate-x-1/2 rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/96 px-6 py-5 vc-reading-serif text-[18px] leading-normal text-[#4f706a] shadow-[0_14px_32px_rgba(73,63,51,0.14),inset_0_1px_0_rgba(255,255,255,0.9)]",
+    "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-stack-gap))] left-1/2 z-40 w-[calc(100%-2rem)] max-w-[448px] -translate-x-1/2 rounded-[14px] border border-[#d8d1c6] bg-[#fffdf8] px-6 py-5 vc-reading-serif text-[18px] leading-normal text-[#4f706a] shadow-[0_8px_20px_rgba(73,63,51,0.11),inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:w-[calc(100%-2.7rem)]",
   optionRow:
-    "flex min-h-[66px] w-full items-center justify-between gap-4 border-[#e3ded6] px-6 text-left transition disabled:cursor-not-allowed disabled:opacity-70",
+    "flex h-1/4 w-full items-center justify-between gap-4 border-[#e3ded6] px-8 text-left transition disabled:cursor-not-allowed disabled:opacity-70",
   optionRowDivider: "border-b",
   optionRowInteractive: "hover:bg-[#f3f0ea]",
   optionRowHidden: "pointer-events-none",
   optionLabel:
-    "block min-w-0 flex-1 truncate vc-reading-serif text-[var(--vc-option-font-size)] leading-[var(--vc-option-line-height)] text-[#174d46] transition-opacity duration-300",
+    "block min-w-0 flex-1 truncate vc-reading-serif text-[19px] leading-none text-[#174d46] transition-opacity duration-300 min-[420px]:text-[22px]",
   optionLabelVisible: "opacity-100",
   optionLabelHidden: "select-none opacity-0",
   optionChevron: "h-6 w-6 shrink-0 text-[#174d46] transition-opacity",
@@ -110,16 +114,16 @@ export const mobileReadingTheme = {
   optionChevronHidden: "opacity-0",
 
   bottomNav:
-    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[34px] border border-b-0 border-[#d8d1c6] bg-[#fffdf8]/96 px-8 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-14px_28px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-[10px] min-[420px]:px-10 min-[420px]:pt-4",
+    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#d8d1c6] bg-[#fffdf8] px-7 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_24px_rgba(73,63,51,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-[10px] min-[420px]:px-9",
   bottomNavGrid: "grid h-full grid-cols-4 items-end gap-1",
   bottomNavItem:
-    "relative flex h-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-none text-[#174d46] transition active:scale-95",
+    "relative flex h-full min-w-0 flex-col items-center justify-center gap-1 rounded-none text-[#174d46] transition active:scale-95",
   bottomNavItemActive: "text-[#2f746a]",
   bottomNavItemInactive: "hover:text-[#2f746a]",
   bottomNavItemDisabled: "cursor-default",
-  bottomNavActiveGlow:
-    "pointer-events-none absolute -bottom-5 h-20 w-24 rounded-full bg-[#8fa79f]/28 blur-2xl",
-  bottomNavIcon: "relative z-10 h-9 w-9 min-[420px]:h-10 min-[420px]:w-10",
-  bottomNavIconActive: "drop-shadow-[0_8px_18px_rgba(47,116,106,0.2)]",
-  bottomNavLabel: "relative z-10 vc-reading-serif text-[18px] leading-none min-[420px]:text-[23px]",
+  bottomNavActiveIndicator:
+    "pointer-events-none absolute bottom-[-0.15rem] h-1 w-1 rounded-full bg-[#2f746a]",
+  bottomNavIcon: "relative z-10 h-7 w-7 min-[420px]:h-8 min-[420px]:w-8",
+  bottomNavIconActive: "",
+  bottomNavLabel: "relative z-10 vc-reading-serif text-[16px] leading-none min-[420px]:text-[18px]",
 } as const;

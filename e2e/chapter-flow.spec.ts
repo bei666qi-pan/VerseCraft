@@ -263,7 +263,8 @@ test.describe("chapter flow", () => {
     await openSeededPlay(page);
     await installChatMock(page);
 
-    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
     await expect(page.getByTestId("chapter-header-pill")).toHaveCount(0);
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
@@ -279,7 +280,7 @@ test.describe("chapter flow", () => {
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
     await page.getByTestId("chapter-next-button").click();
-    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
     await page.getByTestId("bottom-nav-story").click();
@@ -287,12 +288,12 @@ test.describe("chapter flow", () => {
     await expect(page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-2"]')).toHaveAttribute("aria-current", "page");
     await page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-1"]').click();
     await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByText("安全回顾，不回滚当前进度")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
     await page.getByTestId("chapter-return-current").click();
-    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
     await page.getByTestId("bottom-nav-codex").click();
