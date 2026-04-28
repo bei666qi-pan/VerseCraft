@@ -40,20 +40,20 @@ const StoryHistory = memo(function StoryHistory({
   );
   if (visibleEntries.length === 0) return null;
   return (
-    <div className="text-[#f0a96b]">
+    <div className="text-[#174d46]">
       {visibleEntries.map((entry) => {
         const safeContent = typeof entry.content === "string" ? entry.content : "";
         return safeContent.includes("获得了新物品，已放入书包") ? (
           <p
             key={entry.logIndex}
-            className="mb-8 text-base font-bold text-emerald-300 drop-shadow-[0_0_8px_rgba(16,185,129,0.45)]"
+            className="mb-8 text-base font-bold text-[#2f746a]"
           >
             {safeContent.replace(/\*\*/g, "")}
           </p>
         ) : entry.role === "user" ? (
           <p
             key={entry.logIndex}
-            className="mb-10 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]"
+            className="mb-10 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#174d46]"
           >
             {renderUserNarrative(safeContent)}
           </p>
@@ -110,23 +110,23 @@ const StreamPanel = memo(function StreamPanel({
         <div className="space-y-1 py-2 transition-opacity duration-300 ease-out">
           <div className="flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400/90 vc-wait-breath" />
-            <span className="text-sm font-medium text-[#d6a07b]">{primaryThinkingLine}</span>
+            <span className="text-sm font-medium text-[#4f706a]">{primaryThinkingLine}</span>
           </div>
           {waitUxSecondaryLine && waitUxSecondaryLine.trim().length > 0 ? (
-            <div className="text-[11px] text-[#9d826e]">{waitUxSecondaryLine.trim()}</div>
+            <div className="text-[11px] text-[#8b8a84]">{waitUxSecondaryLine.trim()}</div>
           ) : useLegacySemanticHint ? (
             <PlaySemanticWaitingHint kind={semanticWaitingKind} />
           ) : null}
         </div>
       ) : (
         <>
-          <div className="space-y-6 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]">
+          <div className="space-y-6 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#174d46]">
             <span className="whitespace-pre-wrap">
               {renderNarrativeText(smoothNarrative, { streamSafe: true })}
             </span>
           </div>
           {streamStalledHintOn ? (
-            <div className="flex items-center gap-2 text-[12px] text-[#9d826e]">
+            <div className="flex items-center gap-2 text-[12px] text-[#8b8a84]">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400/80 vc-wait-breath" />
               内容仍在继续形成
             </div>
@@ -208,7 +208,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
       ref={scrollRef}
       onScroll={onScrollContainer}
       data-testid="play-story-document"
-      className="px-[2rem] pt-[calc(env(safe-area-inset-top)+4.15rem)] md:px-8 md:pt-[calc(env(safe-area-inset-top)+4.15rem)]"
+      className="px-[1.75rem] pt-7 md:px-8 md:pt-7"
       style={
         {
           overflowAnchor: "auto",
@@ -225,8 +225,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
               isLowSanity={isLowSanity}
             />
             {openingAiBusy ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-[#9d826e]">
-                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400/90 shadow-[0_0_8px_rgba(99,102,241,0.7)]" />
+              <div className="mt-4 flex items-center gap-2 text-sm text-[#4f706a]">
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#8fa79f]" />
                 选项正在由主笔实时推演…
               </div>
             ) : null}
@@ -280,7 +280,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
             />
           </div>
         ) : !embeddedOpeningContent && displayEntries.length === 0 && !isStreamVisualActive ? (
-          <div className="h-24 text-[#9d826e]" />
+          <div className="h-24 text-[#8b8a84]" />
         ) : null}
 
         {showConflictWhisper && conflictFeedback ? <PlayConflictTurnWhisper vm={conflictFeedback} /> : null}
@@ -288,12 +288,12 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
         {(greenTips.length > 0 || firstTimeHint) && (
           <div className="mt-2 space-y-1">
             {firstTimeHint && (
-              <p className="text-sm font-semibold text-emerald-300">
+              <p className="text-sm font-semibold text-[#2f746a]">
                 {firstTimeHint}
               </p>
             )}
             {greenTips.map((tip, idx) => (
-              <p key={idx} className="text-sm font-semibold text-[#d6a07b]">
+              <p key={idx} className="text-sm font-semibold text-[#4f706a]">
                 {tip}
               </p>
             ))}

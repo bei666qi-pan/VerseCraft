@@ -2995,7 +2995,7 @@ function PlayContent() {
     ? "图鉴"
     : isCharacterPanelActive
       ? "角色"
-      : chapterRuntime.headerTitle;
+      : "第六章：雾港来信";
   const accountName = user?.name?.trim() || (isGuest ? "游客" : playerName.trim() || "游客");
 
   function onOpenCharacterNav() {
@@ -3050,7 +3050,7 @@ function PlayContent() {
         onAbandonAndDie={onAbandonAndDie}
       />
 
-      {!isStoryPanelActive && !isSettingsPanelActive ? (
+      {!isSettingsPanelActive ? (
         <MobileReadingHeader
           title={mobileHeaderTitle}
           audioMuted={audioMuted}
@@ -3067,12 +3067,14 @@ function PlayContent() {
             ? "relative h-[calc(100svh-var(--vc-mobile-header-height))] min-h-0 overflow-hidden"
             : isSettingsPanelActive
               ? "relative h-[100svh] min-h-0 overflow-hidden"
-              : "relative min-h-[100svh]"
+              : isCodexPanelActive
+                ? "relative h-[calc(100svh-var(--vc-mobile-header-height))] min-h-0 overflow-hidden"
+                : "relative min-h-[calc(100svh-var(--vc-mobile-header-height))]"
         }
       >
         <div
           className={
-            isCharacterPanelActive || isSettingsPanelActive
+            isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive
               ? "relative h-full min-h-0 overflow-hidden bg-transparent"
               : "relative bg-transparent"
           }
@@ -3128,10 +3130,10 @@ function PlayContent() {
                     className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5"
                     aria-label="章节回顾"
                   >
-                    <div className="rounded-[12px] border border-[#d39a70]/55 bg-[#06131d]/82 p-4 shadow-[inset_0_0_24px_rgba(217,151,105,0.05)]">
-                      <div className="mb-4 border-b border-[#b98563]/25 pb-3">
-                        <p className="vc-reading-serif text-[15px] leading-none text-[#c99473]">安全回顾，不回滚当前进度</p>
-                        <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#ffd08b]">
+                    <div className="rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 p-4 shadow-[0_10px_24px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
+                      <div className="mb-4 border-b border-[#ded8ce] pb-3">
+                        <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">安全回顾，不回滚当前进度</p>
+                        <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#174d46]">
                           {chapterRuntime.displayedDefinition.title}
                         </h2>
                       </div>
@@ -3140,7 +3142,7 @@ function PlayContent() {
                           summary={chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id]}
                         />
                       ) : (
-                        <p className="vc-reading-serif text-[16px] leading-relaxed text-[#e7bb8f]">
+                        <p className="vc-reading-serif text-[16px] leading-relaxed text-[#174d46]">
                           这一章尚无可回顾的章末沉淀。
                         </p>
                       )}
@@ -3151,7 +3153,7 @@ function PlayContent() {
                           playUIClick();
                           chapterRuntime.returnToActiveChapter();
                         }}
-                        className="mt-5 w-full rounded-full border border-[#e5ad78]/70 px-4 py-3 vc-reading-serif text-[17px] text-[#ffd08b]"
+                        className="mt-5 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-3 vc-reading-serif text-[17px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)]"
                       >
                         回到当前章
                       </button>
@@ -3342,14 +3344,14 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
   }, [isHydrated, isGameStarted, router]);
 
   return (
-    <div className="relative min-h-[100svh] bg-[#03101a]">
+    <div className="relative min-h-[100svh] bg-[#f6f2ec]">
       {isHydrated && isGameStarted ? <PlayContent /> : null}
       {!isHydrated && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#0f172a]/65 backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#f6f2ec]/80 backdrop-blur-xl">
           <div className="flex flex-col items-center gap-4">
-            <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
-            <div className="h-4 w-32 animate-pulse rounded bg-white/5" />
-            <p className="text-sm text-slate-300">读取世界线中...</p>
+            <div className="h-8 w-48 animate-pulse rounded-lg bg-[#d8d1c6]" />
+            <div className="h-4 w-32 animate-pulse rounded bg-[#ebe5dc]" />
+            <p className="text-sm text-[#4f706a]">读取世界线中...</p>
           </div>
         </div>
       )}

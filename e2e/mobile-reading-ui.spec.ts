@@ -297,7 +297,8 @@ test.describe("mobile reading UI", () => {
     await openSeededPlay(page);
 
     await expect(page.getByTestId("mobile-reading-shell")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
     await expect(page.getByTestId("chapter-header-pill")).toHaveCount(0);
     await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
@@ -422,7 +423,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("bottom-nav-codex")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toContainText("图鉴");
-    await expect(page.getByTestId("mobile-codex-count")).toHaveText("B1 图鉴：4 / 4");
+    await expect(page.getByTestId("mobile-codex-count")).toHaveText("B1层已识别人物：4 / 4");
     await expect(page.getByTestId("mobile-codex-card")).toHaveCount(5);
     await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(4);
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("人物简介");
@@ -477,11 +478,11 @@ test.describe("mobile reading UI", () => {
     });
 
     await page.getByTestId("bottom-nav-codex").click();
-    await expect(page.getByTestId("mobile-codex-count")).toHaveText("1F 图鉴：3 / 4");
+    await expect(page.getByTestId("mobile-codex-count")).toHaveText("1F已识别人物：3 / 4");
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-008"]')).toBeVisible();
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-014"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-001"]')).toBeVisible();
-    await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(4);
+    await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(3);
   });
 
   test("shows runtime active threat anomalies on the current floor", async ({ page }) => {
@@ -509,7 +510,7 @@ test.describe("mobile reading UI", () => {
     });
 
     await page.getByTestId("bottom-nav-codex").click();
-    await expect(page.getByTestId("mobile-codex-count")).toHaveText("2F 图鉴：1 / 3");
+    await expect(page.getByTestId("mobile-codex-count")).toHaveText("2F已识别人物：1 / 3");
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]')).toBeVisible();
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-002"]')).toBeVisible();
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]').click();
@@ -553,8 +554,6 @@ test.describe("mobile reading UI", () => {
       historicalMaxSanity: 30,
     });
 
-    await expect(page.getByTestId("audio-toggle-button")).toHaveCount(0);
-    await page.getByTestId("bottom-nav-character").click();
     const audio = page.getByTestId("audio-toggle-button");
     const initialAudioLabel = await audio.getAttribute("aria-label");
     await audio.click();
@@ -562,7 +561,6 @@ test.describe("mobile reading UI", () => {
       "aria-label",
       initialAudioLabel === "关闭声音" ? "开启声音" : "关闭声音"
     );
-    await page.getByTestId("bottom-nav-story").click();
 
     const talentButton = page.getByTestId("echo-talent-button");
     await expect(talentButton).toHaveAttribute("aria-label", "发动天赋：生命汇源");
@@ -584,7 +582,7 @@ test.describe("mobile reading UI", () => {
 
       const shell = page.getByTestId("mobile-reading-shell");
       await expect(shell).toBeVisible();
-      await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+      await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
       await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
       await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
       await expectNoHorizontalOverflow(page);

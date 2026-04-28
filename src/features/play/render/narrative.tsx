@@ -312,7 +312,7 @@ export const DMNarrativeBlock = memo(function DMNarrativeBlock({
   void _isLowSanity;
   const safeContent = typeof content === "string" ? content : "";
   const baseClass =
-    "vc-reading-serif space-y-10 text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] tracking-normal text-[#f0a96b] drop-shadow-[0_0_8px_rgba(240,169,107,0.08)]";
+    "vc-reading-serif space-y-10 text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] tracking-normal text-[#174d46]";
   const paras = splitNarrativeIntoParas(safeContent);
   const preferenceStyle = {
     fontSize: "var(--vc-story-font-size, 22px)",

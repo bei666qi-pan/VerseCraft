@@ -53,7 +53,7 @@ export function MobileActionDock({
   return (
     <div data-testid="mobile-action-dock" className={mobileReadingTheme.actionDock}>
       {hasAnyGate ? (
-        <p className="py-3 text-center text-sm font-medium text-[#d6a07b]">
+        <p className="py-3 text-center text-sm font-medium text-[#4f706a]">
           {gateMessage}
         </p>
       ) : (
@@ -84,7 +84,7 @@ export function MobileActionDock({
                   onSubmitKey();
                 }
               }}
-              placeholder="输入下一步行动或命令"
+              placeholder="输入下一步行动或对白..."
               inputMode="text"
               enterKeyHint="send"
               maxLength={MAX_INPUT}

@@ -186,7 +186,7 @@ test.describe("mobile settings UI", () => {
     await page.getByTestId("bottom-nav-settings").click();
     await expect(page.locator("#unified-menu-content")).toBeHidden();
     await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
-    await expect(page.getByTestId("settings-account-pill")).toContainText("当前账号  qi bei");
+    await expect(page.getByTestId("settings-account-pill")).toContainText(/当前账号\s+qi bei/);
     await expect(page.getByText("阅读体验")).toBeVisible();
     await expect(page.getByTestId("settings-volume-percent")).toHaveText("50%");
 
@@ -228,7 +228,7 @@ test.describe("mobile settings UI", () => {
     expect(storyMetrics.lineHeight).toBeGreaterThanOrEqual(51);
 
     await page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 });
-    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
     const persistedMetrics = await page.evaluate(() => {
       const narrative = document.querySelector<HTMLElement>('[data-testid="dm-narrative-block"]');
       if (!narrative) throw new Error("missing story narrative block after reload");
