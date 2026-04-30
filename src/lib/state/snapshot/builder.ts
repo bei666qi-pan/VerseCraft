@@ -20,6 +20,7 @@ import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyD
 import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/template";
 import { createEmptyJournalState, type JournalState } from "@/lib/domain/narrativeDomain";
 import { createInitialChapterState, normalizeChapterState, type ChapterState } from "@/lib/chapters";
+import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 
 export interface BuildRunSnapshotV2Input {
   runId?: string;
@@ -139,12 +140,7 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
     }),
     tasks: splitTasksByStatus(input.tasks ?? []),
     death: createDefaultDeathState(),
-    services: {
-      shopUnlocked: false,
-      forgeUnlocked: false,
-      anchorUnlocked: true,
-      unlockFlags: {},
-    },
+    services: createDefaultB1ServiceState(),
     profession: input.profession ?? createDefaultProfessionState(),
     compatibility: {
       legacyVersion: 1,

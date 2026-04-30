@@ -65,7 +65,7 @@ export const IMMERSION_ISSUE_OPTIONS: Array<{ value: string; label: string }> = 
 
 export const CORE_FUN_POINT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "ai_narrative_presence", label: "AI 叙事和临场感" },
-  { value: "weird_worldview", label: "规则怪谈世界观" },
+  { value: "weird_worldview", label: "异常公寓悬疑氛围" },
   { value: "action_feedback", label: "选择行动后的反馈" },
   { value: "npc_interaction", label: "人物 / NPC 互动" },
   { value: "explore_unknown", label: "探索和推进未知区域" },

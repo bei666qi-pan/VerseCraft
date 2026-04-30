@@ -147,10 +147,10 @@ export const BASE_APARTMENT_TASK_SPECS: TaskContentSpec[] = [
       type: "main",
       floorTier: "B1",
     },
-    issuer: { issuerId: "SYSTEM", issuerName: "规则", claimMode: "auto" },
+    issuer: { issuerId: "SYSTEM", issuerName: "公寓残页", claimMode: "auto" },
     dramatic: {
       dramaticType: "escape",
-      issuerIntent: "让你把‘活下去’从挣扎变成行动：出口不是楼层尽头，而是规则的缝。",
+      issuerIntent: "让你把‘活下去’从挣扎变成行动：出口不是楼层尽头，而是资格链的缝。",
       playerHook: "你要的不是活久一点，而是离开这栋楼。",
       urgencyReason: "第十日的闸门不会等你。",
       riskNote: "别把第一个听来的“出口”当真；公寓喜欢喂假希望。",

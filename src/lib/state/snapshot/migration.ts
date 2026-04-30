@@ -21,6 +21,7 @@ import { inferSaveSlotKind } from "./branch";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
 import { normalizeJournalState } from "@/lib/domain/clueMerge";
 import { normalizeChapterState } from "@/lib/chapters";
+import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -253,15 +254,18 @@ export function normalizeRunSnapshotV2(
       available: normalizeTasks(s.tasks?.available),
     },
     death: normalizeDeathState(s.death),
-    services: {
-      shopUnlocked: Boolean(s.services?.shopUnlocked),
-      forgeUnlocked: Boolean(s.services?.forgeUnlocked),
-      anchorUnlocked:
-        typeof s.services?.anchorUnlocked === "boolean"
-          ? s.services.anchorUnlocked
-          : true,
-      unlockFlags: asRecord(s.services?.unlockFlags) as Record<string, boolean>,
-    },
+    services: (() => {
+      const base = createDefaultB1ServiceState();
+      return {
+        shopUnlocked:
+          typeof s.services?.shopUnlocked === "boolean" ? s.services.shopUnlocked : base.shopUnlocked,
+        forgeUnlocked:
+          typeof s.services?.forgeUnlocked === "boolean" ? s.services.forgeUnlocked : base.forgeUnlocked,
+        anchorUnlocked:
+          typeof s.services?.anchorUnlocked === "boolean" ? s.services.anchorUnlocked : base.anchorUnlocked,
+        unlockFlags: asRecord(s.services?.unlockFlags) as Record<string, boolean>,
+      };
+    })(),
     profession: (() => {
       const raw = s.profession;
       const base = createDefaultProfessionState();

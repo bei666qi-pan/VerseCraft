@@ -16,7 +16,7 @@ test("main threat guard auto-fills update when model omits field", () => {
   const updates = Array.isArray(out.main_threat_updates) ? out.main_threat_updates : [];
   assert.equal(updates.length, 1);
   assert.equal((updates[0] as { floorId?: string }).floorId, "2");
-  assert.equal((updates[0] as { threatId?: string }).threatId, "A-002");
+  assert.equal((updates[0] as { threatId?: string }).threatId, "A-004");
 });
 
 test("main threat guard rejects floor-threat mismatch", () => {

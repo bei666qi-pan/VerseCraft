@@ -1,5 +1,5 @@
 // src/lib/registry/types.ts
-// 如月公寓规则怪谈实体注册表 - 基础类型定义
+// 如月公寓实体注册表 - 基础类型定义
 
 import type { RevealTierRank } from "./revealTierRank";
 import type {
@@ -39,7 +39,7 @@ export type ItemDomainLayer =
 /** Item effect types — direct, observable effects (not clue-based) */
 export type ItemEffectType =
   | "shield"        // Blocks one lethal attack
-  | "ruleKill"     // Rule-based kill, ignores combatPower gap
+  | "ruleKill"     // Legacy: force a counter window / suppress an anomaly; do not present as guaranteed kill
   | "tempStat"     // Temporarily boost a stat (e.g. +5 agility for 1h)
   | "intel"        // Reveal intel / clue packets
   | "access"       // Open route / pass checks
@@ -68,6 +68,10 @@ export interface Item {
   statRequirements?: StatRequirement;
   /** Owner NPC or Anomaly ID. All items have an owner; dropped items belong to the entity that dropped them. */
   ownerId: string;
+  /** Optional semantic origin when the item is found outside its source floor. */
+  originThreatId?: string;
+  /** Optional discovery floor; keep `ownerId` as origin truth and this as where it surfaced. */
+  foundFloor?: FloorId;
   /** Primary effect type for DM/UI display */
   effectType?: ItemEffectType;
   /** Short one-line effect for quick scan; falls back to derived from effectType if absent */
@@ -228,8 +232,12 @@ export interface WarehouseItem {
   sideEffect: string;
   /** Owner NPC or Anomaly ID */
   ownerId: string;
-  /** Floor of origin — higher floor = stronger item */
+  /** Floor of origin/discovery — higher floor = stronger item; use originThreatId/foundFloor to disambiguate spillover. */
   floor: FloorId;
+  /** Optional semantic origin when the item is a spillover from another floor's anomaly. */
+  originThreatId?: string;
+  /** Optional discovery floor when different from the threat/NPC origin. */
+  foundFloor?: FloorId;
   /** Resurrection item: revives any NPC/anomaly except player. SideEffect: 1天内玩家遭遇生命威胁试炼 */
   isResurrection?: boolean;
   /** Stage-2 light forge: optional material tags reused by forge recipes. */
@@ -482,15 +490,39 @@ export interface WeaponizationRecipe {
   canRepeatForge: boolean;
 }
 
-/** Player cannot fight anomalies or NPCs unarmed. Must use items or high-favorability NPCs. */
+export type SurvivalNoteReliability = "true" | "partly_true" | "misleading" | "false" | "unknown";
+
+export interface ApartmentSurvivalNote {
+  id: string;
+  title: string;
+  surfaceText: string;
+  source: string;
+  reliability: SurvivalNoteReliability;
+  knownToPlayerByDefault: boolean;
+  validWhen: string;
+  invalidWhen: string;
+  actualMechanism: string;
+  revealTier: RevealTierRank;
+  relatedAnomalyIds: string[];
+  relatedLocationIds: string[];
+}
+
+/** Player cannot reliably overpower anomalies or NPCs unarmed. Must use evidence, counters, windows, or relationships. */
 export interface Anomaly {
   id: string;
   name: string;
-  /** Floor: A-001~A-007 on 1-7; A-008 on B2 only */
+  /** Canonical floor: A-001/A-004/A-003/A-002/A-005/A-006/A-007 on 1-7; A-008 on B2 only */
   floor: FloorId;
-  /** Combat power 3-10. A-008 must be 10. */
+  /** Legacy intensity score. Prefer displayDangerLevel/threatRating for user-facing text. */
   combatPower: number;
+  displayDangerLevel?: string;
+  threatRating?: number;
   appearance: string;
+  triggerCondition: string;
+  escalationPattern: string;
+  counterWindow: string;
+  narrativeRole: string;
+  floorMechanismTheme: string;
   killingRule: string;
   survivalMethod: string;
   sanityDamage: number;

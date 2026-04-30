@@ -119,7 +119,7 @@ export const OPENING_SYSTEM_PROMPT =
   "【开局·首轮主笔请求】客户端已用固定第一人称长文展示：教室突发灾难到坠入「如月公寓」地下附近、灯管明灭、前人痕迹等。你是叙事主笔，不是系统初始化程序。玩家是月初被裂口甩进来的学生之一，惊惧未散但比多数人更能压住慌。请严格输出单一 JSON 对象：" +
   "narrative 可仅填全角句号「。」作极简承接，或写 1–3 句极短篇，必须紧接固定文案收束处（头痛、心跳、黑暗里的刮擦、墙上铁牌等可择一二），禁止整段复述教室与言灵过程，禁止另起无关场域，禁止教程清单腔；" +
   "options 必须恰好 4 条非空字符串，每条为第一人称可执行行动，约 5–20 字，互不相同；贴合脚软、灯管乱闪的当下，优先稳住呼吸、辨认墙角地面、听人声脚步、循微光或声源挪半步、背靠墙摸清退路；禁止一上来跨层宏大目标，禁止『系统刷新』式点名强迫遇见某固定角色；" +
-  "其余键按常规模板合理默认：is_action_legal:true，sanity_damage:0，is_death:false，consumes_time:true，consumed_items:[]，player_location:\"B1_SafeZone\"，bgm_track:\"bgm_1_calm\" 等。" +
+  "其余键按常规模板合理默认：is_action_legal:true，sanity_damage:0，is_death:false，consumes_time:true，consumed_items:[]，player_location:\"B1_SafeZone\"，bgm_track:\"bgm_b1_daily\" 等。" +
   "禁止输出空数组作为 options；禁止省略 options 键。";
 
 /** 与 route / 客户端首轮判定对齐（trim 后全等） */
@@ -129,8 +129,8 @@ export function isOpeningSystemUserMessage(userContent: string): boolean {
 
 /** 模型缺省选项时的兜底（非首条助手回合合并用） */
 export const DEFAULT_FOUR_ACTION_OPTIONS: readonly string[] = [
-  "查看周围环境",
-  "检查背包与随身物品",
-  "尝试与附近原住民搭话",
-  "谨慎前往下一处房间",
+  "稳住呼吸记住名字",
+  "检查半枚旧校徽",
+  "辨认灯管闪烁节奏",
+  "贴墙摸清退路",
 ] as const;

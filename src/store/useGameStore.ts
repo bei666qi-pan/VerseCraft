@@ -291,10 +291,10 @@ function applyWholeGameHourTicks(args: {
   talentCooldowns: Record<EchoTalent, number>;
   equippedWeapon: Weapon | null;
 } {
-  let { time, originium, talentCooldowns, equippedWeapon } = args;
-  const prob = 0.1 + Math.max(0, args.background - 20) * 0.02;
+  let { time, talentCooldowns, equippedWeapon } = args;
+  const { originium } = args;
   for (let i = 0; i < args.hourTicks; i++) {
-    if (Math.random() < prob) originium += 1;
+    // 原石不是挂机金币；整点推进只处理冷却与时间。登记额度/薪资由 B1 服务或正式任务结算。
     const nh = time.hour + 1;
     time = nh >= 24 ? { day: time.day + 1, hour: 0 } : { day: time.day, hour: nh };
     const nextCd = { ...talentCooldowns } as Record<EchoTalent, number>;
@@ -468,7 +468,7 @@ export interface GameState extends IntegrityMetaState {
   recentOptions: string[];
   /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
   inputMode: "options" | "text";
-  /** 原石货币：初始值 = 10 + 出身，每小时有 10% + (出身-20)*2% 概率获得 1 原石 */
+  /** 原石货币：空间稳定残响/楼内账本信用；初始登记额度 = 10 + 账本信用，后续由任务与 B1 服务结算 */
   originium: number;
   /** 任务追踪系统 */
   tasks: GameTask[];
@@ -813,7 +813,7 @@ function applyTaskRelationshipConsequencesToCodex(
 
 function resolveFloorScore(loc: string): number {
   if (!loc) return 0;
-  if (loc.startsWith("B2_")) return 99;
+  if (loc.startsWith("B2_")) return 8;
   if (loc.startsWith("B1_")) return 0;
   const m = loc.match(/^(\d)F_/);
   return m ? Number(m[1] ?? 0) : 0;
@@ -2003,7 +2003,7 @@ export const useGameStore = create<GameState>()(
           `敏捷[${stats.agility}]，` +
           `幸运[${stats.luck}]，` +
           `魅力[${stats.charm}]，` +
-          `出身[${stats.background}]`;
+          `账本信用[${stats.background}]`;
 
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
         const prof = computeProfessionState({

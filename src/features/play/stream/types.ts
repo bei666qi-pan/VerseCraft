@@ -4,6 +4,22 @@ export type ChatRole = "system" | "user" | "assistant";
 
 export type ChatMessage = { role: ChatRole; content: string };
 
+export type RiskSource =
+  | "hostile"
+  | "hostile_attack"
+  | "anomaly_attack"
+  | "direct_anomaly"
+  | "environment_hostile"
+  | "truth_shock"
+  | "trade_cost"
+  | "revive_residue"
+  | "forge_pollution"
+  | "relationship_debt"
+  | "time_loss"
+  | "service_cost"
+  | "environment"
+  | "unknown";
+
 /**
  * DM JSON 协议（线缆名）定义。
  * 注意：这里的 snake_case 字段属于 /api/chat 对外契约，不能为“代码整洁”直接改名。
@@ -16,6 +32,11 @@ export type DMJson = {
   is_death: boolean;
   consumes_time?: boolean;
   time_cost?: "free" | "light" | "standard" | "heavy" | "dangerous";
+  /**
+   * Optional risk attribution. B1 only blocks hostile/direct anomaly damage; non-hostile costs remain compatible.
+   */
+  risk_source?: RiskSource;
+  damage_source?: RiskSource;
   /**
    * Phase-1 envelope semantic fields (optional on wire; server resolver fills defaults).
    * 前端解析必须容错：缺省时按旧行为工作。
@@ -126,15 +147,6 @@ export type DMJson = {
     nextHint?: string;
     worldConsequences?: string[];
     highRiskHighReward?: boolean;
-    hiddenTriggerConditions?: string[];
-    claimMode?: "auto" | "manual" | "npc_grant";
-    npcProactiveGrant?: {
-      enabled?: boolean;
-      npcId?: string;
-      minFavorability?: number;
-      preferredLocations?: string[];
-      cooldownHours?: number;
-    };
   }>;
   task_updates?: Array<{
     id: string;

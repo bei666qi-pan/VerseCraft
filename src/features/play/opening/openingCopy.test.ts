@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_FOUR_ACTION_OPTIONS,
   FIXED_OPENING_NARRATIVE,
   isOpeningSystemUserMessage,
   OPENING_SYSTEM_PROMPT,
 } from "./openingCopy";
+import { OPENING_OPTION_POOLS } from "./openingOptionPools";
 
 test("OPENING_SYSTEM_PROMPT：要求主笔产出非空四条 options，与固定前文协议一致", () => {
   assert.ok(OPENING_SYSTEM_PROMPT.includes("禁止输出空数组"));
@@ -20,4 +22,11 @@ test("isOpeningSystemUserMessage：trim 后与 OPENING_SYSTEM_PROMPT 对齐", ()
 test("FIXED_OPENING_NARRATIVE：非空固定开场", () => {
   assert.ok(FIXED_OPENING_NARRATIVE.length > 100);
   assert.ok(FIXED_OPENING_NARRATIVE.includes("如月公寓"));
+});
+
+test("opening options do not mention apartment rules before discovery", () => {
+  const allOptions = [...DEFAULT_FOUR_ACTION_OPTIONS, ...OPENING_OPTION_POOLS.flat()];
+  assert.ok(allOptions.length > 4);
+  assert.equal(allOptions.some((option) => option.includes("规则")), false);
+  assert.equal(allOptions.some((option) => option.includes("公寓规则")), false);
 });

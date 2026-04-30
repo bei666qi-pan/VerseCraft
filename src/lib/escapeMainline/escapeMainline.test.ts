@@ -6,8 +6,10 @@ import { buildEscapePromptBlock } from "./prompt";
 import { advanceEscapeMainlineFromResolvedTurn } from "./integration";
 import { shouldAllowDoomline } from "@/features/play/endgame/endgame";
 import { computeEscapeOutcomeForSettlement } from "./selectors";
+import { deriveEscapeFactors } from "./derive";
+import type { MemorySpineEntry, MemorySpineKind } from "@/lib/memorySpine/types";
 
-function makeMemory(kind: any, mergeKey: string, tags: string[] = []) {
+function makeMemory(kind: MemorySpineKind, mergeKey: string, tags: string[] = []): MemorySpineEntry {
   return {
     id: mergeKey,
     kind,
@@ -22,7 +24,7 @@ function makeMemory(kind: any, mergeKey: string, tags: string[] = []) {
     mergeKey,
     anchors: {},
     recallTags: tags,
-    source: "test",
+    source: "system_hook",
     promoteToLore: false,
   };
 }
@@ -75,6 +77,22 @@ test("phase5: false lead is recorded but does not grant true escape", () => {
   });
   assert.ok(next.falseLeads.length >= 1);
   assert.notEqual(next.stage, "escaped_true");
+});
+
+test("phase5: B2 presence alone does not grant B2 access", () => {
+  const factors = deriveEscapeFactors({
+    nowHour: 6,
+    nowTurn: 3,
+    playerLocation: "B2_Passage",
+    tasks: [],
+    codex: {},
+    inventoryItemIds: ["I-C12"],
+    worldFlags: [],
+    memoryEntries: [makeMemory("route_hint", "map_piece_a"), makeMemory("route_hint", "map_piece_b")],
+  });
+  assert.ok(!factors.conditionMetCodes.includes("obtain_b2_access"));
+  assert.ok(factors.blockers.some((b) => b.code === "illegal_b2_presence"));
+  assert.equal(factors.pendingFinalAction, null);
 });
 
 test("phase5: prompt block is short and structured", () => {

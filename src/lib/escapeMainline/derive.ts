@@ -41,6 +41,12 @@ export function deriveEscapeFactors(input: EscapeDerivationInput): {
   const mem = input.memoryEntries ?? [];
   const invIds = input.inventoryItemIds ?? [];
   const worldFlags = new Set((input.worldFlags ?? []).map((x) => String(x ?? "").trim()).filter(Boolean));
+  const hasB2Access =
+    worldFlags.has("b2_access_granted") ||
+    worldFlags.has("escape:b2_access_granted") ||
+    worldFlags.has("permit.b2_access") ||
+    worldFlags.has("route.permit.b2");
+  const isInB2 = loc.startsWith("B2_");
 
   // 路线碎片：优先吃 memorySpine 的 route_hint / secret_fragment
   const routeHintCodes = uniq(
@@ -54,7 +60,7 @@ export function deriveEscapeFactors(input: EscapeDerivationInput): {
 
   // 条件满足（结构化推导示范）
   const conditionMetCodes: string[] = [];
-  if (loc.startsWith("B2_") || worldFlags.has("b2_access_granted")) conditionMetCodes.push("obtain_b2_access");
+  if (hasB2Access) conditionMetCodes.push("obtain_b2_access");
   // 示例钥物：先用 unlock flag / 物品 id 作为可验证真相源
   if (worldFlags.has("permit.one_time") || hasItem(invIds, "I-C12")) conditionMetCodes.push("secure_key_item");
   // gatekeeper 信任：从 codex 关系字段推导（示范：N-018 / N-010 任一达到阈值）
@@ -80,6 +86,9 @@ export function deriveEscapeFactors(input: EscapeDerivationInput): {
   );
 
   const blockers: Array<{ code: string; label: string; severity: "low" | "medium" | "high" }> = [];
+  if (isInB2 && !hasB2Access) {
+    blockers.push({ code: "illegal_b2_presence", label: "你闯入了地下二层，但这不是通行权限；守门审计正在升高。", severity: "high" });
+  }
   if (routeHintCodes.length === 0) blockers.push({ code: "no_route", label: "路线碎片不足：出口路径仍不清晰。", severity: "high" });
   if (!conditionMetCodes.includes("obtain_b2_access")) blockers.push({ code: "no_b2_access", label: "缺少进入地下二层的权限/通行。", severity: "high" });
   if (!conditionMetCodes.includes("secure_key_item")) blockers.push({ code: "no_key_item", label: "缺少关键钥物。", severity: "medium" });
@@ -87,7 +96,7 @@ export function deriveEscapeFactors(input: EscapeDerivationInput): {
   if (!conditionMetCodes.includes("survive_cost_trial")) blockers.push({ code: "no_cost_trial", label: "代价尚未支付；出口不会白送。", severity: "medium" });
 
   const pendingFinalAction =
-    loc.startsWith("B2_") && blockers.length === 0 ? "perform_escape_action_at_gate" : null;
+    isInB2 && hasB2Access && blockers.length === 0 ? "perform_escape_action_at_gate" : null;
 
   return { routeHintCodes, conditionMetCodes: uniq(conditionMetCodes, 8), falseLeadCodes, blockers, pendingFinalAction };
 }

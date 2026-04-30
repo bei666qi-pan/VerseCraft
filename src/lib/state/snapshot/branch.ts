@@ -44,7 +44,7 @@ export interface BranchCreateGuardResult {
 
 export function resolveFloorScore(loc: string): number {
   if (!loc) return 0;
-  if (loc.startsWith("B2_")) return 99;
+  if (loc.startsWith("B2_")) return 8;
   if (loc.startsWith("B1_")) return 0;
   const m = loc.match(/^(\d)F_/);
   return m ? Number(m[1] ?? 0) : 0;

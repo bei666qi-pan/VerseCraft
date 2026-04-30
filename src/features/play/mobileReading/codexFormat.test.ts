@@ -75,7 +75,7 @@ test("mobile codex shows active threat anomalies on their runtime floor", () => 
     },
   });
 
-  assert.ok(slots.some((slot) => slot.id === "A-002"));
+  assert.ok(slots.some((slot) => slot.id === "A-004"));
   assert.ok(slots.some((slot) => slot.id === "A-008"));
 });
 
@@ -110,7 +110,7 @@ test("mobile codex location labels avoid raw internal ids", () => {
 });
 
 test("mobile codex supports anomaly card models", () => {
-  const slots = getMobileCodexSlotsForFloor({ playerLocation: "2F_Corridor" });
+  const slots = getMobileCodexSlotsForFloor({ playerLocation: "4F_CorridorEnd" });
   const cards = buildMobileCodexCardModels({ "A-002": anomalyEntry("A-002", "无头猎犬") }, slots);
   const anomalyCard = cards.find((card) => card.kind === "slot" && card.id === "A-002");
 

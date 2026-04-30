@@ -9,7 +9,7 @@ test("settlement guard freezes mutating fields on illegal action", () => {
     consumed_items: ["I-C03"],
     awarded_items: ["I-B03"],
     currency_change: 9,
-    main_threat_updates: [{ floorId: "2", threatId: "A-002" }],
+    main_threat_updates: [{ floorId: "2", threatId: "A-004" }],
     weapon_updates: [{ weaponId: "WPN-001", stability: 80 }],
   });
   assert.deepEqual(out.consumed_items, []);

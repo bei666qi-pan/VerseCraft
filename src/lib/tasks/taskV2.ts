@@ -513,10 +513,10 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
   });
 
   // 向后兼容 + 产品默认：没有 grantState 时不要把“系统任务”强行当作“玩家已知”。
-  // 仅当任务已经处于 active（正在推进的事实）时，默认可见；否则默认“尚未正式交付”。
+  // active 只代表系统开始追踪，默认仍需叙事提出/玩家承接；新手主线等白名单显式写 visible_on_board。
   if (!normalized.grantState) {
     if (normalized.status === "active") {
-      normalized.grantState = "visible_on_board";
+      normalized.grantState = "narratively_offered";
     } else {
       normalized.grantState = "discovered_but_unoffered";
     }
@@ -737,7 +737,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       desc: "先把 B1 的命稳住，再向老刘换「能验证」的出口碎片；上楼找欣蓝换许可，最后才谈代价与真门。",
       type: "main",
       issuerId: "SYSTEM",
-      issuerName: "规则",
+      issuerName: "公寓残页",
       floorTier: "B1",
       guidanceLevel: "strong",
       status: "active",
@@ -1032,8 +1032,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     }),
     normalizeGameTaskDraft({
       id: "char_newcomer_coverup",
-      title: "帮她把‘漏掉的规则’圆过去",
-      desc: "当灵伤‘不小心’漏掉关键规则时，用不露痕迹的方式替她补上，避免她被泡层口径追责。",
+      title: "帮她把‘漏掉的残页’圆过去",
+      desc: "当灵伤‘不小心’漏掉入住须知残页的一角时，用不露痕迹的方式替她补上，避免她被泡层口径追责。",
       type: "character",
       issuerId: "N-020",
       issuerName: "灵伤",
@@ -1057,7 +1057,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "别直接纠正她；先顺着她的话补一句‘有人跟我提过…’。",
       dramaticType: "coverup",
-      issuerIntent: "她要补给线绩效，也要你继续信她；让你先答应，再用规则催你兑现。",
+      issuerIntent: "她要补给线绩效，也要你继续信她；让你先答应，再用残页和口径催你兑现。",
       playerHook: "你帮她一次，她就会在某个细节上放你一马。",
       urgencyReason: "泡层审计会查漏；查到就会‘回收’她这条人性缓冲。",
       taboo: "别追问‘你是人吗’。",
@@ -1068,7 +1068,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       relatedLocationIds: ["1F_Lobby", "1F_PropertyOffice"],
       canBackfire: true,
       backfireConsequences: ["rel:N-020:trust:-4", "rel:N-010:trust:-2"],
-      spokenDeliveryStyle: "句尾上扬、像在哄人；漏掉关键规则时会装作‘忘了’。",
+      spokenDeliveryStyle: "句尾上扬、像在哄人；漏掉残页关键信息时会装作‘忘了’。",
       reward: { originium: 1 },
       worldConsequences: ["hook:newcomer_coverup_seeded"],
     }),

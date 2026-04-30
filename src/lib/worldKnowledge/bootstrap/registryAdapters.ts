@@ -1,12 +1,12 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
-import { APARTMENT_SYSTEM_CANON, APARTMENT_TRUTH } from "@/lib/registry/apartmentTruth";
+import { APARTMENT_REVEAL_CANON, APARTMENT_SYSTEM_CANON } from "@/lib/registry/apartmentTruth";
 import { ITEMS } from "@/lib/registry/items";
 import { NPCS } from "@/lib/registry/npcs";
-import { APARTMENT_RULES } from "@/lib/registry/rules";
+import { APARTMENT_SURVIVAL_NOTES } from "@/lib/registry/rules";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { FLOORS, MAP_ROOMS, NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
-import { REVEAL_TIER_RANK, revealKnowledgeTagFromRank, type RevealTierRank } from "@/lib/registry/revealTierRank";
+import { REVEAL_TIER_RANK, revealKnowledgeTagFromRank } from "@/lib/registry/revealTierRank";
 import { SCHOOL_CYCLE_LORE_SLICES } from "@/lib/registry/schoolCycleCanon";
 import { buildCycleMoonFlashFactsForCanon } from "@/lib/registry/cycleMoonFlashRegistry";
 import {
@@ -21,7 +21,7 @@ import { MAJOR_NPC_BRANCH_SEEDS } from "@/lib/registry/majorNpcBranchSeeds";
 /** 公寓生态分层标签：检索时区分消化住户 / 校源耦合辅锚 / 秩序节点 */
 function npcEcologyTags(npcId: string): string[] {
   if (MAJOR_NPC_IDS.includes(npcId as MajorNpcId)) {
-    return ["ecology:yeliri_coupled", "ecology:seven_anchor_satellite", "apartment_coexists_digestion"];
+    return ["ecology:key_resident", "apartment_coexists_digestion"];
   }
   if (npcId === "N-011") {
     return ["ecology:order_ledger", "ecology:digestion_manager"];
@@ -134,20 +134,42 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
   entities.push({
     entityType: "truth",
     code: "truth:apartment",
-    canonicalName: "apartment_truth",
-    title: "如月公寓真相档案",
-    summary: "公寓本质、结构、时间线、暗月与出口机制。",
-    detail: APARTMENT_TRUTH.trim(),
+    canonicalName: "apartment_surface_truth",
+    title: "如月公寓表层档案",
+    summary: "月初误入、B1 暂安、守则真假参半与 B2 传闻。",
+    detail: APARTMENT_REVEAL_CANON.surface.text,
     scope: "global",
     ownerUserId: null,
     status: "active",
     sourceType: "bootstrap",
-    sourceRef: "registry/apartmentTruth.ts",
+    sourceRef: "registry/apartmentTruth.ts:APARTMENT_REVEAL_CANON.surface",
     importance: 100,
     version: 1,
     tags: ["core", "truth", "apartment", "world_mechanism", "reveal_surface"],
   });
-  addChunksForEntity("truth:apartment", splitChunksByMaxLen(APARTMENT_TRUTH.split("\n\n"), 1000), 100, chunks);
+  addChunksForEntity("truth:apartment", splitChunksByMaxLen(APARTMENT_REVEAL_CANON.surface.text.split("\n\n"), 1000), 100, chunks);
+
+  for (const tier of [APARTMENT_REVEAL_CANON.fracture, APARTMENT_REVEAL_CANON.deep, APARTMENT_REVEAL_CANON.abyss]) {
+    const revealTag = revealKnowledgeTagFromRank(tier.rank);
+    const code = `truth:apartment_${revealTag.replace("reveal_", "")}`;
+    entities.push({
+      entityType: "truth",
+      code,
+      canonicalName: code.replace("truth:", ""),
+      title: `如月公寓${tier.title}`,
+      summary: tier.title,
+      detail: tier.text,
+      scope: "global",
+      ownerUserId: null,
+      status: "active",
+      sourceType: "bootstrap",
+      sourceRef: "registry/apartmentTruth.ts:APARTMENT_REVEAL_CANON",
+      importance: tier.rank >= REVEAL_TIER_RANK.deep ? 99 : 96,
+      version: 1,
+      tags: ["core", "truth", "apartment", "world_mechanism", revealTag],
+    });
+    addChunksForEntity(code, splitChunksByMaxLen(tier.text.split("\n\n"), 1000), 96, chunks);
+  }
 
   entities.push({
     entityType: "truth",
@@ -176,21 +198,30 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
     entityType: "rule",
     code: "rule:apartment",
     canonicalName: "apartment_rules",
-    title: "如月公寓守则",
-    summary: "规则一至规则十，真假参半但可执行。",
-    detail: APARTMENT_RULES.join("\n"),
+    title: "如月公寓生存笔记",
+    summary: "入住须知残页、住户传言、物业残页与前人笔记；真假参半，需验证。",
+    detail: APARTMENT_SURVIVAL_NOTES.map((note) => `${note.title}：${note.surfaceText}`).join("\n"),
     scope: "global",
     ownerUserId: null,
     status: "active",
     sourceType: "bootstrap",
-    sourceRef: "registry/rules.ts",
+    sourceRef: "registry/rules.ts:APARTMENT_SURVIVAL_NOTES",
     importance: 95,
     version: 1,
-    tags: ["rule", "compliance", "apartment"],
+    tags: ["survival_note", "rumor", "remnant", "apartment", "reveal_surface"],
   });
   addChunksForEntity(
     "rule:apartment",
-    APARTMENT_RULES.map((x, idx) => `${idx + 1}. ${x}`),
+    APARTMENT_SURVIVAL_NOTES.map((note) =>
+      [
+        `${note.title}（${note.source}）`,
+        `表层文本：${note.surfaceText}`,
+        `可靠性：${note.reliability}`,
+        `适用：${note.validWhen}`,
+        `失效：${note.invalidWhen}`,
+        `真实机制：${note.actualMechanism}`,
+      ].join("\n")
+    ),
     95,
     chunks
   );
@@ -516,8 +547,8 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
       code,
       canonicalName: anomaly.id.toLowerCase(),
       title: anomaly.name,
-      summary: `${anomaly.floor} 层 / 战力 ${anomaly.combatPower} / 理智伤害 ${anomaly.sanityDamage}`,
-      detail: anomaly.killingRule,
+      summary: `${anomaly.floor} 层 / 危险 ${anomaly.displayDangerLevel ?? anomaly.combatPower} / 理智伤害 ${anomaly.sanityDamage}`,
+      detail: anomaly.floorMechanismTheme,
       scope: "global",
       ownerUserId: null,
       status: "active",
@@ -530,9 +561,9 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
     addChunksForEntity(
       code,
       [
-        `诡异：${anomaly.name}（${anomaly.id}）\n楼层：${anomaly.floor}\n战力：${anomaly.combatPower}\n理智伤害：${anomaly.sanityDamage}`,
+        `空间异常：${anomaly.name}（${anomaly.id}）\n楼层：${anomaly.floor}\n危险：${anomaly.displayDangerLevel ?? anomaly.combatPower}\n理智伤害：${anomaly.sanityDamage}`,
         `外观：${anomaly.appearance}`,
-        `杀戮规则：${anomaly.killingRule}\n生存方法：${anomaly.survivalMethod}`,
+        `触发条件：${anomaly.triggerCondition}\n升级模式：${anomaly.escalationPattern}\n对策窗口：${anomaly.counterWindow}\n叙事职责：${anomaly.narrativeRole}`,
       ],
       anomaly.id === "A-008" ? 98 : 82,
       chunks

@@ -10,5 +10,6 @@ export * from "./worldOrderRegistry";
 export * from "./revealRegistry";
 export * from "./playerSurfaceLore";
 export * from "./schoolCycleCanon";
+export * from "./worldClosureMatrix";
 export type { SchoolCycleResonanceNpcId } from "./schoolCycleIds";
 export { parsePlayerWorldSignals, type MainThreatPhase, type PlayerWorldSignals } from "./playerWorldSignals";

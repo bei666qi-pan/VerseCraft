@@ -9,13 +9,13 @@ const STAT_LABELS: Record<StatType, string> = {
   agility: "敏捷",
   luck: "幸运",
   charm: "魅力",
-  background: "出身",
+  background: "账本信用",
 };
 
 /** Effect type labels for intuitive display */
 export const EFFECT_TYPE_LABELS: Record<string, string> = {
   shield: "护盾",
-  ruleKill: "规则击杀",
+  ruleKill: "机制压制",
   tempStat: "临时属性",
   intel: "情报",
   access: "通行",
@@ -39,8 +39,8 @@ export function getItemEffectSummary(item: Item | null | undefined): string | nu
   if (item.effectSummary && item.effectSummary.trim()) return item.effectSummary.trim();
   const t = item.effectType;
   if (!t) return null;
-  if (t === "shield") return item.blockLethal && item.ruleKill ? "抵挡1次致命攻击或施加规则击杀" : "抵挡1次致命攻击";
-  if (t === "ruleKill") return "可对诡异施加规则类致命一击";
+  if (t === "shield") return item.blockLethal && item.ruleKill ? "抵挡1次致命攻击或打断异常升级" : "抵挡1次致命攻击";
+  if (t === "ruleKill") return "识别机制承重点，制造压制窗口";
   if (t === "tempStat" && item.tempStatEffect) {
     const { stat, value } = item.tempStatEffect;
     const s = STAT_LABELS[stat] ?? stat;

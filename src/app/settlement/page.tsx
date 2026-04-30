@@ -55,9 +55,8 @@ function computeGrade(
   escapeOutcome: "none" | "true_escape" | "false_escape" | "costly_escape" | "doom"
 ): SettlementGrade {
   if (isDead) return "E";
-  const escaped = escapeOutcome === "true_escape" || escapeOutcome === "costly_escape" || maxFloor >= 99;
-  const killAll = kills >= 8;
-  if (escaped || killAll) return "S";
+  const escaped = escapeOutcome === "true_escape" || escapeOutcome === "costly_escape";
+  if (escaped) return "S";
   if (maxFloor >= 7 || kills >= 5 || (maxFloor >= 6 && survivalHours >= 48)) return "A";
   if (maxFloor >= 5 || kills >= 3 || (maxFloor >= 4 && kills >= 2)) return "B";
   if (maxFloor >= 3 || kills >= 2) return "C";
@@ -66,7 +65,7 @@ function computeGrade(
 }
 
 function formatFloorDisplay(score: number): string {
-  if (score >= 99) return "地下二层出口";
+  if (score >= 8) return "地下二层（出口喉管）";
   if (score <= 0) return "地下一层";
   return `第 ${score} 层`;
 }
@@ -78,15 +77,9 @@ function generateSettlementReview(
   maxFloor: number
 ): [string, string] {
   if (grade === "S") {
-    if (kills >= 8) {
-      return [
-        "你竟将公寓的猎食者们屠戮殆尽，连深渊守门人也未能幸免。",
-        "这栋楼从未见过如此傲慢的胜利者——你值得被刻在它的残骸上。",
-      ];
-    }
     return [
-      "你找到了出口，从高维肠胃的消化中挣脱。",
-      "很少有人能走到这一步；你证明了规则可以被驯服，而非只能被恐惧。",
+      "你对齐了出口资格链，在真正窗口里完成了最后一步。",
+      "很少有人能走到这一步；你证明了传闻需要被验证，出口需要被结算，而不是被硬闯。",
     ];
   }
   if (grade === "E" && isDead) {
@@ -203,7 +196,7 @@ function triggerDownload(content: string, filename: string) {
 
 function resolveFloorScore(location: string): number {
   if (!location) return 0;
-  if (location.startsWith("B2_")) return 99;
+  if (location.startsWith("B2_")) return 8;
   if (location.startsWith("B1_")) return 0;
   const match = location.match(/^(\d)F_/);
   if (!match) return 0;
@@ -294,7 +287,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         profession: profession ? String(profession) : null,
         recapSummary,
         isDead,
-        hasEscaped: !isDead && (escapeOutcome === "true_escape" || escapeOutcome === "costly_escape" || maxFloor >= 99),
+        hasEscaped: !isDead && (escapeOutcome === "true_escape" || escapeOutcome === "costly_escape"),
         writingMarkdown,
       },
     });

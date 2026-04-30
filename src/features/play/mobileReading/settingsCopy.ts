@@ -10,13 +10,13 @@ export const GAME_GUIDE_SECTIONS: readonly GameGuideSection[] = [
     id: "what-is-it",
     index: "01",
     title: "游戏是什么",
-    body: "《VerseCraft》是 AI 驱动的互动小说。你不是只读固定剧情，而是输入自然语言行动，由系统结合场景、状态、时间与规则判断后果。",
+    body: "《VerseCraft》是 AI 驱动的悬疑互动小说。你不是只读固定剧情，而是输入自然语言行动，由系统结合场景、状态、时间与线索判断后果。",
   },
   {
     id: "objective",
     index: "02",
     title: "你的目标",
-    body: "当前世界为“序章·暗月”。你需要在异常公寓中活下来，理解规则，收集线索，处理人物关系，并寻找离开的可能。",
+    body: "当前世界为“序章·暗月”。你需要在异常公寓中活下来，验证传闻与残页，收集线索，处理人物关系，并接近真正出口。",
   },
   {
     id: "how-to-act",
@@ -34,7 +34,7 @@ export const GAME_GUIDE_SECTIONS: readonly GameGuideSection[] = [
     id: "stats-originium",
     index: "05",
     title: "属性与原石",
-    body: "精神影响承压，敏捷影响反应，幸运影响提示，魅力影响对话，出身影响初始资源。原石可用于成长和关键恢复，建议留给低精神或关键节点。",
+    body: "精神影响承压，敏捷影响反应，幸运影响提示，魅力影响对话，账本信用影响初始登记额度。原石是楼内秩序货币，建议留给关键服务或撤退窗口。",
   },
   {
     id: "time-talent",

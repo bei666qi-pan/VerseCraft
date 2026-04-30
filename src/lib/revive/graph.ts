@@ -32,7 +32,10 @@ const FLOOR_VERTICAL_EDGES: Array<[string, string]> = [
   ["4F_CorridorEnd", "5F_Studio503"],
   ["5F_Studio503", "6F_Stairwell"],
   ["6F_Stairwell", "7F_Bench"],
-  ["B1_SafeZone", "B2_Passage"],
+];
+
+export const LOCKED_WORLD_EDGES: Array<[string, string, string]> = [
+  ["B1_SafeZone", "B2_Passage", "b2_access_granted"],
 ];
 
 function addEdge(map: Map<string, Set<string>>, a: string, b: string) {
@@ -42,7 +45,19 @@ function addEdge(map: Map<string, Set<string>>, a: string, b: string) {
   map.get(b)!.add(a);
 }
 
-export function buildWorldGraph(): Map<string, Set<string>> {
+export function canTraverseWorldEdge(
+  from: string,
+  to: string,
+  worldFlags: Iterable<string> = []
+): boolean {
+  const flags = new Set([...worldFlags].map((x) => String(x ?? "").trim()).filter(Boolean));
+  const locked = LOCKED_WORLD_EDGES.find(([a, b]) => (a === from && b === to) || (a === to && b === from));
+  if (!locked) return true;
+  const required = locked[2];
+  return flags.has(required) || flags.has(`escape:${required}`) || flags.has("permit.b2_access") || flags.has("route.permit.b2");
+}
+
+export function buildWorldGraph(options: { includeLockedEdges?: boolean } = {}): Map<string, Set<string>> {
   const g = new Map<string, Set<string>>();
   for (const rooms of Object.values(MAP_ROOMS)) {
     for (const r of rooms) {
@@ -51,6 +66,9 @@ export function buildWorldGraph(): Map<string, Set<string>> {
   }
   for (const [a, b] of [...FLOOR_INTERNAL_EDGES, ...FLOOR_VERTICAL_EDGES]) {
     addEdge(g, a, b);
+  }
+  if (options.includeLockedEdges) {
+    for (const [a, b] of LOCKED_WORLD_EDGES) addEdge(g, a, b);
   }
   return g;
 }

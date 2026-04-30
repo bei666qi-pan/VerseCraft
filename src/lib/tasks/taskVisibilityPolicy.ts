@@ -18,6 +18,10 @@ function grantRank(s: TaskGrantState | undefined): number {
   return 0;
 }
 
+const FORMAL_TASK_BOARD_WHITELIST = new Set([
+  "main_escape_spine",
+]);
+
 export function taskNarrativeLayerOf(t: Pick<GameTaskV2, "taskNarrativeLayer" | "shouldStayAsSoftLead" | "shouldStayAsConversationPromise" | "shouldBeFormalTask" | "goalKind" | "promiseBinding" | "type" | "guidanceLevel">): TaskNarrativeLayerKind {
   return inferEffectiveNarrativeLayer(t);
 }
@@ -50,9 +54,9 @@ export function getTaskVisibilityTier(t: GameTaskV2): TaskVisibilityTier {
 
   // formal_task
   // 必须 accepted_in_story（或显式 visible_on_board）才可进入主视图
-  if (t.status === "active") return "board_visible";
   if (r >= 3) return "board_visible";
   if (r >= 2) return "board_visible";
+  if (t.status === "active" && FORMAL_TASK_BOARD_WHITELIST.has(t.id)) return "board_visible";
   return "hidden";
 }
 

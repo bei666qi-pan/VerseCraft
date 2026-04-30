@@ -14,7 +14,7 @@ const STAT_LABELS: Record<StatType, string> = {
   agility: "敏捷",
   luck: "幸运",
   charm: "魅力",
-  background: "出身",
+  background: "账本信用",
 };
 
 function clampInt(n: unknown, min: number, max: number): number {

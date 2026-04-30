@@ -11,9 +11,9 @@ import {
 test("stage2 threat/weapon/forge packet builders return focused payloads", () => {
   const threat = buildThreatPacket({
     location: "2F_Corridor",
-    contextThreatMap: { "2": { threatId: "A-002", phase: "active", suppressionProgress: 35 } },
+    contextThreatMap: { "2": { threatId: "A-004", phase: "active", suppressionProgress: 35 } },
   });
-  assert.equal(threat.activeThreatId, "A-002");
+  assert.equal(threat.activeThreatId, "A-004");
   const weapon = buildWeaponPacket({
     weapon: {
       weaponId: "WPN-001",
@@ -25,7 +25,7 @@ test("stage2 threat/weapon/forge packet builders return focused payloads", () =>
       repairable: true,
     },
     threatName: "听觉锁定回响体",
-    threatId: "A-002",
+    threatId: "A-004",
   });
   assert.equal(weapon.matchAgainstMainThreat, false);
   const forge = buildForgePacket({

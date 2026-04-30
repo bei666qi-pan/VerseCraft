@@ -53,7 +53,7 @@ test("stage2 loop: 上楼-受压-压制-回B1整备-再上楼", () => {
     "游戏时间[第1日 8时]。用户位置[B1_PowerRoom]。原石[8]。" +
     "行囊道具：防爆手电筒[I-C03|C]，备用电池[I-C12|C]，破裂的八卦镜[I-C02|C]。" +
     "仓库物品：配电间的绝缘胶带[W-B101]，保安室的镜子碎片[W-107]。" +
-    "主威胁状态：2[A-002|active|20]。" +
+    "主威胁状态：2[A-004|active|20]。" +
     "主手武器[WPN-001|稳定55|反制sound/silence|模组无|灌注无|污染30|可修复1]。" +
     "任务追踪：压制二层主威胁[main|active|委托N-008|层级2F|领取auto]。" +
     "NPC当前位置：N-008@B1_PowerRoom。";
@@ -96,7 +96,7 @@ test("stage2 loop: 上楼-受压-压制-回B1整备-再上楼", () => {
       narrative: "你利用镜面反制并争取撤离窗口。",
       is_death: false,
       player_location: "2F_Corridor",
-      main_threat_updates: [{ floorId: "2", threatId: "A-002", phase: "suppressed", suppressionProgress: 75 }],
+      main_threat_updates: [{ floorId: "2", threatId: "A-004", phase: "suppressed", suppressionProgress: 75 }],
       weapon_updates: [{ weaponId: "WPN-001", stability: 48 }],
     },
     "我用镜面反制后后撤",

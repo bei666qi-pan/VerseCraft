@@ -1,4 +1,5 @@
 import { buildServiceContextForLocation, isAbsoluteSafeZoneLocation } from "@/lib/registry/runtimeBoundary";
+import { createDefaultB1ServiceState, type B1ServiceState } from "@/lib/registry/serviceNodes";
 
 const LOCATION_NODE_RE = /\b(B2_Passage|B2_GatekeeperDomain|B1_SafeZone|B1_Storage|B1_Laundry|B1_PowerRoom|1F_Lobby|1F_PropertyOffice|1F_GuardRoom|1F_Mailboxes|2F_Clinic201|2F_Room202|2F_Room203|2F_Corridor|3F_Room301|3F_Room302|3F_Stairwell|4F_Room401|4F_Room402|4F_CorridorEnd|5F_Room501|5F_Room502|5F_Studio503|6F_Room601|6F_Room602|6F_Stairwell|7F_Room701|7F_Bench|7F_Kitchen|7F_SealedDoor)\b/i;
 
@@ -10,17 +11,12 @@ export function guessPlayerLocationFromContext(playerContext: string): string | 
 export function buildB1ServiceContextBlock(args: {
   playerLocation: string | null;
   playerContext?: string;
-  serviceState?: {
-    shopUnlocked?: boolean;
-    forgeUnlocked?: boolean;
-    anchorUnlocked?: boolean;
-    unlockFlags?: Record<string, boolean>;
-  };
+  serviceState?: B1ServiceState;
 }): string {
   const presentNpcIds = extractPresentNpcIds(args.playerContext ?? "", args.playerLocation);
   return buildServiceContextForLocation(
     args.playerLocation,
-    args.serviceState ?? {},
+    args.serviceState ?? createDefaultB1ServiceState(),
     presentNpcIds
   );
 }
@@ -47,8 +43,30 @@ export function applyB1SafetyGuard(args: {
   if (!isAbsoluteSafeZoneLocation(loc)) return next;
   const damage = Number(next.sanity_damage ?? 0);
   if (!Number.isFinite(damage) || damage <= 0) return next;
+  const riskSource =
+    typeof next.risk_source === "string" && next.risk_source.trim()
+      ? next.risk_source.trim()
+      : typeof next.damage_source === "string" && next.damage_source.trim()
+        ? next.damage_source.trim()
+        : "hostile";
+  const hostileSources = new Set(["hostile", "hostile_attack", "anomaly_attack", "direct_anomaly", "environment_hostile"]);
+  if (!hostileSources.has(riskSource)) {
+    const meta =
+      next.security_meta && typeof next.security_meta === "object" && !Array.isArray(next.security_meta)
+        ? (next.security_meta as Record<string, unknown>)
+        : {};
+    next.security_meta = {
+      ...meta,
+      stage: "b1_safe_zone_guard",
+      reason: "b1_non_hostile_cost_allowed",
+      risk_source: riskSource,
+    };
+    return next;
+  }
 
   next.sanity_damage = 0;
+  next.risk_source = riskSource;
+  next.damage_source = riskSource;
   next.is_action_legal = false;
   const meta =
     next.security_meta && typeof next.security_meta === "object" && !Array.isArray(next.security_meta)
@@ -59,6 +77,7 @@ export function applyB1SafetyGuard(args: {
     action: "guarded",
     stage: "b1_safe_zone_guard",
     reason: "hostile_damage_blocked_in_b1",
+    risk_source: riskSource,
   };
   return next;
 }

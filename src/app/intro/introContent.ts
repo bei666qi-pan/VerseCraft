@@ -1,7 +1,7 @@
 export const INTRO_BRAND = "VerseCraft";
 export const INTRO_PAGE_TITLE = "选择世界观";
-export const INTRO_PAGE_SUBTITLE = "不同的世界，不同的故事";
-export const INTRO_CTA = "书写想象";
+export const INTRO_PAGE_SUBTITLE = "AI 悬疑互动小说";
+export const INTRO_CTA = "进入公寓";
 export const INTRO_DISABLED_CTA = "世界观筹备中";
 
 export const DARKMOON_CARD_IMAGE =
@@ -22,14 +22,14 @@ export const INTRO_WORLD_SLIDES = [
   {
     id: "darkmoon",
     title: "序章 · 暗月",
-    subtitle: "被困于暗月循环中的封闭公寓",
+    subtitle: "异常公寓生存叙事",
     available: true,
     imageSrc: DARKMOON_CARD_IMAGE,
     imageAlt: "序章暗月世界观卡片",
     introTitle: "序章 · 暗月",
     introBody: [
-      "你醒在如月公寓 B1 的冷光之下，时间与空间开始出现轻微错位。",
-      "这是一座被暗月循环困住的封闭公寓。你需要观察异常、记录线索，并用自己的行动把故事继续写下去。",
+      "你醒在如月公寓 B1 的冷光之下，和月初又一批误入者一样，先要证明自己能活过第一段走廊。",
+      "这是一段 AI 驱动的悬疑互动小说。你需要探索异常、交涉取舍、记录线索与关系债，一步步接近真正出口。",
     ],
   },
   {

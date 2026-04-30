@@ -20,11 +20,31 @@ test("applyB1SafetyGuard blocks hostile sanity damage in B1", () => {
       sanity_damage: 6,
       narrative: "你在B1遭受攻击。",
       is_death: false,
+      risk_source: "hostile_attack" as any,
     },
     fallbackLocation: "B1_SafeZone",
   });
   assert.equal(guarded.sanity_damage, 0);
   assert.equal(guarded.is_action_legal, false);
+  assert.equal((guarded as any).damage_source, "hostile_attack");
+  assert.equal((guarded as any).security_meta.reason, "hostile_damage_blocked_in_b1");
+});
+
+test("applyB1SafetyGuard keeps non-hostile B1 costs", () => {
+  const guarded = applyB1SafetyGuard({
+    dmRecord: {
+      is_action_legal: true,
+      sanity_damage: 4,
+      narrative: "B1 truth shock still costs sanity.",
+      is_death: false,
+      risk_source: "truth_shock" as any,
+      player_location: "B1_Laundry",
+    },
+    fallbackLocation: "B1_SafeZone",
+  });
+  assert.equal(guarded.sanity_damage, 4);
+  assert.equal(guarded.is_action_legal, true);
+  assert.equal((guarded as any).security_meta.reason, "b1_non_hostile_cost_allowed");
 });
 
 test("applyB1SafetyGuard does not alter non-B1 records", () => {

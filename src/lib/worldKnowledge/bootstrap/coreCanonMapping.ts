@@ -12,8 +12,8 @@ import type { LoreFact, LoreFactType, LoreSourceKind, WorldKnowledgeLayer } from
 import { NPCS } from "@/lib/registry/npcs";
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { ITEMS } from "@/lib/registry/items";
-import { APARTMENT_RULES } from "@/lib/registry/rules";
-import { APARTMENT_SYSTEM_CANON, APARTMENT_TRUTH } from "@/lib/registry/apartmentTruth";
+import { APARTMENT_SURVIVAL_NOTES } from "@/lib/registry/rules";
+import { APARTMENT_REVEAL_CANON, APARTMENT_SYSTEM_CANON } from "@/lib/registry/apartmentTruth";
 import {
   FLOORS,
   MAP_ROOMS,
@@ -24,6 +24,7 @@ import {
   B2_BOSS_LOCKED_FAVORABILITY,
 } from "@/lib/registry/world";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
+import { revealKnowledgeTagFromRank } from "@/lib/registry/revealTierRank";
 import { buildSchoolCycleLoreFactsForCanon } from "@/lib/registry/schoolCycleCanon";
 import { buildCycleMoonFlashFactsForCanon } from "@/lib/registry/cycleMoonFlashRegistry";
 import { buildWorldArcBootstrapFactsForCanon } from "@/lib/registry/worldArcBootstrapSlices";
@@ -72,11 +73,23 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
       layer: "core_canon",
       factType: "world_mechanism",
       factKey: "core:apartment_truth",
-      canonicalText: APARTMENT_TRUTH,
+      canonicalText: APARTMENT_REVEAL_CANON.surface.text,
       tags: ["core", "truth", "mechanism", "apartment", "reveal_surface"],
       source: mkSource("registry"),
     })
   );
+  for (const tier of [APARTMENT_REVEAL_CANON.fracture, APARTMENT_REVEAL_CANON.deep, APARTMENT_REVEAL_CANON.abyss]) {
+    facts.push(
+      mkFact({
+        layer: "core_canon",
+        factType: "world_mechanism",
+        factKey: `core:apartment_truth:${revealKnowledgeTagFromRank(tier.rank).replace("reveal_", "")}`,
+        canonicalText: tier.text,
+        tags: ["core", "truth", "mechanism", "apartment", revealKnowledgeTagFromRank(tier.rank)],
+        source: mkSource("registry"),
+      })
+    );
+  }
   facts.push(
     mkFact({
       layer: "core_canon",
@@ -93,9 +106,11 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
     mkFact({
       layer: "core_canon",
       factType: "rule",
-      factKey: "core:apartment_rules",
-      canonicalText: APARTMENT_RULES.join("\n"),
-      tags: ["rules", "apartment"],
+      factKey: "core:apartment_survival_notes",
+      canonicalText: APARTMENT_SURVIVAL_NOTES.map((note) =>
+        `${note.title}｜${note.source}｜可靠性:${note.reliability}\n${note.surfaceText}\n机制:${note.actualMechanism}`
+      ).join("\n\n"),
+      tags: ["survival_note", "rumor", "remnant", "apartment", "reveal_surface"],
       source: mkSource("registry"),
     })
   );
@@ -305,7 +320,7 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
     }
   }
 
-  // 5) 诡异实体：外观/杀戮规则/生存方法/精神损伤
+  // 5) 空间异常：外观/触发条件/升级模式/对策窗口/精神损伤
   for (const a of ANOMALIES) {
     facts.push(
       mkFact({
@@ -313,11 +328,13 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
         factType: "anomaly",
         factKey: factKeyForEntity("anomaly", a.id),
         canonicalText: [
-          `诡异：${a.name}（${a.id}）`,
-          `楼层：${a.floor}；战力：${a.combatPower}`,
+          `空间异常：${a.name}（${a.id}）`,
+          `楼层：${a.floor}；危险：${a.displayDangerLevel ?? a.combatPower}`,
           `外观：${a.appearance}`,
-          `杀戮规则：${a.killingRule}`,
-          `生存方法：${a.survivalMethod}`,
+          `触发条件：${a.triggerCondition}`,
+          `升级模式：${a.escalationPattern}`,
+          `对策窗口：${a.counterWindow}`,
+          `叙事职责：${a.narrativeRole}`,
           `理智伤害：${a.sanityDamage}`,
         ].join("\n"),
         tags: ["anomaly", a.id, a.floor],

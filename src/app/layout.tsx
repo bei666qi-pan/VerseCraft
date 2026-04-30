@@ -8,7 +8,7 @@ import { envRawFirst } from "@/lib/config/envRaw";
 
 export const metadata: Metadata = {
   title: "文界工坊 (VerseCraft)",
-  description: "锻造可能，实现幻想 - 规则怪谈文字冒险",
+  description: "AI 驱动的悬疑互动小说 / 异常公寓生存叙事",
   metadataBase: new URL(envRawFirst(["APP_URL", "NEXT_PUBLIC_APP_URL"]) ?? "https://versecraft.cn"),
 };
 

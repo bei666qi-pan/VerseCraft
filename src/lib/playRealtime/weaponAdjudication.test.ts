@@ -10,7 +10,7 @@ test("weapon tactical adjudication: no equipped weapon does not grant advantage 
       narrative: "你试图强行推进。",
       is_death: false,
       player_location: "2F_Corridor",
-      main_threat_updates: [{ floorId: "2", threatId: "A-002", phase: "active", suppressionProgress: 20 }],
+      main_threat_updates: [{ floorId: "2", threatId: "A-004", phase: "active", suppressionProgress: 20 }],
     },
     playerContext: "用户位置[2F_Corridor]。原石[0]。行囊道具：空。",
     latestUserInput: "我硬闯过去",
@@ -26,13 +26,13 @@ test("weapon tactical adjudication: matching weapon affects damage and writes du
     dmRecord: {
       is_action_legal: true,
       sanity_damage: 3,
-      narrative: "你把短棍压进走廊里的声纹。",
+      narrative: "你把导电胶带压进走廊里的红水。",
       is_death: false,
       player_location: "2F_Corridor",
-      main_threat_updates: [{ floorId: "2", threatId: "A-002", phase: "active", suppressionProgress: 20 }],
+      main_threat_updates: [{ floorId: "2", threatId: "A-004", phase: "active", suppressionProgress: 20 }],
     },
-    playerContext: "用户位置[2F_Corridor]。主手武器[WPN-001|稳定95|反制sound/silence|模组silent|灌注sound:1|污染0|可修复1]。",
-    latestUserInput: "我压制走廊里的声音",
+    playerContext: "用户位置[2F_Corridor]。主手武器[WPN-001|稳定95|反制liquid/conductive|模组conductive|灌注liquid:1|污染0|可修复1]。",
+    latestUserInput: "我用导电封管压制红水",
     requestId: "weapon-positive-0",
   });
 

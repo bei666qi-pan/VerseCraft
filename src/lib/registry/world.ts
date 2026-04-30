@@ -6,8 +6,8 @@ import { ITEMS } from "./items";
 import { WAREHOUSE_ITEMS } from "./warehouseItems";
 
 export const FLOORS: readonly { id: FloorId; label: string; description: string }[] = [
-  { id: "B2", label: "地下二层", description: "出口通道与守门结界。传闻深渊守门人永驻此处，寻常手段打不开那扇木门。" },
-  { id: "B1", label: "地下一层", description: "玩家初始复苏地。储物间、洗衣房、配电间。绝对安全区，无诡异。" },
+  { id: "B2", label: "地下二层", description: "出口喉管与守门结界。深渊守门人审计通行资格，寻常手段打不开那扇木门。" },
+  { id: "B1", label: "地下一层", description: "玩家初始复苏地。储物间、洗衣房、配电间。安全缓冲层，可喘气、交易和恢复，但服务、时间与债务都有代价。" },
   { id: "1", label: "1 楼", description: "门厅、登记与办公口、保安室、信箱区。陈婆婆长椅、一楼登记窗口、新住户接待动线。" },
   { id: "2", label: "2 楼", description: "201 诊室（林医生）、202 室、203 室、走廊。消毒水与甜腻气味弥漫。" },
   { id: "3", label: "3 楼", description: "301 室、302 室、楼梯间。小女孩阿花踢毽子的回响不绝于耳。" },
@@ -52,7 +52,7 @@ export const NPC_EXCLUSIVE_ITEMS: Record<string, string> = {
   "N-012": "屠夫菜刀（厨师专属）",
   "N-013": "无声琴键（枫专属）",
   "N-014": "漂白剂（洗衣房阿姨专属）",
-  "N-015": "电梯应急钥匙（麟泽专属）",
+  "N-015": "边界巡守钥匙（麟泽专属）",
   "N-016": "失眠者手记（失眠症患者专属）",
   "N-017": "茶壶（红制服保洁员专属·剧毒）",
   "N-018": "交换账本副册（北夏专属）",
@@ -68,7 +68,7 @@ export const ANOMALY_COMBAT_TIERS = {
   b2_boss: 29,
 } as const;
 
-/** NPCs hold 8–20 originium each (saved from salary). Originium = life source, heals injuries, brings pleasure; hard currency in the apartment. */
+/** NPCs hold 8–20 originium each (saved from salary). Originium = stabilized space-residue / ledger credit, not ordinary gold. */
 export const NPC_ORIGINIUM_RANGE = { min: 8, max: 20 };
 
 /** S-tier items can ONLY drop from the 7F manager's exclusive quest line */
@@ -122,7 +122,7 @@ export const MAP_ROOMS: Record<string, readonly string[]> = {
   "7": ["7F_Room701", "7F_Bench", "7F_Kitchen", "7F_SealedDoor"],
 };
 
-/** Stage-1: B1 keeps absolute safe-zone guarantee and serves as service hub. */
+/** Stage-1: B1 blocks direct hostile anomaly harm and serves as service hub; it does not waive trade/truth/revive/forge/time costs. */
 export const B1_ABSOLUTE_SAFE_ROOMS = [
   "B1_SafeZone",
   "B1_Storage",
@@ -237,7 +237,7 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "A-002": "无头猎犬用大黄的声带诱杀猎物",
     },
     fixed_lore:
-      "他曾是钢琴师，失明后大黄成为他唯一家人。大黄三日前在 4 楼尽头走失。他不知道无头猎犬正用大黄的声带在管道中诱杀猎物——每次听到狗叫，他都会冲向声源，那是猎犬的陷阱。七楼枫（N-013）的话术与高层听觉诱饵链亦可能将他拖入剧本。",
+      "他自称旧日学过钢琴，但这只是表层残响，不是当前核心身份。失明后大黄成为他唯一家人。大黄三日前在 4 楼尽头走失；无头猎犬正用大黄的声带制造声音诱饵——每次听到狗叫，他都会冲向声源，那是猎犬的陷阱。七楼枫（N-013）的话术与高层听觉诱饵链亦可能将他拖入剧本。",
     core_desires: "找到大黄；在彻底疯掉前分辨枫（N-013）的话术与真救援。",
     immutable_relationships: [
       "信任林医生（N-002），不知她秘密采集数据",
@@ -423,21 +423,21 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
     immutable_relationships: ["（静态占位）patch 覆盖"],
   },
   "N-016": {
-    homeLocation: "6F_Room601",
-    weakness: "安眠药会让他被墙壁吞噬；极度渴望有人陪他保持清醒",
-    scheduleBehavior: "整夜在 6 楼走廊徘徊，白天试图入睡但总是失败",
+    homeLocation: "6F_Stairwell",
+    weakness: "安眠药会让他坠入错层梦；极度渴望有人陪他保持清醒",
+    scheduleBehavior: "整夜在 6 楼楼梯间徘徊，把错层门牌看成 10F；白天试图入睡但总是失败",
     relationships: {
       "N-009": "双胞胎的存在让他更加不安",
-      "A-005": "器官拟态墙在试图同化他",
+      "A-006": "倒行者与错层门牌让他分不清上下",
       "N-002": "拒绝林医生的安眠药处方",
       "N-013": "夜半听见七层有人笑得太像广播剧，他更不敢睡",
     },
     fixed_lore:
-      "他的失眠是认知污染早期症状。他听见的「墙的吞咽声」是真实的——公寓在消化。保持清醒是对抗同化的唯一方式。安眠药会让他在梦中被墙壁吞噬。他拒绝林医生的处方。双胞胎的存在加剧他的不安，器官拟态墙在慢慢同化他。",
+      "他的失眠是 6F 镜像与错层污染的早期症状；「10 楼走廊」只是 6F 楼梯间投影，不是真实楼层。他听见的吞咽声来自楼体消化。保持清醒只能延迟同化。安眠药会让他在梦中被错层吞没。他拒绝林医生的处方。双胞胎的存在加剧他的不安，倒行者让他分不清上下。",
     core_desires: "永远不要入睡；找到能陪他保持清醒的人；在被同化前逃出公寓。",
     immutable_relationships: [
       "双胞胎（N-009）让他更加不安",
-      "器官拟态墙（A-005）在试图同化他",
+      "倒行者（A-006）与错层门牌让他分不清上下",
       "拒绝林医生（N-002）的安眠药",
     ],
   },

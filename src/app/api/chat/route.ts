@@ -109,6 +109,7 @@ import { applyEquipmentExecutionGuard } from "@/lib/playRealtime/equipmentExecut
 import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
 import { applyWeaponTacticalAdjudication } from "@/lib/playRealtime/weaponAdjudication";
 import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
+import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 import {
@@ -834,15 +835,29 @@ export async function POST(req: Request) {
 
   const promptBuildStartAt = nowMs();
 
+  const serviceState = (() => {
+    const base = createDefaultB1ServiceState();
+    const raw =
+      clientState && typeof clientState === "object" && !Array.isArray(clientState)
+        ? ((clientState as any).services ?? (clientState as any).serviceState ?? null)
+        : null;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+    const o = raw as Record<string, unknown>;
+    return {
+      shopUnlocked: typeof o.shopUnlocked === "boolean" ? o.shopUnlocked : base.shopUnlocked,
+      forgeUnlocked: typeof o.forgeUnlocked === "boolean" ? o.forgeUnlocked : base.forgeUnlocked,
+      anchorUnlocked: typeof o.anchorUnlocked === "boolean" ? o.anchorUnlocked : base.anchorUnlocked,
+      unlockFlags:
+        o.unlockFlags && typeof o.unlockFlags === "object" && !Array.isArray(o.unlockFlags)
+          ? (o.unlockFlags as Record<string, boolean>)
+          : base.unlockFlags,
+    };
+  })();
+
   const serviceContextBlock = buildB1ServiceContextBlock({
     playerLocation: guessPlayerLocationFromContext(playerContext),
     playerContext,
-    serviceState: {
-      shopUnlocked: true,
-      forgeUnlocked: true,
-      anchorUnlocked: true,
-      unlockFlags: {},
-    },
+    serviceState,
   });
   const npcTaskNarrativeBlock =
     riskLane === "slow"
@@ -869,13 +884,6 @@ export async function POST(req: Request) {
       return "";
     }
   })();
-
-  const serviceState = {
-    shopUnlocked: true,
-    forgeUnlocked: true,
-    anchorUnlocked: true,
-    unlockFlags: {},
-  };
 
   await Promise.all([runControlPreflightP, loreRetrievalP]);
   ttftProfile.controlPreflightMs =

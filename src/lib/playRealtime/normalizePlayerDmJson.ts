@@ -50,6 +50,29 @@ function asObjectArray(v: unknown, maxLen: number): Array<Record<string, unknown
   return out;
 }
 
+const RISK_SOURCES = new Set([
+  "hostile",
+  "hostile_attack",
+  "anomaly_attack",
+  "direct_anomaly",
+  "environment_hostile",
+  "truth_shock",
+  "trade_cost",
+  "revive_residue",
+  "forge_pollution",
+  "relationship_debt",
+  "time_loss",
+  "service_cost",
+  "environment",
+  "unknown",
+]);
+
+function normalizeRiskSource(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return RISK_SOURCES.has(s) ? s : undefined;
+}
+
 function normalizeWeaponUpdates(v: unknown): Array<Record<string, unknown>> {
   const raw = asObjectArray(v, 24);
   const out: Array<Record<string, unknown>> = [];
@@ -199,6 +222,8 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     is_death: o.is_death,
     consumes_time: typeof o.consumes_time === "boolean" ? o.consumes_time : true,
     ...(typeof o.time_cost === "string" && o.time_cost.trim() ? { time_cost: o.time_cost.trim() } : {}),
+    ...(normalizeRiskSource(o.risk_source) ? { risk_source: normalizeRiskSource(o.risk_source) } : {}),
+    ...(normalizeRiskSource(o.damage_source) ? { damage_source: normalizeRiskSource(o.damage_source) } : {}),
     consumed_items: asStringArray(o.consumed_items),
     awarded_items: asUnknownArray(o.awarded_items),
     awarded_warehouse_items: asUnknownArray(o.awarded_warehouse_items),

@@ -61,7 +61,7 @@ function collectEntityHints(normalizedInput: string): { exactCodes: string[]; ex
 
 function detectIntents(normalizedInput: string): RetrievalIntentType[] {
   const intents = new Set<RetrievalIntentType>();
-  if (/(规则|守则|禁忌|暗月|出口|真相|13楼|13层)/.test(normalizedInput)) intents.add("rule");
+  if (/(规则|守则|禁忌|残页|传闻|入住须知|暗月|出口|真相|13楼|13层)/.test(normalizedInput)) intents.add("rule");
   if (/(谁|npc|诡异|关系|好感|角色|居民|老人|经理|医生|保安)/.test(normalizedInput)) intents.add("character");
   if (/(房间|楼层|走廊|门厅|地点|在哪|位置|去|地图)/.test(normalizedInput)) intents.add("scene");
   if (/(我|我的|记得|之前|曾经|私有|个人)/.test(normalizedInput)) intents.add("private");
@@ -102,11 +102,16 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
   const tagHints = new Set<string>(entityHints.tagHints);
 
   for (const f of floorHints) tagHints.add(f.replace("楼", "").replace("f", ""));
-  if (intents.includes("rule")) tagHints.add("rule");
+  if (intents.includes("rule")) {
+    tagHints.add("survival_note");
+    tagHints.add("rumor");
+  }
   if (intents.includes("scene")) tagHints.add("location");
   if (intents.includes("character")) tagHints.add("npc");
   if (intents.includes("shared")) tagHints.add("core");
-  if (APARTMENT_RULES.some((r) => normalizedInput.includes(r.slice(0, 4).toLowerCase()))) tagHints.add("rule");
+  if (APARTMENT_RULES.some((r) => normalizedInput.includes(r.slice(0, 4).toLowerCase()))) {
+    tagHints.add("survival_note");
+  }
 
   const ftsQuery = normalizedInput.slice(0, 512);
   const retrievalBudget = {

@@ -78,6 +78,7 @@ test("partitionTasksForBoard: 人情约定线进入 promiseRisk 并排序", () =
     type: "main",
     guidanceLevel: "strong",
     goalKind: "main",
+    grantState: "visible_on_board" as any,
   });
   const f1 = base({
     id: "f1",

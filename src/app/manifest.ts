@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "文界工坊 (VerseCraft)",
     short_name: "文界工坊",
-    description: "规则怪谈 × RPG 属性检定 — 大模型驱动的沉浸式文字冒险",
+    description: "AI 驱动的悬疑互动小说 / 异常公寓生存叙事",
     start_url: "/",
     display: "standalone",
     background_color: "#0f172a",

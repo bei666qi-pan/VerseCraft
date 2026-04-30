@@ -5,12 +5,21 @@ import type {
 } from "./types";
 import { B1_ABSOLUTE_SAFE_ROOMS } from "./world";
 
-type MinimalServiceState = {
+export type B1ServiceState = {
   shopUnlocked?: boolean;
   forgeUnlocked?: boolean;
   anchorUnlocked?: boolean;
   unlockFlags?: Record<string, boolean>;
 };
+
+export function createDefaultB1ServiceState(): Required<B1ServiceState> {
+  return {
+    shopUnlocked: true,
+    forgeUnlocked: false,
+    anchorUnlocked: true,
+    unlockFlags: {},
+  };
+}
 
 const B1_SAFEZONE_SERVICES: ServiceDefinition[] = [
   {
@@ -25,7 +34,7 @@ const B1_SAFEZONE_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_restore",
     kind: "safe_restore",
     name: "安全恢复",
-    description: "在绝对安全环境中进行短暂恢复与整理。",
+    description: "在安全缓冲层中进行短暂恢复；会消耗时间、服务额度或留下关系债，不是免费无代价治疗。",
     npcIds: ["N-014"],
     enabledByDefault: true,
   },
@@ -33,9 +42,9 @@ const B1_SAFEZONE_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_gatekeeper",
     kind: "gatekeeper_meeting",
     name: "守门人会面",
-    description: "用于剧情推进的守门人相关会面入口。",
+    description: "用于出口主线后期的守门人相关会面入口；未获 B2 权限前只显示传闻，不开放会面。",
     npcIds: ["N-008"],
-    enabledByDefault: true,
+    enabledByDefault: false,
   },
 ];
 
@@ -44,7 +53,7 @@ const B1_STORAGE_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_shop",
     kind: "shop_trade",
     name: "基础商店",
-    description: "售卖基础补给与工具，支持最小交易闭环；补给联络（灵伤）可与后勤并发出现。",
+    description: "售卖基础补给与工具，支持原石消费闭环；每笔交易都记入楼内账本。",
     npcIds: ["N-008", "N-014", "N-020"],
     enabledByDefault: true,
   },
@@ -52,7 +61,7 @@ const B1_STORAGE_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_salary",
     kind: "salary_settlement",
     name: "薪资结算",
-    description: "任务相关薪资与基础收益结算入口。",
+    description: "正式委托、登记额度与稳定残响返还的结算入口；不是挂机掉钱。",
     npcIds: ["N-008"],
     enabledByDefault: true,
   },
@@ -63,17 +72,17 @@ const B1_POWERROOM_SERVICES: ServiceDefinition[] = [
     id: "svc_b1_forge_upgrade",
     kind: "forge_upgrade",
     name: "锻造强化",
-    description: "进行有限升级与合成。",
+    description: "进行有限升级与合成；初期锁定，需取得对策物或服务许可后开启。",
     npcIds: ["N-008"],
-    enabledByDefault: true,
+    enabledByDefault: false,
   },
   {
     id: "svc_b1_forge_repair",
     kind: "forge_repair",
     name: "武器维护",
-    description: "执行基础修复与维护。",
+    description: "执行基础修复与维护；拿到对策物后可半开放，仍需要原石或关系代价。",
     npcIds: ["N-008"],
-    enabledByDefault: true,
+    enabledByDefault: false,
   },
 ];
 
@@ -161,8 +170,9 @@ export function isAbsoluteSafeZoneLocation(location: string | null | undefined):
   return typeof location === "string" && (B1_ABSOLUTE_SAFE_ROOMS as readonly string[]).includes(location);
 }
 
-function checkServiceEnabled(serviceId: string, state: MinimalServiceState): boolean {
+function checkServiceEnabled(serviceId: string, state: B1ServiceState): boolean {
   const unlockFlags = state.unlockFlags ?? {};
+  if (unlockFlags[serviceId] === true) return true;
   if (unlockFlags[serviceId] === false) return false;
   if (serviceId.startsWith("svc_b1_shop") && state.shopUnlocked === false) return false;
   if (serviceId.startsWith("svc_b1_forge") && state.forgeUnlocked === false) return false;
@@ -172,19 +182,32 @@ function checkServiceEnabled(serviceId: string, state: MinimalServiceState): boo
 
 export function getServicesForLocation(
   location: string | null | undefined,
-  state: MinimalServiceState = {}
+  state: B1ServiceState = createDefaultB1ServiceState()
 ): Array<ServiceDefinition & { available: boolean }> {
   if (!isB1ServiceNode(location)) return [];
   const node = B1_SERVICE_NODES[location];
   return node.services.map((svc) => ({
     ...svc,
-    available: svc.enabledByDefault && checkServiceEnabled(svc.id, state),
+    available: (() => {
+      const flags = state.unlockFlags ?? {};
+      if (flags[svc.id] === true) return true;
+      if (flags[svc.id] === false) return false;
+      const familyUnlocked =
+        svc.id.startsWith("svc_b1_forge")
+          ? state.forgeUnlocked === true
+          : svc.id.startsWith("svc_b1_shop")
+            ? state.shopUnlocked !== false
+            : svc.id.startsWith("svc_b1_anchor")
+              ? state.anchorUnlocked !== false
+              : false;
+      return (svc.enabledByDefault || familyUnlocked) && checkServiceEnabled(svc.id, state);
+    })(),
   }));
 }
 
 export function buildServiceContextForLocation(
   location: string | null | undefined,
-  state: MinimalServiceState = {},
+  state: B1ServiceState = createDefaultB1ServiceState(),
   presentNpcIds: string[] = []
 ): string {
   if (!isB1ServiceNode(location)) return "";

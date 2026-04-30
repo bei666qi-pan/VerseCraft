@@ -29,7 +29,7 @@ export const STAT_LABELS: Record<StatType, string> = {
   agility: "敏捷",
   luck: "幸运",
   charm: "魅力",
-  background: "出身",
+  background: "账本信用",
 };
 
 export const STAT_DESCRIPTIONS: Record<StatType, string> = {
@@ -37,7 +37,7 @@ export const STAT_DESCRIPTIONS: Record<StatType, string> = {
   agility: "敏捷越高，越能在危机中找到转机",
   luck: "幸运越高，越能得到关键提示",
   charm: "魅力越高，越能改变对话走向",
-  background: "出身越高，越能获得更多原石\n初始原石 = 10 + 出身。",
+  background: "账本信用越高，初始登记额度越宽\n初始原石 = 10 + 账本信用。",
 };
 
 export const TALENTS: readonly {

@@ -60,6 +60,32 @@ test("normalizePlayerDmJson preserves consumes_time false and optional strings",
   assert.ok(Array.isArray(n!.clue_updates) && (n!.clue_updates as unknown[]).length >= 1);
 });
 
+test("normalizePlayerDmJson preserves compatible risk source fields", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 3,
+    narrative: "cost",
+    is_death: false,
+    risk_source: "truth_shock",
+    damage_source: "hostile_attack",
+  });
+  assert.ok(n);
+  assert.equal(n!.risk_source, "truth_shock");
+  assert.equal(n!.damage_source, "hostile_attack");
+
+  const dirty = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 1,
+    narrative: "cost",
+    is_death: false,
+    risk_source: "totally_unknown",
+    damage_source: "script_injection",
+  });
+  assert.ok(dirty);
+  assert.equal(dirty!.risk_source, undefined);
+  assert.equal(dirty!.damage_source, undefined);
+});
+
 test("normalizePlayerDmJson passes through time_cost string", () => {
   const n = normalizePlayerDmJson({
     is_action_legal: true,
