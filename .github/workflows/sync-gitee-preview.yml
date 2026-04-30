@@ -15,7 +15,7 @@ concurrency:
 jobs:
   sync-gitee:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout source branch
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
           git remote add gitee "https://oauth2:${GITEE_TOKEN}@${repo_without_scheme}"
 
       - name: Push current branch to Gitee
-        timeout-minutes: 12
+        timeout-minutes: 22
         env:
           BRANCH_NAME: ${{ github.ref_name }}
           GIT_TERMINAL_PROMPT: "0"
@@ -62,6 +62,9 @@ jobs:
 
           git config --global http.lowSpeedLimit 1024
           git config --global http.lowSpeedTime 60
+          # The BGM asset commit can produce a 100 MiB+ pack. Buffer it so Gitee receives
+          # a Content-Length POST instead of chunked transfer through HTTPS proxies.
+          git config --global http.postBuffer 524288000
 
           echo "Checking Gitee remote access for ${BRANCH_NAME}."
           set +e
@@ -82,13 +85,13 @@ jobs:
             push_lease=("--force-with-lease=refs/heads/${BRANCH_NAME}:${expected}")
           fi
 
-          echo "Pushing ${BRANCH_NAME} to Gitee with a 10 minute hard timeout."
+          echo "Pushing ${BRANCH_NAME} to Gitee with a 20 minute hard timeout."
           set +e
-          timeout 600s git push --verbose gitee "${push_ref}" "${push_lease[@]}"
+          timeout 1200s git push --verbose gitee "${push_ref}" "${push_lease[@]}"
           push_status=$?
           set -e
           if [ "${push_status}" -ne 0 ]; then
-            echo "::error::Gitee push failed or timed out after 10 minutes. Common causes: invalid/expired Gitee token, Gitee HTTPS auth changes, GitHub-to-Gitee network stalls, or remote rejection while transferring a large pack."
+            echo "::error::Gitee push failed or timed out after 20 minutes. Common causes: invalid/expired Gitee token, Gitee HTTPS auth changes, GitHub-to-Gitee network stalls, or remote rejection while transferring a large pack."
             git count-objects -vH || true
             exit "${push_status}"
           fi
