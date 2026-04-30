@@ -58,7 +58,12 @@ export function evaluateNarrativeEnhancementGate(args: {
   }
 
   const sig = parseDmSignals(args.accumulatedDmJson);
-  if (sig.bgm === "bgm_8_boss" || sig.bgm === "bgm_5_darkmoon") {
+  if (
+    sig.bgm === "bgm_endgame_high_pressure" ||
+    sig.bgm === "bgm_darkmoon_anomaly" ||
+    sig.bgm === "bgm_8_boss" ||
+    sig.bgm === "bgm_5_darkmoon"
+  ) {
     score += 32;
     reasons.push("high_tension_bgm");
   }

@@ -58,7 +58,7 @@ test("evaluateNarrativeEnhancementGate allows high-value stack", () => {
     playerContext: "我们来到第九层",
     latestUserInput: "观察守门人",
     isFirstAction: true,
-    accumulatedDmJson: `{"bgm_track":"bgm_8_boss","sanity_damage":12}`,
+    accumulatedDmJson: `{"bgm_track":"bgm_endgame_high_pressure","sanity_damage":12}`,
   });
   assert.equal(r.allowed, true);
   assert.ok(r.score >= 32);

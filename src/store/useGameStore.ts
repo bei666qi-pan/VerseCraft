@@ -498,7 +498,7 @@ export interface GameState extends IntegrityMetaState {
   isGameStarted: boolean;
   /** 固定开场白是否钉在顶部（本局永久展示）。不改 UI 结构，仅控制是否渲染 `FIXED_OPENING_NARRATIVE`。 */
   openingNarrativePinned: boolean;
-  /** BGM track key (bgm_1_calm by default). Not persisted to avoid write amplification; restored from save on load. */
+  /** BGM track key (bgm_b1_daily by default). Not persisted to avoid write amplification; restored from save on load. */
   currentBgm: string;
   /** Master BGM volume 0–100 for audio engine binding. */
   volume: number;
@@ -974,7 +974,7 @@ export const useGameStore = create<GameState>()(
       weaponBag: [],
       intrusionFlashUntil: 0,
       isGameStarted: false,
-      currentBgm: "bgm_1_calm",
+      currentBgm: "bgm_b1_daily",
       volume: 50,
       readingPreferences: { ...DEFAULT_READING_PREFERENCES },
       activeMenu: null,
@@ -1185,7 +1185,7 @@ export const useGameStore = create<GameState>()(
           intrusionFlashUntil: 0,
           isGameStarted: false,
           openingNarrativePinned: false,
-          currentBgm: "bgm_1_calm",
+          currentBgm: "bgm_b1_daily",
           activeMenu: null,
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
@@ -3190,7 +3190,7 @@ export const useGameStore = create<GameState>()(
           talentCooldowns: JSON.parse(JSON.stringify(s.talentCooldowns ?? {})),
           hasCheckedCodex: s.hasCheckedCodex ?? false,
           originium: s.originium ?? 0,
-          currentBgm: s.currentBgm ?? "bgm_1_calm",
+          currentBgm: s.currentBgm ?? "bgm_b1_daily",
           currentOptions: normalizeStoredOptions(s.currentOptions, 4),
           tasks: JSON.parse(JSON.stringify(s.tasks ?? [])),
           playerLocation: s.playerLocation ?? "B1_SafeZone",
@@ -3352,7 +3352,7 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: data.hasCheckedCodex ?? false,
           originium:
             projected.originium ?? data.originium ?? get().originium ?? 0,
-          currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
+          currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_b1_daily",
           currentOptions: normalizeStoredOptions(data.currentOptions, 4),
           tasks: JSON.parse(JSON.stringify(projected.tasks ?? data.tasks ?? [])),
           playerLocation:
@@ -3494,7 +3494,7 @@ export const useGameStore = create<GameState>()(
             talentCooldowns,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
             originium: projected.originium ?? data.originium ?? s.originium ?? 0,
-            currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_1_calm",
+            currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_b1_daily",
             currentOptions: normalizeStoredOptions(data.currentOptions, 4),
             tasks: JSON.parse(
               JSON.stringify(projected.tasks ?? data.tasks ?? s.tasks ?? [])
@@ -3599,7 +3599,7 @@ export const useGameStore = create<GameState>()(
               : (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
           currentOptions: normalizeStoredOptions(shadow.currentOptions, 4),
           inputMode: shadow.inputMode === "text" ? "text" : "options",
-          currentBgm: typeof shadow.currentBgm === "string" ? shadow.currentBgm : "bgm_1_calm",
+          currentBgm: typeof shadow.currentBgm === "string" ? shadow.currentBgm : "bgm_b1_daily",
           stats: shadow.stats && typeof shadow.stats === "object" ? JSON.parse(JSON.stringify(shadow.stats)) : s.stats,
           originium: typeof shadow.originium === "number" ? shadow.originium : s.originium,
           professionState:

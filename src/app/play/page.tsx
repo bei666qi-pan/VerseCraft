@@ -10,7 +10,7 @@ import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
-import { isValidBgmTrack } from "@/config/audio";
+import { selectBgmForTurn } from "@/features/play/bgm/bgmRules";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
@@ -1746,10 +1746,6 @@ function PlayContent() {
       } catch {
         narrativeRef.current = "";
       }
-      const bgmMatch = raw.match(/"bgm_track"\s*:\s*"(bgm_[^"]+)"/);
-      if (bgmMatch && isValidBgmTrack(bgmMatch[1]!)) {
-        setBgm(bgmMatch[1]);
-      }
     };
 
     const readNextWithStallGuard = async (stallMs: number) => {
@@ -2472,9 +2468,20 @@ function PlayContent() {
       setPlayerLocation(parsed.player_location);
     }
 
-    if (typeof parsed.bgm_track === "string" && isValidBgmTrack(parsed.bgm_track)) {
-      setBgm(parsed.bgm_track);
-    }
+    const nextLocationForBgm =
+      typeof parsed.player_location === "string" && parsed.player_location.length > 0
+        ? parsed.player_location
+        : (stateBeforeProfessionTurn.playerLocation ?? "B1_SafeZone");
+    const bgmSelection = selectBgmForTurn({
+      dm: parsed,
+      previousTrack: stateBeforeProfessionTurn.currentBgm,
+      previousLocation: stateBeforeProfessionTurn.playerLocation ?? "B1_SafeZone",
+      nextLocation: nextLocationForBgm,
+      previousStats: stateBeforeProfessionTurn.stats,
+      nextStats: useGameStore.getState().stats,
+      day: stateBeforeProfessionTurn.time?.day ?? 0,
+    });
+    setBgm(bgmSelection.track);
 
     // Recompute profession eligibility and issue short certification trials when gates are met.
     useGameStore.getState().refreshProfessionState();

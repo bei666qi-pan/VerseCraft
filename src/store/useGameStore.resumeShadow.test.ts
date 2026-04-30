@@ -65,7 +65,7 @@ test("phase4: hydrateFromResumeShadow restores options/inputMode/log/time", () =
       codex: { N1: { id: "N1", name: "角色", type: "npc" } },
       currentOptions: ["查看灵感手记", "看向门口", "检查脚印"],
       inputMode: "options",
-      currentBgm: "bgm_1_calm",
+      currentBgm: "bgm_b1_daily",
       stats: { sanity: 11, agility: 2, luck: 2, charm: 2, background: 2 },
       originium: 7,
       memorySpine: { v: 1, entries: [{ id: "m1", kind: "hook", scope: "run_private", summary: "短期钩子。", salience: 0.6, confidence: 0.9, status: "active", createdAtHour: 0, lastTouchedAtHour: 0, ttlHours: 6, mergeKey: "hook:x", anchors: {}, recallTags: ["hook"], source: "system_hook", promoteToLore: false }] },
