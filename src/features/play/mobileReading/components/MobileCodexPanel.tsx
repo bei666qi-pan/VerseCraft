@@ -112,7 +112,7 @@ function CodexCard({
 
 function DetailDivider() {
   return (
-    <div className="my-5 flex items-center gap-2 text-[#8fa79f]" aria-hidden>
+    <div className="my-2.5 flex shrink-0 items-center gap-2 text-[#8fa79f] min-[420px]:my-3" aria-hidden>
       <span className="h-px flex-1 bg-[#ded8ce]" />
       <span className="text-[16px] leading-none">◇</span>
       <span className="h-px flex-1 bg-[#ded8ce]" />
@@ -124,10 +124,12 @@ function DetailBlock({
   icon,
   title,
   children,
+  lines = 2,
 }: {
   icon: "book" | "eye" | "heart";
   title: string;
   children: string;
+  lines?: 1 | 2 | 3;
 }) {
   const Icon =
     icon === "book"
@@ -135,23 +137,27 @@ function DetailBlock({
       : icon === "eye"
         ? MobileReadingIcons.CodexEye
         : MobileReadingIcons.CodexHeart;
+  const clampClass =
+    lines === 1 ? "[-webkit-line-clamp:1]" : lines === 3 ? "[-webkit-line-clamp:3]" : "[-webkit-line-clamp:2]";
   return (
-    <section className="relative pr-4">
-      <h3 className="vc-reading-serif flex items-center gap-3 text-[25px] font-semibold leading-none text-[#174d46] min-[420px]:text-[30px]">
-        <Icon className="h-7 w-7 shrink-0 text-[#2f746a]" strokeWidth={1.45} />
+    <section className="relative min-h-0 shrink-0 pr-3">
+      <h3 className="vc-reading-serif flex items-center gap-2 text-[20px] font-semibold leading-none text-[#174d46] min-[420px]:text-[24px]">
+        <Icon className="h-5 w-5 shrink-0 text-[#2f746a] min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.45} />
         {title}
       </h3>
-      <p className="vc-reading-serif mt-3 whitespace-pre-line text-[19px] leading-[1.8] text-[#1f4b45] min-[420px]:text-[22px]">
+      <p
+        className={`vc-reading-serif mt-1.5 overflow-hidden text-[15px] leading-[1.42] text-[#1f4b45] [display:-webkit-box] [-webkit-box-orient:vertical] min-[420px]:text-[17px] ${clampClass}`}
+      >
         {children}
       </p>
       {icon === "book" || icon === "eye" ? (
         <div
           aria-hidden
-          className="absolute bottom-1 right-0 top-4 flex w-2 flex-col items-center justify-between text-[#2f746a]"
+          className="absolute bottom-0 right-0 top-4 flex w-2 flex-col items-center justify-between text-[#2f746a]"
         >
-          <span className="text-[14px] leading-none">⌃</span>
-          <span className="my-1 h-14 w-1 rounded-full bg-[#2f746a]" />
-          <span className="text-[14px] leading-none">⌄</span>
+          <span className="text-[11px] leading-none">⌃</span>
+          <span className="my-1 h-8 w-0.5 rounded-full bg-[#2f746a] min-[420px]:h-10" />
+          <span className="text-[11px] leading-none">⌄</span>
         </div>
       ) : null}
     </section>
@@ -203,9 +209,9 @@ export function MobileCodexPanel({
     <section
       data-testid="mobile-codex-panel"
       aria-label="图鉴"
-      className="box-border h-full overflow-y-auto px-4 pb-[calc(var(--vc-mobile-bottom-nav-height)+1.25rem+env(safe-area-inset-bottom))] pt-5 text-[#174d46] [scrollbar-width:none] min-[420px]:px-5 [&::-webkit-scrollbar]:hidden"
+      className="box-border flex h-full min-h-0 flex-col overflow-hidden bg-[#fbf8f2] px-4 pb-[calc(var(--vc-mobile-bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] pt-[max(0.65rem,env(safe-area-inset-top))] text-[#174d46] min-[420px]:px-5 min-[420px]:pt-[max(0.85rem,env(safe-area-inset-top))]"
     >
-      <div className="vc-reading-serif px-1 text-[22px] font-semibold leading-none min-[420px]:text-[26px]">
+      <div className="vc-reading-serif shrink-0 px-1 text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
         <span data-testid="mobile-codex-count">
           {countPrefix}：{identifiedCount} / {floorSlots.length}
         </span>
@@ -213,7 +219,7 @@ export function MobileCodexPanel({
 
       <div
         data-testid="mobile-codex-card-strip"
-        className="-mx-4 mt-4 flex gap-2.5 overflow-x-auto px-4 pb-6 pt-1 [scrollbar-width:none] [-ms-overflow-style:none] min-[420px]:-mx-5 min-[420px]:gap-3 min-[420px]:px-5 [&::-webkit-scrollbar]:hidden"
+        className="-mx-4 mt-3 flex shrink-0 gap-2.5 overflow-x-auto px-4 pb-4 pt-1 [scrollbar-width:none] [-ms-overflow-style:none] min-[420px]:-mx-5 min-[420px]:gap-3 min-[420px]:px-5 [&::-webkit-scrollbar]:hidden"
       >
         {cards.map((card) => (
           <CodexCard
@@ -234,7 +240,7 @@ export function MobileCodexPanel({
         </div>
       ) : (
         <>
-          <div className="mx-auto mb-6 flex h-1.5 w-36 overflow-hidden rounded-full bg-[#e3ded6]" aria-hidden>
+          <div className="mx-auto mb-3 flex h-1.5 w-32 shrink-0 overflow-hidden rounded-full bg-[#e3ded6]" aria-hidden>
             <span
               className="rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.24)]"
               style={{ width: `${progressWidth}%` }}
@@ -244,28 +250,28 @@ export function MobileCodexPanel({
           {detail && selectedSlot ? (
             <article
               data-testid="mobile-codex-detail-panel"
-              className="rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 px-5 py-5 shadow-[0_10px_24px_rgba(73,63,51,0.1),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-6"
+              className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 px-4 py-4 shadow-[0_8px_18px_rgba(73,63,51,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-5 min-[420px]:py-5"
             >
-              <header className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-3">
-                <MobileReadingIcons.BrandMark className="mt-1 h-8 w-8 text-[#2f746a]" strokeWidth={1.5} />
+              <header className="grid shrink-0 grid-cols-[1.9rem_minmax(0,1fr)] gap-2.5">
+                <MobileReadingIcons.BrandMark className="mt-0.5 h-7 w-7 text-[#2f746a]" strokeWidth={1.5} />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
                     <div>
                       <h2
                         data-testid="mobile-codex-detail-name"
-                        className="vc-reading-serif text-[32px] font-semibold leading-tight text-[#174d46] min-[420px]:text-[38px]"
+                        className="vc-reading-serif truncate text-[26px] font-semibold leading-none text-[#174d46] min-[420px]:text-[32px]"
                       >
                         {detail.name}
                       </h2>
                       <p
                         data-testid="mobile-codex-detail-location"
-                        className="vc-reading-serif mt-1 text-[21px] leading-tight text-[#4f706a] min-[420px]:text-[24px]"
+                        className="vc-reading-serif mt-1 truncate text-[17px] leading-none text-[#4f706a] min-[420px]:text-[20px]"
                       >
                         {detail.location}
                       </p>
                     </div>
                     {detail.quote ? (
-                      <p className="vc-reading-serif max-w-[13rem] text-[17px] leading-relaxed text-[#1f4b45]">
+                      <p className="hidden max-w-[12rem] truncate vc-reading-serif text-[15px] leading-none text-[#1f4b45] min-[420px]:block">
                         “{detail.quote}”
                       </p>
                     ) : null}
@@ -274,15 +280,15 @@ export function MobileCodexPanel({
               </header>
 
               <DetailDivider />
-              <DetailBlock icon="book" title={introTitle}>
+              <DetailBlock icon="book" title={introTitle} lines={2}>
                 {detail.intro}
               </DetailBlock>
               <DetailDivider />
-              <DetailBlock icon="eye" title="我所见">
+              <DetailBlock icon="eye" title="我所见" lines={2}>
                 {detail.observation}
               </DetailBlock>
               <DetailDivider />
-              <DetailBlock icon="heart" title={selectedSlot.type === "anomaly" ? "应对记录" : "关系印象"}>
+              <DetailBlock icon="heart" title={selectedSlot.type === "anomaly" ? "应对记录" : "关系印象"} lines={2}>
                 {detail.relationship}
               </DetailBlock>
             </article>

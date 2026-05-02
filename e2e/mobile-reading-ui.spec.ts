@@ -324,12 +324,11 @@ async function expectNoPrunedEntries(page: Page) {
 
 async function expectPaperCodexVisual(page: Page, viewportName: string) {
   const metrics = await page.evaluate(() => {
-    const header = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header"]');
     const panel = document.querySelector<HTMLElement>('[data-testid="mobile-codex-panel"]');
     const card = document.querySelector<HTMLElement>('[data-testid="mobile-codex-card"]');
     const detail = document.querySelector<HTMLElement>('[data-testid="mobile-codex-detail-panel"]');
     const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
-    if (!header || !panel || !card || !detail || !nav) throw new Error("missing codex visual targets");
+    if (!panel || !card || !detail || !nav) throw new Error("missing codex visual targets");
     const panelStyle = getComputedStyle(panel);
     const cardStyle = getComputedStyle(card);
     const detailStyle = getComputedStyle(detail);
@@ -342,16 +341,16 @@ async function expectPaperCodexVisual(page: Page, viewportName: string) {
       detailClassName: detail.className,
       detailIconHtml,
       detailRadius: Number.parseFloat(detailStyle.borderRadius),
-      headerClassName: header.className,
+      audioCount: document.querySelectorAll('[data-testid="audio-toggle-button"]').length,
+      headerCount: document.querySelectorAll('[data-testid="mobile-reading-header"]').length,
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
       navClassName: nav.className,
       panelColor: panelStyle.color,
     };
   });
 
-  expect(metrics.headerClassName, `${viewportName} header must be paper, not the old dark chrome`).toContain(
-    "bg-[#fbf8f2]"
-  );
+  expect(metrics.headerCount, `${viewportName} codex should not render the top VerseCraft header`).toBe(0);
+  expect(metrics.audioCount, `${viewportName} codex should not render the top audio button`).toBe(0);
   expect(metrics.navClassName, `${viewportName} nav must be paper, not the old dark dock`).toContain("bg-[#fffdf8]");
   expect(metrics.detailClassName, `${viewportName} detail card must be paper`).toContain("bg-[#fffdf8]");
   expect(metrics.panelColor).toBe("rgb(23, 77, 70)");
@@ -379,49 +378,52 @@ async function expectUnknownCodexPlaceholder(page: Page, codexId: string) {
   await expect(image).toHaveAttribute("src", CODEX_UNKNOWN_PLACEHOLDER_SRC);
 }
 
-async function expectPinnedPanelHeader(
+async function expectPanelFillsViewportWithoutHeader(
   page: Page,
   panelTestId: "mobile-character-panel" | "mobile-codex-panel",
   viewportName: string
 ) {
-  const metrics = await page.evaluate(async ({ targetPanelTestId }) => {
-    const header = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header"]');
-    const spacer = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header-spacer"]');
+  const metrics = await page.evaluate(({ targetPanelTestId }) => {
     const panel = document.querySelector<HTMLElement>(`[data-testid="${targetPanelTestId}"]`);
-    if (!header || !spacer || !panel) throw new Error("missing pinned header targets");
-
-    const before = header.getBoundingClientRect();
-    const panelBefore = panel.getBoundingClientRect();
-    const maxScroll = panel.scrollHeight - panel.clientHeight;
-    panel.scrollTop = Math.min(180, Math.max(0, maxScroll));
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const after = header.getBoundingClientRect();
-    const panelAfter = panel.getBoundingClientRect();
-    const scrolledTop = panel.scrollTop;
-    panel.scrollTop = 0;
-
+    const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
+    if (!panel || !nav) throw new Error("missing full-screen panel targets");
+    const panelRect = panel.getBoundingClientRect();
+    const navRect = nav.getBoundingClientRect();
+    const lastCharacterUpgrade = document.querySelector<HTMLElement>('[data-testid="character-upgrade-background"]');
+    const codexDetail = document.querySelector<HTMLElement>('[data-testid="mobile-codex-detail-panel"]');
+    const lastImportantRect = lastCharacterUpgrade?.getBoundingClientRect() ?? codexDetail?.getBoundingClientRect() ?? null;
     return {
-      afterTop: after.top,
-      beforeBottom: before.bottom,
-      beforeTop: before.top,
-      headerHeight: before.height,
+      audioCount: document.querySelectorAll('[data-testid="audio-toggle-button"]').length,
+      headerCount: document.querySelectorAll('[data-testid="mobile-reading-header"]').length,
+      height: panelRect.height,
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
-      maxScroll,
-      panelTopAfterScroll: panelAfter.top,
-      panelTopBeforeScroll: panelBefore.top,
-      position: getComputedStyle(header).position,
-      scrolledTop,
-      spacerHeight: spacer.getBoundingClientRect().height,
+      importantBottomGap: lastImportantRect ? navRect.top - lastImportantRect.bottom : null,
+      left: panelRect.left,
+      overflowY: getComputedStyle(panel).overflowY,
+      scrollDelta: panel.scrollHeight - panel.clientHeight,
+      spacerCount: document.querySelectorAll('[data-testid="mobile-reading-header-spacer"]').length,
+      top: panelRect.top,
+      viewportHeight: window.innerHeight,
+      width: panelRect.width,
     };
   }, { targetPanelTestId: panelTestId });
 
-  expect(metrics.position, `${viewportName} ${panelTestId} header should be viewport-fixed`).toBe("fixed");
-  expect(metrics.maxScroll, `${viewportName} ${panelTestId} should have scrollable panel content`).toBeGreaterThan(0);
-  expect(metrics.scrolledTop, `${viewportName} ${panelTestId} panel should scroll during pin check`).toBeGreaterThan(0);
-  expect(Math.abs(metrics.afterTop - metrics.beforeTop), `${viewportName} ${panelTestId} header should not move`).toBeLessThanOrEqual(1);
-  expect(Math.abs(metrics.spacerHeight - metrics.headerHeight), `${viewportName} ${panelTestId} spacer should reserve header height`).toBeLessThanOrEqual(1);
-  expect(metrics.panelTopBeforeScroll, `${viewportName} ${panelTestId} content should start below fixed header`).toBeGreaterThanOrEqual(metrics.beforeBottom - 1);
-  expect(metrics.panelTopAfterScroll, `${viewportName} ${panelTestId} content should stay below fixed header`).toBeGreaterThanOrEqual(metrics.beforeBottom - 1);
+  expect(metrics.headerCount, `${viewportName} ${panelTestId} should not render the top VerseCraft header`).toBe(0);
+  expect(metrics.spacerCount, `${viewportName} ${panelTestId} should not reserve removed header space`).toBe(0);
+  expect(metrics.audioCount, `${viewportName} ${panelTestId} should not render the top audio button`).toBe(0);
+  expect(metrics.overflowY, `${viewportName} ${panelTestId} should not be a vertical scroller`).toBe("hidden");
+  expect(metrics.scrollDelta, `${viewportName} ${panelTestId} should fit without vertical overflow`).toBeLessThanOrEqual(1);
+  expect(metrics.top, `${viewportName} ${panelTestId} should start at the phone viewport top`).toBeLessThanOrEqual(1);
+  expect(metrics.left, `${viewportName} ${panelTestId} should align to the viewport left`).toBeLessThanOrEqual(1);
+  expect(metrics.width, `${viewportName} ${panelTestId} should fill the viewport width`).toBeGreaterThanOrEqual(
+    page.viewportSize()!.width - 1
+  );
+  expect(metrics.height, `${viewportName} ${panelTestId} should fill the viewport height`).toBeGreaterThanOrEqual(
+    metrics.viewportHeight - 1
+  );
+  if (metrics.importantBottomGap != null) {
+    expect(metrics.importantBottomGap, `${viewportName} ${panelTestId} key content should sit above bottom nav`).toBeGreaterThanOrEqual(8);
+  }
   expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
@@ -594,11 +596,31 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("character-originium-balance")).toHaveText("原石 12");
     await expect(page.getByTestId("character-stat-background")).toContainText("出身");
     await expect(page.getByTestId("character-stat-background")).not.toContainText("账本信用");
+    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header-spacer")).toHaveCount(0);
+    await expect(page.getByTestId("audio-toggle-button")).toHaveCount(0);
+    await expect(page.getByTestId("character-logo-divider")).toBeVisible();
+    await expect(page.getByTestId("character-identity-section")).not.toHaveClass(/rounded-\[18px\]/);
+    await expect(page.getByTestId("character-attributes-section")).not.toHaveClass(/rounded-\[18px\]/);
+    await expect(page.getByTestId("character-stat-charm-description")).toHaveText("影响说服与人际关系");
+    await expect(page.getByTestId("character-stat-charm-description")).not.toContainText("说明");
+    const charmDescriptionMetrics = await page.getByTestId("character-stat-charm-description").evaluate((node) => {
+      const el = node as HTMLElement;
+      return {
+        clientHeight: el.clientHeight,
+        lineHeight: Number.parseFloat(getComputedStyle(el).lineHeight),
+        scrollHeight: el.scrollHeight,
+        whiteSpace: getComputedStyle(el).whiteSpace,
+      };
+    });
+    expect(charmDescriptionMetrics.whiteSpace).toBe("nowrap");
+    expect(charmDescriptionMetrics.scrollHeight).toBeLessThanOrEqual(charmDescriptionMetrics.clientHeight + 1);
+    expect(charmDescriptionMetrics.clientHeight).toBeLessThanOrEqual(charmDescriptionMetrics.lineHeight + 2);
 
     await page.getByTestId("character-upgrade-agility").click();
     await expect(page.getByTestId("character-stat-agility-value")).toHaveText("18 / 50");
     await expect(page.getByTestId("character-originium-balance")).toHaveText("原石 9");
-    await expectPinnedPanelHeader(page, "mobile-character-panel", "390x844");
+    await expectPanelFillsViewportWithoutHeader(page, "mobile-character-panel", "390x844");
 
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
@@ -613,7 +635,9 @@ test.describe("mobile reading UI", () => {
     await expect(menu).toBeHidden();
     await expect(page.getByTestId("bottom-nav-codex")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toContainText("图鉴");
+    await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-reading-header-spacer")).toHaveCount(0);
+    await expect(page.getByTestId("audio-toggle-button")).toHaveCount(0);
     await expect(page.getByTestId("mobile-codex-count")).toHaveText("B1层已识别人物：4 / 4");
     await expect(page.getByTestId("mobile-codex-card")).toHaveCount(5);
     await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(4);
@@ -626,7 +650,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByText("图鉴 · 目录")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "关闭", exact: true })).toBeHidden();
     await expectPaperCodexVisual(page, "390x844");
-    await expectPinnedPanelHeader(page, "mobile-codex-panel", "390x844");
+    await expectPanelFillsViewportWithoutHeader(page, "mobile-codex-panel", "390x844");
 
     const codexPath = test.info().outputPath("codex-paper-390x844.png");
     await page.screenshot({ path: codexPath, fullPage: false });
@@ -689,7 +713,7 @@ test.describe("mobile reading UI", () => {
       CODEX_UNKNOWN_PLACEHOLDER_SRC
     );
     await expectPaperCodexVisual(page, "393x852");
-    await expectPinnedPanelHeader(page, "mobile-codex-panel", "393x852");
+    await expectPanelFillsViewportWithoutHeader(page, "mobile-codex-panel", "393x852");
 
     const codexPath = test.info().outputPath("codex-paper-393x852.png");
     await page.screenshot({ path: codexPath, fullPage: false });
@@ -734,7 +758,7 @@ test.describe("mobile reading UI", () => {
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]').click();
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("异常简介");
     await expectPaperCodexVisual(page, "430x932");
-    await expectPinnedPanelHeader(page, "mobile-codex-panel", "430x932");
+    await expectPanelFillsViewportWithoutHeader(page, "mobile-codex-panel", "430x932");
 
     const codexPath = test.info().outputPath("codex-paper-430x932.png");
     await page.screenshot({ path: codexPath, fullPage: false });
@@ -755,6 +779,32 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-character-panel")).toBeVisible();
     await expect(page.getByTestId("character-current-profession")).toHaveText("齐日角");
   });
+
+  for (const viewport of [
+    { width: 393, height: 852 },
+    { width: 430, height: 932 },
+  ]) {
+    test(`keeps the mobile character panel full-screen and non-scrollable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openSeededPlay(page, {
+        stats: { sanity: 12, agility: 17, luck: 14, charm: 21, background: 2 },
+        historicalMaxSanity: 19,
+        originium: 12,
+        time: { day: 0, hour: 0 },
+        playerLocation: "B1_SafeZone",
+      });
+
+      await page.getByTestId("bottom-nav-character").click();
+      await expect(page.getByTestId("mobile-character-panel")).toBeVisible();
+      await expect(page.getByTestId("character-logo-divider")).toBeVisible();
+      await expect(page.getByTestId("character-stat-charm-description")).toHaveText("影响说服与人际关系");
+      await expectPanelFillsViewportWithoutHeader(
+        page,
+        "mobile-character-panel",
+        `${viewport.width}x${viewport.height}`
+      );
+    });
+  }
 
   test("does not expose pruned UI entries by selector, role, or Tab focus", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });

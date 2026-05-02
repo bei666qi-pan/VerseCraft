@@ -35,7 +35,7 @@ function PreferenceSegment({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`h-9 min-w-0 flex-1 rounded-full border vc-reading-serif text-[17px] leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition active:scale-[0.98] min-[420px]:h-10 min-[420px]:text-[20px] ${
+      className={`h-8 min-w-0 flex-1 rounded-full border vc-reading-serif text-[15px] leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition active:scale-[0.98] min-[420px]:h-9 min-[420px]:text-[18px] ${
         active
           ? "border-[#8fa79f] bg-[#8fa79f] text-white shadow-[0_8px_16px_rgba(47,116,106,0.16)]"
           : "border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] hover:bg-white"
@@ -72,11 +72,11 @@ export function MobileSettingsPanel({
     <section
       data-testid="mobile-settings-panel"
       aria-label="设置"
-      className="box-border flex h-full min-h-0 w-full overflow-y-auto bg-[#fbf8f2] pb-[calc(var(--vc-mobile-bottom-nav-height)+0.95rem+env(safe-area-inset-bottom))] text-[#174d46] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="box-border flex h-full min-h-0 w-full overflow-hidden bg-[#fbf8f2] text-[#174d46]"
     >
-      <div className="flex min-h-full w-full flex-col bg-[#fbf8f2] px-5 pt-[max(0.65rem,env(safe-area-inset-top))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:px-6 min-[420px]:pt-[max(0.85rem,env(safe-area-inset-top))]">
-        <div className="grid h-[3.7rem] shrink-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-4 border-b border-[#ded8ce] px-2 min-[420px]:h-[4rem] min-[420px]:grid-cols-[minmax(0,1fr)_8rem]">
-          <span className="vc-reading-serif text-[28px] font-semibold leading-none min-[420px]:text-[34px]">
+      <div className="flex h-full min-h-0 w-full flex-col bg-[#fbf8f2] px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+0.7rem+env(safe-area-inset-bottom))] pt-[max(0.55rem,env(safe-area-inset-top))] min-[420px]:px-6 min-[420px]:pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="grid h-[3.05rem] shrink-0 grid-cols-[minmax(0,1fr)_5.6rem] items-center gap-3 border-b border-[#ded8ce] px-1 min-[420px]:h-[3.35rem] min-[420px]:grid-cols-[minmax(0,1fr)_6.3rem]">
+          <span className="vc-reading-serif text-[24px] font-semibold leading-none min-[420px]:text-[28px]">
             游戏指南
           </span>
           <button
@@ -84,14 +84,14 @@ export function MobileSettingsPanel({
             data-testid="open-game-guide-button"
             aria-label="查看游戏指南"
             onClick={() => setGuideOpen(true)}
-            className="h-11 rounded-full border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[20px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-95 min-[420px]:h-12 min-[420px]:text-[24px]"
+            className="h-9 rounded-full border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_4px_10px_rgba(73,63,51,0.07)] transition hover:bg-white active:scale-95 min-[420px]:h-10 min-[420px]:text-[20px]"
           >
             查看
           </button>
         </div>
 
-        <div className="grid h-[4.4rem] shrink-0 grid-cols-[4.25rem_minmax(0,1fr)_3.55rem_3.35rem] items-center gap-2.5 border-b border-[#ded8ce] px-2 min-[420px]:h-[4.8rem] min-[420px]:grid-cols-[5rem_minmax(0,1fr)_4rem_3.8rem]">
-          <span className="vc-reading-serif text-[28px] font-semibold leading-none min-[420px]:text-[34px]">
+        <div className="grid h-[3.75rem] shrink-0 grid-cols-[3.35rem_minmax(0,1fr)_3rem_2.8rem] items-center gap-2 border-b border-[#ded8ce] px-1 min-[420px]:h-[4.1rem] min-[420px]:grid-cols-[4rem_minmax(0,1fr)_3.35rem_3.15rem]">
+          <span className="vc-reading-serif text-[24px] font-semibold leading-none min-[420px]:text-[28px]">
             声音
           </span>
           <input
@@ -102,12 +102,12 @@ export function MobileSettingsPanel({
             onChange={(event) => setVolume(Number(event.target.value))}
             aria-label="声音音量"
             data-testid="settings-volume-slider"
-            className="h-8 w-full min-w-0 appearance-none rounded-full bg-transparent [--thumb-size:1.72rem] [&::-webkit-slider-runnable-track]:h-3 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-thumb]:mt-[-0.5rem] [&::-webkit-slider-thumb]:h-[var(--thumb-size)] [&::-webkit-slider-thumb]:w-[var(--thumb-size)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-[#d8d1c6] [&::-webkit-slider-thumb]:bg-[#fffdf8] [&::-webkit-slider-thumb]:shadow-[0_5px_12px_rgba(73,63,51,0.14)] [&::-moz-range-track]:h-3 [&::-moz-range-track]:rounded-full [&::-moz-range-thumb]:h-[var(--thumb-size)] [&::-moz-range-thumb]:w-[var(--thumb-size)] [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-[#d8d1c6] [&::-moz-range-thumb]:bg-[#fffdf8]"
+            className="h-7 w-full min-w-0 appearance-none rounded-full bg-transparent [--thumb-size:1.35rem] [&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-thumb]:mt-[-0.38rem] [&::-webkit-slider-thumb]:h-[var(--thumb-size)] [&::-webkit-slider-thumb]:w-[var(--thumb-size)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-[#d8d1c6] [&::-webkit-slider-thumb]:bg-[#fffdf8] [&::-webkit-slider-thumb]:shadow-[0_5px_12px_rgba(73,63,51,0.14)] [&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-thumb]:h-[var(--thumb-size)] [&::-moz-range-thumb]:w-[var(--thumb-size)] [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-[#d8d1c6] [&::-moz-range-thumb]:bg-[#fffdf8]"
             style={{ background: sliderBackground }}
           />
           <span
             data-testid="settings-volume-percent"
-            className="vc-reading-serif text-right text-[24px] leading-none min-[420px]:text-[29px]"
+            className="vc-reading-serif text-right text-[19px] leading-none min-[420px]:text-[22px]"
           >
             {safeVolume}%
           </span>
@@ -116,28 +116,28 @@ export function MobileSettingsPanel({
             data-testid="settings-mute-button"
             aria-label={audioMuted ? "开启声音" : "关闭声音"}
             onClick={onToggleMute}
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_7px_16px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95 min-[420px]:h-14 min-[420px]:w-14"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-95 min-[420px]:h-11 min-[420px]:w-11"
           >
-            <AudioIcon className="h-7 w-7 min-[420px]:h-8 min-[420px]:w-8" strokeWidth={1.8} />
+            <AudioIcon className="h-6 w-6 min-[420px]:h-7 min-[420px]:w-7" strokeWidth={1.8} />
           </button>
         </div>
 
-        <SettingsDivider className="my-4 shrink-0" />
-        <h2 className="text-center vc-reading-serif text-[31px] font-semibold leading-none min-[420px]:text-[38px]">
+        <SettingsDivider className="my-2.5 shrink-0 min-[420px]:my-3" />
+        <h2 className="text-center vc-reading-serif text-[25px] font-semibold leading-none min-[420px]:text-[30px]">
           阅读体验
         </h2>
 
-        <div className="mt-4 grid shrink-0 gap-3 px-1 min-[420px]:gap-4">
+        <div className="mt-3 grid shrink-0 gap-2 px-1 min-[420px]:gap-2.5">
           {READING_PREFERENCE_GROUPS.map((group) => (
             <div
               key={group.key}
               data-testid={`reading-preference-${group.key}`}
-              className="grid grid-cols-[4.4rem_minmax(0,1fr)] items-center gap-3 min-[420px]:grid-cols-[5.2rem_minmax(0,1fr)] min-[420px]:gap-4"
+              className="grid grid-cols-[3.8rem_minmax(0,1fr)] items-center gap-2.5 min-[420px]:grid-cols-[4.4rem_minmax(0,1fr)] min-[420px]:gap-3"
             >
-              <div className="vc-reading-serif text-[25px] font-semibold leading-none min-[420px]:text-[31px]">
+              <div className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 {group.label}
               </div>
-              <div className="flex gap-2.5 min-[420px]:gap-3">
+              <div className="flex gap-2 min-[420px]:gap-2.5">
                 {group.options.map((option) => (
                   <PreferenceSegment
                     key={option.value}
@@ -157,14 +157,14 @@ export function MobileSettingsPanel({
           ))}
         </div>
 
-        <SettingsDivider className="my-4 shrink-0" />
+        <SettingsDivider className="my-2.5 shrink-0 min-[420px]:my-3" />
 
-        <div className="grid h-[3.9rem] shrink-0 grid-cols-2 gap-4 min-[420px]:h-[4.45rem]">
+        <div className="grid h-[3.25rem] shrink-0 grid-cols-2 gap-3 min-[420px]:h-[3.65rem]">
           <button
             type="button"
             data-testid="open-chapter-switch-button"
             onClick={() => setChapterOpen(true)}
-            className="rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[22px] leading-none text-[#174d46] shadow-[0_8px_16px_rgba(73,63,51,0.09)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[27px]"
+            className="rounded-[14px] border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[19px] leading-none text-[#174d46] shadow-[0_6px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[23px]"
           >
             切换章节
           </button>
@@ -172,7 +172,7 @@ export function MobileSettingsPanel({
             type="button"
             data-testid="settings-exit-game-button"
             onClick={onExitGame}
-            className="rounded-[16px] border border-[#d8d1c6] bg-[#eef3f0] vc-reading-serif text-[22px] leading-none text-[#174d46] shadow-[0_8px_16px_rgba(73,63,51,0.09)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[27px]"
+            className="rounded-[14px] border border-[#d8d1c6] bg-[#eef3f0] vc-reading-serif text-[19px] leading-none text-[#174d46] shadow-[0_6px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[23px]"
           >
             退出游戏
           </button>

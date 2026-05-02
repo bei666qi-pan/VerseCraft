@@ -210,8 +210,8 @@ async function expectSettingsActionsAboveBottomNav(page: Page, options: { scroll
   }, Boolean(options.scrollToBottom));
   expect(metrics.chapterBottomGap).toBeGreaterThanOrEqual(8);
   expect(metrics.exitBottomGap).toBeGreaterThanOrEqual(8);
-  expect(metrics.chapterHeight).toBeGreaterThanOrEqual(56);
-  expect(metrics.exitHeight).toBeGreaterThanOrEqual(56);
+  expect(metrics.chapterHeight).toBeGreaterThanOrEqual(48);
+  expect(metrics.exitHeight).toBeGreaterThanOrEqual(48);
   expect(metrics.panelBottomGap).toBeLessThanOrEqual(1);
 }
 
@@ -228,13 +228,18 @@ test.describe("mobile settings UI", () => {
       const settingsMetrics = await page.evaluate(() => {
         const panel = document.querySelector<HTMLElement>('[data-testid="mobile-settings-panel"]');
         if (!panel) throw new Error("missing mobile settings panel");
+        const content = panel.firstElementChild as HTMLElement | null;
         const rect = panel.getBoundingClientRect();
         return {
           backgroundColor: getComputedStyle(panel).backgroundColor,
           hasBrand: panel.innerText.includes("VerseCraft"),
           height: rect.height,
+          contentBoxShadow: content ? getComputedStyle(content).boxShadow : "",
+          contentBorderTopWidth: content ? getComputedStyle(content).borderTopWidth : "",
           left: rect.left,
           overflow: document.documentElement.scrollWidth - window.innerWidth,
+          overflowY: getComputedStyle(panel).overflowY,
+          scrollDelta: panel.scrollHeight - panel.clientHeight,
           top: rect.top,
           width: rect.width,
           viewportHeight: window.innerHeight,
@@ -243,6 +248,10 @@ test.describe("mobile settings UI", () => {
       });
       expect(settingsMetrics.hasBrand).toBe(false);
       expect(settingsMetrics.backgroundColor).toBe("rgb(251, 248, 242)");
+      expect(settingsMetrics.overflowY).toBe("hidden");
+      expect(settingsMetrics.scrollDelta).toBeLessThanOrEqual(1);
+      expect(settingsMetrics.contentBoxShadow).toBe("none");
+      expect(settingsMetrics.contentBorderTopWidth).toBe("0px");
       expect(settingsMetrics.top).toBeLessThanOrEqual(1);
       expect(settingsMetrics.left).toBeLessThanOrEqual(1);
       expect(settingsMetrics.width).toBeGreaterThanOrEqual(settingsMetrics.viewportWidth - 1);

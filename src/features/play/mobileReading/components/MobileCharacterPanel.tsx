@@ -21,30 +21,28 @@ const STAT_DESCRIPTIONS: Record<StatType, string> = {
   background: "影响每回合原石获取数量",
 };
 
-function PanelCard({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+function CardTitle({ children }: { children: ReactNode }) {
   return (
-    <section
-      className={`rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/92 shadow-[0_10px_24px_rgba(73,63,51,0.1),inset_0_1px_0_rgba(255,255,255,0.95)] ${className}`}
-    >
-      {children}
-    </section>
+    <div className="flex items-center justify-center gap-2 text-[#8fa79f]" aria-hidden={false}>
+      <span className="text-[14px] leading-none">✦</span>
+      <h2 className="vc-reading-serif text-[24px] font-semibold leading-none text-[#174d46] min-[420px]:text-[28px]">
+        {children}
+      </h2>
+      <span className="text-[14px] leading-none">✦</span>
+    </div>
   );
 }
 
-function CardTitle({ children }: { children: ReactNode }) {
+function CharacterLogoDivider() {
   return (
-    <div className="flex items-center justify-center gap-3 text-[#8fa79f]" aria-hidden={false}>
-      <span className="text-[18px] leading-none">✦</span>
-      <h2 className="vc-reading-serif text-[31px] font-semibold leading-none text-[#174d46] min-[420px]:text-[38px]">
-        {children}
-      </h2>
-      <span className="text-[18px] leading-none">✦</span>
+    <div
+      data-testid="character-logo-divider"
+      className="my-2.5 flex shrink-0 items-center gap-3 text-[#8fa79f] min-[420px]:my-3"
+      aria-hidden
+    >
+      <span className="h-px flex-1 bg-[#ded8ce]" />
+      <MobileReadingIcons.BrandMark className="h-8 w-8 shrink-0 text-[#2f746a]" strokeWidth={1.4} />
+      <span className="h-px flex-1 bg-[#ded8ce]" />
     </div>
   );
 }
@@ -66,53 +64,55 @@ export function MobileCharacterPanel({
   return (
     <section
       data-testid="mobile-character-panel"
-      className="box-border h-full min-h-0 overflow-y-auto px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+1.25rem+env(safe-area-inset-bottom))] pt-5 text-[#174d46] [scrollbar-width:none] min-[420px]:px-6 [&::-webkit-scrollbar]:hidden"
+      className="box-border flex h-full min-h-0 flex-col overflow-hidden bg-[#fbf8f2] px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+0.7rem+env(safe-area-inset-bottom))] pt-[max(0.65rem,env(safe-area-inset-top))] text-[#174d46] min-[420px]:px-6 min-[420px]:pt-[max(0.85rem,env(safe-area-inset-top))]"
       aria-label="角色"
     >
-      <div className="mx-auto flex max-w-[430px] flex-col gap-5">
-        <PanelCard className="px-5 py-5 min-[420px]:px-6 min-[420px]:py-6">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[430px] flex-col">
+        <section data-testid="character-identity-section" className="shrink-0 px-1">
           <CardTitle>身份信息</CardTitle>
-          <dl className="mt-5 divide-y divide-[#ded8ce] border-t border-[#ded8ce]">
-            <div className="grid grid-cols-[6.4rem_minmax(0,1fr)] items-center gap-4 py-4 min-[420px]:grid-cols-[8rem_minmax(0,1fr)]">
-              <dt className="vc-reading-serif text-[24px] font-semibold leading-none min-[420px]:text-[31px]">
+          <dl className="mt-3 divide-y divide-[#ded8ce] border-t border-[#ded8ce]">
+            <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+              <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 当前职业
               </dt>
               <dd
                 data-testid="character-current-profession"
-                className="vc-reading-serif min-w-0 truncate text-[24px] leading-none min-[420px]:text-[31px]"
+                className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
               >
                 {professionLabel}
               </dd>
             </div>
-            <div className="grid grid-cols-[6.4rem_minmax(0,1fr)] items-center gap-4 py-4 min-[420px]:grid-cols-[8rem_minmax(0,1fr)]">
-              <dt className="vc-reading-serif text-[24px] font-semibold leading-none min-[420px]:text-[31px]">
+            <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+              <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 当前时间
               </dt>
               <dd
                 data-testid="character-current-time"
-                className="vc-reading-serif min-w-0 truncate text-[24px] leading-none min-[420px]:text-[31px]"
+                className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
               >
                 {timeLabel}
               </dd>
             </div>
-            <div className="grid grid-cols-[6.4rem_minmax(0,1fr)] items-center gap-4 py-4 min-[420px]:grid-cols-[8rem_minmax(0,1fr)]">
-              <dt className="vc-reading-serif text-[24px] font-semibold leading-none min-[420px]:text-[31px]">
+            <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+              <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
                 当前位置
               </dt>
               <dd
                 data-testid="character-current-location"
-                className="vc-reading-serif min-w-0 truncate text-[24px] leading-none min-[420px]:text-[31px]"
+                className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
               >
                 {locationLabel}
               </dd>
             </div>
           </dl>
-        </PanelCard>
+        </section>
 
-        <PanelCard className="px-5 py-5 min-[420px]:px-6 min-[420px]:py-6">
-          <div className="flex items-center justify-between gap-3 border-b border-[#ded8ce] pb-4">
+        <CharacterLogoDivider />
+
+        <section data-testid="character-attributes-section" className="min-h-0 flex-1 px-1">
+          <div className="flex items-center justify-between gap-3 border-b border-[#ded8ce] pb-2.5">
             <div className="flex items-center gap-2">
-              <h2 className="vc-reading-serif text-[30px] font-semibold leading-none text-[#174d46] min-[420px]:text-[38px]">
+              <h2 className="vc-reading-serif text-[24px] font-semibold leading-none text-[#174d46] min-[420px]:text-[28px]">
                 当前属性
               </h2>
               <span className="text-[#8fa79f]" aria-hidden>✦</span>
@@ -120,19 +120,19 @@ export function MobileCharacterPanel({
             <div
               aria-label="原石余额"
               title="原石余额"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-[10px] border border-[#d8d1c6] bg-[#fbf8f2] px-3 text-[#174d46] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:h-[3.4rem] min-[420px]:px-5"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] border border-[#d8d1c6] bg-[#fffdf8] px-2.5 text-[#174d46] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:h-10 min-[420px]:px-3"
             >
-              <MobileReadingIcons.Originium className="h-7 w-7 shrink-0 text-[#2f746a]" strokeWidth={1.25} />
+              <MobileReadingIcons.Originium className="h-5 w-5 shrink-0 text-[#2f746a] min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.25} />
               <span
                 data-testid="character-originium-balance"
-                className="vc-reading-serif text-[19px] font-semibold leading-none min-[420px]:text-[25px]"
+                className="vc-reading-serif text-[16px] font-semibold leading-none min-[420px]:text-[18px]"
               >
                 原石 {originium}
               </span>
             </div>
           </div>
 
-          <div className="divide-y divide-[#ded8ce]">
+          <div className="min-h-0 divide-y divide-[#ded8ce]">
             {STAT_ORDER.map((stat) => {
               const value = stats[stat] ?? 0;
               const displayMax = stat === "sanity" ? historicalMaxSanity : STAT_MAX;
@@ -141,18 +141,21 @@ export function MobileCharacterPanel({
                 <div
                   key={stat}
                   data-testid={`character-stat-${stat}`}
-                  className="grid min-h-[5.2rem] grid-cols-[3.9rem_4.25rem_minmax(0,1fr)_3.75rem] items-center gap-2 py-3 min-[420px]:grid-cols-[4.6rem_5.2rem_minmax(0,1fr)_4.25rem] min-[420px]:gap-3"
+                  className="grid min-h-[3.55rem] grid-cols-[2.95rem_3.55rem_minmax(0,1fr)_3.05rem] items-center gap-1.5 py-1.5 min-[420px]:min-h-[4rem] min-[420px]:grid-cols-[3.45rem_4.15rem_minmax(0,1fr)_3.45rem] min-[420px]:gap-2"
                 >
-                  <div className="vc-reading-serif whitespace-nowrap text-[25px] font-semibold leading-none min-[420px]:text-[34px]">
+                  <div className="vc-reading-serif whitespace-nowrap text-[19px] font-semibold leading-none min-[420px]:text-[22px]">
                     {STAT_LABELS[stat]}
                   </div>
                   <div
                     data-testid={`character-stat-${stat}-value`}
-                    className="vc-reading-serif whitespace-nowrap text-[20px] leading-none min-[420px]:text-[28px]"
+                    className="vc-reading-serif whitespace-nowrap text-[15px] leading-none min-[420px]:text-[18px]"
                   >
                     {value} / {displayMax}
                   </div>
-                  <div className="vc-reading-serif min-w-0 text-[14px] leading-snug text-[#4f706a] min-[420px]:text-[20px]">
+                  <div
+                    data-testid={`character-stat-${stat}-description`}
+                    className="vc-reading-serif min-w-0 truncate whitespace-nowrap text-[12px] leading-none text-[#4f706a] min-[420px]:text-[14px]"
+                  >
                     {STAT_DESCRIPTIONS[stat]}
                   </div>
                   <button
@@ -162,16 +165,16 @@ export function MobileCharacterPanel({
                     title={`消耗 ${upgradeCost} 原石加点`}
                     disabled={!canUpgrade}
                     onClick={() => onUpgradeAttribute(stat)}
-                    className="flex h-14 w-[3.7rem] shrink-0 flex-col items-center justify-center rounded-[10px] border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-42 min-[420px]:h-[4rem] min-[420px]:w-[4.25rem]"
+                    className="flex h-11 w-[3.05rem] shrink-0 flex-col items-center justify-center rounded-[10px] border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-42 min-[420px]:h-12 min-[420px]:w-[3.45rem]"
                   >
-                    <span className="text-[22px] font-semibold leading-none min-[420px]:text-[28px]">+</span>
-                    <span className="vc-reading-serif text-[15px] leading-none min-[420px]:text-[20px]">加点</span>
+                    <span className="text-[18px] font-semibold leading-none min-[420px]:text-[20px]">+</span>
+                    <span className="vc-reading-serif text-[12px] leading-none min-[420px]:text-[13px]">加点</span>
                   </button>
                 </div>
               );
             })}
           </div>
-        </PanelCard>
+        </section>
       </div>
     </section>
   );

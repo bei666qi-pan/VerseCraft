@@ -3053,11 +3053,9 @@ function PlayContent() {
         onAbandonAndDie={onAbandonAndDie}
       />
 
-      {!isSettingsPanelActive ? (
+      {isStoryPanelActive ? (
         <MobileReadingHeader
           title={mobileHeaderTitle}
-          variant={isCodexPanelActive ? "codex" : "default"}
-          pinned={isCharacterPanelActive || isCodexPanelActive}
           audioMuted={audioMuted}
           onToggleAudio={() => {
             toggleMute();
@@ -3068,13 +3066,9 @@ function PlayContent() {
 
       <div
         className={
-          isCharacterPanelActive
-            ? "relative h-[calc(100svh-var(--vc-mobile-header-height))] min-h-0 overflow-hidden"
-            : isSettingsPanelActive
-              ? "relative h-[100svh] min-h-0 overflow-hidden"
-              : isCodexPanelActive
-                ? "relative h-[calc(100svh-var(--vc-mobile-header-height))] min-h-0 overflow-hidden"
-                : "relative min-h-[calc(100svh-var(--vc-mobile-header-height))]"
+          isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive
+            ? "relative h-[100svh] min-h-0 overflow-hidden"
+            : "relative min-h-[calc(100svh-var(--vc-mobile-header-height))]"
         }
       >
         <div
