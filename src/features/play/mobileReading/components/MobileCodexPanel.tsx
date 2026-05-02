@@ -16,6 +16,12 @@ import { resolveCodexPortrait } from "../codexPortraits";
 import { MobileReadingIcons } from "../icons";
 import type { MobileCodexPanelProps } from "../types";
 
+const UNKNOWN_CODEX_PLACEHOLDER = {
+  src: "/assets/npc-avatars/codex-placeholder-unknown.png",
+  alt: "尚未出现的图鉴占位图",
+  objectPosition: "center top",
+} as const;
+
 function CodexSilhouette({ identified }: { identified: boolean }) {
   return (
     <div
@@ -50,7 +56,8 @@ function CodexCard({
   selected: boolean;
   onSelect: (slot: CodexCatalogSlot) => void;
 }) {
-  const portrait = card.kind === "slot" && card.identified ? resolveCodexPortrait(card.id) : null;
+  const portrait =
+    card.kind === "slot" ? (card.identified ? resolveCodexPortrait(card.id) : UNKNOWN_CODEX_PLACEHOLDER) : null;
   return (
     <button
       type="button"

@@ -4,6 +4,7 @@ const DB_NAME = "keyval-store";
 const STORE_NAME = "keyval";
 const KEY_MAIN = "versecraft-storage";
 const MAX_INPUT = 20;
+const CODEX_UNKNOWN_PLACEHOLDER_SRC = "/assets/npc-avatars/codex-placeholder-unknown.png";
 
 const allTalentCooldowns = {
   时间回溯: 0,
@@ -373,6 +374,11 @@ async function expectPaperCodexVisual(page: Page, viewportName: string) {
   );
 }
 
+async function expectUnknownCodexPlaceholder(page: Page, codexId: string) {
+  const image = page.locator(`[data-testid="mobile-codex-card"][data-codex-id="${codexId}"] img`);
+  await expect(image).toHaveAttribute("src", CODEX_UNKNOWN_PLACEHOLDER_SRC);
+}
+
 async function expectPinnedPanelHeader(
   page: Page,
   panelTestId: "mobile-character-panel" | "mobile-codex-panel",
@@ -611,6 +617,9 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-codex-count")).toHaveText("B1层已识别人物：4 / 4");
     await expect(page.getByTestId("mobile-codex-card")).toHaveCount(5);
     await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(4);
+    await expect(
+      page.locator(`[data-testid="mobile-codex-card-strip"] img[src="${CODEX_UNKNOWN_PLACEHOLDER_SRC}"]`)
+    ).toHaveCount(0);
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("人物简介");
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("我所见");
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("关系印象");
@@ -673,7 +682,12 @@ test.describe("mobile reading UI", () => {
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-008"]')).toBeVisible();
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-014"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-001"]')).toBeVisible();
-    await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(3);
+    await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(4);
+    await expectUnknownCodexPlaceholder(page, "N-001");
+    await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-010"] img')).not.toHaveAttribute(
+      "src",
+      CODEX_UNKNOWN_PLACEHOLDER_SRC
+    );
     await expectPaperCodexVisual(page, "393x852");
     await expectPinnedPanelHeader(page, "mobile-codex-panel", "393x852");
 
@@ -710,6 +724,13 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-codex-count")).toHaveText("2F已识别人物：1 / 3");
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]')).toBeVisible();
     await expect(page.getByTestId("mobile-codex-card")).toHaveCount(3);
+    await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(3);
+    await expectUnknownCodexPlaceholder(page, "N-002");
+    await expectUnknownCodexPlaceholder(page, "A-004");
+    await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"] img')).not.toHaveAttribute(
+      "src",
+      CODEX_UNKNOWN_PLACEHOLDER_SRC
+    );
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]').click();
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("异常简介");
     await expectPaperCodexVisual(page, "430x932");
