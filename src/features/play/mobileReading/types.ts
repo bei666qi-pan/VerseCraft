@@ -91,7 +91,6 @@ export type MobileCodexPanelProps = {
 };
 
 export type MobileSettingsPanelProps = {
-  accountName: string;
   audioMuted: boolean;
   chapterState: ChapterState;
   onExitGame: () => void;

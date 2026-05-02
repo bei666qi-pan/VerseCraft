@@ -47,7 +47,6 @@ function PreferenceSegment({
 }
 
 export function MobileSettingsPanel({
-  accountName,
   audioMuted,
   chapterState,
   onExitGame,
@@ -73,36 +72,10 @@ export function MobileSettingsPanel({
     <section
       data-testid="mobile-settings-panel"
       aria-label="设置"
-      className="box-border h-full min-h-0 overflow-y-auto px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+0.95rem+env(safe-area-inset-bottom))] pt-[max(0.8rem,env(safe-area-inset-top))] text-[#174d46] [scrollbar-width:none] min-[420px]:px-6 [&::-webkit-scrollbar]:hidden"
+      className="box-border flex h-full min-h-0 w-full overflow-y-auto bg-[#fbf8f2] pb-[calc(var(--vc-mobile-bottom-nav-height)+0.95rem+env(safe-area-inset-bottom))] text-[#174d46] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <div className="mx-auto flex max-w-[398px] flex-col rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/92 px-5 py-5 shadow-[0_12px_30px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-6 min-[420px]:py-7">
-        <header className="flex shrink-0 items-center gap-2 border-b border-[#ded8ce] pb-4">
-          <span className="vc-reading-serif text-[32px] leading-none text-[#174d46] min-[420px]:text-[38px]">
-            VerseCraft
-          </span>
-          <MobileReadingIcons.BrandMark className="mt-1 h-7 w-7 text-[#174d46]" strokeWidth={1.45} />
-        </header>
-
-        <div className="pt-5">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="vc-reading-serif text-[48px] font-semibold leading-none min-[420px]:text-[58px]">
-              设置
-            </h1>
-            <div
-              data-testid="settings-account-pill"
-              className="min-w-0 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-3 vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.08)] min-[420px]:px-5 min-[420px]:text-[20px]"
-              title={`当前账号 ${accountName}`}
-            >
-              <span className="block max-w-[9rem] truncate whitespace-nowrap min-[420px]:max-w-[11rem]">
-                当前账号&nbsp; {accountName}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <SettingsDivider className="my-5 shrink-0" />
-
-        <div className="grid h-[4.2rem] shrink-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-4 border-b border-[#ded8ce] px-2 min-[420px]:grid-cols-[minmax(0,1fr)_8rem]">
+      <div className="flex min-h-full w-full flex-col bg-[#fbf8f2] px-5 pt-[max(0.65rem,env(safe-area-inset-top))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:px-6 min-[420px]:pt-[max(0.85rem,env(safe-area-inset-top))]">
+        <div className="grid h-[3.7rem] shrink-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-4 border-b border-[#ded8ce] px-2 min-[420px]:h-[4rem] min-[420px]:grid-cols-[minmax(0,1fr)_8rem]">
           <span className="vc-reading-serif text-[28px] font-semibold leading-none min-[420px]:text-[34px]">
             游戏指南
           </span>
@@ -117,7 +90,7 @@ export function MobileSettingsPanel({
           </button>
         </div>
 
-        <div className="grid h-[5rem] shrink-0 grid-cols-[4.25rem_minmax(0,1fr)_3.55rem_3.35rem] items-center gap-2.5 border-b border-[#ded8ce] px-2 min-[420px]:grid-cols-[5rem_minmax(0,1fr)_4rem_3.8rem]">
+        <div className="grid h-[4.4rem] shrink-0 grid-cols-[4.25rem_minmax(0,1fr)_3.55rem_3.35rem] items-center gap-2.5 border-b border-[#ded8ce] px-2 min-[420px]:h-[4.8rem] min-[420px]:grid-cols-[5rem_minmax(0,1fr)_4rem_3.8rem]">
           <span className="vc-reading-serif text-[28px] font-semibold leading-none min-[420px]:text-[34px]">
             声音
           </span>
@@ -149,12 +122,12 @@ export function MobileSettingsPanel({
           </button>
         </div>
 
-        <SettingsDivider className="my-5 shrink-0" />
-        <h2 className="text-center vc-reading-serif text-[34px] font-semibold leading-none min-[420px]:text-[42px]">
+        <SettingsDivider className="my-4 shrink-0" />
+        <h2 className="text-center vc-reading-serif text-[31px] font-semibold leading-none min-[420px]:text-[38px]">
           阅读体验
         </h2>
 
-        <div className="mt-5 grid shrink-0 gap-4 px-1 min-[420px]:gap-5">
+        <div className="mt-4 grid shrink-0 gap-3 px-1 min-[420px]:gap-4">
           {READING_PREFERENCE_GROUPS.map((group) => (
             <div
               key={group.key}
@@ -184,14 +157,14 @@ export function MobileSettingsPanel({
           ))}
         </div>
 
-        <SettingsDivider className="my-6 shrink-0" />
+        <SettingsDivider className="my-4 shrink-0" />
 
-        <div className="grid h-[4.8rem] shrink-0 grid-cols-2 gap-4 min-[420px]:h-[5.4rem]">
+        <div className="grid h-[3.9rem] shrink-0 grid-cols-2 gap-4 min-[420px]:h-[4.45rem]">
           <button
             type="button"
             data-testid="open-chapter-switch-button"
             onClick={() => setChapterOpen(true)}
-            className="rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[24px] leading-none text-[#174d46] shadow-[0_8px_16px_rgba(73,63,51,0.09)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[29px]"
+            className="rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[22px] leading-none text-[#174d46] shadow-[0_8px_16px_rgba(73,63,51,0.09)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[27px]"
           >
             切换章节
           </button>
@@ -199,7 +172,7 @@ export function MobileSettingsPanel({
             type="button"
             data-testid="settings-exit-game-button"
             onClick={onExitGame}
-            className="rounded-[16px] border border-[#d8d1c6] bg-[#eef3f0] vc-reading-serif text-[24px] leading-none text-[#174d46] shadow-[0_8px_16px_rgba(73,63,51,0.09)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[29px]"
+            className="rounded-[16px] border border-[#d8d1c6] bg-[#eef3f0] vc-reading-serif text-[22px] leading-none text-[#174d46] shadow-[0_8px_16px_rgba(73,63,51,0.09)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[27px]"
           >
             退出游戏
           </button>

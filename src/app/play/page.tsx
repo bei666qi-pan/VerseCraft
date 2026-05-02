@@ -272,7 +272,6 @@ function PlayContent() {
   const intrusionFlashUntil = useGameStore((s) => s.intrusionFlashUntil ?? 0);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
   const isGuest = useGameStore((s) => s.isGuest ?? false);
-  const playerName = useGameStore((s) => s.playerName ?? "");
   const guestId = useGameStore((s) => s.guestId ?? null);
   const dialogueCount = useGameStore((s) => s.dialogueCount ?? 0);
   const incrementDialogueCount = useGameStore((s) => s.incrementDialogueCount);
@@ -303,7 +302,6 @@ function PlayContent() {
   const [audioMuted, setAudioMuted] = useState(false);
   const volume = useGameStore((s) => s.volume ?? 50);
   const setVolume = useGameStore((s) => s.setVolume);
-  const user = useGameStore((s) => s.user);
   const readingPreferences = useGameStore((s) => s.readingPreferences);
   const setReadingPreference = useGameStore((s) => s.setReadingPreference);
   const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
@@ -3003,8 +3001,6 @@ function PlayContent() {
     : isCharacterPanelActive
       ? "角色"
       : "第六章：雾港来信";
-  const accountName = user?.name?.trim() || (isGuest ? "游客" : playerName.trim() || "游客");
-
   function onOpenCharacterNav() {
     playUIClick();
     setOptionsExpanded(false);
@@ -3109,7 +3105,6 @@ function PlayContent() {
             />
           ) : isSettingsPanelActive ? (
             <MobileSettingsPanel
-              accountName={accountName}
               audioMuted={audioMuted}
               chapterState={chapterRuntime.chapterState}
               onExitGame={() => setShowExitModal(true)}

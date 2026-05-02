@@ -11,6 +11,13 @@ const story = [
 
 const options = ["靠近铁牌查看痕迹", "检查学生电子表", "沿血手印方向前进", "先躲进旁边教室"];
 
+const SETTINGS_VIEWPORTS = [
+  { width: 390, height: 660 },
+  { width: 390, height: 844 },
+  { width: 393, height: 852 },
+  { width: 430, height: 932 },
+] as const;
+
 const defaultProfessionState = {
   currentProfession: null,
   unlockedProfessions: [],
@@ -178,63 +185,120 @@ async function openSeededPlay(page: Page) {
   await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
 }
 
+async function expectSettingsActionsAboveBottomNav(page: Page, options: { scrollToBottom?: boolean } = {}) {
+  const metrics = await page.evaluate((scrollToBottom) => {
+    const panel = document.querySelector<HTMLElement>('[data-testid="mobile-settings-panel"]');
+    const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
+    const chapterButton = document.querySelector<HTMLElement>('[data-testid="open-chapter-switch-button"]');
+    const exitButton = document.querySelector<HTMLElement>('[data-testid="settings-exit-game-button"]');
+    if (!panel || !nav || !chapterButton || !exitButton) {
+      throw new Error("missing settings action or bottom nav");
+    }
+    if (scrollToBottom) {
+      panel.scrollTop = panel.scrollHeight;
+    }
+    const navRect = nav.getBoundingClientRect();
+    const chapterRect = chapterButton.getBoundingClientRect();
+    const exitRect = exitButton.getBoundingClientRect();
+    return {
+      chapterBottomGap: navRect.top - chapterRect.bottom,
+      chapterHeight: chapterRect.height,
+      exitBottomGap: navRect.top - exitRect.bottom,
+      exitHeight: exitRect.height,
+      panelBottomGap: window.innerHeight - panel.getBoundingClientRect().bottom,
+    };
+  }, Boolean(options.scrollToBottom));
+  expect(metrics.chapterBottomGap).toBeGreaterThanOrEqual(8);
+  expect(metrics.exitBottomGap).toBeGreaterThanOrEqual(8);
+  expect(metrics.chapterHeight).toBeGreaterThanOrEqual(56);
+  expect(metrics.exitHeight).toBeGreaterThanOrEqual(56);
+  expect(metrics.panelBottomGap).toBeLessThanOrEqual(1);
+}
+
 test.describe("mobile settings UI", () => {
-  test("opens settings, guide, chapter switch, and applies reading preferences", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await openSeededPlay(page);
+  for (const viewport of SETTINGS_VIEWPORTS) {
+    test(`opens settings, guide, chapter switch, and applies reading preferences at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openSeededPlay(page);
 
-    await page.getByTestId("bottom-nav-settings").click();
-    await expect(page.locator("#unified-menu-content")).toBeHidden();
-    await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
-    await expect(page.getByTestId("settings-account-pill")).toContainText(/当前账号\s+qi bei/);
-    await expect(page.getByText("阅读体验")).toBeVisible();
-    await expect(page.getByTestId("settings-volume-percent")).toHaveText("50%");
+      await page.getByTestId("bottom-nav-settings").click();
+      await expect(page.locator("#unified-menu-content")).toBeHidden();
+      await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
+      await expect(page.getByTestId("settings-account-pill")).toHaveCount(0);
+      const settingsMetrics = await page.evaluate(() => {
+        const panel = document.querySelector<HTMLElement>('[data-testid="mobile-settings-panel"]');
+        if (!panel) throw new Error("missing mobile settings panel");
+        const rect = panel.getBoundingClientRect();
+        return {
+          backgroundColor: getComputedStyle(panel).backgroundColor,
+          hasBrand: panel.innerText.includes("VerseCraft"),
+          height: rect.height,
+          left: rect.left,
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+          top: rect.top,
+          width: rect.width,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        };
+      });
+      expect(settingsMetrics.hasBrand).toBe(false);
+      expect(settingsMetrics.backgroundColor).toBe("rgb(251, 248, 242)");
+      expect(settingsMetrics.top).toBeLessThanOrEqual(1);
+      expect(settingsMetrics.left).toBeLessThanOrEqual(1);
+      expect(settingsMetrics.width).toBeGreaterThanOrEqual(settingsMetrics.viewportWidth - 1);
+      expect(settingsMetrics.height).toBeGreaterThanOrEqual(settingsMetrics.viewportHeight - 1);
+      expect(settingsMetrics.overflow).toBeLessThanOrEqual(1);
+      await expectSettingsActionsAboveBottomNav(page);
+      await expect(page.getByText("阅读体验")).toBeVisible();
+      await expect(page.getByTestId("settings-volume-percent")).toHaveText("50%");
 
-    await page.getByTestId("settings-volume-slider").fill("68");
-    await expect(page.getByTestId("settings-volume-percent")).toHaveText("68%");
-    const mute = page.getByTestId("settings-mute-button");
-    const initialMuteLabel = await mute.getAttribute("aria-label");
-    await mute.click();
-    await expect(mute).toHaveAttribute("aria-label", initialMuteLabel === "关闭声音" ? "开启声音" : "关闭声音");
+      await page.getByTestId("settings-volume-slider").fill("68");
+      await expect(page.getByTestId("settings-volume-percent")).toHaveText("68%");
+      const mute = page.getByTestId("settings-mute-button");
+      const initialMuteLabel = await mute.getAttribute("aria-label");
+      await mute.click();
+      await expect(mute).toHaveAttribute("aria-label", initialMuteLabel === "关闭声音" ? "开启声音" : "关闭声音");
 
-    await page.getByTestId("open-game-guide-button").click();
-    await expect(page.getByTestId("game-guide-modal")).toBeVisible();
-    await expect(page.getByText("01 | 游戏是什么")).toBeVisible();
-    await expect(page.getByText("06 | 时间与天赋")).toHaveCount(1);
-    await page.getByTestId("game-guide-modal").getByRole("button", { name: "关闭", exact: true }).click();
-    await expect(page.getByTestId("game-guide-modal")).toHaveCount(0);
+      await page.getByTestId("open-game-guide-button").click();
+      await expect(page.getByTestId("game-guide-modal")).toBeVisible();
+      await expect(page.getByText("01 | 游戏是什么")).toBeVisible();
+      await expect(page.getByText("06 | 时间与天赋")).toHaveCount(1);
+      await page.getByTestId("game-guide-modal").getByRole("button", { name: "关闭", exact: true }).click();
+      await expect(page.getByTestId("game-guide-modal")).toHaveCount(0);
 
-    await page.getByTestId("open-chapter-switch-button").click();
-    await expect(page.getByTestId("chapter-switch-modal")).toBeVisible();
-    await expect(page.getByTestId("chapter-switch-item")).toHaveCount(2);
-    await expect(page.locator('[data-testid="chapter-switch-item"][data-chapter-id="chapter-2"]')).toHaveAttribute("aria-current", "page");
-    await page.getByTestId("chapter-switch-modal").getByRole("button", { name: "关闭", exact: true }).click();
+      await expectSettingsActionsAboveBottomNav(page, { scrollToBottom: true });
+      await page.getByTestId("open-chapter-switch-button").click();
+      await expect(page.getByTestId("chapter-switch-modal")).toBeVisible();
+      await expect(page.getByTestId("chapter-switch-item")).toHaveCount(2);
+      await expect(page.locator('[data-testid="chapter-switch-item"][data-chapter-id="chapter-2"]')).toHaveAttribute("aria-current", "page");
+      await page.getByTestId("chapter-switch-modal").getByRole("button", { name: "关闭", exact: true }).click();
 
-    await page.getByTestId("reading-preference-textSize").getByRole("button", { name: "偏大", exact: true }).click();
-    await page.getByTestId("reading-preference-lineHeight").getByRole("button", { name: "宽松", exact: true }).click();
-    await page.getByTestId("bottom-nav-story").click();
-    await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+      await page.getByTestId("reading-preference-textSize").getByRole("button", { name: "偏大", exact: true }).click();
+      await page.getByTestId("reading-preference-lineHeight").getByRole("button", { name: "宽松", exact: true }).click();
+      await page.getByTestId("bottom-nav-story").click();
+      await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
-    const storyMetrics = await page.evaluate(() => {
-      const narrative = document.querySelector<HTMLElement>('[data-testid="dm-narrative-block"]');
-      if (!narrative) throw new Error("missing story narrative block");
-      const style = getComputedStyle(narrative);
-      return {
-        fontSize: Number.parseFloat(style.fontSize),
-        lineHeight: Number.parseFloat(style.lineHeight),
-      };
+      const storyMetrics = await page.evaluate(() => {
+        const narrative = document.querySelector<HTMLElement>('[data-testid="dm-narrative-block"]');
+        if (!narrative) throw new Error("missing story narrative block");
+        const style = getComputedStyle(narrative);
+        return {
+          fontSize: Number.parseFloat(style.fontSize),
+          lineHeight: Number.parseFloat(style.lineHeight),
+        };
+      });
+      expect(storyMetrics.fontSize).toBeGreaterThanOrEqual(23);
+      expect(storyMetrics.lineHeight).toBeGreaterThanOrEqual(51);
+
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 });
+      await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+      const persistedMetrics = await page.evaluate(() => {
+        const narrative = document.querySelector<HTMLElement>('[data-testid="dm-narrative-block"]');
+        if (!narrative) throw new Error("missing story narrative block after reload");
+        const style = getComputedStyle(narrative);
+        return Number.parseFloat(style.fontSize);
+      });
+      expect(persistedMetrics).toBeGreaterThanOrEqual(23);
     });
-    expect(storyMetrics.fontSize).toBeGreaterThanOrEqual(23);
-    expect(storyMetrics.lineHeight).toBeGreaterThanOrEqual(51);
-
-    await page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 });
-    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
-    const persistedMetrics = await page.evaluate(() => {
-      const narrative = document.querySelector<HTMLElement>('[data-testid="dm-narrative-block"]');
-      if (!narrative) throw new Error("missing story narrative block after reload");
-      const style = getComputedStyle(narrative);
-      return Number.parseFloat(style.fontSize);
-    });
-    expect(persistedMetrics).toBeGreaterThanOrEqual(23);
-  });
+  }
 });
