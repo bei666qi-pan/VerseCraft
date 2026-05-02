@@ -101,22 +101,34 @@ jobs:
       - name: Trigger Coolify deploy
         env:
           BRANCH_NAME: ${{ github.ref_name }}
-          COOLIFY_PREVIEW_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_PREVIEW_DEPLOY_WEBHOOK }}
-          COOLIFY_PROD_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_PROD_DEPLOY_WEBHOOK }}
+          COOLIFY_DEPLOY_URL: ${{ secrets.COOLIFY_DEPLOY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_PREVIEW_DEPLOY_URL: ${{ secrets.COOLIFY_PREVIEW_DEPLOY_URL }}
+          COOLIFY_PREVIEW_TOKEN: ${{ secrets.COOLIFY_PREVIEW_TOKEN }}
         run: |
           set -euo pipefail
 
-          webhook=""
-          webhook_name=""
+          deploy_url=""
+          deploy_token=""
+          deploy_url_secret=""
+          deploy_token_secret=""
 
           case "${BRANCH_NAME}" in
             main)
-              webhook="${COOLIFY_PROD_DEPLOY_WEBHOOK}"
-              webhook_name="COOLIFY_PROD_DEPLOY_WEBHOOK"
+              deploy_url="${COOLIFY_DEPLOY_URL}"
+              deploy_token="${COOLIFY_TOKEN}"
+              deploy_url_secret="COOLIFY_DEPLOY_URL"
+              deploy_token_secret="COOLIFY_TOKEN"
               ;;
             preview)
-              webhook="${COOLIFY_PREVIEW_DEPLOY_WEBHOOK}"
-              webhook_name="COOLIFY_PREVIEW_DEPLOY_WEBHOOK"
+              deploy_url="${COOLIFY_PREVIEW_DEPLOY_URL}"
+              deploy_token="${COOLIFY_PREVIEW_TOKEN}"
+              deploy_url_secret="COOLIFY_PREVIEW_DEPLOY_URL"
+              deploy_token_secret="COOLIFY_PREVIEW_TOKEN"
+              if [ -z "${deploy_url}" ] && [ -z "${deploy_token}" ]; then
+                echo "No preview Coolify deploy secrets configured; skipping preview deploy after Gitee sync."
+                exit 0
+              fi
               ;;
             *)
               echo "Skipping Coolify deploy for unsupported branch ${BRANCH_NAME}."
@@ -124,11 +136,44 @@ jobs:
               ;;
           esac
 
-          if [ -z "${webhook}" ]; then
-            echo "::error::Missing ${webhook_name}. Configure it in GitHub Actions secrets so ${BRANCH_NAME} pushes can trigger Coolify after the Gitee mirror is updated."
+          if [ -z "${deploy_url}" ]; then
+            echo "::error::Missing ${deploy_url_secret}. Configure it in GitHub Actions secrets so ${BRANCH_NAME} pushes can trigger Coolify after the Gitee mirror is updated."
+            exit 1
+          fi
+
+          if [ -z "${deploy_token}" ]; then
+            echo "::error::Missing ${deploy_token_secret}. Configure it in GitHub Actions secrets so ${BRANCH_NAME} pushes can trigger Coolify after the Gitee mirror is updated."
             exit 1
           fi
 
           echo "Triggering Coolify deploy for ${BRANCH_NAME} after Gitee sync."
-          curl --fail --show-error --silent --request POST "${webhook}" >/dev/null
+          curl --fail --show-error --silent --location --request GET \
+            --header "Authorization: Bearer ${deploy_token}" \
+            --header "Accept: application/json" \
+            "${deploy_url}" >/tmp/coolify-deploy-response.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw = Path("/tmp/coolify-deploy-response.json").read_text(encoding="utf-8").strip()
+          if not raw:
+              print("Coolify deploy webhook accepted with an empty response.")
+              raise SystemExit(0)
+
+          try:
+              data = json.loads(raw)
+          except json.JSONDecodeError:
+              print("Coolify deploy webhook accepted with a non-JSON response.")
+              raise SystemExit(0)
+
+          deployments = data.get("deployments")
+          if isinstance(deployments, list) and deployments:
+              deployment_ids = [str(item.get("deployment_uuid")) for item in deployments if isinstance(item, dict)]
+              deployment_ids = [value for value in deployment_ids if value and value != "None"]
+              if deployment_ids:
+                  print("Coolify deployment UUID(s): " + ", ".join(deployment_ids))
+                  raise SystemExit(0)
+
+          print("Coolify deploy webhook accepted.")
+          PY
           echo "Coolify deploy webhook accepted for ${BRANCH_NAME}."
