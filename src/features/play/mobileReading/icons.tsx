@@ -16,6 +16,10 @@ type IconSvgProps = MobileReadingIconProps & {
   children: ReactNode;
 };
 
+const PAPER_ICON_FILL = "#FAF9F6";
+const PAPER_ICON_STROKE = "#2D6B68";
+const PAPER_ICON_STROKE_WIDTH = 0.66;
+
 function IconSvg({
   children,
   className,
@@ -52,6 +56,16 @@ function IconSvg({
       {title ? <title>{title}</title> : null}
       {children}
     </svg>
+  );
+}
+
+function PaperIconSoftShadow({ id }: { id: string }): ReactElement {
+  return (
+    <defs>
+      <filter id={id} x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="#8AA6A2" floodOpacity="0.45" />
+      </filter>
+    </defs>
   );
 }
 
@@ -225,13 +239,19 @@ function SendActionIcon(props: MobileReadingIconProps): ReactElement {
 
 function CharacterIcon(props: MobileReadingIconProps): ReactElement {
   return (
-    <IconSvg {...props}>
-      <circle cx="12" cy="5.65" r="3.25" fill="#FAF9F6" stroke="#2D6B68" />
-      <path
-        d="M4.9 20.2h14.2c-.45-4.7-3.1-7.35-7.1-7.35S5.35 15.5 4.9 20.2z"
-        fill="#FAF9F6"
-        stroke="#2D6B68"
-      />
+    <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+      <PaperIconSoftShadow id="mobileCharacterSoftShadow" />
+      <g
+        filter="url(#mobileCharacterSoftShadow)"
+        stroke={PAPER_ICON_STROKE}
+        strokeWidth={PAPER_ICON_STROKE_WIDTH}
+      >
+        <circle cx="12" cy="5.65" r="3.25" fill={PAPER_ICON_FILL} />
+        <path
+          d="M4.9 20.2h14.2c-.45-4.7-3.1-7.35-7.1-7.35S5.35 15.5 4.9 20.2z"
+          fill={PAPER_ICON_FILL}
+        />
+      </g>
     </IconSvg>
   );
 }
@@ -240,7 +260,9 @@ function OriginiumIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
       <path d="M12 3.4 19.2 7.6 17.4 17.1 12 20.6 6.6 17.1 4.8 7.6z" fill="currentColor" fillOpacity="0.14" />
-      <path d="M12 3.4 19.2 7.6 17.4 17.1 12 20.6 6.6 17.1 4.8 7.6z" />
+      <path
+        d="M12 3.4 19.2 7.6 17.4 17.1 12 20.6 6.6 17.1 4.8 7.6z"
+      />
       <path d="m12 3.4-2.1 8.4 2.1 8.8 2.1-8.8z" opacity="0.74" />
       <path d="M4.8 7.6 9.9 11.8 6.6 17.1" opacity="0.74" />
       <path d="M19.2 7.6 14.1 11.8 17.4 17.1" opacity="0.74" />
@@ -251,20 +273,21 @@ function OriginiumIcon(props: MobileReadingIconProps): ReactElement {
 
 function StoryIcon(props: MobileReadingIconProps): ReactElement {
   return (
-    <IconSvg {...props}>
-      <path
-        d="M3.95 5.85h1.75c2.35 0 4.35.62 6.3 1.95v10.55c-1.9-1.28-4.05-1.9-6.45-1.9h-1.6z"
-        fill="#FAF9F6"
-        stroke="#2D6B68"
-      />
-      <path
-        d="M20.05 5.85H18.3c-2.35 0-4.35.62-6.3 1.95v10.55c1.9-1.28 4.05-1.9 6.45-1.9h1.6z"
-        fill="#FAF9F6"
-        stroke="#2D6B68"
-      />
-      <path d="M12 7.75v10.55" stroke="#2D6B68" />
-      <path d="M6.25 8.25c1.35.02 2.55.32 3.65.98" stroke="#2D6B68" opacity="0.62" />
-      <path d="M17.75 8.25c-1.35.02-2.55.32-3.65.98" stroke="#2D6B68" opacity="0.62" />
+    <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+      <PaperIconSoftShadow id="mobileStorySoftShadow" />
+      <g filter="url(#mobileStorySoftShadow)" stroke={PAPER_ICON_STROKE} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+        <path
+          d="M3.95 5.85h1.75c2.35 0 4.35.62 6.3 1.95v10.55c-1.9-1.28-4.05-1.9-6.45-1.9h-1.6z"
+          fill={PAPER_ICON_FILL}
+        />
+        <path
+          d="M20.05 5.85H18.3c-2.35 0-4.35.62-6.3 1.95v10.55c1.9-1.28 4.05-1.9 6.45-1.9h1.6z"
+          fill={PAPER_ICON_FILL}
+        />
+        <path d="M12 7.75v10.55" />
+        <path d="M6.25 8.25c1.35.02 2.55.32 3.65.98" />
+        <path d="M17.75 8.25c-1.35.02-2.55.32-3.65.98" />
+      </g>
     </IconSvg>
   );
 }
@@ -272,11 +295,7 @@ function StoryIcon(props: MobileReadingIconProps): ReactElement {
 function CodexIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <defs>
-        <filter id="mobileCodexSoftShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="#8AA6A2" floodOpacity="0.45" />
-        </filter>
-      </defs>
+      <PaperIconSoftShadow id="mobileCodexSoftShadow" />
       <g transform="translate(-14.58 -1.2) scale(0.3038)" filter="url(#mobileCodexSoftShadow)">
         <rect
           x="57.5"
@@ -323,14 +342,55 @@ function CodexIcon(props: MobileReadingIconProps): ReactElement {
   );
 }
 
+function CodexDetailEyeIcon(props: MobileReadingIconProps): ReactElement {
+  return (
+    <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+      <PaperIconSoftShadow id="mobileCodexEyeSoftShadow" />
+      <g
+        filter="url(#mobileCodexEyeSoftShadow)"
+        stroke={PAPER_ICON_STROKE}
+        strokeWidth={PAPER_ICON_STROKE_WIDTH}
+      >
+        <path
+          d="M3.75 12s3.35-5.25 8.25-5.25S20.25 12 20.25 12 16.9 17.25 12 17.25 3.75 12 3.75 12z"
+          fill={PAPER_ICON_FILL}
+        />
+        <circle cx="12" cy="12" r="2.15" fill={PAPER_ICON_FILL} />
+      </g>
+    </IconSvg>
+  );
+}
+
+function CodexDetailHeartIcon(props: MobileReadingIconProps): ReactElement {
+  return (
+    <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+      <PaperIconSoftShadow id="mobileCodexHeartSoftShadow" />
+      <path
+        d="M12 20.25s-7.35-4.45-7.35-9.25c0-2.45 1.75-4.15 3.9-4.15 1.55 0 2.75.85 3.45 2.15.7-1.3 1.9-2.15 3.45-2.15 2.15 0 3.9 1.7 3.9 4.15 0 4.8-7.35 9.25-7.35 9.25z"
+        fill={PAPER_ICON_FILL}
+        stroke={PAPER_ICON_STROKE}
+        strokeWidth={PAPER_ICON_STROKE_WIDTH}
+        filter="url(#mobileCodexHeartSoftShadow)"
+      />
+    </IconSvg>
+  );
+}
+
 function SettingsIcon(props: MobileReadingIconProps): ReactElement {
   return (
-    <IconSvg {...props}>
-      <path
-        d="M10.75 3.2h2.5l.52 2.25c.58.18 1.13.42 1.63.72l1.98-1.18 1.76 1.76-1.18 1.98c.3.5.54 1.05.72 1.63l2.25.52v2.5l-2.25.52a7.2 7.2 0 0 1-.72 1.63l1.18 1.98-1.76 1.76-1.98-1.18c-.5.3-1.05.54-1.63.72l-.52 2.25h-2.5l-.52-2.25a7.2 7.2 0 0 1-1.63-.72l-1.98 1.18-1.76-1.76 1.18-1.98a7.2 7.2 0 0 1-.72-1.63l-2.25-.52v-2.5l2.25-.52c.18-.58.42-1.13.72-1.63L4.86 6.75l1.76-1.76L8.6 6.17c.5-.3 1.05-.54 1.63-.72z"
-        stroke="#2D6B68"
-      />
-      <circle cx="12" cy="12.13" r="3" stroke="#2D6B68" />
+    <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+      <PaperIconSoftShadow id="mobileSettingsSoftShadow" />
+      <g
+        filter="url(#mobileSettingsSoftShadow)"
+        stroke={PAPER_ICON_STROKE}
+        strokeWidth={PAPER_ICON_STROKE_WIDTH}
+      >
+        <path
+          d="M10.75 3.2h2.5l.52 2.25c.58.18 1.13.42 1.63.72l1.98-1.18 1.76 1.76-1.18 1.98c.3.5.54 1.05.72 1.63l2.25.52v2.5l-2.25.52a7.2 7.2 0 0 1-.72 1.63l1.18 1.98-1.76 1.76-1.98-1.18c-.5.3-1.05.54-1.63.72l-.52 2.25h-2.5l-.52-2.25a7.2 7.2 0 0 1-1.63-.72l-1.98 1.18-1.76-1.76 1.18-1.98a7.2 7.2 0 0 1-.72-1.63l-2.25-.52v-2.5l2.25-.52c.18-.58.42-1.13.72-1.63L4.86 6.75l1.76-1.76L8.6 6.17c.5-.3 1.05-.54 1.63-.72z"
+          fill={PAPER_ICON_FILL}
+        />
+        <circle cx="12" cy="12.13" r="3" fill={PAPER_ICON_FILL} />
+      </g>
     </IconSvg>
   );
 }
@@ -406,8 +466,8 @@ export const MobileReadingIcons = {
   Character: CharacterIcon,
   Codex: CodexIcon,
   CodexBook: StoryIcon,
-  CodexEye: InsightEyeIcon,
-  CodexHeart: LifeConfluenceIcon,
+  CodexEye: CodexDetailEyeIcon,
+  CodexHeart: CodexDetailHeartIcon,
   CollapseOptions: OptionsPanelIcon,
   ExpandOptions: OptionsListIcon,
   OptionChevron: OptionChevronIcon,

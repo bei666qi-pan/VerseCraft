@@ -332,10 +332,14 @@ async function expectPaperCodexVisual(page: Page, viewportName: string) {
     const panelStyle = getComputedStyle(panel);
     const cardStyle = getComputedStyle(card);
     const detailStyle = getComputedStyle(detail);
+    const detailIconHtml = Array.from(detail.querySelectorAll("svg"))
+      .map((svg) => svg.outerHTML)
+      .join("\n");
     return {
       cardRadius: Number.parseFloat(cardStyle.borderRadius),
       cardWidth: card.getBoundingClientRect().width,
       detailClassName: detail.className,
+      detailIconHtml,
       detailRadius: Number.parseFloat(detailStyle.borderRadius),
       headerClassName: header.className,
       horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
@@ -355,6 +359,18 @@ async function expectPaperCodexVisual(page: Page, viewportName: string) {
   expect(metrics.cardRadius).toBeGreaterThanOrEqual(13);
   expect(metrics.detailRadius).toBeGreaterThanOrEqual(17);
   expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
+  expect(metrics.detailIconHtml, `${viewportName} codex eye icon should use the paper-line detail style`).toContain(
+    "mobileCodexEyeSoftShadow"
+  );
+  expect(metrics.detailIconHtml, `${viewportName} codex heart icon should use the paper-line detail style`).toContain(
+    "mobileCodexHeartSoftShadow"
+  );
+  expect(metrics.detailIconHtml, `${viewportName} should not retain the old complex eye icon`).not.toContain(
+    "3-5.3 8.5-5.3"
+  );
+  expect(metrics.detailIconHtml, `${viewportName} should not retain the old complex heart icon`).not.toContain(
+    "7-4.1-7-9.1"
+  );
 }
 
 async function expectReferenceBottomNavIcons(page: Page, viewportName: string) {
@@ -374,6 +390,19 @@ async function expectReferenceBottomNavIcons(page: Page, viewportName: string) {
   }
 
   const combinedIconHtml = iconHtml.join("\n");
+  for (const shadowId of [
+    "mobileCharacterSoftShadow",
+    "mobileStorySoftShadow",
+    "mobileCodexSoftShadow",
+    "mobileSettingsSoftShadow",
+  ]) {
+    expect(combinedIconHtml, `${viewportName} bottom nav icons should share the codex soft shadow style`).toContain(
+      shadowId
+    );
+  }
+  expect(combinedIconHtml, `${viewportName} bottom nav icons should share the codex thin stroke`).toContain(
+    'stroke-width="0.66"'
+  );
   const codexIconHtml = await page.getByTestId("bottom-nav-codex").locator("svg").evaluate((node) => node.outerHTML);
   expect(codexIconHtml, `${viewportName} codex icon should use the supplied soft shadow SVG`).toContain(
     "mobileCodexSoftShadow"
