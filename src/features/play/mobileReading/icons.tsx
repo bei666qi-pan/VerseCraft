@@ -226,8 +226,8 @@ function SendActionIcon(props: MobileReadingIconProps): ReactElement {
 function CharacterIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <circle cx="12" cy="7.5" r="3.2" />
-      <path d="M5.6 20c.7-4.1 3.1-6.2 6.4-6.2s5.7 2.1 6.4 6.2z" />
+      <circle cx="12" cy="5.65" r="3.25" />
+      <path d="M4.9 20.2h14.2c-.45-4.7-3.1-7.35-7.1-7.35S5.35 15.5 4.9 20.2z" />
     </IconSvg>
   );
 }
@@ -248,11 +248,11 @@ function OriginiumIcon(props: MobileReadingIconProps): ReactElement {
 function StoryIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M4.5 5.8c2.9-.6 5.2.1 7.5 2.1v11.2c-2.2-1.9-4.7-2.6-7.5-2z" />
-      <path d="M19.5 5.8c-2.9-.6-5.2.1-7.5 2.1v11.2c2.2-1.9 4.7-2.6 7.5-2z" />
-      <path d="M12 7.9v11.2" />
-      <path d="M7.2 9.3c1.1 0 2 .3 2.8.8" opacity="0.6" />
-      <path d="M16.8 9.3c-1.1 0-2 .3-2.8.8" opacity="0.6" />
+      <path d="M3.95 5.85h1.75c2.35 0 4.35.62 6.3 1.95v10.55c-1.9-1.28-4.05-1.9-6.45-1.9h-1.6z" />
+      <path d="M20.05 5.85H18.3c-2.35 0-4.35.62-6.3 1.95v10.55c1.9-1.28 4.05-1.9 6.45-1.9h1.6z" />
+      <path d="M12 7.75v10.55" />
+      <path d="M6.25 8.25c1.35.02 2.55.32 3.65.98" opacity="0.72" />
+      <path d="M17.75 8.25c-1.35.02-2.55.32-3.65.98" opacity="0.72" />
     </IconSvg>
   );
 }
@@ -260,11 +260,12 @@ function StoryIcon(props: MobileReadingIconProps): ReactElement {
 function CodexIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M7.1 6.4 4.4 7.1l2.9 11 2.2-.6" />
-      <path d="M16.9 6.4l2.7.7-2.9 11-2.2-.6" />
-      <rect x="8.1" y="4.8" width="7.8" height="13.6" rx="1.2" />
-      <circle cx="12" cy="10.8" r="1.8" />
-      <path d="M9.8 15.3c.6-1 1.4-1.5 2.2-1.5s1.6.5 2.2 1.5" />
+      <path d="M4.05 8.15 8.45 6.95v11.8l-4.4-1.2z" />
+      <path d="M19.95 8.15 15.55 6.95v11.8l4.4-1.2z" />
+      <rect x="8.05" y="4.55" width="7.9" height="14.55" rx="1.05" />
+      <circle cx="12" cy="9.85" r="1.65" />
+      <path d="M9.95 15.05c.45-1.25 1.15-1.85 2.05-1.85s1.6.6 2.05 1.85" />
+      <path d="M10.05 17.1h3.9" opacity="0.74" />
     </IconSvg>
   );
 }
@@ -272,8 +273,8 @@ function CodexIcon(props: MobileReadingIconProps): ReactElement {
 function SettingsIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M12 3.1 13.5 5.4 16.2 4.8 17.1 7.4 19.6 8.6 18.4 11.1 19.6 13.8 17.1 15 16.2 17.6 13.5 17 12 19.4 10.5 17 7.8 17.6 6.9 15 4.4 13.8 5.6 11.1 4.4 8.6 6.9 7.4 7.8 4.8 10.5 5.4z" />
-      <circle cx="12" cy="12" r="3.2" />
+      <path d="M10.75 3.2h2.5l.52 2.25c.58.18 1.13.42 1.63.72l1.98-1.18 1.76 1.76-1.18 1.98c.3.5.54 1.05.72 1.63l2.25.52v2.5l-2.25.52a7.2 7.2 0 0 1-.72 1.63l1.18 1.98-1.76 1.76-1.98-1.18c-.5.3-1.05.54-1.63.72l-.52 2.25h-2.5l-.52-2.25a7.2 7.2 0 0 1-1.63-.72l-1.98 1.18-1.76-1.76 1.18-1.98a7.2 7.2 0 0 1-.72-1.63l-2.25-.52v-2.5l2.25-.52c.18-.58.42-1.13.72-1.63L4.86 6.75l1.76-1.76L8.6 6.17c.5-.3 1.05-.54 1.63-.72z" />
+      <circle cx="12" cy="12.13" r="3" />
     </IconSvg>
   );
 }

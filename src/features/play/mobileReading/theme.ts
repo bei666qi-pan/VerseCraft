@@ -129,13 +129,13 @@ export const mobileReadingTheme = {
     "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#d8d1c6] bg-[#fffdf8] px-7 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_24px_rgba(73,63,51,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-[10px] min-[420px]:px-9",
   bottomNavGrid: "grid h-full grid-cols-4 items-end gap-1",
   bottomNavItem:
-    "relative flex h-full min-w-0 flex-col items-center justify-center gap-1 rounded-none text-[#174d46] transition active:scale-95",
+    "relative flex h-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-none text-[#174d46] transition active:scale-95",
   bottomNavItemActive: "text-[#2f746a]",
   bottomNavItemInactive: "hover:text-[#2f746a]",
   bottomNavItemDisabled: "cursor-default",
   bottomNavActiveIndicator:
     "pointer-events-none absolute bottom-[-0.15rem] h-1 w-1 rounded-full bg-[#2f746a]",
-  bottomNavIcon: "relative z-10 h-7 w-7 min-[420px]:h-8 min-[420px]:w-8",
+  bottomNavIcon: "relative z-10 h-9 w-9 min-[420px]:h-10 min-[420px]:w-10",
   bottomNavIconActive: "",
   bottomNavLabel: "relative z-10 vc-reading-serif text-[16px] leading-none min-[420px]:text-[18px]",
 } as const;

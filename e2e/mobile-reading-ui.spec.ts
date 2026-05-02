@@ -357,6 +357,35 @@ async function expectPaperCodexVisual(page: Page, viewportName: string) {
   expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
+async function expectReferenceBottomNavIcons(page: Page, viewportName: string) {
+  const nav = page.getByTestId("mobile-bottom-nav");
+  await expect(nav).toBeVisible();
+
+  const iconHtml: string[] = [];
+  for (const testId of ["bottom-nav-character", "bottom-nav-story", "bottom-nav-codex", "bottom-nav-settings"]) {
+    const icon = page.getByTestId(testId).locator("svg");
+    await expect(icon, `${testId} should keep a single inline SVG icon`).toHaveCount(1);
+    const box = await icon.boundingBox();
+    expect(box?.width, `${viewportName} ${testId} icon width`).toBeGreaterThanOrEqual(34);
+    expect(box?.width, `${viewportName} ${testId} icon width`).toBeLessThanOrEqual(42);
+    expect(box?.height, `${viewportName} ${testId} icon height`).toBeGreaterThanOrEqual(34);
+    expect(box?.height, `${viewportName} ${testId} icon height`).toBeLessThanOrEqual(42);
+    iconHtml.push(await icon.evaluate((node) => node.outerHTML));
+  }
+
+  const combinedIconHtml = iconHtml.join("\n");
+  for (const oldFragment of [
+    "M5.6 20c.7-4.1",
+    "M4.5 5.8c2.9-.6",
+    "M7.1 6.4 4.4 7.1",
+    "M12 3.1 13.5 5.4",
+  ]) {
+    expect(combinedIconHtml, `${viewportName} should not retain old bottom nav icon SVG paths`).not.toContain(
+      oldFragment
+    );
+  }
+}
+
 test.describe("mobile reading UI", () => {
   test("renders the mobile reading shell at 390x844 and captures collapsed and expanded screenshots", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -375,6 +404,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("send-action-button")).toBeVisible();
     await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
     await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
+    await expectReferenceBottomNavIcons(page, "390x844");
     await expect(page.getByText("Application error")).toHaveCount(0);
     await expect(page.getByText("client-side exception")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
@@ -458,8 +488,9 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("bottom-nav-character")).toHaveAttribute("aria-label", "打开角色");
     for (const testId of ["bottom-nav-character", "bottom-nav-story", "bottom-nav-codex", "bottom-nav-settings"]) {
       const iconCount = await page.getByTestId(testId).locator("svg").count();
-      expect(iconCount).toBeGreaterThan(0);
+      expect(iconCount).toBe(1);
     }
+    await expectReferenceBottomNavIcons(page, "390x844");
 
     await page.getByTestId("bottom-nav-character").click();
     expect(page.url()).toBe(initialUrl);
@@ -669,7 +700,14 @@ test.describe("mobile reading UI", () => {
       await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
       await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
       await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
+      await expectReferenceBottomNavIcons(page, `${viewport.width}x${viewport.height}`);
       await expectNoHorizontalOverflow(page);
+
+      if (viewport.width === 430) {
+        const navIconPath = test.info().outputPath("bottom-nav-reference-icons-430.png");
+        await page.screenshot({ path: navIconPath, fullPage: false });
+        test.info().annotations.push({ type: "screenshot", description: navIconPath });
+      }
 
       if (viewport.width <= 430) {
         await page.getByTestId("options-toggle-button").click();
