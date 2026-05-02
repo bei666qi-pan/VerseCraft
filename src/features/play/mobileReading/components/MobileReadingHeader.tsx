@@ -8,18 +8,30 @@ export function MobileReadingHeader({
   audioMuted,
   onToggleAudio,
   title = "第六章：雾港来信",
+  variant = "default",
 }: MobileReadingHeaderProps) {
+  const isCodex = variant === "codex";
   const AudioIcon = audioMuted ? MobileReadingIcons.AudioOff : MobileReadingIcons.AudioOn;
   return (
-    <header data-testid="mobile-reading-header" className={mobileReadingTheme.header}>
+    <header
+      data-testid="mobile-reading-header"
+      className={isCodex ? mobileReadingTheme.headerCodex : mobileReadingTheme.header}
+    >
       <div className={mobileReadingTheme.headerRow}>
         <div className={mobileReadingTheme.headerBrand}>
-          <div className="flex shrink-0 items-center gap-1">
-            <span className={mobileReadingTheme.brandWordmark}>VerseCraft</span>
-            <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMark} strokeWidth={1.5} />
+          <div className={isCodex ? mobileReadingTheme.headerCodexLogoGroup : "flex shrink-0 items-center gap-1"}>
+            {isCodex ? (
+              <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMarkCodex} strokeWidth={1.5} />
+            ) : null}
+            <span className={isCodex ? mobileReadingTheme.brandWordmarkCodex : mobileReadingTheme.brandWordmark}>
+              VerseCraft
+            </span>
+            {!isCodex ? (
+              <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMark} strokeWidth={1.5} />
+            ) : null}
           </div>
-          <span className={mobileReadingTheme.brandDivider} aria-hidden />
-          <span className={mobileReadingTheme.chapterTitle}>{title}</span>
+          <span className={isCodex ? mobileReadingTheme.brandDividerCodex : mobileReadingTheme.brandDivider} aria-hidden />
+          <span className={isCodex ? mobileReadingTheme.chapterTitleCodex : mobileReadingTheme.chapterTitle}>{title}</span>
         </div>
 
         <button
@@ -27,9 +39,9 @@ export function MobileReadingHeader({
           onClick={onToggleAudio}
           aria-label={audioMuted ? "开启声音" : "关闭声音"}
           data-testid="audio-toggle-button"
-          className={mobileReadingTheme.audioButton}
+          className={isCodex ? mobileReadingTheme.audioButtonCodex : mobileReadingTheme.audioButton}
         >
-          <AudioIcon className={mobileReadingTheme.audioIcon} strokeWidth={1.9} />
+          <AudioIcon className={isCodex ? mobileReadingTheme.audioIconCodex : mobileReadingTheme.audioIcon} strokeWidth={1.9} />
         </button>
       </div>
     </header>

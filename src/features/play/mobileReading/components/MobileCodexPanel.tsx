@@ -20,23 +20,23 @@ function CodexSilhouette({ identified }: { identified: boolean }) {
   return (
     <div
       aria-hidden
-      className={`absolute inset-0 overflow-hidden rounded-t-[16px] ${
+      className={`absolute inset-0 overflow-hidden rounded-[14px] ${
         identified
-          ? "bg-[radial-gradient(circle_at_50%_16%,rgba(47,116,106,0.18),transparent_22%),linear-gradient(160deg,#dce7e3,#f5f2ec)]"
-          : "bg-[radial-gradient(circle_at_50%_24%,rgba(47,116,106,0.28)_0_16%,transparent_17%),linear-gradient(165deg,#f2efea,#fffdf8)]"
+          ? "bg-[radial-gradient(circle_at_50%_18%,rgba(47,116,106,0.16),transparent_22%),linear-gradient(160deg,#dce7e3,#f8f5ef)]"
+          : "bg-[radial-gradient(circle_at_50%_27%,rgba(47,116,106,0.3)_0_14%,transparent_15%),linear-gradient(165deg,#f6f2ec,#fffdf8)]"
       }`}
     >
       <div
-        className={`absolute left-1/2 top-[21%] h-[42%] w-[48%] -translate-x-1/2 rounded-full ${
+        className={`absolute left-1/2 top-[22%] h-[38%] w-[47%] -translate-x-1/2 rounded-full ${
           identified ? "bg-[#8fa79f]/50" : "bg-[#174d46]/78"
         }`}
       />
       <div
-        className={`absolute bottom-0 left-1/2 h-[46%] w-[72%] -translate-x-1/2 rounded-t-full ${
+        className={`absolute bottom-0 left-1/2 h-[44%] w-[70%] -translate-x-1/2 rounded-t-full ${
           identified ? "bg-[#8fa79f]/45" : "bg-[#174d46]/76"
         }`}
       />
-      <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#fffdf8] to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#fffdf8] to-transparent" />
     </div>
   );
 }
@@ -61,13 +61,13 @@ function CodexCard({
       onClick={() => {
         if (card.kind === "slot") onSelect(card.slot);
       }}
-      className={`relative h-[184px] w-[120px] shrink-0 overflow-visible rounded-[18px] border bg-[#fffdf8] text-left shadow-[0_8px_18px_rgba(73,63,51,0.09)] transition min-[420px]:h-[210px] min-[420px]:w-[132px] ${
+      className={`relative h-[146px] w-[82px] shrink-0 overflow-visible rounded-[14px] border bg-[#fffdf8] text-left shadow-[0_6px_16px_rgba(73,63,51,0.09)] transition min-[420px]:h-[168px] min-[420px]:w-[92px] ${
         selected
-          ? "border-[#2f746a] shadow-[0_10px_22px_rgba(47,116,106,0.18),0_0_0_2px_rgba(47,116,106,0.08)]"
+          ? "border-[#2f746a] shadow-[0_10px_22px_rgba(47,116,106,0.14),0_0_0_2px_rgba(47,116,106,0.06)]"
           : "border-[#d8d1c6]"
       } ${card.disabled ? "opacity-75" : "active:scale-[0.985]"}`}
     >
-      <div className="relative h-[116px] overflow-hidden rounded-t-[16px] border-b border-[#e3ded6] min-[420px]:h-[134px]">
+      <div className="absolute inset-0 overflow-hidden rounded-[13px]">
         {portrait ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -79,20 +79,25 @@ function CodexCard({
         ) : (
           <CodexSilhouette identified={card.identified} />
         )}
+        <div className="absolute inset-x-0 bottom-0 h-[4.2rem] bg-gradient-to-t from-[#fffdf8] via-[#fffdf8]/92 to-transparent" />
       </div>
-      <div className="px-3 pb-3 pt-3">
-        <div className="vc-reading-serif truncate text-center text-[21px] font-semibold leading-tight text-[#174d46] min-[420px]:text-[24px]">
+      <div className="absolute inset-x-1 bottom-3">
+        <div className="vc-reading-serif truncate text-center text-[17px] font-semibold leading-tight text-[#174d46] min-[420px]:text-[19px]">
           {card.displayName}
         </div>
-        <div className="vc-reading-serif mt-1 truncate text-center text-[16px] leading-tight text-[#4f706a] min-[420px]:text-[18px]">
+        <div className="vc-reading-serif mt-1 truncate text-center text-[12px] leading-tight text-[#4f706a] min-[420px]:text-[14px]">
           {card.location}
         </div>
       </div>
       {selected ? (
         <span
           aria-hidden
-          className="absolute -bottom-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.45)]"
-        />
+          className="absolute -bottom-[7px] left-1/2 flex w-[58px] -translate-x-1/2 items-center justify-center"
+        >
+          <span className="h-px flex-1 bg-[#2f746a]" />
+          <span className="mx-1 h-2.5 w-2.5 rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.38)]" />
+          <span className="h-px flex-1 bg-[#2f746a]" />
+        </span>
       ) : null}
     </button>
   );
@@ -124,7 +129,7 @@ function DetailBlock({
         ? MobileReadingIcons.CodexEye
         : MobileReadingIcons.CodexHeart;
   return (
-    <section>
+    <section className="relative pr-4">
       <h3 className="vc-reading-serif flex items-center gap-3 text-[25px] font-semibold leading-none text-[#174d46] min-[420px]:text-[30px]">
         <Icon className="h-7 w-7 shrink-0 text-[#2f746a]" strokeWidth={1.45} />
         {title}
@@ -132,6 +137,16 @@ function DetailBlock({
       <p className="vc-reading-serif mt-3 whitespace-pre-line text-[19px] leading-[1.8] text-[#1f4b45] min-[420px]:text-[22px]">
         {children}
       </p>
+      {icon === "book" || icon === "eye" ? (
+        <div
+          aria-hidden
+          className="absolute bottom-1 right-0 top-4 flex w-2 flex-col items-center justify-between text-[#2f746a]"
+        >
+          <span className="text-[14px] leading-none">⌃</span>
+          <span className="my-1 h-14 w-1 rounded-full bg-[#2f746a]" />
+          <span className="text-[14px] leading-none">⌄</span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -181,7 +196,7 @@ export function MobileCodexPanel({
     <section
       data-testid="mobile-codex-panel"
       aria-label="图鉴"
-      className="box-border min-h-full px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+1.25rem+env(safe-area-inset-bottom))] pt-5 text-[#174d46]"
+      className="box-border h-full overflow-y-auto px-4 pb-[calc(var(--vc-mobile-bottom-nav-height)+1.25rem+env(safe-area-inset-bottom))] pt-5 text-[#174d46] [scrollbar-width:none] min-[420px]:px-5 [&::-webkit-scrollbar]:hidden"
     >
       <div className="vc-reading-serif px-1 text-[22px] font-semibold leading-none min-[420px]:text-[26px]">
         <span data-testid="mobile-codex-count">
@@ -191,7 +206,7 @@ export function MobileCodexPanel({
 
       <div
         data-testid="mobile-codex-card-strip"
-        className="-mx-5 mt-4 flex gap-4 overflow-x-auto px-5 pb-6 pt-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="-mx-4 mt-4 flex gap-2.5 overflow-x-auto px-4 pb-6 pt-1 [scrollbar-width:none] [-ms-overflow-style:none] min-[420px]:-mx-5 min-[420px]:gap-3 min-[420px]:px-5 [&::-webkit-scrollbar]:hidden"
       >
         {cards.map((card) => (
           <CodexCard
@@ -214,7 +229,7 @@ export function MobileCodexPanel({
         <>
           <div className="mx-auto mb-6 flex h-1.5 w-36 overflow-hidden rounded-full bg-[#e3ded6]" aria-hidden>
             <span
-              className="rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.28)]"
+              className="rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.24)]"
               style={{ width: `${progressWidth}%` }}
             />
           </div>
@@ -222,7 +237,7 @@ export function MobileCodexPanel({
           {detail && selectedSlot ? (
             <article
               data-testid="mobile-codex-detail-panel"
-              className="rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/92 px-5 py-5 shadow-[0_10px_24px_rgba(73,63,51,0.1),inset_0_1px_0_rgba(255,255,255,0.95)]"
+              className="rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 px-5 py-5 shadow-[0_10px_24px_rgba(73,63,51,0.1),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-6"
             >
               <header className="grid grid-cols-[2.2rem_minmax(0,1fr)] gap-3">
                 <MobileReadingIcons.BrandMark className="mt-1 h-8 w-8 text-[#2f746a]" strokeWidth={1.5} />

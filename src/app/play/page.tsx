@@ -3060,6 +3060,7 @@ function PlayContent() {
       {!isSettingsPanelActive ? (
         <MobileReadingHeader
           title={mobileHeaderTitle}
+          variant={isCodexPanelActive ? "codex" : "default"}
           audioMuted={audioMuted}
           onToggleAudio={() => {
             toggleMute();

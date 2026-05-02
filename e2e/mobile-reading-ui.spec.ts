@@ -321,6 +321,42 @@ async function expectNoPrunedEntries(page: Page) {
   }
 }
 
+async function expectPaperCodexVisual(page: Page, viewportName: string) {
+  const metrics = await page.evaluate(() => {
+    const header = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header"]');
+    const panel = document.querySelector<HTMLElement>('[data-testid="mobile-codex-panel"]');
+    const card = document.querySelector<HTMLElement>('[data-testid="mobile-codex-card"]');
+    const detail = document.querySelector<HTMLElement>('[data-testid="mobile-codex-detail-panel"]');
+    const nav = document.querySelector<HTMLElement>('[data-testid="mobile-bottom-nav"]');
+    if (!header || !panel || !card || !detail || !nav) throw new Error("missing codex visual targets");
+    const panelStyle = getComputedStyle(panel);
+    const cardStyle = getComputedStyle(card);
+    const detailStyle = getComputedStyle(detail);
+    return {
+      cardRadius: Number.parseFloat(cardStyle.borderRadius),
+      cardWidth: card.getBoundingClientRect().width,
+      detailClassName: detail.className,
+      detailRadius: Number.parseFloat(detailStyle.borderRadius),
+      headerClassName: header.className,
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      navClassName: nav.className,
+      panelColor: panelStyle.color,
+    };
+  });
+
+  expect(metrics.headerClassName, `${viewportName} header must be paper, not the old dark chrome`).toContain(
+    "bg-[#fbf8f2]"
+  );
+  expect(metrics.navClassName, `${viewportName} nav must be paper, not the old dark dock`).toContain("bg-[#fffdf8]");
+  expect(metrics.detailClassName, `${viewportName} detail card must be paper`).toContain("bg-[#fffdf8]");
+  expect(metrics.panelColor).toBe("rgb(23, 77, 70)");
+  expect(metrics.cardWidth).toBeGreaterThanOrEqual(78);
+  expect(metrics.cardWidth).toBeLessThanOrEqual(96);
+  expect(metrics.cardRadius).toBeGreaterThanOrEqual(13);
+  expect(metrics.detailRadius).toBeGreaterThanOrEqual(17);
+  expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
 test.describe("mobile reading UI", () => {
   test("renders the mobile reading shell at 390x844 and captures collapsed and expanded screenshots", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -464,6 +500,11 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("关系印象");
     await expect(page.getByText("图鉴 · 目录")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "关闭", exact: true })).toBeHidden();
+    await expectPaperCodexVisual(page, "390x844");
+
+    const codexPath = test.info().outputPath("codex-paper-390x844.png");
+    await page.screenshot({ path: codexPath, fullPage: false });
+    test.info().annotations.push({ type: "screenshot", description: codexPath });
 
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-015"]').click();
     await expect(page.getByTestId("mobile-codex-detail-location")).toHaveText("B1 安全中枢");
@@ -516,6 +557,11 @@ test.describe("mobile reading UI", () => {
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-014"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-001"]')).toBeVisible();
     await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(3);
+    await expectPaperCodexVisual(page, "393x852");
+
+    const codexPath = test.info().outputPath("codex-paper-393x852.png");
+    await page.screenshot({ path: codexPath, fullPage: false });
+    test.info().annotations.push({ type: "screenshot", description: codexPath });
   });
 
   test("shows runtime active threat anomalies on the current floor", async ({ page }) => {
@@ -545,9 +591,14 @@ test.describe("mobile reading UI", () => {
     await page.getByTestId("bottom-nav-codex").click();
     await expect(page.getByTestId("mobile-codex-count")).toHaveText("2F已识别人物：1 / 3");
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]')).toBeVisible();
-    await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-002"]')).toBeVisible();
+    await expect(page.getByTestId("mobile-codex-card")).toHaveCount(3);
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]').click();
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("异常简介");
+    await expectPaperCodexVisual(page, "430x932");
+
+    const codexPath = test.info().outputPath("codex-paper-430x932.png");
+    await page.screenshot({ path: codexPath, fullPage: false });
+    test.info().annotations.push({ type: "screenshot", description: codexPath });
   });
 
   test("shows a certified profession in the mobile character panel", async ({ page }) => {

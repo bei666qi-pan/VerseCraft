@@ -23,7 +23,7 @@ orchestrator for those business flows and passes only the required props into th
 - `MobileCharacterPanel` owns the mobile character tab: identity, originium balance, location,
   time, current profession, and attribute upgrade controls. It receives data and callbacks from
   `/play`; it does not read the store directly.
-- `MobileCodexPanel` owns the mobile codex tab: B1 NPC cards, identified count, portrait
+- `MobileCodexPanel` owns the mobile codex tab: floor-scoped cards, identified count, portrait
   placeholders, and the detail panel. It receives codex data from `/play`; it does not read the
   store directly or open the old modal.
 - `MobileSettingsPanel` owns the mobile settings tab: account display, game guide entry, real
@@ -47,8 +47,8 @@ orchestrator for those business flows and passes only the required props into th
 
 Edit `theme.ts` first when changing screenshot-level visual language. It exports:
 
-- `mobileReadingTokens` for the stable values: near-black background, warm-gold palette,
-  translucent border levels, story text colors, glow shadows, mobile spacing, dock heights,
+- `mobileReadingTokens` for the stable values: paper background, deep-teal text palette,
+  translucent border levels, story text colors, soft shadows, mobile spacing, dock heights,
   input height, and safe-area padding.
 - `mobileReadingTheme` for the Tailwind class strings consumed by the shell components.
 

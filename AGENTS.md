@@ -440,17 +440,9 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
   - 仍是 `/play` 全栈接线点：SSE、回合提交、状态写入、菜单状态、音频与天赋效果都在这里收口。
   - 这里只应做必要接线，不要继续堆大段视觉 JSX。
 - `src/features/play/mobileReading/*`
-  - 移动端阅读壳层主目录。
-  - `MobileReadingShell`：`100dvh` 阅读表面与根测试选择器。
-  - `MobileReadingHeader`：品牌、章节名、声音按钮。
-  - `MobileStoryViewport`：正文滚动区域外壳，正文仍由 `PlayStoryScroll` / narrative renderer 负责。
-  - `MobileActionDock`：底部输入胶囊、选项展开按钮、发送按钮。
-  - `MobileCharacterPanel`：底部“角色”页的移动端身份信息、原石余额和属性加点面板。
-  - `MobileCodexPanel`：底部“图鉴”页的 B1 人物卡片、识别计数、剪影占位和详情面板。
-  - `EchoTalentButton`：天赋按钮的纯 UI 入口。
-  - `MobileOptionsDropdown`：四条行动选项的移动端下拉展示。
-  - `MobileBottomNav`：角色 / 剧情 / 图鉴 / 设置底部导航。
-  - `theme.ts`、`icons.tsx`、`types.ts`、`hooks/useMobileActionDock.ts` 分别放视觉 token、图标选择、props 类型和输入栏局部 UI 状态。
+  - 移动端阅读壳层主目录；具体组件和测试选择器以当前真实文件为准，不把历史组件组或某次视觉稿写成长期事实。
+  - 该目录只负责移动端呈现与局部 UI 状态，不接管 SSE、回合提交、store 持久化、任务/图鉴/仓库写回或选项再生成。
+  - 图鉴页是 `/play` 壳层内的展示视图，必须保留现有图鉴数据、楼层过滤、选中卡片、底部导航和存档兼容，视觉样式可按当前产品稿整体替换。
 
 输入、选项、天赋、底部导航和菜单打开的责任边界：
 
@@ -460,7 +452,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 天赋按钮只触发 `onUseTalent`；`onUseTalent` 仍留在 `page.tsx`，不要把天赋业务效果塞进 UI 图标组件。
 - 底部“角色”通过 `setActiveMenu("character")` 打开 `MobileCharacterPanel`，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`。属性加点只调用现有 `upgradeAttribute`，不要新建第二套加点规则。
 - 底部“剧情”只收起选项并回到阅读态。
-- 底部“图鉴”通过 `setActiveMenu("codex")` 打开 `MobileCodexPanel`，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`；图鉴展示 helper 位于 `codexCatalog.ts`、`codexPortraits.ts`、`codexFormat.ts`。
+- 底部“图鉴”通过 `setActiveMenu("codex")` 打开壳层内图鉴视图，仍在移动阅读壳层内，不新增路由、不进入 `UnifiedMenuModal`；图鉴展示 helper 位于 `codexCatalog.ts`、`codexPortraits.ts`、`codexFormat.ts`。
 - 底部“设置”通过 `setActiveMenu("settings")` 打开现有 `UnifiedMenuModal`；`UnifiedMenuModal` 当前只保留设置可见入口。
 
 仍然禁止重新暴露这些主动 UI 入口：
@@ -472,24 +464,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 成就
 - 武器
 
-移动端阅读壳层改动必须保留这些稳定测试选择器，并更新对应浏览器验证：
-
-- `mobile-reading-shell`
-- `mobile-reading-header`
-- `mobile-story-viewport`
-- `mobile-action-dock`
-- `echo-talent-button`
-- `manual-action-input`
-- `options-toggle-button`
-- `send-action-button`
-- `mobile-options-dropdown`
-- `mobile-option-item`
-- `mobile-bottom-nav`
-- `mobile-codex-panel`
-- `bottom-nav-character`
-- `bottom-nav-story`
-- `bottom-nav-codex`
-- `bottom-nav-settings`
+移动端阅读壳层改动必须保护现有 E2E 依赖的可见行为与 `data-testid` 契约；如确需改名，必须同步更新对应测试和浏览器验证脚本，不能让测试选择器清单变成过期文档。
 
 该区域改动的最低验证要求：
 

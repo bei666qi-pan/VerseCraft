@@ -21,6 +21,7 @@ export type MobileReadingHeaderProps = {
   audioMuted: boolean;
   onToggleAudio: () => void;
   title?: string;
+  variant?: "default" | "codex";
 };
 
 export type MobileStoryViewportProps = {
