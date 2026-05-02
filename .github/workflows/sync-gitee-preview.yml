@@ -1,26 +1,63 @@
 name: Sync Gitee Branches
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main, preview]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to sync and deploy"
+        required: true
+        default: "main"
+        type: choice
+        options:
+          - main
+          - preview
 
 permissions:
   contents: read
 
 concurrency:
-  group: gitee-sync-${{ github.ref_name }}
+  group: gitee-sync-${{ github.event.workflow_run.head_branch || inputs.branch }}
   cancel-in-progress: true
 
 jobs:
   sync-gitee:
+    if: >-
+      ${{
+        (
+          github.event_name == 'workflow_dispatch' &&
+          (inputs.branch == 'main' || inputs.branch == 'preview')
+        ) || (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          (
+            github.event.workflow_run.head_branch == 'main' ||
+            github.event.workflow_run.head_branch == 'preview'
+          )
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.branch }}
+      TARGET_REF: ${{ github.event.workflow_run.head_sha || inputs.branch }}
     steps:
-      - name: Checkout source branch
+      - name: Checkout target ref
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
+
+      - name: Show deployment target
+        run: |
+          set -euo pipefail
+          echo "Deployment event: ${GITHUB_EVENT_NAME}"
+          echo "Target branch: ${TARGET_BRANCH}"
+          echo "Target ref: ${TARGET_REF}"
 
       - name: Configure git identity
         run: |
@@ -49,7 +86,7 @@ jobs:
       - name: Push current branch to Gitee
         timeout-minutes: 22
         env:
-          BRANCH_NAME: ${{ github.ref_name }}
+          BRANCH_NAME: ${{ env.TARGET_BRANCH }}
           GIT_TERMINAL_PROMPT: "0"
           GIT_ASKPASS: /bin/false
         run: |
@@ -99,8 +136,9 @@ jobs:
           echo "Gitee ${BRANCH_NAME} branch sync completed."
 
       - name: Trigger Coolify deploy
+        id: deploy
         env:
-          BRANCH_NAME: ${{ github.ref_name }}
+          BRANCH_NAME: ${{ env.TARGET_BRANCH }}
           COOLIFY_DEPLOY_URL: ${{ secrets.COOLIFY_DEPLOY_URL }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
           COOLIFY_PREVIEW_DEPLOY_URL: ${{ secrets.COOLIFY_PREVIEW_DEPLOY_URL }}
@@ -112,6 +150,10 @@ jobs:
           deploy_token=""
           deploy_url_secret=""
           deploy_token_secret=""
+          health_url=""
+
+          echo "deployed=false" >> "${GITHUB_OUTPUT}"
+          echo "health_url=" >> "${GITHUB_OUTPUT}"
 
           case "${BRANCH_NAME}" in
             main)
@@ -119,12 +161,14 @@ jobs:
               deploy_token="${COOLIFY_TOKEN}"
               deploy_url_secret="COOLIFY_DEPLOY_URL"
               deploy_token_secret="COOLIFY_TOKEN"
+              health_url="https://versecraft.cn/api/health"
               ;;
             preview)
               deploy_url="${COOLIFY_PREVIEW_DEPLOY_URL}"
               deploy_token="${COOLIFY_PREVIEW_TOKEN}"
               deploy_url_secret="COOLIFY_PREVIEW_DEPLOY_URL"
               deploy_token_secret="COOLIFY_PREVIEW_TOKEN"
+              health_url="https://preview.versecraft.cn/api/health"
               if [ -z "${deploy_url}" ] && [ -z "${deploy_token}" ]; then
                 echo "No preview Coolify deploy secrets configured; skipping preview deploy after Gitee sync."
                 exit 0
@@ -177,3 +221,35 @@ jobs:
           print("Coolify deploy webhook accepted.")
           PY
           echo "Coolify deploy webhook accepted for ${BRANCH_NAME}."
+          echo "deployed=true" >> "${GITHUB_OUTPUT}"
+          echo "health_url=${health_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for deployed health endpoint
+        if: steps.deploy.outputs.deployed == 'true'
+        env:
+          HEALTH_URL: ${{ steps.deploy.outputs.health_url }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HEALTH_URL}" ]; then
+            echo "::error::Missing health URL for deployed branch."
+            exit 1
+          fi
+
+          echo "Waiting for healthy response from ${HEALTH_URL}."
+          for attempt in $(seq 1 18); do
+            status_code="$(curl --output /tmp/versecraft-health-response.txt --silent --show-error --location --write-out "%{http_code}" "${HEALTH_URL}" || true)"
+
+            if [ "${status_code}" = "200" ]; then
+              echo "Health check passed on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Health check attempt ${attempt}/18 returned HTTP ${status_code}."
+            if [ "${attempt}" -lt 18 ]; then
+              sleep 10
+            fi
+          done
+
+          echo "::error::Health check failed after 18 attempts for ${HEALTH_URL}."
+          exit 1
