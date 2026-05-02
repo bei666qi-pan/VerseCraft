@@ -373,6 +373,52 @@ async function expectPaperCodexVisual(page: Page, viewportName: string) {
   );
 }
 
+async function expectPinnedPanelHeader(
+  page: Page,
+  panelTestId: "mobile-character-panel" | "mobile-codex-panel",
+  viewportName: string
+) {
+  const metrics = await page.evaluate(async ({ targetPanelTestId }) => {
+    const header = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header"]');
+    const spacer = document.querySelector<HTMLElement>('[data-testid="mobile-reading-header-spacer"]');
+    const panel = document.querySelector<HTMLElement>(`[data-testid="${targetPanelTestId}"]`);
+    if (!header || !spacer || !panel) throw new Error("missing pinned header targets");
+
+    const before = header.getBoundingClientRect();
+    const panelBefore = panel.getBoundingClientRect();
+    const maxScroll = panel.scrollHeight - panel.clientHeight;
+    panel.scrollTop = Math.min(180, Math.max(0, maxScroll));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const after = header.getBoundingClientRect();
+    const panelAfter = panel.getBoundingClientRect();
+    const scrolledTop = panel.scrollTop;
+    panel.scrollTop = 0;
+
+    return {
+      afterTop: after.top,
+      beforeBottom: before.bottom,
+      beforeTop: before.top,
+      headerHeight: before.height,
+      horizontalOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      maxScroll,
+      panelTopAfterScroll: panelAfter.top,
+      panelTopBeforeScroll: panelBefore.top,
+      position: getComputedStyle(header).position,
+      scrolledTop,
+      spacerHeight: spacer.getBoundingClientRect().height,
+    };
+  }, { targetPanelTestId: panelTestId });
+
+  expect(metrics.position, `${viewportName} ${panelTestId} header should be viewport-fixed`).toBe("fixed");
+  expect(metrics.maxScroll, `${viewportName} ${panelTestId} should have scrollable panel content`).toBeGreaterThan(0);
+  expect(metrics.scrolledTop, `${viewportName} ${panelTestId} panel should scroll during pin check`).toBeGreaterThan(0);
+  expect(Math.abs(metrics.afterTop - metrics.beforeTop), `${viewportName} ${panelTestId} header should not move`).toBeLessThanOrEqual(1);
+  expect(Math.abs(metrics.spacerHeight - metrics.headerHeight), `${viewportName} ${panelTestId} spacer should reserve header height`).toBeLessThanOrEqual(1);
+  expect(metrics.panelTopBeforeScroll, `${viewportName} ${panelTestId} content should start below fixed header`).toBeGreaterThanOrEqual(metrics.beforeBottom - 1);
+  expect(metrics.panelTopAfterScroll, `${viewportName} ${panelTestId} content should stay below fixed header`).toBeGreaterThanOrEqual(metrics.beforeBottom - 1);
+  expect(metrics.horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
 async function expectReferenceBottomNavIcons(page: Page, viewportName: string) {
   const nav = page.getByTestId("mobile-bottom-nav");
   await expect(nav).toBeVisible();
@@ -540,10 +586,13 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("character-stat-sanity-value")).toHaveText("12 / 19");
     await expect(page.getByTestId("character-stat-agility-value")).toHaveText("17 / 50");
     await expect(page.getByTestId("character-originium-balance")).toHaveText("原石 12");
+    await expect(page.getByTestId("character-stat-background")).toContainText("出身");
+    await expect(page.getByTestId("character-stat-background")).not.toContainText("账本信用");
 
     await page.getByTestId("character-upgrade-agility").click();
     await expect(page.getByTestId("character-stat-agility-value")).toHaveText("18 / 50");
     await expect(page.getByTestId("character-originium-balance")).toHaveText("原石 9");
+    await expectPinnedPanelHeader(page, "mobile-character-panel", "390x844");
 
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("bottom-nav-story")).toHaveAttribute("aria-current", "page");
@@ -568,6 +617,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByText("图鉴 · 目录")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "关闭", exact: true })).toBeHidden();
     await expectPaperCodexVisual(page, "390x844");
+    await expectPinnedPanelHeader(page, "mobile-codex-panel", "390x844");
 
     const codexPath = test.info().outputPath("codex-paper-390x844.png");
     await page.screenshot({ path: codexPath, fullPage: false });
@@ -625,6 +675,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-001"]')).toBeVisible();
     await expect(page.getByTestId("mobile-codex-card-strip").locator("img")).toHaveCount(3);
     await expectPaperCodexVisual(page, "393x852");
+    await expectPinnedPanelHeader(page, "mobile-codex-panel", "393x852");
 
     const codexPath = test.info().outputPath("codex-paper-393x852.png");
     await page.screenshot({ path: codexPath, fullPage: false });
@@ -662,6 +713,7 @@ test.describe("mobile reading UI", () => {
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="A-008"]').click();
     await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("异常简介");
     await expectPaperCodexVisual(page, "430x932");
+    await expectPinnedPanelHeader(page, "mobile-codex-panel", "430x932");
 
     const codexPath = test.info().outputPath("codex-paper-430x932.png");
     await page.screenshot({ path: codexPath, fullPage: false });

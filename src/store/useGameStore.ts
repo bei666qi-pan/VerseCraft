@@ -468,7 +468,7 @@ export interface GameState extends IntegrityMetaState {
   recentOptions: string[];
   /** 输入模式：options 显示选项卡片，text 显示手动输入框 */
   inputMode: "options" | "text";
-  /** 原石货币：空间稳定残响/楼内账本信用；初始登记额度 = 10 + 账本信用，后续由任务与 B1 服务结算 */
+  /** 原石货币：空间稳定残响/出身登记；初始登记额度 = 10 + 出身，后续由任务与 B1 服务结算 */
   originium: number;
   /** 任务追踪系统 */
   tasks: GameTask[];
@@ -2003,7 +2003,7 @@ export const useGameStore = create<GameState>()(
           `敏捷[${stats.agility}]，` +
           `幸运[${stats.luck}]，` +
           `魅力[${stats.charm}]，` +
-          `账本信用[${stats.background}]`;
+          `出身[${stats.background}]`;
 
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
         const prof = computeProfessionState({

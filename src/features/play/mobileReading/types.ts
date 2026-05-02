@@ -20,6 +20,7 @@ export type MobileReadingShellProps = {
 export type MobileReadingHeaderProps = {
   audioMuted: boolean;
   onToggleAudio: () => void;
+  pinned?: boolean;
   title?: string;
   variant?: "default" | "codex";
 };

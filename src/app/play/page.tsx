@@ -3061,6 +3061,7 @@ function PlayContent() {
         <MobileReadingHeader
           title={mobileHeaderTitle}
           variant={isCodexPanelActive ? "codex" : "default"}
+          pinned={isCharacterPanelActive || isCodexPanelActive}
           audioMuted={audioMuted}
           onToggleAudio={() => {
             toggleMute();

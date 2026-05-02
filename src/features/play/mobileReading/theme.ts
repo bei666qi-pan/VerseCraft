@@ -61,6 +61,11 @@ export const mobileReadingTheme = {
     "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2]/96 px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)] backdrop-blur-[10px]",
   headerCodex:
     "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2]/98 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] backdrop-blur-[8px] min-[420px]:px-6",
+  headerPinned:
+    "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2]/96 px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)] backdrop-blur-[10px] md:border-x md:border-[#ded8ce]",
+  headerCodexPinned:
+    "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2]/98 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] backdrop-blur-[8px] min-[420px]:px-6 md:border-x md:border-[#ded8ce]",
+  headerSpacer: "h-[var(--vc-mobile-header-height)] shrink-0",
   headerRow: "flex h-full items-center justify-between gap-3",
   headerBrand: "flex min-w-0 items-center gap-3 vc-reading-serif",
   headerCodexLogoGroup: "flex shrink-0 items-center gap-2",
