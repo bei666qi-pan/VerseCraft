@@ -374,6 +374,13 @@ async function expectReferenceBottomNavIcons(page: Page, viewportName: string) {
   }
 
   const combinedIconHtml = iconHtml.join("\n");
+  const codexIconHtml = await page.getByTestId("bottom-nav-codex").locator("svg").evaluate((node) => node.outerHTML);
+  expect(codexIconHtml, `${viewportName} codex icon should use the supplied soft shadow SVG`).toContain(
+    "mobileCodexSoftShadow"
+  );
+  expect(codexIconHtml, `${viewportName} codex icon should use the supplied avatar shoulder path`).toContain(
+    "M76.8 52.8C78 46.4 82.4 42.5 87.5 42.5C92.6 42.5 97 46.4 98.2 52.8"
+  );
   for (const oldFragment of [
     "M5.6 20c.7-4.1",
     "M4.5 5.8c2.9-.6",

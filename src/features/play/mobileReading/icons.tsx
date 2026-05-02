@@ -226,8 +226,12 @@ function SendActionIcon(props: MobileReadingIconProps): ReactElement {
 function CharacterIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <circle cx="12" cy="5.65" r="3.25" />
-      <path d="M4.9 20.2h14.2c-.45-4.7-3.1-7.35-7.1-7.35S5.35 15.5 4.9 20.2z" />
+      <circle cx="12" cy="5.65" r="3.25" fill="#FAF9F6" stroke="#2D6B68" />
+      <path
+        d="M4.9 20.2h14.2c-.45-4.7-3.1-7.35-7.1-7.35S5.35 15.5 4.9 20.2z"
+        fill="#FAF9F6"
+        stroke="#2D6B68"
+      />
     </IconSvg>
   );
 }
@@ -248,11 +252,19 @@ function OriginiumIcon(props: MobileReadingIconProps): ReactElement {
 function StoryIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M3.95 5.85h1.75c2.35 0 4.35.62 6.3 1.95v10.55c-1.9-1.28-4.05-1.9-6.45-1.9h-1.6z" />
-      <path d="M20.05 5.85H18.3c-2.35 0-4.35.62-6.3 1.95v10.55c1.9-1.28 4.05-1.9 6.45-1.9h1.6z" />
-      <path d="M12 7.75v10.55" />
-      <path d="M6.25 8.25c1.35.02 2.55.32 3.65.98" opacity="0.72" />
-      <path d="M17.75 8.25c-1.35.02-2.55.32-3.65.98" opacity="0.72" />
+      <path
+        d="M3.95 5.85h1.75c2.35 0 4.35.62 6.3 1.95v10.55c-1.9-1.28-4.05-1.9-6.45-1.9h-1.6z"
+        fill="#FAF9F6"
+        stroke="#2D6B68"
+      />
+      <path
+        d="M20.05 5.85H18.3c-2.35 0-4.35.62-6.3 1.95v10.55c1.9-1.28 4.05-1.9 6.45-1.9h1.6z"
+        fill="#FAF9F6"
+        stroke="#2D6B68"
+      />
+      <path d="M12 7.75v10.55" stroke="#2D6B68" />
+      <path d="M6.25 8.25c1.35.02 2.55.32 3.65.98" stroke="#2D6B68" opacity="0.62" />
+      <path d="M17.75 8.25c-1.35.02-2.55.32-3.65.98" stroke="#2D6B68" opacity="0.62" />
     </IconSvg>
   );
 }
@@ -260,12 +272,53 @@ function StoryIcon(props: MobileReadingIconProps): ReactElement {
 function CodexIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M4.05 8.15 8.45 6.95v11.8l-4.4-1.2z" />
-      <path d="M19.95 8.15 15.55 6.95v11.8l4.4-1.2z" />
-      <rect x="8.05" y="4.55" width="7.9" height="14.55" rx="1.05" />
-      <circle cx="12" cy="9.85" r="1.65" />
-      <path d="M9.95 15.05c.45-1.25 1.15-1.85 2.05-1.85s1.6.6 2.05 1.85" />
-      <path d="M10.05 17.1h3.9" opacity="0.74" />
+      <defs>
+        <filter id="mobileCodexSoftShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="1" stdDeviation="0.8" floodColor="#8AA6A2" floodOpacity="0.45" />
+        </filter>
+      </defs>
+      <g transform="translate(-14.58 -1.2) scale(0.3038)" filter="url(#mobileCodexSoftShadow)">
+        <rect
+          x="57.5"
+          y="23"
+          width="36"
+          height="43"
+          rx="3.5"
+          transform="rotate(-10 75.5 44.5)"
+          fill="#FAF9F6"
+          stroke="#2D6B68"
+          strokeWidth="2"
+        />
+        <rect
+          x="76.5"
+          y="23"
+          width="36"
+          height="43"
+          rx="3.5"
+          transform="rotate(10 94.5 44.5)"
+          fill="#FAF9F6"
+          stroke="#2D6B68"
+          strokeWidth="2"
+        />
+        <rect
+          x="68.5"
+          y="19.5"
+          width="38"
+          height="46"
+          rx="3.8"
+          fill="#FAF9F6"
+          stroke="#2D6B68"
+          strokeWidth="2.2"
+        />
+        <circle cx="87.5" cy="36.2" r="5.6" fill="#FAF9F6" stroke="#2D6B68" strokeWidth="2" />
+        <path
+          d="M76.8 52.8C78 46.4 82.4 42.5 87.5 42.5C92.6 42.5 97 46.4 98.2 52.8"
+          stroke="#2D6B68"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
     </IconSvg>
   );
 }
@@ -273,8 +326,11 @@ function CodexIcon(props: MobileReadingIconProps): ReactElement {
 function SettingsIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M10.75 3.2h2.5l.52 2.25c.58.18 1.13.42 1.63.72l1.98-1.18 1.76 1.76-1.18 1.98c.3.5.54 1.05.72 1.63l2.25.52v2.5l-2.25.52a7.2 7.2 0 0 1-.72 1.63l1.18 1.98-1.76 1.76-1.98-1.18c-.5.3-1.05.54-1.63.72l-.52 2.25h-2.5l-.52-2.25a7.2 7.2 0 0 1-1.63-.72l-1.98 1.18-1.76-1.76 1.18-1.98a7.2 7.2 0 0 1-.72-1.63l-2.25-.52v-2.5l2.25-.52c.18-.58.42-1.13.72-1.63L4.86 6.75l1.76-1.76L8.6 6.17c.5-.3 1.05-.54 1.63-.72z" />
-      <circle cx="12" cy="12.13" r="3" />
+      <path
+        d="M10.75 3.2h2.5l.52 2.25c.58.18 1.13.42 1.63.72l1.98-1.18 1.76 1.76-1.18 1.98c.3.5.54 1.05.72 1.63l2.25.52v2.5l-2.25.52a7.2 7.2 0 0 1-.72 1.63l1.18 1.98-1.76 1.76-1.98-1.18c-.5.3-1.05.54-1.63.72l-.52 2.25h-2.5l-.52-2.25a7.2 7.2 0 0 1-1.63-.72l-1.98 1.18-1.76-1.76 1.18-1.98a7.2 7.2 0 0 1-.72-1.63l-2.25-.52v-2.5l2.25-.52c.18-.58.42-1.13.72-1.63L4.86 6.75l1.76-1.76L8.6 6.17c.5-.3 1.05-.54 1.63-.72z"
+        stroke="#2D6B68"
+      />
+      <circle cx="12" cy="12.13" r="3" stroke="#2D6B68" />
     </IconSvg>
   );
 }
