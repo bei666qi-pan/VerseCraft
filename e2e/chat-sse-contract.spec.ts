@@ -5,6 +5,17 @@ const E2E_PASS = process.env.E2E_PASS;
 const E2E_AI_LIVE = process.env.E2E_AI_LIVE === "1";
 const expectKeysMissing =
   process.env.CI === "true" || process.env.E2E_EXPECT_KEYS_MISSING === "1";
+const VERSECRAFT_STATUS_PREFIX = "__VERSECRAFT_STATUS__:";
+const VERSECRAFT_FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
+const VERSECRAFT_CONTROL_PREFIX = "__VERSECRAFT_";
+
+function isUnknownVerseCraftControlFrame(payload: string): boolean {
+  return (
+    payload.startsWith(VERSECRAFT_CONTROL_PREFIX) &&
+    !payload.startsWith(VERSECRAFT_STATUS_PREFIX) &&
+    !payload.startsWith(VERSECRAFT_FINAL_PREFIX)
+  );
+}
 
 function liveGatewayEnvPresent(): boolean {
   const base = (process.env.AI_GATEWAY_BASE_URL ?? "").trim();
@@ -26,9 +37,11 @@ function extractDmJsonTextFromSseBody(bodyText: string): string {
     if (chunks.length === 0) continue;
     const joined = chunks.join("\n");
     if (!joined.length) continue;
-    if (joined.startsWith("__VERSECRAFT_STATUS__:")) continue;
-    if (joined.startsWith("__VERSECRAFT_FINAL__:")) {
-      raw = joined.slice("__VERSECRAFT_FINAL__:".length);
+    if (joined.startsWith(VERSECRAFT_STATUS_PREFIX) || isUnknownVerseCraftControlFrame(joined)) {
+      continue;
+    }
+    if (joined.startsWith(VERSECRAFT_FINAL_PREFIX)) {
+      raw = joined.slice(VERSECRAFT_FINAL_PREFIX.length);
       continue;
     }
     raw += joined;
@@ -73,18 +86,77 @@ function assertDmContractShape(parsed: unknown) {
   expect(typeof o.is_action_legal).toBe("boolean");
 }
 
-async function postChat(request: {
-  post: (url: string, opts: object) => Promise<{ status: () => number; headers: () => Record<string, string>; text: () => Promise<string> }>;
-}) {
-  return request.post("/api/chat", {
-    data: {
+function isDmContractJson(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const o = parsed as Record<string, unknown>;
+    return Boolean(parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof o.narrative === "string" && typeof o.is_action_legal === "boolean");
+  } catch {
+    return false;
+  }
+}
+
+test("client-compatible SSE parser ignores unknown VerseCraft control frames", () => {
+  const body =
+    'data: {"narrative":"partial"\n\n' +
+    'data: __VERSECRAFT_TRACE__:{"span":"before"}\n\n' +
+    'data: __VERSECRAFT_FINAL__:{"narrative":"FINAL","is_action_legal":true,"sanity_damage":0,"is_death":false}\n\n' +
+    'data: __VERSECRAFT_TRACE__:{"span":"after"}\n\n';
+
+  const raw = extractDmJsonTextFromSseBody(body);
+  expect(raw).toContain('"narrative":"FINAL"');
+  expect(raw).not.toContain("__VERSECRAFT_TRACE__");
+  assertDmContractShape(JSON.parse(raw));
+});
+
+async function postChat(
+  _request?: unknown,
+  options: { content?: string; sessionIdPrefix?: string; cookieHeader?: string; timeoutMs?: number } = {}
+) {
+  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 120_000);
+  const response = await fetch(`${baseURL}/api/chat`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(options.cookieHeader ? { cookie: options.cookieHeader } : {}),
+    },
+    body: JSON.stringify({
       messages: [{ role: "user", content: "e2e-sse-contract-ping" }],
       playerContext: "{}",
-      sessionId: `e2e-${Date.now()}`,
-    },
-    headers: { "content-type": "application/json" },
-    timeout: 120_000,
+      sessionId: `${options.sessionIdPrefix ?? "e2e"}-${Date.now()}`,
+      ...(options.content ? { messages: [{ role: "user", content: options.content }] } : {}),
+    }),
+    signal: controller.signal,
   });
+  const headers = Object.fromEntries(response.headers.entries());
+  let text = "";
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  try {
+    if (!reader) {
+      text = await response.text();
+    } else {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        const raw = extractDmJsonTextFromSseBody(text);
+        if (raw && isDmContractJson(raw)) break;
+      }
+      text += decoder.decode();
+      await reader.cancel().catch(() => undefined);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  return {
+    status: () => response.status,
+    headers: () => headers,
+    text: async () => text,
+  };
 }
 
 /**
@@ -186,14 +258,14 @@ test.describe("/api/chat SSE — 登录态（可选）", () => {
     await page.getByRole("button", { name: /登录|正在连接/ }).click();
     await page.waitForTimeout(3000);
 
-    const res = await page.request.post("/api/chat", {
-      data: {
-        messages: [{ role: "user", content: "e2e-sse-contract-auth-ping" }],
-        playerContext: "{}",
-        sessionId: `e2e-auth-${Date.now()}`,
-      },
-      headers: { "content-type": "application/json" },
-      timeout: 120_000,
+    const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
+    const cookieHeader = (await page.context().cookies(baseURL))
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+    const res = await postChat(null, {
+      content: "e2e-sse-contract-auth-ping",
+      sessionIdPrefix: "e2e-auth",
+      cookieHeader,
     });
 
     const status = res.status();

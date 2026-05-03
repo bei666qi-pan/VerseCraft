@@ -27,6 +27,16 @@ export interface SseDmAccumulateResult {
 }
 
 export const VERSECRAFT_STATUS_PREFIX = "__VERSECRAFT_STATUS__:";
+export const VERSECRAFT_FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
+const VERSECRAFT_CONTROL_PREFIX = "__VERSECRAFT_";
+
+function isUnknownVerseCraftControlFrame(payload: string): boolean {
+  return (
+    payload.startsWith(VERSECRAFT_CONTROL_PREFIX) &&
+    !payload.startsWith(VERSECRAFT_STATUS_PREFIX) &&
+    !payload.startsWith(VERSECRAFT_FINAL_PREFIX)
+  );
+}
 
 export interface VerseCraftStatusFrame {
   stage: string;
@@ -75,12 +85,12 @@ export function accumulateDmFromSseEvent(eventText: string, prevRaw: string): Ss
     return { raw, sawNonEmptyData: false };
   }
   const joined = payloads.join("\n");
-  if (joined.startsWith(VERSECRAFT_STATUS_PREFIX)) {
+  if (joined.startsWith(VERSECRAFT_STATUS_PREFIX) || isUnknownVerseCraftControlFrame(joined)) {
     // 控制帧：保持对旧 JSON 累积器兼容（忽略即可，不进入 DM 原文）。
     return { raw, sawNonEmptyData: false };
   }
-  if (joined.startsWith("__VERSECRAFT_FINAL__:")) {
-    raw = joined.slice("__VERSECRAFT_FINAL__:".length);
+  if (joined.startsWith(VERSECRAFT_FINAL_PREFIX)) {
+    raw = joined.slice(VERSECRAFT_FINAL_PREFIX.length);
     return { raw, sawNonEmptyData: true };
   }
   raw += joined;
@@ -108,8 +118,6 @@ export function foldSseTextToDmRaw(sseDocument: string): string {
   }
   return raw;
 }
-
-export const VERSECRAFT_FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
 
 export interface VerseCraftFinalExtractResult {
   /** Raw DM buffer content (typically a JSON string) after `__VERSECRAFT_FINAL__:`. */
@@ -147,7 +155,9 @@ export function extractFinalPayloadFromSseDocument(sseDocument: string): VerseCr
     for (const ev of events) {
       const joined = joinSseDataLines(ev);
       if (!joined) continue;
-      if (joined.startsWith(VERSECRAFT_STATUS_PREFIX)) continue;
+      if (joined.startsWith(VERSECRAFT_STATUS_PREFIX) || isUnknownVerseCraftControlFrame(joined)) {
+        continue;
+      }
       if (!found && joined.startsWith(VERSECRAFT_FINAL_PREFIX)) {
         found = true;
         payload = joined.slice(VERSECRAFT_FINAL_PREFIX.length);
@@ -162,7 +172,11 @@ export function extractFinalPayloadFromSseDocument(sseDocument: string): VerseCr
   const orphan = buf.trim();
   if (orphan.length > 0 && orphan.startsWith("data:")) {
     const joined = joinSseDataLines(orphan);
-    if (joined && !joined.startsWith(VERSECRAFT_STATUS_PREFIX)) {
+    if (
+      joined &&
+      !joined.startsWith(VERSECRAFT_STATUS_PREFIX) &&
+      !isUnknownVerseCraftControlFrame(joined)
+    ) {
       if (!found && joined.startsWith(VERSECRAFT_FINAL_PREFIX)) {
         found = true;
         payload = joined.slice(VERSECRAFT_FINAL_PREFIX.length);

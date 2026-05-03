@@ -50,6 +50,16 @@ test("status frame can be parsed and is ignored by DM accumulator", () => {
   assert.equal(out.sawNonEmptyData, false);
 });
 
+test("unknown VerseCraft control frames are ignored by DM accumulator", () => {
+  let raw = "";
+  ({ raw } = accumulateDmFromSseEvent('data: {"n":', raw));
+  const ignored = accumulateDmFromSseEvent('data: __VERSECRAFT_TRACE__:{"span":"x"}', raw);
+  assert.equal(ignored.raw, '{"n":');
+  assert.equal(ignored.sawNonEmptyData, false);
+  ({ raw } = accumulateDmFromSseEvent("data: 1}", ignored.raw));
+  assert.equal(raw, '{"n":1}');
+});
+
 test("foldSseTextToDmRaw folds one event and trailing orphan", () => {
   assert.equal(foldSseTextToDmRaw('data: {"x":1}\n\n'), '{"x":1}');
   assert.equal(foldSseTextToDmRaw('data: {"x":1}'), '{"x":1}');
@@ -69,6 +79,17 @@ test("extractFinalPayloadFromSseDocument prefers __VERSECRAFT_FINAL__ even with 
   assert.equal(out.found, true);
   assert.equal(out.payload.includes('"narrative":"FINAL"'), true);
   assert.equal(out.payload.includes("partial"), false);
+});
+
+test("extractFinalPayloadFromSseDocument ignores unknown control frames around final", () => {
+  const doc =
+    'data: __VERSECRAFT_TRACE__:{"span":"before"}\n\n' +
+    'data: __VERSECRAFT_FINAL__:{"narrative":"FINAL","is_action_legal":true,"sanity_damage":0,"is_death":false}\n\n' +
+    'data: __VERSECRAFT_TRACE__:{"span":"after"}\n\n';
+  const out = extractFinalPayloadFromSseDocument(doc);
+  assert.equal(out.found, true);
+  assert.equal(out.payload.includes('"narrative":"FINAL"'), true);
+  assert.equal(out.payload.includes("__VERSECRAFT_TRACE__"), false);
 });
 
 test("extractFinalPayloadFromSseDocument returns found=false when final marker missing", () => {
