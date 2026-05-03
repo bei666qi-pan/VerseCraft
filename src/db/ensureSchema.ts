@@ -136,6 +136,75 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS story_events (
+        id BIGSERIAL PRIMARY KEY,
+        request_id VARCHAR(191) NOT NULL,
+        session_id VARCHAR(191),
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
+        turn_index INTEGER NOT NULL DEFAULT 0,
+        world_id VARCHAR(64) NOT NULL DEFAULT 'base_apartment',
+        chapter_id VARCHAR(64),
+        scene_id VARCHAR(128),
+        actor_type VARCHAR(24) NOT NULL,
+        actor_id VARCHAR(128),
+        event_type VARCHAR(64) NOT NULL,
+        summary TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        committed BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS story_events_session_turn_idx ON story_events (session_id, turn_index);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS story_events_user_created_idx ON story_events (user_id, created_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS story_events_actor_idx ON story_events (actor_type, actor_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS story_events_event_type_idx ON story_events (event_type);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS narrative_runs (
+        id BIGSERIAL PRIMARY KEY,
+        request_id VARCHAR(191) NOT NULL,
+        session_id VARCHAR(191),
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
+        turn_index INTEGER NOT NULL DEFAULT 0,
+        ttft_ms INTEGER,
+        total_latency_ms INTEGER,
+        lore_hit_count INTEGER NOT NULL DEFAULT 0,
+        validator_issue_count INTEGER NOT NULL DEFAULT 0,
+        degrade_reason VARCHAR(128),
+        commit_flags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS narrative_runs_request_unique ON narrative_runs (request_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS narrative_runs_session_turn_idx ON narrative_runs (session_id, turn_index);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS narrative_runs_created_idx ON narrative_runs (created_at);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS npc_memory_entries (
+        id BIGSERIAL PRIMARY KEY,
+        npc_id VARCHAR(128) NOT NULL,
+        session_id VARCHAR(191),
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE SET NULL,
+        scope VARCHAR(32) NOT NULL,
+        kind VARCHAR(32) NOT NULL,
+        summary TEXT NOT NULL,
+        fact_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        related_event_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        salience INTEGER NOT NULL DEFAULT 50,
+        confidence INTEGER NOT NULL DEFAULT 80,
+        emotion JSONB NOT NULL DEFAULT '{}'::jsonb,
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS npc_memory_entries_npc_session_idx ON npc_memory_entries (npc_id, session_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS npc_memory_entries_user_npc_idx ON npc_memory_entries (user_id, npc_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS npc_memory_entries_salience_idx ON npc_memory_entries (salience);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS npc_memory_entries_updated_idx ON npc_memory_entries (updated_at);`);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS user_onboarding (
         user_id VARCHAR(191) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         codex_first_view_done INTEGER NOT NULL DEFAULT 0,

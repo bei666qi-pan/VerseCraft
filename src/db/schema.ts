@@ -160,6 +160,98 @@ export const gameSessionMemory = pgTable("game_session_memory", {
     .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
+export const storyEvents = pgTable(
+  "story_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    requestId: varchar("request_id", { length: 191 }).notNull(),
+    sessionId: varchar("session_id", { length: 191 }),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    turnIndex: integer("turn_index").notNull().default(0),
+
+    worldId: varchar("world_id", { length: 64 }).notNull().default("base_apartment"),
+    chapterId: varchar("chapter_id", { length: 64 }),
+    sceneId: varchar("scene_id", { length: 128 }),
+
+    actorType: varchar("actor_type", { length: 24 }).notNull(),
+    actorId: varchar("actor_id", { length: 128 }),
+
+    eventType: varchar("event_type", { length: 64 }).notNull(),
+    summary: text("summary").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+
+    committed: boolean("committed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionTurnIdx: index("story_events_session_turn_idx").on(table.sessionId, table.turnIndex),
+    userCreatedIdx: index("story_events_user_created_idx").on(table.userId, table.createdAt),
+    actorIdx: index("story_events_actor_idx").on(table.actorType, table.actorId),
+    eventTypeIdx: index("story_events_event_type_idx").on(table.eventType),
+  })
+);
+
+export const narrativeRuns = pgTable(
+  "narrative_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    requestId: varchar("request_id", { length: 191 }).notNull(),
+    sessionId: varchar("session_id", { length: 191 }),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    turnIndex: integer("turn_index").notNull().default(0),
+
+    ttftMs: integer("ttft_ms"),
+    totalLatencyMs: integer("total_latency_ms"),
+    loreHitCount: integer("lore_hit_count").notNull().default(0),
+    validatorIssueCount: integer("validator_issue_count").notNull().default(0),
+    degradeReason: varchar("degrade_reason", { length: 128 }),
+
+    commitFlags: jsonb("commit_flags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    requestIdx: uniqueIndex("narrative_runs_request_unique").on(table.requestId),
+    sessionTurnIdx: index("narrative_runs_session_turn_idx").on(table.sessionId, table.turnIndex),
+    createdIdx: index("narrative_runs_created_idx").on(table.createdAt),
+  })
+);
+
+export const npcMemoryEntries = pgTable(
+  "npc_memory_entries",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    npcId: varchar("npc_id", { length: 128 }).notNull(),
+    sessionId: varchar("session_id", { length: 191 }),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+
+    scope: varchar("scope", { length: 32 }).notNull(),
+    kind: varchar("kind", { length: 32 }).notNull(),
+
+    summary: text("summary").notNull(),
+    factIds: jsonb("fact_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    relatedEventIds: jsonb("related_event_ids").$type<Array<number | string>>().notNull().default(sql`'[]'::jsonb`),
+
+    salience: integer("salience").notNull().default(50),
+    confidence: integer("confidence").notNull().default(80),
+    emotion: jsonb("emotion").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    npcSessionIdx: index("npc_memory_entries_npc_session_idx").on(table.npcId, table.sessionId),
+    userNpcIdx: index("npc_memory_entries_user_npc_idx").on(table.userId, table.npcId),
+    salienceIdx: index("npc_memory_entries_salience_idx").on(table.salience),
+    updatedIdx: index("npc_memory_entries_updated_idx").on(table.updatedAt),
+  })
+);
+
 export const userOnboarding = pgTable("user_onboarding", {
   userId: varchar("user_id", { length: 191 })
     .primaryKey()
