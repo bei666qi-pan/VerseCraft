@@ -130,7 +130,6 @@ import { buildNpcEpistemicAlertAugmentationBlock } from "@/lib/epistemic/reactio
 import { sessionMemoryRowToKnowledgeFacts } from "@/lib/epistemic/sessionFactBridge";
 import { resolveEpistemicTargetNpcId } from "@/lib/epistemic/targetNpc";
 import type { EpistemicValidatorTelemetry } from "@/lib/epistemic/validator";
-import { applyNpcConsistencyPostGeneration } from "@/lib/npcConsistency/validator";
 import type { EpistemicAnomalyResult, EpistemicSceneContext, KnowledgeFact, NpcEpistemicProfile } from "@/lib/epistemic/types";
 import { PLAYER_ACTOR_ID } from "@/lib/epistemic/types";
 import { buildEpistemicResiduePerformancePlan } from "@/lib/epistemic/residuePerformance";
@@ -174,7 +173,8 @@ import {
   runControlPreflightStage,
 } from "@/lib/turnEngine/preflight";
 import { loadRuntimeLoreStage } from "@/lib/turnEngine/runtimeLore";
-import { buildSseHeaders, buildStatusFramePayload, createSseResponse, sse, sseText } from "@/lib/turnEngine/sse";
+import { buildSseHeaders, buildStatusFramePayload, createSseResponse, sse, sseText } from "@/lib/narrativeEngine/streamFrames";
+import { buildDialogueContext } from "@/lib/narrativeEngine/contextBuilder";
 import type {
   ChatTtftProfile,
   NormalizedPlayerIntent,
@@ -189,8 +189,13 @@ import {
   computePreNarrativeDelta,
 } from "@/lib/turnEngine/computeStateDelta";
 import { renderNarrativeFromDelta } from "@/lib/turnEngine/renderNarrative";
-import { validateNarrative } from "@/lib/turnEngine/validateNarrative";
-import { commitTurn, type TurnCommitSummary } from "@/lib/turnEngine/commitTurn";
+import { applyNpcConsistencyPostGeneration, validateNarrative } from "@/lib/narrativeEngine/checker";
+import { commitNarrativeEvents, commitTurn, type TurnCommitSummary } from "@/lib/narrativeEngine/committer";
+import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
+import {
+  buildRouteModelOutputFromResolvedTurn,
+  buildRouteNarrativeCheckResult,
+} from "@/lib/narrativeEngine/routeAdapter";
 import { scheduleBackgroundWorldTick } from "@/lib/turnEngine/enqueueBackgroundTick";
 import {
   buildEpistemicInput,
@@ -2508,6 +2513,77 @@ export async function POST(req: Request) {
               ((resolved as any).security_meta as Record<string, unknown> | undefined) ?? {};
             (resolved as any).security_meta = { ...prev, ...(committedMeta as Record<string, unknown>) };
           }
+          const narrativeLedgerOutput = buildRouteModelOutputFromResolvedTurn({
+            resolved: resolved as unknown as Record<string, unknown>,
+            latestUserInput,
+          });
+          const narrativeLedgerCheck = buildRouteNarrativeCheckResult({
+            output: narrativeLedgerOutput,
+            validatorReport,
+            commitSummary: commitResult.summary,
+          });
+          void (async () => {
+            try {
+              const dialogueContext = await buildDialogueContext({
+                requestId,
+                sessionId,
+                userId,
+                latestUserInput,
+                messages: rawChatMessages,
+                playerContext,
+                clientState,
+                clientPurpose,
+                turnIndex: totalRounds,
+                worldId: "base_apartment",
+                sceneId: postStateDelta.playerLocation ?? null,
+                activeNpcId: focusNpcForPrompt,
+                revealTier: maxRevealRankForMemory,
+                sessionMemory,
+                lorePacket: runtimeLorePacket,
+                recentlyEncounteredEntities: presentNpcIdsForEpistemic ?? [],
+              });
+              const narrativeEventCommit = await commitNarrativeEvents({
+                context: dialogueContext,
+                checked: narrativeLedgerCheck,
+                legacyCommitSummary: commitResult.summary,
+              });
+              await logNarrativeRun({
+                requestId,
+                sessionId,
+                userId,
+                turnIndex: totalRounds,
+                ttftMs:
+                  ttftProfile.firstSseWriteAt !== null
+                    ? Math.max(0, ttftProfile.firstSseWriteAt - ttftProfile.requestReceivedAt)
+                    : undefined,
+                totalLatencyMs: Math.max(0, nowMs() - requestStartedAt),
+                loreHitCount: loreSourceCount,
+                validatorIssueCount: validatorReport.telemetry.totalIssues,
+                degradeReason: narrativeLedgerCheck.degradeReason ?? null,
+                commitFlags: narrativeEventCommit.commitFlags,
+                meta: {
+                  providerRole: routingReport.actualLogicalRole ?? null,
+                  routeLane: turnLaneDecision.lane,
+                  contextBuildDegrade: null,
+                  checkerIssues: narrativeLedgerCheck.issues,
+                  loreRetrieval: {
+                    usedCounts: {
+                      sourceCount: loreSourceCount,
+                      cacheHit: loreCacheHit,
+                      fallbackPath: loreFallbackPath,
+                      budgetHit: loreBudgetHit,
+                      tokenEstimate: loreTokenEstimate,
+                    },
+                    hitCount: loreSourceCount,
+                  },
+                  modelParseFallback: finalJsonParseSuccess ? null : "parse_accumulated_player_dm_json_failed",
+                  commitResult: narrativeEventCommit,
+                },
+              });
+            } catch (ledgerError) {
+              console.warn("[api/chat] narrative engine ledger skipped", ledgerError);
+            }
+          })();
           if (validatorReport.telemetry.totalIssues > 0 && epistemicRolloutFlags.epistemicDebugLog) {
             epistemicDebugLog("narrative_validator_report", {
               requestId,
