@@ -1,4 +1,4 @@
-import { sanitizeMessagesForUpstream } from "@/lib/ai/service";
+import { sanitizeMessagesForUpstream } from "@/lib/ai/stream/sanitize";
 import { composePlayerChatSystemMessages } from "@/lib/playRealtime/playerChatSystemPrompt";
 import type { ChatMessageShape } from "@/lib/turnEngine/types";
 
