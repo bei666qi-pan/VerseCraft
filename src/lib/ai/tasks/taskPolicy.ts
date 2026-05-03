@@ -10,6 +10,22 @@ import { resolveOperationMode, type OperationMode } from "@/lib/ai/degrade/modeC
 import type { FallbackPolicy, TaskType } from "@/lib/ai/types/core";
 
 export type BudgetLevel = "low" | "medium" | "high" | "critical";
+export type PlayerChatNarrativeBudgetTier =
+  | "micro"
+  | "short"
+  | "standard"
+  | "reveal"
+  | "climax"
+  | "ending";
+
+export type PlayerChatMaxTokensSource = "tier" | "env_override";
+
+export interface PlayerChatMaxTokensResolution {
+  maxTokens: number;
+  source: PlayerChatMaxTokensSource;
+  clamped: boolean;
+  requestedMaxTokens: number;
+}
 
 export interface TaskBinding {
   task: TaskType;
@@ -28,6 +44,18 @@ const MAIN = "main" as const satisfies AiLogicalRole;
 const CONTROL = "control" as const satisfies AiLogicalRole;
 const ENHANCE = "enhance" as const satisfies AiLogicalRole;
 const REASONER = "reasoner" as const satisfies AiLogicalRole;
+
+export const PLAYER_CHAT_MAX_TOKENS_MIN = 896;
+export const PLAYER_CHAT_MAX_TOKENS_MAX = 2304;
+
+const PLAYER_CHAT_MAX_TOKENS_BY_TIER: Record<PlayerChatNarrativeBudgetTier, number> = {
+  micro: 896,
+  short: 1152,
+  standard: 1536,
+  reveal: 1792,
+  climax: 1792,
+  ending: 2304,
+};
 
 export const TASK_POLICY: Record<TaskType, TaskBinding> = {
   PLAYER_CHAT: {
@@ -110,6 +138,17 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     budgetLevel: "high",
     responseFormatJsonObject: false,
   },
+  NARRATIVE_EXPANSION: {
+    task: "NARRATIVE_EXPANSION",
+    primaryRole: ENHANCE,
+    fallbackRoles: [MAIN],
+    stream: false,
+    maxTokens: 768,
+    temperature: 0.65,
+    timeoutMs: 7_000,
+    budgetLevel: "medium",
+    responseFormatJsonObject: true,
+  },
   NPC_EMOTION_POLISH: {
     task: "NPC_EMOTION_POLISH",
     primaryRole: ENHANCE,
@@ -175,6 +214,7 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
   RULE_RESOLUTION: new Set([REASONER, ENHANCE]),
   COMBAT_NARRATION: new Set([REASONER, ENHANCE]),
   SCENE_ENHANCEMENT: new Set([REASONER]),
+  NARRATIVE_EXPANSION: new Set([REASONER]),
   NPC_EMOTION_POLISH: new Set([REASONER]),
   WORLDBUILD_OFFLINE: new Set([ENHANCE]),
   STORYLINE_SIMULATION: new Set([ENHANCE]),
@@ -211,6 +251,35 @@ export function getTaskBinding(task: TaskType): TaskBinding {
     };
   }
   return base;
+}
+
+export function clampPlayerChatMaxTokens(value: number): PlayerChatMaxTokensResolution {
+  const requestedMaxTokens = Number.isFinite(value) ? Math.round(value) : TASK_POLICY.PLAYER_CHAT.maxTokens;
+  const maxTokens = Math.max(
+    PLAYER_CHAT_MAX_TOKENS_MIN,
+    Math.min(PLAYER_CHAT_MAX_TOKENS_MAX, requestedMaxTokens)
+  );
+  return {
+    maxTokens,
+    source: "tier",
+    clamped: maxTokens !== requestedMaxTokens,
+    requestedMaxTokens,
+  };
+}
+
+export function resolvePlayerChatMaxTokensForNarrativeBudget(
+  tier: PlayerChatNarrativeBudgetTier,
+  envOverride?: number | null
+): PlayerChatMaxTokensResolution {
+  const hasEnvOverride = typeof envOverride === "number" && Number.isFinite(envOverride);
+  const requestedMaxTokens = hasEnvOverride
+    ? envOverride
+    : (PLAYER_CHAT_MAX_TOKENS_BY_TIER[tier] ?? PLAYER_CHAT_MAX_TOKENS_BY_TIER.standard);
+  const clamped = clampPlayerChatMaxTokens(requestedMaxTokens);
+  return {
+    ...clamped,
+    source: hasEnvOverride ? "env_override" : "tier",
+  };
 }
 
 export function isRoleForbiddenForTask(task: TaskType, role: AiLogicalRole): boolean {

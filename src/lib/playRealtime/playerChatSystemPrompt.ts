@@ -103,7 +103,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【同场人际·npc_social_surface_packet】若动态 JSON 含本键：只用于微表演（默契半句、轻拌嘴、回避、递眼神）；禁止当数据库逐条念名，禁止借机关联未在场者；有边的两人才演熟，未列边的仍算生分。",
     "【世界质感·world_feel_packet】若动态 JSON 含本键：只用于“表层可感的错位/节律/生活底噪”与可执行半步（自保/验证），禁止把空间权柄与月初误闯写成百科讲课；生活线只当底噪证据，不得冲淡悬疑与危险。",
     "",
-    "【叙事长度·情景自适应（强制）】取消固定字数/句数与‘每回合略长’惯性；按本回合情景裁决 narrative 长短。关键节点应戛然而止，把悬念、抉择、张力留给玩家。参考：紧张抉择/对峙/危险骤降 1–3 句；短动作或对白 2–4 句；常规探索 4–7 句；高价值揭示可到 7–12 句。硬规则：每句必须有新信息（动作后果、感官变化、反应、环境、风险）；无新信息立刻停笔，禁止同义改写、形容词堆砌、凑字续写、匀速长叙事、机械灌水与客服腔。",
+    "【叙事长度·情景自适应（强制）】取消固定字数/句数与‘每回合略长’惯性；按本回合情景裁决 narrative 长短。若动态段存在 narrative_budget_packet，以其中 minChars/targetChars/maxChars/minInfoBeats 为具体执行预算：micro 可短促收束；standard/reveal/climax 不应无故低于 minChars；不得为了凑字超过 maxChars。每个信息 beat 必须带来新信息：动作后果、感官变化、NPC 反应、环境阻力、风险变化、关系变化、线索变化之一。关键节点应戛然而止，把悬念、抉择、张力留给玩家；禁止同义改写、形容词堆砌、机械灌水与客服腔。",
     "",
     "【叙事风格】悬疑、压迫、短句、多感官；禁止客服腔与机制讲解。保持第一人称沉浸。",
     "",
@@ -113,7 +113,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "• 允许 NPC 对玩家的对白里出现「你」（例如：她说：“你别动。”）；但引号外的叙事描述不得用「你」来叙述玩家行为。",
     "• 若 POV 不确定，一律默认第一人称「我」继续上一段的镜头。",
     "",
-    "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。",
+    "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、options、其他结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
     "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。options、bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
     "若写出 options：须 4 条、各 5–20 字、不重复、符合场景；勿与玩家状态中【最近选项历史】雷同；须推动剧情，僵局时须环境危机+实质性破局选项。流式输出建议尽早写出 narrative。",
     "consumes_time：默认 true；未写 time_cost 时仍等价「整段动作计 1 游戏小时」；极速反应可为 false。",
@@ -182,6 +182,8 @@ export interface PlayerDmDynamicSuffixInput {
   protagonistAnchorBlock?: string;
   /** 阶段2：回合模式策略包（默认长叙事，仅关键节点给决策）。 */
   turnModePolicyBlock?: string;
+  /** 阶段1：本回合叙事预算 packet（长度、信息密度、停止条件）。 */
+  narrativeBudgetBlock?: string;
   /** 阶段3：现实感约束包（地点/在场/时间/线索/威胁/关系硬边界）。 */
   realityConstraintBlock?: string;
   /** 阶段5：紧凑一致性边界 JSON（与 runtime 大包互补；快车道亦注入） */
@@ -210,6 +212,9 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   if (input.memoryBlock) parts.push(input.memoryBlock);
   if (input.turnModePolicyBlock?.trim()) {
     parts.push("", input.turnModePolicyBlock.trim());
+  }
+  if (input.narrativeBudgetBlock?.trim()) {
+    parts.push("", input.narrativeBudgetBlock.trim());
   }
   if (input.protagonistAnchorBlock?.trim()) {
     parts.push("", input.protagonistAnchorBlock.trim());

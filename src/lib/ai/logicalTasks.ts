@@ -14,8 +14,14 @@ import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
 import type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
+import type { NarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
+import {
+  parseNarrativeExpansionJson,
+  validateExpandedNarrativeCandidate,
+  type NarrativeExpansionResult,
+} from "@/lib/turnEngine/narrativeExpansion";
 
 /** 主叙事 / 玩家 SSE：固定 PLAYER_CHAT，由 taskPolicy 解析逻辑角色与 one-api 模型名。 */
 export async function generateMainReply(params: {
@@ -24,6 +30,7 @@ export async function generateMainReply(params: {
   signal?: AbortSignal;
   timeoutMs?: number;
   skipRoles?: readonly AiLogicalRole[];
+  maxTokensOverride?: number;
 }): Promise<PlayerChatStreamResult> {
   return executePlayerChatStream({
     messages: params.messages,
@@ -38,6 +45,7 @@ export async function generateMainReply(params: {
     signal: params.signal,
     timeoutMs: params.timeoutMs,
     skipRoles: params.skipRoles,
+    maxTokensOverride: params.maxTokensOverride,
   });
 }
 
@@ -73,8 +81,190 @@ export async function enhanceScene(args: {
 
 export type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 export type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
+export type { NarrativeExpansionResult } from "@/lib/turnEngine/narrativeExpansion";
+
+export async function expandNarrativeOnly(args: {
+  originalNarrative: string;
+  originalDmRecord: Record<string, unknown>;
+  narrativeBudget: NarrativeBudget;
+  latestUserInput: string;
+  playerContextSnapshot: string;
+  recentNarrativeTail?: string | null;
+  constraints?: readonly string[];
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+  budgetMs?: number;
+}): Promise<NarrativeExpansionResult> {
+  const startedAt = Date.now();
+  const originalNarrative = String(args.originalNarrative ?? "");
+  const beforeChars = Array.from(originalNarrative.replace(/\s+/g, "")).length;
+  const budgetMs = Math.max(1, Math.min(8_000, args.budgetMs ?? 6_000));
+  const timeout = createTimeoutSignal(args.signal, budgetMs);
+
+  const system: ChatMessage = {
+    role: "system",
+    content: [
+      "你是 VerseCraft 的主叙事受限增写器。你的任务是只扩写 narrative 文本，不裁决新状态。",
+      "请严格以 JSON 格式输出，且只能输出一个 JSON 对象，形如：{\"narrative\":\"...\"}。",
+      "强约束：只允许替换 narrative。禁止修改 is_action_legal、sanity_damage、is_death、consumes_time、time_cost、player_location、options。",
+      "禁止修改 awarded_items、consumed_items、task_updates、relationship_updates、codex_updates、clue_updates、npc_location_updates、main_threat_updates、weapon_updates 等结构字段。",
+      "禁止新增 NPC、地点、道具、任务，禁止提前揭示世界真相，必须保持原始事件结论。",
+      "只能补充：动作反馈、感官细节、环境阻力、NPC 即时反应、心理压迫、悬疑节奏。",
+      `扩写后 narrative 不得超过 ${Math.max(0, Math.round(args.narrativeBudget.maxChars))} 字。`,
+      "禁止输出 markdown、解释、代码块或任何额外文本。",
+    ].join("\n"),
+  };
+
+  const user: ChatMessage = {
+    role: "user",
+    content: [
+      `【玩家本回合输入】\n${String(args.latestUserInput ?? "").slice(0, 500)}`,
+      `【上一段尾巴】\n${String(args.recentNarrativeTail ?? "").slice(0, 500)}`,
+      `【原始 narrative】\n${originalNarrative.slice(0, 1600)}`,
+      `【叙事预算】\n${JSON.stringify({
+        tier: args.narrativeBudget.tier,
+        minChars: args.narrativeBudget.minChars,
+        targetChars: args.narrativeBudget.targetChars,
+        maxChars: args.narrativeBudget.maxChars,
+        minInfoBeats: args.narrativeBudget.minInfoBeats,
+        reasonCodes: args.narrativeBudget.reasonCodes,
+      })}`,
+      `【原始 DM 结构快照：只能用于保持结论，不能改字段】\n${stringifyCompactDmSnapshot(args.originalDmRecord)}`,
+      `【玩家状态摘要】\n${String(args.playerContextSnapshot ?? "").slice(0, 1200)}`,
+      args.constraints && args.constraints.length > 0
+        ? `【额外约束】\n${args.constraints.map((x) => `- ${String(x).slice(0, 160)}`).join("\n")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+
+  try {
+    const res: AIResponse | AIErrorResponse = await executeChatCompletion({
+      task: "NARRATIVE_EXPANSION",
+      messages: [system, user],
+      ctx: {
+        requestId: args.ctx.requestId,
+        task: "NARRATIVE_EXPANSION",
+        userId: args.ctx.userId,
+        sessionId: args.ctx.sessionId,
+        path: args.ctx.path,
+        tags: { ...(args.ctx.tags ?? {}), purpose: "narrative_expansion" },
+      },
+      signal: timeout.signal,
+      requestTimeoutMs: budgetMs,
+      skipCache: true,
+    });
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: timeout.timedOut() ? "timeout" : `ai_error:${res.code}`,
+        latencyMs: Date.now() - startedAt,
+        beforeChars,
+      };
+    }
+
+    const parsed = parseNarrativeExpansionJson(res.content);
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        reason: parsed.reason,
+        latencyMs: Date.now() - startedAt,
+        beforeChars,
+      };
+    }
+
+    const validated = validateExpandedNarrativeCandidate({
+      originalNarrative,
+      candidateNarrative: parsed.narrative,
+      budget: args.narrativeBudget,
+    });
+    if (!validated.ok) {
+      return {
+        ok: false,
+        reason: validated.reason,
+        latencyMs: Date.now() - startedAt,
+        beforeChars: validated.beforeChars,
+        afterChars: validated.afterChars,
+        ignoredFieldKeys: parsed.ignoredFieldKeys,
+      };
+    }
+
+    return {
+      ok: true,
+      narrative: validated.narrative,
+      latencyMs: Date.now() - startedAt,
+      beforeChars: validated.beforeChars,
+      afterChars: validated.afterChars,
+      ignoredFieldKeys: parsed.ignoredFieldKeys,
+    };
+  } finally {
+    timeout.cleanup();
+  }
+}
 
 /** 与 resolveDmTurn clamp 对齐：单条选项最长 40 字。 */
+function createTimeoutSignal(parent: AbortSignal | undefined, timeoutMs: number): {
+  signal: AbortSignal | undefined;
+  cleanup: () => void;
+  timedOut: () => boolean;
+} {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return { signal: parent, cleanup: () => {}, timedOut: () => false };
+  }
+  const ac = new AbortController();
+  let timedOut = false;
+  const tid = setTimeout(() => {
+    timedOut = true;
+    ac.abort();
+  }, Math.max(1, Math.trunc(timeoutMs)));
+
+  const onParentAbort = () => {
+    clearTimeout(tid);
+    ac.abort();
+  };
+  parent?.addEventListener("abort", onParentAbort, { once: true });
+
+  return {
+    signal:
+      typeof AbortSignal !== "undefined" && "any" in AbortSignal
+        ? AbortSignal.any(parent ? [parent, ac.signal] : [ac.signal])
+        : ac.signal,
+    cleanup: () => {
+      clearTimeout(tid);
+      parent?.removeEventListener("abort", onParentAbort);
+    },
+    timedOut: () => timedOut,
+  };
+}
+
+function stringifyCompactDmSnapshot(dmRecord: Record<string, unknown>): string {
+  const keys = [
+    "is_action_legal",
+    "sanity_damage",
+    "is_death",
+    "consumes_time",
+    "time_cost",
+    "player_location",
+    "options",
+    "awarded_items",
+    "consumed_items",
+    "task_updates",
+    "relationship_updates",
+    "codex_updates",
+    "clue_updates",
+    "npc_location_updates",
+    "main_threat_updates",
+    "weapon_updates",
+  ];
+  const out: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(dmRecord, key)) out[key] = dmRecord[key];
+  }
+  return JSON.stringify(out).slice(0, 1400);
+}
+
 export function parseOptionsArrayFromAiJson(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   const out: string[] = [];

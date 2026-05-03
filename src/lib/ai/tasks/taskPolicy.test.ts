@@ -6,9 +6,11 @@ import {
   explainTaskRouting,
   getTaskBinding,
   isModelForbiddenForTask,
+  resolvePlayerChatMaxTokensForNarrativeBudget,
   resolveFallbackPolicy,
   resolveOrderedRoleChain,
 } from "@/lib/ai/tasks/taskPolicy";
+import { resolveAiEnv } from "@/lib/ai/config/envCore";
 
 function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
   const defaults: ResolvedAiEnv = {
@@ -28,11 +30,28 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     logLevel: "info",
     splitPlayerChatDualSystem: false,
     enableNarrativeEnhancement: false,
+    enableNarrativeExpansion: false,
+    playerChatStreamIncludeUsage: true,
+    playerChatMaxRoleCandidates: 2,
+    playerChatMaxRetries: 0,
+    playerChatMaxTokensOverride: null,
+    onlineShortJsonMaxRetries: 0,
+    onlineShortJsonRelaxResponseFormat: true,
+    onlineShortJsonDisableMainFallback: true,
+    playerChatAggressiveFailover: true,
+    playerChatFastLaneZeroRetry: true,
+    playerChatFailFastOnAuth: true,
+    playerChatFailFastOnRateLimit: true,
+    onlineShortJsonRetryHardCap1: true,
     gatewayExtraBody: undefined,
     controlPreflightBudgetMs: 0,
     narrativeEnhanceBudgetMs: 0,
     streamModerationThrottleMs: 0,
     loreRetrievalBudgetMs: 600,
+    offlineFailFast: true,
+    offlineAllowMainFallback: false,
+    offlineAffectsProviderCircuit: false,
+    offlineBudgetProfile: "default",
   };
   return {
     ...defaults,
@@ -41,12 +60,81 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
   };
 }
 
+function withEnv(patch: Record<string, string | undefined>, fn: () => void): void {
+  const prev: Record<string, string | undefined> = {};
+  for (const key of Object.keys(patch)) {
+    prev[key] = process.env[key];
+    const value = patch[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    fn();
+  } finally {
+    for (const key of Object.keys(patch)) {
+      const old = prev[key];
+      if (old === undefined) delete process.env[key];
+      else process.env[key] = old;
+    }
+  }
+}
+
 test("PLAYER_CHAT primary role is main", () => {
   assert.equal(getTaskBinding("PLAYER_CHAT").primaryRole, "main");
 });
 
 test("PLAYER_CHAT maxTokens aligned with short DM JSON budget", () => {
   assert.equal(getTaskBinding("PLAYER_CHAT").maxTokens, 896);
+});
+
+test("PLAYER_CHAT narrative budget tiers resolve dynamic maxTokens", () => {
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("micro").maxTokens, 896);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("short").maxTokens, 1152);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 1536);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("reveal").maxTokens, 1792);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("climax").maxTokens, 1792);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("ending").maxTokens, 2304);
+});
+
+test("PLAYER_CHAT maxTokens env override applies and clamps", () => {
+  withEnv({ AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE: "2048" }, () => {
+    const resolved = resolvePlayerChatMaxTokensForNarrativeBudget(
+      "micro",
+      resolveAiEnv().playerChatMaxTokensOverride
+    );
+    assert.equal(resolved.maxTokens, 2048);
+    assert.equal(resolved.source, "env_override");
+    assert.equal(resolved.clamped, false);
+  });
+
+  withEnv({ AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE: "9999" }, () => {
+    const resolved = resolvePlayerChatMaxTokensForNarrativeBudget(
+      "short",
+      resolveAiEnv().playerChatMaxTokensOverride
+    );
+    assert.equal(resolved.maxTokens, 2304);
+    assert.equal(resolved.source, "env_override");
+    assert.equal(resolved.clamped, true);
+  });
+
+  withEnv({ AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE: "100" }, () => {
+    const resolved = resolvePlayerChatMaxTokensForNarrativeBudget(
+      "ending",
+      resolveAiEnv().playerChatMaxTokensOverride
+    );
+    assert.equal(resolved.maxTokens, 896);
+    assert.equal(resolved.source, "env_override");
+    assert.equal(resolved.clamped, true);
+  });
+});
+
+test("AI_NARRATIVE_EXPANSION_ENABLED env flag overrides default", () => {
+  withEnv({ AI_NARRATIVE_EXPANSION_ENABLED: "false" }, () => {
+    assert.equal(resolveAiEnv().enableNarrativeExpansion, false);
+  });
+  withEnv({ AI_NARRATIVE_EXPANSION_ENABLED: "true" }, () => {
+    assert.equal(resolveAiEnv().enableNarrativeExpansion, true);
+  });
 });
 
 test("reasoner forbidden on PLAYER_CHAT and online control tasks", () => {
@@ -58,6 +146,17 @@ test("reasoner forbidden on PLAYER_CHAT and online control tasks", () => {
 test("enhance forbidden on PLAYER_CHAT but allowed on SCENE_ENHANCEMENT", () => {
   assert.equal(isModelForbiddenForTask("PLAYER_CHAT", "enhance"), true);
   assert.equal(isModelForbiddenForTask("SCENE_ENHANCEMENT", "enhance"), false);
+});
+
+test("NARRATIVE_EXPANSION uses bounded non-stream json enhance policy", () => {
+  const b = getTaskBinding("NARRATIVE_EXPANSION");
+  assert.equal(b.primaryRole, "enhance");
+  assert.deepEqual(b.fallbackRoles, ["main"]);
+  assert.equal(b.stream, false);
+  assert.equal(b.maxTokens, 768);
+  assert.equal(b.timeoutMs, 7_000);
+  assert.equal(b.responseFormatJsonObject, true);
+  assert.equal(isModelForbiddenForTask("NARRATIVE_EXPANSION", "reasoner"), true);
 });
 
 test("WORLDBUILD_OFFLINE uses reasoner primary and forbids enhance", () => {

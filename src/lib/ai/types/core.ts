@@ -9,7 +9,7 @@ export type AiProviderId = "oneapi";
  * - PLAYER_CHAT: online DM / SSE (forbidden roles: reasoner, enhance).
  * - Control-plane tasks: PLAYER_CONTROL_PREFLIGHT, INTENT_PARSE, SAFETY_PREFILTER (control role).
  * - Adjudication / combat text: RULE_RESOLUTION, COMBAT_NARRATION (main role).
- * - Sensory polish: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH (enhance role).
+ * - Sensory polish: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH, NARRATIVE_EXPANSION (enhance role).
  * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION.
  */
 export type TaskType =
@@ -21,6 +21,7 @@ export type TaskType =
   | "RULE_RESOLUTION"
   | "COMBAT_NARRATION"
   | "SCENE_ENHANCEMENT"
+  | "NARRATIVE_EXPANSION"
   | "NPC_EMOTION_POLISH"
   | "WORLDBUILD_OFFLINE"
   | "STORYLINE_SIMULATION"

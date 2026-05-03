@@ -168,3 +168,83 @@ test("buildChatRequestFinishedPayload derives totalTokens from prompt+completion
   assert.equal(p.settlementGuardApplied, false);
   assert.equal(p.settlementAwardPruned, 0);
 });
+
+test("buildChatRequestFinishedPayload includes narrative length telemetry", () => {
+  const p = buildChatRequestFinishedPayload({
+    requestId: "r3",
+    model: "main",
+    success: true,
+    firstChunkAt: 10,
+    requestStartedAt: 0,
+    finishedAt: 100,
+    isFirstAction: false,
+    routing: {
+      operationMode: "full",
+      intendedRole: "main",
+      fallbackCount: 0,
+    },
+    stableCharLen: 1,
+    dynamicCharLen: 2,
+    latestUsage: null,
+    preflight: {
+      ran: false,
+      skippedReason: null,
+      cacheHit: null,
+      latencyMs: null,
+      ok: true,
+      budgetHit: false,
+    },
+    enhance: {
+      attempted: false,
+      outcome: "none",
+      skipReason: null,
+      latencyMs: null,
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    },
+    narrativeLength: {
+      narrativeBudgetTier: "reveal",
+      narrativeBudgetReasonCodes: ["high_value_clue", "normal_risk"],
+      narrativeMinChars: 520,
+      narrativeTargetChars: 680,
+      narrativeMaxChars: 850,
+      actualNarrativeChars: 310,
+      estimatedInfoBeats: 3,
+      narrativeLengthSeverity: "medium",
+      narrativeLengthIssueCodes: ["under_min", "too_few_info_beats"],
+      narrativeUnderMin: true,
+      narrativeOverMax: false,
+      narrativeLengthStatus: "ok",
+      playerChatMaxTokens: 1792,
+    },
+    narrativeExpansion: {
+      narrativeExpansionTriggered: true,
+      narrativeExpansionSucceeded: true,
+      narrativeExpansionSkippedReason: null,
+      narrativeExpansionLatencyMs: 1200,
+      narrativeBeforeChars: 310,
+      narrativeAfterChars: 650,
+    },
+  });
+
+  assert.equal(p.narrativeBudgetTier, "reveal");
+  assert.deepEqual(p.narrativeBudgetReasonCodes, ["high_value_clue", "normal_risk"]);
+  assert.equal(p.narrativeMinChars, 520);
+  assert.equal(p.narrativeTargetChars, 680);
+  assert.equal(p.narrativeMaxChars, 850);
+  assert.equal(p.actualNarrativeChars, 310);
+  assert.equal(p.estimatedInfoBeats, 3);
+  assert.equal(p.narrativeLengthSeverity, "medium");
+  assert.deepEqual(p.narrativeLengthIssueCodes, ["under_min", "too_few_info_beats"]);
+  assert.equal(p.narrativeUnderMin, true);
+  assert.equal(p.narrativeOverMax, false);
+  assert.equal(p.narrativeLengthStatus, "ok");
+  assert.equal(p.playerChatMaxTokens, 1792);
+  assert.equal(p.narrativeExpansionTriggered, true);
+  assert.equal(p.narrativeExpansionSucceeded, true);
+  assert.equal(p.narrativeExpansionSkippedReason, null);
+  assert.equal(p.narrativeExpansionLatencyMs, 1200);
+  assert.equal(p.narrativeBeforeChars, 310);
+  assert.equal(p.narrativeAfterChars, 650);
+});

@@ -210,6 +210,42 @@ test("resolveAiEnv enables narrative enhancement when explicitly set", () => {
   );
 });
 
+test("resolveAiEnv keeps narrative expansion off by default in production", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      APP_ENV: "production",
+      AI_NARRATIVE_EXPANSION_ENABLED: undefined,
+    },
+    () => {
+      assert.equal(resolveAiEnv().enableNarrativeExpansion, false);
+    }
+  );
+});
+
+test("resolveAiEnv allows narrative expansion in staging by default and supports override", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      APP_ENV: "staging",
+      AI_NARRATIVE_EXPANSION_ENABLED: undefined,
+    },
+    () => {
+      assert.equal(resolveAiEnv().enableNarrativeExpansion, true);
+    }
+  );
+  withEnv(
+    {
+      ...gatewayBase,
+      APP_ENV: "staging",
+      AI_NARRATIVE_EXPANSION_ENABLED: "0",
+    },
+    () => {
+      assert.equal(resolveAiEnv().enableNarrativeExpansion, false);
+    }
+  );
+});
+
 test("resolveAiEnv uses default lore retrieval budget", () => {
   withEnv(
     {

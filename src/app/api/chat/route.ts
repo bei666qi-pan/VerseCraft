@@ -22,6 +22,7 @@ import {
 } from "@/lib/analytics/chatRequestFinishedPayload";
 import { getGuestIdFromClientState } from "@/lib/chat/clientStateGuest";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+import type { AnalyticsPlatform } from "@/lib/analytics/types";
 import { buildPlayerContextDigest, inferWeaponizationAttempted } from "@/lib/analytics/playerContextDigest";
 import { DEFAULT_PLAYER_ROLE_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
 import { resolveOperationMode } from "@/lib/ai/degrade/mode";
@@ -33,11 +34,13 @@ import type { AiRoutingReport } from "@/lib/ai/routing/types";
 import { anyAiProviderConfigured } from "@/lib/ai/service";
 import {
   enhanceScene,
+  expandNarrativeOnly,
   generateMainReply,
   generateDecisionOptionsOnlyFallback,
   generateOptionsOnlyFallback,
   type EnhanceAfterMainStreamResult,
 } from "@/lib/ai/logicalTasks";
+import { resolvePlayerChatMaxTokensForNarrativeBudget } from "@/lib/ai/tasks/taskPolicy";
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
 import {
   buildDynamicPlayerDmSystemSuffix,
@@ -145,6 +148,7 @@ import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPa
 import { buildOptionsOnlySystemPrompt, buildOptionsOnlyUserPacket } from "@/lib/playRealtime/optionsOnlyPackets";
 import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonistAnchorPackets";
 import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePackets";
+import { buildNarrativeBudgetPacketBlock, resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
 import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
 import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
 import { buildOptionsRegenResponse } from "./optionsRegenPayload";
@@ -189,6 +193,11 @@ import {
   computePreNarrativeDelta,
 } from "@/lib/turnEngine/computeStateDelta";
 import { renderNarrativeFromDelta } from "@/lib/turnEngine/renderNarrative";
+import {
+  assessNarrativeLengthForTelemetry,
+  buildNarrativeLengthTelemetry,
+  type NarrativeLengthTelemetry,
+} from "@/lib/turnEngine/narrativeLengthTelemetry";
 import { applyNpcConsistencyPostGeneration, validateNarrative } from "@/lib/narrativeEngine/checker";
 import { commitNarrativeEvents, commitTurn, type TurnCommitSummary } from "@/lib/narrativeEngine/committer";
 import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
@@ -197,6 +206,14 @@ import {
   buildRouteNarrativeCheckResult,
 } from "@/lib/narrativeEngine/routeAdapter";
 import { scheduleBackgroundWorldTick } from "@/lib/turnEngine/enqueueBackgroundTick";
+import {
+  applyNarrativeExpansionResultToDmRecord,
+  emptyNarrativeExpansionTelemetry,
+  narrativeExpansionTelemetryFromResult,
+  shouldTriggerNarrativeExpansion,
+  type NarrativeExpansionTelemetry,
+  type NarrativeExpansionResult,
+} from "@/lib/turnEngine/narrativeExpansion";
 import {
   buildEpistemicInput,
   type EpistemicFilterResult,
@@ -1175,14 +1192,32 @@ export async function POST(req: Request) {
     clientState && typeof clientState === "object" && !Array.isArray(clientState)
       ? ((clientState as unknown as { directorDigest?: { beatModeHint?: unknown; tension?: unknown } }).directorDigest ?? null)
       : null;
+  const directorBeatHint = typeof directorDigest?.beatModeHint === "string" ? directorDigest.beatModeHint : null;
+  const directorTension = typeof directorDigest?.tension === "number" ? directorDigest.tension : null;
   const turnLaneDecision: TurnLaneDecision = routeTurnLane({
     intent: normalizedIntent,
     riskLane,
     focusNpcId: focusNpcForPrompt,
-    directorBeat: typeof directorDigest?.beatModeHint === "string" ? directorDigest.beatModeHint : null,
-    directorTension: typeof directorDigest?.tension === "number" ? directorDigest.tension : null,
+    directorBeat: directorBeatHint,
+    directorTension,
     epistemicEnabled: epistemicRolloutFlags.enableEpistemicGuard,
   });
+  const narrativeBudget = resolveNarrativeBudget({
+    plannedTurnMode: `${plannedTurnMode.mode}:${plannedTurnMode.reason}`,
+    riskLane,
+    latestUserInput,
+    playerContext: playerContextForPrompt,
+    clientState,
+    isFirstAction: shouldApplyFirstActionConstraint,
+    currentLocation: playerLocForEpistemic,
+    presentNpcIds: presentNpcIdsForEpistemic,
+    recentNarrativeTail: extractLastAssistantNarrativeTail(rawChatMessages),
+    isEndgame: plannedTurnMode.reason.startsWith("time_endgame"),
+    isChapterClimax: directorBeatHint === "peak" || directorBeatHint === "climax" || (directorTension ?? 0) >= 95,
+  });
+  const narrativeBudgetBlock = buildNarrativeBudgetPacketBlock(narrativeBudget);
+  const narrativeBudgetTier = narrativeBudget.tier;
+  const narrativeBudgetTargetChars = narrativeBudget.targetChars;
   const preStateDelta: StateDelta = computePreNarrativeDelta({
     intent: normalizedIntent,
     control: pipelineControl,
@@ -1271,6 +1306,7 @@ export async function POST(req: Request) {
     controlAugmentation: controlAndLoreAugmentation,
     protagonistAnchorBlock,
     turnModePolicyBlock,
+    narrativeBudgetBlock,
     realityConstraintBlock,
     npcConsistencyBoundaryBlock: npcConsistencyBoundaryFinal.text,
     narrativeContinuityBlock,
@@ -1279,6 +1315,11 @@ export async function POST(req: Request) {
     styleGuideBlock,
   });
   const aiEnvForSystem = resolveAiEnv();
+  const playerChatMaxTokensResolution = resolvePlayerChatMaxTokensForNarrativeBudget(
+    narrativeBudgetTier,
+    aiEnvForSystem.playerChatMaxTokensOverride
+  );
+  const playerChatMaxTokens = playerChatMaxTokensResolution.maxTokens;
   const { safeMessages, stableCharLen, dynamicCharLen } = assemblePlayerChatPrompt({
     stablePrefix: playerDmStablePrefix,
     dynamicSuffix: dynamicSuffixFull,
@@ -1321,6 +1362,13 @@ export async function POST(req: Request) {
       loreBudgetHit,
       runtimePacketChars,
       runtimePacketTokenEstimate,
+      narrativeBudgetTier,
+      narrativeBudgetMinChars: narrativeBudget.minChars,
+      narrativeBudgetTargetChars,
+      narrativeBudgetMaxChars: narrativeBudget.maxChars,
+      playerChatMaxTokens,
+      playerChatMaxTokensSource: playerChatMaxTokensResolution.source,
+      playerChatMaxTokensClamped: playerChatMaxTokensResolution.clamped,
       epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
       actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
       publicFactCount: epistemicPromptMetrics.publicFactCount,
@@ -1547,8 +1595,16 @@ export async function POST(req: Request) {
   const closeWithFallback = async () => {
     try {
       await writeToStream(fallbackPayload);
+    } catch {
+      // Same best-effort boundary as close(): if the client has already gone away,
+      // the fallback cannot be delivered and should not crash the background stream task.
     } finally {
-      await writer.close();
+      try {
+        await writer.close();
+      } catch {
+        // The client or test harness may already have closed the SSE response.
+        // Fallback writing is best-effort; do not convert a closed stream into a background crash.
+      }
     }
   };
 
@@ -1587,6 +1643,8 @@ export async function POST(req: Request) {
   let settlementGuardApplied = false;
   let settlementAwardPruned = 0;
   let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
+  let narrativeLengthTelemetry: NarrativeLengthTelemetry | null = null;
+  let narrativeExpansionTelemetry: NarrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry();
 
   (async () => {
     await writeStatusFrame("request_sent", "行动已送出");
@@ -1607,11 +1665,20 @@ export async function POST(req: Request) {
             userId,
             sessionId,
             path: "/api/chat",
-            tags: { clientPurpose, riskLane },
+            tags: {
+              clientPurpose,
+              riskLane,
+              narrativeBudgetTier,
+              narrativeBudgetTargetChars,
+              playerChatMaxTokens,
+              playerChatMaxTokensSource: playerChatMaxTokensResolution.source,
+              playerChatMaxTokensClamped: playerChatMaxTokensResolution.clamped,
+            },
           },
           signal: ac.signal,
           timeoutMs: TIMEOUT_MS,
           skipRoles: args.skipRoles,
+          maxTokensOverride: playerChatMaxTokens,
         });
       } finally {
         clearTimeout(timeoutId);
@@ -1854,6 +1921,8 @@ export async function POST(req: Request) {
           finalJsonParseSuccess,
           settlementGuardApplied,
           settlementAwardPruned,
+          narrativeLength: narrativeLengthTelemetry,
+          narrativeExpansion: narrativeExpansionTelemetry,
           });
 
           const vTypes = epistemicPostValidatorTelemetry?.violationTypes ?? [];
@@ -2309,8 +2378,6 @@ export async function POST(req: Request) {
             incrTurnModeCount(tm, 1);
             if ((resolved as any).decision_required === true) incrDecisionRequiredHitCount(1);
           }
-          const nar = String((resolved as any).narrative ?? "");
-          if (nar) recordNarrativeChars(nar.length);
         } catch {
           // ignore
         }
@@ -2398,6 +2465,158 @@ export async function POST(req: Request) {
           }
         } catch (e) {
           console.warn("[api/chat] options regen (post-resolve) skipped", e);
+        }
+
+        // Narrative length telemetry only. Do not mutate narrative, options, or state.
+        try {
+          const narrative = String((resolved as any).narrative ?? "");
+          const decisionOptions = [
+            ...(Array.isArray((resolved as any).decision_options) ? ((resolved as any).decision_options as unknown[]) : []),
+            ...(Array.isArray((resolved as any).options) ? ((resolved as any).options as unknown[]) : []),
+          ];
+          const hasDecisionOptions = decisionOptions.some(
+            (option) => typeof option === "string" && option.trim().length > 0
+          );
+          const securityMeta =
+            (resolved as any).security_meta &&
+            typeof (resolved as any).security_meta === "object" &&
+            !Array.isArray((resolved as any).security_meta)
+              ? ((resolved as any).security_meta as Record<string, unknown>)
+              : null;
+          const isSafetyFallback =
+            securityMeta?.action === "degrade" ||
+            String(securityMeta?.stage ?? "").includes("safety") ||
+            String(securityMeta?.stage ?? "").includes("final_output") ||
+            String(securityMeta?.riskLevel ?? "").toLowerCase() === "black";
+          const lengthResult = assessNarrativeLengthForTelemetry({
+            narrative,
+            budget: narrativeBudget ?? null,
+            playerChatMaxTokens,
+            plannedTurnMode: `${plannedTurnMode.mode}:${plannedTurnMode.reason}`,
+            isActionLegal: (resolved as any).is_action_legal !== false,
+            isDeath: (resolved as any).is_death === true,
+            isSafetyFallback,
+            isSystemTransition:
+              normalizedIntent.isSystemTransition || (resolved as any).turn_mode === "system_transition",
+            hasDecisionOptions,
+            riskTags: pipelineControl?.risk_tags ?? [],
+          });
+          narrativeLengthTelemetry = lengthResult.telemetry;
+          recordNarrativeChars(narrativeLengthTelemetry.actualNarrativeChars ?? 0, {
+            underMin: narrativeLengthTelemetry.narrativeUnderMin,
+            overMax: narrativeLengthTelemetry.narrativeOverMax,
+            severity: narrativeLengthTelemetry.narrativeLengthSeverity,
+            budgetMissing: narrativeLengthTelemetry.narrativeLengthStatus === "budget_missing",
+            assessmentError: narrativeLengthTelemetry.narrativeLengthStatus === "assessment_error",
+          });
+          if (lengthResult.assessmentError) {
+            console.warn("[api/chat] narrative length assessment skipped", {
+              requestId,
+              message:
+                lengthResult.assessmentError instanceof Error
+                  ? lengthResult.assessmentError.message
+                  : String(lengthResult.assessmentError),
+            });
+          }
+        } catch (e) {
+          const narrative = String((resolved as any).narrative ?? "");
+          narrativeLengthTelemetry = buildNarrativeLengthTelemetry({
+            budget: narrativeBudget ?? null,
+            playerChatMaxTokens,
+            actualNarrativeChars: Array.from(narrative.replace(/\s+/g, "")).length,
+            status: "assessment_error",
+          });
+          recordNarrativeChars(narrativeLengthTelemetry.actualNarrativeChars ?? 0, {
+            severity: "error",
+            assessmentError: true,
+          });
+          console.warn("[api/chat] narrative length assessment skipped", {
+            requestId,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+
+        try {
+          const narrative = String((resolved as any).narrative ?? "");
+          const securityMeta =
+            (resolved as any).security_meta &&
+            typeof (resolved as any).security_meta === "object" &&
+            !Array.isArray((resolved as any).security_meta)
+              ? ((resolved as any).security_meta as Record<string, unknown>)
+              : null;
+          const hasProtocolOrSafetyDegrade =
+            securityMeta?.action === "degrade" ||
+            typeof securityMeta?.protocol_guard === "string" ||
+            String(securityMeta?.stage ?? "").includes("safety") ||
+            String(securityMeta?.stage ?? "").includes("final_output") ||
+            String(securityMeta?.riskLevel ?? "").toLowerCase() === "black";
+          const performanceBudgetMs = Math.max(0, 56_000 - (Date.now() - requestStartedAt));
+          const expansionDecision = shouldTriggerNarrativeExpansion({
+            enabled: aiEnvForSystem.enableNarrativeExpansion,
+            budget: narrativeBudget ?? null,
+            lengthTelemetry: narrativeLengthTelemetry,
+            isSafetyFallback: hasProtocolOrSafetyDegrade,
+            isActionLegal: (resolved as any).is_action_legal !== false,
+            isDeath: (resolved as any).is_death === true,
+            isSystemTransition:
+              normalizedIntent.isSystemTransition || (resolved as any).turn_mode === "system_transition",
+            hasProtocolOrSafetyDegrade,
+            performanceBudgetMs,
+          });
+
+          if (!expansionDecision.trigger) {
+            narrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry(expansionDecision.skippedReason);
+          } else {
+            const expansionBudgetMs = Math.max(1, Math.min(6_000, performanceBudgetMs - 250));
+            const expansionResult: NarrativeExpansionResult = await expandNarrativeOnly({
+              originalNarrative: narrative,
+              originalDmRecord: resolved as unknown as Record<string, unknown>,
+              narrativeBudget,
+              latestUserInput,
+              playerContextSnapshot: playerContextForPrompt,
+              recentNarrativeTail: extractLastAssistantNarrativeTail(rawChatMessages),
+              constraints: [
+                "只替换 narrative 字段，其他结构字段必须保持原结论。",
+                "不要新增 NPC、地点、道具、任务或世界真相。",
+                "只补足动作反馈、感官细节、环境阻力、即时反应和悬疑节奏。",
+              ],
+              ctx: {
+                requestId,
+                userId,
+                sessionId,
+                path: "/api/chat",
+                tags: {
+                  phase: "final_hooks",
+                  purpose: "narrative_expansion",
+                  narrativeBudgetTier,
+                },
+              },
+              signal: pipelineAbort.signal,
+              budgetMs: expansionBudgetMs,
+            });
+            narrativeExpansionTelemetry = narrativeExpansionTelemetryFromResult(expansionResult);
+            if (expansionResult.ok) {
+              (resolved as any).narrative = expansionResult.narrative;
+              dmRecord = applyNarrativeExpansionResultToDmRecord(
+                dmRecord as Record<string, unknown>,
+                expansionResult
+              );
+            }
+          }
+        } catch (e) {
+          const beforeChars = narrativeLengthTelemetry?.actualNarrativeChars ?? null;
+          narrativeExpansionTelemetry = {
+            narrativeExpansionTriggered: true,
+            narrativeExpansionSucceeded: false,
+            narrativeExpansionSkippedReason: "exception",
+            narrativeExpansionLatencyMs: null,
+            narrativeBeforeChars: beforeChars,
+            narrativeAfterChars: null,
+          };
+          console.warn("[api/chat] narrative expansion skipped", {
+            requestId,
+            message: e instanceof Error ? e.message : String(e),
+          });
         }
         // Optional telemetry: keep a lightweight warning for analysis, but do not block.
         try {

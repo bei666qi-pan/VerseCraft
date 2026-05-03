@@ -121,6 +121,127 @@ test("first player stream hop uses AI_MODEL_MAIN from env", async (t) => {
   assert.equal(firstModel, "vc-custom-main");
 });
 
+test("executePlayerChatStream applies clamped PLAYER_CHAT maxTokensOverride", async (t) => {
+  const restore = patchEnv(baseGateway);
+  const origFetch = globalThis.fetch;
+  let maxTokens: number | undefined;
+  let responseFormatType = "";
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      max_tokens?: number;
+      response_format?: { type?: string };
+    };
+    maxTokens = body.max_tokens;
+    responseFormatType = body.response_format?.type ?? "";
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const result = await executePlayerChatStream({
+    messages: [{ role: "user", content: "x" }],
+    ctx: { requestId: "gw-contract-max-tokens-player", task: "PLAYER_CHAT", userId: null },
+    maxTokensOverride: 9999,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(maxTokens, 2304);
+  assert.equal(responseFormatType, "json_object");
+});
+
+test("AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE does not affect non PLAYER_CHAT completion tasks", async (t) => {
+  const restore = patchEnv({
+    ...baseGateway,
+    AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE: "2304",
+  });
+  const origFetch = globalThis.fetch;
+  let maxTokens: number | undefined;
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { max_tokens?: number };
+    maxTokens = body.max_tokens;
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const res = await executeChatCompletion({
+    task: "INTENT_PARSE",
+    messages: [{ role: "user", content: "{}" }],
+    ctx: { requestId: "gw-contract-max-tokens-non-player", task: "INTENT_PARSE" },
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(maxTokens, 640);
+});
+
+test("NARRATIVE_EXPANSION is non-stream json with bounded max tokens", async (t) => {
+  const restore = patchEnv(baseGateway);
+  const origFetch = globalThis.fetch;
+  let maxTokens: number | undefined;
+  let responseFormatType = "";
+  let stream: boolean | undefined;
+  let model = "";
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      model?: string;
+      max_tokens?: number;
+      response_format?: { type?: string };
+      stream?: boolean;
+    };
+    model = body.model ?? "";
+    maxTokens = body.max_tokens;
+    responseFormatType = body.response_format?.type ?? "";
+    stream = body.stream;
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"narrative\":\"expanded\"}" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const res = await executeChatCompletion({
+    task: "NARRATIVE_EXPANSION",
+    messages: [{ role: "user", content: "{}" }],
+    ctx: { requestId: "gw-contract-narrative-expansion", task: "NARRATIVE_EXPANSION" },
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(model, "model-enhance");
+  assert.equal(maxTokens, 768);
+  assert.equal(responseFormatType, "json_object");
+  assert.equal(stream, false);
+});
+
 test("local vs production style base URL both normalize to chat completions path", async () => {
   const { resolveAiEnv } = await import("@/lib/ai/config/envCore");
   const restoreA = patchEnv({

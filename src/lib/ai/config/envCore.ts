@@ -54,6 +54,8 @@ export interface ResolvedAiEnv {
   splitPlayerChatDualSystem: boolean;
   /** Keep enhancement pipeline compatible but disabled by default in Phase 1. */
   enableNarrativeEnhancement: boolean;
+  /** Optional post-stream narrative-only expansion; never required for first visible token. */
+  enableNarrativeExpansion: boolean;
   /**
    * PLAYER_CHAT: whether to request stream_options.include_usage from upstream.
    * Disabled can reduce vendor overhead and payload size; usage still best-effort via fallback estimation.
@@ -69,6 +71,11 @@ export interface ResolvedAiEnv {
    * Lower reduces first-byte tail amplification; fallback/circuit still applies.
    */
   playerChatMaxRetries: number;
+  /**
+   * PLAYER_CHAT: optional per-turn max_tokens rollback override. Null means use
+   * narrative-budget tier mapping at the caller/task-policy layer.
+   */
+  playerChatMaxTokensOverride: number | null;
   /** Online short JSON tasks: max retries (default 0 to avoid TTFT amplification). */
   onlineShortJsonMaxRetries: number;
   /**
@@ -178,6 +185,22 @@ function resolvePlayerRoleFallbackChain(): AiLogicalRole[] {
   return DEFAULT_PLAYER_ROLE_CHAIN;
 }
 
+function resolvePlayerChatMaxTokensOverride(): number | null {
+  const raw = envRaw("AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE");
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function defaultNarrativeExpansionEnabled(): boolean {
+  const deployEnv = (envRaw("APP_ENV") ?? envRaw("VERCEL_ENV") ?? envRaw("NODE_ENV") ?? process.env.NODE_ENV ?? "")
+    .trim()
+    .toLowerCase();
+  if (deployEnv === "production") return false;
+  if (deployEnv === "staging" || deployEnv === "preview" || deployEnv === "development") return true;
+  return process.env.NODE_ENV !== "production";
+}
+
 function resolveMemoryPrimaryRole(): AiLogicalRole {
   const fromRole = normalizeAiLogicalRole(envRaw("AI_MEMORY_PRIMARY_ROLE"));
   if (fromRole) return fromRole;
@@ -247,6 +270,10 @@ export function resolveAiEnv(): ResolvedAiEnv {
     logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
     splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
     enableNarrativeEnhancement: envBoolean("AI_ENABLE_NARRATIVE_ENHANCEMENT", false),
+    enableNarrativeExpansion: envBoolean(
+      "AI_NARRATIVE_EXPANSION_ENABLED",
+      defaultNarrativeExpansionEnabled()
+    ),
     playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", true),
     playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
     playerChatMaxRetries: (() => {
@@ -256,6 +283,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
       // Conservative cap for player-facing TTFT: allow explicit override, but never exceed 4.
       return Math.max(0, Math.min(4, resolved));
     })(),
+    playerChatMaxTokensOverride: resolvePlayerChatMaxTokensOverride(),
     onlineShortJsonMaxRetries: (() => {
       const override = envNumber("AI_ONLINE_SHORT_JSON_MAX_RETRIES", NaN);
       // Default to 0 (fast fail), but allow explicit override.

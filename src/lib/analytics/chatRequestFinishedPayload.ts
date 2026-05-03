@@ -1,6 +1,8 @@
 import type { OperationMode } from "@/lib/ai/degrade/mode";
 import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import type { TokenUsage } from "@/lib/ai/types/core";
+import type { NarrativeExpansionTelemetry } from "@/lib/turnEngine/narrativeExpansion";
+import type { NarrativeLengthTelemetry } from "@/lib/turnEngine/narrativeLengthTelemetry";
 
 /** Coerce numeric usage fields for analytics JSON; invalid → null (never NaN). */
 export function optionalFiniteInt(n: unknown): number | null {
@@ -128,6 +130,8 @@ export type BuildChatRequestFinishedPayloadInput = {
   settlementGuardApplied?: boolean;
   settlementAwardPruned?: number;
   statusFrameCount?: number;
+  narrativeLength?: NarrativeLengthTelemetry | null;
+  narrativeExpansion?: NarrativeExpansionTelemetry | null;
 };
 
 /**
@@ -148,6 +152,8 @@ export function buildChatRequestFinishedPayload(
         ? promptTokens + completionTokens
         : null;
   const cachedPromptTokens = optionalFiniteInt(u?.cachedPromptTokens);
+  const narrativeLength = input.narrativeLength ?? null;
+  const narrativeExpansion = input.narrativeExpansion ?? null;
 
   const ttft =
     input.firstChunkAt > 0 ? Math.max(0, input.firstChunkAt - input.requestStartedAt) : null;
@@ -170,6 +176,25 @@ export function buildChatRequestFinishedPayload(
     dynamicCharLen: input.dynamicCharLen,
     runtimePacketChars: optionalFiniteInt(input.runtimePacketChars),
     runtimePacketTokenEstimate: optionalFiniteInt(input.runtimePacketTokenEstimate),
+    narrativeBudgetTier: narrativeLength?.narrativeBudgetTier ?? null,
+    narrativeBudgetReasonCodes: narrativeLength?.narrativeBudgetReasonCodes ?? [],
+    narrativeMinChars: optionalFiniteInt(narrativeLength?.narrativeMinChars),
+    narrativeTargetChars: optionalFiniteInt(narrativeLength?.narrativeTargetChars),
+    narrativeMaxChars: optionalFiniteInt(narrativeLength?.narrativeMaxChars),
+    actualNarrativeChars: optionalFiniteInt(narrativeLength?.actualNarrativeChars),
+    estimatedInfoBeats: optionalFiniteInt(narrativeLength?.estimatedInfoBeats),
+    narrativeLengthSeverity: narrativeLength?.narrativeLengthSeverity ?? null,
+    narrativeLengthIssueCodes: narrativeLength?.narrativeLengthIssueCodes ?? [],
+    narrativeUnderMin: narrativeLength?.narrativeUnderMin ?? false,
+    narrativeOverMax: narrativeLength?.narrativeOverMax ?? false,
+    narrativeLengthStatus: narrativeLength?.narrativeLengthStatus ?? null,
+    playerChatMaxTokens: optionalFiniteInt(narrativeLength?.playerChatMaxTokens),
+    narrativeExpansionTriggered: narrativeExpansion?.narrativeExpansionTriggered ?? false,
+    narrativeExpansionSucceeded: narrativeExpansion?.narrativeExpansionSucceeded ?? false,
+    narrativeExpansionSkippedReason: narrativeExpansion?.narrativeExpansionSkippedReason ?? null,
+    narrativeExpansionLatencyMs: optionalFiniteInt(narrativeExpansion?.narrativeExpansionLatencyMs),
+    narrativeBeforeChars: optionalFiniteInt(narrativeExpansion?.narrativeBeforeChars),
+    narrativeAfterChars: optionalFiniteInt(narrativeExpansion?.narrativeAfterChars),
     promptTokens,
     completionTokens,
     totalTokens,

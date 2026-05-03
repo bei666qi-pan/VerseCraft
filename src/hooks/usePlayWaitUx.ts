@@ -48,6 +48,10 @@ export function usePlayWaitUx(args: {
   }, [display]);
 
   const enabled = isPlayWaitUxEnabled() && args.thinking && args.requestStartedAt !== null;
+  const hasClientSignals = args.signals !== undefined;
+  const signalHasResponseHeaders = Boolean(args.signals?.hasResponseHeaders);
+  const signalHasAnySseData = Boolean(args.signals?.hasAnySseData);
+  const signalHasVisibleText = Boolean(args.signals?.hasVisibleText);
 
   useLayoutEffect(() => {
     if (!enabled || args.requestStartedAt === null) return;
@@ -69,7 +73,13 @@ export function usePlayWaitUx(args: {
         requestStartedAt: args.requestStartedAt!,
         backend: args.backendStageRef.current,
         prev: displayRef.current,
-        signals: args.signals,
+        signals: hasClientSignals
+          ? {
+              hasResponseHeaders: signalHasResponseHeaders,
+              hasAnySseData: signalHasAnySseData,
+              hasVisibleText: signalHasVisibleText,
+            }
+          : undefined,
       });
       if (next.stage !== displayRef.current.stage || next.lastStageChangeAt !== displayRef.current.lastStageChangeAt) {
         displayRef.current = next;
@@ -78,7 +88,15 @@ export function usePlayWaitUx(args: {
     }, TICK_MS);
 
     return () => window.clearInterval(id);
-  }, [enabled, args.requestStartedAt, args.backendStageRef]);
+  }, [
+    enabled,
+    args.requestStartedAt,
+    args.backendStageRef,
+    hasClientSignals,
+    signalHasResponseHeaders,
+    signalHasAnySseData,
+    signalHasVisibleText,
+  ]);
 
   if (!enabled || args.requestStartedAt === null) {
     return { primaryLine: "", secondaryLine: null, displayStage: "idle" };

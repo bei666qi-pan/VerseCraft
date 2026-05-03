@@ -17,6 +17,7 @@ import { resilientFetch } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
 import {
   assertModelAllowedForTask,
+  clampPlayerChatMaxTokens,
   getTaskBinding,
   resolveFallbackPolicy,
   resolveOrderedRoleChain,
@@ -107,6 +108,11 @@ const ONLINE_SHORT_JSON_TASKS = new Set<TaskType>([
   "SAFETY_PREFILTER",
 ]);
 
+const ONLINE_FAIL_FAST_JSON_TASKS = new Set<TaskType>([
+  ...ONLINE_SHORT_JSON_TASKS,
+  "NARRATIVE_EXPANSION",
+]);
+
 function gatewayEndpoint(env: ReturnType<typeof resolveAiEnv>): { url: string; key: string } {
   return { url: env.gatewayBaseUrl, key: env.gatewayApiKey };
 }
@@ -117,6 +123,7 @@ function buildPlayerStreamBody(
   binding: TaskBinding,
   enableStream: boolean,
   streamIncludeUsage: boolean,
+  maxTokensOverride?: number,
   extraBody?: Record<string, unknown>
 ): NormalizedCompletionRequest {
   const stream = binding.stream && enableStream;
@@ -124,7 +131,7 @@ function buildPlayerStreamBody(
     modelApiName: gatewayModel,
     messages,
     stream,
-    maxTokens: binding.maxTokens,
+    maxTokens: maxTokensOverride ?? binding.maxTokens,
     temperature: binding.temperature,
     responseFormatJsonObject: binding.responseFormatJsonObject,
     streamIncludeUsage: stream && streamIncludeUsage,
@@ -187,6 +194,7 @@ export async function executePlayerChatStream(params: {
   signal?: AbortSignal;
   timeoutMs?: number;
   skipRoles?: readonly AiLogicalRole[];
+  maxTokensOverride?: number;
 }): Promise<PlayerChatStreamResult> {
   if (params.ctx.task !== "PLAYER_CHAT") {
     console.warn(
@@ -196,6 +204,7 @@ export async function executePlayerChatStream(params: {
   const env = resolveAiEnv();
   const mode = resolveOperationMode();
   const taskBinding = getTaskBinding("PLAYER_CHAT");
+  const playerChatMaxTokens = clampPlayerChatMaxTokens(params.maxTokensOverride ?? taskBinding.maxTokens).maxTokens;
   const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
   const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
   const tags = (params.ctx.tags ?? {}) as Record<string, unknown>;
@@ -309,6 +318,7 @@ export async function executePlayerChatStream(params: {
       taskBinding,
       env.enableStream,
       env.playerChatStreamIncludeUsage,
+      playerChatMaxTokens,
       env.gatewayExtraBody
     );
     const bodyBuildMs = Math.max(0, Date.now() - bodyT0);
@@ -598,9 +608,9 @@ export async function executeChatCompletion(params: {
    * - 降低单 provider 的重试次数，让 role chain 更快推进
    * - 不影响主 PLAYER_CHAT（仍使用 executePlayerChatStream 的 playerChatMaxRetries）
    */
-  const maxRetries = ONLINE_SHORT_JSON_TASKS.has(params.task) && env.onlineShortJsonRetryHardCap1
+  const maxRetries = ONLINE_FAIL_FAST_JSON_TASKS.has(params.task) && env.onlineShortJsonRetryHardCap1
     ? Math.min(1, env.onlineShortJsonMaxRetries)
-    : ONLINE_SHORT_JSON_TASKS.has(params.task)
+    : ONLINE_FAIL_FAST_JSON_TASKS.has(params.task)
       ? env.onlineShortJsonMaxRetries
       : env.maxRetries;
   const expectJsonObject = binding.responseFormatJsonObject;
@@ -789,7 +799,7 @@ export async function executeChatCompletion(params: {
           const s = sanitizeReasonerJsonText(trimmed);
           processed = s.content;
           jsonSanitized = s.sanitized;
-        } else if (ONLINE_SHORT_JSON_TASKS.has(params.task)) {
+        } else if (ONLINE_FAIL_FAST_JSON_TASKS.has(params.task)) {
           const s = sanitizeOnlineShortJsonText(trimmed);
           processed = s.content;
           jsonSanitized = s.sanitized;

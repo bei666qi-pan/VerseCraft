@@ -41,6 +41,12 @@ export type VerseCraftRolloutMetricsSnapshot = {
   decisionRequiredHitCount: number;
   narrativeCharsSum: number;
   narrativeCharsSamples: number;
+  narrativeUnderMinCount: number;
+  narrativeOverMaxCount: number;
+  narrativeLengthLowSeverityCount: number;
+  narrativeLengthMediumSeverityCount: number;
+  narrativeLengthBudgetMissingCount: number;
+  narrativeLengthAssessmentErrorCount: number;
   decisionOptionsFixAttemptCount: number;
   decisionOptionsFixSuccessCount: number;
   protagonistDriftRewriteCount: number;
@@ -103,6 +109,12 @@ const m = {
   decisionRequiredHitCount: 0,
   narrativeCharsSum: 0,
   narrativeCharsSamples: 0,
+  narrativeUnderMinCount: 0,
+  narrativeOverMaxCount: 0,
+  narrativeLengthLowSeverityCount: 0,
+  narrativeLengthMediumSeverityCount: 0,
+  narrativeLengthBudgetMissingCount: 0,
+  narrativeLengthAssessmentErrorCount: 0,
   decisionOptionsFixAttemptCount: 0,
   decisionOptionsFixSuccessCount: 0,
   protagonistDriftRewriteCount: 0,
@@ -219,10 +231,26 @@ export function incrDecisionRequiredHitCount(delta = 1): void {
   m.decisionRequiredHitCount += delta;
 }
 
-export function recordNarrativeChars(n: number): void {
-  if (!Number.isFinite(n) || n < 0) return;
-  m.narrativeCharsSum += Math.trunc(n);
-  m.narrativeCharsSamples += 1;
+export type NarrativeLengthMetricInput = {
+  underMin?: boolean;
+  overMax?: boolean;
+  severity?: "none" | "low" | "medium" | "error" | null;
+  budgetMissing?: boolean;
+  assessmentError?: boolean;
+};
+
+export function recordNarrativeChars(n: number, telemetry?: NarrativeLengthMetricInput): void {
+  if (Number.isFinite(n) && n >= 0) {
+    m.narrativeCharsSum += Math.trunc(n);
+    m.narrativeCharsSamples += 1;
+  }
+  if (!telemetry) return;
+  if (telemetry.underMin) m.narrativeUnderMinCount += 1;
+  if (telemetry.overMax) m.narrativeOverMaxCount += 1;
+  if (telemetry.severity === "low") m.narrativeLengthLowSeverityCount += 1;
+  if (telemetry.severity === "medium") m.narrativeLengthMediumSeverityCount += 1;
+  if (telemetry.budgetMissing) m.narrativeLengthBudgetMissingCount += 1;
+  if (telemetry.assessmentError) m.narrativeLengthAssessmentErrorCount += 1;
 }
 
 export function recordDecisionOptionsFixOutcome(success: boolean): void {
