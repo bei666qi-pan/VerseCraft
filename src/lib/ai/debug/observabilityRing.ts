@@ -28,6 +28,8 @@ export interface AiObservabilityRecord {
   stableCharLen?: number;
   dynamicCharLen?: number;
   cachedPromptTokens?: number;
+  finishReason?: string | null;
+  finishReasonLength?: boolean;
   retryCount?: number;
   failureScope?: "online" | "offline";
   jsonSanitized?: boolean;

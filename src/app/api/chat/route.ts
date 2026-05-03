@@ -91,7 +91,7 @@ import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
 import { auditDmOutputCandidateOnServer } from "@/lib/safety/output/pipeline";
-import { normalizeUsage } from "@/lib/ai/stream/openaiLike";
+import { normalizeFinishReason, normalizeUsage } from "@/lib/ai/stream/openaiLike";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
 import type { TokenUsage } from "@/lib/ai/types/core";
 import { isGlobalCacheSafe } from "@/lib/kg/cacheGate";
@@ -1800,6 +1800,7 @@ export async function POST(req: Request) {
       firstChunkAt: number;
       latestTotalTokens: number;
       latestUsage: TokenUsage | null;
+      latestFinishReason: string | null;
     }) => {
       if (tokenUsageFlushedGlobal) return;
       tokenUsageFlushedGlobal = true;
@@ -1901,6 +1902,7 @@ export async function POST(req: Request) {
           runtimePacketChars,
           runtimePacketTokenEstimate,
           latestUsage: args.latestUsage,
+          streamFinishReason: args.latestFinishReason,
           upstreamConnectMs:
             ttftProfile.generateMainReplyStartedAt !== null && args.firstChunkAt > 0
               ? Math.max(0, args.firstChunkAt - ttftProfile.generateMainReplyStartedAt)
@@ -2031,6 +2033,7 @@ export async function POST(req: Request) {
         phase: "stream_complete",
         latencyMs: finishedAt - requestStartedAt,
         usage: args.latestUsage,
+        finishReason: args.latestFinishReason,
         ttftMs: args.firstChunkAt > 0 ? args.firstChunkAt - requestStartedAt : undefined,
         stableCharLen,
         dynamicCharLen,
@@ -3194,11 +3197,14 @@ export async function POST(req: Request) {
     let streamTtftTelemetrySent = false;
     let streamStatusSent = false;
     let latestStreamUsage: TokenUsage | null = null;
+    let latestStreamFinishReason: string | null = null;
 
     stream_pass: while (streamRound < MAX_STREAM_SOURCE_ROUNDS) {
       streamRound += 1;
       const logicalRole = streamSource.logicalRole;
       routingReport.actualLogicalRole = logicalRole;
+      latestStreamUsage = null;
+      latestStreamFinishReason = null;
       const reader = streamSource.response.body!.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
@@ -3218,6 +3224,7 @@ export async function POST(req: Request) {
           firstChunkAt,
           latestTotalTokens,
           latestUsage: latestStreamUsage,
+          latestFinishReason: latestStreamFinishReason,
         });
 
     try {
@@ -3322,7 +3329,12 @@ export async function POST(req: Request) {
           }
 
           let json: {
-            choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+            choices?: Array<{
+              delta?: { content?: string };
+              message?: { content?: string };
+              finish_reason?: string | null;
+              finishReason?: string | null;
+            }>;
             usage?: { total_tokens?: number; input_tokens?: number; output_tokens?: number };
           } | null = null;
 
@@ -3424,6 +3436,11 @@ export async function POST(req: Request) {
             }
             accumulated += deltaContent;
             await writeToStream(deltaContent);
+          }
+
+          const finishReason = normalizeFinishReason(json);
+          if (finishReason) {
+            latestStreamFinishReason = finishReason;
           }
 
           const nu = normalizeUsage(json?.usage as unknown);

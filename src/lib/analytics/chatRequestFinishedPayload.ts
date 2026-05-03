@@ -120,6 +120,7 @@ export type BuildChatRequestFinishedPayloadInput = {
   runtimePacketChars?: number;
   runtimePacketTokenEstimate?: number;
   latestUsage: TokenUsage | null;
+  streamFinishReason?: string | null;
   preflight: PreflightTurnMetrics;
   enhance: EnhanceTurnMetrics;
   streamReconnectCount?: number;
@@ -152,6 +153,10 @@ export function buildChatRequestFinishedPayload(
         ? promptTokens + completionTokens
         : null;
   const cachedPromptTokens = optionalFiniteInt(u?.cachedPromptTokens);
+  const streamFinishReason =
+    typeof input.streamFinishReason === "string" && input.streamFinishReason.trim()
+      ? input.streamFinishReason.trim().slice(0, 64)
+      : null;
   const narrativeLength = input.narrativeLength ?? null;
   const narrativeExpansion = input.narrativeExpansion ?? null;
 
@@ -189,6 +194,13 @@ export function buildChatRequestFinishedPayload(
     narrativeOverMax: narrativeLength?.narrativeOverMax ?? false,
     narrativeLengthStatus: narrativeLength?.narrativeLengthStatus ?? null,
     playerChatMaxTokens: optionalFiniteInt(narrativeLength?.playerChatMaxTokens),
+    playerChatFinishReason: streamFinishReason,
+    playerChatFinishReasonLength: streamFinishReason?.toLowerCase() === "length",
+    playerChatUsageCaptured: Boolean(u),
+    playerChatPromptTokens: promptTokens,
+    playerChatCompletionTokens: completionTokens,
+    playerChatTotalTokens: totalTokens,
+    playerChatCachedTokens: cachedPromptTokens,
     narrativeExpansionTriggered: narrativeExpansion?.narrativeExpansionTriggered ?? false,
     narrativeExpansionSucceeded: narrativeExpansion?.narrativeExpansionSucceeded ?? false,
     narrativeExpansionSkippedReason: narrativeExpansion?.narrativeExpansionSkippedReason ?? null,

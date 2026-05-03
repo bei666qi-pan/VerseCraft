@@ -40,6 +40,7 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
       totalTokens: 150,
       cachedPromptTokens: 80,
     },
+    streamFinishReason: "length",
     preflight: {
       ran: true,
       skippedReason: null,
@@ -69,6 +70,13 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
   assert.equal(p.completionTokens, 50);
   assert.equal(p.totalTokens, 150);
   assert.equal(p.cachedPromptTokens, 80);
+  assert.equal(p.playerChatFinishReason, "length");
+  assert.equal(p.playerChatFinishReasonLength, true);
+  assert.equal(p.playerChatUsageCaptured, true);
+  assert.equal(p.playerChatPromptTokens, 100);
+  assert.equal(p.playerChatCompletionTokens, 50);
+  assert.equal(p.playerChatTotalTokens, 150);
+  assert.equal(p.playerChatCachedTokens, 80);
   assert.equal(p.firstChunkLatencyMs, 50);
   assert.equal(p.totalLatencyMs, 450);
   assert.equal(p.preflightCacheHit, true);
@@ -247,4 +255,7 @@ test("buildChatRequestFinishedPayload includes narrative length telemetry", () =
   assert.equal(p.narrativeExpansionLatencyMs, 1200);
   assert.equal(p.narrativeBeforeChars, 310);
   assert.equal(p.narrativeAfterChars, 650);
+  assert.equal(p.playerChatUsageCaptured, false);
+  assert.equal(p.playerChatFinishReason, null);
+  assert.equal(p.playerChatFinishReasonLength, false);
 });

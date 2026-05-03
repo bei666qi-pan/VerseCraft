@@ -134,3 +134,11 @@
 2) 对 `finalizing`（终帧后处理）单独计时并上报，定位“正文结束但仍等待”的长尾。
 3) 服务端 prompt 分层（core/optional/late-attach）进一步工程化，把“质量增强块”彻底非首字化。
 
+## 2026-05-03 narrative-length follow-up
+
+- SSE contract remains unchanged: `text/event-stream`, `data:` frames, `__VERSECRAFT_STATUS__`, and `__VERSECRAFT_FINAL__`.
+- PLAYER_CHAT retry, role chain, timeout, and options-only fallback counts were not expanded by the narrative-length work.
+- Dynamic maxTokens remains tier-bound: `micro` and `short` stay small, while `standard` / `reveal` / `climax` / `ending` get larger caps only when the narrative budget asks for them.
+- Additional observability is passive only: upstream stream `finish_reason` and `usage` are recorded when present, including cached prompt tokens and whether `finish_reason=length` may explain under-budget narrative.
+- `useSmoothStreamFromRef` backlog catch-up has a slightly lower threshold and a still-bounded max chunk length, so longer narratives drain faster without instant full-text flush.
+- Rollback levers remain: `AI_NARRATIVE_EXPANSION_ENABLED=false`, `AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE=896`, and `NEXT_PUBLIC_VC_SMOOTH_STREAM_V2=0` for client pacing rollback.

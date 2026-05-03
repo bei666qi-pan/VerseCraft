@@ -78,5 +78,6 @@ export interface FallbackPolicy {
 export interface OpenAiStreamFrame {
   deltaText: string;
   usage: TokenUsage | null;
+  finishReason: string | null;
   isDoneToken: boolean;
 }

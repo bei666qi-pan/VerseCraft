@@ -4,6 +4,7 @@ import {
   buildNarrativeBudgetPacketBlock,
   resolveNarrativeBudget,
   type NarrativeBudget,
+  type ResolveNarrativeBudgetArgs,
 } from "@/lib/playRealtime/narrativeBudgetPackets";
 
 test("simple action resolves to short budget", () => {
@@ -144,3 +145,77 @@ test("reasonCodes are stable short telemetry codes", () => {
   assert.deepEqual(first.reasonCodes, second.reasonCodes);
   assert.equal(first.reasonCodes.every((code) => /^[a-z][a-z0-9_]{1,40}$/.test(code)), true);
 });
+
+const goldenCases: Array<{
+  name: string;
+  args: ResolveNarrativeBudgetArgs;
+  tier: NarrativeBudget["tier"];
+}> = [
+  {
+    name: "simple action",
+    args: { latestUserInput: "我推开门", riskLane: "fast" },
+    tier: "short",
+  },
+  {
+    name: "regular exploration",
+    args: {
+      latestUserInput: "我沿着走廊继续探索，仔细观察墙面和门牌的变化",
+      riskLane: "fast",
+    },
+    tier: "standard",
+  },
+  {
+    name: "important NPC dialogue",
+    args: {
+      latestUserInput: "我低声问欣蓝，她是不是一直记得循环的真相",
+      presentNpcIds: ["xinlan"],
+      playerContext: { relationship: "信任正在变化" },
+      riskLane: "fast",
+    },
+    tier: "reveal",
+  },
+  {
+    name: "high value clue",
+    args: {
+      latestUserInput: "我翻开档案袋，寻找关于暗月和七锚的关键线索",
+      clientState: { activeTask: "确认校源异常" },
+      riskLane: "fast",
+    },
+    tier: "reveal",
+  },
+  {
+    name: "danger choice",
+    args: {
+      plannedTurnMode: "decision_required",
+      latestUserInput: "我停住脚步，门后传来倒计时，必须立刻选择救谁",
+      recentNarrativeTail: "影子已经追上来了。",
+      riskLane: "slow",
+    },
+    tier: "micro",
+  },
+  {
+    name: "chapter climax",
+    args: { latestUserInput: "我冲向大厅中央，准备打断仪式", isChapterClimax: true },
+    tier: "climax",
+  },
+  {
+    name: "ending",
+    args: { latestUserInput: "我接受最后的代价，走向结局", isEndgame: true },
+    tier: "ending",
+  },
+];
+
+for (const c of goldenCases) {
+  test(`golden narrative budget case: ${c.name}`, () => {
+    const budget = resolveNarrativeBudget(c.args);
+    const packet = buildNarrativeBudgetPacketBlock(budget);
+    const parsed = JSON.parse(packet.split("\n")[1]) as NarrativeBudget;
+
+    assert.equal(budget.tier, c.tier);
+    assert.equal(parsed.tier, c.tier);
+    assert.equal(budget.minChars <= budget.targetChars, true);
+    assert.equal(budget.targetChars <= budget.maxChars, true);
+    assert.equal(budget.maxChars <= 1400, true);
+    assert.equal(budget.reasonCodes.every((code) => /^[a-z][a-z0-9_]{1,40}$/.test(code)), true);
+  });
+}

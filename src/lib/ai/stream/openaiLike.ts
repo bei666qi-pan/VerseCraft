@@ -16,6 +16,26 @@ function readCachedPromptTokens(u: Record<string, unknown>): number | undefined 
   return undefined;
 }
 
+function sanitizeFinishReason(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text) return null;
+  return text.slice(0, 64);
+}
+
+export function normalizeFinishReason(raw: unknown): string | null {
+  const root = asRecord(raw);
+  if (!root) return null;
+  const choices = root.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return null;
+  for (const choice of choices) {
+    const c = asRecord(choice);
+    const finishReason = sanitizeFinishReason(c?.finish_reason ?? c?.finishReason);
+    if (finishReason) return finishReason;
+  }
+  return null;
+}
+
 /** Best-effort normalization for OpenAI-compatible usage objects (stream + non-stream). */
 export function normalizeUsage(raw: unknown): TokenUsage | null {
   const u = asRecord(raw);
@@ -48,7 +68,7 @@ export function normalizeUsage(raw: unknown): TokenUsage | null {
 export function parseOpenAiLikeStreamData(data: string): OpenAiStreamFrame | null {
   const trimmed = data.trim();
   if (!trimmed || trimmed === "[DONE]") {
-    return { deltaText: "", usage: null, isDoneToken: trimmed === "[DONE]" };
+    return { deltaText: "", usage: null, finishReason: null, isDoneToken: trimmed === "[DONE]" };
   }
   let parsed: unknown;
   try {
@@ -62,12 +82,12 @@ export function parseOpenAiLikeStreamData(data: string): OpenAiStreamFrame | nul
   const choices = root.choices;
   if (!Array.isArray(choices) || choices.length === 0) {
     const usage = normalizeUsage(root.usage);
-    return { deltaText: "", usage, isDoneToken: false };
+    return { deltaText: "", usage, finishReason: null, isDoneToken: false };
   }
 
   const c0 = asRecord(choices[0]);
   if (!c0) {
-    return { deltaText: "", usage: null, isDoneToken: false };
+    return { deltaText: "", usage: null, finishReason: null, isDoneToken: false };
   }
 
   const delta = asRecord(c0.delta);
@@ -77,13 +97,14 @@ export function parseOpenAiLikeStreamData(data: string): OpenAiStreamFrame | nul
   const deltaText = deltaContent || messageContent;
 
   const obj = typeof root.object === "string" ? root.object : "";
-  const finishReason = typeof c0.finish_reason === "string" ? c0.finish_reason : "";
-  const isFinalObject = obj === "chat.completion" || (finishReason.length > 0 && !delta);
+  const finishReason = normalizeFinishReason(root);
+  const isFinalObject = obj === "chat.completion" || Boolean(finishReason);
 
   const usage = normalizeUsage(root.usage);
   return {
     deltaText,
     usage,
+    finishReason,
     isDoneToken: isFinalObject,
   };
 }

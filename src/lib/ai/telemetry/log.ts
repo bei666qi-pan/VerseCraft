@@ -40,6 +40,7 @@ export interface AiCostRecord {
   stableCharLen?: number;
   dynamicCharLen?: number;
   cachedPromptTokens?: number;
+  finishReason?: string | null;
   retryCount?: number;
   failureScope?: "online" | "offline";
   jsonSanitized?: boolean;
@@ -121,6 +122,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     stableCharLen: rec.stableCharLen,
     dynamicCharLen: rec.dynamicCharLen,
     cachedPromptTokens: rec.cachedPromptTokens ?? rec.usage?.cachedPromptTokens,
+    finishReason: rec.finishReason,
+    finishReasonLength: rec.finishReason?.toLowerCase() === "length",
     retryCount: rec.retryCount,
     failureScope: rec.failureScope,
     jsonSanitized: rec.jsonSanitized,
@@ -167,6 +170,8 @@ export function logAiTelemetry(rec: AiCostRecord): void {
       stableCharLen: rec.stableCharLen,
       dynamicCharLen: rec.dynamicCharLen,
       cachedPromptTokens: rec.cachedPromptTokens ?? rec.usage?.cachedPromptTokens,
+      finishReason: rec.finishReason,
+      finishReasonLength: rec.finishReason?.toLowerCase() === "length",
       retryCount: rec.retryCount,
       failureScope: rec.failureScope,
       jsonSanitized: rec.jsonSanitized,

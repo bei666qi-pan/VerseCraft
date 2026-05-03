@@ -184,3 +184,10 @@ AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE=896
 - production 如果显式打开 expansion，会增加一次非流式 LLM 调用；必须先观察 `narrativeExpansionLatencyMs` 与成功率。
 - budget packet 会影响主模型风格和节奏，但结构字段仍以 normalize、guard、resolveDmTurn 为准。
 - 叙事长度评估是轻量字符和 info beat 估算，不是语义真值判定；它用于 telemetry 和受限触发，不应作为硬阻断。
+## 2026-05-03 follow-up: cache, usage, and display guards
+
+- Prompt cache posture: keep `getStablePlayerDmSystemPrefix()` free of per-turn packets. `narrative_budget_packet` remains in `buildDynamicPlayerDmSystemSuffix()` near the other dynamic runtime packets, and the packet stays to one compact JSON line.
+- Structured output posture: PLAYER_CHAT still uses JSON object mode only. A stricter DM JSON schema should be trialed behind docs/tests first because first-use schema processing can add latency, and `max_tokens` truncation can still produce incomplete JSON.
+- Stream observability: when an upstream OpenAI-compatible stream exposes `finish_reason` or `usage`, the route records finish reason, prompt/completion/total tokens, cached prompt tokens, and a `finishReasonLength` flag without adding user-visible delay.
+- Long narrative display guard: backlog catch-up can emit slightly larger semantic chunks, but remains bounded so longer narrative does not flush instantly or look stalled.
+- Admin dashboard candidates: aggregate `narrativeBudgetTier`, `narrativeUnderMin`, `narrativeExpansionTriggered`, `narrativeExpansionSucceeded`, `playerChatFinishReasonLength`, p95 `firstVisibleTextMs` by tier, and p95 `totalLatencyMs` by tier from existing analytics payloads.

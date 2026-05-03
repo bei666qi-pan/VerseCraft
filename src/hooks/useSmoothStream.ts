@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 
-type SmoothStreamOptions = {
+export type SmoothStreamOptions = {
   minTickMs?: number;
   maxTickMs?: number;
   /**
@@ -31,14 +31,14 @@ export type SmoothStreamTailDrainConfig = {
   onReached: () => void;
 };
 
-const DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
+export const SMOOTH_STREAM_DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
   minTickMs: 24,
   maxTickMs: 140,
   initialBurstWindowMs: 260,
   initialBurstMaxLen: 40,
   steadyMaxLen: 18,
-  backlogThreshold: 220,
-  backlogMaxLen: 36,
+  backlogThreshold: 180,
+  backlogMaxLen: 42,
   burstCharsWhenBacklog: 26,
   uniformPacing: false,
   uniformTickMs: 40,
@@ -51,7 +51,7 @@ function isAsciiWordChar(ch: string): boolean {
   return /[a-zA-Z0-9]/.test(ch);
 }
 
-function takeSemanticChunk(input: string, maxLen = 18): string {
+export function takeSemanticChunk(input: string, maxLen = 18): string {
   if (!input) return "";
   if (input.length <= 2) return input;
 
@@ -96,7 +96,7 @@ function takeSemanticChunk(input: string, maxLen = 18): string {
   return input.slice(0, Math.max(1, i));
 }
 
-function computePauseMs(args: {
+export function computePauseMs(args: {
   chunk: string;
   backlog: number;
   stage: "initial" | "steady" | "backlog";
@@ -189,13 +189,13 @@ export function useSmoothStreamFromRef(
   const onReachedRef = useRef<(() => void) | null>(null);
 
   const mergedOptionsRef = useRef<Required<SmoothStreamOptions>>({
-    ...DEFAULT_OPTIONS,
+    ...SMOOTH_STREAM_DEFAULT_OPTIONS,
     ...(streamOptions ?? {}),
   });
 
   useLayoutEffect(() => {
     mergedOptionsRef.current = {
-      ...DEFAULT_OPTIONS,
+      ...SMOOTH_STREAM_DEFAULT_OPTIONS,
       ...(streamOptions ?? {}),
     };
   }, [streamOptions]);
@@ -215,7 +215,6 @@ export function useSmoothStreamFromRef(
       lastEmitAtRef.current = 0;
       tailDrainFiredRef.current = false;
       displayedRef.current = "";
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDisplayed("");
     } else {
       queueRef.current = "";
@@ -251,14 +250,12 @@ export function useSmoothStreamFromRef(
       if (commonLen > 0 && commonLen >= d.length * 0.5) {
         // Substantial overlap — preserve the common prefix and queue remainder.
         displayedRef.current = T.slice(0, commonLen);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setDisplayed(T.slice(0, commonLen));
         queueRef.current = T.slice(commonLen);
       } else {
         // Texts diverge early — snap to the final target immediately rather
         // than clearing the screen and slowly re-typing everything.
         displayedRef.current = T;
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setDisplayed(T);
         queueRef.current = "";
       }

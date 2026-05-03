@@ -143,3 +143,10 @@ test("首回合与普通回合都可注入 lore", () => {
   assert.ok(first.includes("首轮承接与行动选项"));
   assert.ok(!normal.includes("开局叙事强制约束"));
 });
+test("stable prefix keeps concrete narrative budget packet data out of the cacheable section", () => {
+  __resetStablePlayerDmPrefixMemoForTests();
+  const s = getStablePlayerDmSystemPrefix();
+  assert.equal(s.includes('"schema":"narrative_budget_v1"'), false);
+  assert.equal(s.includes('"targetChars"'), false);
+  assert.equal(s.includes('"reasonCodes"'), false);
+});
