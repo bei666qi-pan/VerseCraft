@@ -384,6 +384,17 @@ function finalizeOptionsFallbackParsed(parsed: string[]): { ok: true; options: s
   return null;
 }
 
+export type OptionsOnlyFallbackResult =
+  | { ok: true; options: string[] }
+  | {
+      ok: false;
+      reason: string;
+      debugReasonCodes?: string[];
+      rawLength?: number;
+      extractedOptionsCount?: number;
+      normalizedOptionsCount?: number;
+    };
+
 async function runOptionsOnlyAiOnce(args: {
   narrative: string;
   latestUserInput: string;
@@ -477,7 +488,7 @@ export async function generateOptionsOnlyFallback(args: {
    * 设计目标：让“补 options”更像低成本工具，而不是第二次长等待。
    */
   budgetMs?: number;
-}): Promise<{ ok: true; options: string[] } | { ok: false; reason: string }> {
+}): Promise<OptionsOnlyFallbackResult> {
   const budgetMs = Math.max(0, Math.min(30_000, args.budgetMs ?? 0));
   const t0 = Date.now();
   const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
@@ -487,25 +498,75 @@ export async function generateOptionsOnlyFallback(args: {
     return { ok: false, reason: "budget_exhausted_before_ai" };
   }
 
-  const tryParse = (content: string): { ok: true; options: string[] } | null => {
+  const tryParse = (
+    content: string
+  ): { ok: true; options: string[] } | {
+    ok: false;
+    reason: string;
+    debugReasonCodes: string[];
+    rawLength: number;
+    extractedOptionsCount: number;
+    normalizedOptionsCount: number;
+  } => {
+    const rawLength = String(content ?? "").length;
+    const cleaned = String(content ?? "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    if (!cleaned) {
+      return {
+        ok: false,
+        reason: "empty_model_content",
+        debugReasonCodes: ["empty_content"],
+        rawLength,
+        extractedOptionsCount: 0,
+        normalizedOptionsCount: 0,
+      };
+    }
+    let obj: Record<string, unknown>;
     try {
       // Strip markdown code fences that some models wrap around JSON
-      const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-      const obj = JSON.parse(cleaned) as Record<string, unknown>;
-      const parsed = parseOptionsArrayFromAiJson(obj.options ?? (obj as any).decision_options);
-      const done = finalizeOptionsFallbackParsed(parsed);
-      if (!done) return null;
-      return {
-        ok: true,
-        options: guardOptionsQualityToFour({
-          options: done.options,
-          playerContext: args.playerContext,
-          recentActionHint: args.latestUserInput,
-        }),
-      };
+      obj = JSON.parse(cleaned) as Record<string, unknown>;
     } catch {
-      return null;
+      return {
+        ok: false,
+        reason: "non_json_model_content",
+        debugReasonCodes: ["parse_failed"],
+        rawLength,
+        extractedOptionsCount: 0,
+        normalizedOptionsCount: 0,
+      };
     }
+    const parsed = parseOptionsArrayFromAiJson(obj.options ?? (obj as any).decision_options);
+    const done = finalizeOptionsFallbackParsed(parsed);
+    if (!done) {
+      const normalized = guardOptionsQualityToFour({
+        options: parsed,
+        playerContext: args.playerContext,
+        recentActionHint: args.latestUserInput,
+      });
+      return {
+        ok: false,
+        reason: "insufficient_model_options",
+        debugReasonCodes: ["insufficient_options"],
+        rawLength,
+        extractedOptionsCount: parsed.length,
+        normalizedOptionsCount: normalized.length,
+      };
+    }
+    const guarded = guardOptionsQualityToFour({
+      options: done.options,
+      playerContext: args.playerContext,
+      recentActionHint: args.latestUserInput,
+    });
+    if (guarded.length !== 4) {
+      return {
+        ok: false,
+        reason: "semantic_gate_rejected",
+        debugReasonCodes: ["semantic_gate_rejected"],
+        rawLength,
+        extractedOptionsCount: done.options.length,
+        normalizedOptionsCount: guarded.length,
+      };
+    }
+    return { ok: true, options: guarded };
   };
 
   const withBudgetSignal = (timeoutMs: number): AbortSignal | undefined => {
@@ -551,14 +612,25 @@ export async function generateOptionsOnlyFallback(args: {
         : Math.max(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, budgetMs > 0 ? budgetMs - 300 : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs)
     ),
   });
+  let lastParseFailure: Extract<OptionsOnlyFallbackResult, { ok: false }> | null = null;
   if (first.ok) {
     const done = tryParse(first.content);
-    if (done) return done;
+    if (done.ok) return done;
+    lastParseFailure = done;
   }
 
   if (budgetMs > 0 && remainingMs() < 1500) {
     // 不注入本地罐头选项；客户端可在正文落地后再请求一次纯模型选项生成。
-    return { ok: false, reason: first.ok ? "invalid_model_options" : first.reason };
+    return first.ok
+      ? {
+          ok: false,
+          reason: "invalid_model_options",
+          debugReasonCodes: lastParseFailure?.debugReasonCodes ?? ["parse_failed"],
+          rawLength: lastParseFailure?.rawLength,
+          extractedOptionsCount: lastParseFailure?.extractedOptionsCount,
+          normalizedOptionsCount: lastParseFailure?.normalizedOptionsCount,
+        }
+      : { ok: false, reason: first.reason, debugReasonCodes: [first.reason] };
   }
 
   const second = await runOptionsOnlyAiOnce({
@@ -570,10 +642,20 @@ export async function generateOptionsOnlyFallback(args: {
   });
   if (second.ok) {
     const done = tryParse(second.content);
-    if (done) return done;
+    if (done.ok) return done;
+    lastParseFailure = done;
   }
 
-  return { ok: false, reason: second.ok ? "invalid_model_options" : second.reason };
+  return second.ok
+    ? {
+        ok: false,
+        reason: "invalid_model_options",
+        debugReasonCodes: lastParseFailure?.debugReasonCodes ?? ["parse_failed"],
+        rawLength: lastParseFailure?.rawLength,
+        extractedOptionsCount: lastParseFailure?.extractedOptionsCount,
+        normalizedOptionsCount: lastParseFailure?.normalizedOptionsCount,
+      }
+    : { ok: false, reason: second.reason, debugReasonCodes: [second.reason] };
 }
 
 async function runDecisionOnlyAiOnce(args: {

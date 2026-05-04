@@ -391,8 +391,18 @@ export async function POST(req: Request) {
       clientTurnModeHint,
       options: regen.ok ? regen.options : [],
       generatorOk: regen.ok,
-      debugReasonCodes: regen.ok ? [] : ["parse_failed"],
+      debugReasonCodes: regen.ok ? [] : (regen.debugReasonCodes ?? ["parse_failed"]),
     });
+    if (!regen.ok && process.env.NODE_ENV !== "production") {
+      console.warn("[api/chat][options_regen_only_failed]", {
+        requestId,
+        reason: regen.reason,
+        debug_reason_codes: regen.debugReasonCodes ?? [],
+        rawLength: regen.rawLength ?? null,
+        extractedOptionsCount: regen.extractedOptionsCount ?? null,
+        normalizedOptionsCount: regen.normalizedOptionsCount ?? null,
+      });
+    }
     const ok = shaped.ok;
     const payload = JSON.stringify(shaped);
     const isAuto =

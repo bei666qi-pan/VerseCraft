@@ -58,7 +58,7 @@ import {
   doesPhaseBlockOptionsRegen,
   isStreamVisualActivePhase,
 } from "@/features/play/stream/chatPhase";
-import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/features/play/stream/dmParse";
+import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
@@ -66,7 +66,6 @@ import { buildOptionsRepairReason, getRepairMissingCount } from "@/lib/play/opti
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
-  extractFinalPayloadFromSseDocument,
   extractStatusFrameFromSseEvent,
   foldSseTextToDmRaw,
   normalizeSseNewlines,
@@ -79,6 +78,12 @@ import {
   getOptionsOnlyDeadlineMs,
   getOptionsRegenSuccessHint,
 } from "./optionsRegenUx";
+import {
+  OPTIONS_REGEN_FAILURE_HINT,
+  parseOptionsFromSsePayload,
+  type OptionsRegenParseResult,
+} from "./optionsRegenParsing";
+import { VERSECRAFT_REQUEST_ID_RESPONSE_HEADER } from "@/lib/telemetry/requestId";
 import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/waitUx/waitUxStages";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -1250,63 +1255,11 @@ function PlayContent() {
       const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
         ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
         : undefined;
-      const parseOptionsFromSsePayload = (
-        payloadText: string,
-        extraBlocked: string[] = []
-      ): { options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } => {
-        const finalPayload = extractFinalPayloadFromSseDocument(payloadText);
-        const dmRaw = finalPayload.found ? finalPayload.payload : foldSseTextToDmRaw(payloadText);
-        let rejectCodes: OptionsRegenReasonCode[] = [];
-        let parseFailed = false;
-        try {
-          const directParsed = JSON.parse(dmRaw) as Record<string, unknown>;
-          const serverDebugCodes = Array.isArray(directParsed.debug_reason_codes)
-            ? directParsed.debug_reason_codes
-                .filter((x): x is string => typeof x === "string")
-                .filter(
-                  (x): x is OptionsRegenReasonCode =>
-                    x === "parse_failed" ||
-                    x === "duplicated_rejected" ||
-                    x === "anchor_miss_rejected" ||
-                    x === "generic_rejected" ||
-                    x === "homogeneity_rejected" ||
-                    x === "repair_pass_used"
-                )
-            : [];
-          const directOpts = (
-            Array.isArray(directParsed.decision_options) ? directParsed.decision_options :
-            Array.isArray(directParsed.options) ? directParsed.options : []
-          ) as unknown[];
-          const q = runSemanticQualityGate(
-            normalizeRegeneratedOptions(directOpts, regenRecentOptions, regenCurrentOptions),
-            extraBlocked
-          );
-          rejectCodes = [...serverDebugCodes, ...q.rejectCodes];
-          if (directOpts.length > 0) {
-            return { options: q.accepted, parseFailed: false, rejectCodes };
-          }
-        } catch {
-          parseFailed = true;
-        }
-        const parsed = tryParseDM(dmRaw) as any;
-        const picked = pickTurnOptionsFromResolvedDm(parsed);
-        let rawOpts: unknown = picked.options;
-        if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
-          const loose = extractRegenOptionsFromRaw(dmRaw);
-          if (loose && loose.length > 0) rawOpts = loose;
-          else parseFailed = true;
-        }
-        const q = runSemanticQualityGate(
-          normalizeRegeneratedOptions(rawOpts, regenRecentOptions, regenCurrentOptions),
-          extraBlocked
-        );
-        return { options: q.accepted, parseFailed, rejectCodes: [...rejectCodes, ...q.rejectCodes] };
-      };
       const runOptionsOnlyAttempt = async (
         attemptReason: string,
         attemptContext = optionsRegenContext,
         extraBlocked: string[] = []
-      ): Promise<{ options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } | null> => {
+      ): Promise<OptionsRegenParseResult | null> => {
         const attemptMessages: ChatMessage[] = useOptionsOnlyPath
           ? [
               ...assistantContextMessages,
@@ -1342,6 +1295,7 @@ function PlayContent() {
           signal: ac.signal,
         });
         if (!attemptRes.ok || !attemptRes.body) return null;
+        const responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
         const reader = attemptRes.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let text = "";
@@ -1359,13 +1313,34 @@ function PlayContent() {
             // ignore
           }
         }
-        return parseOptionsFromSsePayload(text, extraBlocked);
+        const parsed = parseOptionsFromSsePayload(text, {
+          requestId: responseRequestId,
+          extraBlocked,
+          normalizeOptions: (rawOptions) =>
+            normalizeRegeneratedOptions(rawOptions, regenRecentOptions, regenCurrentOptions),
+          runSemanticQualityGate,
+        });
+        if (parsed.failure && process.env.NODE_ENV === "development") {
+          console.warn(
+            `[play][options_regen_failed] reason=${parsed.failure.reason} debug_reason_codes=${
+              parsed.failure.debugReasonCodes.join(",") || "none"
+            }`,
+            {
+              requestId: parsed.requestId,
+              rawLength: parsed.rawLength,
+              extractedOptionsCount: parsed.extractedOptionsCount,
+              normalizedOptionsCount: parsed.normalizedOptionsCount,
+              semanticGateRejectReason: parsed.semanticGateRejectReason,
+            }
+          );
+        }
+        return parsed;
       };
       const firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
       if (tid !== undefined) window.clearTimeout(tid);
       if (firstPass === null) {
         setCurrentOptions([]);
-        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+        setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
         return;
       }
       if (firstPass.parseFailed) reasonCodes.add("parse_failed");
@@ -1418,7 +1393,7 @@ function PlayContent() {
 
       if (finalOptions.length !== 4) {
         setCurrentOptions([]);
-        setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
+        setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
@@ -1434,7 +1409,7 @@ function PlayContent() {
       );
     } catch {
       setCurrentOptions([]);
-      setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
+      setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;

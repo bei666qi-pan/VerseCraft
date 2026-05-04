@@ -26,3 +26,16 @@ test("buildOptionsRegenResponse: insufficient options yields ok=false and empty 
   assert.equal(Array.isArray(out.debug_reason_codes), true);
 });
 
+test("buildOptionsRegenResponse: upstream failure preserves diagnostic reason codes", () => {
+  const out = buildOptionsRegenResponse({
+    clientTurnModeHint: "decision_required",
+    options: [],
+    generatorOk: false,
+    debugReasonCodes: ["empty_content", "parse_failed"],
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.reason, "upstream_generate_failed");
+  assert.deepEqual(out.options, []);
+  assert.deepEqual(out.debug_reason_codes, ["empty_content", "parse_failed"]);
+});
+
