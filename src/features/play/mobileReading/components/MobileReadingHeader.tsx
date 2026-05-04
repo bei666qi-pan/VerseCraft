@@ -8,7 +8,7 @@ export function MobileReadingHeader({
   audioMuted,
   onToggleAudio,
   pinned = false,
-  title = "第六章：雾港来信",
+  title,
   variant = "default",
 }: MobileReadingHeaderProps) {
   const isCodex = variant === "codex";
@@ -20,12 +20,14 @@ export function MobileReadingHeader({
     : isCodex
       ? mobileReadingTheme.headerCodex
       : mobileReadingTheme.header;
+  const brandClassName = isCodex ? mobileReadingTheme.headerBrandCodex : mobileReadingTheme.headerBrand;
+  const logoGroupClassName = isCodex ? mobileReadingTheme.headerCodexLogoGroup : mobileReadingTheme.headerLogoGroup;
   return (
     <>
       <header data-testid="mobile-reading-header" className={headerClassName}>
         <div className={mobileReadingTheme.headerRow}>
-          <div className={mobileReadingTheme.headerBrand}>
-            <div className={isCodex ? mobileReadingTheme.headerCodexLogoGroup : "flex shrink-0 items-center gap-1"}>
+          <div className={brandClassName}>
+            <div className={logoGroupClassName}>
               {isCodex ? (
                 <MobileReadingIcons.BrandMark className={mobileReadingTheme.brandMarkCodex} strokeWidth={1.5} />
               ) : null}
@@ -37,7 +39,12 @@ export function MobileReadingHeader({
               ) : null}
             </div>
             <span className={isCodex ? mobileReadingTheme.brandDividerCodex : mobileReadingTheme.brandDivider} aria-hidden />
-            <span className={isCodex ? mobileReadingTheme.chapterTitleCodex : mobileReadingTheme.chapterTitle}>{title}</span>
+            <span
+              data-testid="mobile-reading-chapter-title"
+              className={isCodex ? mobileReadingTheme.chapterTitleCodex : mobileReadingTheme.chapterTitle}
+            >
+              {title}
+            </span>
           </div>
 
           <button

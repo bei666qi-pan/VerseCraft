@@ -3020,11 +3020,7 @@ function PlayContent() {
   const isReviewingChapter = chapterRuntime.isReviewing && isStoryPanelActive;
   const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
   const chapterInteractionLocked = Boolean(pendingChapterEnd);
-  const mobileHeaderTitle = isCodexPanelActive
-    ? "图鉴"
-    : isCharacterPanelActive
-      ? "角色"
-      : "第六章：雾港来信";
+  const mobileHeaderTitle = chapterRuntime.headerTitle;
   function onOpenCharacterNav() {
     playUIClick();
     setOptionsExpanded(false);

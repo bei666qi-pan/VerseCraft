@@ -21,7 +21,7 @@ export type MobileReadingHeaderProps = {
   audioMuted: boolean;
   onToggleAudio: () => void;
   pinned?: boolean;
-  title?: string;
+  title: string;
   variant?: "default" | "codex";
 };
 

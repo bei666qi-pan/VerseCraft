@@ -378,6 +378,31 @@ async function expectUnknownCodexPlaceholder(page: Page, codexId: string) {
   await expect(image).toHaveAttribute("src", CODEX_UNKNOWN_PLACEHOLDER_SRC);
 }
 
+async function expectChapterTitleFullyVisible(page: Page, viewportName: string) {
+  const metrics = await page.getByTestId("mobile-reading-chapter-title").evaluate((node) => {
+    const el = node as HTMLElement;
+    const style = getComputedStyle(el);
+    return {
+      clientHeight: el.clientHeight,
+      clientWidth: el.clientWidth,
+      overflowX: style.overflowX,
+      scrollHeight: el.scrollHeight,
+      scrollWidth: el.scrollWidth,
+      textOverflow: style.textOverflow,
+      whiteSpace: style.whiteSpace,
+    };
+  });
+
+  expect(metrics.textOverflow, `${viewportName} chapter title should not use ellipsis truncation`).not.toBe("ellipsis");
+  expect(metrics.whiteSpace, `${viewportName} chapter title should be allowed to wrap`).not.toBe("nowrap");
+  expect(metrics.scrollWidth, `${viewportName} chapter title should fit horizontally`).toBeLessThanOrEqual(
+    metrics.clientWidth + 1
+  );
+  expect(metrics.scrollHeight, `${viewportName} chapter title should fit vertically`).toBeLessThanOrEqual(
+    metrics.clientHeight + 1
+  );
+}
+
 async function expectPanelFillsViewportWithoutHeader(
   page: Page,
   panelTestId: "mobile-character-panel" | "mobile-codex-panel",
@@ -484,7 +509,8 @@ test.describe("mobile reading UI", () => {
 
     await expect(page.getByTestId("mobile-reading-shell")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第一章：暗月初醒");
+    await expectChapterTitleFullyVisible(page, "390x844");
     await expect(page.getByTestId("chapter-header-pill")).toHaveCount(0);
     await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
@@ -857,6 +883,7 @@ test.describe("mobile reading UI", () => {
       const shell = page.getByTestId("mobile-reading-shell");
       await expect(shell).toBeVisible();
       await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+      await expectChapterTitleFullyVisible(page, `${viewport.width}x${viewport.height}`);
       await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
       await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
       await expectReferenceBottomNavIcons(page, `${viewport.width}x${viewport.height}`);

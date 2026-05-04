@@ -264,7 +264,7 @@ test.describe("chapter flow", () => {
     await installChatMock(page);
 
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toContainText("第六章：雾港来信");
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第一章：暗月初醒");
     await expect(page.getByTestId("chapter-header-pill")).toHaveCount(0);
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
@@ -281,6 +281,7 @@ test.describe("chapter flow", () => {
 
     await page.getByTestId("chapter-next-button").click();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：门后回声");
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
     await page.getByTestId("bottom-nav-story").click();

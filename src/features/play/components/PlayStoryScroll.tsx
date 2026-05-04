@@ -16,6 +16,13 @@ import { VcSpinner } from "./VcSpinner";
 
 export type PlayStoryDisplayEntry = { role: "assistant" | "user"; content: string; logIndex: number };
 
+const STORY_TYPOGRAPHY_CLASS =
+  "vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] tracking-normal text-[#174d46]";
+const STORY_TYPOGRAPHY_STYLE = {
+  fontSize: "var(--vc-story-font-size, 22px)",
+  lineHeight: "var(--vc-story-line-height, 46.64px)",
+} satisfies CSSProperties;
+
 function renderUserNarrative(content: string): string {
   return formatUserNarrativeForDisplay(content);
 }
@@ -52,7 +59,8 @@ const StoryHistory = memo(function StoryHistory({
         ) : entry.role === "user" ? (
           <p
             key={entry.logIndex}
-            className="mb-10 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#174d46]"
+            className={`mb-10 ${STORY_TYPOGRAPHY_CLASS}`}
+            style={STORY_TYPOGRAPHY_STYLE}
           >
             {renderUserNarrative(safeContent)}
           </p>
@@ -109,7 +117,13 @@ const StreamPanel = memo(function StreamPanel({
         <div className="space-y-1 py-2 transition-opacity duration-300 ease-out">
           <div className="flex items-center gap-2">
             <VcSpinner size={28} strokeWidth={2} className="shrink-0" />
-            <span className="text-sm font-medium text-[#4f706a]">{primaryThinkingLine}</span>
+            <span
+              data-testid="stream-waiting-primary-line"
+              className={`${STORY_TYPOGRAPHY_CLASS} font-medium text-[#4f706a]`}
+              style={STORY_TYPOGRAPHY_STYLE}
+            >
+              {primaryThinkingLine}
+            </span>
           </div>
           {waitUxSecondaryLine && waitUxSecondaryLine.trim().length > 0 ? (
             <div className="text-[11px] text-[#8b8a84]">{waitUxSecondaryLine.trim()}</div>
@@ -119,7 +133,11 @@ const StreamPanel = memo(function StreamPanel({
         </div>
       ) : (
         <>
-          <div className="space-y-6 vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] text-[#174d46]">
+          <div
+            data-testid="stream-narrative-block"
+            className={`space-y-6 ${STORY_TYPOGRAPHY_CLASS}`}
+            style={STORY_TYPOGRAPHY_STYLE}
+          >
             <span className="whitespace-pre-wrap">
               {renderNarrativeText(smoothNarrative, { streamSafe: true })}
             </span>

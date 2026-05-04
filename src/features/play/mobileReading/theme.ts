@@ -67,25 +67,27 @@ export const mobileReadingTheme = {
     "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2]/98 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] backdrop-blur-[8px] min-[420px]:px-6 md:border-x md:border-[#ded8ce]",
   headerSpacer: "h-[var(--vc-mobile-header-height)] shrink-0",
   headerRow: "flex h-full items-center justify-between gap-3",
-  headerBrand: "flex min-w-0 items-center gap-3 vc-reading-serif",
+  headerBrand: "flex min-w-0 flex-1 flex-col items-start justify-center gap-1 vc-reading-serif",
+  headerBrandCodex: "flex min-w-0 flex-1 items-center gap-3 vc-reading-serif",
+  headerLogoGroup: "flex shrink-0 items-center gap-1.5",
   headerCodexLogoGroup: "flex shrink-0 items-center gap-2",
   brandWordmark:
-    "whitespace-nowrap text-[30px] leading-none text-[#174d46] min-[420px]:text-[38px]",
+    "whitespace-nowrap text-[18px] leading-none text-[#4f706a] min-[420px]:text-[20px]",
   brandWordmarkCodex:
     "whitespace-nowrap text-[31px] leading-none text-[#174d46] min-[420px]:text-[36px]",
-  brandMark: "mt-1 h-6 w-6 shrink-0 text-[#174d46] min-[420px]:h-7 min-[420px]:w-7",
+  brandMark: "h-4 w-4 shrink-0 text-[#4f706a] min-[420px]:h-5 min-[420px]:w-5",
   brandMarkCodex: "h-7 w-7 shrink-0 text-[#174d46] min-[420px]:h-8 min-[420px]:w-8",
-  brandDivider: "h-10 w-px shrink-0 bg-[#cfc8bc] min-[420px]:h-12",
+  brandDivider: "hidden",
   brandDividerCodex: "h-9 w-px shrink-0 bg-[#cfc8bc] min-[420px]:h-11",
   chapterTitle:
-    "min-w-0 truncate text-[22px] leading-none text-[#174d46] min-[420px]:text-[30px]",
+    "block w-full max-w-full whitespace-normal break-keep text-[24px] leading-[1.08] text-[#174d46] [text-wrap:balance] min-[420px]:text-[28px]",
   chapterTitleCodex:
     "min-w-0 truncate text-[25px] leading-none text-[#174d46] min-[420px]:text-[30px]",
   audioButton:
-    "flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_8px_18px_rgba(69,58,45,0.12),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-white active:scale-95 min-[420px]:h-[64px] min-[420px]:w-[64px]",
+    "flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_8px_18px_rgba(69,58,45,0.12),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-white active:scale-95 min-[420px]:h-[58px] min-[420px]:w-[58px]",
   audioButtonCodex:
     "flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_8px_18px_rgba(69,58,45,0.12),inset_0_1px_0_rgba(255,255,255,0.94)] transition hover:bg-white active:scale-95 min-[420px]:h-[64px] min-[420px]:w-[64px]",
-  audioIcon: "h-7 w-7 min-[420px]:h-8 min-[420px]:w-8",
+  audioIcon: "h-[1.55rem] w-[1.55rem] min-[420px]:h-7 min-[420px]:w-7",
   audioIconCodex: "h-7 w-7 min-[420px]:h-8 min-[420px]:w-8",
 
   iconButton:
