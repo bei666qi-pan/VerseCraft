@@ -7,6 +7,7 @@ import {
   resolveAiEnv,
 } from "@/lib/ai/config/envCore";
 import { resolveOperationMode } from "@/lib/ai/degrade/modeCore";
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
 function withEnv(patch: Record<string, string | undefined>, fn: () => void): void {
   const prev: Record<string, string | undefined> = {};
@@ -254,6 +255,114 @@ test("resolveAiEnv uses default lore retrieval budget", () => {
     },
     () => {
       assert.equal(resolveAiEnv().loreRetrievalBudgetMs, 600);
+    }
+  );
+});
+
+test("resolveAiEnv budgets control preflight by default and allows rollback", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_CONTROL_PREFLIGHT_BUDGET_MS: undefined,
+    },
+    () => {
+      assert.equal(resolveAiEnv().controlPreflightBudgetMs, 260);
+    }
+  );
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_CONTROL_PREFLIGHT_BUDGET_MS: "0",
+    },
+    () => {
+      assert.equal(resolveAiEnv().controlPreflightBudgetMs, 0);
+    }
+  );
+});
+
+test("resolveAiEnv uses bounded player chat upstream timeout defaults", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_PLAYER_CHAT_TIMEOUTS_V2: undefined,
+      AI_PLAYER_CHAT_FASTLANE_TIMEOUT_MS: undefined,
+      AI_PLAYER_CHAT_SLOWLANE_TIMEOUT_MS: undefined,
+      AI_PLAYER_CHAT_STREAM_RECONNECT_WALL_MS: undefined,
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.equal(e.playerChatFastLaneTimeoutMs, 18_000);
+      assert.equal(e.playerChatSlowLaneTimeoutMs, 45_000);
+      assert.equal(e.playerChatStreamReconnectWallMs, VC_WAITING.playerChatStreamReconnectWallDefaultMs);
+    }
+  );
+});
+
+test("resolveAiEnv allows explicit stream reconnect wall override", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_PLAYER_CHAT_STREAM_RECONNECT_WALL_MS: "22000",
+    },
+    () => {
+      assert.equal(resolveAiEnv().playerChatStreamReconnectWallMs, 22_000);
+    }
+  );
+});
+
+test("resolveAiEnv can roll player chat upstream timeouts back", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_PLAYER_CHAT_TIMEOUTS_V2: "0",
+      AI_PLAYER_CHAT_FASTLANE_TIMEOUT_MS: undefined,
+      AI_PLAYER_CHAT_SLOWLANE_TIMEOUT_MS: undefined,
+      AI_PLAYER_CHAT_STREAM_RECONNECT_WALL_MS: undefined,
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.equal(e.playerChatFastLaneTimeoutMs, 60_000);
+      assert.equal(e.playerChatSlowLaneTimeoutMs, 60_000);
+      assert.equal(e.playerChatStreamReconnectWallMs, 0);
+    }
+  );
+});
+
+test("resolveAiEnv disables player chat thinking by default and keeps gateway extra body task-scoped", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_PLAYER_CHAT_DISABLE_THINKING: undefined,
+      AI_PLAYER_CHAT_MERGE_EXTRA_BODY: undefined,
+      AI_PLAYER_CHAT_EXTRA_BODY_JSON: undefined,
+      AI_GATEWAY_MERGE_EXTRA_BODY: undefined,
+      AI_GATEWAY_EXTRA_BODY_JSON: undefined,
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.deepEqual(e.playerChatExtraBody, {
+        enable_thinking: false,
+        thinking: { type: "disabled" },
+      });
+      assert.equal(e.gatewayExtraBody, undefined);
+    }
+  );
+});
+
+test("resolveAiEnv allows player chat thinking extra body rollback and explicit merge", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      AI_PLAYER_CHAT_DISABLE_THINKING: "0",
+      AI_PLAYER_CHAT_MERGE_EXTRA_BODY: "1",
+      AI_PLAYER_CHAT_EXTRA_BODY_JSON: '{"enable_thinking":false}',
+      AI_GATEWAY_MERGE_EXTRA_BODY: undefined,
+      AI_GATEWAY_EXTRA_BODY_JSON: undefined,
+    },
+    () => {
+      const e = resolveAiEnv();
+      assert.deepEqual(e.playerChatExtraBody, { enable_thinking: false });
+      assert.equal(e.gatewayExtraBody, undefined);
     }
   );
 });

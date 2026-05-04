@@ -7,8 +7,8 @@ import {
 } from "@/hooks/useSmoothStream";
 
 test("smooth stream defaults keep long-narrative backlog catch-up bounded", () => {
-  assert.equal(SMOOTH_STREAM_DEFAULT_OPTIONS.backlogThreshold, 180);
-  assert.equal(SMOOTH_STREAM_DEFAULT_OPTIONS.backlogMaxLen, 42);
+  assert.equal(SMOOTH_STREAM_DEFAULT_OPTIONS.backlogThreshold, 140);
+  assert.equal(SMOOTH_STREAM_DEFAULT_OPTIONS.backlogMaxLen, 56);
   assert.ok(SMOOTH_STREAM_DEFAULT_OPTIONS.backlogMaxLen > SMOOTH_STREAM_DEFAULT_OPTIONS.steadyMaxLen);
   assert.ok(SMOOTH_STREAM_DEFAULT_OPTIONS.backlogMaxLen < 64);
 });
@@ -21,7 +21,7 @@ test("backlog punctuation pause is capped for long narrative queues", () => {
     options: SMOOTH_STREAM_DEFAULT_OPTIONS,
   });
 
-  assert.equal(pause, 24);
+  assert.equal(pause, 18);
 });
 
 test("initial burst stays snappy while semantic chunking avoids full flush", () => {
@@ -33,7 +33,18 @@ test("initial burst stays snappy while semantic chunking avoids full flush", () 
   });
   const chunk = takeSemanticChunk("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 42);
 
-  assert.ok(pause <= 32);
+  assert.ok(pause <= 22);
   assert.ok(chunk.length > SMOOTH_STREAM_DEFAULT_OPTIONS.steadyMaxLen);
   assert.ok(chunk.length <= SMOOTH_STREAM_DEFAULT_OPTIONS.backlogMaxLen);
+});
+
+test("steady Chinese punctuation pauses stay compact", () => {
+  const pause = computePauseMs({
+    chunk: "门缝里传来一声轻响。",
+    backlog: 24,
+    stage: "steady",
+    options: SMOOTH_STREAM_DEFAULT_OPTIONS,
+  });
+
+  assert.ok(pause <= 72);
 });

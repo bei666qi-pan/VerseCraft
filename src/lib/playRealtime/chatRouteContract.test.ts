@@ -23,7 +23,7 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   assert.ok(routeContent.includes("resolveDmTurn"), "final envelope resolver must be applied");
   assert.ok(
     routeContent.includes("maxChars: 4000") ||
-      routeContent.includes("contextMode === \"minimal\" ? 1400 : 4000"),
+      routeContent.includes("contextMode === \"minimal\" ? 900 : 4000"),
     "runtime packet budget must stay aligned with buildRuntimeContextPackets full default (stage2 + 学制子包)"
   );
   assert.ok(routeContent.includes("finalOutputModeration"), "final output safety must be retained");

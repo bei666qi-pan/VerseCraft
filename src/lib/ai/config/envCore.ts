@@ -11,10 +11,10 @@ import {
   parseRoleChain,
 } from "@/lib/ai/models/logicalRoles";
 import { envBoolean, envEnum, envNumber, envRaw } from "@/lib/config/envRaw";
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
-function resolveGatewayExtraBody(): Record<string, unknown> | undefined {
-  if (!envBoolean("AI_GATEWAY_MERGE_EXTRA_BODY", false)) return undefined;
-  const raw = envRaw("AI_GATEWAY_EXTRA_BODY_JSON")?.trim();
+function resolveExtraBodyJson(envName: string): Record<string, unknown> | undefined {
+  const raw = envRaw(envName)?.trim();
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -25,6 +25,25 @@ function resolveGatewayExtraBody(): Record<string, unknown> | undefined {
     /* invalid JSON → no merge */
   }
   return undefined;
+}
+
+function resolveGatewayExtraBody(): Record<string, unknown> | undefined {
+  if (!envBoolean("AI_GATEWAY_MERGE_EXTRA_BODY", false)) return undefined;
+  return resolveExtraBodyJson("AI_GATEWAY_EXTRA_BODY_JSON");
+}
+
+function resolvePlayerChatExtraBody(): Record<string, unknown> | undefined {
+  const defaults = envBoolean("AI_PLAYER_CHAT_DISABLE_THINKING", true)
+    ? {
+        enable_thinking: false,
+        thinking: { type: "disabled" },
+      }
+    : {};
+  const explicit = envBoolean("AI_PLAYER_CHAT_MERGE_EXTRA_BODY", false)
+    ? (resolveExtraBodyJson("AI_PLAYER_CHAT_EXTRA_BODY_JSON") ?? {})
+    : {};
+  const merged = { ...defaults, ...explicit };
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 export type AiGatewayProviderId = "oneapi";
@@ -62,6 +81,12 @@ export interface ResolvedAiEnv {
    */
   playerChatStreamIncludeUsage: boolean;
   /**
+   * PLAYER_CHAT fast lane: when true, do not request provider-side json_object
+   * mode for the live stream. The prompt, parser, normalizer, and final frame
+   * guards still enforce the DM JSON contract locally.
+   */
+  playerChatFastLaneRelaxResponseFormat: boolean;
+  /**
    * PLAYER_CHAT: cap candidate role count (after forbidden + configured-model filter).
    * 0 = no cap (legacy).
    */
@@ -71,6 +96,18 @@ export interface ResolvedAiEnv {
    * Lower reduces first-byte tail amplification; fallback/circuit still applies.
    */
   playerChatMaxRetries: number;
+  /**
+   * PLAYER_CHAT: per-upstream-attempt timeout by risk lane.
+   * Keeps normal turns from being stretched by provider stalls while preserving
+   * slow-lane room for heavier adjudication.
+   */
+  playerChatFastLaneTimeoutMs: number;
+  playerChatSlowLaneTimeoutMs: number;
+  /**
+   * PLAYER_CHAT: wall-clock limit after which stream-body reconnect is skipped.
+   * 0 = legacy 40s reconnect window.
+   */
+  playerChatStreamReconnectWallMs: number;
   /**
    * PLAYER_CHAT: optional per-turn max_tokens rollback override. Null means use
    * narrative-budget tier mapping at the caller/task-policy layer.
@@ -98,6 +135,8 @@ export interface ResolvedAiEnv {
   onlineShortJsonRetryHardCap1: boolean;
   /** Parsed AI_GATEWAY_EXTRA_BODY_JSON when AI_GATEWAY_MERGE_EXTRA_BODY=1. */
   gatewayExtraBody?: Record<string, unknown>;
+  /** Parsed AI_PLAYER_CHAT_EXTRA_BODY_JSON when AI_PLAYER_CHAT_MERGE_EXTRA_BODY=1. */
+  playerChatExtraBody?: Record<string, unknown>;
   /**
    * Wall-clock cap to wait for control preflight before treating as unavailable (same as API failure).
    * 0 = wait for full upstream timeout (legacy).
@@ -246,6 +285,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
   for (const r of AI_LOGICAL_ROLES) {
     modelsByRole[r] = readModelForRole(r);
   }
+  const playerChatTimeoutsV2 = envBoolean("AI_PLAYER_CHAT_TIMEOUTS_V2", true);
 
   return {
     gatewayProvider,
@@ -274,7 +314,8 @@ export function resolveAiEnv(): ResolvedAiEnv {
       "AI_NARRATIVE_EXPANSION_ENABLED",
       defaultNarrativeExpansionEnabled()
     ),
-    playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", true),
+    playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", false),
+    playerChatFastLaneRelaxResponseFormat: envBoolean("AI_PLAYER_CHAT_FASTLANE_RELAX_RESPONSE_FORMAT", false),
     playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
     playerChatMaxRetries: (() => {
       const override = envNumber("AI_PLAYER_CHAT_MAX_RETRIES", NaN);
@@ -283,6 +324,24 @@ export function resolveAiEnv(): ResolvedAiEnv {
       // Conservative cap for player-facing TTFT: allow explicit override, but never exceed 4.
       return Math.max(0, Math.min(4, resolved));
     })(),
+    playerChatFastLaneTimeoutMs: Math.max(
+      3_000,
+      Math.min(60_000, envNumber("AI_PLAYER_CHAT_FASTLANE_TIMEOUT_MS", playerChatTimeoutsV2 ? 18_000 : 60_000))
+    ),
+    playerChatSlowLaneTimeoutMs: Math.max(
+      8_000,
+      Math.min(90_000, envNumber("AI_PLAYER_CHAT_SLOWLANE_TIMEOUT_MS", playerChatTimeoutsV2 ? 45_000 : 60_000))
+    ),
+    playerChatStreamReconnectWallMs: Math.max(
+      0,
+      Math.min(
+        120_000,
+        envNumber(
+          "AI_PLAYER_CHAT_STREAM_RECONNECT_WALL_MS",
+          playerChatTimeoutsV2 ? VC_WAITING.playerChatStreamReconnectWallDefaultMs : 0
+        )
+      )
+    ),
     playerChatMaxTokensOverride: resolvePlayerChatMaxTokensOverride(),
     onlineShortJsonMaxRetries: (() => {
       const override = envNumber("AI_ONLINE_SHORT_JSON_MAX_RETRIES", NaN);
@@ -298,9 +357,13 @@ export function resolveAiEnv(): ResolvedAiEnv {
     playerChatFailFastOnRateLimit: envBoolean("AI_PLAYER_CHAT_FAILFAST_RATELIMIT", true),
     onlineShortJsonRetryHardCap1: envBoolean("AI_ONLINE_SHORT_JSON_RETRY_HARDCAP_1", true),
     gatewayExtraBody: resolveGatewayExtraBody(),
+    playerChatExtraBody: resolvePlayerChatExtraBody(),
     controlPreflightBudgetMs: Math.max(
       0,
-      Math.min(10_000, envNumber("AI_CONTROL_PREFLIGHT_BUDGET_MS", 0))
+      Math.min(
+        10_000,
+        envNumber("AI_CONTROL_PREFLIGHT_BUDGET_MS", VC_WAITING.controlPreflightDefaultBudgetMs)
+      )
     ),
     narrativeEnhanceBudgetMs: Math.max(
       0,
@@ -320,6 +383,9 @@ export function resolveAiEnv(): ResolvedAiEnv {
 
 /** True when gateway URL, key, and main model name are configured (minimum for player chat). */
 export function anyAiProviderConfigured(): boolean {
+  if (process.env.VC_FORCE_AI_KEYS_MISSING === "1" || process.env.AI_FORCE_KEYS_MISSING === "1") {
+    return false;
+  }
   const e = resolveAiEnv();
   return (
     e.gatewayApiKey.length > 0 &&

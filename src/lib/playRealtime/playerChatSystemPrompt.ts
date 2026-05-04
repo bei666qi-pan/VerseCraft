@@ -151,6 +151,8 @@ const STABLE_SECTION_GLUE = "\n\n## 【本回合动态上下文】";
 
 let memoStablePrefix: string | undefined;
 let memoVersionKey: string | undefined;
+let memoCompactStablePrefix: string | undefined;
+let memoCompactVersionKey: string | undefined;
 
 /**
  * Longest stable prefix for prompt/KV cache: full static instructions + lore + fixed section title.
@@ -166,10 +168,34 @@ export function getStablePlayerDmSystemPrefix(): string {
   return memoStablePrefix;
 }
 
+export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
+  return [
+    "你是 VerseCraft 悬疑互动叙事 DM。请严格以 JSON 格式输出，只输出一个 JSON 对象。",
+    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；尽量给 consumes_time、options、player_location、task/codex/relationship/item/currency/dm_change_set 等结构化变化，缺省由服务端补齐。",
+    "narrative 用第一人称“我”，按 narrative_budget_packet 控制长度；每个信息 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化，禁止客服腔和同义复述。",
+    "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
+    "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。",
+    "【安全合规】触及涉黄、极端政治、暴恐细节或违法指引时拒绝执行：is_action_legal=false，sanity_damage=1，consumes_time=true，并给 4 条安全替代 options。",
+    "options 若输出必须 4 条、互不重复、可执行、贴合当前场景；高维真相只能在动态 packet/reveal tier 允许时渐进露出。",
+  ];
+}
+
+export function getCompactStablePlayerDmSystemPrefix(): string {
+  const v = (envRaw("VERSECRAFT_DM_STABLE_PROMPT_VERSION") ?? "").trim();
+  if (memoCompactStablePrefix !== undefined && memoCompactVersionKey === v) {
+    return memoCompactStablePrefix;
+  }
+  memoCompactVersionKey = v;
+  memoCompactStablePrefix = buildCompactStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
+  return memoCompactStablePrefix;
+}
+
 /** Test helper: clear module memo. */
 export function __resetStablePlayerDmPrefixMemoForTests(): void {
   memoStablePrefix = undefined;
   memoVersionKey = undefined;
+  memoCompactStablePrefix = undefined;
+  memoCompactVersionKey = undefined;
 }
 
 export interface PlayerDmDynamicSuffixInput {

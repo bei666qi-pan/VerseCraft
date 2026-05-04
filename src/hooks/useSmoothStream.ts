@@ -32,14 +32,14 @@ export type SmoothStreamTailDrainConfig = {
 };
 
 export const SMOOTH_STREAM_DEFAULT_OPTIONS: Required<SmoothStreamOptions> = {
-  minTickMs: 24,
-  maxTickMs: 140,
-  initialBurstWindowMs: 260,
-  initialBurstMaxLen: 40,
-  steadyMaxLen: 18,
-  backlogThreshold: 180,
-  backlogMaxLen: 42,
-  burstCharsWhenBacklog: 26,
+  minTickMs: 18,
+  maxTickMs: 96,
+  initialBurstWindowMs: 1600,
+  initialBurstMaxLen: 56,
+  steadyMaxLen: 24,
+  backlogThreshold: 140,
+  backlogMaxLen: 56,
+  burstCharsWhenBacklog: 34,
   uniformPacing: false,
   uniformTickMs: 40,
 };
@@ -108,27 +108,27 @@ export function computePauseMs(args: {
   // punctuation pause
   // Phase-4：中文长叙事标点密度高，过长停顿会造成“看起来慢于实际”的断续感。
   // 规则：标点仍可停，但在小 backlog / 小 chunk 时显著收敛停顿。
-  if (tail && SENTENCE_PUNCT.has(tail)) pause = 120;
-  else if (tail && CLAUSE_PUNCT.has(tail)) pause = 72;
-  else pause = 44;
+  if (tail && SENTENCE_PUNCT.has(tail)) pause = 72;
+  else if (tail && CLAUSE_PUNCT.has(tail)) pause = 44;
+  else pause = 30;
 
   const nonWsLen = chunk.replace(/\s/g, "").length;
   if (nonWsLen > 0 && nonWsLen <= 6) {
-    pause = Math.min(pause, 40);
+    pause = Math.min(pause, 28);
   } else if (nonWsLen > 0 && nonWsLen <= 12) {
-    pause = Math.min(pause, 54);
+    pause = Math.min(pause, 36);
   }
 
   // backlog catch-up reduces pauses
   if (stage === "backlog") {
-    if (backlog > 420) pause = 24;
-    else if (backlog > 300) pause = 30;
-    else pause = Math.max(options.minTickMs, Math.min(pause, 54));
+    if (backlog > 420) pause = 18;
+    else if (backlog > 300) pause = 22;
+    else pause = Math.max(options.minTickMs, Math.min(pause, 34));
   }
 
   // initial burst keeps the first tokens snappy
   if (stage === "initial") {
-    pause = Math.min(pause, 32);
+    pause = Math.min(pause, 22);
   }
 
   return Math.max(options.minTickMs, Math.min(options.maxTickMs, pause));
@@ -333,7 +333,7 @@ export function useSmoothStreamFromRef(
           const backlog = q.length;
           const elapsedTurnMs = now - turnStartAtRef.current;
 
-          const isInitial = elapsedTurnMs < mergedOptions.initialBurstWindowMs && !hasShownMeaningfulRef.current;
+          const isInitial = elapsedTurnMs < mergedOptions.initialBurstWindowMs;
           const isBacklog = backlog > Math.max(mergedOptions.backlogThreshold, 120);
 
           const stage: "initial" | "steady" | "backlog" = isBacklog ? "backlog" : isInitial ? "initial" : "steady";

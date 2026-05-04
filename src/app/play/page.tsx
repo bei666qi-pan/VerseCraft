@@ -58,7 +58,7 @@ import {
   doesPhaseBlockOptionsRegen,
   isStreamVisualActivePhase,
 } from "@/features/play/stream/chatPhase";
-import { extractNarrative, extractRegenOptionsFromRaw, tryParseDM } from "@/features/play/stream/dmParse";
+import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
@@ -66,7 +66,6 @@ import { buildOptionsRepairReason, getRepairMissingCount } from "@/lib/play/opti
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
-  extractFinalPayloadFromSseDocument,
   extractStatusFrameFromSseEvent,
   foldSseTextToDmRaw,
   normalizeSseNewlines,
@@ -79,6 +78,12 @@ import {
   getOptionsOnlyDeadlineMs,
   getOptionsRegenSuccessHint,
 } from "./optionsRegenUx";
+import {
+  OPTIONS_REGEN_FAILURE_HINT,
+  parseOptionsFromSsePayload,
+  type OptionsRegenParseResult,
+} from "./optionsRegenParsing";
+import { VERSECRAFT_REQUEST_ID_RESPONSE_HEADER } from "@/lib/telemetry/requestId";
 import { parseBackendWaitStage, type PlayWaitUxStage } from "@/features/play/waitUx/waitUxStages";
 import type { ChatMessage, ChatRole, ChatStreamPhase } from "@/features/play/stream/types";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -132,6 +137,7 @@ function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undef
 const STREAM_CHUNK_STALL_MS = VC_WAITING.playStreamChunkStallMs;
 /** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
 const STREAM_FIRST_CHUNK_STALL_MS = VC_WAITING.playStreamFirstChunkStallMs;
+const MIDSTREAM_LONG_GAP_MS = VC_WAITING.playInterChunkLongGapMs;
 /**
  * Max wait for the **first byte / response headers** from our own `/api/chat`.
  * The handler runs moderation + DB + control preflight (≤~11s) before calling upstream; `resilientFetch`
@@ -377,22 +383,30 @@ function PlayContent() {
   const waitUxSignalsRef = useRef<{
     requestId: string | null;
     requestStartedAt: number | null;
+    firstStatusShownAt: number | null;
     responseHeadersAt: number | null;
     firstSseDataAt: number | null;
     firstVisibleTextAt: number | null;
+    finalFrameReceivedAt: number | null;
     lastSseDataAt: number | null;
+    lastMidstreamSseDataAt: number | null;
     maxInterChunkGapMs: number;
     longGapCount: number;
+    midstreamLongGapCount: number;
     sentPerf: boolean;
   }>({
     requestId: null,
     requestStartedAt: null,
+    firstStatusShownAt: null,
     responseHeadersAt: null,
     firstSseDataAt: null,
     firstVisibleTextAt: null,
+    finalFrameReceivedAt: null,
     lastSseDataAt: null,
+    lastMidstreamSseDataAt: null,
     maxInterChunkGapMs: 0,
     longGapCount: 0,
+    midstreamLongGapCount: 0,
     sentPerf: false,
   });
 
@@ -684,43 +698,65 @@ function PlayContent() {
     signals: waitUxSignals,
   });
 
+  useLayoutEffect(() => {
+    const p = waitUxSignalsRef.current;
+    if (p.requestStartedAt == null || p.firstStatusShownAt != null) return;
+    if (!streamVisualForTypewriter || streamPhase === "idle" || streamPhase === "error") return;
+    if (!waitUxPrimaryLine || waitUxPrimaryLine.trim().length === 0) return;
+    p.firstStatusShownAt = performance.now();
+  }, [streamPhase, streamVisualForTypewriter, waitUxPrimaryLine]);
+
   // Best-effort client perf event (no behavior changes).
   useEffect(() => {
     const p = waitUxSignalsRef.current;
     if (p.sentPerf) return;
     if (!p.requestId || p.requestStartedAt == null) return;
-    // Send when we either saw visible text, or we already exited visual stream (committed/errored).
-    if (p.firstVisibleTextAt == null && streamPhase !== "idle" && streamPhase !== "error") return;
+    // Send after the request has reached a terminal client state so final-frame timing
+    // can be reported when the SSE final marker exists.
+    const streamFinished = p.finalFrameReceivedAt != null || streamPhase === "idle" || streamPhase === "error";
+    if (!streamFinished) return;
     p.sentPerf = true;
-    const firstStatusShownMs = 0; // stage is set at request start on client
+    const firstStatusShownMs =
+      p.firstStatusShownAt != null ? Math.max(0, p.firstStatusShownAt - p.requestStartedAt) : null;
     const responseHeadersMs =
       p.responseHeadersAt != null ? Math.max(0, p.responseHeadersAt - p.requestStartedAt) : null;
     const firstChunkReceivedMs =
       p.firstSseDataAt != null ? Math.max(0, p.firstSseDataAt - p.requestStartedAt) : null;
     const firstVisibleTextMs =
       p.firstVisibleTextAt != null ? Math.max(0, p.firstVisibleTextAt - p.requestStartedAt) : null;
-    const firstPerceivedFeedbackMs = Math.min(
-      ...[0, firstChunkReceivedMs ?? Infinity, firstVisibleTextMs ?? Infinity, responseHeadersMs ?? Infinity].filter(
-        (x) => Number.isFinite(x)
-      )
-    );
+    const finalFrameReceivedMs =
+      p.finalFrameReceivedAt != null ? Math.max(0, p.finalFrameReceivedAt - p.requestStartedAt) : null;
+    const perceivedCandidates = [
+      firstStatusShownMs,
+      firstChunkReceivedMs,
+      firstVisibleTextMs,
+      responseHeadersMs,
+    ].filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+    const firstPerceivedFeedbackMs =
+      perceivedCandidates.length > 0 ? Math.min(...perceivedCandidates) : null;
+    const payload = {
+      requestId: p.requestId,
+      waitUxDisplayStage: waitUxDisplayStage,
+      firstStatusShownMs,
+      responseHeadersMs,
+      firstChunkReceivedMs,
+      firstVisibleTextMs,
+      finalFrameReceivedMs,
+      firstPerceivedFeedbackMs,
+      maxInterChunkGapMs: p.maxInterChunkGapMs,
+      longGapCount: p.longGapCount,
+      midstreamLongGapCount: p.midstreamLongGapCount,
+    };
+    if (process.env.NODE_ENV !== "production" || VC_PERF_FLAGS.clientPerfDebug) {
+      console.debug("[play][chat_client_perf]", payload);
+    }
     void trackGameplayEvent({
       eventName: "chat_client_perf",
       sessionId: guestId ?? "guest_play",
       page: "/play",
       source: "play_page",
       idempotencyKey: `${p.requestId}:chat_client_perf`,
-      payload: {
-        requestId: p.requestId,
-        waitUxDisplayStage: waitUxDisplayStage,
-        firstStatusShownMs,
-        responseHeadersMs,
-        firstChunkReceivedMs,
-        firstVisibleTextMs,
-        firstPerceivedFeedbackMs,
-        maxInterChunkGapMs: p.maxInterChunkGapMs,
-        longGapCount: p.longGapCount,
-      },
+      payload,
     }).catch(() => {});
   }, [guestId, streamPhase, waitUxDisplayStage]);
 
@@ -1250,63 +1286,11 @@ function PlayContent() {
       const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
         ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
         : undefined;
-      const parseOptionsFromSsePayload = (
-        payloadText: string,
-        extraBlocked: string[] = []
-      ): { options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } => {
-        const finalPayload = extractFinalPayloadFromSseDocument(payloadText);
-        const dmRaw = finalPayload.found ? finalPayload.payload : foldSseTextToDmRaw(payloadText);
-        let rejectCodes: OptionsRegenReasonCode[] = [];
-        let parseFailed = false;
-        try {
-          const directParsed = JSON.parse(dmRaw) as Record<string, unknown>;
-          const serverDebugCodes = Array.isArray(directParsed.debug_reason_codes)
-            ? directParsed.debug_reason_codes
-                .filter((x): x is string => typeof x === "string")
-                .filter(
-                  (x): x is OptionsRegenReasonCode =>
-                    x === "parse_failed" ||
-                    x === "duplicated_rejected" ||
-                    x === "anchor_miss_rejected" ||
-                    x === "generic_rejected" ||
-                    x === "homogeneity_rejected" ||
-                    x === "repair_pass_used"
-                )
-            : [];
-          const directOpts = (
-            Array.isArray(directParsed.decision_options) ? directParsed.decision_options :
-            Array.isArray(directParsed.options) ? directParsed.options : []
-          ) as unknown[];
-          const q = runSemanticQualityGate(
-            normalizeRegeneratedOptions(directOpts, regenRecentOptions, regenCurrentOptions),
-            extraBlocked
-          );
-          rejectCodes = [...serverDebugCodes, ...q.rejectCodes];
-          if (directOpts.length > 0) {
-            return { options: q.accepted, parseFailed: false, rejectCodes };
-          }
-        } catch {
-          parseFailed = true;
-        }
-        const parsed = tryParseDM(dmRaw) as any;
-        const picked = pickTurnOptionsFromResolvedDm(parsed);
-        let rawOpts: unknown = picked.options;
-        if (!Array.isArray(rawOpts) || rawOpts.length === 0) {
-          const loose = extractRegenOptionsFromRaw(dmRaw);
-          if (loose && loose.length > 0) rawOpts = loose;
-          else parseFailed = true;
-        }
-        const q = runSemanticQualityGate(
-          normalizeRegeneratedOptions(rawOpts, regenRecentOptions, regenCurrentOptions),
-          extraBlocked
-        );
-        return { options: q.accepted, parseFailed, rejectCodes: [...rejectCodes, ...q.rejectCodes] };
-      };
       const runOptionsOnlyAttempt = async (
         attemptReason: string,
         attemptContext = optionsRegenContext,
         extraBlocked: string[] = []
-      ): Promise<{ options: string[]; parseFailed: boolean; rejectCodes: OptionsRegenReasonCode[] } | null> => {
+      ): Promise<OptionsRegenParseResult | null> => {
         const attemptMessages: ChatMessage[] = useOptionsOnlyPath
           ? [
               ...assistantContextMessages,
@@ -1342,6 +1326,7 @@ function PlayContent() {
           signal: ac.signal,
         });
         if (!attemptRes.ok || !attemptRes.body) return null;
+        const responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
         const reader = attemptRes.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let text = "";
@@ -1359,13 +1344,34 @@ function PlayContent() {
             // ignore
           }
         }
-        return parseOptionsFromSsePayload(text, extraBlocked);
+        const parsed = parseOptionsFromSsePayload(text, {
+          requestId: responseRequestId,
+          extraBlocked,
+          normalizeOptions: (rawOptions) =>
+            normalizeRegeneratedOptions(rawOptions, regenRecentOptions, regenCurrentOptions),
+          runSemanticQualityGate,
+        });
+        if (parsed.failure && process.env.NODE_ENV === "development") {
+          console.warn(
+            `[play][options_regen_failed] reason=${parsed.failure.reason} debug_reason_codes=${
+              parsed.failure.debugReasonCodes.join(",") || "none"
+            }`,
+            {
+              requestId: parsed.requestId,
+              rawLength: parsed.rawLength,
+              extractedOptionsCount: parsed.extractedOptionsCount,
+              normalizedOptionsCount: parsed.normalizedOptionsCount,
+              semanticGateRejectReason: parsed.semanticGateRejectReason,
+            }
+          );
+        }
+        return parsed;
       };
       const firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
       if (tid !== undefined) window.clearTimeout(tid);
       if (firstPass === null) {
         setCurrentOptions([]);
-        setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+        setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
         return;
       }
       if (firstPass.parseFailed) reasonCodes.add("parse_failed");
@@ -1418,7 +1424,7 @@ function PlayContent() {
 
       if (finalOptions.length !== 4) {
         setCurrentOptions([]);
-        setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
+        setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
@@ -1434,7 +1440,7 @@ function PlayContent() {
       );
     } catch {
       setCurrentOptions([]);
-      setFirstTimeHint("当前无法补全可选行动，可切换为手动输入继续，或稍后再试一次。");
+      setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;
@@ -1483,12 +1489,16 @@ function PlayContent() {
       waitUxSignalsRef.current = {
         requestId: rid,
         requestStartedAt: t0,
+        firstStatusShownAt: null,
         responseHeadersAt: null,
         firstSseDataAt: null,
         firstVisibleTextAt: null,
+        finalFrameReceivedAt: null,
         lastSseDataAt: null,
+        lastMidstreamSseDataAt: null,
         maxInterChunkGapMs: 0,
         longGapCount: 0,
+        midstreamLongGapCount: 0,
         sentPerf: false,
       };
     }
@@ -1712,6 +1722,13 @@ function PlayContent() {
         const parsedStage = parseBackendWaitStage(statusFrame.stage);
         if (parsedStage) waitUxBackendStageRef.current = parsedStage;
       }
+      const isFinalFrame = eventText.includes("__VERSECRAFT_FINAL__:");
+      if (isFinalFrame) {
+        const p = waitUxSignalsRef.current;
+        if (p.requestStartedAt != null && p.finalFrameReceivedAt == null) {
+          p.finalFrameReceivedAt = performance.now();
+        }
+      }
       const { raw: nextRaw, sawNonEmptyData } = accumulateDmFromSseEvent(eventText, raw);
       raw = nextRaw;
       if (sawNonEmptyData && !sawStreamChunk) {
@@ -1727,9 +1744,16 @@ function PlayContent() {
         if (p.lastSseDataAt != null) {
           const gap = Math.max(0, now - p.lastSseDataAt);
           p.maxInterChunkGapMs = Math.max(p.maxInterChunkGapMs, gap);
-          if (gap >= 2500) p.longGapCount += 1;
+          if (gap >= MIDSTREAM_LONG_GAP_MS) p.longGapCount += 1;
         }
         p.lastSseDataAt = now;
+        if (!isFinalFrame) {
+          if (p.lastMidstreamSseDataAt != null) {
+            const midstreamGap = Math.max(0, now - p.lastMidstreamSseDataAt);
+            if (midstreamGap >= MIDSTREAM_LONG_GAP_MS) p.midstreamLongGapCount += 1;
+          }
+          p.lastMidstreamSseDataAt = now;
+        }
       }
       try {
         const preview = extractNarrative(raw);
@@ -3229,8 +3253,8 @@ function PlayContent() {
                 chatBusy={isChatBusy || endgameState.active}
                 helperText={
                   endgameState.active
-                    ? (endgameLocked ? "终局已至。" : "正在生成终局…")
-                    : (isChatBusy ? "正在生成..." : "保持简短。保持真实。")
+                    ? (endgameLocked ? "终局已至。" : "终局正在收束")
+                    : (isChatBusy ? (waitUxPrimaryLine || "本回合处理中") : "保持简短。保持真实。")
                 }
                 showRegisterPrompt={showRegisterPrompt}
                 isGuestDialogueExhausted={isGuestDialogueExhausted}

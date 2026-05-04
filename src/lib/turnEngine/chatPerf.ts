@@ -1,8 +1,7 @@
 import { envBoolean, envNumber } from "@/lib/config/envRaw";
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
 import type { ChatPerfFlags, ChatTtftProfile, RiskLane, TtftAggregatePoint } from "@/lib/turnEngine/types";
 
-const TTFT_HARD_CAP_CONTROL_PREFLIGHT_MS = 260;
-const TTFT_HARD_CAP_LORE_MS = 220;
 const TTFT_AGGREGATE_RING_MAX = 120;
 
 const ttftAggregateRing: TtftAggregatePoint[] = [];
@@ -40,11 +39,11 @@ export function resolveChatPerfFlags(): ChatPerfFlags {
     tieredContextBuild: envBoolean("AI_CHAT_TIERED_CONTEXT_BUILD", true),
     controlPreflightBudgetMsCap: Math.max(
       0,
-      Math.min(2000, envNumber("AI_CHAT_CONTROL_PREFLIGHT_BUDGET_MS_CAP", TTFT_HARD_CAP_CONTROL_PREFLIGHT_MS))
+      Math.min(2000, envNumber("AI_CHAT_CONTROL_PREFLIGHT_BUDGET_MS_CAP", VC_WAITING.controlPreflightBudgetCapMs))
     ),
     loreRetrievalBudgetMsCap: Math.max(
       0,
-      Math.min(2000, envNumber("AI_CHAT_LORE_RETRIEVAL_BUDGET_MS_CAP", TTFT_HARD_CAP_LORE_MS))
+      Math.min(2000, envNumber("AI_CHAT_LORE_RETRIEVAL_BUDGET_MS_CAP", VC_WAITING.loreRetrievalBudgetCapMs))
     ),
   };
 }

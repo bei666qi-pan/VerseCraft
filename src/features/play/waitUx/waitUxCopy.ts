@@ -1,34 +1,37 @@
 import type { PlayWaitUxStage } from "./waitUxStages";
 import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
 
-/** 主行：短、过程感、不暴露模型术语。 */
+/** 主行：短、克制、有过程感，不暴露模型术语。 */
 export const PLAY_WAIT_UX_PRIMARY_COPY: Record<Exclude<PlayWaitUxStage, "idle">, string> = {
   request_sent: "行动已送出",
-  routing: "正在接通叙事",
-  context_building: "正在整理上下文",
-  generating: "正在写下一段",
-  streaming: "正文流动中",
+  routing: "正在判断行动影响",
+  context_building: "正在整理现场线索",
+  generating: "正在写下后果",
+  streaming: "正文开始流动",
   finalizing: "正在收束本回合",
 };
 
-/** 仅在中等以上等待时显示的副行（与行动类型弱相关，克制不喧宾）。 */
+/** 中等等待时的副行：和行动类型弱相关，克制，不给固定剩余时间。 */
 export function playWaitUxSemanticSubline(kind: PlaySemanticWaitingKind | null): string | null {
-  if (!kind || kind === "unknown") return null;
   switch (kind) {
     case "explore":
-      return "场景与位置关系在对齐中";
+      return "公寓的空间正在回应你的选择";
     case "dialogue":
-      return "对话脉络在对齐中";
+      return "对方的反应正在被写入现场";
     case "combat":
-      return "行动后果在对齐中";
+      return "行动后果正在压向你";
     case "use_item":
-      return "道具与规则在对齐中";
+      return "道具与现场规则正在对齐";
     case "investigate":
-      return "可查线索在对齐中";
+      return "线索正在从暗处浮出";
     case "meta":
-      return "界面状态在对齐中";
+      return "当前状态正在重新对齐";
+    case "unknown":
+    case null:
+    case undefined:
+      return "公寓正在回应你的选择";
     default:
-      return null;
+      return "公寓正在回应你的选择";
   }
 }
 

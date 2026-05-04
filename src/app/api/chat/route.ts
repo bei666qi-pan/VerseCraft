@@ -45,6 +45,7 @@ import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
 import {
   buildDynamicPlayerDmSystemSuffix,
   buildStyleGuidePacketBlock,
+  getCompactStablePlayerDmSystemPrefix,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
@@ -75,14 +76,20 @@ import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGu
 import {
   sanitizeNarrativeLeakageForFinal,
 } from "@/lib/playRealtime/protocolGuard";
+import {
+  createVerseCraftRequestId,
+  isSafeVerseCraftRequestId,
+  VERSECRAFT_REQUEST_ID_HEADER,
+} from "@/lib/telemetry/requestId";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
+import { CHAT_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import {
   loadVerseCraftEnvFilesOnce,
   reloadVerseCraftProcessEnv,
   resolveVerseCraftProjectRoot,
 } from "@/lib/config/loadVerseCraftEnv";
-import { envBoolean } from "@/lib/config/envRaw";
+import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
@@ -228,6 +235,25 @@ const TTFT_HARD_CAP_SESSION_MEMORY_MS = 140;
 
 
 
+function hasAuthSessionCookie(headers: Headers): boolean {
+  const cookie = headers.get("cookie") ?? "";
+  if (!cookie) return false;
+  return /(?:^|;\s*)(?:authjs\.session-token|__Secure-authjs\.session-token|next-auth\.session-token|__Secure-next-auth\.session-token)=/.test(
+    cookie
+  );
+}
+
+const EARLY_STATUS_WRAPPER_HEADER = "x-versecraft-early-status-wrapper";
+
+function rebuildChatRequest(req: Request, requestId?: string): Request {
+  const headers = new Headers(req.headers);
+  headers.set(EARLY_STATUS_WRAPPER_HEADER, "1");
+  if (requestId) headers.set(VERSECRAFT_REQUEST_ID_HEADER, requestId);
+  return new Request(req, {
+    headers,
+  });
+}
+
 async function loadSessionMemoryForUser(userId: string): Promise<SessionMemoryRow | null> {
   try {
     const memRows = await db
@@ -298,6 +324,121 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
 }
 
 export async function POST(req: Request) {
+  if (!envBoolean("AI_CHAT_ENABLE_EARLY_STATUS_WRAPPER", true)) {
+    return postChatInternal(req);
+  }
+  if (req.headers.get(EARLY_STATUS_WRAPPER_HEADER) === "1") {
+    return postChatInternal(req);
+  }
+
+  const inboundRequestId = req.headers.get(VERSECRAFT_REQUEST_ID_HEADER);
+  const requestId = isSafeVerseCraftRequestId(inboundRequestId)
+    ? inboundRequestId
+    : createVerseCraftRequestId("chat");
+  const firstStatusFlushPaddingBytes = Math.max(
+    0,
+    Math.min(4096, envNumber("VC_FIRST_STATUS_FLUSH_PADDING_BYTES", 2048))
+  );
+  const internalReq = rebuildChatRequest(req, requestId);
+  let outerStreamClosed = false;
+  const readable = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        sse(
+          buildStatusFramePayload({
+            stage: "request_sent",
+            message: "行动已送出",
+            requestId,
+            flushPaddingBytes: firstStatusFlushPaddingBytes,
+          })
+        )
+      );
+
+      setTimeout(() => {
+        void (async () => {
+          try {
+      const inner = await postChatInternal(internalReq);
+      const innerContentType = inner.headers.get("content-type") ?? "";
+      if (!innerContentType.toLowerCase().includes("text/event-stream")) {
+        if (!outerStreamClosed) {
+          controller.enqueue(
+            sse(
+              `__VERSECRAFT_FINAL__:${JSON.stringify({
+                is_action_legal: false,
+                sanity_damage: 0,
+                narrative: "请求格式无效，未推进剧情。",
+                is_death: false,
+                consumes_time: false,
+              })}`
+            )
+          );
+        }
+        return;
+      }
+      if (!inner.body) {
+        const text = await inner.text();
+              if (text && !outerStreamClosed) controller.enqueue(new TextEncoder().encode(text));
+        return;
+      }
+
+      const reader = inner.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+              if (value && !outerStreamClosed) controller.enqueue(value);
+      }
+    } catch (error) {
+      console.warn("[api/chat][early_status_wrapper_failed]", {
+        requestId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      try {
+              if (!outerStreamClosed) {
+                controller.enqueue(
+                  sse(
+                    `__VERSECRAFT_FINAL__:${JSON.stringify({
+                      is_action_legal: false,
+                      sanity_damage: 0,
+                      narrative: "游戏主脑暂时离线，请稍后再试。",
+                      is_death: false,
+                      consumes_time: true,
+                    })}`
+                  )
+                );
+              }
+      } catch {
+        // Best effort: if the client has gone away, there is no final frame to deliver.
+      }
+    } finally {
+      try {
+              if (!outerStreamClosed) {
+                outerStreamClosed = true;
+                controller.close();
+              }
+      } catch {
+        // Client cancellation should not surface as an unhandled rejection.
+      }
+    }
+        })();
+      }, 0);
+    },
+    cancel() {
+      outerStreamClosed = true;
+    },
+  });
+
+  const responseHeaders = buildSseHeaders(requestId);
+  if (process.env.VC_FORCE_AI_KEYS_MISSING === "1" || process.env.AI_FORCE_KEYS_MISSING === "1") {
+    responseHeaders["X-VerseCraft-Ai-Status"] = "keys_missing";
+  }
+
+  return new Response(readable, {
+    status: 200,
+    headers: responseHeaders,
+  });
+}
+
+async function postChatInternal(req: Request) {
   const requestReceivedAt = nowMs();
   let body: unknown;
   const jsonParseStartAt = nowMs();
@@ -341,7 +482,7 @@ export async function POST(req: Request) {
     requestStartedAt: requestReceivedAt,
   });
   const authStartAt = nowMs();
-  const session = await auth();
+  const session = hasAuthSessionCookie(req.headers) ? await auth() : null;
   ttftProfile.authSessionMs = elapsedMs(authStartAt);
   const userId = session?.user?.id ?? null;
 
@@ -375,24 +516,35 @@ export async function POST(req: Request) {
           clientState: validated.clientState,
         })
       : reason;
-    // Let the client-side AbortController (9 s deadline) handle overall timeout.
-    // Server-side budgetMs is set to 0 (unlimited) so the single AI attempt gets the full
-    // time window. Reasoning models (e.g. MiniMax) may need 8鈥?0 s for a complete response.
+    // Bounded server deadline; the UI may retry, but this path must not become a long story turn.
     const regen = await generateOptionsOnlyFallback({
       narrative: lastAssistant,
       latestUserInput: packet,
       playerContext: snapshot,
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-      budgetMs: 0,
+      budgetMs: Math.max(
+        1_000,
+        Math.min(30_000, envNumber("VC_OPTIONS_ONLY_SERVER_BUDGET_MS", VC_WAITING.optionsOnlyServerBudgetMs))
+      ),
       signal: req.signal,
     });
     const shaped = buildOptionsRegenResponse({
       clientTurnModeHint,
       options: regen.ok ? regen.options : [],
       generatorOk: regen.ok,
-      debugReasonCodes: regen.ok ? [] : ["parse_failed"],
+      debugReasonCodes: regen.ok ? [] : (regen.debugReasonCodes ?? ["parse_failed"]),
     });
+    if (!regen.ok && process.env.NODE_ENV !== "production") {
+      console.warn("[api/chat][options_regen_only_failed]", {
+        requestId,
+        reason: regen.reason,
+        debug_reason_codes: regen.debugReasonCodes ?? [],
+        rawLength: regen.rawLength ?? null,
+        extractedOptionsCount: regen.extractedOptionsCount ?? null,
+        normalizedOptionsCount: regen.normalizedOptionsCount ?? null,
+      });
+    }
     const ok = shaped.ok;
     const payload = JSON.stringify(shaped);
     const isAuto =
@@ -581,7 +733,13 @@ export async function POST(req: Request) {
           ttftProfile.sessionMemoryReadMs = 0;
         });
 
-  const playerDmStablePrefix = getStablePlayerDmSystemPrefix();
+  const useFastLaneCompactStablePrompt =
+    perfFlags.enablePromptSlimming &&
+    riskLane === "fast" &&
+    envBoolean("AI_CHAT_FASTLANE_COMPACT_STABLE_PROMPT", true);
+  const playerDmStablePrefix = useFastLaneCompactStablePrompt
+    ? getCompactStablePlayerDmSystemPrefix()
+    : getStablePlayerDmSystemPrefix();
 
   const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
@@ -633,6 +791,8 @@ export async function POST(req: Request) {
     perfFlags.enablePromptSlimming && perfFlags.enableLightweightFastPath && riskLane === "fast"
       ? "minimal"
       : "full";
+  const useFastLaneCompactDynamicPackets =
+    contextMode === "minimal" && envBoolean("AI_CHAT_FASTLANE_COMPACT_DYNAMIC_PACKETS", true);
   const playerLocEarly = guessPlayerLocationFromContext(playerContext);
   const presentNpcIdsEarly = extractPresentNpcIds(playerContext, playerLocEarly);
   const focusNpcEarly =
@@ -647,11 +807,11 @@ export async function POST(req: Request) {
   const memoryCapsEarly =
     contextMode === "minimal"
       ? {
-          summaryMaxChars: 420,
-          playerStatusMaxChars: 220,
-          npcRelationsMaxChars: 140,
-          layerMaxChars: 220,
-          npcSnapshotsMaxChars: 180,
+          summaryMaxChars: 120,
+          playerStatusMaxChars: 80,
+          npcRelationsMaxChars: 60,
+          layerMaxChars: 80,
+          npcSnapshotsMaxChars: 60,
           compact: true as const,
         }
       : { compact: false as const };
@@ -680,7 +840,7 @@ export async function POST(req: Request) {
       publicFactCount: earlyScoped.metrics.publicFactCount,
       forbiddenFactCount: earlyScoped.metrics.forbiddenFactCount,
     },
-    maxChars: contextMode === "minimal" ? 900 : 1600,
+    maxChars: contextMode === "minimal" ? 560 : 1600,
   });
   const playerContextForPrompt =
     contextMode === "minimal"
@@ -690,13 +850,13 @@ export async function POST(req: Request) {
     previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
     rawAction: turnRawAction ?? latestUserInput,
     dice: turnDice,
-    maxChars: contextMode === "minimal" ? 520 : 900,
+    maxChars: contextMode === "minimal" ? 300 : 900,
   });
-  const povBlockEarly = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 280 : 420 });
+  const povBlockEarly = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
   const npcGenderPronounBlockEarly = buildNpcGenderPronounPacketBlock({
     focusNpcId: focusNpcEarly,
     presentNpcIds: presentNpcIdsEarly,
-    maxChars: contextMode === "minimal" ? 520 : 760,
+    maxChars: contextMode === "minimal" ? 280 : 760,
   });
   const dynamicCoreForQuota = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
@@ -1062,11 +1222,11 @@ export async function POST(req: Request) {
   const memoryCapsFinal =
     contextMode === "minimal"
       ? {
-          summaryMaxChars: 420,
-          playerStatusMaxChars: 220,
-          npcRelationsMaxChars: 140,
-          layerMaxChars: 220,
-          npcSnapshotsMaxChars: 180,
+          summaryMaxChars: 120,
+          playerStatusMaxChars: 80,
+          npcRelationsMaxChars: 60,
+          layerMaxChars: 80,
+          npcSnapshotsMaxChars: 60,
           compact: true as const,
         }
       : { compact: false as const };
@@ -1125,7 +1285,7 @@ export async function POST(req: Request) {
         serviceState,
         runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
         contextMode,
-        maxChars: contextMode === "minimal" ? 1400 : 4000,
+        maxChars: contextMode === "minimal" ? 900 : 4000,
         focusNpcId: focusNpcForPrompt,
       });
   runtimePacketChars = runtimePackets.length;
@@ -1141,25 +1301,28 @@ export async function POST(req: Request) {
       publicFactCount: epistemicPromptMetrics.publicFactCount,
       forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
     },
-    maxChars: contextMode === "minimal" ? 900 : 1600,
+    maxChars: contextMode === "minimal" ? 560 : 1600,
     rollout: {
       enableNpcCanonGuard: epistemicRolloutFlags.enableNpcCanonGuard,
       enableNpcBaselineAttitude: epistemicRolloutFlags.enableNpcBaselineAttitude,
       enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
     },
   });
-  const styleGuideBlock = verseRollout.enableStyleGuidePacket ? buildStyleGuidePacketBlock() : "";
+  const styleGuideBlock =
+    verseRollout.enableStyleGuidePacket && !useFastLaneCompactDynamicPackets
+      ? buildStyleGuidePacketBlock()
+      : "";
   const narrativeContinuityBlock = buildNarrativeContinuityPacketBlock({
     previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
     rawAction: turnRawAction ?? latestUserInput,
     dice: turnDice,
-    maxChars: contextMode === "minimal" ? 520 : 900,
+    maxChars: contextMode === "minimal" ? 180 : 900,
   });
-  const povBlock = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 280 : 420 });
+  const povBlock = buildPovPacketBlock({ maxChars: contextMode === "minimal" ? 180 : 420 });
   const npcGenderPronounBlock = buildNpcGenderPronounPacketBlock({
     focusNpcId: focusNpcForPrompt,
     presentNpcIds: presentNpcIdsForEpistemic,
-    maxChars: contextMode === "minimal" ? 520 : 760,
+    maxChars: contextMode === "minimal" ? 280 : 760,
   });
   const plannedTurnMode = inferPlannedTurnMode({
     latestUserInput,
@@ -1275,27 +1438,27 @@ export async function POST(req: Request) {
   }
 
   const turnModePolicyBlock =
-    (verseRollout.enableLongNarrativeMode || verseRollout.enableDecisionTurnMode)
+    !useFastLaneCompactDynamicPackets && (verseRollout.enableLongNarrativeMode || verseRollout.enableDecisionTurnMode)
       ? buildTurnModePolicyPacketBlock({
           plannedMode: plannedTurnMode.mode,
           reason: plannedTurnMode.reason,
-          maxChars: contextMode === "minimal" ? 680 : 860,
+          maxChars: contextMode === "minimal" ? 420 : 860,
         })
       : "";
-  const protagonistAnchorBlock = verseRollout.enableProtagonistAnchorPacket
+  const protagonistAnchorBlock = verseRollout.enableProtagonistAnchorPacket && !useFastLaneCompactDynamicPackets
     ? buildProtagonistAnchorPacketBlock({
         playerContext: playerContextForPrompt,
         clientState,
-        maxChars: contextMode === "minimal" ? 760 : 980,
+        maxChars: contextMode === "minimal" ? 420 : 980,
       })
     : "";
-  const realityConstraintBlock = verseRollout.enableRealityConstraintPacket
+  const realityConstraintBlock = verseRollout.enableRealityConstraintPacket && !useFastLaneCompactDynamicPackets
     ? buildRealityConstraintPacketBlock({
         playerContext: playerContextForPrompt,
         latestUserInput,
         playerLocationFallback: guessPlayerLocationFromContext(playerContext),
         clientState,
-        maxChars: contextMode === "minimal" ? 980 : 1400,
+        maxChars: contextMode === "minimal" ? 520 : 1400,
       })
     : "";
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
@@ -1308,10 +1471,10 @@ export async function POST(req: Request) {
     turnModePolicyBlock,
     narrativeBudgetBlock,
     realityConstraintBlock,
-    npcConsistencyBoundaryBlock: npcConsistencyBoundaryFinal.text,
-    narrativeContinuityBlock,
-    povBlock,
-    npcGenderPronounBlock,
+    npcConsistencyBoundaryBlock: useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
+    narrativeContinuityBlock: useFastLaneCompactDynamicPackets ? "" : narrativeContinuityBlock,
+    povBlock: useFastLaneCompactDynamicPackets ? "" : povBlock,
+    npcGenderPronounBlock: useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
     styleGuideBlock,
   });
   const aiEnvForSystem = resolveAiEnv();
@@ -1476,18 +1639,32 @@ export async function POST(req: Request) {
     console.warn(
       `[api/chat] No AI gateway configured (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_MAIN). See .env.example. Returning degraded SSE with 200.`
     );
-    return createSseResponse({
-      requestId,
-      status: 200,
-      extras: { "X-VerseCraft-Ai-Status": "keys_missing" },
-      payload: JSON.stringify({
-        is_action_legal: false,
-        sanity_damage: 0,
-        narrative: "系统异常：未配置大模型 API Key，无法连接深渊 DM。",
-        is_death: false,
-        consumes_time: true,
-      }),
+    const degradedPayloadAscii = JSON.stringify({
+      is_action_legal: false,
+      sanity_damage: 0,
+      narrative: "AI gateway keys are missing. The turn was not generated.",
+      is_death: false,
+      consumes_time: true,
     });
+    return new Response(
+      `${sseText(
+        buildStatusFramePayload({
+          stage: "request_sent",
+          message: "request accepted",
+          requestId,
+        })
+      )}${sseText(
+        buildStatusFramePayload({
+          stage: "finalizing",
+          message: "degraded: keys missing",
+          requestId,
+        })
+      )}${sseText(`__VERSECRAFT_FINAL__:${degradedPayloadAscii}`)}`,
+      {
+        status: 200,
+        headers: buildSseHeaders(requestId, { "X-VerseCraft-Ai-Status": "keys_missing" }),
+      }
+    );
   }
 
   const FALLBACK_NARRATIVE =
@@ -1518,6 +1695,7 @@ export async function POST(req: Request) {
       finishedAt !== undefined && firstWriteAt !== null ? Math.max(0, finishedAt - firstWriteAt) : null;
     const stagePairs: Array<[string, number]> = [
       ["validate", ttftProfile.validateChatRequestMs ?? 0],
+      ["auth", ttftProfile.authSessionMs ?? 0],
       ["input_safety", ttftProfile.moderateInputOnServerMs ?? 0],
       ["pre_input", ttftProfile.preInputModerationMs ?? 0],
       ["quota", ttftProfile.quotaCheckMs ?? 0],
@@ -1535,6 +1713,7 @@ export async function POST(req: Request) {
       blockingBeforeFirstTokenMs,
       postFirstTokenMs,
       validateMs: ttftProfile.validateChatRequestMs,
+      authSessionMs: ttftProfile.authSessionMs,
       inputSafetyMs: ttftProfile.moderateInputOnServerMs,
       preInputModerationMs: ttftProfile.preInputModerationMs,
       lane: ttftProfile.lane,
@@ -1573,11 +1752,16 @@ export async function POST(req: Request) {
   const writeToStream = async (data: string) => {
     if (ttftProfile.firstSseWriteAt === null) {
       // 棣栧瓧鍐欏叆 SSE锛氳繖鏄帺瀹跺疄闄呮劅鐭ュ埌鈥滃紑濮嬪搷搴斺€濈殑鏃跺埢銆?      ttftProfile.firstSseWriteAt = nowMs();
+      ttftProfile.firstSseWriteAt = nowMs();
       emitTtftProfileSummary("first_sse_write");
     }
     return writer.write(sse(data));
   };
   const writeControlToStream = async (data: string) => writer.write(sse(data));
+  const firstStatusFlushPaddingBytes = Math.max(
+    0,
+    Math.min(4096, envNumber("VC_FIRST_STATUS_FLUSH_PADDING_BYTES", 2048))
+  );
   const writeStatusFrame = async (
     stage:
       | "request_sent"
@@ -1586,15 +1770,16 @@ export async function POST(req: Request) {
       | "generating"
       | "streaming"
       | "finalizing",
-    message: string
+    message: string,
+    flushPaddingBytes = 0
   ) => {
     if (!enableStatusFrames) return;
     statusFrameCount += 1;
-    return writeControlToStream(buildStatusFramePayload({ stage, message, requestId }));
+    return writeControlToStream(buildStatusFramePayload({ stage, message, requestId, flushPaddingBytes }));
   };
   const closeWithFallback = async () => {
     try {
-      await writeToStream(fallbackPayload);
+      await writeControlToStream(`__VERSECRAFT_FINAL__:${fallbackPayload}`);
     } catch {
       // Same best-effort boundary as close(): if the client has already gone away,
       // the fallback cannot be delivered and should not crash the background stream task.
@@ -1647,10 +1832,18 @@ export async function POST(req: Request) {
   let narrativeExpansionTelemetry: NarrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry();
 
   (async () => {
-    await writeStatusFrame("request_sent", "行动已送出");
+    await writeStatusFrame("request_sent", "行动已送出", firstStatusFlushPaddingBytes);
     await writeStatusFrame("routing", "姝ｅ湪杩炴帴娣辨笂");
 
-    const TIMEOUT_MS = 60000;
+    const aiRuntimeEnvForTurn = resolveAiEnv();
+    const TIMEOUT_MS =
+      riskLane === "fast"
+        ? aiRuntimeEnvForTurn.playerChatFastLaneTimeoutMs
+        : aiRuntimeEnvForTurn.playerChatSlowLaneTimeoutMs;
+    const streamReconnectWallMs =
+      aiRuntimeEnvForTurn.playerChatStreamReconnectWallMs > 0
+        ? aiRuntimeEnvForTurn.playerChatStreamReconnectWallMs
+        : 40_000;
     const callUpstreamOnce = async (args: { skipRoles?: readonly AiLogicalRole[]; markStart?: boolean }) => {
       const ac = new AbortController();
       const timeoutId = setTimeout(() => ac.abort(), TIMEOUT_MS);
@@ -1713,13 +1906,41 @@ export async function POST(req: Request) {
           stage: "ai_router",
           isTimeout,
           routerCode: first.code,
+          firstChunkLatencyMs: null,
           totalLatencyMs: Date.now() - requestStartedAt,
+          riskLane: riskLane === "fast" ? "fast" : "slow",
+          aiFallbackCount: first.httpAttempts?.filter((a) => a.failureKind !== undefined).length ?? 0,
+          streamReconnectCount,
+          statusFrameCount,
           preflightRan: preflightTurnMetrics.ran,
           preflightSkippedReason: preflightTurnMetrics.skippedReason,
           preflightCacheHit: preflightTurnMetrics.cacheHit,
           preflightLatencyMs: preflightTurnMetrics.latencyMs,
           preflightOk: preflightTurnMetrics.ok,
           preflightBudgetHit: controlPreflightBudgetHit,
+          upstreamConnectMs: null,
+          serverPerf: envBoolean("AI_CHAT_ENABLE_DIAGNOSTICS", process.env.NODE_ENV === "development")
+            ? {
+                requestReceivedAt: ttftProfile.requestReceivedAt,
+                jsonParseMs: ttftProfile.jsonParseMs,
+                authSessionMs: ttftProfile.authSessionMs,
+                validateChatRequestMs: ttftProfile.validateChatRequestMs,
+                moderateInputOnServerMs: ttftProfile.moderateInputOnServerMs,
+                preInputModerationMs: ttftProfile.preInputModerationMs,
+                quotaCheckMs: ttftProfile.quotaCheckMs,
+                sessionMemoryReadMs: ttftProfile.sessionMemoryReadMs,
+                controlPreflightMs: ttftProfile.controlPreflightMs,
+                loreRetrievalMs: ttftProfile.loreRetrievalMs,
+                promptBuildMs: ttftProfile.promptBuildMs,
+                upstreamConnectMs: null,
+                firstSseWriteDeltaMs:
+                  ttftProfile.firstSseWriteAt !== null
+                    ? Math.max(0, ttftProfile.firstSseWriteAt - ttftProfile.requestReceivedAt)
+                    : null,
+                totalTtftMs: null,
+                lane: ttftProfile.lane,
+              }
+            : undefined,
         },
       }).catch(() => {});
 
@@ -1769,7 +1990,7 @@ export async function POST(req: Request) {
         if (kind === "STREAM_INTERRUPTED" && streamInterruptedCount >= 1) return false;
         if (kind === "EMPTY_CONTENT" && streamEmptyCount >= 1) return false;
         // Do not reconnect after long wall time; prefer fallback to avoid dragging minutes.
-        if (Date.now() - requestStartedAt > 40_000) return false;
+        if (Date.now() - requestStartedAt > streamReconnectWallMs) return false;
       }
       streamReconnectCount += 1;
       if (kind === "STREAM_INTERRUPTED") streamInterruptedCount += 1;
@@ -2052,6 +2273,15 @@ export async function POST(req: Request) {
       await writeStatusFrame("finalizing", "正在收束本回合");
 
       let commitSummaryForAnalytics: TurnCommitSummary | null = null;
+      const finalRepairBudgetMs = Math.max(
+        1_000,
+        Math.min(12_000, envNumber("VC_FINAL_REPAIR_BUDGET_MS", 2_000))
+      );
+      const finalRepairDeadlineAt = Date.now() + finalRepairBudgetMs;
+      const remainingFinalRepairBudgetMs = () => Math.max(0, finalRepairDeadlineAt - Date.now());
+      const nextFinalRepairBudgetMs = (requestedMs: number) =>
+        Math.max(0, Math.min(requestedMs, remainingFinalRepairBudgetMs()));
+      const canRunFinalRepair = (minMs = 500) => remainingFinalRepairBudgetMs() >= minMs;
 
       /**
        * Turn-compiler phases (Phase-2 of the structural refactor).
@@ -2236,14 +2466,14 @@ export async function POST(req: Request) {
               ? (dmRecord.security_meta as Record<string, unknown>)
               : null;
           const preResolveFreeze = preResolveGuard?.settlement_guard === "stage2_freeze_on_illegal_or_death";
-          if (opts.length < 2 && !preResolveFreeze) {
+          if (opts.length < 2 && !preResolveFreeze && canRunFinalRepair()) {
             const regen = await generateOptionsOnlyFallback({
               narrative: String(dmRecord.narrative ?? ""),
               latestUserInput,
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
               signal: pipelineAbort.signal,
-              budgetMs: 4500,
+              budgetMs: nextFinalRepairBudgetMs(4_500),
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
@@ -2314,7 +2544,7 @@ export async function POST(req: Request) {
               decision.filter((x): x is string => typeof x === "string" && x.trim().length > 0),
               4
             ).length;
-            if (optCount < 2 && decCount < 2) {
+            if (optCount < 2 && decCount < 2 && canRunFinalRepair()) {
               recordDecisionOptionsFixOutcome(false);
               const regen = await generateDecisionOptionsOnlyFallback({
                 narrative: String(dm.narrative ?? ""),
@@ -2322,7 +2552,7 @@ export async function POST(req: Request) {
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", purpose: "decision_options_fix" } },
                 signal: pipelineAbort.signal,
-                budgetMs: 2200,
+                budgetMs: nextFinalRepairBudgetMs(2_200),
               });
               if (regen.ok) {
                 recordDecisionOptionsFixOutcome(true);
@@ -2401,7 +2631,7 @@ export async function POST(req: Request) {
             (resolved as any).options = deduped; // keep legacy UI aligned
             (resolved as any).decision_required = true;
             // If dedupe made it invalid, do the existing low-cost fix once.
-            if (deduped.length < 2) {
+            if (deduped.length < 2 && canRunFinalRepair()) {
               recordDecisionOptionsFixOutcome(false);
               const regen = await generateDecisionOptionsOnlyFallback({
                 narrative: String((resolved as any).narrative ?? ""),
@@ -2409,7 +2639,7 @@ export async function POST(req: Request) {
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "quality_gate", purpose: "decision_options_fix" } },
                 signal: pipelineAbort.signal,
-                budgetMs: 1800,
+                budgetMs: nextFinalRepairBudgetMs(1_800),
               });
               if (regen.ok) {
                 recordDecisionOptionsFixOutcome(true);
@@ -2449,7 +2679,7 @@ export async function POST(req: Request) {
               enable: rollout.enableOptionsAutoRegenOnEmpty,
             });
           }
-          if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2) {
+          if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2 && canRunFinalRepair()) {
             if (resolvedOptCount === 0) incrEmptyOptionsTurnCount(1);
             const regen = await generateOptionsOnlyFallback({
               narrative: String((resolved as any).narrative ?? ""),
@@ -2458,7 +2688,7 @@ export async function POST(req: Request) {
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
               signal: pipelineAbort.signal,
               systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-              budgetMs: 4500,
+              budgetMs: nextFinalRepairBudgetMs(4_500),
             });
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
@@ -2570,7 +2800,24 @@ export async function POST(req: Request) {
           if (!expansionDecision.trigger) {
             narrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry(expansionDecision.skippedReason);
           } else {
-            const expansionBudgetMs = Math.max(1, Math.min(6_000, performanceBudgetMs - 250));
+            const configuredExpansionBudgetMs = Math.max(
+              0,
+              Math.min(
+                6_000,
+                envNumber("VC_NARRATIVE_EXPANSION_BUDGET_MS", VC_WAITING.narrativeExpansionServerBudgetMs)
+              )
+            );
+            const finalP50RemainingMs = Math.max(
+              0,
+              CHAT_LATENCY_BUDGET.normalTurnFinalP50Ms - (Date.now() - requestStartedAt) - 500
+            );
+            const expansionBudgetMs = Math.max(
+              0,
+              Math.min(configuredExpansionBudgetMs, performanceBudgetMs - 250, finalP50RemainingMs)
+            );
+            if (expansionBudgetMs < 1_500) {
+              narrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry("performance_budget_exhausted");
+            } else {
             const expansionResult: NarrativeExpansionResult = await expandNarrativeOnly({
               originalNarrative: narrative,
               originalDmRecord: resolved as unknown as Record<string, unknown>,
@@ -2604,6 +2851,7 @@ export async function POST(req: Request) {
                 dmRecord as Record<string, unknown>,
                 expansionResult
               );
+            }
             }
           }
         } catch (e) {
@@ -2684,7 +2932,7 @@ export async function POST(req: Request) {
                   (x): x is string => typeof x === "string" && x.trim().length > 0
                 )
               : [];
-            if (overriddenOpts.length < 2) {
+            if (overriddenOpts.length < 2 && canRunFinalRepair()) {
               try {
                 const rolloutForRegen = getVerseCraftRolloutFlags();
                 const regen = await generateOptionsOnlyFallback({
@@ -2702,7 +2950,7 @@ export async function POST(req: Request) {
                   systemExtra: rolloutForRegen.enableOptionsOnlyRegenPathV2
                     ? buildOptionsOnlySystemPrompt()
                     : "",
-                  budgetMs: 4500,
+                  budgetMs: nextFinalRepairBudgetMs(4_500),
                 });
                 if (regen.ok && regen.options.length >= 2) {
                   (resolved as any).options = [...regen.options];
@@ -2898,7 +3146,8 @@ export async function POST(req: Request) {
         moderationBody = finalizePayload;
       } else {
         // 褰撲笂娓歌繑鍥為潪涓ユ牸 JSON 鎴栭噸澶嶆嫾鎺ュ璞℃椂锛屽己鍒跺洖钀藉埌鏍囧噯 DM JSON 褰㈢姸锛屼繚璇?SSE 濂戠害绋冲畾銆?        finalizePayload = sanitizeAssistantContent(accumulatedText);
-        moderationBody = finalizePayload;
+        finalizePayload = fallbackPayload;
+        moderationBody = fallbackPayload;
       }
 
       // --- Phase 9: commit side effects (output audit + moderation + final write + persist + world tick + kg cache) ---
@@ -3214,6 +3463,33 @@ export async function POST(req: Request) {
       let firstChunkAt = 0;
       let lastStreamDeltaModAt = 0;
       const streamModThrottleMs = preflightEnv.streamModerationThrottleMs;
+      const markFirstVisibleStreamChunk = async () => {
+        if (ttftProfile.firstValidStreamChunkAt === null) {
+          ttftProfile.firstValidStreamChunkAt = nowMs();
+        }
+        if (firstChunkAt !== 0) return;
+        firstChunkAt = Date.now();
+        if (!streamStatusSent) {
+          streamStatusSent = true;
+          await writeStatusFrame("streaming", "正文流动中");
+        }
+        if (!streamTtftTelemetrySent) {
+          streamTtftTelemetrySent = true;
+          logAiTelemetry({
+            requestId,
+            task: "PLAYER_CHAT",
+            providerId: "oneapi",
+            logicalRole: streamSource.logicalRole,
+            gatewayModel: streamSource.gatewayModel,
+            phase: "stream_first_token",
+            ttftMs: firstChunkAt - requestStartedAt,
+            stableCharLen,
+            dynamicCharLen,
+            stream: true,
+            userId,
+          });
+        }
+      };
 
       const flushThisRound = () =>
         flushTokenUsage({
@@ -3272,10 +3548,10 @@ export async function POST(req: Request) {
           const data = line.slice(5).trim();
 
           if (!data) continue;
-          if (ttftProfile.firstValidStreamChunkAt === null) {
+          if (data.length < 0 && ttftProfile.firstValidStreamChunkAt === null) {
             // 绗竴鏉℃湁鏁?chunk 鍒拌揪锛氬彲鐢ㄤ簬鍒ゆ柇涓婃父杩炴帴/鎺掗槦鏄惁鏄?TTFT 涓诲洜銆?            ttftProfile.firstValidStreamChunkAt = nowMs();
           }
-          if (firstChunkAt === 0) {
+          if (data.length < 0 && firstChunkAt === 0) {
             firstChunkAt = Date.now();
             if (!streamStatusSent) {
               streamStatusSent = true;
@@ -3381,6 +3657,7 @@ export async function POST(req: Request) {
               return;
             }
             accumulated += data;
+            await markFirstVisibleStreamChunk();
             await writeToStream(data);
             continue;
           }
@@ -3435,6 +3712,7 @@ export async function POST(req: Request) {
               }
             }
             accumulated += deltaContent;
+            await markFirstVisibleStreamChunk();
             await writeToStream(deltaContent);
           }
 

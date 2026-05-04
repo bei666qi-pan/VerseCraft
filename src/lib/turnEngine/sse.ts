@@ -43,11 +43,17 @@ export function buildStatusFramePayload(args: {
   message: string;
   requestId: string;
   at?: number;
+  flushPaddingBytes?: number;
 }): string {
-  return `__VERSECRAFT_STATUS__:${JSON.stringify({
+  const frame: Record<string, unknown> = {
     stage: args.stage,
     message: args.message,
     requestId: args.requestId,
     at: args.at ?? Date.now(),
-  })}`;
+  };
+  const flushPaddingBytes = Math.max(0, Math.floor(args.flushPaddingBytes ?? 0));
+  if (flushPaddingBytes > 0) {
+    frame.flushPadding = "x".repeat(flushPaddingBytes);
+  }
+  return `__VERSECRAFT_STATUS__:${JSON.stringify(frame)}`;
 }
