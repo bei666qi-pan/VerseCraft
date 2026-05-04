@@ -49,6 +49,7 @@ export function MobileActionDock({
     });
 
   const OptionsIcon = optionsExpanded ? MobileReadingIcons.CollapseOptions : MobileReadingIcons.ExpandOptions;
+  const inputPlaceholder = chatBusy && statusText ? statusText : "输入下一步行动或对白…";
 
   return (
     <div
@@ -89,13 +90,18 @@ export function MobileActionDock({
                   onSubmitKey();
                 }
               }}
-              placeholder="输入下一步行动或对白…"
+              placeholder={inputPlaceholder}
               inputMode="text"
               enterKeyHint="send"
               maxLength={MAX_INPUT}
               aria-describedby="play-input-status"
+              aria-busy={chatBusy || undefined}
               data-testid="manual-action-input"
-              className={mobileReadingTheme.actionInput}
+              className={`${mobileReadingTheme.actionInput} ${
+                chatBusy
+                  ? "disabled:!opacity-100 !bg-[#fffdf8] placeholder:!text-[#2f6f68] placeholder:!opacity-100"
+                  : ""
+              }`}
               disabled={chatBusy || isGuestDialogueExhausted}
             />
             <button

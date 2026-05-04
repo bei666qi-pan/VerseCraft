@@ -120,6 +120,7 @@ async function postChat(
     method: "POST",
     headers: {
       "content-type": "application/json",
+      "x-forwarded-for": `127.0.0.${Math.floor(Math.random() * 200) + 20}`,
       ...(options.cookieHeader ? { cookie: options.cookieHeader } : {}),
     },
     body: JSON.stringify({

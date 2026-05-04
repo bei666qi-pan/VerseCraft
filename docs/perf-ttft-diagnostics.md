@@ -73,3 +73,75 @@
     - `event_name='chat_request_finished'` + `payload->'serverPerf'`
   - 用 `requestId` 关联同一回合的 client/server 事件。
 
+### 2026-05 backend TTFT guard update
+
+This update keeps the `/api/chat` SSE and final DM JSON contract unchanged, but
+tightens the player-facing long tail:
+
+- `AI_PLAYER_CHAT_TIMEOUTS_V2=0` rolls back to the legacy 60s upstream attempt timeout.
+- `AI_PLAYER_CHAT_FASTLANE_TIMEOUT_MS` defaults to `18000`.
+- `AI_PLAYER_CHAT_SLOWLANE_TIMEOUT_MS` defaults to `45000`.
+- `AI_PLAYER_CHAT_STREAM_RECONNECT_WALL_MS` defaults to `3500` so empty/broken stream repair cannot push first-visible text beyond the live p95 budget; set an explicit larger value to roll back.
+- `VC_OPTIONS_ONLY_SERVER_BUDGET_MS` defaults to `16000` for options/decision repair chains only.
+- `VC_FINAL_REPAIR_BUDGET_MS` defaults to `2000` for all final options/decision repair calls in one turn.
+- `AI_PLAYER_CHAT_MERGE_EXTRA_BODY=1` and `AI_PLAYER_CHAT_EXTRA_BODY_JSON` allow player-chat-only gateway body hints, for example provider-specific "disable thinking" switches. It is opt-in because unsupported providers may reject unknown fields.
+- `AI_CONTROL_PREFLIGHT_BUDGET_MS` defaults to `260`. A miss degrades the control preflight to unavailable and continues to the main stream; set `0` to roll back to the legacy full wait.
+
+The repair-chain budget does not synthesize visible narrative or template options.
+If the model does not return valid JSON inside the deadline, callers keep the
+existing safe failure path and the main `PLAYER_CHAT` chain remains separate.
+
+`pnpm benchmark:chat-metrics` now supports live percentile probes:
+
+```powershell
+$env:E2E_AI_LIVE='1'
+$env:BENCHMARK_BASE_URL='http://localhost:666'
+$env:BENCHMARK_CHAT_RUNS='10'
+pnpm benchmark:chat-metrics
+```
+
+The live summary prints p50/p95 for `firstStatusMs`, `firstTokenMs`, `finalMs`,
+and `statusFrames`. Use `BENCHMARK_CHAT_ENFORCE=1` to make the script exit
+non-zero when the live budget fails.
+
+### 2026-05 upstream TTFT probe
+
+当 `/api/chat` 的 `firstStatusMs` 正常但 `firstTokenMs` 超预算时，先不要裁剪叙事内容，也不要把 DB / lore / safety 直接判为根因。使用独立 gateway probe 直接请求 `AI_GATEWAY_BASE_URL` 的 OpenAI-compatible stream：
+
+```powershell
+pnpm probe:ai-gateway -- --runs 10 --prompt-profile app-sized --json-out .runtime-data\gateway-ttft-probe-app-sized.json
+```
+
+关键输出：
+
+- `gatewayHeadersMs`：gateway 返回 HTTP headers 的时间。
+- `gatewayFirstTokenMs`：首个 `choices[0].delta.content` 出现时间。
+- `gatewayFinalMs`：stream 完成时间。
+- `chunkCount` / `finishReason`：确认是否真流式、是否 `length` 截断。
+
+2026-05-04 本地排查结论：
+
+- 小 prompt 直连 `vc-main`：`gatewayFirstTokenMs p50/p95=1841/3335ms`。
+- app-sized prompt（`stableCharLen≈8502`、`dynamicCharLen≈5200`）直连 `vc-main`：`gatewayFirstTokenMs p50/p95=3768/9307ms`。
+- 同一 app-sized prompt 加 `AI_PLAYER_CHAT_EXTRA_BODY_JSON={"enable_thinking":false,"thinking":{"type":"disabled"}}`：`gatewayFirstTokenMs p50/p95=1072/1419ms`。
+- 对应 `/api/chat` live benchmark 在同配置下：`firstStatusMs p50/p95=318/418ms`，`firstTokenMs p50/p95=1386/1600ms`，`finalMs p50/p95=7686/9173ms`，`finalFrames=10/10`。
+
+因此普通 benchmark 的根因不是 `/api/chat` 首字前 DB/lore/safety 阻塞，也不是 role chain / retry 放大；服务端日志中 `moderateInputOnServerMs`、`promptBuildMs` 等本地阶段为毫秒级，`ai.telemetry phase=success` 约 1s 返回 headers，但 `stream_first_token` 在未禁用 thinking 时被模型首正文前推理显著拖长。
+
+浏览器长行动复测还暴露了另一个 tail：`PLAYER_CONTROL_PREFLIGHT` 在首包前等待 5s 以上，导致 `/api/chat` response headers/status frame 延迟。修复方式是启用默认 `AI_CONTROL_PREFLIGHT_BUDGET_MS=260` 的预算化放行；这不是安全审查降级，输入安全、主叙事规则、post-generation validation、NPC consistency 与 `__VERSECRAFT_FINAL__` 收口仍照常执行。
+
+推荐部署配置（provider 支持时）：
+
+```env
+AI_PLAYER_CHAT_MERGE_EXTRA_BODY=1
+AI_PLAYER_CHAT_EXTRA_BODY_JSON={"enable_thinking":false,"thinking":{"type":"disabled"}}
+```
+
+回滚方式：
+
+```env
+AI_PLAYER_CHAT_MERGE_EXTRA_BODY=0
+# 或删除 AI_PLAYER_CHAT_EXTRA_BODY_JSON
+```
+
+注意：这是 PLAYER_CHAT 专用网关 body hint，不改变 `/api/chat` SSE 契约，不改变 `__VERSECRAFT_FINAL__` 收口，不让 `reasoner` 进入主链路，也不通过缩短 narrative 伪造达标。若 provider 不支持这些字段并返回 4xx，应回滚该 env，改在 one-api 渠道或模型配置层选择默认关闭 thinking 的在线叙事模型。

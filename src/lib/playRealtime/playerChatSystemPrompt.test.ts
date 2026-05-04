@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   __resetStablePlayerDmPrefixMemoForTests,
   buildDynamicPlayerDmSystemSuffix,
+  getCompactStablePlayerDmSystemPrefix,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
@@ -21,6 +22,21 @@ test("getStablePlayerDmSystemPrefix returns identical string instance for same v
     else process.env.VERSECRAFT_DM_STABLE_PROMPT_VERSION = prev;
     __resetStablePlayerDmPrefixMemoForTests();
   }
+});
+
+test("compact stable prefix preserves core JSON and safety contract", () => {
+  __resetStablePlayerDmPrefixMemoForTests();
+  const compact = getCompactStablePlayerDmSystemPrefix();
+  const full = getStablePlayerDmSystemPrefix();
+  assert.ok(compact.length < full.length);
+  assert.ok(compact.includes("请严格以 JSON 格式输出"));
+  assert.ok(compact.includes("is_action_legal"));
+  assert.ok(compact.includes("sanity_damage"));
+  assert.ok(compact.includes("narrative"));
+  assert.ok(compact.includes("is_death"));
+  assert.ok(compact.includes("options"));
+  assert.ok(compact.includes("结构化字段"));
+  assert.ok(compact.includes("安全合规"));
 });
 
 test("stable prefix 体积已降到可控范围", () => {

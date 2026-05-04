@@ -51,7 +51,7 @@ export const PLAYER_CHAT_MAX_TOKENS_MAX = 2304;
 const PLAYER_CHAT_MAX_TOKENS_BY_TIER: Record<PlayerChatNarrativeBudgetTier, number> = {
   micro: 896,
   short: 1152,
-  standard: 1536,
+  standard: 896,
   reveal: 1792,
   climax: 1792,
   ending: 2304,

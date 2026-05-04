@@ -137,6 +137,7 @@ function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undef
 const STREAM_CHUNK_STALL_MS = VC_WAITING.playStreamChunkStallMs;
 /** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
 const STREAM_FIRST_CHUNK_STALL_MS = VC_WAITING.playStreamFirstChunkStallMs;
+const MIDSTREAM_LONG_GAP_MS = VC_WAITING.playInterChunkLongGapMs;
 /**
  * Max wait for the **first byte / response headers** from our own `/api/chat`.
  * The handler runs moderation + DB + control preflight (≤~11s) before calling upstream; `resilientFetch`
@@ -382,22 +383,30 @@ function PlayContent() {
   const waitUxSignalsRef = useRef<{
     requestId: string | null;
     requestStartedAt: number | null;
+    firstStatusShownAt: number | null;
     responseHeadersAt: number | null;
     firstSseDataAt: number | null;
     firstVisibleTextAt: number | null;
+    finalFrameReceivedAt: number | null;
     lastSseDataAt: number | null;
+    lastMidstreamSseDataAt: number | null;
     maxInterChunkGapMs: number;
     longGapCount: number;
+    midstreamLongGapCount: number;
     sentPerf: boolean;
   }>({
     requestId: null,
     requestStartedAt: null,
+    firstStatusShownAt: null,
     responseHeadersAt: null,
     firstSseDataAt: null,
     firstVisibleTextAt: null,
+    finalFrameReceivedAt: null,
     lastSseDataAt: null,
+    lastMidstreamSseDataAt: null,
     maxInterChunkGapMs: 0,
     longGapCount: 0,
+    midstreamLongGapCount: 0,
     sentPerf: false,
   });
 
@@ -689,43 +698,65 @@ function PlayContent() {
     signals: waitUxSignals,
   });
 
+  useLayoutEffect(() => {
+    const p = waitUxSignalsRef.current;
+    if (p.requestStartedAt == null || p.firstStatusShownAt != null) return;
+    if (!streamVisualForTypewriter || streamPhase === "idle" || streamPhase === "error") return;
+    if (!waitUxPrimaryLine || waitUxPrimaryLine.trim().length === 0) return;
+    p.firstStatusShownAt = performance.now();
+  }, [streamPhase, streamVisualForTypewriter, waitUxPrimaryLine]);
+
   // Best-effort client perf event (no behavior changes).
   useEffect(() => {
     const p = waitUxSignalsRef.current;
     if (p.sentPerf) return;
     if (!p.requestId || p.requestStartedAt == null) return;
-    // Send when we either saw visible text, or we already exited visual stream (committed/errored).
-    if (p.firstVisibleTextAt == null && streamPhase !== "idle" && streamPhase !== "error") return;
+    // Send after the request has reached a terminal client state so final-frame timing
+    // can be reported when the SSE final marker exists.
+    const streamFinished = p.finalFrameReceivedAt != null || streamPhase === "idle" || streamPhase === "error";
+    if (!streamFinished) return;
     p.sentPerf = true;
-    const firstStatusShownMs = 0; // stage is set at request start on client
+    const firstStatusShownMs =
+      p.firstStatusShownAt != null ? Math.max(0, p.firstStatusShownAt - p.requestStartedAt) : null;
     const responseHeadersMs =
       p.responseHeadersAt != null ? Math.max(0, p.responseHeadersAt - p.requestStartedAt) : null;
     const firstChunkReceivedMs =
       p.firstSseDataAt != null ? Math.max(0, p.firstSseDataAt - p.requestStartedAt) : null;
     const firstVisibleTextMs =
       p.firstVisibleTextAt != null ? Math.max(0, p.firstVisibleTextAt - p.requestStartedAt) : null;
-    const firstPerceivedFeedbackMs = Math.min(
-      ...[0, firstChunkReceivedMs ?? Infinity, firstVisibleTextMs ?? Infinity, responseHeadersMs ?? Infinity].filter(
-        (x) => Number.isFinite(x)
-      )
-    );
+    const finalFrameReceivedMs =
+      p.finalFrameReceivedAt != null ? Math.max(0, p.finalFrameReceivedAt - p.requestStartedAt) : null;
+    const perceivedCandidates = [
+      firstStatusShownMs,
+      firstChunkReceivedMs,
+      firstVisibleTextMs,
+      responseHeadersMs,
+    ].filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+    const firstPerceivedFeedbackMs =
+      perceivedCandidates.length > 0 ? Math.min(...perceivedCandidates) : null;
+    const payload = {
+      requestId: p.requestId,
+      waitUxDisplayStage: waitUxDisplayStage,
+      firstStatusShownMs,
+      responseHeadersMs,
+      firstChunkReceivedMs,
+      firstVisibleTextMs,
+      finalFrameReceivedMs,
+      firstPerceivedFeedbackMs,
+      maxInterChunkGapMs: p.maxInterChunkGapMs,
+      longGapCount: p.longGapCount,
+      midstreamLongGapCount: p.midstreamLongGapCount,
+    };
+    if (process.env.NODE_ENV !== "production" || VC_PERF_FLAGS.clientPerfDebug) {
+      console.debug("[play][chat_client_perf]", payload);
+    }
     void trackGameplayEvent({
       eventName: "chat_client_perf",
       sessionId: guestId ?? "guest_play",
       page: "/play",
       source: "play_page",
       idempotencyKey: `${p.requestId}:chat_client_perf`,
-      payload: {
-        requestId: p.requestId,
-        waitUxDisplayStage: waitUxDisplayStage,
-        firstStatusShownMs,
-        responseHeadersMs,
-        firstChunkReceivedMs,
-        firstVisibleTextMs,
-        firstPerceivedFeedbackMs,
-        maxInterChunkGapMs: p.maxInterChunkGapMs,
-        longGapCount: p.longGapCount,
-      },
+      payload,
     }).catch(() => {});
   }, [guestId, streamPhase, waitUxDisplayStage]);
 
@@ -1458,12 +1489,16 @@ function PlayContent() {
       waitUxSignalsRef.current = {
         requestId: rid,
         requestStartedAt: t0,
+        firstStatusShownAt: null,
         responseHeadersAt: null,
         firstSseDataAt: null,
         firstVisibleTextAt: null,
+        finalFrameReceivedAt: null,
         lastSseDataAt: null,
+        lastMidstreamSseDataAt: null,
         maxInterChunkGapMs: 0,
         longGapCount: 0,
+        midstreamLongGapCount: 0,
         sentPerf: false,
       };
     }
@@ -1687,6 +1722,13 @@ function PlayContent() {
         const parsedStage = parseBackendWaitStage(statusFrame.stage);
         if (parsedStage) waitUxBackendStageRef.current = parsedStage;
       }
+      const isFinalFrame = eventText.includes("__VERSECRAFT_FINAL__:");
+      if (isFinalFrame) {
+        const p = waitUxSignalsRef.current;
+        if (p.requestStartedAt != null && p.finalFrameReceivedAt == null) {
+          p.finalFrameReceivedAt = performance.now();
+        }
+      }
       const { raw: nextRaw, sawNonEmptyData } = accumulateDmFromSseEvent(eventText, raw);
       raw = nextRaw;
       if (sawNonEmptyData && !sawStreamChunk) {
@@ -1702,9 +1744,16 @@ function PlayContent() {
         if (p.lastSseDataAt != null) {
           const gap = Math.max(0, now - p.lastSseDataAt);
           p.maxInterChunkGapMs = Math.max(p.maxInterChunkGapMs, gap);
-          if (gap >= 2500) p.longGapCount += 1;
+          if (gap >= MIDSTREAM_LONG_GAP_MS) p.longGapCount += 1;
         }
         p.lastSseDataAt = now;
+        if (!isFinalFrame) {
+          if (p.lastMidstreamSseDataAt != null) {
+            const midstreamGap = Math.max(0, now - p.lastMidstreamSseDataAt);
+            if (midstreamGap >= MIDSTREAM_LONG_GAP_MS) p.midstreamLongGapCount += 1;
+          }
+          p.lastMidstreamSseDataAt = now;
+        }
       }
       try {
         const preview = extractNarrative(raw);
@@ -3204,8 +3253,8 @@ function PlayContent() {
                 chatBusy={isChatBusy || endgameState.active}
                 helperText={
                   endgameState.active
-                    ? (endgameLocked ? "终局已至。" : "正在生成终局…")
-                    : (isChatBusy ? "正在生成..." : "保持简短。保持真实。")
+                    ? (endgameLocked ? "终局已至。" : "终局正在收束")
+                    : (isChatBusy ? (waitUxPrimaryLine || "本回合处理中") : "保持简短。保持真实。")
                 }
                 showRegisterPrompt={showRegisterPrompt}
                 isGuestDialogueExhausted={isGuestDialogueExhausted}

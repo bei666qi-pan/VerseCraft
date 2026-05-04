@@ -17,6 +17,26 @@ function isPlayWaitUxEnabled(): boolean {
   return process.env.NEXT_PUBLIC_CHAT_WAITING_UX !== "0";
 }
 
+function longWaitSubline(args: {
+  elapsedMs: number;
+  hasResponseHeaders: boolean;
+  hasAnySseData: boolean;
+  hasVisibleText: boolean;
+}): string | null {
+  if (args.hasVisibleText) return null;
+  if (args.elapsedMs >= VC_WAITING.playWaitUxVeryLongFeedbackAfterMs) {
+    if (args.hasAnySseData) return "正文已经抵达，正在继续铺开；不用重复提交。";
+    if (args.hasResponseHeaders) return "本回合仍在生成，连接保持中；不用重复提交。";
+    return "请求仍在路上，页面没有卡死；不用重复提交。";
+  }
+  if (args.elapsedMs >= VC_WAITING.playWaitUxLongFeedbackAfterMs) {
+    if (args.hasAnySseData) return "正文已经抵达，正在铺开。";
+    if (args.hasResponseHeaders) return "正文仍在生成，页面没有卡死。";
+    return "仍在接通叙事通道，页面没有卡死。";
+  }
+  return null;
+}
+
 export function usePlayWaitUx(args: {
   /** 首字前为 true：与 StreamPanel 的 smoothThinking 对齐 */
   thinking: boolean;
@@ -103,12 +123,20 @@ export function usePlayWaitUx(args: {
   }
 
   const primaryLine = primaryLineForWaitStage(display.stage);
-  const showSub =
+  const longSubline = longWaitSubline({
+    elapsedMs,
+    hasResponseHeaders: signalHasResponseHeaders,
+    hasAnySseData: signalHasAnySseData,
+    hasVisibleText: signalHasVisibleText,
+  });
+  const showSemanticSubline =
     elapsedMs >= VC_WAITING.playWaitUxSemanticSublineAfterMs &&
-    (display.stage === "context_building" ||
+    (display.stage === "routing" ||
+      display.stage === "context_building" ||
       display.stage === "generating" ||
       display.stage === "streaming");
-  const secondaryLine = showSub ? playWaitUxSemanticSubline(args.semanticKind) : null;
+  const semanticSubline = showSemanticSubline ? playWaitUxSemanticSubline(args.semanticKind) : null;
+  const secondaryLine = longSubline ?? semanticSubline;
 
   return { primaryLine, secondaryLine, displayStage: display.stage };
 }

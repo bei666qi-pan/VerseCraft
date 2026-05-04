@@ -451,17 +451,16 @@ async function runOptionsOnlyAiOnce(args: {
       tags: { ...(args.ctx.tags ?? {}), purpose: "options_regen" },
     },
     signal: args.signal,
-    // Reasoning models (e.g. MiniMax) need 8-10s for reasoning_content + content.
-    // The per-attempt timeout from VC_WAITING (6.5s) is too short; use 15s to avoid
-    // aborting mid-reasoning and returning no model-generated options.
-    requestTimeoutMs: Math.max(args.timeoutMs, 15_000),
+    // Keep repair attempts bounded. Callers pass a wall-clock budget and this
+    // helper must not stretch the visible turn by silently upgrading to a long timeout.
+    requestTimeoutMs: args.timeoutMs,
     skipCache: true,
     devOverrides: {
       // Reasoning models spend most tokens on reasoning_content before emitting content.
       // 256 is not enough — the model hits max_tokens with empty content.
       maxTokens: 1024,
       temperature: args.temperature,
-      timeoutMs: Math.max(args.timeoutMs, 15_000),
+      timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
     },
   });
@@ -703,12 +702,12 @@ async function runDecisionOnlyAiOnce(args: {
       tags: { ...(args.ctx.tags ?? {}), purpose: "decision_options_regen" },
     },
     signal: args.signal,
-    requestTimeoutMs: Math.max(args.timeoutMs, 15_000),
+    requestTimeoutMs: args.timeoutMs,
     skipCache: true,
     devOverrides: {
       maxTokens: 1024,
       temperature: args.temperature,
-      timeoutMs: Math.max(args.timeoutMs, 15_000),
+      timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
     },
   });

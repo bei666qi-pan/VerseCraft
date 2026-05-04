@@ -32,8 +32,12 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     enableNarrativeEnhancement: false,
     enableNarrativeExpansion: false,
     playerChatStreamIncludeUsage: true,
+    playerChatFastLaneRelaxResponseFormat: true,
     playerChatMaxRoleCandidates: 2,
     playerChatMaxRetries: 0,
+    playerChatFastLaneTimeoutMs: 18_000,
+    playerChatSlowLaneTimeoutMs: 45_000,
+    playerChatStreamReconnectWallMs: 22_000,
     playerChatMaxTokensOverride: null,
     onlineShortJsonMaxRetries: 0,
     onlineShortJsonRelaxResponseFormat: true,
@@ -44,6 +48,7 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     playerChatFailFastOnRateLimit: true,
     onlineShortJsonRetryHardCap1: true,
     gatewayExtraBody: undefined,
+    playerChatExtraBody: undefined,
     controlPreflightBudgetMs: 0,
     narrativeEnhanceBudgetMs: 0,
     streamModerationThrottleMs: 0,
@@ -90,7 +95,7 @@ test("PLAYER_CHAT maxTokens aligned with short DM JSON budget", () => {
 test("PLAYER_CHAT narrative budget tiers resolve dynamic maxTokens", () => {
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("micro").maxTokens, 896);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("short").maxTokens, 1152);
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 1536);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 896);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("reveal").maxTokens, 1792);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("climax").maxTokens, 1792);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("ending").maxTokens, 2304);

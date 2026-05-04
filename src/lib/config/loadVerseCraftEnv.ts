@@ -69,6 +69,12 @@ function parseDotenvFileBody(body: string): Record<string, string> {
 }
 
 function applyAiSecretsFromParsedEnv(parsed: Record<string, string>): void {
+  if (
+    process.env.VC_DISABLE_AI_ENV_FILE_RELOAD === "1" ||
+    process.env.AI_DISABLE_ENV_FILE_RELOAD === "1"
+  ) {
+    return;
+  }
   for (const name of AI_SECRET_ENV_NAMES) {
     const v = parsed[name];
     if (typeof v === "string" && v.trim().length > 0) {

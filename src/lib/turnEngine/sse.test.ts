@@ -46,6 +46,24 @@ test("buildStatusFramePayload emits stable status envelope", () => {
   );
 });
 
+test("buildStatusFramePayload can pad early status frames without changing the envelope", () => {
+  const payload = buildStatusFramePayload({
+    stage: "request_sent",
+    message: "accepted",
+    requestId: "req_123",
+    at: 42,
+    flushPaddingBytes: 2048,
+  });
+  assert.ok(payload.startsWith("__VERSECRAFT_STATUS__:"));
+  const body = JSON.parse(payload.slice("__VERSECRAFT_STATUS__:".length));
+  assert.equal(body.stage, "request_sent");
+  assert.equal(body.message, "accepted");
+  assert.equal(body.requestId, "req_123");
+  assert.equal(body.at, 42);
+  assert.equal(typeof body.flushPadding, "string");
+  assert.ok(body.flushPadding.length >= 2048);
+});
+
 // --- Phase-5: SSE envelope contract, round-tripped through the client decoder ---
 // These tests lock down the three guarantees the client depends on:
 //   1. __VERSECRAFT_STATUS__ frames MUST not corrupt the DM buffer.

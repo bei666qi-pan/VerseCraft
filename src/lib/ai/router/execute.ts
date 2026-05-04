@@ -123,6 +123,7 @@ function buildPlayerStreamBody(
   binding: TaskBinding,
   enableStream: boolean,
   streamIncludeUsage: boolean,
+  requestJsonObject: boolean,
   maxTokensOverride?: number,
   extraBody?: Record<string, unknown>
 ): NormalizedCompletionRequest {
@@ -133,7 +134,7 @@ function buildPlayerStreamBody(
     stream,
     maxTokens: maxTokensOverride ?? binding.maxTokens,
     temperature: binding.temperature,
-    responseFormatJsonObject: binding.responseFormatJsonObject,
+    responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: stream && streamIncludeUsage,
     ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
   };
@@ -312,14 +313,19 @@ export async function executePlayerChatStream(params: {
 
     const factory = getProviderFactory();
     const bodyT0 = Date.now();
+    const playerChatExtraBody =
+      env.playerChatExtraBody && Object.keys(env.playerChatExtraBody).length > 0
+        ? { ...(env.gatewayExtraBody ?? {}), ...env.playerChatExtraBody }
+        : env.gatewayExtraBody;
     const body = buildPlayerStreamBody(
       gatewayModel,
       params.messages,
       taskBinding,
       env.enableStream,
       env.playerChatStreamIncludeUsage,
+      !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
       playerChatMaxTokens,
-      env.gatewayExtraBody
+      playerChatExtraBody
     );
     const bodyBuildMs = Math.max(0, Date.now() - bodyT0);
     const initT0 = Date.now();

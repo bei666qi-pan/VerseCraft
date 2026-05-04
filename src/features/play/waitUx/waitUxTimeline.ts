@@ -1,10 +1,10 @@
 import type { PlayWaitUxStage } from "./waitUxStages";
 import { rankWaitUxStage, waitUxStageAtRank } from "./waitUxStages";
+import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
-const MS_ROUTING = 720;
-const MS_CONTEXT = 2000;
-// Longer than before: prevents premature "generating" when backend is silent.
-const MS_GENERATING = 5600;
+const MS_ROUTING = VC_WAITING.playWaitUxRoutingAfterMs;
+const MS_CONTEXT = VC_WAITING.playWaitUxContextAfterMs;
+const MS_GENERATING = VC_WAITING.playWaitUxGeneratingAfterMs;
 
 const MIN_HOLD_DEFAULT_MS = 440;
 const MIN_HOLD_BACKEND_MS = 260;

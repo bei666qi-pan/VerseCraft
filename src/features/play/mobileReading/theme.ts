@@ -93,7 +93,7 @@ export const mobileReadingTheme = {
   storyViewport: "relative flex flex-col",
 
   actionDock:
-    "pointer-events-none fixed left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 px-[1rem] pb-0 pt-0 min-[420px]:px-[1.35rem]",
+    "pointer-events-none fixed left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-[1rem] pb-0 pt-0 min-[420px]:px-[1.35rem]",
   actionDockCollapsed:
     "bottom-[calc(var(--vc-mobile-bottom-nav-height)+0.65rem)]",
   actionDockExpanded:
