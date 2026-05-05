@@ -24,3 +24,23 @@ export function shouldUseResumeShadowFallback(input: {
   if (!input.rowExists) return true;
   return false;
 }
+
+function parseHomeContinueTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+export function resolveHomeContinueTimestamps(input: {
+  localUpdatedAtIso: string | null | undefined;
+  cloudUpdatedAt: string | null | undefined;
+  cloudUpdatedAtIso: string | null | undefined;
+}): { localTs: number; cloudTs: number } {
+  return {
+    localTs: parseHomeContinueTimestamp(input.localUpdatedAtIso) ?? 0,
+    cloudTs:
+      parseHomeContinueTimestamp(input.cloudUpdatedAt) ??
+      parseHomeContinueTimestamp(input.cloudUpdatedAtIso) ??
+      0,
+  };
+}

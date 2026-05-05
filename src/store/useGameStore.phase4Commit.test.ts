@@ -108,6 +108,7 @@ test("phase4: weapon save fields remain readable after UI entry pruning", () => 
   resetStore();
   useGameStore.setState({ saveSlots: { main_slot: saved } as never });
   useGameStore.getState().loadGame("main_slot");
+  assert.equal(useGameStore.getState().isGameStarted, true);
   assert.equal(useGameStore.getState().equippedWeapon?.id, "WPN_SAVE_1");
   assert.equal(useGameStore.getState().weaponBag[0]?.id, "WPN_SAVE_BAG");
 });

@@ -49,6 +49,7 @@ function createRateLimiter(limit: number, intervalMs: number) {
 
 const generalLimiter = createRateLimiter(10, 1000);
 const llmLimiter = createRateLimiter(2, 1000);
+const chatQueueStatusLimiter = createRateLimiter(20, 1000);
 
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -139,6 +140,8 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const ip = getClientIp(req);
   const isStream = pathname === "/api/chat";
+  const isChatQueueLightweight =
+    pathname === "/api/chat/queue/status" || pathname === "/api/chat/queue/cancel";
   const requestHost = getRequestHost(req);
   const isPreviewHost = isNoindexPreviewHost(requestHost);
   const isPreviewGateHost = isPreviewAccessEnabledForHost(requestHost);
@@ -192,6 +195,10 @@ export async function middleware(req: NextRequest) {
 
   if (isStream) {
     if (!llmLimiter(ip)) {
+      return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
+    }
+  } else if (isChatQueueLightweight) {
+    if (!chatQueueStatusLimiter(ip)) {
       return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
     }
   } else if (!generalLimiter(ip)) {

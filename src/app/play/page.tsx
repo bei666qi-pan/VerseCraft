@@ -15,7 +15,7 @@ import { selectBgmForTurn } from "@/features/play/bgm/bgmRules";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
-import { PlayStoryScroll } from "@/features/play/components/PlayStoryScroll";
+import { PlayStoryScroll, type ChatQueuePanelState } from "@/features/play/components/PlayStoryScroll";
 import {
   MobileActionDock,
   MobileBottomNav,
@@ -127,9 +127,165 @@ import {
 } from "@/lib/combat/combatPresentation";
 import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
+import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
 
 type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
+
+type ChatQueueUiStatus =
+  | "idle"
+  | "queued"
+  | "ready"
+  | "running"
+  | "failed"
+  | "expired"
+  | "cancelled"
+  | "rejected";
+
+type ChatQueueUiState = ChatQueuePanelState & {
+  queueId: string | null;
+};
+
+type ChatQueueApiPayload = {
+  queueId?: string | null;
+  requestId?: string | null;
+  status?: ChatQueueUiStatus | "completed" | "missing";
+  position?: number | null;
+  etaSeconds?: number | null;
+  retryAfterSeconds?: number | null;
+  disabled?: boolean;
+  skipped?: string;
+  reused?: boolean;
+  reason?: string;
+};
+
+type PendingChatQueueAction = {
+  queueId: string;
+  requestId: string;
+  action: string;
+  bypassLengthCheck: boolean;
+  isResume: boolean;
+  isSystemAction: boolean;
+  createdAt: number;
+};
+
+const CHAT_QUEUE_PENDING_STORAGE_KEY = "versecraft.chatQueue.pendingAction.v1";
+const CHAT_QUEUE_FINGERPRINT_STORAGE_KEY = "versecraft.chatQueue.fingerprint.v1";
+const EMPTY_CHAT_QUEUE_STATE: ChatQueueUiState = {
+  active: false,
+  queueId: null,
+  status: "idle",
+  position: null,
+  etaSeconds: null,
+  retryAfterSeconds: null,
+  message: "",
+};
+
+function safeChatQueueNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : null;
+}
+
+function messageForChatQueueStatus(status: ChatQueueUiStatus): string {
+  switch (status) {
+    case "queued":
+      return "当前生成通道繁忙，已为你保留本次行动";
+    case "ready":
+    case "running":
+      return "轮到你了，正在接入主笔通道";
+    case "expired":
+      return "排队已过期，请重新提交本次行动";
+    case "failed":
+      return "排队失败，请稍后再试";
+    case "rejected":
+      return "当前通道过于拥挤，请稍后再试";
+    case "cancelled":
+      return "已取消排队";
+    default:
+      return "";
+  }
+}
+
+function normalizeChatQueuePayload(raw: unknown): ChatQueueApiPayload | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as ChatQueueApiPayload;
+}
+
+function buildChatQueueUiState(payload: ChatQueueApiPayload, fallbackStatus?: ChatQueueUiStatus): ChatQueueUiState {
+  const rawStatus = typeof payload.status === "string" ? payload.status : fallbackStatus;
+  const status: ChatQueueUiStatus =
+    rawStatus === "queued" ||
+    rawStatus === "ready" ||
+    rawStatus === "running" ||
+    rawStatus === "failed" ||
+    rawStatus === "expired" ||
+    rawStatus === "cancelled" ||
+    rawStatus === "rejected"
+      ? rawStatus
+      : "queued";
+  return {
+    active: status !== "cancelled",
+    queueId: typeof payload.queueId === "string" ? payload.queueId : null,
+    status,
+    position: safeChatQueueNumber(payload.position),
+    etaSeconds: safeChatQueueNumber(payload.etaSeconds),
+    retryAfterSeconds: safeChatQueueNumber(payload.retryAfterSeconds),
+    message: messageForChatQueueStatus(status),
+  };
+}
+
+function getOrCreateChatQueueFingerprint(): string {
+  try {
+    const existing = window.localStorage.getItem(CHAT_QUEUE_FINGERPRINT_STORAGE_KEY);
+    if (existing && /^[a-zA-Z0-9_.:-]{8,160}$/.test(existing)) return existing;
+    const bytes = new Uint8Array(12);
+    window.crypto.getRandomValues(bytes);
+    const next = `vcqfp_${Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")}`;
+    window.localStorage.setItem(CHAT_QUEUE_FINGERPRINT_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return `vcqfp_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
+  }
+}
+
+function savePendingChatQueueAction(pending: PendingChatQueueAction): void {
+  try {
+    window.localStorage.setItem(CHAT_QUEUE_PENDING_STORAGE_KEY, JSON.stringify(pending));
+  } catch {
+    // Queue restore is best effort only.
+  }
+}
+
+function loadPendingChatQueueAction(): PendingChatQueueAction | null {
+  try {
+    const raw = window.localStorage.getItem(CHAT_QUEUE_PENDING_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingChatQueueAction>;
+    if (!parsed || typeof parsed.queueId !== "string" || typeof parsed.action !== "string") return null;
+    if (Date.now() - Number(parsed.createdAt ?? 0) > 30 * 60_000) return null;
+    return {
+      queueId: parsed.queueId,
+      requestId: typeof parsed.requestId === "string" ? parsed.requestId : createVerseCraftRequestId("chat"),
+      action: parsed.action,
+      bypassLengthCheck: Boolean(parsed.bypassLengthCheck),
+      isResume: Boolean(parsed.isResume),
+      isSystemAction: Boolean(parsed.isSystemAction),
+      createdAt: Number(parsed.createdAt ?? Date.now()),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingChatQueueAction(): void {
+  try {
+    window.localStorage.removeItem(CHAT_QUEUE_PENDING_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undefined {
   return raw === "idle" || raw === "active" || raw === "suppressed" || raw === "breached" ? raw : undefined;
@@ -333,6 +489,7 @@ function PlayContent() {
   const [openingAiBusy, setOpeningAiBusy] = useState(false);
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
   const [waitingHintKind, setWaitingHintKind] = useState<PlaySemanticWaitingKind | null>(null);
+  const [chatQueueState, setChatQueueState] = useState<ChatQueueUiState>(EMPTY_CHAT_QUEUE_STATE);
   const [optionsRegenBusy, setOptionsRegenBusy] = useState(false);
   const [optionsRegenStage, setOptionsRegenStage] = useState<MobileOptionsRegenStage>("idle");
   const [optionsRegenProgress, setOptionsRegenProgress] = useState(0);
@@ -376,10 +533,18 @@ function PlayContent() {
   const streamLogsBaselineRef = useRef(0);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const chatQueuePollAbortRef = useRef<AbortController | null>(null);
+  const pendingQueueActionRef = useRef<PendingChatQueueAction | null>(null);
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
   const sendActionInFlightRef = useRef(false);
   const sendActionRef = useRef<
-    (action: string, bypassLengthCheck?: boolean, isResume?: boolean, isSystemAction?: boolean) => Promise<void>
+    (
+      action: string,
+      bypassLengthCheck?: boolean,
+      isResume?: boolean,
+      isSystemAction?: boolean,
+      resumeQueueId?: string | null
+    ) => Promise<void>
   >(async () => {});
   const streamPhaseRef = useRef<ChatStreamPhase>("idle");
   /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
@@ -1201,6 +1366,192 @@ function PlayContent() {
   // 因此只保留 ref 供 requestFreshOptions 读取最近一次的 turn_mode（用于 telemetry/success hint）。
   const lastCommittedTurnModeRef = useRef<ClientTurnMode>("decision_required");
 
+  function chatQueueHeaders(requestId: string): Record<string, string> {
+    return {
+      [VERSECRAFT_REQUEST_ID_HEADER]: requestId,
+      [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
+    };
+  }
+
+  function waitForQueueDelay(seconds: number | null, signal: AbortSignal): Promise<void> {
+    const ms = Math.max(500, Math.min(10_000, (seconds ?? 2) * 1000));
+    return new Promise((resolve, reject) => {
+      const id = window.setTimeout(resolve, ms);
+      signal.addEventListener(
+        "abort",
+        () => {
+          window.clearTimeout(id);
+          reject(new DOMException("Queue polling aborted", "AbortError"));
+        },
+        { once: true }
+      );
+    });
+  }
+
+  async function waitForChatQueueReady(queueId: string, pending: PendingChatQueueAction): Promise<string | null> {
+    chatQueuePollAbortRef.current?.abort();
+    const pollAbort = new AbortController();
+    chatQueuePollAbortRef.current = pollAbort;
+    try {
+      while (!pollAbort.signal.aborted) {
+        const res = await fetch(`/api/chat/queue/status?queueId=${encodeURIComponent(queueId)}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: chatQueueHeaders(pending.requestId),
+          signal: pollAbort.signal,
+        });
+        const payload = normalizeChatQueuePayload(await res.json().catch(() => null));
+        if (!payload) {
+          setChatQueueState(buildChatQueueUiState({ status: "failed", retryAfterSeconds: 2 }, "failed"));
+          clearPendingChatQueueAction();
+          return null;
+        }
+        const nextState = buildChatQueueUiState(payload);
+        setChatQueueState(nextState);
+        if (payload.status === "running" || payload.status === "ready") {
+          return queueId;
+        }
+        if (
+          payload.status === "expired" ||
+          payload.status === "failed" ||
+          payload.status === "cancelled" ||
+          payload.status === "completed" ||
+          payload.status === "missing"
+        ) {
+          clearPendingChatQueueAction();
+          return null;
+        }
+        await waitForQueueDelay(safeChatQueueNumber(payload.retryAfterSeconds), pollAbort.signal);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return null;
+      setChatQueueState(buildChatQueueUiState({ status: "failed", retryAfterSeconds: 2 }, "failed"));
+      clearPendingChatQueueAction();
+      return null;
+    } finally {
+      if (chatQueuePollAbortRef.current === pollAbort) chatQueuePollAbortRef.current = null;
+    }
+    return null;
+  }
+
+  async function requestChatQueueAdmission(args: {
+    body: unknown;
+    requestId: string;
+    action: string;
+    bypassLengthCheck: boolean;
+    isResume: boolean;
+    isSystemAction: boolean;
+    resumeQueueId?: string | null;
+  }): Promise<string | null | false> {
+    if (args.isSystemAction) {
+      setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+      return null;
+    }
+
+    const pendingBase: PendingChatQueueAction = {
+      queueId: args.resumeQueueId ?? "",
+      requestId: args.requestId,
+      action: args.action,
+      bypassLengthCheck: args.bypassLengthCheck,
+      isResume: args.isResume,
+      isSystemAction: args.isSystemAction,
+      createdAt: Date.now(),
+    };
+
+    if (args.resumeQueueId) {
+      setChatQueueState(buildChatQueueUiState({ queueId: args.resumeQueueId, status: "queued" }, "queued"));
+      const readyQueueId = await waitForChatQueueReady(args.resumeQueueId, {
+        ...pendingBase,
+        queueId: args.resumeQueueId,
+      });
+      return readyQueueId ?? false;
+    }
+
+    const res = await fetch("/api/chat/queue", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...chatQueueHeaders(args.requestId),
+      },
+      body: JSON.stringify(args.body),
+    });
+    const payload = normalizeChatQueuePayload(await res.json().catch(() => null));
+    if (!payload) {
+      setChatQueueState(buildChatQueueUiState({ status: "failed", retryAfterSeconds: 2 }, "failed"));
+      return false;
+    }
+    if (payload.disabled || payload.skipped === "options_regen_only") {
+      setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+      return null;
+    }
+    const nextState = buildChatQueueUiState(payload, res.ok ? "running" : "rejected");
+    setChatQueueState(nextState);
+    if (!res.ok || payload.status === "rejected") {
+      return false;
+    }
+    const queueId = typeof payload.queueId === "string" ? payload.queueId : null;
+    if (!queueId) return null;
+    if (payload.status === "queued") {
+      const pending = { ...pendingBase, queueId };
+      pendingQueueActionRef.current = pending;
+      savePendingChatQueueAction(pending);
+      return (await waitForChatQueueReady(queueId, pending)) ?? false;
+    }
+    return queueId;
+  }
+
+  async function cancelCurrentChatQueue() {
+    const queueId = chatQueueState.queueId ?? pendingQueueActionRef.current?.queueId ?? null;
+    const pendingAction = pendingQueueActionRef.current?.action ?? null;
+    chatQueuePollAbortRef.current?.abort();
+    clearPendingChatQueueAction();
+    pendingQueueActionRef.current = null;
+    if (queueId) {
+      await fetch("/api/chat/queue/cancel", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          ...chatQueueHeaders(createVerseCraftRequestId("chatq_cancel")),
+        },
+        body: JSON.stringify({ queueId }),
+      }).catch(() => undefined);
+    }
+    setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+    setStreamPhase("idle");
+    sendActionInFlightRef.current = false;
+    setOpeningAiBusy(false);
+    if (pendingAction) setInput(pendingAction);
+    setFirstTimeHint("已取消排队，本次行动没有继续提交。");
+  }
+
+  useEffect(() => {
+    const pending = loadPendingChatQueueAction();
+    if (!pending) return;
+    pendingQueueActionRef.current = pending;
+    setChatQueueState(buildChatQueueUiState({ queueId: pending.queueId, status: "queued" }, "queued"));
+    void (async () => {
+      const readyQueueId = await waitForChatQueueReady(pending.queueId, pending);
+      if (!readyQueueId) {
+        setInput(pending.action);
+        return;
+      }
+      void sendActionRef.current(
+        pending.action,
+        pending.bypassLengthCheck,
+        true,
+        pending.isSystemAction,
+        readyQueueId
+      );
+    })();
+    // Restore once after hydration; sendActionRef is intentionally late-bound.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function requestFreshOptions(
     trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main",
     seedOptions: string[] = []
@@ -1552,7 +1903,8 @@ function PlayContent() {
     action: string,
     bypassLengthCheck?: boolean,
     isResume?: boolean,
-    isSystemAction?: boolean
+    isSystemAction?: boolean,
+    resumeQueueId?: string | null
   ) {
     if (isChatBusy || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
@@ -1648,9 +2000,42 @@ function PlayContent() {
 
     const playerContext = useGameStore.getState().getPromptContext();
     const clientState = useGameStore.getState().getStructuredClientStateForServer();
+    const chatRequestId = waitUxSignalsRef.current.requestId ?? createVerseCraftRequestId("chat");
+    const chatRequestBody = {
+      messages,
+      playerContext,
+      clientState,
+      sessionId: guestId ?? "browser_session",
+      openingOptionsOnlyRound: false,
+    };
 
     const ac = new AbortController();
     streamAbortRef.current = ac;
+    let queueIdForChat: string | null = null;
+
+    try {
+      const queueAdmission = await requestChatQueueAdmission({
+        body: chatRequestBody,
+        requestId: chatRequestId,
+        action: trimmed,
+        bypassLengthCheck: Boolean(bypassLengthCheck),
+        isResume: Boolean(isResume),
+        isSystemAction: Boolean(isSystemAction),
+        resumeQueueId: resumeQueueId ?? null,
+      });
+      if (queueAdmission === false) {
+        setStreamPhase("idle");
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        return;
+      }
+      queueIdForChat = queueAdmission;
+    } catch (queueErr) {
+      console.warn("[play][chat_queue_admission_failed]", queueErr);
+      setChatQueueState(buildChatQueueUiState({ status: "failed", retryAfterSeconds: 2 }, "failed"));
+      setStreamPhase("idle");
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      return;
+    }
 
     let res: Response;
     const fetchDeadlineState = { hit: false };
@@ -1670,19 +2055,32 @@ function PlayContent() {
         cache: "no-store",
         headers: {
           "Content-Type": "application/json",
-          [VERSECRAFT_REQUEST_ID_HEADER]: waitUxSignalsRef.current.requestId ?? createVerseCraftRequestId("chat"),
+          [VERSECRAFT_REQUEST_ID_HEADER]: chatRequestId,
+          [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
+          ...(queueIdForChat ? { [CHAT_QUEUE_ID_HEADER]: queueIdForChat } : {}),
         },
-        body: JSON.stringify({
-          messages,
-          playerContext,
-          clientState,
-          sessionId: guestId ?? "browser_session",
-          openingOptionsOnlyRound: false,
-        }),
+        body: JSON.stringify(chatRequestBody),
         signal: ac.signal,
       });
+      if (queueIdForChat) {
+        clearPendingChatQueueAction();
+        pendingQueueActionRef.current = null;
+        setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+      }
     } catch (fetchErr) {
       setStreamPhase("idle");
+      if (queueIdForChat) {
+        await fetch("/api/chat/queue/cancel", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...chatQueueHeaders(createVerseCraftRequestId("chatq_cancel")),
+          },
+          body: JSON.stringify({ queueId: queueIdForChat }),
+        }).catch(() => undefined);
+      }
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         if (fetchDeadlineState.hit) {
           setLiveNarrative(
@@ -3321,6 +3719,10 @@ function PlayContent() {
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                       waitUxPrimaryLine={waitUxPrimaryLine}
                       waitUxSecondaryLine={waitUxSecondaryLine}
+                      chatQueueState={chatQueueState}
+                      onCancelChatQueue={() => {
+                        void cancelCurrentChatQueue();
+                      }}
                       fixedBottomSpace={optionsExpanded ? "expanded" : "default"}
                     />
                   </>
@@ -3365,6 +3767,8 @@ function PlayContent() {
                 helperText={
                   endgameState.active
                     ? (endgameLocked ? "终局已至。" : "终局正在收束")
+                    : chatQueueState.active
+                      ? chatQueueState.message
                     : (isChatBusy ? (waitUxPrimaryLine || "本回合处理中") : "保持简短。保持真实。")
                 }
                 showRegisterPrompt={showRegisterPrompt}

@@ -81,6 +81,16 @@ import {
   isSafeVerseCraftRequestId,
   VERSECRAFT_REQUEST_ID_HEADER,
 } from "@/lib/telemetry/requestId";
+import {
+  buildChatQueueIdentity,
+  buildChatQueueResponsePayload,
+  claimChatQueueTicketForExecution,
+  completeChatQueueTicket,
+  enqueueChatRequest,
+  failChatQueueTicket,
+  getChatQueueIdFromHeaders,
+} from "@/lib/chatQueue/service";
+import { CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import { CHAT_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
@@ -245,12 +255,169 @@ function hasAuthSessionCookie(headers: Headers): boolean {
 
 const EARLY_STATUS_WRAPPER_HEADER = "x-versecraft-early-status-wrapper";
 
-function rebuildChatRequest(req: Request, requestId?: string): Request {
+function rebuildChatRequest(req: Request, requestId?: string, chatQueueId?: string | null): Request {
   const headers = new Headers(req.headers);
   headers.set(EARLY_STATUS_WRAPPER_HEADER, "1");
   if (requestId) headers.set(VERSECRAFT_REQUEST_ID_HEADER, requestId);
+  if (chatQueueId) headers.set(CHAT_QUEUE_ID_HEADER, chatQueueId);
   return new Request(req, {
     headers,
+  });
+}
+
+function createChatQueueJsonResponse(payload: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json; charset=utf-8");
+  headers.set("cache-control", "no-store");
+  return new Response(JSON.stringify(payload), { ...init, headers });
+}
+
+async function resolveAuthenticatedUserIdForQueue(headers: Headers): Promise<string | null> {
+  if (!hasAuthSessionCookie(headers)) return null;
+  try {
+    const session = await auth();
+    return session?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveChatQueueGate(
+  req: Request,
+  requestId: string
+): Promise<{ queueId: string | null; response: Response | null }> {
+  if (req.headers.get(EARLY_STATUS_WRAPPER_HEADER) === "1") {
+    return { queueId: getChatQueueIdFromHeaders(req.headers), response: null };
+  }
+
+  let body: unknown;
+  try {
+    body = await req.clone().json();
+  } catch {
+    return { queueId: null, response: null };
+  }
+
+  const validated = validateChatRequest(body);
+  if (!validated.ok) return { queueId: null, response: null };
+  if (validated.clientPurpose === "options_regen_only") return { queueId: null, response: null };
+
+  const userId = await resolveAuthenticatedUserIdForQueue(req.headers);
+  const identity = buildChatQueueIdentity({
+    headers: req.headers,
+    sessionId: validated.sessionId,
+    userId,
+  });
+  const inboundQueueId = getChatQueueIdFromHeaders(req.headers);
+  if (inboundQueueId) {
+    const claimed = await claimChatQueueTicketForExecution({ queueId: inboundQueueId, identity });
+    if (!claimed.ok) {
+      const status = claimed.reason === "ticket_not_ready" ? 202 : 409;
+      return {
+        queueId: null,
+        response: createChatQueueJsonResponse(
+          {
+            status: claimed.reason === "ticket_not_ready" ? "queued" : "rejected",
+            reason: claimed.reason,
+            retryAfterSeconds: claimed.retryAfterSeconds,
+          },
+          {
+            status,
+            headers: { "retry-after": String(claimed.retryAfterSeconds) },
+          }
+        ),
+      };
+    }
+    return { queueId: claimed.ticket?.queueId ?? inboundQueueId, response: null };
+  }
+
+  const admission = await enqueueChatRequest({
+    requestId,
+    identity,
+    reason: "manual",
+  });
+  if (!admission.ok) {
+    return {
+      queueId: null,
+      response: createChatQueueJsonResponse(
+        {
+          status: "rejected",
+          reason: admission.reason,
+          retryAfterSeconds: admission.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: { "retry-after": String(admission.retryAfterSeconds) },
+        }
+      ),
+    };
+  }
+  if (admission.kind === "disabled") return { queueId: null, response: null };
+  if (admission.ticket.status === "queued") {
+    return {
+      queueId: null,
+      response: createChatQueueJsonResponse(buildChatQueueResponsePayload(admission.ticket), {
+        status: 202,
+        headers: { "retry-after": String(admission.retryAfterSeconds) },
+      }),
+    };
+  }
+  return { queueId: admission.ticket.queueId, response: null };
+}
+
+async function releaseChatQueueExecution(queueId: string | null, outcome: "completed" | "failed"): Promise<void> {
+  if (!queueId) return;
+  try {
+    if (outcome === "completed") await completeChatQueueTicket(queueId);
+    else await failChatQueueTicket(queueId);
+  } catch (error) {
+    console.warn("[api/chat][queue_release_failed]", {
+      queueId,
+      outcome,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function wrapResponseWithQueueRelease(response: Response, queueId: string | null): Response {
+  if (!queueId) return response;
+  if (!response.body) {
+    void releaseChatQueueExecution(queueId, response.ok ? "completed" : "failed");
+    return response;
+  }
+  let released = false;
+  const releaseOnce = async (outcome: "completed" | "failed") => {
+    if (released) return;
+    released = true;
+    await releaseChatQueueExecution(queueId, outcome);
+  };
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          await releaseOnce(response.ok ? "completed" : "failed");
+          controller.close();
+          return;
+        }
+        if (value) controller.enqueue(value);
+      } catch (error) {
+        await releaseOnce("failed");
+        controller.error(error);
+      }
+    },
+    async cancel() {
+      try {
+        await reader.cancel();
+      } finally {
+        await releaseOnce("failed");
+      }
+    },
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
   });
 }
 
@@ -324,23 +491,28 @@ async function persistTokenUsage(userId: string | null, totalTokens: number) {
 }
 
 export async function POST(req: Request) {
+  const inboundRequestId = req.headers.get(VERSECRAFT_REQUEST_ID_HEADER);
+  const requestId = isSafeVerseCraftRequestId(inboundRequestId)
+    ? inboundRequestId
+    : createVerseCraftRequestId("chat");
+  const queueGate = await resolveChatQueueGate(req, requestId);
+  if (queueGate.response) return queueGate.response;
+
   if (!envBoolean("AI_CHAT_ENABLE_EARLY_STATUS_WRAPPER", true)) {
-    return postChatInternal(req);
+    const internalReq = rebuildChatRequest(req, requestId, queueGate.queueId);
+    return wrapResponseWithQueueRelease(await postChatInternal(internalReq), queueGate.queueId);
   }
   if (req.headers.get(EARLY_STATUS_WRAPPER_HEADER) === "1") {
     return postChatInternal(req);
   }
 
-  const inboundRequestId = req.headers.get(VERSECRAFT_REQUEST_ID_HEADER);
-  const requestId = isSafeVerseCraftRequestId(inboundRequestId)
-    ? inboundRequestId
-    : createVerseCraftRequestId("chat");
   const firstStatusFlushPaddingBytes = Math.max(
     0,
     Math.min(4096, envNumber("VC_FIRST_STATUS_FLUSH_PADDING_BYTES", 2048))
   );
-  const internalReq = rebuildChatRequest(req, requestId);
+  const internalReq = rebuildChatRequest(req, requestId, queueGate.queueId);
   let outerStreamClosed = false;
+  let queueReleaseOutcome: "completed" | "failed" = "completed";
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(
@@ -388,6 +560,7 @@ export async function POST(req: Request) {
               if (value && !outerStreamClosed) controller.enqueue(value);
       }
     } catch (error) {
+      queueReleaseOutcome = "failed";
       console.warn("[api/chat][early_status_wrapper_failed]", {
         requestId,
         message: error instanceof Error ? error.message : String(error),
@@ -410,6 +583,7 @@ export async function POST(req: Request) {
         // Best effort: if the client has gone away, there is no final frame to deliver.
       }
     } finally {
+      await releaseChatQueueExecution(queueGate.queueId, queueReleaseOutcome);
       try {
               if (!outerStreamClosed) {
                 outerStreamClosed = true;

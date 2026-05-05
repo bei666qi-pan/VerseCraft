@@ -110,7 +110,6 @@ test.describe("paper reference UI", () => {
       await page.setViewportSize(viewport);
       await gotoAndExpectTestId(page, "/?e2e=1", "home-paper-page");
       await expect(page.getByRole("heading", { name: "文界工坊" })).toBeVisible();
-      await expect(page.getByText("锻造可能，实现梦想")).toBeVisible();
       await expect(page.getByTestId("home-start-new-button")).toBeVisible();
       await expect(page.getByTestId("home-start-new-button")).toBeEnabled();
       await expect(page.getByTestId("home-continue-button")).toHaveCount(0);
@@ -133,7 +132,6 @@ test.describe("paper reference UI", () => {
       await gotoAndExpectTestId(page, "/?e2e=1", "home-paper-page");
       await expect(page.getByText("本机留有可继续的记录。登录后可云端备份。")).toBeVisible();
       await expect(page.getByRole("heading", { name: "文界工坊" })).toBeVisible();
-      await expect(page.getByText("锻造可能，实现梦想")).toBeVisible();
       await expect(page.getByTestId("home-start-new-button")).toBeVisible();
       await expect(page.getByTestId("home-continue-button")).toBeVisible();
       await expect(page.getByTestId("home-start-new-button")).toBeEnabled();
@@ -178,6 +176,29 @@ test.describe("paper reference UI", () => {
       await expect(page.getByTestId("create-submit-button")).toBeEnabled();
     });
   }
+
+  test("home continue with local save enters play instead of create", async ({ page }) => {
+    const clientErrors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error") clientErrors.push(msg.text());
+    });
+    page.on("pageerror", (error) => {
+      clientErrors.push(error.message);
+    });
+
+    await page.setViewportSize(HOME_VIEWPORTS[0]!);
+    await seedPlayableHomeSave(page);
+    await gotoAndExpectTestId(page, "/?e2e=1", "home-paper-page");
+    await page.getByTestId("home-continue-button").click();
+    await expect(page.getByTestId("home-continue-record-modal")).toBeVisible();
+    await expect(page.getByTestId("home-continue-record-row")).toHaveCount(1);
+    await expect(page).not.toHaveURL(/\/create(?:$|[?#/])/);
+
+    await page.getByTestId("home-continue-confirm-button").click();
+    await expect(page).toHaveURL(/\/play(?:$|[?#/])/, { timeout: 30_000 });
+    await expect(page).not.toHaveURL(/\/create(?:$|[?#/])/);
+    expect(clientErrors.filter((message) => message.includes("localTs"))).toEqual([]);
+  });
 
   test("writes reference-sized high DPR screenshots", async ({ browser }) => {
     const context = await browser.newContext({

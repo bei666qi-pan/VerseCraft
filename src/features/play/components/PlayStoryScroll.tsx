@@ -16,6 +16,15 @@ import { VcSpinner } from "./VcSpinner";
 
 export type PlayStoryDisplayEntry = { role: "assistant" | "user"; content: string; logIndex: number };
 
+export type ChatQueuePanelState = {
+  active: boolean;
+  status: "idle" | "queued" | "ready" | "running" | "failed" | "expired" | "cancelled" | "rejected";
+  position: number | null;
+  etaSeconds: number | null;
+  retryAfterSeconds: number | null;
+  message: string;
+};
+
 const STORY_TYPOGRAPHY_CLASS =
   "vc-reading-serif text-[var(--vc-story-font-size)] leading-[var(--vc-story-line-height)] tracking-normal text-[#174d46]";
 const STORY_TYPOGRAPHY_STYLE = {
@@ -155,6 +164,62 @@ const StreamPanel = memo(function StreamPanel({
   );
 });
 
+const ChatQueuePanel = memo(function ChatQueuePanel({
+  state,
+  onCancel,
+}: {
+  state: ChatQueuePanelState;
+  onCancel?: () => void;
+}) {
+  if (!state.active || state.status === "idle" || state.status === "cancelled") return null;
+  const positionText =
+    typeof state.position === "number" && Number.isFinite(state.position)
+      ? `你前面还有 ${Math.max(0, state.position)} 人`
+      : "正在确认你的位置";
+  const etaText =
+    typeof state.etaSeconds === "number" && Number.isFinite(state.etaSeconds)
+      ? `预计等待约 ${Math.max(1, Math.ceil(state.etaSeconds))} 秒`
+      : "预计等待时间正在计算";
+  const running = state.status === "ready" || state.status === "running";
+  const terminal = state.status === "failed" || state.status === "expired" || state.status === "rejected";
+
+  return (
+    <div
+      data-testid="chat-queue-status"
+      className="rounded-[8px] border border-[#d7d1bd] bg-[#fffdf8]/90 px-4 py-3 text-[#174d46] shadow-[0_8px_24px_rgba(42,55,45,0.08)]"
+    >
+      <div className="flex items-start gap-3">
+        {!terminal ? <VcSpinner size={24} strokeWidth={1.8} className="mt-0.5 shrink-0" /> : null}
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-sm font-semibold">
+            {running ? "轮到你了，正在接入主笔通道" : state.message}
+          </p>
+          {!running && !terminal ? (
+            <>
+              <p className="text-xs text-[#5f756f]">{positionText}</p>
+              <p className="text-xs text-[#7e7b70]">{etaText}</p>
+              <p className="text-xs text-[#8b8a84]">不用重复提交，轮到后会自动继续。</p>
+            </>
+          ) : null}
+          {terminal && state.retryAfterSeconds ? (
+            <p className="text-xs text-[#7e7b70]">可稍等约 {Math.max(1, Math.ceil(state.retryAfterSeconds))} 秒后再试。</p>
+          ) : null}
+        </div>
+        {!terminal && onCancel ? (
+          <button
+            type="button"
+            data-testid="chat-queue-cancel"
+            onClick={onCancel}
+            className="shrink-0 rounded-[6px] border border-[#d7d1bd] px-2 py-1 text-xs text-[#5f756f]"
+          >
+            取消排队
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
 export const PlayStoryScroll = memo(function PlayStoryScroll({
   scrollRef,
   onScrollContainer,
@@ -178,6 +243,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   semanticWaitingKind,
   waitUxPrimaryLine,
   waitUxSecondaryLine,
+  chatQueueState,
+  onCancelChatQueue,
   streamStalledHintOn,
   fixedBottomSpace = "default",
   children,
@@ -208,6 +275,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   semanticWaitingKind?: PlaySemanticWaitingKind | null;
   waitUxPrimaryLine?: string;
   waitUxSecondaryLine?: string | null;
+  chatQueueState?: ChatQueuePanelState | null;
+  onCancelChatQueue?: () => void;
   streamStalledHintOn?: boolean;
   fixedBottomSpace?: "default" | "expanded";
   children?: ReactNode;
@@ -257,6 +326,10 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
           plainOnlyNewTurn={plainOnlyNewTurn}
           plainOnlyLogIndexMin={plainOnlyLogIndexMin}
         />
+
+        {chatQueueState?.active ? (
+          <ChatQueuePanel state={chatQueueState} onCancel={onCancelChatQueue} />
+        ) : null}
 
         <StreamPanel
           isStreamVisualActive={streamOn}

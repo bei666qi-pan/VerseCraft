@@ -50,7 +50,11 @@ import {
 } from "@/lib/state/resumeShadow";
 import { unlockBgmOnUserGesture } from "@/config/audio";
 import { formatLocationLabel } from "@/features/play/render/locationLabels";
-import { resolveHomeEntryState, shouldUseResumeShadowFallback } from "@/components/home/continueFallback";
+import {
+  resolveHomeContinueTimestamps,
+  resolveHomeEntryState,
+  shouldUseResumeShadowFallback,
+} from "@/components/home/continueFallback";
 import {
   homeContinuePrimaryCta,
   homeContinueUnavailableToast,
@@ -416,6 +420,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       const localSummary = localData ? extractHomeContinueSummaryFromPayload(localData) : null;
       const cloudSummary = cloudRow ? extractHomeContinueSummaryFromPayload(cloudRow.data) : null;
       const tag: HomeContinueSourceTag = user ? (localData ? "synced" : "cloud") : "local";
+      const { localTs, cloudTs } = resolveHomeContinueTimestamps({
+        localUpdatedAtIso: localSummary?.updatedAtIso,
+        cloudUpdatedAt: cloudRow?.updatedAt,
+        cloudUpdatedAtIso: cloudSummary?.updatedAtIso,
+      });
 
       const displayUpdatedAt = user
         ? (cloudRow?.updatedAt ?? cloudSummary?.updatedAtIso ?? localSummary?.updatedAtIso ?? null)
@@ -1651,6 +1660,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             </button>
             <button
               type="button"
+              data-testid="home-continue-confirm-button"
               disabled={!continuePickerSelectedRow}
               onClick={() => {
                 const id = continuePickerSelectedSlotId || resolvedContinueSlotId;

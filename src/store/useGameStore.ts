@@ -3426,6 +3426,7 @@ export const useGameStore = create<GameState>()(
           gender: projected.gender ?? get().gender,
           height: projected.height ?? get().height,
           personality: projected.personality ?? get().personality,
+          isGameStarted: true,
         });
       },
       hydrateFromCloud: (slotId, data) => {
