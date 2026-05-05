@@ -450,47 +450,6 @@ export async function recordFeedbackSubmittedAnalytics(input: Omit<AnalyticsEven
   }
 }
 
-export async function recordGameRecordSubmittedAnalytics(input: Omit<AnalyticsEventInsertInput, "eventName" | "tokenCost" | "playDurationDeltaSec"> & { eventTime?: Date }): Promise<void> {
-  const eventTime = input.eventTime ?? new Date();
-  const dateKey = getUtcDateKey(eventTime);
-
-  try {
-    await db.execute(sql`
-      WITH ins_event AS (
-        INSERT INTO analytics_events (
-          event_id, user_id, session_id, event_name, event_time, page, source, platform,
-          token_cost, play_duration_delta_sec, payload, idempotency_key
-        ) VALUES (
-          ${input.eventId}, ${input.userId}, 'system', 'game_record_submitted', ${eventTime},
-          ${input.page}, ${input.source}, ${input.platform},
-          0, 0, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}
-        )
-        ON CONFLICT (idempotency_key) DO NOTHING
-        RETURNING event_id
-      )
-      INSERT INTO admin_metrics_daily (
-        date_key, dau, wau, mau,
-        new_users,
-        total_token_cost, total_play_duration_sec, chat_actions,
-        feedback_submitted_count, game_completed_count, updated_at
-      )
-      SELECT
-        ${dateKey}::date, 0, 0, 0,
-        0,
-        0, 0, 0,
-        0, 1,
-        CURRENT_TIMESTAMP
-      WHERE EXISTS (SELECT 1 FROM ins_event)
-      ON CONFLICT (date_key) DO UPDATE
-      SET
-        game_completed_count = admin_metrics_daily.game_completed_count + 1,
-        updated_at = CURRENT_TIMESTAMP;
-    `);
-  } catch (err) {
-    suppressOrLogAnalyticsError(err, "[analytics][recordGameRecordSubmittedAnalytics] failed");
-  }
-}
-
 export async function recordOnboardingViewedAnalytics(input: Omit<AnalyticsEventInsertInput, "eventName" | "tokenCost" | "playDurationDeltaSec"> & { eventTime?: Date }): Promise<void> {
   const eventTime = input.eventTime ?? new Date();
   try {

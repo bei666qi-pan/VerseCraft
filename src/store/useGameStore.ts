@@ -477,7 +477,7 @@ export interface GameState extends IntegrityMetaState {
   journalClues: ClueEntry[];
   /** 用户当前位置 */
   playerLocation: string;
-  /** 历史最高抵达楼层分数（B1=0, 1F=1, ..., B2=99），用于结算与排行榜 */
+  /** 历史最高抵达楼层分数（B1=0, 1F=1, ..., B2=99），用于结算与履历 */
   historicalMaxFloorScore: number;
   /** 累计死亡次数：供 prompt / 揭露门闸；与存档 snapshot.player.deathCount 同步 */
   deathCount: number;

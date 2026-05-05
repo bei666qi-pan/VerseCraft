@@ -1,9 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { and, count, desc, eq } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
 import { settlementHistories } from "@/db/schema";
+import { getUtcDateKey } from "@/lib/analytics/dateKeys";
+import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+
+const SETTLEMENT_MARKDOWN_MAX_CHARS = 200_000;
+const SETTLEMENT_RECAP_MAX_CHARS = 12_000;
 
 export type SettlementHistoryListItem = {
   id: number;
@@ -45,6 +51,91 @@ function mapRow(row: typeof settlementHistories.$inferSelect): SettlementHistory
     outcome: row.outcome,
     hasWritingMarkdown: typeof row.writingMarkdown === "string" && row.writingMarkdown.length > 0,
   };
+}
+
+export async function submitSettlementHistory(input: {
+  killedAnomalies: number;
+  maxFloorScore: number;
+  survivalTimeSeconds: number;
+  outcome?: "victory" | "death" | "abandon";
+  history?: {
+    grade: string;
+    survivalDay: number;
+    survivalHour: number;
+    maxFloorLabel: string;
+    profession: string | null;
+    recapSummary: string;
+    isDead: boolean;
+    hasEscaped: boolean;
+    writingMarkdown?: string | null;
+  };
+}): Promise<{ success: boolean; historyId?: number | null }> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return { success: false, historyId: null };
+
+  const killedAnomalies = Math.max(0, Math.trunc(input.killedAnomalies));
+  const maxFloorScore = Math.max(0, Math.trunc(input.maxFloorScore));
+  const survivalTimeSeconds = Math.max(0, Math.trunc(input.survivalTimeSeconds));
+  const outcome = input.outcome ?? "abandon";
+  const h = input.history;
+
+  let historyId: number | null = null;
+  if (h) {
+    const grade = (h.grade ?? "E").slice(0, 2);
+    const recap = (h.recapSummary ?? "").slice(0, SETTLEMENT_RECAP_MAX_CHARS);
+    const floorLabel = (h.maxFloorLabel ?? "").slice(0, 64);
+    const profession = h.profession ? h.profession.slice(0, 64) : null;
+    const writingMarkdown =
+      typeof h.writingMarkdown === "string" && h.writingMarkdown.length > 0
+        ? h.writingMarkdown.slice(0, SETTLEMENT_MARKDOWN_MAX_CHARS)
+        : null;
+
+    const inserted = await db
+      .insert(settlementHistories)
+      .values({
+        userId,
+        grade,
+        survivalTimeSeconds,
+        survivalDay: Math.max(0, Math.trunc(h.survivalDay)),
+        survivalHour: Math.max(0, Math.trunc(h.survivalHour)),
+        killedAnomalies,
+        maxFloorScore,
+        maxFloorLabel: floorLabel,
+        profession,
+        recapSummary: recap || "（无复盘摘要）",
+        isDead: !!h.isDead,
+        hasEscaped: !!h.hasEscaped,
+        outcome,
+        writingMarkdown,
+      })
+      .returning({ id: settlementHistories.id });
+    historyId = inserted[0]?.id ?? null;
+  }
+
+  void recordGenericAnalyticsEvent({
+    eventId: `${userId}:game_settlement:${Date.now()}`,
+    idempotencyKey: `game_settlement:${userId}:${getUtcDateKey(new Date())}:${outcome}:${maxFloorScore}:${survivalTimeSeconds}`,
+    userId,
+    sessionId: "system",
+    eventTime: new Date(),
+    eventName: "game_settlement",
+    page: "/settlement",
+    source: "settlement_history",
+    platform: "unknown",
+    tokenCost: 0,
+    playDurationDeltaSec: 0,
+    payload: {
+      outcome,
+      killedAnomalies,
+      maxFloorScore,
+      survivalTimeSeconds,
+      historyId,
+    },
+  }).catch(() => {});
+
+  revalidatePath("/history");
+  return { success: true, historyId };
 }
 
 export async function fetchSettlementHistoryPage(opts?: {

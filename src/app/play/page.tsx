@@ -3519,7 +3519,7 @@ function PlayContent() {
       deleteCloudSaveSlot(autoSlotId).catch(() => ({ ok: false as const })),
     ]);
     setShowExitModal(false);
-    router.push("/");
+    router.push("/settlement");
   }
 
   const bottomNavActiveItem: "character" | "story" | "codex" | "settings" =

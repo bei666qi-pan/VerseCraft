@@ -244,6 +244,17 @@ async function installChatSseMock(page: Page) {
   return submittedActions;
 }
 
+async function installDelayedChatSseMock(page: Page, delayMs = 1600) {
+  await page.route("**/api/chat", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: buildSseFinalFrame(),
+    });
+  });
+}
+
 function lastUserMessage(body: Record<string, unknown>) {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const last = messages[messages.length - 1] as { content?: unknown } | undefined;
@@ -926,6 +937,50 @@ test.describe("mobile reading UI", () => {
         const box = await shell.boundingBox();
         expect(box?.width).toBeLessThanOrEqual(482);
       }
+    });
+  }
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 393, height: 852 },
+    { width: 430, height: 932 },
+    { width: 1280, height: 900 },
+  ]) {
+    test(`shows stable options-generation waiting card at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      test.setTimeout(60_000);
+      await page.setViewportSize(viewport);
+      await installDelayedChatSseMock(page);
+      await openSeededPlay(page, { currentOptions: [], recentOptions: [] });
+
+      await page.getByTestId("options-toggle-button").click();
+      const card = page.getByTestId("mobile-options-loading-card");
+      await expect(card).toBeVisible({ timeout: 5000 });
+      await expect(card).toContainText("正在整理可选行动");
+
+      const metrics = await page.evaluate(() => {
+        const dropdown = document.querySelector<HTMLElement>('[data-testid="mobile-options-dropdown"]');
+        const card = document.querySelector<HTMLElement>('[data-testid="mobile-options-loading-card"]');
+        const title = document.querySelector<HTMLElement>('[data-testid="mobile-options-loading-title"]');
+        const spinner = card?.querySelector<HTMLElement>(".vc-logo-loader");
+        if (!dropdown || !card || !title || !spinner) throw new Error("missing options waiting elements");
+        const titleRect = title.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
+        return {
+          overflowX: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
+          cardLeft: cardRect.left,
+          cardRight: cardRect.right,
+          titleHeight: titleRect.height,
+          titleWhiteSpace: getComputedStyle(title).whiteSpace,
+          spinnerVisible: spinner.getBoundingClientRect().width > 20,
+        };
+      });
+
+      expect(metrics.overflowX).toBeLessThanOrEqual(1);
+      expect(metrics.cardLeft).toBeGreaterThanOrEqual(0);
+      expect(metrics.cardRight).toBeLessThanOrEqual(viewport.width);
+      expect(metrics.titleHeight).toBeLessThanOrEqual(44);
+      expect(metrics.titleWhiteSpace).toBe("nowrap");
+      expect(metrics.spinnerVisible).toBe(true);
     });
   }
 });

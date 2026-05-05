@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCloudSaveSlot } from "@/app/actions/save";
-import { submitGameRecord } from "@/app/actions/leaderboard";
+import { submitSettlementHistory } from "@/app/actions/history";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
 import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTriggers";
@@ -120,7 +120,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
     if (hasUploadedRef.current) return;
     hasUploadedRef.current = true;
     const profession = professionState?.currentProfession ?? null;
-    await submitGameRecord({
+    await submitSettlementHistory({
       killedAnomalies,
       maxFloorScore,
       survivalTimeSeconds: survivalHours * 3600,

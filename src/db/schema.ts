@@ -104,17 +104,6 @@ export const complianceInquiries = pgTable(
   })
 );
 
-export const gameRecords = pgTable("game_records", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id", { length: 191 })
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  killedAnomalies: integer("killed_anomalies").notNull().default(0),
-  maxFloorScore: integer("max_floor_score").notNull().default(0),
-  survivalTimeSeconds: integer("survival_time_seconds").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
-
 /** 账号级结算履历摘要（跨设备）；非完整回放，便于回流与写作导出留档 */
 export const settlementHistories = pgTable(
   "settlement_histories",
@@ -653,7 +642,6 @@ export const usersQuotaRelations = relations(usersQuota, ({ one }) => ({
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   feedbacks: many(feedbacks),
-  gameRecords: many(gameRecords),
   saveSlots: many(saveSlots),
   onboarding: one(userOnboarding),
   sessionMemory: one(gameSessionMemory),
@@ -670,13 +658,6 @@ export const gameSessionMemoryRelations = relations(gameSessionMemory, ({ one })
 export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
   user: one(users, {
     fields: [feedbacks.userId],
-    references: [users.id],
-  }),
-}));
-
-export const gameRecordsRelations = relations(gameRecords, ({ one }) => ({
-  user: one(users, {
-    fields: [gameRecords.userId],
     references: [users.id],
   }),
 }));

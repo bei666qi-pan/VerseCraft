@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getHomeAutoSlotId,
+  planGuestLocalSaveCloudSync,
   resolveHomeContinueTimestamps,
   resolveHomeEntryState,
   shouldUseResumeShadowFallback,
@@ -72,4 +74,26 @@ test("home continue rows resolve cloud and local timestamps without undefined bi
       cloudTs: Date.parse(cloudOnlyUpdatedAtIso),
     }
   );
+});
+
+test("guest local save cloud migration syncs missing and newer local slots only", () => {
+  const plans = planGuestLocalSaveCloudSync({
+    localSaves: [
+      { slotId: "main_slot", updatedAtIso: "2026-05-01T10:00:00.000Z" },
+      { slotId: "branch_slot", updatedAtIso: "2026-05-01T12:00:00.000Z" },
+      { slotId: "cloud_newer", updatedAtIso: "2026-05-01T08:00:00.000Z" },
+      { slotId: "auto_main", updatedAtIso: "2026-05-01T14:00:00.000Z" },
+    ],
+    cloudSaves: [
+      { slotId: "main_slot", updatedAt: "2026-05-01T09:00:00.000Z" },
+      { slotId: "cloud_newer", updatedAt: "2026-05-01T09:30:00.000Z" },
+    ],
+  });
+
+  assert.deepEqual(plans, [
+    { slotId: "main_slot", reason: "local_newer" },
+    { slotId: "branch_slot", reason: "missing_cloud" },
+  ]);
+  assert.equal(getHomeAutoSlotId("main_slot"), "auto_main");
+  assert.equal(getHomeAutoSlotId("branch_slot"), "auto_branch_slot");
 });

@@ -38,7 +38,6 @@ export type AnalyticsEventName =
   | "game_settlement"
   | "feedback_submitted"
   | "compliance_inquiry_submitted"
-  | "game_record_submitted"
   | "onboarding_viewed"
   | "admin_login_success"
   | "session_heartbeat"

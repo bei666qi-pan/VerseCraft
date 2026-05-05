@@ -88,7 +88,7 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
       gameCompletedCount: sql<number>`COUNT(*)`,
     })
     .from(analyticsEvents)
-    .where(sql`${analyticsEvents.eventName} = 'game_record_submitted' AND DATE(${analyticsEvents.eventTime}) = ${dateKey}::date`);
+    .where(sql`${analyticsEvents.eventName} IN ('game_settlement', 'game_record_submitted') AND DATE(${analyticsEvents.eventTime}) = ${dateKey}::date`);
 
   const result: AdminMetricsDailyRebuildResult = {
     dateKey,

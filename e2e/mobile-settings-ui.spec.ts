@@ -310,4 +310,43 @@ test.describe("mobile settings UI", () => {
       expect(persistedMetrics).toBeGreaterThanOrEqual(23);
     });
   }
+
+  test("direct exit opens settlement and writes local history", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openSeededPlay(page);
+
+    await page.getByTestId("bottom-nav-settings").click();
+    await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
+    await page.getByTestId("settings-exit-game-button").click();
+    await expect(page.getByTestId("play-exit-paper-modal")).toBeVisible();
+    await page.getByTestId("play-exit-direct-button").click();
+
+    await expect(page).toHaveURL(/\/settlement(?:$|[?#/])/, { timeout: 15_000 });
+    await expect(page.getByTestId("settlement-paper-card")).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(async () =>
+        page.evaluate(async ({ dbName, storeName }) => {
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const req = indexedDB.open(dbName);
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve(req.result);
+          });
+          const raw = await new Promise<unknown>((resolve, reject) => {
+            const tx = db.transaction(storeName, "readonly");
+            const req = tx.objectStore(storeName).get("versecraft-achievements");
+            req.onerror = () => reject(req.error);
+            req.onsuccess = () => resolve(req.result);
+            tx.oncomplete = () => db.close();
+          });
+          const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+          const parsedRecord = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+          const state = parsedRecord.state && typeof parsedRecord.state === "object"
+            ? (parsedRecord.state as Record<string, unknown>)
+            : {};
+          const records = state.records;
+          return Array.isArray(records) ? records.length : 0;
+        }, { dbName: DB_NAME, storeName: STORE_NAME })
+      )
+      .toBeGreaterThan(0);
+  });
 });

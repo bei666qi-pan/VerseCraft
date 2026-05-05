@@ -9,7 +9,7 @@
 - 聊天与耗时/Token：`src/app/api/chat/route.ts`
 - 注册/登录：`src/app/actions/auth.ts`
 - 反馈：`src/app/actions/feedback.ts`
-- 结算与战绩：`src/app/actions/leaderboard.ts`
+- 结算与履历：`src/app/actions/history.ts`
 - 心跳与在线：`src/app/actions/telemetry.ts` + `src/lib/presence.ts`
 - 通用落库：`src/lib/analytics/repository.ts`
 

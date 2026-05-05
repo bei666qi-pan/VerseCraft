@@ -93,7 +93,7 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
   return (
     <div className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center">
       <div className="pointer-events-none inline-flex max-w-md translate-y-0 transform items-center justify-center rounded-2xl bg-white/90 px-6 py-4 text-sm font-medium text-slate-800 shadow-2xl backdrop-blur-md transition-opacity duration-300">
-        可注册账号以参与排行榜并进行云存档
+        注册账号后可同步云存档，并保留本局历史记录。
       </div>
     </div>
   );

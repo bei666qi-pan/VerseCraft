@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { Trophy } from "lucide-react";
 import { deleteCloudSaveSlot, fetchCloudSaves, syncSaveToCloud } from "@/app/actions/save";
 import { MAX_VISIBLE_SAVE_SLOTS } from "@/lib/save/slots";
 import { checkNameAvailability, loginUser, registerUser } from "@/app/actions/auth";
@@ -25,7 +26,6 @@ import {
   SAVE_LOSS_CONCERN_OPTIONS,
   RECOMMEND_WILLINGNESS_OPTIONS,
 } from "@/lib/survey/productSurveyHomeV1";
-import Leaderboard from "@/components/Leaderboard";
 import {
   VerseCraftPaperBrand,
   VerseCraftPaperCircleButton,
@@ -51,6 +51,8 @@ import {
 import { unlockBgmOnUserGesture } from "@/config/audio";
 import { formatLocationLabel } from "@/features/play/render/locationLabels";
 import {
+  getHomeAutoSlotId,
+  planGuestLocalSaveCloudSync,
   resolveHomeContinueTimestamps,
   resolveHomeEntryState,
   shouldUseResumeShadowFallback,
@@ -132,13 +134,33 @@ function FooterHaloIconButton({
   );
 }
 
+function FooterHaloLinkButton({
+  href,
+  ariaLabel,
+  children,
+}: {
+  href: string;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={ariaLabel}
+      className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98]"
+    >
+      <span className="text-[#164f4d]">{children}</span>
+    </Link>
+  );
+}
+
 const INITIAL_AUTH_ACTION_STATE = { success: false, message: "", error: "" };
 const SURVEY_LOCAL_CACHE_KEY = `vc_survey_done_${PRODUCT_SURVEY_KEY_HOME}`;
 const AUTH_SUCCESS_QUERY_KEY = "auth";
 const SURVEY_COPY = {
   entryLabel: "产品问卷",
   title: "产品问卷",
-  subtitle: "用于迭代节奏、界面与引导分层，与排行榜成绩无直接关系。",
+  subtitle: "用于迭代节奏、界面与引导分层，帮助我们判断下一版优先级。",
   estimate: "约 2 分钟，以选择题为主；末尾可留一句话。提交后立即入库，无需跳转外链。",
   later: "稍后再说",
   submitEmbedded: "提交问卷",
@@ -245,6 +267,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const homeViewTrackedRef = useRef(false);
   const authErrorTrackedRef = useRef<{ mode: AuthMode; msg: string } | null>(null);
   const surveyStartedTrackedRef = useRef(false);
+  const guestSaveCloudMigrationUserRef = useRef<string | null>(null);
 
   const setUser = useGameStore((s) => s.setUser);
   const guestId = useGameStore((s) => s.guestId ?? "guest_home");
@@ -274,7 +297,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     message: "",
   });
   const [toast, setToast] = useState<string | null>(null);
-  const [leaderboardAutoOpen, setLeaderboardAutoOpen] = useState(false);
   const [continuePickerOpen, setContinuePickerOpen] = useState(false);
   const [continuePickerSelectedSlotId, setContinuePickerSelectedSlotId] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -351,20 +373,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     () => cloudRows.length > 0,
     [cloudRows]
   );
-  const latestPlayableLocalSave = useMemo(() => {
+  const playableLocalSaves = useMemo(() => {
     return Object.entries(saveSlots ?? {})
       .filter(([slotId, data]) => !slotId.startsWith("auto_") && slotHasPlayableLocal(data))
       .map(([slotId, data]) => ({
         slotId,
         data,
         updatedAt: extractHomeContinueSummaryFromPayload(data)?.updatedAtIso ?? null,
-      }))
-      .sort((a, b) => {
-        const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
-        const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
-        return tb - ta;
-      })[0] ?? null;
+      }));
   }, [saveSlots]);
+  const latestPlayableLocalSave = useMemo(() => {
+    return [...playableLocalSaves].sort((a, b) => {
+      const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+      const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+      return tb - ta;
+    })[0] ?? null;
+  }, [playableLocalSaves]);
 
   function slotHasPlayableLocal(data: SaveSlotData | undefined): boolean {
     if (!data) return false;
@@ -601,6 +625,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
   useEffect(() => {
     if (!user) {
+      guestSaveCloudMigrationUserRef.current = null;
       setCloudRows([]);
       setCloudSavesLoaded(false);
       return;
@@ -613,26 +638,54 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [user]);
 
   useEffect(() => {
-    if (!user || !cloudSavesLoaded || cloudRows.length > 0) return;
-    const latestLocal = latestPlayableLocalSave;
-    if (!latestLocal) return;
+    if (!user || !cloudSavesLoaded || guestSaveCloudMigrationUserRef.current === user.id) return;
+    if (playableLocalSaves.length === 0) {
+      guestSaveCloudMigrationUserRef.current = user.id;
+      return;
+    }
+
+    const plans = planGuestLocalSaveCloudSync({
+      localSaves: playableLocalSaves.map((row) => ({ slotId: row.slotId, updatedAtIso: row.updatedAt })),
+      cloudSaves: cloudRows.map((row) => {
+        const summary = extractHomeContinueSummaryFromPayload(row.data);
+        return { slotId: row.slotId, updatedAt: row.updatedAt, updatedAtIso: summary?.updatedAtIso ?? null };
+      }),
+    });
+    if (plans.length === 0) {
+      guestSaveCloudMigrationUserRef.current = user.id;
+      if (cloudRows.length > 0) setToast("云端记录更新，已保留本机记录。");
+      return;
+    }
+
     let cancelled = false;
-    void syncSaveToCloud(latestLocal.slotId, latestLocal.data)
-      .then((res) => {
-        if (cancelled || !res.ok) return;
-        return fetchCloudSaves()
-          .then((rows) => {
-            if (!cancelled) setCloudRows((rows as SaveRow[]).slice(0, MAX_VISIBLE_SAVE_SLOTS));
-          })
-          .catch(() => undefined);
-      })
-      .finally(() => {
-        if (!cancelled) setCloudSavesLoaded(true);
-      });
+    guestSaveCloudMigrationUserRef.current = user.id;
+    void (async () => {
+      let syncedCount = 0;
+      for (const plan of plans) {
+        if (cancelled) return;
+        const local = playableLocalSaves.find((row) => row.slotId === plan.slotId);
+        if (!local) continue;
+        const res = await syncSaveToCloud(local.slotId, local.data).catch(() => ({ ok: false as const }));
+        if (res.ok) syncedCount += 1;
+
+        const autoSlotId = getHomeAutoSlotId(local.slotId);
+        const autoData = saveSlots[autoSlotId];
+        if (autoData) {
+          await syncSaveToCloud(autoSlotId, autoData).catch(() => ({ ok: false as const }));
+        }
+      }
+
+      const rows = await fetchCloudSaves().catch(() => []);
+      if (cancelled) return;
+      setCloudRows((rows as SaveRow[]).slice(0, MAX_VISIBLE_SAVE_SLOTS));
+      if (syncedCount > 0) {
+        setToast("本机记录已同步到云端。");
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [user, cloudSavesLoaded, cloudRows.length, latestPlayableLocalSave]);
+  }, [user, cloudSavesLoaded, cloudRows, playableLocalSaves, saveSlots]);
 
   useEffect(() => {
     if (!authWarn) return;
@@ -656,17 +709,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     url.searchParams.delete(AUTH_SUCCESS_QUERY_KEY);
     router.replace(url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : ""));
   }, [router]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      if (window.location.hash === "#home-leaderboard") {
-        setLeaderboardAutoOpen(true);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
 
   useEffect(() => {
     if (!feedbackSuccess || !surveyOpen) return;
@@ -796,6 +838,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       setToast("正在建立云端记录…");
       const syncRes = await syncSaveToCloud(latestPlayableLocalSave.slotId, latestPlayableLocalSave.data).catch(() => ({ ok: false as const }));
       if (syncRes.ok) {
+        const autoSlotId = getHomeAutoSlotId(latestPlayableLocalSave.slotId);
+        const autoData = saveSlots[autoSlotId];
+        if (autoData) {
+          await syncSaveToCloud(autoSlotId, autoData).catch(() => ({ ok: false as const }));
+        }
         const rows = await fetchCloudSaves().catch(() => []);
         const nextRows = (rows as SaveRow[]).slice(0, MAX_VISIBLE_SAVE_SLOTS);
         setCloudRows(nextRows);
@@ -1745,8 +1792,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <footer className="relative z-20 w-full pt-[clamp(0.7rem,2.6svh,1.75rem)] vc-reading-serif text-[#164f4d]" style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}>
         <div className="text-xs">
           <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-2">
-            <div id="home-leaderboard" className="flex min-w-0 items-center justify-self-start [&_button>div]:h-[64px] [&_button>div]:w-[64px]">
-              <Leaderboard userId={user?.id} triggerPlacement="inline" defaultOpen={leaderboardAutoOpen} />
+            <div className="flex min-w-0 items-center justify-self-start">
+              <FooterHaloLinkButton href="/history" ariaLabel="打开历史记录">
+                <Trophy size={22} strokeWidth={2.1} />
+              </FooterHaloLinkButton>
             </div>
             <div className="justify-self-center whitespace-nowrap text-center text-[16px] text-[#164f4d]">
               QQ群 <span className="font-mono">377493954</span>
@@ -1804,62 +1853,64 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       </footer>
 
       <div
-        className={`fixed inset-0 z-[80] flex items-center justify-center p-6 transition-all duration-500 ${
+        className={`fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto px-3 py-4 transition-all duration-500 sm:p-6 ${
           surveyOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
         <div
-          className={`absolute inset-0 bg-slate-200/50 backdrop-blur-sm transition-all duration-500 ${
+          className={`fixed inset-0 bg-[#efe8dd]/72 backdrop-blur-[3px] transition-all duration-500 ${
             surveyOpen ? "opacity-100" : "opacity-0"
           }`}
           onClick={closeSurveyModal}
         />
         <div
-          className={`relative w-full max-w-2xl rounded-[2rem] bg-slate-100/90 p-10 shadow-[0_0_36px_rgba(200,200,200,0.45)] backdrop-blur-3xl transition-all duration-500 ${
+          data-testid="home-survey-paper-modal"
+          className={`relative w-full max-w-[430px] overflow-hidden rounded-[30px] border border-[#d8cbb8] bg-[#fbf7f0]/96 px-[clamp(1.35rem,6vw,2.4rem)] py-[clamp(1.7rem,7vw,2.8rem)] text-[#0f4f47] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55),inset_0_0_0_17px_rgba(255,253,248,0.78),inset_0_0_0_18px_rgba(224,214,199,0.5)] backdrop-blur-3xl transition-all duration-500 sm:max-w-[470px] ${
             surveyOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
-          <h3 className="text-2xl font-semibold tracking-wide text-slate-700">{SURVEY_COPY.title}</h3>
+          <h3 className="vc-reading-serif text-[clamp(2.45rem,12vw,3.6rem)] font-semibold leading-none text-[#0d5a4e]">{SURVEY_COPY.title}</h3>
           {!showBugFeedback ? (
             <>
-              <p className="mt-3 text-sm text-slate-500">{SURVEY_COPY.subtitle}</p>
+              <p className="mt-5 text-[13px] leading-relaxed text-[#4f625c]">{SURVEY_COPY.subtitle}</p>
 
               {surveyCompletion === "loading" ? (
-                <p className="mt-6 text-center text-sm text-slate-500">{SURVEY_COPY.syncHint}</p>
+                <p className="vc-reading-serif mt-10 text-center text-[1.2rem] text-[#0d5a4e]">{SURVEY_COPY.syncHint}</p>
               ) : surveyCompletion === "done" ? (
-                <div className="mt-6 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 p-6 text-center">
-                  <p className="text-sm font-medium text-emerald-950">{SURVEY_COPY.surveyDoneLine}</p>
+                <div className="mt-9 rounded-[22px] border border-[#d8cbb8] bg-[#fffdf8]/78 p-6 text-center shadow-[inset_0_0_0_5px_rgba(248,244,237,0.72),inset_0_0_0_6px_rgba(221,211,196,0.46)]">
+                  <p className="vc-reading-serif text-[1.25rem] font-medium text-[#0d5a4e]">{SURVEY_COPY.surveyDoneLine}</p>
                   <button
                     type="button"
                     onClick={() => setShowBugFeedback(true)}
-                    className="mt-4 rounded-full border border-emerald-700/30 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-50/90"
+                    className="vc-reading-serif mt-5 rounded-[18px] border border-[#0d5a4e] bg-[#fffdf8] px-5 py-2.5 text-[1rem] font-semibold text-[#0d5a4e] shadow-sm transition hover:bg-[#f8f2e8]"
                   >
                     {SURVEY_COPY.feedbackSecondary}
                   </button>
                 </div>
               ) : (
                 <>
-                  <div className="mt-6 rounded-2xl border border-slate-200 bg-white/80 p-5">
+                  <div className="mt-9 rounded-[22px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-5 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.72),inset_0_0_0_6px_rgba(221,211,196,0.46)]">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs font-semibold tracking-[0.18em] text-slate-500">
-                        进度 {safeStep + 1}/{totalSteps}
+                      <div className="vc-reading-serif whitespace-nowrap text-[1.05rem] leading-tight text-[#0d5a4e]">
+                        <span className="block">进度</span>
+                        <span>{safeStep + 1}/{totalSteps}</span>
                       </div>
-                      <div className="w-40 overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-2 rounded-full bg-slate-800" style={{ width: `${progressPct}%` }} />
+                      <div className="h-3 w-[58%] overflow-hidden rounded-full border border-[#d4c9ba] bg-[#eee7df] shadow-[inset_0_1px_2px_rgba(69,53,35,0.12)]">
+                        <div className="h-full rounded-full bg-[#0d5a4e] transition-[width] duration-300" style={{ width: `${progressPct}%` }} />
                       </div>
                     </div>
 
                     <div className="mt-4">
-                      <div className="text-sm font-semibold text-slate-800">{curQ.title}</div>
+                      <div className="vc-reading-serif text-[clamp(1.35rem,6vw,1.8rem)] font-semibold leading-snug text-[#0d5a4e]">{curQ.title}</div>
                       {curQ.subtitle ? (
-                        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">{curQ.subtitle}</div>
+                        <div className="mt-2 text-[12px] leading-relaxed text-[#596a64]">{curQ.subtitle}</div>
                       ) : null}
 
                       {curQ.kind === "single" ? (
                         <select
                           value={getSurveyValue(curQ.id)}
                           onChange={(e) => setSurveyValue(curQ.id, e.target.value)}
-                          className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800"
+                          className="vc-reading-serif mt-5 h-14 w-full rounded-[18px] border border-[#cfc5b6] bg-[#fffdf8] px-5 text-[1.15rem] text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] focus:border-[#0d5a4e]"
                         >
                           <option value="">请选择</option>
                           {curQ.options.map((o) => (
@@ -1874,9 +1925,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                             value={getSurveyValue(curQ.id)}
                             onChange={(e) => setSurveyValue(curQ.id, e.target.value.slice(0, curQ.maxLen))}
                             placeholder={curQ.placeholder}
-                            className="h-28 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:border-slate-400"
+                            className="mt-2 h-32 w-full resize-none rounded-[18px] border border-[#cfc5b6] bg-[#fffdf8] p-4 text-[15px] leading-relaxed text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
                           />
-                          <div className="text-right text-[11px] text-slate-500">
+                          <div className="text-right text-[11px] text-[#6f6a60]">
                             {getSurveyValue(curQ.id).length}/{curQ.maxLen}
                           </div>
                         </div>
@@ -1884,32 +1935,32 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4">
-                    <label className="flex items-start gap-2 text-xs text-slate-600">
+                  <div className="mt-6 rounded-[20px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-4 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.68)]">
+                    <label className="vc-reading-serif flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
                       <input
                         type="checkbox"
                         checked={surveyConsentUserAgreement}
                         onChange={(e) => setSurveyConsentUserAgreement(e.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
                       />
                       <span>
                         我已阅读并同意{" "}
-                        <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/user-agreement">
+                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/user-agreement">
                           用户协议
                         </a>
                         。
                       </span>
                     </label>
-                    <label className="mt-2 flex items-start gap-2 text-xs text-slate-600">
+                    <label className="vc-reading-serif mt-4 flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
                       <input
                         type="checkbox"
                         checked={surveyConsentPrivacyPolicy}
                         onChange={(e) => setSurveyConsentPrivacyPolicy(e.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
                       />
                       <span>
                         我已阅读并同意{" "}
-                        <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/privacy-policy">
+                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/privacy-policy">
                           隐私政策
                         </a>
                         。
@@ -1917,8 +1968,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     </label>
                   </div>
 
-                  <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-between">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="mt-6 flex flex-col gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => {
@@ -1936,7 +1987,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                           setSurveyStep((s) => Math.max(0, s - 1));
                         }}
                         disabled={safeStep === 0}
-                        className="rounded-full border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         上一题
                       </button>
@@ -1964,12 +2015,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                             setSurveyStep((s) => Math.min(totalSteps - 1, s + 1));
                           }}
                           disabled={safeStep >= totalSteps - 1}
-                          className="rounded-full border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="vc-reading-serif min-h-12 w-full rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8] disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           下一题
                         </button>
                         {surveyNextHint ? (
-                          <div className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-full border border-amber-200/90 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm">
+                          <div className="pointer-events-none absolute right-0 top-full mt-2 whitespace-nowrap rounded-full border border-[#d8cbb8] bg-[#fff8e9] px-3 py-1.5 text-xs font-semibold text-[#7b5f20] shadow-sm">
                             这一题还没选
                           </div>
                         ) : null}
@@ -1979,7 +2030,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     <button
                       type="button"
                       onClick={closeSurveyModal}
-                      className="rounded-full border border-slate-300 bg-white/70 px-5 py-2.5 text-sm font-semibold text-slate-600 transition-all hover:bg-white"
+                      className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8]"
                     >
                       {SURVEY_COPY.later}
                     </button>
@@ -1988,7 +2039,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                         type="button"
                         onClick={openExternalSurvey}
                         disabled={!surveyConsentUserAgreement || !surveyConsentPrivacyPolicy}
-                        className="rounded-full border border-slate-400 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {SURVEY_COPY.externalBackup}
                       </button>
@@ -2000,7 +2051,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                         safeStep !== totalSteps - 1
                       }
                       onClick={() => void handleSurveySubmit()}
-                      className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="vc-reading-serif min-h-14 rounded-[18px] border border-[#0a403a] bg-[#244f45] px-6 text-[1.35rem] font-semibold text-white shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition-all hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {surveySubmitPending ? "提交中…" : SURVEY_COPY.submitEmbedded}
                     </button>
@@ -2008,13 +2059,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </>
               )}
 
-              <p className="mt-4 text-right text-xs text-slate-500">{SURVEY_COPY.privacyHint}</p>
+              <p className="mt-6 text-center text-[12px] leading-relaxed text-[#4f625c]">{SURVEY_COPY.privacyHint}</p>
               {surveyCompletion === "open" ? (
-                <div className="mt-3 text-right">
+                <div className="mt-4 text-center">
                   <button
                     type="button"
                     onClick={() => setShowBugFeedback(true)}
-                    className="text-xs text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline"
+                    className="vc-reading-serif text-[1rem] text-[#0d5a4e] underline-offset-4 transition hover:underline"
                   >
                     {SURVEY_COPY.feedbackSecondary}
                   </button>
@@ -2025,36 +2076,36 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <>
               {!feedbackSuccess ? (
                 <>
-                  <p className="mt-3 text-sm text-slate-500">
-                    此为<strong className="font-medium text-slate-700">开放文本反馈</strong>
+                  <p className="mt-5 text-[13px] leading-relaxed text-[#4f625c]">
+                    此为<strong className="font-medium text-[#0d5a4e]">开放文本反馈</strong>
                     ，与结构化产品问卷分渠道存储，便于逐条跟进 bug 与长尾建议。
                   </p>
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-4">
-                    <label className="flex items-start gap-2 text-xs text-slate-600">
+                  <div className="mt-7 rounded-[20px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-4 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.68)]">
+                    <label className="vc-reading-serif flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
                       <input
                         type="checkbox"
                         checked={feedbackConsentUserAgreement}
                         onChange={(e) => setFeedbackConsentUserAgreement(e.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
                       />
                       <span>
                         我已阅读并同意{" "}
-                        <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/user-agreement">
+                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/user-agreement">
                           用户协议
                         </a>
                         。
                       </span>
                     </label>
-                    <label className="mt-2 flex items-start gap-2 text-xs text-slate-600">
+                    <label className="vc-reading-serif mt-4 flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
                       <input
                         type="checkbox"
                         checked={feedbackConsentPrivacyPolicy}
                         onChange={(e) => setFeedbackConsentPrivacyPolicy(e.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
                       />
                       <span>
                         我已阅读并同意{" "}
-                        <a className="underline underline-offset-2 hover:text-slate-900" href="/legal/privacy-policy">
+                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/privacy-policy">
                           隐私政策
                         </a>
                         。
@@ -2065,13 +2116,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     value={feedbackContent}
                     onChange={(event) => setFeedbackContent(event.target.value)}
                     placeholder="请输入你的建议或反馈..."
-                    className="mt-6 h-56 w-full resize-none rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-700 outline-none transition-all focus:border-slate-400 focus:shadow-[0_0_0_4px_rgba(148,163,184,0.15)]"
+                    className="mt-6 h-56 w-full resize-none rounded-[20px] border border-[#cfc5b6] bg-[#fffdf8] p-4 text-[15px] leading-relaxed text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
                   />
-                  <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+                  <div className="mt-6 grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setShowBugFeedback(false)}
-                      className="rounded-full border border-slate-300 bg-white/70 px-5 py-2.5 text-sm font-semibold text-slate-600 transition-all hover:bg-white"
+                      className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8]"
                     >
                       {SURVEY_COPY.feedbackBack}
                     </button>
@@ -2079,15 +2130,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       type="button"
                       disabled={feedbackPending || !feedbackConsentUserAgreement || !feedbackConsentPrivacyPolicy}
                       onClick={() => void handleFeedbackSubmit()}
-                      className="rounded-full bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="vc-reading-serif min-h-12 rounded-[18px] border border-[#0a403a] bg-[#244f45] px-5 text-[1.1rem] font-semibold text-white shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08)] transition-all hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {feedbackPending ? "提交中..." : "提交意见"}
                     </button>
                   </div>
                 </>
               ) : (
-                <div className="mt-8 flex min-h-44 items-center justify-center">
-                  <p className="text-center text-xl font-medium text-slate-700">谢谢您的意见，游戏会因您变得更好！</p>
+                <div className="mt-8 flex min-h-44 items-center justify-center rounded-[22px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-6 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.68)]">
+                  <p className="vc-reading-serif text-center text-[1.3rem] font-medium text-[#0d5a4e]">谢谢您的意见，游戏会因您变得更好！</p>
                 </div>
               )}
             </>

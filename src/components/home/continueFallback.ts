@@ -44,3 +44,51 @@ export function resolveHomeContinueTimestamps(input: {
       0,
   };
 }
+
+export type GuestLocalSaveCloudCandidate = {
+  slotId: string;
+  updatedAtIso: string | null | undefined;
+};
+
+export type GuestCloudSaveCandidate = {
+  slotId: string;
+  updatedAt: string | null | undefined;
+  updatedAtIso?: string | null | undefined;
+};
+
+export type GuestLocalSaveCloudSyncPlan = {
+  slotId: string;
+  reason: "missing_cloud" | "local_newer";
+};
+
+export function getHomeAutoSlotId(slotId: string): string {
+  return slotId === "main_slot" ? "auto_main" : `auto_${slotId}`;
+}
+
+export function planGuestLocalSaveCloudSync(input: {
+  localSaves: GuestLocalSaveCloudCandidate[];
+  cloudSaves: GuestCloudSaveCandidate[];
+}): GuestLocalSaveCloudSyncPlan[] {
+  const cloudBySlot = new Map(input.cloudSaves.map((row) => [row.slotId, row]));
+  const plans: GuestLocalSaveCloudSyncPlan[] = [];
+
+  for (const local of input.localSaves) {
+    if (!local.slotId || local.slotId.startsWith("auto_")) continue;
+    const cloud = cloudBySlot.get(local.slotId);
+    if (!cloud) {
+      plans.push({ slotId: local.slotId, reason: "missing_cloud" });
+      continue;
+    }
+
+    const { localTs, cloudTs } = resolveHomeContinueTimestamps({
+      localUpdatedAtIso: local.updatedAtIso,
+      cloudUpdatedAt: cloud.updatedAt,
+      cloudUpdatedAtIso: cloud.updatedAtIso,
+    });
+    if (localTs > cloudTs) {
+      plans.push({ slotId: local.slotId, reason: "local_newer" });
+    }
+  }
+
+  return plans;
+}

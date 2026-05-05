@@ -279,12 +279,12 @@ export async function getDashboardTableData() {
         max_floor_score AS "maxFloorScore",
         survival_time_seconds AS "survivalTimeSeconds",
         created_at AS "createdAt"
-      FROM game_records
+      FROM settlement_histories
       ORDER BY user_id, created_at DESC
     `)
     .catch((error) => {
-      // Some local environments may not have game_records yet.
-      console.warn("[admin][getDashboardTableData] game_records query failed, fallback empty", error);
+      // Some local environments may not have settlement history yet.
+      console.warn("[admin][getDashboardTableData] settlement_histories query failed, fallback empty", error);
       return { rows: [] };
     });
 

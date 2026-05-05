@@ -110,22 +110,6 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS game_records (
-        id SERIAL PRIMARY KEY,
-        user_id VARCHAR(191) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        killed_anomalies INTEGER NOT NULL DEFAULT 0,
-        max_floor_score INTEGER NOT NULL DEFAULT 0,
-        survival_time_seconds INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await client.query(`
-      ALTER TABLE game_records
-      ALTER COLUMN survival_time_seconds TYPE INTEGER
-      USING survival_time_seconds::integer;
-    `);
-
-    await client.query(`
       CREATE TABLE IF NOT EXISTS game_session_memory (
         user_id VARCHAR(191) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         plot_summary TEXT,
