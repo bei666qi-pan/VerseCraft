@@ -1,38 +1,13 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { clearAdminShadowSession } from "@/app/actions/admin";
-import { formatZhCnUtcDateTime, formatZhCnUtcTimeShort, formatUtcDateKeyLabel } from "@/lib/admin/formatDisplay";
 import type { AdminApiEnvelope } from "@/lib/admin/apiEnvelope";
 import { readAdminResponseJson } from "@/lib/admin/parseAdminEnvelope";
-import { formatDurationSeconds, formatPlayTimeFromDbSeconds } from "@/lib/time/durationUnits";
-import { AdminErrorBoundary } from "@/components/admin/AdminErrorBoundary";
-import { AdminBlockSkeleton, AdminKpiRowSkeleton } from "@/components/admin/AdminPanelSkeleton";
-
-type DashboardUserRow = {
-  id: string;
-  name: string;
-  tokensUsed: number;
-  playTime: number;
-  /** Sum of `user_sessions.total_play_duration_sec` / `guest_sessions` for this account (wall-clock presence). */
-  sessionPlaySec?: number;
-  lastActive: string | Date;
-  isOnline: number;
-  feedbackContent: string;
-  feedbackCreatedAt: string | null;
-  latestSurveyKey?: string | null;
-  latestSurveyVersion?: string | null;
-  latestSurveyAnswers?: Record<string, unknown> | null;
-  latestSurveyFreeText?: string | null;
-  latestSurveyOverallRating?: number | null;
-  latestSurveyRecommendScore?: number | null;
-  latestSurveyCreatedAt?: string | null;
-  latestGameMaxFloor?: number | null;
-  latestGameSurvivalSec?: number | null;
-};
+import { formatDurationSeconds } from "@/lib/time/durationUnits";
 
 type ChartPoint = { date: string; tokens: number; activeUsers?: number; dailyTokens?: number };
+type DashboardUserRow = { id: string; name: string; tokensUsed: number; playTime: number; lastActive: string | Date; isOnline: number; feedbackContent: string; feedbackCreatedAt: string | null };
 
 type Props = {
   rows: DashboardUserRow[];
@@ -41,1032 +16,632 @@ type Props = {
   totalTokens: number;
   chartData?: ChartPoint[];
 };
-type OverviewData = {
-  cards?: {
-    todayNewUsers?: number;
-    dau?: number;
-    wau?: number;
-    mau?: number;
-    todayTokenCost?: number;
-    playDurationRangeSec?: number;
-    legacyUsersPlayTimeSecSum?: number;
-    sessionPlayLiveSecSum?: number;
-    guestsTotal?: number;
-    guestsOnline?: number;
-    guestsPlayDurationSec?: number;
-  };
-  chartData?: ChartPoint[];
-} | null;
-type RealtimeData = {
-  onlineUsers?: number;
-  onlineGuests?: number;
-  activeSessions?: number;
-  avgSessionDurationSec?: number;
-  trends?: { eventsLast5m?: number; eventsLast15m?: number };
-  presenceDebug?: {
-    redis: number;
-    db: number;
-    both: number;
-    dbOnly: number;
-    redisOnly: number;
-    redisDown: boolean;
-  };
-} | null;
-type RetentionKindBlock = { cohortSize?: number; d1?: { rate?: number }; d3?: { rate?: number }; d7?: { rate?: number } };
-type RetentionData = {
-  d1?: { rate?: number };
-  d3?: { rate?: number };
-  d7?: { rate?: number };
-  cohortSize?: number;
-  byActorKind?: { registered?: RetentionKindBlock; guest?: RetentionKindBlock; all?: RetentionKindBlock };
-} | null;
-type FunnelData = {
-  stages?: Array<{
-    eventName?: string;
-    eventLabel?: string;
-    users?: number;
-    registered?: number;
-    guest?: number;
-    all?: number;
-    conversionRate?: number;
-    conversionRateRegistered?: number;
-    conversionRateGuest?: number;
-  }>;
-} | null;
-type FeedbackData = { totalFeedback?: number; negativeFeedback?: number; topics?: Array<{ topic?: string; count?: number }> } | null;
-type SurveyAggregateData = {
-  range?: { label?: string };
-  totalResponses?: number;
-  questions?: Array<{
-    id?: string;
-    title?: string;
-    kind?: "single" | "text";
-    sampleCount?: number;
-    options?: Array<{ value?: string; label?: string; count?: number; pct?: number }>;
-    textCount?: number;
-  }>;
-} | null;
 
-type DegradedKey =
-  | "overview"
-  | "retention"
-  | "realtime"
-  | "funnel"
-  | "feedback"
-  | "survey"
-  | "dashboard";
-
-const DEGRADED_LABEL: Record<DegradedKey, string> = {
-  overview: "概览指标",
-  retention: "留存",
-  realtime: "实时在线",
-  funnel: "漏斗",
-  feedback: "反馈洞察",
-  survey: "问卷聚合",
-  dashboard: "用户表 / 底表",
+type Kpi = {
+  metricId: string;
+  label: string;
+  value: number | string | null;
+  unit?: string;
+  source: string;
+  definition: string;
+  updatedAt: string | null;
+  degraded: boolean;
+  reason: string | null;
 };
 
-const PAGE_SIZE = 12;
-const REFRESH_MS = 15000;
+type OverviewData = { cards?: Record<string, number>; kpis?: Kpi[]; chartData?: ChartPoint[]; updatedAt?: string } | null;
+type JourneyData = {
+  sampleSize?: number;
+  evidenceSufficiency?: string;
+  stages?: Array<{ eventName: string; label: string; count: number; stepConversionRate: number; totalConversionRate: number; metricId: string }>;
+  updatedAt?: string;
+} | null;
+type AiExperienceData = {
+  sampleSize?: number;
+  evidenceSufficiency?: string;
+  metrics?: Kpi[];
+  rates?: { successRate?: number; failureRate?: number; fallbackRate?: number; parseFailureRate?: number; queueWait?: { status?: string } };
+  cost?: { totalTokens?: number; tokenPerEffectiveAction?: number; tokenPerActiveActor?: number; highCostActors?: Array<{ actorKey: string; actions: number; tokens: number }> };
+  anomalies?: string[];
+  updatedAt?: string;
+} | null;
+type ContentQualityData = {
+  evidenceSufficiency?: string;
+  worldSelections?: Array<{ worldId: string; count: number }>;
+  validatorIssues?: number;
+  feedbackTopics?: Array<{ topic?: string; count?: number }>;
+  feedbackSampleSize?: number;
+  negativeFeedbackRate?: number;
+  surveySampleSize?: number;
+  updatedAt?: string;
+} | null;
+type HealthData = {
+  checks?: Record<string, { ok: boolean; degraded: boolean; reason: string | null; updatedAt: string; meta?: Record<string, unknown> }>;
+  cron?: { lastRebuildAt?: string | null };
+  aggregationFreshness?: string | null;
+  recentErrors?: number;
+  deployment?: { commitSha?: string | null; nodeEnv?: string };
+  updatedAt?: string;
+} | null;
+type UserRow = { actorKey: string; name: string; actorType: string; tokensUsed: number; playTime: number; lastActive: string | null; isOnline: boolean };
+type UsersData = { rows: UserRow[]; nextCursor: string | null; hasMore: boolean; totalApprox: number; limit: number } | null;
+type UserDetail = {
+  actorKey: string;
+  basic?: { name?: string; actorType?: string; tokensUsed?: number; playTime?: number; lastActive?: string | null };
+  recentFeedback?: Array<{ kind: string; contentPreview: string; createdAt: string | null }>;
+  recentSurvey?: Array<{ surveyKey: string; overallRating: number | null; recommendScore: number | null; createdAt: string | null }>;
+  recentSettlements?: Array<{ grade: string; survivalTimeSeconds: number; killedAnomalies: number; maxFloorLabel: string; createdAt: string | null }>;
+  recentEvents?: Array<{ eventName: string; eventTime: string | null; page: string | null; source: string | null }>;
+} | null;
+type AuditData = { rows: Array<{ id: number; action: string; actor: string; success: boolean; reason: string | null; targetType: string | null; targetId: string | null; createdAt: string }>; nextCursor: string | null; hasMore: boolean } | null;
 type AiReport = {
   model?: string;
   degraded?: boolean;
-  input?: {
-    range?: { label?: string };
-    anomalyHints?: string[];
-  };
   output?: {
     executiveSummary?: string;
-    retentionRisks?: Array<{ priority: string; title: string; detail: string; evidence: string }>;
-    productProblems?: Array<{ priority: string; title: string; detail: string; evidence: string }>;
-    opportunityPoints?: Array<{ priority: string; title: string; detail: string; evidence: string }>;
-    top3Actions?: Array<{ priority: string; action: string; why: string; expectedImpact: string }>;
-    expectedImpact?: { retentionLift?: string; tokenCostChange?: string; confidenceNote?: string };
-    confidence?: { score?: number; level?: string; reason?: string };
-    evidence?: Array<{ metric: string; value: string; source: string }>;
-    suggestedExperiments?: Array<{ name: string; hypothesis: string; metric: string; duration: string }>;
+    recommendations?: Array<{
+      priority: string;
+      title: string;
+      claim: string;
+      evidenceMetrics: Array<{ metricId: string; label: string; value: string; source: string }>;
+      sampleSize: number;
+      confidence: string;
+      risk: string;
+      suggestedExperiment: string;
+      expectedImpact: string;
+      nextAction: string;
+    }>;
     generatedAt?: string;
     evidenceSufficiency?: string;
   };
-};
+} | null;
 
-function toPriorityLabel(v: string): string {
-  if (v === "immediate") return "立即修复";
-  if (v === "this_week") return "本周可做";
-  return "中期优化";
+const TABS = ["总览", "玩家旅程", "AI 等待体验", "内容质量", "玩家 / 游客", "系统健康", "AI 运营助手", "审计日志"] as const;
+type Tab = (typeof TABS)[number];
+type Range = "today" | "yesterday" | "7d" | "30d";
+
+function percent(v: number | null | undefined): string {
+  return `${(Number(v ?? 0) * 100).toFixed(1)}%`;
 }
 
-function formatLastOnline(value: string | Date): string {
-  return formatZhCnUtcDateTime(value);
+function fmt(v: number | string | null | undefined, unit?: string): string {
+  if (v == null) return "unavailable";
+  if (typeof v === "number") {
+    if (unit === "ratio" || unit === "failure_ratio") return percent(v);
+    if (unit === "ms") return `${Math.round(v)} ms`;
+    return v.toLocaleString();
+  }
+  return v;
 }
 
-function formatCountOrEmpty(n: number, emptyText: string): string {
-  return n === 0 ? emptyText : n.toLocaleString();
+function time(v: string | null | undefined): string {
+  if (!v) return "未更新";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "未更新" : d.toLocaleString("zh-CN", { hour12: false });
 }
 
-function PanelFrame({
-  label,
-  showSlow,
-  slow,
-  children,
-}: {
-  label: string;
-  showSlow: boolean;
-  slow: ReactNode;
-  children: ReactNode;
-}) {
+function priorityLabel(v: string): string {
+  if (v === "immediate") return "立即";
+  if (v === "this_week") return "本周";
+  return "中期";
+}
+
+function Card({ title, value, meta, degraded }: { title: string; value: string; meta?: string; degraded?: boolean }) {
   return (
-    <AdminErrorBoundary label={label}>
-      <Suspense fallback={slow}>{showSlow ? slow : children}</Suspense>
-    </AdminErrorBoundary>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs text-slate-300">{title}</p>
+        {degraded ? <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-100">degraded</span> : null}
+      </div>
+      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+      {meta ? <p className="mt-2 text-xs leading-relaxed text-slate-400">{meta}</p> : null}
+    </div>
   );
 }
 
-export default function AdminDashboardV2({ rows: initialRows, onlineCount, totalUsers, totalTokens, chartData: initialChart }: Props) {
-  const [range, setRange] = useState<"today" | "yesterday" | "7d" | "30d">("7d");
-  const [rows, setRows] = useState(initialRows);
-  const [chartData, setChartData] = useState<ChartPoint[]>(initialChart ?? []);
-  const [overview, setOverview] = useState<OverviewData>(null);
-  const [realtime, setRealtime] = useState<RealtimeData>(null);
-  const [retention, setRetention] = useState<RetentionData>(null);
-  const [funnel, setFunnel] = useState<FunnelData>(null);
-  const [feedbackInsights, setFeedbackInsights] = useState<FeedbackData>(null);
-  const [surveyAgg, setSurveyAgg] = useState<SurveyAggregateData>(null);
-  const [aiReport, setAiReport] = useState<AiReport | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiRouting, setAiRouting] = useState<unknown>(null);
-  const [aiRoutingLoading, setAiRoutingLoading] = useState(false);
-  const [realtimeSeries, setRealtimeSeries] = useState<Array<{ t: string; online: number; sessions: number }>>([]);
+function KpiGrid({ kpis }: { kpis: Kpi[] }) {
+  if (kpis.length === 0) {
+    return <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 text-sm text-slate-300">暂无可用指标，接口可能处于降级状态。</div>;
+  }
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {kpis.map((k) => (
+        <div key={`${k.metricId}:${k.label}:${k.unit ?? ""}`} className="rounded-2xl border border-white/10 bg-white/[0.07] p-4">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs text-slate-300">{k.label}</p>
+            {k.degraded ? <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-100">degraded</span> : null}
+          </div>
+          <p className="mt-2 text-2xl font-semibold text-white">{fmt(k.value, k.unit)}</p>
+          <details className="mt-3 text-xs text-slate-400">
+            <summary className="cursor-pointer text-slate-300">口径说明</summary>
+            <p className="mt-2 leading-relaxed">{k.definition}</p>
+            <p className="mt-1">来源：{k.source}</p>
+            <p className="mt-1">更新时间：{time(k.updatedAt)}</p>
+            {k.reason ? <p className="mt-1 text-amber-100">原因：{k.reason}</p> : null}
+          </details>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+async function fetchEnvelope<T>(url: string, init?: RequestInit): Promise<{ env: AdminApiEnvelope<T>; status: number }> {
+  const res = await fetch(url, { credentials: "include", ...init });
+  return { env: await readAdminResponseJson<T>(res), status: res.status };
+}
+
+export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens }: Props) {
+  const [tab, setTab] = useState<Tab>("总览");
+  const [range, setRange] = useState<Range>("7d");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [showSlowSkeleton, setShowSlowSkeleton] = useState(false);
-  const [degraded, setDegraded] = useState<Partial<Record<DegradedKey, { reason: string | null }>>>({});
-  const [err, setErr] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [overview, setOverview] = useState<OverviewData>(null);
+  const [journey, setJourney] = useState<JourneyData>(null);
+  const [aiExperience, setAiExperience] = useState<AiExperienceData>(null);
+  const [contentQuality, setContentQuality] = useState<ContentQualityData>(null);
+  const [health, setHealth] = useState<HealthData>(null);
+  const [users, setUsers] = useState<UsersData>(null);
+  const [userDetail, setUserDetail] = useState<UserDetail>(null);
+  const [audit, setAudit] = useState<AuditData>(null);
+  const [aiReport, setAiReport] = useState<AiReport>(null);
+  const [degraded, setDegraded] = useState<Record<string, string | null>>({});
+  const [userCursor, setUserCursor] = useState<string | null>(null);
+  const [userCursorStack, setUserCursorStack] = useState<Array<string | null>>([null]);
+  const [userSearch, setUserSearch] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
-  const [detail, setDetail] = useState<{ userName: string; content: string; createdAt: string | null } | null>(null);
-  const [surveyDetail, setSurveyDetail] = useState<{
-    userName: string;
-    createdAt: string | null;
-    surveyKey: string | null;
-    surveyVersion: string | null;
-    answers: Record<string, unknown> | null;
-    freeText: string | null;
-    overallRating: number | null;
-    recommendScore: number | null;
-  } | null>(null);
+  const [actorType, setActorType] = useState<"all" | "registered" | "guest">("all");
+  const [sort, setSort] = useState<"lastActive" | "tokens" | "playTime">("lastActive");
+  const [journeyActorType, setJourneyActorType] = useState<"all" | "registered" | "guest">("all");
+  const [journeyPlatform, setJourneyPlatform] = useState<"all" | "pc" | "mobile">("all");
+  const [rebuildDays, setRebuildDays] = useState(3);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async (silent = false) => {
-    if (!silent) {
-      /* first paint uses SSR props; no full-page block */
-    }
-    setRefreshing(true);
-    setErr(null);
-    setDegraded({});
+  const loadCore = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    const nextDegraded: Record<string, string | null> = {};
     try {
-      const [o, r, rt, f, fi, sa, d] = await Promise.all([
-        fetch(`/api/admin/overview?range=${range}`, { credentials: "include" }),
-        fetch(`/api/admin/retention?range=${range}`, { credentials: "include" }),
-        fetch(`/api/admin/realtime`, { credentials: "include" }),
-        fetch(`/api/admin/funnel?range=${range}`, { credentials: "include" }),
-        fetch(`/api/admin/feedback-insights?range=${range}`, { credentials: "include" }),
-        fetch(`/api/admin/survey-aggregate?range=${range}`, { credentials: "include" }),
-        fetch(`/api/admin/dashboard-data`, { credentials: "include" }),
+      const [ov, j, ai, cq, h, au] = await Promise.all([
+        fetchEnvelope<OverviewData>(`/api/admin/overview?range=${range}`),
+        fetchEnvelope<JourneyData>(`/api/admin/player-journey?range=${range}&actorType=${journeyActorType}&platform=${journeyPlatform}`),
+        fetchEnvelope<AiExperienceData>(`/api/admin/ai-experience?range=${range}`),
+        fetchEnvelope<ContentQualityData>(`/api/admin/content-quality?range=${range}`),
+        fetchEnvelope<HealthData>("/api/admin/system-health"),
+        fetchEnvelope<AuditData>("/api/admin/audit-logs?limit=20"),
       ]);
-
-      const statuses = [o.status, r.status, rt.status, f.status, fi.status, sa.status, d.status];
-      if (statuses.some((s) => s === 403)) {
-        const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-        if (pathname !== "/saiduhsa") {
+      for (const [key, item] of Object.entries({ overview: ov, journey: j, ai, content: cq, health: h, audit: au })) {
+        if (item.status === 403) {
           window.location.href = "/saiduhsa";
           return;
         }
-        setAutoRefresh(false);
-        setErr("登录态已失效，请在当前页面重新验证管理员口令。");
-        return;
+        if (!item.env.ok || item.env.degraded) nextDegraded[key] = item.env.reason ?? "degraded";
       }
-
-      const [ovE, reE, rtE, fuE, fbE, saE, djE] = await Promise.all([
-        readAdminResponseJson<OverviewData>(o),
-        readAdminResponseJson<RetentionData>(r),
-        readAdminResponseJson<RealtimeData>(rt),
-        readAdminResponseJson<FunnelData>(f),
-        readAdminResponseJson<FeedbackData>(fi),
-        readAdminResponseJson<SurveyAggregateData>(sa),
-        readAdminResponseJson<{ rows?: DashboardUserRow[]; chartData?: ChartPoint[] }>(d),
-      ]);
-
-      const nextDegraded: Partial<Record<DegradedKey, { reason: string | null }>> = {};
-
-      const take = <T,>(key: DegradedKey, res: Response, env: AdminApiEnvelope<T>, apply: (data: T) => void) => {
-        const httpOk = res.ok;
-        const data = env.data;
-        if (httpOk && env.ok && data != null) {
-          apply(data);
-          if (env.degraded) nextDegraded[key] = { reason: env.reason };
-          return;
-        }
-        const reason = !httpOk ? `http_${res.status}` : env.reason ?? "unavailable";
-        nextDegraded[key] = { reason };
-      };
-
-      take("overview", o, ovE, (data) => {
-        setOverview(data);
-        if (Array.isArray(data?.chartData)) setChartData(data.chartData);
-      });
-      take("retention", r, reE, (data) => setRetention(data));
-      take("realtime", rt, rtE, (data) => {
-        setRealtime(data);
-        setRealtimeSeries((prev) => [
-          ...prev.slice(-23),
-          {
-            t: formatZhCnUtcTimeShort(),
-            online: Number(data.onlineUsers ?? 0) + Number(data.onlineGuests ?? 0),
-            sessions: Number(data.activeSessions ?? 0),
-          },
-        ]);
-      });
-      take("funnel", f, fuE, (data) => setFunnel(data));
-      take("feedback", fi, fbE, (data) => setFeedbackInsights(data));
-      take("survey", sa, saE, (data) => setSurveyAgg(data));
-      take("dashboard", d, djE, (dj) => {
-        if (dj?.rows) setRows(dj.rows);
-        const hadOverviewChart = Array.isArray(ovE.data && (ovE.data as OverviewData)?.chartData);
-        if (Array.isArray(dj?.chartData) && !hadOverviewChart) setChartData(dj.chartData);
-      });
-
+      if (ov.env.data) setOverview(ov.env.data);
+      if (j.env.data) setJourney(j.env.data);
+      if (ai.env.data) setAiExperience(ai.env.data);
+      if (cq.env.data) setContentQuality(cq.env.data);
+      if (h.env.data) setHealth(h.env.data);
+      if (au.env.data) setAudit(au.env.data);
       setDegraded(nextDegraded);
-    } catch {
-      setErr("数据加载遇到异常，部分区域可能仍为缓存或初始数据。");
     } finally {
       setRefreshing(false);
     }
-  }, [range]);
+  }, [journeyActorType, journeyPlatform, range]);
 
-  const generateAiReport = useCallback(async () => {
-    setAiLoading(true);
-    try {
-      const resp = await fetch(`/api/admin/ai-insights?range=${range}`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const env = await readAdminResponseJson<AiReport>(resp);
-      if (resp.ok && env.ok && env.data) setAiReport(env.data);
-    } finally {
-      setAiLoading(false);
+  const loadUsers = useCallback(async (cursor: string | null) => {
+    const params = new URLSearchParams();
+    params.set("limit", "20");
+    params.set("actorType", actorType);
+    params.set("sort", sort);
+    if (cursor) params.set("cursor", cursor);
+    if (userSearch.trim()) params.set("search", userSearch.trim());
+    if (onlyOnline) params.set("onlyOnline", "1");
+    const { env, status } = await fetchEnvelope<UsersData>(`/api/admin/users?${params.toString()}`);
+    if (status === 403) {
+      window.location.href = "/saiduhsa";
+      return;
     }
-  }, [range]);
-
-  const loadAiRouting = useCallback(async () => {
-    setAiRoutingLoading(true);
-    try {
-      const resp = await fetch("/api/admin/ai-routing", { credentials: "include" });
-      if (resp.status === 403 && typeof window !== "undefined" && window.location.pathname !== "/saiduhsa") {
-        window.location.href = "/saiduhsa";
-        return;
-      }
-      const env = await readAdminResponseJson<unknown>(resp);
-      if (resp.ok && env.ok) setAiRouting(env.data ?? null);
-      else setAiRouting({ degraded: true, reason: env.reason ?? "ai_routing_unavailable" });
-    } finally {
-      setAiRoutingLoading(false);
-    }
-  }, []);
+    if (env.data) setUsers(env.data);
+    if (!env.ok || env.degraded) setDegraded((d) => ({ ...d, users: env.reason ?? "degraded" }));
+  }, [actorType, onlyOnline, sort, userSearch]);
 
   useEffect(() => {
-    void fetchAll(false);
-  }, [fetchAll]);
+    void loadCore(false);
+  }, [loadCore]);
+
+  useEffect(() => {
+    setUserCursor(null);
+    setUserCursorStack([null]);
+  }, [actorType, onlyOnline, sort, userSearch]);
+
+  useEffect(() => {
+    void loadUsers(userCursor);
+  }, [loadUsers, userCursor]);
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const id = setInterval(() => void fetchAll(true), REFRESH_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, fetchAll]);
+    const id = window.setInterval(() => {
+      void loadCore(true);
+      void loadUsers(userCursor);
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [autoRefresh, loadCore, loadUsers, userCursor]);
 
-  useEffect(() => {
-    if (!refreshing) {
-      setShowSlowSkeleton(false);
+  const overviewCards = overview?.cards ?? {};
+  const degradedList = useMemo(() => Object.entries(degraded).filter(([, reason]) => reason), [degraded]);
+
+  async function refreshAiReport() {
+    const { env, status } = await fetchEnvelope<AiReport>(`/api/admin/ai-insights?range=${range}`, { method: "POST" });
+    if (status === 403) {
+      window.location.href = "/saiduhsa";
       return;
     }
-    const id = window.setTimeout(() => setShowSlowSkeleton(true), 2000);
-    return () => clearTimeout(id);
-  }, [refreshing]);
+    if (env.data) setAiReport(env.data);
+    if (!env.ok || env.degraded) setDegraded((d) => ({ ...d, aiAssistant: env.reason ?? "degraded" }));
+  }
 
-  const cards = useMemo(() => {
-    const c = overview?.cards ?? {};
-    return {
-      online: Number(realtime?.onlineUsers ?? onlineCount ?? 0),
-      onlineGuests: Number(realtime?.onlineGuests ?? 0),
-      sessions: Number(realtime?.activeSessions ?? 0),
-      todayNew: Number(c.todayNewUsers ?? 0),
-      dau: Number(c.dau ?? 0),
-      wau: Number(c.wau ?? 0),
-      mau: Number(c.mau ?? 0),
-      todayToken: Number(c.todayTokenCost ?? 0),
-      avgSessionSec: Number(realtime?.avgSessionDurationSec ?? 0),
-      playInRangeSec: Number(c.playDurationRangeSec ?? 0),
-      legacyPlaySumSec: Number(c.legacyUsersPlayTimeSecSum ?? 0),
-      sessionPlayLiveSec: Number(c.sessionPlayLiveSecSum ?? 0),
-      guestsTotal: Number(c.guestsTotal ?? 0),
-      guestsOnline: Number(c.guestsOnline ?? 0),
-      guestsPlaySec: Number(c.guestsPlayDurationSec ?? 0),
-    };
-  }, [overview, realtime, onlineCount]);
+  async function clearAiCache() {
+    const { env } = await fetchEnvelope<{ ok: boolean }>("/api/admin/ai-insights?refresh_cache=1", { method: "POST" });
+    setDegraded((d) => ({ ...d, aiCache: env.ok ? null : env.reason ?? "cache_clear_failed" }));
+  }
 
-  const alerts = useMemo(() => {
-    const list: string[] = [];
-    if ((retention?.d1?.rate ?? 1) < 0.2) list.push("D1 留存偏低，请排查新手引导。");
-    const tokenPerDau = cards.dau > 0 ? cards.todayToken / cards.dau : 0;
-    if (tokenPerDau > 5000) list.push("人均 Token 偏高，关注模型成本。");
-    if ((realtime?.trends?.eventsLast5m ?? 0) > (realtime?.trends?.eventsLast15m ?? 0)) list.push("近5分钟事件波动偏高。");
-    return list;
-  }, [cards, realtime, retention]);
+  async function openUserDetail(actorKey: string) {
+    const { env, status } = await fetchEnvelope<UserDetail>(`/api/admin/users/${encodeURIComponent(actorKey)}`);
+    if (status === 403) {
+      window.location.href = "/saiduhsa";
+      return;
+    }
+    if (env.data) setUserDetail(env.data);
+    if (!env.ok || env.degraded) setDegraded((d) => ({ ...d, userDetail: env.reason ?? "degraded" }));
+  }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (onlyOnline && r.isOnline !== 1) return false;
-      if (!q) return true;
-      return r.name.toLowerCase().includes(q) || String(r.feedbackContent ?? "").toLowerCase().includes(q);
+  async function rebuildDailyMetrics() {
+    const days = Math.max(1, Math.min(30, Math.trunc(rebuildDays || 3)));
+    const { env, status } = await fetchEnvelope<{ ok: boolean; days: number; results: Array<{ ok: boolean }> }>(`/api/admin/rebuild-daily?days=${days}`, { method: "POST" });
+    if (status === 403) {
+      window.location.href = "/saiduhsa";
+      return;
+    }
+    const failed = env.data?.results?.filter((r) => !r.ok).length ?? 0;
+    setActionMessage(env.ok && !env.degraded ? `已重建最近 ${days} 天聚合。` : `重建完成但有 ${failed} 天失败。`);
+    if (!env.ok || env.degraded) setDegraded((d) => ({ ...d, rebuildDaily: env.reason ?? "partial_rebuild_failed" }));
+    await loadCore(true);
+  }
+
+  function nextUserPage() {
+    if (!users?.nextCursor) return;
+    setUserCursorStack((s) => [...s, users.nextCursor]);
+    setUserCursor(users.nextCursor);
+  }
+
+  function prevUserPage() {
+    setUserCursorStack((s) => {
+      const next = s.slice(0, -1);
+      const cursor = next[next.length - 1] ?? null;
+      setUserCursor(cursor);
+      return next.length > 0 ? next : [null];
     });
-  }, [rows, search, onlyOnline]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const degradedList = useMemo(() => {
-    return (Object.entries(degraded) as Array<[DegradedKey, { reason: string | null }]>)
-      .map(([k, v]) => ({ key: k, label: DEGRADED_LABEL[k], reason: v.reason }))
-      .filter((x) => x.label);
-  }, [degraded]);
-
-  const showKpiSlow = showSlowSkeleton && refreshing;
+  }
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 text-slate-100 md:p-6">
-      <section className="mx-auto max-w-7xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-2xl font-semibold">运营决策台</h1>
-            <p className="text-sm text-slate-400">总用户 {Number(totalUsers).toLocaleString()} · 累计 Token {Number(totalTokens).toLocaleString()}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={range} onChange={(e) => setRange(e.target.value as "today" | "yesterday" | "7d" | "30d")} className="rounded-xl bg-white/10 px-3 py-2 text-sm backdrop-blur-xl">
-              <option value="today">今日</option>
-              <option value="yesterday">昨日</option>
-              <option value="7d">近7天</option>
-              <option value="30d">近30天</option>
-            </select>
-            <button className="rounded-xl bg-white/10 px-3 py-2 text-sm backdrop-blur-xl" onClick={() => void fetchAll(true)}>
-              {refreshing ? "刷新中..." : "手动刷新"}
-            </button>
-            <label className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs backdrop-blur-xl">
-              <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-              自动刷新
-            </label>
-          </div>
-        </div>
-
-        {err ? (
-          <div className="rounded-2xl bg-red-500/15 p-3 text-sm text-red-100">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span>{err}</span>
-              {err.includes("登录态已失效") ? (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await clearAdminShadowSession();
-                    } finally {
-                      window.location.href = `/saiduhsa?reauth=${Date.now()}`;
-                    }
-                  }}
-                  className="rounded-lg bg-white/15 px-3 py-1.5 text-xs text-white transition hover:bg-white/25"
-                >
-                  重新验证
-                </button>
-              ) : null}
+    <main className="min-h-screen bg-slate-950 p-3 text-slate-100 md:p-6">
+      <section className="mx-auto flex max-w-7xl flex-col gap-4">
+        <header className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold">运营后台</h1>
+              <p className="mt-1 text-sm text-slate-400">
+                注册用户 {Number(overviewCards.totalUsers ?? totalUsers).toLocaleString()} · Token {Number(overviewCards.totalTokens ?? totalTokens).toLocaleString()} · 在线 {Number(overviewCards.online ?? onlineCount).toLocaleString()}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={range} onChange={(e) => setRange(e.target.value as Range)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm">
+                <option value="today">今日</option>
+                <option value="yesterday">昨日</option>
+                <option value="7d">近 7 日</option>
+                <option value="30d">近 30 日</option>
+              </select>
+              <button className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm" onClick={() => void loadCore(true)}>
+                {refreshing ? "刷新中" : "刷新"}
+              </button>
+              <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs">
+                <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+                自动刷新
+              </label>
+              <button
+                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm"
+                onClick={async () => {
+                  await clearAdminShadowSession();
+                  window.location.href = "/saiduhsa";
+                }}
+              >
+                退出
+              </button>
             </div>
           </div>
-        ) : null}
+        </header>
 
         {degradedList.length > 0 ? (
-          <div
-            className="rounded-2xl bg-amber-500/10 p-3 text-sm text-amber-50/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-xl"
-            data-testid="admin-degraded-banner"
-            role="status"
-          >
-            <p className="font-medium">部分数据暂以降级方式展示</p>
-            <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-amber-100/90">
-              {degradedList.map((x) => (
-                <li key={x.key}>
-                  {x.label}
-                  {x.reason ? <span className="text-amber-200/80">（{x.reason}）</span> : null}
-                </li>
-              ))}
-            </ul>
+          <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 p-3 text-sm text-amber-100" role="status" data-testid="admin-degraded-banner">
+            部分数据处于降级状态：{degradedList.map(([k, v]) => `${k}:${v}`).join("；")}
           </div>
         ) : null}
 
-        <PanelFrame
-          label="核心指标"
-          showSlow={showKpiSlow}
-          slow={<AdminKpiRowSkeleton />}
-        >
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-9">
-            {(
-              [
-                ["在线用户", formatCountOrEmpty(cards.online, "暂无在线用户")],
-                ["在线游客(会话)", formatCountOrEmpty(cards.onlineGuests, "暂无游客在线")],
-                ["活跃会话行", formatCountOrEmpty(cards.sessions, "暂无活跃会话")],
-                ["今日新增", formatCountOrEmpty(cards.todayNew, "今日暂无新增")],
-                ["DAU", formatCountOrEmpty(cards.dau, "本区间暂无")],
-                ["WAU", formatCountOrEmpty(cards.wau, "本区间暂无")],
-                ["MAU", formatCountOrEmpty(cards.mau, "本区间暂无")],
-                [
-                  "今日Token",
-                  cards.todayToken === 0 ? "本日暂无消耗" : cards.todayToken.toLocaleString(),
-                ],
-                ["平均会话时长", formatDurationSeconds(Number(cards.avgSessionSec) || 0) || "暂无数据"],
-              ] as const
-            ).map(([k, v]) => (
-              <div
-                key={String(k)}
-                className="rounded-2xl bg-white/10 p-3 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
-              >
-                <p className="text-xs text-slate-300">{k}</p>
-                <p className="mt-2 text-lg font-semibold">{v}</p>
-              </div>
-            ))}
-          </div>
-        </PanelFrame>
+        <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.05] p-2">
+          {TABS.map((x) => (
+            <button
+              key={x}
+              className={`shrink-0 rounded-xl px-3 py-2 text-sm ${tab === x ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-slate-200"}`}
+              onClick={() => setTab(x)}
+            >
+              {x}
+            </button>
+          ))}
+        </nav>
 
-        {process.env.NODE_ENV === "development" && realtime?.presenceDebug ? (
-          <div className="rounded-2xl bg-white/5 p-3 text-xs text-slate-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-xl">
-            <p className="mb-1 font-medium text-slate-200">在线判定（开发）</p>
-            <p>
-              redis={realtime.presenceDebug.redis} · db={realtime.presenceDebug.db} · 重叠={realtime.presenceDebug.both} ·
-              仅redis={realtime.presenceDebug.redisOnly} · 仅db={realtime.presenceDebug.dbOnly} · redisDown=
-              {realtime.presenceDebug.redisDown ? "1" : "0"}
-            </p>
-            <p className="mt-1 text-slate-500">人工解读：两路任一为真即算在线；仅db 且 Redis 正常时会记 presence_flaky</p>
-          </div>
-        ) : null}
-
-        <PanelFrame
-          label="游客与会话"
-          showSlow={showKpiSlow}
-          slow={
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-20 animate-pulse rounded-2xl bg-gradient-to-br from-white/[0.1] to-white/[0.04] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"
-                  data-testid="admin-block-skeleton"
-                />
-              ))}
-            </div>
-          }
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              ["游客档案数（guest_registry）", cards.guestsTotal === 0 ? "暂无游客档案" : cards.guestsTotal.toLocaleString()],
-              [
-                "游客在线（近90s, guest_registry）",
-                formatCountOrEmpty(cards.guestsOnline, "暂无游客在线"),
-              ],
-              [
-                "游客累计游玩秒（guest_registry）",
-                cards.guestsPlaySec === 0 ? "暂无游玩记录" : formatDurationSeconds(cards.guestsPlaySec),
-              ],
-            ].map(([k, v]) => (
-              <div
-                key={String(k)}
-                className="rounded-2xl bg-white/5 p-3 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"
-              >
-                <p className="text-xs text-slate-400">{k}</p>
-                <p className="mt-2 text-sm font-medium text-slate-100">{v}</p>
-              </div>
-            ))}
-          </div>
-        </PanelFrame>
-
-        <PanelFrame
-          label="时长与驻留"
-          showSlow={showKpiSlow}
-          slow={
+        {tab === "总览" ? (
+          <section className="space-y-4">
+            <KpiGrid kpis={overview?.kpis ?? []} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-20 animate-pulse rounded-2xl bg-gradient-to-br from-white/[0.1] to-white/[0.04] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"
-                />
-              ))}
+              <Card title="DAU / WAU / MAU" value={`${fmt(overviewCards.dau)} / ${fmt(overviewCards.wau)} / ${fmt(overviewCards.mau)}`} meta="来源：admin_metrics_daily，按 UTC 日期聚合。" />
+              <Card title="区间游玩时长" value={formatDurationSeconds(Number(overviewCards.playDurationRangeSec ?? 0)) || "暂无"} meta="来源：admin_metrics_daily.total_play_duration_sec。" />
+              <Card title="反馈量" value={fmt(overviewCards.feedbackCountRange)} meta="来源：analytics_events.feedback_submitted。" />
             </div>
-          }
-        >
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {[
-              [
-                "选中区间内驻留（日滚, UTC）",
-                cards.playInRangeSec === 0 ? "暂无数据" : formatDurationSeconds(cards.playInRangeSec),
-              ],
-              [
-                "全量会话驻留（user_sessions 汇总）",
-                cards.sessionPlayLiveSec === 0 ? "暂无数据" : formatDurationSeconds(cards.sessionPlayLiveSec),
-              ],
-              [
-                "历史累计（users.play_time 旧口径）",
-                cards.legacyPlaySumSec === 0 ? "暂无数据" : formatDurationSeconds(cards.legacyPlaySumSec),
-              ],
-            ].map(([k, v]) => (
-              <div
-                key={String(k)}
-                className="rounded-2xl bg-white/5 p-3 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"
-              >
-                <p className="text-xs text-slate-400">{k}</p>
-                <p className="mt-2 text-sm font-medium text-slate-100">{v}</p>
-              </div>
-            ))}
-          </div>
-        </PanelFrame>
+          </section>
+        ) : null}
 
-        <PanelFrame
-          label="实时趋势与异常"
-          showSlow={showSlowSkeleton && refreshing}
-          slow={
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <div className="xl:col-span-2" data-testid="admin-charts-slow-slot">
-                <AdminBlockSkeleton h="h-56" />
-              </div>
-              <AdminBlockSkeleton h="h-56" />
-            </div>
-          }
-        >
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] xl:col-span-2">
-              <p className="mb-3 text-sm">近24小时实时活跃趋势</p>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={realtimeSeries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                    <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#cbd5e1" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "#cbd5e1" }} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="online" stroke="#38bdf8" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="sessions" stroke="#22c55e" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-              <p className="mb-3 text-sm">异常提示</p>
-              <div className="space-y-2 text-sm">
-                {alerts.length === 0 ? <p className="text-slate-300">暂无显著异常。</p> : alerts.map((a, i) => <div key={i} className="rounded-xl bg-yellow-500/15 p-2 text-yellow-100">{a}</div>)}
-              </div>
-            </div>
-          </div>
-        </PanelFrame>
-
-        <PanelFrame
-          label="新增、活跃与 Token"
-          showSlow={showSlowSkeleton && refreshing}
-          slow={
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <AdminBlockSkeleton h="h-56" />
-              <AdminBlockSkeleton h="h-56" />
-            </div>
-          }
-        >
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2" data-testid="admin-trend-charts">
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-              <p className="mb-3 text-sm">新增与活跃趋势</p>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11, fill: "#cbd5e1" }}
-                      tickFormatter={(v) => formatUtcDateKeyLabel(String(v))}
-                    />
-                    <YAxis tick={{ fontSize: 11, fill: "#cbd5e1" }} />
-                    <Tooltip labelFormatter={(v) => `UTC ${formatUtcDateKeyLabel(String(v))}`} />
-                    <Area type="monotone" dataKey="activeUsers" stroke="#38bdf8" fill="#38bdf8" fillOpacity={0.2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-              <p className="mb-3 text-sm">Token 消耗趋势</p>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11, fill: "#cbd5e1" }}
-                      tickFormatter={(v) => formatUtcDateKeyLabel(String(v))}
-                    />
-                    <YAxis tick={{ fontSize: 11, fill: "#cbd5e1" }} />
-                    <Tooltip
-                      labelFormatter={(v) => `UTC ${formatUtcDateKeyLabel(String(v))}`}
-                      formatter={(v) => [Number(v ?? 0).toLocaleString(), "Token"]}
-                    />
-                    <Bar dataKey="dailyTokens" fill="#22c55e" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        </PanelFrame>
-
-        <PanelFrame
-          label="留存与漏斗"
-          showSlow={showSlowSkeleton && refreshing}
-          slow={
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <AdminBlockSkeleton h="min-h-[12rem]" />
-              <div className="xl:col-span-2">
-                <AdminBlockSkeleton h="min-h-[12rem]" />
-              </div>
-            </div>
-          }
-        >
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="space-y-3 rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-            <p className="text-sm">留存</p>
-            {(["all", "registered", "guest"] as const).map((k) => {
-              const legacyAll =
-                retention && !retention.byActorKind
-                  ? {
-                      cohortSize: retention.cohortSize,
-                      d1: retention.d1,
-                      d3: retention.d3,
-                      d7: retention.d7,
-                    }
-                  : undefined;
-              const b =
-                k === "all"
-                  ? retention?.byActorKind?.all ?? legacyAll
-                  : k === "registered"
-                    ? retention?.byActorKind?.registered
-                    : retention?.byActorKind?.guest;
-              const label = k === "all" ? "合计" : k === "registered" ? "登录" : "游客";
-              return (
-                <div key={k} className="rounded-xl bg-white/5 p-2 text-xs shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-                  <p className="text-slate-300">{label}</p>
-                  <p className="text-sm text-slate-100">D1 {((Number(b?.d1?.rate ?? 0)) * 100).toFixed(1)}% · D3 {((Number(b?.d3?.rate ?? 0)) * 100).toFixed(1)}% · D7 {((Number(b?.d7?.rate ?? 0)) * 100).toFixed(1)}%</p>
-                  <p className="text-slate-500">样本 {Number(b?.cohortSize ?? 0)}</p>
-                </div>
-              );
-            })}
-            <p className="text-xs text-slate-500">合计列为历史混合口径；登录/游客为拆分口径。</p>
-          </div>
-          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] xl:col-span-2">
-            <p className="mb-2 text-sm">漏斗（登录 / 游客 / 合计 · 人）</p>
-            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-              {(funnel?.stages ?? []).length === 0 ? (
-                <p className="text-xs text-slate-400">暂无漏斗数据</p>
-              ) : null}
-              {(funnel?.stages ?? []).map((s) => (
-                <div
-                  key={String(s.eventName)}
-                  className="grid grid-cols-1 gap-1 rounded-xl bg-white/5 p-2 text-xs sm:grid-cols-4"
-                >
-                  <div className="text-slate-200 sm:col-span-1">{String(s.eventLabel ?? s.eventName ?? "")}</div>
-                  <div className="text-slate-300">
-                    登录 {Number(s.registered ?? 0)}（{((Number(s.conversionRateRegistered ?? 0)) * 100).toFixed(1)}%）
-                  </div>
-                  <div className="text-slate-300">
-                    游客 {Number(s.guest ?? 0)}（{((Number(s.conversionRateGuest ?? 0)) * 100).toFixed(1)}%）
-                  </div>
-                  <div className="text-slate-200">
-                    合计 {Number(s.all ?? s.users ?? 0)}（{((Number(s.conversionRate ?? 0)) * 100).toFixed(1)}%）
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        </PanelFrame>
-
-        <PanelFrame
-          label="问卷聚合"
-          showSlow={showSlowSkeleton && refreshing}
-          slow={<AdminBlockSkeleton h="min-h-[14rem]" />}
-        >
-        <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm">问卷聚合（{range}）</p>
-              <p className="mt-1 text-xs text-slate-300">
-                样本 {Number(surveyAgg?.totalResponses ?? 0)} · 口径 {String(surveyAgg?.range?.label ?? "")}
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {(surveyAgg?.questions ?? []).map((q) => {
-              const title = String(q.title ?? q.id ?? "unknown");
-              if (q.kind === "text") {
-                return (
-                  <div key={String(q.id)} className="rounded-2xl bg-black/20 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold">{title}</p>
-                      <p className="text-xs text-slate-300">文本条数 {Number(q.textCount ?? 0)}</p>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-400">文本题不做选项聚合；建议在“按用户查看问卷”里抽样阅读。</p>
-                  </div>
-                );
-              }
-              const opts = Array.isArray(q.options) ? q.options : [];
-              const top = opts.slice(0, 5);
-              const rest = opts.slice(5);
-              const restCount = rest.reduce((s, x) => s + Number(x.count ?? 0), 0);
-              const restPct = rest.reduce((s, x) => s + Number(x.pct ?? 0), 0);
-              const rowsToShow =
-                rest.length > 0
-                  ? [...top, { label: "其他", count: restCount, pct: Math.round(restPct * 10) / 10 }]
-                  : top;
-              const sample = Number(q.sampleCount ?? 0);
-              return (
-                <div key={String(q.id)} className="rounded-2xl bg-black/20 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold">{title}</p>
-                    <p className="text-xs text-slate-300">有效样本 {sample}</p>
-                  </div>
-                  {sample <= 0 ? (
-                    <p className="mt-3 text-xs text-slate-400">样本不足</p>
-                  ) : (
-                    <div className="mt-3 space-y-2">
-                      {rowsToShow.map((o, idx) => {
-                        const label = String((o as { label?: string }).label ?? "");
-                        const count = Number((o as { count?: number }).count ?? 0);
-                        const pct = Number((o as { pct?: number }).pct ?? 0);
-                        return (
-                          <div key={`${String(q.id)}:${idx}`} className="space-y-1">
-                            <div className="flex items-center justify-between text-xs text-slate-200">
-                              <span className="truncate pr-2">{label}</span>
-                              <span className="shrink-0 text-slate-300">
-                                {count}（{pct.toFixed(1)}%）
-                              </span>
-                            </div>
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-                              <div className="h-full rounded-full bg-sky-400/70" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        </PanelFrame>
-
-        <PanelFrame
-          label="反馈与 AI 分析"
-          showSlow={showSlowSkeleton && refreshing}
-          slow={
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <div className="xl:col-span-2">
-                <AdminBlockSkeleton h="min-h-[12rem]" />
-              </div>
-              <AdminBlockSkeleton h="min-h-[12rem]" />
-            </div>
-          }
-        >
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] xl:col-span-2">
-            <p className="mb-2 text-sm">反馈与问题洞察</p>
-            <div className="mb-2 flex flex-wrap gap-2 text-xs text-slate-200">
-              <span className="rounded-lg bg-white/10 px-2 py-1">反馈 {Number(feedbackInsights?.totalFeedback ?? 0)}</span>
-              <span className="rounded-lg bg-white/10 px-2 py-1">负向 {Number(feedbackInsights?.negativeFeedback ?? 0)}</span>
-              {(feedbackInsights?.topics ?? []).slice(0, 3).map((t) => (
-                <span key={String(t.topic)} className="rounded-lg bg-white/10 px-2 py-1">{String(t.topic)} {Number(t.count ?? 0)}</span>
-              ))}
-            </div>
-            <div className="space-y-2">
-              {rows.filter((r) => r.feedbackContent).slice(0, 4).map((r) => (
-                <button key={r.id} className="w-full rounded-xl bg-white/10 p-2 text-left text-xs hover:bg-white/15" onClick={() => setDetail({ userName: r.name, content: r.feedbackContent, createdAt: r.feedbackCreatedAt })}>
-                  <span className="mr-1 text-slate-400">[{r.name}]</span>{r.feedbackContent.slice(0, 80)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm">AI 运营分析官</p>
-              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => void generateAiReport()} disabled={aiLoading}>
-                {aiLoading ? "生成中..." : "一键生成分析"}
-              </button>
-            </div>
-            <div className="space-y-2 text-sm">
-              {aiReport?.output?.generatedAt ? (
-                <p className="text-xs text-slate-300">生成时间（UTC）：{formatZhCnUtcDateTime(aiReport.output.generatedAt)}</p>
-              ) : null}
-              <p className="rounded-xl bg-white/10 p-2 text-xs text-slate-200">
-                {aiReport?.output?.executiveSummary ?? "点击“一键生成分析”获取可追溯的结构化建议。"}
-              </p>
-              {aiReport?.output?.evidenceSufficiency === "insufficient" ? (
-                <p className="rounded-xl bg-yellow-500/15 p-2 text-xs text-yellow-100">证据不足：样本量偏小，建议先扩大采样窗口再决策。</p>
-              ) : null}
-              {(aiReport?.output?.top3Actions ?? []).map((a, i) => (
-                <div key={i} className="rounded-xl bg-white/10 p-2 text-xs">
-                  <p className="text-slate-300">{toPriorityLabel(String(a.priority))}</p>
-                  <p className="mt-1 text-slate-100">{a.action}</p>
-                  <p className="mt-1 text-slate-300">{a.why}</p>
-                </div>
-              ))}
-              <div className="rounded-xl bg-white/10 p-2 text-xs">
-                <p className="text-slate-300">证据来源摘要</p>
-                {(aiReport?.output?.evidence ?? []).slice(0, 3).map((e, i) => (
-                  <p key={i} className="mt-1 text-slate-200">{e.metric}: {e.value}（{e.source}）</p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        </PanelFrame>
-
-        <AdminErrorBoundary label="大模型路由">
-          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm">大模型路由与熔断</p>
-              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" type="button" onClick={() => void loadAiRouting()} disabled={aiRoutingLoading}>
-                {aiRoutingLoading ? "加载中..." : "刷新"}
-              </button>
-            </div>
-            <p className="mb-2 text-xs text-slate-300">近期路由样本与按模型熔断快照（进程内存，重启清空）。</p>
-            <pre className="max-h-64 overflow-auto rounded-xl bg-black/20 p-3 text-[11px] leading-relaxed text-slate-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
-              {aiRouting === null ? "点击「刷新」拉取。" : JSON.stringify(aiRouting, null, 2)}
-            </pre>
-          </div>
-        </AdminErrorBoundary>
-
-        <PanelFrame
-          label="用户与问卷明细表"
-          showSlow={showSlowSkeleton && refreshing}
-          slow={
-            <div className="space-y-3">
-              <div className="h-10 w-full max-w-md animate-pulse rounded-xl bg-white/10" />
-              <AdminBlockSkeleton h="min-h-[16rem]" />
-            </div>
-          }
-        >
-        <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]" data-testid="admin-user-table-panel">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索账号/反馈" className="rounded-xl bg-white/10 px-3 py-2 text-sm" />
-            <label className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs">
-              <input type="checkbox" checked={onlyOnline} onChange={(e) => setOnlyOnline(e.target.checked)} />
-              仅在线
-            </label>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-left text-sm">
-              <thead className="text-slate-300">
-                <tr>
-                  <th className="px-3 py-2">账号</th>
-                  <th className="px-3 py-2">状态</th>
-                  <th className="px-3 py-2">累计 Token</th>
-                  <th className="px-3 py-2">历史累计（旧口径）</th>
-                  <th className="px-3 py-2">会话驻留</th>
-                  <th className="px-3 py-2">最近活跃</th>
-                  <th className="px-3 py-2">最近问卷</th>
-                  <th className="px-3 py-2">最近反馈</th>
-                  <th className="px-3 py-2">最近一局</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((u) => (
-                  <tr key={u.id} className="shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-                    <td className="px-3 py-2">
-                      <span className="inline-flex flex-wrap items-center gap-1.5">
-                        {u.id.startsWith("guest:") ? (
-                          <span className="rounded-lg bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-100">游客</span>
-                        ) : null}
-                        {u.name}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">{u.isOnline === 1 ? "在线" : "离线"}</td>
-                    <td className="px-3 py-2">{Number(u.tokensUsed ?? 0).toLocaleString()}</td>
-                    <td className="px-3 py-2">{formatPlayTimeFromDbSeconds(u.playTime ?? 0)}</td>
-                    <td className="px-3 py-2">{formatPlayTimeFromDbSeconds(u.sessionPlaySec ?? 0)}</td>
-                    <td className="px-3 py-2">{formatLastOnline(u.lastActive)}</td>
-                    <td className="px-3 py-2">
-                      {u.latestSurveyAnswers ? (
-                        <button
-                          className="rounded-lg bg-white/10 px-2 py-1 text-xs"
-                          onClick={() =>
-                            setSurveyDetail({
-                              userName: u.name,
-                              createdAt: u.latestSurveyCreatedAt ?? null,
-                              surveyKey: u.latestSurveyKey ?? null,
-                              surveyVersion: u.latestSurveyVersion ?? null,
-                              answers: u.latestSurveyAnswers ?? null,
-                              freeText: u.latestSurveyFreeText ?? null,
-                              overallRating:
-                                typeof u.latestSurveyOverallRating === "number" ? u.latestSurveyOverallRating : null,
-                              recommendScore:
-                                typeof u.latestSurveyRecommendScore === "number" ? u.latestSurveyRecommendScore : null,
-                            })
-                          }
-                        >
-                          查看
-                        </button>
-                      ) : (
-                        "暂无"
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {u.feedbackContent ? <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => setDetail({ userName: u.name, content: u.feedbackContent, createdAt: u.feedbackCreatedAt })}>查看</button> : "暂无"}
-                    </td>
-                    <td className="px-3 py-2">
-                      {u.latestGameMaxFloor != null
-                        ? `层 ${u.latestGameMaxFloor} / ${formatPlayTimeFromDbSeconds(u.latestGameSurvivalSec ?? 0)}`
-                        : "暂无"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
-            <span>第 {page}/{totalPages} 页，共 {filtered.length} 条</span>
-            <div className="flex gap-2">
-              <button className="rounded-lg bg-white/10 px-2 py-1 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</button>
-              <button className="rounded-lg bg-white/10 px-2 py-1 disabled:opacity-40" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>下一页</button>
-            </div>
-          </div>
-        </div>
-        </PanelFrame>
-      </section>
-
-      {detail ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-slate-900 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm">反馈详情 · {detail.userName}</p>
-              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => setDetail(null)}>关闭</button>
-            </div>
-            <p className="mt-2 text-sm text-slate-200">{detail.content}</p>
-          </div>
-        </div>
-      ) : null}
-
-      {surveyDetail ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-3xl rounded-2xl bg-slate-900 p-4">
-            <div className="flex items-center justify-between gap-3">
+        {tab === "玩家旅程" ? (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-sm">问卷详情 · {surveyDetail.userName}</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {surveyDetail.createdAt ? `提交时间（UTC）：${formatZhCnUtcDateTime(surveyDetail.createdAt)}` : "提交时间：未知"}
-                  {surveyDetail.surveyKey ? ` · key=${surveyDetail.surveyKey}` : ""}
-                  {surveyDetail.surveyVersion ? ` · v=${surveyDetail.surveyVersion}` : ""}
-                </p>
+                <h2 className="text-lg font-semibold">玩家旅程漏斗</h2>
+                <p className="text-xs text-slate-400">样本 {journey?.sampleSize ?? 0} · {journey?.evidenceSufficiency === "insufficient" ? "数据样本不足" : "样本可用"} · 更新时间 {time(journey?.updatedAt)}</p>
               </div>
-              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs" onClick={() => setSurveyDetail(null)}>
-                关闭
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <select value={journeyActorType} onChange={(e) => setJourneyActorType(e.target.value as typeof journeyActorType)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm">
+                  <option value="all">全部 actor</option>
+                  <option value="registered">注册用户</option>
+                  <option value="guest">游客</option>
+                </select>
+                <select value={journeyPlatform} onChange={(e) => setJourneyPlatform(e.target.value as typeof journeyPlatform)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm">
+                  <option value="all">全部端</option>
+                  <option value="mobile">Mobile</option>
+                  <option value="pc">PC</option>
+                </select>
+              </div>
             </div>
+            <div className="space-y-3">
+              {(journey?.stages ?? []).map((s) => (
+                <div key={s.eventName} className="rounded-xl bg-black/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span>{s.label}</span>
+                    <span>{s.count.toLocaleString()} 人 · 相邻 {percent(s.stepConversionRate)} · 总 {percent(s.totalConversionRate)}</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-white/10">
+                    <div className="h-2 rounded-full bg-emerald-300" style={{ width: `${Math.max(1, Math.min(100, s.totalConversionRate * 100))}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
-                <div className="text-slate-400">overallRating</div>
-                <div className="mt-1 text-sm font-semibold">{surveyDetail.overallRating ?? "null"}</div>
-              </div>
-              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
-                <div className="text-slate-400">recommendScore</div>
-                <div className="mt-1 text-sm font-semibold">{surveyDetail.recommendScore ?? "null"}</div>
-              </div>
-              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
-                <div className="text-slate-400">freeText</div>
-                <div className="mt-1 text-sm font-semibold">{surveyDetail.freeText ? "有" : "无"}</div>
+        {tab === "AI 等待体验" ? (
+          <section className="space-y-4">
+            <KpiGrid kpis={aiExperience?.metrics ?? []} />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card title="AI 成功率" value={percent(aiExperience?.rates?.successRate)} meta={`样本 ${aiExperience?.sampleSize ?? 0}`} />
+              <Card title="失败率" value={percent(aiExperience?.rates?.failureRate)} />
+              <Card title="fallback 降级率" value={percent(aiExperience?.rates?.fallbackRate)} />
+              <Card title="JSON 修复/解析失败率" value={percent(aiExperience?.rates?.parseFailureRate)} />
+              <Card title="总 Token" value={fmt(aiExperience?.cost?.totalTokens)} />
+              <Card title="每行动 Token" value={fmt(Math.round(aiExperience?.cost?.tokenPerEffectiveAction ?? 0))} />
+              <Card title="每活跃玩家 Token" value={fmt(Math.round(aiExperience?.cost?.tokenPerActiveActor ?? 0))} />
+              <Card title="queueWait" value="unavailable" meta="当前未接入独立排队耗时字段。" degraded />
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+              <h3 className="text-sm font-semibold">高成本用户 / 会话</h3>
+              <div className="mt-3 grid gap-2">
+                {(aiExperience?.cost?.highCostActors ?? []).length === 0 ? <p className="text-sm text-slate-400">暂无样本。</p> : null}
+                {(aiExperience?.cost?.highCostActors ?? []).map((x) => (
+                  <div key={x.actorKey} className="flex items-center justify-between rounded-xl bg-black/20 p-3 text-sm">
+                    <span className="truncate">{x.actorKey}</span>
+                    <span>{x.tokens.toLocaleString()} tokens / {x.actions} 次</span>
+                  </div>
+                ))}
               </div>
             </div>
+          </section>
+        ) : null}
 
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded-xl bg-black/20 p-3">
-                <p className="mb-2 text-xs text-slate-300">answers</p>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-100">
-                  {surveyDetail.answers ? JSON.stringify(surveyDetail.answers, null, 2) : "null"}
-                </pre>
-              </div>
-              <div className="rounded-xl bg-black/20 p-3">
-                <p className="mb-2 text-xs text-slate-300">freeText</p>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-100">
-                  {surveyDetail.freeText ?? ""}
-                </pre>
+        {tab === "内容质量" ? (
+          <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+              <h2 className="text-lg font-semibold">世界观与章节</h2>
+              <p className="text-xs text-slate-400">更新时间 {time(contentQuality?.updatedAt)} · {contentQuality?.evidenceSufficiency === "insufficient" ? "样本不足" : "样本可用"}</p>
+              <div className="mt-3 space-y-2">
+                {(contentQuality?.worldSelections ?? []).length === 0 ? <p className="text-sm text-slate-400">暂无世界观选择样本。</p> : null}
+                {(contentQuality?.worldSelections ?? []).map((w) => <Card key={w.worldId} title={w.worldId} value={w.count.toLocaleString()} />)}
               </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+              <h2 className="text-lg font-semibold">反馈与规则冲突</h2>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Card title="Validator issue" value={fmt(contentQuality?.validatorIssues)} />
+                <Card title="负反馈率" value={percent(contentQuality?.negativeFeedbackRate)} meta={`反馈样本 ${contentQuality?.feedbackSampleSize ?? 0}，问卷样本 ${contentQuality?.surveySampleSize ?? 0}`} />
+              </div>
+              <div className="mt-3 space-y-2">
+                {(contentQuality?.feedbackTopics ?? []).slice(0, 6).map((t) => (
+                  <div key={String(t.topic)} className="flex justify-between rounded-xl bg-black/20 p-3 text-sm">
+                    <span>{String(t.topic)}</span>
+                    <span>{Number(t.count ?? 0)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {tab === "玩家 / 游客" ? (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.06] p-4" data-testid="admin-user-table-panel">
+            <div className="mb-3 flex flex-wrap gap-2">
+              <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="搜索 actor / 名称" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm" />
+              <select value={actorType} onChange={(e) => setActorType(e.target.value as typeof actorType)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm">
+                <option value="all">全部</option>
+                <option value="registered">注册用户</option>
+                <option value="guest">游客</option>
+              </select>
+              <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm">
+                <option value="lastActive">最近活跃</option>
+                <option value="tokens">Token</option>
+                <option value="playTime">游玩时长</option>
+              </select>
+              <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs">
+                <input type="checkbox" checked={onlyOnline} onChange={(e) => setOnlyOnline(e.target.checked)} />
+                仅在线
+              </label>
+            </div>
+            <div className="grid gap-2">
+              {(users?.rows ?? []).length === 0 ? <p className="rounded-xl bg-black/20 p-4 text-sm text-slate-400">暂无用户数据或接口降级。</p> : null}
+              {(users?.rows ?? []).map((u) => (
+                <div key={u.actorKey} className="grid grid-cols-1 gap-2 rounded-xl bg-black/20 p-3 text-sm md:grid-cols-[1.5fr_0.8fr_1fr_1fr_1fr_0.5fr] md:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-white">{u.name}</p>
+                    <p className="truncate text-xs text-slate-400">{u.actorKey}</p>
+                  </div>
+                  <span className={u.isOnline ? "text-emerald-200" : "text-slate-400"}>{u.isOnline ? "在线" : "离线"} · {u.actorType}</span>
+                  <span>Token {u.tokensUsed.toLocaleString()}</span>
+                  <span>{formatDurationSeconds(u.playTime) || "暂无时长"}</span>
+                  <span>{time(u.lastActive)}</span>
+                  <button className="rounded-lg bg-white/10 px-3 py-1.5 text-xs" onClick={() => void openUserDetail(u.actorKey)}>详情</button>
+                </div>
+              ))}
+            </div>
+            {userDetail ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-semibold">{userDetail.basic?.name ?? userDetail.actorKey}</h3>
+                    <p className="text-xs text-slate-400">{userDetail.actorKey} · {userDetail.basic?.actorType ?? "unknown"} · 最近活跃 {time(userDetail.basic?.lastActive)}</p>
+                  </div>
+                  <button className="rounded-lg bg-white/10 px-3 py-1.5 text-xs" onClick={() => setUserDetail(null)}>关闭</button>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  <Card title="Token" value={fmt(userDetail.basic?.tokensUsed)} />
+                  <Card title="游玩时长" value={formatDurationSeconds(Number(userDetail.basic?.playTime ?? 0)) || "暂无"} />
+                  <Card title="最近战绩" value={(userDetail.recentSettlements?.[0]?.grade ?? "暂无").toString()} meta={userDetail.recentSettlements?.[0]?.maxFloorLabel ?? ""} />
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-xl bg-white/[0.05] p-3">
+                    <h4 className="text-sm font-semibold">最近反馈</h4>
+                    {(userDetail.recentFeedback ?? []).length === 0 ? <p className="mt-2 text-xs text-slate-400">暂无</p> : null}
+                    {(userDetail.recentFeedback ?? []).map((x, idx) => <p key={`${x.createdAt}:${idx}`} className="mt-2 text-xs text-slate-300">{x.kind} · {x.contentPreview}</p>)}
+                  </div>
+                  <div className="rounded-xl bg-white/[0.05] p-3">
+                    <h4 className="text-sm font-semibold">最近问卷</h4>
+                    {(userDetail.recentSurvey ?? []).length === 0 ? <p className="mt-2 text-xs text-slate-400">暂无</p> : null}
+                    {(userDetail.recentSurvey ?? []).map((x, idx) => <p key={`${x.createdAt}:${idx}`} className="mt-2 text-xs text-slate-300">{x.surveyKey} · 评分 {x.overallRating ?? "n/a"} · 推荐 {x.recommendScore ?? "n/a"}</p>)}
+                  </div>
+                  <div className="rounded-xl bg-white/[0.05] p-3">
+                    <h4 className="text-sm font-semibold">最近事件</h4>
+                    {(userDetail.recentEvents ?? []).length === 0 ? <p className="mt-2 text-xs text-slate-400">暂无</p> : null}
+                    {(userDetail.recentEvents ?? []).slice(0, 6).map((x, idx) => <p key={`${x.eventTime}:${idx}`} className="mt-2 text-xs text-slate-300">{x.eventName} · {time(x.eventTime)}</p>)}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
+              <span>约 {users?.totalApprox ?? 0} 条 · 每页 {users?.limit ?? 20}</span>
+              <div className="flex gap-2">
+                <button className="rounded-lg bg-white/10 px-3 py-1.5 disabled:opacity-40" disabled={userCursorStack.length <= 1} onClick={prevUserPage}>上一页</button>
+                <button className="rounded-lg bg-white/10 px-3 py-1.5 disabled:opacity-40" disabled={!users?.hasMore} onClick={nextUserPage}>下一页</button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {tab === "系统健康" ? (
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+              <h2 className="text-lg font-semibold">低风险运营动作</h2>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label className="text-sm text-slate-300">重建最近</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={rebuildDays}
+                  onChange={(e) => setRebuildDays(Number(e.target.value))}
+                  className="w-20 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+                />
+                <span className="text-sm text-slate-300">天 admin_metrics_daily</span>
+                <button className="rounded-xl bg-emerald-300 px-3 py-2 text-sm font-medium text-slate-950" onClick={() => void rebuildDailyMetrics()}>
+                  手动重建
+                </button>
+              </div>
+              {actionMessage ? <p className="mt-2 text-sm text-emerald-100">{actionMessage}</p> : null}
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {Object.entries(health?.checks ?? {}).map(([key, h]) => (
+                <Card key={key} title={key} value={h.ok ? "OK" : "降级"} meta={`原因：${h.reason ?? "none"} · 更新时间 ${time(h.updatedAt)}`} degraded={h.degraded} />
+              ))}
+              <Card title="最近 cron 重建" value={time(health?.cron?.lastRebuildAt)} />
+              <Card title="聚合数据新鲜度" value={time(health?.aggregationFreshness)} />
+              <Card title="最近错误数" value={fmt(health?.recentErrors)} />
+              <Card title="部署版本" value={health?.deployment?.commitSha?.slice(0, 12) ?? "unknown"} meta={`NODE_ENV=${health?.deployment?.nodeEnv ?? "unknown"}`} />
+            </div>
+          </section>
+        ) : null}
+
+        {tab === "AI 运营助手" ? (
+          <section className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <button className="rounded-xl bg-emerald-300 px-3 py-2 text-sm font-medium text-slate-950" onClick={() => void refreshAiReport()}>手动刷新 AI 洞察</button>
+              <button className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm" onClick={() => void clearAiCache()}>清理洞察缓存</button>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+              <p className="text-sm text-slate-300">模型：{aiReport?.model ?? "未生成"} · {aiReport?.degraded ? "降级" : "可用"} · 更新时间 {time(aiReport?.output?.generatedAt)}</p>
+              <p className="mt-3 rounded-xl bg-black/20 p-3 text-sm">{aiReport?.output?.executiveSummary ?? "点击刷新后生成证据驱动建议。"}</p>
+              <div className="mt-3 grid gap-3">
+                {(aiReport?.output?.recommendations ?? []).map((r, idx) => (
+                  <div key={`${r.title}:${idx}`} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-emerald-300 px-2 py-0.5 text-xs font-medium text-slate-950">{priorityLabel(r.priority)}</span>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">置信度 {r.confidence}</span>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">样本 {r.sampleSize}</span>
+                    </div>
+                    <h3 className="mt-3 text-lg font-semibold">{r.title}</h3>
+                    <p className="mt-2 text-sm text-slate-200">{r.claim}</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {r.evidenceMetrics.map((e) => <Card key={`${r.title}:${e.metricId}`} title={e.label} value={e.value} meta={`${e.metricId} · ${e.source}`} />)}
+                    </div>
+                    <p className="mt-3 text-sm text-slate-300">风险：{r.risk}</p>
+                    <p className="mt-1 text-sm text-slate-300">实验：{r.suggestedExperiment}</p>
+                    <p className="mt-1 text-sm text-slate-300">预期影响：{r.expectedImpact}</p>
+                    <p className="mt-1 text-sm text-emerald-100">下一步：{r.nextAction}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {tab === "审计日志" ? (
+          <section className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+            <h2 className="text-lg font-semibold">审计日志</h2>
+            <div className="mt-3 grid gap-2">
+              {(audit?.rows ?? []).length === 0 ? <p className="text-sm text-slate-400">暂无审计记录。</p> : null}
+              {(audit?.rows ?? []).map((r) => (
+                <div key={r.id} className="grid grid-cols-1 gap-1 rounded-xl bg-black/20 p-3 text-sm md:grid-cols-[1fr_1fr_0.6fr_1fr]">
+                  <span>{r.action}</span>
+                  <span>{r.actor}</span>
+                  <span className={r.success ? "text-emerald-200" : "text-rose-200"}>{r.success ? "成功" : "失败"}</span>
+                  <span>{time(r.createdAt)} {r.reason ? `· ${r.reason}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </section>
     </main>
   );
 }
-

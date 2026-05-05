@@ -1,61 +1,90 @@
-# 后台统计与AI洞察维护说明
+# 后台统计与 AI 洞察维护说明
 
-## 指标口径定义位置
-- 核心口径聚合与读取：`src/lib/admin/service.ts`
-- 日级重建口径：`src/lib/analytics/aggregation.ts`
-- 可测试口径工具：`src/lib/admin/metricsUtils.ts`
+## 后台入口
 
-## 埋点接入位置
-- 聊天与耗时/Token：`src/app/api/chat/route.ts`
-- 注册/登录：`src/app/actions/auth.ts`
-- 反馈：`src/app/actions/feedback.ts`
-- 结算与履历：`src/app/actions/history.ts`
-- 心跳与在线：`src/app/actions/telemetry.ts` + `src/lib/presence.ts`
-- 通用落库：`src/lib/analytics/repository.ts`
+- 页面入口：`/saiduhsa`
+- 认证入口：`AdminShadowGate` 调用 `submitAdminShadowLogin`
+- 后台 API：`/api/admin/*`
+- Cron API：`/api/admin/cron/*`
 
-## 聚合在哪里跑
-- 写入时增量聚合：`src/lib/analytics/repository.ts`（CTE 原子更新）
-- 定时重建入口：`src/app/api/admin/cron/rebuild-daily/route.ts`
-- 重建逻辑：`src/lib/analytics/aggregation.ts`
+所有后台 API 必须返回统一 envelope：`ok / data / degraded / reason`。认证失败固定返回 403；普通数据失败必须返回可解析的降级结构，前端只显示局部降级，不白屏。
 
-## AI 洞察如何生成
-- 输入构建与降级：`src/lib/admin/aiInsights.ts`
-- 输出 schema 校验：`src/lib/admin/aiInsightSchema.ts`
+## 鉴权与会话
+
+- 页面和普通后台 API 使用 `ADMIN_PASSWORD` 生成 shadow session。
+- Shadow cookie 名称：`admin_shadow_session`。
+- Cookie 属性：`httpOnly=true`、`sameSite=strict`、`path=/`，生产环境 `secure=true`。
+- 会话为绝对过期，默认 24 小时，集中配置在 `ADMIN_SHADOW_SESSION_MAX_AGE_SECONDS`。
+- 当前允许并发登录；退出会清除当前浏览器 cookie。
+- 登录失败按 IP hash + user-agent hash + 分钟窗口限流。Redis 可用时用 Redis，不可用时退回进程内限流桶。
+- 不记录 cookie、session value、password、token、DATABASE_URL 等敏感明文。
+
+## Cron Secret
+
+- `ADMIN_PASSWORD` 只用于管理员登录。
+- `ADMIN_CRON_SECRET` 只用于 `/api/admin/cron/*`。
+- Cron 请求必须带 `x-cron-secret: <ADMIN_CRON_SECRET>`。
+- 生产环境未配置 `ADMIN_CRON_SECRET` 时拒绝执行；开发环境也返回清晰降级原因。
+- 不允许继续复用 `ADMIN_PASSWORD` 作为 cron secret。
+
+## 数据写入与聚合
+
+- 原始事件：`analytics_events`
+- 会话：`user_sessions`
+- 游客：`guest_registry`、`guest_daily_activity`
+- 用户日活：`actor_daily_activity`、`user_daily_activity`
+- Token 日聚合：`actor_daily_tokens`
+- 后台日聚合：`admin_metrics_daily`
+- 审计日志：`admin_audit_logs`
+
+日级重建入口：`POST /api/admin/cron/rebuild-daily?days=N`。执行成功或失败都会写入审计日志。所有事件写入失败都必须 best-effort，不阻塞玩家主流程。
+
+## 新后台 API
+
+- `GET /api/admin/overview?range=today|yesterday|7d|30d`
+- `GET /api/admin/player-journey?range=7d&actorType=all|registered|guest&platform=all|pc|mobile`
+- `GET /api/admin/ai-experience?range=7d`
+- `GET /api/admin/content-quality?range=7d`
+- `GET /api/admin/system-health`
+- `GET /api/admin/users?limit=20&cursor=&search=&onlyOnline=&actorType=all&sort=lastActive`
+- `GET /api/admin/users/[actorKey]`
+- `GET /api/admin/audit-logs?limit=20&cursor=`
+- `POST /api/admin/rebuild-daily?days=3`
+
+列表接口必须有 `limit`，默认 20，最大 100。时间范围查询必须走既有索引或新增索引，并纳入 `scripts/admin-explain-baseline.ts`。
+
+## AI 洞察
+
+- 输入构建：`src/lib/admin/aiInsights.ts`
+- 输出校验：`src/lib/admin/aiInsightSchema.ts`
 - API：`src/app/api/admin/ai-insights/route.ts`
-- 管理台触发入口：`src/components/admin/AdminDashboardV2.tsx`
+- UI：`src/components/admin/AdminDashboardV2.tsx`
+
+每条建议必须包含优先级、结论、证据指标、样本量、置信度、风险、实验建议、预期影响和下一步动作。样本不足时只能输出“证据不足”和补采建议，不能输出高置信结论。AI 失败时返回本地 fallback。
+
+## 常见降级原因
+
+- `db_unavailable`：数据库不可用或查询失败。
+- `redis_unavailable`：Redis 不可用，登录限流使用进程内 fallback。
+- `ai_gateway_unconfigured`：AI 网关未配置，洞察走本地 fallback。
+- `insufficient_sample`：样本不足，趋势和建议不做强结论。
+- `cron_secret_missing` / `cron_secret_invalid`：Cron secret 缺失或错误。
 
 ## 验证命令
-- 单测：`pnpm test:unit`
-- 类型：`pnpm exec tsc -p tsconfig.json --noEmit`
-- Lint：`npx eslint .`
-- 后台接口集成测试：`pnpm test:admin:api`
-- 后台渲染平滑回归：`pnpm test:admin:perf`
-- SQL 执行计划基线：`pnpm analyze:admin-sql`（CI 门槛模式：`pnpm analyze:admin-sql:strict`）
 
-## 接口集成测试覆盖
-- 鉴权拒绝：未携带 `admin_shadow_session` 时，`/api/admin/*` 返回 403。
-- 鉴权通过：构造有效 shadow cookie 后，`overview/realtime/ai-insights` 至少返回 `200|500`（500 必须是降级结构，不允许崩溃）。
-- AI 生成接口：`POST /api/admin/ai-insights` 走结构化输出或降级输出，禁止返回无结构响应。
+- `npx eslint .`
+- `pnpm test:unit`
+- `pnpm test:ci`
+- `pnpm test:admin:api`
+- `pnpm test:admin:perf`
+- `pnpm analyze:admin-sql`
+- `pnpm analyze:admin-sql:strict`
 
-## SQL 基线门槛（可调）
-- `realtime_active_sessions`：120ms
-- `latest_feedback_distinct_on`：180ms
-- `latest_game_distinct_on`：180ms
-- `events_trend_60m`：120ms
-- `funnel_grouped`：150ms
+`pnpm analyze:admin-sql` 需要真实 `DATABASE_URL`。DB、Redis、AI 网关不可用时，必须记录失败位置和是否与代码改动相关。
 
-若 `--strict` 下超过门槛，脚本退出码为 2，建议在 CI 中阻断上线。
+## 回滚方式
 
-## 前端平滑性回归指标
-- 场景：`/saiduhsa` 首屏渲染 + 自动数据刷新周期。
-- 指标：
-  - FPS >= 20
-  - 最大 Long Task < 400ms
-  - Long Task 数量 < 20（7 秒窗口）
-- 同时断言页面无 `pageerror`。
-
-## 已知降级策略
-- Redis 不可用：在线人数降级为 0，不阻断主流程。
-- AI 调用失败/格式不合法：返回本地降级报告，不影响其他面板。
-- 历史事件不足：AI 输出必须标记“证据不足”。
-
+1. 回滚本次后台代码提交。
+2. 若只需停用 cron，移除部署侧 `ADMIN_CRON_SECRET` 或停止外部调度器。
+3. `admin_audit_logs` 为 additive 表，回滚代码不要求删除该表。
+4. 如需删除新增表，另起破坏性迁移并提前确认数据保留策略。

@@ -1,16 +1,12 @@
-import { cookies } from "next/headers";
-import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
-import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
+import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { getWorldKnowledgeEntityDetail } from "@/lib/admin/worldKnowledgeService";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const cookieStore = await cookies();
-  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  if (!verifyAdminShadowSession(shadowCookie)) {
-    return adminUnauthorizedJson();
-  }
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const guard = await verifyAdminRequest(req);
+  if (!guard.ok) return guard.response;
   const { id } = await ctx.params;
   const entityId = Number(id);
   if (!Number.isFinite(entityId) || entityId <= 0) {

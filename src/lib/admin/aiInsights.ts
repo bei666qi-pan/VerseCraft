@@ -17,6 +17,18 @@ export type AiInsightInput = {
 
 export type AiInsightOutput = {
   executiveSummary: string;
+  recommendations: Array<{
+    priority: "immediate" | "this_week" | "mid_term";
+    title: string;
+    claim: string;
+    evidenceMetrics: Array<{ metricId: string; label: string; value: string; source: string }>;
+    sampleSize: number;
+    confidence: "high" | "medium" | "low";
+    risk: string;
+    suggestedExperiment: string;
+    expectedImpact: string;
+    nextAction: string;
+  }>;
   retentionRisks: Array<{ priority: "immediate" | "this_week" | "mid_term"; title: string; detail: string; evidence: string }>;
   productProblems: Array<{ priority: "immediate" | "this_week" | "mid_term"; title: string; detail: string; evidence: string }>;
   opportunityPoints: Array<{ priority: "immediate" | "this_week" | "mid_term"; title: string; detail: string; evidence: string }>;
@@ -76,8 +88,29 @@ export async function buildAiInsightInput(range: AdminTimeRange): Promise<AiInsi
 }
 
 function fallbackFromInput(input: AiInsightInput): AiInsightOutput {
+  const activeUsers = Number((input.metrics.overview as { activeUsersRange?: number }).activeUsersRange ?? 0);
+  const feedbackSample = Number(input.feedback.totalFeedback ?? 0);
+  const sampleSize = Math.max(activeUsers, feedbackSample);
+  const insufficient = input.evidenceQuality === "insufficient";
   return {
     executiveSummary: input.evidenceQuality === "insufficient" ? "证据不足：当前样本量不足以给出高置信度优化建议。" : "存在留存与成本双重压力，建议优先处理新手链路和高频负反馈。",
+    recommendations: [
+      {
+        priority: insufficient ? "immediate" : "this_week",
+        title: insufficient ? "证据不足，先补齐关键采样" : "优先定位新手链路流失",
+        claim: insufficient ? "当前样本不足以支撑高置信运营结论。" : "现有样本可以支持一次低风险漏斗排查。",
+        evidenceMetrics: [
+          { metricId: "overview.active_actors_today", label: "活跃样本", value: String(activeUsers), source: "admin_metrics_daily" },
+          { metricId: "content.feedback_sample", label: "反馈样本", value: String(feedbackSample), source: "feedbacks" },
+        ],
+        sampleSize,
+        confidence: insufficient ? "low" : "medium",
+        risk: insufficient ? "直接调整玩法可能误判真实流失原因。" : "未分组验证时不要一次改变多个新手节点。",
+        suggestedExperiment: insufficient ? "先补齐首页、角色创建、第一轮行动和等待中退出埋点。" : "对首轮行动引导做小流量 A/B。",
+        expectedImpact: insufficient ? "提高后续诊断可信度。" : "改善第一轮行动抵达率与 D1 留存。",
+        nextAction: insufficient ? "检查玩家旅程 tab 中样本为 0 的阶段。" : "查看玩家旅程相邻转化最低的阶段。",
+      },
+    ],
     retentionRisks: [],
     productProblems: [],
     opportunityPoints: [],
@@ -100,6 +133,20 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
 
   const schemaHint = {
     executiveSummary: "string",
+    recommendations: [
+      {
+        priority: "immediate|this_week|mid_term",
+        title: "string",
+        claim: "string",
+        evidenceMetrics: [{ metricId: "string", label: "string", value: "string", source: "string" }],
+        sampleSize: "number",
+        confidence: "high|medium|low",
+        risk: "string",
+        suggestedExperiment: "string",
+        expectedImpact: "string",
+        nextAction: "string",
+      },
+    ],
     retentionRisks: [{ priority: "immediate|this_week|mid_term", title: "string", detail: "string", evidence: "string" }],
     productProblems: [{ priority: "immediate|this_week|mid_term", title: "string", detail: "string", evidence: "string" }],
     opportunityPoints: [{ priority: "immediate|this_week|mid_term", title: "string", detail: "string", evidence: "string" }],

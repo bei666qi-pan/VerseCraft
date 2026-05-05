@@ -1,14 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 const ADMIN_COOKIE = "admin_shadow_session";
 
 function buildAdminShadowCookie(adminPassword: string): string {
   const exp = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-  const nonce = createHmac("sha256", `${Date.now()}-${Math.random()}`)
-    .update(adminPassword)
-    .digest("base64url")
-    .slice(0, 24);
+  const nonce = randomUUID().replace(/-/g, "");
   const payload = `${exp}.${nonce}`;
   const signature = createHmac("sha256", adminPassword).update(payload).digest("base64url");
   return `${payload}.${signature}`;

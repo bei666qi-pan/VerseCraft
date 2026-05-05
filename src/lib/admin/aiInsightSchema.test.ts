@@ -5,6 +5,20 @@ import { validateAiInsightOutput } from "@/lib/admin/aiInsightSchema";
 test("validateAiInsightOutput should accept valid payload", () => {
   const valid = {
     executiveSummary: "ok",
+    recommendations: [
+      {
+        priority: "immediate",
+        title: "t",
+        claim: "c",
+        evidenceMetrics: [{ metricId: "m", label: "M", value: "1", source: "s" }],
+        sampleSize: 20,
+        confidence: "high",
+        risk: "r",
+        suggestedExperiment: "e",
+        expectedImpact: "i",
+        nextAction: "n",
+      },
+    ],
     retentionRisks: [{ priority: "immediate", title: "t", detail: "d", evidence: "e" }],
     productProblems: [{ priority: "this_week", title: "t", detail: "d", evidence: "e" }],
     opportunityPoints: [{ priority: "mid_term", title: "t", detail: "d", evidence: "e" }],
@@ -22,6 +36,7 @@ test("validateAiInsightOutput should accept valid payload", () => {
 test("validateAiInsightOutput should reject wrong priority", () => {
   const invalid = {
     executiveSummary: "x",
+    recommendations: [],
     retentionRisks: [{ priority: "p0", title: "t", detail: "d", evidence: "e" }],
     productProblems: [],
     opportunityPoints: [],

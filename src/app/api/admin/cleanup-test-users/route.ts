@@ -1,18 +1,14 @@
-import { cookies } from "next/headers";
 import { eq, like } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
-import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
+import { verifyAdminRequest } from "@/lib/admin/authGuard";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const cookieStore = await cookies();
-  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  if (!verifyAdminShadowSession(shadowCookie)) {
-    return adminUnauthorizedJson();
-  }
+  const guard = await verifyAdminRequest();
+  if (!guard.ok) return guard.response;
 
   try {
     const testUsers = await db

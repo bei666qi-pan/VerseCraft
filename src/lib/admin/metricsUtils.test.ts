@@ -3,9 +3,15 @@ import assert from "node:assert/strict";
 import {
   computeDauWauMau,
   computeFunnel,
+  computeAdjacentFunnelStages,
   computeRetention,
   computeTokenStats,
+  decodeCursor,
+  encodeCursor,
+  hasSufficientSample,
   isOnline,
+  percentile,
+  safeRate,
   splitSessionsByInactivity,
 } from "@/lib/admin/metricsUtils";
 
@@ -70,6 +76,37 @@ test("computeFunnel should return conversion from first stage", () => {
 test("computeTokenStats should guard divide by zero", () => {
   assert.equal(computeTokenStats(1000, 0).tokenPerActive, 0);
   assert.equal(computeTokenStats(1000, 20).tokenPerActive, 50);
+});
+
+test("safeRate and sample sufficiency should avoid invented trends", () => {
+  assert.equal(safeRate(5, 10), 0.5);
+  assert.equal(safeRate(5, 0), 0);
+  assert.equal(hasSufficientSample(19), false);
+  assert.equal(hasSufficientSample(20), true);
+});
+
+test("percentile should interpolate sorted values", () => {
+  assert.equal(percentile([30, 10, 20], 0.5), 20);
+  assert.equal(percentile([], 0.95), null);
+  assert.equal(percentile([0, 100], 0.95), 95);
+});
+
+test("computeAdjacentFunnelStages should expose step and total conversion", () => {
+  const stages = computeAdjacentFunnelStages(["home", "create", "enter"], {
+    home: 100,
+    create: 50,
+    enter: 25,
+  });
+  assert.equal(stages[0]?.stepConversionRate, 1);
+  assert.equal(stages[1]?.stepConversionRate, 0.5);
+  assert.equal(stages[2]?.stepConversionRate, 0.5);
+  assert.equal(stages[2]?.totalConversionRate, 0.25);
+});
+
+test("cursor helpers should round trip JSON-safe cursor parts", () => {
+  const cursor = encodeCursor(["2026-05-05T00:00:00.000Z", 42]);
+  assert.deepEqual(decodeCursor(cursor), ["2026-05-05T00:00:00.000Z", 42]);
+  assert.equal(decodeCursor("bad-cursor"), null);
 });
 
 test("timezone cross-day should be treated in UTC", () => {

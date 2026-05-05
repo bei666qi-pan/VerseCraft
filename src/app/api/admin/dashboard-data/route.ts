@@ -1,17 +1,13 @@
-import { cookies } from "next/headers";
-import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
-import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
+import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { getDashboardTableData } from "@/lib/admin/service";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  if (!verifyAdminShadowSession(shadowCookie)) {
-    return adminUnauthorizedJson();
-  }
+  const guard = await verifyAdminRequest();
+  if (!guard.ok) return guard.response;
 
   try {
     const base = await getDashboardTableData();

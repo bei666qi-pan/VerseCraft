@@ -10,6 +10,7 @@ export function validateAiInsightOutput(input: unknown): AiInsightOutput | null 
   if (!input || typeof input !== "object") return null;
   const x = input as Record<string, unknown>;
   if (typeof x.executiveSummary !== "string") return null;
+  if (!Array.isArray(x.recommendations)) return null;
   if (!Array.isArray(x.top3Actions)) return null;
   if (!Array.isArray(x.evidence)) return null;
   const confidence = x.confidence as Record<string, unknown> | undefined;
@@ -20,6 +21,16 @@ export function validateAiInsightOutput(input: unknown): AiInsightOutput | null 
   if (!checkPriorityArray(x.productProblems)) return null;
   if (!checkPriorityArray(x.opportunityPoints)) return null;
   if (!checkPriorityArray(x.top3Actions)) return null;
+  if (!checkPriorityArray(x.recommendations)) return null;
+  for (const item of x.recommendations) {
+    const r = item as Record<string, unknown>;
+    if (typeof r.title !== "string" || typeof r.claim !== "string") return null;
+    if (!Array.isArray(r.evidenceMetrics)) return null;
+    if (typeof r.sampleSize !== "number") return null;
+    if (!CONF_LEVEL.has(String(r.confidence ?? ""))) return null;
+    if (typeof r.risk !== "string" || typeof r.suggestedExperiment !== "string") return null;
+    if (typeof r.expectedImpact !== "string" || typeof r.nextAction !== "string") return null;
+  }
 
   const evidenceSufficiency = String(x.evidenceSufficiency ?? "");
   if (evidenceSufficiency !== "enough" && evidenceSufficiency !== "insufficient") return null;

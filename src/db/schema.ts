@@ -299,6 +299,28 @@ export const adminStatsSnapshots = pgTable("admin_stats_snapshots", {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    action: varchar("action", { length: 96 }).notNull(),
+    actor: varchar("actor", { length: 96 }).notNull(),
+    success: boolean("success").notNull().default(false),
+    reason: varchar("reason", { length: 191 }),
+    ipHash: varchar("ip_hash", { length: 64 }),
+    userAgentHash: varchar("user_agent_hash", { length: 64 }),
+    targetType: varchar("target_type", { length: 64 }),
+    targetId: varchar("target_id", { length: 191 }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    createdIdx: index("admin_audit_logs_created_idx").on(table.createdAt),
+    actionCreatedIdx: index("admin_audit_logs_action_created_idx").on(table.action, table.createdAt),
+    actorCreatedIdx: index("admin_audit_logs_actor_created_idx").on(table.actor, table.createdAt),
+  })
+);
+
 /**
  * ========= Analytics Data Foundation =========
  *

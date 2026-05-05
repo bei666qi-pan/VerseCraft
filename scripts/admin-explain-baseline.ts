@@ -32,13 +32,13 @@ const QUERIES: BaselineQuery[] = [
     `,
   },
   {
-    name: "latest_game_distinct_on",
+    name: "latest_settlement_distinct_on",
     thresholdMs: 180,
     sql: `
       EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
       SELECT DISTINCT ON (user_id)
         user_id, max_floor_score, survival_time_seconds, created_at
-      FROM game_records
+      FROM settlement_histories
       ORDER BY user_id, created_at DESC;
     `,
   },
@@ -57,17 +57,57 @@ const QUERIES: BaselineQuery[] = [
   },
   {
     name: "funnel_grouped",
-    thresholdMs: 150,
+    thresholdMs: 300,
     sql: `
       EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-      SELECT event_name, COUNT(DISTINCT user_id)
+      SELECT event_name, COUNT(DISTINCT COALESCE(actor_id, user_id, guest_id, session_id))
       FROM analytics_events
       WHERE event_time >= NOW() - INTERVAL '7 days'
         AND event_name IN (
-          'user_registered','create_character_success','enter_main_game',
-          'first_effective_action','game_settlement','feedback_submitted'
+          'home_viewed','world_selected','character_create_started','character_create_success',
+          'create_character_success','enter_main_game','first_effective_action',
+          'third_effective_action','save_created','settlement_submitted',
+          'game_settlement','feedback_submitted'
         )
       GROUP BY event_name;
+    `,
+  },
+  {
+    name: "ai_experience_latency",
+    thresholdMs: 300,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY CASE WHEN payload->>'firstTokenMs' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (payload->>'firstTokenMs')::double precision END) AS ttft_p50,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY CASE WHEN payload->>'firstTokenMs' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (payload->>'firstTokenMs')::double precision END) AS ttft_p95,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY CASE WHEN payload->>'totalLatencyMs' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (payload->>'totalLatencyMs')::double precision END) AS total_p50,
+        SUM(token_cost) AS tokens
+      FROM analytics_events
+      WHERE event_time >= NOW() - INTERVAL '7 days'
+        AND event_name IN ('chat_request_finished','chat_action_completed','chat_action_failed');
+    `,
+  },
+  {
+    name: "users_page_registered",
+    thresholdMs: 250,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT id, name, tokens_used, play_time, last_active
+      FROM users
+      WHERE last_active IS NOT NULL
+      ORDER BY last_active DESC
+      LIMIT 20;
+    `,
+  },
+  {
+    name: "audit_logs_recent",
+    thresholdMs: 150,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT id, action, actor, success, created_at
+      FROM admin_audit_logs
+      ORDER BY created_at DESC, id DESC
+      LIMIT 50;
     `,
   },
 ];

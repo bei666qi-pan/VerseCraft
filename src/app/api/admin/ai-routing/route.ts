@@ -1,7 +1,6 @@
 // src/app/api/admin/ai-routing/route.ts
-import { cookies } from "next/headers";
-import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
-import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
+import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { listRecentAiObservability } from "@/lib/ai/debug/observabilityRing";
 import { listRecentAiRoutingReports } from "@/lib/ai/debug/routingRing";
 import { snapshotModelCircuits } from "@/lib/ai/fallback/modelCircuit";
@@ -9,11 +8,8 @@ import { snapshotModelCircuits } from "@/lib/ai/fallback/modelCircuit";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  if (!verifyAdminShadowSession(shadowCookie)) {
-    return adminUnauthorizedJson();
-  }
+  const guard = await verifyAdminRequest();
+  if (!guard.ok) return guard.response;
 
   try {
     return adminJson(

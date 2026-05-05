@@ -64,6 +64,26 @@ jobs:
           VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
           VC_FORCE_AI_KEYS_MISSING: "1"
 
+      - name: Admin API and dashboard degraded smoke
+        run: pnpm test:admin:api && pnpm test:admin:perf
+        env:
+          CI: "true"
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
+          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          REDIS_URL: ""
+          ADMIN_PASSWORD: ci-admin-password-placeholder
+          ADMIN_CRON_SECRET: ci-admin-cron-secret-placeholder
+          AI_GATEWAY_BASE_URL: ""
+          AI_GATEWAY_API_KEY: ""
+          AI_MODEL_MAIN: ""
+          AI_MODEL_CONTROL: ""
+          AI_MODEL_ENHANCE: ""
+          AI_MODEL_REASONER: ""
+          VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
+          VC_FORCE_AI_KEYS_MISSING: "1"
+
   live-chat-perf:
     runs-on: ubuntu-latest
     needs: verify

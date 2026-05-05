@@ -31,6 +31,7 @@ export interface ServerConfig {
   authSecret: string;
   authTrustHost: string;
   adminPassword: string | undefined;
+  adminCronSecret: string | undefined;
   altchaHmacKey: string | undefined;
   /** HMAC secret for /api/audit client signatures. */
   auditHmacSecret: string;
@@ -89,6 +90,7 @@ function loadServerConfig(): ServerConfig {
     authSecret,
     authTrustHost: envRaw("AUTH_TRUST_HOST") ?? "true",
     adminPassword: envRaw("ADMIN_PASSWORD"),
+    adminCronSecret: envRaw("ADMIN_CRON_SECRET"),
     altchaHmacKey: envRaw("ALTCHA_HMAC_KEY"),
     auditHmacSecret,
     runtimeSchemaEnsure: envRaw("RUNTIME_SCHEMA_ENSURE") ?? "1",

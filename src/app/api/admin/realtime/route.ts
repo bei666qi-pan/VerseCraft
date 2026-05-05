@@ -1,16 +1,12 @@
-import { cookies } from "next/headers";
-import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
-import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
+import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { getRealtimeMetrics } from "@/lib/admin/service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  if (!verifyAdminShadowSession(shadowCookie)) {
-    return adminUnauthorizedJson();
-  }
+  const guard = await verifyAdminRequest();
+  if (!guard.ok) return guard.response;
 
   try {
     const metrics = await getRealtimeMetrics();
@@ -19,7 +15,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("[api/admin/realtime] failed", error);
-    const reason = error instanceof Error ? error.message : "realtime_unavailable";
+    const reason = "realtime_unavailable";
     return adminJson(adminFail<null>(reason, null), { status: 200, headers: { "Cache-Control": "private, max-age=3" } });
   }
 }

@@ -1,17 +1,13 @@
-import { cookies } from "next/headers";
-import { ADMIN_SHADOW_COOKIE, verifyAdminShadowSession } from "@/lib/adminShadow";
-import { adminJson, adminOk, adminFail, adminUnauthorizedJson } from "@/lib/admin/apiEnvelope";
+import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
+import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getFunnelMetrics } from "@/lib/admin/service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const cookieStore = await cookies();
-  const shadowCookie = cookieStore.get(ADMIN_SHADOW_COOKIE)?.value;
-  if (!verifyAdminShadowSession(shadowCookie)) {
-    return adminUnauthorizedJson();
-  }
+  const guard = await verifyAdminRequest(req);
+  if (!guard.ok) return guard.response;
 
   const url = new URL(req.url);
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
@@ -22,7 +18,7 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     console.error("[api/admin/funnel] failed", error);
-    const reason = error instanceof Error ? error.message : "funnel_unavailable";
+    const reason = "funnel_unavailable";
     return adminJson(adminFail<null>(reason, null), { status: 200, headers: { "Cache-Control": "private, max-age=10" } });
   }
 }

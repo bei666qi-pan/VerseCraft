@@ -1,23 +1,24 @@
 import { test, expect } from "@playwright/test";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 const ADMIN_COOKIE = "admin_shadow_session";
 
 function buildAdminShadowCookie(adminPassword: string): string {
   const exp = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-  const nonce = createHmac("sha256", `${Date.now()}-${Math.random()}`)
-    .update(adminPassword)
-    .digest("base64url")
-    .slice(0, 24);
+  const nonce = randomUUID().replace(/-/g, "");
   const payload = `${exp}.${nonce}`;
   const signature = createHmac("sha256", adminPassword).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 
+function envelope(data: unknown) {
+  return { ok: true, degraded: false, reason: null, data };
+}
+
 test.describe("Admin duration rendering", () => {
   test("renders 3661 seconds with stable hour-minute-second order", async ({ context, page, baseURL }) => {
     const adminPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
-    test.skip(!adminPassword, "需要 ADMIN_PASSWORD 进入后台页面");
+    test.skip(!adminPassword, "requires ADMIN_PASSWORD to enter the admin page");
 
     const url = new URL(baseURL ?? "http://127.0.0.1:666");
     await context.addCookies([
@@ -33,98 +34,75 @@ test.describe("Admin duration rendering", () => {
 
     await page.route("**/api/admin/overview**", async (route) => {
       await route.fulfill({
-        json: {
-          range: { key: "7d", label: "近 7 天" },
+        json: envelope({
+          range: { key: "7d", label: "近 7 日" },
           cards: {
-            todayNewUsers: 0,
+            totalUsers: 1,
+            totalTokens: 0,
+            online: 1,
             dau: 1,
             wau: 1,
             mau: 1,
-            todayTokenCost: 0,
-            playDurationRangeSec: 450,
-            legacyUsersPlayTimeSecSum: 100,
-            sessionPlayLiveSecSum: 450,
+            feedbackCountRange: 0,
+            playDurationRangeSec: 3661,
           },
+          kpis: [],
           chartData: [],
-        },
+          updatedAt: new Date().toISOString(),
+        }),
       });
     });
-    await page.route("**/api/admin/realtime**", async (route) => {
+    await page.route("**/api/admin/player-journey**", async (route) => {
       await route.fulfill({
-        json: {
-          onlineUsers: 1,
-          onlineGuests: 0,
-          activeSessions: 1,
-          avgSessionDurationSec: 3661,
-          trends: { eventsLast5m: 0, eventsLast15m: 0 },
-        },
+        json: envelope({ sampleSize: 0, evidenceSufficiency: "insufficient", stages: [], updatedAt: new Date().toISOString() }),
       });
     });
-    await page.route("**/api/admin/dashboard-data**", async (route) => {
+    await page.route("**/api/admin/ai-experience**", async (route) => {
       await route.fulfill({
-        json: {
+        json: envelope({ sampleSize: 0, evidenceSufficiency: "insufficient", metrics: [], rates: {}, cost: { highCostActors: [] }, updatedAt: new Date().toISOString() }),
+      });
+    });
+    await page.route("**/api/admin/content-quality**", async (route) => {
+      await route.fulfill({
+        json: envelope({ evidenceSufficiency: "insufficient", worldSelections: [], feedbackTopics: [], updatedAt: new Date().toISOString() }),
+      });
+    });
+    await page.route("**/api/admin/system-health**", async (route) => {
+      await route.fulfill({
+        json: envelope({ checks: {}, updatedAt: new Date().toISOString(), deployment: { commitSha: "test", nodeEnv: "test" } }),
+      });
+    });
+    await page.route("**/api/admin/audit-logs**", async (route) => {
+      await route.fulfill({ json: envelope({ rows: [], nextCursor: null, hasMore: false }) });
+    });
+    await page.route("**/api/admin/users**", async (route) => {
+      await route.fulfill({
+        json: envelope({
           rows: [
             {
-              id: "duration-user",
+              actorKey: "user:duration-user",
               name: "duration-user",
+              actorType: "registered",
               tokensUsed: 0,
               playTime: 3661,
-              sessionPlaySec: 300,
               lastActive: new Date().toISOString(),
-              isOnline: 1,
-              feedbackContent: "",
-              feedbackCreatedAt: null,
-              latestGameMaxFloor: 1,
-              latestGameSurvivalSec: 3661,
-            },
-            {
-              id: "session-user-2",
-              name: "session-user-2",
-              tokensUsed: 0,
-              playTime: 0,
-              sessionPlaySec: 150,
-              lastActive: new Date().toISOString(),
-              isOnline: 0,
-              feedbackContent: "",
-              feedbackCreatedAt: null,
-              latestGameMaxFloor: null,
-              latestGameSurvivalSec: null,
+              isOnline: true,
             },
           ],
-          onlineCount: 1,
-          totalUsers: 1,
-          totalTokens: 0,
-          chartData: [],
-        },
+          nextCursor: null,
+          hasMore: false,
+          totalApprox: 1,
+          limit: 20,
+        }),
       });
-    });
-    await page.route("**/api/admin/retention**", async (route) => {
-      await route.fulfill({ json: { d1: { rate: 1 }, d3: { rate: 1 }, d7: { rate: 1 }, cohortSize: 1 } });
-    });
-    await page.route("**/api/admin/funnel**", async (route) => {
-      await route.fulfill({ json: { stages: [] } });
-    });
-    await page.route("**/api/admin/feedback-insights**", async (route) => {
-      await route.fulfill({ json: { totalFeedback: 0, negativeFeedback: 0, topics: [] } });
-    });
-    await page.route("**/api/admin/survey-aggregate**", async (route) => {
-      await route.fulfill({ json: { range: { label: "近 7 天" }, totalResponses: 0, questions: [] } });
     });
 
     await page.goto("/saiduhsa", { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const dashboardRangeSelect = page.locator("select").first();
-    const fallbackRetryLink = page.locator('a[href="/saiduhsa"]').first();
-    try {
-      await dashboardRangeSelect.waitFor({ timeout: 20_000 });
-    } catch (error) {
-      if (await fallbackRetryLink.isVisible().catch(() => false)) {
-        test.skip(true, "后台 SSR 数据源不可用，无法进入 dashboard 验证浏览器渲染");
-      }
-      throw error;
-    }
+    await page.locator("select").first().waitFor({ timeout: 20_000 });
+    await expect(page.locator("body")).toContainText(/1\s*小时\s*1\s*分\s*1\s*秒/, { timeout: 20_000 });
 
-    await expect(page.getByText("1 小时 1 分 1 秒").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("5 分 0 秒").first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("2 分 30 秒").first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
+    await expect(page.getByText("duration-user", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="admin-user-table-panel"]')).toContainText(/1\s*小时\s*1\s*分\s*1\s*秒/);
   });
 });

@@ -1,10 +1,10 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
 
 export const ADMIN_SHADOW_COOKIE = "admin_shadow_session";
-const ONE_DAY_SECONDS = 24 * 60 * 60;
+export const ADMIN_SHADOW_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 function getAdminPassword(): string {
   return (env.adminPassword ?? "").trim();
@@ -25,14 +25,27 @@ export function buildAdminShadowSession(): { value: string; maxAge: number } | n
   const secret = getAdminPassword();
   if (!secret) return null;
 
-  const exp = Math.floor(Date.now() / 1000) + ONE_DAY_SECONDS;
-  const nonce = createHmac("sha256", `${Date.now()}-${Math.random()}`)
-    .update(secret)
-    .digest("base64url")
-    .slice(0, 24);
+  const exp = Math.floor(Date.now() / 1000) + ADMIN_SHADOW_SESSION_MAX_AGE_SECONDS;
+  const nonce = randomUUID().replace(/-/g, "");
   const payload = `${exp}.${nonce}`;
   const signature = signPayload(payload, secret);
-  return { value: `${payload}.${signature}`, maxAge: ONE_DAY_SECONDS };
+  return { value: `${payload}.${signature}`, maxAge: ADMIN_SHADOW_SESSION_MAX_AGE_SECONDS };
+}
+
+export function getAdminShadowCookieOptions(): {
+  httpOnly: true;
+  secure: boolean;
+  sameSite: "strict";
+  maxAge: number;
+  path: "/";
+} {
+  return {
+    httpOnly: true,
+    secure: env.nodeEnv === "production",
+    sameSite: "strict",
+    maxAge: ADMIN_SHADOW_SESSION_MAX_AGE_SECONDS,
+    path: "/",
+  };
 }
 
 export function verifyAdminShadowSession(value: string | undefined): boolean {

@@ -109,6 +109,65 @@ export function computeTokenStats(totalTokenCost: number, activeUsers: number): 
   return { totalTokenCost: total, tokenPerActive: active > 0 ? total / active : 0 };
 }
 
+export function safeRate(numerator: number, denominator: number): number {
+  const n = Number.isFinite(numerator) ? Math.max(0, numerator) : 0;
+  const d = Number.isFinite(denominator) ? Math.max(0, denominator) : 0;
+  return d > 0 ? n / d : 0;
+}
+
+export function computeAdjacentFunnelStages(
+  eventOrder: string[],
+  counts: Record<string, number>
+): Array<{ eventName: string; count: number; stepConversionRate: number; totalConversionRate: number }> {
+  const base = Math.max(0, Number(counts[eventOrder[0] ?? ""] ?? 0));
+  return eventOrder.map((eventName, index) => {
+    const count = Math.max(0, Number(counts[eventName] ?? 0));
+    const prevName = eventOrder[index - 1];
+    const prevCount = index === 0 ? count : Math.max(0, Number(counts[prevName ?? ""] ?? 0));
+    return {
+      eventName,
+      count,
+      stepConversionRate: index === 0 ? 1 : safeRate(count, prevCount),
+      totalConversionRate: index === 0 ? 1 : safeRate(count, base),
+    };
+  });
+}
+
+export function percentile(values: number[], p: number): number | null {
+  const clean = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (clean.length === 0) return null;
+  const clamped = Math.max(0, Math.min(1, p));
+  const idx = (clean.length - 1) * clamped;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return clean[lo] ?? null;
+  const lower = clean[lo] ?? 0;
+  const upper = clean[hi] ?? lower;
+  return lower + (upper - lower) * (idx - lo);
+}
+
+export function hasSufficientSample(sampleSize: number, minSample = 20): boolean {
+  return Number.isFinite(sampleSize) && sampleSize >= minSample;
+}
+
+export function encodeCursor(parts: Array<string | number | Date | null | undefined>): string {
+  return Buffer.from(
+    JSON.stringify(parts.map((p) => (p instanceof Date ? p.toISOString() : p ?? null))),
+    "utf8"
+  ).toString("base64url");
+}
+
+export function decodeCursor(cursor: string | null | undefined): unknown[] | null {
+  if (!cursor) return null;
+  try {
+    const raw = Buffer.from(cursor, "base64url").toString("utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function isOnline(lastSeenAt: Date | string, now: Date, windowMs: number): boolean {
   const d = lastSeenAt instanceof Date ? lastSeenAt : new Date(lastSeenAt);
   if (Number.isNaN(d.getTime())) return false;
