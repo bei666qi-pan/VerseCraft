@@ -73,7 +73,7 @@ export function MobileCharacterPanel({
           <dl className="mt-3 divide-y divide-[#ded8ce] border-t border-[#ded8ce]">
             <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
               <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
-                当前职业
+                职业
               </dt>
               <dd
                 data-testid="character-current-profession"
@@ -84,7 +84,7 @@ export function MobileCharacterPanel({
             </div>
             <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
               <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
-                当前时间
+                时间
               </dt>
               <dd
                 data-testid="character-current-time"
@@ -95,7 +95,7 @@ export function MobileCharacterPanel({
             </div>
             <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
               <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
-                当前位置
+                位置
               </dt>
               <dd
                 data-testid="character-current-location"
@@ -113,7 +113,7 @@ export function MobileCharacterPanel({
           <div className="flex items-center justify-between gap-3 border-b border-[#ded8ce] pb-2.5">
             <div className="flex items-center gap-2">
               <h2 className="vc-reading-serif text-[24px] font-semibold leading-none text-[#174d46] min-[420px]:text-[28px]">
-                当前属性
+                属性
               </h2>
               <span className="text-[#8fa79f]" aria-hidden>✦</span>
             </div>

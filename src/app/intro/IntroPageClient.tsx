@@ -158,7 +158,7 @@ export function IntroPageClient() {
   };
 
   return (
-    <main className="relative min-h-[100dvh] overflow-hidden bg-[#f7f3ed] text-[#153f3a]">
+    <main className="relative h-[100svh] min-h-[100svh] overflow-hidden bg-[#f7f3ed] text-[#153f3a]">
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_51%_9%,rgba(255,255,255,0.9),transparent_15rem),radial-gradient(circle_at_50%_34%,rgba(40,86,78,0.08),transparent_19rem),linear-gradient(180deg,#f8f5ef_0%,#f1ece4_100%)]"
         aria-hidden
@@ -172,7 +172,7 @@ export function IntroPageClient() {
         }}
       />
 
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.05rem,env(safe-area-inset-top))]">
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col px-5 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-[max(0.72rem,env(safe-area-inset-top))]">
         <header className="flex items-center justify-between">
           <button
             type="button"
@@ -182,35 +182,35 @@ export function IntroPageClient() {
             aria-label="返回首页"
           >
             <BrandMark />
-            <span className="vc-reading-serif text-[30px] font-semibold leading-none min-[430px]:text-[34px]">
+            <span className="vc-reading-serif text-[26px] font-semibold leading-none min-[430px]:text-[32px]">
               {INTRO_BRAND}
             </span>
           </button>
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/82 text-[#172d2a] shadow-[0_0.55rem_1.05rem_rgba(31,38,35,0.18)] transition active:scale-95 min-[430px]:h-14 min-[430px]:w-14"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/82 text-[#172d2a] shadow-[0_0.55rem_1.05rem_rgba(31,38,35,0.18)] transition active:scale-95 min-[430px]:h-12 min-[430px]:w-12"
             aria-label="关闭"
           >
-            <X size={29} strokeWidth={2.1} />
+            <X size={26} strokeWidth={2.1} />
           </button>
         </header>
 
-        <section className="mt-10 text-center min-[430px]:mt-12">
+        <section className="mt-[clamp(1.35rem,4.2svh,2.5rem)] text-center">
           <div className="flex items-center gap-4">
             <SectionRule />
-            <h1 className="vc-reading-serif shrink-0 text-[35px] font-semibold leading-none tracking-[0.18em] text-[#153f3a] min-[430px]:text-[41px]">
+            <h1 className="vc-reading-serif shrink-0 text-[clamp(2rem,8.8vw,2.55rem)] font-semibold leading-none tracking-[0.18em] text-[#153f3a]">
               {INTRO_PAGE_TITLE}
             </h1>
             <SectionRule />
           </div>
-          <p className="mt-4 text-[18px] font-medium tracking-[0.36em] text-[#76736f] min-[430px]:text-[20px]">
+          <p className="mt-[clamp(0.65rem,2.1svh,1rem)] text-[clamp(1rem,4.4vw,1.25rem)] font-medium tracking-[0.36em] text-[#76736f]">
             {INTRO_PAGE_SUBTITLE}
           </p>
         </section>
 
-        <section className="relative mt-10 flex flex-1 flex-col items-center min-[430px]:mt-12">
-          <div className="relative h-[min(58dvh,34rem)] max-h-[34rem] min-h-[26rem] w-full">
+        <section className="relative mt-[clamp(1.25rem,3.8svh,2.5rem)] flex min-h-0 flex-1 flex-col items-center">
+          <div className="relative h-[clamp(19rem,45svh,31rem)] min-h-0 w-full">
             <div className="absolute left-1/2 top-0 h-full w-[82%] -translate-x-[164%] overflow-hidden rounded-[1.65rem] shadow-[0_1rem_2rem_rgba(21,39,36,0.22)]">
               <WorldCard slide={previousSlide} isActive={false} isSide />
             </div>
@@ -226,7 +226,7 @@ export function IntroPageClient() {
             </div>
           </div>
 
-          <div className="mt-6 flex w-full items-center justify-center gap-7 text-[#cfc9c0]">
+          <div className="mt-[clamp(0.85rem,2.4svh,1.5rem)] flex w-full items-center justify-center gap-7 text-[#cfc9c0]">
             <button
               type="button"
               data-testid="intro-carousel-prev"
@@ -273,7 +273,7 @@ export function IntroPageClient() {
             onClick={handleCta}
             disabled={!activeSlide.available}
             className={joinClass(
-              "relative mt-8 flex h-[4.55rem] w-[82%] max-w-[22.5rem] items-center justify-center overflow-hidden rounded-full border text-center vc-reading-serif text-[31px] font-semibold leading-none tracking-[0.18em] shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.18)] transition min-[430px]:text-[35px]",
+              "relative mt-[clamp(1rem,2.9svh,2rem)] flex h-[clamp(3.75rem,7.4svh,4.55rem)] w-[82%] max-w-[22.5rem] items-center justify-center overflow-hidden rounded-full border text-center vc-reading-serif text-[clamp(1.65rem,7.4vw,2.2rem)] font-semibold leading-none tracking-[0.18em] shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.18)] transition",
               activeSlide.available
                 ? "border-white/80 bg-[linear-gradient(180deg,#163f3a,#08222a)] text-[#efe7df] active:scale-[0.985]"
                 : "border-[#d6cec3] bg-[#e4ded4] text-[#9c9489]"

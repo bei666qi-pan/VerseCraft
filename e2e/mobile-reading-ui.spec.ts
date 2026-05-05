@@ -560,7 +560,20 @@ test.describe("mobile reading UI", () => {
     ]);
 
     await expect(page.getByTestId("manual-action-input")).toHaveValue("");
-    expect(submittedActions).toEqual(["靠近铁牌查看痕迹"]);
+    await expect(input).toBeEnabled({ timeout: 10_000 });
+    await input.click();
+    await expect(input).toBeFocused();
+    await input.fill("再次查看门缝");
+    await expect(page.getByTestId("send-action-button")).toBeEnabled();
+
+    await Promise.all([
+      page.waitForRequest((req) => req.url().includes("/api/chat") && req.method() === "POST"),
+      page.getByTestId("send-action-button").click(),
+    ]);
+
+    await expect(page.getByTestId("manual-action-input")).toHaveValue("");
+    await expect.poll(() => submittedActions.length).toBe(2);
+    expect(submittedActions).toEqual(["靠近铁牌查看痕迹", "再次查看门缝"]);
     await expectNoClientCrash(page, errors);
   });
 
@@ -614,6 +627,14 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("bottom-nav-character")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("mobile-character-panel")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
+    await expect(page.getByTestId("character-identity-section")).toContainText("职业");
+    await expect(page.getByTestId("character-identity-section")).toContainText("时间");
+    await expect(page.getByTestId("character-identity-section")).toContainText("位置");
+    await expect(page.getByTestId("character-identity-section")).not.toContainText("当前职业");
+    await expect(page.getByTestId("character-identity-section")).not.toContainText("当前时间");
+    await expect(page.getByTestId("character-identity-section")).not.toContainText("当前位置");
+    await expect(page.getByTestId("character-attributes-section")).toContainText("属性");
+    await expect(page.getByTestId("character-attributes-section")).not.toContainText("当前属性");
     await expect(page.getByTestId("character-current-profession")).toHaveText("无");
     await expect(page.getByTestId("character-current-time")).toHaveText("第 0 日 · 00:00");
     await expect(page.getByTestId("character-current-location")).toHaveText("B1 安全中枢");

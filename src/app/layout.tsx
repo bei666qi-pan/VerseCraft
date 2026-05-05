@@ -4,6 +4,7 @@ import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
 import ChunkErrorHandler from "@/components/ChunkErrorHandler";
+import { MobileChromeTheme } from "@/components/MobileChromeTheme";
 import { envRawFirst } from "@/lib/config/envRaw";
 
 export const metadata: Metadata = {
@@ -18,8 +19,8 @@ export const viewport: Viewport = {
   maximumScale: 5,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#03101a",
-  colorScheme: "dark",
+  themeColor: "#f7f3ec",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -30,8 +31,9 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body
-        className="bg-background text-foreground antialiased min-h-screen flex flex-col"
+        className="min-h-screen flex flex-col bg-[#f7f3ec] text-foreground antialiased"
       >
+        <MobileChromeTheme />
         <svg aria-hidden className="absolute size-0 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <filter id="liquid-glass-refract" x="-20%" y="-20%" width="140%" height="140%">

@@ -19,6 +19,32 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
   expect(overflow).toBeLessThanOrEqual(1);
 }
 
+function hexToRgb(hex: string) {
+  const normalized = hex.replace("#", "");
+  const n = Number.parseInt(normalized, 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
+
+async function expectFixedPaperChrome(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('meta[name="theme-color"]')?.getAttribute("content") ?? ""))
+    .toBe("#f7f3ec");
+
+  const metrics = await page.evaluate(() => {
+    const root = document.scrollingElement ?? document.documentElement;
+    return {
+      bodyBg: getComputedStyle(document.body).backgroundColor,
+      htmlBg: getComputedStyle(document.documentElement).backgroundColor,
+      innerHeight: window.innerHeight,
+      scrollHeight: root.scrollHeight,
+    };
+  });
+  const expectedRgb = hexToRgb("#f7f3ec");
+  expect(metrics.bodyBg).toBe(expectedRgb);
+  expect(metrics.htmlBg).toBe(expectedRgb);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.innerHeight + 1);
+}
+
 async function gotoAndExpectTestId(page: Page, url: string, testId: string) {
   await page.goto(url);
   const root = page.getByTestId(testId);
@@ -93,6 +119,7 @@ test.describe("paper reference UI", () => {
         "https://beian.miit.gov.cn"
       );
       await expectNoHorizontalOverflow(page);
+      await expectFixedPaperChrome(page);
 
       await page.screenshot({
         path: join(screenshotDir, `home-no-save-${viewport.width}x${viewport.height}.png`),
@@ -123,6 +150,7 @@ test.describe("paper reference UI", () => {
         "https://beian.miit.gov.cn"
       );
       await expectNoHorizontalOverflow(page);
+      await expectFixedPaperChrome(page);
 
       await page.screenshot({
         path: join(screenshotDir, `home-with-save-${viewport.width}x${viewport.height}.png`),

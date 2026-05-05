@@ -148,6 +148,30 @@ async function openSeededPlay(page: Page) {
 }
 
 test.describe("mobile browser chrome compatibility", () => {
+  test("matches dark browser chrome to dark pages", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    for (const route of [
+      { path: "/preview-access", theme: "#030712", rgb: "rgb(3, 7, 18)" },
+      { path: "/settlement", theme: "#020617", rgb: "rgb(2, 6, 23)" },
+    ]) {
+      await page.goto(route.path, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      await expect
+        .poll(() =>
+          page.evaluate(() => ({
+            bodyBg: getComputedStyle(document.body).backgroundColor,
+            htmlBg: getComputedStyle(document.documentElement).backgroundColor,
+            themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") ?? "",
+          }))
+        )
+        .toEqual({
+          bodyBg: route.rgb,
+          htmlBg: route.rgb,
+          themeColor: route.theme,
+        });
+    }
+  });
+
   test("uses document scrolling instead of an internal story scroller", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openSeededPlay(page);
@@ -167,6 +191,7 @@ test.describe("mobile browser chrome compatibility", () => {
         htmlClass: document.documentElement.classList.contains("vc-play-reading-page"),
         bodyBg: getComputedStyle(document.body).backgroundColor,
         htmlBg: getComputedStyle(document.documentElement).backgroundColor,
+        themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") ?? "",
         shellBg: getComputedStyle(shell).backgroundImage,
         rootScrollHeight: root.scrollHeight,
         innerHeight: window.innerHeight,
@@ -183,8 +208,9 @@ test.describe("mobile browser chrome compatibility", () => {
 
     expect(metrics.htmlClass).toBe(true);
     expect(metrics.bodyClass).toBe(true);
-    expect(metrics.bodyBg).not.toBe("rgb(255, 255, 255)");
-    expect(metrics.htmlBg).not.toBe("rgb(255, 255, 255)");
+    expect(metrics.themeColor).toBe("#f6f2ec");
+    expect(metrics.bodyBg).toBe("rgb(246, 242, 236)");
+    expect(metrics.htmlBg).toBe("rgb(246, 242, 236)");
     expect(metrics.shellBg).toContain("linear-gradient");
     expect(metrics.rootScrollHeight).toBeGreaterThan(metrics.innerHeight + 200);
     expect(metrics.scrollY).toBeGreaterThan(0);
@@ -192,7 +218,7 @@ test.describe("mobile browser chrome compatibility", () => {
     expect(metrics.storyOverflowY).not.toBe("scroll");
     expect(metrics.storyOverflowY).not.toBe("auto");
     expect(metrics.storyIsInternalScroller).toBe(false);
-    expect(metrics.headerCount).toBe(0);
+    expect(metrics.headerCount).toBe(1);
     expect(metrics.dockPosition).toBe("fixed");
     expect(metrics.navPosition).toBe("fixed");
   });
@@ -207,7 +233,7 @@ test.describe("mobile browser chrome compatibility", () => {
       await page.setViewportSize(viewport);
       await openSeededPlay(page);
 
-      await expect(page.getByTestId("mobile-reading-header")).toHaveCount(0);
+      await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
       await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
       await expect(page.getByTestId("mobile-bottom-nav")).toBeVisible();
 

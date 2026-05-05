@@ -11,16 +11,25 @@ export function VerseCraftPaperFrame({
   className = "",
   contentClassName = "",
   dataTestId,
+  fixedViewport = false,
 }: {
   children: ReactNode;
   className?: string;
   contentClassName?: string;
   dataTestId?: string;
+  fixedViewport?: boolean;
 }) {
+  const frameClassName = fixedViewport
+    ? "h-[100svh] min-h-[100svh] overflow-hidden sm:h-auto sm:min-h-[100dvh] sm:overflow-x-hidden sm:overflow-y-visible"
+    : "min-h-[100dvh] overflow-x-hidden";
+  const contentFrameClassName = fixedViewport
+    ? "h-full min-h-0 sm:h-auto sm:min-h-[100dvh]"
+    : "min-h-[100dvh]";
+
   return (
     <main
       data-testid={dataTestId}
-      className={`relative min-h-[100dvh] overflow-x-hidden bg-[#f7f3ec] ${PAPER_TEXT} ${className}`}
+      className={`relative bg-[#f7f3ec] ${PAPER_TEXT} ${frameClassName} ${className}`}
     >
       <div
         className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(92deg,rgba(36,75,71,0.018)_0px,rgba(36,75,71,0.018)_1px,transparent_1px,transparent_24px),linear-gradient(180deg,rgba(255,255,255,0.82),rgba(239,234,225,0.92))]"
@@ -30,7 +39,7 @@ export function VerseCraftPaperFrame({
         className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(rgba(120,112,96,0.09)_0.7px,transparent_0.7px)] [background-size:9px_9px]"
         aria-hidden
       />
-      <div className={`relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[470px] flex-col px-7 ${contentClassName}`}>
+      <div className={`relative z-10 mx-auto flex w-full max-w-[470px] flex-col px-7 ${contentFrameClassName} ${contentClassName}`}>
         {children}
       </div>
     </main>

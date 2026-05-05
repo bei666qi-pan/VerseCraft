@@ -10,8 +10,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "AI 驱动的悬疑互动小说 / 异常公寓生存叙事",
     start_url: "/",
     display: "standalone",
-    background_color: "#0f172a",
-    theme_color: "#0f172a",
+    background_color: "#f7f3ec",
+    theme_color: "#f7f3ec",
     orientation: "portrait",
     icons: [
       {

@@ -144,8 +144,16 @@ const MIDSTREAM_LONG_GAP_MS = VC_WAITING.playInterChunkLongGapMs;
  * may retry several times with `AI_TIMEOUT_MS` (~60s) each — 95s was too low and caused false timeouts.
  */
 const FETCH_CHAT_RESPONSE_DEADLINE_MS = VC_WAITING.playFetchChatResponseDeadlineMs;
+const TAIL_DRAIN_UNLOCK_MIN_MS = 2200;
+const TAIL_DRAIN_UNLOCK_MAX_MS = 9000;
 /** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
 const SCROLL_STICKY_BOTTOM_PX = 96;
+
+function computeTailDrainUnlockDeadlineMs(target: string | null): number {
+  const estimated = Math.max(TAIL_DRAIN_UNLOCK_MIN_MS, (target?.length ?? 0) * 18);
+  return Math.min(TAIL_DRAIN_UNLOCK_MAX_MS, estimated);
+}
+
 /**
  * UI-only heuristic for waiting-upstream semantic hints.
  * Must remain conservative and stable; it must not affect server control-plane decisions.
@@ -500,6 +508,20 @@ function PlayContent() {
       alignKey: tailAlignKey,
       onReached: onTailDrainComplete,
     };
+  }, [streamPhase, tailAlignKey, onTailDrainComplete]);
+
+  useEffect(() => {
+    if (streamPhase !== "tail_draining") return;
+    const deadlineMs = computeTailDrainUnlockDeadlineMs(tailDrainTargetRef.current);
+    const timer = window.setTimeout(() => {
+      if (streamPhaseRef.current !== "tail_draining") return;
+      console.warn("[play][tail_drain_unlock_timeout] recovering stuck interaction lock", {
+        deadlineMs,
+        targetLength: tailDrainTargetRef.current?.length ?? 0,
+      });
+      onTailDrainComplete();
+    }, deadlineMs);
+    return () => window.clearTimeout(timer);
   }, [streamPhase, tailAlignKey, onTailDrainComplete]);
 
   const day = time.day ?? 0;

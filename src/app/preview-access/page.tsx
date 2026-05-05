@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { sanitizePreviewAccessNext } from "@/lib/previewAccess";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { PreviewAccessForm } from "./PreviewAccessForm";
@@ -12,6 +12,11 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#030712",
+  colorScheme: "dark",
 };
 
 export default async function PreviewAccessPage(props: AppPageDynamicProps) {
