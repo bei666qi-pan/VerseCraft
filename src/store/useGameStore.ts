@@ -71,6 +71,7 @@ import {
   normalizeSaveSlotMeta,
   type SaveSlotMeta,
 } from "@/lib/state/snapshot/branch";
+import { pruneVisibleSaveSlots } from "@/lib/save/slots";
 import type {
   RunSnapshotV2,
   SnapshotCodexEntry,
@@ -233,7 +234,7 @@ function migratePersistedState(
     chapterState: normalizeChapterState(raw.chapterState),
     readingPreferences: normalizeReadingPreferences(raw.readingPreferences),
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
-    saveSlots: migratedSlots,
+    saveSlots: pruneVisibleSaveSlots(migratedSlots as Record<string, SaveSlotData>),
     pendingHourProgress:
       typeof raw.pendingHourProgress === "number" && Number.isFinite(raw.pendingHourProgress)
         ? Math.max(0, Math.min(0.999999, raw.pendingHourProgress))
@@ -401,7 +402,7 @@ const TALENT_ACTION_COOLDOWNS: Record<EchoTalent, number> = {
 
 export interface GameState extends IntegrityMetaState {
   currentSaveSlot: string;
-  /** 最多 3 个存档位 */
+  /** 最多 5 个用户可见记录；auto_* 恢复槽不占展示名额 */
   saveSlots: Record<string, SaveSlotData>;
   isHydrated: boolean;
   user: AuthUser | null;
@@ -2951,9 +2952,20 @@ export const useGameStore = create<GameState>()(
         return false;
       },
       deleteSaveSlot: (slotId) => {
-        // 单线时间线：不允许删除存档槽（避免误操作丢进度）
-        void slotId;
-        return false;
+        const s = get();
+        if (!slotId || !s.saveSlots?.[slotId]) return false;
+        const next = { ...s.saveSlots };
+        delete next[slotId];
+        const autoPair = createAutoSlotIdFor(slotId);
+        if (autoPair !== slotId) delete next[autoPair];
+        const visibleIds = Object.keys(next).filter((id) => !id.startsWith("auto_"));
+        set({
+          currentSaveSlot:
+            slotId === s.currentSaveSlot ? (visibleIds[0] ?? "main_slot") : s.currentSaveSlot,
+          isGameStarted: slotId === s.currentSaveSlot && visibleIds.length === 0 ? false : s.isGameStarted,
+          saveSlots: pruneVisibleSaveSlots(next),
+        });
+        return true;
       },
       createBranchSlot: (input) => {
         void input;
@@ -2993,14 +3005,17 @@ export const useGameStore = create<GameState>()(
       deleteSaveSlot: (slotId) => {
         const s = get();
         if (!slotId || !s.saveSlots?.[slotId]) return false;
-        const ids = Object.keys(s.saveSlots ?? {}).filter((id) => !id.startsWith("auto_"));
-        if (ids.length <= 1) return false;
-        if (slotId === s.currentSaveSlot) return false;
         const next = { ...s.saveSlots };
         delete next[slotId];
         const autoPair = createAutoSlotIdFor(slotId);
         if (autoPair !== slotId) delete next[autoPair];
-        set({ saveSlots: next });
+        const visibleIds = Object.keys(next).filter((id) => !id.startsWith("auto_"));
+        set({
+          currentSaveSlot:
+            slotId === s.currentSaveSlot ? (visibleIds[0] ?? "main_slot") : s.currentSaveSlot,
+          isGameStarted: slotId === s.currentSaveSlot && visibleIds.length === 0 ? false : s.isGameStarted,
+          saveSlots: pruneVisibleSaveSlots(next),
+        });
         return true;
       },
       createBranchSlot: (input) => {
@@ -3226,8 +3241,11 @@ export const useGameStore = create<GameState>()(
           ...(data.slotMeta ?? baseMeta),
           snapshotSummary: summaryWithProfession,
         };
-        set((prev) => ({ saveSlots: { ...prev.saveSlots, [effectiveSlotId]: data } }));
         const autoSlotId = createAutoSlotIdFor(effectiveSlotId);
+        const nextSlots: Record<string, SaveSlotData> = {
+          ...(s.saveSlots ?? {}),
+          [effectiveSlotId]: data,
+        };
         if (autoSlotId !== effectiveSlotId) {
           const autoMeta: SaveSlotMeta = {
             ...data.slotMeta!,
@@ -3236,13 +3254,13 @@ export const useGameStore = create<GameState>()(
             label: `${data.slotMeta?.label ?? "自动分支"}（自动）`,
             updatedAt: snapshot.meta.lastSavedAt,
           };
-          set((prev) => ({
-            saveSlots: {
-              ...prev.saveSlots,
-              [autoSlotId]: { ...data, slotMeta: autoMeta },
-            },
-          }));
+          nextSlots[autoSlotId] = { ...data, slotMeta: autoMeta };
         }
+        set({
+          saveSlots: pruneVisibleSaveSlots(nextSlots, {
+            keepSlotIds: [effectiveSlotId],
+          }),
+        });
         void import("@/app/actions/save")
           .then(({ syncSaveToCloud }) =>
             Promise.all([
@@ -3319,16 +3337,19 @@ export const useGameStore = create<GameState>()(
         });
         set({
           currentSaveSlot: slotId,
-          saveSlots: {
-            ...get().saveSlots,
-            [slotId]: {
-              ...data,
-              chapterState,
-              slotMeta,
-              runSnapshotV2: normalizedSnapshot,
-              ...projected,
+          saveSlots: pruneVisibleSaveSlots(
+            {
+              ...get().saveSlots,
+              [slotId]: {
+                ...data,
+                chapterState,
+                slotMeta,
+                runSnapshotV2: normalizedSnapshot,
+                ...projected,
+              },
             },
-          },
+            { keepSlotIds: [slotId] }
+          ),
           stats: JSON.parse(JSON.stringify(safeStats)),
           inventory: JSON.parse(JSON.stringify(projected.inventory ?? data.inventory)),
           warehouse: Array.isArray(projected.warehouse ?? data.warehouse)
@@ -3462,16 +3483,19 @@ export const useGameStore = create<GameState>()(
           void hasProgress;
           return {
             currentSaveSlot: slotId,
-            saveSlots: {
-              ...s.saveSlots,
-              [slotId]: {
-                ...data,
-                chapterState,
-                slotMeta,
-                runSnapshotV2: normalizedSnapshot,
-                ...projected,
+            saveSlots: pruneVisibleSaveSlots(
+              {
+                ...s.saveSlots,
+                [slotId]: {
+                  ...data,
+                  chapterState,
+                  slotMeta,
+                  runSnapshotV2: normalizedSnapshot,
+                  ...projected,
+                },
               },
-            },
+              { keepSlotIds: [slotId] }
+            ),
             stats: JSON.parse(JSON.stringify(safeStats)),
             inventory: JSON.parse(JSON.stringify(projected.inventory ?? data.inventory)),
             warehouse: Array.isArray(projected.warehouse ?? data.warehouse)

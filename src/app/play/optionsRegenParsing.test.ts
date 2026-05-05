@@ -125,3 +125,17 @@ test("parseOptionsFromSsePayload: status frame plus final frame parses final opt
   assert.equal(result.parseFailed, false);
   assert.deepEqual(result.options, OPTIONS);
 });
+
+test("parseOptionsFromSsePayload: options-only status frames do not pollute raw final payload", () => {
+  const sse = [
+    'data: __VERSECRAFT_STATUS__:{"stage":"context_building","message":"status","requestId":"vc_test_options_status"}',
+    "",
+    `data: ${JSON.stringify({ ok: true, reason: "ok", options: OPTIONS, decision_options: OPTIONS })}`,
+    "",
+  ].join("\n");
+  const result = parseOptionsFromSsePayload(sse, config());
+
+  assert.equal(result.requestId, "vc_test_options_status");
+  assert.equal(result.parseFailed, false);
+  assert.deepEqual(result.options, OPTIONS);
+});

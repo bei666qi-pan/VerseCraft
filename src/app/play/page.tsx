@@ -9,6 +9,7 @@ import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hook
 import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
+import { deleteCloudSaveSlot, syncSaveToCloud } from "@/app/actions/save";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { selectBgmForTurn } from "@/features/play/bgm/bgmRules";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
@@ -26,6 +27,7 @@ import {
   MobileReadingShell,
   MobileSettingsPanel,
   MobileStoryViewport,
+  type MobileOptionsRegenStage,
 } from "@/features/play/mobileReading";
 import {
   ChapterEndSheet,
@@ -262,6 +264,7 @@ function PlayContent() {
   const recentOptions = useGameStore((s) => s.recentOptions ?? []);
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
   const writeResumeShadow = useGameStore((s) => s.writeResumeShadow);
+  const clearResumeShadow = useGameStore((s) => s.clearResumeShadow);
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
   const currentOptions = useMemo(
     () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
@@ -331,6 +334,8 @@ function PlayContent() {
   /** waiting_upstream 阶段的语义化过渡提示：在发起请求时一次性确定，避免渲染过程闪烁/跳变。 */
   const [waitingHintKind, setWaitingHintKind] = useState<PlaySemanticWaitingKind | null>(null);
   const [optionsRegenBusy, setOptionsRegenBusy] = useState(false);
+  const [optionsRegenStage, setOptionsRegenStage] = useState<MobileOptionsRegenStage>("idle");
+  const [optionsRegenProgress, setOptionsRegenProgress] = useState(0);
   const [endgameState, setEndgameState] = useState<{ active: boolean; awaitingEnding: boolean }>({
     active: false,
     awaitingEnding: false,
@@ -602,6 +607,27 @@ function PlayContent() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!optionsRegenBusy) return;
+    const ceilings: Record<MobileOptionsRegenStage, number> = {
+      idle: 16,
+      request_sent: 28,
+      context_building: 54,
+      generating: 82,
+      finalizing: 96,
+      complete: 100,
+    };
+    const timer = window.setInterval(() => {
+      setOptionsRegenProgress((prev) => {
+        const ceiling = ceilings[optionsRegenStage] ?? 90;
+        if (prev >= ceiling) return prev;
+        const step = optionsRegenStage === "request_sent" ? 1.2 : optionsRegenStage === "finalizing" ? 0.55 : 0.9;
+        return Math.min(ceiling, prev + step);
+      });
+    }, 180);
+    return () => window.clearInterval(timer);
+  }, [optionsRegenBusy, optionsRegenStage]);
 
   useEffect(() => {
     if (!isGuestDialogueExhausted) {
@@ -1213,6 +1239,8 @@ function PlayContent() {
 
     optionsRegenInFlightRef.current = true;
     setOptionsRegenBusy(true);
+    setOptionsRegenStage("request_sent");
+    setOptionsRegenProgress(10);
     if (trigger === "opening_fallback") {
       setFirstTimeHint("主笔正在补全首轮可选行动…");
     } else if (trigger === "auto_switch") {
@@ -1308,6 +1336,27 @@ function PlayContent() {
       const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
         ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
         : undefined;
+      const applyOptionsRegenStatus = (stage: unknown) => {
+        const next: MobileOptionsRegenStage =
+          stage === "context_building"
+            ? "context_building"
+            : stage === "generating" || stage === "streaming"
+              ? "generating"
+              : stage === "finalizing"
+                ? "finalizing"
+                : stage === "request_sent" || stage === "routing"
+                  ? "request_sent"
+                  : "idle";
+        if (next === "idle") return;
+        const floor =
+          next === "request_sent" ? 18 :
+          next === "context_building" ? 42 :
+          next === "generating" ? 70 :
+          next === "finalizing" ? 91 :
+          10;
+        setOptionsRegenStage(next);
+        setOptionsRegenProgress((prev) => Math.max(prev, floor));
+      };
       const runOptionsOnlyAttempt = async (
         attemptReason: string,
         attemptContext = optionsRegenContext,
@@ -1352,13 +1401,35 @@ function PlayContent() {
         const reader = attemptRes.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let text = "";
+        let sseBuffer = "";
         try {
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            text += decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
+            text += chunk;
+            sseBuffer += chunk;
+            const taken = takeCompleteSseEvents(sseBuffer);
+            sseBuffer = taken.rest;
+            for (const eventText of taken.events) {
+              const status = extractStatusFrameFromSseEvent(eventText);
+              if (status) applyOptionsRegenStatus(status.stage);
+            }
           }
-          text += decoder.decode();
+          const tail = decoder.decode();
+          text += tail;
+          sseBuffer += tail;
+          const taken = takeCompleteSseEvents(sseBuffer);
+          sseBuffer = taken.rest;
+          for (const eventText of taken.events) {
+            const status = extractStatusFrameFromSseEvent(eventText);
+            if (status) applyOptionsRegenStatus(status.stage);
+          }
+          const orphan = normalizeSseNewlines(sseBuffer).trim();
+          if (orphan.startsWith("data:")) {
+            const status = extractStatusFrameFromSseEvent(orphan);
+            if (status) applyOptionsRegenStatus(status.stage);
+          }
         } finally {
           try {
             await reader.cancel();
@@ -1393,6 +1464,8 @@ function PlayContent() {
       if (tid !== undefined) window.clearTimeout(tid);
       if (firstPass === null) {
         setCurrentOptions([]);
+        setOptionsRegenStage("finalizing");
+        setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
         return;
       }
@@ -1446,10 +1519,14 @@ function PlayContent() {
 
       if (finalOptions.length !== 4) {
         setCurrentOptions([]);
+        setOptionsRegenStage("finalizing");
+        setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
+      setOptionsRegenStage("complete");
+      setOptionsRegenProgress(100);
       setCurrentOptions(finalOptions);
       if (process.env.NODE_ENV === "development") {
         const debugHint = formatOptionsRegenDebugHint(Array.from(reasonCodes));
@@ -1462,6 +1539,8 @@ function PlayContent() {
       );
     } catch {
       setCurrentOptions([]);
+      setOptionsRegenStage("finalizing");
+      setOptionsRegenProgress((prev) => Math.max(prev, 92));
       setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
     } finally {
       setOptionsRegenBusy(false);
@@ -3018,17 +3097,31 @@ function PlayContent() {
     }
   }
 
-  function onSaveAndExit() {
-    useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+  async function onSaveAndExit() {
+    const st = useGameStore.getState();
+    const slotId = st.currentSaveSlot || "main_slot";
+    st.saveGame(slotId);
     writeResumeShadow();
+    const saved = useGameStore.getState().saveSlots?.[slotId];
+    if (saved) {
+      await syncSaveToCloud(slotId, saved).catch(() => ({ ok: false as const }));
+    }
     setShowExitModal(false);
     router.push("/");
   }
 
-  function onAbandonAndDie() {
-    setStats({ sanity: 0 });
+  async function onAbandonAndDie() {
+    const slotId = useGameStore.getState().currentSaveSlot || "main_slot";
+    const autoSlotId = slotId === "main_slot" ? "auto_main" : `auto_${slotId}`;
+    clearResumeShadow();
+    useGameStore.getState().deleteSaveSlot(slotId);
+    useGameStore.getState().deleteSaveSlot(autoSlotId);
+    await Promise.all([
+      deleteCloudSaveSlot(slotId).catch(() => ({ ok: false as const })),
+      deleteCloudSaveSlot(autoSlotId).catch(() => ({ ok: false as const })),
+    ]);
     setShowExitModal(false);
-    router.push("/settlement");
+    router.push("/");
   }
 
   const bottomNavActiveItem: "character" | "story" | "codex" | "settings" =
@@ -3304,7 +3397,11 @@ function PlayContent() {
                   onPick={onPickOption}
                 />
               ) : optionsExpanded ? (
-                <MobileOptionsEmptyState busy={optionsRegenBusy} />
+                <MobileOptionsEmptyState
+                  busy={optionsRegenBusy}
+                  stage={optionsRegenStage}
+                  progress={optionsRegenProgress}
+                />
               ) : null}
                 </>
               ) : null}

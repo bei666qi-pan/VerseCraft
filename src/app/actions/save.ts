@@ -1,10 +1,11 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "../../../auth";
 import { db } from "@/db";
 import { saveSlots } from "@/db/schema";
 import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
+import { getAutoSaveSlotId, isAutoSaveSlotId, MAX_VISIBLE_SAVE_SLOTS } from "@/lib/save/slots";
 import { enqueueWorldEngineTick } from "@/lib/worldEngine/queue";
 
 function normalizeSavePayload(data: unknown): Record<string, unknown> | null {
@@ -48,6 +49,43 @@ function isValidSlotId(slotId: string): boolean {
   return /^[a-z0-9_:-]{2,64}$/i.test(slotId);
 }
 
+async function pruneCloudSaveSlotsForUser(userId: string) {
+  const rows = await db
+    .select({
+      slotId: saveSlots.slotId,
+      updatedAt: saveSlots.updatedAt,
+    })
+    .from(saveSlots)
+    .where(eq(saveSlots.userId, userId));
+
+  const visible = rows
+    .filter((row) => !isAutoSaveSlotId(row.slotId))
+    .sort((a, b) => {
+      const tb = b.updatedAt ? new Date(b.updatedAt as unknown as string | Date).getTime() : 0;
+      const ta = a.updatedAt ? new Date(a.updatedAt as unknown as string | Date).getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      return a.slotId.localeCompare(b.slotId);
+    });
+  const keptVisible = new Set(visible.slice(0, MAX_VISIBLE_SAVE_SLOTS).map((row) => row.slotId));
+  const deleteIds = new Set<string>();
+
+  for (const row of visible.slice(MAX_VISIBLE_SAVE_SLOTS)) {
+    deleteIds.add(row.slotId);
+    deleteIds.add(getAutoSaveSlotId(row.slotId));
+  }
+  for (const row of rows) {
+    if (!isAutoSaveSlotId(row.slotId)) continue;
+    const parentSlotId = row.slotId === "auto_main" ? "main_slot" : row.slotId.slice("auto_".length);
+    if (!keptVisible.has(parentSlotId)) deleteIds.add(row.slotId);
+  }
+
+  const ids = Array.from(deleteIds).filter(isValidSlotId);
+  if (ids.length === 0) return;
+  await db
+    .delete(saveSlots)
+    .where(and(eq(saveSlots.userId, userId), inArray(saveSlots.slotId, ids)));
+}
+
 export async function syncSaveToCloud(slotId: string, data: unknown) {
   try {
     const session = await auth();
@@ -75,6 +113,8 @@ export async function syncSaveToCloud(slotId: string, data: unknown) {
           updatedAt: sql`CURRENT_TIMESTAMP`,
         },
       });
+
+    await pruneCloudSaveSlotsForUser(userId);
 
     void recordGenericAnalyticsEvent({
       eventId: `${userId}:save_sync:${slotId}:${Date.now()}`,
@@ -112,17 +152,19 @@ export async function fetchCloudSaves() {
       .from(saveSlots)
       .where(eq(saveSlots.userId, userId));
 
-    const mapped = rows.map((row) => ({
-      slotId: row.slotId,
-      data: row.data as Record<string, unknown>,
-      updatedAt: row.updatedAt?.toISOString() ?? null,
-    }));
+    const mapped = rows
+      .filter((row) => !isAutoSaveSlotId(row.slotId))
+      .map((row) => ({
+        slotId: row.slotId,
+        data: row.data as Record<string, unknown>,
+        updatedAt: row.updatedAt?.toISOString() ?? null,
+      }));
     // 首页合并列表时优先展示最近写入的槽位（仅影响顺序，不改变字段）
     return mapped.sort((a, b) => {
       const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
       const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
       return tb - ta;
-    });
+    }).slice(0, MAX_VISIBLE_SAVE_SLOTS);
   } catch {
     return [];
   }

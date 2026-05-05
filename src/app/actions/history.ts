@@ -5,8 +5,6 @@ import { auth } from "../../../auth";
 import { db } from "@/db";
 import { settlementHistories } from "@/db/schema";
 
-const AI_RECAP_MAX = 12_000;
-
 export type SettlementHistoryListItem = {
   id: number;
   createdAt: string;
@@ -47,23 +45,6 @@ function mapRow(row: typeof settlementHistories.$inferSelect): SettlementHistory
     outcome: row.outcome,
     hasWritingMarkdown: typeof row.writingMarkdown === "string" && row.writingMarkdown.length > 0,
   };
-}
-
-/** AI 复盘异步就绪后补写，不阻塞结算主路径 */
-export async function enrichSettlementHistoryAiRecap(input: {
-  historyId: number;
-  aiSummary: string;
-}): Promise<{ ok: boolean }> {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) return { ok: false };
-  const summary = input.aiSummary.trim().slice(0, AI_RECAP_MAX);
-  if (!summary) return { ok: false };
-  await db
-    .update(settlementHistories)
-    .set({ aiRecapSummary: summary })
-    .where(and(eq(settlementHistories.id, input.historyId), eq(settlementHistories.userId, userId)));
-  return { ok: true };
 }
 
 export async function fetchSettlementHistoryPage(opts?: {

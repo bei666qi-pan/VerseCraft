@@ -90,6 +90,7 @@ export type {
   MobileSettingsPanelProps,
   MobileOptionsEmptyStateProps,
   MobileOptionsDropdownProps,
+  MobileOptionsRegenStage,
   MobileReadingHeaderProps,
   MobileReadingShellProps,
   MobileStoryViewportProps,

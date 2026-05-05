@@ -107,10 +107,7 @@ export const useAchievementsStore = create<AchievementsState>()(
             const createdAt = Number.isFinite(ts) ? ts : Date.now();
             const lines = (it.recapSummary ?? "").split("\n").filter(Boolean);
             const reviewLine1 = lines[0] ?? "";
-            const reviewLine2 =
-              it.aiRecapSummary?.trim() ||
-              lines.slice(1).join("\n") ||
-              "";
+            const reviewLine2 = lines.slice(1).join("\n") || "";
             return {
               survivalTimeText: `${Math.max(0, it.survivalDay)} 日 ${Math.max(0, it.survivalHour)} 时`,
               grade: normalizeGrade(it.grade),

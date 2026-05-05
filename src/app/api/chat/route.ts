@@ -552,7 +552,16 @@ async function postChatInternal(req: Request) {
       /auto/i.test(clientReason);
     if (isAuto) recordOptionsAutoRegenOutcome(ok);
     else recordOptionsManualRegenOutcome(ok);
-    return createSseResponse({ requestId, payload, status: 200 });
+    const statusFrames = [
+      buildStatusFramePayload({ stage: "request_sent", message: "选项请求已送出", requestId }),
+      buildStatusFramePayload({ stage: "context_building", message: "正在分析局势", requestId }),
+      buildStatusFramePayload({ stage: "generating", message: "正在判断影响", requestId }),
+      buildStatusFramePayload({ stage: "finalizing", message: "正在生成选项", requestId }),
+    ];
+    return new Response(`${statusFrames.map((frame) => sseText(frame)).join("")}${sseText(payload)}`, {
+      status: 200,
+      headers: buildSseHeaders(requestId),
+    });
   }
 
   const riskControl = checkRiskControl({ ip: clientIp, sessionId, userId });

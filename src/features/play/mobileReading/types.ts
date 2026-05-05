@@ -69,8 +69,18 @@ export type MobileOptionsDropdownProps = {
   revealed?: boolean;
 };
 
+export type MobileOptionsRegenStage =
+  | "idle"
+  | "request_sent"
+  | "context_building"
+  | "generating"
+  | "finalizing"
+  | "complete";
+
 export type MobileOptionsEmptyStateProps = {
   busy: boolean;
+  progress?: number;
+  stage?: MobileOptionsRegenStage;
 };
 
 export type MobileCharacterPanelProps = {

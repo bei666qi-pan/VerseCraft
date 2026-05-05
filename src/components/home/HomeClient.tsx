@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { deleteCloudSaveSlot, fetchCloudSaves, syncSaveToCloud } from "@/app/actions/save";
-import { HOME_CONTINUE_TIME_EPSILON_MS } from "@/lib/save/homeContinue";
+import { MAX_VISIBLE_SAVE_SLOTS } from "@/lib/save/slots";
 import { checkNameAvailability, loginUser, registerUser } from "@/app/actions/auth";
 import { trackGameplayEvent } from "@/app/actions/telemetry";
 import {
@@ -52,8 +52,6 @@ import { unlockBgmOnUserGesture } from "@/config/audio";
 import { formatLocationLabel } from "@/features/play/render/locationLabels";
 import { resolveHomeEntryState, shouldUseResumeShadowFallback } from "@/components/home/continueFallback";
 import {
-  homeContinueConflictHint,
-  homeContinuePickerTitle,
   homeContinuePrimaryCta,
   homeContinueUnavailableToast,
   homeRecoveryFallbackToast,
@@ -288,8 +286,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [feedbackConsentPrivacyPolicy, setFeedbackConsentPrivacyPolicy] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  /** 同槽本地与云端时间不一致时，用户显式选择；禁止静默覆盖 */
-  const [syncSourceBySlot, setSyncSourceBySlot] = useState<Record<string, "local" | "cloud">>({});
+  const [cloudSavesLoaded, setCloudSavesLoaded] = useState(false);
   const [surveyCompletion, setSurveyCompletion] = useState<"loading" | "open" | "done">("loading");
   const [surveyStep, setSurveyStep] = useState(0);
   const [svDiscoverySource, setSvDiscoverySource] = useState("");
@@ -350,6 +347,20 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     () => cloudRows.length > 0,
     [cloudRows]
   );
+  const latestPlayableLocalSave = useMemo(() => {
+    return Object.entries(saveSlots ?? {})
+      .filter(([slotId, data]) => !slotId.startsWith("auto_") && slotHasPlayableLocal(data))
+      .map(([slotId, data]) => ({
+        slotId,
+        data,
+        updatedAt: extractHomeContinueSummaryFromPayload(data)?.updatedAtIso ?? null,
+      }))
+      .sort((a, b) => {
+        const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+        const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+        return tb - ta;
+      })[0] ?? null;
+  }, [saveSlots]);
 
   function slotHasPlayableLocal(data: SaveSlotData | undefined): boolean {
     if (!data) return false;
@@ -362,11 +373,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const localEntries = Object.entries(saveSlots ?? {}).filter(([id]) => !id.startsWith("auto_"));
     const cloudBySlot = new Map(cloudRows.filter((r) => !r.slotId.startsWith("auto_")).map((r) => [r.slotId, r]));
 
-    const slotIds = new Set<string>();
-    for (const [id] of localEntries) slotIds.add(id);
-    for (const r of cloudRows) {
-      if (!r.slotId.startsWith("auto_")) slotIds.add(r.slotId);
-    }
+    const slotIds = user
+      ? new Set<string>(
+          cloudRows.filter((r) => !r.slotId.startsWith("auto_")).map((r) => r.slotId)
+        )
+      : new Set<string>(localEntries.map(([id]) => id));
 
     const rows: Array<{
       slotId: string;
@@ -400,32 +411,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         continue;
       }
 
-      if (!localData && !cloudRow) continue;
+      if (user && !cloudRow) continue;
+      if (!user && !localData) continue;
       const localSummary = localData ? extractHomeContinueSummaryFromPayload(localData) : null;
       const cloudSummary = cloudRow ? extractHomeContinueSummaryFromPayload(cloudRow.data) : null;
-      const localTs = localSummary?.updatedAtIso ? Date.parse(localSummary.updatedAtIso) : 0;
-      const cloudTs = cloudRow?.updatedAt ? Date.parse(cloudRow.updatedAt) : 0;
-      const hasLocal = !!localData;
-      const hasCloud = !!cloudRow;
+      const tag: HomeContinueSourceTag = user ? (localData ? "synced" : "cloud") : "local";
 
-      let tag: HomeContinueSourceTag;
-      if (hasLocal && !hasCloud) tag = "local";
-      else if (!hasLocal && hasCloud) tag = "cloud";
-      else if (hasLocal && hasCloud) {
-        const delta = Math.abs(localTs - cloudTs);
-        tag = delta <= HOME_CONTINUE_TIME_EPSILON_MS ? "synced" : "conflict";
-      } else {
-        continue;
-      }
-
-      const displayUpdatedAt =
-        tag === "cloud"
-          ? cloudRow?.updatedAt ?? null
-          : tag === "local"
-            ? localSummary?.updatedAtIso ?? null
-            : Math.max(localTs, cloudTs) === localTs
-              ? localSummary?.updatedAtIso ?? cloudRow?.updatedAt ?? null
-              : cloudRow?.updatedAt ?? localSummary?.updatedAtIso ?? null;
+      const displayUpdatedAt = user
+        ? (cloudRow?.updatedAt ?? cloudSummary?.updatedAtIso ?? localSummary?.updatedAtIso ?? null)
+        : (localSummary?.updatedAtIso ?? null);
 
       rows.push({
         slotId,
@@ -443,7 +437,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       const ta = a.displayUpdatedAt ? Date.parse(a.displayUpdatedAt) : 0;
       const tb = b.displayUpdatedAt ? Date.parse(b.displayUpdatedAt) : 0;
       return tb - ta;
-    });
+    }).slice(0, MAX_VISIBLE_SAVE_SLOTS);
   }, [saveSlots, cloudRows, user]);
 
   const deleteTargetRow = useMemo(() => {
@@ -455,13 +449,14 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const deleteTargetDisplay = useMemo(() => {
     if (!deleteTargetRow) return "";
     const rawLabel =
-      deleteTargetRow.localSummary?.label ??
+      (user ? deleteTargetRow.cloudSummary?.label : deleteTargetRow.localSummary?.label) ??
       deleteTargetRow.cloudSummary?.label ??
+      deleteTargetRow.localSummary?.label ??
       (deleteTargetRow.slotId === "main_slot" ? "主线记录" : "未命名记录");
     const label = String(rawLabel ?? "").replaceAll("存档", "记录").replaceAll("进度", "记录");
     const tag = tagLabel(deleteTargetRow.tag);
     return `${label}（${tag}）`;
-  }, [deleteTargetRow]);
+  }, [deleteTargetRow, user]);
 
   const entryState: EntryState = useMemo(() => {
     return resolveHomeEntryState({
@@ -549,11 +544,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     }
   }, [continuePickerOpen, continueRows, continuePickerSelectedSlotId, resolvedContinueSlotId]);
 
-  const hasLoginSyncNotice = useMemo(() => {
-    if (!user) return false;
-    return continueRows.some((r) => r.tag === "conflict");
-  }, [user, continueRows]);
-
   function formatShortUpdated(iso: string | null): string {
     if (!iso) return "时间未知";
     const t = Date.parse(iso);
@@ -601,11 +591,39 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   useHeartbeat(!!user, guestId, "/");
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setCloudRows([]);
+      setCloudSavesLoaded(false);
+      return;
+    }
+    setCloudSavesLoaded(false);
     void fetchCloudSaves()
-      .then((rows) => setCloudRows(rows as SaveRow[]))
-      .catch(() => setCloudRows([]));
+      .then((rows) => setCloudRows((rows as SaveRow[]).slice(0, MAX_VISIBLE_SAVE_SLOTS)))
+      .catch(() => setCloudRows([]))
+      .finally(() => setCloudSavesLoaded(true));
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !cloudSavesLoaded || cloudRows.length > 0) return;
+    const latestLocal = latestPlayableLocalSave;
+    if (!latestLocal) return;
+    let cancelled = false;
+    void syncSaveToCloud(latestLocal.slotId, latestLocal.data)
+      .then((res) => {
+        if (cancelled || !res.ok) return;
+        return fetchCloudSaves()
+          .then((rows) => {
+            if (!cancelled) setCloudRows((rows as SaveRow[]).slice(0, MAX_VISIBLE_SAVE_SLOTS));
+          })
+          .catch(() => undefined);
+      })
+      .finally(() => {
+        if (!cancelled) setCloudSavesLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, cloudSavesLoaded, cloudRows.length, latestPlayableLocalSave]);
 
   useEffect(() => {
     if (!authWarn) return;
@@ -756,11 +774,31 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     await signOut({ redirect: false });
     setUser(null);
     setCloudRows([]);
-    setSyncSourceBySlot({});
+    setCloudSavesLoaded(false);
     router.refresh();
   }
 
-  function openContinuePicker() {
+  async function openContinuePicker() {
+    if (user && !cloudSavesLoaded) {
+      setToast("正在读取云端记录…");
+      return;
+    }
+    if (user && continueRows.length === 0 && latestPlayableLocalSave) {
+      setToast("正在建立云端记录…");
+      const syncRes = await syncSaveToCloud(latestPlayableLocalSave.slotId, latestPlayableLocalSave.data).catch(() => ({ ok: false as const }));
+      if (syncRes.ok) {
+        const rows = await fetchCloudSaves().catch(() => []);
+        const nextRows = (rows as SaveRow[]).slice(0, MAX_VISIBLE_SAVE_SLOTS);
+        setCloudRows(nextRows);
+        if (nextRows.length > 0) {
+          setContinuePickerSelectedSlotId(nextRows[0]!.slotId);
+          setContinuePickerOpen(true);
+          return;
+        }
+      }
+      setToast("云端记录建立失败，请稍后再试。");
+      return;
+    }
     if (continueRows.length === 0) {
       if (hasPlayableResumeShadow) {
         void handleContinueAdventure("__resume_shadow__");
@@ -834,39 +872,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
 
-    if (row.tag === "conflict") {
-      const choice = syncSourceBySlot[slotId];
-      if (!choice) {
-        setToast("该槽位本地与云端进度不一致，请先选择「保留本地」或「使用云端」——我们不会默默覆盖任一侧。");
-        return;
-      }
-      void trackGameplayEvent({
-        eventName: "home_continue_resolved",
-        page: "/",
-        source: "home_continue",
-        payload: { slotId, tag: "conflict", choice },
-      }).catch(() => {});
-      if (choice === "local") {
-        const data = saveSlots[slotId];
-        if (!data) {
-          setToast("本机记录不可用。");
-          return;
-        }
-        loadGame(slotId);
-        const syncRes = await syncSaveToCloud(slotId, data).catch(() => ({ ok: false as const }));
-        if (!syncRes.ok) setToast("已载入本地进度；云端同步失败时可稍后在游戏内再次保存。");
-      } else {
-        const cr = cloudRows.find((c) => c.slotId === slotId);
-        if (!cr || !isSaveSlotData(cr.data)) {
-          setToast("云端记录不可用。");
-          return;
-        }
-        hydrateFromCloud(slotId, cr.data);
-      }
-      router.push("/play");
-      return;
-    }
-
     void trackGameplayEvent({
       eventName: "home_continue_resolved",
       page: "/",
@@ -874,7 +879,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       payload: { slotId, tag: row.tag },
     }).catch(() => {});
 
-    if (row.tag === "cloud") {
+    if (user) {
       const cr = cloudRows.find((c) => c.slotId === slotId);
       if (!cr || !isSaveSlotData(cr.data)) {
         setToast("云端记录不可用。");
@@ -1302,7 +1307,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               </div>
             </div>
           ) : (
-            <div className="vc-reading-serif text-[18px] leading-[1.85] text-[#164f4d]">
+            <div className="vc-reading-serif w-full whitespace-nowrap text-center text-[clamp(13px,3.8vw,18px)] leading-none text-[#164f4d]">
               {canContinueFromHome ? "本机留有可继续的记录。登录后可云端备份。" : "可直接以游客开始。登录后可云端备份。"}
             </div>
           )}
@@ -1503,19 +1508,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               文界工坊
             </h1>
             <VerseCraftPaperDivider className="mx-auto mt-[clamp(1rem,3.4svh,1.75rem)] w-[13.6rem]" />
-            <p className="mt-[clamp(1.55rem,4.9svh,3rem)] vc-reading-serif text-[clamp(1.45rem,6.2vw,1.7rem)] font-medium leading-none text-[#164f4d]">
-              锻造可能，实现梦想
-            </p>
           </div>
 
           <div className="mx-auto mt-[clamp(1.9rem,6.4svh,4.7rem)] w-full">
             <div className="mx-auto flex w-full flex-col items-stretch justify-center gap-[clamp(1rem,3.5svh,2.15rem)]">
-              {hasLoginSyncNotice ? (
-                <div className="rounded-xl border border-[#d8d3ca] bg-[#f8f5ef]/70 px-3 py-2 text-left text-xs font-medium text-[#164f4d]">
-                  {homeContinueConflictHint()}
-                </div>
-              ) : null}
-
               <VerseCraftPaperPillButton
                 type="button"
                 data-testid="home-start-new-button"
@@ -1557,40 +1553,40 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       </section>
 
       <div
-        className={`fixed inset-0 z-[70] flex items-center justify-center p-6 transition-all duration-500 ${
+        className={`fixed inset-0 z-[70] flex items-center justify-center bg-[#f2eee7]/62 p-4 transition-all duration-500 sm:p-6 ${
           continuePickerOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
         <div
-          className={`absolute inset-0 bg-slate-200/55 backdrop-blur-sm transition-all duration-500 ${
+          className={`absolute inset-0 backdrop-blur-[2px] transition-all duration-500 ${
             continuePickerOpen ? "opacity-100" : "opacity-0"
           }`}
           onClick={() => setContinuePickerOpen(false)}
         />
         <div
-          className={`relative w-full max-w-2xl rounded-[2rem] bg-white/85 p-7 shadow-[0_0_48px_rgba(15,23,42,0.18)] backdrop-blur-3xl transition-all duration-500 ${
+          data-testid="home-continue-record-modal"
+          className={`relative w-full max-w-[1120px] rounded-[28px] border border-[#d7ccbd] bg-[#fffdf8]/96 p-[clamp(1.5rem,4vw,4.4rem)] text-[#0f5a52] shadow-[0_26px_76px_rgba(76,61,42,0.22),inset_0_0_0_10px_rgba(248,243,235,0.96),inset_0_0_0_11px_rgba(218,207,191,0.7),inset_0_0_0_24px_rgba(255,253,248,0.9),inset_0_0_0_25px_rgba(226,216,200,0.62)] transition-all duration-500 sm:rounded-[42px] ${
             continuePickerOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 text-left">
-              <h3 className="text-sm font-semibold tracking-widest text-slate-700">{homeContinuePickerTitle()}</h3>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                这不是“回到上一刻”。你只是沿着同一条线继续往前走。
-              </p>
+              <h3 className="vc-reading-serif text-[clamp(2rem,4.8vw,4rem)] font-semibold leading-none tracking-normal text-[#0f5a52]">
+                选择要继续的记录
+              </h3>
             </div>
             <button
               type="button"
               onClick={() => setContinuePickerOpen(false)}
-              className="shrink-0 rounded-full border border-slate-200 bg-white/70 px-3 py-1.5 text-xs text-slate-500 transition hover:text-slate-800"
+              className="vc-reading-serif shrink-0 rounded-full border border-[#d6cabb] bg-[#fffdf8] px-8 py-3 text-[clamp(1.2rem,2.1vw,1.7rem)] text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
             >
               关闭
             </button>
           </div>
 
-          <div className="mt-5 max-h-[50vh] space-y-2 overflow-y-auto text-left">
+          <div className="mt-[clamp(2rem,5vw,4.8rem)] max-h-[48vh] space-y-4 overflow-y-auto text-left pr-1">
             {continueRows.map((r) => {
-              const sum = r.localSummary ?? r.cloudSummary;
+              const sum = user ? (r.cloudSummary ?? r.localSummary) : (r.localSummary ?? r.cloudSummary);
               const line = summarizeLine(sum);
               const upd = formatShortUpdated(r.displayUpdatedAt);
               const selected = (continuePickerSelectedSlotId || resolvedContinueSlotId) === r.slotId;
@@ -1606,19 +1602,24 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   }}
                   role="button"
                   tabIndex={0}
-                  className={`w-full rounded-2xl border px-4 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-white/70 ${
-                    selected ? "border-slate-800 bg-slate-900 text-white" : "border-slate-200 bg-white/70 text-slate-700 hover:bg-white"
+                  data-testid="home-continue-record-row"
+                  className={`w-full rounded-[16px] border px-[clamp(1rem,3vw,2.1rem)] py-[clamp(1rem,2.2vw,1.8rem)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f5a52]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf8] ${
+                    selected
+                      ? "border-[#0f5a52] bg-[#edf4ef] text-[#0f5a52] shadow-[inset_0_0_0_1px_rgba(15,90,82,0.1)]"
+                      : "border-[#d8d0c4] bg-[#fffdf8]/84 text-[#0f5a52] hover:border-[#0f5a52]/55 hover:bg-[#f7fbf6]"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold">
-                        [{tagLabel(r.tag)}] {normalizeContinueLabel(sum?.label ?? r.slotId)}
+                      <div className="vc-reading-serif text-[clamp(1.45rem,3vw,2.15rem)] font-semibold leading-none">
+                        {normalizeContinueLabel(sum?.label ?? r.slotId)}
                       </div>
-                      <div className={`mt-1 text-[11px] ${selected ? "text-white/80" : "text-slate-500"}`}>{line}</div>
+                      <div className="vc-reading-serif mt-4 text-[clamp(1rem,1.8vw,1.45rem)] leading-none text-[#0f5a52]">{line}</div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <div className={`text-[11px] font-mono ${selected ? "text-white/75" : "text-slate-400"}`}>更新 {upd}</div>
+                    <div className="flex shrink-0 items-center justify-between gap-4 sm:justify-end sm:gap-7">
+                      <div className="vc-reading-serif whitespace-nowrap text-[clamp(1rem,1.7vw,1.35rem)] text-[#0f5a52]">
+                        更新 {upd}
+                      </div>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1627,11 +1628,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                           setDeleteTargetSlotId(r.slotId);
                           setDeleteConfirmOpen(true);
                         }}
-                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
-                          selected
-                            ? "border-white/25 bg-white/10 text-white hover:bg-white/15"
-                            : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                        }`}
+                        data-testid="home-continue-delete-button"
+                        className="vc-reading-serif rounded-full border border-[#d6cabb] bg-[#fffdf8] px-5 py-2 text-[clamp(1rem,1.7vw,1.35rem)] font-semibold text-[#0f5a52] shadow-[0_4px_12px_rgba(78,63,47,0.1)] transition hover:border-[#0f5a52]/45 hover:bg-white"
                         aria-label={`删除记录 ${sum?.label ?? r.slotId}`}
                       >
                         删除
@@ -1643,58 +1641,25 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             })}
           </div>
 
-          {user && continuePickerSelectedRow?.tag === "conflict" ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white/70 p-3 text-left">
-              <div className="text-xs font-semibold text-slate-700">冲突：选择继续来源</div>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setSyncSourceBySlot((prev) => ({ ...prev, [continuePickerSelectedRow.slotId]: "local" }))}
-                  className={`rounded-xl border px-4 py-3 text-xs font-semibold transition ${
-                    syncSourceBySlot[continuePickerSelectedRow.slotId] === "local"
-                      ? "border-slate-800 bg-slate-900 text-white"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                  }`}
-                >
-                  保留本地
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSyncSourceBySlot((prev) => ({ ...prev, [continuePickerSelectedRow.slotId]: "cloud" }))}
-                  className={`rounded-xl border px-4 py-3 text-xs font-semibold transition ${
-                    syncSourceBySlot[continuePickerSelectedRow.slotId] === "cloud"
-                      ? "border-slate-800 bg-slate-900 text-white"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                  }`}
-                >
-                  使用云端
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="mt-[clamp(2.6rem,7vw,10rem)] flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end sm:gap-8">
             <button
               type="button"
               onClick={() => setContinuePickerOpen(false)}
-              className="rounded-full border border-slate-300 bg-white/70 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-white"
+              className="vc-reading-serif rounded-full border border-[#d8d0c4] bg-[#fffdf8] px-9 py-3 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.1)] transition hover:bg-white"
             >
               取消
             </button>
             <button
               type="button"
-              disabled={
-                !continuePickerSelectedRow ||
-                (!!user && continuePickerSelectedRow.tag === "conflict" && !syncSourceBySlot[continuePickerSelectedRow.slotId])
-              }
+              disabled={!continuePickerSelectedRow}
               onClick={() => {
                 const id = continuePickerSelectedSlotId || resolvedContinueSlotId;
                 setContinuePickerOpen(false);
                 void handleContinueAdventure(id);
               }}
-              className="rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="vc-reading-serif rounded-full border border-[#8c867d] bg-[#f6f2ec] px-12 py-3 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {homeContinuePrimaryCta()} →
+              继续行动 →
             </button>
           </div>
         </div>
@@ -1752,12 +1717,6 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 if ((continuePickerSelectedSlotId || resolvedContinueSlotId) === slotId) {
                   setContinuePickerSelectedSlotId("");
                 }
-                setSyncSourceBySlot((prev) => {
-                  const next = { ...prev };
-                  delete next[slotId];
-                  delete next[autoId];
-                  return next;
-                });
                 if (user) {
                   await deleteCloudSaveSlot(slotId).catch(() => undefined);
                   await deleteCloudSaveSlot(autoId).catch(() => undefined);
