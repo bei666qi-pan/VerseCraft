@@ -1,12 +1,12 @@
-import { VC_WAITING } from "@/lib/perf/waitingConfig";
+import { OPTIONS_REGEN_LATENCY_BUDGET } from "@/lib/perf/waitingConfig";
 
 export type OptionsRegenTrigger = "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main";
 export type ClientTurnMode = "decision_required" | "narrative_only" | "system_transition";
 
 export function getOptionsOnlyDeadlineMs(trigger: OptionsRegenTrigger): number {
   return trigger === "opening_fallback"
-    ? VC_WAITING.playOpeningOptionsOnlyClientDeadlineMs
-    : VC_WAITING.playOptionsOnlyClientDeadlineMs;
+    ? OPTIONS_REGEN_LATENCY_BUDGET.openingClientDeadlineMs
+    : OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs;
 }
 
 export function backfillAcceptedOptionsFromModel(args: {

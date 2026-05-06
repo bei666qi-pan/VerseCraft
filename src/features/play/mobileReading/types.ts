@@ -79,6 +79,7 @@ export type MobileOptionsRegenStage =
 
 export type MobileOptionsEmptyStateProps = {
   busy: boolean;
+  message?: string | null;
   progress?: number;
   stage?: MobileOptionsRegenStage;
 };

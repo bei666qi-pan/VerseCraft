@@ -64,7 +64,7 @@ import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
-import { buildOptionsRepairReason, getRepairMissingCount } from "@/lib/play/optionsRepair";
+import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
   accumulateDmFromSseEvent,
@@ -500,6 +500,7 @@ function PlayContent() {
   const [optionsRegenBusy, setOptionsRegenBusy] = useState(false);
   const [optionsRegenStage, setOptionsRegenStage] = useState<MobileOptionsRegenStage>("idle");
   const [optionsRegenProgress, setOptionsRegenProgress] = useState(0);
+  const [optionsRegenFailureMessage, setOptionsRegenFailureMessage] = useState<string | null>(null);
   const [endgameState, setEndgameState] = useState<{ active: boolean; awaitingEnding: boolean }>({
     active: false,
     awaitingEnding: false,
@@ -1591,6 +1592,9 @@ function PlayContent() {
     setOptionsRegenBusy(true);
     setOptionsRegenStage("request_sent");
     setOptionsRegenProgress(10);
+    setOptionsRegenFailureMessage(null);
+    const optionsRegenStartedAt = Date.now();
+    let optionsRegenTimedOut = false;
     if (trigger === "opening_fallback") {
       setFirstTimeHint("主笔正在补全首轮可选行动…");
     } else if (trigger === "auto_switch") {
@@ -1683,9 +1687,10 @@ function PlayContent() {
       // Phase-5：options-only 补齐是“低成本工具”，不允许无上限等待。
       const optionsOnlyDeadlineMs = getOptionsOnlyDeadlineMs(trigger);
       const ac = new AbortController();
-      const tid = VC_PERF_FLAGS.clientOptionsOnlyDeadline
-        ? window.setTimeout(() => ac.abort(), optionsOnlyDeadlineMs)
-        : undefined;
+      const tid = window.setTimeout(() => {
+        optionsRegenTimedOut = true;
+        ac.abort();
+      }, optionsOnlyDeadlineMs);
       const applyOptionsRegenStatus = (stage: unknown) => {
         const next: MobileOptionsRegenStage =
           stage === "context_building"
@@ -1810,6 +1815,25 @@ function PlayContent() {
         }
         return parsed;
       };
+      const logOptionsRegenTelemetry = (args: {
+        success: boolean;
+        failureReason: string | null;
+        repairUsed: boolean;
+        finalOptionsCount: number;
+      }) => {
+        if (process.env.NODE_ENV !== "development") return;
+        console.debug("[play][options_regen_metrics]", {
+          options_regen_latency_ms: Date.now() - optionsRegenStartedAt,
+          options_regen_trigger: trigger,
+          options_regen_success: args.success,
+          options_regen_failure_reason: args.failureReason,
+          options_regen_repair_used: args.repairUsed,
+          options_regen_timed_out: optionsRegenTimedOut,
+          options_regen_semantic_reject_codes: Array.from(reasonCodes).filter((code) => code.includes("rejected")),
+          options_regen_final_options_count: args.finalOptionsCount,
+          options_regen_client_deadline_ms: optionsOnlyDeadlineMs,
+        });
+      };
       const firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
       if (tid !== undefined) window.clearTimeout(tid);
       if (firstPass === null) {
@@ -1817,6 +1841,13 @@ function PlayContent() {
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
+        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
+        logOptionsRegenTelemetry({
+          success: false,
+          failureReason: optionsRegenTimedOut ? "client_deadline_timeout" : "request_failed",
+          repairUsed: false,
+          finalOptionsCount: 0,
+        });
         return;
       }
       if (firstPass.parseFailed) reasonCodes.add("parse_failed");
@@ -1825,11 +1856,14 @@ function PlayContent() {
         normalizeRegeneratedOptions(groups.flat(), regenRecentOptions, regenCurrentOptions);
       let finalOptions = mergeModelOptions(modelSeedOptions, firstPass.options);
 
-      // 修复：原来的 `shouldTriggerOptionsRepairPass` 只在 0<accepted<4 时触发 repair；
-      // 当 firstPass 完全失败（accepted=0）或返回 3 条时，应一视同仁继续请求模型补齐到 4。
-      // 这里把 repair/retry 合并成一个“直到 4 条或达到上限”的循环，避免“生成 3 个/生成 0 个”失败静默。
-      const MAX_EXTRA_ROUNDS = 2;
-      for (let round = 0; round < MAX_EXTRA_ROUNDS && finalOptions.length < 4; round += 1) {
+      // Options regen is a strict short-link path: one first pass, then at most
+      // one repair pass that fills missing slots from already accepted model options.
+      let repairUsed = false;
+      if (
+        repairPassEnabled &&
+        shouldTriggerOptionsRepairPass({ acceptedOptions: finalOptions, targetCount: 4 })
+      ) {
+        repairUsed = true;
         if (repairPassEnabled) reasonCodes.add("repair_pass_used");
         const missingCount = getRepairMissingCount({ acceptedOptions: finalOptions, targetCount: 4 });
         const repairReason = buildOptionsRepairReason({
@@ -1856,14 +1890,9 @@ function PlayContent() {
         }
         if (repaired && Array.isArray(repaired.options) && repaired.options.length > 0) {
           const merged = mergeModelOptions(finalOptions, repaired.options);
-          if (merged.length === finalOptions.length) {
-            // 本轮没有新贡献，避免无意义再发请求。
-            break;
+          if (merged.length > finalOptions.length) {
+            finalOptions = merged;
           }
-          finalOptions = merged;
-        } else {
-          // 本轮没有可用返回：停止继续请求，避免反复空转。
-          break;
         }
       }
 
@@ -1872,16 +1901,30 @@ function PlayContent() {
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
+        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
+        logOptionsRegenTelemetry({
+          success: false,
+          failureReason: firstPass.failure?.reason ?? "insufficient_options_after_repair",
+          repairUsed,
+          finalOptionsCount: finalOptions.length,
+        });
         return;
       }
       // 只刷新 currentOptions：不写 user/assistant logs、不增 dialogueCount、不提交世界状态。
       setOptionsRegenStage("complete");
       setOptionsRegenProgress(100);
+      setOptionsRegenFailureMessage(null);
       setCurrentOptions(finalOptions);
       if (process.env.NODE_ENV === "development") {
         const debugHint = formatOptionsRegenDebugHint(Array.from(reasonCodes));
         if (debugHint) console.debug("[play][options_regen]", debugHint, { trigger, finalLen: finalOptions.length });
       }
+      logOptionsRegenTelemetry({
+        success: true,
+        failureReason: null,
+        repairUsed,
+        finalOptionsCount: finalOptions.length,
+      });
       const successHint = getOptionsRegenSuccessHint({ trigger, turnMode: lastCommittedTurnModeRef.current });
       if (successHint) setFirstTimeHint(successHint);
       setLiveNarrative((prev) =>
@@ -1892,6 +1935,7 @@ function PlayContent() {
       setOptionsRegenStage("finalizing");
       setOptionsRegenProgress((prev) => Math.max(prev, 92));
       setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
+      setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;
@@ -3798,6 +3842,7 @@ function PlayContent() {
               ) : optionsExpanded ? (
                 <MobileOptionsEmptyState
                   busy={optionsRegenBusy}
+                  message={optionsRegenFailureMessage}
                   stage={optionsRegenStage}
                   progress={optionsRegenProgress}
                 />

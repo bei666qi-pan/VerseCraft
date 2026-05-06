@@ -44,7 +44,7 @@ function StageLabels({ activeIndex }: { activeIndex: number }) {
   return <>{nodes}</>;
 }
 
-export function MobileOptionsEmptyState({ busy, progress, stage = "idle" }: MobileOptionsEmptyStateProps) {
+export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle" }: MobileOptionsEmptyStateProps) {
   const safeProgress = Math.max(6, Math.min(100, progress ?? STAGE_PROGRESS[stage] ?? 8));
   const activeIndex = STAGE_INDEX[stage] ?? 0;
 
@@ -108,7 +108,7 @@ export function MobileOptionsEmptyState({ busy, progress, stage = "idle" }: Mobi
 
   return (
     <div data-testid="mobile-options-dropdown" className={mobileReadingTheme.optionsEmptyState} role="status">
-      当前暂无可用选项。
+      {message?.trim() || "当前暂无可用选项。"}
     </div>
   );
 }

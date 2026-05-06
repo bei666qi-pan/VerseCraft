@@ -307,23 +307,6 @@ function guardModelGeneratedOptions(options: string[], maxCount = 4): string[] {
   return out;
 }
 
-function contextualFallbackPad(playerContext: string): readonly string[] {
-  const ctx = String(playerContext ?? "");
-  const loc = ctx.match(/用户位置\[([^\]]+)\]/)?.[1]?.trim() || "";
-  const hasThreat = /主威胁状态：/.test(ctx) && /(active|suppressed|breached|危险|压制|失控)/.test(ctx);
-  const npcLine = ctx.match(/NPC当前位置：([^。]+)。/)?.[1]?.trim() || "";
-  const npcHint = npcLine ? "我先压低声音，向附近的人确认情况。" : "我先侧耳听周围动静。";
-  const placeHint = loc ? `我先沿${loc.includes("B1") ? "安全区方向" : "走廊边缘"}调整站位，找遮蔽物。` : "我先找一处更稳的站位。";
-  const threatHint = hasThreat ? "我先拉开距离，确认退路与危险来源。" : "我先确认退路与可用遮蔽物。";
-  const probeHint = hasThreat ? "我先用小动作试探对方反应。" : "我先做个小试探，确认周围反应。";
-  return [
-    threatHint,
-    npcHint,
-    placeHint,
-    probeHint,
-  ];
-}
-
 function normalizeForLooseDedup(s: string): string {
   return String(s ?? "")
     .trim()
@@ -343,31 +326,6 @@ function areOptionsTooSimilar(a: string, b: string): boolean {
   return false;
 }
 
-/**
- * 将 0–4 条候选选项与通用短句合并为恰好 4 条（去重）。
- * 注意：实时 options-only 模型补救不再调用该本地补齐，避免用通用短句冒充大模型选项。
- */
-export function padOptionsFallbackToFour(options: string[], playerContext?: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const pushUnique = (s: string) => {
-    const t = String(s ?? "").trim();
-    if (t.length < 2) return;
-    const k = t.toLowerCase();
-    if (seen.has(k)) return;
-    seen.add(k);
-    out.push(t);
-  };
-  for (const s of options) pushUnique(s);
-  // 兜底也要尽量贴近当前上下文：避免“四条都像同一种泛化观察”
-  const ctx = String(playerContext ?? "");
-  for (const g of contextualFallbackPad(ctx)) {
-    if (out.length >= 4) break;
-    pushUnique(g);
-  }
-  return out.slice(0, 4);
-}
-
 export function guardOptionsQualityToFour(args: {
   options: string[];
   playerContext?: string;
@@ -385,7 +343,7 @@ function finalizeOptionsFallbackParsed(parsed: string[]): { ok: true; options: s
 }
 
 export type OptionsOnlyFallbackResult =
-  | { ok: true; options: string[] }
+  | { ok: true; options: string[]; repairUsed?: boolean; latencyMs?: number }
   | {
       ok: false;
       reason: string;
@@ -393,6 +351,7 @@ export type OptionsOnlyFallbackResult =
       rawLength?: number;
       extractedOptionsCount?: number;
       normalizedOptionsCount?: number;
+      latencyMs?: number;
     };
 
 async function runOptionsOnlyAiOnce(args: {
@@ -458,7 +417,7 @@ async function runOptionsOnlyAiOnce(args: {
     devOverrides: {
       // Reasoning models spend most tokens on reasoning_content before emitting content.
       // 256 is not enough — the model hits max_tokens with empty content.
-      maxTokens: 1024,
+      maxTokens: 384,
       temperature: args.temperature,
       timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
@@ -488,7 +447,7 @@ export async function generateOptionsOnlyFallback(args: {
    */
   budgetMs?: number;
 }): Promise<OptionsOnlyFallbackResult> {
-  const budgetMs = Math.max(0, Math.min(30_000, args.budgetMs ?? 0));
+  const budgetMs = Math.max(0, Math.min(VC_WAITING.optionsOnlyServerBudgetMs, args.budgetMs ?? VC_WAITING.optionsOnlyServerBudgetMs));
   const t0 = Date.now();
   const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
 
@@ -506,6 +465,7 @@ export async function generateOptionsOnlyFallback(args: {
     rawLength: number;
     extractedOptionsCount: number;
     normalizedOptionsCount: number;
+    acceptedOptions: string[];
   } => {
     const rawLength = String(content ?? "").length;
     const cleaned = String(content ?? "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
@@ -517,6 +477,7 @@ export async function generateOptionsOnlyFallback(args: {
         rawLength,
         extractedOptionsCount: 0,
         normalizedOptionsCount: 0,
+        acceptedOptions: [],
       };
     }
     let obj: Record<string, unknown>;
@@ -531,6 +492,7 @@ export async function generateOptionsOnlyFallback(args: {
         rawLength,
         extractedOptionsCount: 0,
         normalizedOptionsCount: 0,
+        acceptedOptions: [],
       };
     }
     const parsed = parseOptionsArrayFromAiJson(obj.options ?? (obj as any).decision_options);
@@ -548,6 +510,7 @@ export async function generateOptionsOnlyFallback(args: {
         rawLength,
         extractedOptionsCount: parsed.length,
         normalizedOptionsCount: normalized.length,
+        acceptedOptions: normalized,
       };
     }
     const guarded = guardOptionsQualityToFour({
@@ -563,6 +526,7 @@ export async function generateOptionsOnlyFallback(args: {
         rawLength,
         extractedOptionsCount: done.options.length,
         normalizedOptionsCount: guarded.length,
+        acceptedOptions: guarded,
       };
     }
     return { ok: true, options: guarded };
@@ -592,57 +556,105 @@ export async function generateOptionsOnlyFallback(args: {
     return typeof AbortSignal !== "undefined" && "any" in AbortSignal ? AbortSignal.any(signals) : ac.signal;
   };
 
-  // When budget is tight (< sum of both attempt timeouts), use single attempt with full budget
-  // to maximize chance of one successful AI call. Previous dual-attempt strategy caused the first
-  // attempt to consume nearly all budget, leaving the second with insufficient time.
-  const canFitBothAttempts = budgetMs <= 0 ||
-    budgetMs >= VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs + VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs + 500;
+  // Options regen is a strict short-link path: one bounded model attempt plus,
+  // only when partial model options exist, one bounded repair pass.
+  const firstTimeoutMs = Math.max(
+    1,
+    Math.min(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, budgetMs > 0 ? remainingMs() : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs)
+  );
+  const failFromParse = (
+    failure: ReturnType<typeof tryParse> | null,
+    reason = "invalid_model_options"
+  ): Extract<OptionsOnlyFallbackResult, { ok: false }> => ({
+    ok: false,
+    reason,
+    debugReasonCodes: failure && !failure.ok ? failure.debugReasonCodes : ["parse_failed"],
+    rawLength: failure && !failure.ok ? failure.rawLength : undefined,
+    extractedOptionsCount: failure && !failure.ok ? failure.extractedOptionsCount : undefined,
+    normalizedOptionsCount: failure && !failure.ok ? failure.normalizedOptionsCount : undefined,
+    latencyMs: Date.now() - t0,
+  });
 
   const first = await runOptionsOnlyAiOnce({
     ...args,
     temperature: 0.4,
     systemExtra: args.systemExtra,
-    timeoutMs: canFitBothAttempts
-      ? VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs
-      : Math.max(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, budgetMs > 0 ? budgetMs - 300 : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
-    signal: withBudgetSignal(
-      canFitBothAttempts
-        ? VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs
-        : Math.max(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, budgetMs > 0 ? budgetMs - 300 : VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs)
-    ),
+    timeoutMs: firstTimeoutMs,
+    signal: withBudgetSignal(firstTimeoutMs),
   });
-  let lastParseFailure: Extract<OptionsOnlyFallbackResult, { ok: false }> | null = null;
+  let lastParseFailure: Extract<ReturnType<typeof tryParse>, { ok: false }> | null = null;
   if (first.ok) {
     const done = tryParse(first.content);
-    if (done.ok) return done;
+    if (done.ok) return { ...done, latencyMs: Date.now() - t0 };
     lastParseFailure = done;
+  } else {
+    return { ok: false, reason: first.reason, debugReasonCodes: [first.reason], latencyMs: Date.now() - t0 };
   }
 
   if (budgetMs > 0 && remainingMs() < 1500) {
     // 不注入本地罐头选项；客户端可在正文落地后再请求一次纯模型选项生成。
-    return first.ok
-      ? {
+    return {
           ok: false,
           reason: "invalid_model_options",
           debugReasonCodes: lastParseFailure?.debugReasonCodes ?? ["parse_failed"],
           rawLength: lastParseFailure?.rawLength,
           extractedOptionsCount: lastParseFailure?.extractedOptionsCount,
           normalizedOptionsCount: lastParseFailure?.normalizedOptionsCount,
-        }
-      : { ok: false, reason: first.reason, debugReasonCodes: [first.reason] };
+          latencyMs: Date.now() - t0,
+        };
   }
+
+  const acceptedOptions = lastParseFailure?.acceptedOptions ?? [];
+  if (acceptedOptions.length === 0 || acceptedOptions.length >= 4) return failFromParse(lastParseFailure);
+  if (budgetMs > 0 && remainingMs() < 500) return failFromParse(lastParseFailure, "budget_exhausted_before_repair");
+
+  const missingCount = 4 - acceptedOptions.length;
+  const repairTimeoutMs = Math.max(
+    1,
+    Math.min(VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs, budgetMs > 0 ? remainingMs() : VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs)
+  );
 
   const second = await runOptionsOnlyAiOnce({
     ...args,
-    temperature: 0.65,
-    systemExtra: [args.systemExtra ?? "", "若你上次容易少给条目：本次必须输出恰好 4 条 options，不要省略。"].filter(Boolean).join("\n"),
-    timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
-    signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs),
+    latestUserInput: [
+      args.latestUserInput,
+      "",
+      "[accepted_options_locked]",
+      ...acceptedOptions,
+      `[repair_missing_slots:${missingCount}]`,
+    ].join("\n"),
+    temperature: 0.55,
+    systemExtra: [
+      args.systemExtra ?? "",
+      `Repair pass only: keep accepted_options_locked unchanged and add exactly ${missingCount} new scene-specific options. Do not rewrite accepted options.`,
+    ].filter(Boolean).join("\n"),
+    timeoutMs: repairTimeoutMs,
+    signal: withBudgetSignal(repairTimeoutMs),
   });
   if (second.ok) {
     const done = tryParse(second.content);
-    if (done.ok) return done;
-    lastParseFailure = done;
+    const merged = guardOptionsQualityToFour({
+      options: [...acceptedOptions, ...(done.ok ? done.options : done.acceptedOptions)],
+      playerContext: args.playerContext,
+      recentActionHint: args.latestUserInput,
+    });
+    if (merged.length === 4) return { ok: true, options: merged, repairUsed: true, latencyMs: Date.now() - t0 };
+    lastParseFailure = done.ok
+      ? {
+          ok: false,
+          reason: "semantic_gate_rejected",
+          debugReasonCodes: ["semantic_gate_rejected", "repair_pass_used"],
+          rawLength: String(second.content ?? "").length,
+          extractedOptionsCount: done.options.length,
+          normalizedOptionsCount: merged.length,
+          acceptedOptions: merged,
+        }
+      : {
+          ...done,
+          debugReasonCodes: Array.from(new Set([...done.debugReasonCodes, "repair_pass_used"])),
+          normalizedOptionsCount: merged.length,
+          acceptedOptions: merged,
+        };
   }
 
   return second.ok
@@ -653,8 +665,9 @@ export async function generateOptionsOnlyFallback(args: {
         rawLength: lastParseFailure?.rawLength,
         extractedOptionsCount: lastParseFailure?.extractedOptionsCount,
         normalizedOptionsCount: lastParseFailure?.normalizedOptionsCount,
+        latencyMs: Date.now() - t0,
       }
-    : { ok: false, reason: second.reason, debugReasonCodes: [second.reason] };
+    : { ok: false, reason: second.reason, debugReasonCodes: [second.reason, "repair_pass_used"], latencyMs: Date.now() - t0 };
 }
 
 async function runDecisionOnlyAiOnce(args: {
@@ -705,7 +718,7 @@ async function runDecisionOnlyAiOnce(args: {
     requestTimeoutMs: args.timeoutMs,
     skipCache: true,
     devOverrides: {
-      maxTokens: 1024,
+      maxTokens: 384,
       temperature: args.temperature,
       timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
@@ -726,7 +739,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   /** See `generateOptionsOnlyFallback.budgetMs`. */
   budgetMs?: number;
 }): Promise<{ ok: true; decision_options: string[] } | { ok: false; reason: string }> {
-  const budgetMs = Math.max(0, Math.min(30_000, args.budgetMs ?? 0));
+  const budgetMs = Math.max(0, Math.min(VC_WAITING.optionsOnlyServerBudgetMs, args.budgetMs ?? VC_WAITING.optionsOnlyServerBudgetMs));
   const t0 = Date.now();
   const remainingMs = () => (budgetMs > 0 ? Math.max(0, budgetMs - (Date.now() - t0)) : Infinity);
 

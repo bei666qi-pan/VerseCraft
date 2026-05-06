@@ -1,13 +1,34 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
-import { guardOptionsQualityToFour, isNonNarrativeOptionLike, padOptionsFallbackToFour, parseOptionsArrayFromAiJson } from "./logicalTasks";
+import { guardOptionsQualityToFour, isNonNarrativeOptionLike, parseOptionsArrayFromAiJson } from "./logicalTasks";
 
-test("parseOptionsArrayFromAiJson: keeps 2–4 valid strings and dedupes", () => {
-  assert.deepEqual(parseOptionsArrayFromAiJson(["a", "我走一步", "我走一步", "我停一下"]), ["我走一步", "我停一下"]);
+function collectProductSourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === ".next") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...collectProductSourceFiles(full));
+      continue;
+    }
+    if (!/\.(ts|tsx)$/.test(entry.name)) continue;
+    if (/\.test\.(ts|tsx)$/.test(entry.name)) continue;
+    out.push(full);
+  }
+  return out;
+}
+
+test("parseOptionsArrayFromAiJson: keeps valid strings and dedupes", () => {
+  assert.deepEqual(parseOptionsArrayFromAiJson(["a", "我走近门口", "我走近门口", "我停下听声"]), [
+    "我走近门口",
+    "我停下听声",
+  ]);
 });
 
 test("parseOptionsArrayFromAiJson: skips too-short and too-long", () => {
-  assert.deepEqual(parseOptionsArrayFromAiJson(["x", "我走一步", "x".repeat(50)]), ["我走一步"]);
+  assert.deepEqual(parseOptionsArrayFromAiJson(["x", "我走近门口", "x".repeat(50)]), ["我走近门口"]);
 });
 
 test("isNonNarrativeOptionLike: blocks journal and menu-like options", () => {
@@ -17,52 +38,32 @@ test("isNonNarrativeOptionLike: blocks journal and menu-like options", () => {
   assert.equal(isNonNarrativeOptionLike("我用手电照向门缝"), false);
 });
 
-test("padOptionsFallbackToFour: fills from generics when empty", () => {
-  const out = padOptionsFallbackToFour([], "用户位置[B1_SafeZone]。主威胁状态：B1[A-001|active|30]。");
-  assert.equal(out.length, 4);
-  assert.ok(out.every((s) => s.length >= 2));
-});
-
-test("padOptionsFallbackToFour: preserves model options and pads to four", () => {
-  const out = padOptionsFallbackToFour(["我查看门锁是否完好。", "我侧耳听走廊动静。"]);
-  assert.equal(out.length, 4);
-  assert.equal(out[0], "我查看门锁是否完好。");
-  assert.equal(out[1], "我侧耳听走廊动静。");
-});
-
-test("padOptionsFallbackToFour: four model options unchanged length", () => {
-  const four = ["我一", "我二", "我三", "我四"].map((s) => `${s}继续试探。`);
-  const out = padOptionsFallbackToFour(four);
-  assert.deepEqual(out, four);
-});
-
-test("guardOptionsQualityToFour: high-duplicate outputs should be deduped without local padding", () => {
-  const ctx = "用户位置[B1_SafeZone]。主威胁状态：B1[A-001|active|30]。NPC当前位置：走廊尽头的保安室。";
+test("guardOptionsQualityToFour: high-duplicate outputs stay insufficient without local padding", () => {
   const out = guardOptionsQualityToFour({
-    options: ["我先看看门。", "我先看看门。", "我先看看周围。", "我先看看周围。"],
-    playerContext: ctx,
+    options: ["我先看看门", "我先看看门", "我先看看周围", "我先看看周围"],
+    playerContext: "用户位置[B1_SafeZone]。主威胁状态：B1[A-001|active|30]。NPC当前位置：走廊尽头的保安室。",
     recentActionHint: "我拿出手机照明",
   });
-  assert.deepEqual(out, ["我先看看门。", "我先看看周围。"]);
-  assert.equal(out.some((s) => /退路|后撤|避开|掩体|遮蔽|拉开距离/.test(s)), false);
-  assert.equal(out.some((s) => /问|确认|交涉|对话|喊话|打听/.test(s)), false);
+  assert.deepEqual(out, ["我先看看门", "我先看看周围"]);
+  assert.equal(out.length < 4, true);
 });
 
-test("guardOptionsQualityToFour: fewer than four valid model options stay insufficient", () => {
+test("guardOptionsQualityToFour: fewer than four valid model options are not padded", () => {
   const out = guardOptionsQualityToFour({
     options: ["我用手电照向门缝", "我贴墙听走廊动静", "我退回楼梯口观察"],
   });
   assert.deepEqual(out, ["我用手电照向门缝", "我贴墙听走廊动静", "我退回楼梯口观察"]);
 });
 
-test("padOptionsFallbackToFour: npc present -> should include a dialogue/confirm hint", () => {
-  const out = padOptionsFallbackToFour([], "用户位置[B1_SafeZone]。NPC当前位置：楼梯口的女生。");
-  assert.equal(out.length, 4);
-  assert.equal(out.some((s) => /确认情况|确认|问|交涉|对话/.test(s)), true);
-});
-
-test("padOptionsFallbackToFour: threat present -> should include an avoid/retreat hint", () => {
-  const out = padOptionsFallbackToFour([], "用户位置[B1_SafeZone]。主威胁状态：B1[A-001|active|30]。");
-  assert.equal(out.length, 4);
-  assert.equal(out.some((s) => /退路|后撤|避开|掩体|遮蔽|拉开距离/.test(s)), true);
+test("options regen product paths must not import or call local template padding", () => {
+  const banned = ["padOptionsFallbackToFour", "legacyPadOptionsForOfflineDevOnly"];
+  const roots = ["src/app", "src/features", "src/lib/play", "src/lib/turnEngine"].map((p) => path.resolve(p));
+  const offenders: string[] = [];
+  for (const root of roots) {
+    for (const file of collectProductSourceFiles(root)) {
+      const src = fs.readFileSync(file, "utf8");
+      if (banned.some((name) => src.includes(name))) offenders.push(path.relative(process.cwd(), file));
+    }
+  }
+  assert.deepEqual(offenders, []);
 });

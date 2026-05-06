@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   backfillAcceptedOptionsFromModel,
   getOptionsOnlyDeadlineMs,
   getOptionsRegenSuccessHint,
 } from "@/app/play/optionsRegenUx";
+import { OPTIONS_REGEN_LATENCY_BUDGET } from "@/lib/perf/waitingConfig";
 
 test("options regen UX: decision_required auto_missing_main success shows hint", () => {
   const hint = getOptionsRegenSuccessHint({ trigger: "auto_missing_main", turnMode: "decision_required" });
@@ -19,11 +22,29 @@ test("options regen UX: hint now shown for any turn mode (long-narrative auto-co
   assert.equal(typeof getOptionsRegenSuccessHint({ trigger: "manual_button", turnMode: "system_transition" }), "string");
 });
 
-test("options regen UX: client deadline does not abort before server options AI floor", () => {
-  const serverOptionsOnlyFloorMs = 15_000;
-  assert.equal(getOptionsOnlyDeadlineMs("manual_button") >= serverOptionsOnlyFloorMs, true);
-  assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main") >= serverOptionsOnlyFloorMs, true);
+test("options regen UX: short-link client deadlines stay within P99 targets", () => {
+  assert.equal(getOptionsOnlyDeadlineMs("manual_button") <= OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs, true);
+  assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main") <= OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs, true);
+  assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") <= OPTIONS_REGEN_LATENCY_BUDGET.openingClientDeadlineMs, true);
+  assert.equal(getOptionsOnlyDeadlineMs("manual_button") <= 9_000, true);
+  assert.equal(getOptionsOnlyDeadlineMs("auto_missing_main") <= 9_000, true);
+  assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") <= 11_000, true);
   assert.equal(getOptionsOnlyDeadlineMs("opening_fallback") >= getOptionsOnlyDeadlineMs("manual_button"), true);
+});
+
+test("options regen UX: NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0 cannot widen options-only deadlines", async () => {
+  const previous = process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS;
+  process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS = "0";
+  try {
+    const moduleUrl = `${pathToFileURL(path.resolve("src/lib/perf/waitingConfig.ts")).href}?tight0=${Date.now()}`;
+    const fresh = (await import(moduleUrl)) as typeof import("@/lib/perf/waitingConfig");
+    assert.equal(fresh.VC_WAITING.playOptionsOnlyClientDeadlineMs, 9_000);
+    assert.equal(fresh.VC_WAITING.playOpeningOptionsOnlyClientDeadlineMs, 11_000);
+    assert.equal(fresh.VC_WAITING.optionsOnlyServerBudgetMs, 8_000);
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS;
+    else process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS = previous;
+  }
 });
 
 test("options regen UX: model options backfill semantic-gate misses", () => {

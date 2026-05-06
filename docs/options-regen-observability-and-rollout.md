@@ -2,6 +2,32 @@
 
 本文档覆盖 `options_regen_only` 在当前仓库的真实实现、原因码、灰度开关、测试矩阵与回滚策略。
 
+## 0) 短链路预算与长期护栏
+
+`options_regen_only` 是玩家继续行动入口的短链路能力，不是主叙事生成链路。它只整理下一步可点击行动，不推进回合、不写世界状态、不使用本地模板补齐。
+
+长期目标与硬截止：
+
+- P50 ≤ 2.5s
+- P75 ≤ 4s
+- P95 ≤ 6s
+- P99 ≤ 8.5s
+- 普通选项生成 client deadline：9s
+- 开局选项生成 client deadline：11s
+- 服务端 options-only 总预算：8s
+- 首次模型请求 timeout：5s
+- repair pass timeout：3s，且只能补缺口
+- 本地兜底选项允许次数：0
+
+失败策略：
+
+- 超时、解析失败、语义质量门不通过，或 repair 后仍不足 4 条时，清空可点击选项。
+- 用户只看到失败态：“这次没有整理出可靠选项，你可以手动输入行动，或再次尝试生成。”
+- 不允许展示“观察四周 / 保持警惕 / 询问情况 / 确认退路”一类本地模板选项。
+- `NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0` 只能影响主叙事流的宽 timeout，不能放宽 options-only 预算。
+
+这些数值集中在 `src/lib/perf/waitingConfig.ts` 的 `OPTIONS_REGEN_LATENCY_BUDGET`。后续任何功能改动不得放宽上述预算，除非同步修改预算测试，并在 PR 中说明原因、风险和回滚方式。
+
 ## 1) 真实链路（文件级）
 
 1. 触发入口：`src/app/play/page.tsx` `requestFreshOptions()`
@@ -36,6 +62,14 @@
 - 不写入世界状态，不写入任务/剧情字段
 - 仅开发态通过 `console.debug("[play][options_regen]", ...)` 输出
 - 服务端响应可携带 `debug_reason_codes`（`optionsRegenPayload`），属于调试元信息
+- 客户端与服务端开发态均保留结构化 debug 事件，字段包括：
+  - `options_regen_latency_ms`
+  - `options_regen_trigger`
+  - `options_regen_success`
+  - `options_regen_failure_reason`
+  - `options_regen_repair_used`
+  - `options_regen_timed_out`
+  - `options_regen_semantic_reject_codes`
 
 ## 3) 为什么需要语义质量门
 

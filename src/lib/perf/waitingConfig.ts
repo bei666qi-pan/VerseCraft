@@ -47,6 +47,48 @@ export const CHAT_LATENCY_BUDGET: ChatLatencyBudget = {
   minStatusFramesPerTurn: 1,
 } as const;
 
+export type OptionsRegenLatencyBudget = {
+  /** UI should acknowledge an options-only request almost immediately. */
+  immediateFeedbackMs: number;
+  /** Local perceived feedback target for the short options-only path. */
+  perceivedFeedbackMs: number;
+  /** Target p50 for model-generated options. */
+  p50TargetMs: number;
+  /** Target p75 for model-generated options. */
+  p75TargetMs: number;
+  /** Target p95 for model-generated options. */
+  p95TargetMs: number;
+  /** Hard p99/service ceiling for model-generated options. */
+  p99TargetMs: number;
+  /** Normal client hard deadline for `/api/chat` options_regen_only. */
+  clientDeadlineMs: number;
+  /** Opening-only client hard deadline, slightly wider for cold context. */
+  openingClientDeadlineMs: number;
+  /** Server wall-clock budget for the full options-only chain. */
+  serverBudgetMs: number;
+  /** First model attempt timeout; this is not a narrative turn. */
+  firstAttemptTimeoutMs: number;
+  /** Repair pass timeout; repair may only fill missing model options. */
+  repairAttemptTimeoutMs: number;
+  /** Product paths must never synthesize generic local clickable options. */
+  localFallbackOptionsAllowed: boolean;
+};
+
+export const OPTIONS_REGEN_LATENCY_BUDGET: OptionsRegenLatencyBudget = {
+  immediateFeedbackMs: 200,
+  perceivedFeedbackMs: 300,
+  p50TargetMs: 2_500,
+  p75TargetMs: 4_000,
+  p95TargetMs: 6_000,
+  p99TargetMs: 8_500,
+  clientDeadlineMs: 9_000,
+  openingClientDeadlineMs: 11_000,
+  serverBudgetMs: 8_000,
+  firstAttemptTimeoutMs: 5_000,
+  repairAttemptTimeoutMs: 3_000,
+  localFallbackOptionsAllowed: false,
+} as const;
+
 export const VC_WAITING = {
   /**
    * Play page: max wait for response headers from our own `/api/chat`.
@@ -72,15 +114,14 @@ export const VC_WAITING = {
 
   /**
    * Play page: per-request client deadline for `/api/chat` options_regen_only.
-   * Keep above the server options-only repair budget so the browser does not
-   * abort before the bounded server repair chain finishes.
+   * This short-link budget is intentionally not widened by
+   * NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0; that rollback knob only applies to the
+   * main narrative chat stream.
    */
-  playOptionsOnlyClientDeadlineMs:
-    process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS === "0" ? 45_000 : 20_000,
+  playOptionsOnlyClientDeadlineMs: OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs,
 
   /** Opening fallback carries a colder context and often runs on first load. */
-  playOpeningOptionsOnlyClientDeadlineMs:
-    process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS === "0" ? 60_000 : 24_000,
+  playOpeningOptionsOnlyClientDeadlineMs: OPTIONS_REGEN_LATENCY_BUDGET.openingClientDeadlineMs,
 
   /** Waiting UX timer tick for `usePlayWaitUx`. */
   playWaitUxTickMs: 160,
@@ -106,15 +147,15 @@ export const VC_WAITING = {
    * Options/decision-only short JSON repair calls. These are not the main
    * PLAYER_CHAT narrative stream and must stay bounded.
    */
-  optionsOnlyFallbackRequestTimeoutMs: 9_000,
-  optionsOnlyFallbackAttempt1TimeoutMs: 6_500,
-  optionsOnlyFallbackAttempt2TimeoutMs: 8_500,
+  optionsOnlyFallbackRequestTimeoutMs: OPTIONS_REGEN_LATENCY_BUDGET.p99TargetMs,
+  optionsOnlyFallbackAttempt1TimeoutMs: OPTIONS_REGEN_LATENCY_BUDGET.firstAttemptTimeoutMs,
+  optionsOnlyFallbackAttempt2TimeoutMs: OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs,
 
   /**
    * Server wall-clock budget for the full options/decision repair chain.
    * This keeps repair attempts bounded without touching the main stream.
    */
-  optionsOnlyServerBudgetMs: 16_000,
+  optionsOnlyServerBudgetMs: OPTIONS_REGEN_LATENCY_BUDGET.serverBudgetMs,
 
   /**
    * Server wall-clock budget for optional post-resolve narrative expansion.

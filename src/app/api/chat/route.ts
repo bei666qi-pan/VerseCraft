@@ -92,7 +92,7 @@ import {
 } from "@/lib/chatQueue/service";
 import { CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
-import { CHAT_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
+import { CHAT_LATENCY_BUDGET, OPTIONS_REGEN_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
 import {
   loadVerseCraftEnvFilesOnce,
@@ -691,24 +691,49 @@ async function postChatInternal(req: Request) {
         })
       : reason;
     // Bounded server deadline; the UI may retry, but this path must not become a long story turn.
+    const optionsRegenStartedAt = Date.now();
+    const optionsServerBudgetMs = Math.max(
+      1_000,
+      Math.min(
+        OPTIONS_REGEN_LATENCY_BUDGET.serverBudgetMs,
+        envNumber("VC_OPTIONS_ONLY_SERVER_BUDGET_MS", VC_WAITING.optionsOnlyServerBudgetMs)
+      )
+    );
     const regen = await generateOptionsOnlyFallback({
       narrative: lastAssistant,
       latestUserInput: packet,
       playerContext: snapshot,
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
-      budgetMs: Math.max(
-        1_000,
-        Math.min(30_000, envNumber("VC_OPTIONS_ONLY_SERVER_BUDGET_MS", VC_WAITING.optionsOnlyServerBudgetMs))
-      ),
+      budgetMs: optionsServerBudgetMs,
       signal: req.signal,
     });
     const shaped = buildOptionsRegenResponse({
       clientTurnModeHint,
       options: regen.ok ? regen.options : [],
       generatorOk: regen.ok,
-      debugReasonCodes: regen.ok ? [] : (regen.debugReasonCodes ?? ["parse_failed"]),
+      debugReasonCodes: regen.ok
+        ? (regen.repairUsed ? ["repair_pass_used"] : [])
+        : (regen.debugReasonCodes ?? ["parse_failed"]),
     });
+    const optionsRegenLatencyMs = Date.now() - optionsRegenStartedAt;
+    const optionsRegenDebugReasonCodes = shaped.debug_reason_codes ?? [];
+    const optionsRegenTimedOut =
+      optionsRegenDebugReasonCodes.some((code) => /timeout|abort/i.test(code)) ||
+      (!regen.ok && /timeout|abort/i.test(regen.reason));
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[api/chat][options_regen_only_metrics]", {
+        requestId,
+        options_regen_latency_ms: optionsRegenLatencyMs,
+        options_regen_trigger: clientReason || "unknown",
+        options_regen_success: shaped.ok,
+        options_regen_failure_reason: regen.ok ? null : regen.reason,
+        options_regen_repair_used: regen.ok ? Boolean(regen.repairUsed) : optionsRegenDebugReasonCodes.includes("repair_pass_used"),
+        options_regen_timed_out: optionsRegenTimedOut,
+        options_regen_semantic_reject_codes: optionsRegenDebugReasonCodes.filter((code) => /reject/i.test(code)),
+        options_regen_server_budget_ms: optionsServerBudgetMs,
+      });
+    }
     if (!regen.ok && process.env.NODE_ENV !== "production") {
       console.warn("[api/chat][options_regen_only_failed]", {
         requestId,
