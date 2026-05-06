@@ -50,7 +50,7 @@ import { PROFESSION_IDS } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
 import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
-import { applyBloodErase, extractGreenTips } from "@/features/play/render/narrative";
+import { sanitizeNarrativeDisplayMarkers } from "@/features/play/render/narrative";
 import {
   sanitizeDisplayedNarrative,
   sanitizeDisplayedOptionText,
@@ -179,6 +179,7 @@ const EMPTY_CHAT_QUEUE_STATE: ChatQueueUiState = {
   etaSeconds: null,
   retryAfterSeconds: null,
   message: "",
+  wasQueued: false,
 };
 
 function safeChatQueueNumber(value: unknown): number | null {
@@ -186,13 +187,13 @@ function safeChatQueueNumber(value: unknown): number | null {
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : null;
 }
 
-function messageForChatQueueStatus(status: ChatQueueUiStatus): string {
+function messageForChatQueueStatus(status: ChatQueueUiStatus, wasQueued = false): string {
   switch (status) {
     case "queued":
       return "当前生成通道繁忙，已为你保留本次行动";
     case "ready":
     case "running":
-      return "轮到你了，正在接入主笔通道";
+      return wasQueued ? "轮到你了，正在接入主笔通道" : "";
     case "expired":
       return "排队已过期，请重新提交本次行动";
     case "failed":
@@ -211,7 +212,11 @@ function normalizeChatQueuePayload(raw: unknown): ChatQueueApiPayload | null {
   return raw as ChatQueueApiPayload;
 }
 
-function buildChatQueueUiState(payload: ChatQueueApiPayload, fallbackStatus?: ChatQueueUiStatus): ChatQueueUiState {
+function buildChatQueueUiState(
+  payload: ChatQueueApiPayload,
+  fallbackStatus?: ChatQueueUiStatus,
+  options: { wasQueued?: boolean } = {}
+): ChatQueueUiState {
   const rawStatus = typeof payload.status === "string" ? payload.status : fallbackStatus;
   const status: ChatQueueUiStatus =
     rawStatus === "queued" ||
@@ -223,6 +228,7 @@ function buildChatQueueUiState(payload: ChatQueueApiPayload, fallbackStatus?: Ch
     rawStatus === "rejected"
       ? rawStatus
       : "queued";
+  const wasQueued = Boolean(options.wasQueued || status === "queued");
   return {
     active: status !== "cancelled",
     queueId: typeof payload.queueId === "string" ? payload.queueId : null,
@@ -230,7 +236,8 @@ function buildChatQueueUiState(payload: ChatQueueApiPayload, fallbackStatus?: Ch
     position: safeChatQueueNumber(payload.position),
     etaSeconds: safeChatQueueNumber(payload.etaSeconds),
     retryAfterSeconds: safeChatQueueNumber(payload.retryAfterSeconds),
-    message: messageForChatQueueStatus(status),
+    message: messageForChatQueueStatus(status, wasQueued),
+    wasQueued,
   };
 }
 
@@ -477,7 +484,7 @@ function PlayContent() {
   const setVolume = useGameStore((s) => s.setVolume);
   const readingPreferences = useGameStore((s) => s.readingPreferences);
   const setReadingPreference = useGameStore((s) => s.setReadingPreference);
-  const [pendingHallucinationCheck, setPendingHallucinationCheck] = useState(false);
+  const [, setPendingHallucinationCheck] = useState(false);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
   const [talentEffectType, setTalentEffectType] = useState<EchoTalent | null>(null);
@@ -983,26 +990,6 @@ function PlayContent() {
       .map(({ l, idx }) => ({ role: l!.role as "assistant" | "user", content: String(l!.content), logIndex: idx }));
   }, [logs, isStreamVisualActive]);
 
-  // 仅保留助手叙事日志，供绿字提取与最新助手文本推断使用
-  const assistantOnlyMessages = useMemo(() => {
-    return (logs ?? [])
-      .filter((l) => l && l.role === "assistant" && typeof l.content === "string")
-      .map((l) => String(l.content));
-  }, [logs]);
-
-  const latestAssistantRaw = useMemo(() => {
-    if (streamVisualForTypewriter) {
-      return typeof smoothNarrative === "string" && smoothNarrative.length > 0
-        ? smoothNarrative
-        : narrativeRef.current ?? "";
-    }
-    if (liveNarrative) return liveNarrative;
-    if (assistantOnlyMessages.length > 0) return assistantOnlyMessages[assistantOnlyMessages.length - 1] ?? "";
-    return "";
-  }, [streamVisualForTypewriter, smoothNarrative, liveNarrative, assistantOnlyMessages]);
-
-  const greenTips = useMemo(() => extractGreenTips(latestAssistantRaw), [latestAssistantRaw]);
-
   const prevIsStreamVisualActiveRef = useRef(false);
   const onScrollContainer = useCallback(() => {
     const gap = getDocumentDistanceToBottom();
@@ -1074,6 +1061,14 @@ function PlayContent() {
   useEffect(() => {
     setMasterVolume(volume);
   }, [volume]);
+
+  const handleSetVolume = useCallback(
+    (value: number) => {
+      setVolume(value);
+      setMasterVolume(value);
+    },
+    [setVolume]
+  );
 
   useEffect(() => {
     if (!audioMuted) updateSanityFilter(sanity);
@@ -1407,7 +1402,7 @@ function PlayContent() {
           clearPendingChatQueueAction();
           return null;
         }
-        const nextState = buildChatQueueUiState(payload);
+        const nextState = buildChatQueueUiState(payload, undefined, { wasQueued: true });
         setChatQueueState(nextState);
         if (payload.status === "running" || payload.status === "ready") {
           return queueId;
@@ -1460,7 +1455,7 @@ function PlayContent() {
     };
 
     if (args.resumeQueueId) {
-      setChatQueueState(buildChatQueueUiState({ queueId: args.resumeQueueId, status: "queued" }, "queued"));
+      setChatQueueState(buildChatQueueUiState({ queueId: args.resumeQueueId, status: "queued" }, "queued", { wasQueued: true }));
       const readyQueueId = await waitForChatQueueReady(args.resumeQueueId, {
         ...pendingBase,
         queueId: args.resumeQueueId,
@@ -1487,19 +1482,23 @@ function PlayContent() {
       setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
       return null;
     }
-    const nextState = buildChatQueueUiState(payload, res.ok ? "running" : "rejected");
-    setChatQueueState(nextState);
+    const nextState = buildChatQueueUiState(payload, res.ok ? "running" : "rejected", {
+      wasQueued: payload.status === "queued",
+    });
     if (!res.ok || payload.status === "rejected") {
+      setChatQueueState(nextState);
       return false;
     }
     const queueId = typeof payload.queueId === "string" ? payload.queueId : null;
     if (!queueId) return null;
     if (payload.status === "queued") {
+      setChatQueueState(nextState);
       const pending = { ...pendingBase, queueId };
       pendingQueueActionRef.current = pending;
       savePendingChatQueueAction(pending);
       return (await waitForChatQueueReady(queueId, pending)) ?? false;
     }
+    setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
     return queueId;
   }
 
@@ -1972,10 +1971,7 @@ function PlayContent() {
     parsedPostDrainRef.current = null;
     setLiveNarrative("");
 
-    const sanityAtStart = useGameStore.getState().stats?.sanity ?? 0;
-    const prevPending = pendingHallucinationCheck;
     setPendingHallucinationCheck(false);
-    const shouldApplyHallucination = prevPending && sanityAtStart < 20 && Math.random() < 0.3;
 
     if (!isResume && !isSystemAction) {
       useGameStore.getState().pushLog({ role: "user", content: trimmed });
@@ -2428,10 +2424,11 @@ function PlayContent() {
       return;
     }
 
-    if (!parsed.is_action_legal) {
+    const shouldShowComplianceHint = !isOpeningSystemRequest;
+    if (shouldShowComplianceHint && !parsed.is_action_legal) {
       triggerComplianceHint();
     }
-    if (parsed.security_meta?.action && parsed.security_meta.action !== "allow") {
+    if (shouldShowComplianceHint && parsed.security_meta?.action && parsed.security_meta.action !== "allow") {
       triggerComplianceHint();
     }
 
@@ -2474,7 +2471,7 @@ function PlayContent() {
     const rawNarrative = typeof parsed.narrative === "string" ? parsed.narrative : String(parsed.narrative ?? "");
     let narrativeToPush: string;
     try {
-      const prepared = (shouldApplyHallucination ? applyBloodErase(rawNarrative) : rawNarrative).slice(0, 50000);
+      const prepared = sanitizeNarrativeDisplayMarkers(rawNarrative).slice(0, 50000);
       const shown = sanitizeDisplayedNarrative(prepared);
       narrativeToPush = shown.text;
     } catch {
@@ -2790,7 +2787,7 @@ function PlayContent() {
       }
     }
 
-    let dmg = clampInt(parsed.sanity_damage ?? 0, 0, 9999);
+    let dmg = isOpeningSystemRequest ? 0 : clampInt(parsed.sanity_damage ?? 0, 0, 9999);
     const threatIsHot = Array.isArray((parsed as { main_threat_updates?: unknown[] }).main_threat_updates)
       && ((parsed as { main_threat_updates?: unknown[] }).main_threat_updates ?? []).some((u) => {
         if (!u || typeof u !== "object" || Array.isArray(u)) return false;
@@ -3649,7 +3646,7 @@ function PlayContent() {
                 setAudioMuted(isMuted());
               }}
               readingPreferences={readingPreferences}
-              setVolume={setVolume}
+              setVolume={handleSetVolume}
               volume={volume}
             />
           ) : (
@@ -3710,8 +3707,6 @@ function PlayContent() {
                       isLowSanity={isLowSanity}
                       isDarkMoon={isDarkMoon}
                       liveNarrative={liveNarrative}
-                      greenTips={greenTips}
-                      firstTimeHint={firstTimeHint}
                       plainOnlyNewTurn={false}
                       plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                       embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}

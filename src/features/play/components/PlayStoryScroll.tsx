@@ -23,6 +23,7 @@ export type ChatQueuePanelState = {
   etaSeconds: number | null;
   retryAfterSeconds: number | null;
   message: string;
+  wasQueued?: boolean;
 };
 
 const STORY_TYPOGRAPHY_CLASS =
@@ -182,6 +183,7 @@ const ChatQueuePanel = memo(function ChatQueuePanel({
       : "预计等待时间正在计算";
   const running = state.status === "ready" || state.status === "running";
   const terminal = state.status === "failed" || state.status === "expired" || state.status === "rejected";
+  if (running && !state.wasQueued) return null;
 
   return (
     <div
@@ -191,9 +193,7 @@ const ChatQueuePanel = memo(function ChatQueuePanel({
       <div className="flex items-start gap-3">
         {!terminal ? <VcSpinner size={24} strokeWidth={1.8} className="mt-0.5 shrink-0" /> : null}
         <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-sm font-semibold">
-            {running ? "轮到你了，正在接入主笔通道" : state.message}
-          </p>
+          <p className="text-sm font-semibold">{state.message}</p>
           {!running && !terminal ? (
             <>
               <p className="text-xs text-[#5f756f]">{positionText}</p>
@@ -234,8 +234,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   isLowSanity,
   isDarkMoon,
   liveNarrative,
-  greenTips,
-  firstTimeHint,
   plainOnlyNewTurn,
   plainOnlyLogIndexMin,
   embeddedOpeningContent,
@@ -263,8 +261,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   isLowSanity: boolean;
   isDarkMoon: boolean;
   liveNarrative: string;
-  greenTips: string[];
-  firstTimeHint: string | null;
   plainOnlyNewTurn: boolean;
   plainOnlyLogIndexMin: number;
   /** 尚无助手日志时由前端静态渲染的固定开场正文 */
@@ -361,20 +357,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
 
         {showConflictWhisper && conflictFeedback ? <PlayConflictTurnWhisper vm={conflictFeedback} /> : null}
 
-        {(greenTips.length > 0 || firstTimeHint) && (
-          <div className="mt-2 space-y-1">
-            {firstTimeHint && (
-              <p className="text-sm font-semibold text-[#2f746a]">
-                {firstTimeHint}
-              </p>
-            )}
-            {greenTips.map((tip, idx) => (
-              <p key={idx} className="text-sm font-semibold text-[#4f706a]">
-                {tip}
-              </p>
-            ))}
-          </div>
-        )}
         {children}
       </div>
     </div>

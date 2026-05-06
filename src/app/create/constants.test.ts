@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   BASE_STATS,
   GENDER_OPTIONS,
+  STAT_DESCRIPTIONS,
+  STAT_LABELS,
   TALENTS,
   calculateRemainingPoints,
   isValidCreatePersonality,
@@ -34,4 +36,18 @@ test("create personality validation accepts 2-6 Chinese characters only", () => 
 
 test("create talent list contains six choices", () => {
   assert.equal(TALENTS.length, 6);
+});
+
+test("create page uses origin copy for background stat without changing allocation logic", () => {
+  assert.equal(STAT_LABELS.background, "出身");
+  assert.equal(STAT_DESCRIPTIONS.background, "出身越高，越能获得更多原石。");
+  assert.equal(calculateRemainingPoints({ ...BASE_STATS, background: 5 }), 25);
+});
+
+test("create echo talent descriptions match the public copy", () => {
+  const descByTitle = Object.fromEntries(TALENTS.map((talent) => [talent.title, talent.desc]));
+  assert.equal(descByTitle["时间回溯"], "退回至1小时之前。");
+  assert.equal(descByTitle["命运馈赠"], "得到馈赠的道具。");
+  assert.equal(descByTitle["主角光环"], "短时间内成为真正的主角。");
+  assert.equal(descByTitle["丧钟回响"], "清除一位恶意实体");
 });

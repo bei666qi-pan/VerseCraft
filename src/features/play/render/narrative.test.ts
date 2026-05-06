@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   autoParagraphizeNarrative,
   prepareStreamingNarrativeForRender,
+  sanitizeNarrativeDisplayMarkers,
   splitNarrativeIntoParas,
 } from "./narrative";
 
@@ -31,6 +32,18 @@ test("prepareStreamingNarrativeForRender: removes lone opening **", () => {
 
 test("prepareStreamingNarrativeForRender: keeps paired **", () => {
   assert.equal(prepareStreamingNarrativeForRender("a**b**c"), "a**b**c");
+});
+
+test("sanitizeNarrativeDisplayMarkers: renders blood-marked text as plain story text", () => {
+  assert.equal(sanitizeNarrativeDisplayMarkers("前{{BLOOD}}红字{{/BLOOD}}后"), "前红字后");
+});
+
+test("sanitizeNarrativeDisplayMarkers: removes green tip blocks from story text", () => {
+  assert.equal(sanitizeNarrativeDisplayMarkers("正文^^这是提示词^^继续"), "正文继续");
+});
+
+test("sanitizeNarrativeDisplayMarkers: removes dangling green tip content while streaming", () => {
+  assert.equal(sanitizeNarrativeDisplayMarkers("正文^^未完成提示"), "正文");
 });
 
 test("prepareStreamingNarrativeForRender: leading lone **", () => {

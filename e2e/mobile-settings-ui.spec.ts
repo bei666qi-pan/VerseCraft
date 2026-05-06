@@ -260,9 +260,27 @@ test.describe("mobile settings UI", () => {
       await expectSettingsActionsAboveBottomNav(page);
       await expect(page.getByText("阅读体验")).toBeVisible();
       await expect(page.getByTestId("settings-volume-percent")).toHaveText("50%");
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const volumes = Array.from(document.querySelectorAll<HTMLAudioElement>("[data-testid^='bgm-audio-']"))
+              .map((audio) => audio.volume);
+            return volumes.length > 0 ? Math.round(Math.max(...volumes) * 1000) : -1;
+          })
+        )
+        .toBe(200);
 
       await page.getByTestId("settings-volume-slider").fill("68");
       await expect(page.getByTestId("settings-volume-percent")).toHaveText("68%");
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const volumes = Array.from(document.querySelectorAll<HTMLAudioElement>("[data-testid^='bgm-audio-']"))
+              .map((audio) => audio.volume);
+            return volumes.length > 0 ? Math.round(Math.max(...volumes) * 1000) : -1;
+          })
+        )
+        .toBe(272);
       const mute = page.getByTestId("settings-mute-button");
       const initialMuteLabel = await mute.getAttribute("aria-label");
       await mute.click();
@@ -312,6 +330,7 @@ test.describe("mobile settings UI", () => {
   }
 
   test("direct exit opens settlement and writes local history", async ({ page }) => {
+    await page.setExtraHTTPHeaders({ "x-forwarded-for": "198.51.100.232" });
     await page.setViewportSize({ width: 390, height: 844 });
     await openSeededPlay(page);
 

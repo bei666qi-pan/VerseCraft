@@ -14,6 +14,11 @@ import { isMuted } from "@/lib/audioEngine";
 const CROSSFADE_DURATION_MS = 2000;
 const BASE_VOLUME = 0.4;
 
+export function getBgmElementVolume(percent: number): number {
+  const safePercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 50;
+  return (safePercent / 100) * BASE_VOLUME;
+}
+
 function shouldLoop(track: BgmTrackKey): boolean {
   return getBgmMeta(track).playback === "loop";
 }
@@ -33,9 +38,9 @@ export function BgmPlayer() {
   const rafRef = useRef<number | null>(null);
   const fallbackTimerRef = useRef<number | null>(null);
   const mutedRef = useRef(muted);
-  const targetVolumeRef = useRef((volume / 100) * BASE_VOLUME);
+  const targetVolumeRef = useRef(getBgmElementVolume(volume));
 
-  const targetVolume = (volume / 100) * BASE_VOLUME;
+  const targetVolume = getBgmElementVolume(volume);
 
   useEffect(() => {
     mutedRef.current = muted;
@@ -183,6 +188,10 @@ export function BgmPlayer() {
     active.src = active.src || getBgmSrc(activeTrack);
     active.loop = shouldLoop(activeTrack);
     active.volume = targetVolume;
+    if (rafRef.current == null) {
+      const inactive = activeRef.current === "a" ? b : a;
+      inactive.volume = 0;
+    }
     if (active.paused) {
       void active.play().catch(() => {});
     }
@@ -215,8 +224,8 @@ export function BgmPlayer() {
 
   return (
     <div className="sr-only" aria-hidden>
-      <audio ref={setRefA} preload="metadata" onEnded={handleEnded} />
-      <audio ref={setRefB} preload="metadata" onEnded={handleEnded} />
+      <audio ref={setRefA} data-testid="bgm-audio-a" preload="metadata" onEnded={handleEnded} />
+      <audio ref={setRefB} data-testid="bgm-audio-b" preload="metadata" onEnded={handleEnded} />
     </div>
   );
 }

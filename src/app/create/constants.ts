@@ -29,7 +29,7 @@ export const STAT_LABELS: Record<StatType, string> = {
   agility: "敏捷",
   luck: "幸运",
   charm: "魅力",
-  background: "账本信用",
+  background: "出身",
 };
 
 export const STAT_DESCRIPTIONS: Record<StatType, string> = {
@@ -37,7 +37,7 @@ export const STAT_DESCRIPTIONS: Record<StatType, string> = {
   agility: "敏捷越高，越能在危机中找到转机",
   luck: "幸运越高，越能得到关键提示",
   charm: "魅力越高，越能改变对话走向",
-  background: "账本信用越高，初始登记额度越宽\n初始原石 = 10 + 账本信用。",
+  background: "出身越高，越能获得更多原石。",
 };
 
 export const TALENTS: readonly {
@@ -46,12 +46,12 @@ export const TALENTS: readonly {
   cd: string;
   desc: string;
 }[] = [
-  { key: "时间回溯", title: "时间回溯", cd: "冷却：6 小时", desc: "退回至 1 小时前，删除最近 2 条记录。" },
-  { key: "命运馈赠", title: "命运馈赠", cd: "冷却：10 小时", desc: "尝试获得额外灵感，但可能引发风险。" },
-  { key: "主角光环", title: "主角光环", cd: "冷却：8 小时", desc: "短时间降低失败惩罚，并触发 1 次收益事件。" },
+  { key: "时间回溯", title: "时间回溯", cd: "冷却：6 小时", desc: "退回至1小时之前。" },
+  { key: "命运馈赠", title: "命运馈赠", cd: "冷却：10 小时", desc: "得到馈赠的道具。" },
+  { key: "主角光环", title: "主角光环", cd: "冷却：8 小时", desc: "短时间内成为真正的主角。" },
   { key: "生命汇源", title: "生命汇源", cd: "冷却：10 小时", desc: "立即恢复最多 20 点精神。" },
   { key: "洞察之眼", title: "洞察之眼", cd: "冷却：8 小时", desc: "提示当前最可靠的推进方向。" },
-  { key: "丧钟回响", title: "丧钟回响", cd: "冷却：30 小时", desc: "清除当前场景中的恶意目标，部分目标免疫。" },
+  { key: "丧钟回响", title: "丧钟回响", cd: "冷却：30 小时", desc: "清除一位恶意实体" },
 ] as const;
 
 export function isValidCreatePersonality(value: string): boolean {

@@ -129,6 +129,57 @@ function buildSseFinalFrame() {
 }
 
 test.describe("chat queue UI", () => {
+  test("does not show queue-running copy when admission starts immediately", async ({ page }) => {
+    test.setTimeout(60_000);
+    let queueSubmissions = 0;
+    let chatSubmissions = 0;
+    let releaseChat!: () => void;
+    const chatRelease = new Promise<void>((resolve) => {
+      releaseChat = resolve;
+    });
+
+    await page.route("**/api/chat/queue", async (route) => {
+      queueSubmissions += 1;
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          queueId: "vcq_e2e_direct_running",
+          requestId: "rq-e2e-direct-running",
+          status: "running",
+          position: 0,
+          etaSeconds: 0,
+        }),
+      });
+    });
+
+    await page.route("**/api/chat", async (route) => {
+      chatSubmissions += 1;
+      await chatRelease;
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+        body: buildSseFinalFrame(),
+      });
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedPlayableState(page);
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    await expect(page.getByTestId("mobile-action-dock")).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("manual-action-input").fill("查看门后");
+    await page.getByTestId("send-action-button").click();
+
+    await expect.poll(() => queueSubmissions, { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => chatSubmissions, { timeout: 10_000 }).toBe(1);
+    await expect(page.getByTestId("chat-queue-status")).toHaveCount(0);
+    await expect(page.getByText("轮到你了，正在接入主笔通道")).toHaveCount(0);
+
+    releaseChat();
+    await expect(page.locator("body")).toContainText("门后的摩擦声停住了", { timeout: 10_000 });
+  });
+
   test("shows position and ETA, then resumes the original stream without duplicate queue tickets", async ({ page }) => {
     test.setTimeout(90_000);
     const errors: string[] = [];

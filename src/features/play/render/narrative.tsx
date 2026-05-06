@@ -4,7 +4,6 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import { LOCATION_LABELS } from "./locationLabels";
 
 export const BLOOD_MARKER = "{{BLOOD}}";
-const BLOOD_END = "{{/BLOOD}}";
 const AUTO_PARAGRAPH_ENABLED = process.env.NEXT_PUBLIC_CHAT_AUTO_PARAGRAPH !== "0";
 const AUTO_PARAGRAPH_MIN_CHARS = (() => {
   const raw = Number(process.env.NEXT_PUBLIC_CHAT_AUTO_PARAGRAPH_MIN_CHARS ?? "100");
@@ -126,32 +125,26 @@ export function prepareStreamingNarrativeForRender(s: string): string {
   return t;
 }
 
-export function applyBloodErase(narrative: string): string {
-  const parts = narrative.split(/([。！？\n]+)/);
-  const sentences: string[] = [];
-  let buf = "";
-  for (const p of parts) {
-    if (/^[。！？\n]+$/.test(p)) {
-      if (buf.trim()) sentences.push(buf + p);
-      buf = "";
-    } else {
-      buf += p;
-    }
+export function sanitizeNarrativeDisplayMarkers(text: string): string {
+  let out = typeof text === "string" ? text : "";
+  out = out
+    .replace(/\{\{blood\}\}/gi, "{{BLOOD}}")
+    .replace(/\{\{\/blood\}\}/gi, "{{/BLOOD}}");
+  out = out.replace(/\^\^[\s\S]*?\^\^/g, "");
+  const danglingGreenTip = out.lastIndexOf("^^");
+  if (danglingGreenTip !== -1) {
+    out = out.slice(0, danglingGreenTip);
   }
-  if (buf.trim()) sentences.push(buf);
-  const meaningful = sentences.filter((s) => s.trim().length > 4);
-  if (meaningful.length < 2) return narrative;
-  const startIdx = Math.min(
-    Math.floor(Math.random() * (meaningful.length - 1)),
-    meaningful.length - 2
-  );
-  const s0 = meaningful[startIdx];
-  const s1 = meaningful[startIdx + 1];
-  const idx0 = narrative.indexOf(s0);
-  const idx1 = narrative.indexOf(s1, idx0);
-  if (idx0 === -1 || idx1 === -1) return narrative;
-  const end = idx1 + s1.length;
-  return `${narrative.slice(0, idx0)}${BLOOD_MARKER}${narrative.slice(idx0, end)}${BLOOD_END}${narrative.slice(end)}`;
+  out = out.replace(/\{\{BLOOD\}\}([\s\S]*?)\{\{\/BLOOD\}\}/g, "$1");
+  out = out
+    .replace(/\{\{BLOOD\}\}/g, "")
+    .replace(/\{\{\/BLOOD\}\}/g, "")
+    .replace(/\^\^/g, "");
+  return out;
+}
+
+export function applyBloodErase(narrative: string): string {
+  return narrative;
 }
 
 /**
@@ -219,38 +212,26 @@ export function renderNarrativeText(
         minParaChars: AUTO_PARAGRAPH_MIN_CHARS,
       });
     }
+    normalized = sanitizeNarrativeDisplayMarkers(normalized);
     const stripOrphans = (s: string) =>
-      s.replace(/\{\{BLOOD\}\}/g, "").replace(/\{\{\/BLOOD\}\}/g, "").replace(/\^\^/g, "").replace(/\*\*/g, "");
+      sanitizeNarrativeDisplayMarkers(s).replace(/\*\*/g, "");
     if (plainOnly) {
       const plain = normalized
         .replace(/\*\*([^*]*)\*\*/g, "$1")
-        .replace(/\^\^([^^]*)\^\^/g, "$1")
         .replace(/\{\{BLOOD\}\}([\s\S]*?)\{\{\/BLOOD\}\}/g, "$1");
       return <span>{stripOrphans(plain)}</span>;
     }
-    const parts = normalized.split(/(\*\*[^*]*\*\*|\^\^[^^]*\^\^|\{\{BLOOD\}\}[\s\S]*?\{\{\/BLOOD\}\})/g);
+    const parts = normalized.split(/(\*\*[^*]*\*\*)/g);
     return parts.map((part, i) => {
       const m = part.match(/^\*\*(.+)\*\*$/);
       if (m)
         return (
           <strong
             key={i}
-            className="font-bold text-red-600 drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]"
+            className="font-semibold text-inherit"
           >
             {m[1]}
           </strong>
-        );
-      const blood = part.match(/^\{\{BLOOD\}\}([\s\S]*)\{\{\/BLOOD\}\}$/);
-      if (blood)
-        return (
-          <span key={i} className="relative inline-block">
-            <span className="relative z-0 text-inherit opacity-30">{blood[1]}</span>
-            <span
-              className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-br from-red-900/85 via-red-800/80 to-red-950/90 mix-blend-multiply"
-              style={{ borderRadius: "2px" }}
-              aria-hidden
-            />
-          </span>
         );
       return <span key={i}>{stripOrphans(part)}</span>;
     });
@@ -260,41 +241,8 @@ export function renderNarrativeText(
 }
 
 export function extractGreenTips(text: string): string[] {
-  if (typeof text !== "string" || !text.includes("^^")) return [];
-  const tips: string[] = [];
-  const seen = new Set<string>();
-  const regex = /\^\^([\s\S]*?)\^\^/g;
-  const normalizeTip = (input: string): string => {
-    return input
-      .replace(/\s+/g, "")
-      .replace(/[，。、“”‘’：；！？,.!?:;'"()（）【】\[\]—\-]/g, "")
-      .replace(/属性面板|属性|加点/g, "潜能赋予")
-      .replace(/理智值\/生命值|理智值|理智|生命值/g, "精神")
-      .replace(/选项输入切换为手动输入|将选项切换为手动输入|切换到手动输入/g, "手动输入")
-      .replace(/回理智|恢复理智|回精神锚点|恢复精神锚点/g, "回精神")
-      .trim();
-  };
-  const MANUAL_INPUT_COMPLIANCE_KEY =
-    "你可以选择手动输入自由书写你的意志若手动输入不可能的事情则会被抹杀原石可在设置中用于潜能赋予或回精神";
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const tip = match[1]?.trim();
-    if (!tip) continue;
-    const key = normalizeTip(tip);
-    if (!key) continue;
-    const isManualInputComplianceTip =
-      key.includes("手动输入") &&
-      key.includes("不可能") &&
-      key.includes("抹杀") &&
-      key.includes("原石") &&
-      key.includes("潜能赋予") &&
-      key.includes("精神");
-    const dedupeKey = isManualInputComplianceTip ? MANUAL_INPUT_COMPLIANCE_KEY : key;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-    tips.push(tip);
-  }
-  return tips;
+  void text;
+  return [];
 }
 
 export const DMNarrativeBlock = memo(function DMNarrativeBlock({

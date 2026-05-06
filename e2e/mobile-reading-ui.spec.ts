@@ -231,6 +231,38 @@ function buildSseFinalFrame() {
   })}\n\n`;
 }
 
+function buildOpeningPenaltyFrame() {
+  return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
+    is_action_legal: false,
+    sanity_damage: 1,
+    narrative: "开局系统回合返回了安全降级，但不应惩罚刚进入剧情的玩家。",
+    is_death: false,
+    consumes_time: true,
+    options,
+    security_meta: { action: "degrade", reason: "e2e_opening_guard" },
+  })}\n\n`;
+}
+
+async function readPersistedSanity(page: Page) {
+  return page.evaluate(async ({ dbName, storeName, key }) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(dbName);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+    });
+    const raw = await new Promise<unknown>((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const req = tx.objectStore(storeName).get(key);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => resolve(req.result);
+      tx.oncomplete = () => db.close();
+    });
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const state = parsed && typeof parsed === "object" ? (parsed as { state?: { stats?: { sanity?: unknown } } }).state : null;
+    return typeof state?.stats?.sanity === "number" ? state.stats.sanity : null;
+  }, { dbName: DB_NAME, storeName: STORE_NAME, key: KEY_MAIN });
+}
+
 async function installChatSseMock(page: Page) {
   const submittedActions: string[] = [];
   await page.route("**/api/chat", async (route) => {
@@ -513,6 +545,33 @@ async function expectReferenceBottomNavIcons(page: Page, viewportName: string) {
 }
 
 test.describe("mobile reading UI", () => {
+  test("does not punish the cold opening system round when upstream returns a safety fallback", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    let openingRequests = 0;
+
+    await page.route("**/api/chat", async (route) => {
+      openingRequests += 1;
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+        body: buildOpeningPenaltyFrame(),
+      });
+    });
+
+    await openSeededPlay(page, {
+      logs: [],
+      currentOptions: [],
+      recentOptions: [],
+      inputMode: "options",
+      time: { day: 0, hour: 0 },
+      stats: { sanity: 30, agility: 20, luck: 20, charm: 20, background: 20 },
+    });
+
+    await expect.poll(() => openingRequests, { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect(page.getByTestId("play-compliance-paper-card")).toHaveCount(0);
+    await expect.poll(() => readPersistedSanity(page), { timeout: 10_000 }).toBe(30);
+  });
+
   test("renders the mobile reading shell at 390x844 and captures collapsed and expanded screenshots", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const errors = trackPageErrors(page);
