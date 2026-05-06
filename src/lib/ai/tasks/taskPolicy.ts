@@ -182,6 +182,17 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
+  DIRECTOR_PLAN_CRITIC: {
+    task: "DIRECTOR_PLAN_CRITIC",
+    primaryRole: CONTROL,
+    fallbackRoles: [MAIN],
+    stream: false,
+    maxTokens: 768,
+    temperature: 0,
+    timeoutMs: 12_000,
+    budgetLevel: "medium",
+    responseFormatJsonObject: true,
+  },
   DEV_ASSIST: {
     task: "DEV_ASSIST",
     primaryRole: REASONER,
@@ -218,6 +229,7 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
   NPC_EMOTION_POLISH: new Set([REASONER]),
   WORLDBUILD_OFFLINE: new Set([ENHANCE]),
   STORYLINE_SIMULATION: new Set([ENHANCE]),
+  DIRECTOR_PLAN_CRITIC: new Set([REASONER, ENHANCE]),
   DEV_ASSIST: new Set([ENHANCE]),
   MEMORY_COMPRESSION: new Set([ENHANCE]),
 };

@@ -876,6 +876,37 @@ export async function runBackofficeReasonerJsonTask(params: {
   });
 }
 
+/** 后台导演候选计划 critic，只做验收把关，不写玩家可见正文。 */
+export async function runDirectorPlanCriticTask(params: {
+  messages: ChatMessage[];
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+  requestTimeoutMs?: number;
+  skipCache?: boolean;
+  devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
+}): Promise<AIResponse | AIErrorResponse> {
+  return executeChatCompletion({
+    task: "DIRECTOR_PLAN_CRITIC",
+    messages: params.messages,
+    ctx: {
+      requestId: params.ctx.requestId,
+      task: "DIRECTOR_PLAN_CRITIC",
+      userId: params.ctx.userId,
+      sessionId: params.ctx.sessionId,
+      path: params.ctx.path,
+      tags: params.ctx.tags,
+    },
+    signal: params.signal,
+    requestTimeoutMs: params.requestTimeoutMs,
+    skipCache: params.skipCache ?? true,
+    devOverrides: {
+      responseFormatJsonObject: true,
+      temperature: 0,
+      ...(params.devOverrides ?? {}),
+    },
+  });
+}
+
 /** 会话记忆压缩（长对话摘要），固定 MEMORY_COMPRESSION。 */
 export async function compressSessionMemory(params: {
   messages: ChatMessage[];

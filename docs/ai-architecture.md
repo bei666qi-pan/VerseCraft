@@ -111,3 +111,6 @@
   - `world_engine_agenda_snapshots`（会话 agenda 快照）
 - Redis 仅用于去重锁/热缓存协调；长期事实源为 PostgreSQL。
 - 成功写入后递增 `vc_world_meta.world_revision`，供在线 retrieval 对齐后台增量版本。
+# World Director 补充
+
+后台导演闭环的详细设计见 [`docs/reasoner-world-director.md`](reasoner-world-director.md)。关键边界：`PLAYER_CHAT` 仍禁止路由到 `reasoner`；`/api/chat` 只做短超时、fail-open 的 due agenda 读取；reasoner 只在 worker/离线任务中生成 `director_plan_v1`，经 validator/可选 critic 后写入 agenda。

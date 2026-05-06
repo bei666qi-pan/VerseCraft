@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createEmptyDirectorState, createEmptyIncidentQueue } from "./types";
 import { postTurnStoryDirectorUpdate } from "./postTurn";
 import { buildDirectorDigestForServer } from "./prompt";
-import { buildServerDirectorHintBlock } from "./serverHint";
+import { buildDirectorAgendaHintBlock, buildServerDirectorHintBlock } from "./serverHint";
 
 function mkState(overrides?: Partial<ReturnType<typeof createEmptyDirectorState>>) {
   return { ...createEmptyDirectorState(0), ...(overrides ?? {}) } as any;
@@ -95,5 +95,24 @@ test("directorDigest and server hint are length-capped", () => {
   assert.ok(dig.digest.length <= 220);
   const hint = buildServerDirectorHintBlock(dig);
   assert.ok(hint.length <= 600);
+});
+
+test("director agenda hint block only exposes sanitized soft constraints", () => {
+  const hint = buildDirectorAgendaHintBlock([
+    {
+      id: 1,
+      eventCode: "EV_SOFT_CLUE",
+      title: "soft clue",
+      injectionHint: "let the hallway light flicker near the old notice board",
+      triggerConditions: ["player stays near corridor"],
+      agencyConstraints: ["player can ignore or avoid it"],
+      forbiddenOutcomes: ["do not reveal the hidden culprit"],
+      salience: 0.9,
+    },
+  ]);
+  assert.match(hint, /EV_SOFT_CLUE/);
+  assert.match(hint, /player can ignore/);
+  assert.doesNotMatch(hint, /private_hooks/);
+  assert.doesNotMatch(hint, /must_not_surface_directly/);
 });
 

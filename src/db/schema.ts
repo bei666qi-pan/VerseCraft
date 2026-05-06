@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   bigserial,
+  bigint,
   boolean,
   date,
   index,
@@ -930,11 +931,27 @@ export const worldEngineEventQueue = pgTable(
     priority: varchar("priority", { length: 16 }).notNull().default("low"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     status: varchar("status", { length: 32 }).notNull().default("pending"),
+    dueTurnIndex: integer("due_turn_index"),
+    ttlTurns: integer("ttl_turns"),
+    expiresTurnIndex: integer("expires_turn_index"),
+    injectedTurnIndex: integer("injected_turn_index"),
+    resolvedTurnIndex: integer("resolved_turn_index"),
+    salience: integer("salience").notNull().default(0),
+    agencyRisk: varchar("agency_risk", { length: 16 }),
+    continuityRisk: varchar("continuity_risk", { length: 16 }),
+    spoilerRisk: varchar("spoiler_risk", { length: 16 }),
+    revealPolicy: varchar("reveal_policy", { length: 24 }),
+    injectionHint: text("injection_hint"),
+    agencyConstraints: jsonb("agency_constraints").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    forbiddenOutcomes: jsonb("forbidden_outcomes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    dedupKey: varchar("dedup_key", { length: 191 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     sessionStatusDueIdx: index("world_engine_event_queue_session_status_due_idx").on(table.sessionId, table.status, table.dueInTurns),
     eventCodeIdx: index("world_engine_event_queue_event_code_idx").on(table.eventCode),
+    directorDueIdx: index("world_engine_event_queue_director_due_idx").on(table.sessionId, table.status, table.dueTurnIndex),
+    directorDedupUnique: uniqueIndex("world_engine_event_queue_director_dedup_unique").on(table.sessionId, table.eventCode, table.dedupKey),
   })
 );
 
@@ -952,6 +969,25 @@ export const worldEngineAgendaSnapshots = pgTable(
   (table) => ({
     sessionRevisionUnique: uniqueIndex("world_engine_agenda_session_revision_unique").on(table.sessionId, table.agendaRevision),
     sessionCreatedIdx: index("world_engine_agenda_session_created_idx").on(table.sessionId, table.createdAt),
+  })
+);
+
+export const worldEngineDirectorState = pgTable(
+  "world_engine_director_state",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    turnIndex: integer("turn_index").notNull().default(0),
+    phase: varchar("phase", { length: 24 }).notNull().default("quiet"),
+    pacingJson: jsonb("pacing_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    recentDirectorIntent: text("recent_director_intent"),
+    worldRevision: bigint("world_revision", { mode: "bigint" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionUnique: uniqueIndex("world_engine_director_state_session_unique").on(table.sessionId),
+    userUpdatedIdx: index("world_engine_director_state_user_updated_idx").on(table.userId, table.updatedAt),
   })
 );
 

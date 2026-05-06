@@ -41,8 +41,21 @@ export type DecideBackgroundTickArgs = {
   latestUserInput: string;
   dmRecord: Record<string, unknown> | null;
   playerLocation: string | null;
+  previousPlayerLocation?: string | null;
   npcLocationUpdateCount: number;
   preflightRiskTags: readonly string[];
+  minTriggerGapTurns?: number;
+  maxPendingAgenda?: number;
+  pendingAgendaCount?: number;
+  lastWorldEngineTurn?: number | null;
+  progresslessTurnCount?: number;
+  repeatedInvestigationCount?: number;
+  dueHookCount?: number;
+  dueNpcAgendaCount?: number;
+  clueCount?: number;
+  keyClueRank?: number;
+  currentTension?: number | null;
+  recentHighPressureTurns?: number;
 };
 
 export function decideBackgroundTick(
@@ -58,9 +71,22 @@ export function decideBackgroundTick(
     turnIndex: args.turnIndex,
     latestUserInput: args.latestUserInput,
     playerLocation: args.playerLocation,
+    previousPlayerLocation: args.previousPlayerLocation,
     npcLocationUpdateCount: args.npcLocationUpdateCount,
     dmRecord: args.dmRecord,
     preflightRiskTags: [...args.preflightRiskTags],
+    minTriggerGapTurns: args.minTriggerGapTurns,
+    maxPendingAgenda: args.maxPendingAgenda,
+    pendingAgendaCount: args.pendingAgendaCount,
+    lastWorldEngineTurn: args.lastWorldEngineTurn,
+    progresslessTurnCount: args.progresslessTurnCount,
+    repeatedInvestigationCount: args.repeatedInvestigationCount,
+    dueHookCount: args.dueHookCount,
+    dueNpcAgendaCount: args.dueNpcAgendaCount,
+    clueCount: args.clueCount,
+    keyClueRank: args.keyClueRank,
+    currentTension: args.currentTension,
+    recentHighPressureTurns: args.recentHighPressureTurns,
   });
   if (triggers.length === 0) {
     return { shouldEnqueue: false, triggers: [], skipReason: "no_triggers" };
@@ -163,6 +189,7 @@ export function scheduleBackgroundWorldTick(
         controlRiskTags: [...args.preflightRiskTags],
         dmNarrativePreview: args.dmNarrativePreview.slice(0, 1200),
         playerLocation: args.playerLocation,
+        previousPlayerLocation: args.previousPlayerLocation,
         npcLocationUpdateCount: args.npcLocationUpdateCount,
         turnIndex: args.turnIndex,
       });

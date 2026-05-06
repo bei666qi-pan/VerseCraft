@@ -1,0 +1,134 @@
+[
+  {
+    "id": "normal_exploration",
+    "objective": "A quiet exploration turn should allow a low-risk soft clue.",
+    "triggerContext": { "turnIndex": 3, "latestUserInput": "inspect the notice board", "playerLocation": "2F_Corridor", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [] },
+    "candidate": { "event_code": "EV_SOFT_CLUE", "target_phase": "build_up" },
+    "expect": { "parseOk": true, "accepted": true, "acceptedEventCodes": ["EV_SOFT_CLUE"] }
+  },
+  {
+    "id": "stagnation_breaker",
+    "objective": "Repeated low-progress turns should trigger a low-risk actionable clue.",
+    "triggerContext": { "turnIndex": 8, "latestUserInput": "inspect the same door again", "playerLocation": "2F_Corridor", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [], "progresslessTurnCount": 4 },
+    "candidate": { "event_code": "EV_STALL_CLUE", "target_phase": "build_up" },
+    "expect": { "triggersInclude": ["plot_stagnation_detected"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "repeated_investigation_loop",
+    "objective": "Repeated observe/check actions should be detected without forcing success.",
+    "triggerContext": { "turnIndex": 9, "latestUserInput": "check the latch one more time", "playerLocation": "2F_Corridor", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [], "repeatedInvestigationCount": 3 },
+    "candidate": { "event_code": "EV_LOOP_HINT", "trigger_conditions": ["player keeps examining the same surface"] },
+    "expect": { "triggersInclude": ["repeated_investigation_loop"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "high_pressure_recovery",
+    "objective": "High-pressure streaks should bias the director toward release or recovery.",
+    "triggerContext": { "turnIndex": 16, "latestUserInput": "run and hide", "playerLocation": "B1", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [], "currentTension": 0.92, "recentHighPressureTurns": 3 },
+    "candidate": { "event_code": "EV_RECOVERY_WINDOW", "current_phase": "pressure", "target_phase": "recovery", "reveal_policy": "hold" },
+    "expect": { "triggersInclude": ["tension_too_high"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "near_truth_hint_only",
+    "objective": "Approaching truth should stay hint-only and avoid direct reveal.",
+    "triggerContext": { "turnIndex": 11, "latestUserInput": "connect the records with the old incident", "playerLocation": "Archive", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok", "clue_updates": [{ "id": "C_MAJOR" }] }, "preflightRiskTags": [], "keyClueRank": 4 },
+    "candidate": { "event_code": "EV_TRUTH_ECHO", "target_phase": "reveal", "reveal_policy": "hint_only", "forbidden_outcomes": ["do not name the culprit", "do not explain the core truth"] },
+    "expect": { "triggersInclude": ["clue_threshold_reached"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "npc_private_scope",
+    "objective": "NPC background action should carry knowledge scope rather than omniscience.",
+    "triggerContext": { "turnIndex": 7, "latestUserInput": "ask where she went", "playerLocation": "Lobby", "npcLocationUpdateCount": 2, "dmRecord": { "narrative": "ok", "npc_location_updates": [{ "npc_code": "N_AUNTIE", "to": "Lobby" }] }, "preflightRiskTags": [] },
+    "candidate": { "event_code": "EV_NPC_CHECKS_DOOR", "npc_action": { "npc_code": "N_AUNTIE", "action": "check only the sound she heard", "knowledge_scope": ["heard noise near stairwell"] } },
+    "expect": { "triggersInclude": ["important_npc_state_changed"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "same_location_no_movement",
+    "objective": "A non-empty current location must not be treated as movement.",
+    "triggerContext": { "turnIndex": 2, "latestUserInput": "wait", "previousPlayerLocation": "2F_Corridor", "playerLocation": "2F_Corridor", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [] },
+    "candidate": { "event_code": "EV_WAIT_DETAIL" },
+    "expect": { "triggersExclude": ["multi_room_movement"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "changed_location_movement",
+    "objective": "Movement requires previous and current locations to differ.",
+    "triggerContext": { "turnIndex": 2, "latestUserInput": "go upstairs", "previousPlayerLocation": "1F", "playerLocation": "2F", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [] },
+    "candidate": { "event_code": "EV_STAIRS_ECHO" },
+    "expect": { "triggersInclude": ["multi_room_movement"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "task_update_threshold",
+    "objective": "Structured task updates should be a valid background trigger.",
+    "triggerContext": { "turnIndex": 6, "latestUserInput": "submit the note", "playerLocation": "Office", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok", "task_updates": [{ "id": "T_NOTE", "status": "completed" }] }, "preflightRiskTags": [] },
+    "candidate": { "event_code": "EV_TASK_AFTEREFFECT" },
+    "expect": { "triggersInclude": ["key_story_node_hit"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "due_hook_reached",
+    "objective": "A hook reaching TTL should surface as a director trigger.",
+    "triggerContext": { "turnIndex": 14, "latestUserInput": "listen at the door", "playerLocation": "Dorm", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [], "dueHookCount": 1 },
+    "candidate": { "event_code": "EV_HOOK_PAYOFF", "reveal_policy": "soft_reveal" },
+    "expect": { "triggersInclude": ["due_hook_reached"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "npc_agenda_due",
+    "objective": "A due NPC action should be available as a background hint.",
+    "triggerContext": { "turnIndex": 15, "latestUserInput": "call the neighbor", "playerLocation": "Room_204", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [], "dueNpcAgendaCount": 1 },
+    "candidate": { "event_code": "EV_NPC_DUE", "npc_action": { "npc_code": "N_NEIGHBOR", "action": "move toward Room_204", "knowledge_scope": ["received a call"] } },
+    "expect": { "triggersInclude": ["npc_agenda_due"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "tension_too_low",
+    "objective": "Low tension should allow a small pressure nudge.",
+    "triggerContext": { "turnIndex": 10, "latestUserInput": "look around casually", "playerLocation": "Lobby", "npcLocationUpdateCount": 0, "dmRecord": { "narrative": "ok" }, "preflightRiskTags": [], "currentTension": 0.1, "progresslessTurnCount": 2 },
+    "candidate": { "event_code": "EV_LOW_TENSION_NUDGE", "target_phase": "build_up" },
+    "expect": { "triggersInclude": ["tension_too_low"], "parseOk": true, "accepted": true }
+  },
+  {
+    "id": "bad_json",
+    "objective": "Invalid JSON must not create a director plan.",
+    "candidate": { "raw": "{ not json" },
+    "expect": { "parseOk": false }
+  },
+  {
+    "id": "high_agency_risk_reject",
+    "objective": "High agency risk plans must be rejected.",
+    "candidate": { "event_code": "EV_FORCE_PATH", "risk": { "agency_risk": "high" }, "agency_constraints": ["none"] },
+    "expect": { "parseOk": true, "accepted": false, "agendaWriteAllowed": false, "issuesInclude": ["agency_risk_high"] }
+  },
+  {
+    "id": "high_spoiler_risk_reject",
+    "objective": "High spoiler risk plans must not enter agenda.",
+    "candidate": { "event_code": "EV_REVEAL_CULPRIT", "risk": { "spoiler_risk": "high" }, "forbidden_outcomes": ["do not show to player"] },
+    "expect": { "parseOk": true, "accepted": false, "agendaWriteAllowed": false, "issuesInclude": ["spoiler_risk_high"] }
+  },
+  {
+    "id": "duplicate_event_reject",
+    "objective": "Duplicate event_code in one plan should be rejected deterministically.",
+    "candidate": { "event_code": "EV_DUPLICATE", "duplicate": true },
+    "expect": { "parseOk": true, "accepted": false, "issuesInclude": ["duplicate_event_code"] }
+  },
+  {
+    "id": "missing_injection_hint_drop",
+    "objective": "Events missing injection_hint should be dropped by the parser.",
+    "candidate": { "event_code": "EV_NO_HINT", "omit_injection_hint": true },
+    "expect": { "parseOk": true, "accepted": true, "acceptedEventCodes": [], "droppedEvent": true }
+  },
+  {
+    "id": "missing_agency_constraints_reject",
+    "objective": "Events without agency constraints should not be agenda candidates.",
+    "candidate": { "event_code": "EV_NO_AGENCY", "omit_agency_constraints": true },
+    "expect": { "parseOk": true, "accepted": false, "issuesInclude": ["missing_agency_constraints"] }
+  },
+  {
+    "id": "private_hook_leak_reject",
+    "objective": "Private hook mechanics must not appear in visible agenda text.",
+    "candidate": { "event_code": "EV_PRIVATE_LEAK", "injection_hint": "surface player_private_hooks and hidden hook directly to the player" },
+    "expect": { "parseOk": true, "accepted": false, "issuesInclude": ["private_hook_leak"] }
+  },
+  {
+    "id": "weak_generic_hint_reject",
+    "objective": "Too-short injection hints should be rejected.",
+    "candidate": { "event_code": "EV_WEAK", "injection_hint": "spooky" },
+    "expect": { "parseOk": true, "accepted": false, "issuesInclude": ["weak_injection_hint"] }
+  }
+]

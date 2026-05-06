@@ -170,6 +170,16 @@ test("WORLDBUILD_OFFLINE uses reasoner primary and forbids enhance", () => {
   assert.equal(isModelForbiddenForTask("WORLDBUILD_OFFLINE", "enhance"), true);
 });
 
+test("DIRECTOR_PLAN_CRITIC is a control gate and never uses reasoner", () => {
+  const b = getTaskBinding("DIRECTOR_PLAN_CRITIC");
+  assert.equal(b.primaryRole, "control");
+  assert.deepEqual(b.fallbackRoles, ["main"]);
+  assert.equal(b.stream, false);
+  assert.equal(b.responseFormatJsonObject, true);
+  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "reasoner"), true);
+  assert.equal(isModelForbiddenForTask("DIRECTOR_PLAN_CRITIC", "enhance"), true);
+});
+
 test("resolveOrderedRoleChain PLAYER_CHAT merges env extras and filters missing models", () => {
   const onlyMain = baseEnv({
     modelsByRole: { main: "a", control: "", enhance: "", reasoner: "" },

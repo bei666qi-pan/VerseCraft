@@ -898,6 +898,20 @@ export async function ensureRuntimeSchema(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS due_turn_index INTEGER;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS ttl_turns INTEGER;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS expires_turn_index INTEGER;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS injected_turn_index INTEGER;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS resolved_turn_index INTEGER;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS salience INTEGER NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS agency_risk VARCHAR(16);`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS continuity_risk VARCHAR(16);`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS spoiler_risk VARCHAR(16);`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS reveal_policy VARCHAR(24);`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS injection_hint TEXT;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS agency_constraints JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS forbidden_outcomes JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+    await client.query(`ALTER TABLE world_engine_event_queue ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(191);`);
     await client.query(
       `CREATE INDEX IF NOT EXISTS world_engine_event_queue_session_status_due_idx
        ON world_engine_event_queue (session_id, status, due_in_turns);`
@@ -905,6 +919,14 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(
       `CREATE INDEX IF NOT EXISTS world_engine_event_queue_event_code_idx
        ON world_engine_event_queue (event_code);`
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_event_queue_director_due_idx
+       ON world_engine_event_queue (session_id, status, due_turn_index);`
+    );
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS world_engine_event_queue_director_dedup_unique
+       ON world_engine_event_queue (session_id, event_code, dedup_key);`
     );
 
     await client.query(`
@@ -922,6 +944,27 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(
       `CREATE INDEX IF NOT EXISTS world_engine_agenda_session_created_idx
        ON world_engine_agenda_snapshots (session_id, created_at);`
+    );
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS world_engine_director_state (
+        id SERIAL PRIMARY KEY,
+        session_id VARCHAR(191) NOT NULL,
+        user_id VARCHAR(191) REFERENCES users(id) ON DELETE CASCADE,
+        turn_index INTEGER NOT NULL DEFAULT 0,
+        phase VARCHAR(24) NOT NULL DEFAULT 'quiet',
+        pacing_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        recent_director_intent TEXT,
+        world_revision BIGINT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS world_engine_director_state_session_unique
+       ON world_engine_director_state (session_id);`
+    );
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS world_engine_director_state_user_updated_idx
+       ON world_engine_director_state (user_id, updated_at);`
     );
 
     // ========= AI 后台分析快照（admin + settlement）=========

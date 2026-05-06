@@ -46,3 +46,12 @@
 ## 10. 逻辑模型名切换
 
 - [ ] 在 one-api 中将某渠道映射到新上游后，若 **模型 id 字符串不变**，VerseCraft **零改**；若 id 变更，仅更新对应 **`AI_MODEL_*` env**，业务模块无需改动。
+# World Director 回归补充
+
+- [ ] `PLAYER_CHAT` 仍不允许 `reasoner` / `enhance` 角色，`DIRECTOR_PLAN_CRITIC` 仅允许 `control -> main`。
+- [ ] `AI_DIRECTOR_MODE=shadow` 时 worker 可生成、校验、写入 agenda，但不注入主叙事。
+- [ ] `AI_DIRECTOR_MODE=soft` 且 `AI_ENABLE_DIRECTOR_HINT_INJECTION=true` 时，只注入 1-3 条 due agenda，且不包含 `player_private_hooks`。
+- [ ] `/api/chat` 在 DB、Redis、reasoner、critic 任一失败时仍返回原有 SSE / `__VERSECRAFT_FINAL__`。
+- [ ] `playerLocation` 非空但未变化时不触发 `multi_room_movement`。
+- [ ] 高 `agency_risk` / `spoiler_risk` / `safety_risk` 的 `director_plan_v1` 不入库、不注入。
+- [ ] 运行 `pnpm eval:director`，覆盖停滞、高压恢复、剧透拒绝、重复事件、bad JSON 等 fixture。

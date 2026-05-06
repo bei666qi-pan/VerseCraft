@@ -33,3 +33,10 @@
 - 非流式任务：`executeChatCompletion`
 - 环境：`config/env.ts`、`config/envRaw.ts`
 - 降级：`degrade/mode.ts`
+# World Director 故障排查补充
+
+1. 确认灰度开关：`AI_ENABLE_WORLD_DIRECTOR`、`AI_DIRECTOR_MODE`、`AI_ENABLE_DIRECTOR_HINT_INJECTION`。`off` 完全跳过；`shadow` 只写 agenda；`soft` 才允许 due agenda 进入 prompt。
+2. 若 `/play` 回复变慢，先查 `AI_DIRECTOR_AGENDA_QUERY_TIMEOUT_MS` 和 `director_agenda_injected` telemetry；due agenda 查询应短超时 fail-open，不应阻塞首字。
+3. 若 agenda 未生成，查 worker 日志中的 `WORLD_ENGINE_TICK`、`world_director_skipped`、`world_director_tick_failed`、validator reject reason，以及 `world_engine_runs.status`。
+4. 若怀疑泄露隐藏信息，检查 `world_engine_event_queue.injection_hint` 与 `agency_constraints`；`player_private_hooks` 只应存在于 run output / snapshot，不应进入 `DirectorHintBlock` 或最终 SSE payload。
+5. 快速本地回归：`pnpm exec tsx --test src/lib/worldEngine/engine.test.ts src/lib/storyDirector/storyDirector.test.ts && pnpm eval:director`。

@@ -142,6 +142,8 @@ import {
 import { applyDmChangeSetToDmRecord } from "@/lib/dmChangeSet/applyChangeSet";
 import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/revive/conspiracy";
 import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
+import { loadDueDirectorAgenda, markDirectorAgendaInjected, expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
+import { resolveWorldDirectorConfig } from "@/lib/worldEngine/config";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
 import { detectCognitiveAnomaly } from "@/lib/epistemic/detector";
@@ -1274,19 +1276,51 @@ async function postChatInternal(req: Request) {
           latestUserInput,
         })
       : "";
+  const worldDirectorConfig = resolveWorldDirectorConfig();
+  const directorDigestForPrompt =
+    clientState && typeof clientState === "object" && !Array.isArray(clientState)
+      ? ((clientState as any).directorDigest ?? null)
+      : null;
+  const dueDirectorAgendaPromise =
+    sessionId && worldDirectorConfig.hintInjectionEnabled
+      ? loadDueDirectorAgenda({
+          sessionId,
+          turnIndex: totalRounds,
+          limit: worldDirectorConfig.maxDueHints,
+          timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
+        }).catch(() => [])
+      : Promise.resolve([]);
+  let dueDirectorAgendaForPrompt: Awaited<typeof dueDirectorAgendaPromise> = [];
+  let injectedDirectorAgendaIds: number[] = [];
+
+  await Promise.all([
+    runControlPreflightP,
+    loreRetrievalP,
+    dueDirectorAgendaPromise.then((items) => {
+      dueDirectorAgendaForPrompt = items;
+      injectedDirectorAgendaIds = items.map((item) => item.id).filter((id) => Number.isFinite(id));
+    }),
+  ]);
   const directorHintBlock = (() => {
     try {
-      const d =
-        clientState && typeof clientState === "object" && !Array.isArray(clientState)
-          ? ((clientState as any).directorDigest ?? null)
-          : null;
-      return buildServerDirectorHintBlock(d);
+      return buildServerDirectorHintBlock(
+        directorDigestForPrompt,
+        dueDirectorAgendaForPrompt.map((item) => ({
+          id: item.id,
+          eventCode: item.eventCode,
+          title: item.title,
+          injectionHint: item.injectionHint,
+          triggerConditions: [],
+          agencyConstraints: item.agencyConstraints,
+          forbiddenOutcomes: item.forbiddenOutcomes,
+          salience: item.salience,
+          revealPolicy: item.revealPolicy,
+        }))
+      );
     } catch {
       return "";
     }
   })();
-
-  await Promise.all([runControlPreflightP, loreRetrievalP]);
   ttftProfile.controlPreflightMs =
     typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
   ttftProfile.loreRetrievalMs = Math.max(0, loreRetrievalLatencyMs);
@@ -3569,6 +3603,41 @@ async function postChatInternal(req: Request) {
           finalOptionsQualityPassTelemetry = false;
         }
         await writer.write(sse(`${VERSECRAFT_FINAL_PREFIX}${finalizePayload}`));
+        if (sessionId && injectedDirectorAgendaIds.length > 0) {
+          const capturedAgendaIds = [...injectedDirectorAgendaIds];
+          void markDirectorAgendaInjected({
+            sessionId,
+            agendaIds: capturedAgendaIds,
+            turnIndex: totalRounds,
+            requestId,
+          })
+            .then(() =>
+              recordGenericAnalyticsEvent({
+                eventId: `${requestId}:director_agenda_injected`,
+                idempotencyKey: `${requestId}:director_agenda_injected`,
+                userId,
+                guestId: userId ? null : chatGuestId,
+                sessionId,
+                eventName: "director_agenda_injected",
+                eventTime: new Date(),
+                page: "/play",
+                source: "chat",
+                platform,
+                tokenCost: 0,
+                playDurationDeltaSec: 0,
+                payload: {
+                  requestId,
+                  agendaIds: capturedAgendaIds,
+                  agendaCount: capturedAgendaIds.length,
+                  directorMode: worldDirectorConfig.mode,
+                },
+              })
+            )
+            .catch(() => {});
+        }
+        if (sessionId && worldDirectorConfig.enabled) {
+          void expireStaleDirectorAgenda({ sessionId, turnIndex: totalRounds }).catch(() => {});
+        }
         if (
           epistemicResiduePlan.persistEntry &&
           userId &&
@@ -3655,7 +3724,7 @@ async function postChatInternal(req: Request) {
             });
           });
         }
-        if (dmRecord && sessionId) {
+        if (dmRecord && sessionId && worldDirectorConfig.enabled) {
           // Phase-4: non-blocking background world tick. The wrapper decides
           // triggers + enqueue and NEVER awaits inside the hot path.
           const capturedSessionId = sessionId;
@@ -3668,9 +3737,12 @@ async function postChatInternal(req: Request) {
             dmRecord,
             playerLocation:
               typeof dmRecord.player_location === "string" ? dmRecord.player_location : null,
+            previousPlayerLocation: playerLocForEpistemic,
             npcLocationUpdateCount: Array.isArray(dmRecord.npc_location_updates)
               ? dmRecord.npc_location_updates.length
               : 0,
+            minTriggerGapTurns: worldDirectorConfig.minTriggerGapTurns,
+            maxPendingAgenda: worldDirectorConfig.maxPendingAgendaPerSession,
             preflightRiskTags: pipelineControl?.risk_tags ?? [],
             dmNarrativePreview: String(dmRecord.narrative ?? ""),
             commitSummary: commitSummaryForAnalytics,
@@ -3694,6 +3766,7 @@ async function postChatInternal(req: Request) {
                   requestId,
                   dedupKey: result.dedupKey,
                   triggers: [...decision.triggers],
+                  directorMode: worldDirectorConfig.mode,
                 },
               }).catch(() => {});
             },
