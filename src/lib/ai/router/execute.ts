@@ -25,6 +25,11 @@ import {
 } from "@/lib/ai/tasks/taskPolicy";
 import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
 import {
+  executeMockChatCompletion,
+  executeMockPlayerChatStream,
+  isMockAiProviderEnabled,
+} from "@/lib/ai/mock/mockProvider";
+import {
   completionCacheTtlSec,
   isCompletionTaskCacheable,
   readCompletionCache,
@@ -203,6 +208,9 @@ export async function executePlayerChatStream(params: {
     );
   }
   const env = resolveAiEnv();
+  if (env.gatewayProvider === "mock" || isMockAiProviderEnabled()) {
+    return executeMockPlayerChatStream({ messages: params.messages, ctx: params.ctx });
+  }
   const mode = resolveOperationMode();
   const taskBinding = getTaskBinding("PLAYER_CHAT");
   const playerChatMaxTokens = clampPlayerChatMaxTokens(params.maxTokensOverride ?? taskBinding.maxTokens).maxTokens;
@@ -592,6 +600,9 @@ export async function executeChatCompletion(params: {
 }): Promise<AIResponse | AIErrorResponse> {
   if (params.task === "PLAYER_CHAT") {
     throw new Error("[ai] PLAYER_CHAT must use executePlayerChatStream(), not executeChatCompletion()");
+  }
+  if (isMockAiProviderEnabled()) {
+    return executeMockChatCompletion({ task: params.task, messages: params.messages, ctx: params.ctx });
   }
   const env = resolveAiEnv();
   const mode = resolveOperationMode();

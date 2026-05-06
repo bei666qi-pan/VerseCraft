@@ -46,7 +46,7 @@ function resolvePlayerChatExtraBody(): Record<string, unknown> | undefined {
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-export type AiGatewayProviderId = "oneapi";
+export type AiGatewayProviderId = "oneapi" | "mock";
 
 export interface ResolvedAiEnv {
   gatewayProvider: AiGatewayProviderId;
@@ -181,6 +181,15 @@ function resolveGatewayChatCompletionsUrl(): string {
   return `${normalized}/v1/chat/completions`;
 }
 
+export function resolveAiProviderId(): AiGatewayProviderId {
+  const raw = (envRaw("AI_PROVIDER") ?? envRaw("AI_GATEWAY_PROVIDER") ?? "oneapi").trim().toLowerCase();
+  return raw === "mock" ? "mock" : "oneapi";
+}
+
+export function isMockAiProviderEnv(): boolean {
+  return resolveAiProviderId() === "mock";
+}
+
 function readModelForRole(role: AiLogicalRole): string {
   const key =
     role === "main"
@@ -191,6 +200,9 @@ function readModelForRole(role: AiLogicalRole): string {
           ? "AI_MODEL_ENHANCE"
           : "AI_MODEL_REASONER";
   const direct = (envRaw(key) ?? "").trim();
+  if (isMockAiProviderEnv()) {
+    return direct.length > 0 ? direct : `mock-${role}`;
+  }
   if (role === "enhance") {
     // Phase 1: physical deployment keeps 3 model names. When AI_MODEL_ENHANCE is unset,
     // transparently map enhance-role traffic to main model deployment.
@@ -277,9 +289,9 @@ export function resolveAiEnv(): ResolvedAiEnv {
     );
   }
 
-  const gatewayProvider = envEnum("AI_GATEWAY_PROVIDER", ["oneapi"] as const, "oneapi");
-  const gatewayBaseUrl = resolveGatewayChatCompletionsUrl();
-  const gatewayApiKey = (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
+  const gatewayProvider = resolveAiProviderId();
+  const gatewayBaseUrl = gatewayProvider === "mock" ? "mock://chat/completions" : resolveGatewayChatCompletionsUrl();
+  const gatewayApiKey = gatewayProvider === "mock" ? "mock-key" : (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
 
   const modelsByRole = {} as Record<AiLogicalRole, string>;
   for (const r of AI_LOGICAL_ROLES) {
@@ -387,6 +399,7 @@ export function anyAiProviderConfigured(): boolean {
     return false;
   }
   const e = resolveAiEnv();
+  if (e.gatewayProvider === "mock") return true;
   return (
     e.gatewayApiKey.length > 0 &&
     e.gatewayBaseUrl.length > 0 &&

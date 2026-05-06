@@ -120,12 +120,12 @@ export const mobileReadingTheme = {
   optionsEmptyState:
     "fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-stack-gap))] left-1/2 z-40 w-[calc(100%-2rem)] max-w-[448px] -translate-x-1/2 rounded-[14px] border border-[#d8d1c6] bg-[#fffdf8] px-6 py-5 vc-reading-serif text-[18px] leading-normal text-[#4f706a] shadow-[0_8px_20px_rgba(73,63,51,0.11),inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:w-[calc(100%-2.7rem)]",
   optionRow:
-    "flex h-1/4 w-full items-center justify-between gap-4 border-[#e3ded6] px-8 text-left transition disabled:cursor-not-allowed disabled:opacity-70",
+    "flex h-1/4 w-full items-center justify-between gap-2.5 border-[#e3ded6] px-5 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-70 min-[420px]:gap-3 min-[420px]:px-6",
   optionRowDivider: "border-b",
   optionRowInteractive: "hover:bg-[#f3f0ea]",
   optionRowHidden: "pointer-events-none",
   optionLabel:
-    "block min-w-0 flex-1 truncate vc-reading-serif text-[19px] leading-none text-[#174d46] transition-opacity duration-300 min-[420px]:text-[22px]",
+    "block min-w-0 flex-1 whitespace-normal break-words vc-reading-serif text-[15px] leading-[1.25] text-[#174d46] transition-opacity duration-300 [text-wrap:pretty] min-[420px]:text-[17px]",
   optionLabelVisible: "opacity-100",
   optionLabelHidden: "select-none opacity-0",
   optionChevron: "h-6 w-6 shrink-0 text-[#174d46] transition-opacity",

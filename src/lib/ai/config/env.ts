@@ -6,6 +6,7 @@ export {
   anyAiProviderConfigured,
   DEFAULT_PLAYER_CHAIN,
   DEFAULT_PLAYER_ROLE_CHAIN,
+  isMockAiProviderEnv,
   resolveAiEnv,
   resolveGatewayPrimaryBinding,
   resolveDeepSeekLegacyConfig,

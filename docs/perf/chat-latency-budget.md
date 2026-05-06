@@ -125,3 +125,44 @@ AI_PLAYER_CHAT_TIMEOUTS_V2=0
 ```
 
 该预算只约束上游空流 / 断流补救，不缩短正常主模型叙事，不改变 `PLAYER_CHAT` role chain 定义，不让 `reasoner` 进入在线主链路。
+
+## 生成质量与稳定护栏
+
+`/api/chat` 的性能门禁现在不只看速度。任何改动 `PLAYER_CHAT`、SSE、prompt、lore/RAG、options repair、waiting UX、AI routing 的 PR，都必须同时保护：
+
+- HTTP 200 + `text/event-stream`。
+- 终帧 `__VERSECRAFT_FINAL__` 100% 可解析。
+- narrative 非空，且达到 fixture/eval 中声明的最小字符数。
+- options 恰好 4 条，除非 eval case 明确允许缺失。
+- options 必须是场景内可执行行动，不能是“打开菜单 / 查看背包 / 查看属性 / 查看任务”等 UI 操作。
+- 首个 status、首个 visible token、final、long gap 必须来自 `CHAT_LATENCY_BUDGET`。
+
+PR 必跑的无 key 护栏：
+
+```bash
+pnpm lint
+pnpm test:unit
+pnpm build
+pnpm test:e2e:contract
+AI_PROVIDER=mock pnpm test:e2e:mock
+AI_PROVIDER=mock pnpm benchmark:chat-metrics -- --mode mock --assert-budget --include-all --json-out .runtime-data/chat-benchmark-mock.json
+AI_PROVIDER=mock pnpm eval:chat-quality -- --mode mock --assert --json-out .runtime-data/eval-chat-quality-mock.json
+```
+
+真实网关只在 main push、workflow_dispatch 或 nightly 有 secrets 时运行；PR 不依赖真实 AI key。live 门禁用于发现真实 provider 的 tail latency、token、缓存命中和质量漂移：
+
+```bash
+E2E_AI_LIVE=1 VC_ASSERT_CHAT_LATENCY_BUDGET=1 pnpm benchmark:chat-metrics -- --mode live --assert-budget --include-all
+E2E_AI_LIVE=1 pnpm eval:chat-quality -- --mode live --assert
+```
+
+共享 SSE 解析与统计入口是 `src/lib/perf/chatSseProbe.ts`。E2E 和 benchmark 必须复用它，禁止再复制 `__VERSECRAFT_STATUS__:`、`__VERSECRAFT_FINAL__:`、`__VERSECRAFT_` 的解析逻辑。控制帧前缀由 `src/lib/turnEngine/sse.ts` 导出。
+
+线上可观测性必须记录结构化字段，不记录原始玩家输入、完整 narrative 或完整 prompt。`chat_request_finished` 与 `chatGenerationMetrics` 至少应覆盖 provider/model/logicalRole、promptVersion、stablePrefixHash、firstStatus、firstVisibleText、final、optionsRepair、fallback、token usage 和 OpenTelemetry GenAI 风格字段：`gen_ai.client.token.usage`、`gen_ai.client.operation.duration`、`gen_ai.server.time_to_first_token`。
+
+禁止用以下方式“优化”：
+
+- 为速度删除安全审查、NPC/世界观一致性、epistemic filtering 或 post-generation validation。
+- 为速度用模板冒充主叙事。
+- 为补齐 options 做无限重试或本地通用补齐。
+- 把 DB、analytics、world tick、离线 reasoner 塞回首字前路径。

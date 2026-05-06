@@ -3,8 +3,7 @@ import { test, expect } from "@playwright/test";
 const E2E_USER = process.env.E2E_USER;
 const E2E_PASS = process.env.E2E_PASS;
 const E2E_AI_LIVE = process.env.E2E_AI_LIVE === "1";
-const expectKeysMissing =
-  process.env.CI === "true" || process.env.E2E_EXPECT_KEYS_MISSING === "1";
+const expectKeysMissing = process.env.E2E_EXPECT_KEYS_MISSING === "1";
 const VERSECRAFT_STATUS_PREFIX = "__VERSECRAFT_STATUS__:";
 const VERSECRAFT_FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
 const VERSECRAFT_CONTROL_PREFIX = "__VERSECRAFT_";

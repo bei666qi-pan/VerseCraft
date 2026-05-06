@@ -1,13 +1,20 @@
 {
   "scenario": "item_interaction",
-  "description": "使用道具 / 调查物品，槽位与 intent 偏 use_item / investigate",
+  "description": "使用道具与调查物品，验证结构化结果和选项仍围绕场景行动。",
   "latestUserInput": "我用钥匙试开防火门上的挂锁，同时用手机灯照锁孔周围有没有刮痕。",
-  "playerContext": "player_location: 楼梯间\\ninventory: 铜钥匙, 手机, 绷带\\nquest_flags: 寻找逃生通道",
+  "playerContext": "player_location: 楼梯间\ninventory: 铜钥匙, 手机, 绷带\nquest_flags: 寻找逃生通道",
   "ruleSnapshot": {
     "in_combat_hint": false,
     "in_dialogue_hint": false,
     "location_changed_hint": false,
     "high_value_scene": false
   },
-  "observabilityNotes": "预检 extracted_slots 可能出现 item_hint / location_hint"
+  "expect": {
+    "minNarrativeChars": 180,
+    "optionsCount": 4,
+    "allowOptionsMissing": false,
+    "mustContainAny": ["钥匙", "挂锁", "锁孔", "防火门"],
+    "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "查看属性", "查看任务"]
+  },
+  "observabilityNotes": "物品调查场景用于防止选项退化成查看背包、使用道具等泛 UI 操作。"
 }

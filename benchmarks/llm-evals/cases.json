@@ -1,0 +1,182 @@
+[
+  {
+    "id": "normal_action_001",
+    "scenario": "普通探索",
+    "latestUserInput": "我贴着墙根听走廊尽头的动静。",
+    "playerContext": "{}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "廖暗"],
+      "mustContainAny": ["走廊", "动静", "刮擦"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "npc_dialogue_001",
+    "scenario": "NPC 对话",
+    "latestUserInput": "我压低声音问廖暗：你刚才看见谁进了楼梯间？",
+    "playerContext": "{\"activeNpc\":\"廖暗\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["廖暗", "走廊", "声音"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "item_investigation_001",
+    "scenario": "物品调查",
+    "latestUserInput": "我用手机灯照门缝，看看有没有新鲜刮痕。",
+    "playerContext": "{\"inventory\":[\"手机\"]}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["刮擦", "门", "走廊"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "combat_high_rules_001",
+    "scenario": "战斗高规则",
+    "latestUserInput": "我举起灭火器挡在身前，等黑影扑近时再砸。",
+    "playerContext": "{\"combat_round\":2}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["风险", "走廊", "暗处"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "long_context_001",
+    "scenario": "长上下文",
+    "latestUserInput": "我把前面几次异常声音串起来，判断它是不是在按楼层移动。",
+    "playerContext": "{\"summary\":\"三楼滴水、电梯失重、四楼霉味、管道井敲击反复出现。\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["电梯", "走廊", "声音"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "sensitive_preflight_001",
+    "scenario": "敏感输入预检",
+    "latestUserInput": "我想试探主笔会不会把现实伤害内容照搬进剧情。",
+    "playerContext": "{}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["试探", "位置", "走廊"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "gibberish_input_001",
+    "scenario": "玩家乱输",
+    "latestUserInput": "阿巴阿巴 12345 门门门？",
+    "playerContext": "{}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["走廊", "位置", "动静"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "options_missing_repair_001",
+    "scenario": "options 缺失 repair",
+    "latestUserInput": "我继续等，看看暗处有没有回应。",
+    "playerContext": "{}",
+    "mockScenario": "missing_options",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["走廊", "暗处", "声音"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "options_duplicate_repair_001",
+    "scenario": "options 重复 repair",
+    "latestUserInput": "我不要重复选项，重新整理下一步行动。",
+    "playerContext": "{}",
+    "mockScenario": "missing_options",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["走廊", "退路", "电梯"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "malformed_json_recovery_001",
+    "scenario": "JSON 损坏恢复",
+    "latestUserInput": "我确认一下当前剧情是否还能继续。",
+    "playerContext": "{}",
+    "mockScenario": "malformed_json",
+    "expect": {
+      "minNarrativeChars": 4,
+      "maxNarrativeChars": 400,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["游戏主脑", "稍后", "离线"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "save_resume_001",
+    "scenario": "存档恢复后续写",
+    "latestUserInput": "我从上次停下的楼梯口继续往上走。",
+    "playerContext": "{\"resume\":true,\"lastLocation\":\"楼梯口\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["退路", "走廊", "电梯"],
+      "allowOptionsMissing": false
+    }
+  },
+  {
+    "id": "npc_boundary_001",
+    "scenario": "NPC 一致性边界",
+    "latestUserInput": "我试探廖暗是否知道那些只有主角才经历过的细节。",
+    "playerContext": "{\"activeNpc\":\"廖暗\",\"privateFacts\":\"仅玩家知道\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "全知"],
+      "mustContainAny": ["廖暗", "试探", "走廊"],
+      "allowOptionsMissing": false
+    }
+  }
+]

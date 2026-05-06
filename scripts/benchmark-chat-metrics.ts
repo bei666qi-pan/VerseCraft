@@ -1,13 +1,23 @@
 /**
- * Chat turn latency benchmark and budget gate.
+ * Chat turn latency + contract + quality benchmark.
  *
- * Default mode prints fixture sizes only, so CI without AI keys never fails by
- * accident. Live assertions require E2E_AI_LIVE=1 plus --assert-budget or
- * VC_ASSERT_CHAT_LATENCY_BUDGET=1.
+ * PR-safe modes use deterministic mock or degraded SSE. Live mode is opt-in and
+ * should only run when gateway secrets are available.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
+import { probeChatSse, type ChatSseProbeMetrics } from "../src/lib/perf/chatSseProbe";
+
+type BenchmarkMode = "fixtures" | "mock" | "live" | "degraded";
+
+type FixtureExpect = {
+  minNarrativeChars: number;
+  optionsCount?: number;
+  allowOptionsMissing?: boolean;
+  mustNotContain?: string[];
+  mustContainAny?: string[];
+};
 
 type Fixture = {
   scenario: string;
@@ -15,25 +25,19 @@ type Fixture = {
   latestUserInput: string;
   playerContext: string;
   observabilityNotes?: string;
+  mockScenario?: string;
+  expect: FixtureExpect;
 };
 
-type ProbeMetrics = {
+type ProbeMetrics = ChatSseProbeMetrics & {
   scenario: string;
   run: number;
-  httpStatus: number;
-  contentType: string;
-  aiStatus: string;
-  firstSseMs: number | null;
-  firstStatusMs: number | null;
-  firstTokenMs: number | null;
-  finalMs: number | null;
-  statusFrames: number;
-  finalFrameReceived: boolean;
-  finalJsonParseSuccess: boolean;
-  maxInterChunkGapMs: number;
-  longGapCount: number;
-  bytesRead: number;
-  error?: string;
+  narrativeNonEmpty: boolean;
+  contractPass: boolean;
+  qualityPass: boolean;
+  budgetFailures: string[];
+  qualityFailures: string[];
+  optionsRepairDetected: boolean;
 };
 
 type PercentileSummary = {
@@ -41,10 +45,15 @@ type PercentileSummary = {
   p95: number | null;
 };
 
-type LiveSummary = {
+type BenchmarkSummary = {
   runs: number;
   http200: number;
   finalFrames: number;
+  finalJsonParse: number;
+  contractPass: number;
+  qualityPass: number;
+  narrativeNonEmpty: number;
+  optionsQualityPass: number;
   firstStatusMs: PercentileSummary;
   firstTokenMs: PercentileSummary;
   finalMs: PercentileSummary;
@@ -56,11 +65,11 @@ type LiveSummary = {
 
 type CliOptions = {
   assertBudget: boolean;
-  degradedSmoke: boolean;
   includeAll: boolean;
   json: boolean;
   jsonOnly: boolean;
   jsonOut: string | null;
+  mode: BenchmarkMode;
   runs: number;
   scenario: string;
   warmupRuns: number;
@@ -68,9 +77,6 @@ type CliOptions = {
 
 const root = path.resolve(__dirname, "..");
 const dir = path.join(root, "benchmarks", "chat-turns");
-const CONTROL_PREFIX = "__VERSECRAFT_";
-const STATUS_PREFIX = "__VERSECRAFT_STATUS__:";
-const FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
 
 function getArgValue(args: string[], name: string): string | null {
   const prefix = `${name}=`;
@@ -81,21 +87,33 @@ function getArgValue(args: string[], name: string): string | null {
   return null;
 }
 
+function resolveMode(args: string[]): BenchmarkMode {
+  const raw = (getArgValue(args, "--mode") ?? process.env.BENCHMARK_CHAT_MODE ?? "").trim().toLowerCase();
+  if (raw === "mock" || raw === "live" || raw === "degraded" || raw === "fixtures") return raw;
+  if (args.includes("--degraded-smoke") || process.env.VC_BENCHMARK_DEGRADED_SMOKE === "1") return "degraded";
+  if (process.env.E2E_AI_LIVE === "1") return "live";
+  return "fixtures";
+}
+
 function parseCli(): CliOptions {
   const args = process.argv.slice(2);
-  const runsRaw = getArgValue(args, "--runs") ?? process.env.BENCHMARK_CHAT_RUNS ?? "10";
-  const warmupRaw = getArgValue(args, "--warmup-runs") ?? process.env.BENCHMARK_CHAT_WARMUP_RUNS ?? "1";
+  const mode = resolveMode(args);
+  const runsRaw = getArgValue(args, "--runs") ?? process.env.BENCHMARK_CHAT_RUNS ?? "3";
+  const warmupRaw =
+    getArgValue(args, "--warmup-runs") ??
+    process.env.BENCHMARK_CHAT_WARMUP_RUNS ??
+    (mode === "fixtures" ? "0" : "1");
   return {
     assertBudget:
       args.includes("--assert-budget") ||
       process.env.VC_ASSERT_CHAT_LATENCY_BUDGET === "1" ||
       process.env.BENCHMARK_CHAT_ENFORCE === "1",
-    degradedSmoke: args.includes("--degraded-smoke") || process.env.VC_BENCHMARK_DEGRADED_SMOKE === "1",
     includeAll: args.includes("--include-all") || process.env.BENCHMARK_CHAT_INCLUDE_ALL === "1",
     json: args.includes("--json") || args.includes("--json-only") || process.env.VC_BENCHMARK_CHAT_JSON === "1",
     jsonOnly: args.includes("--json-only"),
     jsonOut: getArgValue(args, "--json-out") ?? process.env.VC_BENCHMARK_CHAT_JSON_OUT ?? null,
-    runs: Math.max(1, Math.min(100, Number(runsRaw) || 10)),
+    mode,
+    runs: Math.max(1, Math.min(100, Number(runsRaw) || 3)),
     scenario: getArgValue(args, "--scenario") ?? process.env.BENCHMARK_CHAT_SCENARIO ?? "normal_action",
     warmupRuns: Math.max(0, Math.min(5, Number(warmupRaw) || 0)),
   };
@@ -110,13 +128,11 @@ function loadFixtures(): Fixture[] {
     console.error("Missing benchmarks/chat-turns directory");
     return [];
   }
-  const out: Fixture[] = [];
-  for (const f of fs.readdirSync(dir)) {
-    if (!f.endsWith(".json")) continue;
-    const j = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")) as Fixture;
-    out.push(j);
-  }
-  return out.sort((a, b) => a.scenario.localeCompare(b.scenario));
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")) as Fixture)
+    .sort((a, b) => a.scenario.localeCompare(b.scenario));
 }
 
 function percentile(values: number[], p: number): number | null {
@@ -130,255 +146,159 @@ function fmt(value: number | null): string {
   return value == null ? "n/a" : String(Math.round(value));
 }
 
-function extractDataPayload(eventText: string): string {
-  return eventText
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).trimStart())
-    .join("\n")
-    .trim();
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-function isContractJson(raw: string): boolean {
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return Boolean(
-      parsed &&
-        typeof parsed === "object" &&
-        !Array.isArray(parsed) &&
-        typeof parsed.narrative === "string" &&
-        typeof parsed.is_action_legal === "boolean"
-    );
-  } catch {
-    return false;
+function finalContains(metrics: ChatSseProbeMetrics, terms: string[]): boolean {
+  if (terms.length === 0) return true;
+  const root = asRecord(metrics.finalJson);
+  const narrative = typeof root?.narrative === "string" ? root.narrative : "";
+  const options = Array.isArray(root?.options) ? root.options.filter((x): x is string => typeof x === "string").join("\n") : "";
+  const text = `${narrative}\n${options}`;
+  return terms.some((term) => text.includes(term));
+}
+
+function finalDoesNotContain(metrics: ChatSseProbeMetrics, terms: string[]): boolean {
+  if (terms.length === 0) return true;
+  const root = asRecord(metrics.finalJson);
+  const narrative = typeof root?.narrative === "string" ? root.narrative : "";
+  const options = Array.isArray(root?.options) ? root.options.filter((x): x is string => typeof x === "string").join("\n") : "";
+  const text = `${narrative}\n${options}`;
+  return terms.every((term) => !text.includes(term));
+}
+
+function assessFixtureQuality(fixture: Fixture, metrics: ChatSseProbeMetrics): string[] {
+  const failures: string[] = [];
+  const expect = fixture.expect;
+  if (!metrics.contractPass) failures.push("contract_failed");
+  if (!metrics.finalJsonParseSuccess) failures.push("final_json_parse_failed");
+  if (metrics.narrativeChars <= 0) failures.push("narrative_empty");
+  if (metrics.narrativeChars < expect.minNarrativeChars) {
+    failures.push(`narrativeChars<${expect.minNarrativeChars}`);
   }
+  const expectedOptions = expect.optionsCount ?? 4;
+  if (!expect.allowOptionsMissing && metrics.optionsCount !== expectedOptions) {
+    failures.push(`optionsCount!=${expectedOptions}`);
+  }
+  if (!expect.allowOptionsMissing && !metrics.optionsQualityPass) failures.push("options_quality_failed");
+  if (!finalDoesNotContain(metrics, expect.mustNotContain ?? [])) failures.push("must_not_contain_failed");
+  if (!finalContains(metrics, expect.mustContainAny ?? [])) failures.push("must_contain_any_failed");
+  return failures;
 }
 
-async function probeOne(baseUrl: string, fixture: Fixture, run: number): Promise<ProbeMetrics> {
-  const requestId = `benchmark-${fixture.scenario}-${run}-${Date.now()}`;
-  const body = {
-    messages: [{ role: "user" as const, content: fixture.latestUserInput }],
-    playerContext: fixture.playerContext,
-    sessionId: `benchmark-${fixture.scenario}-${run}-${Date.now()}`,
+function assessBudget(mode: BenchmarkMode, metrics: ChatSseProbeMetrics): string[] {
+  const failures: string[] = [];
+  if (metrics.httpStatus !== 200) failures.push(`http=${metrics.httpStatus}`);
+  if (!metrics.finalFrameReceived) failures.push("final_frame_missing");
+  if (!metrics.finalJsonParseSuccess) failures.push("final_json_parse_failed");
+  if (mode === "degraded") {
+    if (metrics.aiStatus.toLowerCase() !== "keys_missing") failures.push(`aiStatus=${metrics.aiStatus || "missing"}`);
+    if (metrics.firstStatusMs == null || metrics.firstStatusMs > CHAT_LATENCY_BUDGET.degradedFirstStatusMaxMs) {
+      failures.push(`firstStatusMs>${CHAT_LATENCY_BUDGET.degradedFirstStatusMaxMs}`);
+    }
+    if (metrics.finalMs == null || metrics.finalMs > CHAT_LATENCY_BUDGET.degradedFinalFrameMaxMs) {
+      failures.push(`finalMs>${CHAT_LATENCY_BUDGET.degradedFinalFrameMaxMs}`);
+    }
+    return failures;
+  }
+  if (metrics.firstStatusMs == null || metrics.firstStatusMs > CHAT_LATENCY_BUDGET.firstStatusShownP95Ms) {
+    failures.push(`firstStatusMs>${CHAT_LATENCY_BUDGET.firstStatusShownP95Ms}`);
+  }
+  if (metrics.firstTokenMs == null || metrics.firstTokenMs > CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms) {
+    failures.push(`firstTokenMs>${CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms}`);
+  }
+  if (metrics.finalMs == null || metrics.finalMs > CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms) {
+    failures.push(`finalMs>${CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms}`);
+  }
+  if (metrics.longGapCount > 0) failures.push(`longGapCount=${metrics.longGapCount}`);
+  return failures;
+}
+
+async function probeOne(baseUrl: string, fixture: Fixture, run: number, mode: BenchmarkMode): Promise<ProbeMetrics> {
+  const requestId = `benchmark-${mode}-${fixture.scenario}-${run}-${Date.now()}`;
+  const marker = mode === "mock" && fixture.mockScenario ? `[mock_scenario:${fixture.mockScenario}] ` : "";
+  const content = `${marker}${fixture.latestUserInput}`;
+  const metrics = await probeChatSse({
+    baseUrl,
+    timeoutMs: 120_000,
+    headers: {
+      Accept: "text/event-stream",
+      "X-VerseCraft-Request-Id": requestId,
+      "X-Forwarded-For": `127.0.0.${(run % 200) + 1}`,
+    },
+    body: {
+      latestUserInput: content,
+      messages: [{ role: "user", content }],
+      playerContext: fixture.playerContext,
+      sessionId: requestId,
+    },
+  });
+  const budgetFailures = assessBudget(mode, metrics);
+  const qualityFailures = mode === "degraded" ? [] : assessFixtureQuality(fixture, metrics);
+  return {
+    ...metrics,
+    scenario: fixture.scenario,
+    run,
+    narrativeNonEmpty: metrics.narrativeChars > 0,
+    contractPass: metrics.contractPass,
+    qualityPass: qualityFailures.length === 0,
+    budgetFailures,
+    qualityFailures,
+    optionsRepairDetected: JSON.stringify(metrics.finalJson ?? {}).includes("options_repair"),
   };
-
-  const t0 = Date.now();
-  let firstSseMs: number | null = null;
-  let firstStatusMs: number | null = null;
-  let firstTokenMs: number | null = null;
-  let finalMs: number | null = null;
-  let statusFrames = 0;
-  let finalFrameReceived = false;
-  let finalJsonParseSuccess = false;
-  let bytesRead = 0;
-  let httpStatus = 0;
-  let contentType = "";
-  let aiStatus = "";
-  let lastVisibleChunkAt: number | null = null;
-  let maxInterChunkGapMs = 0;
-  let longGapCount = 0;
-
-  try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        "X-VerseCraft-Request-Id": requestId,
-        "X-Forwarded-For": `127.0.0.${(run % 200) + 1}`,
-      },
-      body: JSON.stringify(body),
-    });
-    httpStatus = res.status;
-    contentType = res.headers.get("content-type") ?? "";
-    aiStatus = res.headers.get("x-versecraft-ai-status") ?? "";
-    const reader = res.body?.getReader();
-    if (!reader) {
-      return {
-        scenario: fixture.scenario,
-        run,
-        httpStatus,
-        contentType,
-        aiStatus,
-        firstSseMs,
-        firstStatusMs,
-        firstTokenMs,
-        finalMs,
-        statusFrames,
-        finalFrameReceived,
-        finalJsonParseSuccess,
-        maxInterChunkGapMs,
-        longGapCount,
-        bytesRead,
-        error: "no_body_reader",
-      };
-    }
-
-    const dec = new TextDecoder();
-    let pending = "";
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        bytesRead += value.byteLength;
-        pending += dec.decode(value, { stream: true });
-        pending = pending.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-        let eventEnd = pending.indexOf("\n\n");
-        while (eventEnd >= 0) {
-          const eventText = pending.slice(0, eventEnd);
-          pending = pending.slice(eventEnd + 2);
-          const payload = extractDataPayload(eventText);
-          if (payload.length > 0) {
-            const now = Date.now();
-            if (firstSseMs == null) firstSseMs = now - t0;
-            if (payload.startsWith(STATUS_PREFIX)) {
-              statusFrames += 1;
-              if (firstStatusMs == null) firstStatusMs = now - t0;
-            } else if (payload.startsWith(FINAL_PREFIX)) {
-              finalFrameReceived = true;
-              finalJsonParseSuccess = isContractJson(payload.slice(FINAL_PREFIX.length));
-              if (finalMs == null) finalMs = now - t0;
-            } else if (!payload.startsWith(CONTROL_PREFIX)) {
-              if (firstTokenMs == null) firstTokenMs = now - t0;
-              if (lastVisibleChunkAt != null) {
-                const gap = now - lastVisibleChunkAt;
-                maxInterChunkGapMs = Math.max(maxInterChunkGapMs, gap);
-                if (gap >= CHAT_LATENCY_BUDGET.maxInterChunkGapWarnMs) longGapCount += 1;
-              }
-              lastVisibleChunkAt = now;
-            }
-          }
-          eventEnd = pending.indexOf("\n\n");
-        }
-
-        if (Date.now() - t0 > 120_000) break;
-      }
-    } finally {
-      await reader.cancel().catch(() => {});
-    }
-
-    return {
-      scenario: fixture.scenario,
-      run,
-      httpStatus,
-      contentType,
-      aiStatus,
-      firstSseMs,
-      firstStatusMs,
-      firstTokenMs,
-      finalMs,
-      statusFrames,
-      finalFrameReceived,
-      finalJsonParseSuccess,
-      maxInterChunkGapMs,
-      longGapCount,
-      bytesRead,
-    };
-  } catch (e) {
-    return {
-      scenario: fixture.scenario,
-      run,
-      httpStatus,
-      contentType,
-      aiStatus,
-      firstSseMs,
-      firstStatusMs,
-      firstTokenMs,
-      finalMs,
-      statusFrames,
-      finalFrameReceived,
-      finalJsonParseSuccess,
-      maxInterChunkGapMs,
-      longGapCount,
-      bytesRead,
-      error: (e as Error).message,
-    };
-  }
 }
 
 function printProbe(options: CliOptions, m: ProbeMetrics): void {
-  const suffix = m.error ? ` error=${m.error}` : "";
+  const suffix = [...m.budgetFailures, ...m.qualityFailures, m.error ? `error=${m.error}` : ""].filter(Boolean).join(",");
   log(
     options,
     `  ${m.scenario}#${m.run}: http=${m.httpStatus} firstSseMs=${fmt(m.firstSseMs)} firstStatusMs=${fmt(
       m.firstStatusMs
-    )} firstTokenMs=${fmt(m.firstTokenMs)} finalMs=${fmt(m.finalMs)} statusFrames=${m.statusFrames} final=${
-      m.finalFrameReceived ? 1 : 0
-    } finalJson=${m.finalJsonParseSuccess ? 1 : 0} longGaps=${m.longGapCount} bytes=${m.bytesRead}${suffix}`
+    )} firstTokenMs=${fmt(m.firstTokenMs)} finalMs=${fmt(m.finalMs)} narrativeChars=${m.narrativeChars} options=${
+      m.optionsCount
+    } optionsQuality=${m.optionsQualityPass ? 1 : 0} final=${m.finalFrameReceived ? 1 : 0} finalJson=${
+      m.finalJsonParseSuccess ? 1 : 0
+    } longGaps=${m.longGapCount} bytes=${m.bytesRead}${suffix ? ` failures=${suffix}` : ""}`
   );
 }
 
-function summarize(metrics: ProbeMetrics[]): LiveSummary {
-  const ok = metrics.filter((m) => !m.error && m.httpStatus === 200);
-  const firstStatus = ok.flatMap((m) => (m.firstStatusMs == null ? [] : [m.firstStatusMs]));
-  const firstToken = ok.flatMap((m) => (m.firstTokenMs == null ? [] : [m.firstTokenMs]));
-  const final = ok.flatMap((m) => (m.finalMs == null ? [] : [m.finalMs]));
-  const statuses = ok.map((m) => m.statusFrames);
-  const longGaps = ok.map((m) => m.longGapCount);
-  const summary: LiveSummary = {
+function summarize(metrics: ProbeMetrics[]): BenchmarkSummary {
+  const firstStatus = metrics.flatMap((m) => (m.firstStatusMs == null ? [] : [m.firstStatusMs]));
+  const firstToken = metrics.flatMap((m) => (m.firstTokenMs == null ? [] : [m.firstTokenMs]));
+  const final = metrics.flatMap((m) => (m.finalMs == null ? [] : [m.finalMs]));
+  const statuses = metrics.map((m) => m.statusFrameCount);
+  const longGaps = metrics.map((m) => m.longGapCount);
+  const failures = metrics.flatMap((m) => [...m.budgetFailures, ...m.qualityFailures].map((f) => `${m.scenario}#${m.run}:${f}`));
+  return {
     runs: metrics.length,
-    http200: ok.length,
-    finalFrames: ok.filter((m) => m.finalFrameReceived).length,
+    http200: metrics.filter((m) => m.httpStatus === 200).length,
+    finalFrames: metrics.filter((m) => m.finalFrameReceived).length,
+    finalJsonParse: metrics.filter((m) => m.finalJsonParseSuccess).length,
+    contractPass: metrics.filter((m) => m.contractPass).length,
+    qualityPass: metrics.filter((m) => m.qualityPass).length,
+    narrativeNonEmpty: metrics.filter((m) => m.narrativeNonEmpty).length,
+    optionsQualityPass: metrics.filter((m) => m.optionsQualityPass).length,
     firstStatusMs: { p50: percentile(firstStatus, 0.5), p95: percentile(firstStatus, 0.95) },
     firstTokenMs: { p50: percentile(firstToken, 0.5), p95: percentile(firstToken, 0.95) },
     finalMs: { p50: percentile(final, 0.5), p95: percentile(final, 0.95) },
     statusFrames: { p50: percentile(statuses, 0.5), p95: percentile(statuses, 0.95) },
     longGapCount: { p50: percentile(longGaps, 0.5), p95: percentile(longGaps, 0.95) },
-    budgetOk: true,
-    budgetFailures: [],
+    budgetOk: failures.length === 0,
+    budgetFailures: failures,
   };
-
-  const failures = summary.budgetFailures;
-  if (summary.http200 !== summary.runs) failures.push(`http200 ${summary.http200}/${summary.runs}`);
-  if (summary.finalFrames !== summary.runs) failures.push(`finalFrames ${summary.finalFrames}/${summary.runs}`);
-  if (summary.firstStatusMs.p95 == null || summary.firstStatusMs.p95 > CHAT_LATENCY_BUDGET.firstStatusShownP95Ms) {
-    failures.push(`firstStatusMs.p95>${CHAT_LATENCY_BUDGET.firstStatusShownP95Ms}`);
-  }
-  if (summary.firstTokenMs.p50 == null || summary.firstTokenMs.p50 > CHAT_LATENCY_BUDGET.firstVisibleTextP50Ms) {
-    failures.push(`firstTokenMs.p50>${CHAT_LATENCY_BUDGET.firstVisibleTextP50Ms}`);
-  }
-  if (summary.firstTokenMs.p95 == null || summary.firstTokenMs.p95 > CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms) {
-    failures.push(`firstTokenMs.p95>${CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms}`);
-  }
-  if (summary.finalMs.p50 == null || summary.finalMs.p50 > CHAT_LATENCY_BUDGET.normalTurnFinalP50Ms) {
-    failures.push(`finalMs.p50>${CHAT_LATENCY_BUDGET.normalTurnFinalP50Ms}`);
-  }
-  if (summary.finalMs.p95 == null || summary.finalMs.p95 > CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms) {
-    failures.push(`finalMs.p95>${CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms}`);
-  }
-  if (summary.statusFrames.p50 == null || summary.statusFrames.p50 < CHAT_LATENCY_BUDGET.minStatusFramesPerTurn) {
-    failures.push(`statusFrames.p50<${CHAT_LATENCY_BUDGET.minStatusFramesPerTurn}`);
-  }
-  summary.budgetOk = failures.length === 0;
-  return summary;
 }
 
-function printSummary(options: CliOptions, summary: LiveSummary): void {
-  log(options, "\nLive summary");
+function printSummary(options: CliOptions, summary: BenchmarkSummary): void {
+  log(options, "\nBenchmark summary");
   log(options, `  runs=${summary.runs} http200=${summary.http200} finalFrames=${summary.finalFrames}`);
+  log(options, `  finalJsonParse=${summary.finalJsonParse} contractPass=${summary.contractPass} qualityPass=${summary.qualityPass}`);
+  log(options, `  narrativeNonEmpty=${summary.narrativeNonEmpty} optionsQualityPass=${summary.optionsQualityPass}`);
   log(options, `  firstStatusMs p50=${fmt(summary.firstStatusMs.p50)} p95=${fmt(summary.firstStatusMs.p95)}`);
   log(options, `  firstTokenMs  p50=${fmt(summary.firstTokenMs.p50)} p95=${fmt(summary.firstTokenMs.p95)}`);
   log(options, `  finalMs       p50=${fmt(summary.finalMs.p50)} p95=${fmt(summary.finalMs.p95)}`);
-  log(options, `  statusFrames  p50=${fmt(summary.statusFrames.p50)} p95=${fmt(summary.statusFrames.p95)}`);
   log(options, `  longGapCount  p50=${fmt(summary.longGapCount.p50)} p95=${fmt(summary.longGapCount.p95)}`);
-  log(options, `  budget=${summary.budgetOk ? "pass" : `fail (${summary.budgetFailures.join(", ")})`}`);
-}
-
-function assertDegradedSmoke(m: ProbeMetrics): string[] {
-  const failures: string[] = [];
-  if (m.httpStatus !== 200) failures.push(`http=${m.httpStatus}`);
-  if (!m.contentType.toLowerCase().includes("text/event-stream")) failures.push("content-type is not event-stream");
-  if (m.aiStatus.toLowerCase() !== "keys_missing") failures.push(`aiStatus=${m.aiStatus || "missing"}`);
-  if (m.firstStatusMs == null || m.firstStatusMs > CHAT_LATENCY_BUDGET.degradedFirstStatusMaxMs) {
-    failures.push(`firstStatusMs>${CHAT_LATENCY_BUDGET.degradedFirstStatusMaxMs}`);
-  }
-  if (m.finalMs == null || m.finalMs > CHAT_LATENCY_BUDGET.degradedFinalFrameMaxMs) {
-    failures.push(`finalMs>${CHAT_LATENCY_BUDGET.degradedFinalFrameMaxMs}`);
-  }
-  if (!m.finalFrameReceived) failures.push("final frame missing");
-  if (!m.finalJsonParseSuccess) failures.push("final JSON parse failed");
-  return failures;
+  log(options, `  gate=${summary.budgetOk ? "pass" : `fail (${summary.budgetFailures.join(", ")})`}`);
 }
 
 async function writeJsonIfNeeded(options: CliOptions, result: unknown): Promise<void> {
@@ -401,88 +321,51 @@ async function main(): Promise<void> {
       description: f.description ?? "",
       chars,
       estimatedTokens: Math.ceil(chars / 4),
+      minNarrativeChars: f.expect?.minNarrativeChars,
       observabilityNotes: f.observabilityNotes ?? "",
     };
   });
 
-  log(options, `Loaded ${fixtures.length} fixtures from benchmarks/chat-turns\n`);
+  log(options, `Loaded ${fixtures.length} fixtures from benchmarks/chat-turns`);
   for (const f of fixtureSummaries) {
-    log(options, `${f.scenario}: ~${f.chars} chars (~${f.estimatedTokens} tok est) - ${f.description}`);
-    if (f.observabilityNotes) log(options, `  notes: ${f.observabilityNotes}`);
+    log(options, `${f.scenario}: ~${f.chars} chars (~${f.estimatedTokens} tok est), minNarrative=${f.minNarrativeChars}`);
   }
 
-  const live = process.env.E2E_AI_LIVE === "1";
   const baseUrl = process.env.BENCHMARK_BASE_URL ?? "http://localhost:666";
-  const fixture = fixtures.find((f) => f.scenario === options.scenario) ?? fixtures[0];
-  const result: {
-    mode: "fixtures" | "degraded-smoke" | "live";
-    baseUrl: string;
-    budget: typeof CHAT_LATENCY_BUDGET;
-    fixtures: typeof fixtureSummaries;
-    metrics: ProbeMetrics[];
-    summary: LiveSummary | null;
-    degradedFailures: string[];
-  } = {
-    mode: live ? "live" : options.degradedSmoke ? "degraded-smoke" : "fixtures",
+  const selected = fixtures.find((f) => f.scenario === options.scenario) ?? fixtures[0];
+  const runFixtures = options.includeAll ? fixtures : selected ? Array.from({ length: options.runs }, () => selected) : [];
+  const result = {
+    mode: options.mode,
     baseUrl,
     budget: CHAT_LATENCY_BUDGET,
     fixtures: fixtureSummaries,
-    metrics: [],
-    summary: null,
-    degradedFailures: [],
+    metrics: [] as ProbeMetrics[],
+    summary: null as BenchmarkSummary | null,
   };
 
-  if (!fixture) {
+  if (options.mode === "fixtures") {
+    log(options, "\nFixture inventory only. Use --mode mock|live|degraded to probe /api/chat.");
+    await writeJsonIfNeeded(options, result);
+    return;
+  }
+  if (runFixtures.length === 0) {
     console.error("No benchmark fixtures found.");
     process.exitCode = 1;
     return;
   }
 
-  if (!live) {
-    if (!options.degradedSmoke) {
-      log(options, "\nSet E2E_AI_LIVE=1 to probe live TTFT. Use VC_BENCHMARK_DEGRADED_SMOKE=1 for no-key SSE smoke.");
-      await writeJsonIfNeeded(options, result);
-      return;
-    }
-    log(options, `\nDegraded smoke BENCHMARK_BASE_URL=${baseUrl}`);
-    const metric = await probeOne(baseUrl, fixture, 1);
+  log(options, `\n${options.mode} probe BENCHMARK_BASE_URL=${baseUrl}`);
+  for (let i = 1; i <= options.warmupRuns; i += 1) {
+    const warmup = await probeOne(baseUrl, runFixtures[0], 10_000 + i, options.mode);
+    log(options, `  warmup#${i}: http=${warmup.httpStatus} firstTokenMs=${fmt(warmup.firstTokenMs)} finalMs=${fmt(warmup.finalMs)}`);
+  }
+
+  for (let i = 0; i < runFixtures.length; i += 1) {
+    const fixture = runFixtures[i];
+    const run = options.includeAll ? i + 1 : i + 1;
+    const metric = await probeOne(baseUrl, fixture, run, options.mode);
     result.metrics.push(metric);
     printProbe(options, metric);
-    result.degradedFailures = assertDegradedSmoke(metric);
-    log(options, `  degraded=${result.degradedFailures.length === 0 ? "pass" : `fail (${result.degradedFailures.join(", ")})`}`);
-    if (options.assertBudget && result.degradedFailures.length > 0) process.exitCode = 1;
-    await writeJsonIfNeeded(options, result);
-    return;
-  }
-
-  log(options, `\nLive probe BENCHMARK_BASE_URL=${baseUrl}`);
-  log(options, `Live ordinary scenario=${fixture.scenario} runs=${options.runs}\n`);
-
-  for (let i = 1; i <= options.warmupRuns; i += 1) {
-    const warmup = await probeOne(baseUrl, fixture, 10_000 + i);
-    log(
-      options,
-      `  warmup#${i}: http=${warmup.httpStatus} firstStatusMs=${fmt(warmup.firstStatusMs)} firstTokenMs=${fmt(
-        warmup.firstTokenMs
-      )} finalMs=${fmt(warmup.finalMs)}`
-    );
-  }
-  if (options.warmupRuns > 0) log(options);
-
-  for (let i = 1; i <= options.runs; i += 1) {
-    const m = await probeOne(baseUrl, fixture, i);
-    result.metrics.push(m);
-    printProbe(options, m);
-  }
-
-  if (options.includeAll) {
-    log(options, "\nLive fixture sweep");
-    let run = 1;
-    for (const f of fixtures) {
-      const m = await probeOne(baseUrl, f, run);
-      printProbe(options, m);
-      run += 1;
-    }
   }
 
   result.summary = summarize(result.metrics);

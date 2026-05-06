@@ -13,7 +13,7 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   const chatPerfContent = readFileSync(chatPerfPath, "utf8");
   const anyContent = `${routeContent}\n/*-*/\n${chatPerfContent}`;
 
-  assert.ok(routeContent.includes("__VERSECRAFT_FINAL__"));
+  assert.ok(routeContent.includes("VERSECRAFT_FINAL_PREFIX"));
   assert.ok(routeContent.includes("runStreamFinalHooks"));
   const required = ["is_action_legal", "sanity_damage", "narrative", "is_death", "consumes_time"];
   for (const key of required) {

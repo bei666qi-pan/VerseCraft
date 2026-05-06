@@ -1,13 +1,20 @@
 {
   "scenario": "combat_high_rules",
-  "description": "战斗或强规则裁决语境，规则快照 in_combat_hint",
-  "latestUserInput": "我抡起灭火器砸向扑过来的东西，同时往后退到墙角，准备下一击。",
-  "playerContext": "player_location: 地下停车场\\ncombat_round: 2\\nenemy: 未知实体\\nhp: 45\\nstress: high",
+  "description": "战斗或强规则裁决场景，验证规则压力下仍有可解析终帧和足够叙事。",
+  "latestUserInput": "我抄起灭火器砸向扑过来的东西，同时往后退到墙角，准备下一击。",
+  "playerContext": "player_location: 地下停车场\ncombat_round: 2\nenemy: 未知实体\nhp: 45\nstress: high",
   "ruleSnapshot": {
     "in_combat_hint": true,
     "in_dialogue_hint": false,
     "location_changed_hint": false,
     "high_value_scene": true
   },
-  "observabilityNotes": "主模型 JSON 需严格合规；预检 risk 标签可能偏高；增强可能仍被门控"
+  "expect": {
+    "minNarrativeChars": 160,
+    "optionsCount": 4,
+    "allowOptionsMissing": false,
+    "mustContainAny": ["灭火器", "墙角", "东西", "停车场"],
+    "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "查看属性", "查看任务"]
+  },
+  "observabilityNotes": "combat 场景允许叙事略短，但不能丢 final JSON、不能丢选项质量。"
 }

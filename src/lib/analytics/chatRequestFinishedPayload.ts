@@ -117,6 +117,10 @@ export type BuildChatRequestFinishedPayloadInput = {
   routing: ChatRoutingSnapshot;
   stableCharLen: number;
   dynamicCharLen: number;
+  promptVersion?: string | null;
+  promptStablePrefixHash?: string | null;
+  stableTokenEstimate?: number | null;
+  dynamicTokenEstimate?: number | null;
   runtimePacketChars?: number;
   runtimePacketTokenEstimate?: number;
   latestUsage: TokenUsage | null;
@@ -131,6 +135,22 @@ export type BuildChatRequestFinishedPayloadInput = {
   settlementGuardApplied?: boolean;
   settlementAwardPruned?: number;
   statusFrameCount?: number;
+  firstStatusMs?: number | null;
+  firstVisibleTextMs?: number | null;
+  finalMs?: number | null;
+  narrativeChars?: number | null;
+  optionsCount?: number | null;
+  optionsQualityPass?: boolean | null;
+  optionsRepairUsed?: boolean | null;
+  optionsRepairMs?: number | null;
+  fallbackUsed?: boolean | null;
+  degradedMode?: boolean | null;
+  longGapCount?: number | null;
+  maxInterChunkGapMs?: number | null;
+  promptBuildMs?: number | null;
+  loreRetrievalMs?: number | null;
+  retryCount?: number | null;
+  errorType?: string | null;
   narrativeLength?: NarrativeLengthTelemetry | null;
   narrativeExpansion?: NarrativeExpansionTelemetry | null;
 };
@@ -179,6 +199,10 @@ export function buildChatRequestFinishedPayload(
     aiActualLogicalRole: input.routing.actualLogicalRole ?? input.model,
     stableCharLen: input.stableCharLen,
     dynamicCharLen: input.dynamicCharLen,
+    promptVersion: input.promptVersion ?? null,
+    promptStablePrefixHash: input.promptStablePrefixHash ?? null,
+    stableTokenEstimate: optionalFiniteInt(input.stableTokenEstimate),
+    dynamicTokenEstimate: optionalFiniteInt(input.dynamicTokenEstimate),
     runtimePacketChars: optionalFiniteInt(input.runtimePacketChars),
     runtimePacketTokenEstimate: optionalFiniteInt(input.runtimePacketTokenEstimate),
     narrativeBudgetTier: narrativeLength?.narrativeBudgetTier ?? null,
@@ -236,5 +260,29 @@ export function buildChatRequestFinishedPayload(
     settlementAwardPruned: optionalFiniteInt(input.settlementAwardPruned),
     statusFrameCount: optionalFiniteInt(input.statusFrameCount),
     statusShownRate: (input.statusFrameCount ?? 0) > 0 ? 1 : 0,
+    firstStatusMs: optionalFiniteInt(input.firstStatusMs),
+    firstVisibleTextMs: optionalFiniteInt(input.firstVisibleTextMs ?? ttft),
+    finalMs: optionalFiniteInt(input.finalMs ?? Math.max(0, input.finishedAt - input.requestStartedAt)),
+    narrativeChars: optionalFiniteInt(input.narrativeChars ?? narrativeLength?.actualNarrativeChars),
+    optionsCount: optionalFiniteInt(input.optionsCount),
+    optionsQualityPass: typeof input.optionsQualityPass === "boolean" ? input.optionsQualityPass : null,
+    optionsRepairUsed: typeof input.optionsRepairUsed === "boolean" ? input.optionsRepairUsed : null,
+    optionsRepairMs: optionalFiniteInt(input.optionsRepairMs),
+    fallbackUsed: typeof input.fallbackUsed === "boolean" ? input.fallbackUsed : null,
+    degradedMode: typeof input.degradedMode === "boolean" ? input.degradedMode : null,
+    longGapCount: optionalFiniteInt(input.longGapCount),
+    maxInterChunkGapMs: optionalFiniteInt(input.maxInterChunkGapMs),
+    promptBuildMs: optionalFiniteInt(input.promptBuildMs),
+    loreRetrievalMs: optionalFiniteInt(input.loreRetrievalMs),
+    retryCount: optionalFiniteInt(input.retryCount),
+    errorType: input.errorType ?? null,
+    "gen_ai.client.token.usage": {
+      input_tokens: promptTokens,
+      output_tokens: completionTokens,
+      total_tokens: totalTokens,
+      cached_input_tokens: cachedPromptTokens,
+    },
+    "gen_ai.client.operation.duration": optionalFiniteInt(input.finalMs ?? Math.max(0, input.finishedAt - input.requestStartedAt)),
+    "gen_ai.server.time_to_first_token": optionalFiniteInt(input.firstVisibleTextMs ?? ttft),
   };
 }

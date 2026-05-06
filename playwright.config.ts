@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const defaultWebServerCommand =
+  process.env.AI_PROVIDER === "mock" ? "pnpm exec next start -p 666" : "pnpm dev";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -21,7 +24,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? "pnpm dev",
+    command: process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? defaultWebServerCommand,
     url: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666",
     reuseExistingServer: !process.env.CI,
     timeout: process.env.CI ? 120_000 : 120_000,

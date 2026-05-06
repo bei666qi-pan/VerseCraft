@@ -154,12 +154,25 @@ let memoVersionKey: string | undefined;
 let memoCompactStablePrefix: string | undefined;
 let memoCompactVersionKey: string | undefined;
 
+export function getPlayerDmPromptVersion(): string {
+  return (envRaw("VERSECRAFT_DM_STABLE_PROMPT_VERSION") ?? "default").trim() || "default";
+}
+
+export function stablePromptHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 /**
  * Longest stable prefix for prompt/KV cache: full static instructions + lore + fixed section title.
  * Invalidated when env VERSECRAFT_DM_STABLE_PROMPT_VERSION changes.
  */
 export function getStablePlayerDmSystemPrefix(): string {
-  const v = (envRaw("VERSECRAFT_DM_STABLE_PROMPT_VERSION") ?? "").trim();
+  const v = getPlayerDmPromptVersion();
   if (memoStablePrefix !== undefined && memoVersionKey === v) {
     return memoStablePrefix;
   }
@@ -181,7 +194,7 @@ export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
 }
 
 export function getCompactStablePlayerDmSystemPrefix(): string {
-  const v = (envRaw("VERSECRAFT_DM_STABLE_PROMPT_VERSION") ?? "").trim();
+  const v = getPlayerDmPromptVersion();
   if (memoCompactStablePrefix !== undefined && memoCompactVersionKey === v) {
     return memoCompactStablePrefix;
   }

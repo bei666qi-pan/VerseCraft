@@ -1,6 +1,10 @@
 import { VERSECRAFT_REQUEST_ID_RESPONSE_HEADER } from "@/lib/telemetry/requestId";
 import type { StatusFrameStage } from "@/lib/turnEngine/types";
 
+export const VERSECRAFT_CONTROL_PREFIX = "__VERSECRAFT_";
+export const VERSECRAFT_STATUS_PREFIX = "__VERSECRAFT_STATUS__:";
+export const VERSECRAFT_FINAL_PREFIX = "__VERSECRAFT_FINAL__:";
+
 export function encodeSseEventPayload(data: string): string {
   const normalized = data.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = normalized.split("\n");
@@ -55,5 +59,5 @@ export function buildStatusFramePayload(args: {
   if (flushPaddingBytes > 0) {
     frame.flushPadding = "x".repeat(flushPaddingBytes);
   }
-  return `__VERSECRAFT_STATUS__:${JSON.stringify(frame)}`;
+  return `${VERSECRAFT_STATUS_PREFIX}${JSON.stringify(frame)}`;
 }

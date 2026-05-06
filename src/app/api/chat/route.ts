@@ -24,7 +24,7 @@ import { getGuestIdFromClientState } from "@/lib/chat/clientStateGuest";
 import { recordChatActionCompletedAnalytics, recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 import type { AnalyticsPlatform } from "@/lib/analytics/types";
 import { buildPlayerContextDigest, inferWeaponizationAttempted } from "@/lib/analytics/playerContextDigest";
-import { DEFAULT_PLAYER_ROLE_CHAIN, resolveAiEnv } from "@/lib/ai/config/env";
+import { DEFAULT_PLAYER_ROLE_CHAIN, isMockAiProviderEnv, resolveAiEnv } from "@/lib/ai/config/env";
 import { resolveOperationMode } from "@/lib/ai/degrade/mode";
 import { allowControlPreflightForSession } from "@/lib/ai/governance/sessionBudget";
 import { pushAiRoutingReport } from "@/lib/ai/debug/routingRing";
@@ -61,6 +61,7 @@ import {
   recordOptionsManualRegenOutcome,
   recordPromptCharDelta,
 } from "@/lib/observability/versecraftRolloutMetrics";
+import { logChatGenerationMetrics } from "@/lib/observability/chatGenerationMetrics";
 import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
 import {
   normalizePlayerDmJson,
@@ -194,7 +195,14 @@ import {
   runControlPreflightStage,
 } from "@/lib/turnEngine/preflight";
 import { loadRuntimeLoreStage } from "@/lib/turnEngine/runtimeLore";
-import { buildSseHeaders, buildStatusFramePayload, createSseResponse, sse, sseText } from "@/lib/narrativeEngine/streamFrames";
+import {
+  buildSseHeaders,
+  buildStatusFramePayload,
+  createSseResponse,
+  sse,
+  sseText,
+  VERSECRAFT_FINAL_PREFIX,
+} from "@/lib/narrativeEngine/streamFrames";
 import { buildDialogueContext } from "@/lib/narrativeEngine/contextBuilder";
 import type {
   ChatTtftProfile,
@@ -286,6 +294,9 @@ async function resolveChatQueueGate(
   req: Request,
   requestId: string
 ): Promise<{ queueId: string | null; response: Response | null }> {
+  if (isMockAiProviderEnv() && envBoolean("VC_MOCK_AI_BYPASS_CHAT_QUEUE", true)) {
+    return { queueId: null, response: null };
+  }
   if (req.headers.get(EARLY_STATUS_WRAPPER_HEADER) === "1") {
     return { queueId: getChatQueueIdFromHeaders(req.headers), response: null };
   }
@@ -535,7 +546,7 @@ export async function POST(req: Request) {
         if (!outerStreamClosed) {
           controller.enqueue(
             sse(
-              `__VERSECRAFT_FINAL__:${JSON.stringify({
+              `${VERSECRAFT_FINAL_PREFIX}${JSON.stringify({
                 is_action_legal: false,
                 sanity_damage: 0,
                 narrative: "请求格式无效，未推进剧情。",
@@ -569,7 +580,7 @@ export async function POST(req: Request) {
               if (!outerStreamClosed) {
                 controller.enqueue(
                   sse(
-                    `__VERSECRAFT_FINAL__:${JSON.stringify({
+                    `${VERSECRAFT_FINAL_PREFIX}${JSON.stringify({
                       is_action_legal: false,
                       sanity_damage: 0,
                       narrative: "游戏主脑暂时离线，请稍后再试。",
@@ -1691,7 +1702,15 @@ async function postChatInternal(req: Request) {
     aiEnvForSystem.playerChatMaxTokensOverride
   );
   const playerChatMaxTokens = playerChatMaxTokensResolution.maxTokens;
-  const { safeMessages, stableCharLen, dynamicCharLen } = assemblePlayerChatPrompt({
+  const {
+    safeMessages,
+    stableCharLen,
+    dynamicCharLen,
+    promptVersion,
+    promptStablePrefixHash,
+    stableTokenEstimate,
+    dynamicTokenEstimate,
+  } = assemblePlayerChatPrompt({
     stablePrefix: playerDmStablePrefix,
     dynamicSuffix: dynamicSuffixFull,
     splitDualSystem: aiEnvForSystem.splitPlayerChatDualSystem,
@@ -1733,6 +1752,12 @@ async function postChatInternal(req: Request) {
       loreBudgetHit,
       runtimePacketChars,
       runtimePacketTokenEstimate,
+      promptVersion,
+      promptStablePrefixHash,
+      stableCharLen,
+      dynamicCharLen,
+      stableTokenEstimate,
+      dynamicTokenEstimate,
       narrativeBudgetTier,
       narrativeBudgetMinChars: narrativeBudget.minChars,
       narrativeBudgetTargetChars,
@@ -1867,7 +1892,7 @@ async function postChatInternal(req: Request) {
           message: "degraded: keys missing",
           requestId,
         })
-      )}${sseText(`__VERSECRAFT_FINAL__:${degradedPayloadAscii}`)}`,
+      )}${sseText(`${VERSECRAFT_FINAL_PREFIX}${degradedPayloadAscii}`)}`,
       {
         status: 200,
         headers: buildSseHeaders(requestId, { "X-VerseCraft-Ai-Status": "keys_missing" }),
@@ -1987,7 +2012,7 @@ async function postChatInternal(req: Request) {
   };
   const closeWithFallback = async () => {
     try {
-      await writeControlToStream(`__VERSECRAFT_FINAL__:${fallbackPayload}`);
+      await writeControlToStream(`${VERSECRAFT_FINAL_PREFIX}${fallbackPayload}`);
     } catch {
       // Same best-effort boundary as close(): if the client has already gone away,
       // the fallback cannot be delivered and should not crash the background stream task.
@@ -2035,6 +2060,11 @@ async function postChatInternal(req: Request) {
   let finalJsonParseSuccess = false;
   let settlementGuardApplied = false;
   let settlementAwardPruned = 0;
+  let finalOptionsCountTelemetry = 0;
+  let finalOptionsQualityPassTelemetry = false;
+  let optionsRepairUsedTelemetry = false;
+  let optionsRepairMsTelemetry: number | null = null;
+  let fallbackUsedTelemetry = false;
   let epistemicPostValidatorTelemetry: EpistemicValidatorTelemetry | null = null;
   let narrativeLengthTelemetry: NarrativeLengthTelemetry | null = null;
   let narrativeExpansionTelemetry: NarrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry();
@@ -2328,6 +2358,10 @@ async function postChatInternal(req: Request) {
           },
           stableCharLen,
           dynamicCharLen,
+          promptVersion,
+          promptStablePrefixHash,
+          stableTokenEstimate,
+          dynamicTokenEstimate,
           runtimePacketChars,
           runtimePacketTokenEstimate,
           latestUsage: args.latestUsage,
@@ -2350,6 +2384,21 @@ async function postChatInternal(req: Request) {
           streamEmptyCount,
           statusFrameCount,
           finalJsonParseSuccess,
+          firstStatusMs:
+            ttftProfile.firstSseWriteAt !== null ? Math.max(0, ttftProfile.firstSseWriteAt - requestStartedAt) : null,
+          firstVisibleTextMs: args.firstChunkAt > 0 ? Math.max(0, args.firstChunkAt - requestStartedAt) : null,
+          finalMs: Math.max(0, finishedAt - requestStartedAt),
+          narrativeChars: narrativeLengthTelemetry?.actualNarrativeChars ?? null,
+          optionsCount: finalOptionsCountTelemetry,
+          optionsQualityPass: finalOptionsQualityPassTelemetry,
+          optionsRepairUsed: optionsRepairUsedTelemetry,
+          optionsRepairMs: optionsRepairMsTelemetry,
+          fallbackUsed: fallbackUsedTelemetry,
+          degradedMode: false,
+          promptBuildMs: ttftProfile.promptBuildMs,
+          loreRetrievalMs: loreRetrievalLatencyMs,
+          retryCount: routingReport.attempts.filter((a) => a.failureKind !== undefined).length,
+          errorType: args.streamBlocked ? "stream_blocked" : null,
           settlementGuardApplied,
           settlementAwardPruned,
           narrativeLength: narrativeLengthTelemetry,
@@ -2453,10 +2502,43 @@ async function postChatInternal(req: Request) {
         })(),
       }).catch(() => {});
 
+      logChatGenerationMetrics({
+        requestId,
+        sessionId,
+        userId,
+        provider: streamSource.providerId,
+        model: args.gatewayModel,
+        logicalRole: args.streamRole,
+        promptVersion,
+        promptStablePrefixHash,
+        scenarioOrTurnMode: plannedTurnMode.mode,
+        firstStatusMs:
+          ttftProfile.firstSseWriteAt !== null ? Math.max(0, ttftProfile.firstSseWriteAt - requestStartedAt) : null,
+        firstVisibleTextMs: args.firstChunkAt > 0 ? Math.max(0, args.firstChunkAt - requestStartedAt) : null,
+        finalMs: Math.max(0, finishedAt - requestStartedAt),
+        finalJsonParseSuccess,
+        narrativeChars: narrativeLengthTelemetry?.actualNarrativeChars ?? null,
+        optionsCount: finalOptionsCountTelemetry,
+        optionsQualityPass: finalOptionsQualityPassTelemetry,
+        optionsRepairUsed: optionsRepairUsedTelemetry,
+        optionsRepairMs: optionsRepairMsTelemetry,
+        fallbackUsed: fallbackUsedTelemetry,
+        degradedMode: false,
+        preflightMs: preflightTurnMetrics.latencyMs,
+        loreRetrievalMs: loreRetrievalLatencyMs,
+        promptBuildMs: ttftProfile.promptBuildMs,
+        inputTokens: args.latestUsage?.promptTokens,
+        outputTokens: args.latestUsage?.completionTokens,
+        cachedInputTokens: args.latestUsage?.cachedPromptTokens,
+        retryCount: routingReport.attempts.filter((a) => a.failureKind !== undefined).length,
+        errorType: args.streamBlocked ? "stream_blocked" : null,
+        usage: args.latestUsage,
+      });
+
       logAiTelemetry({
         requestId,
         task: "PLAYER_CHAT",
-        providerId: "oneapi",
+        providerId: streamSource.providerId,
         logicalRole: args.streamRole,
         gatewayModel: args.gatewayModel,
         phase: "stream_complete",
@@ -2675,14 +2757,17 @@ async function postChatInternal(req: Request) {
               : null;
           const preResolveFreeze = preResolveGuard?.settlement_guard === "stage2_freeze_on_illegal_or_death";
           if (opts.length < 2 && !preResolveFreeze && canRunFinalRepair()) {
+            const repairStartedAt = Date.now();
             const regen = await generateOptionsOnlyFallback({
               narrative: String(dmRecord.narrative ?? ""),
               latestUserInput,
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
               signal: pipelineAbort.signal,
-              budgetMs: nextFinalRepairBudgetMs(4_500),
+              budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
             });
+            optionsRepairUsedTelemetry = true;
+            optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
             }
@@ -2754,14 +2839,17 @@ async function postChatInternal(req: Request) {
             ).length;
             if (optCount < 2 && decCount < 2 && canRunFinalRepair()) {
               recordDecisionOptionsFixOutcome(false);
+              const repairStartedAt = Date.now();
               const regen = await generateDecisionOptionsOnlyFallback({
                 narrative: String(dm.narrative ?? ""),
                 latestUserInput,
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", purpose: "decision_options_fix" } },
                 signal: pipelineAbort.signal,
-                budgetMs: nextFinalRepairBudgetMs(2_200),
+                budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
               });
+              optionsRepairUsedTelemetry = true;
+              optionsRepairMsTelemetry = Math.max(0, Date.now() - repairStartedAt);
               if (regen.ok) {
                 recordDecisionOptionsFixOutcome(true);
                 dm.turn_mode = "decision_required";
@@ -3354,6 +3442,7 @@ async function postChatInternal(req: Request) {
         moderationBody = finalizePayload;
       } else {
         // 褰撲笂娓歌繑鍥為潪涓ユ牸 JSON 鎴栭噸澶嶆嫾鎺ュ璞℃椂锛屽己鍒跺洖钀藉埌鏍囧噯 DM JSON 褰㈢姸锛屼繚璇?SSE 濂戠害绋冲畾銆?        finalizePayload = sanitizeAssistantContent(accumulatedText);
+        fallbackUsedTelemetry = true;
         finalizePayload = fallbackPayload;
         moderationBody = fallbackPayload;
       }
@@ -3468,7 +3557,18 @@ async function postChatInternal(req: Request) {
       }
 
       if (finalizePayload) {
-        await writer.write(sse(`__VERSECRAFT_FINAL__:${finalizePayload}`));
+        try {
+          const parsedForMetrics = JSON.parse(finalizePayload) as Record<string, unknown>;
+          const finalOptions = Array.isArray(parsedForMetrics.options)
+            ? parsedForMetrics.options.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+            : [];
+          finalOptionsCountTelemetry = finalOptions.length;
+          finalOptionsQualityPassTelemetry = finalOptions.length === 4 && filterNarrativeActionOptions(finalOptions, 4).length === 4;
+        } catch {
+          finalOptionsCountTelemetry = 0;
+          finalOptionsQualityPassTelemetry = false;
+        }
+        await writer.write(sse(`${VERSECRAFT_FINAL_PREFIX}${finalizePayload}`));
         if (
           epistemicResiduePlan.persistEntry &&
           userId &&
@@ -4112,7 +4212,7 @@ async function tryServeCodexFromGlobalCache(args: {
     Connection: "keep-alive",
   } as const;
 
-  return new Response(sseText(`__VERSECRAFT_FINAL__:${JSON.stringify(dmNorm)}`), {
+  return new Response(sseText(`${VERSECRAFT_FINAL_PREFIX}${JSON.stringify(dmNorm)}`), {
     status: 200,
     headers,
   });
