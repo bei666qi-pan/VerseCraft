@@ -7,6 +7,12 @@ function isAbortError(e: unknown): boolean {
   return e instanceof Error && (e.name === "AbortError" || /abort/i.test(e.message));
 }
 
+function createFetchTimeoutError(timeoutMs: number): Error {
+  const err = new Error(`upstream fetch timeout after ${timeoutMs}ms`);
+  err.name = "TimeoutError";
+  return err;
+}
+
 export function isRetryableHttpStatus(status: number): boolean {
   return status === 429 || status === 503 || status === 502 || status === 408;
 }
@@ -67,9 +73,11 @@ export async function resilientFetch(
       return lastResponse;
     } catch (e) {
       clearTimeout(timeoutId);
-      lastError = e;
-      if (!isRetryable(null, e)) {
-        throw e;
+      const timeoutHit = timeoutController.signal.aborted && parentSignal?.aborted !== true;
+      const normalizedError = timeoutHit ? createFetchTimeoutError(timeoutMs) : e;
+      lastError = normalizedError;
+      if (!isRetryable(null, normalizedError)) {
+        throw normalizedError;
       }
       if (attempt < maxRetries) {
         const waitMs = 400 * 2 ** attempt;
@@ -77,7 +85,7 @@ export async function resilientFetch(
         await sleep(waitMs);
         continue;
       }
-      throw e;
+      throw normalizedError;
     }
   }
 

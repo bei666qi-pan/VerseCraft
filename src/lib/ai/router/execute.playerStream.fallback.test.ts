@@ -94,3 +94,87 @@ test("executePlayerChatStream falls back when primary upstream returns 503", asy
   assert.equal(calls, 2);
   assert.ok(result.response.body);
 });
+
+test("executePlayerChatStream falls back when primary upstream fetch times out", async (t) => {
+  const restoreEnv = patchEnv({
+    AI_GATEWAY_BASE_URL: "https://gateway.test",
+    AI_GATEWAY_API_KEY: "k",
+    AI_MODEL_MAIN: "upstream-main",
+    AI_MODEL_CONTROL: "upstream-control",
+    AI_MODEL_ENHANCE: "e",
+    AI_MODEL_REASONER: "r",
+    AI_PLAYER_ROLE_CHAIN: "main,control",
+    AI_MAX_RETRIES: "0",
+    AI_PLAYER_CHAT_AGGRESSIVE_FAILOVER: "1",
+    AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES: "2",
+    AI_CIRCUIT_FAILURE_THRESHOLD: "99",
+  });
+  const origFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.includes("gateway.test")) {
+      return new Response(`unexpected url: ${url}`, { status: 500 });
+    }
+    calls++;
+    const body = JSON.parse(String(init?.body)) as { model?: string };
+    if (calls === 1) {
+      assert.equal(body.model, "upstream-main");
+      const signal = init?.signal;
+      return await new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener(
+          "abort",
+          () => {
+            const err = new Error("The operation was aborted.");
+            err.name = "AbortError";
+            reject(err);
+          },
+          { once: true }
+        );
+      });
+    }
+    assert.equal(body.model, "upstream-control");
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          enc.encode(
+            `data: ${JSON.stringify({
+              choices: [{ delta: { content: "fallback fragment" }, finish_reason: null }],
+            })}\n\n`
+          )
+        );
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  };
+
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restoreEnv();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const messages: ChatMessage[] = [{ role: "user", content: "hello" }];
+  const result = await executePlayerChatStream({
+    messages,
+    ctx: { requestId: "e2e-fallback-timeout", task: "PLAYER_CHAT", userId: null },
+    timeoutMs: 1,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.logicalRole, "control");
+  assert.equal(calls, 2);
+  assert.equal(result.httpAttempts[0]?.failureKind, "TIMEOUT");
+  assert.ok(result.response.body);
+});
