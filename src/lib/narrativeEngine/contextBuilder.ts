@@ -2,7 +2,11 @@ import { getChapterDefinition, normalizeChapterState } from "@/lib/chapters";
 import type { ChapterState } from "@/lib/chapters/types";
 import { CONTENT_PACKS } from "@/lib/contentSpec/packs";
 import { coerceToEpistemicMemory, type SessionMemoryRow } from "@/lib/memoryCompress";
-import type { MemorySpineState } from "@/lib/memorySpine/types";
+import {
+  selectChapterMustEchoEntries,
+  selectOpenChapterThreads,
+} from "@/lib/memorySpine/selectors";
+import type { MemorySpineEntry, MemorySpineState } from "@/lib/memorySpine/types";
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
 import { ANOMALIES } from "@/lib/registry/anomalies";
@@ -10,6 +14,7 @@ import { ITEMS } from "@/lib/registry/items";
 import { NPCS } from "@/lib/registry/npcs";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
+import { buildChapterWriterInstruction } from "@/lib/storyDirector/chapterReasoner";
 import type { LoreFact, LorePacket, RuntimeLoreRequest } from "@/lib/worldKnowledge/types";
 import { writeNarrativeRunBestEffort } from "./narrativeRunRepository";
 import {
@@ -32,6 +37,7 @@ export type BuildDialogueContextInput = NarrativeTurnInput & {
   revealTier?: number | null;
   runSnapshotV2?: RunSnapshotV2 | null;
   chapterState?: ChapterState | null;
+  storyDirector?: unknown | null;
   sessionMemory?: SessionMemoryRow | null;
   lorePacket?: LorePacket | null;
   recentlyEncounteredEntities?: string[];
@@ -110,7 +116,9 @@ export async function buildDialogueContext(input: BuildDialogueContextInput): Pr
 
     applyChapterContext(context, {
       snapshot,
+      clientState,
       chapterState: input.chapterState,
+      storyDirector: input.storyDirector,
       sceneId: input.sceneId,
     });
 
@@ -220,8 +228,18 @@ function createMinimalDialogueContext(input: BuildDialogueContextInput, snapshot
     },
     chapter: {
       chapterId: null,
+      title: null,
       status: null,
       sceneId: input.sceneId ?? null,
+      phase: null,
+      promise: null,
+      mainQuestion: null,
+      emotionalTone: null,
+      mustEchoSummaries: [],
+      unresolvedThreads: [],
+      forbiddenRevealIds: [],
+      closePolicy: null,
+      writerInstruction: null,
       objective: null,
       completedBeatIds: [],
       allowedEventIds: [],
@@ -307,13 +325,44 @@ function applyChapterContext(
   context: DialogueContext,
   args: {
     snapshot: RunSnapshotV2 | null;
+    clientState: Record<string, unknown> | null;
     chapterState?: ChapterState | null;
+    storyDirector?: unknown | null;
     sceneId?: string | null;
   }
 ): void {
   const rawState = args.chapterState ?? args.snapshot?.chapterState ?? null;
+  const directorChapter = resolveChapterDirectorPackage({
+    explicitDirector: args.storyDirector,
+    snapshot: args.snapshot,
+    clientState: args.clientState,
+  });
   if (!rawState) {
     context.chapter.sceneId = args.sceneId ?? context.player.locationId ?? null;
+    if (directorChapter) {
+      context.chapter = {
+        ...context.chapter,
+        chapterId: directorChapter.chapterId,
+        title: directorChapter.title,
+        sceneId: args.sceneId ?? context.player.locationId ?? null,
+        phase: directorChapter.phase,
+        promise: directorChapter.promise,
+        mainQuestion: directorChapter.mainQuestion,
+        emotionalTone: directorChapter.emotionalTone,
+        mustEchoSummaries: buildMustEchoSummaries({
+          memorySpine: getMemorySpine(args.snapshot),
+          directorChapter,
+        }),
+        unresolvedThreads: buildUnresolvedThreadSummaries({
+          memorySpine: getMemorySpine(args.snapshot),
+          directorChapter,
+        }),
+        forbiddenRevealIds: directorChapter.forbiddenRevealIds,
+        closePolicy: directorChapter.closePolicy,
+        writerInstruction: directorChapter.writerInstruction,
+        objective: directorChapter.mainQuestion ?? directorChapter.promise,
+      };
+    }
     return;
   }
   try {
@@ -322,20 +371,238 @@ function applyChapterContext(
     const progress = chapterId ? chapterState.progressByChapterId?.[chapterId] : null;
     const definition = getChapterDefinition(chapterId);
     const completedBeatIds = uniqueStrings(progress?.completedBeatIds ?? []);
+    const title = directorChapter?.title ?? definition?.title ?? null;
+    const fallbackObjective = progress?.lastObjectiveText ?? definition?.objective ?? null;
+    const mainQuestion = directorChapter?.mainQuestion ?? fallbackObjective;
+    const promise = directorChapter?.promise ?? definition?.endHook ?? fallbackObjective;
+    const memorySpine = getMemorySpine(args.snapshot);
     context.chapter = {
       chapterId,
+      title,
       status: progress?.status ?? null,
       sceneId: args.sceneId ?? context.player.locationId ?? null,
-      objective: progress?.lastObjectiveText ?? definition?.objective ?? null,
+      phase: directorChapter?.phase ?? null,
+      promise,
+      mainQuestion,
+      emotionalTone: directorChapter?.emotionalTone ?? null,
+      mustEchoSummaries: buildMustEchoSummaries({
+        memorySpine,
+        directorChapter,
+        chapterId,
+        chapterOrder: definition?.order ?? null,
+      }),
+      unresolvedThreads: buildUnresolvedThreadSummaries({
+        memorySpine,
+        directorChapter,
+        chapterId,
+        chapterOrder: definition?.order ?? null,
+      }),
+      forbiddenRevealIds: directorChapter?.forbiddenRevealIds ?? [],
+      closePolicy: directorChapter?.closePolicy ?? null,
+      writerInstruction:
+        directorChapter?.writerInstruction ??
+        (fallbackObjective ? `承接本章目标推进：${clipForContext(fallbackObjective, 120)}` : null),
+      objective: mainQuestion,
       completedBeatIds,
       allowedEventIds: (definition?.beats ?? [])
         .map((beat) => beat.id)
         .filter((id) => !completedBeatIds.includes(id)),
-      blockedEventIds: [],
+      blockedEventIds: completedBeatIds,
     };
   } catch {
     context.chapter.sceneId = args.sceneId ?? context.player.locationId ?? null;
   }
+}
+
+type ChapterDirectorContext = {
+  chapterId: string | null;
+  chapterOrder: number | null;
+  title: string | null;
+  phase: string | null;
+  rawPhase: string | null;
+  promise: string | null;
+  mainQuestion: string | null;
+  emotionalTone: string | null;
+  mustEchoMemoryIds: string[];
+  openThreadIds: string[];
+  forbiddenRevealIds: string[];
+  closePolicy: string | null;
+  writerInstruction: string | null;
+};
+
+function resolveChapterDirectorPackage(args: {
+  explicitDirector?: unknown | null;
+  snapshot: RunSnapshotV2 | null;
+  clientState: Record<string, unknown> | null;
+}): ChapterDirectorContext | null {
+  const candidates = [
+    asRecord(args.explicitDirector)?.chapter,
+    asRecord(args.explicitDirector),
+    asRecord(args.snapshot?.world?.storyDirector)?.chapter,
+    asRecord(args.clientState?.storyDirector)?.chapter,
+    asRecord(asRecord(args.clientState?.directorDigest)?.chapter),
+  ];
+  for (const raw of candidates) {
+    const o = asRecord(raw);
+    if (!o) continue;
+    const chapterId = stringOrNull(o.currentChapterId) ?? stringOrNull(o.chapterId);
+    const title = stringOrNull(o.chapterTitle) ?? stringOrNull(o.title);
+    if (!chapterId && !title) continue;
+    const rawPhase = normalizePhaseCode(o.chapterPhase ?? o.phase);
+    const writerInstruction = rawPhase
+      ? buildChapterWriterInstruction(rawPhase as any)
+      : stringOrNull(o.writerInstruction);
+    const closeCandidate = asRecord(o.closeCandidate);
+    const shouldClose = closeCandidate?.shouldClose === true || o.shouldClose === true;
+    const recap = stringOrNull(closeCandidate?.playerRecapCandidate);
+    const nextTitle = stringOrNull(closeCandidate?.nextChapterTitleCandidate) ?? stringOrNull(o.nextTitle);
+    return {
+      chapterId,
+      chapterOrder: normalizeOptionalPositiveInt(o.chapterOrder),
+      title,
+      rawPhase,
+      phase: rawPhase ? phaseLabelForWriter(rawPhase) : null,
+      promise: stringOrNull(o.promise),
+      mainQuestion: stringOrNull(o.mainQuestion),
+      emotionalTone: stringOrNull(o.emotionalTone),
+      mustEchoMemoryIds: asStringArray(o.mustEchoMemoryIds).slice(0, 8),
+      openThreadIds: asStringArray(o.openThreadIds).slice(0, 12),
+      forbiddenRevealIds: asStringArray(o.forbiddenRevealIds).slice(0, 10),
+      closePolicy: shouldClose
+        ? [
+            "可以写出自然的可读停顿，但不要写章末结算、奖励、损失、进度或系统说明。",
+            recap ? `回望只可参考：${clipForContext(recap, 120)}` : "",
+            nextTitle ? `下一章标题可作为方向感：${clipForContext(nextTitle, 40)}` : "",
+          ].filter(Boolean).join(" ")
+        : "本章仍由正文自然推进；不要主动宣布章节结束。",
+      writerInstruction,
+    };
+  }
+  return null;
+}
+
+function getMemorySpine(snapshot: RunSnapshotV2 | null): MemorySpineState {
+  const spine = snapshot?.memory?.spine;
+  if (spine && Array.isArray(spine.entries)) return spine;
+  return { v: 1, entries: [] };
+}
+
+function buildMustEchoSummaries(args: {
+  memorySpine: MemorySpineState;
+  directorChapter: ChapterDirectorContext | null;
+  chapterId?: string | null;
+  chapterOrder?: number | null;
+}): string[] {
+  const entries = args.memorySpine.entries ?? [];
+  const explicitIds = new Set(args.directorChapter?.mustEchoMemoryIds ?? []);
+  const explicit = entries.filter((entry) => explicitIds.has(entry.id));
+  const selected = selectChapterMustEchoEntries(args.memorySpine, {
+    chapterId: args.directorChapter?.chapterId ?? args.chapterId ?? null,
+    chapterOrder: args.directorChapter?.chapterOrder ?? args.chapterOrder ?? null,
+    maxItems: 6,
+  });
+  return summarizeMemoryEntries([...explicit, ...selected], {
+    forbiddenRevealIds: args.directorChapter?.forbiddenRevealIds ?? [],
+    maxItems: 4,
+    maxChars: 120,
+  });
+}
+
+function buildUnresolvedThreadSummaries(args: {
+  memorySpine: MemorySpineState;
+  directorChapter: ChapterDirectorContext | null;
+  chapterId?: string | null;
+  chapterOrder?: number | null;
+}): string[] {
+  const entries = args.memorySpine.entries ?? [];
+  const explicitIds = new Set(args.directorChapter?.openThreadIds ?? []);
+  const explicit = entries.filter((entry) => explicitIds.has(entry.id));
+  const selected = selectOpenChapterThreads(args.memorySpine, {
+    chapterId: args.directorChapter?.chapterId ?? args.chapterId ?? null,
+    chapterOrder: args.directorChapter?.chapterOrder ?? args.chapterOrder ?? null,
+    maxItems: 8,
+  });
+  return summarizeMemoryEntries([...explicit, ...selected], {
+    forbiddenRevealIds: args.directorChapter?.forbiddenRevealIds ?? [],
+    maxItems: 6,
+    maxChars: 120,
+  });
+}
+
+function summarizeMemoryEntries(
+  entries: MemorySpineEntry[],
+  opts: { forbiddenRevealIds: string[]; maxItems: number; maxChars: number }
+): string[] {
+  const forbidden = new Set(opts.forbiddenRevealIds);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (!entry || entry.status === "expired") continue;
+    const summary = writerSafeMemorySummary(entry, forbidden, opts.maxChars);
+    if (!summary || seen.has(summary)) continue;
+    seen.add(summary);
+    out.push(summary);
+    if (out.length >= opts.maxItems) break;
+  }
+  return out;
+}
+
+function writerSafeMemorySummary(entry: MemorySpineEntry, forbiddenRevealIds: Set<string>, maxChars: number): string {
+  if (forbiddenRevealIds.has(entry.id)) {
+    return `禁止直接揭露未解真相：${entry.id}`;
+  }
+  if (entry.kind === "secret_fragment") {
+    return "有一枚未完全解开的秘密碎片靠近场面，只能以表层征兆回应。";
+  }
+  return clipForContext(entry.summary, maxChars);
+}
+
+function phaseLabelForWriter(phase: string): string | null {
+  switch (phase) {
+    case "opening":
+      return "开篇承接";
+    case "rising":
+      return "铺陈推进";
+    case "choice":
+      return "选择临界";
+    case "echo":
+      return "选择回响";
+    case "reveal":
+      return "小幅揭露";
+    case "aftershock":
+      return "余波停顿";
+    case "closing":
+      return "自然收束";
+    default:
+      return null;
+  }
+}
+
+function normalizePhaseCode(value: unknown): string | null {
+  const phase = stringOrNull(value);
+  if (
+    phase === "opening" ||
+    phase === "rising" ||
+    phase === "choice" ||
+    phase === "echo" ||
+    phase === "reveal" ||
+    phase === "aftershock" ||
+    phase === "closing"
+  ) {
+    return phase;
+  }
+  return null;
+}
+
+function normalizeOptionalPositiveInt(value: unknown): number | null {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+}
+
+function clipForContext(value: unknown, max: number): string {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
 async function resolveLorePacket(args: {

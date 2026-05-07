@@ -699,6 +699,25 @@ export async function executeChatCompletion(params: {
   const { url, key } = gatewayEndpoint(env);
 
   for (const role of policy.chain) {
+    if (params.signal?.aborted) {
+      return {
+        ok: false,
+        code: "ABORTED",
+        message: "Request aborted by caller.",
+        routing: {
+          requestId: params.ctx.requestId,
+          task: params.task,
+          operationMode: mode,
+          intendedRole: intendedLogicalRole,
+          actualLogicalRole: null,
+          fallbackCount: countFallbacks(attempts),
+          attempts,
+          finalStatus: "aborted",
+          lastFailureSummary: "ABORTED:caller",
+        },
+      };
+    }
+
     const gatewayModel = env.modelsByRole[role];
     if (!gatewayModel) continue;
 
@@ -729,8 +748,11 @@ export async function executeChatCompletion(params: {
     }
 
     const factory = getProviderFactory();
+    const forceJsonObjectFromOverride = params.devOverrides?.responseFormatJsonObject === true;
     const requestJsonObject =
-      expectJsonObject && !(env.onlineShortJsonRelaxResponseFormat && ONLINE_SHORT_JSON_TASKS.has(params.task));
+      expectJsonObject &&
+      (forceJsonObjectFromOverride ||
+        !(env.onlineShortJsonRelaxResponseFormat && ONLINE_SHORT_JSON_TASKS.has(params.task)));
     const body = buildNonStreamBody(
       gatewayModel,
       params.messages,
@@ -925,6 +947,24 @@ export async function executeChatCompletion(params: {
           providerScope: failureScope,
           countProvider,
         });
+      }
+      if (kind === "ABORTED" || params.signal?.aborted) {
+        return {
+          ok: false,
+          code: "ABORTED",
+          message: "Request aborted by caller.",
+          routing: {
+            requestId: params.ctx.requestId,
+            task: params.task,
+            operationMode: mode,
+            intendedRole: intendedLogicalRole,
+            actualLogicalRole: null,
+            fallbackCount: countFallbacks(attempts),
+            attempts,
+            finalStatus: "aborted",
+            lastFailureSummary: `${kind}:${role}`,
+          },
+        };
       }
     }
   }

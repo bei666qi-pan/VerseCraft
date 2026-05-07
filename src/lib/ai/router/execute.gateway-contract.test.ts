@@ -197,6 +197,76 @@ test("AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE does not affect non PLAYER_CHAT complet
   assert.equal(maxTokens, 640);
 });
 
+test("executeChatCompletion honors explicit JSON response override for online short JSON tasks", async (t) => {
+  const restore = patchEnv({
+    ...baseGateway,
+    AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT: "1",
+  });
+  const origFetch = globalThis.fetch;
+  let responseFormatType = "";
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      response_format?: { type?: string };
+    };
+    responseFormatType = body.response_format?.type ?? "";
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"options\":[\"a\",\"b\",\"c\",\"d\"]}" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const res = await executeChatCompletion({
+    task: "INTENT_PARSE",
+    messages: [{ role: "user", content: "{}" }],
+    ctx: { requestId: "gw-contract-force-json-short-task", task: "INTENT_PARSE" },
+    devOverrides: { responseFormatJsonObject: true },
+    skipCache: true,
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(responseFormatType, "json_object");
+});
+
+test("executeChatCompletion stops before upstream fetch when caller signal is already aborted", async (t) => {
+  const restore = patchEnv(baseGateway);
+  const origFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    return new Response("{}", { status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const ac = new AbortController();
+  ac.abort();
+  const res = await executeChatCompletion({
+    task: "INTENT_PARSE",
+    messages: [{ role: "user", content: "{}" }],
+    ctx: { requestId: "gw-contract-aborted-short-task", task: "INTENT_PARSE" },
+    signal: ac.signal,
+    skipCache: true,
+  });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.code, "ABORTED");
+  assert.equal(fetchCalled, false);
+});
+
 test("NARRATIVE_EXPANSION is non-stream json with bounded max tokens", async (t) => {
   const restore = patchEnv(baseGateway);
   const origFetch = globalThis.fetch;

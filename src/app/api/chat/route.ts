@@ -719,7 +719,12 @@ async function postChatInternal(req: Request) {
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
       budgetMs: optionsServerBudgetMs,
-      signal: req.signal,
+      // The early-status wrapper returns the outer SSE response before the
+      // internal options-only request finishes. The original request signal can
+      // therefore be aborted even while the client is still reading the SSE
+      // stream, so this short helper relies on its own wall-clock budget rather
+      // than inheriting the route request signal.
+      signal: undefined,
     });
     const shaped = buildOptionsRegenResponse({
       clientTurnModeHint,

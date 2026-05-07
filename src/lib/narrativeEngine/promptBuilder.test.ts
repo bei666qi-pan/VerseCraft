@@ -19,8 +19,18 @@ const context: DialogueContext = {
   },
   chapter: {
     chapterId: "chapter-1",
+    title: "暗月初醒",
     status: "active",
     sceneId: "B1_SafeZone",
+    phase: "选择回响",
+    promise: "第一道异常会在门后的回声里继续逼近。",
+    mainQuestion: "门后的回声究竟指向哪里？",
+    emotionalTone: "克制、悬疑、余波未散",
+    mustEchoSummaries: ["玩家答应沿门后的回声继续查下去。"],
+    unresolvedThreads: ["门后的回声留下新的调查钩子。"],
+    forbiddenRevealIds: ["fact:secret"],
+    closePolicy: "本章仍由正文自然推进；不要主动宣布章节结束。",
+    writerInstruction: "让玩家刚做出的选择在场景里被自然回响。",
     objective: "确认走廊是否安全。",
     completedBeatIds: ["wake"],
     allowedEventIds: ["observe"],
@@ -93,7 +103,7 @@ test("buildNarrativePromptPacket renders fixed packet sections in order", () => 
   const expected = [
     "## 稳定系统规则",
     "## 世界规则包",
-    "## 当前章节包",
+    "## 当前章节导演包",
     "## 当前场景包",
     "## NPC 身份包",
     "## NPC 已知信息边界",
@@ -135,6 +145,45 @@ test("buildNarrativePromptPacket hides forbidden lore text from usable world pac
   assert.doesNotMatch(forbidden, /终局真相不应在此处出现/);
 });
 
+test("buildNarrativePromptPacket renders a writer-safe chapter director packet", () => {
+  const packet = buildNarrativePromptPacket(context);
+  const packets = packet.debugPacket.packets as Record<string, Record<string, unknown>>;
+  const chapter = packets["当前章节导演包"];
+  const chapterJson = JSON.stringify(chapter);
+
+  assert.equal(chapter.chapterTitle, context.chapter.title);
+  assert.equal(chapter.currentWritingGoal, context.chapter.writerInstruction);
+  assert.equal(chapter.chapterPromise, context.chapter.promise);
+  assert.equal(chapter.chapterMainQuestion, context.chapter.mainQuestion);
+  assert.deepEqual(chapter.forbiddenEarlyRevealHints, [
+    "禁止提前揭露的未解内容 1：只写表层征兆、误导、情绪反应或调查方向。",
+  ]);
+  assert.doesNotMatch(chapterJson, /fact:secret/);
+  assert.doesNotMatch(chapterJson, /终局真相不应在此处出现/);
+  assert.match(chapterJson, /不要在 narrative 中写“本章完成”/);
+  assert.match(chapterJson, /Writer 不能决定章节是否关闭/);
+  assert.match(chapterJson, /我蹲下身，确认水迹到底从哪里开始/);
+  assert.match(chapterJson, /我装作没听见，先观察陈婆婆的反应/);
+  assert.match(chapterJson, /调查门缝/);
+  assert.match(chapterJson, /使用道具/);
+  assert.match(chapterJson, /打开图鉴/);
+});
+
+test("buildNarrativePromptPacket keeps chapter director packet free of internal budgets and completion demands", () => {
+  const packet = buildNarrativePromptPacket(context);
+  const packets = packet.debugPacket.packets as Record<string, Record<string, unknown>>;
+  const chapterJson = JSON.stringify(packets["当前章节导演包"]);
+
+  for (const field of ["pressureBudget", "softMaxTurns", "targetTurns", "minTurns", "startedTurn", "confidence"]) {
+    assert.equal(chapterJson.includes(field), false);
+  }
+  assert.match(chapterJson, /选项必须是第一人称小说式行动/);
+  assert.match(chapterJson, /Writer 不能决定章节是否关闭/);
+  assert.doesNotMatch(packet.system, /请.*本章完成/);
+  assert.doesNotMatch(packet.system, /必须.*本章完成/);
+  assert.doesNotMatch(packet.system, /输出“本章完成”/);
+});
+
 test("buildNarrativePromptPacket includes strict schema preference without requiring provider lock-in", () => {
   const packet = buildNarrativePromptPacket(context);
   const outputFormat = packet.debugPacket.outputFormat as Record<string, unknown>;
@@ -152,4 +201,3 @@ test("buildNarrativePromptPacket does not fabricate missing latest user input", 
   assert.match(packet.user, /如果没有收到真实玩家输入，不要补写玩家动作/);
   assert.doesNotMatch(packet.user, /检查安全区边缘/);
 });
-

@@ -55,10 +55,8 @@ export function advanceChapterBeats(
           : index === 3
             ? progress.turnCount >= 2 || progress.keyChoiceCount >= 1
             : index === 4
-              ? progress.stateChangeCount >= 1 || progress.turnCount >= definition.minTurns
-              : index === 5
-                ? progress.turnCount >= definition.minTurns && progress.stateChangeCount >= 1
-                : progress.turnCount >= definition.minTurns && progress.keyChoiceCount >= definition.minKeyChoices;
+              ? progress.stateChangeCount >= 1
+              : false;
     if (canComplete) completed.add(beat.id);
   }
   return uniqueStrings(Array.from(completed));

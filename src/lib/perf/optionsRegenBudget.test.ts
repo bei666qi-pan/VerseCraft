@@ -19,7 +19,11 @@ test("options regen budget: hard deadlines cannot exceed short-link ceilings", (
   assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.clientDeadlineMs <= 9_000, true);
   assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.openingClientDeadlineMs <= 11_000, true);
   assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.serverBudgetMs <= 8_500, true);
-  assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.firstAttemptTimeoutMs <= 5_500, true);
+  assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.firstAttemptTimeoutMs <= 8_000, true);
+  assert.equal(
+    OPTIONS_REGEN_LATENCY_BUDGET.firstAttemptTimeoutMs < OPTIONS_REGEN_LATENCY_BUDGET.serverBudgetMs,
+    true
+  );
   assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs <= 3_000, true);
   assert.equal(OPTIONS_REGEN_LATENCY_BUDGET.localFallbackOptionsAllowed, false);
 });

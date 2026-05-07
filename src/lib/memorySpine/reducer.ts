@@ -1,4 +1,4 @@
-import type { MemorySpineEntry, MemorySpineState } from "./types";
+import type { MemorySpineChapterRole, MemorySpineEntry, MemorySpineState } from "./types";
 import { pruneMemorySpine } from "./prune";
 
 export type MemoryCandidateDraft = Omit<MemorySpineEntry, "id" | "createdAtHour" | "lastTouchedAtHour"> & {
@@ -38,6 +38,25 @@ function mergeRecallTags(a: string[], b: string[]): string[] {
   for (const x of a ?? []) if (typeof x === "string" && x.trim()) out.add(x.trim());
   for (const x of b ?? []) if (typeof x === "string" && x.trim()) out.add(x.trim());
   return [...out].slice(0, 12);
+}
+
+function normalizeChapterRole(value: unknown): MemorySpineChapterRole | undefined {
+  return value === "setup" ||
+    value === "payoff" ||
+    value === "echo" ||
+    value === "hook" ||
+    value === "recap"
+    ? value
+    : undefined;
+}
+
+function normalizeChapterId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : undefined;
+}
+
+function normalizeChapterOrder(value: unknown): number | undefined {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.min(999, Math.trunc(n)) : undefined;
 }
 
 export function reduceMemoryCandidates(input: {
@@ -84,6 +103,10 @@ export function reduceMemoryCandidates(input: {
       anchors: d.anchors ?? {},
       recallTags: Array.isArray(d.recallTags) ? d.recallTags.slice(0, 12) : [],
       source: d.source ?? "resolved_turn",
+      ...(normalizeChapterId(d.chapterId) ? { chapterId: normalizeChapterId(d.chapterId) } : {}),
+      ...(normalizeChapterOrder(d.chapterOrder) ? { chapterOrder: normalizeChapterOrder(d.chapterOrder) } : {}),
+      ...(normalizeChapterRole(d.chapterRole) ? { chapterRole: normalizeChapterRole(d.chapterRole) } : {}),
+      ...(typeof d.shouldAppearInRecap === "boolean" ? { shouldAppearInRecap: d.shouldAppearInRecap } : {}),
       promoteToLore: Boolean(d.promoteToLore),
     };
 
@@ -100,6 +123,22 @@ export function reduceMemoryCandidates(input: {
         ttlHours: Math.max(prevE.ttlHours, candidate.ttlHours),
         anchors: mergeAnchors(prevE.anchors, candidate.anchors),
         recallTags: mergeRecallTags(prevE.recallTags, candidate.recallTags),
+        ...(candidate.chapterId ? { chapterId: candidate.chapterId } : prevE.chapterId ? { chapterId: prevE.chapterId } : {}),
+        ...(typeof candidate.chapterOrder === "number"
+          ? { chapterOrder: candidate.chapterOrder }
+          : typeof prevE.chapterOrder === "number"
+            ? { chapterOrder: prevE.chapterOrder }
+            : {}),
+        ...(candidate.chapterRole
+          ? { chapterRole: candidate.chapterRole }
+          : prevE.chapterRole
+            ? { chapterRole: prevE.chapterRole }
+            : {}),
+        ...(typeof candidate.shouldAppearInRecap === "boolean"
+          ? { shouldAppearInRecap: candidate.shouldAppearInRecap }
+          : typeof prevE.shouldAppearInRecap === "boolean"
+            ? { shouldAppearInRecap: prevE.shouldAppearInRecap }
+            : {}),
         promoteToLore: prevE.promoteToLore || candidate.promoteToLore,
       };
       entries[idx] = merged;

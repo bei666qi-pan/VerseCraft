@@ -53,6 +53,82 @@ test("normalizeRunSnapshotV2 fills defaults for partial snapshot", () => {
   assert.ok(Array.isArray(normalized.memory!.spine.entries));
 });
 
+test("normalizeRunSnapshotV2 preserves legacy chapter state and backfills director chapter", () => {
+  const nowHour = Math.max(0, Math.floor(Date.now() / 3600000));
+  const normalized = normalizeRunSnapshotV2({
+    schemaVersion: 2,
+    meta: { runId: "run_chapter_compat", worldVersion: 2, startedAt: "2026-01-01T00:00:00.000Z" },
+    player: { profile: { name: "A", gender: "other", height: 170, personality: "quiet" } },
+    time: { day: 1, hour: 4 },
+    world: {
+      storyDirector: {
+        v: 1,
+        arcId: "legacy_arc",
+        tension: 42,
+        stallCount: 1,
+      },
+    },
+    chapterState: {
+      currentChapterId: "chapter-2",
+      activeChapterId: "chapter-2",
+      reviewChapterId: null,
+      completedChapterIds: ["chapter-1"],
+      unlockedChapterIds: ["chapter-1", "chapter-2"],
+      progressByChapterId: {
+        "chapter-2": {
+          chapterId: "chapter-2",
+          status: "active",
+          startedAt: 1,
+          completedAt: null,
+          turnCount: 1,
+          narrativeCharCount: 20,
+          keyChoiceCount: 1,
+          completedBeatIds: [],
+          stateChangeCount: 1,
+          lastObjectiveText: "Follow the echo behind the door.",
+        },
+      },
+      summariesByChapterId: {},
+      lastChapterEndAt: null,
+      pendingChapterEndId: null,
+    },
+    memory: {
+      spine: {
+        v: 1,
+        entries: [
+          {
+            id: "legacy_memory_without_chapter",
+            kind: "hook",
+            scope: "run_private",
+            summary: "A legacy hook without chapter fields.",
+            salience: 0.8,
+            confidence: 0.9,
+            status: "active",
+            createdAtHour: nowHour,
+            lastTouchedAtHour: nowHour,
+            ttlHours: 72,
+            mergeKey: "legacy:hook",
+            anchors: {},
+            recallTags: ["hook"],
+            source: "system_hook",
+            promoteToLore: false,
+          },
+        ],
+      },
+    },
+  });
+  const director = normalized.world.storyDirector as any;
+  assert.equal(normalized.chapterState?.activeChapterId, "chapter-2");
+  assert.equal(director.arcId, "legacy_arc");
+  assert.equal(director.chapter.currentChapterId, "chapter-2");
+  assert.equal(director.chapter.chapterOrder, 2);
+  assert.equal(director.chapter.mainQuestion, "Follow the echo behind the door.");
+  const memory = normalized.memory?.spine.entries.find((entry) => entry.id === "legacy_memory_without_chapter");
+  assert.ok(memory);
+  assert.equal(memory!.chapterId, undefined);
+  assert.equal(memory!.chapterOrder, undefined);
+});
+
 test("snapshot projection keeps legacy surface usable", () => {
   const snapshot = buildRunSnapshotV2({
     player: { name: "B", gender: "女", height: 165, personality: "稳重" },

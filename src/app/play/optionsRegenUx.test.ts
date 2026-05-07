@@ -40,7 +40,7 @@ test("options regen UX: NEXT_PUBLIC_VC_TIGHT_TIMEOUTS=0 cannot widen options-onl
     const fresh = (await import(moduleUrl)) as typeof import("@/lib/perf/waitingConfig");
     assert.equal(fresh.VC_WAITING.playOptionsOnlyClientDeadlineMs, 9_000);
     assert.equal(fresh.VC_WAITING.playOpeningOptionsOnlyClientDeadlineMs, 11_000);
-    assert.equal(fresh.VC_WAITING.optionsOnlyServerBudgetMs, 8_000);
+    assert.equal(fresh.VC_WAITING.optionsOnlyServerBudgetMs, 8_500);
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS;
     else process.env.NEXT_PUBLIC_VC_TIGHT_TIMEOUTS = previous;

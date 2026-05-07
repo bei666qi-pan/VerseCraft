@@ -1,5 +1,69 @@
 export type BeatMode = "quiet" | "pressure" | "reveal" | "collision" | "countdown" | "peak" | "aftershock";
 
+export type ChapterPhase =
+  | "opening"
+  | "rising"
+  | "choice"
+  | "echo"
+  | "reveal"
+  | "aftershock"
+  | "closing";
+
+export type ChapterCloseDecision = {
+  shouldClose: boolean;
+  confidence: number;
+
+  hasResolvedSmallQuestion: boolean;
+  hasNewHook: boolean;
+  hasPlayerChoiceEcho: boolean;
+  hasReadablePause: boolean;
+  hasNoLoreConflict: boolean;
+
+  reason: string;
+  playerRecapCandidate: string;
+  modelSummaryCandidate: string;
+  nextChapterTitleCandidate: string | null;
+};
+
+export type NextChapterSeed = {
+  title: string;
+  promise: string;
+  mainQuestion: string;
+  emotionalTone: string;
+  mustEchoMemoryIds: string[];
+  inheritedThreadIds: string[];
+};
+
+export type ChapterDirectorState = {
+  v: 1;
+  currentChapterId: string;
+  chapterOrder: number;
+  chapterTitle: string;
+  chapterPhase: ChapterPhase;
+
+  promise: string;
+  mainQuestion: string;
+  emotionalTone: string;
+
+  startedTurn: number;
+  minTurns: number;
+  targetTurns: [number, number];
+  softMaxTurns: number;
+
+  openThreadIds: string[];
+  resolvedThreadIds: string[];
+  keyChoiceIds: string[];
+  echoedChoiceIds: string[];
+  mustEchoMemoryIds: string[];
+  forbiddenRevealIds: string[];
+
+  closeCandidate: ChapterCloseDecision | null;
+  nextChapterSeed: NextChapterSeed | null;
+
+  summaryForPlayer: string | null;
+  summaryForModel: string | null;
+};
+
 export type DirectorPressureFlag =
   | "stalling"
   | "high_threat"
@@ -24,6 +88,7 @@ export type StoryDirectorState = {
   pressureBudget: number; // 0..100
   lastMandatoryIncidentTurn: number;
   escapePressureBand: "low" | "mid" | "high";
+  chapter: ChapterDirectorState;
 };
 
 export type DirectorPlan = {
@@ -82,6 +147,57 @@ export type IncidentQueueState = {
   items: IncidentEnvelope[];
 };
 
+export function createInitialChapterDirectorState(
+  nowTurn: number,
+  overrides: Partial<Pick<
+    ChapterDirectorState,
+    | "currentChapterId"
+    | "chapterOrder"
+    | "chapterTitle"
+    | "promise"
+    | "mainQuestion"
+    | "emotionalTone"
+    | "minTurns"
+    | "targetTurns"
+    | "softMaxTurns"
+  >> = {}
+): ChapterDirectorState {
+  const startedTurn = Math.max(0, Math.trunc(Number(nowTurn) || 0));
+  return {
+    v: 1,
+    currentChapterId: overrides.currentChapterId ?? "chapter-1",
+    chapterOrder: Math.max(1, Math.trunc(Number(overrides.chapterOrder ?? 1) || 1)),
+    chapterTitle: overrides.chapterTitle ?? "暗月初醒",
+    chapterPhase: "opening",
+    promise:
+      overrides.promise ??
+      "玩家从异常中醒来，必须确认眼前处境，并让第一个选择留下可回响的痕迹。",
+    mainQuestion:
+      overrides.mainQuestion ??
+      "这座公寓为什么在暗月下改变，玩家刚做出的选择会被谁记住？",
+    emotionalTone: overrides.emotionalTone ?? "悬疑、克制、压迫感逐步靠近",
+    startedTurn,
+    minTurns: Math.max(1, Math.trunc(Number(overrides.minTurns ?? 3) || 3)),
+    targetTurns: Array.isArray(overrides.targetTurns)
+      ? [
+          Math.max(1, Math.trunc(Number(overrides.targetTurns[0]) || 4)),
+          Math.max(2, Math.trunc(Number(overrides.targetTurns[1]) || 8)),
+        ]
+      : [4, 8],
+    softMaxTurns: Math.max(2, Math.trunc(Number(overrides.softMaxTurns ?? 10) || 10)),
+    openThreadIds: [],
+    resolvedThreadIds: [],
+    keyChoiceIds: [],
+    echoedChoiceIds: [],
+    mustEchoMemoryIds: [],
+    forbiddenRevealIds: [],
+    closeCandidate: null,
+    nextChapterSeed: null,
+    summaryForPlayer: null,
+    summaryForModel: null,
+  };
+}
+
 export function createEmptyDirectorState(nowTurn: number): StoryDirectorState {
   return {
     v: 1,
@@ -99,6 +215,7 @@ export function createEmptyDirectorState(nowTurn: number): StoryDirectorState {
     pressureBudget: 45,
     lastMandatoryIncidentTurn: Math.max(0, nowTurn - 99),
     escapePressureBand: "low",
+    chapter: createInitialChapterDirectorState(nowTurn),
   };
 }
 

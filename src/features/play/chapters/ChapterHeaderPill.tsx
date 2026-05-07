@@ -26,13 +26,14 @@ export function ChapterHeaderPill({
       >
         <span className="min-w-0">
           <span className="block vc-reading-serif text-[16px] leading-none text-[#ffd08b]">
-            {reviewing ? "回顾中 · " : ""}{formatChapterTitle(definition)}
+            {reviewing ? "回看本章 · " : ""}
+            {formatChapterTitle(definition)}
           </span>
           <span className="mt-1 block truncate text-[12px] leading-none text-[#c99473]/85">
             {progress?.lastObjectiveText ?? definition.objective}
           </span>
         </span>
-        <span className="shrink-0 text-[13px] text-[#e8ad79]">章节</span>
+        <span className="shrink-0 text-[13px] text-[#e8ad79]">目录</span>
       </button>
       {reviewing ? (
         <button
@@ -41,7 +42,7 @@ export function ChapterHeaderPill({
           onClick={onReturnToActive}
           className="mt-2 w-full rounded-full border border-[#d39a70]/25 px-3 py-1.5 vc-reading-serif text-[14px] text-[#ffd08b] active:scale-[0.99]"
         >
-          回到当前章
+          回到正在阅读
         </button>
       ) : null}
     </div>

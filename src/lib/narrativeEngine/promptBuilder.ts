@@ -23,7 +23,7 @@ export type NarrativePromptPacket = {
 const SECTION_ORDER = [
   "稳定系统规则",
   "世界规则包",
-  "当前章节包",
+  "当前章节导演包",
   "当前场景包",
   "NPC 身份包",
   "NPC 已知信息边界",
@@ -137,14 +137,36 @@ function buildPackets(context: DialogueContext): Record<(typeof SECTION_ORDER)[n
         "若规则没有进入本包，必须视为未知，不能现场发明。",
       ],
     },
-    "当前章节包": {
-      chapterId: context.chapter.chapterId,
-      status: context.chapter.status,
-      objective: context.chapter.objective,
+    "当前章节导演包": {
+      chapterTitle: context.chapter.title,
+      currentWritingGoal: context.chapter.writerInstruction ?? context.chapter.objective,
+      chapterPromise: context.chapter.promise,
+      chapterMainQuestion: context.chapter.mainQuestion,
+      emotionalTone: context.chapter.emotionalTone,
+      mustEchoMemoriesThisTurn: context.chapter.mustEchoSummaries.slice(0, 4).map((summary) => clip(summary, 160)),
+      unresolvedThreads: context.chapter.unresolvedThreads.slice(0, 4).map((thread) => clip(thread, 160)),
+      forbiddenEarlyRevealHints: buildForbiddenRevealHints(context.chapter.forbiddenRevealIds),
+      chapterEndProximity: buildChapterEndProximity(context),
+      chapterEndHookDirection: buildChapterEndHookDirection(context),
+      closePolicy: context.chapter.closePolicy,
+      legacyObjective: context.chapter.objective,
       completedBeatIds: context.chapter.completedBeatIds,
       allowedEventIds: context.chapter.allowedEventIds,
       blockedEventIds: context.chapter.blockedEventIds,
-      policy: "章节推进只能使用 allowedEventIds 和结构化 state/event 候选，不得解析 narrative 自行推进。",
+      writerPolicy: [
+        "把本包当作小说写作方向，不要把 JSON、字段名、系统说明或技术解释写进 narrative。",
+        "不要在 narrative 中写“本章完成”“章节关闭”“结算”“获得/失去”“任务完成”等系统化表达。",
+        "Writer 不能决定章节是否关闭；只允许在 closePolicy 允许时写出自然的可读停顿。",
+        "禁止提前揭露的内容只作为禁止提示，不要输出禁止提示编号、隐藏真相正文或内部 ID。",
+        "选项必须是第一人称小说式行动，不是命令式按钮。",
+      ],
+      decisionOptionStyle: {
+        good: [
+          "我蹲下身，确认水迹到底从哪里开始",
+          "我装作没听见，先观察陈婆婆的反应",
+        ],
+        bad: ["调查门缝", "使用道具", "打开图鉴"],
+      },
     },
     "当前场景包": {
       sceneId: context.chapter.sceneId ?? context.player.locationId,
@@ -276,6 +298,27 @@ function buildNpcMotivationSources(context: DialogueContext): Record<string, unk
         summary: clip(event.summary, 160),
       })),
   };
+}
+
+function buildForbiddenRevealHints(forbiddenRevealIds: string[]): string[] {
+  const count = Math.min(4, forbiddenRevealIds.filter(Boolean).length);
+  return Array.from({ length: count }, (_, index) => `禁止提前揭露的未解内容 ${index + 1}：只写表层征兆、误导、情绪反应或调查方向。`);
+}
+
+function buildChapterEndProximity(context: DialogueContext): string {
+  const policy = context.chapter.closePolicy ?? "";
+  if (policy.includes("可读停顿") || policy.includes("下一章")) {
+    return "接近章末：可以收束本回合的局部问题，留下自然停顿，但不要宣布章节结束。";
+  }
+  return "尚未接近章末：继续推进本章核心疑问，让玩家选择自然产生后果。";
+}
+
+function buildChapterEndHookDirection(context: DialogueContext): string {
+  const thread = context.chapter.unresolvedThreads.find((value) => value.trim().length > 0);
+  if (thread) return `把章末钩子压在这条未解线索的余波里：${clip(thread, 120)}`;
+  const question = context.chapter.mainQuestion ?? context.chapter.promise ?? context.chapter.objective;
+  if (question) return `围绕本章疑问留下新的可回访方向：${clip(question, 120)}`;
+  return "只保留一个可感知的小疑点，不要解释设定或提前给出答案。";
 }
 
 function renderSection(title: string, packet: Record<string, unknown>): string {

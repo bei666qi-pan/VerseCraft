@@ -1,4 +1,4 @@
-export { ChapterEndSheet } from "./ChapterEndSheet";
+export { ChapterEndSheet, ChapterRecapSheet } from "./ChapterEndSheet";
 export { ChapterHeaderPill } from "./ChapterHeaderPill";
 export { ChapterNavigator } from "./ChapterNavigator";
 export { ChapterProgressHint } from "./ChapterProgressHint";

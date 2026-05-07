@@ -26,6 +26,8 @@ export type MemorySpineSource =
   | "resolved_turn"
   | "system_hook";
 
+export type MemorySpineChapterRole = "setup" | "payoff" | "echo" | "hook" | "recap";
+
 export type MemorySpineAnchors = {
   locationIds?: string[];
   npcIds?: string[];
@@ -63,6 +65,11 @@ export type MemorySpineEntry = {
   recallTags: string[];
 
   source: MemorySpineSource;
+
+  chapterId?: string;
+  chapterOrder?: number;
+  chapterRole?: MemorySpineChapterRole;
+  shouldAppearInRecap?: boolean;
 
   /** 是否允许投影到 world knowledge / facts（默认保守）。 */
   promoteToLore: boolean;

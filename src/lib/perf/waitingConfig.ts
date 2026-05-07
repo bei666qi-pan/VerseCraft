@@ -83,8 +83,8 @@ export const OPTIONS_REGEN_LATENCY_BUDGET: OptionsRegenLatencyBudget = {
   p99TargetMs: 8_500,
   clientDeadlineMs: 9_000,
   openingClientDeadlineMs: 11_000,
-  serverBudgetMs: 8_000,
-  firstAttemptTimeoutMs: 5_000,
+  serverBudgetMs: 8_500,
+  firstAttemptTimeoutMs: 8_000,
   repairAttemptTimeoutMs: 3_000,
   localFallbackOptionsAllowed: false,
 } as const;

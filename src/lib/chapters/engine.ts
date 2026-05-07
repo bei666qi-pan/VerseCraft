@@ -72,13 +72,16 @@ export function shouldCompleteChapter(
 ): boolean {
   if (runtime.suppressCompletion) return false;
   if (progress.status !== "active") return false;
-  const completed = new Set(progress.completedBeatIds);
-  const requiredBeats = definition.beats.filter((beat) => beat.required !== false);
+  if (progress.turnCount < definition.minTurns) return false;
+  const decision = runtime.closeDecision;
   return (
-    progress.turnCount >= definition.minTurns &&
-    progress.keyChoiceCount >= definition.minKeyChoices &&
-    progress.stateChangeCount >= 1 &&
-    requiredBeats.every((beat) => completed.has(beat.id))
+    decision?.shouldClose === true &&
+    Number(decision.confidence ?? 0) >= 0.75 &&
+    decision.hasResolvedSmallQuestion === true &&
+    decision.hasNewHook === true &&
+    decision.hasPlayerChoiceEcho === true &&
+    decision.hasReadablePause === true &&
+    decision.hasNoLoreConflict === true
   );
 }
 
@@ -152,7 +155,7 @@ export function recordChapterTurnInState(input: {
     },
   };
   const suppressCompletion = input.runtime?.suppressCompletion || input.signals.isDeath === true;
-  if (shouldCompleteChapter(nextProgress, input.definition, { suppressCompletion })) {
+  if (shouldCompleteChapter(nextProgress, input.definition, { ...input.runtime, suppressCompletion })) {
     const nextDefinition = getChapterDefinition(input.definition.nextChapterId);
     const completedAt = input.now ?? Date.now();
     const summary = buildChapterSummary({
@@ -161,6 +164,7 @@ export function recordChapterTurnInState(input: {
       signals: input.signals,
       completedAt,
       nextObjective: nextDefinition?.objective,
+      closeDecision: input.runtime?.closeDecision ?? null,
     });
     nextState = completeChapter({
       state: nextState,

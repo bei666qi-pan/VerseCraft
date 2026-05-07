@@ -18,6 +18,21 @@ import type { ChapterTurnSignals } from "./types";
 
 const first = getChapterDefinition(CHAPTER_ONE_ID)!;
 
+function acceptedCloseDecision() {
+  return {
+    shouldClose: true,
+    confidence: 0.84,
+    hasResolvedSmallQuestion: true,
+    hasNewHook: true,
+    hasPlayerChoiceEcho: true,
+    hasReadablePause: true,
+    hasNoLoreConflict: true,
+    playerRecapCandidate: "本章的小问题已经收束，新的钩子指向门后。",
+    modelSummaryCandidate: "chapter close accepted",
+    nextChapterTitleCandidate: "门后回声",
+  };
+}
+
 function progressSignals(overrides: Partial<ChapterTurnSignals> = {}): ChapterTurnSignals {
   return {
     source: "option",
@@ -64,6 +79,7 @@ test("first chapter completes, summarizes, and unlocks chapter two", () => {
       state,
       definition: first,
       signals: progressSignals({ logCountBefore: i, logCountAfter: i + 2 }),
+      runtime: i === first.minTurns - 1 ? { closeDecision: acceptedCloseDecision() } : undefined,
       now: i + 2,
     });
   }
@@ -72,10 +88,12 @@ test("first chapter completes, summarizes, and unlocks chapter two", () => {
   assert.equal(state.completedChapterIds.includes(CHAPTER_ONE_ID), true);
   assert.equal(state.unlockedChapterIds.includes(CHAPTER_TWO_ID), true);
   assert.equal(state.summariesByChapterId[CHAPTER_ONE_ID].title, "暗月初醒");
+  assert.equal(state.summariesByChapterId[CHAPTER_ONE_ID].summaryForPlayer, acceptedCloseDecision().playerRecapCandidate);
+  assert.deepEqual(state.summariesByChapterId[CHAPTER_ONE_ID].resultLines, [acceptedCloseDecision().playerRecapCandidate]);
   assert.equal(state.pendingChapterEndId, CHAPTER_ONE_ID);
 });
 
-test("shouldCompleteChapter returns true once first chapter criteria are met", () => {
+test("shouldCompleteChapter does not close from progress counters alone", () => {
   let progress = createInitialChapterState(1).progressByChapterId[CHAPTER_ONE_ID];
   for (let i = 0; i < first.minTurns; i++) {
     progress = evaluateChapterProgress({
@@ -85,7 +103,22 @@ test("shouldCompleteChapter returns true once first chapter criteria are met", (
       now: i + 2,
     });
   }
-  assert.equal(shouldCompleteChapter(progress, first), true);
+  assert.equal(progress.turnCount >= first.minTurns, true);
+  assert.equal(progress.stateChangeCount >= 1, true);
+  assert.equal(shouldCompleteChapter(progress, first), false);
+});
+
+test("shouldCompleteChapter accepts only reasoner close decisions", () => {
+  let progress = createInitialChapterState(1).progressByChapterId[CHAPTER_ONE_ID];
+  for (let i = 0; i < first.minTurns; i++) {
+    progress = evaluateChapterProgress({
+      definition: first,
+      progress,
+      signals: progressSignals(),
+      now: i + 2,
+    });
+  }
+  assert.equal(shouldCompleteChapter(progress, first, { closeDecision: acceptedCloseDecision() }), true);
 });
 
 test("entering chapter two keeps chapter one review safe and returns to active chapter", () => {
@@ -95,6 +128,7 @@ test("entering chapter two keeps chapter one review safe and returns to active c
       state,
       definition: first,
       signals: progressSignals(),
+      runtime: i === first.minTurns - 1 ? { closeDecision: acceptedCloseDecision() } : undefined,
       now: i + 2,
     });
   }

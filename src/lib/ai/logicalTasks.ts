@@ -354,6 +354,14 @@ export type OptionsOnlyFallbackResult =
       latencyMs?: number;
     };
 
+function summarizeCompletionFailure(res: AIErrorResponse): string {
+  const summary = res.routing?.lastFailureSummary?.trim();
+  if (summary) return `ai_error:${res.code}:${summary}`;
+  const last = [...(res.routing?.attempts ?? [])].reverse().find((attempt) => attempt.failureKind);
+  if (last?.failureKind) return `ai_error:${res.code}:${last.failureKind}:${last.logicalRole}`;
+  return `ai_error:${res.code}`;
+}
+
 async function runOptionsOnlyAiOnce(args: {
   narrative: string;
   latestUserInput: string;
@@ -389,12 +397,19 @@ async function runOptionsOnlyAiOnce(args: {
       .filter((s) => s.length > 0)
       .join("\n"),
   };
+  const latestUserInput = String(args.latestUserInput ?? "");
+  const narrative = String(args.narrative ?? "");
+  const playerContext = String(args.playerContext ?? "");
+  const structuredOptionsPacket = latestUserInput.length > 160;
+  const latestUserInputLimit = structuredOptionsPacket ? 1400 : 400;
+  const narrativeLimit = structuredOptionsPacket ? 360 : 1200;
+  const playerContextLimit = structuredOptionsPacket ? 360 : 1200;
   const user: ChatMessage = {
     role: "user",
     content: [
-      `【本回合玩家输入】${String(args.latestUserInput ?? "").slice(0, 400)}`,
-      `【本回合叙事（narrative）】${String(args.narrative ?? "").slice(0, 1200)}`,
-      `【玩家状态摘要】${String(args.playerContext ?? "").slice(0, 1200)}`,
+      `[player_action_or_options_context]\n${latestUserInput.slice(0, latestUserInputLimit)}`,
+      `[recent_narrative_supplement]\n${narrative.slice(0, narrativeLimit)}`,
+      `[player_state_supplement]\n${playerContext.slice(0, playerContextLimit)}`,
     ].join("\n"),
   };
 
@@ -424,7 +439,7 @@ async function runOptionsOnlyAiOnce(args: {
     },
   });
 
-  if (!res.ok) return { ok: false, reason: `ai_error:${res.code}` };
+  if (!res.ok) return { ok: false, reason: summarizeCompletionFailure(res) };
   return { ok: true, content: res.content };
 }
 

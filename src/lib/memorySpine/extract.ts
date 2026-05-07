@@ -1,13 +1,8 @@
 import type { MemoryCandidateDraft } from "./reducer";
-import type { MemorySpineSource } from "./types";
+import type { MemorySpineChapterRole, MemorySpineKind, MemorySpineSource } from "./types";
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
-}
-
-function clamp01(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
 }
 
 function floorFromLocation(loc: string): string {
@@ -23,6 +18,13 @@ function floorFromLocation(loc: string): string {
 type ExtractInput = {
   nowHour: number;
   resolvedTurn: any;
+  chapter?: {
+    chapterId?: string | null;
+    currentChapterId?: string | null;
+    activeChapterId?: string | null;
+    chapterOrder?: number | null;
+    order?: number | null;
+  } | null;
   before: {
     playerLocation: string;
     activeTaskIds: string[];
@@ -38,6 +40,72 @@ type ExtractInput = {
   enableNarrativeMicroPatterns?: boolean;
 };
 
+type ChapterBinding = { chapterId?: string; chapterOrder?: number };
+
+const CHAPTER_BINDABLE_KINDS = new Set<MemorySpineKind>([
+  "promise",
+  "debt",
+  "relationship_shift",
+  "secret_fragment",
+  "danger_hint",
+  "hook",
+]);
+
+function resolveChapterBinding(input: ExtractInput["chapter"]): ChapterBinding {
+  if (!input) return {};
+  const chapterId =
+    asString(input.chapterId) ||
+    asString(input.currentChapterId) ||
+    asString(input.activeChapterId) ||
+    undefined;
+  const orderRaw = input.chapterOrder ?? input.order;
+  const orderNum = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? Math.trunc(orderRaw) : Number(orderRaw);
+  const chapterOrder = Number.isFinite(orderNum) && orderNum > 0 ? Math.trunc(orderNum) : undefined;
+  return {
+    ...(chapterId ? { chapterId } : {}),
+    ...(chapterOrder ? { chapterOrder } : {}),
+  };
+}
+
+function inferChapterRole(row: MemoryCandidateDraft): MemorySpineChapterRole | undefined {
+  if (!CHAPTER_BINDABLE_KINDS.has(row.kind)) return undefined;
+  if (row.kind === "relationship_shift") return "echo";
+  if (row.kind === "hook" || row.kind === "secret_fragment" || row.kind === "danger_hint") return "hook";
+  if (row.status === "resolved" || row.status === "consumed") return "payoff";
+  return "setup";
+}
+
+function isLowConfidenceNarrativeMicroPattern(row: MemoryCandidateDraft): boolean {
+  return row.source === "resolved_turn" && Number(row.confidence ?? 0) < 0.65;
+}
+
+function inferShouldAppearInRecap(row: MemoryCandidateDraft): boolean | undefined {
+  if (!CHAPTER_BINDABLE_KINDS.has(row.kind)) return undefined;
+  if (isLowConfidenceNarrativeMicroPattern(row) && Number(row.salience ?? 0) < 0.75) return false;
+  if (row.kind === "relationship_shift" || row.kind === "hook") return true;
+  if (row.kind === "promise" && (row.status === "resolved" || row.status === "consumed")) return true;
+  if (row.kind === "secret_fragment") return Number(row.salience ?? 0) >= 0.75;
+  if (row.kind === "danger_hint") return Number(row.salience ?? 0) >= 0.72;
+  return false;
+}
+
+function bindCandidateToChapter(row: MemoryCandidateDraft, chapter: ChapterBinding): MemoryCandidateDraft {
+  if (!CHAPTER_BINDABLE_KINDS.has(row.kind)) return row;
+  const chapterRole = row.chapterRole ?? inferChapterRole(row);
+  const shouldAppearInRecap = row.shouldAppearInRecap ?? inferShouldAppearInRecap(row);
+  return {
+    ...row,
+    ...(row.chapterId ? {} : chapter.chapterId ? { chapterId: chapter.chapterId } : {}),
+    ...(typeof row.chapterOrder === "number"
+      ? {}
+      : typeof chapter.chapterOrder === "number"
+        ? { chapterOrder: chapter.chapterOrder }
+        : {}),
+    ...(chapterRole ? { chapterRole } : {}),
+    ...(typeof shouldAppearInRecap === "boolean" ? { shouldAppearInRecap } : {}),
+  };
+}
+
 function push(out: MemoryCandidateDraft[], row: MemoryCandidateDraft) {
   const s = typeof row.summary === "string" ? row.summary.trim() : "";
   if (!s) return;
@@ -46,7 +114,7 @@ function push(out: MemoryCandidateDraft[], row: MemoryCandidateDraft) {
 
 export function extractMemoryCandidates(input: ExtractInput): MemoryCandidateDraft[] {
   const out: MemoryCandidateDraft[] = [];
-  const nowHour = input.nowHour;
+  const chapter = resolveChapterBinding(input.chapter);
   const resolved = input.resolvedTurn ?? {};
   const locAfter = input.after.playerLocation ?? input.before.playerLocation ?? "B1_SafeZone";
   const floorAfter = floorFromLocation(locAfter);
@@ -297,6 +365,6 @@ export function extractMemoryCandidates(input: ExtractInput): MemoryCandidateDra
   const compact = [...dedup.values()];
   // 低价值条目限流（salience+confidence 低的靠后截断）
   compact.sort((a, b) => (b.salience * b.confidence) - (a.salience * a.confidence));
-  return compact.slice(0, 14);
+  return compact.slice(0, 14).map((row) => bindCandidateToChapter(row, chapter));
 }
 

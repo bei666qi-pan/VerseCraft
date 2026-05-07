@@ -31,24 +31,24 @@ export function ChapterEndSheet({
       <section
         data-testid="chapter-end-sheet"
         className="max-h-[68dvh] overflow-y-auto rounded-[14px] border border-[#d39a70]/70 bg-[#06131d]/98 p-4 shadow-[0_18px_46px_rgba(0,0,0,0.42),0_0_26px_rgba(239,177,127,0.12),inset_0_0_24px_rgba(217,151,105,0.06)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        aria-label={`${formatChapterTitle(definition)}完成`}
+        aria-label={`${formatChapterTitle(definition)} 前情回望`}
       >
         <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#b98563]/25 pb-3">
-          <div>
+          <div className="min-w-0">
             <p className="vc-reading-serif text-[18px] leading-none text-[#ffd08b]">
-              第{definition.order}章完成
+              本章回望
             </p>
-            <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#ffbd7d]">
+            <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-tight text-[#ffbd7d]">
               {definition.title}
             </h2>
           </div>
           <button
             type="button"
             onClick={onDismiss}
-            aria-label="暂收章末总结"
-            className="rounded-full border border-[#d39a70]/35 px-3 py-1 text-[14px] text-[#e7bb8f]"
+            aria-label="暂时停在这里"
+            className="shrink-0 rounded-full border border-[#d39a70]/35 px-3 py-1 text-[14px] text-[#e7bb8f]"
           >
-            暂收
+            暂时停在这里
           </button>
         </div>
         <ChapterSummaryList summary={summary} />
@@ -60,7 +60,7 @@ export function ChapterEndSheet({
               onClick={onEnterNext}
               className="rounded-full border border-[#e5ad78]/80 bg-[#151b20] px-4 py-3 vc-reading-serif text-[18px] font-semibold text-[#ffd08b] shadow-[0_0_20px_rgba(239,177,127,0.25)]"
             >
-              进入下一章
+              继续下一章
             </button>
           ) : null}
           <button
@@ -69,7 +69,7 @@ export function ChapterEndSheet({
             onClick={onReviewChapter}
             className="rounded-full border border-[#d39a70]/45 px-4 py-2.5 vc-reading-serif text-[16px] text-[#e7bb8f]"
           >
-            回顾本章
+            回看本章
           </button>
           {hasPreviousChapter ? (
             <button
@@ -78,7 +78,7 @@ export function ChapterEndSheet({
               onClick={onReviewPrevious}
               className="rounded-full border border-[#d39a70]/35 px-4 py-2.5 vc-reading-serif text-[16px] text-[#d6a07b]"
             >
-              返回上一章
+              前情回望
             </button>
           ) : null}
         </div>
@@ -86,3 +86,5 @@ export function ChapterEndSheet({
     </div>
   );
 }
+
+export const ChapterRecapSheet = ChapterEndSheet;

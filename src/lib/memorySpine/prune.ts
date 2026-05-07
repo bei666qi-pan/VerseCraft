@@ -1,4 +1,4 @@
-import type { MemorySpineEntry, MemorySpineState } from "./types";
+import type { MemorySpineChapterRole, MemorySpineEntry, MemorySpineState } from "./types";
 
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -15,6 +15,25 @@ function normalizeSummary(s: unknown, maxChars: number): string {
   if (!t) return "";
   if (t.length <= maxChars) return t;
   return t.slice(0, maxChars);
+}
+
+function normalizeChapterRole(value: unknown): MemorySpineChapterRole | undefined {
+  return value === "setup" ||
+    value === "payoff" ||
+    value === "echo" ||
+    value === "hook" ||
+    value === "recap"
+    ? value
+    : undefined;
+}
+
+function normalizeChapterId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : undefined;
+}
+
+function normalizeChapterOrder(value: unknown): number | undefined {
+  const n = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.min(999, Math.trunc(n)) : undefined;
 }
 
 export function normalizeMemorySpineEntry(raw: unknown, nowHour: number): MemorySpineEntry | null {
@@ -58,6 +77,11 @@ export function normalizeMemorySpineEntry(raw: unknown, nowHour: number): Memory
 
   const source = typeof o.source === "string" ? o.source : "resolved_turn";
   const promoteToLore = typeof o.promoteToLore === "boolean" ? o.promoteToLore : false;
+  const chapterId = normalizeChapterId(o.chapterId);
+  const chapterOrder = normalizeChapterOrder(o.chapterOrder);
+  const chapterRole = normalizeChapterRole(o.chapterRole);
+  const shouldAppearInRecap =
+    typeof o.shouldAppearInRecap === "boolean" ? o.shouldAppearInRecap : undefined;
 
   return {
     id,
@@ -81,6 +105,10 @@ export function normalizeMemorySpineEntry(raw: unknown, nowHour: number): Memory
     },
     recallTags,
     source: source as any,
+    ...(chapterId ? { chapterId } : {}),
+    ...(typeof chapterOrder === "number" ? { chapterOrder } : {}),
+    ...(chapterRole ? { chapterRole } : {}),
+    ...(typeof shouldAppearInRecap === "boolean" ? { shouldAppearInRecap } : {}),
     promoteToLore,
   };
 }

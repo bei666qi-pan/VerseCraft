@@ -51,6 +51,7 @@ export interface ChapterSummary {
   chapterId: ChapterId;
   title: string;
   completedAt: number;
+  summaryForPlayer?: string;
   resultLines: string[];
   obtainedLines: string[];
   lostLines: string[];
@@ -102,4 +103,16 @@ export interface ChapterTurnSignals {
 
 export interface ChapterCompletionRuntime {
   suppressCompletion?: boolean;
+  closeDecision?: {
+    shouldClose?: boolean;
+    confidence?: number;
+    hasResolvedSmallQuestion?: boolean;
+    hasNewHook?: boolean;
+    hasPlayerChoiceEcho?: boolean;
+    hasReadablePause?: boolean;
+    hasNoLoreConflict?: boolean;
+    playerRecapCandidate?: string;
+    modelSummaryCandidate?: string;
+    nextChapterTitleCandidate?: string | null;
+  } | null;
 }

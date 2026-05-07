@@ -7,6 +7,12 @@ export type DirectorSignals = {
   effectiveProgressScore: number; // 0..100
   progressed: boolean;
   stalled: boolean;
+  moved: boolean;
+  terminalTaskDelta: number;
+  memoryEntryDelta: number;
+  relationshipUpdateCount: number;
+  taskUpdateCount: number;
+  mainThreatUpdateCount: number;
 
   highPressure: boolean;
   threatHot: boolean;
@@ -18,6 +24,7 @@ export type DirectorSignals = {
 
   falseCalmRisk: boolean;
   nearPeak: boolean;
+  loreConflict: boolean;
 
   notes: string[];
 };
@@ -96,14 +103,28 @@ export function detectDirectorSignals(args: {
     : 0;
   if (relUpdates > 0) notes.push(`rel:${relUpdates}`);
 
+  const consistencyFlags = Array.isArray((args.resolvedTurn as any)?.ui_hints?.consistency_flags)
+    ? (args.resolvedTurn as any).ui_hints.consistency_flags
+    : [];
+  const loreConflict = consistencyFlags
+    .map((x: unknown) => String(x ?? ""))
+    .some((flag: string) => /lore_conflict|forbidden_reveal|dm_only_leak|schema_invalid|hallucination/i.test(flag));
+  if (loreConflict) notes.push("lore_conflict");
+
   // effective progress score (deterministic, structure-first)
   let score = 0;
   if (moved) score += 18;
   score += Math.min(40, terminalDelta * 22);
   score += Math.min(18, memDelta * 6);
   score += Math.min(12, relUpdates * 3);
-  if (Array.isArray((args.resolvedTurn as any)?.main_threat_updates) && (args.resolvedTurn as any).main_threat_updates.length > 0) score += 16;
-  if (Array.isArray((args.resolvedTurn as any)?.task_updates) && (args.resolvedTurn as any).task_updates.length > 0) score += 10;
+  const mainThreatUpdateCount = Array.isArray((args.resolvedTurn as any)?.main_threat_updates)
+    ? (args.resolvedTurn as any).main_threat_updates.length
+    : 0;
+  const taskUpdateCount = Array.isArray((args.resolvedTurn as any)?.task_updates)
+    ? (args.resolvedTurn as any).task_updates.length
+    : 0;
+  if (mainThreatUpdateCount > 0) score += 16;
+  if (taskUpdateCount > 0) score += 10;
   score = clampInt(score, 0, 100);
 
   const progressed = score >= 22;
@@ -127,6 +148,12 @@ export function detectDirectorSignals(args: {
     effectiveProgressScore: score,
     progressed,
     stalled,
+    moved,
+    terminalTaskDelta: terminalDelta,
+    memoryEntryDelta: memDelta,
+    relationshipUpdateCount: relUpdates,
+    taskUpdateCount,
+    mainThreatUpdateCount,
     highPressure,
     threatHot,
     debtPileup,
@@ -135,6 +162,7 @@ export function detectDirectorSignals(args: {
     hookCodesReady,
     falseCalmRisk,
     nearPeak,
+    loreConflict,
     notes,
   };
 }

@@ -53,7 +53,7 @@ import { buildCombatNarrativeStyleBlock } from "@/lib/combat/combatNarrativeStyl
 import { buildCombatPromptBlockV1 } from "@/lib/combat/combatPromptBlock";
 import type { IncidentQueueState, StoryDirectorState } from "@/lib/storyDirector/types";
 import { createEmptyDirectorState, createEmptyIncidentQueue } from "@/lib/storyDirector/types";
-import { postTurnStoryDirectorUpdate } from "@/lib/storyDirector/postTurn";
+import { normalizeDirectorState, postTurnStoryDirectorUpdate } from "@/lib/storyDirector/postTurn";
 import { buildDirectorDigestForServer, buildDirectorPromptBlock } from "@/lib/storyDirector/prompt";
 import { buildIncidentDigest, normalizeIncidentQueue } from "@/lib/storyDirector/queue";
 import type { EscapeMainlineState } from "@/lib/escapeMainline/types";
@@ -141,7 +141,7 @@ import {
 } from "@/features/play/mobileReading/readingPreferences";
 
 const DB_KEY = "versecraft-storage";
-const PERSIST_VERSION = 1;
+const PERSIST_VERSION = 2;
 
 function normalizeStoredOptions(options: unknown, maxCount = 4): string[] {
   if (!Array.isArray(options)) return [];
@@ -186,8 +186,34 @@ function applyNarrativeIntegrityOnBundle(args: {
 
 const idbStorage = createResilientIdbStorage();
 
-/** 防御性迁移：当本地持久化数据版本不匹配时，直接丢弃旧数据，使用初始状态，避免旧 Schema 缺少 NPC/物品字段导致渲染崩溃 */
-function migratePersistedState(
+function buildChapterDirectorBridgeFromStoreState(chapterState: ChapterState): {
+  currentChapterId: string;
+  chapterOrder?: number;
+  chapterTitle?: string;
+  promise?: string;
+  mainQuestion?: string;
+  minTurns?: number;
+  targetTurns?: [number, number];
+  softMaxTurns?: number;
+} {
+  const chapterId = chapterState.activeChapterId ?? chapterState.currentChapterId;
+  const definition = getChapterDefinition(chapterId);
+  const progress = chapterState.progressByChapterId?.[chapterId];
+  const objective = progress?.lastObjectiveText ?? definition?.objective;
+  return {
+    currentChapterId: chapterId,
+    chapterOrder: definition?.order,
+    chapterTitle: definition?.title,
+    promise: definition?.endHook ?? objective,
+    mainQuestion: objective,
+    minTurns: definition?.minTurns,
+    targetTurns: definition ? [definition.minTurns, definition.maxTurns] : undefined,
+    softMaxTurns: definition?.maxTurns,
+  };
+}
+
+/** 防御性迁移：保留旧 logs/saveSlots，并为缺省的新结构补兼容默认值，避免旧 Schema 渲染崩溃。 */
+export function migratePersistedState(
   persistedState: unknown,
   fromVersion: number
 ): Record<string, unknown> {
@@ -200,6 +226,12 @@ function migratePersistedState(
     raw.saveSlots && typeof raw.saveSlots === "object" && !Array.isArray(raw.saveSlots)
       ? (raw.saveSlots as Record<string, unknown>)
       : {};
+  const rootChapterState = normalizeChapterState(raw.chapterState);
+  const rootStoryDirector = normalizeDirectorState(
+    raw.storyDirector,
+    Array.isArray(raw.logs) ? raw.logs.length : 0,
+    buildChapterDirectorBridgeFromStoreState(rootChapterState)
+  );
   const migratedSlots: Record<string, unknown> = {};
   for (const [slotId, slotPayload] of Object.entries(saveSlotsRaw)) {
     if (!slotPayload || typeof slotPayload !== "object" || Array.isArray(slotPayload)) continue;
@@ -231,7 +263,8 @@ function migratePersistedState(
   }
   return {
     ...raw,
-    chapterState: normalizeChapterState(raw.chapterState),
+    chapterState: rootChapterState,
+    storyDirector: rootStoryDirector,
     readingPreferences: normalizeReadingPreferences(raw.readingPreferences),
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: pruneVisibleSaveSlots(migratedSlots as Record<string, SaveSlotData>),
@@ -692,6 +725,13 @@ export interface GameState extends IntegrityMetaState {
       pressureFlags: string[];
       pendingIncidentCodes: string[];
       mustRecallHookCodes: string[];
+      chapter?: {
+        chapterId: string;
+        title: string;
+        phase: string;
+        shouldClose: boolean;
+        nextTitle: string | null;
+      };
       digest: string;
     };
   };
@@ -1059,11 +1099,16 @@ export const useGameStore = create<GameState>()(
         const chapterState = normalizeChapterState(state.chapterState);
         const definition = getChapterDefinition(chapterState.activeChapterId);
         if (!definition) return chapterState;
+        const closeDecision = (() => {
+          const chapter = (state as any).storyDirector?.chapter;
+          if (!chapter || chapter.currentChapterId !== definition.id) return null;
+          return chapter.closeCandidate ?? null;
+        })();
         const nextState = recordChapterTurnInState({
           state: chapterState,
           definition,
           signals,
-          runtime: { suppressCompletion: signals.isDeath === true },
+          runtime: { suppressCompletion: signals.isDeath === true, closeDecision },
         });
         set({ chapterState: nextState });
         return nextState;
@@ -2114,6 +2159,7 @@ export const useGameStore = create<GameState>()(
               plan,
               armedIncident: fired,
               incidentPreviewCodes: [...(preview.armedCodes ?? []), ...(preview.pendingCodes ?? [])],
+              chapter: (director as any).chapter ?? null,
               maxChars: 360,
             });
           } catch {
@@ -2521,6 +2567,7 @@ export const useGameStore = create<GameState>()(
           pressureFlags: Array.isArray((director as any).lastPressureFlags) ? (director as any).lastPressureFlags : [],
           pendingIncidentCodes: [...(incDigest.armedCodes ?? []), ...(incDigest.pendingCodes ?? [])],
           mustRecallHookCodes: Array.isArray((director as any).lastRecallHooks) ? (director as any).lastRecallHooks : [],
+          chapter: (director as any).chapter ?? null,
         });
         return {
           v: 1 as const,
@@ -2593,9 +2640,15 @@ export const useGameStore = create<GameState>()(
           codex: s.codex ?? {},
           mainThreatByFloor: s.mainThreatByFloor ?? {},
         };
+        const chapterState = normalizeChapterState(s.chapterState);
+        const chapterDefinition = getChapterDefinition(chapterState.activeChapterId);
         const candidates = extractMemoryCandidates({
           nowHour,
           resolvedTurn: args.resolvedTurn,
+          chapter: {
+            chapterId: chapterState.activeChapterId,
+            chapterOrder: chapterDefinition?.order ?? undefined,
+          },
           before,
           after,
           enableNarrativeMicroPatterns: false,
@@ -2638,10 +2691,24 @@ export const useGameStore = create<GameState>()(
           mainThreatByFloor: s.mainThreatByFloor ?? {},
           memoryEntries: s.memorySpine?.entries ?? [],
         };
+        const chapterState = normalizeChapterState(s.chapterState);
+        const chapterDefinition = getChapterDefinition(chapterState.activeChapterId);
         const updated = postTurnStoryDirectorUpdate({
           directorRaw: (s as any).storyDirector ?? createEmptyDirectorState(nowTurn),
           incidentQueueRaw: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
           nowTurn,
+          chapter: chapterDefinition
+            ? {
+                currentChapterId: chapterDefinition.id,
+                chapterOrder: chapterDefinition.order,
+                chapterTitle: chapterDefinition.title,
+                promise: chapterDefinition.endHook,
+                mainQuestion: chapterDefinition.objective,
+                minTurns: chapterDefinition.minTurns,
+                targetTurns: [chapterDefinition.minTurns, chapterDefinition.maxTurns],
+                softMaxTurns: chapterDefinition.maxTurns,
+              }
+            : undefined,
           pre,
           post,
           resolvedTurn: args.resolvedTurn,
@@ -3080,6 +3147,12 @@ export const useGameStore = create<GameState>()(
         const effectiveSlotId = "main_slot";
         const safeStats = s.stats ?? DEFAULT_STATS;
         const chapterState = normalizeChapterState(s.chapterState);
+        const storyDirector = normalizeDirectorState(
+          (s as any).storyDirector ??
+            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.storyDirector,
+          (s.logs ?? []).length,
+          buildChapterDirectorBridgeFromStoreState(chapterState)
+        );
         const computedProfession = computeProfessionState({
           prev: s.professionState,
           stats: safeStats,
@@ -3156,10 +3229,7 @@ export const useGameStore = create<GameState>()(
             overlay.anchorUnlocks,
           pendingEvents:
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.pendingEvents ?? [],
-          storyDirector:
-            (s as any).storyDirector ??
-            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.storyDirector ??
-            createEmptyDirectorState(0),
+          storyDirector,
           incidentQueue:
             (s as any).incidentQueue ??
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.incidentQueue ??
@@ -3355,9 +3425,9 @@ export const useGameStore = create<GameState>()(
           warehouse: Array.isArray(projected.warehouse ?? data.warehouse)
             ? JSON.parse(JSON.stringify(projected.warehouse ?? data.warehouse))
             : [],
-          logs: JSON.parse(JSON.stringify(data.logs)),
-          time: JSON.parse(JSON.stringify(projected.time ?? data.time)),
-          codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex)),
+          logs: JSON.parse(JSON.stringify(data.logs ?? [])),
+          time: JSON.parse(JSON.stringify(projected.time ?? data.time ?? { day: 0, hour: 0 })),
+          codex: JSON.parse(JSON.stringify(projected.codex ?? data.codex ?? {})),
           memorySpine: JSON.parse(JSON.stringify(normalizedSnapshot.memory?.spine ?? createEmptyMemorySpine())),
           storyDirector: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).storyDirector ?? createEmptyDirectorState(0))),
           incidentQueue: JSON.parse(JSON.stringify((normalizedSnapshot.world as any).incidentQueue ?? createEmptyIncidentQueue())),
@@ -3593,6 +3663,13 @@ export const useGameStore = create<GameState>()(
       hydrateFromResumeShadow: () => {
         const shadow = readResumeShadowSnapshot();
         if (!shadow || shadow.isGameStarted !== true) return false;
+        const current = get();
+        const chapterState = normalizeChapterState((shadow as { chapterState?: unknown }).chapterState ?? current.chapterState);
+        const storyDirector = normalizeDirectorState(
+          (shadow as any).storyDirector ?? current.storyDirector,
+          Array.isArray(shadow.logs) ? shadow.logs.length : 0,
+          buildChapterDirectorBridgeFromStoreState(chapterState)
+        );
         set((s) => ({
           currentSaveSlot: shadow.currentSaveSlot || "main_slot",
           isGameStarted: true,
@@ -3610,10 +3687,7 @@ export const useGameStore = create<GameState>()(
             (shadow as any).memorySpine && typeof (shadow as any).memorySpine === "object" && !Array.isArray((shadow as any).memorySpine)
               ? JSON.parse(JSON.stringify((shadow as any).memorySpine))
               : s.memorySpine ?? createEmptyMemorySpine(),
-          storyDirector:
-            (shadow as any).storyDirector && typeof (shadow as any).storyDirector === "object" && !Array.isArray((shadow as any).storyDirector)
-              ? JSON.parse(JSON.stringify((shadow as any).storyDirector))
-              : (s as any).storyDirector ?? createEmptyDirectorState(0),
+          storyDirector: JSON.parse(JSON.stringify(storyDirector)),
           incidentQueue:
             (shadow as any).incidentQueue && typeof (shadow as any).incidentQueue === "object" && !Array.isArray((shadow as any).incidentQueue)
               ? JSON.parse(JSON.stringify((shadow as any).incidentQueue))
@@ -3631,7 +3705,7 @@ export const useGameStore = create<GameState>()(
             shadow.professionState && typeof shadow.professionState === "object" && !Array.isArray(shadow.professionState)
               ? JSON.parse(JSON.stringify(shadow.professionState))
               : s.professionState,
-          chapterState: normalizeChapterState((shadow as { chapterState?: unknown }).chapterState ?? s.chapterState),
+          chapterState,
           openingNarrativePinned:
             typeof (shadow as any).openingNarrativePinned === "boolean"
               ? (shadow as any).openingNarrativePinned
@@ -3683,7 +3757,11 @@ export const useGameStore = create<GameState>()(
         logs: s.logs ?? [],
         codex: s.codex ?? {},
         memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
-        storyDirector: (s as any).storyDirector ?? createEmptyDirectorState(0),
+        storyDirector: normalizeDirectorState(
+          (s as any).storyDirector,
+          (s.logs ?? []).length,
+          buildChapterDirectorBridgeFromStoreState(normalizeChapterState(s.chapterState))
+        ),
         incidentQueue: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
         escapeMainline: (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
         hasCheckedCodex: s.hasCheckedCodex ?? false,

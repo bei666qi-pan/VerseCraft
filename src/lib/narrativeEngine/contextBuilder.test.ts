@@ -42,7 +42,28 @@ const snapshot = {
   },
   time: { day: 1, hour: 8 },
   profession: { currentProfession: "keeper" },
-  world: { discoveredSecrets: ["fact:door"], worldFlags: {}, pendingEvents: [] },
+  world: {
+    discoveredSecrets: ["fact:door"],
+    worldFlags: {},
+    pendingEvents: [],
+    storyDirector: {
+      chapter: {
+        currentChapterId: "chapter-1",
+        chapterOrder: 1,
+        chapterTitle: "暗月初醒",
+        chapterPhase: "echo",
+        promise: "第一道异常会在门后的回声里继续逼近。",
+        mainQuestion: "门后的回声究竟指向哪里？",
+        emotionalTone: "克制、悬疑、余波未散",
+        mustEchoMemoryIds: ["mem:promise", "mem:secret"],
+        openThreadIds: ["mem:promise", "mem:hook"],
+        forbiddenRevealIds: ["mem:secret"],
+        closeCandidate: {
+          shouldClose: false,
+        },
+      },
+    },
+  },
   journal: { version: 1, clues: [{ id: "clue:first-door" }] },
   memory: {
     spine: {
@@ -50,8 +71,64 @@ const snapshot = {
       entries: [
         {
           id: "mem:promise",
+          kind: "promise",
+          scope: "run_private",
+          summary: "玩家答应沿门后的回声继续查下去。",
+          salience: 0.9,
+          confidence: 0.85,
           status: "active",
+          createdAtHour: 1,
+          lastTouchedAtHour: 2,
+          ttlHours: 72,
+          mergeKey: "promise:door",
           anchors: { npcIds: ["N-010"], itemIds: ["I-C03"] },
+          recallTags: [],
+          source: "resolved_turn",
+          chapterId: "chapter-1",
+          chapterOrder: 1,
+          chapterRole: "setup",
+          promoteToLore: false,
+        },
+        {
+          id: "mem:hook",
+          kind: "hook",
+          scope: "run_private",
+          summary: "门后的回声留下新的调查钩子。",
+          salience: 0.86,
+          confidence: 0.82,
+          status: "active",
+          createdAtHour: 1,
+          lastTouchedAtHour: 2,
+          ttlHours: 72,
+          mergeKey: "hook:door",
+          anchors: {},
+          recallTags: [],
+          source: "system_hook",
+          chapterId: "chapter-1",
+          chapterOrder: 1,
+          chapterRole: "hook",
+          shouldAppearInRecap: true,
+          promoteToLore: false,
+        },
+        {
+          id: "mem:secret",
+          kind: "secret_fragment",
+          scope: "run_private",
+          summary: "真正的门后循环真相不应直接泄露。",
+          salience: 0.92,
+          confidence: 0.9,
+          status: "active",
+          createdAtHour: 1,
+          lastTouchedAtHour: 2,
+          ttlHours: 72,
+          mergeKey: "secret:door",
+          anchors: {},
+          recallTags: [],
+          source: "resolved_turn",
+          chapterId: "chapter-1",
+          chapterOrder: 1,
+          chapterRole: "hook",
+          promoteToLore: false,
         },
       ],
     },
@@ -178,6 +255,19 @@ test("buildDialogueContext merges snapshot, lore, npc heart, memories, and recen
   assert.ok(context.player.knownFactIds.includes("fact:door"));
   assert.ok(context.player.discoveredClueIds.includes("clue:first-door"));
   assert.equal(context.chapter.chapterId, "chapter-1");
+  assert.equal(context.chapter.title, "暗月初醒");
+  assert.equal(context.chapter.phase, "选择回响");
+  assert.notEqual(context.chapter.phase, "echo");
+  assert.equal(context.chapter.mainQuestion, "门后的回声究竟指向哪里？");
+  assert.equal(context.chapter.promise, "第一道异常会在门后的回声里继续逼近。");
+  assert.ok(context.chapter.writerInstruction);
+  assert.ok(context.chapter.mustEchoSummaries.length <= 4);
+  assert.ok(context.chapter.mustEchoSummaries.some((line) => line.includes("玩家答应")));
+  assert.ok(context.chapter.mustEchoSummaries.some((line) => line.includes("禁止直接揭露未解真相：mem:secret")));
+  assert.equal(JSON.stringify(context.chapter.mustEchoSummaries).includes("真正的门后循环真相"), false);
+  assert.ok(context.chapter.unresolvedThreads.length <= 6);
+  assert.deepEqual(context.chapter.forbiddenRevealIds, ["mem:secret"]);
+  assert.match(context.chapter.closePolicy ?? "", /不要主动宣布章节结束/);
   assert.ok(context.chapter.allowedEventIds.includes("observe"));
   assert.equal(context.activeNpc?.npcId, "N-010");
   assert.equal(context.activeNpc?.displayName, "Xinlan");
@@ -186,6 +276,33 @@ test("buildDialogueContext merges snapshot, lore, npc heart, memories, and recen
   assert.ok(context.world.loreFacts.some((fact) => fact.factKey === "world:rule:safe-zone"));
   assert.ok(context.world.hardRules.includes("Safe zones cannot be treated as guaranteed exits."));
   assert.ok(context.world.allowedEntityIds.includes("N-010"));
+});
+
+test("buildDialogueContext injects a writer-safe chapter director context", async () => {
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_chapter_director",
+    sessionId: "sess_ctx_chapter_director",
+    userId: "user_ctx_chapter_director",
+    latestUserInput: "look around",
+    messages: [{ role: "user", content: "look around" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 4, playerLocation: "B1_SafeZone" },
+    runSnapshotV2: snapshot,
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+    }),
+  });
+
+  assert.equal(context.chapter.chapterId, "chapter-1");
+  assert.equal(context.chapter.title, "暗月初醒");
+  assert.equal(context.chapter.phase, "选择回响");
+  assert.notEqual(context.chapter.phase, "echo");
+  assert.equal(context.chapter.forbiddenRevealIds.includes("mem:secret"), true);
+  assert.ok(context.chapter.mustEchoSummaries.length > 0);
+  assert.ok(context.chapter.mustEchoSummaries.length <= 4);
+  assert.equal(JSON.stringify(context.chapter.mustEchoSummaries).includes("真正的门后循环真相"), false);
+  assert.equal(JSON.stringify(context.chapter).includes("pressureBudget"), false);
 });
 
 test("buildDialogueContext does not infer active NPC from free-form user input", async () => {
@@ -205,6 +322,36 @@ test("buildDialogueContext does not infer active NPC from free-form user input",
 
   assert.equal(context.activeNpc, null);
   assert.deepEqual(context.npcMemories, []);
+});
+
+test("buildDialogueContext falls back to legacy chapter objective when director chapter is absent", async () => {
+  const legacySnapshot = {
+    ...(snapshot as any),
+    world: {
+      ...((snapshot as any).world ?? {}),
+      storyDirector: undefined,
+    },
+  } as unknown as RunSnapshotV2;
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_legacy_chapter",
+    sessionId: "sess_legacy_chapter",
+    userId: null,
+    latestUserInput: "look",
+    messages: [{ role: "user", content: "look" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 1, playerLocation: "B1_SafeZone" },
+    runSnapshotV2: legacySnapshot,
+    chapterState,
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+    }),
+  });
+
+  assert.equal(context.chapter.chapterId, "chapter-1");
+  assert.equal(context.chapter.mainQuestion, "Find the first stable clue.");
+  assert.equal(context.chapter.objective, "Find the first stable clue.");
+  assert.match(context.chapter.writerInstruction ?? "", /Find the first stable clue/);
 });
 
 test("buildDialogueContext returns conservative context without session memory", async () => {

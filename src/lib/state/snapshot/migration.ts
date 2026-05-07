@@ -20,8 +20,9 @@ import { ANOMALIES } from "@/lib/registry/anomalies";
 import { inferSaveSlotKind } from "./branch";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
 import { normalizeJournalState } from "@/lib/domain/clueMerge";
-import { normalizeChapterState } from "@/lib/chapters";
+import { getChapterDefinition, normalizeChapterState } from "@/lib/chapters";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
+import type { ChapterState } from "@/lib/chapters/types";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -89,7 +90,34 @@ function normalizeMemorySpine(raw: unknown, nowHour: number): MemorySpineState {
   return pruneMemorySpine(state, nowHour, { maxEntries: 64 });
 }
 
+function buildChapterDirectorBridgeFromState(chapterState: ChapterState): {
+  currentChapterId: string;
+  chapterOrder?: number;
+  chapterTitle?: string;
+  promise?: string;
+  mainQuestion?: string;
+  minTurns?: number;
+  targetTurns?: [number, number];
+  softMaxTurns?: number;
+} {
+  const chapterId = chapterState.activeChapterId ?? chapterState.currentChapterId;
+  const definition = getChapterDefinition(chapterId);
+  const progress = chapterState.progressByChapterId?.[chapterId];
+  const objective = progress?.lastObjectiveText ?? definition?.objective;
+  return {
+    currentChapterId: chapterId,
+    chapterOrder: definition?.order,
+    chapterTitle: definition?.title,
+    promise: definition?.endHook ?? objective,
+    mainQuestion: objective,
+    minTurns: definition?.minTurns,
+    targetTurns: definition ? [definition.minTurns, definition.maxTurns] : undefined,
+    softMaxTurns: definition?.maxTurns,
+  };
+}
+
 export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnapshotV2 {
+  const chapterState = normalizeChapterState(legacy.chapterState);
   return buildRunSnapshotV2({
     runId: createRunId(),
     player: {
@@ -114,7 +142,12 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     tasks: normalizeTasks(legacy.tasks),
     profession: legacy.professionState ?? createDefaultProfessionState(),
     memorySpine: createEmptyMemorySpine(),
-    chapterState: normalizeChapterState(legacy.chapterState),
+    storyDirector: normalizeDirectorState(
+      legacy.runSnapshotV2?.world?.storyDirector,
+      Array.isArray(legacy.logs) ? legacy.logs.length : 0,
+      buildChapterDirectorBridgeFromState(chapterState)
+    ),
+    chapterState,
   });
 }
 
@@ -130,6 +163,10 @@ export function normalizeRunSnapshotV2(
   const fromLegacy = migrateLegacySaveToSnapshot(legacyBase);
   const now = new Date();
   const nowHour = Math.max(0, Math.floor(now.getTime() / 3600000));
+  const normalizedChapterState = normalizeChapterState(
+    (s as { chapterState?: unknown }).chapterState ?? legacyBase.chapterState
+  );
+  const chapterDirectorBridge = buildChapterDirectorBridgeFromState(normalizedChapterState);
   const normalized: RunSnapshotV2 = {
     ...fromLegacy,
     ...s,
@@ -228,7 +265,7 @@ export function normalizeRunSnapshotV2(
       pendingEvents: Array.isArray(s.world?.pendingEvents)
         ? s.world.pendingEvents.filter((x): x is string => typeof x === "string")
         : fromLegacy.world.pendingEvents,
-      storyDirector: normalizeDirectorState((s.world as any)?.storyDirector, 0),
+      storyDirector: normalizeDirectorState((s.world as any)?.storyDirector, 0, chapterDirectorBridge),
       incidentQueue: normalizeIncidentQueue((s.world as any)?.incidentQueue),
       floorThreatTier: asRecord(s.world?.floorThreatTier) as Record<string, number>,
       mainThreatByFloor: (() => {
@@ -244,7 +281,7 @@ export function normalizeRunSnapshotV2(
       return normalizeEscapeMainline((s as any).escape, nowHour);
     })(),
     journal: normalizeJournalState((s as { journal?: unknown }).journal),
-    chapterState: normalizeChapterState((s as { chapterState?: unknown }).chapterState ?? legacyBase.chapterState),
+    chapterState: normalizedChapterState,
     npcs: asRecord(s.npcs) as RunSnapshotV2["npcs"],
     tasks: {
       active: normalizeTasks(s.tasks?.active),

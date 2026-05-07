@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const DB_NAME = "keyval-store";
 const STORE_NAME = "keyval";
@@ -40,6 +40,21 @@ const prunedMarkers = [
   "weapon",
   "equipment",
   "armory",
+];
+const gameyChapterTerms = [
+  "本章完成",
+  "获得",
+  "失去",
+  "关系变化",
+  "理智 -1",
+  "理智-1",
+  "关系 +5",
+  "关系+5",
+  "任务完成",
+  "章节进度",
+  "行动结算",
+  "待进入",
+  "锁定",
 ];
 
 function trackPageErrors(page: Page) {
@@ -91,10 +106,54 @@ function nearChapterEndState(now = Date.now()) {
   };
 }
 
+function nearChapterEndDirectorState() {
+  return {
+    v: 1,
+    arcId: "darkmoon-prologue",
+    beatIndex: 2,
+    tension: 12,
+    stallCount: 0,
+    lastProgressTurn: 1,
+    recentProgressTurns: [1],
+    recentIncidentCodes: [],
+    recentPeakTurn: 0,
+    cooldowns: {},
+    openHookCodes: ["door-after-echo"],
+    falseCalmTurns: 0,
+    pressureBudget: 45,
+    lastMandatoryIncidentTurn: 0,
+    escapePressureBand: "low",
+    chapter: {
+      v: 1,
+      currentChapterId: "chapter-1",
+      chapterOrder: 1,
+      chapterTitle: "暗月初醒",
+      chapterPhase: "echo",
+      promise: "门后的回声会把第一道异常推向下一页。",
+      mainQuestion: "门后的回声究竟来自哪里？",
+      emotionalTone: "悬疑、克制、余波未散",
+      startedTurn: 0,
+      minTurns: 3,
+      targetTurns: [3, 6],
+      softMaxTurns: 6,
+      openThreadIds: ["door-after-echo"],
+      resolvedThreadIds: ["first-small-question"],
+      keyChoiceIds: ["first-clear-intervention"],
+      echoedChoiceIds: [],
+      mustEchoMemoryIds: ["door-after-echo"],
+      forbiddenRevealIds: [],
+      closeCandidate: null,
+      nextChapterSeed: null,
+      summaryForPlayer: null,
+      summaryForModel: null,
+    },
+  };
+}
+
 async function seedChapterPlayState(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 15_000 });
   await page.evaluate(
-    async ({ dbName, storeName, key, actionOptions, chapterState, defaultProfession }) => {
+    async ({ dbName, storeName, key, actionOptions, chapterState, storyDirector, defaultProfession }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open(dbName);
         req.onupgradeneeded = () => {
@@ -130,6 +189,7 @@ async function seedChapterPlayState(page: Page) {
           talentCooldowns: {},
           professionState: defaultProfession,
           chapterState,
+          storyDirector,
         };
         const state = {
           currentSaveSlot: "main_slot",
@@ -155,6 +215,7 @@ async function seedChapterPlayState(page: Page) {
           talentCooldowns: {},
           professionState: baseSlot.professionState,
           chapterState,
+          storyDirector,
         };
         store.put(JSON.stringify({ state, version: 1 }), key);
         tx.oncomplete = () => {
@@ -170,6 +231,7 @@ async function seedChapterPlayState(page: Page) {
       key: KEY_MAIN,
       actionOptions: options,
       chapterState: nearChapterEndState(),
+      storyDirector: nearChapterEndDirectorState(),
       defaultProfession: defaultProfessionState,
     }
   );
@@ -183,7 +245,15 @@ function buildChapterSseFinalFrame() {
       narrative: "你靠近门缝，发现水迹只停在门槛内侧。电子表亮了一瞬，留下指向下一扇门的时间残影。",
       is_death: false,
       consumes_time: false,
+      player_location: "B1_Corridor",
       options,
+      task_updates: [
+        {
+          id: "chapter_first_intervention",
+          title: "确认门后的回声",
+          status: "active",
+        },
+      ],
       codex_updates: [
         {
           id: "A-CHAPTER-001",
@@ -212,6 +282,13 @@ function buildChapterSseFinalFrame() {
 }
 
 async function installChatMock(page: Page) {
+  await page.route("**/api/chat/queue", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ disabled: true }),
+    });
+  });
   await page.route("**/api/chat", async (route) => {
     await route.fulfill({
       status: 200,
@@ -231,6 +308,13 @@ async function openSeededPlay(page: Page) {
 async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
+}
+
+async function expectNoGameyChapterText(locator: Locator) {
+  const text = await locator.innerText();
+  for (const term of gameyChapterTerms) expect(text).not.toContain(term);
+  expect(text).not.toMatch(/理智\s*[-+]\s*\d+/);
+  expect(text).not.toMatch(/关系\s*[-+]\s*\d+/);
 }
 
 async function expectNoPrunedEntries(page: Page) {
@@ -257,8 +341,15 @@ async function expectNoPrunedEntries(page: Page) {
 }
 
 test.describe("chapter flow", () => {
-  test("completes chapter one, enters chapter two, reviews chapter one, and returns", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  const mobileChapterViewports = [
+    { width: 390, height: 844 },
+    { width: 393, height: 852 },
+    { width: 430, height: 932 },
+  ];
+
+  for (const viewport of mobileChapterViewports) {
+    test(`completes chapter one, enters chapter two, reviews chapter one, and returns at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
     const errors = trackPageErrors(page);
     await openSeededPlay(page);
     await installChatMock(page);
@@ -275,8 +366,11 @@ test.describe("chapter flow", () => {
     ]);
 
     await expect(page.getByTestId("chapter-end-sheet")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("chapter-end-sheet")).toContainText("第1章完成");
-    await expect(page.getByTestId("chapter-end-sheet")).toContainText("下一目标");
+    await expect(page.getByTestId("chapter-end-sheet")).toContainText("本章回望");
+    await expect(page.getByTestId("chapter-end-sheet")).toContainText("前情回望");
+    await expect(page.getByTestId("chapter-end-sheet")).toContainText("继续下一章");
+    await expect(page.getByTestId("chapter-end-sheet")).toContainText("回看本章");
+    await expectNoGameyChapterText(page.getByTestId("chapter-end-sheet"));
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
     await page.getByTestId("chapter-next-button").click();
@@ -286,15 +380,24 @@ test.describe("chapter flow", () => {
 
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("chapter-navigator")).toBeVisible();
-    await expect(page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-2"]')).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("chapter-navigator")).toContainText("小说目录");
+    await expectNoGameyChapterText(page.getByTestId("chapter-navigator"));
+    const chapterOneItem = page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-1"]');
+    const chapterTwoItem = page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-2"]');
+    await expect(chapterOneItem).toContainText("第一章：暗月初醒");
+    await expect(chapterOneItem).toContainText(/回响|回声|异常|门缝|明确介入/);
+    await expect(chapterTwoItem).toContainText("第二章：门后回声");
+    await expect(chapterTwoItem).toContainText("正在阅读");
+    await expect(chapterTwoItem).toHaveAttribute("aria-current", "page");
     await page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-1"]').click();
     await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
-    await expect(page.getByText("安全回顾，不回滚当前进度")).toBeVisible();
+    await expect(page.getByText("前情回望，不影响正在阅读的章节")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
     await page.getByTestId("chapter-return-current").click();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：门后回声");
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
 
     await page.getByTestId("bottom-nav-codex").click();
@@ -308,7 +411,8 @@ test.describe("chapter flow", () => {
     await expectNoPrunedEntries(page);
     await expectNoHorizontalOverflow(page);
     expect(errors).toEqual([]);
-  });
+    });
+  }
 
   for (const route of ["/guide", "/journal", "/warehouse", "/achievements", "/weapons", "/taskbar"]) {
     test(`keeps old route ${route} from exposing pruned UI`, async ({ page }) => {

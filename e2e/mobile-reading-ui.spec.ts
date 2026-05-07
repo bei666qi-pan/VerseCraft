@@ -243,6 +243,20 @@ function buildOpeningPenaltyFrame() {
   })}\n\n`;
 }
 
+function isPlayerChatPost(req: { url(): string; method(): string }) {
+  return new URL(req.url()).pathname === "/api/chat" && req.method() === "POST";
+}
+
+async function installQueueDisabledMock(page: Page) {
+  await page.route("**/api/chat/queue", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ disabled: true }),
+    });
+  });
+}
+
 async function readPersistedSanity(page: Page) {
   return page.evaluate(async ({ dbName, storeName, key }) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -265,6 +279,7 @@ async function readPersistedSanity(page: Page) {
 
 async function installChatSseMock(page: Page) {
   const submittedActions: string[] = [];
+  await installQueueDisabledMock(page);
   await page.route("**/api/chat", async (route) => {
     submittedActions.push(lastUserMessage(route.request().postDataJSON() as Record<string, unknown>));
     await route.fulfill({
@@ -277,6 +292,7 @@ async function installChatSseMock(page: Page) {
 }
 
 async function installDelayedChatSseMock(page: Page, delayMs = 1600) {
+  await installQueueDisabledMock(page);
   await page.route("**/api/chat", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     await route.fulfill({
@@ -549,6 +565,7 @@ test.describe("mobile reading UI", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     let openingRequests = 0;
 
+    await installQueueDisabledMock(page);
     await page.route("**/api/chat", async (route) => {
       openingRequests += 1;
       await route.fulfill({
@@ -625,7 +642,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("send-action-button")).toBeEnabled();
 
     await Promise.all([
-      page.waitForRequest((req) => req.url().includes("/api/chat") && req.method() === "POST"),
+      page.waitForRequest(isPlayerChatPost),
       page.getByTestId("send-action-button").click(),
     ]);
 
@@ -637,7 +654,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("send-action-button")).toBeEnabled();
 
     await Promise.all([
-      page.waitForRequest((req) => req.url().includes("/api/chat") && req.method() === "POST"),
+      page.waitForRequest(isPlayerChatPost),
       page.getByTestId("send-action-button").click(),
     ]);
 
@@ -661,7 +678,7 @@ test.describe("mobile reading UI", () => {
     expect(optionElementsAreButtons).toBe(true);
 
     await Promise.all([
-      page.waitForRequest((req) => req.url().includes("/api/chat") && req.method() === "POST"),
+      page.waitForRequest(isPlayerChatPost),
       optionItems.nth(1).click(),
     ]);
 

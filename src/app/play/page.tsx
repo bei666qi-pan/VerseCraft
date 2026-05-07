@@ -3700,11 +3700,11 @@ function PlayContent() {
                   <section
                     data-testid="chapter-review-panel"
                     className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5"
-                    aria-label="章节回顾"
+                    aria-label="前情回望"
                   >
                     <div className="rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 p-4 shadow-[0_10px_24px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
                       <div className="mb-4 border-b border-[#ded8ce] pb-3">
-                        <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">安全回顾，不回滚当前进度</p>
+                        <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">前情回望，不影响正在阅读的章节</p>
                         <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#174d46]">
                           {chapterRuntime.displayedDefinition.title}
                         </h2>
@@ -3715,7 +3715,7 @@ function PlayContent() {
                         />
                       ) : (
                         <p className="vc-reading-serif text-[16px] leading-relaxed text-[#174d46]">
-                          这一章尚无可回顾的章末沉淀。
+                          这一章还没有留下可回望的段落。
                         </p>
                       )}
                       <button
@@ -3727,7 +3727,7 @@ function PlayContent() {
                         }}
                         className="mt-5 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-3 vc-reading-serif text-[17px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)]"
                       >
-                        回到当前章
+                        回到正在阅读
                       </button>
                     </div>
                   </section>
@@ -3863,6 +3863,11 @@ function PlayContent() {
             onReturnToActive={() => {
               playUIClick();
               chapterRuntime.returnToActiveChapter();
+              setChapterNavigatorOpen(false);
+            }}
+            onEnterNext={() => {
+              playUIClick();
+              chapterRuntime.enterNextChapter();
               setChapterNavigatorOpen(false);
             }}
           />

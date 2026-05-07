@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { useGameStore } from "./useGameStore";
+import { migratePersistedState, useGameStore } from "./useGameStore";
 
 function resetStore() {
   const initial = (useGameStore as unknown as { getInitialState: () => ReturnType<typeof useGameStore.getState> }).getInitialState();
@@ -160,6 +160,89 @@ test("phase4: setCurrentOptions filters journal/menu-like options", () => {
   resetStore();
   useGameStore.getState().setCurrentOptions(["查看灵感手记", "检查背包", "我用手电照向门缝"]);
   assert.deepEqual(useGameStore.getState().currentOptions, ["我用手电照向门缝"]);
+});
+
+test("chapter-aware migration preserves legacy local saves and backfills director chapter", () => {
+  const chapterState = {
+    currentChapterId: "chapter-2",
+    activeChapterId: "chapter-2",
+    reviewChapterId: null,
+    completedChapterIds: ["chapter-1"],
+    unlockedChapterIds: ["chapter-1", "chapter-2"],
+    progressByChapterId: {
+      "chapter-2": {
+        chapterId: "chapter-2",
+        status: "active",
+        startedAt: 1,
+        completedAt: null,
+        turnCount: 1,
+        narrativeCharCount: 24,
+        keyChoiceCount: 1,
+        completedBeatIds: [],
+        stateChangeCount: 1,
+        lastObjectiveText: "Follow the chapter two clue.",
+      },
+    },
+    summariesByChapterId: {},
+    lastChapterEndAt: null,
+    pendingChapterEndId: null,
+  };
+  const legacySlot = {
+    stats: { sanity: 10, agility: 0, luck: 0, charm: 0, background: 0 },
+    inventory: [],
+    logs: [{ role: "assistant", content: "legacy log survives" }],
+    time: { day: 1, hour: 2 },
+    codex: {},
+    historicalMaxSanity: 50,
+    playerLocation: "B1_SafeZone",
+    chapterState,
+    runSnapshotV2: {
+      schemaVersion: 2,
+      meta: {
+        runId: "legacy_run",
+        worldVersion: 2,
+        startedAt: "2026-01-01T00:00:00.000Z",
+        lastSavedAt: "2026-01-01T00:00:00.000Z",
+      },
+      player: { profile: { name: "A", gender: "other", height: 170, personality: "quiet" } },
+      time: { day: 1, hour: 2 },
+      world: { storyDirector: { v: 1, arcId: "legacy_arc", tension: 37, stallCount: 1 } },
+      chapterState,
+    },
+  } as never;
+
+  const migrated = migratePersistedState(
+    {
+      logs: [{ role: "assistant", content: "root log survives" }],
+      chapterState,
+      storyDirector: { v: 1, arcId: "root_legacy_arc", tension: 12, stallCount: 0 },
+      saveSlots: { main_slot: legacySlot },
+    },
+    1
+  ) as any;
+
+  assert.equal(migrated.logs[0].content, "root log survives");
+  assert.ok(migrated.saveSlots.main_slot);
+  assert.equal(migrated.saveSlots.main_slot.logs[0].content, "legacy log survives");
+  assert.equal(migrated.storyDirector.chapter.currentChapterId, "chapter-2");
+  assert.equal(migrated.saveSlots.main_slot.runSnapshotV2.world.storyDirector.chapter.currentChapterId, "chapter-2");
+
+  resetStore();
+  useGameStore.setState({ saveSlots: migrated.saveSlots });
+  useGameStore.getState().loadGame("main_slot");
+  const loaded = useGameStore.getState();
+  assert.equal(loaded.logs[0]?.content, "legacy log survives");
+  assert.equal(loaded.saveSlots.main_slot?.logs[0]?.content, "legacy log survives");
+  assert.equal(loaded.chapterState.activeChapterId, "chapter-2");
+  assert.equal((loaded.storyDirector as any).chapter.currentChapterId, "chapter-2");
+
+  resetStore();
+  useGameStore.getState().hydrateFromCloud("main_slot", legacySlot);
+  const cloudLoaded = useGameStore.getState();
+  assert.equal(cloudLoaded.logs[0]?.content, "legacy log survives");
+  assert.equal(cloudLoaded.saveSlots.main_slot?.logs[0]?.content, "legacy log survives");
+  assert.equal(cloudLoaded.chapterState.activeChapterId, "chapter-2");
+  assert.equal((cloudLoaded.storyDirector as any).chapter.currentChapterId, "chapter-2");
 });
 
 test("phase4: saveGame does not persist journal/menu-like options", () => {

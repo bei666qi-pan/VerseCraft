@@ -63,8 +63,19 @@ export type DialogueContext = {
 
   chapter: {
     chapterId: string | null;
+    title: string | null;
     status: string | null;
     sceneId: string | null;
+    phase: string | null;
+    promise: string | null;
+    mainQuestion: string | null;
+    emotionalTone: string | null;
+    mustEchoSummaries: string[];
+    unresolvedThreads: string[];
+    forbiddenRevealIds: string[];
+    closePolicy: string | null;
+    writerInstruction: string | null;
+    /** Legacy alias for callers that still read the old chapter objective. */
     objective: string | null;
     completedBeatIds: string[];
     allowedEventIds: string[];

@@ -27,6 +27,7 @@ export function planStoryBeat(args: {
 }): DirectorPlan {
   const d = args.director;
   const s = args.signals;
+  const chapter = d.chapter;
   const pressureFlags: DirectorPlan["pressureFlags"] = [];
   if (s.stalled) pressureFlags.push("stalling");
   if (s.threatHot) pressureFlags.push("high_threat");
@@ -40,11 +41,20 @@ export function planStoryBeat(args: {
   const budget = clampInt(d.pressureBudget ?? 45, 0, 100);
   const mustAdvance = s.stalled || (d.stallCount ?? 0) >= 2;
 
-  const mustRecallHookCodes = s.hookCodesReady.slice(0, mustAdvance ? 2 : 1);
+  const mustRecallHookCodes = uniq(
+    [
+      ...(s.hookCodesReady ?? []),
+      ...(chapter?.mustEchoMemoryIds ?? []),
+    ],
+    mustAdvance ? 3 : 2
+  );
 
   const beatMode: DirectorPlan["beatMode"] = (() => {
     if (inCooldown) return "aftershock";
+    if (chapter?.closeCandidate?.shouldClose || chapter?.chapterPhase === "closing") return "aftershock";
     if (s.nearPeak && budget >= 55) return "peak";
+    if (chapter?.chapterPhase === "choice" && budget >= 35) return "collision";
+    if ((chapter?.chapterPhase === "echo" || chapter?.chapterPhase === "reveal") && budget >= 20) return "reveal";
     if (s.falseCalmRisk) return "falseCalmTurns" in d ? "pressure" : "pressure";
     if (mustAdvance && budget >= 28) return "pressure";
     if (s.highPressure && budget >= 35) return "pressure";
