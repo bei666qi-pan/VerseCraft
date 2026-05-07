@@ -14,6 +14,12 @@ import {
   enableNpcPersonalityCoreV2,
   enableTaskModeLayer,
 } from "@/lib/playRealtime/npcNarrativeRolloutFlags";
+import {
+  buildNpcKnowledgePacket,
+  compactNpcKnowledgePacket,
+  type NpcKnowledgePacket,
+} from "@/lib/npcKnowledge/npcKnowledgeResolver";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 const RT_TASK_LAYERS_RE = /【rt_task_layers】([^\s。]+)/;
 
@@ -271,6 +277,7 @@ export function buildActorResiduePacketCompact(p: Record<string, unknown>): Reco
 }
 
 export type ActorConstraintBundle = {
+  npc_knowledge_packet: NpcKnowledgePacket | null;
   actor_personality_packet: Record<string, unknown>;
   actor_residue_packet: Record<string, unknown>;
   actor_foreshadow_packet: Record<string, unknown>;
@@ -290,7 +297,11 @@ export function buildActorConstraintBundle(args: {
   pendingHourFraction: number;
   /** 同场景 NPC id（用于彼此关系表演提示） */
   presentNpcIds?: string[];
+  playerKnownFactIds?: string[];
+  scenePublicFactIds?: string[];
+  floorId?: string | null;
 }): ActorConstraintBundle {
+  const rollout = getVerseCraftRolloutFlags();
   const layers = enableTaskModeLayer() ? parseRtTaskLayers(args.playerContext) : [];
 
   let viewFinal: ReturnType<typeof buildNpcHeartRuntimeView> = null;
@@ -347,7 +358,21 @@ export function buildActorConstraintBundle(args: {
     };
   }
 
+  const npcKnowledgePacket = rollout.enableNpcBeliefGraph && args.focusNpcId
+    ? buildNpcKnowledgePacket({
+        speakerNpcId: args.focusNpcId,
+        presentNpcIds: args.presentNpcIds ?? [],
+        location: args.location,
+        floorId: args.floorId ?? null,
+        maxRevealRank: args.maxRevealRank,
+        playerKnownFactIds: args.playerKnownFactIds ?? [],
+        scenePublicFactIds: args.scenePublicFactIds ?? [],
+        activeTaskIds: args.activeTaskIds,
+      })
+    : null;
+
   return {
+    npc_knowledge_packet: npcKnowledgePacket,
     actor_personality_packet: personality,
     actor_residue_packet: residue,
     actor_foreshadow_packet: enableMajorNpcForeshadow()
@@ -378,6 +403,7 @@ export function buildActorConstraintBundle(args: {
 
 export function compactActorConstraintBundle(b: ActorConstraintBundle): Record<string, unknown> {
   return {
+    npc_knowledge_packet: compactNpcKnowledgePacket(b.npc_knowledge_packet),
     actor_personality_packet: buildActorPersonalityPacketCompact(b.actor_personality_packet),
     actor_residue_packet: buildActorResiduePacketCompact(b.actor_residue_packet),
     actor_foreshadow_packet: buildActorForeshadowPacketCompact(b.actor_foreshadow_packet),

@@ -124,6 +124,19 @@ function asUnknownRecord(v: unknown): Record<string, unknown> | null {
   return v as Record<string, unknown>;
 }
 
+function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
+  const src = asUnknownRecord(v);
+  if (!src) return null;
+  const out: Record<string, unknown> = {};
+  const usedFactIds = asStringArray(src.used_fact_ids).slice(0, 24);
+  const usedNpcBeliefIds = asStringArray(src.used_npc_belief_ids).slice(0, 24);
+  const candidateNewFacts = asObjectArray(src.candidate_new_facts).slice(0, 8);
+  if (usedFactIds.length > 0) out.used_fact_ids = usedFactIds;
+  if (usedNpcBeliefIds.length > 0) out.used_npc_belief_ids = usedNpcBeliefIds;
+  if (candidateNewFacts.length > 0) out.candidate_new_facts = candidateNewFacts;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** 供客户端与反馈层复用：统一解析 `conflict_outcome` / `combat_summary` 线型。 */
 export function normalizeConflictOutcome(raw: unknown): TurnEnvelope["conflict_outcome"] {
   if (raw === null || raw === undefined) return null;
@@ -351,6 +364,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     !Array.isArray((input as { anti_cheat_meta?: unknown }).anti_cheat_meta)
       ? ((input as any).anti_cheat_meta as Record<string, unknown>)
       : {};
+  const narrativeAudit = normalizeNarrativeAudit((input as { _narrative_audit?: unknown })._narrative_audit);
 
   // options normalization policy under new modes:
   // - narrative_only: legacy options allowed but not required; keep whatever exists (compat).
@@ -399,6 +413,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     ...(bgm_track ? { bgm_track } : {}),
     ...(nextChapterTitleCandidate ? { next_chapter_title_candidate: nextChapterTitleCandidate } : {}),
     ...(security_meta ? { security_meta } : {}),
+    ...(narrativeAudit ? ({ _narrative_audit: narrativeAudit } as Record<string, unknown>) : {}),
     ...(Object.keys(ui_hints).length > 0 ? { ui_hints } : {}),
 
     // New envelope semantic fields

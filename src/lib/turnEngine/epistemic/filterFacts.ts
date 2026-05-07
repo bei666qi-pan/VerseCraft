@@ -81,10 +81,30 @@ function emptyRejectedReasonMap(): Record<EpistemicFilterReason, number> {
     scope_public_ok: 0,
     actor_owned_private: 0,
     player_actor_owns_fact: 0,
+    floor_shared: 0,
+    relation_shared: 0,
+    rumor_network: 0,
+    role_based: 0,
     reveal_tier_below_threshold: 0,
     xinlan_exception_not_propagated: 0,
     expired_fact_dropped: 0,
   };
+}
+
+function factHasTag(fact: KnowledgeFact, pattern: string | RegExp): boolean {
+  const tags = Array.isArray(fact.tags) ? fact.tags : [];
+  if (typeof pattern === "string") return tags.includes(pattern);
+  return tags.some((tag) => pattern.test(tag));
+}
+
+function sharedReasonForFact(fact: KnowledgeFact): EpistemicFilterReason {
+  if (fact.sourceType === "rumor" || factHasTag(fact, /(^|:)rumor(_network)?($|:)/)) {
+    return "rumor_network";
+  }
+  if (factHasTag(fact, /(^|:)relation_shared($|:)/)) return "relation_shared";
+  if (factHasTag(fact, /(^|:)role_based($|:)/)) return "role_based";
+  if (factHasTag(fact, /(^|:)floor_shared($|:)|(^|:)same_floor($|:)/)) return "floor_shared";
+  return fact.scope === "shared_scene" ? "scope_shared_scene_ok_to_infer" : "scope_public_ok";
 }
 
 function brandAs<T extends KnowledgeFact, B extends string>(
@@ -171,7 +191,7 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
       // `shared_scene` facts it was never present for.
       if (actorId === null || canActorKnowFact(f, actorId, args.scene, { nowIso })) {
         scenePublic.push(brandAs<typeof f, "scene_public">(f));
-        bumpReason(rejectedReasons, "scope_public_ok");
+        bumpReason(rejectedReasons, sharedReasonForFact(f));
       } else {
         bumpReason(rejectedReasons, "scope_shared_scene_ok_to_infer");
       }
@@ -199,6 +219,12 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
           ownerActorId: owner,
         } as ActorScopedFact);
         bumpReason(rejectedReasons, "actor_owned_private");
+      } else if (actorId && f.visibleTo.includes(actorId)) {
+        actorScoped.push({
+          ...brandAs<typeof f, "actor_scoped">(f),
+          ownerActorId: owner || actorId,
+        } as ActorScopedFact);
+        bumpReason(rejectedReasons, sharedReasonForFact(f));
       } else if (owner && isXinlanNpcId(owner) && !isXinlanNpcId(actorId ?? "")) {
         // Xinlan-owned private memory must not propagate to other NPCs.
         bumpReason(rejectedReasons, "xinlan_exception_not_propagated");
@@ -215,8 +241,10 @@ export function filterEpistemicFacts(args: FilterFactsArgs): EpistemicFilterResu
       // chains).
       if (isPlayerActor) {
         playerOnly.push(brandAs<typeof f, "player_known">(f));
+        bumpReason(rejectedReasons, sharedReasonForFact(f));
       } else if (isNpcActor) {
         scenePublic.push(brandAs<typeof f, "scene_public">(f));
+        bumpReason(rejectedReasons, sharedReasonForFact(f));
       }
     }
   }

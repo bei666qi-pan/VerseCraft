@@ -9,6 +9,27 @@ import { emptyStateDelta } from "@/lib/turnEngine/computeStateDelta";
 import type { EpistemicFilterResult } from "@/lib/turnEngine/epistemic/types";
 import type { KnowledgeFact } from "@/lib/epistemic/types";
 import type { NormalizedPlayerIntent } from "@/lib/turnEngine/types";
+import { buildNpcKnowledgePacket } from "@/lib/npcKnowledge/npcKnowledgeResolver";
+import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
+
+function makeRejectedReasons(): EpistemicFilterResult["telemetry"]["rejectedReasons"] {
+  return {
+    player_private_locked_to_player: 0,
+    dm_only_world_truth: 0,
+    other_npc_private_memory: 0,
+    scope_shared_scene_ok_to_infer: 0,
+    scope_public_ok: 0,
+    actor_owned_private: 0,
+    player_actor_owns_fact: 0,
+    floor_shared: 0,
+    relation_shared: 0,
+    rumor_network: 0,
+    role_based: 0,
+    reveal_tier_below_threshold: 0,
+    xinlan_exception_not_propagated: 0,
+    expired_fact_dropped: 0,
+  };
+}
 
 function makeFilter(partial: Partial<EpistemicFilterResult> = {}): EpistemicFilterResult {
   return {
@@ -20,18 +41,7 @@ function makeFilter(partial: Partial<EpistemicFilterResult> = {}): EpistemicFilt
     telemetry: {
       totalInputFacts: 0,
       bucketCounts: { dmOnly: 0, scenePublic: 0, playerOnly: 0, actorScoped: 0, residue: 0 },
-      rejectedReasons: {
-        player_private_locked_to_player: 0,
-        dm_only_world_truth: 0,
-        other_npc_private_memory: 0,
-        scope_shared_scene_ok_to_infer: 0,
-        scope_public_ok: 0,
-        actor_owned_private: 0,
-        player_actor_owns_fact: 0,
-        reveal_tier_below_threshold: 0,
-        xinlan_exception_not_propagated: 0,
-        expired_fact_dropped: 0,
-      },
+      rejectedReasons: makeRejectedReasons(),
       revealGatedCount: 0,
       actorIsXinlanException: false,
       actorId: null,
@@ -50,6 +60,7 @@ function makeFact(content: string, scope: KnowledgeFact["scope"] = "world"): Kno
     visibleTo: [],
     inferableByOthers: false,
     tags: [],
+    createdAt: "2026-05-07T00:00:00.000Z",
   };
 }
 
@@ -102,18 +113,7 @@ test("validateNarrative flags DM-only fact leak in narrative and falls back", ()
     telemetry: {
       totalInputFacts: 1,
       bucketCounts: { dmOnly: 1, scenePublic: 0, playerOnly: 0, actorScoped: 0, residue: 0 },
-      rejectedReasons: {
-        player_private_locked_to_player: 0,
-        dm_only_world_truth: 0,
-        other_npc_private_memory: 0,
-        scope_shared_scene_ok_to_infer: 0,
-        scope_public_ok: 0,
-        actor_owned_private: 0,
-        player_actor_owns_fact: 0,
-        reveal_tier_below_threshold: 0,
-        xinlan_exception_not_propagated: 0,
-        expired_fact_dropped: 0,
-      },
+      rejectedReasons: makeRejectedReasons(),
       revealGatedCount: 0,
       actorIsXinlanException: false,
       actorId: null,
@@ -133,6 +133,32 @@ test("validateNarrative flags DM-only fact leak in narrative and falls back", ()
   assert.ok(report.issues.some((x) => x.code === "dm_only_fact_leaked_in_narrative"));
   assert.ok(report.narrativeOverride, "high severity should produce safe narrative fallback");
   assert.equal(report.telemetry.safeNarrativeFallbackApplied, true);
+});
+
+test("validateNarrative ignores low-signal scene overlap in DM-only facts", () => {
+  const filter = makeFilter({
+    dmOnlyFacts: [makeFact("走廊深处的门缝里传来低低的刮擦声") as never],
+    telemetry: {
+      totalInputFacts: 1,
+      bucketCounts: { dmOnly: 1, scenePublic: 0, playerOnly: 0, actorScoped: 0, residue: 0 },
+      rejectedReasons: makeRejectedReasons(),
+      revealGatedCount: 0,
+      actorIsXinlanException: false,
+      actorId: null,
+    },
+  });
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "我贴着墙根停下，走廊深处有一点刮擦声。动静很轻，像在试探我的位置。",
+        options: ["贴墙靠近", "退到楼梯口", "丢出纸团", "低声试探"],
+        player_location: "旧公寓三楼走廊",
+      },
+      epistemicFilter: filter,
+    })
+  );
+  assert.equal(report.issues.some((x) => x.code === "dm_only_fact_leaked_in_narrative"), false);
+  assert.equal(report.narrativeOverride, null);
 });
 
 test("validateNarrative flags location conflict when intent is not a system transition", () => {
@@ -294,4 +320,67 @@ test("validateNarrative bridges npcConsistencyIssueCount into report", () => {
   );
   assert.ok(report.issues.some((x) => x.code === "npc_consistency_bridge"));
   assert.equal(report.telemetry.byCode.npc_consistency_bridge, 1);
+});
+
+test("validateNarrative bridges style validator without safe fallback", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "系统提示：任务已完成，你获得了钥匙。",
+        options: ["贴墙观察", "收好钥匙", "听楼上", "退到门边"],
+        player_location: "涓夋ゼ璧板粖",
+      },
+      narrativeStyleValidationEnabled: true,
+      narrativeStyleFocus: "investigate",
+    })
+  );
+  assert.equal(report.narrativeOverride, null);
+  assert.ok(report.issues.some((x) => x.code === "mechanical_exposition"));
+  assert.ok((report.telemetry.narrativeStyleIssueCount ?? 0) > 0);
+});
+
+test("validateNarrative bridges NPC knowledge validator", () => {
+  const npcKnowledgePacket = buildNpcKnowledgePacket({
+    speakerNpcId: "N-001",
+    presentNpcIds: ["N-001"],
+    location: "B1_SafeZone",
+    floorId: "B1",
+    maxRevealRank: 0,
+    playerKnownFactIds: [],
+    scenePublicFactIds: [],
+    activeTaskIds: [],
+  });
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "N-001说，公寓的根因就是七锚闭环的真相。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+      },
+      sceneNpcIds: ["N-001"],
+      npcKnowledgePacket,
+      speakerNpcId: "N-001",
+      npcKnowledgeMaxRevealRank: 0,
+    })
+  );
+  assert.ok(report.issues.some((x) => x.code === "root_cause_leak"));
+  assert.ok((report.telemetry.npcKnowledgeIssueCount ?? 0) > 0);
+});
+
+test("validateNarrative bridges unsupported fact detector", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "N-001低声说，公寓的根因就是七锚闭环的真相。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: { used_fact_ids: [] },
+      },
+      allowedFactIds: [NPC_KNOWLEDGE_FACT_IDS.B1_PUBLIC_ANOMALY],
+      factDetectionMaxRevealRank: 0,
+    })
+  );
+  assert.ok(report.issues.some((x) => x.code === "unsupported_root_cause_claim"));
+  assert.ok((report.telemetry.unsupportedFactIssueCount ?? 0) > 0);
+  assert.ok(report.narrativeOverride);
 });

@@ -61,6 +61,10 @@ export type EpistemicFilterReason =
   | "scope_public_ok"
   | "actor_owned_private"
   | "player_actor_owns_fact"
+  | "floor_shared"
+  | "relation_shared"
+  | "rumor_network"
+  | "role_based"
   | "reveal_tier_below_threshold"
   | "xinlan_exception_not_propagated"
   | "expired_fact_dropped";

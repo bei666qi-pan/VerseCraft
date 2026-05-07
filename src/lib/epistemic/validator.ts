@@ -41,6 +41,9 @@ export type EpistemicValidatorTelemetry = {
   narrativeRhythmFinalSafe?: boolean;
   narrativeRhythmLogs?: string[];
   npcPersonalityPacketChars?: number;
+  npcKnowledgePacketChars?: number;
+  narrativeGovernanceFinalSafe?: boolean;
+  npcBeliefGraphPacketPresent?: boolean;
   majorNpcDifferentiationScore?: number | null;
   taskModeDistribution?: Record<string, number>;
   fineTimeCostUsage?: number;

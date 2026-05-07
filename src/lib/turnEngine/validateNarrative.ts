@@ -47,6 +47,23 @@
  * The caller (`commitTurn`) is responsible for applying overrides.
  */
 import { safeBlockedDmJson } from "@/lib/security/policy";
+import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
+import {
+  validateNarrativeStyle,
+  type NarrativeStyleIssueCode,
+  type NarrativeStyleValidationReport,
+} from "@/lib/narrativeStyle/styleValidator";
+import type { NpcKnowledgePacket } from "@/lib/npcKnowledge/npcKnowledgeResolver";
+import {
+  validateNpcKnowledgeInNarrative,
+  type NpcKnowledgeValidationIssueCode,
+  type NpcKnowledgeValidationReport,
+} from "@/lib/npcKnowledge/npcKnowledgeValidator";
+import {
+  detectUnsupportedFacts,
+  type UnsupportedFactIssueCode,
+  type UnsupportedFactDetectorReport,
+} from "@/lib/worldFacts/unsupportedFactDetector";
 import type { EpistemicFilterResult } from "@/lib/turnEngine/epistemic/types";
 import type { KnowledgeFact } from "@/lib/epistemic/types";
 import type {
@@ -65,7 +82,24 @@ export type NarrativeValidationIssueCode =
   | "inventory_conflict"
   | "time_feel_drift"
   | "task_mode_mismatch"
-  | "npc_consistency_bridge";
+  | "npc_consistency_bridge"
+  | "style_drift"
+  | "mechanical_exposition"
+  | "narrative_style_bridge"
+  | "npc_knows_forbidden_fact"
+  | "npc_mentions_unknown_npc"
+  | "npc_relationship_fabrication"
+  | "floor_knowledge_overreach"
+  | "root_cause_leak"
+  | "rumor_stated_as_fact"
+  | "unsupported_new_fact"
+  | "unsupported_relationship_claim"
+  | "unsupported_root_cause_claim"
+  | "unsupported_location_claim"
+  | "unsupported_event_stage_claim"
+  | "fact_id_not_allowed"
+  | "used_fact_id_missing_from_registry"
+  | "fact_commit_gate_blocked";
 
 export type NarrativeValidationIssue = {
   code: NarrativeValidationIssueCode;
@@ -85,6 +119,21 @@ export type NarrativeValidationIssue = {
 export type NarrativeValidationTelemetry = {
   totalIssues: number;
   byCode: Partial<Record<NarrativeValidationIssueCode, number>>;
+  narrativeStyleIssueCount?: number;
+  narrativeStyleByCode?: Partial<Record<NarrativeStyleIssueCode, number>>;
+  narrativeStyleProfileId?: string;
+  npcKnowledgeByCode?: Partial<Record<NpcKnowledgeValidationIssueCode, number>>;
+  unsupportedFactIssueCount?: number;
+  unsupportedFactByCode?: Partial<Record<UnsupportedFactIssueCode, number>>;
+  styleIssueCount: number;
+  styleDriftCount: number;
+  mechanicalExpositionCount: number;
+  npcKnowledgeIssueCount: number;
+  rootCauseLeakCount: number;
+  unsupportedFactCount: number;
+  unsupportedRelationshipClaimCount: number;
+  factCommitRejectedCount: number;
+  narrativeGovernanceFinalSafe: boolean;
   /** Whether the validator picked a narrow options override. */
   optionsOverrideApplied: boolean;
   /** Whether the validator fell all the way back to a safe narrative. */
@@ -137,6 +186,22 @@ export type ValidateNarrativeArgs = {
    * the validator runs.
    */
   npcConsistencyIssueCount?: number;
+  /** Feature-flagged from route.ts; default false preserves legacy callers/tests. */
+  narrativeStyleValidationEnabled?: boolean;
+  styleValidationReport?: NarrativeStyleValidationReport | null;
+  styleProfile?: VerseCraftStyleProfile | null;
+  narrativeStyleFocus?: string | null;
+  npcKnowledgeValidationEnabled?: boolean;
+  npcKnowledgeValidationReport?: NpcKnowledgeValidationReport | null;
+  npcKnowledgePacket?: NpcKnowledgePacket | null;
+  speakerNpcId?: string | null;
+  npcKnowledgeMaxRevealRank?: number;
+  unsupportedFactDetectionEnabled?: boolean;
+  unsupportedFactReport?: UnsupportedFactDetectorReport | null;
+  allowedFactIds?: readonly string[];
+  scenePublicFactIds?: readonly string[];
+  actorScopedFactIds?: readonly string[];
+  factDetectionMaxRevealRank?: number;
 };
 
 /**
@@ -147,6 +212,48 @@ export type ValidateNarrativeArgs = {
  * 下游 route 在 Phase-8.5 会在此信号后再调用 `generateOptionsOnlyFallback`。
  */
 const CLEAR_OPTIONS_SIGNAL: readonly string[] = [];
+
+const HIGH_SIGNAL_FACT_KEYWORD_RE =
+  /(根因|真相|七锚|闭环|纠错|根源|公寓.*因|异变.*因|N-\d{3,6}|C-[A-Za-z0-9_-]+|T-[A-Za-z0-9_-]+)/;
+
+const LOW_SIGNAL_FACT_KEYWORD_PARTS = [
+  "走廊",
+  "楼梯",
+  "电梯",
+  "门缝",
+  "位置",
+  "动静",
+  "声音",
+  "脚步",
+  "墙根",
+  "空气",
+  "深处",
+  "退路",
+  "灯管",
+  "手机",
+  "锁孔",
+  "刮痕",
+  "刮擦",
+  "纸箱",
+  "公告",
+  "宿舍",
+  "可以",
+  "继续",
+  "确认",
+  "试探",
+  "靠近",
+  "身后",
+  "利用",
+  "口袋",
+  "小物",
+  "东西",
+  "出来",
+  "记录",
+  "方向",
+  "最近",
+  "防火",
+  "挂锁",
+];
 
 function isString(v: unknown): v is string {
   return typeof v === "string";
@@ -161,6 +268,37 @@ function asStringArray(v: unknown): string[] {
   return out;
 }
 
+function asObject(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+function extractNarrativeAudit(dm: Record<string, unknown>): {
+  usedFactIds: string[];
+  candidateNewFacts: unknown[];
+} {
+  const audit = asObject(dm._narrative_audit);
+  return {
+    usedFactIds: asStringArray(audit?.used_fact_ids ?? dm.used_fact_ids),
+    candidateNewFacts: Array.isArray(audit?.candidate_new_facts ?? dm.candidate_new_facts)
+      ? ((audit?.candidate_new_facts ?? dm.candidate_new_facts) as unknown[])
+      : [],
+  };
+}
+
+function mapUnsupportedSeverity(code: UnsupportedFactIssueCode): "low" | "medium" | "high" {
+  if (code === "unsupported_root_cause_claim") return "high";
+  if (
+    code === "unsupported_relationship_claim" ||
+    code === "unsupported_location_claim" ||
+    code === "unsupported_event_stage_claim" ||
+    code === "fact_id_not_allowed" ||
+    code === "used_fact_id_missing_from_registry"
+  ) {
+    return "medium";
+  }
+  return "low";
+}
+
 /**
  * Extract overlapping 3-char CJK windows from the fact content.
  *
@@ -171,12 +309,22 @@ function asStringArray(v: unknown): string[] {
  */
 export function extractFactKeywords(content: string): string[] {
   if (!isString(content) || !content.trim()) return [];
+  const highSignalContent = HIGH_SIGNAL_FACT_KEYWORD_RE.test(content);
+  // DM-only leak fallback is intentionally reserved for high-signal secrets.
+  // Generic private lore often shares mundane scene words with safe prose, and
+  // those should stay in lower-risk governance paths instead of clearing a turn.
+  if (!highSignalContent) return [];
   const runs = content.match(/[\u4e00-\u9fa5]+/g) ?? [];
   const out = new Set<string>();
   for (const run of runs) {
     if (run.length < 3) continue;
     for (let i = 0; i + 3 <= run.length && out.size < 64; i += 1) {
-      out.add(run.slice(i, i + 3));
+      const keyword = run.slice(i, i + 3);
+      const lowSignal = LOW_SIGNAL_FACT_KEYWORD_PARTS.some(
+        (part) => keyword.includes(part) || part.includes(keyword)
+      );
+      if (!highSignalContent && lowSignal) continue;
+      out.add(keyword);
     }
   }
   return [...out];
@@ -258,12 +406,21 @@ function countFactKeywords(facts: readonly KnowledgeFact[]): string[] {
   return out;
 }
 
+function mapStyleIssueCode(code: NarrativeStyleIssueCode): NarrativeValidationIssueCode {
+  if (code === "mechanical_exposition" || code === "forbidden_phrase_hit") {
+    return "mechanical_exposition";
+  }
+  if (code === "style_drift") return "style_drift";
+  return "narrative_style_bridge";
+}
+
 export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidationReport {
   const issues: NarrativeValidationIssue[] = [];
   const dm = args.dmRecord;
   const narrative = isString(dm.narrative) ? dm.narrative : "";
   const options = asStringArray(dm.options);
   const intentIsSystemTransition = Boolean(args.intent?.isSystemTransition);
+  const narrativeAudit = extractNarrativeAudit(dm);
 
   // 1. DM-only fact leak detection.
   if (args.epistemicFilter && narrative) {
@@ -408,6 +565,93 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     });
   }
 
+  const styleReport =
+    Object.prototype.hasOwnProperty.call(args, "styleValidationReport")
+      ? args.styleValidationReport ?? null
+      : args.narrativeStyleValidationEnabled && narrative
+        ? validateNarrativeStyle({
+            narrative,
+            styleProfile: args.styleProfile ?? getVerseCraftStyleProfile(),
+            focus: args.narrativeStyleFocus ?? args.intent?.kind ?? null,
+            turnMode: isString(dm.turn_mode) ? dm.turn_mode : null,
+          })
+        : null;
+  if (styleReport && !styleReport.ok) {
+    for (const issue of styleReport.issues) {
+      const mappedCode = mapStyleIssueCode(issue.code);
+      issues.push({
+        code: mappedCode,
+        detail: `style:${issue.code}${issue.detail ? `:${issue.detail}` : ""}`,
+        anchor: issue.anchor,
+        severity:
+          issue.code === "mechanical_exposition" ||
+          issue.code === "forbidden_phrase_hit" ||
+          issue.code === "dialogue_over_explains" ||
+          issue.code === "hook_missing"
+            ? "medium"
+            : "low",
+      });
+    }
+  }
+
+  const npcKnowledgeValidationEnabled = args.npcKnowledgeValidationEnabled !== false;
+  const npcKnowledgeReport =
+    Object.prototype.hasOwnProperty.call(args, "npcKnowledgeValidationReport")
+      ? args.npcKnowledgeValidationReport ?? null
+      : npcKnowledgeValidationEnabled && args.npcKnowledgePacket && narrative
+        ? validateNpcKnowledgeInNarrative({
+            narrative,
+            speakerNpcId: args.speakerNpcId ?? args.npcKnowledgePacket.speakerNpcId,
+            npcKnowledgePacket: args.npcKnowledgePacket,
+            presentNpcIds: args.sceneNpcIds ?? [],
+            maxRevealRank: args.npcKnowledgeMaxRevealRank ?? 0,
+          })
+        : null;
+  if (npcKnowledgeReport && !npcKnowledgeReport.ok) {
+    for (const issue of npcKnowledgeReport.issues) {
+      issues.push({
+        code: issue.code,
+        detail: `npc_knowledge:${issue.detail ?? issue.code}`,
+        anchor: issue.anchor,
+        severity: issue.severity,
+      });
+    }
+  }
+
+  const allowedFactIds = [
+    ...(args.allowedFactIds ?? []),
+    ...(args.scenePublicFactIds ?? []),
+    ...(args.actorScopedFactIds ?? []),
+    ...(args.npcKnowledgePacket?.can_know_fact_ids ?? []),
+    ...(args.npcKnowledgePacket?.can_hint_fact_ids ?? []),
+  ];
+  const unsupportedFactDetectionEnabled = args.unsupportedFactDetectionEnabled !== false;
+  const unsupportedFactReport =
+    Object.prototype.hasOwnProperty.call(args, "unsupportedFactReport")
+      ? args.unsupportedFactReport ?? null
+      : unsupportedFactDetectionEnabled &&
+          (narrative || narrativeAudit.usedFactIds.length > 0 || narrativeAudit.candidateNewFacts.length > 0)
+        ? detectUnsupportedFacts({
+            narrative,
+            usedFactIds: narrativeAudit.usedFactIds,
+            allowedFactIds,
+            npcKnowledgePacket: args.npcKnowledgePacket ?? null,
+            scenePublicFactIds: args.scenePublicFactIds ?? [],
+            actorScopedFactIds: args.actorScopedFactIds ?? [],
+            maxRevealRank: args.factDetectionMaxRevealRank ?? args.npcKnowledgeMaxRevealRank ?? 0,
+          })
+        : null;
+  if (unsupportedFactReport && unsupportedFactReport.unsupportedCandidates.length > 0) {
+    for (const candidate of unsupportedFactReport.unsupportedCandidates) {
+      issues.push({
+        code: candidate.code,
+        detail: `world_fact:${candidate.factId ?? candidate.text}`,
+        anchor: candidate.factId,
+        severity: candidate.severity ?? mapUnsupportedSeverity(candidate.code),
+      });
+    }
+  }
+
   // ---- Decide overrides ----
   const byCode: Partial<Record<NarrativeValidationIssueCode, number>> = {};
   for (const issue of issues) {
@@ -447,6 +691,37 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   const telemetry: NarrativeValidationTelemetry = {
     totalIssues: issues.length,
     byCode,
+    ...(styleReport
+      ? {
+          narrativeStyleIssueCount: styleReport.telemetry.totalIssues,
+          narrativeStyleByCode: styleReport.telemetry.byCode,
+          narrativeStyleProfileId: styleReport.telemetry.styleProfileId,
+        }
+      : {}),
+    ...(npcKnowledgeReport
+      ? {
+          npcKnowledgeIssueCount: npcKnowledgeReport.telemetry.totalIssues,
+          npcKnowledgeByCode: npcKnowledgeReport.telemetry.byCode,
+        }
+      : {}),
+    ...(unsupportedFactReport
+      ? {
+          unsupportedFactIssueCount: unsupportedFactReport.telemetry.totalCandidates,
+          unsupportedFactByCode: unsupportedFactReport.telemetry.byCode,
+        }
+      : {}),
+    styleIssueCount: styleReport?.telemetry.totalIssues ?? 0,
+    styleDriftCount: styleReport?.telemetry.byCode.style_drift ?? byCode.style_drift ?? 0,
+    mechanicalExpositionCount: byCode.mechanical_exposition ?? 0,
+    npcKnowledgeIssueCount: npcKnowledgeReport?.telemetry.totalIssues ?? 0,
+    rootCauseLeakCount:
+      (byCode.root_cause_leak ?? 0) + (byCode.unsupported_root_cause_claim ?? 0),
+    unsupportedFactCount: unsupportedFactReport?.telemetry.totalCandidates ?? 0,
+    unsupportedRelationshipClaimCount:
+      unsupportedFactReport?.telemetry.byCode.unsupported_relationship_claim ?? 0,
+    factCommitRejectedCount: 0,
+    narrativeGovernanceFinalSafe:
+      !issues.some((issue) => issue.severity === "high") || narrativeOverride !== null,
     optionsOverrideApplied: optionsOverride !== null,
     safeNarrativeFallbackApplied: narrativeOverride !== null,
   };

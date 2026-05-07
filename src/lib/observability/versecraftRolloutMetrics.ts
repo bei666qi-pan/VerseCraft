@@ -70,6 +70,19 @@ export type VerseCraftRolloutMetricsSnapshot = {
   adminProfessionMetricsQueryMsSamples: number;
   adminWeaponMetricsQueryMsSum: number;
   adminWeaponMetricsQueryMsSamples: number;
+
+  // -------- PR-4: narrative governance aggregate counters --------
+  narrativeGovernanceSamples: number;
+  styleIssueCount: number;
+  styleDriftCount: number;
+  mechanicalExpositionCount: number;
+  npcKnowledgeIssueCount: number;
+  rootCauseLeakCount: number;
+  unsupportedFactCount: number;
+  unsupportedRelationshipClaimCount: number;
+  factCommitRejectedCount: number;
+  narrativeGovernanceFinalSafeCount: number;
+  narrativeGovernanceFinalUnsafeCount: number;
 };
 
 const m = {
@@ -137,6 +150,18 @@ const m = {
   adminProfessionMetricsQueryMsSamples: 0,
   adminWeaponMetricsQueryMsSum: 0,
   adminWeaponMetricsQueryMsSamples: 0,
+
+  narrativeGovernanceSamples: 0,
+  styleIssueCount: 0,
+  styleDriftCount: 0,
+  mechanicalExpositionCount: 0,
+  npcKnowledgeIssueCount: 0,
+  rootCauseLeakCount: 0,
+  unsupportedFactCount: 0,
+  unsupportedRelationshipClaimCount: 0,
+  factCommitRejectedCount: 0,
+  narrativeGovernanceFinalSafeCount: 0,
+  narrativeGovernanceFinalUnsafeCount: 0,
 };
 
 export function resetVerseCraftRolloutMetrics(): void {
@@ -311,6 +336,37 @@ export function recordAdminWeaponMetricsQueryMs(ms: number): void {
   if (!Number.isFinite(ms) || ms < 0) return;
   m.adminWeaponMetricsQueryMsSum += ms;
   m.adminWeaponMetricsQueryMsSamples += 1;
+}
+
+export type NarrativeGovernanceMetricInput = {
+  styleIssueCount?: number;
+  styleDriftCount?: number;
+  mechanicalExpositionCount?: number;
+  npcKnowledgeIssueCount?: number;
+  rootCauseLeakCount?: number;
+  unsupportedFactCount?: number;
+  unsupportedRelationshipClaimCount?: number;
+  factCommitRejectedCount?: number;
+  narrativeGovernanceFinalSafe?: boolean;
+};
+
+function addFiniteMetric(key: keyof typeof m, value: number | undefined): void {
+  if (!Number.isFinite(value ?? NaN)) return;
+  m[key] += Math.max(0, Math.trunc(value ?? 0));
+}
+
+export function recordNarrativeGovernanceOutcome(input: NarrativeGovernanceMetricInput): void {
+  m.narrativeGovernanceSamples += 1;
+  addFiniteMetric("styleIssueCount", input.styleIssueCount);
+  addFiniteMetric("styleDriftCount", input.styleDriftCount);
+  addFiniteMetric("mechanicalExpositionCount", input.mechanicalExpositionCount);
+  addFiniteMetric("npcKnowledgeIssueCount", input.npcKnowledgeIssueCount);
+  addFiniteMetric("rootCauseLeakCount", input.rootCauseLeakCount);
+  addFiniteMetric("unsupportedFactCount", input.unsupportedFactCount);
+  addFiniteMetric("unsupportedRelationshipClaimCount", input.unsupportedRelationshipClaimCount);
+  addFiniteMetric("factCommitRejectedCount", input.factCommitRejectedCount);
+  if (input.narrativeGovernanceFinalSafe) m.narrativeGovernanceFinalSafeCount += 1;
+  else m.narrativeGovernanceFinalUnsafeCount += 1;
 }
 
 export function getVerseCraftRolloutMetricsSnapshot(): VerseCraftRolloutMetricsSnapshot {

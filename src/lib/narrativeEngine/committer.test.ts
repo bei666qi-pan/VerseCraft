@@ -9,6 +9,18 @@ import type { DialogueContext } from "./types";
 import type { NpcMemoryWriteInput } from "./npcMemoryRepository";
 import type { StoryEventWriteInput } from "./storyEventRepository";
 
+const narrativeGovernanceTelemetry = {
+  styleIssueCount: 0,
+  styleDriftCount: 0,
+  mechanicalExpositionCount: 0,
+  npcKnowledgeIssueCount: 0,
+  rootCauseLeakCount: 0,
+  unsupportedFactCount: 0,
+  unsupportedRelationshipClaimCount: 0,
+  factCommitRejectedCount: 0,
+  narrativeGovernanceFinalSafe: true,
+};
+
 test("narrative committer delegates commitTurn without changing summary", () => {
   const args = {
     requestId: "req_commit_1",
@@ -30,6 +42,7 @@ test("narrative committer delegates commitTurn without changing summary", () => 
       telemetry: {
         totalIssues: 0,
         byCode: {},
+        ...narrativeGovernanceTelemetry,
         optionsOverrideApplied: false,
         safeNarrativeFallbackApplied: false,
       },
@@ -160,6 +173,7 @@ test("commitNarrativeEvents writes minimum story events and scoped NPC memories"
         newTasks: 0,
       },
       validatorIssueCounts: {},
+      narrativeGovernanceTelemetry,
       commitFlags: ["post_validator_ok"],
     },
     deps: {

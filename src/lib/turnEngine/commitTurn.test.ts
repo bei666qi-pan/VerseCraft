@@ -2,7 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { commitTurn } from "@/lib/turnEngine/commitTurn";
 import { emptyStateDelta } from "@/lib/turnEngine/computeStateDelta";
-import type { NarrativeValidationReport } from "@/lib/turnEngine/validateNarrative";
+import type { NarrativeValidationReport, NarrativeValidationTelemetry } from "@/lib/turnEngine/validateNarrative";
+
+function baseTelemetry(
+  overrides: Partial<NarrativeValidationTelemetry> = {}
+): NarrativeValidationTelemetry {
+  return {
+    totalIssues: 0,
+    byCode: {},
+    styleIssueCount: 0,
+    styleDriftCount: 0,
+    mechanicalExpositionCount: 0,
+    npcKnowledgeIssueCount: 0,
+    rootCauseLeakCount: 0,
+    unsupportedFactCount: 0,
+    unsupportedRelationshipClaimCount: 0,
+    factCommitRejectedCount: 0,
+    narrativeGovernanceFinalSafe: true,
+    optionsOverrideApplied: false,
+    safeNarrativeFallbackApplied: false,
+    ...overrides,
+  };
+}
 
 function okReport(): NarrativeValidationReport {
   return {
@@ -10,12 +31,7 @@ function okReport(): NarrativeValidationReport {
     issues: [],
     optionsOverride: null,
     narrativeOverride: null,
-    telemetry: {
-      totalIssues: 0,
-      byCode: {},
-      optionsOverrideApplied: false,
-      safeNarrativeFallbackApplied: false,
-    },
+    telemetry: baseTelemetry(),
   };
 }
 
@@ -52,12 +68,11 @@ test("commitTurn applies options override", () => {
     issues: [],
     optionsOverride: ["观察", "退后", "记录", "思考"],
     narrativeOverride: null,
-    telemetry: {
+    telemetry: baseTelemetry({
       totalIssues: 1,
       byCode: { options_duplicate_only: 1 },
       optionsOverrideApplied: true,
-      safeNarrativeFallbackApplied: false,
-    },
+    }),
   };
   const result = commitTurn({
     requestId: "req_2",
@@ -90,12 +105,11 @@ test("commitTurn falls back to safe narrative when override present", () => {
       options: ["a2", "b2", "c2", "d2"],
       security_meta: { action: "degrade", stage: "post_model", risk_level: "gray", reason: "x" },
     }),
-    telemetry: {
+    telemetry: baseTelemetry({
       totalIssues: 1,
       byCode: { dm_only_fact_leaked_in_narrative: 1 },
-      optionsOverrideApplied: false,
       safeNarrativeFallbackApplied: true,
-    },
+    }),
   };
   const result = commitTurn({
     requestId: "req_3",
@@ -165,4 +179,29 @@ test("commitTurn preserves existing security_meta keys", () => {
   const meta = result.committedDmRecord.security_meta as Record<string, unknown>;
   assert.equal(meta.earlier_stage, "input_ok");
   assert.ok(meta.turn_commit);
+});
+
+test("commitTurn records fact commit gate metadata", () => {
+  const result = commitTurn({
+    requestId: "req_fact_gate",
+    sessionId: "s_1",
+    turnIndex: 4,
+    candidateDmRecord: {
+      narrative: "...",
+      options: ["a", "b", "c", "d"],
+      _narrative_audit: { candidate_new_facts: [{ factId: "fact:forged" }] },
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    factCommitGateResult: {
+      allowedFacts: [],
+      rejectedFacts: [{ candidate: { factId: "fact:forged" }, reason: "candidate_truth_level" }],
+      rewriteHints: ["candidate_fact_not_committed:fact:forged"],
+      shouldBlockCommit: true,
+    },
+  });
+  assert.ok(result.summary.commitFlags.includes("fact_commit_gate_blocked"));
+  assert.equal(result.summary.validatorIssueCounts.fact_commit_gate_blocked, 1);
+  const audit = result.committedDmRecord._narrative_audit as Record<string, unknown>;
+  assert.deepEqual(audit.rejected_fact_ids, ["fact:forged"]);
 });

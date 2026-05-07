@@ -36,8 +36,11 @@ export type NarrativeRhythmTelemetry = {
   timeFeelMismatchCount: number;
   narrativeRhythmRewriteTriggered: boolean;
   narrativeRhythmFinalSafe: boolean;
+  narrativeGovernanceFinalSafe: boolean;
   narrativeRhythmLogs?: string[];
   npcPersonalityPacketChars?: number;
+  npcKnowledgePacketChars?: number;
+  npcBeliefGraphPacketPresent?: boolean;
   /** 启发式：高魅力且无人格漂移≈高区分；有漂移压低 */
   majorNpcDifferentiationScore?: number | null;
   taskModeDistribution?: Record<string, number>;
@@ -128,6 +131,9 @@ export function applyNarrativeRhythmGate(input: {
 
   const personalityPkt = bundle.actor_personality_packet as Record<string, unknown>;
   const npcPersonalityPacketChars = JSON.stringify(bundle.actor_personality_packet).length;
+  const npcKnowledgePacketChars = bundle.npc_knowledge_packet
+    ? JSON.stringify(bundle.npc_knowledge_packet).length
+    : 0;
   const baselineAttitude = typeof personalityPkt.attitude === "string" ? personalityPkt.attitude : null;
   const isXinlan =
     input.focusNpcId.trim() === XINLAN_NPC_ID || input.canonical.memoryPrivilege === "xinlan";
@@ -225,8 +231,11 @@ export function applyNarrativeRhythmGate(input: {
       timeFeelMismatchCount: enableTimeFeelValidator() && tf.timeFeelMismatchDetected ? 1 : 0,
       narrativeRhythmRewriteTriggered: rewritten,
       narrativeRhythmFinalSafe: true,
+      narrativeGovernanceFinalSafe: true,
       narrativeRhythmLogs: logs.length ? logs : undefined,
       npcPersonalityPacketChars,
+      npcKnowledgePacketChars,
+      npcBeliefGraphPacketPresent: Boolean(bundle.npc_knowledge_packet),
       majorNpcDifferentiationScore,
       taskModeDistribution: distributionFromLayers(layers),
       fineTimeCostUsage,

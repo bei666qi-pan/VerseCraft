@@ -25,12 +25,15 @@ import type {
   NarrativeValidationIssueCode,
   NarrativeValidationReport,
 } from "@/lib/turnEngine/validateNarrative";
+import type { FactCommitGateResult } from "@/lib/worldFacts/factCommitGate";
 
 export type TurnCommitFlag =
   | "options_rewrite_applied"
   | "safe_narrative_fallback_applied"
   | "must_degrade_from_delta"
   | "action_illegal"
+  | "fact_commit_gate_blocked"
+  | "fact_candidates_rejected"
   | "post_validator_ok"
   | "post_validator_issues";
 
@@ -56,6 +59,17 @@ export type TurnCommitSummary = {
     newTasks: number;
   };
   validatorIssueCounts: Partial<Record<NarrativeValidationIssueCode, number>>;
+  narrativeGovernanceTelemetry: {
+    styleIssueCount: number;
+    styleDriftCount: number;
+    mechanicalExpositionCount: number;
+    npcKnowledgeIssueCount: number;
+    rootCauseLeakCount: number;
+    unsupportedFactCount: number;
+    unsupportedRelationshipClaimCount: number;
+    factCommitRejectedCount: number;
+    narrativeGovernanceFinalSafe: boolean;
+  };
   commitFlags: readonly TurnCommitFlag[];
 };
 
@@ -69,6 +83,8 @@ export type CommitTurnArgs = {
   delta: StateDelta;
   /** Validator report from `validateNarrative`. */
   validatorReport: NarrativeValidationReport;
+  /** Optional PR-3 fact-source gate result. Pure metadata, no IO. */
+  factCommitGateResult?: FactCommitGateResult | null;
 };
 
 export type CommitTurnResult = {
@@ -132,7 +148,43 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
 
   if (delta.mustDegrade) flags.add("must_degrade_from_delta");
   if (delta.isActionLegal === false) flags.add("action_illegal");
+  if (args.factCommitGateResult?.shouldBlockCommit) flags.add("fact_commit_gate_blocked");
+  if ((args.factCommitGateResult?.rejectedFacts.length ?? 0) > 0) flags.add("fact_candidates_rejected");
   flags.add(validatorReport.ok ? "post_validator_ok" : "post_validator_issues");
+
+  if (args.factCommitGateResult) {
+    const audit =
+      committed._narrative_audit && typeof committed._narrative_audit === "object" && !Array.isArray(committed._narrative_audit)
+        ? (committed._narrative_audit as Record<string, unknown>)
+        : {};
+    committed = {
+      ...committed,
+      _narrative_audit: {
+        ...audit,
+        allowed_fact_ids: args.factCommitGateResult.allowedFacts.map((fact) => fact.factId),
+        rejected_fact_ids: args.factCommitGateResult.rejectedFacts
+          .map((row) => row.candidate.factId)
+          .filter((factId): factId is string => typeof factId === "string" && factId.trim().length > 0),
+        fact_commit_blocked: args.factCommitGateResult.shouldBlockCommit,
+      },
+    };
+  }
+
+  const factCommitRejectedCount = args.factCommitGateResult?.rejectedFacts.length ?? 0;
+  const narrativeGovernanceFinalSafe =
+    validatorReport.telemetry.narrativeGovernanceFinalSafe &&
+    args.factCommitGateResult?.shouldBlockCommit !== true;
+  const narrativeGovernanceTelemetry = {
+    styleIssueCount: validatorReport.telemetry.styleIssueCount,
+    styleDriftCount: validatorReport.telemetry.styleDriftCount,
+    mechanicalExpositionCount: validatorReport.telemetry.mechanicalExpositionCount,
+    npcKnowledgeIssueCount: validatorReport.telemetry.npcKnowledgeIssueCount,
+    rootCauseLeakCount: validatorReport.telemetry.rootCauseLeakCount,
+    unsupportedFactCount: validatorReport.telemetry.unsupportedFactCount,
+    unsupportedRelationshipClaimCount: validatorReport.telemetry.unsupportedRelationshipClaimCount,
+    factCommitRejectedCount,
+    narrativeGovernanceFinalSafe,
+  };
 
   // Attach a compact commit trace to security_meta for debug correlation.
   committed = mergeSecurityMeta(committed, {
@@ -142,6 +194,9 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       options_rewrite: flags.has("options_rewrite_applied"),
       safe_fallback: flags.has("safe_narrative_fallback_applied"),
       issues: validatorReport.telemetry.totalIssues,
+      fact_gate_blocked: args.factCommitGateResult?.shouldBlockCommit ?? false,
+      fact_rejected: factCommitRejectedCount,
+      narrative_governance: narrativeGovernanceTelemetry,
     },
   });
 
@@ -171,7 +226,16 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       taskUpdates: delta.taskUpdates.length,
       newTasks: delta.newTasks.length,
     },
-    validatorIssueCounts: { ...validatorReport.telemetry.byCode },
+    validatorIssueCounts: {
+      ...validatorReport.telemetry.byCode,
+      ...(args.factCommitGateResult?.shouldBlockCommit
+        ? {
+            fact_commit_gate_blocked:
+              ((validatorReport.telemetry.byCode.fact_commit_gate_blocked ?? 0) + 1),
+          }
+        : {}),
+    },
+    narrativeGovernanceTelemetry,
     commitFlags: [...flags],
   };
 

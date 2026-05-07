@@ -87,21 +87,24 @@ const IDLE_VALIDATOR_TELEMETRY: EpistemicValidatorTelemetry = {
   involvedFields: [],
 };
 
-const IDLE_RHYTHM_FIELDS: Pick<
-  EpistemicValidatorTelemetry,
-  | "personalityDriftCount"
-  | "foreshadowLeakCount"
-  | "taskModeMismatchCount"
-  | "timeFeelMismatchCount"
-  | "narrativeRhythmRewriteTriggered"
-  | "narrativeRhythmFinalSafe"
-  | "npcPersonalityPacketChars"
-  | "majorNpcDifferentiationScore"
-  | "taskModeDistribution"
-  | "fineTimeCostUsage"
-  | "personalityRewriteCount"
-  | "avgFormalTaskDelayFromFirstContact"
-> = {
+const IDLE_RHYTHM_FIELDS: {
+  personalityDriftCount: number;
+  foreshadowLeakCount: number;
+  taskModeMismatchCount: number;
+  timeFeelMismatchCount: number;
+  narrativeRhythmRewriteTriggered: boolean;
+  narrativeRhythmFinalSafe: boolean;
+  narrativeRhythmLogs?: string[];
+  npcPersonalityPacketChars: number;
+  npcKnowledgePacketChars: number;
+  narrativeGovernanceFinalSafe: boolean;
+  npcBeliefGraphPacketPresent: boolean;
+  majorNpcDifferentiationScore: number | null;
+  taskModeDistribution?: Record<string, number>;
+  fineTimeCostUsage: number;
+  personalityRewriteCount: number;
+  avgFormalTaskDelayFromFirstContact: number | null;
+} = {
   personalityDriftCount: 0,
   foreshadowLeakCount: 0,
   taskModeMismatchCount: 0,
@@ -109,6 +112,9 @@ const IDLE_RHYTHM_FIELDS: Pick<
   narrativeRhythmRewriteTriggered: false,
   narrativeRhythmFinalSafe: true,
   npcPersonalityPacketChars: 0,
+  npcKnowledgePacketChars: 0,
+  narrativeGovernanceFinalSafe: true,
+  npcBeliefGraphPacketPresent: false,
   majorNpcDifferentiationScore: null,
   taskModeDistribution: undefined,
   fineTimeCostUsage: 0,

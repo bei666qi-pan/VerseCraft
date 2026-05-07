@@ -72,6 +72,7 @@ import { buildMultiNpcCompactPersonaPacket } from "@/lib/playRealtime/multiNpcPe
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcRuntimeStatePacket, buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
 import type { NpcHeartRuntimeView } from "@/lib/npcHeart/types";
+import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
@@ -603,6 +604,14 @@ export function buildRuntimeContextPackets(args: {
     codexOrHintNpcIds: codexNpcIdsFromHints,
     maxRevealRank,
   });
+  const floorSharedFactIds =
+    threatPacket.floorId === "B1"
+      ? [NPC_KNOWLEDGE_FACT_IDS.B1_PUBLIC_ANOMALY]
+      : threatPacket.floorId === "1F"
+        ? [NPC_KNOWLEDGE_FACT_IDS.F1_PUBLIC_ANOMALY]
+        : threatPacket.floorId === "7F"
+          ? [NPC_KNOWLEDGE_FACT_IDS.F7_PUBLIC_ANOMALY]
+          : [];
   const actorConstraintBundle = buildActorConstraintBundle({
     playerContext: args.playerContext,
     latestUserInput: args.latestUserInput,
@@ -616,6 +625,8 @@ export function buildRuntimeContextPackets(args: {
       .slice(0, 16),
     pendingHourFraction,
     presentNpcIds: nearbyNpcIds,
+    floorId: threatPacket.floorId,
+    scenePublicFactIds: floorSharedFactIds,
   });
   const actorConstraintCompact = compactActorConstraintBundle(actorConstraintBundle);
   const activeTaskIdsForRuntimeState = parseRtTaskLayers(args.playerContext)
@@ -912,6 +923,7 @@ export function buildRuntimeContextPackets(args: {
       time,
       floorThreatTier: inferFloorThreatTier(location),
     },
+    ...actorConstraintBundle,
     main_threat_packet: threatPacket,
     worldview_packet: worldviewPacket,
     school_cycle_arc_packet: schoolCycleArcPacket,
@@ -958,7 +970,6 @@ export function buildRuntimeContextPackets(args: {
     npc_player_baseline_packet: npcPlayerBaselinePacket,
     npc_scene_authority_packet: npcSceneAuthorityPacket,
     multi_npc_persona_packet: multiNpcPersonaPacket,
-    ...actorConstraintBundle,
     ...worldLorePackets,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
@@ -971,6 +982,7 @@ export function buildRuntimeContextPackets(args: {
       ? {
           // 首字必需：地点/主威胁/当前任务/关键NPC/职业状态，避免世界观错位。
           current_location_packet: packets.current_location_packet,
+          ...actorConstraintCompact,
           main_threat_packet: packets.main_threat_packet,
           active_tasks_packet: packets.active_tasks_packet.slice(0, 3),
           nearby_npc_packet: packets.nearby_npc_packet.slice(0, 4),
@@ -988,7 +1000,6 @@ export function buildRuntimeContextPackets(args: {
           npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
           multi_npc_persona_packet: multiNpcPersonaPacket,
           ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
-          ...actorConstraintCompact,
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
           ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
@@ -1018,6 +1029,7 @@ export function buildRuntimeContextPackets(args: {
     /** 截断路径下优先保留武器/锻造/战术上下文（原在 JSON 尾部易被 slice 截断） */
     weapon_packet: packets.weapon_packet,
     forge_packet: packets.forge_packet,
+    ...actorConstraintCompact,
     tactical_context_packet: packets.tactical_context_packet,
     school_cycle_arc_packet: schoolCycleArcPacketMicro,
     ...worldLorePacketsCompact,
@@ -1048,7 +1060,6 @@ export function buildRuntimeContextPackets(args: {
     },
     npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
     multi_npc_persona_packet: multiNpcPersonaPacket,
-    ...actorConstraintCompact,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
     ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),

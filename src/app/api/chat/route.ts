@@ -60,6 +60,7 @@ import {
   recordOptionsAutoRegenOutcome,
   recordOptionsManualRegenOutcome,
   recordPromptCharDelta,
+  recordNarrativeGovernanceOutcome,
 } from "@/lib/observability/versecraftRolloutMetrics";
 import { logChatGenerationMetrics } from "@/lib/observability/chatGenerationMetrics";
 import { persistTurnFacts } from "@/lib/worldKnowledge/ingestion/persistTurnFacts";
@@ -161,7 +162,10 @@ import type { LorePacket } from "@/lib/worldKnowledge/types";
 import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
-import { buildNarrativeContinuityPacketBlock } from "@/lib/playRealtime/narrativeStylePackets";
+import {
+  buildNarrativeContinuityPacketBlock,
+  buildNarrativeStyleBiblePacketBlock,
+} from "@/lib/playRealtime/narrativeStylePackets";
 import { shapeUserActionForModelV2 } from "@/lib/playRealtime/actionIntent";
 import { buildPovPacketBlock } from "@/lib/playRealtime/povPackets";
 import { buildNpcGenderPronounPacketBlock } from "@/lib/playRealtime/npcGenderPackets";
@@ -179,6 +183,9 @@ import {
 } from "@/lib/guardrails/provenanceVerifier";
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
+import { buildNpcKnowledgePacket, inferNpcKnowledgeFloorId } from "@/lib/npcKnowledge/npcKnowledgeResolver";
+import { gateFactCommit, type WorldFactCommitCandidate } from "@/lib/worldFacts/factCommitGate";
+import { getFactsForFloor, getFactsForNpc, listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
 import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
 import { buildOptionsRegenResponse } from "./optionsRegenPayload";
 import { getPostResolveOptionsRegenSkipReason, shouldSkipPostResolveOptionsRegen } from "./postResolveOptionsRegenSkip";
@@ -1459,6 +1466,32 @@ async function postChatInternal(req: Request) {
     profile: null,
     nowIso: nowIsoForEpistemic,
   });
+  const npcKnowledgePacketForValidator = verseRollout.enableNpcBeliefGraph && focusNpcForPrompt
+    ? buildNpcKnowledgePacket({
+        speakerNpcId: focusNpcForPrompt,
+        presentNpcIds: presentNpcIdsForEpistemic,
+        location: playerLocForEpistemic,
+        floorId: null,
+        maxRevealRank: maxRevealRankForMemory,
+        playerKnownFactIds: actorEpistemicFilter.playerOnlyFacts.map((fact) => fact.id),
+        scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
+        activeTaskIds: [],
+      })
+    : null;
+  const factAuditFloorId = inferNpcKnowledgeFloorId(playerLocForEpistemic, null);
+  const allowedWorldFactIdsForValidator = verseRollout.enableWorldFactRegistry
+    ? [
+        ...new Set([
+          ...listWorldFacts(maxRevealRankForMemory).map((fact) => fact.factId),
+          ...(factAuditFloorId ? getFactsForFloor(factAuditFloorId, maxRevealRankForMemory).map((fact) => fact.factId) : []),
+          ...(focusNpcForPrompt ? getFactsForNpc(focusNpcForPrompt, maxRevealRankForMemory).map((fact) => fact.factId) : []),
+          ...actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
+          ...actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
+          ...(npcKnowledgePacketForValidator?.can_know_fact_ids ?? []),
+          ...(npcKnowledgePacketForValidator?.can_hint_fact_ids ?? []),
+        ]),
+      ]
+    : [];
   if (epistemicRolloutFlags.epistemicDebugLog) {
     epistemicDebugLog("filter_result_built", {
       requestId,
@@ -1576,10 +1609,46 @@ async function postChatInternal(req: Request) {
       enableNpcSceneAuthority: epistemicRolloutFlags.enableNpcSceneAuthority,
     },
   });
-  const styleGuideBlock =
+  const legacyStyleGuideBlock =
     verseRollout.enableStyleGuidePacket && !useFastLaneCompactDynamicPackets
       ? buildStyleGuidePacketBlock()
       : "";
+  const narrativeStyleBibleBlock =
+    verseRollout.enableNarrativeStyleBible && !useFastLaneCompactDynamicPackets
+      ? buildNarrativeStyleBiblePacketBlock({
+          rawAction: turnRawAction ?? latestUserInput,
+          maxChars: contextMode === "minimal" ? 720 : 1200,
+          includeExamples: contextMode !== "minimal",
+        })
+      : "";
+  const worldFactAuditBlock = !useFastLaneCompactDynamicPackets
+    && verseRollout.enableWorldFactRegistry
+    ? [
+        "## 【world_fact_audit_v1】",
+        JSON.stringify({
+          required_when_claiming_world_facts: ["factId", "source", "truthLevel", "revealTier"],
+          output_optional: {
+            _narrative_audit: {
+              used_fact_ids: ["fact:..."],
+              used_npc_belief_ids: ["belief:..."],
+              candidate_new_facts: [
+                {
+                  factId: "fact:...",
+                  source: "player_observed|npc_belief|world_engine",
+                  truthLevel: "candidate|rumor|hypothesis|session_committed",
+                  revealTier: 0,
+                  ownerNpcIds: [],
+                  floorIds: [],
+                  relatedNpcIds: [],
+                },
+              ],
+            },
+          },
+          hard_rule: "Do not state apartment root, NPC relation, event stage, item ownership, floor anomaly, or key history as fact unless backed by a listed factId.",
+        }),
+      ].join("\n")
+    : "";
+  const styleGuideBlock = legacyStyleGuideBlock;
   const narrativeContinuityBlock = buildNarrativeContinuityPacketBlock({
     previousTail: extractLastAssistantNarrativeTail(rawChatMessages),
     rawAction: turnRawAction ?? latestUserInput,
@@ -1737,7 +1806,9 @@ async function postChatInternal(req: Request) {
     controlAugmentation: controlAndLoreAugmentation,
     protagonistAnchorBlock,
     turnModePolicyBlock,
+    narrativeStyleBibleBlock: useFastLaneCompactDynamicPackets ? "" : narrativeStyleBibleBlock,
     narrativeBudgetBlock,
+    worldFactAuditBlock,
     realityConstraintBlock,
     npcConsistencyBoundaryBlock: useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
     narrativeContinuityBlock: useFastLaneCompactDynamicPackets ? "" : narrativeContinuityBlock,
@@ -3246,6 +3317,15 @@ async function postChatInternal(req: Request) {
             (epistemicPostValidatorTelemetry?.foreshadowLeakCount ?? 0) +
             (epistemicPostValidatorTelemetry?.taskModeMismatchCount ?? 0) +
             (epistemicPostValidatorTelemetry?.timeFeelMismatchCount ?? 0);
+          const narrativeAudit =
+            candidateRec._narrative_audit && typeof candidateRec._narrative_audit === "object" && !Array.isArray(candidateRec._narrative_audit)
+              ? (candidateRec._narrative_audit as Record<string, unknown>)
+              : {};
+          const candidateFactsForGate: WorldFactCommitCandidate[] = Array.isArray(narrativeAudit.candidate_new_facts)
+            ? narrativeAudit.candidate_new_facts.filter(
+                (fact): fact is WorldFactCommitCandidate => Boolean(fact && typeof fact === "object" && !Array.isArray(fact))
+              )
+            : [];
           const validatorReport = validateNarrative({
             dmRecord: candidateRec,
             delta: postStateDelta,
@@ -3254,7 +3334,26 @@ async function postChatInternal(req: Request) {
             sceneNpcIds: presentNpcIdsForEpistemic ?? [],
             riskTags: pipelineControl?.risk_tags ?? [],
             npcConsistencyIssueCount,
+            narrativeStyleValidationEnabled: verseRollout.enableNarrativeStyleValidator,
+            narrativeStyleFocus: normalizedIntent.kind,
+            npcKnowledgeValidationEnabled: verseRollout.enableNpcKnowledgeValidator,
+            npcKnowledgePacket: npcKnowledgePacketForValidator,
+            speakerNpcId: focusNpcForPrompt,
+            npcKnowledgeMaxRevealRank: maxRevealRankForMemory,
+            unsupportedFactDetectionEnabled: verseRollout.enableWorldFactRegistry,
+            allowedFactIds: allowedWorldFactIdsForValidator,
+            scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
+            actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
+            factDetectionMaxRevealRank: maxRevealRankForMemory,
           });
+          const factCommitGateResult = verseRollout.enableFactCommitGate
+            ? gateFactCommit({
+                resolvedDmTurn: candidateRec,
+                candidateFacts: candidateFactsForGate,
+                validatorIssues: validatorReport.issues,
+                maxRevealRank: maxRevealRankForMemory,
+              })
+            : null;
           const commitResult = commitTurn({
             requestId,
             sessionId,
@@ -3262,7 +3361,9 @@ async function postChatInternal(req: Request) {
             candidateDmRecord: candidateRec,
             delta: postStateDelta,
             validatorReport,
+            factCommitGateResult,
           });
+          recordNarrativeGovernanceOutcome(commitResult.summary.narrativeGovernanceTelemetry);
           commitSummaryForAnalytics = commitResult.summary;
           void commitSummaryForAnalytics; // signal usage across try/catch for eslint dataflow
           if (validatorReport.optionsOverride) {
@@ -3327,6 +3428,10 @@ async function postChatInternal(req: Request) {
             const prev =
               ((resolved as any).security_meta as Record<string, unknown> | undefined) ?? {};
             (resolved as any).security_meta = { ...prev, ...(committedMeta as Record<string, unknown>) };
+          }
+          const committedAudit = commitResult.committedDmRecord._narrative_audit;
+          if (committedAudit && typeof committedAudit === "object" && !Array.isArray(committedAudit)) {
+            (resolved as any)._narrative_audit = committedAudit;
           }
           const narrativeLedgerOutput = buildRouteModelOutputFromResolvedTurn({
             resolved: resolved as unknown as Record<string, unknown>,
@@ -3432,6 +3537,7 @@ async function postChatInternal(req: Request) {
                   },
                   modelParseFallback: finalJsonParseSuccess ? null : "parse_accumulated_player_dm_json_failed",
                   commitResult: narrativeEventCommit,
+                  narrativeGovernanceTelemetry: commitResult.summary.narrativeGovernanceTelemetry,
                   provenanceVerifier: provenanceVerifierTelemetry,
                 },
               });
@@ -3459,6 +3565,7 @@ async function postChatInternal(req: Request) {
               safeNarrativeFallbackApplied: commitResult.summary.safeNarrativeFallbackApplied,
               commitFlags: commitResult.summary.commitFlags,
               deltaSummary: commitResult.summary.deltaSummary,
+              narrativeGovernanceTelemetry: commitResult.summary.narrativeGovernanceTelemetry,
             });
           }
           // Phase-4/5: promote commit/validator telemetry to formal analytics events
@@ -3490,6 +3597,7 @@ async function postChatInternal(req: Request) {
                 commitFlags: [...commitResult.summary.commitFlags],
                 deltaSummary: commitResult.summary.deltaSummary,
                 validatorIssueCounts: commitResult.summary.validatorIssueCounts,
+                narrativeGovernanceTelemetry: commitResult.summary.narrativeGovernanceTelemetry,
               },
             }).catch(() => {});
             if (validatorReport.telemetry.totalIssues > 0) {
@@ -3514,6 +3622,14 @@ async function postChatInternal(req: Request) {
                   byCode: validatorReport.telemetry.byCode,
                   optionsOverrideApplied: validatorReport.telemetry.optionsOverrideApplied,
                   safeNarrativeFallbackApplied: validatorReport.telemetry.safeNarrativeFallbackApplied,
+                  styleIssueCount: validatorReport.telemetry.styleIssueCount,
+                  styleDriftCount: validatorReport.telemetry.styleDriftCount,
+                  mechanicalExpositionCount: validatorReport.telemetry.mechanicalExpositionCount,
+                  npcKnowledgeIssueCount: validatorReport.telemetry.npcKnowledgeIssueCount,
+                  rootCauseLeakCount: validatorReport.telemetry.rootCauseLeakCount,
+                  unsupportedFactCount: validatorReport.telemetry.unsupportedFactCount,
+                  unsupportedRelationshipClaimCount: validatorReport.telemetry.unsupportedRelationshipClaimCount,
+                  narrativeGovernanceFinalSafe: commitResult.summary.narrativeGovernanceTelemetry.narrativeGovernanceFinalSafe,
                   issueCodes: validatorReport.issues.map((x) => x.code),
                 },
               }).catch(() => {});

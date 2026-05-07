@@ -38,6 +38,14 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableMonthStartStudentWorldlogic: boolean;
   /** 文风指导短块（动态 suffix，非模仿具体作品） */
   enableStyleGuidePacket: boolean;
+  /** VerseCraft Style Bible prompt packet; compact, original style protocol only. */
+  enableNarrativeStyleBible: boolean;
+  /** Post-generation style validator; telemetry-only / low-medium severity. */
+  enableNarrativeStyleValidator: boolean;
+  enableNpcBeliefGraph: boolean;
+  enableNpcKnowledgeValidator: boolean;
+  enableWorldFactRegistry: boolean;
+  enableFactCommitGate: boolean;
   /** 客户端优先采用 __VERSECRAFT_FINAL__ 整帧作为 DM JSON（与既有 SSE 行为一致，用于观测/强制） */
   enableFinalFrameFirstCommit: boolean;
   /** UI 调试诊断（开发态；生产默认关） */
@@ -147,6 +155,12 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableWorldFeelPackets: readFlag("VERSECRAFT_ENABLE_WORLD_FEEL_PACKETS", true),
     enableMonthStartStudentWorldlogic: readFlag("VERSECRAFT_ENABLE_MONTH_START_STUDENT_WORLDLOGIC", true),
     enableStyleGuidePacket: readFlag("VERSECRAFT_ENABLE_STYLE_GUIDE_PACKET", true),
+    enableNarrativeStyleBible: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STYLE_BIBLE", true),
+    enableNarrativeStyleValidator: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STYLE_VALIDATOR", true),
+    enableNpcBeliefGraph: readFlag("VERSECRAFT_ENABLE_NPC_BELIEF_GRAPH", true),
+    enableNpcKnowledgeValidator: readFlag("VERSECRAFT_ENABLE_NPC_KNOWLEDGE_VALIDATOR", true),
+    enableWorldFactRegistry: readFlag("VERSECRAFT_ENABLE_WORLD_FACT_REGISTRY", true),
+    enableFactCommitGate: readFlag("VERSECRAFT_ENABLE_FACT_COMMIT_GATE", true),
     enableFinalFrameFirstCommit: readFlag("VERSECRAFT_ENABLE_FINAL_FRAME_FIRST_COMMIT", true),
     enableUiDebugDiagnostics: readFlag("VERSECRAFT_ENABLE_UI_DEBUG_DIAGNOSTICS", false),
     enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false),

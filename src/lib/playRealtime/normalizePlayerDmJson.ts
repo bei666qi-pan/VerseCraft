@@ -26,6 +26,10 @@ function asUnknownArray(v: unknown): unknown[] {
   return v;
 }
 
+function asUnknownRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
@@ -49,6 +53,23 @@ function asObjectArray(v: unknown, maxLen: number): Array<Record<string, unknown
     out.push(x as Record<string, unknown>);
   }
   return out;
+}
+
+function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
+  const src = asUnknownRecord(v);
+  if (!src) return null;
+  const out: Record<string, unknown> = {};
+  const usedFactIds = asStringArray(src.used_fact_ids).slice(0, 24);
+  const usedNpcBeliefIds = asStringArray(src.used_npc_belief_ids).slice(0, 24);
+  const candidateNewFacts = asObjectArray(src.candidate_new_facts, 8).map((fact) => ({
+    ...fact,
+    factId: typeof fact.factId === "string" ? fact.factId.trim().slice(0, 120) : undefined,
+    content: typeof fact.content === "string" ? fact.content.trim().slice(0, 240) : undefined,
+  }));
+  if (usedFactIds.length > 0) out.used_fact_ids = usedFactIds;
+  if (usedNpcBeliefIds.length > 0) out.used_npc_belief_ids = usedNpcBeliefIds;
+  if (candidateNewFacts.length > 0) out.candidate_new_facts = candidateNewFacts;
+  return Object.keys(out).length > 0 && safeJsonByteLength(out) <= 1800 ? out : null;
 }
 
 const RISK_SOURCES = new Set([
@@ -286,6 +307,8 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
       out.security_meta = { trimmed: true };
     }
   }
+  const narrativeAudit = normalizeNarrativeAudit(o._narrative_audit);
+  if (narrativeAudit) out._narrative_audit = narrativeAudit;
 
   return out;
 }

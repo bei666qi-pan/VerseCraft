@@ -584,6 +584,24 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 
 ---
 
+## 8.6 叙事治理工程规则
+
+这些规则适用于 Style Bible、NPC belief / relation graph、world fact registry、unsupported fact detector、fact commit gate、post-generation validator 与 golden regression 的后续改造。
+
+1. 不要推倒现有 long narrative、`npcConsistency`、`validateNarrative`、`filterEpistemicFacts` / `filterFacts`。叙事治理只能在现有链路上增量接入、补窄 validator、补 telemetry 或补回归测试。
+2. 所有叙事治理改造必须保留灰度开关。新增 prompt packet、validator、commit gate、fact registry 规则或 telemetry 行为时，必须能通过 `VERSECRAFT_ENABLE_*` 风格的开关单独关闭，关闭后不得破坏 `/api/chat` 主链路。
+3. 文风协议只使用 VerseCraft 自有抽象风格，不引用任何现成小说原文，也不要把外部作品片段放进 prompt、测试、fixture 或文档。允许的表达只能抽象为冷峻悬疑、规则游戏压迫感、少年宿命感、克制对白、章节钩子等自有风格约束。
+4. 文学描写可以自由，世界事实不能自由。气味、光线、动作、节奏、心理压力可以由模型发挥；剧情真相、NPC 关系、公寓根因、事件阶段、楼层异常、物品归属、关键历史必须来自可审计事实源。
+5. 没有 `factId` / `source` / `revealTier` 的剧情真相不得 commit。模型输出只能先进入 candidate / audit 字段，必须经过 registry、validator 与 commit gate 才能成为正式状态。
+6. NPC 只能知道 belief graph、relation graph、scene public、actor scoped 允许的事实。不得让 NPC 凭空认识陌生 NPC、凭空知道其他楼层私事、凭空发明关系或把玩家私有知识当作自己的记忆。
+7. 普通 NPC 不得知道公寓根因。核心 NPC 也只能按 `revealTier` 和 belief profile 暗示 cause fragment，不得越级直接解释 root truth。
+8. `rumor` / `hypothesis` / `false_belief` 不得写成确定事实。谣言必须是不确定语气，假设必须保留推测性质，错误认知必须表现为角色误解而不是叙事真相。
+9. 所有新增 validator 必须是纯函数，不做 IO，不访问数据库，不读写文件，不调用 LLM，不依赖网络。需要外部事实时，由调用方以结构化参数传入。
+10. 所有新增叙事治理模块必须有单元测试和 golden scene。测试至少覆盖通过样例、阻断样例、低 reveal tier、误伤风险与回滚开关行为。
+11. Codex 修改后必须运行相关测试，并在总结中报告失败或未运行原因。纯文档改动至少运行 `git diff --check`；代码、prompt、validator、commit gate 或 `/api/chat` 改动必须运行对应 unit / contract / lint，无法运行时要说明具体命令与阻塞原因。
+
+---
+
 ## 9. 仓库内仍然有效的老红线
 
 这些内容来自旧版 `AGENTS.md`，在当前仓库中仍然成立，应继续保留：

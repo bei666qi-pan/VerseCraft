@@ -229,6 +229,7 @@ export interface PlayerDmDynamicSuffixInput {
   /** 阶段5：紧凑一致性边界 JSON（与 runtime 大包互补；快车道亦注入） */
   npcConsistencyBoundaryBlock?: string;
   /** 阶段1：叙事连贯性紧凑 packet（吸收动作、防复述、镜头推进）。 */
+  narrativeStyleBibleBlock?: string;
   narrativeContinuityBlock?: string;
   /** 阶段2：叙事 POV packet（第一人称硬约束）。 */
   povBlock?: string;
@@ -236,6 +237,7 @@ export interface PlayerDmDynamicSuffixInput {
   npcGenderPronounBlock?: string;
   /** 阶段9：文风质感短块（不模仿具体作品） */
   styleGuideBlock?: string;
+  worldFactAuditBlock?: string;
 }
 
 /** 动态 suffix 注入用；与 VERSECRAFT_ENABLE_STYLE_GUIDE_PACKET 联动 */
@@ -253,20 +255,27 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   if (input.turnModePolicyBlock?.trim()) {
     parts.push("", input.turnModePolicyBlock.trim());
   }
+  if (input.narrativeStyleBibleBlock?.trim()) {
+    parts.push("", input.narrativeStyleBibleBlock.trim());
+  }
+  if (input.narrativeContinuityBlock?.trim()) {
+    parts.push("", input.narrativeContinuityBlock.trim());
+  }
+  if (input.runtimePackets) parts.push("", input.runtimePackets);
   if (input.narrativeBudgetBlock?.trim()) {
     parts.push("", input.narrativeBudgetBlock.trim());
   }
-  if (input.protagonistAnchorBlock?.trim()) {
-    parts.push("", input.protagonistAnchorBlock.trim());
+  if (input.worldFactAuditBlock?.trim()) {
+    parts.push("", input.worldFactAuditBlock.trim());
   }
   if (input.realityConstraintBlock?.trim()) {
     parts.push("", input.realityConstraintBlock.trim());
   }
+  if (input.protagonistAnchorBlock?.trim()) {
+    parts.push("", input.protagonistAnchorBlock.trim());
+  }
   if (input.npcConsistencyBoundaryBlock?.trim()) {
     parts.push("", input.npcConsistencyBoundaryBlock.trim());
-  }
-  if (input.narrativeContinuityBlock?.trim()) {
-    parts.push("", input.narrativeContinuityBlock.trim());
   }
   if (input.povBlock?.trim()) {
     parts.push("", input.povBlock.trim());
@@ -277,7 +286,6 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   // TTFT/成本优化：保持字段语义不变，但减少无信息密度的 wrapper 文案体积。
   // 注意：stable prefix 仍负责规则与格式约束；这里仅是动态上下文。
   parts.push(`当前玩家状态：${input.playerContext}`);
-  if (input.runtimePackets) parts.push("", input.runtimePackets);
   if (input.styleGuideBlock?.trim()) parts.push("", input.styleGuideBlock.trim());
   if (input.isFirstAction) {
     parts.push("", FIRST_ACTION_CONSTRAINT, "");

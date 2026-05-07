@@ -121,8 +121,8 @@ test("dynamic suffix 传入 narrativeBudgetBlock 时注入 narrative_budget_pack
   const turnModeIdx = dyn.indexOf("turn_mode_policy_packet");
   const budgetIdx = dyn.indexOf("narrative_budget_packet");
   const continuityIdx = dyn.indexOf("narrative_continuity_packet");
-  assert.ok(turnModeIdx >= 0 && budgetIdx > turnModeIdx, "budget 应跟在 turn mode 动态规则附近");
-  assert.ok(continuityIdx >= 0 && continuityIdx > budgetIdx, "continuity 仍在 budget 后继续注入");
+  assert.ok(turnModeIdx >= 0 && continuityIdx > turnModeIdx, "continuity 应跟在 turn mode / style 后注入");
+  assert.ok(budgetIdx >= 0 && budgetIdx > continuityIdx, "budget 保留在治理 runtime packet 后注入");
 });
 
 test("dynamic suffix 不传 narrativeBudgetBlock 时保持兼容", () => {

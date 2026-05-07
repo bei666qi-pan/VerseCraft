@@ -7,6 +7,18 @@ import {
 import type { NarrativeValidationReport } from "./checker";
 import type { TurnCommitSummary } from "./committer";
 
+const narrativeGovernanceTelemetry = {
+  styleIssueCount: 0,
+  styleDriftCount: 0,
+  mechanicalExpositionCount: 0,
+  npcKnowledgeIssueCount: 0,
+  rootCauseLeakCount: 0,
+  unsupportedFactCount: 0,
+  unsupportedRelationshipClaimCount: 0,
+  factCommitRejectedCount: 0,
+  narrativeGovernanceFinalSafe: true,
+};
+
 describe("routeAdapter", () => {
   it("maps a resolved DM turn into a narrative engine model output", () => {
     const output = buildRouteModelOutputFromResolvedTurn({
@@ -83,6 +95,7 @@ function validationReport(overrides: Partial<NarrativeValidationReport>): Narrat
     telemetry: {
       totalIssues: overrides.issues?.length ?? 0,
       byCode: {},
+      ...narrativeGovernanceTelemetry,
       optionsOverrideApplied: false,
       safeNarrativeFallbackApplied: false,
     },
@@ -115,5 +128,6 @@ function commitSummary(overrides: Partial<TurnCommitSummary>): TurnCommitSummary
     validatorIssueCounts: {},
     commitFlags: ["post_validator_ok"],
     ...overrides,
+    narrativeGovernanceTelemetry: overrides.narrativeGovernanceTelemetry ?? narrativeGovernanceTelemetry,
   };
 }
