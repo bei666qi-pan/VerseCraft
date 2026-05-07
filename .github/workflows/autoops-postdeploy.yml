@@ -1,0 +1,108 @@
+name: Auto-Ops Postdeploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run postdeploy checks even if the latest commit is not an auto-ops commit"
+        type: boolean
+        required: false
+        default: false
+      trigger_codex_on_failure:
+        description: "Dispatch autoops-codex when healthcheck fails"
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: autoops-postdeploy-${{ github.sha || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  postdeploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTOOPS_SITE_URL: ${{ vars.AUTOOPS_SITE_URL || 'https://versecraft.cn' }}
+      AUTOOPS_HEALTH_URL: ${{ vars.AUTOOPS_HEALTH_URL || 'https://versecraft.cn/api/health' }}
+      AUTOOPS_REPO: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ github.token }}
+      COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+      COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+      COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether to run
+        id: gate
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --pretty=%s)"
+          echo "Latest commit: ${subject}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif echo "$subject" | grep -Ei '\[auto-ops\]|auto-ops' >/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Healthcheck and smoke
+        id: health
+        if: steps.gate.outputs.run == 'true'
+        continue-on-error: true
+        run: pnpm autoops:healthcheck -- --attempts 6 --timeout-ms 10000
+
+      - name: Create incident issue on failure
+        if: steps.gate.outputs.run == 'true' && steps.health.outcome != 'success'
+        run: |
+          mkdir -p .ops/autoops/runtime
+          node - <<'NODE'
+          const fs = require("node:fs");
+          fs.writeFileSync(".ops/autoops/runtime/postdeploy-failure.json", JSON.stringify({
+            source: "github-actions",
+            alert_type: "app_health_failed",
+            severity: "critical",
+            resource_id: process.env.AUTOOPS_HEALTH_URL,
+            trace_id: process.env.GITHUB_RUN_ID,
+            created_at: new Date().toISOString()
+          }));
+          NODE
+          node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/postdeploy-failure.json
+
+      - name: Escalate postdeploy failure
+        if: steps.gate.outputs.run == 'true' && steps.health.outcome != 'success' && (github.event_name == 'push' || inputs.trigger_codex_on_failure == true)
+        run: |
+          node scripts/autoops/trigger-github-dispatch.mjs \
+            --event-type autoops-codex \
+            --source github-actions \
+            --type app_health_failed \
+            --severity critical \
+            --resource-id "${AUTOOPS_HEALTH_URL}" \
+            --trace-id "${GITHUB_RUN_ID}"
+
+      - name: Skip ordinary push
+        if: steps.gate.outputs.run != 'true'
+        run: echo "Latest commit is not an auto-ops commit; skipping postdeploy checks."

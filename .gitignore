@@ -59,6 +59,8 @@ pnpm-debug.log*
 # runtime data
 /.runtime-data/
 /.local-runtime/
+/.ops/autoops/runtime/*
+!/.ops/autoops/runtime/.gitkeep
 /tmp/
 /temp/
 

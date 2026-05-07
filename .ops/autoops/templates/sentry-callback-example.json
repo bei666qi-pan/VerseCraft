@@ -1,0 +1,9 @@
+{
+  "source": "sentry",
+  "alert_type": "sentry_code_error",
+  "severity": "critical",
+  "resource_id": "versecraft-web",
+  "event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "title": "Unhandled TypeError in /api/chat",
+  "created_at": "2026-05-07T10:00:00+08:00"
+}

@@ -1,0 +1,151 @@
+name: Auto-Ops Local Codex Handoff
+
+on:
+  repository_dispatch:
+    types:
+      - autoops-codex
+  workflow_dispatch:
+    inputs:
+      incident_key:
+        description: "Incident key"
+        required: false
+      alert_type:
+        description: "Alert type"
+        required: false
+        default: "unknown"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: autoops-codex-${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      INCIDENT_KEY: ${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
+      SOURCE: ${{ github.event.client_payload.source || 'manual' }}
+      SEVERITY: ${{ github.event.client_payload.severity || 'warning' }}
+      RESOURCE_ID: ${{ github.event.client_payload.resource_id || '' }}
+      ALERT_TYPE: ${{ github.event.client_payload.alert_type || inputs.alert_type || 'unknown' }}
+      TRACE_ID: ${{ github.event.client_payload.trace_id || '' }}
+      RUNBOOK: ${{ github.event.client_payload.runbook || 'collect-evidence' }}
+      CREATED_AT: ${{ github.event.client_payload.created_at || github.event.repository.updated_at }}
+      AUTOOPS_SITE_URL: ${{ vars.AUTOOPS_SITE_URL || 'https://versecraft.cn' }}
+      AUTOOPS_HEALTH_URL: ${{ vars.AUTOOPS_HEALTH_URL || 'https://versecraft.cn/api/health' }}
+      AUTOOPS_REPO: ${{ github.repository }}
+      AUTOOPS_BRANCH: main
+      AUTOOPS_DEPLOY_MODE: ${{ vars.AUTOOPS_DEPLOY_MODE || 'observe' }}
+      AUTOOPS_CODE_FIX_MODE: local
+      GITHUB_TOKEN: ${{ github.token }}
+      COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+      COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+      COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+      VOLC_AK: ${{ secrets.VOLC_AK }}
+      VOLC_SK: ${{ secrets.VOLC_SK }}
+      VOLC_REGION: ${{ secrets.VOLC_REGION }}
+      VOLC_ECS_INSTANCE_IDS: ${{ secrets.VOLC_ECS_INSTANCE_IDS }}
+      AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      REDIS_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Write incident payload
+        run: |
+          mkdir -p .ops/autoops/runtime
+          node - <<'NODE'
+          const fs = require("node:fs");
+          fs.writeFileSync(".ops/autoops/runtime/incident-payload.json", JSON.stringify({
+            incident_key: process.env.INCIDENT_KEY,
+            source: process.env.SOURCE,
+            alert_type: process.env.ALERT_TYPE,
+            severity: process.env.SEVERITY,
+            resource_id: process.env.RESOURCE_ID,
+            trace_id: process.env.TRACE_ID,
+            runbook: process.env.RUNBOOK,
+            created_at: process.env.CREATED_AT
+          }, null, 2));
+          NODE
+
+      - name: Collect runtime evidence and generate local Codex prompt
+        run: node scripts/autoops/collect-runtime-evidence.mjs --payload-file .ops/autoops/runtime/incident-payload.json --health-attempts 1
+        continue-on-error: true
+
+      - name: Auto-ops self-test
+        run: pnpm autoops:self-test
+        continue-on-error: true
+
+      - name: Create or update local Codex issue
+        id: issue
+        run: |
+          node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/incident-payload.json --codex-needed
+          issue_number="$(node -e "const fs=require('node:fs'); const p=JSON.parse(fs.readFileSync('.ops/autoops/runtime/incident-issue.json','utf8')); console.log(p.issue_number || '')")"
+          if [ -z "${issue_number}" ]; then
+            echo "::error::Failed to resolve incident issue number."
+            exit 1
+          fi
+          echo "number=${issue_number}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Local Codex repair command: pnpm autoops:local-codex -- --issue ${issue_number} --push-main"
+
+      - name: Add handoff comment
+        run: |
+          node --input-type=module - <<'NODE'
+          const { GitHubClient } = await import("./scripts/autoops/lib/github.mjs");
+          const client = new GitHubClient();
+          const issue = process.env.ISSUE_NUMBER;
+          const body = [
+            "Auto-Ops collected runtime evidence and generated a local Codex repair prompt.",
+            "",
+            "This project does not use `OPENAI_API_KEY`; GitHub Actions will not run cloud Codex.",
+            "",
+            "Run locally:",
+            "",
+            "```bash",
+            `pnpm autoops:local-codex -- --issue ${issue} --push-main`,
+            "```",
+            "",
+            `Workflow run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            "Artifact: `autoops-runtime-evidence`"
+          ].join("\n");
+          await client.addIssueComment(issue, body);
+          NODE
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+
+      - name: Upload runtime evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoops-runtime-evidence-${{ steps.issue.outputs.number }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            .ops/autoops/runtime/*.json
+            .ops/autoops/runtime/*.md
+            .ops/autoops/runtime/*.log
+            .ops/autoops/runtime/*.txt
+            !.ops/autoops/runtime/*.env
+            !.ops/autoops/runtime/*.zip
+
+      - name: Local repair instructions
+        run: |
+          echo "Cloud Codex is disabled. Run this on the local Codex machine:"
+          echo "pnpm autoops:local-codex -- --issue ${{ steps.issue.outputs.number }} --push-main"

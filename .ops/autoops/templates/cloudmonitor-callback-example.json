@@ -1,0 +1,9 @@
+{
+  "source": "volcengine-cloudmonitor",
+  "alert_type": "disk_high",
+  "severity": "warning",
+  "resource_id": "i-xxxxxxxx",
+  "metric_name": "disk_used_percent",
+  "value": 92,
+  "created_at": "2026-05-07T10:00:00+08:00"
+}

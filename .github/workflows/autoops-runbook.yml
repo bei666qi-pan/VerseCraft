@@ -1,0 +1,132 @@
+name: Auto-Ops Runbook
+
+on:
+  repository_dispatch:
+    types:
+      - autoops-runbook
+      - autoops-record
+  workflow_dispatch:
+    inputs:
+      incident_key:
+        description: "Incident key"
+        required: false
+      alert_type:
+        description: "Alert type"
+        required: false
+        default: "unknown"
+      runbook:
+        description: "Runbook override"
+        required: false
+        default: "diagnose"
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: autoops-${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  runbook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      INCIDENT_KEY: ${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
+      SOURCE: ${{ github.event.client_payload.source || 'manual' }}
+      SEVERITY: ${{ github.event.client_payload.severity || 'warning' }}
+      RESOURCE_ID: ${{ github.event.client_payload.resource_id || '' }}
+      ALERT_TYPE: ${{ github.event.client_payload.alert_type || inputs.alert_type || 'unknown' }}
+      TRACE_ID: ${{ github.event.client_payload.trace_id || '' }}
+      RUNBOOK: ${{ github.event.client_payload.runbook || inputs.runbook || 'diagnose' }}
+      CREATED_AT: ${{ github.event.client_payload.created_at || github.event.repository.updated_at }}
+      AUTOOPS_SITE_URL: ${{ vars.AUTOOPS_SITE_URL || 'https://versecraft.cn' }}
+      AUTOOPS_HEALTH_URL: ${{ vars.AUTOOPS_HEALTH_URL || 'https://versecraft.cn/api/health' }}
+      AUTOOPS_REPO: ${{ github.repository }}
+      AUTOOPS_BRANCH: main
+      GITHUB_TOKEN: ${{ github.token }}
+      COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+      COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+      COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+      VOLC_AK: ${{ secrets.VOLC_AK }}
+      VOLC_SK: ${{ secrets.VOLC_SK }}
+      VOLC_REGION: ${{ secrets.VOLC_REGION }}
+      VOLC_ECS_INSTANCE_IDS: ${{ secrets.VOLC_ECS_INSTANCE_IDS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Collect runtime evidence
+        run: pnpm exec node scripts/autoops/collect-runtime-evidence.mjs --health-attempts 1
+        continue-on-error: true
+
+      - name: Execute fast runbook
+        id: fast
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          case "${ALERT_TYPE}" in
+            app_health_failed)
+              pnpm autoops:coolify:restart
+              ;;
+            coolify_deploy_failed)
+              pnpm autoops:coolify:deploy -- --force
+              ;;
+            disk_high|docker_cache|simple_server_issue)
+              pnpm autoops:volc:clean-disk
+              ;;
+            o11y_agent_disconnected)
+              pnpm autoops:volc:restart-o11y
+              ;;
+            memory_high|cpu_high)
+              pnpm autoops:volc:diagnose
+              ;;
+            *)
+              echo "No safe automatic fast path for ${ALERT_TYPE}; collecting issue evidence only."
+              ;;
+          esac
+
+      - name: Healthcheck
+        id: health
+        continue-on-error: true
+        run: pnpm autoops:healthcheck -- --attempts 4 --timeout-ms 8000
+
+      - name: Create or update incident issue
+        if: steps.health.outcome == 'success'
+        run: |
+          mkdir -p .ops/autoops/runtime
+          node - <<'NODE'
+          const fs = require("node:fs");
+          fs.writeFileSync(".ops/autoops/runtime/runbook-payload.json", JSON.stringify({
+            incident_key: process.env.INCIDENT_KEY,
+            source: process.env.SOURCE,
+            alert_type: process.env.ALERT_TYPE,
+            severity: process.env.SEVERITY,
+            resource_id: process.env.RESOURCE_ID,
+            trace_id: process.env.TRACE_ID,
+            created_at: process.env.CREATED_AT
+          }));
+          NODE
+          node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/runbook-payload.json
+
+      - name: Escalate to Codex slow path
+        if: steps.health.outcome != 'success' || steps.fast.outcome != 'success'
+        run: |
+          pnpm exec node scripts/autoops/trigger-github-dispatch.mjs \
+            --event-type autoops-codex \
+            --source "${SOURCE}" \
+            --type "${ALERT_TYPE}" \
+            --severity "${SEVERITY}" \
+            --resource-id "${RESOURCE_ID}" \
+            --trace-id "${TRACE_ID}" \
+            --runbook "${RUNBOOK}"
