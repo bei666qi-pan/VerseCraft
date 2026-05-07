@@ -41,7 +41,7 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
     env:
       TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.branch }}
       TARGET_REF: ${{ github.event.workflow_run.head_sha || inputs.branch }}
@@ -139,6 +139,10 @@ jobs:
         id: deploy
         env:
           BRANCH_NAME: ${{ env.TARGET_BRANCH }}
+          COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+          COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+          COOLIFY_PREVIEW_APP_UUID: ${{ secrets.COOLIFY_PREVIEW_APP_UUID }}
           COOLIFY_DEPLOY_URL: ${{ secrets.COOLIFY_DEPLOY_URL }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
           COOLIFY_PREVIEW_DEPLOY_URL: ${{ secrets.COOLIFY_PREVIEW_DEPLOY_URL }}
@@ -150,26 +154,37 @@ jobs:
           deploy_token=""
           deploy_url_secret=""
           deploy_token_secret=""
+          app_uuid=""
+          use_api="false"
           health_url=""
 
           echo "deployed=false" >> "${GITHUB_OUTPUT}"
           echo "health_url=" >> "${GITHUB_OUTPUT}"
+          echo "deployment_uuid=" >> "${GITHUB_OUTPUT}"
 
           case "${BRANCH_NAME}" in
             main)
-              deploy_url="${COOLIFY_DEPLOY_URL}"
-              deploy_token="${COOLIFY_TOKEN}"
-              deploy_url_secret="COOLIFY_DEPLOY_URL"
-              deploy_token_secret="COOLIFY_TOKEN"
+              app_uuid="${COOLIFY_APP_UUID}"
               health_url="https://versecraft.cn/api/health"
+              if [ -n "${COOLIFY_BASE_URL}" ] && [ -n "${COOLIFY_API_KEY}" ] && [ -n "${app_uuid}" ]; then
+                use_api="true"
+              else
+                echo "::error::Main deploy requires COOLIFY_BASE_URL, COOLIFY_API_KEY, and COOLIFY_APP_UUID so Actions can queue a non-forced Coolify API deployment and poll the deployment UUID."
+                exit 1
+              fi
               ;;
             preview)
-              deploy_url="${COOLIFY_PREVIEW_DEPLOY_URL}"
-              deploy_token="${COOLIFY_PREVIEW_TOKEN}"
-              deploy_url_secret="COOLIFY_PREVIEW_DEPLOY_URL"
-              deploy_token_secret="COOLIFY_PREVIEW_TOKEN"
+              app_uuid="${COOLIFY_PREVIEW_APP_UUID}"
               health_url="https://preview.versecraft.cn/api/health"
-              if [ -z "${deploy_url}" ] && [ -z "${deploy_token}" ]; then
+              if [ -n "${COOLIFY_BASE_URL}" ] && [ -n "${COOLIFY_API_KEY}" ] && [ -n "${app_uuid}" ]; then
+                use_api="true"
+              else
+                deploy_url="${COOLIFY_PREVIEW_DEPLOY_URL}"
+                deploy_token="${COOLIFY_PREVIEW_TOKEN}"
+                deploy_url_secret="COOLIFY_PREVIEW_DEPLOY_URL"
+                deploy_token_secret="COOLIFY_PREVIEW_TOKEN"
+              fi
+              if [ "${use_api}" != "true" ] && [ -z "${deploy_url}" ] && [ -z "${deploy_token}" ]; then
                 echo "No preview Coolify deploy secrets configured; skipping preview deploy after Gitee sync."
                 exit 0
               fi
@@ -179,6 +194,83 @@ jobs:
               exit 0
               ;;
           esac
+
+          if [ "${use_api}" = "true" ]; then
+            echo "Triggering Coolify API deploy for ${BRANCH_NAME} after Gitee sync."
+            export COOLIFY_SELECTED_APP_UUID="${app_uuid}"
+            python - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          base = os.environ["COOLIFY_BASE_URL"].rstrip("/")
+          if not base.endswith("/api/v1"):
+              base = f"{base}/api/v1"
+          app_uuid = os.environ["COOLIFY_SELECTED_APP_UUID"]
+          api_key = os.environ["COOLIFY_API_KEY"]
+          query = urllib.parse.urlencode({
+              "uuid": app_uuid,
+              "force": "false",
+              "instant_deploy": "true",
+          })
+          url = f"{base}/deploy?{query}"
+          headers = {
+              "Accept": "application/json",
+              "Authorization": f"Bearer {api_key}",
+              "User-Agent": "VerseCraft-GitHub-Actions",
+          }
+
+          last_error = ""
+          response_text = ""
+          for method in ("GET", "POST"):
+              request = urllib.request.Request(url, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      response_text = response.read().decode("utf-8", errors="replace")
+                      break
+              except urllib.error.HTTPError as error:
+                  last_error = f"{method} {error.code}: {error.read().decode('utf-8', errors='replace')[:400]}"
+              except Exception as error:
+                  last_error = f"{method}: {error}"
+          else:
+              print(f"::error::Coolify API deploy failed: {last_error}")
+              raise SystemExit(1)
+
+          try:
+              data = json.loads(response_text) if response_text.strip() else {}
+          except json.JSONDecodeError:
+              print("::error::Coolify API deploy returned a non-JSON response.")
+              raise SystemExit(1)
+
+          deployment_ids = []
+          if isinstance(data, dict):
+              value = data.get("deployment_uuid")
+              if value:
+                  deployment_ids.append(str(value))
+              deployments = data.get("deployments")
+              if isinstance(deployments, list):
+                  for item in deployments:
+                      if isinstance(item, dict) and item.get("deployment_uuid"):
+                          deployment_ids.append(str(item["deployment_uuid"]))
+
+          deployment_ids = [value for value in deployment_ids if value]
+          if not deployment_ids:
+              print("::error::Coolify API deploy did not return a deployment UUID.")
+              raise SystemExit(1)
+
+          Path("/tmp/coolify-deployment-uuid.txt").write_text(deployment_ids[0], encoding="utf-8")
+          print(f"Coolify API queued deployment {deployment_ids[0]} with force=false.")
+          PY
+            deployment_uuid="$(cat /tmp/coolify-deployment-uuid.txt)"
+            echo "deployment_uuid=${deployment_uuid}" >> "${GITHUB_OUTPUT}"
+            echo "deployed=true" >> "${GITHUB_OUTPUT}"
+            echo "health_url=${health_url}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
 
           if [ -z "${deploy_url}" ]; then
             echo "::error::Missing ${deploy_url_secret}. Configure it in GitHub Actions secrets so ${BRANCH_NAME} pushes can trigger Coolify after the Gitee mirror is updated."
@@ -216,13 +308,106 @@ jobs:
               deployment_ids = [value for value in deployment_ids if value and value != "None"]
               if deployment_ids:
                   print("Coolify deployment UUID(s): " + ", ".join(deployment_ids))
+                  Path("/tmp/coolify-deployment-uuid.txt").write_text(deployment_ids[0], encoding="utf-8")
                   raise SystemExit(0)
 
           print("Coolify deploy webhook accepted.")
           PY
           echo "Coolify deploy webhook accepted for ${BRANCH_NAME}."
+          if [ -s /tmp/coolify-deployment-uuid.txt ]; then
+            echo "deployment_uuid=$(cat /tmp/coolify-deployment-uuid.txt)" >> "${GITHUB_OUTPUT}"
+          fi
           echo "deployed=true" >> "${GITHUB_OUTPUT}"
           echo "health_url=${health_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for Coolify deployment result
+        if: steps.deploy.outputs.deployment_uuid != ''
+        env:
+          COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+          COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+          DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment_uuid }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${COOLIFY_BASE_URL}" ] || [ -z "${COOLIFY_API_KEY}" ]; then
+            echo "::error::Missing Coolify API secrets; cannot poll deployment ${DEPLOYMENT_UUID}."
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          base = os.environ["COOLIFY_BASE_URL"].rstrip("/")
+          if not base.endswith("/api/v1"):
+              base = f"{base}/api/v1"
+          deployment_uuid = os.environ["DEPLOYMENT_UUID"]
+          api_key = os.environ["COOLIFY_API_KEY"]
+          url = f"{base}/deployments/{deployment_uuid}"
+          headers = {
+              "Accept": "application/json",
+              "Authorization": f"Bearer {api_key}",
+              "User-Agent": "VerseCraft-GitHub-Actions",
+          }
+          success_re = re.compile(r"(success|finished|completed)", re.I)
+          failure_re = re.compile(r"(fail|failed|error|cancel|cancelled|exited|unhealthy)", re.I)
+
+          def sanitize_tail(data):
+              raw_logs = data.get("logs")
+              if isinstance(raw_logs, str):
+                  try:
+                      raw_logs = json.loads(raw_logs)
+                  except json.JSONDecodeError:
+                      raw_logs = []
+              if not isinstance(raw_logs, list):
+                  return []
+              visible = []
+              for entry in raw_logs:
+                  if not isinstance(entry, dict) or entry.get("hidden") is True:
+                      continue
+                  output = str(entry.get("output", ""))
+                  output = re.sub(r"\x1b\[[0-9;]*m", "", output)
+                  output = re.sub(r"Bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer <REDACTED>", output)
+                  visible.append(output[:500])
+              return visible[-12:]
+
+          last_data = {}
+          for attempt in range(1, 161):
+              request = urllib.request.Request(url, headers=headers, method="GET")
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      text = response.read().decode("utf-8", errors="replace")
+                      last_data = json.loads(text) if text.strip() else {}
+              except urllib.error.HTTPError as error:
+                  print(f"Deployment poll attempt {attempt}/160 returned HTTP {error.code}.")
+                  last_data = {}
+              except Exception as error:
+                  print(f"Deployment poll attempt {attempt}/160 failed: {error}")
+                  last_data = {}
+
+              status = str(last_data.get("status") or last_data.get("deployment", {}).get("status") or "")
+              print(f"Deployment {deployment_uuid} attempt {attempt}/160 status: {status or 'unknown'}")
+
+              if success_re.search(status):
+                  print(f"Coolify deployment {deployment_uuid} completed with status {status}.")
+                  raise SystemExit(0)
+              if failure_re.search(status):
+                  print(f"::error::Coolify deployment {deployment_uuid} failed with status {status}.")
+                  for line in sanitize_tail(last_data):
+                      print(line)
+                  raise SystemExit(1)
+              time.sleep(15)
+
+          print(f"::error::Coolify deployment {deployment_uuid} did not finish within 40 minutes.")
+          for line in sanitize_tail(last_data):
+              print(line)
+          raise SystemExit(1)
+          PY
 
       - name: Wait for deployed health endpoint
         if: steps.deploy.outputs.deployed == 'true'
