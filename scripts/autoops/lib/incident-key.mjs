@@ -57,6 +57,9 @@ export function compactDispatchPayload(input = {}) {
   if (input.runbook) {
     payload.runbook = input.runbook;
   }
+  if (input.dry_run !== undefined || input.dryRun !== undefined) {
+    payload.dry_run = Boolean(input.dry_run ?? input.dryRun);
+  }
   return payload;
 }
 

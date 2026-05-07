@@ -20,7 +20,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: autoops-codex-${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -34,6 +34,7 @@ jobs:
       RESOURCE_ID: ${{ github.event.client_payload.resource_id || '' }}
       ALERT_TYPE: ${{ github.event.client_payload.alert_type || inputs.alert_type || 'unknown' }}
       TRACE_ID: ${{ github.event.client_payload.trace_id || '' }}
+      DRY_RUN: ${{ github.event.client_payload.dry_run || 'false' }}
       RUNBOOK: ${{ github.event.client_payload.runbook || 'collect-evidence' }}
       CREATED_AT: ${{ github.event.client_payload.created_at || github.event.repository.updated_at }}
       AUTOOPS_SITE_URL: ${{ vars.AUTOOPS_SITE_URL || 'https://versecraft.cn' }}
@@ -82,7 +83,8 @@ jobs:
             resource_id: process.env.RESOURCE_ID,
             trace_id: process.env.TRACE_ID,
             runbook: process.env.RUNBOOK,
-            created_at: process.env.CREATED_AT
+            created_at: process.env.CREATED_AT,
+            dry_run: process.env.DRY_RUN === "true"
           }, null, 2));
           NODE
 

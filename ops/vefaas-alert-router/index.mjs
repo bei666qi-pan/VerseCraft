@@ -138,7 +138,7 @@ async function withDeadline(promise, timeoutMs = downstreamTimeoutMs()) {
 }
 
 async function runFastPath(alert, decision) {
-  const dryRun = process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1";
+  const dryRun = process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1" || alert.dry_run === true;
   if (decision.runbook === "coolify-restart") {
     const uuid = process.env.COOLIFY_APP_UUID;
     if (!uuid) throw new Error("COOLIFY_APP_UUID is required for coolify restart fast path");
@@ -193,6 +193,9 @@ async function tryDispatch(eventType, alert, decision) {
 
 async function executeRoute(alert, decision) {
   try {
+    if (alert.dry_run === true) {
+      return await withDeadline(dispatch("autoops-record", alert, decision));
+    }
     if (decision.path === "fast") {
       return await withDeadline(runFastPath(alert, decision));
     }

@@ -131,7 +131,7 @@ function buildIncidentKey(input = {}) {
 }
 
 function compactDispatchPayload(input = {}) {
-  return {
+  const payload = {
     incident_key: input.incident_key || buildIncidentKey(input),
     source: input.source || "unknown",
     severity: input.severity || "warning",
@@ -141,6 +141,10 @@ function compactDispatchPayload(input = {}) {
     created_at: input.created_at || input.createdAt || new Date().toISOString(),
     runbook: input.runbook || undefined,
   };
+  if (input.dry_run !== undefined || input.dryRun !== undefined) {
+    payload.dry_run = Boolean(input.dry_run ?? input.dryRun);
+  }
+  return payload;
 }
 
 function normalizeHeaders(headers = {}) {
@@ -164,6 +168,13 @@ function normalizeSeverity(value) {
   if (/critical|fatal|p0|p1|high/.test(raw)) return "critical";
   if (/info|low|p3/.test(raw)) return "info";
   return "warning";
+}
+
+function parseBoolean(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === "number") return value !== 0;
+  const raw = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on", "dry-run", "dry_run"].includes(raw);
 }
 
 function classifyAlert(alert = {}) {
@@ -262,6 +273,7 @@ function normalizeAlert(payload = {}, headers = {}) {
       "",
     trace_id: String(traceId || ""),
     created_at: payload.created_at || payload.createdAt || payload.StartTime || new Date().toISOString(),
+    dry_run: parseBoolean(payload.dry_run ?? payload.dryRun ?? payload.dryrun),
     raw_summary: summary,
     raw_type: payload.alert_type || payload.type || payload.event || "",
     payload,
@@ -467,7 +479,9 @@ async function volcRunCommand(runbook) {
 }
 
 async function runFastPath(alert, decision) {
-  if (process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1") return { ok: true, dryRun: true, action: decision.runbook };
+  if (process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1" || alert.dry_run === true) {
+    return { ok: true, dryRun: true, action: decision.runbook };
+  }
   if (decision.runbook === "coolify-restart") {
     if (!process.env.COOLIFY_APP_UUID) throw new Error("COOLIFY_APP_UUID is required");
     await coolifyRestart(process.env.COOLIFY_APP_UUID);
@@ -494,6 +508,7 @@ async function tryDispatch(eventType, alert, decision) {
 
 async function executeRoute(alert, decision) {
   try {
+    if (alert.dry_run === true) return await repositoryDispatch("autoops-record", alert, decision);
     if (decision.path === "fast") return await runFastPath(alert, decision);
     if (decision.path === "slow") return await repositoryDispatch("autoops-codex", alert, decision);
     return await repositoryDispatch("autoops-record", alert, decision);

@@ -93,6 +93,7 @@ export function normalizeAlert(payload = {}, headers = {}) {
       "",
     trace_id: String(traceId || ""),
     created_at: payload.created_at || payload.createdAt || payload.StartTime || new Date().toISOString(),
+    dry_run: parseBoolean(payload.dry_run ?? payload.dryRun ?? payload.dryrun),
     raw_summary: summary,
     raw_type: payload.alert_type || payload.type || payload.event || "",
     payload,
@@ -100,6 +101,13 @@ export function normalizeAlert(payload = {}, headers = {}) {
   normalized.alert_type = classifyAlert(normalized);
   normalized.incident_key = buildIncidentKey(normalized);
   return normalized;
+}
+
+export function parseBoolean(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === "number") return value !== 0;
+  const raw = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on", "dry-run", "dry_run"].includes(raw);
 }
 
 export function normalizeSeverity(value) {
