@@ -28,6 +28,9 @@ async function main() {
   const args = parseArgs();
   const dryRun = Boolean(args.dryRun);
   const payload = args.payload ? JSON.parse(args.payload) : sampleAlert(args.type || "unknown");
+  if (dryRun) {
+    payload.dry_run = true;
+  }
   const alert = normalizeAlert(payload, {});
   const decision = decideAutoopsPath(alert);
   const eventType = decision.path === "slow" ? "autoops-codex" : "autoops-runbook";
