@@ -1,5 +1,7 @@
 import "server-only";
 
+import { sql } from "drizzle-orm";
+import { db } from "@/db";
 import { runBackofficeReasonerJsonTask } from "@/lib/ai/logicalTasks";
 import { createRequestId } from "@/lib/security/helpers";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
@@ -11,6 +13,15 @@ export type AiInsightInput = {
   range: { preset: string; startDateKey: string; endDateKey: string; label: string };
   metrics: { overview: Record<string, unknown>; retention: Record<string, unknown>; funnel: Record<string, unknown>; realtime: Record<string, unknown> };
   feedback: { totalFeedback: number; negativeFeedback: number; negativeRate: number; topTopics: Array<{ topic: string; count: number }>; samples: string[] };
+  survey: {
+    sampleSize: number;
+    registeredResponses: number;
+    guestResponses: number;
+    avgOverallRating: number | null;
+    avgRecommendScore: number | null;
+    contactIntentCount: number;
+    recentSamples: Array<{ actorKind: "注册用户" | "游客" | "未知"; overallRating: number | null; recommendScore: number | null; comment: string }>;
+  };
   anomalyHints: string[];
   evidenceQuality: "enough" | "insufficient";
 };
@@ -56,6 +67,8 @@ function buildAdminDataRevision(input: AiInsightInput): string {
     String(m.tokenCostRange ?? 0),
     String(input.feedback.totalFeedback),
     String(input.feedback.negativeFeedback),
+    String(input.survey.sampleSize),
+    String(input.survey.avgOverallRating ?? ""),
   ].join("|");
 }
 
@@ -63,13 +76,72 @@ function cleanFeedbackText(input: string): string {
   return input.replace(/\s+/g, " ").replace(/[^\u4e00-\u9fa5a-zA-Z0-9,.;:!?()\-\s]/g, "").trim().slice(0, 200);
 }
 
+function rowsOf(result: unknown): Array<Record<string, unknown>> {
+  const rows = (result as { rows?: unknown })?.rows;
+  return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+}
+
+function finiteNumberOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function getSurveyEvidence(range: AdminTimeRange): Promise<AiInsightInput["survey"]> {
+  const [aggRaw, recentRaw] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        COUNT(*)::int AS "sampleSize",
+        COUNT(*) FILTER (WHERE user_id IS NOT NULL)::int AS "registeredResponses",
+        COUNT(*) FILTER (WHERE user_id IS NULL AND guest_id IS NOT NULL AND btrim(guest_id::text) <> '')::int AS "guestResponses",
+        AVG(overall_rating)::float AS "avgOverallRating",
+        AVG(recommend_score)::float AS "avgRecommendScore",
+        COUNT(*) FILTER (WHERE contact_intent = true)::int AS "contactIntentCount"
+      FROM survey_responses
+      WHERE created_at >= ${range.start}
+        AND created_at <= ${range.end}
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        CASE
+          WHEN user_id IS NOT NULL THEN '注册用户'
+          WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN '游客'
+          ELSE '未知'
+        END AS "actorKind",
+        overall_rating AS "overallRating",
+        recommend_score AS "recommendScore",
+        free_text AS "freeText"
+      FROM survey_responses
+      WHERE created_at >= ${range.start}
+        AND created_at <= ${range.end}
+      ORDER BY created_at DESC
+      LIMIT 12
+    `).catch(() => ({ rows: [] })),
+  ]);
+  const agg = rowsOf(aggRaw)[0] ?? {};
+  return {
+    sampleSize: Number(agg.sampleSize ?? 0),
+    registeredResponses: Number(agg.registeredResponses ?? 0),
+    guestResponses: Number(agg.guestResponses ?? 0),
+    avgOverallRating: finiteNumberOrNull(agg.avgOverallRating),
+    avgRecommendScore: finiteNumberOrNull(agg.avgRecommendScore),
+    contactIntentCount: Number(agg.contactIntentCount ?? 0),
+    recentSamples: rowsOf(recentRaw).map((r) => ({
+      actorKind: String(r.actorKind ?? "未知") === "注册用户" ? "注册用户" : String(r.actorKind ?? "未知") === "游客" ? "游客" : "未知",
+      overallRating: finiteNumberOrNull(r.overallRating),
+      recommendScore: finiteNumberOrNull(r.recommendScore),
+      comment: cleanFeedbackText(String(r.freeText ?? "")),
+    })),
+  };
+}
+
 export async function buildAiInsightInput(range: AdminTimeRange): Promise<AiInsightInput> {
-  const [overview, retention, funnel, feedback, realtime] = await Promise.all([
+  const [overview, retention, funnel, feedback, realtime, survey] = await Promise.all([
     getOverviewMetrics(range),
     getRetentionMetrics(range),
     getFunnelMetrics(range),
     getFeedbackInsights(range),
     getRealtimeMetrics(),
+    getSurveyEvidence(range),
   ]);
   const negativeRate = feedback.totalFeedback > 0 ? feedback.negativeFeedback / feedback.totalFeedback : 0;
   const samples = (((feedback as unknown as { samples?: string[] }).samples) ?? []).map(cleanFeedbackText).filter(Boolean).slice(0, 12);
@@ -77,11 +149,12 @@ export async function buildAiInsightInput(range: AdminTimeRange): Promise<AiInsi
   if ((retention.d1?.rate ?? 1) < 0.2) anomalyHints.push("D1留存低于20%");
   if ((realtime.trends?.eventsLast5m ?? 0) > (realtime.trends?.eventsLast15m ?? 0)) anomalyHints.push("近5分钟事件波动偏高");
   if (overview.cards.dau > 0 && overview.cards.todayTokenCost / overview.cards.dau > 5000) anomalyHints.push("人均Token成本偏高");
-  const evidenceQuality = feedback.totalFeedback < 10 || Number(overview.cards.activeUsersRange ?? 0) < 20 ? "insufficient" : "enough";
+  const evidenceQuality = Math.max(feedback.totalFeedback, survey.sampleSize) < 10 || Number(overview.cards.activeUsersRange ?? 0) < 20 ? "insufficient" : "enough";
   return {
     range: { preset: range.preset, startDateKey: range.startDateKey, endDateKey: range.endDateKey, label: range.label },
     metrics: { overview: overview.cards, retention, funnel, realtime },
     feedback: { totalFeedback: feedback.totalFeedback, negativeFeedback: feedback.negativeFeedback, negativeRate, topTopics: feedback.topics.slice(0, 5), samples },
+    survey,
     anomalyHints,
     evidenceQuality,
   };
@@ -90,7 +163,8 @@ export async function buildAiInsightInput(range: AdminTimeRange): Promise<AiInsi
 function fallbackFromInput(input: AiInsightInput): AiInsightOutput {
   const activeUsers = Number((input.metrics.overview as { activeUsersRange?: number }).activeUsersRange ?? 0);
   const feedbackSample = Number(input.feedback.totalFeedback ?? 0);
-  const sampleSize = Math.max(activeUsers, feedbackSample);
+  const surveySample = Number(input.survey.sampleSize ?? 0);
+  const sampleSize = Math.max(activeUsers, feedbackSample, surveySample);
   const insufficient = input.evidenceQuality === "insufficient";
   return {
     executiveSummary: input.evidenceQuality === "insufficient" ? "证据不足：当前样本量不足以给出高置信度优化建议。" : "存在留存与成本双重压力，建议优先处理新手链路和高频负反馈。",
@@ -102,6 +176,7 @@ function fallbackFromInput(input: AiInsightInput): AiInsightOutput {
         evidenceMetrics: [
           { metricId: "overview.active_actors_today", label: "活跃样本", value: String(activeUsers), source: "admin_metrics_daily" },
           { metricId: "content.feedback_sample", label: "反馈样本", value: String(feedbackSample), source: "feedbacks" },
+          { metricId: "content.survey_sample", label: "问卷样本", value: String(surveySample), source: "survey_responses" },
         ],
         sampleSize,
         confidence: insufficient ? "low" : "medium",
@@ -120,6 +195,7 @@ function fallbackFromInput(input: AiInsightInput): AiInsightOutput {
     evidence: [
       { metric: "activeUsersRange", value: String((input.metrics.overview as { activeUsersRange?: number }).activeUsersRange ?? 0), source: "admin_metrics_daily" },
       { metric: "negativeRate", value: `${(input.feedback.negativeRate * 100).toFixed(1)}%`, source: "feedbacks" },
+      { metric: "surveySample", value: String(surveySample), source: "survey_responses" },
     ],
     suggestedExperiments: [],
     generatedAt: new Date().toISOString(),
@@ -158,7 +234,15 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
     generatedAt: "ISO datetime",
     evidenceSufficiency: "enough|insufficient",
   };
-  const systemPrompt = ["你是VerseCraft后台AI运营分析官。", "你只能依据输入数据给出建议，禁止编造证据。", "当证据不足时，必须明确写出“证据不足”。", "建议必须按优先级：immediate / this_week / mid_term。", "请严格以 JSON 格式输出。", `输出结构必须匹配：${JSON.stringify(schemaHint)}`].join("\n");
+  const systemPrompt = [
+    "你是VerseCraft后台AI运营分析官，负责分析问卷、反馈、留存、旅程漏斗、在线与Token成本。",
+    "你只能依据输入数据给出建议，禁止编造证据、趋势、样本或结论。",
+    "当证据不足时，必须明确写出“证据不足”，只能建议补采或核查，不得给高置信策略结论。",
+    "建议必须按优先级：immediate / this_week / mid_term。",
+    "所有 evidenceMetrics 必须来自输入里的真实指标，不要引用不存在的表、字段或样本。",
+    "请严格以 JSON 格式输出。",
+    `输出结构必须匹配：${JSON.stringify(schemaHint)}`,
+  ].join("\n");
 
   try {
     const ai = await runBackofficeReasonerJsonTask({
@@ -188,6 +272,25 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
   } catch {
     return { input, output: fallbackFromInput(input), model: "none", degraded: true };
   }
+}
+
+export async function generateRuleFallbackAiInsightReport(range: AdminTimeRange): Promise<{
+  range: AdminTimeRange;
+  model: string;
+  degraded: boolean;
+  stale: boolean;
+  input: AiInsightInput;
+  output: AiInsightOutput;
+}> {
+  const input = await buildAiInsightInput(range);
+  return {
+    range,
+    model: "local-rule-fallback",
+    degraded: true,
+    stale: false,
+    input,
+    output: fallbackFromInput(input),
+  };
 }
 
 export async function getCachedAiInsightReport(range: AdminTimeRange): Promise<{

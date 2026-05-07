@@ -49,6 +49,7 @@ test.describe("Admin dashboard partial API failure", () => {
 
     await expect(page.locator("select").first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "运营决策台" })).toBeVisible();
+    await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
     await expect(page.getByTestId("admin-user-table-panel")).toBeVisible();
     await expect(page.getByTestId("admin-degraded-banner")).toBeVisible();
     expect(errors.length, `page errors: ${errors.join(" | ")}`).toBe(0);

@@ -2,7 +2,7 @@ import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
 import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getAiInsights } from "@/lib/admin/service";
-import { getCachedAiInsightReport, refreshAiInsightReport } from "@/lib/admin/aiInsights";
+import { generateRuleFallbackAiInsightReport, getCachedAiInsightReport, refreshAiInsightReport } from "@/lib/admin/aiInsights";
 import { invalidateCompletionCacheByTask } from "@/lib/ai/governance/responseCache";
 import { invalidateAiAnalysisSnapshot } from "@/lib/ai/analysis/snapshotStore";
 import { recordAdminAuditLog } from "@/lib/admin/auditLog";
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("[api/admin/ai-insights:post] failed", error);
     try {
-      const fallback = await getAiInsights(range);
+      const fallback = await generateRuleFallbackAiInsightReport(range);
       return adminJson(
         adminOk(
           {

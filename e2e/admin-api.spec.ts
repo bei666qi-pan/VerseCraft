@@ -86,6 +86,21 @@ test.describe("Admin API integration", () => {
       expect(body).toHaveProperty("degraded");
     }
 
+    const health = await request.get("/api/admin/system-health", {
+      headers: { Cookie: cookie },
+      timeout: 20_000,
+    });
+    expect([200, 500]).toContain(health.status());
+    const healthBody = (await health.json()) as Record<string, unknown>;
+    if (health.status() === 200 && healthBody.ok === true && healthBody.data != null) {
+      const data = healthBody.data as Record<string, unknown>;
+      expect(data).toHaveProperty("capacity");
+      const capacity = data.capacity as Record<string, unknown>;
+      expect(capacity).toHaveProperty("online");
+      expect(capacity).toHaveProperty("chatQueue");
+      expect(capacity).toHaveProperty("estimate");
+    }
+
     const aiReport = await request.post("/api/admin/ai-insights?range=7d", {
       headers: { Cookie: cookie },
       timeout: 40_000,

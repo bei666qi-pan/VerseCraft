@@ -31,67 +31,76 @@ test.describe("在线状态", () => {
       },
     ]);
 
-    await page.route("**/api/admin/realtime**", async (route) => {
-      await route.fulfill({
-        json: {
-          onlineUsers: 1,
-          onlineGuests: 0,
-          activeSessions: 2,
-          avgSessionDurationSec: 0,
-          updatedAt: new Date().toISOString(),
-          trends: { eventsLast5m: 0, eventsLast15m: 0, eventsLast60m: 0 },
-        },
-      });
-    });
+    const envelope = (data: unknown) => ({ ok: true, degraded: false, reason: null, data });
+
     await page.route("**/api/admin/overview**", async (route) => {
       await route.fulfill({
-        json: { range: { key: "7d", label: "近 7 天" }, cards: { todayTokenCost: 0 }, chartData: [] },
+        json: envelope({
+          range: { key: "7d", label: "近 7 天" },
+          cards: { totalUsers: 2, totalTokens: 0, online: 1, dau: 1, wau: 1, mau: 1, feedbackCountRange: 0, playDurationRangeSec: 0 },
+          kpis: [],
+          chartData: [],
+          updatedAt: new Date().toISOString(),
+        }),
       });
     });
-    await page.route("**/api/admin/retention**", async (route) => {
-      await route.fulfill({ json: { d1: { rate: 1 }, d3: { rate: 1 }, d7: { rate: 1 }, cohortSize: 1 } });
+    await page.route("**/api/admin/player-journey**", async (route) => {
+      await route.fulfill({ json: envelope({ sampleSize: 0, evidenceSufficiency: "insufficient", stages: [], updatedAt: new Date().toISOString() }) });
     });
-    await page.route("**/api/admin/funnel**", async (route) => {
-      await route.fulfill({ json: { stages: [] } });
-    });
-    await page.route("**/api/admin/feedback-insights**", async (route) => {
-      await route.fulfill({ json: { totalFeedback: 0, negativeFeedback: 0, topics: [] } });
-    });
-    await page.route("**/api/admin/survey-aggregate**", async (route) => {
-      await route.fulfill({ json: { range: { label: "近 7 天" }, totalResponses: 0, questions: [] } });
-    });
-    await page.route("**/api/admin/dashboard-data**", async (route) => {
+    await page.route("**/api/admin/ai-experience**", async (route) => {
       await route.fulfill({
-        json: {
+        json: envelope({ sampleSize: 0, evidenceSufficiency: "insufficient", metrics: [], rates: {}, cost: { highCostActors: [] }, updatedAt: new Date().toISOString() }),
+      });
+    });
+    await page.route("**/api/admin/content-quality**", async (route) => {
+      await route.fulfill({ json: envelope({ evidenceSufficiency: "insufficient", worldSelections: [], feedbackTopics: [], updatedAt: new Date().toISOString() }) });
+    });
+    await page.route("**/api/admin/system-health**", async (route) => {
+      await route.fulfill({
+        json: envelope({
+          checks: {},
+          capacity: {
+            online: { registered: 1, guests: 0, total: 1, activeSessions: 2, windowSeconds: 90, source: "presence_window" },
+            chatQueue: { enabled: true, running: 0, queued: 0, maxRunning: 4, maxQueued: 80, remainingImmediate: 4, remainingQueueSlots: 80, estimatedSecondsPerTurn: 12 },
+            estimate: { status: "sample_insufficient", remainingConcurrentActions: null, confidence: "low", explanation: "近 1 小时 AI 回合样本不足，暂不输出承载余量结论。" },
+            evidence: { recentAiRequests: 0, dbOk: true, aiGatewayOk: true, queueDepthKnown: true },
+          },
+          deployment: { commitSha: "test", nodeEnv: "test" },
+          updatedAt: new Date().toISOString(),
+        }),
+      });
+    });
+    await page.route("**/api/admin/audit-logs**", async (route) => {
+      await route.fulfill({ json: envelope({ rows: [], nextCursor: null, hasMore: false }) });
+    });
+    await page.route("**/api/admin/users**", async (route) => {
+      await route.fulfill({
+        json: envelope({
           rows: [
             {
-              id: "u-fresh",
+              actorKey: "u-fresh",
               name: "fresh-45s",
+              actorType: "registered",
               tokensUsed: 0,
               playTime: 0,
-              sessionPlaySec: 0,
               lastActive: new Date().toISOString(),
-              isOnline: 1,
-              feedbackContent: "",
-              feedbackCreatedAt: null,
+              isOnline: true,
             },
             {
-              id: "u-stale",
+              actorKey: "u-stale",
               name: "stale-120s",
+              actorType: "registered",
               tokensUsed: 0,
               playTime: 0,
-              sessionPlaySec: 0,
               lastActive: new Date().toISOString(),
-              isOnline: 0,
-              feedbackContent: "",
-              feedbackCreatedAt: null,
+              isOnline: false,
             },
           ],
-          onlineCount: 1,
-          totalUsers: 2,
-          totalTokens: 0,
-          chartData: [],
-        },
+          nextCursor: null,
+          hasMore: false,
+          totalApprox: 2,
+          limit: 20,
+        }),
       });
     });
 
@@ -103,6 +112,7 @@ test.describe("在线状态", () => {
       test.skip(true, "后台不可用");
     }
 
+    await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
     const rowFresh = page.locator("tr", { hasText: "fresh-45s" });
     const rowStale = page.locator("tr", { hasText: "stale-120s" });
     await expect(rowFresh).toContainText("在线", { timeout: 15_000 });

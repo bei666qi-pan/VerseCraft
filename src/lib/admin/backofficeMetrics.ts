@@ -7,8 +7,12 @@ import { getAdminMetricDefinition } from "@/lib/admin/metricDefinitions";
 import { computeAdjacentFunnelStages, decodeCursor, encodeCursor, safeRate } from "@/lib/admin/metricsUtils";
 import { getFeedbackInsights, getOverviewMetrics, getRealtimeMetrics } from "@/lib/admin/service";
 import { getAdminLoginRateLimitHealth } from "@/lib/admin/loginRateLimit";
+import { computeAdminCapacityEstimate } from "@/lib/admin/capacityEstimate";
 import { anyAiProviderConfigured } from "@/lib/ai/config/env";
 import { envRaw } from "@/lib/config/envRaw";
+import { getChatQueueConfig } from "@/lib/chatQueue/config";
+import { shouldQueueChatRequest } from "@/lib/chatQueue/service";
+import { ONLINE_WINDOW_SECONDS } from "@/lib/presence/onlineWindow";
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
@@ -304,9 +308,9 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
     sampleSize,
     evidenceSufficiency: sampleSize >= 20 ? "enough" : "insufficient",
     metrics: [
-      kpi({ metricId: "ai.ttft_p50", label: "TTFT P50", value: row.ttftP50 == null ? null : Math.round(n(row.ttftP50)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
+      kpi({ metricId: "ai.ttft_p50", label: "首段等待中位数", value: row.ttftP50 == null ? null : Math.round(n(row.ttftP50)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
       kpi({ metricId: "ai.ttft_p95", value: row.ttftP95 == null ? null : Math.round(n(row.ttftP95)), unit: "ms", updatedAt: new Date().toISOString() }),
-      kpi({ metricId: "ai.total_latency_p50", label: "总耗时 P50", value: row.totalP50 == null ? null : Math.round(n(row.totalP50)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
+      kpi({ metricId: "ai.total_latency_p50", label: "总耗时中位数", value: row.totalP50 == null ? null : Math.round(n(row.totalP50)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
       kpi({ metricId: "ai.total_latency_p95", value: row.totalP95 == null ? null : Math.round(n(row.totalP95)), unit: "ms", updatedAt: new Date().toISOString() }),
     ],
     rates: {
@@ -399,19 +403,40 @@ export async function getSystemHealth() {
     updatedAt: new Date().toISOString(),
     meta: { redisConfigured: redisHealth.redisConfigured, fallbackBuckets: redisHealth.fallbackBuckets },
   };
+  const aiGatewayOk = anyAiProviderConfigured();
   checks.aiGateway = {
-    ok: anyAiProviderConfigured(),
-    degraded: !anyAiProviderConfigured(),
-    reason: anyAiProviderConfigured() ? null : "ai_gateway_keys_missing",
+    ok: aiGatewayOk,
+    degraded: !aiGatewayOk,
+    reason: aiGatewayOk ? null : "ai_gateway_keys_missing",
     updatedAt: new Date().toISOString(),
   };
   const metaRaw = await withDeadline(db.execute(sql`
     SELECT
       (SELECT MAX(created_at) FROM admin_audit_logs WHERE action = 'admin_cron_rebuild_daily') AS "lastCronAt",
       (SELECT MAX(updated_at) FROM admin_metrics_daily) AS "aggregationFreshness",
-      (SELECT COUNT(*)::int FROM analytics_events WHERE event_time >= NOW() - INTERVAL '1 hour' AND event_name LIKE '%failed%') AS "recentErrors"
+      (SELECT COUNT(*)::int FROM analytics_events WHERE event_time >= NOW() - INTERVAL '1 hour' AND event_name LIKE '%failed%') AS "recentErrors",
+      (SELECT COUNT(*)::int FROM analytics_events WHERE event_time >= NOW() - INTERVAL '1 hour' AND event_name = 'chat_request_finished') AS "recentAiRequests"
   `), 1200, "system_health_meta_timeout").catch(() => ({ rows: [] }));
   const meta = rowsOf(metaRaw)[0] ?? {};
+  const realtime = await withDeadline(getRealtimeMetrics(), 1200, "system_health_realtime_timeout").catch(() => null);
+  const queueConfig = getChatQueueConfig();
+  const queueDecision = await withDeadline(shouldQueueChatRequest(), 800, "chat_queue_capacity_timeout").catch(() => null);
+  const queueDepthKnown = Boolean(queueDecision?.enabled && queueDecision.runningCount != null && queueDecision.queuedCount != null);
+  const runningCount = queueDecision?.runningCount ?? null;
+  const queuedCount = queueDecision?.queuedCount ?? null;
+  const remainingImmediate = runningCount == null ? null : Math.max(0, queueConfig.maxRunning - runningCount);
+  const remainingQueueSlots = queuedCount == null ? null : Math.max(0, queueConfig.maxQueued - queuedCount);
+  const capacityEstimate = computeAdminCapacityEstimate({
+    queueEnabled: queueConfig.enabled,
+    queueDepthKnown,
+    runningCount,
+    queuedCount,
+    maxRunning: queueConfig.maxRunning,
+    maxQueued: queueConfig.maxQueued,
+    dbOk: checks.db.ok,
+    aiGatewayOk,
+    recentAiSampleSize: n(meta.recentAiRequests),
+  });
   return {
     checks,
     cron: { lastRebuildAt: iso(meta.lastCronAt), updatedAt: new Date().toISOString() },
@@ -421,6 +446,33 @@ export async function getSystemHealth() {
     deployment: {
       commitSha: envRaw("VERCEL_GIT_COMMIT_SHA") ?? envRaw("GITHUB_SHA") ?? null,
       nodeEnv: envRaw("NODE_ENV") ?? "development",
+    },
+    capacity: {
+      online: {
+        registered: n(realtime?.onlineUsers),
+        guests: n(realtime?.onlineGuests),
+        total: n(realtime?.onlineUsers) + n(realtime?.onlineGuests),
+        activeSessions: n(realtime?.activeSessions),
+        windowSeconds: ONLINE_WINDOW_SECONDS,
+        source: realtime ? "presence_window" : "unavailable",
+      },
+      chatQueue: {
+        enabled: queueConfig.enabled,
+        running: runningCount,
+        queued: queuedCount,
+        maxRunning: queueConfig.maxRunning,
+        maxQueued: queueConfig.maxQueued,
+        remainingImmediate,
+        remainingQueueSlots,
+        estimatedSecondsPerTurn: queueConfig.estimatedSecondsPerTurn,
+      },
+      estimate: capacityEstimate,
+      evidence: {
+        recentAiRequests: n(meta.recentAiRequests),
+        dbOk: checks.db.ok,
+        aiGatewayOk,
+        queueDepthKnown,
+      },
     },
     updatedAt: new Date().toISOString(),
   };
@@ -479,7 +531,7 @@ export async function listAdminUsers(opts: {
       SELECT
         ('g:' || g.guest_id) AS actor_key,
         g.guest_id AS raw_id,
-        COALESCE('guest:' || g.guest_id, 'guest') AS display_name,
+        ('游客 ' || RIGHT(REPLACE(g.guest_id, '-', ''), 4)) AS display_name,
         'guest' AS actor_type,
         COALESCE(t.tokens_used, 0)::int AS tokens_used,
         COALESCE(g.total_play_duration_sec, 0)::int AS play_time,
@@ -542,8 +594,21 @@ export async function getAdminUserDetail(actorKey: string) {
         FROM users WHERE id = ${rawId} LIMIT 1
       `)
     : await db.execute(sql`
-        SELECT guest_id AS "rawId", ('guest:' || guest_id) AS name, 0 AS "tokensUsed", total_play_duration_sec AS "playTime", last_seen_at AS "lastActive", 'guest' AS "actorType"
-        FROM guest_registry WHERE guest_id = ${rawId} LIMIT 1
+        SELECT
+          g.guest_id AS "rawId",
+          ('游客 ' || RIGHT(REPLACE(g.guest_id, '-', ''), 4)) AS name,
+          COALESCE(t.tokens_used, 0)::int AS "tokensUsed",
+          g.total_play_duration_sec AS "playTime",
+          g.last_seen_at AS "lastActive",
+          'guest' AS "actorType"
+        FROM guest_registry g
+        LEFT JOIN (
+          SELECT guest_id, COALESCE(SUM(daily_token_cost), 0)::int AS tokens_used
+          FROM guest_daily_tokens
+          GROUP BY guest_id
+        ) t ON t.guest_id = g.guest_id
+        WHERE g.guest_id = ${rawId}
+        LIMIT 1
       `);
   const base = rowsOf(baseRaw)[0];
   if (!base) return null;
