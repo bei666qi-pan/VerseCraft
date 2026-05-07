@@ -122,7 +122,13 @@ export class CoolifyClient {
     if (!uuid) {
       throw new Error("Coolify application UUID is required");
     }
-    const query = new URLSearchParams({ uuid, force: String(Boolean(force)), instant_deploy: String(Boolean(instant)) });
+    const query = new URLSearchParams({ uuid });
+    if (force) {
+      query.set("force", "true");
+    }
+    if (instant) {
+      query.set("instant_deploy", "true");
+    }
     if (this.dryRun) {
       logJson("coolify.deploy.dry_run", { uuid, force, instant });
       return { dryRun: true, deployment_uuid: `dry-${Date.now()}` };

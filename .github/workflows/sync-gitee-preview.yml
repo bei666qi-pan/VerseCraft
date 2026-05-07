@@ -212,9 +212,11 @@ jobs:
               base = f"{base}/api/v1"
           app_uuid = os.environ["COOLIFY_SELECTED_APP_UUID"]
           api_key = os.environ["COOLIFY_API_KEY"]
+          # Omit force unless a true forced rebuild is requested. Some Coolify
+          # versions treat the presence of the force query key as a no-cache
+          # rebuild even when the value is "false".
           query = urllib.parse.urlencode({
               "uuid": app_uuid,
-              "force": "false",
               "instant_deploy": "true",
           })
           url = f"{base}/deploy?{query}"
@@ -263,7 +265,7 @@ jobs:
               raise SystemExit(1)
 
           Path("/tmp/coolify-deployment-uuid.txt").write_text(deployment_ids[0], encoding="utf-8")
-          print(f"Coolify API queued deployment {deployment_ids[0]} with force=false.")
+          print(f"Coolify API queued deployment {deployment_ids[0]} without a forced rebuild.")
           PY
             deployment_uuid="$(cat /tmp/coolify-deployment-uuid.txt)"
             echo "deployment_uuid=${deployment_uuid}" >> "${GITHUB_OUTPUT}"
