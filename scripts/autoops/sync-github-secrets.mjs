@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 import { discoverCoolifyAppUuid } from "./lib/coolify.mjs";
 import { discoverVolcInstances } from "./lib/volc-openapi.mjs";
-import { buildGhSecretCommands, syncSecretsWithGh } from "./lib/github.mjs";
+import { syncSecretsWithGh } from "./lib/github.mjs";
 import { autoopsDefaults, loadLocalEnvFiles, logJson, parseArgs, writeRuntimeJson, writeRuntimeText } from "./lib/logger.mjs";
 
 function generatedSecret() {
@@ -32,23 +32,21 @@ async function main() {
     }
   }
 
-  const requiredNames = [
+  const secretNames = [
     "VOLC_AK",
     "VOLC_SK",
     "VOLC_REGION",
-    "GITHUB_TOKEN",
     "COOLIFY_API_KEY",
     "COOLIFY_BASE_URL",
     "AUTOOPS_ALERT_ROUTER_SECRET",
     "COOLIFY_APP_UUID",
     "VOLC_ECS_INSTANCE_IDS",
   ];
-  const optionalNames = ["OPENAI_API_KEY"];
-  const secretMap = Object.fromEntries([...requiredNames, ...optionalNames].map((name) => [name, process.env[name] || ""]));
+  const secretMap = Object.fromEntries(secretNames.map((name) => [name, process.env[name] || ""]));
   const present = Object.keys(secretMap).filter((name) => secretMap[name]);
-  const missing = requiredNames.filter((name) => !secretMap[name]);
+  const missing = secretNames.filter((name) => !secretMap[name]);
   const result = syncSecretsWithGh(secretMap, { repo, dryRun });
-  const commands = result.commands?.length ? result.commands : buildGhSecretCommands(present, repo);
+  const commands = result.commands || [];
   if (generatedAlertRouterSecret) {
     await writeRuntimeText(
       "generated-secrets.local.env",
@@ -70,7 +68,8 @@ async function main() {
     missing,
     synced: result.synced || [],
     commands,
-    openai_api_key_present: Boolean(secretMap.OPENAI_API_KEY),
+    openai_api_key_present: Boolean(process.env.OPENAI_API_KEY),
+    github_auth_local_only: Boolean(process.env.GITHUB_TOKEN),
     generated_alert_router_secret: generatedAlertRouterSecret,
   });
   logJson("github.secrets.sync.completed", {
@@ -79,7 +78,8 @@ async function main() {
     missing,
     synced: result.synced || [],
     fallback_commands_count: commands.length,
-    openai_api_key_present: Boolean(secretMap.OPENAI_API_KEY),
+    openai_api_key_present: Boolean(process.env.OPENAI_API_KEY),
+    github_auth_local_only: Boolean(process.env.GITHUB_TOKEN),
     generated_alert_router_secret: generatedAlertRouterSecret,
   });
   if (missing.length && !dryRun) {
