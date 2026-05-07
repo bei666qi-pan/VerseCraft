@@ -150,7 +150,8 @@ function buildNonStreamBody(
   messages: ChatMessage[],
   maxTokens: number,
   temperature: number | undefined,
-  requestJsonObject: boolean
+  requestJsonObject: boolean,
+  extraBody?: Record<string, unknown>
 ): NormalizedCompletionRequest {
   return {
     modelApiName: gatewayModel,
@@ -160,6 +161,7 @@ function buildNonStreamBody(
     temperature,
     responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: false,
+    ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
   };
 }
 
@@ -596,6 +598,7 @@ export async function executeChatCompletion(params: {
   requestTimeoutMs?: number;
   /** When true, skip offline response cache (DEV_ASSIST / worldbuild / storyline). */
   skipCache?: boolean;
+  extraBody?: Record<string, unknown>;
   devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
 }): Promise<AIResponse | AIErrorResponse> {
   if (params.task === "PLAYER_CHAT") {
@@ -758,7 +761,8 @@ export async function executeChatCompletion(params: {
       params.messages,
       binding.maxTokens,
       binding.temperature,
-      requestJsonObject
+      requestJsonObject,
+      params.extraBody
     );
     const init = factory.buildInit(key, body);
     const t0 = Date.now();

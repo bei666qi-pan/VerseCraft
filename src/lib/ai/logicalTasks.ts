@@ -371,6 +371,7 @@ async function runOptionsOnlyAiOnce(args: {
   temperature: number;
   systemExtra?: string;
   timeoutMs: number;
+  maxTokens?: number;
 }): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const system: ChatMessage = {
     role: "system",
@@ -429,10 +430,14 @@ async function runOptionsOnlyAiOnce(args: {
     // helper must not stretch the visible turn by silently upgrading to a long timeout.
     requestTimeoutMs: args.timeoutMs,
     skipCache: true,
+    extraBody: {
+      enable_thinking: false,
+      thinking: { type: "disabled" },
+    },
     devOverrides: {
       // Reasoning models spend most tokens on reasoning_content before emitting content.
       // 256 is not enough — the model hits max_tokens with empty content.
-      maxTokens: 384,
+      maxTokens: args.maxTokens ?? 640,
       temperature: args.temperature,
       timeoutMs: args.timeoutMs,
       responseFormatJsonObject: true,
@@ -441,6 +446,12 @@ async function runOptionsOnlyAiOnce(args: {
 
   if (!res.ok) return { ok: false, reason: summarizeCompletionFailure(res) };
   return { ok: true, content: res.content };
+}
+
+function isRetriableOptionsOnlyAiFailure(reason: string): boolean {
+  const s = String(reason ?? "");
+  if (!s || /NO_CREDENTIALS|ABORTED|AUTH|RATE_LIMIT/i.test(s)) return false;
+  return /CHAIN_EXHAUSTED|EMPTY_CONTENT|JSON_PARSE|TIMEOUT|NETWORK|UNKNOWN|5\d\d/i.test(s);
 }
 
 /**
@@ -596,14 +607,75 @@ export async function generateOptionsOnlyFallback(args: {
     systemExtra: args.systemExtra,
     timeoutMs: firstTimeoutMs,
     signal: withBudgetSignal(firstTimeoutMs),
+    maxTokens: 640,
   });
   let lastParseFailure: Extract<ReturnType<typeof tryParse>, { ok: false }> | null = null;
   if (first.ok) {
     const done = tryParse(first.content);
     if (done.ok) return { ...done, latencyMs: Date.now() - t0 };
-    lastParseFailure = done;
+    if (done.acceptedOptions.length === 0 && (budgetMs <= 0 || remainingMs() >= 1_200)) {
+      const retryTimeoutMs = Math.max(1, Math.min(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, remainingMs()));
+      const retry = await runOptionsOnlyAiOnce({
+        ...args,
+        temperature: 0.35,
+        systemExtra: [
+          args.systemExtra ?? "",
+          "Retry because the previous options-only model call did not produce any usable action option. Output only the JSON object with exactly four first-person Chinese action options.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        timeoutMs: retryTimeoutMs,
+        signal: withBudgetSignal(retryTimeoutMs),
+        maxTokens: 640,
+      });
+      if (retry.ok) {
+        const retryDone = tryParse(retry.content);
+        if (retryDone.ok) return { ...retryDone, latencyMs: Date.now() - t0 };
+        lastParseFailure = {
+          ...retryDone,
+          debugReasonCodes: Array.from(new Set([...retryDone.debugReasonCodes, "model_retry_used"])),
+        };
+      } else {
+        lastParseFailure = {
+          ...done,
+          debugReasonCodes: Array.from(new Set([...done.debugReasonCodes, retry.reason, "model_retry_used"])),
+        };
+      }
+    }
+    if (!lastParseFailure) lastParseFailure = done;
   } else {
-    return { ok: false, reason: first.reason, debugReasonCodes: [first.reason], latencyMs: Date.now() - t0 };
+    const canRetry = isRetriableOptionsOnlyAiFailure(first.reason) && (budgetMs <= 0 || remainingMs() >= 1_200);
+    if (!canRetry) {
+      return { ok: false, reason: first.reason, debugReasonCodes: [first.reason], latencyMs: Date.now() - t0 };
+    }
+    const retryTimeoutMs = Math.max(1, Math.min(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs, remainingMs()));
+    const retry = await runOptionsOnlyAiOnce({
+      ...args,
+      temperature: 0.35,
+      systemExtra: [
+        args.systemExtra ?? "",
+        "Retry because the previous options-only model call returned no usable JSON. Output only the JSON object with exactly four first-person Chinese action options.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      timeoutMs: retryTimeoutMs,
+      signal: withBudgetSignal(retryTimeoutMs),
+      maxTokens: 640,
+    });
+    if (!retry.ok) {
+      return {
+        ok: false,
+        reason: retry.reason,
+        debugReasonCodes: [first.reason, retry.reason, "model_retry_used"],
+        latencyMs: Date.now() - t0,
+      };
+    }
+    const done = tryParse(retry.content);
+    if (done.ok) return { ...done, latencyMs: Date.now() - t0 };
+    lastParseFailure = {
+      ...done,
+      debugReasonCodes: Array.from(new Set([...done.debugReasonCodes, "model_retry_used"])),
+    };
   }
 
   if (budgetMs > 0 && remainingMs() < 1500) {
@@ -645,6 +717,7 @@ export async function generateOptionsOnlyFallback(args: {
     ].filter(Boolean).join("\n"),
     timeoutMs: repairTimeoutMs,
     signal: withBudgetSignal(repairTimeoutMs),
+    maxTokens: 640,
   });
   if (second.ok) {
     const done = tryParse(second.content);
