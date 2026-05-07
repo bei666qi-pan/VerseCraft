@@ -22,22 +22,22 @@ export function PreviewAccessForm({ nextPath }: { nextPath: string }) {
   return (
     <form
       action={formAction}
-      className="relative z-10 w-full max-w-md rounded-lg border border-cyan-100/15 bg-slate-950/70 p-7 shadow-[0_24px_100px_rgba(8,47,73,0.42)] backdrop-blur-2xl"
+      className="relative z-10 w-full max-w-md rounded-[28px] border border-[#d8cbb8] bg-[#fbf7f0]/98 p-7 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)]"
     >
       <input type="hidden" name="next" value={nextPath} />
       <div>
-        <p className="text-xs font-medium uppercase tracking-[0.22em] text-cyan-200/70">
+        <p className="text-xs font-medium uppercase tracking-[0.22em] text-[#4f706a]">
           VerseCraft
         </p>
-        <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-50">
+        <h1 className="vc-reading-serif mt-3 text-3xl font-semibold leading-none tracking-normal text-[#0d5a4e]">
           预览站访问验证
         </h1>
-        <p className="mt-3 text-sm leading-6 text-slate-300">
+        <p className="mt-3 text-sm leading-6 text-[#4f625c]">
           这是受保护的预览环境，请输入访问密码。
         </p>
       </div>
 
-      <label className="mt-7 block text-sm font-medium text-slate-200" htmlFor="preview-password">
+      <label className="vc-reading-serif mt-7 block text-[1.05rem] font-semibold text-[#0d5a4e]" htmlFor="preview-password">
         访问密码
       </label>
       <input
@@ -46,12 +46,12 @@ export function PreviewAccessForm({ nextPath }: { nextPath: string }) {
         type="password"
         autoComplete="current-password"
         required
-        className="mt-2 w-full rounded-lg border border-white/15 bg-black/35 px-4 py-3 text-sm text-slate-50 outline-none transition placeholder:text-slate-500 focus:border-cyan-300/70 focus:bg-black/50"
+        className="mt-2 w-full rounded-[16px] border border-[#cfc5b6] bg-[#fffdf8] px-4 py-3 text-sm text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
         placeholder="请输入预览访问密码"
       />
 
       {state.error ? (
-        <p className="mt-3 text-sm text-rose-300" role="alert">
+        <p className="mt-3 text-sm text-[#8d3f35]" role="alert">
           {state.error}
         </p>
       ) : null}
@@ -59,7 +59,7 @@ export function PreviewAccessForm({ nextPath }: { nextPath: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="mt-6 w-full rounded-lg border border-cyan-200/25 bg-cyan-200/12 px-4 py-3 text-sm font-medium text-cyan-50 transition hover:border-cyan-100/45 hover:bg-cyan-200/18 disabled:cursor-not-allowed disabled:opacity-60"
+        className="vc-reading-serif mt-6 w-full rounded-[16px] border border-[#0a403a] bg-[#244f45] px-4 py-3 text-[1.1rem] font-semibold text-[#fffdf8] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? "正在验证..." : "进入预览站"}
       </button>

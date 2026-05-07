@@ -24,7 +24,7 @@
 | `AI_MODEL_CONTROL` | 建议 | 控制面 / 意图 / 安全预筛 |
 | `AI_MODEL_ENHANCE` | 建议 | 场景增强、情绪润色（Phase 1 可直接映射到 `AI_MODEL_MAIN`） |
 | `AI_MODEL_REASONER` | 建议 | 离线推演、管理洞察 |
-| `AI_ENABLE_NARRATIVE_ENHANCEMENT` | 否 | 叙事增强总开关；默认关闭（`false`） |
+| `AI_ENABLE_NARRATIVE_ENHANCEMENT` | 否 | 叙事增强总开关；默认开启（`true`）。这是 post-stream 可选增强，失败或超时会跳过 |
 | `AI_PLAYER_ROLE_CHAIN` | 否 | 玩家 SSE 候选顺序，如 `main,control` |
 | `AI_PLAYER_MODEL_CHAIN` | 否 | **遗留**：旧厂商 id 会映射为角色 |
 | `AI_MEMORY_PRIMARY_ROLE` / `AI_MEMORY_MODEL` | 否 | 记忆压缩链首选 |
@@ -44,7 +44,7 @@
 | `AI_GATEWAY_MERGE_EXTRA_BODY` | 否 | `1` 时把 `AI_GATEWAY_EXTRA_BODY_JSON` 解析为对象并**浅合并**进请求体（不覆盖 `messages`/`model`/`stream`/`max_tokens` 等保留键） |
 | `AI_CONTROL_PREFLIGHT_BUDGET_MS` | 否 | 见 §7 预检墙钟预算；`0` 表示不截断 |
 | `AI_LORE_RETRIEVAL_BUDGET_MS` | 否 | 见 §7 lore 检索墙钟预算；`0` 表示不截断 |
-| `AI_NARRATIVE_ENHANCE_BUDGET_MS` | 否 | 见 §7 尾段增强墙钟预算；`0` 表示仅用任务内超时 |
+| `AI_NARRATIVE_ENHANCE_BUDGET_MS` | 否 | 见 §7 尾段增强墙钟预算；默认 `4500`，`0` 表示仅用任务内超时 |
 | `AI_STREAM_MODERATION_THROTTLE_MS` | 否 | 见 §7 流式输出审核节流；`0` 表示每 delta 必审 |
 
 \*：`anyAiProviderConfigured()` 要求至少 **网关 URL + Key + `AI_MODEL_MAIN`** 非空；其他角色若未配置，对应任务链会自动跳过该角色。
@@ -123,7 +123,7 @@
 |------|------|------|
 | `AI_CONTROL_PREFLIGHT_BUDGET_MS` | `0` | `>0` 时预检最多等待该毫秒；超时则与「预检失败」相同，继续主模型流式（缩短 TTFT 尾部）。上限 10000。 |
 | `AI_LORE_RETRIEVAL_BUDGET_MS` | `600` | `>0` 时 lore 最多等待该毫秒；超时走 fallback lore 路径，不阻塞主模型开流。上限 5000。 |
-| `AI_NARRATIVE_ENHANCE_BUDGET_MS` | `0` | `>0` 时尾段感官增强 LLM 额外墙钟上限；超时放弃增强，仍发主模型 JSON（缩短终帧延迟）。上限 60000。 |
+| `AI_NARRATIVE_ENHANCE_BUDGET_MS` | `4500` | `>0` 时尾段感官增强 LLM 额外墙钟上限；超时放弃增强，仍发主模型 JSON（缩短终帧延迟）。上限 60000。 |
 | `AI_STREAM_MODERATION_THROTTLE_MS` | `0` | `>0` 时对 **JSON delta** 的 `postModelModeration` 按最小间隔节流（中间 delta 先直出，**削弱**分块审核密度；终帧仍有 `finalOutputModeration`）。上限 2000。 |
 
 另见治理项 **`AI_ENHANCE_GATE_MIN_SCORE`**（[`docs/ai-governance.md`](ai-governance.md)）：提高后增强门控更严，默认 `32` 与历史一致。

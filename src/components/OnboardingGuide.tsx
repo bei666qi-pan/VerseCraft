@@ -140,9 +140,8 @@ export function OnboardingGuide({
         </div>
       )}
 
-      {/* Tip text - frosted glass */}
       <div
-        className="absolute backdrop-blur-md bg-white/5 rounded-2xl px-5 py-4 max-w-[280px] shadow-xl"
+        className="absolute max-w-[280px] rounded-[18px] border border-[#d8d3ca] bg-[#fffdf8] px-5 py-4 text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.14)]"
         style={{
           left: rect ? Math.max(16, Math.min(rect.left + rect.width / 2 - 140, fallbackW - 296)) : "50%",
           top: rect
@@ -155,8 +154,8 @@ export function OnboardingGuide({
           transform: rect ? "translateX(-50%)" : "translate(-50%, -50%)",
         }}
       >
-        <p className="text-sm font-light text-white/95 leading-relaxed tracking-wide">{step.tip}</p>
-        <p className="mt-2 text-[11px] text-white/50 font-extralight">点击任意处继续</p>
+        <p className="text-sm font-medium leading-relaxed tracking-wide">{step.tip}</p>
+        <p className="mt-2 text-[11px] font-medium text-[#4f706a]">点击任意处继续</p>
       </div>
     </div>
   );

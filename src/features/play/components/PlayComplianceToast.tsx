@@ -6,7 +6,7 @@ export function PlayComplianceToast({ visible }: { visible: boolean }) {
     <div className="pointer-events-none fixed left-1/2 top-1/2 z-[80] w-[min(86vw,560px)] -translate-x-1/2 -translate-y-1/2">
       <div
         data-testid="play-compliance-paper-card"
-        className="rounded-[24px] border border-[#ded8ce] bg-[#fffdf8]/96 px-6 py-8 text-center text-[#0f6a60] shadow-[0_28px_70px_rgba(72,60,45,0.22),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-[6px]"
+        className="rounded-[24px] border border-[#ded8ce] bg-[#fffdf8] px-6 py-8 text-center text-[#0f6a60] shadow-[0_28px_70px_rgba(72,60,45,0.22),inset_0_1px_0_rgba(255,255,255,0.9)]"
       >
         <div className="mx-auto mb-7 flex w-[46%] items-center justify-center gap-3">
           <span className="h-px flex-1 bg-[#d8d1c6]" />

@@ -792,6 +792,34 @@ test.describe("mobile reading UI", () => {
 
     await page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-015"]').click();
     await expect(page.getByTestId("mobile-codex-detail-location")).toHaveText("B1 安全中枢");
+    await expect(page.getByTestId("mobile-codex-intro")).toContainText(
+      "黑色旧制式外套，披肩常带雨痕，站姿笔直，眼神克制而冷峻。"
+    );
+    await expect(page.getByTestId("mobile-codex-intro")).not.toContainText("坊间印象");
+    await expect(page.getByTestId("mobile-codex-intro")).not.toContainText("忌讳");
+    const codexDetailMetrics = await page.evaluate(() => {
+      const readBlock = (testId: string) => {
+        const block = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+        const paragraph = block?.querySelector<HTMLElement>("p");
+        if (!block || !paragraph) throw new Error(`missing ${testId}`);
+        const paragraphStyle = getComputedStyle(paragraph);
+        return {
+          blockHeight: block.clientHeight,
+          paragraphOverflowY: paragraphStyle.overflowY,
+        };
+      };
+      return {
+        intro: readBlock("mobile-codex-intro"),
+        observation: readBlock("mobile-codex-observation"),
+        relationship: readBlock("mobile-codex-relationship"),
+      };
+    });
+    expect(codexDetailMetrics.intro.paragraphOverflowY).not.toMatch(/auto|scroll/);
+    expect(codexDetailMetrics.observation.paragraphOverflowY).toBe("auto");
+    expect(codexDetailMetrics.observation.blockHeight).toBeGreaterThan(
+      codexDetailMetrics.relationship.blockHeight
+    );
+    expect(codexDetailMetrics.relationship.paragraphOverflowY).not.toMatch(/auto|scroll/);
     const codexText = await page.getByTestId("mobile-codex-panel").innerText();
     expect(codexText).not.toContain("B1_SafeZone");
     expect(codexText).not.toContain("B1_Storage");
@@ -972,10 +1000,23 @@ test.describe("mobile reading UI", () => {
 
     const talentButton = page.getByTestId("echo-talent-button");
     await expect(talentButton).toHaveAttribute("aria-label", "发动天赋：生命汇源");
+    await expect(talentButton).toHaveAttribute("data-ready", "true");
     await expect(talentButton).toBeEnabled();
+    const readyVisual = await talentButton.evaluate((node) => {
+      const style = getComputedStyle(node as HTMLElement);
+      return { opacity: Number.parseFloat(style.opacity), boxShadow: style.boxShadow };
+    });
+    expect(readyVisual.opacity).toBeGreaterThan(0.95);
+    expect(readyVisual.boxShadow).toContain("rgba");
     await talentButton.click();
     await expect(talentButton).toBeDisabled();
+    await expect(talentButton).toHaveAttribute("data-ready", "false");
     await expect(talentButton).toHaveAttribute("aria-label", /生命汇源，冷却:/);
+    await expect
+      .poll(async () => {
+        return talentButton.evaluate((node) => Number.parseFloat(getComputedStyle(node as HTMLElement).opacity));
+      })
+      .toBeLessThan(readyVisual.opacity);
   });
 
   for (const viewport of [

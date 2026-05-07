@@ -92,7 +92,7 @@ export function GuestSoftNudge({ context = "global" }: GuestSoftNudgeProps) {
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center">
-      <div className="pointer-events-none inline-flex max-w-md translate-y-0 transform items-center justify-center rounded-2xl bg-white/90 px-6 py-4 text-sm font-medium text-slate-800 shadow-2xl backdrop-blur-md transition-opacity duration-300">
+      <div className="pointer-events-none inline-flex max-w-md translate-y-0 transform items-center justify-center rounded-[18px] border border-[#d8d3ca] bg-[#fffdf8] px-6 py-4 text-sm font-medium text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.14)] transition-opacity duration-300">
         注册账号后可同步云存档，并保留本局历史记录。
       </div>
     </div>

@@ -22,7 +22,7 @@
 
 真实上游由 **one-api** + 环境变量 `AI_MODEL_*` 决定；应用内只使用下列 **角色**：
 
-> Phase 1（稳态过渡）：生产仅需 3 个实际部署名 `vc-main` / `vc-control` / `vc-reasoner`；`enhance` 逻辑角色保留，但默认映射到 `vc-main`，且增强触发默认关闭。
+> 稳态过渡：生产仅需 3 个实际部署名 `vc-main` / `vc-control` / `vc-reasoner`；`enhance` 逻辑角色保留，默认映射到 `vc-main`，叙事增强默认开启但只作为 post-stream 可选增强，受门控与 `AI_NARRATIVE_ENHANCE_BUDGET_MS` 预算限制，失败/超时跳过。
 
 | 逻辑角色 | 典型任务 |
 |----------|----------|

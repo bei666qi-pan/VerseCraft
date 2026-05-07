@@ -321,7 +321,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     enableStream: envBoolean("AI_ENABLE_STREAM", true),
     logLevel: envEnum("AI_LOG_LEVEL", ["silent", "error", "info", "debug"] as const, "info"),
     splitPlayerChatDualSystem: envBoolean("AI_PLAYER_CHAT_SPLIT_SYSTEM", false),
-    enableNarrativeEnhancement: envBoolean("AI_ENABLE_NARRATIVE_ENHANCEMENT", false),
+    enableNarrativeEnhancement: envBoolean("AI_ENABLE_NARRATIVE_ENHANCEMENT", true),
     enableNarrativeExpansion: envBoolean(
       "AI_NARRATIVE_EXPANSION_ENABLED",
       defaultNarrativeExpansionEnabled()
@@ -379,7 +379,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     ),
     narrativeEnhanceBudgetMs: Math.max(
       0,
-      Math.min(60_000, envNumber("AI_NARRATIVE_ENHANCE_BUDGET_MS", 0))
+      Math.min(60_000, envNumber("AI_NARRATIVE_ENHANCE_BUDGET_MS", 4_500))
     ),
     streamModerationThrottleMs: Math.max(
       0,

@@ -34,14 +34,6 @@ export default function RootLayout({
         className="min-h-screen flex flex-col bg-[#f7f3ec] text-foreground antialiased"
       >
         <MobileChromeTheme />
-        <svg aria-hidden className="absolute size-0 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <filter id="liquid-glass-refract" x="-20%" y="-20%" width="140%" height="140%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" result="noise" />
-              <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
-            </filter>
-          </defs>
-        </svg>
         <StorageDegradedBanner />
         <ChunkErrorHandler />
         <HydrationProvider>

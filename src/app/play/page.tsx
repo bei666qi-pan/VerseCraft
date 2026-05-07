@@ -4066,7 +4066,7 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
     <div className="relative min-h-[100svh] bg-[#f6f2ec]">
       {isHydrated && isGameStarted ? <PlayContent /> : null}
       {!isHydrated && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#f6f2ec]/80 backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#f6f2ec]">
           <div className="flex flex-col items-center gap-4">
             <div className="h-8 w-48 animate-pulse rounded-lg bg-[#d8d1c6]" />
             <div className="h-4 w-32 animate-pulse rounded bg-[#ebe5dc]" />

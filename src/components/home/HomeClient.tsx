@@ -1370,18 +1370,26 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
 
         {authOpen && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={authMode === "login" ? "登录" : "注册"}
+          >
             <div
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-[#efe8dd]/78"
               onClick={closeAuthModal}
             />
-            <div className="relative w-full max-w-md rounded-3xl border border-white/20 bg-slate-900/85 px-6 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.9)] backdrop-blur-2xl">
+            <div
+              data-testid="home-auth-paper-modal"
+              className="relative w-full max-w-md overflow-hidden rounded-[30px] border border-[#d8cbb8] bg-[#fbf7f0]/98 px-6 py-6 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)]"
+            >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-semibold tracking-widest text-slate-100">
+                  <h2 className="vc-reading-serif text-[26px] font-semibold leading-none text-[#0d5a4e]">
                     {authMode === "login" ? "登录" : "注册"}
                   </h2>
-                  <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+                  <p className="mt-2 text-xs leading-relaxed text-[#4f625c]">
                     {authMode === "login"
                       ? "用笔名与密码进入已存在的档案。"
                       : "创建新档案：笔名唯一，创建后可云同步与跨设备继续。"}
@@ -1390,26 +1398,26 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <button
                   type="button"
                   onClick={closeAuthModal}
-                  className="shrink-0 rounded-full border border-slate-600/60 bg-slate-800/80 px-3 py-1 text-xs text-slate-300 hover:border-slate-400 hover:text-slate-100"
+                  className="shrink-0 rounded-full border border-[#d8cbb8] bg-[#fffdf8] px-3 py-1 text-xs font-semibold text-[#164f4d] shadow-sm transition hover:bg-[#f8f2e8]"
                 >
                   关闭
                 </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAuthMode("login");
-                          void trackGameplayEvent({
-                            eventName: "auth_mode_switched",
-                            page: "/",
-                            source: "auth_modal",
-                            payload: { mode: "login" },
-                          }).catch(() => {});
-                        }}
-                  className={`h-9 rounded-xl text-xs font-semibold tracking-[0.22em] transition ${
-                    authMode === "login" ? "bg-white/15 text-white" : "text-slate-400 hover:text-slate-200"
+              <div className="mt-5 grid grid-cols-2 gap-2 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-1 shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    void trackGameplayEvent({
+                      eventName: "auth_mode_switched",
+                      page: "/",
+                      source: "auth_modal",
+                      payload: { mode: "login" },
+                    }).catch(() => {});
+                  }}
+                  className={`h-10 rounded-[14px] vc-reading-serif text-[1rem] font-semibold transition ${
+                    authMode === "login" ? "bg-[#244f45] text-[#fffdf8] shadow-sm" : "text-[#4f625c] hover:bg-[#f8f2e8]"
                   }`}
                   aria-pressed={authMode === "login"}
                 >
@@ -1417,17 +1425,17 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 </button>
                 <button
                   type="button"
-                        onClick={() => {
-                          setAuthMode("register");
-                          void trackGameplayEvent({
-                            eventName: "auth_mode_switched",
-                            page: "/",
-                            source: "auth_modal",
-                            payload: { mode: "register" },
-                          }).catch(() => {});
-                        }}
-                  className={`h-9 rounded-xl text-xs font-semibold tracking-[0.22em] transition ${
-                    authMode === "register" ? "bg-white/15 text-white" : "text-slate-400 hover:text-slate-200"
+                  onClick={() => {
+                    setAuthMode("register");
+                    void trackGameplayEvent({
+                      eventName: "auth_mode_switched",
+                      page: "/",
+                      source: "auth_modal",
+                      payload: { mode: "register" },
+                    }).catch(() => {});
+                  }}
+                  className={`h-10 rounded-[14px] vc-reading-serif text-[1rem] font-semibold transition ${
+                    authMode === "register" ? "bg-[#244f45] text-[#fffdf8] shadow-sm" : "text-[#4f625c] hover:bg-[#f8f2e8]"
                   }`}
                   aria-pressed={authMode === "register"}
                 >
@@ -1460,22 +1468,22 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   name="name"
                   autoComplete="username"
                   placeholder={authMode === "login" ? "笔名" : "新笔名（唯一）"}
-                  className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  className="h-11 w-full rounded-[16px] border border-[#cfc5b6] bg-[#fffdf8] px-4 text-sm text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
                   value={authName}
                   onChange={(e) => setAuthName(e.target.value)}
                 />
                 {authMode === "register" ? (
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500">笔名唯一性</span>
+                    <span className="text-[#6f6a60]">笔名唯一性</span>
                     <span
                       className={
                         nameCheck.status === "ok"
-                          ? "text-emerald-300"
+                          ? "text-[#0d6b52]"
                           : nameCheck.status === "taken"
-                            ? "text-rose-300"
+                            ? "text-[#9a3b35]"
                             : nameCheck.status === "error"
-                              ? "text-amber-300"
-                              : "text-slate-500"
+                              ? "text-[#8b6a22]"
+                              : "text-[#6f6a60]"
                       }
                     >
                       {nameCheck.status === "checking" ? "校验中…" : nameCheck.message || "请输入至少 2 个字符"}
@@ -1487,40 +1495,40 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   type="password"
                   autoComplete="current-password"
                   placeholder="密码（至少 6 位）"
-                  className="h-10 w-full rounded-xl border border-white/25 bg-slate-900/40 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  className="h-11 w-full rounded-[16px] border border-[#cfc5b6] bg-[#fffdf8] px-4 text-sm text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                 />
                 <div className="space-y-2">
-                  <label className="flex items-start gap-2 text-xs text-slate-300">
+                  <label className="flex items-start gap-2 text-xs text-[#0d3f39]">
                     <input
                       type="checkbox"
                       name="consent_user_agreement"
                       value="1"
                       checked={authConsentUserAgreement}
                       onChange={(e) => setAuthConsentUserAgreement(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-slate-600/60"
+                      className="mt-1 h-4 w-4 rounded border-[#cfc5b6] accent-[#0d5a4e]"
                     />
                     <span className="leading-relaxed">
                       我已阅读并同意{" "}
-                      <a className="underline underline-offset-2 hover:text-slate-100" href="/legal/user-agreement">
+                      <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/user-agreement">
                         用户协议
                       </a>
                       。
                     </span>
                   </label>
-                  <label className="flex items-start gap-2 text-xs text-slate-300">
+                  <label className="flex items-start gap-2 text-xs text-[#0d3f39]">
                     <input
                       type="checkbox"
                       name="consent_privacy_policy"
                       value="1"
                       checked={authConsentPrivacyPolicy}
                       onChange={(e) => setAuthConsentPrivacyPolicy(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-slate-600/60"
+                      className="mt-1 h-4 w-4 rounded border-[#cfc5b6] accent-[#0d5a4e]"
                     />
                     <span className="leading-relaxed">
                       我已阅读并同意{" "}
-                      <a className="underline underline-offset-2 hover:text-slate-100" href="/legal/privacy-policy">
+                      <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/privacy-policy">
                         隐私政策
                       </a>
                       。
@@ -1530,19 +1538,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <button
                   type="submit"
                   disabled={authPending}
-                  className={`h-10 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`h-12 w-full rounded-[16px] border border-[#0a403a] bg-[#244f45] vc-reading-serif text-[1.15rem] font-semibold text-[#fffdf8] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60 ${
                     authPending ? "halo-nerve" : ""
                   }`}
                 >
                   {authPending ? "处理中..." : authMode === "login" ? "登录并进入" : "注册并进入"}
                 </button>
                 {!activeAuthState.success && activeAuthState.error && (
-                  <div className="mt-3 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-xs text-red-100">
+                  <div className="mt-3 rounded-[14px] border border-[#d99a8f] bg-[#fff2ed] px-3 py-2 text-xs text-[#8d3f35]">
                     {activeAuthState.error}
                   </div>
                 )}
                 {activeAuthState.success && activeAuthState.message ? (
-                  <div className="mt-3 rounded-xl border border-emerald-400/40 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-100">
+                  <div className="mt-3 rounded-[14px] border border-[#9bcbb1] bg-[#edf8f1] px-3 py-2 text-xs text-[#0d6b52]">
                     {authMode === "login" ? "登录成功：正在进入…" : "注册成功：正在进入…"}
                   </div>
                 ) : null}
@@ -1552,7 +1560,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         )}
 
       {toast && (
-        <div className="pointer-events-none fixed top-24 right-8 z-50 rounded-2xl border border-red-400/50 bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-xl shadow-[0_0_24px_rgba(220,38,38,0.3)] animate-[fadeIn_0.35s_ease-out]">
+        <div className="pointer-events-none fixed right-8 top-24 z-50 rounded-[18px] border border-[#d99a8f] bg-[#fff2ed] px-4 py-3 text-sm font-medium text-[#8d3f35] shadow-[0_12px_28px_rgba(141,63,53,0.18)] animate-[fadeIn_0.35s_ease-out]">
           {toast}
         </div>
       )}
@@ -1614,7 +1622,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         }`}
       >
         <div
-          className={`absolute inset-0 backdrop-blur-[2px] transition-all duration-500 ${
+          className={`absolute inset-0 bg-[#efe8dd]/30 transition-all duration-500 ${
             continuePickerOpen ? "opacity-100" : "opacity-0"
           }`}
           onClick={() => setContinuePickerOpen(false)}
@@ -1728,24 +1736,24 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         }`}
       >
         <div
-          className={`absolute inset-0 bg-slate-900/25 backdrop-blur-sm transition-all duration-300 ${
+          className={`absolute inset-0 bg-[#efe8dd]/72 transition-all duration-300 ${
             deleteConfirmOpen ? "opacity-100" : "opacity-0"
           }`}
           onClick={() => setDeleteConfirmOpen(false)}
         />
         <div
-          className={`relative w-full max-w-md rounded-[1.75rem] border border-slate-200 bg-white/90 p-6 shadow-[0_30px_90px_rgba(15,23,42,0.25)] backdrop-blur-3xl transition-all duration-300 ${
+          className={`relative w-full max-w-md rounded-[1.75rem] border border-[#d8cbb8] bg-[#fbf7f0]/98 p-6 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)] transition-all duration-300 ${
             deleteConfirmOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
           <div className="text-left">
-            <div className="text-sm font-semibold tracking-widest text-slate-800">确认抹除记录？</div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            <div className="text-sm font-semibold tracking-widest text-[#0d5a4e]">确认抹除记录？</div>
+            <p className="mt-2 text-xs leading-relaxed text-[#4f625c]">
               {user ? "将同时抹除本机与云端（含自动记录）。" : "将抹除本机记录（游客模式无云端）。"}
             </p>
-            <p className="mt-3 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-700">
+            <p className="mt-3 rounded-xl border border-[#d8cbb8] bg-[#fffdf8]/80 px-3 py-2 text-xs text-[#4f625c]">
               目标：
-              <span className="ml-2 font-semibold text-slate-800">
+              <span className="ml-2 font-semibold text-[#0d5a4e]">
                 {deleteTargetDisplay || (deleteTargetSlotId ? "该记录" : "—")}
               </span>
             </p>
@@ -1755,7 +1763,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <button
               type="button"
               onClick={() => setDeleteConfirmOpen(false)}
-              className="rounded-full border border-slate-300 bg-white/70 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white"
+              className="rounded-full border border-[#d8cbb8] bg-[#fffdf8] px-5 py-2.5 text-sm font-semibold text-[#164f4d] hover:bg-[#f8f2e8]"
             >
               取消
             </button>
@@ -1779,7 +1787,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   await deleteCloudSaveSlot(autoId).catch(() => undefined);
                 }
               }}
-              className="rounded-full bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700"
+              className="rounded-full bg-[#8c2f2f] px-5 py-2.5 text-sm font-semibold text-[#fffdf8] transition hover:bg-[#743030]"
             >
               确认删除
             </button>
@@ -1858,14 +1866,14 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         }`}
       >
         <div
-          className={`fixed inset-0 bg-[#efe8dd]/72 backdrop-blur-[3px] transition-all duration-500 ${
+          className={`fixed inset-0 bg-[#efe8dd]/82 transition-all duration-500 ${
             surveyOpen ? "opacity-100" : "opacity-0"
           }`}
           onClick={closeSurveyModal}
         />
         <div
           data-testid="home-survey-paper-modal"
-          className={`relative w-full max-w-[430px] overflow-hidden rounded-[30px] border border-[#d8cbb8] bg-[#fbf7f0]/96 px-[clamp(1.35rem,6vw,2.4rem)] py-[clamp(1.7rem,7vw,2.8rem)] text-[#0f4f47] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55),inset_0_0_0_17px_rgba(255,253,248,0.78),inset_0_0_0_18px_rgba(224,214,199,0.5)] backdrop-blur-3xl transition-all duration-500 sm:max-w-[470px] ${
+          className={`relative w-full max-w-[430px] overflow-hidden rounded-[30px] border border-[#d8cbb8] bg-[#fbf7f0]/96 px-[clamp(1.35rem,6vw,2.4rem)] py-[clamp(1.7rem,7vw,2.8rem)] text-[#0f4f47] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55),inset_0_0_0_17px_rgba(255,253,248,0.78),inset_0_0_0_18px_rgba(224,214,199,0.5)] transition-all duration-500 sm:max-w-[470px] ${
             surveyOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >

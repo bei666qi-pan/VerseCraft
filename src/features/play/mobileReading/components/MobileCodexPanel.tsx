@@ -125,11 +125,15 @@ function DetailBlock({
   title,
   children,
   lines = 2,
+  scrollable = false,
+  testId,
 }: {
   icon: "book" | "eye" | "heart";
   title: string;
   children: string;
   lines?: 1 | 2 | 3;
+  scrollable?: boolean;
+  testId?: string;
 }) {
   const Icon =
     icon === "book"
@@ -140,17 +144,24 @@ function DetailBlock({
   const clampClass =
     lines === 1 ? "[-webkit-line-clamp:1]" : lines === 3 ? "[-webkit-line-clamp:3]" : "[-webkit-line-clamp:2]";
   return (
-    <section className="relative min-h-0 shrink-0 pr-3">
+    <section
+      data-testid={testId}
+      className={`relative min-h-0 pr-3 ${scrollable ? "flex flex-1 flex-col overflow-hidden" : "shrink-0"}`}
+    >
       <h3 className="vc-reading-serif flex items-center gap-2 text-[20px] font-semibold leading-none text-[#174d46] min-[420px]:text-[24px]">
         <Icon className="h-5 w-5 shrink-0 text-[#2f746a] min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.45} />
         {title}
       </h3>
       <p
-        className={`vc-reading-serif mt-1.5 overflow-hidden text-[15px] leading-[1.42] text-[#1f4b45] [display:-webkit-box] [-webkit-box-orient:vertical] min-[420px]:text-[17px] ${clampClass}`}
+        className={
+          scrollable
+            ? "vc-reading-serif mt-1.5 min-h-0 flex-1 overflow-y-auto pr-1 text-[15px] leading-[1.48] text-[#1f4b45] min-[420px]:text-[17px]"
+            : `vc-reading-serif mt-1.5 overflow-hidden text-[15px] leading-[1.42] text-[#1f4b45] [display:-webkit-box] [-webkit-box-orient:vertical] min-[420px]:text-[17px] ${clampClass}`
+        }
       >
         {children}
       </p>
-      {icon === "book" || icon === "eye" ? (
+      {scrollable ? (
         <div
           aria-hidden
           className="absolute bottom-0 right-0 top-4 flex w-2 flex-col items-center justify-between text-[#2f746a]"
@@ -250,7 +261,7 @@ export function MobileCodexPanel({
           {detail && selectedSlot ? (
             <article
               data-testid="mobile-codex-detail-panel"
-              className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 px-4 py-4 shadow-[0_8px_18px_rgba(73,63,51,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-5 min-[420px]:py-5"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 px-4 py-4 shadow-[0_8px_18px_rgba(73,63,51,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-5 min-[420px]:py-5"
             >
               <header className="grid shrink-0 grid-cols-[1.9rem_minmax(0,1fr)] gap-2.5">
                 <MobileReadingIcons.BrandMark className="mt-0.5 h-7 w-7 text-[#2f746a]" strokeWidth={1.5} />
@@ -280,15 +291,20 @@ export function MobileCodexPanel({
               </header>
 
               <DetailDivider />
-              <DetailBlock icon="book" title={introTitle} lines={2}>
+              <DetailBlock icon="book" title={introTitle} lines={2} testId="mobile-codex-intro">
                 {detail.intro}
               </DetailBlock>
               <DetailDivider />
-              <DetailBlock icon="eye" title="我所见" lines={2}>
+              <DetailBlock icon="eye" title="我所见" scrollable testId="mobile-codex-observation">
                 {detail.observation}
               </DetailBlock>
               <DetailDivider />
-              <DetailBlock icon="heart" title={selectedSlot.type === "anomaly" ? "应对记录" : "关系印象"} lines={2}>
+              <DetailBlock
+                icon="heart"
+                title={selectedSlot.type === "anomaly" ? "应对记录" : "关系印象"}
+                lines={1}
+                testId="mobile-codex-relationship"
+              >
                 {detail.relationship}
               </DetailBlock>
             </article>

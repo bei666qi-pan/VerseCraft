@@ -289,10 +289,24 @@ function normalizeCodexText(text: string | null | undefined): string {
   return String(text ?? "").replace(/\s+/g, " ").trim();
 }
 
+function firstDisplaySentence(text: string | null | undefined, maxLen = 96): string {
+  const firstLine = String(text ?? "")
+    .split(/\n+/)
+    .map((line) => normalizeCodexText(line))
+    .find(Boolean);
+  if (!firstLine) return "";
+
+  const sentence = firstLine.match(/^.*?[。！？!?](?=\s|$|[^，、；：,.])/u)?.[0]?.trim() ?? "";
+  const candidate = sentence || firstLine;
+  if (candidate.length <= maxLen) return candidate;
+  return candidate.slice(0, maxLen).trim();
+}
+
 export function buildMobileCodexIntro(entry: CodexEntry): string {
   const registryIntro = buildCodexIntro(entry).trim();
-  if (registryIntro) return registryIntro;
-  return normalizeCodexText(entry.known_info) || "暂无可靠记录。";
+  const registryOpening = firstDisplaySentence(registryIntro);
+  if (registryOpening) return registryOpening;
+  return firstDisplaySentence(entry.known_info) || "暂无可靠记录。";
 }
 
 export function buildMobileCodexObservation(entry: CodexEntry): string {

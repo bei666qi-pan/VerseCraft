@@ -36,7 +36,7 @@
 
 平凡轮次（评分不足、无控制面信号、被采样剔除、或预算用尽）**不会**调用 enhance 上游。
 
-Phase 1 默认策略：`AI_ENABLE_NARRATIVE_ENHANCEMENT=0`，增强链路默认不触发；逻辑角色与任务仍保留，避免破坏兼容与观测维度。
+默认策略：`AI_ENABLE_NARRATIVE_ENHANCEMENT=1`，增强链路在门控命中后作为 post-stream 可选增强触发；`AI_NARRATIVE_ENHANCE_BUDGET_MS` 默认 `4500`，失败或超时跳过，逻辑角色与任务仍保留，避免破坏兼容与观测维度。
 
 ## 缓存策略表
 
@@ -88,4 +88,4 @@ Redis 可用时走 `SETEX`/`GET`；否则进程内 Map（容量有界）。
 
 ## 环境变量（可选调参）
 
-见根目录 `.env.example` 中 `AI_CACHE_*` / `AI_PREFLIGHT_*` / `AI_ENHANCE_*` / `VERSECRAFT_AI_CACHE_VERSION`。叙事增强门控最低分可调 **`AI_ENHANCE_GATE_MIN_SCORE`**（默认 `32`，与历史一致；调高则更少回合进入增强采样），并可用 **`AI_ENABLE_NARRATIVE_ENHANCEMENT`** 做总开关。
+见根目录 `.env.example` 中 `AI_CACHE_*` / `AI_PREFLIGHT_*` / `AI_ENHANCE_*` / `VERSECRAFT_AI_CACHE_VERSION`。叙事增强门控最低分可调 **`AI_ENHANCE_GATE_MIN_SCORE`**（默认 `32`，与历史一致；调高则更少回合进入增强采样），并可用 **`AI_ENABLE_NARRATIVE_ENHANCEMENT`** 做总开关；后台 reasoner 仍只用于 world worker / `WORLDBUILD_OFFLINE` 等异步路径，不进入 `PLAYER_CHAT` 主流。

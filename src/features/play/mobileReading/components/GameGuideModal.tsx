@@ -17,7 +17,7 @@ export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () =
   return (
     <div
       data-testid="game-guide-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#ede7de]/64 px-4 py-[max(1.5rem,env(safe-area-inset-top))] backdrop-blur-[3px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#ede7de]/78 px-4 py-[max(1.5rem,env(safe-area-inset-top))]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="game-guide-title"

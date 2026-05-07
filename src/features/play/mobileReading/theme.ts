@@ -58,13 +58,13 @@ export const mobileReadingTheme = {
   shellBody: "relative isolate min-h-[100svh] overflow-visible",
 
   header:
-    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2]/96 px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)] backdrop-blur-[10px]",
+    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2] px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)]",
   headerCodex:
-    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2]/98 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] backdrop-blur-[8px] min-[420px]:px-6",
+    "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2] px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] min-[420px]:px-6",
   headerPinned:
-    "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2]/96 px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)] backdrop-blur-[10px] md:border-x md:border-[#ded8ce]",
+    "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2] px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)] md:border-x md:border-[#ded8ce]",
   headerCodexPinned:
-    "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2]/98 px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] backdrop-blur-[8px] min-[420px]:px-6 md:border-x md:border-[#ded8ce]",
+    "fixed top-0 left-1/2 z-50 box-border h-[var(--vc-mobile-header-height)] w-full max-w-[480px] -translate-x-1/2 border-b border-[#ded8ce] bg-[#fbf8f2] px-5 pb-0 pt-[max(0.7rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_6px_18px_rgba(67,55,42,0.055)] min-[420px]:px-6 md:border-x md:border-[#ded8ce]",
   headerSpacer: "h-[var(--vc-mobile-header-height)] shrink-0",
   headerRow: "flex h-full items-center justify-between gap-3",
   headerBrand: "flex min-w-0 flex-1 flex-col items-start justify-center gap-1 vc-reading-serif",
@@ -101,9 +101,13 @@ export const mobileReadingTheme = {
   actionDockExpanded:
     "bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-options-panel-height)+var(--vc-mobile-stack-gap)+var(--vc-mobile-stack-gap))]",
   actionDockPill:
-    "pointer-events-auto flex h-[3.9rem] items-center gap-1 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-2 shadow-[0_8px_18px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.92)] backdrop-blur-[8px]",
+    "pointer-events-auto flex h-[3.9rem] items-center gap-1 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-2 shadow-[0_8px_18px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.92)]",
   talentButton:
-    "h-[2.35rem] w-[2.35rem] enabled:hover:bg-white enabled:active:scale-95 disabled:opacity-95 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
+    "h-[2.35rem] w-[2.35rem] enabled:hover:bg-white enabled:active:scale-95 min-[420px]:h-[2.56rem] min-[420px]:w-[2.56rem]",
+  talentButtonReady:
+    "border-[#b9d0c7] bg-[#fffef9] text-[#0f6a60] shadow-[0_0_16px_rgba(47,116,106,0.22),0_5px_12px_rgba(47,116,106,0.12),inset_0_1px_0_rgba(255,255,255,0.96)]",
+  talentButtonCooling:
+    "border-[#d8d1c6] bg-[#f3efe7] text-[#8b8a84] opacity-70 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]",
   talentIcon: "h-[1.25rem] w-[1.25rem] min-[420px]:h-[1.35rem] min-[420px]:w-[1.35rem]",
   actionInput:
     "min-w-0 flex-1 rounded-full border border-[#d8d1c6] bg-[#fbf8f2] px-3 py-2.5 vc-reading-serif text-[14px] leading-none text-[#174d46] outline-none transition placeholder:text-[#9a9993] focus:border-[#2f746a]/65 focus:bg-white disabled:opacity-60 min-[420px]:px-4 min-[420px]:text-[15px]",
@@ -133,7 +137,7 @@ export const mobileReadingTheme = {
   optionChevronHidden: "opacity-0",
 
   bottomNav:
-    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#d8d1c6] bg-[#fffdf8] px-7 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_24px_rgba(73,63,51,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-[10px] min-[420px]:px-9",
+    "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#d8d1c6] bg-[#fffdf8] px-7 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_24px_rgba(73,63,51,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-9",
   bottomNavGrid: "grid h-full grid-cols-4 items-end gap-1",
   bottomNavItem:
     "relative flex h-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-none text-[#174d46] transition active:scale-95",

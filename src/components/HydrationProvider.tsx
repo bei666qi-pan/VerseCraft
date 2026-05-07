@@ -40,7 +40,7 @@ export default function HydrationProvider({
   if (!isHydrated) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
-        <div className="h-10 w-56 animate-pulse rounded-xl bg-white/10 backdrop-blur-sm" />
+        <div className="h-10 w-56 animate-pulse rounded-xl bg-[#e5ded3]" />
         <div className="h-4 w-36 animate-pulse rounded-lg bg-white/5" />
         <p className="text-sm text-slate-400">读取世界线中...</p>
       </div>

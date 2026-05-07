@@ -83,7 +83,7 @@
 - **网关**：`AI_GATEWAY_PROVIDER`（默认 `oneapi`）、`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`
 - **角色 → 上游模型名**：`AI_MODEL_MAIN`、`AI_MODEL_CONTROL`、`AI_MODEL_ENHANCE`、`AI_MODEL_REASONER`
 - **Phase 1 三部署推荐映射**：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-main`、`AI_MODEL_REASONER=vc-reasoner`
-- **增强触发开关**：`AI_ENABLE_NARRATIVE_ENHANCEMENT`（默认关闭；仅控制“是否触发增强”，不删除逻辑角色与任务矩阵）
+- **增强触发开关**：`AI_ENABLE_NARRATIVE_ENHANCEMENT`（默认开启；仅控制“是否触发 post-stream 可选增强”，不删除逻辑角色与任务矩阵；失败/超时按预算跳过）
 - **玩家链**：`AI_PLAYER_ROLE_CHAIN`；兼容旧 `AI_PLAYER_MODEL_CHAIN`（旧 id 映射为角色）
 - **覆盖链首**：`AI_MEMORY_PRIMARY_ROLE` / 旧 `AI_MEMORY_MODEL`；`AI_DEV_ASSIST_PRIMARY_ROLE` / 旧 `AI_ADMIN_MODEL`
 - **行为**：`AI_ENABLE_STREAM`、`AI_LOG_LEVEL`、`AI_REQUEST_TIMEOUT_MS`、`AI_MAX_RETRIES`、熔断与 `AI_OPERATION_MODE`

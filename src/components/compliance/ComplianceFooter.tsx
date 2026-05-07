@@ -18,7 +18,7 @@ export function ComplianceFooter() {
   return (
     <footer className="w-full px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-10">
       <div className="mx-auto w-full max-w-5xl">
-        <div className="rounded-3xl bg-white/35 px-6 py-6 backdrop-blur-xl">
+        <div className="rounded-3xl border border-[#d8cbb8] bg-[#fffdf8]/88 px-6 py-6 shadow-[0_12px_30px_rgba(72,60,45,0.09)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="flex flex-col gap-2">
               <div className="text-xs font-semibold tracking-widest text-slate-700/80">{compactProductName} · 合规</div>

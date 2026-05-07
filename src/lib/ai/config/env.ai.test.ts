@@ -187,26 +187,29 @@ test("resolveAiEnv maps enhance model to main when AI_MODEL_ENHANCE is unset", (
   );
 });
 
-test("resolveAiEnv keeps narrative enhancement disabled by default", () => {
+test("resolveAiEnv enables narrative enhancement by default with a finite budget", () => {
   withEnv(
     {
       ...gatewayBase,
       AI_ENABLE_NARRATIVE_ENHANCEMENT: undefined,
+      AI_NARRATIVE_ENHANCE_BUDGET_MS: undefined,
     },
     () => {
-      assert.equal(resolveAiEnv().enableNarrativeEnhancement, false);
+      const env = resolveAiEnv();
+      assert.equal(env.enableNarrativeEnhancement, true);
+      assert.equal(env.narrativeEnhanceBudgetMs, 4_500);
     }
   );
 });
 
-test("resolveAiEnv enables narrative enhancement when explicitly set", () => {
+test("resolveAiEnv disables narrative enhancement when explicitly set off", () => {
   withEnv(
     {
       ...gatewayBase,
-      AI_ENABLE_NARRATIVE_ENHANCEMENT: "1",
+      AI_ENABLE_NARRATIVE_ENHANCEMENT: "0",
     },
     () => {
-      assert.equal(resolveAiEnv().enableNarrativeEnhancement, true);
+      assert.equal(resolveAiEnv().enableNarrativeEnhancement, false);
     }
   );
 });

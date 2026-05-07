@@ -16,7 +16,15 @@ export function EchoTalentButton({ label, ready, talentName, onUseTalent }: Echo
       aria-label={label}
       title={label}
       data-testid="echo-talent-button"
-      className={`${mobileReadingTheme.iconButton} ${mobileReadingTheme.talentButton}`}
+      data-ready={ready ? "true" : "false"}
+      style={
+        ready
+          ? undefined
+          : { opacity: 0.62, filter: "saturate(0.72) brightness(0.86) contrast(0.9)" }
+      }
+      className={`${mobileReadingTheme.iconButton} ${mobileReadingTheme.talentButton} ${
+        ready ? mobileReadingTheme.talentButtonReady : mobileReadingTheme.talentButtonCooling
+      }`}
     >
       <MobileReadingTalentIcon
         talentName={talentName}

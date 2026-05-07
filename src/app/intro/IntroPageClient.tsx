@@ -87,7 +87,7 @@ function WorldCard({
           type="button"
           data-testid="intro-world-info"
           onClick={onIntro}
-          className="absolute right-[4.2%] top-[2.4%] inline-flex h-10 items-center gap-2 rounded-full border border-white/38 bg-white/18 px-4 text-[15px] font-medium text-white shadow-[inset_0_0_22px_rgba(255,255,255,0.12),0_8px_18px_rgba(0,0,0,0.12)] backdrop-blur-md transition hover:bg-white/24 active:scale-[0.98] min-[430px]:h-11 min-[430px]:text-[16px]"
+          className="absolute right-[4.2%] top-[2.4%] inline-flex h-10 items-center gap-2 rounded-full border border-[#d8cfc1] bg-[#fffdf8] px-4 text-[15px] font-semibold text-[#173f3a] shadow-[0_8px_18px_rgba(31,38,35,0.14),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-[#f8f4ed] active:scale-[0.98] min-[430px]:h-11 min-[430px]:text-[16px]"
         >
           <FileText size={17} strokeWidth={1.9} />
           世界观介绍
@@ -107,7 +107,7 @@ function IntroModal({
   return (
     <div
       data-testid="intro-world-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#173b36]/28 px-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#efe8dd]/78 px-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="intro-world-modal-title"

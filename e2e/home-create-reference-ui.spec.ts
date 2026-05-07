@@ -177,6 +177,36 @@ test.describe("paper reference UI", () => {
     });
   }
 
+  test("home auth login and register modal uses paper surfaces", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoAndExpectTestId(page, "/?e2e=1", "home-paper-page");
+
+    await page.getByRole("button", { name: "登录或注册" }).click();
+    const modal = page.getByTestId("home-auth-paper-modal");
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText("登录");
+    await expect(modal).toContainText("用笔名与密码进入已存在的档案。");
+
+    const loginMetrics = await modal.evaluate((node) => {
+      const el = node as HTMLElement;
+      const style = getComputedStyle(el);
+      return {
+        className: el.className,
+        backgroundColor: style.backgroundColor,
+        borderColor: style.borderTopColor,
+      };
+    });
+    expect(loginMetrics.className).not.toContain("backdrop-blur");
+    expect(loginMetrics.className).not.toContain("glass");
+    expect(loginMetrics.className).toContain("bg-[#fbf7f0]");
+    expect(loginMetrics.className).toContain("border-[#d8cbb8]");
+
+    await modal.getByRole("button", { name: "注册" }).click();
+    await expect(modal).toContainText("注册");
+    await expect(modal).toContainText("创建新档案：笔名唯一，创建后可云同步与跨设备继续。");
+    await expectNoHorizontalOverflow(page);
+  });
+
   test("home continue with local save enters play instead of create", async ({ page }) => {
     const clientErrors: string[] = [];
     page.on("console", (msg) => {

@@ -29,7 +29,7 @@ export function ChapterSwitchModal({
   return (
     <div
       data-testid="chapter-switch-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#ede7de]/55 px-7 py-[max(2rem,env(safe-area-inset-top))] backdrop-blur-[3px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#ede7de]/78 px-7 py-[max(2rem,env(safe-area-inset-top))]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="chapter-switch-title"

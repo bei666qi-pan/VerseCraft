@@ -28,7 +28,7 @@ export function PlayTaskPanel({
   if (!open) return null;
 
   return (
-    <aside className="pointer-events-auto fixed right-3 top-[84px] z-[72] w-[352px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white/85 shadow-[0_28px_72px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+    <aside className="pointer-events-auto fixed right-3 top-[84px] z-[72] w-[352px] max-w-[calc(100vw-24px)] rounded-2xl border border-[#d8cbb8] bg-[#fffdf8] text-[#174d46] shadow-[0_28px_72px_rgba(72,60,45,0.16)]">
       <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold tracking-wider text-slate-800">目标与局势</h3>

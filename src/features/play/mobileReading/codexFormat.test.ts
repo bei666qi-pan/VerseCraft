@@ -4,6 +4,7 @@ import type { CodexEntry } from "@/store/useGameStore";
 import { B1_NPC_CODEX_SLOTS } from "./codexCatalog";
 import {
   buildMobileCodexCardModels,
+  buildMobileCodexIntro,
   formatMobileCodexLocation,
   getMobileCodexIdentifiedCount,
   getMobileCodexSlotsForFloor,
@@ -116,4 +117,13 @@ test("mobile codex supports anomaly card models", () => {
 
   assert.equal(anomalyCard?.identified, true);
   assert.equal(anomalyCard?.displayName, "无头猎犬");
+});
+
+test("mobile codex intro keeps only the opening registry description", () => {
+  const intro = buildMobileCodexIntro(npcEntry("N-015", "麟泽"));
+
+  assert.equal(intro, "黑色旧制式外套，披肩常带雨痕，站姿笔直，眼神克制而冷峻。");
+  assert.equal(intro.includes("\n"), false);
+  assert.equal(intro.includes("坊间印象"), false);
+  assert.equal(intro.includes("忌讳"), false);
 });

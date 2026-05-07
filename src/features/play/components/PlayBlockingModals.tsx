@@ -1,7 +1,6 @@
 "use client";
 
 import { X } from "lucide-react";
-import { glassModalOverlay, glassPlayDialogSurface } from "@/lib/ui/glassStyles";
 
 export function PlayBlockingModals({
   showDialoguePaywall,
@@ -24,14 +23,14 @@ export function PlayBlockingModals({
     <>
       {showDialoguePaywall && (
         <div
-          className={`fixed inset-0 z-[70] flex items-center justify-center ${glassModalOverlay}`}
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-[#efe8dd]/78 px-4"
           role="dialog"
           aria-modal
         >
-          <div className={`${glassPlayDialogSurface} p-8`}>
-            <h2 className="text-lg font-semibold tracking-wide text-white">体验次数已耗尽</h2>
+          <div className="w-full max-w-md rounded-[28px] border border-[#d8cbb8] bg-[#fbf7f0]/98 p-8 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)]">
+            <h2 className="vc-reading-serif text-[1.7rem] font-semibold leading-none text-[#0d5a4e]">体验次数已耗尽</h2>
             {showRegisterPrompt && (
-              <p className="mt-3 text-sm leading-relaxed text-slate-200">
+              <p className="mt-4 text-sm leading-relaxed text-[#4f625c]">
                 体验次数已耗尽。若你仍要继续行动，请注册或登录。
               </p>
             )}
@@ -39,9 +38,9 @@ export function PlayBlockingModals({
               <button
                 type="button"
                 onClick={onPaywallRegister}
-                className="group relative inline-flex items-center gap-3 rounded-full border border-white/15 bg-slate-900/70 px-8 py-3 text-sm font-semibold text-slate-50 shadow-[0_0_40px_rgba(15,23,42,0.9)] backdrop-blur-2xl transition-all duration-300 hover:scale-105 hover:border-cyan-300/70 hover:shadow-[0_0_55px_rgba(56,189,248,0.85)]"
+                className="vc-reading-serif inline-flex min-h-12 items-center justify-center rounded-[16px] border border-[#0a403a] bg-[#244f45] px-8 text-[1.05rem] font-semibold text-[#fffdf8] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition hover:bg-[#1c453d]"
               >
-                <span className="relative">注册 / 登录</span>
+                注册 / 登录
               </button>
             </div>
           </div>
@@ -50,7 +49,7 @@ export function PlayBlockingModals({
 
       {showExitModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#f2eee7]/68 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#f2eee7]/82 p-4"
           role="dialog"
           aria-modal
           aria-labelledby="exit-modal-title"
