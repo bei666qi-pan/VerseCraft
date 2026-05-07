@@ -32,3 +32,13 @@ export type {
   BuildEpistemicInputArgs,
   LorePacketInput,
 } from "./buildEpistemicInput";
+
+export { buildEpistemicPromptContext } from "./promptContext";
+
+export type {
+  EpistemicPromptContext,
+  EpistemicPromptContextCaps,
+  EpistemicPromptContextTelemetry,
+  EpistemicPromptFact,
+  EpistemicPromptResidueHint,
+} from "./promptContext";

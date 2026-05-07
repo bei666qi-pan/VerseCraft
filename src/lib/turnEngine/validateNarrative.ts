@@ -64,6 +64,8 @@ import {
   type UnsupportedFactIssueCode,
   type UnsupportedFactDetectorReport,
 } from "@/lib/worldFacts/unsupportedFactDetector";
+import { normalizeNarrativeAuditPayload, type NarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
+import { listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
 import type { EpistemicFilterResult } from "@/lib/turnEngine/epistemic/types";
 import type { KnowledgeFact } from "@/lib/epistemic/types";
 import type {
@@ -201,6 +203,7 @@ export type ValidateNarrativeArgs = {
   allowedFactIds?: readonly string[];
   scenePublicFactIds?: readonly string[];
   actorScopedFactIds?: readonly string[];
+  sessionCommittedFactIds?: readonly string[];
   factDetectionMaxRevealRank?: number;
 };
 
@@ -272,17 +275,25 @@ function asObject(v: unknown): Record<string, unknown> | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
-function extractNarrativeAudit(dm: Record<string, unknown>): {
-  usedFactIds: string[];
-  candidateNewFacts: unknown[];
-} {
-  const audit = asObject(dm._narrative_audit);
+function emptyNarrativeAudit(): NarrativeAuditPayload {
   return {
-    usedFactIds: asStringArray(audit?.used_fact_ids ?? dm.used_fact_ids),
-    candidateNewFacts: Array.isArray(audit?.candidate_new_facts ?? dm.candidate_new_facts)
-      ? ((audit?.candidate_new_facts ?? dm.candidate_new_facts) as unknown[])
-      : [],
+    used_fact_ids: [],
+    candidate_new_facts: [],
+    mentioned_entity_ids: [],
   };
+}
+
+function extractNarrativeAudit(dm: Record<string, unknown>): NarrativeAuditPayload {
+  const audit = asObject(dm._narrative_audit);
+  return normalizeNarrativeAuditPayload(
+    {
+      used_fact_ids: audit?.used_fact_ids ?? dm.used_fact_ids,
+      candidate_new_facts: audit?.candidate_new_facts ?? dm.candidate_new_facts,
+      mentioned_entity_ids: audit?.mentioned_entity_ids ?? dm.mentioned_entity_ids,
+      speaker_npc_id: audit?.speaker_npc_id ?? dm.speaker_npc_id,
+    },
+    { preserveEmptyArrays: true }
+  ) ?? emptyNarrativeAudit();
 }
 
 function mapUnsupportedSeverity(code: UnsupportedFactIssueCode): "low" | "medium" | "high" {
@@ -618,27 +629,36 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     }
   }
 
+  const maxRevealRankForFacts = args.factDetectionMaxRevealRank ?? args.npcKnowledgeMaxRevealRank ?? 0;
   const allowedFactIds = [
-    ...(args.allowedFactIds ?? []),
-    ...(args.scenePublicFactIds ?? []),
-    ...(args.actorScopedFactIds ?? []),
-    ...(args.npcKnowledgePacket?.can_know_fact_ids ?? []),
-    ...(args.npcKnowledgePacket?.can_hint_fact_ids ?? []),
+    ...new Set([
+      ...(args.allowedFactIds ?? []),
+      ...(args.scenePublicFactIds ?? []),
+      ...(args.actorScopedFactIds ?? []),
+      ...(args.npcKnowledgePacket?.can_know_fact_ids ?? []),
+      ...(args.npcKnowledgePacket?.can_hint_fact_ids ?? []),
+      ...listWorldFacts(maxRevealRankForFacts).map((fact) => fact.factId),
+      ...(args.sessionCommittedFactIds ?? []),
+    ]),
   ];
   const unsupportedFactDetectionEnabled = args.unsupportedFactDetectionEnabled !== false;
   const unsupportedFactReport =
     Object.prototype.hasOwnProperty.call(args, "unsupportedFactReport")
       ? args.unsupportedFactReport ?? null
       : unsupportedFactDetectionEnabled &&
-          (narrative || narrativeAudit.usedFactIds.length > 0 || narrativeAudit.candidateNewFacts.length > 0)
+          (narrative || narrativeAudit.used_fact_ids.length > 0 || narrativeAudit.candidate_new_facts.length > 0)
         ? detectUnsupportedFacts({
             narrative,
-            usedFactIds: narrativeAudit.usedFactIds,
+            usedFactIds: narrativeAudit.used_fact_ids,
+            candidateNewFacts: narrativeAudit.candidate_new_facts,
             allowedFactIds,
             npcKnowledgePacket: args.npcKnowledgePacket ?? null,
             scenePublicFactIds: args.scenePublicFactIds ?? [],
             actorScopedFactIds: args.actorScopedFactIds ?? [],
-            maxRevealRank: args.factDetectionMaxRevealRank ?? args.npcKnowledgeMaxRevealRank ?? 0,
+            sessionCommittedFactIds: args.sessionCommittedFactIds ?? [],
+            maxRevealRank: maxRevealRankForFacts,
+            stateDelta: args.delta,
+            dmRecord: dm,
           })
         : null;
   if (unsupportedFactReport && unsupportedFactReport.unsupportedCandidates.length > 0) {

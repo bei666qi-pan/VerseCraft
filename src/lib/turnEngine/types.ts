@@ -41,11 +41,30 @@ export type TurnLaneReason =
   | "short_acknowledgement"
   | "default_rule";
 
+export type TurnLaneSideEffectPlan = {
+  /**
+   * Skip heavy runtime lore retrieval for turns whose semantics do not need
+   * fresh lore. Safety, schema, final validation and the safety kernel still run.
+   */
+  skipRuntimeLore: boolean;
+  /** Use compact prompt packets and smaller context caps. */
+  compactPrompt: boolean;
+  /** Force the full actor-scoped epistemic context even under tight budgets. */
+  requireFullEpistemic: boolean;
+  /** Keep NPC consistency validation/rewrite in the final hook path. */
+  requireNpcConsistency: boolean;
+  /** Require Narrative Safety Kernel hard-gate after model output. */
+  requireNarrativeSafetyHardGate: boolean;
+  /** Require pacing validation/budget packets for this turn. */
+  requirePacingValidation: boolean;
+};
+
 export type TurnLaneDecision = {
   lane: TurnLane;
   reasons: TurnLaneReason[];
   /** non-authoritative confidence hint for analytics only */
   confidence: "low" | "medium" | "high";
+  sideEffectPlan: TurnLaneSideEffectPlan;
 };
 
 /**

@@ -66,6 +66,13 @@ export type AnalyticsEventName =
   | "turn_lane_decided"
   | "turn_commit_summary"
   | "narrative_validator_issue"
+  | "narrative_safety_issue"
+  | "narrative_safety_commit"
+  | "entity_audit_issue"
+  | "pacing_validator_issue"
+  | "safety_fallback_used"
+  | "unknown_entity_blocked"
+  | "prompt_injection_blocked"
   | "narrative_protocol_leak"
   | "presence_flaky";
 

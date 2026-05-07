@@ -4,6 +4,10 @@ import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { listRecentAiObservability } from "@/lib/ai/debug/observabilityRing";
 import { listRecentAiRoutingReports } from "@/lib/ai/debug/routingRing";
 import { snapshotModelCircuits } from "@/lib/ai/fallback/modelCircuit";
+import {
+  getNarrativeSafetyRuntimeConfig,
+  getNarrativeSafetyTelemetrySummary,
+} from "@/lib/turnEngine/narrativeSafety";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +21,7 @@ export async function GET() {
         recent: listRecentAiRoutingReports(),
         observability: listRecentAiObservability(),
         modelCircuits: snapshotModelCircuits(),
+        narrativeSafety: getNarrativeSafetyTelemetrySummary(getNarrativeSafetyRuntimeConfig()),
       }),
       { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=10" } }
     );

@@ -5,6 +5,7 @@
 import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 import { extractBalancedJsonObjectCandidates } from "@/features/play/stream/dmParse";
 import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
+import { normalizeNarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
 
 function coerceOptionToString(x: unknown): string | null {
   if (typeof x === "string") return x.trim() || null;
@@ -24,10 +25,6 @@ function asStringArray(v: unknown): string[] {
 function asUnknownArray(v: unknown): unknown[] {
   if (!Array.isArray(v)) return [];
   return v;
-}
-
-function asUnknownRecord(v: unknown): Record<string, unknown> | null {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
 function clampInt(n: unknown, min: number, max: number): number {
@@ -56,20 +53,7 @@ function asObjectArray(v: unknown, maxLen: number): Array<Record<string, unknown
 }
 
 function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
-  const src = asUnknownRecord(v);
-  if (!src) return null;
-  const out: Record<string, unknown> = {};
-  const usedFactIds = asStringArray(src.used_fact_ids).slice(0, 24);
-  const usedNpcBeliefIds = asStringArray(src.used_npc_belief_ids).slice(0, 24);
-  const candidateNewFacts = asObjectArray(src.candidate_new_facts, 8).map((fact) => ({
-    ...fact,
-    factId: typeof fact.factId === "string" ? fact.factId.trim().slice(0, 120) : undefined,
-    content: typeof fact.content === "string" ? fact.content.trim().slice(0, 240) : undefined,
-  }));
-  if (usedFactIds.length > 0) out.used_fact_ids = usedFactIds;
-  if (usedNpcBeliefIds.length > 0) out.used_npc_belief_ids = usedNpcBeliefIds;
-  if (candidateNewFacts.length > 0) out.candidate_new_facts = candidateNewFacts;
-  return Object.keys(out).length > 0 && safeJsonByteLength(out) <= 1800 ? out : null;
+  return normalizeNarrativeAuditPayload(v);
 }
 
 const RISK_SOURCES = new Set([

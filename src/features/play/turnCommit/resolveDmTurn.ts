@@ -10,6 +10,7 @@ import { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
+import { normalizeNarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
 import type { NarrativeDensity, TurnEnvelope, TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
 export type ResolvedTurnUiHints = {
@@ -125,16 +126,7 @@ function asUnknownRecord(v: unknown): Record<string, unknown> | null {
 }
 
 function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
-  const src = asUnknownRecord(v);
-  if (!src) return null;
-  const out: Record<string, unknown> = {};
-  const usedFactIds = asStringArray(src.used_fact_ids).slice(0, 24);
-  const usedNpcBeliefIds = asStringArray(src.used_npc_belief_ids).slice(0, 24);
-  const candidateNewFacts = asObjectArray(src.candidate_new_facts).slice(0, 8);
-  if (usedFactIds.length > 0) out.used_fact_ids = usedFactIds;
-  if (usedNpcBeliefIds.length > 0) out.used_npc_belief_ids = usedNpcBeliefIds;
-  if (candidateNewFacts.length > 0) out.candidate_new_facts = candidateNewFacts;
-  return Object.keys(out).length > 0 ? out : null;
+  return normalizeNarrativeAuditPayload(v);
 }
 
 /** 供客户端与反馈层复用：统一解析 `conflict_outcome` / `combat_summary` 线型。 */

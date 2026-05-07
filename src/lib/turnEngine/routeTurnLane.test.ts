@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { NormalizedPlayerIntent } from "@/lib/turnEngine/types";
-import { routeTurnLane } from "@/lib/turnEngine/routeTurnLane";
+import { planTurnLaneSideEffects, routeTurnLane } from "@/lib/turnEngine/routeTurnLane";
 
 function makeIntent(partial: Partial<NormalizedPlayerIntent> = {}): NormalizedPlayerIntent {
   return {
@@ -27,6 +27,9 @@ test("routeTurnLane returns FAST for options_regen_only", () => {
   assert.equal(decision.lane, "FAST");
   assert.ok(decision.reasons.includes("options_regen_only"));
   assert.equal(decision.confidence, "high");
+  assert.equal(decision.sideEffectPlan.skipRuntimeLore, true);
+  assert.equal(decision.sideEffectPlan.compactPrompt, true);
+  assert.equal(decision.sideEffectPlan.requireNarrativeSafetyHardGate, true);
 });
 
 test("routeTurnLane returns RULE for system_transition input", () => {
@@ -60,6 +63,9 @@ test("routeTurnLane routes explicit reveal phrases to REVEAL when epistemic enab
   });
   assert.equal(decision.lane, "REVEAL");
   assert.ok(decision.reasons.includes("explicit_reveal_intent"));
+  assert.equal(decision.sideEffectPlan.requireFullEpistemic, true);
+  assert.equal(decision.sideEffectPlan.requireNpcConsistency, true);
+  assert.equal(decision.sideEffectPlan.requireNarrativeSafetyHardGate, true);
 });
 
 test("routeTurnLane explicit reveal falls back to RULE when epistemic disabled", () => {
@@ -115,6 +121,9 @@ test("routeTurnLane routes high risk tags to RULE", () => {
   });
   assert.equal(decision.lane, "RULE");
   assert.ok(decision.reasons.includes("high_risk_tags"));
+  assert.equal(decision.sideEffectPlan.skipRuntimeLore, false);
+  assert.equal(decision.sideEffectPlan.compactPrompt, false);
+  assert.equal(decision.sideEffectPlan.requireNarrativeSafetyHardGate, true);
 });
 
 test("routeTurnLane uses director tension to force RULE", () => {
@@ -139,6 +148,7 @@ test("routeTurnLane returns FAST for short ack on fast risk lane", () => {
   assert.equal(decision.lane, "FAST");
   assert.ok(decision.reasons.includes("short_acknowledgement"));
   assert.ok(decision.reasons.includes("fast_risk_lane"));
+  assert.deepEqual(decision.sideEffectPlan, planTurnLaneSideEffects("FAST"));
 });
 
 test("routeTurnLane defaults to RULE when nothing matches", () => {
@@ -150,4 +160,31 @@ test("routeTurnLane defaults to RULE when nothing matches", () => {
   });
   assert.equal(decision.lane, "RULE");
   assert.ok(decision.reasons.includes("default_rule"));
+});
+
+test("planTurnLaneSideEffects is deterministic and keeps safety gates on every lane", () => {
+  assert.deepEqual(planTurnLaneSideEffects("FAST"), {
+    skipRuntimeLore: true,
+    compactPrompt: true,
+    requireFullEpistemic: false,
+    requireNpcConsistency: true,
+    requireNarrativeSafetyHardGate: true,
+    requirePacingValidation: false,
+  });
+  assert.deepEqual(planTurnLaneSideEffects("RULE"), {
+    skipRuntimeLore: false,
+    compactPrompt: false,
+    requireFullEpistemic: false,
+    requireNpcConsistency: true,
+    requireNarrativeSafetyHardGate: true,
+    requirePacingValidation: true,
+  });
+  assert.deepEqual(planTurnLaneSideEffects("REVEAL"), {
+    skipRuntimeLore: false,
+    compactPrompt: false,
+    requireFullEpistemic: true,
+    requireNpcConsistency: true,
+    requireNarrativeSafetyHardGate: true,
+    requirePacingValidation: true,
+  });
 });

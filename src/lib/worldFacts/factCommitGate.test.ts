@@ -129,3 +129,21 @@ test("player forged candidate does not become committed fact", () => {
   assert.equal(result.allowedFacts.length, 0);
   assert.ok(result.rejectedFacts.length > 0);
 });
+
+test("narrative audit candidate_new_facts shape is rejected instead of committed", () => {
+  const result = gate({
+    candidateFacts: [
+      {
+        content: "老板旁边可能有一个银发女孩",
+        category: "npc",
+        source: "player_observed",
+        ownerNpcIds: [],
+        floorIds: [],
+        relatedNpcIds: [],
+        revealTier: REVEAL_TIER_RANK.surface,
+      },
+    ],
+  });
+  assert.equal(result.allowedFacts.length, 0);
+  assert.equal(result.rejectedFacts[0]?.reason, "missing_fact_id");
+});

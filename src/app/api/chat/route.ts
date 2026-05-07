@@ -241,8 +241,18 @@ import {
   buildNarrativeLengthTelemetry,
   type NarrativeLengthTelemetry,
 } from "@/lib/turnEngine/narrativeLengthTelemetry";
-import { applyNpcConsistencyPostGeneration, validateNarrative } from "@/lib/narrativeEngine/checker";
-import { commitNarrativeEvents, commitTurn, type TurnCommitSummary } from "@/lib/narrativeEngine/committer";
+import {
+  applyNpcConsistencyPostGeneration,
+  validateNarrative,
+  type NarrativeValidationReport,
+} from "@/lib/narrativeEngine/checker";
+import {
+  COMMIT_STATE_CHANGING_FIELDS,
+  COMMIT_STATE_MIRROR_FIELDS,
+  commitNarrativeEvents,
+  commitTurn,
+  type TurnCommitSummary,
+} from "@/lib/narrativeEngine/committer";
 import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
 import {
   buildRouteModelOutputFromResolvedTurn,
@@ -258,9 +268,23 @@ import {
   type NarrativeExpansionResult,
 } from "@/lib/turnEngine/narrativeExpansion";
 import {
+  buildEpistemicPromptContext,
   buildEpistemicInput,
   type EpistemicFilterResult,
 } from "@/lib/turnEngine/epistemic";
+import {
+  asAnalyticsEventName,
+  buildNarrativeSafetyTelemetryEvents,
+  collectSafetyReport,
+  getNarrativeSafetyRuntimeConfig,
+  planNarrativeSafetyEnforcement,
+  pushNarrativeSafetyTelemetryEvent,
+} from "@/lib/turnEngine/narrativeSafety";
+import {
+  buildPacingCandidateFromDmRecord,
+  normalizeBeatState,
+  validatePacing,
+} from "@/lib/turnEngine/pacing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -867,6 +891,7 @@ async function postChatInternal(req: Request) {
   // 3) playerContext is display-only
   // 4) user natural language expresses intent only, never facts
   const verseRollout = getVerseCraftRolloutFlags();
+  const narrativeSafetyRuntime = getNarrativeSafetyRuntimeConfig();
   const antiCheat = assessAndRewriteAntiCheatInput({
     latestUserInput,
     clientState,
@@ -964,6 +989,39 @@ async function postChatInternal(req: Request) {
     void ingestUserKnowledge({ userId, latestUserInput, route: kgRoute });
   }
 
+  const pipelineRule = buildRuleSnapshot(playerContext, latestUserInput);
+  let pipelineControl: PlayerControlPlane | null = null;
+  let pipelinePreflightFailed = true;
+  let controlPreflightBudgetHit = false;
+  let preflightTurnMetrics = createDefaultPreflightMetrics();
+
+  if (isFirstAction && userId) {
+    void db.delete(gameSessionMemory).where(eq(gameSessionMemory.userId, userId)).catch(() => {});
+  }
+
+  const preflightEnv = resolveAiEnv();
+  const runControlPreflightP = runControlPreflightStage({
+    perfFlags,
+    riskLane,
+    sessionId,
+    latestUserInput,
+    playerContext,
+    pipelineRule,
+    requestId,
+    userId,
+    controlPreflightBudgetMs: Math.max(
+      0,
+      Math.min(preflightEnv.controlPreflightBudgetMs, perfFlags.controlPreflightBudgetMsCap)
+    ),
+    allowControlPreflightForSessionImpl: allowControlPreflightForSession,
+    resolveOperationModeImpl: resolveOperationMode,
+  }).then((result) => {
+    pipelineControl = result.pipelineControl;
+    pipelinePreflightFailed = result.pipelinePreflightFailed;
+    controlPreflightBudgetHit = result.controlPreflightBudgetHit;
+    preflightTurnMetrics = result.preflightTurnMetrics;
+  });
+
   // Overlap session-memory DB read with local chat message shaping (stable prefix + raw slice + dice).
   const sessionMemoryStartAt = nowMs();
   const sessionMemoryPromise: Promise<SessionMemoryRow | null> =
@@ -974,14 +1032,6 @@ async function postChatInternal(req: Request) {
       : Promise.resolve(null).finally(() => {
           ttftProfile.sessionMemoryReadMs = 0;
         });
-
-  const useFastLaneCompactStablePrompt =
-    perfFlags.enablePromptSlimming &&
-    riskLane === "fast" &&
-    envBoolean("AI_CHAT_FASTLANE_COMPACT_STABLE_PROMPT", true);
-  const playerDmStablePrefix = useFastLaneCompactStablePrompt
-    ? getCompactStablePlayerDmSystemPrefix()
-    : getStablePlayerDmSystemPrefix();
 
   const rawChatMessages = messages
     .filter((m) => m && typeof m.content === "string" && typeof m.role === "string")
@@ -1029,12 +1079,9 @@ async function postChatInternal(req: Request) {
   if (ttftProfile.sessionMemoryReadMs === null) {
     ttftProfile.sessionMemoryReadMs = elapsedMs(sessionMemoryStartAt);
   }
-  const contextMode =
-    perfFlags.enablePromptSlimming && perfFlags.enableLightweightFastPath && riskLane === "fast"
-      ? "minimal"
-      : "full";
-  const useFastLaneCompactDynamicPackets =
-    contextMode === "minimal" && envBoolean("AI_CHAT_FASTLANE_COMPACT_DYNAMIC_PACKETS", true);
+  await runControlPreflightP;
+  ttftProfile.controlPreflightMs =
+    typeof preflightTurnMetrics.latencyMs === "number" ? Math.max(0, preflightTurnMetrics.latencyMs) : 0;
   const playerLocEarly = guessPlayerLocationFromContext(playerContext);
   const presentNpcIdsEarly = extractPresentNpcIds(playerContext, playerLocEarly);
   const focusNpcEarly =
@@ -1043,9 +1090,46 @@ async function postChatInternal(req: Request) {
           latestUserInput,
           playerContext,
           playerLocation: playerLocEarly,
-          controlTarget: null,
+          controlTarget: pipelineControl?.extracted_slots?.target ?? null,
         })
       : null;
+  const epistemicRolloutFlags = getEpistemicRolloutFlags();
+  const normalizedIntent: NormalizedPlayerIntent = normalizePlayerInput({
+    latestUserInput,
+    control: pipelineControl,
+    riskTags: pipelineControl?.risk_tags ?? [],
+    isFirstAction: Boolean(isFirstAction),
+    shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
+    clientPurpose,
+  });
+  const directorDigest =
+    clientState && typeof clientState === "object" && !Array.isArray(clientState)
+      ? ((clientState as unknown as { directorDigest?: { beatModeHint?: unknown; tension?: unknown } }).directorDigest ?? null)
+      : null;
+  const directorBeatHint = typeof directorDigest?.beatModeHint === "string" ? directorDigest.beatModeHint : null;
+  const directorTension = typeof directorDigest?.tension === "number" ? directorDigest.tension : null;
+  const turnLaneDecision: TurnLaneDecision = routeTurnLane({
+    intent: normalizedIntent,
+    riskLane,
+    focusNpcId: focusNpcEarly,
+    directorBeat: directorBeatHint,
+    directorTension,
+    epistemicEnabled: epistemicRolloutFlags.enableEpistemicGuard,
+  });
+  const laneSideEffectPlan = turnLaneDecision.sideEffectPlan;
+  const contextMode =
+    perfFlags.enablePromptSlimming && perfFlags.enableLightweightFastPath && laneSideEffectPlan.compactPrompt
+      ? "minimal"
+      : "full";
+  const useFastLaneCompactStablePrompt =
+    perfFlags.enablePromptSlimming &&
+    laneSideEffectPlan.compactPrompt &&
+    envBoolean("AI_CHAT_FASTLANE_COMPACT_STABLE_PROMPT", true);
+  const playerDmStablePrefix = useFastLaneCompactStablePrompt
+    ? getCompactStablePlayerDmSystemPrefix()
+    : getStablePlayerDmSystemPrefix();
+  const useFastLaneCompactDynamicPackets =
+    contextMode === "minimal" && envBoolean("AI_CHAT_FASTLANE_COMPACT_DYNAMIC_PACKETS", true);
   const memoryCapsEarly =
     contextMode === "minimal"
       ? {
@@ -1113,7 +1197,8 @@ async function postChatInternal(req: Request) {
   });
   const systemPromptForQuota = `${playerDmStablePrefix}\n\n${dynamicCoreForQuota}`;
 
-  const shouldRunStrictQuotaBeforeFirstToken = !(perfFlags.enableLightweightFastPath && riskLane === "fast");
+  const shouldRunStrictQuotaBeforeFirstToken =
+    !(perfFlags.enableLightweightFastPath && laneSideEffectPlan.compactPrompt);
   if (userId && shouldRunStrictQuotaBeforeFirstToken) {
     try {
       const estimated = estimateTokensFromInput(systemPromptForQuota, messages);
@@ -1190,39 +1275,6 @@ async function postChatInternal(req: Request) {
     void markUserActive(userId).catch(() => {});
   }
 
-  const pipelineRule = buildRuleSnapshot(playerContext, latestUserInput);
-  let pipelineControl: PlayerControlPlane | null = null;
-  let pipelinePreflightFailed = true;
-  let controlPreflightBudgetHit = false;
-  let preflightTurnMetrics = createDefaultPreflightMetrics();
-
-  if (isFirstAction && userId) {
-    void db.delete(gameSessionMemory).where(eq(gameSessionMemory.userId, userId)).catch(() => {});
-  }
-
-  const preflightEnv = resolveAiEnv();
-  const runControlPreflightP = runControlPreflightStage({
-    perfFlags,
-    riskLane,
-    sessionId,
-    latestUserInput,
-    playerContext,
-    pipelineRule,
-    requestId,
-    userId,
-    controlPreflightBudgetMs: Math.max(
-      0,
-      Math.min(preflightEnv.controlPreflightBudgetMs, perfFlags.controlPreflightBudgetMsCap)
-    ),
-    allowControlPreflightForSessionImpl: allowControlPreflightForSession,
-    resolveOperationModeImpl: resolveOperationMode,
-  }).then((result) => {
-    pipelineControl = result.pipelineControl;
-    pipelinePreflightFailed = result.pipelinePreflightFailed;
-    controlPreflightBudgetHit = result.controlPreflightBudgetHit;
-    preflightTurnMetrics = result.preflightTurnMetrics;
-  });
-
   let runtimeLoreCompact = "";
   let loreRetrievalLatencyMs = 0;
   let loreCacheHit = false;
@@ -1235,28 +1287,31 @@ async function postChatInternal(req: Request) {
   let runtimeLorePacket: LorePacket | null = null;
   let provenanceVerifierTelemetry: ProvenanceTelemetrySummary | null = null;
 
-  const loreRetrievalP = loadRuntimeLoreStage({
-    perfFlags,
-    riskLane,
-    loreRetrievalBudgetMs: Math.max(
-      0,
-      Math.min(preflightEnv.loreRetrievalBudgetMs, perfFlags.loreRetrievalBudgetMsCap)
-    ),
-    requestId,
-    userId,
-    sessionId,
-    latestUserInput,
-    playerContext,
-  }).then((result) => {
-    runtimeLoreCompact = result.runtimeLoreCompact;
-    loreRetrievalLatencyMs = result.loreRetrievalLatencyMs;
-    loreCacheHit = result.loreCacheHit;
-    loreSourceCount = result.loreSourceCount;
-    loreTokenEstimate = result.loreTokenEstimate;
-    loreFallbackPath = result.loreFallbackPath;
-    loreBudgetHit = result.loreBudgetHit;
-    runtimeLorePacket = result.runtimeLorePacket;
-  });
+  const loreRetrievalBudgetMs = Math.max(
+    0,
+    Math.min(preflightEnv.loreRetrievalBudgetMs, perfFlags.loreRetrievalBudgetMsCap)
+  );
+  const loreRetrievalP = laneSideEffectPlan.skipRuntimeLore
+    ? Promise.resolve()
+    : loadRuntimeLoreStage({
+        perfFlags,
+        riskLane,
+        loreRetrievalBudgetMs,
+        requestId,
+        userId,
+        sessionId,
+        latestUserInput,
+        playerContext,
+      }).then((result) => {
+        runtimeLoreCompact = result.runtimeLoreCompact;
+        loreRetrievalLatencyMs = result.loreRetrievalLatencyMs;
+        loreCacheHit = result.loreCacheHit;
+        loreSourceCount = result.loreSourceCount;
+        loreTokenEstimate = result.loreTokenEstimate;
+        loreFallbackPath = result.loreFallbackPath;
+        loreBudgetHit = result.loreBudgetHit;
+        runtimeLorePacket = result.runtimeLorePacket;
+      });
 
   const promptBuildStartAt = nowMs();
 
@@ -1285,14 +1340,14 @@ async function postChatInternal(req: Request) {
     serviceState,
   });
   const npcTaskNarrativeBlock =
-    riskLane === "slow"
+    !laneSideEffectPlan.compactPrompt
       ? buildNpcProactiveGrantNarrativeBlock({
           playerContext,
           latestUserInput,
         })
       : "";
   const conspiracyNarrativeBlock =
-    riskLane === "slow"
+    !laneSideEffectPlan.compactPrompt
       ? build7FConspiracyNarrativeBlock({
           playerContext,
           latestUserInput,
@@ -1352,7 +1407,6 @@ async function postChatInternal(req: Request) {
   const presentNpcIdsForEpistemic = extractPresentNpcIds(playerContext, playerLocForEpistemic);
   const signalsForEpistemicReveal = parsePlayerWorldSignals(playerContext, playerLocForEpistemic);
   const maxRevealRankForMemory = computeMaxRevealRankFromSignals(signalsForEpistemicReveal);
-  const epistemicRolloutFlags = getEpistemicRolloutFlags();
 
   let focusNpcForPrompt: string | null = null;
   let epistemicAnomalyResult: EpistemicAnomalyResult | null = null;
@@ -1365,7 +1419,13 @@ async function postChatInternal(req: Request) {
    * - fast lane 棣栧瓧浼樺厛锛氱姝㈣繘鍏ヨ閲嶈绠楀垎鏀紝閬垮厤鎶婃櫘閫氬洖鍚堟嫋鎱㈠埌鎱㈣溅閬?TTFT
    * - slow lane 鍙惎鐢細鐢ㄤ簬 NPC 璁板繂/璁ょ煡寮傚父绛変竴鑷存€у寮?   *
    * 涓轰粈涔堜笉浼氱牬鍧忓畨鍏?鐜╂硶锛?   * - 杈撳叆瀹夊叏銆佸崗璁畧鍗€乶pcConsistencyBoundary锛坈ompact锛変粛鍦?core prompt 閲?   * - 璇ュ垎鏀富瑕佸奖鍝嶁€滃彊浜嬩竴鑷存€?璁板繂绮惧害鈥濓紝涓嶈礋璐ｅ唴瀹瑰畨鍏ㄤ笌纭鍐?   */
-  if (riskLane === "slow" && !shouldApplyFirstActionConstraint && epistemicRolloutFlags.enableEpistemicGuard) {
+  const shouldResolveFocusNpcForPrompt =
+    !shouldApplyFirstActionConstraint && (!laneSideEffectPlan.compactPrompt || laneSideEffectPlan.requireFullEpistemic);
+  const shouldRunFullEpistemicForPrompt =
+    shouldResolveFocusNpcForPrompt &&
+    (laneSideEffectPlan.requireFullEpistemic || epistemicRolloutFlags.enableEpistemicGuard);
+
+  if (shouldRunFullEpistemicForPrompt) {
     const loreSlice = runtimeLorePacket ? mergeLorePacketSlices(runtimeLorePacket) : [];
     const fromLore = loreFactsToKnowledgeFacts(loreSlice.slice(0, 96), nowIsoForEpistemic);
     const fromSession = sessionMemoryRowToKnowledgeFacts(sessionMemory, nowIsoForEpistemic);
@@ -1409,7 +1469,7 @@ async function postChatInternal(req: Request) {
         });
       }
     }
-  } else if (riskLane === "slow" && !shouldApplyFirstActionConstraint) {
+  } else if (shouldResolveFocusNpcForPrompt) {
     const focusNpcId = resolveEpistemicTargetNpcId({
       latestUserInput,
       playerContext,
@@ -1435,10 +1495,9 @@ async function postChatInternal(req: Request) {
    * Phase-3: structured epistemic filter.
    *
    * This is the explicit, code-reviewable cognitive partition that downstream
-   * narrative rendering / post-generation validators consume. The legacy
-   * string-layer prompt context (`buildActorScopedEpistemicContext` below) is
-   * still computed for compatibility with the current DM prompt — this
-   * structured view is *additive* and does not replace it.
+   * narrative rendering / post-generation validators consume. The final DM
+   * prompt is assembled from `buildEpistemicPromptContext` below; legacy
+   * string-layer memory is now telemetry-only for this route.
    *
    * Two views are computed per turn:
    *   - `actorEpistemicFilter`: scoped to the focus NPC actor (or player-only
@@ -1540,9 +1599,7 @@ async function postChatInternal(req: Request) {
     profile: epistemicProfileForPrompt,
     anomalyResult: epistemicAnomalyResult,
     residuePacket: epistemicResiduePlan.packet,
-    detectorRan: Boolean(
-      focusNpcForPrompt && !shouldApplyFirstActionConstraint && epistemicRolloutFlags.enableEpistemicGuard
-    ),
+    detectorRan: Boolean(focusNpcForPrompt && shouldRunFullEpistemicForPrompt),
     options: memoryCapsFinal,
     nowIso: nowIsoForEpistemic,
     maxRevealRank: maxRevealRankForMemory,
@@ -1550,8 +1607,8 @@ async function postChatInternal(req: Request) {
     actorCanonOneLiner: actorCanonOneLinerForMemory,
     actorScopedEpistemicEnabled: epistemicRolloutFlags.enableActorScopedEpistemic,
   });
-  memoryBlock = scopedFinal.block;
   const epistemicPromptMetrics = scopedFinal.metrics;
+  memoryBlock = "";
 
   const controlAugmentation = buildControlAugmentationBlock({
     control: pipelineControl,
@@ -1561,7 +1618,6 @@ async function postChatInternal(req: Request) {
 
   const controlAndLoreAugmentation = [
     contextMode === "minimal" ? "" : controlAugmentation,
-    contextMode === "minimal" ? "" : runtimeLoreCompact,
     contextMode === "minimal" ? "" : serviceContextBlock,
     contextMode === "minimal" ? "" : directorHintBlock,
     npcTaskNarrativeBlock,
@@ -1575,7 +1631,7 @@ async function postChatInternal(req: Request) {
   const shouldSkipRuntimePacketsForFastLane =
     perfFlags.enableLightweightFastPath &&
     perfFlags.fastLaneSkipRuntimePackets &&
-    riskLane === "fast";
+    laneSideEffectPlan.compactPrompt;
 
   const runtimePackets = shouldSkipRuntimePacketsForFastLane
     ? ""
@@ -1584,7 +1640,7 @@ async function postChatInternal(req: Request) {
         latestUserInput,
         playerLocation: guessPlayerLocationFromContext(playerContext),
         serviceState,
-        runtimeLoreCompact: contextMode === "minimal" ? "" : runtimeLoreCompact,
+        runtimeLoreCompact: "",
         contextMode,
         maxChars: contextMode === "minimal" ? 900 : 4000,
         focusNpcId: focusNpcForPrompt,
@@ -1627,19 +1683,26 @@ async function postChatInternal(req: Request) {
         "## 【world_fact_audit_v1】",
         JSON.stringify({
           required_when_claiming_world_facts: ["factId", "source", "truthLevel", "revealTier"],
-          output_optional: {
+          strong_fact_categories: [
+            "root_cause",
+            "relationship",
+            "location_transition",
+            "event_stage",
+            "item_acquisition",
+            "npc_identity_or_deep_role",
+            "task_completion",
+          ],
+          output_required_when_claiming_strong_facts: {
             _narrative_audit: {
               used_fact_ids: ["fact:..."],
-              used_npc_belief_ids: ["belief:..."],
+              mentioned_entity_ids: ["N-001", "location_or_item_id"],
+              speaker_npc_id: focusNpcForPrompt ?? undefined,
               candidate_new_facts: [
                 {
-                  factId: "fact:...",
-                  source: "player_observed|npc_belief|world_engine",
-                  truthLevel: "candidate|rumor|hypothesis|session_committed",
-                  revealTier: 0,
-                  ownerNpcIds: [],
-                  floorIds: [],
-                  relatedNpcIds: [],
+                  text: "未证实候选事实，不得写成确定世界事实",
+                  category: "root_cause|relationship|location_transition|event_stage|item_acquisition|npc_identity|task_completion",
+                  confidence: 0.2,
+                  proposed_source: "player_observed|npc_belief|world_engine",
                 },
               ],
             },
@@ -1680,28 +1743,16 @@ async function postChatInternal(req: Request) {
    * the authoritative state change still flows through applyDmChangeSetToDmRecord
    * and resolveDmTurn. See `renderNarrativeFromDelta` for the hole-filling seam.
    */
-  const normalizedIntent: NormalizedPlayerIntent = normalizePlayerInput({
-    latestUserInput,
-    control: pipelineControl,
-    riskTags: pipelineControl?.risk_tags ?? [],
-    isFirstAction: Boolean(isFirstAction),
-    shouldApplyFirstActionConstraint: Boolean(shouldApplyFirstActionConstraint),
-    clientPurpose,
-  });
-  const directorDigest =
-    clientState && typeof clientState === "object" && !Array.isArray(clientState)
-      ? ((clientState as unknown as { directorDigest?: { beatModeHint?: unknown; tension?: unknown } }).directorDigest ?? null)
-      : null;
-  const directorBeatHint = typeof directorDigest?.beatModeHint === "string" ? directorDigest.beatModeHint : null;
-  const directorTension = typeof directorDigest?.tension === "number" ? directorDigest.tension : null;
-  const turnLaneDecision: TurnLaneDecision = routeTurnLane({
-    intent: normalizedIntent,
-    riskLane,
-    focusNpcId: focusNpcForPrompt,
-    directorBeat: directorBeatHint,
-    directorTension,
-    epistemicEnabled: epistemicRolloutFlags.enableEpistemicGuard,
-  });
+  const epistemicPromptContext = buildEpistemicPromptContext(
+    actorEpistemicFilter,
+    focusNpcForPrompt ?? PLAYER_ACTOR_ID,
+    turnLaneDecision.lane,
+    {
+      compact: laneSideEffectPlan.requireFullEpistemic ? false : laneSideEffectPlan.compactPrompt || contextMode === "minimal",
+      maxPromptChars: laneSideEffectPlan.requireFullEpistemic ? 3200 : contextMode === "minimal" ? 900 : 1800,
+      maxFactChars: laneSideEffectPlan.requireFullEpistemic ? 180 : contextMode === "minimal" ? 80 : 120,
+    }
+  );
   const narrativeBudget = resolveNarrativeBudget({
     plannedTurnMode: `${plannedTurnMode.mode}:${plannedTurnMode.reason}`,
     riskLane,
@@ -1715,7 +1766,9 @@ async function postChatInternal(req: Request) {
     isEndgame: plannedTurnMode.reason.startsWith("time_endgame"),
     isChapterClimax: directorBeatHint === "peak" || directorBeatHint === "climax" || (directorTension ?? 0) >= 95,
   });
-  const narrativeBudgetBlock = buildNarrativeBudgetPacketBlock(narrativeBudget);
+  const narrativeBudgetBlock = laneSideEffectPlan.requirePacingValidation
+    ? buildNarrativeBudgetPacketBlock(narrativeBudget)
+    : "";
   const narrativeBudgetTier = narrativeBudget.tier;
   const narrativeBudgetTargetChars = narrativeBudget.targetChars;
   const preStateDelta: StateDelta = computePreNarrativeDelta({
@@ -1743,9 +1796,8 @@ async function postChatInternal(req: Request) {
   };
   void turnExecutionContext; // TODO(phase-3): pass through runStreamFinalHooks as single arg.
 
-  // Phase-5: emit lane decision as a formal analytics event so that rollout /
-  // rollback tooling can observe lane distribution even though the lane does
-  // not yet cause side effects on the hot path. Non-blocking.
+  // Phase-5: emit lane decision and applied side-effect plan as formal
+  // analytics events. Non-blocking.
   if (sessionId) {
     const capturedSessionIdLane = sessionId;
     void recordGenericAnalyticsEvent({
@@ -1770,6 +1822,33 @@ async function postChatInternal(req: Request) {
         isFirstAction: normalizedIntent.isFirstAction,
         isSystemTransition: normalizedIntent.isSystemTransition,
         riskLane,
+        sideEffectPlan: laneSideEffectPlan,
+        epistemicPromptContext: epistemicPromptContext.telemetry,
+      },
+    }).catch(() => {});
+    void recordGenericAnalyticsEvent({
+      eventId: `${requestId}:lane_side_effect_applied`,
+      idempotencyKey: `${requestId}:lane_side_effect_applied`,
+      userId,
+      guestId: userId ? null : chatGuestId,
+      sessionId: capturedSessionIdLane,
+      eventName: "lane_side_effect_applied",
+      eventTime: new Date(),
+      page: "/play",
+      source: "chat",
+      platform,
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        requestId,
+        lane: turnLaneDecision.lane,
+        riskLane,
+        reasons: [...turnLaneDecision.reasons],
+        sideEffectPlan: laneSideEffectPlan,
+        skipped_runtime_lore: laneSideEffectPlan.skipRuntimeLore,
+        full_epistemic_required: laneSideEffectPlan.requireFullEpistemic,
+        compactPrompt: laneSideEffectPlan.compactPrompt,
+        requireNarrativeSafetyHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
       },
     }).catch(() => {});
   }
@@ -1800,6 +1879,7 @@ async function postChatInternal(req: Request) {
     : "";
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
+    epistemicPromptContextBlock: epistemicPromptContext.promptBlock,
     playerContext: playerContextForPrompt,
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets,
@@ -1858,6 +1938,11 @@ async function postChatInternal(req: Request) {
       requestId,
       model: telemetryPreferredModel,
       isFirstAction,
+      turnLane: turnLaneDecision.lane,
+      turnLaneReasons: [...turnLaneDecision.reasons],
+      laneSideEffectPlan,
+      skipped_runtime_lore: laneSideEffectPlan.skipRuntimeLore,
+      full_epistemic_required: laneSideEffectPlan.requireFullEpistemic,
       controlPreflightBudgetHit,
       preflightRan: preflightTurnMetrics.ran,
       preflightSkippedReason: preflightTurnMetrics.skippedReason,
@@ -1868,6 +1953,7 @@ async function postChatInternal(req: Request) {
       loreCacheHit,
       loreSourceCount,
       loreTokenEstimate,
+      loreCompactChars: runtimeLoreCompact.length,
       loreFallbackPath,
       loreBudgetHit,
       runtimePacketChars,
@@ -1889,6 +1975,7 @@ async function postChatInternal(req: Request) {
       actorKnownFactCount: epistemicPromptMetrics.actorKnownFactCount,
       publicFactCount: epistemicPromptMetrics.publicFactCount,
       forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
+      epistemicPromptContext: epistemicPromptContext.telemetry,
       anomalySeverity: epistemicPromptMetrics.anomalySeverity,
       validatorTriggered: epistemicPromptMetrics.validatorTriggered,
       promptCharsDelta: epistemicPromptMetrics.promptCharsDelta,
@@ -2533,6 +2620,7 @@ async function postChatInternal(req: Request) {
             publicFactCount: epistemicPromptMetrics.publicFactCount,
             forbiddenFactCount: epistemicPromptMetrics.forbiddenFactCount,
             epistemicFactCount: epistemicPromptMetrics.epistemicFactCount,
+            promptContext: epistemicPromptContext.telemetry,
             anomalyDetected: Boolean(epistemicAnomalyResult?.anomaly),
             anomalySeverity: epistemicAnomalyResult?.anomaly ? epistemicAnomalyResult.severity : "none",
             validatorTriggered: epistemicPostValidatorTelemetry?.validatorTriggered ?? false,
@@ -2923,7 +3011,9 @@ async function postChatInternal(req: Request) {
           epistemicPostValidatorTelemetry = telemetry;
           return next;
         };
-        dmRecord = runEpistemicPostGuard(dmRecord);
+        if (laneSideEffectPlan.requireNpcConsistency) {
+          dmRecord = runEpistemicPostGuard(dmRecord);
+        }
 
         // --- Phase 7: turn mode correction (narrative_only / decision_required) ---
         try {
@@ -3346,11 +3436,183 @@ async function postChatInternal(req: Request) {
             actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
             factDetectionMaxRevealRank: maxRevealRankForMemory,
           });
+          const usedFactIdsForSafety = Array.isArray(narrativeAudit.used_fact_ids)
+            ? narrativeAudit.used_fact_ids.filter((value): value is string => typeof value === "string")
+            : [];
+          const clientStateForPacing =
+            clientState && typeof clientState === "object" && !Array.isArray(clientState)
+              ? (clientState as Record<string, unknown>)
+              : {};
+          const directorDigestRecordForPacing =
+            directorDigestForPrompt && typeof directorDigestForPrompt === "object" && !Array.isArray(directorDigestForPrompt)
+              ? (directorDigestForPrompt as Record<string, unknown>)
+              : null;
+          const directorChapterForPacing =
+            directorDigestRecordForPacing?.chapter &&
+            typeof directorDigestRecordForPacing.chapter === "object" &&
+            !Array.isArray(directorDigestRecordForPacing.chapter)
+              ? (directorDigestRecordForPacing.chapter as Record<string, unknown>)
+              : null;
+          const previousBeatStateForPacing =
+            normalizeBeatState(directorChapterForPacing?.phase) ??
+            normalizeBeatState(directorDigestRecordForPacing?.beatModeHint);
+          const directorBeatStateForPacing = normalizeBeatState(directorBeatHint);
+          const candidateBeatStateForPacing =
+            plannedTurnMode.mode === "decision_required"
+              ? "choice"
+              : plannedTurnMode.mode === "narrative_only" && previousBeatStateForPacing === "peak"
+                ? "aftermath"
+                : directorBeatStateForPacing === "peak"
+                  ? "peak"
+                  : turnLaneDecision.lane === "REVEAL"
+                    ? "rising"
+                    : null;
+          const completedTaskIdsForPacing = Array.isArray(clientStateForPacing.completedTaskIds)
+            ? clientStateForPacing.completedTaskIds
+                .map((value) => (typeof value === "string" ? value.trim() : ""))
+                .filter(Boolean)
+                .slice(0, 64)
+            : [];
+          const journalClueCountForPacing =
+            typeof clientStateForPacing.journalClueCount === "number" &&
+            Number.isFinite(clientStateForPacing.journalClueCount)
+              ? Math.max(0, Math.trunc(clientStateForPacing.journalClueCount))
+              : 0;
+          const directorPressureFlagsForPacing = Array.isArray(directorDigestRecordForPacing?.pressureFlags)
+            ? directorDigestRecordForPacing.pressureFlags.filter((value): value is string => typeof value === "string")
+            : [];
+          const directorStallCountForPacing =
+            typeof directorDigestRecordForPacing?.stallCount === "number" &&
+            Number.isFinite(directorDigestRecordForPacing.stallCount)
+              ? Math.max(0, Math.trunc(directorDigestRecordForPacing.stallCount))
+              : 0;
+          const consecutiveCrisisTurnsForPacing =
+            (directorTension ?? 0) >= 85 || directorPressureFlagsForPacing.includes("high_threat")
+              ? Math.max(1, directorStallCountForPacing)
+              : 0;
+          const directorDueAgendaHintForPacing =
+            dueDirectorAgendaForPrompt
+              .map((item) => `${item.eventCode}:${item.priority}:${item.revealPolicy}`)
+              .filter(Boolean)
+              .join("|") || null;
+          const pacingReport = narrativeSafetyRuntime.pacingValidatorEnabled
+            ? validatePacing({
+                lane: turnLaneDecision.lane,
+                candidate: buildPacingCandidateFromDmRecord(candidateRec, {
+                  beatState: candidateBeatStateForPacing,
+                }),
+                stateDelta: postStateDelta,
+                previousSnapshot: {
+                  beatState: previousBeatStateForPacing,
+                  consecutivePeakTurns: previousBeatStateForPacing === "peak" ? 1 : 0,
+                  consecutiveCrisisTurns: consecutiveCrisisTurnsForPacing,
+                  majorRevealCooldown: 0,
+                  prerequisiteClueCount: journalClueCountForPacing,
+                  completedTaskIds: completedTaskIdsForPacing,
+                  pendingChoiceConsequence: false,
+                  ...(typeof directorTension === "number" ? { tension: directorTension } : {}),
+                },
+                revealBudget: {
+                  requiredPrerequisiteClues: 0,
+                  majorRevealCooldown: 0,
+                  maxConsecutiveCrisisTurns: 3,
+                },
+                allowedFactIds: allowedWorldFactIdsForValidator,
+                worldFacts: verseRollout.enableWorldFactRegistry ? listWorldFacts() : [],
+                directorDueAgendaHint: directorDueAgendaHintForPacing,
+              })
+            : null;
+          const optionsForSafety = Array.isArray(candidateRec.options)
+            ? candidateRec.options.filter((value): value is string => typeof value === "string")
+            : [];
+          const sessionCommittedEntityIdsForSafety = [
+            ...new Set([
+              ...presentNpcIdsForEpistemic,
+              ...String(playerContext ?? "")
+                .split(/\r?\n/)
+                .flatMap((line) => {
+                  const match = line.match(/^\s*(?:active_npc|present_npc|npc)\s*:\s*(.+?)\s*$/i);
+                  return match?.[1] ? [match[1].trim()] : [];
+                }),
+              ...[...String(playerContext ?? "").matchAll(/\bN-\d{3,6}\b/gi)].map((match) => match[0].toUpperCase()),
+            ]),
+          ];
+          const narrativeSafetyReport = narrativeSafetyRuntime.kernelEnabled
+            ? collectSafetyReport({
+                dmRecord: candidateRec,
+                narrative: typeof candidateRec.narrative === "string" ? candidateRec.narrative : null,
+                options: optionsForSafety,
+                validateNarrativeReport: validatorReport,
+                pacingReport,
+                npcKnowledgeIssues: [],
+                unsupportedFactIssues: [],
+                speakerNpcId: focusNpcForPrompt,
+                allowedFactIds: allowedWorldFactIdsForValidator,
+                usedFactIds: usedFactIdsForSafety,
+                worldFacts: verseRollout.enableWorldFactRegistry ? listWorldFacts() : [],
+                maxRevealRank: maxRevealRankForMemory,
+                stateDelta: postStateDelta,
+                intent: normalizedIntent,
+                sessionCommittedEntityIds: sessionCommittedEntityIdsForSafety,
+              })
+            : null;
+          const narrativeSafetyEnforcement = planNarrativeSafetyEnforcement({
+            safetyReport: narrativeSafetyReport,
+            pacingReport,
+            policy: {
+              kernelEnabled: narrativeSafetyRuntime.kernelEnabled,
+              mode: narrativeSafetyRuntime.mode,
+              entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled,
+              pacingValidatorEnabled: narrativeSafetyRuntime.pacingValidatorEnabled,
+              laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
+            },
+          });
+          const shouldNarrativeSafetyFallback =
+            narrativeSafetyEnforcement.shouldFallback &&
+            !validatorReport.narrativeOverride &&
+            narrativeSafetyRuntime.mode !== "shadow";
+          const effectiveValidatorReport: NarrativeValidationReport = shouldNarrativeSafetyFallback
+            ? {
+                ...validatorReport,
+                ok: false,
+                issues: [
+                  ...validatorReport.issues,
+                  {
+                    code: "npc_consistency_bridge",
+                    severity: narrativeSafetyEnforcement.shouldBlockCommit ? "high" : "medium",
+                    detail: `narrative_safety_kernel:${narrativeSafetyEnforcement.decision}`,
+                    ...(narrativeSafetyReport?.issues[0]?.anchor
+                      ? { anchor: narrativeSafetyReport.issues[0].anchor }
+                      : {}),
+                  },
+                ],
+                narrativeOverride: safeBlockedDmJson(
+                  "这里的信息触及了叙事安全边界，先收束到当前可以确认的事实继续。",
+                  {
+                    action: "degrade",
+                    stage: "post_model",
+                    riskLevel: "gray",
+                    reason: "narrative_safety_kernel_high_severity",
+                  }
+                ),
+                telemetry: {
+                  ...validatorReport.telemetry,
+                  totalIssues: validatorReport.telemetry.totalIssues + 1,
+                  byCode: {
+                    ...validatorReport.telemetry.byCode,
+                    npc_consistency_bridge:
+                      (validatorReport.telemetry.byCode.npc_consistency_bridge ?? 0) + 1,
+                  },
+                  safeNarrativeFallbackApplied: true,
+                  narrativeGovernanceFinalSafe: true,
+                },
+              }
+            : validatorReport;
           const factCommitGateResult = verseRollout.enableFactCommitGate
             ? gateFactCommit({
                 resolvedDmTurn: candidateRec,
                 candidateFacts: candidateFactsForGate,
-                validatorIssues: validatorReport.issues,
+                validatorIssues: effectiveValidatorReport.issues,
                 maxRevealRank: maxRevealRankForMemory,
               })
             : null;
@@ -3360,16 +3622,50 @@ async function postChatInternal(req: Request) {
             turnIndex: totalRounds,
             candidateDmRecord: candidateRec,
             delta: postStateDelta,
-            validatorReport,
+            validatorReport: effectiveValidatorReport,
+            safetyReport: narrativeSafetyReport,
+            pacingReport,
+            safetyPolicy: {
+              kernelEnabled: narrativeSafetyRuntime.kernelEnabled,
+              mode: narrativeSafetyRuntime.mode,
+              entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled,
+              pacingValidatorEnabled: narrativeSafetyRuntime.pacingValidatorEnabled,
+              laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
+            },
             factCommitGateResult,
           });
+          const committedRecord = commitResult.committedDmRecord;
+          const commitControlledFields = [
+            ...COMMIT_STATE_CHANGING_FIELDS,
+            ...COMMIT_STATE_MIRROR_FIELDS,
+            "is_action_legal",
+            "sanity_damage",
+            "narrative",
+            "is_death",
+            "consumes_time",
+            "time_cost",
+            "consumed_items",
+            "currency_change",
+            "main_threat_updates",
+            "weapon_updates",
+            "weapon_bag_updates",
+            "options",
+            "decision_options",
+          ] as const;
+          for (const field of commitControlledFields) {
+            if (field in committedRecord) {
+              (resolved as any)[field] = committedRecord[field];
+            } else if (commitResult.summary.blockedCommitFields.includes(field)) {
+              delete (resolved as any)[field];
+            }
+          }
           recordNarrativeGovernanceOutcome(commitResult.summary.narrativeGovernanceTelemetry);
           commitSummaryForAnalytics = commitResult.summary;
           void commitSummaryForAnalytics; // signal usage across try/catch for eslint dataflow
-          if (validatorReport.optionsOverride) {
-            (resolved as any).options = [...validatorReport.optionsOverride];
+          if (effectiveValidatorReport.optionsOverride) {
+            (resolved as any).options = [...effectiveValidatorReport.optionsOverride];
             if (Array.isArray((resolved as any).decision_options)) {
-              (resolved as any).decision_options = [...validatorReport.optionsOverride];
+              (resolved as any).decision_options = [...effectiveValidatorReport.optionsOverride];
             }
             // Phase 8.5 修复：validator 的 optionsOverride 现在只是“清空信号”，不再注入罐头短句。
             // 若覆盖后 options 不足，立刻再调用一次大模型实时生成，确保玩家看到的是模型产物而非既定文案。
@@ -3409,9 +3705,9 @@ async function postChatInternal(req: Request) {
               }
             }
           }
-          if (validatorReport.narrativeOverride) {
+          if (effectiveValidatorReport.narrativeOverride) {
             try {
-              const parsedSafe = JSON.parse(validatorReport.narrativeOverride) as Record<string, unknown>;
+              const parsedSafe = JSON.parse(effectiveValidatorReport.narrativeOverride) as Record<string, unknown>;
               if (typeof parsedSafe.narrative === "string") {
                 (resolved as any).narrative = parsedSafe.narrative;
               }
@@ -3439,7 +3735,7 @@ async function postChatInternal(req: Request) {
           });
           const narrativeLedgerCheck = buildRouteNarrativeCheckResult({
             output: narrativeLedgerOutput,
-            validatorReport,
+            validatorReport: effectiveValidatorReport,
             commitSummary: commitResult.summary,
           });
           try {
@@ -3517,7 +3813,7 @@ async function postChatInternal(req: Request) {
                     : undefined,
                 totalLatencyMs: Math.max(0, nowMs() - requestStartedAt),
                 loreHitCount: loreSourceCount,
-                validatorIssueCount: validatorReport.telemetry.totalIssues,
+                validatorIssueCount: effectiveValidatorReport.telemetry.totalIssues,
                 degradeReason: narrativeLedgerCheck.degradeReason ?? null,
                 commitFlags: narrativeEventCommit.commitFlags,
                 meta: {
@@ -3545,14 +3841,14 @@ async function postChatInternal(req: Request) {
               console.warn("[api/chat] narrative engine ledger skipped", ledgerError);
             }
           })();
-          if (validatorReport.telemetry.totalIssues > 0 && epistemicRolloutFlags.epistemicDebugLog) {
+          if (effectiveValidatorReport.telemetry.totalIssues > 0 && epistemicRolloutFlags.epistemicDebugLog) {
             epistemicDebugLog("narrative_validator_report", {
               requestId,
               sessionId,
-              totalIssues: validatorReport.telemetry.totalIssues,
-              byCode: validatorReport.telemetry.byCode,
-              optionsOverrideApplied: validatorReport.telemetry.optionsOverrideApplied,
-              safeNarrativeFallbackApplied: validatorReport.telemetry.safeNarrativeFallbackApplied,
+              totalIssues: effectiveValidatorReport.telemetry.totalIssues,
+              byCode: effectiveValidatorReport.telemetry.byCode,
+              optionsOverrideApplied: effectiveValidatorReport.telemetry.optionsOverrideApplied,
+              safeNarrativeFallbackApplied: effectiveValidatorReport.telemetry.safeNarrativeFallbackApplied,
             });
           }
           if (epistemicRolloutFlags.epistemicDebugLog) {
@@ -3565,6 +3861,11 @@ async function postChatInternal(req: Request) {
               safeNarrativeFallbackApplied: commitResult.summary.safeNarrativeFallbackApplied,
               commitFlags: commitResult.summary.commitFlags,
               deltaSummary: commitResult.summary.deltaSummary,
+              safetyIssueCounts: commitResult.summary.safetyIssueCounts,
+              pacingIssueCounts: commitResult.summary.pacingIssueCounts,
+              blockedCommitFields: commitResult.summary.blockedCommitFields,
+              fallbackApplied: commitResult.summary.fallbackApplied,
+              entityAuditSummary: commitResult.summary.entityAuditSummary,
               narrativeGovernanceTelemetry: commitResult.summary.narrativeGovernanceTelemetry,
             });
           }
@@ -3597,10 +3898,59 @@ async function postChatInternal(req: Request) {
                 commitFlags: [...commitResult.summary.commitFlags],
                 deltaSummary: commitResult.summary.deltaSummary,
                 validatorIssueCounts: commitResult.summary.validatorIssueCounts,
+                safetyIssueCounts: commitResult.summary.safetyIssueCounts,
+                pacingIssueCounts: commitResult.summary.pacingIssueCounts,
+                blockedCommitFields: commitResult.summary.blockedCommitFields,
+                fallbackApplied: commitResult.summary.fallbackApplied,
+                entityAuditSummary: commitResult.summary.entityAuditSummary,
                 narrativeGovernanceTelemetry: commitResult.summary.narrativeGovernanceTelemetry,
+                narrativeSafetyKernel: {
+                  enabled: narrativeSafetyRuntime.kernelEnabled,
+                  mode: narrativeSafetyRuntime.mode,
+                  decision: narrativeSafetyEnforcement.decision,
+                  reportDecision: narrativeSafetyReport?.decision ?? "disabled",
+                  ok: narrativeSafetyReport?.ok ?? true,
+                  maxSeverity: narrativeSafetyReport?.maxSeverity ?? null,
+                  invariantsViolated: narrativeSafetyReport?.invariantsViolated ?? [],
+                  telemetry: narrativeSafetyReport?.telemetry ?? null,
+                  hardGateApplied: narrativeSafetyEnforcement.shouldBlockCommit,
+                  fallbackApplied: shouldNarrativeSafetyFallback,
+                },
               },
             }).catch(() => {});
-            if (validatorReport.telemetry.totalIssues > 0) {
+            const narrativeSafetyTelemetryEvents = buildNarrativeSafetyTelemetryEvents({
+              requestId,
+              sessionId: capturedSessionIdAnalytics,
+              turnIndex: totalRounds,
+              config: narrativeSafetyRuntime,
+              enforcement: narrativeSafetyEnforcement,
+              safetyReport: narrativeSafetyReport,
+              pacingReport,
+              commitSummary: commitResult.summary,
+              lane: turnLaneDecision.lane,
+              laneReasons: turnLaneDecision.reasons,
+              model: routingReport.actualLogicalRole ?? routingReport.intendedRole,
+              task: "PLAYER_CHAT",
+            });
+            for (const event of narrativeSafetyTelemetryEvents) {
+              pushNarrativeSafetyTelemetryEvent(event);
+              void recordGenericAnalyticsEvent({
+                eventId: `${requestId}:${event.eventName}`,
+                idempotencyKey: `${requestId}:${event.eventName}`,
+                userId,
+                guestId: userId ? null : chatGuestId,
+                sessionId: capturedSessionIdAnalytics,
+                eventName: asAnalyticsEventName(event.eventName),
+                eventTime: new Date(),
+                page: "/play",
+                source: "chat",
+                platform,
+                tokenCost: 0,
+                playDurationDeltaSec: 0,
+                payload: event.payload,
+              }).catch(() => {});
+            }
+            if (effectiveValidatorReport.telemetry.totalIssues > 0) {
               void recordGenericAnalyticsEvent({
                 eventId: `${requestId}:narrative_validator_issue`,
                 idempotencyKey: `${requestId}:narrative_validator_issue`,
@@ -3618,19 +3968,19 @@ async function postChatInternal(req: Request) {
                   requestId,
                   turnIndex: totalRounds,
                   lane: turnLaneDecision.lane,
-                  totalIssues: validatorReport.telemetry.totalIssues,
-                  byCode: validatorReport.telemetry.byCode,
-                  optionsOverrideApplied: validatorReport.telemetry.optionsOverrideApplied,
-                  safeNarrativeFallbackApplied: validatorReport.telemetry.safeNarrativeFallbackApplied,
-                  styleIssueCount: validatorReport.telemetry.styleIssueCount,
-                  styleDriftCount: validatorReport.telemetry.styleDriftCount,
-                  mechanicalExpositionCount: validatorReport.telemetry.mechanicalExpositionCount,
-                  npcKnowledgeIssueCount: validatorReport.telemetry.npcKnowledgeIssueCount,
-                  rootCauseLeakCount: validatorReport.telemetry.rootCauseLeakCount,
-                  unsupportedFactCount: validatorReport.telemetry.unsupportedFactCount,
-                  unsupportedRelationshipClaimCount: validatorReport.telemetry.unsupportedRelationshipClaimCount,
+                  totalIssues: effectiveValidatorReport.telemetry.totalIssues,
+                  byCode: effectiveValidatorReport.telemetry.byCode,
+                  optionsOverrideApplied: effectiveValidatorReport.telemetry.optionsOverrideApplied,
+                  safeNarrativeFallbackApplied: effectiveValidatorReport.telemetry.safeNarrativeFallbackApplied,
+                  styleIssueCount: effectiveValidatorReport.telemetry.styleIssueCount,
+                  styleDriftCount: effectiveValidatorReport.telemetry.styleDriftCount,
+                  mechanicalExpositionCount: effectiveValidatorReport.telemetry.mechanicalExpositionCount,
+                  npcKnowledgeIssueCount: effectiveValidatorReport.telemetry.npcKnowledgeIssueCount,
+                  rootCauseLeakCount: effectiveValidatorReport.telemetry.rootCauseLeakCount,
+                  unsupportedFactCount: effectiveValidatorReport.telemetry.unsupportedFactCount,
+                  unsupportedRelationshipClaimCount: effectiveValidatorReport.telemetry.unsupportedRelationshipClaimCount,
                   narrativeGovernanceFinalSafe: commitResult.summary.narrativeGovernanceTelemetry.narrativeGovernanceFinalSafe,
-                  issueCodes: validatorReport.issues.map((x) => x.code),
+                  issueCodes: effectiveValidatorReport.issues.map((x) => x.code),
                 },
               }).catch(() => {});
             }

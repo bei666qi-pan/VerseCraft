@@ -11,6 +11,7 @@ import type { KnowledgeFact } from "@/lib/epistemic/types";
 import type { NormalizedPlayerIntent } from "@/lib/turnEngine/types";
 import { buildNpcKnowledgePacket } from "@/lib/npcKnowledge/npcKnowledgeResolver";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
+import { REVEAL_TIER_RANK } from "@/lib/registry/revealTierRank";
 
 function makeRejectedReasons(): EpistemicFilterResult["telemetry"]["rejectedReasons"] {
   return {
@@ -383,4 +384,126 @@ test("validateNarrative bridges unsupported fact detector", () => {
   assert.ok(report.issues.some((x) => x.code === "unsupported_root_cause_claim"));
   assert.ok((report.telemetry.unsupportedFactIssueCount ?? 0) > 0);
   assert.ok(report.narrativeOverride);
+});
+
+test("validateNarrative falls back when root cause has no allowed root fact", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "我听见N-001低声说，公寓根因就是七锚闭环。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: { used_fact_ids: [] },
+      },
+      allowedFactIds: [NPC_KNOWLEDGE_FACT_IDS.B1_PUBLIC_ANOMALY],
+      factDetectionMaxRevealRank: REVEAL_TIER_RANK.surface,
+    })
+  );
+  assert.ok(report.issues.some((issue) => issue.code === "unsupported_root_cause_claim" && issue.severity === "high"));
+  assert.ok(report.narrativeOverride);
+});
+
+test("validateNarrative flags relationship claim without fact or edge", () => {
+  const npcKnowledgePacket = buildNpcKnowledgePacket({
+    speakerNpcId: "N-001",
+    presentNpcIds: ["N-001"],
+    location: "B1_SafeZone",
+    floorId: "B1",
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+    playerKnownFactIds: [],
+    scenePublicFactIds: [],
+    activeTaskIds: [],
+  });
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "N-001一直保护N-010，这件事早就不是秘密。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: { used_fact_ids: [] },
+      },
+      npcKnowledgePacket,
+      speakerNpcId: "N-001",
+      factDetectionMaxRevealRank: REVEAL_TIER_RANK.surface,
+    })
+  );
+  assert.ok(report.issues.some((issue) => issue.code === "unsupported_relationship_claim"));
+  assert.ok(report.issues.some((issue) => issue.code === "unsupported_new_fact" && issue.severity === "medium"));
+});
+
+test("validateNarrative flags location transition without fact or delta", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "我已经抵达B2，冷水从门缝漫过来。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: { used_fact_ids: [] },
+      },
+      delta: { ...emptyStateDelta(), playerLocation: "B1_SafeZone", isActionLegal: true },
+      factDetectionMaxRevealRank: REVEAL_TIER_RANK.surface,
+    })
+  );
+  assert.ok(report.issues.some((issue) => issue.code === "unsupported_location_claim" && issue.severity === "medium"));
+});
+
+test("validateNarrative maps missing used fact id to medium issue", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "我继续观察墙根。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: { used_fact_ids: ["fact:missing:ghost"] },
+      },
+      allowedFactIds: ["fact:missing:ghost"],
+      factDetectionMaxRevealRank: REVEAL_TIER_RANK.surface,
+    })
+  );
+  assert.ok(
+    report.issues.some((issue) => issue.code === "used_fact_id_missing_from_registry" && issue.severity === "medium")
+  );
+});
+
+test("validateNarrative maps reveal tier breach fact id to high issue for root fact", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "我听见N-010说，真正的源头已经逼近。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: { used_fact_ids: [NPC_KNOWLEDGE_FACT_IDS.APARTMENT_CAUSE_ROOT_TRUTH] },
+      },
+      allowedFactIds: [NPC_KNOWLEDGE_FACT_IDS.APARTMENT_CAUSE_ROOT_TRUTH],
+      factDetectionMaxRevealRank: REVEAL_TIER_RANK.surface,
+    })
+  );
+  assert.ok(report.issues.some((issue) => issue.code === "fact_id_not_allowed" && issue.severity === "high"));
+  assert.ok(report.narrativeOverride);
+});
+
+test("validateNarrative records candidate_new_facts without making them committed facts", () => {
+  const report = validateNarrative(
+    baseArgs({
+      dmRecord: {
+        narrative: "我没有确认那个人影，只把疑点压在心里。",
+        options: ["退后", "观察", "沉默", "追问"],
+        player_location: "B1_SafeZone",
+        _narrative_audit: {
+          used_fact_ids: [],
+          candidate_new_facts: [
+            {
+              text: "老板旁边可能有一个银发女孩",
+              category: "npc_identity",
+              confidence: 0.2,
+              proposed_source: "player_observed",
+            },
+          ],
+        },
+      },
+      factDetectionMaxRevealRank: REVEAL_TIER_RANK.surface,
+    })
+  );
+  assert.ok(report.issues.some((issue) => issue.code === "unsupported_new_fact" && issue.severity === "low"));
+  assert.equal(report.narrativeOverride, null);
 });

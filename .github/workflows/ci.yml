@@ -17,11 +17,11 @@ on:
 
 jobs:
   verify:
+    name: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Omit `version`: must match package.json `packageManager` exactly; `version: 10` conflicts with `pnpm@10.0.0`.
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -35,28 +35,24 @@ jobs:
       - name: Lint, unit tests, production build
         run: pnpm test:ci
         env:
-          # next build may read optional AI keys; CI image has none — placeholders satisfy any stray reads.
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
-          # Redis is optional in CI. Keep it empty so rate limits and caches use in-memory fallback.
           REDIS_URL: ""
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
-      - name: E2E contract (no AI gateway — degraded SSE)
-        run: pnpm run test:e2e:contract
+      - name: Admin API and dashboard degraded smoke
+        run: pnpm test:admin:api && pnpm test:admin:perf
         env:
           CI: "true"
-          E2E_EXPECT_KEYS_MISSING: "1"
-          # 避免与开发者本机已占用的 666 冲突；CI 内单独起 3000
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
-          # Redis is optional in CI. Keep it empty so degraded SSE never tries 127.0.0.1:6379.
           REDIS_URL: ""
-          # Ensure PR / fork runs do not pick up accidental AI_* from the shell
+          ADMIN_PASSWORD: ci-admin-password-placeholder
+          ADMIN_CRON_SECRET: ci-admin-cron-secret-placeholder
           AI_GATEWAY_BASE_URL: ""
           AI_GATEWAY_API_KEY: ""
           AI_MODEL_MAIN: ""
@@ -65,6 +61,79 @@ jobs:
           AI_MODEL_REASONER: ""
           VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
           VC_FORCE_AI_KEYS_MISSING: "1"
+
+  e2e-contract:
+    name: E2E contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: E2E contract (no AI gateway; degraded SSE)
+        run: pnpm run test:e2e:contract
+        env:
+          CI: "true"
+          E2E_EXPECT_KEYS_MISSING: "1"
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
+          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          REDIS_URL: ""
+          AI_GATEWAY_BASE_URL: ""
+          AI_GATEWAY_API_KEY: ""
+          AI_MODEL_MAIN: ""
+          AI_MODEL_CONTROL: ""
+          AI_MODEL_ENHANCE: ""
+          AI_MODEL_REASONER: ""
+          VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
+          VC_FORCE_AI_KEYS_MISSING: "1"
+
+  mock-chat-guardrails:
+    name: mock-chat-guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Build production app for mock guardrails
+        run: pnpm build
+        env:
+          CI: "true"
+          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          REDIS_URL: ""
+          AI_PROVIDER: mock
+          AI_GATEWAY_BASE_URL: ""
+          AI_GATEWAY_API_KEY: ""
+          AI_MODEL_MAIN: ""
+          AI_MODEL_CONTROL: ""
+          AI_MODEL_ENHANCE: ""
+          AI_MODEL_REASONER: ""
+          VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
 
       - name: Mock E2E, benchmark, and eval
         run: |
@@ -82,6 +151,7 @@ jobs:
           curl -fsS http://127.0.0.1:3000 >/dev/null
           BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run benchmark:chat:mock
           BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:chat-quality:mock
+          BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:narrative-safety:mock
           kill "$mock_server_pid" 2>/dev/null || true
           wait "$mock_server_pid" 2>/dev/null || true
           trap - EXIT
@@ -109,32 +179,82 @@ jobs:
           path: |
             .runtime-data/chat-benchmark-mock.json
             .runtime-data/eval-chat-quality-mock.json
+            .runtime-data/eval-narrative-safety-mock.json
             .runtime-data/mock-next.log
 
-      - name: Admin API and dashboard degraded smoke
-        run: pnpm test:admin:api && pnpm test:admin:perf
-        env:
-          CI: "true"
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
-          PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
-          REDIS_URL: ""
-          ADMIN_PASSWORD: ci-admin-password-placeholder
-          ADMIN_CRON_SECRET: ci-admin-cron-secret-placeholder
-          AI_GATEWAY_BASE_URL: ""
-          AI_GATEWAY_API_KEY: ""
-          AI_MODEL_MAIN: ""
-          AI_MODEL_CONTROL: ""
-          AI_MODEL_ENHANCE: ""
-          AI_MODEL_REASONER: ""
-          VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
-          VC_FORCE_AI_KEYS_MISSING: "1"
+  narrative-safety-mock-gate:
+    name: narrative-safety mock gate
+    runs-on: ubuntu-latest
+    needs: mock-chat-guardrails
+    if: always()
+    steps:
+      - name: Download mock guardrail artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mock-chat-guardrails
+          path: .runtime-data
+
+      - name: Assert narrative safety mock report
+        run: |
+          mkdir -p .runtime-data
+          node <<'NODE' | tee .runtime-data/narrative-safety-mock-gate.log
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const candidates = [
+            ".runtime-data/eval-narrative-safety-mock.json",
+            ".runtime-data/.runtime-data/eval-narrative-safety-mock.json",
+          ];
+          const reportPath = candidates.find((candidate) => fs.existsSync(candidate));
+          if (!reportPath) {
+            console.error("Missing eval-narrative-safety-mock.json artifact.");
+            process.exit(1);
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+          const summary = report.summary ?? {};
+          const requiredRates = [
+            "jsonPassRate",
+            "ssePassRate",
+            "unknownEntityPassRate",
+            "unregisteredNpcPassRate",
+            "speakerPresencePassRate",
+            "npcKnowledgePassRate",
+            "unsupportedFactPassRate",
+            "pacingPassRate",
+            "promptInjectionPassRate",
+            "commitSafetyPassRate",
+          ];
+          const failures = [];
+          for (const key of requiredRates) {
+            if (summary[key] !== 1) failures.push(`${key}=${summary[key]}`);
+          }
+          if (summary.severeErrorCount !== 0) failures.push(`severeErrorCount=${summary.severeErrorCount}`);
+          if (summary.gatePass !== true) failures.push(`gatePass=${summary.gatePass}`);
+          console.log(`Narrative safety mock report: ${path.normalize(reportPath)}`);
+          console.log(JSON.stringify(summary, null, 2));
+          if (failures.length > 0) {
+            console.error(`Narrative safety mock gate failed: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Narrative safety mock gate passed.");
+          NODE
+
+      - name: Upload narrative safety gate artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: narrative-safety-mock-gate
+          path: |
+            .runtime-data/eval-narrative-safety-mock.json
+            .runtime-data/.runtime-data/eval-narrative-safety-mock.json
+            .runtime-data/narrative-safety-mock-gate.log
+            .runtime-data/mock-next.log
+            .runtime-data/.runtime-data/mock-next.log
 
   live-chat-perf:
+    name: live-chat-perf
     runs-on: ubuntu-latest
     needs: verify
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Check live perf configuration
         id: live_perf
@@ -191,6 +311,8 @@ jobs:
         run: |
           mkdir -p .runtime-data
           pnpm exec next start -p 3000 > .runtime-data/live-chat-next.log 2>&1 &
+          live_server_pid=$!
+          trap 'kill "$live_server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000 >/dev/null; then
               break
@@ -201,7 +323,11 @@ jobs:
           E2E_AI_LIVE=1 VC_ASSERT_CHAT_LATENCY_BUDGET=1 BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm benchmark:chat-metrics -- --mode live --assert-budget --include-all --json-out .runtime-data/live-chat-benchmark.json
           if [ "${{ github.event_name }}" = "schedule" ]; then
             E2E_AI_LIVE=1 BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm eval:chat-quality -- --mode live --assert --json-out .runtime-data/live-chat-quality-eval.json
+            E2E_AI_LIVE=1 BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm eval:narrative-safety -- --mode live --assert --json-out .runtime-data/live-narrative-safety-eval.json
           fi
+          kill "$live_server_pid" 2>/dev/null || true
+          wait "$live_server_pid" 2>/dev/null || true
+          trap - EXIT
         env:
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
@@ -223,4 +349,5 @@ jobs:
           path: |
             .runtime-data/live-chat-benchmark.json
             .runtime-data/live-chat-quality-eval.json
+            .runtime-data/live-narrative-safety-eval.json
             .runtime-data/live-chat-next.log

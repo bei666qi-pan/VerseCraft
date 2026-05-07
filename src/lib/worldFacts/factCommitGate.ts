@@ -45,14 +45,53 @@ export type GateFactCommitArgs = {
 };
 
 const UNCERTAIN_RE = /(听说|据说|传闻|有人说|像是|好像|也许|可能|不确定|我猜|他们说|别当真)/;
+const WORLD_FACT_CATEGORIES: readonly WorldFactCategory[] = [
+  "npc",
+  "floor",
+  "event",
+  "item",
+  "apartment_root",
+  "relationship",
+  "location",
+  "task",
+  "anomaly",
+];
+const WORLD_FACT_SOURCES: readonly WorldFactSource[] = [
+  "registry",
+  "story_ledger",
+  "world_engine",
+  "player_observed",
+  "npc_belief",
+  "system_repair",
+];
+const WORLD_FACT_TRUTH_LEVELS: readonly WorldFactTruthLevel[] = [
+  "canon",
+  "session_committed",
+  "rumor",
+  "hypothesis",
+  "false_belief",
+  "candidate",
+];
+
+function isWorldFactCategory(value: unknown): value is WorldFactCategory {
+  return typeof value === "string" && (WORLD_FACT_CATEGORIES as readonly string[]).includes(value);
+}
+
+function isWorldFactSource(value: unknown): value is WorldFactSource {
+  return typeof value === "string" && (WORLD_FACT_SOURCES as readonly string[]).includes(value);
+}
+
+function isWorldFactTruthLevel(value: unknown): value is WorldFactTruthLevel {
+  return typeof value === "string" && (WORLD_FACT_TRUTH_LEVELS as readonly string[]).includes(value);
+}
 
 function hasRequiredMetadata(candidate: WorldFactCommitCandidate): boolean {
   return Boolean(
-    candidate.factId &&
+      candidate.factId &&
       candidate.content &&
-      candidate.category &&
-      candidate.truthLevel &&
-      candidate.source &&
+      isWorldFactCategory(candidate.category) &&
+      isWorldFactTruthLevel(candidate.truthLevel) &&
+      isWorldFactSource(candidate.source) &&
       Array.isArray(candidate.ownerNpcIds) &&
       Array.isArray(candidate.floorIds) &&
       Array.isArray(candidate.relatedNpcIds) &&

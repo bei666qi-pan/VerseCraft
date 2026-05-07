@@ -1,4 +1,6 @@
 import {
+  COMMIT_STATE_CHANGING_FIELDS,
+  COMMIT_STATE_MIRROR_FIELDS,
   commitTurn as commitTurnCore,
   type CommitTurnArgs,
   type CommitTurnResult,
@@ -25,6 +27,7 @@ export type {
   TurnCommitFlag,
   TurnCommitSummary,
 };
+export { COMMIT_STATE_CHANGING_FIELDS, COMMIT_STATE_MIRROR_FIELDS };
 
 export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   return commitTurnCore(args);

@@ -27,6 +27,9 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
     "runtime packet budget must stay aligned with buildRuntimeContextPackets full default (stage2 + 学制子包)"
   );
   assert.ok(routeContent.includes("finalOutputModeration"), "final output safety must be retained");
+  assert.ok(routeContent.includes("collectSafetyReport"), "Narrative Safety Kernel must stay on final path");
+  assert.ok(routeContent.includes("lane_side_effect_applied"), "TurnLane side-effect telemetry must be retained");
+  assert.ok(routeContent.includes("sideEffectPlan"), "route.ts must consume TurnLane sideEffectPlan");
   assert.ok(routeContent.includes("runStreamFinalHooks"), "final hooks must stay enabled");
   const idxInputSafety = routeContent.indexOf("const inputSafety = await moderateInputOnServer");
   const idxRiskLane = routeContent.indexOf("const laneDecision =");

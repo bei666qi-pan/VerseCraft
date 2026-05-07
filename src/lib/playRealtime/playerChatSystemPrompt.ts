@@ -115,6 +115,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "",
     "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、options、其他结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
     "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。options、bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
+    "【强事实审计（强制）】若 narrative 或结构化更新声称根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份或任务完成，必须输出 _narrative_audit.used_fact_ids；无可用 factId 时不得写成确定事实，只能写为未证实候选/传闻并放入 _narrative_audit.candidate_new_facts。",
     "若本回合自然形成章节收束并留下下一章钩子，可额外输出 next_chapter_title_candidate：简体中文短标题，不含“第几章”、引号、系统词或固定旧标题；不要为普通回合强行输出。",
     "若写出 options：须 4 条、各 5–20 字、不重复、符合场景；勿与玩家状态中【最近选项历史】雷同；须推动剧情，僵局时须环境危机+实质性破局选项。流式输出建议尽早写出 narrative。",
     "consumes_time：默认 true；未写 time_cost 时仍等价「整段动作计 1 游戏小时」；极速反应可为 false。",
@@ -189,6 +190,7 @@ export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
     "narrative 用第一人称“我”，按 narrative_budget_packet 控制长度；每个信息 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化，禁止客服腔和同义复述。",
     "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
     "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。",
+    "强事实必须带证据：根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份、任务完成须写 _narrative_audit.used_fact_ids；无 factId 只能写 candidate_new_facts/传闻，不得确定化。",
     "【安全合规】触及涉黄、极端政治、暴恐细节或违法指引时拒绝执行：is_action_legal=false，sanity_damage=1，consumes_time=true，并给 4 条安全替代 options。",
     "options 若输出必须 4 条、互不重复、可执行、贴合当前场景；高维真相只能在动态 packet/reveal tier 允许时渐进露出。",
   ];
@@ -214,6 +216,7 @@ export function __resetStablePlayerDmPrefixMemoForTests(): void {
 
 export interface PlayerDmDynamicSuffixInput {
   memoryBlock: string;
+  epistemicPromptContextBlock?: string;
   playerContext: string;
   isFirstAction: boolean;
   runtimePackets: string;
@@ -252,6 +255,9 @@ const FIRST_ACTION_CONSTRAINT =
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {
   const parts: string[] = [];
   if (input.memoryBlock) parts.push(input.memoryBlock);
+  if (input.epistemicPromptContextBlock?.trim()) {
+    parts.push("", input.epistemicPromptContextBlock.trim());
+  }
   if (input.turnModePolicyBlock?.trim()) {
     parts.push("", input.turnModePolicyBlock.trim());
   }

@@ -23,6 +23,16 @@ function messagesText(messages: ChatMessage[]): string {
   return messages.map((m) => m.content).join("\n").slice(-12_000);
 }
 
+function latestUserText(messages: ChatMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user" && typeof message.content === "string") {
+      return message.content.slice(-4_000);
+    }
+  }
+  return "";
+}
+
 export function resolveMockScenario(input: MockScenarioInput): MockAiScenario {
   const tagged = asScenario(input.tags?.mockScenario);
   if (tagged) return tagged;
@@ -68,7 +78,7 @@ const longContextNarrative = [
 const dialogueNarrative = [
   "我压低声音问出那句话后，老李没有马上回答。他先看了一眼电梯方向，又把手里的钥匙串攥紧，像是怕金属碰撞声惊动昨晚留下的东西。",
   "过了几秒，他才说昨晚这层楼确实有声音，不像脚步，更像有人拖着湿布从走廊一头擦到另一头。说到这里，他刻意避开了楼梯间门缝。",
-  "他的迟疑不是单纯害怕，而是在判断我知道多少。我可以追问电梯停靠记录，也可以换个方式问他昨晚是否看见有人进出三楼。",
+  "他的迟疑不是单纯害怕，而是在判断我知道多少。我可以追问电梯停靠记录，也可以换个方式问他昨晚是否看见有人进出三楼。这给了我继续施压的余地。",
 ].join("");
 
 const sensitiveNarrative = [
@@ -77,14 +87,20 @@ const sensitiveNarrative = [
   "接下来我可以把注意力放回游戏行动本身，例如离开高风险话题、检查现场痕迹，或者向在场可信的人说明我刚才是在测试主笔的安全边界。",
 ].join("");
 
-function chooseNarrative(input: MockScenarioInput): string {
-  const text = messagesText(input.messages);
+function chooseNarrativeByText(text: string, contextFallback = false): string | null {
   if (text.includes("现实自伤") || text.includes("现实伤害") || text.includes("照单全收")) return sensitiveNarrative;
   if (text.includes("灭火器") || text.includes("墙角") || text.includes("停车场")) return combatNarrative;
+  if (contextFallback && (text.includes("时间线") || text.includes("线索") || text.includes("顶楼"))) return longContextNarrative;
+  if (contextFallback && (text.includes("昨晚") || text.includes("老李"))) return dialogueNarrative;
   if (text.includes("钥匙") || text.includes("挂锁") || text.includes("锁孔") || text.includes("防火门")) return itemNarrative;
   if (text.includes("时间线") || text.includes("线索") || text.includes("顶楼")) return longContextNarrative;
   if (text.includes("昨晚") || text.includes("老李")) return dialogueNarrative;
-  return normalNarrative;
+  return null;
+}
+
+function chooseNarrative(input: MockScenarioInput): string {
+  const userText = latestUserText(input.messages);
+  return chooseNarrativeByText(userText) ?? chooseNarrativeByText(messagesText(input.messages), true) ?? normalNarrative;
 }
 
 export const MOCK_ACTION_OPTIONS = [

@@ -588,6 +588,12 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 
 这些规则适用于 Style Bible、NPC belief / relation graph、world fact registry、unsupported fact detector、fact commit gate、post-generation validator 与 golden regression 的后续改造。
 
+长期入口：
+
+- 叙事安全 12 阶段升级计划见 `docs/narrative-safety-upgrade-plan.md`。
+- 后续 Codex / 人类开发者执行手册见 `docs/codex-narrative-safety-playbook.md`。
+- 两份文档不替代本节红线；如果发生冲突，以当前代码与 AGENTS.md 的不可破坏契约为准。
+
 1. 不要推倒现有 long narrative、`npcConsistency`、`validateNarrative`、`filterEpistemicFacts` / `filterFacts`。叙事治理只能在现有链路上增量接入、补窄 validator、补 telemetry 或补回归测试。
 2. 所有叙事治理改造必须保留灰度开关。新增 prompt packet、validator、commit gate、fact registry 规则或 telemetry 行为时，必须能通过 `VERSECRAFT_ENABLE_*` 风格的开关单独关闭，关闭后不得破坏 `/api/chat` 主链路。
 3. 文风协议只使用 VerseCraft 自有抽象风格，不引用任何现成小说原文，也不要把外部作品片段放进 prompt、测试、fixture 或文档。允许的表达只能抽象为冷峻悬疑、规则游戏压迫感、少年宿命感、克制对白、章节钩子等自有风格约束。
