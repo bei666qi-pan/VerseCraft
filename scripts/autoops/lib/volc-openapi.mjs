@@ -145,8 +145,9 @@ export class VolcEcsClient {
     const body = {
       RegionId: this.region,
       InstanceIds: instanceIds,
-      CommandName: commandName,
-      CommandType: "Shell",
+      InvocationName: "versecraft",
+      Description: commandName,
+      Type: "Shell",
       CommandContent: encoded,
       ContentEncoding: "Base64",
       Timeout: timeout,
