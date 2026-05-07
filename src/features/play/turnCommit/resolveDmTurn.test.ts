@@ -181,6 +181,19 @@ test("resolveTurnConsistency: legacy/default decision turn with missing options 
   assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_options_waiting_regen") ?? false, true);
 });
 
+test("resolveTurnConsistency: keeps sanitized next chapter title candidate", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "我听见门缝后的水声贴着地面退去。",
+    is_death: false,
+    consumes_time: true,
+    next_chapter_title_candidate: "《潮湿门缝》",
+    options: [],
+  } as any);
+  assert.equal(out.next_chapter_title_candidate, "潮湿门缝");
+});
+
 test("resolveTurnConsistency: journal/menu options are invalid and trigger regen wait", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,

@@ -408,12 +408,15 @@ test("chapter reasoner update generates a next chapter seed after a valid close 
     nowTurn: 3,
     pre: before,
     post: after,
-    resolvedTurn: { task_updates: [{ id: "small_question", status: "completed" }] },
+    resolvedTurn: {
+      task_updates: [{ id: "small_question", status: "completed" }],
+      next_chapter_title_candidate: "潮湿门缝",
+    },
   });
 
   assert.equal(out.director.chapter.closeCandidate?.shouldClose, true);
   assert.ok(out.director.chapter.nextChapterSeed);
-  assert.equal(out.director.chapter.nextChapterSeed?.title, "门后回声");
+  assert.equal(out.director.chapter.nextChapterSeed?.title, "潮湿门缝");
   assert.ok(out.director.chapter.nextChapterSeed?.inheritedThreadIds.includes("next_hook"));
 });
 

@@ -68,6 +68,7 @@ export function buildChapterSummary(input: {
   signals: ChapterTurnSignals;
   completedAt?: number;
   nextObjective?: string;
+  title?: string | null;
   closeDecision?: {
     playerRecapCandidate?: string;
   } | null;
@@ -84,7 +85,7 @@ export function buildChapterSummary(input: {
   const clueLines = cleanLines(signals.clueLines);
   return {
     chapterId: definition.id,
-    title: definition.title,
+    title: input.title ?? definition.title,
     completedAt: input.completedAt ?? Date.now(),
     summaryForPlayer: buildSummaryForPlayer(input),
     resultLines: resultLines.length > 0 ? resultLines : fallbackResult(definition, progress),

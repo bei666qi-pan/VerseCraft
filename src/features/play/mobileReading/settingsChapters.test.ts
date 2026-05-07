@@ -18,6 +18,10 @@ test("settings chapter list exposes completed chapters as selectable review targ
     ...createInitialChapterState(),
     activeChapterId: "chapter-1",
     currentChapterId: "chapter-1",
+    chapterTitlesById: {
+      "chapter-1": "暗月初醒",
+      "chapter-2": "潮湿门缝",
+    },
     completedChapterIds: ["chapter-1"],
     unlockedChapterIds: ["chapter-1", "chapter-2"],
     pendingChapterEndId: "chapter-1",
@@ -43,4 +47,17 @@ test("settings chapter list exposes completed chapters as selectable review targ
   assert.equal(chapterOne?.status, "completed");
   assert.equal(chapterOne?.selectable, true);
   assert.equal(chapterTwo?.status, "current");
+  assert.equal(chapterTwo?.title, "第二章·潮湿门缝");
+});
+
+test("settings chapter list falls back to chapter order without hardcoded second title", () => {
+  const unlocked = {
+    ...createInitialChapterState(),
+    activeChapterId: "chapter-2",
+    currentChapterId: "chapter-2",
+    unlockedChapterIds: ["chapter-1", "chapter-2"],
+  };
+  const items = buildSettingsChapterItems(unlocked);
+  const chapterTwo = items.find((item) => item.id === "chapter-2");
+  assert.equal(chapterTwo?.title, "第二章");
 });

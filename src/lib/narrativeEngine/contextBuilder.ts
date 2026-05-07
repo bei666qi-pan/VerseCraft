@@ -1,4 +1,4 @@
-import { getChapterDefinition, normalizeChapterState } from "@/lib/chapters";
+import { getChapterDefinition, getChapterDisplayName, normalizeChapterState } from "@/lib/chapters";
 import type { ChapterState } from "@/lib/chapters/types";
 import { CONTENT_PACKS } from "@/lib/contentSpec/packs";
 import { coerceToEpistemicMemory, type SessionMemoryRow } from "@/lib/memoryCompress";
@@ -371,7 +371,7 @@ function applyChapterContext(
     const progress = chapterId ? chapterState.progressByChapterId?.[chapterId] : null;
     const definition = getChapterDefinition(chapterId);
     const completedBeatIds = uniqueStrings(progress?.completedBeatIds ?? []);
-    const title = directorChapter?.title ?? definition?.title ?? null;
+    const title = directorChapter?.title ?? getChapterDisplayName(definition, chapterState) ?? null;
     const fallbackObjective = progress?.lastObjectiveText ?? definition?.objective ?? null;
     const mainQuestion = directorChapter?.mainQuestion ?? fallbackObjective;
     const promise = directorChapter?.promise ?? definition?.endHook ?? fallbackObjective;

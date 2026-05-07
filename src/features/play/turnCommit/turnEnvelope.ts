@@ -60,6 +60,7 @@ export type TurnEnvelope = {
 
   // Keep legacy optional keys if present
   bgm_track?: string;
+  next_chapter_title_candidate?: string;
 
   // --- Phase-1: new envelope semantic fields (backward-compatible) ---
   /**

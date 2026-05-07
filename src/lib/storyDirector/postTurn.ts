@@ -1,4 +1,5 @@
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
+import { sanitizeChapterTitleCandidate, toChineseChapterOrder } from "@/lib/chapters/title";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import { detectDirectorSignals } from "./signals";
 import { evaluateChapterCloseDecision, planChapterStep } from "./chapterReasoner";
@@ -331,8 +332,7 @@ function collectResolvedTurnIds(resolvedTurn: any, nowTurn: number, signals: { p
 }
 
 function pickNextChapterTitle(order: number): string {
-  if (order <= 1) return "门后回声";
-  return `第${order + 1}章`;
+  return `第${toChineseChapterOrder(order + 1)}章`;
 }
 
 function buildChapterCloseDecision(input: {
@@ -421,7 +421,7 @@ function advanceChapterDirectorState(args: {
     ...collectForbiddenRevealIds(args.postMemoryEntries),
   ], 12);
 
-  const closeCandidate = buildChapterCloseDecision({
+  const baseCloseCandidate = buildChapterCloseDecision({
     chapter: args.chapter,
     signals: args.signals,
     plan: args.plan,
@@ -433,6 +433,14 @@ function advanceChapterDirectorState(args: {
     mustEchoMemoryIds,
     memoryEntries: args.postMemoryEntries,
   });
+  const modelTitleCandidate = sanitizeChapterTitleCandidate(
+    (args.resolvedTurn as { next_chapter_title_candidate?: unknown })?.next_chapter_title_candidate,
+    32
+  );
+  const closeCandidate =
+    baseCloseCandidate?.shouldClose && modelTitleCandidate
+      ? { ...baseCloseCandidate, nextChapterTitleCandidate: modelTitleCandidate }
+      : baseCloseCandidate;
   const nextChapterSeed = buildNextChapterSeed({
     chapter: args.chapter,
     closeCandidate,

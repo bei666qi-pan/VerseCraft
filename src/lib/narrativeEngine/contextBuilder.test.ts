@@ -10,6 +10,9 @@ const chapterState: ChapterState = {
   currentChapterId: "chapter-1",
   activeChapterId: "chapter-1",
   reviewChapterId: null,
+  chapterTitlesById: {
+    "chapter-1": "暗月初醒",
+  },
   completedChapterIds: [],
   unlockedChapterIds: ["chapter-1"],
   progressByChapterId: {

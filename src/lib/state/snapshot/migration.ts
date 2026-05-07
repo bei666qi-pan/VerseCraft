@@ -20,7 +20,7 @@ import { ANOMALIES } from "@/lib/registry/anomalies";
 import { inferSaveSlotKind } from "./branch";
 import { createDefaultProfessionState } from "@/lib/profession/registry";
 import { normalizeJournalState } from "@/lib/domain/clueMerge";
-import { getChapterDefinition, normalizeChapterState } from "@/lib/chapters";
+import { getChapterDefinition, getChapterDisplayName, normalizeChapterState } from "@/lib/chapters";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import type { ChapterState } from "@/lib/chapters/types";
 
@@ -107,7 +107,7 @@ function buildChapterDirectorBridgeFromState(chapterState: ChapterState): {
   return {
     currentChapterId: chapterId,
     chapterOrder: definition?.order,
-    chapterTitle: definition?.title,
+    chapterTitle: getChapterDisplayName(definition, chapterState),
     promise: definition?.endHook ?? objective,
     mainQuestion: objective,
     minTurns: definition?.minTurns,

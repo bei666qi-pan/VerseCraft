@@ -51,12 +51,12 @@ export function ChapterSummaryList({ summary }: { summary: ChapterSummary }) {
   const paragraphs = getRecapParagraphs(summary);
   return (
     <section data-testid="chapter-summary-list" className="space-y-3" aria-label="前情回望">
-      <h3 className="vc-reading-serif text-[19px] font-semibold leading-none text-[#ffd08b]">
+      <h3 className="vc-reading-serif text-[19px] font-semibold leading-none text-[#174d46]">
         前情回望
       </h3>
       <div className="space-y-3">
         {paragraphs.map((line, index) => (
-          <p key={`${index}-${line}`} className="vc-reading-serif text-[16px] leading-relaxed text-[#e7bb8f]">
+          <p key={`${index}-${line}`} className="vc-reading-serif text-[16px] leading-relaxed text-[#4f706a]">
             {line}
           </p>
         ))}

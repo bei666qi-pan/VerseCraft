@@ -30,7 +30,7 @@ export const CHAPTER_DEFINITIONS: readonly ChapterDefinition[] = [
   {
     id: CHAPTER_TWO_ID,
     order: 2,
-    title: "门后回声",
+    title: "第二章",
     subtitle: "第二章",
     kind: "tutorial",
     objective: "沿第一章线索继续探索，面对第一个更明确的阻碍或 NPC 迹象。",

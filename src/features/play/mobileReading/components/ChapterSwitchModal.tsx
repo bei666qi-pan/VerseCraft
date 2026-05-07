@@ -39,6 +39,7 @@ export function ChapterSwitchModal({
         <button
           type="button"
           onClick={onClose}
+          data-testid="chapter-switch-close"
           className="absolute right-6 top-7 z-10 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-2 vc-reading-serif text-[16px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
         >
           关闭

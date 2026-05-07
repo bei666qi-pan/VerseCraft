@@ -68,6 +68,9 @@ function nearChapterEndState(now = Date.now()) {
     currentChapterId: "chapter-1",
     activeChapterId: "chapter-1",
     reviewChapterId: null,
+    chapterTitlesById: {
+      "chapter-1": "暗月初醒",
+    },
     completedChapterIds: [],
     unlockedChapterIds: ["chapter-1"],
     summariesByChapterId: {},
@@ -245,6 +248,7 @@ function buildChapterSseFinalFrame() {
       narrative: "你靠近门缝，发现水迹只停在门槛内侧。电子表亮了一瞬，留下指向下一扇门的时间残影。",
       is_death: false,
       consumes_time: false,
+      next_chapter_title_candidate: "潮湿门缝",
       player_location: "B1_Corridor",
       options,
       task_updates: [
@@ -273,7 +277,7 @@ function buildChapterSseFinalFrame() {
       new_tasks: [
         {
           id: "chapter_2_objective",
-          title: "沿门后回声继续调查",
+          title: "沿潮湿门缝继续调查",
           description: "沿第一条异常线索继续探索。",
           status: "active",
         },
@@ -340,6 +344,40 @@ async function expectNoPrunedEntries(page: Page) {
   for (const marker of prunedMarkers) expect(interactiveText).not.toContain(marker);
 }
 
+async function expectPageTurnDuring(page: Page, action: () => Promise<void>) {
+  await page.evaluate(() => {
+    const win = window as typeof window & {
+      __vcChapterPageTurnSeen?: boolean;
+      __vcChapterPageTurnObserver?: MutationObserver;
+    };
+    win.__vcChapterPageTurnSeen = Boolean(document.querySelector('[data-testid="chapter-page-turn-overlay"]'));
+    win.__vcChapterPageTurnObserver?.disconnect();
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="chapter-page-turn-overlay"]')) {
+        win.__vcChapterPageTurnSeen = true;
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    win.__vcChapterPageTurnObserver = observer;
+  });
+
+  await action();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const win = window as typeof window & { __vcChapterPageTurnSeen?: boolean };
+        return win.__vcChapterPageTurnSeen === true;
+      })
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    const win = window as typeof window & { __vcChapterPageTurnObserver?: MutationObserver };
+    win.__vcChapterPageTurnObserver?.disconnect();
+  });
+  await expect(page.getByTestId("chapter-page-turn-overlay")).toHaveCount(0, { timeout: 2_000 });
+}
+
 test.describe("chapter flow", () => {
   const mobileChapterViewports = [
     { width: 390, height: 844 },
@@ -373,10 +411,13 @@ test.describe("chapter flow", () => {
     await expectNoGameyChapterText(page.getByTestId("chapter-end-sheet"));
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
-    await page.getByTestId("chapter-next-button").click();
+    await expectPageTurnDuring(page, () => page.getByTestId("chapter-next-button").click());
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：门后回声");
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
+    const legacySecondChapterTitle = ["门后", "回声"].join("");
+    await expect(page.getByTestId("mobile-reading-header")).not.toContainText(legacySecondChapterTitle);
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+    await expect(page.getByText("夕阳斜斜地压在黑板上")).toHaveCount(0);
 
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("chapter-navigator")).toBeVisible();
@@ -386,27 +427,66 @@ test.describe("chapter flow", () => {
     const chapterTwoItem = page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-2"]');
     await expect(chapterOneItem).toContainText("第一章：暗月初醒");
     await expect(chapterOneItem).toContainText(/回响|回声|异常|门缝|明确介入/);
-    await expect(chapterTwoItem).toContainText("第二章：门后回声");
+    await expect(chapterTwoItem).toContainText("第二章：潮湿门缝");
     await expect(chapterTwoItem).toContainText("正在阅读");
     await expect(chapterTwoItem).toHaveAttribute("aria-current", "page");
-    await page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-1"]').click();
+    await expectPageTurnDuring(page, () =>
+      page.locator('[data-testid="chapter-nav-item"][data-chapter-id="chapter-1"]').click()
+    );
     await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByText("前情回望，不影响正在阅读的章节")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
-    await page.getByTestId("chapter-return-current").click();
+    await expectPageTurnDuring(page, () => page.getByTestId("chapter-return-current").click());
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
-    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：门后回声");
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+
+    await expectPageTurnDuring(page, () => page.getByTestId("chapter-top-prev-button").click());
+    await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
+    await expectPageTurnDuring(page, () => page.getByTestId("chapter-top-next-button").click());
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
+
+    const viewportBox = await page.getByTestId("mobile-story-viewport").boundingBox();
+    expect(viewportBox).toBeTruthy();
+    if (viewportBox) {
+      const y = viewportBox.y + Math.min(220, viewportBox.height / 2);
+      await expectPageTurnDuring(page, async () => {
+        await page.getByTestId("mobile-story-viewport").dispatchEvent("touchstart", {
+          touches: [{ identifier: 1, clientX: viewportBox.x + viewportBox.width * 0.18, clientY: y }],
+        });
+        await page.getByTestId("mobile-story-viewport").dispatchEvent("touchend", {
+          changedTouches: [{ identifier: 1, clientX: viewportBox.x + viewportBox.width * 0.82, clientY: y + 2 }],
+        });
+      });
+      await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
+      await expectPageTurnDuring(page, async () => {
+        await page.getByTestId("mobile-story-viewport").dispatchEvent("touchstart", {
+          touches: [{ identifier: 2, clientX: viewportBox.x + viewportBox.width * 0.82, clientY: y }],
+        });
+        await page.getByTestId("mobile-story-viewport").dispatchEvent("touchend", {
+          changedTouches: [{ identifier: 2, clientX: viewportBox.x + viewportBox.width * 0.18, clientY: y + 4 }],
+        });
+      });
+      await expect(page.getByTestId("chapter-review-panel")).toHaveCount(0);
+    }
 
     await page.getByTestId("bottom-nav-codex").click();
     await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
     await page.getByTestId("bottom-nav-settings").click();
     await expect(page.locator("#unified-menu-content")).toBeHidden();
     await expect(page.getByTestId("mobile-settings-panel")).toBeVisible();
+    await page.getByTestId("open-chapter-switch-button").click();
+    await expect(page.getByTestId("chapter-switch-modal")).toContainText("第二章·潮湿门缝");
+    await page.getByTestId("chapter-switch-close").click();
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
+    const bottomGap = await page.evaluate(() => {
+      const root = document.scrollingElement ?? document.documentElement;
+      return root.scrollHeight - window.scrollY - window.innerHeight;
+    });
+    expect(bottomGap).toBeLessThan(140);
 
     await expectNoPrunedEntries(page);
     await expectNoHorizontalOverflow(page);

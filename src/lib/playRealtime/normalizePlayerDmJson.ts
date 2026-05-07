@@ -4,6 +4,7 @@
  */
 import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 import { extractBalancedJsonObjectCandidates } from "@/features/play/stream/dmParse";
+import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
 
 function coerceOptionToString(x: unknown): string | null {
   if (typeof x === "string") return x.trim() || null;
@@ -261,6 +262,10 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   }
   if (typeof o.bgm_track === "string" && o.bgm_track.length > 0) {
     out.bgm_track = o.bgm_track;
+  }
+  const nextChapterTitleCandidate = sanitizeChapterTitleCandidate(o.next_chapter_title_candidate, 32);
+  if (nextChapterTitleCandidate) {
+    out.next_chapter_title_candidate = nextChapterTitleCandidate;
   }
   const changeSetRaw = (o as { dm_change_set?: unknown }).dm_change_set;
   if (

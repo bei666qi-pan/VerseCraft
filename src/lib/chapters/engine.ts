@@ -1,6 +1,7 @@
 import { getChapterDefinition } from "./definitions";
 import { advanceChapterBeats, countChapterStateChanges, shouldCountChapterTurn, shouldCountKeyChoice } from "./progress";
 import { buildChapterSummary } from "./summary";
+import { getChapterDisplayName, sanitizeChapterTitleCandidate } from "./title";
 import type {
   ChapterCompletionRuntime,
   ChapterDefinition,
@@ -92,9 +93,12 @@ export function completeChapter(input: {
   summary: ChapterSummary;
   now?: number;
   completedLogIndex?: number | null;
+  nextChapterTitleCandidate?: string | null;
 }): ChapterState {
   const now = input.now ?? Date.now();
   const nextChapterId = input.definition.nextChapterId ?? null;
+  const nextChapterTitle =
+    nextChapterId ? sanitizeChapterTitleCandidate(input.nextChapterTitleCandidate, 32) : null;
   const completedProgress: ChapterProgress = {
     ...input.progress,
     status: "completed",
@@ -124,6 +128,10 @@ export function completeChapter(input: {
     summariesByChapterId: {
       ...input.state.summariesByChapterId,
       [input.definition.id]: input.summary,
+    },
+    chapterTitlesById: {
+      ...(input.state.chapterTitlesById ?? {}),
+      ...(nextChapterId && nextChapterTitle ? { [nextChapterId]: nextChapterTitle } : {}),
     },
     pendingChapterEndId: input.definition.id,
     lastChapterEndAt: now,
@@ -164,6 +172,7 @@ export function recordChapterTurnInState(input: {
       signals: input.signals,
       completedAt,
       nextObjective: nextDefinition?.objective,
+      title: getChapterDisplayName(input.definition, nextState),
       closeDecision: input.runtime?.closeDecision ?? null,
     });
     nextState = completeChapter({
@@ -174,6 +183,7 @@ export function recordChapterTurnInState(input: {
       now: completedAt,
       completedLogIndex:
         typeof input.signals.logCountAfter === "number" ? Math.max(0, input.signals.logCountAfter - 1) : null,
+      nextChapterTitleCandidate: input.runtime?.closeDecision?.nextChapterTitleCandidate ?? null,
     });
   }
   return nextState;

@@ -1,5 +1,6 @@
 import {
   CHAPTER_DEFINITIONS,
+  formatChapterTitle,
   type ChapterId,
   type ChapterState,
 } from "@/lib/chapters";
@@ -11,11 +12,6 @@ export type SettingsChapterItem = {
   statusLabel: string;
   actionLabel: string;
   selectable: boolean;
-};
-
-const CHAPTER_DISPLAY_TITLES: Record<string, string> = {
-  "chapter-1": "第一章·暗月初醒",
-  "chapter-2": "第二章·门后回声",
 };
 
 export function buildSettingsChapterItems(chapterState: ChapterState): SettingsChapterItem[] {
@@ -36,7 +32,7 @@ export function buildSettingsChapterItems(chapterState: ChapterState): SettingsC
             : "locked";
       return {
         id: definition.id,
-        title: CHAPTER_DISPLAY_TITLES[definition.id] ?? `第 ${definition.order} 章·${definition.title}`,
+        title: formatChapterTitle(definition, chapterState).replace("：", "·"),
         status,
         statusLabel:
           status === "current"

@@ -98,6 +98,18 @@ test("normalizePlayerDmJson passes through time_cost string", () => {
   assert.equal((n as { time_cost?: string }).time_cost, "light");
 });
 
+test("normalizePlayerDmJson preserves a cleaned next chapter title candidate", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "我把门缝后的冷光压在视线边缘。",
+    is_death: false,
+    next_chapter_title_candidate: "  第二章：潮湿门缝  ",
+  });
+  assert.ok(n);
+  assert.equal(n!.next_chapter_title_candidate, "潮湿门缝");
+});
+
 test("normalizePlayerDmJson sanitizes weapon_updates to whitelist shape", () => {
   const n = normalizePlayerDmJson({
     is_action_legal: true,

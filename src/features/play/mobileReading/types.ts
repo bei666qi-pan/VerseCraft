@@ -19,7 +19,11 @@ export type MobileReadingShellProps = {
 
 export type MobileReadingHeaderProps = {
   audioMuted: boolean;
+  canGoNextChapter?: boolean;
+  canGoPreviousChapter?: boolean;
   onToggleAudio: () => void;
+  onGoNextChapter?: () => void;
+  onGoPreviousChapter?: () => void;
   pinned?: boolean;
   title: string;
   variant?: "default" | "codex";
@@ -27,6 +31,8 @@ export type MobileReadingHeaderProps = {
 
 export type MobileStoryViewportProps = {
   children: ReactNode;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
 };
 
 export type MobileActionDockProps = {

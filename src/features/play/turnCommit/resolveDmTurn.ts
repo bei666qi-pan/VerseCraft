@@ -9,6 +9,7 @@ import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
 import { isNonNarrativeOptionLike } from "@/lib/play/optionQuality";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
+import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
 import type { NarrativeDensity, TurnEnvelope, TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
 export type ResolvedTurnUiHints = {
@@ -365,6 +366,10 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     (input as { conflict_outcome?: unknown }).conflict_outcome ??
     (input as { combat_summary?: unknown }).combat_summary
   );
+  const nextChapterTitleCandidate = sanitizeChapterTitleCandidate(
+    (input as { next_chapter_title_candidate?: unknown }).next_chapter_title_candidate,
+    32
+  );
 
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
@@ -392,6 +397,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     weapon_updates: asObjectArray(input.weapon_updates),
     weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
     ...(bgm_track ? { bgm_track } : {}),
+    ...(nextChapterTitleCandidate ? { next_chapter_title_candidate: nextChapterTitleCandidate } : {}),
     ...(security_meta ? { security_meta } : {}),
     ...(Object.keys(ui_hints).length > 0 ? { ui_hints } : {}),
 

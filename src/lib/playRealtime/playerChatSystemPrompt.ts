@@ -115,6 +115,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "",
     "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、options、其他结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
     "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。options、bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
+    "若本回合自然形成章节收束并留下下一章钩子，可额外输出 next_chapter_title_candidate：简体中文短标题，不含“第几章”、引号、系统词或固定旧标题；不要为普通回合强行输出。",
     "若写出 options：须 4 条、各 5–20 字、不重复、符合场景；勿与玩家状态中【最近选项历史】雷同；须推动剧情，僵局时须环境危机+实质性破局选项。流式输出建议尽早写出 narrative。",
     "consumes_time：默认 true；未写 time_cost 时仍等价「整段动作计 1 游戏小时」；极速反应可为 false。",
     "time_cost（可选，蛇形）：free|light|standard|heavy|dangerous。与 consumes_time 组合：false 一律不推进表观小时；true 且无 time_cost 时 +1.0 小时分数（与旧版一致）；true 且 light 等则按分数累计，满 1 才进位显示小时。试探/停顿多用 light；正式交涉 standard；跨层/服务/锻造等 heavy；逃离/硬碰 dangerous；free 表叙事不占表观时钟。",
@@ -184,7 +185,7 @@ export function getStablePlayerDmSystemPrefix(): string {
 export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
   return [
     "你是 VerseCraft 悬疑互动叙事 DM。请严格以 JSON 格式输出，只输出一个 JSON 对象。",
-    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；尽量给 consumes_time、options、player_location、task/codex/relationship/item/currency/dm_change_set 等结构化变化，缺省由服务端补齐。",
+    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；尽量给 consumes_time、options、player_location、task/codex/relationship/item/currency/dm_change_set 等结构化变化，缺省由服务端补齐。章末可选 next_chapter_title_candidate，必须是短中文标题。",
     "narrative 用第一人称“我”，按 narrative_budget_packet 控制长度；每个信息 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化，禁止客服腔和同义复述。",
     "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
     "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。",

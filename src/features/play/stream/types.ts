@@ -169,6 +169,7 @@ export type DMJson = {
   player_location?: string;
   npc_location_updates?: Array<{ id: string; to_location: string }>;
   bgm_track?: string;
+  next_chapter_title_candidate?: string;
   security_meta?: {
     action?: "allow" | "review" | "degrade" | "terminate" | "block";
     stage?: "pre_input" | "post_model" | "final_output" | "risk_control";

@@ -59,16 +59,16 @@ export function ChapterNavigator({
     <div className="absolute inset-x-3 bottom-[calc(7.8rem+env(safe-area-inset-bottom))] z-40">
       <section
         data-testid="chapter-navigator"
-        className="rounded-[12px] border border-[#d39a70]/60 bg-[#06131d]/98 p-4 shadow-[0_18px_44px_rgba(0,0,0,0.38),inset_0_0_24px_rgba(217,151,105,0.06)]"
+        className="rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8]/98 p-4 text-[#174d46] shadow-[0_18px_44px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]"
         aria-label="小说目录"
       >
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="vc-reading-serif text-[22px] font-semibold leading-none text-[#ffd08b]">小说目录</h2>
+          <h2 className="vc-reading-serif text-[22px] font-semibold leading-none text-[#174d46]">小说目录</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="关闭小说目录"
-            className="rounded-full border border-[#d39a70]/35 px-3 py-1 text-[14px] text-[#e7bb8f]"
+            className="rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-3 py-1 text-[14px] text-[#4f706a] shadow-[0_6px_14px_rgba(73,63,51,0.08)]"
           >
             关闭
           </button>
@@ -101,17 +101,17 @@ export function ChapterNavigator({
                 }}
                 className={`grid min-h-[74px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[8px] border px-3 py-2 text-left transition ${
                   item.active || item.reviewing
-                    ? "border-[#e5ad78]/80 bg-[#10202b] text-[#ffd08b] shadow-[0_0_18px_rgba(239,177,127,0.18)]"
+                    ? "border-[#2f746a]/35 bg-[#f4f6f2] text-[#174d46] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
                     : item.completed
-                      ? "border-[#d39a70]/35 bg-[#071721] text-[#e7bb8f]"
+                      ? "border-[#d8d1c6] bg-[#fffdf8] text-[#174d46]"
                       : item.unlocked
-                        ? "border-[#d39a70]/45 bg-[#091923] text-[#e7bb8f]"
-                        : "border-[#38505d]/35 bg-[#05101a] text-[#7f8589]"
+                        ? "border-[#d8d1c6] bg-[#fbf8f2] text-[#174d46]"
+                        : "border-[#ded8ce] bg-[#f6f2ec] text-[#8b8a84]"
                 }`}
               >
                 <span className="min-w-0">
                   <span className="block vc-reading-serif text-[17px] leading-tight">
-                    {formatChapterTitle(item.definition)}
+                    {formatChapterTitle(item.definition, chapterState)}
                   </span>
                   <span className="mt-1 block text-[12px] leading-relaxed text-current/75">
                     {excerpt}
@@ -127,7 +127,7 @@ export function ChapterNavigator({
             type="button"
             data-testid="chapter-return-current"
             onClick={onReturnToActive}
-            className="mt-3 w-full rounded-full border border-[#d39a70]/45 px-4 py-2 vc-reading-serif text-[16px] text-[#ffd08b]"
+            className="mt-3 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-2 vc-reading-serif text-[16px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.08)]"
           >
             回到正在阅读
           </button>

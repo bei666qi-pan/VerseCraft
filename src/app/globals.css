@@ -64,6 +64,82 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes vc-chapter-page-turn-next-sheet {
+  0% { transform: translateX(118%) skewX(-10deg); opacity: 0; filter: brightness(1.03); }
+  22% { opacity: 1; }
+  72% { transform: translateX(2%) skewX(-4deg); opacity: 1; filter: brightness(1); }
+  100% { transform: translateX(-8%) skewX(0deg); opacity: 0; filter: brightness(0.98); }
+}
+
+@keyframes vc-chapter-page-turn-prev-sheet {
+  0% { transform: translateX(-118%) skewX(10deg); opacity: 0; filter: brightness(1.03); }
+  22% { opacity: 1; }
+  72% { transform: translateX(-2%) skewX(4deg); opacity: 1; filter: brightness(1); }
+  100% { transform: translateX(8%) skewX(0deg); opacity: 0; filter: brightness(0.98); }
+}
+
+@keyframes vc-chapter-page-turn-next-crease {
+  0% { transform: translateX(170%); opacity: 0; }
+  18% { opacity: 0.72; }
+  74% { opacity: 0.4; }
+  100% { transform: translateX(-60%); opacity: 0; }
+}
+
+@keyframes vc-chapter-page-turn-prev-crease {
+  0% { transform: translateX(-170%); opacity: 0; }
+  18% { opacity: 0.72; }
+  74% { opacity: 0.4; }
+  100% { transform: translateX(60%); opacity: 0; }
+}
+
+.vc-chapter-page-turn-sheet {
+  top: 0;
+  bottom: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 253, 248, 0.92), rgba(246, 242, 236, 0.98) 58%, rgba(226, 218, 206, 0.88)),
+    repeating-linear-gradient(0deg, rgba(47, 116, 106, 0.018) 0 1px, transparent 1px 7px);
+  will-change: transform, opacity, filter;
+}
+
+.vc-chapter-page-turn-crease {
+  top: 0;
+  bottom: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(81, 68, 52, 0.17), rgba(255, 253, 248, 0.62), transparent),
+    linear-gradient(90deg, transparent, rgba(47, 116, 106, 0.08), transparent);
+  filter: blur(0.2px);
+  will-change: transform, opacity;
+}
+
+.vc-chapter-page-turn--next .vc-chapter-page-turn-sheet {
+  right: -6%;
+  transform-origin: right center;
+  animation: vc-chapter-page-turn-next-sheet 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+}
+
+.vc-chapter-page-turn--next .vc-chapter-page-turn-crease {
+  right: 0;
+  animation: vc-chapter-page-turn-next-crease 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+}
+
+.vc-chapter-page-turn--previous .vc-chapter-page-turn-sheet {
+  left: -6%;
+  transform-origin: left center;
+  animation: vc-chapter-page-turn-prev-sheet 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+}
+
+.vc-chapter-page-turn--previous .vc-chapter-page-turn-crease {
+  left: 0;
+  animation: vc-chapter-page-turn-prev-crease 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-chapter-page-turn-sheet,
+  .vc-chapter-page-turn-crease {
+    animation-duration: 1ms !important;
+  }
+}
+
 /* GPU-only: transform + opacity to avoid layout/paint pipeline */
 @keyframes breathe {
   0%, 100% { opacity: 0.75; }

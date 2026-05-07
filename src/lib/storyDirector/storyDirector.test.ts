@@ -68,7 +68,7 @@ test("chapter bridge resets director chapter when active chapter changes", () =>
     chapter: {
       currentChapterId: "chapter-2",
       chapterOrder: 2,
-      chapterTitle: "门后回声",
+      chapterTitle: "潮湿门缝",
       promise: "把第一章留下的门缝回声带入更深处。",
       mainQuestion: "门后到底是谁在回应玩家？",
       minTurns: 4,
@@ -81,7 +81,7 @@ test("chapter bridge resets director chapter when active chapter changes", () =>
   });
   assert.equal(out.director.chapter.currentChapterId, "chapter-2");
   assert.equal(out.director.chapter.chapterOrder, 2);
-  assert.equal(out.director.chapter.chapterTitle, "门后回声");
+  assert.equal(out.director.chapter.chapterTitle, "潮湿门缝");
   assert.equal(out.director.chapter.startedTurn, 5);
 });
 
@@ -308,13 +308,16 @@ test("chapter director can produce close candidate and next chapter seed", () =>
     nowTurn: 3,
     pre: before,
     post: after,
-    resolvedTurn: { task_updates: [{ id: "small_question", status: "completed" }] },
+    resolvedTurn: {
+      task_updates: [{ id: "small_question", status: "completed" }],
+      next_chapter_title_candidate: "潮湿门缝",
+    },
   });
 
   assert.equal(out.director.chapter.chapterPhase, "closing");
   assert.equal(out.director.chapter.closeCandidate?.shouldClose, true);
   assert.ok((out.director.chapter.closeCandidate?.confidence ?? 0) >= 0.72);
-  assert.equal(out.director.chapter.nextChapterSeed?.title, "门后回声");
+  assert.equal(out.director.chapter.nextChapterSeed?.title, "潮湿门缝");
   assert.ok(out.director.chapter.summaryForPlayer);
   const traces = getChapterReasonerTrace();
   const trace = traces[traces.length - 1];
@@ -328,7 +331,7 @@ test("chapter director can produce close candidate and next chapter seed", () =>
   assert.ok(trace.mustEchoMemoryIds.includes("hook_next"));
   assert.ok(trace.selectedThreadIds.includes("hook_next"));
   assert.ok(trace.selectedThreadIds.includes("promise_done"));
-  assert.equal(trace.nextChapterSeed?.title, "门后回声");
+  assert.equal(trace.nextChapterSeed?.title, "潮湿门缝");
   assert.equal(trace.suppressedGameyUi, true);
 });
 

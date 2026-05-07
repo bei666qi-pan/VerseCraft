@@ -13,6 +13,7 @@ import {
   reviewCompletedChapter,
   shouldCompleteChapter,
   enterNextChapter,
+  formatChapterTitle,
 } from "./index";
 import type { ChapterTurnSignals } from "./types";
 
@@ -29,7 +30,7 @@ function acceptedCloseDecision() {
     hasNoLoreConflict: true,
     playerRecapCandidate: "本章的小问题已经收束，新的钩子指向门后。",
     modelSummaryCandidate: "chapter close accepted",
-    nextChapterTitleCandidate: "门后回声",
+    nextChapterTitleCandidate: "潮湿门缝",
   };
 }
 
@@ -53,6 +54,7 @@ test("old save chapter migration starts at chapter one active", () => {
   assert.equal(migrated.activeChapterId, CHAPTER_ONE_ID);
   assert.equal(migrated.progressByChapterId[CHAPTER_ONE_ID].status, "active");
   assert.equal(migrated.progressByChapterId[CHAPTER_TWO_ID].status, "locked");
+  assert.equal(formatChapterTitle(getChapterDefinition(CHAPTER_TWO_ID), migrated), "第二章");
 });
 
 test("initial chapter state activates the first chapter", () => {
@@ -88,6 +90,8 @@ test("first chapter completes, summarizes, and unlocks chapter two", () => {
   assert.equal(state.completedChapterIds.includes(CHAPTER_ONE_ID), true);
   assert.equal(state.unlockedChapterIds.includes(CHAPTER_TWO_ID), true);
   assert.equal(state.summariesByChapterId[CHAPTER_ONE_ID].title, "暗月初醒");
+  assert.equal(state.chapterTitlesById[CHAPTER_TWO_ID], "潮湿门缝");
+  assert.equal(formatChapterTitle(getChapterDefinition(CHAPTER_TWO_ID), state), "第二章：潮湿门缝");
   assert.equal(state.summariesByChapterId[CHAPTER_ONE_ID].summaryForPlayer, acceptedCloseDecision().playerRecapCandidate);
   assert.deepEqual(state.summariesByChapterId[CHAPTER_ONE_ID].resultLines, [acceptedCloseDecision().playerRecapCandidate]);
   assert.equal(state.pendingChapterEndId, CHAPTER_ONE_ID);
@@ -135,6 +139,7 @@ test("entering chapter two keeps chapter one review safe and returns to active c
   state = enterNextChapter(state, CHAPTER_DEFINITIONS);
   assert.equal(state.activeChapterId, CHAPTER_TWO_ID);
   assert.equal(state.progressByChapterId[CHAPTER_TWO_ID].status, "active");
+  assert.equal(formatChapterTitle(getChapterDefinition(CHAPTER_TWO_ID), state), "第二章：潮湿门缝");
 
   state = reviewCompletedChapter(state, CHAPTER_ONE_ID);
   assert.equal(state.reviewChapterId, CHAPTER_ONE_ID);

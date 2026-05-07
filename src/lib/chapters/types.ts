@@ -65,6 +65,7 @@ export interface ChapterState {
   currentChapterId: ChapterId;
   activeChapterId: ChapterId;
   reviewChapterId: ChapterId | null;
+  chapterTitlesById: Record<ChapterId, string>;
   completedChapterIds: ChapterId[];
   unlockedChapterIds: ChapterId[];
   progressByChapterId: Record<ChapterId, ChapterProgress>;

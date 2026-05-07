@@ -1,5 +1,6 @@
 import { CHAPTER_DEFINITIONS, getFirstChapterDefinition } from "./definitions";
 import { createChapterProgress } from "./engine";
+import { sanitizeChapterTitleCandidate } from "./title";
 import type { ChapterProgress, ChapterState } from "./types";
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -51,6 +52,9 @@ export function createInitialChapterState(now = Date.now()): ChapterState {
     currentChapterId: first.id,
     activeChapterId: first.id,
     reviewChapterId: null,
+    chapterTitlesById: {
+      [first.id]: sanitizeChapterTitleCandidate(first.title, 32) ?? first.title,
+    },
     completedChapterIds: [],
     unlockedChapterIds: [first.id],
     progressByChapterId,
@@ -77,11 +81,11 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
       ? record.reviewChapterId
       : null;
   const rawProgress = asRecord(record.progressByChapterId);
-  const progressByChapterId = Object.fromEntries(
+  const progressByChapterId: Record<string, ChapterProgress> = Object.fromEntries(
     CHAPTER_DEFINITIONS.map((definition) => {
       const fallback = base.progressByChapterId[definition.id];
       const normalized = normalizeProgress(rawProgress[definition.id], fallback);
-      const status =
+      const status: ChapterProgress["status"] =
         completedChapterIds.includes(definition.id)
           ? "completed"
           : definition.id === activeChapterId
@@ -93,10 +97,21 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
     })
   );
   const summariesRaw = asRecord(record.summariesByChapterId);
+  const rawTitles = asRecord(record.chapterTitlesById);
+  const chapterTitlesById: Record<string, string> = {};
+  for (const definition of CHAPTER_DEFINITIONS) {
+    const fromState = sanitizeChapterTitleCandidate(rawTitles[definition.id], 32);
+    const fromSummary = sanitizeChapterTitleCandidate(asRecord(summariesRaw[definition.id]).title, 32);
+    const fromDefinition =
+      definition.order === 1 ? sanitizeChapterTitleCandidate(definition.title, 32) ?? definition.title : null;
+    const title = fromState ?? fromSummary ?? fromDefinition;
+    if (title) chapterTitlesById[definition.id] = title;
+  }
   return {
     currentChapterId: reviewChapterId ?? activeChapterId,
     activeChapterId,
     reviewChapterId,
+    chapterTitlesById,
     completedChapterIds,
     unlockedChapterIds,
     progressByChapterId,

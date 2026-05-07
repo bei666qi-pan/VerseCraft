@@ -1,16 +1,6 @@
 import { CHAPTER_DEFINITIONS, getChapterDefinition } from "./definitions";
 import type { ChapterDefinition, ChapterState } from "./types";
 
-export function formatChapterTitle(definition: ChapterDefinition | null): string {
-  if (!definition) return "第一章：暗月初醒";
-  return `第${toChineseOrder(definition.order)}章：${definition.title}`;
-}
-
-function toChineseOrder(order: number): string {
-  const map: Record<number, string> = { 1: "一", 2: "二", 3: "三", 4: "四", 5: "五" };
-  return map[order] ?? String(order);
-}
-
 export function selectActiveChapterDefinition(state: ChapterState): ChapterDefinition {
   return getChapterDefinition(state.activeChapterId) ?? CHAPTER_DEFINITIONS[0];
 }

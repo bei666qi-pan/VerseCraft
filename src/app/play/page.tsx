@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
+import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
 import type { StatType } from "@/lib/registry/types";
@@ -32,6 +33,8 @@ import {
 import {
   ChapterEndSheet,
   ChapterNavigator,
+  ChapterPageTurnOverlay,
+  type ChapterPageTurnDirection,
   ChapterProgressHint,
   ChapterSummaryList,
   useChapterRuntime,
@@ -517,6 +520,7 @@ function PlayContent() {
     mapping: Record<string, ProfessionId>;
   }>({ enabled: false, options: [], mapping: {} });
   const chapterRuntime = useChapterRuntime();
+  const [chapterPageTurn, setChapterPageTurn] = useState<ChapterPageTurnDirection | null>(null);
   const hasModelChoiceOptions = currentOptions.length === 4;
   const hasVisibleChoiceOptions = hasModelChoiceOptions || pendingProfessionChoice.enabled;
 
@@ -537,6 +541,8 @@ function PlayContent() {
   const parsedPostDrainRef = useRef<{ isDeath: boolean } | null>(null);
   const [tailAlignKey, setTailAlignKey] = useState(0);
   const autoScrollRafRef = useRef<number | null>(null);
+  const chapterPageTurnTimerRef = useRef<number | null>(null);
+  const chapterPageTurnFrameRef = useRef<number | null>(null);
   const lastAutoScrollAtRef = useRef(0);
   const streamLogsBaselineRef = useRef(0);
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -866,6 +872,58 @@ function PlayContent() {
     },
     [scheduleAutoScroll]
   );
+
+  const scrollToStoryEnd = useCallback(
+    (smooth = true) => {
+      openingInitialScrollLockRef.current = false;
+      userScrolledUpRef.current = false;
+      requestAnimationFrame(() => scheduleAutoScroll(smooth));
+    },
+    [scheduleAutoScroll]
+  );
+
+  const runChapterPageTurn = useCallback(
+    (
+      direction: ChapterPageTurnDirection,
+      action: () => void,
+      options: { scrollEnd?: boolean } = {}
+    ) => {
+      if (chapterPageTurnTimerRef.current != null) {
+        window.clearTimeout(chapterPageTurnTimerRef.current);
+        chapterPageTurnTimerRef.current = null;
+      }
+      if (chapterPageTurnFrameRef.current != null) {
+        window.cancelAnimationFrame(chapterPageTurnFrameRef.current);
+        chapterPageTurnFrameRef.current = null;
+      }
+      flushSync(() => {
+        setChapterPageTurn(direction);
+      });
+      chapterPageTurnFrameRef.current = window.requestAnimationFrame(() => {
+        chapterPageTurnFrameRef.current = null;
+        action();
+        if (options.scrollEnd) {
+          scrollToStoryEnd(true);
+        }
+      });
+      chapterPageTurnTimerRef.current = window.setTimeout(() => {
+        setChapterPageTurn(null);
+        chapterPageTurnTimerRef.current = null;
+      }, 900);
+    },
+    [scrollToStoryEnd]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (chapterPageTurnTimerRef.current != null) {
+        window.clearTimeout(chapterPageTurnTimerRef.current);
+      }
+      if (chapterPageTurnFrameRef.current != null) {
+        window.cancelAnimationFrame(chapterPageTurnFrameRef.current);
+      }
+    };
+  }, []);
 
   const smoothStreamOptions = useMemo(() => {
     if (!VC_PERF_FLAGS.clientSmoothStreamV2) {
@@ -3575,6 +3633,43 @@ function PlayContent() {
   const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
   const chapterInteractionLocked = Boolean(pendingChapterEnd);
   const mobileHeaderTitle = chapterRuntime.headerTitle;
+  const previousChapterId = chapterRuntime.displayedDefinition.previousChapterId;
+  const canNavigatePreviousChapter = Boolean(
+    !chapterRuntime.isReviewing &&
+      previousChapterId &&
+      chapterRuntime.chapterState.completedChapterIds.includes(previousChapterId)
+  );
+  const canNavigateNextChapter = Boolean(chapterRuntime.isReviewing || (pendingChapterEnd && chapterRuntime.nextDefinition));
+
+  function navigateToPreviousChapter() {
+    const previous = previousChapterId;
+    if (!previous || !canNavigatePreviousChapter) return;
+    playUIClick();
+    setOptionsExpanded(false);
+    setChapterNavigatorOpen(false);
+    runChapterPageTurn("previous", () => {
+      chapterRuntime.reviewChapter(previous);
+    });
+  }
+
+  function navigateToNextChapter() {
+    if (!canNavigateNextChapter) return;
+    playUIClick();
+    setOptionsExpanded(false);
+    setChapterNavigatorOpen(false);
+    if (chapterRuntime.isReviewing) {
+      runChapterPageTurn("return", () => {
+        chapterRuntime.returnToActiveChapter();
+      }, { scrollEnd: true });
+      return;
+    }
+    if (pendingChapterEnd && chapterRuntime.nextDefinition) {
+      runChapterPageTurn("next", () => {
+        chapterRuntime.enterNextChapter();
+      }, { scrollEnd: true });
+    }
+  }
+
   function onOpenCharacterNav() {
     playUIClick();
     setOptionsExpanded(false);
@@ -3589,7 +3684,11 @@ function PlayContent() {
       return;
     }
     if (chapterRuntime.isReviewing) {
-      chapterRuntime.returnToActiveChapter();
+      runChapterPageTurn("return", () => {
+        chapterRuntime.returnToActiveChapter();
+      }, { scrollEnd: true });
+    } else if (hasAssistantMessage || displayEntries.length > 0) {
+      scrollToStoryEnd(true);
     }
     setActiveMenu(null);
   }
@@ -3631,6 +3730,10 @@ function PlayContent() {
         <MobileReadingHeader
           title={mobileHeaderTitle}
           audioMuted={audioMuted}
+          canGoPreviousChapter={canNavigatePreviousChapter}
+          canGoNextChapter={canNavigateNextChapter}
+          onGoPreviousChapter={navigateToPreviousChapter}
+          onGoNextChapter={navigateToNextChapter}
           onToggleAudio={() => {
             toggleMute();
             setAudioMuted(isMuted());
@@ -3677,11 +3780,15 @@ function PlayContent() {
               chapterState={chapterRuntime.chapterState}
               onExitGame={() => setShowExitModal(true)}
               onReturnToActiveChapter={() => {
-                chapterRuntime.returnToActiveChapter();
+                runChapterPageTurn("return", () => {
+                  chapterRuntime.returnToActiveChapter();
+                }, { scrollEnd: true });
                 setActiveMenu(null);
               }}
               onReviewChapter={(chapterId) => {
-                chapterRuntime.reviewChapter(chapterId);
+                runChapterPageTurn("previous", () => {
+                  chapterRuntime.reviewChapter(chapterId);
+                });
                 setActiveMenu(null);
               }}
               onSetReadingPreference={setReadingPreference}
@@ -3695,7 +3802,10 @@ function PlayContent() {
             />
           ) : (
             <>
-              <MobileStoryViewport>
+              <MobileStoryViewport
+                onSwipeLeft={navigateToNextChapter}
+                onSwipeRight={navigateToPreviousChapter}
+              >
                 {isReviewingChapter ? (
                   <section
                     data-testid="chapter-review-panel"
@@ -3706,7 +3816,7 @@ function PlayContent() {
                       <div className="mb-4 border-b border-[#ded8ce] pb-3">
                         <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">前情回望，不影响正在阅读的章节</p>
                         <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#174d46]">
-                          {chapterRuntime.displayedDefinition.title}
+                          {chapterRuntime.displayedTitle || chapterRuntime.headerTitle}
                         </h2>
                       </div>
                       {chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id] ? (
@@ -3723,7 +3833,9 @@ function PlayContent() {
                         data-testid="chapter-return-current"
                         onClick={() => {
                           playUIClick();
-                          chapterRuntime.returnToActiveChapter();
+                          runChapterPageTurn("return", () => {
+                            chapterRuntime.returnToActiveChapter();
+                          }, { scrollEnd: true });
                         }}
                         className="mt-5 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-3 vc-reading-serif text-[17px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)]"
                       >
@@ -3753,7 +3865,11 @@ function PlayContent() {
                       liveNarrative={liveNarrative}
                       plainOnlyNewTurn={false}
                       plainOnlyLogIndexMin={streamLogsBaselineRef.current}
-                      embeddedOpeningContent={showPinnedOpeningNarrative ? FIXED_OPENING_NARRATIVE : null}
+                      embeddedOpeningContent={
+                        showPinnedOpeningNarrative && chapterRuntime.activeDefinition.order === 1
+                          ? FIXED_OPENING_NARRATIVE
+                          : null
+                      }
                       openingAiBusy={openingBusyUi}
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                       waitUxPrimaryLine={waitUxPrimaryLine}
@@ -3857,48 +3973,65 @@ function PlayContent() {
             onClose={() => setChapterNavigatorOpen(false)}
             onReviewChapter={(chapterId) => {
               playUIClick();
-              chapterRuntime.reviewChapter(chapterId);
+              runChapterPageTurn("previous", () => {
+                chapterRuntime.reviewChapter(chapterId);
+              });
               setChapterNavigatorOpen(false);
             }}
             onReturnToActive={() => {
               playUIClick();
-              chapterRuntime.returnToActiveChapter();
+              runChapterPageTurn("return", () => {
+                chapterRuntime.returnToActiveChapter();
+              }, { scrollEnd: true });
               setChapterNavigatorOpen(false);
             }}
             onEnterNext={() => {
               playUIClick();
-              chapterRuntime.enterNextChapter();
+              runChapterPageTurn("next", () => {
+                chapterRuntime.enterNextChapter();
+              }, { scrollEnd: true });
               setChapterNavigatorOpen(false);
             }}
           />
           <ChapterEndSheet
             open={Boolean(pendingChapterEnd)}
             definition={pendingChapterEnd?.definition ?? null}
+            chapterState={chapterRuntime.chapterState}
             summary={pendingChapterEnd?.summary ?? null}
             hasNextChapter={Boolean(chapterRuntime.nextDefinition)}
             hasPreviousChapter={Boolean(pendingChapterEnd?.definition.previousChapterId)}
             onEnterNext={() => {
               playUIClick();
-              chapterRuntime.enterNextChapter();
+              runChapterPageTurn("next", () => {
+                chapterRuntime.enterNextChapter();
+              }, { scrollEnd: true });
               setChapterNavigatorOpen(false);
             }}
             onReviewChapter={() => {
               if (!pendingChapterEnd) return;
               playUIClick();
-              chapterRuntime.reviewChapter(pendingChapterEnd.id);
+              runChapterPageTurn("previous", () => {
+                chapterRuntime.reviewChapter(pendingChapterEnd.id);
+              });
               setChapterNavigatorOpen(false);
             }}
             onReviewPrevious={() => {
               const previous = pendingChapterEnd?.definition.previousChapterId;
               if (!previous) return;
               playUIClick();
-              chapterRuntime.reviewChapter(previous);
+              runChapterPageTurn("previous", () => {
+                chapterRuntime.reviewChapter(previous);
+              });
               setChapterNavigatorOpen(false);
             }}
             onDismiss={() => {
               playUIClick();
               chapterRuntime.dismissChapterEnd();
             }}
+          />
+          <ChapterPageTurnOverlay
+            active={chapterPageTurn !== null}
+            direction={chapterPageTurn ?? "next"}
           />
           <MobileBottomNav
             activeItem={bottomNavActiveItem}

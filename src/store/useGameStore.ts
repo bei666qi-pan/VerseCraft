@@ -123,6 +123,7 @@ import {
   CHAPTER_DEFINITIONS,
   createInitialChapterState,
   enterNextChapter,
+  getChapterDisplayName,
   getChapterDefinition,
   normalizeChapterState,
   recordChapterTurnInState,
@@ -203,7 +204,7 @@ function buildChapterDirectorBridgeFromStoreState(chapterState: ChapterState): {
   return {
     currentChapterId: chapterId,
     chapterOrder: definition?.order,
-    chapterTitle: definition?.title,
+    chapterTitle: getChapterDisplayName(definition, chapterState),
     promise: definition?.endHook ?? objective,
     mainQuestion: objective,
     minTurns: definition?.minTurns,
@@ -2701,7 +2702,7 @@ export const useGameStore = create<GameState>()(
             ? {
                 currentChapterId: chapterDefinition.id,
                 chapterOrder: chapterDefinition.order,
-                chapterTitle: chapterDefinition.title,
+                chapterTitle: getChapterDisplayName(chapterDefinition, chapterState),
                 promise: chapterDefinition.endHook,
                 mainQuestion: chapterDefinition.objective,
                 minTurns: chapterDefinition.minTurns,
