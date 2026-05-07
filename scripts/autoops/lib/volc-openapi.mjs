@@ -64,14 +64,16 @@ export class VolcEcsClient {
     sk = env("VOLC_SK"),
     region = env("VOLC_REGION", "cn-shanghai"),
     dryRun = false,
+    timeoutMs = 15000,
   } = {}) {
     this.ak = ak;
     this.sk = sk;
     this.region = region;
     this.dryRun = dryRun;
+    this.timeoutMs = timeoutMs;
   }
 
-  async call(action, { method = "GET", params = {}, body = null, timeoutMs = 15000 } = {}) {
+  async call(action, { method = "GET", params = {}, body = null, timeoutMs = this.timeoutMs } = {}) {
     const query = { Action: action, Version: ECS_VERSION, ...params };
     const requestBody = body == null ? "" : JSON.stringify(body);
     if (this.dryRun) {
@@ -181,6 +183,86 @@ export class VolcEcsClient {
       recorded_at: new Date().toISOString(),
     });
     return result;
+  }
+}
+
+export class VolcOpenApiClient {
+  constructor({
+    ak = env("VOLC_AK"),
+    sk = env("VOLC_SK"),
+    region = env("VOLC_REGION", "cn-shanghai"),
+    dryRun = false,
+  } = {}) {
+    this.ak = ak;
+    this.sk = sk;
+    this.region = region;
+    this.dryRun = dryRun;
+  }
+
+  async call({
+    service,
+    version,
+    action,
+    method = "POST",
+    params = {},
+    body = null,
+    timeoutMs = 15000,
+  }) {
+    if (!service || !version || !action) {
+      throw new Error("service, version, and action are required for Volcengine OpenAPI calls");
+    }
+    const query = { Action: action, Version: version, ...params };
+    const requestBody = body == null ? "" : JSON.stringify(body);
+    if (this.dryRun) {
+      logJson("volc.openapi.dry_run", {
+        service,
+        version,
+        action,
+        method,
+        params: query,
+        body: body ? redact(body) : null,
+      });
+      return { dryRun: true, Action: action, Result: {} };
+    }
+    if (!this.ak || !this.sk || !this.region) {
+      throw new Error("VOLC_AK, VOLC_SK, and VOLC_REGION are required for Volcengine OpenAPI calls");
+    }
+    const { headers, queryString } = signVolcRequest({
+      method,
+      query,
+      body: requestBody,
+      region: this.region,
+      service,
+      ak: this.ak,
+      sk: this.sk,
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${VOLC_ENDPOINT}/?${queryString}`, {
+        method,
+        signal: controller.signal,
+        headers,
+        body: method === "GET" ? undefined : requestBody,
+      });
+      const text = await response.text();
+      let data = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { raw: text };
+        }
+      }
+      if (!response.ok || data.ResponseMetadata?.Error) {
+        throw new Error(
+          `Volc OpenAPI ${service}.${action} failed: ${response.status} ${JSON.stringify(redact(data)).slice(0, 1200)}`
+        );
+      }
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
 

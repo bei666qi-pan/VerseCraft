@@ -10,20 +10,44 @@ import { logJson, warnJson } from "../../scripts/autoops/lib/logger.mjs";
 const seenTraceIds = new Set();
 const seenIncidentKeys = new Map();
 const DEDUPE_TTL_MS = Number(process.env.AUTOOPS_ALERT_DEDUPE_TTL_MS || 5 * 60 * 1000);
+const DEFAULT_DOWNSTREAM_TIMEOUT_MS = 1200;
 
 function response(statusCode, body) {
   return {
     statusCode,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify(body),
   };
 }
 
+function objectFromMaybeJson(value, fallback = {}) {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function eventRoot(event) {
+  const root = objectFromMaybeJson(event, {});
+  const data = objectFromMaybeJson(root.data, null);
+  return data && (data.body || data.headers || data.queryStringParameters) ? data : root;
+}
+
 function parseBody(event) {
-  if (!event) return {};
-  const raw = event.body ?? event.Body ?? "";
+  const root = eventRoot(event);
+  if (root.source || root.alert_type || root.type || root.AlarmRuleName || root.rule_name || root.message || root.resource_id) {
+    return root;
+  }
+  const raw = root.body ?? root.Body ?? "";
   if (!raw) return {};
-  const text = event.isBase64Encoded ? Buffer.from(raw, "base64").toString("utf8") : String(raw);
+  const text = (root.isBase64Encoded ? Buffer.from(raw, "base64").toString("utf8") : String(raw)).replace(/^\uFEFF/, "");
   try {
     return JSON.parse(text);
   } catch {
@@ -32,21 +56,36 @@ function parseBody(event) {
 }
 
 function headersOf(event) {
-  return event?.headers || event?.Headers || {};
+  const root = eventRoot(event);
+  return root.headers || root.Headers || {};
 }
 
 function queryOf(event) {
-  return event?.queryStringParameters || event?.query || event?.Query || {};
+  const root = eventRoot(event);
+  const query = root.queryStringParameters || root.query || root.Query || root.QueryStringParameters;
+  if (query && typeof query === "object") return query;
+  const raw = root.rawQueryString || root.queryString || root.QueryString || "";
+  if (!raw) return {};
+  return Object.fromEntries(new URLSearchParams(String(raw)));
 }
 
 function getSecret(headers, query) {
   const normalizedHeaders = Object.fromEntries(Object.entries(headers || {}).map(([key, value]) => [String(key).toLowerCase(), value]));
+  const headerSecret = Array.isArray(normalizedHeaders["x-autoops-secret"])
+    ? normalizedHeaders["x-autoops-secret"][0]
+    : normalizedHeaders["x-autoops-secret"];
+  const headerRouterSecret = Array.isArray(normalizedHeaders["x-alert-router-secret"])
+    ? normalizedHeaders["x-alert-router-secret"][0]
+    : normalizedHeaders["x-alert-router-secret"];
+  const authorization = Array.isArray(normalizedHeaders.authorization)
+    ? normalizedHeaders.authorization[0]
+    : normalizedHeaders.authorization;
   return (
     query.secret ||
     query.autoops_secret ||
-    normalizedHeaders["x-autoops-secret"] ||
-    normalizedHeaders["x-alert-router-secret"] ||
-    normalizedHeaders.authorization?.replace(/^Bearer\s+/i, "")
+    headerSecret ||
+    headerRouterSecret ||
+    authorization?.replace(/^Bearer\s+/i, "")
   );
 }
 
@@ -82,19 +121,35 @@ function dedupe(alert) {
   return { duplicate: false };
 }
 
+function downstreamTimeoutMs() {
+  const value = Number(process.env.AUTOOPS_ALERT_ROUTER_DOWNSTREAM_TIMEOUT_MS || DEFAULT_DOWNSTREAM_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_DOWNSTREAM_TIMEOUT_MS;
+}
+
+function shouldWaitForDownstream() {
+  return process.env.AUTOOPS_ALERT_ROUTER_WAIT_FOR_DOWNSTREAM === "1" || process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1";
+}
+
+async function withDeadline(promise, timeoutMs = downstreamTimeoutMs()) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("downstream trigger timeout")), timeoutMs)),
+  ]);
+}
+
 async function runFastPath(alert, decision) {
   const dryRun = process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1";
   if (decision.runbook === "coolify-restart") {
     const uuid = process.env.COOLIFY_APP_UUID;
     if (!uuid) throw new Error("COOLIFY_APP_UUID is required for coolify restart fast path");
-    const client = new CoolifyClient({ dryRun });
+    const client = new CoolifyClient({ dryRun, requestTimeoutMs: downstreamTimeoutMs() });
     await client.restart(uuid);
     return { ok: true, action: "coolify_restart" };
   }
   if (decision.runbook === "coolify-deploy") {
     const uuid = process.env.COOLIFY_APP_UUID;
     if (!uuid) throw new Error("COOLIFY_APP_UUID is required for coolify deploy fast path");
-    const client = new CoolifyClient({ dryRun });
+    const client = new CoolifyClient({ dryRun, requestTimeoutMs: downstreamTimeoutMs() });
     await client.deploy(uuid, { force: true, instant: true });
     return { ok: true, action: "coolify_deploy" };
   }
@@ -110,17 +165,71 @@ async function runFastPath(alert, decision) {
     runbook === "restart-o11y"
       ? "if command -v o11yagentctl >/dev/null; then o11yagentctl restart || true; o11yagentctl ps || true; else systemctl restart o11yagent || true; systemctl status o11yagent --no-pager || true; fi"
       : "df -h; docker system df || true; docker builder prune -af --filter until=24h || true; docker image prune -af --filter until=168h || true; journalctl --vacuum-time=7d 2>/dev/null || true; df -h; docker system df || true";
-  const client = new VolcEcsClient({ dryRun });
+  const client = new VolcEcsClient({ dryRun, timeoutMs: downstreamTimeoutMs() });
   await client.runCommand({ instanceIds, command, commandName: `versecraft-autoops-${runbook}`, timeout: 90 });
   return { ok: true, action: `volc_${runbook}` };
 }
 
 async function dispatch(eventType, alert, decision) {
   const dryRun = process.env.AUTOOPS_ALERT_ROUTER_DRY_RUN === "1";
-  const client = new GitHubClient({ dryRun });
+  const client = new GitHubClient({ dryRun, timeoutMs: downstreamTimeoutMs() });
   const payload = compactDispatchPayload({ ...alert, runbook: decision.runbook });
   await client.repositoryDispatch(eventType, payload);
   return { ok: true, event_type: eventType };
+}
+
+async function tryDispatch(eventType, alert, decision) {
+  try {
+    return await dispatch(eventType, alert, decision);
+  } catch (error) {
+    warnJson("alert_router.dispatch_failed", {
+      incident_key: alert.incident_key,
+      event_type: eventType,
+      error: error.message,
+    });
+    return { ok: false, event_type: eventType, error: error.message };
+  }
+}
+
+async function executeRoute(alert, decision) {
+  try {
+    if (decision.path === "fast") {
+      return await withDeadline(runFastPath(alert, decision));
+    }
+    if (decision.path === "slow") {
+      return await withDeadline(dispatch("autoops-codex", alert, decision));
+    }
+    return await withDeadline(dispatch("autoops-record", alert, decision));
+  } catch (error) {
+    warnJson("alert_router.route_failed_escalating", { incident_key: alert.incident_key, error: error.message });
+    const escalation =
+      decision.path === "slow"
+        ? { ok: false, skipped: true, reason: "autoops-codex dispatch already failed" }
+        : await tryDispatch("autoops-codex", { ...alert, alert_type: alert.alert_type || "unknown" }, decision);
+    return {
+      ok: false,
+      error: error.message,
+      escalated: Boolean(escalation.ok),
+      escalation,
+    };
+  }
+}
+
+function startBackgroundRoute(alert, decision) {
+  setTimeout(async () => {
+    const result = await executeRoute(alert, decision);
+    logJson("alert_router.background_route_completed", {
+      incident_key: alert.incident_key,
+      result,
+    });
+  }, 0);
+  return {
+    ok: true,
+    accepted: true,
+    mode: "background",
+    runbook: decision.runbook,
+    path: decision.path,
+  };
 }
 
 async function processAlert(event) {
@@ -133,28 +242,14 @@ async function processAlert(event) {
   const alert = normalizeAlert(body, headers);
   const duplicate = dedupe(alert);
   const decision = decideAutoopsPath(alert);
-  logJson("alert_router.received", { alert, decision, duplicate });
+  const root = eventRoot(event);
+  setTimeout(() => logJson("alert_router.received", { alert, decision, duplicate, event_shape: { root_keys: Object.keys(root).slice(0, 30) } }), 0);
   if (duplicate.duplicate) {
     return response(200, { ok: true, duplicate: true, incident_key: alert.incident_key });
   }
 
   const started = Date.now();
-  let routeResult = null;
-  try {
-    if (decision.path === "fast") {
-      routeResult = await Promise.race([
-        runFastPath(alert, decision),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("fast path trigger timeout")), 900)),
-      ]);
-    } else if (decision.path === "slow") {
-      routeResult = await dispatch("autoops-codex", alert, decision);
-    } else {
-      routeResult = await dispatch("autoops-record", alert, decision);
-    }
-  } catch (error) {
-    warnJson("alert_router.fast_path_failed_escalating", { incident_key: alert.incident_key, error: error.message });
-    routeResult = await dispatch("autoops-codex", { ...alert, alert_type: alert.alert_type || "unknown" }, decision);
-  }
+  const routeResult = shouldWaitForDownstream() ? await executeRoute(alert, decision) : startBackgroundRoute(alert, decision);
 
   return response(200, {
     ok: true,
@@ -167,10 +262,23 @@ async function processAlert(event) {
 }
 
 export async function handler(event, context = {}) {
-  if (context) {
-    context.callbackWaitsForEmptyEventLoop = false;
+  try {
+    if (context && typeof context === "object" && "callbackWaitsForEmptyEventLoop" in context) {
+      context.callbackWaitsForEmptyEventLoop = false;
+    }
+  } catch {
+    // Some veFaaS context implementations are read-only; this flag is only an optimization.
   }
-  return processAlert(event);
+  try {
+    return await processAlert(event);
+  } catch (error) {
+    warnJson("alert_router.unhandled_error", { error: error.message });
+    return response(200, {
+      ok: false,
+      error: "alert_router_internal_error",
+      message: error.message,
+    });
+  }
 }
 
 async function startServer() {

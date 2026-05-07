@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AUTOOPS_RUNTIME_DIR, autoopsDefaults, loadLocalEnvFiles, logJson, parseArgs, writeRuntimeJson } from "./lib/logger.mjs";
 
@@ -38,6 +38,11 @@ async function main() {
   await writeFile(
     path.join(packageDir, "index.mjs"),
     `export { handler } from "./ops/vefaas-alert-router/index.mjs";\n`,
+    "utf8"
+  );
+  await writeFile(
+    path.join(packageDir, "index.js"),
+    await readFile(path.resolve("ops", "vefaas-alert-router", "index.cjs"), "utf8"),
     "utf8"
   );
   const compression = dryRun ? { ok: true, dryRun: true } : compressDirectory(packageDir, archivePath);

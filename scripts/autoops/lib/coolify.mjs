@@ -15,13 +15,14 @@ export function coolifyBaseCandidates(baseUrl = env("COOLIFY_BASE_URL")) {
 }
 
 export class CoolifyClient {
-  constructor({ baseUrl = env("COOLIFY_BASE_URL"), apiKey = env("COOLIFY_API_KEY"), dryRun = false } = {}) {
+  constructor({ baseUrl = env("COOLIFY_BASE_URL"), apiKey = env("COOLIFY_API_KEY"), dryRun = false, requestTimeoutMs = 15000 } = {}) {
     this.baseCandidates = coolifyBaseCandidates(baseUrl);
     this.apiKey = apiKey;
     this.dryRun = dryRun;
+    this.requestTimeoutMs = requestTimeoutMs;
   }
 
-  async request(path, { method = "GET", body = undefined, allow404 = false, timeoutMs = 15000 } = {}) {
+  async request(path, { method = "GET", body = undefined, allow404 = false, timeoutMs = this.requestTimeoutMs } = {}) {
     if (!this.apiKey) {
       throw new Error("COOLIFY_API_KEY is required for Coolify API calls");
     }

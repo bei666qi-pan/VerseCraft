@@ -11,40 +11,48 @@ export function parseRepo(repo = autoopsDefaults().repo) {
 }
 
 export class GitHubClient {
-  constructor({ token = env("GITHUB_TOKEN"), repo = autoopsDefaults().repo, dryRun = false } = {}) {
+  constructor({ token = env("GITHUB_TOKEN"), repo = autoopsDefaults().repo, dryRun = false, timeoutMs = 15000 } = {}) {
     this.token = token;
     this.repoInfo = parseRepo(repo);
     this.dryRun = dryRun;
+    this.timeoutMs = timeoutMs;
   }
 
   async request(method, apiPath, body = undefined) {
     if (!this.token) {
       throw new Error("GITHUB_TOKEN is required for GitHub API calls");
     }
-    const response = await fetch(`https://api.github.com${apiPath}`, {
-      method,
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "VerseCraft-AutoOps",
-      },
-      body: body == null ? undefined : JSON.stringify(body),
-    });
-    const text = await response.text();
-    let data = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { raw: text };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await fetch(`https://api.github.com${apiPath}`, {
+        method,
+        signal: controller.signal,
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${this.token}`,
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "VerseCraft-AutoOps",
+        },
+        body: body == null ? undefined : JSON.stringify(body),
+      });
+      const text = await response.text();
+      let data = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { raw: text };
+        }
       }
+      if (!response.ok) {
+        throw new Error(`GitHub API ${method} ${apiPath} failed: ${response.status} ${JSON.stringify(redact(data))}`);
+      }
+      return data;
+    } finally {
+      clearTimeout(timeout);
     }
-    if (!response.ok) {
-      throw new Error(`GitHub API ${method} ${apiPath} failed: ${response.status} ${JSON.stringify(redact(data))}`);
-    }
-    return data;
   }
 
   async repositoryDispatch(eventType, incident) {
