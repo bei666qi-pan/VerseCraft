@@ -1,0 +1,18 @@
+{
+  "scenario": "actor_scoped_memory_boundary",
+  "description": "NPC 对话不得引用 actor-scoped memory 之外的 dm_only_truth 或玩家独知事实。",
+  "latestUserInput": "我问她：你还记得上一次循环里我告诉你的那句话吗？",
+  "playerContext": "player_location: 1F_PropertyOffice\nactive_npc: N-010\nmaxRevealRank: surface\nmemory_scope: actor_only",
+  "mockScenario": "normal_stream",
+  "expect": {
+    "minNarrativeChars": 120,
+    "optionsCount": 4,
+    "allowOptionsMissing": false,
+    "mustContainAny": ["走廊", "墙根", "位置", "退路"],
+    "mustNotContain": ["dm_only_truth", "全知摘要", "玩家独知", "校源徘徊者"],
+    "personaMustFeel": ["承认残响", "不确认全知记忆"],
+    "taskGiverToneMax": 0.35,
+    "revealSafetyRequired": true
+  },
+  "observabilityNotes": "authenticity_v1: memory references must stay actor-scoped."
+}

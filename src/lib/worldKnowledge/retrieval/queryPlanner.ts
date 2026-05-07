@@ -75,7 +75,16 @@ function buildFingerprint(
   normalizedInput: string,
   locationHints: string[],
   exactCodes: string[],
-  maxRevealRank: number
+  maxRevealRank: number,
+  metadata: {
+    actorNpcId?: string | null;
+    presentNpcIds: string[];
+    locationId?: string | null;
+    activeTaskIds: string[];
+    threatLevel?: string | null;
+    scenePressure?: string | null;
+    playerKnownFactIds: string[];
+  }
 ): string {
   const body = [
     normalizedInput,
@@ -88,8 +97,30 @@ function buildFingerprint(
     locationHints.join(","),
     exactCodes.join(","),
     String(maxRevealRank),
+    metadata.actorNpcId ?? "",
+    metadata.presentNpcIds.join(","),
+    metadata.locationId ?? "",
+    metadata.activeTaskIds.join(","),
+    metadata.threatLevel ?? "",
+    metadata.scenePressure ?? "",
+    metadata.playerKnownFactIds.join(","),
   ].join("|");
   return createHash("sha256").update(body).digest("hex");
+}
+
+function collectNpcIdsFromText(value: string | null | undefined): string[] {
+  const text = String(value ?? "");
+  return [...new Set(text.match(/N-\d{3}/g) ?? [])];
+}
+
+function collectActiveTaskIdsFromContext(value: string | null | undefined): string[] {
+  const text = String(value ?? "");
+  const ids = new Set<string>();
+  for (const match of text.matchAll(/(?:task|任务|taskId|id)[:=]?\s*([a-zA-Z0-9_.:-]{3,80})/g)) {
+    const id = match[1]?.trim();
+    if (id && !id.startsWith("http")) ids.add(id);
+  }
+  return [...ids].slice(0, 24);
 }
 
 export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPlan {
@@ -100,6 +131,12 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
   const entityHints = collectEntityHints(normalizedInput);
   const intents = detectIntents(normalizedInput);
   const tagHints = new Set<string>(entityHints.tagHints);
+  const presentNpcIds = input.presentNpcIds?.length
+    ? input.presentNpcIds
+    : [...new Set([...collectNpcIdsFromText(input.playerContext), ...input.recentlyEncounteredEntities.filter((id) => /^N-\d{3}$/.test(id))])];
+  const activeTaskIds = input.activeTaskIds?.length ? input.activeTaskIds : collectActiveTaskIdsFromContext(input.playerContext);
+  const locationId = input.locationId ?? input.playerLocation;
+  const playerKnownFactIds = input.playerKnownFactIds ?? [];
 
   for (const f of floorHints) tagHints.add(f.replace("楼", "").replace("f", ""));
   if (intents.includes("rule")) {
@@ -118,7 +155,15 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     ...DEFAULT_RETRIEVAL_BUDGET,
     maxFacts: Math.max(6, Math.min(DEFAULT_RETRIEVAL_BUDGET.maxFacts, Math.floor(input.tokenBudget / 35))),
   };
-  const fingerprint = buildFingerprint(input, normalizedInput, locationHints, entityHints.exactCodes, maxRevealRank);
+  const fingerprint = buildFingerprint(input, normalizedInput, locationHints, entityHints.exactCodes, maxRevealRank, {
+    actorNpcId: input.actorNpcId,
+    presentNpcIds,
+    locationId,
+    activeTaskIds,
+    threatLevel: input.threatLevel,
+    scenePressure: input.scenePressure,
+    playerKnownFactIds,
+  });
   const entitiesFingerprint = createHash("sha256")
     .update([...entityHints.exactCodes, ...input.recentlyEncounteredEntities].sort().join("|"))
     .digest("hex");
@@ -131,6 +176,13 @@ export function planWorldKnowledgeQuery(input: RuntimeLoreRequest): RetrievalPla
     locationHints,
     tagHints: [...tagHints],
     maxRevealRank,
+    actorNpcId: input.actorNpcId,
+    presentNpcIds,
+    locationId,
+    activeTaskIds,
+    threatLevel: input.threatLevel,
+    scenePressure: input.scenePressure,
+    playerKnownFactIds,
     ftsQuery,
     scope: input.worldScope,
     tokenBudget: input.tokenBudget,

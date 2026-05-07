@@ -1,5 +1,8 @@
 import { DEFAULT_RUNTIME_LORE_CHAR_BUDGET, WORLD_KNOWLEDGE_MAX_PACKET_CHARS, WORLD_KNOWLEDGE_MAX_RETRIEVED_FACTS } from "../constants";
+import { toLoreEvidenceBundleEntry } from "../canon/adapters";
+import type { LoreGateResultV1 } from "../reveal/revealGate";
 import type { LoreFact, LorePacket, RetrievalCandidate, RetrievalDebugMeta, RuntimeLoreRequest } from "../types";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 function compactLine(fact: LoreFact): string {
   const shortText = fact.canonicalText.replace(/\s+/g, " ").slice(0, 180);
@@ -28,6 +31,7 @@ function groupFacts(facts: LoreFact): "core" | "private" | "scene" | "other" {
 export function buildLorePacket(args: {
   input: RuntimeLoreRequest;
   candidates: RetrievalCandidate[];
+  gateResults?: LoreGateResultV1[];
   queryFingerprint: string;
   cache: RetrievalDebugMeta["cache"];
   dbRoundTrips: number;
@@ -68,6 +72,15 @@ export function buildLorePacket(args: {
     scores[c.fact.identity.factKey] = c.score;
     if (c.debug?.from) hitSources.add(c.debug.from);
   }
+  const rollout = getVerseCraftRolloutFlags();
+  const evidenceBundle =
+    rollout.enableCanonFactV1 || rollout.enableRevealAwareEvidenceBundle || rollout.enableProvenanceVerifierShadow
+      ? (args.gateResults && args.gateResults.length > 0
+          ? args.gateResults.map((result) =>
+              toLoreEvidenceBundleEntry(result.candidate, result.gateDecision, result.gateReason)
+            )
+          : args.candidates.map((candidate) => toLoreEvidenceBundleEntry(candidate, "included", "included")))
+      : undefined;
 
   return {
     coreAnchors,
@@ -76,6 +89,7 @@ export function buildLorePacket(args: {
     privateFacts,
     sceneFacts,
     compactPromptText,
+    ...(evidenceBundle ? { evidenceBundle } : {}),
     debugMeta: {
       queryFingerprint: args.queryFingerprint,
       cache: args.cache,

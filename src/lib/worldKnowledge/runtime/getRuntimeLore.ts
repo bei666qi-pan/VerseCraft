@@ -4,7 +4,7 @@ import { rerankCandidates } from "@/lib/worldKnowledge/retrieval/rerank";
 import { retrieveWorldKnowledge } from "@/lib/worldKnowledge/retrieval/retrieveWorldKnowledge";
 import { readWorldLoreCache, writeWorldLoreCache } from "@/lib/worldKnowledge/cache/worldKnowledgeCache";
 import { buildRegistryFallbackLorePacket } from "./fallbackFromRegistry";
-import { gateCandidatesForLorePacket } from "../reveal/revealGate";
+import { gateCandidatesForLorePacketV1 } from "../reveal/revealGate";
 import { DEFAULT_RUNTIME_LORE_TOKEN_BUDGET, WORLD_KNOWLEDGE_RETRIEVAL_TIMEOUT_MS } from "../constants";
 import type { LorePacket, RuntimeLoreRequest } from "../types";
 
@@ -97,14 +97,34 @@ export async function getRuntimeLore(input: RuntimeLoreRequest, deps: RuntimeLor
   const reranked = deps.rerankCandidates(retrieval.debugCandidates ?? [], {
     playerLocation: normalizedInput.playerLocation,
     recentlyEncounteredEntities: normalizedInput.recentlyEncounteredEntities,
+    actorNpcId: normalizedInput.actorNpcId,
+    presentNpcIds: normalizedInput.presentNpcIds ?? [],
+    locationId: normalizedInput.locationId ?? normalizedInput.playerLocation,
+    activeTaskIds: normalizedInput.activeTaskIds ?? [],
+    threatLevel: normalizedInput.threatLevel,
+    scenePressure: normalizedInput.scenePressure,
+    playerKnownFactIds: normalizedInput.playerKnownFactIds ?? [],
   });
 
   const maxRevealRank = plan.maxRevealRank;
-  const gated = gateCandidatesForLorePacket(reranked, maxRevealRank);
+  const gateResult = gateCandidatesForLorePacketV1(reranked, {
+    maxRank: maxRevealRank,
+    actorNpcId: plan.actorNpcId,
+    presentNpcIds: plan.presentNpcIds,
+  });
+  const gated = gateResult.included.map((result) => result.candidate);
+  if (gated.length === 0) {
+    return deps.buildRegistryFallbackLorePacket({
+      input: normalizedInput,
+      plan,
+      reason: "db_empty",
+    });
+  }
 
   const packet = deps.buildLorePacket({
     input: normalizedInput,
     candidates: gated,
+    gateResults: [...gateResult.included, ...gateResult.blocked, ...gateResult.downgraded],
     queryFingerprint: plan.fingerprint,
     cache: {
       level0MemoHit: false,

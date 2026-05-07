@@ -59,6 +59,7 @@
     "benchmark:chat:mock": "tsx scripts/benchmark-chat-metrics.ts --mode mock --assert-budget --include-all --json-out .runtime-data/chat-benchmark-mock.json",
     "eval:chat-quality": "tsx scripts/eval-chat-quality.ts",
     "eval:chat-quality:mock": "tsx scripts/eval-chat-quality.ts --mode mock --assert --json-out .runtime-data/eval-chat-quality-mock.json",
+    "eval:authenticity": "tsx scripts/eval-authenticity.ts",
     "eval:director": "tsx scripts/eval-director.ts",
     "perf:k6:health": "k6 run perf/k6/health-load.js",
     "perf:k6:chat:mock": "k6 run perf/k6/chat-mock-load.js",

@@ -59,7 +59,7 @@ export type NpcHeartRuntimeView = {
   suggestedTaskDramaticTypes: string[];
 
   /** Phase-5: 出口主线角色位（仅供 prompt/规则；不做 UI 面板） */
-  escapeRole?: "route_holder" | "gatekeeper" | "liar" | "ally" | "sacrificer" | "blocker";
+  escapeRole?: "route_holder" | "gatekeeper" | "border_keeper" | "liar" | "ally" | "sacrificer" | "blocker";
 
   /**
    * 认知边界（阶段 1+）：与 profile/relation 并行，默认未填不影响既有心核逻辑。

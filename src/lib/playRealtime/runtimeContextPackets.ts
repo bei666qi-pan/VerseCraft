@@ -69,6 +69,9 @@ import { buildWorldFeelPacket } from "@/lib/playRealtime/worldFeelPackets";
 import { buildPlayabilityPacketsV1 } from "@/lib/gameplay/playabilityPackets";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { buildMultiNpcCompactPersonaPacket } from "@/lib/playRealtime/multiNpcPersonaPackets";
+import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
+import { buildNpcRuntimeStatePacket, buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
+import type { NpcHeartRuntimeView } from "@/lib/npcHeart/types";
 import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
@@ -615,6 +618,43 @@ export function buildRuntimeContextPackets(args: {
     presentNpcIds: nearbyNpcIds,
   });
   const actorConstraintCompact = compactActorConstraintBundle(actorConstraintBundle);
+  const activeTaskIdsForRuntimeState = parseRtTaskLayers(args.playerContext)
+    .map((x) => x.taskId)
+    .filter((id) => typeof id === "string" && id.trim().length > 0)
+    .slice(0, 16);
+  const npcRuntimeStatePacket = rollout.enableNpcRuntimeStateV1
+    ? buildNpcRuntimeStatePacket(
+        [
+          ...(focusNpcForBaseline ? [focusNpcForBaseline] : []),
+          ...nearbyNpcIds,
+        ]
+          .filter((id, index, arr) => id && arr.indexOf(id) === index)
+          .slice(0, 4)
+          .map((npcId) =>
+            buildNpcHeartRuntimeView({
+              npcId,
+              relationPartial: {},
+              locationId: location ?? "B1_SafeZone",
+              activeTaskIds: activeTaskIdsForRuntimeState,
+              hotThreatPresent: threatPacket.phase === "active" || threatPacket.phase === "breached",
+              maxRevealRank,
+              presentNpcIds: nearbyNpcIds,
+            })
+          )
+          .filter((view): view is NpcHeartRuntimeView => Boolean(view))
+          .map((view) =>
+            buildNpcRuntimeStateV1({
+              view,
+              maxRevealRank,
+              taskPressure: {
+                taskIds: activeTaskIdsForRuntimeState,
+                relationFirstInstruction:
+                  "Express relation and motive first; task pressure may guide urgency but not overwrite NPC voice.",
+              },
+            })
+          )
+      )
+    : null;
   const contextMode = args.contextMode ?? "full";
   const multiNpcPersonaPacket = buildMultiNpcCompactPersonaPacket({
     npcIds: [
@@ -845,6 +885,7 @@ export function buildRuntimeContextPackets(args: {
         })
       : { schema: "space_authority_baseline_compact_v1", rolloutDisabled: true },
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
+    ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
   };
 
   const weaponPacket = buildWeaponPacket({
@@ -920,6 +961,7 @@ export function buildRuntimeContextPackets(args: {
     ...actorConstraintBundle,
     ...worldLorePackets,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
+    ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
     ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
     ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
@@ -945,6 +987,7 @@ export function buildRuntimeContextPackets(args: {
           npc_player_baseline_packet: packets.npc_player_baseline_packet,
           npc_scene_authority_packet: compactNpcSceneAuthorityPacket(npcSceneAuthorityPacket),
           multi_npc_persona_packet: multiNpcPersonaPacket,
+          ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
           ...actorConstraintCompact,
           school_cycle_arc_packet: schoolCycleArcPacketCompact,
           ...worldLorePacketsCompact,
@@ -1007,6 +1050,7 @@ export function buildRuntimeContextPackets(args: {
     multi_npc_persona_packet: multiNpcPersonaPacket,
     ...actorConstraintCompact,
     ...(npcSocialSurfacePacket ? { npc_social_surface_packet: npcSocialSurfacePacket } : {}),
+    ...(npcRuntimeStatePacket ? { npc_runtime_state_packet: npcRuntimeStatePacket } : {}),
     ...(playerWorldEntryPacket ? { player_world_entry_packet: playerWorldEntryPacket } : {}),
     ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
     ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),

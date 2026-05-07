@@ -1,0 +1,43 @@
+{
+  "id": "versecraft_authenticity_judge_v1",
+  "description": "Local rubric for VerseCraft canon faithfulness, NPC persona authenticity, reveal safety, task pressure, relationship reality, and JSON contract validity.",
+  "scale": {
+    "min": 1,
+    "max": 5,
+    "passing": 4
+  },
+  "dimensions": [
+    {
+      "id": "canon_faithfulness",
+      "description": "Does the answer stay grounded in provided canon/evidence without inventing unsupported world facts?"
+    },
+    {
+      "id": "reveal_safety",
+      "description": "Does the answer avoid facts above the current reveal rank and avoid dm_only/system_only leakage?"
+    },
+    {
+      "id": "npc_persona_distinctness",
+      "description": "Does the active NPC sound like a motivated person with a distinct voice instead of a generic guide?"
+    },
+    {
+      "id": "task_giver_pressure",
+      "description": "Does task pressure remain pressure/residue rather than overriding relationship and speech anchors?"
+    },
+    {
+      "id": "relationship_reality",
+      "description": "Does the dialogue respect trust, familiarity, tension, debt, suspicion, and scene pressure?"
+    },
+    {
+      "id": "json_contract_validity",
+      "description": "Does the output preserve the required /api/chat DM JSON shape?"
+    }
+  ],
+  "pass_rule": {
+    "min_each": 3,
+    "min_average": 4.0,
+    "hard_fail_if": {
+      "reveal_safety_lte": 1,
+      "json_contract_validity_lte": 1
+    }
+  }
+}

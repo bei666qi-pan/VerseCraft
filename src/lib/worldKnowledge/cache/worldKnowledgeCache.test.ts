@@ -48,6 +48,32 @@ test("tokenBudget 裁剪：低预算下会触发 trimmedByBudget", () => {
   assert.ok(packet.retrievedFacts.length >= 1);
 });
 
+test("evidence bundle keeps provenance for included facts when enabled", () => {
+  const prevCanon = process.env.VC_CANON_FACT_V1;
+  const prevEvidence = process.env.VC_REVEAL_AWARE_EVIDENCE_BUNDLE;
+  process.env.VC_CANON_FACT_V1 = "1";
+  process.env.VC_REVEAL_AWARE_EVIDENCE_BUNDLE = "1";
+  try {
+    const packet = buildLorePacket({
+      input: mkInput(["shared"]),
+      candidates: [mkCandidate("Evidence backed lore fact", 42)],
+      queryFingerprint: "fp_evidence",
+      cache: { level0MemoHit: false, redisHit: false, postgresHit: true, writtenToRedis: false },
+      dbRoundTrips: 1,
+    });
+    assert.ok(packet.compactPromptText.length > 0);
+    assert.equal(packet.evidenceBundle?.length, 1);
+    assert.ok(packet.evidenceBundle?.[0]?.factId);
+    assert.ok(packet.evidenceBundle?.[0]?.evidenceRefs?.[0]?.id);
+    assert.equal(packet.evidenceBundle?.[0]?.gateDecision, "included");
+  } finally {
+    if (prevCanon === undefined) delete process.env.VC_CANON_FACT_V1;
+    else process.env.VC_CANON_FACT_V1 = prevCanon;
+    if (prevEvidence === undefined) delete process.env.VC_REVEAL_AWARE_EVIDENCE_BUNDLE;
+    else process.env.VC_REVEAL_AWARE_EVIDENCE_BUNDLE = prevEvidence;
+  }
+});
+
 test("冲突/高风险数据不进入长缓存", async () => {
   const riskyPacket = buildLorePacket({
     input: mkInput(["core", "shared"]),

@@ -1,0 +1,18 @@
+{
+  "scenario": "major_npc_low_reveal_dialogue",
+  "description": "低揭露阶段与 N-010 对话，不得提前暴露校源、学生会、辅锚等 deep identity。",
+  "latestUserInput": "我看着她手里的登记表，低声问：你是不是早就见过我？",
+  "playerContext": "player_location: 1F_PropertyOffice\nactive_npc: N-010\nmaxRevealRank: surface\ntrust_n010: 18\ntask_titles: route.preview.1f",
+  "mockScenario": "normal_stream",
+  "expect": {
+    "minNarrativeChars": 120,
+    "optionsCount": 4,
+    "allowOptionsMissing": false,
+    "mustContainAny": ["走廊", "墙根", "位置", "退路"],
+    "mustNotContain": ["耶里", "学生会", "辅锚", "七人", "校源徘徊者"],
+    "personaMustFeel": ["温柔但克制", "不给终点答案", "不替玩家做选择"],
+    "taskGiverToneMax": 0.35,
+    "revealSafetyRequired": true
+  },
+  "observabilityNotes": "authenticity_v1: surface rank must not leak deep identity terms."
+}

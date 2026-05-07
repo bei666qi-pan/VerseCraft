@@ -1,0 +1,18 @@
+{
+  "scenario": "task_pressure_persona_dialogue",
+  "description": "同一任务压力下 NPC 仍应先表达关系和动机，不退化成任务发放器腔。",
+  "latestUserInput": "如果你真想让我去一楼查登记表，先告诉我你为什么非要我去。",
+  "playerContext": "player_location: B1_SafeZone\nactive_npc: N-008\nmaxRevealRank: surface\ntask_titles: route.preview.1f\nrelationship_hint: guarded",
+  "mockScenario": "normal_stream",
+  "expect": {
+    "minNarrativeChars": 120,
+    "optionsCount": 4,
+    "allowOptionsMissing": false,
+    "mustContainAny": ["走廊", "墙根", "位置", "退路"],
+    "mustNotContain": ["系统发放任务", "任务领取成功", "打开任务面板"],
+    "personaMustFeel": ["先有人格动机", "再有任务压力"],
+    "taskGiverToneMax": 0.45,
+    "revealSafetyRequired": true
+  },
+  "observabilityNotes": "authenticity_v1: task pressure is not allowed to overwrite speech anchors."
+}

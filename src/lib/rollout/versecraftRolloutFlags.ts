@@ -91,6 +91,16 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableSessionClockV1: boolean;
   /** 阶段7：管理后台玩法指标（profession/weapon/guide/return） */
   enableAdminPlaystyleMetrics: boolean;
+  /** CanonFactV1 structured fact contract and adapters; default off for rollout safety. */
+  enableCanonFactV1: boolean;
+  /** NpcRuntimeStateV1 prompt/runtime packet rendering; default off for behavior parity. */
+  enableNpcRuntimeStateV1: boolean;
+  /** Structured evidence bundle attached to LorePacket; default off unless explicitly enabled. */
+  enableRevealAwareEvidenceBundle: boolean;
+  /** Claim/provenance verifier in shadow mode only; never blocks player-visible output. */
+  enableProvenanceVerifierShadow: boolean;
+  /** Local authenticity eval fixtures/rubric flywheel. */
+  enableAuthenticityEvalFlywheel: boolean;
 };
 
 function readFlag(envName: string, defaultTrue: boolean): boolean {
@@ -164,5 +174,10 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableGuestUnifiedMetrics: readFlag("VERSECRAFT_ENABLE_GUEST_UNIFIED_METRICS", true),
     enableSessionClockV1: readFlag("VERSECRAFT_ENABLE_SESSION_CLOCK_V1", true),
     enableAdminPlaystyleMetrics: readFlag("VERSECRAFT_ENABLE_ADMIN_PLAYSTYLE_METRICS", true),
+    enableCanonFactV1: readFlag("VC_CANON_FACT_V1", false),
+    enableNpcRuntimeStateV1: readFlag("VC_NPC_RUNTIME_STATE_V1", false),
+    enableRevealAwareEvidenceBundle: readFlag("VC_REVEAL_AWARE_EVIDENCE_BUNDLE", false),
+    enableProvenanceVerifierShadow: readFlag("VC_PROVENANCE_VERIFIER_SHADOW", false),
+    enableAuthenticityEvalFlywheel: readFlag("VC_AUTHENTICITY_EVAL_FLYWHEEL", false),
   };
 }

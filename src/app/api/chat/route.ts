@@ -170,6 +170,15 @@ import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonis
 import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePackets";
 import { buildNarrativeBudgetPacketBlock, resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
 import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
+import {
+  applyHighRiskWarningsShadowMode,
+  extractNarrativeClaims,
+  summarizeVerificationForTelemetry,
+  verifyClaimsAgainstEvidence,
+  type ProvenanceTelemetrySummary,
+} from "@/lib/guardrails/provenanceVerifier";
+import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
+import { buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
 import { assessAndRewriteAntiCheatInput } from "@/lib/playRealtime/antiCheatInput";
 import { buildOptionsRegenResponse } from "./optionsRegenPayload";
 import { getPostResolveOptionsRegenSkipReason, shouldSkipPostResolveOptionsRegen } from "./postResolveOptionsRegenSkip";
@@ -1217,6 +1226,7 @@ async function postChatInternal(req: Request) {
   let runtimePacketChars = 0;
   let runtimePacketTokenEstimate = 0;
   let runtimeLorePacket: LorePacket | null = null;
+  let provenanceVerifierTelemetry: ProvenanceTelemetrySummary | null = null;
 
   const loreRetrievalP = loadRuntimeLoreStage({
     perfFlags,
@@ -3327,6 +3337,45 @@ async function postChatInternal(req: Request) {
             validatorReport,
             commitSummary: commitResult.summary,
           });
+          try {
+            const rollout = getVerseCraftRolloutFlags();
+            if (rollout.enableProvenanceVerifierShadow) {
+              const npcRuntimeState = focusNpcForPrompt
+                ? (() => {
+                    const view = buildNpcHeartRuntimeView({
+                      npcId: focusNpcForPrompt,
+                      relationPartial: {},
+                      locationId:
+                        postStateDelta.playerLocation ??
+                        guessPlayerLocationFromContext(playerContext) ??
+                        "B1_SafeZone",
+                      activeTaskIds: [],
+                      hotThreatPresent: (pipelineControl?.risk_tags ?? []).some((tag) =>
+                        String(tag).toLowerCase().includes("threat")
+                      ),
+                      maxRevealRank: maxRevealRankForMemory,
+                      presentNpcIds: presentNpcIdsForEpistemic ?? [],
+                    });
+                    return view
+                      ? buildNpcRuntimeStateV1({
+                          view,
+                          maxRevealRank: maxRevealRankForMemory,
+                        })
+                      : null;
+                  })()
+                : null;
+              const claims = extractNarrativeClaims(resolved as unknown as Record<string, unknown>);
+              const verification = verifyClaimsAgainstEvidence(
+                claims,
+                runtimeLorePacket?.evidenceBundle ?? [],
+                npcRuntimeState
+              );
+              provenanceVerifierTelemetry = summarizeVerificationForTelemetry(verification);
+              applyHighRiskWarningsShadowMode(verification);
+            }
+          } catch (verifierError) {
+            console.warn("[api/chat] provenance verifier shadow skipped", verifierError);
+          }
           void (async () => {
             try {
               const dialogueContext = await buildDialogueContext({
@@ -3383,6 +3432,7 @@ async function postChatInternal(req: Request) {
                   },
                   modelParseFallback: finalJsonParseSuccess ? null : "parse_accumulated_player_dm_json_failed",
                   commitResult: narrativeEventCommit,
+                  provenanceVerifier: provenanceVerifierTelemetry,
                 },
               });
             } catch (ledgerError) {

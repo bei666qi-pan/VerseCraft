@@ -1,4 +1,6 @@
 import type { NpcHeartRuntimeView } from "./types";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { buildNpcRuntimeStateV1, renderNpcRuntimeStatePromptBlock } from "./runtimeState";
 
 function clamp(s: string, maxChars: number): string {
   const t = String(s ?? "").trim();
@@ -13,6 +15,16 @@ export function buildNpcHeartPromptBlock(input: {
   const maxChars = Math.max(120, Math.min(900, input.maxChars ?? 520));
   const views = (input.views ?? []).slice(0, 5);
   if (views.length === 0) return "";
+  if (getVerseCraftRolloutFlags().enableNpcRuntimeStateV1) {
+    const states = views.map((view) =>
+      buildNpcRuntimeStateV1({
+        view,
+        maxRevealRank: 0,
+      })
+    );
+    const runtimeBlock = renderNpcRuntimeStatePromptBlock({ states, maxChars });
+    if (runtimeBlock) return runtimeBlock;
+  }
   const lines: string[] = [];
   lines.push("## 【NPC心脏·行为锚（写作用，勿念设定）】");
   const anyMajor = views.some((v) => v.profile.charmTier === "major_charm");

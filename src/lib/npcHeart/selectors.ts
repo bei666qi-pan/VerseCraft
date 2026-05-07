@@ -1,4 +1,4 @@
-import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
+import { CONTENT_SPEC_NPC_PROFILES_V2, CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import type { NpcProfileV2 } from "@/lib/registry/types";
 import { buildPeerRelationalCuesForNpc } from "@/lib/playRealtime/npcSocialSurfacePackets";
@@ -19,7 +19,7 @@ function floorFromLocation(loc: string): string {
 }
 
 function pickProfile(npcId: string): NpcProfileV2 | null {
-  return (CORE_NPC_PROFILES_V2 as readonly NpcProfileV2[]).find((p) => p.id === npcId) ?? null;
+  return ([...CORE_NPC_PROFILES_V2, ...CONTENT_SPEC_NPC_PROFILES_V2] as readonly NpcProfileV2[]).find((p) => p.id === npcId) ?? null;
 }
 
 export function buildNpcHeartRuntimeView(args: {

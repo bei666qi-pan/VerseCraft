@@ -1,6 +1,8 @@
 import { buildCoreCanonFactsFromRegistry } from "@/lib/worldKnowledge/bootstrap/coreCanonMapping";
-import { gateCandidatesForLorePacket } from "../reveal/revealGate";
+import { toLoreEvidenceBundleEntry } from "../canon/adapters";
+import { gateCandidatesForLorePacketV1 } from "../reveal/revealGate";
 import type { LoreFact, LorePacket, RetrievalPlan, RuntimeLoreRequest } from "../types";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 
 function scoreFallbackFact(f: LoreFact, req: RuntimeLoreRequest, plan: RetrievalPlan): number {
   const text = `${f.identity.factKey} ${f.canonicalText}`.toLowerCase();
@@ -33,13 +35,27 @@ export function buildRegistryFallbackLorePacket(args: {
     .sort((a, b) => b.score - a.score)
     .slice(0, Math.max(24, Math.floor(args.input.tokenBudget / 15)));
 
-  const gated = gateCandidatesForLorePacket(scored, args.plan.maxRevealRank);
+  const gateResult = gateCandidatesForLorePacketV1(scored, {
+    maxRank: args.plan.maxRevealRank,
+    actorNpcId: args.plan.actorNpcId,
+    presentNpcIds: args.plan.presentNpcIds,
+  });
+  const gated = gateResult.included.map((result) => result.candidate);
   const ranked = gated.map((x) => x.fact).slice(0, Math.max(6, Math.floor(args.input.tokenBudget / 40)));
 
   const coreAnchors = ranked.filter((f) => f.layer === "core_canon" && (f.factType === "rule" || f.factType === "world_mechanism"));
   const sceneFacts = ranked.filter((f) => f.factType === "location" || f.factType === "npc" || f.factType === "anomaly");
   const privateFacts: LoreFact[] = [];
   const relevantEntities = ranked.filter((f) => f.factType === "npc" || f.factType === "anomaly" || f.factType === "item");
+  const rollout = getVerseCraftRolloutFlags();
+  const evidenceBundle =
+    rollout.enableCanonFactV1 || rollout.enableRevealAwareEvidenceBundle || rollout.enableProvenanceVerifierShadow
+      ? [
+          ...gateResult.included.map((result) => toLoreEvidenceBundleEntry(result.candidate, "fallback", args.reason)),
+          ...gateResult.blocked.map((result) => toLoreEvidenceBundleEntry(result.candidate, "blocked", result.gateReason)),
+          ...gateResult.downgraded.map((result) => toLoreEvidenceBundleEntry(result.candidate, "downgraded", result.gateReason)),
+        ]
+      : undefined;
 
   return {
     coreAnchors,
@@ -48,6 +64,7 @@ export function buildRegistryFallbackLorePacket(args: {
     privateFacts,
     sceneFacts,
     compactPromptText: compactFallbackText(ranked),
+    ...(evidenceBundle ? { evidenceBundle } : {}),
     debugMeta: {
       queryFingerprint: args.plan.fingerprint,
       cache: {

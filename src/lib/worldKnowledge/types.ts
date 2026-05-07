@@ -4,6 +4,7 @@
  * 注意：本阶段只提供类型与接口，避免接入任何 /api/chat 业务逻辑。
  */
 import type { TaskType } from "@/lib/ai/types/core";
+import type { LoreEvidenceBundleEntryV1 } from "./canon/types";
 
 export type WorldKnowledgeLayer =
   | "core_canon"
@@ -78,6 +79,13 @@ export interface RuntimeLoreRequest {
    */
   playerContext?: string | null;
   recentlyEncounteredEntities: string[];
+  actorNpcId?: string | null;
+  presentNpcIds?: string[];
+  locationId?: string | null;
+  activeTaskIds?: string[];
+  threatLevel?: string | null;
+  scenePressure?: string | null;
+  playerKnownFactIds?: string[];
   taskType: RuntimeLoreTaskType;
   tokenBudget: number;
   worldScope: RuntimeWorldScope[];
@@ -92,6 +100,13 @@ export interface RetrievalPlan {
   tagHints: string[];
   /** 允许注入的世界知识最高揭露层级（0 surface … 3 abyss） */
   maxRevealRank: number;
+  actorNpcId?: string | null;
+  presentNpcIds: string[];
+  locationId?: string | null;
+  activeTaskIds: string[];
+  threatLevel?: string | null;
+  scenePressure?: string | null;
+  playerKnownFactIds: string[];
   ftsQuery: string;
   scope: RuntimeWorldScope[];
   tokenBudget: number;
@@ -174,6 +189,7 @@ export interface LorePacket {
   privateFacts: LoreFact[];
   sceneFacts: LoreFact[];
   compactPromptText: string;
+  evidenceBundle?: LoreEvidenceBundleEntryV1[];
   debugMeta: RetrievalDebugMeta;
 }
 

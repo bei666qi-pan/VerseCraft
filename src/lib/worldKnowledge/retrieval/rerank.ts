@@ -3,6 +3,13 @@ import type { RetrievalCandidate } from "../types";
 export interface RerankContext {
   playerLocation: string | null;
   recentlyEncounteredEntities: string[];
+  actorNpcId?: string | null;
+  presentNpcIds?: string[];
+  locationId?: string | null;
+  activeTaskIds?: string[];
+  threatLevel?: string | null;
+  scenePressure?: string | null;
+  playerKnownFactIds?: string[];
 }
 
 function scoreBoost(candidate: RetrievalCandidate, ctx: RerankContext): number {
@@ -17,6 +24,23 @@ function scoreBoost(candidate: RetrievalCandidate, ctx: RerankContext): number {
     const e = eid.toLowerCase();
     if (key.includes(e) || text.includes(e)) boost += 30;
   }
+  if (ctx.actorNpcId) {
+    const id = ctx.actorNpcId.toLowerCase();
+    if (key.includes(id) || text.includes(id)) boost += 22;
+  }
+  for (const id of ctx.presentNpcIds ?? []) {
+    const normalized = id.toLowerCase();
+    if (key.includes(normalized) || text.includes(normalized)) boost += 12;
+  }
+  for (const taskId of ctx.activeTaskIds ?? []) {
+    const normalized = taskId.toLowerCase();
+    if (key.includes(normalized) || text.includes(normalized)) boost += 8;
+  }
+  if (ctx.locationId) {
+    const normalized = ctx.locationId.toLowerCase();
+    if (key.includes(normalized) || text.includes(normalized)) boost += 18;
+  }
+  if (ctx.playerKnownFactIds?.includes(candidate.fact.identity.factKey)) boost += 14;
   if (candidate.fact.layer === "user_private_lore") boost += 25;
   if (candidate.fact.factType === "rule" || candidate.fact.factType === "world_mechanism") boost += 18;
   if (candidate.fact.isHot) boost += 10;
