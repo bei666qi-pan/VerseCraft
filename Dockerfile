@@ -5,11 +5,9 @@
 # 亦不使用 `RUN --mount=type=cache`（依赖上述语法），以保证默认 docker driver 可构建。
 #
 # 可选 Build Args（在 Coolify「Build Arguments」中设置）：
-# - DOCKER_IMAGE_BASE：默认 node:22-alpine；国内可换镜像加速基础层拉取
 # - PNPM_REGISTRY：留空=官方 registry；国内可填 https://registry.npmmirror.com
 
-ARG DOCKER_IMAGE_BASE=node:22-alpine
-FROM ${DOCKER_IMAGE_BASE} AS base
+FROM node:22-alpine AS base
 RUN apk add --no-cache ca-certificates libc6-compat
 
 # ---- 第一阶段：安装依赖 ----
