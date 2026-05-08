@@ -71,7 +71,7 @@ export interface ResolvedAiEnv {
   logLevel: "silent" | "error" | "info" | "debug";
   /** Two role=system messages (stable + dynamic) for PLAYER_CHAT when true. */
   splitPlayerChatDualSystem: boolean;
-  /** Keep enhancement pipeline compatible but disabled by default in Phase 1. */
+  /** Keep enhancement pipeline enabled by default; explicit env can still disable it. */
   enableNarrativeEnhancement: boolean;
   /** Optional post-stream narrative-only expansion; never required for first visible token. */
   enableNarrativeExpansion: boolean;
@@ -204,10 +204,10 @@ function readModelForRole(role: AiLogicalRole): string {
     return direct.length > 0 ? direct : `mock-${role}`;
   }
   if (role === "enhance") {
-    // Phase 1: physical deployment keeps 3 model names. When AI_MODEL_ENHANCE is unset,
-    // transparently map enhance-role traffic to main model deployment.
-    if (direct.length > 0) return direct;
-    return (envRaw("AI_MODEL_MAIN") ?? "").trim();
+    return direct.length > 0 ? direct : "vc-enhance";
+  }
+  if (role === "reasoner") {
+    return direct.length > 0 ? direct : "vc-reasoner";
   }
   return direct;
 }
@@ -244,12 +244,7 @@ function resolvePlayerChatMaxTokensOverride(): number | null {
 }
 
 function defaultNarrativeExpansionEnabled(): boolean {
-  const deployEnv = (envRaw("APP_ENV") ?? envRaw("VERCEL_ENV") ?? envRaw("NODE_ENV") ?? process.env.NODE_ENV ?? "")
-    .trim()
-    .toLowerCase();
-  if (deployEnv === "production") return false;
-  if (deployEnv === "staging" || deployEnv === "preview" || deployEnv === "development") return true;
-  return process.env.NODE_ENV !== "production";
+  return true;
 }
 
 function resolveMemoryPrimaryRole(): AiLogicalRole {

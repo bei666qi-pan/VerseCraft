@@ -105,7 +105,7 @@ import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
-import { safeBlockedDmJson } from "@/lib/security/policy";
+import { buildInWorldSafetyRedirect, safeBlockedDmJson } from "@/lib/security/policy";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
@@ -145,6 +145,9 @@ import { build7FConspiracyNarrativeBlock, ensure7FConspiracyTask } from "@/lib/r
 import { buildServerDirectorHintBlock } from "@/lib/storyDirector/serverHint";
 import { loadDueDirectorAgenda, markDirectorAgendaInjected, expireStaleDirectorAgenda } from "@/lib/worldEngine/agenda";
 import { resolveWorldDirectorConfig } from "@/lib/worldEngine/config";
+import { resolveSocialWorldConfig } from "@/lib/socialWorld/config";
+import { loadDueSocialEventsForPrompt, markSocialEventsProjected } from "@/lib/socialWorld/persistence";
+import { loadSocialWorldHintForPrompt } from "@/lib/socialWorld/prompt";
 import { buildActorScopedEpistemicMemoryBlock } from "@/lib/epistemic/actorScopedMemoryBlock";
 import { buildNpcEpistemicProfile } from "@/lib/epistemic/builders";
 import { detectCognitiveAnomaly } from "@/lib/epistemic/detector";
@@ -1354,6 +1357,7 @@ async function postChatInternal(req: Request) {
         })
       : "";
   const worldDirectorConfig = resolveWorldDirectorConfig();
+  const socialWorldConfig = resolveSocialWorldConfig();
   const directorDigestForPrompt =
     clientState && typeof clientState === "object" && !Array.isArray(clientState)
       ? ((clientState as any).directorDigest ?? null)
@@ -1367,17 +1371,43 @@ async function postChatInternal(req: Request) {
           timeoutMs: worldDirectorConfig.agendaQueryTimeoutMs,
         }).catch(() => [])
       : Promise.resolve([]);
+  const socialWorldHintPromise = loadSocialWorldHintForPrompt({
+    sessionId,
+    nowTurn: totalRounds,
+    loadDueSocialEventsForPrompt,
+    enabled: socialWorldConfig.promptInjectionEnabled,
+    timeoutMs: socialWorldConfig.queryTimeoutMs,
+    budget: socialWorldConfig.budget,
+  });
   let dueDirectorAgendaForPrompt: Awaited<typeof dueDirectorAgendaPromise> = [];
   let injectedDirectorAgendaIds: number[] = [];
 
-  await Promise.all([
+  const [, , dueDirectorAgendaItems, socialWorldHintForPrompt] = await Promise.all([
     runControlPreflightP,
     loreRetrievalP,
-    dueDirectorAgendaPromise.then((items) => {
-      dueDirectorAgendaForPrompt = items;
-      injectedDirectorAgendaIds = items.map((item) => item.id).filter((id) => Number.isFinite(id));
-    }),
+    dueDirectorAgendaPromise,
+    socialWorldHintPromise,
   ]);
+  dueDirectorAgendaForPrompt = dueDirectorAgendaItems;
+  injectedDirectorAgendaIds = dueDirectorAgendaItems.map((item) => item.id).filter((id) => Number.isFinite(id));
+  const socialWorldHintBlock = socialWorldHintForPrompt?.block ?? "";
+  const injectedSocialEventIds = socialWorldHintForPrompt?.projectedEventIds ?? [];
+  const socialProjectionTelemetry = {
+    socialWorldMode: socialWorldConfig.mode,
+    socialHintCount: socialWorldHintForPrompt?.socialHintCount ?? 0,
+    socialHintChars: socialWorldHintForPrompt?.socialHintChars ?? 0,
+    socialPromptChars: socialWorldHintForPrompt?.socialHintChars ?? 0,
+    socialQueryLatencyMs: socialWorldHintForPrompt?.socialQueryLatencyMs ?? 0,
+    socialHintVisibilityCounts: socialWorldHintForPrompt?.socialHintVisibilityCounts ?? {
+      ambient: 0,
+      rumor: 0,
+      directly_observable: 0,
+    },
+    socialEventsProjected: injectedSocialEventIds.length,
+    socialProjectionSkippedReason:
+      socialWorldHintForPrompt?.socialProjectionSkippedReason ??
+      (socialWorldConfig.promptInjectionEnabled ? "query_failed" : "disabled"),
+  };
   const directorHintBlock = (() => {
     try {
       return buildServerDirectorHintBlock(
@@ -1624,6 +1654,7 @@ async function postChatInternal(req: Request) {
     conspiracyNarrativeBlock,
     epistemicAlertAugmentation,
     epistemicResiduePlan.augmentationBlock,
+    socialWorldHintBlock,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -1958,6 +1989,14 @@ async function postChatInternal(req: Request) {
       loreBudgetHit,
       runtimePacketChars,
       runtimePacketTokenEstimate,
+      socialWorldMode: socialProjectionTelemetry.socialWorldMode,
+      socialHintCount: socialProjectionTelemetry.socialHintCount,
+      socialHintChars: socialProjectionTelemetry.socialHintChars,
+      socialPromptChars: socialProjectionTelemetry.socialPromptChars,
+      socialQueryLatencyMs: socialProjectionTelemetry.socialQueryLatencyMs,
+      socialHintVisibilityCounts: socialProjectionTelemetry.socialHintVisibilityCounts,
+      socialEventsProjected: socialProjectionTelemetry.socialEventsProjected,
+      socialProjectionSkippedReason: socialProjectionTelemetry.socialProjectionSkippedReason,
       promptVersion,
       promptStablePrefixHash,
       stableCharLen,
@@ -2666,7 +2705,18 @@ async function postChatInternal(req: Request) {
               epistemicPostValidatorTelemetry?.avgFormalTaskDelayFromFirstContact ?? null,
             residueTriggeredCount: Boolean(epistemicResiduePlan.packet) ? 1 : 0,
           };
-          const withEpistemicCore = { ...base, epistemicRollup: epistemicRollupPayload };
+          const withSocialProjection = {
+            ...base,
+            socialWorldMode: socialProjectionTelemetry.socialWorldMode,
+            socialHintCount: socialProjectionTelemetry.socialHintCount,
+            socialHintChars: socialProjectionTelemetry.socialHintChars,
+            socialPromptChars: socialProjectionTelemetry.socialPromptChars,
+            socialQueryLatencyMs: socialProjectionTelemetry.socialQueryLatencyMs,
+            socialHintVisibilityCounts: socialProjectionTelemetry.socialHintVisibilityCounts,
+            socialEventsProjected: socialProjectionTelemetry.socialEventsProjected,
+            socialProjectionSkippedReason: socialProjectionTelemetry.socialProjectionSkippedReason,
+          };
+          const withEpistemicCore = { ...withSocialProjection, epistemicRollup: epistemicRollupPayload };
           const withEpistemicPost =
             epistemicPostValidatorTelemetry != null
               ? { ...withEpistemicCore, epistemicPostValidator: epistemicPostValidatorTelemetry }
@@ -3587,7 +3637,7 @@ async function postChatInternal(req: Request) {
                   },
                 ],
                 narrativeOverride: safeBlockedDmJson(
-                  "这里的信息触及了叙事安全边界，先收束到当前可以确认的事实继续。",
+                  buildInWorldSafetyRedirect(latestUserInput),
                   {
                     action: "degrade",
                     stage: "post_model",
@@ -4156,6 +4206,38 @@ async function postChatInternal(req: Request) {
             )
             .catch(() => {});
         }
+        if (sessionId && injectedSocialEventIds.length > 0) {
+          const capturedSocialEventIds = [...injectedSocialEventIds];
+          void markSocialEventsProjected(sessionId, capturedSocialEventIds)
+            .then((projectedCount) =>
+              recordGenericAnalyticsEvent({
+                eventId: `${requestId}:social_world_hint_projected`,
+                idempotencyKey: `${requestId}:social_world_hint_projected`,
+                userId,
+                guestId: userId ? null : chatGuestId,
+                sessionId,
+                eventName: "social_world_hint_projected",
+                eventTime: new Date(),
+                page: "/play",
+                source: "chat",
+                platform,
+                tokenCost: 0,
+                playDurationDeltaSec: 0,
+                payload: {
+                  requestId,
+                  socialWorldMode: socialProjectionTelemetry.socialWorldMode,
+                  socialHintCount: socialProjectionTelemetry.socialHintCount,
+                  socialHintChars: socialProjectionTelemetry.socialHintChars,
+                  socialPromptChars: socialProjectionTelemetry.socialPromptChars,
+                  socialQueryLatencyMs: socialProjectionTelemetry.socialQueryLatencyMs,
+                  socialHintVisibilityCounts: socialProjectionTelemetry.socialHintVisibilityCounts,
+                  socialEventsProjected: projectedCount,
+                  socialProjectionSkippedReason: socialProjectionTelemetry.socialProjectionSkippedReason,
+                },
+              })
+            )
+            .catch(() => {});
+        }
         if (sessionId && worldDirectorConfig.enabled) {
           void expireStaleDirectorAgenda({ sessionId, turnIndex: totalRounds }).catch(() => {});
         }
@@ -4288,6 +4370,8 @@ async function postChatInternal(req: Request) {
                   dedupKey: result.dedupKey,
                   triggers: [...decision.triggers],
                   directorMode: worldDirectorConfig.mode,
+                  socialWorldMode: socialWorldConfig.mode,
+                  socialTickEligible: socialWorldConfig.backgroundEnabled,
                 },
               }).catch(() => {});
             },

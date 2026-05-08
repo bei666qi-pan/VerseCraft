@@ -21,7 +21,7 @@
  * actually flushed to the client".
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
-import { safeBlockedDmJson } from "@/lib/security/policy";
+import { buildInWorldSafetyRedirect, safeBlockedDmJson } from "@/lib/security/policy";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -83,8 +83,7 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "npc_status_forbidden_direct_speech",
 ]);
 
-const SAFE_COMMIT_FALLBACK_MESSAGE =
-  "这里的信息触及了叙事安全边界，先收束到当前可以确认的事实继续。";
+const SAFE_COMMIT_FALLBACK_MESSAGE = buildInWorldSafetyRedirect();
 
 export type TurnCommitFlag =
   | "options_rewrite_applied"

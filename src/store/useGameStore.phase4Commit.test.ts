@@ -7,6 +7,18 @@ function resetStore() {
   useGameStore.setState(initial, true);
 }
 
+test("initCharacter starts without gifting a random inventory item", () => {
+  resetStore();
+  useGameStore.getState().initCharacter(
+    { name: "测试者", gender: "unknown", height: 170, personality: "谨慎" },
+    { sanity: 10, agility: 0, luck: 0, charm: 0, background: 10 },
+    "洞察之眼"
+  );
+
+  assert.equal(useGameStore.getState().isGameStarted, true);
+  assert.deepEqual(useGameStore.getState().inventory, []);
+});
+
 test("phase4: awarded_items write should land in inventory", () => {
   resetStore();
   const s = useGameStore.getState();

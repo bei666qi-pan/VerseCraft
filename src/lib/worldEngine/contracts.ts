@@ -25,6 +25,22 @@ export type DirectorPhase =
 export type DirectorRiskLevel = "low" | "medium" | "high";
 export type RevealPolicy = "hold" | "hint_only" | "soft_reveal" | "redirect";
 export type DirectorPriority = "low" | "medium" | "high";
+export type DirectorSocialEventType =
+  | "conversation"
+  | "rumor_spread"
+  | "conflict"
+  | "trade"
+  | "alliance"
+  | "betrayal"
+  | "warning"
+  | "rescue"
+  | "surveillance"
+  | "debt_call"
+  | "secret_transfer"
+  | "route_interference";
+export type DirectorSocialVisibility = "private" | "ambient" | "rumor" | "directly_observable";
+export type DirectorPlayerRelevance = "none" | "low" | "medium" | "high";
+export type DirectorEscapeRelevance = "none" | "route" | "condition" | "blocker" | "false_lead";
 
 export type DirectorPacingAssessment = {
   tension: number;
@@ -65,6 +81,50 @@ export type DirectorAgendaItem = {
   payload: Record<string, unknown>;
 };
 
+export type DirectorSocialEvent = {
+  event_code: string;
+  type: DirectorSocialEventType;
+  actor_npc_ids: string[];
+  target_npc_ids: string[];
+  location_id: string;
+  due_in_turns: number;
+  ttl_turns: number;
+  priority: DirectorPriority;
+  salience: number;
+  visibility: DirectorSocialVisibility;
+  trigger_conditions: string[];
+  injection_hint: string;
+  agency_constraints: string[];
+  forbidden_outcomes: string[];
+  knowledge_scope: string;
+  must_not_reveal: string[];
+  player_relevance: DirectorPlayerRelevance;
+  escape_relevance: DirectorEscapeRelevance;
+  payload: Record<string, unknown>;
+};
+
+export type NpcRelationDelta = {
+  from_npc_id: string;
+  to_npc_id: string;
+  trust_delta?: number;
+  fear_delta?: number;
+  debt_delta?: number;
+  resentment_delta?: number;
+  suspicion_delta?: number;
+  reason_code: string;
+};
+
+export type NpcAgentPatch = {
+  npc_id: string;
+  current_goal?: string;
+  next_action?: string;
+  eta_turns?: number;
+  location_intent?: string;
+  urgency?: DirectorPriority;
+  knowledge_scope?: string[];
+  must_not_reveal?: string[];
+};
+
 export type DirectorBranchSeed = {
   seed_code: string;
   summary: string;
@@ -95,6 +155,9 @@ export type DirectorPlan = {
   reveal_policy: RevealPolicy;
   npc_next_actions: DirectorNpcAction[];
   world_events_to_schedule: DirectorAgendaItem[];
+  social_events_to_schedule?: DirectorSocialEvent[];
+  npc_relation_deltas?: NpcRelationDelta[];
+  npc_agent_patches?: NpcAgentPatch[];
   story_branch_seeds: DirectorBranchSeed[];
   consistency_warnings: DirectorConsistencyWarning[];
   player_private_hooks: DirectorPrivateHook[];
@@ -117,15 +180,38 @@ export type WorldEngineTickPayload = {
 };
 
 export type WorldEngineStructuredDelta = DirectorPlan & {
+  social_events_to_schedule: DirectorSocialEvent[];
+  npc_relation_deltas: NpcRelationDelta[];
+  npc_agent_patches: NpcAgentPatch[];
   /** True when the deterministic validator allows event rows to be persisted. */
   agenda_write_allowed: boolean;
   agenda_reject_reasons: string[];
+  /** True when deterministic risk gates allow social event rows to be persisted. */
+  social_write_allowed: boolean;
+  social_reject_reasons: string[];
 };
 
 const PRIORITIES = ["low", "medium", "high"] as const;
 const PHASES = ["quiet", "build_up", "pressure", "release", "reveal", "recovery"] as const;
 const RISK_LEVELS = ["low", "medium", "high"] as const;
 const REVEAL_POLICIES = ["hold", "hint_only", "soft_reveal", "redirect"] as const;
+const SOCIAL_EVENT_TYPES = [
+  "conversation",
+  "rumor_spread",
+  "conflict",
+  "trade",
+  "alliance",
+  "betrayal",
+  "warning",
+  "rescue",
+  "surveillance",
+  "debt_call",
+  "secret_transfer",
+  "route_interference",
+] as const;
+const SOCIAL_VISIBILITIES = ["private", "ambient", "rumor", "directly_observable"] as const;
+const PLAYER_RELEVANCE = ["none", "low", "medium", "high"] as const;
+const ESCAPE_RELEVANCE = ["none", "route", "condition", "blocker", "false_lead"] as const;
 
 function clamp01(v: unknown, fallback = 0): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -170,6 +256,11 @@ function sanitizeCode(v: unknown, fallbackPrefix: string): string {
   return cleaned || `${fallbackPrefix}_UNKNOWN`;
 }
 
+function sanitizeOptionalCode(v: unknown): string {
+  const raw = clampText(v, 80).toUpperCase();
+  return raw.replace(/[^A-Z0-9_-]/g, "_").replace(/_{2,}/g, "_").replace(/^_+|_+$/g, "");
+}
+
 function enumOr<T extends string>(v: unknown, values: readonly T[], fallback: T): T {
   return values.includes(v as T) ? (v as T) : fallback;
 }
@@ -185,6 +276,9 @@ const directorPlanSchema = z
     reveal_policy: z.enum(REVEAL_POLICIES).optional(),
     npc_next_actions: z.array(z.unknown()).optional(),
     world_events_to_schedule: z.array(z.unknown()).optional(),
+    social_events_to_schedule: z.array(z.unknown()).optional(),
+    npc_relation_deltas: z.array(z.unknown()).optional(),
+    npc_agent_patches: z.array(z.unknown()).optional(),
     story_branch_seeds: z.array(z.unknown()).optional(),
     consistency_warnings: z.array(z.unknown()).optional(),
     player_private_hooks: z.array(z.unknown()).optional(),
@@ -241,6 +335,102 @@ function normalizeAgendaItems(raw: unknown): DirectorAgendaItem[] {
       payload: asRecord(o.payload) ?? {},
     });
     if (out.length >= 12) break;
+  }
+  return out;
+}
+
+function normalizeSocialEvents(raw: unknown, socialWriteAllowed: boolean): DirectorSocialEvent[] {
+  if (!socialWriteAllowed || !Array.isArray(raw)) return [];
+  const out: DirectorSocialEvent[] = [];
+  for (const x of raw) {
+    const o = asRecord(x);
+    if (!o) continue;
+    const eventCode = sanitizeOptionalCode(o.event_code);
+    const type = SOCIAL_EVENT_TYPES.includes(o.type as DirectorSocialEventType)
+      ? (o.type as DirectorSocialEventType)
+      : null;
+    const actorNpcIds = uniqueStrings(o.actor_npc_ids, 8, 80);
+    const injectionHint = clampText(o.injection_hint, 360);
+    if (!eventCode || !type || actorNpcIds.length === 0 || !injectionHint) continue;
+    out.push({
+      event_code: eventCode,
+      type,
+      actor_npc_ids: actorNpcIds,
+      target_npc_ids: uniqueStrings(o.target_npc_ids, 8, 80),
+      location_id: clampText(o.location_id, 100),
+      due_in_turns: clampInt(o.due_in_turns, 0, 48, 1),
+      ttl_turns: clampInt(o.ttl_turns, 1, 48, 6),
+      priority: enumOr(o.priority, PRIORITIES, "low"),
+      salience: clamp01(o.salience, o.priority === "high" ? 0.8 : 0.4),
+      visibility: enumOr(o.visibility, SOCIAL_VISIBILITIES, "private"),
+      trigger_conditions: uniqueStrings(o.trigger_conditions, 8, 120),
+      injection_hint: injectionHint,
+      agency_constraints: uniqueStrings(o.agency_constraints, 8, 160),
+      forbidden_outcomes: uniqueStrings(o.forbidden_outcomes, 8, 160),
+      knowledge_scope: clampText(o.knowledge_scope, 80),
+      must_not_reveal: uniqueStrings(o.must_not_reveal, 12, 120),
+      player_relevance: enumOr(o.player_relevance, PLAYER_RELEVANCE, "none"),
+      escape_relevance: enumOr(o.escape_relevance, ESCAPE_RELEVANCE, "none"),
+      payload: asRecord(o.payload) ?? {},
+    });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+function clampSignedDelta(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-1, Math.min(1, n));
+}
+
+function normalizeNpcRelationDeltas(raw: unknown): NpcRelationDelta[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NpcRelationDelta[] = [];
+  for (const x of raw) {
+    const o = asRecord(x);
+    if (!o) continue;
+    const fromNpcId = clampText(o.from_npc_id, 80);
+    const toNpcId = clampText(o.to_npc_id, 80);
+    if (!fromNpcId || !toNpcId) continue;
+    const delta: NpcRelationDelta = {
+      from_npc_id: fromNpcId,
+      to_npc_id: toNpcId,
+      reason_code: sanitizeOptionalCode(o.reason_code) || "SOCIAL_RELATION_DELTA",
+    };
+    for (const key of ["trust_delta", "fear_delta", "debt_delta", "resentment_delta", "suspicion_delta"] as const) {
+      if (o[key] !== undefined) delta[key] = clampSignedDelta(o[key]);
+    }
+    out.push(delta);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+function normalizeNpcAgentPatches(raw: unknown): NpcAgentPatch[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NpcAgentPatch[] = [];
+  for (const x of raw) {
+    const o = asRecord(x);
+    if (!o) continue;
+    const npcId = clampText(o.npc_id, 80);
+    if (!npcId) continue;
+    const currentGoal = clampText(o.current_goal, 160);
+    const nextAction = clampText(o.next_action, 180);
+    const locationIntent = clampText(o.location_intent, 120);
+    const knowledgeScope = uniqueStrings(o.knowledge_scope, 8, 80);
+    const mustNotReveal = uniqueStrings(o.must_not_reveal, 12, 120);
+    out.push({
+      npc_id: npcId,
+      ...(currentGoal ? { current_goal: currentGoal } : {}),
+      ...(nextAction ? { next_action: nextAction } : {}),
+      ...(o.eta_turns !== undefined ? { eta_turns: clampInt(o.eta_turns, 0, 48, 1) } : {}),
+      ...(locationIntent ? { location_intent: locationIntent } : {}),
+      ...(o.urgency ? { urgency: enumOr(o.urgency, PRIORITIES, "low") } : {}),
+      ...(knowledgeScope.length > 0 ? { knowledge_scope: knowledgeScope } : {}),
+      ...(mustNotReveal.length > 0 ? { must_not_reveal: mustNotReveal } : {}),
+    });
+    if (out.length >= 8) break;
   }
   return out;
 }
@@ -327,6 +517,11 @@ function normalizePlan(root: Record<string, unknown>): WorldEngineStructuredDelt
   const agendaRejectReasons: string[] = [];
   if (risk.agency_risk === "high") agendaRejectReasons.push("agency_risk_high");
   if (risk.spoiler_risk === "high") agendaRejectReasons.push("spoiler_risk_high");
+  const socialRejectReasons: string[] = [];
+  if (risk.agency_risk === "high") socialRejectReasons.push("agency_risk_high");
+  if (risk.spoiler_risk === "high") socialRejectReasons.push("spoiler_risk_high");
+  if (risk.safety_risk === "high") socialRejectReasons.push("safety_risk_high");
+  const socialWriteAllowed = socialRejectReasons.length === 0;
 
   return {
     schema_version: "director_plan_v1",
@@ -338,11 +533,16 @@ function normalizePlan(root: Record<string, unknown>): WorldEngineStructuredDelt
     reveal_policy: enumOr(root.reveal_policy, REVEAL_POLICIES, "hint_only"),
     npc_next_actions: normalizeNpcActions(root.npc_next_actions),
     world_events_to_schedule: normalizeAgendaItems(root.world_events_to_schedule),
+    social_events_to_schedule: normalizeSocialEvents(root.social_events_to_schedule, socialWriteAllowed),
+    npc_relation_deltas: normalizeNpcRelationDeltas(root.npc_relation_deltas),
+    npc_agent_patches: normalizeNpcAgentPatches(root.npc_agent_patches),
     story_branch_seeds: normalizeSeeds(root.story_branch_seeds),
     consistency_warnings: normalizeWarnings(root.consistency_warnings),
     player_private_hooks: normalizeHooks(root.player_private_hooks),
     agenda_write_allowed: agendaRejectReasons.length === 0,
     agenda_reject_reasons: agendaRejectReasons,
+    social_write_allowed: socialWriteAllowed,
+    social_reject_reasons: socialRejectReasons,
   };
 }
 

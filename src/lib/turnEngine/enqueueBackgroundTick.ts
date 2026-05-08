@@ -153,8 +153,21 @@ export function scheduleBackgroundWorldTick(
     latestUserInput: args.latestUserInput,
     dmRecord: args.dmRecord,
     playerLocation: args.playerLocation,
+    previousPlayerLocation: args.previousPlayerLocation,
     npcLocationUpdateCount: args.npcLocationUpdateCount,
     preflightRiskTags: args.preflightRiskTags,
+    minTriggerGapTurns: args.minTriggerGapTurns,
+    maxPendingAgenda: args.maxPendingAgenda,
+    pendingAgendaCount: args.pendingAgendaCount,
+    lastWorldEngineTurn: args.lastWorldEngineTurn,
+    progresslessTurnCount: args.progresslessTurnCount,
+    repeatedInvestigationCount: args.repeatedInvestigationCount,
+    dueHookCount: args.dueHookCount,
+    dueNpcAgendaCount: args.dueNpcAgendaCount,
+    clueCount: args.clueCount,
+    keyClueRank: args.keyClueRank,
+    currentTension: args.currentTension,
+    recentHighPressureTurns: args.recentHighPressureTurns,
   });
 
   if (!decision.shouldEnqueue || !args.sessionId) {

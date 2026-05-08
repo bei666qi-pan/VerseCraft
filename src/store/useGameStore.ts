@@ -10,7 +10,6 @@ import {
   type IntegrityMetaState,
 } from "@/store/middleware/checksumMiddleware";
 import type { Item, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
-import { ITEMS } from "@/lib/registry/items";
 import { getWeaponById } from "@/lib/registry/weapons";
 import { NPC_HOME_LOCATION_SEED } from "@/lib/registry/runtimeBoundary";
 import {
@@ -898,40 +897,6 @@ function parseTags(tagsStr: string): string[] {
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-}
-
-function clamp01(n: number): number {
-  if (Number.isNaN(n)) return 0;
-  if (n < 0) return 0;
-  if (n > 1) return 1;
-  return n;
-}
-
-function pickStartingItemByBackground(background: number): Item {
-  const dItems = ITEMS.filter((i) => i.tier === "D");
-  const bItems = ITEMS.filter((i) => i.tier === "B");
-  const aItems = ITEMS.filter((i) => i.tier === "A");
-
-  const safePick = (pool: Item[], fallback: Item): Item => {
-    if (pool.length === 0) return fallback;
-    const idx = Math.floor(Math.random() * pool.length);
-    return pool[idx] ?? fallback;
-  };
-
-  const fallback = dItems[0] ?? ITEMS[0]!;
-
-  const highTierChance = clamp01((background || 0) * 0.1);
-  const roll = Math.random();
-
-  if (roll < highTierChance) {
-    const aChance = clamp01((background - 6) / 20);
-    const chooseA = Math.random() < aChance;
-    return chooseA
-      ? safePick(aItems, safePick(bItems, fallback))
-      : safePick(bItems, safePick(aItems, fallback));
-  }
-
-  return safePick(dItems, fallback);
 }
 
 function createGuestId(): string {
@@ -2032,7 +1997,6 @@ export const useGameStore = create<GameState>()(
 
       initCharacter: (profile, stats, talent) => {
         const background = stats.background ?? DEFAULT_STATS.background;
-        const startingItem = pickStartingItemByBackground(background);
         const initialSanity = stats.sanity ?? DEFAULT_STATS.sanity;
 
         set({
@@ -2045,7 +2009,7 @@ export const useGameStore = create<GameState>()(
           time: { day: 0, hour: 0 },
           stats,
           historicalMaxSanity: initialSanity,
-          inventory: [startingItem],
+          inventory: [],
           codex: {},
           hasCheckedCodex: false,
           warehouse: [],

@@ -59,7 +59,10 @@ test("system fault: provider error + private fail_soft => fallback narrative (no
 
   assert.equal(r.verdict, "fallback");
   assert.equal(r.fallbackUsed, true);
-  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("外部校验暂不可用"));
+  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("灯光忽然跳了一下"));
+  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("足够我抓住机会"));
+  assert.ok(!String(r.updatedDmRecord.narrative ?? "").includes("外部校验"));
+  assert.ok(!String(r.updatedDmRecord.narrative ?? "").includes("叙事安全边界"));
 });
 
 test("system fault must not downgrade local hard reject", async () => {

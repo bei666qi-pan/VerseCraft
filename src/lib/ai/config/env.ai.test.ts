@@ -170,7 +170,7 @@ test("resolveAiEnv maps AI_MEMORY_MODEL legacy id to memoryPrimaryRole", () => {
   );
 });
 
-test("resolveAiEnv maps enhance model to main when AI_MODEL_ENHANCE is unset", () => {
+test("resolveAiEnv defaults enhance and reasoner to dedicated vc deployments when unset", () => {
   withEnv(
     {
       AI_GATEWAY_BASE_URL: "https://oneapi.example.com",
@@ -178,11 +178,12 @@ test("resolveAiEnv maps enhance model to main when AI_MODEL_ENHANCE is unset", (
       AI_MODEL_MAIN: "vc-main",
       AI_MODEL_CONTROL: "vc-control",
       AI_MODEL_ENHANCE: undefined,
-      AI_MODEL_REASONER: "vc-reasoner",
+      AI_MODEL_REASONER: undefined,
     },
     () => {
       const e = resolveAiEnv();
-      assert.equal(e.modelsByRole.enhance, "vc-main");
+      assert.equal(e.modelsByRole.enhance, "vc-enhance");
+      assert.equal(e.modelsByRole.reasoner, "vc-reasoner");
     }
   );
 });
@@ -214,7 +215,7 @@ test("resolveAiEnv disables narrative enhancement when explicitly set off", () =
   );
 });
 
-test("resolveAiEnv keeps narrative expansion off by default in production", () => {
+test("resolveAiEnv keeps narrative expansion on by default in production", () => {
   withEnv(
     {
       ...gatewayBase,
@@ -222,7 +223,7 @@ test("resolveAiEnv keeps narrative expansion off by default in production", () =
       AI_NARRATIVE_EXPANSION_ENABLED: undefined,
     },
     () => {
-      assert.equal(resolveAiEnv().enableNarrativeExpansion, false);
+      assert.equal(resolveAiEnv().enableNarrativeExpansion, true);
     }
   );
 });

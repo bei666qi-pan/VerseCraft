@@ -122,13 +122,15 @@ export function buildDirectorAgendaHintBlock(
  */
 export function buildServerDirectorHintBlock(
   d: ServerDirectorDigest | null,
-  agenda: readonly ServerDirectorAgendaHint[] = []
+  agenda: readonly ServerDirectorAgendaHint[] = [],
+  opts?: { socialWorldHintBlock?: string }
 ): string {
+  const socialWorldHintBlock = clampText(opts?.socialWorldHintBlock, 420);
   const agendaBlock = buildDirectorAgendaHintBlock(agenda, {
     currentPhase: d?.beatModeHint,
     targetIntent: d?.digest,
   });
-  if (!d) return agendaBlock;
+  if (!d) return [agendaBlock, socialWorldHintBlock].filter(Boolean).join("\n\n");
 
   const tension = clampInt(d.tension, 0, 100);
   const stall = clampInt(d.stallCount, 0, 9);
@@ -156,6 +158,6 @@ export function buildServerDirectorHintBlock(
   if (tension >= 70) lines.push("语气基调：更紧、更近、更急，但保持角色口吻与规则一致。");
 
   const digestBlock = lines.join("\n");
-  if (!agendaBlock) return digestBlock.length <= 600 ? digestBlock : digestBlock.slice(0, 600);
-  return [digestBlock, agendaBlock].join("\n\n");
+  const clippedDigestBlock = digestBlock.length <= 600 ? digestBlock : digestBlock.slice(0, 600);
+  return [clippedDigestBlock, agendaBlock, socialWorldHintBlock].filter(Boolean).join("\n\n");
 }

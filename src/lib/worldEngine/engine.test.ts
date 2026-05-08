@@ -148,6 +148,134 @@ test("parseWorldEngineDeltaJson remains compatible with legacy five-array output
   assert.ok(parsed);
   assert.equal(parsed?.world_events_to_schedule.length, 1);
   assert.equal(parsed?.npc_next_actions[0]?.npc_code, "N-001".replace(/[^A-Z0-9_-]/g, "_"));
+  assert.deepEqual(parsed?.social_events_to_schedule, []);
+  assert.deepEqual(parsed?.npc_relation_deltas, []);
+  assert.deepEqual(parsed?.npc_agent_patches, []);
+});
+
+test("parseWorldEngineDeltaJson parses and normalizes Social World extension fields", () => {
+  const parsed = parseWorldEngineDeltaJson(
+    JSON.stringify({
+      schema_version: "director_plan_v1",
+      risk_assessment: { agency_risk: "low", continuity_risk: "low", spoiler_risk: "low", safety_risk: "low" },
+      social_events_to_schedule: [
+        {
+          event_code: "se hallway rumor",
+          type: "rumor_spread",
+          actor_npc_ids: ["N-001", "N-001"],
+          target_npc_ids: ["N-002"],
+          location_id: "3F_Corridor",
+          due_in_turns: 2,
+          ttl_turns: 60,
+          priority: "high",
+          salience: 2,
+          visibility: "rumor",
+          trigger_conditions: ["player remains near 3F"],
+          injection_hint: "Someone has started repeating an unconfirmed stairwell rumor.",
+          agency_constraints: ["Player may ignore the rumor."],
+          forbidden_outcomes: ["Do not confirm the root truth."],
+          knowledge_scope: "rumor_network",
+          must_not_reveal: ["ROOT_CAUSE_FACT"],
+          player_relevance: "high",
+          escape_relevance: "route",
+          payload: { source: "social_world" },
+        },
+      ],
+      npc_relation_deltas: [
+        {
+          from_npc_id: "N-001",
+          to_npc_id: "N-002",
+          trust_delta: 2,
+          suspicion_delta: -2,
+          reason_code: "shared_rumor",
+        },
+      ],
+      npc_agent_patches: [
+        {
+          npc_id: "N-001",
+          current_goal: "Check whether the stairwell rumor is useful before talking again.",
+          next_action: "Ask N-002 about the hallway noise.",
+          eta_turns: 3,
+          location_intent: "3F_Corridor",
+          urgency: "medium",
+          knowledge_scope: ["rumor_network"],
+          must_not_reveal: ["ROOT_CAUSE_FACT"],
+        },
+      ],
+    })
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed?.social_events_to_schedule.length, 1);
+  assert.equal(parsed?.social_events_to_schedule[0]?.event_code, "SE_HALLWAY_RUMOR");
+  assert.deepEqual(parsed?.social_events_to_schedule[0]?.actor_npc_ids, ["N-001"]);
+  assert.equal(parsed?.social_events_to_schedule[0]?.ttl_turns, 48);
+  assert.equal(parsed?.social_events_to_schedule[0]?.salience, 1);
+  assert.deepEqual(parsed?.social_events_to_schedule[0]?.must_not_reveal, ["ROOT_CAUSE_FACT"]);
+  assert.equal(parsed?.npc_relation_deltas[0]?.trust_delta, 1);
+  assert.equal(parsed?.npc_relation_deltas[0]?.suspicion_delta, -1);
+  assert.equal(parsed?.npc_relation_deltas[0]?.reason_code, "SHARED_RUMOR");
+  assert.equal(parsed?.npc_agent_patches[0]?.eta_turns, 3);
+  assert.deepEqual(parsed?.npc_agent_patches[0]?.must_not_reveal, ["ROOT_CAUSE_FACT"]);
+});
+
+test("parseWorldEngineDeltaJson caps social extension arrays and drops invalid social events", () => {
+  const socialEvents = Array.from({ length: 10 }, (_, idx) => ({
+    event_code: `SE_${idx}`,
+    type: idx === 0 ? "" : "conversation",
+    actor_npc_ids: idx === 1 ? [] : [`N-${String(idx).padStart(3, "0")}`],
+    target_npc_ids: ["N-002"],
+    injection_hint: idx === 2 ? "" : `Candidate social hint ${idx} stays concise and safe.`,
+    knowledge_scope: "scene_public",
+  }));
+  const parsed = parseWorldEngineDeltaJson(
+    JSON.stringify({
+      schema_version: "director_plan_v1",
+      risk_assessment: { agency_risk: "low", continuity_risk: "low", spoiler_risk: "low", safety_risk: "low" },
+      social_events_to_schedule: socialEvents,
+      npc_relation_deltas: Array.from({ length: 20 }, (_, idx) => ({
+        from_npc_id: `N-${idx}`,
+        to_npc_id: `N-${idx + 1}`,
+        trust_delta: 0.1,
+        reason_code: `r_${idx}`,
+      })),
+      npc_agent_patches: Array.from({ length: 20 }, (_, idx) => ({ npc_id: `N-${idx}`, next_action: "Wait." })),
+    })
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed?.social_events_to_schedule.length, 6);
+  assert.equal(parsed?.social_events_to_schedule[0]?.event_code, "SE_3");
+  assert.equal(parsed?.npc_relation_deltas.length, 12);
+  assert.equal(parsed?.npc_agent_patches.length, 8);
+});
+
+test("high-risk DirectorPlan blocks social events from normalized output", () => {
+  const parsed = parseWorldEngineDeltaJson(
+    JSON.stringify({
+      schema_version: "director_plan_v1",
+      risk_assessment: { agency_risk: "high", continuity_risk: "low", spoiler_risk: "high", safety_risk: "high" },
+      social_events_to_schedule: [
+        {
+          event_code: "SE_BLOCKED",
+          type: "conflict",
+          actor_npc_ids: ["N-001"],
+          target_npc_ids: ["N-002"],
+          injection_hint: "This should not survive high risk gating.",
+          knowledge_scope: "scene_public",
+          must_not_reveal: ["HIDDEN"],
+        },
+      ],
+    })
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed?.social_write_allowed, false);
+  assert.deepEqual(parsed?.social_events_to_schedule, []);
+  assert.deepEqual(parsed?.social_reject_reasons, ["agency_risk_high", "spoiler_risk_high", "safety_risk_high"]);
+  const validation = validateDirectorPlan(parsed!);
+  assert.equal(validation.accepted, false);
+  assert.deepEqual(validation.acceptedSocialEventCodes, []);
 });
 
 test("validateDirectorPlan rejects high agency or spoiler plans for agenda", () => {

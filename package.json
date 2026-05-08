@@ -64,6 +64,7 @@
     "eval:narrative-safety:mock": "tsx scripts/eval-narrative-safety.ts --mode mock --assert --json-out .runtime-data/eval-narrative-safety-mock.json",
     "eval:authenticity": "tsx scripts/eval-authenticity.ts",
     "eval:director": "tsx scripts/eval-director.ts",
+    "eval:social-world": "tsx scripts/eval-social-world.ts",
     "perf:k6:health": "k6 run perf/k6/health-load.js",
     "perf:k6:chat:mock": "k6 run perf/k6/chat-mock-load.js",
     "perf:k6:chat:degraded": "k6 run perf/k6/chat-degraded-load.js",

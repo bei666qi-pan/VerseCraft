@@ -410,6 +410,8 @@ test("commitTurn applies safe fallback and writes no npc updates on offscreen di
   assert.equal(result.committedDmRecord.npc_location_updates, undefined);
   assert.equal(result.summary.deltaSummary.npcLocationUpdates, 0);
   assert.equal(result.summary.safeNarrativeFallbackApplied, true);
+  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("叙事安全边界"), false);
+  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("触及安全边界"), false);
 });
 
 test("commitTurn records low style drift without blocking commit", () => {

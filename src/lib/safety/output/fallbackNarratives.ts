@@ -1,12 +1,19 @@
 import type { RiskLevel, ModerationDecision, ModerationScene, ModerationStage } from "@/lib/safety/policy/model";
 
-// 降级场景不再内置罐头短句：options 留空，由客户端触发模型实时生成补齐。
+// 降级场景不内置本地选项，仍交给模型选项链路实时补齐。
 const EMPTY_OPTIONS: string[] = [];
 
 function truncate(s: string, max = 1200): string {
   const t = s.trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+function privateStoryFallback(max = 900): string {
+  return truncate(
+    "话音刚落，门缝后的摩擦声停了一下。那不是回应，更像有什么东西在黑暗里重新确认我的位置。老人抬手按低我的手腕，眼神第一次变得严厉：别再用声音试探它。这个短暂的停顿反而露出一个机会，我可以趁它判断错方向时后撤，也可以逼老人说出那扇门后到底是什么。",
+    max
+  );
 }
 
 export function buildOutputFallback(args: {
@@ -17,14 +24,13 @@ export function buildOutputFallback(args: {
   reasonCode: string;
   isProviderFailureFallback: boolean;
 }): { narrative: string; options?: string[] } {
-  const { scene, stage, decision, isProviderFailureFallback } = args;
+  const { scene, stage, isProviderFailureFallback } = args;
 
-  // System failure: keep it minimal, but still world-safe and not “客服腔”.
   if (isProviderFailureFallback) {
     if (scene === "private_story_output") {
       return {
         narrative: truncate(
-          "外部校验暂不可用。你没有追着危险细节继续，而是把注意力收回到更稳妥的路径：先确认边界、再选择推进的方式。",
+          "灯光忽然跳了一下，像有人在远处拨动了整层楼的电闸。老人把茶杯放下，朝走廊尽头看去；那里的脚步声没有靠近，反而绕开了半圈。这个偏移很短，却足够我抓住机会换位置，或者追问老人刚才为什么紧张。",
           900
         ),
         options: [...EMPTY_OPTIONS],
@@ -32,48 +38,40 @@ export function buildOutputFallback(args: {
     }
     if (stage === "public_display") {
       return {
-        narrative: truncate("当前无法完成公开展示前的合规校验，该条内容已被拒绝呈现。", 400),
+        narrative: truncate("当前无法完成公开展示前的校验，这段内容先不展示。", 400),
       };
     }
     return {
-      narrative: truncate("该内容暂无法完成安全校验，已做降级处理。", 400),
+      narrative: truncate("这段内容暂时无法完成校验，系统已保留更稳妥的版本。", 400),
     };
   }
 
   if (scene === "private_story_output") {
-    if (decision === "fallback") {
-      return {
-        narrative: truncate("你的直觉提醒：继续深入可能越过边界。于是你改用更克制的方式，把危险留在阴影里，换取一条更安全的推进。", 900),
-        options: [...EMPTY_OPTIONS],
-      };
-    }
-    // reject should behave like fallback for private story, to preserve immersion.
     return {
-      narrative: truncate("危险边界已被你确认。你收回了那条不该走的路，只保留更安全的后续选项。", 900),
+      narrative: privateStoryFallback(900),
       options: [...EMPTY_OPTIONS],
     };
   }
 
   if (scene === "codex_text") {
     return {
-      narrative: truncate("图鉴条目暂无法生成安全版本。你改记下更抽象、更不提供细节的要点。", 600),
+      narrative: truncate("图鉴条目暂时只保留更抽象的记录：现象仍在，细节需要等更可靠的线索补上。", 600),
     };
   }
 
   if (scene === "task_text") {
     return {
-      narrative: truncate("任务文本已做安全降级。你获得的是方向，而不是能被滥用的细节。", 600),
+      narrative: truncate("任务文本先收束成方向：确认现场、避开过早判断，再寻找下一处可验证的线索。", 600),
     };
   }
 
   if (stage === "public_display") {
     return {
-      narrative: truncate("该内容不符合公开展示规范，已拒绝呈现。", 350),
+      narrative: truncate("这段内容暂时不适合公开展示，已保留为更克制的版本。", 350),
     };
   }
 
   return {
-    narrative: truncate("该内容触及安全边界，已做安全降级处理。", 400),
+    narrative: truncate("我把不合常理的话说出口，世界没有照做；眼前的门、光线和脚步声仍旧要求我作出下一个选择。", 400),
   };
 }
-

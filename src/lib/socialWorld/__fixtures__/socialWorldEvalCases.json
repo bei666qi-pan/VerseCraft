@@ -1,0 +1,461 @@
+[
+  {
+    "id": "rumor_spread_legal",
+    "description": "N-020 misleads N-008; N-008 becomes more suspicious of the player, while the prompt only carries rumor-level surface traces.",
+    "turnIndex": 12,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-020", "N-008", "player"],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_RUMOR_MISLEAD",
+        "type": "rumor_spread",
+        "actor_npc_ids": ["N-020"],
+        "target_npc_ids": ["N-008", "player"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 6,
+        "priority": "high",
+        "salience": 0.82,
+        "visibility": "rumor",
+        "trigger_conditions": ["Only surface as indirect gossip or attitude change."],
+        "injection_hint": "N-020 plants an unconfirmed story that makes N-008 more wary of the player.",
+        "agency_constraints": ["The player can ignore, challenge, or investigate the rumor."],
+        "forbidden_outcomes": ["Do not confirm whether N-020 fabricated the story."],
+        "knowledge_scope": "rumor_network",
+        "must_not_reveal": ["N-020 fabricated the story", "complete backstage fact"],
+        "player_relevance": "high",
+        "escape_relevance": "none",
+        "payload": {
+          "cause_fact_ids": ["rumor:player_seen_near_exit"],
+          "summary_for_player": "有人把玩家靠近出口的说法传给了保安，语气听上去并不确定。"
+        }
+      }
+    ],
+    "npcRelationDeltas": [
+      {
+        "from_npc_id": "N-008",
+        "to_npc_id": "player",
+        "suspicion_delta": 0.25,
+        "reason_code": "RUMOR_PLAYER_EXIT"
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": ["SE_RUMOR_MISLEAD"],
+      "rejectedEventCodes": [],
+      "projectedEventCodes": ["SE_RUMOR_MISLEAD"],
+      "projectedCount": 1,
+      "relationEdge": {
+        "fromNpcId": "N-008",
+        "toNpcId": "player",
+        "minSuspicion": 0.2
+      }
+    }
+  },
+  {
+    "id": "private_warning",
+    "description": "N-010 privately warns N-018; the private wording is never projected, but N-018 receives a behavioral patch.",
+    "turnIndex": 13,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-010", "N-018"],
+    "seedNpcStates": [
+      { "npcId": "N-018", "knownFactIds": [], "suspectedFactIds": [] }
+    ],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_PRIVATE_WARNING",
+        "type": "warning",
+        "actor_npc_ids": ["N-010"],
+        "target_npc_ids": ["N-018"],
+        "location_id": "4F_Clinic",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "high",
+        "salience": 0.78,
+        "visibility": "private",
+        "trigger_conditions": ["Do not expose the private warning itself."],
+        "injection_hint": "N-010 privately warns N-018 to change position without exposing the wording.",
+        "agency_constraints": ["Only later behavior may change."],
+        "forbidden_outcomes": ["Do not quote the warning to the player."],
+        "knowledge_scope": "actor_private",
+        "must_not_reveal": ["PRIVATE_WARNING_TEXT"],
+        "player_relevance": "medium",
+        "escape_relevance": "none",
+        "payload": {}
+      }
+    ],
+    "npcAgentPatches": [
+      {
+        "npc_id": "N-018",
+        "current_goal": "Avoid the service stairs for now.",
+        "next_action": "quietly leaves the service stair landing",
+        "eta_turns": 1,
+        "location_intent": "4F_Clinic",
+        "urgency": "high",
+        "knowledge_scope": ["actor_private"],
+        "must_not_reveal": ["PRIVATE_WARNING_TEXT"]
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": ["SE_PRIVATE_WARNING"],
+      "rejectedEventCodes": [],
+      "projectedEventCodes": [],
+      "projectedCount": 0,
+      "agentState": {
+        "npcId": "N-018",
+        "status": "active",
+        "agendaIncludes": "quietly leaves",
+        "forbiddenRevealIncludes": "PRIVATE_WARNING_TEXT"
+      }
+    }
+  },
+  {
+    "id": "knowledge_scope_violation",
+    "description": "NPC acts on true_exit_location without knowing it; Social GM must reject.",
+    "turnIndex": 14,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-020", "N-008"],
+    "seedNpcStates": [
+      { "npcId": "N-020", "knownFactIds": ["rumor:old_key"], "suspectedFactIds": [] }
+    ],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_TRUE_EXIT_OOB",
+        "type": "route_interference",
+        "actor_npc_ids": ["N-020"],
+        "target_npc_ids": ["N-008"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 5,
+        "priority": "high",
+        "salience": 0.8,
+        "visibility": "ambient",
+        "trigger_conditions": ["Should be rejected by knowledge scope."],
+        "injection_hint": "N-020 blocks the true exit because he knows true_exit_location.",
+        "agency_constraints": ["No direct outcome lock."],
+        "forbidden_outcomes": ["Do not reveal true exit."],
+        "knowledge_scope": "actor_private",
+        "must_not_reveal": ["true_exit_location"],
+        "player_relevance": "high",
+        "escape_relevance": "blocker",
+        "payload": { "cause_fact_ids": ["true_exit_location"] }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": [],
+      "rejectedEventCodes": ["SE_TRUE_EXIT_OOB"],
+      "rejectionCodesInclude": ["knowledge_scope_violation"],
+      "projectedEventCodes": [],
+      "projectedCount": 0
+    }
+  },
+  {
+    "id": "must_not_reveal_violation",
+    "description": "Candidate injection leaks 七锚 and 真出口; Social GM must reject.",
+    "turnIndex": 15,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-010", "N-018"],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_SPOILER_HINT",
+        "type": "warning",
+        "actor_npc_ids": ["N-010"],
+        "target_npc_ids": ["N-018"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "high",
+        "salience": 0.9,
+        "visibility": "rumor",
+        "trigger_conditions": ["Reject direct spoiler."],
+        "injection_hint": "七锚 points to 真出口, so N-018 should tell the player.",
+        "agency_constraints": ["No forced action."],
+        "forbidden_outcomes": ["Do not reveal 七锚 or 真出口."],
+        "knowledge_scope": "rumor_network",
+        "must_not_reveal": ["七锚", "真出口"],
+        "player_relevance": "high",
+        "escape_relevance": "route",
+        "payload": { "cause_fact_ids": ["rumor:anchor_phrase"] }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": [],
+      "rejectedEventCodes": ["SE_SPOILER_HINT"],
+      "rejectionCodesInclude": ["must_not_reveal_in_model_summary"],
+      "projectedEventCodes": [],
+      "projectedCount": 0
+    }
+  },
+  {
+    "id": "agency_violation",
+    "description": "Candidate forces player failure; Social GM must reject.",
+    "turnIndex": 16,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-008", "N-020"],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_FORCE_CAPTURE",
+        "type": "surveillance",
+        "actor_npc_ids": ["N-008"],
+        "target_npc_ids": ["N-020"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 3,
+        "priority": "high",
+        "salience": 0.7,
+        "visibility": "directly_observable",
+        "trigger_conditions": ["Reject forced failure."],
+        "injection_hint": "The player must fail and be caught no matter what they do.",
+        "agency_constraints": ["This candidate is intentionally invalid."],
+        "forbidden_outcomes": ["Do not force failure."],
+        "knowledge_scope": "scene_public",
+        "must_not_reveal": [],
+        "player_relevance": "high",
+        "escape_relevance": "blocker",
+        "payload": { "cause_fact_ids": ["scene:guard_posts"] }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": [],
+      "rejectedEventCodes": ["SE_FORCE_CAPTURE"],
+      "rejectionCodesInclude": ["forced_player_failure"],
+      "projectedEventCodes": [],
+      "projectedCount": 0
+    }
+  },
+  {
+    "id": "location_impossible",
+    "description": "Direct conversation is impossible from the player location; deterministic validation downgrades it to ambient.",
+    "turnIndex": 17,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-010", "N-018"],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_OFFSCREEN_TALK",
+        "type": "conversation",
+        "actor_npc_ids": ["N-010"],
+        "target_npc_ids": ["N-018"],
+        "location_id": "7F_Rooftop",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "medium",
+        "salience": 0.65,
+        "visibility": "directly_observable",
+        "trigger_conditions": ["Should downgrade if not locally perceivable."],
+        "injection_hint": "N-010 and N-018 have a brief offscreen conversation.",
+        "agency_constraints": ["Player can only notice indirect traces."],
+        "forbidden_outcomes": ["Do not teleport the player."],
+        "knowledge_scope": "scene_public",
+        "must_not_reveal": [],
+        "player_relevance": "medium",
+        "escape_relevance": "none",
+        "payload": {
+          "cause_fact_ids": ["scene:offscreen_shift"],
+          "summary_for_player": "附近只剩下交谈后留下的一点停顿感。"
+        }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": ["SE_OFFSCREEN_TALK"],
+      "rejectedEventCodes": [],
+      "projectedEventCodes": ["SE_OFFSCREEN_TALK"],
+      "projectedCount": 1,
+      "sanitizedVisibility": { "SE_OFFSCREEN_TALK": "ambient" }
+    }
+  },
+  {
+    "id": "duplicate_event",
+    "description": "Same pair and event type repeated in one tick; the second event is deduped.",
+    "turnIndex": 18,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-020", "N-008"],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_DUP_A",
+        "type": "rumor_spread",
+        "actor_npc_ids": ["N-020"],
+        "target_npc_ids": ["N-008"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "medium",
+        "salience": 0.6,
+        "visibility": "rumor",
+        "trigger_conditions": ["First duplicate candidate."],
+        "injection_hint": "N-020 repeats a small rumor to N-008.",
+        "agency_constraints": ["Player can ignore."],
+        "forbidden_outcomes": ["Do not confirm truth."],
+        "knowledge_scope": "rumor_network",
+        "must_not_reveal": [],
+        "player_relevance": "medium",
+        "escape_relevance": "none",
+        "payload": {
+          "cause_fact_ids": ["rumor:small_repeat"],
+          "summary_for_player": "有人又提到那条未经证实的小道消息。"
+        }
+      },
+      {
+        "event_code": "SE_DUP_B",
+        "type": "rumor_spread",
+        "actor_npc_ids": ["N-020"],
+        "target_npc_ids": ["N-008"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "medium",
+        "salience": 0.6,
+        "visibility": "rumor",
+        "trigger_conditions": ["Second duplicate candidate."],
+        "injection_hint": "N-020 repeats the same rumor to N-008 again.",
+        "agency_constraints": ["Player can ignore."],
+        "forbidden_outcomes": ["Do not confirm truth."],
+        "knowledge_scope": "rumor_network",
+        "must_not_reveal": [],
+        "player_relevance": "medium",
+        "escape_relevance": "none",
+        "payload": {
+          "cause_fact_ids": ["rumor:small_repeat"],
+          "summary_for_player": "重复的小道消息不应二次注入。"
+        }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": ["SE_DUP_A"],
+      "rejectedEventCodes": ["SE_DUP_B"],
+      "rejectionCodesInclude": ["duplicate_social_pair_cooldown"],
+      "projectedEventCodes": ["SE_DUP_A"],
+      "projectedCount": 1
+    }
+  },
+  {
+    "id": "prompt_budget",
+    "description": "Three due events exist, but prompt projection injects only the top two within 420 chars.",
+    "turnIndex": 19,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-001", "N-002", "N-003", "N-004", "N-005", "N-006"],
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_BUDGET_HIGH",
+        "type": "conflict",
+        "actor_npc_ids": ["N-001"],
+        "target_npc_ids": ["N-002"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "high",
+        "salience": 0.75,
+        "visibility": "directly_observable",
+        "trigger_conditions": ["Highest relevance first."],
+        "injection_hint": "N-001 and N-002 avoid each other after a clipped argument.",
+        "agency_constraints": ["Do not force player involvement."],
+        "forbidden_outcomes": ["Do not explain the backstage cause."],
+        "knowledge_scope": "scene_public",
+        "must_not_reveal": [],
+        "player_relevance": "high",
+        "escape_relevance": "none",
+        "payload": { "cause_fact_ids": ["scene:argument"], "summary_for_player": "两个人在门边短暂僵住，又很快分开。" }
+      },
+      {
+        "event_code": "SE_BUDGET_MED",
+        "type": "trade",
+        "actor_npc_ids": ["N-003"],
+        "target_npc_ids": ["N-004"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "medium",
+        "salience": 0.6,
+        "visibility": "ambient",
+        "trigger_conditions": ["Second relevance."],
+        "injection_hint": "N-003 and N-004 leave signs of a small exchange.",
+        "agency_constraints": ["Do not explain the trade."],
+        "forbidden_outcomes": ["Do not force a clue pickup."],
+        "knowledge_scope": "scene_public",
+        "must_not_reveal": [],
+        "player_relevance": "medium",
+        "escape_relevance": "none",
+        "payload": { "cause_fact_ids": ["scene:small_trade"], "summary_for_player": "桌角多出一道被刚刚挪过的痕迹。" }
+      },
+      {
+        "event_code": "SE_BUDGET_LOW",
+        "type": "conversation",
+        "actor_npc_ids": ["N-005"],
+        "target_npc_ids": ["N-006"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 4,
+        "priority": "low",
+        "salience": 0.4,
+        "visibility": "ambient",
+        "trigger_conditions": ["Should be omitted by visible prompt budget."],
+        "injection_hint": "N-005 and N-006 leave a low-salience trace.",
+        "agency_constraints": ["Can be ignored."],
+        "forbidden_outcomes": ["No forced action."],
+        "knowledge_scope": "scene_public",
+        "must_not_reveal": [],
+        "player_relevance": "low",
+        "escape_relevance": "none",
+        "payload": { "cause_fact_ids": ["scene:minor_talk"], "summary_for_player": "角落里留下一点低声交谈后的静。" }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": ["SE_BUDGET_HIGH", "SE_BUDGET_MED", "SE_BUDGET_LOW"],
+      "rejectedEventCodes": [],
+      "projectedEventCodes": ["SE_BUDGET_HIGH", "SE_BUDGET_MED"],
+      "projectedCount": 2
+    }
+  },
+  {
+    "id": "memory_spine_write",
+    "description": "High-salience route_interference event writes a route_hint MemorySpine entry.",
+    "turnIndex": 20,
+    "playerLocationId": "3F_Corridor",
+    "knownNpcIds": ["N-010", "N-018"],
+    "userId": "U-EVAL",
+    "directorSocialEvents": [
+      {
+        "event_code": "SE_ROUTE_HINT",
+        "type": "route_interference",
+        "actor_npc_ids": ["N-010"],
+        "target_npc_ids": ["N-018"],
+        "location_id": "3F_Corridor",
+        "due_in_turns": 0,
+        "ttl_turns": 6,
+        "priority": "high",
+        "salience": 0.92,
+        "visibility": "ambient",
+        "trigger_conditions": ["High salience social route trace."],
+        "injection_hint": "Someone has shifted a route marker without making the true route explicit.",
+        "agency_constraints": ["Player can ignore or investigate."],
+        "forbidden_outcomes": ["Do not reveal the final exit."],
+        "knowledge_scope": "scene_public",
+        "must_not_reveal": ["final exit"],
+        "player_relevance": "high",
+        "escape_relevance": "route",
+        "payload": {
+          "cause_fact_ids": ["scene:route_marker"],
+          "summary_for_player": "路线标记像被人动过，但看不出目的。"
+        }
+      }
+    ],
+    "expect": {
+      "acceptedEventCodes": ["SE_ROUTE_HINT"],
+      "rejectedEventCodes": [],
+      "projectedEventCodes": ["SE_ROUTE_HINT"],
+      "projectedCount": 1,
+      "memorySpineKind": "route_hint"
+    }
+  },
+  {
+    "id": "fail_open",
+    "description": "Projection query failure returns an empty hint result without throwing.",
+    "turnIndex": 21,
+    "failPersistenceQuery": true,
+    "expect": {
+      "acceptedEventCodes": [],
+      "rejectedEventCodes": [],
+      "projectedEventCodes": [],
+      "projectedCount": 0,
+      "failOpen": true
+    }
+  }
+]

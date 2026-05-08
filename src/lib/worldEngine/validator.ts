@@ -1,4 +1,4 @@
-import type { DirectorAgendaItem, DirectorPlan } from "./contracts";
+import type { DirectorAgendaItem, DirectorPlan, DirectorSocialEvent } from "./contracts";
 
 export type DirectorValidationIssueSeverity = "low" | "medium" | "high";
 
@@ -13,6 +13,8 @@ export type DirectorValidationResult = {
   accepted: boolean;
   acceptedEventCodes: string[];
   rejectedEventCodes: string[];
+  acceptedSocialEventCodes: string[];
+  rejectedSocialEventCodes: string[];
   issues: DirectorValidationIssue[];
 };
 
@@ -70,6 +72,41 @@ function validateAgendaItem(ev: DirectorAgendaItem): DirectorValidationIssue[] {
   return issues;
 }
 
+function validateSocialEvent(ev: DirectorSocialEvent): DirectorValidationIssue[] {
+  const issues: DirectorValidationIssue[] = [];
+  if (!EVENT_CODE_RE.test(ev.event_code)) {
+    issues.push(issue("invalid_social_event_code", "social event_code must be stable ASCII code.", "high", ev.event_code));
+  }
+  if (!ev.type) {
+    issues.push(issue("missing_social_event_type", "social event type is required.", "high", ev.event_code));
+  }
+  if (!Array.isArray(ev.actor_npc_ids) || ev.actor_npc_ids.length === 0) {
+    issues.push(issue("missing_social_actor", "social event requires at least one actor NPC.", "high", ev.event_code));
+  }
+  if (textLen(ev.injection_hint) < 12) {
+    issues.push(issue("weak_social_injection_hint", "social event injection_hint is too short.", "high", ev.event_code));
+  }
+  if (!ev.knowledge_scope) {
+    issues.push(issue("missing_social_knowledge_scope", "social event requires knowledge_scope.", "high", ev.event_code));
+  }
+  const joined = [
+    ev.injection_hint,
+    ...(ev.trigger_conditions ?? []),
+    ...(ev.agency_constraints ?? []),
+    ...(ev.forbidden_outcomes ?? []),
+    ...(ev.must_not_reveal ?? []),
+  ].join("\n");
+  if (PRIVATE_HOOK_LEAK_RE.test(joined)) {
+    issues.push(
+      issue("social_private_hook_leak", "social event text appears to expose private hook semantics.", "high", ev.event_code)
+    );
+  }
+  if (/强制玩家失败|玩家(必定|必须|无法避免地|一定会).{0,8}(失败|死亡|受伤|被抓)|player must fail|force player failure/i.test(joined)) {
+    issues.push(issue("social_forces_player_failure", "social event cannot force player failure.", "high", ev.event_code));
+  }
+  return issues;
+}
+
 export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResult {
   const issues: DirectorValidationIssue[] = [];
   if (plan.schema_version !== "director_plan_v1") {
@@ -88,6 +125,9 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
   const seen = new Set<string>();
   const acceptedEventCodes: string[] = [];
   const rejectedEventCodes: string[] = [];
+  const seenSocial = new Set<string>();
+  const acceptedSocialEventCodes: string[] = [];
+  const rejectedSocialEventCodes: string[] = [];
   const planLevelReject = issues.some((x) => x.severity === "high");
 
   for (const ev of plan.world_events_to_schedule ?? []) {
@@ -104,6 +144,20 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
     }
   }
 
+  for (const ev of plan.social_events_to_schedule ?? []) {
+    const itemIssues = validateSocialEvent(ev);
+    if (seenSocial.has(ev.event_code)) {
+      itemIssues.push(issue("duplicate_social_event_code", "Duplicate social event_code in one DirectorPlan.", "high", ev.event_code));
+    }
+    seenSocial.add(ev.event_code);
+    issues.push(...itemIssues);
+    if (planLevelReject || itemIssues.some((x) => x.severity === "high")) {
+      rejectedSocialEventCodes.push(ev.event_code);
+    } else {
+      acceptedSocialEventCodes.push(ev.event_code);
+    }
+  }
+
   for (const hook of plan.player_private_hooks ?? []) {
     if (hook.must_not_surface_directly !== true) {
       issues.push(issue("private_hook_contract_missing", "player_private_hooks must never be directly surfaced.", "high"));
@@ -115,6 +169,8 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
     accepted: !hasHighIssue,
     acceptedEventCodes: hasHighIssue ? [] : acceptedEventCodes,
     rejectedEventCodes: Array.from(new Set(rejectedEventCodes)),
+    acceptedSocialEventCodes: hasHighIssue ? [] : acceptedSocialEventCodes,
+    rejectedSocialEventCodes: Array.from(new Set(rejectedSocialEventCodes)),
     issues,
   };
 }

@@ -22,7 +22,7 @@
 | `AI_GATEWAY_API_KEY` | 是* | 网关访问令牌（勿 `NEXT_PUBLIC_*`） |
 | `AI_MODEL_MAIN` | 是* | 主叙事、多数裁决类任务 |
 | `AI_MODEL_CONTROL` | 建议 | 控制面 / 意图 / 安全预筛 |
-| `AI_MODEL_ENHANCE` | 建议 | 场景增强、情绪润色（Phase 1 可直接映射到 `AI_MODEL_MAIN`） |
+| `AI_MODEL_ENHANCE` | 建议 | 场景增强、情绪润色（生产建议使用独立 `vc-enhance`） |
 | `AI_MODEL_REASONER` | 建议 | 离线推演、管理洞察 |
 | `AI_ENABLE_NARRATIVE_ENHANCEMENT` | 否 | 叙事增强总开关；默认开启（`true`）。这是 post-stream 可选增强，失败或超时会跳过 |
 | `AI_PLAYER_ROLE_CHAIN` | 否 | 玩家 SSE 候选顺序，如 `main,control` |
@@ -87,7 +87,7 @@
 - `DATABASE_URL`、`AUTH_SECRET`、及其他已有生产项
 - `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`
 - `AI_MODEL_MAIN`、`AI_MODEL_CONTROL`、`AI_MODEL_ENHANCE`、`AI_MODEL_REASONER`
-- Phase 1 推荐三部署映射：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-main`、`AI_MODEL_REASONER=vc-reasoner`
+- 生产推荐映射：`AI_MODEL_MAIN=vc-main`、`AI_MODEL_CONTROL=vc-control`、`AI_MODEL_ENHANCE=vc-enhance`、`AI_MODEL_REASONER=vc-reasoner`
 
 容器内应用与本地共用同一套代码路径；**无**「仅线上」或「仅本地」分支。
 

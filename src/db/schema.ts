@@ -991,6 +991,100 @@ export const worldEngineDirectorState = pgTable(
   })
 );
 
+export const npcAgentState = pgTable(
+  "npc_agent_state",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    npcId: varchar("npc_id", { length: 128 }).notNull(),
+    stateJson: jsonb("state_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    status: varchar("status", { length: 24 }).notNull().default("idle"),
+    lastActiveTurn: integer("last_active_turn").notNull().default(0),
+    nextEligibleTurn: integer("next_eligible_turn").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionNpcUnique: uniqueIndex("npc_agent_state_session_npc_unique").on(table.sessionId, table.npcId),
+    sessionStatusEligibleIdx: index("npc_agent_state_session_status_eligible_idx").on(
+      table.sessionId,
+      table.status,
+      table.nextEligibleTurn
+    ),
+    userUpdatedIdx: index("npc_agent_state_user_updated_idx").on(table.userId, table.updatedAt),
+  })
+);
+
+export const npcRelationEdges = pgTable(
+  "npc_relation_edges",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    fromNpcId: varchar("from_npc_id", { length: 128 }).notNull(),
+    toNpcId: varchar("to_npc_id", { length: 128 }).notNull(),
+    edgeJson: jsonb("edge_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionEdgeUnique: uniqueIndex("npc_relation_edges_session_edge_unique").on(
+      table.sessionId,
+      table.fromNpcId,
+      table.toNpcId
+    ),
+    sessionFromIdx: index("npc_relation_edges_session_from_idx").on(table.sessionId, table.fromNpcId),
+    sessionToIdx: index("npc_relation_edges_session_to_idx").on(table.sessionId, table.toNpcId),
+  })
+);
+
+export const socialEventLedger = pgTable(
+  "social_event_ledger",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    eventId: varchar("event_id", { length: 128 }).notNull(),
+    eventType: varchar("event_type", { length: 32 }).notNull(),
+    actorKey: varchar("actor_key", { length: 512 }).notNull(),
+    targetKey: varchar("target_key", { length: 512 }).notNull(),
+    dedupKey: varchar("dedup_key", { length: 191 }).notNull(),
+    turnIndex: integer("turn_index").notNull().default(0),
+    dueTurnIndex: integer("due_turn_index").notNull().default(0),
+    expiresTurnIndex: integer("expires_turn_index"),
+    visibility: varchar("visibility", { length: 32 }).notNull(),
+    playerRelevance: varchar("player_relevance", { length: 16 }).notNull(),
+    escapeRelevance: varchar("escape_relevance", { length: 24 }).notNull().default("none"),
+    knowledgeScope: varchar("knowledge_scope", { length: 32 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("candidate"),
+    eventJson: jsonb("event_json").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    projectedAt: timestamp("projected_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    dedupUnique: uniqueIndex("social_event_ledger_dedup_unique").on(
+      table.sessionId,
+      table.eventType,
+      table.actorKey,
+      table.targetKey,
+      table.dedupKey
+    ),
+    promptDueIdx: index("social_event_ledger_prompt_due_idx").on(
+      table.sessionId,
+      table.status,
+      table.visibility,
+      table.playerRelevance,
+      table.dueTurnIndex
+    ),
+    sessionEventIdx: index("social_event_ledger_session_event_idx").on(table.sessionId, table.eventId),
+    sessionExpiresIdx: index("social_event_ledger_session_expires_idx").on(
+      table.sessionId,
+      table.status,
+      table.expiresTurnIndex
+    ),
+  })
+);
+
 export const aiAnalysisSnapshots = pgTable(
   "ai_analysis_snapshots",
   {

@@ -72,6 +72,7 @@ export type AnalyticsEventName =
   | "survey_external_link_opened"
   | "page_hidden_during_generation"
   | "world_engine_enqueued"
+  | "social_world_hint_projected"
   | "turn_lane_decided"
   | "turn_commit_summary"
   | "narrative_validator_issue"

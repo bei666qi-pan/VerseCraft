@@ -2,11 +2,21 @@ import { pool } from "@/db/index";
 import { runDirectorPlanCriticTask, runOfflineReasonerTask } from "@/lib/ai/logicalTasks";
 import type { ChatMessage } from "@/lib/ai/types/core";
 import { getAppRedisClient } from "@/lib/ratelimit";
+import { applySocialGmDeltas, type SocialGmApplyResult } from "@/lib/socialWorld/applyDeltas";
+import { selectActiveNpcsForSocialTick } from "@/lib/socialWorld/activation";
+import { resolveSocialWorldConfig, type SocialWorldConfig } from "@/lib/socialWorld/config";
+import {
+  countPendingSocialEvents,
+  loadNpcAgentStates,
+  loadRecentSocialEventsForCooldown,
+} from "@/lib/socialWorld/persistence";
+import type { NpcAgentState } from "@/lib/socialWorld/types";
 import { insertDirectorAgendaItems } from "./agenda";
 import { resolveWorldDirectorConfig } from "./config";
 import {
   parseWorldEngineDeltaJson,
   type DirectorPlan,
+  type WorldEngineTrigger,
   type WorldEngineStructuredDelta,
   type WorldEngineTickPayload,
 } from "./contracts";
@@ -81,13 +91,73 @@ function summarizePlayerBehavior(input: WorldEngineTickPayload): Record<string, 
   };
 }
 
+const SOCIAL_WORLD_TRIGGER_SET = new Set<WorldEngineTrigger>([
+  "multi_room_movement",
+  "key_story_node_hit",
+  "important_npc_state_changed",
+  "world_fact_threshold_reached",
+  "plot_stagnation_detected",
+  "repeated_investigation_loop",
+  "due_hook_reached",
+  "npc_agenda_due",
+  "clue_threshold_reached",
+]);
+
+type SocialWorldTickContext = {
+  config: SocialWorldConfig;
+  tickTriggered: boolean;
+  skipReason: string | null;
+  activeNpcIds: string[];
+  pendingEventCount: number;
+};
+
+type SocialWorldTelemetry = {
+  socialWorldMode: SocialWorldConfig["mode"];
+  socialTickTriggered: boolean;
+  socialActiveNpcCount: number;
+  socialEventsAccepted: number;
+  socialEventsRejected: number;
+  socialPromptChars: number;
+  socialQueryLatencyMs: number;
+  socialReasonerLatencyMs: number;
+  socialRejectedByCode: Record<string, number>;
+  socialProjectionSkippedReason?: string | null;
+  socialPendingEventCount: number;
+  socialTickSkippedReason: string | null;
+};
+
+function shouldTriggerSocialTick(triggers: readonly WorldEngineTrigger[]): boolean {
+  return triggers.some((trigger) => SOCIAL_WORLD_TRIGGER_SET.has(trigger));
+}
+
+function socialRejectedByCode(result: SocialGmApplyResult | null): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const issue of result?.issues ?? []) {
+    counts[issue.code] = (counts[issue.code] ?? 0) + 1;
+  }
+  return counts;
+}
+
 function buildWorldEngineMessages(input: {
   payload: WorldEngineTickPayload;
   recentFacts: string[];
   recentAgenda: Array<Record<string, unknown>>;
   directorState: WorldDirectorState | null;
+  socialWorld: SocialWorldTickContext;
 }): ChatMessage[] {
+  const socialPolicy = input.socialWorld.tickTriggered
+    ? [
+        "Social World Engine schema extension is enabled for this tick: you may output social_events_to_schedule, npc_relation_deltas, and npc_agent_patches as optional candidate fields.",
+        "Social World Engine candidates do not directly change the world; deterministic validators and later persistence decide what can commit.",
+        "Do not leak private hooks, must_not_reveal items, hidden truths, or NPC-private knowledge through social events.",
+        "NPC social actions must be based only on their knowledge_scope and plausible known facts.",
+        "Social events must not force player failure, remove player agency, or decide the player's action.",
+      ]
+    : [
+        "Social World Engine is disabled for this tick; output empty social_events_to_schedule, npc_relation_deltas, and npc_agent_patches.",
+      ];
   const system = [
+    ...socialPolicy,
     "你是 VerseCraft 的后台 World Director，不是玩家可见主笔。",
     "你的任务是评估节奏、张力、疲劳、伏笔压力、连续性风险和玩家自主性风险，并输出可验证的导演计划。",
     "不要输出玩家可见 narrative，不要替玩家做决定，不要强制玩家失败，不要提前揭示核心真相。",
@@ -120,12 +190,26 @@ function buildWorldEngineMessages(input: {
             world_revision: input.directorState.worldRevision,
           }
         : null,
+      social_world: {
+        mode: input.socialWorld.config.mode,
+        enabled_for_this_tick: input.socialWorld.tickTriggered,
+        skip_reason: input.socialWorld.skipReason,
+        active_npc_ids: input.socialWorld.activeNpcIds,
+        active_npc_count: input.socialWorld.activeNpcIds.length,
+        pending_event_count: input.socialWorld.pendingEventCount,
+        pending_event_limit: input.socialWorld.config.maxPendingEventsPerSession,
+      },
       recent_player_behavior_summary: summarizePlayerBehavior(input.payload),
       output_constraints: {
         event_count_max: 4,
+        social_event_count_max: input.socialWorld.tickTriggered ? input.socialWorld.config.maxEventsPerTick : 0,
+        npc_relation_delta_count_max: 12,
+        npc_agent_patch_count_max: 8,
         npc_action_count_max: 6,
         prefer_reveal_policy_near_truth: "hint_only",
         agency_rule: "If a player action can reasonably avoid an event, the plan must allow avoidance.",
+        social_event_rule:
+          "Social events are candidates only; include knowledge_scope and must_not_reveal; never force player failure.",
       },
     },
     null,
@@ -211,6 +295,8 @@ async function runOptionalCritic(args: {
       accepted: false,
       acceptedEventCodes: [],
       rejectedEventCodes: args.plan.world_events_to_schedule.map((x) => x.event_code),
+      acceptedSocialEventCodes: [],
+      rejectedSocialEventCodes: (args.plan.social_events_to_schedule ?? []).map((x) => x.event_code),
       issues: [
         ...args.validation.issues,
         ...parsed.reject_reasons.map((reason) => ({
@@ -239,11 +325,33 @@ async function writeWorldEngineOutputs(args: {
   payload: WorldEngineTickPayload;
   delta: WorldEngineStructuredDelta;
   validation: DirectorValidationResult;
+  socialGm: SocialGmApplyResult | null;
+  socialTelemetry: SocialWorldTelemetry;
   previousDirectorState: WorldDirectorState | null;
 }): Promise<{ runId: number; worldRevision: bigint; agendaCreated: number; agendaSkipped: number }> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const validationOutput = args.socialGm
+      ? {
+          ...args.validation,
+          social_world: args.socialTelemetry,
+          social_gm: {
+            accepted_event_codes: args.socialGm.acceptedEventCodes,
+            rejected_event_codes: args.socialGm.rejectedEventCodes,
+            issues: args.socialGm.issues,
+            writes: {
+              events: args.socialGm.eventWrite,
+              relations: args.socialGm.relationWrite,
+              agents: args.socialGm.agentWrite,
+              memory: args.socialGm.memoryWrite,
+            },
+          },
+        }
+      : {
+          ...args.validation,
+          social_world: args.socialTelemetry,
+        };
     const run = await client.query<{ run_id: string }>(
       `INSERT INTO world_engine_runs (
          dedup_key, request_id, user_id, session_id, trigger_signals,
@@ -261,7 +369,7 @@ async function writeWorldEngineOutputs(args: {
         "WORLDBUILD_OFFLINE",
         JSON.stringify({
           ...args.delta,
-          validation: args.validation,
+          validation: validationOutput,
           agenda_write_allowed: args.delta.agenda_write_allowed && args.validation.accepted,
         }),
       ]
@@ -270,7 +378,7 @@ async function writeWorldEngineOutputs(args: {
 
     const snapshot = {
       director_plan: args.delta,
-      validation: args.validation,
+      validation: validationOutput,
       npc_next_actions: args.delta.npc_next_actions,
       story_branch_seeds: args.delta.story_branch_seeds,
       consistency_warnings: args.delta.consistency_warnings,
@@ -371,16 +479,58 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
     }
 > {
   const cfg = resolveWorldDirectorConfig();
+  const socialCfg = resolveSocialWorldConfig();
   if (!cfg.enabled) {
-    return { ok: true, runId: 0, worldRevision: 0n, agendaCreated: 0, agendaSkipped: 0 };
+    return { ok: true, runId: 0, worldRevision: BigInt(0), agendaCreated: 0, agendaSkipped: 0 };
   }
 
-  const [recentFacts, recentAgenda, directorState] = await Promise.all([
+  const [recentFacts, recentAgenda, directorState, socialNpcStates, pendingSocialEventCount, recentSocialEvents] =
+    await Promise.all([
     loadRecentWorldFacts(payload.userId, payload.sessionId),
     loadRecentAgendaSummary(payload.sessionId),
     loadDirectorState(payload.sessionId),
+    socialCfg.backgroundEnabled ? loadNpcAgentStates(payload.sessionId).catch(() => []) : Promise.resolve([]),
+    socialCfg.backgroundEnabled ? countPendingSocialEvents(payload.sessionId).catch(() => 0) : Promise.resolve(0),
+    socialCfg.backgroundEnabled
+      ? loadRecentSocialEventsForCooldown(
+          payload.sessionId,
+          payload.turnIndex,
+          Math.max(0, socialCfg.minTriggerGapTurns - 1)
+        ).catch(() => [])
+      : Promise.resolve([]),
   ]);
-  const messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState });
+  const socialHasTrigger = socialCfg.backgroundEnabled && shouldTriggerSocialTick(payload.triggerSignals);
+  const socialPendingCapacityOk = pendingSocialEventCount < socialCfg.maxPendingEventsPerSession;
+  const socialGapOk = socialCfg.minTriggerGapTurns <= 0 || recentSocialEvents.length === 0;
+  const socialTickTriggered = socialCfg.backgroundEnabled && socialHasTrigger && socialPendingCapacityOk && socialGapOk;
+  const socialTickSkippedReason = !socialCfg.enabled
+    ? "off"
+    : !socialCfg.backgroundEnabled
+      ? "mode_off"
+      : !socialHasTrigger
+        ? "no_trigger"
+        : !socialPendingCapacityOk
+          ? "pending_limit"
+          : !socialGapOk
+            ? "min_gap"
+            : null;
+  const activeSocialNpcStates: NpcAgentState[] = socialTickTriggered
+    ? selectActiveNpcsForSocialTick({
+        npcStates: socialNpcStates,
+        nowTurn: payload.turnIndex,
+        desiredActiveNpcCount: socialCfg.maxActiveNpcs,
+        budget: socialCfg.budget,
+      })
+    : [];
+  const socialWorldContext: SocialWorldTickContext = {
+    config: socialCfg,
+    tickTriggered: socialTickTriggered,
+    skipReason: socialTickSkippedReason,
+    activeNpcIds: activeSocialNpcStates.map((state) => state.npcId),
+    pendingEventCount: pendingSocialEventCount,
+  };
+  const messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState, socialWorld: socialWorldContext });
+  const reasonerStartedAt = Date.now();
   const res = await runOfflineReasonerTask({
     kind: "worldbuild",
     messages,
@@ -399,6 +549,7 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
       maxTokens: 2048,
     },
   });
+  const socialReasonerLatencyMs = socialTickTriggered ? Math.max(0, Date.now() - reasonerStartedAt) : 0;
   if (!res.ok) return { ok: false, reason: `reasoner_failed:${res.code}` };
   const parsed = parseWorldEngineDeltaJson(res.content ?? "");
   if (!parsed) return { ok: false, reason: "reasoner_invalid_json" };
@@ -409,10 +560,65 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
     recentFacts,
     validation: deterministicValidation,
   });
+  const socialGm =
+    socialTickTriggered && parsed.social_events_to_schedule.length > 0
+      ? await applySocialGmDeltas({
+          sessionId: payload.sessionId,
+          userId: payload.userId,
+          turnIndex: payload.turnIndex,
+          dedupKey: payload.dedupKey,
+          playerLocationId: payload.playerLocation,
+          directorSocialEvents: parsed.social_events_to_schedule,
+          npcRelationDeltas: parsed.npc_relation_deltas,
+          npcAgentPatches: parsed.npc_agent_patches,
+          riskAssessment: parsed.risk_assessment,
+          acceptedSocialEventCodes: validation.acceptedSocialEventCodes,
+          budget: socialCfg.budget,
+          cooldownTurns: Math.max(0, socialCfg.minTriggerGapTurns - 1),
+          maxPendingEventsPerSession: socialCfg.maxPendingEventsPerSession,
+        }).catch((error) => ({
+          acceptedEvents: [],
+          rejectedEvents: [],
+          issues: [
+            {
+              code: "social_gm_failed_open",
+              severity: "warning" as const,
+              message: error instanceof Error ? error.message : "Social GM failed open.",
+            },
+          ],
+          acceptedEventCodes: [],
+          rejectedEventCodes: parsed.social_events_to_schedule.map((event) => event.event_code),
+          eventWrite: { inserted: 0, updated: 0, skipped: 0 },
+          relationWrite: { inserted: 0, updated: 0, skipped: 0 },
+          agentWrite: { inserted: 0, updated: 0, skipped: 0 },
+          memoryWrite: { inserted: 0, updated: 0, skipped: 0 },
+          memorySpineEntries: [],
+        }))
+      : null;
+  const suppressedSocialEventCount = socialTickTriggered ? 0 : parsed.social_events_to_schedule.length;
+  const socialTelemetry: SocialWorldTelemetry = {
+    socialWorldMode: socialCfg.mode,
+    socialTickTriggered,
+    socialActiveNpcCount: activeSocialNpcStates.length,
+    socialEventsAccepted: socialGm?.acceptedEventCodes.length ?? 0,
+    socialEventsRejected: (socialGm?.rejectedEventCodes.length ?? 0) + suppressedSocialEventCount,
+    socialPromptChars: 0,
+    socialQueryLatencyMs: 0,
+    socialReasonerLatencyMs,
+    socialRejectedByCode:
+      suppressedSocialEventCount > 0 && !socialGm
+        ? { [socialTickSkippedReason ?? "social_tick_disabled"]: suppressedSocialEventCount }
+        : socialRejectedByCode(socialGm),
+    socialProjectionSkippedReason: socialCfg.promptInjectionEnabled ? null : "disabled",
+    socialPendingEventCount: pendingSocialEventCount,
+    socialTickSkippedReason,
+  };
   const out = await writeWorldEngineOutputs({
     payload,
     delta: parsed,
     validation,
+    socialGm,
+    socialTelemetry,
     previousDirectorState: directorState,
   });
   return {
