@@ -64,6 +64,9 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
     finalJsonParseSuccess: true,
     settlementGuardApplied: true,
     settlementAwardPruned: 2,
+    httpStatus: 429,
+    upstreamStatus: 429,
+    rateLimited: true,
   };
   const p = buildChatRequestFinishedPayload(base);
   assert.equal(p.promptTokens, 100);
@@ -90,6 +93,9 @@ test("buildChatRequestFinishedPayload fills token fields and nulls invalid usage
   assert.equal(p.finalJsonParseSuccess, true);
   assert.equal(p.settlementGuardApplied, true);
   assert.equal(p.settlementAwardPruned, 2);
+  assert.equal(p.httpStatus, 429);
+  assert.equal(p.upstreamStatus, 429);
+  assert.equal(p.rateLimited, true);
 });
 
 test("toEnhanceTurnMetrics maps applied and exception", () => {

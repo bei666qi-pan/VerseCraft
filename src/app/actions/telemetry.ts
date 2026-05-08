@@ -4,8 +4,10 @@ import { createHash } from "node:crypto";
 import { auth } from "../../../auth";
 import { markUserActive } from "@/lib/presence";
 import { derivePlatformFromUserAgent } from "@/lib/analytics/dateKeys";
+import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
+import { resolveGameplayEventIdentity } from "@/lib/analytics/gameplayEventIdentity";
 import { recordGenericAnalyticsEvent, touchUserSessionHeartbeat } from "@/lib/analytics/repository";
-import type { AnalyticsEventName } from "@/lib/analytics/types";
+import type { AnalyticsEventName, AnalyticsPlatform } from "@/lib/analytics/types";
 
 export async function pingPresence(sessionId?: string, page?: string, userAgent?: string | null) {
   const session = await auth();
@@ -17,7 +19,9 @@ export async function pingPresence(sessionId?: string, page?: string, userAgent?
     return { ok: false };
   }
 
-  const memberId = userId ?? sessionId!;
+  const guestId = isGuest ? sessionId! : null;
+  const actor = buildActorIdentity({ userId: userId ?? null, guestId });
+  const memberId = actor?.actorId ?? userId ?? sessionId!;
   await markUserActive(memberId);
 
   const sid = sessionId && sessionId.trim().length > 0 ? sessionId : `hb_${memberId}`;
@@ -26,6 +30,9 @@ export async function pingPresence(sessionId?: string, page?: string, userAgent?
   void recordGenericAnalyticsEvent({
     eventId: `${memberId}:session_heartbeat:${minuteBucket}`,
     idempotencyKey: `${memberId}:session_heartbeat:${minuteBucket}`,
+    actorId: actor?.actorId ?? null,
+    actorType: actor?.actorType ?? null,
+    guestId: actor?.guestId ?? null,
     userId: userId ?? null,
     sessionId: sid,
     eventName: "session_heartbeat",
@@ -51,7 +58,11 @@ export async function pingPresence(sessionId?: string, page?: string, userAgent?
 
 export async function trackGameplayEvent(input: {
   eventName: AnalyticsEventName;
-  sessionId?: string;
+  sessionId?: string | null;
+  guestId?: string | null;
+  userAgent?: string | null;
+  platform?: AnalyticsPlatform;
+  eventVersion?: string;
   page?: string | null;
   source?: string | null;
   tokenCost?: number;
@@ -64,9 +75,10 @@ export async function trackGameplayEvent(input: {
   const eventName = input.eventName;
   if (!eventName) return { ok: false };
 
-  const sid = input.sessionId && input.sessionId.trim().length > 0 ? input.sessionId : userId ? `sess_${userId}` : "anon_session";
+  const resolvedIdentity = resolveGameplayEventIdentity(input, userId);
+  const sid = resolvedIdentity.sessionId;
   const eventTime = new Date();
-  const payload = input.payload ?? {};
+  const payload = resolvedIdentity.payload;
   const idempotencyKey =
     input.idempotencyKey && input.idempotencyKey.trim().length > 0
       ? input.idempotencyKey
@@ -74,7 +86,9 @@ export async function trackGameplayEvent(input: {
           .update(
             JSON.stringify({
               eventName,
-              userId,
+              userId: resolvedIdentity.userId,
+              guestId: resolvedIdentity.guestId,
+              actorId: resolvedIdentity.actorId,
               sid,
               page: input.page ?? null,
               source: input.source ?? null,
@@ -88,13 +102,16 @@ export async function trackGameplayEvent(input: {
   void recordGenericAnalyticsEvent({
     eventId: `evt_${eventTime.getTime()}_${idempotencyKey.slice(0, 8)}`,
     idempotencyKey: `${eventName}:${idempotencyKey}`,
-    userId,
+    actorId: resolvedIdentity.actorId,
+    actorType: resolvedIdentity.actorType,
+    guestId: resolvedIdentity.guestId,
+    userId: resolvedIdentity.userId,
     sessionId: sid,
     eventName,
     eventTime,
     page: input.page ?? null,
     source: input.source ?? "client",
-    platform: derivePlatformFromUserAgent(null),
+    platform: resolvedIdentity.platform,
     tokenCost: Math.max(0, Math.trunc(input.tokenCost ?? 0)),
     playDurationDeltaSec: Math.max(0, Math.trunc(input.playDurationDeltaSec ?? 0)),
     payload,

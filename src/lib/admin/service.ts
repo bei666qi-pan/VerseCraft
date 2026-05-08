@@ -22,6 +22,7 @@ import {
   SAVE_LOSS_CONCERN_OPTIONS,
   RECOMMEND_WILLINGNESS_OPTIONS,
 } from "@/lib/survey/productSurveyHomeV1";
+import { buildSurveyAggregateReport } from "@/lib/admin/surveyAggregate";
 
 function normalizeExecuteRows(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
@@ -51,12 +52,7 @@ type SurveyAggregateQuestion = {
   textCount?: number;
 };
 
-export type SurveyAggregateReport = {
-  range: Pick<AdminTimeRange, "preset" | "start" | "end" | "startDateKey" | "endDateKey" | "label">;
-  surveyKey: string;
-  totalResponses: number;
-  questions: SurveyAggregateQuestion[];
-};
+export type SurveyAggregateReport = ReturnType<typeof buildSurveyAggregateReport>;
 
 const HOME_SURVEY_META: Array<
   | { id: Exclude<SurveyQuestionId, "topFixOne" | "finalSuggestion">; kind: "single"; title: string; options: SurveyOption[] }
@@ -81,7 +77,16 @@ function toPct(count: number, total: number): number {
 
 export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyAggregateReport> {
   const raw = await db.execute(sql`
-    SELECT answers
+    SELECT
+      user_id AS "userId",
+      guest_id AS "guestId",
+      survey_version AS "surveyVersion",
+      answers,
+      free_text AS "freeText",
+      overall_rating AS "overallRating",
+      recommend_score AS "recommendScore",
+      client_meta AS "clientMeta",
+      created_at AS "createdAt"
     FROM survey_responses
     WHERE survey_key = ${PRODUCT_SURVEY_KEY_HOME}
       AND created_at >= ${range.start}
@@ -90,6 +95,37 @@ export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyA
     LIMIT 5000
   `);
   const rows = normalizeExecuteRows(raw);
+  const eventRaw = await db.execute(sql`
+    SELECT
+      event_name AS "eventName",
+      COALESCE(actor_id, guest_id, user_id, session_id) AS "actorKey",
+      payload,
+      event_time AS "eventTime"
+    FROM analytics_events
+    WHERE event_name IN (
+      'survey_entry_exposed',
+      'survey_entry_clicked',
+      'survey_modal_opened',
+      'survey_started',
+      'survey_step_viewed',
+      'survey_step_next',
+      'survey_step_prev',
+      'survey_exit',
+      'survey_submit_attempted',
+      'survey_submit_failed',
+      'survey_submitted'
+    )
+      AND event_time >= ${range.start}
+      AND event_time <= ${range.end}
+      AND (
+        payload->>'surveyKey' IS NULL
+        OR payload->>'surveyKey' = ${PRODUCT_SURVEY_KEY_HOME}
+      )
+    ORDER BY event_time DESC
+    LIMIT 10000
+  `);
+  const eventRows = normalizeExecuteRows(eventRaw);
+  const aggregate = buildSurveyAggregateReport(range, rows, eventRows);
   const totalResponses = rows.length;
 
   const countsByQ = new Map<SurveyQuestionId, Map<string, number>>();
@@ -152,17 +188,9 @@ export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyA
   });
 
   return {
-    range: {
-      preset: range.preset,
-      start: range.start,
-      end: range.end,
-      startDateKey: range.startDateKey,
-      endDateKey: range.endDateKey,
-      label: range.label,
-    },
-    surveyKey: PRODUCT_SURVEY_KEY_HOME,
-    totalResponses,
+    ...aggregate,
     questions,
+    optionDistribution: questions.filter((q) => q.kind === "single"),
   };
 }
 

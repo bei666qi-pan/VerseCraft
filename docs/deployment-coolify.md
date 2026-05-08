@@ -58,7 +58,9 @@
 - 详见 [`docs/ai-gateway.md`](ai-gateway.md)
 - `MIGRATE_ON_BOOT=1`
 - `RUNTIME_SCHEMA_ENSURE=1`
-- `DAILY_TOKEN_LIMIT=50000`（可选）
+- `DAILY_TOKEN_LIMIT=1000000`（注册用户每日 Token 上限，可选）
+- `GUEST_DAILY_TOKEN_LIMIT=500000`（游客每日 Token 上限，可选）
+- `SURVEY_BONUS_DAILY_TOKEN_LIMIT=1000000`（注册用户填写问卷后的当日额外额度，可选）
 - `DAILY_ACTION_LIMIT=200`（可选）
 - `MODERATION_ENABLED=true`
 - `MODERATION_PROVIDER=auto`（推荐）

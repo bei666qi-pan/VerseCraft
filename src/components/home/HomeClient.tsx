@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -266,14 +266,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const user = initialUser;
   const homeViewTrackedRef = useRef(false);
   const authErrorTrackedRef = useRef<{ mode: AuthMode; msg: string } | null>(null);
+  const surveyEntryExposedTrackedRef = useRef(false);
   const surveyStartedTrackedRef = useRef(false);
   const guestSaveCloudMigrationUserRef = useRef<string | null>(null);
 
   const setUser = useGameStore((s) => s.setUser);
-  const guestId = useGameStore((s) => s.guestId ?? "guest_home");
+  const guestId = useGameStore((s) => s.guestId);
   usePresenceHeartbeat({
-    enabled: true,
-    sessionId: user?.id ? `home_u_${user.id}` : guestId,
+    enabled: !!user || !!guestId,
+    sessionId: user?.id ? `home_u_${user.id}` : guestId ?? "guest_pending",
     page: "/",
     guestId: user ? null : guestId,
   });
@@ -330,6 +331,74 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [loginState, loginFormAction, loginPending] = useActionState(loginUser, INITIAL_AUTH_ACTION_STATE);
   const [registerState, registerFormAction, registerPending] = useActionState(registerUser, INITIAL_AUTH_ACTION_STATE);
   const surveyUrl = getPublicRuntimeConfig().surveyUrl;
+
+  const analyticsIdentityRef = useRef<{ guestId: string | null; userAgent: string | null }>({
+    guestId: user ? null : guestId,
+    userAgent: null,
+  });
+
+  useEffect(() => {
+    analyticsIdentityRef.current = {
+      guestId: user ? null : guestId,
+      userAgent: typeof navigator === "undefined" ? null : navigator.userAgent,
+    };
+  }, [user, guestId]);
+
+  const trackHomeGameplayEvent = useCallback((input: Parameters<typeof trackGameplayEvent>[0]) => {
+    return trackGameplayEvent({
+      ...input,
+      ...analyticsIdentityRef.current,
+    });
+  }, []);
+
+  const surveyActorType = user ? "registered" : "guest";
+  const buildSurveyEventPayload = useCallback(
+    (payload: Record<string, unknown> = {}) => {
+      const stepTotal = HOME_SURVEY_FLOW.length;
+      const rawStep =
+        typeof payload.stepIndex === "number"
+          ? payload.stepIndex
+          : typeof payload.fromStepIndex === "number"
+            ? payload.fromStepIndex
+            : -1;
+      const stepIndex = Number.isFinite(rawStep) ? Math.max(-1, Math.min(stepTotal - 1, Math.trunc(rawStep))) : -1;
+      const questionId =
+        typeof payload.questionId === "string" && payload.questionId.trim()
+          ? payload.questionId
+          : stepIndex >= 0
+            ? HOME_SURVEY_FLOW[stepIndex]?.id ?? "unknown"
+            : "entry";
+      const gid = analyticsIdentityRef.current.guestId ?? guestId ?? null;
+      return {
+        surveyKey: PRODUCT_SURVEY_KEY_HOME,
+        surveyVersion: PRODUCT_SURVEY_VERSION_HOME,
+        version: PRODUCT_SURVEY_VERSION_HOME,
+        stepIndex,
+        stepTotal,
+        questionId,
+        actorType: surveyActorType,
+        guestId: gid ?? (surveyActorType === "registered" ? "registered_user" : "missing_guest"),
+        ...payload,
+      };
+    },
+    [guestId, surveyActorType]
+  );
+
+  const trackSurveyEvent = useCallback(
+    (
+      eventName: Parameters<typeof trackGameplayEvent>[0]["eventName"],
+      payload: Record<string, unknown> = {},
+      source = "survey_embedded"
+    ) => {
+      return trackHomeGameplayEvent({
+        eventName,
+        page: "/",
+        source,
+        payload: buildSurveyEventPayload(payload),
+      });
+    },
+    [buildSurveyEventPayload, trackHomeGameplayEvent]
+  );
 
   const localProgressInfo = useMemo(() => {
     const slots = saveSlots ?? {};
@@ -504,7 +573,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   useEffect(() => {
     if (homeViewTrackedRef.current) return;
     homeViewTrackedRef.current = true;
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "home_viewed",
       page: "/",
       source: "home",
@@ -515,7 +584,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         hasCloud: hasCloudAnySave,
       },
     }).catch(() => {});
-  }, [entryState, user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow]);
+  }, [entryState, user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow, trackHomeGameplayEvent]);
 
   useEffect(() => {
     const refreshShadow = () => setShadowTick((n) => n + 1);
@@ -621,7 +690,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     setUser(user ? { name: user.name } : null);
   }, [setUser, user]);
 
-  useHeartbeat(!!user, guestId, "/");
+  useHeartbeat(!!user, guestId ?? undefined, "/");
 
   useEffect(() => {
     if (!user) {
@@ -722,26 +791,24 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [surveyOpen, feedbackSuccess]);
 
   useEffect(() => {
-    void trackGameplayEvent({
-      eventName: "survey_entry_exposed",
-      page: "/",
-      source: "survey",
-      payload: { placement: "home_fab" },
-    }).catch(() => {});
-  }, []);
+    if (surveyEntryExposedTrackedRef.current) return;
+    surveyEntryExposedTrackedRef.current = true;
+    void trackSurveyEvent("survey_entry_exposed", { placement: "home_fab", stepIndex: -1, questionId: "entry" }, "survey").catch(() => {});
+  }, [trackSurveyEvent]);
 
   useEffect(() => {
     if (!surveyOpen) return;
-    void trackGameplayEvent({
-      eventName: "survey_modal_opened",
-      page: "/",
-      source: "survey",
-      payload: {
+    void trackSurveyEvent(
+      "survey_modal_opened",
+      {
         mode: showBugFeedback ? "open_feedback" : "product_survey_embedded",
         surveyCompletion,
+        stepIndex: -1,
+        questionId: "modal",
       },
-    }).catch(() => {});
-  }, [surveyOpen, showBugFeedback]);
+      "survey"
+    ).catch(() => {});
+  }, [surveyOpen, showBugFeedback, surveyCompletion, trackSurveyEvent]);
 
   useEffect(() => {
     if (!surveyOpen) return;
@@ -749,13 +816,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     if (surveyCompletion !== "open") return;
     if (surveyStartedTrackedRef.current) return;
     surveyStartedTrackedRef.current = true;
-    void trackGameplayEvent({
-      eventName: "survey_started",
-      page: "/",
-      source: "survey_embedded",
-      payload: { surveyKey: PRODUCT_SURVEY_KEY_HOME, version: PRODUCT_SURVEY_VERSION_HOME },
-    }).catch(() => {});
-  }, [surveyOpen, showBugFeedback, surveyCompletion]);
+    void trackSurveyEvent("survey_started", { stepIndex: 0, questionId: HOME_SURVEY_FLOW[0]?.id ?? "unknown" }).catch(() => {});
+  }, [surveyOpen, showBugFeedback, surveyCompletion, trackSurveyEvent]);
 
   useEffect(() => {
     if (!surveyOpen) return;
@@ -765,26 +827,18 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const stepIndex = Math.max(0, Math.min(stepTotal - 1, surveyStep));
     const questionId = HOME_SURVEY_FLOW[stepIndex]?.id ?? "unknown";
     const pct = Math.round(((stepIndex + 1) / Math.max(1, stepTotal)) * 100);
-    void trackGameplayEvent({
-      eventName: "survey_step_viewed",
-      page: "/",
-      source: "survey_embedded",
-      payload: {
-        surveyKey: PRODUCT_SURVEY_KEY_HOME,
-        version: PRODUCT_SURVEY_VERSION_HOME,
+    void trackSurveyEvent("survey_step_viewed", {
         stepIndex,
-        stepTotal,
         questionId,
         progressPct: pct,
-      },
     }).catch(() => {});
-  }, [surveyOpen, showBugFeedback, surveyCompletion, surveyStep]);
+  }, [surveyOpen, showBugFeedback, surveyCompletion, surveyStep, trackSurveyEvent]);
 
   function openAuthModal() {
     // Avoid side effects inside state updaters (prevents Router/render warnings in React).
     setAuthOpen(true);
     setIsConnecting(true);
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "home_auth_clicked",
       page: "/",
       source: "home_header",
@@ -795,7 +849,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         reason: localProgressInfo.hasAny || hasLocalAnySave ? "sync_local_progress" : "account_value",
       },
     }).catch(() => {});
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "auth_modal_opened",
       page: "/",
       source: "auth_modal",
@@ -877,7 +931,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       hasPlayableResumeShadow,
     });
 
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "home_continue_clicked",
       page: "/",
       source: "home_continue",
@@ -928,7 +982,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
 
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "home_continue_resolved",
       page: "/",
       source: "home_continue",
@@ -963,19 +1017,18 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   async function handleSurveySubmit() {
-    void trackGameplayEvent({
-      eventName: "survey_submit_attempted",
-      page: "/",
-      source: "survey_embedded",
-      payload: {
-        surveyKey: PRODUCT_SURVEY_KEY_HOME,
-        version: PRODUCT_SURVEY_VERSION_HOME,
-        stepIndex: Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep)),
-        stepTotal: HOME_SURVEY_FLOW.length,
-      },
+    const submitStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
+    void trackSurveyEvent("survey_submit_attempted", {
+      stepIndex: submitStepIndex,
+      questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
     }).catch(() => {});
 
     if (!surveyConsentUserAgreement || !surveyConsentPrivacyPolicy) {
+      void trackSurveyEvent("survey_submit_failed", {
+        stepIndex: submitStepIndex,
+        questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
+        reason: "missing_consent",
+      }).catch(() => {});
       setToast("请先勾选用户协议与隐私政策。");
       return;
     }
@@ -990,6 +1043,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       !svSaveLossConcern ||
       !svRecommendWillingness
     ) {
+      void trackSurveyEvent("survey_submit_failed", {
+        stepIndex: submitStepIndex,
+        questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
+        reason: "required_answer_missing",
+      }).catch(() => {});
       setToast("请把本问卷必答题补全后再提交。");
       return;
     }
@@ -1025,23 +1083,27 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         entryState,
         page: "/",
         userLoggedIn: !!user,
+        actorType: surveyActorType,
+        guestId: analyticsIdentityRef.current.guestId ?? guestId ?? (surveyActorType === "registered" ? "registered_user" : "missing_guest"),
+        platform: typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches ? "mobile" : "desktop",
       },
     });
     setSurveySubmitPending(false);
     if (!result.success) {
-      void trackGameplayEvent({
-        eventName: "survey_submit_failed",
-        page: "/",
-        source: "survey_embedded",
-        payload: {
-          surveyKey: PRODUCT_SURVEY_KEY_HOME,
-          version: PRODUCT_SURVEY_VERSION_HOME,
-          message: result.message,
-        },
+      void trackSurveyEvent("survey_submit_failed", {
+        stepIndex: submitStepIndex,
+        questionId: HOME_SURVEY_FLOW[submitStepIndex]?.id ?? "unknown",
+        reason: "server_rejected",
+        message: result.message,
       }).catch(() => {});
       setToast(result.message);
       return;
     }
+    void trackSurveyEvent("survey_submitted", {
+      stepIndex: HOME_SURVEY_FLOW.length - 1,
+      questionId: "submit",
+      completedStepCount: HOME_SURVEY_FLOW.length,
+    }).catch(() => {});
     setSurveyCompletion("done");
     try {
       localStorage.setItem(SURVEY_LOCAL_CACHE_KEY, "1");
@@ -1052,7 +1114,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }
 
   async function handleFeedbackSubmit() {
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "feedback_submit_attempted",
       page: "/",
       source: "open_feedback",
@@ -1082,7 +1144,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     );
     setFeedbackPending(false);
     if (!result.success) {
-      void trackGameplayEvent({
+      void trackHomeGameplayEvent({
         eventName: "feedback_submit_failed",
         page: "/",
         source: "open_feedback",
@@ -1104,12 +1166,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     setSurveyConsentUserAgreement(false);
     setSurveyConsentPrivacyPolicy(false);
     setSurveyStep(0);
-    void trackGameplayEvent({
-      eventName: "survey_entry_clicked",
-      page: "/",
-      source: "survey",
-      payload: { placement: "home_fab" },
-    }).catch(() => {});
+    void trackSurveyEvent("survey_entry_clicked", { placement: "home_fab", stepIndex: -1, questionId: "entry" }, "survey").catch(() => {});
   }
 
   function openFooterFeedback() {
@@ -1130,18 +1187,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       const stepTotal = HOME_SURVEY_FLOW.length;
       const stepIndex = Math.max(0, Math.min(stepTotal - 1, surveyStep));
       const questionId = HOME_SURVEY_FLOW[stepIndex]?.id ?? "unknown";
-      void trackGameplayEvent({
-        eventName: "survey_exit",
-        page: "/",
-        source: "survey_embedded",
-        payload: {
-          surveyKey: PRODUCT_SURVEY_KEY_HOME,
-          version: PRODUCT_SURVEY_VERSION_HOME,
-          stepIndex,
-          stepTotal,
-          questionId,
-        },
-      }).catch(() => {});
+      void trackSurveyEvent("survey_exit", { stepIndex, questionId, reason: "modal_close" }).catch(() => {});
     }
     setSurveyOpen(false);
     setShowBugFeedback(false);
@@ -1158,12 +1204,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       return;
     }
     window.open(surveyUrl, "_blank", "noopener,noreferrer");
-    void trackGameplayEvent({
-      eventName: "survey_external_link_opened",
-      page: "/",
-      source: "survey",
-      payload: { mode: "external_backup", hasUrl: true },
-    }).catch(() => {});
+    void trackSurveyEvent("survey_external_link_opened", { mode: "external_backup", hasUrl: true, stepIndex: -1, questionId: "external_link" }, "survey").catch(() => {});
   }
 
   const authPending = loginPending || registerPending;
@@ -1176,13 +1217,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     const last = authErrorTrackedRef.current;
     if (last && last.mode === authMode && last.msg === msg) return;
     authErrorTrackedRef.current = { mode: authMode, msg };
-    void trackGameplayEvent({
+    void trackHomeGameplayEvent({
       eventName: "auth_submit_failed",
       page: "/",
       source: "auth_modal",
       payload: { mode: authMode, error: msg },
     }).catch(() => {});
-  }, [activeAuthState?.error, authMode]);
+  }, [activeAuthState?.error, authMode, trackHomeGameplayEvent]);
 
   function getSurveyValue(id: HomeSurveyQuestionId): string {
     switch (id) {
@@ -1409,7 +1450,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   type="button"
                   onClick={() => {
                     setAuthMode("login");
-                    void trackGameplayEvent({
+                    void trackHomeGameplayEvent({
                       eventName: "auth_mode_switched",
                       page: "/",
                       source: "auth_modal",
@@ -1427,7 +1468,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   type="button"
                   onClick={() => {
                     setAuthMode("register");
-                    void trackGameplayEvent({
+                    void trackHomeGameplayEvent({
                       eventName: "auth_mode_switched",
                       page: "/",
                       source: "auth_modal",
@@ -1448,7 +1489,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 className="relative mt-5 space-y-3"
                 action={activeAuthAction}
                 onSubmit={() => {
-                  void trackGameplayEvent({
+                  void trackHomeGameplayEvent({
                     eventName: "auth_submit_attempted",
                     page: "/",
                     source: "auth_modal",
@@ -1582,7 +1623,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 className="min-h-[68px] text-[29px]"
                 onClick={() => {
                   unlockBgmOnUserGesture();
-                  void trackGameplayEvent({
+                  void trackHomeGameplayEvent({
                     eventName: "home_start_new_clicked",
                     page: "/",
                     source: "home_start_new",
@@ -1981,16 +2022,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                       <button
                         type="button"
                         onClick={() => {
-                          void trackGameplayEvent({
-                            eventName: "survey_step_prev",
-                            page: "/",
-                            source: "survey_embedded",
-                            payload: {
-                              surveyKey: PRODUCT_SURVEY_KEY_HOME,
-                              version: PRODUCT_SURVEY_VERSION_HOME,
-                              fromStepIndex: Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep)),
-                              questionId: HOME_SURVEY_FLOW[Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep))]?.id ?? "unknown",
-                            },
+                          const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
+                          void trackSurveyEvent("survey_step_prev", {
+                            stepIndex: fromStepIndex,
+                            fromStepIndex,
+                            toStepIndex: Math.max(0, fromStepIndex - 1),
+                            questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
                           }).catch(() => {});
                           setSurveyStep((s) => Math.max(0, s - 1));
                         }}
@@ -2009,16 +2046,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                               return;
                             }
                             setSurveyNextHint(false);
-                            void trackGameplayEvent({
-                              eventName: "survey_step_next",
-                              page: "/",
-                              source: "survey_embedded",
-                              payload: {
-                                surveyKey: PRODUCT_SURVEY_KEY_HOME,
-                                version: PRODUCT_SURVEY_VERSION_HOME,
-                                fromStepIndex: Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep)),
-                                questionId: HOME_SURVEY_FLOW[Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep))]?.id ?? "unknown",
-                              },
+                            const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
+                            void trackSurveyEvent("survey_step_next", {
+                              stepIndex: fromStepIndex,
+                              fromStepIndex,
+                              toStepIndex: Math.min(totalSteps - 1, fromStepIndex + 1),
+                              questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
                             }).catch(() => {});
                             setSurveyStep((s) => Math.min(totalSteps - 1, s + 1));
                           }}

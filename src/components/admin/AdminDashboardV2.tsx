@@ -7,6 +7,7 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   Database,
   FileText,
   HeartPulse,
@@ -48,28 +49,118 @@ type Kpi = {
 
 type OverviewData = { cards?: Record<string, number>; kpis?: Kpi[]; chartData?: ChartPoint[]; updatedAt?: string } | null;
 type JourneyData = {
+  mode?: "strict" | "any_order";
   sampleSize?: number;
   evidenceSufficiency?: string;
-  stages?: Array<{ eventName: string; label: string; count: number; stepConversionRate: number; totalConversionRate: number; metricId: string }>;
+  stages?: Array<{
+    eventName: string;
+    label: string;
+    count: number;
+    stepConversionRate: number;
+    totalConversionRate: number;
+    dropOffCount?: number;
+    dropOffRate?: number;
+    isBiggestDrop?: boolean;
+    metricId: string;
+  }>;
   updatedAt?: string;
 } | null;
 type AiExperienceData = {
   sampleSize?: number;
   evidenceSufficiency?: string;
   metrics?: Kpi[];
-  rates?: { successRate?: number; failureRate?: number; fallbackRate?: number; parseFailureRate?: number; queueWait?: { status?: string } };
+  rates?: { successRate?: number; failureRate?: number; fallbackRate?: number; parseFailureRate?: number; rateLimitRate?: number; queueWait?: { status?: string } };
+  rateLimitCount?: number;
   cost?: { totalTokens?: number; tokenPerEffectiveAction?: number; tokenPerActiveActor?: number; highCostActors?: Array<{ actorKey: string; actions: number; tokens: number }> };
   anomalies?: string[];
   updatedAt?: string;
 } | null;
 type ContentQualityData = {
+  sampleSize?: number;
   evidenceSufficiency?: string;
-  worldSelections?: Array<{ worldId: string; count: number }>;
-  validatorIssues?: number;
+  worldSelections?: Array<{ worldId: string; count: number; firstActionCount?: number; firstActionRate?: number }>;
+  worldFirstActionRate?: number;
+  chapters?: {
+    entered?: Array<{ worldId: string; chapterId: string; count: number }>;
+    completed?: Array<{ worldId: string; chapterId: string; count: number }>;
+    abandoned?: Array<{ worldId: string; chapterId: string; count: number }>;
+    rank?: Array<{ worldId: string; chapterId: string; entered: number; completed: number; abandoned: number; completionRate: number; abandonRate: number }>;
+    completionRate?: number;
+    abandonRate?: number;
+    evidenceSufficiency?: string;
+  };
+  npcInteractions?: {
+    rank?: Array<{ npcId: string; started: number; completed: number; failed: number; completionRate: number; failureRate: number }>;
+    completionRate?: number;
+    failureRate?: number;
+  };
+  validatorIssues?: { total?: number; byCode?: Array<{ code: string; count: number }> };
+  validatorIssueCount?: number;
+  retryRegenerationCount?: number;
+  retryRegeneration?: { retryCount?: number; regenCount?: number; total?: number };
   feedbackTopics?: Array<{ topic?: string; count?: number }>;
   feedbackSampleSize?: number;
   negativeFeedbackRate?: number;
   surveySampleSize?: number;
+  updatedAt?: string;
+} | null;
+type SurveyAggregateData = {
+  evidenceSufficiency?: string;
+  totalResponses?: number;
+  completionFunnel?: Array<{
+    eventName: string;
+    label: string;
+    count: number;
+    stepConversionRate: number;
+    totalConversionRate: number;
+  }>;
+  perQuestionDropoff?: Array<{
+    questionId: string;
+    title: string;
+    stepIndex: number;
+    viewed: number;
+    nextCount: number;
+    dropOffCount: number;
+    dropOffRate: number;
+  }>;
+  textThemes?: Array<{ theme: string; count: number; pct: number }>;
+  lowRatingSamples?: Array<{
+    overallRating: number | null;
+    recommendScore: number | null;
+    experienceStage: string;
+    summary: string;
+    createdAt: string | null;
+  }>;
+  recommendScoreDistribution?: Array<{ bucket: string; label: string; count: number; pct: number }>;
+  segmentBreakdown?: {
+    actorType?: Array<{ segment: string; count: number; pct: number }>;
+    platform?: Array<{ segment: string; count: number; pct: number }>;
+    experienceStage?: Array<{ segment: string; label?: string; count: number; pct: number }>;
+  };
+} | null;
+type EventHealthData = {
+  totalEvents?: number;
+  eventsByName?: Array<{ eventName: string; count: number }>;
+  invalidContractCount?: number;
+  missingActorCount?: number;
+  missingGuestCount?: number;
+  anonSessionCount?: number;
+  unknownPlatformCount?: number;
+  missingWorldIdCount?: number;
+  missingChapterIdCount?: number;
+  rates?: {
+    invalidContractRate?: number;
+    missingActorRate?: number;
+    missingGuestRate?: number;
+    anonSessionRate?: number;
+    unknownPlatformRate?: number;
+    missingWorldIdRate?: number;
+    missingChapterIdRate?: number;
+  };
+  topInvalidEvents?: Array<{ eventName: string; count: number; reasons?: Array<{ reason: string; count: number }> }>;
+  topMissingProperties?: Array<{ property: string; count: number; eventName: string | null }>;
+  eventCoverage?: Array<{ eventName: string; label: string; count: number; covered: boolean; status: string }>;
+  evidenceSufficiency?: string;
   updatedAt?: string;
 } | null;
 type CapacityData = {
@@ -118,10 +209,31 @@ type UsersData = { rows: UserRow[]; nextCursor: string | null; hasMore: boolean;
 type UserDetail = {
   actorKey: string;
   basic?: { name?: string; actorType?: string; tokensUsed?: number; playTime?: number; lastActive?: string | null };
-  recentFeedback?: Array<{ kind: string; contentPreview: string; createdAt: string | null }>;
-  recentSurvey?: Array<{ surveyKey: string; overallRating: number | null; recommendScore: number | null; createdAt: string | null }>;
+  journeyStage?: { currentLabel?: string | null; nextLabel?: string | null; status?: string; stageIndex?: number; totalStages?: number };
+  contentPath?: {
+    worlds?: Array<{ worldId: string; count: number; lastEventAt: string | null }>;
+    chapters?: Array<{ worldId: string; chapterId: string; entered: number; completed: number; abandoned: number; lastEventAt: string | null }>;
+    npcs?: Array<{ npcId: string; started: number; completed: number; failed: number; lastEventAt: string | null }>;
+  };
+  aiExperience?: { requestCount?: number; avgLatency?: number; failureCount?: number; fallbackCount?: number; slowRequestCount?: number; tokenCost?: number };
+  feedbackAndSurvey?: { negativeFeedbackCount?: number; negativeSurveyCount?: number; saveAnxietyCount?: number };
+  riskTags?: string[];
+  suggestedOpsActions?: string[];
+  recentFeedback?: Array<{ kind: string; contentPreview: string; createdAt: string | null; negative?: boolean }>;
+  recentSurvey?: Array<{
+    surveyKey: string;
+    overallRating: number | null;
+    recommendScore: number | null;
+    experienceStage?: string | null;
+    quitReason?: string | null;
+    saveLossConcern?: string | null;
+    topFixPreview?: string;
+    createdAt: string | null;
+    negative?: boolean;
+    saveAnxiety?: boolean;
+  }>;
   recentSettlements?: Array<{ grade: string; survivalTimeSeconds: number; killedAnomalies: number; maxFloorLabel: string; createdAt: string | null }>;
-  recentEvents?: Array<{ eventName: string; eventTime: string | null; page: string | null; source: string | null }>;
+  recentEvents?: Array<{ eventName: string; eventTime: string | null; page: string | null; source: string | null; payloadSummary?: Record<string, unknown> }>;
 } | null;
 type AuditData = { rows: Array<{ id: number; action: string; actor: string; success: boolean; reason: string | null; targetType: string | null; targetId: string | null; createdAt: string }>; nextCursor: string | null; hasMore: boolean } | null;
 type AiReport = {
@@ -146,7 +258,7 @@ type AiReport = {
   };
 } | null;
 
-const TABS = ["总览", "玩家旅程", "AI 体验", "内容质量", "玩家 / 游客", "系统健康", "AI 运营助手", "审计日志"] as const;
+const TABS = ["总览", "玩家旅程", "AI 体验", "内容质量", "数据质量", "玩家 / 游客", "系统健康", "AI 运营助手", "审计日志"] as const;
 type Tab = (typeof TABS)[number];
 type Range = "today" | "yesterday" | "7d" | "30d";
 
@@ -155,6 +267,7 @@ const tabIcons: Record<Tab, ComponentType<{ className?: string }>> = {
   玩家旅程: Activity,
   "AI 体验": HeartPulse,
   内容质量: FileText,
+  数据质量: ClipboardCheck,
   "玩家 / 游客": Users,
   系统健康: ShieldCheck,
   "AI 运营助手": Bot,
@@ -227,9 +340,12 @@ function reasonLabel(v: string | null | undefined): string {
     redis_ping_failed: "缓存连接失败",
     db_unavailable: "数据库不可用",
     db_health_timeout: "数据库检查超时",
+    event_health_unavailable: "数据质量接口暂不可用",
+    insufficient_sample: "样本不足",
     users_unavailable: "用户列表暂不可用",
     ai_insights_unavailable: "AI 分析暂不可用",
     ai_refresh_degraded: "AI 分析已降级",
+    ai_insights_snapshot_missing_used_rule_fallback: "暂无缓存快照，已使用本地规则建议",
     ai_refresh_failed_used_rule_fallback: "AI 生成失败，已使用本地规则建议",
     partial_rebuild_failed: "部分日期重建失败",
     none: "无异常",
@@ -266,10 +382,19 @@ function eventLabel(v: string | null | undefined): string {
     save_created: "创建存档",
     settlement_submitted: "提交结算",
     feedback_submitted: "提交反馈",
-    chat_request_finished: "完成一次 AI 回合",
-    chat_action_completed: "完成一次行动",
-    survey_submitted: "提交问卷",
-  };
+      chat_request_finished: "完成一次 AI 回合",
+      chat_action_completed: "完成一次行动",
+      survey_submitted: "提交问卷",
+      chapter_entered: "进入章节",
+      chapter_completed: "完成章节",
+      chapter_abandoned: "放弃章节",
+      npc_interaction_started: "开始 NPC 互动",
+      npc_interaction_completed: "完成 NPC 互动",
+      npc_interaction_failed: "NPC 互动失败",
+      regen_clicked: "点击重生成",
+      retry_clicked: "点击重试",
+      narrative_eval_sampled: "叙事评估采样",
+    };
   return map[raw] ?? (raw.includes("_") ? "后台记录事件" : raw || "未知事件");
 }
 
@@ -297,6 +422,19 @@ function shortActorCode(actorKey: string): string {
   const clean = actorKey.replace(/^[ug]:/, "").replace(/-/g, "");
   if (!clean) return "未记录";
   return `尾号 ${clean.slice(-6)}`;
+}
+
+function riskTagLabel(tag: string): string {
+  const map: Record<string, string> = {
+    high_ai_cost: "AI 成本高",
+    wait_too_long: "等待过长",
+    stuck_before_first_action: "首行动前卡住",
+    survey_negative: "问卷负向",
+    feedback_negative: "反馈负向",
+    save_anxiety: "存档焦虑",
+    content_quality_risk: "内容质量风险",
+  };
+  return map[tag] ?? tag;
 }
 
 function Card({ title, value, meta, degraded }: { title: string; value: string; meta?: string; degraded?: boolean }) {
@@ -369,6 +507,8 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   const [journey, setJourney] = useState<JourneyData>(null);
   const [aiExperience, setAiExperience] = useState<AiExperienceData>(null);
   const [contentQuality, setContentQuality] = useState<ContentQualityData>(null);
+  const [surveyAggregate, setSurveyAggregate] = useState<SurveyAggregateData>(null);
+  const [eventHealth, setEventHealth] = useState<EventHealthData>(null);
   const [health, setHealth] = useState<HealthData>(null);
   const [users, setUsers] = useState<UsersData>(null);
   const [userDetail, setUserDetail] = useState<UserDetail>(null);
@@ -383,6 +523,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   const [sort, setSort] = useState<"lastActive" | "tokens" | "playTime">("lastActive");
   const [journeyActorType, setJourneyActorType] = useState<"all" | "registered" | "guest">("all");
   const [journeyPlatform, setJourneyPlatform] = useState<"all" | "pc" | "mobile">("all");
+  const [journeyMode, setJourneyMode] = useState<"strict" | "any_order">("strict");
   const [rebuildDays, setRebuildDays] = useState(3);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [aiRefreshing, setAiRefreshing] = useState(false);
@@ -391,15 +532,17 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
     if (!silent) setRefreshing(true);
     const nextDegraded: Record<string, string | null> = {};
     try {
-      const [ov, j, ai, cq, h, au] = await Promise.all([
+      const [ov, j, ai, cq, survey, eh, h, au] = await Promise.all([
         fetchEnvelope<OverviewData>(`/api/admin/overview?range=${range}`),
-        fetchEnvelope<JourneyData>(`/api/admin/player-journey?range=${range}&actorType=${journeyActorType}&platform=${journeyPlatform}`),
+        fetchEnvelope<JourneyData>(`/api/admin/player-journey?range=${range}&actorType=${journeyActorType}&platform=${journeyPlatform}&mode=${journeyMode}`),
         fetchEnvelope<AiExperienceData>(`/api/admin/ai-experience?range=${range}`),
         fetchEnvelope<ContentQualityData>(`/api/admin/content-quality?range=${range}`),
+        fetchEnvelope<SurveyAggregateData>(`/api/admin/survey-aggregate?range=${range}`),
+        fetchEnvelope<EventHealthData>(`/api/admin/event-health?range=${range}`),
         fetchEnvelope<HealthData>("/api/admin/system-health"),
         fetchEnvelope<AuditData>("/api/admin/audit-logs?limit=20"),
       ]);
-      for (const [key, item] of Object.entries({ overview: ov, journey: j, ai, content: cq, health: h, audit: au })) {
+      for (const [key, item] of Object.entries({ overview: ov, journey: j, ai, content: cq, survey, eventHealth: eh, health: h, audit: au })) {
         if (item.status === 403) {
           window.location.href = "/saiduhsa";
           return;
@@ -410,13 +553,15 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
       if (j.env.data) setJourney(j.env.data);
       if (ai.env.data) setAiExperience(ai.env.data);
       if (cq.env.data) setContentQuality(cq.env.data);
+      if (survey.env.data) setSurveyAggregate(survey.env.data);
+      if (eh.env.data) setEventHealth(eh.env.data);
       if (h.env.data) setHealth(h.env.data);
       if (au.env.data) setAudit(au.env.data);
       setDegraded(nextDegraded);
     } finally {
       setRefreshing(false);
     }
-  }, [journeyActorType, journeyPlatform, range]);
+  }, [journeyActorType, journeyMode, journeyPlatform, range]);
 
   const loadUsers = useCallback(async (cursor: string | null) => {
     const params = new URLSearchParams();
@@ -461,6 +606,16 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   const capacity = health?.capacity;
   const totalOnline = Number(capacity?.online?.total ?? overviewCards.online ?? onlineCount ?? 0);
   const degradedList = useMemo(() => Object.entries(degraded).filter(([, reason]) => reason), [degraded]);
+  const contentValidatorIssues = contentQuality?.validatorIssues;
+  const contentValidatorIssueTotal = Number(contentValidatorIssues?.total ?? contentQuality?.validatorIssueCount ?? 0);
+  const contentValidatorIssueByCode = contentValidatorIssues?.byCode ?? [];
+  const contentChapterRank = contentQuality?.chapters?.rank ?? [];
+  const contentNpcRank = contentQuality?.npcInteractions?.rank ?? [];
+  const surveyFunnel = surveyAggregate?.completionFunnel ?? [];
+  const surveyQuestionDropoff = surveyAggregate?.perQuestionDropoff ?? [];
+  const surveyThemes = surveyAggregate?.textThemes ?? [];
+  const surveyLowRatingSamples = surveyAggregate?.lowRatingSamples ?? [];
+  const surveyRecommendDistribution = surveyAggregate?.recommendScoreDistribution ?? [];
 
   async function refreshAiReport() {
     setAiRefreshing(true);
@@ -614,15 +769,24 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                   <option value="mobile">移动端</option>
                   <option value="pc">电脑端</option>
                 </select>
+                <select value={journeyMode} onChange={(e) => setJourneyMode(e.target.value as typeof journeyMode)} className="rounded-lg border border-[#cfc6b7] bg-[#fffaf0] px-3 py-2 text-sm">
+                  <option value="strict">严格顺序</option>
+                  <option value="any_order">任意顺序</option>
+                </select>
               </div>
             </div>
             <div className="space-y-3">
               {(journey?.stages ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无旅程样本。</p> : null}
               {(journey?.stages ?? []).map((s) => (
-                <div key={s.eventName} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3">
+                <div key={s.eventName} className={`rounded-lg border p-3 ${s.isBiggestDrop ? "border-[#c4914a] bg-[#fff2cf]" : "border-[#e1d8ca] bg-[#fffdf8]"}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <span className="font-medium text-[#173f39]">{s.label || eventLabel(s.eventName)}</span>
-                    <span className="text-[#68746c]">{s.count.toLocaleString("zh-CN")} 人 · 相邻 {percent(s.stepConversionRate)} · 总 {percent(s.totalConversionRate)}</span>
+                    <span className="font-medium text-[#173f39]">
+                      {s.label || eventLabel(s.eventName)}
+                      {s.isBiggestDrop ? <span className="ml-2 rounded-full bg-[#c4914a] px-2 py-0.5 text-[11px] text-[#fffaf0]">最大流失</span> : null}
+                    </span>
+                    <span className="text-[#68746c]">
+                      {s.count.toLocaleString("zh-CN")} 人 · 相邻 {percent(s.stepConversionRate)} · 总 {percent(s.totalConversionRate)} · 流失 {Number(s.dropOffCount ?? 0).toLocaleString("zh-CN")} / {percent(s.dropOffRate)}
+                    </span>
                   </div>
                   <div className="mt-2 h-2 rounded-full bg-[#e7decf]">
                     <div className="h-2 rounded-full bg-[#174d46]" style={{ width: `${Math.max(1, Math.min(100, s.totalConversionRate * 100))}%` }} />
@@ -641,6 +805,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               <Card title="失败率" value={percent(aiExperience?.rates?.failureRate)} />
               <Card title="降级率" value={percent(aiExperience?.rates?.fallbackRate)} />
               <Card title="结构解析失败率" value={percent(aiExperience?.rates?.parseFailureRate)} />
+              <Card title="429 限流率" value={percent(aiExperience?.rates?.rateLimitRate)} meta={`限流 ${fmt(aiExperience?.rateLimitCount)} 次`} degraded={(aiExperience?.rateLimitCount ?? 0) > 0} />
               <Card title="总 Token" value={fmt(aiExperience?.cost?.totalTokens)} />
               <Card title="每次行动 Token" value={fmt(Math.round(aiExperience?.cost?.tokenPerEffectiveAction ?? 0))} />
               <Card title="每位活跃玩家 Token" value={fmt(Math.round(aiExperience?.cost?.tokenPerActiveActor ?? 0))} />
@@ -662,29 +827,306 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
         ) : null}
 
         {tab === "内容质量" ? (
-          <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Panel>
-              <SectionTitle title="世界与章节反馈" meta={`更新时间 ${time(contentQuality?.updatedAt)} · ${contentQuality?.evidenceSufficiency === "insufficient" ? "样本不足" : "样本可用"}`} />
-              <div className="mt-3 space-y-2">
-                {(contentQuality?.worldSelections ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无世界选择样本。</p> : null}
-                {(contentQuality?.worldSelections ?? []).map((w) => <Card key={w.worldId} title={w.worldId === "unknown" ? "未记录世界" : w.worldId} value={w.count.toLocaleString("zh-CN")} />)}
+          <section className="space-y-4">
+            {contentQuality?.evidenceSufficiency === "insufficient" ? (
+              <div className="rounded-lg border border-[#c4914a]/35 bg-[#fff2cf] p-3 text-sm text-[#7a4e15]">
+                内容质量样本不足：当前最大样本 {fmt(contentQuality?.sampleSize)}，只展示采样缺口，不判断趋势。
               </div>
-            </Panel>
+            ) : null}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card title="世界首行动率" value={percent(contentQuality?.worldFirstActionRate)} meta={`世界选择 ${fmt(contentQuality?.worldSelections?.reduce((sum, x) => sum + Number(x.count ?? 0), 0))}`} />
+              <Card title="章节完成率" value={percent(contentQuality?.chapters?.completionRate)} meta={`进入 ${fmt(contentQuality?.chapters?.entered?.reduce((sum, x) => sum + Number(x.count ?? 0), 0))}`} degraded={contentQuality?.chapters?.evidenceSufficiency === "insufficient"} />
+              <Card title="NPC 互动完成率" value={percent(contentQuality?.npcInteractions?.completionRate)} meta={`失败率 ${percent(contentQuality?.npcInteractions?.failureRate)}`} />
+              <Card title="重试 / 重生成" value={fmt(contentQuality?.retryRegenerationCount)} meta={`retry ${fmt(contentQuality?.retryRegeneration?.retryCount)} · regen ${fmt(contentQuality?.retryRegeneration?.regenCount)}`} />
+              <Card title="规则冲突" value={fmt(contentValidatorIssueTotal)} meta={`${contentValidatorIssueByCode.length} 类 issue`} />
+              <Card title="负反馈率" value={percent(contentQuality?.negativeFeedbackRate)} meta={`反馈样本 ${fmt(contentQuality?.feedbackSampleSize)}，问卷样本 ${fmt(contentQuality?.surveySampleSize)}`} />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Panel>
+                <SectionTitle title="世界排行" meta={`更新时间 ${time(contentQuality?.updatedAt)}`} />
+                <div className="mt-3 space-y-2">
+                  {(contentQuality?.worldSelections ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无世界选择样本。</p> : null}
+                  {(contentQuality?.worldSelections ?? []).map((w) => (
+                    <div key={w.worldId} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div>
+                        <p className="font-medium text-[#173f39]">{w.worldId === "unknown" ? "未记录世界" : w.worldId}</p>
+                        <p className="text-xs text-[#68746c]">首行动 {fmt(w.firstActionCount)} / {percent(w.firstActionRate)}</p>
+                      </div>
+                      <span>{fmt(w.count)}</span>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel>
+                <SectionTitle title="章节完成率" meta="按 chapter_entered / completed / abandoned 聚合。" />
+                <div className="mt-3 space-y-2">
+                  {contentChapterRank.length === 0 ? <p className="text-sm text-[#68746c]">暂无章节样本。</p> : null}
+                  {contentChapterRank.slice(0, 8).map((c) => (
+                    <div key={`${c.worldId}:${c.chapterId}`} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-[#173f39]">{c.chapterId}</span>
+                        <span>{percent(c.completionRate)} 完成 · {percent(c.abandonRate)} 放弃</span>
+                      </div>
+                      <p className="mt-1 text-xs text-[#68746c]">进入 {fmt(c.entered)} · 完成 {fmt(c.completed)} · 放弃 {fmt(c.abandoned)} · {c.worldId}</p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Panel>
+                <SectionTitle title="NPC 互动排行" meta="按 started / completed / failed 聚合。" />
+                <div className="mt-3 space-y-2">
+                  {contentNpcRank.length === 0 ? <p className="text-sm text-[#68746c]">暂无 NPC 互动样本。</p> : null}
+                  {contentNpcRank.slice(0, 8).map((n) => (
+                    <div key={n.npcId} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-[#173f39]">{n.npcId}</span>
+                        <span>{percent(n.completionRate)} 完成</span>
+                      </div>
+                      <p className="mt-1 text-xs text-[#68746c]">开始 {fmt(n.started)} · 完成 {fmt(n.completed)} · 失败 {fmt(n.failed)} · 失败率 {percent(n.failureRate)}</p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel>
+                <SectionTitle title="规则冲突分类" meta="validator / safety / entity / pacing issue code 聚合。" />
+                <div className="mt-3 space-y-2">
+                  {contentValidatorIssueByCode.length === 0 ? <p className="text-sm text-[#68746c]">暂无规则冲突样本。</p> : null}
+                  {contentValidatorIssueByCode.slice(0, 10).map((item) => (
+                    <div key={item.code} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <span className="font-mono text-xs text-[#173f39]">{item.code}</span>
+                      <span>{fmt(item.count)}</span>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+
             <Panel>
-              <SectionTitle title="反馈与问卷" />
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Card title="叙事规则提醒" value={fmt(contentQuality?.validatorIssues)} />
-                <Card title="负反馈率" value={percent(contentQuality?.negativeFeedbackRate)} meta={`反馈样本 ${contentQuality?.feedbackSampleSize ?? 0}，问卷样本 ${contentQuality?.surveySampleSize ?? 0}`} />
-              </div>
+              <SectionTitle title="反馈与问卷主题" meta="负反馈率仍来自 feedbacks，问卷样本来自 survey_responses。" />
               <div className="mt-3 space-y-2">
                 {(contentQuality?.feedbackTopics ?? []).slice(0, 6).map((t) => (
                   <div key={String(t.topic)} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                     <span>{String(t.topic || "未分类反馈")}</span>
-                    <span>{Number(t.count ?? 0).toLocaleString("zh-CN")}</span>
+                    <span>{fmt(t.count)}</span>
                   </div>
                 ))}
               </div>
             </Panel>
+
+            <Panel>
+              <SectionTitle
+                title="问卷分析"
+                meta={
+                  surveyAggregate?.evidenceSufficiency === "insufficient"
+                    ? "样本不足：展示原始计数与抱怨主题，不判断趋势。"
+                    : `站内问卷样本 ${fmt(surveyAggregate?.totalResponses)}`
+                }
+              />
+              {degraded.survey ? (
+                <div className="mt-3 rounded-lg border border-[#c4914a]/35 bg-[#fff2cf] p-3 text-sm text-[#7a4e15]">
+                  问卷分析降级：{reasonLabel(degraded.survey)}
+                </div>
+              ) : null}
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <Card title="问卷提交数" value={fmt(surveyAggregate?.totalResponses)} meta="survey_responses" degraded={surveyAggregate?.evidenceSufficiency === "insufficient"} />
+                <Card title="主题样本" value={fmt(surveyThemes.reduce((sum, item) => sum + Number(item.count ?? 0), 0))} meta={`${surveyThemes.length} 类抱怨`} />
+                <Card title="低评分样本" value={fmt(surveyLowRatingSamples.length)} meta="摘要已截断并脱敏" />
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div>
+                  <SectionTitle title="完成漏斗" meta="按 actor 去重统计 survey_* 事件。" />
+                  <div className="mt-3 space-y-2">
+                    {surveyFunnel.length === 0 ? <p className="text-sm text-[#68746c]">暂无问卷事件样本。</p> : null}
+                    {surveyFunnel.map((item) => (
+                      <div key={item.eventName} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium text-[#173f39]">{item.label || eventLabel(item.eventName)}</span>
+                          <span>{fmt(item.count)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-[#68746c]">
+                          上一步转化 {percent(item.stepConversionRate)} · 总转化 {percent(item.totalConversionRate)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <SectionTitle title="每题流失" meta="step_viewed 到下一题或提交尝试。" />
+                  <div className="mt-3 space-y-2">
+                    {surveyQuestionDropoff.length === 0 ? <p className="text-sm text-[#68746c]">暂无题目浏览样本。</p> : null}
+                    {surveyQuestionDropoff.slice(0, 10).map((item) => (
+                      <div key={item.questionId} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-medium text-[#173f39]">{item.title}</span>
+                          <span>{percent(item.dropOffRate)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-[#68746c]">
+                          浏览 {fmt(item.viewed)} · 进入下一步 {fmt(item.nextCount)} · 流失 {fmt(item.dropOffCount)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div>
+                  <SectionTitle title="主题排行" meta="开放文本本地规则聚类。" />
+                  <div className="mt-3 space-y-2">
+                    {surveyThemes.length === 0 ? <p className="text-sm text-[#68746c]">暂无开放文本主题。</p> : null}
+                    {surveyThemes.map((item) => (
+                      <div key={item.theme} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                        <span>{item.theme}</span>
+                        <span>{fmt(item.count)} · {item.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <SectionTitle title="推荐意愿" meta="优先使用 recommendScore，其次问卷选项。" />
+                  <div className="mt-3 space-y-2">
+                    {surveyRecommendDistribution.length === 0 ? <p className="text-sm text-[#68746c]">暂无推荐意愿样本。</p> : null}
+                    {surveyRecommendDistribution.slice(0, 8).map((item) => (
+                      <div key={item.bucket} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                        <span>{item.label}</span>
+                        <span>{fmt(item.count)} · {item.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <SectionTitle title="分群" meta="注册/游客、平台、体验阶段。" />
+                  <div className="mt-3 space-y-2">
+                    {(surveyAggregate?.segmentBreakdown?.actorType ?? []).map((item) => (
+                      <div key={`actor:${item.segment}`} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                        <span>{item.segment === "registered" ? "注册用户" : item.segment === "guest" ? "游客" : "未知身份"}</span>
+                        <span>{fmt(item.count)} · {item.pct}%</span>
+                      </div>
+                    ))}
+                    {(surveyAggregate?.segmentBreakdown?.platform ?? []).slice(0, 3).map((item) => (
+                      <div key={`platform:${item.segment}`} className="flex justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                        <span>{item.segment}</span>
+                        <span>{fmt(item.count)} · {item.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <SectionTitle title="低评分样本" meta="不展示完整原文，只展示 120 字内脱敏摘要。" />
+                <div className="mt-3 space-y-2">
+                  {surveyLowRatingSamples.length === 0 ? <p className="text-sm text-[#68746c]">暂无低评分样本。</p> : null}
+                  {surveyLowRatingSamples.slice(0, 8).map((item, idx) => (
+                    <div key={`${item.createdAt ?? "sample"}:${idx}`} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3 text-xs text-[#68746c]">
+                        <span>满意度 {item.overallRating ?? "未填"} · 推荐 {item.recommendScore ?? "未填"} · {item.experienceStage}</span>
+                        <span>{time(item.createdAt)}</span>
+                      </div>
+                      <p className="mt-2 text-[#173f39]">{item.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Panel>
+          </section>
+        ) : null}
+
+        {tab === "数据质量" ? (
+          <section className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card title="总事件数" value={fmt(eventHealth?.totalEvents)} meta={`更新：${time(eventHealth?.updatedAt)}`} degraded={eventHealth?.evidenceSufficiency === "insufficient"} />
+              <Card title="缺 actor 率" value={percent(eventHealth?.rates?.missingActorRate)} meta={`${fmt(eventHealth?.missingActorCount)} 条缺 actor_id`} />
+              <Card title="anon_session 率" value={percent(eventHealth?.rates?.anonSessionRate)} meta={`${fmt(eventHealth?.anonSessionCount)} 条仍落在匿名会话`} />
+              <Card title="unknown platform 率" value={percent(eventHealth?.rates?.unknownPlatformRate)} meta={`${fmt(eventHealth?.unknownPlatformCount)} 条未识别设备`} />
+              <Card title="缺 guest 率" value={percent(eventHealth?.rates?.missingGuestRate)} meta={`${fmt(eventHealth?.missingGuestCount)} 条游客身份不完整`} />
+              <Card title="契约异常率" value={percent(eventHealth?.rates?.invalidContractRate)} meta={`${fmt(eventHealth?.invalidContractCount)} 条事件不满足 tracking plan`} />
+              <Card title="缺 worldId 率" value={percent(eventHealth?.rates?.missingWorldIdRate)} meta={`${fmt(eventHealth?.missingWorldIdCount)} 条关键事件缺世界字段`} />
+              <Card title="缺 chapterId 率" value={percent(eventHealth?.rates?.missingChapterIdRate)} meta={`${fmt(eventHealth?.missingChapterIdCount)} 条回合/存档事件缺章节字段`} />
+            </div>
+
+            {degraded.eventHealth ? (
+              <div className="rounded-lg border border-[#c4914a]/35 bg-[#fff2cf] p-3 text-sm text-[#7a4e15]">
+                数据质量面板降级：{reasonLabel(degraded.eventHealth)}
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Panel>
+                <SectionTitle title="核心事件覆盖" meta={eventHealth?.evidenceSufficiency === "insufficient" ? "样本不足，只显示覆盖情况，不判断趋势。" : "核心漏斗事件是否在当前区间出现。"} />
+                <div className="mt-3 space-y-2">
+                  {(eventHealth?.eventCoverage ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无事件样本。</p> : null}
+                  {(eventHealth?.eventCoverage ?? []).map((item) => (
+                    <div key={item.eventName} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div>
+                        <p className="font-medium text-[#173f39]">{eventLabel(item.eventName)}</p>
+                        <p className="text-xs text-[#68746c]">{item.eventName}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={item.covered ? "text-[#0d6b55]" : "text-[#9f2f2f]"}>{item.covered ? "已覆盖" : "缺失"}</p>
+                        <p className="text-xs text-[#68746c]">{item.count.toLocaleString("zh-CN")} 条</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel>
+                <SectionTitle title="Top missing properties" meta="按事件契约与数据质量规则聚合，只展示字段名和计数。" />
+                <div className="mt-3 space-y-2">
+                  {(eventHealth?.topMissingProperties ?? []).length === 0 ? <p className="text-sm text-[#68746c]">当前区间没有明显字段缺口。</p> : null}
+                  {(eventHealth?.topMissingProperties ?? []).map((item) => (
+                    <div key={`${item.property}:${item.eventName ?? "all"}`} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <span className="font-mono text-xs text-[#173f39]">{item.property}</span>
+                      <span>{item.count.toLocaleString("zh-CN")} 条</span>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Panel>
+                <SectionTitle title="契约异常事件" meta="用于定位埋点缺字段、未知事件名或敏感字段风险。" />
+                <div className="mt-3 space-y-2">
+                  {(eventHealth?.topInvalidEvents ?? []).length === 0 ? <p className="text-sm text-[#68746c]">当前区间没有契约异常事件。</p> : null}
+                  {(eventHealth?.topInvalidEvents ?? []).map((item) => (
+                    <div key={item.eventName} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>{eventLabel(item.eventName)}</span>
+                        <span>{item.count.toLocaleString("zh-CN")} 条</span>
+                      </div>
+                      <p className="mt-1 text-xs text-[#68746c]">
+                        {(item.reasons ?? []).map((r) => `${r.reason}:${r.count}`).join(" / ") || "unknown"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel>
+                <SectionTitle title="事件量 Top" meta="用于判断当前样本主要来自哪些事件。" />
+                <div className="mt-3 space-y-2">
+                  {(eventHealth?.eventsByName ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无事件样本。</p> : null}
+                  {(eventHealth?.eventsByName ?? []).slice(0, 12).map((item) => (
+                    <div key={item.eventName} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <span>{eventLabel(item.eventName)}</span>
+                      <span>{item.count.toLocaleString("zh-CN")} 条</span>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
           </section>
         ) : null}
 
@@ -759,27 +1201,118 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                   <Card title="Token" value={fmt(userDetail.basic?.tokensUsed)} />
                   <Card title="游玩时长" value={formatDurationSeconds(Number(userDetail.basic?.playTime ?? 0)) || "暂无记录"} />
+                  <Card
+                    title="漏斗阶段"
+                    value={userDetail.journeyStage?.currentLabel ?? "暂无行为"}
+                    meta={
+                      userDetail.journeyStage?.nextLabel
+                        ? `下一步：${userDetail.journeyStage.nextLabel}`
+                        : userDetail.journeyStage?.status === "completed"
+                          ? "已走完核心漏斗"
+                          : "等待首个核心事件"
+                    }
+                    degraded={userDetail.journeyStage?.status === "no_events"}
+                  />
+                  <Card
+                    title="AI 平均等待"
+                    value={userDetail.aiExperience?.requestCount ? `${Math.round(Number(userDetail.aiExperience?.avgLatency ?? 0) / 1000)} 秒` : "暂无记录"}
+                    meta={`失败 ${fmt(userDetail.aiExperience?.failureCount)} · fallback ${fmt(userDetail.aiExperience?.fallbackCount)} · 慢请求 ${fmt(userDetail.aiExperience?.slowRequestCount)}`}
+                    degraded={(userDetail.aiExperience?.failureCount ?? 0) > 0 || (userDetail.aiExperience?.slowRequestCount ?? 0) > 0}
+                  />
+                  <Card
+                    title="AI 成本"
+                    value={`${fmt(userDetail.aiExperience?.tokenCost)} Token`}
+                    meta={`AI 请求 ${fmt(userDetail.aiExperience?.requestCount)}`}
+                    degraded={(userDetail.riskTags ?? []).includes("high_ai_cost")}
+                  />
                   <Card title="最近战绩" value={(userDetail.recentSettlements?.[0]?.grade ?? "暂无记录").toString()} meta={userDetail.recentSettlements?.[0]?.maxFloorLabel ?? ""} />
+                </div>
+                <div className="mt-3 rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-medium">风险标签</h4>
+                    {(userDetail.riskTags ?? []).length === 0 ? <span className="rounded-full border border-[#d8d0c3] bg-[#fffdf8] px-2 py-0.5 text-xs text-[#68746c]">暂无明显风险</span> : null}
+                    {(userDetail.riskTags ?? []).map((tag) => (
+                      <span key={tag} className="rounded-full border border-[#b86a4b]/35 bg-[#fff1e9] px-2 py-0.5 text-xs font-medium text-[#8d3f26]">
+                        {riskTagLabel(tag)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   <div className="rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
                     <h4 className="font-medium">最近反馈</h4>
                     {(userDetail.recentFeedback ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无记录</p> : null}
-                    {(userDetail.recentFeedback ?? []).map((x, idx) => <p key={`${x.createdAt}:${idx}`} className="mt-2 text-xs text-[#335c54]">{x.contentPreview || "未填写文本"}</p>)}
+                    {(userDetail.recentFeedback ?? []).map((x, idx) => (
+                      <p key={`${x.createdAt}:${idx}`} className="mt-2 text-xs leading-relaxed text-[#335c54]">
+                        {x.negative ? <span className="mr-1 rounded bg-[#fff1e9] px-1.5 py-0.5 text-[#8d3f26]">负向</span> : null}
+                        {x.contentPreview || "未填写文本"}
+                      </p>
+                    ))}
                   </div>
                   <div className="rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
                     <h4 className="font-medium">最近问卷</h4>
                     {(userDetail.recentSurvey ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无记录</p> : null}
-                    {(userDetail.recentSurvey ?? []).map((x, idx) => <p key={`${x.createdAt}:${idx}`} className="mt-2 text-xs text-[#335c54]">满意度 {x.overallRating ?? "未填"} · 推荐意愿 {x.recommendScore ?? "未填"}</p>)}
+                    {(userDetail.recentSurvey ?? []).map((x, idx) => (
+                      <div key={`${x.createdAt}:${idx}`} className="mt-2 text-xs leading-relaxed text-[#335c54]">
+                        <p>
+                          {x.negative ? <span className="mr-1 rounded bg-[#fff1e9] px-1.5 py-0.5 text-[#8d3f26]">低分</span> : null}
+                          {x.saveAnxiety ? <span className="mr-1 rounded bg-[#fff2cf] px-1.5 py-0.5 text-[#7a4e15]">存档焦虑</span> : null}
+                          满意度 {x.overallRating ?? "未填"} · 推荐意愿 {x.recommendScore ?? "未填"}
+                        </p>
+                        {x.topFixPreview ? <p className="mt-1 text-[#68746c]">希望改进：{x.topFixPreview}</p> : null}
+                      </div>
+                    ))}
                   </div>
                   <div className="rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
                     <h4 className="font-medium">最近行为</h4>
                     {(userDetail.recentEvents ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无记录</p> : null}
-                    {(userDetail.recentEvents ?? []).slice(0, 6).map((x, idx) => <p key={`${x.eventTime}:${idx}`} className="mt-2 text-xs text-[#335c54]">{eventLabel(x.eventName)} · {time(x.eventTime)}</p>)}
+                    {(userDetail.recentEvents ?? []).slice(0, 8).map((x, idx) => (
+                      <p key={`${x.eventTime}:${idx}:${x.eventName}`} className="mt-2 text-xs leading-relaxed text-[#335c54]">
+                        {eventLabel(x.eventName)} · {time(x.eventTime)}
+                        {x.page ? <span className="text-[#68746c]"> · {x.page}</span> : null}
+                      </p>
+                    ))}
                   </div>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
+                    <h4 className="font-medium">世界路径</h4>
+                    {(userDetail.contentPath?.worlds ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无记录</p> : null}
+                    {(userDetail.contentPath?.worlds ?? []).slice(0, 5).map((x) => (
+                      <p key={`${x.worldId}:${x.lastEventAt}`} className="mt-2 text-xs text-[#335c54]">
+                        {translateLooseLabel(x.worldId)} · {fmt(x.count)} 次 · {time(x.lastEventAt)}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
+                    <h4 className="font-medium">章节路径</h4>
+                    {(userDetail.contentPath?.chapters ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无记录</p> : null}
+                    {(userDetail.contentPath?.chapters ?? []).slice(0, 5).map((x) => (
+                      <p key={`${x.worldId}:${x.chapterId}`} className="mt-2 text-xs leading-relaxed text-[#335c54]">
+                        {translateLooseLabel(x.chapterId)} · 进入 {fmt(x.entered)} / 完成 {fmt(x.completed)} / 放弃 {fmt(x.abandoned)}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
+                    <h4 className="font-medium">NPC 路径</h4>
+                    {(userDetail.contentPath?.npcs ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无记录</p> : null}
+                    {(userDetail.contentPath?.npcs ?? []).slice(0, 5).map((x) => (
+                      <p key={x.npcId} className="mt-2 text-xs leading-relaxed text-[#335c54]">
+                        {translateLooseLabel(x.npcId)} · 开始 {fmt(x.started)} / 完成 {fmt(x.completed)} / 失败 {fmt(x.failed)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-3 rounded-lg border border-[#e1d8ca] bg-[#fffaf0] p-3">
+                  <h4 className="font-medium">建议动作</h4>
+                  {(userDetail.suggestedOpsActions ?? []).length === 0 ? <p className="mt-2 text-xs text-[#68746c]">暂无建议</p> : null}
+                  {(userDetail.suggestedOpsActions ?? []).map((action) => (
+                    <p key={action} className="mt-2 text-xs leading-relaxed text-[#335c54]">{action}</p>
+                  ))}
+                  <p className="mt-2 text-[11px] text-[#8b877e]">数据口径：详情接口按 actorKey 查询，注册用户匹配 userId/actorId，游客匹配 guestId/actorId，事件时间线最多返回 30 条。</p>
                 </div>
               </div>
             ) : null}
@@ -842,7 +1375,15 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               <button className="rounded-lg border border-[#cfc6b7] bg-[#fffaf0] px-3 py-2 text-sm" onClick={() => void clearAiCache()}>清理分析缓存</button>
             </div>
             <Panel>
-              <p className="text-sm text-[#68746c]">分析引擎：{aiReport?.model ? "后台推理模型" : "未生成"} · {aiReport?.degraded ? "已降级" : "可用"} · 更新时间 {time(aiReport?.output?.generatedAt)}</p>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-[#68746c]">
+                <span>分析引擎：{aiReport?.model === "local-rule-fallback" ? "本地规则兜底" : aiReport?.model ? "后台推理模型" : "未生成"}</span>
+                <span className="rounded-full border border-[#d8d0c3] bg-[#fffaf0] px-2 py-0.5 text-xs">{aiReport?.degraded ? "已降级" : "可用"}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-xs ${aiReport?.output?.evidenceSufficiency === "enough" ? "border-[#b7d4c8] bg-[#effaf5] text-[#0d6b55]" : "border-[#e2c17d] bg-[#fff2cf] text-[#7a4e15]"}`}>
+                  证据{aiReport?.output?.evidenceSufficiency === "enough" ? "充分" : "不足"}
+                </span>
+                <span>整体置信度 {confidenceLabel(aiReport?.output?.confidence?.level)} · 更新时间 {time(aiReport?.output?.generatedAt)}</span>
+              </div>
+              {aiReport?.output?.confidence?.reason ? <p className="mt-2 text-xs text-[#68746c]">置信说明：{aiReport.output.confidence.reason}</p> : null}
               <p className="mt-3 rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">{aiReport?.output?.executiveSummary ?? "点击按钮后，基于问卷、反馈、旅程漏斗、留存和 Token 成本生成证据驱动建议。"}</p>
               <div className="mt-3 grid gap-3">
                 {(aiReport?.output?.recommendations ?? []).map((r, idx) => (

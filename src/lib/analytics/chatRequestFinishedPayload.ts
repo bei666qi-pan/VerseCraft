@@ -151,6 +151,9 @@ export type BuildChatRequestFinishedPayloadInput = {
   loreRetrievalMs?: number | null;
   retryCount?: number | null;
   errorType?: string | null;
+  httpStatus?: number | null;
+  upstreamStatus?: number | null;
+  rateLimited?: boolean | null;
   narrativeLength?: NarrativeLengthTelemetry | null;
   narrativeExpansion?: NarrativeExpansionTelemetry | null;
 };
@@ -276,6 +279,9 @@ export function buildChatRequestFinishedPayload(
     loreRetrievalMs: optionalFiniteInt(input.loreRetrievalMs),
     retryCount: optionalFiniteInt(input.retryCount),
     errorType: input.errorType ?? null,
+    httpStatus: optionalFiniteInt(input.httpStatus),
+    upstreamStatus: optionalFiniteInt(input.upstreamStatus),
+    rateLimited: input.rateLimited === true,
     "gen_ai.client.token.usage": {
       input_tokens: promptTokens,
       output_tokens: completionTokens,

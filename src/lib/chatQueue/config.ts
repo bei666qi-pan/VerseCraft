@@ -24,7 +24,7 @@ function sanitizeRedisPrefix(value: string | undefined): string {
 export function getChatQueueConfig(): ChatQueueConfig {
   return {
     enabled: envBoolean("VC_CHAT_QUEUE_ENABLED", true),
-    maxRunning: clampInt(envNumber("VC_CHAT_QUEUE_MAX_RUNNING", 4), 1, 100),
+    maxRunning: clampInt(envNumber("VC_CHAT_QUEUE_MAX_RUNNING", 12), 1, 100),
     maxQueued: clampInt(envNumber("VC_CHAT_QUEUE_MAX_QUEUED", 80), 0, 10_000),
     estimatedSecondsPerTurn: clampInt(envNumber("VC_CHAT_QUEUE_ESTIMATED_SECONDS_PER_TURN", 12), 1, 600),
     ticketTtlSeconds: clampInt(envNumber("VC_CHAT_QUEUE_TICKET_TTL_SECONDS", 180), 10, 3600),

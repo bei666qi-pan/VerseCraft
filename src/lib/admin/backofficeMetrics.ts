@@ -4,7 +4,14 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getAdminMetricDefinition } from "@/lib/admin/metricDefinitions";
-import { computeAdjacentFunnelStages, decodeCursor, encodeCursor, safeRate } from "@/lib/admin/metricsUtils";
+import { decodeCursor, encodeCursor, safeRate } from "@/lib/admin/metricsUtils";
+import {
+  computeJourneyFunnelStages,
+  normalizeJourneyFunnelEvents,
+  type JourneyFunnelMode,
+} from "@/lib/admin/journeyFunnel";
+import { buildContentQualityMetricsSnapshot } from "@/lib/admin/contentQualityMetrics";
+import { buildAdminUserDetailSignals } from "@/lib/admin/userDetailSignals";
 import { getFeedbackInsights, getOverviewMetrics, getRealtimeMetrics } from "@/lib/admin/service";
 import { getAdminLoginRateLimitHealth } from "@/lib/admin/loginRateLimit";
 import { computeAdminCapacityEstimate } from "@/lib/admin/capacityEstimate";
@@ -188,7 +195,8 @@ const JOURNEY_LABELS: Record<string, string> = {
 
 export async function getPlayerJourneyMetrics(
   range: AdminTimeRange,
-  filters: { actorType: "all" | "registered" | "guest"; platform: "all" | "pc" | "mobile" }
+  filters: { actorType: "all" | "registered" | "guest"; platform: "all" | "pc" | "mobile" },
+  mode: JourneyFunnelMode = "strict"
 ) {
   const actorFilter =
     filters.actorType === "registered"
@@ -203,7 +211,7 @@ export async function getPlayerJourneyMetrics(
         ? sql`AND platform = 'desktop'`
         : sql``;
   const raw = await db.execute(sql`
-    WITH normalized AS (
+    WITH raw_events AS (
       SELECT
         CASE
           WHEN event_name = 'create_character_success' THEN 'character_create_success'
@@ -216,7 +224,8 @@ export async function getPlayerJourneyMetrics(
           CASE WHEN user_id IS NOT NULL THEN 'u:' || user_id END,
           CASE WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN 'g:' || guest_id END,
           session_id
-        ) AS actor_key
+        ) AS actor_key,
+        event_time
       FROM analytics_events
       WHERE event_time >= ${range.start}
         AND event_time <= ${range.end}
@@ -227,14 +236,24 @@ export async function getPlayerJourneyMetrics(
         )
         ${actorFilter}
         ${platformFilter}
+    ),
+    normalized AS (
+      SELECT stage, actor_key, MIN(event_time) AS first_at
+      FROM raw_events
+      GROUP BY stage, actor_key
     )
-    SELECT stage, COUNT(DISTINCT actor_key)::int AS count
+    SELECT stage, actor_key AS "actorKey", first_at AS "firstAt"
     FROM normalized
-    GROUP BY stage
   `);
-  const counts: Record<string, number> = {};
-  for (const row of rowsOf(raw)) counts[String(row.stage ?? "")] = n(row.count);
-  const stages = computeAdjacentFunnelStages([...JOURNEY_STAGES], counts).map((s) => ({
+  const normalizedEvents = normalizeJourneyFunnelEvents(
+    rowsOf(raw).map((row) => ({
+      stage: String(row.stage ?? ""),
+      actorKey: String(row.actorKey ?? ""),
+      firstAt: row.firstAt as Date | string | number | null,
+    })),
+    { actorType: "all", platform: "all" }
+  );
+  const stages = computeJourneyFunnelStages(JOURNEY_STAGES, normalizedEvents, mode).map((s) => ({
     ...s,
     label: JOURNEY_LABELS[s.eventName] ?? s.eventName,
     metricId: `journey.${s.eventName}`,
@@ -243,6 +262,7 @@ export async function getPlayerJourneyMetrics(
   return {
     range,
     filters,
+    mode,
     sampleSize,
     evidenceSufficiency: sampleSize >= 20 ? "enough" : "insufficient",
     stages,
@@ -264,6 +284,15 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
           ELSE 0
         END AS fallback_used,
         CASE WHEN (payload->>'finalJsonParseSuccess') = 'false' THEN 1 ELSE 0 END AS parse_failed,
+        CASE
+          WHEN (payload->>'rateLimited') = 'true'
+            OR (payload->>'httpStatus') = '429'
+            OR (payload->>'upstreamStatus') = '429'
+            OR (payload->>'routerCode') ~* 'rate|429'
+            OR (payload->>'errorType') ~* 'rate|429'
+          THEN 1
+          ELSE 0
+        END AS rate_limited,
         CASE WHEN (payload->>'firstChunkLatencyMs') ~ '^[0-9]+(\\.[0-9]+)?$' THEN (payload->>'firstChunkLatencyMs')::numeric END AS ttft_ms,
         CASE WHEN (payload->>'totalLatencyMs') ~ '^[0-9]+(\\.[0-9]+)?$' THEN (payload->>'totalLatencyMs')::numeric END AS total_ms,
         CASE WHEN (payload->>'totalTokens') ~ '^[0-9]+$' THEN (payload->>'totalTokens')::int ELSE token_cost END AS tokens
@@ -278,6 +307,7 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
       COALESCE(SUM(failed), 0)::int AS "failedCount",
       COALESCE(SUM(fallback_used), 0)::int AS "fallbackCount",
       COALESCE(SUM(parse_failed), 0)::int AS "parseFailedCount",
+      COALESCE(SUM(rate_limited), 0)::int AS "rateLimitCount",
       COALESCE(SUM(tokens), 0)::int AS "totalTokens",
       COUNT(DISTINCT COALESCE(actor_id, session_id))::int AS "activeActors",
       percentile_cont(0.5) WITHIN GROUP (ORDER BY ttft_ms) AS "ttftP50",
@@ -318,8 +348,10 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
       failureRate: safeRate(n(row.failedCount), sampleSize),
       fallbackRate: safeRate(n(row.fallbackCount), sampleSize),
       parseFailureRate: safeRate(n(row.parseFailedCount), sampleSize),
+      rateLimitRate: safeRate(n(row.rateLimitCount), sampleSize),
       queueWait: { p50: null, p95: null, status: "unavailable" as const },
     },
+    rateLimitCount: n(row.rateLimitCount),
     cost: {
       totalTokens,
       tokenPerEffectiveAction: safeRate(totalTokens, sampleSize),
@@ -336,27 +368,95 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
 }
 
 export async function getContentQualityMetrics(range: AdminTimeRange) {
-  const [feedback, worldRaw, validatorRaw, surveyRaw] = await Promise.all([
+  const actorKeySql = sql`COALESCE(
+    actor_id,
+    CASE WHEN user_id IS NOT NULL THEN 'u:' || user_id END,
+    CASE WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN 'g:' || guest_id END,
+    's:' || session_id
+  )`;
+  const worldIdSql = sql`COALESCE(NULLIF(payload->>'worldId', ''), NULLIF(payload->>'world', ''), NULLIF(payload->>'world_id', ''), 'unknown')`;
+  const chapterIdSql = sql`COALESCE(NULLIF(payload->>'chapterId', ''), NULLIF(payload->>'chapter_id', ''), NULLIF(payload->>'currentChapterId', ''), NULLIF(payload->>'activeChapterId', ''), NULLIF(payload->>'chapter', ''), 'unknown')`;
+  const npcIdSql = sql`COALESCE(NULLIF(payload->>'npcId', ''), NULLIF(payload->>'npc_id', ''), NULLIF(payload->>'targetNpcId', ''), 'unknown')`;
+
+  const [
+    feedback,
+    worldRaw,
+    worldFirstActionRaw,
+    chapterRaw,
+    npcRaw,
+    validatorRaw,
+    retryRaw,
+    surveyRaw,
+  ] = await Promise.all([
     getFeedbackInsights(range).catch(() => null),
     db.execute(sql`
-      SELECT COALESCE(payload->>'worldId', payload->>'world') AS "worldId", COUNT(DISTINCT COALESCE(actor_id, session_id))::int AS count
+      SELECT ${worldIdSql} AS "worldId", COUNT(DISTINCT ${actorKeySql})::int AS count
       FROM analytics_events
       WHERE event_name = 'world_selected'
         AND event_time >= ${range.start}
         AND event_time <= ${range.end}
-      GROUP BY COALESCE(payload->>'worldId', payload->>'world')
+      GROUP BY ${worldIdSql}
       ORDER BY count DESC
       LIMIT 10
     `).catch(() => ({ rows: [] })),
     db.execute(sql`
-      SELECT
-        COALESCE(payload->>'totalIssues', '1') AS "issueCount",
-        payload->'byCode' AS "byCode"
+      SELECT ${worldIdSql} AS "worldId", COUNT(DISTINCT ${actorKeySql})::int AS count
       FROM analytics_events
-      WHERE event_name = 'narrative_validator_issue'
+      WHERE event_name = 'first_effective_action'
         AND event_time >= ${range.start}
         AND event_time <= ${range.end}
-      LIMIT 1000
+      GROUP BY ${worldIdSql}
+      ORDER BY count DESC
+      LIMIT 20
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT event_name AS "eventName", ${worldIdSql} AS "worldId", ${chapterIdSql} AS "chapterId", COUNT(DISTINCT ${actorKeySql})::int AS count
+      FROM analytics_events
+      WHERE event_name IN ('chapter_entered', 'chapter_completed', 'chapter_abandoned')
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      GROUP BY event_name, ${worldIdSql}, ${chapterIdSql}
+      ORDER BY count DESC
+      LIMIT 200
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT event_name AS "eventName", ${worldIdSql} AS "worldId", ${chapterIdSql} AS "chapterId", ${npcIdSql} AS "npcId", COUNT(*)::int AS count
+      FROM analytics_events
+      WHERE event_name IN ('npc_interaction_started', 'npc_interaction_completed', 'npc_interaction_failed')
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      GROUP BY event_name, ${worldIdSql}, ${chapterIdSql}, ${npcIdSql}
+      ORDER BY count DESC
+      LIMIT 200
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        event_name AS "eventName",
+        COALESCE(payload->>'totalIssues', payload->>'issueCount', '1') AS "issueCount",
+        payload->'byCode' AS "byCode",
+        payload->'issueCodes' AS "issueCodes",
+        COALESCE(payload->>'issueCode', payload->>'code') AS "issueCode"
+      FROM analytics_events
+      WHERE event_name IN (
+        'narrative_validator_issue',
+        'narrative_safety_issue',
+        'entity_audit_issue',
+        'pacing_validator_issue',
+        'unknown_entity_blocked',
+        'prompt_injection_blocked',
+        'narrative_protocol_leak'
+      )
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      LIMIT 2000
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT event_name AS "eventName", COUNT(*)::int AS count
+      FROM analytics_events
+      WHERE event_name IN ('retry_clicked', 'regen_clicked')
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      GROUP BY event_name
     `).catch(() => ({ rows: [] })),
     db.execute(sql`
       SELECT COUNT(*)::int AS "sampleSize"
@@ -365,20 +465,22 @@ export async function getContentQualityMetrics(range: AdminTimeRange) {
         AND created_at <= ${range.end}
     `).catch(() => ({ rows: [] })),
   ]);
-  const validatorIssues = rowsOf(validatorRaw).reduce((sum, r) => sum + n(r.issueCount), 0);
-  const sampleSize = Math.max(n(feedback?.totalFeedback), n(rowsOf(surveyRaw)[0]?.sampleSize), validatorIssues);
-  return {
-    range,
-    evidenceSufficiency: sampleSize >= 20 ? "enough" : "insufficient",
-    worldSelections: rowsOf(worldRaw).map((r) => ({ worldId: String(r.worldId ?? "unknown"), count: n(r.count) })),
-    chapters: { entered: [], completed: [], evidenceSufficiency: "insufficient" as const },
-    npcInteractions: [],
-    validatorIssues,
-    retryRegenerationCount: 0,
+  const snapshot = buildContentQualityMetricsSnapshot({
+    worldSelectionRows: rowsOf(worldRaw),
+    worldFirstActionRows: rowsOf(worldFirstActionRaw),
+    chapterRows: rowsOf(chapterRaw),
+    npcRows: rowsOf(npcRaw),
+    validatorRows: rowsOf(validatorRaw),
+    retryRows: rowsOf(retryRaw),
     feedbackTopics: feedback?.topics ?? [],
     feedbackSampleSize: feedback?.totalFeedback ?? 0,
-    negativeFeedbackRate: feedback && feedback.totalFeedback > 0 ? safeRate(feedback.negativeFeedback, feedback.totalFeedback) : 0,
+    negativeFeedbackCount: feedback?.negativeFeedback ?? 0,
     surveySampleSize: n(rowsOf(surveyRaw)[0]?.sampleSize),
+  });
+  return {
+    range,
+    ...snapshot,
+    validatorIssueCount: snapshot.validatorIssues.total,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -582,6 +684,74 @@ export async function listAdminUsers(opts: {
   };
 }
 
+function objectOf(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function previewText(value: unknown, maxChars = 120): string {
+  return text(value)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(/\b1[3-9]\d{9}\b/g, "[phone]")
+    .replace(/\b\d{6,}\b/g, "[number]")
+    .replace(/\s+/g, " ")
+    .slice(0, maxChars);
+}
+
+function summarizePayload(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const sensitive = /password|cookie|session|database_url|api[_-]?key|authorization|secret|token/i;
+  const out: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(out).length >= 8) break;
+    if (sensitive.test(key)) continue;
+    if (typeof raw === "string") {
+      out[key] = previewText(raw, 80);
+    } else if (raw == null || typeof raw === "number" || typeof raw === "boolean") {
+      out[key] = raw;
+    } else {
+      out[key] = Array.isArray(raw) ? `[array:${raw.length}]` : "[object]";
+    }
+  }
+  return out;
+}
+
+function isNegativeFeedback(row: Record<string, unknown>): boolean {
+  const kind = text(row.kind).toLowerCase();
+  const content = text(row.content).toLowerCase();
+  return (
+    /(negative|bug|complaint|risk|bad|fail)/.test(kind) ||
+    /慢|等|卡|失败|不好|看不懂|不知道|崩|丢|存档|难用|失望|不稳定/.test(content)
+  );
+}
+
+function surveyRiskFlags(row: Record<string, unknown>): { negative: boolean; saveAnxiety: boolean } {
+  const answers = objectOf(row.answers);
+  const overallRating = row.overallRating == null ? null : n(row.overallRating);
+  const recommendScore = row.recommendScore == null ? null : n(row.recommendScore);
+  const recommendWillingness = text(answers.recommendWillingness);
+  const saveLossConcern = text(answers.saveLossConcern);
+  const quitReason = text(answers.quitReason);
+  const openText = `${text(answers.topFixOne)} ${text(answers.finalSuggestion)} ${text(row.freeText)}`;
+  return {
+    negative:
+      (overallRating != null && overallRating <= 2) ||
+      (recommendScore != null && recommendScore <= 4) ||
+      recommendWillingness === "unwilling" ||
+      /等待|太久|看不懂|不知道|不稳定|难用|失望|失败/.test(openText),
+    saveAnxiety:
+      saveLossConcern === "quite_worried_frequent_check" ||
+      saveLossConcern === "very_worried_affects_continue" ||
+      saveLossConcern === "already_lost_or_cannot_find" ||
+      quitReason === "save_progress_insecure" ||
+      /存档|进度|保存|丢档|丢失/.test(openText),
+  };
+}
+
 export async function getAdminUserDetail(actorKey: string) {
   const isUser = actorKey.startsWith("u:");
   const isGuest = actorKey.startsWith("g:");
@@ -610,9 +780,32 @@ export async function getAdminUserDetail(actorKey: string) {
         WHERE g.guest_id = ${rawId}
         LIMIT 1
       `);
-  const base = rowsOf(baseRaw)[0];
+  let base = rowsOf(baseRaw)[0];
+  if (!base && isGuest) {
+    const fallbackBaseRaw = await db
+      .execute(sql`
+        SELECT
+          ${rawId} AS "rawId",
+          ('游客 ' || RIGHT(REPLACE(${rawId}, '-', ''), 4)) AS name,
+          COALESCE(SUM(token_cost), 0)::int AS "tokensUsed",
+          0::int AS "playTime",
+          MAX(event_time) AS "lastActive",
+          'guest' AS "actorType"
+        FROM analytics_events
+        WHERE guest_id = ${rawId} OR actor_id = ${actorKey}
+        LIMIT 1
+      `)
+      .catch(() => ({ rows: [] }));
+    base = rowsOf(fallbackBaseRaw)[0];
+  }
   if (!base) return null;
-  const [feedbackRaw, surveyRaw, settlementRaw, eventsRaw] = await Promise.all([
+  const actorEventWhere = isUser
+    ? sql`(user_id = ${rawId} OR actor_id = ${actorKey})`
+    : sql`(guest_id = ${rawId} OR actor_id = ${actorKey})`;
+  const worldIdSql = sql`COALESCE(NULLIF(payload->>'worldId', ''), NULLIF(payload->>'world', ''), NULLIF(payload->>'world_id', ''), 'unknown')`;
+  const chapterIdSql = sql`COALESCE(NULLIF(payload->>'chapterId', ''), NULLIF(payload->>'chapter_id', ''), NULLIF(payload->>'currentChapterId', ''), NULLIF(payload->>'activeChapterId', ''), NULLIF(payload->>'chapter', ''), 'unknown')`;
+  const npcIdSql = sql`COALESCE(NULLIF(payload->>'npcId', ''), NULLIF(payload->>'npc_id', ''), NULLIF(payload->>'targetNpcId', ''), 'unknown')`;
+  const [feedbackRaw, surveyRaw, settlementRaw, eventsRaw, aiRaw, worldsRaw, chaptersRaw, npcsRaw] = await Promise.all([
     db.execute(sql`
       SELECT content, kind, created_at AS "createdAt"
       FROM feedbacks
@@ -621,7 +814,14 @@ export async function getAdminUserDetail(actorKey: string) {
       LIMIT 5
     `).catch(() => ({ rows: [] })),
     db.execute(sql`
-      SELECT survey_key AS "surveyKey", survey_version AS "surveyVersion", overall_rating AS "overallRating", recommend_score AS "recommendScore", created_at AS "createdAt"
+      SELECT
+        survey_key AS "surveyKey",
+        survey_version AS "surveyVersion",
+        answers,
+        free_text AS "freeText",
+        overall_rating AS "overallRating",
+        recommend_score AS "recommendScore",
+        created_at AS "createdAt"
       FROM survey_responses
       WHERE ${isUser ? sql`user_id = ${rawId}` : sql`guest_id = ${rawId}`}
       ORDER BY created_at DESC
@@ -639,33 +839,156 @@ export async function getAdminUserDetail(actorKey: string) {
     db.execute(sql`
       SELECT event_name AS "eventName", event_time AS "eventTime", page, source, payload
       FROM analytics_events
-      WHERE ${isUser ? sql`user_id = ${rawId}` : sql`guest_id = ${rawId}`}
+      WHERE ${actorEventWhere}
       ORDER BY event_time DESC
+      LIMIT 30
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        COUNT(*)::int AS "requestCount",
+        COALESCE(SUM(token_cost), 0)::int AS "tokenCost",
+        COALESCE(AVG(CASE WHEN payload->>'totalLatencyMs' ~ '^[0-9]+(\\.[0-9]+)?$' THEN (payload->>'totalLatencyMs')::numeric ELSE NULL END), 0)::int AS "avgLatency",
+        COUNT(*) FILTER (WHERE COALESCE(payload->>'success', 'true') = 'false')::int AS "failureCount",
+        COUNT(*) FILTER (WHERE COALESCE(payload->>'fallbackUsed', 'false') = 'true')::int AS "fallbackCount",
+        COUNT(*) FILTER (WHERE payload->>'totalLatencyMs' ~ '^[0-9]+(\\.[0-9]+)?$' AND (payload->>'totalLatencyMs')::numeric >= 18000)::int AS "slowRequestCount"
+      FROM analytics_events
+      WHERE ${actorEventWhere}
+        AND event_name = 'chat_request_finished'
+      LIMIT 1
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT ${worldIdSql} AS "worldId", COUNT(*)::int AS count, MAX(event_time) AS "lastEventAt"
+      FROM analytics_events
+      WHERE ${actorEventWhere}
+        AND event_name IN ('world_selected', 'enter_main_game', 'first_effective_action', 'chapter_entered', 'chapter_completed', 'chapter_abandoned')
+      GROUP BY ${worldIdSql}
+      ORDER BY count DESC, "lastEventAt" DESC
+      LIMIT 10
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        ${worldIdSql} AS "worldId",
+        ${chapterIdSql} AS "chapterId",
+        COUNT(*) FILTER (WHERE event_name = 'chapter_entered')::int AS entered,
+        COUNT(*) FILTER (WHERE event_name = 'chapter_completed')::int AS completed,
+        COUNT(*) FILTER (WHERE event_name = 'chapter_abandoned')::int AS abandoned,
+        MAX(event_time) AS "lastEventAt"
+      FROM analytics_events
+      WHERE ${actorEventWhere}
+        AND event_name IN ('chapter_entered', 'chapter_completed', 'chapter_abandoned')
+      GROUP BY ${worldIdSql}, ${chapterIdSql}
+      ORDER BY "lastEventAt" DESC
+      LIMIT 20
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        ${npcIdSql} AS "npcId",
+        COUNT(*) FILTER (WHERE event_name = 'npc_interaction_started')::int AS started,
+        COUNT(*) FILTER (WHERE event_name = 'npc_interaction_completed')::int AS completed,
+        COUNT(*) FILTER (WHERE event_name = 'npc_interaction_failed')::int AS failed,
+        MAX(event_time) AS "lastEventAt"
+      FROM analytics_events
+      WHERE ${actorEventWhere}
+        AND event_name IN ('npc_interaction_started', 'npc_interaction_completed', 'npc_interaction_failed')
+      GROUP BY ${npcIdSql}
+      ORDER BY "lastEventAt" DESC
       LIMIT 20
     `).catch(() => ({ rows: [] })),
   ]);
-  return {
-    actorKey,
-    basic: {
-      rawId: String(base.rawId ?? ""),
-      name: String(base.name ?? ""),
-      actorType: String(base.actorType ?? ""),
-      tokensUsed: n(base.tokensUsed),
-      playTime: n(base.playTime),
-      lastActive: iso(base.lastActive),
-    },
-    recentFeedback: rowsOf(feedbackRaw).map((r) => ({
-      kind: String(r.kind ?? "open"),
-      contentPreview: String(r.content ?? "").slice(0, 120),
-      createdAt: iso(r.createdAt),
-    })),
-    recentSurvey: rowsOf(surveyRaw).map((r) => ({
+  const basic = {
+    rawId: String(base.rawId ?? ""),
+    name: String(base.name ?? ""),
+    actorType: String(base.actorType ?? ""),
+    tokensUsed: n(base.tokensUsed),
+    playTime: n(base.playTime),
+    lastActive: iso(base.lastActive),
+  };
+  const feedbackRows = rowsOf(feedbackRaw);
+  const surveyRows = rowsOf(surveyRaw);
+  const recentFeedback = feedbackRows.map((r) => ({
+    kind: String(r.kind ?? "open"),
+    contentPreview: previewText(r.content),
+    createdAt: iso(r.createdAt),
+    negative: isNegativeFeedback(r),
+  }));
+  const recentSurvey = surveyRows.map((r) => {
+    const answers = objectOf(r.answers);
+    return {
       surveyKey: String(r.surveyKey ?? ""),
       surveyVersion: String(r.surveyVersion ?? ""),
       overallRating: r.overallRating == null ? null : n(r.overallRating),
       recommendScore: r.recommendScore == null ? null : n(r.recommendScore),
+      experienceStage: text(answers.experienceStage) || null,
+      quitReason: text(answers.quitReason) || null,
+      saveLossConcern: text(answers.saveLossConcern) || null,
+      topFixPreview: previewText(answers.topFixOne),
       createdAt: iso(r.createdAt),
+      ...surveyRiskFlags(r),
+    };
+  });
+  const aiRow = rowsOf(aiRaw)[0] ?? {};
+  const aiExperience = {
+    requestCount: n(aiRow.requestCount),
+    avgLatency: n(aiRow.avgLatency),
+    failureCount: n(aiRow.failureCount),
+    fallbackCount: n(aiRow.fallbackCount),
+    slowRequestCount: n(aiRow.slowRequestCount),
+    tokenCost: n(aiRow.tokenCost),
+  };
+  const contentPath = {
+    worlds: rowsOf(worldsRaw).map((r) => ({
+      worldId: String(r.worldId ?? "unknown"),
+      count: n(r.count),
+      lastEventAt: iso(r.lastEventAt),
     })),
+    chapters: rowsOf(chaptersRaw).map((r) => ({
+      worldId: String(r.worldId ?? "unknown"),
+      chapterId: String(r.chapterId ?? "unknown"),
+      entered: n(r.entered),
+      completed: n(r.completed),
+      abandoned: n(r.abandoned),
+      lastEventAt: iso(r.lastEventAt),
+    })),
+    npcs: rowsOf(npcsRaw).map((r) => ({
+      npcId: String(r.npcId ?? "unknown"),
+      started: n(r.started),
+      completed: n(r.completed),
+      failed: n(r.failed),
+      lastEventAt: iso(r.lastEventAt),
+    })),
+  };
+  const recentEvents = rowsOf(eventsRaw).map((r) => ({
+    eventName: String(r.eventName ?? ""),
+    eventTime: iso(r.eventTime),
+    page: r.page ? String(r.page) : null,
+    source: r.source ? String(r.source) : null,
+    payloadSummary: summarizePayload(r.payload),
+  }));
+  const feedbackAndSurvey = {
+    recentFeedback,
+    recentSurvey,
+    negativeFeedbackCount: recentFeedback.filter((r) => r.negative).length,
+    negativeSurveyCount: recentSurvey.filter((r) => r.negative).length,
+    saveAnxietyCount: recentSurvey.filter((r) => r.saveAnxiety).length,
+  };
+  const signals = buildAdminUserDetailSignals({
+    basic,
+    recentEvents,
+    feedbackAndSurvey,
+    aiExperience,
+    contentPath,
+  });
+  return {
+    actorKey,
+    basic,
+    journeyStage: signals.journeyStage,
+    contentPath,
+    aiExperience,
+    feedbackAndSurvey,
+    riskTags: signals.riskTags,
+    suggestedOpsActions: signals.suggestedOpsActions,
+    recentFeedback,
+    recentSurvey,
     recentSettlements: rowsOf(settlementRaw).map((r) => ({
       grade: String(r.grade ?? ""),
       survivalTimeSeconds: n(r.survivalTimeSeconds),
@@ -673,15 +996,6 @@ export async function getAdminUserDetail(actorKey: string) {
       maxFloorLabel: String(r.maxFloorLabel ?? ""),
       createdAt: iso(r.createdAt),
     })),
-    recentEvents: rowsOf(eventsRaw).map((r) => ({
-      eventName: String(r.eventName ?? ""),
-      eventTime: iso(r.eventTime),
-      page: r.page ? String(r.page) : null,
-      source: r.source ? String(r.source) : null,
-      payloadSummary:
-        r.payload && typeof r.payload === "object"
-          ? Object.fromEntries(Object.entries(r.payload as Record<string, unknown>).slice(0, 8))
-          : {},
-    })),
+    recentEvents,
   };
 }

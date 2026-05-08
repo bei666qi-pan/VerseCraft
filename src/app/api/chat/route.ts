@@ -13,7 +13,7 @@ import {
   sessionMemoryRowLooksPresent,
   type SessionMemoryRow,
 } from "@/lib/memoryCompress";
-import { checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
+import { buildQuotaLimitMessage, checkQuota, incrementQuota, estimateTokensFromInput } from "@/lib/quota";
 import { markUserActive } from "@/lib/presence";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import {
@@ -384,7 +384,9 @@ async function resolveChatQueueGate(
   if (!validated.ok) return { queueId: null, response: null };
   if (validated.clientPurpose === "options_regen_only") return { queueId: null, response: null };
 
+  const queueGateStartedAt = Date.now();
   const userId = await resolveAuthenticatedUserIdForQueue(req.headers);
+  const queueGuestId = userId ? null : getGuestIdFromClientState(validated.clientState);
   const identity = buildChatQueueIdentity({
     headers: req.headers,
     sessionId: validated.sessionId,
@@ -419,6 +421,33 @@ async function resolveChatQueueGate(
     reason: "manual",
   });
   if (!admission.ok) {
+    void recordGenericAnalyticsEvent({
+      eventId: `${requestId}:chat_request_finished_queue_rejected`,
+      idempotencyKey: `${requestId}:chat_request_finished_queue_rejected`,
+      userId,
+      guestId: queueGuestId,
+      sessionId: validated.sessionId ?? "unknown_session",
+      eventName: "chat_request_finished",
+      eventTime: new Date(),
+      page: "/play",
+      source: "chat_queue",
+      platform: "unknown",
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        requestId,
+        model: "chat_queue",
+        success: false,
+        stage: "queue_admission",
+        httpStatus: 429,
+        upstreamStatus: null,
+        rateLimited: true,
+        queueReason: admission.reason,
+        queueRetryAfterSeconds: admission.retryAfterSeconds,
+        firstChunkLatencyMs: null,
+        totalLatencyMs: Date.now() - queueGateStartedAt,
+      },
+    }).catch(() => {});
     return {
       queueId: null,
       response: createChatQueueJsonResponse(
@@ -1227,24 +1256,55 @@ async function postChatInternal(req: Request) {
   });
   const systemPromptForQuota = `${playerDmStablePrefix}\n\n${dynamicCoreForQuota}`;
 
-  const shouldRunStrictQuotaBeforeFirstToken =
-    !(perfFlags.enableLightweightFastPath && laneSideEffectPlan.compactPrompt);
-  if (userId && shouldRunStrictQuotaBeforeFirstToken) {
+  const shouldRunStrictQuotaBeforeFirstToken = true;
+  if ((userId || chatGuestId) && shouldRunStrictQuotaBeforeFirstToken) {
     try {
       const estimated = estimateTokensFromInput(systemPromptForQuota, messages);
       const quotaCheckStartAt = nowMs();
-      const quotaResult = await checkQuota(userId, estimated);
+      const quotaResult = await checkQuota({
+        userId,
+        guestId: userId ? null : chatGuestId,
+        estimatedTokens: estimated,
+      });
       ttftProfile.quotaCheckMs = elapsedMs(quotaCheckStartAt);
       if (!quotaResult.ok) {
-        const msg =
-          quotaResult.reason === "banned"
-            ? "账号已被封禁，无法继续使用本平台。"
-            : quotaResult.reason === "token_limit"
-              ? "今日 Token 配额已用尽，请明天再试。"
-              : "今日动作次数已达上限，请明天再试。";
+        const status = quotaResult.reason === "banned" ? 403 : 429;
+        const msg = buildQuotaLimitMessage(quotaResult);
+        void recordGenericAnalyticsEvent({
+          eventId: `${requestId}:chat_request_finished_quota`,
+          idempotencyKey: `${requestId}:chat_request_finished_quota`,
+          userId,
+          guestId: userId ? null : chatGuestId,
+          sessionId: sessionId ?? "unknown_session",
+          eventName: "chat_request_finished",
+          eventTime: new Date(),
+          page: "/play",
+          source: "chat",
+          platform,
+          tokenCost: 0,
+          playDurationDeltaSec: 0,
+          payload: {
+            requestId,
+            model: "quota_guard",
+            success: false,
+            stage: "quota",
+            httpStatus: status,
+            upstreamStatus: null,
+            rateLimited: status === 429,
+            quotaReason: quotaResult.reason,
+            quotaActorType: quotaResult.actorType,
+            quotaDailyTokenLimit: quotaResult.dailyTokenLimit,
+            quotaUsedTokens: quotaResult.usedTokens,
+            quotaEstimatedTokens: quotaResult.estimatedTokens,
+            quotaBonusTokens: quotaResult.bonusTokens,
+            quotaSurveyBonus: quotaResult.hasSurveyBonus,
+            firstChunkLatencyMs: null,
+            totalLatencyMs: Date.now() - requestStartedAt,
+          },
+        }).catch(() => {});
         return createSseResponse({
           requestId,
-          status: quotaResult.reason === "banned" ? 403 : 429,
+          status,
           payload: JSON.stringify({
             is_action_legal: false,
             sanity_damage: 0,
@@ -1258,7 +1318,7 @@ async function postChatInternal(req: Request) {
       console.error("[api/chat] quota check failed, proceeding without quota", quotaErr);
       if (ttftProfile.quotaCheckMs === null) ttftProfile.quotaCheckMs = 0;
     }
-  } else if (userId) {
+  } else if (userId || chatGuestId) {
     /**
      * 鍗曟満鍙欎簨杩囩▼鍒嗗眰绛栫暐锛?     * - 蹇溅閬撲笉鍋氣€滈噸鍨嬮厤棰?DB 鏍￠獙鈥濋瀛楀墠闃诲锛岄伩鍏嶆妸鏅€氬洖鍚堝綋鎴愰珮浠峰€煎澶栨彁浜ゅ鐞嗭紱
      * - 鍩虹闄愭祦锛坮iskControl锛変笌鍐呭瀹夊叏锛坢oderateInputOnServer锛変粛鐒朵繚鐣欙紱
@@ -2437,6 +2497,7 @@ async function postChatInternal(req: Request) {
     const first = await callUpstreamOnce({ markStart: true });
     if (!first.ok) {
       const isTimeout = first.code === "ABORTED";
+      const isUpstreamRateLimited = first.lastHttpStatus === 429 || /rate_limit|429/i.test(String(first.code));
       console.error(`\x1b[31m[api/chat] AI router failed\x1b[0m`, {
         code: first.code,
         message: first.message,
@@ -2462,6 +2523,9 @@ async function postChatInternal(req: Request) {
           stage: "ai_router",
           isTimeout,
           routerCode: first.code,
+          httpStatus: first.lastHttpStatus ?? null,
+          upstreamStatus: first.lastHttpStatus ?? null,
+          rateLimited: isUpstreamRateLimited,
           firstChunkLatencyMs: null,
           totalLatencyMs: Date.now() - requestStartedAt,
           riskLane: riskLane === "fast" ? "fast" : "slow",

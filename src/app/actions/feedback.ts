@@ -16,6 +16,7 @@ import {
   type HomeSurveyAnswers,
 } from "@/lib/survey/productSurveyHomeV1";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
+import type { AnalyticsPlatform } from "@/lib/analytics/types";
 
 type FeedbackActionResult = {
   success: boolean;
@@ -140,6 +141,12 @@ export async function submitProductSurvey(input: {
   }
 
   try {
+    const clientMeta = input.clientMeta ?? {};
+    const platformRaw = typeof clientMeta.platform === "string" ? clientMeta.platform : "";
+    const platform: AnalyticsPlatform = platformRaw === "mobile" || platformRaw === "desktop" ? platformRaw : "unknown";
+    const payloadActorType = userId ? "registered" : "guest";
+    const payloadGuestId = userId ? "registered_user" : gidRaw ?? "missing_guest";
+
     await db.insert(surveyResponses).values({
       userId: userId ?? null,
       guestId: gidRaw && isValidGuestId(gidRaw) ? gidRaw : null,
@@ -153,7 +160,12 @@ export async function submitProductSurvey(input: {
       contactIntent: !!input.contactIntent,
       userAgreement: true,
       privacyPolicy: true,
-      clientMeta: input.clientMeta ?? {},
+      clientMeta: {
+        ...clientMeta,
+        actorType: payloadActorType,
+        platform,
+        guestId: payloadGuestId,
+      },
     });
 
     const anonKey = userId ?? `guest:${gidRaw ?? "unknown"}`;
@@ -161,17 +173,24 @@ export async function submitProductSurvey(input: {
       eventId: `${anonKey}:survey_embedded:${Date.now()}`,
       idempotencyKey: `survey_embedded:${input.surveyKey}:${anonKey}:${getUtcDateKey(new Date())}`,
       userId: userId,
+      guestId: gidRaw && isValidGuestId(gidRaw) ? gidRaw : null,
       sessionId: gidRaw ? `survey:${gidRaw}` : "survey:user",
       eventName: "survey_submitted",
       eventTime: new Date(),
       page: "/",
       source: "survey_embedded",
-      platform: "unknown",
+      platform,
       tokenCost: 0,
       playDurationDeltaSec: 0,
       payload: {
         surveyKey: input.surveyKey,
         surveyVersion: input.surveyVersion,
+        version: input.surveyVersion,
+        stepIndex: 9,
+        stepTotal: 10,
+        questionId: "submit",
+        actorType: payloadActorType,
+        guestId: payloadGuestId,
         mode: "embedded",
         // 兼容首页问卷新版字段；用于统计分析，不参与业务逻辑。
         createFriction: (answers as HomeSurveyAnswers).createFriction,

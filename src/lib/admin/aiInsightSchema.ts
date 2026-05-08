@@ -1,4 +1,4 @@
-import type { AiInsightOutput } from "@/lib/admin/aiInsights";
+import type { AiInsightOutput } from "@/lib/admin/aiInsightTypes";
 import { validateAnalysisOutputBase } from "@/lib/ai/analysis/schema";
 
 const PRIORITY = new Set(["immediate", "this_week", "mid_term"]);
@@ -25,7 +25,11 @@ export function validateAiInsightOutput(input: unknown): AiInsightOutput | null 
   for (const item of x.recommendations) {
     const r = item as Record<string, unknown>;
     if (typeof r.title !== "string" || typeof r.claim !== "string") return null;
-    if (!Array.isArray(r.evidenceMetrics)) return null;
+    if (!Array.isArray(r.evidenceMetrics) || r.evidenceMetrics.length === 0) return null;
+    for (const evidence of r.evidenceMetrics) {
+      const e = evidence as Record<string, unknown>;
+      if (typeof e.metricId !== "string" || typeof e.label !== "string" || typeof e.value !== "string" || typeof e.source !== "string") return null;
+    }
     if (typeof r.sampleSize !== "number") return null;
     if (!CONF_LEVEL.has(String(r.confidence ?? ""))) return null;
     if (typeof r.risk !== "string" || typeof r.suggestedExperiment !== "string") return null;

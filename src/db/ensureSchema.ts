@@ -86,6 +86,9 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS survey_responses_created_idx ON survey_responses (created_at);
     `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS survey_responses_created_key_idx ON survey_responses (created_at, survey_key);
+    `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS compliance_inquiries (
@@ -286,10 +289,13 @@ export async function ensureRuntimeSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS analytics_events_user_event_time_idx ON analytics_events (user_id, event_time);
     `);
     await client.query(`
-      CREATE INDEX IF NOT EXISTS analytics_events_event_name_event_time_idx ON analytics_events (event_name, event_time);
+      CREATE INDEX IF NOT EXISTS analytics_events_event_name_time_idx ON analytics_events (event_name, event_time);
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS analytics_events_session_id_idx ON analytics_events (session_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS analytics_events_session_event_time_idx ON analytics_events (session_id, event_time);
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS analytics_events_page_time_idx ON analytics_events (page, event_time);
@@ -299,6 +305,9 @@ export async function ensureRuntimeSchema(): Promise<void> {
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS analytics_events_guest_event_time_idx ON analytics_events (guest_id, event_time);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS analytics_events_payload_world_id_time_idx ON analytics_events ((payload->>'worldId'), event_time);
     `);
 
     await client.query(`

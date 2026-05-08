@@ -82,6 +82,7 @@ export const surveyResponses = pgTable(
     keyUserIdx: index("survey_responses_key_user_idx").on(table.surveyKey, table.userId),
     keyGuestIdx: index("survey_responses_key_guest_idx").on(table.surveyKey, table.guestId),
     createdIdx: index("survey_responses_created_idx").on(table.createdAt),
+    createdKeyIdx: index("survey_responses_created_key_idx").on(table.createdAt, table.surveyKey),
   })
 );
 
@@ -424,6 +425,7 @@ export const analyticsEvents = pgTable(
     userEventTimeIdx: index("analytics_events_user_event_time_idx").on(table.userId, table.eventTime),
     eventNameTimeIdx: index("analytics_events_event_name_time_idx").on(table.eventName, table.eventTime),
     sessionIdx: index("analytics_events_session_id_idx").on(table.sessionId),
+    sessionEventTimeIdx: index("analytics_events_session_event_time_idx").on(table.sessionId, table.eventTime),
     pageTimeIdx: index("analytics_events_page_time_idx").on(table.page, table.eventTime),
     actorEventTimeIdx: index("analytics_events_actor_event_time_idx").on(table.actorId, table.eventTime),
     guestEventTimeIdx: index("analytics_events_guest_event_time_idx").on(table.guestId, table.eventTime),

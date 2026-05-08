@@ -1,7 +1,6 @@
 import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
 import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
-import { getAiInsights } from "@/lib/admin/service";
 import { generateRuleFallbackAiInsightReport, getCachedAiInsightReport, refreshAiInsightReport } from "@/lib/admin/aiInsights";
 import { invalidateCompletionCacheByTask } from "@/lib/ai/governance/responseCache";
 import { invalidateAiAnalysisSnapshot } from "@/lib/ai/analysis/snapshotStore";
@@ -45,9 +44,9 @@ export async function GET(req: Request) {
         headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" },
       });
     }
-    const data = await getAiInsights(range);
-    return adminJson(adminOk(data), {
-      headers: { "Cache-Control": "private, max-age=180, stale-while-revalidate=300" },
+    const data = await generateRuleFallbackAiInsightReport(range);
+    return adminJson(adminOk({ ...data, source: "rule_fallback" as const }, { degraded: true, reason: "ai_insights_snapshot_missing_used_rule_fallback" }), {
+      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=120" },
     });
   } catch (error) {
     console.error("[api/admin/ai-insights] failed", error);
@@ -118,6 +117,13 @@ export async function POST(req: Request) {
     console.error("[api/admin/ai-insights:post] failed", error);
     try {
       const fallback = await generateRuleFallbackAiInsightReport(range);
+      await recordAdminAuditLog({
+        action: "admin_ai_insight_refresh",
+        actor: guard.actor,
+        success: false,
+        reason: "ai_refresh_failed_used_rule_fallback",
+        metadata: { range: range.preset, model: fallback.model },
+      }).catch(() => undefined);
       return adminJson(
         adminOk(
           {
@@ -130,7 +136,13 @@ export async function POST(req: Request) {
         { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" } }
       );
     } catch {
-      // fall through
+      await recordAdminAuditLog({
+        action: "admin_ai_insight_refresh",
+        actor: guard.actor,
+        success: false,
+        reason: "ai_insights_generation_failed",
+        metadata: { range: range.preset },
+      }).catch(() => undefined);
     }
     return adminJson(adminFail<null>("ai_insights_generation_failed", null), {
       status: 200,

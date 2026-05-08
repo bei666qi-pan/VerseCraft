@@ -9,6 +9,11 @@ import {
   validateAuthSecretLength,
   validatePostgresDatabaseUrl,
 } from "@/lib/config/validateCriticalEnv";
+import {
+  DEFAULT_GUEST_DAILY_TOKEN_LIMIT,
+  DEFAULT_REGISTERED_DAILY_TOKEN_LIMIT,
+  DEFAULT_SURVEY_BONUS_DAILY_TOKEN_LIMIT,
+} from "@/lib/quotaPolicy";
 
 export { EnvValidationError } from "@/lib/config/validateCriticalEnv";
 
@@ -38,6 +43,8 @@ export interface ServerConfig {
   runtimeSchemaEnsure: string;
   migrateOnBoot: string;
   dailyTokenLimit: number;
+  guestDailyTokenLimit: number;
+  surveyBonusDailyTokenLimit: number;
   dailyActionLimit: number;
   securityModerationEnabled: boolean;
   securityModerationProvider: string;
@@ -95,7 +102,12 @@ function loadServerConfig(): ServerConfig {
     auditHmacSecret,
     runtimeSchemaEnsure: envRaw("RUNTIME_SCHEMA_ENSURE") ?? "1",
     migrateOnBoot: envRaw("MIGRATE_ON_BOOT") ?? "1",
-    dailyTokenLimit: envNumber("DAILY_TOKEN_LIMIT", 50_000),
+    dailyTokenLimit: envNumber("DAILY_TOKEN_LIMIT", DEFAULT_REGISTERED_DAILY_TOKEN_LIMIT),
+    guestDailyTokenLimit: envNumber("GUEST_DAILY_TOKEN_LIMIT", DEFAULT_GUEST_DAILY_TOKEN_LIMIT),
+    surveyBonusDailyTokenLimit: envNumber(
+      "SURVEY_BONUS_DAILY_TOKEN_LIMIT",
+      DEFAULT_SURVEY_BONUS_DAILY_TOKEN_LIMIT
+    ),
     dailyActionLimit: envNumber("DAILY_ACTION_LIMIT", 200),
     securityModerationEnabled: moderationEnabled,
     securityModerationProvider: moderationProvider,

@@ -82,6 +82,61 @@
 
 `pnpm analyze:admin-sql` 需要真实 `DATABASE_URL`。DB、Redis、AI 网关不可用时，必须记录失败位置和是否与代码改动相关。
 
+## 429 与承载观测
+
+- `/api/chat` 的本地 quota 拦截和上游 AI 429 都写入 `chat_request_finished`，payload 标记 `rateLimited=true`、`httpStatus` 或 `upstreamStatus`。
+- “AI 体验”tab 展示 `429 限流率` 与限流次数，用于判断是玩家额度耗尽、AI 网关限流，还是服务器承载接近上限。
+- 聊天队列只在运行中请求达到 `VC_CHAT_QUEUE_MAX_RUNNING` 后启用；未达到承载阈值时不提前排队。队列票据必须返回 ETA，前端显示预计等待时间。
+
+## 数据质量维护说明
+
+- 入口：`GET /api/admin/event-health?range=today|yesterday|7d|30d&limit=20`。
+- 口径：仅统计 `analytics_events` 的结构化字段，不展示原始玩家输入、完整 narrative、cookie、password、DATABASE_URL 或 AI key。
+- 重点观察：`invalidContractCount`、`missingActorCount`、`missingGuestCount`、`anonSessionCount`、`unknownPlatformCount`、`missingWorldIdCount`、`missingChapterIdCount`。
+- 运营判断：当 `totalEvents < 20` 或核心漏斗事件覆盖不足时，后台应显示 `insufficient_sample`，只用于补采排查，不输出趋势判断。
+- 性能维护：新增事件质量查询已纳入 `scripts/admin-explain-baseline.ts`，生产大表变慢时先跑 `pnpm analyze:admin-sql` 看是否命中 `analytics_events_event_name_time_idx`、`analytics_events_actor_event_time_idx`、`analytics_events_guest_event_time_idx`、`analytics_events_session_event_time_idx`。
+
+## 事件缺失排查流程
+
+1. 打开“数据质量”tab，确认 `eventCoverage` 中缺失的核心事件名。
+2. 对照 `docs/analytics-tracking-plan.md` 和 `src/lib/analytics/eventTaxonomy.ts`，确认该事件的触发位置、必填 identity 和 payload key。
+3. 若游客事件缺 `guest_id` 或落到 `anon_session`，优先检查 `HomeClient` 调用是否传入 `guestId`、`navigator.userAgent` 和稳定 `sessionId`。
+4. 若 `platform` 为 `unknown`，检查 `trackGameplayEvent` 调用方是否传入 platform，或 user-agent 推导是否被服务端动作缺参绕过。
+5. 若 world/chapter 缺失，检查 `worldId`、`chapterId` 是否在事件 payload 中写入；不要从 narrative 反推。
+6. 修复后先用 `pnpm test:unit` 覆盖 taxonomy/identity，再用 `pnpm test:admin:api` 验证后台 envelope。
+
+## 问卷分析说明
+
+- 入口：`GET /api/admin/survey-aggregate?range=7d`。
+- 数据源：`survey_responses` 保存问卷答案，`analytics_events` 保存问卷入口、步骤与提交漏斗事件。
+- 输出：完成漏斗、每题流失、选项分布、开放文本主题、低评分样本、推荐意愿分布、注册/游客与平台分群。
+- 开放文本主题默认使用本地 rule-based fallback；没有 AI key 时也必须可用。
+- 隐私要求：低评分样本只展示截断摘要，必须脱敏邮箱、手机号、长数字，不展示完整开放文本。
+- 性能索引：`survey_responses_created_key_idx(created_at, survey_key)` 支撑按时间范围和问卷 key 聚合。
+
+## 内容质量说明
+
+- 入口：`GET /api/admin/content-quality?range=7d`。
+- 数据源：`world_selected`、`first_effective_action`、`chapter_entered/completed/abandoned`、`npc_interaction_started/completed/failed`、`retry_clicked`、`regen_clicked`、validator issue 事件、`feedbacks`、`survey_responses`。
+- 展示：世界排行、世界首行动率、章节完成/放弃率、NPC 互动排行、validator issue 分类、重试/重新生成次数、负反馈率、问卷样本量。
+- 样本不足：最大样本数小于 20 时返回 `degraded=true`、`reason=insufficient_sample`，运营只能看到采样缺口，不应得出内容趋势。
+- 维护重点：`chapters` 和 `npcInteractions` 不得固定空壳；若为空，先查事件是否真正写入，再查 payload 是否缺 `worldId/chapterId/npcId`。
+
+## 索引迁移与回滚
+
+本次后台性能索引只做 additive migration：`drizzle/0009_admin_analytics_indexes.sql`。如果需要回滚索引本身，应另起一次受控迁移或在维护窗口手动执行：
+
+```sql
+DROP INDEX IF EXISTS analytics_events_event_name_time_idx;
+DROP INDEX IF EXISTS analytics_events_actor_event_time_idx;
+DROP INDEX IF EXISTS analytics_events_guest_event_time_idx;
+DROP INDEX IF EXISTS analytics_events_session_event_time_idx;
+DROP INDEX IF EXISTS analytics_events_payload_world_id_time_idx;
+DROP INDEX IF EXISTS survey_responses_created_key_idx;
+```
+
+不要删除 `analytics_events` 或 `survey_responses` 数据表；事件与问卷是 append-only 口径，代码回滚不要求清理历史数据。
+
 ## 回滚方式
 
 1. 回滚本次后台代码提交。

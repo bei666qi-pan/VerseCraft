@@ -20,6 +20,8 @@ test.describe("Admin API integration", () => {
       "/api/admin/player-journey?range=7d",
       "/api/admin/ai-experience?range=7d",
       "/api/admin/content-quality?range=7d",
+      "/api/admin/survey-aggregate?range=7d",
+      "/api/admin/event-health?range=7d",
       "/api/admin/system-health",
       "/api/admin/users?limit=5",
       "/api/admin/audit-logs?limit=5",
@@ -68,9 +70,12 @@ test.describe("Admin API integration", () => {
     expect([200, 500]).toContain(realtime.status());
 
     const backofficeTargets = [
-      "/api/admin/player-journey?range=7d",
+      "/api/admin/player-journey?range=7d&mode=strict&actorType=all&platform=all",
+      "/api/admin/player-journey?range=7d&mode=any_order&actorType=all&platform=all",
       "/api/admin/ai-experience?range=7d",
       "/api/admin/content-quality?range=7d",
+      "/api/admin/survey-aggregate?range=7d",
+      "/api/admin/event-health?range=7d&limit=5",
       "/api/admin/system-health",
       "/api/admin/users?limit=5",
       "/api/admin/audit-logs?limit=5",
@@ -84,6 +89,27 @@ test.describe("Admin API integration", () => {
       const body = (await res.json()) as Record<string, unknown>;
       expect(body).toHaveProperty("ok");
       expect(body).toHaveProperty("degraded");
+    }
+
+    const usersList = await request.get("/api/admin/users?limit=5", {
+      headers: { Cookie: cookie },
+      timeout: 20_000,
+    });
+    expect([200, 500]).toContain(usersList.status());
+    const usersBody = (await usersList.json()) as Record<string, unknown>;
+    const usersData = usersBody.data as { rows?: Array<{ actorKey?: unknown }> } | undefined;
+    const firstActorKey = Array.isArray(usersData?.rows)
+      ? usersData.rows.map((row) => (typeof row.actorKey === "string" ? row.actorKey : "")).find(Boolean)
+      : null;
+    if (firstActorKey) {
+      const detail = await request.get(`/api/admin/users/${encodeURIComponent(firstActorKey)}`, {
+        headers: { Cookie: cookie },
+        timeout: 20_000,
+      });
+      expect([200, 404, 500]).toContain(detail.status());
+      const detailBody = (await detail.json()) as Record<string, unknown>;
+      expect(detailBody).toHaveProperty("ok");
+      expect(detailBody).toHaveProperty("degraded");
     }
 
     const health = await request.get("/api/admin/system-health", {

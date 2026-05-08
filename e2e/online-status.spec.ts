@@ -55,6 +55,11 @@ test.describe("在线状态", () => {
     await page.route("**/api/admin/content-quality**", async (route) => {
       await route.fulfill({ json: envelope({ evidenceSufficiency: "insufficient", worldSelections: [], feedbackTopics: [], updatedAt: new Date().toISOString() }) });
     });
+    await page.route("**/api/admin/survey-aggregate**", async (route) => {
+      await route.fulfill({
+        json: envelope({ evidenceSufficiency: "insufficient", totalResponses: 0, completionFunnel: [], perQuestionDropoff: [], textThemes: [], lowRatingSamples: [], recommendScoreDistribution: [], segmentBreakdown: { actorType: [], platform: [], experienceStage: [] } }),
+      });
+    });
     await page.route("**/api/admin/system-health**", async (route) => {
       await route.fulfill({
         json: envelope({

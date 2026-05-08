@@ -2,6 +2,7 @@ import { adminJson, adminOk, adminFail } from "@/lib/admin/apiEnvelope";
 import { verifyAdminRequest } from "@/lib/admin/authGuard";
 import { parseAdminTimeRangeFromSearchParams } from "@/lib/admin/timeRange";
 import { getPlayerJourneyMetrics } from "@/lib/admin/backofficeMetrics";
+import { parseJourneyFunnelMode } from "@/lib/admin/journeyFunnel";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,12 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const range = parseAdminTimeRangeFromSearchParams(url.searchParams);
+  const mode = parseJourneyFunnelMode(url.searchParams.get("mode"));
   try {
     const data = await getPlayerJourneyMetrics(range, {
       actorType: parseActorType(url.searchParams.get("actorType")),
       platform: parsePlatform(url.searchParams.get("platform")),
-    });
+    }, mode);
     return adminJson(adminOk(data, { degraded: data.evidenceSufficiency === "insufficient", reason: data.evidenceSufficiency === "insufficient" ? "insufficient_sample" : null }), {
       headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=120" },
     });
@@ -34,6 +36,7 @@ export async function GET(req: Request) {
       adminFail(reason, {
         range,
         filters: { actorType: parseActorType(url.searchParams.get("actorType")), platform: parsePlatform(url.searchParams.get("platform")) },
+        mode,
         sampleSize: 0,
         evidenceSufficiency: "insufficient",
         stages: [],

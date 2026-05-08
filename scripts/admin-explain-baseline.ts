@@ -73,6 +73,65 @@ const QUERIES: BaselineQuery[] = [
     `,
   },
   {
+    name: "event_health_event_coverage",
+    thresholdMs: 450,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT
+        event_name,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE actor_id IS NULL)::int AS missing_actor,
+        COUNT(*) FILTER (WHERE session_id = 'anon_session')::int AS anon_session,
+        COUNT(*) FILTER (WHERE platform IS NULL OR platform = 'unknown')::int AS unknown_platform
+      FROM analytics_events
+      WHERE event_time >= NOW() - INTERVAL '7 days'
+        AND event_time <= NOW()
+      GROUP BY event_name
+      ORDER BY total DESC
+      LIMIT 100;
+    `,
+  },
+  {
+    name: "strict_player_journey",
+    thresholdMs: 650,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      WITH raw_events AS (
+        SELECT
+          CASE
+            WHEN event_name = 'create_character_success' THEN 'character_create_success'
+            WHEN event_name = 'game_settlement' THEN 'settlement_submitted'
+            WHEN event_name IN ('save_sync', 'save_load') THEN 'save_created'
+            ELSE event_name
+          END AS stage,
+          COALESCE(
+            actor_id,
+            CASE WHEN user_id IS NOT NULL THEN 'u:' || user_id END,
+            CASE WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN 'g:' || guest_id END,
+            session_id
+          ) AS actor_key,
+          event_time
+        FROM analytics_events
+        WHERE event_time >= NOW() - INTERVAL '7 days'
+          AND event_time <= NOW()
+          AND event_name IN (
+            'home_viewed','world_selected','character_create_started','character_create_success','create_character_success',
+            'enter_main_game','first_effective_action','third_effective_action','save_created','save_sync','save_load',
+            'settlement_submitted','game_settlement','feedback_submitted'
+          )
+      ),
+      normalized AS (
+        SELECT stage, actor_key, MIN(event_time) AS first_at
+        FROM raw_events
+        GROUP BY stage, actor_key
+      )
+      SELECT stage, COUNT(*)::int AS actors, MIN(first_at) AS first_seen
+      FROM normalized
+      GROUP BY stage
+      ORDER BY actors DESC;
+    `,
+  },
+  {
     name: "ai_experience_latency",
     thresholdMs: 300,
     sql: `
@@ -85,6 +144,116 @@ const QUERIES: BaselineQuery[] = [
       FROM analytics_events
       WHERE event_time >= NOW() - INTERVAL '7 days'
         AND event_name IN ('chat_request_finished','chat_action_completed','chat_action_failed');
+    `,
+  },
+  {
+    name: "content_quality_world_chapter_npc",
+    thresholdMs: 650,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT
+        event_name,
+        COALESCE(NULLIF(payload->>'worldId', ''), NULLIF(payload->>'world', ''), NULLIF(payload->>'world_id', ''), 'unknown') AS world_id,
+        COALESCE(NULLIF(payload->>'chapterId', ''), NULLIF(payload->>'chapter_id', ''), NULLIF(payload->>'currentChapterId', ''), NULLIF(payload->>'activeChapterId', ''), NULLIF(payload->>'chapter', ''), 'unknown') AS chapter_id,
+        COALESCE(NULLIF(payload->>'npcId', ''), NULLIF(payload->>'npc_id', ''), NULLIF(payload->>'targetNpcId', ''), 'unknown') AS npc_id,
+        COUNT(*)::int AS total
+      FROM analytics_events
+      WHERE event_time >= NOW() - INTERVAL '7 days'
+        AND event_time <= NOW()
+        AND event_name IN (
+          'world_selected',
+          'first_effective_action',
+          'chapter_entered',
+          'chapter_completed',
+          'chapter_abandoned',
+          'npc_interaction_started',
+          'npc_interaction_completed',
+          'npc_interaction_failed'
+        )
+      GROUP BY event_name, world_id, chapter_id, npc_id
+      ORDER BY total DESC
+      LIMIT 200;
+    `,
+  },
+  {
+    name: "content_quality_validator_retry",
+    thresholdMs: 450,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT
+        event_name,
+        COALESCE(payload->>'issueCode', payload->>'code', 'unknown') AS issue_code,
+        COUNT(*)::int AS total
+      FROM analytics_events
+      WHERE event_time >= NOW() - INTERVAL '7 days'
+        AND event_time <= NOW()
+        AND event_name IN (
+          'narrative_validator_issue',
+          'narrative_safety_issue',
+          'entity_audit_issue',
+          'pacing_validator_issue',
+          'retry_clicked',
+          'regen_clicked'
+        )
+      GROUP BY event_name, issue_code
+      ORDER BY total DESC
+      LIMIT 100;
+    `,
+  },
+  {
+    name: "survey_aggregate_recent",
+    thresholdMs: 350,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT
+        survey_key,
+        COUNT(*)::int AS responses,
+        COUNT(*) FILTER (WHERE overall_rating IS NOT NULL AND overall_rating <= 2)::int AS low_rating,
+        COUNT(*) FILTER (WHERE recommend_score IS NOT NULL)::int AS recommend_samples
+      FROM survey_responses
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+        AND created_at <= NOW()
+      GROUP BY survey_key
+      ORDER BY responses DESC
+      LIMIT 50;
+    `,
+  },
+  {
+    name: "user_detail_actor_events",
+    thresholdMs: 250,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      WITH target AS (
+        SELECT actor_id
+        FROM analytics_events
+        WHERE actor_id IS NOT NULL
+        ORDER BY event_time DESC
+        LIMIT 1
+      )
+      SELECT event_name, event_time, platform
+      FROM analytics_events
+      WHERE actor_id = (SELECT actor_id FROM target)
+      ORDER BY event_time DESC
+      LIMIT 30;
+    `,
+  },
+  {
+    name: "user_detail_guest_events",
+    thresholdMs: 250,
+    sql: `
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      WITH target AS (
+        SELECT guest_id
+        FROM analytics_events
+        WHERE guest_id IS NOT NULL
+        ORDER BY event_time DESC
+        LIMIT 1
+      )
+      SELECT event_name, event_time, platform
+      FROM analytics_events
+      WHERE guest_id = (SELECT guest_id FROM target)
+      ORDER BY event_time DESC
+      LIMIT 30;
     `,
   },
   {
