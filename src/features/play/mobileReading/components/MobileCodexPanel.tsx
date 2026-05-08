@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type CodexCatalogSlot } from "../codexCatalog";
 import {
   buildMobileCodexCardModels,
@@ -143,6 +143,29 @@ function DetailBlock({
         : MobileReadingIcons.CodexHeart;
   const clampClass =
     lines === 1 ? "[-webkit-line-clamp:1]" : lines === 3 ? "[-webkit-line-clamp:3]" : "[-webkit-line-clamp:2]";
+  const contentRef = useRef<HTMLParagraphElement | null>(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    if (!scrollable) {
+      setHasOverflow(false);
+      return;
+    }
+    const node = contentRef.current;
+    if (!node) return;
+    const update = () => {
+      setHasOverflow(node.scrollHeight > node.clientHeight + 1);
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      const tid = window.setTimeout(update, 0);
+      return () => window.clearTimeout(tid);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [children, scrollable]);
+
   return (
     <section
       data-testid={testId}
@@ -153,6 +176,7 @@ function DetailBlock({
         {title}
       </h3>
       <p
+        ref={contentRef}
         className={
           scrollable
             ? "vc-reading-serif mt-1.5 min-h-0 flex-1 overflow-y-auto pr-1 text-[15px] leading-[1.48] text-[#1f4b45] min-[420px]:text-[17px]"
@@ -161,9 +185,10 @@ function DetailBlock({
       >
         {children}
       </p>
-      {scrollable ? (
+      {scrollable && hasOverflow ? (
         <div
           aria-hidden
+          data-testid={testId ? `${testId}-scroll-indicator` : undefined}
           className="absolute bottom-0 right-0 top-4 flex w-2 flex-col items-center justify-between text-[#2f746a]"
         >
           <span className="text-[11px] leading-none">⌃</span>

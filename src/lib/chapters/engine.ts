@@ -195,11 +195,21 @@ export function recordChapterTurnInState(input: {
         typeof input.signals.logCountAfter === "number" ? Math.max(0, input.signals.logCountAfter - 1) : null,
       nextChapterTitleCandidate: input.runtime?.closeDecision?.nextChapterTitleCandidate ?? null,
     });
+    if (nextDefinition) {
+      nextState = {
+        ...enterNextChapter(nextState, [input.definition, nextDefinition], completedAt),
+        pendingChapterEndId: input.definition.id,
+      };
+    }
   }
   return nextState;
 }
 
-export function enterNextChapter(state: ChapterState, definitions: readonly ChapterDefinition[]): ChapterState {
+export function enterNextChapter(
+  state: ChapterState,
+  definitions: readonly ChapterDefinition[],
+  now = Date.now()
+): ChapterState {
   const pendingId = state.pendingChapterEndId ?? state.activeChapterId;
   const currentDefinition = getChapterDefinition(pendingId);
   const nextDefinition = currentDefinition?.nextChapterId
@@ -212,7 +222,7 @@ export function enterNextChapter(state: ChapterState, definitions: readonly Chap
   const nextProgress =
     existing && existing.status !== "locked"
       ? existing
-      : createChapterProgress(nextDefinition, "active", Date.now());
+      : createChapterProgress(nextDefinition, "active", now);
   return {
     ...state,
     currentChapterId: nextDefinition.id,
@@ -225,7 +235,7 @@ export function enterNextChapter(state: ChapterState, definitions: readonly Chap
       [nextDefinition.id]: {
         ...nextProgress,
         status: nextProgress.status === "completed" ? "completed" : "active",
-        startedAt: nextProgress.startedAt ?? Date.now(),
+        startedAt: nextProgress.startedAt ?? now,
       },
     },
   };

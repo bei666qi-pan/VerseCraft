@@ -15,6 +15,9 @@ import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTier
 import { parseRuntimeNpcPrimitives } from "./runtimeContextPackets";
 import { buildThreatPacket } from "./stage2Packets";
 import { buildMultiNpcPersonaBoundaryPacketObject } from "@/lib/playRealtime/multiNpcPersonaPackets";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { recordSceneActorGateTelemetry } from "@/lib/observability/versecraftRolloutMetrics";
+import { buildSceneActorGate, compactSceneActorGatePacket, type SceneActorGateResult } from "./sceneActorGate";
 
 export type NpcConsistencyEpistemicCounts = {
   actorKnownFactCount: number;
@@ -44,6 +47,59 @@ function compactBaseline(p: ReturnType<typeof buildNpcPlayerBaselinePacket> | Re
   };
 }
 
+function normalizeBoundaryNpcId(id: string | null | undefined): string | null {
+  const match = String(id ?? "").trim().match(/^N-(\d{3,6})$/i);
+  return match ? `N-${match[1]}` : null;
+}
+
+function pushUniqueNpcId(out: string[], id: string | null | undefined): void {
+  const t = normalizeBoundaryNpcId(id);
+  if (t && !out.includes(t)) out.push(t);
+}
+
+function selectLegacyNearbyNpcIds(
+  npcPositions: Array<{ npcId: string; location: string }>,
+  currentLocation: string | null
+): string[] {
+  if (!currentLocation) return [];
+  const ids: string[] = [];
+  for (const pos of npcPositions) {
+    if (pos.location !== currentLocation) continue;
+    pushUniqueNpcId(ids, pos.npcId);
+  }
+  return ids;
+}
+
+function selectLegacyFocusNpcId(focusNpcId: string | null | undefined, nearbyNpcIds: string[]): string | null {
+  const requested = normalizeBoundaryNpcId(focusNpcId);
+  if (requested && nearbyNpcIds.includes(requested)) return requested;
+  return nearbyNpcIds[0] ?? null;
+}
+
+function countSceneActorGateForbiddenMentions(sceneActorGate: SceneActorGateResult): number {
+  const forbidden = new Set(sceneActorGate.forbiddenNpcIds);
+  let count = 0;
+  for (const id of sceneActorGate.mentionedNpcIds) {
+    if (forbidden.has(id) || sceneActorGate.modeByNpcId[id] === "forbidden") count += 1;
+  }
+  return count;
+}
+
+function recordBoundarySceneActorGateTelemetry(
+  sceneActorGate: SceneActorGateResult | null,
+  sceneActorGatePacket: ReturnType<typeof compactSceneActorGatePacket> | null
+): void {
+  if (!sceneActorGate || !sceneActorGatePacket) return;
+  recordSceneActorGateTelemetry({
+    enabled: true,
+    focusNpcId: sceneActorGate.focusNpcId,
+    multiPresentNoFocus: sceneActorGate.ambiguity.multiPresentNoFocus,
+    packetChars: JSON.stringify(sceneActorGatePacket).length,
+    canSpeakCount: sceneActorGate.canSpeakNpcIds.length,
+    forbiddenMentionCount: countSceneActorGateForbiddenMentions(sceneActorGate),
+  });
+}
+
 /**
  * 单行标题 + 短 JSON：actor_canon / baseline / scene_authority / epistemic 计数 / 记忆特权 / reveal 门闸。
  */
@@ -66,10 +122,22 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
 
   const prim = parseRuntimeNpcPrimitives(args.playerContext, args.playerLocation);
   const location = prim.location;
-  const nearbyNpcIds = prim.npcPositions.filter((x) => x.location === location).map((x) => x.npcId);
-  const focusRaw = args.focusNpcId?.trim() ?? "";
-  const focusNpcForBaseline =
-    focusRaw && nearbyNpcIds.includes(focusRaw) ? focusRaw : (nearbyNpcIds[0] ?? null);
+  const globalRollout = getVerseCraftRolloutFlags();
+  const legacyNearbyNpcIds = selectLegacyNearbyNpcIds(prim.npcPositions, location);
+  const legacyFocusNpcId = selectLegacyFocusNpcId(args.focusNpcId, legacyNearbyNpcIds);
+  const sceneActorGate = globalRollout.enableSceneActorGateV1
+    ? buildSceneActorGate({
+        playerContext: args.playerContext,
+        latestUserInput: args.latestUserInput,
+        playerLocation: args.playerLocation,
+        controlTarget: args.focusNpcId,
+        relationshipHints: prim.relationshipHints,
+      })
+    : null;
+  const sceneActorGatePacket = sceneActorGate ? compactSceneActorGatePacket(sceneActorGate) : null;
+  recordBoundarySceneActorGateTelemetry(sceneActorGate, sceneActorGatePacket);
+  const nearbyNpcIds = sceneActorGate ? sceneActorGate.presentNpcIds : legacyNearbyNpcIds;
+  const focusNpcForBaseline = sceneActorGate ? sceneActorGate.focusNpcId : legacyFocusNpcId;
 
   const threatPacket = buildThreatPacket({
     location,
@@ -181,6 +249,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
   const packets = {
     actor_canon_packet,
     npc_player_baseline_packet,
+    ...(sceneActorGatePacket ? { scene_actor_gate_packet: sceneActorGatePacket } : {}),
     npc_scene_authority_packet,
     multi_npc_persona_packet: multiNpcPersonaPacket,
     actor_epistemic_packet,

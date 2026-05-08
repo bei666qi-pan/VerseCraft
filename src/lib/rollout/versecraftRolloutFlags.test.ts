@@ -2,7 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getVerseCraftRolloutFlags } from "./versecraftRolloutFlags";
 
-test("getVerseCraftRolloutFlags 默认全开（可逐项 env 关闭）", () => {
+function withEnv<T>(name: string, value: string | undefined, fn: () => T): T {
+  const prev = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env[name];
+    else process.env[name] = prev;
+  }
+}
+
+test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   const f = getVerseCraftRolloutFlags();
   assert.equal(f.enableSettingsTaskRemoval, true);
   assert.equal(f.enableSpaceAuthorityCanon, true);
@@ -29,4 +41,19 @@ test("getVerseCraftRolloutFlags 默认全开（可逐项 env 关闭）", () => {
   assert.equal(f.enableGuestUnifiedMetrics, true);
   assert.equal(f.enableSessionClockV1, true);
   assert.equal(f.enableAdminPlaystyleMetrics, true);
+  assert.equal(f.enableSceneActorGateV1, true);
+  assert.equal(f.enableSceneActorGateValidatorV1, true);
+  assert.equal(f.enableModeAwareNpcPersonaPacketV1, true);
+});
+
+test("SceneActorGate rollout flags can be disabled by env", () => {
+  withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", "0", () => {
+    assert.equal(getVerseCraftRolloutFlags().enableSceneActorGateV1, false);
+  });
+  withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_VALIDATOR_V1", "false", () => {
+    assert.equal(getVerseCraftRolloutFlags().enableSceneActorGateValidatorV1, false);
+  });
+  withEnv("VERSECRAFT_ENABLE_MODE_AWARE_NPC_PERSONA_PACKET_V1", "off", () => {
+    assert.equal(getVerseCraftRolloutFlags().enableModeAwareNpcPersonaPacketV1, false);
+  });
 });

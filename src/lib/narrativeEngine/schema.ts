@@ -35,6 +35,7 @@ export const ModelStateChangesSchema = z
       .optional(),
     taskUpdates: z.array(z.record(z.string(), z.unknown())).optional(),
     relationshipUpdates: z.array(z.record(z.string(), z.unknown())).optional(),
+    npcLocationUpdates: z.array(z.record(z.string(), z.unknown())).optional(),
     clueUpdates: z.array(z.record(z.string(), z.unknown())).optional(),
   })
   .default({});
@@ -104,6 +105,10 @@ export const MODEL_OUTPUT_STRICT_JSON_SCHEMA = {
             items: { type: "object", additionalProperties: true },
           },
           relationshipUpdates: {
+            type: "array",
+            items: { type: "object", additionalProperties: true },
+          },
+          npcLocationUpdates: {
             type: "array",
             items: { type: "object", additionalProperties: true },
           },

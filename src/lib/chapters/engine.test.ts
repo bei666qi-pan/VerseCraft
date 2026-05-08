@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CHAPTER_DEFINITIONS,
   CHAPTER_ONE_ID,
   CHAPTER_TWO_ID,
   advanceChapterBeats,
@@ -10,10 +9,10 @@ import {
   getChapterDefinition,
   normalizeChapterState,
   recordChapterTurnInState,
+  resolveChapterNarrativeBudget,
   returnToActiveChapter,
   reviewCompletedChapter,
   shouldCompleteChapter,
-  enterNextChapter,
   formatChapterTitle,
 } from "./index";
 import type { ChapterDefinition, ChapterTurnSignals } from "./types";
@@ -66,6 +65,48 @@ test("initial chapter state activates the first chapter", () => {
   assert.deepEqual(state.unlockedChapterIds, [CHAPTER_ONE_ID]);
 });
 
+test("chapter narrative budgets expose target ranges and hard caps", () => {
+  const climaxDefinition: ChapterDefinition = {
+    ...second,
+    id: "chapter-climax",
+    order: 7,
+    kind: "climax",
+    targetTextChars: [1, 2],
+    hardTextChars: 3,
+  };
+  const endingDefinition: ChapterDefinition = {
+    ...second,
+    id: "chapter-ending",
+    order: 8,
+    kind: "ending",
+    targetTextChars: [1, 2],
+    hardTextChars: 3,
+  };
+
+  assert.deepEqual(resolveChapterNarrativeBudget(first), {
+    targetTextChars: [900, 1800],
+    hardTextChars: 2200,
+  });
+  assert.deepEqual(resolveChapterNarrativeBudget(second), {
+    targetTextChars: [1200, 2200],
+    hardTextChars: 2600,
+  });
+  assert.deepEqual(
+    resolveChapterNarrativeBudget(climaxDefinition),
+    {
+      targetTextChars: [1800, 3500],
+      hardTextChars: 4200,
+    }
+  );
+  assert.deepEqual(
+    resolveChapterNarrativeBudget(endingDefinition),
+    {
+      targetTextChars: [2200, 4000],
+      hardTextChars: 5000,
+    }
+  );
+});
+
 test("valid turns accumulate turn count, narrative characters, and state changes", () => {
   const state = createInitialChapterState(1);
   const progress = state.progressByChapterId[CHAPTER_ONE_ID];
@@ -76,7 +117,7 @@ test("valid turns accumulate turn count, narrative characters, and state changes
   assert.equal(next.stateChangeCount >= 1, true);
 });
 
-test("chapter one completes from local readiness, summarizes, and unlocks chapter two", () => {
+test("chapter one completes from local readiness, enters chapter two, and keeps recap choice", () => {
   let state = createInitialChapterState(1);
   for (let i = 0; i < first.minTurns; i++) {
     state = recordChapterTurnInState({
@@ -93,6 +134,8 @@ test("chapter one completes from local readiness, summarizes, and unlocks chapte
   assert.equal(state.unlockedChapterIds.includes(CHAPTER_TWO_ID), true);
   assert.equal(state.summariesByChapterId[CHAPTER_ONE_ID].title, "暗月初醒");
   assert.equal(state.pendingChapterEndId, CHAPTER_ONE_ID);
+  assert.equal(state.activeChapterId, CHAPTER_TWO_ID);
+  assert.equal(state.currentChapterId, CHAPTER_TWO_ID);
 });
 
 test("chapter two completes from local readiness including state-change and next-risk beats", () => {
@@ -106,7 +149,6 @@ test("chapter two completes from local readiness including state-change and next
       now: i + 2,
     });
   }
-  state = enterNextChapter(state, CHAPTER_DEFINITIONS);
   for (let i = 0; i < second.minTurns; i++) {
     state = recordChapterTurnInState({
       state,
@@ -257,7 +299,6 @@ test("entering chapter two keeps chapter one review safe and returns to active c
       now: i + 2,
     });
   }
-  state = enterNextChapter(state, CHAPTER_DEFINITIONS);
   assert.equal(state.activeChapterId, CHAPTER_TWO_ID);
   assert.equal(state.progressByChapterId[CHAPTER_TWO_ID].status, "active");
   assert.equal(formatChapterTitle(getChapterDefinition(CHAPTER_TWO_ID), state), "第二章：潮湿门缝");

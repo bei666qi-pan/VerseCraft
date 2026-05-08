@@ -50,6 +50,7 @@ export function buildRouteModelOutputFromResolvedTurn(args: {
       ...arrayRecords(args.resolved.task_updates),
     ]),
     ...arrayRecordsField("relationshipUpdates", arrayRecords(args.resolved.relationship_updates)),
+    ...arrayRecordsField("npcLocationUpdates", arrayRecords(args.resolved.npc_location_updates)),
     ...arrayRecordsField("clueUpdates", arrayRecords(args.resolved.codex_updates)),
   } satisfies ModelOutputSchema["stateChanges"];
 
@@ -144,7 +145,7 @@ function coerceConsumesTime(raw: unknown): ModelOutputSchema["stateChanges"]["ti
   return null;
 }
 
-function arrayRecordsField<K extends "taskUpdates" | "relationshipUpdates" | "clueUpdates">(
+function arrayRecordsField<K extends "taskUpdates" | "relationshipUpdates" | "npcLocationUpdates" | "clueUpdates">(
   key: K,
   value: Record<string, unknown>[]
 ): Pick<ModelOutputSchema["stateChanges"], K> | Record<string, never> {

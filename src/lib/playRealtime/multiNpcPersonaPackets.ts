@@ -1,8 +1,9 @@
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { NPCS } from "@/lib/registry/npcs";
+import type { SceneNpcMode } from "@/lib/playRealtime/sceneActorGate";
 
-type PersonaCard = {
+type PersonaFullCard = {
   id: string;
   name: string;
   appearance_short: string;
@@ -12,7 +13,18 @@ type PersonaCard = {
   current_presence: { present: boolean; location: string | null };
   allowed_scene_presence: string[];
   first_appearance_rule: "must_use_appearance_short" | "already_written";
+  mode?: SceneNpcMode;
 };
+
+type PersonaMinimalCard = {
+  id: string;
+  name: string;
+  mode: "heard_only" | "memory_only";
+  current_presence: { present: boolean; location: string | null };
+  rule: "no_live_dialogue";
+};
+
+type PersonaCard = PersonaFullCard | PersonaMinimalCard;
 
 function clamp(s: string, max: number): string {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
@@ -86,6 +98,7 @@ export function buildMultiNpcCompactPersonaPacket(args: {
   currentLocation: string | null;
   /** From `scene_npc_appearance_written_packet` to enforce first appearance binding. */
   sceneAppearanceAlreadyWrittenIds: string[];
+  modeByNpcId?: Record<string, SceneNpcMode>;
   /** Hard cap on included cards. */
   maxCards?: number;
   maxChars?: number;
@@ -101,6 +114,7 @@ export function buildMultiNpcCompactPersonaPacketObject(args: {
   npcPositions: Array<{ npcId: string; location: string }>;
   currentLocation: string | null;
   sceneAppearanceAlreadyWrittenIds: string[];
+  modeByNpcId?: Record<string, SceneNpcMode>;
   maxCards?: number;
 }): { schema: string; instruction: string; cards: PersonaCard[] } {
   const maxCards = Math.max(2, Math.min(6, args.maxCards ?? 4));
@@ -118,19 +132,32 @@ export function buildMultiNpcCompactPersonaPacketObject(args: {
     const canon = getNpcCanonicalIdentity(id);
     const pub = resolvePublicFields(canon.npcId);
     const present = presentSet.has(canon.npcId);
-    const firstRule: PersonaCard["first_appearance_rule"] = written.has(canon.npcId)
+    const mode = args.modeByNpcId?.[canon.npcId];
+    if (mode === "forbidden") continue;
+    if (mode === "heard_only" || mode === "memory_only") {
+      cards.push({
+        id: canon.npcId,
+        name: pub.name || canon.canonicalName || canon.npcId,
+        mode,
+        current_presence: { present, location: present ? args.currentLocation : null },
+        rule: "no_live_dialogue",
+      });
+      continue;
+    }
+    const firstRule: PersonaFullCard["first_appearance_rule"] = written.has(canon.npcId)
       ? "already_written"
       : "must_use_appearance_short";
     cards.push({
       id: canon.npcId,
       name: pub.name || canon.canonicalName || canon.npcId,
       appearance_short: clamp(canon.canonicalAppearanceShort || pub.appearance, 140),
-      public_personality: clamp(pub.personality || canon.canonicalPublicPersonality, 80),
+      public_personality: clamp(pub.personality || canon.canonicalPersonalityCore, 80),
       speech_pattern: clamp(pub.speechPattern, 160),
       public_role: clamp(canon.canonicalPublicRole || pub.specialty, 120),
       current_presence: { present, location: present ? args.currentLocation : null },
       allowed_scene_presence: (canon.allowedSpawnLocations ?? []).slice(0, 5).map((x) => String(x ?? "").slice(0, 40)),
       first_appearance_rule: firstRule,
+      ...(mode ? { mode } : {}),
     });
   }
 

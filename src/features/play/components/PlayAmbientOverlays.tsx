@@ -49,7 +49,7 @@ export function PlayAmbientOverlays({
       )}
 
       {hitEffectActive && (
-        <div className="pointer-events-none fixed inset-0 z-[55]" aria-hidden>
+        <div data-testid="sanity-hit-effect-overlay" className="pointer-events-none fixed inset-0 z-[55]" aria-hidden>
           <div
             className="absolute inset-0 opacity-90"
             style={{

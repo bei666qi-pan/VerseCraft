@@ -30,6 +30,7 @@ describe("routeAdapter", () => {
         sanity_damage: 2,
         consumes_time: true,
         relationship_updates: [{ npcId: "N-001", delta: 1 }],
+        npc_location_updates: [{ npcId: "N-001", toLocation: "B1_corridor" }],
       },
     });
 
@@ -39,6 +40,7 @@ describe("routeAdapter", () => {
     assert.equal(output.stateChanges.playerLocation, "B1_corridor");
     assert.equal(output.stateChanges.sanityDelta, -2);
     assert.equal(output.stateChanges.timeCost, "standard");
+    assert.deepEqual(output.stateChanges.npcLocationUpdates, [{ npcId: "N-001", toLocation: "B1_corridor" }]);
     assert.equal(output.eventCandidates[0]?.type, "player_action");
     assert.equal(output.eventCandidates[1]?.type, "npc_reply");
   });

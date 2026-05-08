@@ -69,6 +69,11 @@ import { buildWorldFeelPacket } from "@/lib/playRealtime/worldFeelPackets";
 import { buildPlayabilityPacketsV1 } from "@/lib/gameplay/playabilityPackets";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { buildMultiNpcCompactPersonaPacket } from "@/lib/playRealtime/multiNpcPersonaPackets";
+import {
+  buildSceneActorGate,
+  compactSceneActorGatePacket,
+  type SceneActorGateResult,
+} from "@/lib/playRealtime/sceneActorGate";
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcRuntimeStatePacket, buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
 import type { NpcHeartRuntimeView } from "@/lib/npcHeart/types";
@@ -81,6 +86,7 @@ import {
   incrSurvivalLoopPacketUsageCount,
   incrRelationshipLoopPacketUsageCount,
   incrInvestigationLoopPacketUsageCount,
+  recordSceneActorGateTelemetry,
 } from "@/lib/observability/versecraftRolloutMetrics";
 
 type ServiceStateInput = {
@@ -468,6 +474,81 @@ function parsePendingHourFractionFromContext(playerContext: string): number {
   return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
 }
 
+function pushUniqueNpcId(out: string[], id: string | null | undefined): void {
+  const t = String(id ?? "").trim();
+  if (t && !out.includes(t)) out.push(t);
+}
+
+function selectSceneActorPersonaNpcIds(sceneActorGate: SceneActorGateResult): string[] {
+  const ids: string[] = [];
+  pushUniqueNpcId(ids, sceneActorGate.focusNpcId);
+  for (const id of sceneActorGate.canSpeakNpcIds) pushUniqueNpcId(ids, id);
+  // Persona cards currently carry appearance and speech anchors, so offscreen/memory-only NPCs stay out.
+  return ids.slice(0, 6);
+}
+
+function normalizeNpcIdForGateTelemetry(id: string | null | undefined): string | null {
+  const match = String(id ?? "").trim().match(/^N-(\d{3,6})$/i);
+  return match ? `N-${match[1]}` : null;
+}
+
+function selectLegacyNearbyNpcIds(
+  npcPositions: Array<{ npcId: string; location: string }>,
+  currentLocation: string | null
+): string[] {
+  if (!currentLocation) return [];
+  const ids: string[] = [];
+  for (const pos of npcPositions) {
+    if (pos.location !== currentLocation) continue;
+    pushUniqueNpcId(ids, normalizeNpcIdForGateTelemetry(pos.npcId));
+  }
+  return ids;
+}
+
+function selectLegacyFocusNpcId(focusNpcId: string | null | undefined, nearbyNpcIds: string[]): string | null {
+  const requested = normalizeNpcIdForGateTelemetry(focusNpcId);
+  if (requested && nearbyNpcIds.includes(requested)) return requested;
+  return nearbyNpcIds[0] ?? null;
+}
+
+function selectLegacyPersonaNpcIds(args: {
+  focusNpcId: string | null;
+  nearbyNpcIds: string[];
+  mentionedNpcIds: string[];
+  codexNpcIds: string[];
+}): string[] {
+  const ids: string[] = [];
+  pushUniqueNpcId(ids, args.focusNpcId);
+  for (const id of args.nearbyNpcIds) pushUniqueNpcId(ids, id);
+  for (const id of args.mentionedNpcIds) pushUniqueNpcId(ids, id);
+  for (const id of args.codexNpcIds) pushUniqueNpcId(ids, id);
+  return ids.slice(0, 6);
+}
+
+function countSceneActorGateForbiddenMentions(sceneActorGate: SceneActorGateResult): number {
+  const forbidden = new Set(sceneActorGate.forbiddenNpcIds);
+  let count = 0;
+  for (const id of sceneActorGate.mentionedNpcIds) {
+    if (forbidden.has(id) || sceneActorGate.modeByNpcId[id] === "forbidden") count += 1;
+  }
+  return count;
+}
+
+function recordRuntimeSceneActorGateTelemetry(
+  sceneActorGate: SceneActorGateResult | null,
+  sceneActorGatePacket: ReturnType<typeof compactSceneActorGatePacket> | null
+): void {
+  if (!sceneActorGate || !sceneActorGatePacket) return;
+  recordSceneActorGateTelemetry({
+    enabled: true,
+    focusNpcId: sceneActorGate.focusNpcId,
+    multiPresentNoFocus: sceneActorGate.ambiguity.multiPresentNoFocus,
+    packetChars: JSON.stringify(sceneActorGatePacket).length,
+    canSpeakCount: sceneActorGate.canSpeakNpcIds.length,
+    forbiddenMentionCount: countSceneActorGateForbiddenMentions(sceneActorGate),
+  });
+}
+
 export function buildRuntimeContextPackets(args: {
   playerContext: string;
   latestUserInput: string;
@@ -499,8 +580,32 @@ export function buildRuntimeContextPackets(args: {
     available: svc.available,
     npcIds: svc.npcIds,
   }));
-  const nearbyNpcIds = npcPositions.filter((x) => x.location === location).map((x) => x.npcId);
   const rollout = getVerseCraftRolloutFlags();
+  const mentionedNpcIdsFromInput = extractMentionedNpcIdsFromUserInput(args.latestUserInput);
+  const codexNpcIdsFromHints = extractNpcIdsFromRelationshipHints(relationshipHints);
+  const legacyNearbyNpcIds = selectLegacyNearbyNpcIds(npcPositions, location);
+  const legacyFocusNpcId = selectLegacyFocusNpcId(args.focusNpcId, legacyNearbyNpcIds);
+  const sceneActorGate = rollout.enableSceneActorGateV1
+    ? buildSceneActorGate({
+        playerContext: args.playerContext,
+        latestUserInput: args.latestUserInput,
+        playerLocation: args.playerLocation,
+        controlTarget: args.focusNpcId,
+        relationshipHints,
+      })
+    : null;
+  const sceneActorGatePacket = sceneActorGate ? compactSceneActorGatePacket(sceneActorGate) : null;
+  recordRuntimeSceneActorGateTelemetry(sceneActorGate, sceneActorGatePacket);
+  const nearbyNpcIds = sceneActorGate ? sceneActorGate.presentNpcIds : legacyNearbyNpcIds;
+  const focusNpcForBaseline = sceneActorGate ? sceneActorGate.focusNpcId : legacyFocusNpcId;
+  const personaNpcIds = sceneActorGate
+    ? selectSceneActorPersonaNpcIds(sceneActorGate)
+    : selectLegacyPersonaNpcIds({
+        focusNpcId: focusNpcForBaseline,
+        nearbyNpcIds,
+        mentionedNpcIds: mentionedNpcIdsFromInput,
+        codexNpcIds: codexNpcIdsFromHints,
+      });
   const loreLines = compactRuntimeLore(args.runtimeLoreCompact ?? "");
   const professionIdentityPacket = buildProfessionIdentityPacket({
     worldFlags,
@@ -580,9 +685,6 @@ export function buildRuntimeContextPackets(args: {
   });
   const schoolSourcePacket = buildSchoolSourcePacket(maxRevealRank);
   const teamRelinkPacket = buildTeamRelinkPacket({ majorNpcRelinkPacket, nearbyNpcIds });
-  const focusRaw = args.focusNpcId?.trim() ?? "";
-  const focusNpcForBaseline =
-    focusRaw && nearbyNpcIds.includes(focusRaw) ? focusRaw : (nearbyNpcIds[0] ?? null);
   const npcPlayerBaselinePacket = focusNpcForBaseline
     ? buildNpcPlayerBaselinePacket({
         npcId: focusNpcForBaseline,
@@ -594,8 +696,6 @@ export function buildRuntimeContextPackets(args: {
         },
       })
     : buildEmptyNpcPlayerBaselinePacket();
-  const mentionedNpcIdsFromInput = extractMentionedNpcIdsFromUserInput(args.latestUserInput);
-  const codexNpcIdsFromHints = extractNpcIdsFromRelationshipHints(relationshipHints);
   const npcSceneAuthorityPacket = buildNpcSceneAuthority({
     currentSceneLocation: location,
     npcPositions,
@@ -635,10 +735,7 @@ export function buildRuntimeContextPackets(args: {
     .slice(0, 16);
   const npcRuntimeStatePacket = rollout.enableNpcRuntimeStateV1
     ? buildNpcRuntimeStatePacket(
-        [
-          ...(focusNpcForBaseline ? [focusNpcForBaseline] : []),
-          ...nearbyNpcIds,
-        ]
+        personaNpcIds
           .filter((id, index, arr) => id && arr.indexOf(id) === index)
           .slice(0, 4)
           .map((npcId) =>
@@ -668,15 +765,13 @@ export function buildRuntimeContextPackets(args: {
     : null;
   const contextMode = args.contextMode ?? "full";
   const multiNpcPersonaPacket = buildMultiNpcCompactPersonaPacket({
-    npcIds: [
-      ...(focusNpcForBaseline ? [focusNpcForBaseline] : []),
-      ...nearbyNpcIds,
-      ...mentionedNpcIdsFromInput,
-      ...codexNpcIdsFromHints,
-    ],
+    npcIds: personaNpcIds,
     npcPositions,
     currentLocation: location,
     sceneAppearanceAlreadyWrittenIds: sceneNpcAppearanceWritten,
+    ...(rollout.enableModeAwareNpcPersonaPacketV1 && sceneActorGate
+      ? { modeByNpcId: sceneActorGate.modeByNpcId }
+      : {}),
     maxCards: 4,
     maxChars: contextMode === "minimal" ? 900 : 1400,
   });
@@ -936,6 +1031,7 @@ export function buildRuntimeContextPackets(args: {
       discoveredTruths: worldFlags.filter((x) => x.includes("truth") || x.includes("conspiracy")),
     }),
     nearby_npc_packet: nearbyNpcIds,
+    ...(sceneActorGatePacket ? { scene_actor_gate_packet: sceneActorGatePacket } : {}),
     active_tasks_packet: tasks,
     anchor_revive_packet: {
       anchorUnlocks,
@@ -986,6 +1082,7 @@ export function buildRuntimeContextPackets(args: {
           main_threat_packet: packets.main_threat_packet,
           active_tasks_packet: packets.active_tasks_packet.slice(0, 3),
           nearby_npc_packet: packets.nearby_npc_packet.slice(0, 4),
+          ...(sceneActorGatePacket ? { scene_actor_gate_packet: sceneActorGatePacket } : {}),
           profession_packet: packets.profession_packet,
           tactical_context_packet: packets.tactical_context_packet,
           ...(rollout.enablePlayabilityCoreLoopsV1
@@ -1031,6 +1128,7 @@ export function buildRuntimeContextPackets(args: {
     forge_packet: packets.forge_packet,
     ...actorConstraintCompact,
     tactical_context_packet: packets.tactical_context_packet,
+    ...(sceneActorGatePacket ? { scene_actor_gate_packet: sceneActorGatePacket } : {}),
     school_cycle_arc_packet: schoolCycleArcPacketMicro,
     ...worldLorePacketsCompact,
     worldview_packet: packets.worldview_packet,

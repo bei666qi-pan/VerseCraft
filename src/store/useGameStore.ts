@@ -135,6 +135,7 @@ import {
   getChapterDefinition,
   normalizeChapterState,
   recordChapterTurnInState,
+  resolveChapterNarrativeBudget,
   returnToActiveChapter,
   reviewCompletedChapter,
   type ChapterId,
@@ -751,6 +752,14 @@ export interface GameState extends IntegrityMetaState {
         nextTitle: string | null;
       };
       digest: string;
+    };
+    chapterRuntime?: {
+      chapterId: string;
+      order: number;
+      kind: string;
+      narrativeCharCount: number;
+      targetTextChars: [number, number];
+      hardTextChars: number;
     };
   };
 
@@ -1792,6 +1801,7 @@ export const useGameStore = create<GameState>()(
             const key = existingKey ?? id ?? name ?? "unknown";
             const prev = next[key];
             const merged: CodexEntry = {
+              ...(prev ?? {}),
               id: prev?.id ?? id ?? name ?? key,
               name: name ?? prev?.name ?? "",
               type: (u.type === "npc" || u.type === "anomaly" ? u.type : prev?.type ?? "npc") as "npc" | "anomaly",
@@ -2578,6 +2588,12 @@ export const useGameStore = create<GameState>()(
           mustRecallHookCodes: Array.isArray((director as any).lastRecallHooks) ? (director as any).lastRecallHooks : [],
           chapter: (director as any).chapter ?? null,
         });
+        const chapterState = normalizeChapterState(s.chapterState);
+        const chapterDefinition = getChapterDefinition(chapterState.activeChapterId);
+        const chapterProgress = chapterDefinition
+          ? chapterState.progressByChapterId[chapterDefinition.id]
+          : null;
+        const chapterBudget = resolveChapterNarrativeBudget(chapterDefinition);
         return {
           v: 1 as const,
           guestId: s.guestId ?? null,
@@ -2609,6 +2625,18 @@ export const useGameStore = create<GameState>()(
           ...(hintCodes.length ? { memoryHintCodes: hintCodes } : {}),
           ...(promotions.length ? { memoryPromotions: promotions } : {}),
           ...(directorDigest.digest ? { directorDigest } : {}),
+          ...(chapterDefinition && chapterProgress
+            ? {
+                chapterRuntime: {
+                  chapterId: chapterDefinition.id,
+                  order: chapterDefinition.order,
+                  kind: chapterDefinition.kind,
+                  narrativeCharCount: Math.max(0, Math.trunc(Number(chapterProgress.narrativeCharCount ?? 0) || 0)),
+                  targetTextChars: chapterBudget.targetTextChars,
+                  hardTextChars: chapterBudget.hardTextChars,
+                },
+              }
+            : {}),
           ...(() => {
             const clues = s.journalClues ?? [];
             const shown = clues.filter((c) => c.visibility !== "hidden");

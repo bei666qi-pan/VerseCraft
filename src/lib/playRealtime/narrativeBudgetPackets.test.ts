@@ -96,6 +96,43 @@ test("endgame resolves to ending budget", () => {
   assert.equal(budget.reasonCodes.includes("ending"), true);
 });
 
+test("chapter caps are included in budget packet and clamp remaining hard chars", () => {
+  const budget = resolveNarrativeBudget({
+    latestUserInput: "我继续推进本章线索",
+    riskLane: "fast",
+    chapter: {
+      chapterId: "chapter-1",
+      narrativeCharCount: 2140,
+      targetTextChars: [900, 1800],
+      hardTextChars: 2200,
+    },
+  });
+
+  assert.equal(budget.chapter?.id, "chapter-1");
+  assert.equal(budget.chapter?.remainingHardChars, 60);
+  assert.equal(budget.chapter?.shouldClose, true);
+  assert.equal(budget.maxChars <= 60, true);
+  assert.equal(budget.reasonCodes.includes("chapter_close_due"), true);
+});
+
+test("ending chapter hard cap is 5000", () => {
+  const budget = resolveNarrativeBudget({
+    latestUserInput: "我走向最后的选择",
+    isEndgame: true,
+    chapter: {
+      chapterId: "ending",
+      narrativeCharCount: 3900,
+      targetTextChars: [2200, 4000],
+      hardTextChars: 5000,
+    },
+  });
+
+  assert.equal(budget.tier, "ending");
+  assert.equal(budget.chapter?.hardMaxChars, 5000);
+  assert.equal(budget.chapter?.targetMaxChars, 4000);
+  assert.equal(budget.chapter?.shouldClose, false);
+});
+
 test("buildNarrativeBudgetPacketBlock emits parseable compact JSON", () => {
   const budget = resolveNarrativeBudget({
     latestUserInput: "我沿着走廊继续探索，仔细观察墙面和门牌的变化",

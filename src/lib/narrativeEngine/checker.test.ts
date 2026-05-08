@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyStateDelta } from "@/lib/turnEngine/computeStateDelta";
+import type { SceneActorGateResult } from "@/lib/playRealtime/sceneActorGate";
 import { validateNarrative as validateNarrativeCore } from "@/lib/turnEngine/validateNarrative";
 import { checkModelOutput, validateNarrative } from "./checker";
 import type { ModelOutputSchema } from "./schema";
@@ -109,6 +110,59 @@ function validOutput(overrides: Partial<ModelOutputSchema> = {}): ModelOutputSch
     consistencyNotes: [],
     ...overrides,
   };
+}
+
+const sceneGateContext: DialogueContext = {
+  ...context,
+  activeNpc: {
+    npcId: "N-015",
+    displayName: "Linze",
+    forbiddenFactIds: ["fact:secret"],
+  },
+  world: {
+    ...context.world,
+    allowedEntityIds: [...context.world.allowedEntityIds, "N-015", "1F_Lobby", "7F_Bench"],
+  },
+  rawCompatibility: {
+    ...context.rawCompatibility,
+    playerContext: "playerLocation[1F_Lobby]\nN-010@7F_Bench\nN-015@1F_Lobby",
+  },
+};
+
+function sceneActorGate(overrides: Partial<SceneActorGateResult> = {}): SceneActorGateResult {
+  return {
+    schema: "scene_actor_gate_v1",
+    currentLocation: "1F_Lobby",
+    focusNpcId: "N-015",
+    presentNpcIds: ["N-015"],
+    canSpeakNpcIds: ["N-015"],
+    mentionedNpcIds: [],
+    offscreenNpcIds: ["N-010"],
+    memoryOnlyNpcIds: [],
+    forbiddenNpcIds: [],
+    modeByNpcId: {
+      "N-010": "heard_only",
+      "N-015": "present",
+    },
+    ambiguity: {
+      multiPresentNoFocus: false,
+      reason: null,
+    },
+    compactRules: [],
+    ...overrides,
+  };
+}
+
+function withEnv<T>(name: string, value: string | undefined, fn: () => T): T {
+  const prev = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env[name];
+    else process.env[name] = prev;
+  }
 }
 
 test("checkModelOutput accepts a schema-valid, context-aligned candidate", () => {
@@ -265,6 +319,118 @@ test("checkModelOutput blocks unknown relationship and task updates", () => {
   assert.equal(result.ok, false);
   assert.ok(result.issues.some((issue) => issue.code === "relationship_update_unknown_npc"));
   assert.ok(result.issues.some((issue) => issue.code === "task_update_unknown_task"));
+});
+
+test("checkModelOutput blocks relationship updates for offscreen NPCs not authorized by SceneActorGate", () => {
+  const result = checkModelOutput({
+    output: validOutput({
+      stateChanges: {
+        relationshipUpdates: [{ npcId: "N-010", delta: 1 }],
+      },
+    }),
+    context: sceneGateContext,
+    sceneActorGate: sceneActorGate(),
+    logFailures: false,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.degradeReason, "scene_actor_gate_relationship_unauthorized");
+  assert.ok(result.issues.some((issue) => issue.code === "scene_actor_gate_relationship_unauthorized"));
+});
+
+test("checkModelOutput allows remote contact relationship updates when SceneActorGate canSpeak includes the NPC", () => {
+  const result = checkModelOutput({
+    output: validOutput({
+      stateChanges: {
+        relationshipUpdates: [{ npcId: "N-010", delta: 1 }],
+      },
+    }),
+    context: sceneGateContext,
+    sceneActorGate: sceneActorGate({
+      canSpeakNpcIds: ["N-015", "N-010"],
+      modeByNpcId: {
+        "N-010": "remote_contact",
+        "N-015": "present",
+      },
+    }),
+    logFailures: false,
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(!result.issues.some((issue) => issue.code === "scene_actor_gate_relationship_unauthorized"));
+});
+
+test("checkModelOutput blocks npcLocationUpdates for NPCs missing from the known location map", () => {
+  const result = checkModelOutput({
+    output: validOutput({
+      stateChanges: {
+        npcLocationUpdates: [{ npcId: "N-099", toLocation: "1F_Lobby" }],
+      },
+    }),
+    context: sceneGateContext,
+    sceneActorGate: sceneActorGate(),
+    logFailures: false,
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((issue) => issue.code === "scene_actor_gate_npc_location_unknown"));
+});
+
+test("checkModelOutput blocks npc eventCandidates not authorized by SceneActorGate canSpeak", () => {
+  const base = validOutput();
+  const result = checkModelOutput({
+    output: validOutput({
+      eventCandidates: [
+        ...base.eventCandidates,
+        {
+          type: "npc_reply",
+          actorType: "npc",
+          actorId: "N-010",
+          summary: "N-010 tries to speak from offscreen.",
+          payload: {},
+        },
+      ],
+    }),
+    context: sceneGateContext,
+    sceneActorGate: sceneActorGate(),
+    logFailures: false,
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((issue) => issue.code === "scene_actor_gate_npc_event_unauthorized"));
+});
+
+test("checkModelOutput preserves old behavior when SceneActorGate is absent", () => {
+  const result = checkModelOutput({
+    output: validOutput({
+      stateChanges: {
+        relationshipUpdates: [{ npcId: "N-010", delta: 1 }],
+      },
+    }),
+    context: sceneGateContext,
+    logFailures: false,
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(!result.issues.some((issue) => issue.code.startsWith("scene_actor_gate_")));
+});
+
+test("SceneActorGate validator rollout off preserves old checker behavior", () => {
+  withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_VALIDATOR_V1", "0", () => {
+    const result = checkModelOutput({
+      output: validOutput({
+        stateChanges: {
+          relationshipUpdates: [{ npcId: "N-010", delta: 1 }],
+        },
+      }),
+      context: sceneGateContext,
+      sceneActorGate: sceneActorGate(),
+      logFailures: false,
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(!result.issues.some((issue) => issue.code.startsWith("scene_actor_gate_")));
+  });
 });
 
 test("checkModelOutput fallback path never throws on malformed output", () => {

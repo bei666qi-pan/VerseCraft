@@ -1,5 +1,5 @@
 import { CHAPTER_DEFINITIONS, getFirstChapterDefinition } from "./definitions";
-import { createChapterProgress } from "./engine";
+import { createChapterProgress, enterNextChapter } from "./engine";
 import { sanitizeChapterTitleCandidate } from "./title";
 import type { ChapterProgress, ChapterState } from "./types";
 
@@ -107,7 +107,7 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
     const title = fromState ?? fromSummary ?? fromDefinition;
     if (title) chapterTitlesById[definition.id] = title;
   }
-  return {
+  const normalized: ChapterState = {
     currentChapterId: reviewChapterId ?? activeChapterId,
     activeChapterId,
     reviewChapterId,
@@ -122,4 +122,14 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
         ? record.pendingChapterEndId
         : null,
   };
+  const pendingDefinition =
+    typeof normalized.pendingChapterEndId === "string"
+      ? CHAPTER_DEFINITIONS.find((definition) => definition.id === normalized.pendingChapterEndId)
+      : null;
+  return pendingDefinition?.nextChapterId
+    ? {
+        ...enterNextChapter(normalized, CHAPTER_DEFINITIONS, now),
+        pendingChapterEndId: normalized.pendingChapterEndId,
+      }
+    : normalized;
 }

@@ -241,6 +241,7 @@ function buildPackets(context: DialogueContext): Record<(typeof SECTION_ORDER)[n
         "timeCost",
         "taskUpdates",
         "relationshipUpdates",
+        "npcLocationUpdates",
         "clueUpdates",
       ],
       allowedEventCandidateTypes: [

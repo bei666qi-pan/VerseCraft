@@ -60,6 +60,8 @@
     "benchmark:chat:mock": "tsx scripts/benchmark-chat-metrics.ts --mode mock --assert-budget --include-all --json-out .runtime-data/chat-benchmark-mock.json",
     "eval:chat-quality": "tsx scripts/eval-chat-quality.ts",
     "eval:chat-quality:mock": "tsx scripts/eval-chat-quality.ts --mode mock --assert --json-out .runtime-data/eval-chat-quality-mock.json",
+    "eval:npc-consistency": "tsx scripts/eval-npc-consistency.ts",
+    "eval:npc-consistency:mock": "tsx scripts/eval-npc-consistency.ts --mode mock --assert --json-out .runtime-data/eval-npc-consistency-mock.json",
     "eval:narrative-safety": "tsx scripts/eval-narrative-safety.ts",
     "eval:narrative-safety:mock": "tsx scripts/eval-narrative-safety.ts --mode mock --assert --json-out .runtime-data/eval-narrative-safety-mock.json",
     "eval:authenticity": "tsx scripts/eval-authenticity.ts",

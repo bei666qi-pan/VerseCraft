@@ -83,6 +83,17 @@ export type VerseCraftRolloutMetricsSnapshot = {
   factCommitRejectedCount: number;
   narrativeGovernanceFinalSafeCount: number;
   narrativeGovernanceFinalUnsafeCount: number;
+
+  // -------- SceneActorGate V1 aggregate counters --------
+  sceneActorGateEnabled: number;
+  sceneActorGateFocusNull: number;
+  sceneActorGateMultiPresentNoFocus: number;
+  sceneActorGatePacketChars: number;
+  sceneActorGatePacketSamples: number;
+  sceneActorGateCanSpeakCount: number;
+  sceneActorGateForbiddenMentionCount: number;
+  sceneActorGateValidatorTriggered: number;
+  sceneActorGateRewriteTriggered: number;
 };
 
 const m = {
@@ -162,6 +173,16 @@ const m = {
   factCommitRejectedCount: 0,
   narrativeGovernanceFinalSafeCount: 0,
   narrativeGovernanceFinalUnsafeCount: 0,
+
+  sceneActorGateEnabled: 0,
+  sceneActorGateFocusNull: 0,
+  sceneActorGateMultiPresentNoFocus: 0,
+  sceneActorGatePacketChars: 0,
+  sceneActorGatePacketSamples: 0,
+  sceneActorGateCanSpeakCount: 0,
+  sceneActorGateForbiddenMentionCount: 0,
+  sceneActorGateValidatorTriggered: 0,
+  sceneActorGateRewriteTriggered: 0,
 };
 
 export function resetVerseCraftRolloutMetrics(): void {
@@ -367,6 +388,40 @@ export function recordNarrativeGovernanceOutcome(input: NarrativeGovernanceMetri
   addFiniteMetric("factCommitRejectedCount", input.factCommitRejectedCount);
   if (input.narrativeGovernanceFinalSafe) m.narrativeGovernanceFinalSafeCount += 1;
   else m.narrativeGovernanceFinalUnsafeCount += 1;
+}
+
+export type SceneActorGateMetricInput = {
+  enabled: boolean;
+  focusNpcId: string | null;
+  multiPresentNoFocus: boolean;
+  packetChars: number;
+  canSpeakCount: number;
+  forbiddenMentionCount: number;
+};
+
+export function recordSceneActorGateTelemetry(input: SceneActorGateMetricInput): void {
+  if (!input.enabled) return;
+  m.sceneActorGateEnabled += 1;
+  if (!input.focusNpcId) m.sceneActorGateFocusNull += 1;
+  if (input.multiPresentNoFocus) m.sceneActorGateMultiPresentNoFocus += 1;
+  if (Number.isFinite(input.packetChars) && input.packetChars >= 0) {
+    m.sceneActorGatePacketChars += Math.trunc(input.packetChars);
+    m.sceneActorGatePacketSamples += 1;
+  }
+  if (Number.isFinite(input.canSpeakCount)) {
+    m.sceneActorGateCanSpeakCount += Math.max(0, Math.trunc(input.canSpeakCount));
+  }
+  if (Number.isFinite(input.forbiddenMentionCount)) {
+    m.sceneActorGateForbiddenMentionCount += Math.max(0, Math.trunc(input.forbiddenMentionCount));
+  }
+}
+
+export function recordSceneActorGateValidatorOutcome(input: {
+  validatorTriggered: boolean;
+  rewriteTriggered: boolean;
+}): void {
+  if (input.validatorTriggered) m.sceneActorGateValidatorTriggered += 1;
+  if (input.rewriteTriggered) m.sceneActorGateRewriteTriggered += 1;
 }
 
 export function getVerseCraftRolloutMetricsSnapshot(): VerseCraftRolloutMetricsSnapshot {

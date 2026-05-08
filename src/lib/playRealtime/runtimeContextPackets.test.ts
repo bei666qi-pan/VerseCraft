@@ -2,6 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 
+function parseRuntimePackets(packet: string): Record<string, unknown> {
+  return JSON.parse(packet.split("\n")[2]!) as Record<string, unknown>;
+}
+
+function withEnv<T>(name: string, value: string | undefined, fn: () => T): T {
+  const prev = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env[name];
+    else process.env[name] = prev;
+  }
+}
+
 test("buildRuntimeContextPackets includes stage-1 packets", () => {
   const packet = buildRuntimeContextPackets({
     playerContext:
@@ -68,6 +84,7 @@ test("buildRuntimeContextPackets includes stage-1 packets", () => {
   assert.ok(packet.includes("month_start_student_pressure_v1"));
   assert.ok(packet.includes("\"living_surface\""));
   assert.ok(packet.includes("living_lines"));
+  assert.ok(packet.includes("scene_actor_gate_packet"));
 });
 
 test("buildRuntimeContextPackets respects maxChars budget", () => {
@@ -107,5 +124,81 @@ test("new_player_guide_packet turns off outside early window", () => {
   assert.ok(packet.includes("new_player_guide_packet"));
   // enabled=false 时仍可存在包，但不应强导向
   assert.ok(packet.includes("\"enabled\":false") || packet.includes("\"phase\":\"off\""));
+});
+
+test("scene_actor_gate_packet stays compact and prevents multi-present focus fallback", () => {
+  const packet = buildRuntimeContextPackets({
+    playerContext:
+      "游戏时间[第1日 11时]。用户位置[1F_Lobby]。任务追踪：大厅试探[soft|active|委托N-001|层级1F|领取npc_grant]。" +
+      "世界标记：conspiracy_seeded。锚点解锁：B1[1]，1F[1]，7F[0]。" +
+      "主威胁状态：1[A-001|active|20]。" +
+      "NPC当前位置：N-001@1F_Lobby，N-002@1F_Lobby，N-003@1F_Lobby，N-004@1F_Lobby，N-005@1F_Lobby，N-006@1F_Lobby，N-010@7F_Bench，N-018@4F_CorridorEnd。" +
+      "图鉴已解锁：电工老刘[npc|好感28|N-010]，旧记录[npc|好感10|N-018]。" +
+      "场景外貌已描写：N-001/N-002。" +
+      "【rt_task_layers】hall_probe=soft_lead。",
+    latestUserInput: "我看向大厅人群，又想起 N-010 留下的那句提醒。",
+    playerLocation: "1F_Lobby",
+    maxChars: 40000,
+  });
+
+  const packets = parseRuntimePackets(packet);
+  const gate = packets.scene_actor_gate_packet as {
+    f: string | null;
+    p: string[];
+    s: string[];
+    m: Record<string, string>;
+    amb: number;
+  };
+  const personaText = packets.multi_npc_persona_packet as string;
+
+  assert.ok(JSON.stringify(gate).length <= 1000);
+  assert.equal(gate.f, null);
+  assert.equal(gate.amb, 1);
+  assert.deepEqual(gate.p, ["N-001", "N-002", "N-003", "N-004", "N-005", "N-006"]);
+  assert.deepEqual(gate.s, ["N-001", "N-002", "N-003", "N-004", "N-005", "N-006"]);
+  assert.equal(gate.m["N-010"], "h");
+  assert.ok(!(packets.npc_player_baseline_packet as { npcId: string | null }).npcId);
+  assert.equal((packets.actor_personality_packet as { npcId: string | null }).npcId, null);
+  assert.ok(personaText.length <= 1400);
+  assert.ok(personaText.includes('"id":"N-001"'));
+  assert.ok(!personaText.includes('"id":"N-010"'));
+  assert.ok(!personaText.includes('"id":"N-018"'));
+});
+
+/*
+test("SceneActorGate rollout off falls back without gate packet", () => {
+  withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", "0", () => {
+    const packet = buildRuntimeContextPackets({
+      playerContext:
+        "娓告垙鏃堕棿[绗?鏃?11鏃禲銆傜敤鎴蜂綅缃甗B1_SafeZone]銆? +
+        "NPC褰撳墠浣嶇疆锛歂-015@B1_SafeZone锛孨-020@B1_SafeZone銆? +
+        "鍥鹃壌宸茶В閿侊細欣蓝[npc|濂芥劅10|N-015]銆?,
+      latestUserInput: "她怎么看我？",
+      playerLocation: "B1_SafeZone",
+      maxChars: 40000,
+    });
+    const packets = parseRuntimePackets(packet);
+
+    assert.equal("scene_actor_gate_packet" in packets, false);
+    assert.deepEqual(packets.nearby_npc_packet, ["N-015", "N-020"]);
+    assert.equal((packets.npc_player_baseline_packet as { npcId: string | null }).npcId, "N-015");
+  });
+});
+*/
+
+test("SceneActorGate rollout off falls back without gate packet", () => {
+  withEnv("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", "0", () => {
+    const packet = buildRuntimeContextPackets({
+      playerContext: "N-015@B1_SafeZone N-020@B1_SafeZone",
+      latestUserInput: "who is here?",
+      playerLocation: "B1_SafeZone",
+      maxChars: 40000,
+    });
+    const packets = parseRuntimePackets(packet);
+
+    assert.equal("scene_actor_gate_packet" in packets, false);
+    assert.ok(Array.isArray(packets.nearby_npc_packet));
+    assert.equal((packets.current_location_packet as { location: string | null }).location, "B1_SafeZone");
+  });
 });
 

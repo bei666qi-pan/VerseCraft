@@ -9,6 +9,9 @@ import {
   type NarrativeValidationTelemetry,
   type ValidateNarrativeArgs,
 } from "@/lib/turnEngine/validateNarrative";
+import type { SceneActorGateResult } from "@/lib/playRealtime/sceneActorGate";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { recordSceneActorGateValidatorOutcome } from "@/lib/observability/versecraftRolloutMetrics";
 import {
   buildFallbackModelOutput,
   MODEL_OUTPUT_FALLBACK_NARRATIVE,
@@ -67,6 +70,7 @@ export type NarrativeCheckLogger = (input: {
 export function checkModelOutput(args: {
   output: unknown;
   context: DialogueContext;
+  sceneActorGate?: SceneActorGateResult | null;
   logger?: NarrativeCheckLogger | null;
   logFailures?: boolean;
 }): NarrativeCheckResult {
@@ -94,8 +98,17 @@ export function checkModelOutput(args: {
   const parsed = parsedResult.data;
   issues.push(...checkWorldNpcRevealLayer(parsed, args.context));
   issues.push(...checkNarrativeStateAlignmentLayer(parsed, args.context));
+  const sceneActorGateIssues = getVerseCraftRolloutFlags().enableSceneActorGateValidatorV1
+    ? checkSceneActorGateStructuredPermissions(parsed, args.context, args.sceneActorGate)
+    : [];
+  issues.push(...sceneActorGateIssues);
 
   const safeOutput = buildSafeOutput(parsed, issues, args.context);
+  const sceneActorGateValidatorTriggered = sceneActorGateIssues.length > 0;
+  recordSceneActorGateValidatorOutcome({
+    validatorTriggered: sceneActorGateValidatorTriggered,
+    rewriteTriggered: sceneActorGateValidatorTriggered && safeOutput !== parsed,
+  });
   const result = buildCheckResult({ parsed, issues, safeOutput });
   recordCheckFailure(args, result);
   return result;
@@ -340,6 +353,78 @@ function checkNarrativeStateAlignmentLayer(
   return issues;
 }
 
+function checkSceneActorGateStructuredPermissions(
+  output: ModelOutputSchema,
+  context: DialogueContext,
+  sceneActorGate: SceneActorGateResult | null | undefined
+): NarrativeCheckIssue[] {
+  if (!sceneActorGate) return [];
+
+  const issues: NarrativeCheckIssue[] = [];
+  const canSpeakNpcIds = new Set(
+    sceneActorGate.canSpeakNpcIds.map((id) => normalizeSceneNpcId(id)).filter((id): id is string => Boolean(id))
+  );
+  const npcCurrentLocationMap = buildNpcCurrentLocationMap(context, sceneActorGate);
+  const knownLocationIds = new Set(Object.values(npcCurrentLocationMap).filter(Boolean));
+  if (sceneActorGate.currentLocation) knownLocationIds.add(sceneActorGate.currentLocation);
+
+  (output.stateChanges.relationshipUpdates ?? []).forEach((update, index) => {
+    const npcId = normalizeSceneNpcId(stringProp(update, "npcId") ?? stringProp(update, "actorId"));
+    if (!npcId || !canSpeakNpcIds.has(npcId)) {
+      issues.push({
+        code: "scene_actor_gate_relationship_unauthorized",
+        severity: "block",
+        message: `SceneActorGate 未授权该 NPC 关系变更：${npcId ?? "missing"}`,
+        path: `stateChanges.relationshipUpdates.${index}`,
+      });
+    }
+  });
+
+  (output.stateChanges.npcLocationUpdates ?? []).forEach((update, index) => {
+    const npcId = normalizeSceneNpcId(
+      stringProp(update, "npcId") ?? stringProp(update, "id") ?? stringProp(update, "actorId")
+    );
+    if (!npcId || !npcCurrentLocationMap[npcId]) {
+      issues.push({
+        code: "scene_actor_gate_npc_location_unknown",
+        severity: "block",
+        message: `SceneActorGate 无法确认该 NPC 的当前位置，禁止写入位置变更：${npcId ?? "missing"}`,
+        path: `stateChanges.npcLocationUpdates.${index}`,
+      });
+      return;
+    }
+
+    const targetLocation =
+      stringProp(update, "toLocation") ??
+      stringProp(update, "to_location") ??
+      stringProp(update, "location") ??
+      stringProp(update, "currentLocation");
+    if (!targetLocation || !knownLocationIds.has(targetLocation)) {
+      issues.push({
+        code: "scene_actor_gate_npc_location_unknown_target",
+        severity: "block",
+        message: `SceneActorGate 无法确认目标位置，禁止凭空移动 NPC：${targetLocation ?? "missing"}`,
+        path: `stateChanges.npcLocationUpdates.${index}`,
+      });
+    }
+  });
+
+  output.eventCandidates.forEach((candidate, index) => {
+    if (candidate.actorType !== "npc") return;
+    const actorId = normalizeSceneNpcId(candidate.actorId);
+    if (!actorId || !canSpeakNpcIds.has(actorId)) {
+      issues.push({
+        code: "scene_actor_gate_npc_event_unauthorized",
+        severity: "block",
+        message: `SceneActorGate 未授权该 NPC 事件：${actorId ?? "missing"}`,
+        path: `eventCandidates.${index}.actorId`,
+      });
+    }
+  });
+
+  return issues;
+}
+
 function buildSafeOutput(
   parsed: ModelOutputSchema,
   issues: NarrativeCheckIssue[],
@@ -576,6 +661,34 @@ function extractEntityIds(text: string): string[] {
     /\b(?:N-\d{3,6}|I-[A-Za-z0-9-]+|W-[A-Za-z0-9-]+|A-[A-Za-z0-9_-]+|T-[A-Za-z0-9_-]+|C-[A-Za-z0-9_-]+|B\d_[A-Za-z0-9_]+|F\d_[A-Za-z0-9_]+|task:[A-Za-z0-9:_-]+|clue:[A-Za-z0-9:_-]+|fact:[A-Za-z0-9:_-]+|world:[A-Za-z0-9:_-]+)\b/g
   );
   return [...new Set(matches ?? [])];
+}
+
+function normalizeSceneNpcId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^N-(\d{3,6})$/i);
+  return match ? `N-${match[1]}` : null;
+}
+
+function buildNpcCurrentLocationMap(
+  context: DialogueContext,
+  sceneActorGate: SceneActorGateResult
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const gateMap = (sceneActorGate as unknown as { npcCurrentLocationMap?: unknown }).npcCurrentLocationMap;
+  if (gateMap && typeof gateMap === "object" && !Array.isArray(gateMap)) {
+    for (const [rawNpcId, rawLocation] of Object.entries(gateMap as Record<string, unknown>)) {
+      const npcId = normalizeSceneNpcId(rawNpcId);
+      if (npcId && typeof rawLocation === "string" && rawLocation.trim()) out[npcId] = rawLocation.trim();
+    }
+  }
+
+  for (const match of context.rawCompatibility.playerContext.matchAll(/\b(N-\d{3,6})@([A-Za-z0-9_-]+)\b/gi)) {
+    const npcId = normalizeSceneNpcId(match[1]);
+    const location = match[2]?.trim();
+    if (npcId && location) out[npcId] = location;
+  }
+
+  return out;
 }
 
 function stringProp(record: Record<string, unknown>, key: string): string | null {

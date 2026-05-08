@@ -1,6 +1,6 @@
 export type ChapterId = string;
 
-export type ChapterKind = "tutorial" | "standard" | "climax" | "side" | "transition";
+export type ChapterKind = "tutorial" | "standard" | "climax" | "side" | "transition" | "ending";
 
 export type ChapterProgressStatus = "locked" | "active" | "completed" | "reviewing";
 
@@ -26,6 +26,7 @@ export interface ChapterDefinition {
   minKeyChoices: number;
   targetKeyChoices: number;
   targetTextChars: [number, number];
+  hardTextChars: number;
   beats: ChapterBeatDefinition[];
   endHook: string;
   nextChapterId?: ChapterId;

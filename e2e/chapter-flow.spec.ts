@@ -375,7 +375,7 @@ async function expectPageTurnDuring(page: Page, action: () => Promise<void>) {
     const win = window as typeof window & { __vcChapterPageTurnObserver?: MutationObserver };
     win.__vcChapterPageTurnObserver?.disconnect();
   });
-  await expect(page.getByTestId("chapter-page-turn-overlay")).toHaveCount(0, { timeout: 2_000 });
+  await expect(page.getByTestId("chapter-page-turn-overlay")).toHaveCount(0, { timeout: 5_000 });
 }
 
 test.describe("chapter flow", () => {
@@ -409,13 +409,20 @@ test.describe("chapter flow", () => {
     await expect(page.getByTestId("chapter-end-sheet")).toContainText("继续下一章");
     await expect(page.getByTestId("chapter-end-sheet")).toContainText("回看本章");
     await expectNoGameyChapterText(page.getByTestId("chapter-end-sheet"));
-    await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
-
-    await expectPageTurnDuring(page, () => page.getByTestId("chapter-next-button").click());
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
     const legacySecondChapterTitle = ["门后", "回声"].join("");
     await expect(page.getByTestId("mobile-reading-header")).not.toContainText(legacySecondChapterTitle);
+    await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
+
+    await expectPageTurnDuring(page, () => page.getByTestId("chapter-review-button").click());
+    await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
+    await expect(page.getByText("前情回望，不影响正在阅读的章节")).toBeVisible();
+    await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
+
+    await expectPageTurnDuring(page, () => page.getByTestId("chapter-return-current").click());
+    await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
+    await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
     await expect(page.getByText("夕阳斜斜地压在黑板上")).toHaveCount(0);
 

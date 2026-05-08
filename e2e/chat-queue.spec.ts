@@ -291,4 +291,128 @@ test.describe("chat queue UI", () => {
     const hookErrors = errors.filter((e) => e.includes("310") || e.includes("more hooks"));
     expect(hookErrors, `React hook errors: ${hookErrors.join("; ")}`).toHaveLength(0);
   });
+
+  test("recoverable chat 429 enters queue once and resumes without duplicating the user action", async ({ page }) => {
+    test.setTimeout(90_000);
+    let queueSubmissions = 0;
+    let chatSubmissions = 0;
+    let lastChatQueueHeader: string | null = null;
+    const action = "check door";
+
+    await page.route("**/api/chat/queue/status?*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "retry-after": "1",
+        },
+        body: JSON.stringify({
+          queueId: "vcq_e2e_rate_limit_retry",
+          requestId: "rq-e2e-rate-limit-retry",
+          status: "running",
+          position: 0,
+          etaSeconds: 0,
+          retryAfterSeconds: 1,
+        }),
+      });
+    });
+
+    await page.route("**/api/chat/queue", async (route) => {
+      queueSubmissions += 1;
+      if (queueSubmissions === 1) {
+        await route.fulfill({
+          status: 200,
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            queueId: "vcq_e2e_initial_running",
+            requestId: "rq-e2e-initial-running",
+            status: "running",
+            position: 0,
+            etaSeconds: 0,
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 202,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "retry-after": "1",
+        },
+        body: JSON.stringify({
+          queueId: "vcq_e2e_rate_limit_retry",
+          requestId: "rq-e2e-rate-limit-retry",
+          status: "queued",
+          position: 1,
+          etaSeconds: 8,
+          retryAfterSeconds: 1,
+        }),
+      });
+    });
+
+    await page.route("**/api/chat", async (route) => {
+      chatSubmissions += 1;
+      lastChatQueueHeader = route.request().headers()["x-versecraft-chat-queue-id"] ?? null;
+      if (chatSubmissions === 1) {
+        await route.fulfill({
+          status: 429,
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            reason: "upstream_rate_limit",
+            upstream_status: 429,
+            message: "upstream rate limited",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+        body: buildSseFinalFrame(),
+      });
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedPlayableState(page);
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    await expect(page.getByTestId("mobile-action-dock")).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("manual-action-input").fill(action);
+    await page.getByTestId("send-action-button").click();
+
+    await expect.poll(() => chatSubmissions, { timeout: 20_000 }).toBe(2);
+    await expect.poll(() => queueSubmissions, { timeout: 20_000 }).toBe(2);
+    await expect.poll(() => lastChatQueueHeader, { timeout: 10_000 }).toBe("vcq_e2e_rate_limit_retry");
+    await expect(page.getByTestId("chat-queue-status")).toHaveCount(0, { timeout: 10_000 });
+
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(
+            async ({ dbName, storeName, key, submittedAction }) => {
+              const db = await new Promise<IDBDatabase>((resolve, reject) => {
+                const req = indexedDB.open(dbName);
+                req.onerror = () => reject(req.error);
+                req.onsuccess = () => resolve(req.result);
+              });
+              try {
+                const raw = await new Promise<string | null>((resolve, reject) => {
+                  const tx = db.transaction(storeName, "readonly");
+                  const req = tx.objectStore(storeName).get(key);
+                  req.onerror = () => reject(req.error);
+                  req.onsuccess = () => resolve(typeof req.result === "string" ? req.result : null);
+                });
+                const parsed = raw ? JSON.parse(raw) : null;
+                const logs = Array.isArray(parsed?.state?.logs) ? parsed.state.logs : [];
+                return logs.filter((log: { role?: string; content?: string }) => log.role === "user" && log.content === submittedAction).length;
+              } finally {
+                db.close();
+              }
+            },
+            { dbName: DB_NAME, storeName: STORE_NAME, key: KEY_MAIN, submittedAction: action }
+          ),
+        { timeout: 10_000 }
+      )
+      .toBe(1);
+  });
 });

@@ -46,6 +46,12 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableNpcKnowledgeValidator: boolean;
   enableWorldFactRegistry: boolean;
   enableFactCommitGate: boolean;
+  /** SceneActorGate V1 runtime prompt packet and focus arbitration; default on for current mainline. */
+  enableSceneActorGateV1: boolean;
+  /** SceneActorGate V1 structured-field validator; default on, no-op if no gate context is passed. */
+  enableSceneActorGateValidatorV1: boolean;
+  /** Mode-aware NPC persona packet cards; default on, can fall back to legacy full cards. */
+  enableModeAwareNpcPersonaPacketV1: boolean;
   /** 客户端优先采用 __VERSECRAFT_FINAL__ 整帧作为 DM JSON（与既有 SSE 行为一致，用于观测/强制） */
   enableFinalFrameFirstCommit: boolean;
   /** UI 调试诊断（开发态；生产默认关） */
@@ -161,6 +167,9 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableNpcKnowledgeValidator: readFlag("VERSECRAFT_ENABLE_NPC_KNOWLEDGE_VALIDATOR", true),
     enableWorldFactRegistry: readFlag("VERSECRAFT_ENABLE_WORLD_FACT_REGISTRY", true),
     enableFactCommitGate: readFlag("VERSECRAFT_ENABLE_FACT_COMMIT_GATE", true),
+    enableSceneActorGateV1: readFlag("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", true),
+    enableSceneActorGateValidatorV1: readFlag("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_VALIDATOR_V1", true),
+    enableModeAwareNpcPersonaPacketV1: readFlag("VERSECRAFT_ENABLE_MODE_AWARE_NPC_PERSONA_PACKET_V1", true),
     enableFinalFrameFirstCommit: readFlag("VERSECRAFT_ENABLE_FINAL_FRAME_FIRST_COMMIT", true),
     enableUiDebugDiagnostics: readFlag("VERSECRAFT_ENABLE_UI_DEBUG_DIAGNOSTICS", false),
     enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false),

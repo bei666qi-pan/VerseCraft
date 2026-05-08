@@ -52,6 +52,35 @@ test("phase4: awarded_warehouse_items write should land in warehouse", () => {
   assert.equal(useGameStore.getState().warehouse.some((x) => x.id === "WH_AWARD_1"), true);
 });
 
+test("mergeCodex preserves existing observation fields on relationship-only updates", () => {
+  resetStore();
+  const s = useGameStore.getState();
+  s.mergeCodex([
+    {
+      id: "N-015",
+      name: "麟泽",
+      type: "npc",
+      known_info: "第一次见到他时，他披着旧外套，肩上有雨痕。",
+      personality: "克制警觉",
+      traits: "说话短促",
+    },
+  ]);
+  s.mergeCodex([
+    {
+      id: "N-015",
+      name: "麟泽",
+      type: "npc",
+      favorability: 12,
+    },
+  ]);
+
+  const entry = useGameStore.getState().codex["N-015"];
+  assert.equal(entry?.favorability, 12);
+  assert.equal(entry?.known_info, "第一次见到他时，他披着旧外套，肩上有雨痕。");
+  assert.equal(entry?.personality, "克制警觉");
+  assert.equal(entry?.traits, "说话短促");
+});
+
 test("phase4: warehouse state supports narrative consume without changing save fields", () => {
   resetStore();
   const s = useGameStore.getState();

@@ -170,6 +170,22 @@ test("WORLDBUILD_OFFLINE uses reasoner primary and forbids enhance", () => {
   assert.equal(isModelForbiddenForTask("WORLDBUILD_OFFLINE", "enhance"), true);
 });
 
+test("production role policy keeps enhance and reasoner on their intended lanes", () => {
+  const env = baseEnv({
+    modelsByRole: { main: "vc-main", control: "vc-control", enhance: "vc-enhance", reasoner: "vc-reasoner" },
+    playerRoleFallbackChain: ["reasoner", "enhance", "control"],
+    devAssistPrimaryRole: "reasoner",
+  });
+
+  assert.deepEqual(resolveOrderedRoleChain("SCENE_ENHANCEMENT", env, "full")[0], "enhance");
+  assert.deepEqual(resolveOrderedRoleChain("NARRATIVE_EXPANSION", env, "full")[0], "enhance");
+  assert.deepEqual(resolveOrderedRoleChain("NPC_EMOTION_POLISH", env, "full")[0], "enhance");
+  assert.deepEqual(resolveOrderedRoleChain("WORLDBUILD_OFFLINE", env, "full")[0], "reasoner");
+  assert.deepEqual(resolveOrderedRoleChain("STORYLINE_SIMULATION", env, "full")[0], "reasoner");
+  assert.deepEqual(resolveOrderedRoleChain("DEV_ASSIST", env, "full")[0], "reasoner");
+  assert.deepEqual(resolveOrderedRoleChain("PLAYER_CHAT", env, "full"), ["main", "control"]);
+});
+
 test("DIRECTOR_PLAN_CRITIC is a control gate and never uses reasoner", () => {
   const b = getTaskBinding("DIRECTOR_PLAN_CRITIC");
   assert.equal(b.primaryRole, "control");

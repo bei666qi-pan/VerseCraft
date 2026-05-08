@@ -51,7 +51,7 @@ import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
 import { PROFESSION_IDS } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
-import { clampInt, localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
+import { localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
 import { sanitizeNarrativeDisplayMarkers } from "@/features/play/render/narrative";
 import {
@@ -119,6 +119,7 @@ import {
 } from "@/features/play/turnCommit/phaseRegressionGuards";
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
+import { applyTurnSanityDamage, normalizeTurnSanityDamage } from "@/features/play/turnCommit/sanityDamage";
 import {
   extractFilteredHintsFromTrace,
   isNarrativeSystemsDebugEnabled,
@@ -150,6 +151,7 @@ import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
+import { normalizeChapterState } from "@/lib/chapters";
 
 type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
 
@@ -313,6 +315,36 @@ function clearPendingChatQueueAction(): void {
   } catch {
     // ignore
   }
+}
+
+function isRecoverableModelRateLimit(args: {
+  status?: number;
+  upstreamStatus?: number;
+  code?: string;
+  reason?: string;
+  body?: string;
+}): boolean {
+  const code = String(args.code ?? "").toLowerCase();
+  const reason = String(args.reason ?? "").toLowerCase();
+  const body = String(args.body ?? "").toLowerCase();
+  if (/risk_control|queue_full|quota|auth|forbidden|banned|invalid_ticket/.test(`${code} ${reason} ${body}`)) {
+    return false;
+  }
+  if (args.upstreamStatus === 429 || args.upstreamStatus === 503) return true;
+  if (args.status === 503) return true;
+  return /rate[_-]?limit|too many requests|upstream_rate|overloaded|capacity/.test(`${code} ${reason} ${body}`);
+}
+
+function dmIndicatesRecoverableModelRateLimit(dm: unknown): boolean {
+  if (!dm || typeof dm !== "object" || Array.isArray(dm)) return false;
+  const meta = (dm as { security_meta?: unknown }).security_meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  const record = meta as Record<string, unknown>;
+  return isRecoverableModelRateLimit({
+    upstreamStatus: typeof record.upstream_status === "number" ? record.upstream_status : undefined,
+    code: typeof record.upstream_code === "string" ? record.upstream_code : undefined,
+    reason: typeof record.reason === "string" ? record.reason : undefined,
+  });
 }
 
 function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undefined {
@@ -622,10 +654,19 @@ function PlayContent() {
       bypassLengthCheck?: boolean,
       isResume?: boolean,
       isSystemAction?: boolean,
-      resumeQueueId?: string | null
+      resumeQueueId?: string | null,
+      retriedAfterRateLimit?: boolean
     ) => Promise<void>
   >(async () => {});
   const streamPhaseRef = useRef<ChatStreamPhase>("idle");
+
+  useEffect(() => {
+    const raw = useGameStore.getState().chapterState;
+    const normalized = normalizeChapterState(raw);
+    if (raw?.pendingChapterEndId && !normalized.pendingChapterEndId) {
+      useGameStore.setState({ chapterState: normalized });
+    }
+  }, [chapterRuntime.chapterState.activeChapterId, chapterRuntime.chapterState.pendingChapterEndId]);
   /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
   const openingAwaitingAssistantRef = useRef(false);
   const openingStartedAtRef = useRef(0);
@@ -1387,7 +1428,7 @@ function PlayContent() {
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
       const confirmLeave = window.confirm(
-        "深渊的凝视正在干扰你的认知。连接被切断时，本回合记录可能来不及落地。仍要离开吗？"
+        "世界推演仍在进行。连接被切断时，本回合记录可能来不及落地。仍要离开吗？"
       );
       if (confirmLeave) {
         window.location.href = "/";
@@ -2403,7 +2444,8 @@ function PlayContent() {
     bypassLengthCheck?: boolean,
     isResume?: boolean,
     isSystemAction?: boolean,
-    resumeQueueId?: string | null
+    resumeQueueId?: string | null,
+    retriedAfterRateLimit?: boolean
   ) {
     if (isChatBusy || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
@@ -2424,7 +2466,12 @@ function PlayContent() {
       }
       return;
     }
-    if (!isSystemAction && currentState.chapterState?.pendingChapterEndId) return;
+    const latestChapterState = normalizeChapterState(currentState.chapterState);
+    if (currentState.chapterState?.pendingChapterEndId && !latestChapterState.pendingChapterEndId) {
+      useGameStore.setState({ chapterState: latestChapterState });
+    }
+    if (!isSystemAction && latestChapterState.pendingChapterEndId) return;
+    if (!isSystemAction && latestChapterState.reviewChapterId) return;
     if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
       setShowDialoguePaywall(true);
       return;
@@ -2611,7 +2658,7 @@ function PlayContent() {
         }
         return;
       }
-      setLiveNarrative("连接深渊时发生了波动，请稍后再试。");
+      setLiveNarrative("世界推演连接发生波动，请稍后再试。");
       return;
     } finally {
       if (fetchDeadlineTimer !== undefined) {
@@ -2680,6 +2727,7 @@ function PlayContent() {
         maybeObj && typeof maybeObj === "object" && !Array.isArray(maybeObj) ? maybeObj : null;
       const upstreamStatus = errRec ? Number(errRec["upstreamStatus"] ?? 0) : 0;
       const code = errRec ? String(errRec["code"] ?? "") : "";
+      const reason = errRec ? String(errRec["reason"] ?? errRec["error"] ?? "") : "";
 
       // Print a guaranteed-visible line first (DevTools sometimes shows `{}` for objects).
       const isAuthFailed =
@@ -2714,22 +2762,38 @@ function PlayContent() {
         console.error("[/api/chat] non-OK response detail", detailText);
       }
 
+      if (
+        isRecoverableModelRateLimit({
+          status: res.status,
+          upstreamStatus,
+          code,
+          reason,
+          body: errorText,
+        }) &&
+        !retriedAfterRateLimit
+      ) {
+        setLiveNarrative("当前生成通道繁忙，已为你进入排队队列。");
+        sendActionInFlightRef.current = false;
+        await sendAction(trimmed, true, true, isSystemAction, null, true);
+        return;
+      }
+
       const msg = res.status === 429 || res.status === 503
-        ? "深渊暂时拒绝了你的连接，请稍后再试。"
+        ? "当前生成通道仍然繁忙，请稍后再试。"
         : res.status === 403
-          ? "深渊拒绝了你。请确认你的身份后再试。"
+          ? "当前连接被拒绝。请确认你的身份后再试。"
           : (res.status === 502 && (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403))
-            ? "深渊鉴权失败：请检查服务端大模型密钥与环境配置。"
+            ? "推演服务鉴权失败：请检查服务端大模型密钥与环境配置。"
           : res.status === 504
-            ? "深渊回应超时（504），请稍后再试。"
-          : "连接深渊时发生了波动，请稍后再试。";
+            ? "世界推演回应超时（504），请稍后再试。"
+          : "世界推演连接发生波动，请稍后再试。";
       setLiveNarrative(msg);
       return;
     }
 
     if (!res.body) {
       setStreamPhase("idle");
-      setLiveNarrative("连接深渊时发生了波动，请稍后再试。");
+      setLiveNarrative("世界推演连接发生波动，请稍后再试。");
       return;
     }
 
@@ -2956,6 +3020,14 @@ function PlayContent() {
       tailDrainTargetRef.current = salvage;
       setTailAlignKey((n) => n + 1);
       setStreamPhase("tail_draining");
+      return;
+    }
+
+    if (dmIndicatesRecoverableModelRateLimit(parsed) && !retriedAfterRateLimit) {
+      setStreamPhase("idle");
+      setLiveNarrative("当前生成通道繁忙，已为你进入排队队列。");
+      sendActionInFlightRef.current = false;
+      await sendAction(trimmed, true, true, isSystemAction, null, true);
       return;
     }
 
@@ -3322,23 +3394,23 @@ function PlayContent() {
       }
     }
 
-    let dmg = isOpeningSystemRequest ? 0 : clampInt(parsed.sanity_damage ?? 0, 0, 9999);
     const threatIsHot = Array.isArray((parsed as { main_threat_updates?: unknown[] }).main_threat_updates)
       && ((parsed as { main_threat_updates?: unknown[] }).main_threat_updates ?? []).some((u) => {
         if (!u || typeof u !== "object" || Array.isArray(u)) return false;
         const phase = (u as { phase?: unknown }).phase;
         return phase === "active" || phase === "suppressed" || phase === "breached";
       });
-    if (stateBeforeProfessionTurn.professionState.currentProfession === "守灯人" && threatIsHot && dmg > 0) {
-      dmg = Math.max(0, dmg - 1);
-    }
-    if (consumedProfessionActive === "守灯人" && dmg > 0) {
-      dmg = Math.max(0, dmg - 1);
-    }
+    const dmg = normalizeTurnSanityDamage({
+      rawDamage: parsed.sanity_damage ?? 0,
+      isOpeningSystemRequest,
+      passiveMitigation: stateBeforeProfessionTurn.professionState.currentProfession === "守灯人" && threatIsHot,
+      activeMitigation: consumedProfessionActive === "守灯人",
+    });
     if (dmg > 0) {
       const cur = useGameStore.getState().stats?.sanity ?? 0;
-      useGameStore.getState().setStats({ sanity: Math.max(0, cur - dmg) });
-      setHitEffectUntil(Date.now() + 1200);
+      const applied = applyTurnSanityDamage({ currentSanity: cur, damage: dmg });
+      useGameStore.getState().setStats({ sanity: applied.nextSanity });
+      if (applied.triggerHitEffect) setHitEffectUntil(Date.now() + 1200);
     }
 
     const pickedTurnOpts = pickTurnOptionsFromResolvedDm(parsed);
@@ -4614,8 +4686,11 @@ function PlayContent() {
               setChapterNavigatorOpen(false);
             }}
             onDismiss={() => {
+              if (!pendingChapterEnd) return;
               playUIClick();
-              chapterRuntime.dismissChapterEnd();
+              runChapterPageTurn("previous", () => {
+                chapterRuntime.reviewChapter(pendingChapterEnd.id);
+              });
             }}
           />
           <ChapterPageTurnOverlay

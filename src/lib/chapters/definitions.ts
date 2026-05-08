@@ -17,6 +17,7 @@ export const CHAPTER_DEFINITIONS: readonly ChapterDefinition[] = [
     minKeyChoices: 1,
     targetKeyChoices: 2,
     targetTextChars: [900, 1800],
+    hardTextChars: 2200,
     beats: [
       { id: "wake", label: "醒来", description: "确认当前处境。", required: true },
       { id: "observe", label: "观察异常", description: "发现环境中不合常理的细节。", required: true },
@@ -40,6 +41,7 @@ export const CHAPTER_DEFINITIONS: readonly ChapterDefinition[] = [
     minKeyChoices: 2,
     targetKeyChoices: 2,
     targetTextChars: [1200, 2200],
+    hardTextChars: 2600,
     beats: [
       { id: "new-objective", label: "新目标", description: "明确下一处调查方向。", required: true },
       { id: "search", label: "搜查判断", description: "围绕线索做出判断或搜查。", required: true },

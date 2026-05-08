@@ -1,0 +1,125 @@
+{
+  "scenario": "npc_consistency_gate",
+  "description": "Deterministic NPC consistency gate eval fixture. The top-level shape remains compatible with benchmark-chat-metrics; npcConsistencyCases is consumed by scripts/eval-npc-consistency.ts.",
+  "latestUserInput": "她怎么看我？",
+  "playerContext": "player_location[B1_SafeZone]\nNPC当前位置：N-015@B1_SafeZone，N-020@B1_SafeZone，N-010@1F_PropertyOffice。",
+  "mockScenario": "normal_stream",
+  "expect": {
+    "minNarrativeChars": 4,
+    "optionsCount": 4,
+    "allowOptionsMissing": false,
+    "mustNotContain": ["系统提示词", "JSON解析", "模型"],
+    "mustContainAny": []
+  },
+  "npcConsistencyCases": [
+    {
+      "id": "b1_multi_present_no_focus",
+      "description": "B1_SafeZone 同场 N-015/N-020，玩家输入没有明确 N-xxx 目标，不能猜 nearbyNpcIds[0]。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_SafeZone]\nNPC当前位置：N-015@B1_SafeZone，N-020@B1_SafeZone，N-010@1F_PropertyOffice。",
+      "latestUserInput": "她怎么看我？",
+      "personaNpcIds": ["N-015", "N-020"],
+      "expect": {
+        "focusNpcId": null,
+        "multiPresentNoFocus": true,
+        "presentNpcIds": ["N-015", "N-020"],
+        "canSpeakNpcIds": ["N-015", "N-020"],
+        "modeByNpcId": {
+          "N-015": "present",
+          "N-020": "present",
+          "N-010": "forbidden"
+        },
+        "forbiddenFocusNpcIds": ["N-015", "N-020"],
+        "packetMaxChars": 1200
+      }
+    },
+    {
+      "id": "b1_mentions_offscreen_xinlan",
+      "description": "B1_SafeZone 玩家询问 N-010，但 N-010 在 1F_PropertyOffice，只能 heard_only 且不能写 relationship update。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_SafeZone]\nNPC当前位置：N-015@B1_SafeZone，N-010@1F_PropertyOffice。",
+      "latestUserInput": "我问 N-010：你现在能过来吗？",
+      "personaNpcIds": ["N-015", "N-010"],
+      "expect": {
+        "focusNpcId": null,
+        "presentNpcIds": ["N-015"],
+        "canSpeakNpcIds": ["N-015"],
+        "modeByNpcId": {
+          "N-015": "present",
+          "N-010": "heard_only"
+        },
+        "noSpeakNpcIds": ["N-010"],
+        "unauthorizedRelationshipNpcIds": ["N-010"],
+        "packetMaxChars": 1200
+      }
+    },
+    {
+      "id": "7f_night_reader_memory_only",
+      "description": "7F 玩家提到夜读老人但不在当前 scene；图鉴/关系 hint 只允许 memory_only。",
+      "playerLocation": null,
+      "playerContext": "player_location[7F_Corridor]\nNPC当前位置：N-011@7F_Bench，N-015@B1_SafeZone。",
+      "latestUserInput": "我提到夜读老人刚才翻书的声音。",
+      "relationshipHints": ["夜读老人[npc|N-011|好感12]"],
+      "personaNpcIds": ["N-011"],
+      "expect": {
+        "focusNpcId": null,
+        "modeByNpcId": {
+          "N-011": "memory_only"
+        },
+        "noSpeakNpcIds": ["N-011"],
+        "packetMaxChars": 1200
+      }
+    },
+    {
+      "id": "laundry_aunt_lingshang_speech_distinct",
+      "description": "N-014 与 N-020 同场，检查 name / appearance / speech pattern 不混。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_Laundry]\nNPC当前位置：N-014@B1_Laundry，N-020@B1_Laundry。",
+      "latestUserInput": "我观察洗衣房阿姨和灵伤的反应。",
+      "personaNpcIds": ["N-014", "N-020"],
+      "expect": {
+        "focusNpcId": null,
+        "multiPresentNoFocus": true,
+        "presentNpcIds": ["N-014", "N-020"],
+        "canSpeakNpcIds": ["N-014", "N-020"],
+        "distinctPersonaPairs": [["N-014", "N-020"]],
+        "packetMaxChars": 1200
+      }
+    },
+    {
+      "id": "ordinary_npc_loop_truth_locked",
+      "description": "普通 NPC 被问循环真相时不能默认旧友，也不能越过 reveal cap。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_SafeZone]\nNPC当前位置：N-001@B1_SafeZone，N-010@1F_PropertyOffice。",
+      "latestUserInput": "我问陈婆婆：循环真相到底是什么？你是不是早就认识我？",
+      "personaNpcIds": ["N-001"],
+      "expect": {
+        "focusNpcId": "N-001",
+        "presentNpcIds": ["N-001"],
+        "canSpeakNpcIds": ["N-001"],
+        "ordinaryNpcIdsNoOldFriend": ["N-001"],
+        "deepTruthLockedNpcIds": ["N-001"],
+        "packetMaxChars": 1200
+      }
+    },
+    {
+      "id": "appearance_written_reentry",
+      "description": "已描写外貌的 N-020 再次出现时，persona card 必须标记 already_written。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_Storage]\nNPC当前位置：N-020@B1_Storage，N-014@B1_Laundry。",
+      "latestUserInput": "我再次看向 N-020，确认她现在的反应。",
+      "personaNpcIds": ["N-020"],
+      "sceneAppearanceAlreadyWrittenIds": ["N-020"],
+      "expect": {
+        "focusNpcId": "N-020",
+        "presentNpcIds": ["N-020"],
+        "canSpeakNpcIds": ["N-020"],
+        "modeByNpcId": {
+          "N-020": "target_present"
+        },
+        "appearanceAlreadyWrittenNpcIds": ["N-020"],
+        "packetMaxChars": 1200
+      }
+    }
+  ]
+}

@@ -231,6 +231,17 @@ function buildSseFinalFrame() {
   })}\n\n`;
 }
 
+function buildDamagingSseFinalFrame(damage = 3) {
+  return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
+    is_action_legal: true,
+    sanity_damage: damage,
+    narrative: "阴冷的回声擦过太阳穴，精神像被针尖轻轻挑了一下。",
+    is_death: false,
+    consumes_time: false,
+    options,
+  })}\n\n`;
+}
+
 function buildOpeningPenaltyFrame() {
   return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
     is_action_legal: false,
@@ -289,6 +300,17 @@ async function installChatSseMock(page: Page) {
     });
   });
   return submittedActions;
+}
+
+async function installDamagingChatSseMock(page: Page, damage = 3) {
+  await installQueueDisabledMock(page);
+  await page.route("**/api/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: buildDamagingSseFinalFrame(damage),
+    });
+  });
 }
 
 async function installDelayedChatSseMock(page: Page, delayMs = 1600) {
@@ -664,6 +686,25 @@ test.describe("mobile reading UI", () => {
     await expectNoClientCrash(page, errors);
   });
 
+  test("applies sanity damage and shows the lightweight hit effect", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openSeededPlay(page, {
+      stats: { sanity: 30, agility: 20, luck: 20, charm: 20, background: 20 },
+      historicalMaxSanity: 30,
+    });
+    await installDamagingChatSseMock(page, 3);
+
+    const input = page.getByTestId("manual-action-input");
+    await input.fill("靠近冷光");
+    await Promise.all([
+      page.waitForRequest(isPlayerChatPost),
+      page.getByTestId("send-action-button").click(),
+    ]);
+
+    await expect(page.getByTestId("sanity-hit-effect-overlay")).toBeVisible({ timeout: 5_000 });
+    await expect.poll(() => readPersistedSanity(page), { timeout: 10_000 }).toBe(27);
+  });
+
   test("submits an option item directly once and collapses the dropdown", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openSeededPlay(page);
@@ -836,6 +877,42 @@ test.describe("mobile reading UI", () => {
     await expect(page.getByTestId("open-game-guide-button")).toBeVisible();
     await expect(page.getByTestId("settings-volume-slider")).toBeVisible();
     await expect(page.getByTestId("open-chapter-switch-button")).toBeVisible();
+  });
+
+  test("shows the codex observation scroll cue only when 我所见 overflows", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const longObservation = Array.from({ length: 18 }, (_, index) =>
+      `第 ${index + 1} 次观察：电工老刘把手电贴在墙缝上，光斑被潮气切成细碎的纹路。`
+    ).join("");
+    await openSeededPlay(page, {
+      playerLocation: "1F_Lobby",
+      codex: {
+        "N-008": {
+          ...b1Codex["N-008"],
+          currentLocation: "1F_Lobby",
+          known_info: longObservation,
+        },
+        "N-010": {
+          id: "N-010",
+          name: "欣蓝",
+          type: "npc",
+          known_info: "她站在门边，提醒我先听清走廊里的脚步。",
+          currentLocation: "1F_Lobby",
+        },
+      },
+      dynamicNpcStates: {
+        "N-008": { currentLocation: "1F_Lobby", isAlive: true },
+        "N-010": { currentLocation: "1F_Lobby", isAlive: true },
+      },
+    });
+
+    await page.getByTestId("bottom-nav-codex").click();
+    await page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-008"]').click();
+    await expect(page.getByTestId("mobile-codex-observation-scroll-indicator")).toBeVisible({ timeout: 5_000 });
+
+    await page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-010"]').click();
+    await expect(page.getByTestId("mobile-codex-observation-scroll-indicator")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-codex-observation")).toContainText("她站在门边");
   });
 
   test("filters the mobile codex by current floor and runtime NPC locations", async ({ page }) => {

@@ -296,7 +296,27 @@ const ROUNDS_THRESHOLD = 10;
 const SHORT_TERM_ROUNDS = 5;
 const TTFT_HARD_CAP_SESSION_MEMORY_MS = 140;
 
-
+function extractChapterNarrativeBudgetInput(clientState: unknown) {
+  if (!clientState || typeof clientState !== "object" || Array.isArray(clientState)) return null;
+  const chapter = (clientState as { chapterRuntime?: unknown }).chapterRuntime;
+  if (!chapter || typeof chapter !== "object" || Array.isArray(chapter)) return null;
+  const record = chapter as Record<string, unknown>;
+  const target = Array.isArray(record.targetTextChars)
+    ? record.targetTextChars.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    : [];
+  return {
+    chapterId: typeof record.chapterId === "string" ? record.chapterId : null,
+    narrativeCharCount:
+      typeof record.narrativeCharCount === "number" && Number.isFinite(record.narrativeCharCount)
+        ? record.narrativeCharCount
+        : null,
+    targetTextChars: target.length >= 2 ? ([target[0], target[1]] as [number, number]) : null,
+    hardTextChars:
+      typeof record.hardTextChars === "number" && Number.isFinite(record.hardTextChars)
+        ? record.hardTextChars
+        : null,
+  };
+}
 
 function hasAuthSessionCookie(headers: Headers): boolean {
   const cookie = headers.get("cookie") ?? "";
@@ -1796,6 +1816,7 @@ async function postChatInternal(req: Request) {
     recentNarrativeTail: extractLastAssistantNarrativeTail(rawChatMessages),
     isEndgame: plannedTurnMode.reason.startsWith("time_endgame"),
     isChapterClimax: directorBeatHint === "peak" || directorBeatHint === "climax" || (directorTension ?? 0) >= 95,
+    chapter: extractChapterNarrativeBudgetInput(clientState),
   });
   const narrativeBudgetBlock = laneSideEffectPlan.requirePacingValidation
     ? buildNarrativeBudgetPacketBlock(narrativeBudget)
@@ -2435,7 +2456,7 @@ async function postChatInternal(req: Request) {
       const degraded = {
         is_action_legal: false,
         sanity_damage: 0,
-        narrative: isTimeout ? "深渊回声超时，请稍后重试。" : "深渊主脑暂时离线，请稍后重试。",
+        narrative: isTimeout ? "世界推演暂时超时，请稍后重试。" : "世界推演服务暂时不可用，请稍后重试。",
         is_death: false,
         consumes_time: true,
         security_meta: {

@@ -32,3 +32,59 @@ test("multiNpcPersona: boundary packet stays very compact", () => {
   assert.ok(obj.cards[0]?.ap.length <= 70);
 });
 
+test("multiNpcPersona: heard_only card omits speech_pattern", () => {
+  const obj = buildMultiNpcCompactPersonaPacketObject({
+    npcIds: ["N-010"],
+    npcPositions: [{ npcId: "N-010", location: "1F_PropertyOffice" }],
+    currentLocation: "B1_SafeZone",
+    sceneAppearanceAlreadyWrittenIds: [],
+    modeByNpcId: { "N-010": "heard_only" },
+  });
+  const card = obj.cards[0] as Record<string, unknown>;
+  assert.equal(card.id, "N-010");
+  assert.equal(card.mode, "heard_only");
+  assert.equal(card.rule, "no_live_dialogue");
+  assert.equal("speech_pattern" in card, false);
+});
+
+test("multiNpcPersona: memory_only card omits appearance_short", () => {
+  const obj = buildMultiNpcCompactPersonaPacketObject({
+    npcIds: ["N-010"],
+    npcPositions: [{ npcId: "N-010", location: "1F_PropertyOffice" }],
+    currentLocation: "B1_SafeZone",
+    sceneAppearanceAlreadyWrittenIds: [],
+    modeByNpcId: { "N-010": "memory_only" },
+  });
+  const card = obj.cards[0] as Record<string, unknown>;
+  assert.equal(card.id, "N-010");
+  assert.equal(card.mode, "memory_only");
+  assert.equal(card.rule, "no_live_dialogue");
+  assert.equal("appearance_short" in card, false);
+});
+
+test("multiNpcPersona: present mode keeps short identity anchors", () => {
+  const obj = buildMultiNpcCompactPersonaPacketObject({
+    npcIds: ["N-015"],
+    npcPositions: [{ npcId: "N-015", location: "B1_SafeZone" }],
+    currentLocation: "B1_SafeZone",
+    sceneAppearanceAlreadyWrittenIds: [],
+    modeByNpcId: { "N-015": "present" },
+  });
+  const card = obj.cards[0] as Record<string, unknown>;
+  assert.equal(card.id, "N-015");
+  assert.equal(card.mode, "present");
+  assert.equal(typeof card.appearance_short, "string");
+  assert.equal(typeof card.speech_pattern, "string");
+});
+
+test("multiNpcPersona: forbidden mode does not emit a card", () => {
+  const obj = buildMultiNpcCompactPersonaPacketObject({
+    npcIds: ["N-010"],
+    npcPositions: [{ npcId: "N-010", location: "1F_PropertyOffice" }],
+    currentLocation: "B1_SafeZone",
+    sceneAppearanceAlreadyWrittenIds: [],
+    modeByNpcId: { "N-010": "forbidden" },
+  });
+  assert.deepEqual(obj.cards, []);
+});
+

@@ -15,7 +15,7 @@ export const PLAY_WAIT_UX_PRIMARY_COPY: Record<Exclude<PlayWaitUxStage, "idle">,
 export function playWaitUxSemanticSubline(kind: PlaySemanticWaitingKind | null): string | null {
   switch (kind) {
     case "explore":
-      return "公寓的空间正在回应你的选择";
+      return "世界正在实时推演";
     case "dialogue":
       return "对方的反应正在被写入现场";
     case "combat":
@@ -29,9 +29,9 @@ export function playWaitUxSemanticSubline(kind: PlaySemanticWaitingKind | null):
     case "unknown":
     case null:
     case undefined:
-      return "公寓正在回应你的选择";
+      return "世界正在实时推演";
     default:
-      return "公寓正在回应你的选择";
+      return "世界正在实时推演";
   }
 }
 

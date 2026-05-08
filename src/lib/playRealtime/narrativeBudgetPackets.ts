@@ -16,6 +16,24 @@ export type NarrativeBudget = {
   mustInclude: string[];
   stopRule: string;
   reasonCodes: string[];
+  chapter?: NarrativeBudgetChapterCaps;
+};
+
+export type NarrativeBudgetChapterCaps = {
+  id: string;
+  currentChars: number;
+  targetMinChars: number;
+  targetMaxChars: number;
+  hardMaxChars: number;
+  remainingHardChars: number;
+  shouldClose: boolean;
+};
+
+export type NarrativeBudgetChapterInput = {
+  chapterId?: string | null;
+  narrativeCharCount?: number | null;
+  targetTextChars?: readonly [number, number] | readonly number[] | null;
+  hardTextChars?: number | null;
 };
 
 export type ResolveNarrativeBudgetArgs = {
@@ -30,6 +48,7 @@ export type ResolveNarrativeBudgetArgs = {
   recentNarrativeTail?: string | null;
   isEndgame?: boolean;
   isChapterClimax?: boolean;
+  chapter?: NarrativeBudgetChapterInput | null;
 };
 
 type TierBudgetDefaults = Omit<NarrativeBudget, "schema" | "tier" | "reasonCodes">;
@@ -222,19 +241,24 @@ export function resolveNarrativeBudget(args: ResolveNarrativeBudgetArgs): Narrat
     reasonCodes.push("normal_risk");
   }
 
-  return createBudget(tier, reasonCodes);
+  return createBudget(tier, reasonCodes, args.chapter ?? null);
 }
 
 export function buildNarrativeBudgetPacketBlock(budget: NarrativeBudget): string {
   return `## 【narrative_budget_packet】\n${JSON.stringify(normalizeNarrativeBudget(budget))}`;
 }
 
-function createBudget(tier: NarrativeBudgetTier, reasonCodes: readonly string[]): NarrativeBudget {
+function createBudget(
+  tier: NarrativeBudgetTier,
+  reasonCodes: readonly string[],
+  chapter?: NarrativeBudgetChapterInput | null,
+): NarrativeBudget {
   return normalizeNarrativeBudget({
     schema: SCHEMA,
     tier,
     ...TIER_BUDGETS[tier],
     reasonCodes: [...reasonCodes],
+    ...(chapter ? { chapter: normalizeChapterCaps(chapter) } : {}),
   });
 }
 
@@ -247,16 +271,23 @@ function normalizeNarrativeBudget(budget: NarrativeBudget): NarrativeBudget {
     maxChars: budget.maxChars,
   });
 
+  const chapter = budget.chapter ? normalizeChapterCaps(budget.chapter) : undefined;
+  const cappedNumbers = applyChapterCaps(numbers, chapter);
+
   return {
     schema: SCHEMA,
     tier,
-    minChars: numbers.minChars,
-    targetChars: numbers.targetChars,
-    maxChars: numbers.maxChars,
+    minChars: cappedNumbers.minChars,
+    targetChars: cappedNumbers.targetChars,
+    maxChars: cappedNumbers.maxChars,
     minInfoBeats: clampInteger(budget.minInfoBeats, defaults.minInfoBeats, 1, 8),
     mustInclude: sanitizeStringList(budget.mustInclude, defaults.mustInclude, 8),
     stopRule: normalizeText(budget.stopRule) || defaults.stopRule,
-    reasonCodes: sanitizeReasonCodes(budget.reasonCodes, ["manual_budget"]),
+    reasonCodes: sanitizeReasonCodes(
+      chapter?.shouldClose ? [...budget.reasonCodes, "chapter_close_due"] : budget.reasonCodes,
+      ["manual_budget"]
+    ),
+    ...(chapter ? { chapter } : {}),
   };
 }
 
@@ -271,6 +302,42 @@ function clampBudgetNumbers(
   minChars = Math.min(minChars, maxChars - 20);
   const targetChars = clampInteger(numbers.targetChars, defaults.targetChars, minChars, maxChars);
 
+  return { minChars, targetChars, maxChars };
+}
+
+function normalizeChapterCaps(input: NarrativeBudgetChapterInput | NarrativeBudgetChapterCaps): NarrativeBudgetChapterCaps {
+  const source = input as NarrativeBudgetChapterInput & NarrativeBudgetChapterCaps;
+  const target = Array.isArray(source.targetTextChars)
+    ? source.targetTextChars
+    : [Number(source.targetMinChars), Number(source.targetMaxChars)];
+  const hardRaw = Number(source.hardTextChars ?? source.hardMaxChars ?? target[1] ?? 3000);
+  const hardMaxChars = clampInteger(hardRaw, 3000, 200, 10_000);
+  const targetMinChars = clampInteger(target[0], Math.min(1200, hardMaxChars - 20), 80, Math.max(80, hardMaxChars - 20));
+  const targetMaxChars = clampInteger(target[1], Math.min(2400, hardMaxChars), targetMinChars + 20, hardMaxChars);
+  const currentChars = clampInteger(source.narrativeCharCount ?? source.currentChars ?? 0, 0, 0, 1_000_000);
+  const remainingHardChars = Math.max(0, hardMaxChars - currentChars);
+  return {
+    id: normalizeText(source.chapterId ?? source.id ?? "chapter"),
+    currentChars,
+    targetMinChars,
+    targetMaxChars,
+    hardMaxChars,
+    remainingHardChars,
+    shouldClose: currentChars >= targetMaxChars || remainingHardChars <= 220,
+  };
+}
+
+function applyChapterCaps(
+  numbers: Pick<NarrativeBudget, "minChars" | "targetChars" | "maxChars">,
+  chapter: NarrativeBudgetChapterCaps | undefined
+): Pick<NarrativeBudget, "minChars" | "targetChars" | "maxChars"> {
+  if (!chapter) return numbers;
+  if (chapter.remainingHardChars <= 0) {
+    return { minChars: 40, targetChars: 80, maxChars: 120 };
+  }
+  const maxChars = Math.max(40, Math.min(numbers.maxChars, chapter.remainingHardChars));
+  const targetChars = Math.max(40, Math.min(numbers.targetChars, maxChars));
+  const minChars = Math.max(20, Math.min(numbers.minChars, targetChars));
   return { minChars, targetChars, maxChars };
 }
 
@@ -294,6 +361,7 @@ function buildSignalText(args: ResolveNarrativeBudgetArgs): string {
     args.currentLocation,
     args.presentNpcIds,
     args.recentNarrativeTail,
+    args.chapter,
   ]
     .map(valueToSearchText)
     .filter(Boolean)
