@@ -8,11 +8,17 @@ import {
 } from "@/lib/memorySpine/selectors";
 import type { MemorySpineEntry, MemorySpineState } from "@/lib/memorySpine/types";
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
+import { computeNpcFirstEncounterEchoPlan } from "@/lib/playerEcho/npcFirstEncounter";
+import { buildPlayerEchoPromptBlock } from "@/lib/playerEcho/prompt";
+import { readPlayerEchoCanon } from "@/lib/playerEcho/repository";
+import { selectPlayerEchoFragments } from "@/lib/playerEcho/select";
+import type { PlayerEchoCanon } from "@/lib/playerEcho/types";
 import { getNpcCanonicalIdentity, isRegisteredCanonicalNpcId } from "@/lib/registry/npcCanon";
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { ITEMS } from "@/lib/registry/items";
 import { NPCS } from "@/lib/registry/npcs";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import { getVerseCraftRolloutFlags, type VerseCraftRolloutFlagsSnapshot } from "@/lib/rollout/versecraftRolloutFlags";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import { buildChapterWriterInstruction } from "@/lib/storyDirector/chapterReasoner";
 import type { LoreFact, LorePacket, RuntimeLoreRequest } from "@/lib/worldKnowledge/types";
@@ -41,6 +47,8 @@ export type BuildDialogueContextInput = NarrativeTurnInput & {
   sessionMemory?: SessionMemoryRow | null;
   lorePacket?: LorePacket | null;
   recentlyEncounteredEntities?: string[];
+  playerEchoReadTimeoutMs?: number;
+  rolloutFlags?: Partial<Pick<VerseCraftRolloutFlagsSnapshot, "enablePlayerEchoCanon" | "enablePlayerEchoPromptPacket">>;
   deps?: Partial<DialogueContextBuilderDeps>;
 };
 
@@ -49,6 +57,7 @@ export type DialogueContextBuilderDeps = {
   loadWorldLore: (request: RuntimeLoreRequest) => Promise<LorePacket>;
   loadRecentStoryEvents: (input: StoryEventReadInput) => Promise<RecentStoryEventRecord[]>;
   loadNpcMemories: (input: NpcMemoryReadInput) => Promise<NpcMemoryContextRecord[]>;
+  loadPlayerEchoCanon: (userId: string) => Promise<PlayerEchoCanon | null>;
   buildNpcHeartRuntimeView: typeof buildNpcHeartRuntimeView;
   recordDegrade: (input: {
     requestId: string;
@@ -177,6 +186,19 @@ export async function buildDialogueContext(input: BuildDialogueContextInput): Pr
       revealTier,
       epistemicMemory,
       forbiddenFactIds: context.world.forbiddenFactIds,
+      degradeReasons,
+    });
+
+    context.playerEcho = await buildPlayerEchoContext({
+      input,
+      deps,
+      activeNpcId,
+      presentNpcIds,
+      locationId: context.player.locationId,
+      floorId: inferFloorId(context.player.locationId),
+      revealTier,
+      snapshot,
+      currentRunDiscovered: collectCurrentRunDiscoveredNpcIds({ snapshot, clientState }),
       degradeReasons,
     });
 
@@ -729,6 +751,97 @@ async function loadNpcMemories(args: {
   }
 }
 
+async function buildPlayerEchoContext(args: {
+  input: BuildDialogueContextInput;
+  deps: DialogueContextBuilderDeps;
+  activeNpcId: string | null;
+  presentNpcIds: string[];
+  locationId: string | null;
+  floorId: string | null;
+  revealTier: number;
+  snapshot: RunSnapshotV2 | null;
+  currentRunDiscovered: string[];
+  degradeReasons: string[];
+}): Promise<DialogueContext["playerEcho"] | undefined> {
+  const flags = {
+    ...getVerseCraftRolloutFlags(),
+    ...(args.input.rolloutFlags ?? {}),
+  };
+  if (!flags.enablePlayerEchoCanon || !flags.enablePlayerEchoPromptPacket || !args.input.userId) {
+    return undefined;
+  }
+
+  const timeoutMs = Math.max(80, Math.min(120, normalizeInt(args.input.playerEchoReadTimeoutMs, 100)));
+  const loaded = await loadPlayerEchoCanonWithTimeout(
+    args.deps.loadPlayerEchoCanon(args.input.userId),
+    timeoutMs
+  );
+  if (!loaded.ok) {
+    args.degradeReasons.push("player_echo_read_failed");
+    return undefined;
+  }
+  if (!loaded.value) return undefined;
+
+  const npcIds = uniqueStrings([args.activeNpcId ?? "", ...args.presentNpcIds]);
+  const selectedFragments = selectPlayerEchoFragments(loaded.value, {
+    activeNpcId: args.activeNpcId,
+    presentNpcIds: args.presentNpcIds,
+    locationId: args.locationId,
+    floorId: args.floorId,
+    latestUserInput: args.input.latestUserInput,
+    revealTier: args.revealTier,
+    npcMemoryPrivilegeById: Object.fromEntries(
+      npcIds.map((npcId) => [npcId, getNpcCanonicalIdentity(npcId).memoryPrivilege])
+    ),
+  });
+  const firstEncounterPlan = args.activeNpcId
+    ? computeNpcFirstEncounterEchoPlan({
+        canonIdentity: getNpcCanonicalIdentity(args.activeNpcId),
+        echoCanon: loaded.value,
+        activeNpcId: args.activeNpcId,
+        snapshot: args.snapshot,
+        currentRunDiscovered: args.currentRunDiscovered,
+        revealTier: args.revealTier,
+      })
+    : null;
+  const packet = buildPlayerEchoPromptBlock(selectedFragments, firstEncounterPlan);
+
+  return {
+    selectedFragments,
+    firstEncounterPlan,
+    packetDigest: packet ? stableDigest(packet) : null,
+    packetCharLen: packet.length,
+  };
+}
+
+async function loadPlayerEchoCanonWithTimeout(
+  promise: Promise<PlayerEchoCanon | null>,
+  timeoutMs: number
+): Promise<{ ok: true; value: PlayerEchoCanon | null } | { ok: false; value: null }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const guarded = promise.then(
+    (value) => ({ ok: true as const, value }),
+    () => ({ ok: false as const, value: null })
+  );
+  const timeout = new Promise<{ ok: false; value: null }>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, value: null }), timeoutMs);
+  });
+  try {
+    return await Promise.race([guarded, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function stableDigest(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function collectAllowedEntityIds(args: {
   snapshot: RunSnapshotV2 | null;
   clientState: Record<string, unknown> | null;
@@ -802,6 +915,23 @@ function collectPresentNpcIds(args: {
   return uniqueStrings([...fromClient, ...fromSnapshot]).slice(0, 12);
 }
 
+function collectCurrentRunDiscoveredNpcIds(args: {
+  snapshot: RunSnapshotV2 | null;
+  clientState: Record<string, unknown> | null;
+}): string[] {
+  const fromSnapshot = Object.keys(args.snapshot?.player?.codex ?? {}).filter(isKnownNpcId);
+  const clientCodex = asRecord(args.clientState?.codex);
+  const fromClientCodex = clientCodex ? Object.keys(clientCodex).filter(isKnownNpcId) : [];
+  const fromClientList = asStringArray(args.clientState?.discoveredNpcIds).filter(isKnownNpcId);
+  return uniqueStrings([...fromSnapshot, ...fromClientCodex, ...fromClientList]).slice(0, 80);
+}
+
+function inferFloorId(locationId: string | null): string | null {
+  if (!locationId) return null;
+  const match = locationId.match(/^(B\d+|\d+F)/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
 function chooseActiveNpcId(args: {
   requestedNpcId?: string | null;
   presentNpcIds: string[];
@@ -869,6 +999,7 @@ function resolveDialogueContextDeps(overrides?: Partial<DialogueContextBuilderDe
     loadWorldLore: loadWorldLoreDefault,
     loadRecentStoryEvents: loadRecentStoryEventsDefault,
     loadNpcMemories: loadNpcMemoriesDefault,
+    loadPlayerEchoCanon: readPlayerEchoCanon,
     buildNpcHeartRuntimeView,
     recordDegrade: recordDialogueContextDegradeDefault,
     ...overrides,

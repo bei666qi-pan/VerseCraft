@@ -52,6 +52,14 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableSceneActorGateValidatorV1: boolean;
   /** Mode-aware NPC persona packet cards; default on, can fall back to legacy full cards. */
   enableModeAwareNpcPersonaPacketV1: boolean;
+  /** Player Echo Canon pure data layer; default off until wired into gameplay flow. */
+  enablePlayerEchoCanon: boolean;
+  /** Player Echo Canon DB persistence; default off and must be enabled by caller rollout. */
+  enablePlayerEchoPersistence: boolean;
+  /** Player Echo prompt packet injection; default off and not connected in V1 persistence work. */
+  enablePlayerEchoPromptPacket: boolean;
+  /** Player Echo post-generation validator; default off until explicitly integrated. */
+  enablePlayerEchoValidator: boolean;
   /** 客户端优先采用 __VERSECRAFT_FINAL__ 整帧作为 DM JSON（与既有 SSE 行为一致，用于观测/强制） */
   enableFinalFrameFirstCommit: boolean;
   /** UI 调试诊断（开发态；生产默认关） */
@@ -170,6 +178,10 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableSceneActorGateV1: readFlag("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_V1", true),
     enableSceneActorGateValidatorV1: readFlag("VERSECRAFT_ENABLE_SCENE_ACTOR_GATE_VALIDATOR_V1", true),
     enableModeAwareNpcPersonaPacketV1: readFlag("VERSECRAFT_ENABLE_MODE_AWARE_NPC_PERSONA_PACKET_V1", true),
+    enablePlayerEchoCanon: readFlag("VERSECRAFT_ENABLE_PLAYER_ECHO_CANON", false),
+    enablePlayerEchoPersistence: readFlag("VERSECRAFT_ENABLE_PLAYER_ECHO_PERSISTENCE", false),
+    enablePlayerEchoPromptPacket: readFlag("VERSECRAFT_ENABLE_PLAYER_ECHO_PROMPT_PACKET", false),
+    enablePlayerEchoValidator: readFlag("VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR", false),
     enableFinalFrameFirstCommit: readFlag("VERSECRAFT_ENABLE_FINAL_FRAME_FIRST_COMMIT", true),
     enableUiDebugDiagnostics: readFlag("VERSECRAFT_ENABLE_UI_DEBUG_DIAGNOSTICS", false),
     enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false),

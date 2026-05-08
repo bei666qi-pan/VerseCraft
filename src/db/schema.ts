@@ -150,6 +150,50 @@ export const gameSessionMemory = pgTable("game_session_memory", {
     .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
 });
 
+export const playerEchoCanon = pgTable("player_echo_canon", {
+  userId: varchar("user_id", { length: 191 })
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  totalRuns: integer("total_runs").notNull().default(0),
+  totalDeaths: integer("total_deaths").notNull().default(0),
+  endingsSeen: jsonb("endings_seen").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  highestFloorScore: integer("highest_floor_score").notNull().default(0),
+  repeatedDeathCauses: jsonb("repeated_death_causes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  recurringNpcBonds: jsonb("recurring_npc_bonds")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  unresolvedRegrets: jsonb("unresolved_regrets").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  strongestChoices: jsonb("strongest_choices").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  stableEchoSummary: text("stable_echo_summary").notNull().default(""),
+  lastRunSummary: text("last_run_summary").notNull().default(""),
+  echoIntensity: integer("echo_intensity").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`)
+    .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+});
+
+export const playerEchoEvents = pgTable(
+  "player_echo_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "cascade" }),
+    runId: varchar("run_id", { length: 191 }),
+    eventType: varchar("event_type", { length: 64 }),
+    targetType: varchar("target_type", { length: 32 }),
+    targetId: varchar("target_id", { length: 128 }),
+    summary: text("summary").notNull(),
+    emotionalWeight: integer("emotional_weight").notNull().default(50),
+    safetyLevel: integer("safety_level").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    userCreatedIdx: index("player_echo_events_user_created_idx").on(table.userId, table.createdAt),
+    targetIdx: index("player_echo_events_target_idx").on(table.targetType, table.targetId),
+  })
+);
+
 export const storyEvents = pgTable(
   "story_events",
   {
@@ -668,12 +712,28 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   saveSlots: many(saveSlots),
   onboarding: one(userOnboarding),
   sessionMemory: one(gameSessionMemory),
+  playerEchoCanon: one(playerEchoCanon),
+  playerEchoEvents: many(playerEchoEvents),
   quota: one(usersQuota),
 }));
 
 export const gameSessionMemoryRelations = relations(gameSessionMemory, ({ one }) => ({
   user: one(users, {
     fields: [gameSessionMemory.userId],
+    references: [users.id],
+  }),
+}));
+
+export const playerEchoCanonRelations = relations(playerEchoCanon, ({ one }) => ({
+  user: one(users, {
+    fields: [playerEchoCanon.userId],
+    references: [users.id],
+  }),
+}));
+
+export const playerEchoEventsRelations = relations(playerEchoEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [playerEchoEvents.userId],
     references: [users.id],
   }),
 }));

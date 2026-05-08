@@ -186,6 +186,12 @@ import {
 } from "@/lib/guardrails/provenanceVerifier";
 import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
+import { computeNpcFirstEncounterEchoPlan } from "@/lib/playerEcho/npcFirstEncounter";
+import { buildPlayerEchoPromptBlock } from "@/lib/playerEcho/prompt";
+import { readPlayerEchoCanon } from "@/lib/playerEcho/repository";
+import { selectPlayerEchoFragments } from "@/lib/playerEcho/select";
+import type { PlayerEchoCanon } from "@/lib/playerEcho/types";
+import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import { buildNpcKnowledgePacket, inferNpcKnowledgeFloorId } from "@/lib/npcKnowledge/npcKnowledgeResolver";
 import { gateFactCommit, type WorldFactCommitCandidate } from "@/lib/worldFacts/factCommitGate";
 import { getFactsForFloor, getFactsForNpc, listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
@@ -262,6 +268,7 @@ import {
   buildRouteNarrativeCheckResult,
 } from "@/lib/narrativeEngine/routeAdapter";
 import { scheduleBackgroundWorldTick } from "@/lib/turnEngine/enqueueBackgroundTick";
+import { schedulePlayerEchoPersistFromTurn } from "@/lib/playerEcho/persistFromTurn";
 import {
   applyNarrativeExpansionResultToDmRecord,
   emptyNarrativeExpansionTelemetry,
@@ -1336,6 +1343,15 @@ async function postChatInternal(req: Request) {
         runtimeLorePacket = result.runtimeLorePacket;
       });
 
+  let playerEchoReadFailed = false;
+  const playerEchoCanonPromise: Promise<PlayerEchoCanon | null> =
+    verseRollout.enablePlayerEchoCanon && verseRollout.enablePlayerEchoPromptPacket && userId
+      ? loadPlayerEchoCanonForPrompt(userId, 100).then((result) => {
+          if (!result.ok) playerEchoReadFailed = true;
+          return result.value;
+        })
+      : Promise.resolve(null);
+
   const promptBuildStartAt = nowMs();
 
   const serviceState = (() => {
@@ -1601,6 +1617,37 @@ async function postChatInternal(req: Request) {
         ]),
       ]
     : [];
+  const playerEchoCanonForPrompt = await playerEchoCanonPromise;
+  const playerEchoSelectedFragments = playerEchoCanonForPrompt
+    ? selectPlayerEchoFragments(playerEchoCanonForPrompt, {
+        activeNpcId: focusNpcForPrompt,
+        presentNpcIds: presentNpcIdsForEpistemic,
+        locationId: playerLocForEpistemic,
+        floorId: factAuditFloorId,
+        latestUserInput,
+        revealTier: maxRevealRankForMemory,
+        npcMemoryPrivilegeById: buildNpcMemoryPrivilegeMapForEcho([
+          ...(focusNpcForPrompt ? [focusNpcForPrompt] : []),
+          ...presentNpcIdsForEpistemic,
+        ]),
+      })
+    : [];
+  const playerEchoFirstEncounterPlan =
+    playerEchoCanonForPrompt && focusNpcForPrompt
+      ? computeNpcFirstEncounterEchoPlan({
+          canonIdentity: getNpcCanonicalIdentity(focusNpcForPrompt),
+          echoCanon: playerEchoCanonForPrompt,
+          activeNpcId: focusNpcForPrompt,
+          snapshot: extractRunSnapshotForEcho(clientState),
+          currentRunDiscovered: collectCurrentRunDiscoveredNpcIdsForEcho(clientState),
+          revealTier: maxRevealRankForMemory,
+        })
+      : null;
+  const playerEchoPromptBlock =
+    verseRollout.enablePlayerEchoCanon && verseRollout.enablePlayerEchoPromptPacket
+      ? buildPlayerEchoPromptBlock(playerEchoSelectedFragments, playerEchoFirstEncounterPlan)
+      : "";
+  const playerEchoPacketChars = playerEchoPromptBlock.length;
   if (epistemicRolloutFlags.epistemicDebugLog) {
     epistemicDebugLog("filter_result_built", {
       requestId,
@@ -1940,6 +1987,7 @@ async function postChatInternal(req: Request) {
     turnModePolicyBlock,
     narrativeStyleBibleBlock: useFastLaneCompactDynamicPackets ? "" : narrativeStyleBibleBlock,
     narrativeBudgetBlock,
+    playerEchoBlock: playerEchoPromptBlock,
     worldFactAuditBlock,
     realityConstraintBlock,
     npcConsistencyBoundaryBlock: useFastLaneCompactDynamicPackets ? "" : npcConsistencyBoundaryFinal.text,
@@ -2024,6 +2072,9 @@ async function postChatInternal(req: Request) {
       dynamicCharLen,
       stableTokenEstimate,
       dynamicTokenEstimate,
+      playerEchoPacketChars,
+      playerEchoSelectedCount: playerEchoSelectedFragments.length,
+      playerEchoReadFailed,
       narrativeBudgetTier,
       narrativeBudgetMinChars: narrativeBudget.minChars,
       narrativeBudgetTargetChars,
@@ -3078,6 +3129,8 @@ async function postChatInternal(req: Request) {
             canonical: focusNpcForPrompt ? getNpcCanonicalIdentity(focusNpcForPrompt) : null,
             playerContext,
             latestUserInput,
+            playerEchoPacketPresent: playerEchoPacketChars > 0,
+            firstEncounterPlan: playerEchoFirstEncounterPlan,
           });
           epistemicPostValidatorTelemetry = telemetry;
           return next;
@@ -4182,9 +4235,11 @@ async function postChatInternal(req: Request) {
         }
       }
 
+      let finalDmRecordForBackground: Record<string, unknown> | null = null;
       if (finalizePayload) {
         try {
           const parsedForMetrics = JSON.parse(finalizePayload) as Record<string, unknown>;
+          finalDmRecordForBackground = parsedForMetrics;
           const finalOptions = Array.isArray(parsedForMetrics.options)
             ? parsedForMetrics.options.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
             : [];
@@ -4195,6 +4250,19 @@ async function postChatInternal(req: Request) {
           finalOptionsQualityPassTelemetry = false;
         }
         await writer.write(sse(`${VERSECRAFT_FINAL_PREFIX}${finalizePayload}`));
+        const playerEchoFlags = getVerseCraftRolloutFlags();
+        if (playerEchoFlags.enablePlayerEchoCanon && playerEchoFlags.enablePlayerEchoPersistence) {
+          schedulePlayerEchoPersistFromTurn({
+            flags: playerEchoFlags,
+            userId,
+            runId: sessionId,
+            dmRecord: finalDmRecordForBackground ?? dmRecord,
+            runSnapshotV2: null,
+            turnCommitSummary: commitSummaryForAnalytics,
+            latestUserInput,
+            nowIso: new Date().toISOString(),
+          });
+        }
         if (sessionId && injectedDirectorAgendaIds.length > 0) {
           const capturedAgendaIds = [...injectedDirectorAgendaIds];
           void markDirectorAgendaInjected({
@@ -4814,6 +4882,81 @@ async function postChatInternal(req: Request) {
     status: 200,
     headers: sseHeadersOut,
   });
+}
+
+async function loadPlayerEchoCanonForPrompt(
+  userId: string,
+  timeoutMs: number
+): Promise<{ ok: true; value: PlayerEchoCanon | null } | { ok: false; value: null }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const guarded = readPlayerEchoCanon(userId).then(
+    (value) => ({ ok: true as const, value }),
+    () => ({ ok: false as const, value: null })
+  );
+  const timeout = new Promise<{ ok: false; value: null }>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, value: null }), Math.max(80, Math.min(120, timeoutMs)));
+  });
+  try {
+    return await Promise.race([guarded, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function buildNpcMemoryPrivilegeMapForEcho(
+  npcIds: readonly string[]
+): Record<string, ReturnType<typeof getNpcCanonicalIdentity>["memoryPrivilege"]> {
+  const out: Record<string, ReturnType<typeof getNpcCanonicalIdentity>["memoryPrivilege"]> = {};
+  for (const raw of npcIds) {
+    const id = typeof raw === "string" ? raw.trim() : "";
+    if (!id || out[id]) continue;
+    out[id] = getNpcCanonicalIdentity(id).memoryPrivilege;
+  }
+  return out;
+}
+
+function collectCurrentRunDiscoveredNpcIdsForEcho(clientState: unknown): string[] {
+  const state = asPlainRecordForEcho(clientState);
+  if (!state) return [];
+  const out = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const id = value.trim();
+    if (/^N-\d{3}$/i.test(id)) out.add(id.toUpperCase());
+  };
+  for (const id of Object.keys(asPlainRecordForEcho(state.codex) ?? {})) add(id);
+  for (const id of Object.keys(asPlainRecordForEcho(state.npcCodex) ?? {})) add(id);
+  const snapshot = asPlainRecordForEcho(state.runSnapshotV2);
+  const player = asPlainRecordForEcho(snapshot?.player);
+  for (const id of Object.keys(asPlainRecordForEcho(player?.codex) ?? {})) add(id);
+  const discovered = Array.isArray(state.discoveredNpcIds) ? state.discoveredNpcIds : [];
+  for (const id of discovered) add(id);
+  return [...out].slice(0, 80);
+}
+
+function extractRunSnapshotForEcho(clientState: unknown): RunSnapshotV2 | null {
+  const state = asPlainRecordForEcho(clientState);
+  if (!state) return null;
+  if (looksLikeRunSnapshotForEcho(state.runSnapshotV2)) return state.runSnapshotV2;
+  const slotId = typeof state.currentSaveSlot === "string" ? state.currentSaveSlot : null;
+  const saveSlots = asPlainRecordForEcho(state.saveSlots);
+  const currentSlot = slotId ? asPlainRecordForEcho(saveSlots?.[slotId]) : null;
+  const slotSnapshot = currentSlot?.runSnapshotV2;
+  return looksLikeRunSnapshotForEcho(slotSnapshot) ? slotSnapshot : null;
+}
+
+function looksLikeRunSnapshotForEcho(value: unknown): value is RunSnapshotV2 {
+  const snapshot = asPlainRecordForEcho(value);
+  return Boolean(
+    snapshot &&
+      snapshot.schemaVersion === 2 &&
+      asPlainRecordForEcho(snapshot.player) &&
+      asPlainRecordForEcho(snapshot.npcs)
+  );
+}
+
+function asPlainRecordForEcho(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 /** IVFFlat 榛樿 probes=5锛涘悜閲忕淮 256銆傚嬁鎻愰珮 @/db pool max锛堝綋鍓?10锛夛紝缂撳瓨璺緞浠呯煭浜嬪姟銆?*/

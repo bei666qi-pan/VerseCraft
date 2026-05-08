@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChapterState } from "@/lib/chapters/types";
 import { SESSION_MEMORY_EPISTEMIC_EMBED_KEY } from "@/lib/memoryCompress";
+import type { EchoFragment, PlayerEchoCanon } from "@/lib/playerEcho/types";
 import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import type { LorePacket } from "@/lib/worldKnowledge/types";
 import { buildDialogueContext, type DialogueContextBuilderDeps } from "./contextBuilder";
@@ -203,6 +204,7 @@ function deps(overrides: Partial<DialogueContextBuilderDeps> = {}): Partial<Dial
         confidence: 85,
       },
     ],
+    loadPlayerEchoCanon: async () => null,
     buildNpcHeartRuntimeView: ((() => ({
       profile: {
         displayName: "Xinlan",
@@ -223,6 +225,41 @@ function deps(overrides: Partial<DialogueContextBuilderDeps> = {}): Partial<Dial
     })) as unknown) as DialogueContextBuilderDeps["buildNpcHeartRuntimeView"],
     recordDegrade: async () => undefined,
     ...overrides,
+  };
+}
+
+function echoFragment(overrides: Partial<EchoFragment> = {}): EchoFragment {
+  return {
+    id: "echo:npc",
+    type: "npc_bond",
+    targetType: "npc",
+    targetId: "N-010",
+    summary: "登记口前留下过一瞬未完的牵引",
+    safetyLevel: 2,
+    emotionalWeight: 0.8,
+    salience: 0.86,
+    confidence: 0.9,
+    status: "active",
+    anchors: { npcIds: ["N-010"], locationIds: ["B1_SafeZone"], floorIds: ["B1"] },
+    ...overrides,
+  };
+}
+
+function echoCanon(fragments: EchoFragment[]): PlayerEchoCanon {
+  return {
+    schema: "player_echo_canon_v1",
+    version: 1,
+    playerKey: "user_echo",
+    worldId: "dark_moon_prologue",
+    loopCount: 2,
+    fragments,
+    npcBonds: [],
+    strongestChoices: [],
+    unresolvedRegrets: [],
+    repeatedDeathCauses: [],
+    stableEchoSummary: null,
+    lastRunSummary: null,
+    updatedAt: null,
   };
 }
 
@@ -472,4 +509,149 @@ test("buildDialogueContext returns conservative context and records degrade reas
   assert.ok(recorded[0]?.includes("session_memory_read_failed"));
   assert.ok(recorded[0]?.includes("world_lore_read_failed"));
   assert.ok(recorded[0]?.includes("recent_story_events_read_failed"));
+});
+
+test("buildDialogueContext leaves playerEcho absent when flags are off", async () => {
+  let reads = 0;
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_echo_flags_off",
+    sessionId: "sess_echo_flags_off",
+    userId: "user_echo",
+    latestUserInput: "look",
+    messages: [{ role: "user", content: "look" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 1, playerLocation: "B1_SafeZone", presentNpcIds: ["N-010"] },
+    activeNpcId: "N-010",
+    revealTier: 3,
+    rolloutFlags: { enablePlayerEchoCanon: false, enablePlayerEchoPromptPacket: false },
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+      loadPlayerEchoCanon: async () => {
+        reads += 1;
+        return echoCanon([echoFragment()]);
+      },
+    }),
+  });
+
+  assert.equal(context.playerEcho, undefined);
+  assert.equal(reads, 0);
+});
+
+test("buildDialogueContext selects compact playerEcho fragments when flags are on", async () => {
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_echo_on",
+    sessionId: "sess_echo_on",
+    userId: "user_echo",
+    latestUserInput: "N-010 让我想起登记口",
+    messages: [{ role: "user", content: "N-010 让我想起登记口" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 1, playerLocation: "B1_SafeZone", presentNpcIds: ["N-010"] },
+    activeNpcId: "N-010",
+    revealTier: 3,
+    rolloutFlags: { enablePlayerEchoCanon: true, enablePlayerEchoPromptPacket: true },
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+      loadPlayerEchoCanon: async () =>
+        echoCanon([
+          echoFragment({ id: "echo:1" }),
+          echoFragment({ id: "echo:2", summary: "她曾在安全区边缘留下迟疑", anchors: { npcIds: ["N-010"] } }),
+          echoFragment({ id: "echo:3", targetType: "location", targetId: "B1_SafeZone" }),
+          echoFragment({ id: "echo:4", targetId: "N-015", anchors: { npcIds: ["N-015"] }, summary: "无关 NPC 不应被选中" }),
+        ]),
+    }),
+  });
+
+  assert.ok(context.playerEcho);
+  assert.equal((context.playerEcho?.selectedFragments.length ?? 0) <= 3, true);
+  assert.ok(context.playerEcho?.selectedFragments.some((fragment) => fragment.targetId === "N-010"));
+  assert.equal(context.playerEcho?.selectedFragments.some((fragment) => fragment.targetId === "N-015"), false);
+  assert.equal((context.playerEcho?.packetCharLen ?? 0) <= 520, true);
+});
+
+test("buildDialogueContext does not read playerEcho without userId", async () => {
+  let reads = 0;
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_echo_no_user",
+    sessionId: "sess_echo_no_user",
+    userId: null,
+    latestUserInput: "look",
+    messages: [{ role: "user", content: "look" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 1, playerLocation: "B1_SafeZone", presentNpcIds: ["N-010"] },
+    activeNpcId: "N-010",
+    revealTier: 3,
+    rolloutFlags: { enablePlayerEchoCanon: true, enablePlayerEchoPromptPacket: true },
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+      loadPlayerEchoCanon: async () => {
+        reads += 1;
+        return echoCanon([echoFragment()]);
+      },
+    }),
+  });
+
+  assert.equal(context.playerEcho, undefined);
+  assert.equal(reads, 0);
+});
+
+test("buildDialogueContext degrades instead of throwing on playerEcho read failure", async () => {
+  const recorded: string[][] = [];
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_echo_fail",
+    sessionId: "sess_echo_fail",
+    userId: "user_echo",
+    latestUserInput: "look",
+    messages: [{ role: "user", content: "look" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 1, playerLocation: "B1_SafeZone", presentNpcIds: ["N-010"] },
+    activeNpcId: "N-010",
+    revealTier: 3,
+    rolloutFlags: { enablePlayerEchoCanon: true, enablePlayerEchoPromptPacket: true },
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+      loadPlayerEchoCanon: async () => {
+        throw new Error("echo read failed");
+      },
+      recordDegrade: async (input) => {
+        recorded.push(input.reasons);
+      },
+    }),
+  });
+
+  assert.equal(context.playerEcho, undefined);
+  assert.equal(recorded.length, 1);
+  assert.ok(recorded[0]?.includes("player_echo_read_failed"));
+});
+
+test("buildDialogueContext degrades instead of throwing on playerEcho read timeout", async () => {
+  const recorded: string[][] = [];
+  const context = await buildDialogueContext({
+    requestId: "req_ctx_echo_timeout",
+    sessionId: "sess_echo_timeout",
+    userId: "user_echo",
+    latestUserInput: "look",
+    messages: [{ role: "user", content: "look" }],
+    playerContext: "",
+    clientState: { v: 1, turnIndex: 1, playerLocation: "B1_SafeZone", presentNpcIds: ["N-010"] },
+    activeNpcId: "N-010",
+    revealTier: 3,
+    playerEchoReadTimeoutMs: 80,
+    rolloutFlags: { enablePlayerEchoCanon: true, enablePlayerEchoPromptPacket: true },
+    deps: deps({
+      loadRecentStoryEvents: async () => [],
+      loadNpcMemories: async () => [],
+      loadPlayerEchoCanon: async () => new Promise<PlayerEchoCanon>(() => {}),
+      recordDegrade: async (input) => {
+        recorded.push(input.reasons);
+      },
+    }),
+  });
+
+  assert.equal(context.playerEcho, undefined);
+  assert.equal(recorded.length, 1);
+  assert.ok(recorded[0]?.includes("player_echo_read_failed"));
 });

@@ -44,6 +44,10 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enableSceneActorGateV1, true);
   assert.equal(f.enableSceneActorGateValidatorV1, true);
   assert.equal(f.enableModeAwareNpcPersonaPacketV1, true);
+  assert.equal(f.enablePlayerEchoCanon, false);
+  assert.equal(f.enablePlayerEchoPersistence, false);
+  assert.equal(f.enablePlayerEchoPromptPacket, false);
+  assert.equal(f.enablePlayerEchoValidator, false);
 });
 
 test("SceneActorGate rollout flags can be disabled by env", () => {
@@ -55,5 +59,20 @@ test("SceneActorGate rollout flags can be disabled by env", () => {
   });
   withEnv("VERSECRAFT_ENABLE_MODE_AWARE_NPC_PERSONA_PACKET_V1", "off", () => {
     assert.equal(getVerseCraftRolloutFlags().enableModeAwareNpcPersonaPacketV1, false);
+  });
+});
+
+test("Player Echo rollout flags are opt-in", () => {
+  withEnv("VERSECRAFT_ENABLE_PLAYER_ECHO_CANON", "1", () => {
+    assert.equal(getVerseCraftRolloutFlags().enablePlayerEchoCanon, true);
+  });
+  withEnv("VERSECRAFT_ENABLE_PLAYER_ECHO_PERSISTENCE", "true", () => {
+    assert.equal(getVerseCraftRolloutFlags().enablePlayerEchoPersistence, true);
+  });
+  withEnv("VERSECRAFT_ENABLE_PLAYER_ECHO_PROMPT_PACKET", "on", () => {
+    assert.equal(getVerseCraftRolloutFlags().enablePlayerEchoPromptPacket, true);
+  });
+  withEnv("VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR", "1", () => {
+    assert.equal(getVerseCraftRolloutFlags().enablePlayerEchoValidator, true);
   });
 });

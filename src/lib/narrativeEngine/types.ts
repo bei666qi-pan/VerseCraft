@@ -1,3 +1,5 @@
+import type { NpcFirstEncounterEchoPlan, SelectedEchoFragment } from "@/lib/playerEcho/types";
+
 export type NarrativeTurnMessage = {
   role: string;
   content: string;
@@ -130,6 +132,13 @@ export type DialogueContext = {
     eventType: string;
     summary: string;
   }>;
+
+  playerEcho?: {
+    selectedFragments: SelectedEchoFragment[];
+    firstEncounterPlan: NpcFirstEncounterEchoPlan | null;
+    packetDigest: string | null;
+    packetCharLen: number;
+  };
 
   rawCompatibility: {
     playerContext: string;

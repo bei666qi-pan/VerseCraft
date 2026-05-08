@@ -227,6 +227,8 @@ export interface PlayerDmDynamicSuffixInput {
   turnModePolicyBlock?: string;
   /** 阶段1：本回合叙事预算 packet（长度、信息密度、停止条件）。 */
   narrativeBudgetBlock?: string;
+  /** Player Echo Canon 动态短包（个人残响，仅灰度开启时注入）。 */
+  playerEchoBlock?: string;
   /** 阶段3：现实感约束包（地点/在场/时间/线索/威胁/关系硬边界）。 */
   realityConstraintBlock?: string;
   /** 阶段5：紧凑一致性边界 JSON（与 runtime 大包互补；快车道亦注入） */
@@ -270,6 +272,9 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   if (input.runtimePackets) parts.push("", input.runtimePackets);
   if (input.narrativeBudgetBlock?.trim()) {
     parts.push("", input.narrativeBudgetBlock.trim());
+  }
+  if (input.playerEchoBlock?.trim()) {
+    parts.push("", input.playerEchoBlock.trim());
   }
   if (input.worldFactAuditBlock?.trim()) {
     parts.push("", input.worldFactAuditBlock.trim());

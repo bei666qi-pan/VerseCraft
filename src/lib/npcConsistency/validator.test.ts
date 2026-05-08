@@ -20,6 +20,17 @@ function baseDm(narrative: string): Record<string, unknown> {
   };
 }
 
+function withPlayerEchoValidatorEnabled<T>(fn: () => T): T {
+  const prev = process.env.VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR;
+  process.env.VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR = "1";
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) delete process.env.VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR;
+    else process.env.VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR = prev;
+  }
+}
+
 describe("applyNpcConsistencyPostGeneration", () => {
   let prevValidator: string | undefined;
   let prevNpcConsistency: string | undefined;
@@ -144,5 +155,32 @@ describe("applyNpcConsistencyPostGeneration", () => {
       canonical: canon,
     });
     assert.ok(r.telemetry.violationTypes?.includes("familiarity_overreach"));
+  });
+});
+
+describe("applyNpcConsistencyPostGeneration playerEcho bridge", () => {
+  const emptyFacts: KnowledgeFact[] = [];
+
+  it("blocks normal NPC explicit previous-run memory when rollout is enabled", () => {
+    const npcId = "N-001";
+    const r = withPlayerEchoValidatorEnabled(() =>
+      applyNpcConsistencyPostGeneration({
+        dmRecord: baseDm("陈婆婆说：“你又来了，我记得你上次死在七楼。”"),
+        actorNpcId: npcId,
+        presentNpcIds: [npcId],
+        allFacts: emptyFacts,
+        profile: buildNpcEpistemicProfile(npcId),
+        anomalyResult: emptyEpistemicAnomalyResult(npcId),
+        nowIso: now,
+        maxRevealRank: 0,
+        canonical: getNpcCanonicalIdentity(npcId),
+        playerEchoPacketPresent: true,
+        firstEncounterPlan: null,
+      })
+    );
+
+    assert.ok(r.telemetry.violationTypes?.includes("player_echo_normal_npc_overreach"));
+    assert.ok(r.telemetry.consistencyViolations?.some((v) => v.includes("player_echo_normal_npc_overreach")));
+    assert.equal(String(r.dmRecord.narrative).includes("你又来了"), false);
   });
 });

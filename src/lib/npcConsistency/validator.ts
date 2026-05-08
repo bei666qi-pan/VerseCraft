@@ -27,6 +27,8 @@ import { enableCompositeNarrativeGuard } from "./narrativeGuardFlags";
 import { applyProtagonistDriftPostGeneration } from "./protagonistDriftValidator";
 import { detectPersonaMixup, rewritePersonaMixupConservatively } from "./personaMixupValidator";
 import { incrProtagonistDriftRewriteCount, incrWorldPostRewriteCount } from "@/lib/observability/versecraftRolloutMetrics";
+import { applyPlayerEchoPostGenerationValidation } from "@/lib/playerEcho/validator";
+import type { NpcFirstEncounterEchoPlan } from "@/lib/playerEcho/types";
 
 export type NpcConsistencyViolationType =
   | "offscreen_npc_dialogue"
@@ -38,7 +40,10 @@ export type NpcConsistencyViolationType =
   | "familiarity_overreach"
   | "no_reaction_to_boundary_crossing"
   | "protagonist_drift"
-  | "persona_mixup";
+  | "persona_mixup"
+  | "player_echo_normal_npc_overreach"
+  | "player_echo_reveal_overreach"
+  | "player_echo_canon_override";
 
 function normalizeNpcId(id: string): string {
   return String(id ?? "")
@@ -135,6 +140,8 @@ export function applyNpcConsistencyPostGeneration(input: {
   /** 阶段7：与 actorConstraintPackets 同源，缺省时跳过叙事节奏门闸 */
   playerContext?: string | null;
   latestUserInput?: string | null;
+  playerEchoPacketPresent?: boolean;
+  firstEncounterPlan?: NpcFirstEncounterEchoPlan | null;
 }): { dmRecord: Record<string, unknown>; telemetry: EpistemicValidatorTelemetry } {
   // Phase6 rollout: allow fast rollback of post-generation rewrites.
   const rollout = getVerseCraftRolloutFlags();
@@ -158,7 +165,8 @@ export function applyNpcConsistencyPostGeneration(input: {
     baseTelemetry = ep.telemetry;
   }
 
-  if (!enableNpcConsistencyValidator() && !enableNarrativeRhythmGateAny()) {
+  const playerEchoValidatorEnabled = rollout.enablePlayerEchoValidator;
+  if (!enableNpcConsistencyValidator() && !enableNarrativeRhythmGateAny() && !playerEchoValidatorEnabled) {
     return { dmRecord: rec, telemetry: baseTelemetry };
   }
 
@@ -315,6 +323,28 @@ export function applyNpcConsistencyPostGeneration(input: {
       narrativeWork = rewriteNarrativeLoopTruthLeak(narrativeWork);
       extraRewrite = true;
       logs.push("major_charm_omn");
+    }
+  }
+
+  if (playerEchoValidatorEnabled) {
+    const echo = applyPlayerEchoPostGenerationValidation({
+      narrative: narrativeWork,
+      actorNpcId: actorId,
+      canonical: canon,
+      maxRevealRank: mr,
+      playerEchoPacketPresent: Boolean(input.playerEchoPacketPresent),
+      firstEncounterPlan: input.firstEncounterPlan ?? null,
+    });
+    if (echo.telemetry.validatorTriggered) {
+      violations.push(...echo.telemetry.violations);
+      for (const vt of echo.telemetry.violationTypes) {
+        if (!vtypes.includes(vt)) vtypes.push(vt);
+      }
+      logs.push(`player_echo:${echo.telemetry.source}:${echo.telemetry.violationTypes.join(",")}`);
+    }
+    if (echo.narrative !== narrativeWork) {
+      narrativeWork = echo.narrative;
+      extraRewrite = true;
     }
   }
 
