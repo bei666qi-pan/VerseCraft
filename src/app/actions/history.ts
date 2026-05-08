@@ -57,7 +57,7 @@ export async function submitSettlementHistory(input: {
   killedAnomalies: number;
   maxFloorScore: number;
   survivalTimeSeconds: number;
-  outcome?: "victory" | "death" | "abandon";
+  outcome?: "victory" | "death" | "abandon" | "doom" | "true_escape" | "costly_escape" | "false_escape";
   history?: {
     grade: string;
     survivalDay: number;

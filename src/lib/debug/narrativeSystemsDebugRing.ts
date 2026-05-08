@@ -1,9 +1,11 @@
+import type { EndingTelemetryEventName, EndingTelemetryPayload } from "@/lib/endings/telemetry";
+
 /**
  * 阶段 7：叙事/变更集/手记/目标 可观测性（环形缓冲，仅开发或显式开启）。
  * 客户端设置 NEXT_PUBLIC_VERSECRAFT_SYSTEMS_DEBUG=1 后，/play 回合 commit 会写入摘要。
  */
 
-export type NarrativeSystemsDebugEvent = {
+export type NarrativeTurnCommitDebugEvent = {
   kind: "turn_commit";
   at: number;
   changeSetApplied?: boolean;
@@ -21,7 +23,28 @@ export type NarrativeSystemsDebugEvent = {
   warehouseCount: number;
 };
 
-const MAX = 12;
+export type EndingDecisionDebugEvent = {
+  kind: "ending_decision";
+  at: number;
+  eventName: EndingTelemetryEventName;
+  runId: string;
+  outcome: string | null;
+  endingPhase: string;
+  detectedAtTurn: number | null;
+  idempotencyKey: string | null;
+  reasons: string[];
+  blockers: string[];
+  escapeStage: string;
+  survivalHours: number;
+  source: string;
+  snapshotPresent: boolean;
+  settlementId: string | null;
+  note?: string;
+};
+
+export type NarrativeSystemsDebugEvent = NarrativeTurnCommitDebugEvent | EndingDecisionDebugEvent;
+
+const MAX = 20;
 const ring: NarrativeSystemsDebugEvent[] = [];
 
 export function isNarrativeSystemsDebugEnabled(): boolean {
@@ -59,6 +82,33 @@ export function pushNarrativeSystemsDebugEvent(event: NarrativeSystemsDebugEvent
   if (!isNarrativeSystemsDebugEnabled()) return;
   ring.unshift(event);
   while (ring.length > MAX) ring.pop();
+}
+
+export function pushEndingDecisionDebugEvent(input: {
+  eventName: EndingTelemetryEventName;
+  payload: EndingTelemetryPayload;
+  note?: string;
+  at?: number;
+}): void {
+  if (!isNarrativeSystemsDebugEnabled()) return;
+  pushNarrativeSystemsDebugEvent({
+    kind: "ending_decision",
+    at: input.at ?? Date.now(),
+    eventName: input.eventName,
+    runId: input.payload.runId,
+    outcome: input.payload.outcome,
+    endingPhase: input.payload.endingPhase,
+    detectedAtTurn: input.payload.detectedAtTurn,
+    idempotencyKey: input.payload.idempotencyKey,
+    reasons: input.payload.reasons,
+    blockers: input.payload.blockers,
+    escapeStage: input.payload.escapeStage,
+    survivalHours: input.payload.survivalHours,
+    source: input.payload.source,
+    snapshotPresent: input.payload.snapshotPresent,
+    settlementId: input.payload.settlementId,
+    note: input.note,
+  });
 }
 
 export function getNarrativeSystemsDebugTail(n = 8): NarrativeSystemsDebugEvent[] {

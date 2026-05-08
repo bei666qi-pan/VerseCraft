@@ -38,25 +38,75 @@ export function shouldCountKeyChoice(signals: ChapterTurnSignals, stateChangeDel
   return stateChangeDelta > 0;
 }
 
+function hasNarrative(progress: ChapterProgress): boolean {
+  return progress.turnCount >= 1 && progress.narrativeCharCount > 0;
+}
+
+function hasAnyChoice(progress: ChapterProgress): boolean {
+  return progress.keyChoiceCount >= 1;
+}
+
+function hasRequiredChoices(definition: ChapterDefinition, progress: ChapterProgress): boolean {
+  return progress.keyChoiceCount >= Math.max(0, definition.minKeyChoices);
+}
+
+function hasStateChange(progress: ChapterProgress): boolean {
+  return progress.stateChangeCount >= 1;
+}
+
+function hasLocalClosingShape(definition: ChapterDefinition, progress: ChapterProgress): boolean {
+  return (
+    progress.turnCount >= definition.minTurns &&
+    hasNarrative(progress) &&
+    hasRequiredChoices(definition, progress) &&
+    hasStateChange(progress)
+  );
+}
+
+function canCompleteKnownBeat(
+  beatId: string,
+  definition: ChapterDefinition,
+  progress: ChapterProgress
+): boolean | null {
+  switch (beatId) {
+    case "wake":
+      return progress.turnCount >= 1;
+    case "observe":
+      return hasNarrative(progress);
+    case "first-choice":
+      return hasAnyChoice(progress);
+    case "first-clue":
+      return hasStateChange(progress);
+    case "hook":
+      return hasLocalClosingShape(definition, progress);
+    case "new-objective":
+      return hasNarrative(progress);
+    case "search":
+      return progress.turnCount >= 2 || hasAnyChoice(progress);
+    case "obstacle":
+      return hasStateChange(progress) || (progress.turnCount >= 2 && hasAnyChoice(progress));
+    case "key-choice":
+      return progress.keyChoiceCount >= Math.max(1, definition.minKeyChoices);
+    case "state-change":
+      return hasStateChange(progress);
+    case "next-risk":
+      return hasLocalClosingShape(definition, progress);
+    default:
+      return null;
+  }
+}
+
 export function advanceChapterBeats(
   definition: ChapterDefinition,
   progress: ChapterProgress
 ): string[] {
   const completed = new Set(progress.completedBeatIds);
-  const required = definition.beats;
-  for (let i = 0; i < required.length; i++) {
-    const beat = required[i];
-    const index = i + 1;
+  for (const beat of definition.beats) {
+    const knownDecision = canCompleteKnownBeat(beat.id, definition, progress);
     const canComplete =
-      index === 1
-        ? progress.turnCount >= 1
-        : index === 2
-          ? progress.turnCount >= 1 && progress.narrativeCharCount > 0
-          : index === 3
-            ? progress.turnCount >= 2 || progress.keyChoiceCount >= 1
-            : index === 4
-              ? progress.stateChangeCount >= 1
-              : false;
+      knownDecision ??
+      (beat.required === false &&
+        progress.turnCount >= Math.max(definition.minTurns, Math.max(1, definition.maxTurns - 1)));
     if (canComplete) completed.add(beat.id);
   }
   return uniqueStrings(Array.from(completed));

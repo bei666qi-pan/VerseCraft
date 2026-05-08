@@ -3,6 +3,7 @@ import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import type { EscapeMainlineState } from "./types";
 import { normalizeEscapeMainline, advanceEscapeMainlineFromState } from "./reducer";
 import type { EscapeDerivationInput } from "./derive";
+export { resolveEscapeFinalAction } from "./finalAction";
 
 export function advanceEscapeMainlineFromResolvedTurn(args: {
   prevEscapeRaw: unknown;
@@ -15,6 +16,7 @@ export function advanceEscapeMainlineFromResolvedTurn(args: {
   worldFlags: string[];
   memoryEntries: MemorySpineEntry[];
   resolvedTurn: any;
+  playerAction?: string;
   changedBy: string;
 }): EscapeMainlineState {
   const prev = normalizeEscapeMainline(args.prevEscapeRaw, args.nowHour);
@@ -32,6 +34,7 @@ export function advanceEscapeMainlineFromResolvedTurn(args: {
     prev,
     derived,
     resolvedTurn: args.resolvedTurn,
+    playerAction: args.playerAction,
     changedBy: args.changedBy,
   });
 }

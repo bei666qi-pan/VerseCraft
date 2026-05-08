@@ -59,7 +59,12 @@ export function shouldSuppressDoomlineBecauseEscaped(state: EscapeMainlineState)
 }
 
 export function computeEscapeOutcomeForSettlement(state: EscapeMainlineState): "none" | "true_escape" | "false_escape" | "costly_escape" | "doom" {
-  return state.outcomeHint?.outcome ?? "none";
+  if (state.stage === "escaped_true") return "true_escape";
+  if (state.stage === "escaped_costly") return "costly_escape";
+  if (state.stage === "escaped_false") return "false_escape";
+  if (state.stage === "doomed") return "doom";
+  const hinted = state.outcomeHint?.outcome;
+  return hinted === "true_escape" || hinted === "costly_escape" || hinted === "false_escape" || hinted === "doom" ? hinted : "none";
 }
 
 export function pickEscapeMetCodes(state: EscapeMainlineState, max = 6): EscapeConditionCode[] {

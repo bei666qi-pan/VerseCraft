@@ -1,8 +1,16 @@
-import type { EscapeMainlineState, EscapeStage, EscapeConditionCode, EscapeFalseLead, EscapeRouteFragment } from "./types";
+import type {
+  EscapeMainlineState,
+  EscapeStage,
+  EscapeConditionCode,
+  EscapeFalseLead,
+  EscapeOutcomeHint,
+  EscapeRouteFragment,
+} from "./types";
 import { createDefaultEscapeMainline } from "./types";
 import { createDefaultEscapeMainlineTemplate } from "./template";
 import type { EscapeDerivationInput } from "./derive";
 import { deriveEscapeFactors } from "./derive";
+import { resolveEscapeFinalActionFromState } from "./finalAction";
 
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
@@ -110,8 +118,18 @@ export function advanceEscapeMainlineFromState(input: {
   derived: EscapeDerivationInput;
   resolvedTurn: any;
   changedBy: string;
+  playerAction?: string;
 }): EscapeMainlineState {
   const prev = input.prev ?? createDefaultEscapeMainlineTemplate(input.derived.nowHour);
+  if (prev.stage === "final_window_open") {
+    return resolveEscapeFinalActionFromState({
+      prev,
+      playerAction: input.playerAction,
+      resolvedTurn: input.resolvedTurn,
+      derived: input.derived,
+      changedBy: input.changedBy,
+    });
+  }
   const factors = deriveEscapeFactors(input.derived);
   const nextStage = computeStageFromFactors(prev, factors);
 
@@ -150,7 +168,7 @@ export function advanceEscapeMainlineFromState(input: {
     };
   })();
 
-  const outcomeHint = (() => {
+  const outcomeHint: EscapeOutcomeHint = (() => {
     if (prev.outcomeHint?.outcome && prev.outcomeHint.outcome !== "none") return prev.outcomeHint;
     if (nextStage === "doomed") return { outcome: "doom", title: "终焉", toneLine: "末日闸门落下，你没能走出去。" };
     if (nextStage === "escaped_true") return { outcome: "true_escape", title: "真正逃离", toneLine: "你走出去了——这一次是真正的出口。" };

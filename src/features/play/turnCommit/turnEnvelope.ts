@@ -11,6 +11,13 @@ export type ConflictOutcomeEnvelope = {
   linkedNpcIds?: string[];
 };
 
+export type EndingFinaleEnvelope = {
+  outcome?: string;
+  narrative?: string;
+  recalled?: string[];
+  options?: string[];
+};
+
 /**
  * TurnEnvelope：服务端最终回合输出协议（phase-1）。
  *
@@ -61,6 +68,7 @@ export type TurnEnvelope = {
   // Keep legacy optional keys if present
   bgm_track?: string;
   next_chapter_title_candidate?: string;
+  ending_finale?: EndingFinaleEnvelope | null;
 
   // --- Phase-1: new envelope semantic fields (backward-compatible) ---
   /**

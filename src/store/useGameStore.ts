@@ -62,6 +62,17 @@ import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import { advanceEscapeMainlineFromResolvedTurn } from "@/lib/escapeMainline/integration";
 import { buildEscapePromptBlock } from "@/lib/escapeMainline/prompt";
 import { getEscapeObjectiveSummary } from "@/lib/escapeMainline/selectors";
+import { createInitialEndingState, transitionEndingState } from "@/lib/endings/stateMachine";
+import type { EndingFinalChoice, EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
+import { ENDING_SETTLEMENT_OPTIONS } from "@/lib/endings/finalNarrativePrompt";
+import {
+  buildEndingEvaluationInputFromStore,
+  buildEndingSettlementSnapshotFromStore,
+  evaluateEndingAfterTurnForStore,
+  normalizeEndingSettlementSnapshot,
+  normalizeEndingState,
+  resolveEndingRunId,
+} from "@/lib/endings/storeIntegration";
 import {
   buildSnapshotSummary,
   canCreateManualBranch,
@@ -113,8 +124,6 @@ import { repairNarrativeCrossRefs } from "@/lib/domain/narrativeIntegrity";
 import type { NarrativeIntegrityReport } from "@/lib/domain/narrativeIntegrity";
 import { narrativeDebugEnabled } from "@/lib/domain/narrativeDebug";
 import { buildNarrativeLinkagePromptBlock } from "@/lib/domain/narrativeLinkagePrompt";
-import type { GameTaskV2 } from "@/lib/tasks/taskV2";
-import type { RunSnapshotV2 } from "@/lib/state/snapshot/types";
 import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
 import { resolveHourProgressDelta, splitProgress } from "@/lib/time/timeBudget";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
@@ -233,6 +242,7 @@ export function migratePersistedState(
     Array.isArray(raw.logs) ? raw.logs.length : 0,
     buildChapterDirectorBridgeFromStoreState(rootChapterState)
   );
+  const rootEndingState = normalizeEndingState(raw.endingState);
   const migratedSlots: Record<string, unknown> = {};
   for (const [slotId, slotPayload] of Object.entries(saveSlotsRaw)) {
     if (!slotPayload || typeof slotPayload !== "object" || Array.isArray(slotPayload)) continue;
@@ -257,6 +267,10 @@ export function migratePersistedState(
       ...legacy,
       professionState,
       chapterState: normalizeChapterState(legacy.chapterState ?? snapshot.chapterState),
+      endingState: normalizeEndingState(legacy.endingState ?? snapshot.endingState),
+      endingSettlementSnapshot: normalizeEndingSettlementSnapshot(
+        legacy.endingSettlementSnapshot ?? snapshot.endingSettlementSnapshot ?? snapshot.endingState?.settlementSnapshot
+      ),
       slotMeta,
       runSnapshotV2: snapshot,
       ...projectSnapshotToLegacy(snapshot),
@@ -266,6 +280,7 @@ export function migratePersistedState(
     ...raw,
     chapterState: rootChapterState,
     storyDirector: rootStoryDirector,
+    endingState: rootEndingState,
     readingPreferences: normalizeReadingPreferences(raw.readingPreferences),
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: pruneVisibleSaveSlots(migratedSlots as Record<string, SaveSlotData>),
@@ -405,6 +420,8 @@ export interface SaveSlotData {
   };
   professionState?: ProfessionStateV1;
   chapterState?: ChapterState;
+  endingState?: EndingState;
+  endingSettlementSnapshot?: EndingSettlementSnapshot | null;
 }
 
 export interface AuthUser {
@@ -492,6 +509,7 @@ export interface GameState extends IntegrityMetaState {
 
   /** Phase-5: 出口主线骨架（Escape Mainline） */
   escapeMainline: EscapeMainlineState;
+  endingState: EndingState;
 
   /** 新手引导：是否已查看图鉴（羊皮纸引导已移除） */
   hasCheckedCodex: boolean;
@@ -561,7 +579,7 @@ export interface GameState extends IntegrityMetaState {
     text: string;
   }>;
   /** Phase-3：前台快捷行动（仅 UI 辅助；不入存档）。 */
-  pendingClientAction?: { text: string; autoSend: boolean; source: "weapon" | "system" };
+  pendingClientAction?: { text: string; autoSend: boolean; source: "weapon" | "system" } | null;
   /** 是否已在叙事中遇到 1F 认证 NPC（路线引导大姐姐 N-010） */
   hasMetProfessionCertifier: boolean;
   _integrity_dirty: boolean;
@@ -769,11 +787,25 @@ export interface GameState extends IntegrityMetaState {
   /** Phase-5: 回合 commit 后推进出口主线（确定性） */
   advanceEscapeMainlineFromResolvedTurn: (args: {
     resolvedTurn: any;
+    playerAction?: string;
     nowTurnOverride?: number;
     nowHourOverride?: number;
   }) => void;
   buildEscapePromptBlock: () => string;
   getEscapeObjectiveSummary: () => { stage: string; nextObjective: string; blockers: string[] };
+  evaluateEndingAfterTurn: (input?: {
+    resolvedTurn?: any;
+    turnCount?: number;
+    finalNarrative?: string | null;
+    lastAction?: string | null;
+    abandonRequested?: boolean;
+  }) => EndingState;
+  createEndingSettlementSnapshot: () => EndingState;
+  selectEndingFinalAction: (choice: EndingFinalChoice) => EndingState;
+  commitEndingFinalNarrative: (narrative: string) => EndingState;
+  markEndingRedirected: () => EndingState;
+  markEndingSettled: () => EndingState;
+  resetEndingForNewGame: () => EndingState;
 
   performCheck: (
     baseStat: StatType,
@@ -999,6 +1031,11 @@ export const useGameStore = create<GameState>()(
       logs: [],
       codex: {},
       memorySpine: createEmptyMemorySpine(),
+      storyDirector: createEmptyDirectorState(0),
+      incidentQueue: createEmptyIncidentQueue(),
+      escapeMainline: createDefaultEscapeMainlineTemplate(0),
+      endingState: createInitialEndingState(),
+      openingNarrativePinned: false,
       hasCheckedCodex: false,
       warehouse: [],
       currentOptions: [],
@@ -1237,6 +1274,7 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
           chapterState: createInitialChapterState(),
+          endingState: createInitialEndingState(),
           hasMetProfessionCertifier: false,
           journalClues: [],
           conflictTurnFeedback: null,
@@ -1364,6 +1402,7 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: [],
           professionState: createDefaultProfessionState(),
           chapterState: createInitialChapterState(),
+          endingState: createInitialEndingState(),
           hasMetProfessionCertifier: false,
         }));
       },
@@ -1384,12 +1423,16 @@ export const useGameStore = create<GameState>()(
           deathCount: 0,
           appliedRelationshipTaskIds: [],
           chapterState: createInitialChapterState(),
+          endingState: createInitialEndingState(),
           hasMetProfessionCertifier: false,
         });
       },
 
       setCurrentOptions: (options) =>
         set((s) => {
+          if (s.endingState?.phase && s.endingState.phase !== "playing") {
+            return { currentOptions: [], recentOptions: s.recentOptions ?? [] };
+          }
           const safeOptions = normalizeStoredOptions(options, 4);
           const appended = [...(s.recentOptions ?? []), ...safeOptions];
           const trimmed = appended.slice(-8);
@@ -2033,6 +2076,7 @@ export const useGameStore = create<GameState>()(
           storyDirector: createEmptyDirectorState(0),
           incidentQueue: createEmptyIncidentQueue(),
           escapeMainline: createDefaultEscapeMainlineTemplate(0),
+          endingState: createInitialEndingState(),
           journalClues: [],
         });
       },
@@ -2755,6 +2799,7 @@ export const useGameStore = create<GameState>()(
           worldFlags,
           memoryEntries: s.memorySpine?.entries ?? [],
           resolvedTurn: args.resolvedTurn,
+          playerAction: args.playerAction,
           changedBy: "resolved_turn",
         });
         set({ escapeMainline: next as any });
@@ -2770,6 +2815,166 @@ export const useGameStore = create<GameState>()(
         const s = get();
         const state = normalizeEscapeMainline((s as any).escapeMainline, (s.time?.day ?? 0) * 24 + (s.time?.hour ?? 0));
         return getEscapeObjectiveSummary(state);
+      },
+
+      evaluateEndingAfterTurn: (input = {}) => {
+        const s = get();
+        if (s.endingState?.phase === "settlement_ready" && s.endingState.settlementSnapshot) {
+          return s.endingState;
+        }
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+        const runId = resolveEndingRunId({
+          slotRunId: activeSnapshot?.meta?.runId ?? s.saveSlots?.[s.currentSaveSlot]?.slotMeta?.runId,
+          currentSaveSlot: s.currentSaveSlot,
+        });
+        const evaluation = buildEndingEvaluationInputFromStore({
+          stats: s.stats ?? DEFAULT_STATS,
+          time: s.time ?? { day: 0, hour: 0 },
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+          escapeMainline: (s as any).escapeMainline ?? null,
+          logs: s.logs ?? [],
+          turnCount: input.turnCount ?? (s.logs ?? []).length,
+          resolvedTurn: input.resolvedTurn ?? null,
+          lastAction: input.lastAction ?? null,
+          abandonRequested: input.abandonRequested,
+        });
+        const nextEndingState = evaluateEndingAfterTurnForStore({
+          prev: s.endingState,
+          runId,
+          evaluation,
+          snapshotInput: {
+            stats: s.stats ?? DEFAULT_STATS,
+            time: s.time ?? { day: 0, hour: 0 },
+            playerLocation: s.playerLocation ?? "B1_SafeZone",
+            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+            logs: s.logs ?? [],
+            codex: s.codex ?? {},
+            journalClues: s.journalClues ?? [],
+            escapeMainline: (s as any).escapeMainline ?? null,
+            finalNarrative: input.finalNarrative ?? null,
+          },
+        });
+        set({
+          endingState: nextEndingState,
+          ...(nextEndingState.phase !== "playing"
+            ? { currentOptions: [], recentOptions: [] }
+            : {}),
+        });
+        return nextEndingState;
+      },
+
+      selectEndingFinalAction: (choice) => {
+        const stampedChoice = {
+          ...choice,
+          selectedAt: choice.selectedAt || new Date().toISOString(),
+        };
+        const nextEndingState = transitionEndingState(get().endingState, {
+          type: "FINAL_ACTION_SELECTED",
+          choice: stampedChoice,
+          at: stampedChoice.selectedAt,
+        });
+        set({ endingState: nextEndingState, currentOptions: [], recentOptions: [] });
+        return nextEndingState;
+      },
+
+      commitEndingFinalNarrative: (narrative) => {
+        const s = get();
+        const committed = transitionEndingState(s.endingState, {
+          type: "FINAL_NARRATIVE_COMMITTED",
+          narrative,
+          at: new Date().toISOString(),
+        });
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+        const runId = resolveEndingRunId({
+          slotRunId: activeSnapshot?.meta?.runId ?? s.saveSlots?.[s.currentSaveSlot]?.slotMeta?.runId,
+          currentSaveSlot: s.currentSaveSlot,
+        });
+        const snapshot = buildEndingSettlementSnapshotFromStore({
+          runId,
+          endingState: committed,
+          stats: s.stats ?? DEFAULT_STATS,
+          time: s.time ?? { day: 0, hour: 0 },
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+          logs: s.logs ?? [],
+          codex: s.codex ?? {},
+          journalClues: s.journalClues ?? [],
+          escapeMainline: (s as any).escapeMainline ?? null,
+          finalNarrative: narrative,
+        });
+        const nextEndingState = transitionEndingState(committed, {
+          type: "SETTLEMENT_SNAPSHOT_CREATED",
+          snapshot,
+          idempotencyKey: committed.idempotencyKey,
+        });
+        set({
+          endingState: nextEndingState,
+          currentOptions: nextEndingState.phase === "settlement_ready" ? [...ENDING_SETTLEMENT_OPTIONS] : [],
+          recentOptions: [],
+        });
+        return nextEndingState;
+      },
+
+      createEndingSettlementSnapshot: () => {
+        const s = get();
+        if (s.endingState?.phase === "settlement_ready" && s.endingState.settlementSnapshot) {
+          return s.endingState;
+        }
+        const activeSnapshot = s.saveSlots?.[s.currentSaveSlot]?.runSnapshotV2;
+        const runId = resolveEndingRunId({
+          slotRunId: activeSnapshot?.meta?.runId ?? s.saveSlots?.[s.currentSaveSlot]?.slotMeta?.runId,
+          currentSaveSlot: s.currentSaveSlot,
+        });
+        const endingState = normalizeEndingState(s.endingState);
+        const snapshot = buildEndingSettlementSnapshotFromStore({
+          runId,
+          endingState,
+          stats: s.stats ?? DEFAULT_STATS,
+          time: s.time ?? { day: 0, hour: 0 },
+          playerLocation: s.playerLocation ?? "B1_SafeZone",
+          historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+          logs: s.logs ?? [],
+          codex: s.codex ?? {},
+          journalClues: s.journalClues ?? [],
+          escapeMainline: (s as any).escapeMainline ?? null,
+        });
+        const nextEndingState = transitionEndingState(endingState, {
+          type: "SETTLEMENT_SNAPSHOT_CREATED",
+          snapshot,
+          idempotencyKey: endingState.idempotencyKey,
+        });
+        set({
+          endingState: nextEndingState,
+          ...(nextEndingState.phase === "settlement_ready"
+            ? { currentOptions: [], recentOptions: [] }
+            : {}),
+        });
+        return nextEndingState;
+      },
+
+      markEndingRedirected: () => {
+        const nextEndingState = transitionEndingState(get().endingState, {
+          type: "REDIRECTED_TO_SETTLEMENT",
+          at: new Date().toISOString(),
+        });
+        set({ endingState: nextEndingState });
+        return nextEndingState;
+      },
+
+      markEndingSettled: () => {
+        const nextEndingState = transitionEndingState(get().endingState, {
+          type: "SETTLED",
+          at: new Date().toISOString(),
+        });
+        set({ endingState: nextEndingState });
+        return nextEndingState;
+      },
+
+      resetEndingForNewGame: () => {
+        const nextEndingState = transitionEndingState(get().endingState, { type: "RESET_FOR_NEW_RUN" });
+        set({ endingState: nextEndingState });
+        return nextEndingState;
       },
 
       buildMemoryRecallBlock: () => {
@@ -3148,6 +3353,8 @@ export const useGameStore = create<GameState>()(
         const effectiveSlotId = "main_slot";
         const safeStats = s.stats ?? DEFAULT_STATS;
         const chapterState = normalizeChapterState(s.chapterState);
+        const endingForSave = normalizeEndingState(s.endingState);
+        const endingSnapshotForSave = normalizeEndingSettlementSnapshot(endingForSave.settlementSnapshot);
         const storyDirector = normalizeDirectorState(
           (s as any).storyDirector ??
             s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.world?.storyDirector,
@@ -3176,6 +3383,11 @@ export const useGameStore = create<GameState>()(
           reviveContext: s.reviveContext,
         });
         const prevMeta = s.saveSlots?.[effectiveSlotId]?.slotMeta;
+        const runIdForSave =
+          s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.runId ??
+          prevMeta?.runId ??
+          endingSnapshotForSave?.runId ??
+          createRunId();
         const baseMeta = normalizeSaveSlotMeta(prevMeta, {
           slotId: effectiveSlotId,
           label:
@@ -3184,18 +3396,14 @@ export const useGameStore = create<GameState>()(
           kind: inferSaveSlotKind(effectiveSlotId),
           createdAt: prevMeta?.createdAt ?? new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          runId:
-            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.runId ??
-            createRunId(),
+          runId: runIdForSave,
           parentSlotId: prevMeta?.parentSlotId ?? null,
           branchFromDecisionId: prevMeta?.branchFromDecisionId ?? null,
           snapshotSummary: summary,
         });
         const snapshot = buildRunSnapshotV2({
           slotMeta: baseMeta,
-          runId:
-            s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.runId ??
-            createRunId(),
+          runId: runIdForSave,
           startedAt: s.saveSlots?.[effectiveSlotId]?.runSnapshotV2?.meta?.startedAt,
           player: {
             name: s.playerName ?? "",
@@ -3250,6 +3458,8 @@ export const useGameStore = create<GameState>()(
           profession: computedProfession,
           memorySpine: s.memorySpine ?? createEmptyMemorySpine(),
           chapterState,
+          endingState: endingForSave,
+          endingSettlementSnapshot: endingSnapshotForSave,
           journal: {
             version: JOURNAL_STATE_VERSION,
             clues: mergeCluesWithDedupe([], s.journalClues ?? [], 200),
@@ -3277,7 +3487,8 @@ export const useGameStore = create<GameState>()(
           hasCheckedCodex: s.hasCheckedCodex ?? false,
           originium: s.originium ?? 0,
           currentBgm: s.currentBgm ?? "bgm_b1_daily",
-          currentOptions: normalizeStoredOptions(s.currentOptions, 4),
+          currentOptions:
+            endingForSave.phase !== "playing" ? [] : normalizeStoredOptions(s.currentOptions, 4),
           tasks: JSON.parse(JSON.stringify(s.tasks ?? [])),
           playerLocation: s.playerLocation ?? "B1_SafeZone",
           dynamicNpcStates: JSON.parse(JSON.stringify(s.dynamicNpcStates ?? {})),
@@ -3303,6 +3514,8 @@ export const useGameStore = create<GameState>()(
           professionState: JSON.parse(JSON.stringify(computedProfession)),
           ...legacyProjection,
           chapterState: JSON.parse(JSON.stringify(chapterState)),
+          endingState: JSON.parse(JSON.stringify(endingForSave)),
+          endingSettlementSnapshot: JSON.parse(JSON.stringify(endingSnapshotForSave)),
         };
         const summaryWithProfession = {
           ...summary,
@@ -3395,6 +3608,19 @@ export const useGameStore = create<GameState>()(
         const chapterState = normalizeChapterState(
           data.chapterState ?? projected.chapterState ?? normalizedSnapshot.chapterState
         );
+        const loadedEndingSnapshot = normalizeEndingSettlementSnapshot(
+          data.endingSettlementSnapshot ??
+            projected.endingSettlementSnapshot ??
+            normalizedSnapshot.endingSettlementSnapshot ??
+            normalizedSnapshot.endingState?.settlementSnapshot
+        );
+        const loadedEndingStateBase = normalizeEndingState(
+          data.endingState ?? projected.endingState ?? normalizedSnapshot.endingState
+        );
+        const loadedEndingState =
+          loadedEndingSnapshot && !loadedEndingStateBase.settlementSnapshot
+            ? { ...loadedEndingStateBase, settlementSnapshot: loadedEndingSnapshot }
+            : loadedEndingStateBase;
         const slotMeta = normalizeSaveSlotMeta(data.slotMeta, {
           slotId,
           label: slotId === "main_slot" ? "主线存档" : slotId,
@@ -3413,10 +3639,12 @@ export const useGameStore = create<GameState>()(
               ...get().saveSlots,
               [slotId]: {
                 ...data,
+                ...projected,
                 chapterState,
+                endingState: loadedEndingState,
+                endingSettlementSnapshot: loadedEndingSnapshot,
                 slotMeta,
                 runSnapshotV2: normalizedSnapshot,
-                ...projected,
               },
             },
             { keepSlotIds: [slotId] }
@@ -3445,7 +3673,7 @@ export const useGameStore = create<GameState>()(
           originium:
             projected.originium ?? data.originium ?? get().originium ?? 0,
           currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_b1_daily",
-          currentOptions: normalizeStoredOptions(data.currentOptions, 4),
+          currentOptions: loadedEndingState.phase !== "playing" ? [] : normalizeStoredOptions(data.currentOptions, 4),
           tasks: JSON.parse(JSON.stringify(projected.tasks ?? data.tasks ?? [])),
           playerLocation:
             projected.playerLocation ?? data.playerLocation ?? "B1_SafeZone",
@@ -3493,6 +3721,7 @@ export const useGameStore = create<GameState>()(
           ),
           professionState: JSON.parse(JSON.stringify(professionState)),
           chapterState: JSON.parse(JSON.stringify(chapterState)),
+          endingState: JSON.parse(JSON.stringify(loadedEndingState)),
           playerName: projected.playerName ?? get().playerName,
           gender: projected.gender ?? get().gender,
           height: projected.height ?? get().height,
@@ -3538,6 +3767,19 @@ export const useGameStore = create<GameState>()(
         const chapterState = normalizeChapterState(
           data.chapterState ?? projected.chapterState ?? normalizedSnapshot.chapterState
         );
+        const loadedEndingSnapshot = normalizeEndingSettlementSnapshot(
+          data.endingSettlementSnapshot ??
+            projected.endingSettlementSnapshot ??
+            normalizedSnapshot.endingSettlementSnapshot ??
+            normalizedSnapshot.endingState?.settlementSnapshot
+        );
+        const loadedEndingStateBase = normalizeEndingState(
+          data.endingState ?? projected.endingState ?? normalizedSnapshot.endingState
+        );
+        const loadedEndingState =
+          loadedEndingSnapshot && !loadedEndingStateBase.settlementSnapshot
+            ? { ...loadedEndingStateBase, settlementSnapshot: loadedEndingSnapshot }
+            : loadedEndingStateBase;
         const slotMeta = normalizeSaveSlotMeta(data.slotMeta, {
           slotId,
           label: slotId === "main_slot" ? "主线存档" : slotId,
@@ -3560,10 +3802,12 @@ export const useGameStore = create<GameState>()(
                 ...s.saveSlots,
                 [slotId]: {
                   ...data,
+                  ...projected,
                   chapterState,
+                  endingState: loadedEndingState,
+                  endingSettlementSnapshot: loadedEndingSnapshot,
                   slotMeta,
                   runSnapshotV2: normalizedSnapshot,
-                  ...projected,
                 },
               },
               { keepSlotIds: [slotId] }
@@ -3591,7 +3835,7 @@ export const useGameStore = create<GameState>()(
             hasCheckedCodex: data.hasCheckedCodex ?? false,
             originium: projected.originium ?? data.originium ?? s.originium ?? 0,
             currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_b1_daily",
-            currentOptions: normalizeStoredOptions(data.currentOptions, 4),
+            currentOptions: loadedEndingState.phase !== "playing" ? [] : normalizeStoredOptions(data.currentOptions, 4),
             tasks: JSON.parse(
               JSON.stringify(projected.tasks ?? data.tasks ?? s.tasks ?? [])
             ),
@@ -3649,6 +3893,7 @@ export const useGameStore = create<GameState>()(
             ),
             professionState: JSON.parse(JSON.stringify(professionState)),
             chapterState: JSON.parse(JSON.stringify(chapterState)),
+            endingState: JSON.parse(JSON.stringify(loadedEndingState)),
             playerName: projected.playerName ?? s.playerName,
             gender: projected.gender ?? s.gender,
             height: projected.height ?? s.height,
@@ -3765,6 +4010,7 @@ export const useGameStore = create<GameState>()(
         ),
         incidentQueue: (s as any).incidentQueue ?? createEmptyIncidentQueue(),
         escapeMainline: (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
+        endingState: normalizeEndingState(s.endingState),
         hasCheckedCodex: s.hasCheckedCodex ?? false,
         warehouse: s.warehouse ?? [],
         originium: s.originium ?? 0,

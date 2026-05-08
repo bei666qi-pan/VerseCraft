@@ -75,14 +75,24 @@ export function shouldCompleteChapter(
   if (progress.status !== "active") return false;
   if (progress.turnCount < definition.minTurns) return false;
   const decision = runtime.closeDecision;
-  return (
+  const closeDecisionReady =
     decision?.shouldClose === true &&
     Number(decision.confidence ?? 0) >= 0.75 &&
     decision.hasResolvedSmallQuestion === true &&
     decision.hasNewHook === true &&
     decision.hasPlayerChoiceEcho === true &&
     decision.hasReadablePause === true &&
-    decision.hasNoLoreConflict === true
+    decision.hasNoLoreConflict === true;
+  if (closeDecisionReady) return true;
+
+  const completedBeatIds = new Set(progress.completedBeatIds);
+  const requiredBeatsReady = definition.beats.every(
+    (beat) => beat.required === false || completedBeatIds.has(beat.id)
+  );
+  return (
+    progress.keyChoiceCount >= definition.minKeyChoices &&
+    progress.stateChangeCount >= 1 &&
+    requiredBeatsReady
   );
 }
 

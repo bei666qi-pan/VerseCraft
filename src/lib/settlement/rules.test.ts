@@ -3,23 +3,45 @@ import test from "node:test";
 import {
   computeSettlementGrade,
   formatSettlementFloor,
+  getSettlementGradeCaption,
+  getSettlementOutcomeLead,
   resolveSettlementFloorScore,
 } from "./rules";
 
-test("settlement grade forces death to E", () => {
+test("settlement grade keeps death in E/D range", () => {
   assert.equal(
     computeSettlementGrade({
       isDead: true,
-      maxFloor: 8,
-      killedAnomalies: 8,
-      survivalHours: 120,
+      maxFloor: 1,
+      killedAnomalies: 0,
+      survivalHours: 4,
       escapeOutcome: "true_escape",
     }),
     "E"
   );
+  assert.equal(
+    computeSettlementGrade({
+      isDead: true,
+      maxFloor: 7,
+      killedAnomalies: 3,
+      survivalHours: 80,
+      escapeOutcome: "death",
+    }),
+    "D"
+  );
 });
 
-test("settlement grade awards S for completed escape", () => {
+test("settlement grade awards outcome-aware escape tiers", () => {
+  assert.equal(
+    computeSettlementGrade({
+      isDead: false,
+      maxFloor: 8,
+      killedAnomalies: 0,
+      survivalHours: 14,
+      escapeOutcome: "true_escape",
+    }),
+    "S"
+  );
   assert.equal(
     computeSettlementGrade({
       isDead: false,
@@ -29,6 +51,36 @@ test("settlement grade awards S for completed escape", () => {
       escapeOutcome: "costly_escape",
     }),
     "S"
+  );
+  assert.equal(
+    computeSettlementGrade({
+      isDead: false,
+      maxFloor: 3,
+      killedAnomalies: 0,
+      survivalHours: 14,
+      escapeOutcome: "costly_escape",
+    }),
+    "A"
+  );
+  assert.equal(
+    computeSettlementGrade({
+      isDead: false,
+      maxFloor: 3,
+      killedAnomalies: 0,
+      survivalHours: 14,
+      escapeOutcome: "false_escape",
+    }),
+    "B"
+  );
+  assert.equal(
+    computeSettlementGrade({
+      isDead: false,
+      maxFloor: 7,
+      killedAnomalies: 0,
+      survivalHours: 14,
+      escapeOutcome: "false_escape",
+    }),
+    "A"
   );
 });
 
@@ -46,4 +98,12 @@ test("settlement floor display maps basement and normal floors", () => {
   assert.equal(formatSettlementFloor(0), "地下一层");
   assert.equal(formatSettlementFloor(8), "地下二层");
   assert.equal(formatSettlementFloor(4), "第 4 层");
+});
+
+test("settlement captions describe terminal outcomes", () => {
+  assert.match(getSettlementGradeCaption("S", "true_escape"), /真正的出口/);
+  assert.match(getSettlementGradeCaption("A", "costly_escape"), /代价/);
+  assert.match(getSettlementGradeCaption("B", "false_escape"), /循环/);
+  assert.match(getSettlementGradeCaption("E", "death"), /死亡/);
+  assert.match(getSettlementOutcomeLead("doom"), /第十日/);
 });

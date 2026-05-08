@@ -1,4 +1,4 @@
-import type { StatType } from "@/lib/registry/types";
+import type { StatType, Weapon } from "@/lib/registry/types";
 import { createDefaultAnchorUnlocks, normalizeAnchorUnlocks } from "./anchors";
 import { normalizeDeathState } from "./death";
 import { buildRunSnapshotV2, createRunId } from "./builder";
@@ -23,6 +23,7 @@ import { normalizeJournalState } from "@/lib/domain/clueMerge";
 import { getChapterDefinition, getChapterDisplayName, normalizeChapterState } from "@/lib/chapters";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import type { ChapterState } from "@/lib/chapters/types";
+import { normalizeEndingSettlementSnapshot, normalizeEndingState } from "@/lib/endings/storeIntegration";
 
 const DEFAULT_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -123,7 +124,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     player: {
       name: legacy.playerName ?? "",
       gender: legacy.gender ?? "",
-      height: Number.isFinite(legacy.height) ? legacy.height : 170,
+      height: Number.isFinite(Number(legacy.height)) ? Number(legacy.height) : 170,
       personality: legacy.personality ?? "",
     },
     stats: legacy.stats ?? DEFAULT_STATS,
@@ -148,6 +149,10 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
       buildChapterDirectorBridgeFromState(chapterState)
     ),
     chapterState,
+    endingState: normalizeEndingState(legacy.endingState ?? legacy.runSnapshotV2?.endingState),
+    endingSettlementSnapshot: normalizeEndingSettlementSnapshot(
+      legacy.endingSettlementSnapshot ?? legacy.runSnapshotV2?.endingSettlementSnapshot
+    ),
   });
 }
 
@@ -166,6 +171,25 @@ export function normalizeRunSnapshotV2(
   const normalizedChapterState = normalizeChapterState(
     (s as { chapterState?: unknown }).chapterState ?? legacyBase.chapterState
   );
+  const rawEndingState = (s as { endingState?: unknown }).endingState ?? legacyBase.endingState;
+  const rawEndingPhase = asRecord(rawEndingState).phase;
+  const normalizedEndingStateBase = normalizeEndingState(rawEndingState);
+  const normalizedEndingSettlementSnapshot = normalizeEndingSettlementSnapshot(
+    (s as { endingSettlementSnapshot?: unknown }).endingSettlementSnapshot ??
+      normalizedEndingStateBase.settlementSnapshot ??
+      legacyBase.endingSettlementSnapshot
+  );
+  const normalizedEndingState =
+    normalizedEndingSettlementSnapshot && !normalizedEndingStateBase.settlementSnapshot
+      ? {
+          ...normalizedEndingStateBase,
+          phase:
+            rawEndingPhase === "settlement_ready" || rawEndingPhase === "settled"
+              ? rawEndingPhase
+              : normalizedEndingStateBase.phase,
+          settlementSnapshot: normalizedEndingSettlementSnapshot,
+        }
+      : normalizedEndingStateBase;
   const chapterDirectorBridge = buildChapterDirectorBridgeFromState(normalizedChapterState);
   const normalized: RunSnapshotV2 = {
     ...fromLegacy,
@@ -240,7 +264,7 @@ export function normalizeRunSnapshotV2(
           : null,
       weaponBag: Array.isArray((s.player as unknown as { weaponBag?: unknown }).weaponBag)
         ? ((s.player as unknown as { weaponBag?: unknown }).weaponBag as unknown[])
-            .filter((w): w is RunSnapshotV2["player"]["equippedWeapon"] => !!w && typeof w === "object" && !Array.isArray(w))
+            .filter((w): w is Weapon => !!w && typeof w === "object" && !Array.isArray(w))
             .slice(0, 24)
         : [],
     },
@@ -282,6 +306,8 @@ export function normalizeRunSnapshotV2(
     })(),
     journal: normalizeJournalState((s as { journal?: unknown }).journal),
     chapterState: normalizedChapterState,
+    endingState: normalizedEndingState,
+    endingSettlementSnapshot: normalizedEndingSettlementSnapshot,
     npcs: asRecord(s.npcs) as RunSnapshotV2["npcs"],
     tasks: {
       active: normalizeTasks(s.tasks?.active),
@@ -307,7 +333,7 @@ export function normalizeRunSnapshotV2(
       const raw = s.profession;
       const base = createDefaultProfessionState();
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
-      const o = raw as Record<string, unknown>;
+      const o = raw as unknown as Record<string, unknown>;
       const currentProfession =
         o.currentProfession === "守灯人" ||
         o.currentProfession === "巡迹客" ||
@@ -324,7 +350,7 @@ export function normalizeRunSnapshotV2(
         : [];
       return {
         ...base,
-        ...(typeof o === "object" ? (o as typeof base) : {}),
+        ...(typeof o === "object" ? (o as unknown as typeof base) : {}),
         currentProfession,
         unlockedProfessions,
       };
@@ -370,6 +396,8 @@ export function projectSnapshotToLegacy(snapshot: RunSnapshotV2): LegacySaveSurf
     weaponBag: snapshot.player.weaponBag ?? [],
     professionState: snapshot.profession,
     chapterState: snapshot.chapterState,
+    endingState: snapshot.endingState,
+    endingSettlementSnapshot: snapshot.endingSettlementSnapshot ?? snapshot.endingState?.settlementSnapshot ?? null,
     runSnapshotV2: snapshot,
   };
 }

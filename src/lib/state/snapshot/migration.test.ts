@@ -25,6 +25,11 @@ test("legacy save can migrate to RunSnapshotV2 without crashing", () => {
       counterTags: ["sound"],
       stability: 80,
       calibratedThreatId: null,
+      modSlots: [],
+      currentMods: [],
+      currentInfusions: [],
+      contamination: 0,
+      repairable: true,
     },
   });
   assert.equal(snapshot.schemaVersion, 2);
@@ -51,6 +56,58 @@ test("normalizeRunSnapshotV2 fills defaults for partial snapshot", () => {
   assert.ok(normalized.memory);
   assert.equal(normalized.memory!.spine.v, 1);
   assert.ok(Array.isArray(normalized.memory!.spine.entries));
+});
+
+test("normalizeRunSnapshotV2 reattaches separate ending settlement snapshot", () => {
+  const normalized = normalizeRunSnapshotV2({
+    schemaVersion: 2,
+    meta: { runId: "run_ending", worldVersion: 2, startedAt: "2026-01-01T00:00:00.000Z" },
+    player: { profile: { name: "A", gender: "other", height: 170, personality: "quiet" } },
+    time: { day: 10, hour: 5 },
+    endingState: {
+      phase: "settlement_ready",
+      eligibility: {
+        outcome: "doom",
+        confidence: 1,
+        reasons: ["day=10"],
+        blockers: [],
+        detectedAtTurn: 8,
+        source: "time",
+        priority: 20,
+      },
+      finalNarrative: null,
+      settlementSnapshot: null,
+      redirectedAt: null,
+      settledAt: null,
+      idempotencyKey: "run_ending:doom:8",
+    },
+    endingSettlementSnapshot: {
+      v: 1,
+      runId: "run_ending",
+      settlementId: "settlement:run_ending:doom:8",
+      outcome: "doom",
+      grade: "E",
+      title: "Doom",
+      caption: "",
+      finalNarrative: "",
+      survivalHours: 245,
+      survivalDay: 10,
+      survivalHour: 5,
+      maxFloorScore: 0,
+      maxFloorLabel: "B1",
+      killedAnomalies: 0,
+      keyChoices: [],
+      obtainedClues: [],
+      npcEpilogues: [],
+      worldStateLines: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      writingMarkdown: "",
+    },
+  });
+
+  assert.equal(normalized.endingState?.phase, "settlement_ready");
+  assert.equal(normalized.endingState?.settlementSnapshot?.settlementId, "settlement:run_ending:doom:8");
+  assert.equal(normalized.endingSettlementSnapshot?.settlementId, "settlement:run_ending:doom:8");
 });
 
 test("normalizeRunSnapshotV2 preserves legacy chapter state and backfills director chapter", () => {

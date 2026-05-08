@@ -22,6 +22,7 @@ export function shouldAllowDoomline(args: { escapeStage?: string | null }): bool
 }
 
 export const ENDGAME_ONLY_OPTION = "迎接终焉" as const;
+export { ENDING_SETTLEMENT_OPTIONS } from "@/lib/endings/finalNarrativePrompt";
 
 const ENDGAME_LOCAL_TAIL = [
   "",

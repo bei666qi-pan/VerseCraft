@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCloudSaveSlot } from "@/app/actions/save";
 import { submitSettlementHistory } from "@/app/actions/history";
@@ -8,21 +8,33 @@ import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
 import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTriggers";
 import { useMounted } from "@/hooks/useMounted";
-import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
+import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 import {
   computeSettlementGrade,
   formatSettlementFloor,
   getSettlementGradeCaption,
+  getSettlementOutcomeLead,
+  getSettlementOutcomeTitle,
   resolveSettlementFloorScore,
-  type SettlementEscapeOutcome,
+  type SettlementOutcome,
 } from "@/lib/settlement/rules";
 import { useAchievementsStore } from "@/store/useAchievementsStore";
 import { useGameStore } from "@/store/useGameStore";
+import type { EndingOutcome, EndingSettlementSnapshot } from "@/lib/endings/types";
+import {
+  buildEndingTelemetryIdempotencyKey,
+  buildEndingTelemetryPayload,
+  type EndingTelemetryEventName,
+} from "@/lib/endings/telemetry";
+import { pushEndingDecisionDebugEvent } from "@/lib/debug/narrativeSystemsDebugRing";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
+type SettlementSource = "ending_snapshot" | "legacy_fallback";
+type SettlementViewSnapshot = EndingSettlementSnapshot & { source: SettlementSource };
+const FALLBACK_SETTLEMENT_STATS = { sanity: 0, agility: 0, luck: 0, charm: 0, background: 0 };
 
 function replaceLocationIdsForDisplay(text: string): string {
   let out = String(text ?? "");
@@ -69,14 +81,161 @@ function estimateKilledAnomalies(logs: LogEntry[]): number {
   return matches ? Math.max(0, matches.length) : 0;
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
+function asSettlementOutcome(outcome: EndingOutcome | SettlementOutcome | null | undefined): SettlementOutcome {
+  if (
+    outcome === "death" ||
+    outcome === "doom" ||
+    outcome === "true_escape" ||
+    outcome === "costly_escape" ||
+    outcome === "false_escape" ||
+    outcome === "abandon"
+  ) {
+    return outcome;
+  }
+  return "none";
+}
+
+function asEndingOutcome(outcome: SettlementOutcome): EndingOutcome {
+  return outcome === "none" ? "abandon" : outcome;
+}
+
+function compactLines(values: readonly unknown[], cap: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const text = String(raw ?? "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(replaceLocationIdsForDisplay(text).slice(0, 160));
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+function buildHistoryRecap(snapshot: SettlementViewSnapshot): string {
+  const parts = [snapshot.title, snapshot.caption, getSettlementOutcomeLead(asSettlementOutcome(snapshot.outcome))];
+  if (snapshot.finalChoiceLabel) parts.push(`最终选择：${snapshot.finalChoiceLabel}`);
+  if (snapshot.outcome === "death") {
+    if (snapshot.deathCause) parts.push(`死因：${snapshot.deathCause}`);
+    if (snapshot.deathLocation) parts.push(`地点：${replaceLocationIdsForDisplay(snapshot.deathLocation)}`);
+    if (snapshot.lastAction) parts.push(`最后行动：${snapshot.lastAction}`);
+  }
+  return parts.filter(Boolean).join("\n");
+}
+
+function buildLegacySnapshot(input: {
+  stats: { sanity?: number | null };
+  logs: LogEntry[];
+  time: { day?: number | null; hour?: number | null };
+  playerLocation: string;
+  historicalMaxFloorScore: number;
+  escapeStateRaw: unknown;
+  currentSaveSlot: string;
+  codex: Record<string, unknown>;
+  journalClues: unknown[];
+}): SettlementViewSnapshot {
+  const survivalDay = Math.max(0, Number(input.time.day ?? 0));
+  const survivalHour = Math.max(0, Number(input.time.hour ?? 0));
+  const survivalHours = survivalDay * 24 + survivalHour;
+  const isDead = Number(input.stats.sanity ?? 0) <= 0;
+  const escapeState = normalizeEscapeMainline(input.escapeStateRaw, survivalHours);
+  const escapeOutcome = computeEscapeOutcomeForSettlement(escapeState);
+  const outcome = asEndingOutcome(isDead ? "death" : asSettlementOutcome(escapeOutcome));
+  const killedAnomalies = estimateKilledAnomalies(input.logs);
+  const maxFloorScore = Math.max(resolveSettlementFloorScore(input.playerLocation), input.historicalMaxFloorScore);
+  const grade = computeSettlementGrade({
+    isDead,
+    maxFloor: maxFloorScore,
+    killedAnomalies,
+    survivalHours,
+    escapeOutcome: outcome,
+  });
+  const lastAssistant = [...input.logs].reverse().find((entry) => entry.role === "assistant")?.content ?? "";
+  const keyChoices = compactLines(
+    input.logs.filter((entry) => entry.role === "user").map((entry) => entry.content).slice(-12),
+    12
+  );
+  const obtainedClues = compactLines(
+    [
+      ...input.journalClues.map((clue: any) => clue?.title ?? clue?.name ?? clue?.id),
+      ...Object.values(input.codex).map((entry: any) => entry?.name ?? entry?.id),
+    ],
+    16
+  );
+  const title = getSettlementOutcomeTitle(outcome);
+  const caption = getSettlementGradeCaption(grade, outcome);
+  const writingMarkdown = buildMarkdown(input.logs);
+  return {
+    v: 1,
+    source: "legacy_fallback",
+    runId: `legacy:${input.currentSaveSlot || "main_slot"}`,
+    settlementId: `legacy:${input.currentSaveSlot || "main_slot"}:${survivalHours}:${outcome}`,
+    outcome,
+    grade,
+    title,
+    caption,
+    finalNarrative:
+      replaceLocationIdsForDisplay(lastAssistant).trim() ||
+      "这份结算来自旧存档兼容路径：系统没有找到不可变结算快照，因此用当前本地状态重建了本局终章。",
+    survivalHours,
+    survivalDay,
+    survivalHour,
+    maxFloorScore,
+    maxFloorLabel: formatSettlementFloor(maxFloorScore),
+    killedAnomalies,
+    keyChoices,
+    obtainedClues,
+    npcEpilogues: compactLines(
+      Object.values(input.codex)
+        .filter((entry: any) => entry?.type === "npc")
+        .map((entry: any) => `${entry?.name ?? entry?.id ?? "某位住户"}：后日谈未被旧存档完整记录。`),
+      8
+    ),
+    worldStateLines: [
+      `结算来源：legacy_fallback`,
+      `最终位置：${replaceLocationIdsForDisplay(input.playerLocation)}`,
+      `逃离主线：${escapeState.stage}`,
+      `理智：${input.stats.sanity ?? 0}`,
+    ],
+    createdAt: new Date().toISOString(),
+    writingMarkdown,
+  };
+}
+
+function DetailList({ empty, items }: { empty: string; items: readonly string[] }) {
+  if (items.length === 0) return <p className="text-[15px] leading-relaxed text-[#6c5946]">{empty}</p>;
   return (
-    <div className="flex min-h-[8.5rem] flex-col items-center justify-center rounded-[14px] border border-[#4c8b83] bg-[#fffdf8]/78 px-4 text-center">
-      <div className="vc-reading-serif text-[clamp(1.1rem,2.2vw,1.55rem)] text-[#0f5a52]">{label}</div>
-      <div className="vc-reading-serif mt-5 text-[clamp(1.55rem,3vw,2.15rem)] font-semibold leading-none text-[#0f5a52]">
-        {value}
-      </div>
+    <ul className="grid gap-2">
+      {items.map((item, index) => (
+        <li key={`${item}:${index}`} className="border-l-2 border-[#9b6b48] pl-3 text-[15px] leading-relaxed text-[#3c2417]">
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[8px] border border-[#d9c7ad] bg-[#fffdf8] p-4">
+      <p className="text-[12px] font-semibold tracking-[0.12em] text-[#8a5a3a]">{label}</p>
+      <p className="mt-2 vc-reading-serif text-[24px] font-semibold leading-tight text-[#2f4f48]">{value}</p>
     </div>
+  );
+}
+
+function StorySection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-t border-[#e2d6c6] py-6">
+      <h2 className="vc-reading-serif text-[22px] font-semibold leading-tight text-[#2f4f48]">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
   );
 }
 
@@ -84,11 +243,16 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   useClientPageDynamicProps(props);
   const router = useRouter();
   const mounted = useMounted();
-  const hasUploadedRef = useRef(false);
+  const historySubmittedRef = useRef(false);
+  const historySubmittingRef = useRef(false);
+  const historySubmitPromiseRef = useRef<Promise<boolean> | null>(null);
   const hasAchievementPushedRef = useRef(false);
+  const endingTelemetrySeenRef = useRef<Set<string>>(new Set());
   const [returningHome, setReturningHome] = useState(false);
+  const [showFullText, setShowFullText] = useState(false);
 
-  const stats = useGameStore((s) => s.stats) ?? { sanity: 0, agility: 0, luck: 0, charm: 0, background: 0 };
+  const storeStats = useGameStore((s) => s.stats);
+  const stats = useMemo(() => storeStats ?? FALLBACK_SETTLEMENT_STATS, [storeStats]);
   const logs = useGameStore((s) => (s.logs ?? []) as LogEntry[]);
   const time = useGameStore((s) => s.time ?? { day: 0, hour: 0 });
   const playerLocation = useGameStore((s) => s.playerLocation ?? "B1_SafeZone");
@@ -96,70 +260,195 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const currentSaveSlot = useGameStore((s) => s.currentSaveSlot ?? "main_slot");
   const professionState = useGameStore((s) => s.professionState);
   const escapeStateRaw = useGameStore((s) => (s as { escapeMainline?: unknown }).escapeMainline);
+  const codex = useGameStore((s) => s.codex ?? {});
+  const journalClues = useGameStore((s) => s.journalClues ?? []);
+  const endingState = useGameStore((s) => s.endingState);
+  const markEndingSettled = useGameStore((s) => s.markEndingSettled);
 
-  const survivalDay = Math.max(0, Number(time.day ?? 0));
-  const survivalHour = Math.max(0, Number(time.hour ?? 0));
-  const isDead = (stats.sanity ?? 0) <= 0;
-  const killedAnomalies = estimateKilledAnomalies(logs);
-  const survivalHours = survivalDay * 24 + survivalHour;
-  const maxFloorScore = Math.max(resolveSettlementFloorScore(playerLocation), historicalMaxFloorScore);
-  const escapeState = normalizeEscapeMainline(escapeStateRaw, survivalHours);
-  const escapeOutcome = computeEscapeOutcomeForSettlement(escapeState) as SettlementEscapeOutcome;
-  const grade = computeSettlementGrade({
-    isDead,
-    maxFloor: maxFloorScore,
-    killedAnomalies,
-    survivalHours,
-    escapeOutcome,
-  });
-  const gradeCaption = getSettlementGradeCaption(grade, escapeOutcome);
-  const maxFloorLabel = formatSettlementFloor(maxFloorScore);
-  const writingMarkdown = useMemo(() => buildMarkdown(logs), [logs]);
-
-  const handleSubmit = useCallback(async () => {
-    if (hasUploadedRef.current) return;
-    hasUploadedRef.current = true;
-    const profession = professionState?.currentProfession ?? null;
-    await submitSettlementHistory({
-      killedAnomalies,
-      maxFloorScore,
-      survivalTimeSeconds: survivalHours * 3600,
-      outcome: isDead
-        ? "death"
-        : escapeOutcome === "true_escape" || escapeOutcome === "costly_escape"
-          ? "victory"
-          : "abandon",
-      history: {
-        grade,
-        survivalDay,
-        survivalHour,
-        maxFloorLabel,
-        profession: profession ? String(profession) : null,
-        recapSummary: gradeCaption,
-        isDead,
-        hasEscaped: !isDead && (escapeOutcome === "true_escape" || escapeOutcome === "costly_escape"),
-        writingMarkdown,
-      },
-    }).catch(() => undefined);
+  const snapshot = useMemo<SettlementViewSnapshot>(() => {
+    const endingSnapshot = endingState?.settlementSnapshot;
+    if (endingSnapshot) {
+      return {
+        ...endingSnapshot,
+        source: "ending_snapshot",
+        finalNarrative: replaceLocationIdsForDisplay(endingSnapshot.finalNarrative),
+        deathLocation: endingSnapshot.deathLocation
+          ? replaceLocationIdsForDisplay(endingSnapshot.deathLocation)
+          : endingSnapshot.deathLocation,
+        worldStateLines: compactLines(endingSnapshot.worldStateLines ?? [], 16),
+        keyChoices: compactLines(endingSnapshot.keyChoices ?? [], 12),
+        obtainedClues: compactLines(endingSnapshot.obtainedClues ?? [], 16),
+        npcEpilogues: compactLines(endingSnapshot.npcEpilogues ?? [], 16),
+      };
+    }
+    return buildLegacySnapshot({
+      stats,
+      logs,
+      time,
+      playerLocation,
+      historicalMaxFloorScore,
+      escapeStateRaw,
+      currentSaveSlot,
+      codex,
+      journalClues,
+    });
   }, [
-    escapeOutcome,
-    grade,
-    gradeCaption,
-    isDead,
-    killedAnomalies,
-    maxFloorLabel,
-    maxFloorScore,
-    professionState?.currentProfession,
-    survivalDay,
-    survivalHour,
-    survivalHours,
-    writingMarkdown,
+    codex,
+    currentSaveSlot,
+    endingState?.settlementSnapshot,
+    escapeStateRaw,
+    historicalMaxFloorScore,
+    journalClues,
+    logs,
+    playerLocation,
+    stats,
+    time,
   ]);
+
+  const outcome = asSettlementOutcome(snapshot.outcome);
+  const isDead = outcome === "death";
+  const hasEscaped = outcome === "true_escape" || outcome === "costly_escape";
+  const historyRecap = useMemo(() => buildHistoryRecap(snapshot), [snapshot]);
+
+  const emitSettlementEndingTelemetry = useCallback(
+    (
+      eventName: EndingTelemetryEventName,
+      options: {
+        source: string;
+        extra?: Record<string, unknown>;
+        idempotencySuffix?: string | null;
+        once?: boolean;
+        note?: string;
+      }
+    ) => {
+      const latestStore = useGameStore.getState();
+      const latestEndingState = latestStore.endingState ?? endingState ?? null;
+      const escapeStage = normalizeEscapeMainline(escapeStateRaw, snapshot.survivalHours).stage;
+      const eligibility = latestEndingState?.eligibility ?? null;
+      const payload = buildEndingTelemetryPayload({
+        endingState: latestEndingState,
+        runId: snapshot.runId,
+        escapeStage,
+        time,
+        source: options.source,
+        extra: {
+          outcome: snapshot.outcome,
+          endingPhase: latestEndingState?.phase ?? "settlement_ready",
+          detectedAtTurn: eligibility?.detectedAtTurn ?? null,
+          idempotencyKey: latestEndingState?.idempotencyKey ?? null,
+          reasons: eligibility?.reasons ?? [],
+          blockers: eligibility?.blockers ?? [],
+          survivalHours: snapshot.survivalHours,
+          snapshotPresent: snapshot.source === "ending_snapshot",
+          settlementId: snapshot.settlementId,
+          settlementSource: snapshot.source,
+          grade: snapshot.grade,
+          ...(options.extra ?? {}),
+        },
+      });
+      const key = buildEndingTelemetryIdempotencyKey(eventName, payload, options.idempotencySuffix);
+      if (options.once !== false) {
+        if (endingTelemetrySeenRef.current.has(key)) return;
+        endingTelemetrySeenRef.current.add(key);
+      }
+      pushEndingDecisionDebugEvent({ eventName, payload, note: options.note });
+      void trackGameplayEvent({
+        eventName,
+        page: "/settlement",
+        source: "ending",
+        idempotencyKey: key,
+        payload,
+      }).catch(() => {});
+    },
+    [endingState, escapeStateRaw, snapshot, time]
+  );
+
+  const submitHistoryOnce = useCallback(
+    async () => {
+      const latestEnding = useGameStore.getState().endingState;
+      if (latestEnding?.settledAt || historySubmittedRef.current) return true;
+      if (historySubmitPromiseRef.current) return historySubmitPromiseRef.current;
+      const localHistoryKey = `versecraft:settlement-history:${snapshot.settlementId}`;
+      if (typeof window !== "undefined" && window.localStorage.getItem(localHistoryKey) === "submitted") {
+        historySubmittedRef.current = true;
+        if (!latestEnding?.settledAt) {
+          markEndingSettled();
+          useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+        }
+        emitSettlementEndingTelemetry("ending_settlement_history_submitted", {
+          source: "history_submit_idempotent",
+          idempotencySuffix: "history_submitted",
+          extra: { historySubmitted: true, historySubmitSource: "local_idempotent" },
+        });
+        return true;
+      }
+      if (historySubmittingRef.current) return false;
+      historySubmittingRef.current = true;
+      const profession = professionState?.currentProfession ?? null;
+      const promise = (async () => {
+        const result = await submitSettlementHistory({
+          killedAnomalies: snapshot.killedAnomalies,
+          maxFloorScore: snapshot.maxFloorScore,
+          survivalTimeSeconds: snapshot.survivalHours * 3600,
+          outcome: snapshot.outcome,
+          history: {
+            grade: snapshot.grade,
+            survivalDay: snapshot.survivalDay,
+            survivalHour: snapshot.survivalHour,
+            maxFloorLabel: snapshot.maxFloorLabel,
+            profession: profession ? String(profession) : null,
+            recapSummary: historyRecap,
+            isDead,
+            hasEscaped,
+            writingMarkdown: snapshot.writingMarkdown,
+          },
+        }).catch(() => ({ success: false, historyId: null }));
+        if (result.success) {
+          historySubmittedRef.current = true;
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(localHistoryKey, "submitted");
+          }
+          if (!useGameStore.getState().endingState?.settledAt) {
+            markEndingSettled();
+            useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+          }
+        }
+        emitSettlementEndingTelemetry("ending_settlement_history_submitted", {
+          source: "history_submit",
+          idempotencySuffix: "history_submitted",
+          extra: {
+            historySubmitted: result.success,
+            historyId: result.historyId ?? null,
+            blockers: result.success ? [] : ["history_submit_failed"],
+          },
+        });
+        return result.success;
+      })();
+      historySubmitPromiseRef.current = promise;
+      const ok = await promise;
+      historySubmittingRef.current = false;
+      historySubmitPromiseRef.current = null;
+      return ok;
+    },
+    [
+      emitSettlementEndingTelemetry,
+      hasEscaped,
+      historyRecap,
+      isDead,
+      markEndingSettled,
+      professionState?.currentProfession,
+      snapshot,
+    ]
+  );
 
   useEffect(() => {
     if (!mounted) return;
-    void handleSubmit();
-  }, [mounted, handleSubmit]);
+    if (endingState?.settledAt) {
+      historySubmittedRef.current = true;
+      return;
+    }
+    void submitHistoryOnce();
+  }, [endingState?.settledAt, mounted, submitHistoryOnce]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -167,9 +456,35 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       eventName: "settlement_viewed",
       page: "/settlement",
       source: "settlement",
-      payload: { isDead, grade, killedAnomalies, maxFloorScore, survivalHours },
+      payload: {
+        outcome: snapshot.outcome,
+        grade: snapshot.grade,
+        killedAnomalies: snapshot.killedAnomalies,
+        maxFloorScore: snapshot.maxFloorScore,
+        survivalHours: snapshot.survivalHours,
+        settlementSource: snapshot.source,
+      },
     }).catch(() => {});
-  }, [mounted, isDead, grade, killedAnomalies, maxFloorScore, survivalHours]);
+    emitSettlementEndingTelemetry("ending_settlement_viewed", {
+      source: "settlement_page",
+      idempotencySuffix: "viewed",
+      extra: {
+        outcome: snapshot.outcome,
+        grade: snapshot.grade,
+        settlementSource: snapshot.source,
+      },
+    });
+    if (snapshot.source === "legacy_fallback") {
+      emitSettlementEndingTelemetry("ending_blocked", {
+        source: "settlement_legacy_fallback",
+        idempotencySuffix: "legacy_snapshot_missing",
+        extra: {
+          blockers: ["settlement_snapshot_missing"],
+          snapshotPresent: false,
+        },
+      });
+    }
+  }, [emitSettlementEndingTelemetry, mounted, snapshot]);
 
   useEffect(() => {
     if (!mounted || hasAchievementPushedRef.current) return;
@@ -178,18 +493,18 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       {
         type: "achievement.unlock",
         record: {
-          survivalTimeText: `${survivalDay} 日 ${survivalHour} 时`,
-          grade,
-          kills: killedAnomalies,
-          maxFloor: maxFloorScore,
-          maxFloorDisplay: maxFloorLabel,
-          reviewLine1: gradeCaption,
-          reviewLine2: "",
+          survivalTimeText: `${snapshot.survivalDay} 日 ${snapshot.survivalHour} 时`,
+          grade: snapshot.grade,
+          kills: snapshot.killedAnomalies,
+          maxFloor: snapshot.maxFloorScore,
+          maxFloorDisplay: snapshot.maxFloorLabel,
+          reviewLine1: snapshot.caption,
+          reviewLine2: getSettlementOutcomeLead(outcome),
         },
       },
       { addAchievementRecord: (record) => useAchievementsStore.getState().addRecord(record) }
     );
-  }, [mounted, grade, gradeCaption, killedAnomalies, maxFloorLabel, maxFloorScore, survivalDay, survivalHour]);
+  }, [mounted, outcome, snapshot]);
 
   function handleExport() {
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
@@ -197,14 +512,15 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       eventName: "settlement_export_clicked",
       page: "/settlement",
       source: "settlement",
-      payload: { grade, maxFloorScore },
+      payload: { outcome: snapshot.outcome, grade: snapshot.grade, maxFloorScore: snapshot.maxFloorScore },
     }).catch(() => {});
-    triggerDownload(writingMarkdown, `versecraft-writing-${ts}.md`);
+    triggerDownload(snapshot.writingMarkdown || buildMarkdown(logs), `versecraft-writing-${ts}.md`);
   }
 
-  async function handleReturnHome() {
+  async function clearRunAndLeave(target: "/" | "/intro") {
     if (returningHome) return;
     setReturningHome(true);
+    await submitHistoryOnce();
     const slotId = currentSaveSlot || "main_slot";
     const autoSlotId = slotId === "main_slot" ? "auto_main" : `auto_${slotId}`;
     useGameStore.getState().destroySaveData();
@@ -212,66 +528,141 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       deleteCloudSaveSlot(slotId).catch(() => ({ ok: false as const })),
       deleteCloudSaveSlot(autoSlotId).catch(() => ({ ok: false as const })),
     ]);
-    router.push("/");
+    router.push(target);
   }
 
   if (!mounted) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f6f2ec] text-[#0f5a52]">
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f2ec] text-[#2f4f48]">
         <div className="vc-reading-serif animate-pulse text-xl">结算中...</div>
       </main>
     );
   }
 
   return (
-    <main className="relative min-h-[100dvh] overflow-hidden bg-[#f6f2ec] px-4 py-8 text-[#0f5a52] sm:px-8 sm:py-16">
-      <section
-        data-testid="settlement-paper-card"
-        className="relative mx-auto flex min-h-[min(88dvh,860px)] w-full max-w-[1040px] flex-col items-center justify-center rounded-[32px] border border-[#decfbb] bg-[#fffdf8]/96 px-[clamp(1.6rem,7vw,6rem)] py-[clamp(2rem,7vw,5.4rem)] shadow-[0_24px_74px_rgba(76,61,42,0.18),inset_0_0_0_10px_rgba(248,243,235,0.96),inset_0_0_0_11px_rgba(218,207,191,0.72),inset_0_0_0_24px_rgba(255,253,248,0.9),inset_0_0_0_25px_rgba(226,216,200,0.62)] sm:rounded-[42px]"
-      >
-        <header className="text-center">
-          <div
-            className="vc-reading-serif text-[clamp(4.7rem,10vw,7.4rem)] font-semibold leading-none text-[#0f5a52] drop-shadow-[0_4px_10px_rgba(15,90,82,0.18)]"
-            aria-label={`结算评级：${grade}`}
-          >
-            {grade}
+    <main className="min-h-[100dvh] bg-[#f6f2ec] px-4 py-6 text-[#2f4f48] sm:px-8 sm:py-10">
+      <article className="mx-auto w-full max-w-[1040px]">
+        <header className="border-b border-[#d8cbb8] pb-6">
+          <p className="text-[12px] font-semibold tracking-[0.18em] text-[#9b4d2d]">
+            {snapshot.source === "legacy_fallback" ? "LEGACY_FALLBACK" : "ENDING SNAPSHOT"}
+          </p>
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="vc-reading-serif text-[clamp(2.4rem,7vw,5.2rem)] font-semibold leading-none text-[#2f4f48]">
+                {snapshot.title || getSettlementOutcomeTitle(outcome)}
+              </h1>
+              <p className="mt-4 max-w-[760px] text-[17px] leading-relaxed text-[#5f4a37]">{snapshot.caption}</p>
+              <p className="mt-2 max-w-[760px] text-[15px] leading-relaxed text-[#7b6652]">
+                {getSettlementOutcomeLead(outcome)}
+              </p>
+            </div>
+            <div className="min-w-[8rem] rounded-[8px] border border-[#9b6b48] bg-[#fffdf8] px-5 py-4 text-center">
+              <p className="text-[12px] font-semibold tracking-[0.14em] text-[#8a5a3a]">评级</p>
+              <p className="vc-reading-serif mt-1 text-[56px] font-semibold leading-none text-[#2f4f48]">{snapshot.grade}</p>
+            </div>
           </div>
-          <h1 className="vc-reading-serif mt-7 text-[clamp(1.75rem,4vw,3rem)] font-semibold leading-tight text-[#0f5a52]">
-            {gradeCaption}
-          </h1>
         </header>
 
-        <section
-          data-testid="settlement-metrics"
-          className="mt-[clamp(2.4rem,6vw,5rem)] w-full rounded-[18px] border border-[#4c8b83] bg-[#fffdf8]/66 p-[clamp(1.2rem,3vw,2.2rem)]"
-        >
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-            <StatTile label="存活时间" value={`${survivalDay} 日 ${survivalHour} 时`} />
-            <StatTile label="消灭诡异" value={`${killedAnomalies} 只`} />
-            <StatTile label="最高抵达" value={maxFloorLabel} />
-          </div>
+        <section className="grid gap-3 py-6 sm:grid-cols-3">
+          <MetricTile label="存活时间" value={`${snapshot.survivalDay} 日 ${snapshot.survivalHour} 时`} />
+          <MetricTile label="最高抵达" value={snapshot.maxFloorLabel} />
+          <MetricTile label="消灭诡异" value={`${snapshot.killedAnomalies} 只`} />
         </section>
 
-        <div className="mt-[clamp(1.8rem,4vw,2.8rem)] flex w-full flex-col gap-6">
+        {isDead ? (
+          <section className="mb-6 rounded-[8px] border border-[#9b6b48] bg-[#fffaf0] p-4">
+            <h2 className="vc-reading-serif text-[22px] font-semibold text-[#3c2417]">死亡记录</h2>
+            <div className="mt-3 grid gap-2 text-[15px] leading-relaxed text-[#5f4a37]">
+              <p>死因：{snapshot.deathCause || "未记录"}</p>
+              <p>地点：{snapshot.deathLocation || "未记录"}</p>
+              <p>最后行动：{snapshot.lastAction || "未记录"}</p>
+            </div>
+          </section>
+        ) : null}
+
+        <StorySection title="最终叙事">
+          <div
+            data-testid="settlement-final-narrative"
+            className="whitespace-pre-wrap vc-reading-serif text-[18px] leading-[2.05] text-[#2d2a24]"
+          >
+            {snapshot.finalNarrative}
+          </div>
+        </StorySection>
+
+        <StorySection title="关键选择回顾">
+          <DetailList empty="本局没有留下可回顾的关键选择。" items={snapshot.keyChoices} />
+        </StorySection>
+
+        <StorySection title="获得线索">
+          <DetailList empty="本局没有记录到已获得线索。" items={snapshot.obtainedClues} />
+        </StorySection>
+
+        <StorySection title="NPC 后日谈">
+          <DetailList empty="本局没有形成可展示的 NPC 后日谈。" items={snapshot.npcEpilogues} />
+        </StorySection>
+
+        <StorySection title="世界状态">
+          <DetailList empty="本局没有记录额外世界状态。" items={snapshot.worldStateLines} />
+        </StorySection>
+
+        {showFullText ? (
+          <StorySection title="本局全文">
+            <div className="grid gap-5" data-testid="settlement-fulltext">
+              {logs.length > 0 ? (
+                logs.map((entry, index) => (
+                  <section key={`${entry.role}:${index}`} className="border-l-2 border-[#d7bd9b] pl-4">
+                    <p className="text-[12px] font-semibold tracking-[0.12em] text-[#8a5a3a]">
+                      {entry.role === "user" ? "玩家行动" : entry.role === "assistant" ? "剧情叙事" : "系统记录"}
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-[#2d2a24]">
+                      {replaceLocationIdsForDisplay(entry.content)}
+                    </p>
+                  </section>
+                ))
+              ) : (
+                <p className="text-[15px] leading-relaxed text-[#6c5946]">本地日志已经不可用，只能查看上方最终叙事。</p>
+              )}
+            </div>
+          </StorySection>
+        ) : null}
+
+        <section className="grid gap-3 border-t border-[#d8cbb8] py-6 sm:grid-cols-2">
           <button
             type="button"
-            onClick={() => void handleReturnHome()}
+            onClick={handleExport}
+            data-testid="settlement-export-writing"
+            className="rounded-[8px] border border-[#9b6b48] bg-[#fffdf8] px-5 py-3 text-[15px] font-semibold text-[#3c2417]"
+          >
+            导出本局写作稿
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowFullText((value) => !value)}
+            data-testid="settlement-review-fulltext"
+            className="rounded-[8px] border border-[#d7bd9b] bg-[#fffdf8] px-5 py-3 text-[15px] font-semibold text-[#3c2417]"
+          >
+            {showFullText ? "收起全文" : "回看全文"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void clearRunAndLeave("/")}
             disabled={returningHome}
             data-testid="settlement-return-home"
-            className="vc-reading-serif min-h-[4.3rem] w-full rounded-[16px] border border-[#0f5a52] bg-[#fffdf8]/82 px-6 text-[clamp(1.55rem,3vw,2.25rem)] font-semibold text-[#0f5a52] transition hover:bg-white disabled:opacity-60"
+            className="rounded-[8px] border border-[#d7bd9b] bg-[#fffdf8] px-5 py-3 text-[15px] font-semibold text-[#3c2417] disabled:opacity-60"
           >
             返回首页
           </button>
           <button
             type="button"
-            onClick={handleExport}
-            data-testid="settlement-export-writing"
-            className="vc-reading-serif min-h-[3.7rem] w-full rounded-[16px] border border-dashed border-[#4c8b83] bg-transparent px-6 text-[clamp(1.25rem,2.4vw,1.8rem)] font-semibold text-[#0f5a52] transition hover:bg-white/60"
+            onClick={() => void clearRunAndLeave("/intro")}
+            disabled={returningHome}
+            data-testid="settlement-new-run"
+            className="rounded-[8px] bg-[#2f4f48] px-5 py-3 text-[15px] font-semibold text-[#fffdf8] disabled:opacity-60"
           >
-            导出本局写作稿
+            新一局
           </button>
-        </div>
-      </section>
+        </section>
+      </article>
     </main>
   );
 }

@@ -95,6 +95,23 @@ import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
 import { useClientPageDynamicProps } from "@/lib/next/useClientPageDynamicProps";
 import type { PlaySemanticWaitingKind } from "@/features/play/components/PlaySemanticWaitingHint";
 import { ENDGAME_ONLY_OPTION, ensureMinChars, isEndgameMoment, shouldAllowDoomline } from "@/features/play/endgame/endgame";
+import { FinalChoicePanel } from "@/features/play/endings/FinalChoicePanel";
+import { FinalNarrativeSheet } from "@/features/play/endings/FinalNarrativeSheet";
+import {
+  buildEndingFinalChoices,
+  buildEndingFinalNarrativePrompt,
+  buildLocalEndingFinaleFallback,
+  ENDING_FINALE_SYSTEM_PROMPT_TAG,
+  ENDING_SETTLEMENT_OPTIONS,
+  normalizeEndingFinalePayload,
+  stampEndingFinalChoice,
+} from "@/lib/endings/finalNarrativePrompt";
+import {
+  buildEndingTelemetryIdempotencyKey,
+  buildEndingTelemetryPayload,
+  type EndingTelemetryEventName,
+} from "@/lib/endings/telemetry";
+import type { EndingFinalChoice, EndingFinalePayload, EndingOutcome, EndingState } from "@/lib/endings/types";
 import {
   normalizeRegeneratedOptions,
   shouldAutoRegenerateOptionsOnModeSwitch,
@@ -105,6 +122,7 @@ import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOpti
 import {
   extractFilteredHintsFromTrace,
   isNarrativeSystemsDebugEnabled,
+  pushEndingDecisionDebugEvent,
   pushNarrativeSystemsDebugEvent,
 } from "@/lib/debug/narrativeSystemsDebugRing";
 import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTriggers";
@@ -399,6 +417,31 @@ function scrollDocumentToTop(): void {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
+function computeTelemetrySurvivalHours(time: { day?: number | null; hour?: number | null } | null | undefined): number {
+  const day = Number(time?.day ?? 0);
+  const hour = Number(time?.hour ?? 0);
+  return Math.max(0, Math.trunc(Number.isFinite(day) ? day : 0)) * 24 +
+    Math.max(0, Math.trunc(Number.isFinite(hour) ? hour : 0));
+}
+
+function buildNoEndingTelemetryBlockers(state: unknown, resolvedTurn?: unknown): string[] {
+  const s = (state ?? {}) as {
+    stats?: { sanity?: number | null };
+    time?: { day?: number | null; hour?: number | null };
+    escapeMainline?: { stage?: unknown };
+  };
+  const blockers: string[] = [];
+  if (Number(s.stats?.sanity ?? 0) > 0) blockers.push("sanity_above_zero");
+  if (!Boolean((resolvedTurn as { is_death?: unknown } | null)?.is_death)) blockers.push("resolved_turn_not_death");
+  const escapeStage = String(s.escapeMainline?.stage ?? "unknown");
+  if (!escapeStage.startsWith("escaped_")) blockers.push("escape_stage_not_terminal");
+  if (computeTelemetrySurvivalHours(s.time) < 240 && Number(s.time?.day ?? 0) < 10) {
+    blockers.push("doom_time_not_reached");
+  }
+  if (blockers.length === 0) blockers.push("no_ending_conditions_met");
+  return blockers;
+}
+
 function PlayContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -431,6 +474,11 @@ function PlayContent() {
   const setCurrentOptions = useGameStore((s) => s.setCurrentOptions);
   const writeResumeShadow = useGameStore((s) => s.writeResumeShadow);
   const clearResumeShadow = useGameStore((s) => s.clearResumeShadow);
+  const endingState = useGameStore((s) => s.endingState);
+  const evaluateEndingAfterTurn = useGameStore((s) => s.evaluateEndingAfterTurn);
+  const selectEndingFinalAction = useGameStore((s) => s.selectEndingFinalAction);
+  const commitEndingFinalNarrative = useGameStore((s) => s.commitEndingFinalNarrative);
+  const markEndingRedirected = useGameStore((s) => s.markEndingRedirected);
   const inputMode = useGameStore((s) => s.inputMode ?? "options");
   const currentOptions = useMemo(
     () => filterNarrativeActionOptions(currentOptionsFromStore, 4),
@@ -523,6 +571,21 @@ function PlayContent() {
   const [chapterPageTurn, setChapterPageTurn] = useState<ChapterPageTurnDirection | null>(null);
   const hasModelChoiceOptions = currentOptions.length === 4;
   const hasVisibleChoiceOptions = hasModelChoiceOptions || pendingProfessionChoice.enabled;
+  const endingSettlementReady =
+    endingState?.phase === "settlement_ready" && Boolean(endingState.settlementSnapshot);
+  const endingOutcome = endingState?.eligibility?.outcome ?? null;
+  const endingFinalChoiceReady = endingState?.phase === "eligible" && endingOutcome !== null && endingOutcome !== "death";
+  const endingFinalNarrativeBusy =
+    endingState?.phase === "final_turn_pending" ||
+    endingState?.phase === "final_narrative_committing" ||
+    (endingSettlementReady && endingState?.settlementSnapshot?.outcome !== "death" && streamPhase !== "idle");
+  const endingFinalSheetReady =
+    endingSettlementReady && endingState?.settlementSnapshot?.outcome !== "death" && streamPhase === "idle";
+  const endingFlowActive = endingFinalChoiceReady || endingFinalNarrativeBusy || endingFinalSheetReady;
+  const endingFinalChoices = useMemo(
+    () => (endingFinalChoiceReady && endingOutcome ? buildEndingFinalChoices({ outcome: endingOutcome }) : []),
+    [endingFinalChoiceReady, endingOutcome]
+  );
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredOpening = useRef(false);
@@ -549,6 +612,8 @@ function PlayContent() {
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const chatQueuePollAbortRef = useRef<AbortController | null>(null);
   const pendingQueueActionRef = useRef<PendingChatQueueAction | null>(null);
+  const settlementRedirectScheduledRef = useRef(false);
+  const endingTelemetrySeenRef = useRef<Set<string>>(new Set());
   // Prevent duplicate /api/chat requests before React finishes re-rendering.
   const sendActionInFlightRef = useRef(false);
   const sendActionRef = useRef<
@@ -633,6 +698,117 @@ function PlayContent() {
   useEffect(() => {
     if (isChatBusy) setOptionsExpanded(false);
   }, [isChatBusy]);
+
+  const emitEndingTelemetryEvent = useCallback(
+    (
+      eventName: EndingTelemetryEventName,
+      options: {
+        endingState?: EndingState | null;
+        source: string;
+        extra?: Record<string, unknown>;
+        idempotencySuffix?: string | null;
+        once?: boolean;
+        note?: string;
+      }
+    ) => {
+      const storeState = useGameStore.getState();
+      const currentEnding = options.endingState ?? storeState.endingState ?? null;
+      const currentSlot = storeState.currentSaveSlot || "main_slot";
+      const slot = storeState.saveSlots?.[currentSlot] ?? null;
+      const runId =
+        currentEnding?.settlementSnapshot?.runId ??
+        (slot as { slotMeta?: { runId?: string | null }; runId?: string | null } | null)?.slotMeta?.runId ??
+        (slot as { runId?: string | null } | null)?.runId ??
+        `local:${currentSlot}`;
+      const payload = buildEndingTelemetryPayload({
+        endingState: currentEnding,
+        runId,
+        escapeStage: (storeState as { escapeMainline?: { stage?: unknown } }).escapeMainline?.stage,
+        time: storeState.time,
+        source: options.source,
+        extra: options.extra,
+      });
+      const key = buildEndingTelemetryIdempotencyKey(eventName, payload, options.idempotencySuffix);
+      if (options.once !== false) {
+        if (endingTelemetrySeenRef.current.has(key)) return;
+        endingTelemetrySeenRef.current.add(key);
+      }
+      pushEndingDecisionDebugEvent({ eventName, payload, note: options.note });
+      void trackGameplayEvent({
+        eventName,
+        sessionId: guestId ?? "guest_play",
+        page: "/play",
+        source: "ending",
+        idempotencyKey: key,
+        payload,
+      }).catch(() => {});
+    },
+    [guestId]
+  );
+
+  const scheduleSettlementRedirect = useCallback((delayMs = 0) => {
+    if (settlementRedirectScheduledRef.current) return;
+    const current = useGameStore.getState().endingState;
+    if (current?.phase !== "settlement_ready" || !current.settlementSnapshot || current.redirectedAt) return;
+    if (current.settlementSnapshot.outcome !== "death") return;
+    settlementRedirectScheduledRef.current = true;
+    window.setTimeout(() => {
+      const latest = useGameStore.getState().endingState;
+      if (latest?.phase !== "settlement_ready" || !latest.settlementSnapshot || latest.redirectedAt) return;
+      if (latest.settlementSnapshot.outcome !== "death") return;
+      const redirected = markEndingRedirected();
+      emitEndingTelemetryEvent("ending_redirected_to_settlement", {
+        endingState: redirected,
+        source: "death_auto_redirect",
+        idempotencySuffix: "death_auto_redirect",
+        extra: { redirectTarget: "/settlement" },
+      });
+      router.push("/settlement");
+    }, Math.max(0, delayMs));
+  }, [emitEndingTelemetryEvent, markEndingRedirected, router]);
+
+  useEffect(() => {
+    if (!endingSettlementReady) return;
+    if (endingState?.redirectedAt) return;
+    if (endingState?.settlementSnapshot?.outcome !== "death") return;
+    if (streamPhaseRef.current !== "idle") return;
+    scheduleSettlementRedirect(0);
+  }, [endingSettlementReady, endingState?.redirectedAt, endingState?.settlementSnapshot?.outcome, scheduleSettlementRedirect]);
+
+  useEffect(() => {
+    if (!endingState?.eligibility) return;
+    if (endingState.phase === "playing") return;
+    emitEndingTelemetryEvent("ending_eligible_detected", {
+      endingState,
+      source: "ending_state_observed",
+      idempotencySuffix: "eligibility",
+      extra: { eligibilityPriority: endingState.eligibility.priority },
+    });
+  }, [emitEndingTelemetryEvent, endingState]);
+
+  useEffect(() => {
+    if (!endingFinalChoiceReady || !endingState?.eligibility) return;
+    emitEndingTelemetryEvent("ending_final_choice_shown", {
+      endingState,
+      source: "final_choice_panel",
+      idempotencySuffix: "final_choice_panel",
+      extra: { choiceCount: endingFinalChoices.length },
+    });
+  }, [emitEndingTelemetryEvent, endingFinalChoiceReady, endingFinalChoices.length, endingState]);
+
+  useEffect(() => {
+    if (!endingSettlementReady || !endingState?.settlementSnapshot) return;
+    emitEndingTelemetryEvent("ending_settlement_snapshot_created", {
+      endingState,
+      source: "ending_state_observed",
+      idempotencySuffix: "snapshot",
+      extra: {
+        settlementId: endingState.settlementSnapshot.settlementId,
+        grade: endingState.settlementSnapshot.grade,
+      },
+    });
+  }, [emitEndingTelemetryEvent, endingSettlementReady, endingState]);
+
   const optionsRegenPhaseBlocked = useMemo(
     () => doesPhaseBlockOptionsRegen(streamPhase),
     [streamPhase]
@@ -665,8 +841,27 @@ function PlayContent() {
     const sanityAfter = useGameStore.getState().stats?.sanity ?? 0;
     const pending = parsedPostDrainRef.current;
     parsedPostDrainRef.current = null;
+    const ending = useGameStore.getState().endingState;
+    if (ending?.phase === "settlement_ready" && ending.settlementSnapshot) {
+      if (ending.settlementSnapshot.outcome === "death") scheduleSettlementRedirect(0);
+      return;
+    }
+    if (ending?.phase && ending.phase !== "playing") {
+      return;
+    }
     if (pending?.isDeath || sanityAfter <= 0) {
-      setTimeout(() => router.push("/settlement"), 2000);
+      const nextEnding = evaluateEndingAfterTurn({
+        resolvedTurn: { is_death: Boolean(pending?.isDeath) || sanityAfter <= 0 },
+        turnCount: (useGameStore.getState().logs ?? []).length,
+      });
+      if (nextEnding.eligibility) {
+        emitEndingTelemetryEvent("ending_eligible_detected", {
+          endingState: nextEnding,
+          source: "tail_drain_death_check",
+          idempotencySuffix: "eligibility",
+        });
+      }
+      if (nextEnding.phase === "settlement_ready") scheduleSettlementRedirect(0);
       return;
     }
     // After every turn completes, auto-generate options if fewer than four model actions survived.
@@ -676,6 +871,8 @@ function PlayContent() {
     const currentOpts = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
     if (currentOpts.length < 4 && !endgameState.active && !pendingProfessionChoice.enabled) {
       setTimeout(() => {
+        const latestEnding = useGameStore.getState().endingState;
+        if (latestEnding?.phase && latestEnding.phase !== "playing") return;
         // Re-check after delay — the in-flight regen may have completed.
         const rechecked = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
         if (rechecked.length < 4 && !optionsRegenInFlightRef.current && !pendingProfessionChoice.enabled) {
@@ -683,7 +880,7 @@ function PlayContent() {
         }
       }, 500);
     }
-  }, [router, endgameState.active, pendingProfessionChoice.enabled]);
+  }, [emitEndingTelemetryEvent, endgameState.active, evaluateEndingAfterTurn, pendingProfessionChoice.enabled, scheduleSettlementRedirect]);
 
   const streamTailDrain = useMemo<SmoothStreamTailDrainConfig | null>(() => {
     if (streamPhase !== "tail_draining") return null;
@@ -1139,9 +1336,22 @@ function PlayContent() {
 
   useEffect(() => {
     if (sanity <= 0) {
-      setTimeout(() => router.push("/settlement"), 2000);
+      const current = useGameStore.getState().endingState;
+      if (current?.phase !== "settlement_ready") {
+        const nextEnding = evaluateEndingAfterTurn({
+          resolvedTurn: { is_death: true },
+          turnCount: (useGameStore.getState().logs ?? []).length,
+        });
+        if (nextEnding.eligibility) {
+          emitEndingTelemetryEvent("ending_eligible_detected", {
+            endingState: nextEnding,
+            source: "sanity_watch",
+            idempotencySuffix: "eligibility",
+          });
+        }
+      }
     }
-  }, [sanity, router]);
+  }, [emitEndingTelemetryEvent, sanity, evaluateEndingAfterTurn]);
 
   useEffect(() => {
     if (!showDarkMoonOverlay) return;
@@ -1166,6 +1376,8 @@ function PlayContent() {
     if (!endgameState.awaitingEnding) return;
     if (streamPhase !== "idle") return;
     if (sendActionInFlightRef.current) return;
+    const ending = useGameStore.getState().endingState;
+    if (ending?.phase && ending.phase !== "playing") return;
     void sendActionRef.current(ENDGAME_SYSTEM_PROMPT, true, false, true);
   }, [endgameState.awaitingEnding, streamPhase]);
 
@@ -1610,12 +1822,198 @@ function PlayContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function buildCurrentEndingFinaleInput(choice?: EndingFinalChoice) {
+    const state = useGameStore.getState();
+    const stateOutcome = state.endingState?.eligibility?.outcome ?? null;
+    const outcome = (choice?.outcome ?? state.endingState?.finalChoice?.outcome ?? stateOutcome ?? "doom") as EndingOutcome;
+    const fallbackChoice: EndingFinalChoice = {
+      id: "embrace_doom",
+      label: "迎接终焉",
+      description: "直面本局已经抵达的终点。",
+      outcome,
+      selectedAt: new Date().toISOString(),
+    };
+    const finalChoice =
+      choice ??
+      state.endingState?.finalChoice ??
+      buildEndingFinalChoices({ outcome })[0] ??
+      fallbackChoice;
+    const allLogs = state.logs ?? [];
+    const keyChoices = allLogs
+      .filter((entry) => entry?.role === "user")
+      .map((entry) => String(entry.content ?? "").trim())
+      .filter(Boolean)
+      .slice(-8);
+    const clueNames = (state.journalClues ?? [])
+      .map((clue: any) => String(clue?.title ?? clue?.name ?? clue?.id ?? "").trim())
+      .filter(Boolean)
+      .slice(-8);
+    const codexNames = Object.values(state.codex ?? {})
+      .map((entry: any) => String(entry?.name ?? entry?.id ?? "").trim())
+      .filter(Boolean)
+      .slice(-8);
+    const lastNarrative = [...allLogs]
+      .reverse()
+      .find((entry) => entry?.role === "assistant")?.content ?? "";
+    const timeNow = state.time ?? { day: 0, hour: 0 };
+    const worldStateLines = [
+      `位置：${state.playerLocation ?? "未知"}`,
+      `时间：第${timeNow.day ?? 0}日 ${timeNow.hour ?? 0}时`,
+      `理智：${state.stats?.sanity ?? 0}`,
+      `逃离主线：${(state as any).escapeMainline?.stage ?? "unknown"}`,
+    ];
+    return {
+      outcome,
+      choice: finalChoice,
+      keyChoices,
+      obtainedClues: [...clueNames, ...codexNames].slice(0, 12),
+      worldStateLines,
+      lastNarrative: String(lastNarrative).slice(-1200),
+    };
+  }
+
+  function buildEndingFinaleDmEnvelope(finale: EndingFinalePayload) {
+    return {
+      is_action_legal: true,
+      sanity_damage: 0,
+      narrative: finale.narrative,
+      is_death: false,
+      consumes_time: false,
+      turn_mode: "system_transition",
+      decision_required: false,
+      options: [...ENDING_SETTLEMENT_OPTIONS],
+      decision_options: [],
+      currency_change: 0,
+      consumed_items: [],
+      awarded_items: [],
+      awarded_warehouse_items: [],
+      codex_updates: [],
+      relationship_updates: [],
+      new_tasks: [],
+      task_updates: [],
+      clue_updates: [],
+      npc_location_updates: [],
+      main_threat_updates: [],
+      weapon_updates: [],
+      weapon_bag_updates: [],
+      ending_finale: finale,
+    };
+  }
+
+  function commitLocalEndingFinaleFallback() {
+    const finale = buildLocalEndingFinaleFallback(buildCurrentEndingFinaleInput());
+    useGameStore.getState().pushLog({ role: "assistant", content: finale.narrative, reasoning: undefined });
+    const committedEnding = commitEndingFinalNarrative(finale.narrative);
+    emitEndingTelemetryEvent("ending_final_narrative_committed", {
+      endingState: committedEnding,
+      source: "local_finale_fallback",
+      idempotencySuffix: "final_narrative",
+      extra: { finaleSource: finale.source, usedFallback: true },
+    });
+    if (committedEnding.phase === "settlement_ready" && committedEnding.settlementSnapshot) {
+      emitEndingTelemetryEvent("ending_settlement_snapshot_created", {
+        endingState: committedEnding,
+        source: "local_finale_fallback",
+        idempotencySuffix: "snapshot",
+        extra: {
+          settlementId: committedEnding.settlementSnapshot.settlementId,
+          grade: committedEnding.settlementSnapshot.grade,
+        },
+      });
+    }
+    autoMissingOptionsAttemptedRef.current = true;
+    setLiveNarrative("");
+    setOptionsExpanded(false);
+    setEndgameState({ active: false, awaitingEnding: false });
+    setActiveMenu(null);
+    setFirstTimeHint("最终叙事已用本地兜底完成，可以查看结算。");
+    try {
+      useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
+      writeResumeShadow();
+    } catch (e) {
+      console.error("[play][ending_finale_fallback_save_failed]", e);
+    }
+    parsedPostDrainRef.current = { isDeath: false };
+    narrativeRef.current = finale.narrative;
+    tailDrainTargetRef.current = finale.narrative;
+    setTailAlignKey((n) => n + 1);
+    setStreamPhase("tail_draining");
+  }
+
+  function onSelectEndingFinalChoice(choice: EndingFinalChoice) {
+    if (isChatBusy || sendActionInFlightRef.current) return;
+    const stamped = stampEndingFinalChoice(choice);
+    const selectedEnding = selectEndingFinalAction(stamped);
+    emitEndingTelemetryEvent("ending_final_choice_selected", {
+      endingState: selectedEnding,
+      source: "final_choice_panel",
+      idempotencySuffix: `choice:${stamped.id}`,
+      extra: { finalChoiceId: stamped.id, finalChoiceLabel: stamped.label },
+    });
+    setOptionsExpanded(false);
+    setInput("");
+    setInputError("");
+    setFirstTimeHint("最终选择已确认，正在生成本局最终叙事。");
+    const prompt = buildEndingFinalNarrativePrompt(buildCurrentEndingFinaleInput(stamped));
+    void sendActionRef.current(prompt, true, false, true);
+  }
+
+  function onViewEndingSettlement() {
+    const current = useGameStore.getState().endingState;
+    if (current?.phase !== "settlement_ready" || !current.settlementSnapshot) return;
+    const redirected = markEndingRedirected();
+    emitEndingTelemetryEvent("ending_redirected_to_settlement", {
+      endingState: redirected,
+      source: "final_narrative_sheet",
+      idempotencySuffix: "view_settlement_button",
+      extra: { redirectTarget: "/settlement" },
+    });
+    router.push("/settlement");
+  }
+
+  function onExportEndingWriting() {
+    const snapshot = useGameStore.getState().endingState?.settlementSnapshot;
+    if (!snapshot) return;
+    const text = snapshot.writingMarkdown || snapshot.finalNarrative || "";
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${snapshot.settlementId || "versecraft-ending"}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    setFirstTimeHint("本局写作稿已导出。");
+  }
+
+  function onReviewEndingFullText() {
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    scrollDocumentToTop();
+    setFirstTimeHint("已回到正文开头，可回看本局全文。");
+  }
+
   async function requestFreshOptions(
     trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main",
     seedOptions: string[] = []
   ) {
     // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
     const manual = trigger === "manual_button";
+    const ending = useGameStore.getState().endingState;
+    if (ending?.phase && ending.phase !== "playing") {
+      emitEndingTelemetryEvent("ending_blocked", {
+        endingState: ending,
+        source: "options_regen_guard",
+        idempotencySuffix: `options_regen:${trigger}`,
+        extra: { blockers: ["ending_phase_blocks_options_regen"], optionsRegenTrigger: trigger },
+      });
+      if (manual) {
+        setFirstTimeHint(
+          ending.phase === "settlement_ready" ? "本局已进入结算。" : "本局终局已经开启，请完成最终选择。"
+        );
+      }
+      return;
+    }
 
     if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
       sendActionInFlightRef.current = false;
@@ -2009,6 +2407,23 @@ function PlayContent() {
   ) {
     if (isChatBusy || sendActionInFlightRef.current) return;
     const currentState = useGameStore.getState();
+    if (!isSystemAction && currentState.endingState?.phase && currentState.endingState.phase !== "playing") {
+      emitEndingTelemetryEvent("ending_blocked", {
+        endingState: currentState.endingState,
+        source: "send_action_guard",
+        idempotencySuffix: `send_action:${currentState.endingState.phase}`,
+        extra: { blockers: ["ending_phase_blocks_regular_action"] },
+      });
+      if (
+        currentState.endingState.phase === "settlement_ready" &&
+        currentState.endingState.settlementSnapshot?.outcome === "death"
+      ) {
+        scheduleSettlementRedirect(0);
+      } else {
+        setFirstTimeHint("本局终局已经开启，请先完成最终选择。");
+      }
+      return;
+    }
     if (!isSystemAction && currentState.chapterState?.pendingChapterEndId) return;
     if (currentState.isGuest && (currentState.dialogueCount ?? 0) >= 50) {
       setShowDialoguePaywall(true);
@@ -2060,6 +2475,7 @@ function PlayContent() {
     setWaitingHintKind(guessSemanticWaitingKind(trimmed));
     const isOpeningSystemRequest = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
     const isEndgameSystemRound = Boolean(isSystemAction && trimmed === ENDGAME_SYSTEM_PROMPT);
+    const isEndingFinaleSystemRound = Boolean(isSystemAction && trimmed.startsWith(ENDING_FINALE_SYSTEM_PROMPT_TAG));
     if (isOpeningSystemRequest) {
       setOpeningAiBusy(true);
       setCurrentOptions([]);
@@ -2067,6 +2483,10 @@ function PlayContent() {
     if (isEndgameSystemRound) {
       // 终局回合强制以唯一选项推进
       setCurrentOptions([ENDGAME_ONLY_OPTION]);
+    }
+    if (isEndingFinaleSystemRound) {
+      setCurrentOptions([]);
+      setOptionsExpanded(false);
     }
     narrativeRef.current = "";
     tailDrainTargetRef.current = null;
@@ -2179,6 +2599,10 @@ function PlayContent() {
           body: JSON.stringify({ queueId: queueIdForChat }),
         }).catch(() => undefined);
       }
+      if (isEndingFinaleSystemRound) {
+        commitLocalEndingFinaleFallback();
+        return;
+      }
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         if (fetchDeadlineState.hit) {
           setLiveNarrative(
@@ -2212,6 +2636,10 @@ function PlayContent() {
     if (!res.ok) {
       setStreamPhase("idle");
       const errorText = await res.text().catch(() => "");
+      if (isEndingFinaleSystemRound) {
+        commitLocalEndingFinaleFallback();
+        return;
+      }
       // Legacy / misconfigured proxies may return 4xx/5xx while body is still valid SSE + DM JSON.
       if (responseIsSse && errorText) {
         const dmRawFromError = foldSseTextToDmRaw(errorText);
@@ -2489,7 +2917,12 @@ function PlayContent() {
       }
     }
 
-    const parsed = (resolved.dm ?? null) as any;
+    let parsed = (resolved.dm ?? null) as any;
+    if (isEndingFinaleSystemRound) {
+      const fallbackInput = buildCurrentEndingFinaleInput();
+      const finale = normalizeEndingFinalePayload(parsed?.ending_finale, fallbackInput);
+      parsed = buildEndingFinaleDmEnvelope(finale);
+    }
     /** 同回合多条「获得类」反馈合并为一条顶栏提示，避免互相覆盖 */
     const acquireHudHints: string[] = [];
     if (!parsed) {
@@ -2920,7 +3353,38 @@ function PlayContent() {
     const merged = [...validOpts];
     const deliveryDecision = decideModelOptionsDelivery({ options: merged });
 
-    if (isEndgameSystemRound) {
+    if (isEndingFinaleSystemRound) {
+      const finale = normalizeEndingFinalePayload((parsed as any).ending_finale, buildCurrentEndingFinaleInput());
+      if (finale.narrative !== narrativeToPush) {
+        useGameStore.getState().popLastNLogs(1);
+        useGameStore.getState().pushLog({ role: "assistant", content: finale.narrative, reasoning: undefined });
+        narrativeToPush = finale.narrative;
+        parsed = buildEndingFinaleDmEnvelope(finale);
+      }
+      const committedEnding = commitEndingFinalNarrative(finale.narrative);
+      emitEndingTelemetryEvent("ending_final_narrative_committed", {
+        endingState: committedEnding,
+        source: finale.source === "fallback" ? "ai_finale_parse_fallback" : "ai_finale",
+        idempotencySuffix: "final_narrative",
+        extra: { finaleSource: finale.source, usedFallback: finale.source === "fallback" },
+      });
+      if (committedEnding.phase === "settlement_ready" && committedEnding.settlementSnapshot) {
+        emitEndingTelemetryEvent("ending_settlement_snapshot_created", {
+          endingState: committedEnding,
+          source: finale.source === "fallback" ? "ai_finale_parse_fallback" : "ai_finale",
+          idempotencySuffix: "snapshot",
+          extra: {
+            settlementId: committedEnding.settlementSnapshot.settlementId,
+            grade: committedEnding.settlementSnapshot.grade,
+          },
+        });
+      }
+      autoMissingOptionsAttemptedRef.current = true;
+      setOptionsExpanded(false);
+      setEndgameState({ active: false, awaitingEnding: false });
+      setActiveMenu(null);
+      setFirstTimeHint("最终叙事已完成，可以查看结算。");
+    } else if (isEndgameSystemRound) {
       // 终局：强制唯一选项 + 结局字数兜底（避免模型没达到≥600字）
       const ensured = ensureMinChars(narrativeToPush, 600);
       if (ensured !== narrativeToPush) {
@@ -2980,9 +3444,11 @@ function PlayContent() {
     }
 
     if (process.env.NODE_ENV === "development") {
-      const branch = isEndgameSystemRound
-        ? "endgame"
-        : deliveryDecision.action === "commit"
+      const branch = isEndingFinaleSystemRound
+        ? "ending_finale"
+        : isEndgameSystemRound
+          ? "endgame"
+          : deliveryDecision.action === "commit"
           ? "merged"
           : deliveryDecision.action === "repair"
             ? "merged_insufficient_regen"
@@ -3363,6 +3829,7 @@ function PlayContent() {
     try {
       useGameStore.getState().advanceEscapeMainlineFromResolvedTurn({
         resolvedTurn: parsed,
+        playerAction: trimmed,
         nowTurnOverride: (stateBeforeProfessionTurn.logs ?? []).length + 1,
       });
     } catch (e) {
@@ -3439,6 +3906,59 @@ function PlayContent() {
       });
     }
 
+    const endingAfterTurn = evaluateEndingAfterTurn({
+      resolvedTurn: parsed,
+      turnCount: (useGameStore.getState().logs ?? []).length,
+      finalNarrative: narrativeToPush,
+      lastAction: isSystemAction ? null : trimmed,
+    });
+    if (endingAfterTurn.eligibility) {
+      emitEndingTelemetryEvent("ending_eligible_detected", {
+        endingState: endingAfterTurn,
+        source: "post_turn_evaluation",
+        idempotencySuffix: "eligibility",
+        extra: { eligibilityPriority: endingAfterTurn.eligibility.priority },
+      });
+    } else if (!isSystemAction && parsed.is_action_legal) {
+      const postTurnState = useGameStore.getState();
+      emitEndingTelemetryEvent("ending_blocked", {
+        endingState: endingAfterTurn,
+        source: "post_turn_evaluation",
+        idempotencySuffix: `turn:${(postTurnState.logs ?? []).length}`,
+        extra: {
+          reasons: ["post_turn_evaluated_no_ending"],
+          blockers: buildNoEndingTelemetryBlockers(postTurnState, parsed),
+        },
+      });
+    }
+    if (endingAfterTurn.phase === "settlement_ready") {
+      if (endingAfterTurn.settlementSnapshot) {
+        emitEndingTelemetryEvent("ending_settlement_snapshot_created", {
+          endingState: endingAfterTurn,
+          source: "post_turn_evaluation",
+          idempotencySuffix: "snapshot",
+          extra: {
+            settlementId: endingAfterTurn.settlementSnapshot.settlementId,
+            grade: endingAfterTurn.settlementSnapshot.grade,
+          },
+        });
+      }
+      autoMissingOptionsAttemptedRef.current = true;
+      setCurrentOptions([]);
+      setOptionsExpanded(false);
+      setFirstTimeHint(
+        endingAfterTurn.settlementSnapshot?.outcome === "death"
+          ? "本局已进入结算。"
+          : "最终叙事已完成，可以查看结算。"
+      );
+    } else if (endingAfterTurn.phase === "eligible" && endingAfterTurn.eligibility?.outcome !== "death") {
+      autoMissingOptionsAttemptedRef.current = true;
+      setCurrentOptions([]);
+      setOptionsExpanded(false);
+      setEndgameState({ active: false, awaitingEnding: false });
+      setFirstTimeHint("本局终局已经开启，请完成最终选择。");
+    }
+
     // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
     // 这能覆盖“手动输入且无 options”的场景，避免首页“继续执笔”失真。
     useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
@@ -3480,6 +4000,21 @@ function PlayContent() {
 
   function onSubmit() {
     if (chapterInteractionLocked || isReviewingChapter) return;
+    const currentEnding = useGameStore.getState().endingState;
+    if (currentEnding?.phase && currentEnding.phase !== "playing") {
+      emitEndingTelemetryEvent("ending_blocked", {
+        endingState: currentEnding,
+        source: "manual_input_guard",
+        idempotencySuffix: `manual_input:${currentEnding.phase}`,
+        extra: { blockers: ["ending_phase_blocks_regular_action"] },
+      });
+      if (currentEnding.phase === "settlement_ready" && currentEnding.settlementSnapshot?.outcome === "death") {
+        scheduleSettlementRedirect(0);
+      } else {
+        setFirstTimeHint("本局终局已经开启，请先完成最终选择。");
+      }
+      return;
+    }
     const trimmed = input.trim();
     if (trimmed.length > MAX_INPUT) {
       setInputError("输入不可超过20个字符");
@@ -3503,6 +4038,21 @@ function PlayContent() {
   function onPickOption(option: string) {
     setOptionsExpanded(false);
     if (chapterInteractionLocked || isReviewingChapter) return;
+    const currentEnding = useGameStore.getState().endingState;
+    if (currentEnding?.phase && currentEnding.phase !== "playing") {
+      emitEndingTelemetryEvent("ending_blocked", {
+        endingState: currentEnding,
+        source: "option_pick_guard",
+        idempotencySuffix: `option_pick:${currentEnding.phase}`,
+        extra: { blockers: ["ending_phase_blocks_regular_option"] },
+      });
+      if (currentEnding.phase === "settlement_ready" && currentEnding.settlementSnapshot?.outcome === "death") {
+        scheduleSettlementRedirect(0);
+      } else {
+        setFirstTimeHint("本局终局已经开启，请使用终局面板继续。");
+      }
+      return;
+    }
     if (endgameState.active) {
       if (!endgameLocked) return;
       if (option === ENDGAME_ONLY_OPTION) {
@@ -3885,6 +4435,41 @@ function PlayContent() {
               </MobileStoryViewport>
 
               {!isReviewingChapter && !chapterInteractionLocked ? (
+                endingFlowActive ? (
+                  <>
+                    {endingFinalChoiceReady && endingOutcome ? (
+                      <FinalChoicePanel
+                        outcome={endingOutcome}
+                        choices={endingFinalChoices}
+                        disabled={isChatBusy || sendActionInFlightRef.current}
+                        onSelect={onSelectEndingFinalChoice}
+                      />
+                    ) : null}
+                    {endingFinalNarrativeBusy ? (
+                      <section
+                        data-testid="ending-final-narrative-pending"
+                        aria-label="最终叙事生成中"
+                        className="mx-4 mb-[calc(var(--vc-mobile-bottom-nav-height)+1rem+env(safe-area-inset-bottom))] rounded-[8px] border border-[#9b6b48] bg-[#fffaf0] p-4 text-[#3c2417] shadow-[0_12px_28px_rgba(75,45,24,0.18)]"
+                      >
+                        <p className="text-[12px] font-semibold tracking-[0.14em] text-[#9b4d2d]">本局终局</p>
+                        <p className="mt-2 vc-reading-serif text-[18px] font-semibold leading-snug">
+                          最终叙事正在收束
+                        </p>
+                        <p className="mt-2 text-[14px] leading-relaxed text-[#5f4a37]">
+                          系统只会生成最终叙事，不会再追加普通任务、奖励或下一步行动。
+                        </p>
+                      </section>
+                    ) : null}
+                    {endingFinalSheetReady && endingState?.settlementSnapshot ? (
+                      <FinalNarrativeSheet
+                        snapshot={endingState.settlementSnapshot}
+                        onViewSettlement={onViewEndingSettlement}
+                        onExportWriting={onExportEndingWriting}
+                        onReviewFullText={onReviewEndingFullText}
+                      />
+                    ) : null}
+                  </>
+                ) : (
                 <>
               <ChapterProgressHint
                 definition={chapterRuntime.activeDefinition}
@@ -3910,6 +4495,8 @@ function PlayContent() {
                   setOptionsExpanded(nextExpanded);
                   if (
                     nextExpanded &&
+                    !endingSettlementReady &&
+                    !endingFlowActive &&
                     currentOptions.length === 0 &&
                     !optionsRegenBusy &&
                     !optionsRegenPhaseBlocked &&
@@ -3918,7 +4505,7 @@ function PlayContent() {
                     void requestFreshOptions("manual_button");
                   }
                 }}
-                chatBusy={isChatBusy || endgameState.active}
+                chatBusy={isChatBusy || endgameState.active || endingSettlementReady}
                 helperText={
                   endgameState.active
                     ? (endgameLocked ? "终局已至。" : "终局正在收束")
@@ -3949,6 +4536,7 @@ function PlayContent() {
                   isDarkMoon={isDarkMoon}
                   disabled={
                     isChatBusy ||
+                    endingSettlementReady ||
                     isGuestDialogueExhausted ||
                     optionsRegenBusy ||
                     (endgameState.active && !endgameLocked)
@@ -3964,6 +4552,7 @@ function PlayContent() {
                 />
               ) : null}
                 </>
+                )
               ) : null}
             </>
           )}

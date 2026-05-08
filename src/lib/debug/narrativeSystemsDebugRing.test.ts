@@ -4,6 +4,7 @@ import {
   clearNarrativeSystemsDebugRing,
   extractFilteredHintsFromTrace,
   getNarrativeSystemsDebugTail,
+  pushEndingDecisionDebugEvent,
   pushNarrativeSystemsDebugEvent,
 } from "@/lib/debug/narrativeSystemsDebugRing";
 
@@ -40,7 +41,45 @@ test("pushNarrativeSystemsDebugEvent respects ring cap when enabled", () => {
         warehouseCount: 0,
       });
     }
-    assert.ok(getNarrativeSystemsDebugTail(20).length <= 12);
+    assert.equal(getNarrativeSystemsDebugTail(20).length, 20);
+  } finally {
+    if (prev === undefined) delete process.env.VERSECRAFT_SYSTEMS_DEBUG;
+    else process.env.VERSECRAFT_SYSTEMS_DEBUG = prev;
+    clearNarrativeSystemsDebugRing();
+  }
+});
+
+test("pushEndingDecisionDebugEvent records sanitized ending decisions", () => {
+  const prev = process.env.VERSECRAFT_SYSTEMS_DEBUG;
+  process.env.VERSECRAFT_SYSTEMS_DEBUG = "1";
+  clearNarrativeSystemsDebugRing();
+  try {
+    pushEndingDecisionDebugEvent({
+      eventName: "ending_eligible_detected",
+      payload: {
+        runId: "run-a",
+        outcome: "doom",
+        endingPhase: "eligible",
+        detectedAtTurn: 9,
+        idempotencyKey: "run-a:doom:9",
+        reasons: ["survival_hours_reached"],
+        blockers: [],
+        escapeStage: "final_window_open",
+        survivalHours: 240,
+        source: "time",
+        snapshotPresent: false,
+        settlementId: null,
+        hiddenTruth: "should_not_be_copied",
+      },
+    });
+    const [event] = getNarrativeSystemsDebugTail(1);
+    assert.equal(event.kind, "ending_decision");
+    if (event.kind === "ending_decision") {
+      assert.equal(event.eventName, "ending_eligible_detected");
+      assert.equal(event.outcome, "doom");
+      assert.deepEqual(event.reasons, ["survival_hours_reached"]);
+      assert.equal("hiddenTruth" in event, false);
+    }
   } finally {
     if (prev === undefined) delete process.env.VERSECRAFT_SYSTEMS_DEBUG;
     else process.env.VERSECRAFT_SYSTEMS_DEBUG = prev;

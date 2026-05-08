@@ -5,6 +5,7 @@ import type { ProfessionStateV1 } from "@/lib/profession/types";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { JournalState } from "@/lib/domain/narrativeDomain";
 import type { ChapterState } from "@/lib/chapters/types";
+import type { EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
 
@@ -175,6 +176,14 @@ export interface RunSnapshotV2 {
    * Optional for old saves; missing values normalize to chapter 1 active.
    */
   chapterState?: ChapterState;
+  /**
+   * Unified ending state machine. Optional for old saves; missing values normalize to playing.
+   */
+  endingState?: EndingState;
+  /**
+   * Immutable ending settlement snapshot. Optional until an ending becomes settlement_ready.
+   */
+  endingSettlementSnapshot?: EndingSettlementSnapshot | null;
   npcs: Record<string, SnapshotNpcState>;
   tasks: SnapshotTasks;
   death: SnapshotDeath;
@@ -206,5 +215,7 @@ export interface LegacySaveSurface {
   weaponBag?: Weapon[];
   professionState?: ProfessionStateV1;
   chapterState?: ChapterState;
+  endingState?: EndingState;
+  endingSettlementSnapshot?: EndingSettlementSnapshot | null;
   runSnapshotV2?: RunSnapshotV2;
 }

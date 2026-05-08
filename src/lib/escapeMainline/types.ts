@@ -53,6 +53,14 @@ export type EscapeOutcomeHint = {
   toneLine: string;
 };
 
+export type EscapeFinalActionKind = "none" | "true_exit" | "costly_exit" | "false_exit";
+
+export type EscapeFinalActionDecision = {
+  kind: EscapeFinalActionKind;
+  matchedBy: "resolved_turn" | "world_flag" | "player_text" | "none";
+  reasons: string[];
+};
+
 export type EscapeMainlineState = {
   v: 1;
   stage: EscapeStage;

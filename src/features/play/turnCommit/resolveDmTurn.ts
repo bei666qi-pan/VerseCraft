@@ -129,6 +129,22 @@ function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
   return normalizeNarrativeAuditPayload(v);
 }
 
+function normalizeEndingFinale(raw: unknown): TurnEnvelope["ending_finale"] {
+  const o = asUnknownRecord(raw);
+  if (!o) return null;
+  const narrative = typeof o.narrative === "string" ? clampString(o.narrative.trim(), 5000) : "";
+  const outcome = typeof o.outcome === "string" ? clampString(o.outcome.trim(), 40) : "";
+  const recalled = asStringArray(o.recalled).slice(0, 8);
+  const options = asStringArray(o.options).slice(0, 3);
+  if (!narrative && !outcome && recalled.length === 0 && options.length === 0) return null;
+  return {
+    ...(outcome ? { outcome } : {}),
+    ...(narrative ? { narrative } : {}),
+    ...(recalled.length > 0 ? { recalled } : {}),
+    ...(options.length > 0 ? { options } : {}),
+  };
+}
+
 /** 供客户端与反馈层复用：统一解析 `conflict_outcome` / `combat_summary` 线型。 */
 export function normalizeConflictOutcome(raw: unknown): TurnEnvelope["conflict_outcome"] {
   if (raw === null || raw === undefined) return null;
@@ -357,6 +373,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       ? ((input as any).anti_cheat_meta as Record<string, unknown>)
       : {};
   const narrativeAudit = normalizeNarrativeAudit((input as { _narrative_audit?: unknown })._narrative_audit);
+  const endingFinale = normalizeEndingFinale((input as { ending_finale?: unknown }).ending_finale);
 
   // options normalization policy under new modes:
   // - narrative_only: legacy options allowed but not required; keep whatever exists (compat).
@@ -404,6 +421,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
     ...(bgm_track ? { bgm_track } : {}),
     ...(nextChapterTitleCandidate ? { next_chapter_title_candidate: nextChapterTitleCandidate } : {}),
+    ...(endingFinale ? { ending_finale: endingFinale } : {}),
     ...(security_meta ? { security_meta } : {}),
     ...(narrativeAudit ? ({ _narrative_audit: narrativeAudit } as Record<string, unknown>) : {}),
     ...(Object.keys(ui_hints).length > 0 ? { ui_hints } : {}),

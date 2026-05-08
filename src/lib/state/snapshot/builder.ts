@@ -21,6 +21,8 @@ import { createDefaultEscapeMainlineTemplate } from "@/lib/escapeMainline/templa
 import { createEmptyJournalState, type JournalState } from "@/lib/domain/narrativeDomain";
 import { createInitialChapterState, normalizeChapterState, type ChapterState } from "@/lib/chapters";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
+import type { EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
+import { normalizeEndingSettlementSnapshot, normalizeEndingState } from "@/lib/endings/storeIntegration";
 
 export interface BuildRunSnapshotV2Input {
   runId?: string;
@@ -62,6 +64,8 @@ export interface BuildRunSnapshotV2Input {
   journal?: JournalState;
   /** 章节状态；缺省第一章 active，兼容旧入口 */
   chapterState?: ChapterState;
+  endingState?: EndingState;
+  endingSettlementSnapshot?: EndingSettlementSnapshot | null;
 }
 
 export function createRunId(): string {
@@ -72,6 +76,25 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
   const nowIso = new Date().toISOString();
   const nowTurn = 0;
   const nowHour = Math.max(0, Math.floor(Date.now() / 3600000));
+  const endingSettlementSnapshot = normalizeEndingSettlementSnapshot(
+    input.endingSettlementSnapshot ?? input.endingState?.settlementSnapshot
+  );
+  const endingStateBase = normalizeEndingState(input.endingState);
+  const rawEndingPhase =
+    input.endingState && typeof input.endingState === "object" && !Array.isArray(input.endingState)
+      ? (input.endingState as { phase?: unknown }).phase
+      : null;
+  const endingState =
+    endingSettlementSnapshot && !endingStateBase.settlementSnapshot
+      ? {
+          ...endingStateBase,
+          phase:
+            rawEndingPhase === "settlement_ready" || rawEndingPhase === "settled"
+              ? rawEndingPhase
+              : endingStateBase.phase,
+          settlementSnapshot: endingSettlementSnapshot,
+        }
+      : endingStateBase;
   return {
     schemaVersion: RUN_SNAPSHOT_V2_VERSION,
     meta: {
@@ -133,6 +156,8 @@ export function buildRunSnapshotV2(input: BuildRunSnapshotV2Input): RunSnapshotV
     escape: input.escapeMainline ?? createDefaultEscapeMainlineTemplate(nowHour),
     journal: input.journal ?? createEmptyJournalState(),
     chapterState: normalizeChapterState(input.chapterState ?? createInitialChapterState()),
+    endingState,
+    endingSettlementSnapshot,
     npcs: buildNpcSnapshotMap({
       dynamicNpcStates: input.dynamicNpcStates ?? {},
       homeSeed: input.homeSeed ?? {},
