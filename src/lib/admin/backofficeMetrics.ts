@@ -155,10 +155,10 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
       } as AdminKpi),
       kpi({
         metricId: "overview.token_cost_today",
-        label: "今日 Token 成本",
+        label: "今日 AI 用量",
         value: n(extras.aiTokenCost),
         source: "analytics_events.token_cost",
-        definition: "今日 chat_request_finished token_cost 求和。",
+        definition: "今日 AI 回合记录的用量求和。",
         updatedAt: new Date().toISOString(),
         degraded: false,
         reason: null,

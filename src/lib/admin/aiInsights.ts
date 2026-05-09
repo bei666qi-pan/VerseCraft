@@ -350,7 +350,7 @@ export async function buildAiInsightInput(range: AdminTimeRange): Promise<AiInsi
   const anomalyHints: string[] = [];
   if ((retention.d1?.rate ?? 1) < 0.2) anomalyHints.push("D1留存低于20%");
   if ((realtime.trends?.eventsLast5m ?? 0) > (realtime.trends?.eventsLast15m ?? 0)) anomalyHints.push("近5分钟事件波动偏高");
-  if (overview.cards.dau > 0 && overview.cards.todayTokenCost / overview.cards.dau > 5000) anomalyHints.push("人均Token成本偏高");
+  if (overview.cards.dau > 0 && overview.cards.todayTokenCost / overview.cards.dau > 5000) anomalyHints.push("人均AI用量偏高");
   if (contentQualityEvidence.retryRegenerationCount >= 10) anomalyHints.push("重试/重生成操作偏高");
   if (contentQualityEvidence.validatorIssueTotal >= 10) anomalyHints.push("叙事规则冲突样本偏高");
   const evidence = computeAiEvidenceQuality({
@@ -410,7 +410,7 @@ export async function generateAiInsightReport(range: AdminTimeRange): Promise<{ 
     evidenceSufficiency: "enough|insufficient",
   };
   const systemPrompt = [
-    "你是VerseCraft后台AI运营分析官，负责分析事件健康、严格顺序漏斗、内容质量、问卷主题、用户风险、反馈、留存、在线与Token成本。",
+    "你是VerseCraft后台AI运营分析官，负责分析事件健康、严格顺序漏斗、内容质量、问卷主题、用户风险、反馈、留存、在线与AI用量。",
     "你只能依据输入数据给出建议，禁止编造证据、趋势、样本或结论。",
     "如果 eventHealth 不可信，整体 evidenceSufficiency 必须为 insufficient。",
     "如果 strictPlayerJourney.sampleSize < 20，任何 recommendation.confidence 都不得为 high。",

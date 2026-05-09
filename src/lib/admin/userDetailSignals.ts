@@ -107,8 +107,8 @@ export function buildAdminUserRiskTags(input: AdminUserDetailSignalsInput): Admi
 
 export function buildAdminUserSuggestedOpsActions(tags: AdminUserRiskTag[], journey: AdminUserJourneyStage): string[] {
   const actions: string[] = [];
-  if (tags.includes("wait_too_long")) actions.push("优先复核该 actor 的等待耗时、队列状态与 AI fallback 记录。");
-  if (tags.includes("high_ai_cost")) actions.push("抽查高 token 回合，确认是否存在重复重试、过长 prompt 或异常上下文膨胀。");
+  if (tags.includes("wait_too_long")) actions.push("优先复核该玩家的等待耗时、队列状态与 AI 兜底记录。");
+  if (tags.includes("high_ai_cost")) actions.push("抽查高 AI 用量回合，确认是否存在重复重试、过长提示或异常上下文膨胀。");
   if (tags.includes("stuck_before_first_action")) actions.push("补充首行动前引导，检查世界选择到首次行动之间是否缺少明确下一步。");
   if (tags.includes("survey_negative") || tags.includes("feedback_negative")) actions.push("查看最近反馈/问卷摘要，按主题进入产品修复或人工回访。");
   if (tags.includes("save_anxiety")) actions.push("检查存档提示、继续游戏入口和云同步反馈是否足够明确。");

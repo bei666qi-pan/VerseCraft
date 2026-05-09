@@ -69,9 +69,9 @@ export const ADMIN_METRIC_DEFINITIONS: AdminMetricDefinition[] = [
   },
   {
     id: "overview.token_cost_today",
-    nameZh: "今日 Token 成本",
-    meaning: "今天 AI 主链路消耗的 token 总量。",
-    calculation: "今日 chat_request_finished token_cost 求和。",
+    nameZh: "今日 AI 用量",
+    meaning: "今天 AI 主链路消耗的用量总和。",
+    calculation: "今日 AI 回合记录的用量求和。",
     source: "analytics_events.token_cost",
     refresh: "实时查询 / cron 日聚合",
     scope: "all",

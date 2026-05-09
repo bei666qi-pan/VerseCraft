@@ -61,6 +61,13 @@ function pickTone(s: string): EmotionalTone {
   return "unknown";
 }
 
+function looksLikeShortQuestion(raw: string): boolean {
+  const compact = raw.replace(/\s+/g, "").trim();
+  if (!compact || compact.length > 32) return false;
+  if (/[?？]$/.test(compact)) return true;
+  return /(谁|什么|为何|为什么|怎么|怎样|哪里|哪儿|吗|呢|有没有|是否|能不能|可不可以|是谁|是什么|在哪里|怎么办)/.test(compact);
+}
+
 function inferActionType(raw: string): PlayerActionType {
   const t = raw.replace(/\s+/g, "");
   if (!t) return "other";
@@ -73,7 +80,12 @@ function inferActionType(raw: string): PlayerActionType {
   if (/^(查看|观察|调查|搜索|检查|翻找)/.test(t)) return "investigate";
   if (/(攻击|砍|刺|射击|开火|格挡|闪避|躲开|反击)/.test(t)) return "combat";
   if (/^(我)?(去|前往|走向|进入|回到|返回)/.test(t) || /^(探索|移动到)/.test(t)) return "move";
-  if (/[:：]|“|”/.test(raw) || /^(我)?对.+(说|问|喊|解释|回答|道歉|打招呼)/.test(t) || /^(我)?(询问|请求|交谈|沟通)/.test(t)) {
+  if (
+    looksLikeShortQuestion(raw) ||
+    /[:：]|“|”/.test(raw) ||
+    /^(我)?对.+(说|问|喊|解释|回答|道歉|打招呼)/.test(t) ||
+    /^(我)?(询问|请求|交谈|沟通)/.test(t)
+  ) {
     return "dialogue";
   }
   return "other";

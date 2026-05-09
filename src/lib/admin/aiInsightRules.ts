@@ -165,7 +165,7 @@ export function fallbackFromInput(input: AiInsightInput): AiInsightOutput {
     opportunityPoints: [],
     top3Actions: [],
     expectedImpact: { confidenceNote: insufficient ? "模型调用失败或证据不足，使用本地补采建议。" : "模型调用失败，使用本地规则建议；置信度最高为中。" },
-    confidence: { score: insufficient ? 0.25 : 0.55, level: insufficient ? "low" : "medium", reason: insufficient ? "事件健康或样本不足" : "本地规则 fallback，证据可追溯但未由模型综合" },
+    confidence: { score: insufficient ? 0.25 : 0.55, level: insufficient ? "low" : "medium", reason: insufficient ? "事件健康或样本不足" : "本地规则兜底，证据可追溯但未由模型综合" },
     evidence: [
       { metric: "activeUsersRange", value: String(activeUsers), source: "admin_metrics_daily" },
       { metric: "eventHealthInvalidRate", value: rateLabel(eventHealth.rates.invalidContractRate), source: "analytics_events" },

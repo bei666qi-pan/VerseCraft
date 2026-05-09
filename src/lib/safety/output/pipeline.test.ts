@@ -59,8 +59,9 @@ test("system fault: provider error + private fail_soft => fallback narrative (no
 
   assert.equal(r.verdict, "fallback");
   assert.equal(r.fallbackUsed, true);
-  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("灯光忽然跳了一下"));
-  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("足够我抓住机会"));
+  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("当前内容安全校验暂时不可用"));
+  assert.equal(String(r.updatedDmRecord.narrative ?? "").includes("老人"), false);
+  assert.equal(String(r.updatedDmRecord.narrative ?? "").includes("摩擦声"), false);
   assert.ok(!String(r.updatedDmRecord.narrative ?? "").includes("外部校验"));
   assert.ok(!String(r.updatedDmRecord.narrative ?? "").includes("叙事安全边界"));
 });

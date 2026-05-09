@@ -11,7 +11,7 @@ function truncate(s: string, max = 1200): string {
 
 function privateStoryFallback(max = 900): string {
   return truncate(
-    "话音刚落，门缝后的摩擦声停了一下。那不是回应，更像有什么东西在黑暗里重新确认我的位置。老人抬手按低我的手腕，眼神第一次变得严厉：别再用声音试探它。这个短暂的停顿反而露出一个机会，我可以趁它判断错方向时后撤，也可以逼老人说出那扇门后到底是什么。",
+    "当前生成内容触发安全规则，本回合未展示这段正文。请换一种行动方式继续。",
     max
   );
 }
@@ -30,7 +30,7 @@ export function buildOutputFallback(args: {
     if (scene === "private_story_output") {
       return {
         narrative: truncate(
-          "灯光忽然跳了一下，像有人在远处拨动了整层楼的电闸。老人把茶杯放下，朝走廊尽头看去；那里的脚步声没有靠近，反而绕开了半圈。这个偏移很短，却足够我抓住机会换位置，或者追问老人刚才为什么紧张。",
+          "当前内容安全校验暂时不可用，本回合先不展示生成正文。请稍后重试。",
           900
         ),
         options: [...EMPTY_OPTIONS],
@@ -42,7 +42,7 @@ export function buildOutputFallback(args: {
       };
     }
     return {
-      narrative: truncate("这段内容暂时无法完成校验，系统已保留更稳妥的版本。", 400),
+      narrative: truncate("这段内容暂时无法完成校验，请稍后重试。", 400),
     };
   }
 
@@ -73,7 +73,7 @@ export function buildOutputFallback(args: {
 
   return {
     narrative: truncate(
-      "话刚出口，老人先看向走廊尽头。灯管抖了一下，门缝里的摩擦声忽然换了节奏，像是有东西被我的声音引偏。它没有替我解决眼前的问题，却露出一个可以利用的空档：退到柜边、追问老人，或贴墙换路。",
+      "当前生成内容无法安全展示，请调整后重试。",
       400
     ),
   };

@@ -41,12 +41,12 @@
  *   - If options are the problem, propose a `optionsOverride` drawn from the
  *     safe fallback list.
  *   - If the narrative leaks DM-only facts or has a reveal tier breach, the
- *     safest answer is a narrative rewrite via `safeBlockedDmJson`; we expose
+ *     safest answer is a non-story retry shell; we expose
  *     that via `narrativeOverride`.
  *
  * The caller (`commitTurn`) is responsible for applying overrides.
  */
-import { safeBlockedDmJson } from "@/lib/security/policy";
+import { nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
 import {
   validateNarrativeStyle,
@@ -149,7 +149,7 @@ export type NarrativeValidationReport = {
   optionsOverride: string[] | null;
   /**
    * Non-null when the validator wants the caller to replace the entire
-   * DM JSON with a safe-blocked shell. Structure matches `safeBlockedDmJson`.
+   * DM JSON with a non-story retry shell.
    */
   narrativeOverride: string | null;
   telemetry: NarrativeValidationTelemetry;
@@ -694,11 +694,9 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
 
   if (hasHigh) {
     const safeMessage =
-      args.safeFallbackMessage ?? "这里的信息你此刻还看不真切，先按下心神，换一种方式继续。";
-    narrativeOverride = safeBlockedDmJson(safeMessage, {
-      action: "degrade",
-      stage: "post_model",
-      riskLevel: "gray",
+      args.safeFallbackMessage ??
+      "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。";
+    narrativeOverride = nonNarrativeTurnGuardDmJson(safeMessage, {
       reason: "narrative_validator_high_severity",
     });
   } else if (hasMediumOptionsIssue || hasOptionsShapeIssue) {

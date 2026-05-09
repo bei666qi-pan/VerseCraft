@@ -426,7 +426,7 @@ function shortActorCode(actorKey: string): string {
 
 function riskTagLabel(tag: string): string {
   const map: Record<string, string> = {
-    high_ai_cost: "AI 成本高",
+    high_ai_cost: "AI 用量偏高",
     wait_too_long: "等待过长",
     stuck_before_first_action: "首行动前卡住",
     survey_negative: "问卷负向",
@@ -445,7 +445,12 @@ function Card({ title, value, meta, degraded }: { title: string; value: string; 
         {degraded ? <span className="rounded-full border border-[#c4914a]/35 bg-[#fff2cf] px-2 py-0.5 text-[11px] text-[#7a4e15]">降级</span> : null}
       </div>
       <p className="mt-2 text-2xl font-semibold text-[#123f39]">{value}</p>
-      {meta ? <p className="mt-2 text-xs leading-relaxed text-[#68746c]">{meta}</p> : null}
+      {meta ? (
+        <details className="mt-2 text-xs leading-relaxed text-[#68746c]">
+          <summary className="cursor-pointer text-[#335c54]">查看说明</summary>
+          <p className="mt-1">{meta}</p>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -464,7 +469,7 @@ function KpiGrid({ kpis }: { kpis: Kpi[] }) {
           </div>
           <p className="mt-2 text-2xl font-semibold text-[#123f39]">{fmt(k.value, k.unit)}</p>
           <details className="mt-3 text-xs text-[#68746c]">
-            <summary className="cursor-pointer text-[#335c54]">口径说明</summary>
+            <summary className="cursor-pointer text-[#335c54]">查看技术明细</summary>
             <p className="mt-2 leading-relaxed">{k.definition}</p>
             <p className="mt-1">来源：{sourceLabel(k.source)}</p>
             <p className="mt-1">更新时间：{time(k.updatedAt)}</p>
@@ -684,7 +689,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               <p className="text-xs font-medium tracking-[0.22em] text-[#6c7771]">VERSECRAFT ADMIN</p>
               <h1 className="vc-reading-serif mt-2 text-4xl font-semibold leading-none text-[#123f39]">运营决策台</h1>
               <p className="mt-3 text-sm text-[#68746c]">
-                注册用户 {Number(overviewCards.totalUsers ?? totalUsers).toLocaleString("zh-CN")} · 游客 {Number(overviewCards.guestsTotal ?? 0).toLocaleString("zh-CN")} · 当前在线 {totalOnline.toLocaleString("zh-CN")} · Token {Number(overviewCards.totalTokens ?? totalTokens).toLocaleString("zh-CN")}
+                注册用户 {Number(overviewCards.totalUsers ?? totalUsers).toLocaleString("zh-CN")} · 游客 {Number(overviewCards.guestsTotal ?? 0).toLocaleString("zh-CN")} · 当前在线 {totalOnline.toLocaleString("zh-CN")} · AI 用量 {Number(overviewCards.totalTokens ?? totalTokens).toLocaleString("zh-CN")}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -749,7 +754,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               <Card title="反馈量" value={fmt(overviewCards.feedbackCountRange)} meta="来源：玩家反馈与行为事件记录。" />
               <Card title="注册用户总数" value={fmt(overviewCards.totalUsers ?? totalUsers)} />
               <Card title="游客总数" value={fmt(overviewCards.guestsTotal)} />
-              <Card title="今日 Token" value={fmt(overviewCards.todayTokenCost)} />
+              <Card title="今日 AI 用量" value={fmt(overviewCards.todayTokenCost)} />
             </div>
           </section>
         ) : null}
@@ -803,22 +808,22 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <Card title="AI 成功率" value={percent(aiExperience?.rates?.successRate)} meta={`样本 ${aiExperience?.sampleSize ?? 0}`} />
               <Card title="失败率" value={percent(aiExperience?.rates?.failureRate)} />
-              <Card title="降级率" value={percent(aiExperience?.rates?.fallbackRate)} />
-              <Card title="结构解析失败率" value={percent(aiExperience?.rates?.parseFailureRate)} />
-              <Card title="429 限流率" value={percent(aiExperience?.rates?.rateLimitRate)} meta={`限流 ${fmt(aiExperience?.rateLimitCount)} 次`} degraded={(aiExperience?.rateLimitCount ?? 0) > 0} />
-              <Card title="总 Token" value={fmt(aiExperience?.cost?.totalTokens)} />
-              <Card title="每次行动 Token" value={fmt(Math.round(aiExperience?.cost?.tokenPerEffectiveAction ?? 0))} />
-              <Card title="每位活跃玩家 Token" value={fmt(Math.round(aiExperience?.cost?.tokenPerActiveActor ?? 0))} />
-              <Card title="排队等待" value="暂未单独记录" meta="当前仅展示聊天队列深度与承载余量。" degraded />
+              <Card title="兜底率" value={percent(aiExperience?.rates?.fallbackRate)} />
+              <Card title="结果格式异常率" value={percent(aiExperience?.rates?.parseFailureRate)} />
+              <Card title="请求被限流率" value={percent(aiExperience?.rates?.rateLimitRate)} meta={`被限流 ${fmt(aiExperience?.rateLimitCount)} 次`} degraded={(aiExperience?.rateLimitCount ?? 0) > 0} />
+              <Card title="总 AI 用量" value={fmt(aiExperience?.cost?.totalTokens)} />
+              <Card title="每次行动 AI 用量" value={fmt(Math.round(aiExperience?.cost?.tokenPerEffectiveAction ?? 0))} />
+              <Card title="每位活跃玩家 AI 用量" value={fmt(Math.round(aiExperience?.cost?.tokenPerActiveActor ?? 0))} />
+              <Card title="排队情况" value="暂未单独记录" meta="当前仅展示聊天队列深度与承载余量。" degraded />
             </div>
             <Panel>
-              <SectionTitle title="高 Token 行动来源" meta="按真实 AI 消耗事件聚合；样本不足时不做异常判断。" />
+              <SectionTitle title="高 AI 用量行动来源" meta="按真实 AI 消耗事件聚合；样本不足时不做异常判断。" />
               <div className="mt-3 grid gap-2">
                 {(aiExperience?.cost?.highCostActors ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无样本。</p> : null}
                 {(aiExperience?.cost?.highCostActors ?? []).map((x) => (
                   <div key={x.actorKey} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
                     <span className="truncate">{shortActorCode(x.actorKey)}</span>
-                    <span>{x.tokens.toLocaleString("zh-CN")} Token / {x.actions} 次</span>
+                    <span>{x.tokens.toLocaleString("zh-CN")} 点 / {x.actions} 次</span>
                   </div>
                 ))}
               </div>
@@ -1144,7 +1149,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               </select>
               <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="rounded-lg border border-[#cfc6b7] bg-[#fffaf0] px-3 py-2 text-sm">
                 <option value="lastActive">最近活跃</option>
-                <option value="tokens">Token</option>
+                <option value="tokens">AI 用量</option>
                 <option value="playTime">游玩时长</option>
               </select>
               <label className="inline-flex items-center gap-2 rounded-lg border border-[#cfc6b7] bg-[#fffaf0] px-3 py-2 text-xs">
@@ -1159,7 +1164,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                     <th className="px-3 py-2 font-medium">账号</th>
                     <th className="px-3 py-2 font-medium">身份</th>
                     <th className="px-3 py-2 font-medium">状态</th>
-                    <th className="px-3 py-2 font-medium">Token</th>
+                    <th className="px-3 py-2 font-medium">AI 用量</th>
                     <th className="px-3 py-2 font-medium">游玩时长</th>
                     <th className="px-3 py-2 font-medium">最近活跃</th>
                     <th className="px-3 py-2 font-medium">操作</th>
@@ -1202,7 +1207,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                   </button>
                 </div>
                 <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                  <Card title="Token" value={fmt(userDetail.basic?.tokensUsed)} />
+                  <Card title="累计 AI 用量" value={fmt(userDetail.basic?.tokensUsed)} />
                   <Card title="游玩时长" value={formatDurationSeconds(Number(userDetail.basic?.playTime ?? 0)) || "暂无记录"} />
                   <Card
                     title="漏斗阶段"
@@ -1219,12 +1224,12 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                   <Card
                     title="AI 平均等待"
                     value={userDetail.aiExperience?.requestCount ? `${Math.round(Number(userDetail.aiExperience?.avgLatency ?? 0) / 1000)} 秒` : "暂无记录"}
-                    meta={`失败 ${fmt(userDetail.aiExperience?.failureCount)} · fallback ${fmt(userDetail.aiExperience?.fallbackCount)} · 慢请求 ${fmt(userDetail.aiExperience?.slowRequestCount)}`}
+                    meta={`失败 ${fmt(userDetail.aiExperience?.failureCount)} · 兜底 ${fmt(userDetail.aiExperience?.fallbackCount)} · 慢请求 ${fmt(userDetail.aiExperience?.slowRequestCount)}`}
                     degraded={(userDetail.aiExperience?.failureCount ?? 0) > 0 || (userDetail.aiExperience?.slowRequestCount ?? 0) > 0}
                   />
                   <Card
-                    title="AI 成本"
-                    value={`${fmt(userDetail.aiExperience?.tokenCost)} Token`}
+                    title="AI 用量"
+                    value={`${fmt(userDetail.aiExperience?.tokenCost)} 点`}
                     meta={`AI 请求 ${fmt(userDetail.aiExperience?.requestCount)}`}
                     degraded={(userDetail.riskTags ?? []).includes("high_ai_cost")}
                   />
@@ -1384,7 +1389,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 <span>整体置信度 {confidenceLabel(aiReport?.output?.confidence?.level)} · 更新时间 {time(aiReport?.output?.generatedAt)}</span>
               </div>
               {aiReport?.output?.confidence?.reason ? <p className="mt-2 text-xs text-[#68746c]">置信说明：{aiReport.output.confidence.reason}</p> : null}
-              <p className="mt-3 rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">{aiReport?.output?.executiveSummary ?? "点击按钮后，基于问卷、反馈、旅程漏斗、留存和 Token 成本生成证据驱动建议。"}</p>
+              <p className="mt-3 rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">{aiReport?.output?.executiveSummary ?? "点击按钮后，基于问卷、反馈、旅程漏斗、留存和 AI 用量生成证据驱动建议。"}</p>
               <div className="mt-3 grid gap-3">
                 {(aiReport?.output?.recommendations ?? []).map((r, idx) => (
                   <div key={`${r.title}:${idx}`} className="rounded-lg border border-[#d8d0c3] bg-[#fffdf8] p-4">

@@ -105,7 +105,7 @@ import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
-import { buildInWorldSafetyRedirect, safeBlockedDmJson } from "@/lib/security/policy";
+import { nonNarrativeTurnGuardDmJson, safeBlockedDmJson } from "@/lib/security/policy";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
@@ -3774,12 +3774,10 @@ async function postChatInternal(req: Request) {
                       : {}),
                   },
                 ],
-                narrativeOverride: safeBlockedDmJson(
-                  buildInWorldSafetyRedirect(latestUserInput),
+                narrativeOverride: nonNarrativeTurnGuardDmJson(
+                  "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。",
                   {
-                    action: "degrade",
-                    stage: "post_model",
-                    riskLevel: "gray",
+                    requestId,
                     reason: "narrative_safety_kernel_high_severity",
                   }
                 ),
@@ -4215,8 +4213,8 @@ async function postChatInternal(req: Request) {
           moderationBody = finalizePayload;
 
           if (outputAudit.verdict === "reject") {
-            const narrative = typeof dmRecord.narrative === "string" ? dmRecord.narrative : "当前内容无法处理。";
             const reason = outputAudit.reasonCode || "output_reject";
+            const blockedMessage = "当前生成内容触发安全规则，已拦截本回合。请换一种方式继续。";
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
             writeAuditTrail({
@@ -4234,7 +4232,7 @@ async function postChatInternal(req: Request) {
 
             await writer.write(
               sse(
-                safeBlockedDmJson(narrative, {
+                safeBlockedDmJson(blockedMessage, {
                   action: "degrade",
                   stage: "final_output",
                   riskLevel: "black",

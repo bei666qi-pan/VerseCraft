@@ -53,7 +53,7 @@ function clampInt(value: number, min: number, max: number): number {
 }
 
 export function resolveSocialWorldConfig(source?: EnvSource): SocialWorldConfig {
-  const featureEnabled = boolEnv("AI_ENABLE_SOCIAL_WORLD", false, source);
+  const featureEnabled = boolEnv("AI_ENABLE_SOCIAL_WORLD", true, source);
   const requestedMode = modeEnv(source, featureEnabled ? "shadow" : "off");
   const enabled = featureEnabled && requestedMode !== "off";
   const mode: SocialWorldMode = enabled ? requestedMode : "off";

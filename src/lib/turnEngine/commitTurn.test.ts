@@ -372,6 +372,8 @@ test("commitTurn applies safe fallback and writes no state on high root cause le
   });
 
   assert.notEqual(result.committedDmRecord.narrative, "公寓根因就是七锚闭环。");
+  assert.equal(result.committedDmRecord.narrative, "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。");
+  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("老人"), false);
   assert.equal(result.committedDmRecord.new_tasks, undefined);
   assert.equal(result.committedDmRecord.player_location, undefined);
   assert.equal(result.summary.deltaSummary.newTasks, 0);
@@ -410,6 +412,8 @@ test("commitTurn applies safe fallback and writes no npc updates on offscreen di
   assert.equal(result.committedDmRecord.npc_location_updates, undefined);
   assert.equal(result.summary.deltaSummary.npcLocationUpdates, 0);
   assert.equal(result.summary.safeNarrativeFallbackApplied, true);
+  assert.equal(result.committedDmRecord.narrative, "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。");
+  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("老人"), false);
   assert.equal(String(result.committedDmRecord.narrative ?? "").includes("叙事安全边界"), false);
   assert.equal(String(result.committedDmRecord.narrative ?? "").includes("触及安全边界"), false);
 });

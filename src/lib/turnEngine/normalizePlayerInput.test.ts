@@ -64,6 +64,17 @@ test("normalizePlayerInput uses control preflight intent when provided", () => {
   assert.deepEqual(intent.riskTags, ["social_pressure"]);
 });
 
+test("normalizePlayerInput treats short bare question as dialogue", () => {
+  const intent = normalizePlayerInput({
+    latestUserInput: "你是谁？",
+    control: null,
+    isFirstAction: false,
+    shouldApplyFirstActionConstraint: false,
+    clientPurpose: "normal",
+  });
+  assert.equal(intent.kind, "dialogue");
+});
+
 test("normalizePlayerInput forces options_regen_only to meta kind", () => {
   const intent = normalizePlayerInput({
     latestUserInput: "攻击敌人",

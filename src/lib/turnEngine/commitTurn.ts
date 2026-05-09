@@ -21,7 +21,7 @@
  * actually flushed to the client".
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
-import { buildInWorldSafetyRedirect, safeBlockedDmJson } from "@/lib/security/policy";
+import { nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -83,7 +83,8 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "npc_status_forbidden_direct_speech",
 ]);
 
-const SAFE_COMMIT_FALLBACK_MESSAGE = buildInWorldSafetyRedirect();
+const TURN_GUARD_FALLBACK_MESSAGE =
+  "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。";
 
 export type TurnCommitFlag =
   | "options_rewrite_applied"
@@ -175,7 +176,7 @@ function applyNarrativeOverride(
   narrativeOverride: string,
   options: { preserveStateFields?: boolean } = {}
 ): Record<string, unknown> {
-  // `narrativeOverride` is a JSON string from `safeBlockedDmJson`. We parse it
+  // `narrativeOverride` is a JSON string from the guard shell. We parse it
   // once and merge; if parsing fails, we keep the original record — the outer
   // output moderation stage still protects the client.
   try {
@@ -439,10 +440,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   const effectiveNarrativeOverride =
     validatorReport.narrativeOverride ??
     (hardBlockCommit || shouldApplySafetyFallback
-      ? safeBlockedDmJson(SAFE_COMMIT_FALLBACK_MESSAGE, {
-          action: "degrade",
-          stage: "post_model",
-          riskLevel: "gray",
+      ? nonNarrativeTurnGuardDmJson(TURN_GUARD_FALLBACK_MESSAGE, {
           requestId: args.requestId,
           reason: "turn_commit_hard_gate",
         })

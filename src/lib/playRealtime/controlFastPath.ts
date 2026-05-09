@@ -87,6 +87,13 @@ function shortActionGate(input: string): boolean {
   return true;
 }
 
+function looksLikeShortQuestion(input: string): boolean {
+  const t = input.replace(/\s+/g, "").trim();
+  if (!t || t.length > 32) return false;
+  if (/[?？]$/.test(t)) return true;
+  return /(谁|什么|为何|为什么|怎么|怎样|哪里|哪儿|吗|呢|有没有|是否|能不能|可不可以|是谁|是什么|在哪里|怎么办)/.test(t);
+}
+
 export function runDeterministicControlFastPath(args: {
   latestUserInput: string;
   ruleSnapshot: PlayerRuleSnapshot;
@@ -120,7 +127,22 @@ export function runDeterministicControlFastPath(args: {
     return { hit: true, control: c, reason: "meta_command" };
   }
 
-  // 2) 明确道具使用（UI 常见形态：我使用了道具：【xx】）
+  // 2) 短问句：按对话/提问处理，由主模型结合当前在场对象自然回应。
+  if (looksLikeShortQuestion(input)) {
+    const c = basePlane("dialogue", 0.88);
+    c.enhance_npc_emotion = true;
+    c.dm_hints = "用户提出短问句；若当前在场对象明确，按对白回应；若对象不明确，只给环境反应并引导确认目标。";
+    c.risk_tags = risk.tags;
+    c.risk_level = risk.level;
+    if (risk.block) {
+      c.block_dm = true;
+      c.block_reason = risk.reason;
+      c.dm_hints = "输入疑似高风险违规；主笔必须拒绝并给出安全替代建议。";
+    }
+    return { hit: true, control: c, reason: "dialogue_short_question" };
+  }
+
+  // 3) 明确道具使用（UI 常见形态：我使用了道具：【xx】）
   if (/^(我)?使用了道具[:：]/.test(input) || /^(我)?(使用|服用|喝下|喝|吃下|吃|装备|点燃|注射)/.test(input)) {
     // 仅在存在明显“对象”时命中，否则可能是“我使用方法…”的自然语言。
     const obj =
@@ -144,7 +166,7 @@ export function runDeterministicControlFastPath(args: {
     }
   }
 
-  // 3) 明确对话
+  // 4) 明确对话
   if (
     /^(我)?对.+(说|问|喊|解释|回答|道歉|打招呼)/.test(input) ||
     /^(我)?(询问|请求|交谈|沟通)/.test(input)
@@ -166,7 +188,7 @@ export function runDeterministicControlFastPath(args: {
     return { hit: true, control: c, reason: "dialogue_explicit" };
   }
 
-  // 4) 明确移动 / 探索（极短）
+  // 5) 明确移动 / 探索（极短）
   if (/^(我)?(去|前往|走向|进入|回到|返回)/.test(input) || /^(探索|移动到)/.test(input)) {
     const loc =
       extractBetween(input, "去", ["，", "。", "！", "?", "？"], 22) ??
@@ -188,7 +210,7 @@ export function runDeterministicControlFastPath(args: {
     return { hit: true, control: c, reason: "move_explore_explicit" };
   }
 
-  // 5) 明确调查/观察（短指令）
+  // 6) 明确调查/观察（短指令）
   if (/^(查看|观察|调查|搜索|检查|翻找)/.test(input)) {
     const target = extractBetween(input, "", ["，", "。", "！", "?", "？"], 22);
     const c = basePlane("investigate", 0.86);
@@ -204,7 +226,7 @@ export function runDeterministicControlFastPath(args: {
     return { hit: true, control: c, reason: "investigate_explicit" };
   }
 
-  // 6) 轻量风险词：即使意图不明，也可给出风险标签，但为避免误判，仍交给 LLM。
+  // 7) 轻量风险词：即使意图不明，也可给出风险标签，但为避免误判，仍交给 LLM。
   if (risk.tags.length > 0) {
     return { hit: false, reason: "risk_keyword_but_ambiguous" };
   }

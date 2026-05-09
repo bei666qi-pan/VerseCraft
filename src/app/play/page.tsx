@@ -347,6 +347,35 @@ function dmIndicatesRecoverableModelRateLimit(dm: unknown): boolean {
   });
 }
 
+function shouldShowComplianceHintForDm(dm: unknown, isOpeningSystemRequest: boolean): boolean {
+  if (isOpeningSystemRequest) return false;
+  if (!dm || typeof dm !== "object" || Array.isArray(dm)) return false;
+  const record = dm as { is_action_legal?: unknown; security_meta?: unknown };
+  const meta =
+    record.security_meta && typeof record.security_meta === "object" && !Array.isArray(record.security_meta)
+      ? (record.security_meta as Record<string, unknown>)
+      : null;
+  const reason = String(meta?.reason ?? "").toLowerCase();
+  const stage = String(meta?.stage ?? "").toLowerCase();
+  const action = String(meta?.action ?? "").toLowerCase();
+  const riskLevel = String(meta?.risk_level ?? meta?.riskLevel ?? "").toLowerCase();
+  const nonSafetyReasons =
+    /narrative_validator|narrative_safety_kernel|turn_commit|fact_commit|npc_consistency|dm_only|root_cause|offscreen|unregistered|style_drift|pacing/.test(
+      reason
+    );
+  if (nonSafetyReasons) return false;
+
+  const safetySignal =
+    /(pre_input|final_output|risk_control)/.test(stage) ||
+    /(blocked_by_policy|input_reject|output_reject|moderation|policy|sexual|violence|violent|illegal|self_harm|drugs|risk_control|rate|quota|banned|forbidden)/.test(
+      reason
+    ) ||
+    riskLevel === "black";
+  if (safetySignal) return true;
+  if (record.is_action_legal === false && action && action !== "allow" && action !== "review") return true;
+  return false;
+}
+
 function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undefined {
   return raw === "idle" || raw === "active" || raw === "suppressed" || raw === "breached" ? raw : undefined;
 }
@@ -3031,11 +3060,7 @@ function PlayContent() {
       return;
     }
 
-    const shouldShowComplianceHint = !isOpeningSystemRequest;
-    if (shouldShowComplianceHint && !parsed.is_action_legal) {
-      triggerComplianceHint();
-    }
-    if (shouldShowComplianceHint && parsed.security_meta?.action && parsed.security_meta.action !== "allow") {
+    if (shouldShowComplianceHintForDm(parsed, isOpeningSystemRequest)) {
       triggerComplianceHint();
     }
 
@@ -4104,7 +4129,6 @@ function PlayContent() {
   function noteManualTextIntent() {
     if (hasShownManualInputComplianceHintRef.current) return;
     hasShownManualInputComplianceHintRef.current = true;
-    triggerComplianceHint();
   }
 
   function onPickOption(option: string) {

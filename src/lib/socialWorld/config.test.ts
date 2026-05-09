@@ -42,6 +42,15 @@ function visibleEvent(partial: Partial<SocialEvent> = {}): SocialEvent {
   });
 }
 
+test("social world defaults to background shadow mode", () => {
+  const config = resolveSocialWorldConfig({});
+
+  assert.equal(config.enabled, true);
+  assert.equal(config.mode, "shadow");
+  assert.equal(config.backgroundEnabled, true);
+  assert.equal(config.promptInjectionEnabled, false);
+});
+
 test("social world off mode disables background and prompt behavior", async () => {
   const config = resolveSocialWorldConfig({
     AI_ENABLE_SOCIAL_WORLD: "false",

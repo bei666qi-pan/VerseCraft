@@ -43,19 +43,19 @@ export function buildUserFacingMessage(args: {
     if (v.decision === "reject") {
       return {
         message: "当前行动无法执行，请调整描述后重试。",
-        narrativeFallback: "我收回念头。",
+        narrativeFallback: "当前行动触发安全规则，本回合未写入剧情。请调整描述后重试。",
       };
     }
     if (v.decision === "fallback") {
       return {
         message: "行动存在风险点，已安全回退。",
-        narrativeFallback: "你试图推进，但叙事边界迅速收紧——一些细节被强行抹去。你只能以更克制的方式继续行动。",
+        narrativeFallback: "当前行动存在风险点，本回合未写入剧情。请换一种更安全的行动方式继续。",
       };
     }
     if (v.decision === "rewrite") {
       return {
         message: "行动措辞已做安全处理。",
-        narrativeFallback: "你压下过于尖锐的细节，用更隐晦的方式描述你的行动，避免触碰不可言说的边界。",
+        narrativeFallback: "当前行动措辞已做安全处理，请按处理后的描述继续。",
       };
     }
     return { message: "ok" };

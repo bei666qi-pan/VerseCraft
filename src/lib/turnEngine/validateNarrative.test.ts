@@ -133,6 +133,10 @@ test("validateNarrative flags DM-only fact leak in narrative and falls back", ()
   assert.equal(report.ok, false);
   assert.ok(report.issues.some((x) => x.code === "dm_only_fact_leaked_in_narrative"));
   assert.ok(report.narrativeOverride, "high severity should produce safe narrative fallback");
+  const override = JSON.parse(report.narrativeOverride ?? "{}") as Record<string, unknown>;
+  assert.equal(override.narrative, "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。");
+  assert.equal(String(override.narrative).includes("老人"), false);
+  assert.equal(String(override.narrative).includes("摩擦声"), false);
   assert.equal(report.telemetry.safeNarrativeFallbackApplied, true);
 });
 

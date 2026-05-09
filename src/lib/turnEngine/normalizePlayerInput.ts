@@ -30,6 +30,7 @@ const COMBAT_RE = /(攻击|袭击|开枪|射击|挥刀|刺|砍|锁喉|反击|压
 const DIALOGUE_RE = /(对话|询问|问清|交谈|告诉|回答|回应|喊话|呼唤|和.*说|向.*说|对.*说)/;
 const USE_ITEM_RE = /(使用|服用|吃下|喝下|点亮|打开|用|拿出|装备|换上)/;
 const META_RE = /(存档|读档|打开(菜单|设置)|查看(图鉴|任务|背包|仓库))/;
+const SHORT_QUESTION_RE = /([?？]$|谁|什么|为何|为什么|怎么|怎样|哪里|哪儿|吗|呢|有没有|是否|能不能|可不可以|是谁|是什么|在哪里|怎么办)/;
 
 function stripForNormalization(text: string): string {
   return String(text ?? "")
@@ -41,11 +42,12 @@ function stripForNormalization(text: string): string {
 function heuristicIntentKind(text: string): NormalizedPlayerIntentKind {
   const t = String(text ?? "").trim();
   if (!t) return "other";
+  const compact = t.replace(/\s+/g, "");
   if (SYSTEM_TRANSITION_RE.test(t)) return "system_transition";
   if (META_RE.test(t)) return "meta";
   if (COMBAT_RE.test(t)) return "combat";
   if (INVESTIGATE_RE.test(t)) return "investigate";
-  if (DIALOGUE_RE.test(t)) return "dialogue";
+  if (DIALOGUE_RE.test(t) || (compact.length <= 32 && SHORT_QUESTION_RE.test(compact))) return "dialogue";
   if (USE_ITEM_RE.test(t)) return "use_item";
   if (EXPLORE_RE.test(t)) return "explore";
   return "other";

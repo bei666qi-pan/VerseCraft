@@ -34,6 +34,20 @@ test("fast path: 明确对话 → dialogue + target", () => {
   assert.ok(r.control.extracted_slots.target);
 });
 
+test("fast path: 短问句 → dialogue without canned fallback", () => {
+  const r = runDeterministicControlFastPath({
+    latestUserInput: "你是谁？",
+    ruleSnapshot: ruleBase,
+    locationHint: null,
+  });
+  assert.equal(r.hit, true);
+  if (!r.hit) return;
+  assert.equal(r.control.intent, "dialogue");
+  assert.equal(r.control.extracted_slots.target, undefined);
+  assert.equal(r.control.enhance_npc_emotion, true);
+  assert.equal(r.reason, "dialogue_short_question");
+});
+
 test("fast path: 明确道具使用 → use_item + item_hint", () => {
   const r = runDeterministicControlFastPath({
     latestUserInput: "我使用了道具：【止血绷带】",
