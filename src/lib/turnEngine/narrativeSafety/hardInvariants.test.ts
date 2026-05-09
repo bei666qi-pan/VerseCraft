@@ -76,7 +76,7 @@ function delta(overrides: Partial<StateDelta> = {}): StateDelta {
   };
 }
 
-test("hard entity invariants reject unregistered visible and structured entities", () => {
+test("hard entity invariants repair unregistered visible and structured entities", () => {
   const report = collectSafetyReport({
     dmRecord: dm({
       narrative: "N-999 waits beside the counter.",
@@ -98,7 +98,7 @@ test("hard entity invariants reject unregistered visible and structured entities
     registeredNpcIds: ["N-001", "N-002", "N-003"],
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.equal(report.maxSeverity, "high");
   assert.ok(report.issues.some((issue) => issue.code === "unregistered_npc_id" && issue.anchor === "N-999"));
   assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.anchor === "LOC-VOID-999"));
