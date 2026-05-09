@@ -36,7 +36,7 @@ function scenePacket(overrides: Partial<NpcSceneAuthorityPacket> = {}): NpcScene
   };
 }
 
-test("collectSafetyReport maps validateNarrative high issue to fallback", () => {
+test("collectSafetyReport maps validateNarrative high issue to repair", () => {
   const issue: NarrativeValidationIssue = {
     code: "dm_only_fact_leaked_in_narrative",
     severity: "high",
@@ -48,7 +48,7 @@ test("collectSafetyReport maps validateNarrative high issue to fallback", () => 
   });
 
   assert.equal(report.ok, false);
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.equal(report.maxSeverity, "high");
   assert.equal(report.telemetry.bySource.validateNarrative, 1);
 });
@@ -60,7 +60,7 @@ test("collectSafetyReport flags unknown NPC id as high", () => {
     registeredNpcIds: ["N-001", "N-002"],
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "unregistered_npc_id" && issue.severity === "high"));
   assert.ok(report.invariantsViolated.includes("unregistered_npc_id"));
 });
@@ -72,7 +72,7 @@ test("collectSafetyReport flags offscreen NPC direct speech as high", () => {
     registeredNpcIds: ["N-001", "N-002"],
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "offscreen_npc_direct_speech" && issue.severity === "high"));
 });
 
@@ -110,7 +110,7 @@ test("collectSafetyReport records low style issue without fallback", () => {
   assert.ok(report.issues.some((item) => item.code === "style_drift"));
 });
 
-test("collectSafetyReport maps high pacing issue to fallback", () => {
+test("collectSafetyReport maps high pacing issue to repair", () => {
   const pacingReport: PacingValidationReport = {
     ok: false,
     maxSeverity: "high",
@@ -136,7 +136,7 @@ test("collectSafetyReport maps high pacing issue to fallback", () => {
 
   const report = collectSafetyReport({ pacingReport });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.invariantsViolated.includes("pacing_budget_breach"));
   assert.equal(report.telemetry.bySource.pacing, 1);
 });
@@ -157,7 +157,7 @@ test("entity whitelist flags fabricated Chinese NPC surface in narrative as high
     npcSceneAuthorityPacket: scenePacket(),
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.severity === "high"));
 });
 
@@ -188,7 +188,7 @@ test("entity whitelist flags unknown NPC id in options as high", () => {
     npcSceneAuthorityPacket: scenePacket(),
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "unregistered_npc_id" && issue.anchor === "N-999"));
 });
 
@@ -198,7 +198,7 @@ test("entity whitelist flags offscreen NPC direct speech with N-id attribution",
     npcSceneAuthorityPacket: scenePacket(),
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "offscreen_npc_direct_speech" && issue.anchor === "N-002"));
 });
 
@@ -209,7 +209,7 @@ test("entity whitelist flags offscreen speaker pronoun direct speech", () => {
     npcSceneAuthorityPacket: scenePacket(),
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "offscreen_npc_direct_speech" && issue.anchor === "N-002"));
 });
 
@@ -236,7 +236,7 @@ test("entity whitelist flags non-present registered NPC in npc_location_updates 
     npcSceneAuthorityPacket: scenePacket(),
   });
 
-  assert.equal(report.decision, "fallback");
+  assert.equal(report.decision, "repair");
   assert.ok(report.issues.some((issue) => issue.code === "speaker_not_present" && issue.anchor === "N-002"));
 });
 

@@ -106,10 +106,11 @@ import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
+import { safeBlockedDmJson } from "@/lib/security/policy";
 import {
-  nonNarrativeTurnGuardDmJson,
-  safeBlockedDmJson,
-} from "@/lib/security/policy";
+  isVisibleSafetyDegradeReason,
+  visibleSafetyDegradeMessageFor,
+} from "@/lib/security/visibleSafety";
 import { mergeAutoCapturedCodexUpdates } from "@/lib/registry/codexAutoCapture";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
@@ -3654,7 +3655,6 @@ async function postChatInternal(req: Request) {
               scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
               actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
               factDetectionMaxRevealRank: maxRevealRankForMemory,
-              safeFallbackMessage: "本回合未提交，请换个行动继续。",
             });
           let validatorReport = runNarrativeValidator(candidateRec);
           const usedFactIdsForSafety = Array.isArray(narrativeAudit.used_fact_ids)
@@ -3871,11 +3871,14 @@ async function postChatInternal(req: Request) {
               console.warn("[api/chat] narrative repair skipped", repairErr);
             }
           }
-          const shouldNarrativeSafetyFallback =
-            narrativeSafetyEnforcement.shouldFallback &&
-            !validatorReport.narrativeOverride &&
-            narrativeSafetyRuntime.mode !== "shadow";
-          const effectiveValidatorReport: NarrativeValidationReport = shouldNarrativeSafetyFallback
+          const shouldRecordNarrativeSafetyIssue =
+            narrativeSafetyEnforcement.decision !== "pass" &&
+            !validatorReport.issues.some(
+              (issue) =>
+                issue.code === "npc_consistency_bridge" &&
+                String(issue.detail ?? "").startsWith("narrative_safety_kernel:")
+            );
+          const effectiveValidatorReport: NarrativeValidationReport = shouldRecordNarrativeSafetyIssue
             ? {
                 ...validatorReport,
                 ok: false,
@@ -3890,13 +3893,7 @@ async function postChatInternal(req: Request) {
                       : {}),
                   },
                 ],
-                narrativeOverride: nonNarrativeTurnGuardDmJson(
-                  "本回合未提交，请换个行动继续。",
-                  {
-                    requestId,
-                    reason: "narrative_safety_kernel_high_severity",
-                  }
-                ),
+                narrativeOverride: null,
                 telemetry: {
                   ...validatorReport.telemetry,
                   totalIssues: validatorReport.telemetry.totalIssues + 1,
@@ -3905,8 +3902,8 @@ async function postChatInternal(req: Request) {
                     npc_consistency_bridge:
                       (validatorReport.telemetry.byCode.npc_consistency_bridge ?? 0) + 1,
                   },
-                  safeNarrativeFallbackApplied: true,
-                  narrativeGovernanceFinalSafe: true,
+                  safeNarrativeFallbackApplied: false,
+                  narrativeGovernanceFinalSafe: !narrativeSafetyEnforcement.shouldBlockCommit,
                 },
               }
             : validatorReport;
@@ -4216,7 +4213,7 @@ async function postChatInternal(req: Request) {
                   invariantsViolated: narrativeSafetyReport?.invariantsViolated ?? [],
                   telemetry: narrativeSafetyReport?.telemetry ?? null,
                   hardGateApplied: narrativeSafetyEnforcement.shouldBlockCommit,
-                  fallbackApplied: shouldNarrativeSafetyFallback,
+                  fallbackApplied: false,
                 },
               },
             }).catch(() => {});
@@ -4338,10 +4335,7 @@ async function postChatInternal(req: Request) {
 
           if (outputAudit.verdict === "reject") {
             const reason = outputAudit.reasonCode || "output_reject";
-            const blockedMessage =
-              /sexual|explicit|gore|violence|violent|illegal|harm|legal_redline|self_harm/i.test(reason)
-                ? "本回合涉及涉黄、涉暴或违法伤害内容，不能继续。"
-                : "本回合未提交，请换个行动继续。";
+            const blockedMessage = visibleSafetyDegradeMessageFor(reason);
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
             writeAuditTrail({
@@ -4357,19 +4351,25 @@ async function postChatInternal(req: Request) {
               summary: blockedAuditSummary,
             });
 
-            await writer.write(
-              sse(
-                safeBlockedDmJson(blockedMessage, {
-                  action: "degrade",
-                  stage: "final_output",
-                  riskLevel: "black",
-                  requestId,
-                  reason,
-                })
-              )
-            );
-            await writer.close();
-            return true;
+            if (blockedMessage) {
+              await writer.write(
+                sse(
+                  safeBlockedDmJson(blockedMessage, {
+                    action: "degrade",
+                    stage: "final_output",
+                    riskLevel: "black",
+                    requestId,
+                    reason,
+                  })
+                )
+              );
+              await writer.close();
+              return true;
+            }
+            console.warn("[api/chat] non-visible output reject recorded without narrative fallback", {
+              requestId,
+              reason,
+            });
           }
         } catch (e: unknown) {
           console.warn("[api/chat] output audit skipped due to error", e);
@@ -4405,26 +4405,26 @@ async function postChatInternal(req: Request) {
             summary: blockedAuditSummary,
           });
 
-          const narrative =
-            /sexual|explicit|gore|violence|violent|illegal|harm|legal_redline|self_harm/i.test(
-              finalModeration.result.reason
-            )
-              ? "本回合涉及涉黄、涉暴或违法伤害内容，不能继续。"
-              : "本回合未提交，请换个行动继续。";
-
-          await writer.write(
-            sse(
-              safeBlockedDmJson(narrative, {
-                action: "degrade",
-                stage: "final_output",
-                riskLevel: "black",
-                requestId,
-                reason: finalModeration.result.reason,
-              })
-            )
-          );
-          await writer.close();
-          return true;
+          const narrative = visibleSafetyDegradeMessageFor(finalModeration.result.reason);
+          if (narrative) {
+            await writer.write(
+              sse(
+                safeBlockedDmJson(narrative, {
+                  action: "degrade",
+                  stage: "final_output",
+                  riskLevel: "black",
+                  requestId,
+                  reason: finalModeration.result.reason,
+                })
+              )
+            );
+            await writer.close();
+            return true;
+          }
+          console.warn("[api/chat] non-visible final moderation block recorded without narrative fallback", {
+            requestId,
+            reason: finalModeration.result.reason,
+          });
         }
       }
 
@@ -4892,7 +4892,10 @@ async function postChatInternal(req: Request) {
               path: "/api/chat",
               requestId,
             });
-            if (postChunkModeration.policy.blocked) {
+            if (
+              postChunkModeration.policy.blocked &&
+              isVisibleSafetyDegradeReason(postChunkModeration.result.reason)
+            ) {
               streamBlocked = true;
               recordHighRisk({ ip: clientIp, sessionId, userId }, postChunkModeration.result.reason);
               writeAuditTrail({
@@ -4923,6 +4926,11 @@ async function postChatInternal(req: Request) {
               await reader.cancel().catch(() => {});
               await writer.close();
               return;
+            } else if (postChunkModeration.policy.blocked) {
+              console.warn("[api/chat] non-visible post-model chunk block recorded without narrative fallback", {
+                requestId,
+                reason: postChunkModeration.result.reason,
+              });
             }
             accumulated += data;
             await markFirstVisibleStreamChunk();
@@ -4946,7 +4954,10 @@ async function postChatInternal(req: Request) {
                 requestId,
               });
               lastStreamDeltaModAt = Date.now();
-              if (postChunkModeration.policy.blocked) {
+              if (
+                postChunkModeration.policy.blocked &&
+                isVisibleSafetyDegradeReason(postChunkModeration.result.reason)
+              ) {
                 streamBlocked = true;
                 recordHighRisk({ ip: clientIp, sessionId, userId }, postChunkModeration.result.reason);
                 writeAuditTrail({
@@ -4977,6 +4988,11 @@ async function postChatInternal(req: Request) {
                 await reader.cancel().catch(() => {});
                 await writer.close();
                 return;
+              } else if (postChunkModeration.policy.blocked) {
+                console.warn("[api/chat] non-visible post-model delta block recorded without narrative fallback", {
+                  requestId,
+                  reason: postChunkModeration.result.reason,
+                });
               }
             }
             accumulated += deltaContent;

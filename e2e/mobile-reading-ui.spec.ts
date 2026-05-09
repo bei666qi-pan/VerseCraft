@@ -231,6 +231,17 @@ function buildSseFinalFrame() {
   })}\n\n`;
 }
 
+function buildPanelSwitchSseFinalFrame() {
+  return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "STREAM_PANEL_SWITCH_OK narrative landed.",
+    is_death: false,
+    consumes_time: false,
+    options,
+  })}\n\n`;
+}
+
 function buildNpcMentionWithoutCodexFrame() {
   return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
     is_action_legal: true,
@@ -337,14 +348,14 @@ async function installDamagingChatSseMock(page: Page, damage = 3) {
   });
 }
 
-async function installDelayedChatSseMock(page: Page, delayMs = 1600) {
+async function installDelayedChatSseMock(page: Page, delayMs = 1600, body = buildSseFinalFrame()) {
   await installQueueDisabledMock(page);
   await page.route("**/api/chat", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     await route.fulfill({
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
-      body: buildSseFinalFrame(),
+      body,
     });
   });
 }
@@ -710,6 +721,37 @@ test.describe("mobile reading UI", () => {
     await expectNoClientCrash(page, errors);
   });
 
+  test("keeps in-flight generation alive while switching to codex", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openSeededPlay(page, {
+      codex: b1Codex,
+      playerLocation: "B1_SafeZone",
+    });
+    await installDelayedChatSseMock(page, 900, buildPanelSwitchSseFinalFrame());
+
+    const responsePromise = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/chat" && response.status() === 200
+    );
+    await page.getByTestId("manual-action-input").fill("inspect B1 storage");
+    await Promise.all([
+      page.waitForRequest(isPlayerChatPost),
+      page.getByTestId("send-action-button").click(),
+    ]);
+
+    await page.getByTestId("bottom-nav-codex").click();
+    await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
+    await expect(page.getByTestId("mobile-action-dock")).toBeHidden();
+    await responsePromise;
+
+    await page.getByTestId("bottom-nav-story").click();
+    await expect(page.getByTestId("mobile-story-viewport")).toBeVisible();
+    await expect(page.getByTestId("mobile-story-viewport")).toContainText("STREAM_PANEL_SWITCH_OK", {
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId("manual-action-input")).toBeEnabled();
+    await expect(page.getByText("本回合未提交")).toHaveCount(0);
+  });
+
   test("applies sanity damage and shows the lightweight hit effect", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openSeededPlay(page, {
@@ -778,7 +820,7 @@ test.describe("mobile reading UI", () => {
     await expect(page.locator("#unified-menu-content")).toBeHidden();
     await expect(page.getByTestId("bottom-nav-character")).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("mobile-character-panel")).toBeVisible();
-    await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-action-dock")).toBeHidden();
     await expect(page.getByTestId("character-identity-section")).toContainText("职业");
     await expect(page.getByTestId("character-identity-section")).toContainText("时间");
     await expect(page.getByTestId("character-identity-section")).toContainText("位置");

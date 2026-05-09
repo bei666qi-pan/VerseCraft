@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
@@ -62,6 +62,7 @@ export function CreateCharacterForm() {
   const [selectedTalent, setSelectedTalent] = useState<EchoTalent | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
   const [stats, setStats] = useState<Record<StatType, number>>({ ...BASE_STATS });
 
   const remaining = useMemo(() => calculateRemainingPoints(stats), [stats]);
@@ -107,6 +108,7 @@ export function CreateCharacterForm() {
   }
 
   async function handleSubmit() {
+    if (submitInFlightRef.current) return;
     setSubmitError(null);
     if (!canSubmit || !selectedTalent) {
       setSubmitAttempted(true);
@@ -117,6 +119,7 @@ export function CreateCharacterForm() {
     const cleanPersonality = personality.trim();
     const cleanHeight = clampInt(height, 140, 220);
 
+    submitInFlightRef.current = true;
     setSubmitting(true);
     try {
       const e2eBypass =
@@ -132,6 +135,8 @@ export function CreateCharacterForm() {
           });
       if (!validated.ok) {
         setSubmitError(validated.message);
+        submitInFlightRef.current = false;
+        setSubmitting(false);
         return;
       }
 
@@ -140,24 +145,39 @@ export function CreateCharacterForm() {
         stats,
         selectedTalent
       );
-    } finally {
+      try {
+        useGameStore.getState().saveGame("main_slot");
+      } catch (saveError) {
+        console.warn("[create] main_slot save failed before play navigation", saveError);
+      }
+
+      void trackGameplayEvent({
+        eventName: "create_character_success",
+        sessionId: guestId,
+        page: "/create",
+        source: "create_page",
+        idempotencyKey: `create_character_success:${guestId}:${cleanName}`,
+        payload: {
+          name: cleanName,
+          gender,
+          height: cleanHeight,
+        },
+      }).catch(() => {});
+
+      router.replace("/play");
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          if (window.location.pathname !== "/play") {
+            window.location.assign("/play");
+          }
+        }, 900);
+      }
+    } catch (error) {
+      console.error("[create] failed to initialize character", error);
+      submitInFlightRef.current = false;
+      setSubmitError("开卷失败，请重试。");
       setSubmitting(false);
     }
-
-    void trackGameplayEvent({
-      eventName: "create_character_success",
-      sessionId: guestId,
-      page: "/create",
-      source: "create_page",
-      idempotencyKey: `create_character_success:${guestId}:${cleanName}`,
-      payload: {
-        name: cleanName,
-        gender,
-        height: cleanHeight,
-      },
-    }).catch(() => {});
-
-    router.push("/play");
   }
 
   return (
@@ -303,7 +323,7 @@ export function CreateCharacterForm() {
             type="submit"
             data-testid="create-submit-button"
             disabled={!canSubmit || submitting}
-            className="h-[56px] min-h-[56px] rounded-[16px] text-[28px]"
+            className="h-[56px] min-h-[56px] touch-manipulation rounded-[16px] text-[28px]"
           >
             <span className="absolute left-7 text-[#c8c5bd]" aria-hidden>
               ✦

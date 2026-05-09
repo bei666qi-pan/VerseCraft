@@ -61,10 +61,10 @@ export function classifyPlayTurnFailure(args: {
 }
 
 export function getPlayTurnFailureMessage(kind: PlayTurnFailureKind): string {
-  if (kind === "site_busy") return "当前网站生成通道繁忙，请稍后重试；本回合未提交。";
-  if (kind === "network_or_gateway") return "网站响应超时或网关连接不稳定，请稍后重试；本回合未提交。";
-  if (kind === "auth_or_config") return "本回合未提交，请稍后重试。";
-  return "本回合未提交，请稍后重试或换个行动。";
+  if (kind === "site_busy") return "当前网站生成通道繁忙，请稍后重试。";
+  if (kind === "network_or_gateway") return "网站响应超时或网关连接不稳定，请稍后重试。";
+  if (kind === "auth_or_config") return "当前账号或配置状态需要刷新，请稍后重试。";
+  return "这次回复没有形成可用回合，请重试同一行动或换个更具体的说法。";
 }
 
 export function shouldShowFailureAsNarrative(kind: PlayTurnFailureKind): boolean {

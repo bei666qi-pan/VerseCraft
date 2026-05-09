@@ -209,10 +209,7 @@ function decide(issues: readonly NarrativeSafetyIssue[]): NarrativeSafetyDecisio
   if (issues.some((issue) => issue.severity === "high" && BLOCK_COMMIT_CODES.has(issue.code))) {
     return "block_commit";
   }
-  if (issues.some((issue) => issue.severity === "high")) {
-    return "fallback";
-  }
-  if (issues.some((issue) => issue.severity === "medium")) {
+  if (issues.some((issue) => issue.severity === "high" || issue.severity === "medium")) {
     return "repair";
   }
   return "pass";

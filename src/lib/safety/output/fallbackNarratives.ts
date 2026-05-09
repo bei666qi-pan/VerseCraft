@@ -1,20 +1,25 @@
-import type { RiskLevel, ModerationDecision, ModerationScene, ModerationStage } from "@/lib/safety/policy/model";
+import type {
+  RiskLevel,
+  ModerationDecision,
+  ModerationScene,
+  ModerationStage,
+} from "@/lib/safety/policy/model";
+import {
+  isVisibleSafetyDegradeReason,
+  VISIBLE_SAFETY_DEGRADE_MESSAGE,
+} from "@/lib/security/visibleSafety";
 
 const EMPTY_OPTIONS: string[] = [];
 
 function truncate(s: string, max = 1200): string {
   const t = s.trim();
   if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
-}
-
-function isExplicitSafetyReason(reasonCode: string): boolean {
-  return /sexual|explicit|gore|violence|violent|illegal|harm|legal_redline|self_harm/i.test(reasonCode);
+  return `${t.slice(0, max - 1)}...`;
 }
 
 function privateStoryOutputFallback(reasonCode: string): string {
-  if (isExplicitSafetyReason(reasonCode)) return "本回合涉及涉黄、涉暴或违法伤害内容，不能继续。";
-  return "本回合未提交，请换个行动继续。";
+  if (isVisibleSafetyDegradeReason(reasonCode)) return VISIBLE_SAFETY_DEGRADE_MESSAGE;
+  return "这一步已做安全改写，请继续当前行动。";
 }
 
 export function buildOutputFallback(args: {
@@ -30,7 +35,7 @@ export function buildOutputFallback(args: {
   if (isProviderFailureFallback) {
     if (scene === "private_story_output") {
       return {
-        narrative: truncate("本回合未提交，请稍后重试。", 400),
+        narrative: truncate("网站生成通道暂时繁忙，请稍后重试。", 400),
         options: [...EMPTY_OPTIONS],
       };
     }

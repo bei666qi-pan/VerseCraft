@@ -37,16 +37,13 @@
  *       with `delta.isActionLegal === false` or `delta.mustDegrade === true`
  *       (e.g. combat move on a degraded turn).
  *
- * When any issue fires, the validator tries a *narrow* rewrite:
- *   - If options are the problem, propose a `optionsOverride` drawn from the
- *     safe fallback list.
- *   - If the narrative leaks DM-only facts or has a reveal tier breach, the
- *     safest answer is a non-story retry shell; we expose
- *     that via `narrativeOverride`.
+ * When any issue fires, the validator stays non-blocking for player-visible
+ * prose. It may clear invalid options so the caller can regenerate them, but
+ * narrative governance issues are reported through telemetry and structured
+ * commit gates rather than replacing the story text.
  *
  * The caller (`commitTurn`) is responsible for applying overrides.
  */
-import { buildImmersiveGuardFallback, nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
 import {
   validateNarrativeStyle,
@@ -179,7 +176,6 @@ export type ValidateNarrativeArgs = {
   /** Risk tags from control preflight; used only for telemetry detail. */
   riskTags?: readonly string[];
   /** Safe-narrative message used for high-severity fallback. */
-  safeFallbackMessage?: string;
   /**
    * Phase-5: bridged telemetry from `applyNpcConsistencyPostGeneration` so this
    * report becomes the single post-generation source of truth. When > 0 we
@@ -693,12 +689,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   let narrativeOverride: string | null = null;
 
   if (hasHigh) {
-    const safeMessage =
-      args.safeFallbackMessage ??
-      buildImmersiveGuardFallback();
-    narrativeOverride = nonNarrativeTurnGuardDmJson(safeMessage, {
-      reason: "narrative_validator_high_severity",
-    });
+    narrativeOverride = null;
   } else if (hasMediumOptionsIssue || hasOptionsShapeIssue) {
     // 不再注入罐头短句；用空数组作为“需要重新生成实时选项”的显式信号。
     // caller（api/chat 的 Phase-8.5）会在看到非空 optionsOverride 为空数组时，
@@ -738,8 +729,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     unsupportedRelationshipClaimCount:
       unsupportedFactReport?.telemetry.byCode.unsupported_relationship_claim ?? 0,
     factCommitRejectedCount: 0,
-    narrativeGovernanceFinalSafe:
-      !issues.some((issue) => issue.severity === "high") || narrativeOverride !== null,
+    narrativeGovernanceFinalSafe: !issues.some((issue) => issue.severity === "high"),
     optionsOverrideApplied: optionsOverride !== null,
     safeNarrativeFallbackApplied: narrativeOverride !== null,
   };

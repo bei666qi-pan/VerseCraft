@@ -13,9 +13,9 @@ import type { PacingValidationReport } from "@/lib/turnEngine/pacing";
 
 function issue(overrides: Partial<NarrativeSafetyIssue> = {}): NarrativeSafetyIssue {
   return {
-    code: "unsupported_root_cause_claim",
+    code: "npc_knows_forbidden_fact",
     severity: "high",
-    source: "unsupportedFactDetector",
+    source: "npcKnowledgeValidator",
     detail: "redacted detail",
     ...overrides,
   };
@@ -33,7 +33,7 @@ function safetyReport(issues: NarrativeSafetyIssue[]): NarrativeSafetyReport {
   return {
     ok: issues.length === 0,
     decision: issues.some((item) => item.severity === "high")
-      ? "fallback"
+      ? "repair"
       : issues.some((item) => item.severity === "medium")
         ? "repair"
         : "pass",
@@ -106,7 +106,7 @@ test("shadow mode records high issues without fallback or block", () => {
   assert.equal(plan.shouldBlockCommit, false);
 });
 
-test("hard mode blocks high non-entity issues", () => {
+test("hard mode repairs high non-entity issues without fallback or commit block", () => {
   const plan = planNarrativeSafetyEnforcement({
     safetyReport: safetyReport([issue()]),
     policy: {
@@ -117,13 +117,38 @@ test("hard mode blocks high non-entity issues", () => {
     },
   });
 
-  assert.equal(plan.decision, "block_commit");
-  assert.equal(plan.shouldFallback, true);
-  assert.equal(plan.shouldBlockCommit, true);
-  assert.equal(plan.highSeverityBlocked, true);
+  assert.equal(plan.decision, "repair");
+  assert.equal(plan.shouldFallback, false);
+  assert.equal(plan.shouldBlockCommit, false);
+  assert.equal(plan.highSeverityBlocked, false);
 });
 
-test("soft mode falls back for high non-entity issues without blocking commit", () => {
+test("hard mode strips structured writes when safety report asks for block_commit", () => {
+  const report = safetyReport([
+    issue({
+      code: "unsupported_root_cause_claim",
+      invariant: "unsupported_root_cause_claim",
+      severity: "high",
+      source: "unsupportedFactDetector",
+    }),
+  ]);
+  report.decision = "block_commit";
+  const plan = planNarrativeSafetyEnforcement({
+    safetyReport: report,
+    policy: {
+      kernelEnabled: true,
+      mode: "hard",
+      entityHardGateEnabled: true,
+      pacingValidatorEnabled: true,
+    },
+  });
+
+  assert.equal(plan.decision, "block_commit");
+  assert.equal(plan.shouldFallback, false);
+  assert.equal(plan.shouldBlockCommit, true);
+});
+
+test("soft mode repairs high non-entity issues without fallback", () => {
   const plan = planNarrativeSafetyEnforcement({
     safetyReport: safetyReport([issue()]),
     policy: {
@@ -134,8 +159,8 @@ test("soft mode falls back for high non-entity issues without blocking commit", 
     },
   });
 
-  assert.equal(plan.decision, "fallback");
-  assert.equal(plan.shouldFallback, true);
+  assert.equal(plan.decision, "repair");
+  assert.equal(plan.shouldFallback, false);
   assert.equal(plan.shouldBlockCommit, false);
 });
 
@@ -222,7 +247,8 @@ test("pacing validator switch controls pacing hard gates", () => {
     },
   });
 
-  assert.equal(enabledPlan.pacingHardGateTriggered, true);
+  assert.equal(enabledPlan.pacingHardGateTriggered, false);
+  assert.equal(enabledPlan.decision, "repair");
   assert.equal(disabledPlan.pacingHardGateTriggered, false);
   assert.equal(disabledPlan.shouldBlockCommit, false);
 });

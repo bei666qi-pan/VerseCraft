@@ -141,10 +141,6 @@ function hasPacingMediumOrHighIssue(report: PacingValidationReport | null | unde
   return Boolean(report?.issues.some((issue) => issue.severity === "high" || issue.severity === "medium"));
 }
 
-function hasHighSafetyIssue(report: NarrativeSafetyReport | null | undefined): boolean {
-  return Boolean(report?.issues.some((issue) => issue.severity === "high"));
-}
-
 export function isZeroToleranceEntityIssue(issue: NarrativeSafetyIssue): boolean {
   return ZERO_TOLERANCE_ENTITY_CODES.has(issue.code);
 }
@@ -166,14 +162,9 @@ export function planNarrativeSafetyEnforcement(args: {
   const issues = args.safetyReport?.issues ?? [];
   const enabled = policy.kernelEnabled;
   const mode = policy.mode;
-  const laneRequiresHardGate = policy.laneRequiresHardGate !== false;
   const hasMediumOrHighSafety = hasIssue(
     issues,
     (issue) => issue.severity === "high" || issue.severity === "medium"
-  );
-  const hasHighNonEntitySafety = hasIssue(
-    issues,
-    (issue) => issue.severity === "high" && !isZeroToleranceEntityIssue(issue)
   );
   const entityHardGateTriggered =
     enabled &&
@@ -184,26 +175,16 @@ export function planNarrativeSafetyEnforcement(args: {
     enabled &&
     mode !== "shadow" &&
     hasIssue(issues, (issue) => issue.severity !== "low" && isPromptInjectionIssue(issue));
-  const pacingHardGateTriggered =
+  const reportBlockCommitTriggered =
     enabled &&
-    mode === "hard" &&
+    mode !== "shadow" &&
+    args.safetyReport?.decision === "block_commit";
+  const pacingNeedsRepair =
+    enabled &&
     policy.pacingValidatorEnabled &&
-    laneRequiresHardGate &&
-    hasPacingHighIssue(args.pacingReport);
-  const highSeverityBlocked =
-    enabled &&
-    mode === "hard" &&
-    laneRequiresHardGate &&
-    hasHighNonEntitySafety;
-  const softFallback =
-    enabled &&
-    mode === "soft" &&
-    (hasMediumOrHighSafety || (policy.pacingValidatorEnabled && hasPacingMediumOrHighIssue(args.pacingReport)));
-  const hardFallback =
-    enabled &&
-    mode === "hard" &&
-    laneRequiresHardGate &&
-    (hasHighSafetyIssue(args.safetyReport) || (policy.pacingValidatorEnabled && hasPacingHighIssue(args.pacingReport)));
+    (hasPacingHighIssue(args.pacingReport) || hasPacingMediumOrHighIssue(args.pacingReport));
+  const highSeverityBlocked = false;
+  const pacingHardGateTriggered = false;
 
   if (!enabled) {
     return {
@@ -236,9 +217,9 @@ export function planNarrativeSafetyEnforcement(args: {
   const shouldBlockCommit =
     entityHardGateTriggered ||
     promptInjectionBlocked ||
-    pacingHardGateTriggered ||
-    highSeverityBlocked;
-  const shouldFallback = shouldBlockCommit || softFallback || hardFallback;
+    reportBlockCommitTriggered;
+  const shouldFallback = false;
+  const needsRepair = hasMediumOrHighSafety || pacingNeedsRepair || (args.pacingReport?.issues.length ?? 0) > 0;
   return {
     enabled,
     mode,
@@ -248,6 +229,6 @@ export function planNarrativeSafetyEnforcement(args: {
     pacingHardGateTriggered,
     promptInjectionBlocked,
     highSeverityBlocked,
-    decision: shouldBlockCommit ? "block_commit" : shouldFallback ? "fallback" : issues.length > 0 ? "repair" : "pass",
+    decision: shouldBlockCommit ? "block_commit" : needsRepair || issues.length > 0 ? "repair" : "pass",
   };
 }

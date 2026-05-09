@@ -21,7 +21,6 @@
  * actually flushed to the client".
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
-import { buildImmersiveGuardFallback, nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -198,10 +197,6 @@ function applyNarrativeOverride(
   } catch {
     return base;
   }
-}
-
-function hasHighValidatorIssue(report: NarrativeValidationReport): boolean {
-  return report.issues.some((issue) => issue.severity === "high");
 }
 
 function countSafetyIssues(
@@ -422,8 +417,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     pacingReport: args.pacingReport,
     policy: args.safetyPolicy,
   });
-  const hardBlockFromSafety =
-    safetyEnforcement.shouldBlockCommit || hasHighValidatorIssue(validatorReport);
+  const hardBlockFromSafety = safetyEnforcement.shouldBlockCommit;
   const hardBlockFromPacing = safetyEnforcement.pacingHardGateTriggered;
   const hardBlockCommit =
     hardBlockFromSafety ||
@@ -432,16 +426,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   if (hardBlockFromSafety) flags.add("safety_hard_gate_blocked");
   if (hardBlockFromPacing) flags.add("pacing_hard_gate_blocked");
 
-  const shouldApplySafetyFallback =
-    safetyEnforcement.shouldFallback && safetyEnforcement.mode !== "shadow";
-  const effectiveNarrativeOverride =
-    validatorReport.narrativeOverride ??
-    (hardBlockCommit || shouldApplySafetyFallback
-      ? nonNarrativeTurnGuardDmJson(buildImmersiveGuardFallback(), {
-          requestId: args.requestId,
-          reason: "turn_commit_hard_gate",
-        })
-      : null);
+  const effectiveNarrativeOverride = validatorReport.narrativeOverride ?? null;
 
   if (effectiveNarrativeOverride) {
     committed = applyNarrativeOverride(committed, effectiveNarrativeOverride, {

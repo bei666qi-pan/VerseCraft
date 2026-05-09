@@ -12,7 +12,6 @@ import type { NormalizedPlayerIntent } from "@/lib/turnEngine/types";
 import { buildNpcKnowledgePacket } from "@/lib/npcKnowledge/npcKnowledgeResolver";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import { REVEAL_TIER_RANK } from "@/lib/registry/revealTierRank";
-import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
 
 function makeRejectedReasons(): EpistemicFilterResult["telemetry"]["rejectedReasons"] {
   return {
@@ -108,7 +107,7 @@ test("validateNarrative extracts overlapping CJK keywords", () => {
   assert.ok(keywords.includes("锚闭环"));
 });
 
-test("validateNarrative flags DM-only fact leak in narrative and falls back", () => {
+test("validateNarrative flags DM-only fact leak without narrative fallback", () => {
   const filter = makeFilter({
     // Cast because the brand is nominal-only and we do not re-run filterFacts here.
     dmOnlyFacts: [makeFact("七锚闭环的根因在于纠错员") as never],
@@ -133,13 +132,8 @@ test("validateNarrative flags DM-only fact leak in narrative and falls back", ()
   );
   assert.equal(report.ok, false);
   assert.ok(report.issues.some((x) => x.code === "dm_only_fact_leaked_in_narrative"));
-  assert.ok(report.narrativeOverride, "high severity should produce safe narrative fallback");
-  const override = JSON.parse(report.narrativeOverride ?? "{}") as Record<string, unknown>;
-  assert.equal(override.narrative, NARRATIVE_GUARD_IMMERSIVE_FALLBACK);
-  assert.equal(String(override.narrative ?? "").includes(["未写入", "剧情状态"].join("")), false);
-  assert.equal(String(override.narrative).includes("老人"), false);
-  assert.equal(String(override.narrative).includes("摩擦声"), false);
-  assert.equal(report.telemetry.safeNarrativeFallbackApplied, true);
+  assert.equal(report.narrativeOverride, null);
+  assert.equal(report.telemetry.safeNarrativeFallbackApplied, false);
 });
 
 test("validateNarrative ignores low-signal scene overlap in DM-only facts", () => {
@@ -389,10 +383,10 @@ test("validateNarrative bridges unsupported fact detector", () => {
   );
   assert.ok(report.issues.some((x) => x.code === "unsupported_root_cause_claim"));
   assert.ok((report.telemetry.unsupportedFactIssueCount ?? 0) > 0);
-  assert.ok(report.narrativeOverride);
+  assert.equal(report.narrativeOverride, null);
 });
 
-test("validateNarrative falls back when root cause has no allowed root fact", () => {
+test("validateNarrative flags root cause without allowed root fact without narrative fallback", () => {
   const report = validateNarrative(
     baseArgs({
       dmRecord: {
@@ -406,7 +400,7 @@ test("validateNarrative falls back when root cause has no allowed root fact", ()
     })
   );
   assert.ok(report.issues.some((issue) => issue.code === "unsupported_root_cause_claim" && issue.severity === "high"));
-  assert.ok(report.narrativeOverride);
+  assert.equal(report.narrativeOverride, null);
 });
 
 test("validateNarrative flags relationship claim without fact or edge", () => {
@@ -485,7 +479,7 @@ test("validateNarrative maps reveal tier breach fact id to high issue for root f
     })
   );
   assert.ok(report.issues.some((issue) => issue.code === "fact_id_not_allowed" && issue.severity === "high"));
-  assert.ok(report.narrativeOverride);
+  assert.equal(report.narrativeOverride, null);
 });
 
 test("validateNarrative records candidate_new_facts without making them committed facts", () => {

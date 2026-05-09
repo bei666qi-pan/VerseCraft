@@ -23,4 +23,8 @@ test("only network and busy failures can be shown in narrative strip", () => {
   assert.equal(shouldShowFailureAsNarrative("site_busy"), true);
   assert.equal(shouldShowFailureAsNarrative("internal"), false);
   assert.equal(getPlayTurnFailureMessage("internal").includes("网络"), false);
+  assert.equal(getPlayTurnFailureMessage("internal").includes("本回合未提交"), false);
+  assert.equal(getPlayTurnFailureMessage("auth_or_config").includes("本回合未提交"), false);
+  assert.equal(getPlayTurnFailureMessage("network_or_gateway").includes("本回合未提交"), false);
+  assert.equal(getPlayTurnFailureMessage("site_busy").includes("本回合未提交"), false);
 });

@@ -13,6 +13,7 @@ import { sanitizeNarrativeForOutput } from "@/lib/safety/output/sanitizer";
 import { buildOutputFallback } from "@/lib/safety/output/fallbackNarratives";
 import { writeOutputAuditEvent, buildOutputActorHashes } from "@/lib/safety/output/audit";
 import { fingerprintText } from "@/lib/safety/input/audit";
+import { isVisibleSafetyDegradeReason } from "@/lib/security/visibleSafety";
 
 function resolveOutputFailMode(stage: ModerationStage): "fail_soft" | "fail_closed" {
   const privateMode = (envRaw("VC_OUTPUT_FAIL_MODE_PRIVATE") ?? "fail_soft").trim();
@@ -204,6 +205,16 @@ export async function auditDmOutputCandidateOnServer(args: {
       const sanitized = sanitizeNarrativeForOutput({ scene, narrative: String(updatedDmRecord.narrative ?? "") });
       updatedDmRecord.narrative = sanitized.narrative;
       if (sanitized.usedRewrite) rewriteUsed = true;
+    } else if (
+      evalResult.decision === "fallback" &&
+      scene === "private_story_output" &&
+      !isVisibleSafetyDegradeReason(evalResult.reasonCode)
+    ) {
+      verdict = "rewrite";
+      rewriteUsed = true;
+      const sanitized = sanitizeNarrativeForOutput({ scene, narrative: String(updatedDmRecord.narrative ?? "") });
+      updatedDmRecord.narrative = sanitized.narrative;
+      if (sanitized.usedRewrite) rewriteUsed = true;
     } else if (evalResult.decision === "fallback") {
       verdict = "fallback";
       fallbackUsed = true;
@@ -217,6 +228,17 @@ export async function auditDmOutputCandidateOnServer(args: {
       });
       updatedDmRecord.narrative = fb.narrative;
       if (fb.options) updatedDmRecord.options = fb.options;
+    } else if (
+      evalResult.decision === "reject" &&
+      scene === "private_story_output" &&
+      !isVisibleSafetyDegradeReason(evalResult.reasonCode)
+    ) {
+      verdict = "rewrite";
+      decision = "rewrite";
+      rewriteUsed = true;
+      const sanitized = sanitizeNarrativeForOutput({ scene, narrative: String(updatedDmRecord.narrative ?? "") });
+      updatedDmRecord.narrative = sanitized.narrative;
+      if (sanitized.usedRewrite) rewriteUsed = true;
     } else if (evalResult.decision === "reject") {
       verdict = "reject";
       reasonCode = evalResult.reasonCode;

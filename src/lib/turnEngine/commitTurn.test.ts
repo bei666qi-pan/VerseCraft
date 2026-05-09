@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { commitTurn } from "@/lib/turnEngine/commitTurn";
 import { emptyStateDelta } from "@/lib/turnEngine/computeStateDelta";
-import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyReport,
@@ -44,7 +43,7 @@ function okReport(): NarrativeValidationReport {
 function safetyReport(
   issues: NarrativeSafetyIssue[],
   decision: NarrativeSafetyReport["decision"] = issues.some((issue) => issue.severity === "high")
-    ? "fallback"
+    ? "repair"
     : issues.some((issue) => issue.severity === "medium")
       ? "repair"
       : "pass"
@@ -340,7 +339,7 @@ test("commitTurn blocks relationship updates with an unknown NPC id", () => {
   assert.ok(result.summary.blockedCommitFields.includes("accepted_delta"));
 });
 
-test("commitTurn applies safe fallback and writes no state on high root cause leak", () => {
+test("commitTurn strips state but keeps narrative on high root cause leak", () => {
   const result = commitTurn({
     requestId: "req_root_cause",
     sessionId: "s_1",
@@ -372,18 +371,15 @@ test("commitTurn applies safe fallback and writes no state on high root cause le
     ),
   });
 
-  assert.notEqual(result.committedDmRecord.narrative, "公寓根因就是七锚闭环。");
-  assert.equal(result.committedDmRecord.narrative, NARRATIVE_GUARD_IMMERSIVE_FALLBACK);
-  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("guard"), false);
-  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("老人"), false);
+  assert.equal(result.committedDmRecord.narrative, "公寓根因就是七锚闭环。");
   assert.equal(result.committedDmRecord.new_tasks, undefined);
   assert.equal(result.committedDmRecord.player_location, undefined);
   assert.equal(result.summary.deltaSummary.newTasks, 0);
   assert.equal(result.summary.playerLocation, null);
-  assert.equal(result.summary.fallbackApplied, true);
+  assert.equal(result.summary.fallbackApplied, false);
 });
 
-test("commitTurn applies safe fallback and writes no npc updates on offscreen direct speech", () => {
+test("commitTurn strips npc updates but keeps narrative on offscreen direct speech", () => {
   const result = commitTurn({
     requestId: "req_offscreen_speech",
     sessionId: "s_1",
@@ -413,12 +409,8 @@ test("commitTurn applies safe fallback and writes no npc updates on offscreen di
 
   assert.equal(result.committedDmRecord.npc_location_updates, undefined);
   assert.equal(result.summary.deltaSummary.npcLocationUpdates, 0);
-  assert.equal(result.summary.safeNarrativeFallbackApplied, true);
-  assert.equal(result.committedDmRecord.narrative, NARRATIVE_GUARD_IMMERSIVE_FALLBACK);
-  assert.equal(String(result.committedDmRecord.narrative ?? "").includes(["请换", "一种方式重试"].join("")), false);
-  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("老人"), false);
-  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("叙事安全边界"), false);
-  assert.equal(String(result.committedDmRecord.narrative ?? "").includes("触及安全边界"), false);
+  assert.equal(result.summary.safeNarrativeFallbackApplied, false);
+  assert.equal(result.committedDmRecord.narrative, "N-002说：我就在门外。");
 });
 
 test("commitTurn records low style drift without blocking commit", () => {
@@ -535,7 +527,7 @@ test("commitTurn disabled safety policy returns to the legacy no-op safety path"
   assert.equal(meta.turn_commit.safety_policy.decision, "pass");
 });
 
-test("commitTurn soft mode falls back for high non-entity issue but keeps state fields", () => {
+test("commitTurn soft mode strips state but keeps narrative for block_commit safety report", () => {
   const result = commitTurn({
     requestId: "req_soft_root",
     sessionId: "s_1",
@@ -573,10 +565,11 @@ test("commitTurn soft mode falls back for high non-entity issue but keeps state 
     },
   });
 
-  assert.notEqual(result.committedDmRecord.narrative, "The root truth is stated without evidence.");
-  assert.deepEqual(result.committedDmRecord.new_tasks, [{ taskId: "T_SOFT", title: "Track the clue" }]);
+  assert.equal(result.committedDmRecord.narrative, "The root truth is stated without evidence.");
+  assert.equal(result.committedDmRecord.new_tasks, undefined);
+  assert.equal(result.committedDmRecord.player_location, undefined);
   assert.equal(result.summary.degraded, true);
-  assert.equal(result.summary.fallbackApplied, true);
-  assert.ok(!result.summary.commitFlags.includes("safety_hard_gate_blocked"));
-  assert.deepEqual(result.summary.blockedCommitFields, []);
+  assert.equal(result.summary.fallbackApplied, false);
+  assert.ok(result.summary.commitFlags.includes("safety_hard_gate_blocked"));
+  assert.ok(result.summary.blockedCommitFields.includes("new_tasks"));
 });

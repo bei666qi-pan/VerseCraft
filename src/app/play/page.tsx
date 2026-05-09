@@ -3013,7 +3013,7 @@ function PlayContent() {
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
         setLiveNarrative("");
-        setFirstTimeHint("本回合未提交，请重试同一行动或换个更具体的说法。");
+        setFirstTimeHint("这次回复没有形成可用回合，请重试同一行动或换个更具体的说法。");
         return;
       }
       if (resolved.failure === "protocol_guard_rejected") {
@@ -3021,7 +3021,7 @@ function PlayContent() {
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
         setLiveNarrative("");
-        setFirstTimeHint("本回合未提交，请重试同一行动或换个更具体的说法。");
+        setFirstTimeHint("这次回复没有形成可用回合，请重试同一行动或换个更具体的说法。");
         return;
       }
       useGameStore.getState().pushLog({
@@ -4278,6 +4278,7 @@ function PlayContent() {
   const isCodexPanelActive = activeMenu === "codex";
   const isSettingsPanelActive = activeMenu === "settings";
   const isStoryPanelActive = activeMenu === null;
+  const isOverlayPanelActive = isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive;
   const isReviewingChapter = chapterRuntime.isReviewing && isStoryPanelActive;
   const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
   const chapterInteractionLocked = Boolean(pendingChapterEnd);
@@ -4399,19 +4400,19 @@ function PlayContent() {
 
       <div
         className={
-          isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive
+          isOverlayPanelActive
             ? "relative h-[calc(var(--vc-vh,1svh)_*_100)] min-h-0 overflow-hidden"
             : "relative min-h-[calc((var(--vc-vh,1svh)_*_100)_-_var(--vc-mobile-header-height))]"
         }
       >
         <div
           className={
-            isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive
-              ? "relative h-full min-h-0 overflow-hidden bg-transparent"
+            isOverlayPanelActive
+              ? "relative h-full min-h-0 overflow-hidden bg-transparent [&_[data-testid=mobile-action-dock]]:hidden [&_[data-testid=mobile-options-dropdown]]:hidden [&_[data-testid=mobile-options-empty-state]]:hidden [&_[data-testid=mobile-story-viewport]]:invisible"
               : "relative bg-transparent"
           }
         >
-          {isCharacterPanelActive ? (
+          {!isOverlayPanelActive && isCharacterPanelActive ? (
             <MobileCharacterPanel
               stats={stats}
               historicalMaxSanity={historicalMaxSanity}
@@ -4423,14 +4424,14 @@ function PlayContent() {
                 upgradeAttribute(attr);
               }}
             />
-          ) : isCodexPanelActive ? (
+          ) : !isOverlayPanelActive && isCodexPanelActive ? (
             <MobileCodexPanel
               codex={codex}
               dynamicNpcStates={dynamicNpcStates}
               mainThreatByFloor={mainThreatByFloor}
               playerLocation={playerLocation}
             />
-          ) : isSettingsPanelActive ? (
+          ) : !isOverlayPanelActive && isSettingsPanelActive ? (
             <MobileSettingsPanel
               audioMuted={audioMuted}
               chapterState={chapterRuntime.chapterState}
@@ -4639,6 +4640,56 @@ function PlayContent() {
               ) : null}
             </>
           )}
+          {isOverlayPanelActive ? (
+            <div className="absolute inset-0 z-20 h-full min-h-0 overflow-hidden bg-transparent">
+              {isCharacterPanelActive ? (
+                <MobileCharacterPanel
+                  stats={stats}
+                  historicalMaxSanity={historicalMaxSanity}
+                  originium={originium}
+                  time={time}
+                  playerLocation={playerLocation}
+                  currentProfession={professionState.currentProfession}
+                  onUpgradeAttribute={(attr) => {
+                    upgradeAttribute(attr);
+                  }}
+                />
+              ) : isCodexPanelActive ? (
+                <MobileCodexPanel
+                  codex={codex}
+                  dynamicNpcStates={dynamicNpcStates}
+                  mainThreatByFloor={mainThreatByFloor}
+                  playerLocation={playerLocation}
+                />
+              ) : isSettingsPanelActive ? (
+                <MobileSettingsPanel
+                  audioMuted={audioMuted}
+                  chapterState={chapterRuntime.chapterState}
+                  onExitGame={() => setShowExitModal(true)}
+                  onReturnToActiveChapter={() => {
+                    runChapterPageTurn("return", () => {
+                      chapterRuntime.returnToActiveChapter();
+                    }, { scrollEnd: true });
+                    setActiveMenu(null);
+                  }}
+                  onReviewChapter={(chapterId) => {
+                    runChapterPageTurn("previous", () => {
+                      chapterRuntime.reviewChapter(chapterId);
+                    });
+                    setActiveMenu(null);
+                  }}
+                  onSetReadingPreference={setReadingPreference}
+                  onToggleMute={() => {
+                    toggleMute();
+                    setAudioMuted(isMuted());
+                  }}
+                  readingPreferences={readingPreferences}
+                  setVolume={handleSetVolume}
+                  volume={volume}
+                />
+              ) : null}
+            </div>
+          ) : null}
           <ChapterNavigator
             open={chapterNavigatorOpen && isStoryPanelActive}
             chapterState={chapterRuntime.chapterState}
