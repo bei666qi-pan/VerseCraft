@@ -27,7 +27,7 @@ test("protocolGuard: detect excessive escaped protocol residue", () => {
 test("protocolGuard: sanitize and degrade leaked narrative", () => {
   const out = sanitizeNarrativeLeakageForFinal('正文 {"is_action_legal":true,"consumes_time":false}');
   assert.equal(out.degraded, true);
-  assert.equal(out.narrative.includes("协议污染"), true);
+  assert.equal(out.narrative, "本回合输出未提交，请重试同一行动。");
 });
 
 test("protocolGuard: strips minimax tool_call blocks from narrative", () => {

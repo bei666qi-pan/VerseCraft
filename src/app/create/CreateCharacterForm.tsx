@@ -164,7 +164,7 @@ export function CreateCharacterForm() {
     <VerseCraftPaperFrame contentClassName="pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">
       <form
         data-testid="create-character-page"
-        className="relative mx-auto flex min-h-[100dvh] w-full flex-col"
+        className="relative mx-auto flex min-h-[calc(var(--vc-vh,1svh)_*_100)] w-full flex-col overflow-x-hidden"
         onSubmit={(event) => {
           event.preventDefault();
           void handleSubmit();
@@ -293,7 +293,7 @@ export function CreateCharacterForm() {
           <CreateTalentGrid selectedTalent={selectedTalent} onSelectTalent={setSelectedTalent} />
         </section>
 
-        <footer className="mt-5">
+        <footer className="mt-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {submitMessage ? (
             <p data-testid="create-submit-error" className="mb-3 text-center vc-reading-serif text-[16px] leading-relaxed text-[#8d5854]">
               {submitMessage}

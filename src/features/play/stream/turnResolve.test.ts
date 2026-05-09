@@ -49,8 +49,7 @@ test("resolveTurnFromSse: salvage narrative should be dropped when protocol guar
   const raw = '{"narrative":"正常句子后拼接 {\\"is_death\\":false,\\"consumes_time\\":true}","oops":';
   const out = resolveTurnFromSse({ sseDocumentText: sse, rawDm: raw });
   assert.equal(out.dm, null);
-  // fail-closed：不透传污染正文；但允许输出“已拦截”的安全提示，避免整回合空白。
-  assert.equal(out.narrative.includes("拦截") || out.narrative === "", true);
+  assert.equal(out.narrative === "本回合输出未提交，请重试同一行动。" || out.narrative === "", true);
   assert.equal(out.source === "none" || out.source === "narrative_only", true);
 });
 

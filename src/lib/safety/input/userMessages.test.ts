@@ -1,16 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildUserFacingMessage } from "./userMessages";
-import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
 
-test("private_story_action reject：回退提示不是本地剧情模板", () => {
+test("private_story_action reject returns explicit safety text without narrative fallback", () => {
   const res = buildUserFacingMessage({
     scene: "private_story_action",
     verdict: { decision: "reject" } as any,
   });
-  assert.ok(res.narrativeFallback, "应提供 narrativeFallback");
-  assert.equal(res.narrativeFallback, NARRATIVE_GUARD_IMMERSIVE_FALLBACK);
-  assert.equal(String(res.narrativeFallback).includes("当前行动"), false);
-  assert.equal(String(res.narrativeFallback).includes("我收回念头"), false);
-  assert.equal(String(res.narrativeFallback).includes("叙事边界"), false);
+  assert.equal(res.narrativeFallback, undefined);
+  assert.match(res.message, /涉黄、涉暴|违法伤害/);
+});
+
+test("private_story_action rewrite is short procedural text", () => {
+  const res = buildUserFacingMessage({
+    scene: "private_story_action",
+    verdict: { decision: "rewrite" } as any,
+  });
+  assert.equal(res.narrativeFallback, undefined);
+  assert.equal(res.message.includes("系统"), false);
 });

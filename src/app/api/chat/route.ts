@@ -107,7 +107,6 @@ import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
 import {
-  buildImmersiveGuardFallback,
   nonNarrativeTurnGuardDmJson,
   safeBlockedDmJson,
 } from "@/lib/security/policy";
@@ -690,7 +689,7 @@ export async function POST(req: Request) {
                     `${VERSECRAFT_FINAL_PREFIX}${JSON.stringify({
                       is_action_legal: false,
                       sanity_damage: 0,
-                      narrative: "游戏主脑暂时离线，请稍后再试。",
+                      narrative: "本回合未生成，请稍后再试。",
                       is_death: false,
                       consumes_time: true,
                     })}`
@@ -927,6 +926,29 @@ async function postChatInternal(req: Request) {
   });
   ttftProfile.moderateInputOnServerMs = elapsedMs(inputSafetyStartAt);
   if (inputSafety.decision === "reject") {
+    const inputSafetyDebug =
+      inputSafety.debug && typeof inputSafety.debug === "object" && !Array.isArray(inputSafety.debug)
+        ? (inputSafety.debug as Record<string, unknown>)
+        : {};
+    const inputSafetyVerdict =
+      inputSafetyDebug.verdict && typeof inputSafetyDebug.verdict === "object" && !Array.isArray(inputSafetyDebug.verdict)
+        ? (inputSafetyDebug.verdict as Record<string, unknown>)
+        : {};
+    const inputSafetyReasonCode =
+      typeof inputSafetyVerdict.reasonCode === "string" && inputSafetyVerdict.reasonCode.trim()
+        ? inputSafetyVerdict.reasonCode.trim()
+        : "input_reject";
+    const inputSafetyLocalRisk =
+      inputSafetyVerdict.debug && typeof inputSafetyVerdict.debug === "object" && !Array.isArray(inputSafetyVerdict.debug)
+        ? ((inputSafetyVerdict.debug as Record<string, unknown>).localRisk as unknown)
+        : null;
+    const inputSafetyTags =
+      inputSafetyLocalRisk && typeof inputSafetyLocalRisk === "object" && !Array.isArray(inputSafetyLocalRisk)
+        ? ((inputSafetyLocalRisk as Record<string, unknown>).tags as unknown)
+        : null;
+    const inputSafetyCategory = Array.isArray(inputSafetyTags)
+      ? inputSafetyTags.filter((tag): tag is string => typeof tag === "string").join("|")
+      : inputSafetyReasonCode;
     recordHighRisk({ ip: clientIp, sessionId, userId }, `input_reject:${inputSafety.traceId}`);
     return createSseResponse({
       requestId,
@@ -936,7 +958,9 @@ async function postChatInternal(req: Request) {
         stage: "pre_input",
         riskLevel: "gray",
         requestId,
-        reason: "input_reject",
+        reason: `input_reject:${inputSafetyReasonCode}`,
+        reasonCode: inputSafetyReasonCode,
+        category: inputSafetyCategory,
       }),
     });
   }
@@ -2259,7 +2283,7 @@ async function postChatInternal(req: Request) {
     const degradedPayloadAscii = JSON.stringify({
       is_action_legal: false,
       sanity_damage: 0,
-      narrative: "AI gateway keys are missing. The turn was not generated.",
+      narrative: "当前未配置可用的大模型通道，本回合未生成。",
       is_death: false,
       consumes_time: true,
     });
@@ -2285,7 +2309,7 @@ async function postChatInternal(req: Request) {
   }
 
   const FALLBACK_NARRATIVE =
-    "游戏主脑暂时离线，请稍后再试。";
+    "本回合未生成，请稍后再试。";
   const enableStatusFrames = envBoolean("AI_CHAT_ENABLE_STATUS_FRAMES", true);
   const SSE_HEADERS = buildSseHeaders(requestId);
 
@@ -3630,11 +3654,7 @@ async function postChatInternal(req: Request) {
               scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
               actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
               factDetectionMaxRevealRank: maxRevealRankForMemory,
-              safeFallbackMessage: buildImmersiveGuardFallback({
-                playerContext,
-                latestUserInput,
-                reason: "narrative_validator_repair_failed",
-              }),
+              safeFallbackMessage: "本回合未提交，请换个行动继续。",
             });
           let validatorReport = runNarrativeValidator(candidateRec);
           const usedFactIdsForSafety = Array.isArray(narrativeAudit.used_fact_ids)
@@ -3871,10 +3891,7 @@ async function postChatInternal(req: Request) {
                   },
                 ],
                 narrativeOverride: nonNarrativeTurnGuardDmJson(
-                  buildImmersiveGuardFallback({
-                    playerContext,
-                    reason: "narrative_safety_kernel_high_severity",
-                  }),
+                  "本回合未提交，请换个行动继续。",
                   {
                     requestId,
                     reason: "narrative_safety_kernel_high_severity",
@@ -4321,10 +4338,10 @@ async function postChatInternal(req: Request) {
 
           if (outputAudit.verdict === "reject") {
             const reason = outputAudit.reasonCode || "output_reject";
-            const blockedMessage = buildImmersiveGuardFallback({
-              playerContext,
-              reason,
-            });
+            const blockedMessage =
+              /sexual|explicit|gore|violence|violent|illegal|harm|legal_redline|self_harm/i.test(reason)
+                ? "本回合涉及涉黄、涉暴或违法伤害内容，不能继续。"
+                : "本回合未提交，请换个行动继续。";
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
             writeAuditTrail({
@@ -4388,10 +4405,12 @@ async function postChatInternal(req: Request) {
             summary: blockedAuditSummary,
           });
 
-          const narrative = buildImmersiveGuardFallback({
-            playerContext,
-            reason: finalModeration.result.reason,
-          });
+          const narrative =
+            /sexual|explicit|gore|violence|violent|illegal|harm|legal_redline|self_harm/i.test(
+              finalModeration.result.reason
+            )
+              ? "本回合涉及涉黄、涉暴或违法伤害内容，不能继续。"
+              : "本回合未提交，请换个行动继续。";
 
           await writer.write(
             sse(

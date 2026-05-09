@@ -20,11 +20,11 @@ export function VerseCraftPaperFrame({
   fixedViewport?: boolean;
 }) {
   const frameClassName = fixedViewport
-    ? "h-[100svh] min-h-[100svh] overflow-hidden sm:h-auto sm:min-h-[100dvh] sm:overflow-x-hidden sm:overflow-y-visible"
-    : "min-h-[100dvh] overflow-x-hidden";
+    ? "h-[calc(var(--vc-vh,1svh)_*_100)] min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-hidden sm:h-auto sm:min-h-[calc(var(--vc-vh,1svh)_*_100)] sm:overflow-x-hidden sm:overflow-y-visible"
+    : "min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-x-hidden";
   const contentFrameClassName = fixedViewport
-    ? "h-full min-h-0 sm:h-auto sm:min-h-[100dvh]"
-    : "min-h-[100dvh]";
+    ? "h-full min-h-0 sm:h-auto sm:min-h-[calc(var(--vc-vh,1svh)_*_100)]"
+    : "min-h-[calc(var(--vc-vh,1svh)_*_100)]";
 
   return (
     <main

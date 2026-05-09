@@ -75,6 +75,8 @@ export function safeBlockedDmJson(
     riskLevel?: "normal" | "gray" | "black";
     requestId?: string;
     reason?: string;
+    reasonCode?: string;
+    category?: string;
   }
 ): string {
   return JSON.stringify({
@@ -93,6 +95,8 @@ export function safeBlockedDmJson(
       risk_level: meta?.riskLevel ?? "gray",
       request_id: meta?.requestId ?? "",
       reason: meta?.reason ?? "blocked_by_policy",
+      reason_code: meta?.reasonCode ?? meta?.reason ?? "blocked_by_policy",
+      category: meta?.category ?? "",
     },
   });
 }

@@ -1,7 +1,5 @@
 import type { RiskLevel, ModerationDecision, ModerationScene, ModerationStage } from "@/lib/safety/policy/model";
-import { buildImmersiveGuardFallback } from "@/lib/security/policy";
 
-// 降级场景不内置本地选项，仍交给模型选项链路实时补齐。
 const EMPTY_OPTIONS: string[] = [];
 
 function truncate(s: string, max = 1200): string {
@@ -10,8 +8,13 @@ function truncate(s: string, max = 1200): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-function privateStoryFallback(max = 900): string {
-  return truncate(buildImmersiveGuardFallback(), max);
+function isExplicitSafetyReason(reasonCode: string): boolean {
+  return /sexual|explicit|gore|violence|violent|illegal|harm|legal_redline|self_harm/i.test(reasonCode);
+}
+
+function privateStoryOutputFallback(reasonCode: string): string {
+  if (isExplicitSafetyReason(reasonCode)) return "本回合涉及涉黄、涉暴或违法伤害内容，不能继续。";
+  return "本回合未提交，请换个行动继续。";
 }
 
 export function buildOutputFallback(args: {
@@ -22,12 +25,12 @@ export function buildOutputFallback(args: {
   reasonCode: string;
   isProviderFailureFallback: boolean;
 }): { narrative: string; options?: string[] } {
-  const { scene, stage, isProviderFailureFallback } = args;
+  const { scene, stage, reasonCode, isProviderFailureFallback } = args;
 
   if (isProviderFailureFallback) {
     if (scene === "private_story_output") {
       return {
-        narrative: truncate(buildImmersiveGuardFallback(), 900),
+        narrative: truncate("本回合未提交，请稍后重试。", 400),
         options: [...EMPTY_OPTIONS],
       };
     }
@@ -43,14 +46,14 @@ export function buildOutputFallback(args: {
 
   if (scene === "private_story_output") {
     return {
-      narrative: privateStoryFallback(900),
+      narrative: truncate(privateStoryOutputFallback(reasonCode), 900),
       options: [...EMPTY_OPTIONS],
     };
   }
 
   if (scene === "codex_text") {
     return {
-      narrative: truncate("图鉴条目暂时只保留更抽象的记录：现象仍在，细节需要等更可靠的线索补上。", 600),
+      narrative: truncate("图鉴条目暂时只保留更抽象的记录，细节需要等更可靠的线索补上。", 600),
     };
   }
 
@@ -67,6 +70,6 @@ export function buildOutputFallback(args: {
   }
 
   return {
-    narrative: truncate(buildImmersiveGuardFallback(), 400),
+    narrative: truncate(privateStoryOutputFallback(reasonCode), 400),
   };
 }

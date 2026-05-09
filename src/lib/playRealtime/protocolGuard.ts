@@ -122,7 +122,7 @@ export function sanitizeNarrativeLeakageForFinal(raw: string): NarrativeSanitize
   const post = analyzeNarrativeLeak(cleaned);
   if (!cleaned || post.hasLeak) {
     return {
-      narrative: "本回合输出疑似协议污染，已拦截写回。请重试同一行动。",
+      narrative: "本回合输出未提交，请重试同一行动。",
       degraded: true,
       flags: post.flags.length > 0 ? post.flags : ["embedded_dm_key"],
     };

@@ -52,6 +52,12 @@ import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConst
 import { PROFESSION_IDS } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
 import { localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
+import { shouldShowComplianceHintForDmMeta } from "@/features/play/safetyCompliance";
+import {
+  classifyPlayTurnFailure,
+  getPlayTurnFailureMessage,
+  shouldShowFailureAsNarrative,
+} from "@/features/play/turnFailurePolicy";
 import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
 import { sanitizeNarrativeDisplayMarkers } from "@/features/play/render/narrative";
 import {
@@ -348,32 +354,7 @@ function dmIndicatesRecoverableModelRateLimit(dm: unknown): boolean {
 }
 
 function shouldShowComplianceHintForDm(dm: unknown, isOpeningSystemRequest: boolean): boolean {
-  if (isOpeningSystemRequest) return false;
-  if (!dm || typeof dm !== "object" || Array.isArray(dm)) return false;
-  const record = dm as { is_action_legal?: unknown; security_meta?: unknown };
-  const meta =
-    record.security_meta && typeof record.security_meta === "object" && !Array.isArray(record.security_meta)
-      ? (record.security_meta as Record<string, unknown>)
-      : null;
-  const reason = String(meta?.reason ?? "").toLowerCase();
-  const stage = String(meta?.stage ?? "").toLowerCase();
-  const action = String(meta?.action ?? "").toLowerCase();
-  const riskLevel = String(meta?.risk_level ?? meta?.riskLevel ?? "").toLowerCase();
-  const nonSafetyReasons =
-    /narrative_validator|narrative_safety_kernel|turn_commit|fact_commit|npc_consistency|dm_only|root_cause|offscreen|unregistered|style_drift|pacing/.test(
-      reason
-    );
-  if (nonSafetyReasons) return false;
-
-  const safetySignal =
-    /(pre_input|final_output|risk_control)/.test(stage) ||
-    /(blocked_by_policy|input_reject|output_reject|moderation|policy|sexual|violence|violent|illegal|self_harm|drugs|risk_control|rate|quota|banned|forbidden)/.test(
-      reason
-    ) ||
-    riskLevel === "black";
-  if (safetySignal) return true;
-  if (record.is_action_legal === false && action && action !== "allow" && action !== "review") return true;
-  return false;
+  return shouldShowComplianceHintForDmMeta(dm, isOpeningSystemRequest);
 }
 
 function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undefined {
@@ -653,6 +634,7 @@ function PlayContent() {
   const hasTriggeredResume = useRef(false);
   const hasShownManualInputComplianceHintRef = useRef(false);
   const hasShownProfessionEligibleHintRef = useRef(false);
+  const hasShownComplianceHintThisSessionRef = useRef(false);
   const complianceHintTimerRef = useRef<number | null>(null);
   const userScrolledUpRef = useRef(false);
   /**
@@ -1036,6 +1018,8 @@ function PlayContent() {
   }, [firstTimeHint]);
 
   const triggerComplianceHint = useCallback(() => {
+    if (hasShownComplianceHintThisSessionRef.current) return;
+    hasShownComplianceHintThisSessionRef.current = true;
     if (complianceHintTimerRef.current) {
       window.clearTimeout(complianceHintTimerRef.current);
     }
@@ -2679,15 +2663,19 @@ function PlayContent() {
         commitLocalEndingFinaleFallback();
         return;
       }
-      if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
-        if (fetchDeadlineState.hit) {
-          setLiveNarrative(
-            "等待服务器首包超时：本回合在服务端会依次经过安全审查、数据库与控制预检，再连接大模型（上游失败时还会自动重试，整体可能超过数分钟）。若多次出现，请检查本机 PostgreSQL、网络与 `.env.local` 中的大模型 Key；也可稍后再试。"
-          );
-        }
-        return;
+      const failureKind = classifyPlayTurnFailure({
+        errorName: fetchErr instanceof Error ? fetchErr.name : undefined,
+        errorMessage: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
+        deadlineHit: fetchDeadlineState.hit,
+      });
+      const message = getPlayTurnFailureMessage(failureKind);
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      if (shouldShowFailureAsNarrative(failureKind)) {
+        setLiveNarrative(message);
+      } else {
+        setLiveNarrative("");
+        setFirstTimeHint(message);
       }
-      setLiveNarrative("世界推演连接发生波动，请稍后再试。");
       return;
     } finally {
       if (fetchDeadlineTimer !== undefined) {
@@ -2807,22 +2795,28 @@ function PlayContent() {
         return;
       }
 
-      const msg = res.status === 429 || res.status === 503
-        ? "当前生成通道仍然繁忙，请稍后再试。"
-        : res.status === 403
-          ? "当前连接被拒绝。请确认你的身份后再试。"
-          : (res.status === 502 && (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403))
-            ? "推演服务鉴权失败：请检查服务端大模型密钥与环境配置。"
-          : res.status === 504
-            ? "世界推演回应超时（504），请稍后再试。"
-          : "世界推演连接发生波动，请稍后再试。";
-      setLiveNarrative(msg);
+      const failureKind = classifyPlayTurnFailure({
+        status: res.status,
+        upstreamStatus,
+        code,
+        reason,
+        body: errorText,
+      });
+      const message = getPlayTurnFailureMessage(failureKind);
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      if (shouldShowFailureAsNarrative(failureKind)) {
+        setLiveNarrative(message);
+      } else {
+        setLiveNarrative("");
+        setFirstTimeHint(message);
+      }
       return;
     }
 
     if (!res.body) {
       setStreamPhase("idle");
-      setLiveNarrative("世界推演连接发生波动，请稍后再试。");
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
       return;
     }
 
@@ -2936,21 +2930,17 @@ function PlayContent() {
       if (err?.message === "STREAM_STALL_TIMEOUT") {
         console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
         setStreamPhase("idle");
-        setLiveNarrative("上游长时间无响应，已停止等待。请检查网络或稍后重试。");
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
         return;
       }
       if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
         streamCancelled = true;
       } else {
-        // Treat unknown stream read errors as potential safety intercept / broken stream.
         console.error("[/api/chat] stream read error", readErr);
-        try {
-          useGameStore.getState().triggerSecurityFallback("stream_read_error");
-        } catch {
-          // ignore
-        }
         narrativeRef.current = "";
-        setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
         setStreamPhase("idle");
         return;
       }
@@ -2969,13 +2959,10 @@ function PlayContent() {
       const looksLikeJsonFragment = typeof raw === "string" && raw.includes("{") && raw.includes("\"narrative\"");
       const looksTruncated = looksLikeJsonFragment && !raw.trimEnd().endsWith("}");
       if (looksTruncated) {
-        try {
-          useGameStore.getState().triggerSecurityFallback("stream_aborted_with_truncated_json");
-        } catch {
-          // ignore
-        }
         narrativeRef.current = "";
-        setLiveNarrative("{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}");
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
+        return;
       }
       return;
     }
@@ -3024,12 +3011,19 @@ function PlayContent() {
         setStreamPhase("idle");
         // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
         narrativeRef.current = "";
-        setLiveNarrative(
-          "本回合剧情数据格式异常，未写入日志与结算。请重试同一行动，或切换到手动输入后再试。"
-        );
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        setLiveNarrative("");
+        setFirstTimeHint("本回合未提交，请重试同一行动或换个更具体的说法。");
         return;
       }
-      // 仅正文可恢复：先写入 assistant 日志，避免“回合白玩了”；结构化结算跳过，但不影响继续游玩。
+      if (resolved.failure === "protocol_guard_rejected") {
+        setStreamPhase("idle");
+        narrativeRef.current = "";
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        setLiveNarrative("");
+        setFirstTimeHint("本回合未提交，请重试同一行动或换个更具体的说法。");
+        return;
+      }
       useGameStore.getState().pushLog({
         role: "assistant",
         content: salvage.slice(0, 50000),
@@ -4406,8 +4400,8 @@ function PlayContent() {
       <div
         className={
           isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive
-            ? "relative h-[100svh] min-h-0 overflow-hidden"
-            : "relative min-h-[calc(100svh-var(--vc-mobile-header-height))]"
+            ? "relative h-[calc(var(--vc-vh,1svh)_*_100)] min-h-0 overflow-hidden"
+            : "relative min-h-[calc((var(--vc-vh,1svh)_*_100)_-_var(--vc-mobile-header-height))]"
         }
       >
         <div
@@ -4744,7 +4738,7 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
   }, [isHydrated, isGameStarted, router]);
 
   return (
-    <div className="relative min-h-[100svh] bg-[#f6f2ec]">
+    <div className="relative min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-x-hidden bg-[#f6f2ec]">
       {isHydrated && isGameStarted ? <PlayContent /> : null}
       {!isHydrated && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-[#f6f2ec]">

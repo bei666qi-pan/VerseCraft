@@ -40,7 +40,7 @@ export const mobileReadingTokens = {
   },
   layout: {
     maxShellWidth: "480px",
-    minViewportHeight: "100svh",
+    minViewportHeight: "calc(var(--vc-vh, 1svh) * 100)",
   },
   typography: {
     serifClassName: "vc-reading-serif",
@@ -52,10 +52,10 @@ export type MobileReadingTokens = typeof mobileReadingTokens;
 
 export const mobileReadingTheme = {
   shellFrame:
-    "flex min-h-[100svh] w-full justify-center overflow-x-hidden bg-[#f6f2ec]",
+    "flex min-h-[calc(var(--vc-vh,1svh)_*_100)] w-full justify-center overflow-x-hidden bg-[#f6f2ec]",
   shell:
-    "vc-reading-surface relative flex min-h-[100svh] w-full max-w-[480px] flex-col overflow-x-hidden text-[#174d46] shadow-[0_0_70px_rgba(76,65,51,0.12)] transition-all duration-1000 md:border-x md:border-[#ded8ce]",
-  shellBody: "relative isolate min-h-[100svh] overflow-visible",
+    "vc-reading-surface relative flex min-h-[calc(var(--vc-vh,1svh)_*_100)] w-full max-w-[480px] flex-col overflow-x-hidden text-[#174d46] shadow-[0_0_70px_rgba(76,65,51,0.12)] transition-all duration-1000 md:border-x md:border-[#ded8ce]",
+  shellBody: "relative isolate min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-visible",
 
   header:
     "sticky top-0 z-40 box-border h-[var(--vc-mobile-header-height)] border-b border-[#ded8ce] bg-[#fbf8f2] px-6 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))] text-[#174d46] shadow-[0_8px_22px_rgba(67,55,42,0.08)]",

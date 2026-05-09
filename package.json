@@ -46,6 +46,7 @@
     "test:e2e:chat": "playwright test e2e/chat-sse-contract.spec.ts",
     "test:e2e:mock": "playwright test e2e/chat-latency-budget.spec.ts e2e/chat-sse-contract.spec.ts",
     "test:e2e:contract": "playwright test e2e/chat-sse-contract.spec.ts e2e/chat-latency-budget.spec.ts e2e/play-open.spec.ts",
+    "verify:main-ai-live": "tsx scripts/verify-main-ai-live.ts",
     "ship": "node deploy.sh",
     "probe:ai-gateway": "tsx scripts/probe-ai-gateway.ts",
     "debug:gateway-json-stream": "tsx scripts/debug-gateway-json-stream.ts",

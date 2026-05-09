@@ -5,6 +5,10 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
 import { createResilientIdbStorage } from "@/lib/resilientStorage";
 import {
+  mergePersistedStateAfterHydrationDeadline,
+  type StorageMode,
+} from "@/lib/state/hydrationMode";
+import {
   checksumMiddleware,
   createStateChecksum,
   type IntegrityMetaState,
@@ -495,6 +499,7 @@ export interface GameState extends IntegrityMetaState {
   /** 最多 5 个用户可见记录；auto_* 恢复槽不占展示名额 */
   saveSlots: Record<string, SaveSlotData>;
   isHydrated: boolean;
+  storageMode: StorageMode;
   user: AuthUser | null;
   guestId: string | null;
   isGuest: boolean;
@@ -640,6 +645,7 @@ export interface GameState extends IntegrityMetaState {
   consumeClientAction: () => { text: string; autoSend: boolean; source: "weapon" | "system" } | null;
   triggerSecurityFallback: (reason?: string) => void;
   setHydrated: (state: boolean) => void;
+  setStorageMode: (mode: StorageMode) => void;
   setVolume: (volume: number) => void;
   setReadingPreference: <K extends ReadingPreferenceKey>(key: K, value: ReadingPreferences[K]) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
@@ -1023,6 +1029,7 @@ export const useGameStore = create<GameState>()(
       currentSaveSlot: "main_slot",
       saveSlots: {},
       isHydrated: false,
+      storageMode: "normal",
       user: null,
       guestId: createGuestId(),
       isGuest: true,
@@ -1134,6 +1141,7 @@ export const useGameStore = create<GameState>()(
       },
 
       setHydrated: (state) => set({ isHydrated: state }),
+      setStorageMode: (mode) => set({ storageMode: mode }),
       setBgm: (track) => set({ currentBgm: track }),
       setVolume: (vol) => set({ volume: clampVolume(vol) }),
       setReadingPreference: (key, value) =>
@@ -1229,7 +1237,7 @@ export const useGameStore = create<GameState>()(
           return {
             securityFallback: {
               active: true,
-              message: "{{BLOOD}}禁止输出非法词语！！！{{/BLOOD}}",
+              message: "该内容涉及涉黄、涉暴或违法伤害，不能继续。",
               at: Date.now(),
               reason,
             },
@@ -4009,14 +4017,17 @@ export const useGameStore = create<GameState>()(
       migrate: migratePersistedState,
       storage: createJSONStorage(() => createDebouncedStorage(idbStorage, 1000)),
       skipHydration: true,
+      merge: (persistedState, currentState) =>
+        mergePersistedStateAfterHydrationDeadline(persistedState, currentState),
       /** 捕获反序列化/持久化过程中的静默错误，确保生命周期闭环，避免永远 pending */
       onRehydrateStorage: () => (state, error) => {
         if (error != null) {
           console.warn("[useGameStore] Rehydration error, falling back to initial state:", error);
+          useGameStore.getState().setStorageMode("degraded");
         }
         useGameStore.getState().setHydrated(true);
       },
-      // Excludes transient UI: isHydrated, currentOptions, recentOptions, inputMode, intrusionFlashUntil
+      // Excludes transient UI: isHydrated, storageMode, currentOptions, recentOptions, inputMode, intrusionFlashUntil
       partialize: (s) => ({
         currentSaveSlot: s.currentSaveSlot,
         saveSlots: s.saveSlots ?? {},

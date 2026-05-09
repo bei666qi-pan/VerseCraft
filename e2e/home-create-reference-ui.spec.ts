@@ -176,6 +176,11 @@ test.describe("paper reference UI", () => {
 
       await page.getByTestId("quick-create-character").click();
       await expect(page.getByTestId("create-submit-button")).toBeEnabled();
+      await page.getByTestId("create-submit-button").click();
+      await expect(page).toHaveURL(/\/play(?:$|[?#/])/, { timeout: 30_000 });
+      await expect(page.locator("body")).toBeVisible();
+      await expect(page.locator("text=Application error")).toHaveCount(0);
+      await expectNoHorizontalOverflow(page);
     });
   }
 

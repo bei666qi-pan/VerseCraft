@@ -3,7 +3,7 @@
 // getItem 必须严格返回 string | null，绝不能将非字符串脏数据传给 Zustand 导致 JSON.parse 崩溃。
 
 import type { StateStorage } from "zustand/middleware";
-import { get, set, del, clear } from "idb-keyval";
+import { get, set, del } from "idb-keyval";
 
 const GET_ITEM_TIMEOUT_MS = 3000;
 const SET_ITEM_TIMEOUT_MS = 5000;
@@ -70,13 +70,24 @@ function probeIdbAvailable(): Promise<boolean> {
   });
 }
 
-function dispatchStorageDegraded(): void {
+export function notifyStorageDegraded(message?: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.dispatchEvent(new CustomEvent("storage-degraded"));
+    window.dispatchEvent(new CustomEvent("storage-degraded", { detail: { message } }));
   } catch {
     /* ignore */
   }
+}
+
+export function resolveStorageFallbackValue(
+  idbResult: unknown,
+  localValue: string | null,
+  memoryValue: string | undefined
+): string | null {
+  if (typeof idbResult === "string") return idbResult;
+  if (typeof localValue === "string") return localValue;
+  if (typeof memoryValue === "string") return memoryValue;
+  return null;
 }
 
 function getLocalItem(name: string): string | null {
@@ -115,15 +126,16 @@ export function createResilientIdbStorage(): StateStorage {
         const canUseIdb = await probeIdbAvailable();
         if (canUseIdb) {
           const idbResult = await withTimeout(get(name), GET_ITEM_TIMEOUT_MS);
-          if (idbResult != null && typeof idbResult === "string") return idbResult;
           if (idbResult != null && typeof idbResult !== "string") {
             try {
-              await withTimeout(clear(), 1000);
+              await withTimeout(del(name), 1000);
             } catch {
               /* ignore */
             }
-            return getLocalItem(name) ?? memoryCache.get(name) ?? null;
+            notifyStorageDegraded("本地存储数据格式异常，已隔离当前存档缓存");
           }
+          const resolved = resolveStorageFallbackValue(idbResult, getLocalItem(name), memoryCache.get(name));
+          if (resolved !== null) return resolved;
         }
         const local = getLocalItem(name);
         if (typeof local === "string") return local;
@@ -131,12 +143,12 @@ export function createResilientIdbStorage(): StateStorage {
         return typeof mem === "string" ? mem : null;
       } catch {
         try {
-          await withTimeout(clear(), 1000);
+          await withTimeout(del(name), 1000);
         } catch {
           /* ignore */
         }
-        removeLocalItem(name);
-        return memoryCache.get(name) ?? null;
+        notifyStorageDegraded("本地存储读取较慢，已进入临时恢复模式");
+        return getLocalItem(name) ?? memoryCache.get(name) ?? null;
       }
     },
 
@@ -152,7 +164,7 @@ export function createResilientIdbStorage(): StateStorage {
       } catch {
         if (setLocalItem(name, value)) return;
       }
-      dispatchStorageDegraded();
+      notifyStorageDegraded();
     },
 
     removeItem: async (name: string): Promise<void> => {

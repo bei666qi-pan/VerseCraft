@@ -5,6 +5,7 @@ import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
 import ChunkErrorHandler from "@/components/ChunkErrorHandler";
 import { MobileChromeTheme } from "@/components/MobileChromeTheme";
+import ViewportRuntimeVars from "@/components/ViewportRuntimeVars";
 import { envRawFirst } from "@/lib/config/envRaw";
 
 export const metadata: Metadata = {
@@ -31,8 +32,9 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body
-        className="min-h-screen flex flex-col bg-[#f7f3ec] text-foreground antialiased"
+        className="flex min-h-[calc(var(--vc-vh,1svh)_*_100)] flex-col overflow-x-hidden bg-[#f7f3ec] text-foreground antialiased"
       >
+        <ViewportRuntimeVars />
         <MobileChromeTheme />
         <StorageDegradedBanner />
         <ChunkErrorHandler />

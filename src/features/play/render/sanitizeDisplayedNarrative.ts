@@ -1,4 +1,4 @@
-export const DISPLAY_NARRATIVE_FALLBACK = "本回合叙事数据异常，已自动拦截，请重试。";
+export const DISPLAY_NARRATIVE_FALLBACK = "本回合输出未提交，请重试同一行动。";
 
 function countMatches(text: string, re: RegExp): number {
   const m = text.match(re);
