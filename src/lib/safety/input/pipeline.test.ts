@@ -32,7 +32,7 @@ test("feedback_input: obvious script payload => reject by precheck", async () =>
   assert.equal(r.decision, "reject");
 });
 
-test("private_story_action: contact info in private => fallback (soft rewrite)", async () => {
+test("private_story_action: contact info in private => rewrite without narrative fallback", async () => {
   const r = await moderateInputOnServer({
     scene: "private_story_action",
     text: "我想联系我微信号，问问你接下来怎么走。",
@@ -40,7 +40,7 @@ test("private_story_action: contact info in private => fallback (soft rewrite)",
     sessionIdHash: "s1",
     ipHash: "i1",
   });
-  assert.equal(r.decision, "fallback");
+  assert.equal(r.decision, "rewrite");
   // safetyRewriteForInput should remove obvious contact patterns.
   assert.ok(!String(r.text ?? "").includes("微信"), `rewritten=${String(r.text ?? "")}`);
   assert.ok(r.userMessage.length > 0);

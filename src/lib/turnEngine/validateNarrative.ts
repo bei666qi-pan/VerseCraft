@@ -46,7 +46,7 @@
  *
  * The caller (`commitTurn`) is responsible for applying overrides.
  */
-import { nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
+import { buildImmersiveGuardFallback, nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
 import {
   validateNarrativeStyle,
@@ -693,7 +693,9 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   let narrativeOverride: string | null = null;
 
   if (hasHigh) {
-    const safeMessage = args.safeFallbackMessage;
+    const safeMessage =
+      args.safeFallbackMessage ??
+      buildImmersiveGuardFallback();
     narrativeOverride = nonNarrativeTurnGuardDmJson(safeMessage, {
       reason: "narrative_validator_high_severity",
     });

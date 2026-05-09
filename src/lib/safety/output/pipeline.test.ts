@@ -101,19 +101,20 @@ test("public_display: provider failure + fail_closed => reject (hard block)", as
   assert.equal(r.decision, "reject");
 });
 
-test("private_story_output: contact info in narrative => fallback narrative (world-safe)", async () => {
+test("private_story_output: contact info in narrative => rewrite in place", async () => {
   const dm = baseDmRecord("我只想留个方式：微信联系后再说。然后继续靠近。");
 
   const r = await auditDmOutputCandidateOnServer({
     dmRecord: dm,
     sceneKind: "private_story_output",
-    traceId: "t-contact-fallback",
+    traceId: "t-contact-rewrite",
     providerSignalsOverride: [],
   });
 
-  assert.equal(r.verdict, "fallback");
-  assert.equal(r.decision, "fallback");
-  assert.equal(r.fallbackUsed, true);
+  assert.equal(r.verdict, "rewrite");
+  assert.equal(r.decision, "rewrite");
+  assert.equal(r.fallbackUsed, false);
+  assert.equal(r.rewriteUsed, true);
   // Should keep structured fields intact.
   assert.deepEqual(r.updatedDmRecord.task_updates, dm.task_updates);
   const narrative = String(r.updatedDmRecord.narrative ?? "");

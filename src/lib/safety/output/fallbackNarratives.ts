@@ -1,5 +1,5 @@
 import type { RiskLevel, ModerationDecision, ModerationScene, ModerationStage } from "@/lib/safety/policy/model";
-import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
+import { buildImmersiveGuardFallback } from "@/lib/security/policy";
 
 // 降级场景不内置本地选项，仍交给模型选项链路实时补齐。
 const EMPTY_OPTIONS: string[] = [];
@@ -11,7 +11,7 @@ function truncate(s: string, max = 1200): string {
 }
 
 function privateStoryFallback(max = 900): string {
-  return truncate(NARRATIVE_GUARD_IMMERSIVE_FALLBACK, max);
+  return truncate(buildImmersiveGuardFallback(), max);
 }
 
 export function buildOutputFallback(args: {
@@ -27,7 +27,7 @@ export function buildOutputFallback(args: {
   if (isProviderFailureFallback) {
     if (scene === "private_story_output") {
       return {
-        narrative: truncate(NARRATIVE_GUARD_IMMERSIVE_FALLBACK, 900),
+        narrative: truncate(buildImmersiveGuardFallback(), 900),
         options: [...EMPTY_OPTIONS],
       };
     }
@@ -67,6 +67,6 @@ export function buildOutputFallback(args: {
   }
 
   return {
-    narrative: truncate(NARRATIVE_GUARD_IMMERSIVE_FALLBACK, 400),
+    narrative: truncate(buildImmersiveGuardFallback(), 400),
   };
 }

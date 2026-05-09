@@ -64,7 +64,7 @@ import {
   isStreamVisualActivePhase,
 } from "@/features/play/stream/chatPhase";
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
-import { extractCodexMentionsFromNarrative } from "@/lib/registry/codexAutoCapture";
+import { extractCodexMentionsFromDmRecord } from "@/lib/registry/codexAutoCapture";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
 import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
@@ -3332,7 +3332,10 @@ function PlayContent() {
 
     // 兜底：若叙事中提及了已注册的 NPC/诡异，但 DM 未回写 codex_updates，也自动写入图鉴目录。
     try {
-      const autoEntries = extractCodexMentionsFromNarrative(narrativeToPush, { maxMatches: 10 });
+      const autoEntries = extractCodexMentionsFromDmRecord(
+        { ...(parsed as Record<string, unknown>), narrative: narrativeToPush },
+        { maxMatches: 10 }
+      );
       if (autoEntries.length > 0) {
         const curCodex = useGameStore.getState().codex ?? {};
         const missing = autoEntries.filter((e) => !(String(e.id) in curCodex));

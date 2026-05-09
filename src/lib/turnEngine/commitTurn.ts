@@ -21,7 +21,7 @@
  * actually flushed to the client".
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
-import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK, nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
+import { buildImmersiveGuardFallback, nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -82,8 +82,6 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "offscreen_npc_direct_speech",
   "npc_status_forbidden_direct_speech",
 ]);
-
-const TURN_GUARD_FALLBACK_MESSAGE = NARRATIVE_GUARD_IMMERSIVE_FALLBACK;
 
 export type TurnCommitFlag =
   | "options_rewrite_applied"
@@ -439,7 +437,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   const effectiveNarrativeOverride =
     validatorReport.narrativeOverride ??
     (hardBlockCommit || shouldApplySafetyFallback
-      ? nonNarrativeTurnGuardDmJson(TURN_GUARD_FALLBACK_MESSAGE, {
+      ? nonNarrativeTurnGuardDmJson(buildImmersiveGuardFallback(), {
           requestId: args.requestId,
           reason: "turn_commit_hard_gate",
         })

@@ -1,7 +1,49 @@
 import type { ModerationResult, RiskDecision } from "@/lib/security/types";
 
 export const NARRATIVE_GUARD_IMMERSIVE_FALLBACK =
-  "我把快要成形的判断咽回去。门缝里的水声还在，灯管轻轻发响，像有人把这一秒按在原处，没有让它继续往下掉。那些细节暂时对不上：脚步声太远，墙上的影子也太薄，薄得不像能被一句话钉成事实。我只好先停住，掌心贴着冰凉的墙皮，把呼吸压低，等这层楼自己露出下一点破绽。远处的电梯没有亮，安全出口的绿光却晃了一下，像在提醒我，真正能确认的东西还留在眼前。再往前一步之前，我得先把脚下这片潮湿看清。";
+  "眼前的动静没有断开，我把尚未坐实的判断压在心里，顺着能确认的细节继续往前探。";
+
+function compactVisibleText(value: unknown, max = 80): string {
+  const text = String(value ?? "")
+    .replace(/__VERSECRAFT_[A-Z_]+__:[\s\S]*$/g, "")
+    .replace(/[{}[\]"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  return text.length <= max ? text : text.slice(Math.max(0, text.length - max)).trim();
+}
+
+function inferSceneAnchor(args: { narrative?: unknown; playerContext?: unknown; latestUserInput?: unknown }): string {
+  const text = `${String(args.narrative ?? "")}\n${String(args.playerContext ?? "")}\n${String(args.latestUserInput ?? "")}`;
+  if (/电梯/.test(text)) return "电梯口的暗光";
+  if (/楼梯|台阶/.test(text)) return "楼梯间的回声";
+  if (/门|门缝|门锁/.test(text)) return "门边的细响";
+  if (/配电|灯|电线/.test(text)) return "灯管下的影子";
+  if (/水|潮|湿/.test(text)) return "脚边的潮意";
+  if (/走廊/.test(text)) return "走廊尽头的阴影";
+  return "眼前这片安静";
+}
+
+export function buildImmersiveGuardFallback(args: {
+  narrative?: unknown;
+  playerContext?: unknown;
+  latestUserInput?: unknown;
+  reason?: unknown;
+} = {}): string {
+  const anchor = inferSceneAnchor(args);
+  const tail = compactVisibleText(args.narrative, 64);
+  const intent = compactVisibleText(args.latestUserInput, 36);
+  if (intent && tail) {
+    return `我把「${intent}」留在动作里，没有急着把它说成已经发生的结果。${anchor}还贴着刚才那一幕，我顺着能确认的痕迹继续往前探。`;
+  }
+  if (intent) {
+    return `我把「${intent}」压低到更稳的节奏里。${anchor}还在，我一边确认退路，一边继续追着最近的动静走。`;
+  }
+  if (tail) {
+    return `${tail} 我没有把不确定的影子当成答案，只让呼吸稳下来，沿着眼前能确认的细节继续判断。`;
+  }
+  return NARRATIVE_GUARD_IMMERSIVE_FALLBACK;
+}
 
 export function riskDecision(result: ModerationResult): RiskDecision {
   if (result.decision === "block") {

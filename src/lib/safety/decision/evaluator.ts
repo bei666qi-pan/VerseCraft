@@ -120,7 +120,7 @@ export function evaluateModerationDecision(input: PolicyEvaluationInput): Policy
     };
   }
 
-  // 3) Public strict: contact/fraud -> hard block (public), soft block (private).
+  // 3) Public strict: contact/fraud -> hard block (public), safe rewrite (private).
   if (localRisk.tags.includes("fraud_scam") || localRisk.tags.includes("contact_info")) {
     if (strictPublic) {
       return {
@@ -131,7 +131,7 @@ export function evaluateModerationDecision(input: PolicyEvaluationInput): Policy
       };
     }
     return {
-      ...softBlockToFallback("private_fraud_or_contact", "私密剧情不允许引流或联系方式/诈骗内容"),
+      ...softBlockToRewrite("private_fraud_or_contact_rewrite", "私密剧情不允许引流或联系方式/诈骗内容，优先安全改写"),
       providerUsed: providers,
       whitelist,
       debug: { providerSignals, localRisk, strictPublic, failMode },

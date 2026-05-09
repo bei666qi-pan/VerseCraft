@@ -231,6 +231,19 @@ function buildSseFinalFrame() {
   })}\n\n`;
 }
 
+function buildNpcMentionWithoutCodexFrame() {
+  return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "配电间的门被人从里面顶住，老刘压低嗓子骂了一句，让你先别碰墙上的湿线。",
+    is_death: false,
+    consumes_time: true,
+    options,
+    codex_updates: [],
+    npc_location_updates: [],
+  })}\n\n`;
+}
+
 function buildDamagingSseFinalFrame(damage = 3) {
   return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
     is_action_legal: true,
@@ -300,6 +313,17 @@ async function installChatSseMock(page: Page) {
     });
   });
   return submittedActions;
+}
+
+async function installNpcMentionWithoutCodexMock(page: Page) {
+  await installQueueDisabledMock(page);
+  await page.route("**/api/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: buildNpcMentionWithoutCodexFrame(),
+    });
+  });
 }
 
 async function installDamagingChatSseMock(page: Page, damage = 3) {
@@ -958,6 +982,42 @@ test.describe("mobile reading UI", () => {
     await page.screenshot({ path: codexPath, fullPage: false });
     test.info().annotations.push({ type: "screenshot", description: codexPath });
   });
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 393, height: 852 },
+    { width: 430, height: 932 },
+  ]) {
+    test(`auto-captures registered NPC from final narrative without codex_updates at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openSeededPlay(page, {
+        playerLocation: "B1_SafeZone",
+        codex: {},
+      });
+      await installNpcMentionWithoutCodexMock(page);
+
+      await page.getByTestId("manual-action-input").fill("我靠近配电间，先听里面是谁。");
+      await Promise.all([
+        page.waitForRequest(isPlayerChatPost),
+        page.getByTestId("send-action-button").click(),
+      ]);
+      await expect(page.getByTestId("mobile-story-viewport")).toContainText("老刘", { timeout: 10_000 });
+
+      await page.getByTestId("bottom-nav-codex").click();
+      await expect(page.getByTestId("mobile-codex-panel")).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-008"] img')).not.toHaveAttribute(
+        "src",
+        CODEX_UNKNOWN_PLACEHOLDER_SRC
+      );
+      await page.locator('[data-testid="mobile-codex-card"][data-codex-id="N-008"]').click();
+      await expect(page.getByTestId("mobile-codex-detail-panel")).toContainText("电工老刘");
+      await expectPanelFillsViewportWithoutHeader(
+        page,
+        "mobile-codex-panel",
+        `${viewport.width}x${viewport.height}`
+      );
+    });
+  }
 
   test("shows runtime active threat anomalies on the current floor", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 });

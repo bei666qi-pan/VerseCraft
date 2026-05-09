@@ -18,12 +18,14 @@ export function sanitizeNarrativeForOutput(args: {
   const urlRe = /\bhttps?:\/\/[^\s]+/gi;
   const emailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
   const phoneCnRe = /(?:\+?86[-\s]?)?1[3-9]\d{9}/g;
+  const contactChannelRe = /(微信|V信|vx|QQ|电话|手机号|联系方式|加我|私聊|邮箱|网址|链接)/gi;
 
   const contactReplacement = "[已屏蔽联系方式/链接]";
   const beforeContact = out;
   out = replaceAll(urlRe, out, contactReplacement);
   out = replaceAll(emailRe, out, contactReplacement);
   out = replaceAll(phoneCnRe, out, contactReplacement);
+  out = replaceAll(contactChannelRe, out, contactReplacement);
   if (out !== beforeContact) usedRewrite = true;
 
   // 2) Step-by-step “how to” / operational abuse markers.

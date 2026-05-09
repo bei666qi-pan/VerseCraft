@@ -1,6 +1,6 @@
 import type { InputScene } from "@/lib/safety/input/scenes";
 import type { PolicyEvaluationResult } from "@/lib/safety/policy/model";
-import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
+import { buildImmersiveGuardFallback } from "@/lib/security/policy";
 
 export type UserFacingModerationMessage = {
   message: string;
@@ -43,20 +43,20 @@ export function buildUserFacingMessage(args: {
   if (args.scene === "private_story_action") {
     if (v.decision === "reject") {
       return {
-        message: "我停在原地，把这一步先收回来。",
-        narrativeFallback: NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
+        message: "我换了更稳妥的方式继续。",
+        narrativeFallback: buildImmersiveGuardFallback(),
       };
     }
     if (v.decision === "fallback") {
       return {
-        message: "我把危险的念头压下去，先确认眼前。",
-        narrativeFallback: NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
+        message: "我换了更稳妥的方式继续。",
+        narrativeFallback: buildImmersiveGuardFallback(),
       };
     }
     if (v.decision === "rewrite") {
       return {
         message: "我换了更稳妥的说法继续。",
-        narrativeFallback: NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
+        narrativeFallback: buildImmersiveGuardFallback(),
       };
     }
     return { message: "ok" };

@@ -38,6 +38,7 @@ import {
   generateMainReply,
   generateDecisionOptionsOnlyFallback,
   generateOptionsOnlyFallback,
+  repairNarrativeOnly,
   type EnhanceAfterMainStreamResult,
 } from "@/lib/ai/logicalTasks";
 import { resolvePlayerChatMaxTokensForNarrativeBudget } from "@/lib/ai/tasks/taskPolicy";
@@ -106,10 +107,11 @@ import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
 import {
-  NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
+  buildImmersiveGuardFallback,
   nonNarrativeTurnGuardDmJson,
   safeBlockedDmJson,
 } from "@/lib/security/policy";
+import { mergeAutoCapturedCodexUpdates } from "@/lib/registry/codexAutoCapture";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
@@ -3608,26 +3610,33 @@ async function postChatInternal(req: Request) {
                 (fact): fact is WorldFactCommitCandidate => Boolean(fact && typeof fact === "object" && !Array.isArray(fact))
               )
             : [];
-          const validatorReport = validateNarrative({
-            dmRecord: candidateRec,
-            delta: postStateDelta,
-            epistemicFilter: actorEpistemicFilter,
-            intent: normalizedIntent,
-            sceneNpcIds: presentNpcIdsForEpistemic ?? [],
-            riskTags: pipelineControl?.risk_tags ?? [],
-            npcConsistencyIssueCount,
-            narrativeStyleValidationEnabled: verseRollout.enableNarrativeStyleValidator,
-            narrativeStyleFocus: normalizedIntent.kind,
-            npcKnowledgeValidationEnabled: verseRollout.enableNpcKnowledgeValidator,
-            npcKnowledgePacket: npcKnowledgePacketForValidator,
-            speakerNpcId: focusNpcForPrompt,
-            npcKnowledgeMaxRevealRank: maxRevealRankForMemory,
-            unsupportedFactDetectionEnabled: verseRollout.enableWorldFactRegistry,
-            allowedFactIds: allowedWorldFactIdsForValidator,
-            scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
-            actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
-            factDetectionMaxRevealRank: maxRevealRankForMemory,
-          });
+          const runNarrativeValidator = (dmRecordForValidation: Record<string, unknown>): NarrativeValidationReport =>
+            validateNarrative({
+              dmRecord: dmRecordForValidation,
+              delta: postStateDelta,
+              epistemicFilter: actorEpistemicFilter,
+              intent: normalizedIntent,
+              sceneNpcIds: presentNpcIdsForEpistemic ?? [],
+              riskTags: pipelineControl?.risk_tags ?? [],
+              npcConsistencyIssueCount,
+              narrativeStyleValidationEnabled: verseRollout.enableNarrativeStyleValidator,
+              narrativeStyleFocus: normalizedIntent.kind,
+              npcKnowledgeValidationEnabled: verseRollout.enableNpcKnowledgeValidator,
+              npcKnowledgePacket: npcKnowledgePacketForValidator,
+              speakerNpcId: focusNpcForPrompt,
+              npcKnowledgeMaxRevealRank: maxRevealRankForMemory,
+              unsupportedFactDetectionEnabled: verseRollout.enableWorldFactRegistry,
+              allowedFactIds: allowedWorldFactIdsForValidator,
+              scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
+              actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
+              factDetectionMaxRevealRank: maxRevealRankForMemory,
+              safeFallbackMessage: buildImmersiveGuardFallback({
+                playerContext,
+                latestUserInput,
+                reason: "narrative_validator_repair_failed",
+              }),
+            });
+          let validatorReport = runNarrativeValidator(candidateRec);
           const usedFactIdsForSafety = Array.isArray(narrativeAudit.used_fact_ids)
             ? narrativeAudit.used_fact_ids.filter((value): value is string => typeof value === "string")
             : [];
@@ -3729,7 +3738,7 @@ async function postChatInternal(req: Request) {
               ...[...String(playerContext ?? "").matchAll(/\bN-\d{3,6}\b/gi)].map((match) => match[0].toUpperCase()),
             ]),
           ];
-          const narrativeSafetyReport = narrativeSafetyRuntime.kernelEnabled
+          let narrativeSafetyReport = narrativeSafetyRuntime.kernelEnabled
             ? collectSafetyReport({
                 dmRecord: candidateRec,
                 narrative: typeof candidateRec.narrative === "string" ? candidateRec.narrative : null,
@@ -3748,7 +3757,7 @@ async function postChatInternal(req: Request) {
                 sessionCommittedEntityIds: sessionCommittedEntityIdsForSafety,
               })
             : null;
-          const narrativeSafetyEnforcement = planNarrativeSafetyEnforcement({
+          let narrativeSafetyEnforcement = planNarrativeSafetyEnforcement({
             safetyReport: narrativeSafetyReport,
             pacingReport,
             policy: {
@@ -3759,6 +3768,89 @@ async function postChatInternal(req: Request) {
               laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
             },
           });
+          const repairableNarrativeFailure =
+            narrativeSafetyRuntime.mode !== "shadow" &&
+            (Boolean(validatorReport.narrativeOverride) || narrativeSafetyEnforcement.shouldFallback) &&
+            !narrativeSafetyEnforcement.promptInjectionBlocked;
+          if (repairableNarrativeFailure && canRunFinalRepair()) {
+            try {
+              const repairIssues = [
+                ...validatorReport.issues.map((issue) => ({
+                  source: "validateNarrative",
+                  code: issue.code,
+                  severity: issue.severity,
+                  detail: issue.detail,
+                  anchor: issue.anchor,
+                })),
+                ...(narrativeSafetyReport?.issues ?? []).map((issue) => ({
+                  source: issue.source,
+                  code: issue.code,
+                  severity: issue.severity,
+                  detail: issue.detail,
+                  anchor: issue.anchor,
+                })),
+              ];
+              const repaired = await repairNarrativeOnly({
+                originalNarrative: String(candidateRec.narrative ?? ""),
+                originalDmRecord: candidateRec,
+                latestUserInput,
+                playerContextSnapshot: playerContext,
+                issues: repairIssues,
+                constraints: [
+                  "只修 narrative，不新增状态事实。",
+                  "保持玩家沉浸，修复失败也用当前场景内的自然承接。",
+                  "不得出现系统、降级、校验失败、无法生成、内容违规等措辞。",
+                ],
+                ctx: {
+                  requestId,
+                  userId,
+                  sessionId,
+                  path: "/api/chat",
+                  tags: { phase: "post_validator", purpose: "narrative_repair" },
+                },
+                signal: pipelineAbort.signal,
+                budgetMs: nextFinalRepairBudgetMs(3_000),
+                maxChars: narrativeBudget.maxChars,
+              });
+              if (repaired.ok) {
+                candidateRec.narrative = repaired.narrative;
+                (resolved as any).narrative = repaired.narrative;
+                validatorReport = runNarrativeValidator(candidateRec);
+                narrativeSafetyReport = narrativeSafetyRuntime.kernelEnabled
+                  ? collectSafetyReport({
+                      dmRecord: candidateRec,
+                      narrative: typeof candidateRec.narrative === "string" ? candidateRec.narrative : null,
+                      options: optionsForSafety,
+                      validateNarrativeReport: validatorReport,
+                      pacingReport,
+                      npcKnowledgeIssues: [],
+                      unsupportedFactIssues: [],
+                      speakerNpcId: focusNpcForPrompt,
+                      allowedFactIds: allowedWorldFactIdsForValidator,
+                      usedFactIds: usedFactIdsForSafety,
+                      worldFacts: verseRollout.enableWorldFactRegistry ? listWorldFacts() : [],
+                      maxRevealRank: maxRevealRankForMemory,
+                      stateDelta: postStateDelta,
+                      intent: normalizedIntent,
+                      sessionCommittedEntityIds: sessionCommittedEntityIdsForSafety,
+                    })
+                  : null;
+                narrativeSafetyEnforcement = planNarrativeSafetyEnforcement({
+                  safetyReport: narrativeSafetyReport,
+                  pacingReport,
+                  policy: {
+                    kernelEnabled: narrativeSafetyRuntime.kernelEnabled,
+                    mode: narrativeSafetyRuntime.mode,
+                    entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled,
+                    pacingValidatorEnabled: narrativeSafetyRuntime.pacingValidatorEnabled,
+                    laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
+                  },
+                });
+              }
+            } catch (repairErr) {
+              console.warn("[api/chat] narrative repair skipped", repairErr);
+            }
+          }
           const shouldNarrativeSafetyFallback =
             narrativeSafetyEnforcement.shouldFallback &&
             !validatorReport.narrativeOverride &&
@@ -3779,7 +3871,10 @@ async function postChatInternal(req: Request) {
                   },
                 ],
                 narrativeOverride: nonNarrativeTurnGuardDmJson(
-                  NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
+                  buildImmersiveGuardFallback({
+                    playerContext,
+                    reason: "narrative_safety_kernel_high_severity",
+                  }),
                   {
                     requestId,
                     reason: "narrative_safety_kernel_high_severity",
@@ -4183,6 +4278,10 @@ async function postChatInternal(req: Request) {
         if (!shouldSkipItemOptionInjection({ resolved, clientPurpose: validated.clientPurpose })) {
           resolvedForClient = applyItemGameplayOptionInjection(resolved, clientState);
         }
+        resolvedForClient = mergeAutoCapturedCodexUpdates(
+          resolvedForClient as unknown as Record<string, unknown>,
+          { maxMatches: 12 }
+        ) as unknown as ResolvedDmTurn;
         finalizePayload = JSON.stringify(resolvedForClient);
         moderationBody = finalizePayload;
       } else {
@@ -4213,12 +4312,19 @@ async function postChatInternal(req: Request) {
           if (!shouldSkipItemOptionInjection({ resolved: auditedResolved, clientPurpose: validated.clientPurpose })) {
             auditedResolved = applyItemGameplayOptionInjection(auditedResolved, clientState);
           }
+          auditedResolved = mergeAutoCapturedCodexUpdates(
+            auditedResolved as unknown as Record<string, unknown>,
+            { maxMatches: 12 }
+          ) as unknown as ResolvedDmTurn;
           finalizePayload = JSON.stringify(auditedResolved);
           moderationBody = finalizePayload;
 
           if (outputAudit.verdict === "reject") {
             const reason = outputAudit.reasonCode || "output_reject";
-            const blockedMessage = NARRATIVE_GUARD_IMMERSIVE_FALLBACK;
+            const blockedMessage = buildImmersiveGuardFallback({
+              playerContext,
+              reason,
+            });
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
             writeAuditTrail({
@@ -4282,8 +4388,10 @@ async function postChatInternal(req: Request) {
             summary: blockedAuditSummary,
           });
 
-          const narrative =
-            typeof finalModeration.policy.userMessage === "string" ? finalModeration.policy.userMessage : "该内容无法呈现。";
+          const narrative = buildImmersiveGuardFallback({
+            playerContext,
+            reason: finalModeration.result.reason,
+          });
 
           await writer.write(
             sse(
