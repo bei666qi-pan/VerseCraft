@@ -105,7 +105,11 @@ import { envBoolean, envNumber } from "@/lib/config/envRaw";
 import { isKgLayerEnabled } from "@/lib/config/kgEnv";
 import { moderationTextForPrivateStoryChat, validateChatRequest } from "@/lib/security/chatValidation";
 import { finalOutputModeration, postModelModeration, preInputModeration } from "@/lib/security/contentSafety";
-import { nonNarrativeTurnGuardDmJson, safeBlockedDmJson } from "@/lib/security/policy";
+import {
+  NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
+  nonNarrativeTurnGuardDmJson,
+  safeBlockedDmJson,
+} from "@/lib/security/policy";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
@@ -3775,7 +3779,7 @@ async function postChatInternal(req: Request) {
                   },
                 ],
                 narrativeOverride: nonNarrativeTurnGuardDmJson(
-                  "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。",
+                  NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
                   {
                     requestId,
                     reason: "narrative_safety_kernel_high_severity",
@@ -4214,7 +4218,7 @@ async function postChatInternal(req: Request) {
 
           if (outputAudit.verdict === "reject") {
             const reason = outputAudit.reasonCode || "output_reject";
-            const blockedMessage = "当前生成内容触发安全规则，已拦截本回合。请换一种方式继续。";
+            const blockedMessage = NARRATIVE_GUARD_IMMERSIVE_FALLBACK;
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
             writeAuditTrail({

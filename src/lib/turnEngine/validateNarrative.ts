@@ -693,9 +693,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   let narrativeOverride: string | null = null;
 
   if (hasHigh) {
-    const safeMessage =
-      args.safeFallbackMessage ??
-      "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。";
+    const safeMessage = args.safeFallbackMessage;
     narrativeOverride = nonNarrativeTurnGuardDmJson(safeMessage, {
       reason: "narrative_validator_high_severity",
     });

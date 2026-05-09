@@ -81,6 +81,45 @@ test("mergeCodex preserves existing observation fields on relationship-only upda
   assert.equal(entry?.traits, "说话短促");
 });
 
+test("mergeCodex appends current-turn observations and keeps relationship-only updates stable", () => {
+  resetStore();
+  const s = useGameStore.getState();
+  s.mergeCodex([
+    {
+      id: "N-015",
+      name: "N-015",
+      type: "npc",
+      known_info: "first structured note",
+      observations: ["first sighting by the stairwell"],
+    },
+  ]);
+  s.mergeCodex([
+    {
+      id: "N-015",
+      name: "N-015",
+      type: "npc",
+      observations: ["second sighting near storage", "first sighting by the stairwell"],
+      trust: 3,
+    },
+  ]);
+  s.mergeCodex([
+    {
+      id: "N-015",
+      name: "N-015",
+      type: "npc",
+      fear: 1,
+    },
+  ]);
+
+  const entry = useGameStore.getState().codex["N-015"];
+  assert.deepEqual(entry?.observations?.slice(0, 2), [
+    "second sighting near storage",
+    "first sighting by the stairwell",
+  ]);
+  assert.equal(entry?.trust, 3);
+  assert.equal(entry?.fear, 1);
+});
+
 test("phase4: warehouse state supports narrative consume without changing save fields", () => {
   resetStore();
   const s = useGameStore.getState();

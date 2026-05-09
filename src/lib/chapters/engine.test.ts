@@ -313,6 +313,30 @@ test("entering chapter two keeps chapter one review safe and returns to active c
   assert.equal(state.currentChapterId, CHAPTER_TWO_ID);
 });
 
+test("chapter completion derives a next chapter title when the model omits the candidate", () => {
+  let state = createInitialChapterState(1);
+  const orderOnlyTitle = formatChapterTitle(second, state);
+  for (let i = 0; i < first.minTurns; i++) {
+    state = recordChapterTurnInState({
+      state,
+      definition: first,
+      signals: progressSignals({
+        clueLines: ["门缝后有潮湿脚印，指向储物间。"],
+        resultLines: ["我确认安全区外的走廊不是普通通道。"],
+      }),
+      runtime:
+        i === first.minTurns - 1
+          ? { closeDecision: { ...acceptedCloseDecision(), nextChapterTitleCandidate: null } }
+          : undefined,
+      now: i + 2,
+    });
+  }
+
+  const title = formatChapterTitle(second, state);
+  assert.notEqual(title, orderOnlyTitle);
+  assert.equal(state.chapterTitlesById[CHAPTER_TWO_ID]?.length > 0, true);
+});
+
 test("locked chapters cannot be reviewed into active state", () => {
   const state = createInitialChapterState(1);
   const reviewed = reviewCompletedChapter(state, CHAPTER_TWO_ID);

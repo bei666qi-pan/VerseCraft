@@ -36,7 +36,7 @@ import {
   ChapterPageTurnOverlay,
   type ChapterPageTurnDirection,
   ChapterProgressHint,
-  ChapterSummaryList,
+  ChapterReviewStory,
   useChapterRuntime,
 } from "@/features/play/chapters";
 import {
@@ -151,7 +151,7 @@ import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
-import { normalizeChapterState } from "@/lib/chapters";
+import { normalizeChapterState, selectChapterReviewLogEntries } from "@/lib/chapters";
 
 type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
 
@@ -3251,6 +3251,8 @@ function PlayContent() {
         name: string;
         type: "npc" | "anomaly";
         known_info?: unknown;
+        observation?: unknown;
+        observations?: unknown;
         favorability?: unknown;
         trust?: unknown;
         fear?: unknown;
@@ -3278,6 +3280,10 @@ function PlayContent() {
         name: u.name,
         type: u.type,
         known_info: typeof u.known_info === "string" ? u.known_info : undefined,
+        observations: [
+          ...(typeof u.observation === "string" ? [u.observation] : []),
+          ...(Array.isArray(u.observations) ? u.observations.filter((x): x is string => typeof x === "string") : []),
+        ],
         favorability: typeof u.favorability === "number" ? u.favorability : undefined,
         trust: typeof u.trust === "number" ? u.trust : undefined,
         fear: typeof u.fear === "number" ? u.fear : undefined,
@@ -4286,6 +4292,13 @@ function PlayContent() {
       chapterRuntime.chapterState.completedChapterIds.includes(previousChapterId)
   );
   const canNavigateNextChapter = Boolean(chapterRuntime.isReviewing || (pendingChapterEnd && chapterRuntime.nextDefinition));
+  const chapterReviewEntries = useMemo(
+    () =>
+      isReviewingChapter
+        ? selectChapterReviewLogEntries(logs, chapterRuntime.displayedProgress)
+        : [],
+    [chapterRuntime.displayedProgress, isReviewingChapter, logs]
+  );
 
   function navigateToPreviousChapter() {
     const previous = previousChapterId;
@@ -4453,42 +4466,19 @@ function PlayContent() {
                 onSwipeRight={navigateToPreviousChapter}
               >
                 {isReviewingChapter ? (
-                  <section
-                    data-testid="chapter-review-panel"
-                    className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5"
-                    aria-label="前情回望"
-                  >
-                    <div className="rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 p-4 shadow-[0_10px_24px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
-                      <div className="mb-4 border-b border-[#ded8ce] pb-3">
-                        <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">前情回望，不影响正在阅读的章节</p>
-                        <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-none text-[#174d46]">
-                          {chapterRuntime.displayedTitle || chapterRuntime.headerTitle}
-                        </h2>
-                      </div>
-                      {chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id] ? (
-                        <ChapterSummaryList
-                          summary={chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id]}
-                        />
-                      ) : (
-                        <p className="vc-reading-serif text-[16px] leading-relaxed text-[#174d46]">
-                          这一章还没有留下可回望的段落。
-                        </p>
-                      )}
-                      <button
-                        type="button"
-                        data-testid="chapter-return-current"
-                        onClick={() => {
-                          playUIClick();
-                          runChapterPageTurn("return", () => {
-                            chapterRuntime.returnToActiveChapter();
-                          }, { scrollEnd: true });
-                        }}
-                        className="mt-5 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-3 vc-reading-serif text-[17px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)]"
-                      >
-                        回到正在阅读
-                      </button>
-                    </div>
-                  </section>
+                  <ChapterReviewStory
+                    title={chapterRuntime.displayedTitle || chapterRuntime.headerTitle}
+                    entries={chapterReviewEntries}
+                    summary={chapterRuntime.chapterState.summariesByChapterId[chapterRuntime.displayedDefinition.id]}
+                    isLowSanity={isLowSanity}
+                    isDarkMoon={isDarkMoon}
+                    onReturnToActive={() => {
+                      playUIClick();
+                      runChapterPageTurn("return", () => {
+                        chapterRuntime.returnToActiveChapter();
+                      }, { scrollEnd: true });
+                    }}
+                  />
                 ) : (
                   <>
                     {/*

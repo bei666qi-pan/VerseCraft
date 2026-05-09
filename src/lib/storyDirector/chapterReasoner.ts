@@ -325,7 +325,7 @@ function selectChapterPhase(args: {
 export function buildChapterWriterInstruction(phase: ChapterPhase): string {
   switch (phase) {
     case "opening":
-      return "承接章节标题或上一章回望，用一个可感知场景把本章问题立起来；不要写系统阶段、章节进度或结算。";
+      return "承接章节标题或上一章留页，用一个可感知场景把本章问题立起来；不要写系统阶段、章节进度或结算。";
     case "choice":
       return "玩家停滞或冲突升温；推动一次有意义、可回避、不会强制失败的选择压力，仍用小说场景表达。";
     case "echo":
@@ -335,7 +335,7 @@ export function buildChapterWriterInstruction(phase: ChapterPhase): string {
     case "aftershock":
       return "保留余震和后果感，允许短暂停顿；不要立刻解释真相，也不要把危险写没。";
     case "closing":
-      return "准备自然收束、前情回望素材和下一章种子；不要展示章节完成、奖励、进度条或行动结算。";
+      return "准备自然收束、章节留页素材和下一章种子；不要展示章节完成、奖励、进度条或行动结算。";
     case "rising":
     default:
       return "继续用行动、环境变化和人物反应推进本章核心疑问，制造可读的小说张力，避免系统化说明。";

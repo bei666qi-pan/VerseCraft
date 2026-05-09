@@ -50,9 +50,9 @@ function getRecapParagraphs(summary: ChapterSummary): string[] {
 export function ChapterSummaryList({ summary }: { summary: ChapterSummary }) {
   const paragraphs = getRecapParagraphs(summary);
   return (
-    <section data-testid="chapter-summary-list" className="space-y-3" aria-label="前情回望">
+    <section data-testid="chapter-summary-list" className="space-y-3" aria-label="章节留页">
       <h3 className="vc-reading-serif text-[19px] font-semibold leading-none text-[#174d46]">
-        前情回望
+        章节留页
       </h3>
       <div className="space-y-3">
         {paragraphs.map((line, index) => (

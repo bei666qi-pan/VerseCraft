@@ -1,4 +1,5 @@
 import type { RiskLevel, ModerationDecision, ModerationScene, ModerationStage } from "@/lib/safety/policy/model";
+import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
 
 // 降级场景不内置本地选项，仍交给模型选项链路实时补齐。
 const EMPTY_OPTIONS: string[] = [];
@@ -10,10 +11,7 @@ function truncate(s: string, max = 1200): string {
 }
 
 function privateStoryFallback(max = 900): string {
-  return truncate(
-    "当前生成内容触发安全规则，本回合未展示这段正文。请换一种行动方式继续。",
-    max
-  );
+  return truncate(NARRATIVE_GUARD_IMMERSIVE_FALLBACK, max);
 }
 
 export function buildOutputFallback(args: {
@@ -29,10 +27,7 @@ export function buildOutputFallback(args: {
   if (isProviderFailureFallback) {
     if (scene === "private_story_output") {
       return {
-        narrative: truncate(
-          "当前内容安全校验暂时不可用，本回合先不展示生成正文。请稍后重试。",
-          900
-        ),
+        narrative: truncate(NARRATIVE_GUARD_IMMERSIVE_FALLBACK, 900),
         options: [...EMPTY_OPTIONS],
       };
     }
@@ -72,9 +67,6 @@ export function buildOutputFallback(args: {
   }
 
   return {
-    narrative: truncate(
-      "当前生成内容无法安全展示，请调整后重试。",
-      400
-    ),
+    narrative: truncate(NARRATIVE_GUARD_IMMERSIVE_FALLBACK, 400),
   };
 }

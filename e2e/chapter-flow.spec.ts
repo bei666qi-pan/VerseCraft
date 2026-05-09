@@ -404,8 +404,8 @@ test.describe("chapter flow", () => {
     ]);
 
     await expect(page.getByTestId("chapter-end-sheet")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("chapter-end-sheet")).toContainText("本章回望");
-    await expect(page.getByTestId("chapter-end-sheet")).toContainText("前情回望");
+    await expect(page.getByTestId("chapter-end-sheet")).toContainText("本章留页");
+    await expect(page.getByTestId("chapter-end-sheet")).toContainText("章节留页");
     await expect(page.getByTestId("chapter-end-sheet")).toContainText("继续下一章");
     await expect(page.getByTestId("chapter-end-sheet")).toContainText("回看本章");
     await expectNoGameyChapterText(page.getByTestId("chapter-end-sheet"));
@@ -417,7 +417,7 @@ test.describe("chapter flow", () => {
 
     await expectPageTurnDuring(page, () => page.getByTestId("chapter-review-button").click());
     await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
-    await expect(page.getByText("前情回望，不影响正在阅读的章节")).toBeVisible();
+    await expect(page.getByText("章节留页，只读，不影响当前章节")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
     await expectPageTurnDuring(page, () => page.getByTestId("chapter-return-current").click());
@@ -442,7 +442,7 @@ test.describe("chapter flow", () => {
     );
     await expect(page.getByTestId("chapter-review-panel")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
-    await expect(page.getByText("前情回望，不影响正在阅读的章节")).toBeVisible();
+    await expect(page.getByText("章节留页，只读，不影响当前章节")).toBeVisible();
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
 
     await expectPageTurnDuring(page, () => page.getByTestId("chapter-return-current").click());

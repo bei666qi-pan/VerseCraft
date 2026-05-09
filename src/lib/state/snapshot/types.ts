@@ -20,6 +20,8 @@ export interface SnapshotCodexEntry {
   id: string;
   name: string;
   type: "npc" | "anomaly";
+  known_info?: string;
+  observations?: string[];
   favorability?: number;
   trust?: number;
   fear?: number;

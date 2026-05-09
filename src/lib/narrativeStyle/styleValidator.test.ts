@@ -31,9 +31,23 @@ test("validateNarrativeStyle flags NPC dialogue that over-explains truth", () =>
   assert.ok(hitCodes.includes("dialogue_over_explains"));
 });
 
+test("validateNarrativeStyle flags rules-creepypasta register", () => {
+  const hitCodes = codes("公寓规则写着：守则第一条，不得违反，否则后果自负。灯牌在墙上闪了三次。");
+  assert.ok(hitCodes.includes("style_drift"));
+});
+
 test("validateNarrativeStyle accepts an investigation passage in profile", () => {
   const report = validateNarrativeStyle({
     narrative: "门缝里没有风，灰却向外走。我蹲下去，看见鞋印停在门内半寸。下一秒，楼上有人停住了脚步。",
+    styleProfile,
+    focus: "investigate",
+  });
+  assert.equal(report.ok, true);
+});
+
+test("validateNarrativeStyle accepts youth-campus suspense texture", () => {
+  const report = validateNarrativeStyle({
+    narrative: "我把校服袖口往下拽了拽，粉笔灰还粘在指节上。走廊灯忽然暗了一格，像有人在远处轻轻合上课本。",
     styleProfile,
     focus: "investigate",
   });

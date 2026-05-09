@@ -312,6 +312,18 @@ export function buildMobileCodexIntro(entry: CodexEntry): string {
 export function buildMobileCodexObservation(entry: CodexEntry): string {
   const intro = normalizeCodexText(buildMobileCodexIntro(entry));
   const seen = new Set<string>();
+  const observationPieces = Array.isArray(entry.observations)
+    ? entry.observations
+        .map((value) => normalizeCodexText(value))
+        .filter((value) => {
+          if (!value || value === intro || seen.has(value)) return false;
+          seen.add(value);
+          return true;
+        })
+        .slice(0, 3)
+    : [];
+  if (observationPieces.length > 0) return observationPieces.join(" ");
+
   const pieces = [entry.known_info, entry.personality, entry.traits]
     .map((value) => normalizeCodexText(value))
     .filter((value) => {

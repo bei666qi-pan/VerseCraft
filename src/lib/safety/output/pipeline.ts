@@ -156,8 +156,9 @@ export async function auditDmOutputCandidateOnServer(args: {
   let reasonCode = evalResult.reasonCode;
 
   // System-failure override:
-  // - private output: apply a stricter fallback unless local policy already hard-rejects.
-  // - public display: fail-closed requires hard reject (even if local policy would allow).
+  // - private story output is fail-soft: provider/network failures are audit signals only.
+  //   The reader should not see a fallback paragraph unless local rules found clear risk.
+  // - public display stays fail-closed and hides content when external verification is unavailable.
   if (providerFailed) {
     if (stage === "public_display" && evalResult.decision !== "reject") {
       verdict = "reject";
@@ -190,21 +191,6 @@ export async function auditDmOutputCandidateOnServer(args: {
       updatedDmRecord.narrative = fb.narrative;
       if (fb.options) updatedDmRecord.options = fb.options;
       fallbackUsed = false;
-    } else if (stage === "output" && evalResult.decision !== "reject") {
-      fallbackUsed = true;
-      verdict = "fallback";
-      decision = "fallback";
-      reasonCode = "output_provider_failed_fail_soft";
-      const fb = buildOutputFallback({
-        scene,
-        stage,
-        decision: "fallback",
-        riskLevel: "soft_block",
-        reasonCode,
-        isProviderFailureFallback: true,
-      });
-      updatedDmRecord.narrative = fb.narrative;
-      if (fb.options) updatedDmRecord.options = fb.options;
     }
   }
 

@@ -130,7 +130,9 @@ test.describe("paper reference UI", () => {
       await page.setViewportSize(viewport);
       await seedPlayableHomeSave(page);
       await gotoAndExpectTestId(page, "/?e2e=1", "home-paper-page");
-      await expect(page.getByText("本机留有可继续的记录。登录后可云端备份。")).toBeVisible();
+      await expect(page.getByText("本机留有可继续的记录。")).toBeVisible();
+      const removedContinueHint = ["本机留有可继续的记录。", "登录后", "可云端备份。"].join("");
+      await expect(page.getByText(removedContinueHint)).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "文界工坊" })).toBeVisible();
       await expect(page.getByTestId("home-start-new-button")).toBeVisible();
       await expect(page.getByTestId("home-continue-button")).toBeVisible();
@@ -180,6 +182,8 @@ test.describe("paper reference UI", () => {
   test("home auth login and register modal uses paper surfaces", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await gotoAndExpectTestId(page, "/?e2e=1", "home-paper-page");
+    const removedGuestHint = ["可直接以游客开始。", "登录后", "可云端备份。"].join("");
+    await expect(page.getByText(removedGuestHint)).toHaveCount(0);
 
     await page.getByRole("button", { name: "登录或注册" }).click();
     const modal = page.getByTestId("home-auth-paper-modal");
@@ -200,6 +204,14 @@ test.describe("paper reference UI", () => {
     expect(loginMetrics.className).not.toContain("glass");
     expect(loginMetrics.className).toContain("bg-[#fbf7f0]");
     expect(loginMetrics.className).toContain("border-[#d8cbb8]");
+
+    await modal.getByRole("button", { name: "登录并进入" }).click();
+    await expect(modal).toContainText("请先填写笔名。");
+    await modal.getByPlaceholder("笔名").fill("测试账号");
+    await modal.getByPlaceholder("密码（至少 6 位）").fill("123456");
+    await modal.getByRole("button", { name: "登录并进入" }).click();
+    await expect(modal).toContainText("请先勾选用户协议与隐私政策。");
+    await expect(page).toHaveURL(/\/(?:\?e2e=1)?$/);
 
     await modal.getByRole("button", { name: "注册" }).click();
     await expect(modal).toContainText("注册");

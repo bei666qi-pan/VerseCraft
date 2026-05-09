@@ -12,6 +12,7 @@ import type { NormalizedPlayerIntent } from "@/lib/turnEngine/types";
 import { buildNpcKnowledgePacket } from "@/lib/npcKnowledge/npcKnowledgeResolver";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import { REVEAL_TIER_RANK } from "@/lib/registry/revealTierRank";
+import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
 
 function makeRejectedReasons(): EpistemicFilterResult["telemetry"]["rejectedReasons"] {
   return {
@@ -134,7 +135,8 @@ test("validateNarrative flags DM-only fact leak in narrative and falls back", ()
   assert.ok(report.issues.some((x) => x.code === "dm_only_fact_leaked_in_narrative"));
   assert.ok(report.narrativeOverride, "high severity should produce safe narrative fallback");
   const override = JSON.parse(report.narrativeOverride ?? "{}") as Record<string, unknown>;
-  assert.equal(override.narrative, "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。");
+  assert.equal(override.narrative, NARRATIVE_GUARD_IMMERSIVE_FALLBACK);
+  assert.equal(String(override.narrative ?? "").includes(["未写入", "剧情状态"].join("")), false);
   assert.equal(String(override.narrative).includes("老人"), false);
   assert.equal(String(override.narrative).includes("摩擦声"), false);
   assert.equal(report.telemetry.safeNarrativeFallbackApplied, true);

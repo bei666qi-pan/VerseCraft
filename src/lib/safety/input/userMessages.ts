@@ -1,5 +1,6 @@
 import type { InputScene } from "@/lib/safety/input/scenes";
 import type { PolicyEvaluationResult } from "@/lib/safety/policy/model";
+import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK } from "@/lib/security/policy";
 
 export type UserFacingModerationMessage = {
   message: string;
@@ -42,20 +43,20 @@ export function buildUserFacingMessage(args: {
   if (args.scene === "private_story_action") {
     if (v.decision === "reject") {
       return {
-        message: "当前行动无法执行，请调整描述后重试。",
-        narrativeFallback: "当前行动触发安全规则，本回合未写入剧情。请调整描述后重试。",
+        message: "我停在原地，把这一步先收回来。",
+        narrativeFallback: NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
       };
     }
     if (v.decision === "fallback") {
       return {
-        message: "行动存在风险点，已安全回退。",
-        narrativeFallback: "当前行动存在风险点，本回合未写入剧情。请换一种更安全的行动方式继续。",
+        message: "我把危险的念头压下去，先确认眼前。",
+        narrativeFallback: NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
       };
     }
     if (v.decision === "rewrite") {
       return {
-        message: "行动措辞已做安全处理。",
-        narrativeFallback: "当前行动措辞已做安全处理，请按处理后的描述继续。",
+        message: "我换了更稳妥的说法继续。",
+        narrativeFallback: NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
       };
     }
     return { message: "ok" };

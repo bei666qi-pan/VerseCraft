@@ -293,6 +293,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const [authFormNonce, setAuthFormNonce] = useState(0);
   const [authName, setAuthName] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [authClientError, setAuthClientError] = useState("");
   const [nameCheck, setNameCheck] = useState<{ status: "idle" | "checking" | "ok" | "taken" | "error"; message: string }>({
     status: "idle",
     message: "",
@@ -1210,6 +1211,39 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   const authPending = loginPending || registerPending;
   const activeAuthState = authMode === "login" ? loginState : registerState;
   const activeAuthAction = authMode === "login" ? loginFormAction : registerFormAction;
+  const activeAuthError = authClientError || activeAuthState.error || "";
+
+  function validateAuthFormBeforeSubmit(): string | null {
+    const name = authName.trim();
+    if (!name) return "请先填写笔名。";
+    if (name.length < 2) return "笔名至少 2 个字符。";
+    if (!authPassword) return "请先填写密码。";
+    if (authPassword.length < 6) return "密码至少 6 位。";
+    if (!authConsentUserAgreement || !authConsentPrivacyPolicy) return "请先勾选用户协议与隐私政策。";
+    return null;
+  }
+
+  function handleAuthSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const error = validateAuthFormBeforeSubmit();
+    if (error) {
+      event.preventDefault();
+      setAuthClientError(error);
+      void trackHomeGameplayEvent({
+        eventName: "auth_submit_failed",
+        page: "/",
+        source: "auth_modal",
+        payload: { mode: authMode, error, clientSide: true },
+      }).catch(() => {});
+      return;
+    }
+    setAuthClientError("");
+    void trackHomeGameplayEvent({
+      eventName: "auth_submit_attempted",
+      page: "/",
+      source: "auth_modal",
+      payload: { mode: authMode },
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     const msg = activeAuthState?.error?.trim() || "";
@@ -1224,6 +1258,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       payload: { mode: authMode, error: msg },
     }).catch(() => {});
   }, [activeAuthState?.error, authMode, trackHomeGameplayEvent]);
+
+  useEffect(() => {
+    setAuthClientError("");
+  }, [authMode, authName, authPassword, authConsentUserAgreement, authConsentPrivacyPolicy]);
 
   function getSurveyValue(id: HomeSurveyQuestionId): string {
     switch (id) {
@@ -1404,9 +1442,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               </div>
             </div>
           ) : (
-            <div className="vc-reading-serif w-full whitespace-nowrap text-center text-[clamp(13px,3.8vw,18px)] leading-none text-[#164f4d]">
-              {canContinueFromHome ? "本机留有可继续的记录。登录后可云端备份。" : "可直接以游客开始。登录后可云端备份。"}
-            </div>
+            canContinueFromHome ? (
+              <div className="vc-reading-serif w-full whitespace-nowrap text-center text-[clamp(13px,3.8vw,18px)] leading-none text-[#164f4d]">
+                本机留有可继续的记录。
+              </div>
+            ) : null
           )}
         </div>
 
@@ -1488,14 +1528,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 key={`auth-form-${authMode}-${authFormNonce}`}
                 className="relative mt-5 space-y-3"
                 action={activeAuthAction}
-                onSubmit={() => {
-                  void trackHomeGameplayEvent({
-                    eventName: "auth_submit_attempted",
-                    page: "/",
-                    source: "auth_modal",
-                    payload: { mode: authMode },
-                  }).catch(() => {});
-                }}
+                onSubmit={handleAuthSubmit}
               >
                 <input
                   name="fax_number"
@@ -1585,9 +1618,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 >
                   {authPending ? "处理中..." : authMode === "login" ? "登录并进入" : "注册并进入"}
                 </button>
-                {!activeAuthState.success && activeAuthState.error && (
+                {!activeAuthState.success && activeAuthError && (
                   <div className="mt-3 rounded-[14px] border border-[#d99a8f] bg-[#fff2ed] px-3 py-2 text-xs text-[#8d3f35]">
-                    {activeAuthState.error}
+                    {activeAuthError}
                   </div>
                 )}
                 {activeAuthState.success && activeAuthState.message ? (

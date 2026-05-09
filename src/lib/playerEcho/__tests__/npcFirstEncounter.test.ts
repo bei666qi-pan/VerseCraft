@@ -153,6 +153,41 @@ test("night reader first encounter can use metaphor", () => {
   assert.equal(plan.styleHint, "书页/墨迹/重读隐喻");
 });
 
+test("major charm first encounter stays quiet without echo evidence", () => {
+  const plan = computeNpcFirstEncounterEchoPlan({
+    canonIdentity: identity({
+      npcId: "N-015",
+      canonicalName: "N-015",
+      memoryPrivilege: "major_charm",
+      revealTierCap: REVEAL_TIER_RANK.abyss,
+    }),
+    echoCanon: null,
+    activeNpcId: "N-015",
+    revealTier: REVEAL_TIER_RANK.surface,
+  });
+
+  assert.equal(plan.intensity, "none");
+  assert.equal(plan.allowedForms.length, 0);
+  assert.equal(plan.forbiddenClaims.includes("known_friend_claim"), true);
+});
+
+test("night reader without echo evidence is subtle rather than a strong first impact", () => {
+  const plan = computeNpcFirstEncounterEchoPlan({
+    canonIdentity: identity({
+      npcId: "N-011",
+      canonicalName: "夜读老人",
+      memoryPrivilege: "night_reader",
+      revealTierCap: REVEAL_TIER_RANK.deep,
+    }),
+    echoCanon: null,
+    activeNpcId: "N-011",
+    revealTier: REVEAL_TIER_RANK.deep,
+  });
+
+  assert.equal(plan.intensity, "subtle");
+  assert.equal(plan.allowedForms.includes("metaphor"), true);
+});
+
 test("already discovered NPC is lowered to none", () => {
   const plan = computeNpcFirstEncounterEchoPlan({
     canonIdentity: identity({ npcId: "N-010", memoryPrivilege: "xinlan" }),

@@ -3,6 +3,7 @@ export * from "./budget";
 export * from "./engine";
 export * from "./migration";
 export * from "./progress";
+export * from "./reviewLog";
 export * from "./selectors";
 export * from "./summary";
 export * from "./title";

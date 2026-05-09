@@ -1,5 +1,8 @@
 import type { ModerationResult, RiskDecision } from "@/lib/security/types";
 
+export const NARRATIVE_GUARD_IMMERSIVE_FALLBACK =
+  "我把快要成形的判断咽回去。门缝里的水声还在，灯管轻轻发响，像有人把这一秒按在原处，没有让它继续往下掉。那些细节暂时对不上：脚步声太远，墙上的影子也太薄，薄得不像能被一句话钉成事实。我只好先停住，掌心贴着冰凉的墙皮，把呼吸压低，等这层楼自己露出下一点破绽。远处的电梯没有亮，安全出口的绿光却晃了一下，像在提醒我，真正能确认的东西还留在眼前。再往前一步之前，我得先把脚下这片潮湿看清。";
+
 export function riskDecision(result: ModerationResult): RiskDecision {
   if (result.decision === "block") {
     return {
@@ -53,7 +56,7 @@ export function safeBlockedDmJson(
 }
 
 export function nonNarrativeTurnGuardDmJson(
-  message = "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。",
+  message = NARRATIVE_GUARD_IMMERSIVE_FALLBACK,
   meta?: {
     requestId?: string;
     reason?: string;

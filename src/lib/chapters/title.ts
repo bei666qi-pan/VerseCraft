@@ -1,4 +1,4 @@
-import type { ChapterDefinition, ChapterId, ChapterState } from "./types";
+import type { ChapterDefinition, ChapterId, ChapterState, ChapterSummary } from "./types";
 
 const CHINESE_ORDER_LABELS: Record<number, string> = {
   1: "一",
@@ -36,6 +36,39 @@ export function sanitizeChapterTitleCandidate(value: unknown, maxChars = 24): st
   const clipped = cleaned.length <= maxChars ? cleaned : cleaned.slice(0, maxChars).trim();
   if (!clipped || LEGACY_HARDCODED_TITLES.has(clipped)) return null;
   return clipped;
+}
+
+function compactTitleSource(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[《》「」『』“”"'`*_~#<>[\]{}\\]/g, "")
+    .replace(/^(我|你|他|她|他们|她们|我们|玩家)?(确认|发现|看见|听见|找到|意识到|注意到|察觉到|走向|进入|离开|继续|沿着|打开|关上|靠近|询问|记录|留下|指向|面对|获得|失去|完成|更新|揭开)+/u, "")
+    .replace(/[，。！？；：,.!?;:、]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  const first = cleaned.split(/\s+/).find((part) => part.trim().length >= 2) ?? cleaned;
+  return sanitizeChapterTitleCandidate(first, 12);
+}
+
+export function deriveNextChapterTitleCandidate(input: {
+  summary?: ChapterSummary | null;
+  fallbackObjective?: string | null;
+}): string | null {
+  const summary = input.summary ?? null;
+  const candidates = [
+    ...(Array.isArray(summary?.clueLines) ? summary.clueLines : []),
+    summary?.hook,
+    summary?.nextObjective,
+    ...(Array.isArray(summary?.resultLines) ? summary.resultLines : []),
+    input.fallbackObjective,
+  ];
+  for (const candidate of candidates) {
+    const title = compactTitleSource(candidate);
+    if (title) return title;
+  }
+  return null;
 }
 
 export function getChapterStoredTitle(state: ChapterState | null | undefined, chapterId: ChapterId): string | null {

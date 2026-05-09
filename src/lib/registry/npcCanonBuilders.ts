@@ -15,6 +15,7 @@ import type {
 import { MAJOR_NPC_IDS, type MajorNpcId } from "./majorNpcDeepCanon";
 import { MAJOR_NPC_DEEP_CANON } from "./majorNpcDeepCanon";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "./revealTierRank";
+import { formatCompactLocationLabel, formatLocationLabel } from "@/lib/ui/locationLabels";
 
 export const DEFAULT_BASELINE_VIEW_OF_PLAYER =
   "同一【空间】权柄裂口下、月初常被甩进公寓泡层的误闯学生之一；楼内住户对此不稀奇。非天选唯一，默认与本人无旧识。";
@@ -246,11 +247,38 @@ export function normalizeLocationKey(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
+function normalizeLocationComparable(s: string): string {
+  return normalizeLocationKey(s)
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/一楼/g, "1楼")
+    .replace(/二楼/g, "2楼")
+    .replace(/三楼/g, "3楼")
+    .replace(/四楼/g, "4楼")
+    .replace(/五楼/g, "5楼")
+    .replace(/六楼/g, "6楼")
+    .replace(/七楼/g, "7楼")
+    .replace(/([1-7])f/g, "$1楼")
+    .replace(/地下(?:一层|1层|室)/g, "b1")
+    .replace(/诊室/g, "室")
+    .replace(/长椅区/g, "长椅")
+    .replace(/走廊长椅/g, "长椅");
+}
+
+function comparableLocationKeys(s: string): string[] {
+  const raw = normalizeLocationKey(s);
+  const candidates = [raw, formatLocationLabel(raw), formatCompactLocationLabel(raw)];
+  return [...new Set(candidates.map(normalizeLocationComparable).filter((value) => value && value !== "未知区域"))];
+}
+
 export function locationsMatch(a: string, b: string): boolean {
-  const x = normalizeLocationKey(a).toLowerCase();
-  const y = normalizeLocationKey(b).toLowerCase();
-  if (x === y) return true;
-  if (x.includes(y) || y.includes(x)) return true;
+  const xs = comparableLocationKeys(a);
+  const ys = comparableLocationKeys(b);
+  for (const x of xs) {
+    for (const y of ys) {
+      if (x === y || x.includes(y) || y.includes(x)) return true;
+    }
+  }
   return false;
 }
 

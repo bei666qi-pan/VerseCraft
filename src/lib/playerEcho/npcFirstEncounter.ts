@@ -157,19 +157,26 @@ export function computeNpcFirstEncounterEchoPlan(args: NpcFirstEncounterEchoPlan
   let allowedForms: NpcFirstEncounterAllowedForm[] = [];
 
   if (privilege === "normal") {
-    intensity = intensityScore >= 0.45 ? "subtle" : "none";
+    intensity = intensityScore >= 0.7 ? "subtle" : "none";
     allowedForms = intensity === "none" ? [] : ["pause", "gesture", "sensory_deja_vu"];
     forbidden.add("known_friend_claim");
   } else if (privilege === "major_charm") {
-    intensity = intensityScore >= 0.65 ? "noticeable" : "subtle";
-    allowedForms = ["pause", "gesture", "misnaming", "sensory_deja_vu"];
+    intensity = intensityScore >= 0.72 ? "noticeable" : intensityScore >= 0.35 ? "subtle" : "none";
+    allowedForms = intensity === "none" ? [] : ["pause", "gesture", "misnaming", "sensory_deja_vu"];
     forbidden.add("exact_previous_run_memory");
+    forbidden.add("known_friend_claim");
   } else if (privilege === "night_reader") {
-    intensity = "noticeable";
+    intensity = intensityScore >= 0.72 ? "noticeable" : "subtle";
     allowedForms = ["pause", "metaphor", "sensory_deja_vu"];
     forbidden.add("warm_old_friend_recognition");
+    forbidden.add("known_friend_claim");
   } else if (privilege === "xinlan") {
-    intensity = intensityScore >= 0.6 || revealTier >= REVEAL_TIER_RANK.deep ? "strong" : "noticeable";
+    intensity =
+      intensityScore >= 0.72 && revealTier >= REVEAL_TIER_RANK.deep
+        ? "strong"
+        : intensityScore >= 0.35 || revealTier >= REVEAL_TIER_RANK.deep
+          ? "noticeable"
+          : "subtle";
     allowedForms = ["pause", "gesture", "registration_hesitation", "sensory_deja_vu"];
     forbidden.add("seven_keys_full_reveal");
     forbidden.add("school_root_cause_full_reveal");

@@ -44,7 +44,7 @@ test("rewrite: private explicit gore => narrative sanitized, structured fields p
   assert.ok(!narrative.includes("血肉模糊"));
 });
 
-test("system fault: provider error + private fail_soft => fallback narrative (not overriding local reject)", async () => {
+test("system fault: provider error + private fail_soft => allow when local rules see no clear risk", async () => {
   const dm = baseDmRecord("正常叙事文本，带一点怪谈压迫感。");
   const providerSignals: ProviderSignal[] = [
     { provider: "baidu_text_censor", decision: "allow", riskLevel: "normal", categories: [], errorKind: "network_timeout" },
@@ -57,9 +57,10 @@ test("system fault: provider error + private fail_soft => fallback narrative (no
     providerSignalsOverride: providerSignals,
   });
 
-  assert.equal(r.verdict, "fallback");
-  assert.equal(r.fallbackUsed, true);
-  assert.ok(String(r.updatedDmRecord.narrative ?? "").includes("当前内容安全校验暂时不可用"));
+  assert.equal(r.verdict, "allow");
+  assert.equal(r.fallbackUsed, false);
+  assert.equal(r.updatedDmRecord.narrative, dm.narrative);
+  assert.equal(String(r.updatedDmRecord.narrative ?? "").includes("当前内容"), false);
   assert.equal(String(r.updatedDmRecord.narrative ?? "").includes("老人"), false);
   assert.equal(String(r.updatedDmRecord.narrative ?? "").includes("摩擦声"), false);
   assert.ok(!String(r.updatedDmRecord.narrative ?? "").includes("外部校验"));

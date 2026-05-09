@@ -194,9 +194,25 @@ async function performRegisterNewUser(name: string, password: string): Promise<A
 /** 已存在用户：仅凭证登录 + 登录分析。 */
 async function performCredentialsLogin(name: string, password: string): Promise<AuthActionState> {
   // 显式登录：先确认账号存在，避免“输错当注册”的不确定性
-  const existing = await db.select({ id: users.id }).from(users).where(eq(users.name, name)).limit(1).catch(() => []);
-  if (!existing[0]) {
+  const existing = await db
+    .select({ id: users.id, password: users.password })
+    .from(users)
+    .where(eq(users.name, name))
+    .limit(1)
+    .catch((error) => {
+      console.error("Login lookup failed:", error);
+      return null;
+    });
+  if (!existing) {
+    return { success: false, error: "暂时无法连接账号服务，请稍后再试。" };
+  }
+  const account = existing[0];
+  if (!account) {
     return { success: false, error: "账号不存在：该笔名尚未创建，请先注册。" };
+  }
+  const passwordOk = await bcrypt.compare(password, account.password).catch(() => false);
+  if (!passwordOk) {
+    return { success: false, error: "密码不正确，请重新输入。" };
   }
 
   try {

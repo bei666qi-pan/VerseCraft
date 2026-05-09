@@ -1,5 +1,6 @@
 import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
+import { NPC_CANONICAL_IDENTITY_BY_ID, resolveNpcRuntimeLocation } from "@/lib/registry/npcCanon";
 import { buildServiceContextForLocation, getServicesForLocation, isAbsoluteSafeZoneLocation } from "@/lib/registry/serviceNodes";
 import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 
@@ -8,7 +9,17 @@ import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
  * 大规模世界事实由服务端 worldKnowledge + RAG 负责。
  */
 export const NPC_HOME_LOCATION_SEED: Record<string, string> = Object.fromEntries(
-  Object.entries(NPC_SOCIAL_GRAPH).map(([id, profile]) => [id, profile.homeLocation])
+  Object.entries(NPC_SOCIAL_GRAPH).map(([id, profile]) => {
+    const canon = NPC_CANONICAL_IDENTITY_BY_ID[id];
+    if (!canon) return [id, profile.homeLocation];
+    const resolved = resolveNpcRuntimeLocation({
+      npcId: id,
+      canonicalHomeLocation: canon.canonicalHomeLocation,
+      allowedSpawnLocations: canon.allowedSpawnLocations,
+      runtimeLocation: profile.homeLocation,
+    });
+    return [id, resolved.runtimeLocation];
+  })
 );
 
 export const NPC_RELATIONSHIP_HOOK_SEED: Record<string, string[]> = Object.fromEntries(

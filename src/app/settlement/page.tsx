@@ -35,6 +35,28 @@ type LogEntry = { role: string; content: string; reasoning?: string };
 type SettlementSource = "ending_snapshot" | "legacy_fallback";
 type SettlementViewSnapshot = EndingSettlementSnapshot & { source: SettlementSource };
 const FALLBACK_SETTLEMENT_STATS = { sanity: 0, agility: 0, luck: 0, charm: 0, background: 0 };
+const LEGACY_SAFETY_FALLBACK_RE = new RegExp(
+  [
+    "叙事安全边界",
+    ["当前行动", "触发安全规则"].join(""),
+    ["本回合", "未写入剧情"].join(""),
+    ["请调整描述", "后重试"].join(""),
+    ["请换一种方式", "重试"].join(""),
+    ["未写入剧情", "状态"].join(""),
+  ].join("|")
+);
+const ESCAPE_STAGE_LABELS: Record<string, string> = {
+  trapped: "仍被困在公寓里",
+  aware_exit_exists: "已经察觉出口线索",
+  route_fragmented: "掌握了部分路线",
+  conditions_known: "知道了主要逃离条件",
+  conditions_partially_met: "部分逃离条件已满足",
+  final_window_open: "最终窗口已经打开",
+  escaped_true: "真正逃离",
+  escaped_false: "误入假出口",
+  escaped_costly: "付出代价后离开",
+  doomed: "终焉已落下",
+};
 
 function replaceLocationIdsForDisplay(text: string): string {
   let out = String(text ?? "");
@@ -43,6 +65,52 @@ function replaceLocationIdsForDisplay(text: string): string {
     out = out.replaceAll(id, label);
   }
   return out;
+}
+
+function formatSettlementSourceLabel(source: SettlementSource): string {
+  return source === "legacy_fallback" ? "本地结算记录" : "本局结算";
+}
+
+function formatEscapeStageLabel(stage: unknown): string {
+  const raw = String(stage ?? "").trim();
+  return ESCAPE_STAGE_LABELS[raw] ?? (raw ? raw.replace(/_/g, " ") : "尚未确认出口");
+}
+
+function formatWorldStateLine(line: string): string {
+  const text = replaceLocationIdsForDisplay(String(line ?? "").trim());
+  if (!text) return "";
+
+  const location = text.match(/^location:(.+)$/);
+  if (location) return `最终位置：${replaceLocationIdsForDisplay(location[1] ?? "").trim() || "未记录"}`;
+
+  const time = text.match(/^time:day=(\d+),hour=(\d+)$/);
+  if (time) return `经历时间：第 ${time[1]} 日 ${time[2]} 时`;
+
+  const sanity = text.match(/^sanity:(-?\d+)$/);
+  if (sanity) return `理智：${sanity[1]}`;
+
+  const escape = text.match(/^escape:(.+)$/);
+  if (escape) return `逃离主线：${formatEscapeStageLabel(escape[1])}`;
+
+  if (text === "结算来源：legacy_fallback") return "结算方式：根据本地游玩记录生成";
+  if (text.startsWith("逃离主线：")) return `逃离主线：${formatEscapeStageLabel(text.slice("逃离主线：".length))}`;
+
+  return text;
+}
+
+function formatNpcEpilogueLine(line: string): string {
+  return replaceLocationIdsForDisplay(String(line ?? "").trim())
+    .replace(/\btrust=(-?\d+)\b/g, "信任 $1")
+    .replace(/\bfavor=(-?\d+)\b/g, "好感 $1")
+    .replace(/\bfavorability=(-?\d+)\b/g, "好感 $1");
+}
+
+function formatFinalNarrativeForSettlement(text: string): string {
+  const normalized = replaceLocationIdsForDisplay(String(text ?? "").trim());
+  if (!normalized || LEGACY_SAFETY_FALLBACK_RE.test(normalized)) {
+    return "本局最后一段剧情没有完整保存。你仍可以查看下方的行动回顾、线索和世界状态，重新开局也不会影响这些已记录的内容。";
+  }
+  return normalized;
 }
 
 function buildMarkdown(logs: LogEntry[]): string {
@@ -174,9 +242,7 @@ function buildLegacySnapshot(input: {
     grade,
     title,
     caption,
-    finalNarrative:
-      replaceLocationIdsForDisplay(lastAssistant).trim() ||
-      "这份结算来自旧存档兼容路径：系统没有找到不可变结算快照，因此用当前本地状态重建了本局终章。",
+    finalNarrative: formatFinalNarrativeForSettlement(lastAssistant),
     survivalHours,
     survivalDay,
     survivalHour,
@@ -192,9 +258,9 @@ function buildLegacySnapshot(input: {
       8
     ),
     worldStateLines: [
-      `结算来源：legacy_fallback`,
+      "结算方式：根据本地游玩记录生成",
       `最终位置：${replaceLocationIdsForDisplay(input.playerLocation)}`,
-      `逃离主线：${escapeState.stage}`,
+      `逃离主线：${formatEscapeStageLabel(escapeState.stage)}`,
       `理智：${input.stats.sanity ?? 0}`,
     ],
     createdAt: new Date().toISOString(),
@@ -533,18 +599,18 @@ export default function SettlementPage(props: AppPageDynamicProps) {
 
   if (!mounted) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f6f2ec] text-[#2f4f48]">
+      <main className="flex min-h-screen w-full items-center justify-center overflow-x-hidden bg-[#f6f2ec] text-[#2f4f48]">
         <div className="vc-reading-serif animate-pulse text-xl">结算中...</div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-[100dvh] bg-[#f6f2ec] px-4 py-6 text-[#2f4f48] sm:px-8 sm:py-10">
-      <article className="mx-auto w-full max-w-[1040px]">
+    <main className="box-border flex min-h-[100dvh] w-full justify-center overflow-x-hidden bg-[#f6f2ec] px-4 py-6 text-[#2f4f48] sm:px-8 sm:py-10">
+      <article className="w-full min-w-0 max-w-[1040px]" data-testid="settlement-paper-card">
         <header className="border-b border-[#d8cbb8] pb-6">
           <p className="text-[12px] font-semibold tracking-[0.18em] text-[#9b4d2d]">
-            {snapshot.source === "legacy_fallback" ? "LEGACY_FALLBACK" : "ENDING SNAPSHOT"}
+            {formatSettlementSourceLabel(snapshot.source)}
           </p>
           <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -585,7 +651,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             data-testid="settlement-final-narrative"
             className="whitespace-pre-wrap vc-reading-serif text-[18px] leading-[2.05] text-[#2d2a24]"
           >
-            {snapshot.finalNarrative}
+            {formatFinalNarrativeForSettlement(snapshot.finalNarrative)}
           </div>
         </StorySection>
 
@@ -598,11 +664,11 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         </StorySection>
 
         <StorySection title="NPC 后日谈">
-          <DetailList empty="本局没有形成可展示的 NPC 后日谈。" items={snapshot.npcEpilogues} />
+          <DetailList empty="本局没有形成可展示的 NPC 后日谈。" items={snapshot.npcEpilogues.map(formatNpcEpilogueLine).filter(Boolean)} />
         </StorySection>
 
         <StorySection title="世界状态">
-          <DetailList empty="本局没有记录额外世界状态。" items={snapshot.worldStateLines} />
+          <DetailList empty="本局没有记录额外世界状态。" items={snapshot.worldStateLines.map(formatWorldStateLine).filter(Boolean)} />
         </StorySection>
 
         {showFullText ? (

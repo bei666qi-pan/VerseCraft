@@ -21,7 +21,7 @@
  * actually flushed to the client".
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
-import { nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
+import { NARRATIVE_GUARD_IMMERSIVE_FALLBACK, nonNarrativeTurnGuardDmJson } from "@/lib/security/policy";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -83,8 +83,7 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "npc_status_forbidden_direct_speech",
 ]);
 
-const TURN_GUARD_FALLBACK_MESSAGE =
-  "本回合触发叙事一致性保护，未写入剧情状态。请换一种方式重试。";
+const TURN_GUARD_FALLBACK_MESSAGE = NARRATIVE_GUARD_IMMERSIVE_FALLBACK;
 
 export type TurnCommitFlag =
   | "options_rewrite_applied"

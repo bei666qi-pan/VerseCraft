@@ -27,6 +27,7 @@ function buildLines(selection: SelectedEchoFragment[], plan: NpcFirstEncounterEc
   const lines = [
     "【player_echo_canon_packet】",
     "规则：不得覆盖当前周目事实；不得让普通 NPC 明确认得玩家；残响只可自然表现，不必强写。",
+    "首次影响按 intensity 克制执行；微弱残响只能写停顿、目光或一句岔开的对白，不写成旧友相认。",
   ];
 
   for (const fragment of selection.slice(0, 3)) {

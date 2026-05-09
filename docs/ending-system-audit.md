@@ -26,7 +26,7 @@ flowchart TD
   E --> F["recordChapterTurnInState(...)"]
   F --> G{"shouldCompleteChapter(...)"}
   G -- true --> H["completeChapter(...) 写 completedChapterIds / summaries / pendingChapterEndId"]
-  H --> I["ChapterEndSheet 显示 本章回望 / 继续下一章"]
+  H --> I["ChapterEndSheet 显示 本章留页 / 继续下一章"]
   I --> J["enterNextChapter(...) 或 reviewChapter(...)"]
 ```
 
@@ -141,7 +141,7 @@ flowchart TD
 
 | 事件 | 当前触发条件 | 写入状态 | UI 表现 | 是否跳转 `/settlement` |
 | --- | --- | --- | --- | --- |
-| `chapter_complete` | 真实合法非 system 回合后，`recordChapterTurnInState` 进度满足 `minTurns`，且 `StoryDirector.closeCandidate` 全部条件通过。见 `src/lib/chapters/engine.ts:69-87`、`src/store/useGameStore.ts:1098-1115`。 | 写 `chapterState.progressByChapterId[chapterId].status = "completed"`、`completedChapterIds`、`summariesByChapterId`、`pendingChapterEndId`、下一章 title candidate。见 `src/lib/chapters/engine.ts:102-138`。 | `ChapterEndSheet` 覆盖行动区，显示“本章回望 / 继续下一章 / 回看本章”。见 `src/features/play/chapters/ChapterEndSheet.tsx:30-87`。 | 否。只进入下一章或回看。 |
+| `chapter_complete` | 真实合法非 system 回合后，`recordChapterTurnInState` 进度满足 `minTurns`，且 `StoryDirector.closeCandidate` 全部条件通过。见 `src/lib/chapters/engine.ts:69-87`、`src/store/useGameStore.ts:1098-1115`。 | 写 `chapterState.progressByChapterId[chapterId].status = "completed"`、`completedChapterIds`、`summariesByChapterId`、`pendingChapterEndId`、下一章 title candidate。见 `src/lib/chapters/engine.ts:102-138`。 | `ChapterEndSheet` 覆盖行动区，显示“本章留页 / 继续下一章 / 回看本章”。见 `src/features/play/chapters/ChapterEndSheet.tsx:30-87`。 | 否。只进入下一章或回看。 |
 | `death` | `parsed.is_death === true` 或最终 `stats.sanity <= 0`。见 `src/app/play/page.tsx:661-670`、`src/app/play/page.tsx:1140-1144`。 | `parsed.is_death` 本身没有统一写入 immutable death record；理智伤害只扣 `stats.sanity`。`recordDeathForRevive` 存在但未接入当前 `/play` death 跳转。 | 回合叙事 tail drain 后延迟跳转；期间可能仍短暂保留本回合 options。 | 是，客户端 `router.push("/settlement")`。 |
 | `doom` | 时间推进后恰好 `day=10,hour=0` 且未 escaped。见 `src/features/play/endgame/endgame.ts:10-22`、`src/app/play/page.tsx:3316-3332`。 | 只写 React 本地 `endgameState` 和 `currentOptions=["迎接终焉"]`；没有写 `escapeMainline.stage="doomed"`。 | 终局 overlay、行动区 busy 文案、唯一选项“迎接终焉”。见 `src/app/play/page.tsx:828-833`、`src/app/play/page.tsx:3921-3955`。 | 最终由玩家点击唯一选项跳转。 |
 | `final_window_open` | 在 B2、具备 B2 权限、关键钥物、守门人认可、代价试炼，并且没有 blockers。见 `src/lib/escapeMainline/derive.ts:44-99`、`src/lib/escapeMainline/reducer.ts:85-105`。 | 写 `escapeMainline.stage="final_window_open"`、`finalWindow.open=true`、`pendingFinalAction`。见 `src/lib/escapeMainline/reducer.ts:141-185`。 | 目前没有专用 UI；只进入 prompt block 影响后续 AI 写作。 | 否。 |

@@ -5,6 +5,7 @@ import { B1_NPC_CODEX_SLOTS } from "./codexCatalog";
 import {
   buildMobileCodexCardModels,
   buildMobileCodexIntro,
+  buildMobileCodexObservation,
   formatMobileCodexLocation,
   getMobileCodexIdentifiedCount,
   getMobileCodexSlotsForFloor,
@@ -126,4 +127,19 @@ test("mobile codex intro keeps only the opening registry description", () => {
   assert.equal(intro.includes("\n"), false);
   assert.equal(intro.includes("坊间印象"), false);
   assert.equal(intro.includes("忌讳"), false);
+});
+
+test("mobile codex observation prefers newest structured observations", () => {
+  const entry = npcEntry("N-015", "N-015");
+  entry.known_info = buildMobileCodexIntro(entry);
+  entry.observations = [
+    "second scene: he blocks the storage door before answering.",
+    "first scene: rain on the coat shoulder.",
+  ];
+
+  const observation = buildMobileCodexObservation(entry);
+
+  assert.equal(observation.startsWith("second scene"), true);
+  assert.equal(observation.includes("first scene"), true);
+  assert.equal(observation.includes(entry.known_info), false);
 });

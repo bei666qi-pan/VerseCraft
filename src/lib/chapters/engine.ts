@@ -1,7 +1,7 @@
 import { getChapterDefinition } from "./definitions";
 import { advanceChapterBeats, countChapterStateChanges, shouldCountChapterTurn, shouldCountKeyChoice } from "./progress";
 import { buildChapterSummary } from "./summary";
-import { getChapterDisplayName, sanitizeChapterTitleCandidate } from "./title";
+import { deriveNextChapterTitleCandidate, getChapterDisplayName, sanitizeChapterTitleCandidate } from "./title";
 import type {
   ChapterCompletionRuntime,
   ChapterDefinition,
@@ -107,8 +107,15 @@ export function completeChapter(input: {
 }): ChapterState {
   const now = input.now ?? Date.now();
   const nextChapterId = input.definition.nextChapterId ?? null;
+  const nextDefinition = nextChapterId ? getChapterDefinition(nextChapterId) : null;
   const nextChapterTitle =
-    nextChapterId ? sanitizeChapterTitleCandidate(input.nextChapterTitleCandidate, 32) : null;
+    nextChapterId
+      ? sanitizeChapterTitleCandidate(input.nextChapterTitleCandidate, 32) ??
+        deriveNextChapterTitleCandidate({
+          summary: input.summary,
+          fallbackObjective: nextDefinition?.objective,
+        })
+      : null;
   const completedProgress: ChapterProgress = {
     ...input.progress,
     status: "completed",

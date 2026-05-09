@@ -366,6 +366,8 @@ export interface CodexEntry {
   type: "npc" | "anomaly";
   /** 我目前掌握的、可展示的情报（由 DM 生成并通过 codex_updates 下发；为空则视为暂无） */
   known_info?: string;
+  /** Recent player-facing observations from structured codex_updates, newest first. */
+  observations?: string[];
   favorability?: number;
   trust?: number;
   fear?: number;
@@ -381,6 +383,43 @@ export interface CodexEntry {
   traits?: string;
   rules_discovered?: string;
   weakness?: string;
+}
+
+const CODEX_OBSERVATION_LIMIT = 6;
+const CODEX_OBSERVATION_MAX_CHARS = 220;
+
+function normalizeCodexObservationText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.length <= CODEX_OBSERVATION_MAX_CHARS ? text : text.slice(0, CODEX_OBSERVATION_MAX_CHARS).trim();
+}
+
+function collectCodexObservationUpdates(update: CodexEntry): string[] {
+  const loose = update as CodexEntry & { observation?: unknown; observations?: unknown };
+  const raw = [
+    loose.observation,
+    ...(Array.isArray(loose.observations) ? loose.observations : []),
+  ];
+  const out: string[] = [];
+  for (const value of raw) {
+    const text = normalizeCodexObservationText(value);
+    if (text) out.push(text);
+  }
+  return out;
+}
+
+function mergeCodexObservations(previous: unknown, incoming: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const value of [...incoming, ...(Array.isArray(previous) ? previous : [])]) {
+    const text = normalizeCodexObservationText(value);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    merged.push(text);
+    if (merged.length >= CODEX_OBSERVATION_LIMIT) break;
+  }
+  return merged;
 }
 
 export type GameTask = GameTaskV2;
@@ -1800,6 +1839,12 @@ export const useGameStore = create<GameState>()(
             const existingKey = Object.keys(next).find((k) => next[k]?.name === name || next[k]?.id === id);
             const key = existingKey ?? id ?? name ?? "unknown";
             const prev = next[key];
+            const incomingKnownInfo = normalizeCodexObservationText((u as { known_info?: unknown }).known_info);
+            const incomingObservations = collectCodexObservationUpdates(u);
+            if (incomingKnownInfo && incomingKnownInfo !== normalizeCodexObservationText(prev?.known_info)) {
+              incomingObservations.push(incomingKnownInfo);
+            }
+            const observations = mergeCodexObservations(prev?.observations, incomingObservations);
             const merged: CodexEntry = {
               ...(prev ?? {}),
               id: prev?.id ?? id ?? name ?? key,
@@ -1808,6 +1853,7 @@ export const useGameStore = create<GameState>()(
               ...(typeof (u as { known_info?: unknown }).known_info === "string"
                 ? { known_info: ((u as { known_info: string }).known_info ?? "").trim().slice(0, 800) }
                 : {}),
+              ...(observations.length > 0 ? { observations } : {}),
               ...(typeof u.favorability === "number" ? { favorability: u.favorability } : {}),
               ...(typeof u.trust === "number" ? { trust: u.trust } : {}),
               ...(typeof u.fear === "number" ? { fear: u.fear } : {}),

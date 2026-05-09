@@ -15,6 +15,7 @@ import {
   resolveNpcRuntimeLocation,
 } from "@/lib/registry/npcCanon";
 import { XINLAN_NPC_ID } from "@/lib/registry/npcCanonBuilders";
+import { NPC_HOME_LOCATION_SEED } from "@/lib/registry/runtimeBoundary";
 
 test("普通 NPC 不能被标成 exact_knowledge（注册表）", () => {
   for (const [id, card] of Object.entries(NPC_CANONICAL_IDENTITY_BY_ID)) {
@@ -75,6 +76,15 @@ test("NPC 性别、称谓、身份可稳定读取", () => {
 test("越界地点会被纠偏到 canonical home", () => {
   const id = "N-001";
   const card = getNpcCanonicalIdentity(id);
+  const internal = resolveNpcRuntimeLocation({
+    npcId: id,
+    canonicalHomeLocation: card.canonicalHomeLocation,
+    allowedSpawnLocations: card.allowedSpawnLocations,
+    runtimeLocation: "1F_Lobby",
+  });
+  assert.equal(internal.ok, true);
+  assert.equal(internal.runtimeLocation, "1F_Lobby");
+
   const bad = resolveNpcRuntimeLocation({
     npcId: id,
     canonicalHomeLocation: card.canonicalHomeLocation,
@@ -118,6 +128,20 @@ test("helper 与注册表一致", () => {
   assert.equal(getNpcPlayerRecognitionMode("N-015"), "familiar_pull");
   assert.ok(getNpcAllowedSpawnLocations("N-001").length > 0);
   assert.ok(getNpcBaselineViewOfPlayer("N-003").includes("误闯"));
+});
+
+test("runtime home location seed stays inside each NPC canonical spawn range", () => {
+  for (const [id, location] of Object.entries(NPC_HOME_LOCATION_SEED)) {
+    const card = getNpcCanonicalIdentity(id);
+    const resolved = resolveNpcRuntimeLocation({
+      npcId: id,
+      canonicalHomeLocation: card.canonicalHomeLocation,
+      allowedSpawnLocations: card.allowedSpawnLocations,
+      runtimeLocation: location,
+    });
+    assert.equal(resolved.runtimeLocation, location, `${id} seed should already be canonical-safe`);
+    assert.equal(resolved.ok, true, `${id} seed should not require correction`);
+  }
 });
 
 test("夜读老人：memoryPrivilege 与 XINLAN 常量区分", () => {

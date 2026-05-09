@@ -34,12 +34,12 @@ export function ChapterEndSheet({
       <section
         data-testid="chapter-end-sheet"
         className="max-h-[68dvh] overflow-y-auto rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8]/98 p-4 text-[#174d46] shadow-[0_18px_44px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        aria-label={`${formatChapterTitle(definition, chapterState)} 前情回望`}
+        aria-label={`${formatChapterTitle(definition, chapterState)} 章节留页`}
       >
         <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#ded8ce] pb-3">
           <div className="min-w-0">
             <p className="vc-reading-serif text-[18px] leading-none text-[#4f706a]">
-              本章回望
+              本章留页
             </p>
             <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-tight text-[#174d46]">
               {displayTitle || formatChapterTitle(definition, chapterState)}
@@ -81,7 +81,7 @@ export function ChapterEndSheet({
               onClick={onReviewPrevious}
               className="rounded-full border border-[#d8d1c6] px-4 py-2.5 vc-reading-serif text-[16px] text-[#4f706a]"
             >
-              前情回望
+              回看上一章
             </button>
           ) : null}
         </div>

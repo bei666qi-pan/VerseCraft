@@ -67,6 +67,9 @@ export type DMJson = {
     type: "npc" | "anomaly";
     /** 我目前掌握的、可展示的情报（由 DM 生成；不要求每次都有） */
     known_info?: string;
+    /** A current-turn player-facing observation; must come from visible/structured facts, not invented lore. */
+    observation?: string;
+    observations?: string[];
     favorability?: number;
     trust?: number;
     fear?: number;

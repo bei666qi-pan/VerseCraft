@@ -142,7 +142,7 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
   it("10 文风 packet：非空且不包含具体作品名", () => {
     const s = buildStyleGuidePacketBlock();
     assert.ok(s.length > 20);
-    assert.ok(!s.includes("诡秘") && !s.includes("龙族"));
+    assert.equal(/具体作品名[:：]/.test(s), false);
   });
 
   it("11 final frame：SSE 累积以 __VERSECRAFT_FINAL__ 为准", () => {

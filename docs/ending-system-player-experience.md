@@ -185,5 +185,5 @@
 
 - 最终叙事生成失败：使用本地 fallback，并提示可以查看结算。
 - history 提交失败：不阻塞导出、返回首页、新一局。
-- snapshot 缺失：使用 legacy fallback，页面标记 `LEGACY_FALLBACK`。
+- snapshot 缺失：使用本地记录重建结算，页面展示为“本地结算记录”，不暴露内部状态码。
 - telemetry/debug 记录卡点，但普通玩家看不到隐藏剧情真相。
