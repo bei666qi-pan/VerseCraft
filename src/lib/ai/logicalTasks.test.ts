@@ -53,6 +53,55 @@ test("runOfflineReasonerTask maps kind to TaskType (no gateway)", async () => {
   );
 });
 
+test("runOfflineReasonerTask forwards extraBody to the gateway payload", async () => {
+  const origFetch = globalThis.fetch;
+  await withEnv(
+    {
+      AI_GATEWAY_BASE_URL: "https://gw.reasoner.test",
+      AI_GATEWAY_API_KEY: "k",
+      AI_MODEL_MAIN: "model-main",
+      AI_MODEL_CONTROL: "model-control",
+      AI_MODEL_ENHANCE: "model-enhance",
+      AI_MODEL_REASONER: "model-reasoner",
+      AI_MAX_RETRIES: "0",
+      AI_TIMEOUT_MS: "5000",
+      AI_CIRCUIT_FAILURE_THRESHOLD: "99",
+    },
+    async () => {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          model?: string;
+          enable_thinking?: boolean;
+          thinking?: { type?: string };
+        };
+        assert.equal(body.model, "model-reasoner");
+        assert.equal(body.enable_thinking, false);
+        assert.equal(body.thinking?.type, "disabled");
+        return new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      };
+      try {
+        const res = await runOfflineReasonerTask({
+          kind: "worldbuild",
+          messages: [{ role: "user", content: "x" }],
+          ctx: { requestId: "lt-extra-body", path: "/test" },
+          skipCache: true,
+          extraBody: {
+            enable_thinking: false,
+            thinking: { type: "disabled" },
+          },
+          devOverrides: { responseFormatJsonObject: true },
+        });
+        assert.equal(res.ok, true);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    }
+  );
+});
+
 test("compressSessionMemory uses MEMORY_COMPRESSION task", async () => {
   await withEnv(
     {

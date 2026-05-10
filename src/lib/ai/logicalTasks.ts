@@ -1056,6 +1056,7 @@ export async function runOfflineReasonerTask(params: {
   signal?: AbortSignal;
   requestTimeoutMs?: number;
   skipCache?: boolean;
+  extraBody?: Record<string, unknown>;
   devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
 }): Promise<AIResponse | AIErrorResponse> {
   const task = offlineReasonerTaskType(params.kind);
@@ -1073,6 +1074,7 @@ export async function runOfflineReasonerTask(params: {
     signal: params.signal,
     requestTimeoutMs: params.requestTimeoutMs,
     skipCache: params.skipCache,
+    extraBody: params.extraBody,
     devOverrides: params.devOverrides,
   });
 }
