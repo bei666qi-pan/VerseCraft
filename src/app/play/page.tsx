@@ -2431,67 +2431,81 @@ function PlayContent() {
             if (status) applyOptionsRegenStatus(status.stage);
           }
         } else {
-        const attemptRes = await fetch("/api/chat", {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-          headers: optionsRegenHeaders,
-          body: optionsRegenBody,
-          signal: ac.signal,
-        });
-        if (!attemptRes.ok || !attemptRes.body) {
-          const errorText = await attemptRes.text().catch(() => "");
-          const localRateLimited = isLocalRateLimitedPayload({ status: attemptRes.status, body: errorText });
-          const recoverable = localRateLimited || attemptRes.status === 429 || attemptRes.status === 503 || !attemptRes.body;
-          return {
-            kind: "transport_failed",
-            status: attemptRes.status,
-            reason: localRateLimited ? "local_rate_limited" : `http_${attemptRes.status || "no_body"}`,
-            retryAfterMs: parseRetryAfterMs(attemptRes.headers.get("retry-after")),
-            localRateLimited,
-            recoverable,
-          };
-        }
-        responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
-        const reader = attemptRes.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        text = "";
-        let sseBuffer = "";
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            text += chunk;
-            sseBuffer += chunk;
-            const taken = takeCompleteSseEvents(sseBuffer);
-            sseBuffer = taken.rest;
-            for (const eventText of taken.events) {
-              const status = extractStatusFrameFromSseEvent(eventText);
-              if (status) applyOptionsRegenStatus(status.stage);
+          const attemptRes = await fetch("/api/chat", {
+            method: "POST",
+            credentials: "include",
+            cache: "no-store",
+            headers: optionsRegenHeaders,
+            body: optionsRegenBody,
+            signal: ac.signal,
+          });
+          if (!attemptRes.ok) {
+            const errorText = await attemptRes.text().catch(() => "");
+            const localRateLimited = isLocalRateLimitedPayload({ status: attemptRes.status, body: errorText });
+            const recoverable = localRateLimited || attemptRes.status === 429 || attemptRes.status === 503;
+            return {
+              kind: "transport_failed",
+              status: attemptRes.status,
+              reason: localRateLimited ? "local_rate_limited" : `http_${attemptRes.status || "unknown"}`,
+              retryAfterMs: parseRetryAfterMs(attemptRes.headers.get("retry-after")),
+              localRateLimited,
+              recoverable,
+            };
+          }
+          responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
+          text = "";
+          if (!attemptRes.body) {
+            text = await attemptRes.text().catch(() => "");
+            if (!text) {
+              return {
+                kind: "transport_failed",
+                status: attemptRes.status,
+                reason: "empty_text_body",
+                retryAfterMs: parseRetryAfterMs(attemptRes.headers.get("retry-after")),
+                localRateLimited: false,
+                recoverable: true,
+              };
+            }
+          } else {
+            const reader = attemptRes.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let sseBuffer = "";
+            try {
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                text += chunk;
+                sseBuffer += chunk;
+                const taken = takeCompleteSseEvents(sseBuffer);
+                sseBuffer = taken.rest;
+                for (const eventText of taken.events) {
+                  const status = extractStatusFrameFromSseEvent(eventText);
+                  if (status) applyOptionsRegenStatus(status.stage);
+                }
+              }
+              const tail = decoder.decode();
+              text += tail;
+              sseBuffer += tail;
+              const taken = takeCompleteSseEvents(sseBuffer);
+              sseBuffer = taken.rest;
+              for (const eventText of taken.events) {
+                const status = extractStatusFrameFromSseEvent(eventText);
+                if (status) applyOptionsRegenStatus(status.stage);
+              }
+              const orphan = normalizeSseNewlines(sseBuffer).trim();
+              if (orphan.startsWith("data:")) {
+                const status = extractStatusFrameFromSseEvent(orphan);
+                if (status) applyOptionsRegenStatus(status.stage);
+              }
+            } finally {
+              try {
+                await reader.cancel();
+              } catch {
+                // ignore
+              }
             }
           }
-          const tail = decoder.decode();
-          text += tail;
-          sseBuffer += tail;
-          const taken = takeCompleteSseEvents(sseBuffer);
-          sseBuffer = taken.rest;
-          for (const eventText of taken.events) {
-            const status = extractStatusFrameFromSseEvent(eventText);
-            if (status) applyOptionsRegenStatus(status.stage);
-          }
-          const orphan = normalizeSseNewlines(sseBuffer).trim();
-          if (orphan.startsWith("data:")) {
-            const status = extractStatusFrameFromSseEvent(orphan);
-            if (status) applyOptionsRegenStatus(status.stage);
-          }
-        } finally {
-          try {
-            await reader.cancel();
-          } catch {
-            // ignore
-          }
-        }
         }
 
         const parsed = parseOptionsFromSsePayload(text, {
@@ -3212,83 +3226,99 @@ function PlayContent() {
     } else {
       const res = transport.res;
       if (!res.body) {
-        setStreamPhase("idle");
-        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-        showTurnFailureIfVisible("network_or_gateway");
-        return;
-      }
-
-      const reader = res.body.getReader();
-      streamReaderRef.current = reader;
-      const decoder = new TextDecoder("utf-8");
-
-      const readNextWithStallGuard = async (stallMs: number) => {
-        let timer: number | undefined;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timer = window.setTimeout(() => reject(new Error("STREAM_STALL_TIMEOUT")), stallMs);
-        });
-        try {
-          const out = await Promise.race([reader.read(), timeoutPromise]);
-          if (timer !== undefined) window.clearTimeout(timer);
-          return out;
-        } catch (e) {
-          if (timer !== undefined) window.clearTimeout(timer);
-          throw e;
+        sseDocumentText = await res.text().catch(() => "");
+        if (!sseDocumentText) {
+          setStreamPhase("idle");
+          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+          showTurnFailureIfVisible("network_or_gateway");
+          return;
         }
-      };
-
-      // 性能分层（首字后感知慢 / 卡住）：
-      // - 首个非空 SSE data: 到来前：使用 Android 加权后的首包 stall 上限，限制“连接已建立但无正文 bytes”的假死。
-      // - 首个 chunk 到来后：使用 STREAM_CHUNK_STALL_MS 限制“上游长停顿”的等待上限
-      // 这两者都不等于“真实延迟优化”，它们只是定义“何时判定卡死并收敛体验”。
-      try {
+        let walkBuf = sseDocumentText;
         while (true) {
-          const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : transportTimeouts.firstChunkStallMs;
-          const { value, done } = await readNextWithStallGuard(stallMs);
-          if (done) break;
-          const chunkText = decoder.decode(value, { stream: true });
-          sseDocumentText += chunkText;
-          buf += chunkText;
-          const { events, rest } = takeCompleteSseEvents(buf);
-          buf = rest;
+          const { events, rest } = takeCompleteSseEvents(walkBuf);
+          walkBuf = rest;
           for (const event of events) {
             applySseEvent(event);
           }
+          if (events.length === 0) break;
         }
-        const tail = takeCompleteSseEvents(buf);
-        buf = tail.rest;
-        for (const event of tail.events) {
-          applySseEvent(event);
+        const orphanFetchText = normalizeSseNewlines(walkBuf).trim();
+        if (orphanFetchText.length > 0 && orphanFetchText.startsWith("data:")) {
+          applySseEvent(orphanFetchText);
         }
-        const orphan = normalizeSseNewlines(buf).trim();
-        if (orphan.length > 0 && orphan.startsWith("data:")) {
-          applySseEvent(orphan);
-        }
-      } catch (readErr) {
-        const err = readErr as Error & { name?: string; message?: string };
-        if (err?.message === "STREAM_STALL_TIMEOUT") {
-          console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
-          setStreamPhase("idle");
-          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-          showTurnFailureIfVisible("network_or_gateway");
-          return;
-        }
-        if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
-          streamCancelled = true;
-        } else {
-          console.error("[/api/chat] stream read error", readErr);
-          narrativeRef.current = "";
-          setStreamPhase("idle");
-          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-          showTurnFailureIfVisible("network_or_gateway");
-          return;
-        }
-      } finally {
-        streamReaderRef.current = null;
+      } else {
+        const reader = res.body.getReader();
+        streamReaderRef.current = reader;
+        const decoder = new TextDecoder("utf-8");
+
+        const readNextWithStallGuard = async (stallMs: number) => {
+          let timer: number | undefined;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = window.setTimeout(() => reject(new Error("STREAM_STALL_TIMEOUT")), stallMs);
+          });
+          try {
+            const out = await Promise.race([reader.read(), timeoutPromise]);
+            if (timer !== undefined) window.clearTimeout(timer);
+            return out;
+          } catch (e) {
+            if (timer !== undefined) window.clearTimeout(timer);
+            throw e;
+          }
+        };
+
+        // 性能分层（首字后感知慢 / 卡住）：
+        // - 首个非空 SSE data: 到来前：使用 Android 加权后的首包 stall 上限，限制“连接已建立但无正文 bytes”的假死。
+        // - 首个 chunk 到来后：使用 STREAM_CHUNK_STALL_MS 限制“上游长停顿”的等待上限
+        // 这两者都不等于“真实延迟优化”，它们只是定义“何时判定卡死并收敛体验”。
         try {
-          await reader.cancel();
-        } catch {
-          // ignore
+          while (true) {
+            const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : transportTimeouts.firstChunkStallMs;
+            const { value, done } = await readNextWithStallGuard(stallMs);
+            if (done) break;
+            const chunkText = decoder.decode(value, { stream: true });
+            sseDocumentText += chunkText;
+            buf += chunkText;
+            const { events, rest } = takeCompleteSseEvents(buf);
+            buf = rest;
+            for (const event of events) {
+              applySseEvent(event);
+            }
+          }
+          const tail = takeCompleteSseEvents(buf);
+          buf = tail.rest;
+          for (const event of tail.events) {
+            applySseEvent(event);
+          }
+          const orphan = normalizeSseNewlines(buf).trim();
+          if (orphan.length > 0 && orphan.startsWith("data:")) {
+            applySseEvent(orphan);
+          }
+        } catch (readErr) {
+          const err = readErr as Error & { name?: string; message?: string };
+          if (err?.message === "STREAM_STALL_TIMEOUT") {
+            console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
+            setStreamPhase("idle");
+            if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+            showTurnFailureIfVisible("network_or_gateway");
+            return;
+          }
+          if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
+            streamCancelled = true;
+          } else {
+            console.error("[/api/chat] stream read error", readErr);
+            narrativeRef.current = "";
+            setStreamPhase("idle");
+            if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+            showTurnFailureIfVisible("network_or_gateway");
+            return;
+          }
+        } finally {
+          streamReaderRef.current = null;
+          try {
+            await reader.cancel();
+          } catch {
+            // ignore
+          }
         }
       }
     }

@@ -35,7 +35,7 @@ services:
       AI_DIRECTOR_MODE: soft
       AI_ENABLE_DIRECTOR_HINT_INJECTION: "true"
     env_file: [".env.local"]
-    command: ["sh", "-c", "corepack enable && pnpm worker:kg"]
+    command: ["node", "--conditions=react-server", "--import", "tsx", "scripts/vc-worker.ts"]
     depends_on: [postgres, redis]
 
 volumes:

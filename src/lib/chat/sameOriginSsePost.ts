@@ -35,8 +35,11 @@ export function postSameOriginForSseDocumentText(args: {
 
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
+    let settled = false;
 
     const done = (out: SameOriginSsePostOk | SameOriginSsePostErr) => {
+      if (settled) return;
+      settled = true;
       signal.removeEventListener("abort", onAbort);
       resolve(out);
     };

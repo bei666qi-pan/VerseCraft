@@ -4,8 +4,8 @@
 
 ## 进程建议
 
-- Web：保持 `MIGRATE_ON_BOOT=1`，启动时执行 `scripts/migrate.js`。
-- Worker：单独服务运行 `pnpm worker:kg`；排障时可用 `pnpm worker:kg:once`。
+- Web：保持 `MIGRATE_ON_BOOT=1`，生产 Dockerfile 默认通过 `scripts/start-production.mjs` 同时启动 Web 与单并发嵌入式 Worker。
+- Worker：若拆成独立服务，运行 `node --conditions=react-server --import tsx scripts/vc-worker.ts`；排障时可用 `pnpm worker:kg:once`。
 - Weekly compaction：通过 Coolify Scheduler 或 cron 每周执行 `pnpm kg:compact`。
 
 ## 连接与并发边界
@@ -17,8 +17,8 @@
 ## 推荐部署步骤
 
 1. Web 容器上线并确认 `MIGRATE_ON_BOOT=1`。
-2. 新增 Worker 服务，启动命令 `pnpm worker:kg`。
-3. 生产环境可通过 `docker-compose --profile production up -d` 自动拉起 vc-worker 服务。
+2. 默认 Web 容器已启动嵌入式 Worker；如需关闭，设置 `VC_RUN_EMBEDDED_WORKER=0` 并重启。
+3. 如改为独立 Worker 服务，可通过 `docker-compose --profile production up -d` 自动拉起 vc-worker 服务。
 4. 配置每周任务 `pnpm kg:compact`。
 5. 可选执行 `pnpm kg:self-check` 和 `VC_CHECK_KG_SCHEMA=1 pnpm db:check`。
 
