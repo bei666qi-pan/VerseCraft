@@ -63,3 +63,13 @@ test("world director reasoner request disables thinking to produce consumable JS
   assert.match(reasonerCall, /enable_thinking:\s*false/);
   assert.match(reasonerCall, /thinking:\s*{\s*type:\s*"disabled"\s*}/);
 });
+
+test("world director snapshot insert casts reused session parameter for PostgreSQL", () => {
+  const engine = readFileSync("src/lib/worldEngine/engine.ts", "utf8");
+  const snapshotStart = engine.indexOf("INSERT INTO world_engine_agenda_snapshots");
+  const snapshotEnd = engine.indexOf("const wr = await client.query", snapshotStart);
+  const snapshotInsert = engine.slice(snapshotStart, snapshotEnd);
+
+  assert.match(snapshotInsert, /\$2::varchar/);
+  assert.match(snapshotInsert, /WHERE session_id = \$2::varchar/);
+});

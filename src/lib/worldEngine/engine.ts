@@ -390,10 +390,10 @@ async function writeWorldEngineOutputs(args: {
          run_id, session_id, user_id, agenda_revision, snapshot_json
        )
        VALUES (
-         $1, $2, $3,
+         $1, $2::varchar, $3::varchar,
          (SELECT COALESCE(MAX(agenda_revision), 0) + 1
           FROM world_engine_agenda_snapshots
-          WHERE session_id = $2),
+          WHERE session_id = $2::varchar),
          $4::jsonb
        )`,
       [runId, args.payload.sessionId, args.payload.userId, JSON.stringify(snapshot)]
