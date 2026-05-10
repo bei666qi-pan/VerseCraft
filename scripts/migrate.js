@@ -384,9 +384,31 @@ async function ensureKgSemanticLayer(client) {
 }
 
 /**
- * Janitor / 共识 / 队列表（依赖 vector 扩展）。幂等 ALTER + CREATE。
+ * Janitor / 共识 / 队列表。vc_jobs 不依赖 pgvector，必须先于可选 vector schema 创建。
  */
 async function ensureKgWorkerLayer(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_jobs (
+      job_id BIGSERIAL PRIMARY KEY,
+      job_type TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'pending',
+      run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      priority INTEGER NOT NULL DEFAULT 0,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 8,
+      locked_at TIMESTAMPTZ,
+      locked_by TEXT,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
+    ON vc_jobs (status, run_at, priority DESC, job_id);
+  `);
+
   try {
     await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
   } catch (e) {
@@ -447,28 +469,6 @@ async function ensureKgWorkerLayer(client) {
 
   await client.query(`
     CREATE INDEX IF NOT EXISTS vc_cluster_observation_cluster_idx ON vc_cluster_observation (cluster_id);
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS vc_jobs (
-      job_id BIGSERIAL PRIMARY KEY,
-      job_type TEXT NOT NULL,
-      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-      status TEXT NOT NULL DEFAULT 'pending',
-      run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      priority INTEGER NOT NULL DEFAULT 0,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      max_attempts INTEGER NOT NULL DEFAULT 8,
-      locked_at TIMESTAMPTZ,
-      locked_by TEXT,
-      last_error TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
-    ON vc_jobs (status, run_at, priority DESC, job_id);
   `);
 
   const candCols = [

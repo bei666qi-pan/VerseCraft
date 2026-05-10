@@ -26,3 +26,29 @@ test("production Docker image starts embedded worker by default", () => {
   assert.match(dockerfile, /\/app\/src \.\/src/);
   assert.match(dockerfile, /\/app\/node_modules \.\/node_modules/);
 });
+
+test("KG job queue schema is created even when pgvector is unavailable", () => {
+  const migrate = readFileSync("scripts/migrate.js", "utf8");
+  const ensureSchema = readFileSync("src/db/ensureSchema.ts", "utf8");
+
+  const migrateWorkerLayer = migrate.slice(
+    migrate.indexOf("async function ensureKgWorkerLayer"),
+    migrate.indexOf("const candCols = [")
+  );
+  assert.ok(
+    migrateWorkerLayer.indexOf("CREATE TABLE IF NOT EXISTS vc_jobs") <
+      migrateWorkerLayer.indexOf("CREATE EXTENSION IF NOT EXISTS vector"),
+    "migrate.js must create vc_jobs before optional vector setup"
+  );
+
+  const runtimeKgSchemaStart = ensureSchema.indexOf("async function ensureKgSchema");
+  const runtimeKgSchema = ensureSchema.slice(
+    runtimeKgSchemaStart,
+    ensureSchema.indexOf("CREATE TABLE IF NOT EXISTS vc_world_meta", runtimeKgSchemaStart)
+  );
+  assert.ok(
+    runtimeKgSchema.indexOf("CREATE TABLE IF NOT EXISTS vc_jobs") <
+      runtimeKgSchema.indexOf("CREATE EXTENSION IF NOT EXISTS vector"),
+    "ensureRuntimeSchema must create vc_jobs before optional vector setup"
+  );
+});

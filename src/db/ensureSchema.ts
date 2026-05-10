@@ -1098,6 +1098,26 @@ async function ensureKgSchema(
   client: { query: (sql: string) => Promise<unknown> }
 ): Promise<void> {
   try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS vc_jobs (
+        job_id BIGSERIAL PRIMARY KEY,
+        job_type TEXT NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status TEXT NOT NULL DEFAULT 'pending',
+        run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        priority INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 8,
+        locked_at TIMESTAMPTZ,
+        locked_by TEXT,
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
+      ON vc_jobs (status, run_at, priority DESC, job_id);
+    `);
     await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS vc_world_meta (
@@ -1163,22 +1183,6 @@ async function ensureKgSchema(
       );
     `);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS vc_jobs (
-        job_id BIGSERIAL PRIMARY KEY,
-        job_type TEXT NOT NULL,
-        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-        status TEXT NOT NULL DEFAULT 'pending',
-        run_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        priority INTEGER NOT NULL DEFAULT 0,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        max_attempts INTEGER NOT NULL DEFAULT 8,
-        locked_at TIMESTAMPTZ,
-        locked_by TEXT,
-        last_error TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    await client.query(`
       CREATE INDEX IF NOT EXISTS vc_world_cluster_ivfflat_centroid
       ON vc_world_cluster USING ivfflat (centroid vector_cosine_ops)
       WITH (lists = 100)
@@ -1195,10 +1199,6 @@ async function ensureKgSchema(
       ON vc_semantic_cache USING ivfflat (request_embedding vector_cosine_ops)
       WITH (lists = 100)
       WHERE cache_scope = 'global' AND is_valid = TRUE AND task = 'codex';
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS vc_jobs_claim_idx
-      ON vc_jobs (status, run_at, priority DESC, job_id);
     `);
   } catch (e) {
     console.warn("[ensureSchema] ensureKgSchema skipped:", e);
