@@ -15,6 +15,21 @@ const CHINESE_ORDER_LABELS: Record<number, string> = {
 
 const LEGACY_HARDCODED_TITLES = new Set(["门后回声"]);
 
+/** Narrative-hook style lines misused as readable chapter subtitles in the shell header. */
+export function isWeakChapterBookmarkSnippet(value: unknown): boolean {
+  if (typeof value !== "string") return true;
+  const t = value.replace(/\s+/g, " ").trim();
+  if (!t) return true;
+  if (/^新的线索/.test(t)) return true;
+  if (/^上一章/.test(t)) return true;
+  if (/沿着.*章/.test(t)) return true;
+  if (/沿第[一二三四五六七八九十\d]+章/.test(t)) return true;
+  if (/可回望/.test(t) && /新的线索|暗处/.test(t)) return true;
+  if (/门后更深/.test(t)) return true;
+  if (/指向下一处/.test(t)) return true;
+  return false;
+}
+
 export function toChineseChapterOrder(order: number): string {
   const safe = Number.isFinite(order) ? Math.max(1, Math.trunc(order)) : 1;
   if (CHINESE_ORDER_LABELS[safe]) return CHINESE_ORDER_LABELS[safe]!;
@@ -40,6 +55,7 @@ export function sanitizeChapterTitleCandidate(value: unknown, maxChars = 24): st
 
 function compactTitleSource(value: unknown): string | null {
   if (typeof value !== "string") return null;
+  if (isWeakChapterBookmarkSnippet(value)) return null;
   const cleaned = value
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/[《》「」『』“”"'`*_~#<>[\]{}\\]/g, "")
@@ -49,7 +65,7 @@ function compactTitleSource(value: unknown): string | null {
     .trim();
   if (!cleaned) return null;
   const first = cleaned.split(/\s+/).find((part) => part.trim().length >= 2) ?? cleaned;
-  return sanitizeChapterTitleCandidate(first, 12);
+  return sanitizeChapterTitleCandidate(first, 22);
 }
 
 export function deriveNextChapterTitleCandidate(input: {
@@ -58,11 +74,11 @@ export function deriveNextChapterTitleCandidate(input: {
 }): string | null {
   const summary = input.summary ?? null;
   const candidates = [
-    ...(Array.isArray(summary?.clueLines) ? summary.clueLines : []),
-    summary?.hook,
+    input.fallbackObjective,
     summary?.nextObjective,
     ...(Array.isArray(summary?.resultLines) ? summary.resultLines : []),
-    input.fallbackObjective,
+    summary?.hook,
+    ...(Array.isArray(summary?.clueLines) ? summary.clueLines : []),
   ];
   for (const candidate of candidates) {
     const title = compactTitleSource(candidate);
@@ -80,7 +96,8 @@ export function getChapterDisplayName(
   state?: ChapterState | null
 ): string {
   if (!definition) return "暗月初醒";
-  const stored = getChapterStoredTitle(state, definition.id);
+  const storedRaw = getChapterStoredTitle(state, definition.id);
+  const stored = storedRaw && !isWeakChapterBookmarkSnippet(storedRaw) ? storedRaw : null;
   if (stored) return stored;
   if (definition.order === 1) return sanitizeChapterTitleCandidate(definition.title, 32) ?? definition.title;
   return "";

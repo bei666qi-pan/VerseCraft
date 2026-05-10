@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDebouncedStorage } from "@/lib/idbDebouncedStorage";
+import { flushGameStorePersistenceDebouncedWrites, createDebouncedStorage } from "@/lib/idbDebouncedStorage";
 
 test("phase4: debounced storage should flush on hidden visibility", async () => {
   let visibilityHandler: (() => void) | null = null;
@@ -33,4 +33,20 @@ test("phase4: debounced storage should flush on hidden visibility", async () => 
   visibilityHandler?.();
   await Promise.resolve();
   assert.equal(writes, 1);
+});
+
+test("flushGameStorePersistenceDebouncedWrites persists pending debounced snapshot", async () => {
+  let lastWrite: string | null = null;
+  const base: import("zustand/middleware").StateStorage = {
+    getItem: async () => null,
+    setItem: async (_name, value) => {
+      lastWrite = value;
+    },
+    removeItem: async () => {},
+  };
+  const storage = createDebouncedStorage(base, 60_000, { registerGamePersistenceFlush: true });
+  storage.setItem("versecraft-storage", "snapshot-ready");
+  assert.equal(lastWrite, null);
+  await flushGameStorePersistenceDebouncedWrites();
+  assert.equal(lastWrite, "snapshot-ready");
 });

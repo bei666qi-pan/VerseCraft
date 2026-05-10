@@ -153,7 +153,7 @@ import {
   dangerTierToPlayerText,
   styleTagsToPlayerHint,
 } from "@/lib/combat/combatPresentation";
-import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
+import { VC_PERF_FLAGS, VC_WAITING, resolvePlayChatTransportTimeouts } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
 import {
@@ -162,6 +162,10 @@ import {
 } from "@/lib/chatPurpose";
 import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
 import { normalizeChapterState, selectChapterReviewLogEntries } from "@/lib/chapters";
+import {
+  calculateChapterChatSliceStart,
+  resolveDisplayScopeStartForNewChapterBridge,
+} from "@/lib/play/chapterConversationScope";
 
 type ClientTurnMode = "narrative_only" | "decision_required" | "system_transition";
 
@@ -417,15 +421,7 @@ function normalizeMainThreatPhase(raw: unknown): SnapshotMainThreatPhase | undef
 
 /** Max idle time between SSE chunks after the first payload (avoids infinite “正在生成…”). */
 const STREAM_CHUNK_STALL_MS = VC_WAITING.playStreamChunkStallMs;
-/** Stricter timeout until first non-empty `data:` payload (connection open but no DM bytes). */
-const STREAM_FIRST_CHUNK_STALL_MS = VC_WAITING.playStreamFirstChunkStallMs;
 const MIDSTREAM_LONG_GAP_MS = VC_WAITING.playInterChunkLongGapMs;
-/**
- * Max wait for the **first byte / response headers** from our own `/api/chat`.
- * The handler runs moderation + DB + control preflight (≤~11s) before calling upstream; `resilientFetch`
- * may retry several times with `AI_TIMEOUT_MS` (~60s) each — 95s was too low and caused false timeouts.
- */
-const FETCH_CHAT_RESPONSE_DEADLINE_MS = VC_WAITING.playFetchChatResponseDeadlineMs;
 const TAIL_DRAIN_UNLOCK_MIN_MS = 2200;
 const TAIL_DRAIN_UNLOCK_MAX_MS = 9000;
 /** 距底部小于此像素视为「贴底」，流式更新时才自动滚动。 */
@@ -1382,10 +1378,14 @@ function PlayContent() {
       const prevProgress = prevDef
         ? chapterRuntime.chapterState.progressByChapterId[prevDef.id]
         : undefined;
-      const prevCompletedIdx = typeof prevProgress?.completedLogIndex === "number"
-        ? Math.max(0, Math.trunc(prevProgress.completedLogIndex))
-        : null;
-      scopeStart = prevCompletedIdx !== null ? prevCompletedIdx + 1 : 0;
+      const prevCompletedIdx =
+        typeof prevProgress?.completedLogIndex === "number"
+          ? Math.max(0, Math.trunc(prevProgress.completedLogIndex))
+          : null;
+      scopeStart = resolveDisplayScopeStartForNewChapterBridge({
+        logs: baseLogs,
+        prevCompletedLogIndex: prevCompletedIdx,
+      });
     }
     return baseLogs
       .map((l, idx) => ({ l, idx }))
@@ -2683,8 +2683,8 @@ function PlayContent() {
     }
 
     const history = useGameStore.getState().logs ?? [];
-    // 章节级上下文截断：仅保留当前章节范围 + 上一章末尾 1 轮（共 2 条）作为衔接。
-    // 防止跨章节历史污染 DM prompt；服务端 SHORT_TERM_ROUNDS 仍正常生效。
+    // Chapter-scoped prompt slice: keep anchors from startedLogIndex minus a small overlap, or a wider
+    // bridge when freshly entering a chapter (turnCount 0) so the model still sees recent closing beats.
     const chapterStateNow = normalizeChapterState(useGameStore.getState().chapterState);
     const activeProgressNow = chapterStateNow.progressByChapterId[chapterStateNow.activeChapterId] ?? null;
     const activeOrderNow = (() => {
@@ -2696,12 +2696,12 @@ function PlayContent() {
         ? Math.max(0, Math.trunc(activeProgressNow.startedLogIndex))
         : null;
     const turnCountNow = activeProgressNow?.turnCount ?? 0;
-    let chapterSliceStart = 0;
-    if (startedLogIndexNow !== null) {
-      chapterSliceStart = Math.max(0, startedLogIndexNow - 2);
-    } else if (activeOrderNow > 1 && turnCountNow === 0) {
-      chapterSliceStart = Math.max(0, history.length - 2);
-    }
+    const chapterSliceStart = calculateChapterChatSliceStart({
+      startedLogIndex: startedLogIndexNow,
+      activeChapterOrder: activeOrderNow,
+      chapterTurnCount: turnCountNow,
+      historyLength: history.length,
+    });
     const scopedHistory = chapterSliceStart > 0 ? history.slice(chapterSliceStart) : history;
     const baseMessages: ChatMessage[] = scopedHistory
       .filter((l) => l && (l.role === "user" || l.role === "assistant"))
@@ -2730,6 +2730,7 @@ function PlayContent() {
     const ac = new AbortController();
     streamAbortRef.current = ac;
     let queueIdForChat: string | null = null;
+    const transportTimeouts = resolvePlayChatTransportTimeouts();
 
     try {
       const queueAdmissionArgs = {
@@ -2782,7 +2783,7 @@ function PlayContent() {
         } catch {
           /* ignore */
         }
-      }, FETCH_CHAT_RESPONSE_DEADLINE_MS);
+      }, transportTimeouts.fetchDeadlineMs);
       res = await fetch("/api/chat", {
         method: "POST",
         credentials: "include",
@@ -3052,13 +3053,13 @@ function PlayContent() {
     };
 
     // 性能分层（首字后感知慢 / 卡住）：
-    // - 首个非空 SSE data: 到来前：使用 STREAM_FIRST_CHUNK_STALL_MS 限制“连接已建立但无正文 bytes”的等待上限
+    // - 首个非空 SSE data: 到来前：使用 Android 加权后的首包 stall 上限，限制“连接已建立但无正文 bytes”的假死。
     // - 首个 chunk 到来后：使用 STREAM_CHUNK_STALL_MS 限制“上游长停顿”的等待上限
     // 这两者都不等于“真实延迟优化”，它们只是定义“何时判定卡死并收敛体验”。
     let streamCancelled = false;
     try {
       while (true) {
-        const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : STREAM_FIRST_CHUNK_STALL_MS;
+        const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : transportTimeouts.firstChunkStallMs;
         const { value, done } = await readNextWithStallGuard(stallMs);
         if (done) break;
         const chunkText = decoder.decode(value, { stream: true });

@@ -4023,7 +4023,9 @@ export const useGameStore = create<GameState>()(
       name: DB_KEY,
       version: PERSIST_VERSION,
       migrate: migratePersistedState,
-      storage: createJSONStorage(() => createDebouncedStorage(idbStorage, 1000)),
+      storage: createJSONStorage(() =>
+        createDebouncedStorage(idbStorage, 1000, { registerGamePersistenceFlush: true })
+      ),
       skipHydration: true,
       merge: (persistedState, currentState) =>
         mergePersistedStateAfterHydrationDeadline(persistedState, currentState),

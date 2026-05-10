@@ -411,6 +411,7 @@ test.describe("chapter flow", () => {
     await expectNoGameyChapterText(page.getByTestId("chapter-end-sheet"));
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
+    await expect(page.getByTestId("mobile-reading-chapter-title")).not.toContainText("新的线索已经指向下一处");
     const legacySecondChapterTitle = ["门后", "回声"].join("");
     await expect(page.getByTestId("mobile-reading-header")).not.toContainText(legacySecondChapterTitle);
     await expect(page.getByTestId("mobile-action-dock")).toHaveCount(0);
@@ -424,7 +425,7 @@ test.describe("chapter flow", () => {
     await expect(page.getByTestId("mobile-reading-header")).toBeVisible();
     await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
     await expect(page.getByTestId("mobile-action-dock")).toBeVisible();
-    await expect(page.getByText("夕阳斜斜地压在黑板上")).toHaveCount(0);
+    await expect(page.getByTestId("play-story-document")).toContainText("门槛内侧");
 
     await page.getByTestId("bottom-nav-story").click();
     await expect(page.getByTestId("chapter-navigator")).toBeVisible();

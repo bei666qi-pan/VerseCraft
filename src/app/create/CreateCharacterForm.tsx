@@ -27,6 +27,8 @@ import {
   type GenderOption,
 } from "./constants";
 import { validateCreateProfileBeforeLocalStart } from "./createSubmitPolicy";
+import { flushGameStorePersistenceDebouncedWrites } from "@/lib/idbDebouncedStorage";
+import { isLikelyAndroidMobileUa } from "@/lib/platform/isLikelyAndroidMobileUa";
 
 const inputClass =
   "h-9 w-full border-0 border-b border-[#bdb8af] bg-transparent px-1 vc-reading-serif text-[18px] leading-none text-[#164f4d] outline-none transition placeholder:text-[17px] placeholder:text-[#365f5d]/78 focus:border-[#164f4d]";
@@ -145,6 +147,8 @@ export function CreateCharacterForm() {
         console.warn("[create] main_slot save failed before play navigation", saveError);
       }
 
+      await flushGameStorePersistenceDebouncedWrites();
+
       void trackGameplayEvent({
         eventName: "create_character_success",
         sessionId: guestId,
@@ -170,13 +174,21 @@ export function CreateCharacterForm() {
         console.warn("[create] post-start profile moderation skipped", moderationError);
       });
 
+      const android = isLikelyAndroidMobileUa();
+      if (typeof window !== "undefined" && android) {
+        window.location.assign("/play");
+        return;
+      }
+
       router.replace("/play");
       if (typeof window !== "undefined") {
         window.setTimeout(() => {
-          if (window.location.pathname !== "/play") {
+          if (window.location.pathname.includes("/create")) {
+            submitInFlightRef.current = false;
+            setSubmitting(false);
             window.location.assign("/play");
           }
-        }, 900);
+        }, 2200);
       }
     } catch (error) {
       console.error("[create] failed to initialize character", error);

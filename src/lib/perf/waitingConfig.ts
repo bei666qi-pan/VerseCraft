@@ -184,6 +184,23 @@ export const VC_WAITING = {
   playerChatStreamReconnectWallDefaultMs: 3_500,
 } as const;
 
+/**
+ * `/play` `/api/chat` transport: widen first-chunk stall and header deadline on Android
+ * where SSE first bytes arrive later (weak radio + heavier preflight).
+ */
+export function resolvePlayChatTransportTimeouts(): {
+  firstChunkStallMs: number;
+  fetchDeadlineMs: number;
+} {
+  let firstChunkStallMs = VC_WAITING.playStreamFirstChunkStallMs;
+  let fetchDeadlineMs = VC_WAITING.playFetchChatResponseDeadlineMs;
+  if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "")) {
+    firstChunkStallMs = Math.max(firstChunkStallMs, 34_000);
+    fetchDeadlineMs = Math.max(fetchDeadlineMs, 105_000);
+  }
+  return { firstChunkStallMs, fetchDeadlineMs };
+}
+
 export const VC_PERF_FLAGS = {
   /** Enable extra client-side perf logging without changing behavior. */
   clientPerfDebug: process.env.NEXT_PUBLIC_VC_PERF_DEBUG === "1",
