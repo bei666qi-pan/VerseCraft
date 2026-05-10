@@ -292,7 +292,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
   ].join("\n");
 
   /** 默认留足完整 JSON（勿在 parse 中途截断）；需更紧时由调用方先降 maxChars 并接受可能裁掉尾部键。 */
-  const maxChars = args.maxChars ?? 2000;
+  const maxChars = args.maxChars ?? 2200;
   const trimmed = text.length > maxChars ? `${text.slice(0, Math.max(0, maxChars - 1))}…` : text;
   return { text: trimmed, charCount: trimmed.length, npcConsistencyBoundaryEnabled: true };
 }
