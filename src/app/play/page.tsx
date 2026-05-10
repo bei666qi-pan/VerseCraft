@@ -90,6 +90,7 @@ import {
   getOptionsRegenSuccessHint,
 } from "./optionsRegenUx";
 import {
+  OPTIONS_REGEN_FAILURE_HINT,
   parseOptionsFromSsePayload,
   type OptionsRegenParseResult,
 } from "./optionsRegenParsing";
@@ -155,6 +156,10 @@ import {
 import { VC_PERF_FLAGS, VC_WAITING } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
+import {
+  VERSECRAFT_CHAT_PURPOSE_HEADER,
+  VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+} from "@/lib/chatPurpose";
 import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
 import { normalizeChapterState, selectChapterReviewLogEntries } from "@/lib/chapters";
 
@@ -197,6 +202,17 @@ type PendingChatQueueAction = {
   createdAt: number;
 };
 
+type OptionsOnlyAttemptOutcome =
+  | { kind: "parsed"; parsed: OptionsRegenParseResult }
+  | {
+      kind: "transport_failed";
+      status: number;
+      reason: string;
+      retryAfterMs: number;
+      localRateLimited: boolean;
+      recoverable: boolean;
+    };
+
 const CHAT_QUEUE_PENDING_STORAGE_KEY = "versecraft.chatQueue.pendingAction.v1";
 const CHAT_QUEUE_FINGERPRINT_STORAGE_KEY = "versecraft.chatQueue.fingerprint.v1";
 const EMPTY_CHAT_QUEUE_STATE: ChatQueueUiState = {
@@ -213,6 +229,27 @@ const EMPTY_CHAT_QUEUE_STATE: ChatQueueUiState = {
 function safeChatQueueNumber(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : null;
+}
+
+function parseRetryAfterMs(value: string | null, fallbackMs = 1_100): number {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallbackMs;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(250, Math.min(5_000, Math.trunc(seconds * 1000)));
+  const dateMs = Date.parse(raw);
+  if (Number.isFinite(dateMs)) return Math.max(250, Math.min(5_000, dateMs - Date.now()));
+  return fallbackMs;
+}
+
+async function sleepWithinOptionsDeadline(args: {
+  startedAt: number;
+  deadlineMs: number;
+  requestedDelayMs: number;
+}): Promise<boolean> {
+  const remaining = Math.max(0, args.deadlineMs - (Date.now() - args.startedAt) - 250);
+  if (remaining <= 0) return false;
+  await new Promise((resolve) => window.setTimeout(resolve, Math.min(args.requestedDelayMs, remaining)));
+  return true;
 }
 
 function messageForChatQueueStatus(status: ChatQueueUiStatus, wasQueued = false): string {
@@ -330,6 +367,7 @@ function isRecoverableModelRateLimit(args: {
   const code = String(args.code ?? "").toLowerCase();
   const reason = String(args.reason ?? "").toLowerCase();
   const body = String(args.body ?? "").toLowerCase();
+  if (isLocalRateLimitedPayload({ status: args.status, code, reason, body })) return false;
   if (/risk_control|queue_full|quota|auth|forbidden|banned|invalid_ticket/.test(`${code} ${reason} ${body}`)) {
     return false;
   }
@@ -338,16 +376,35 @@ function isRecoverableModelRateLimit(args: {
   return /rate[_-]?limit|too many requests|upstream_rate|overloaded|capacity/.test(`${code} ${reason} ${body}`);
 }
 
+function isLocalRateLimitedPayload(args: { status?: number; code?: string; reason?: string; body?: string }): boolean {
+  const haystack = [args.code, args.reason, args.body].filter(Boolean).join(" ").toLowerCase();
+  return (
+    args.status === 429 &&
+    /\brate_limited\b/.test(haystack) &&
+    !/\b(upstream|upstream_rate|queue_full|risk_control|capacity|overloaded)\b/.test(haystack)
+  );
+}
+
 function dmIndicatesRecoverableModelRateLimit(dm: unknown): boolean {
   if (!dm || typeof dm !== "object" || Array.isArray(dm)) return false;
   const meta = (dm as { security_meta?: unknown }).security_meta;
-  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
-  const record = meta as Record<string, unknown>;
-  return isRecoverableModelRateLimit({
-    upstreamStatus: typeof record.upstream_status === "number" ? record.upstream_status : undefined,
-    code: typeof record.upstream_code === "string" ? record.upstream_code : undefined,
-    reason: typeof record.reason === "string" ? record.reason : undefined,
-  });
+  const internal = (dm as { internal_meta?: unknown }).internal_meta;
+  for (const source of [meta, internal]) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    const record = source as Record<string, unknown>;
+    if (
+      isRecoverableModelRateLimit({
+        status: typeof record.kind === "string" && record.kind === "site_busy" ? 503 : undefined,
+        upstreamStatus: typeof record.upstream_status === "number" ? record.upstream_status : undefined,
+        code: typeof record.upstream_code === "string" ? record.upstream_code : undefined,
+        reason: typeof record.reason === "string" ? record.reason : undefined,
+        body: typeof record.kind === "string" ? record.kind : undefined,
+      })
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function shouldShowComplianceHintForDm(dm: unknown, isOpeningSystemRequest: boolean): boolean {
@@ -752,15 +809,16 @@ function PlayContent() {
     (kind: ReturnType<typeof classifyPlayTurnFailure>) => {
       const message = getPlayTurnFailureMessage(kind);
       setOptionsRegenFailureMessage(null);
-      setCurrentOptions([]);
-      setFirstTimeHint(null);
       if (shouldShowFailureAsNarrative(kind) && message) {
+        setCurrentOptions([]);
+        setFirstTimeHint(null);
         narrativeRef.current = message;
         setLiveNarrative(message);
         return message;
       }
       narrativeRef.current = "";
       setLiveNarrative("");
+      setFirstTimeHint(message || null);
       return "";
     },
     [setCurrentOptions]
@@ -2267,7 +2325,7 @@ function PlayContent() {
         attemptReason: string,
         attemptContext = optionsRegenContext,
         extraBlocked: string[] = []
-      ): Promise<OptionsRegenParseResult | null> => {
+      ): Promise<OptionsOnlyAttemptOutcome> => {
         const attemptMessages: ChatMessage[] = useOptionsOnlyPath
           ? [
               ...assistantContextMessages,
@@ -2288,7 +2346,10 @@ function PlayContent() {
           method: "POST",
           credentials: "include",
           cache: "no-store",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+          },
           body: JSON.stringify({
             messages: attemptMessages,
             playerContext,
@@ -2302,7 +2363,19 @@ function PlayContent() {
           }),
           signal: ac.signal,
         });
-        if (!attemptRes.ok || !attemptRes.body) return null;
+        if (!attemptRes.ok || !attemptRes.body) {
+          const errorText = await attemptRes.text().catch(() => "");
+          const localRateLimited = isLocalRateLimitedPayload({ status: attemptRes.status, body: errorText });
+          const recoverable = localRateLimited || attemptRes.status === 429 || attemptRes.status === 503 || !attemptRes.body;
+          return {
+            kind: "transport_failed",
+            status: attemptRes.status,
+            reason: localRateLimited ? "local_rate_limited" : `http_${attemptRes.status || "no_body"}`,
+            retryAfterMs: parseRetryAfterMs(attemptRes.headers.get("retry-after")),
+            localRateLimited,
+            recoverable,
+          };
+        }
         const responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
         const reader = attemptRes.body.getReader();
         const decoder = new TextDecoder("utf-8");
@@ -2364,7 +2437,7 @@ function PlayContent() {
             }
           );
         }
-        return parsed;
+        return { kind: "parsed", parsed };
       };
       const logOptionsRegenTelemetry = (args: {
         success: boolean;
@@ -2385,25 +2458,32 @@ function PlayContent() {
           options_regen_client_deadline_ms: optionsOnlyDeadlineMs,
         });
       };
-      let firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
-      if (firstPass === null && !optionsRegenTimedOut) {
-        await new Promise((r) => setTimeout(r, 800));
-        firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      let firstAttempt = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      if (firstAttempt.kind === "transport_failed" && firstAttempt.recoverable && !optionsRegenTimedOut) {
+        const slept = await sleepWithinOptionsDeadline({
+          startedAt: optionsRegenStartedAt,
+          deadlineMs: optionsOnlyDeadlineMs,
+          requestedDelayMs: firstAttempt.retryAfterMs,
+        });
+        if (slept && !optionsRegenTimedOut) {
+          firstAttempt = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+        }
       }
       if (tid !== undefined) window.clearTimeout(tid);
-      if (firstPass === null) {
+      if (firstAttempt.kind === "transport_failed") {
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(null);
-        setOptionsRegenFailureMessage(null);
+        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
         logOptionsRegenTelemetry({
           success: false,
-          failureReason: optionsRegenTimedOut ? "client_deadline_timeout" : "request_failed",
+          failureReason: optionsRegenTimedOut ? "client_deadline_timeout" : firstAttempt.reason,
           repairUsed: false,
           finalOptionsCount: 0,
         });
         return;
       }
+      const firstPass = firstAttempt.parsed;
       if (firstPass.parseFailed) reasonCodes.add("parse_failed");
       for (const code of firstPass.rejectCodes) reasonCodes.add(code);
       const mergeModelOptions = (...groups: string[][]): string[] =>
@@ -2437,7 +2517,8 @@ function PlayContent() {
           repairNeedCount: missingCount,
           repairLockedOptions: finalOptions,
         });
-        const repaired = await runOptionsOnlyAttempt(repairReason, repairContext, finalOptions);
+        const repairedAttempt = await runOptionsOnlyAttempt(repairReason, repairContext, finalOptions);
+        const repaired = repairedAttempt.kind === "parsed" ? repairedAttempt.parsed : null;
         if (repaired) {
           if (repaired.parseFailed) reasonCodes.add("parse_failed");
           for (const code of repaired.rejectCodes) reasonCodes.add(code);
@@ -2454,7 +2535,7 @@ function PlayContent() {
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(null);
-        setOptionsRegenFailureMessage(null);
+        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
         logOptionsRegenTelemetry({
           success: false,
           failureReason: firstPass.failure?.reason ?? "insufficient_options_after_repair",
@@ -2484,7 +2565,7 @@ function PlayContent() {
       setOptionsRegenStage("finalizing");
       setOptionsRegenProgress((prev) => Math.max(prev, 92));
       setFirstTimeHint(null);
-      setOptionsRegenFailureMessage(null);
+      setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;
@@ -2651,7 +2732,7 @@ function PlayContent() {
     let queueIdForChat: string | null = null;
 
     try {
-      const queueAdmission = await requestChatQueueAdmission({
+      const queueAdmissionArgs = {
         body: chatRequestBody,
         requestId: chatRequestId,
         action: trimmed,
@@ -2659,7 +2740,8 @@ function PlayContent() {
         isResume: Boolean(isResume),
         isSystemAction: Boolean(isSystemAction),
         resumeQueueId: resumeQueueId ?? null,
-      });
+      };
+      const queueAdmission = await requestChatQueueAdmission(queueAdmissionArgs);
       if (queueAdmission === false) {
         setStreamPhase("idle");
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -2669,11 +2751,24 @@ function PlayContent() {
       queueIdForChat = queueAdmission;
     } catch (queueErr) {
       console.warn("[play][chat_queue_admission_failed]", queueErr);
-      setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
-      setStreamPhase("idle");
-      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      showTurnFailureIfVisible("site_busy");
-      return;
+      try {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        const recoveredQueueAdmission = await requestChatQueueAdmission(queueAdmissionArgs);
+        if (recoveredQueueAdmission === false) {
+          setStreamPhase("idle");
+          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+          showTurnFailureIfVisible("site_busy");
+          return;
+        }
+        queueIdForChat = recoveredQueueAdmission;
+      } catch (retryErr) {
+        console.warn("[play][chat_queue_admission_retry_failed]", retryErr);
+        setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+        setStreamPhase("idle");
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        showTurnFailureIfVisible("network_or_gateway");
+        return;
+      }
     }
 
     let res: Response;
@@ -2849,7 +2944,6 @@ function PlayContent() {
         }) &&
         !retriedAfterRateLimit
       ) {
-        showTurnFailureIfVisible("site_busy");
         sendActionInFlightRef.current = false;
         await sendAction(trimmed, true, true, isSystemAction, null, true);
         return;
@@ -3105,7 +3199,6 @@ function PlayContent() {
 
     if (dmIndicatesRecoverableModelRateLimit(parsed) && !retriedAfterRateLimit) {
       setStreamPhase("idle");
-      showTurnFailureIfVisible("site_busy");
       sendActionInFlightRef.current = false;
       await sendAction(trimmed, true, true, isSystemAction, null, true);
       return;

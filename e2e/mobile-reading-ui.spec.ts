@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 
 const DB_NAME = "keyval-store";
 const STORE_NAME = "keyval";
@@ -228,6 +228,17 @@ function buildSseFinalFrame() {
     is_death: false,
     consumes_time: false,
     options,
+  })}\n\n`;
+}
+
+function buildOptionsOnlySseFrame(actionOptions = options) {
+  return `data: ${JSON.stringify({
+    ok: true,
+    reason: "ok",
+    turn_mode: "decision_required",
+    decision_required: true,
+    decision_options: actionOptions,
+    options: actionOptions,
   })}\n\n`;
 }
 
@@ -1326,4 +1337,125 @@ test.describe("mobile reading UI", () => {
       expect(metrics.spinnerVisible).toBe(true);
     });
   }
+
+  test.describe("Android options regeneration", () => {
+    test.use({
+      userAgent: devices["Pixel 5"].userAgent,
+      deviceScaleFactor: devices["Pixel 5"].deviceScaleFactor,
+      isMobile: true,
+      hasTouch: true,
+    });
+
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 393, height: 852 },
+      { width: 430, height: 932 },
+    ]) {
+      test(`recovers options-only local 429 without busy copy at ${viewport.width}x${viewport.height}`, async ({
+        page,
+      }) => {
+        test.setTimeout(60_000);
+        await page.setViewportSize(viewport);
+        await installQueueDisabledMock(page);
+
+        let optionsRequests = 0;
+        const seenPurposeHeaders: Array<string | undefined> = [];
+        await page.route("**/api/chat", async (route) => {
+          const body = route.request().postDataJSON() as Record<string, unknown>;
+          if (body.clientPurpose === "options_regen_only") {
+            optionsRequests += 1;
+            seenPurposeHeaders.push(route.request().headers()["x-versecraft-chat-purpose"]);
+            if (optionsRequests === 1) {
+              await route.fulfill({
+                status: 429,
+                headers: {
+                  "content-type": "application/json; charset=utf-8",
+                  "retry-after": "1",
+                },
+                body: JSON.stringify({ error: "rate_limited", message: "too many local requests" }),
+              });
+              return;
+            }
+            await route.fulfill({
+              status: 200,
+              headers: { "content-type": "text/event-stream; charset=utf-8" },
+              body: buildOptionsOnlySseFrame(),
+            });
+            return;
+          }
+          await route.fulfill({
+            status: 200,
+            headers: { "content-type": "text/event-stream; charset=utf-8" },
+            body: buildSseFinalFrame(),
+          });
+        });
+
+        await openSeededPlay(page, {
+          currentOptions: [],
+          recentOptions: [],
+          inputMode: "options",
+        });
+
+        await page.getByTestId("options-toggle-button").tap();
+        await expect(page.getByTestId("mobile-options-loading-card")).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByTestId("mobile-option-item")).toHaveCount(4, { timeout: 12_000 });
+        await expect.poll(() => optionsRequests, { timeout: 12_000 }).toBe(2);
+        expect(seenPurposeHeaders).toEqual(["options_regen_only", "options_regen_only"]);
+        await expect(page.locator("body")).not.toContainText("网站生成通道繁忙");
+      });
+    }
+
+    test("rapid option-toggle taps do not create an options-only request storm", async ({ page }) => {
+      test.setTimeout(60_000);
+      await page.setViewportSize({ width: 393, height: 852 });
+      await installQueueDisabledMock(page);
+
+      let optionsRequests = 0;
+      await page.route("**/api/chat", async (route) => {
+        const body = route.request().postDataJSON() as Record<string, unknown>;
+        if (body.clientPurpose === "options_regen_only") {
+          optionsRequests += 1;
+          if (optionsRequests === 1) {
+            await route.fulfill({
+              status: 429,
+              headers: {
+                "content-type": "application/json; charset=utf-8",
+                "retry-after": "1",
+              },
+              body: JSON.stringify({ error: "rate_limited", message: "too many local requests" }),
+            });
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          await route.fulfill({
+            status: 200,
+            headers: { "content-type": "text/event-stream; charset=utf-8" },
+            body: buildOptionsOnlySseFrame(),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          headers: { "content-type": "text/event-stream; charset=utf-8" },
+          body: buildSseFinalFrame(),
+        });
+      });
+
+      await openSeededPlay(page, {
+        currentOptions: [],
+        recentOptions: [],
+        inputMode: "options",
+      });
+
+      const toggle = page.getByTestId("options-toggle-button");
+      await toggle.tap();
+      await toggle.tap();
+      await toggle.tap();
+
+      await expect.poll(() => optionsRequests, { timeout: 12_000 }).toBe(2);
+      await expect(page.getByTestId("mobile-option-item")).toHaveCount(4, { timeout: 12_000 });
+      expect(optionsRequests).toBeLessThanOrEqual(2);
+      await expect(page.locator("body")).not.toContainText("网站生成通道繁忙");
+    });
+  });
 });

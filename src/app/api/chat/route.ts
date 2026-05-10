@@ -94,6 +94,7 @@ import {
   getChatQueueIdFromHeaders,
 } from "@/lib/chatQueue/service";
 import { CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
+import { isChatPurposeHeaderConsistent } from "@/lib/chatPurpose";
 import { buildRuleSnapshot } from "@/lib/playRealtime/ruleSnapshot";
 import { CHAT_LATENCY_BUDGET, OPTIONS_REGEN_LATENCY_BUDGET, VC_WAITING } from "@/lib/perf/waitingConfig";
 import type { PlayerControlPlane } from "@/lib/playRealtime/types";
@@ -387,6 +388,13 @@ function createChatQueueJsonResponse(payload: unknown, init: ResponseInit = {}):
   return new Response(JSON.stringify(payload), { ...init, headers });
 }
 
+function createChatPurposeMismatchResponse(): Response {
+  return createChatQueueJsonResponse(
+    { error: "chat_purpose_mismatch", message: "请求用途与请求体不一致。" },
+    { status: 400 }
+  );
+}
+
 async function resolveAuthenticatedUserIdForQueue(headers: Headers): Promise<string | null> {
   if (!hasAuthSessionCookie(headers)) return null;
   try {
@@ -417,6 +425,9 @@ async function resolveChatQueueGate(
 
   const validated = validateChatRequest(body);
   if (!validated.ok) return { queueId: null, response: null };
+  if (!isChatPurposeHeaderConsistent({ headers: req.headers, clientPurpose: validated.clientPurpose })) {
+    return { queueId: null, response: createChatPurposeMismatchResponse() };
+  }
   if (validated.clientPurpose === "options_regen_only") return { queueId: null, response: null };
 
   const queueGateStartedAt = Date.now();
@@ -777,6 +788,9 @@ async function postChatInternal(req: Request) {
   ttftProfile.validateChatRequestMs = elapsedMs(validateStartAt);
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: validated.status });
+  }
+  if (!isChatPurposeHeaderConsistent({ headers: req.headers, clientPurpose: validated.clientPurpose })) {
+    return NextResponse.json({ error: "chat_purpose_mismatch", message: "请求用途与请求体不一致。" }, { status: 400 });
   }
   const messages = validated.messages;
   const playerContext = validated.playerContext;

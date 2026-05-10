@@ -3,6 +3,7 @@ import { buildVisibleSiteFailureMessage } from "@/lib/playRealtime/immersiveTurn
 export type PlayTurnFailureKind =
   | "network_or_gateway"
   | "site_busy"
+  | "local_rate_limited"
   | "auth_or_config"
   | "internal";
 
@@ -26,6 +27,12 @@ export function classifyPlayTurnFailure(args: {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+
+  const isLocalRateLimited =
+    args.status === 429 &&
+    /\brate_limited\b/.test(haystack) &&
+    !/\b(upstream|upstream_rate|queue_full|risk_control|capacity|overloaded)\b/.test(haystack);
+  if (isLocalRateLimited) return "local_rate_limited";
 
   if (
     args.status === 429 ||
@@ -65,6 +72,7 @@ export function classifyPlayTurnFailure(args: {
 export function getPlayTurnFailureMessage(kind: PlayTurnFailureKind): string {
   if (kind === "network_or_gateway") return buildVisibleSiteFailureMessage("network_or_gateway");
   if (kind === "site_busy") return buildVisibleSiteFailureMessage("site_busy");
+  if (kind === "local_rate_limited") return "请求节奏过快，请稍等片刻。";
   if (kind === "auth_or_config") return buildVisibleSiteFailureMessage("auth_or_config");
   return "";
 }

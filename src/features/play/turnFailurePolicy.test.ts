@@ -14,6 +14,8 @@ test("classifyPlayTurnFailure only labels real timeout/gateway failures as netwo
 
 test("classifyPlayTurnFailure separates busy, auth, and internal failures", () => {
   assert.equal(classifyPlayTurnFailure({ status: 503 }), "site_busy");
+  assert.equal(classifyPlayTurnFailure({ status: 429, body: '{"error":"rate_limited"}' }), "local_rate_limited");
+  assert.equal(classifyPlayTurnFailure({ status: 429, reason: "upstream_rate_limit" }), "site_busy");
   assert.equal(classifyPlayTurnFailure({ status: 502, upstreamStatus: 401, code: "UPSTREAM_AUTH_FAILED" }), "auth_or_config");
   assert.equal(classifyPlayTurnFailure({ status: 500, code: "JSON_PARSE_FAILED" }), "internal");
   assert.equal(classifyPlayTurnFailure({ status: 200, code: "VALIDATOR_REPAIR_FAILED" }), "internal");
@@ -22,11 +24,13 @@ test("classifyPlayTurnFailure separates busy, auth, and internal failures", () =
 test("only website/gateway failures are player-visible fallback", () => {
   assert.equal(shouldShowFailureAsNarrative("network_or_gateway"), true);
   assert.equal(shouldShowFailureAsNarrative("site_busy"), true);
+  assert.equal(shouldShowFailureAsNarrative("local_rate_limited"), false);
   assert.equal(shouldShowFailureAsNarrative("auth_or_config"), true);
   assert.equal(shouldShowFailureAsNarrative("internal"), false);
 
   assert.match(getPlayTurnFailureMessage("network_or_gateway"), /网站|网关/);
   assert.match(getPlayTurnFailureMessage("site_busy"), /网站|繁忙/);
+  assert.doesNotMatch(getPlayTurnFailureMessage("local_rate_limited"), /网站|繁忙|网络|网关/);
   assert.match(getPlayTurnFailureMessage("auth_or_config"), /网站|服务/);
   assert.equal(getPlayTurnFailureMessage("internal"), "");
 });

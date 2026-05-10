@@ -28,3 +28,22 @@ test("api/chat: options_regen_only fast path bypasses story-action risk and inpu
     "options_regen_only packet should consume dedicated optionsRegenContext to avoid context drift"
   );
 });
+
+test("api/chat: chat purpose header is validated before queue and options fast path", () => {
+  const p = join(process.cwd(), "src/app/api/chat/route.ts");
+  const content = readFileSync(p, "utf8");
+
+  const resolveGateIdx = content.indexOf("async function resolveChatQueueGate");
+  const internalIdx = content.indexOf("async function postChatInternal");
+  const queueMismatchIdx = content.indexOf("createChatPurposeMismatchResponse()", resolveGateIdx);
+  const queueSkipIdx = content.indexOf('validated.clientPurpose === "options_regen_only"', resolveGateIdx);
+  const internalMismatchIdx = content.indexOf('NextResponse.json({ error: "chat_purpose_mismatch"', internalIdx);
+  const fastPathIdx = content.indexOf('if (clientPurpose === "options_regen_only")', internalIdx);
+
+  assert.ok(resolveGateIdx >= 0, "missing queue-gate function");
+  assert.ok(internalIdx >= 0, "missing internal chat function");
+  assert.ok(queueMismatchIdx >= 0, "missing queue-gate chat purpose mismatch guard");
+  assert.ok(internalMismatchIdx >= 0, "missing internal chat purpose mismatch guard");
+  assert.ok(queueMismatchIdx < queueSkipIdx, "mismatched purpose header must not bypass queue admission");
+  assert.ok(internalMismatchIdx < fastPathIdx, "mismatched purpose header must not reach options fast path");
+});

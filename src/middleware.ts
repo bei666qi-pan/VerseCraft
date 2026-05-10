@@ -15,6 +15,7 @@ import {
   isSuspiciousPath,
 } from "@/lib/security/http";
 import { getPrunedUiRedirectPath } from "@/lib/ui/prunedUiRoutes";
+import { getChatRateLimitBucketForHeaders } from "@/lib/chatPurpose";
 
 type Entry = { count: number; resetAt: number };
 
@@ -49,6 +50,7 @@ function createRateLimiter(limit: number, intervalMs: number) {
 
 const generalLimiter = createRateLimiter(10, 1000);
 const llmLimiter = createRateLimiter(2, 1000);
+const optionsOnlyLlmLimiter = createRateLimiter(6, 1000);
 const chatQueueStatusLimiter = createRateLimiter(20, 1000);
 
 function getClientIp(req: NextRequest): string {
@@ -194,7 +196,9 @@ export async function middleware(req: NextRequest) {
   }
 
   if (isStream) {
-    if (!llmLimiter(ip)) {
+    const chatBucket = getChatRateLimitBucketForHeaders(req.headers);
+    const allowed = chatBucket === "options_regen_only" ? optionsOnlyLlmLimiter(ip) : llmLimiter(ip);
+    if (!allowed) {
       return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
     }
   } else if (isChatQueueLightweight) {

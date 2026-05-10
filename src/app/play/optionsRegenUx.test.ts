@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -55,5 +56,12 @@ test("options regen UX: model options backfill semantic-gate misses", () => {
     }),
     ["我查看门锁", "我检查墙角", "我靠近铁门", "我询问老刘"]
   );
+});
+
+test("options regen UX: options-only request has Android-safe rate-limit recovery hooks", () => {
+  const src = fs.readFileSync(path.resolve("src/app/play/page.tsx"), "utf8");
+  assert.match(src, /\[VERSECRAFT_CHAT_PURPOSE_HEADER\]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY/);
+  assert.match(src, /sleepWithinOptionsDeadline\(/);
+  assert.match(src, /setOptionsRegenFailureMessage\(OPTIONS_REGEN_FAILURE_HINT\)/);
 });
 
