@@ -53,11 +53,6 @@ import { PROFESSION_IDS } from "@/lib/profession/registry";
 import type { ProfessionId } from "@/lib/profession/types";
 import { localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { shouldShowComplianceHintForDmMeta } from "@/features/play/safetyCompliance";
-import {
-  classifyPlayTurnFailure,
-  getPlayTurnFailureMessage,
-  shouldShowFailureAsNarrative,
-} from "@/features/play/turnFailurePolicy";
 import { deriveTaskConsequences } from "@/lib/tasks/taskConsequences";
 import { sanitizeNarrativeDisplayMarkers } from "@/features/play/render/narrative";
 import {
@@ -71,6 +66,11 @@ import {
 } from "@/features/play/stream/chatPhase";
 import { extractNarrative, tryParseDM } from "@/features/play/stream/dmParse";
 import { extractCodexMentionsFromDmRecord } from "@/lib/registry/codexAutoCapture";
+import {
+  classifyPlayTurnFailure,
+  getPlayTurnFailureMessage,
+  shouldShowFailureAsNarrative,
+} from "@/features/play/turnFailurePolicy";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
 import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
@@ -90,7 +90,6 @@ import {
   getOptionsRegenSuccessHint,
 } from "./optionsRegenUx";
 import {
-  OPTIONS_REGEN_FAILURE_HINT,
   parseOptionsFromSsePayload,
   type OptionsRegenParseResult,
 } from "./optionsRegenParsing";
@@ -219,16 +218,14 @@ function safeChatQueueNumber(value: unknown): number | null {
 function messageForChatQueueStatus(status: ChatQueueUiStatus, wasQueued = false): string {
   switch (status) {
     case "queued":
-      return "当前生成通道繁忙，已为你保留本次行动";
+      return "本次行动已接入，主笔正在落笔";
     case "ready":
     case "running":
       return wasQueued ? "轮到你了，正在接入主笔通道" : "";
     case "expired":
-      return "排队已过期，请重新提交本次行动";
     case "failed":
-      return "排队失败，请稍后再试";
     case "rejected":
-      return "当前通道过于拥挤，请稍后再试";
+      return "网站生成通道繁忙，请稍后再试。";
     case "cancelled":
       return "已取消排队";
     default:
@@ -681,7 +678,7 @@ function PlayContent() {
   /** 主链路开场已发起、且首条助手叙事尚未落库；超时降级仅在 `streamPhaseRef` 为 idle 时注入本地开场，避免与 SSE 抢写。 */
   const openingAwaitingAssistantRef = useRef(false);
   const openingStartedAtRef = useRef(0);
-  /** 开场首段等待超时后是否已自动重试过一次拉取 options */
+  /** 开场首段等待超时后是否已自动补拉过一次 options */
   const openingTimeoutRetryRef = useRef(false);
   /** 开局回合：叙事固定为本地文案，不从 SSE 的 narrative 字段增量覆盖 */
   const optionsRegenInFlightRef = useRef(false);
@@ -750,6 +747,24 @@ function PlayContent() {
   useEffect(() => {
     if (isChatBusy) setOptionsExpanded(false);
   }, [isChatBusy]);
+
+  const showTurnFailureIfVisible = useCallback(
+    (kind: ReturnType<typeof classifyPlayTurnFailure>) => {
+      const message = getPlayTurnFailureMessage(kind);
+      setOptionsRegenFailureMessage(null);
+      setCurrentOptions([]);
+      setFirstTimeHint(null);
+      if (shouldShowFailureAsNarrative(kind) && message) {
+        narrativeRef.current = message;
+        setLiveNarrative(message);
+        return message;
+      }
+      narrativeRef.current = "";
+      setLiveNarrative("");
+      return "";
+    },
+    [setCurrentOptions]
+  );
 
   const emitEndingTelemetryEvent = useCallback(
     (
@@ -1441,7 +1456,7 @@ function PlayContent() {
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
       const confirmLeave = window.confirm(
-        "世界推演仍在进行。连接被切断时，本回合记录可能来不及落地。仍要离开吗？"
+        "本次内容仍在生成。离开后，本回合记录可能来不及落地。仍要离开吗？"
       );
       if (confirmLeave) {
         window.location.href = "/";
@@ -1469,10 +1484,10 @@ function PlayContent() {
     setLiveNarrative((prev) => (typeof prev === "string" && prev.startsWith("【开局】") ? "" : prev));
   }, [endgameState.active, hasVisibleChoiceOptions]);
 
-  // 开场超时：须避免请求仍在飞行时误判；先静默自动重试一次拉 options，仍失败再提示（不重复 push 开场正文）
+  // 开场超时：须避免请求仍在飞行时误判；先静默补拉一次 options，仍无结果则写入自然承接。
   useEffect(() => {
     if (!isHydrated) return;
-    // Phase-5：开场要么尽快成功，要么尽快进入低成本兜底，避免“等很久→再重试→再补选项”的累加等待。
+    // Phase-5：开场要么尽快成功，要么尽快进入低成本承接，避免“长等待→重复请求→再补选项”的累加等待。
     const OPENING_STALL_MS = 14_000;
     const tick = window.setInterval(() => {
       if (shouldRecoverStaleSendActionFlight(sendActionInFlightRef.current, streamPhaseRef.current)) {
@@ -1513,13 +1528,13 @@ function PlayContent() {
 
       openingAwaitingAssistantRef.current = false;
       openingTimeoutRetryRef.current = false;
-      // 不再注入本地预置选项池：若上游无法生成 options，应保持为空并引导玩家切换手动输入。
       setCurrentOptions([]);
       setOpeningAiBusy(false);
-      setLiveNarrative("【开局】仍无法获取选项，请检查网络或刷新页面；也可切换为手动输入后重试。");
+      narrativeRef.current = "";
+      setLiveNarrative("");
     }, 400);
     return () => clearInterval(tick);
-  }, [isHydrated]);
+  }, [isHydrated, setCurrentOptions]);
 
   // 兜底：仅在「冷开场」从存档恢复 options。对局中主笔若本轮未返回 options，内存已清空，
   // 但 saveSlots 可能尚未 autosave，若此处读 slot 会误把上一回合既定选项填回，导致不出现「让主笔给出选项」。
@@ -1564,9 +1579,7 @@ function PlayContent() {
     if (currentOptions.length > 0) return;
 
     hasSeededOpeningOptions.current = true;
-    // 更严格：开场白之后的预置四选项只出现一次。
-    // 后续回合若没有 options，就保持为空，引导玩家切换到手动输入继续。
-    setFirstTimeHint("本回合未生成可用选项，可切换为手动输入继续。");
+    setFirstTimeHint(null);
   }, [coldPlayOpening, currentOptions.length, inputMode, isHydrated, isChatBusy, setCurrentOptions]);
 
   const prevInputModeRef = useRef<"options" | "text">(inputMode);
@@ -1850,7 +1863,7 @@ function PlayContent() {
     sendActionInFlightRef.current = false;
     setOpeningAiBusy(false);
     if (pendingAction) setInput(pendingAction);
-    setFirstTimeHint("已取消排队，本次行动没有继续提交。");
+    setFirstTimeHint("已取消这次等待。");
   }
 
   useEffect(() => {
@@ -2075,16 +2088,16 @@ function PlayContent() {
     }
 
     if (optionsRegenInFlightRef.current) {
-      if (manual) setFirstTimeHint("正在整理可选行动，请稍候再试。");
+      if (manual) setFirstTimeHint("正在整理可选行动。");
       return;
     }
     const isAutoTrigger = trigger === "auto_missing_main" || trigger === "opening_fallback";
     if (doesPhaseBlockOptionsRegen(streamPhaseRef.current) && !isAutoTrigger) {
-      if (manual) setFirstTimeHint("主笔仍在生成本回合内容，请稍后再刷新选项。");
+      if (manual) setFirstTimeHint("本回合还在落笔。");
       return;
     }
     if (sendActionInFlightRef.current && !isAutoTrigger) {
-      if (manual) setFirstTimeHint("上一回合请求仍在处理中，请稍后再刷新选项。");
+      if (manual) setFirstTimeHint("上一回合还在落笔。");
       return;
     }
     if (endgameState.active) {
@@ -2094,7 +2107,7 @@ function PlayContent() {
     // Always allow options generation regardless of turn_mode.
     // Players should always have clickable options available after each turn.
     if (isGuestDialogueExhausted) {
-      setFirstTimeHint("当前无法生成可用行动，请继续手动输入或稍后重试");
+      setFirstTimeHint(null);
       return;
     }
 
@@ -2350,8 +2363,8 @@ function PlayContent() {
         setCurrentOptions([]);
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
-        setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
-        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
+        setFirstTimeHint(null);
+        setOptionsRegenFailureMessage(null);
         logOptionsRegenTelemetry({
           success: false,
           failureReason: optionsRegenTimedOut ? "client_deadline_timeout" : "request_failed",
@@ -2410,8 +2423,8 @@ function PlayContent() {
         setCurrentOptions([]);
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
-        setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
-        setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
+        setFirstTimeHint(null);
+        setOptionsRegenFailureMessage(null);
         logOptionsRegenTelemetry({
           success: false,
           failureReason: firstPass.failure?.reason ?? "insufficient_options_after_repair",
@@ -2437,15 +2450,12 @@ function PlayContent() {
       });
       const successHint = getOptionsRegenSuccessHint({ trigger, turnMode: lastCommittedTurnModeRef.current });
       if (successHint) setFirstTimeHint(successHint);
-      setLiveNarrative((prev) =>
-        typeof prev === "string" && prev.includes("当前无法生成可用行动") ? "" : prev
-      );
     } catch {
       setCurrentOptions([]);
       setOptionsRegenStage("finalizing");
       setOptionsRegenProgress((prev) => Math.max(prev, 92));
-      setFirstTimeHint(OPTIONS_REGEN_FAILURE_HINT);
-      setOptionsRegenFailureMessage(OPTIONS_REGEN_FAILURE_HINT);
+      setFirstTimeHint(null);
+      setOptionsRegenFailureMessage(null);
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;
@@ -2604,14 +2614,16 @@ function PlayContent() {
       if (queueAdmission === false) {
         setStreamPhase("idle");
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        showTurnFailureIfVisible("site_busy");
         return;
       }
       queueIdForChat = queueAdmission;
     } catch (queueErr) {
       console.warn("[play][chat_queue_admission_failed]", queueErr);
-      setChatQueueState(buildChatQueueUiState({ status: "failed", retryAfterSeconds: 2 }, "failed"));
+      setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
       setStreamPhase("idle");
       if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      showTurnFailureIfVisible("site_busy");
       return;
     }
 
@@ -2663,19 +2675,18 @@ function PlayContent() {
         commitLocalEndingFinaleFallback();
         return;
       }
+      console.warn("[play][chat_fetch_failed]", {
+        name: fetchErr instanceof Error ? fetchErr.name : undefined,
+        message: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
+        deadlineHit: fetchDeadlineState.hit,
+      });
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
       const failureKind = classifyPlayTurnFailure({
         errorName: fetchErr instanceof Error ? fetchErr.name : undefined,
         errorMessage: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
         deadlineHit: fetchDeadlineState.hit,
       });
-      const message = getPlayTurnFailureMessage(failureKind);
-      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      if (shouldShowFailureAsNarrative(failureKind)) {
-        setLiveNarrative(message);
-      } else {
-        setLiveNarrative("");
-        setFirstTimeHint(message);
-      }
+      showTurnFailureIfVisible(failureKind);
       return;
     } finally {
       if (fetchDeadlineTimer !== undefined) {
@@ -2789,12 +2800,19 @@ function PlayContent() {
         }) &&
         !retriedAfterRateLimit
       ) {
-        setLiveNarrative("当前生成通道繁忙，已为你进入排队队列。");
+        showTurnFailureIfVisible("site_busy");
         sendActionInFlightRef.current = false;
         await sendAction(trimmed, true, true, isSystemAction, null, true);
         return;
       }
 
+      console.warn("[play][chat_non_ok]", {
+        status: res.status,
+        upstreamStatus,
+        code,
+        reason,
+      });
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
       const failureKind = classifyPlayTurnFailure({
         status: res.status,
         upstreamStatus,
@@ -2802,21 +2820,14 @@ function PlayContent() {
         reason,
         body: errorText,
       });
-      const message = getPlayTurnFailureMessage(failureKind);
-      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      if (shouldShowFailureAsNarrative(failureKind)) {
-        setLiveNarrative(message);
-      } else {
-        setLiveNarrative("");
-        setFirstTimeHint(message);
-      }
+      showTurnFailureIfVisible(failureKind);
       return;
     }
 
     if (!res.body) {
       setStreamPhase("idle");
       if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
+      showTurnFailureIfVisible("network_or_gateway");
       return;
     }
 
@@ -2931,7 +2942,7 @@ function PlayContent() {
         console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
         setStreamPhase("idle");
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-        setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
+        showTurnFailureIfVisible("network_or_gateway");
         return;
       }
       if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
@@ -2939,9 +2950,9 @@ function PlayContent() {
       } else {
         console.error("[/api/chat] stream read error", readErr);
         narrativeRef.current = "";
-        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-        setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
         setStreamPhase("idle");
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+        showTurnFailureIfVisible("network_or_gateway");
         return;
       }
     } finally {
@@ -2961,7 +2972,7 @@ function PlayContent() {
       if (looksTruncated) {
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-        setLiveNarrative(getPlayTurnFailureMessage("network_or_gateway"));
+        showTurnFailureIfVisible("network_or_gateway");
         return;
       }
       return;
@@ -3009,11 +3020,9 @@ function PlayContent() {
       const salvage = (resolved.narrative ?? "").trim();
       if (!salvage) {
         setStreamPhase("idle");
-        // 格式/重复输出等解析失败：不扣理智、不用安全血字（与 stream 安全截断路径区分）
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
         setLiveNarrative("");
-        setFirstTimeHint("这次回复没有形成可用回合，请重试同一行动或换个更具体的说法。");
         return;
       }
       if (resolved.failure === "protocol_guard_rejected") {
@@ -3021,7 +3030,6 @@ function PlayContent() {
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
         setLiveNarrative("");
-        setFirstTimeHint("这次回复没有形成可用回合，请重试同一行动或换个更具体的说法。");
         return;
       }
       useGameStore.getState().pushLog({
@@ -3031,7 +3039,7 @@ function PlayContent() {
       });
       setLiveNarrative("");
       setCurrentOptions([]);
-      setFirstTimeHint("本回合正文已保存，但部分状态结算未提交（格式异常）。可继续手动输入推进。");
+      setFirstTimeHint(null);
       try {
         useGameStore.getState().saveGame(useGameStore.getState().currentSaveSlot);
         writeResumeShadow();
@@ -3048,7 +3056,7 @@ function PlayContent() {
 
     if (dmIndicatesRecoverableModelRateLimit(parsed) && !retriedAfterRateLimit) {
       setStreamPhase("idle");
-      setLiveNarrative("当前生成通道繁忙，已为你进入排队队列。");
+      showTurnFailureIfVisible("site_busy");
       sendActionInFlightRef.current = false;
       await sendAction(trimmed, true, true, isSystemAction, null, true);
       return;
@@ -3510,7 +3518,7 @@ function PlayContent() {
         setFirstTimeHint("正在为你补全首轮可选行动…");
         setTimeout(() => { void requestFreshOptions("opening_fallback", deliveryDecision.seedOptions); }, 200);
       } else {
-        setFirstTimeHint("当前选项不足四条，可切换为手动输入继续，或稍后再试一次。");
+        setFirstTimeHint(null);
       }
     } else {
       // 无 options 的策略分流：
@@ -4076,7 +4084,7 @@ function PlayContent() {
       parsedPostDrainRef.current = null;
       const rec = getCommitFailureRecovery({ committedNarrativeForRescue });
       if (rec.kind === "narrative_rescued") {
-        // 正文已写入日志时，结算失败不应“回退正文”。
+        // 正文已写入日志时，结算异常不应回退正文。
         setLiveNarrative("");
         setCurrentOptions([]);
         setFirstTimeHint(rec.hint);
@@ -4088,6 +4096,7 @@ function PlayContent() {
         setStreamPhase("idle");
         narrativeRef.current = "";
         setLiveNarrative(rec.liveNarrative);
+        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
       }
     }
     } finally {

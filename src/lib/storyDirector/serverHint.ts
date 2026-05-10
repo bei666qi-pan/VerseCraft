@@ -151,6 +151,7 @@ export function buildServerDirectorHintBlock(
   else if (beat === "reveal") lines.push("本回合偏回收旧钩子：让旧线索自然回到场景。");
   else if (beat === "pressure") lines.push("本回合偏压力上升：用环境、人际或机会推动决定。");
   else lines.push("本回合偏克制推进：用行动推进，不要长篇解释设定。");
+  lines.push("节奏参考主流网文：清楚推进、对白通俗、轻悬疑弱恐怖；本提示只给异步节拍建议，不接管 PLAYER_CHAT。");
 
   if (stall >= 2) lines.push("若玩家停滞，请用低风险可行动线索推动选择。");
   if (recall.length) lines.push(`回收重点（不要直呼代码）：${recall.join("；")}`);

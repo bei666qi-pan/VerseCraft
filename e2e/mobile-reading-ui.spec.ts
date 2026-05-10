@@ -255,6 +255,20 @@ function buildNpcMentionWithoutCodexFrame() {
   })}\n\n`;
 }
 
+function buildLaoLiuPlainDialogueFrame() {
+  return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative:
+      "我在B1储物间门口停住时，老刘正蹲在配电箱前，袖口卷到手肘，手背上沾着一层灰。他先看了我一眼，又把螺丝刀别回耳后，说：“B1这一路电压不稳，别碰湿线。你要找人，先把手电开着，别逞能。”",
+    is_death: false,
+    consumes_time: true,
+    options,
+    codex_updates: [],
+    npc_location_updates: [{ id: "N-008", to_location: "B1_Storage" }],
+  })}\n\n`;
+}
+
 function buildDamagingSseFinalFrame(damage = 3) {
   return `data: __VERSECRAFT_FINAL__:${JSON.stringify({
     is_action_legal: true,
@@ -333,6 +347,17 @@ async function installNpcMentionWithoutCodexMock(page: Page) {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
       body: buildNpcMentionWithoutCodexFrame(),
+    });
+  });
+}
+
+async function installLaoLiuPlainDialogueMock(page: Page) {
+  await installQueueDisabledMock(page);
+  await page.route("**/api/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      body: buildLaoLiuPlainDialogueFrame(),
     });
   });
 }
@@ -750,6 +775,28 @@ test.describe("mobile reading UI", () => {
     });
     await expect(page.getByTestId("manual-action-input")).toBeEnabled();
     await expect(page.getByText("本回合未提交")).toHaveCount(0);
+  });
+
+  test("normal Lao Liu question lands as plain narrative without fallback wording", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openSeededPlay(page, {
+      codex: {},
+      playerLocation: "B1_Storage",
+    });
+    await installLaoLiuPlainDialogueMock(page);
+
+    await page.getByTestId("manual-action-input").fill("我向电工老刘询问B1的电力情况");
+    await Promise.all([
+      page.waitForRequest(isPlayerChatPost),
+      page.getByTestId("send-action-button").click(),
+    ]);
+
+    const story = page.getByTestId("mobile-story-viewport");
+    await expect(story).toContainText("B1这一路电压不稳", { timeout: 10_000 });
+    await expect(story).toContainText("别碰湿线");
+    const storyText = await story.innerText();
+    expect(storyText).not.toMatch(/本回合未生成|本回合未提交|创作主脑|网络|网站|稍后|重试|失败/);
+    expect(storyText).not.toMatch(/命运|宿命|你终于|等你很久/);
   });
 
   test("applies sanity damage and shows the lightweight hit effect", async ({ page }) => {

@@ -247,6 +247,31 @@ test.describe("paper reference UI", () => {
     expect(clientErrors.filter((message) => message.includes("localTs"))).toEqual([]);
   });
 
+  test("create opens play even when post-start server actions fail on Android viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route("**/*", async (route) => {
+      const req = route.request();
+      const headers = req.headers();
+      if (req.method() === "POST" && (headers["next-action"] || headers["rsc"])) {
+        await route.fulfill({
+          status: 503,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+          body: "server action unavailable",
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await gotoAndExpectTestId(page, "/create?e2e=1", "create-character-page");
+    await page.getByTestId("quick-create-character").click();
+    await expect(page.getByTestId("create-submit-button")).toBeEnabled();
+    await page.getByTestId("create-submit-button").click();
+    await expect(page).toHaveURL(/\/play(?:$|[?#/])/, { timeout: 30_000 });
+    await expect(page.getByText("开卷失败")).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+  });
+
   test("writes reference-sized high DPR screenshots", async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: 470, height: 836 },

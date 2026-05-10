@@ -26,6 +26,7 @@ import {
   isValidCreatePersonality,
   type GenderOption,
 } from "./constants";
+import { validateCreateProfileBeforeLocalStart } from "./createSubmitPolicy";
 
 const inputClass =
   "h-9 w-full border-0 border-b border-[#bdb8af] bg-transparent px-1 vc-reading-serif text-[18px] leading-none text-[#164f4d] outline-none transition placeholder:text-[17px] placeholder:text-[#365f5d]/78 focus:border-[#164f4d]";
@@ -122,26 +123,19 @@ export function CreateCharacterForm() {
     submitInFlightRef.current = true;
     setSubmitting(true);
     try {
-      const e2eBypass =
-        process.env.NODE_ENV === "development" &&
-        typeof window !== "undefined" &&
-        new URLSearchParams(window.location.search).get("e2e") === "1";
-      // 该分支仅用于端到端冒烟测试，避免本地/CI 依赖外部审核与数据库链路导致不稳定。
-      const validated = e2eBypass
-        ? { ok: true as const, name: cleanName, personality: cleanPersonality }
-        : await validateCharacterProfile({
-            name: cleanName,
-            personality: cleanPersonality,
-          });
-      if (!validated.ok) {
-        setSubmitError(validated.message);
+      const localSafety = validateCreateProfileBeforeLocalStart({
+        name: cleanName,
+        personality: cleanPersonality,
+      });
+      if (!localSafety.ok) {
+        setSubmitError(localSafety.message);
         submitInFlightRef.current = false;
         setSubmitting(false);
         return;
       }
 
       useGameStore.getState().initCharacter(
-        { name: validated.name, gender, height: cleanHeight, personality: validated.personality },
+        { name: cleanName, gender, height: cleanHeight, personality: cleanPersonality },
         stats,
         selectedTalent
       );
@@ -163,6 +157,18 @@ export function CreateCharacterForm() {
           height: cleanHeight,
         },
       }).catch(() => {});
+      void validateCharacterProfile({
+        name: cleanName,
+        personality: cleanPersonality,
+      }).then((validated) => {
+        if (!validated.ok) {
+          console.warn("[create] post-start profile moderation rejected after local start", {
+            message: validated.message,
+          });
+        }
+      }).catch((moderationError) => {
+        console.warn("[create] post-start profile moderation skipped", moderationError);
+      });
 
       router.replace("/play");
       if (typeof window !== "undefined") {
@@ -175,7 +181,7 @@ export function CreateCharacterForm() {
     } catch (error) {
       console.error("[create] failed to initialize character", error);
       submitInFlightRef.current = false;
-      setSubmitError("开卷失败，请重试。");
+      setSubmitError("本地角色档案没有写入，请检查浏览器存储权限后再次开卷。");
       setSubmitting(false);
     }
   }

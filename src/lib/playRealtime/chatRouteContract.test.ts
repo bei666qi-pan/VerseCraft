@@ -58,4 +58,14 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
       (routeContent.includes("loreRetrievalBudgetMs") || routeContent.includes("loreBudgetMs")),
     "lore timeout degrade guard missing"
   );
+  for (const forbidden of [
+    "本回合未生成",
+    "本回合未提交",
+    "创作主脑暂时离线",
+    "世界推演暂时超时",
+    "世界推演服务暂时不可用",
+    "连接失败，正在降级",
+  ]) {
+    assert.equal(routeContent.includes(forbidden), false, `non-safety fallback leaked: ${forbidden}`);
+  }
 });

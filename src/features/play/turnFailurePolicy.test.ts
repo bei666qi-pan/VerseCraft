@@ -16,15 +16,17 @@ test("classifyPlayTurnFailure separates busy, auth, and internal failures", () =
   assert.equal(classifyPlayTurnFailure({ status: 503 }), "site_busy");
   assert.equal(classifyPlayTurnFailure({ status: 502, upstreamStatus: 401, code: "UPSTREAM_AUTH_FAILED" }), "auth_or_config");
   assert.equal(classifyPlayTurnFailure({ status: 500, code: "JSON_PARSE_FAILED" }), "internal");
+  assert.equal(classifyPlayTurnFailure({ status: 200, code: "VALIDATOR_REPAIR_FAILED" }), "internal");
 });
 
-test("only network and busy failures can be shown in narrative strip", () => {
+test("only website/gateway failures are player-visible fallback", () => {
   assert.equal(shouldShowFailureAsNarrative("network_or_gateway"), true);
   assert.equal(shouldShowFailureAsNarrative("site_busy"), true);
+  assert.equal(shouldShowFailureAsNarrative("auth_or_config"), true);
   assert.equal(shouldShowFailureAsNarrative("internal"), false);
-  assert.equal(getPlayTurnFailureMessage("internal").includes("网络"), false);
-  assert.equal(getPlayTurnFailureMessage("internal").includes("本回合未提交"), false);
-  assert.equal(getPlayTurnFailureMessage("auth_or_config").includes("本回合未提交"), false);
-  assert.equal(getPlayTurnFailureMessage("network_or_gateway").includes("本回合未提交"), false);
-  assert.equal(getPlayTurnFailureMessage("site_busy").includes("本回合未提交"), false);
+
+  assert.match(getPlayTurnFailureMessage("network_or_gateway"), /网站|网关/);
+  assert.match(getPlayTurnFailureMessage("site_busy"), /网站|繁忙/);
+  assert.match(getPlayTurnFailureMessage("auth_or_config"), /网站|服务/);
+  assert.equal(getPlayTurnFailureMessage("internal"), "");
 });

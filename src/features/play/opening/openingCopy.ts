@@ -126,11 +126,3 @@ export const OPENING_SYSTEM_PROMPT =
 export function isOpeningSystemUserMessage(userContent: string): boolean {
   return String(userContent ?? "").trim() === OPENING_SYSTEM_PROMPT.trim();
 }
-
-/** 模型缺省选项时的兜底（非首条助手回合合并用） */
-export const DEFAULT_FOUR_ACTION_OPTIONS: readonly string[] = [
-  "稳住呼吸记住名字",
-  "检查半枚旧校徽",
-  "辨认灯管闪烁节奏",
-  "贴墙摸清退路",
-] as const;

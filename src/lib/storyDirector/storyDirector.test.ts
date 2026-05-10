@@ -347,6 +347,8 @@ test("directorDigest and server hint are length-capped", () => {
   assert.ok(dig.digest.length <= 220);
   const hint = buildServerDirectorHintBlock(dig);
   assert.ok(hint.length <= 600);
+  assert.match(hint, /主流网文/);
+  assert.match(hint, /不接管 PLAYER_CHAT/);
 });
 
 test("director agenda hint block only exposes sanitized soft constraints", () => {

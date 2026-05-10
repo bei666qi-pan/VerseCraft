@@ -9,8 +9,7 @@ import {
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import type { OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 
-export const OPTIONS_REGEN_FAILURE_HINT =
-  "这次没有整理出可靠选项，你可以手动输入行动，或再次尝试生成。";
+export const OPTIONS_REGEN_FAILURE_HINT = "也可以直接写下下一步行动。";
 
 const KNOWN_REGEN_REASON_CODES = new Set<OptionsRegenReasonCode>([
   "parse_failed",

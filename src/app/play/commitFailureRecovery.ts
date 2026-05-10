@@ -4,7 +4,7 @@ export function getCommitFailureRecovery(args: {
   | {
       kind: "narrative_rescued";
       narrative: string;
-      hint: string;
+      hint: string | null;
     }
   | {
       kind: "fatal";
@@ -15,9 +15,8 @@ export function getCommitFailureRecovery(args: {
     return {
       kind: "narrative_rescued",
       narrative: s,
-      hint: "本回合正文已保存，但结算发生错误，部分状态可能未写入。可继续手动输入推进。",
+      hint: null,
     };
   }
-  return { kind: "fatal", liveNarrative: "剧情结算时发生错误，请重试本回合。" };
+  return { kind: "fatal", liveNarrative: "" };
 }
-

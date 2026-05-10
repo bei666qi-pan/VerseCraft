@@ -49,7 +49,7 @@ test("resolveTurnFromSse: salvage narrative should be dropped when protocol guar
   const raw = '{"narrative":"正常句子后拼接 {\\"is_death\\":false,\\"consumes_time\\":true}","oops":';
   const out = resolveTurnFromSse({ sseDocumentText: sse, rawDm: raw });
   assert.equal(out.dm, null);
-  assert.equal(out.narrative === "本回合输出未提交，请重试同一行动。" || out.narrative === "", true);
+  assert.doesNotMatch(out.narrative, /失败|错误|未生成|未提交|稍后|重试|网络|网站|繁忙|系统/);
   assert.equal(out.source === "none" || out.source === "narrative_only", true);
 });
 

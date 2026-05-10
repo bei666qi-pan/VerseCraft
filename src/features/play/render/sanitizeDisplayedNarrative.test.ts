@@ -6,16 +6,17 @@ import {
   sanitizeDisplayedOptionText,
 } from "@/features/play/render/sanitizeDisplayedNarrative";
 
-test("display sanitizer blocks protocol fragment narrative", () => {
+test("display sanitizer blocks protocol fragment narrative without local story fallback", () => {
   const out = sanitizeDisplayedNarrative('正文 {"is_action_legal":true,"is_death":false}');
   assert.equal(out.blocked, true);
   assert.equal(out.text, DISPLAY_NARRATIVE_FALLBACK);
+  assert.equal(out.text, "");
 });
 
 test("display sanitizer keeps normal narrative", () => {
-  const out = sanitizeDisplayedNarrative("你缓慢推开门，尘埃在光里漂浮。");
+  const out = sanitizeDisplayedNarrative("你慢慢推开门，尘埃在光里浮起来。");
   assert.equal(out.blocked, false);
-  assert.equal(out.text, "你缓慢推开门，尘埃在光里漂浮。");
+  assert.equal(out.text, "你慢慢推开门，尘埃在光里浮起来。");
 });
 
 test("display sanitizer filters protocol-like option text", () => {
@@ -25,28 +26,28 @@ test("display sanitizer filters protocol-like option text", () => {
 
 test("display sanitizer blocks screenshot-like mixed leakage sample", () => {
   const raw =
-    '你向前一步，耳边响起低语。,"is_death":false,"consumes_time":true}{"is_action_legal":true,"sanity_damage":0}';
+    '你向前一步，耳边响起低语。"is_death":false,"consumes_time":true}{"is_action_legal":true,"sanity_damage":0}';
   const out = sanitizeDisplayedNarrative(raw);
   assert.equal(out.blocked, true);
-  assert.equal(out.text, DISPLAY_NARRATIVE_FALLBACK);
+  assert.equal(out.text, "");
 });
 
 test("display sanitizer blocks excessive escaped fragments", () => {
   const raw = '文本\\n\\n\\n\\n\\n\\n\\"a\\" \\"b\\" \\"c\\" \\"d\\"';
   const out = sanitizeDisplayedNarrative(raw);
   assert.equal(out.blocked, true);
-  assert.equal(out.text, DISPLAY_NARRATIVE_FALLBACK);
+  assert.equal(out.text, "");
 });
 
 test("display sanitizer blocks minimax tool_call leakage", () => {
   const raw = [
     "我听见楼道里有脚步。",
     "<minimax:tool_call>",
-    "<invoke name=\"npc_scene_authority_packet\"/>",
+    '<invoke name="npc_scene_authority_packet"/>',
     "</minimax:tool_call>",
   ].join("\n");
   const out = sanitizeDisplayedNarrative(raw);
   assert.equal(out.blocked, true);
-  assert.equal(out.text, DISPLAY_NARRATIVE_FALLBACK);
+  assert.equal(out.text, "");
   assert.equal(sanitizeDisplayedOptionText(raw), "");
 });

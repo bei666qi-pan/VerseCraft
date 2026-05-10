@@ -1,3 +1,5 @@
+import { buildVisibleSiteFailureMessage } from "@/lib/playRealtime/immersiveTurnContinuation";
+
 export type PlayTurnFailureKind =
   | "network_or_gateway"
   | "site_busy"
@@ -61,12 +63,12 @@ export function classifyPlayTurnFailure(args: {
 }
 
 export function getPlayTurnFailureMessage(kind: PlayTurnFailureKind): string {
-  if (kind === "site_busy") return "当前网站生成通道繁忙，请稍后重试。";
-  if (kind === "network_or_gateway") return "网站响应超时或网关连接不稳定，请稍后重试。";
-  if (kind === "auth_or_config") return "当前账号或配置状态需要刷新，请稍后重试。";
-  return "这次回复没有形成可用回合，请重试同一行动或换个更具体的说法。";
+  if (kind === "network_or_gateway") return buildVisibleSiteFailureMessage("network_or_gateway");
+  if (kind === "site_busy") return buildVisibleSiteFailureMessage("site_busy");
+  if (kind === "auth_or_config") return buildVisibleSiteFailureMessage("auth_or_config");
+  return "";
 }
 
 export function shouldShowFailureAsNarrative(kind: PlayTurnFailureKind): boolean {
-  return kind === "site_busy" || kind === "network_or_gateway";
+  return kind === "network_or_gateway" || kind === "site_busy" || kind === "auth_or_config";
 }

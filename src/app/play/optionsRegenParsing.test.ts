@@ -56,11 +56,9 @@ test("parseOptionsFromSsePayload: ok=false options regen response does not call 
   assert.deepEqual(result.failure?.debugReasonCodes, ["parse_failed"]);
 });
 
-test("parseOptionsFromSsePayload: ok=false path keeps user-facing options fallback hint specific", () => {
-  assert.equal(
-    OPTIONS_REGEN_FAILURE_HINT,
-    "这次没有整理出可靠选项，你可以手动输入行动，或再次尝试生成。"
-  );
+test("parseOptionsFromSsePayload: options fallback hint has no failure wording", () => {
+  assert.equal(OPTIONS_REGEN_FAILURE_HINT, "也可以直接写下下一步行动。");
+  assert.doesNotMatch(OPTIONS_REGEN_FAILURE_HINT, /失败|错误|未生成|未提交|稍后|重试|网络|网站|繁忙|系统/);
 });
 
 test("parseOptionsFromSsePayload: ok=false does not emit tryParseDM console error", () => {

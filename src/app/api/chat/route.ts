@@ -112,6 +112,10 @@ import {
   visibleSafetyDegradeMessageFor,
 } from "@/lib/security/visibleSafety";
 import { mergeAutoCapturedCodexUpdates } from "@/lib/registry/codexAutoCapture";
+import {
+  buildInternalNoNarrativeDmJson,
+  buildVisibleSiteFailureDmJson,
+} from "@/lib/playRealtime/immersiveTurnContinuation";
 import { checkRiskControl, recordHighRisk } from "@/lib/security/riskControl";
 import { writeAuditTrail } from "@/lib/security/auditTrail";
 import { moderateInputOnServer } from "@/lib/safety/input/pipeline";
@@ -301,6 +305,17 @@ import {
   normalizeBeatState,
   validatePacing,
 } from "@/lib/turnEngine/pacing";
+
+function extractPartialNarrativeForRepair(raw: string): string {
+  const text = String(raw ?? "");
+  const match = text.match(/"narrative"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (!match?.[1]) return "";
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch {
+    return match[1].replace(/\\"/g, '"').replace(/\\n/g, "\n").trim();
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -653,12 +668,10 @@ export async function POST(req: Request) {
         if (!outerStreamClosed) {
           controller.enqueue(
             sse(
-              `${VERSECRAFT_FINAL_PREFIX}${JSON.stringify({
-                is_action_legal: false,
-                sanity_damage: 0,
-                narrative: "请求格式无效，未推进剧情。",
-                is_death: false,
-                consumes_time: false,
+              `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
+                kind: "site_unavailable",
+                requestId,
+                reason: "early_status_invalid_content_type",
               })}`
             )
           );
@@ -687,12 +700,10 @@ export async function POST(req: Request) {
               if (!outerStreamClosed) {
                 controller.enqueue(
                   sse(
-                    `${VERSECRAFT_FINAL_PREFIX}${JSON.stringify({
-                      is_action_legal: false,
-                      sanity_damage: 0,
-                      narrative: "本回合未生成，请稍后再试。",
-                      is_death: false,
-                      consumes_time: true,
+                    `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
+                      kind: "site_unavailable",
+                      requestId,
+                      reason: "early_status_wrapper_failed",
                     })}`
                   )
                 );
@@ -903,12 +914,10 @@ async function postChatInternal(req: Request) {
     return createSseResponse({
       requestId,
       status: 429,
-      payload: safeBlockedDmJson("当前请求过于频繁或风险过高，请稍后再试。", {
-        action: "block",
-        stage: "risk_control",
-        riskLevel: riskControl.level,
+      payload: buildVisibleSiteFailureDmJson({
+        kind: "site_busy",
         requestId,
-        reason: riskControl.reason,
+        reason: `risk_control:${riskControl.reason}`,
       }),
     });
   }
@@ -951,18 +960,29 @@ async function postChatInternal(req: Request) {
       ? inputSafetyTags.filter((tag): tag is string => typeof tag === "string").join("|")
       : inputSafetyReasonCode;
     recordHighRisk({ ip: clientIp, sessionId, userId }, `input_reject:${inputSafety.traceId}`);
+    const visibleSafetyMessage = visibleSafetyDegradeMessageFor({
+      userMessage: inputSafety.userMessage,
+      narrativeFallback: inputSafety.narrativeFallback,
+      reasonCode: inputSafetyReasonCode,
+      category: inputSafetyCategory,
+    });
     return createSseResponse({
       requestId,
       status: 403,
-      payload: safeBlockedDmJson(inputSafety.narrativeFallback ?? inputSafety.userMessage, {
-        action: "degrade",
-        stage: "pre_input",
-        riskLevel: "gray",
-        requestId,
-        reason: `input_reject:${inputSafetyReasonCode}`,
-        reasonCode: inputSafetyReasonCode,
-        category: inputSafetyCategory,
-      }),
+      payload: visibleSafetyMessage
+        ? safeBlockedDmJson(visibleSafetyMessage, {
+            action: "degrade",
+            stage: "pre_input",
+            riskLevel: "gray",
+            requestId,
+            reason: `input_reject:${inputSafetyReasonCode}`,
+            reasonCode: inputSafetyReasonCode,
+            category: inputSafetyCategory,
+          })
+        : buildInternalNoNarrativeDmJson({
+            requestId,
+            reason: `input_reject_non_visible:${inputSafetyReasonCode}`,
+          }),
     });
   }
   if (clientPurpose === "options_regen_only") {
@@ -1046,16 +1066,26 @@ async function postChatInternal(req: Request) {
     });
     if (preCheck.policy.blocked) {
       recordHighRisk({ ip: clientIp, sessionId, userId }, preCheck.result.reason);
+      const visibleSafetyMessage = visibleSafetyDegradeMessageFor({
+        userMessage: preCheck.policy.userMessage,
+        reason: preCheck.result.reason,
+        categories: preCheck.result.categories,
+      });
       return createSseResponse({
         requestId,
         status: preCheck.policy.statusCode,
-        payload: safeBlockedDmJson(preCheck.policy.userMessage, {
-          action: "degrade",
-          stage: "pre_input",
-          riskLevel: "gray",
-          requestId,
-          reason: preCheck.result.reason,
-        }),
+        payload: visibleSafetyMessage
+          ? safeBlockedDmJson(visibleSafetyMessage, {
+              action: "degrade",
+              stage: "pre_input",
+              riskLevel: "gray",
+              requestId,
+              reason: preCheck.result.reason,
+            })
+          : buildInternalNoNarrativeDmJson({
+              requestId,
+              reason: `pre_input_non_visible:${preCheck.result.reason}`,
+            }),
       });
     }
   } else {
@@ -2281,12 +2311,10 @@ async function postChatInternal(req: Request) {
     console.warn(
       `[api/chat] No AI gateway configured (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_MAIN). See .env.example. Returning degraded SSE with 200.`
     );
-    const degradedPayloadAscii = JSON.stringify({
-      is_action_legal: false,
-      sanity_damage: 0,
-      narrative: "当前未配置可用的大模型通道，本回合未生成。",
-      is_death: false,
-      consumes_time: true,
+    const degradedPayloadAscii = buildVisibleSiteFailureDmJson({
+      kind: "auth_or_config",
+      requestId,
+      reason: "keys_missing",
     });
     return new Response(
       `${sseText(
@@ -2309,17 +2337,12 @@ async function postChatInternal(req: Request) {
     );
   }
 
-  const FALLBACK_NARRATIVE =
-    "本回合未生成，请稍后再试。";
   const enableStatusFrames = envBoolean("AI_CHAT_ENABLE_STATUS_FRAMES", true);
   const SSE_HEADERS = buildSseHeaders(requestId);
 
-  const fallbackPayload = JSON.stringify({
-    is_action_legal: false,
-    sanity_damage: 0,
-    narrative: FALLBACK_NARRATIVE,
-    is_death: false,
-    consumes_time: true,
+  const fallbackPayload = buildInternalNoNarrativeDmJson({
+    requestId,
+    reason: "server_internal_non_visible",
   });
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -2599,23 +2622,16 @@ async function postChatInternal(req: Request) {
       const attemptsForHint = first.httpAttempts ?? [];
       const lastWithBody = [...attemptsForHint].reverse().find((a) => typeof a.httpStatus === "number" && a.message);
       const hintFields = parseUpstreamErrorFields(lastWithBody?.message);
-      const degraded = {
-        is_action_legal: false,
-        sanity_damage: 0,
-        narrative: isTimeout ? "世界推演暂时超时，请稍后重试。" : "世界推演服务暂时不可用，请稍后重试。",
-        is_death: false,
-        consumes_time: true,
-        security_meta: {
-          action: "degrade",
-          stage: "ai_router",
-          reason: first.code,
-          upstream_status: upstreamStatus || undefined,
-          ...(hintFields.upstreamCode ? { upstream_code: hintFields.upstreamCode } : {}),
-        },
-      };
+      const degraded = buildVisibleSiteFailureDmJson({
+        kind: isUpstreamRateLimited ? "site_busy" : isTimeout ? "network_or_gateway" : "site_unavailable",
+        requestId,
+        reason: hintFields.upstreamCode
+          ? `ai_router:${first.code}:${hintFields.upstreamCode}`
+          : `ai_router:${first.code}:${upstreamStatus || "unknown"}`,
+      });
       try {
-        await writeStatusFrame("finalizing", "连接失败，正在降级");
-        await writeToStream(JSON.stringify(degraded));
+        await writeStatusFrame("finalizing", isUpstreamRateLimited ? "网站生成通道繁忙" : "网站连接暂时不稳定");
+        await writeToStream(degraded);
       } finally {
         await writer.close();
       }
@@ -3027,6 +3043,83 @@ async function postChatInternal(req: Request) {
         return applyDmChangeSetToDmRecord(rec, { clientState, requestId });
       };
 
+      const phaseRepairMalformedCandidate = async (): Promise<Record<string, unknown> | null> => {
+        if (!canRunFinalRepair()) return null;
+        const partialNarrative = extractPartialNarrativeForRepair(accumulatedText);
+        const seedRecord: Record<string, unknown> = {
+          is_action_legal: true,
+          sanity_damage: 0,
+          narrative: partialNarrative,
+          is_death: false,
+          consumes_time: true,
+          consumed_items: [],
+          options: [],
+          internal_meta: {
+            action: "model_repair_after_malformed_dm",
+            request_id: requestId,
+          },
+        };
+        try {
+          const repaired = await repairNarrativeOnly({
+            originalNarrative: partialNarrative || latestUserInput,
+            originalDmRecord: seedRecord,
+            latestUserInput,
+            playerContextSnapshot: playerContext,
+            issues: [
+              {
+                source: "parseAccumulatedPlayerDmJson",
+                code: "malformed_dm_json",
+                severity: "high",
+                detail: "main stream ended before a complete DM JSON object was available",
+              },
+            ],
+            constraints: [
+              "按当前场景继续生成正常叙事，不解释 JSON、解析、模型或系统错误。",
+              "玩家输入若无法直接完成，就写成尝试、询问、呼喊、寻找或判断，再给出自然后果。",
+            ],
+            ctx: {
+              requestId,
+              userId,
+              sessionId,
+              path: "/api/chat",
+              tags: { phase: "final_hooks", purpose: "malformed_dm_repair" },
+            },
+            signal: pipelineAbort.signal,
+            budgetMs: nextFinalRepairBudgetMs(3_000),
+            maxChars: narrativeBudget.maxChars,
+          });
+          if (!repaired.ok) return null;
+          const optionsRepairStartedAt = Date.now();
+          const regen = await generateOptionsOnlyFallback({
+            narrative: repaired.narrative,
+            latestUserInput,
+            playerContext,
+            ctx: {
+              requestId,
+              userId,
+              sessionId,
+              path: "/api/chat",
+              tags: { phase: "final_hooks", purpose: "malformed_dm_options_repair" },
+            },
+            signal: pipelineAbort.signal,
+            budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
+          });
+          optionsRepairUsedTelemetry = true;
+          optionsRepairMsTelemetry = Math.max(0, Date.now() - optionsRepairStartedAt);
+          const repairedRecord = normalizePlayerDmJson({
+            ...seedRecord,
+            narrative: repaired.narrative,
+            options: regen.ok ? regen.options : [],
+          });
+          if (!repairedRecord) return null;
+          fallbackUsedTelemetry = true;
+          return applyDmChangeSetToDmRecord(repairedRecord, { clientState, requestId });
+        } catch (e) {
+          console.warn("[api/chat] malformed DM model repair skipped", e);
+          return null;
+        }
+      };
+
       // --- Phase 2: structural guards (pre-enhance) ---
       const phaseApplyStructuralGuards = (
         dm: Record<string, unknown>
@@ -3104,6 +3197,9 @@ async function postChatInternal(req: Request) {
       };
 
       let dmRecord = phaseParseAndNormalizeCandidate();
+      if (!dmRecord) {
+        dmRecord = await phaseRepairMalformedCandidate();
+      }
 
       let moderationBody = accumulatedText;
       let finalizePayload: string | null = null;

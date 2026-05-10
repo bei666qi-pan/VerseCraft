@@ -144,9 +144,9 @@
       "minNarrativeChars": 4,
       "maxNarrativeChars": 400,
       "optionsCount": 4,
-      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
-      "mustContainAny": ["游戏主脑", "稍后", "离线"],
-      "allowOptionsMissing": true
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "本回合未生成", "本回合未提交", "创作主脑", "稍后", "离线", "网站", "网络", "重试"],
+      "mustContainAny": ["走廊", "灯管", "墙根", "退路"],
+      "allowOptionsMissing": false
     }
   },
   {

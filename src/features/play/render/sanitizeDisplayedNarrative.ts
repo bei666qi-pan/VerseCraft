@@ -1,4 +1,4 @@
-export const DISPLAY_NARRATIVE_FALLBACK = "本回合输出未提交，请重试同一行动。";
+export const DISPLAY_NARRATIVE_FALLBACK = "";
 
 function countMatches(text: string, re: RegExp): number {
   const m = text.match(re);

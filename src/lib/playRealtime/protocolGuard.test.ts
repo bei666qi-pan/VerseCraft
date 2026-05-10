@@ -13,7 +13,7 @@ test("protocolGuard: detect leaked DM keys in narrative", () => {
 });
 
 test("protocolGuard: strip trailing leaked object", () => {
-  const input = "你看见门后有光。\n\n{\"is_action_legal\":true,\"sanity_damage\":0}";
+  const input = '你看见门后有光。\n\n{"is_action_legal":true,"sanity_damage":0}';
   const out = stripTrailingLeakedObject(input);
   assert.equal(out, "你看见门后有光。");
 });
@@ -24,10 +24,10 @@ test("protocolGuard: detect excessive escaped protocol residue", () => {
   assert.equal(analysis.flags.includes("excessive_escape_sequences"), true);
 });
 
-test("protocolGuard: sanitize and degrade leaked narrative", () => {
+test("protocolGuard: protocol leakage degrades to empty narrative, not local story fallback", () => {
   const out = sanitizeNarrativeLeakageForFinal('正文 {"is_action_legal":true,"consumes_time":false}');
   assert.equal(out.degraded, true);
-  assert.equal(out.narrative, "本回合输出未提交，请重试同一行动。");
+  assert.equal(out.narrative, "");
 });
 
 test("protocolGuard: strips minimax tool_call blocks from narrative", () => {
@@ -35,8 +35,8 @@ test("protocolGuard: strips minimax tool_call blocks from narrative", () => {
     "我抬起头，灯管嗡了一声。",
     "",
     "<minimax:tool_call>",
-    "<invoke name=\"b1_node_ref\"/>",
-    "<invoke name=\"npc-015_baseline\"/>",
+    '<invoke name="b1_node_ref"/>',
+    '<invoke name="npc-015_baseline"/>',
     "</minimax:tool_call>",
     "",
     "墙面像被水擦过一遍。",

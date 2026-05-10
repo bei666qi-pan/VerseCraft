@@ -74,6 +74,18 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(!s.includes("镜像灌注"));
 });
 
+test("stable prefix constrains NPC first encounter and lighter web-novel style", () => {
+  __resetStablePlayerDmPrefixMemoForTests();
+  const s = getStablePlayerDmSystemPrefix();
+  assert.ok(s.includes("中国青春幻想网文"));
+  assert.ok(s.includes("恐怖/诡异大幅弱化"));
+  assert.ok(s.includes("生活化动作、位置、正在做的事"));
+  assert.ok(s.includes("对白可通俗"));
+  assert.ok(s.includes("误闯学生/新来的人/需要判断风险的陌生人"));
+  assert.ok(s.includes("禁止突兀站着等主角"));
+  assert.ok(!s.includes("龙族"));
+});
+
 test("dynamic suffix 含 npc_consistency_boundary_compact（快车道亦适用）", () => {
   const boundary = buildNpcConsistencyBoundaryCompactBlock({
     playerContext: "用户位置[1F_Lobby]。NPC当前位置：N-001@1F_Lobby。",

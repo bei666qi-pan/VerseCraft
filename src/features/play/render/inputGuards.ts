@@ -16,7 +16,7 @@ export function localInputSafetyCheck(input: string): { ok: boolean; reason?: st
       text
     )
   ) {
-    return { ok: false, reason: "输入包含高风险指令，请调整表述后重试" };
+    return { ok: false, reason: "输入包含越界指令，请改写成角色行动。" };
   }
   return { ok: true };
 }
