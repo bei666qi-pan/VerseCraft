@@ -157,7 +157,7 @@ import { VC_PERF_FLAGS, VC_WAITING, resolvePlayChatTransportTimeouts } from "@/l
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 import { postSameOriginForSseDocumentText } from "@/lib/chat/sameOriginSsePost";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
-import { needsLegacySseClientTransport } from "@/lib/platform/needsLegacySseClientTransport";
+import { needsLegacySseClientTransport, needsLegacySseClientTransportFromHighEntropyUserAgentData } from "@/lib/platform/needsLegacySseClientTransport";
 import {
   VERSECRAFT_CHAT_PURPOSE_HEADER,
   VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
@@ -722,6 +722,22 @@ function PlayContent() {
     ) => Promise<void>
   >(async () => {});
   const streamPhaseRef = useRef<ChatStreamPhase>("idle");
+  /** High-entropy Client Hints: shells may spoof Chrome UA but expose real brands here. */
+  const legacySseHighEntropyHintRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.userAgentData?.getHighEntropyValues) return;
+    void (async () => {
+      try {
+        const h = await navigator.userAgentData.getHighEntropyValues(["fullVersionList", "brands"]);
+        if (needsLegacySseClientTransportFromHighEntropyUserAgentData(h)) {
+          legacySseHighEntropyHintRef.current = true;
+        }
+      } catch {
+        /* ignore: hints unavailable in some WebViews */
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const raw = useGameStore.getState().chapterState;
@@ -2359,7 +2375,8 @@ function PlayContent() {
           optionsRegenContext: attemptContext,
           clientTurnModeHint: "decision_required",
         });
-        const useLegacyOptionsTransport = needsLegacySseClientTransport();
+        const useLegacyOptionsTransport =
+          needsLegacySseClientTransport() || legacySseHighEntropyHintRef.current;
         let text = "";
         let responseRequestId: string | null = null;
 
@@ -2833,7 +2850,7 @@ function PlayContent() {
       }
     }
 
-    const useLegacySseTransport = needsLegacySseClientTransport();
+    const useLegacySseTransport = needsLegacySseClientTransport() || legacySseHighEntropyHintRef.current;
     const chatSendHeaders: Record<string, string> = {
       "Content-Type": "application/json",
       [VERSECRAFT_REQUEST_ID_HEADER]: chatRequestId,

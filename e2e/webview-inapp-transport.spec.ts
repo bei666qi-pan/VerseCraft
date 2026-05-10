@@ -1,11 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-test.use({
-  userAgent:
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
-    "Mobile/15E148 MicroMessenger/8.0.0 Language/zh_CN",
-});
-
 const DB_NAME = "keyval-store";
 const STORE_NAME = "keyval";
 const KEY_MAIN = "versecraft-storage";
@@ -133,34 +127,58 @@ async function installChatMock(page: Page) {
   });
 }
 
+async function runXHRTransportScenario(page: Page, uaSubstring: string) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const clientErrors: string[] = [];
+  page.on("pageerror", (error) => clientErrors.push(error.message));
+
+  const opening = "雾声贴着墙根流动，安全中枢的灯光像潮水一样忽明忽暗。";
+  await seedPlayState(page, opening, options);
+  await installChatMock(page);
+
+  const response = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+  expect(response?.status()).toBeLessThan(500);
+  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+
+  const ua = await page.evaluate(() => navigator.userAgent);
+  expect(ua.toLowerCase()).toContain(uaSubstring);
+
+  await page.getByTestId("manual-action-input").fill("查看铁牌");
+  await page.getByTestId("send-action-button").click();
+
+  await expect
+    .poll(() => page.getByTestId("mobile-story-viewport").innerText(), { timeout: 20_000 })
+    .toContain("你靠近铁牌，锈迹下浮出一道新的划痕");
+
+  await page.getByTestId("options-toggle-button").click();
+  await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
+  await expect(page.getByTestId("mobile-option-item")).toHaveCount(options.length);
+
+  expect(clientErrors, `page errors: ${clientErrors.join("; ")}`).toHaveLength(0);
+}
+
 test.describe("in-app browser SSE transport (XHR path)", () => {
-  test("main chat uses legacy transport and commits narrative + options", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    const clientErrors: string[] = [];
-    page.on("pageerror", (error) => clientErrors.push(error.message));
+  test.describe("MicroMessenger UA", () => {
+    test.use({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+        "Mobile/15E148 MicroMessenger/8.0.0 Language/zh_CN",
+    });
 
-    const opening = "雾声贴着墙根流动，安全中枢的灯光像潮水一样忽明忽暗。";
-    await seedPlayState(page, opening, options);
-    await installChatMock(page);
+    test("main chat uses legacy transport and commits narrative + options", async ({ page }) => {
+      await runXHRTransportScenario(page, "micromessenger");
+    });
+  });
 
-    const response = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
-    expect(response?.status()).toBeLessThan(500);
-    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+  test.describe("MQQBrowser UA (QQ, no qq/ token)", () => {
+    test.use({
+      userAgent:
+        "Mozilla/5.0 (Linux; U; Android 12; zh-cn; Pixel 6 Build/SP2A.220405.004) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Version/4.0 Chrome/98.0.4758.87 MQQBrowser/14.0 Mobile Safari/537.36",
+    });
 
-    const ua = await page.evaluate(() => navigator.userAgent);
-    expect(ua.toLowerCase()).toContain("micromessenger");
-
-    await page.getByTestId("manual-action-input").fill("查看铁牌");
-    await page.getByTestId("send-action-button").click();
-
-    await expect
-      .poll(() => page.getByTestId("mobile-story-viewport").innerText(), { timeout: 20_000 })
-      .toContain("你靠近铁牌，锈迹下浮出一道新的划痕");
-
-    await page.getByTestId("options-toggle-button").click();
-    await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
-    await expect(page.getByTestId("mobile-option-item")).toHaveCount(options.length);
-
-    expect(clientErrors, `page errors: ${clientErrors.join("; ")}`).toHaveLength(0);
+    test("main chat uses legacy transport and commits narrative + options", async ({ page }) => {
+      await runXHRTransportScenario(page, "mqqbrowser");
+    });
   });
 });
