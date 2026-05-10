@@ -543,6 +543,10 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
     },
     requestTimeoutMs: 45_000,
     skipCache: true,
+    extraBody: {
+      enable_thinking: false,
+      thinking: { type: "disabled" },
+    },
     devOverrides: {
       responseFormatJsonObject: true,
       temperature: 0.2,

@@ -52,3 +52,14 @@ test("KG job queue schema is created even when pgvector is unavailable", () => {
     "ensureRuntimeSchema must create vc_jobs before optional vector setup"
   );
 });
+
+test("world director reasoner request disables thinking to produce consumable JSON content", () => {
+  const engine = readFileSync("src/lib/worldEngine/engine.ts", "utf8");
+  const callStart = engine.indexOf("runOfflineReasonerTask({");
+  const callEnd = engine.indexOf("devOverrides:", callStart);
+  const reasonerCall = engine.slice(callStart, callEnd);
+
+  assert.match(reasonerCall, /extraBody:\s*{/);
+  assert.match(reasonerCall, /enable_thinking:\s*false/);
+  assert.match(reasonerCall, /thinking:\s*{\s*type:\s*"disabled"\s*}/);
+});
