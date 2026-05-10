@@ -155,7 +155,9 @@ import {
 } from "@/lib/combat/combatPresentation";
 import { VC_PERF_FLAGS, VC_WAITING, resolvePlayChatTransportTimeouts } from "@/lib/perf/waitingConfig";
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
+import { postSameOriginForSseDocumentText } from "@/lib/chat/sameOriginSsePost";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
+import { needsLegacySseClientTransport } from "@/lib/platform/needsLegacySseClientTransport";
 import {
   VERSECRAFT_CHAT_PURPOSE_HEADER,
   VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
@@ -2342,25 +2344,82 @@ function PlayContent() {
                 ].join("\n"),
               },
             ];
+        const optionsRegenHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+          [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+        };
+        const optionsRegenBody = JSON.stringify({
+          messages: attemptMessages,
+          playerContext,
+          clientState,
+          sessionId: guestId ?? "browser_session",
+          openingOptionsOnlyRound: false,
+          clientPurpose: "options_regen_only",
+          clientReason: `【为何需要整理选项】${attemptReason}`,
+          optionsRegenContext: attemptContext,
+          clientTurnModeHint: "decision_required",
+        });
+        const useLegacyOptionsTransport = needsLegacySseClientTransport();
+        let text = "";
+        let responseRequestId: string | null = null;
+
+        if (useLegacyOptionsTransport) {
+          const xhrOut = await postSameOriginForSseDocumentText({
+            url: "/api/chat",
+            body: optionsRegenBody,
+            headers: optionsRegenHeaders,
+            timeoutMs: optionsOnlyDeadlineMs,
+            signal: ac.signal,
+          });
+          if (!xhrOut.ok) {
+            return {
+              kind: "transport_failed",
+              status: 0,
+              reason: xhrOut.kind === "timeout" ? "xhr_timeout" : xhrOut.kind,
+              retryAfterMs: null,
+              localRateLimited: false,
+              recoverable: true,
+            };
+          }
+          responseRequestId = xhrOut.versecraftRequestId;
+          text = xhrOut.text;
+          const xhrCt = xhrOut.contentType.toLowerCase();
+          const xhrOk = xhrOut.status >= 200 && xhrOut.status < 300;
+          if (!xhrOk || !xhrCt.includes("text/event-stream")) {
+            const localRateLimited = isLocalRateLimitedPayload({ status: xhrOut.status, body: text });
+            const recoverable =
+              localRateLimited || xhrOut.status === 429 || xhrOut.status === 503 || !xhrCt.includes("text/event-stream");
+            return {
+              kind: "transport_failed",
+              status: xhrOut.status,
+              reason: localRateLimited ? "local_rate_limited" : `http_${xhrOut.status || "no_sse"}`,
+              retryAfterMs: parseRetryAfterMs(null),
+              localRateLimited,
+              recoverable,
+            };
+          }
+          let sseBuffer = text;
+          while (true) {
+            const taken = takeCompleteSseEvents(sseBuffer);
+            sseBuffer = taken.rest;
+            for (const eventText of taken.events) {
+              const status = extractStatusFrameFromSseEvent(eventText);
+              if (status) applyOptionsRegenStatus(status.stage);
+            }
+            if (taken.events.length === 0) break;
+          }
+          const orphanOpt = normalizeSseNewlines(sseBuffer).trim();
+          if (orphanOpt.startsWith("data:")) {
+            const status = extractStatusFrameFromSseEvent(orphanOpt);
+            if (status) applyOptionsRegenStatus(status.stage);
+          }
+        } else {
         const attemptRes = await fetch("/api/chat", {
           method: "POST",
           credentials: "include",
           cache: "no-store",
-          headers: {
-            "Content-Type": "application/json",
-            [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
-          },
-          body: JSON.stringify({
-            messages: attemptMessages,
-            playerContext,
-            clientState,
-            sessionId: guestId ?? "browser_session",
-            openingOptionsOnlyRound: false,
-            clientPurpose: "options_regen_only",
-            clientReason: `【为何需要整理选项】${attemptReason}`,
-            optionsRegenContext: attemptContext,
-            clientTurnModeHint: "decision_required",
-          }),
+          headers: optionsRegenHeaders,
+          body: optionsRegenBody,
           signal: ac.signal,
         });
         if (!attemptRes.ok || !attemptRes.body) {
@@ -2376,10 +2435,10 @@ function PlayContent() {
             recoverable,
           };
         }
-        const responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
+        responseRequestId = attemptRes.headers.get(VERSECRAFT_REQUEST_ID_RESPONSE_HEADER);
         const reader = attemptRes.body.getReader();
         const decoder = new TextDecoder("utf-8");
-        let text = "";
+        text = "";
         let sseBuffer = "";
         try {
           while (true) {
@@ -2416,6 +2475,8 @@ function PlayContent() {
             // ignore
           }
         }
+        }
+
         const parsed = parseOptionsFromSsePayload(text, {
           requestId: responseRequestId,
           extraBlocked,
@@ -2772,212 +2833,25 @@ function PlayContent() {
       }
     }
 
-    let res: Response;
-    const fetchDeadlineState = { hit: false };
-    let fetchDeadlineTimer: number | undefined;
-    try {
-      fetchDeadlineTimer = window.setTimeout(() => {
-        fetchDeadlineState.hit = true;
-        try {
-          ac.abort();
-        } catch {
-          /* ignore */
-        }
-      }, transportTimeouts.fetchDeadlineMs);
-      res = await fetch("/api/chat", {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-          [VERSECRAFT_REQUEST_ID_HEADER]: chatRequestId,
-          [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
-          ...(queueIdForChat ? { [CHAT_QUEUE_ID_HEADER]: queueIdForChat } : {}),
-        },
-        body: JSON.stringify(chatRequestBody),
-        signal: ac.signal,
-      });
-      if (queueIdForChat) {
-        clearPendingChatQueueAction();
-        pendingQueueActionRef.current = null;
-        setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
-      }
-    } catch (fetchErr) {
-      setStreamPhase("idle");
-      if (queueIdForChat) {
-        await fetch("/api/chat/queue/cancel", {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-          headers: {
-            "Content-Type": "application/json",
-            ...chatQueueHeaders(createVerseCraftRequestId("chatq_cancel")),
-          },
-          body: JSON.stringify({ queueId: queueIdForChat }),
-        }).catch(() => undefined);
-      }
-      if (isEndingFinaleSystemRound) {
-        commitLocalEndingFinaleFallback();
-        return;
-      }
-      console.warn("[play][chat_fetch_failed]", {
-        name: fetchErr instanceof Error ? fetchErr.name : undefined,
-        message: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
-        deadlineHit: fetchDeadlineState.hit,
-      });
-      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      const failureKind = classifyPlayTurnFailure({
-        errorName: fetchErr instanceof Error ? fetchErr.name : undefined,
-        errorMessage: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
-        deadlineHit: fetchDeadlineState.hit,
-      });
-      showTurnFailureIfVisible(failureKind);
-      return;
-    } finally {
-      if (fetchDeadlineTimer !== undefined) {
-        window.clearTimeout(fetchDeadlineTimer);
-      }
-      streamAbortRef.current = null;
-    }
+    const useLegacySseTransport = needsLegacySseClientTransport();
+    const chatSendHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      [VERSECRAFT_REQUEST_ID_HEADER]: chatRequestId,
+      [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
+      ...(queueIdForChat ? { [CHAT_QUEUE_ID_HEADER]: queueIdForChat } : {}),
+    };
+    type ChatSendTransport =
+      | { mode: "fetch"; res: Response }
+      | {
+          mode: "legacy";
+          status: number;
+          statusText: string;
+          contentType: string;
+          text: string;
+          versecraftRequestId: string | null;
+          aiStatus: string | null;
+        };
 
-    const responseContentType = res.headers.get("content-type") ?? "";
-    const responseIsSse = responseContentType.includes("text/event-stream");
-    {
-      const p = waitUxSignalsRef.current;
-      if (p.requestStartedAt != null && p.responseHeadersAt == null) {
-        p.responseHeadersAt = performance.now();
-      }
-      const ridHeader = res.headers.get("x-versecraft-request-id");
-      if (isSafeVerseCraftRequestId(ridHeader)) {
-        p.requestId = ridHeader;
-      }
-    }
-
-    if (!res.ok) {
-      setStreamPhase("idle");
-      const errorText = await res.text().catch(() => "");
-      if (isEndingFinaleSystemRound) {
-        commitLocalEndingFinaleFallback();
-        return;
-      }
-      // Legacy / misconfigured proxies may return 4xx/5xx while body is still valid SSE + DM JSON.
-      if (responseIsSse && errorText) {
-        const dmRawFromError = foldSseTextToDmRaw(errorText);
-        const degradedDm = tryParseDM(dmRawFromError);
-        if (degradedDm && typeof degradedDm.narrative === "string" && degradedDm.narrative.trim().length > 0) {
-          const shown = sanitizeDisplayedNarrative(degradedDm.narrative);
-          useGameStore.getState().pushLog({
-            role: "assistant",
-            content: shown.text.slice(0, 50000),
-            reasoning: undefined,
-          });
-          setLiveNarrative("");
-          console.warn("[/api/chat] non-OK HTTP but SSE body parsed as DM; showing narrative.", {
-            status: res.status,
-            aiStatus: res.headers.get("X-VerseCraft-Ai-Status"),
-          });
-          // Auto-generate options even on degraded 403 responses so players
-          // always have clickable actions after narrative appears.
-          setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 300);
-          return;
-        }
-      }
-      let parsedError: unknown = null;
-      try {
-        if (responseContentType.includes("application/json") && errorText) {
-          parsedError = JSON.parse(errorText);
-        } else if (responseIsSse && errorText) {
-          const dmRaw = foldSseTextToDmRaw(errorText);
-          const dmParsed = tryParseDM(dmRaw);
-          if (dmParsed) parsedError = dmParsed;
-        }
-      } catch {
-        parsedError = null;
-      }
-
-      const maybeObj = parsedError as Record<string, unknown> | null;
-      const errRec =
-        maybeObj && typeof maybeObj === "object" && !Array.isArray(maybeObj) ? maybeObj : null;
-      const upstreamStatus = errRec ? Number(errRec["upstreamStatus"] ?? 0) : 0;
-      const code = errRec ? String(errRec["code"] ?? "") : "";
-      const reason = errRec ? String(errRec["reason"] ?? errRec["error"] ?? "") : "";
-
-      // Print a guaranteed-visible line first (DevTools sometimes shows `{}` for objects).
-      const isAuthFailed =
-        res.status === 502 &&
-        (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403);
-
-      const logLine = `[/api/chat] non-OK status=${res.status} statusText=${res.statusText} contentType=${responseContentType} body=${errorText.slice(0, 800)}`;
-
-      if (isAuthFailed) {
-        console.warn(logLine);
-      } else {
-        console.error(logLine);
-      }
-
-      const detail = {
-        status: res.status,
-        statusText: res.statusText,
-        contentType: responseContentType,
-        parsedError,
-        body: errorText,
-      };
-      const detailText = (() => {
-        try {
-          return JSON.stringify(detail, null, 2);
-        } catch {
-          return String(detail);
-        }
-      })();
-      if (isAuthFailed) {
-        console.warn("[/api/chat] non-OK response detail", detailText);
-      } else {
-        console.error("[/api/chat] non-OK response detail", detailText);
-      }
-
-      if (
-        isRecoverableModelRateLimit({
-          status: res.status,
-          upstreamStatus,
-          code,
-          reason,
-          body: errorText,
-        }) &&
-        !retriedAfterRateLimit
-      ) {
-        sendActionInFlightRef.current = false;
-        await sendAction(trimmed, true, true, isSystemAction, null, true);
-        return;
-      }
-
-      console.warn("[play][chat_non_ok]", {
-        status: res.status,
-        upstreamStatus,
-        code,
-        reason,
-      });
-      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      const failureKind = classifyPlayTurnFailure({
-        status: res.status,
-        upstreamStatus,
-        code,
-        reason,
-        body: errorText,
-      });
-      showTurnFailureIfVisible(failureKind);
-      return;
-    }
-
-    if (!res.body) {
-      setStreamPhase("idle");
-      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-      showTurnFailureIfVisible("network_or_gateway");
-      return;
-    }
-
-    const reader = res.body.getReader();
-    streamReaderRef.current = reader;
-    const decoder = new TextDecoder("utf-8");
     let buf = "";
     let raw = "";
     let sseDocumentText = "";
@@ -3037,74 +2911,368 @@ function PlayContent() {
       }
     };
 
-    const readNextWithStallGuard = async (stallMs: number) => {
-      let timer: number | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = window.setTimeout(() => reject(new Error("STREAM_STALL_TIMEOUT")), stallMs);
-      });
-      try {
-        const out = await Promise.race([reader.read(), timeoutPromise]);
-        if (timer !== undefined) window.clearTimeout(timer);
-        return out;
-      } catch (e) {
-        if (timer !== undefined) window.clearTimeout(timer);
-        throw e;
-      }
-    };
-
-    // 性能分层（首字后感知慢 / 卡住）：
-    // - 首个非空 SSE data: 到来前：使用 Android 加权后的首包 stall 上限，限制“连接已建立但无正文 bytes”的假死。
-    // - 首个 chunk 到来后：使用 STREAM_CHUNK_STALL_MS 限制“上游长停顿”的等待上限
-    // 这两者都不等于“真实延迟优化”，它们只是定义“何时判定卡死并收敛体验”。
-    let streamCancelled = false;
+    let transport: ChatSendTransport | null = null;
+    const fetchDeadlineState = { hit: false };
+    let fetchDeadlineTimer: number | undefined;
     try {
+      fetchDeadlineTimer = window.setTimeout(() => {
+        fetchDeadlineState.hit = true;
+        try {
+          ac.abort();
+        } catch {
+          /* ignore */
+        }
+      }, transportTimeouts.fetchDeadlineMs);
+
+      if (useLegacySseTransport) {
+        const xhrOut = await postSameOriginForSseDocumentText({
+          url: "/api/chat",
+          body: JSON.stringify(chatRequestBody),
+          headers: chatSendHeaders,
+          timeoutMs: transportTimeouts.fetchDeadlineMs,
+          signal: ac.signal,
+        });
+        if (queueIdForChat) {
+          clearPendingChatQueueAction();
+          pendingQueueActionRef.current = null;
+          setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+        }
+        if (!xhrOut.ok) {
+          setStreamPhase("idle");
+          if (queueIdForChat) {
+            await fetch("/api/chat/queue/cancel", {
+              method: "POST",
+              credentials: "include",
+              cache: "no-store",
+              headers: {
+                "Content-Type": "application/json",
+                ...chatQueueHeaders(createVerseCraftRequestId("chatq_cancel")),
+              },
+              body: JSON.stringify({ queueId: queueIdForChat }),
+            }).catch(() => undefined);
+          }
+          if (isEndingFinaleSystemRound) {
+            commitLocalEndingFinaleFallback();
+            return;
+          }
+          console.warn("[play][chat_xhr_failed]", {
+            kind: xhrOut.kind,
+            message: xhrOut.message,
+            deadlineHit: fetchDeadlineState.hit,
+          });
+          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+          const failureKind = classifyPlayTurnFailure({
+            errorName: xhrOut.kind === "aborted" ? "AbortError" : undefined,
+            errorMessage: xhrOut.message,
+            deadlineHit: fetchDeadlineState.hit,
+          });
+          showTurnFailureIfVisible(failureKind);
+          return;
+        }
+        transport = {
+          mode: "legacy",
+          status: xhrOut.status,
+          statusText: xhrOut.statusText,
+          contentType: xhrOut.contentType,
+          text: xhrOut.text,
+          versecraftRequestId: xhrOut.versecraftRequestId,
+          aiStatus: xhrOut.aiStatus,
+        };
+      } else {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: chatSendHeaders,
+          body: JSON.stringify(chatRequestBody),
+          signal: ac.signal,
+        });
+        if (queueIdForChat) {
+          clearPendingChatQueueAction();
+          pendingQueueActionRef.current = null;
+          setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+        }
+        transport = { mode: "fetch", res };
+      }
+    } catch (fetchErr) {
+      setStreamPhase("idle");
+      if (queueIdForChat) {
+        await fetch("/api/chat/queue/cancel", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...chatQueueHeaders(createVerseCraftRequestId("chatq_cancel")),
+          },
+          body: JSON.stringify({ queueId: queueIdForChat }),
+        }).catch(() => undefined);
+      }
+      if (isEndingFinaleSystemRound) {
+        commitLocalEndingFinaleFallback();
+        return;
+      }
+      console.warn("[play][chat_fetch_failed]", {
+        name: fetchErr instanceof Error ? fetchErr.name : undefined,
+        message: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
+        deadlineHit: fetchDeadlineState.hit,
+      });
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      const failureKind = classifyPlayTurnFailure({
+        errorName: fetchErr instanceof Error ? fetchErr.name : undefined,
+        errorMessage: fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? ""),
+        deadlineHit: fetchDeadlineState.hit,
+      });
+      showTurnFailureIfVisible(failureKind);
+      return;
+    } finally {
+      if (fetchDeadlineTimer !== undefined) {
+        window.clearTimeout(fetchDeadlineTimer);
+      }
+      streamAbortRef.current = null;
+    }
+
+    if (!transport) return;
+
+    const responseContentType =
+      transport.mode === "fetch" ? (transport.res.headers.get("content-type") ?? "") : transport.contentType;
+    const responseIsSse = responseContentType.toLowerCase().includes("text/event-stream");
+    {
+      const p = waitUxSignalsRef.current;
+      if (p.requestStartedAt != null && p.responseHeadersAt == null) {
+        p.responseHeadersAt = performance.now();
+      }
+      const ridHeader =
+        transport.mode === "fetch"
+          ? transport.res.headers.get("x-versecraft-request-id")
+          : transport.versecraftRequestId;
+      if (isSafeVerseCraftRequestId(ridHeader)) {
+        p.requestId = ridHeader;
+      }
+    }
+
+    const httpStatus = transport.mode === "fetch" ? transport.res.status : transport.status;
+    const httpStatusText = transport.mode === "fetch" ? transport.res.statusText : transport.statusText;
+    const httpOk = httpStatus >= 200 && httpStatus < 300;
+
+    if (!httpOk) {
+      setStreamPhase("idle");
+      const errorText =
+        transport.mode === "fetch" ? await transport.res.text().catch(() => "") : transport.text;
+      if (isEndingFinaleSystemRound) {
+        commitLocalEndingFinaleFallback();
+        return;
+      }
+      // Legacy / misconfigured proxies may return 4xx/5xx while body is still valid SSE + DM JSON.
+      if (responseIsSse && errorText) {
+        const dmRawFromError = foldSseTextToDmRaw(errorText);
+        const degradedDm = tryParseDM(dmRawFromError);
+        if (degradedDm && typeof degradedDm.narrative === "string" && degradedDm.narrative.trim().length > 0) {
+          const shown = sanitizeDisplayedNarrative(degradedDm.narrative);
+          useGameStore.getState().pushLog({
+            role: "assistant",
+            content: shown.text.slice(0, 50000),
+            reasoning: undefined,
+          });
+          setLiveNarrative("");
+          const aiStatusHdr =
+            transport.mode === "fetch"
+              ? transport.res.headers.get("X-VerseCraft-Ai-Status")
+              : transport.aiStatus;
+          console.warn("[/api/chat] non-OK HTTP but SSE body parsed as DM; showing narrative.", {
+            status: httpStatus,
+            aiStatus: aiStatusHdr,
+          });
+          // Auto-generate options even on degraded 403 responses so players
+          // always have clickable actions after narrative appears.
+          setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 300);
+          return;
+        }
+      }
+      let parsedError: unknown = null;
+      try {
+        if (responseContentType.includes("application/json") && errorText) {
+          parsedError = JSON.parse(errorText);
+        } else if (responseIsSse && errorText) {
+          const dmRaw = foldSseTextToDmRaw(errorText);
+          const dmParsed = tryParseDM(dmRaw);
+          if (dmParsed) parsedError = dmParsed;
+        }
+      } catch {
+        parsedError = null;
+      }
+
+      const maybeObj = parsedError as Record<string, unknown> | null;
+      const errRec =
+        maybeObj && typeof maybeObj === "object" && !Array.isArray(maybeObj) ? maybeObj : null;
+      const upstreamStatus = errRec ? Number(errRec["upstreamStatus"] ?? 0) : 0;
+      const code = errRec ? String(errRec["code"] ?? "") : "";
+      const reason = errRec ? String(errRec["reason"] ?? errRec["error"] ?? "") : "";
+
+      // Print a guaranteed-visible line first (DevTools sometimes shows `{}` for objects).
+      const isAuthFailed =
+        httpStatus === 502 &&
+        (code === "UPSTREAM_AUTH_FAILED" || upstreamStatus === 401 || upstreamStatus === 403);
+
+      const logLine = `[/api/chat] non-OK status=${httpStatus} statusText=${httpStatusText} contentType=${responseContentType} body=${errorText.slice(0, 800)}`;
+
+      if (isAuthFailed) {
+        console.warn(logLine);
+      } else {
+        console.error(logLine);
+      }
+
+      const detail = {
+        status: httpStatus,
+        statusText: httpStatusText,
+        contentType: responseContentType,
+        parsedError,
+        body: errorText,
+      };
+      const detailText = (() => {
+        try {
+          return JSON.stringify(detail, null, 2);
+        } catch {
+          return String(detail);
+        }
+      })();
+      if (isAuthFailed) {
+        console.warn("[/api/chat] non-OK response detail", detailText);
+      } else {
+        console.error("[/api/chat] non-OK response detail", detailText);
+      }
+
+      if (
+        isRecoverableModelRateLimit({
+          status: httpStatus,
+          upstreamStatus,
+          code,
+          reason,
+          body: errorText,
+        }) &&
+        !retriedAfterRateLimit
+      ) {
+        sendActionInFlightRef.current = false;
+        await sendAction(trimmed, true, true, isSystemAction, null, true);
+        return;
+      }
+
+      console.warn("[play][chat_non_ok]", {
+        status: httpStatus,
+        upstreamStatus,
+        code,
+        reason,
+      });
+      if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+      const failureKind = classifyPlayTurnFailure({
+        status: httpStatus,
+        upstreamStatus,
+        code,
+        reason,
+        body: errorText,
+      });
+      showTurnFailureIfVisible(failureKind);
+      return;
+    }
+
+    let streamCancelled = false;
+
+    if (transport.mode === "legacy") {
+      sseDocumentText = transport.text;
+      let walkBuf = sseDocumentText;
       while (true) {
-        const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : transportTimeouts.firstChunkStallMs;
-        const { value, done } = await readNextWithStallGuard(stallMs);
-        if (done) break;
-        const chunkText = decoder.decode(value, { stream: true });
-        sseDocumentText += chunkText;
-        buf += chunkText;
-        const { events, rest } = takeCompleteSseEvents(buf);
-        buf = rest;
+        const { events, rest } = takeCompleteSseEvents(walkBuf);
+        walkBuf = rest;
         for (const event of events) {
           applySseEvent(event);
         }
+        if (events.length === 0) break;
       }
-      const tail = takeCompleteSseEvents(buf);
-      buf = tail.rest;
-      for (const event of tail.events) {
-        applySseEvent(event);
+      const orphanLegacy = normalizeSseNewlines(walkBuf).trim();
+      if (orphanLegacy.length > 0 && orphanLegacy.startsWith("data:")) {
+        applySseEvent(orphanLegacy);
       }
-      const orphan = normalizeSseNewlines(buf).trim();
-      if (orphan.length > 0 && orphan.startsWith("data:")) {
-        applySseEvent(orphan);
-      }
-    } catch (readErr) {
-      const err = readErr as Error & { name?: string; message?: string };
-      if (err?.message === "STREAM_STALL_TIMEOUT") {
-        console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
+    } else {
+      const res = transport.res;
+      if (!res.body) {
         setStreamPhase("idle");
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
         showTurnFailureIfVisible("network_or_gateway");
         return;
       }
-      if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
-        streamCancelled = true;
-      } else {
-        console.error("[/api/chat] stream read error", readErr);
-        narrativeRef.current = "";
-        setStreamPhase("idle");
-        if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-        showTurnFailureIfVisible("network_or_gateway");
-        return;
-      }
-    } finally {
-      streamReaderRef.current = null;
+
+      const reader = res.body.getReader();
+      streamReaderRef.current = reader;
+      const decoder = new TextDecoder("utf-8");
+
+      const readNextWithStallGuard = async (stallMs: number) => {
+        let timer: number | undefined;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = window.setTimeout(() => reject(new Error("STREAM_STALL_TIMEOUT")), stallMs);
+        });
+        try {
+          const out = await Promise.race([reader.read(), timeoutPromise]);
+          if (timer !== undefined) window.clearTimeout(timer);
+          return out;
+        } catch (e) {
+          if (timer !== undefined) window.clearTimeout(timer);
+          throw e;
+        }
+      };
+
+      // 性能分层（首字后感知慢 / 卡住）：
+      // - 首个非空 SSE data: 到来前：使用 Android 加权后的首包 stall 上限，限制“连接已建立但无正文 bytes”的假死。
+      // - 首个 chunk 到来后：使用 STREAM_CHUNK_STALL_MS 限制“上游长停顿”的等待上限
+      // 这两者都不等于“真实延迟优化”，它们只是定义“何时判定卡死并收敛体验”。
       try {
-        await reader.cancel();
-      } catch {
-        // ignore
+        while (true) {
+          const stallMs = sawStreamChunk ? STREAM_CHUNK_STALL_MS : transportTimeouts.firstChunkStallMs;
+          const { value, done } = await readNextWithStallGuard(stallMs);
+          if (done) break;
+          const chunkText = decoder.decode(value, { stream: true });
+          sseDocumentText += chunkText;
+          buf += chunkText;
+          const { events, rest } = takeCompleteSseEvents(buf);
+          buf = rest;
+          for (const event of events) {
+            applySseEvent(event);
+          }
+        }
+        const tail = takeCompleteSseEvents(buf);
+        buf = tail.rest;
+        for (const event of tail.events) {
+          applySseEvent(event);
+        }
+        const orphan = normalizeSseNewlines(buf).trim();
+        if (orphan.length > 0 && orphan.startsWith("data:")) {
+          applySseEvent(orphan);
+        }
+      } catch (readErr) {
+        const err = readErr as Error & { name?: string; message?: string };
+        if (err?.message === "STREAM_STALL_TIMEOUT") {
+          console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
+          setStreamPhase("idle");
+          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+          showTurnFailureIfVisible("network_or_gateway");
+          return;
+        }
+        if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
+          streamCancelled = true;
+        } else {
+          console.error("[/api/chat] stream read error", readErr);
+          narrativeRef.current = "";
+          setStreamPhase("idle");
+          if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+          showTurnFailureIfVisible("network_or_gateway");
+          return;
+        }
+      } finally {
+        streamReaderRef.current = null;
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
       }
     }
 
