@@ -842,20 +842,29 @@ async function postChatInternal(req: Request) {
         envNumber("VC_OPTIONS_ONLY_SERVER_BUDGET_MS", VC_WAITING.optionsOnlyServerBudgetMs)
       )
     );
-    const regen = await generateOptionsOnlyFallback({
+    let regen = await generateOptionsOnlyFallback({
       narrative: lastAssistant,
       latestUserInput: packet,
       playerContext: snapshot,
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
       budgetMs: optionsServerBudgetMs,
-      // The early-status wrapper returns the outer SSE response before the
-      // internal options-only request finishes. The original request signal can
-      // therefore be aborted even while the client is still reading the SSE
-      // stream, so this short helper relies on its own wall-clock budget rather
-      // than inheriting the route request signal.
       signal: undefined,
     });
+    if (!regen.ok) {
+      const retryBudgetMs = Math.max(0, optionsServerBudgetMs - (Date.now() - optionsRegenStartedAt));
+      if (retryBudgetMs >= 1_200) {
+        regen = await generateOptionsOnlyFallback({
+          narrative: lastAssistant,
+          latestUserInput: packet,
+          playerContext: snapshot,
+          ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only", retryPass: true } },
+          systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+          budgetMs: retryBudgetMs,
+          signal: undefined,
+        });
+      }
+    }
     const shaped = buildOptionsRegenResponse({
       clientTurnModeHint,
       options: regen.ok ? regen.options : [],
@@ -3349,6 +3358,14 @@ async function postChatInternal(req: Request) {
         if (laneSideEffectPlan.requireNpcConsistency) {
           dmRecord = runEpistemicPostGuard(dmRecord);
         }
+        try {
+          const { validateCanonNames } = await import("@/lib/npcConsistency/canonNameValidator");
+          const nar = String((dmRecord as Record<string, unknown>).narrative ?? "");
+          const canonWarnings = validateCanonNames(nar, presentNpcIdsForEpistemic);
+          if (canonWarnings.length > 0 && process.env.NODE_ENV !== "production") {
+            console.warn("[api/chat][canon_name_warning]", { requestId, canonWarnings });
+          }
+        } catch { /* non-critical */ }
 
         // --- Phase 7: turn mode correction (narrative_only / decision_required) ---
         try {
@@ -3522,7 +3539,7 @@ async function postChatInternal(req: Request) {
           }
           if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2 && canRunFinalRepair()) {
             if (resolvedOptCount === 0) incrEmptyOptionsTurnCount(1);
-            const regen = await generateOptionsOnlyFallback({
+            let regen = await generateOptionsOnlyFallback({
               narrative: String((resolved as any).narrative ?? ""),
               latestUserInput,
               playerContext,
@@ -3531,6 +3548,17 @@ async function postChatInternal(req: Request) {
               systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
               budgetMs: nextFinalRepairBudgetMs(4_500),
             });
+            if (!regen.ok && canRunFinalRepair()) {
+              regen = await generateOptionsOnlyFallback({
+                narrative: String((resolved as any).narrative ?? ""),
+                latestUserInput,
+                playerContext,
+                ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn", retryPass: true } },
+                signal: pipelineAbort.signal,
+                systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+                budgetMs: nextFinalRepairBudgetMs(3_500),
+              });
+            }
             if (regen.ok) {
               (dmRecord as Record<string, unknown>).options = regen.options;
               dmRecord = runEpistemicPostGuard(dmRecord);

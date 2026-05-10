@@ -46,7 +46,7 @@ export function ChapterReviewStory({
       className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5"
       aria-label="章节留页"
     >
-      <div className="rounded-[8px] border border-[#d8d1c6] bg-[#fffdf8]/94 p-4 shadow-[0_10px_24px_rgba(73,63,51,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
+      <div>
         <div className="mb-4 border-b border-[#ded8ce] pb-3">
           <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">章节留页，只读，不影响当前章节</p>
           <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-tight text-[#174d46]">

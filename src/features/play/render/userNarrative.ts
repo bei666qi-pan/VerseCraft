@@ -61,7 +61,9 @@ export function formatUserNarrativeForDisplay(content: string): string {
     return ensureStatementPunct(compact);
   }
 
-  return `你调整了行动节奏，继续向前推进。`;
+  const compact = text.replace(/\s+/g, " ").trim();
+  const head = compact.length > 60 ? `${compact.slice(0, 58)}…` : compact;
+  return /^我/.test(head) ? ensureStatementPunct(head) : ensureStatementPunct(`我${head}`);
 }
 
 const QUOTE_ONLY_DISPLAY = /^“([^”]+)”\s*$/;

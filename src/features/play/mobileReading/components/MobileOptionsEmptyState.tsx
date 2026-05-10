@@ -107,8 +107,8 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
   }
 
   return (
-    <div data-testid="mobile-options-dropdown" className={mobileReadingTheme.optionsEmptyState} role="status">
-      {message?.trim() || "当前暂无可用选项。"}
+    <div data-testid="mobile-options-empty-fallback" className={mobileReadingTheme.optionsEmptyState} role="status">
+      {message?.trim() || "正在重新整理可选行动…"}
     </div>
   );
 }

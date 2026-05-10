@@ -1175,7 +1175,7 @@ function PlayContent() {
       chapterPageTurnTimerRef.current = window.setTimeout(() => {
         setChapterPageTurn(null);
         chapterPageTurnTimerRef.current = null;
-      }, 900);
+      }, 620);
     },
     [scrollToStoryEnd]
   );
@@ -1308,23 +1308,26 @@ function PlayContent() {
   const displayEntries = useMemo(() => {
     const baseLogs = logs ?? [];
     const cutoff = isStreamVisualActive ? streamLogsBaselineRef.current : baseLogs.length;
-    // 章节级 UI 截断：只展示当前章节范围内的对话；
-    // 旧章节内容仍写在 store/logs 中，可通过"章节回看"打开（不受此截断影响）。
     const isReviewingNow = Boolean(chapterRuntime.isReviewing);
     const activeProgress = chapterRuntime.activeProgress;
-    const activeOrder = chapterRuntime.activeDefinition?.order ?? 1;
     const startedLogIndex =
       typeof activeProgress?.startedLogIndex === "number" && Number.isFinite(activeProgress.startedLogIndex)
         ? Math.max(0, Math.trunc(activeProgress.startedLogIndex))
         : null;
-    const turnCount = activeProgress?.turnCount ?? 0;
     let scopeStart = 0;
     if (isReviewingNow) {
       scopeStart = 0;
     } else if (startedLogIndex !== null) {
       scopeStart = startedLogIndex;
-    } else if (activeOrder > 1 && turnCount === 0) {
-      scopeStart = Math.max(0, baseLogs.length - 2);
+    } else {
+      const prevDef = chapterRuntime.previousDefinition;
+      const prevProgress = prevDef
+        ? chapterRuntime.chapterState.progressByChapterId[prevDef.id]
+        : undefined;
+      const prevCompletedIdx = typeof prevProgress?.completedLogIndex === "number"
+        ? Math.max(0, Math.trunc(prevProgress.completedLogIndex))
+        : null;
+      scopeStart = prevCompletedIdx !== null ? prevCompletedIdx + 1 : 0;
     }
     return baseLogs
       .map((l, idx) => ({ l, idx }))
@@ -1336,7 +1339,8 @@ function PlayContent() {
     isStreamVisualActive,
     chapterRuntime.isReviewing,
     chapterRuntime.activeProgress,
-    chapterRuntime.activeDefinition?.order,
+    chapterRuntime.previousDefinition,
+    chapterRuntime.chapterState.progressByChapterId,
   ]);
 
   const prevIsStreamVisualActiveRef = useRef(false);
@@ -2381,10 +2385,13 @@ function PlayContent() {
           options_regen_client_deadline_ms: optionsOnlyDeadlineMs,
         });
       };
-      const firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      let firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      if (firstPass === null && !optionsRegenTimedOut) {
+        await new Promise((r) => setTimeout(r, 800));
+        firstPass = await runOptionsOnlyAttempt(reason, optionsRegenContext, []);
+      }
       if (tid !== undefined) window.clearTimeout(tid);
       if (firstPass === null) {
-        setCurrentOptions([]);
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(null);
@@ -2444,7 +2451,6 @@ function PlayContent() {
       }
 
       if (finalOptions.length !== 4) {
-        setCurrentOptions([]);
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(null);
@@ -2475,7 +2481,6 @@ function PlayContent() {
       const successHint = getOptionsRegenSuccessHint({ trigger, turnMode: lastCommittedTurnModeRef.current });
       if (successHint) setFirstTimeHint(successHint);
     } catch {
-      setCurrentOptions([]);
       setOptionsRegenStage("finalizing");
       setOptionsRegenProgress((prev) => Math.max(prev, 92));
       setFirstTimeHint(null);
@@ -4834,12 +4839,15 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
   const router = useRouter();
   const isHydrated = useGameStore((s) => s.isHydrated);
   const isGameStarted = useGameStore((s) => s.isGameStarted ?? false);
+  const hasLogs = useGameStore((s) => (s.logs?.length ?? 0) > 0);
+  const isReviewing = useGameStore((s) => !!s.chapterState?.reviewChapterId);
 
   useEffect(() => {
     if (!isHydrated) return;
     if (isGameStarted) return;
+    if (hasLogs || isReviewing) return;
     router.replace("/create?from=play");
-  }, [isHydrated, isGameStarted, router]);
+  }, [isHydrated, isGameStarted, hasLogs, isReviewing, router]);
 
   return (
     <div className="relative min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-x-hidden bg-[#f6f2ec]">

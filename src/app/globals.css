@@ -113,23 +113,23 @@
 .vc-chapter-page-turn--next .vc-chapter-page-turn-sheet {
   right: -6%;
   transform-origin: right center;
-  animation: vc-chapter-page-turn-next-sheet 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: vc-chapter-page-turn-next-sheet 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
 }
 
 .vc-chapter-page-turn--next .vc-chapter-page-turn-crease {
   right: 0;
-  animation: vc-chapter-page-turn-next-crease 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: vc-chapter-page-turn-next-crease 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
 }
 
 .vc-chapter-page-turn--previous .vc-chapter-page-turn-sheet {
   left: -6%;
   transform-origin: left center;
-  animation: vc-chapter-page-turn-prev-sheet 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: vc-chapter-page-turn-prev-sheet 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
 }
 
 .vc-chapter-page-turn--previous .vc-chapter-page-turn-crease {
   left: 0;
-  animation: vc-chapter-page-turn-prev-crease 760ms cubic-bezier(0.2, 0.72, 0.22, 1) both;
+  animation: vc-chapter-page-turn-prev-crease 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -138,6 +138,13 @@
     animation-duration: 1ms !important;
   }
 }
+
+@keyframes vc-echo-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(47,116,106,0.18), 0 5px 12px rgba(47,116,106,0.10), inset 0 1px 0 rgba(255,255,255,0.96); }
+  50%      { box-shadow: 0 0 22px rgba(47,116,106,0.45), 0 6px 14px rgba(47,116,106,0.18), inset 0 1px 0 rgba(255,255,255,0.96); }
+}
+.vc-echo-glow { animation: vc-echo-glow 2.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .vc-echo-glow { animation: none; } }
 
 /* GPU-only: transform + opacity to avoid layout/paint pipeline */
 @keyframes breathe {

@@ -23,6 +23,21 @@ services:
     volumes:
       - redis_data:/data
 
+  vc-worker:
+    image: ${VERSECRAFT_IMAGE:-versecraft:latest}
+    build: .
+    container_name: versecraft-worker
+    restart: unless-stopped
+    profiles: ["production", "worker"]
+    environment:
+      NODE_ENV: production
+      AI_ENABLE_WORLD_DIRECTOR: "true"
+      AI_DIRECTOR_MODE: soft
+      AI_ENABLE_DIRECTOR_HINT_INJECTION: "true"
+    env_file: [".env.local"]
+    command: ["sh", "-c", "corepack enable && pnpm worker:kg"]
+    depends_on: [postgres, redis]
+
 volumes:
   postgres_data:
   redis_data:

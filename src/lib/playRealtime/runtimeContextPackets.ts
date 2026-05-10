@@ -178,7 +178,7 @@ function parseNpcPositions(playerContext: string): Array<{ npcId: string; locati
       return { npcId: (npcId ?? "").trim(), location: (location ?? "").trim() };
     })
     .filter((x) => x.npcId && x.location)
-    .slice(0, 12);
+    .slice(0, 24);
 }
 
 function parseRelationshipHints(playerContext: string): string[] {

@@ -259,7 +259,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
       if (!name || !loc) continue;
       seen.add(id);
       items.push({ id, name, loc });
-      if (items.length >= 12) break;
+      if (items.length >= 24) break;
     }
     return {
       rule: "all_npcs_know_public_roster",
@@ -267,6 +267,11 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
       items,
     };
   })();
+
+  const profession_certifier_map_packet = {
+    rule: "only_these_professions_exist",
+    map: { "守灯人": "N-008", "巡迹客": "N-014", "觅兆者": "N-008", "齐日角": "N-011", "溯源师": "N-008" },
+  };
 
   const packets = {
     actor_canon_packet,
@@ -278,6 +283,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
     actor_memory_privilege_packet,
     actor_reveal_limit_packet,
     public_npc_roster_packet,
+    profession_certifier_map_packet,
   };
 
   const text = [

@@ -23,7 +23,7 @@ export function EchoTalentButton({ label, ready, talentName, onUseTalent }: Echo
           : { opacity: 0.62, filter: "saturate(0.72) brightness(0.86) contrast(0.9)" }
       }
       className={`${mobileReadingTheme.iconButton} ${mobileReadingTheme.talentButton} ${
-        ready ? mobileReadingTheme.talentButtonReady : mobileReadingTheme.talentButtonCooling
+        ready ? `${mobileReadingTheme.talentButtonReady} vc-echo-glow` : mobileReadingTheme.talentButtonCooling
       }`}
     >
       <MobileReadingTalentIcon

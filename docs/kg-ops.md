@@ -18,8 +18,9 @@
 
 1. Web 容器上线并确认 `MIGRATE_ON_BOOT=1`。
 2. 新增 Worker 服务，启动命令 `pnpm worker:kg`。
-3. 配置每周任务 `pnpm kg:compact`。
-4. 可选执行 `pnpm kg:self-check` 和 `VC_CHECK_KG_SCHEMA=1 pnpm db:check`。
+3. 生产环境可通过 `docker-compose --profile production up -d` 自动拉起 vc-worker 服务。
+4. 配置每周任务 `pnpm kg:compact`。
+5. 可选执行 `pnpm kg:self-check` 和 `VC_CHECK_KG_SCHEMA=1 pnpm db:check`。
 
 ## 快速回滚
 
