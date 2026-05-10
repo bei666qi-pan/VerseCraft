@@ -9,9 +9,11 @@ import {
 
 test("needsLegacySseClientTransportFromUserAgent matches known in-app browsers", () => {
   assert.equal(needsLegacySseClientTransportFromUserAgent("Mozilla/5.0 MicroMessenger/8.0"), true);
+  assert.equal(needsLegacySseClientTransportFromUserAgent("Mozilla/5.0 wxwork/4.1.0 MicroMessenger/8.0"), true);
   assert.equal(needsLegacySseClientTransportFromUserAgent("Mozilla/5.0 baiduboxapp/13.0"), true);
   assert.equal(needsLegacySseClientTransportFromUserAgent("Mozilla/5.0 baiduapp/13.0"), true);
   assert.equal(needsLegacySseClientTransportFromUserAgent("Mozilla/5.0 BaiduHD/6.8 Mobile"), true);
+  assert.equal(needsLegacySseClientTransportFromUserAgent("Mozilla/5.0 baiduboxapp/13.0 swan/2.0"), true);
   assert.equal(needsLegacySseClientTransportFromUserAgent("Quark/6.0 Mobile Safari/537.36"), true);
   assert.equal(needsLegacySseClientTransportFromUserAgent("UCBrowser/15.0"), true);
   assert.equal(
@@ -23,6 +25,12 @@ test("needsLegacySseClientTransportFromUserAgent matches known in-app browsers",
   assert.equal(
     needsLegacySseClientTransportFromUserAgent(
       "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/88.0.4324.93 Mobile Safari/537.36 MQQBrowser/14.0"
+    ),
+    true
+  );
+  assert.equal(
+    needsLegacySseClientTransportFromUserAgent(
+      "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/98.0 Mobile Safari/537.36 TBS/046001 QBCore/4.0"
     ),
     true
   );

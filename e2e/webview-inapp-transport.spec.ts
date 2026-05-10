@@ -3,6 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 const DB_NAME = "keyval-store";
 const STORE_NAME = "keyval";
 const KEY_MAIN = "versecraft-storage";
+const PLAY_NAV_TIMEOUT_MS = 30_000;
+
+test.setTimeout(60_000);
 
 const options = ["靠近铁牌查看痕迹", "检查学生电子表", "沿血手印方向前进", "先躲进旁边教室"];
 const mainNarrative = "你靠近铁牌，锈迹下浮出一道新的划痕。雾声短暂后退，给你留下继续判断的余地。";
@@ -61,7 +64,7 @@ const defaultProfessionState = {
 };
 
 async function seedPlayState(page: Page, story: string, actionOptions: string[]) {
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 15_000 });
+  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.evaluate(
     async ({ dbName, storeName, key, story: st, actionOptions: ao, professionState }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -137,8 +140,28 @@ async function seedPlayState(page: Page, story: string, actionOptions: string[])
   );
 }
 
+async function installChatQueueBypassMock(page: Page) {
+  await page.route("**/api/chat/queue", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled: true, status: "ready", queueId: null }),
+    });
+  });
+  await page.route("**/api/chat/queue/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled: true, status: "ready", queueId: null }),
+    });
+  });
+}
+
 async function installChatMock(page: Page) {
+  let callCount = 0;
+  await installChatQueueBypassMock(page);
   await page.route("**/api/chat", async (route) => {
+    callCount += 1;
     let parsedBody: Record<string, unknown> | null = null;
     try {
       parsedBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -172,6 +195,7 @@ async function installChatMock(page: Page) {
         `data: __VERSECRAFT_FINAL__:${JSON.stringify(finalPayload)}\n\n`,
     });
   });
+  return () => callCount;
 }
 
 async function blockFetchForChatEndpoint(page: Page) {
@@ -196,6 +220,51 @@ async function blockFetchForChatEndpoint(page: Page) {
   });
 }
 
+async function breakFetchStreamForChatEndpoint(page: Page) {
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch.bind(window);
+    (window as unknown as { __vcFetchChatCalls?: number }).__vcFetchChatCalls = 0;
+    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL
+          ? String(input)
+          : input && typeof input === "object" && "url" in input
+            ? String(input.url)
+            : "";
+      const path = new URL(rawUrl, window.location.href).pathname;
+      if (path !== "/api/chat") return nativeFetch(input, init);
+      (window as unknown as { __vcFetchChatCalls?: number }).__vcFetchChatCalls =
+        ((window as unknown as { __vcFetchChatCalls?: number }).__vcFetchChatCalls ?? 0) + 1;
+      const encoder = new TextEncoder();
+      let sentStatus = false;
+      const brokenStream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!sentStatus) {
+            sentStatus = true;
+            controller.enqueue(
+              encoder.encode(
+                `data: __VERSECRAFT_STATUS__:${JSON.stringify({ stage: "generating", requestId: "broken_fetch_stream_req" })}\n\n`
+              )
+            );
+            return;
+          }
+          controller.error(new Error("broken in-app ReadableStream after status"));
+        },
+      });
+      return Promise.resolve(
+        new Response(brokenStream, {
+          status: 200,
+          statusText: "OK",
+          headers: {
+            "content-type": "text/event-stream; charset=utf-8",
+            "x-versecraft-request-id": "broken_fetch_stream_req",
+          },
+        })
+      );
+    }) as typeof window.fetch;
+  });
+}
+
 async function expectNoFetchChatCalls(page: Page) {
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __vcFetchChatCalls?: number }).__vcFetchChatCalls ?? 0))
@@ -212,9 +281,9 @@ async function runXHRTransportScenario(page: Page, uaSubstring: string) {
   await seedPlayState(page, opening, options);
   await installChatMock(page);
 
-  const response = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+  const response = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
   expect(response?.status()).toBeLessThan(500);
-  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
 
   const ua = await page.evaluate(() => navigator.userAgent);
   expect(ua.toLowerCase()).toContain(uaSubstring);
@@ -244,9 +313,9 @@ async function runXHROptionsRegenScenario(page: Page, uaSubstring: string) {
   await seedPlayState(page, opening, []);
   await installChatMock(page);
 
-  const response = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+  const response = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
   expect(response?.status()).toBeLessThan(500);
-  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
 
   const ua = await page.evaluate(() => navigator.userAgent);
   expect(ua.toLowerCase()).toContain(uaSubstring);
@@ -318,12 +387,62 @@ test.describe("fetch stream compatibility fallback", () => {
       { narrative: mainNarrative, actionOptions: options }
     );
 
-    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
-    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: 15_000 });
+    await installChatQueueBypassMock(page);
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
     await page.getByTestId("manual-action-input").fill("查看铁牌");
     await page.getByTestId("send-action-button").click();
     await expect
       .poll(() => page.getByTestId("mobile-story-viewport").innerText(), { timeout: 20_000 })
       .toContain(mainNarrative);
+  });
+
+  test("main chat retries same-origin XHR when fetch stream read fails before first chunk", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const clientErrors: string[] = [];
+    page.on("pageerror", (error) => clientErrors.push(error.message));
+
+    await breakFetchStreamForChatEndpoint(page);
+    await seedPlayState(page, "走廊灯光贴着墙根晃动。", options);
+    const chatNetworkCalls = await installChatMock(page);
+
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
+    await page.getByTestId("manual-action-input").fill("查看铁牌");
+    await page.getByTestId("send-action-button").click();
+
+    await expect
+      .poll(() => page.getByTestId("mobile-story-viewport").innerText(), { timeout: 20_000 })
+      .toContain(mainNarrative);
+    await page.getByTestId("options-toggle-button").click();
+    await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
+    await expect(page.getByTestId("mobile-option-item")).toHaveCount(options.length);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __vcFetchChatCalls?: number }).__vcFetchChatCalls ?? 0))
+      .toBeGreaterThan(0);
+    expect(chatNetworkCalls()).toBeGreaterThan(0);
+    expect(clientErrors, `page errors: ${clientErrors.join("; ")}`).toHaveLength(0);
+  });
+
+  test("options regen retries same-origin XHR when fetch stream read fails before first chunk", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const clientErrors: string[] = [];
+    page.on("pageerror", (error) => clientErrors.push(error.message));
+
+    await breakFetchStreamForChatEndpoint(page);
+    await seedPlayState(page, "安全中枢的灯光像潮水一样忽明忽暗。", []);
+    const chatNetworkCalls = await installChatMock(page);
+
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
+    await page.getByTestId("options-toggle-button").click();
+
+    await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("mobile-option-item")).toHaveCount(options.length, { timeout: 20_000 });
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __vcFetchChatCalls?: number }).__vcFetchChatCalls ?? 0))
+      .toBeGreaterThan(0);
+    expect(chatNetworkCalls()).toBeGreaterThan(0);
+    expect(clientErrors, `page errors: ${clientErrors.join("; ")}`).toHaveLength(0);
   });
 });

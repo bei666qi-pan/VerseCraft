@@ -7,16 +7,20 @@
 /** Lowercase substrings; keep specific to avoid matching normal Chrome Mobile. */
 export const LEGACY_SSE_TRANSPORT_UA_MARKERS = [
   "micromessenger",
+  "wxwork",
   "qq/",
   "mqqbrowser",
   "qqbrowser",
   " qq",
+  "qbcore",
+  "tbs/",
   "quark",
   "baiduboxapp",
   "baiduapp",
   "baiduhd",
   "baidubrowser",
   "bdbrowser",
+  "swan/",
   "ucbrowser",
   "ucweb/",
   "miuibrowser",
@@ -47,7 +51,7 @@ export function needsLegacySseClientTransportFromUserAgentDataBrands(
     if (b.includes("baidu") || b.includes("bdbrowser")) return true;
     if (b.includes("ucbrowser") || b.includes("ucweb")) return true;
     if (b.includes("miuibrowser")) return true;
-    if (b.includes("mqqbrowser")) return true;
+    if (b.includes("mqqbrowser") || b.includes("qbcore")) return true;
     if (b.includes("qq") && b.includes("browser")) return true;
   }
   return false;

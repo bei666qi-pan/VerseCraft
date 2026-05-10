@@ -81,6 +81,7 @@ import {
   foldSseTextToDmRaw,
   normalizeSseNewlines,
   takeCompleteSseEvents,
+  VERSECRAFT_FINAL_PREFIX,
 } from "@/features/play/stream/sseFrame";
 import { resolveTurnFromSse } from "@/features/play/stream/turnResolve";
 import { getCommitFailureRecovery } from "./commitFailureRecovery";
@@ -2339,6 +2340,23 @@ function PlayContent() {
         setOptionsRegenStage(next);
         setOptionsRegenProgress((prev) => Math.max(prev, floor));
       };
+      const applyOptionsRegenStatusFramesFromSseText = (sseText: string) => {
+        let sseBuffer = sseText;
+        while (true) {
+          const taken = takeCompleteSseEvents(sseBuffer);
+          sseBuffer = taken.rest;
+          for (const eventText of taken.events) {
+            const status = extractStatusFrameFromSseEvent(eventText);
+            if (status) applyOptionsRegenStatus(status.stage);
+          }
+          if (taken.events.length === 0) break;
+        }
+        const orphan = normalizeSseNewlines(sseBuffer).trim();
+        if (orphan.startsWith("data:")) {
+          const status = extractStatusFrameFromSseEvent(orphan);
+          if (status) applyOptionsRegenStatus(status.stage);
+        }
+      };
       const runOptionsOnlyAttempt = async (
         attemptReason: string,
         attemptContext = optionsRegenContext,
@@ -2415,21 +2433,7 @@ function PlayContent() {
               recoverable,
             };
           }
-          let sseBuffer = text;
-          while (true) {
-            const taken = takeCompleteSseEvents(sseBuffer);
-            sseBuffer = taken.rest;
-            for (const eventText of taken.events) {
-              const status = extractStatusFrameFromSseEvent(eventText);
-              if (status) applyOptionsRegenStatus(status.stage);
-            }
-            if (taken.events.length === 0) break;
-          }
-          const orphanOpt = normalizeSseNewlines(sseBuffer).trim();
-          if (orphanOpt.startsWith("data:")) {
-            const status = extractStatusFrameFromSseEvent(orphanOpt);
-            if (status) applyOptionsRegenStatus(status.stage);
-          }
+          applyOptionsRegenStatusFramesFromSseText(text);
         } else {
           const attemptRes = await fetch("/api/chat", {
             method: "POST",
@@ -2470,6 +2474,7 @@ function PlayContent() {
             const reader = attemptRes.body.getReader();
             const decoder = new TextDecoder("utf-8");
             let sseBuffer = "";
+            let readerCancelled = false;
             try {
               while (true) {
                 const { value, done } = await reader.read();
@@ -2498,11 +2503,56 @@ function PlayContent() {
                 const status = extractStatusFrameFromSseEvent(orphan);
                 if (status) applyOptionsRegenStatus(status.stage);
               }
-            } finally {
+            } catch (streamReadErr) {
+              if (text.includes(VERSECRAFT_FINAL_PREFIX) || optionsRegenTimedOut) throw streamReadErr;
               try {
                 await reader.cancel();
+                readerCancelled = true;
               } catch {
                 // ignore
+              }
+              const xhrOut = await postSameOriginForSseDocumentText({
+                url: "/api/chat",
+                body: optionsRegenBody,
+                headers: optionsRegenHeaders,
+                timeoutMs: optionsOnlyDeadlineMs,
+                signal: ac.signal,
+              });
+              if (!xhrOut.ok) {
+                return {
+                  kind: "transport_failed",
+                  status: 0,
+                  reason: xhrOut.kind === "timeout" ? "xhr_timeout_after_fetch_stream_failure" : xhrOut.kind,
+                  retryAfterMs: null,
+                  localRateLimited: false,
+                  recoverable: true,
+                };
+              }
+              const xhrCt = xhrOut.contentType.toLowerCase();
+              const xhrOk = xhrOut.status >= 200 && xhrOut.status < 300;
+              text = xhrOut.text;
+              responseRequestId = xhrOut.versecraftRequestId;
+              if (!xhrOk || !xhrCt.includes("text/event-stream")) {
+                const localRateLimited = isLocalRateLimitedPayload({ status: xhrOut.status, body: text });
+                const recoverable =
+                  localRateLimited || xhrOut.status === 429 || xhrOut.status === 503 || !xhrCt.includes("text/event-stream");
+                return {
+                  kind: "transport_failed",
+                  status: xhrOut.status,
+                  reason: localRateLimited ? "local_rate_limited" : `http_${xhrOut.status || "no_sse"}`,
+                  retryAfterMs: parseRetryAfterMs(null),
+                  localRateLimited,
+                  recoverable,
+                };
+              }
+              applyOptionsRegenStatusFramesFromSseText(text);
+            } finally {
+              if (!readerCancelled) {
+                try {
+                  await reader.cancel();
+                } catch {
+                  // ignore
+                }
               }
             }
           }
@@ -2894,7 +2944,7 @@ function PlayContent() {
         const parsedStage = parseBackendWaitStage(statusFrame.stage);
         if (parsedStage) waitUxBackendStageRef.current = parsedStage;
       }
-      const isFinalFrame = eventText.includes("__VERSECRAFT_FINAL__:");
+      const isFinalFrame = eventText.includes(VERSECRAFT_FINAL_PREFIX);
       if (isFinalFrame) {
         const p = waitUxSignalsRef.current;
         if (p.requestStartedAt != null && p.finalFrameReceivedAt == null) {
@@ -2939,6 +2989,25 @@ function PlayContent() {
         narrativeRef.current = shown.text;
       } catch {
         narrativeRef.current = "";
+      }
+    };
+
+    const applyFullSseDocumentText = (documentText: string) => {
+      raw = "";
+      buf = "";
+      sseDocumentText = documentText;
+      let walkBuf = documentText;
+      while (true) {
+        const { events, rest } = takeCompleteSseEvents(walkBuf);
+        walkBuf = rest;
+        for (const event of events) {
+          applySseEvent(event);
+        }
+        if (events.length === 0) break;
+      }
+      const orphan = normalizeSseNewlines(walkBuf).trim();
+      if (orphan.length > 0 && orphan.startsWith("data:")) {
+        applySseEvent(orphan);
       }
     };
 
@@ -3209,20 +3278,7 @@ function PlayContent() {
     let streamCancelled = false;
 
     if (transport.mode === "legacy") {
-      sseDocumentText = transport.text;
-      let walkBuf = sseDocumentText;
-      while (true) {
-        const { events, rest } = takeCompleteSseEvents(walkBuf);
-        walkBuf = rest;
-        for (const event of events) {
-          applySseEvent(event);
-        }
-        if (events.length === 0) break;
-      }
-      const orphanLegacy = normalizeSseNewlines(walkBuf).trim();
-      if (orphanLegacy.length > 0 && orphanLegacy.startsWith("data:")) {
-        applySseEvent(orphanLegacy);
-      }
+      applyFullSseDocumentText(transport.text);
     } else {
       const res = transport.res;
       if (!res.body) {
@@ -3233,23 +3289,80 @@ function PlayContent() {
           showTurnFailureIfVisible("network_or_gateway");
           return;
         }
-        let walkBuf = sseDocumentText;
-        while (true) {
-          const { events, rest } = takeCompleteSseEvents(walkBuf);
-          walkBuf = rest;
-          for (const event of events) {
-            applySseEvent(event);
-          }
-          if (events.length === 0) break;
-        }
-        const orphanFetchText = normalizeSseNewlines(walkBuf).trim();
-        if (orphanFetchText.length > 0 && orphanFetchText.startsWith("data:")) {
-          applySseEvent(orphanFetchText);
-        }
+        applyFullSseDocumentText(sseDocumentText);
       } else {
         const reader = res.body.getReader();
         streamReaderRef.current = reader;
         const decoder = new TextDecoder("utf-8");
+        const fetchTextFallbackResponse =
+          typeof res.clone === "function"
+            ? (() => {
+                try {
+                  return res.clone();
+                } catch {
+                  return null;
+                }
+              })()
+            : null;
+        const readFetchTextFallback = async (): Promise<string> => {
+          if (!fetchTextFallbackResponse) return "";
+          let timer: number | undefined;
+          const timeoutMs = Math.max(1_000, Math.min(5_000, VC_WAITING.playerChatStreamReconnectWallDefaultMs));
+          try {
+            return await Promise.race([
+              fetchTextFallbackResponse.text(),
+              new Promise<string>((resolve) => {
+                timer = window.setTimeout(() => resolve(""), timeoutMs);
+              }),
+            ]);
+          } finally {
+            if (timer !== undefined) window.clearTimeout(timer);
+          }
+        };
+        const recoverFetchStreamBeforeFirstChunk = async (reason: string): Promise<boolean> => {
+          if (sawStreamChunk || raw.trim().length > 0) return false;
+          const fetchText = await readFetchTextFallback().catch(() => "");
+          if (fetchText.trim().length > 0) {
+            applyFullSseDocumentText(fetchText);
+            console.warn("[play][chat_fetch_stream_recovered]", { reason, source: "fetch_text" });
+            return true;
+          }
+          const xhrOut = await postSameOriginForSseDocumentText({
+            url: "/api/chat",
+            body: JSON.stringify(chatRequestBody),
+            headers: chatSendHeaders,
+            timeoutMs: transportTimeouts.fetchDeadlineMs,
+            signal: ac.signal,
+          });
+          if (!xhrOut.ok) {
+            console.warn("[play][chat_fetch_stream_recovery_failed]", {
+              reason,
+              source: "xhr",
+              kind: xhrOut.kind,
+              message: xhrOut.message,
+            });
+            return false;
+          }
+          const xhrOk = xhrOut.status >= 200 && xhrOut.status < 300;
+          const xhrIsSse = xhrOut.contentType.toLowerCase().includes("text/event-stream");
+          if (!xhrOk || !xhrIsSse || xhrOut.text.trim().length === 0) {
+            console.warn("[play][chat_fetch_stream_recovery_failed]", {
+              reason,
+              source: "xhr",
+              status: xhrOut.status,
+              contentType: xhrOut.contentType,
+              empty: xhrOut.text.trim().length === 0,
+            });
+            return false;
+          }
+          if (isSafeVerseCraftRequestId(xhrOut.versecraftRequestId)) {
+            waitUxSignalsRef.current.requestId = xhrOut.versecraftRequestId;
+          }
+          applyFullSseDocumentText(xhrOut.text);
+          console.warn("[play][chat_fetch_stream_recovered]", { reason, source: "xhr" });
+          return true;
+        };
+        let readerCancelled = false;
 
         const readNextWithStallGuard = async (stallMs: number) => {
           let timer: number | undefined;
@@ -3297,27 +3410,48 @@ function PlayContent() {
           const err = readErr as Error & { name?: string; message?: string };
           if (err?.message === "STREAM_STALL_TIMEOUT") {
             console.error("[/api/chat] SSE stall timeout (no timely chunks)", readErr);
-            setStreamPhase("idle");
-            if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-            showTurnFailureIfVisible("network_or_gateway");
-            return;
-          }
-          if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
+            try {
+              await reader.cancel();
+              readerCancelled = true;
+            } catch {
+              // ignore
+            }
+            if (await recoverFetchStreamBeforeFirstChunk("stream_stall_timeout")) {
+              setStreamPhase("streaming_body");
+            } else {
+              setStreamPhase("idle");
+              if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+              showTurnFailureIfVisible("network_or_gateway");
+              return;
+            }
+          } else if (err?.name === "AbortError" || err?.name === "CancelError" || err?.message?.includes("abort")) {
             streamCancelled = true;
           } else {
             console.error("[/api/chat] stream read error", readErr);
-            narrativeRef.current = "";
-            setStreamPhase("idle");
-            if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
-            showTurnFailureIfVisible("network_or_gateway");
-            return;
+            try {
+              await reader.cancel();
+              readerCancelled = true;
+            } catch {
+              // ignore
+            }
+            if (await recoverFetchStreamBeforeFirstChunk("stream_read_error")) {
+              setStreamPhase("streaming_body");
+            } else {
+              narrativeRef.current = "";
+              setStreamPhase("idle");
+              if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+              showTurnFailureIfVisible("network_or_gateway");
+              return;
+            }
           }
         } finally {
           streamReaderRef.current = null;
-          try {
-            await reader.cancel();
-          } catch {
-            // ignore
+          if (!readerCancelled) {
+            try {
+              await reader.cancel();
+            } catch {
+              // ignore
+            }
           }
         }
       }
