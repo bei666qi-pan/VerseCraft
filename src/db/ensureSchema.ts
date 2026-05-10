@@ -1094,10 +1094,27 @@ export async function ensureRuntimeSchema(): Promise<void> {
   }
 }
 
+async function ensureKgCoreTables(
+  client: { query: (sql: string) => Promise<unknown> }
+): Promise<void> {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_world_meta (
+      id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      world_revision BIGINT NOT NULL DEFAULT 0
+    );
+  `);
+  await client.query(`
+    INSERT INTO vc_world_meta (id, world_revision) VALUES (1, 0)
+    ON CONFLICT (id) DO NOTHING;
+  `);
+}
+
 async function ensureKgSchema(
   client: { query: (sql: string) => Promise<unknown> }
 ): Promise<void> {
   try {
+    await ensureKgCoreTables(client);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS vc_jobs (
         job_id BIGSERIAL PRIMARY KEY,

@@ -31,6 +31,19 @@ test("KG job queue schema is created even when pgvector is unavailable", () => {
   const migrate = readFileSync("scripts/migrate.js", "utf8");
   const ensureSchema = readFileSync("src/db/ensureSchema.ts", "utf8");
 
+  assert.match(migrate, /async function ensureKgCoreLayer/);
+  assert.match(ensureSchema, /async function ensureKgCoreTables/);
+
+  const migrateSemanticLayer = migrate.slice(
+    migrate.indexOf("async function ensureKgSemanticLayer"),
+    migrate.indexOf("CREATE TABLE IF NOT EXISTS vc_semantic_cache")
+  );
+  assert.ok(
+    migrateSemanticLayer.indexOf("await ensureKgCoreLayer(client)") <
+      migrateSemanticLayer.indexOf("CREATE EXTENSION IF NOT EXISTS vector"),
+    "migrate.js must create vc_world_meta before optional vector setup"
+  );
+
   const migrateWorkerLayer = migrate.slice(
     migrate.indexOf("async function ensureKgWorkerLayer"),
     migrate.indexOf("const candCols = [")
@@ -45,6 +58,11 @@ test("KG job queue schema is created even when pgvector is unavailable", () => {
   const runtimeKgSchema = ensureSchema.slice(
     runtimeKgSchemaStart,
     ensureSchema.indexOf("CREATE TABLE IF NOT EXISTS vc_world_meta", runtimeKgSchemaStart)
+  );
+  assert.ok(
+    runtimeKgSchema.indexOf("await ensureKgCoreTables(client)") <
+      runtimeKgSchema.indexOf("CREATE EXTENSION IF NOT EXISTS vector"),
+    "ensureRuntimeSchema must create vc_world_meta before optional vector setup"
   );
   assert.ok(
     runtimeKgSchema.indexOf("CREATE TABLE IF NOT EXISTS vc_jobs") <

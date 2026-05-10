@@ -314,7 +314,22 @@ async function applySchemaV1(client) {
  * KG：pgvector + IVFFlat 语义缓存与世界元数据（幂等）。
  * 无 pgvector 扩展时跳过（应用层对 42P01/缺扩展静默降级）。
  */
+async function ensureKgCoreLayer(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS vc_world_meta (
+      id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      world_revision BIGINT NOT NULL DEFAULT 0
+    );
+  `);
+  await client.query(`
+    INSERT INTO vc_world_meta (id, world_revision) VALUES (1, 0)
+    ON CONFLICT (id) DO NOTHING;
+  `);
+}
+
 async function ensureKgSemanticLayer(client) {
+  await ensureKgCoreLayer(client);
+
   try {
     await client.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
   } catch (e) {
@@ -387,6 +402,8 @@ async function ensureKgSemanticLayer(client) {
  * Janitor / 共识 / 队列表。vc_jobs 不依赖 pgvector，必须先于可选 vector schema 创建。
  */
 async function ensureKgWorkerLayer(client) {
+  await ensureKgCoreLayer(client);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS vc_jobs (
       job_id BIGSERIAL PRIMARY KEY,
