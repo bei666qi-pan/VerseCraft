@@ -5,7 +5,7 @@ import {
   listChapterDefinitionsForState,
 } from "./definitions";
 import { createChapterProgress, enterNextChapter } from "./engine";
-import { sanitizeChapterTitleCandidate } from "./title";
+import { isWeakChapterBookmarkSnippet, sanitizeChapterTitleCandidate } from "./title";
 import type { ChapterProgress, ChapterState } from "./types";
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -15,6 +15,11 @@ function asRecord(value: unknown): Record<string, unknown> {
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)));
+}
+
+function normalizedTitleKey(value: unknown): string | null {
+  const title = sanitizeChapterTitleCandidate(value, 32);
+  return title ? title.replace(/\s+/g, "") : null;
 }
 
 function normalizeProgress(raw: unknown, fallback: ChapterProgress): ChapterProgress {
@@ -118,6 +123,11 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
     const fromDefinition =
       definition.order === 1 ? sanitizeChapterTitleCandidate(definition.title, 32) ?? definition.title : null;
     const title = fromState ?? fromSummary ?? fromDefinition;
+    const titleKey = normalizedTitleKey(title);
+    const duplicatesEarlierChapter =
+      Boolean(titleKey) &&
+      Object.entries(chapterTitlesById).some(([, existing]) => normalizedTitleKey(existing) === titleKey);
+    if (definition.order !== 1 && (duplicatesEarlierChapter || isWeakChapterBookmarkSnippet(title))) continue;
     if (title) chapterTitlesById[definition.id] = title;
   }
   const normalized: ChapterState = {

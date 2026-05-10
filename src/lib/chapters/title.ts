@@ -13,7 +13,7 @@ const CHINESE_ORDER_LABELS: Record<number, string> = {
   10: "十",
 };
 
-const LEGACY_HARDCODED_TITLES = new Set(["门后回声"]);
+const LEGACY_HARDCODED_TITLES = new Set(["门后回声", "沿当前线索继续推进", "继续推进当前线索"]);
 
 /** Narrative-hook style lines misused as readable chapter subtitles in the shell header. */
 export function isWeakChapterBookmarkSnippet(value: unknown): boolean {
@@ -21,6 +21,9 @@ export function isWeakChapterBookmarkSnippet(value: unknown): boolean {
   const t = value.replace(/\s+/g, " ").trim();
   if (!t) return true;
   if (/^新的线索/.test(t)) return true;
+  if (/当前线索/.test(t) && /(继续|推进|深入|调查)/.test(t)) return true;
+  if (/^(沿|顺着)?当前线索(继续)?(推进|深入|调查)?$/.test(t)) return true;
+  if (/^(继续|推进|深入)(当前|本章|下一处)?线索/.test(t)) return true;
   if (/^上一章/.test(t)) return true;
   if (/沿着.*章/.test(t)) return true;
   if (/沿第[一二三四五六七八九十\d]+章/.test(t)) return true;

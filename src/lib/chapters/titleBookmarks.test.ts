@@ -11,6 +11,7 @@ import { getChapterDefinition, CHAPTER_TWO_ID } from "@/lib/chapters/definitions
 test("isWeakChapterBookmarkSnippet flags generic hook clichés", () => {
   assert.equal(isWeakChapterBookmarkSnippet("新的线索已经指向下一处可回望的暗处。"), true);
   assert.equal(isWeakChapterBookmarkSnippet("沿第一章线索继续探索， facing NPC."), true);
+  assert.equal(isWeakChapterBookmarkSnippet("沿当前线索继续推进"), true);
   assert.equal(isWeakChapterBookmarkSnippet("潮湿门缝"), false);
 });
 

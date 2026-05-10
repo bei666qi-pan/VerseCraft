@@ -5,8 +5,10 @@ export type ChapterNarrativeBudget = {
   hardTextChars: number;
 };
 
+export const MIN_CHAPTER_NARRATIVE_CHARS = 1000;
+
 const CHAPTER_TEXT_BUDGETS = {
-  first: { targetTextChars: [900, 1800], hardTextChars: 2200 },
+  first: { targetTextChars: [MIN_CHAPTER_NARRATIVE_CHARS, 1800], hardTextChars: 2200 },
   second: { targetTextChars: [1200, 2200], hardTextChars: 2600 },
   standard: { targetTextChars: [1200, 2400], hardTextChars: 3000 },
   climax: { targetTextChars: [1800, 3500], hardTextChars: 4200 },
@@ -22,10 +24,10 @@ export function resolveChapterNarrativeBudget(
   if (definition.kind === "climax") return CHAPTER_TEXT_BUDGETS.climax;
   if (definition.kind === "ending") return CHAPTER_TEXT_BUDGETS.ending;
   const hardTextChars = Number.isFinite(definition.hardTextChars)
-    ? Math.max(200, Math.trunc(definition.hardTextChars))
+    ? Math.max(MIN_CHAPTER_NARRATIVE_CHARS + 20, Math.trunc(definition.hardTextChars))
     : CHAPTER_TEXT_BUDGETS.standard.hardTextChars;
   const [rawMin, rawMax] = definition.targetTextChars ?? CHAPTER_TEXT_BUDGETS.standard.targetTextChars;
-  const min = Math.max(80, Math.min(hardTextChars - 20, Math.trunc(rawMin)));
+  const min = Math.max(MIN_CHAPTER_NARRATIVE_CHARS, Math.min(hardTextChars - 20, Math.trunc(rawMin)));
   const max = Math.max(min + 20, Math.min(hardTextChars, Math.trunc(rawMax)));
   return { targetTextChars: [min, max], hardTextChars };
 }

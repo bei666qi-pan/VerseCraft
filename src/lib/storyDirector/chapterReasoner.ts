@@ -1,5 +1,4 @@
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
-import { toChineseChapterOrder } from "@/lib/chapters/title";
 import {
   selectChapterMustEchoEntries,
   selectChapterRecapMemoryEntries,
@@ -144,7 +143,7 @@ function nextChapterTitleCandidate(chapter: ChapterDirectorState, shouldClose: b
   if (!shouldClose) return null;
   if (chapter.nextChapterSeed?.title) return chapter.nextChapterSeed.title;
   if (chapter.closeCandidate?.nextChapterTitleCandidate) return chapter.closeCandidate.nextChapterTitleCandidate;
-  return `第${toChineseChapterOrder(chapter.chapterOrder + 1)}章`;
+  return null;
 }
 
 export function evaluateChapterCloseDecision(args: {

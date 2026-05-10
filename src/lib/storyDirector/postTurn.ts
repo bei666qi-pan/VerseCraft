@@ -1,5 +1,5 @@
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
-import { sanitizeChapterTitleCandidate, toChineseChapterOrder } from "@/lib/chapters/title";
+import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
 import { detectDirectorSignals } from "./signals";
 import { evaluateChapterCloseDecision, planChapterStep } from "./chapterReasoner";
@@ -331,10 +331,6 @@ function collectResolvedTurnIds(resolvedTurn: any, nowTurn: number, signals: { p
   return uniq(ids, 12);
 }
 
-function pickNextChapterTitle(order: number): string {
-  return `第${toChineseChapterOrder(order + 1)}章`;
-}
-
 function buildChapterCloseDecision(input: {
   chapter: ChapterDirectorState;
   signals: ReturnType<typeof detectDirectorSignals>;
@@ -371,7 +367,8 @@ function buildNextChapterSeed(args: {
   mustEchoMemoryIds: string[];
 }): NextChapterSeed | null {
   if (!args.closeCandidate?.shouldClose) return null;
-  const title = args.closeCandidate.nextChapterTitleCandidate ?? pickNextChapterTitle(args.chapter.chapterOrder);
+  const title = sanitizeChapterTitleCandidate(args.closeCandidate.nextChapterTitleCandidate, 32);
+  if (!title) return null;
   return {
     title,
     promise: `承接${args.chapter.chapterTitle}留下的余响，让玩家刚做出的选择在新场景里被回应。`,

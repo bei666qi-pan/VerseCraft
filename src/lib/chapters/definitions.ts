@@ -16,7 +16,7 @@ const SEED_CHAPTER_DEFINITIONS: readonly ChapterDefinition[] = [
     maxTurns: 6,
     minKeyChoices: 1,
     targetKeyChoices: 2,
-    targetTextChars: [900, 1800],
+    targetTextChars: [1000, 1800],
     hardTextChars: 2200,
     beats: [
       { id: "wake", label: "醒来", description: "确认当前处境。", required: true },

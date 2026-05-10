@@ -35,11 +35,15 @@ function acceptedCloseDecision() {
   };
 }
 
+function longNarrative(seed = "门缝后的潮气压在走廊里，灯影和脚步声一点点把新的线索推向更深处。"): string {
+  return seed.repeat(18);
+}
+
 function progressSignals(overrides: Partial<ChapterTurnSignals> = {}): ChapterTurnSignals {
   return {
     source: "option",
     isLegalAction: true,
-    narrativeText: "门缝里传来压低的呼吸声，你确认这里不是普通公寓。",
+    narrativeText: longNarrative(),
     previousLocation: "B1_SafeZone",
     nextLocation: "B1_Storage",
     codexUpdateCount: 1,
@@ -84,7 +88,7 @@ test("chapter narrative budgets expose target ranges and hard caps", () => {
   };
 
   assert.deepEqual(resolveChapterNarrativeBudget(first), {
-    targetTextChars: [900, 1800],
+    targetTextChars: [1000, 1800],
     hardTextChars: 2200,
   });
   assert.deepEqual(resolveChapterNarrativeBudget(second), {
@@ -156,7 +160,7 @@ test("chapter two completes from local readiness including state-change and next
       signals: progressSignals({
         logCountBefore: i + 10,
         logCountAfter: i + 12,
-        narrativeText: "你沿着第一章留下的潮湿痕迹继续搜查，阻碍在门后逐渐显形。",
+        narrativeText: longNarrative("我沿着第一章留下的潮湿痕迹继续搜查，阻碍在门后逐渐显形。"),
         previousLocation: i === 0 ? "B1_Corridor" : "B1_Storage",
         nextLocation: i === 0 ? "B1_Storage" : "B1_Storage",
         taskUpdateCount: 1,
@@ -200,12 +204,25 @@ test("closeDecision still completes even when local required beats are incomplet
     ...createInitialChapterState(1).progressByChapterId[CHAPTER_ONE_ID],
     status: "active" as const,
     turnCount: first.minTurns,
-    narrativeCharCount: 120,
+    narrativeCharCount: 1000,
     keyChoiceCount: 0,
     stateChangeCount: 0,
     completedBeatIds: ["wake", "observe"],
   };
   assert.equal(shouldCompleteChapter(progress, first, { closeDecision: acceptedCloseDecision() }), true);
+});
+
+test("chapter cannot close before the minimum narrative length even with closeDecision", () => {
+  const progress = {
+    ...createInitialChapterState(1).progressByChapterId[CHAPTER_ONE_ID],
+    status: "active" as const,
+    turnCount: first.minTurns,
+    narrativeCharCount: 999,
+    keyChoiceCount: first.minKeyChoices,
+    stateChangeCount: 1,
+    completedBeatIds: first.beats.map((beat) => beat.id),
+  };
+  assert.equal(shouldCompleteChapter(progress, first, { closeDecision: acceptedCloseDecision() }), false);
 });
 
 test("suppressCompletion prevents local chapter completion", () => {
@@ -313,7 +330,7 @@ test("entering chapter two keeps chapter one review safe and returns to active c
   assert.equal(state.currentChapterId, CHAPTER_TWO_ID);
 });
 
-test("chapter completion derives a next chapter title when the model omits the candidate", () => {
+test("chapter completion does not invent a next title when the model omits the candidate", () => {
   let state = createInitialChapterState(1);
   const orderOnlyTitle = formatChapterTitle(second, state);
   for (let i = 0; i < first.minTurns; i++) {
@@ -333,8 +350,26 @@ test("chapter completion derives a next chapter title when the model omits the c
   }
 
   const title = formatChapterTitle(second, state);
-  assert.notEqual(title, orderOnlyTitle);
-  assert.equal(state.chapterTitlesById[CHAPTER_TWO_ID]?.length > 0, true);
+  assert.equal(title, orderOnlyTitle);
+  assert.equal(state.chapterTitlesById[CHAPTER_TWO_ID], undefined);
+});
+
+test("normalization drops duplicate non-first chapter titles from older saves", () => {
+  const state = normalizeChapterState({
+    activeChapterId: CHAPTER_TWO_ID,
+    currentChapterId: CHAPTER_TWO_ID,
+    completedChapterIds: [CHAPTER_ONE_ID],
+    unlockedChapterIds: [CHAPTER_ONE_ID, CHAPTER_TWO_ID],
+    chapterTitlesById: {
+      [CHAPTER_ONE_ID]: "暗月初醒",
+      [CHAPTER_TWO_ID]: "暗月初醒",
+    },
+    progressByChapterId: {},
+    summariesByChapterId: {},
+  });
+  assert.equal(state.chapterTitlesById[CHAPTER_ONE_ID], "暗月初醒");
+  assert.equal(state.chapterTitlesById[CHAPTER_TWO_ID], undefined);
+  assert.equal(formatChapterTitle(second, state), "第二章");
 });
 
 test("locked chapters cannot be reviewed into active state", () => {

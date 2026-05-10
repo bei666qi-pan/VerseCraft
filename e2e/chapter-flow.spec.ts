@@ -83,7 +83,7 @@ function nearChapterEndState(now = Date.now()) {
         startedAt: now - 60_000,
         completedAt: null,
         turnCount: 2,
-        narrativeCharCount: 820,
+        narrativeCharCount: 980,
         keyChoiceCount: 0,
         completedBeatIds: ["wake", "observe", "first-choice"],
         stateChangeCount: 0,

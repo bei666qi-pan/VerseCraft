@@ -103,7 +103,7 @@ test("chapter caps are included in budget packet and clamp remaining hard chars"
     chapter: {
       chapterId: "chapter-1",
       narrativeCharCount: 2140,
-      targetTextChars: [900, 1800],
+      targetTextChars: [1000, 1800],
       hardTextChars: 2200,
     },
   });

@@ -117,7 +117,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、options、其他结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
     "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。options、bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type/known_info/observation 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
     "【强事实审计（强制）】若 narrative 或结构化更新声称根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份或任务完成，必须输出 _narrative_audit.used_fact_ids；无可用 factId 时不得写成确定事实，只能写为未证实候选/传闻并放入 _narrative_audit.candidate_new_facts。",
-    "若本回合自然形成章节收束并留下下一章钩子，可额外输出 next_chapter_title_candidate：简体中文短标题，不含“第几章”、引号、系统词或固定旧标题；不要为普通回合强行输出。",
+    "若本回合自然形成章节收束并留下下一章钩子，必须额外输出 next_chapter_title_candidate：由本回合叙事现场实时概括出的简体中文短标题，不含“第几章”、引号、系统词、固定旧标题或“沿当前线索继续推进”等通用占位；不要为普通回合强行输出。",
     "若写出 options：须 4 条、各 5–20 字、不重复、符合场景；勿与玩家状态中【最近选项历史】雷同；须推动剧情，僵局时须环境危机+实质性破局选项。流式输出建议尽早写出 narrative。",
     "consumes_time：默认 true；未写 time_cost 时仍等价「整段动作计 1 游戏小时」；极速反应可为 false。",
     "time_cost（可选，蛇形）：free|light|standard|heavy|dangerous。与 consumes_time 组合：false 一律不推进表观小时；true 且无 time_cost 时 +1.0 小时分数（与旧版一致）；true 且 light 等则按分数累计，满 1 才进位显示小时。试探/停顿多用 light；正式交涉 standard；跨层/服务/锻造等 heavy；逃离/硬碰 dangerous；free 表叙事不占表观时钟。",

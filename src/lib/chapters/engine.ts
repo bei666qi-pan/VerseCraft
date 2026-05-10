@@ -1,7 +1,8 @@
 import { getChapterDefinition } from "./definitions";
+import { resolveChapterNarrativeBudget } from "./budget";
 import { advanceChapterBeats, countChapterStateChanges, shouldCountChapterTurn, shouldCountKeyChoice } from "./progress";
 import { buildChapterSummary } from "./summary";
-import { deriveNextChapterTitleCandidate, getChapterDisplayName, sanitizeChapterTitleCandidate } from "./title";
+import { getChapterDisplayName, isWeakChapterBookmarkSnippet, sanitizeChapterTitleCandidate } from "./title";
 import type {
   ChapterCompletionRuntime,
   ChapterDefinition,
@@ -10,6 +11,22 @@ import type {
   ChapterSummary,
   ChapterTurnSignals,
 } from "./types";
+
+function normalizedTitleKey(value: unknown): string | null {
+  const title = sanitizeChapterTitleCandidate(value, 32);
+  return title ? title.replace(/\s+/g, "") : null;
+}
+
+function isUniqueChapterTitleCandidate(state: ChapterState, chapterId: string, value: unknown): boolean {
+  const key = normalizedTitleKey(value);
+  if (!key) return false;
+  if (isWeakChapterBookmarkSnippet(value)) return false;
+  for (const [id, title] of Object.entries(state.chapterTitlesById ?? {})) {
+    if (id === chapterId) continue;
+    if (normalizedTitleKey(title) === key) return false;
+  }
+  return true;
+}
 
 export function createChapterProgress(
   definition: ChapterDefinition,
@@ -74,6 +91,8 @@ export function shouldCompleteChapter(
   if (runtime.suppressCompletion) return false;
   if (progress.status !== "active") return false;
   if (progress.turnCount < definition.minTurns) return false;
+  const [minimumNarrativeChars] = resolveChapterNarrativeBudget(definition).targetTextChars;
+  if (progress.narrativeCharCount < minimumNarrativeChars) return false;
   const decision = runtime.closeDecision;
   const closeDecisionReady =
     decision?.shouldClose === true &&
@@ -107,15 +126,16 @@ export function completeChapter(input: {
 }): ChapterState {
   const now = input.now ?? Date.now();
   const nextChapterId = input.definition.nextChapterId ?? null;
-  const nextDefinition = nextChapterId ? getChapterDefinition(nextChapterId) : null;
+  const modelTitle = nextChapterId ? sanitizeChapterTitleCandidate(input.nextChapterTitleCandidate, 32) : null;
   const nextChapterTitle =
-    nextChapterId
-      ? sanitizeChapterTitleCandidate(input.nextChapterTitleCandidate, 32) ??
-        deriveNextChapterTitleCandidate({
-          summary: input.summary,
-          fallbackObjective: nextDefinition?.objective,
-        })
+    nextChapterId && modelTitle && isUniqueChapterTitleCandidate(input.state, nextChapterId, modelTitle)
+      ? modelTitle
       : null;
+  const chapterTitlesById = { ...(input.state.chapterTitlesById ?? {}) };
+  if (nextChapterId) {
+    if (nextChapterTitle) chapterTitlesById[nextChapterId] = nextChapterTitle;
+    else delete chapterTitlesById[nextChapterId];
+  }
   const completedProgress: ChapterProgress = {
     ...input.progress,
     status: "completed",
@@ -146,10 +166,7 @@ export function completeChapter(input: {
       ...input.state.summariesByChapterId,
       [input.definition.id]: input.summary,
     },
-    chapterTitlesById: {
-      ...(input.state.chapterTitlesById ?? {}),
-      ...(nextChapterId && nextChapterTitle ? { [nextChapterId]: nextChapterTitle } : {}),
-    },
+    chapterTitlesById,
     pendingChapterEndId: input.definition.id,
     lastChapterEndAt: now,
   };
