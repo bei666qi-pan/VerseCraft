@@ -153,6 +153,39 @@ test("parseWorldEngineDeltaJson remains compatible with legacy five-array output
   assert.deepEqual(parsed?.npc_agent_patches, []);
 });
 
+test("parseWorldEngineDeltaJson normalizes noncanonical enum labels instead of rejecting the plan", () => {
+  const parsed = parseWorldEngineDeltaJson(
+    JSON.stringify({
+      schema_version: "director_plan_v1",
+      director_intent: "keep pacing",
+      current_phase: "investigating",
+      target_phase: "raise-pressure",
+      reveal_policy: "soft_hint",
+      pacing_assessment: "not an object",
+      risk_assessment: {
+        agency_risk: "mediumish",
+        continuity_risk: "low",
+        spoiler_risk: "gentle",
+        safety_risk: "none",
+      },
+      world_events_to_schedule: [
+        {
+          event_code: "ev-test",
+          title: "low risk hook",
+          injection_hint: "A quiet sound repeats behind the door.",
+        },
+      ],
+    })
+  );
+
+  assert.ok(parsed);
+  assert.equal(parsed?.current_phase, "quiet");
+  assert.equal(parsed?.target_phase, "build_up");
+  assert.equal(parsed?.reveal_policy, "hint_only");
+  assert.equal(parsed?.risk_assessment.agency_risk, "low");
+  assert.equal(parsed?.world_events_to_schedule.length, 1);
+});
+
 test("parseWorldEngineDeltaJson parses and normalizes Social World extension fields", () => {
   const parsed = parseWorldEngineDeltaJson(
     JSON.stringify({

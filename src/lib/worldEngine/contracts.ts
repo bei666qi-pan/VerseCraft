@@ -267,21 +267,21 @@ function enumOr<T extends string>(v: unknown, values: readonly T[], fallback: T)
 
 const directorPlanSchema = z
   .object({
-    schema_version: z.literal("director_plan_v1").optional(),
-    director_intent: z.string().optional(),
-    current_phase: z.enum(PHASES).optional(),
-    target_phase: z.enum(PHASES).optional(),
-    pacing_assessment: z.record(z.string(), z.unknown()).optional(),
-    risk_assessment: z.record(z.string(), z.unknown()).optional(),
-    reveal_policy: z.enum(REVEAL_POLICIES).optional(),
-    npc_next_actions: z.array(z.unknown()).optional(),
-    world_events_to_schedule: z.array(z.unknown()).optional(),
-    social_events_to_schedule: z.array(z.unknown()).optional(),
-    npc_relation_deltas: z.array(z.unknown()).optional(),
-    npc_agent_patches: z.array(z.unknown()).optional(),
-    story_branch_seeds: z.array(z.unknown()).optional(),
-    consistency_warnings: z.array(z.unknown()).optional(),
-    player_private_hooks: z.array(z.unknown()).optional(),
+    schema_version: z.unknown().optional(),
+    director_intent: z.unknown().optional(),
+    current_phase: z.unknown().optional(),
+    target_phase: z.unknown().optional(),
+    pacing_assessment: z.unknown().optional(),
+    risk_assessment: z.unknown().optional(),
+    reveal_policy: z.unknown().optional(),
+    npc_next_actions: z.unknown().optional(),
+    world_events_to_schedule: z.unknown().optional(),
+    social_events_to_schedule: z.unknown().optional(),
+    npc_relation_deltas: z.unknown().optional(),
+    npc_agent_patches: z.unknown().optional(),
+    story_branch_seeds: z.unknown().optional(),
+    consistency_warnings: z.unknown().optional(),
+    player_private_hooks: z.unknown().optional(),
   })
   .passthrough();
 
