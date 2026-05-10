@@ -42,8 +42,8 @@ test("compact stable prefix preserves core JSON and safety contract", () => {
 test("stable prefix 体积已降到可控范围", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  // 阶段2：POV 硬约束加入后 stable 体积小幅增加；仍需保持可缓存与可控。
-  assert.ok(s.length < 9000, `stable prefix too large: ${s.length}`);
+  // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积小幅上升；仍需保持可缓存与可控。
+  assert.ok(s.length < 9200, `stable prefix too large: ${s.length}`);
   assert.ok(s.includes("【JSON】单个对象"));
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));

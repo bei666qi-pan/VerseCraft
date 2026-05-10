@@ -1,6 +1,6 @@
 import {
-  CHAPTER_DEFINITIONS,
   formatChapterTitle,
+  listChapterDefinitionsForState,
   type ChapterId,
   type ChapterState,
 } from "@/lib/chapters";
@@ -17,7 +17,14 @@ export type SettingsChapterItem = {
 export function buildSettingsChapterItems(chapterState: ChapterState): SettingsChapterItem[] {
   const completed = new Set(chapterState.completedChapterIds ?? []);
   const unlocked = new Set(chapterState.unlockedChapterIds ?? []);
-  return [...CHAPTER_DEFINITIONS]
+  const definitions = listChapterDefinitionsForState({
+    activeChapterId: chapterState.activeChapterId,
+    reviewChapterId: chapterState.reviewChapterId,
+    unlockedChapterIds: chapterState.unlockedChapterIds,
+    completedChapterIds: chapterState.completedChapterIds,
+    progressByChapterId: chapterState.progressByChapterId,
+  });
+  return [...definitions]
     .sort((a, b) => b.order - a.order)
     .map((definition) => {
       const isCurrent = definition.id === chapterState.activeChapterId && !chapterState.reviewChapterId;

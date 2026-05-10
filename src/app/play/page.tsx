@@ -1308,12 +1308,36 @@ function PlayContent() {
   const displayEntries = useMemo(() => {
     const baseLogs = logs ?? [];
     const cutoff = isStreamVisualActive ? streamLogsBaselineRef.current : baseLogs.length;
+    // 章节级 UI 截断：只展示当前章节范围内的对话；
+    // 旧章节内容仍写在 store/logs 中，可通过"章节回看"打开（不受此截断影响）。
+    const isReviewingNow = Boolean(chapterRuntime.isReviewing);
+    const activeProgress = chapterRuntime.activeProgress;
+    const activeOrder = chapterRuntime.activeDefinition?.order ?? 1;
+    const startedLogIndex =
+      typeof activeProgress?.startedLogIndex === "number" && Number.isFinite(activeProgress.startedLogIndex)
+        ? Math.max(0, Math.trunc(activeProgress.startedLogIndex))
+        : null;
+    const turnCount = activeProgress?.turnCount ?? 0;
+    let scopeStart = 0;
+    if (isReviewingNow) {
+      scopeStart = 0;
+    } else if (startedLogIndex !== null) {
+      scopeStart = startedLogIndex;
+    } else if (activeOrder > 1 && turnCount === 0) {
+      scopeStart = Math.max(0, baseLogs.length - 2);
+    }
     return baseLogs
       .map((l, idx) => ({ l, idx }))
-      .filter(({ idx }) => idx < cutoff)
+      .filter(({ idx }) => idx >= scopeStart && idx < cutoff)
       .filter(({ l }) => l && (l.role === "assistant" || l.role === "user") && typeof l.content === "string")
       .map(({ l, idx }) => ({ role: l!.role as "assistant" | "user", content: String(l!.content), logIndex: idx }));
-  }, [logs, isStreamVisualActive]);
+  }, [
+    logs,
+    isStreamVisualActive,
+    chapterRuntime.isReviewing,
+    chapterRuntime.activeProgress,
+    chapterRuntime.activeDefinition?.order,
+  ]);
 
   const prevIsStreamVisualActiveRef = useRef(false);
   const onScrollContainer = useCallback(() => {
@@ -2573,7 +2597,27 @@ function PlayContent() {
     }
 
     const history = useGameStore.getState().logs ?? [];
-    const baseMessages: ChatMessage[] = history
+    // 章节级上下文截断：仅保留当前章节范围 + 上一章末尾 1 轮（共 2 条）作为衔接。
+    // 防止跨章节历史污染 DM prompt；服务端 SHORT_TERM_ROUNDS 仍正常生效。
+    const chapterStateNow = normalizeChapterState(useGameStore.getState().chapterState);
+    const activeProgressNow = chapterStateNow.progressByChapterId[chapterStateNow.activeChapterId] ?? null;
+    const activeOrderNow = (() => {
+      const m = /^chapter-(\d+)$/.exec(chapterStateNow.activeChapterId ?? "");
+      return m ? Number(m[1]) : 1;
+    })();
+    const startedLogIndexNow =
+      typeof activeProgressNow?.startedLogIndex === "number" && Number.isFinite(activeProgressNow.startedLogIndex)
+        ? Math.max(0, Math.trunc(activeProgressNow.startedLogIndex))
+        : null;
+    const turnCountNow = activeProgressNow?.turnCount ?? 0;
+    let chapterSliceStart = 0;
+    if (startedLogIndexNow !== null) {
+      chapterSliceStart = Math.max(0, startedLogIndexNow - 2);
+    } else if (activeOrderNow > 1 && turnCountNow === 0) {
+      chapterSliceStart = Math.max(0, history.length - 2);
+    }
+    const scopedHistory = chapterSliceStart > 0 ? history.slice(chapterSliceStart) : history;
+    const baseMessages: ChatMessage[] = scopedHistory
       .filter((l) => l && (l.role === "user" || l.role === "assistant"))
       .map((l) => ({ role: l.role as ChatRole, content: String(l.content ?? "") }));
 

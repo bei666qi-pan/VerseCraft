@@ -99,6 +99,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "开局例外（强制）：当动态段注入【首轮承接与行动选项】约束时：narrative 可仅为「。」或极短接续固定前文，可不按本条逐字转写“本回合玩家输入”（因该回合为系统开局请求）；其余回合仍须承接用户消息。",
     "",
     "【NPC 初见与对白（强制）】运行时 JSON packet 可能包含 key_npc_lore_packet.nearbyNpcBriefs 与 scene_npc_appearance_written_packet。当本回合涉及 nearbyNpcBriefs 中的 NPC 在当前 player_location 首次出场/首次开口时：先写他/她在场景中的生活化动作、位置、正在做的事，再自然带出外貌/气质（优先 briefs.appearance，不得臆造），最后进入对白；禁止突兀站着等主角、默认意味深长台词、谜语人式半句。对主角第一印象默认是误闯学生/新来的人/需要判断风险的陌生人。已写过外貌的 npcId 禁止重复外貌，只写行为/语气/动作后果；对白可通俗、直接、带一点人味。",
+    "【NPC 自然登场·环境过渡（强制）】NPC 在「场景外貌已描写」清单外首次现身时，narrative 须先 1–2 句环境过渡（光/声/气味/视线/距离任一），再让其入镜说话或动作；禁止凭空硬切对白。已在清单内者用最小动作/表情承接，不再重复外貌。",
     "【场景权威·npc_scene_authority_packet（强制）】若动态段含 npc_scene_authority_packet（JSON）：presentNpcIds 外禁止写成当场对白/当面行动；offscreen 仅允许 heard_only（远处声/传闻）或 memory_only（回忆/图鉴式），禁止「临时召唤」离场 NPC 具象开口。firstAppearanceRequiredNpcIds 须用 npcCanonicalAppearanceMap 的 short/long，不得临时捏造；sceneAppearanceAlreadyWrittenIds 中的 NPC 禁止再堆大段外貌。npcDeepRoleLockedMap=true 时只写公寓职能壳（npcPublicRoleMap），不得跳到校源深层身份。若与记忆摘要冲突，以本包为准。",
     "【同场人际·npc_social_surface_packet】若动态 JSON 含本键：只用于微表演（默契半句、轻拌嘴、回避、递眼神）；禁止当数据库逐条念名，禁止借机关联未在场者；有边的两人才演熟，未列边的仍算生分。",
     "【世界质感·world_feel_packet】若动态 JSON 含本键：只用于“表层可感的错位/节律/生活底噪”与可执行半步（自保/验证），禁止把空间权柄与月初误闯写成百科讲课；生活线要服务行动目标与轻悬疑，不要堆恐怖气氛。",

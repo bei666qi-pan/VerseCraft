@@ -202,6 +202,8 @@ function buildPackets(context: DialogueContext): Record<(typeof SECTION_ORDER)[n
         "NPC 不能说出 forbiddenFactIds 对应事实。",
         "NPC 不能知道 recentEvents 之外的未发生事件。",
         "NPC 不知道的信息必须以犹豫、回避或表层观察表达，不能补全真相。",
+        "NPC 默认知道 public_npc_roster_packet 中所有存活 NPC 的姓名与当前位置（公示事实）；可在对话中自然提及（例：『林医生应该在 2 楼诊室』），但不得编造他们的内心活动、隐藏目的或未公示的能力。",
+        "对于 public_npc_roster_packet 之外的细节、forbiddenFactIds 命中事实、未在 recentEvents 中出现的事件，NPC 必须以犹豫、回避、转述听闻或『我不清楚』方式回应；禁止凭空补全真相，禁止幻觉式编造 NPC 心理活动。",
       ],
     },
     "NPC 记忆包": {

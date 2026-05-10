@@ -246,6 +246,28 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
     xinlan_tiered: focus === XINLAN_NPC_ID ? 1 : 0,
   };
 
+  // 公示 NPC 名册：所有存活 NPC 的 id/姓名/位置 = 世界级公开事实，所有 NPC 默认知道。
+  // 用于消除"两位 NPC 互相不知道对方在哪/叫什么"的伪幻觉问题；同时配合下方边界规则禁止捏造心理。
+  const public_npc_roster_packet = (() => {
+    const seen = new Set<string>();
+    const items: Array<{ id: string; name: string; loc: string }> = [];
+    for (const pos of prim.npcPositions) {
+      const id = normalizeBoundaryNpcId(pos.npcId);
+      if (!id || seen.has(id)) continue;
+      const name = String(getNpcCanonicalIdentity(id).canonicalName ?? "").slice(0, 16);
+      const loc = String(pos.location ?? "").slice(0, 32);
+      if (!name || !loc) continue;
+      seen.add(id);
+      items.push({ id, name, loc });
+      if (items.length >= 12) break;
+    }
+    return {
+      rule: "all_npcs_know_public_roster",
+      ban: "no_fabricate_inner_thought_or_hidden_knowledge",
+      items,
+    };
+  })();
+
   const packets = {
     actor_canon_packet,
     npc_player_baseline_packet,
@@ -255,6 +277,7 @@ export function buildNpcConsistencyBoundaryCompactBlock(args: {
     actor_epistemic_packet,
     actor_memory_privilege_packet,
     actor_reveal_limit_packet,
+    public_npc_roster_packet,
   };
 
   const text = [

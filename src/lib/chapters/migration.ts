@@ -1,4 +1,9 @@
-import { CHAPTER_DEFINITIONS, getFirstChapterDefinition } from "./definitions";
+import {
+  CHAPTER_DEFINITIONS,
+  getChapterDefinition,
+  getFirstChapterDefinition,
+  listChapterDefinitionsForState,
+} from "./definitions";
 import { createChapterProgress, enterNextChapter } from "./engine";
 import { sanitizeChapterTitleCandidate } from "./title";
 import type { ChapterProgress, ChapterState } from "./types";
@@ -81,9 +86,17 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
       ? record.reviewChapterId
       : null;
   const rawProgress = asRecord(record.progressByChapterId);
+  const definitionsForState = listChapterDefinitionsForState({
+    activeChapterId: activeChapterId,
+    reviewChapterId,
+    unlockedChapterIds,
+    completedChapterIds,
+    progressByChapterId: rawProgress,
+  });
   const progressByChapterId: Record<string, ChapterProgress> = Object.fromEntries(
-    CHAPTER_DEFINITIONS.map((definition) => {
-      const fallback = base.progressByChapterId[definition.id];
+    definitionsForState.map((definition) => {
+      const fallback =
+        base.progressByChapterId[definition.id] ?? createChapterProgress(definition, "locked", now);
       const normalized = normalizeProgress(rawProgress[definition.id], fallback);
       const status: ChapterProgress["status"] =
         completedChapterIds.includes(definition.id)
@@ -99,7 +112,7 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
   const summariesRaw = asRecord(record.summariesByChapterId);
   const rawTitles = asRecord(record.chapterTitlesById);
   const chapterTitlesById: Record<string, string> = {};
-  for (const definition of CHAPTER_DEFINITIONS) {
+  for (const definition of definitionsForState) {
     const fromState = sanitizeChapterTitleCandidate(rawTitles[definition.id], 32);
     const fromSummary = sanitizeChapterTitleCandidate(asRecord(summariesRaw[definition.id]).title, 32);
     const fromDefinition =
@@ -124,11 +137,11 @@ export function normalizeChapterState(raw: unknown, now = Date.now()): ChapterSt
   };
   const pendingDefinition =
     typeof normalized.pendingChapterEndId === "string"
-      ? CHAPTER_DEFINITIONS.find((definition) => definition.id === normalized.pendingChapterEndId)
+      ? getChapterDefinition(normalized.pendingChapterEndId)
       : null;
   return pendingDefinition?.nextChapterId
     ? {
-        ...enterNextChapter(normalized, CHAPTER_DEFINITIONS, now),
+        ...enterNextChapter(normalized, definitionsForState, now),
         pendingChapterEndId: normalized.pendingChapterEndId,
       }
     : normalized;

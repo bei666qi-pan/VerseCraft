@@ -15,13 +15,15 @@ export type WorldDirectorConfig = {
 };
 
 export function resolveWorldDirectorConfig(): WorldDirectorConfig {
-  const mode = envEnum("AI_DIRECTOR_MODE", ["off", "shadow", "soft"] as const, "shadow");
+  // 默认 soft：让 reasoner 异步导演链路（worldEngine tick + agenda hint 注入）实质生效。
+  // 仍可由部署侧通过 AI_DIRECTOR_MODE / AI_ENABLE_DIRECTOR_HINT_INJECTION 显式覆盖。
+  const mode = envEnum("AI_DIRECTOR_MODE", ["off", "shadow", "soft"] as const, "soft");
   const enabled = envBoolean("AI_ENABLE_WORLD_DIRECTOR", true) && mode !== "off";
   return {
     enabled,
     mode,
     hintInjectionEnabled:
-      enabled && mode === "soft" && envBoolean("AI_ENABLE_DIRECTOR_HINT_INJECTION", false),
+      enabled && mode === "soft" && envBoolean("AI_ENABLE_DIRECTOR_HINT_INJECTION", true),
     criticEnabled: enabled && envBoolean("AI_ENABLE_DIRECTOR_CRITIC", false),
     maxDueHints: Math.max(1, Math.min(3, envNumber("AI_DIRECTOR_MAX_DUE_HINTS", 2))),
     minTriggerGapTurns: Math.max(0, Math.min(48, envNumber("AI_DIRECTOR_MIN_TRIGGER_GAP_TURNS", 4))),

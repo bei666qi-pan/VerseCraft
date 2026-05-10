@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import {
-  CHAPTER_DEFINITIONS,
   enterNextChapter,
   formatChapterTitle,
   getChapterDisplayName,
   getChapterDefinition,
+  listChapterDefinitionsForState,
   normalizeChapterState,
   returnToActiveChapter,
   reviewCompletedChapter,
@@ -28,6 +28,17 @@ export function useChapterRuntime() {
   const displayedProgress = chapterState.progressByChapterId[displayedDefinition.id];
   const activeProgress = chapterState.progressByChapterId[activeDefinition.id];
   const pending = selectPendingChapterSummary(chapterState);
+  const definitions = useMemo(
+    () =>
+      listChapterDefinitionsForState({
+        activeChapterId: chapterState.activeChapterId,
+        reviewChapterId: chapterState.reviewChapterId,
+        unlockedChapterIds: chapterState.unlockedChapterIds,
+        completedChapterIds: chapterState.completedChapterIds,
+        progressByChapterId: chapterState.progressByChapterId,
+      }),
+    [chapterState]
+  );
   return {
     chapterState,
     activeDefinition,
@@ -45,8 +56,8 @@ export function useChapterRuntime() {
     reviewChapter: reviewChapterAction,
     returnToActiveChapter: returnToActiveChapterAction,
     dismissChapterEnd,
-    definitions: CHAPTER_DEFINITIONS,
-    previewEnterNext: () => enterNextChapter(chapterState, CHAPTER_DEFINITIONS),
+    definitions,
+    previewEnterNext: () => enterNextChapter(chapterState, definitions),
     previewReviewActive: () => reviewCompletedChapter(chapterState, displayedDefinition.id),
     previewReturnActive: () => returnToActiveChapter(chapterState),
   };

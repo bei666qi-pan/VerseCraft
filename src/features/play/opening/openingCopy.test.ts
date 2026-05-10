@@ -26,3 +26,23 @@ test("opening copy exports no local preset option fallback", async () => {
   const openingCopy = await import("./openingCopy");
   assert.equal("DEFAULT_FOUR_ACTION_OPTIONS" in openingCopy, false);
 });
+
+test("OPENING_SYSTEM_PROMPT：不再硬编码字数与动作模板，确保选项实时由模型生成", () => {
+  // 防回归：删除的"约 5–20 字"硬性字数约束不应再回潮。
+  assert.ok(!OPENING_SYSTEM_PROMPT.includes("约 5–20 字"));
+  assert.ok(!OPENING_SYSTEM_PROMPT.includes("5-20 字"));
+  // 防回归：删除的"优先稳住呼吸/辨认墙角/听人声脚步/循微光或声源/背靠墙摸清退路"动作模板列举不应再回潮。
+  for (const banned of [
+    "优先稳住呼吸",
+    "辨认墙角地面",
+    "听人声脚步",
+    "循微光或声源挪半步",
+    "背靠墙摸清退路",
+  ]) {
+    assert.ok(!OPENING_SYSTEM_PROMPT.includes(banned), `OPENING_SYSTEM_PROMPT 不应包含模板片段："${banned}"`);
+  }
+  // 关键合理性硬约束仍保留。
+  assert.ok(OPENING_SYSTEM_PROMPT.includes("第一人称"));
+  assert.ok(OPENING_SYSTEM_PROMPT.includes("互不相同"));
+  assert.ok(OPENING_SYSTEM_PROMPT.includes("禁止套用任何提前写好的模板"));
+});

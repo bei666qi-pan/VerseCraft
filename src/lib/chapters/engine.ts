@@ -220,7 +220,8 @@ export function enterNextChapter(
   const pendingId = state.pendingChapterEndId ?? state.activeChapterId;
   const currentDefinition = getChapterDefinition(pendingId);
   const nextDefinition = currentDefinition?.nextChapterId
-    ? definitions.find((chapter) => chapter.id === currentDefinition.nextChapterId) ?? null
+    ? definitions.find((chapter) => chapter.id === currentDefinition.nextChapterId) ??
+      getChapterDefinition(currentDefinition.nextChapterId)
     : null;
   if (!nextDefinition) {
     return { ...state, pendingChapterEndId: null, reviewChapterId: null };

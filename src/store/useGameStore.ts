@@ -132,11 +132,11 @@ import { resolveHourProgressDelta, splitProgress } from "@/lib/time/timeBudget";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import {
-  CHAPTER_DEFINITIONS,
   createInitialChapterState,
   enterNextChapter,
   getChapterDisplayName,
   getChapterDefinition,
+  listChapterDefinitionsForState,
   normalizeChapterState,
   recordChapterTurnInState,
   resolveChapterNarrativeBudget,
@@ -1173,9 +1173,17 @@ export const useGameStore = create<GameState>()(
         return nextState;
       },
       enterNextChapter: () =>
-        set((s) => ({
-          chapterState: enterNextChapter(normalizeChapterState(s.chapterState), CHAPTER_DEFINITIONS),
-        })),
+        set((s) => {
+          const normalized = normalizeChapterState(s.chapterState);
+          const definitions = listChapterDefinitionsForState({
+            activeChapterId: normalized.activeChapterId,
+            reviewChapterId: normalized.reviewChapterId,
+            unlockedChapterIds: normalized.unlockedChapterIds,
+            completedChapterIds: normalized.completedChapterIds,
+            progressByChapterId: normalized.progressByChapterId,
+          });
+          return { chapterState: enterNextChapter(normalized, definitions) };
+        }),
       reviewChapter: (chapterId) =>
         set((s) => ({
           chapterState: reviewCompletedChapter(normalizeChapterState(s.chapterState), chapterId),

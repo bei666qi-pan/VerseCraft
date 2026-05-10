@@ -324,6 +324,20 @@ const ROUNDS_THRESHOLD = 10;
 const SHORT_TERM_ROUNDS = 5;
 const TTFT_HARD_CAP_SESSION_MEMORY_MS = 140;
 
+/**
+ * 开局首轮（OPENING_SYSTEM_PROMPT 触发的回合）若命中安全降级，
+ * 不向前端展示标准的「本回合涉及涉黄、涉暴或违法伤害内容，不能继续。」。
+ * 该文本会污染既定开场白的沉浸感；改用克制的中性中文承接句，并保留合规拦截行为本身。
+ */
+const OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE =
+  "夜风从走廊深处吹来，我先把心稳一稳，再决定下一步。";
+
+function resolveVisibleSafetyMessageForTurn(raw: string | null, isOpeningTurn: boolean): string | null {
+  if (!raw) return null;
+  if (isOpeningTurn) return OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE;
+  return raw;
+}
+
 function extractChapterNarrativeBudgetInput(clientState: unknown) {
   if (!clientState || typeof clientState !== "object" || Array.isArray(clientState)) return null;
   const chapter = (clientState as { chapterRuntime?: unknown }).chapterRuntime;
@@ -960,12 +974,15 @@ async function postChatInternal(req: Request) {
       ? inputSafetyTags.filter((tag): tag is string => typeof tag === "string").join("|")
       : inputSafetyReasonCode;
     recordHighRisk({ ip: clientIp, sessionId, userId }, `input_reject:${inputSafety.traceId}`);
-    const visibleSafetyMessage = visibleSafetyDegradeMessageFor({
-      userMessage: inputSafety.userMessage,
-      narrativeFallback: inputSafety.narrativeFallback,
-      reasonCode: inputSafetyReasonCode,
-      category: inputSafetyCategory,
-    });
+    const visibleSafetyMessage = resolveVisibleSafetyMessageForTurn(
+      visibleSafetyDegradeMessageFor({
+        userMessage: inputSafety.userMessage,
+        narrativeFallback: inputSafety.narrativeFallback,
+        reasonCode: inputSafetyReasonCode,
+        category: inputSafetyCategory,
+      }),
+      Boolean(shouldApplyFirstActionConstraint)
+    );
     return createSseResponse({
       requestId,
       status: 403,
@@ -1066,11 +1083,14 @@ async function postChatInternal(req: Request) {
     });
     if (preCheck.policy.blocked) {
       recordHighRisk({ ip: clientIp, sessionId, userId }, preCheck.result.reason);
-      const visibleSafetyMessage = visibleSafetyDegradeMessageFor({
-        userMessage: preCheck.policy.userMessage,
-        reason: preCheck.result.reason,
-        categories: preCheck.result.categories,
-      });
+      const visibleSafetyMessage = resolveVisibleSafetyMessageForTurn(
+        visibleSafetyDegradeMessageFor({
+          userMessage: preCheck.policy.userMessage,
+          reason: preCheck.result.reason,
+          categories: preCheck.result.categories,
+        }),
+        Boolean(shouldApplyFirstActionConstraint)
+      );
       return createSseResponse({
         requestId,
         status: preCheck.policy.statusCode,
@@ -4415,6 +4435,7 @@ async function postChatInternal(req: Request) {
             userId: userId ?? undefined,
             sessionId: sessionId ?? undefined,
             ip: clientIp,
+            isOpeningTurn: Boolean(shouldApplyFirstActionConstraint),
           });
 
           dmRecord = outputAudit.updatedDmRecord;
@@ -4431,7 +4452,10 @@ async function postChatInternal(req: Request) {
 
           if (outputAudit.verdict === "reject") {
             const reason = outputAudit.reasonCode || "output_reject";
-            const blockedMessage = visibleSafetyDegradeMessageFor(reason);
+            const blockedMessage = resolveVisibleSafetyMessageForTurn(
+              visibleSafetyDegradeMessageFor(reason),
+              Boolean(shouldApplyFirstActionConstraint)
+            );
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
             writeAuditTrail({
@@ -4501,7 +4525,10 @@ async function postChatInternal(req: Request) {
             summary: blockedAuditSummary,
           });
 
-          const narrative = visibleSafetyDegradeMessageFor(finalModeration.result.reason);
+          const narrative = resolveVisibleSafetyMessageForTurn(
+            visibleSafetyDegradeMessageFor(finalModeration.result.reason),
+            Boolean(shouldApplyFirstActionConstraint)
+          );
           if (narrative) {
             await writer.write(
               sse(

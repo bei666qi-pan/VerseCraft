@@ -1,4 +1,8 @@
-import { CHAPTER_DEFINITIONS, getChapterDefinition } from "./definitions";
+import {
+  CHAPTER_DEFINITIONS,
+  getChapterDefinition,
+  listChapterDefinitionsForState,
+} from "./definitions";
 import type { ChapterDefinition, ChapterState } from "./types";
 
 export function selectActiveChapterDefinition(state: ChapterState): ChapterDefinition {
@@ -19,7 +23,14 @@ export function selectPendingChapterSummary(state: ChapterState) {
 }
 
 export function selectChapterNavigatorItems(state: ChapterState) {
-  return CHAPTER_DEFINITIONS.map((definition) => {
+  const definitions = listChapterDefinitionsForState({
+    activeChapterId: state.activeChapterId,
+    reviewChapterId: state.reviewChapterId,
+    unlockedChapterIds: state.unlockedChapterIds,
+    completedChapterIds: state.completedChapterIds,
+    progressByChapterId: state.progressByChapterId,
+  });
+  return definitions.map((definition) => {
     const progress = state.progressByChapterId[definition.id];
     const completed = state.completedChapterIds.includes(definition.id);
     const unlocked = state.unlockedChapterIds.includes(definition.id) || completed;
