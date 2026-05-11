@@ -140,6 +140,7 @@ import {
   getClientOptionsOnlyRegenPathV2Enabled,
   getClientOptionsRegenRepairPassEnabled,
   getClientOptionsRegenSemanticGateEnabled,
+  getClientDeferMainTurnOptionsToClientEnabled,
   getClientHiddenCombatV1Enabled,
   getClientProfessionChoiceInterruptV1Enabled,
   getClientCombatSummaryV1Enabled,
@@ -698,6 +699,8 @@ function PlayContent() {
   const openingInitialScrollLockArmedRef = useRef(false);
   const tailDrainTargetRef = useRef<string | null>(null);
   const parsedPostDrainRef = useRef<{ isDeath: boolean } | null>(null);
+  /** When true: expand options dock after tail drain settles (defer-options flow). Consumed once in onTailDrainComplete. */
+  const expandOptionsDockAfterTailDrainRef = useRef(false);
   const [tailAlignKey, setTailAlignKey] = useState(0);
   const autoScrollRafRef = useRef<number | null>(null);
   const chapterPageTurnTimerRef = useRef<number | null>(null);
@@ -978,6 +981,11 @@ function PlayContent() {
     if (streamPhaseRef.current !== "tail_draining") return;
     tailDrainTargetRef.current = null;
     setStreamPhase("idle");
+    const shouldExpandDeferredOptionsDock = expandOptionsDockAfterTailDrainRef.current;
+    expandOptionsDockAfterTailDrainRef.current = false;
+    if (shouldExpandDeferredOptionsDock) {
+      setOptionsExpanded(true);
+    }
     const sanityAfter = useGameStore.getState().stats?.sanity ?? 0;
     const pending = parsedPostDrainRef.current;
     parsedPostDrainRef.current = null;
@@ -3557,6 +3565,7 @@ function PlayContent() {
     }
 
     setStreamPhase("turn_committing");
+    expandOptionsDockAfterTailDrainRef.current = false;
     let committedNarrativeForRescue: string | null = null;
     try {
     const resolved = resolveTurnFromSse({ sseDocumentText, rawDm: raw });
@@ -4036,7 +4045,14 @@ function PlayContent() {
       : [];
 
     const merged = [...validOpts];
-    const deliveryDecision = decideModelOptionsDelivery({ options: merged });
+    const deliverPlayableOptionsSeparately =
+      getClientDeferMainTurnOptionsToClientEnabled() &&
+      parsed.is_action_legal &&
+      !parsed.is_death &&
+      !isEndingFinaleSystemRound &&
+      !isEndgameSystemRound;
+    const mergedForDelivery = deliverPlayableOptionsSeparately ? [] : merged;
+    const deliveryDecision = decideModelOptionsDelivery({ options: mergedForDelivery });
 
     if (isEndingFinaleSystemRound) {
       const finale = normalizeEndingFinalePayload((parsed as any).ending_finale, buildCurrentEndingFinaleInput());
@@ -4643,6 +4659,11 @@ function PlayContent() {
       setEndgameState({ active: false, awaitingEnding: false });
       setFirstTimeHint("本局终局已经开启，请完成最终选择。");
     }
+
+    expandOptionsDockAfterTailDrainRef.current =
+      deliverPlayableOptionsSeparately &&
+      endingAfterTurn.phase !== "settlement_ready" &&
+      !(endingAfterTurn.phase === "eligible" && endingAfterTurn.eligibility?.outcome !== "death");
 
     // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
     // 这能覆盖“手动输入且无 options”的场景，避免首页“继续执笔”失真。

@@ -24,6 +24,7 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enableTaskAutoOpenOnNarrativeGrant, true);
   assert.equal(f.enablePlayerFacingTaskCopyV2, true);
   assert.equal(f.enableOptionsAutoRegenOnEmpty, true);
+  assert.equal(f.deferMainTurnOptionsToClient, true);
   assert.equal(f.enableOptionsOnlyRegenPathV2, true);
   assert.equal(f.enableNewPlayerGuideDualCoreV2, true);
   assert.equal(f.enableWorldFeelPackets, true);
@@ -59,6 +60,12 @@ test("SceneActorGate rollout flags can be disabled by env", () => {
   });
   withEnv("VERSECRAFT_ENABLE_MODE_AWARE_NPC_PERSONA_PACKET_V1", "off", () => {
     assert.equal(getVerseCraftRolloutFlags().enableModeAwareNpcPersonaPacketV1, false);
+  });
+});
+
+test("deferMainTurnOptionsToClient can be disabled by env", () => {
+  withEnv("VERSECRAFT_DEFER_MAIN_TURN_OPTIONS_TO_CLIENT", "0", () => {
+    assert.equal(getVerseCraftRolloutFlags().deferMainTurnOptionsToClient, false);
   });
 });
 

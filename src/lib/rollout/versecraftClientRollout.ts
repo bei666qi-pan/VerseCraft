@@ -36,6 +36,11 @@ export function getClientOptionsAutoRegenOnEmptyEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_AUTO_REGEN_ON_EMPTY", true);
 }
 
+/** Server-synchronized: defer playable options to a follow-up options_regen_only request. */
+export function getClientDeferMainTurnOptionsToClientEnabled(): boolean {
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_DEFER_MAIN_TURN_OPTIONS_TO_CLIENT", true);
+}
+
 export function getClientOptionsOnlyRegenPathV2Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_ONLY_REGEN_PATH_V2", true);
 }

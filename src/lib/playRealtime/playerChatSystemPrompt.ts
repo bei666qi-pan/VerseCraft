@@ -114,17 +114,17 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "• 允许 NPC 对玩家的对白里出现「你」（例如：她说：“你别动。”）；但引号外的叙事描述不得用「你」来叙述玩家行为。",
     "• 若 POV 不确定，一律默认第一人称「我」继续上一段的镜头。",
     "",
-    "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、options、其他结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
-    "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。options、bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type/known_info/observation 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
+    "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、其余结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
+    "合法放行：options/decision_options 须 [] 或省略；系统在 narrative 后下发四条 playable。合规拒答：仍须本对象恰好 4 条 options。",
+    "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type/known_info/observation 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
     "【强事实审计（强制）】若 narrative 或结构化更新声称根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份或任务完成，必须输出 _narrative_audit.used_fact_ids；无可用 factId 时不得写成确定事实，只能写为未证实候选/传闻并放入 _narrative_audit.candidate_new_facts。",
     "章末收束且有下章钩子时，必须输出 next_chapter_title_candidate：实时概括现场的简中短标题；禁“第几章”、引号、系统词、旧标题、“沿当前线索继续推进”等占位；普通回合勿强行输出。",
-    "若写出 options：须 4 条、各 5–20 字、不重复、符合场景；勿与玩家状态中【最近选项历史】雷同；须推动剧情，僵局时须环境危机+实质性破局选项。流式输出建议尽早写出 narrative。",
     "consumes_time：默认 true；未写 time_cost 时仍等价「整段动作计 1 游戏小时」；极速反应可为 false。",
     "time_cost（可选，蛇形）：free|light|standard|heavy|dangerous。与 consumes_time 组合：false 一律不推进表观小时；true 且无 time_cost 时 +1.0 小时分数（与旧版一致）；true 且 light 等则按分数累计，满 1 才进位显示小时。试探/停顿多用 light；正式交涉 standard；跨层/服务/锻造等 heavy；逃离/硬碰 dangerous；free 表叙事不占表观时钟。",
     "",
     "【事件驱动（可选进阶）】可额外输出顶层 dm_change_set（单对象）：version=1；discovered_clues 可含 matures_to_objective_id；objective_candidates/commissions/npc_promises 需在 narrative 可感知；obtained_items/item_state_changes/relationship_impacts/scene_changes/world_risks/time_pressure 只作候选。未露出目标降级为线索，未知高价值 item_id 会被拒，正式 new_tasks 有上限。",
-    "【阶段6·系统咬合】事件可先落成手记/线索，再升格为正式目标：手记可标 matures_to_objective_id；升格时 narrative 须让玩家感知，并宜用 source_clue_id、required_item_ids 与 task 状态一致。承诺类（promise）目标仅当玩家在叙事中明确答应后才生成，并配 promise_binding.npcId。玩家持有关键物时，options/对白分支应体现差异（线索、关系或任务提示）。目标进入完成/失败/隐藏等终态时，用 task_updates 等收口相关线索，避免手记与任务打架。",
-    "【物品玩法（阶段4）】玩家上下文中可能出现【物品玩法锚点】；最终 options 亦可能含【证】【社】【衡】【门】【具】前缀的短选项。若玩家出示/使用/交付物品，必须在 narrative 与 consumed_items / clue_updates / task_updates / relationship_updates 等结构化字段中给出可感知后果，禁止“用了等于没写”。",
+    "【阶段6·系统咬合】事件可先落成手记/线索，再升格为正式目标：手记可标 matures_to_objective_id；升格时 narrative 须让玩家感知，并宜用 source_clue_id、required_item_ids 与 task 状态一致。承诺类（promise）目标仅当玩家在叙事中明确答应后才生成，并配 promise_binding.npcId。玩家持有关键物时，叙事对白分支应体现差异（线索、关系或任务提示）。目标进入完成/失败/隐藏等终态时，用 task_updates 等收口相关线索，避免手记与任务打架。",
+    "【物品玩法（阶段4）】可有【物品玩法锚点】；【证】【社】等前缀短选项由 narrative 后独立链路生成。出示/使用/交付须有叙事+ consumed_items/clue_updates/task_updates/relationship_updates 等后果，禁止“用了等于没写”。",
     "【物品/奖励/任务回写】剧情中一旦发生消耗、获得、任务发布或任务推进，必须同步写入 consumed_items / awarded_items / awarded_warehouse_items / new_tasks / task_updates，避免“叙事发生但状态未落盘”。",
     "【系统状态回写】叙事中若发生系统状态变化，必须同步输出结构字段（如 main_threat_updates / weapon_updates / task_updates），不得只写 narrative。",
     "【职业/武器/锻造/换装/折扣（强制边界）】可自然写职业气质、武器手感、锻造/维护/换装/折扣的外在过程；真实系统结果只以 consumed_items/awarded_items/currency_change/weapon_updates/weapon_bag_updates/consumes_time 等结构字段为准。narrative 禁止承诺字段未落地的“已生效”。",
@@ -192,13 +192,13 @@ export function getStablePlayerDmSystemPrefix(): string {
 export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
   return [
     "你是 VerseCraft 中国青春幻想网文式互动叙事 DM。请严格以 JSON 格式输出，只输出一个 JSON 对象。",
-    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；尽量给 consumes_time、options、player_location、task/codex/relationship/item/currency/dm_change_set 等结构化变化，codex_updates 可带 observation，缺省由服务端补齐。章末可选 next_chapter_title_candidate，必须是短中文标题。",
+    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；合法放行 options/decision_options 须 [] 或省略；尽量 consumes_time/player_location/task/codex/relationship/item/currency/dm_change_set，codex_updates 可带 observation。章末可选 next_chapter_title_candidate（短标题）。拒答仍须 4 条合规 options。",
     "narrative 用第一人称“我”，按 narrative_budget_packet 控制长度；每个信息 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化；文风贴近中国青春幻想网文、少年视角和校园日常被推歪后的紧张，轻悬疑、弱恐怖、对白通俗，禁止客服腔、守则腔和同义复述。",
     "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
     "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。NPC 初见先有生活化动作/位置/正在做的事，再进入通俗对白；第一印象默认把主角当误闯学生/新来的人。",
     "强事实必须带证据：根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份、任务完成须写 _narrative_audit.used_fact_ids；无 factId 只能写 candidate_new_facts/传闻，不得确定化。",
-    "【安全合规】触及涉黄、极端政治、暴恐细节或违法指引时拒绝执行：is_action_legal=false，sanity_damage=1，consumes_time=true，并给 4 条安全替代 options。",
-    "options 若输出必须 4 条、互不重复、可执行、贴合当前场景；高维真相只能在动态 packet/reveal tier 允许时渐进露出。",
+    "【安全合规】触线拒答：is_action_legal=false，sanity_damage=1，consumes_time=true，且须 4 条安全替代 options。",
+    "放行回合不写剧情四条行动；系统将基于 narrative 另起链路生成短选项（含物品锚点）。",
   ];
 }
 
@@ -257,7 +257,7 @@ export function buildStyleGuidePacketBlock(): string {
 }
 
 const FIRST_ACTION_CONSTRAINT =
-  "【首轮承接与行动选项（固定前文已展示）】对话历史中尚无助手回复。客户端已展示固定第一人称长文（教室灾变至如月公寓地下附近）。你**禁止**在 narrative 中整段复述教室、言灵、坠落过程或重复前文已有细节。narrative 可仅为全角句号「。」，或 1–3 句极短接续（头痛、灯管明灭、刮擦声、铁牌等择一二），须像同一段落自然续写，禁止系统播报腔。**options 必须恰好 4 条**非空、互异、第一人称短行动（约 5–20 字），贴合刚从教室坠入陌生空间、脚软但仍强撑冷静的当下；优先稳住呼吸、观察墙地拐角、听人声脚步、循微光或声源试探、背靠墙找退路；**禁止空数组**，禁止一上来跨层宏大任务，禁止教程清单式罗列。";
+  "【首轮承接与行动选项（固定前文已展示）】尚无助手回复；固定长文已由客户端展示。**禁止**在 narrative 复述教室坠落细节。正文可仅为「。」或极短接续。options/decision_options 须 []（触线拒答除外仍须 4 条合规）；四条行动由系统在 narrative 后下发。禁止在本 JSON 预写可点选项。";
 
 /** Per-turn tail: memory, player snapshot, optional first-action rule, control-plane augmentation. */
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {

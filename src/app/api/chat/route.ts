@@ -74,6 +74,10 @@ import {
   applyItemGameplayOptionInjection,
   shouldSkipItemOptionInjection,
 } from "@/lib/play/itemGameplay";
+import {
+  shouldApplyDeferredOptionsStrip,
+  stripPlayableOptionsForDeferredClientDelivery,
+} from "@/lib/play/deferMainTurnOptionsDelivery";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGuards";
 import {
@@ -3046,6 +3050,10 @@ async function postChatInternal(req: Request) {
     ): Promise<boolean> => {
       await writeStatusFrame("finalizing", "正在收束本回合");
 
+      const verseRolloutSnapshot = getVerseCraftRolloutFlags();
+      const deferPlayableOptsToSeparateRequest =
+        verseRolloutSnapshot.deferMainTurnOptionsToClient && clientPurpose !== "options_regen_only";
+
       let commitSummaryForAnalytics: TurnCommitSummary | null = null;
       const finalRepairBudgetMs = Math.max(
         1_000,
@@ -3132,27 +3140,31 @@ async function postChatInternal(req: Request) {
             maxChars: narrativeBudget.maxChars,
           });
           if (!repaired.ok) return null;
-          const optionsRepairStartedAt = Date.now();
-          const regen = await generateOptionsOnlyFallback({
-            narrative: repaired.narrative,
-            latestUserInput,
-            playerContext,
-            ctx: {
-              requestId,
-              userId,
-              sessionId,
-              path: "/api/chat",
-              tags: { phase: "final_hooks", purpose: "malformed_dm_options_repair" },
-            },
-            signal: pipelineAbort.signal,
-            budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
-          });
-          optionsRepairUsedTelemetry = true;
-          optionsRepairMsTelemetry = Math.max(0, Date.now() - optionsRepairStartedAt);
+          let repairedOptions: string[] = [];
+          if (!deferPlayableOptsToSeparateRequest) {
+            const optionsRepairStartedAt = Date.now();
+            const regen = await generateOptionsOnlyFallback({
+              narrative: repaired.narrative,
+              latestUserInput,
+              playerContext,
+              ctx: {
+                requestId,
+                userId,
+                sessionId,
+                path: "/api/chat",
+                tags: { phase: "final_hooks", purpose: "malformed_dm_options_repair" },
+              },
+              signal: pipelineAbort.signal,
+              budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
+            });
+            optionsRepairUsedTelemetry = true;
+            optionsRepairMsTelemetry = Math.max(0, Date.now() - optionsRepairStartedAt);
+            repairedOptions = regen.ok ? regen.options : [];
+          }
           const repairedRecord = normalizePlayerDmJson({
             ...seedRecord,
             narrative: repaired.narrative,
-            options: regen.ok ? regen.options : [],
+            options: repairedOptions,
           });
           if (!repairedRecord) return null;
           fallbackUsedTelemetry = true;
@@ -3320,7 +3332,7 @@ async function postChatInternal(req: Request) {
               ? (dmRecord.security_meta as Record<string, unknown>)
               : null;
           const preResolveFreeze = preResolveGuard?.settlement_guard === "stage2_freeze_on_illegal_or_death";
-          if (opts.length < 2 && !preResolveFreeze && canRunFinalRepair()) {
+          if (opts.length < 2 && !preResolveFreeze && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
             const repairStartedAt = Date.now();
             const regen = await generateOptionsOnlyFallback({
               narrative: String(dmRecord.narrative ?? ""),
@@ -3413,7 +3425,7 @@ async function postChatInternal(req: Request) {
               decision.filter((x): x is string => typeof x === "string" && x.trim().length > 0),
               4
             ).length;
-            if (optCount < 2 && decCount < 2 && canRunFinalRepair()) {
+            if (optCount < 2 && decCount < 2 && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
               recordDecisionOptionsFixOutcome(false);
               const repairStartedAt = Date.now();
               const regen = await generateDecisionOptionsOnlyFallback({
@@ -3503,7 +3515,7 @@ async function postChatInternal(req: Request) {
             (resolved as any).options = deduped; // keep legacy UI aligned
             (resolved as any).decision_required = true;
             // If dedupe made it invalid, do the existing low-cost fix once.
-            if (deduped.length < 2 && canRunFinalRepair()) {
+            if (deduped.length < 2 && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
               recordDecisionOptionsFixOutcome(false);
               const regen = await generateDecisionOptionsOnlyFallback({
                 narrative: String((resolved as any).narrative ?? ""),
@@ -3551,7 +3563,13 @@ async function postChatInternal(req: Request) {
               enable: rollout.enableOptionsAutoRegenOnEmpty,
             });
           }
-          if (!shouldSkipRegen && rollout.enableOptionsAutoRegenOnEmpty && resolvedOptCount < 2 && canRunFinalRepair()) {
+          if (
+            !shouldSkipRegen &&
+            rollout.enableOptionsAutoRegenOnEmpty &&
+            resolvedOptCount < 2 &&
+            canRunFinalRepair() &&
+            !deferPlayableOptsToSeparateRequest
+          ) {
             if (resolvedOptCount === 0) incrEmptyOptionsTurnCount(1);
             let regen = await generateOptionsOnlyFallback({
               narrative: String((resolved as any).narrative ?? ""),
@@ -4131,7 +4149,7 @@ async function postChatInternal(req: Request) {
                   (x): x is string => typeof x === "string" && x.trim().length > 0
                 )
               : [];
-            if (overriddenOpts.length < 2 && canRunFinalRepair()) {
+            if (overriddenOpts.length < 2 && canRunFinalRepair() && !deferPlayableOptsToSeparateRequest) {
               try {
                 const rolloutForRegen = getVerseCraftRolloutFlags();
                 const regen = await generateOptionsOnlyFallback({
@@ -4454,6 +4472,15 @@ async function postChatInternal(req: Request) {
           resolvedForClient as unknown as Record<string, unknown>,
           { maxMatches: 12 }
         ) as unknown as ResolvedDmTurn;
+        if (
+          shouldApplyDeferredOptionsStrip(
+            verseRolloutSnapshot.deferMainTurnOptionsToClient,
+            validated.clientPurpose,
+            resolvedForClient as unknown as Record<string, unknown>
+          )
+        ) {
+          resolvedForClient = stripPlayableOptionsForDeferredClientDelivery(resolvedForClient);
+        }
         finalizePayload = JSON.stringify(resolvedForClient);
         moderationBody = finalizePayload;
       } else {
@@ -4489,6 +4516,15 @@ async function postChatInternal(req: Request) {
             auditedResolved as unknown as Record<string, unknown>,
             { maxMatches: 12 }
           ) as unknown as ResolvedDmTurn;
+          if (
+            shouldApplyDeferredOptionsStrip(
+              verseRolloutSnapshot.deferMainTurnOptionsToClient,
+              validated.clientPurpose,
+              auditedResolved as unknown as Record<string, unknown>
+            )
+          ) {
+            auditedResolved = stripPlayableOptionsForDeferredClientDelivery(auditedResolved);
+          }
           finalizePayload = JSON.stringify(auditedResolved);
           moderationBody = finalizePayload;
 
