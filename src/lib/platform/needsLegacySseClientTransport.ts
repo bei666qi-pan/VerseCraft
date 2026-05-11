@@ -73,7 +73,20 @@ export function needsLegacySseClientTransportFromHighEntropyUserAgentData(data: 
  */
 export function needsLegacySseClientTransport(): boolean {
   if (typeof window === "undefined") return false;
+  // No ReadableStream at all → must use legacy.
   if (typeof ReadableStream === "undefined") return true;
+  // AbortController missing → fetch+signal deadline won't work, use legacy.
+  if (typeof AbortController === "undefined") return true;
+  // Incomplete Streams API: the browser has ReadableStream but NOT WritableStream,
+  // a strong signal of a partial/shallow implementation that breaks fetch body streaming.
+  if (typeof WritableStream === "undefined") return true;
+  // Incomplete Streams API: ReadableStream lacks the fundamental primitives.
+  if (
+    typeof ReadableStream.prototype.pipeTo !== "function" ||
+    typeof ReadableStream.prototype.pipeThrough !== "function"
+  ) {
+    return true;
+  }
   if (
     needsLegacySseClientTransportFromUserAgent(typeof navigator !== "undefined" ? navigator.userAgent : "")
   ) {

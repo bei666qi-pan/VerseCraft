@@ -2312,12 +2312,17 @@ function PlayContent() {
       const userContextMessages: ChatMessage[] = lastUser
         ? [{ role: "user", content: lastUser }]
         : [];
-      // Phase-5：options-only 补齐是“低成本工具”，不允许无上限等待。
+      // Phase-5：options-only 补齐是”低成本工具”，不允许无上限等待。
       const optionsOnlyDeadlineMs = getOptionsOnlyDeadlineMs(trigger);
-      const ac = new AbortController();
+      let ac: AbortController;
+      try {
+        ac = new AbortController();
+      } catch {
+        ac = { signal: { aborted: false, addEventListener() {}, removeEventListener() {} } } as unknown as AbortController;
+      }
       const tid = window.setTimeout(() => {
         optionsRegenTimedOut = true;
-        ac.abort();
+        try { ac.abort(); } catch { /* ignore */ }
       }, optionsOnlyDeadlineMs);
       const applyOptionsRegenStatus = (stage: unknown) => {
         const next: MobileOptionsRegenStage =
@@ -2502,6 +2507,51 @@ function PlayContent() {
               if (orphan.startsWith("data:")) {
                 const status = extractStatusFrameFromSseEvent(orphan);
                 if (status) applyOptionsRegenStatus(status.stage);
+              }
+              // Broken ReadableStream: reader.read() may return {done:true} immediately
+              // without data in some in-app WebViews, bypassing the catch-based recovery.
+              if (text.trim().length === 0 && !optionsRegenTimedOut) {
+                try {
+                  await reader.cancel();
+                  readerCancelled = true;
+                } catch {
+                  // ignore
+                }
+                const xhrOut = await postSameOriginForSseDocumentText({
+                  url: "/api/chat",
+                  body: optionsRegenBody,
+                  headers: optionsRegenHeaders,
+                  timeoutMs: optionsOnlyDeadlineMs,
+                  signal: ac.signal,
+                });
+                if (!xhrOut.ok) {
+                  return {
+                    kind: "transport_failed",
+                    status: 0,
+                    reason: xhrOut.kind === "timeout" ? "xhr_timeout_after_fetch_stream_empty" : xhrOut.kind,
+                    retryAfterMs: null,
+                    localRateLimited: false,
+                    recoverable: true,
+                  };
+                }
+                const xhrCt = xhrOut.contentType.toLowerCase();
+                const xhrOk = xhrOut.status >= 200 && xhrOut.status < 300;
+                text = xhrOut.text;
+                responseRequestId = xhrOut.versecraftRequestId;
+                if (!xhrOk || !xhrCt.includes("text/event-stream")) {
+                  const localRateLimited = isLocalRateLimitedPayload({ status: xhrOut.status, body: text });
+                  const recoverable =
+                    localRateLimited || xhrOut.status === 429 || xhrOut.status === 503 || !xhrCt.includes("text/event-stream");
+                  return {
+                    kind: "transport_failed",
+                    status: xhrOut.status,
+                    reason: localRateLimited ? "local_rate_limited" : `http_${xhrOut.status || "no_sse"}`,
+                    retryAfterMs: parseRetryAfterMs(null),
+                    localRateLimited,
+                    recoverable,
+                  };
+                }
+                applyOptionsRegenStatusFramesFromSseText(text);
               }
             } catch (streamReadErr) {
               if (text.includes(VERSECRAFT_FINAL_PREFIX) || optionsRegenTimedOut) throw streamReadErr;
@@ -2869,7 +2919,12 @@ function PlayContent() {
       openingOptionsOnlyRound: false,
     };
 
-    const ac = new AbortController();
+    let ac: AbortController;
+    try {
+      ac = new AbortController();
+    } catch {
+      ac = { signal: { aborted: false, addEventListener() {}, removeEventListener() {} } } as unknown as AbortController;
+    }
     streamAbortRef.current = ac;
     let queueIdForChat: string | null = null;
     const transportTimeouts = resolvePlayChatTransportTimeouts();
@@ -3405,6 +3460,25 @@ function PlayContent() {
           const orphan = normalizeSseNewlines(buf).trim();
           if (orphan.length > 0 && orphan.startsWith("data:")) {
             applySseEvent(orphan);
+          }
+          // Broken ReadableStream: reader.read() may return {done:true} immediately
+          // without data in some in-app WebViews, bypassing the catch-based recovery.
+          if (!sawStreamChunk && sseDocumentText.trim().length === 0) {
+            try {
+              await reader.cancel();
+              readerCancelled = true;
+            } catch {
+              // ignore
+            }
+            if (await recoverFetchStreamBeforeFirstChunk("stream_empty_done")) {
+              setStreamPhase("streaming_body");
+            } else {
+              narrativeRef.current = "";
+              setStreamPhase("idle");
+              if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
+              showTurnFailureIfVisible("network_or_gateway");
+              return;
+            }
           }
         } catch (readErr) {
           const err = readErr as Error & { name?: string; message?: string };
