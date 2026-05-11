@@ -631,20 +631,27 @@ export async function listAdminUsers(opts: {
     ),
     guests AS (
       SELECT
-        ('g:' || g.guest_id) AS actor_key,
-        g.guest_id AS raw_id,
-        ('游客 ' || RIGHT(REPLACE(g.guest_id, '-', ''), 4)) AS display_name,
+        ('g:' || a.guest_id) AS actor_key,
+        a.guest_id AS raw_id,
+        CASE WHEN al.guest_no > 0 THEN ('游客' || al.guest_no::text) ELSE '游客' END AS display_name,
         'guest' AS actor_type,
         COALESCE(t.tokens_used, 0)::int AS tokens_used,
-        COALESCE(g.total_play_duration_sec, 0)::int AS play_time,
-        g.last_seen_at AS last_active,
-        (g.last_seen_at >= NOW() - INTERVAL '90 seconds') AS is_online
-      FROM guest_registry g
+        COALESCE(t.play_time, 0)::int AS play_time,
+        a.last_seen_at AS last_active,
+        (a.last_seen_at >= NOW() - INTERVAL '90 seconds') AS is_online
+      FROM analytics_actors a
+      LEFT JOIN guest_aliases al ON al.guest_id = a.guest_id
       LEFT JOIN (
-        SELECT guest_id, COALESCE(SUM(daily_token_cost), 0)::int AS tokens_used
-        FROM guest_daily_tokens
-        GROUP BY guest_id
-      ) t ON t.guest_id = g.guest_id
+        SELECT
+          actor_id,
+          COALESCE(SUM(daily_token_cost), 0)::int AS tokens_used,
+          COALESCE(SUM(active_play_sec), 0)::int AS play_time
+        FROM actor_daily_tokens
+        GROUP BY actor_id
+      ) t ON t.actor_id = a.actor_id
+      WHERE a.actor_type = 'guest'
+        AND a.guest_id IS NOT NULL
+        AND a.guest_id <> ''
     ),
     combined AS (
       SELECT * FROM registered

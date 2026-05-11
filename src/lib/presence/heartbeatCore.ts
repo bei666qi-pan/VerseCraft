@@ -37,3 +37,8 @@ export function computePlayDeltaSec(
 export function shouldCountPresenceHeartbeat(args: { visible: boolean; hasFocus: boolean }): boolean {
   return args.visible && args.hasFocus;
 }
+
+/** Always true for a structurally valid heartbeat — timestamps should be refreshed even when the tab is in background. */
+export function shouldUpdatePresenceTimestamp(_args: { visible: boolean; hasFocus: boolean }): boolean {
+  return true;
+}

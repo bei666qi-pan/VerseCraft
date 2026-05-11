@@ -2,7 +2,7 @@ import { getChapterDefinition } from "./definitions";
 import { resolveChapterNarrativeBudget } from "./budget";
 import { advanceChapterBeats, countChapterStateChanges, shouldCountChapterTurn, shouldCountKeyChoice } from "./progress";
 import { buildChapterSummary } from "./summary";
-import { getChapterDisplayName, isWeakChapterBookmarkSnippet, sanitizeChapterTitleCandidate } from "./title";
+import { deriveNextChapterTitleCandidate, getChapterDisplayName, isWeakChapterBookmarkSnippet, sanitizeChapterTitleCandidate } from "./title";
 import type {
   ChapterCompletionRuntime,
   ChapterDefinition,
@@ -127,9 +127,14 @@ export function completeChapter(input: {
   const now = input.now ?? Date.now();
   const nextChapterId = input.definition.nextChapterId ?? null;
   const modelTitle = nextChapterId ? sanitizeChapterTitleCandidate(input.nextChapterTitleCandidate, 32) : null;
+  const derivedTitle =
+    nextChapterId && !modelTitle
+      ? deriveNextChapterTitleCandidate({ summary: input.summary })
+      : null;
+  const candidateTitle = modelTitle ?? derivedTitle;
   const nextChapterTitle =
-    nextChapterId && modelTitle && isUniqueChapterTitleCandidate(input.state, nextChapterId, modelTitle)
-      ? modelTitle
+    nextChapterId && candidateTitle && isUniqueChapterTitleCandidate(input.state, nextChapterId, candidateTitle)
+      ? candidateTitle
       : null;
   const chapterTitlesById = { ...(input.state.chapterTitlesById ?? {}) };
   if (nextChapterId) {

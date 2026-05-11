@@ -55,7 +55,6 @@ export function usePresenceHeartbeat(args: Args) {
     };
 
     const tick = () => {
-      if (document.visibilityState !== "visible" || !document.hasFocus()) return;
       const now = Date.now();
       if (now - lastAt.current < THROTTLE_MS) return;
       lastAt.current = now;

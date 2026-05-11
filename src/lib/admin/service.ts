@@ -2,7 +2,7 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsEvents, feedbacks, guestRegistry, userSessions, users } from "@/db/schema";
+import { adminMetricsDaily, analyticsActors, analyticsEvents, feedbacks, guestRegistry, userSessions, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
@@ -592,14 +592,25 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
     const [gRow] = await db
       .select({
         total: sql<number>`count(*)::int`,
-        playSec: sql<number>`coalesce(sum(${guestRegistry.totalPlayDurationSec}), 0)::bigint`,
-        online: sql<number>`count(*) filter (where ${guestRegistry.lastSeenAt} >= now() - interval '90 second')::int`,
+        online: sql<number>`count(*) filter (where ${analyticsActors.lastSeenAt} >= now() - interval '90 second')::int`,
       })
-      .from(guestRegistry);
+      .from(analyticsActors)
+      .where(sql`${analyticsActors.actorType} = 'guest'`);
+    let guestPlaySec = 0;
+    try {
+      const [pRow] = await db
+        .select({
+          sec: sql<number>`coalesce(sum(${guestRegistry.totalPlayDurationSec}), 0)::bigint`,
+        })
+        .from(guestRegistry);
+      guestPlaySec = Number(pRow?.sec ?? 0);
+    } catch {
+      // fallback: guestRegistry may not be available
+    }
     guestAgg = {
       total: Number(gRow?.total ?? 0),
       online: Number(gRow?.online ?? 0),
-      playSec: Number(gRow?.playSec ?? 0),
+      playSec: guestPlaySec,
     };
   } catch {
     guestAgg = { total: 0, online: 0, playSec: 0 };

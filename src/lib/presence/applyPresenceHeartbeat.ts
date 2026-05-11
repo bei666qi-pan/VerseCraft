@@ -26,6 +26,8 @@ export type ApplyPresenceHeartbeatInput = {
   guestId: string | null;
   page: string | null;
   now: Date;
+  /** When true, timestamps are still refreshed for online detection but play duration is NOT accumulated. */
+  isBackground?: boolean;
   /** Fingerprinting for `guest_registry` (hashed IP; no raw IP stored). */
   client?: { userAgent: string | null; ipHash: string | null; platform: string | null } | null;
 };
@@ -48,7 +50,7 @@ export async function applyPresenceHeartbeat(input: ApplyPresenceHeartbeatInput)
     return { kind: "bad_request", message: "invalid sessionId" };
   }
 
-  const { userId, guestId, page, now } = input;
+  const { userId, guestId, page, now, isBackground } = input;
   if (userId) {
     // Logged-in: `guestId` in body is ignored; session is owned by `userId` from auth.
   } else {
@@ -63,7 +65,7 @@ export async function applyPresenceHeartbeat(input: ApplyPresenceHeartbeatInput)
   const pageSql = page && page.length <= 500 ? page : null;
 
   if (userId) {
-    return applyForUser({ sessionId, userId, page: pageSql, now, bucketStart });
+    return applyForUser({ sessionId, userId, page: pageSql, now, bucketStart, isBackground });
   }
   return applyForGuest({
     sessionId,
@@ -71,6 +73,7 @@ export async function applyPresenceHeartbeat(input: ApplyPresenceHeartbeatInput)
     page: pageSql,
     now,
     bucketStart,
+    isBackground,
     client: input.client,
   });
 }
@@ -81,8 +84,10 @@ async function applyForUser(args: {
   page: string | null;
   now: Date;
   bucketStart: Date;
+  isBackground?: boolean;
 }): Promise<ApplyPresenceResult> {
-  const { sessionId, userId, page, now, bucketStart } = args;
+  const { sessionId, userId, page, now, bucketStart, isBackground } = args;
+  const foreground = !isBackground;
 
   const q0 = await db.execute(sql`
     SELECT session_id, user_id, last_seen_at, last_presence_ok_at, total_play_duration_sec
@@ -136,7 +141,7 @@ async function applyForUser(args: {
   }
 
   const lastSeen = new Date(String(existing.last_seen_at));
-  const playDelta = computePlayDeltaSec(lastSeen, now);
+  const playDelta = foreground ? computePlayDeltaSec(lastSeen, now) : 0;
 
   await db.execute(sql`
     UPDATE user_sessions
@@ -165,9 +170,11 @@ async function applyForGuest(args: {
   page: string | null;
   now: Date;
   bucketStart: Date;
+  isBackground?: boolean;
   client: ApplyPresenceHeartbeatInput["client"];
 }): Promise<ApplyPresenceResult> {
-  const { sessionId, guestId, page, now, bucketStart, client } = args;
+  const { sessionId, guestId, page, now, bucketStart, isBackground, client } = args;
+  const foreground = !isBackground;
 
   const q0 = await db.execute(sql`
     SELECT session_id, guest_id, last_seen_at, last_presence_ok_at, total_play_duration_sec
@@ -227,7 +234,7 @@ async function applyForGuest(args: {
   }
 
   const lastSeen = new Date(String(existing.last_seen_at));
-  const playDelta = computePlayDeltaSec(lastSeen, now);
+  const playDelta = foreground ? computePlayDeltaSec(lastSeen, now) : 0;
 
   await db.execute(sql`
     UPDATE guest_sessions

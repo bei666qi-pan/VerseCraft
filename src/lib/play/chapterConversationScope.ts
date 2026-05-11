@@ -3,6 +3,9 @@
 /** Max assistant/user bubble pairs-ish window when bridging into a chapter with unknown startedLogIndex. */
 export const CHAPTER_ENTRY_CHAT_BRIDGE_MESSAGE_CAP = 8;
 
+/** Number of log entries retained before `startedLogIndex` so the last exchange of the prior chapter stays visible. */
+export const CHAPTER_DISPLAY_OVERLAP = 3;
+
 type LogRoleRow = { role?: string };
 
 /**

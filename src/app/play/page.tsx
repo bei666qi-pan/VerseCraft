@@ -167,6 +167,7 @@ import {
 import type { SnapshotMainThreatPhase } from "@/lib/state/snapshot/types";
 import { normalizeChapterState, selectChapterReviewLogEntries } from "@/lib/chapters";
 import {
+  CHAPTER_DISPLAY_OVERLAP,
   calculateChapterChatSliceStart,
   resolveDisplayScopeStartForNewChapterBridge,
 } from "@/lib/play/chapterConversationScope";
@@ -1401,7 +1402,7 @@ function PlayContent() {
     if (isReviewingNow) {
       scopeStart = 0;
     } else if (startedLogIndex !== null) {
-      scopeStart = startedLogIndex;
+      scopeStart = Math.max(0, startedLogIndex - CHAPTER_DISPLAY_OVERLAP);
     } else {
       const prevDef = chapterRuntime.previousDefinition;
       const prevProgress = prevDef

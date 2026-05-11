@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "../../../../../auth";
 import { ensureRuntimeSchema } from "@/db/ensureSchema";
 import { applyPresenceHeartbeat } from "@/lib/presence/applyPresenceHeartbeat";
-import { shouldCountPresenceHeartbeat } from "@/lib/presence/heartbeatCore";
+import { shouldCountPresenceHeartbeat, shouldUpdatePresenceTimestamp } from "@/lib/presence/heartbeatCore";
 import { hashClientIpForGuest, platformFromUserAgent } from "@/lib/privacy/guestIdentityHash";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 
@@ -72,11 +72,15 @@ export async function POST(request: Request) {
 
   const page = typeof b.page === "string" ? b.page : null;
   const ctx = b.context;
+  let isBackground = false;
   if (ctx) {
     const v = ctx.visible !== false;
     const f = ctx.focused !== false;
     if (!shouldCountPresenceHeartbeat({ visible: v, hasFocus: f })) {
-      return NextResponse.json({ ok: true, ignored: true });
+      if (!shouldUpdatePresenceTimestamp({ visible: v, hasFocus: f })) {
+        return NextResponse.json({ ok: true, ignored: true });
+      }
+      isBackground = true;
     }
   }
 
@@ -94,6 +98,7 @@ export async function POST(request: Request) {
       guestId: guestIdForBody,
       page,
       now,
+      isBackground,
       client,
     });
   } catch (err) {
