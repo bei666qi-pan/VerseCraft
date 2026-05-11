@@ -171,6 +171,9 @@ export const ANALYTICS_EVENT_TAXONOMY = {
   kg_job_failed: c("kg_job_failed", "health", "KG worker failed a job.", systemIdentity, ["jobId", "jobType", "attempts"], ["durationMs", "errorKind"], "kg"),
 
   world_engine_enqueued: c("world_engine_enqueued", "content_quality", "Background world engine tick was enqueued.", sessionIdentity, ["requestId", "jobId"], ["triggerCodes"], "world-engine"),
+  world_engine_reasoner_failed: c("world_engine_reasoner_failed", "content_quality", "World engine reasoner API call failed.", sessionIdentity, ["requestId"], ["code", "triggerSignals"], "world-engine"),
+  world_engine_parse_failed: c("world_engine_parse_failed", "content_quality", "World engine reasoner JSON parse failed.", sessionIdentity, ["requestId"], ["triggerSignals"], "world-engine"),
+  world_engine_validation_failed: c("world_engine_validation_failed", "content_quality", "World engine deterministic validation rejected all events.", sessionIdentity, ["requestId"], ["triggerSignals", "rejectedEventCodes"], "world-engine"),
   social_world_hint_projected: c("social_world_hint_projected", "content_quality", "Social world hints were projected into runtime.", sessionIdentity, ["requestId", "projectedCount"], ["socialWorldMode"], "world-engine"),
   turn_lane_decided: c("turn_lane_decided", "gameplay", "Turn lane routing decision.", sessionIdentity, ["requestId", "lane", "reasons"], ["confidence", "riskLane"], "turn-engine"),
   lane_side_effect_applied: c("lane_side_effect_applied", "gameplay", "Turn lane side-effect policy applied.", sessionIdentity, ["requestId", "lane"], ["riskLane", "sideEffectPlan"], "turn-engine"),
