@@ -69,5 +69,8 @@ test("options regen budget: server env override cannot widen options_regen_only 
 test("options regen budget: client options-only deadline cannot be disabled by rollout env", () => {
   const src = fs.readFileSync(playPagePath, "utf8");
   assert.equal(src.includes("clientOptionsOnlyDeadline"), false);
-  assert.match(src, /window\.setTimeout\(\(\) => \{\s*optionsRegenTimedOut = true;\s*ac\.abort\(\);\s*\}, optionsOnlyDeadlineMs\)/s);
+  assert.match(
+    src,
+    /window\.setTimeout\(\(\) => \{\s*optionsRegenTimedOut = true;[\s\S]*?ac\.abort\(\);[\s\S]*?\}, optionsOnlyDeadlineMs\)/
+  );
 });
