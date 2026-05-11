@@ -701,6 +701,8 @@ function PlayContent() {
   const parsedPostDrainRef = useRef<{ isDeath: boolean } | null>(null);
   /** When true: expand options dock after tail drain settles (defer-options flow). Consumed once in onTailDrainComplete. */
   const expandOptionsDockAfterTailDrainRef = useRef(false);
+  /** When true: user clicked to expand options while a regen was already in flight. Triggers a deferred retry on regen failure. */
+  const pendingManualOptionsRegenRef = useRef(false);
   const [tailAlignKey, setTailAlignKey] = useState(0);
   const autoScrollRafRef = useRef<number | null>(null);
   const chapterPageTurnTimerRef = useRef<number | null>(null);
@@ -2242,6 +2244,7 @@ function PlayContent() {
     setOptionsRegenFailureMessage(null);
     const optionsRegenStartedAt = Date.now();
     let optionsRegenTimedOut = false;
+    let regenSucceeded = false;
     if (trigger === "opening_fallback") {
       setFirstTimeHint("主笔正在补全首轮可选行动…");
     } else if (trigger === "auto_switch") {
@@ -2760,6 +2763,7 @@ function PlayContent() {
       setOptionsRegenProgress(100);
       setOptionsRegenFailureMessage(null);
       setCurrentOptions(finalOptions);
+      regenSucceeded = true;
       if (process.env.NODE_ENV === "development") {
         const debugHint = formatOptionsRegenDebugHint(Array.from(reasonCodes));
         if (debugHint) console.debug("[play][options_regen]", debugHint, { trigger, finalLen: finalOptions.length });
@@ -2780,6 +2784,12 @@ function PlayContent() {
     } finally {
       setOptionsRegenBusy(false);
       optionsRegenInFlightRef.current = false;
+      if (!regenSucceeded && pendingManualOptionsRegenRef.current) {
+        pendingManualOptionsRegenRef.current = false;
+        setTimeout(() => {
+          void requestFreshOptions("manual_button");
+        }, 0);
+      }
     }
   }
 
@@ -5182,16 +5192,22 @@ function PlayContent() {
                 onToggleOptions={() => {
                   const nextExpanded = !optionsExpanded;
                   setOptionsExpanded(nextExpanded);
+                  if (!nextExpanded) {
+                    pendingManualOptionsRegenRef.current = false;
+                    return;
+                  }
                   if (
-                    nextExpanded &&
                     !endingSettlementReady &&
                     !endingFlowActive &&
                     currentOptions.length === 0 &&
-                    !optionsRegenBusy &&
                     !optionsRegenPhaseBlocked &&
                     !isGuestDialogueExhausted
                   ) {
-                    void requestFreshOptions("manual_button");
+                    if (optionsRegenBusy) {
+                      pendingManualOptionsRegenRef.current = true;
+                    } else {
+                      void requestFreshOptions("manual_button");
+                    }
                   }
                 }}
                 chatBusy={isChatBusy || endgameState.active || endingSettlementReady}
