@@ -31,7 +31,7 @@ concurrency:
 jobs:
   runbook:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       INCIDENT_KEY: ${{ github.event.client_payload.incident_key || inputs.incident_key || github.run_id }}
       SOURCE: ${{ github.event.client_payload.source || 'manual' }}
@@ -67,47 +67,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Collect runtime evidence
-        run: pnpm exec node scripts/autoops/collect-runtime-evidence.mjs --health-attempts 1
-        continue-on-error: true
-
-      - name: Execute fast runbook
-        id: fast
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          if [ "${DRY_RUN}" = "true" ]; then
-            echo "Dry-run alert: skipping Coolify/ECS fast-path execution."
-            exit 0
-          fi
-          case "${ALERT_TYPE}" in
-            app_health_failed)
-              pnpm autoops:coolify:restart
-              ;;
-            coolify_deploy_failed)
-              pnpm autoops:coolify:deploy -- --force
-              ;;
-            disk_high|docker_cache|simple_server_issue)
-              pnpm autoops:volc:clean-disk
-              ;;
-            o11y_agent_disconnected)
-              pnpm autoops:volc:restart-o11y
-              ;;
-            memory_high|cpu_high)
-              pnpm autoops:volc:diagnose
-              ;;
-            *)
-              echo "No safe automatic fast path for ${ALERT_TYPE}; collecting issue evidence only."
-              ;;
-          esac
-
-      - name: Healthcheck
-        id: health
-        continue-on-error: true
-        run: pnpm autoops:healthcheck -- --attempts 4 --timeout-ms 8000
-
-      - name: Create or update incident issue
-        if: steps.health.outcome == 'success'
+      # ── Step 1: Create incident issue FIRST ──
+      - name: Write incident payload
         run: |
           mkdir -p .ops/autoops/runtime
           node - <<'NODE'
@@ -119,12 +80,136 @@ jobs:
             severity: process.env.SEVERITY,
             resource_id: process.env.RESOURCE_ID,
             trace_id: process.env.TRACE_ID,
+            runbook: process.env.RUNBOOK,
             created_at: process.env.CREATED_AT,
             dry_run: process.env.DRY_RUN === "true"
           }));
           NODE
-          node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/runbook-payload.json
 
+      - name: Create or update incident issue
+        id: issue
+        continue-on-error: true
+        run: |
+          node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/runbook-payload.json
+          issue_number="$(node -e "try { const fs=require('node:fs'); const p=JSON.parse(fs.readFileSync('.ops/autoops/runtime/incident-issue.json','utf8')); console.log(p.issue_number || '') } catch(e) { console.log('') }")"
+          echo "number=${issue_number}" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Collect runtime evidence ──
+      - name: Collect runtime evidence
+        run: pnpm exec node scripts/autoops/collect-runtime-evidence.mjs --health-attempts 1
+        continue-on-error: true
+
+      # ── Step 3: Execute remediation based on alert type ──
+      - name: Execute disk remediation
+        id: disk
+        continue-on-error: true
+        if: |
+          contains(fromJSON('["disk_high","disk_inode_high","disk_full","docker_cache","docker_logs_high","docker_overlay_high"]'), env.ALERT_TYPE)
+        run: |
+          set -euo pipefail
+          echo "Running disk remediation for ${ALERT_TYPE}..."
+          pnpm autoops:disk:remediate -- --mode auto
+          DISK_EXIT=$?
+          echo "exit_code=${DISK_EXIT}" >> "$GITHUB_OUTPUT"
+          if [ "$DISK_EXIT" = "2" ]; then
+            echo "recovered=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Disk remediation completed but still critical"
+          elif [ "$DISK_EXIT" = "0" ]; then
+            echo "recovered=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "recovered=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Disk remediation failed with exit code ${DISK_EXIT}"
+          fi
+
+      - name: Execute app health fast path
+        id: app
+        continue-on-error: true
+        if: env.ALERT_TYPE == 'app_health_failed' && env.DRY_RUN != 'true'
+        run: |
+          pnpm autoops:coolify:restart
+          sleep 15
+          pnpm autoops:healthcheck -- --attempts 4 --timeout-ms 8000
+
+      - name: Execute coolify deploy fast path
+        id: coolify
+        continue-on-error: true
+        if: env.ALERT_TYPE == 'coolify_deploy_failed' && env.DRY_RUN != 'true'
+        run: |
+          pnpm autoops:coolify:deploy -- --force
+          sleep 15
+          pnpm autoops:healthcheck -- --attempts 4 --timeout-ms 8000
+
+      - name: Execute other fast runbooks
+        id: fast
+        continue-on-error: true
+        if: |
+          !contains(fromJSON('["disk_high","disk_inode_high","disk_full","docker_cache","docker_logs_high","docker_overlay_high","app_health_failed","coolify_deploy_failed"]'), env.ALERT_TYPE)
+        run: |
+          set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "Dry-run: skipping fast-path execution."
+            exit 0
+          fi
+          case "${ALERT_TYPE}" in
+            o11y_agent_disconnected)
+              pnpm autoops:volc:restart-o11y
+              ;;
+            memory_high|cpu_high)
+              pnpm autoops:volc:diagnose
+              ;;
+            *)
+              echo "No automatic fast path for ${ALERT_TYPE}; evidence collected only."
+              ;;
+          esac
+
+      # ── Step 4: Healthcheck ──
+      - name: Healthcheck
+        id: health
+        continue-on-error: true
+        run: pnpm autoops:healthcheck -- --attempts 4 --timeout-ms 8000
+
+      # ── Step 5: Post-remediation comments + issue updates ──
+      - name: Comment disk remediation result
+        if: steps.disk.outcome == 'success' && steps.issue.outputs.number != ''
+        run: |
+          ISSUE="${{ steps.issue.outputs.number }}"
+          EXIT="${{ steps.disk.outputs.exit_code }}"
+          if [ "$EXIT" = "0" ]; then
+            MSG="Disk remediation completed successfully. See workflow artifacts for details."
+          elif [ "$EXIT" = "2" ]; then
+            MSG="Disk remediation completed but disk is still critical. Manual intervention needed."
+          else
+            MSG="Disk remediation encountered errors. Check workflow run for details."
+          fi
+          echo "Comment: ${MSG}"
+          node --input-type=module - <<'NODE'
+          import { GitHubClient } from "./scripts/autoops/lib/github.mjs";
+          const client = new GitHubClient();
+          const issue = process.env.ISSUE_NUMBER;
+          const msg = process.env.COMMENT_MSG;
+          await client.addIssueComment(issue, msg);
+          NODE
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          COMMENT_MSG: "${{ steps.disk.outputs.exit_code == '0' && 'Disk remediation completed successfully.' || steps.disk.outputs.exit_code == '2' && 'Disk remediation completed but disk is still critical. Manual intervention needed.' || 'Disk remediation encountered errors.' }}"
+
+      - name: Add manual-intervention-needed label if still critical
+        if: steps.disk.outputs.exit_code == '2' && steps.issue.outputs.number != ''
+        run: |
+          node --input-type=module - <<'NODE'
+          import { GitHubClient } from "./scripts/autoops/lib/github.mjs";
+          const client = new GitHubClient();
+          const issue = process.env.ISSUE_NUMBER;
+          await client.ensureLabels(["manual-intervention-needed"]);
+          const current = await client.getIssue(issue);
+          const labels = (current.labels || []).map(l => typeof l === 'string' ? l : l.name);
+          labels.push("manual-intervention-needed");
+          await client.request("PATCH", `/repos/${client.repoInfo.owner}/${client.repoInfo.repo}/issues/${issue}`, { labels: [...new Set(labels)] });
+          NODE
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+
+      # ── Step 6: Escalate if healthcheck failed ──
       - name: Escalate to Codex slow path
         if: steps.health.outcome != 'success' || steps.fast.outcome != 'success'
         run: |
@@ -136,3 +221,18 @@ jobs:
             --resource-id "${RESOURCE_ID}" \
             --trace-id "${TRACE_ID}" \
             --runbook "${RUNBOOK}"
+
+      # ── Step 7: Upload runtime artifacts ──
+      - name: Upload runtime artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoops-runbook-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            .ops/autoops/runtime/*.json
+            .ops/autoops/runtime/*.md
+            .ops/autoops/runtime/*.txt
+            !.ops/autoops/runtime/*.env
+            !.ops/autoops/runtime/*.zip

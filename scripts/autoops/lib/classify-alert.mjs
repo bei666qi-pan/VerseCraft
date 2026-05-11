@@ -2,16 +2,21 @@ import { buildIncidentKey } from "./incident-key.mjs";
 
 const ALERT_TYPES = new Set([
   "disk_high",
+  "disk_inode_high",
+  "disk_full",
   "memory_high",
   "cpu_high",
   "o11y_agent_disconnected",
   "app_health_failed",
   "app_5xx",
   "coolify_deploy_failed",
+  "coolify_unhealthy",
   "sentry_code_error",
   "apm_slow_endpoint",
   "build_failed",
   "docker_cache",
+  "docker_logs_high",
+  "docker_overlay_high",
   "simple_server_issue",
   "unknown",
 ]);
@@ -140,6 +145,7 @@ export function classifyAlert(alert = {}) {
     payload.message,
     payload.error,
     payload.status,
+    payload.status_code,
     payload.transaction,
     payload.url,
   ]
@@ -163,14 +169,37 @@ export function classifyAlert(alert = {}) {
   if (/coolify.*(fail|failed|error)|deploy.*failed|deployment.*failed|部署失败/.test(text)) {
     return "coolify_deploy_failed";
   }
+  if (/coolify.*(unhealthy|down|stopped|restart)/i.test(text)) {
+    return "coolify_unhealthy";
+  }
   if (/health|健康|unhealthy|probe|status[_ -]?code|http 5\d\d/.test(text)) {
     return "app_health_failed";
+  }
+  // Disk-specific patterns must come BEFORE app_5xx to avoid
+  // "500MB" in log-size warnings being misclassified as HTTP 500.
+  if (/no space left on device|ENOSPC|disk full|diskfull|磁盘空间不足|空间已满|no free space/i.test(text)) {
+    return "disk_full";
+  }
+  if (/inode.*(full|100%|99%|98%|97%|96%|95%)|inode.*exhausted/i.test(text)) {
+    return "disk_inode_high";
+  }
+  if (/overlay2.*(high|full|100%|99%|98%|95%)|docker.*overlay.*(space|full|usage.*high)/i.test(text)) {
+    return "docker_overlay_high";
+  }
+  if (/docker.*log.*(huge|giant|100%\s*MB|[5-9]\d{2,}\s*MB|exceed)/i.test(text) || /json[.-]log.*size/i.test(text)) {
+    return "docker_logs_high";
   }
   if (/(^|[^0-9])5\d\d([^0-9]|$)|bad gateway|gateway timeout|502|503|504/.test(text)) {
     return "app_5xx";
   }
-  if (/disk|filesystem|df|磁盘|硬盘|volume|inode/.test(text)) {
+  if (/filesystem|df\s+-h|磁盘|硬盘/i.test(text) && /(9[5-9]|100)%/.test(text)) {
     return "disk_high";
+  }
+  if (/disk|filesystem|df|磁盘|硬盘|volume/.test(text)) {
+    return "disk_high";
+  }
+  if (/inode/i.test(text)) {
+    return "disk_inode_high";
   }
   if (/docker.*cache|builder cache|image prune/.test(text)) {
     return "docker_cache";
@@ -189,17 +218,42 @@ export function classifyAlert(alert = {}) {
 
 export function decideAutoopsPath(alert = {}) {
   const alertType = alert.alert_type || classifyAlert(alert);
-  if (["disk_high", "docker_cache", "simple_server_issue", "o11y_agent_disconnected"].includes(alertType)) {
-    return { path: "fast", runbook: alertType === "o11y_agent_disconnected" ? "restart-o11y" : "clean-disk" };
+
+  // Disk-related alerts → runbook path (not veFaaS fast cleanup)
+  if (["disk_high", "disk_inode_high", "disk_full", "docker_cache", "docker_logs_high", "docker_overlay_high"].includes(alertType)) {
+    return { path: "runbook", runbook: "disk-remediate" };
   }
+
+  // o11y agent still fast
+  if (alertType === "o11y_agent_disconnected") {
+    return { path: "fast", runbook: "restart-o11y" };
+  }
+
+  // simple_server_issue → diagnose runbook
+  if (alertType === "simple_server_issue") {
+    return { path: "runbook", runbook: "diagnose" };
+  }
+
+  // app_health_failed: try fast path (coolify restart), escalate on failure
   if (alertType === "app_health_failed") {
     return { path: "fast", runbook: "coolify-restart" };
   }
+
+  // coolify_deploy_failed: fast redeploy
   if (alertType === "coolify_deploy_failed") {
     return { path: "fast", runbook: "coolify-deploy" };
   }
+
+  // coolify_unhealthy: runbook (diagnose + restart)
+  if (alertType === "coolify_unhealthy") {
+    return { path: "runbook", runbook: "coolify-diagnose" };
+  }
+
+  // Code repair needed: slow path → codex
   if (["sentry_code_error", "build_failed", "app_5xx", "apm_slow_endpoint"].includes(alertType)) {
     return { path: "slow", runbook: "collect-evidence" };
   }
+
+  // Unknown / unclassified: record only
   return { path: "record", runbook: "diagnose" };
 }

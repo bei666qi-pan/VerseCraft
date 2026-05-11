@@ -182,7 +182,25 @@ async function main() {
             logJson("autoops.health.remediation_triggered", {
               failures: consecutiveHealthFailures,
             });
-            await attemptRemediation({ dryRun: Boolean(args.dryRun) });
+            try {
+              await attemptRemediation({ dryRun: Boolean(args.dryRun) });
+              // Re-check health after remediation
+              const postHealth = await pollHealth({ attempts: 2, timeoutMs: 8000 });
+              logJson("autoops.health.post_remediation_check", {
+                ok: postHealth.ok,
+                site_ok: postHealth.site?.ok,
+                coolify_ok: postHealth.coolify?.ok,
+              });
+              if (!postHealth.ok) {
+                warnJson("autoops.health.remediation_did_not_restore", {
+                  consecutive_failures_before: consecutiveHealthFailures,
+                });
+              }
+            } catch (err) {
+              warnJson("autoops.health.remediation_error", {
+                error: err.message?.slice(0, 300),
+              });
+            }
             consecutiveHealthFailures = 0;
           }
         } else {
@@ -199,6 +217,11 @@ async function main() {
     if (now - lastIncidentPoll >= pollIntervalMs) {
       try {
         const result = await pollIncident(args);
+        if (result?.noIssue) {
+          logJson("autoops.agent.waiting_for_incident", {
+            message: "No matching incident issue found; waiting for next poll cycle.",
+          });
+        }
         if (result?.manual) {
           logJson("autoops.incident.manual_intervention_needed", {
             issue: result.issue || "unknown",

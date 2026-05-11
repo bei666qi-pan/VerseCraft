@@ -309,7 +309,7 @@ export async function once(args) {
   const client = new GitHubClient({ dryRun: Boolean(args.dryRun) });
   const issue = await selectIssue(client, args);
   if (!issue) {
-    logJson("autoops.agent.no_issue", {});
+    logJson("autoops.incident.no_matching_issue", {});
     return { ok: true, noIssue: true };
   }
   return processIssue(client, issue, args);
