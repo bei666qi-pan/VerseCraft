@@ -16,6 +16,7 @@ import {
 } from "@/lib/security/http";
 import { getPrunedUiRedirectPath } from "@/lib/ui/prunedUiRoutes";
 import { getChatRateLimitBucketForHeaders } from "@/lib/chatPurpose";
+import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER } from "@/lib/chatQueue/types";
 
 type Entry = { count: number; resetAt: number };
 
@@ -59,6 +60,14 @@ function getClientIp(req: NextRequest): string {
   const realIp = req.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
   return (req as unknown as { ip?: string }).ip ?? "unknown";
+}
+
+function buildLlmLimitKey(req: NextRequest): string {
+  const ip = getClientIp(req);
+  const ua = (req.headers.get("user-agent") ?? "").slice(0, 80);
+  const fp = req.headers.get(CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER) ?? "";
+  const safeFp = /^[a-zA-Z0-9_.:-]{8,160}$/.test(fp) ? fp : "";
+  return `${ip}|${ua}|${safeFp}`;
 }
 
 const RATE_LIMITED_JSON = {
@@ -197,7 +206,8 @@ export async function middleware(req: NextRequest) {
 
   if (isStream) {
     const chatBucket = getChatRateLimitBucketForHeaders(req.headers);
-    const allowed = chatBucket === "options_regen_only" ? optionsOnlyLlmLimiter(ip) : llmLimiter(ip);
+    const limitKey = buildLlmLimitKey(req);
+    const allowed = chatBucket === "options_regen_only" ? optionsOnlyLlmLimiter(limitKey) : llmLimiter(limitKey);
     if (!allowed) {
       return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
     }

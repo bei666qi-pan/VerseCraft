@@ -177,3 +177,124 @@ test("isSuspiciousPath detects traversal", () => {
   assert.equal(isSuspiciousPath("/api/chat"), false);
   assert.equal(isSuspiciousPath("/../etc/passwd"), true);
 });
+
+// --- Referer fallback for in-app WebViews ---
+
+test("isCrossSiteStateChangingRequest allows sec-fetch-site:none + Origin:null with same-origin Referer", () => {
+  // WeChat/QQ WebView: opaque origin + same-origin referer → not cross-site.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "origin": "null",
+        "referer": "https://versecraft.example.com/play",
+        "host": "versecraft.example.com",
+      })
+    ),
+    false
+  );
+});
+
+test("isCrossSiteStateChangingRequest blocks sec-fetch-site:none + Origin:null with cross-site Referer", () => {
+  // In-app WebView with opaque origin but referer pointing to an external site → block.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "origin": "null",
+        "referer": "https://evil.example.com/page",
+        "host": "versecraft.example.com",
+      })
+    ),
+    true
+  );
+});
+
+test("isCrossSiteStateChangingRequest allows Origin matching x-forwarded-host + x-forwarded-proto", () => {
+  // Reverse-proxy: browser sends origin for the public host; server sees x-forwarded-*.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "origin": "https://public.versecraft.example.com",
+        "host": "internal.local",
+        "x-forwarded-host": "public.versecraft.example.com",
+        "x-forwarded-proto": "https",
+      })
+    ),
+    false
+  );
+});
+
+test("isCrossSiteStateChangingRequest blocks Origin mismatching all candidate origins", () => {
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "origin": "https://evil.example.com",
+        "host": "versecraft.example.com",
+        "x-forwarded-host": "public.versecraft.example.com",
+        "x-forwarded-proto": "https",
+      })
+    ),
+    true
+  );
+});
+
+test("isCrossSiteStateChangingRequest allows missing Origin with same-origin Referer", () => {
+  // Some in-app browsers omit Origin but include a same-origin Referer.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "referer": "https://versecraft.example.com/play",
+        "host": "versecraft.example.com",
+      })
+    ),
+    false
+  );
+});
+
+test("isCrossSiteStateChangingRequest blocks missing Origin with cross-site Referer", () => {
+  // No Origin but Referer is cross-site → block.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "referer": "https://evil.example.com/page",
+        "host": "versecraft.example.com",
+      })
+    ),
+    true
+  );
+});
+
+test("isCrossSiteStateChangingRequest allows sec-fetch-site:none + no Origin + no Referer", () => {
+  // Most permissive fallback: privacy-sensitive browsers that suppress
+  // both Origin and Referer. Allow as same-origin (XHR/fetch + credentials: include
+  // already enforces same-origin at the browser level).
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "host": "versecraft.example.com",
+      })
+    ),
+    false
+  );
+});
+
+test("isCrossSiteStateChangingRequest still blocks explicit cross-site regardless of Referer", () => {
+  // sec-fetch-site:cross-site must always be blocked.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "cross-site",
+        "origin": "https://versecraft.example.com",
+        "referer": "https://versecraft.example.com/play",
+        "host": "versecraft.example.com",
+      })
+    ),
+    true
+  );
+});

@@ -21,16 +21,34 @@ test("classifyPlayTurnFailure separates busy, auth, and internal failures", () =
   assert.equal(classifyPlayTurnFailure({ status: 200, code: "VALIDATOR_REPAIR_FAILED" }), "internal");
 });
 
+test("classifyPlayTurnFailure detects csrf check failures", () => {
+  assert.equal(
+    classifyPlayTurnFailure({ status: 403, body: '{"error":"csrf_check_failed"}' }),
+    "csrf_failed"
+  );
+  assert.equal(
+    classifyPlayTurnFailure({ status: 403, reason: "csrf_check_failed" }),
+    "csrf_failed"
+  );
+  // csrf_check_failed takes priority over the auth_or_config 403 heuristic
+  assert.equal(
+    classifyPlayTurnFailure({ status: 403, code: "csrf_check_failed" }),
+    "csrf_failed"
+  );
+});
+
 test("only website/gateway failures are player-visible fallback", () => {
   assert.equal(shouldShowFailureAsNarrative("network_or_gateway"), true);
   assert.equal(shouldShowFailureAsNarrative("site_busy"), true);
   assert.equal(shouldShowFailureAsNarrative("local_rate_limited"), false);
   assert.equal(shouldShowFailureAsNarrative("auth_or_config"), true);
+  assert.equal(shouldShowFailureAsNarrative("csrf_failed"), true);
   assert.equal(shouldShowFailureAsNarrative("internal"), false);
 
   assert.match(getPlayTurnFailureMessage("network_or_gateway"), /网站|网关/);
   assert.match(getPlayTurnFailureMessage("site_busy"), /网站|繁忙/);
   assert.doesNotMatch(getPlayTurnFailureMessage("local_rate_limited"), /网站|繁忙|网络|网关/);
   assert.match(getPlayTurnFailureMessage("auth_or_config"), /网站|服务/);
+  assert.match(getPlayTurnFailureMessage("csrf_failed"), /浏览器|校验|刷新/);
   assert.equal(getPlayTurnFailureMessage("internal"), "");
 });

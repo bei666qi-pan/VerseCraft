@@ -5,6 +5,7 @@ export type PlayTurnFailureKind =
   | "site_busy"
   | "local_rate_limited"
   | "auth_or_config"
+  | "csrf_failed"
   | "internal";
 
 export function classifyPlayTurnFailure(args: {
@@ -27,6 +28,9 @@ export function classifyPlayTurnFailure(args: {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+
+  // CSRF check failure has a specific error code; surface it explicitly.
+  if (/\bcsrf_check_failed\b/.test(haystack)) return "csrf_failed";
 
   const isLocalRateLimited =
     args.status === 429 &&
@@ -74,9 +78,10 @@ export function getPlayTurnFailureMessage(kind: PlayTurnFailureKind): string {
   if (kind === "site_busy") return buildVisibleSiteFailureMessage("site_busy");
   if (kind === "local_rate_limited") return "请求节奏过快，请稍等片刻。";
   if (kind === "auth_or_config") return buildVisibleSiteFailureMessage("auth_or_config");
+  if (kind === "csrf_failed") return "当前浏览器请求校验失败，请刷新页面或将链接复制到系统浏览器打开。";
   return "";
 }
 
 export function shouldShowFailureAsNarrative(kind: PlayTurnFailureKind): boolean {
-  return kind === "network_or_gateway" || kind === "site_busy" || kind === "auth_or_config";
+  return kind === "network_or_gateway" || kind === "site_busy" || kind === "auth_or_config" || kind === "csrf_failed";
 }
