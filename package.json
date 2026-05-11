@@ -92,7 +92,13 @@
     "autoops:coolify:restart": "node scripts/autoops/coolify-restart.mjs",
     "autoops:volc:diagnose": "node scripts/autoops/run-volc-command.mjs diagnose",
     "autoops:volc:clean-disk": "node scripts/autoops/run-volc-command.mjs clean-disk",
-    "autoops:volc:restart-o11y": "node scripts/autoops/run-volc-command.mjs restart-o11y"
+    "autoops:volc:restart-o11y": "node scripts/autoops/run-volc-command.mjs restart-o11y",
+    "autoops:volc:log-rotate": "node scripts/autoops/run-volc-command.mjs docker-log-rotate",
+    "autoops:setup-cleanup": "node scripts/autoops/setup-scheduled-cleanup.mjs",
+    "autoops:setup-disk-alert": "node scripts/autoops/setup-disk-alert.mjs",
+    "autoops:start": "node scripts/autoops/start-autoops.mjs",
+    "autoops:start:codex": "node scripts/autoops/start-autoops.mjs --agent codex",
+    "autoops:start:deepseek": "node scripts/autoops/start-autoops.mjs --agent deepseek"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",

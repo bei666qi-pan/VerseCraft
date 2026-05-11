@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { createAgentRunner } from "./lib/agent-runner.mjs";
 import { CoolifyClient, discoverCoolifyAppUuid } from "./lib/coolify.mjs";
 import { GitHubClient } from "./lib/github.mjs";
 import { runHealthcheck } from "./lib/healthcheck.mjs";
@@ -90,7 +91,7 @@ async function buildLocalTask({ issue, comments, artifacts }) {
   const promptText = existsSync(existingPrompt) ? await readFile(existingPrompt, "utf8") : "";
   const bodyAndComments = [issue.body || "", ...comments.map((comment) => comment.body || "")].join("\n\n--- comment ---\n\n");
   const links = artifactAndEvidenceLinks(bodyAndComments);
-  const task = `# Local Codex Auto-Ops Task
+  const task = `# Local Agent Auto-Ops Task
 
 Issue: #${issue.number} ${issue.title}
 Issue URL: ${issue.html_url}
@@ -122,36 +123,48 @@ ${JSON.stringify({ urls: links.urls, artifacts }, null, 2)}
 - Do not commit runtime artifacts, generated secrets, env files, zips, private keys, tokens, or logs.
 - After editing, the runner will validate and push if requested.
 `;
-  const taskPath = await writeRuntimeText("local-codex-task.md", task);
+  const taskPath = await writeRuntimeText("local-agent-task.md", task);
   return { taskPath, task };
 }
 
 function runLocalCodex(task, args) {
-  if (args.dryRun) {
-    logJson("autoops.local_codex.dry_run", { prompt_written: ".ops/autoops/runtime/local-codex-task.md" });
-    return { executed: false, dryRun: true };
-  }
-  if (process.env.AUTOOPS_CODEX_COMMAND) {
-    const result = spawnSync(process.env.AUTOOPS_CODEX_COMMAND, {
-      shell: true,
-      input: task,
-      encoding: "utf8",
-      timeout: Number(args.codexTimeoutMs || 45 * 60 * 1000),
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    return { executed: result.status === 0, status: result.status, stdout: result.stdout, stderr: result.stderr, command: "AUTOOPS_CODEX_COMMAND" };
-  }
-  const help = spawnSync("codex", ["exec", "--help"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  if (help.status !== 0) {
-    return { executed: false, unavailable: true, reason: "codex CLI with non-interactive exec is not available" };
-  }
-  const result = spawnSync("codex", ["exec"], {
-    input: task,
-    encoding: "utf8",
-    timeout: Number(args.codexTimeoutMs || 45 * 60 * 1000),
-    stdio: ["pipe", "pipe", "pipe"],
+  // Backward-compatible wrapper: use agent runner under the hood.
+  return runAgent(task, args);
+}
+
+async function runAgent(task, args) {
+  const agentType = args.agent || "claude";
+  const runner = createAgentRunner(agentType, {
+    commandOverride: process.env.AUTOOPS_CODEX_COMMAND,
   });
-  return { executed: result.status === 0, status: result.status, stdout: result.stdout, stderr: result.stderr, command: "codex exec" };
+
+  if (args.dryRun) {
+    logJson("autoops.agent.dry_run", {
+      agent: runner.name,
+      prompt_written: ".ops/autoops/runtime/local-agent-task.md",
+    });
+    return { executed: false, dryRun: true, agent: runner.name };
+  }
+
+  logJson("autoops.agent.starting", {
+    agent: runner.name,
+    timeout_ms: Number(args.agentTimeoutMs || 45 * 60 * 1000),
+  });
+
+  const result = await runner.run(task, {
+    timeoutMs: Number(args.agentTimeoutMs || 45 * 60 * 1000),
+  });
+
+  await writeRuntimeJson("local-agent-execution.json", result);
+  logJson("autoops.agent.completed", {
+    agent: runner.name,
+    executed: result.executed,
+    exit_code: result.exitCode,
+    duration_ms: result.durationMs,
+    unavailable: result.unavailable,
+  });
+
+  return result;
 }
 
 function validationCommandsFor(files) {
@@ -179,11 +192,11 @@ async function validate(files) {
       results.push({ command, ok: true, duration_ms: Date.now() - started });
     } catch (error) {
       results.push({ command, ok: false, duration_ms: Date.now() - started, output: error.output || error.message });
-      await writeRuntimeJson("local-codex-validation.json", { ok: false, results });
+      await writeRuntimeJson("local-agent-validation.json", { ok: false, results });
       return { ok: false, results };
     }
   }
-  await writeRuntimeJson("local-codex-validation.json", { ok: true, results });
+  await writeRuntimeJson("local-agent-validation.json", { ok: true, results });
   return { ok: true, results };
 }
 
@@ -211,42 +224,48 @@ async function deployIfRequested() {
   return { mode, deploy };
 }
 
-async function processIssue(client, issue, args) {
+export async function processIssue(client, issue, args) {
   const comments = await client.listIssueComments(issue.number);
   const links = artifactAndEvidenceLinks([issue.body || "", ...comments.map((comment) => comment.body || "")].join("\n"));
   const artifacts = await artifactLinksForRuns(client, links.runIds);
   const { task, taskPath } = await buildLocalTask({ issue, comments, artifacts });
-  logJson("autoops.local_codex.task_ready", { issue: issue.number, task_path: taskPath });
+  const agentType = args.agent || "claude";
+  logJson("autoops.agent.task_ready", { issue: issue.number, task_path: taskPath, agent: agentType });
 
-  const codex = runLocalCodex(task, args);
-  await writeRuntimeJson("local-codex-execution.json", codex);
-  if (!codex.executed) {
+  const agentResult = runLocalCodex(task, args);
+  await writeRuntimeJson("local-agent-execution.json", agentResult);
+  if (!agentResult.executed) {
+    const reason = agentResult.unavailable
+      ? `Agent "${agentResult.agent || agentType}" is not available: ${agentResult.reason || "unknown"}`
+      : agentResult.reason || "dry-run";
     const message = [
-      "Local Codex runner prepared the repair prompt but did not execute a non-interactive Codex CLI.",
+      "Local agent runner prepared the repair prompt but did not execute.",
+      `Agent: \`${agentResult.agent || agentType}\``,
+      `Reason: ${reason}`,
       "",
       `Prompt: \`${taskPath}\``,
       "",
-      "Run manually in Codex, then rerun:",
+      "Run manually, then rerun:",
       "",
       "```bash",
-      `pnpm autoops:local-codex -- --issue ${issue.number} --push-main`,
+      `pnpm autoops:local-codex -- --issue ${issue.number} --push-main --agent ${agentType}`,
       "```",
     ].join("\n");
     await client.addIssueComment(issue.number, message);
-    logJson("autoops.local_codex.needs_manual_codex", { issue: issue.number, task_path: taskPath, reason: codex.reason || "dry-run" });
+    logJson("autoops.agent.needs_manual", { issue: issue.number, task_path: taskPath, agent: agentResult.agent || agentType, reason });
     return { ok: false, manual: true };
   }
 
   const files = changedFiles();
-  await writeRuntimeJson("local-codex-changed-files.json", { files, status: statusShort() });
+  await writeRuntimeJson("local-agent-changed-files.json", { files, status: statusShort() });
   if (!files.length) {
-    await client.addIssueComment(issue.number, "Local Codex completed but produced no repository changes.");
+    await client.addIssueComment(issue.number, `Local agent (${agentResult.agent || agentType}) completed but produced no repository changes.`);
     return { ok: true, noChanges: true };
   }
 
   const validation = await validate(files);
   if (!validation.ok) {
-    await client.addIssueComment(issue.number, `Local validation failed. Logs are in \`.ops/autoops/runtime/local-codex-validation.json\`.\n\nFailed command: \`${validation.results.find((item) => !item.ok)?.command}\``);
+    await client.addIssueComment(issue.number, `Local validation failed. Logs are in \`.ops/autoops/runtime/local-agent-validation.json\`.\n\nFailed command: \`${validation.results.find((item) => !item.ok)?.command}\``);
     return { ok: false, validationFailed: true };
   }
 
@@ -271,7 +290,7 @@ async function processIssue(client, issue, args) {
   const deploy = args.pushMain ? await deployIfRequested() : { skipped: "push-main not requested" };
   const health = args.pushMain ? await runHealthcheck({ attempts: 4, timeoutMs: 10000 }) : { skipped: "push-main not requested" };
   const body = [
-    `Local Codex remediation completed for #${issue.number}.`,
+    `Local agent (${agentResult.agent || agentType}) remediation completed for #${issue.number}.`,
     "",
     `Commit: \`${sha}\``,
     `Pushed main: \`${Boolean(args.pushMain)}\``,
@@ -285,12 +304,12 @@ async function processIssue(client, issue, args) {
   return { ok: true, sha, deploy, health };
 }
 
-async function once(args) {
+export async function once(args) {
   await loadLocalEnvFiles();
   const client = new GitHubClient({ dryRun: Boolean(args.dryRun) });
   const issue = await selectIssue(client, args);
   if (!issue) {
-    logJson("autoops.local_codex.no_issue", {});
+    logJson("autoops.agent.no_issue", {});
     return { ok: true, noIssue: true };
   }
   return processIssue(client, issue, args);
@@ -303,7 +322,7 @@ async function main() {
     const intervalMs = Number(args.intervalMs || 300000);
     do {
       await once(args).catch(async (error) => {
-        await writeRuntimeJson("local-codex-error.json", { error: error.message, at: new Date().toISOString() });
+        await writeRuntimeJson("local-agent-error.json", { error: error.message, at: new Date().toISOString() });
         console.error(error);
       });
       await new Promise((resolve) => setTimeout(resolve, intervalMs));

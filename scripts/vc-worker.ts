@@ -10,6 +10,15 @@ import { hostname } from "node:os";
 const workerId = `${hostname()}-${process.pid}`;
 const once = process.argv.includes("--once");
 
+let consecutiveFailures = 0;
+let lastJobProcessedAt: string | null = null;
+const MAX_CONSECUTIVE_FAILURES =
+  (() => {
+    const raw = process.env.VC_WORKER_MAX_CONSECUTIVE_FAILURES;
+    const n = raw == null ? 5 : Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5;
+  })();
+
 function logJson(obj: Record<string, unknown>): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), workerId, ...obj }));
 }
@@ -19,6 +28,20 @@ function workerConcurrency(): number {
   const n = raw == null ? 1 : Number(raw);
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(2, Math.floor(n));
+}
+
+async function writeHeartbeat(): Promise<void> {
+  try {
+    const { writeWorkerHeartbeat } = await import("../src/lib/kg/workerHeartbeat");
+    await writeWorkerHeartbeat({
+      workerId,
+      lastPollAt: new Date().toISOString(),
+      lastJobProcessedAt,
+      consecutiveFailures,
+    });
+  } catch {
+    // 心跳失败不影响主循环
+  }
 }
 
 function reasonerCooldownMs(): number {
@@ -88,6 +111,9 @@ async function processOne(
   await emitJobEvent(deps.recordGenericAnalyticsEvent, "kg_job_claimed", job, {});
 
   try {
+    // Job 开始处理时也算心跳活动
+    lastJobProcessedAt = new Date().toISOString();
+
     switch (job.jobType) {
       case "JANITOR_REVIEW_CANDIDATE": {
         const candidateId = payloadCandidateId(job.payload);
@@ -139,12 +165,17 @@ async function processOne(
     }
 
     await deps.completeJob(job.jobId);
+    consecutiveFailures = 0;
     await emitJobEvent(deps.recordGenericAnalyticsEvent, "kg_job_succeeded", job, {
       latencyMs: Date.now() - t0,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    logJson({ level: "error", msg: "job_failed", jobId: job.jobId, jobType: job.jobType, error: msg });
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      logJson({ level: "alert", msg: "consecutive_failures_threshold", jobId: job.jobId, jobType: job.jobType, consecutiveFailures, threshold: MAX_CONSECUTIVE_FAILURES });
+    }
+    logJson({ level: "error", msg: "job_failed", jobId: job.jobId, jobType: job.jobType, error: msg, consecutiveFailures });
     await deps.failJob({
       jobId: job.jobId,
       maxAttempts: job.maxAttempts,
@@ -206,7 +237,11 @@ async function main(): Promise<void> {
 
   logJson({ level: "info", msg: "worker_start", once, concurrency: workerConcurrency() });
 
+  // 启动时立即写一次心跳
+  await writeHeartbeat();
+
   let idleMs = 300;
+  let heartbeatCounter = 0;
   try {
     for (;;) {
       const stale = await releaseStaleRunningJobs(10);
@@ -214,6 +249,10 @@ async function main(): Promise<void> {
 
       const jobs = (await claimJobs({ workerId, batch: 4 })) as ClaimedJob[];
       if (jobs.length === 0) {
+        // 空闲时也写心跳
+        heartbeatCounter += 1;
+        if (heartbeatCounter % 3 === 0) await writeHeartbeat();
+
         await new Promise((r) => setTimeout(r, idleMs));
         idleMs = Math.min(800, Math.floor(idleMs * 1.25));
         if (once) break;
@@ -221,6 +260,26 @@ async function main(): Promise<void> {
       }
       idleMs = 300;
       await processBatch(deps, jobs);
+
+      // 每批处理完写心跳
+      await writeHeartbeat();
+
+      // 周期性检测 dead job 堆积
+      heartbeatCounter += 1;
+      if (heartbeatCounter % 10 === 0) {
+        try {
+          const r = await pool.query<{ count: string }>(
+            `SELECT COUNT(*)::int AS count FROM vc_jobs WHERE job_type = 'WORLD_ENGINE_TICK' AND status = 'dead' AND created_at >= NOW() - INTERVAL '24 hours'`
+          ).catch(() => null);
+          const deadCount = r ? Number(r.rows[0]?.count ?? 0) : -1;
+          if (deadCount > 20) {
+            logJson({ level: "alert", msg: "dead_jobs_accumulating", jobType: "WORLD_ENGINE_TICK", deadCount, threshold: 20 });
+          }
+        } catch {
+          // 静默
+        }
+      }
+
       if (once) break;
     }
   } finally {

@@ -4660,10 +4660,8 @@ function PlayContent() {
       setFirstTimeHint("本局终局已经开启，请完成最终选择。");
     }
 
-    expandOptionsDockAfterTailDrainRef.current =
-      deliverPlayableOptionsSeparately &&
-      endingAfterTurn.phase !== "settlement_ready" &&
-      !(endingAfterTurn.phase === "eligible" && endingAfterTurn.eligibility?.outcome !== "death");
+    // 选项生成后不自动展开 dock，由玩家手动点击展开
+    expandOptionsDockAfterTailDrainRef.current = false;
 
     // 统一强制保存：只要本回合 DM JSON 成功解析且状态 commit 完成，就必须保存一次。
     // 这能覆盖“手动输入且无 options”的场景，避免首页“继续执笔”失真。

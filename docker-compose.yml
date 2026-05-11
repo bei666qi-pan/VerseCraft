@@ -34,9 +34,16 @@ services:
       AI_ENABLE_WORLD_DIRECTOR: "true"
       AI_DIRECTOR_MODE: soft
       AI_ENABLE_DIRECTOR_HINT_INJECTION: "true"
+      VC_RUN_EMBEDDED_WORKER: "false"
     env_file: [".env.local"]
     command: ["node", "--conditions=react-server", "--import", "tsx", "scripts/vc-worker.ts"]
     depends_on: [postgres, redis]
+    healthcheck:
+      test: ["CMD", "node", "-e", "try{const fs=require('fs');const t=parseInt(fs.readFileSync('/tmp/versecraft-worker-heartbeat','utf8'));process.exit(Date.now()-t<120000?0:1)}catch(e){process.exit(1)}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
 
 volumes:
   postgres_data:

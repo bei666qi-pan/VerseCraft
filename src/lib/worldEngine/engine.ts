@@ -1,6 +1,7 @@
 import { pool } from "@/db/index";
 import { runDirectorPlanCriticTask, runOfflineReasonerTask } from "@/lib/ai/logicalTasks";
 import type { ChatMessage } from "@/lib/ai/types/core";
+import { recordGenericAnalyticsEvent } from "@/lib/analytics/repository";
 import { getAppRedisClient } from "@/lib/ratelimit";
 import { applySocialGmDeltas, type SocialGmApplyResult } from "@/lib/socialWorld/applyDeltas";
 import { selectActiveNpcsForSocialTick } from "@/lib/socialWorld/activation";
@@ -554,10 +555,62 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
     },
   });
   const socialReasonerLatencyMs = socialTickTriggered ? Math.max(0, Date.now() - reasonerStartedAt) : 0;
-  if (!res.ok) return { ok: false, reason: `reasoner_failed:${res.code}` };
+  if (!res.ok) {
+    void recordGenericAnalyticsEvent({
+      eventId: `${payload.requestId}:reasoner_failed`,
+      idempotencyKey: `${payload.requestId}:reasoner_failed`,
+      userId: payload.userId,
+      sessionId: payload.sessionId,
+      eventName: "world_engine_reasoner_failed",
+      eventTime: new Date(),
+      page: null,
+      source: "world_engine",
+      platform: "unknown",
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: { code: res.code, triggerSignals: payload.triggerSignals },
+    }).catch(() => {});
+    return { ok: false, reason: `reasoner_failed:${res.code}` };
+  }
   const parsed = parseWorldEngineDeltaJson(res.content ?? "");
-  if (!parsed) return { ok: false, reason: "reasoner_invalid_json" };
+  if (!parsed) {
+    void recordGenericAnalyticsEvent({
+      eventId: `${payload.requestId}:parse_failed`,
+      idempotencyKey: `${payload.requestId}:parse_failed`,
+      userId: payload.userId,
+      sessionId: payload.sessionId,
+      eventName: "world_engine_parse_failed",
+      eventTime: new Date(),
+      page: null,
+      source: "world_engine",
+      platform: "unknown",
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: { contentPreview: (res.content ?? "").slice(0, 200), triggerSignals: payload.triggerSignals },
+    }).catch(() => {});
+    return { ok: false, reason: "reasoner_invalid_json" };
+  }
   const deterministicValidation = validateDirectorPlan(parsed);
+  if (!deterministicValidation.accepted) {
+    void recordGenericAnalyticsEvent({
+      eventId: `${payload.requestId}:validation_failed`,
+      idempotencyKey: `${payload.requestId}:validation_failed`,
+      userId: payload.userId,
+      sessionId: payload.sessionId,
+      eventName: "world_engine_validation_failed",
+      eventTime: new Date(),
+      page: null,
+      source: "world_engine",
+      platform: "unknown",
+      tokenCost: 0,
+      playDurationDeltaSec: 0,
+      payload: {
+        issues: deterministicValidation.issues.map((i) => ({ code: i.code, severity: i.severity })),
+        rejectedEventCodes: deterministicValidation.rejectedEventCodes,
+        triggerSignals: payload.triggerSignals,
+      },
+    }).catch(() => {});
+  }
   const validation = await runOptionalCritic({
     payload,
     plan: parsed,
