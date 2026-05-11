@@ -330,15 +330,16 @@ test("entering chapter two keeps chapter one review safe and returns to active c
   assert.equal(state.currentChapterId, CHAPTER_TWO_ID);
 });
 
-test("chapter completion derives a fallback title from summary when the model omits the candidate", () => {
+test("chapter completion does not invent a next title when the model omits the candidate", () => {
   let state = createInitialChapterState(1);
+  const orderOnlyTitle = formatChapterTitle(second, state);
   for (let i = 0; i < first.minTurns; i++) {
     state = recordChapterTurnInState({
       state,
       definition: first,
       signals: progressSignals({
         clueLines: ["门缝后有潮湿脚印，指向储物间。"],
-        resultLines: ["走廊不是普通通道。"],
+        resultLines: ["我确认安全区外的走廊不是普通通道。"],
       }),
       runtime:
         i === first.minTurns - 1
@@ -349,8 +350,8 @@ test("chapter completion derives a fallback title from summary when the model om
   }
 
   const title = formatChapterTitle(second, state);
-  assert.ok(title !== "第二章");
-  assert.ok(typeof state.chapterTitlesById[CHAPTER_TWO_ID] === "string");
+  assert.equal(title, orderOnlyTitle);
+  assert.equal(state.chapterTitlesById[CHAPTER_TWO_ID], undefined);
 });
 
 test("normalization drops duplicate non-first chapter titles from older saves", () => {
