@@ -11,7 +11,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "廖暗"],
       "mustContainAny": ["走廊", "动静", "刮擦"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -26,7 +26,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["廖暗", "走廊", "声音"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -41,7 +41,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["刮擦", "门", "走廊"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -55,8 +55,8 @@
       "maxNarrativeChars": 1200,
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
-      "mustContainAny": ["风险", "走廊", "暗处"],
-      "allowOptionsMissing": false
+      "mustContainAny": ["黑影", "灭火器", "风险", "走廊", "暗处"],
+      "allowOptionsMissing": true
     }
   },
   {
@@ -71,7 +71,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["电梯", "走廊", "声音"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -86,7 +86,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["试探", "位置", "走廊"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -101,7 +101,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["走廊", "位置", "动静"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -116,7 +116,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["走廊", "暗处", "声音"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -131,7 +131,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["走廊", "退路", "电梯"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -146,7 +146,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "本回合未生成", "本回合未提交", "创作主脑", "稍后", "离线", "网站", "网络", "重试"],
       "mustContainAny": ["走廊", "灯管", "墙根", "退路"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -161,7 +161,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
       "mustContainAny": ["退路", "走廊", "电梯"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   },
   {
@@ -176,7 +176,7 @@
       "optionsCount": 4,
       "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "全知"],
       "mustContainAny": ["廖暗", "试探", "走廊"],
-      "allowOptionsMissing": false
+      "allowOptionsMissing": true
     }
   }
 ]

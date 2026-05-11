@@ -98,7 +98,9 @@ export function evaluateChatQualityCase(testCase: ChatEvalCase, metrics: ChatSse
   if (!jsonPass) failures.push("json_contract_failed");
 
   const mustContainAny = testCase.expect.mustContainAny ?? [];
-  const mustContainPass = mustContainAny.length === 0 || mustContainAny.some((term) => text.includes(term));
+  // Main-turn FINAL may omit options (defer to options_regen_only); anchor cues must survive in narrative.
+  const mustContainPass =
+    mustContainAny.length === 0 || mustContainAny.some((term) => narrative.includes(term));
   const narrativeLengthPass =
     metrics.narrativeChars >= testCase.expect.minNarrativeChars &&
     metrics.narrativeChars <= testCase.expect.maxNarrativeChars;

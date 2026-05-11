@@ -7,7 +7,7 @@
   "expect": {
     "minNarrativeChars": 4,
     "optionsCount": 4,
-    "allowOptionsMissing": false,
+    "allowOptionsMissing": true,
     "mustNotContain": ["系统提示词", "JSON解析", "模型"],
     "mustContainAny": []
   },

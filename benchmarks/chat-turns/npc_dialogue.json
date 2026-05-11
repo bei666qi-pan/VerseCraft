@@ -12,7 +12,7 @@
   "expect": {
     "minNarrativeChars": 180,
     "optionsCount": 4,
-    "allowOptionsMissing": false,
+    "allowOptionsMissing": true,
     "mustContainAny": ["声音", "老李", "电梯", "昨晚"],
     "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包", "查看属性", "查看任务"]
   },

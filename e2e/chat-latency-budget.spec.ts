@@ -8,6 +8,18 @@ const ASSERT_BUDGET = process.env.VC_ASSERT_CHAT_LATENCY_BUDGET === "1";
 const EXPECT_KEYS_MISSING = process.env.E2E_EXPECT_KEYS_MISSING === "1";
 const MOCK_AI = process.env.AI_PROVIDER === "mock";
 
+/** Mirrors `readFlag(..., defaultTrue)` for VERSECRAFT_DEFER_MAIN_TURN_OPTIONS_TO_CLIENT in rollout flags (CI default ON). */
+function expectDeferredMainTurnOptionsEmptyInFinal(): boolean {
+  const raw = process.env.VERSECRAFT_DEFER_MAIN_TURN_OPTIONS_TO_CLIENT;
+  if (raw === undefined) return true;
+  const trimmed = raw.trim().replace(/^\uFEFF/, "");
+  if (trimmed === "") return true;
+  const l = trimmed.toLowerCase();
+  if (l === "1" || l === "true" || l === "yes" || l === "on") return true;
+  if (l === "0" || l === "false" || l === "no" || l === "off") return false;
+  return true;
+}
+
 function liveGatewayEnvPresent(): boolean {
   const base = (process.env.AI_GATEWAY_BASE_URL ?? "").trim();
   const key = (process.env.AI_GATEWAY_API_KEY ?? "").trim();
@@ -64,7 +76,7 @@ test.describe("/api/chat latency budget - degraded SSE", () => {
 });
 
 test.describe("/api/chat latency budget - mock provider", () => {
-  test("mock stream preserves SSE contract, narrative, options, and budget metrics", async () => {
+  test("mock stream preserves SSE contract, narrative, final options posture, and budget metrics", async () => {
     test.setTimeout(120_000);
     test.skip(!MOCK_AI, "Requires AI_PROVIDER=mock.");
     await collectChatLatencyMetrics({
@@ -85,8 +97,13 @@ test.describe("/api/chat latency budget - mock provider", () => {
     expect(metrics.finalFrameReceived).toBe(true);
     expect(metrics.finalJsonParseSuccess).toBe(true);
     expect(metrics.narrativeChars).toBeGreaterThanOrEqual(180);
-    expect(metrics.optionsCount).toBe(4);
-    expect(metrics.optionsQualityPass).toBe(true);
+    if (expectDeferredMainTurnOptionsEmptyInFinal()) {
+      expect(metrics.optionsCount).toBe(0);
+      expect(metrics.optionsQualityPass).toBe(false);
+    } else {
+      expect(metrics.optionsCount).toBe(4);
+      expect(metrics.optionsQualityPass).toBe(true);
+    }
     expect(metrics.longGapCount).toBe(0);
     expect(metrics.firstStatusMs!).toBeLessThanOrEqual(CHAT_LATENCY_BUDGET.firstStatusShownP95Ms);
     expect(metrics.firstVisibleTextMs!).toBeLessThanOrEqual(CHAT_LATENCY_BUDGET.firstVisibleTextP95Ms);

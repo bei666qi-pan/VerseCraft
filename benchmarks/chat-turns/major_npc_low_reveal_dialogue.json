@@ -7,7 +7,7 @@
   "expect": {
     "minNarrativeChars": 120,
     "optionsCount": 4,
-    "allowOptionsMissing": false,
+    "allowOptionsMissing": true,
     "mustContainAny": ["走廊", "墙根", "位置", "退路"],
     "mustNotContain": ["耶里", "学生会", "辅锚", "七人", "校源徘徊者"],
     "personaMustFeel": ["温柔但克制", "不给终点答案", "不替玩家做选择"],
