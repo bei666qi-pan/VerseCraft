@@ -585,3 +585,55 @@ test.describe("queue bypass path for in-app browsers", () => {
     await expect(page.locator("body")).not.toContainText("网站生成通道繁忙");
   });
 });
+
+test.describe("middleware CSRF: WebView false-positive Sec-Fetch-Site", () => {
+  const middlewareUaCases = [
+    {
+      name: "WeChat",
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.0",
+    },
+    {
+      name: "QQ",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 12; zh-cn) AppleWebKit/537.36 Version/4.0 Chrome/98.0.4758.87 QQBrowser/14.0 Mobile Safari/537.36",
+    },
+    {
+      name: "Quark",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.0.0 Quark/7.2.0.650 Mobile Safari/537.36",
+    },
+    {
+      name: "Baidu",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 12; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/96.0.4664.45 Mobile Safari/537.36 baiduboxapp/13.40.0.10",
+    },
+  ];
+
+  for (const { name, userAgent } of middlewareUaCases) {
+    test(`POST /api/presence/heartbeat is not 403 for ${name} when Sec-Fetch-Site is cross-site but referer is same-origin`, async ({
+      request,
+      baseURL,
+    }) => {
+      const origin = baseURL ?? "http://127.0.0.1:666";
+      const res = await request.post(`${origin}/api/presence/heartbeat`, {
+        headers: {
+          "Content-Type": "application/json",
+          "Sec-Fetch-Site": "cross-site",
+          Origin: "https://servicewechat.com",
+          Referer: `${origin}/play`,
+          "User-Agent": userAgent,
+        },
+        data: JSON.stringify({
+          sessionId: "e2e_mw_csrf_sess",
+          page: "/play",
+          guestId: "e2e_mw_guest",
+          context: { visible: true, focused: true },
+        }),
+      });
+      const body = await res.text();
+      expect(res.status(), body).not.toBe(403);
+      expect(body).not.toContain("csrf_check_failed");
+    });
+  }
+});

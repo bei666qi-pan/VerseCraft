@@ -7,11 +7,11 @@ import {
   isSuspiciousPath,
 } from "@/lib/security/http";
 
-function makeReq(method: string, headers: Record<string, string>): any {
+function makeReq(method: string, headers: Record<string, string>, pathname = "/api/chat/queue"): any {
   return {
     method,
     headers: new Map(Object.entries(headers)),
-    nextUrl: new URL("https://versecraft.example.com/api/chat/queue"),
+    nextUrl: new URL(`https://versecraft.example.com${pathname}`),
   };
 }
 
@@ -62,6 +62,53 @@ test("isCrossSiteStateChangingRequest blocks explicit cross-site", () => {
         "origin": "https://evil.example.com",
         "host": "versecraft.example.com",
       })
+    ),
+    true
+  );
+});
+
+test("isCrossSiteStateChangingRequest allows in-app webview cross-site with same-site referer for api/chat", () => {
+  const inAppUAs = [
+    "Mozilla/5.0 (Linux; Android 12; zh-cn) AppleWebKit/537.36 Version/4.0 Chrome/98.0.4758.87 MQQBrowser/14.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 MQQBrowser/17.0.0.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 12; rv:109.0) AppleWebKit/537.36 Chrome/109.0.0.0 Mobile Safari/537.36 Quark/8.9.6.1",
+    "Mozilla/5.0 (Linux; U; Android 11; zh-cn; MI 9 Build/RKQ1.201112.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/105.0.0.0 baiduboxapp/13.24.0.10",
+  ];
+
+  for (const userAgent of inAppUAs) {
+    assert.equal(
+      isCrossSiteStateChangingRequest(
+        makeReq(
+          "POST",
+          {
+            "sec-fetch-site": "cross-site",
+            "origin": "https://servicewechat.com",
+            "referer": "https://versecraft.example.com/play",
+            "host": "versecraft.example.com",
+            "user-agent": userAgent,
+          },
+          "/api/chat"
+        )
+      ),
+      false
+    );
+  }
+});
+
+test("isCrossSiteStateChangingRequest blocks in-app-like UA on non-whitelisted path", () => {
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq(
+        "POST",
+        {
+          "sec-fetch-site": "cross-site",
+          "origin": "https://servicewechat.com",
+          "referer": "https://versecraft.example.com/play",
+          "host": "versecraft.example.com",
+          "user-agent": "Mozilla/5.0 (Linux; Android 12) MQQBrowser/14.0",
+        },
+        "/api/preferences"
+      )
     ),
     true
   );
@@ -284,8 +331,8 @@ test("isCrossSiteStateChangingRequest allows sec-fetch-site:none + no Origin + n
   );
 });
 
-test("isCrossSiteStateChangingRequest still blocks explicit cross-site regardless of Referer", () => {
-  // sec-fetch-site:cross-site must always be blocked.
+test("isCrossSiteStateChangingRequest allows sec-fetch-site:cross-site when Origin matches (WebView false positive)", () => {
+  // Quark/Baidu etc. may set Sec-Fetch-Site: cross-site even for same-origin POST.
   assert.equal(
     isCrossSiteStateChangingRequest(
       makeReq("POST", {
@@ -295,7 +342,7 @@ test("isCrossSiteStateChangingRequest still blocks explicit cross-site regardles
         "host": "versecraft.example.com",
       })
     ),
-    true
+    false
   );
 });
 

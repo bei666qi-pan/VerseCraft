@@ -113,17 +113,29 @@ export function isSameOriginReferer(req: NextRequest): boolean {
   return candidates.some((c) => c === refererOrigin);
 }
 
+function hasInAppWebViewUserAgent(req: NextRequest): boolean {
+  const ua = (req.headers.get("user-agent") ?? "").toLowerCase();
+  if (!ua) return false;
+  return (
+    ua.includes("micromessenger") ||
+    ua.includes("mqqbrowser") ||
+    ua.includes("qqbrowser") ||
+    ua.includes("quark") ||
+    ua.includes("baiduboxapp")
+  );
+}
+
+function isInAppWebViewCompatibleMutatingPath(pathname: string): boolean {
+  return pathname === "/api/chat" || pathname === "/api/presence/heartbeat";
+}
+
 export function isCrossSiteStateChangingRequest(req: NextRequest): boolean {
   const method = req.method.toUpperCase();
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
 
-  const secFetchSite = (req.headers.get("sec-fetch-site") ?? "").trim().toLowerCase();
-  // Only block when browser explicitly marks the request as cross-site.
-  // "none" can appear in some in-app WebViews (WeChat/QQ/Quark/Baidu) for
-  // same-origin fetch/XHR; treat it like a missing header → fall through to origin check.
-  if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "same-site" && secFetchSite !== "none") {
-    return true;
-  }
+  // Do not short-circuit on Sec-Fetch-Site. Some in-app WebViews (Quark, Baidu,
+  // WeChat/QQ shells) incorrectly send "cross-site" for same-origin XHR/fetch.
+  // Origin / Referer (below) are authoritative for CSRF same-origin checks.
 
   const origin = req.headers.get("origin");
   // No Origin header at all → allow (browser is not sending cross-origin signal).
@@ -164,5 +176,18 @@ export function isCrossSiteStateChangingRequest(req: NextRequest): boolean {
   // In some reverse-proxy setups, getExpectedRequestOrigin may resolve differently from
   // what the browser sends. Check against the broader candidate set.
   if (getCandidateRequestOrigins(req).some((c) => c === origin)) return false;
+
+  // In some embedded WebViews, known clients may emit a synthetic `Origin` header
+  // for same-site calls. If user-agent looks like known in-app WebView and Referer
+  // is still same-site, treat as same-site for chat/presence heartbeat endpoints
+  // to avoid false-positive CSRF blocks.
+  if (
+    hasInAppWebViewUserAgent(req) &&
+    isInAppWebViewCompatibleMutatingPath(req.nextUrl.pathname) &&
+    isSameOriginReferer(req)
+  ) {
+    return false;
+  }
+
   return true;
 }
