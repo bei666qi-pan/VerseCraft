@@ -1,4 +1,5 @@
 import type { NextRequest, NextResponse } from "next/server";
+import { isInAppBrowserUserAgent } from "@/lib/platform/inAppBrowserUaMarkers";
 
 /**
  * Public URL as seen by the browser when behind a reverse proxy.
@@ -114,15 +115,7 @@ export function isSameOriginReferer(req: NextRequest): boolean {
 }
 
 function hasInAppWebViewUserAgent(req: NextRequest): boolean {
-  const ua = (req.headers.get("user-agent") ?? "").toLowerCase();
-  if (!ua) return false;
-  return (
-    ua.includes("micromessenger") ||
-    ua.includes("mqqbrowser") ||
-    ua.includes("qqbrowser") ||
-    ua.includes("quark") ||
-    ua.includes("baiduboxapp")
-  );
+  return isInAppBrowserUserAgent(req.headers.get("user-agent") ?? "");
 }
 
 function isInAppWebViewCompatibleMutatingPath(pathname: string): boolean {

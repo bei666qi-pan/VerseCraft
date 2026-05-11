@@ -4,35 +4,12 @@
  * still receives the full SSE document.
  */
 
-/** Lowercase substrings; keep specific to avoid matching normal Chrome Mobile. */
-export const LEGACY_SSE_TRANSPORT_UA_MARKERS = [
-  "micromessenger",
-  "wxwork",
-  "qq/",
-  "mqqbrowser",
-  "qqbrowser",
-  " qq",
-  "qbcore",
-  "tbs/",
-  "quark",
-  "baiduboxapp",
-  "baiduapp",
-  "baiduhd",
-  "baidubrowser",
-  "bdbrowser",
-  "swan/",
-  "ucbrowser",
-  "ucweb/",
-  "miuibrowser",
-] as const;
+import { IN_APP_BROWSER_UA_MARKERS, isInAppBrowserUserAgent } from "@/lib/platform/inAppBrowserUaMarkers";
+
+export { IN_APP_BROWSER_UA_MARKERS as LEGACY_SSE_TRANSPORT_UA_MARKERS };
 
 export function needsLegacySseClientTransportFromUserAgent(userAgent: string | null | undefined): boolean {
-  const ua = String(userAgent ?? "").toLowerCase();
-  if (!ua) return false;
-  for (const marker of LEGACY_SSE_TRANSPORT_UA_MARKERS) {
-    if (ua.includes(marker)) return true;
-  }
-  return false;
+  return isInAppBrowserUserAgent(userAgent);
 }
 
 /**

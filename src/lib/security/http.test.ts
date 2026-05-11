@@ -69,10 +69,28 @@ test("isCrossSiteStateChangingRequest blocks explicit cross-site", () => {
 
 test("isCrossSiteStateChangingRequest allows in-app webview cross-site with same-site referer for api/chat", () => {
   const inAppUAs = [
+    // WeChat / QQ (original set)
     "Mozilla/5.0 (Linux; Android 12; zh-cn) AppleWebKit/537.36 Version/4.0 Chrome/98.0.4758.87 MQQBrowser/14.0 Mobile Safari/537.36",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 16_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 MQQBrowser/17.0.0.0 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (Linux; Android 12; rv:109.0) AppleWebKit/537.36 Chrome/109.0.0.0 Mobile Safari/537.36 Quark/8.9.6.1",
     "Mozilla/5.0 (Linux; U; Android 11; zh-cn; MI 9 Build/RKQ1.201112.002) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/105.0.0.0 baiduboxapp/13.24.0.10",
+    // Newly added: Baidu variants
+    "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36 baiduapp/13.45.0.10",
+    "Mozilla/5.0 (Linux; Android 11; zh-cn) AppleWebKit/537.36 Chrome/96.0.4664.45 Mobile Safari/537.36 baidubrowser/8.10",
+    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 bdbrowser/5.2 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 baiduhd/6.8 Mobile",
+    "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 baiduboxapp/13.0 swan/2.0 Mobile Safari/537.36",
+    // Newly added: QQ variants
+    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/88.0.4324.93 Mobile Safari/537.36 MQQBrowser/14.0",
+    "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/98.0 Mobile Safari/537.36 TBS/046001 QBCore/4.0",
+    "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 QQ/8.9.28 Mobile Safari/537.36",
+    // Newly added: WeChat Work
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 wxwork/4.1.0 MicroMessenger/8.0",
+    // Newly added: UC Browser
+    "Mozilla/5.0 (Linux; U; Android 9; en-US) AppleWebKit/537.36 Version/4.0 UCBrowser/13.2.0.1122 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Version/4.0 Chrome/78.0.3904.108 UWS/2.13.1.39 Mobile Safari/537.36 UCWEB/13.2.0.1122",
+    // Newly added: MIUI Browser
+    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/112.0.0.0 Mobile Safari/537.36 miuibrowser/16.0",
   ];
 
   for (const userAgent of inAppUAs) {

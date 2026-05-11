@@ -11,6 +11,7 @@ const options = ["靠近铁牌查看痕迹", "检查学生电子表", "沿血手
 const mainNarrative = "你靠近铁牌，锈迹下浮出一道新的划痕。雾声短暂后退，给你留下继续判断的余地。";
 
 const IN_APP_BROWSER_CASES = [
+  // --- WeChat variants ---
   {
     name: "WeChat MicroMessenger",
     uaSubstring: "micromessenger",
@@ -19,6 +20,14 @@ const IN_APP_BROWSER_CASES = [
       "Mobile/15E148 MicroMessenger/8.0.0 Language/zh_CN",
   },
   {
+    name: "WeChat Work (wxwork)",
+    uaSubstring: "wxwork",
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+      "Mobile/15E148 wxwork/4.1.0 MicroMessenger/8.0.0 Language/zh_CN",
+  },
+  // --- QQ variants ---
+  {
     name: "QQ Browser shell",
     uaSubstring: "qqbrowser",
     userAgent:
@@ -26,18 +35,71 @@ const IN_APP_BROWSER_CASES = [
       "Version/4.0 Chrome/98.0.4758.87 QQBrowser/14.0 Mobile Safari/537.36",
   },
   {
+    name: "QQ Browser MQQ",
+    uaSubstring: "mqqbrowser",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 10; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Version/4.0 Chrome/88.0.4324.93 Mobile Safari/537.36 MQQBrowser/14.0",
+  },
+  {
+    name: "QQ TBS X5 WebView",
+    uaSubstring: "tbs/",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 12; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Version/4.0 Chrome/98.0.4758.87 Mobile Safari/537.36 TBS/046001 QBCore/4.0",
+  },
+  // --- Quark ---
+  {
     name: "Quark",
     uaSubstring: "quark",
     userAgent:
       "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 " +
       "Chrome/112.0.0.0 Quark/7.2.0.650 Mobile Safari/537.36",
   },
+  // --- Baidu variants ---
   {
-    name: "Baidu app",
+    name: "Baidu app (baiduboxapp)",
     uaSubstring: "baiduboxapp",
     userAgent:
       "Mozilla/5.0 (Linux; Android 12; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) " +
       "Version/4.0 Chrome/96.0.4664.45 Mobile Safari/537.36 baiduboxapp/13.40.0.10",
+  },
+  {
+    name: "Baidu Browser (baidubrowser)",
+    uaSubstring: "baidubrowser",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 11; zh-cn) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Version/4.0 Chrome/96.0.4664.45 Mobile Safari/537.36 baidubrowser/8.10",
+  },
+  {
+    name: "Baidu App (baiduapp)",
+    uaSubstring: "baiduapp",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36 baiduapp/13.45.0.10",
+  },
+  {
+    name: "BD Browser (bdbrowser)",
+    uaSubstring: "bdbrowser",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 10; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Version/4.0 Chrome/86.0.4240.198 Mobile Safari/537.36 bdbrowser/5.2",
+  },
+  // --- UC Browser ---
+  {
+    name: "UC Browser",
+    uaSubstring: "ucbrowser",
+    userAgent:
+      "Mozilla/5.0 (Linux; U; Android 9; en-US; SM-G960F Build/PPR1.180610.011) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Version/4.0 UCBrowser/13.2.0.1122 Mobile Safari/537.36",
+  },
+  // --- MIUI Browser ---
+  {
+    name: "MIUI Browser",
+    uaSubstring: "miuibrowser",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Version/4.0 Chrome/112.0.0.0 Mobile Safari/537.36 miuibrowser/16.0",
   },
 ] as const;
 
@@ -588,25 +650,71 @@ test.describe("queue bypass path for in-app browsers", () => {
 
 test.describe("middleware CSRF: WebView false-positive Sec-Fetch-Site", () => {
   const middlewareUaCases = [
+    // --- WeChat variants ---
     {
       name: "WeChat",
       userAgent:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.0",
     },
     {
+      name: "WeChat Work (wxwork)",
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 wxwork/4.1.0 MicroMessenger/8.0.0",
+    },
+    // --- QQ variants ---
+    {
       name: "QQ",
       userAgent:
         "Mozilla/5.0 (Linux; Android 12; zh-cn) AppleWebKit/537.36 Version/4.0 Chrome/98.0.4758.87 QQBrowser/14.0 Mobile Safari/537.36",
     },
     {
+      name: "QQ MQQ",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 10; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/88.0.4324.93 Mobile Safari/537.36 MQQBrowser/14.0",
+    },
+    {
+      name: "QQ TBS X5",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 12; zh-CN) AppleWebKit/537.36 Version/4.0 Chrome/98.0.4758.87 Mobile Safari/537.36 TBS/046001 QBCore/4.0",
+    },
+    // --- Quark ---
+    {
       name: "Quark",
       userAgent:
         "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.0.0 Quark/7.2.0.650 Mobile Safari/537.36",
     },
+    // --- Baidu variants ---
     {
-      name: "Baidu",
+      name: "Baidu (baiduboxapp)",
       userAgent:
         "Mozilla/5.0 (Linux; Android 12; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/96.0.4664.45 Mobile Safari/537.36 baiduboxapp/13.40.0.10",
+    },
+    {
+      name: "Baidu Browser (baidubrowser)",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 11; zh-cn) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/96.0.4664.45 Mobile Safari/537.36 baidubrowser/8.10",
+    },
+    {
+      name: "Baidu App (baiduapp)",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36 baiduapp/13.45.0.10",
+    },
+    {
+      name: "BD Browser (bdbrowser)",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 10; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/86.0.4240.198 Mobile Safari/537.36 bdbrowser/5.2",
+    },
+    // --- UC Browser ---
+    {
+      name: "UC Browser",
+      userAgent:
+        "Mozilla/5.0 (Linux; U; Android 9; en-US; SM-G960F Build/PPR1.180610.011) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 UCBrowser/13.2.0.1122 Mobile Safari/537.36",
+    },
+    // --- MIUI Browser ---
+    {
+      name: "MIUI Browser",
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 13; zh-CN) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.0.0 Mobile Safari/537.36 miuibrowser/16.0",
     },
   ];
 
