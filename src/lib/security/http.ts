@@ -80,23 +80,20 @@ export function getCandidateRequestOrigins(req: NextRequest): string[] {
 
   const hostHeader = req.headers.get("host")?.trim();
   if (hostHeader) {
-    const protocol = req.nextUrl.protocol === "https:" ? "https" : "http";
-    const fromHost = `${protocol}://${hostHeader}`;
-    if (fromHost !== nextOrigin) candidates.push(fromHost);
-    if (protocol === "http") {
-      const httpsAlt = `https://${hostHeader}`;
-      if (httpsAlt !== nextOrigin) candidates.push(httpsAlt);
-    }
+    const httpVariant = `http://${hostHeader}`;
+    const httpsVariant = `https://${hostHeader}`;
+    if (httpVariant !== nextOrigin) candidates.push(httpVariant);
+    if (httpsVariant !== nextOrigin) candidates.push(httpsVariant);
   }
 
   const xfHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   if (xfHost && xfHost !== hostHeader) {
-    const xfProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim()?.toLowerCase();
-    if (xfProto === "https" || xfProto === "http") {
-      candidates.push(`${xfProto}://${xfHost}`);
-    }
-    // Always include the https variant for TLS-offload scenarios
+    // Always include both http and https variants for x-forwarded-host.
+    // In-app browsers redirected from HTTP to HTTPS may send Referer with
+    // the http scheme, which must still match a candidate origin.
+    const httpVariant = `http://${xfHost}`;
     const httpsVariant = `https://${xfHost}`;
+    if (!candidates.includes(httpVariant)) candidates.push(httpVariant);
     if (!candidates.includes(httpsVariant)) candidates.push(httpsVariant);
   }
 

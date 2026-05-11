@@ -298,3 +298,22 @@ test("isCrossSiteStateChangingRequest still blocks explicit cross-site regardles
     true
   );
 });
+
+test("isCrossSiteStateChangingRequest allows Origin:null with http Referer after HTTPS redirect", () => {
+  // Browser was redirected from HTTP to HTTPS by reverse proxy.
+  // Referer retains the original http:// scheme, which must still match
+  // a candidate origin for the Referer fallback to work.
+  assert.equal(
+    isCrossSiteStateChangingRequest(
+      makeReq("POST", {
+        "sec-fetch-site": "none",
+        "origin": "null",
+        "referer": "http://versecraft.example.com/play",
+        "host": "versecraft.example.com",
+        "x-forwarded-host": "versecraft.example.com",
+        "x-forwarded-proto": "https",
+      })
+    ),
+    false
+  );
+});
