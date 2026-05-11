@@ -446,3 +446,142 @@ test.describe("fetch stream compatibility fallback", () => {
     expect(clientErrors, `page errors: ${clientErrors.join("; ")}`).toHaveLength(0);
   });
 });
+
+test.describe("queue bypass path for in-app browsers", () => {
+  // When the queue API returns a non-rejection HTTP error (CSRF block, rate-limit,
+  // server error), the client must bypass the queue and proceed with the chat
+  // instead of showing "网站生成通道繁忙".
+
+  async function installChatMockNoQueue(page: Page) {
+    let callCount = 0;
+    await page.route("**/api/chat", async (route) => {
+      callCount += 1;
+      let parsedBody: Record<string, unknown> | null = null;
+      try {
+        parsedBody = route.request().postDataJSON() as Record<string, unknown>;
+      } catch {
+        parsedBody = null;
+      }
+      const isOptionsOnly = parsedBody?.clientPurpose === "options_regen_only";
+      const finalPayload = isOptionsOnly
+        ? { ok: true, reason: "options_regen_ok", options, debug_reason_codes: [] }
+        : {
+            is_action_legal: true,
+            sanity_damage: 0,
+            narrative: mainNarrative,
+            is_death: false,
+            consumes_time: false,
+            options,
+          };
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "x-versecraft-request-id": "e2e_webview_req_1",
+        },
+        body:
+          `data: __VERSECRAFT_STATUS__:${JSON.stringify({ stage: "generating", message: "生成中", requestId: "e2e_webview_req_1" })}\n\n` +
+          `data: __VERSECRAFT_FINAL__:${JSON.stringify(finalPayload)}\n\n`,
+      });
+    });
+    return () => callCount;
+  }
+
+  test("WeChat in-app browser bypasses queue when /api/chat/queue returns 403", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // Must override navigator.userAgent BEFORE any navigation (before seedPlayState).
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "userAgent", {
+        get: () =>
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.0 Language/zh_CN",
+        configurable: true,
+      });
+    });
+    // Block fetch for /api/chat to force XHR transport
+    await blockFetchForChatEndpoint(page);
+
+    const opening = "雾声贴着墙根流动。";
+    await seedPlayState(page, opening, options);
+
+    // Install mock chat (without queue bypass)
+    await installChatMockNoQueue(page);
+
+    // Route /api/chat/queue to return 403 (simulating CSRF midware block)
+    await page.route("**/api/chat/queue", async (route) => {
+      await route.fulfill({
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "csrf_check_failed" }),
+      });
+    });
+
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
+
+    // Verify UA is set correctly
+    const ua = await page.evaluate(() => navigator.userAgent);
+    expect(ua.toLowerCase()).toContain("micromessenger");
+
+    await page.getByTestId("manual-action-input").fill("查看铁牌");
+    await page.getByTestId("send-action-button").click();
+
+    // Narrative should appear — chat proceeds via XHR despite queue 403
+    await expect
+      .poll(() => page.getByTestId("mobile-story-viewport").innerText(), { timeout: 20_000 })
+      .toContain(mainNarrative);
+
+    // Must not show the queue-busy error
+    await expect(page.locator("body")).not.toContainText("网站生成通道繁忙");
+
+    // Options should also work
+    await page.getByTestId("options-toggle-button").click();
+    await expect(page.getByTestId("mobile-options-dropdown")).toBeVisible();
+    await expect(page.getByTestId("mobile-option-item")).toHaveCount(options.length);
+  });
+
+  test("QQ in-app browser bypasses queue when /api/chat/queue returns unexpected response", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "userAgent", {
+        get: () =>
+          "Mozilla/5.0 (Linux; Android 12; zh-cn) AppleWebKit/537.36 Version/4.0 Chrome/98.0.4758.87 QQBrowser/14.0 Mobile Safari/537.36",
+        configurable: true,
+      });
+    });
+    await blockFetchForChatEndpoint(page);
+
+    const opening = "安全中枢的灯光像潮水一样忽明忽暗。";
+    await seedPlayState(page, opening, options);
+
+    await installChatMockNoQueue(page);
+
+    // Queue API returns HTML garbage (unparseable)
+    await page.route("**/api/chat/queue", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+        body: "<html>502 Bad Gateway</html>",
+      });
+    });
+
+    await page.goto("/play", { waitUntil: "domcontentloaded", timeout: PLAY_NAV_TIMEOUT_MS });
+    await expect(page.getByTestId("mobile-reading-shell")).toBeVisible({ timeout: PLAY_NAV_TIMEOUT_MS });
+
+    // Verify UA
+    const ua = await page.evaluate(() => navigator.userAgent);
+    expect(ua.toLowerCase()).toContain("qqbrowser");
+
+    await page.getByTestId("manual-action-input").fill("查看铁牌");
+    await page.getByTestId("send-action-button").click();
+
+    await expect
+      .poll(() => page.getByTestId("mobile-story-viewport").innerText(), { timeout: 20_000 })
+      .toContain(mainNarrative);
+
+    await expect(page.locator("body")).not.toContainText("网站生成通道繁忙");
+  });
+});

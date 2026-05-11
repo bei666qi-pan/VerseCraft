@@ -56,8 +56,13 @@ export function isCrossSiteStateChangingRequest(req: NextRequest): boolean {
   const method = req.method.toUpperCase();
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
 
-  const secFetchSite = req.headers.get("sec-fetch-site");
-  if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "same-site") return true;
+  const secFetchSite = (req.headers.get("sec-fetch-site") ?? "").trim().toLowerCase();
+  // Only block when browser explicitly marks the request as cross-site.
+  // "none" can appear in some in-app WebViews (WeChat/QQ/Quark/Baidu) for
+  // same-origin fetch/XHR; treat it like a missing header → fall through to origin check.
+  if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "same-site" && secFetchSite !== "none") {
+    return true;
+  }
 
   const origin = req.headers.get("origin");
   if (!origin) return false;

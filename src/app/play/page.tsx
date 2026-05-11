@@ -1918,8 +1918,11 @@ function PlayContent() {
     });
     const payload = normalizeChatQueuePayload(await res.json().catch(() => null));
     if (!payload) {
-      setChatQueueState(buildChatQueueUiState({ status: "failed", retryAfterSeconds: 2 }, "failed"));
-      return false;
+      // Queue API returned an unparseable response (midware block, server error, etc.).
+      // Bypass the queue instead of blocking the user, so the chat can still proceed.
+      console.warn("[play][chat_queue_unparseable]", { status: res.status });
+      setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+      return null;
     }
     if (payload.disabled || payload.skipped === "options_regen_only") {
       setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
@@ -1928,9 +1931,17 @@ function PlayContent() {
     const nextState = buildChatQueueUiState(payload, res.ok ? "running" : "rejected", {
       wasQueued: payload.status === "queued",
     });
-    if (!res.ok || payload.status === "rejected") {
+    // Only block on explicit queue-capacity rejections.
+    // Transient midware blocks (CSRF, rate-limit, server errors) must not block the
+    // chat path — they bypass the queue so the user can still play.
+    if (payload.status === "rejected") {
       setChatQueueState(nextState);
       return false;
+    }
+    if (!res.ok) {
+      console.warn("[play][chat_queue_http_error_bypass]", { status: res.status, payloadStatus: payload.status });
+      setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+      return null;
     }
     const queueId = typeof payload.queueId === "string" ? payload.queueId : null;
     if (!queueId) return null;
