@@ -21,11 +21,11 @@ test.describe("Admin dashboard partial API failure", () => {
     const adminPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
     test.skip(!adminPassword, "需要 ADMIN_PASSWORD 以进入后台页面");
 
-    await page.route("**/api/admin/overview?**", (route) => {
+    await page.route("**/api/admin/overview**", (route) => {
       void route.fulfill({
         status: 500,
         contentType: "application/json",
-        body: JSON.stringify({ error: "e2e_simulated_failure" }),
+        body: JSON.stringify({ ok: false, data: null, degraded: true, reason: "e2e_simulated_failure" }),
       });
     });
 
@@ -49,7 +49,7 @@ test.describe("Admin dashboard partial API failure", () => {
 
     await expect(page.locator("select").first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "运营决策台" })).toBeVisible();
-    await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
+    await page.getByRole("button", { name: /玩家明细/ }).click();
     await expect(page.getByTestId("admin-user-table-panel")).toBeVisible();
     await expect(page.getByTestId("admin-degraded-banner")).toBeVisible();
     expect(errors.length, `page errors: ${errors.join(" | ")}`).toBe(0);

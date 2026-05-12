@@ -117,7 +117,7 @@ test.describe("在线状态", () => {
       test.skip(true, "后台不可用");
     }
 
-    await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
+    await page.getByRole("button", { name: /玩家明细/ }).click();
     const rowFresh = page.locator("tr", { hasText: "fresh-45s" });
     const rowStale = page.locator("tr", { hasText: "stale-120s" });
     await expect(rowFresh).toContainText("在线", { timeout: 15_000 });

@@ -1,28 +1,13 @@
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import {
+  HOME_SURVEY_FLOW,
   PRODUCT_SURVEY_KEY_HOME,
-  DISCOVERY_SOURCE_OPTIONS,
   EXPERIENCE_STAGE_OPTIONS,
-  CREATE_FRICTION_OPTIONS,
-  IMMERSION_ISSUE_OPTIONS,
-  CORE_FUN_POINT_OPTIONS,
-  QUIT_REASON_OPTIONS,
-  SAVE_LOSS_CONCERN_OPTIONS,
   RECOMMEND_WILLINGNESS_OPTIONS,
+  type HomeSurveyQuestionId,
 } from "@/lib/survey/productSurveyHomeV1";
 
-type SurveyOption = { value: string; label: string };
-type SurveyQuestionId =
-  | "discoverySource"
-  | "experienceStage"
-  | "createFriction"
-  | "immersionIssue"
-  | "coreFunPoint"
-  | "quitReason"
-  | "saveLossConcern"
-  | "recommendWillingness"
-  | "topFixOne"
-  | "finalSuggestion";
+type SurveyQuestionId = HomeSurveyQuestionId;
 
 export type SurveyAggregateQuestion = {
   id: SurveyQuestionId;
@@ -91,21 +76,7 @@ export type SurveyAggregateReport = {
   };
 };
 
-const HOME_SURVEY_META: Array<
-  | { id: Exclude<SurveyQuestionId, "topFixOne" | "finalSuggestion">; kind: "single"; title: string; options: SurveyOption[] }
-  | { id: "topFixOne" | "finalSuggestion"; kind: "text"; title: string }
-> = [
-  { id: "discoverySource", kind: "single", title: "你从哪里知道 VerseCraft？", options: DISCOVERY_SOURCE_OPTIONS },
-  { id: "experienceStage", kind: "single", title: "当前体验阶段", options: EXPERIENCE_STAGE_OPTIONS },
-  { id: "createFriction", kind: "single", title: "角色创建阻力", options: CREATE_FRICTION_OPTIONS },
-  { id: "immersionIssue", kind: "single", title: "最影响沉浸的问题", options: IMMERSION_ISSUE_OPTIONS },
-  { id: "coreFunPoint", kind: "single", title: "当前最有趣的点", options: CORE_FUN_POINT_OPTIONS },
-  { id: "quitReason", kind: "single", title: "中途退出原因", options: QUIT_REASON_OPTIONS },
-  { id: "topFixOne", kind: "text", title: "最优先修复的问题" },
-  { id: "saveLossConcern", kind: "single", title: "存档担忧", options: SAVE_LOSS_CONCERN_OPTIONS },
-  { id: "recommendWillingness", kind: "single", title: "推荐意愿", options: RECOMMEND_WILLINGNESS_OPTIONS },
-  { id: "finalSuggestion", kind: "text", title: "最后补充" },
-];
+const HOME_SURVEY_META = HOME_SURVEY_FLOW;
 
 const FUNNEL_EVENTS = [
   { eventName: "survey_entry_exposed", label: "入口曝光" },
@@ -152,7 +123,7 @@ function iso(value: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function labelForOption(options: SurveyOption[], value: string): string {
+function labelForOption(options: Array<{ value: string; label: string }>, value: string): string {
   return options.find((opt) => opt.value === value)?.label ?? (value || "未填写");
 }
 

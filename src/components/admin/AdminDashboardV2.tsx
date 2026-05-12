@@ -107,6 +107,22 @@ type ContentQualityData = {
 type SurveyAggregateData = {
   evidenceSufficiency?: string;
   totalResponses?: number;
+  questions?: Array<{
+    id: string;
+    title: string;
+    kind: "single" | "text";
+    sampleCount: number;
+    options?: Array<{ value: string; label: string; count: number; pct: number }>;
+    textCount?: number;
+  }>;
+  optionDistribution?: Array<{
+    id: string;
+    title: string;
+    kind: "single" | "text";
+    sampleCount: number;
+    options?: Array<{ value: string; label: string; count: number; pct: number }>;
+    textCount?: number;
+  }>;
   completionFunnel?: Array<{
     eventName: string;
     label: string;
@@ -222,12 +238,17 @@ type UserDetail = {
   recentFeedback?: Array<{ kind: string; contentPreview: string; createdAt: string | null; negative?: boolean }>;
   recentSurvey?: Array<{
     surveyKey: string;
+    surveyVersion?: string;
     overallRating: number | null;
     recommendScore: number | null;
     experienceStage?: string | null;
     quitReason?: string | null;
     saveLossConcern?: string | null;
     topFixPreview?: string;
+    finalSuggestionPreview?: string;
+    freeTextPreview?: string;
+    openTextSummary?: string[];
+    answerSummary?: Array<{ questionId: string; title: string; kind: string; value: string; label: string; filled: boolean }>;
     createdAt: string | null;
     negative?: boolean;
     saveAnxiety?: boolean;
@@ -258,17 +279,17 @@ type AiReport = {
   };
 } | null;
 
-const TABS = ["总览", "玩家旅程", "AI 体验", "内容质量", "数据质量", "玩家 / 游客", "系统健康", "AI 运营助手", "审计日志"] as const;
+const TABS = ["实时总览", "玩家旅程", "AI 用量", "问卷与反馈", "玩家明细", "数据质量", "系统健康", "AI 运营助手", "审计日志"] as const;
 type Tab = (typeof TABS)[number];
 type Range = "today" | "yesterday" | "7d" | "30d";
 
 const tabIcons: Record<Tab, ComponentType<{ className?: string }>> = {
-  总览: BarChart3,
+  实时总览: BarChart3,
   玩家旅程: Activity,
-  "AI 体验": HeartPulse,
-  内容质量: FileText,
+  "AI 用量": HeartPulse,
+  问卷与反馈: FileText,
+  玩家明细: Users,
   数据质量: ClipboardCheck,
-  "玩家 / 游客": Users,
   系统健康: ShieldCheck,
   "AI 运营助手": Bot,
   审计日志: Database,
@@ -500,11 +521,15 @@ function Panel({ children, testId }: { children: ReactNode; testId?: string }) {
 
 async function fetchEnvelope<T>(url: string, init?: RequestInit): Promise<{ env: AdminApiEnvelope<T>; status: number }> {
   const res = await fetch(url, { credentials: "include", ...init });
-  return { env: await readAdminResponseJson<T>(res), status: res.status };
+  const env = await readAdminResponseJson<T>(res);
+  if (!res.ok && env.ok && !env.degraded) {
+    return { env: { ok: false, data: env.data ?? null, degraded: true, reason: `http_${res.status}` }, status: res.status };
+  }
+  return { env, status: res.status };
 }
 
 export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens }: Props) {
-  const [tab, setTab] = useState<Tab>("总览");
+  const [tab, setTab] = useState<Tab>("实时总览");
   const [range, setRange] = useState<Range>("7d");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -621,6 +646,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   const surveyThemes = surveyAggregate?.textThemes ?? [];
   const surveyLowRatingSamples = surveyAggregate?.lowRatingSamples ?? [];
   const surveyRecommendDistribution = surveyAggregate?.recommendScoreDistribution ?? [];
+  const surveyQuestions = surveyAggregate?.questions ?? [];
 
   async function refreshAiReport() {
     setAiRefreshing(true);
@@ -743,7 +769,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
           })}
         </nav>
 
-        {tab === "总览" ? (
+        {tab === "实时总览" ? (
           <section className="space-y-4">
             <KpiGrid kpis={overview?.kpis ?? []} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -802,7 +828,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
           </Panel>
         ) : null}
 
-        {tab === "AI 体验" ? (
+        {tab === "AI 用量" ? (
           <section className="space-y-4">
             <KpiGrid kpis={aiExperience?.metrics ?? []} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -831,7 +857,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
           </section>
         ) : null}
 
-        {tab === "内容质量" ? (
+        {tab === "问卷与反馈" ? (
           <section className="space-y-4">
             {contentQuality?.evidenceSufficiency === "insufficient" ? (
               <div className="rounded-lg border border-[#c4914a]/35 bg-[#fff2cf] p-3 text-sm text-[#7a4e15]">
@@ -979,6 +1005,38 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              <div className="mt-4" data-testid="admin-survey-question-distribution">
+                <SectionTitle title="逐题分布" meta="题目定义来自站内问卷版本；选择题展示选项计数，文本题展示有效文本数。" />
+                <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  {surveyQuestions.length === 0 ? <p className="text-sm text-[#68746c]">暂无逐题样本。</p> : null}
+                  {surveyQuestions.map((q) => (
+                    <div key={q.id} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-[#173f39]">{q.title}</p>
+                          <p className="mt-1 text-xs text-[#68746c]">
+                            {q.kind === "text" ? `有效文本 ${fmt(q.textCount)} / 样本 ${fmt(q.sampleCount)}` : `已回答 ${fmt(q.sampleCount)}`}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-[#d8d0c3] bg-[#fffaf0] px-2 py-0.5 text-xs text-[#68746c]">
+                          {q.kind === "text" ? "开放题" : "选择题"}
+                        </span>
+                      </div>
+                      {q.kind === "single" ? (
+                        <div className="mt-3 space-y-2">
+                          {(q.options ?? []).slice(0, 8).map((opt) => (
+                            <div key={`${q.id}:${opt.value}`} className="grid grid-cols-[1fr_auto] gap-3 text-xs">
+                              <span className="truncate text-[#335c54]">{opt.label}</span>
+                              <span className="text-[#173f39]">{fmt(opt.count)} · {opt.pct}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1135,7 +1193,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
           </section>
         ) : null}
 
-        {tab === "玩家 / 游客" ? (
+        {tab === "玩家明细" ? (
           <Panel testId="admin-user-table-panel">
             <div className="mb-3 flex flex-wrap gap-2">
               <label className="relative min-w-0 flex-1">
@@ -1267,7 +1325,24 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                           {x.saveAnxiety ? <span className="mr-1 rounded bg-[#fff2cf] px-1.5 py-0.5 text-[#7a4e15]">存档焦虑</span> : null}
                           满意度 {x.overallRating ?? "未填"} · 推荐意愿 {x.recommendScore ?? "未填"}
                         </p>
-                        {x.topFixPreview ? <p className="mt-1 text-[#68746c]">希望改进：{x.topFixPreview}</p> : null}
+                        <p className="mt-1 text-[#68746c]">版本 {x.surveyVersion || "未知"} · {time(x.createdAt)}</p>
+                        {(x.answerSummary ?? []).length > 0 ? (
+                          <div className="mt-2 space-y-1 rounded-md border border-[#e1d8ca] bg-[#fffdf8] p-2">
+                            {(x.answerSummary ?? []).map((answer) => (
+                              <div key={`${idx}:${answer.questionId}`} className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] gap-2">
+                                <span className="break-words text-[#68746c]">{answer.title}</span>
+                                <span className={`min-w-0 break-words ${answer.filled ? "text-[#173f39]" : "text-[#9a9184]"}`}>{answer.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {(x.openTextSummary ?? []).length > 0 ? (
+                          <div className="mt-2 space-y-1 text-[#68746c]">
+                            {(x.openTextSummary ?? []).map((text, textIdx) => (
+                              <p key={`${idx}:text:${textIdx}`}>开放文本：{text}</p>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>

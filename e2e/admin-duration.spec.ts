@@ -106,7 +106,7 @@ test.describe("Admin duration rendering", () => {
     await page.locator("select").first().waitFor({ timeout: 20_000 });
     await expect(page.locator("body")).toContainText(/1\s*小时\s*1\s*分\s*1\s*秒/, { timeout: 20_000 });
 
-    await page.getByRole("button", { name: /玩家 \/ 游客/ }).click();
+    await page.getByRole("button", { name: /玩家明细/ }).click();
     await expect(page.getByText("duration-user", { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid="admin-user-table-panel"]')).toContainText(/1\s*小时\s*1\s*分\s*1\s*秒/);
   });

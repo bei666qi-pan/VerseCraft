@@ -10,8 +10,12 @@ export type AdminRealtimeMetrics = {
   onlineUsers: number;
   /** Active guest **sessions** (rows in `guest_sessions`) within the online window. */
   onlineGuests: number;
-  /** `COUNT(*)` from `user_sessions` with `last_seen_at` in the online window (indexed). */
+  /** Active registered + guest sessions in the online window. */
   activeSessions: number;
+  /** `COUNT(*)` from `user_sessions` with `last_seen_at` in the online window (indexed). */
+  registeredActiveSessions: number;
+  /** `COUNT(*)` from `guest_sessions` with `last_seen_at` in the online window (indexed). */
+  guestActiveSessions: number;
   avgSessionDurationSec: number;
   updatedAt: string;
   /** Dev-only: how online actors were merged (Redis vs DB vs overlap). */
@@ -47,7 +51,9 @@ export async function getAdminRealtimeMetrics(): Promise<AdminRealtimeMetrics> {
   return {
     onlineUsers: onlineUsersRegistered,
     onlineGuests: onlineGuestSessionCount,
-    activeSessions: activeUserSessionsCount,
+    activeSessions: activeUserSessionsCount + onlineGuestSessionCount,
+    registeredActiveSessions: activeUserSessionsCount,
+    guestActiveSessions: onlineGuestSessionCount,
     avgSessionDurationSec: Number(avgRow?.avgSessionDurationSec ?? 0),
     updatedAt: new Date().toISOString(),
     presenceDebug: isDev

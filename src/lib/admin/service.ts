@@ -4,7 +4,8 @@ import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { adminMetricsDaily, analyticsActors, analyticsEvents, feedbacks, guestRegistry, userSessions, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
-import { getOnlineUsersFromPresence } from "@/lib/presence";
+import { normalizePresenceMemberToActorKey } from "@/lib/admin/adminActorKeys";
+import { getOnlinePresenceReport } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
 import { computeFunnelTriColumn, computeTokenStats } from "@/lib/admin/metricsUtils";
@@ -13,14 +14,6 @@ import { getProfessionWeaponMetrics } from "@/lib/admin/professionWeaponMetrics"
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import {
   PRODUCT_SURVEY_KEY_HOME,
-  DISCOVERY_SOURCE_OPTIONS,
-  EXPERIENCE_STAGE_OPTIONS,
-  CREATE_FRICTION_OPTIONS,
-  IMMERSION_ISSUE_OPTIONS,
-  CORE_FUN_POINT_OPTIONS,
-  QUIT_REASON_OPTIONS,
-  SAVE_LOSS_CONCERN_OPTIONS,
-  RECOMMEND_WILLINGNESS_OPTIONS,
 } from "@/lib/survey/productSurveyHomeV1";
 import { buildSurveyAggregateReport } from "@/lib/admin/surveyAggregate";
 
@@ -30,50 +23,7 @@ function normalizeExecuteRows(result: unknown): Array<Record<string, unknown>> {
   return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
 }
 
-type SurveyOption = { value: string; label: string };
-type SurveyQuestionId =
-  | "discoverySource"
-  | "experienceStage"
-  | "createFriction"
-  | "immersionIssue"
-  | "coreFunPoint"
-  | "quitReason"
-  | "saveLossConcern"
-  | "recommendWillingness"
-  | "topFixOne"
-  | "finalSuggestion";
-
-type SurveyAggregateQuestion = {
-  id: SurveyQuestionId;
-  title: string;
-  kind: "single" | "text";
-  sampleCount: number;
-  options?: Array<{ value: string; label: string; count: number; pct: number }>;
-  textCount?: number;
-};
-
 export type SurveyAggregateReport = ReturnType<typeof buildSurveyAggregateReport>;
-
-const HOME_SURVEY_META: Array<
-  | { id: Exclude<SurveyQuestionId, "topFixOne" | "finalSuggestion">; kind: "single"; title: string; options: SurveyOption[] }
-  | { id: "topFixOne" | "finalSuggestion"; kind: "text"; title: string }
-> = [
-  { id: "discoverySource", kind: "single", title: "你从哪里知道 VerseCraft？", options: DISCOVERY_SOURCE_OPTIONS },
-  { id: "experienceStage", kind: "single", title: "你现在属于哪种体验阶段？", options: EXPERIENCE_STAGE_OPTIONS },
-  { id: "createFriction", kind: "single", title: "角色创建流程里，哪个部分最容易让你犹豫或烦？", options: CREATE_FRICTION_OPTIONS },
-  { id: "immersionIssue", kind: "single", title: "在正式游玩过程中，哪一种问题最影响你的沉浸感？", options: IMMERSION_ISSUE_OPTIONS },
-  { id: "coreFunPoint", kind: "single", title: "你觉得当前“最好玩”的核心点是什么？", options: CORE_FUN_POINT_OPTIONS },
-  { id: "quitReason", kind: "single", title: "如果你中途退出或今天不继续玩，最主要的原因会是什么？", options: QUIT_REASON_OPTIONS },
-  { id: "topFixOne", kind: "text", title: "如果只能提一个最该优先修掉的问题" },
-  { id: "saveLossConcern", kind: "single", title: "是否担心进度/历史/存档丢失？", options: SAVE_LOSS_CONCERN_OPTIONS },
-  { id: "recommendWillingness", kind: "single", title: "是否愿意推荐朋友来玩？", options: RECOMMEND_WILLINGNESS_OPTIONS },
-  { id: "finalSuggestion", kind: "text", title: "最后补充（可选）" },
-];
-
-function toPct(count: number, total: number): number {
-  if (total <= 0) return 0;
-  return Math.round((count / total) * 1000) / 10; // 1 decimal
-}
 
 export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyAggregateReport> {
   const raw = await db.execute(sql`
@@ -125,88 +75,54 @@ export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyA
     LIMIT 10000
   `);
   const eventRows = normalizeExecuteRows(eventRaw);
-  const aggregate = buildSurveyAggregateReport(range, rows, eventRows);
-  const totalResponses = rows.length;
-
-  const countsByQ = new Map<SurveyQuestionId, Map<string, number>>();
-  const textCountByQ = new Map<Extract<SurveyQuestionId, "topFixOne" | "finalSuggestion">, number>();
-
-  for (const row of rows) {
-    const ans = row.answers;
-    const a =
-      ans && typeof ans === "object" && !Array.isArray(ans) ? (ans as Record<string, unknown>) : null;
-    if (!a) continue;
-
-    for (const q of HOME_SURVEY_META) {
-      if (q.kind === "single") {
-        const v = a[q.id];
-        if (typeof v !== "string" || !v) continue;
-        let m = countsByQ.get(q.id);
-        if (!m) {
-          m = new Map<string, number>();
-          countsByQ.set(q.id, m);
-        }
-        m.set(v, (m.get(v) ?? 0) + 1);
-      } else {
-        const v = a[q.id];
-        if (typeof v !== "string") continue;
-        const t = v.trim();
-        if (!t) continue;
-        textCountByQ.set(q.id, (textCountByQ.get(q.id) ?? 0) + 1);
-      }
-    }
-  }
-
-  const questions: SurveyAggregateQuestion[] = HOME_SURVEY_META.map((q) => {
-    if (q.kind === "text") {
-      const c = textCountByQ.get(q.id) ?? 0;
-      return {
-        id: q.id,
-        title: q.title,
-        kind: "text",
-        sampleCount: totalResponses,
-        textCount: c,
-      };
-    }
-    const m = countsByQ.get(q.id) ?? new Map<string, number>();
-    const answered = [...m.values()].reduce((s, n) => s + n, 0);
-    const options = q.options
-      .map((opt) => {
-        const count = m.get(opt.value) ?? 0;
-        return { value: opt.value, label: opt.label, count, pct: toPct(count, answered) };
-      })
-      .filter((x) => x.count > 0 || answered === 0)
-      .sort((a, b) => b.count - a.count);
-
-    return {
-      id: q.id,
-      title: q.title,
-      kind: "single",
-      sampleCount: answered,
-      options,
-    };
-  });
-
-  return {
-    ...aggregate,
-    questions,
-    optionDistribution: questions.filter((q) => q.kind === "single"),
-  };
+  return buildSurveyAggregateReport(range, rows, eventRows);
 }
 
 export async function getDashboardTableData() {
-  const userRows = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      tokensUsed: users.tokensUsed,
-      todayTokensUsed: users.todayTokensUsed,
-      playTime: users.playTime,
-      todayPlayTime: users.todayPlayTime,
-      lastActive: users.lastActive,
-    })
-    .from(users)
-    .orderBy(desc(users.tokensUsed));
+  const userRowsRaw = await db.execute(sql`
+    WITH totals AS (
+      SELECT
+        user_id AS "userId",
+        COALESCE(SUM(daily_token_cost), 0)::int AS "tokensUsed",
+        COALESCE(SUM(active_play_sec), 0)::int AS "playTime"
+      FROM actor_daily_tokens
+      WHERE actor_type = 'user'
+        AND user_id IS NOT NULL
+      GROUP BY user_id
+    ),
+    today AS (
+      SELECT
+        user_id AS "userId",
+        COALESCE(SUM(daily_token_cost), 0)::int AS "todayTokensUsed",
+        COALESCE(SUM(active_play_sec), 0)::int AS "todayPlayTime"
+      FROM actor_daily_tokens
+      WHERE actor_type = 'user'
+        AND user_id IS NOT NULL
+        AND date_key = CURRENT_DATE
+      GROUP BY user_id
+    )
+    SELECT
+      u.id,
+      u.name,
+      COALESCE(t."tokensUsed", u.tokens_used, 0)::int AS "tokensUsed",
+      COALESCE(td."todayTokensUsed", u.today_tokens_used, 0)::int AS "todayTokensUsed",
+      COALESCE(t."playTime", u.play_time, 0)::int AS "playTime",
+      COALESCE(td."todayPlayTime", u.today_play_time, 0)::int AS "todayPlayTime",
+      u.last_active AS "lastActive"
+    FROM users u
+    LEFT JOIN totals t ON t."userId" = u.id
+    LEFT JOIN today td ON td."userId" = u.id
+    ORDER BY "tokensUsed" DESC
+  `);
+  const userRows = normalizeExecuteRows(userRowsRaw).map((row) => ({
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    tokensUsed: Number(row.tokensUsed ?? 0),
+    todayTokensUsed: Number(row.todayTokensUsed ?? 0),
+    playTime: Number(row.playTime ?? 0),
+    todayPlayTime: Number(row.todayPlayTime ?? 0),
+    lastActive: row.lastActive ? new Date(String(row.lastActive)) : new Date(0),
+  }));
 
   const sessionPlayByUserRaw = await db
     .execute(sql`
@@ -241,7 +157,11 @@ export async function getDashboardTableData() {
     if (id) sessionPlayByGuest.set(id, Number(row.sessionPlaySec ?? 0));
   }
 
-  const { ids: onlineIds } = await getOnlineUsersFromPresence().catch(() => ({ ids: [], count: 0 }));
+  const onlineActorKeys = new Set(
+    (await getOnlinePresenceReport().catch(() => ({ ids: [] as string[] }))).ids
+      .map(normalizePresenceMemberToActorKey)
+      .filter(Boolean)
+  );
   // 避免全表拉取后在内存去重：改为 DISTINCT ON 每用户一条最新记录。
   const latestFeedbackRowsRaw = await db.execute(sql`
     SELECT DISTINCT ON (user_id)
@@ -408,7 +328,6 @@ export async function getDashboardTableData() {
     });
   }
 
-  const onlineSet = new Set(onlineIds);
   const tableRows = userRows.map((u) => {
     const latest = latestFeedbackMap.get(u.id);
     const latestGame = latestGameMap.get(u.id);
@@ -416,7 +335,7 @@ export async function getDashboardTableData() {
     return {
       ...u,
       lastActive: u.lastActive instanceof Date ? u.lastActive.toISOString() : String(u.lastActive),
-      isOnline: onlineSet.has(u.id) ? 1 : 0,
+      isOnline: onlineActorKeys.has(`u:${u.id}`) ? 1 : 0,
       feedbackPreview: latest ? latest.content.slice(0, 6) : "",
       feedbackContent: latest?.content ?? "",
       feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
@@ -501,7 +420,7 @@ export async function getDashboardTableData() {
       playTime: Number(g.playTime ?? 0),
       todayPlayTime: Number(g.todayPlayTime ?? 0),
       lastActive,
-      isOnline: onlineSet.has(`g:${guestId}`) ? 1 : 0,
+      isOnline: onlineActorKeys.has(`g:${guestId}`) ? 1 : 0,
       feedbackPreview: latest ? latest.content.slice(0, 6) : "",
       feedbackContent: latest?.content ?? "",
       feedbackCreatedAt: latest?.createdAt ? new Date(latest.createdAt).toISOString() : null,
@@ -531,9 +450,13 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
   const [lifeAgg] = await db
     .select({
       totalUsers: sql<number>`COUNT(*)`,
-      totalTokens: sql<number>`COALESCE(SUM(${users.tokensUsed}), 0)`,
     })
     .from(users);
+
+  const tokenLifeRaw = await db
+    .execute(sql`SELECT COALESCE(SUM(daily_token_cost), 0)::int AS "totalTokens" FROM actor_daily_tokens`)
+    .catch(() => ({ rows: [] }));
+  const tokenLifeAgg = normalizeExecuteRows(tokenLifeRaw)[0] ?? {};
 
   const [dailyAgg] = await db
     .select({
@@ -587,12 +510,18 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
     sessionTotalLive = { sec: 0 };
   }
 
+  let realtimeOnlineGuests = 0;
+  try {
+    realtimeOnlineGuests = Number((await getAdminRealtimeMetrics()).onlineGuests ?? 0);
+  } catch {
+    realtimeOnlineGuests = 0;
+  }
+
   let guestAgg = { total: 0, online: 0, playSec: 0 };
   try {
     const [gRow] = await db
       .select({
         total: sql<number>`count(*)::int`,
-        online: sql<number>`count(*) filter (where ${analyticsActors.lastSeenAt} >= now() - interval '90 second')::int`,
       })
       .from(analyticsActors)
       .where(sql`${analyticsActors.actorType} = 'guest'`);
@@ -609,18 +538,18 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
     }
     guestAgg = {
       total: Number(gRow?.total ?? 0),
-      online: Number(gRow?.online ?? 0),
+      online: realtimeOnlineGuests,
       playSec: guestPlaySec,
     };
   } catch {
-    guestAgg = { total: 0, online: 0, playSec: 0 };
+    guestAgg = { total: 0, online: realtimeOnlineGuests, playSec: 0 };
   }
 
   return {
     range,
     cards: {
       totalUsers: Number(lifeAgg?.totalUsers ?? 0),
-      totalTokens: Number(lifeAgg?.totalTokens ?? 0),
+      totalTokens: Number(tokenLifeAgg.totalTokens ?? 0),
       activeUsersRange: Number(dailyAgg?.dau ?? 0),
       newUsersRange: Number(dailyAgg?.newUsers ?? 0),
       tokenCostRange: Number(dailyAgg?.tokenCost ?? 0),

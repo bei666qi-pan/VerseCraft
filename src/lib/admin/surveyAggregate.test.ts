@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildSurveyAggregateReport } from "@/lib/admin/surveyAggregate";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
+import { HOME_SURVEY_FLOW } from "@/lib/survey/productSurveyHomeV1";
 
 const range: AdminTimeRange = {
   preset: "7d",
@@ -50,6 +51,8 @@ test("survey aggregate computes option distribution", () => {
 
   const discovery = report.questions.find((q) => q.id === "discoverySource");
   assert.equal(report.totalResponses, 2);
+  assert.equal(report.questions.length, HOME_SURVEY_FLOW.length);
+  assert.equal(report.optionDistribution.length, HOME_SURVEY_FLOW.filter((q) => q.kind === "single").length);
   assert.equal(discovery?.sampleCount, 2);
   assert.equal(discovery?.options?.[0]?.value, "friend");
   assert.equal(discovery?.options?.[0]?.count, 2);

@@ -15,11 +15,14 @@ import { buildAdminUserDetailSignals } from "@/lib/admin/userDetailSignals";
 import { getFeedbackInsights, getOverviewMetrics, getRealtimeMetrics } from "@/lib/admin/service";
 import { getAdminLoginRateLimitHealth } from "@/lib/admin/loginRateLimit";
 import { computeAdminCapacityEstimate } from "@/lib/admin/capacityEstimate";
+import { normalizePresenceMemberToActorKey } from "@/lib/admin/adminActorKeys";
 import { anyAiProviderConfigured } from "@/lib/ai/config/env";
 import { envRaw } from "@/lib/config/envRaw";
 import { getChatQueueConfig } from "@/lib/chatQueue/config";
 import { shouldQueueChatRequest } from "@/lib/chatQueue/service";
+import { getOnlinePresenceReport } from "@/lib/presence";
 import { ONLINE_WINDOW_SECONDS } from "@/lib/presence/onlineWindow";
+import { sanitizeHomeSurveyText, summarizeHomeSurveyAnswers } from "@/lib/survey/productSurveyHomeV1";
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
@@ -36,6 +39,15 @@ function iso(v: unknown): string | null {
   if (!v) return null;
   const d = v instanceof Date ? v : new Date(String(v));
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+async function getOnlineAdminActorKeys(): Promise<Set<string>> {
+  try {
+    const report = await getOnlinePresenceReport();
+    return new Set(report.ids.map(normalizePresenceMemberToActorKey).filter(Boolean));
+  } catch {
+    return new Set();
+  }
 }
 
 function withDeadline<T>(promise: Promise<T>, ms: number, reason: string): Promise<T> {
@@ -157,8 +169,8 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
         metricId: "overview.token_cost_today",
         label: "今日 AI 用量",
         value: n(extras.aiTokenCost),
-        source: "analytics_events.token_cost",
-        definition: "今日 AI 回合记录的用量求和。",
+        source: "analytics_events.chat_request_finished.token_cost / actor_daily_tokens",
+        definition: "今日 AI 回合完成事件记录的 token_cost 求和，日表按同一 actor key 回写。",
         updatedAt: new Date().toISOString(),
         degraded: false,
         reason: null,
@@ -225,6 +237,8 @@ export async function getPlayerJourneyMetrics(
           CASE WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN 'g:' || guest_id END,
           session_id
         ) AS actor_key,
+        COALESCE(actor_type, CASE WHEN user_id IS NOT NULL THEN 'user' ELSE 'guest' END) AS actor_type,
+        platform,
         event_time
       FROM analytics_events
       WHERE event_time >= ${range.start}
@@ -242,16 +256,25 @@ export async function getPlayerJourneyMetrics(
       FROM raw_events
       GROUP BY stage, actor_key
     )
-    SELECT stage, actor_key AS "actorKey", first_at AS "firstAt"
-    FROM normalized
+    SELECT
+      r.stage,
+      r.actor_key AS "actorKey",
+      MIN(r.actor_type) AS "actorType",
+      MIN(r.platform) AS platform,
+      n.first_at AS "firstAt"
+    FROM normalized n
+    JOIN raw_events r ON r.stage = n.stage AND r.actor_key = n.actor_key
+    GROUP BY r.stage, r.actor_key, n.first_at
   `);
   const normalizedEvents = normalizeJourneyFunnelEvents(
     rowsOf(raw).map((row) => ({
       stage: String(row.stage ?? ""),
       actorKey: String(row.actorKey ?? ""),
+      actorType: String(row.actorType ?? ""),
+      platform: String(row.platform ?? ""),
       firstAt: row.firstAt as Date | string | number | null,
     })),
-    { actorType: "all", platform: "all" }
+    filters
   );
   const stages = computeJourneyFunnelStages(JOURNEY_STAGES, normalizedEvents, mode).map((s) => ({
     ...s,
@@ -274,8 +297,12 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
   const raw = await db.execute(sql`
     WITH chat AS (
       SELECT
-        actor_id,
-        session_id,
+        COALESCE(
+          actor_id,
+          CASE WHEN user_id IS NOT NULL THEN 'u:' || user_id END,
+          CASE WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN 'g:' || guest_id END,
+          CASE WHEN session_id IS NOT NULL AND btrim(session_id::text) <> '' THEN 's:' || session_id END
+        ) AS actor_key,
         token_cost,
         CASE WHEN (payload->>'success') = 'true' THEN 1 ELSE 0 END AS success,
         CASE WHEN (payload->>'success') = 'false' THEN 1 ELSE 0 END AS failed,
@@ -309,7 +336,7 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
       COALESCE(SUM(parse_failed), 0)::int AS "parseFailedCount",
       COALESCE(SUM(rate_limited), 0)::int AS "rateLimitCount",
       COALESCE(SUM(tokens), 0)::int AS "totalTokens",
-      COUNT(DISTINCT COALESCE(actor_id, session_id))::int AS "activeActors",
+      COUNT(DISTINCT actor_key)::int AS "activeActors",
       percentile_cont(0.5) WITHIN GROUP (ORDER BY ttft_ms) AS "ttftP50",
       percentile_cont(0.95) WITHIN GROUP (ORDER BY ttft_ms) AS "ttftP95",
       percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS "totalP50",
@@ -322,14 +349,19 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
   const activeActors = n(row.activeActors);
   const topCostRaw = await db.execute(sql`
     SELECT
-      COALESCE(actor_id, session_id) AS "actorKey",
+      COALESCE(
+        actor_id,
+        CASE WHEN user_id IS NOT NULL THEN 'u:' || user_id END,
+        CASE WHEN guest_id IS NOT NULL AND btrim(guest_id::text) <> '' THEN 'g:' || guest_id END,
+        CASE WHEN session_id IS NOT NULL AND btrim(session_id::text) <> '' THEN 's:' || session_id END
+      ) AS "actorKey",
       COUNT(*)::int AS "actions",
       COALESCE(SUM(token_cost), 0)::int AS "tokens"
     FROM analytics_events
     WHERE event_name = 'chat_request_finished'
       AND event_time >= ${range.start}
       AND event_time <= ${range.end}
-    GROUP BY COALESCE(actor_id, session_id)
+    GROUP BY 1
     ORDER BY "tokens" DESC
     LIMIT 10
   `).catch(() => ({ rows: [] }));
@@ -600,6 +632,7 @@ export async function listAdminUsers(opts: {
   const search = `%${(opts.search ?? "").trim().replace(/[%_]/g, "")}%`;
   const actorType = opts.actorType ?? "all";
   const onlyOnline = Boolean(opts.onlyOnline);
+  const onlineActorKeys = await getOnlineAdminActorKeys();
   const orderBy =
     opts.sort === "tokens"
       ? sql`tokens_used DESC, last_active DESC`
@@ -612,22 +645,36 @@ export async function listAdminUsers(opts: {
       : actorType === "guest"
         ? sql`WHERE actor_type = 'guest'`
         : sql`WHERE true`;
-  const onlineFilter = onlyOnline ? sql`AND is_online = true` : sql``;
+  const onlineFilter = onlyOnline
+    ? onlineActorKeys.size > 0
+      ? sql`AND actor_key IN (${sql.join([...onlineActorKeys].map((key) => sql`${key}`), sql`, `)})`
+      : sql`AND false`
+    : sql``;
   const searchFilter = opts.search?.trim()
     ? sql`AND (actor_key ILIKE ${search} OR display_name ILIKE ${search})`
     : sql``;
   const raw = await db.execute(sql`
-    WITH registered AS (
+    WITH registered_token_rollup AS (
       SELECT
-        ('u:' || id) AS actor_key,
-        id AS raw_id,
-        name AS display_name,
+        user_id,
+        COALESCE(SUM(daily_token_cost), 0)::int AS tokens_used,
+        COALESCE(SUM(active_play_sec), 0)::int AS play_time
+      FROM actor_daily_tokens
+      WHERE actor_type = 'user'
+        AND user_id IS NOT NULL
+      GROUP BY user_id
+    ),
+    registered AS (
+      SELECT
+        ('u:' || u.id) AS actor_key,
+        u.id AS raw_id,
+        u.name AS display_name,
         'registered' AS actor_type,
-        tokens_used,
-        play_time,
-        last_active,
-        (last_active >= NOW() - INTERVAL '90 seconds') AS is_online
-      FROM users
+        COALESCE(rt.tokens_used, u.tokens_used, 0)::int AS tokens_used,
+        COALESCE(rt.play_time, u.play_time, 0)::int AS play_time,
+        u.last_active
+      FROM users u
+      LEFT JOIN registered_token_rollup rt ON rt.user_id = u.id
     ),
     guests AS (
       SELECT
@@ -637,8 +684,7 @@ export async function listAdminUsers(opts: {
         'guest' AS actor_type,
         COALESCE(t.tokens_used, 0)::int AS tokens_used,
         COALESCE(t.play_time, 0)::int AS play_time,
-        a.last_seen_at AS last_active,
-        (a.last_seen_at >= NOW() - INTERVAL '90 seconds') AS is_online
+        a.last_seen_at AS last_active
       FROM analytics_actors a
       LEFT JOIN guest_aliases al ON al.guest_id = a.guest_id
       LEFT JOIN (
@@ -682,7 +728,7 @@ export async function listAdminUsers(opts: {
       tokensUsed: n(r.tokens_used),
       playTime: n(r.play_time),
       lastActive: iso(r.last_active),
-      isOnline: Boolean(r.is_online),
+      isOnline: onlineActorKeys.has(String(r.actor_key ?? "")),
     })),
     nextCursor: rows.length > limit ? encodeCursor([offset + limit]) : null,
     hasMore: rows.length > limit,
@@ -767,8 +813,27 @@ export async function getAdminUserDetail(actorKey: string) {
 
   const baseRaw = isUser
     ? await db.execute(sql`
-        SELECT id AS "rawId", name, tokens_used AS "tokensUsed", play_time AS "playTime", last_active AS "lastActive", 'registered' AS "actorType"
-        FROM users WHERE id = ${rawId} LIMIT 1
+        WITH token_rollup AS (
+          SELECT
+            user_id,
+            COALESCE(SUM(daily_token_cost), 0)::int AS tokens_used,
+            COALESCE(SUM(active_play_sec), 0)::int AS play_time
+          FROM actor_daily_tokens
+          WHERE actor_type = 'user'
+            AND user_id = ${rawId}
+          GROUP BY user_id
+        )
+        SELECT
+          u.id AS "rawId",
+          u.name,
+          COALESCE(t.tokens_used, u.tokens_used, 0)::int AS "tokensUsed",
+          COALESCE(t.play_time, u.play_time, 0)::int AS "playTime",
+          u.last_active AS "lastActive",
+          'registered' AS "actorType"
+        FROM users u
+        LEFT JOIN token_rollup t ON t.user_id = u.id
+        WHERE u.id = ${rawId}
+        LIMIT 1
       `)
     : await db.execute(sql`
         SELECT
@@ -920,6 +985,12 @@ export async function getAdminUserDetail(actorKey: string) {
   }));
   const recentSurvey = surveyRows.map((r) => {
     const answers = objectOf(r.answers);
+    const answerSummary = summarizeHomeSurveyAnswers(answers);
+    const openTextSummary = [
+      sanitizeHomeSurveyText(answers.topFixOne, 240),
+      sanitizeHomeSurveyText(answers.finalSuggestion, 240),
+      previewText(r.freeText, 240),
+    ].filter(Boolean);
     return {
       surveyKey: String(r.surveyKey ?? ""),
       surveyVersion: String(r.surveyVersion ?? ""),
@@ -929,6 +1000,10 @@ export async function getAdminUserDetail(actorKey: string) {
       quitReason: text(answers.quitReason) || null,
       saveLossConcern: text(answers.saveLossConcern) || null,
       topFixPreview: previewText(answers.topFixOne),
+      finalSuggestionPreview: sanitizeHomeSurveyText(answers.finalSuggestion, 240),
+      freeTextPreview: previewText(r.freeText, 240),
+      openTextSummary,
+      answerSummary,
       createdAt: iso(r.createdAt),
       ...surveyRiskFlags(r),
     };

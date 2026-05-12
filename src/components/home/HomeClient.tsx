@@ -15,16 +15,10 @@ import {
   submitProductSurvey,
 } from "@/app/actions/feedback";
 import {
+  HOME_SURVEY_FLOW,
   PRODUCT_SURVEY_KEY_HOME,
   PRODUCT_SURVEY_VERSION_HOME,
-  DISCOVERY_SOURCE_OPTIONS,
-  EXPERIENCE_STAGE_OPTIONS,
-  CREATE_FRICTION_OPTIONS,
-  IMMERSION_ISSUE_OPTIONS,
-  CORE_FUN_POINT_OPTIONS,
-  QUIT_REASON_OPTIONS,
-  SAVE_LOSS_CONCERN_OPTIONS,
-  RECOMMEND_WILLINGNESS_OPTIONS,
+  type HomeSurveyQuestionId,
 } from "@/lib/survey/productSurveyHomeV1";
 import {
   VerseCraftPaperBrand,
@@ -172,78 +166,6 @@ const SURVEY_COPY = {
   noLink: "暂未配置外链问卷；请使用上方站内表单。",
   syncHint: "正在向服务器核对是否已提交…",
 } as const;
-
-type HomeSurveyQuestionId =
-  | "discoverySource"
-  | "experienceStage"
-  | "createFriction"
-  | "immersionIssue"
-  | "coreFunPoint"
-  | "quitReason"
-  | "topFixOne"
-  | "saveLossConcern"
-  | "recommendWillingness"
-  | "finalSuggestion";
-
-type HomeSurveyQuestionConfig =
-  | {
-      id: Exclude<HomeSurveyQuestionId, "topFixOne" | "finalSuggestion">;
-      kind: "single";
-      title: string;
-      subtitle?: string;
-      required: true;
-      options: Array<{ value: string; label: string }>;
-    }
-  | {
-      id: "topFixOne" | "finalSuggestion";
-      kind: "text";
-      title: string;
-      subtitle?: string;
-      required: boolean;
-      maxLen: 500;
-      placeholder: string;
-    };
-
-/** 首页产品问卷（≤10题）：用于产品分层与决策排序 */
-const HOME_SURVEY_FLOW: HomeSurveyQuestionConfig[] = [
-  { id: "discoverySource", kind: "single", required: true, title: "你从哪里知道 VerseCraft？", options: DISCOVERY_SOURCE_OPTIONS },
-  { id: "experienceStage", kind: "single", required: true, title: "你现在属于哪种体验阶段？", options: EXPERIENCE_STAGE_OPTIONS },
-  { id: "createFriction", kind: "single", required: true, title: "角色创建流程里，哪个部分最容易让你犹豫或烦？", options: CREATE_FRICTION_OPTIONS },
-  { id: "immersionIssue", kind: "single", required: true, title: "在正式游玩过程中，哪一种问题最影响你的沉浸感？", options: IMMERSION_ISSUE_OPTIONS },
-  { id: "coreFunPoint", kind: "single", required: true, title: "你觉得文界工坊当前“最好玩”的核心点是什么？", options: CORE_FUN_POINT_OPTIONS },
-  { id: "quitReason", kind: "single", required: true, title: "如果你中途退出或今天不继续玩，最主要的原因会是什么？", options: QUIT_REASON_OPTIONS },
-  {
-    id: "topFixOne",
-    kind: "text",
-    required: true,
-    title: "如果只能让你提一个最该优先修掉的问题，你会写什么？",
-    maxLen: 500,
-    placeholder: "请描述一个最优先修复的问题。",
-  },
-  {
-    id: "saveLossConcern",
-    kind: "single",
-    required: true,
-    title: "你是否担心过“自己的记录、历史会丢”？",
-    options: SAVE_LOSS_CONCERN_OPTIONS,
-  },
-  {
-    id: "recommendWillingness",
-    kind: "single",
-    required: true,
-    title: "你是否愿意推荐你的朋友来玩？",
-    options: RECOMMEND_WILLINGNESS_OPTIONS,
-  },
-  {
-    id: "finalSuggestion",
-    kind: "text",
-    required: false,
-    title: "最后补充（可选）",
-    subtitle: "请尽量具体，最好描述你在哪一步卡住、困惑、流失或不放心。",
-    maxLen: 500,
-    placeholder: "请尽量具体，最好描述你在哪一步卡住、困惑、流失或不放心。",
-  },
-];
 
 type EntryState = "guest_fresh" | "guest_has_progress" | "authed_has_progress" | "authed_no_progress";
 
