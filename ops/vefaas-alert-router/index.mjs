@@ -153,21 +153,21 @@ async function runFastPath(alert, decision) {
     await client.deploy(uuid, { force: true, instant: true });
     return { ok: true, action: "coolify_deploy" };
   }
-  const instanceIds = String(process.env.VOLC_ECS_INSTANCE_IDS || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (!instanceIds.length) {
-    throw new Error("VOLC_ECS_INSTANCE_IDS is required for ECS fast path");
+  // o11y restart: still fast
+  if (decision.runbook === "restart-o11y") {
+    const instanceIds = String(process.env.VOLC_ECS_INSTANCE_IDS || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (!instanceIds.length) {
+      throw new Error("VOLC_ECS_INSTANCE_IDS is required for ECS fast path");
+    }
+    const command = "if command -v o11yagentctl >/dev/null; then o11yagentctl restart || true; o11yagentctl ps || true; else systemctl restart o11yagent || true; systemctl status o11yagent --no-pager || true; fi";
+    const client = new VolcEcsClient({ dryRun, timeoutMs: downstreamTimeoutMs() });
+    await client.runCommand({ instanceIds, command, commandName: "versecraft-autoops-restart-o11y", timeout: 30 });
+    return { ok: true, action: "volc_restart_o11y" };
   }
-  const runbook = decision.runbook === "restart-o11y" ? "restart-o11y" : "clean-disk";
-  const command =
-    runbook === "restart-o11y"
-      ? "if command -v o11yagentctl >/dev/null; then o11yagentctl restart || true; o11yagentctl ps || true; else systemctl restart o11yagent || true; systemctl status o11yagent --no-pager || true; fi"
-      : "df -h; docker system df || true; docker builder prune -af --filter until=24h || true; docker image prune -af --filter until=168h || true; journalctl --vacuum-time=7d 2>/dev/null || true; df -h; docker system df || true";
-  const client = new VolcEcsClient({ dryRun, timeoutMs: downstreamTimeoutMs() });
-  await client.runCommand({ instanceIds, command, commandName: `versecraft-autoops-${runbook}`, timeout: 90 });
-  return { ok: true, action: `volc_${runbook}` };
+  throw new Error(`Unknown fast-path runbook "${decision.runbook}"`);
 }
 
 async function dispatch(eventType, alert, decision) {
@@ -196,6 +196,10 @@ async function executeRoute(alert, decision) {
     if (alert.dry_run === true) {
       return await withDeadline(dispatch("autoops-record", alert, decision));
     }
+    // Runbook path: dispatch to autoops-runbook (disk-remediate, coolify-diagnose, etc.)
+    if (decision.path === "runbook") {
+      return await withDeadline(dispatch("autoops-runbook", { ...alert, runbook: decision.runbook }, decision));
+    }
     if (decision.path === "fast") {
       return await withDeadline(runFastPath(alert, decision));
     }
@@ -205,10 +209,8 @@ async function executeRoute(alert, decision) {
     return await withDeadline(dispatch("autoops-record", alert, decision));
   } catch (error) {
     warnJson("alert_router.route_failed_escalating", { incident_key: alert.incident_key, error: error.message });
-    const escalation =
-      decision.path === "slow"
-        ? { ok: false, skipped: true, reason: "autoops-codex dispatch already failed" }
-        : await tryDispatch("autoops-codex", { ...alert, alert_type: alert.alert_type || "unknown" }, decision);
+    // Fast path or runbook path failures: escalate to codex (creates incident + evidence)
+    const escalation = await tryDispatch("autoops-codex", { ...alert, alert_type: alert.alert_type || "unknown", runbook: decision.runbook }, decision);
     return {
       ok: false,
       error: error.message,

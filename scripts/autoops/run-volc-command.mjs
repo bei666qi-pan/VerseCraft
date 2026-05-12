@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 import { discoverVolcInstances, VolcEcsClient } from "./lib/volc-openapi.mjs";
+import {
+  diskPolicy,
+  renderDiskDiagnoseCommand,
+  renderDiskCleanSafeCommand,
+  renderDiskCleanDeepCommand,
+  renderDiskPostcheckCommand,
+  assertSafeDiskCommand,
+} from "./lib/disk-policy.mjs";
 import { loadLocalEnvFiles, logJson, parseArgs, writeRuntimeJson } from "./lib/logger.mjs";
+
+const policy = diskPolicy();
 
 const RUNBOOKS = {
   diagnose: `set -eu
@@ -13,13 +23,16 @@ echo "## docker ps"; docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ima
 echo "## docker system df"; docker system df || true
 echo "## journal"; journalctl -n 120 --no-pager 2>/dev/null || true
 echo "## o11y"; (command -v o11yagentctl >/dev/null && o11yagentctl ps) || true`,
-  "clean-disk": `set -eu
-echo "## before"; df -h || true; docker system df || true
-echo "## prune docker builder cache"; docker builder prune -af --filter until=24h || true
-echo "## prune old dangling/unused images"; docker image prune -af --filter until=168h || true
-echo "## prune stopped containers"; docker container prune -f || true
-echo "## vacuum journal"; journalctl --vacuum-time=7d 2>/dev/null || true
-echo "## after"; df -h || true; docker system df || true`,
+
+  // ── New disk runbooks (generated from disk-policy) ──────────────────────
+  "disk-diagnose": renderDiskDiagnoseCommand(policy),
+  "disk-clean-safe": renderDiskCleanSafeCommand(policy),
+  "disk-clean-deep": renderDiskCleanDeepCommand(policy),
+  "disk-postcheck": renderDiskPostcheckCommand(policy),
+
+  // Compatibility alias: clean-disk now calls disk-clean-safe
+  "clean-disk": renderDiskCleanSafeCommand(policy),
+
   "restart-o11y": `set -eu
 echo "## restart o11y agent"
 if command -v o11yagentctl >/dev/null; then
@@ -78,8 +91,23 @@ async function main() {
   const dryRun = Boolean(args.dryRun);
   const command = RUNBOOKS[runbook];
   if (!command) {
-    throw new Error(`Unknown runbook "${runbook}". Supported: ${Object.keys(RUNBOOKS).join(", ")}`);
+    const supported = Object.keys(RUNBOOKS).join(", ");
+    throw new Error(`Unknown runbook "${runbook}". Supported: ${supported}`);
   }
+
+  // Safety check for disk-related runbooks
+  if (["disk-clean-safe", "disk-clean-deep", "clean-disk"].includes(runbook)) {
+    const safety = assertSafeDiskCommand(command);
+    if (!safety.ok) {
+      await writeRuntimeJson("disk-command-safety-failure.json", {
+        runbook,
+        violations: safety.reason,
+        at: new Date().toISOString(),
+      });
+      throw new Error(`Disk safety check failed for runbook "${runbook}": ${safety.reason.join("; ")}`);
+    }
+  }
+
   const discovered = await discoverVolcInstances({ dryRun });
   const instanceIds = String(args.instanceIds || discovered.instanceIds?.join(",") || "")
     .split(",")

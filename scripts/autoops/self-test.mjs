@@ -11,7 +11,9 @@ async function main() {
   await loadLocalEnvFiles();
   const disk = normalizeAlert({ source: "volcengine-cloudmonitor", alert_type: "disk_high", resource_id: "i-test", trace_id: "t1" });
   assert.equal(disk.alert_type, "disk_high");
-  assert.equal(decideAutoopsPath(disk).path, "fast");
+  const diskDecision = decideAutoopsPath(disk);
+  assert.equal(diskDecision.path, "runbook");
+  assert.equal(diskDecision.runbook, "disk-remediate");
 
   const sentry = normalizeAlert({ source: "sentry", title: "Unhandled TypeError", event_id: "evt-1" });
   assert.equal(sentry.alert_type, "sentry_code_error");
@@ -54,9 +56,34 @@ async function main() {
   assert.ok("ok" in pollResult);
   assert.ok("checked_at" in pollResult);
 
+  // ── disk-policy self-test ──
+  const { diskPolicySelfTest } = await import("./lib/disk-policy.mjs");
+  const diskPolicyResult = diskPolicySelfTest();
+  const diskPolicyFailed = diskPolicyResult.tests.filter((t) => !t.ok);
+  if (diskPolicyFailed.length > 0) {
+    console.error("disk-policy self-test failures:", JSON.stringify(diskPolicyFailed));
+  }
+
+  // ── classify-alert enhanced detection ──
+  const enospcAlert = normalizeAlert({ source: "volcengine-cloudmonitor", rule_name: "disk_full", message: "no space left on device" });
+  assert.equal(enospcAlert.alert_type, "disk_full");
+
+  const overlayAlert = normalizeAlert({ source: "volcengine-cloudmonitor", message: "docker overlay2 usage high 95%" });
+  assert.ok(["docker_overlay_high", "disk_high"].includes(overlayAlert.alert_type), `overlay alert: ${overlayAlert.alert_type}`);
+
+  const diskPath = decideAutoopsPath(enospcAlert);
+  assert.equal(diskPath.path, "runbook");
+  assert.equal(diskPath.runbook, "disk-remediate");
+
+  // ── assertSafeDiskCommand ──
+  const { assertSafeDiskCommand } = await import("./lib/disk-policy.mjs");
+  assert.equal(assertSafeDiskCommand("rm -rf /").ok, false);
+  assert.equal(assertSafeDiskCommand("docker builder prune -f --filter until=24h").ok, true);
+
   const result = {
-    ok: true,
-    checks: ["classify-alert", "incident-key", "dispatch-payload-size", "healthcheck-dry-run", "coolify-dry-run", "volc-dry-run", "agent-runner-factory", "health-poller-interface"],
+    ok: diskPolicyResult.ok,
+    checks: ["classify-alert", "incident-key", "dispatch-payload-size", "healthcheck-dry-run", "coolify-dry-run", "volc-dry-run", "agent-runner-factory", "health-poller-interface", "disk-policy", "disk-classify-alert", "disk-safety-guard"],
+    disk_policy: diskPolicyResult,
     checked_at: new Date().toISOString(),
   };
   await writeRuntimeJson("self-test.json", result);

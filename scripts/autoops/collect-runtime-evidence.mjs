@@ -48,6 +48,19 @@ async function readRuntimeFiles() {
   return out;
 }
 
+async function maybeDiskEvidence() {
+  try {
+    const diskRemediation = await readJsonIfExists(path.join(AUTOOPS_RUNTIME_DIR, "disk-remediation.json"), null);
+    const diskDiagnose = await readJsonIfExists(path.join(AUTOOPS_RUNTIME_DIR, "disk-diagnose-before.json"), null);
+    if (diskRemediation || diskDiagnose) {
+      return { disk_remediation: diskRemediation, disk_diagnose_before: diskDiagnose };
+    }
+    return { skipped: "no disk evidence files found" };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 async function maybeCoolifyEvidence() {
   if (!process.env.COOLIFY_API_KEY || !process.env.COOLIFY_BASE_URL) {
     return { skipped: "missing Coolify API configuration" };
@@ -110,6 +123,12 @@ ${JSON.stringify(evidence.package_scripts, null, 2)}
 ${evidence.recent_commits}
 \`\`\`
 
+## Disk evidence
+
+\`\`\`json
+${String(evidence.runtime_files["disk-diagnose-before.json"] || evidence.runtime_files["disk-remediation.json"] || "not collected").slice(0, 16000)}
+\`\`\`
+
 ## Guardrails
 
 - Preserve \`/api/chat\` SSE and JSON contracts.
@@ -160,6 +179,7 @@ async function main() {
     recent_commits: run("git log --oneline -12"),
     healthcheck,
     coolify: await maybeCoolifyEvidence(),
+    disk: await maybeDiskEvidence(),
     runtime_files: await readRuntimeFiles(),
   };
   await writeRuntimeJson("runtime-evidence.json", evidence);
