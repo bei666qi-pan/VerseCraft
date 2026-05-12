@@ -82,7 +82,6 @@
     "content:validate": "tsx scripts/validate-content-spec.ts",
     "autoops:discover": "node scripts/autoops/discover.mjs",
     "autoops:sync-secrets": "node scripts/autoops/sync-github-secrets.mjs",
-    "autoops:provision": "node scripts/autoops/provision-vefaas-alert-router.mjs",
     "autoops:simulate": "node scripts/autoops/simulate-alert.mjs",
     "autoops:self-test": "node scripts/autoops/self-test.mjs",
     "autoops:local-codex": "node scripts/autoops/local-codex-runner.mjs",
