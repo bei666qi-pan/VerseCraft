@@ -4,15 +4,18 @@
 
 ```mermaid
 flowchart LR
-  A["CloudMonitor / Sentry / APM / external health"] --> B["APIG POST /autoops/alert"]
-  B --> C["veFaaS alert-router"]
-  C -->|low-risk fast path| D["Coolify API / Volc ECS Cloud Assistant"]
-  C -->|code/build/unknown slow path| E["GitHub repository_dispatch"]
-  E --> F["autoops-runbook.yml"]
-  F -->|needs code repair| G["autoops-codex.yml"]
-  G --> H["incident issue + evidence artifact + local Codex prompt"]
-  H --> I["local Codex runner"]
-  I --> J["validation + commit + push main + healthcheck"]
+  A["GitHub Actions autoops-schedule.yml (every 10 min)"] --> B["Health check + Disk check"]
+  B -->|healthy| C["continue"]
+  B -->|unhealthy| D["repository_dispatch autoops-runbook.yml"]
+  D -->|needs code repair| E["autoops-codex.yml"]
+  E --> F["incident issue + evidence artifact + local Codex prompt"]
+  F --> G["local Codex runner"]
+  G --> H["validation + commit + push main + healthcheck"]
+
+  subgraph Manual / On-Demand
+    I["workflow_dispatch"] --> D
+    J["pnpm autoops:disk:remediate -- --mode auto"] --> B
+  end
 ```
 
 ## No Cloud Codex
@@ -56,8 +59,6 @@ Secrets:
 - `COOLIFY_BASE_URL`
 - `COOLIFY_APP_UUID`
 - `VOLC_ECS_INSTANCE_IDS`
-- `AUTOOPS_ALERT_ROUTER_SECRET`
-
 Do not sync `GITHUB_TOKEN`; workflows use the built-in `github.token`.
 Do not configure `OPENAI_API_KEY` for this flow.
 
@@ -82,16 +83,15 @@ Variables:
 
 Current default is `AUTOOPS_DEPLOY_MODE=observe` because this repo already has `Sync Gitee Branches` triggering Coolify after CI success. Switch to `api` only after confirming there is no duplicate deploy path.
 
-## Volc CloudMonitor Webhook
+## Scheduled Checks (replaces CloudMonitor + APIG + VeFaaS)
 
-APIG URL shape:
+APIG and VeFaaS have been removed (saving ¥1,050/month). Auto-ops now uses
+GitHub Actions scheduled workflows instead of push-based webhooks.
 
-```text
-https://<apig-domain>/autoops/alert?secret=<AUTOOPS_ALERT_ROUTER_SECRET>
-```
-
-Callback payload examples live in `.ops/autoops/templates/`.
-The router reads `x-volc-trace-id`, generates `incident_key`, and dedupes within the function process.
+The `autoops-schedule.yml` workflow runs every 10 minutes and performs:
+- Health check (HTTP 200 on versecraft.cn + Coolify API)
+- Hourly disk check via `disk-remediate --mode auto`
+- Auto-dispatch `autoops-runbook` on failures
 
 ## Volc OpenAPI Basis
 
@@ -106,28 +106,16 @@ References:
 
 If veFaaS or APIG API parameters are uncertain, do not guess. Use the generated package and the shortest console steps in `provision-result.json`.
 
-## veFaaS + APIG
+## Scheduled Workflow
 
-Run:
+No provisioning needed. The `autoops-schedule.yml` workflow runs automatically
+once pushed to `main`. Enable it immediately via:
 
 ```bash
-pnpm autoops:provision
+gh workflow enable autoops-schedule.yml
 ```
 
-Outputs:
-
-- `.ops/autoops/runtime/vefaas-alert-router.zip`
-- `.ops/autoops/runtime/provision-result.json`
-- `.ops/autoops/runtime/cloudmonitor-webhook-url.txt`
-
-Console fallback:
-
-1. Create or update a Node.js 22 veFaaS function named `versecraft-autoops-alert-router`.
-2. Upload `.ops/autoops/runtime/vefaas-alert-router.zip`.
-3. Set handler to `index.handler`.
-4. Configure required environment variable names from `CONFIG.md`; do not paste values into chat or Git.
-5. Create APIG route `POST /autoops/alert` and bind it to the function.
-6. Configure CloudMonitor/Sentry/external health callbacks to the APIG URL.
+Or trigger manually from the GitHub Actions UI (`workflow_dispatch`).
 
 ## Windows Local Loop
 
@@ -147,7 +135,5 @@ Arguments: -NoProfile -ExecutionPolicy Bypass -Command "cd D:\versecraft; pnpm a
 
 ## Disable Auto-Ops
 
-- Disable the APIG route or rotate/remove `AUTOOPS_ALERT_ROUTER_SECRET`.
-- Disable `autoops-runbook.yml`, `autoops-codex.yml`, and `autoops-postdeploy.yml`.
-- Remove CloudMonitor/Sentry/APM webhooks.
+- Disable `autoops-schedule.yml`, `autoops-runbook.yml`, `autoops-codex.yml`, and `autoops-postdeploy.yml`.
 - Stop the local Codex loop.

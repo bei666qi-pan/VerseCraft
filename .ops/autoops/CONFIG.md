@@ -17,7 +17,7 @@
 | --- | --- |
 | `COOLIFY_API_KEY` | Coolify API |
 | `COOLIFY_BASE_URL` | Coolify root or `/api/v1` URL |
-| `AUTOOPS_ALERT_ROUTER_SECRET` | APIG/veFaaS webhook verification |
+| `AUTOOPS_ALERT_ROUTER_SECRET` | Deprecated — APIG/VeFaaS removed. Scheduled GitHub Actions replaces webhook |
 | `VOLC_AK` | Volcengine OpenAPI AK |
 | `VOLC_SK` | Volcengine OpenAPI SK |
 | `VOLC_REGION` | Usually `cn-shanghai` |
@@ -31,10 +31,6 @@ Do not set `OPENAI_API_KEY` for auto-ops. Do not sync a repository secret named 
 | Variable | Purpose |
 | --- | --- |
 | `AUTOOPS_CODEX_COMMAND` | Optional non-interactive local Codex command override |
-| `AUTOOPS_APIG_BASE_URL` | Final APIG base URL for provision report |
-| `AUTOOPS_VEFAAS_FUNCTION_NAME` | Defaults to `versecraft-autoops-alert-router` |
-| `AUTOOPS_ALERT_DEDUPE_TTL_MS` | In-memory alert-router dedupe window |
-| `AUTOOPS_ALERT_ROUTER_DRY_RUN` | `1` disables external side effects in alert-router |
 
 ## Auto Discovery
 

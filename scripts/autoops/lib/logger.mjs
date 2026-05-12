@@ -174,7 +174,6 @@ function loadWindowsUserEnvFallback() {
     "COOLIFY_BASE_URL",
     "COOLIFY_APP_UUID",
     "VOLC_ECS_INSTANCE_IDS",
-    "AUTOOPS_ALERT_ROUTER_SECRET",
     "OPENAI_API_KEY",
   ].filter((name) => !process.env[name]);
   if (!names.length) {

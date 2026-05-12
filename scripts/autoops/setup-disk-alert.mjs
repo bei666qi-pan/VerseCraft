@@ -28,7 +28,7 @@ async function main() {
     "     - 统计周期: 5 分钟",
     "     - 静默时间: 30 分钟",
     "   - 通知方式:",
-    "     - 回调 URL (使用 cloudmonitor-webhook-url.txt 中的地址)",
+    "     - (可选) APIG 已关闭。磁盘检查现由 GitHub Actions autoops-schedule.yml 每 10 分钟执行，无需 CloudMonitor 回调",
     "   - 启用: true",
     "",
     "4. 替代方案: 运行 --api 尝试通过 API 创建",

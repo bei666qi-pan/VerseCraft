@@ -1,0 +1,121 @@
+name: Auto-Ops Scheduled Check
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      skip_disk:
+        description: "Skip disk remediation this run"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+# Allow overlapping runs — if one takes >10min the next still starts
+concurrency:
+  group: autoops-schedule-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  scheduled:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTOOPS_SITE_URL: ${{ vars.AUTOOPS_SITE_URL || 'https://versecraft.cn' }}
+      AUTOOPS_HEALTH_URL: ${{ vars.AUTOOPS_HEALTH_URL || 'https://versecraft.cn/api/health' }}
+      AUTOOPS_REPO: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ github.token }}
+      COOLIFY_API_KEY: ${{ secrets.COOLIFY_API_KEY }}
+      COOLIFY_BASE_URL: ${{ secrets.COOLIFY_BASE_URL }}
+      COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+      VOLC_AK: ${{ secrets.VOLC_AK }}
+      VOLC_SK: ${{ secrets.VOLC_SK }}
+      VOLC_REGION: ${{ secrets.VOLC_REGION }}
+      VOLC_ECS_INSTANCE_IDS: ${{ secrets.VOLC_ECS_INSTANCE_IDS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # ── Health Check ──
+      - name: Health check
+        id: health
+        continue-on-error: true
+        run: pnpm autoops:healthcheck -- --attempts 2 --timeout-ms 8000
+
+      # ── Disk check (hourly, at :00–:04 window to avoid all schedulers hitting at once) ──
+      - name: Disk check
+        id: disk
+        continue-on-error: true
+        if: inputs.skip_disk != true
+        run: |
+          MINUTE=$(date +%M)
+          if [ "$MINUTE" -ge 0 ] && [ "$MINUTE" -le 4 ]; then
+            echo "Running hourly disk remediation..."
+            pnpm autoops:disk:remediate -- --mode auto
+            DISK_EXIT=$?
+            echo "exit_code=${DISK_EXIT}" >> "$GITHUB_OUTPUT"
+            if [ "$DISK_EXIT" = "2" ]; then
+              echo "::warning::Disk remediation completed but still critical"
+            elif [ "$DISK_EXIT" != "0" ]; then
+              echo "::error::Disk remediation failed with exit code ${DISK_EXIT}"
+            fi
+          else
+            echo "Skipping disk check this cycle (minute=${MINUTE}, runs at :00-:04)"
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Escalate health failure ──
+      - name: Dispatch runbook on health failure
+        if: steps.health.outcome != 'success'
+        run: |
+          pnpm exec node scripts/autoops/trigger-github-dispatch.mjs \
+            --event-type autoops-runbook \
+            --source github-actions-schedule \
+            --type app_health_failed \
+            --severity warning \
+            --resource-id "${AUTOOPS_HEALTH_URL}" \
+            --trace-id "${GITHUB_RUN_ID}" \
+            --runbook diagnose
+
+      # ── Escalate disk critical ──
+      - name: Dispatch runbook on disk critical
+        if: steps.disk.outputs.exit_code == '2'
+        run: |
+          pnpm exec node scripts/autoops/trigger-github-dispatch.mjs \
+            --event-type autoops-runbook \
+            --source github-actions-schedule \
+            --type disk_high \
+            --severity critical \
+            --resource-id "${VOLC_ECS_INSTANCE_IDS}" \
+            --trace-id "${GITHUB_RUN_ID}" \
+            --runbook disk-remediate
+
+      # ── Upload runtime artifacts ──
+      - name: Upload runtime artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoops-schedule-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            .ops/autoops/runtime/*.json
+            .ops/autoops/runtime/*.md
+            .ops/autoops/runtime/*.txt
+            !.ops/autoops/runtime/*.env
+            !.ops/autoops/runtime/*.zip
