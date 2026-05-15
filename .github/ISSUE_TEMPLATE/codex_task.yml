@@ -1,0 +1,89 @@
+name: Codex automation task
+description: Approved small task for the hourly Codex automation worker.
+title: "[Codex] "
+labels:
+  - agent:approved
+  - codex:ready
+  - priority:P2
+  - risk:low
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: Background
+      description: What problem or opportunity does this task address?
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The single outcome this issue should produce.
+    validations:
+      required: true
+  - type: textarea
+    id: allowed_scope
+    attributes:
+      label: Allowed modification scope
+      description: Files, modules, or behavior the worker may change.
+    validations:
+      required: true
+  - type: textarea
+    id: forbidden
+    attributes:
+      label: Forbidden changes
+      description: Explicitly list what must not be changed.
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation requirements
+      description: Constraints the implementation must follow.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Objective checks required before closing.
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test commands
+      description: Commands the worker must run.
+      value: |
+        npx eslint .
+        pnpm build
+    validations:
+      required: true
+  - type: dropdown
+    id: direct_main
+    attributes:
+      label: Direct commit to main allowed?
+      options:
+        - "yes"
+        - "no"
+    validations:
+      required: true
+  - type: dropdown
+    id: deploy_required
+    attributes:
+      label: Deployment required?
+      options:
+        - "no"
+        - "yes"
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - "risk:low"
+        - "risk:medium"
+        - "risk:high"
+    validations:
+      required: true
