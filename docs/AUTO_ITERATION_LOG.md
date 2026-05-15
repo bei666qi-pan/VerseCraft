@@ -20,3 +20,26 @@ Scores:
 - NPC Life Score: guidance only, no runtime change.
 - Innovation Score: improves repeatable issue execution.
 - Stability Score: lint and build passed; production verification not run because this cycle does not deploy.
+
+## 2026-05-15 - Created next Codex issues
+
+- Issue: #67, #68, #69
+- Type: created issues
+- Goal: seed the next automation queue after bootstrapping the issue worker system.
+- Created issues:
+  - #67 `[Codex] Add mock playtest for free-input fallback loop`
+  - #68 `[Codex] Add NPC epistemic boundary regression case`
+  - #69 `[Codex] Harden production smoke script artifact output`
+- Modified files: `docs/AUTO_ITERATION_LOG.md`, `docs/TODO.md`.
+- Test results: `git diff --check` passed; `scripts/verify-no-secret-leak.ps1` passed for the log update; previous bootstrap validation passed in the same cycle.
+- Playability impact: #67 targets free-input playability validation.
+- NPC Life impact: #68 targets NPC epistemic boundary validation.
+- AI Reliability impact: #67 and #68 target mock/no-key and knowledge-boundary reliability.
+- Deployed: no.
+
+Scores:
+
+- Playability Score: next task seeded.
+- NPC Life Score: next task seeded.
+- Innovation Score: issue-driven automation queue restored.
+- Stability Score: no runtime change; production verification not run because this cycle does not deploy.

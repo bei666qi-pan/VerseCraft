@@ -5,7 +5,7 @@
 - Keep issue-driven cycles limited to one approved task per run.
 - Prefer small playability, NPC life, AI reliability, and stability improvements.
 - Create 2-3 high-quality `agent:approved` + `codex:ready` issues when no executable issue exists.
-- Next cycle should create 2-3 approved ready issues because this bootstrap cycle found no executable issue.
+- Next cycle should pick one approved ready issue: #67, #68, or #69.
 
 ## Backlog Themes
 
