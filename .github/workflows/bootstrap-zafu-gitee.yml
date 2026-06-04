@@ -41,27 +41,34 @@ jobs:
             exit 1
           fi
           python3 - <<'PY'
-          import os, urllib.parse, urllib.request
+          import json, os, urllib.parse, urllib.request
           token = os.environ['GITEE_TOKEN']
+          owner, repo = 'bei-qi-luo', 'zafu-leave-system'
           key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDTmk3DNw10g91tA4xuG96UOL7/J6ABkyA0WE1xMFQQbCE0R/q5EnZCcJxJVkmZp9opJrH2djyGppMc/Fy+Mfo0zHgXYRLnQPiP1CAO0yuDA97keT2oBj1kLzqw0FxCUJhdZYENLG6oujKLeHdgP9OuDZQp7HmX5l/Ss6mPWYxhMiwd3CNd3fextZULkiMr7JZ0H+XHR4UBMRIuXqZTnlqJrKJlTT7txr/3FHZJgVRIgHU+GhALZzznhsW5QDv5TR3AOalLq0aNjCIn24uWSlihaMXVYV4Bt4jqT22sRZscdqEJp1Ikv7zPVucGmGpBv3iCckTT+IdXBKXZ/4FwFWLxaI9uVvfOPEcmdwJwECUmCy2RqZ9y+o2347Mzzsc18tbYJ92IPMEy7flY8+2cHKjOgOdW+JVQdmJCzBtlxCWPTvP02QozsZb5iLPVHB/E4UHM2e/ibOtR6Z3tIIIH6YQqE9iTOTwlsY0/xQiTq/2NEMCO/kt92fHIDGkZqEg1xA5TFC8x3SjpsUeP6P9t1O9YQZTAvrnEvljD7L8qOOTLNskuH8YcIJBUSgyPWd6FYGqgNtZBMNbPxml+m+ZQM9VUbq+LjfDOggoPgvrvD/AC0i4v0GftcExhQhnofRMH9MLYeM7y+Z33LUNyPcdRErpuNj2QxTikO9zoEvAzVAdp3w=="
-          url = 'https://gitee.com/api/v5/repos/bei-qi-luo/zafu-leave-system/keys'
-          data = urllib.parse.urlencode({
-              'access_token': token,
-              'title': 'coolify-minipet-gitee',
-              'key': key,
-              'read_only': 'true',
-          }).encode()
-          req = urllib.request.Request(url, data=data, method='POST')
+          add_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys'
+          data = urllib.parse.urlencode({'access_token': token, 'title': 'coolify-minipet-gitee', 'key': key, 'read_only': 'true'}).encode()
           try:
-              with urllib.request.urlopen(req, timeout=30) as resp:
-                  print(resp.read().decode())
+              with urllib.request.urlopen(urllib.request.Request(add_url, data=data, method='POST'), timeout=30) as resp:
+                  print('added key', resp.read().decode())
           except Exception as e:
               body = e.read().decode() if hasattr(e, 'read') else str(e)
-              if 'already exists' in body or '已存在' in body or '422' in body:
-                  print('deploy key already exists or accepted:', body[:200])
-              else:
-                  print(body)
-                  raise
+              print('add key response:', body[:300])
+          avail_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys/available?access_token={urllib.parse.quote(token)}'
+          with urllib.request.urlopen(avail_url, timeout=30) as resp:
+              available = json.loads(resp.read().decode())
+          target = None
+          for item in available:
+              title = item.get('title') or ''
+              if 'minipet-gitee' in title or item.get('key','').startswith('ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDTmk3'):
+                  target = item
+                  break
+          if not target:
+              raise SystemExit(f'Could not find deploy key in available list: {available!r}')
+          key_id = target['id']
+          enable_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys/enable/{key_id}?access_token={urllib.parse.quote(token)}'
+          req = urllib.request.Request(enable_url, method='PUT')
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              print('enabled key', key_id, resp.read().decode())
           PY
 
       - name: Push main to Gitee
