@@ -53,22 +53,24 @@ jobs:
           except Exception as e:
               body = e.read().decode() if hasattr(e, 'read') else str(e)
               print('add key response:', body[:300])
-          avail_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys/available?access_token={urllib.parse.quote(token)}'
-          with urllib.request.urlopen(avail_url, timeout=30) as resp:
-              available = json.loads(resp.read().decode())
-          target = None
-          for item in available:
-              title = item.get('title') or ''
-              if 'minipet-gitee' in title or item.get('key','').startswith('ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDTmk3'):
-                  target = item
-                  break
-          if not target:
-              raise SystemExit(f'Could not find deploy key in available list: {available!r}')
-          key_id = target['id']
-          enable_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys/enable/{key_id}?access_token={urllib.parse.quote(token)}'
-          req = urllib.request.Request(enable_url, method='PUT')
-          with urllib.request.urlopen(req, timeout=30) as resp:
-              print('enabled key', key_id, resp.read().decode())
+              if '已经启用' not in body and 'already exists' not in body and '已经被添加' not in body:
+                  pass
+          enabled_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys?access_token={urllib.parse.quote(token)}'
+          with urllib.request.urlopen(enabled_url, timeout=30) as resp:
+              enabled = json.loads(resp.read().decode())
+          if any('minipet-gitee' in (item.get('title') or '') for item in enabled):
+              print('deploy key already enabled on repo')
+          else:
+              avail_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys/available?access_token={urllib.parse.quote(token)}'
+              with urllib.request.urlopen(avail_url, timeout=30) as resp:
+                  available = json.loads(resp.read().decode())
+              target = next((item for item in available if 'minipet-gitee' in (item.get('title') or '')), None)
+              if target:
+                  enable_url = f'https://gitee.com/api/v5/repos/{owner}/{repo}/keys/enable/{target["id"]}?access_token={urllib.parse.quote(token)}'
+                  with urllib.request.urlopen(urllib.request.Request(enable_url, method='PUT'), timeout=30) as resp:
+                      print('enabled key', target['id'], resp.read().decode())
+              else:
+                  print('available keys', available)
           PY
 
       - name: Push main to Gitee
