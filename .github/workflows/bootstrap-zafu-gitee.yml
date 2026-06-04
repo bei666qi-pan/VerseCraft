@@ -1,0 +1,51 @@
+name: Bootstrap ZAFU Gitee Mirror
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout zafu-leave-system
+        uses: actions/checkout@v4
+        with:
+          repository: bei666qi-pan/zafu-leave-system
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure Gitee repository exists
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -o /tmp/gitee-repo.json -w "%{http_code}" \
+            "https://gitee.com/api/v5/repos/bei-qi-luo/zafu-leave-system?access_token=${GITEE_TOKEN}")"
+          if [ "$status" = "404" ]; then
+            curl -sS -X POST "https://gitee.com/api/v5/user/repos" \
+              -d "access_token=${GITEE_TOKEN}" \
+              -d "name=zafu-leave-system" \
+              -d "private=true" \
+              -d "description=ZAFU campus leave system mirror"
+          elif [ "$status" != "200" ]; then
+            cat /tmp/gitee-repo.json
+            exit 1
+          fi
+
+      - name: Push main to Gitee
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git remote add gitee "https://oauth2:${GITEE_TOKEN}@gitee.com/bei-qi-luo/zafu-leave-system.git"
+          git config --global http.postBuffer 524288000
+          git push --force gitee HEAD:refs/heads/main
