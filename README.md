@@ -1,201 +1,201 @@
 <p align="center">
-  <img src="./public/logo.svg" width="92" alt="VerseCraft logo" />
+  <img src="./public/logo.svg" width="88" alt="VerseCraft logo" />
 </p>
 
 <h1 align="center">文界工坊 VerseCraft</h1>
 
-<p align="center">
-  <strong>AI 启动的互动小说游戏平台</strong>
-</p>
+<p align="center"><strong>AI 互动叙事平台：让大模型作为「故事运行时」，实时承接、推进与扩展一部可游玩的互动小说。</strong></p>
 
 <p align="center">
-  不是把小说塞进聊天框。<br>
-  是把 <strong>世界观、规则、选择、后果</strong> 交给 AI 在你眼前实时运行。
+  <img src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs" alt="Next.js" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Drizzle-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + Drizzle" />
+  <img src="https://img.shields.io/badge/Node-%E2%89%A522.22-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node >=22.22" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License" />
+  <a href="https://versecraft.cn"><img src="https://img.shields.io/badge/Live-versecraft.cn-brightgreen?style=flat-square" alt="Live Demo" /></a>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Product-AI%20Interactive%20Novel%20Platform-111111?style=flat-square" alt="Product badge" />
-  <img src="https://img.shields.io/badge/Current%20World-%E5%BA%8F%E7%AB%A0%C2%B7%E6%9A%97%E6%9C%88-222222?style=flat-square" alt="Current world badge" />
-  <img src="https://img.shields.io/badge/Language-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-333333?style=flat-square" alt="Language badge" />
-  <img src="https://img.shields.io/badge/Status-Playable%20Prototype-444444?style=flat-square" alt="Status badge" />
-</p>
+---
 
-<p align="center">
-  <a href="https://versecraft.cn"><strong>在线演示：versecraft.cn</strong></a> ·
-  <a href="./README.en.md">English</a>
-</p>
+## 这是什么
 
-<p align="center">
-  <a href="#什么是-versecraft">什么是 VerseCraft</a> ·
-  <a href="#为什么它有开创性">为什么它有开创性</a> ·
-  <a href="#在线演示">在线演示</a> ·
-  <a href="#当前示例世界">当前示例</a> ·
-  <a href="#30-秒玩法说明">玩法说明</a> ·
-  <a href="#快速开始">快速开始</a> ·
-  <a href="#给开发者">给开发者</a>
-</p>
+VerseCraft 不是把小说塞进聊天框，而是把**世界观、规则、选择与后果**交给大模型在玩家眼前实时运行。
 
-> **一句话定义：** VerseCraft 想做的不是一部 AI 小说，而是一种让 AI 启动、承接、扩展互动小说世界的游戏平台。
+玩家用一句自然语言描述自己想做什么（而不是从固定选项里点选），AI 会结合当前场景、世界规则、角色状态与时间推进来裁定后果，再把结果继续展开为新的叙事、新的选择和新的压力。底座被设计成一个**平台**而非单一故事页面：同一套互动叙事引擎可以承载悬疑、校园、科幻、末日等不同题材，当前以可游玩的起始世界「序章·暗月」作为能力验证样板。
 
-## 什么是 VerseCraft
+技术上它是一个 Next.js 16 / React 19 单体应用，内含完整的回合引擎、AI 网关抽象、世界知识 RAG、后台世界推演 worker、内容安全合规层与管理后台，已部署上线。
 
-VerseCraft 是一个面向互动叙事的 AI 平台原型。
+## 🔗 在线体验
 
-在这里，AI 不只是负责“续写一段文案”，而是负责把一个世界真正跑起来：
+**https://versecraft.cn** （生产环境 · 简体中文）
 
-- 它接住玩家输入的一句话动作。
-- 它理解当前场景、世界规则、角色状态和时间推进。
-- 它决定这句话会引发什么后果。
-- 它把结果继续变成新的叙事、新的选择、新的压力。
+## ✨ 核心特性
 
-换句话说，**玩家不是在读小说，而是在进入一部被 AI 实时点亮的互动小说。**
+- **自然语言行动，而非点选题** — 玩家直接输入「我贴着墙往前走」「我敲门三下立刻后退」，由主模型裁定结果，输入真正改变剧情走向。
+- **分阶段回合引擎** — `POST /api/chat` 把一次回合拆为安全校验、控制面预检、意图归一、lane 路由、prompt 组装、主模型流式生成、NPC 一致性改写、`validateNarrative` + `commitTurn`、`__VERSECRAFT_FINAL__` 终帧等阶段（`src/lib/turnEngine/*`），将「事实提交」与「文案生成」分离，便于审计与回退。
+- **统一大模型基础设施** — 业务代码不直接 `fetch` 模型，全部经 `src/lib/ai` 网关层（one-api 兼容）。按**逻辑角色** `main / control / enhance / reasoner` 抽象，真实上游型号只存在于环境变量或 one-api 控制台，换模型无需改业务代码（`src/lib/ai/tasks/taskPolicy.ts` 维护任务→角色映射与禁止路由表）。
+- **韧性与降级** — 网关层内置超时、重试，以及按 provider 与按逻辑角色的进程内熔断（`src/lib/ai/fallback/circuitBreaker.ts`、`modelCircuit.ts`），并支持 `full / safe / emergency` 运行模式；未配置网关时仍返回 `200` + SSE 并带 `X-VerseCraft-Ai-Status: keys_missing` 降级帧。
+- **世界知识 RAG** — 世界事实从硬编码逐步迁移到「稳定规则前缀 + 运行时检索 lore 注入」，运行时调用 `getRuntimeLore(...)` 按预算检索（`src/lib/worldKnowledge/*`），`registry` 承担 bootstrap / fallback。
+- **后台世界推演（World Director）** — `reasoner` 角色仅用于离线任务；在线回合终帧后**非阻塞**入队 `WORLD_ENGINE_TICK`，由 worker（`scripts/vc-worker.ts`）消费并生成 NPC 后续行动、世界事件、剧情分支种子等，落库到 `world_engine_runs / world_engine_event_queue / world_engine_agenda_snapshots`。
+- **认知一致性（Epistemic）与叙事校验** — 事实按「DM 专属 / 场景公共 / 玩家私密 / 角色私有 / 情绪残响」分桶，post-generation validator 检测 DM-only 泄露、位置冲突、reveal 越权、选项退化等问题并按严重度回退（`src/lib/epistemic/*`、`turnEngine/validateNarrative.ts`）。
+- **内容安全合规层** — 本地场景化策略引擎为主裁判（白名单 + 回退叙事 + JSON 契约保序），可选接入外部文本审核作为风险信号之一，带独立的失败模式与熔断配置（`src/lib/safety/*`）；附用户协议、隐私政策、未成年人、AI 免责声明等法务页面（`src/app/legal/*`）。
+- **客户端持久化与离线** — 存档走 IndexedDB（`idb-keyval`），含 service worker（`public/sw.js`）与离线页，存档结构带快照兼容层。
 
-## 为什么它有开创性
+## 🏗 架构
 
-- **它的目标是平台，不是单一故事页面**：同一套互动叙事底座可以承载悬疑、校园、科幻、末日、现实、历史、奇幻等不同题材。
-- **AI 在这里是“故事运行时”**：不是聊天陪玩，而是负责推进剧情、执行规则、制造后果。
-- **互动不是点选题，而是自然语言行动**：你可以像真的身在现场一样，直接说“我要做什么”。
-- **世界观是可持续扩展的**：每一个新世界都可以拥有自己的规则、角色、检定方式和叙事节奏。
-- **它不是传统文字游戏的复刻**：更像互动小说、规则系统和 AI 叙事引擎的结合体。
+```mermaid
+flowchart TD
+  Player["玩家自然语言输入"] --> Chat["POST /api/chat<br/>route.ts"]
 
-如果说很多 AI 项目在做“更聪明的聊天”，VerseCraft 想做的是 **“更像活着的故事世界”**。
+  subgraph Online["在线回合引擎 turnEngine"]
+    Chat --> Sec["安全校验 + 控制面预检 + 意图归一"]
+    Sec --> Route["lane 路由 + 预算化 runtime lore"]
+    Route --> Prompt["epistemic 过滤 + prompt 组装"]
+    Prompt --> Main["主模型流式输出 SSE"]
+    Main --> Consist["NPC 一致性改写 + resolveDmTurn"]
+    Consist --> Commit["validateNarrative + commitTurn"]
+    Commit --> Final["__VERSECRAFT_FINAL__ 终帧"]
+  end
 
-## 在线演示
+  Prompt -. 按预算检索 .-> RAG["世界知识 RAG<br/>worldKnowledge / registry"]
+  Main --> Gateway["AI 网关层 src/lib/ai<br/>逻辑角色 main/control/enhance/reasoner"]
+  Gateway --> OneAPI["one-api 兼容上游"]
 
-演示网址：[versecraft.cn](https://versecraft.cn)
+  Final --> Tick["非阻塞入队 WORLD_ENGINE_TICK"]
+  Tick --> Queue[("Redis 去重锁 / 队列")]
+  Queue --> Worker["vc-worker（reasoner 离线推演）"]
+  Worker --> PG[("PostgreSQL · Drizzle<br/>事实源 / 世界引擎落库")]
+  RAG --> PG
+  Commit --> PG
+```
 
-## 当前示例世界
+> 数据真相源为 PostgreSQL；Redis 仅用于去重锁、热缓存与限流协调。`PLAYER_CHAT` 主链路禁止路由到 `reasoner` / `enhance`（见 `taskPolicy.ts` 的 `TASK_ROLE_FORBIDDEN`），离线推演不阻塞在线回合。
 
-目前 VerseCraft 先提供一个可游玩的起始世界，用来验证平台能力：
+## 🧰 技术栈
 
-### 序章·暗月
+| 维度 | 选型 | 说明 |
+|------|------|------|
+| 运行时 | Node.js ≥ 22.22（`.node-version` 锁 22.22.2） | `engines` 强约束 |
+| 框架 | Next.js 16 + React 19 | App Router；生产用 `output: "standalone"` |
+| 语言 | TypeScript 5 | 全量 TS |
+| 样式 | Tailwind CSS v4 | 经 `@tailwindcss/postcss` |
+| 状态管理 | Zustand 5 | 客户端游戏状态 |
+| 数据库 | PostgreSQL + Drizzle ORM | `drizzle-kit` 管理迁移（`drizzle/*.sql`） |
+| 缓存 / 限流 | Redis + `@upstash/ratelimit` | 去重锁、热缓存、速率限制 |
+| 鉴权 | NextAuth v5（beta）+ bcryptjs | Credentials provider，见 `auth.ts` |
+| 人机校验 | ALTCHA（`altcha` / `altcha-lib`） | 注册 / 关键操作防滥用 |
+| AI 接入 | one-api 兼容网关（OpenAI Chat Completions 形态） | 逻辑角色抽象，型号在环境变量 |
+| 客户端存档 | IndexedDB（`idb-keyval`） | 含 service worker / 离线页 |
+| 校验 | Zod 4 | 运行时 schema 校验 |
+| 测试 | `tsx --test`（单测）+ Playwright（E2E）+ k6（压测） | SSE 契约 / 延迟预算 / admin 烟测 |
+| 部署 | Docker（多阶段 standalone）+ Coolify | `Dockerfile` 暴露 3000，`/api/health` 健康检查 |
+| 包管理 | pnpm 10 | `pnpm-lock.yaml` frozen |
 
-你会进入一个由 AI 主笔承接的互动叙事场景。
+## 🚀 快速开始
 
-它不是 VerseCraft 的题材边界，只是第一块内容样板：
-
-- 用来验证自然语言行动如何被 AI 承接。
-- 用来验证世界状态、角色状态和时间推进如何协同。
-- 用来验证一套平台能力能否持续孵化不同类型的互动故事。
-- 后续世界可以是完全不同的题材、节奏和玩法目标。
-
-换句话说，「序章·暗月」是第一扇门，不是 VerseCraft 被绑定的唯一素材类型。
-
-## 30 秒玩法说明
-
-1. 先创建角色，分配属性，选定你的起始倾向。
-2. 进入当前世界，阅读 AI 给你的场景描述。
-3. 输入一句自然语言动作，比如：
-
-> 我先别出声，贴着墙往前走。<br>
-> 我敲门三下，然后立刻后退。<br>
-> 我不进去，先把手电照向走廊尽头。
-
-4. AI 会结合世界规则、角色属性和时间变化，给出即时后果。
-5. 你继续行动，故事继续分叉，直到活下来、失败，或摸到真相的一角。
-
-## 你会感受到的，不只是“能聊天”
-
-- **压迫感**：危险不是写在背景里的，而是会实时追上来的。
-- **参与感**：你的输入不是装饰，它真的改变故事走向。
-- **未知感**：同一句行动，在不同时间点、不同状态下，可能完全不同。
-- **沉浸感**：它更像你在经历一场小说，而不是在围观一场小说。
-
-## 它适合谁
-
-- 喜欢互动小说、分支叙事、角色扮演和文本冒险的人。
-- 喜欢“我的选择会改变结果”而不是只读剧情的人。
-- 对 AI 原生内容形态感兴趣，想看“小说平台”能不能被重新定义的人。
-- 想体验中文语境下、由 AI 驱动的单机叙事系统的人。
-
-## 快速开始
+前置依赖：Node.js ≥ 22.22.0、pnpm 10、PostgreSQL（可用 `docker compose` 起本地实例）。
 
 ```bash
-node -v # >= 22.22.0
+# 1. 克隆
+git clone https://github.com/bei666qi-pan/VerseCraft.git
+cd VerseCraft
+
+# 2. 安装依赖
 pnpm install
+
+# 3. 配置环境变量：复制模板并按需填写
+cp .env.example .env.local
+
+# 4.（可选）启动本地 PostgreSQL / Redis
+docker compose --profile local up -d
+# 或仅起 PostgreSQL：pnpm postgres:local
+
+# 5. 推送数据库 schema
+pnpm db:push
+
+# 6. 启动开发服务器（默认端口 666）
 pnpm dev
 ```
 
-Codex Browser Use 依赖 Node REPL 解析到合格 Node 运行时；若 PATH 中默认 `node.exe` 低于 `22.22.0`，请设置 `NODE_REPL_NODE_PATH` 指向合格的 Node 可执行文件。Windows 本机可使用 `D:\node-v22.22.2\node.exe`；调整用户环境变量后如果 Browser Use 仍解析旧 Node，请重启 Codex app。
+打开 http://localhost:666 ，进入「铸造角色」分配属性后即可开局。未配置 AI 网关时页面仍可运行，AI 回合会以降级方式响应。
 
-先把 `.env.example` 复制为 `.env.local` 并按模板填好配置。默认会在 `http://localhost:666` 启动，进入「铸造角色」后就可以直接开局。
-
-## 平台想去哪里
-
-VerseCraft 的野心不是只做完某一个示例世界。
-
-它真正想验证的是：
-
-- AI 能不能成为互动小说的平台层。
-- 一个仓库里能不能持续孵化多个可游玩的世界。
-- 世界观、规则系统、状态流转和叙事生成，能不能被做成可扩展的内容基础设施。
-
-你现在看到的是第一扇门，不是最后一层楼。
-
-## 给开发者
-
-<details>
-<summary><b>展开查看开发说明</b></summary>
-
-### 项目定位
-
-VerseCraft 是一个单机、浏览器内运行的中文互动叙事项目。它目前以「序章·暗月」为起始演示世界，围绕 AI 叙事推进、规则检定、世界知识检索和客户端持久化来搭建通用平台原型。
-
-### 技术栈
-
-- Node.js >=22.22.0
-- Next.js 16 + React 19
-- Tailwind CSS v4
-- Zustand 5
-- PostgreSQL + Drizzle
-- IndexedDB（`idb-keyval`）做客户端持久化
-
-### 本地开发常用命令
+常用命令：
 
 ```bash
-pnpm dev
-pnpm build
-pnpm test:unit
-pnpm test:e2e:chat
-pnpm run ship -- "feat: your message"
+pnpm build               # 生产构建
+pnpm test:unit           # 单元测试（含 turnEngine 契约）
+pnpm test:e2e:chat       # /api/chat SSE 契约 E2E（Playwright）
+pnpm test:ci             # eslint + 单测 + db:check + build（与 CI 对齐）
+pnpm verify:ai-gateway   # 探测 AI 网关连通性
+pnpm worker:kg           # 启动后台世界推演 worker
 ```
 
-### 环境变量
+> 注：`pnpm dev` 实为 `next dev --webpack -p 666`，故开发服务器固定在端口 `666`（见 `package.json` scripts）。
 
-复制 `.env.example` 为 `.env.local`，然后按模板填写。常见必需项包括：
+## ⚙️ 配置
 
-- `DATABASE_URL`
-- `REDIS_URL`
-- `AUTH_SECRET`
-- `ADMIN_PASSWORD`
-- `ALTCHA_HMAC_KEY`
-- `AI_GATEWAY_BASE_URL`
-- `AI_GATEWAY_API_KEY`
-- `AI_MODEL_MAIN`
-- `AI_MODEL_CONTROL`
-- `AI_MODEL_ENHANCE`
-- `AI_MODEL_REASONER`
+所有配置以 [`.env.example`](./.env.example) 为模板，复制为 `.env.local` 后填写。**仓库内不含任何真实密钥**（模板里全部是 `replace_with_*` / `change_me` 等占位值）；生产环境的密钥统一在 Coolify 的 Environment Variables 面板配置。关键变量：
 
-更多说明见：
+| 变量 | 用途 |
+|------|------|
+| `DATABASE_URL` | PostgreSQL 连接串（必需） |
+| `REDIS_URL` | Redis 连接串（去重锁 / 限流 / 缓存） |
+| `AUTH_SECRET` / `AUTH_TRUST_HOST` | NextAuth 会话签名与反代信任 |
+| `ADMIN_PASSWORD` | 管理后台登录口令 |
+| `ALTCHA_HMAC_KEY` | ALTCHA 人机校验 HMAC |
+| `AI_GATEWAY_PROVIDER` / `AI_GATEWAY_BASE_URL` / `AI_GATEWAY_API_KEY` | one-api 兼容网关接入 |
+| `AI_MODEL_MAIN` / `AI_MODEL_CONTROL` / `AI_MODEL_ENHANCE` / `AI_MODEL_REASONER` | 逻辑角色对应的上游模型名 |
+| `AI_OPERATION_MODE` | 运行模式 `full` \| `safe` \| `emergency` |
+| `MIGRATE_ON_BOOT` / `RUNTIME_SCHEMA_ENSURE` | 启动时迁移 / 运行时确保 schema |
+| `MODERATION_*` / `BAIDU_SINAN_*` | 内容审核开关与外部审核信号（详见 `docs/deployment-coolify.md`） |
 
-- `docs/environment.md`
-- `docs/ai-architecture.md`
-- `docs/local-development.md`
-- `docs/deployment-coolify.md`
+更多说明见 `docs/environment.md`、`docs/ai-architecture.md`、`docs/ai-gateway.md`、`docs/local-development.md`。
 
-### 项目结构
+## 📁 目录结构
 
 ```text
-src/
-├── app/           # 页面与 API 路由
-├── components/    # 通用界面组件
-├── features/      # 玩法与流式交互逻辑
-├── lib/           # 配置、AI、世界知识与服务端能力
-└── store/         # 游戏状态
+VerseCraft/
+├── src/
+│   ├── app/                # Next.js App Router：页面 + API 路由
+│   │   ├── api/chat/       # 玩家回合主入口（SSE）
+│   │   ├── api/admin/      # 管理后台 API
+│   │   ├── api/health/     # 健康检查
+│   │   ├── play/           # 主游玩页
+│   │   └── legal/          # 用户协议/隐私/未成年人/AI 免责声明
+│   ├── lib/
+│   │   ├── ai/             # 统一大模型网关（角色 / 路由 / 熔断 / 流式）
+│   │   ├── turnEngine/     # 分阶段回合引擎
+│   │   ├── worldEngine/    # 后台世界推演触发与队列
+│   │   ├── worldKnowledge/ # 世界知识 RAG（检索 / 摄取 / canon）
+│   │   ├── epistemic/      # 认知一致性分桶与校验
+│   │   ├── safety/         # 内容安全合规策略引擎
+│   │   ├── security/       # 风险分 lane / 限流 / 审计
+│   │   └── registry/       # 世界事实 bootstrap / fallback
+│   ├── features/play/      # 玩法与流式交互逻辑
+│   ├── components/         # 界面组件（含 admin）
+│   ├── store/              # Zustand 游戏状态
+│   └── db/                 # Drizzle schema 与连接
+├── drizzle/                # SQL 迁移文件
+├── scripts/                # 运维 / 评测 / worker / autoops 脚本
+├── e2e/                    # Playwright 端到端测试
+├── docs/                   # 架构与运维文档
+├── Dockerfile              # 多阶段 standalone 生产镜像
+└── docker-compose.yml      # 本地 PG/Redis（local）+ worker（production/worker）profile
 ```
 
-</details>
+## 部署
+
+生产链路遵循「GitHub（事实源）→ Gitee（国内镜像）→ Coolify（火山引擎 ECS）」：
+
+1. 推送到 GitHub `main` / `preview`，触发 GitHub Actions `CI`（eslint + 单测 + 生产构建 + admin 烟测）。
+2. CI 成功后 `Sync Gitee Branches` workflow 把对应 commit 镜像同步到 Gitee（GitHub 为唯一事实源，`--force-with-lease`）。
+3. 同一 workflow 调用 Coolify API 触发部署，并轮询部署状态与 `/api/health`，直至健康。
+
+Coolify 侧使用仓库 `Dockerfile`（多阶段 standalone）：监听端口 `3000`，健康检查 `GET /api/health`，`start-period` 60s 为启动迁移留时间，运行时密钥全部在 Coolify 面板注入。预览站 `preview.versecraft.cn` 为独立 Coolify 应用，从 Gitee `preview` 分支部署，使用独立的数据库 / Redis / 密钥。详见 `docs/deployment-coolify.md` 与 `docs/deployment-preview.md`。
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE) © 2026 VerseCraft Contributors
+
+英文版说明见 [README.en.md](./README.en.md)。
