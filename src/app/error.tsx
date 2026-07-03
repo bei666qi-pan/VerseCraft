@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearVersecraftStorage } from "@/lib/resilientStorage";
+import { VerseCraftPaperMark } from "@/components/VerseCraftPaperFrame";
 
 export default function Error({
   error,
@@ -26,9 +27,7 @@ export default function Error({
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#f7f3ec] p-6 text-[#164f4d]">
-      <p className="text-6xl font-black tracking-tighter text-[#8d3f35]" aria-hidden="true">
-        ⚠
-      </p>
+      <VerseCraftPaperMark className="h-16 w-16" />
       <h1 className="vc-reading-serif mt-6 text-[1.65rem] font-semibold leading-none text-[#0d5a4e]">
         页面加载出错
       </h1>

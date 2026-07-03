@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { VerseCraftPaperMark } from "@/components/VerseCraftPaperFrame";
 
 export const metadata: Metadata = {
   title: "页面不存在",
@@ -9,10 +10,11 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#f7f3ec] p-6 text-[#164f4d]">
-      <p className="vc-reading-serif text-6xl font-black tracking-tighter text-[#8d3f35]" aria-hidden="true">
+      <VerseCraftPaperMark className="h-16 w-16" />
+      <p className="vc-reading-serif mt-6 text-5xl font-black tracking-tighter text-[#8d3f35]" aria-hidden="true">
         404
       </p>
-      <h1 className="vc-reading-serif mt-6 text-[1.65rem] font-semibold leading-none text-[#0d5a4e]">
+      <h1 className="vc-reading-serif mt-5 text-[1.65rem] font-semibold leading-none text-[#0d5a4e]">
         此页不在卷宗之中
       </h1>
       <p className="mt-4 max-w-xs text-center text-sm leading-relaxed text-[#4f625c]">
