@@ -60,6 +60,8 @@ export interface AiCostRecord {
   bodyBuildMs?: number;
   /** Provider init/header build (local CPU) */
   providerInitMs?: number;
+  /** Number of tool calls returned in this completion (offline tool-enabled tasks only). */
+  toolCallCount?: number;
 }
 
 function totalTokensOf(u: TokenUsage | null | undefined): number | undefined {
@@ -141,6 +143,7 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     privateFactHitCount: rec.privateFactHitCount,
     bodyBuildMs: rec.bodyBuildMs,
     providerInitMs: rec.providerInitMs,
+    toolCallCount: rec.toolCallCount,
   };
   if (shouldEmitConsole(rec.phase)) {
     if (rec.phase === "error") {

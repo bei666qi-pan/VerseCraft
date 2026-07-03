@@ -14,6 +14,7 @@ import {
 import type { NpcAgentState } from "@/lib/socialWorld/types";
 import { insertDirectorAgendaItems } from "./agenda";
 import { resolveWorldDirectorConfig } from "./config";
+import { runWorldDirectorReasonerWithTools } from "./directorTools";
 import {
   parseWorldEngineDeltaJson,
   type DirectorPlan,
@@ -532,28 +533,37 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
   };
   const messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState, socialWorld: socialWorldContext });
   const reasonerStartedAt = Date.now();
-  const res = await runOfflineReasonerTask({
-    kind: "worldbuild",
-    messages,
-    ctx: {
-      requestId: payload.requestId,
-      userId: payload.userId,
-      sessionId: payload.sessionId,
-      path: "/worker/world-engine",
-      tags: { purpose: "world_director", mode: cfg.mode },
-    },
-    requestTimeoutMs: 45_000,
-    skipCache: true,
-    extraBody: {
-      enable_thinking: false,
-      thinking: { type: "disabled" },
-    },
-    devOverrides: {
-      responseFormatJsonObject: true,
-      temperature: 0.2,
-      maxTokens: 2048,
-    },
-  });
+  // 试点开关：tool loop 版导演推理（只读检索工具，有界轮数）；默认走原单次 reasoner 路径。
+  const res = cfg.toolLoopEnabled
+    ? await runWorldDirectorReasonerWithTools({
+        messages,
+        requestId: payload.requestId,
+        userId: payload.userId,
+        sessionId: payload.sessionId,
+        mode: cfg.mode,
+      })
+    : await runOfflineReasonerTask({
+        kind: "worldbuild",
+        messages,
+        ctx: {
+          requestId: payload.requestId,
+          userId: payload.userId,
+          sessionId: payload.sessionId,
+          path: "/worker/world-engine",
+          tags: { purpose: "world_director", mode: cfg.mode },
+        },
+        requestTimeoutMs: 45_000,
+        skipCache: true,
+        extraBody: {
+          enable_thinking: false,
+          thinking: { type: "disabled" },
+        },
+        devOverrides: {
+          responseFormatJsonObject: true,
+          temperature: 0.2,
+          maxTokens: 2048,
+        },
+      });
   const socialReasonerLatencyMs = socialTickTriggered ? Math.max(0, Date.now() - reasonerStartedAt) : 0;
   if (!res.ok) {
     void recordGenericAnalyticsEvent({

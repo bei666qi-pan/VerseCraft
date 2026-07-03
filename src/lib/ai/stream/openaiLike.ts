@@ -1,5 +1,5 @@
 // src/lib/ai/stream/openaiLike.ts
-import type { OpenAiStreamFrame, TokenUsage } from "@/lib/ai/types/core";
+import type { OpenAiStreamFrame, TokenUsage, ToolCall } from "@/lib/ai/types/core";
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -109,15 +109,43 @@ export function parseOpenAiLikeStreamData(data: string): OpenAiStreamFrame | nul
   };
 }
 
-export function extractNonStreamContent(data: unknown): { content: string; usage: TokenUsage | null } {
+/** Defensive parse of `message.tool_calls` from non-stream responses; drops malformed entries. */
+function extractToolCalls(message: Record<string, unknown> | null): ToolCall[] {
+  const raw = message?.tool_calls;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const out: ToolCall[] = [];
+  for (const item of raw) {
+    const o = asRecord(item);
+    const fn = o ? asRecord(o.function) : null;
+    if (!o || !fn) continue;
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    const name = typeof fn.name === "string" ? fn.name.trim() : "";
+    if (!id || !name) continue;
+    out.push({
+      id,
+      type: "function",
+      function: {
+        name,
+        arguments: typeof fn.arguments === "string" ? fn.arguments : "{}",
+      },
+    });
+  }
+  return out;
+}
+
+export function extractNonStreamContent(data: unknown): {
+  content: string;
+  usage: TokenUsage | null;
+  toolCalls: ToolCall[];
+} {
   const root = asRecord(data);
-  if (!root) return { content: "", usage: null };
+  if (!root) return { content: "", usage: null, toolCalls: [] };
   const choices = root.choices;
   if (!Array.isArray(choices) || choices.length === 0) {
-    return { content: "", usage: normalizeUsage(root.usage) };
+    return { content: "", usage: normalizeUsage(root.usage), toolCalls: [] };
   }
   const c0 = asRecord(choices[0]);
   const message = c0 ? asRecord(c0.message) : null;
   const content = message && typeof message.content === "string" ? message.content : "";
-  return { content, usage: normalizeUsage(root.usage) };
+  return { content, usage: normalizeUsage(root.usage), toolCalls: extractToolCalls(message) };
 }

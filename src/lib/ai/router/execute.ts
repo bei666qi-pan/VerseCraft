@@ -17,6 +17,7 @@ import { resilientFetch } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
 import {
   assertModelAllowedForTask,
+  assertToolUseAllowedForTask,
   clampPlayerChatMaxTokens,
   getTaskBinding,
   resolveFallbackPolicy,
@@ -36,7 +37,14 @@ import {
   writeCompletionCache,
 } from "@/lib/ai/governance/responseCache";
 import { logAiTelemetry } from "@/lib/ai/telemetry/log";
-import type { AIRequestContext, AiProviderId, ChatMessage, TaskType } from "@/lib/ai/types/core";
+import type {
+  AIRequestContext,
+  AiProviderId,
+  ChatMessage,
+  TaskType,
+  ToolChoiceOption,
+  ToolDefinition,
+} from "@/lib/ai/types/core";
 import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString } from "@/lib/ai/validation/structuredOutput";
@@ -151,7 +159,9 @@ function buildNonStreamBody(
   maxTokens: number,
   temperature: number | undefined,
   requestJsonObject: boolean,
-  extraBody?: Record<string, unknown>
+  extraBody?: Record<string, unknown>,
+  tools?: readonly ToolDefinition[],
+  toolChoice?: ToolChoiceOption
 ): NormalizedCompletionRequest {
   return {
     modelApiName: gatewayModel,
@@ -161,6 +171,7 @@ function buildNonStreamBody(
     temperature,
     responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: false,
+    ...(tools && tools.length > 0 ? { tools, toolChoice: toolChoice ?? "auto" } : {}),
     ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
   };
 }
@@ -231,27 +242,6 @@ export async function executePlayerChatStream(params: {
   const incFailure = (kind: string) => failureCounts.set(kind, (failureCounts.get(kind) ?? 0) + 1);
 
   if (policy.chain.length === 0) {
-    // #region agent log
-    fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
-      body: JSON.stringify({
-        sessionId: "5f6062",
-        runId: "pre-fix",
-        hypothesisId: "H3",
-        location: "src/lib/ai/router/execute.ts:playerChatPolicyEmpty",
-        message: "player chat policy chain resolved empty",
-        data: {
-          requestId: params.ctx.requestId,
-          mode,
-          task: "PLAYER_CHAT",
-          intendedLogicalRole,
-          configuredMainModels: env.modelsByRole.main.length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return {
       ok: false,
       code: "NO_CREDENTIALS",
@@ -552,33 +542,6 @@ export async function executePlayerChatStream(params: {
     }
   }
 
-  // #region agent log
-  fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
-    body: JSON.stringify({
-      sessionId: "5f6062",
-      runId: "pre-fix",
-      hypothesisId: "H4",
-      location: "src/lib/ai/router/execute.ts:playerChatChainExhausted",
-      message: "all upstream attempts exhausted for player chat",
-      data: {
-        requestId: params.ctx.requestId,
-        mode,
-        attempts: attempts.map((a) => ({
-          logicalRole: a.logicalRole,
-          providerId: a.providerId,
-          gatewayModel: a.gatewayModel,
-          phase: a.phase,
-          httpStatus: a.httpStatus ?? null,
-          failureKind: a.failureKind ?? null,
-          severity: a.severity ?? null,
-        })),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   return {
     ok: false,
     code: "CHAIN_EXHAUSTED",
@@ -599,10 +562,18 @@ export async function executeChatCompletion(params: {
   /** When true, skip offline response cache (DEV_ASSIST / worldbuild / storyline). */
   skipCache?: boolean;
   extraBody?: Record<string, unknown>;
+  /** Function tools；仅离线任务允许（TASK_TOOLS_ALLOWED），违规直接抛错。带 tools 的请求一律绕过响应缓存。 */
+  tools?: readonly ToolDefinition[];
+  toolChoice?: ToolChoiceOption;
   devOverrides?: Partial<Pick<TaskBinding, "maxTokens" | "temperature" | "timeoutMs" | "responseFormatJsonObject">>;
 }): Promise<AIResponse | AIErrorResponse> {
   if (params.task === "PLAYER_CHAT") {
     throw new Error("[ai] PLAYER_CHAT must use executePlayerChatStream(), not executeChatCompletion()");
+  }
+  const toolsActive = Boolean(params.tools && params.tools.length > 0);
+  if (toolsActive) {
+    // Policy gate runs before mock short-circuit so tests and dev both observe the same boundary.
+    assertToolUseAllowedForTask(params.task);
   }
   if (isMockAiProviderEnabled()) {
     return executeMockChatCompletion({ task: params.task, messages: params.messages, ctx: params.ctx });
@@ -658,7 +629,7 @@ export async function executeChatCompletion(params: {
     };
   }
 
-  if (params.skipCache !== true && isCompletionTaskCacheable(params.task)) {
+  if (params.skipCache !== true && !toolsActive && isCompletionTaskCacheable(params.task)) {
     const cached = await readCompletionCache(params.task, params.messages);
     if (cached) {
       const est = estimateUsdForUsage(cached.logicalRole, cached.usage);
@@ -762,7 +733,9 @@ export async function executeChatCompletion(params: {
       binding.maxTokens,
       binding.temperature,
       requestJsonObject,
-      params.extraBody
+      params.extraBody,
+      toolsActive ? params.tools : undefined,
+      params.toolChoice
     );
     const init = factory.buildInit(key, body);
     const t0 = Date.now();
@@ -818,10 +791,12 @@ export async function executeChatCompletion(params: {
       }
 
       const raw = (await res.json()) as unknown;
-      const { content, usage } = extractNonStreamContent(raw);
+      const { content, usage, toolCalls } = extractNonStreamContent(raw);
       const trimmed = (content ?? "").trim();
+      const hasToolCalls = toolsActive && toolCalls.length > 0;
 
-      if (!trimmed) {
+      // Tool-call 回合：content 允许为空，且不是 JSON 正文，跳过空内容与 JSON 校验。
+      if (!trimmed && !hasToolCalls) {
         attempts.push({
           logicalRole: role,
           providerId: PROVIDER_ID,
@@ -837,7 +812,7 @@ export async function executeChatCompletion(params: {
 
       let processed = trimmed;
       let jsonSanitized = false;
-      if (expectJsonObject) {
+      if (expectJsonObject && !hasToolCalls) {
         if (isOfflineTask(params.task)) {
           const s = sanitizeReasonerJsonText(trimmed);
           processed = s.content;
@@ -849,7 +824,7 @@ export async function executeChatCompletion(params: {
         }
       }
 
-      if (expectJsonObject && !isValidJsonObjectString(processed)) {
+      if (expectJsonObject && !hasToolCalls && !isValidJsonObjectString(processed)) {
         attempts.push({
           logicalRole: role,
           providerId: PROVIDER_ID,
@@ -902,9 +877,10 @@ export async function executeChatCompletion(params: {
         jsonSanitized,
         estCostUsd: estOk,
         userId: params.ctx.userId,
+        ...(hasToolCalls ? { toolCallCount: toolCalls.length } : {}),
       });
 
-      if (params.skipCache !== true && isCompletionTaskCacheable(params.task)) {
+      if (params.skipCache !== true && !toolsActive && isCompletionTaskCacheable(params.task)) {
         const ttl = completionCacheTtlSec(params.task);
         void writeCompletionCache(
           params.task,
@@ -928,6 +904,7 @@ export async function executeChatCompletion(params: {
         usage,
         latencyMs: Date.now() - t0,
         routing,
+        ...(hasToolCalls ? { toolCalls } : {}),
       };
     } catch (e) {
       const { kind, severity } = classifyFetchThrowable(e);

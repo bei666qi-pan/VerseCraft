@@ -237,6 +237,29 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
 /** @deprecated Use TASK_ROLE_FORBIDDEN */
 export const TASK_MODEL_FORBIDDEN = TASK_ROLE_FORBIDDEN;
 
+/**
+ * Tool-calling（function calling）白名单：只允许离线 / worker 链路。
+ * 在线任务（PLAYER_CHAT、control 面、enhance 面）一律禁止 —— tool 往返必然破坏首包与 final 预算，
+ * 与 turn engine 的 workflow-over-agent 原则冲突。Enforced before network in execute layer.
+ */
+export const TASK_TOOLS_ALLOWED: ReadonlySet<TaskType> = new Set<TaskType>([
+  "WORLDBUILD_OFFLINE",
+  "STORYLINE_SIMULATION",
+  "DEV_ASSIST",
+]);
+
+export function isToolUseAllowedForTask(task: TaskType): boolean {
+  return TASK_TOOLS_ALLOWED.has(task);
+}
+
+export function assertToolUseAllowedForTask(task: TaskType): void {
+  if (!isToolUseAllowedForTask(task)) {
+    throw new Error(
+      `[ai] Tool use is forbidden for task ${task} (online/realtime lane). Allowed: ${[...TASK_TOOLS_ALLOWED].join(", ")}`
+    );
+  }
+}
+
 export function getTaskBinding(task: TaskType): TaskBinding {
   const base = TASK_POLICY[task];
   const env = resolveAiEnv();

@@ -22,6 +22,14 @@ export {
   type PlayerChatStreamResult,
 } from "@/lib/ai/router/execute";
 export {
+  runToolLoop,
+  type RegisteredTool,
+  type ToolHandlerContext,
+  type ToolLoopResult,
+  type ToolLoopTrace,
+  type ToolRegistry,
+} from "@/lib/ai/tools/runToolLoop";
+export {
   resolveAiEnv,
   anyAiProviderConfigured,
   resolveGatewayPrimaryBinding,
@@ -40,11 +48,14 @@ export {
   TASK_POLICY,
   TASK_MODEL_FORBIDDEN,
   TASK_ROLE_FORBIDDEN,
+  TASK_TOOLS_ALLOWED,
   getTaskBinding,
   explainTaskRouting,
   exportTaskModelMatrixMarkdown,
   isModelForbiddenForTask,
+  isToolUseAllowedForTask,
   assertModelAllowedForTask,
+  assertToolUseAllowedForTask,
   resolveOrderedRoleChain,
 } from "@/lib/ai/tasks/taskPolicy";
 export type { TaskBinding, BudgetLevel } from "@/lib/ai/tasks/taskPolicy";
@@ -58,4 +69,7 @@ export type {
   StreamChunk,
   FallbackPolicy,
   ProviderClient,
+  ToolCall,
+  ToolChoiceOption,
+  ToolDefinition,
 } from "@/lib/ai/types";

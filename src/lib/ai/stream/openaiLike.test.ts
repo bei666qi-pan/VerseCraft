@@ -61,12 +61,41 @@ test("normalizeFinishReason reads the first stable choice reason", () => {
 });
 
 test("extractNonStreamContent reads message.content", () => {
-  const { content, usage } = extractNonStreamContent({
+  const { content, usage, toolCalls } = extractNonStreamContent({
     choices: [{ message: { content: '{"ok":true}' } }],
     usage: { total_tokens: 1 },
   });
   assert.equal(content, '{"ok":true}');
   assert.equal(usage?.totalTokens, 1);
+  assert.deepEqual(toolCalls, []);
+});
+
+test("extractNonStreamContent reads message.tool_calls and drops malformed entries", () => {
+  const { content, toolCalls } = extractNonStreamContent({
+    choices: [
+      {
+        message: {
+          content: null,
+          tool_calls: [
+            { id: "c1", type: "function", function: { name: "search", arguments: '{"q":"月"}' } },
+            { id: "", type: "function", function: { name: "bad-no-id", arguments: "{}" } },
+            { id: "c3", type: "function", function: { name: "", arguments: "{}" } },
+            { id: "c4", type: "function", function: { name: "no_args" } },
+            "not-an-object",
+          ],
+        },
+      },
+    ],
+  });
+  assert.equal(content, "");
+  assert.equal(toolCalls.length, 2);
+  assert.deepEqual(toolCalls[0], {
+    id: "c1",
+    type: "function",
+    function: { name: "search", arguments: '{"q":"月"}' },
+  });
+  // arguments 非字符串时回退为 "{}"
+  assert.deepEqual(toolCalls[1], { id: "c4", type: "function", function: { name: "no_args", arguments: "{}" } });
 });
 
 test("normalizeUsage reads prompt_tokens_details.cached_tokens", () => {

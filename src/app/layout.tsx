@@ -9,9 +9,19 @@ import ViewportRuntimeVars from "@/components/ViewportRuntimeVars";
 import { envRawFirst } from "@/lib/config/envRaw";
 
 export const metadata: Metadata = {
-  title: "文界工坊 (VerseCraft)",
+  title: {
+    default: "文界工坊 (VerseCraft)",
+    template: "%s · 文界工坊",
+  },
   description: "AI 驱动的悬疑互动小说 / 异常公寓生存叙事",
   metadataBase: new URL(envRawFirst(["APP_URL", "NEXT_PUBLIC_APP_URL"]) ?? "https://versecraft.cn"),
+  openGraph: {
+    title: "文界工坊 (VerseCraft)",
+    description: "AI 驱动的悬疑互动小说 / 异常公寓生存叙事",
+    siteName: "文界工坊 (VerseCraft)",
+    locale: "zh_CN",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {

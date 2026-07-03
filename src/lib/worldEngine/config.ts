@@ -7,6 +7,8 @@ export type WorldDirectorConfig = {
   mode: WorldDirectorMode;
   hintInjectionEnabled: boolean;
   criticEnabled: boolean;
+  /** 试点：导演 reasoner 走有界 tool loop（只读检索工具）。默认关闭，关闭时行为与原路径完全一致。 */
+  toolLoopEnabled: boolean;
   maxDueHints: number;
   minTriggerGapTurns: number;
   maxPendingAgendaPerSession: number;
@@ -25,6 +27,7 @@ export function resolveWorldDirectorConfig(): WorldDirectorConfig {
     hintInjectionEnabled:
       enabled && mode === "soft" && envBoolean("AI_ENABLE_DIRECTOR_HINT_INJECTION", true),
     criticEnabled: enabled && envBoolean("AI_ENABLE_DIRECTOR_CRITIC", false),
+    toolLoopEnabled: enabled && envBoolean("AI_DIRECTOR_TOOL_LOOP_ENABLED", false),
     maxDueHints: Math.max(1, Math.min(3, envNumber("AI_DIRECTOR_MAX_DUE_HINTS", 2))),
     minTriggerGapTurns: Math.max(0, Math.min(48, envNumber("AI_DIRECTOR_MIN_TRIGGER_GAP_TURNS", 4))),
     maxPendingAgendaPerSession: Math.max(

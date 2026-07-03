@@ -39,10 +39,39 @@ export type ModelCapability =
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
+/** OpenAI-compatible function tool declaration (request side). */
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    /** JSON Schema object describing the arguments. */
+    parameters: Record<string, unknown>;
+  };
+}
+
+/** OpenAI-compatible tool call emitted by the assistant (response side). */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    /** Raw JSON string as returned by the model; parse defensively. */
+    arguments: string;
+  };
+}
+
+/** Request-level tool selection strategy. */
+export type ToolChoiceOption = "auto" | "none" | "required";
+
 /** Message shape after sanitization (no reasoning_content). */
 export interface ChatMessage {
   role: ChatRole;
   content: string;
+  /** Assistant tool-call round; serialized as `tool_calls` upstream. Only meaningful when role === "assistant". */
+  toolCalls?: ToolCall[];
+  /** Links a role === "tool" result message to its originating call; serialized as `tool_call_id` upstream. */
+  toolCallId?: string;
 }
 
 export interface AIRequestContext {

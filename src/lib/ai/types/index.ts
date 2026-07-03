@@ -13,6 +13,9 @@ export type {
   StreamChunk,
   FallbackPolicy,
   OpenAiStreamFrame,
+  ToolCall,
+  ToolChoiceOption,
+  ToolDefinition,
 } from "@/lib/ai/types/core";
 
 // Re-export ProviderClient naming contract (alias of ProviderRequestFactory).
@@ -30,6 +33,8 @@ export interface AIResponse {
   routing?: AiRoutingReport;
   /** Populated when `executeChatCompletion` served a cached payload. */
   fromCache?: boolean;
+  /** Present when the model answered with a tool-call round (offline tool-enabled tasks only). */
+  toolCalls?: import("@/lib/ai/types/core").ToolCall[];
 }
 
 export interface AIErrorResponse {

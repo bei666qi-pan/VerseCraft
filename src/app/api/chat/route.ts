@@ -2334,26 +2334,6 @@ async function postChatInternal(req: Request) {
         gatewayKeyLen: ai.gatewayApiKey.length,
         mainModelConfigured: ai.modelsByRole.main.length > 0,
       });
-      // #region agent log
-      fetch("http://127.0.0.1:7873/ingest/0434b5a7-7f9a-46e8-9419-36678c4433f6", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5f6062" },
-        body: JSON.stringify({
-          sessionId: "5f6062",
-          runId: "pre-fix",
-          hypothesisId: "H1",
-          location: "src/app/api/chat/route.ts:anyAiProviderConfigured",
-          message: "provider configuration missing after reload",
-          data: {
-            requestId,
-            gatewayConfigured: Boolean(ai.gatewayBaseUrl && ai.gatewayApiKey),
-            gatewayKeyLen: ai.gatewayApiKey.length,
-            mainModelConfigured: ai.modelsByRole.main.length > 0,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
     }
     console.warn(
       `[api/chat] No AI gateway configured (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_MAIN). See .env.example. Returning degraded SSE with 200.`
