@@ -82,3 +82,6 @@ redis_data/
 *.tsbuildinfo
 next-env.d.ts
 dump.rdb
+
+# 本地部署凭证,严禁入库
+部署凭证.txt
