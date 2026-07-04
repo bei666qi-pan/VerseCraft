@@ -8,6 +8,7 @@ import { trackGameplayEvent } from "@/app/actions/telemetry";
 import { LOCATION_LABELS } from "@/features/play/render/locationLabels";
 import { applyNarrativeFeatureEvent } from "@/features/play/narrativeFeatureTriggers";
 import { useMounted } from "@/hooks/useMounted";
+import { VerseCraftPaperDivider } from "@/components/VerseCraftPaperFrame";
 import { normalizeEscapeMainline } from "@/lib/escapeMainline/reducer";
 import { computeEscapeOutcomeForSettlement } from "@/lib/escapeMainline/selectors";
 import type { AppPageDynamicProps } from "@/lib/next/pageDynamicProps";
@@ -269,11 +270,11 @@ function buildLegacySnapshot(input: {
 }
 
 function DetailList({ empty, items }: { empty: string; items: readonly string[] }) {
-  if (items.length === 0) return <p className="text-[15px] leading-relaxed text-[#6c5946]">{empty}</p>;
+  if (items.length === 0) return <p className="text-[15px] leading-relaxed text-vc-ink-soft">{empty}</p>;
   return (
     <ul className="grid gap-2">
       {items.map((item, index) => (
-        <li key={`${item}:${index}`} className="border-l-2 border-[#9b6b48] pl-3 text-[15px] leading-relaxed text-[#3c2417]">
+        <li key={`${item}:${index}`} className="border-l-2 border-vc-line-warm pl-3 text-[15px] leading-relaxed text-vc-ink">
           {item}
         </li>
       ))}
@@ -283,9 +284,9 @@ function DetailList({ empty, items }: { empty: string; items: readonly string[] 
 
 function MetricTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[8px] border border-[#d9c7ad] bg-[#fffdf8] p-4">
-      <p className="text-[12px] font-semibold tracking-[0.12em] text-[#8a5a3a]">{label}</p>
-      <p className="mt-2 vc-reading-serif text-[24px] font-semibold leading-tight text-[#2f4f48]">{value}</p>
+    <div className="vc-card rounded-[14px] p-4">
+      <p className="text-[12px] font-semibold tracking-[0.16em] text-vc-ink-faint">{label}</p>
+      <p className="mt-2 vc-reading-serif text-[28px] font-semibold leading-tight text-vc-ink-deep">{value}</p>
     </div>
   );
 }
@@ -293,13 +294,20 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 function StorySection({
   title,
   children,
+  delayMs = 0,
 }: {
   title: string;
   children: ReactNode;
+  delayMs?: number;
 }) {
   return (
-    <section className="border-t border-[#e2d6c6] py-6">
-      <h2 className="vc-reading-serif text-[22px] font-semibold leading-tight text-[#2f4f48]">{title}</h2>
+    <section className="animate-fade-in-up border-t border-vc-line py-6" style={{ animationDelay: `${delayMs}ms` }}>
+      <h2 className="vc-reading-serif flex items-center gap-2.5 text-[22px] font-semibold leading-tight text-vc-ink">
+        <span aria-hidden className="text-[11px] leading-none text-vc-ink-faint">
+          ◆
+        </span>
+        {title}
+      </h2>
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -599,46 +607,66 @@ export default function SettlementPage(props: AppPageDynamicProps) {
 
   if (!mounted) {
     return (
-      <main className="flex min-h-screen w-full items-center justify-center overflow-x-hidden bg-[#f6f2ec] text-[#2f4f48]">
+      <main className="flex min-h-screen w-full items-center justify-center overflow-x-hidden bg-vc-paper text-vc-ink">
         <div className="vc-reading-serif animate-pulse text-xl">结算中...</div>
       </main>
     );
   }
 
   return (
-    <main className="box-border flex min-h-[100dvh] w-full justify-center overflow-x-hidden bg-[#f6f2ec] px-4 py-6 text-[#2f4f48] sm:px-8 sm:py-10">
+    <main className="box-border flex min-h-[100dvh] w-full justify-center overflow-x-hidden bg-vc-paper px-4 py-6 text-vc-ink sm:px-8 sm:py-10">
       <article className="w-full min-w-0 max-w-[1040px]" data-testid="settlement-paper-card">
-        <header className="border-b border-[#d8cbb8] pb-6">
-          <p className="text-[12px] font-semibold tracking-[0.18em] text-[#9b4d2d]">
+        <header className="animate-fade-in-up pb-8 text-center">
+          <p className="text-[12px] font-semibold tracking-[0.32em] text-vc-ink-faint">
             {formatSettlementSourceLabel(snapshot.source)}
           </p>
-          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="vc-reading-serif text-[clamp(2.4rem,7vw,5.2rem)] font-semibold leading-none text-[#2f4f48]">
-                {snapshot.title || getSettlementOutcomeTitle(outcome)}
-              </h1>
-              <p className="mt-4 max-w-[760px] text-[17px] leading-relaxed text-[#5f4a37]">{snapshot.caption}</p>
-              <p className="mt-2 max-w-[760px] text-[15px] leading-relaxed text-[#7b6652]">
-                {getSettlementOutcomeLead(outcome)}
-              </p>
-            </div>
-            <div className="min-w-[8rem] rounded-[8px] border border-[#9b6b48] bg-[#fffdf8] px-5 py-4 text-center">
-              <p className="text-[12px] font-semibold tracking-[0.14em] text-[#8a5a3a]">评级</p>
-              <p className="vc-reading-serif mt-1 text-[56px] font-semibold leading-none text-[#2f4f48]">{snapshot.grade}</p>
+          <h1 className="vc-reading-serif mt-5 text-[clamp(2.4rem,7vw,4.8rem)] font-semibold leading-none tracking-[0.04em] text-vc-ink-deep">
+            {snapshot.title || getSettlementOutcomeTitle(outcome)}
+          </h1>
+          <VerseCraftPaperDivider className="mx-auto mt-6 max-w-[420px]" />
+          <p className="mx-auto mt-5 max-w-[680px] text-[17px] leading-relaxed text-vc-ink-soft">{snapshot.caption}</p>
+          <p className="mx-auto mt-2 max-w-[680px] text-[15px] leading-relaxed text-vc-ink-faint">
+            {getSettlementOutcomeLead(outcome)}
+          </p>
+          <div className="mt-7 flex justify-center">
+            <div
+              className={`relative inline-flex h-24 w-24 rotate-[3deg] items-center justify-center rounded-[12px] border-2 bg-vc-paper-bright vc-shadow-card ${
+                isDead ? "border-vc-seal/80 text-vc-seal" : "border-vc-accent/70 text-vc-ink-deep"
+              }`}
+            >
+              <span aria-hidden className="pointer-events-none absolute inset-1 rounded-[8px] border border-current opacity-40" />
+              <div className="text-center">
+                <p className="pl-[0.28em] text-[10px] font-semibold tracking-[0.28em]">评级</p>
+                <p className="vc-reading-serif mt-0.5 text-[40px] font-semibold leading-none">{snapshot.grade}</p>
+              </div>
             </div>
           </div>
         </header>
 
-        <section className="grid gap-3 py-6 sm:grid-cols-3">
+        <section
+          className="grid animate-fade-in-up gap-3 border-t border-vc-line-warm py-6 sm:grid-cols-3"
+          style={{ animationDelay: "120ms" }}
+        >
           <MetricTile label="存活时间" value={`${snapshot.survivalDay} 日 ${snapshot.survivalHour} 时`} />
           <MetricTile label="最高抵达" value={snapshot.maxFloorLabel} />
           <MetricTile label="消灭诡异" value={`${snapshot.killedAnomalies} 只`} />
         </section>
 
         {isDead ? (
-          <section className="mb-6 rounded-[8px] border border-[#9b6b48] bg-[#fffaf0] p-4">
-            <h2 className="vc-reading-serif text-[22px] font-semibold text-[#3c2417]">死亡记录</h2>
-            <div className="mt-3 grid gap-2 text-[15px] leading-relaxed text-[#5f4a37]">
+          <section
+            className="mb-6 animate-fade-in-up rounded-[14px] border border-vc-seal/50 bg-vc-paper-bright p-5 vc-shadow-card"
+            style={{ animationDelay: "180ms" }}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                aria-hidden
+                className="vc-reading-serif inline-flex h-9 w-9 shrink-0 -rotate-6 items-center justify-center rounded-full border-2 border-vc-seal/70 text-[15px] font-semibold text-vc-seal"
+              >
+                殁
+              </span>
+              <h2 className="vc-reading-serif text-[22px] font-semibold text-vc-seal">死亡记录</h2>
+            </div>
+            <div className="mt-3 grid gap-2 text-[15px] leading-relaxed text-vc-ink-soft">
               <p>死因：{snapshot.deathCause || "未记录"}</p>
               <p>地点：{snapshot.deathLocation || "未记录"}</p>
               <p>最后行动：{snapshot.lastAction || "未记录"}</p>
@@ -646,28 +674,28 @@ export default function SettlementPage(props: AppPageDynamicProps) {
           </section>
         ) : null}
 
-        <StorySection title="最终叙事">
+        <StorySection title="最终叙事" delayMs={240}>
           <div
             data-testid="settlement-final-narrative"
-            className="whitespace-pre-wrap vc-reading-serif text-[18px] leading-[2.05] text-[#2d2a24]"
+            className="whitespace-pre-wrap vc-reading-serif text-[18px] leading-[2.05] text-vc-ink-deep"
           >
             {formatFinalNarrativeForSettlement(snapshot.finalNarrative)}
           </div>
         </StorySection>
 
-        <StorySection title="关键选择回顾">
+        <StorySection title="关键选择回顾" delayMs={300}>
           <DetailList empty="本局没有留下可回顾的关键选择。" items={snapshot.keyChoices} />
         </StorySection>
 
-        <StorySection title="获得线索">
+        <StorySection title="获得线索" delayMs={360}>
           <DetailList empty="本局没有记录到已获得线索。" items={snapshot.obtainedClues} />
         </StorySection>
 
-        <StorySection title="NPC 后日谈">
+        <StorySection title="NPC 后日谈" delayMs={420}>
           <DetailList empty="本局没有形成可展示的 NPC 后日谈。" items={snapshot.npcEpilogues.map(formatNpcEpilogueLine).filter(Boolean)} />
         </StorySection>
 
-        <StorySection title="世界状态">
+        <StorySection title="世界状态" delayMs={480}>
           <DetailList empty="本局没有记录额外世界状态。" items={snapshot.worldStateLines.map(formatWorldStateLine).filter(Boolean)} />
         </StorySection>
 
@@ -676,28 +704,31 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             <div className="grid gap-5" data-testid="settlement-fulltext">
               {logs.length > 0 ? (
                 logs.map((entry, index) => (
-                  <section key={`${entry.role}:${index}`} className="border-l-2 border-[#d7bd9b] pl-4">
-                    <p className="text-[12px] font-semibold tracking-[0.12em] text-[#8a5a3a]">
+                  <section key={`${entry.role}:${index}`} className="border-l-2 border-vc-line-warm pl-4">
+                    <p className="text-[12px] font-semibold tracking-[0.14em] text-vc-ink-faint">
                       {entry.role === "user" ? "玩家行动" : entry.role === "assistant" ? "剧情叙事" : "系统记录"}
                     </p>
-                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-[#2d2a24]">
+                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-vc-ink">
                       {replaceLocationIdsForDisplay(entry.content)}
                     </p>
                   </section>
                 ))
               ) : (
-                <p className="text-[15px] leading-relaxed text-[#6c5946]">本地日志已经不可用，只能查看上方最终叙事。</p>
+                <p className="text-[15px] leading-relaxed text-vc-ink-soft">本地日志已经不可用，只能查看上方最终叙事。</p>
               )}
             </div>
           </StorySection>
         ) : null}
 
-        <section className="grid gap-3 border-t border-[#d8cbb8] py-6 sm:grid-cols-2">
+        <section
+          className="grid animate-fade-in-up gap-3 border-t border-vc-line-warm py-6 sm:grid-cols-2"
+          style={{ animationDelay: "540ms" }}
+        >
           <button
             type="button"
             onClick={handleExport}
             data-testid="settlement-export-writing"
-            className="rounded-[8px] border border-[#9b6b48] bg-[#fffdf8] px-5 py-3 text-[15px] font-semibold text-[#3c2417]"
+            className="rounded-[10px] border border-vc-line-warm bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent"
           >
             导出本局写作稿
           </button>
@@ -705,7 +736,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             type="button"
             onClick={() => setShowFullText((value) => !value)}
             data-testid="settlement-review-fulltext"
-            className="rounded-[8px] border border-[#d7bd9b] bg-[#fffdf8] px-5 py-3 text-[15px] font-semibold text-[#3c2417]"
+            className="rounded-[10px] border border-vc-line bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent"
           >
             {showFullText ? "收起全文" : "回看全文"}
           </button>
@@ -714,7 +745,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             onClick={() => void clearRunAndLeave("/")}
             disabled={returningHome}
             data-testid="settlement-return-home"
-            className="rounded-[8px] border border-[#d7bd9b] bg-[#fffdf8] px-5 py-3 text-[15px] font-semibold text-[#3c2417] disabled:opacity-60"
+            className="rounded-[10px] border border-vc-line bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent disabled:opacity-60"
           >
             返回首页
           </button>
@@ -723,11 +754,16 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             onClick={() => void clearRunAndLeave("/intro")}
             disabled={returningHome}
             data-testid="settlement-new-run"
-            className="rounded-[8px] bg-[#2f4f48] px-5 py-3 text-[15px] font-semibold text-[#fffdf8] disabled:opacity-60"
+            className="rounded-[10px] bg-vc-ink px-5 py-3 text-[15px] font-semibold text-vc-paper-bright transition-colors hover:bg-vc-ink-deep disabled:opacity-60"
           >
             新一局
           </button>
         </section>
+
+        <footer aria-hidden className="animate-fade-in-up pb-4 pt-2 text-center" style={{ animationDelay: "600ms" }}>
+          <VerseCraftPaperDivider className="mx-auto max-w-[360px]" />
+          <p className="mt-3 pl-[0.4em] text-[12px] tracking-[0.4em] text-vc-ink-faint">全 卷 终</p>
+        </footer>
       </article>
     </main>
   );

@@ -38,7 +38,7 @@ function PreferenceSegment({
       className={`h-8 min-w-0 flex-1 rounded-full border vc-reading-serif text-[15px] leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition active:scale-[0.98] min-[420px]:h-9 min-[420px]:text-[18px] ${
         active
           ? "border-[#8fa79f] bg-[#8fa79f] text-white shadow-[0_8px_16px_rgba(47,116,106,0.16)]"
-          : "border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] hover:bg-white"
+          : "border-[#d8d1c6] bg-vc-paper-bright text-[#174d46] hover:bg-white"
       }`}
     >
       {children}
@@ -84,7 +84,7 @@ export function MobileSettingsPanel({
             data-testid="open-game-guide-button"
             aria-label="查看游戏指南"
             onClick={() => setGuideOpen(true)}
-            className="h-9 rounded-full border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_4px_10px_rgba(73,63,51,0.07)] transition hover:bg-white active:scale-95 min-[420px]:h-10 min-[420px]:text-[20px]"
+            className="h-9 rounded-full border border-[#d8d1c6] bg-vc-paper-bright vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_4px_10px_rgba(73,63,51,0.07)] transition hover:bg-white active:scale-95 min-[420px]:h-10 min-[420px]:text-[20px]"
           >
             查看
           </button>
@@ -102,7 +102,7 @@ export function MobileSettingsPanel({
             onChange={(event) => setVolume(Number(event.target.value))}
             aria-label="声音音量"
             data-testid="settings-volume-slider"
-            className="h-7 w-full min-w-0 appearance-none rounded-full bg-transparent [--thumb-size:1.35rem] [&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-thumb]:mt-[-0.38rem] [&::-webkit-slider-thumb]:h-[var(--thumb-size)] [&::-webkit-slider-thumb]:w-[var(--thumb-size)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-[#d8d1c6] [&::-webkit-slider-thumb]:bg-[#fffdf8] [&::-webkit-slider-thumb]:shadow-[0_5px_12px_rgba(73,63,51,0.14)] [&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-thumb]:h-[var(--thumb-size)] [&::-moz-range-thumb]:w-[var(--thumb-size)] [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-[#d8d1c6] [&::-moz-range-thumb]:bg-[#fffdf8]"
+            className="h-7 w-full min-w-0 appearance-none rounded-full bg-transparent [--thumb-size:1.35rem] [&::-webkit-slider-runnable-track]:h-2.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-thumb]:mt-[-0.38rem] [&::-webkit-slider-thumb]:h-[var(--thumb-size)] [&::-webkit-slider-thumb]:w-[var(--thumb-size)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-[#d8d1c6] [&::-webkit-slider-thumb]:bg-vc-paper-bright [&::-webkit-slider-thumb]:shadow-[0_5px_12px_rgba(73,63,51,0.14)] [&::-moz-range-track]:h-2.5 [&::-moz-range-track]:rounded-full [&::-moz-range-thumb]:h-[var(--thumb-size)] [&::-moz-range-thumb]:w-[var(--thumb-size)] [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-[#d8d1c6] [&::-moz-range-thumb]:bg-vc-paper-bright"
             style={{ background: sliderBackground }}
           />
           <span
@@ -116,7 +116,7 @@ export function MobileSettingsPanel({
             data-testid="settings-mute-button"
             aria-label={audioMuted ? "开启声音" : "关闭声音"}
             onClick={onToggleMute}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-95 min-[420px]:h-11 min-[420px]:w-11"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-vc-paper-bright text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-95 min-[420px]:h-11 min-[420px]:w-11"
           >
             <AudioIcon className="h-6 w-6 min-[420px]:h-7 min-[420px]:w-7" strokeWidth={1.8} />
           </button>
@@ -164,7 +164,7 @@ export function MobileSettingsPanel({
             type="button"
             data-testid="open-chapter-switch-button"
             onClick={() => setChapterOpen(true)}
-            className="rounded-[14px] border border-[#d8d1c6] bg-[#fffdf8] vc-reading-serif text-[19px] leading-none text-[#174d46] shadow-[0_6px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[23px]"
+            className="rounded-[14px] border border-[#d8d1c6] bg-vc-paper-bright vc-reading-serif text-[19px] leading-none text-[#174d46] shadow-[0_6px_12px_rgba(73,63,51,0.08)] transition hover:bg-white active:scale-[0.98] min-[420px]:text-[23px]"
           >
             切换章节
           </button>

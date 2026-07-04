@@ -85,3 +85,6 @@ dump.rdb
 
 # 本地部署凭证,严禁入库
 部署凭证.txt
+
+# pnpm 本地 store（沙盒安装产物）
+/.pnpm-store

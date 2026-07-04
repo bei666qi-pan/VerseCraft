@@ -34,13 +34,13 @@ export function ChapterSwitchModal({
       aria-modal="true"
       aria-labelledby="chapter-switch-title"
     >
-      <section className="relative w-full max-w-[360px] rounded-[24px] border border-[#d8d1c6] bg-[#fffdf8]/96 px-6 pb-8 pt-8 text-[#174d46] shadow-[0_18px_44px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]">
+      <section className="relative w-full max-w-[360px] rounded-[24px] border border-[#d8d1c6] bg-vc-paper-bright/96 px-6 pb-8 pt-8 text-[#174d46] shadow-[0_18px_44px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]">
         <div className="pointer-events-none absolute inset-2 rounded-[21px] border border-[#ebe5dc]" aria-hidden />
         <button
           type="button"
           onClick={onClose}
           data-testid="chapter-switch-close"
-          className="absolute right-6 top-7 z-10 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-2 vc-reading-serif text-[16px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
+          className="absolute right-6 top-7 z-10 rounded-full border border-[#d8d1c6] bg-vc-paper-bright px-4 py-2 vc-reading-serif text-[16px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
         >
           关闭
         </button>
@@ -48,7 +48,7 @@ export function ChapterSwitchModal({
           <h2 id="chapter-switch-title" className="pointer-events-none vc-reading-serif text-[32px] font-semibold leading-none text-[#174d46]">
             切换章节
           </h2>
-          <p className="mt-3 vc-reading-serif text-[16px] leading-none text-[#4f706a]">
+          <p className="mt-3 vc-reading-serif text-[16px] leading-none text-vc-ink-soft">
             上滑查看已解锁章节
           </p>
         </header>
@@ -85,7 +85,7 @@ export function ChapterSwitchModal({
                   <span
                     className={`shrink-0 vc-reading-serif text-[20px] ${
                       current
-                        ? "rounded-full border border-[#cfc8bc] bg-[#fffdf8] px-4 py-1 text-[17px]"
+                        ? "rounded-full border border-[#cfc8bc] bg-vc-paper-bright px-4 py-1 text-[17px]"
                         : ""
                     }`}
                   >

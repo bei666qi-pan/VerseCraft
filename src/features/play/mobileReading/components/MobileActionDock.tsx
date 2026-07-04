@@ -59,7 +59,7 @@ export function MobileActionDock({
       }`}
     >
       {hasAnyGate ? (
-        <p className="py-3 text-center text-sm font-medium text-[#4f706a]">
+        <p className="py-3 text-center text-sm font-medium text-vc-ink-soft">
           {gateMessage}
         </p>
       ) : (
@@ -99,7 +99,7 @@ export function MobileActionDock({
               data-testid="manual-action-input"
               className={`${mobileReadingTheme.actionInput} ${
                 chatBusy
-                  ? "disabled:!opacity-100 !bg-[#fffdf8] placeholder:!text-[#2f6f68] placeholder:!opacity-100"
+                  ? "disabled:!opacity-100 !bg-vc-paper-bright placeholder:!text-[#2f6f68] placeholder:!opacity-100"
                   : ""
               }`}
               disabled={chatBusy || isGuestDialogueExhausted}

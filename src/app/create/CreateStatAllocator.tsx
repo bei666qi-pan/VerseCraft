@@ -116,7 +116,7 @@ function useStatStepper(
 }
 
 const stepButtonClass =
-  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#c8c3ba] bg-[#f7f3ec]/90 vc-reading-serif text-[24px] leading-none text-[#164f4d] shadow-[0_10px_20px_rgba(62,72,68,0.09),inset_0_1px_0_rgba(255,255,255,0.88)] transition enabled:hover:bg-[#fbf8f3] enabled:active:scale-90 disabled:cursor-not-allowed disabled:opacity-35";
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-vc-line bg-vc-paper/90 vc-reading-serif text-[24px] leading-none text-vc-ink vc-shadow-card transition enabled:hover:bg-vc-paper-bright enabled:active:scale-90 disabled:cursor-not-allowed disabled:opacity-35";
 
 export function CreateStatAllocator({
   onDecrement,
@@ -132,7 +132,7 @@ export function CreateStatAllocator({
   const stepper = useStatStepper(onIncrement, onDecrement, remaining, stats);
 
   return (
-    <div className="mt-4 divide-y divide-[#d8d3ca]">
+    <div className="mt-4 divide-y divide-vc-line">
       {CREATE_STAT_ORDER.map((stat) => (
         <div
           key={stat}
@@ -141,14 +141,14 @@ export function CreateStatAllocator({
         >
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <h3 className="vc-reading-serif text-[22px] font-semibold leading-none text-[#164f4d]">
+              <h3 className="vc-reading-serif text-[22px] font-semibold leading-none text-vc-ink">
                 {STAT_LABELS[stat]}
               </h3>
-              <span className="vc-reading-serif text-[16px] font-semibold leading-none text-[#164f4d]">
+              <span className="vc-reading-serif text-[16px] font-semibold leading-none text-vc-ink">
                 当前：{stats[stat]}
               </span>
             </div>
-            <p className="mt-1.5 whitespace-pre-line vc-reading-serif text-[14px] leading-[1.22] text-[#365f5d]">
+            <p className="mt-1.5 whitespace-pre-line vc-reading-serif text-[14px] leading-[1.22] text-vc-ink-soft">
               {STAT_DESCRIPTIONS[stat]}
             </p>
           </div>
@@ -170,11 +170,21 @@ export function CreateStatAllocator({
             >
               −
             </button>
-            <div
-              data-testid={`create-stat-value-${stat}`}
-              className="vc-reading-serif text-center text-[26px] leading-none text-[#164f4d]"
-            >
-              {stats[stat]}
+            <div className="min-w-0">
+              <div
+                data-testid={`create-stat-value-${stat}`}
+                className={`vc-reading-serif text-center text-[26px] leading-none transition-colors ${
+                  stats[stat] > BASE_STATS[stat] ? "text-vc-accent" : "text-vc-ink"
+                }`}
+              >
+                {stats[stat]}
+              </div>
+              <div className="mx-auto mt-1.5 h-1 w-11 overflow-hidden rounded-full bg-vc-line/70" aria-hidden>
+                <div
+                  className="h-full rounded-full bg-vc-accent transition-all"
+                  style={{ width: `${Math.min(100, Math.round((stats[stat] / 30) * 100))}%` }}
+                />
+              </div>
             </div>
             <button
               type="button"

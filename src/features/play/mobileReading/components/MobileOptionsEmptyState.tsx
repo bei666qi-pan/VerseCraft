@@ -52,13 +52,13 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
     return (
       <div
         data-testid="mobile-options-dropdown"
-        className="fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-stack-gap))] left-1/2 z-40 h-[var(--vc-mobile-options-panel-height)] w-[calc(100%-1.35rem)] max-w-[448px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#ded8ce] bg-[#fffdf8] p-3 text-[#174d46] shadow-[0_10px_26px_rgba(73,63,51,0.13),inset_0_1px_0_rgba(255,255,255,0.92)] min-[420px]:w-[calc(100%-2.7rem)] min-[420px]:p-4"
+        className="fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-stack-gap))] left-1/2 z-40 h-[var(--vc-mobile-options-panel-height)] w-[calc(100%-1.35rem)] max-w-[448px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#ded8ce] bg-vc-paper-bright p-3 text-[#174d46] shadow-[0_10px_26px_rgba(73,63,51,0.13),inset_0_1px_0_rgba(255,255,255,0.92)] min-[420px]:w-[calc(100%-2.7rem)] min-[420px]:p-4"
         data-options-regen-stage={stage}
         role="status"
       >
         <div
           data-testid="mobile-options-loading-card"
-          className="relative grid h-full grid-cols-[58px_minmax(0,1fr)] items-center gap-3 rounded-[14px] border border-[#ebe4d9] bg-[#fffdf8] px-3 py-3 min-[390px]:grid-cols-[68px_minmax(0,1fr)] min-[420px]:gap-4 min-[420px]:px-4"
+          className="relative grid h-full grid-cols-[58px_minmax(0,1fr)] items-center gap-3 rounded-[14px] border border-[#ebe4d9] bg-vc-paper-bright px-3 py-3 min-[390px]:grid-cols-[68px_minmax(0,1fr)] min-[420px]:gap-4 min-[420px]:px-4"
         >
           <div className="pointer-events-none absolute inset-1.5 rounded-[12px] border border-[#efe8dd]" />
           <div className="pointer-events-none absolute left-2 top-2 h-2.5 w-2.5 rotate-45 border-l border-t border-[#e5d9c9]" aria-hidden />
@@ -81,7 +81,7 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
             </div>
             <div className="relative mt-4 h-px w-[92%] bg-[#d8d1c6] min-[390px]:mt-5">
               <div
-                className="absolute left-0 top-0 h-px bg-[#2f746a] transition-[width] duration-500 ease-out"
+                className="absolute left-0 top-0 h-px bg-vc-accent transition-[width] duration-500 ease-out"
                 style={{ width: `${safeProgress}%` }}
               />
               {[16, 50, 84].map((left, index) => {
@@ -91,7 +91,7 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
                     key={left}
                     className={`absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-500 ${
                       active
-                        ? "bg-[#2f746a] shadow-[0_0_0_10px_rgba(47,116,106,0.1),0_0_22px_rgba(47,116,106,0.22)]"
+                        ? "bg-vc-accent shadow-[0_0_0_10px_rgba(47,116,106,0.1),0_0_22px_rgba(47,116,106,0.22)]"
                         : "bg-[#c8c0b4]"
                     }`}
                     style={{ left: `${left}%` } as CSSProperties}

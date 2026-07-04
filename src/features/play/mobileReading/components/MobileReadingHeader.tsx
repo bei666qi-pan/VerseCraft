@@ -62,7 +62,7 @@ export function MobileReadingHeader({
                   aria-label="切到上一章"
                   title="上一章"
                   data-testid="chapter-top-prev-button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_6px_14px_rgba(69,58,45,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-vc-paper-bright text-[#174d46] shadow-[0_6px_14px_rgba(69,58,45,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <ChevronIcon className="h-5 w-5 rotate-180" strokeWidth={1.9} />
                 </button>
@@ -73,7 +73,7 @@ export function MobileReadingHeader({
                   aria-label="切到下一章"
                   title="下一章"
                   data-testid="chapter-top-next-button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_6px_14px_rgba(69,58,45,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8d1c6] bg-vc-paper-bright text-[#174d46] shadow-[0_6px_14px_rgba(69,58,45,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <ChevronIcon className="h-5 w-5" strokeWidth={1.9} />
                 </button>

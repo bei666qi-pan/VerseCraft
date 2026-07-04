@@ -25,8 +25,8 @@ function BrandMark() {
 function SectionRule() {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-3" aria-hidden>
-      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[#1d4d48]/30 to-[#1d4d48]/70" />
-      <span className="h-3 w-3 rotate-45 bg-[#1d4d48]" />
+      <span className="h-px flex-1 bg-gradient-to-r from-transparent via-vc-ink/30 to-vc-ink/70" />
+      <span className="h-3 w-3 rotate-45 bg-vc-ink" />
     </span>
   );
 }
@@ -35,14 +35,14 @@ function EmptyWorldCard({ isActive }: { isActive: boolean }) {
   return (
     <div
       className={joinClass(
-        "flex h-full w-full items-center justify-center rounded-[1.65rem] border border-[#d8d0c4]",
+        "flex h-full w-full items-center justify-center rounded-[1.65rem] border border-vc-line",
         "bg-[linear-gradient(145deg,#ece5db,#faf7f1_42%,#e9e1d5)]",
         "shadow-[inset_0_0_42px_rgba(32,69,63,0.08)]",
-        isActive && "border-[#c9c1b4]"
+        isActive && "border-vc-line-warm"
       )}
       aria-hidden
     >
-      <span className="h-20 w-20 rounded-full border border-[#d5cdc0]/70 bg-white/30" />
+      <span className="h-20 w-20 rounded-full border border-vc-line/70 bg-white/30" />
     </div>
   );
 }
@@ -76,6 +76,7 @@ function WorldCard({
           src={slide.imageSrc}
           alt={slide.imageAlt ?? slide.title}
           className="h-full w-full object-cover"
+          decoding="async"
           draggable={false}
         />
       ) : (
@@ -87,7 +88,7 @@ function WorldCard({
           type="button"
           data-testid="intro-world-info"
           onClick={onIntro}
-          className="absolute right-[4.2%] top-[2.4%] inline-flex h-10 items-center gap-2 rounded-full border border-[#d8cfc1] bg-[#fffdf8] px-4 text-[15px] font-semibold text-[#173f3a] shadow-[0_8px_18px_rgba(31,38,35,0.14),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-[#f8f4ed] active:scale-[0.98] min-[430px]:h-11 min-[430px]:text-[16px]"
+          className="absolute right-[4.2%] top-[2.4%] inline-flex h-10 items-center gap-2 rounded-full border border-vc-line-warm bg-vc-paper-bright px-4 text-[15px] font-semibold text-vc-ink vc-shadow-float transition hover:bg-vc-paper-raised active:scale-[0.98] min-[430px]:h-11 min-[430px]:text-[16px]"
         >
           <FileText size={17} strokeWidth={1.9} />
           世界观介绍
@@ -107,25 +108,25 @@ function IntroModal({
   return (
     <div
       data-testid="intro-world-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#efe8dd]/78 px-6"
+      className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-[#efe8dd]/78 px-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="intro-world-modal-title"
     >
-      <section className="relative w-full max-w-[360px] rounded-[1.6rem] border border-[#d8cfc1] bg-[#f8f4ed] px-6 py-7 text-[#163f3a] shadow-[0_1.5rem_3.5rem_rgba(32,50,47,0.28)]">
+      <section className="relative w-full max-w-[360px] animate-fade-in-up rounded-[1.6rem] border border-vc-line-warm bg-vc-paper-raised px-6 py-7 text-vc-ink vc-shadow-modal">
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/86 text-[#173f3a] shadow-[0_0.45rem_1rem_rgba(26,46,42,0.16)] transition active:scale-95"
+          className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-vc-paper-bright text-vc-ink vc-shadow-float transition active:scale-95"
           aria-label="关闭世界观介绍"
         >
           <X size={20} strokeWidth={2.1} />
         </button>
-        <p className="text-[13px] font-medium tracking-[0.24em] text-[#6c7771]">WORLD INTRO</p>
-        <h2 id="intro-world-modal-title" className="vc-reading-serif mt-3 text-[32px] font-semibold">
+        <p className="text-[13px] font-medium tracking-[0.24em] text-vc-ink-faint">WORLD INTRO</p>
+        <h2 id="intro-world-modal-title" className="vc-reading-serif mt-3 text-[32px] font-semibold text-vc-ink-deep">
           {slide.introTitle}
         </h2>
-        <div className="mt-5 space-y-4 text-[15px] leading-7 text-[#40524e]">
+        <div className="mt-5 space-y-4 text-[15px] leading-7 text-vc-ink-soft">
           {slide.introBody.map((line) => (
             <p key={line}>{line}</p>
           ))}
@@ -158,7 +159,7 @@ export function IntroPageClient() {
   };
 
   return (
-    <main className="relative h-[100svh] min-h-[100svh] overflow-hidden bg-[#f7f3ed] text-[#153f3a]">
+    <main className="relative h-[100svh] min-h-[100svh] overflow-hidden bg-vc-paper text-vc-ink">
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_51%_9%,rgba(255,255,255,0.9),transparent_15rem),radial-gradient(circle_at_50%_34%,rgba(40,86,78,0.08),transparent_19rem),linear-gradient(180deg,#f8f5ef_0%,#f1ece4_100%)]"
         aria-hidden
@@ -178,7 +179,7 @@ export function IntroPageClient() {
             type="button"
             data-testid="intro-back-home"
             onClick={() => router.push("/")}
-            className="inline-flex items-center gap-3 text-left text-[#133f3a] transition active:scale-[0.98]"
+            className="inline-flex items-center gap-3 text-left text-vc-ink transition active:scale-[0.98]"
             aria-label="返回首页"
           >
             <BrandMark />
@@ -189,22 +190,22 @@ export function IntroPageClient() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/82 text-[#172d2a] shadow-[0_0.55rem_1.05rem_rgba(31,38,35,0.18)] transition active:scale-95 min-[430px]:h-12 min-[430px]:w-12"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/82 text-vc-ink-deep vc-shadow-float transition active:scale-95 min-[430px]:h-12 min-[430px]:w-12"
             aria-label="关闭"
           >
             <X size={26} strokeWidth={2.1} />
           </button>
         </header>
 
-        <section className="mt-[clamp(1.35rem,4.2svh,2.5rem)] text-center">
+        <section className="mt-[clamp(1.35rem,4.2svh,2.5rem)] animate-fade-in-up text-center">
           <div className="flex items-center gap-4">
             <SectionRule />
-            <h1 className="vc-reading-serif shrink-0 text-[clamp(2rem,8.8vw,2.55rem)] font-semibold leading-none tracking-[0.18em] text-[#153f3a]">
+            <h1 className="vc-reading-serif shrink-0 text-[clamp(2rem,8.8vw,2.55rem)] font-semibold leading-none tracking-[0.18em] text-vc-ink-deep">
               {INTRO_PAGE_TITLE}
             </h1>
             <SectionRule />
           </div>
-          <p className="mt-[clamp(0.65rem,2.1svh,1rem)] text-[clamp(1rem,4.4vw,1.25rem)] font-medium tracking-[0.36em] text-[#76736f]">
+          <p className="mt-[clamp(0.65rem,2.1svh,1rem)] text-[clamp(1rem,4.4vw,1.25rem)] font-medium tracking-[0.36em] text-vc-ink-soft">
             {INTRO_PAGE_SUBTITLE}
           </p>
         </section>
@@ -217,7 +218,7 @@ export function IntroPageClient() {
             <div className="absolute left-1/2 top-0 h-full w-[82%] translate-x-[64%] overflow-hidden rounded-[1.65rem] shadow-[0_1rem_2rem_rgba(21,39,36,0.22)]">
               <WorldCard slide={nextSlide} isActive={false} isSide />
             </div>
-            <div className="absolute left-1/2 top-0 h-full w-[82%] -translate-x-1/2">
+            <div key={activeSlide.id} className="absolute left-1/2 top-0 h-full w-[82%] -translate-x-1/2 animate-fade-in">
               <WorldCard
                 slide={activeSlide}
                 isActive
@@ -226,7 +227,7 @@ export function IntroPageClient() {
             </div>
           </div>
 
-          <div className="mt-[clamp(0.85rem,2.4svh,1.5rem)] flex w-full items-center justify-center gap-7 text-[#cfc9c0]">
+          <div className="mt-[clamp(0.85rem,2.4svh,1.5rem)] flex w-full items-center justify-center gap-7 text-vc-ink-faint">
             <button
               type="button"
               data-testid="intro-carousel-prev"
@@ -249,7 +250,7 @@ export function IntroPageClient() {
                   }}
                   className={joinClass(
                     "h-2.5 w-2.5 rounded-full transition",
-                    index === activeIndex ? "scale-125 bg-[#0b5a51]" : "bg-[#d7d1c8]"
+                    index === activeIndex ? "scale-125 bg-vc-accent" : "bg-vc-line"
                   )}
                   aria-label={`切换到第 ${index + 1} 个世界观`}
                   aria-current={index === activeIndex ? "true" : undefined}

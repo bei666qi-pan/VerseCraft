@@ -42,7 +42,7 @@ function CodexSilhouette({ identified }: { identified: boolean }) {
           identified ? "bg-[#8fa79f]/45" : "bg-[#174d46]/76"
         }`}
       />
-      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#fffdf8] to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-vc-paper-bright to-transparent" />
     </div>
   );
 }
@@ -68,9 +68,9 @@ function CodexCard({
       onClick={() => {
         if (card.kind === "slot") onSelect(card.slot);
       }}
-      className={`relative h-[146px] w-[82px] shrink-0 overflow-visible rounded-[14px] border bg-[#fffdf8] text-left shadow-[0_6px_16px_rgba(73,63,51,0.09)] transition min-[420px]:h-[168px] min-[420px]:w-[92px] ${
+      className={`relative h-[146px] w-[82px] shrink-0 overflow-visible rounded-[14px] border bg-vc-paper-bright text-left shadow-[0_6px_16px_rgba(73,63,51,0.09)] transition min-[420px]:h-[168px] min-[420px]:w-[92px] ${
         selected
-          ? "border-[#2f746a] shadow-[0_10px_22px_rgba(47,116,106,0.14),0_0_0_2px_rgba(47,116,106,0.06)]"
+          ? "border-vc-accent shadow-[0_10px_22px_rgba(47,116,106,0.14),0_0_0_2px_rgba(47,116,106,0.06)]"
           : "border-[#d8d1c6]"
       } ${card.disabled ? "opacity-75" : "active:scale-[0.985]"}`}
     >
@@ -86,13 +86,13 @@ function CodexCard({
         ) : (
           <CodexSilhouette identified={card.identified} />
         )}
-        <div className="absolute inset-x-0 bottom-0 h-[4.2rem] bg-gradient-to-t from-[#fffdf8] via-[#fffdf8]/92 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-[4.2rem] bg-gradient-to-t from-vc-paper-bright via-vc-paper-bright/92 to-transparent" />
       </div>
       <div className="absolute inset-x-1 bottom-3">
         <div className="vc-reading-serif truncate text-center text-[17px] font-semibold leading-tight text-[#174d46] min-[420px]:text-[19px]">
           {card.displayName}
         </div>
-        <div className="vc-reading-serif mt-1 truncate text-center text-[12px] leading-tight text-[#4f706a] min-[420px]:text-[14px]">
+        <div className="vc-reading-serif mt-1 truncate text-center text-[12px] leading-tight text-vc-ink-soft min-[420px]:text-[14px]">
           {card.location}
         </div>
       </div>
@@ -101,9 +101,9 @@ function CodexCard({
           aria-hidden
           className="absolute -bottom-[7px] left-1/2 flex w-[58px] -translate-x-1/2 items-center justify-center"
         >
-          <span className="h-px flex-1 bg-[#2f746a]" />
-          <span className="mx-1 h-2.5 w-2.5 rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.38)]" />
-          <span className="h-px flex-1 bg-[#2f746a]" />
+          <span className="h-px flex-1 bg-vc-accent" />
+          <span className="mx-1 h-2.5 w-2.5 rounded-full bg-vc-accent shadow-[0_0_10px_rgba(47,116,106,0.38)]" />
+          <span className="h-px flex-1 bg-vc-accent" />
         </span>
       ) : null}
     </button>
@@ -172,7 +172,7 @@ function DetailBlock({
       className={`relative min-h-0 pr-3 ${scrollable ? "flex flex-1 flex-col overflow-hidden" : "shrink-0"}`}
     >
       <h3 className="vc-reading-serif flex items-center gap-2 text-[20px] font-semibold leading-none text-[#174d46] min-[420px]:text-[24px]">
-        <Icon className="h-5 w-5 shrink-0 text-[#2f746a] min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.45} />
+        <Icon className="h-5 w-5 shrink-0 text-vc-accent min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.45} />
         {title}
       </h3>
       <p
@@ -189,10 +189,10 @@ function DetailBlock({
         <div
           aria-hidden
           data-testid={testId ? `${testId}-scroll-indicator` : undefined}
-          className="absolute bottom-0 right-0 top-4 flex w-2 flex-col items-center justify-between text-[#2f746a]"
+          className="absolute bottom-0 right-0 top-4 flex w-2 flex-col items-center justify-between text-vc-accent"
         >
           <span className="text-[11px] leading-none">⌃</span>
-          <span className="my-1 h-8 w-0.5 rounded-full bg-[#2f746a] min-[420px]:h-10" />
+          <span className="my-1 h-8 w-0.5 rounded-full bg-vc-accent min-[420px]:h-10" />
           <span className="text-[11px] leading-none">⌄</span>
         </div>
       ) : null}
@@ -270,7 +270,7 @@ export function MobileCodexPanel({
       {floorSlots.length === 0 ? (
         <div
           data-testid="mobile-codex-empty"
-          className="vc-reading-serif mt-5 rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/92 px-5 py-10 text-center text-[20px] text-[#4f706a] shadow-[0_8px_18px_rgba(73,63,51,0.08)]"
+          className="vc-reading-serif mt-5 rounded-[18px] border border-[#d8d1c6] bg-vc-paper-bright/92 px-5 py-10 text-center text-[20px] text-vc-ink-soft shadow-[0_8px_18px_rgba(73,63,51,0.08)]"
         >
           当前楼层暂无可记录对象
         </div>
@@ -278,7 +278,7 @@ export function MobileCodexPanel({
         <>
           <div className="mx-auto mb-3 flex h-1.5 w-32 shrink-0 overflow-hidden rounded-full bg-[#e3ded6]" aria-hidden>
             <span
-              className="rounded-full bg-[#2f746a] shadow-[0_0_10px_rgba(47,116,106,0.24)]"
+              className="rounded-full bg-vc-accent shadow-[0_0_10px_rgba(47,116,106,0.24)]"
               style={{ width: `${progressWidth}%` }}
             />
           </div>
@@ -286,10 +286,10 @@ export function MobileCodexPanel({
           {detail && selectedSlot ? (
             <article
               data-testid="mobile-codex-detail-panel"
-              className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-[#d8d1c6] bg-[#fffdf8]/94 px-4 py-4 shadow-[0_8px_18px_rgba(73,63,51,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-5 min-[420px]:py-5"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-[#d8d1c6] bg-vc-paper-bright/94 px-4 py-4 shadow-[0_8px_18px_rgba(73,63,51,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-5 min-[420px]:py-5"
             >
               <header className="grid shrink-0 grid-cols-[1.9rem_minmax(0,1fr)] gap-2.5">
-                <MobileReadingIcons.BrandMark className="mt-0.5 h-7 w-7 text-[#2f746a]" strokeWidth={1.5} />
+                <MobileReadingIcons.BrandMark className="mt-0.5 h-7 w-7 text-vc-accent" strokeWidth={1.5} />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
                     <div>
@@ -301,7 +301,7 @@ export function MobileCodexPanel({
                       </h2>
                       <p
                         data-testid="mobile-codex-detail-location"
-                        className="vc-reading-serif mt-1 truncate text-[17px] leading-none text-[#4f706a] min-[420px]:text-[20px]"
+                        className="vc-reading-serif mt-1 truncate text-[17px] leading-none text-vc-ink-soft min-[420px]:text-[20px]"
                       >
                         {detail.location}
                       </p>

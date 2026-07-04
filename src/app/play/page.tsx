@@ -5421,7 +5421,7 @@ export default function PlayPageWrapper(props: AppPageDynamicProps) {
           <div className="flex flex-col items-center gap-4">
             <div className="h-8 w-48 animate-pulse rounded-lg bg-[#d8d1c6]" />
             <div className="h-4 w-32 animate-pulse rounded bg-[#ebe5dc]" />
-            <p className="text-sm text-[#4f706a]">读取世界线中...</p>
+            <p className="text-sm text-vc-ink-soft">读取世界线中...</p>
           </div>
         </div>
       )}

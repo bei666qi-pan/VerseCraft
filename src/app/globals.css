@@ -13,6 +13,20 @@
   --color-abyss-mid: oklch(0.22 0.06 255);
   --color-halo: oklch(0.98 0.02 250 / 0.6);
 
+  /* VerseCraft paper 设计语言统一 token（墨青 + 纸质）
+     生成类名：text-vc-ink / bg-vc-paper / border-vc-line 等 */
+  --color-vc-ink: #164f4d; /* 主墨青：正文、标题 */
+  --color-vc-ink-deep: #0d3f39; /* 深墨：hover、强调 */
+  --color-vc-ink-soft: #4f706a; /* 次级文字 */
+  --color-vc-ink-faint: #8fa4a2; /* 弱化文字、装饰符 */
+  --color-vc-paper: #f7f3ec; /* 页面底色 */
+  --color-vc-paper-raised: #f8f5ef; /* 卡片底色 */
+  --color-vc-paper-bright: #fffdf8; /* 输入框、浮层底色 */
+  --color-vc-line: #d8d3ca; /* 常规分隔线/边框 */
+  --color-vc-line-warm: #d8cbb8; /* 暖调边框（弹窗、卷轴） */
+  --color-vc-accent: #2f746a; /* 青玉点缀：光效、进度 */
+  --color-vc-seal: #a4433c; /* 朱砂：危险、死亡、警示 */
+
   /* Coolify/CI build may not have access to fonts.googleapis.com.
      Use system font stacks to keep builds offline-safe. */
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -23,6 +37,43 @@
   --animate-glitch: glitch 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) 10;
   --animate-breathe: breathe 2s ease-in-out infinite;
   --animate-halo-pulse: halo-pulse 2.5s ease-in-out infinite;
+  --animate-fade-in: fadeIn 0.5s ease-out both;
+  --animate-fade-in-up: vc-fade-in-up 0.6s cubic-bezier(0.22, 0.68, 0.18, 1) both;
+}
+
+/* VerseCraft 统一投影与复用表面（与 PaperFrame 组件共享同一质感） */
+:root {
+  --vc-shadow-card: 0 18px 36px rgba(62, 72, 68, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88), inset 0 -2px 5px rgba(106, 100, 88, 0.06);
+  --vc-shadow-float: 0 12px 28px rgba(62, 72, 68, 0.12);
+  --vc-shadow-modal: 0 22px 62px rgba(77, 61, 40, 0.18),
+    inset 0 0 0 7px rgba(248, 244, 237, 0.92), inset 0 0 0 8px rgba(209, 199, 184, 0.55);
+  --vc-shadow-inset-paper: inset 0 0 0 4px rgba(248, 244, 237, 0.72);
+}
+
+.vc-shadow-card { box-shadow: var(--vc-shadow-card); }
+.vc-shadow-float { box-shadow: var(--vc-shadow-float); }
+.vc-shadow-modal { box-shadow: var(--vc-shadow-modal); }
+.vc-shadow-inset-paper { box-shadow: var(--vc-shadow-inset-paper); }
+
+/* 纸质卡片：外围页面通用容器 */
+.vc-card {
+  border: 1px solid var(--color-vc-line);
+  background: color-mix(in srgb, var(--color-vc-paper-raised) 88%, transparent);
+  border-radius: 22px;
+  box-shadow: var(--vc-shadow-card);
+}
+
+@keyframes vc-fade-in-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-fade-in {
+    animation: none !important;
+  }
 }
 
 @keyframes glitch {

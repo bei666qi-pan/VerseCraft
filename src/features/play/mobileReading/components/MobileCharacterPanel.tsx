@@ -41,7 +41,7 @@ function CharacterLogoDivider() {
       aria-hidden
     >
       <span className="h-px flex-1 bg-[#ded8ce]" />
-      <MobileReadingIcons.BrandMark className="h-8 w-8 shrink-0 text-[#2f746a]" strokeWidth={1.4} />
+      <MobileReadingIcons.BrandMark className="h-8 w-8 shrink-0 text-vc-accent" strokeWidth={1.4} />
       <span className="h-px flex-1 bg-[#ded8ce]" />
     </div>
   );
@@ -120,9 +120,9 @@ export function MobileCharacterPanel({
             <div
               aria-label="原石余额"
               title="原石余额"
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] border border-[#d8d1c6] bg-[#fffdf8] px-2.5 text-[#174d46] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:h-10 min-[420px]:px-3"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] border border-[#d8d1c6] bg-vc-paper-bright px-2.5 text-[#174d46] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] min-[420px]:h-10 min-[420px]:px-3"
             >
-              <MobileReadingIcons.Originium className="h-5 w-5 shrink-0 text-[#2f746a] min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.25} />
+              <MobileReadingIcons.Originium className="h-5 w-5 shrink-0 text-vc-accent min-[420px]:h-6 min-[420px]:w-6" strokeWidth={1.25} />
               <span
                 data-testid="character-originium-balance"
                 className="vc-reading-serif text-[16px] font-semibold leading-none min-[420px]:text-[18px]"
@@ -154,7 +154,7 @@ export function MobileCharacterPanel({
                   </div>
                   <div
                     data-testid={`character-stat-${stat}-description`}
-                    className="vc-reading-serif min-w-0 truncate whitespace-nowrap text-[12px] leading-none text-[#4f706a] min-[420px]:text-[14px]"
+                    className="vc-reading-serif min-w-0 truncate whitespace-nowrap text-[12px] leading-none text-vc-ink-soft min-[420px]:text-[14px]"
                   >
                     {STAT_DESCRIPTIONS[stat]}
                   </div>
@@ -165,7 +165,7 @@ export function MobileCharacterPanel({
                     title={`消耗 ${upgradeCost} 原石加点`}
                     disabled={!canUpgrade}
                     onClick={() => onUpgradeAttribute(stat)}
-                    className="flex h-11 w-[3.05rem] shrink-0 flex-col items-center justify-center rounded-[10px] border border-[#d8d1c6] bg-[#fffdf8] text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-42 min-[420px]:h-12 min-[420px]:w-[3.45rem]"
+                    className="flex h-11 w-[3.05rem] shrink-0 flex-col items-center justify-center rounded-[10px] border border-[#d8d1c6] bg-vc-paper-bright text-[#174d46] shadow-[0_5px_12px_rgba(73,63,51,0.08)] transition enabled:hover:bg-white enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-42 min-[420px]:h-12 min-[420px]:w-[3.45rem]"
                   >
                     <span className="text-[18px] font-semibold leading-none min-[420px]:text-[20px]">+</span>
                     <span className="vc-reading-serif text-[12px] leading-none min-[420px]:text-[13px]">加点</span>

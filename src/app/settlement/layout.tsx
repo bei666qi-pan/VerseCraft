@@ -7,8 +7,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#020617",
-  colorScheme: "dark",
+  themeColor: "#f7f3ec",
+  colorScheme: "light",
 };
 
 export default function SettlementLayout({ children }: { children: ReactNode }) {

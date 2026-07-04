@@ -31,7 +31,7 @@ import { flushGameStorePersistenceDebouncedWrites } from "@/lib/idbDebouncedStor
 import { isLikelyAndroidMobileUa } from "@/lib/platform/isLikelyAndroidMobileUa";
 
 const inputClass =
-  "h-9 w-full border-0 border-b border-[#bdb8af] bg-transparent px-1 vc-reading-serif text-[18px] leading-none text-[#164f4d] outline-none transition placeholder:text-[17px] placeholder:text-[#365f5d]/78 focus:border-[#164f4d]";
+  "mt-1.5 h-10 w-full rounded-[10px] border border-vc-line bg-vc-paper-bright px-3 vc-reading-serif text-[17px] leading-none text-vc-ink outline-none transition placeholder:text-[16px] placeholder:text-vc-ink-faint focus:border-vc-ink-deep";
 
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!;
@@ -209,8 +209,8 @@ export function CreateCharacterForm() {
         }}
       >
         <header className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2 text-[#164f4d]">
-            <VerseCraftPaperMark className="h-8 w-8 border-[#d8d3ca] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
+          <div className="flex min-w-0 items-center gap-2 text-vc-ink">
+            <VerseCraftPaperMark className="h-8 w-8 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
             <span className="vc-reading-serif text-[25px] font-semibold leading-none">VerseCraft</span>
           </div>
 
@@ -219,18 +219,25 @@ export function CreateCharacterForm() {
             data-testid="quick-create-character"
             aria-label="一键注册角色（仅生成本地角色档案，不生成账号）"
             onClick={fillQuickCharacter}
-            className="absolute right-0 top-[3.55rem] inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-[#bdb8af] bg-[#f8f5ef]/90 px-3 vc-reading-serif text-[15px] font-semibold leading-none text-[#164f4d] shadow-[0_12px_24px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-[#fbf8f3] active:scale-[0.98]"
+            className="absolute right-0 top-[3.55rem] inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-vc-line bg-vc-paper-raised/90 px-3 vc-reading-serif text-[15px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.98]"
           >
-            <VerseCraftPaperMark className="h-7 w-7 border-[#d8d3ca] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
+            <VerseCraftPaperMark className="h-7 w-7 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
             <span className="whitespace-nowrap">一键注册角色</span>
           </button>
         </header>
 
-        <section className="mt-[4.35rem]">
+        <section className="mt-[4.6rem] animate-fade-in-up">
+          <h1 className="vc-reading-serif text-[30px] font-semibold leading-tight text-vc-ink-deep">入卷之前</h1>
+          <p className="mt-2 vc-reading-serif text-[15px] leading-relaxed text-vc-ink-soft">
+            写下这具身体的轮廓。暗月之下，公寓会记住每一个走进来的名字。
+          </p>
+        </section>
+
+        <section className="vc-card mt-6 px-5 py-5">
           <VerseCraftPaperSectionTitle>基础档案</VerseCraftPaperSectionTitle>
-          <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-4">
+          <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4">
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">称呼</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">称呼</span>
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -240,20 +247,20 @@ export function CreateCharacterForm() {
             </label>
 
             <label className="relative min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">性别</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">性别</span>
               <select
                 value={gender}
                 onChange={(event) => setGender(event.target.value as GenderOption)}
                 className={`${inputClass} appearance-none pr-9`}
               >
                 {GENDER_OPTIONS.map((option) => (
-                  <option key={option} value={option} className="bg-[#f7f3ec] text-[#164f4d]">
+                  <option key={option} value={option} className="bg-vc-paper text-vc-ink">
                     {option}
                   </option>
                 ))}
               </select>
               <span
-                className="pointer-events-none absolute bottom-1.5 right-1 text-[25px] leading-none text-[#164f4d]"
+                className="pointer-events-none absolute bottom-2 right-3 text-[22px] leading-none text-vc-ink"
                 aria-hidden
               >
                 ⌄
@@ -261,7 +268,7 @@ export function CreateCharacterForm() {
             </label>
 
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">身高</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">身高</span>
               <div className="relative">
                 <input
                   type="number"
@@ -273,27 +280,27 @@ export function CreateCharacterForm() {
                   onBlur={() => setHeightFocused(false)}
                   className={`${inputClass} pr-11 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
                 />
-                <span className="absolute bottom-2 right-0 vc-reading-serif text-[18px] leading-none text-[#164f4d]">
+                <span className="absolute bottom-2.5 right-3 vc-reading-serif text-[16px] leading-none text-vc-ink-soft">
                   cm
                 </span>
               </div>
               {heightFocused ? (
-                <p className="mt-2 vc-reading-serif text-[14px] text-[#8d5854]">140 — 220</p>
+                <p className="mt-2 vc-reading-serif text-[14px] text-vc-seal">140 — 220</p>
               ) : null}
             </label>
 
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-[#164f4d]">性格</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">性格</span>
               <input
                 value={personality}
                 onChange={(event) => setPersonality(event.target.value)}
                 placeholder="2-6 个中文字符"
                 className={`${inputClass} ${
-                  personality.length > 0 && !personalityValid ? "border-[#8d5854] text-[#8d5854]" : ""
+                  personality.length > 0 && !personalityValid ? "border-vc-seal text-vc-seal" : ""
                 }`}
               />
               {!personalityValid && personality.length > 0 ? (
-                <p className="mt-2 vc-reading-serif text-[14px] text-[#8d5854]">必须为 2-6 个中文字符。</p>
+                <p className="mt-2 vc-reading-serif text-[14px] text-vc-seal">必须为 2-6 个中文字符。</p>
               ) : null}
             </label>
           </div>
@@ -301,15 +308,15 @@ export function CreateCharacterForm() {
 
         <VerseCraftPaperDivider className="mt-6" />
 
-        <section className="mt-6">
+        <section className="vc-card mt-6 px-5 py-5">
           <div className="flex items-start justify-between gap-4">
             <VerseCraftPaperSectionTitle>潜能赋予</VerseCraftPaperSectionTitle>
             <div className="mt-1 flex shrink-0 items-baseline gap-4">
-              <span className="vc-reading-serif text-[20px] leading-none text-[#164f4d]">剩余</span>
+              <span className="vc-reading-serif text-[20px] leading-none text-vc-ink">剩余</span>
               <span
                 data-testid="create-remaining-points"
-                className={`vc-reading-serif text-[30px] font-semibold leading-none ${
-                  remaining === 0 ? "text-[#164f4d]" : "text-[#274f4d]"
+                className={`vc-reading-serif text-[30px] font-semibold leading-none transition-colors ${
+                  remaining === 0 ? "text-vc-ink" : "text-vc-accent"
                 }`}
               >
                 {remaining}
@@ -326,14 +333,14 @@ export function CreateCharacterForm() {
 
         <VerseCraftPaperDivider className="mt-4" />
 
-        <section className="mt-5">
+        <section className="vc-card mt-5 px-5 py-5">
           <VerseCraftPaperSectionTitle>回响天赋</VerseCraftPaperSectionTitle>
           <CreateTalentGrid selectedTalent={selectedTalent} onSelectTalent={setSelectedTalent} />
         </section>
 
         <footer className="mt-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {submitMessage ? (
-            <p data-testid="create-submit-error" className="mb-3 text-center vc-reading-serif text-[16px] leading-relaxed text-[#8d5854]">
+            <p data-testid="create-submit-error" className="mb-3 text-center vc-reading-serif text-[16px] leading-relaxed text-vc-seal">
               {submitMessage}
             </p>
           ) : null}
@@ -343,11 +350,11 @@ export function CreateCharacterForm() {
             disabled={!canSubmit || submitting}
             className="h-[56px] min-h-[56px] touch-manipulation rounded-[16px] text-[28px]"
           >
-            <span className="absolute left-7 text-[#c8c5bd]" aria-hidden>
+            <span className="absolute left-7 text-vc-ink-faint" aria-hidden>
               ✦
             </span>
             <span>{submitting ? "开卷中" : "开卷"}</span>
-            <span className="absolute right-7 text-[#c8c5bd]" aria-hidden>
+            <span className="absolute right-7 text-vc-ink-faint" aria-hidden>
               ✦
             </span>
           </VerseCraftPaperPillButton>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -62,6 +63,18 @@ import {
   homeContinueUnavailableToast,
   homeRecoveryFallbackToast,
 } from "@/lib/ui/deathContractCopy";
+import type { AuthMode } from "@/components/home/HomeAuthModal";
+import type {
+  HomeSurveyQuestionConfig,
+  HomeSurveyQuestionId,
+} from "@/components/home/HomeSurveyModal";
+import { SURVEY_COPY } from "@/components/home/homeSurveyCopy";
+
+// 两个弹窗拆为独立 chunk，不进入首页首屏主 bundle，降低首次加载与 hydration 成本。
+// HomeSurveyModal 保持原有“常驻挂载 + open 控制过渡”语义：组件仍无条件渲染，
+// chunk 在水合后即后台加载完成，首次打开的过渡动画不受影响。
+const HomeAuthModal = dynamic(() => import("@/components/home/HomeAuthModal"), { ssr: false });
+const HomeSurveyModal = dynamic(() => import("@/components/home/HomeSurveyModal"), { ssr: false });
 
 type HomeClientProps = {
   initialUser: { id: string; name: string } | null;
@@ -129,7 +142,7 @@ function FooterHaloIconButton({
       aria-expanded={ariaExpanded}
       className="h-[64px] w-[64px]"
     >
-      <span className="text-[#164f4d]">{children}</span>
+      <span className="text-vc-ink">{children}</span>
     </VerseCraftPaperCircleButton>
   );
 }
@@ -147,9 +160,9 @@ function FooterHaloLinkButton({
     <Link
       href={href}
       aria-label={ariaLabel}
-      className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98]"
+      className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full border border-vc-line bg-vc-paper-raised/90 text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.98]"
     >
-      <span className="text-[#164f4d]">{children}</span>
+      <span className="text-vc-ink">{children}</span>
     </Link>
   );
 }
@@ -157,52 +170,6 @@ function FooterHaloLinkButton({
 const INITIAL_AUTH_ACTION_STATE = { success: false, message: "", error: "" };
 const SURVEY_LOCAL_CACHE_KEY = `vc_survey_done_${PRODUCT_SURVEY_KEY_HOME}`;
 const AUTH_SUCCESS_QUERY_KEY = "auth";
-const SURVEY_COPY = {
-  entryLabel: "产品问卷",
-  title: "产品问卷",
-  subtitle: "用于迭代节奏、界面与引导分层，帮助我们判断下一版优先级。",
-  estimate: "约 2 分钟，以选择题为主；末尾可留一句话。提交后立即入库，无需跳转外链。",
-  later: "稍后再说",
-  submitEmbedded: "提交问卷",
-  externalBackup: "备用：外链问卷",
-  surveyDoneLine: "该设备／账号下本问卷已归档，感谢你的时间。",
-  feedbackSecondary: "问题反馈（开放文本）",
-  feedbackBack: "返回问卷",
-  privacyHint: "提交即表示你已阅读《隐私政策》，我们仅将内容用于产品与体验分析。",
-  noLink: "暂未配置外链问卷；请使用上方站内表单。",
-  syncHint: "正在向服务器核对是否已提交…",
-} as const;
-
-type HomeSurveyQuestionId =
-  | "discoverySource"
-  | "experienceStage"
-  | "createFriction"
-  | "immersionIssue"
-  | "coreFunPoint"
-  | "quitReason"
-  | "topFixOne"
-  | "saveLossConcern"
-  | "recommendWillingness"
-  | "finalSuggestion";
-
-type HomeSurveyQuestionConfig =
-  | {
-      id: Exclude<HomeSurveyQuestionId, "topFixOne" | "finalSuggestion">;
-      kind: "single";
-      title: string;
-      subtitle?: string;
-      required: true;
-      options: Array<{ value: string; label: string }>;
-    }
-  | {
-      id: "topFixOne" | "finalSuggestion";
-      kind: "text";
-      title: string;
-      subtitle?: string;
-      required: boolean;
-      maxLen: 500;
-      placeholder: string;
-    };
 
 /** 首页产品问卷（≤10题）：用于产品分层与决策排序 */
 const HOME_SURVEY_FLOW: HomeSurveyQuestionConfig[] = [
@@ -246,8 +213,6 @@ const HOME_SURVEY_FLOW: HomeSurveyQuestionConfig[] = [
 ];
 
 type EntryState = "guest_fresh" | "guest_has_progress" | "authed_has_progress" | "authed_no_progress";
-
-type AuthMode = "login" | "register";
 
 function isSaveSlotData(data: unknown): data is SaveSlotData {
   const d = data as Record<string, unknown> | null;
@@ -588,6 +553,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
   }, [entryState, user, localProgressInfo.hasAny, hasLocalAnySave, hasCloudAnySave, hasPlayableResumeShadow, trackHomeGameplayEvent]);
 
   useEffect(() => {
+    if (user) return;
+    // 未登录时预取登录弹窗 chunk，避免首次点击“执笔 登录”出现可感知延迟。
+    void import("@/components/home/HomeAuthModal").catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
     const refreshShadow = () => setShadowTick((n) => n + 1);
     refreshShadow();
     window.addEventListener("focus", refreshShadow);
@@ -874,6 +845,16 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     setAuthPassword("");
     setNameCheck({ status: "idle", message: "" });
     setAuthFormNonce((n) => n + 1);
+  }
+
+  function switchAuthMode(mode: AuthMode) {
+    setAuthMode(mode);
+    void trackHomeGameplayEvent({
+      eventName: "auth_mode_switched",
+      page: "/",
+      source: "auth_modal",
+      payload: { mode },
+    }).catch(() => {});
   }
 
   async function handleLogout() {
@@ -1337,6 +1318,34 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
     return getSurveyValue(curQ.id) !== "";
   }
 
+  function handleSurveyStepPrev() {
+    const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
+    void trackSurveyEvent("survey_step_prev", {
+      stepIndex: fromStepIndex,
+      fromStepIndex,
+      toStepIndex: Math.max(0, fromStepIndex - 1),
+      questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
+    }).catch(() => {});
+    setSurveyStep((s) => Math.max(0, s - 1));
+  }
+
+  function handleSurveyStepNext() {
+    if (!canGoNext()) {
+      setSurveyNextHint(true);
+      window.setTimeout(() => setSurveyNextHint(false), 1600);
+      return;
+    }
+    setSurveyNextHint(false);
+    const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
+    void trackSurveyEvent("survey_step_next", {
+      stepIndex: fromStepIndex,
+      fromStepIndex,
+      toStepIndex: Math.min(totalSteps - 1, fromStepIndex + 1),
+      questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
+    }).catch(() => {});
+    setSurveyStep((s) => Math.min(totalSteps - 1, s + 1));
+  }
+
   useEffect(() => {
     if (!authOpen) return;
     // When switching mode or reopening, clear transient backend errors from previous submission.
@@ -1396,7 +1405,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 type="button"
                 onClick={openAuthModal}
                 aria-label="登录或注册"
-                className={`inline-flex h-[58px] min-w-[152px] shrink-0 items-center justify-center rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 px-6 vc-reading-serif text-[21px] font-semibold leading-none text-[#164f4d] shadow-[0_18px_36px_rgba(62,72,68,0.11),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-[#fbf8f3] active:scale-[0.98] ${
+                className={`inline-flex h-[58px] min-w-[152px] shrink-0 items-center justify-center rounded-full border border-vc-line bg-vc-paper-raised/90 px-6 vc-reading-serif text-[21px] font-semibold leading-none text-vc-ink shadow-[0_18px_36px_rgba(62,72,68,0.11),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-vc-paper-bright active:scale-[0.98] ${
                   authWarn ? "ring-2 ring-red-500/70" : ""
                 }`}
               >
@@ -1410,23 +1419,23 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           {user ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#365f5d]">
-                  <span className="max-w-[260px] truncate rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/90 px-3 py-1 text-sm font-bold text-[#164f4d] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-vc-ink-soft">
+                  <span className="max-w-[260px] truncate rounded-full border border-vc-line bg-vc-paper-raised/90 px-3 py-1 text-sm font-bold text-vc-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
                     {user.name}
                   </span>
-                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
+                  <span className="rounded-full bg-vc-paper-raised/75 px-2.5 py-1 text-[11px] font-medium text-vc-ink-soft">
                     已登录
                   </span>
-                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
+                  <span className="rounded-full bg-vc-paper-raised/75 px-2.5 py-1 text-[11px] font-medium text-vc-ink-soft">
                     可跨设备继续
                   </span>
-                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
+                  <span className="rounded-full bg-vc-paper-raised/75 px-2.5 py-1 text-[11px] font-medium text-vc-ink-soft">
                     云 {hasCloudAnySave ? `${cloudRows.length}` : "0"}
                   </span>
-                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
+                  <span className="rounded-full bg-vc-paper-raised/75 px-2.5 py-1 text-[11px] font-medium text-vc-ink-soft">
                     本地 {hasLocalAnySave ? `${Object.keys(saveSlots ?? {}).length}` : "0"}
                   </span>
-                  <span className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/80 px-2 py-0.5 text-[11px] font-semibold text-[#164f4d]">
+                  <span className="rounded-full bg-vc-paper-raised/75 px-2.5 py-1 text-[11px] font-medium text-vc-ink-soft">
                     问卷 {surveyCompletion === "done" ? "已提交" : "未提交"}
                   </span>
                 </div>
@@ -1435,7 +1444,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="rounded-full border border-[#d8d3ca] bg-[#f8f5ef]/85 px-5 py-2.5 text-sm font-semibold text-[#164f4d] transition hover:bg-[#fbf8f3]"
+                  className="rounded-full border border-vc-line bg-vc-paper-raised/85 px-5 py-2.5 text-sm font-semibold text-vc-ink transition hover:bg-vc-paper-bright"
                 >
                   退出
                 </button>
@@ -1443,7 +1452,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             </div>
           ) : (
             canContinueFromHome ? (
-              <div className="vc-reading-serif w-full whitespace-nowrap text-center text-[clamp(13px,3.8vw,18px)] leading-none text-[#164f4d]">
+              <div className="vc-reading-serif w-full whitespace-nowrap text-center text-[clamp(13px,3.8vw,18px)] leading-none text-vc-ink">
                 本机留有可继续的记录。
               </div>
             ) : null
@@ -1451,200 +1460,43 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
 
         {authOpen && (
-          <div
-            className="fixed inset-0 z-40 flex items-center justify-center px-4"
-            role="dialog"
-            aria-modal="true"
-            aria-label={authMode === "login" ? "登录" : "注册"}
-          >
-            <div
-              className="absolute inset-0 bg-[#efe8dd]/78"
-              onClick={closeAuthModal}
-            />
-            <div
-              data-testid="home-auth-paper-modal"
-              className="relative w-full max-w-md overflow-hidden rounded-[30px] border border-[#d8cbb8] bg-[#fbf7f0]/98 px-6 py-6 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)]"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="vc-reading-serif text-[26px] font-semibold leading-none text-[#0d5a4e]">
-                    {authMode === "login" ? "登录" : "注册"}
-                  </h2>
-                  <p className="mt-2 text-xs leading-relaxed text-[#4f625c]">
-                    {authMode === "login"
-                      ? "用笔名与密码进入已存在的档案。"
-                      : "创建新档案：笔名唯一，创建后可云同步与跨设备继续。"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeAuthModal}
-                  className="shrink-0 rounded-full border border-[#d8cbb8] bg-[#fffdf8] px-3 py-1 text-xs font-semibold text-[#164f4d] shadow-sm transition hover:bg-[#f8f2e8]"
-                >
-                  关闭
-                </button>
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-2 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-1 shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("login");
-                    void trackHomeGameplayEvent({
-                      eventName: "auth_mode_switched",
-                      page: "/",
-                      source: "auth_modal",
-                      payload: { mode: "login" },
-                    }).catch(() => {});
-                  }}
-                  className={`h-10 rounded-[14px] vc-reading-serif text-[1rem] font-semibold transition ${
-                    authMode === "login" ? "bg-[#244f45] text-[#fffdf8] shadow-sm" : "text-[#4f625c] hover:bg-[#f8f2e8]"
-                  }`}
-                  aria-pressed={authMode === "login"}
-                >
-                  登录
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("register");
-                    void trackHomeGameplayEvent({
-                      eventName: "auth_mode_switched",
-                      page: "/",
-                      source: "auth_modal",
-                      payload: { mode: "register" },
-                    }).catch(() => {});
-                  }}
-                  className={`h-10 rounded-[14px] vc-reading-serif text-[1rem] font-semibold transition ${
-                    authMode === "register" ? "bg-[#244f45] text-[#fffdf8] shadow-sm" : "text-[#4f625c] hover:bg-[#f8f2e8]"
-                  }`}
-                  aria-pressed={authMode === "register"}
-                >
-                  注册
-                </button>
-              </div>
-
-              <form
-                key={`auth-form-${authMode}-${authFormNonce}`}
-                className="relative mt-5 space-y-3"
-                action={activeAuthAction}
-                onSubmit={handleAuthSubmit}
-              >
-                <input
-                  name="fax_number"
-                  type="text"
-                  autoComplete="off"
-                  aria-hidden={true}
-                  tabIndex={-1}
-                  className="absolute left-[-9999px] top-[-9999px] z-[-1] opacity-0"
-                />
-                <input
-                  name="name"
-                  autoComplete="username"
-                  placeholder={authMode === "login" ? "笔名" : "新笔名（唯一）"}
-                  className="h-11 w-full rounded-[16px] border border-[#cfc5b6] bg-[#fffdf8] px-4 text-sm text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
-                  value={authName}
-                  onChange={(e) => setAuthName(e.target.value)}
-                />
-                {authMode === "register" ? (
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-[#6f6a60]">笔名唯一性</span>
-                    <span
-                      className={
-                        nameCheck.status === "ok"
-                          ? "text-[#0d6b52]"
-                          : nameCheck.status === "taken"
-                            ? "text-[#9a3b35]"
-                            : nameCheck.status === "error"
-                              ? "text-[#8b6a22]"
-                              : "text-[#6f6a60]"
-                      }
-                    >
-                      {nameCheck.status === "checking" ? "校验中…" : nameCheck.message || "请输入至少 2 个字符"}
-                    </span>
-                  </div>
-                ) : null}
-                <input
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="密码（至少 6 位）"
-                  className="h-11 w-full rounded-[16px] border border-[#cfc5b6] bg-[#fffdf8] px-4 text-sm text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                />
-                <div className="space-y-2">
-                  <label className="flex items-start gap-2 text-xs text-[#0d3f39]">
-                    <input
-                      type="checkbox"
-                      name="consent_user_agreement"
-                      value="1"
-                      checked={authConsentUserAgreement}
-                      onChange={(e) => setAuthConsentUserAgreement(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-[#cfc5b6] accent-[#0d5a4e]"
-                    />
-                    <span className="leading-relaxed">
-                      我已阅读并同意{" "}
-                      <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/user-agreement">
-                        用户协议
-                      </a>
-                      。
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-2 text-xs text-[#0d3f39]">
-                    <input
-                      type="checkbox"
-                      name="consent_privacy_policy"
-                      value="1"
-                      checked={authConsentPrivacyPolicy}
-                      onChange={(e) => setAuthConsentPrivacyPolicy(e.target.checked)}
-                      className="mt-1 h-4 w-4 rounded border-[#cfc5b6] accent-[#0d5a4e]"
-                    />
-                    <span className="leading-relaxed">
-                      我已阅读并同意{" "}
-                      <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/privacy-policy">
-                        隐私政策
-                      </a>
-                      。
-                    </span>
-                  </label>
-                </div>
-                <button
-                  type="submit"
-                  disabled={authPending}
-                  className={`h-12 w-full rounded-[16px] border border-[#0a403a] bg-[#244f45] vc-reading-serif text-[1.15rem] font-semibold text-[#fffdf8] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60 ${
-                    authPending ? "halo-nerve" : ""
-                  }`}
-                >
-                  {authPending ? "处理中..." : authMode === "login" ? "登录并进入" : "注册并进入"}
-                </button>
-                {!activeAuthState.success && activeAuthError && (
-                  <div className="mt-3 rounded-[14px] border border-[#d99a8f] bg-[#fff2ed] px-3 py-2 text-xs text-[#8d3f35]">
-                    {activeAuthError}
-                  </div>
-                )}
-                {activeAuthState.success && activeAuthState.message ? (
-                  <div className="mt-3 rounded-[14px] border border-[#9bcbb1] bg-[#edf8f1] px-3 py-2 text-xs text-[#0d6b52]">
-                    {authMode === "login" ? "登录成功：正在进入…" : "注册成功：正在进入…"}
-                  </div>
-                ) : null}
-              </form>
-            </div>
-          </div>
+          <HomeAuthModal
+            authMode={authMode}
+            authFormNonce={authFormNonce}
+            authName={authName}
+            authPassword={authPassword}
+            authConsentUserAgreement={authConsentUserAgreement}
+            authConsentPrivacyPolicy={authConsentPrivacyPolicy}
+            nameCheck={nameCheck}
+            authPending={authPending}
+            activeAuthState={activeAuthState}
+            activeAuthAction={activeAuthAction}
+            activeAuthError={activeAuthError}
+            onClose={closeAuthModal}
+            onSwitchMode={switchAuthMode}
+            onNameChange={setAuthName}
+            onPasswordChange={setAuthPassword}
+            onConsentUserAgreementChange={setAuthConsentUserAgreement}
+            onConsentPrivacyPolicyChange={setAuthConsentPrivacyPolicy}
+            onSubmit={handleAuthSubmit}
+          />
         )}
 
       {toast && (
-        <div className="pointer-events-none fixed right-8 top-24 z-50 rounded-[18px] border border-[#d99a8f] bg-[#fff2ed] px-4 py-3 text-sm font-medium text-[#8d3f35] shadow-[0_12px_28px_rgba(141,63,53,0.18)] animate-[fadeIn_0.35s_ease-out]">
+        <div className="pointer-events-none fixed right-8 top-24 z-50 rounded-[18px] border border-vc-seal/45 bg-vc-paper-bright px-4 py-3 text-sm font-medium text-vc-seal shadow-[0_12px_28px_rgba(164,67,60,0.18)] animate-[fadeIn_0.35s_ease-out]">
           {toast}
         </div>
       )}
 
       <section className="relative z-10 flex min-h-0 w-full flex-1 flex-col items-center text-center">
         <div className="flex min-h-0 w-full flex-1 flex-col">
-          <div className="mx-auto mt-[clamp(1.45rem,5.1svh,3.9rem)] max-w-2xl">
+          <div className="animate-fade-in-up mx-auto mt-[clamp(1.45rem,5.1svh,3.9rem)] max-w-2xl">
             <h1 className="vc-reading-serif text-[clamp(2.85rem,13.2vw,3.625rem)] font-semibold leading-none text-[#0f4644] sm:text-[66px]">
               文界工坊
             </h1>
+            <p className="vc-reading-serif mt-[clamp(0.85rem,2.8svh,1.35rem)] text-[clamp(0.85rem,3.2vw,1rem)] leading-none tracking-[0.42em] text-vc-ink-soft">
+              以字为契，入梦为章
+            </p>
             <VerseCraftPaperDivider className="mx-auto mt-[clamp(1rem,3.4svh,1.75rem)] w-[13.6rem]" />
           </div>
 
@@ -1653,7 +1505,8 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               <VerseCraftPaperPillButton
                 type="button"
                 data-testid="home-start-new-button"
-                className="min-h-[68px] text-[29px]"
+                className="animate-fade-in-up min-h-[68px] text-[29px]"
+                style={{ animationDelay: "80ms" }}
                 onClick={() => {
                   unlockBgmOnUserGesture();
                   void trackHomeGameplayEvent({
@@ -1667,7 +1520,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 }}
               >
                 <span>开始新篇</span>
-                <span className="text-[#8fa4a2]" aria-hidden>
+                <span className="text-vc-ink-faint" aria-hidden>
                   →
                 </span>
               </VerseCraftPaperPillButton>
@@ -1676,11 +1529,12 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <VerseCraftPaperPillButton
                   type="button"
                   data-testid="home-continue-button"
-                  className="min-h-[68px] text-[29px]"
+                  className="animate-fade-in-up min-h-[68px] text-[29px]"
+                  style={{ animationDelay: "160ms" }}
                   onClick={openContinuePicker}
                 >
                   <span>{homeContinuePrimaryCta()}</span>
-                  <span className="text-[#8fa4a2]" aria-hidden>
+                  <span className="text-vc-ink-faint" aria-hidden>
                     →
                   </span>
                 </VerseCraftPaperPillButton>
@@ -1703,7 +1557,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         />
         <div
           data-testid="home-continue-record-modal"
-          className={`relative w-full max-w-[1120px] rounded-[28px] border border-[#d7ccbd] bg-[#fffdf8]/96 p-[clamp(1.5rem,4vw,4.4rem)] text-[#0f5a52] shadow-[0_26px_76px_rgba(76,61,42,0.22),inset_0_0_0_10px_rgba(248,243,235,0.96),inset_0_0_0_11px_rgba(218,207,191,0.7),inset_0_0_0_24px_rgba(255,253,248,0.9),inset_0_0_0_25px_rgba(226,216,200,0.62)] transition-all duration-500 sm:rounded-[42px] ${
+          className={`relative w-full max-w-[1120px] rounded-[28px] border border-[#d7ccbd] bg-vc-paper-bright/96 p-[clamp(1.5rem,4vw,4.4rem)] text-[#0f5a52] shadow-[0_26px_76px_rgba(76,61,42,0.22),inset_0_0_0_10px_rgba(248,243,235,0.96),inset_0_0_0_11px_rgba(218,207,191,0.7),inset_0_0_0_24px_rgba(255,253,248,0.9),inset_0_0_0_25px_rgba(226,216,200,0.62)] transition-all duration-500 sm:rounded-[42px] ${
             continuePickerOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
@@ -1716,7 +1570,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <button
               type="button"
               onClick={() => setContinuePickerOpen(false)}
-              className="vc-reading-serif shrink-0 rounded-full border border-[#d6cabb] bg-[#fffdf8] px-8 py-3 text-[clamp(1.2rem,2.1vw,1.7rem)] text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
+              className="vc-reading-serif shrink-0 rounded-full border border-[#d6cabb] bg-vc-paper-bright px-8 py-3 text-[clamp(1.2rem,2.1vw,1.7rem)] text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
             >
               关闭
             </button>
@@ -1741,10 +1595,10 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   role="button"
                   tabIndex={0}
                   data-testid="home-continue-record-row"
-                  className={`w-full rounded-[16px] border px-[clamp(1rem,3vw,2.1rem)] py-[clamp(1rem,2.2vw,1.8rem)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f5a52]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf8] ${
+                  className={`w-full rounded-[16px] border px-[clamp(1rem,3vw,2.1rem)] py-[clamp(1rem,2.2vw,1.8rem)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f5a52]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-vc-paper-bright ${
                     selected
                       ? "border-[#0f5a52] bg-[#edf4ef] text-[#0f5a52] shadow-[inset_0_0_0_1px_rgba(15,90,82,0.1)]"
-                      : "border-[#d8d0c4] bg-[#fffdf8]/84 text-[#0f5a52] hover:border-[#0f5a52]/55 hover:bg-[#f7fbf6]"
+                      : "border-[#d8d0c4] bg-vc-paper-bright/84 text-[#0f5a52] hover:border-[#0f5a52]/55 hover:bg-[#f7fbf6]"
                   }`}
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1767,7 +1621,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                           setDeleteConfirmOpen(true);
                         }}
                         data-testid="home-continue-delete-button"
-                        className="vc-reading-serif rounded-full border border-[#d6cabb] bg-[#fffdf8] px-5 py-2 text-[clamp(1rem,1.7vw,1.35rem)] font-semibold text-[#0f5a52] shadow-[0_4px_12px_rgba(78,63,47,0.1)] transition hover:border-[#0f5a52]/45 hover:bg-white"
+                        className="vc-reading-serif rounded-full border border-[#d6cabb] bg-vc-paper-bright px-5 py-2 text-[clamp(1rem,1.7vw,1.35rem)] font-semibold text-[#0f5a52] shadow-[0_4px_12px_rgba(78,63,47,0.1)] transition hover:border-[#0f5a52]/45 hover:bg-white"
                         aria-label={`删除记录 ${sum?.label ?? r.slotId}`}
                       >
                         删除
@@ -1783,7 +1637,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <button
               type="button"
               onClick={() => setContinuePickerOpen(false)}
-              className="vc-reading-serif rounded-full border border-[#d8d0c4] bg-[#fffdf8] px-9 py-3 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.1)] transition hover:bg-white"
+              className="vc-reading-serif rounded-full border border-[#d8d0c4] bg-vc-paper-bright px-9 py-3 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.1)] transition hover:bg-white"
             >
               取消
             </button>
@@ -1816,7 +1670,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           onClick={() => setDeleteConfirmOpen(false)}
         />
         <div
-          className={`relative w-full max-w-md rounded-[1.75rem] border border-[#d8cbb8] bg-[#fbf7f0]/98 p-6 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)] transition-all duration-300 ${
+          className={`relative w-full max-w-md rounded-[1.75rem] border border-vc-line-warm bg-[#fbf7f0]/98 p-6 text-vc-ink vc-shadow-modal transition-all duration-300 ${
             deleteConfirmOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
@@ -1825,7 +1679,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <p className="mt-2 text-xs leading-relaxed text-[#4f625c]">
               {user ? "将同时抹除本机与云端（含自动记录）。" : "将抹除本机记录（游客模式无云端）。"}
             </p>
-            <p className="mt-3 rounded-xl border border-[#d8cbb8] bg-[#fffdf8]/80 px-3 py-2 text-xs text-[#4f625c]">
+            <p className="mt-3 rounded-xl border border-vc-line-warm bg-vc-paper-bright/80 px-3 py-2 text-xs text-[#4f625c]">
               目标：
               <span className="ml-2 font-semibold text-[#0d5a4e]">
                 {deleteTargetDisplay || (deleteTargetSlotId ? "该记录" : "—")}
@@ -1837,7 +1691,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <button
               type="button"
               onClick={() => setDeleteConfirmOpen(false)}
-              className="rounded-full border border-[#d8cbb8] bg-[#fffdf8] px-5 py-2.5 text-sm font-semibold text-[#164f4d] hover:bg-[#f8f2e8]"
+              className="rounded-full border border-vc-line-warm bg-vc-paper-bright px-5 py-2.5 text-sm font-semibold text-vc-ink hover:bg-[#f8f2e8]"
             >
               取消
             </button>
@@ -1861,7 +1715,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   await deleteCloudSaveSlot(autoId).catch(() => undefined);
                 }
               }}
-              className="rounded-full bg-[#8c2f2f] px-5 py-2.5 text-sm font-semibold text-[#fffdf8] transition hover:bg-[#743030]"
+              className="rounded-full bg-[#8c2f2f] px-5 py-2.5 text-sm font-semibold text-vc-paper-bright transition hover:bg-[#743030]"
             >
               确认删除
             </button>
@@ -1871,7 +1725,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
 
       <VerseCraftPaperDivider className="relative z-20 mt-[clamp(0.9rem,3.2svh,2.5rem)]" />
 
-      <footer className="relative z-20 w-full pt-[clamp(0.7rem,2.6svh,1.75rem)] vc-reading-serif text-[#164f4d]" style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}>
+      <footer className="relative z-20 w-full pt-[clamp(0.7rem,2.6svh,1.75rem)] vc-reading-serif text-vc-ink" style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}>
         <div className="text-xs">
           <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-2 gap-y-2">
             <div className="flex min-w-0 items-center justify-self-start">
@@ -1879,7 +1733,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <Trophy size={22} strokeWidth={2.1} />
               </FooterHaloLinkButton>
             </div>
-            <div className="justify-self-center whitespace-nowrap text-center text-[16px] text-[#164f4d]">
+            <div className="justify-self-center whitespace-nowrap text-center text-[16px] text-vc-ink">
               QQ群 <span className="font-mono">377493954</span>
             </div>
             <div className="flex justify-self-end">
@@ -1890,7 +1744,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
           </div>
 
           <div
-            className="mt-[clamp(0.85rem,2.7svh,1.75rem)] flex w-full items-center justify-between gap-x-2 whitespace-nowrap text-[12px] text-[#164f4d]/88 sm:flex-wrap sm:justify-center sm:gap-x-4 sm:text-[15px]"
+            className="mt-[clamp(0.85rem,2.7svh,1.75rem)] flex w-full items-center justify-between gap-x-2 whitespace-nowrap text-[12px] text-vc-ink/88 sm:flex-wrap sm:justify-center sm:gap-x-4 sm:text-[15px]"
           >
             <Link className="hover:text-[#0f3c3a]" href="/legal/user-agreement">
               用户协议
@@ -1913,15 +1767,15 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             </Link>
           </div>
 
-          <div className="mt-2 text-center text-[11px] text-[#164f4d]/78 sm:mt-3 sm:text-[12px]">
+          <div className="mt-2 text-center text-[11px] text-vc-ink/78 sm:mt-3 sm:text-[12px]">
             {(() => {
               const c = getPublicRuntimeConfig().compliance;
               const beianNumber = (c.beianNumber ?? "").trim();
               const beianUrl = (c.beianUrl ?? "").trim();
-              if (!beianNumber) return <span className="text-[#164f4d]/45">—</span>;
+              if (!beianNumber) return <span className="text-vc-ink/45">—</span>;
               return (
                 <a
-                  className="text-[#164f4d]/78 underline underline-offset-4 decoration-[#d8d3ca] transition hover:text-[#0f3c3a]"
+                  className="text-vc-ink/78 underline underline-offset-4 decoration-vc-line transition hover:text-[#0f3c3a]"
                   href={beianUrl || "https://beian.miit.gov.cn"}
                   target="_blank"
                   rel="noreferrer noopener"
@@ -1934,291 +1788,39 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         </div>
       </footer>
 
-      <div
-        className={`fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto px-3 py-4 transition-all duration-500 sm:p-6 ${
-          surveyOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-        }`}
-      >
-        <div
-          className={`fixed inset-0 bg-[#efe8dd]/82 transition-all duration-500 ${
-            surveyOpen ? "opacity-100" : "opacity-0"
-          }`}
-          onClick={closeSurveyModal}
-        />
-        <div
-          data-testid="home-survey-paper-modal"
-          className={`relative w-full max-w-[430px] overflow-hidden rounded-[30px] border border-[#d8cbb8] bg-[#fbf7f0]/96 px-[clamp(1.35rem,6vw,2.4rem)] py-[clamp(1.7rem,7vw,2.8rem)] text-[#0f4f47] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55),inset_0_0_0_17px_rgba(255,253,248,0.78),inset_0_0_0_18px_rgba(224,214,199,0.5)] transition-all duration-500 sm:max-w-[470px] ${
-            surveyOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
-          }`}
-        >
-          <h3 className="vc-reading-serif text-[clamp(2.45rem,12vw,3.6rem)] font-semibold leading-none text-[#0d5a4e]">{SURVEY_COPY.title}</h3>
-          {!showBugFeedback ? (
-            <>
-              <p className="mt-5 text-[13px] leading-relaxed text-[#4f625c]">{SURVEY_COPY.subtitle}</p>
-
-              {surveyCompletion === "loading" ? (
-                <p className="vc-reading-serif mt-10 text-center text-[1.2rem] text-[#0d5a4e]">{SURVEY_COPY.syncHint}</p>
-              ) : surveyCompletion === "done" ? (
-                <div className="mt-9 rounded-[22px] border border-[#d8cbb8] bg-[#fffdf8]/78 p-6 text-center shadow-[inset_0_0_0_5px_rgba(248,244,237,0.72),inset_0_0_0_6px_rgba(221,211,196,0.46)]">
-                  <p className="vc-reading-serif text-[1.25rem] font-medium text-[#0d5a4e]">{SURVEY_COPY.surveyDoneLine}</p>
-                  <button
-                    type="button"
-                    onClick={() => setShowBugFeedback(true)}
-                    className="vc-reading-serif mt-5 rounded-[18px] border border-[#0d5a4e] bg-[#fffdf8] px-5 py-2.5 text-[1rem] font-semibold text-[#0d5a4e] shadow-sm transition hover:bg-[#f8f2e8]"
-                  >
-                    {SURVEY_COPY.feedbackSecondary}
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="mt-9 rounded-[22px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-5 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.72),inset_0_0_0_6px_rgba(221,211,196,0.46)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="vc-reading-serif whitespace-nowrap text-[1.05rem] leading-tight text-[#0d5a4e]">
-                        <span className="block">进度</span>
-                        <span>{safeStep + 1}/{totalSteps}</span>
-                      </div>
-                      <div className="h-3 w-[58%] overflow-hidden rounded-full border border-[#d4c9ba] bg-[#eee7df] shadow-[inset_0_1px_2px_rgba(69,53,35,0.12)]">
-                        <div className="h-full rounded-full bg-[#0d5a4e] transition-[width] duration-300" style={{ width: `${progressPct}%` }} />
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="vc-reading-serif text-[clamp(1.35rem,6vw,1.8rem)] font-semibold leading-snug text-[#0d5a4e]">{curQ.title}</div>
-                      {curQ.subtitle ? (
-                        <div className="mt-2 text-[12px] leading-relaxed text-[#596a64]">{curQ.subtitle}</div>
-                      ) : null}
-
-                      {curQ.kind === "single" ? (
-                        <select
-                          value={getSurveyValue(curQ.id)}
-                          onChange={(e) => setSurveyValue(curQ.id, e.target.value)}
-                          className="vc-reading-serif mt-5 h-14 w-full rounded-[18px] border border-[#cfc5b6] bg-[#fffdf8] px-5 text-[1.15rem] text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] focus:border-[#0d5a4e]"
-                        >
-                          <option value="">请选择</option>
-                          {curQ.options.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="mt-3 space-y-3">
-                          <textarea
-                            value={getSurveyValue(curQ.id)}
-                            onChange={(e) => setSurveyValue(curQ.id, e.target.value.slice(0, curQ.maxLen))}
-                            placeholder={curQ.placeholder}
-                            className="mt-2 h-32 w-full resize-none rounded-[18px] border border-[#cfc5b6] bg-[#fffdf8] p-4 text-[15px] leading-relaxed text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
-                          />
-                          <div className="text-right text-[11px] text-[#6f6a60]">
-                            {getSurveyValue(curQ.id).length}/{curQ.maxLen}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-6 rounded-[20px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-4 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.68)]">
-                    <label className="vc-reading-serif flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
-                      <input
-                        type="checkbox"
-                        checked={surveyConsentUserAgreement}
-                        onChange={(e) => setSurveyConsentUserAgreement(e.target.checked)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
-                      />
-                      <span>
-                        我已阅读并同意{" "}
-                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/user-agreement">
-                          用户协议
-                        </a>
-                        。
-                      </span>
-                    </label>
-                    <label className="vc-reading-serif mt-4 flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
-                      <input
-                        type="checkbox"
-                        checked={surveyConsentPrivacyPolicy}
-                        onChange={(e) => setSurveyConsentPrivacyPolicy(e.target.checked)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
-                      />
-                      <span>
-                        我已阅读并同意{" "}
-                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/privacy-policy">
-                          隐私政策
-                        </a>
-                        。
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="mt-6 flex flex-col gap-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
-                          void trackSurveyEvent("survey_step_prev", {
-                            stepIndex: fromStepIndex,
-                            fromStepIndex,
-                            toStepIndex: Math.max(0, fromStepIndex - 1),
-                            questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
-                          }).catch(() => {});
-                          setSurveyStep((s) => Math.max(0, s - 1));
-                        }}
-                        disabled={safeStep === 0}
-                        className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8] disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        上一题
-                      </button>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!canGoNext()) {
-                              setSurveyNextHint(true);
-                              window.setTimeout(() => setSurveyNextHint(false), 1600);
-                              return;
-                            }
-                            setSurveyNextHint(false);
-                            const fromStepIndex = Math.max(0, Math.min(HOME_SURVEY_FLOW.length - 1, surveyStep));
-                            void trackSurveyEvent("survey_step_next", {
-                              stepIndex: fromStepIndex,
-                              fromStepIndex,
-                              toStepIndex: Math.min(totalSteps - 1, fromStepIndex + 1),
-                              questionId: HOME_SURVEY_FLOW[fromStepIndex]?.id ?? "unknown",
-                            }).catch(() => {});
-                            setSurveyStep((s) => Math.min(totalSteps - 1, s + 1));
-                          }}
-                          disabled={safeStep >= totalSteps - 1}
-                          className="vc-reading-serif min-h-12 w-full rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          下一题
-                        </button>
-                        {surveyNextHint ? (
-                          <div className="pointer-events-none absolute right-0 top-full mt-2 whitespace-nowrap rounded-full border border-[#d8cbb8] bg-[#fff8e9] px-3 py-1.5 text-xs font-semibold text-[#7b5f20] shadow-sm">
-                            这一题还没选
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={closeSurveyModal}
-                      className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8]"
-                    >
-                      {SURVEY_COPY.later}
-                    </button>
-                    {surveyUrl ? (
-                      <button
-                        type="button"
-                        onClick={openExternalSurvey}
-                        disabled={!surveyConsentUserAgreement || !surveyConsentPrivacyPolicy}
-                        className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {SURVEY_COPY.externalBackup}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={
-                        surveySubmitPending ||
-                        safeStep !== totalSteps - 1
-                      }
-                      onClick={() => void handleSurveySubmit()}
-                      className="vc-reading-serif min-h-14 rounded-[18px] border border-[#0a403a] bg-[#244f45] px-6 text-[1.35rem] font-semibold text-white shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition-all hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {surveySubmitPending ? "提交中…" : SURVEY_COPY.submitEmbedded}
-                    </button>
-                  </div>
-                </>
-              )}
-
-              <p className="mt-6 text-center text-[12px] leading-relaxed text-[#4f625c]">{SURVEY_COPY.privacyHint}</p>
-              {surveyCompletion === "open" ? (
-                <div className="mt-4 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setShowBugFeedback(true)}
-                    className="vc-reading-serif text-[1rem] text-[#0d5a4e] underline-offset-4 transition hover:underline"
-                  >
-                    {SURVEY_COPY.feedbackSecondary}
-                  </button>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {!feedbackSuccess ? (
-                <>
-                  <p className="mt-5 text-[13px] leading-relaxed text-[#4f625c]">
-                    此为<strong className="font-medium text-[#0d5a4e]">开放文本反馈</strong>
-                    ，与结构化产品问卷分渠道存储，便于逐条跟进 bug 与长尾建议。
-                  </p>
-                  <div className="mt-7 rounded-[20px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-4 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.68)]">
-                    <label className="vc-reading-serif flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
-                      <input
-                        type="checkbox"
-                        checked={feedbackConsentUserAgreement}
-                        onChange={(e) => setFeedbackConsentUserAgreement(e.target.checked)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
-                      />
-                      <span>
-                        我已阅读并同意{" "}
-                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/user-agreement">
-                          用户协议
-                        </a>
-                        。
-                      </span>
-                    </label>
-                    <label className="vc-reading-serif mt-4 flex items-start gap-3 text-[1rem] leading-relaxed text-[#0d3f39]">
-                      <input
-                        type="checkbox"
-                        checked={feedbackConsentPrivacyPolicy}
-                        onChange={(e) => setFeedbackConsentPrivacyPolicy(e.target.checked)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded-[6px] border-[#cfc5b6] accent-[#0d5a4e]"
-                      />
-                      <span>
-                        我已阅读并同意{" "}
-                        <a className="underline decoration-[#0d5a4e]/45 underline-offset-4 hover:text-[#0d5a4e]" href="/legal/privacy-policy">
-                          隐私政策
-                        </a>
-                        。
-                      </span>
-                    </label>
-                  </div>
-                  <textarea
-                    value={feedbackContent}
-                    onChange={(event) => setFeedbackContent(event.target.value)}
-                    placeholder="请输入你的建议或反馈..."
-                    className="mt-6 h-56 w-full resize-none rounded-[20px] border border-[#cfc5b6] bg-[#fffdf8] p-4 text-[15px] leading-relaxed text-[#0d3f39] outline-none shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] placeholder:text-[#8b8074] focus:border-[#0d5a4e]"
-                  />
-                  <div className="mt-6 grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowBugFeedback(false)}
-                      className="vc-reading-serif min-h-12 rounded-[18px] border border-[#d8cbb8] bg-[#fffdf8] px-5 text-[1.1rem] font-semibold text-[#0d5a4e] shadow-[inset_0_0_0_4px_rgba(248,244,237,0.72)] transition-all hover:bg-[#f8f2e8]"
-                    >
-                      {SURVEY_COPY.feedbackBack}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={feedbackPending || !feedbackConsentUserAgreement || !feedbackConsentPrivacyPolicy}
-                      onClick={() => void handleFeedbackSubmit()}
-                      className="vc-reading-serif min-h-12 rounded-[18px] border border-[#0a403a] bg-[#244f45] px-5 text-[1.1rem] font-semibold text-white shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08)] transition-all hover:bg-[#1c453d] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {feedbackPending ? "提交中..." : "提交意见"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="mt-8 flex min-h-44 items-center justify-center rounded-[22px] border border-[#d8cbb8] bg-[#fffdf8]/72 p-6 shadow-[inset_0_0_0_5px_rgba(248,244,237,0.68)]">
-                  <p className="vc-reading-serif text-center text-[1.3rem] font-medium text-[#0d5a4e]">谢谢您的意见，游戏会因您变得更好！</p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      <HomeSurveyModal
+        open={surveyOpen}
+        onClose={closeSurveyModal}
+        showBugFeedback={showBugFeedback}
+        onShowBugFeedback={setShowBugFeedback}
+        surveyCompletion={surveyCompletion}
+        question={curQ}
+        safeStep={safeStep}
+        totalSteps={totalSteps}
+        progressPct={progressPct}
+        getSurveyValue={getSurveyValue}
+        setSurveyValue={setSurveyValue}
+        surveyConsentUserAgreement={surveyConsentUserAgreement}
+        surveyConsentPrivacyPolicy={surveyConsentPrivacyPolicy}
+        onSurveyConsentUserAgreementChange={setSurveyConsentUserAgreement}
+        onSurveyConsentPrivacyPolicyChange={setSurveyConsentPrivacyPolicy}
+        onStepPrev={handleSurveyStepPrev}
+        onStepNext={handleSurveyStepNext}
+        surveyNextHint={surveyNextHint}
+        surveyUrl={surveyUrl}
+        onOpenExternalSurvey={openExternalSurvey}
+        surveySubmitPending={surveySubmitPending}
+        onSubmitSurvey={() => void handleSurveySubmit()}
+        feedbackSuccess={feedbackSuccess}
+        feedbackContent={feedbackContent}
+        onFeedbackContentChange={setFeedbackContent}
+        feedbackConsentUserAgreement={feedbackConsentUserAgreement}
+        feedbackConsentPrivacyPolicy={feedbackConsentPrivacyPolicy}
+        onFeedbackConsentUserAgreementChange={setFeedbackConsentUserAgreement}
+        onFeedbackConsentPrivacyPolicyChange={setFeedbackConsentPrivacyPolicy}
+        feedbackPending={feedbackPending}
+        onSubmitFeedback={() => void handleFeedbackSubmit()}
+      />
     </VerseCraftPaperFrame>
 
     </>

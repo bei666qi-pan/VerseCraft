@@ -1,10 +1,9 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { VerseCraftLogoMark } from "@/components/VerseCraftLogo";
 
-const PAPER_TEXT = "text-[#164f4d]";
-const PAPER_LINE = "border-[#d8d3ca]";
-const PAPER_SHADOW =
-  "shadow-[0_18px_36px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-2px_5px_rgba(106,100,88,0.06)]";
+const PAPER_TEXT = "text-vc-ink";
+const PAPER_LINE = "border-vc-line";
+const PAPER_SHADOW = "vc-shadow-card";
 
 export function VerseCraftPaperFrame({
   children,
@@ -29,7 +28,7 @@ export function VerseCraftPaperFrame({
   return (
     <main
       data-testid={dataTestId}
-      className={`relative bg-[#f7f3ec] ${PAPER_TEXT} ${frameClassName} ${className}`}
+      className={`relative bg-vc-paper ${PAPER_TEXT} ${frameClassName} ${className}`}
     >
       <div
         className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(92deg,rgba(36,75,71,0.018)_0px,rgba(36,75,71,0.018)_1px,transparent_1px,transparent_24px),linear-gradient(180deg,rgba(255,255,255,0.82),rgba(239,234,225,0.92))]"
@@ -49,7 +48,7 @@ export function VerseCraftPaperFrame({
 export function VerseCraftPaperMark({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`relative grid shrink-0 place-items-center rounded-full border border-[#ded9d1] bg-[#f8f5ef]/72 ${PAPER_SHADOW} ${className}`}
+      className={`relative grid shrink-0 place-items-center rounded-full border border-[#ded9d1] bg-vc-paper-raised/72 ${PAPER_SHADOW} ${className}`}
       aria-hidden
     >
       <VerseCraftLogoMark className="h-[118%] w-[118%]" sizes="64px" />
@@ -71,7 +70,7 @@ export function VerseCraftPaperBrand({
   return (
     <div className={`flex min-w-0 items-center gap-4 ${className}`}>
       <VerseCraftPaperMark className={markClassName} />
-      <span className={`vc-reading-serif truncate font-semibold leading-none text-[#164f4d] ${textClassName}`}>
+      <span className={`vc-reading-serif truncate font-semibold leading-none text-vc-ink ${textClassName}`}>
         {text}
       </span>
     </div>
@@ -80,7 +79,7 @@ export function VerseCraftPaperBrand({
 
 export function VerseCraftPaperDivider({ className = "" }: { className?: string }) {
   return (
-    <div className={`flex items-center gap-3 text-[#8fa4a2] ${className}`} aria-hidden>
+    <div className={`flex items-center gap-3 text-vc-ink-faint ${className}`} aria-hidden>
       <span className="h-px flex-1 bg-[#d8d3ca]" />
       <span className="text-[18px] leading-none">◆</span>
       <span className="h-px flex-1 bg-[#d8d3ca]" />
@@ -97,10 +96,10 @@ export function VerseCraftPaperSectionTitle({
 }) {
   return (
     <header className={className}>
-      <h2 className="vc-reading-serif text-[24px] font-semibold leading-none text-[#164f4d]">
+      <h2 className="vc-reading-serif text-[24px] font-semibold leading-none text-vc-ink">
         {children}
       </h2>
-      <div className="mt-1.5 flex w-[9.8rem] items-center gap-2 text-[#164f4d]" aria-hidden>
+      <div className="mt-1.5 flex w-[9.8rem] items-center gap-2 text-vc-ink" aria-hidden>
         <span className="h-px flex-1 bg-[#b8b5ad]" />
         <span className="text-[13px] leading-none">◆</span>
         <span className="h-px w-10 bg-[#d8d3ca]" />
@@ -117,7 +116,7 @@ export function VerseCraftPaperPillButton({
   return (
     <button
       {...props}
-      className={`relative flex min-h-16 w-full items-center justify-center gap-4 rounded-full border ${PAPER_LINE} bg-[#f8f5ef]/88 px-8 vc-reading-serif text-[28px] font-semibold leading-none text-[#164f4d] ${PAPER_SHADOW} transition hover:bg-[#fbf8f3] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 ${className}`}
+      className={`relative flex min-h-16 w-full items-center justify-center gap-4 rounded-full border ${PAPER_LINE} bg-vc-paper-raised/88 px-8 vc-reading-serif text-[28px] font-semibold leading-none text-vc-ink ${PAPER_SHADOW} transition hover:bg-vc-paper-bright active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 ${className}`}
     >
       {children}
     </button>
@@ -132,7 +131,7 @@ export function VerseCraftPaperCircleButton({
   return (
     <button
       {...props}
-      className={`relative grid h-16 w-16 shrink-0 place-items-center rounded-full border ${PAPER_LINE} bg-[#f8f5ef]/90 text-[#164f4d] ${PAPER_SHADOW} transition hover:bg-[#fbf8f3] active:scale-[0.98] ${className}`}
+      className={`relative grid h-16 w-16 shrink-0 place-items-center rounded-full border ${PAPER_LINE} bg-vc-paper-raised/90 text-vc-ink ${PAPER_SHADOW} transition hover:bg-vc-paper-bright active:scale-[0.98] ${className}`}
     >
       {children}
     </button>

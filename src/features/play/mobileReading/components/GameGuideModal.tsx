@@ -22,14 +22,14 @@ export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () =
       aria-modal="true"
       aria-labelledby="game-guide-title"
     >
-      <section className="relative w-full max-w-[440px] rounded-[26px] border border-[#d8d1c6] bg-[#fffdf8]/96 p-4 text-[#174d46] shadow-[0_18px_46px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]">
+      <section className="relative w-full max-w-[440px] rounded-[26px] border border-[#d8d1c6] bg-vc-paper-bright/96 p-4 text-[#174d46] shadow-[0_18px_46px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]">
         <div className="pointer-events-none absolute inset-2 rounded-[22px] border border-[#ebe5dc]" aria-hidden />
         <div className="pointer-events-none absolute inset-4 rounded-[18px] border border-[#f0ece6]" aria-hidden />
         <div className="relative px-2 pb-3 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-0 top-1 z-10 rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-2 vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
+            className="absolute right-0 top-1 z-10 rounded-full border border-[#d8d1c6] bg-vc-paper-bright px-4 py-2 vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
           >
             关闭
           </button>
@@ -41,7 +41,7 @@ export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () =
           </div>
           <div
             data-testid="game-guide-scroll"
-            className="mt-5 max-h-[66vh] overflow-y-auto rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] [scrollbar-color:#8fa79f_#eee8df] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#8fa79f] [&::-webkit-scrollbar-track]:bg-[#eee8df]"
+            className="mt-5 max-h-[66vh] overflow-y-auto rounded-[16px] border border-[#d8d1c6] bg-vc-paper-bright px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] [scrollbar-color:#8fa79f_#eee8df] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#8fa79f] [&::-webkit-scrollbar-track]:bg-[#eee8df]"
           >
             <div className="divide-y divide-[#ded8ce]">
               {GAME_GUIDE_SECTIONS.map((section) => (
