@@ -111,7 +111,6 @@
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.4",
-    "@volcengine/tos-sdk": "^2.9.1",
     "altcha": "^2.3.0",
     "altcha-lib": "^1.4.1",
     "bcryptjs": "^3.0.3",
@@ -127,6 +126,7 @@
     "recharts": "^3.8.0",
     "redis": "^5.11.0",
     "server-only": "^0.0.1",
+    "tsx": "^4.21.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
@@ -138,6 +138,7 @@
     "@types/pg": "^8.18.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@volcengine/tos-sdk": "^2.9.1",
     "dotenv": "^17.3.1",
     "drizzle-kit": "^0.31.9",
     "eslint": "^9",
@@ -145,7 +146,6 @@
     "fast-check": "^4.7.0",
     "sharp": "^0.35.3",
     "tailwindcss": "^4",
-    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
