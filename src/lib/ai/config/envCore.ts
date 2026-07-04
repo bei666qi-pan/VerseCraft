@@ -87,6 +87,15 @@ export interface ResolvedAiEnv {
    */
   playerChatFastLaneRelaxResponseFormat: boolean;
   /**
+   * T2（技术改良，2026-07）：当为 true 时，PLAYER_CHAT 请求改用
+   * `responseFormatJsonSchema`（见 src/lib/ai/schemas/playerDmJsonSchema.ts）
+   * 而不是纯 `response_format:{type:"json_object"}`。默认 false——
+   * 并非所有 OpenAI 兼容网关背后的模型都支持 `json_schema` response_format，
+   * 开启前请先在目标环境用 pnpm test:e2e:chat 确认网关/模型返回 200 而非 4xx。
+   * 当前 schema 是 strict:false（结构提示，非硬约束解码），见该文件顶部注释。
+   */
+  aiGatewayJsonSchemaEnabled: boolean;
+  /**
    * PLAYER_CHAT: cap candidate role count (after forbidden + configured-model filter).
    * 0 = no cap (legacy).
    */
@@ -179,6 +188,25 @@ function resolveGatewayChatCompletionsUrl(): string {
     return normalized;
   }
   return `${normalized}/v1/chat/completions`;
+}
+
+/**
+ * T4（2026-07，世界知识向量检索）：embeddings 端点 URL。
+ * 默认复用与 chat completions 相同的网关根地址（`AI_GATEWAY_BASE_URL`），只是把
+ * `/v1/chat/completions` 换成 `/v1/embeddings`——这是 one-api 及绝大多数 OpenAI 兼容网关的
+ * 标准约定，不需要新增独立的 base url 配置。仅当 embeddings 走独立网关/独立域名时才需要
+ * 显式设置 `AI_EMBEDDING_GATEWAY_BASE_URL` 覆盖。
+ */
+function resolveGatewayEmbeddingsUrl(): string {
+  const explicit = envRaw("AI_EMBEDDING_GATEWAY_BASE_URL")?.trim();
+  const base = explicit || (envRaw("AI_GATEWAY_BASE_URL")?.trim() ?? "");
+  if (!base) return "";
+  const normalized = base.replace(/\/+$/, "");
+  if (normalized.toLowerCase().endsWith("/embeddings")) return normalized;
+  if (normalized.toLowerCase().endsWith("/chat/completions")) {
+    return normalized.replace(/\/chat\/completions$/i, "/embeddings");
+  }
+  return `${normalized}/v1/embeddings`;
 }
 
 export function resolveAiProviderId(): AiGatewayProviderId {
@@ -323,6 +351,7 @@ export function resolveAiEnv(): ResolvedAiEnv {
     ),
     playerChatStreamIncludeUsage: envBoolean("AI_PLAYER_CHAT_STREAM_INCLUDE_USAGE", false),
     playerChatFastLaneRelaxResponseFormat: envBoolean("AI_PLAYER_CHAT_FASTLANE_RELAX_RESPONSE_FORMAT", false),
+    aiGatewayJsonSchemaEnabled: envBoolean("AI_GATEWAY_JSON_SCHEMA_ENABLED", false),
     playerChatMaxRoleCandidates: Math.max(0, Math.min(6, envNumber("AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES", 2))),
     playerChatMaxRetries: (() => {
       const override = envNumber("AI_PLAYER_CHAT_MAX_RETRIES", NaN);
@@ -421,4 +450,33 @@ export function resolveGatewayPrimaryBinding(): {
  */
 export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string; model: string } {
   return resolveGatewayPrimaryBinding();
+}
+
+/**
+ * T4（2026-07，世界知识向量检索）：embeddings 网关绑定。
+ *
+ * 与 `resolveGatewayPrimaryBinding()` 同一套约定——不在业务代码里写死"火山引擎/Ark/豆包"
+ * 之类的厂商细节，模型选型通过 `AI_MODEL_EMBEDDING`（opaque 字符串，由 one-api 侧的 channel
+ * 配置决定实际打到哪个厂商/模型）解析，鉴权复用 `AI_GATEWAY_API_KEY`（即用户所说的
+ * "部署凭证里的信息"，不需要新增独立密钥）。
+ *
+ * `dimension` 对应 `world_knowledge_chunks.embedding_vector` 的 pgvector 列宽度
+ * （`vector(256)`，见 `src/db/ensureSchema.ts`）。如果实际模型输出维度与此不同，
+ * 调用方（`embedText.ts`）需要自行处理不匹配（本仓库未接入真实 Ark 凭证，无法在当前环境
+ * 验证真实输出维度，上线前必须用真实凭证跑一次 `pnpm verify:ai-gateway` 或等价探测确认）。
+ */
+export function resolveEmbeddingBinding(): {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  dimension: number;
+  configured: boolean;
+} {
+  const gatewayProvider = resolveAiProviderId();
+  const apiUrl = gatewayProvider === "mock" ? "mock://embeddings" : resolveGatewayEmbeddingsUrl();
+  const apiKey = gatewayProvider === "mock" ? "mock-key" : (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
+  const model = (envRaw("AI_MODEL_EMBEDDING") ?? "").trim();
+  const dimension = Math.max(1, envNumber("AI_EMBEDDING_DIMENSION", 256));
+  const configured = gatewayProvider === "mock" || (apiUrl.length > 0 && apiKey.length > 0 && model.length > 0);
+  return { apiUrl, apiKey, model, dimension, configured };
 }

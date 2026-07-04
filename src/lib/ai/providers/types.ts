@@ -9,6 +9,21 @@ export interface NormalizedCompletionRequest {
   maxTokens: number;
   temperature?: number;
   responseFormatJsonObject?: boolean;
+  /**
+   * Provider-level strict JSON Schema constraint (OpenAI Structured Outputs
+   * `response_format: {type:"json_schema", json_schema:{name, strict, schema}}`
+   * or equivalent). When set, takes priority over `responseFormatJsonObject`
+   * in provider adapters that support it. Opt-in only — see
+   * `src/lib/ai/config/envCore.ts` `aiGatewayJsonSchemaEnabled` — because not
+   * every provider behind an OpenAI-compatible gateway implements this mode;
+   * sending it to an unsupported provider can cause hard 4xx failures instead
+   * of graceful degradation.
+   */
+  responseFormatJsonSchema?: {
+    name: string;
+    strict: boolean;
+    schema: Record<string, unknown>;
+  };
   streamIncludeUsage?: boolean;
   /** Function tools for this request (policy-gated upstream in taskPolicy; offline tasks only). */
   tools?: readonly ToolDefinition[];

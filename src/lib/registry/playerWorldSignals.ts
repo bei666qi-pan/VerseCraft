@@ -3,6 +3,8 @@
  * 仅解析已约定格式字段，未知内容忽略。
  */
 
+import { computeSanityBand, computeSanityRatio, type SanityBandId } from "./sanityStateRegistry";
+
 const TIME_RE = /游戏时间\[第(\d+)日\s+(\d+)时\]/;
 const LOCATION_RE = /用户位置\[([^\]]+)\]/;
 const WORLD_FLAGS_RE = /世界标记：([^。]+)。/;
@@ -15,6 +17,8 @@ const CODEX_RE = /图鉴已解锁：([^。]+)。/;
 const FLOOR_SCORE_RE = /进度\[最高层分(\d+)\]/;
 /** 本轮是否已发生锚点重构（回写）；与 worldFlags `cycle.anchor_rebuild` 二选一或并存 */
 const ANCHOR_REBUILT_CYCLE_RE = /本轮锚点重构\[1\]/;
+/** G1+G4：当前理智/历史理智峰值，格式 理智状态[current/historicalMax] */
+const SANITY_STATE_RE = /理智状态\[(\d+)\/(\d+)\]/;
 
 export type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
@@ -43,6 +47,10 @@ export interface PlayerWorldSignals {
   activeTaskTitles: string[];
   /** 当前十日窗口内是否已触发锚点重构（叙事/服务端可写入上文或 flag） */
   anchorRebuiltThisCycle: boolean;
+  /** G1+G4：当前理智 / 历史理智峰值，裁剪至 [0,1]；signal 缺失时为 null（安全默认，不触发任何联动） */
+  sanityRatio: number | null;
+  /** G1+G4：由 sanityRatio 折算的离散状态档位；signal 缺失时为 "unknown" */
+  sanityBand: SanityBandId;
 }
 
 function inferResidentialFloorFromNode(node: string | null): number | null {
@@ -155,6 +163,15 @@ export function parsePlayerWorldSignals(
     worldFlags.includes("cycle.anchor_rebuild") ||
     worldFlags.includes("cycle.anchor_rebuilt_this_cycle");
 
+  const sanityM = ctx.match(SANITY_STATE_RE);
+  const sanityCurrentRaw = sanityM ? Number.parseInt(sanityM[1] ?? "", 10) : NaN;
+  const sanityHistMaxRaw = sanityM ? Number.parseInt(sanityM[2] ?? "", 10) : NaN;
+  const sanityRatio = computeSanityRatio(
+    Number.isFinite(sanityCurrentRaw) ? sanityCurrentRaw : null,
+    Number.isFinite(sanityHistMaxRaw) ? sanityHistMaxRaw : null
+  );
+  const sanityBand = computeSanityBand(sanityRatio);
+
   return {
     day,
     hour,
@@ -178,5 +195,7 @@ export function parsePlayerWorldSignals(
     historicalMaxFloorScore,
     activeTaskTitles: parseActiveTaskTitles(ctx),
     anchorRebuiltThisCycle,
+    sanityRatio,
+    sanityBand,
   };
 }

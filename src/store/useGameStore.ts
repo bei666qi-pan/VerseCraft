@@ -27,6 +27,7 @@ import {
   applyTaskUpdateToTask,
   activateClaimableHiddenTasks,
   extractRelationshipPatchesFromConsequences,
+  applyAutoFailedTasks,
   type GameTaskV2,
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
@@ -35,6 +36,11 @@ import type { ConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPrese
 import { enableTaskModeLayer } from "@/lib/playRealtime/npcNarrativeRolloutFlags";
 import { parsePlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { computeMaxRevealRankFromSignals } from "@/lib/registry/revealRegistry";
+import {
+  computeSanityBand,
+  computeSanityRatio,
+  buildSanityNarrativeHintBlock,
+} from "@/lib/registry/sanityStateRegistry";
 import {
   createDefaultWorldOverlay,
   normalizeRunSnapshotV2,
@@ -1870,12 +1876,18 @@ export const useGameStore = create<GameState>()(
                 ? { known_info: ((u as { known_info: string }).known_info ?? "").trim().slice(0, 800) }
                 : {}),
               ...(observations.length > 0 ? { observations } : {}),
-              ...(typeof u.favorability === "number" ? { favorability: u.favorability } : {}),
-              ...(typeof u.trust === "number" ? { trust: u.trust } : {}),
-              ...(typeof u.fear === "number" ? { fear: u.fear } : {}),
-              ...(typeof u.debt === "number" ? { debt: u.debt } : {}),
-              ...(typeof u.affection === "number" ? { affection: u.affection } : {}),
-              ...(typeof u.desire === "number" ? { desire: u.desire } : {}),
+              // 关系数值字段语义为"本回合变化量"（delta），非绝对值：
+              // 系统 prompt 明确要求"若本回合发生关系变化，请输出 relationship_updates"，
+              // 且 applyTaskRelationshipConsequencesToCodex（任务结算路径）对同一批字段
+              // 采用累加+裁剪语义。此前 mergeCodex 对这些字段是覆盖写且无裁剪，与任务路径
+              // 语义不一致，也无法防止 AI 单次异常输出把数值写出 [-100,100] 范围。
+              // 此处统一为累加+clampRelation 裁剪。
+              ...(typeof u.favorability === "number" ? { favorability: clampRelation((prev?.favorability ?? 0) + u.favorability) } : {}),
+              ...(typeof u.trust === "number" ? { trust: clampRelation((prev?.trust ?? 0) + u.trust) } : {}),
+              ...(typeof u.fear === "number" ? { fear: clampRelation((prev?.fear ?? 0) + u.fear) } : {}),
+              ...(typeof u.debt === "number" ? { debt: clampRelation((prev?.debt ?? 0) + u.debt) } : {}),
+              ...(typeof u.affection === "number" ? { affection: clampRelation((prev?.affection ?? 0) + u.affection) } : {}),
+              ...(typeof u.desire === "number" ? { desire: clampRelation((prev?.desire ?? 0) + u.desire) } : {}),
               ...(typeof u.romanceEligible === "boolean" ? { romanceEligible: u.romanceEligible } : {}),
               ...(u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
                 ? { romanceStage: u.romanceStage }
@@ -1945,12 +1957,18 @@ export const useGameStore = create<GameState>()(
           equippedWeapon: snap.equippedWeapon ?? null,
           hourTicks: wholeHours,
         });
+        // G3（玩法改良，2026-07）：时间整点推进后，服务端兜底判定是否有 active
+        // 任务已超过 autoFailAfterGameHour 阈值，自动转 failed（不依赖 AI 主动声明）。
+        // 只在这里对齐一次，避免在每个消费 tasks 的地方各自重复判定。
+        const currentGameHourIndex = ticked.time.day * 24 + ticked.time.hour;
+        const tasksAfterAutoFail = applyAutoFailedTasks(snap.tasks ?? [], currentGameHourIndex);
         set({
           pendingHourProgress: newPending,
           time: ticked.time,
           originium: ticked.originium,
           talentCooldowns: ticked.talentCooldowns,
           equippedWeapon: ticked.equippedWeapon,
+          ...(tasksAfterAutoFail !== (snap.tasks ?? []) ? { tasks: tasksAfterAutoFail } : {}),
         });
         return { hoursAdvanced: wholeHours, deltaApplied: delta };
       },
@@ -2132,6 +2150,17 @@ export const useGameStore = create<GameState>()(
           `魅力[${stats.charm}]，` +
           `出身[${stats.background}]`;
 
+        // G1+G4：理智值状态效应——比值取自"当前/历史峰值"，与绝对加点无关，
+        // 与 historicalMaxSanity 棘轮（生命汇源天赋的既有"永久性心理创伤"设定）保持同一口径。
+        const histMaxSanityNow = typeof s.historicalMaxSanity === "number" ? s.historicalMaxSanity : stats.sanity;
+        const sanityRatioNow = computeSanityRatio(
+          typeof stats.sanity === "number" ? stats.sanity : null,
+          typeof histMaxSanityNow === "number" ? histMaxSanityNow : null
+        );
+        const sanityBandNow = computeSanityBand(sanityRatioNow);
+        const sanityStateBracket = `理智状态[${stats.sanity ?? 0}/${histMaxSanityNow ?? 0}]。`;
+        const sanityNarrativeHintBlock = buildSanityNarrativeHintBlock(sanityBandNow);
+
         const talentText = s.talent ? `回响天赋[${s.talent}]` : "回响天赋[未选择]";
         const prof = computeProfessionState({
           prev: s.professionState,
@@ -2270,7 +2299,7 @@ export const useGameStore = create<GameState>()(
                 : "";
             const maxRevealRankHeart = computeMaxRevealRankFromSignals(
               parsePlayerWorldSignals(
-                `游戏时间[第${time.day}日 ${time.hour}时]。用户位置[${location}]。进度[最高层分${s.historicalMaxFloorScore ?? 0}]。死亡累计[${s.deathCount ?? 0}]。原石[${s.originium}]。` +
+                `游戏时间[第${time.day}日 ${time.hour}时]。用户位置[${location}]。进度[最高层分${s.historicalMaxFloorScore ?? 0}]。死亡累计[${s.deathCount ?? 0}]。原石[${s.originium}]。${sanityStateBracket}` +
                   (activeSnapshot
                     ? `世界标记：${Object.entries(activeSnapshot.world.worldFlags ?? {})
                         .filter(([, v]) => v === true)
@@ -2487,6 +2516,7 @@ export const useGameStore = create<GameState>()(
           `原石[${s.originium}]。` +
           `进度[最高层分${s.historicalMaxFloorScore ?? 0}]。` +
           `死亡累计[${s.deathCount ?? 0}]。` +
+          sanityStateBracket +
           (s.tasks.filter((t) => t.status === "active" || t.status === "available").length > 0
             ? `任务追踪：${s.tasks
                 .filter((t) => t.status === "active" || t.status === "available")
@@ -2533,6 +2563,7 @@ export const useGameStore = create<GameState>()(
           (escapeBlock ? ` ${escapeBlock}` : "") +
           (directorBlock ? ` ${directorBlock}` : "") +
           (npcHeartBlock ? ` ${npcHeartBlock}` : "") +
+          (sanityNarrativeHintBlock ? ` ${sanityNarrativeHintBlock}` : "") +
           (taskDramaBlock ? ` ${taskDramaBlock}` : "") +
           (memoryPacket.text ? ` ${memoryPacket.text}` : "") +
           (() => {

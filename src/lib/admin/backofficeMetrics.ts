@@ -780,8 +780,10 @@ export async function getAdminUserDetail(actorKey: string) {
           'guest' AS "actorType"
         FROM guest_registry g
         LEFT JOIN (
+          -- T8 方案B（2026-07）：guest_daily_tokens 已下线，改读统一的 actor_daily_tokens。
           SELECT guest_id, COALESCE(SUM(daily_token_cost), 0)::int AS tokens_used
-          FROM guest_daily_tokens
+          FROM actor_daily_tokens
+          WHERE actor_type = 'guest'
           GROUP BY guest_id
         ) t ON t.guest_id = g.guest_id
         WHERE g.guest_id = ${rawId}

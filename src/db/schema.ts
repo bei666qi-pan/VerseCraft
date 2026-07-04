@@ -484,6 +484,8 @@ export const actorSessions = pgTable(
     activePlaySec: integer("active_play_sec").notNull().default(0),
     readSec: integer("read_sec").notNull().default(0),
     idleSec: integer("idle_sec").notNull().default(0),
+    /** T8 方案B（2026-07）：心跳限流字段，从 user_sessions/guest_sessions 迁移过来的等价列。 */
+    lastPresenceOkAt: timestamp("last_presence_ok_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({

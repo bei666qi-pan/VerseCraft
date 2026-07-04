@@ -1,7 +1,7 @@
 // src/lib/quota.ts
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { guestDailyTokens, surveyResponses, usersQuota } from "@/db/schema";
+import { actorDailyTokens, surveyResponses, usersQuota } from "@/db/schema";
 import { env } from "@/lib/env";
 import {
   buildQuotaLimitNarrative,
@@ -149,10 +149,12 @@ async function checkGuestQuota(
     guestDailyTokenLimit: GUEST_DAILY_TOKEN_LIMIT,
     surveyBonusDailyTokenLimit: SURVEY_BONUS_DAILY_TOKEN_LIMIT,
   });
+  // T8 方案B：游客配额读取已从 `guest_daily_tokens` 切到统一的 `actor_daily_tokens`
+  // （actorId = `g:${guestId}`，与 `buildActorIdentity` 的约定一致）。旧表仍继续写入，未下线。
   const rows = await db
-    .select({ dailyTokenCost: guestDailyTokens.dailyTokenCost })
-    .from(guestDailyTokens)
-    .where(and(eq(guestDailyTokens.guestId, guestId), eq(guestDailyTokens.dateKey, todayDateKey())))
+    .select({ dailyTokenCost: actorDailyTokens.dailyTokenCost })
+    .from(actorDailyTokens)
+    .where(and(eq(actorDailyTokens.actorId, `g:${guestId}`), eq(actorDailyTokens.dateKey, todayDateKey())))
     .limit(1);
   const usedTokens = rows[0]?.dailyTokenCost ?? 0;
   if (usedTokens + estimatedTokens > dailyTokenLimit) {

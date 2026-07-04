@@ -79,31 +79,37 @@ export async function recordGenericAnalyticsEvent(
   await insertAnalyticsEventIdempotent(input);
 }
 
+/**
+ * T8 方案B（2026-07，下线旧表）：只在 `input.userId` 有值时被调用
+ * （见 `src/app/actions/telemetry.ts` 的两处调用点），改写 `actor_sessions`
+ * 而不是已下线的 `user_sessions`。
+ */
 export async function touchUserSessionHeartbeat(input: {
   sessionId: string;
   userId: string | null;
   page: string | null;
   eventTime?: Date;
 }): Promise<void> {
-  if (!input.sessionId) return;
+  if (!input.sessionId || !input.userId) return;
   const eventTime = input.eventTime ?? new Date();
+  const actorId = `u:${input.userId}`;
   try {
     await db.execute(sql`
-      INSERT INTO user_sessions (
-        session_id, user_id, started_at, last_seen_at, last_page,
-        total_token_cost, total_play_duration_sec, chat_action_count, updated_at
+      INSERT INTO actor_sessions (
+        session_id, actor_id, actor_type, user_id, guest_id,
+        started_at, last_seen_at, last_page,
+        total_token_cost, chat_action_count,
+        online_sec, active_play_sec, read_sec, idle_sec, updated_at
       ) VALUES (
-        ${input.sessionId},
-        ${input.userId},
-        ${eventTime},
-        ${eventTime},
-        ${input.page},
-        0, 0, 0, CURRENT_TIMESTAMP
+        ${input.sessionId}, ${actorId}, 'user', ${input.userId}, NULL,
+        ${eventTime}, ${eventTime}, ${input.page},
+        0, 0,
+        0, 0, 0, 0, CURRENT_TIMESTAMP
       )
       ON CONFLICT (session_id) DO UPDATE SET
-        user_id = COALESCE(EXCLUDED.user_id, user_sessions.user_id),
-        last_seen_at = GREATEST(user_sessions.last_seen_at, EXCLUDED.last_seen_at),
-        last_page = COALESCE(EXCLUDED.last_page, user_sessions.last_page),
+        user_id = COALESCE(EXCLUDED.user_id, actor_sessions.user_id),
+        last_seen_at = GREATEST(actor_sessions.last_seen_at, EXCLUDED.last_seen_at),
+        last_page = COALESCE(EXCLUDED.last_page, actor_sessions.last_page),
         updated_at = CURRENT_TIMESTAMP
     `);
   } catch (err) {
@@ -212,70 +218,19 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           chat_action_count = actor_daily_tokens.chat_action_count + 1,
           active_play_sec = actor_daily_tokens.active_play_sec + EXCLUDED.active_play_sec
       ),
-      ins_session AS (
-        INSERT INTO user_sessions (
-          session_id, user_id, started_at, last_seen_at, last_page,
-          total_token_cost, total_play_duration_sec, chat_action_count, updated_at
-        )
-        SELECT
-          ${input.sessionId}, ${input.userId}, ${eventTime}, ${eventTime}, ${input.page},
-          ${input.tokenCost}, ${input.playDurationDeltaSec}, 1, CURRENT_TIMESTAMP
-        WHERE EXISTS (SELECT 1 FROM ins_event)
-          AND ${input.userId} IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM user_sessions WHERE session_id = ${input.sessionId})
-      ),
-      upd_session AS (
-        UPDATE user_sessions
-        SET
-          last_seen_at = GREATEST(last_seen_at, ${eventTime}),
-          last_page = COALESCE(${input.page}, last_page),
-          total_token_cost = total_token_cost + ${input.tokenCost},
-          total_play_duration_sec = total_play_duration_sec + ${input.playDurationDeltaSec},
-          chat_action_count = chat_action_count + 1,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE session_id = ${input.sessionId}
-          AND ${input.userId} IS NOT NULL
-          AND EXISTS (SELECT 1 FROM ins_event)
-      ),
-      ins_daily_activity AS (
-        INSERT INTO user_daily_activity (
-          user_id, date_key, first_active_at, last_active_at, chat_action_count
-        )
-        SELECT
-          ${input.userId}, ${dateKey}::date, ${eventTime}, ${eventTime}, 1
+      -- T8 方案B（2026-07，下线旧表）：user_sessions/user_daily_activity/user_daily_tokens/
+      -- guest_daily_activity/guest_daily_tokens 不再从这条路径写入——上面的
+      -- upsert_actor_session/upsert_actor_daily_activity/upsert_actor_daily_tokens
+      -- 已经承担了同等职责。这里只需要单独算一次"这是不是该 actor 今天第一次活跃"，
+      -- 用于下面 upsert_admin_daily 的 dau 计数（admin_metrics_daily 是独立于
+      -- user_*/guest_*/actor_* 三元组之外的另一张聚合表，不在本次下线范围）。
+      is_first_daily_activity_today AS (
+        SELECT 1 AS hit
         WHERE EXISTS (SELECT 1 FROM ins_event)
           AND ${input.userId} IS NOT NULL
           AND NOT EXISTS (
-            SELECT 1
-            FROM user_daily_activity
-            WHERE user_id = ${input.userId} AND date_key = ${dateKey}::date
+            SELECT 1 FROM actor_daily_activity WHERE actor_id = ${actorId} AND date_key = ${dateKey}::date
           )
-        RETURNING user_id
-      ),
-      upd_daily_activity AS (
-        UPDATE user_daily_activity
-        SET
-          last_active_at = GREATEST(last_active_at, ${eventTime}),
-          chat_action_count = chat_action_count + 1
-        WHERE user_id = ${input.userId}
-          AND date_key = ${dateKey}::date
-          AND ${input.userId} IS NOT NULL
-          AND EXISTS (SELECT 1 FROM ins_event)
-          AND NOT EXISTS (SELECT 1 FROM ins_daily_activity)
-      ),
-      upsert_daily_tokens AS (
-        INSERT INTO user_daily_tokens (
-          user_id, date_key, daily_token_cost, daily_play_duration_sec, chat_action_count
-        )
-        SELECT
-          ${input.userId}, ${dateKey}::date, ${input.tokenCost}, ${input.playDurationDeltaSec}, 1
-        WHERE EXISTS (SELECT 1 FROM ins_event)
-          AND ${input.userId} IS NOT NULL
-        ON CONFLICT (user_id, date_key) DO UPDATE
-        SET
-          daily_token_cost = user_daily_tokens.daily_token_cost + EXCLUDED.daily_token_cost,
-          daily_play_duration_sec = user_daily_tokens.daily_play_duration_sec + EXCLUDED.daily_play_duration_sec,
-          chat_action_count = user_daily_tokens.chat_action_count + EXCLUDED.chat_action_count
       ),
       touch_guest_registry AS (
         INSERT INTO guest_registry (guest_id, first_seen_at, last_seen_at, total_play_duration_sec, platform, updated_at)
@@ -289,29 +244,6 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
           platform = COALESCE(EXCLUDED.platform, guest_registry.platform),
           updated_at = CURRENT_TIMESTAMP
       ),
-      upsert_guest_daily_activity AS (
-        INSERT INTO guest_daily_activity (guest_id, date_key, first_active_at, last_active_at, chat_action_count)
-        SELECT
-          ${input.guestId}, ${dateKey}::date, ${eventTime}, ${eventTime}, 1
-        WHERE EXISTS (SELECT 1 FROM ins_event)
-          AND ${input.userId} IS NULL
-          AND ${input.guestId} IS NOT NULL
-        ON CONFLICT (guest_id, date_key) DO UPDATE SET
-          last_active_at = GREATEST(guest_daily_activity.last_active_at, EXCLUDED.last_active_at),
-          chat_action_count = guest_daily_activity.chat_action_count + EXCLUDED.chat_action_count
-      ),
-      upsert_guest_daily_tokens AS (
-        INSERT INTO guest_daily_tokens (guest_id, date_key, daily_token_cost, daily_play_duration_sec, chat_action_count)
-        SELECT
-          ${input.guestId}, ${dateKey}::date, ${input.tokenCost}, ${input.playDurationDeltaSec}, 1
-        WHERE EXISTS (SELECT 1 FROM ins_event)
-          AND ${input.userId} IS NULL
-          AND ${input.guestId} IS NOT NULL
-        ON CONFLICT (guest_id, date_key) DO UPDATE SET
-          daily_token_cost = guest_daily_tokens.daily_token_cost + EXCLUDED.daily_token_cost,
-          daily_play_duration_sec = guest_daily_tokens.daily_play_duration_sec + EXCLUDED.daily_play_duration_sec,
-          chat_action_count = guest_daily_tokens.chat_action_count + EXCLUDED.chat_action_count
-      ),
       upsert_admin_daily AS (
         INSERT INTO admin_metrics_daily (
           date_key, dau, wau, mau, new_users,
@@ -320,7 +252,7 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
         )
         SELECT
           ${dateKey}::date,
-          (SELECT COUNT(*) FROM ins_daily_activity),
+          (SELECT COUNT(*) FROM is_first_daily_activity_today),
           0, 0, 0,
           ${input.tokenCost},
           ${input.playDurationDeltaSec},

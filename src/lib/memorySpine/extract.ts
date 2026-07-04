@@ -112,6 +112,50 @@ function push(out: MemoryCandidateDraft[], row: MemoryCandidateDraft) {
   out.push({ ...row, summary: s.slice(0, 80) });
 }
 
+type RelationshipDeltaKey = "favorability" | "trust" | "fear" | "debt" | "affection" | "desire";
+
+/** 与 mergeCodex（useGameStore.ts）累加语义保持一致的字段判定顺序：favorability > trust > fear > debt > affection > desire。 */
+const RELATIONSHIP_DELTA_KEYS: readonly RelationshipDeltaKey[] = [
+  "favorability",
+  "trust",
+  "fear",
+  "debt",
+  "affection",
+  "desire",
+];
+
+/** 每个字段 + 方向对应的定性描述短句；不出现原始数值或内部字段名，可直接面向玩家呈现。 */
+const RELATIONSHIP_DELTA_PHRASES: Record<RelationshipDeltaKey, { up: string; down: string }> = {
+  favorability: { up: "对你添了几分好感", down: "似乎对你冷淡了几分" },
+  trust: { up: "看起来更信任你了", down: "对你起了些戒心" },
+  fear: { up: "似乎有点怵你", down: "对你的怯意淡去了些" },
+  debt: { up: "欠你的人情又多了一层", down: "还清了一些欠你的人情" },
+  affection: { up: "似乎更在意你了", down: "那份在意淡了几分" },
+  desire: { up: "眼神里多了些说不清的意味", down: "那点心思像是淡了" },
+};
+
+/**
+ * 把一批关系数值 delta（可能同时含多个字段）折算成一句定性描述：
+ * 取绝对值最大的字段作为"本回合最显著的变化"；同值按固定优先序取靠前者。
+ * 找不到任何非零 delta 时返回空字符串（调用方应据此跳过本条记忆）。
+ */
+function describeRelationshipDeltaHeadline(deltas: Partial<Record<RelationshipDeltaKey, number>>): string {
+  let bestKey: RelationshipDeltaKey | null = null;
+  let bestAbs = 0;
+  for (const k of RELATIONSHIP_DELTA_KEYS) {
+    const v = deltas[k];
+    if (typeof v !== "number" || !Number.isFinite(v) || v === 0) continue;
+    const abs = Math.abs(v);
+    if (abs > bestAbs) {
+      bestAbs = abs;
+      bestKey = k;
+    }
+  }
+  if (!bestKey) return "";
+  const v = deltas[bestKey] ?? 0;
+  return v >= 0 ? RELATIONSHIP_DELTA_PHRASES[bestKey].up : RELATIONSHIP_DELTA_PHRASES[bestKey].down;
+}
+
 export function extractMemoryCandidates(input: ExtractInput): MemoryCandidateDraft[] {
   const out: MemoryCandidateDraft[] = [];
   const chapter = resolveChapterBinding(input.chapter);
@@ -207,17 +251,21 @@ export function extractMemoryCandidates(input: ExtractInput): MemoryCandidateDra
   for (const r of rel) {
     const npcId = asString((r as any)?.npcId);
     if (!npcId) continue;
-    const deltaKeys = ["favorability", "trust", "fear", "debt", "affection", "desire"] as const;
-    const deltas: string[] = [];
-    for (const k of deltaKeys) {
+    const deltas: Partial<Record<RelationshipDeltaKey, number>> = {};
+    for (const k of RELATIONSHIP_DELTA_KEYS) {
       const v = (r as any)?.[k];
-      if (typeof v === "number" && Number.isFinite(v)) deltas.push(`${k}${v >= 0 ? "+" : ""}${Math.trunc(v)}`);
+      if (typeof v === "number" && Number.isFinite(v) && v !== 0) deltas[k] = v;
     }
-    if (deltas.length === 0) continue;
+    const headline = describeRelationshipDeltaHeadline(deltas);
+    if (!headline) continue;
+    // 优先使用图鉴里已确认的展示名，避免把内部 npcId 直接写进摘要——
+    // 这份摘要现在同时供 AI prompt 与玩家可见的"记忆片段"呈现共用（见
+    // relationshipMemoryDisplay.ts），必须保持玩家可读。
+    const npcName = asString((input.after.codex as any)?.[npcId]?.name) || npcId;
     push(out, {
       kind: "relationship_shift",
       scope: "npc_local",
-      summary: `你与${npcId}的关系发生变化（${deltas.slice(0, 3).join("，")}）。`,
+      summary: `你与${npcName}的关系有了新变化——${headline}。`,
       salience: 0.66,
       confidence: 0.86,
       status: "active",

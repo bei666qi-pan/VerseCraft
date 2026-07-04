@@ -4,6 +4,7 @@
 
 import type { PlayerWorldSignals } from "./playerWorldSignals";
 import { REVEAL_TIER_RANK, type RevealTierId, type RevealTierRank } from "./revealTierRank";
+import { SANITY_BAND_RANK } from "./sanityStateRegistry";
 
 export interface RevealTierMeta {
   id: RevealTierId;
@@ -23,14 +24,14 @@ export const REVEAL_TIER_METAS: readonly RevealTierMeta[] = [
   {
     id: "fracture",
     title: "裂缝真相",
-    unlockSignals: ["次日以后", "复活或推进标记", "主威胁压制进展", "较高图鉴好感"],
+    unlockSignals: ["次日以后", "复活或推进标记", "主威胁压制进展", "较高图鉴好感", "理智出现裂隙（sanity fractured 及以上）"],
     revealPolicy:
       "可给机制切片：锚点代价、原石社会功能、楼层阶段感。可暗示数名关键住户「不像普通徘徊者」与职能—记忆耦合违和；仍不可直述七锚、校源标签、十日闪烁全貌。",
   },
   {
     id: "deep",
     title: "深层机制",
-    unlockSignals: ["7F 锚或身处 7F", "阴谋类世界标记", "职业认证线索"],
+    unlockSignals: ["7F 锚或身处 7F", "阴谋类世界标记", "职业认证线索", "理智濒崩（sanity critical）"],
     revealPolicy:
       "可谈七锚结构、学制循环窗口、校源徘徊者运行态、龙月校准与泄露—收容双端因果；仍不直给通关步骤与出口对账链。",
   },
@@ -115,6 +116,18 @@ export const REVEAL_GATE_RULES: readonly RevealGateRule[] = [
     id: "exit_world_flags",
     bumpTo: REVEAL_TIER_RANK.abyss,
     when: (s) => /b2_unlocked|abyss_line|dragon_anchor|exit_truth/i.test(s.worldFlags.join(",")),
+  },
+  // G1：理智状态门禁联动（Bloodborne "洞察"式双刃剑——越接近崩溃，越能触及被隐藏的真相）。
+  // sanityBand 缺失信号时恒为 "unknown"（rank -1），不会满足下列判定，安全默认不联动。
+  {
+    id: "sanity_fractured",
+    bumpTo: REVEAL_TIER_RANK.fracture,
+    when: (s) => SANITY_BAND_RANK[s.sanityBand] >= SANITY_BAND_RANK.fractured,
+  },
+  {
+    id: "sanity_critical",
+    bumpTo: REVEAL_TIER_RANK.deep,
+    when: (s) => SANITY_BAND_RANK[s.sanityBand] >= SANITY_BAND_RANK.critical,
   },
 ];
 

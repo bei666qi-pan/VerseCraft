@@ -57,6 +57,7 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     offlineAllowMainFallback: false,
     offlineAffectsProviderCircuit: false,
     offlineBudgetProfile: "default",
+    aiGatewayJsonSchemaEnabled: false,
   };
   return {
     ...defaults,

@@ -3,6 +3,7 @@ import type { StatType } from "@/lib/registry/types";
 import type { ProfessionId } from "@/lib/profession/types";
 import type { ChapterId, ChapterState } from "@/lib/chapters";
 import type { CodexEntry } from "@/store/useGameStore";
+import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type {
   ReadingPreferenceKey,
   ReadingPreferences,
@@ -105,6 +106,8 @@ export type MobileCodexPanelProps = {
   dynamicNpcStates?: MobileCodexDynamicNpcStates;
   mainThreatByFloor?: MobileCodexMainThreatByFloor;
   playerLocation: string;
+  /** G2：用于生成"记忆片段"区块（叙事化关系呈现），缺省时该区块不展示 */
+  memorySpine?: MemorySpineState | null;
 };
 
 export type MobileSettingsPanelProps = {

@@ -120,6 +120,101 @@ test("mergeCodex appends current-turn observations and keeps relationship-only u
   assert.equal(entry?.fear, 1);
 });
 
+test("mergeCodex accumulates repeated relationship deltas and clamps to [-100,100]", () => {
+  resetStore();
+  const s = useGameStore.getState();
+  // 模拟连续多回合 relationship_updates 下发同一 NPC 的 favorability 增量。
+  s.mergeCodex([{ id: "N-020", name: "N-020", type: "npc", favorability: 40 }]);
+  assert.equal(useGameStore.getState().codex["N-020"]?.favorability, 40);
+
+  s.mergeCodex([{ id: "N-020", name: "N-020", type: "npc", favorability: 30 }]);
+  assert.equal(useGameStore.getState().codex["N-020"]?.favorability, 70);
+
+  // 第三次增量会超出上限（70+40=110），必须裁剪到 100 而不是覆盖成 40 或直接相加到 110。
+  s.mergeCodex([{ id: "N-020", name: "N-020", type: "npc", favorability: 40 }]);
+  assert.equal(useGameStore.getState().codex["N-020"]?.favorability, 100);
+
+  // 负向增量同理验证下界裁剪。
+  s.mergeCodex([{ id: "N-020", name: "N-020", type: "npc", trust: -60 }]);
+  s.mergeCodex([{ id: "N-020", name: "N-020", type: "npc", trust: -60 }]);
+  assert.equal(useGameStore.getState().codex["N-020"]?.trust, -100);
+});
+
+test("G3: applyGameTimeFromResolvedTurn auto-fails active tasks past autoFailAfterGameHour", () => {
+  resetStore();
+  useGameStore.setState({
+    time: { day: 0, hour: 0 },
+    tasks: [
+      {
+        id: "t_overdue",
+        title: "过期任务",
+        desc: "",
+        type: "floor",
+        issuerId: "",
+        issuerName: "",
+        floorTier: "",
+        guidanceLevel: "none",
+        reward: { originium: 0, items: [], warehouseItems: [], unlocks: [], relationshipChanges: [] },
+        status: "active",
+        expiresAt: null,
+        betrayalPossible: false,
+        hiddenOutcome: "",
+        hiddenTriggerConditions: [],
+        claimMode: "manual",
+        npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
+        npcProactiveGrantLastIssuedHour: null,
+        nextHint: "",
+        worldConsequences: [],
+        highRiskHighReward: false,
+        // 阈值设为 0：只要时间推进到 hourIndex > 0（即推进任意 1 小时）就应触发自动失败。
+        autoFailAfterGameHour: 0,
+      },
+    ] as never,
+  });
+
+  // 不传 time_cost：per resolveHourProgressDelta 走 legacy 分支，保证整推进 1 小时。
+  const result = useGameStore.getState().applyGameTimeFromResolvedTurn({ consumes_time: true });
+  assert.equal(result.hoursAdvanced, 1);
+
+  const task = useGameStore.getState().tasks.find((t) => t.id === "t_overdue");
+  assert.equal(task?.status, "failed");
+});
+
+test("G3: applyGameTimeFromResolvedTurn leaves tasks array reference untouched when no task is overdue", () => {
+  resetStore();
+  const tasksBefore = [
+    {
+      id: "t_future",
+      title: "未过期任务",
+      desc: "",
+      type: "floor",
+      issuerId: "",
+      issuerName: "",
+      floorTier: "",
+      guidanceLevel: "none",
+      reward: { originium: 0, items: [], warehouseItems: [], unlocks: [], relationshipChanges: [] },
+      status: "active",
+      expiresAt: null,
+      betrayalPossible: false,
+      hiddenOutcome: "",
+      hiddenTriggerConditions: [],
+      claimMode: "manual",
+      npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
+      npcProactiveGrantLastIssuedHour: null,
+      nextHint: "",
+      worldConsequences: [],
+      highRiskHighReward: false,
+      autoFailAfterGameHour: 999,
+    },
+  ] as never;
+  useGameStore.setState({ time: { day: 0, hour: 0 }, tasks: tasksBefore });
+
+  useGameStore.getState().applyGameTimeFromResolvedTurn({ consumes_time: true });
+
+  assert.equal(useGameStore.getState().tasks, tasksBefore, "无任务过期时应保持同一数组引用");
+  assert.equal(useGameStore.getState().tasks[0]?.status, "active");
+});
+
 test("phase4: warehouse state supports narrative consume without changing save fields", () => {
   resetStore();
   const s = useGameStore.getState();

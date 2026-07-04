@@ -1,6 +1,8 @@
 import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
+import { buildNpcMemoryMomentLines } from "@/lib/registry/relationshipMemoryDisplay";
 import type { FloorId } from "@/lib/registry/types";
 import { formatCompactLocationLabel } from "@/lib/ui/locationLabels";
+import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { CodexEntry } from "@/store/useGameStore";
 import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "./codexCatalog";
 
@@ -47,6 +49,8 @@ export type MobileCodexDetail = {
   intro: string;
   observation: string;
   relationship: string;
+  /** G2：与该 NPC 相关的具体记忆片段（叙事化，非数值），最多数条；无记忆时为空字符串。 */
+  memories: string;
 };
 
 const LOCATION_FIELD_CANDIDATES = [
@@ -258,7 +262,7 @@ export function resolveMobileCodexEntryLocation(
 export function buildMobileCodexDetail(
   codex: Record<string, CodexEntry> | null | undefined,
   slot: CodexCatalogSlot,
-  options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> = {}
+  options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> & { memorySpine?: MemorySpineState | null } = {}
 ): MobileCodexDetail {
   const entry = codex?.[slot.id] ?? null;
   const entryKind = slot.type === "anomaly" ? "异常" : "人物";
@@ -271,6 +275,7 @@ export function buildMobileCodexDetail(
       intro: `尚未识别该${entryKind}。`,
       observation: "暂未记录更多观察。",
       relationship: slot.type === "anomaly" ? "暂无稳定应对记录。" : "暂无稳定关系印象。",
+      memories: "",
     };
   }
 
@@ -282,6 +287,7 @@ export function buildMobileCodexDetail(
     intro: buildMobileCodexIntro(entry),
     observation: buildMobileCodexObservation(entry),
     relationship: buildMobileCodexRelationship(entry),
+    memories: buildMobileCodexMemories(entry, options.memorySpine),
   };
 }
 
@@ -343,4 +349,14 @@ export function buildMobileCodexRelationship(entry: CodexEntry): string {
   if (label === "恋人") return "彼此之间已有稳定而亲密的牵连。";
   if (label === "敌人") return "对方目前带有明显敌意或危险距离。";
   return "暂无稳定关系印象。";
+}
+
+/**
+ * G2：把与该 NPC 相关的具体记忆片段拼成一段可直接展示的文本（叙事化呈现，取代纯数值条）。
+ * 异常类图鉴或无相关记忆时返回空字符串，调用方应据此隐藏该区块而非展示"暂无"。
+ */
+export function buildMobileCodexMemories(entry: CodexEntry, memorySpine: MemorySpineState | null | undefined): string {
+  if (entry.type === "anomaly") return "";
+  const lines = buildNpcMemoryMomentLines(memorySpine, entry.id, { maxItems: 3 });
+  return lines.join("；");
 }

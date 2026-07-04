@@ -11,8 +11,17 @@ import {
 import { markUserActive } from "@/lib/presence";
 import { recordPlayDurationToRollups } from "@/lib/presence/recordPlayDurationRollup";
 import { upsertGuestRegistryRow } from "@/lib/presence/upsertGuestRegistry";
+import { upsertActorDailyActivityHeartbeat } from "@/lib/presence/actorRollupUpsert";
+import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
 import { recordDailyActiveUser } from "@/lib/adminDailyMetrics";
 import { getUtcDateKey } from "@/lib/adminDailyMetrics";
+
+// T8 方案B（2026-07，下线旧表）：`actor_sessions` 现在是唯一的会话表，承担了原来
+// `user_sessions`/`guest_sessions`（原生表，未在 schema.ts 声明）的全部职责：
+// 存在性检查、心跳限流（last_presence_ok_at）、播放时长累计、会话归属校验。
+// `user_sessions`/`guest_sessions`/`user_daily_activity`/`user_daily_tokens`/
+// `guest_daily_activity`/`guest_daily_tokens` 六张旧表不再从这条路径读写；
+// 物理表未删除（未执行 DROP TABLE），只是应用层不再触碰。
 
 function rowsOf<T extends Record<string, unknown>>(result: unknown): T[] {
   if (Array.isArray(result)) return result as T[];
@@ -88,10 +97,12 @@ async function applyForUser(args: {
 }): Promise<ApplyPresenceResult> {
   const { sessionId, userId, page, now, bucketStart, isBackground } = args;
   const foreground = !isBackground;
+  const identity = buildActorIdentity({ userId });
+  const actorId = identity?.actorId ?? `u:${userId}`;
 
   const q0 = await db.execute(sql`
-    SELECT session_id, user_id, last_seen_at, last_presence_ok_at, total_play_duration_sec
-    FROM user_sessions
+    SELECT session_id, user_id, last_seen_at, last_presence_ok_at, active_play_sec
+    FROM actor_sessions
     WHERE session_id = ${sessionId}
     LIMIT 1
   `);
@@ -100,7 +111,7 @@ async function applyForUser(args: {
         user_id: string | null;
         last_seen_at: string | Date;
         last_presence_ok_at: string | Date | null;
-        total_play_duration_sec: number;
+        active_play_sec: number;
       }
     | null;
 
@@ -127,16 +138,24 @@ async function applyForUser(args: {
 
   if (!existing) {
     await db.execute(sql`
-      INSERT INTO user_sessions (
-        session_id, user_id, started_at, last_seen_at, last_page,
-        total_token_cost, total_play_duration_sec, chat_action_count, updated_at, last_presence_ok_at
+      INSERT INTO actor_sessions (
+        session_id, actor_id, actor_type, user_id, guest_id,
+        started_at, last_seen_at, last_page,
+        total_token_cost, chat_action_count,
+        online_sec, active_play_sec, read_sec, idle_sec,
+        updated_at, last_presence_ok_at
       ) VALUES (
-        ${sessionId}, ${userId}, ${now}, ${now}, ${page},
-        0, 0, 0, CURRENT_TIMESTAMP, ${now}
+        ${sessionId}, ${actorId}, 'user', ${userId}, NULL,
+        ${now}, ${now}, ${page},
+        0, 0,
+        0, 0, 0, 0,
+        CURRENT_TIMESTAMP, ${now}
       )
+      ON CONFLICT (session_id) DO NOTHING
     `);
     void markUserActive(userId).catch(() => {});
     void recordDailyActiveUser(userId, getUtcDateKey(now)).catch(() => {});
+    void upsertActorDailyActivityHeartbeat({ userId, guestId: null, now, playDeltaSec: 0 });
     return { kind: "ok", playDeltaSec: 0 };
   }
 
@@ -144,12 +163,12 @@ async function applyForUser(args: {
   const playDelta = foreground ? computePlayDeltaSec(lastSeen, now) : 0;
 
   await db.execute(sql`
-    UPDATE user_sessions
+    UPDATE actor_sessions
     SET
       last_seen_at = ${now},
       last_page = COALESCE(${page}, last_page),
       user_id = COALESCE(user_id, ${userId}),
-      total_play_duration_sec = total_play_duration_sec + ${playDelta},
+      active_play_sec = active_play_sec + ${playDelta},
       last_presence_ok_at = ${now},
       updated_at = CURRENT_TIMESTAMP
     WHERE session_id = ${sessionId}
@@ -160,6 +179,7 @@ async function applyForUser(args: {
   }
   void markUserActive(userId).catch(() => {});
   void recordDailyActiveUser(userId, getUtcDateKey(now)).catch(() => {});
+  void upsertActorDailyActivityHeartbeat({ userId, guestId: null, now, playDeltaSec: playDelta });
 
   return { kind: "ok", playDeltaSec: playDelta };
 }
@@ -175,10 +195,12 @@ async function applyForGuest(args: {
 }): Promise<ApplyPresenceResult> {
   const { sessionId, guestId, page, now, bucketStart, isBackground, client } = args;
   const foreground = !isBackground;
+  const identity = buildActorIdentity({ guestId });
+  const actorId = identity?.actorId ?? `g:${guestId}`;
 
   const q0 = await db.execute(sql`
-    SELECT session_id, guest_id, last_seen_at, last_presence_ok_at, total_play_duration_sec
-    FROM guest_sessions
+    SELECT session_id, guest_id, last_seen_at, last_presence_ok_at, active_play_sec
+    FROM actor_sessions
     WHERE session_id = ${sessionId}
     LIMIT 1
   `);
@@ -187,7 +209,7 @@ async function applyForGuest(args: {
         guest_id: string;
         last_seen_at: string | Date;
         last_presence_ok_at: string | Date | null;
-        total_play_duration_sec: number;
+        active_play_sec: number;
       }
     | null;
 
@@ -214,13 +236,20 @@ async function applyForGuest(args: {
 
   if (!existing) {
     await db.execute(sql`
-      INSERT INTO guest_sessions (
-        session_id, guest_id, started_at, last_seen_at, last_page,
-        total_play_duration_sec, updated_at, last_presence_ok_at
+      INSERT INTO actor_sessions (
+        session_id, actor_id, actor_type, user_id, guest_id,
+        started_at, last_seen_at, last_page,
+        total_token_cost, chat_action_count,
+        online_sec, active_play_sec, read_sec, idle_sec,
+        updated_at, last_presence_ok_at
       ) VALUES (
-        ${sessionId}, ${guestId}, ${now}, ${now}, ${page},
-        0, CURRENT_TIMESTAMP, ${now}
+        ${sessionId}, ${actorId}, 'guest', NULL, ${guestId},
+        ${now}, ${now}, ${page},
+        0, 0,
+        0, 0, 0, 0,
+        CURRENT_TIMESTAMP, ${now}
       )
+      ON CONFLICT (session_id) DO NOTHING
     `);
     void markUserActive(`g:${guestId}`).catch(() => {});
     void recordDailyActiveUser(`g:${guestId}`, getUtcDateKey(now)).catch(() => {});
@@ -230,6 +259,7 @@ async function applyForGuest(args: {
       playDeltaSec: 0,
       meta: { userAgent: client?.userAgent ?? null, ipHash: client?.ipHash ?? null, platform: client?.platform ?? null },
     });
+    void upsertActorDailyActivityHeartbeat({ userId: null, guestId, now, playDeltaSec: 0 });
     return { kind: "ok", playDeltaSec: 0 };
   }
 
@@ -237,12 +267,12 @@ async function applyForGuest(args: {
   const playDelta = foreground ? computePlayDeltaSec(lastSeen, now) : 0;
 
   await db.execute(sql`
-    UPDATE guest_sessions
+    UPDATE actor_sessions
     SET
       last_seen_at = ${now},
       last_page = COALESCE(${page}, last_page),
       guest_id = ${guestId},
-      total_play_duration_sec = total_play_duration_sec + ${playDelta},
+      active_play_sec = active_play_sec + ${playDelta},
       last_presence_ok_at = ${now},
       updated_at = CURRENT_TIMESTAMP
     WHERE session_id = ${sessionId}
@@ -259,6 +289,7 @@ async function applyForGuest(args: {
     playDeltaSec: playDelta,
     meta: { userAgent: client?.userAgent ?? null, ipHash: client?.ipHash ?? null, platform: client?.platform ?? null },
   });
+  void upsertActorDailyActivityHeartbeat({ userId: null, guestId, now, playDeltaSec: playDelta });
 
   return { kind: "ok", playDeltaSec: playDelta };
 }

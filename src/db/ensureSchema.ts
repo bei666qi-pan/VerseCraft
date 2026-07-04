@@ -458,6 +458,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS actor_sessions_actor_last_seen_idx ON actor_sessions (actor_id, last_seen_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS actor_sessions_guest_last_seen_idx ON actor_sessions (guest_id, last_seen_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS actor_sessions_user_last_seen_idx ON actor_sessions (user_id, last_seen_at);`);
+    // T8 方案B（2026-07）：actor_sessions 接管心跳限流职责，补上 user_sessions/guest_sessions 才有的字段。
+    await client.query(`ALTER TABLE actor_sessions ADD COLUMN IF NOT EXISTS last_presence_ok_at TIMESTAMPTZ NULL;`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS actor_daily_activity (

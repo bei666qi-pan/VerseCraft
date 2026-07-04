@@ -41,7 +41,18 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     if (body.temperature !== undefined) {
       payload.temperature = body.temperature;
     }
-    if (body.responseFormatJsonObject) {
+    // Schema-constrained mode takes priority over plain json_object mode when
+    // both are set. Opt-in via `responseFormatJsonSchema` (see providers/types.ts).
+    if (body.responseFormatJsonSchema) {
+      payload.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: body.responseFormatJsonSchema.name,
+          strict: body.responseFormatJsonSchema.strict,
+          schema: body.responseFormatJsonSchema.schema,
+        },
+      };
+    } else if (body.responseFormatJsonObject) {
       payload.response_format = { type: "json_object" };
     }
     if (body.stream && body.streamIncludeUsage) {

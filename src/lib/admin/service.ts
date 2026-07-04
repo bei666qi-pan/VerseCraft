@@ -2,7 +2,7 @@ import "server-only";
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { adminMetricsDaily, analyticsActors, analyticsEvents, feedbacks, guestRegistry, userSessions, users } from "@/db/schema";
+import { actorSessions, adminMetricsDaily, analyticsActors, analyticsEvents, feedbacks, guestRegistry, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
@@ -208,11 +208,14 @@ export async function getDashboardTableData() {
     .from(users)
     .orderBy(desc(users.tokensUsed));
 
+  // T8 方案B：会话玩耍时长读取已从 `user_sessions` / `guest_sessions` 切到统一的
+  // `actor_sessions`（active_play_sec 是 total_play_duration_sec 的迁移后等价字段，
+  // 详见 `src/lib/presence/actorRollupUpsert.ts` 顶部注释）。旧表仍继续写入，未下线。
   const sessionPlayByUserRaw = await db
     .execute(sql`
-      SELECT user_id AS "userId", COALESCE(SUM(total_play_duration_sec), 0)::int AS "sessionPlaySec"
-      FROM user_sessions
-      WHERE user_id IS NOT NULL
+      SELECT user_id AS "userId", COALESCE(SUM(active_play_sec), 0)::int AS "sessionPlaySec"
+      FROM actor_sessions
+      WHERE actor_type = 'user' AND user_id IS NOT NULL
       GROUP BY user_id
     `)
     .catch((error) => {
@@ -221,8 +224,9 @@ export async function getDashboardTableData() {
     });
   const sessionPlayByGuestRaw = await db
     .execute(sql`
-      SELECT guest_id AS "guestId", COALESCE(SUM(total_play_duration_sec), 0)::int AS "sessionPlaySec"
-      FROM guest_sessions
+      SELECT guest_id AS "guestId", COALESCE(SUM(active_play_sec), 0)::int AS "sessionPlaySec"
+      FROM actor_sessions
+      WHERE actor_type = 'guest' AND guest_id IS NOT NULL
       GROUP BY guest_id
     `)
     .catch((error) => {
@@ -574,14 +578,16 @@ export async function getOverviewMetrics(range: AdminTimeRange) {
     })
     .from(users);
 
+  // T8 方案B：注册用户会话玩耍时长总计已从 `user_sessions.total_play_duration_sec` 切到
+  // `actor_sessions.active_play_sec`（actor_type = 'user'）。
   let sessionTotalLive: { sec: number } = { sec: 0 };
   try {
     const [r] = await db
       .select({
-        sec: sql<number>`COALESCE(SUM(${userSessions.totalPlayDurationSec}), 0)`,
+        sec: sql<number>`COALESCE(SUM(${actorSessions.activePlaySec}), 0)`,
       })
-      .from(userSessions)
-      .where(sql`${userSessions.userId} IS NOT NULL`);
+      .from(actorSessions)
+      .where(sql`${actorSessions.actorType} = 'user' AND ${actorSessions.userId} IS NOT NULL`);
     sessionTotalLive = { sec: Number(r?.sec ?? 0) };
   } catch {
     sessionTotalLive = { sec: 0 };
@@ -676,7 +682,9 @@ export async function getRealtimeMetrics() {
 export async function getRetentionMetrics(range: AdminTimeRange) {
   /**
    * 留存口径修复：
-   * - 历史只按注册用户（user_registered + user_daily_activity）统计，游客会被忽略导致“后台留存无数据”。
+   * - 历史只按注册用户（user_registered + user_daily_activity）统计，游客会被忽略导致"后台留存无数据"。
+   * - T8 方案B（2026-07）：user_daily_activity/guest_daily_activity 已下线，下面改读统一的
+   *   actor_daily_activity（actor_type='user'/'guest'）。
    * - 这里改为“用户 + 游客会话”统一活跃口径：
    *   user -> u:<user_id>, guest -> g:<session_id>。
    */
@@ -710,8 +718,9 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
       SELECT actor_key, cohort_day FROM guest_first_seen
     ),
     active_days AS (
-      SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
-      FROM user_daily_activity
+      SELECT DISTINCT actor_id AS actor_key, date_key::date AS active_day
+      FROM actor_daily_activity
+      WHERE actor_type = 'user'
       UNION
       SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
       FROM analytics_events
@@ -748,8 +757,9 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
 
   const returningRes = await db.execute(sql`
     WITH active_days AS (
-      SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
-      FROM user_daily_activity
+      SELECT DISTINCT actor_id AS actor_key, date_key::date AS active_day
+      FROM actor_daily_activity
+      WHERE actor_type = 'user'
       UNION
       SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
       FROM analytics_events
@@ -773,8 +783,9 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
 
   const churnRes = await db.execute(sql`
     WITH active_days AS (
-      SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
-      FROM user_daily_activity
+      SELECT DISTINCT actor_id AS actor_key, date_key::date AS active_day
+      FROM actor_daily_activity
+      WHERE actor_type = 'user'
       UNION
       SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
       FROM analytics_events
@@ -817,8 +828,9 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
           AND event_time <= ${range.end}
       ),
       active_days AS (
-        SELECT DISTINCT ('u:' || user_id) AS actor_key, date_key::date AS active_day
-        FROM user_daily_activity
+        SELECT DISTINCT actor_id AS actor_key, date_key::date AS active_day
+        FROM actor_daily_activity
+        WHERE actor_type = 'user'
         UNION
         SELECT DISTINCT ('u:' || user_id), DATE(event_time)
         FROM analytics_events
@@ -865,8 +877,9 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
           AND first_seen_at <= ${range.end}
       ),
       active_days AS (
-        SELECT DISTINCT ('g:' || guest_id) AS actor_key, date_key::date AS active_day
-        FROM guest_daily_activity
+        SELECT DISTINCT actor_id AS actor_key, date_key::date AS active_day
+        FROM actor_daily_activity
+        WHERE actor_type = 'guest'
         UNION
         SELECT DISTINCT ('g:' || guest_id), DATE(event_time)
         FROM analytics_events

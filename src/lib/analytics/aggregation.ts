@@ -2,7 +2,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { analyticsEvents, userDailyActivity, userDailyTokens } from "@/db/schema";
+import { actorDailyActivity, actorDailyTokens, analyticsEvents } from "@/db/schema";
 import { getUtcDateKey, parseUtcDateKeyToDate } from "@/lib/analytics/dateKeys";
 
 export type AdminMetricsDailyRebuildResult = {
@@ -37,31 +37,38 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
   const wauStartKey = getUtcDateKey(wauStart);
   const mauStartKey = getUtcDateKey(mauStart);
 
+  // T8 方案B：DAU/WAU/MAU 与日 token/玩耍时长统计已从 `user_daily_activity` / `user_daily_tokens`
+  // 切到统一的 `actor_daily_activity` / `actor_daily_tokens`（actor_type = 'user'，
+  // 与旧口径一致——只统计注册用户，不含游客）。旧表仍继续写入，未下线。
   const [dauAgg] = await db
-    .select({ dau: sql<number>`COUNT(DISTINCT ${userDailyActivity.userId})` })
-    .from(userDailyActivity)
-    .where(sql`${userDailyActivity.dateKey} = ${dateKey}::date`);
+    .select({ dau: sql<number>`COUNT(DISTINCT ${actorDailyActivity.actorId})` })
+    .from(actorDailyActivity)
+    .where(sql`${actorDailyActivity.actorType} = 'user' AND ${actorDailyActivity.dateKey} = ${dateKey}::date`);
 
   const [wauAgg] = await db
-    .select({ wau: sql<number>`COUNT(DISTINCT ${userDailyActivity.userId})` })
-    .from(userDailyActivity)
-    .where(sql`${userDailyActivity.dateKey} >= ${wauStartKey}::date AND ${userDailyActivity.dateKey} <= ${dateKey}::date`);
+    .select({ wau: sql<number>`COUNT(DISTINCT ${actorDailyActivity.actorId})` })
+    .from(actorDailyActivity)
+    .where(
+      sql`${actorDailyActivity.actorType} = 'user' AND ${actorDailyActivity.dateKey} >= ${wauStartKey}::date AND ${actorDailyActivity.dateKey} <= ${dateKey}::date`
+    );
 
   const [mauAgg] = await db
-    .select({ mau: sql<number>`COUNT(DISTINCT ${userDailyActivity.userId})` })
-    .from(userDailyActivity)
-    .where(sql`${userDailyActivity.dateKey} >= ${mauStartKey}::date AND ${userDailyActivity.dateKey} <= ${dateKey}::date`);
+    .select({ mau: sql<number>`COUNT(DISTINCT ${actorDailyActivity.actorId})` })
+    .from(actorDailyActivity)
+    .where(
+      sql`${actorDailyActivity.actorType} = 'user' AND ${actorDailyActivity.dateKey} >= ${mauStartKey}::date AND ${actorDailyActivity.dateKey} <= ${dateKey}::date`
+    );
 
   const [
     tokensAgg,
   ] = await db
     .select({
-      totalTokenCost: sql<number>`COALESCE(SUM(${userDailyTokens.dailyTokenCost}), 0)`,
-      totalPlayDurationSec: sql<number>`COALESCE(SUM(${userDailyTokens.dailyPlayDurationSec}), 0)`,
-      chatActions: sql<number>`COALESCE(SUM(${userDailyTokens.chatActionCount}), 0)`,
+      totalTokenCost: sql<number>`COALESCE(SUM(${actorDailyTokens.dailyTokenCost}), 0)`,
+      totalPlayDurationSec: sql<number>`COALESCE(SUM(${actorDailyTokens.activePlaySec}), 0)`,
+      chatActions: sql<number>`COALESCE(SUM(${actorDailyTokens.chatActionCount}), 0)`,
     })
-    .from(userDailyTokens)
-    .where(sql`${userDailyTokens.dateKey} = ${dateKey}::date`);
+    .from(actorDailyTokens)
+    .where(sql`${actorDailyTokens.actorType} = 'user' AND ${actorDailyTokens.dateKey} = ${dateKey}::date`);
 
   const [
     newUsersAgg,

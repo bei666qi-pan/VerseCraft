@@ -3,16 +3,19 @@ import assert from "node:assert/strict";
 import {
   applyNpcProactiveGrantGuard,
   activateClaimableHiddenTasks,
+  applyAutoFailedTasks,
   applyTaskUpdateToTask,
   buildNpcGrantFallbackNarrativeBlock,
   buildNpcProactiveGrantNarrativeBlock,
   canClaimHiddenTask,
+  computeAutoFailedTaskIds,
   createStageOneStarterTasks,
   extractRelationshipPatchesFromConsequences,
   formatTaskRewardSummary,
   normalizeDmTaskPayload,
   normalizeGameTaskDraft,
   normalizeTaskUpdateDraft,
+  type GameTaskV2,
 } from "./taskV2";
 import { projectTaskBoardViewModel } from "@/lib/play/taskBoardUi";
 
@@ -307,4 +310,41 @@ test("extractRelationshipPatchesFromConsequences parses relationship deltas", ()
   assert.equal(patches[0]?.romanceEligible, true);
   assert.equal(patches[0]?.romanceStage, "hint");
   assert.equal(patches[0]?.betrayalFlagAdd, "merchant_secret_flag");
+});
+
+// G3（玩法改良，2026-07）：服务端自动失败判定。
+function taskWithAutoFail(partial: { id: string; status?: GameTaskV2["status"]; autoFailAfterGameHour?: number | null }): GameTaskV2 {
+  const t = normalizeGameTaskDraft({ id: partial.id, title: partial.id, status: partial.status ?? "active" });
+  if (!t) throw new Error("normalizeGameTaskDraft returned null in test fixture");
+  return { ...t, autoFailAfterGameHour: partial.autoFailAfterGameHour };
+}
+
+test("computeAutoFailedTaskIds: active task past its autoFailAfterGameHour is flagged", () => {
+  const tasks = [
+    taskWithAutoFail({ id: "t_overdue", autoFailAfterGameHour: 48 }),
+    taskWithAutoFail({ id: "t_not_yet", autoFailAfterGameHour: 200 }),
+    taskWithAutoFail({ id: "t_no_deadline", autoFailAfterGameHour: null }),
+  ];
+  // currentGameHourIndex = day 3 * 24 + hour 0 = 72，超过 t_overdue 的 48，未超过 t_not_yet 的 200
+  const ids = computeAutoFailedTaskIds(tasks, 72);
+  assert.deepEqual(ids, ["t_overdue"]);
+});
+
+test("computeAutoFailedTaskIds: only applies to active tasks, ignores completed/hidden/failed", () => {
+  const tasks = [
+    taskWithAutoFail({ id: "t_completed", status: "completed", autoFailAfterGameHour: 1 }),
+    taskWithAutoFail({ id: "t_hidden", status: "hidden", autoFailAfterGameHour: 1 }),
+    taskWithAutoFail({ id: "t_already_failed", status: "failed", autoFailAfterGameHour: 1 }),
+  ];
+  assert.deepEqual(computeAutoFailedTaskIds(tasks, 1000), []);
+});
+
+test("applyAutoFailedTasks: flips overdue active tasks to failed, returns same array ref when nothing changes", () => {
+  const tasks = [taskWithAutoFail({ id: "t_overdue", autoFailAfterGameHour: 10 })];
+  const updated = applyAutoFailedTasks(tasks, 11);
+  assert.equal(updated[0]?.status, "failed");
+  assert.notEqual(updated, tasks, "应返回新数组而非原地修改");
+
+  const untouched = applyAutoFailedTasks(tasks, 5);
+  assert.equal(untouched, tasks, "未命中任何任务时应原样返回同一引用，避免无意义的下游重渲染");
 });

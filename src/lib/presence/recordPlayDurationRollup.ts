@@ -5,11 +5,12 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { getUtcDateKey, recordDailyTokenUsage } from "@/lib/adminDailyMetrics";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
+import { upsertActorDailyTokensFromPlayDelta } from "@/lib/presence/actorRollupUpsert";
 
 /**
  * Adds wall-clock play seconds to rollups. Always UTC `dateKey` (YYYY-MM-DD).
- * Registered users: `user_daily_tokens` + `admin_metrics_daily` + Redis daily play hash.
- * Guests: `guest_daily_tokens` + `admin_metrics_daily` (no `user_daily_*` row).
+ * T8 方案B（2026-07，下线旧表）：日汇总统一写 `actor_daily_tokens`（不再区分
+ * `user_daily_tokens`/`guest_daily_tokens`），加上 `admin_metrics_daily` + Redis daily play hash。
  */
 export async function recordPlayDurationToRollups(args: {
   userId: string | null;
@@ -24,30 +25,9 @@ export async function recordPlayDurationToRollups(args: {
   const gid = (args.guestId ?? "").trim();
 
   void recordDailyTokenUsage(dateKey, 0, delta).catch(() => {});
+  void upsertActorDailyTokensFromPlayDelta({ userId: args.userId, guestId: gid || null, playDeltaSec: delta, at: d });
 
   try {
-    if (args.userId) {
-      await db.execute(sql`
-        INSERT INTO user_daily_tokens (
-          user_id, date_key, daily_token_cost, daily_play_duration_sec, chat_action_count
-        ) VALUES (
-          ${args.userId}, ${dateKey}::date, 0, ${delta}, 0
-        )
-        ON CONFLICT (user_id, date_key) DO UPDATE SET
-          daily_play_duration_sec = user_daily_tokens.daily_play_duration_sec + EXCLUDED.daily_play_duration_sec
-      `);
-    } else if (gid) {
-      await db.execute(sql`
-        INSERT INTO guest_daily_tokens (
-          guest_id, date_key, daily_token_cost, daily_play_duration_sec, chat_action_count
-        ) VALUES (
-          ${gid}, ${dateKey}::date, 0, ${delta}, 0
-        )
-        ON CONFLICT (guest_id, date_key) DO UPDATE SET
-          daily_play_duration_sec = guest_daily_tokens.daily_play_duration_sec + EXCLUDED.daily_play_duration_sec
-      `);
-    }
-
     await db.execute(sql`
       INSERT INTO admin_metrics_daily (
         date_key, dau, wau, mau, new_users,

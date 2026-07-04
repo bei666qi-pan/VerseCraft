@@ -174,6 +174,17 @@ export interface GameTaskV2 {
    * - archived_hidden: 已归档隐藏（对玩家不再可见）
    */
   grantState?: TaskGrantState;
+
+  /**
+   * G3（玩法改良，2026-07）：任务服务端自动失败阈值，按游戏内整点 hourIndex
+   * （day*24+hour，与 `promiseBinding.boundAtGameHour` / `npcProactiveGrant`
+   * 冷却计算同一基准，注意与 `expiresAt`——一个自由格式 ISO 字符串、且在
+   * `applyNpcProactiveGrantGuard` 里另作"发放时机"用途——语义不同，不要混用）。
+   * 由注册表/起始任务定义显式设置（非 AI 每回合输出），当当前 hourIndex 超过
+   * 此值且任务仍为 active 时，见 `computeAutoFailedTaskIds`，由客户端在时间推进
+   * 时自动转 failed，不再完全依赖 AI 主动声明。null/undefined = 不自动失败。
+   */
+  autoFailAfterGameHour?: number | null;
 }
 
 export interface RelationshipStatePatch {
@@ -1119,6 +1130,35 @@ export function activateClaimableHiddenTasks(tasks: GameTaskV2[]): GameTaskV2[] 
       ? { ...t, status: t.claimMode === "auto" ? "active" : "available" }
       : t;
   });
+}
+
+/**
+ * G3（玩法改良，2026-07）：服务端兜底判定——`active` 任务若设置了
+ * `autoFailAfterGameHour` 且当前游戏内 hourIndex（day*24+hour）已超过该阈值，
+ * 自动转 `failed`，不再完全依赖 AI 在 `task_updates` 里主动声明失败。
+ *
+ * 纯函数，不做 IO；调用方（useGameStore 的 `applyGameTimeFromResolvedTurn`）
+ * 负责在游戏时间推进后调用并把结果写回 state。只处理这一类兜底转移，不影响
+ * AI 主动声明的 completed/failed（那些走既有 `applyTaskUpdateToTask` 路径）。
+ */
+export function computeAutoFailedTaskIds(tasks: GameTaskV2[], currentGameHourIndex: number): string[] {
+  if (!Array.isArray(tasks) || tasks.length === 0) return [];
+  if (!Number.isFinite(currentGameHourIndex)) return [];
+  const out: string[] = [];
+  for (const t of tasks) {
+    if (!t || t.status !== "active") continue;
+    const threshold = t.autoFailAfterGameHour;
+    if (typeof threshold !== "number" || !Number.isFinite(threshold)) continue;
+    if (currentGameHourIndex > threshold) out.push(t.id);
+  }
+  return out;
+}
+
+/** 便捷封装：直接返回应用自动失败判定后的任务数组（未命中的任务原样返回，保持引用不变）。 */
+export function applyAutoFailedTasks(tasks: GameTaskV2[], currentGameHourIndex: number): GameTaskV2[] {
+  const failedIds = new Set(computeAutoFailedTaskIds(tasks, currentGameHourIndex));
+  if (failedIds.size === 0) return tasks;
+  return tasks.map((t) => (failedIds.has(t.id) ? { ...t, status: "failed" as const } : t));
 }
 
 function parseSignedInt(v: string): number | null {

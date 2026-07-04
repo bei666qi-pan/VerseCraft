@@ -152,6 +152,7 @@ jobs:
           BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run benchmark:chat:mock
           BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:chat-quality:mock
           BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:narrative-safety:mock
+          pnpm run eval:npc-consistency:mock
           kill "$mock_server_pid" 2>/dev/null || true
           wait "$mock_server_pid" 2>/dev/null || true
           trap - EXIT
@@ -180,6 +181,7 @@ jobs:
             .runtime-data/chat-benchmark-mock.json
             .runtime-data/eval-chat-quality-mock.json
             .runtime-data/eval-narrative-safety-mock.json
+            .runtime-data/eval-npc-consistency-mock.json
             .runtime-data/mock-next.log
 
   narrative-safety-mock-gate:
@@ -350,4 +352,18 @@ jobs:
             .runtime-data/live-chat-benchmark.json
             .runtime-data/live-chat-quality-eval.json
             .runtime-data/live-narrative-safety-eval.json
+
+  # T9（技术改良，2026-07）：此前 CI 从未验证过 Dockerfile 的可构建性——生产部署
+  # 完全依赖 Coolify 在部署时才第一次 `docker build`，构建失败要等到那时才发现。
+  # 本 job 只做 `docker build`（不 push、不需要任何密钥，见 Dockerfile 本身也没有
+  # 要求 DATABASE_URL/AUTH_SECRET 之类的 build ARG），验证镜像三阶段构建本身是否
+  # 成功，独立于其它 job、不阻塞其它验证的反馈速度。
+  docker-build:
+    name: docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production Docker image (no push)
+        run: docker build -t versecraft:ci-verify .
             .runtime-data/live-chat-next.log

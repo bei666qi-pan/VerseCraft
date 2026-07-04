@@ -202,6 +202,7 @@ export function MobileCodexPanel({
   dynamicNpcStates,
   mainThreatByFloor,
   playerLocation,
+  memorySpine,
 }: MobileCodexPanelProps) {
   const currentFloor = useMemo(() => resolveMobileCodexCurrentFloor(playerLocation), [playerLocation]);
   const floorLabel = formatMobileCodexFloorLabel(currentFloor);
@@ -234,7 +235,7 @@ export function MobileCodexPanel({
   const selectedIndex = selectedSlot ? Math.max(0, floorSlots.findIndex((slot) => slot.id === selectedSlot.id)) : 0;
   const progressWidth =
     floorSlots.length > 0 ? Math.max(18, ((selectedIndex + 1) / floorSlots.length) * 100) : 0;
-  const detail = selectedSlot ? buildMobileCodexDetail(codex, selectedSlot, { dynamicNpcStates }) : null;
+  const detail = selectedSlot ? buildMobileCodexDetail(codex, selectedSlot, { dynamicNpcStates, memorySpine }) : null;
   const introTitle = selectedSlot?.type === "anomaly" ? "异常简介" : "人物简介";
   const countPrefix = `${floorLabel}${floorLabel.endsWith("F") ? "" : "层"}已识别人物`;
 
@@ -329,6 +330,14 @@ export function MobileCodexPanel({
               >
                 {detail.relationship}
               </DetailBlock>
+              {detail.memories ? (
+                <>
+                  <DetailDivider />
+                  <DetailBlock icon="book" title="记忆片段" lines={3} scrollable testId="mobile-codex-memories">
+                    {detail.memories}
+                  </DetailBlock>
+                </>
+              ) : null}
             </article>
           ) : null}
         </>

@@ -3,9 +3,8 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { Redis } from "@upstash/redis";
-import { sql, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { userSessions } from "@/db/schema";
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result;
@@ -16,6 +15,10 @@ import { insertAnalyticsEventIdempotent } from "@/lib/analytics/repository";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
 import { mergeOnlineActorKeys, type MergedOnlineBreakdown } from "@/lib/presence/mergeOnlineActorKeys";
 import { ONLINE_WINDOW_MS, ONLINE_WINDOW_SECONDS } from "@/lib/presence/onlineWindow";
+import {
+  touchActorSessionsLastSeenByGuestId,
+  touchActorSessionsLastSeenByUserId,
+} from "@/lib/presence/actorRollupUpsert";
 
 const ACTIVE_USERS_KEY = "active_users";
 
@@ -43,23 +46,8 @@ function getRedis(): ReturnType<typeof Redis.fromEnv> | null {
   }
 }
 
-async function touchUserSessionsLastSeenByUserId(userId: string): Promise<void> {
-  const t = new Date();
-  await db
-    .update(userSessions)
-    .set({ lastSeenAt: t, updatedAt: t })
-    .where(eq(userSessions.userId, userId));
-}
-
-async function touchGuestSessionsLastSeenByGuestId(guestId: string): Promise<void> {
-  await db.execute(sql`
-    UPDATE guest_sessions
-    SET
-      last_seen_at = (CURRENT_TIMESTAMP),
-      updated_at = (CURRENT_TIMESTAMP)
-    WHERE guest_id = ${guestId}
-  `);
-}
+// T8 方案B（2026-07，下线旧表）：markUserActive 的 DB 侧"刷新 last_seen_at"职责
+// 已从 user_sessions/guest_sessions 迁到 actor_sessions（见 actorRollupUpsert.ts）。
 
 export async function markUserActive(userId: string): Promise<void> {
   if (!userId) return;
@@ -69,21 +57,21 @@ export async function markUserActive(userId: string): Promise<void> {
   if (isGuestKey) {
     const gid = userId.slice(2);
     if (gid) {
-      void touchGuestSessionsLastSeenByGuestId(gid).catch((err) => {
+      void touchActorSessionsLastSeenByGuestId(gid).catch((err) => {
         if (isPostgresUnavailableError(err)) {
           warnOptionalPostgresUnavailableOnce("presence.touchGuest");
           return;
         }
-        console.error("[presence] touch guest_sessions last_seen failed", err);
+        console.error("[presence] touch actor_sessions (guest) last_seen failed", err);
       });
     }
   } else {
-    void touchUserSessionsLastSeenByUserId(userId).catch((err) => {
+    void touchActorSessionsLastSeenByUserId(userId).catch((err) => {
       if (isPostgresUnavailableError(err)) {
         warnOptionalPostgresUnavailableOnce("presence.touchUser");
         return;
       }
-      console.error("[presence] touch user_sessions last_seen failed", err);
+      console.error("[presence] touch actor_sessions (user) last_seen failed", err);
     });
   }
 
@@ -175,6 +163,11 @@ export type OnlinePresenceReport = {
   mergedBreakdown: MergedOnlineBreakdown;
 };
 
+/**
+ * T8 方案B（2026-07，旧表已下线）：在线窗口读取统一走 `actor_sessions`。
+ * `user_sessions` / `guest_sessions` 已不再从应用层任何路径读写（物理表未删除，
+ * 只是应用代码完全不碰了），`actor_sessions` 现在是唯一的会话表。
+ */
 async function loadDbOnlineActorKeysAndSessionCounts(): Promise<{
   dbUserIds: string[];
   dbGuestKeys: string[];
@@ -182,36 +175,36 @@ async function loadDbOnlineActorKeysAndSessionCounts(): Promise<{
   onlineGuestSessionCount: number;
 }> {
   const sec = ONLINE_WINDOW_SECONDS;
-  const [userQ, guestQ, countQ] = await Promise.all([
+  const [actorQ, countQ] = await Promise.all([
     db.execute(sql`
-      SELECT user_id::text AS "userId" FROM user_sessions
-      WHERE user_id IS NOT NULL
-        AND last_seen_at >= (NOW() - (${sec}::int * interval '1 second'))
-      GROUP BY user_id
-    `),
-    db.execute(sql`
-      SELECT guest_id::text AS "guestId" FROM guest_sessions
+      SELECT actor_type AS "actorType", user_id::text AS "userId", guest_id::text AS "guestId"
+      FROM actor_sessions
       WHERE last_seen_at >= (NOW() - (${sec}::int * interval '1 second'))
-      GROUP BY guest_id
+      GROUP BY actor_type, user_id, guest_id
     `),
     db.execute(sql`
       SELECT
         (SELECT COUNT(*)::int
-         FROM user_sessions
-         WHERE last_seen_at >= (NOW() - (${sec}::int * interval '1 second'))
+         FROM actor_sessions
+         WHERE actor_type = 'user'
+           AND last_seen_at >= (NOW() - (${sec}::int * interval '1 second'))
         ) AS "activeUserSessions",
         (SELECT COUNT(*)::int
-         FROM guest_sessions
-         WHERE last_seen_at >= (NOW() - (${sec}::int * interval '1 second'))
+         FROM actor_sessions
+         WHERE actor_type = 'guest'
+           AND last_seen_at >= (NOW() - (${sec}::int * interval '1 second'))
         ) AS "activeGuestSessions"
     `),
   ]);
-  const userRows = rowsOf(userQ);
-  const gRows = rowsOf(guestQ);
+  const actorRows = rowsOf(actorQ);
   const countRow = rowsOf(countQ)[0] ?? {};
 
-  const dbUserIds = userRows.map((r) => String(r.userId ?? "")).filter(Boolean);
-  const dbGuestKeys = gRows
+  const dbUserIds = actorRows
+    .filter((r) => r.actorType === "user")
+    .map((r) => String(r.userId ?? ""))
+    .filter(Boolean);
+  const dbGuestKeys = actorRows
+    .filter((r) => r.actorType === "guest")
     .map((r) => (r.guestId ? `g:${String(r.guestId)}` : ""))
     .filter(Boolean);
 

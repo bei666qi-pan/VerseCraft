@@ -16,10 +16,14 @@ export async function GET() {
   if (!guard.ok) return guard.response;
 
   try {
+    const [recent, observability] = await Promise.all([
+      listRecentAiRoutingReports(),
+      listRecentAiObservability(),
+    ]);
     return adminJson(
       adminOk({
-        recent: listRecentAiRoutingReports(),
-        observability: listRecentAiObservability(),
+        recent,
+        observability,
         modelCircuits: snapshotModelCircuits(),
         narrativeSafety: getNarrativeSafetyTelemetrySummary(getNarrativeSafetyRuntimeConfig()),
       }),

@@ -12,8 +12,9 @@ export const DURATION_UNIT_SECONDS = "SECONDS" as const;
 export const DURATION_DB_FIELD_UNITS = {
   "users.playTime": DURATION_UNIT_SECONDS,
   "users.todayPlayTime": DURATION_UNIT_SECONDS,
-  "user_sessions.total_play_duration_sec": DURATION_UNIT_SECONDS,
-  "user_daily_tokens.daily_play_duration_sec": DURATION_UNIT_SECONDS,
+  // T8 方案B（2026-07）：user_sessions/user_daily_tokens 已下线，字段等价物迁到 actor_sessions/actor_daily_tokens。
+  "actor_sessions.active_play_sec": DURATION_UNIT_SECONDS,
+  "actor_daily_tokens.active_play_sec": DURATION_UNIT_SECONDS,
   "admin_metrics_daily.total_play_duration_sec": DURATION_UNIT_SECONDS,
 } as const;
 

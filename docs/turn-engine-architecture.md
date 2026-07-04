@@ -208,7 +208,7 @@ void pending;
 
 1. `turnExecutionContext.lane` 是 observer，不改变 pipeline 行为。
 2. `computePostNarrativeDelta` 仍从 `dmRecord` 反向派生 delta（而不是先产 delta 再渲叙事）。
-3. `EpistemicFilter` 没有回接进 prompt 组装，只用于 validator 输入。
+3. ~~`EpistemicFilter` 没有回接进 prompt 组装，只用于 validator 输入。~~ **【2026-07 更新：此条已过时】** 经代码核查，`route.ts` 中 `actorEpistemicFilter`（由 `buildEpistemicInput` 产生的 Phase-3 typed `EpistemicFilterResult`）已经通过 `buildEpistemicPromptContext(actorEpistemicFilter, ...)` 生成 `epistemicPromptContext.promptBlock`，并经 `dynamicSuffixFull` 真正进入发给主模型的 prompt（`route.ts:2012-2149`）；legacy 的 `buildActorScopedEpistemicContext` 输出（`memoryBlock`）在同一路径里被显式清空（`route.ts:1876`），只保留其 `.metrics` 做 telemetry 对照。`src/lib/turnEngine/epistemic/promptContext.ts` 里 `buildEpistemicPromptContext` 只从 `scenePublicFacts`/`actorScopedFacts` 取内容，`dmOnlyFacts`/`playerOnlyFacts` 只暴露 id（用于告诉模型"禁止使用"），并有端到端回归测试 `promptContext.test.ts`（"dm-only facts are blocked by id and never appear in the prompt block" 等 7 例，均通过）。**新的、更准确的关注点**：`runtimePackets`（`buildRuntimeContextPackets`，`src/lib/playRealtime/runtimeContextPackets.ts`，约 30+ 个独立 packet builder：floor lore / NPC arc / cycle time / threat / weapon / worldview 等）是一条与 typed epistemic filter **并行的独立内容通道**，尚未逐个审计是否每个 packet 都严格遵守认知边界——这是真正值得下一轮排查的点，而不是"EpistemicFilter 未接回 prompt"本身。
 4. `applyNpcConsistencyPostGeneration` 的改写发生在 `validateNarrative` 之前，因此 validator 只能桥接 telemetry，而不是接管它的改写。
 5. `controlPreflightBudget.contract.test.ts` / `chatRouteContract.test.ts` 是**按源码 grep 快照的契约测试**，当 route.ts 继续瘦身时需要把 grep 范围同步迁移（当前已支持在 `turnEngine/preflight.ts` + `turnEngine/chatPerf.ts` 中查找）。
 
@@ -244,7 +244,7 @@ void pending;
 以下顺序按"收益 / 风险比"，是当前架构**偏离目标仍然最多**的地方：
 
 1. **lane 决策真正产生副作用**：`FAST` 跳过 B1/equipment guard + runtime lore retrieval；`REVEAL` 强制走 `applyNpcConsistencyPostGeneration` + `validateNarrative`。否则抽象层永远停在 observer。
-2. **`EpistemicFilter` 接回 prompt 组装**：让普通 NPC 的 prompt 只能看 `scenePublicFacts + actorScopedFacts`，DM-only / playerOnly 严禁回注。
+2. ~~`EpistemicFilter` 接回 prompt 组装~~ **【2026-07 已确认完成，见第 7 节第 3 条】**。新的高优先级项：**审计 `runtimePackets`（约 30+ 个 packet builder）是否都遵守认知边界**——这条内容通道独立于 typed `EpistemicFilterResult`，目前没有统一的"谁能看见什么"审计记录，值得先做一次分类盘点（哪些 packet 是场景公共信息、哪些可能夹带只有 DM/特定 NPC 该知道的内容），再决定是否需要接入统一过滤。
 3. **把 `validateNarrative.narrativeOverride` 的 fallback 粒度做细**：目前"安全叙事"过粗；应保留原 DM 的 state delta 但只替换 narrative 字符串。
 4. **把 `commitTurn` 真正作为 envelope 真相源**：让 `resolveDmTurn` 读 delta 再生成 envelope，而不是反过来。
 5. **统一 telemetry 入口**：把 `epistemicDebugLog` 和 `recordGenericAnalyticsEvent` 合并为一个 thin wrapper，避免事件分散。

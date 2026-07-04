@@ -1,5 +1,7 @@
 import type { RetrievalCandidate, RetrievalPlan, RetrievalResult, RuntimeLoreRequest } from "../types";
 import { WORLD_KNOWLEDGE_MAX_DB_ROUND_TRIPS, WORLD_KNOWLEDGE_MAX_RETRIEVED_FACTS } from "../constants";
+import { envBoolean, envNumber } from "@/lib/config/envRaw";
+import { vectorSearch } from "./vectorSearch";
 
 type ChunkRow = {
   chunk_id: number;
@@ -169,8 +171,32 @@ export async function retrieveWorldKnowledge(args: {
       allCandidates.push(...ret.rows.map((r, idx) => mapRowToCandidate(r, "fts", Math.max(20, 70 - idx))));
     }
 
-    // 4) vector adapter (phase-3: interface reserved, runtime no-op by default)
+    // 4) vector adapter（T4，2026-07）：默认开启（AI_ENABLE_WORLD_VECTOR_RETRIEVAL 默认 true，
+    // 显式设为 "0"/"false" 可关闭）。打开后会在这次检索请求里额外发一次在线 embeddings 调用
+    // （给玩家当前输入生成 query embedding），严格控制在 embedTimeoutMs 内，任何失败/超时都
+    // 直接静默跳过，不影响 exact/tag/fts 三层——不允许拖慢 /api/chat 首包
+    // （CLAUDE.md 5.4 性能预算）。上线前必须用真实网关实测延迟（见
+    // scripts/verify-embedding-dimension.ts + AI_WORLD_VECTOR_QUERY_EMBED_TIMEOUT_MS 调优）。
     used.vectorCount = 0;
+    const vectorRetrievalEnabled = envBoolean("AI_ENABLE_WORLD_VECTOR_RETRIEVAL", true);
+    const queryText = args.plan.ftsQuery || args.input.latestUserInput || "";
+    if (vectorRetrievalEnabled && queryText.trim() && dbRoundTrips < dbRoundTripLimit) {
+      const embedTimeoutMs = Math.max(100, Math.min(2000, envNumber("AI_WORLD_VECTOR_QUERY_EMBED_TIMEOUT_MS", 300)));
+      try {
+        const { embedText } = await import("@/lib/ai/embeddings/embedText");
+        const embedded = await embedText(queryText, embedTimeoutMs);
+        if (embedded.ok) {
+          dbRoundTrips += 1;
+          const vectorCandidates = await vectorSearch({
+            vectorQuery: { embedding: embedded.vector, minSimilarity: 0.5 },
+          });
+          used.vectorCount = vectorCandidates.length;
+          allCandidates.push(...vectorCandidates);
+        }
+      } catch {
+        // 静默降级：向量层从来不是必需层，exact/tag/fts 三层已经能撑住基本可用性。
+      }
+    }
 
     const deduped = dedupeCandidates(allCandidates);
     return {

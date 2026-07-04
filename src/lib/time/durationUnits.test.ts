@@ -12,8 +12,8 @@ test("duration DB fields are explicitly seconds", () => {
   assert.deepEqual(DURATION_DB_FIELD_UNITS, {
     "users.playTime": "SECONDS",
     "users.todayPlayTime": "SECONDS",
-    "user_sessions.total_play_duration_sec": "SECONDS",
-    "user_daily_tokens.daily_play_duration_sec": "SECONDS",
+    "actor_sessions.active_play_sec": "SECONDS",
+    "actor_daily_tokens.active_play_sec": "SECONDS",
     "admin_metrics_daily.total_play_duration_sec": "SECONDS",
   });
 });

@@ -48,6 +48,7 @@ import type {
 import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString } from "@/lib/ai/validation/structuredOutput";
+import { buildPlayerDmJsonSchemaRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
 
 const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
 
@@ -138,7 +139,8 @@ function buildPlayerStreamBody(
   streamIncludeUsage: boolean,
   requestJsonObject: boolean,
   maxTokensOverride?: number,
-  extraBody?: Record<string, unknown>
+  extraBody?: Record<string, unknown>,
+  responseFormatJsonSchema?: NormalizedCompletionRequest["responseFormatJsonSchema"]
 ): NormalizedCompletionRequest {
   const stream = binding.stream && enableStream;
   return {
@@ -150,6 +152,7 @@ function buildPlayerStreamBody(
     responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: stream && streamIncludeUsage,
     ...(extraBody && Object.keys(extraBody).length > 0 ? { extraBody } : {}),
+    ...(responseFormatJsonSchema ? { responseFormatJsonSchema } : {}),
   };
 }
 
@@ -317,6 +320,12 @@ export async function executePlayerChatStream(params: {
       env.playerChatExtraBody && Object.keys(env.playerChatExtraBody).length > 0
         ? { ...(env.gatewayExtraBody ?? {}), ...env.playerChatExtraBody }
         : env.gatewayExtraBody;
+    // T2（2026-07）：仅在非 fast-lane 且显式开启 AI_GATEWAY_JSON_SCHEMA_ENABLED 时
+    // 附带 responseFormatJsonSchema。fast lane 保持原有轻量 json_object/relax 行为，
+    // 避免给延迟敏感路径新增 schema 预处理开销（见 openai 文档：新 schema 首次请求
+    // 有预处理延迟）。
+    const useJsonSchemaForThisTurn =
+      env.aiGatewayJsonSchemaEnabled && !(isFastLane && env.playerChatFastLaneRelaxResponseFormat);
     const body = buildPlayerStreamBody(
       gatewayModel,
       params.messages,
@@ -325,7 +334,8 @@ export async function executePlayerChatStream(params: {
       env.playerChatStreamIncludeUsage,
       !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
       playerChatMaxTokens,
-      playerChatExtraBody
+      playerChatExtraBody,
+      useJsonSchemaForThisTurn ? buildPlayerDmJsonSchemaRequest() : undefined
     );
     const bodyBuildMs = Math.max(0, Date.now() - bodyT0);
     const initT0 = Date.now();

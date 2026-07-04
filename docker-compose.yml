@@ -1,6 +1,12 @@
 services:
   postgres:
-    image: postgres:15-alpine
+    # T4（2026-07）：切到 pgvector 镜像，让本地/自建 Postgres 默认就有 `CREATE EXTENSION vector`
+    # 能力（`src/db/ensureSchema.ts` 已经会自动探测并执行该语句）。可用 VERSECRAFT_PG_IMAGE 覆盖。
+    # 版本用 pg16——与 `scripts/start-local-postgres.mjs` 默认值、
+    # `docs/world-knowledge-rag-operations.md` 里已经写好的推荐值保持一致。
+    # 注意：这只影响本 docker-compose（profiles: local）；生产环境如果用 Coolify 管理的独立
+    # Postgres 服务，不受这里改动，需要用户自行在生产库上确认/安装 pgvector 扩展。
+    image: ${VERSECRAFT_PG_IMAGE:-pgvector/pgvector:pg16}
     container_name: versecraft-postgres
     restart: unless-stopped
     profiles: ["local"]

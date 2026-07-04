@@ -10,4 +10,5 @@ export {
   resolveAiEnv,
   resolveGatewayPrimaryBinding,
   resolveDeepSeekLegacyConfig,
+  resolveEmbeddingBinding,
 } from "@/lib/ai/config/envCore";

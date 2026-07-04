@@ -149,6 +149,12 @@ import {
 import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTurn";
 import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
+import { buildNoEndingTelemetryBlockers } from "@/lib/play/noEndingTelemetryBlockers";
+import {
+  dmIndicatesRecoverableModelRateLimit,
+  isLocalRateLimitedPayload,
+  isRecoverableModelRateLimit,
+} from "@/lib/play/chatRateLimitRecovery";
 import { getHiddenNpcCombatProfile } from "@/lib/combat/npcCombatProfiles";
 import {
   buildNpcCombatPowerDisplay,
@@ -366,56 +372,6 @@ function clearPendingChatQueueAction(): void {
   }
 }
 
-function isRecoverableModelRateLimit(args: {
-  status?: number;
-  upstreamStatus?: number;
-  code?: string;
-  reason?: string;
-  body?: string;
-}): boolean {
-  const code = String(args.code ?? "").toLowerCase();
-  const reason = String(args.reason ?? "").toLowerCase();
-  const body = String(args.body ?? "").toLowerCase();
-  if (isLocalRateLimitedPayload({ status: args.status, code, reason, body })) return false;
-  if (/risk_control|queue_full|quota|auth|forbidden|banned|invalid_ticket/.test(`${code} ${reason} ${body}`)) {
-    return false;
-  }
-  if (args.upstreamStatus === 429 || args.upstreamStatus === 503) return true;
-  if (args.status === 503) return true;
-  return /rate[_-]?limit|too many requests|upstream_rate|overloaded|capacity/.test(`${code} ${reason} ${body}`);
-}
-
-function isLocalRateLimitedPayload(args: { status?: number; code?: string; reason?: string; body?: string }): boolean {
-  const haystack = [args.code, args.reason, args.body].filter(Boolean).join(" ").toLowerCase();
-  return (
-    args.status === 429 &&
-    /\brate_limited\b/.test(haystack) &&
-    !/\b(upstream|upstream_rate|queue_full|risk_control|capacity|overloaded)\b/.test(haystack)
-  );
-}
-
-function dmIndicatesRecoverableModelRateLimit(dm: unknown): boolean {
-  if (!dm || typeof dm !== "object" || Array.isArray(dm)) return false;
-  const meta = (dm as { security_meta?: unknown }).security_meta;
-  const internal = (dm as { internal_meta?: unknown }).internal_meta;
-  for (const source of [meta, internal]) {
-    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
-    const record = source as Record<string, unknown>;
-    if (
-      isRecoverableModelRateLimit({
-        status: typeof record.kind === "string" && record.kind === "site_busy" ? 503 : undefined,
-        upstreamStatus: typeof record.upstream_status === "number" ? record.upstream_status : undefined,
-        code: typeof record.upstream_code === "string" ? record.upstream_code : undefined,
-        reason: typeof record.reason === "string" ? record.reason : undefined,
-        body: typeof record.kind === "string" ? record.kind : undefined,
-      })
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function shouldShowComplianceHintForDm(dm: unknown, isOpeningSystemRequest: boolean): boolean {
   return shouldShowComplianceHintForDmMeta(dm, isOpeningSystemRequest);
 }
@@ -514,31 +470,6 @@ function scrollDocumentToTop(): void {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-function computeTelemetrySurvivalHours(time: { day?: number | null; hour?: number | null } | null | undefined): number {
-  const day = Number(time?.day ?? 0);
-  const hour = Number(time?.hour ?? 0);
-  return Math.max(0, Math.trunc(Number.isFinite(day) ? day : 0)) * 24 +
-    Math.max(0, Math.trunc(Number.isFinite(hour) ? hour : 0));
-}
-
-function buildNoEndingTelemetryBlockers(state: unknown, resolvedTurn?: unknown): string[] {
-  const s = (state ?? {}) as {
-    stats?: { sanity?: number | null };
-    time?: { day?: number | null; hour?: number | null };
-    escapeMainline?: { stage?: unknown };
-  };
-  const blockers: string[] = [];
-  if (Number(s.stats?.sanity ?? 0) > 0) blockers.push("sanity_above_zero");
-  if (!Boolean((resolvedTurn as { is_death?: unknown } | null)?.is_death)) blockers.push("resolved_turn_not_death");
-  const escapeStage = String(s.escapeMainline?.stage ?? "unknown");
-  if (!escapeStage.startsWith("escaped_")) blockers.push("escape_stage_not_terminal");
-  if (computeTelemetrySurvivalHours(s.time) < 240 && Number(s.time?.day ?? 0) < 10) {
-    blockers.push("doom_time_not_reached");
-  }
-  if (blockers.length === 0) blockers.push("no_ending_conditions_met");
-  return blockers;
-}
-
 function PlayContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -614,6 +545,7 @@ function PlayContent() {
   const setActiveMenu = useGameStore((s) => s.setActiveMenu);
   const recordChapterTurn = useGameStore((s) => s.recordChapterTurn);
   const codex = useGameStore((s) => s.codex ?? {});
+  const memorySpine = useGameStore((s) => s.memorySpine ?? null);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
@@ -5053,6 +4985,7 @@ function PlayContent() {
               dynamicNpcStates={dynamicNpcStates}
               mainThreatByFloor={mainThreatByFloor}
               playerLocation={playerLocation}
+              memorySpine={memorySpine}
             />
           ) : !isOverlayPanelActive && isSettingsPanelActive ? (
             <MobileSettingsPanel
@@ -5289,6 +5222,7 @@ function PlayContent() {
                   dynamicNpcStates={dynamicNpcStates}
                   mainThreatByFloor={mainThreatByFloor}
                   playerLocation={playerLocation}
+                  memorySpine={memorySpine}
                 />
               ) : isSettingsPanelActive ? (
                 <MobileSettingsPanel
