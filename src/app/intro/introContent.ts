@@ -1,11 +1,13 @@
+import { assetUrl } from "@/lib/config/publicRuntime";
+
 export const INTRO_BRAND = "VerseCraft";
 export const INTRO_PAGE_TITLE = "选择世界观";
 export const INTRO_PAGE_SUBTITLE = "AI 悬疑互动小说";
 export const INTRO_CTA = "进入公寓";
 export const INTRO_DISABLED_CTA = "世界观筹备中";
 
-export const DARKMOON_CARD_IMAGE =
-  "/assets/intro/darkmoon-card-4547bc8069598bf27bca2e919033e05f.jpg";
+const DARKMOON_CARD_IMAGE_BASE = assetUrl("/assets/intro/darkmoon-card-4547bc8069598bf27bca2e919033e05f");
+export const DARKMOON_CARD_IMAGE = `${DARKMOON_CARD_IMAGE_BASE}.jpg`;
 
 export type IntroWorldSlide = {
   id: string;
@@ -13,6 +15,8 @@ export type IntroWorldSlide = {
   subtitle: string;
   available: boolean;
   imageSrc?: string;
+  /** 不含扩展名的路径前缀，用于拼出 avif/webp 多宽度档位。见 scripts/optimizeStaticImages.ts。 */
+  imageBasePath?: string;
   imageAlt?: string;
   introTitle: string;
   introBody: readonly string[];
@@ -25,6 +29,7 @@ export const INTRO_WORLD_SLIDES = [
     subtitle: "异常公寓生存叙事",
     available: true,
     imageSrc: DARKMOON_CARD_IMAGE,
+    imageBasePath: DARKMOON_CARD_IMAGE_BASE,
     imageAlt: "序章暗月世界观卡片",
     introTitle: "序章 · 暗月",
     introBody: [

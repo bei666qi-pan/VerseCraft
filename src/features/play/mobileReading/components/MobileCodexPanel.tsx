@@ -71,13 +71,28 @@ function CodexCard({
     >
       <div className="absolute inset-0 overflow-hidden rounded-[13px]">
         {portrait ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={portrait.src}
-            alt={portrait.alt}
-            className="h-full w-full object-cover"
-            style={{ objectPosition: portrait.objectPosition ?? "center top" }}
-          />
+          <picture>
+            {portrait.basePath ? (
+              <>
+                <source
+                  type="image/avif"
+                  srcSet={`${portrait.basePath}@1x.avif 1x, ${portrait.basePath}@2x.avif 2x, ${portrait.basePath}@3x.avif 3x`}
+                />
+                <source
+                  type="image/webp"
+                  srcSet={`${portrait.basePath}@1x.webp 1x, ${portrait.basePath}@2x.webp 2x, ${portrait.basePath}@3x.webp 3x`}
+                />
+              </>
+            ) : null}
+            <img
+              src={portrait.src}
+              alt={portrait.alt}
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+              style={{ objectPosition: portrait.objectPosition ?? "center top" }}
+            />
+          </picture>
         ) : showUnknownPortrait ? (
           <CodexUnknownPortrait />
         ) : (

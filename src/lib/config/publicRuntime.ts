@@ -16,6 +16,8 @@ import {
 export interface PublicRuntimeConfig {
   buildId: string | null;
   surveyUrl: string | null;
+  /** 图片等静态资源的 CDN 基础域名（不含末尾斜杠），未配置时用本地 /assets 路径。 */
+  assetCdnBaseUrl: string | null;
   compliance: {
     productName: string | null;
     operatingSubject: string | null;
@@ -41,6 +43,10 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
   const id = process.env.NEXT_PUBLIC_BUILD_ID?.trim();
   const surveyUrlRaw = process.env.NEXT_PUBLIC_SURVEY_URL?.trim();
   const surveyUrl = surveyUrlRaw && surveyUrlRaw.length > 0 ? surveyUrlRaw : null;
+
+  const assetCdnBaseUrlRaw = process.env.NEXT_PUBLIC_ASSET_CDN_BASE_URL?.trim();
+  const assetCdnBaseUrl =
+    assetCdnBaseUrlRaw && assetCdnBaseUrlRaw.length > 0 ? assetCdnBaseUrlRaw.replace(/\/+$/, "") : null;
 
   const productNameRaw = process.env.NEXT_PUBLIC_PRODUCT_NAME?.trim();
   const productName = productNameRaw && productNameRaw.length > 0 ? productNameRaw : null;
@@ -89,6 +95,7 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
   return {
     buildId: id && id.length > 0 ? id : null,
     surveyUrl,
+    assetCdnBaseUrl,
     compliance: {
       productName,
       operatingSubject,
@@ -106,4 +113,17 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
       isTestPeriod,
     },
   };
+}
+
+/**
+ * 把一个本地 `/assets/...` 路径改写成 CDN 域名下的路径（未配置 NEXT_PUBLIC_ASSET_CDN_BASE_URL 时原样返回，
+ * 本地开发和未接入 CDN 的环境都直接落回本地静态资源）。
+ * CDN 源站 bucket 内对象没有 `assets/` 前缀（例如 `npc-avatars/A-001.png`，见
+ * scripts/deployAssetsToTos.mjs），所以拼 CDN 路径时要去掉本地约定里的 `/assets` 段。
+ */
+export function assetUrl(path: string): string {
+  const base = getPublicRuntimeConfig().assetCdnBaseUrl;
+  if (!base) return path;
+  const relative = path.replace(/^\/assets/, "");
+  return `${base}${relative}`;
 }

@@ -70,15 +70,31 @@ function WorldCard({
       aria-label={slide.title}
     >
       {slide.imageSrc ? (
-        // Intentionally use a plain /assets/*.jpg path so the CDN suffix cache rule applies.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={slide.imageSrc}
-          alt={slide.imageAlt ?? slide.title}
-          className="h-full w-full object-cover"
-          decoding="async"
-          draggable={false}
-        />
+        // Intentionally use plain /assets/* paths (not next/image's /_next/image proxy) so the
+        // CDN suffix cache rule applies to every format variant.
+        <picture>
+          {slide.imageBasePath ? (
+            <>
+              <source
+                type="image/avif"
+                srcSet={`${slide.imageBasePath}-480w.avif 480w, ${slide.imageBasePath}-720w.avif 720w, ${slide.imageBasePath}-940w.avif 940w`}
+                sizes="(min-width: 1024px) 680px, 90vw"
+              />
+              <source
+                type="image/webp"
+                srcSet={`${slide.imageBasePath}-480w.webp 480w, ${slide.imageBasePath}-720w.webp 720w, ${slide.imageBasePath}-940w.webp 940w`}
+                sizes="(min-width: 1024px) 680px, 90vw"
+              />
+            </>
+          ) : null}
+          <img
+            src={slide.imageSrc}
+            alt={slide.imageAlt ?? slide.title}
+            className="h-full w-full object-cover"
+            decoding="async"
+            draggable={false}
+          />
+        </picture>
       ) : (
         <EmptyWorldCard isActive={isActive} />
       )}

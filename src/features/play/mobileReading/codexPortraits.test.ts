@@ -5,12 +5,14 @@ import { resolveCodexPortrait } from "./codexPortraits";
 test("mobile codex portrait resolver maps registry ids to CDN-cacheable static assets", () => {
   assert.deepEqual(resolveCodexPortrait("N-008"), {
     src: "/assets/npc-avatars/N-008.png",
+    basePath: "/assets/npc-avatars/N-008",
     alt: "电工老刘",
     objectPosition: "center top",
   });
 
   assert.deepEqual(resolveCodexPortrait("A-002"), {
     src: "/assets/npc-avatars/A-002.png",
+    basePath: "/assets/npc-avatars/A-002",
     alt: "无头猎犬",
     objectPosition: "center top",
   });

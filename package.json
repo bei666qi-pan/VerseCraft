@@ -83,6 +83,7 @@
     "embeddings:verify-dimension": "tsx scripts/verify-embedding-dimension.ts",
     "replay:phase3:e2e": "tsx scripts/replay-phase3-e2e.ts",
     "content:validate": "tsx scripts/validate-content-spec.ts",
+    "images:optimize": "tsx scripts/optimizeStaticImages.ts",
     "autoops:discover": "node scripts/autoops/discover.mjs",
     "autoops:sync-secrets": "node scripts/autoops/sync-github-secrets.mjs",
     "autoops:simulate": "node scripts/autoops/simulate-alert.mjs",
@@ -110,6 +111,7 @@
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.4",
+    "@volcengine/tos-sdk": "^2.9.1",
     "altcha": "^2.3.0",
     "altcha-lib": "^1.4.1",
     "bcryptjs": "^3.0.3",
@@ -141,6 +143,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "fast-check": "^4.7.0",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
