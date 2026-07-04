@@ -138,7 +138,7 @@ export const mobileReadingTheme = {
 
   bottomNav:
     "fixed bottom-0 left-1/2 z-40 box-border h-[var(--vc-mobile-bottom-nav-height)] w-full max-w-[480px] -translate-x-1/2 rounded-t-[28px] border border-b-0 border-[#d8d1c6] bg-[#fffdf8] px-7 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_24px_rgba(73,63,51,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] min-[420px]:px-9",
-  bottomNavGrid: "grid h-full grid-cols-4 items-end gap-1",
+  bottomNavGrid: "grid h-full grid-cols-5 items-end gap-1",
   bottomNavItem:
     "relative flex h-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-none text-[#164f4d] transition active:scale-95",
   bottomNavItemActive: "text-[#2f746a]",

@@ -962,7 +962,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "char_1f_stamp_leverage",
       title: "借到一枚“通行印章”",
-      desc: "从物业体系里拿到一次性的“许可”——不一定是明文的印章，也可以是口头放行。",
+      desc: "从欣蓝的登记口路径里换到一次性的“通行许可”——不一定是明文的印章，也可以是她一句不点破的放行。",
       type: "character",
       issuerId: "N-010",
       issuerName: "欣蓝",

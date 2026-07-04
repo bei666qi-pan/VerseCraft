@@ -239,6 +239,8 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
         "N-010": "觉得欣蓝握着半页自己念不出的名单",
         "N-018": "偶尔以物换提示，不信他免费",
         "N-001": "陈婆婆的警告让她绩效发抖——也是人性锚",
+        "N-013": "怕他嘴里的「剧本」会把自己也写成道具，却又下意识替他打圆场",
+        "N-007": "隔着楼层没怎么说过话，但认得出对方画里那种「没被选中」的眼神",
       },
       immutable_relationships: [
         "与麟泽（N-015）同守 B1 相位，冲突时听边界裁决",
@@ -426,7 +428,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里戏剧社 / 辩论写手：擅长把别人写进替身位。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "曾把主锚写进旧剧本当替身梗；循环后梗被同一权柄泡层兑现，羞耻与生存欲拧成诱导刃。",
+      "与叶合写同人阵草案时，曾为凑七人之数把主锚写进旧剧本当替身梗；循环后梗被同一权柄泡层兑现，羞耻与生存欲拧成诱导刃。",
     residualEchoToProtagonist:
       "见主锚会像看见自己写坏的台词活了——既想毁稿又想借主锚改结局。",
     whyNotImmediateAlly:
@@ -492,6 +494,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
         "N-010": "怕她收回路线许可让自己变弃子",
         "N-018": "诱导经济对手盘：互相抬价",
         "N-015": "边界冷脸让他收敛电梯话术",
+        "N-020": "知道她听得懂自己话里的破绽，却从没戳穿过，算欠她一次",
       },
       immutable_relationships: [
         "与叶（N-007）镜像草案羁绊，须 sibling 线对齐才可能互信并队",
@@ -510,7 +513,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     schoolIdentity: "耶里美术社：与枫不同班，却被绑进同一张同人阵草案。",
     wandererSubtype: ["apartment_wanderer", "school_wanderer", "residual_echo"],
     schoolWandererNote:
-      "循环后她被标定为镜像反制辅锚；同一权柄在轮廓层的残响让她对脸与线条异常敏感。",
+      "循环后她被标定为镜像反制辅锚；同一权柄在轮廓层的残响让她对脸与线条异常敏感——那条总被涂掉又浮现的线，正是她与枫合写同人阵草案时，替七人之数多描出的那个「替身」轮廓。",
     residualEchoToProtagonist:
       "主锚步态或虹膜会触发她保护欲违和——像旧草案上被涂掉又浮现的线。",
     whyNotImmediateAlly:
@@ -576,6 +579,7 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
         "N-018": "碎片换线索可以，但防他把她草案挂牌拍卖",
         "N-015": "边界冷硬让她安心——至少有人不让诱导上楼",
         "A-005": "器官拟态墙诱发面部认知漂移",
+        "N-020": "知道她替枫描补过场面，却从没提过草案的事，两人算心照不宣",
       },
       immutable_relationships: [
         "与枫（N-013）旧草案羁绊，主锚不可当挑拨工具",

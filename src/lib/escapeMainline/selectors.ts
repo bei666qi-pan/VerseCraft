@@ -1,4 +1,4 @@
-import type { EscapeMainlineState, EscapeCondition, EscapeConditionCode } from "./types";
+import type { EscapeMainlineState, EscapeCondition, EscapeConditionCode, EscapeStage } from "./types";
 
 function uniq(xs: string[], cap: number): string[] {
   const out: string[] = [];
@@ -52,6 +52,21 @@ export function getEscapeObjectiveSummary(state: EscapeMainlineState): {
                     : "继续推进出口主线。";
 
   return { stage, nextObjective, blockers };
+}
+
+/** 玩家可读的阶段短标签：给 UI 展示"我在出口主线上走到哪"，不暴露内部 stage 字面量。 */
+export function getEscapeStageLabel(stage: EscapeStage): string {
+  if (stage === "trapped") return "仍被困住";
+  if (stage === "aware_exit_exists") return "察觉出口";
+  if (stage === "route_fragmented") return "路线破碎";
+  if (stage === "conditions_known") return "条件已知";
+  if (stage === "conditions_partially_met") return "条件渐满";
+  if (stage === "final_window_open") return "窗口已开";
+  if (stage === "escaped_true") return "真正逃离";
+  if (stage === "escaped_costly") return "代价逃离";
+  if (stage === "escaped_false") return "假性逃离";
+  if (stage === "doomed") return "终焉";
+  return "推进中";
 }
 
 export function shouldSuppressDoomlineBecauseEscaped(state: EscapeMainlineState): boolean {

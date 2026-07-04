@@ -48,6 +48,7 @@ export function MobileBottomNav({
   onFocusStory,
   onOpenCodex,
   onOpenSettings,
+  onOpenTasks,
 }: MobileBottomNavProps) {
   const items: DockItem[] = [
     {
@@ -65,6 +66,15 @@ export function MobileBottomNav({
       testId: "bottom-nav-story",
       active: activeItem === "story",
       onClick: onFocusStory,
+    },
+    {
+      label: "任务",
+      ariaLabel: "打开任务",
+      icon: MobileReadingIcons.Tasks,
+      testId: "bottom-nav-tasks",
+      active: activeItem === "tasks",
+      disabled: !onOpenTasks,
+      onClick: onOpenTasks,
     },
     {
       label: "图鉴",

@@ -68,16 +68,44 @@ function buildTriggerHaystack(playerContext: string, taskTitles: string[]): stri
   return `${taskTrack}\n${proactive}\n${taskTitles.join("\n")}`.toLowerCase();
 }
 
+/**
+ * 纯 ASCII / 字母数字 / 点号 / 下划线组成的 needle（如 "B1"、"7F"、"route.preview"）
+ * 裸子串匹配误报率最高：会命中"B10F"里的"B1"或"seventeen"里的"seven"。
+ * 中文关键词不做此收紧——中文没有天然词边界，且实测误报率显著更低，收紧会破坏
+ * 既有触发信号（例如"边界"命中麟泽）。
+ */
+function isAsciiIdentifierNeedle(needle: string): boolean {
+  return /^[a-z0-9_.]+$/i.test(needle);
+}
+
+/** 要求 needle 左右邻字符不是字母/数字/下划线，避免命中被更长 token 吞掉的子串。 */
+function includesWithBoundary(haystackLower: string, needleLower: string): boolean {
+  let fromIndex = 0;
+  for (;;) {
+    const idx = haystackLower.indexOf(needleLower, fromIndex);
+    if (idx === -1) return false;
+    const before = idx > 0 ? haystackLower[idx - 1] : "";
+    const after = idx + needleLower.length < haystackLower.length ? haystackLower[idx + needleLower.length] : "";
+    const boundaryOk = !/[a-z0-9_]/i.test(before) && !/[a-z0-9_]/i.test(after);
+    if (boundaryOk) return true;
+    fromIndex = idx + 1;
+  }
+}
+
+function matchesNeedle(haystackLower: string, needle: string): boolean {
+  const n = needle.toLowerCase();
+  if (!n) return false;
+  if (isAsciiIdentifierNeedle(n)) return includesWithBoundary(haystackLower, n);
+  return haystackLower.includes(n);
+}
+
 function matchesAnyNeedle(haystack: string, needles: string[]): boolean {
-  return needles.some((n) => n && haystack.includes(n.toLowerCase()));
+  return needles.some((n) => matchesNeedle(haystack, n));
 }
 
 function matchesWorldFlags(flags: string[], needles: string[]): boolean {
   const lower = flags.map((f) => f.toLowerCase());
-  return needles.some((n) => {
-    const nn = n.toLowerCase();
-    return lower.some((f) => f.includes(nn));
-  });
+  return needles.some((n) => n && lower.some((f) => matchesNeedle(f, n)));
 }
 
 const PIVOT_FLAG_SUBSTRINGS = ["relink", "seven", "七锚", "旧阵", "old_array", "first_relink", "名册"];

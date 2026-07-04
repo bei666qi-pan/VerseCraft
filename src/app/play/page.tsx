@@ -28,6 +28,7 @@ import {
   MobileReadingShell,
   MobileSettingsPanel,
   MobileStoryViewport,
+  MobileTaskPanel,
   type MobileOptionsRegenStage,
 } from "@/features/play/mobileReading";
 import {
@@ -546,6 +547,7 @@ function PlayContent() {
   const recordChapterTurn = useGameStore((s) => s.recordChapterTurn);
   const codex = useGameStore((s) => s.codex ?? {});
   const memorySpine = useGameStore((s) => s.memorySpine ?? null);
+  const escapeMainlineStage = useGameStore((s) => s.escapeMainline?.stage ?? null);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
@@ -1009,6 +1011,12 @@ function PlayContent() {
   const hasFirstEffectiveActionRef = useRef(false);
 
   const isGuestDialogueExhausted = isGuest && dialogueCount >= 50;
+  // 游客临近 50 回合上限时的渐进提示（非阻断）：避免到达上限前毫无预警地撞上付费墙。
+  const guestTurnsRemaining = isGuest ? Math.max(0, 50 - dialogueCount) : null;
+  const guestTurnsRemainingHint =
+    guestTurnsRemaining !== null && guestTurnsRemaining > 0 && guestTurnsRemaining <= 10
+      ? `游客模式：还剩 ${guestTurnsRemaining} 次行动，之后需要注册才能继续`
+      : null;
   const endgameLocked = endgameState.active && !endgameState.awaitingEnding;
 
   const sanity = stats?.sanity ?? 0;
@@ -4825,15 +4833,16 @@ function PlayContent() {
     router.push("/settlement");
   }
 
-  const bottomNavActiveItem: "character" | "story" | "codex" | "settings" =
-    activeMenu === "character" || activeMenu === "codex" || activeMenu === "settings"
+  const bottomNavActiveItem: "character" | "story" | "codex" | "settings" | "tasks" =
+    activeMenu === "character" || activeMenu === "codex" || activeMenu === "settings" || activeMenu === "tasks"
       ? activeMenu
       : "story";
   const isCharacterPanelActive = activeMenu === "character";
   const isCodexPanelActive = activeMenu === "codex";
   const isSettingsPanelActive = activeMenu === "settings";
+  const isTasksPanelActive = activeMenu === "tasks";
   const isStoryPanelActive = activeMenu === null;
-  const isOverlayPanelActive = isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive;
+  const isOverlayPanelActive = isCharacterPanelActive || isCodexPanelActive || isSettingsPanelActive || isTasksPanelActive;
   const isReviewingChapter = chapterRuntime.isReviewing && isStoryPanelActive;
   const pendingChapterEnd = isStoryPanelActive ? chapterRuntime.pending : null;
   const chapterInteractionLocked = Boolean(pendingChapterEnd);
@@ -4912,6 +4921,12 @@ function PlayContent() {
     setActiveMenu("codex");
   }
 
+  function onOpenTasksNav() {
+    playUIClick();
+    setOptionsExpanded(false);
+    setActiveMenu("tasks");
+  }
+
   function onOpenSettingsNav() {
     playUIClick();
     setOptionsExpanded(false);
@@ -4978,6 +4993,7 @@ function PlayContent() {
               onUpgradeAttribute={(attr) => {
                 upgradeAttribute(attr);
               }}
+              escapeStage={escapeMainlineStage}
             />
           ) : !isOverlayPanelActive && isCodexPanelActive ? (
             <MobileCodexPanel
@@ -4986,6 +5002,13 @@ function PlayContent() {
               mainThreatByFloor={mainThreatByFloor}
               playerLocation={playerLocation}
               memorySpine={memorySpine}
+            />
+          ) : !isOverlayPanelActive && isTasksPanelActive ? (
+            <MobileTaskPanel
+              tasks={tasks}
+              originium={originium}
+              codex={codex}
+              onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
             />
           ) : !isOverlayPanelActive && isSettingsPanelActive ? (
             <MobileSettingsPanel
@@ -5157,7 +5180,9 @@ function PlayContent() {
                     ? (endgameLocked ? "终局已至。" : "终局正在收束")
                     : chatQueueState.active
                       ? chatQueueState.message
-                    : (isChatBusy ? (waitUxPrimaryLine || "本回合处理中") : "保持简短。保持真实。")
+                    : isChatBusy
+                      ? (waitUxPrimaryLine || "本回合处理中")
+                      : (guestTurnsRemainingHint || "保持简短。保持真实。")
                 }
                 showRegisterPrompt={showRegisterPrompt}
                 isGuestDialogueExhausted={isGuestDialogueExhausted}
@@ -5215,6 +5240,7 @@ function PlayContent() {
                   onUpgradeAttribute={(attr) => {
                     upgradeAttribute(attr);
                   }}
+                  escapeStage={escapeMainlineStage}
                 />
               ) : isCodexPanelActive ? (
                 <MobileCodexPanel
@@ -5223,6 +5249,13 @@ function PlayContent() {
                   mainThreatByFloor={mainThreatByFloor}
                   playerLocation={playerLocation}
                   memorySpine={memorySpine}
+                />
+              ) : isTasksPanelActive ? (
+                <MobileTaskPanel
+                  tasks={tasks}
+                  originium={originium}
+                  codex={codex}
+                  onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
                 />
               ) : isSettingsPanelActive ? (
                 <MobileSettingsPanel
@@ -5327,6 +5360,7 @@ function PlayContent() {
             onOpenCharacter={onOpenCharacterNav}
             onFocusStory={onFocusStoryNav}
             onOpenCodex={onOpenCodexNav}
+            onOpenTasks={onOpenTasksNav}
             onOpenSettings={onOpenSettingsNav}
           />
         </div>

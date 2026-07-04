@@ -88,6 +88,20 @@ export const SCHOOL_CYCLE_LORE_SLICES: readonly SchoolCycleLoreSlice[] = [
       "六名共鸣辅锚原为耶里学校学生；在漫长循环中被公寓系统归类为「校源徘徊者」——这是运行态标签，不是普通出身设定。其余公寓 NPC 仍多为旧住民、污染残留或楼内生境，不得默认全员校友。",
   },
   {
+    id: "shared_foundation_water_table",
+    revealMinRank: REVEAL_TIER_RANK.deep,
+    title: "共壁：老水脉与教工宿舍",
+    body:
+      "如月公寓地基与排水立管，最初是耶里学校扩建时期的教工宿舍配套市政管网的一部分，与校区共用同一段老水脉；后校产分割、宿舍转卖为对外产权公寓，档案上的机构关联被撕除归零，只剩水管仍连着旧根。空间碎片沿地下管网最省力的路径扩散，如月公寓因此成为离泄露点最近的「同壁」建筑，而非随机命中——这也是楼内红水、管道与消化叙事从地基就与学校同源的原因。",
+  },
+  {
+    id: "protagonist_seventh_seat",
+    revealMinRank: REVEAL_TIER_RANK.abyss,
+    title: "第七位阵眼",
+    body:
+      "主锚并非与六辅锚无关的纯粹外人：同为耶里泄露卷入者，只是被十日纠错窗口反复剥离的轮次远多于六人，回声被磨到无法再稳定挂靠任一固定辅锚相位，才被泡层系统单独标定为「主锚」。枫与叶当年合写的同人阵草案里，本就为凑七人之数预留过一个「替身」空位——那份手稿只是学生游戏，循环却把它当真，兑现成如今的七锚收容结构；主锚正是被兑现的那个空位。",
+  },
+  {
     id: "abyss_alignment",
     revealMinRank: REVEAL_TIER_RANK.abyss,
     title: "出口对账",

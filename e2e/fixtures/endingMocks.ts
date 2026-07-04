@@ -556,7 +556,7 @@ async function expectSettlementPage(page: Page, scenario: EndingScenario) {
   await expect(page.getByText(/查看门缝|检查电表|继续调查|返回安全区/)).toHaveCount(0);
 
   if (scenario === "death") {
-    await expect(page.getByText(/死因|姝诲洜|sanity_depleted|黑影/).first()).toBeVisible();
+    await expect(page.getByText(/死因|姝诲洜|黑影/).first()).toBeVisible();
   }
 
   await expect.poll(() => readPersistedOutcome(page), { timeout: 6_000 }).toBe(scenario);

@@ -7,8 +7,8 @@ import { getMajorNpcDeepCanon, MAJOR_NPC_IDS, type MajorNpcId } from "@/lib/regi
 import type { PlayerWorldSignals } from "@/lib/registry/playerWorldSignals";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 
-/** 叙事固定起点：学校侧泄露为泡层锚定的因，公寓侧为果（与 rootCanon 一致）。 */
-export const SCHOOL_INCIDENT_ORIGIN_ID = "yeliri_school_first_spatial_leak" as const;
+/** 叙事固定起点：学校侧泄露为泡层锚定的因，公寓侧为果（与 rootCanon.IMMUTABLE_ROOT_CANON 的 "yeliri_school_first_leak" 条目同一 id，勿再漂移出第二个拼写）。 */
+export const SCHOOL_INCIDENT_ORIGIN_ID = "yeliri_school_first_leak" as const;
 
 /** 封闭窗口长度（与玩法「约十日纠错」对齐；日历日可大于 10，位相仍按模回折）。 */
 export const CYCLE_WINDOW_DAYS = 10;

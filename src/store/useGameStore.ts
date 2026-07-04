@@ -485,6 +485,7 @@ export type ActiveMenu =
   | "codex"
   | "warehouse"
   | "achievements"
+  | "tasks"
   | null;
 
 /**

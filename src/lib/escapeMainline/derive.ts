@@ -1,5 +1,11 @@
 import type { MemorySpineEntry } from "@/lib/memorySpine/types";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
+import {
+  ESCAPE_COST_TRIAL_TASK_IDS,
+  ESCAPE_GATEKEEPER_NPC_IDS,
+  ESCAPE_GATEKEEPER_TRUST_THRESHOLDS,
+  ESCAPE_KEY_ITEM_ID,
+} from "./closureBinding";
 
 export type EscapeDerivationInput = {
   nowHour: number;
@@ -61,17 +67,20 @@ export function deriveEscapeFactors(input: EscapeDerivationInput): {
   // 条件满足（结构化推导示范）
   const conditionMetCodes: string[] = [];
   if (hasB2Access) conditionMetCodes.push("obtain_b2_access");
-  // 示例钥物：先用 unlock flag / 物品 id 作为可验证真相源
-  if (worldFlags.has("permit.one_time") || hasItem(invIds, "I-C12")) conditionMetCodes.push("secure_key_item");
-  // gatekeeper 信任：从 codex 关系字段推导（示范：N-018 / N-010 任一达到阈值）
-  const trustN018 = Number(input.codex?.["N-018"]?.trust ?? 0);
-  const trustN010 = Number(input.codex?.["N-010"]?.trust ?? 0);
-  if ((Number.isFinite(trustN018) && trustN018 >= 45) || (Number.isFinite(trustN010) && trustN010 >= 50)) {
+  // 钥物：unlock flag / 物品 id 作为可验证真相源（id 与 WORLD_CLOSURE_MATRIX 楼层 1 绑定，见 closureBinding.ts）
+  if (worldFlags.has("permit.one_time") || hasItem(invIds, ESCAPE_KEY_ITEM_ID)) conditionMetCodes.push("secure_key_item");
+  // gatekeeper 信任：从 codex 关系字段推导（N-018 / N-010 任一达到阈值，两者均为 WORLD_CLOSURE_MATRIX 楼层 1 的守门人）
+  const trustN018 = Number(input.codex?.[ESCAPE_GATEKEEPER_NPC_IDS[0]]?.trust ?? 0);
+  const trustN010 = Number(input.codex?.[ESCAPE_GATEKEEPER_NPC_IDS[1]]?.trust ?? 0);
+  if (
+    (Number.isFinite(trustN018) && trustN018 >= ESCAPE_GATEKEEPER_TRUST_THRESHOLDS[ESCAPE_GATEKEEPER_NPC_IDS[0]]) ||
+    (Number.isFinite(trustN010) && trustN010 >= ESCAPE_GATEKEEPER_TRUST_THRESHOLDS[ESCAPE_GATEKEEPER_NPC_IDS[1]])
+  ) {
     conditionMetCodes.push("gain_trust_from_gatekeeper");
   }
-  // 代价试炼：以任务完成作为结构化真相源
+  // 代价试炼：以任务完成作为结构化真相源（任务 id 与楼层 1 的代价试炼任务绑定，见 closureBinding.ts）
   const completed = (input.tasks ?? []).filter((t) => t.status === "completed").map((t) => t.id);
-  if (completed.includes("main_escape_cost_trial") || completed.includes("char_mirror_patrol_debt")) {
+  if (ESCAPE_COST_TRIAL_TASK_IDS.some((id) => completed.includes(id))) {
     conditionMetCodes.push("survive_cost_trial");
   }
 

@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import type { StatType } from "@/lib/registry/types";
 import type { ProfessionId } from "@/lib/profession/types";
 import type { ChapterId, ChapterState } from "@/lib/chapters";
-import type { CodexEntry } from "@/store/useGameStore";
+import type { CodexEntry, GameTask } from "@/store/useGameStore";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
+import type { EscapeStage } from "@/lib/escapeMainline/types";
 import type {
   ReadingPreferenceKey,
   ReadingPreferences,
@@ -99,6 +100,8 @@ export type MobileCharacterPanelProps = {
   playerLocation: string;
   currentProfession: ProfessionId | null;
   onUpgradeAttribute: (attr: StatType) => void;
+  /** 出口主线阶段（只读展示用，缺省时不展示主线小节） */
+  escapeStage?: EscapeStage | null;
 };
 
 export type MobileCodexPanelProps = {
@@ -108,6 +111,14 @@ export type MobileCodexPanelProps = {
   playerLocation: string;
   /** G2：用于生成"记忆片段"区块（叙事化关系呈现），缺省时该区块不展示 */
   memorySpine?: MemorySpineState | null;
+};
+
+export type MobileTaskPanelProps = {
+  tasks: GameTask[];
+  originium: number;
+  codex?: Record<string, CodexEntry>;
+  highlightTaskIds?: string[];
+  onClaimTask: (taskId: string) => void;
 };
 
 export type MobileSettingsPanelProps = {
@@ -124,9 +135,10 @@ export type MobileSettingsPanelProps = {
 };
 
 export type MobileBottomNavProps = {
-  activeItem: "character" | "story" | "codex" | "settings";
+  activeItem: "character" | "story" | "codex" | "settings" | "tasks";
   onOpenCharacter?: () => void;
   onFocusStory: () => void;
   onOpenCodex: () => void;
   onOpenSettings: () => void;
+  onOpenTasks?: () => void;
 };

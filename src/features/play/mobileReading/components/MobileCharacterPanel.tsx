@@ -10,6 +10,7 @@ import {
   formatMobileCharacterTime,
   getMobileCharacterUpgradeCost,
 } from "../characterFormat";
+import { getEscapeStageLabel } from "@/lib/escapeMainline/selectors";
 import { MobileReadingIcons } from "../icons";
 import type { MobileCharacterPanelProps } from "../types";
 
@@ -55,11 +56,13 @@ export function MobileCharacterPanel({
   playerLocation,
   currentProfession,
   onUpgradeAttribute,
+  escapeStage,
 }: MobileCharacterPanelProps) {
   const upgradeCost = getMobileCharacterUpgradeCost(stats);
   const professionLabel = formatMobileCharacterProfession(currentProfession);
   const timeLabel = formatMobileCharacterTime(time);
   const locationLabel = formatCompactLocationLabel(playerLocation);
+  const escapeStageLabel = escapeStage ? getEscapeStageLabel(escapeStage) : null;
 
   return (
     <section
@@ -104,6 +107,19 @@ export function MobileCharacterPanel({
                 {locationLabel}
               </dd>
             </div>
+            {escapeStageLabel ? (
+              <div className="grid grid-cols-[5.4rem_minmax(0,1fr)] items-center gap-3 py-2.5 min-[420px]:grid-cols-[6.7rem_minmax(0,1fr)] min-[420px]:py-3">
+                <dt className="vc-reading-serif text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
+                  出口主线
+                </dt>
+                <dd
+                  data-testid="character-escape-stage"
+                  className="vc-reading-serif min-w-0 truncate text-[20px] leading-none min-[420px]:text-[24px]"
+                >
+                  {escapeStageLabel}
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </section>
 

@@ -419,6 +419,25 @@ function CodexDetailHeartIcon(props: MobileReadingIconProps): ReactElement {
   );
 }
 
+function TaskBoardIcon(props: MobileReadingIconProps): ReactElement {
+  return (
+    <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
+      <PaperIconSoftShadow id="mobileTaskBoardSoftShadow" />
+      <g
+        filter="url(#mobileTaskBoardSoftShadow)"
+        stroke={PAPER_ICON_STROKE}
+        strokeWidth={PAPER_ICON_STROKE_WIDTH}
+      >
+        <rect x="5.4" y="3.4" width="13.2" height="17.2" rx="1.7" fill={PAPER_ICON_FILL} />
+        <path d="M9.1 7.5h5.8" />
+        <path d="M9.1 11.1h5.8" />
+        <path d="M9.1 14.7h3.6" />
+        <path d="M7.55 10.85 8.35 11.65 9.75 9.95" fill="none" strokeWidth="1.3" />
+      </g>
+    </IconSvg>
+  );
+}
+
 function SettingsIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props} strokeWidth={PAPER_ICON_STROKE_WIDTH}>
@@ -518,6 +537,7 @@ export const MobileReadingIcons = {
   SendAction: SendActionIcon,
   Settings: SettingsIcon,
   Story: StoryIcon,
+  Tasks: TaskBoardIcon,
   Talent: EchoDefaultIcon,
   Talents: MobileReadingTalentIcons,
 } as const;

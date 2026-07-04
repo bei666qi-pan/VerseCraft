@@ -14,6 +14,31 @@ import {
 import { getClientTaskBoardPressureV1Enabled, getClientTaskVisibilityPolicyV3Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
 
+function guidanceBadge(
+  level: TaskStageCardViewModel["guidanceLevel"],
+  mode: "light" | "dark"
+): { label: string; cls: string } | null {
+  if (level === "strong") {
+    return {
+      label: "指引明确",
+      cls:
+        mode === "light"
+          ? "border-teal-200 bg-teal-50 text-teal-800"
+          : "border-teal-400/35 bg-teal-500/10 text-teal-200",
+    };
+  }
+  if (level === "light") {
+    return {
+      label: "靠自己摸索",
+      cls:
+        mode === "light"
+          ? "border-slate-200 bg-slate-50 text-slate-500"
+          : "border-white/15 bg-white/5 text-slate-400",
+    };
+  }
+  return null;
+}
+
 function statusStyle(status: GameTask["status"], mode: "light" | "dark"): string {
   if (mode === "light") {
     if (status === "active") return "border-amber-200 bg-amber-50 text-amber-800";
@@ -204,6 +229,12 @@ export function PlayNarrativeTaskBoard({
                   {getTaskStatusLabel(t.status)}
                 </span>
               ) : null}
+              {(() => {
+                const badge = guidanceBadge(vm.guidanceLevel, mode);
+                return badge ? (
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>
+                ) : null;
+              })()}
             </div>
             <h4 className={titleCls}>{vm.title}</h4>
           </div>

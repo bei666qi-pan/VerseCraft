@@ -46,7 +46,7 @@ export const WORLD_CLOSURE_MATRIX: readonly WorldClosureMatrixEntry[] = [
     linkedAnomalyId: "A-001",
     keyNpcIds: ["N-001", "N-003", "N-010", "N-018"],
     survivalNoteIds: ["note_mechanical_watch"],
-    itemIds: ["I-A01"],
+    itemIds: ["I-A01", "I-C12"],
     warehouseItemIds: ["W-101", "W-102", "W-103", "W-104", "W-105", "W-106", "W-107", "W-108", "W-202", "W-204", "W-206"],
     counterWindowSummary: "姓名、入楼时间、随身表与登记物互相校准。",
     escapeRelevance: "欣蓝与登记口提供 B2 通行权限线索。",

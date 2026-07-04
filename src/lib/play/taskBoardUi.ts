@@ -337,6 +337,9 @@ export function projectTaskBoardViewModel(tasks: GameTask[], v3VisibilityEnabled
 /** 单张舞台卡：组件只渲染这些行，避免在 React 里拼业务句。 */
 export type TaskStageRiskBand = "calm" | "uneasy" | "hot";
 
+/** UI 用：这件事游戏愿意替玩家指路到什么程度（strong=指引明确，light=靠自己摸索） */
+export type TaskStageGuidanceLevel = "strong" | "standard" | "light" | "none";
+
 export type TaskStageCardViewModel = {
   taskId: string;
   role: TaskStageRole;
@@ -350,6 +353,7 @@ export type TaskStageCardViewModel = {
   riskSense: string;
   /** UI 用：低风险中性、期限/中等不安、高反噬灼热 */
   riskBand: TaskStageRiskBand;
+  guidanceLevel: TaskStageGuidanceLevel;
 };
 
 function clipStageText(s: string, max: number): string {
@@ -455,6 +459,10 @@ export function buildTaskStageCardViewModel(
 ): TaskStageCardViewModel {
   const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
   const risk = buildRiskSenseLine(task, codex);
+  const guidanceLevel: TaskStageGuidanceLevel =
+    task.guidanceLevel === "strong" || task.guidanceLevel === "standard" || task.guidanceLevel === "light"
+      ? task.guidanceLevel
+      : "none";
   return {
     taskId: task.id,
     role,
@@ -467,6 +475,7 @@ export function buildTaskStageCardViewModel(
     payoffLine: buildPayoffLine(task, codex),
     riskSense: risk.line,
     riskBand: risk.band,
+    guidanceLevel,
   };
 }
 

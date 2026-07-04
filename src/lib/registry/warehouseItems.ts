@@ -17,7 +17,7 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   // === 1 楼 8 件 ===
   { id: "W-101", name: "陈婆婆的顶针", description: "一枚老式铜顶针。", benefit: "魅力+3约3小时，NPC更易接纳。", sideEffect: "超3小时勒紧，难脱下。", ownerId: "N-001", floor: "1" },
   { id: "W-102", name: "邮差的旧邮戳", description: "沾满干涸印泥的橡皮戳。", benefit: "盖信上标记已送达，跳过邮差2次投递。", sideEffect: "会显现你的名字和未来日期。", ownerId: "N-003", floor: "1" },
-  { id: "W-103", name: "物业的空白表单", description: "物业办公室的空白表格。", benefit: "伪造合规身份，通过物业检查。", sideEffect: "无人注视时会自动填死因。", ownerId: "N-010", floor: "1" },
+  { id: "W-103", name: "登记口的空白表单", description: "欣蓝登记窗口下留出的空白表格，边角有铅笔试写又擦掉的痕迹。", benefit: "伪造合规身份，通过物业检查。", sideEffect: "无人注视时会自动填死因。", ownerId: "N-010", floor: "1" },
   { id: "W-104", name: "门厅的枯萎盆栽", description: "一盆枯死的绿植。", benefit: "吸收认知污染，理智+3约5小时。", sideEffect: "会复活并朝你生长。", ownerId: "N-001", floor: "1" },
   { id: "W-105", name: "信箱区的铁夹子", description: "夹报纸用的铁夹。", benefit: "夹门缝阻止自动关闭3小时。", sideEffect: "3小时后夹紧难取。", ownerId: "N-003", floor: "1" },
   { id: "W-106", name: "实习徽章的别针", description: "灵伤落在登记动线旁的别针。", benefit: "部分NPC误认为内部人员，可通过一次低风险检查。", sideEffect: "1天内会刺入皮肤，需取下。", ownerId: "N-020", floor: "1" },
@@ -47,11 +47,11 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   { id: "W-407", name: "401 室的旧算盘", description: "张先生用过的算盘。", benefit: "账本信用+4约3小时。", sideEffect: "算珠会显示不愿见的数字。", ownerId: "N-006", floor: "4" },
   { id: "W-408", name: "屠夫的刀锈", description: "2F 管道凝聚体刀刃上的锈迹。", benefit: "涂普通门缝，水管诡异无法从该门凝聚。", sideEffect: "24小时后该门可能卡死。", ownerId: "A-004", floor: "2" },
   // === 5 楼 6 件 ===
-  { id: "W-501", name: "画室的褪色颜料", description: "叶用剩的颜料管。", benefit: "改变外观2小时，迷惑视觉诡异。", sideEffect: "会短暂映出她的轮廓，凝视会吸引她注意。", ownerId: "N-007", floor: "5" },
+  { id: "W-501", name: "画室的褪色颜料", description: "叶用来描轮廓线的颜料管，管身被反复捏出的凹痕比画布上任何一笔都深。", benefit: "改变外观2小时，迷惑视觉诡异。", sideEffect: "会短暂映出她的轮廓，凝视会吸引她注意。", ownerId: "N-007", floor: "5" },
   { id: "W-502", name: "器官拟态墙的眼睑", description: "拟态墙剥落的肉膜。", benefit: "拟态为墙2小时，逃避视觉追踪。", sideEffect: "2小时内会与皮肤融合。", ownerId: "A-005", floor: "5" },
-  { id: "W-503", name: "未完成的自画像碎片", description: "叶的画布上撕下的碎片。", benefit: "魅力+5约3小时，并触发画室真相分支。", sideEffect: "碎片上的眼睛会转向你。", ownerId: "N-007", floor: "5" },
+  { id: "W-503", name: "未完成的自画像碎片", description: "叶的画布上撕下的碎片，边缘留着一道被涂掉又浮现的轮廓线，像多画了一个人。", benefit: "魅力+5约3小时，并触发画室真相分支。", sideEffect: "碎片上的眼睛会转向你。", ownerId: "N-007", floor: "5" },
   { id: "W-504", name: "墙眼的分泌物", description: "拟态墙眼睛分泌的透明液。", benefit: "涂镜面遮蔽镜像诡异2小时。", sideEffect: "腐蚀镜面，用后可能碎裂。", ownerId: "A-005", floor: "5" },
-  { id: "W-505", name: "调色盘上的混色", description: "叶调色盘上未干的混色。", benefit: "改面容2小时，混淆面容识别诡异。", sideEffect: "洗掉后面容短暂模糊。", ownerId: "N-007", floor: "5" },
+  { id: "W-505", name: "调色盘上的混色", description: "叶调色盘上未干的混色，像是想把某张脸的轮廓一遍遍描回去又一遍遍抹掉。", benefit: "改面容2小时，混淆面容识别诡异。", sideEffect: "洗掉后面容短暂模糊。", ownerId: "N-007", floor: "5" },
   { id: "W-506", name: "拟态墙的血管丝", description: "墙内抽出的细小血管。", benefit: "点燃驱散5米内污染2小时，灼伤低阶诡异。", sideEffect: "燃烧惨叫吸引其他诡异。", ownerId: "A-005", floor: "5" },
   // === 6 楼 6 件 ===
   { id: "W-601", name: "双胞胎的共用手帕", description: "两人共用过的旧手帕。", benefit: "选择机制诡异无法选定你2次。", sideEffect: "会分裂成两半，各映半张脸。", ownerId: "N-009", floor: "6" },

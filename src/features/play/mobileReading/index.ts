@@ -9,6 +9,7 @@ export { MobileReadingHeader } from "./components/MobileReadingHeader";
 export { MobileReadingShell } from "./components/MobileReadingShell";
 export { MobileSettingsPanel } from "./components/MobileSettingsPanel";
 export { MobileStoryViewport } from "./components/MobileStoryViewport";
+export { MobileTaskPanel } from "./components/MobileTaskPanel";
 export {
   getMobileReadingTalentIcon,
   isMobileReadingTalentIconName,
@@ -94,4 +95,5 @@ export type {
   MobileReadingHeaderProps,
   MobileReadingShellProps,
   MobileStoryViewportProps,
+  MobileTaskPanelProps,
 } from "./types";

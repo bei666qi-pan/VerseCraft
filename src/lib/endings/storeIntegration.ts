@@ -216,7 +216,7 @@ export function buildEndingDeathContextFromEvaluation(input: EndingEvaluationInp
   const cause =
     asString(resolved.death_cause) ||
     asString(resolved.deathCause) ||
-    (Number(input.stats?.sanity ?? 0) <= 0 ? "sanity_depleted" : "");
+    (Number(input.stats?.sanity ?? 0) <= 0 ? "理智耗尽" : "");
   const location = asString(resolved.player_location) || input.playerLocation || "";
   const lastUser = [...(input.logs ?? [])].reverse().find((entry) => entry.role === "user")?.content ?? "";
   const lastAction = asString(input.lastAction) || lastUser;

@@ -111,3 +111,31 @@ test("majorNpcRelink: 系统摘要字段与 deepReveal 裁剪", () => {
   assert.ok((linF?.deepRevealUnlocksActive?.length ?? 0) >= 1);
   assert.ok(linF?.fractureHintStyle);
 });
+
+test('majorNpcRelink: 收紧后的匹配不会被无关词组"吞掉"短 ASCII 关键词（回归：AB15 不应误判命中 B1）', () => {
+  const ctx =
+    "游戏时间[第2日 0时]。用户位置[1F_Lobby]。世界标记：无。任务追踪：整理AB15档案[进行中|地点1F]。";
+  const signals = parsePlayerWorldSignals(ctx, null);
+  const entries = computeMajorNpcRelinkStates({
+    playerContext: ctx,
+    signals,
+    nearbyNpcIds: [],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+  const lin = entries.find((e) => e.npcId === "N-015");
+  assert.equal(lin?.relinkPhase, 1);
+});
+
+test("majorNpcRelink: 独立出现的 B1 仍可正常命中麟泽（未过度收紧）", () => {
+  const ctx =
+    "游戏时间[第2日 0时]。用户位置[1F_Lobby]。世界标记：无。任务追踪：B1 补给核对[进行中|地点1F]。";
+  const signals = parsePlayerWorldSignals(ctx, null);
+  const entries = computeMajorNpcRelinkStates({
+    playerContext: ctx,
+    signals,
+    nearbyNpcIds: [],
+    maxRevealRank: REVEAL_TIER_RANK.surface,
+  });
+  const lin = entries.find((e) => e.npcId === "N-015");
+  assert.equal(lin?.relinkPhase, 2);
+});
