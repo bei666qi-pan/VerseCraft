@@ -9,6 +9,9 @@ let droneGain: GainNode | null = null;
 let droneFilter: BiquadFilterNode | null = null;
 let muted = false;
 let droneStarted = false;
+// drone 是否处于「激活」状态（仅 /play 恐怖氛围期间为 true）。
+// 用它把低频 drone 严格限制在 /play，避免其作为全局单例泄漏到首页/序章。
+let droneActive = false;
 
 function getCtx(): AudioContext {
   if (!ctx) {
@@ -32,7 +35,13 @@ export function resumeAudio(): void {
     void c.resume();
   }
   muted = false;
-  startDrone();
+  // 不在此处启动低频 drone —— drone 只属于 /play 恐怖氛围，由 startAmbientDrone()
+  // 显式启停。首页/序章调用 resumeAudio() 仅用于解锁自动播放策略，绝不能连带触发
+  // 那个 55Hz 的「耳鸣心跳」嗡鸣（此前正是它泄漏到首页，表现为难听的低沉声）。
+  if (droneActive) {
+    // 已处于 /play 激活态时（例如取消静音重新 resume），恢复 drone 增益
+    startAmbientDrone();
+  }
 }
 
 export function toggleMute(): boolean {
@@ -60,8 +69,8 @@ export function setMasterVolume(percent: number): void {
 
 // --------------- Persistent low-frequency drone (heartbeat / tinnitus) ---------------
 
-function startDrone(): void {
-  if (droneStarted || muted) return;
+function ensureDroneNodes(): void {
+  if (droneStarted) return;
   const c = getCtx();
 
   droneFilter = c.createBiquadFilter();
@@ -70,7 +79,7 @@ function startDrone(): void {
   droneFilter.Q.value = 1;
 
   droneGain = c.createGain();
-  droneGain.gain.value = 0.12;
+  droneGain.gain.value = 0; // 起始静音，由 startAmbientDrone() 淡入
 
   droneOsc = c.createOscillator();
   droneOsc.type = "sine";
@@ -83,10 +92,31 @@ function startDrone(): void {
   droneStarted = true;
 }
 
+/**
+ * 启动 /play 恐怖氛围低频 drone（幂等）。**仅应在 /play 内调用。**
+ * 首页/序章不调用它，因此不会再出现泄漏到首页的低沉嗡鸣。静音时只创建节点、
+ * 保持静默，待取消静音后由 updateSanityFilter 恢复增益。
+ */
+export function startAmbientDrone(): void {
+  ensureDroneNodes();
+  droneActive = true;
+  if (!muted && droneGain) {
+    droneGain.gain.setTargetAtTime(0.12, getCtx().currentTime, 0.6);
+  }
+}
+
+/** 离开 /play 时淡出 drone，避免其作为全局单例继续在首页/序章作响。 */
+export function stopAmbientDrone(): void {
+  droneActive = false;
+  if (droneGain) {
+    droneGain.gain.setTargetAtTime(0, getCtx().currentTime, 0.4);
+  }
+}
+
 // --------------- Sanity-reactive filter ---------------
 
 export function updateSanityFilter(sanity: number): void {
-  if (!droneFilter || !droneGain || !droneOsc) return;
+  if (!droneActive || !droneFilter || !droneGain || !droneOsc) return;
   const c = getCtx();
   const t = c.currentTime;
 
@@ -107,7 +137,7 @@ export function updateSanityFilter(sanity: number): void {
 // --------------- Dark-moon pitch shift ---------------
 
 export function setDarkMoonMode(active: boolean): void {
-  if (!droneOsc) return;
+  if (!droneActive || !droneOsc) return;
   const c = getCtx();
   const t = c.currentTime;
   if (active) {

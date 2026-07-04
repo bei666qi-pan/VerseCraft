@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
-import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume } from "@/lib/audioEngine";
+import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume, startAmbientDrone, stopAmbientDrone } from "@/lib/audioEngine";
 import type { StatType } from "@/lib/registry/types";
 import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
@@ -1444,6 +1444,13 @@ function PlayContent() {
 
   useEffect(() => {
     setAudioMuted(isMuted());
+  }, []);
+
+  // 低频恐怖 drone 只属于 /play：进入时启动、离开时淡出。
+  // 首页/序章不再触发它，杜绝泄漏到首页的低沉嗡鸣。
+  useEffect(() => {
+    startAmbientDrone();
+    return () => stopAmbientDrone();
   }, []);
 
   useEffect(() => {
