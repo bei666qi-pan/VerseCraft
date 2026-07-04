@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { ChevronLeft, ChevronRight, FileText, Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { VerseCraftLogoMark } from "@/components/VerseCraftLogo";
 import {
@@ -140,6 +140,13 @@ export function IntroPageClient() {
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isIntroOpen, setIsIntroOpen] = useState(false);
+  const [isNavPending, startNavTransition] = useTransition();
+
+  // 提前预取 /create 的 RSC payload 与 JS chunk：
+  // CTA 点击后不再现场拉包，消除「进入公寓」的高延迟跳转
+  useEffect(() => {
+    router.prefetch("/create");
+  }, [router]);
 
   const activeSlide = INTRO_WORLD_SLIDES[activeIndex];
   const previousSlide = INTRO_WORLD_SLIDES[(activeIndex - 1 + INTRO_WORLD_SLIDES.length) % INTRO_WORLD_SLIDES.length];
@@ -154,8 +161,11 @@ export function IntroPageClient() {
   };
 
   const handleCta = () => {
-    if (!activeSlide.available) return;
-    router.push("/create");
+    if (!activeSlide.available || isNavPending) return;
+    // useTransition 跟踪导航挂起态：点击即刻有视觉反馈，杜绝“点了没反应”
+    startNavTransition(() => {
+      router.push("/create");
+    });
   };
 
   return (
@@ -232,7 +242,7 @@ export function IntroPageClient() {
               type="button"
               data-testid="intro-carousel-prev"
               onClick={() => move(-1)}
-              className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/45 active:scale-95"
+              className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/45 hover:text-vc-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent/60 active:scale-95"
               aria-label="上一个世界观"
             >
               <ChevronLeft size={21} strokeWidth={1.6} />
@@ -249,8 +259,8 @@ export function IntroPageClient() {
                     setIsIntroOpen(false);
                   }}
                   className={joinClass(
-                    "h-2.5 w-2.5 rounded-full transition",
-                    index === activeIndex ? "scale-125 bg-vc-accent" : "bg-vc-line"
+                    "h-2.5 w-2.5 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-vc-paper",
+                    index === activeIndex ? "scale-125 bg-vc-accent" : "bg-vc-line hover:bg-vc-ink-faint"
                   )}
                   aria-label={`切换到第 ${index + 1} 个世界观`}
                   aria-current={index === activeIndex ? "true" : undefined}
@@ -261,7 +271,7 @@ export function IntroPageClient() {
               type="button"
               data-testid="intro-carousel-next"
               onClick={() => move(1)}
-              className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/45 active:scale-95"
+              className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-white/45 hover:text-vc-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent/60 active:scale-95"
               aria-label="下一个世界观"
             >
               <ChevronRight size={21} strokeWidth={1.6} />
@@ -273,21 +283,49 @@ export function IntroPageClient() {
             data-testid="intro-start-create"
             onClick={handleCta}
             disabled={!activeSlide.available}
+            data-pending={isNavPending ? "true" : undefined}
             className={joinClass(
-              "relative mt-[clamp(1rem,2.9svh,2rem)] flex h-[clamp(3.75rem,7.4svh,4.55rem)] w-[82%] max-w-[22.5rem] items-center justify-center overflow-hidden rounded-full border text-center vc-reading-serif text-[clamp(1.65rem,7.4vw,2.2rem)] font-semibold leading-none tracking-[0.18em] shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.18)] transition",
+              "group relative mt-[clamp(1rem,2.9svh,2rem)] flex h-[clamp(3.75rem,7.4svh,4.55rem)] w-[82%] max-w-[22.5rem] items-center justify-center overflow-hidden rounded-full border text-center vc-reading-serif text-[clamp(1.65rem,7.4vw,2.2rem)] font-semibold leading-none tracking-[0.18em] transition-all duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-vc-paper",
               activeSlide.available
-                ? "border-white/80 bg-[linear-gradient(180deg,#163f3a,#08222a)] text-[#efe7df] active:scale-[0.985]"
-                : "border-[#d6cec3] bg-[#e4ded4] text-[#9c9489]"
+                ? joinClass(
+                    "border-white/80 bg-[linear-gradient(180deg,#1a4741,#163f3a_38%,#08222a)] text-[#efe7df]",
+                    "shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.20),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-8px_16px_rgba(4,18,22,0.55)]",
+                    "hover:shadow-[0_0.9rem_1.6rem_rgba(26,40,37,0.28),inset_0_1px_0_rgba(255,255,255,0.2),inset_0_-8px_16px_rgba(4,18,22,0.5)] hover:brightness-[1.07]",
+                    "active:scale-[0.982] active:brightness-95",
+                    isNavPending && "brightness-[1.05] saturate-[0.92]"
+                  )
+                : "border-[#d6cec3] bg-[#e4ded4] text-[#9c9489] shadow-[0_0.65rem_1.15rem_rgba(26,40,37,0.1)]"
             )}
             aria-disabled={!activeSlide.available}
+            aria-busy={isNavPending || undefined}
           >
-            <span className="pointer-events-none absolute left-8 text-[#6b9089]/42" aria-hidden>
-              ✦
+            {/* 悬停微光扫过 */}
+            {activeSlide.available ? (
+              <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-full" aria-hidden>
+                <span className="absolute inset-y-0 left-[-55%] w-[42%] -skew-x-[18deg] bg-gradient-to-r from-transparent via-white/12 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-[340%]" />
+              </span>
+            ) : null}
+            <span
+              className="pointer-events-none absolute left-8 flex items-center text-[#6b9089]/42 transition-opacity"
+              aria-hidden
+            >
+              {isNavPending ? (
+                <Loader2 size={22} strokeWidth={2.2} className="animate-spin text-[#9dbcb4]/80" />
+              ) : (
+                "✦"
+              )}
             </span>
             <span className="relative z-10" data-testid="intro-start-create-label">
-              {activeCtaLabel}
+              {isNavPending ? "推门而入…" : activeCtaLabel}
             </span>
-            <span className="pointer-events-none absolute right-8 text-[#6b9089]/42" aria-hidden>
+            <span
+              className={joinClass(
+                "pointer-events-none absolute right-8 text-[#6b9089]/42",
+                isNavPending && "animate-breathe"
+              )}
+              aria-hidden
+            >
               ✦
             </span>
           </button>

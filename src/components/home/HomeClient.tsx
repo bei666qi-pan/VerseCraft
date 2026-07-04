@@ -1,11 +1,11 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { Trophy } from "lucide-react";
+import { Loader2, Trophy } from "lucide-react";
 import { deleteCloudSaveSlot, fetchCloudSaves, syncSaveToCloud } from "@/app/actions/save";
 import { MAX_VISIBLE_SAVE_SLOTS } from "@/lib/save/slots";
 import { checkNameAvailability, loginUser, registerUser } from "@/app/actions/auth";
@@ -229,6 +229,14 @@ function isSaveSlotData(data: unknown): data is SaveSlotData {
 export default function HomeClient({ initialUser }: HomeClientProps) {
   const router = useRouter();
   const user = initialUser;
+  const [isStartNewPending, startNewGameTransition] = useTransition();
+
+  // 提前预取两条主路径的 RSC payload 与 JS chunk，消除点击后的现场拉包延迟：
+  // 「开始新篇」→ /intro；「继续」确认 → /play（chunk 较大，后台预取收益最高）
+  useEffect(() => {
+    router.prefetch("/intro");
+    router.prefetch("/play");
+  }, [router]);
   const homeViewTrackedRef = useRef(false);
   const authErrorTrackedRef = useRef<{ mode: AuthMode; msg: string } | null>(null);
   const surveyEntryExposedTrackedRef = useRef(false);
@@ -1507,7 +1515,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 data-testid="home-start-new-button"
                 className="animate-fade-in-up min-h-[68px] text-[29px]"
                 style={{ animationDelay: "80ms" }}
+                aria-busy={isStartNewPending || undefined}
                 onClick={() => {
+                  if (isStartNewPending) return;
                   unlockBgmOnUserGesture();
                   void trackHomeGameplayEvent({
                     eventName: "home_start_new_clicked",
@@ -1516,12 +1526,19 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                     payload: { entryState, loggedIn: !!user },
                   }).catch(() => {});
                   resetForNewGame();
-                  router.push("/intro");
+                  // useTransition 跟踪导航挂起态：点击立刻有反馈，且防止重复触发 reset
+                  startNewGameTransition(() => {
+                    router.push("/intro");
+                  });
                 }}
               >
-                <span>开始新篇</span>
+                <span>{isStartNewPending ? "落笔启程…" : "开始新篇"}</span>
                 <span className="text-vc-ink-faint" aria-hidden>
-                  →
+                  {isStartNewPending ? (
+                    <Loader2 size={24} strokeWidth={2.2} className="animate-spin" />
+                  ) : (
+                    "→"
+                  )}
                 </span>
               </VerseCraftPaperPillButton>
 
