@@ -183,7 +183,7 @@ export function IntroPageClient() {
         }}
       />
 
-      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col px-5 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-[max(0.72rem,env(safe-area-inset-top))]">
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col px-5 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-[max(0.72rem,env(safe-area-inset-top))] lg:max-w-[720px]">
         <header className="flex items-center justify-between">
           <button
             type="button"
@@ -221,7 +221,7 @@ export function IntroPageClient() {
         </section>
 
         <section className="relative mt-[clamp(1.25rem,3.8svh,2.5rem)] flex min-h-0 flex-1 flex-col items-center">
-          <div className="relative h-[clamp(19rem,45svh,31rem)] min-h-0 w-full">
+          <div className="relative h-[clamp(19rem,45svh,31rem)] min-h-0 w-full lg:h-[clamp(24rem,52svh,34rem)]">
             <div className="absolute left-1/2 top-0 h-full w-[82%] -translate-x-[164%] overflow-hidden rounded-[1.65rem] shadow-[0_1rem_2rem_rgba(21,39,36,0.22)]">
               <WorldCard slide={previousSlide} isActive={false} isSide />
             </div>

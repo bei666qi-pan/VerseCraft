@@ -111,18 +111,35 @@ function BrandMarkIcon(props: MobileReadingIconProps): ReactElement {
   );
 }
 
+/* 天赋回响图标组 —— 统一构成语言：
+ * 主体轮廓 + currentColor 低透明度「衬底」提供体量感 + 一枚品牌四芒星点缀。
+ * 全部走 currentColor，随按钮状态（就绪/冷却）自然变色。 */
+
+function TalentSparkle({ cx, cy, r }: { cx: number; cy: number; r: number }): ReactElement {
+  const k = r * 0.34;
+  return (
+    <path
+      d={`M${cx} ${cy - r}Q${cx + k} ${cy - k} ${cx + r} ${cy}Q${cx + k} ${cy + k} ${cx} ${cy + r}Q${cx - k} ${cy + k} ${cx - r} ${cy}Q${cx - k} ${cy - k} ${cx} ${cy - r}Z`}
+      fill="currentColor"
+      stroke="none"
+    />
+  );
+}
+
 function EchoDefaultIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M7.4 15.4V10a4.6 4.6 0 0 1 9.2 0v5.4" />
-      <path d="M6.2 15.4h11.6" />
-      <path d="M9.8 18a2.3 2.3 0 0 0 4.4 0" />
-      <path d="M12 4.3V3" />
-      <path d="M4.7 9.2a7.6 7.6 0 0 0-.8 3.3" />
-      <path d="M19.3 9.2a7.6 7.6 0 0 1 .8 3.3" />
-      <path d="M5.1 5.2 3.8 3.8" />
-      <path d="M18.9 5.2 20.2 3.8" />
-      <circle cx="12" cy="10.7" r="7.9" opacity="0.14" />
+      {/* 回响：中心星芒向两侧漾开的声纹 */}
+      <path
+        d="M12 8.2q.8 3 3.8 3.8-3 .8-3.8 3.8-.8-3-3.8-3.8 3-.8 3.8-3.8z"
+        fill="currentColor"
+        fillOpacity="0.16"
+      />
+      <path d="M12 8.2q.8 3 3.8 3.8-3 .8-3.8 3.8-.8-3-3.8-3.8 3-.8 3.8-3.8z" />
+      <path d="M17.7 8.6a6.7 6.7 0 0 1 0 6.8" />
+      <path d="M20.4 6.6a10.2 10.2 0 0 1 0 10.8" opacity="0.5" />
+      <path d="M6.3 8.6a6.7 6.7 0 0 0 0 6.8" />
+      <path d="M3.6 6.6a10.2 10.2 0 0 0 0 10.8" opacity="0.5" />
     </IconSvg>
   );
 }
@@ -130,10 +147,13 @@ function EchoDefaultIcon(props: MobileReadingIconProps): ReactElement {
 function TimeRewindIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M18.4 6.2a8.3 8.3 0 1 0 1.4 9.8" />
+      {/* 时间回溯：逆转的表盘 */}
+      <circle cx="12" cy="12" r="5.4" fill="currentColor" fillOpacity="0.1" stroke="none" />
+      <path d="M18.4 6.2a8.3 8.3 0 1 0 1.9 8.9" />
       <path d="M18.6 3.7v4.9h-4.9" />
-      <circle cx="12" cy="12" r="5.2" opacity="0.28" />
-      <path d="M12 8.8v3.7l2.5 1.4" />
+      <circle cx="12" cy="12" r="5.4" opacity="0.4" />
+      <path d="M12 8.9v3.4l2.4 1.5" strokeWidth="1.95" />
+      <TalentSparkle cx={5} cy={4.6} r={1.7} />
     </IconSvg>
   );
 }
@@ -141,13 +161,14 @@ function TimeRewindIcon(props: MobileReadingIconProps): ReactElement {
 function FateGiftIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M5.3 10h13.4v9H5.3z" />
-      <path d="M4.6 7.1h14.8V10H4.6z" />
-      <path d="M12 7.1V19" />
-      <path d="M8.6 7.1c-1.5-1.8-.2-3.9 1.7-3 1 .5 1.7 1.7 1.7 3" />
-      <path d="M15.4 7.1c1.5-1.8.2-3.9-1.7-3-1 .5-1.7 1.7-1.7 3" />
-      <path d="M17.4 3.1v2.2" />
-      <path d="M16.3 4.2h2.2" />
+      {/* 命运馈赠：缎带礼盒 */}
+      <rect x="5.5" y="10.4" width="13" height="8.5" rx="1.1" fill="currentColor" fillOpacity="0.08" stroke="none" />
+      <rect x="4.5" y="7.2" width="15" height="3.2" rx="0.9" />
+      <rect x="5.5" y="10.4" width="13" height="8.5" rx="1.1" />
+      <path d="M12 7.2v11.7" />
+      <path d="M12 7.1c-2.5.1-4.5-.3-4.2-1.7.3-1.6 3.1-1.1 4.2 1.7z" fill="currentColor" fillOpacity="0.14" />
+      <path d="M12 7.1c2.5.1 4.5-.3 4.2-1.7-.3-1.6-3.1-1.1-4.2 1.7z" fill="currentColor" fillOpacity="0.14" />
+      <TalentSparkle cx={18.6} cy={3.6} r={1.8} />
     </IconSvg>
   );
 }
@@ -155,10 +176,13 @@ function FateGiftIcon(props: MobileReadingIconProps): ReactElement {
 function ProtagonistHaloIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <ellipse cx="12" cy="7" rx="5.9" ry="2.1" />
-      <path d="M7.3 15.7c.9-2.2 2.5-3.3 4.7-3.3s3.8 1.1 4.7 3.3" />
-      <path d="M5.8 19.2c1.2-2.3 3.4-3.5 6.2-3.5s5 1.2 6.2 3.5" />
-      <path d="M19.4 9.6l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" />
+      {/* 主角光环：悬浮的环与登场者 */}
+      <ellipse cx="12" cy="5.9" rx="5.4" ry="1.8" fill="currentColor" fillOpacity="0.12" stroke="none" />
+      <ellipse cx="12" cy="5.9" rx="5.4" ry="1.8" />
+      <ellipse cx="12" cy="6.1" rx="3.3" ry="1" opacity="0.4" />
+      <circle cx="12" cy="12" r="2.7" />
+      <path d="M6.3 19.5c1.1-3 3.1-4.6 5.7-4.6s4.6 1.6 5.7 4.6" />
+      <TalentSparkle cx={19.9} cy={10.1} r={1.7} />
     </IconSvg>
   );
 }
@@ -166,9 +190,18 @@ function ProtagonistHaloIcon(props: MobileReadingIconProps): ReactElement {
 function LifeConfluenceIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M12 19.4s-7-4.1-7-9.1A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.3c0 5-7 9.1-7 9.1z" />
-      <path d="M7.4 12.2h2.3l1.1-2.1 2 4.4 1.2-2.3h2.6" />
-      <path d="M12 4.2c1.2 1.4 1.7 2.5 1.7 3.5a1.7 1.7 0 1 1-3.4 0c0-1 .5-2.1 1.7-3.5z" />
+      {/* 生命汇源：心搏与汇入的水滴 */}
+      <path
+        d="M12 19.6c-3.9-2.6-6.9-5.4-6.9-8.8a3.75 3.75 0 0 1 6.9-2.1 3.75 3.75 0 0 1 6.9 2.1c0 3.4-3 6.2-6.9 8.8z"
+        fill="currentColor"
+        fillOpacity="0.1"
+      />
+      <path d="M7.3 12.3h2.2l1.2-2.3 2 4.5 1.3-2.2h2.7" strokeWidth="1.9" />
+      <path
+        d="M12 2.9c.95 1.15 1.45 2.1 1.45 2.9a1.45 1.45 0 1 1-2.9 0c0-.8.5-1.75 1.45-2.9z"
+        fill="currentColor"
+        fillOpacity="0.18"
+      />
     </IconSvg>
   );
 }
@@ -176,10 +209,17 @@ function LifeConfluenceIcon(props: MobileReadingIconProps): ReactElement {
 function InsightEyeIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M3.5 12s3-5.3 8.5-5.3 8.5 5.3 8.5 5.3-3 5.3-8.5 5.3S3.5 12 3.5 12z" />
-      <circle cx="12" cy="12" r="2.6" />
-      <path d="M18.3 4.2l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" />
-      <path d="M6 4.8 7 6.2" />
+      {/* 洞察之眼：看破的瞳 */}
+      <path
+        d="M3.6 12.4c2-3.7 4.8-5.6 8.4-5.6s6.4 1.9 8.4 5.6c-2 3.7-4.8 5.6-8.4 5.6s-6.4-1.9-8.4-5.6z"
+        fill="currentColor"
+        fillOpacity="0.08"
+      />
+      <path d="M3.6 12.4c2-3.7 4.8-5.6 8.4-5.6s6.4 1.9 8.4 5.6c-2 3.7-4.8 5.6-8.4 5.6s-6.4-1.9-8.4-5.6z" />
+      <circle cx="12" cy="12.4" r="2.7" />
+      <circle cx="12" cy="12.4" r="1" fill="currentColor" stroke="none" />
+      <path d="M6.4 5.1l.9 1.3" opacity="0.6" />
+      <TalentSparkle cx={18.9} cy={4.4} r={1.9} />
     </IconSvg>
   );
 }
@@ -187,14 +227,17 @@ function InsightEyeIcon(props: MobileReadingIconProps): ReactElement {
 function TollingBellIcon(props: MobileReadingIconProps): ReactElement {
   return (
     <IconSvg {...props}>
-      <path d="M7.5 17.3h9" />
-      <path d="M9 17.2V11a3 3 0 0 1 6 0v6.2" />
-      <path d="M8.1 17.2c-.7 0-1.2-.6-.9-1.2.6-1.2 1-2.4 1-4" />
-      <path d="M15.8 12c0 1.6.4 2.8 1 4 .3.6-.2 1.2-.9 1.2" />
-      <path d="M11 19.2a1.2 1.2 0 0 0 2 0" />
-      <path d="M5 8.2a8.6 8.6 0 0 0-1.5 4.6" />
-      <path d="M19 8.2a8.6 8.6 0 0 1 1.5 4.6" />
-      <path d="M12 5.4V4.1" />
+      {/* 丧钟回响：鸣响的钟 */}
+      <path
+        d="M12 5c2.9 0 4.5 2.1 4.5 5 0 2.2.5 3.7 1.3 4.9.3.5-.1 1.1-.7 1.1H6.9c-.6 0-1-.6-.7-1.1.8-1.2 1.3-2.7 1.3-4.9 0-2.9 1.6-5 4.5-5z"
+        fill="currentColor"
+        fillOpacity="0.1"
+      />
+      <path d="M12 5c2.9 0 4.5 2.1 4.5 5 0 2.2.5 3.7 1.3 4.9.3.5-.1 1.1-.7 1.1H6.9c-.6 0-1-.6-.7-1.1.8-1.2 1.3-2.7 1.3-4.9 0-2.9 1.6-5 4.5-5z" />
+      <path d="M12 5V3.6" />
+      <path d="M10.9 19a1.35 1.35 0 0 0 2.2 0" />
+      <path d="M19.3 5.6a9.6 9.6 0 0 1 1.6 4.4" opacity="0.55" />
+      <path d="M4.7 5.6a9.6 9.6 0 0 0-1.6 4.4" opacity="0.55" />
     </IconSvg>
   );
 }

@@ -1397,6 +1397,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <VerseCraftPaperFrame
         dataTestId="home-paper-page"
         fixedViewport
+        maxWidthClassName="max-w-[470px] lg:max-w-[640px]"
         contentClassName="pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-[max(0.85rem,env(safe-area-inset-top))] sm:pb-[max(0.95rem,env(safe-area-inset-bottom))] sm:pt-[max(1.65rem,env(safe-area-inset-top))]"
       >
         <header className="relative z-20 flex w-full items-center justify-between gap-4">
@@ -1499,7 +1500,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
       <section className="relative z-10 flex min-h-0 w-full flex-1 flex-col items-center text-center">
         <div className="flex min-h-0 w-full flex-1 flex-col">
           <div className="animate-fade-in-up mx-auto mt-[clamp(1.45rem,5.1svh,3.9rem)] max-w-2xl">
-            <h1 className="vc-reading-serif text-[clamp(2.85rem,13.2vw,3.625rem)] font-semibold leading-none text-[#0f4644] sm:text-[66px]">
+            <h1 className="vc-reading-serif text-[clamp(2.85rem,13.2vw,3.625rem)] font-semibold leading-none text-[#0f4644] sm:text-[66px] lg:text-[84px]">
               文界工坊
             </h1>
             <p className="vc-reading-serif mt-[clamp(0.85rem,2.8svh,1.35rem)] text-[clamp(0.85rem,3.2vw,1rem)] leading-none tracking-[0.42em] text-vc-ink-soft">
@@ -1513,7 +1514,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
               <VerseCraftPaperPillButton
                 type="button"
                 data-testid="home-start-new-button"
-                className="animate-fade-in-up min-h-[68px] text-[29px]"
+                className="animate-fade-in-up min-h-[68px] text-[29px] lg:min-h-[78px] lg:text-[33px]"
                 style={{ animationDelay: "80ms" }}
                 aria-busy={isStartNewPending || undefined}
                 onClick={() => {
@@ -1546,7 +1547,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <VerseCraftPaperPillButton
                   type="button"
                   data-testid="home-continue-button"
-                  className="animate-fade-in-up min-h-[68px] text-[29px]"
+                  className="animate-fade-in-up min-h-[68px] text-[29px] lg:min-h-[78px] lg:text-[33px]"
                   style={{ animationDelay: "160ms" }}
                   onClick={openContinuePicker}
                 >

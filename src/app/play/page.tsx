@@ -544,6 +544,13 @@ function PlayContent() {
   const pathname = usePathname();
   const lastAutoSaveRef = useRef(0);
 
+  // 提前预取两个离场目标（结算 / 首页），死亡与结局跳转不再现场拉包。
+  // 仅预取路由资源，不产生任何游戏状态副作用。
+  useEffect(() => {
+    router.prefetch("/settlement");
+    router.prefetch("/");
+  }, [router]);
+
   const isHydrated = useGameStore((s) => s.isHydrated);
 
   const rawStats = useGameStore((s) => s.stats) ?? FALLBACK_STATS;

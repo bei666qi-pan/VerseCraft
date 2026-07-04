@@ -15,12 +15,7 @@ import {
 import { resolveCodexPortrait } from "../codexPortraits";
 import { MobileReadingIcons } from "../icons";
 import type { MobileCodexPanelProps } from "../types";
-
-const UNKNOWN_CODEX_PLACEHOLDER = {
-  src: "/assets/npc-avatars/codex-placeholder-unknown.png",
-  alt: "尚未出现的图鉴占位图",
-  objectPosition: "center top",
-} as const;
+import { CodexUnknownPortrait } from "./CodexUnknownPortrait";
 
 function CodexSilhouette({ identified }: { identified: boolean }) {
   return (
@@ -56,8 +51,8 @@ function CodexCard({
   selected: boolean;
   onSelect: (slot: CodexCatalogSlot) => void;
 }) {
-  const portrait =
-    card.kind === "slot" ? (card.identified ? resolveCodexPortrait(card.id) : UNKNOWN_CODEX_PLACEHOLDER) : null;
+  const portrait = card.kind === "slot" && card.identified ? resolveCodexPortrait(card.id) : null;
+  const showUnknownPortrait = card.kind === "slot" && !card.identified;
   return (
     <button
       type="button"
@@ -83,6 +78,8 @@ function CodexCard({
             className="h-full w-full object-cover"
             style={{ objectPosition: portrait.objectPosition ?? "center top" }}
           />
+        ) : showUnknownPortrait ? (
+          <CodexUnknownPortrait />
         ) : (
           <CodexSilhouette identified={card.identified} />
         )}

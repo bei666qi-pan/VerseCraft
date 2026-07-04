@@ -11,12 +11,15 @@ export function VerseCraftPaperFrame({
   contentClassName = "",
   dataTestId,
   fixedViewport = false,
+  maxWidthClassName = "max-w-[470px]",
 }: {
   children: ReactNode;
   className?: string;
   contentClassName?: string;
   dataTestId?: string;
   fixedViewport?: boolean;
+  /** 内容列宽度：桌面端可传 lg: 覆盖（默认与旧行为一致） */
+  maxWidthClassName?: string;
 }) {
   const frameClassName = fixedViewport
     ? "h-[calc(var(--vc-vh,1svh)_*_100)] min-h-[calc(var(--vc-vh,1svh)_*_100)] overflow-hidden sm:h-auto sm:min-h-[calc(var(--vc-vh,1svh)_*_100)] sm:overflow-x-hidden sm:overflow-y-visible"
@@ -38,7 +41,7 @@ export function VerseCraftPaperFrame({
         className="pointer-events-none absolute inset-0 opacity-55 [background-image:radial-gradient(rgba(120,112,96,0.09)_0.7px,transparent_0.7px)] [background-size:9px_9px]"
         aria-hidden
       />
-      <div className={`relative z-10 mx-auto flex w-full max-w-[470px] flex-col px-7 ${contentFrameClassName} ${contentClassName}`}>
+      <div className={`relative z-10 mx-auto flex w-full ${maxWidthClassName} flex-col px-7 ${contentFrameClassName} ${contentClassName}`}>
         {children}
       </div>
     </main>

@@ -323,6 +323,13 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const hasAchievementPushedRef = useRef(false);
   const endingTelemetrySeenRef = useRef<Set<string>>(new Set());
   const [returningHome, setReturningHome] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<"/" | "/intro" | null>(null);
+
+  // 提前预取两个离场目标的 RSC payload 与 chunk，跳转不再现场拉包
+  useEffect(() => {
+    router.prefetch("/");
+    router.prefetch("/intro");
+  }, [router]);
   const [showFullText, setShowFullText] = useState(false);
 
   const storeStats = useGameStore((s) => s.stats);
@@ -594,14 +601,19 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   async function clearRunAndLeave(target: "/" | "/intro") {
     if (returningHome) return;
     setReturningHome(true);
+    setLeaveTarget(target);
+    // 历史提交通常已在挂载时完成（幂等 ref/localStorage 命中即返），这里一般是瞬时的；
+    // 必须先于 destroySaveData 完成，因为其内部还会回写 store（markEndingSettled + saveGame）
     await submitHistoryOnce();
     const slotId = currentSaveSlot || "main_slot";
     const autoSlotId = slotId === "main_slot" ? "auto_main" : `auto_${slotId}`;
     useGameStore.getState().destroySaveData();
-    await Promise.all([
+    // 云存档删除不再无限等待：2.5s 兜底后先离场，删除请求在后台继续完成
+    const deletions = Promise.all([
       deleteCloudSaveSlot(slotId).catch(() => ({ ok: false as const })),
       deleteCloudSaveSlot(autoSlotId).catch(() => ({ ok: false as const })),
     ]);
+    await Promise.race([deletions, new Promise((resolve) => setTimeout(resolve, 2500))]);
     router.push(target);
   }
 
@@ -721,7 +733,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         ) : null}
 
         <section
-          className="grid animate-fade-in-up gap-3 border-t border-vc-line-warm py-6 sm:grid-cols-2"
+          className="grid animate-fade-in-up gap-3 border-t border-vc-line-warm py-6 sm:grid-cols-2 lg:grid-cols-4"
           style={{ animationDelay: "540ms" }}
         >
           <button
@@ -745,18 +757,20 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             onClick={() => void clearRunAndLeave("/")}
             disabled={returningHome}
             data-testid="settlement-return-home"
+            aria-busy={leaveTarget === "/" || undefined}
             className="rounded-[10px] border border-vc-line bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent disabled:opacity-60"
           >
-            返回首页
+            {leaveTarget === "/" ? "收卷离场…" : "返回首页"}
           </button>
           <button
             type="button"
             onClick={() => void clearRunAndLeave("/intro")}
             disabled={returningHome}
             data-testid="settlement-new-run"
+            aria-busy={leaveTarget === "/intro" || undefined}
             className="rounded-[10px] bg-vc-ink px-5 py-3 text-[15px] font-semibold text-vc-paper-bright transition-colors hover:bg-vc-ink-deep disabled:opacity-60"
           >
-            新一局
+            {leaveTarget === "/intro" ? "另起新篇…" : "新一局"}
           </button>
         </section>
 

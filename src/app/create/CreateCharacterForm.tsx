@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StatType } from "@/lib/registry/types";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
@@ -55,6 +55,11 @@ export function CreateCharacterForm() {
   const user = useGameStore((s) => s.user);
   const guestId = useGameStore((s) => s.guestId ?? "guest_create");
   useHeartbeat(!!user, guestId, "/create");
+
+  // 提前预取 /play 的 RSC payload 与大体积 chunk：「开卷」不再现场拉包
+  useEffect(() => {
+    router.prefetch("/play");
+  }, [router]);
 
   const [name, setName] = useState("");
   const [gender, setGender] = useState<GenderOption>("男");
@@ -199,7 +204,8 @@ export function CreateCharacterForm() {
   }
 
   return (
-    <VerseCraftPaperFrame contentClassName="pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">
+    <VerseCraftPaperFrame
+      maxWidthClassName="max-w-[470px] lg:max-w-[640px]" contentClassName="pb-[calc(1rem+env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]">
       <form
         data-testid="create-character-page"
         className="relative mx-auto flex min-h-[calc(var(--vc-vh,1svh)_*_100)] w-full flex-col overflow-x-hidden"
