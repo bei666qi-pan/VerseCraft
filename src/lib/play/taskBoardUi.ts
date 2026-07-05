@@ -346,6 +346,8 @@ export type TaskStageCardViewModel = {
   status: GameTask["status"];
   claimMode: GameTask["claimMode"];
   issuerLine: string;
+  /** 玩家现在具体能做/能说的一句话——本卡最具行动力的一行，优先取自任务的 nextHint。 */
+  nextStep: string;
   whyMatters: string;
   ifNotDone: string;
   payoffLine: string;
@@ -406,13 +408,40 @@ const WHY_MATTERS_FALLBACK: Record<TaskStageRole, readonly string[]> = {
 function buildWhyMatters(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
   const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 96);
   const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 96);
-  const hint = clipStageText(sanitizePlayerFacingInline(String(task.nextHint ?? ""), codex), 96);
   const desc = clipStageText(sanitizePlayerFacingInline(String(task.desc ?? ""), codex), 96);
   if (urg) return urg;
   if (hook) return hook;
-  if (hint) return hint;
   if (desc) return desc;
   return pickStableVariant(task.id, WHY_MATTERS_FALLBACK[role]);
+}
+
+const NEXT_STEP_FALLBACK: Record<TaskStageRole, readonly string[]> = {
+  mainline: [
+    "找当事人把话挑明，别绕圈子。",
+    "先去现场确认一遍，再决定怎么开口。",
+    "把手上的线索摊开问一句，看对方怎么接。",
+  ],
+  commission: [
+    "去见委托人，把你已经掌握的说清楚。",
+    "先把对方交代的事往前推一步，再回去交差。",
+    "找对的人，问出你还缺的那一句话。",
+  ],
+  opportunity: [
+    "现在就去看一眼，别等它自己关上。",
+    "抓紧时间探一探，机会不等人。",
+    "先去确认这条路还开着，再决定要不要走。",
+  ],
+};
+
+/**
+ * 「下一步」行：任务里最具体、最有行动力的一句（作者写在 nextHint 里的原话），
+ * 此前只是 buildWhyMatters 的最低优先级兜底——一旦任务写了 urgencyReason/playerHook，
+ * nextHint 就被整句吞掉，UI 上永远看不到。现在单独开一行，任何任务都优先展示它。
+ */
+function buildNextStep(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
+  const hint = clipStageText(sanitizePlayerFacingInline(String(task.nextHint ?? ""), codex), 72);
+  if (hint) return hint;
+  return pickStableVariant(task.id, NEXT_STEP_FALLBACK[role]);
 }
 
 const IF_NOT_DONE_FALLBACK: Record<TaskStageRole, readonly string[]> = {
@@ -521,6 +550,7 @@ export function buildTaskStageCardViewModel(
     status: task.status,
     claimMode: task.claimMode,
     issuerLine: issuer || "未知托付方",
+    nextStep: buildNextStep(task, role, codex),
     whyMatters: buildWhyMatters(task, role, codex),
     ifNotDone: buildIfNotDone(task, role, codex),
     payoffLine: buildPayoffLine(task, codex),

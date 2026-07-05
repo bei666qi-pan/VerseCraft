@@ -1,5 +1,5 @@
 import { inferEffectiveNarrativeLayer, type IssuerPersonaMode, type IssuerSoftRevealMode } from "@/lib/tasks/taskRoleModel";
-import type { GameTaskV2 } from "./taskV2";
+import type { GameTaskV2, TaskDramaticType } from "./taskV2";
 
 function clamp(s: string, max: number): string {
   const t = String(s ?? "").trim();
@@ -30,6 +30,19 @@ const REVEAL_VOICE_HINT: Record<IssuerSoftRevealMode, string> = {
   receipt: "像交对账单一样列清楚",
   script_tweak: "改口时露出破绽",
   closed_door: "关上门才肯松半句口",
+};
+
+/** 戏剧类型 → 具体张力提示，同样替代原始枚举码（如 "debt_payment"）。 */
+const DRAMATIC_TYPE_HINT: Record<TaskDramaticType, string> = {
+  survival: "求生：先活下去，别的都往后放",
+  trust: "试探：在悄悄摸对方的底线",
+  leverage: "筹码：谁拿捏谁，还没定",
+  betrayal: "背刺：信任随时可能碎",
+  delivery: "交付：说到做到才算数",
+  investigation: "查证：只认拿得出手的证据",
+  coverup: "遮掩：帮忙瞒住一件事",
+  escape: "脱身：一门心思找出口",
+  debt_payment: "还债：为欠下的东西买单",
 };
 
 export function buildTaskDramaPacket(args: {
@@ -68,7 +81,7 @@ export function buildTaskDramaPacket(args: {
     const residue = clamp(t.residueOnFail ?? t.residueOnComplete ?? "", 56);
     const voice = clamp(t.spokenDeliveryStyle ?? "", 44) || (t.issuerPersonaMode ? PERSONA_VOICE_HINT[t.issuerPersonaMode] : "");
     const revealHint = t.issuerSoftRevealMode ? REVEAL_VOICE_HINT[t.issuerSoftRevealMode] : "";
-    const dt = t.dramaticType ? `类型=${t.dramaticType}` : "";
+    const dramaHint = t.dramaticType ? DRAMATIC_TYPE_HINT[t.dramaticType] : "";
     const layer = inferEffectiveNarrativeLayer(t);
     const layerCn =
       layer === "soft_lead" ? "暗示线" : layer === "conversation_promise" ? "人情约定" : "正式追踪";
@@ -78,9 +91,10 @@ export function buildTaskDramaPacket(args: {
         : t.guidanceLevel === "light"
           ? "引导：少直给，多留线索让玩家自己拼"
           : "";
-    lines.push(`${t.issuerName}委托《${t.title}》${dt}[${layerCn}]`.trim());
+    lines.push(`${t.issuerName}委托《${t.title}》[${layerCn}]`.trim());
     const bits = [
       voice ? `语气：${voice}` : "",
+      dramaHint ? `张力：${dramaHint}` : "",
       intent ? `动机：${intent}` : "",
       motive ? `潜台词（角色不可自己说破）：${motive}` : "",
       hook ? `钩子：${hook}` : "",

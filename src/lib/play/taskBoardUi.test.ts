@@ -182,11 +182,12 @@ test("projectTaskBoardViewModel returns clear player-facing slots", () => {
   assert.ok(vm.visibleCount >= 4);
 });
 
-test("buildTaskStageCardViewModel exposes five readable rows", () => {
+test("buildTaskStageCardViewModel exposes six readable rows", () => {
   const t = task({
     id: "stage1",
     title: "舞台卡",
     urgencyReason: "因为门要关了",
+    nextHint: "先去问老刘钥匙在哪",
     residueOnFail: "会失去钥匙",
     reward: { originium: 10, items: [], warehouseItems: [], unlocks: ["侧门通行"], relationshipChanges: [] },
     highRiskHighReward: true,
@@ -194,11 +195,29 @@ test("buildTaskStageCardViewModel exposes five readable rows", () => {
     grantState: "visible_on_board" as any,
   });
   const vm = buildTaskStageCardViewModel(t, "mainline", null);
+  assert.equal(vm.nextStep, "先去问老刘钥匙在哪");
   assert.equal(vm.whyMatters, "因为门要关了");
   assert.ok(vm.ifNotDone.includes("会失去钥匙"));
   assert.ok(vm.payoffLine.includes("权限") || vm.payoffLine.includes("侧门"));
   assert.ok(vm.riskSense.length > 8);
   assert.equal(vm.riskBand, "hot");
+});
+
+test("buildTaskStageCardViewModel 的 nextStep 不会被 urgencyReason 挤掉，且没有 nextHint 时才落到按角色变体的兜底", () => {
+  const withUrgencyOnly = task({
+    id: "stage-urgency-only",
+    title: "只写了紧迫理由",
+    urgencyReason: "门要关了",
+    nextHint: "去问守卫要钥匙",
+    grantState: "visible_on_board" as any,
+  });
+  const vm = buildTaskStageCardViewModel(withUrgencyOnly, "mainline", null);
+  assert.equal(vm.whyMatters, "门要关了");
+  assert.equal(vm.nextStep, "去问守卫要钥匙");
+
+  const bare = task({ id: "stage-bare", title: "无戏剧字段", grantState: "visible_on_board" as any });
+  const bareVm = buildTaskStageCardViewModel(bare, "commission", null);
+  assert.ok(bareVm.nextStep.length > 0);
 });
 
 test("projectTaskBoardStageProjection aligns cards with 1+2+1 board", () => {

@@ -11,6 +11,17 @@ const DEV_PHRASE_RES: readonly { re: RegExp; replace: string }[] = [
   { re: /七辅锚/g, replace: "" },
   { re: /registry\/[\w./-]+/gi, replace: "" },
   { re: /\.tsx?[:：]\d+/g, replace: "" },
+  // 已知内部字段/触发码名（例如 guidanceLevel、visited:...、talked_to:...），
+  // 可能被模型忘记规则而原样带出；名字本身在中文叙事里就不该合法出现，
+  // 不要求一定带 :/= 取值后缀——后缀存在时一并清掉。
+  {
+    re: /\b(visited|talked_to|guidanceLevel|taskNarrativeLayer|surfaceClass|surfaceSlot|dramaticType|goalKind|grantState|claimMode|npcProactiveGrant|issuerPersonaMode|issuerSoftRevealMode|issuerPressureStyle|issuerDemandStyle|issuerTrustTestMode|worldConsequences|hiddenTriggerConditions|followupSeedCodes|promiseBinding)\b\s*[:=]?\s*[\w.:-]*/gi,
+    replace: "",
+  },
+  // 兜底：narrative 里几乎不会合法出现 snake_case / lowerCamelCase 英文标识符，
+  // 出现多半是内部字段名或事件 flag 泄漏（如 b1_guidance_seeded、escape:route_fragment_seeded）。
+  { re: /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, replace: "" },
+  { re: /\b[a-z]+(?:[A-Z][a-z0-9]*){2,}\b/g, replace: "" },
 ];
 
 /**

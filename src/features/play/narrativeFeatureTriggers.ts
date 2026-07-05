@@ -68,6 +68,8 @@ export type NarrativeFeatureTriggerResult = {
   applied: boolean;
   feature: "guide" | "task" | "journal" | "inventory" | "warehouse" | "achievement" | "weapon";
   hints: string[];
+  /** 本次事件实际涉及的任务 id（新增/更新/服务端点名），供 UI 做"高亮刚变化的任务"用。 */
+  taskIds?: string[];
   counts: {
     guideHintsPresented?: number;
     taskAddsApplied?: number;
@@ -119,6 +121,7 @@ function result(
     feature,
     applied: patch?.applied ?? false,
     hints: patch?.hints ?? [],
+    ...(patch?.taskIds ? { taskIds: patch.taskIds } : {}),
     counts: patch?.counts ?? {},
   };
 }
@@ -174,14 +177,15 @@ function extractJournalRecallHint(
   };
 }
 
-function extractTaskPanelHint(raw: unknown): string {
+function extractTaskPanelHint(raw: unknown): { hint: string; ids: string[] } {
   const o = asRecord(raw);
-  if (!o) return "";
+  if (!o) return { hint: "", ids: [] };
   const autoOpenTask = o.auto_open_panel === "task";
   const highlightIds = Array.isArray(o.highlight_task_ids)
     ? o.highlight_task_ids.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
     : [];
-  return autoOpenTask || highlightIds.length > 0 ? "新的叙事线索已被记录。" : "";
+  const hint = autoOpenTask || highlightIds.length > 0 ? "新的叙事线索已被记录。" : "";
+  return { hint, ids: highlightIds };
 }
 
 function extractItemKeys(raw: unknown): string[] {
@@ -385,10 +389,11 @@ export function applyNarrativeFeatureEvent(
       });
     }
     case "task.panel_hint": {
-      const hint = extractTaskPanelHint(event.raw);
+      const { hint, ids } = extractTaskPanelHint(event.raw);
       return result("task", {
         applied: Boolean(hint),
         hints: hint ? [hint] : [],
+        taskIds: ids,
       });
     }
     case "task.add": {
@@ -403,6 +408,7 @@ export function applyNarrativeFeatureEvent(
       return result("task", {
         applied: rows.length > 0,
         hints: added.length > 0 ? ["新的叙事线索已被记录。"] : [],
+        taskIds: added.map((t) => t.id),
         counts: { taskAddsApplied: rows.length },
       });
     }
@@ -417,6 +423,7 @@ export function applyNarrativeFeatureEvent(
       }
       return result("task", {
         applied: true,
+        taskIds: patches.map((p) => p.id),
         counts: { taskUpdatesApplied: patches.length },
       });
     }

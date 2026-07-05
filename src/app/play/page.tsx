@@ -16,6 +16,7 @@ import { selectBgmForTurn } from "@/features/play/bgm/bgmRules";
 import { PlayAmbientOverlays } from "@/features/play/components/PlayAmbientOverlays";
 import { PlayBlockingModals } from "@/features/play/components/PlayBlockingModals";
 import { PlayComplianceToast } from "@/features/play/components/PlayComplianceToast";
+import { PlayFeedbackToast } from "@/features/play/components/PlayFeedbackToast";
 import { PlayStoryScroll, type ChatQueuePanelState } from "@/features/play/components/PlayStoryScroll";
 import {
   MobileActionDock,
@@ -578,6 +579,8 @@ function PlayContent() {
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
   const [talentEffectType, setTalentEffectType] = useState<EchoTalent | null>(null);
   const [firstTimeHint, setFirstTimeHint] = useState<string | null>(null);
+  /** 本回合新增/更新、或服务端 highlight_task_ids 点名的任务，用于任务面板里的高亮环效果。 */
+  const [recentTaskHighlightIds, setRecentTaskHighlightIds] = useState<string[]>([]);
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
@@ -1071,6 +1074,14 @@ function PlayContent() {
     const t = setTimeout(() => setFirstTimeHint(null), 3000);
     return () => clearTimeout(t);
   }, [firstTimeHint]);
+
+  // 高亮环只在玩家实际停留在任务面板时才开始倒数消退；不在任务面板时保持点亮，
+  // 这样玩家收到"新任务"提示后无论何时点进任务页，都还能看到是哪张卡变了。
+  useEffect(() => {
+    if (activeMenu !== "tasks" || recentTaskHighlightIds.length === 0) return;
+    const t = setTimeout(() => setRecentTaskHighlightIds([]), 5000);
+    return () => clearTimeout(t);
+  }, [activeMenu, recentTaskHighlightIds]);
 
   const triggerComplianceHint = useCallback(() => {
     if (hasShownComplianceHintThisSessionRef.current) return;
@@ -4155,7 +4166,7 @@ function PlayContent() {
       setFirstTimeHint(acquireHudHints.join("；"));
     }
 
-    applyNarrativeFeatureEvent(
+    const taskUpdateTrigger = applyNarrativeFeatureEvent(
       { type: "task.update", raw: parsed.task_updates },
       {
         updateTaskStatus,
@@ -4212,13 +4223,22 @@ function PlayContent() {
     try {
       const toastHint = typeof uiHints?.toast_hint === "string" ? uiHints.toast_hint.trim() : "";
       const guideHint = applyNarrativeFeatureEvent({ type: "guide.hint", raw: uiHints }, {}).hints[0] ?? "";
-      const taskPanelHint = applyNarrativeFeatureEvent({ type: "task.panel_hint", raw: uiHints }, {}).hints[0] ?? "";
+      const taskPanelTrigger = applyNarrativeFeatureEvent({ type: "task.panel_hint", raw: uiHints }, {});
+      const taskPanelHint = taskPanelTrigger.hints[0] ?? "";
       if (toastHint) {
         setFirstTimeHint(toastHint);
       } else if (guideHint) {
         setFirstTimeHint(guideHint);
       } else if (!endgameState.active) {
         if (taskPanelHint) setFirstTimeHint(taskPanelHint);
+      }
+
+      // 高亮刚被本回合触碰过的任务：新增、更新、或服务端 highlight_task_ids 点名的，三者合并去重。
+      const touchedTaskIds = Array.from(
+        new Set([...(taskAddTrigger.taskIds ?? []), ...(taskUpdateTrigger.taskIds ?? []), ...(taskPanelTrigger.taskIds ?? [])])
+      );
+      if (touchedTaskIds.length > 0) {
+        setRecentTaskHighlightIds(touchedTaskIds);
       }
     } catch {
       // ignore: hints are best-effort
@@ -5048,6 +5068,7 @@ function PlayContent() {
               tasks={tasks}
               originium={originium}
               codex={codex}
+              highlightTaskIds={recentTaskHighlightIds}
               onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
             />
           ) : !isOverlayPanelActive && isSettingsPanelActive ? (
@@ -5314,6 +5335,7 @@ function PlayContent() {
                   tasks={tasks}
                   originium={originium}
                   codex={codex}
+                  highlightTaskIds={recentTaskHighlightIds}
                   onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
                 />
               ) : isSettingsPanelActive ? (
@@ -5427,6 +5449,7 @@ function PlayContent() {
 
       <NarrativeSystemsDebugPanel />
       <PlayComplianceToast visible={showComplianceHint} />
+      <PlayFeedbackToast text={firstTimeHint} />
 
     </MobileReadingShell>
   );

@@ -60,6 +60,14 @@ test("buildTaskDramaPacket translates issuerSoftRevealMode instead of leaking th
   assert.ok(packet.includes("翻旧账时无意带出"));
 });
 
+test("buildTaskDramaPacket translates dramaticType instead of leaking the raw enum code", () => {
+  const t: GameTaskV2 = { ...baseTask, dramaticType: "debt_payment" };
+  const packet = buildTaskDramaPacket({ tasks: [t] });
+  assert.equal(packet.includes("debt_payment"), false);
+  assert.equal(packet.includes("类型="), false);
+  assert.ok(packet.includes("张力：还债"));
+});
+
 test("buildTaskDramaPacket adds a concrete guidance directive for strong/light guidanceLevel", () => {
   const strong = buildTaskDramaPacket({ tasks: [{ ...baseTask, guidanceLevel: "strong" }] });
   const light = buildTaskDramaPacket({ tasks: [{ ...baseTask, id: "t2", guidanceLevel: "light" }] });

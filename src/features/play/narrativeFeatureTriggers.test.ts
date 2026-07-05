@@ -55,6 +55,7 @@ test("narrative guide and task panel hints surface as passive hints only", () =>
 
   assert.equal(taskPanel.applied, true);
   assert.deepEqual(taskPanel.hints, ["新的叙事线索已被记录。"]);
+  assert.deepEqual(taskPanel.taskIds, ["task.main"]);
 });
 
 test("narrative guide events can read retained guide content without opening guide UI", () => {
@@ -246,6 +247,7 @@ test("former taskbar task actions route through narrative add and update events"
   assert.equal(addResult.applied, true);
   assert.equal(addResult.counts.taskAddsApplied, 1);
   assert.deepEqual(addResult.hints, ["新的叙事线索已被记录。"]);
+  assert.deepEqual(addResult.taskIds, ["task.narrative"]);
   assert.deepEqual(tasks, [{ id: "task.narrative", title: "确认配电间的声音" }]);
 
   const statusUpdates: Array<{ id: string; status: GameTaskStatus }> = [];
@@ -260,6 +262,7 @@ test("former taskbar task actions route through narrative add and update events"
 
   assert.equal(updateResult.applied, true);
   assert.equal(updateResult.counts.taskUpdatesApplied, 1);
+  assert.deepEqual(updateResult.taskIds, ["task.narrative"]);
   assert.deepEqual(statusUpdates, [{ id: "task.narrative", status: "completed" }]);
   assert.equal(patches[0]?.nextHint, "声音停止了。");
 });
