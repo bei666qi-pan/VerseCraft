@@ -22,6 +22,19 @@ export type ResolvedTurnUiHints = {
 
 export type ResolvedDmTurn = TurnEnvelope;
 
+/**
+ * 单回合直接走 legacy `new_tasks` 字段时的服务端硬上限。
+ *
+ * `playerChatSystemPrompt.ts` 里的【事件驱动（可选进阶）】一节早就向模型承诺"正式
+ * new_tasks 有上限"，`src/lib/dmChangeSet/applyChangeSet.ts` 在模型使用 `dm_change_set`
+ * 时也确实执行了这个上限（`MAX_LEGACY_NEW_TASKS_WHEN_CHANGESET(1) + MAX_NEW_TASKS_FROM_CHANGESET(2) = 3`）。
+ * 但模型不经过 `dm_change_set`、直接输出 legacy `new_tasks` 时（这是更常见的路径），
+ * 这里此前完全没有数量限制——提示词的承诺和实现不一致。取同一量级（3）收口，
+ * 避免单次异常输出把大量任务一次性灌入 store（前端 1+2+1 展示不会丢任务，只是会把
+ * 超额部分推进"更多在办"，但服务端理应先做一道防线，而不是只靠前端兜底）。
+ */
+const MAX_NEW_TASKS_PER_TURN = 3;
+
 type ResolveTurnConsistencyOptions = {
   maxNarrativeChars?: number;
   maxOptionChars?: number;
@@ -262,9 +275,13 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   }
 
   // Tasks: force normalize and keep only normalized outputs.
-  const normalizedNewTasks = asUnknownArray(input.new_tasks)
+  const normalizedNewTasksAll = asUnknownArray(input.new_tasks)
     .map((t) => normalizeGameTaskDraft(t))
     .filter((t): t is NonNullable<ReturnType<typeof normalizeGameTaskDraft>> => !!t);
+  const normalizedNewTasks = normalizedNewTasksAll.slice(0, MAX_NEW_TASKS_PER_TURN);
+  if (normalizedNewTasksAll.length > MAX_NEW_TASKS_PER_TURN) {
+    consistency_flags.push("new_tasks_capped");
+  }
   const normalizedTaskUpdates = asUnknownArray(input.task_updates)
     .map((u) => normalizeTaskUpdateDraft(u))
     .filter((u): u is NonNullable<ReturnType<typeof normalizeTaskUpdateDraft>> => !!u);

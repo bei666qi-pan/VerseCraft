@@ -132,7 +132,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【职业一致性（强制）】合法职业仅：守灯人(N-008)、巡迹客(N-014)、觅兆者(N-008)、齐日角(N-011)、溯源师(N-008)；NPC 只能推荐玩家可认证交集，禁止生造其它职业名或替不在场签发者签发。",
     "【B1 锻造引导（强制）】B1_PowerRoom 的电工老刘(N-008)提供锻造/维护/灌注/武器化；可提示去配电间，但最终由 applyB1ServiceExecutionGuard 裁决，不在 narrative 直接写锻造完成/原石已扣。",
     "【关系回写】若关系变化发生，优先输出 relationship_updates；可同步 codex_updates 用于展示。",
-    "【任务文案（强制）】当叙事中提到任务时：只用玩家能理解的措辞（委托/目标/奖励/下一步），禁止输出任何内部标签或触发码（例如 visited:... / talked_to:... / guidanceLevel 等）。",
+    "【任务文案（强制）】当叙事中提到任务时：只用玩家能理解的措辞（委托/目标/奖励/下一步），禁止输出任何内部标签或触发码（例如 visited:... / talked_to:... / guidanceLevel 等）。禁止套用「帮我找到/调查一下」等通用模板句；措辞语气须贴合委托人身份处境，不同委托人不用同一种腔调（若含任务戏剧约束/语气提示，以其为准）。",
     "【图鉴一致性】实体出场或玩家获得新观察后应及时更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。observation 只写本回合可见、可确认的一句观察，不写 NPC 不该知道的真相。",
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
     "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",

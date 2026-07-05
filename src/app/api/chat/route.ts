@@ -3182,6 +3182,7 @@ async function postChatInternal(req: Request) {
           playerContext,
           latestUserInput,
           requestId,
+          clientState,
         });
         rec = normalizeDmTaskPayload(rec);
         rec = ensure7FConspiracyTask(rec, { playerContext, latestUserInput });

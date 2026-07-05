@@ -160,6 +160,51 @@ test("ending store: resetForNewGame clears ending state", () => {
   assert.equal(useGameStore.getState().endingState.settlementSnapshot, null);
 });
 
+test("resetForNewGame: 全新玩家（时间早、未死过）不会被标记为已毕业新手引导", () => {
+  resetStore();
+  seedRun({ time: { day: 1, hour: 2 }, deathCount: 0, hasCompletedNewPlayerGuideBefore: false });
+
+  useGameStore.getState().resetForNewGame();
+
+  assert.equal(useGameStore.getState().hasCompletedNewPlayerGuideBefore, false);
+});
+
+test("resetForNewGame: 游戏时间已过第1天12时时，标记为已毕业新手引导", () => {
+  resetStore();
+  seedRun({ time: { day: 1, hour: 13 }, deathCount: 0, hasCompletedNewPlayerGuideBefore: false });
+
+  useGameStore.getState().resetForNewGame();
+
+  assert.equal(useGameStore.getState().hasCompletedNewPlayerGuideBefore, true);
+});
+
+test("resetForNewGame: 已经死过一次时，即使时间还早也标记为已毕业新手引导", () => {
+  resetStore();
+  seedRun({ time: { day: 1, hour: 1 }, deathCount: 1, hasCompletedNewPlayerGuideBefore: false });
+
+  useGameStore.getState().resetForNewGame();
+
+  assert.equal(useGameStore.getState().hasCompletedNewPlayerGuideBefore, true);
+});
+
+test("resetForNewGame: 已毕业状态在后续新开局里保持（不会被重新判定为新手）", () => {
+  resetStore();
+  seedRun({ time: { day: 1, hour: 1 }, deathCount: 0, hasCompletedNewPlayerGuideBefore: true });
+
+  useGameStore.getState().resetForNewGame();
+
+  assert.equal(useGameStore.getState().hasCompletedNewPlayerGuideBefore, true);
+});
+
+test("getPromptContext: 新手引导毕业状态会序列化进 playerContext 供服务端解析", () => {
+  resetStore();
+  seedRun({ hasCompletedNewPlayerGuideBefore: false });
+  assert.ok(useGameStore.getState().getPromptContext().includes("新手引导[进行中]。"));
+
+  seedRun({ hasCompletedNewPlayerGuideBefore: true });
+  assert.ok(useGameStore.getState().getPromptContext().includes("新手引导[已毕业]。"));
+});
+
 test("ending store: final choice plus final narrative creates immutable settlement snapshot", () => {
   resetStore();
   seedRun({

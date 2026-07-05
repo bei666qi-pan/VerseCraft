@@ -1,10 +1,12 @@
 import type { StatType, Weapon } from "@/lib/registry/types";
+import type { ProfessionId } from "@/lib/profession/types";
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
 import type { NpcHeartRuntimeView } from "@/lib/npcHeart/types";
 import { buildSceneCombatContext } from "./sceneCombatContext";
 import { buildActorPostureLayers, buildHiddenNpcCombatProfile, computeCombatPrecheck, computeNpcCombatScore } from "./combatAdjudication";
 import { computePlayerCombatScore } from "./playerCombatScore";
 import { resolveNpcCombatStyle } from "./combatStyleResolvers";
+import { getCombatStyleFromRegistry } from "./npcCombatStyles";
 import {
   dangerTierToPlayerText,
   outcomeToResultLayer,
@@ -101,6 +103,10 @@ export function buildCombatPromptBlockV1(args: {
   codex?: Record<string, CodexEntry>;
   npcHeartViews?: NpcHeartRuntimeView[];
   maxChars?: number;
+  /** 已认证职业（Stage-4：职业进入战力预判，而不是与战斗系统平行） */
+  profession?: ProfessionId | null;
+  /** 本回合职业主动是否已发动 */
+  professionActiveEngaged?: boolean;
 }): string {
   const maxChars = Math.max(180, Math.min(700, args.maxChars ?? 420));
   const locationId = String(args.locationId ?? "").trim() || "unknown";
@@ -124,6 +130,9 @@ export function buildCombatPromptBlockV1(args: {
   const codexEntry = (args.codex ?? {})[npcId] ?? null;
   const npcHidden = buildHiddenNpcCombatProfile({ npcId, codex: args.codex ?? null });
   const npcScore = computeNpcCombatScore({ npc: npcHidden, scene });
+  const opponentVulnerableTags = npcHidden.styleKey
+    ? getCombatStyleFromRegistry(npcHidden.styleKey)?.vulnerableToTags
+    : undefined;
   const playerScore = computePlayerCombatScore({
     stats: args.stats,
     equippedWeapon: args.equippedWeapon ?? null,
@@ -132,6 +141,10 @@ export function buildCombatPromptBlockV1(args: {
     allyCount: 0,
     initiative: /偷袭|趁其不备|背后|突然/.test(args.lastUserInput) ? "soft" : "none",
     footingQuality: scene.isSafeZone ? "good" : "ok",
+    profession: args.profession ?? null,
+    professionActiveEngaged: args.professionActiveEngaged,
+    kind: detect.kindHint,
+    opponentVulnerableTags,
   });
 
   const pre: CombatPrecheck = computeCombatPrecheck({

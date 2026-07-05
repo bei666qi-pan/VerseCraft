@@ -139,7 +139,28 @@ export function applyEquipmentExecutionGuard(args: {
     return parseWeaponBagFromPlayerContext(args.playerContext);
   })();
 
-  // 装备/换装/卸下：从节奏与反作弊角度统一为“消耗 1 回合”（consumes_time=true）
+  // 当前已装备武器的完整对象（用于读取 equipTimeCostTurns；仅结构化 clientState 有意义，无则视为默认耗时）。
+  const equippedWeaponObj: Weapon | null = (() => {
+    const eq = args.clientState?.equippedWeapon;
+    if (eq && typeof eq === "object" && !Array.isArray(eq) && typeof (eq as any).id === "string") {
+      return eq as unknown as Weapon;
+    }
+    return null;
+  })();
+
+  /**
+   * 换装耗时：默认仍是“消耗 1 回合”（与此前行为一致，且现有全部武器数据 equipTimeCostTurns 均为 1，
+   * 因此对现有存档零行为变化）。修复：`equipTimeCostTurns` 此前是纯展示/未消费字段——真正的“耗1回合”
+   * 规则写死在下面这行 `consumes_time = true`，与该字段完全脱钩。现在改为真正读取该字段，
+   * 只有显式标注 `equipTimeCostTurns: 0`（“可瞬间换装”的武器）才会跳过回合消耗。
+   */
+  function turnCostOf(weapon: Weapon | null): number {
+    const raw = (weapon as { equipTimeCostTurns?: unknown } | null)?.equipTimeCostTurns;
+    return typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, Math.trunc(raw)) : 1;
+  }
+
+  // 非法/提前返回分支维持原有行为（仍标记为消耗回合，避免改变既有反作弊口径）；
+  // 合法分支会在下方按具体武器的 equipTimeCostTurns 重新计算。
   record.consumes_time = true;
 
   if (act.kind === "unequip") {
@@ -151,6 +172,7 @@ export function applyEquipmentExecutionGuard(args: {
     // 规则：卸下回武器背包
     appendWeaponUpdates(record, [{ unequip: true }]);
     appendWeaponBagUpdates(record, [{ addEquippedWeaponId: equippedId }]);
+    record.consumes_time = turnCostOf(equippedWeaponObj) > 0;
     record.narrative = `${record.narrative ?? ""}\n\n你卸下了武器，武器已回到背包。`.trim();
     return record;
   }
@@ -173,6 +195,7 @@ export function applyEquipmentExecutionGuard(args: {
     }
     appendWeaponUpdates(record, [{ weapon: targetWeapon }]);
     appendWeaponBagUpdates(record, [{ removeWeaponId: targetWeapon.id }]);
+    record.consumes_time = turnCostOf(targetWeapon) > 0;
     record.narrative = `${record.narrative ?? ""}\n\n你完成装备，武器已进入武器栏。`.trim();
     return record;
   }
@@ -182,6 +205,7 @@ export function applyEquipmentExecutionGuard(args: {
     // 视为 equip
     appendWeaponUpdates(record, [{ weapon: targetWeapon }]);
     appendWeaponBagUpdates(record, [{ removeWeaponId: targetWeapon.id }]);
+    record.consumes_time = turnCostOf(targetWeapon) > 0;
     record.narrative = `${record.narrative ?? ""}\n\n你完成装备，武器已进入武器栏。`.trim();
     return record;
   }
@@ -197,6 +221,7 @@ export function applyEquipmentExecutionGuard(args: {
     { removeWeaponId: targetWeapon.id },
     { addEquippedWeaponId: equippedId },
   ]);
+  record.consumes_time = turnCostOf(targetWeapon) > 0;
   record.narrative = `${record.narrative ?? ""}\n\n你更换了武器，新武器已生效，旧武器已回到背包。`.trim();
   return record;
 }

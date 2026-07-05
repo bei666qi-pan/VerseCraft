@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildTaskCompactRowViewModel,
   buildTaskStageCardViewModel,
   computeTaskBoardPressureSummary,
   filterTasksForTaskBoardVisibilityV2,
@@ -79,7 +80,6 @@ test("partitionTasksForBoard keeps commission-slot tasks out of mainline pool", 
     status: "active",
     grantState: "visible_on_board" as any,
     surfaceClass: "commission" as any,
-    surfaceSlot: "commission" as any,
   });
   const p = partitionTasksForBoard([spine, lane], 2);
   assert.equal(p.primary?.id, "spine");
@@ -95,7 +95,6 @@ test("partitionTasksForBoard follows 1+2+1 slots", () => {
       status: "active",
       grantState: "visible_on_board" as any,
       surfaceClass: "commission" as any,
-      surfaceSlot: "commission" as any,
     })
   );
   const opportunities = Array.from({ length: 6 }, (_, i) =>
@@ -107,7 +106,6 @@ test("partitionTasksForBoard follows 1+2+1 slots", () => {
       dramaticType: "investigation" as any,
       grantState: "visible_on_board" as any,
       surfaceClass: "opportunity" as any,
-      surfaceSlot: "opportunity" as any,
     })
   );
   const promises = Array.from({ length: 12 }, (_, i) =>
@@ -168,7 +166,6 @@ test("projectTaskBoardViewModel returns clear player-facing slots", () => {
       dramaticType: "investigation" as any,
       grantState: "visible_on_board" as any,
       surfaceClass: "opportunity" as any,
-      surfaceSlot: "opportunity" as any,
     }),
     task({
       id: "p1",
@@ -217,11 +214,74 @@ test("projectTaskBoardStageProjection aligns cards with 1+2+1 board", () => {
       dramaticType: "investigation" as any,
       grantState: "visible_on_board" as any,
       surfaceClass: "opportunity" as any,
-      surfaceSlot: "opportunity" as any,
     }),
   ];
   const p = projectTaskBoardStageProjection(tasks, true, null);
   assert.equal(p.cards.mainline?.taskId, "m1");
   assert.equal(p.cards.commissions.length, p.board.commissions.length);
   assert.equal(p.cards.opportunity?.taskId, "o1");
+});
+
+test("buildTaskCompactRowViewModel gives a single-line summary with tone", () => {
+  const t = task({
+    id: "promise1",
+    title: "口头承诺",
+    issuerName: "麟泽",
+    playerHook: "你欠她一次人情",
+    highRiskHighReward: true,
+    taskNarrativeLayer: "conversation_promise" as any,
+    grantState: "narratively_offered" as any,
+  });
+  const vm = buildTaskCompactRowViewModel(t, null);
+  assert.equal(vm.taskId, "promise1");
+  assert.ok(vm.oneLiner.includes("麟泽"));
+  assert.ok(vm.oneLiner.includes("你欠她一次人情"));
+  assert.equal(vm.tone, "hot");
+});
+
+test("buildTaskStageCardViewModel fallback text varies by task instead of one fixed line for all tasks", () => {
+  const bare = (id: string, title: string) => task({ id, title, grantState: "visible_on_board" as any });
+  const a = buildTaskStageCardViewModel(bare("bare-a", "无戏剧字段任务A"), "commission", null);
+  const b = buildTaskStageCardViewModel(bare("bare-b", "无戏剧字段任务B"), "commission", null);
+  const c = buildTaskStageCardViewModel(bare("bare-c", "无戏剧字段任务C"), "commission", null);
+  assert.ok(a.whyMatters.length > 0);
+  assert.ok(a.ifNotDone.length > 0);
+  assert.ok(a.payoffLine.length > 0);
+  // 至少不是三个任务完全相同的一句话（旧实现是全板统一的一句兜底文案）。
+  const allSame = a.whyMatters === b.whyMatters && b.whyMatters === c.whyMatters;
+  assert.equal(allSame, false);
+});
+
+test("buildTaskStageCardViewModel fallback text is stable across repeated calls for the same task", () => {
+  const t = task({ id: "stable-1", title: "稳定性任务", grantState: "visible_on_board" as any });
+  const first = buildTaskStageCardViewModel(t, "opportunity", null);
+  const second = buildTaskStageCardViewModel(t, "opportunity", null);
+  assert.equal(first.whyMatters, second.whyMatters);
+  assert.equal(first.ifNotDone, second.ifNotDone);
+  assert.equal(first.payoffLine, second.payoffLine);
+});
+
+test("projectTaskBoardStageProjection exposes compact rows for promises/clues without full stage-card bulk", () => {
+  const tasks = [
+    task({ id: "m1", title: "走出去", goalKind: "main", status: "active", grantState: "visible_on_board" as any }),
+    task({
+      id: "p1",
+      title: "口头承诺",
+      status: "available",
+      taskNarrativeLayer: "conversation_promise" as any,
+      grantState: "narratively_offered" as any,
+    }),
+    task({
+      id: "s1",
+      title: "线索影子",
+      status: "available",
+      taskNarrativeLayer: "soft_lead" as any,
+      grantState: "discovered_but_unoffered" as any,
+    }),
+  ];
+  const p = projectTaskBoardStageProjection(tasks, true, null);
+  assert.equal(p.secondary.promises.length, p.board.promises.length);
+  assert.equal(p.secondary.clues.length, p.board.clues.length);
+  assert.ok(p.secondary.promises.some((row) => row.taskId === "p1"));
+  assert.ok(p.secondary.clues.some((row) => row.taskId === "s1"));
 });

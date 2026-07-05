@@ -69,15 +69,15 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableFinalFrameFirstCommit: boolean;
   /** UI 调试诊断（开发态；生产默认关） */
   enableUiDebugDiagnostics: boolean;
-  /** 隐藏战力系统 V1（纯计算/叙事结算锚点；默认关闭，灰度用） */
+  /** 隐藏战力系统 V1（纯计算/叙事结算锚点）。Stage-4：职业/武器阶级/克制矩阵已接入战力计算，默认开启。 */
   enableHiddenCombatV1: boolean;
-  /** 隐藏战力裁决层 V1（NPC/玩家/场景/结果分级；默认关闭，灰度用） */
+  /** 隐藏战力裁决层 V1（NPC/玩家/场景/结果分级）。Stage-4：默认开启，随 enableHiddenCombatV1 一起生效。 */
   enableHiddenCombatAdjudicationV1: boolean;
-  /** NPC 战斗风格注册表 V1（结构化风格约束块；默认关闭，灰度用） */
+  /** NPC 战斗风格注册表 V1（结构化风格约束块 + vulnerableToTags 克制表）；默认开启。 */
   enableNpcCombatStyleRegistryV1: boolean;
-  /** 战斗裁决 prompt block V1（冲突回合增强叙事约束；默认关闭，灰度用） */
+  /** 战斗裁决 prompt block V1（冲突回合增强叙事约束）；默认开启。 */
   enableCombatPromptBlockV1: boolean;
-  /** 可选 combat_summary 回写（解析端先兼容“读到就收”；默认关闭，灰度用） */
+  /** 可选 combat_summary 回写（解析端先兼容“读到就收”）；默认开启。 */
   enableCombatSummaryV1: boolean;
 
   // -------- Phase6: long narrative + decision envelope + reality + anti-cheat --------
@@ -190,11 +190,11 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enablePlayerEchoValidator: readFlag("VERSECRAFT_ENABLE_PLAYER_ECHO_VALIDATOR", false),
     enableFinalFrameFirstCommit: readFlag("VERSECRAFT_ENABLE_FINAL_FRAME_FIRST_COMMIT", true),
     enableUiDebugDiagnostics: readFlag("VERSECRAFT_ENABLE_UI_DEBUG_DIAGNOSTICS", false),
-    enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false),
-    enableHiddenCombatAdjudicationV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_ADJUDICATION_V1", false),
-    enableNpcCombatStyleRegistryV1: readFlag("VERSECRAFT_ENABLE_NPC_COMBAT_STYLE_REGISTRY_V1", false),
-    enableCombatPromptBlockV1: readFlag("VERSECRAFT_ENABLE_COMBAT_PROMPT_BLOCK_V1", false),
-    enableCombatSummaryV1: readFlag("VERSECRAFT_ENABLE_COMBAT_SUMMARY_V1", false),
+    enableHiddenCombatV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", true),
+    enableHiddenCombatAdjudicationV1: readFlag("VERSECRAFT_ENABLE_HIDDEN_COMBAT_ADJUDICATION_V1", true),
+    enableNpcCombatStyleRegistryV1: readFlag("VERSECRAFT_ENABLE_NPC_COMBAT_STYLE_REGISTRY_V1", true),
+    enableCombatPromptBlockV1: readFlag("VERSECRAFT_ENABLE_COMBAT_PROMPT_BLOCK_V1", true),
+    enableCombatSummaryV1: readFlag("VERSECRAFT_ENABLE_COMBAT_SUMMARY_V1", true),
 
     enableLongNarrativeMode: readFlag("VERSECRAFT_ENABLE_LONG_NARRATIVE_MODE", true),
     enableDecisionTurnMode: readFlag("VERSECRAFT_ENABLE_DECISION_TURN_MODE", true),

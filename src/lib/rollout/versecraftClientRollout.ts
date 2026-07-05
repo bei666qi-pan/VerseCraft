@@ -71,29 +71,29 @@ export function getClientContinueButtonEnabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_CONTINUE_BUTTON", true);
 }
 
-/** 隐藏战力系统 V1（客户端：codex 展示等；默认关闭） */
+/** 隐藏战力系统 V1（客户端：codex 展示等）。Stage-4：与服务端 enableHiddenCombatV1 对齐，默认开启。 */
 export function getClientHiddenCombatV1Enabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", false);
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_HIDDEN_COMBAT_V1", true);
 }
 
-/** 隐藏战力裁决层 V1（客户端可用于 debug/展示控制；默认关闭） */
+/** 隐藏战力裁决层 V1（客户端可用于 debug/展示控制）。Stage-4：默认开启。 */
 export function getClientHiddenCombatAdjudicationV1Enabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_HIDDEN_COMBAT_ADJUDICATION_V1", false);
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_HIDDEN_COMBAT_ADJUDICATION_V1", true);
 }
 
-/** NPC 战斗风格注册表 V1（客户端：用于注入风格约束块；默认关闭） */
+/** NPC 战斗风格注册表 V1（客户端：用于注入风格约束块）。Stage-4：默认开启。 */
 export function getClientNpcCombatStyleRegistryV1Enabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_NPC_COMBAT_STYLE_REGISTRY_V1", false);
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_NPC_COMBAT_STYLE_REGISTRY_V1", true);
 }
 
-/** 战斗裁决 prompt block V1（客户端镜像；默认关闭） */
+/** 战斗裁决 prompt block V1（客户端镜像）。Stage-4：默认开启。 */
 export function getClientCombatPromptBlockV1Enabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_COMBAT_PROMPT_BLOCK_V1", false);
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_COMBAT_PROMPT_BLOCK_V1", true);
 }
 
-/** 可选 combat_summary 回写（客户端：解析端读到就收；默认关闭） */
+/** 可选 combat_summary 回写（客户端：解析端读到就收）。Stage-4：默认开启。 */
 export function getClientCombatSummaryV1Enabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_COMBAT_SUMMARY_V1", false);
+  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_COMBAT_SUMMARY_V1", true);
 }
 
 /** 冲突回合「局势余音」轻量 UI（消费 conflict_outcome / combat_summary；默认开） */
@@ -104,11 +104,6 @@ export function getClientConflictFeedbackV1Enabled(): boolean {
 /** 职业 prompt 降噪 V1（客户端镜像，用于本地 playerContext 组装；默认开） */
 export function getClientProfessionPromptDietV1Enabled(): boolean {
   return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_PROFESSION_PROMPT_DIET_V1", true);
-}
-
-/** 职业认证是否允许“打断式四选一覆盖 options”（默认关，避免抢戏） */
-export function getClientProfessionChoiceInterruptV1Enabled(): boolean {
-  return readPublicBoolean("NEXT_PUBLIC_VERSECRAFT_ENABLE_PROFESSION_CHOICE_INTERRUPT_V1", false);
 }
 
 export function getVerseCraftClientRolloutFlags(): {

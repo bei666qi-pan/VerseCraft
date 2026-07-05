@@ -40,7 +40,6 @@ test("normalizeTaskUpdateDraft keeps only patchable fields", () => {
     status: "completed",
     nextHint: "去B1交付",
     surfaceClass: "commission",
-    surfaceSlot: "commission",
     surfacePriority: 88,
     unknown: "x",
   });
@@ -49,9 +48,11 @@ test("normalizeTaskUpdateDraft keeps only patchable fields", () => {
   assert.equal(patch!.status, "completed");
   assert.equal(patch!.nextHint, "去B1交付");
   assert.equal((patch as any).surfaceClass, "commission");
-  assert.equal((patch as any).surfaceSlot, "commission");
   assert.equal((patch as any).surfacePriority, 88);
   assert.ok(!("unknown" in patch!));
+  // surfaceSlot 已于 2026-07 重构收敛为纯 UI 派生值（taskBoardUi.inferSurfaceSlot），
+  // 不再是可独立写入的任务字段，即使传入也应被静默忽略。
+  assert.ok(!("surfaceSlot" in patch!));
 });
 
 test("applyTaskUpdateToTask merges reward fields", () => {

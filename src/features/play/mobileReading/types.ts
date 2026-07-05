@@ -59,6 +59,11 @@ export type MobileActionDockProps = {
   talentReady?: boolean;
   talentCooldownText?: string | null;
   onUseTalent?: () => void;
+  /** 职业主动技能：label 为 null/undefined 时不渲染按钮（未认证职业前不占位）。 */
+  professionActiveLabel?: string | null;
+  professionActiveReady?: boolean;
+  professionActiveCooldownText?: string | null;
+  onUseProfessionActive?: () => void;
 };
 
 export type EchoTalentButtonProps = {
@@ -66,6 +71,13 @@ export type EchoTalentButtonProps = {
   ready: boolean;
   talentName?: string | null;
   onUseTalent?: () => void;
+};
+
+export type ProfessionActiveButtonProps = {
+  label: string;
+  ready: boolean;
+  cooldownText?: string | null;
+  onUseProfessionActive?: () => void;
 };
 
 export type MobileOptionsDropdownProps = {

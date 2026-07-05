@@ -802,6 +802,7 @@ export function buildRuntimeContextPackets(args: {
         playerContext: args.playerContext,
         playerLocation: location,
         clientState: null,
+        activeTaskTitles: tasks,
       })
     : null;
   if (newPlayerGuidePacket?.enabled) incrNewPlayerGuideDualCoreHitCount(1);

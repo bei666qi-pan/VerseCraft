@@ -50,7 +50,8 @@ import {
 } from "@/features/play/opening/openingCopy";
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
-import { PROFESSION_IDS } from "@/lib/profession/registry";
+import { PROFESSION_IDS, PROFESSION_REGISTRY } from "@/lib/profession/registry";
+import { getProfessionActiveSkillName, getProfessionActiveCooldownKey } from "@/lib/profession/benefits";
 import type { ProfessionId } from "@/lib/profession/types";
 import { localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
 import { shouldShowComplianceHintForDmMeta } from "@/features/play/safetyCompliance";
@@ -143,7 +144,6 @@ import {
   getClientOptionsRegenSemanticGateEnabled,
   getClientDeferMainTurnOptionsToClientEnabled,
   getClientHiddenCombatV1Enabled,
-  getClientProfessionChoiceInterruptV1Enabled,
   getClientCombatSummaryV1Enabled,
   getClientConflictFeedbackV1Enabled,
 } from "@/lib/rollout/versecraftClientRollout";
@@ -1032,6 +1032,15 @@ function PlayContent() {
     () => PROFESSION_IDS.filter((id) => professionState?.eligibilityByProfession?.[id]).length,
     [professionState]
   );
+  // 职业主动技能：镜像 talentCdLeft 的写法，把 professionCooldowns 存的“到期绝对小时”换算成“剩余小时”。
+  const professionActiveCdLeft = useMemo(() => {
+    const current = professionState?.currentProfession ?? null;
+    if (!current) return 0;
+    const cdKey = getProfessionActiveCooldownKey(current);
+    const cooldownTo = safeNumber(professionState?.professionCooldowns?.[cdKey], 0);
+    const nowHour = (time?.day ?? 0) * 24 + (time?.hour ?? 0);
+    return Math.max(0, cooldownTo - nowHour);
+  }, [professionState, time]);
 
   useEffect(() => {
     if (!isHydrated || !isGameStarted) return;
@@ -4238,8 +4247,10 @@ function PlayContent() {
     // Recompute profession eligibility and issue short certification trials when gates are met.
     useGameStore.getState().refreshProfessionState();
 
-    // ---- 单职业认证触发（N-010 认证NPC + 1F + 好感>=0 + 任一属性>20 + 当前无职业）----
+    // ---- 单职业认证触发（签发者NPC + 1F + 好感>=0 + 当前无职业）----
     // 设计：不解析叙事文本；仅依赖结构化回写（codex/relationship/npc_location_updates）做“遇到”近似。
+    // 修复：签发者不再硬编码 N-010——五个职业分属 N-008/N-011/N-014 三位签发者，统一从注册表取值，
+    // 避免“职业A的认证进度却被职业B的签发者好感/相遇状态把关”的矛盾。
     {
       const currentLoc =
         typeof parsed.player_location === "string" && parsed.player_location.trim().length > 0
@@ -4272,31 +4283,36 @@ function PlayContent() {
         }
       }
 
-      // 遇到认证NPC：只在 1F 触发（避免其它楼层的误判）
-      if (in1F && (seenNpcIds.has("N-010") || useGameStore.getState().dynamicNpcStates?.["N-010"]?.currentLocation?.startsWith("1F_"))) {
+      // 五位职业签发者（去重）：守灯人/觅兆者/溯源师=N-008，巡迹客=N-014，齐日角=N-011。
+      const certifierNpcIds = [...new Set(PROFESSION_IDS.map((id) => PROFESSION_REGISTRY[id].certification.certifierNpcId))];
+
+      // 遇到认证NPC：只在 1F 触发（避免其它楼层的误判），且必须是真实签发者之一。
+      const metAnyCertifierThisTurn = certifierNpcIds.some(
+        (npcId) =>
+          seenNpcIds.has(npcId) ||
+          useGameStore.getState().dynamicNpcStates?.[npcId]?.currentLocation?.startsWith("1F_")
+      );
+      if (in1F && metAnyCertifierThisTurn) {
         if (!useGameStore.getState().hasMetProfessionCertifier) markMetProfessionCertifier();
       }
 
       const stateNow = useGameStore.getState();
       const alreadyHasProfession = Boolean(stateNow.professionState?.currentProfession);
       const metNpc = Boolean(stateNow.hasMetProfessionCertifier);
-      const favor =
-        typeof stateNow.codex?.["N-010"]?.favorability === "number"
-          ? (stateNow.codex["N-010"]!.favorability as number)
-          : 0;
+      // 好感门槛：取玩家已接触到的签发者里最高的好感值，而不是固定读一个与当前候选职业无关的 NPC。
+      const favor = Math.max(
+        0,
+        ...certifierNpcIds.map((npcId) =>
+          typeof stateNow.codex?.[npcId]?.favorability === "number" ? (stateNow.codex[npcId]!.favorability as number) : 0
+        )
+      );
       const favorOk = favor >= 0;
 
-      const statsNow = stateNow.stats ?? FALLBACK_STATS;
-      const anyStatOver20 =
-        (statsNow.sanity ?? 0) > 20 ||
-        (statsNow.agility ?? 0) > 20 ||
-        (statsNow.luck ?? 0) > 20 ||
-        (statsNow.charm ?? 0) > 20 ||
-        (statsNow.background ?? 0) > 20;
-
-      if (!alreadyHasProfession && in1F && metNpc && favorOk && anyStatOver20) {
+      if (!alreadyHasProfession && in1F && metNpc && favorOk) {
         // 可选职业：以 `professionState.eligibilityByProfession` 为准（stat + 行为证据 + 试炼任务），
         // 避免“前端提示可认证，但 engine 实际不可认证”的矛盾。
+        // 修复：去掉此前额外叠加的“任一属性>20”门槛——它与 engine 的 primaryStatMin(18) 不一致，
+        // 会造成“engine 判定可认证，但这里因为门槛更高而不展示”的自相矛盾。
         const eligible: ProfessionId[] = PROFESSION_IDS.filter(
           (id) => Boolean(stateNow.professionState?.eligibilityByProfession?.[id])
         );
@@ -4310,17 +4326,13 @@ function PlayContent() {
           };
           const opts = eligible.map((id) => optionTextById[id]);
           const mapping = Object.fromEntries(eligible.map((id) => [optionTextById[id], id])) as Record<string, ProfessionId>;
-          // 默认不打断主叙事 options：只提示并高亮设置入口，让玩家自行决定是否在“设置→职业”里完成认证。
-          // 若灰度开启“打断式认证”，才覆盖 options（旧行为）。
-          if (getClientProfessionChoiceInterruptV1Enabled()) {
-            setPendingProfessionChoice({ enabled: true, options: opts.slice(0, 5), mapping });
-            if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
-            setCurrentOptions([...opts.slice(0, 4)]);
-            setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
-          } else {
-            setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
-            setFirstTimeHint("你已满足职业认证条件：可在【设置→职业】中完成认证（不必打断本回合推进）。");
-          }
+          // 修复：此前的默认分支会提示“可在【设置→职业】中完成认证”，但代码库里并不存在这样的设置面板，
+          // 是一句指向不存在 UI 的死提示。职业认证走“对话驱动”设计（不新增设置页/面板），因此统一改为
+          // 把可认证职业直接作为本回合可选项呈现，玩家选择后即完成认证。
+          setPendingProfessionChoice({ enabled: true, options: opts.slice(0, 5), mapping });
+          if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
+          setCurrentOptions([...opts.slice(0, 4)]);
+          setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
         }
       }
     }
@@ -4753,6 +4765,27 @@ function PlayContent() {
   function triggerTalentEffect(t: EchoTalent) {
     setTalentEffectType(t);
     setTalentEffectUntil(Date.now() + TALENT_EFFECT_DURATION);
+  }
+
+  // 职业主动技能：镜像 onUseTalent 的守卫写法。修复：activateProfessionActive() 此前在 store 里
+  // 完整实现（发动/冷却/tip），但没有任何 UI 入口可以触发它——玩家永远按不到它。
+  function onUseProfessionActive() {
+    const currentProfession = useGameStore.getState().professionState?.currentProfession ?? null;
+    if (!currentProfession) return;
+    if (chapterInteractionLocked || isReviewingChapter) return;
+    if (professionActiveCdLeft > 0) return;
+    if (isChatBusy || sendActionInFlightRef.current || endgameState.active) return;
+    if (isGuestDialogueExhausted) {
+      setShowDialoguePaywall(true);
+      return;
+    }
+    const result = useGameStore.getState().activateProfessionActive();
+    if (!result.ok) {
+      setFirstTimeHint(result.reason ?? "职业主动暂不可用。");
+      return;
+    }
+    playUIClick();
+    setFirstTimeHint(result.tip ?? "职业主动已发动，将在你下一步行动中生效。");
   }
 
   function onUseTalent() {
@@ -5205,6 +5238,25 @@ function PlayContent() {
                 )}
                 talentCooldownText={talent && talentCdLeft > 0 ? `冷却:${talentCdLeft}` : null}
                 onUseTalent={onUseTalent}
+                professionActiveLabel={
+                  professionState?.currentProfession
+                    ? getProfessionActiveSkillName(professionState.currentProfession)
+                    : null
+                }
+                professionActiveReady={Boolean(
+                  professionState?.currentProfession &&
+                  professionActiveCdLeft === 0 &&
+                  !isChatBusy &&
+                  !sendActionInFlightRef.current &&
+                  !endgameState.active &&
+                  !isGuestDialogueExhausted
+                )}
+                professionActiveCooldownText={
+                  professionState?.currentProfession && professionActiveCdLeft > 0
+                    ? `冷却:${professionActiveCdLeft}`
+                    : null
+                }
+                onUseProfessionActive={onUseProfessionActive}
               />
               {optionsExpanded && currentOptions.length > 0 ? (
                 <MobileOptionsDropdown

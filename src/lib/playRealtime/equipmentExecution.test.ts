@@ -133,6 +133,50 @@ test("swap: consumes_time true, remove new from bag and return old to bag", () =
   assert.equal((wbu[1] as any).addEquippedWeaponId, "WPN-001");
 });
 
+// 修复：equipTimeCostTurns 此前是纯展示字段，consumes_time 永远硬编码 true。现在真正读取该字段；
+// 现有全部武器数据该字段均为 1（默认耗 1 回合），只有显式标注 0（“可瞬间换装”）才会跳过回合消耗。
+test("equip: equipTimeCostTurns=0 时不强制消耗回合（quick-draw 武器）", () => {
+  const out = applyEquipmentExecutionGuard({
+    dmRecord: baseDm(),
+    latestUserInput: "装备武器：WZ-QUICK",
+    playerContext: "（兼容快照）",
+    clientState: {
+      v: 1,
+      turnIndex: 5,
+      playerLocation: "B1_SafeZone",
+      time: { day: 0, hour: 4 },
+      stats: { sanity: 10, agility: 10, luck: 10, charm: 10, background: 10 },
+      originium: 0,
+      inventoryItemIds: [],
+      warehouseItemIds: [],
+      equippedWeapon: null,
+      weaponBag: [
+        {
+          id: "WZ-QUICK",
+          name: "速拔武器",
+          description: "d",
+          counterThreatIds: [],
+          counterTags: [],
+          stability: 70,
+          calibratedThreatId: null,
+          modSlots: ["core", "surface"],
+          currentMods: [],
+          currentInfusions: [],
+          contamination: 0,
+          repairable: true,
+          equipTimeCostTurns: 0,
+        } as any,
+      ],
+      currentProfession: null,
+      worldFlags: [],
+      presentNpcIds: [],
+    },
+  });
+  assert.equal(out.consumes_time, false);
+  const wu = Array.isArray(out.weapon_updates) ? out.weapon_updates : [];
+  assert.equal(wu.length, 1);
+});
+
 test("illegal equip: weapon not in bag is blocked", () => {
   const out = applyEquipmentExecutionGuard({
     dmRecord: baseDm(),

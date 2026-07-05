@@ -24,6 +24,12 @@ export type GameTaskType = "main" | "floor" | "character" | "conspiracy";
 /** 正式目标语义类（产品层）；缺省时由适配器按 id/type 推断 */
 export type GameGoalKind = "main" | "promise" | "commission";
 export type TaskSurfaceClass = "mainline" | "commission" | "opportunity" | "background";
+/**
+ * 展示槽位：纯 UI 派生值（见 `src/lib/play/taskBoardUi.ts` 的 `inferSurfaceSlot()`），
+ * 与 `TaskSurfaceClass` 1:1 对应（仅 background→hidden 改名），不再作为 `GameTaskV2` 上
+ * 可单独授权的存储字段——2026-07 重构前两者曾同时存在且要求内容方手动保持一致，
+ * 是重复劳动也是潜在漂移点，故收敛为单一事实源 `surfaceClass`。
+ */
 export type TaskSurfaceSlot = "mainline" | "commission" | "opportunity" | "hidden";
 export type GameTaskStatus =
   | "active"
@@ -127,8 +133,6 @@ export interface GameTaskV2 {
    * - background: 后台任务（不应抢占任务板核心槽位）
    */
   surfaceClass?: TaskSurfaceClass;
-  /** 展示槽位建议；缺省时由投影器按语义推断 */
-  surfaceSlot?: TaskSurfaceSlot;
   /** 同槽位排序优先级（0..100，越高越先显示） */
   surfacePriority?: number;
 
@@ -259,12 +263,6 @@ function normalizeGoalKind(v: unknown): GameGoalKind | undefined {
 
 function normalizeSurfaceClass(v: unknown): TaskSurfaceClass | undefined {
   return v === "mainline" || v === "commission" || v === "opportunity" || v === "background"
-    ? v
-    : undefined;
-}
-
-function normalizeSurfaceSlot(v: unknown): TaskSurfaceSlot | undefined {
-  return v === "mainline" || v === "commission" || v === "opportunity" || v === "hidden"
     ? v
     : undefined;
 }
@@ -498,7 +496,6 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
     spokenDeliveryStyle: clampShortText((d as any).spokenDeliveryStyle, 120),
     goalKind: normalizeGoalKind((d as { goalKind?: unknown }).goalKind),
     surfaceClass: normalizeSurfaceClass((d as { surfaceClass?: unknown }).surfaceClass),
-    surfaceSlot: normalizeSurfaceSlot((d as { surfaceSlot?: unknown }).surfaceSlot),
     surfacePriority: normalizeSurfacePriority((d as { surfacePriority?: unknown }).surfacePriority),
     ...(requiredItemIds.length > 0 ? { requiredItemIds } : {}),
     ...(narrativeTrace ? { narrativeTrace } : {}),
@@ -575,10 +572,6 @@ export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> &
   if ((d as { surfaceClass?: unknown }).surfaceClass !== undefined) {
     const sc = normalizeSurfaceClass((d as { surfaceClass?: unknown }).surfaceClass);
     if (sc) out.surfaceClass = sc;
-  }
-  if ((d as { surfaceSlot?: unknown }).surfaceSlot !== undefined) {
-    const ss = normalizeSurfaceSlot((d as { surfaceSlot?: unknown }).surfaceSlot);
-    if (ss) out.surfaceSlot = ss;
   }
   if ((d as { surfacePriority?: unknown }).surfacePriority !== undefined) {
     const sp = normalizeSurfacePriority((d as { surfacePriority?: unknown }).surfacePriority);
@@ -756,7 +749,6 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       taskNarrativeLayer: "formal_task",
       grantState: "visible_on_board",
       surfaceClass: "mainline",
-      surfaceSlot: "mainline",
       hiddenTriggerConditions: [],
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
@@ -787,7 +779,6 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       taskNarrativeLayer: "formal_task",
       grantState: "visible_on_board",
       surfaceClass: "commission",
-      surfaceSlot: "commission",
       hiddenTriggerConditions: ["b1_guidance_seeded"],
       npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_PowerRoom"], cooldownHours: 6 },
       npcProactiveGrantLastIssuedHour: null,
@@ -871,7 +862,6 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       taskNarrativeLayer: "formal_task",
       grantState: "visible_on_board",
       surfaceClass: "commission",
-      surfaceSlot: "commission",
       hiddenTriggerConditions: [],
       npcProactiveGrant: {
         enabled: true,
@@ -927,6 +917,9 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       worldConsequences: ["b1:border_coach_offered"],
     }),
     // 机会窗：第一次上楼试探；与「出口真相」挂钩的物证在此阶段出现
+    // 触发条件故意晚于 b1_guidance_seeded 一拍（挂在 escape_route_fragments 完成后才出现），
+    // 避免新手完成第一个委托（b1_survival_rhythm）时一次性被 3 条任务同时砸中
+    // （escape_route_fragments + soft_border_coach_linz + 本任务），把揭示节奏拉开。
     normalizeGameTaskDraft({
       id: "floor_1f_probe",
       title: "一楼试探性探索",
@@ -939,9 +932,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       grantState: "visible_on_board",
       status: "hidden",
       claimMode: "manual",
-      hiddenTriggerConditions: ["b1_guidance_seeded"],
+      hiddenTriggerConditions: ["escape:route_fragment_seeded"],
       surfaceClass: "opportunity",
-      surfaceSlot: "opportunity",
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
       nextHint: "先去1F门厅观察物业与登记台的视线，再决定要不要接欣蓝的话茬。",
@@ -1300,12 +1292,6 @@ function parseProactiveLedgerFromContext(playerContext: string): Record<string, 
   return out;
 }
 
-function parseHoursIso(iso: string): number | null {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  return Math.floor(t / 3600000);
-}
-
 export function applyNpcProactiveGrantGuard(args: {
   dmRecord: Record<string, unknown>;
   playerContext: string;
@@ -1363,13 +1349,15 @@ export function applyNpcProactiveGrantGuard(args: {
       continue;
     }
 
-    if (task.expiresAt) {
-      const expiresHour = parseHoursIso(task.expiresAt);
-      if (expiresHour !== null && currentHourIndex < expiresHour) {
-        blockedReasons.push(`${task.title}:未到触发时机`);
-        continue;
-      }
-    }
+    // 注意：此前这里曾用 `expiresAt`（真实 ISO 时间戳，供 taskBoardUi/taskPlayerFacingText
+    // 当"截止日期"展示用）与 `currentHourIndex`（游戏内相对小时数 day*24+hour）直接比较，
+    // 两者单位不同（epoch 小时 vs 游戏内小时），导致只要任务设了 `expiresAt`，这道"未到
+    // 触发时机"闸门几乎永远判定为真、把该 npc_grant 任务永久挡住。2026-07 审计确认现有
+    // starter tasks 均未设置 `expiresAt`，此闸门在当前内容下从未真正生效，故直接移除而非
+    // 强行改单位换算（避免引入没有真实设计依据的"未来发放时间"新语义）。如果确实需要
+    // "延后到某个游戏内小时才允许发放"的能力，应新增专用字段（如
+    // `npcProactiveGrant.notBeforeGameHour`，与 `autoFailAfterGameHour` 同用游戏内小时口径），
+    // 而不是复用语义不同的 `expiresAt`。
 
     issuedNpcIds.add(grantNpc);
     accepted.push({

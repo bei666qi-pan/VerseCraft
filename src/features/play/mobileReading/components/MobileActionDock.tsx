@@ -6,6 +6,7 @@ import { useMobileActionDock } from "../hooks/useMobileActionDock";
 import { mobileReadingTheme } from "../theme";
 import type { MobileActionDockProps } from "../types";
 import { EchoTalentButton } from "./EchoTalentButton";
+import { ProfessionActiveButton } from "./ProfessionActiveButton";
 
 export function MobileActionDock({
   inputMode,
@@ -29,6 +30,10 @@ export function MobileActionDock({
   talentReady = false,
   talentCooldownText,
   onUseTalent,
+  professionActiveLabel,
+  professionActiveReady = false,
+  professionActiveCooldownText,
+  onUseProfessionActive,
 }: MobileActionDockProps) {
   void inputMode;
   void _isLowSanity;
@@ -77,6 +82,14 @@ export function MobileActionDock({
               ready={talentReady}
               onUseTalent={onUseTalent}
             />
+            {professionActiveLabel ? (
+              <ProfessionActiveButton
+                label={professionActiveLabel}
+                ready={professionActiveReady}
+                cooldownText={professionActiveCooldownText}
+                onUseProfessionActive={onUseProfessionActive}
+              />
+            ) : null}
             <input
               value={input}
               onFocus={onTextIntent}

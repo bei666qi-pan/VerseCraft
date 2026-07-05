@@ -1,7 +1,9 @@
 import type { StatType, Weapon } from "@/lib/registry/types";
+import type { ProfessionId } from "@/lib/profession/types";
 import type { CodexEntry } from "@/store/useGameStore";
 import { computePlayerCombatScore } from "./playerCombatScore";
 import { getHiddenNpcCombatProfile, type HiddenNpcCombatProfile } from "./npcCombatProfiles";
+import { getCombatStyleFromRegistry } from "./npcCombatStyles";
 import { resolveCombat } from "./resolveCombat";
 import type {
   CombatActorScore,
@@ -13,6 +15,18 @@ import type {
   MainThreatPhase,
   SceneCombatContext,
 } from "./types";
+
+/** 对方风格“怕什么”：npc 一侧用 styleKey 查风格注册表；玩家一侧对 NPC 无意义（返回空）。 */
+function vulnerableTagsForOpponent(
+  opponent:
+    | { kind: "player" }
+    | { kind: "npc"; npc: HiddenNpcCombatProfileV1 }
+): string[] | undefined {
+  if (opponent.kind !== "npc") return undefined;
+  const styleKey = opponent.npc.styleKey;
+  if (!styleKey) return undefined;
+  return getCombatStyleFromRegistry(styleKey)?.vulnerableToTags;
+}
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
@@ -139,15 +153,34 @@ export function buildActorPostureLayers(score: CombatActorScore): {
   return { staticBedrock, dynamicPosture };
 }
 
+type PlayerCombatActorArgs = {
+  kind: "player";
+  stats: Record<StatType, number> | null | undefined;
+  equippedWeapon: Weapon | null | undefined;
+  threatPhase: MainThreatPhase;
+  knowsWeakness?: boolean;
+  allyCount?: number;
+  initiative?: "none" | "soft" | "hard";
+  footingQuality?: "good" | "ok" | "bad";
+  /** 已认证职业（Stage-4：职业进入战力计算） */
+  profession?: ProfessionId | null;
+  /** 本回合职业主动是否已发动 */
+  professionActiveEngaged?: boolean;
+};
+
+type NpcCombatActorArgs = {
+  kind: "npc";
+  npc: HiddenNpcCombatProfileV1;
+  injured?: "none" | "light" | "heavy";
+  outnumbered?: boolean;
+  surprised?: boolean;
+};
+
 export function adjudicateCombat(args: {
   kind: CombatConflictKind;
   scene: SceneCombatContext;
-  attacker:
-    | { kind: "player"; stats: Record<StatType, number> | null | undefined; equippedWeapon: Weapon | null | undefined; threatPhase: MainThreatPhase; knowsWeakness?: boolean; allyCount?: number; initiative?: "none" | "soft" | "hard"; footingQuality?: "good" | "ok" | "bad" }
-    | { kind: "npc"; npc: HiddenNpcCombatProfileV1; injured?: "none" | "light" | "heavy"; outnumbered?: boolean; surprised?: boolean };
-  defender:
-    | { kind: "player"; stats: Record<StatType, number> | null | undefined; equippedWeapon: Weapon | null | undefined; threatPhase: MainThreatPhase; knowsWeakness?: boolean; allyCount?: number; initiative?: "none" | "soft" | "hard"; footingQuality?: "good" | "ok" | "bad" }
-    | { kind: "npc"; npc: HiddenNpcCombatProfileV1; injured?: "none" | "light" | "heavy"; outnumbered?: boolean; surprised?: boolean };
+  attacker: PlayerCombatActorArgs | NpcCombatActorArgs;
+  defender: PlayerCombatActorArgs | NpcCombatActorArgs;
 }): CombatResolution {
   const attackerScore =
     args.attacker.kind === "player"
@@ -159,6 +192,10 @@ export function adjudicateCombat(args: {
           knowsWeakness: args.attacker.knowsWeakness,
           allyCount: args.attacker.allyCount,
           initiative: args.attacker.initiative,
+          profession: args.attacker.profession,
+          professionActiveEngaged: args.attacker.professionActiveEngaged,
+          kind: args.kind,
+          opponentVulnerableTags: vulnerableTagsForOpponent(args.defender),
         })
       : computeNpcCombatScore({
           npc: args.attacker.npc,
@@ -178,6 +215,10 @@ export function adjudicateCombat(args: {
           knowsWeakness: args.defender.knowsWeakness,
           allyCount: args.defender.allyCount,
           initiative: args.defender.initiative,
+          profession: args.defender.profession,
+          professionActiveEngaged: args.defender.professionActiveEngaged,
+          kind: args.kind,
+          opponentVulnerableTags: vulnerableTagsForOpponent(args.attacker),
         })
       : computeNpcCombatScore({
           npc: args.defender.npc,

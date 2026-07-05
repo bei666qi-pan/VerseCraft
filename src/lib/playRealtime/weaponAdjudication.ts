@@ -1,7 +1,19 @@
 import { getWeaponById } from "@/lib/registry/weapons";
 import { guessPlayerLocationFromContext } from "@/lib/playRealtime/b1Safety";
+import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
 
 type DmRecord = Record<string, unknown>;
+
+type EquippedWeaponSnapshot = {
+  weaponId: string | null;
+  counterThreatIds: string[];
+  stability: number | null;
+  counterTags: string[];
+  mods: string[];
+  infusions: Array<{ threatTag: "liquid" | "mirror" | "cognition" | "seal"; turnsLeft: number }>;
+  contamination: number | null;
+  repairable: boolean | null;
+};
 
 type ThreatPhase = "idle" | "active" | "suppressed" | "breached";
 
@@ -66,6 +78,54 @@ function parseEquippedWeaponFromPlayerContext(playerContext: string): {
     infusions,
     contamination: Number.isFinite(contaminationRaw) ? clampInt(contaminationRaw, 0, 100) : null,
     repairable,
+  };
+}
+
+/**
+ * 装备武器状态解析：优先信任结构化 `clientState.equippedWeapon`（与 equipmentExecution.ts 对齐），
+ * `playerContext` 正则解析仅作旧存档/旧 prompt 的兼容兜底。
+ *
+ * 修复：此前本函数只有 playerContext 一条输入路径（没有 clientState 形参），与 equipmentExecution.ts
+ * 早已切换到的“结构化优先”不一致——一旦 playerContext 的文案模板变化，这里的正则会直接解析失败、
+ * 退化为“视为无武器”，而 equipmentExecution.ts 不受影响。
+ *
+ * 同时修复：旧实现总是用 `getWeaponById(weaponId)` 从旧的 4 件固定表回查 counterThreatIds；
+ * 一旦武器来自“道具武器化”（id 形如 WZ-*），旧表查不到，counterThreatIds 会静默变成空数组。
+ * 现在优先直接使用 clientState 里武器对象自带的 counterThreatIds/counterTags 等字段。
+ */
+function resolveEquippedWeaponSnapshot(args: {
+  playerContext: string;
+  clientState?: ClientStructuredContextV1 | null;
+}): EquippedWeaponSnapshot {
+  const eq = (args.clientState as { equippedWeapon?: unknown } | null | undefined)?.equippedWeapon;
+  if (eq && typeof eq === "object" && !Array.isArray(eq) && typeof (eq as any).id === "string") {
+    const w = eq as Record<string, unknown>;
+    const infusionsRaw = Array.isArray(w.currentInfusions) ? (w.currentInfusions as unknown[]) : [];
+    const stabilityNum = Number(w.stability);
+    const contaminationNum = Number(w.contamination);
+    return {
+      weaponId: String(w.id),
+      counterThreatIds: Array.isArray(w.counterThreatIds) ? (w.counterThreatIds as string[]) : [],
+      stability: Number.isFinite(stabilityNum) ? clampInt(stabilityNum, 0, 100) : null,
+      counterTags: Array.isArray(w.counterTags) ? (w.counterTags as string[]) : [],
+      mods: Array.isArray(w.currentMods) ? (w.currentMods as string[]) : [],
+      infusions: infusionsRaw
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
+        .map((x) => ({
+          threatTag: String(x.threatTag ?? "") as "liquid" | "mirror" | "cognition" | "seal",
+          turnsLeft: Number(x.turnsLeft ?? 0) || 0,
+        }))
+        .filter((x) => x.turnsLeft > 0),
+      contamination: Number.isFinite(contaminationNum) ? clampInt(contaminationNum, 0, 100) : null,
+      repairable: typeof w.repairable === "boolean" ? (w.repairable as boolean) : null,
+    };
+  }
+  // 兼容兜底：旧存档/旧 prompt 没有结构化 clientState 时，退化为正则解析。
+  const parsed = parseEquippedWeaponFromPlayerContext(args.playerContext);
+  const legacy = getWeaponById(parsed.weaponId);
+  return {
+    ...parsed,
+    counterThreatIds: legacy?.counterThreatIds ?? [],
   };
 }
 
@@ -154,6 +214,8 @@ export function applyWeaponTacticalAdjudication(args: {
   playerContext: string;
   latestUserInput: string;
   requestId: string;
+  /** 结构化上下文（优先信任来源）；缺省时退化为 playerContext 正则解析。 */
+  clientState?: ClientStructuredContextV1 | null;
 }): DmRecord {
   const next = { ...args.dmRecord };
   const baseDamageRaw = Number(next.sanity_damage ?? 0);
@@ -171,7 +233,7 @@ export function applyWeaponTacticalAdjudication(args: {
   // 只在“确实是威胁相关高风险回合”介入，避免武器变成所有行动的万能加减器。
   if (!highRisk) return next;
 
-  const w = parseEquippedWeaponFromPlayerContext(args.playerContext);
+  const w = resolveEquippedWeaponSnapshot({ playerContext: args.playerContext, clientState: args.clientState });
   const hasWeapon = Boolean(w.weaponId);
 
   // 没有武器：某些高风险动作更危险（规则 4）。
@@ -184,8 +246,7 @@ export function applyWeaponTacticalAdjudication(args: {
     return next;
   }
 
-  const baseWeapon = getWeaponById(w.weaponId);
-  const counterThreatIds = baseWeapon?.counterThreatIds ?? [];
+  const counterThreatIds = w.counterThreatIds;
   const threatTags = classifyThreatTags(threatId);
 
   const directThreatMatch = Boolean(threatId) && counterThreatIds.includes(threatId!);

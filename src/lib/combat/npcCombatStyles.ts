@@ -31,6 +31,12 @@ export type CombatStyleDefinitionV1 = {
   finishTendency: CombatFinishTendency;
   signatureBeats: string[];
   forbiddenExaggerations: string[];
+  /**
+   * Stage-4：这个风格“怕什么”（武器 counterTags / currentMods 命中即视为“用对了武器”）。
+   * - 只用于战力计算里的小幅加成（见 playerCombatScore.weaponCounterMatchBonus），不做硬克制/免死。
+   * - 可选：未标注的风格视为无特定弱点（不影响现有行为）。
+   */
+  vulnerableToTags?: string[];
 };
 
 export type CombatStyleResolveResult = {
@@ -92,6 +98,7 @@ export const NPC_COMBAT_STYLE_REGISTRY_V1: Record<string, CombatStyleDefinitionV
       "不追杀到底：只把冲突压回可控范围",
     ],
     forbiddenExaggerations: uniq([...commonForbidden(), "禁止写成‘一掌震碎整层楼’"], 10),
+    vulnerableToTags: ["grappling", "direction"],
   },
   "major:N-010": {
     styleKey: "major:N-010",
@@ -106,6 +113,7 @@ export const NPC_COMBAT_STYLE_REGISTRY_V1: Record<string, CombatStyleDefinitionV
     finishTendency: "trade_exit",
     signatureBeats: ["先问目标，再给两条都带代价的路", "真正的‘打’发生在你开口之前"],
     forbiddenExaggerations: uniq([...commonForbidden(), "禁止把她写成莽撞打手"], 10),
+    vulnerableToTags: ["cognition", "anchor"],
   },
   "major:N-018": {
     styleKey: "major:N-018",
@@ -120,6 +128,7 @@ export const NPC_COMBAT_STYLE_REGISTRY_V1: Record<string, CombatStyleDefinitionV
     finishTendency: "trade_exit",
     signatureBeats: ["给你看见‘可以赢’的错觉，然后把代价写到你身上", "赢了也不追：收账才是结束"],
     forbiddenExaggerations: uniq([...commonForbidden(), "禁止写成屠杀型狂战"], 10),
+    vulnerableToTags: ["seal", "silence"],
   },
   "major:N-013": {
     styleKey: "major:N-013",
@@ -134,6 +143,7 @@ export const NPC_COMBAT_STYLE_REGISTRY_V1: Record<string, CombatStyleDefinitionV
     finishTendency: "break_morale",
     signatureBeats: ["先让你觉得自己占理，再在你最用力那下让你出丑", "不把冲突推到大破坏：更像一刀割在自尊上"],
     forbiddenExaggerations: uniq([...commonForbidden(), "禁止写成纯近战猛男"], 10),
+    vulnerableToTags: ["cognition", "sound"],
   },
   "major:N-007": {
     styleKey: "major:N-007",
@@ -148,6 +158,7 @@ export const NPC_COMBAT_STYLE_REGISTRY_V1: Record<string, CombatStyleDefinitionV
     finishTendency: "subdue",
     signatureBeats: ["不抢攻：等你露出破绽再让你自己绊倒", "结束像把门关上：把你推回‘不该来’的那边"],
     forbiddenExaggerations: uniq([...commonForbidden(), "禁止写成华丽异能特效连发"], 10),
+    vulnerableToTags: ["mirror", "direction"],
   },
   "major:N-020": {
     styleKey: "major:N-020",
@@ -162,6 +173,7 @@ export const NPC_COMBAT_STYLE_REGISTRY_V1: Record<string, CombatStyleDefinitionV
     finishTendency: "subdue",
     signatureBeats: ["先让你意识到‘你会受伤’，再把冲突降级", "不升级破坏：她的强在于止损"],
     forbiddenExaggerations: uniq([...commonForbidden(), "禁止写成治愈光环或大范围净化"], 10),
+    vulnerableToTags: ["cognition", "silence"],
   },
 };
 
@@ -183,6 +195,7 @@ export const NPC_COMBAT_STYLE_TEMPLATES_V1: Record<string, CombatStyleDefinition
     finishTendency: "subdue",
     signatureBeats: ["先一句规矩，再一记按停", "冲突被压回可控范围"],
     forbiddenExaggerations: uniq(commonForbidden(), 10),
+    vulnerableToTags: ["sound"],
   },
   "tpl:dangerous_resident": {
     styleKey: "tpl:dangerous_resident",
@@ -197,6 +210,7 @@ export const NPC_COMBAT_STYLE_TEMPLATES_V1: Record<string, CombatStyleDefinition
     finishTendency: "break_morale",
     signatureBeats: ["先压住你，再给你一个退的台阶"],
     forbiddenExaggerations: uniq(commonForbidden(), 10),
+    vulnerableToTags: ["seal", "grappling"],
   },
   "tpl:information_broker": {
     styleKey: "tpl:information_broker",
@@ -211,6 +225,7 @@ export const NPC_COMBAT_STYLE_TEMPLATES_V1: Record<string, CombatStyleDefinition
     finishTendency: "trade_exit",
     signatureBeats: ["一句话把你钉在原地，然后撤离"],
     forbiddenExaggerations: uniq(commonForbidden(), 10),
+    vulnerableToTags: ["cognition"],
   },
 };
 

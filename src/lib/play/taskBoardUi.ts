@@ -144,9 +144,8 @@ function inferSurfaceClass(task: GameTask): TaskSurfaceClass {
   return "commission";
 }
 
+/** 纯派生：不再读取任务上的存储字段（已于 2026-07 收敛去重），只从 surfaceClass 推导。 */
 function inferSurfaceSlot(task: GameTask): TaskSurfaceSlot {
-  const t = task as GameTaskV2;
-  if (t.surfaceSlot) return t.surfaceSlot;
   const cls = inferSurfaceClass(task);
   if (cls === "mainline") return "mainline";
   if (cls === "commission") return "commission";
@@ -362,6 +361,20 @@ function clipStageText(s: string, max: number): string {
   return x.length <= max ? x : `${x.slice(0, max - 1)}…`;
 }
 
+/**
+ * 按任务 id 稳定取一条候选文案（同一任务每次渲染取到同一条，不同任务大概率取到不同条）。
+ * 仅用于"没有具体戏剧字段时"的兜底文案——目的是让缺省文案不再是一整个板子上完全相同的
+ * 一句话（那是"AI 味"/机械感的直接来源之一），而不是引入真正的随机性。
+ */
+function pickStableVariant(seed: string, variants: readonly string[]): string {
+  if (variants.length === 0) return "";
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return variants[hash % variants.length];
+}
+
 function stageRiskTier(t: GameTask): "low" | "medium" | "high" | "extreme" {
   if (t.highRiskHighReward) return "extreme";
   const rn = (t as { riskNote?: string }).riskNote;
@@ -372,6 +385,24 @@ function stageRiskTier(t: GameTask): "low" | "medium" | "high" | "extreme" {
   return "low";
 }
 
+const WHY_MATTERS_FALLBACK: Record<TaskStageRole, readonly string[]> = {
+  mainline: [
+    "这条线不推进，你还是困在这层楼的规则里。",
+    "眼下能往前挪一步的，就是这个。",
+    "不趟这条线，你连下一步该问谁都不知道。",
+  ],
+  commission: [
+    "答应了就是答应了，对方在等一个交代。",
+    "这笔人情已经欠下，迟早要还。",
+    "对方开了口，你的回应会被记在心里。",
+  ],
+  opportunity: [
+    "这扇窗口不会一直开着。",
+    "现在顺手能拿到，过这阵就难说了。",
+    "错过这次，下次未必还有这么巧的时机。",
+  ],
+};
+
 function buildWhyMatters(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
   const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 96);
   const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 96);
@@ -381,10 +412,26 @@ function buildWhyMatters(task: GameTask, role: TaskStageRole, codex?: Record<str
   if (hook) return hook;
   if (hint) return hint;
   if (desc) return desc;
-  if (role === "mainline") return "这是你当前最该推进的剧情轴心。";
-  if (role === "commission") return "这是别人托付给你的交换与承诺。";
-  return "短时窗口里的一次机会，错过通常不会原样回来。";
+  return pickStableVariant(task.id, WHY_MATTERS_FALLBACK[role]);
 }
+
+const IF_NOT_DONE_FALLBACK: Record<TaskStageRole, readonly string[]> = {
+  mainline: [
+    "拖着不管：出路只会越拖越远。",
+    "放着不做：局面不会替你等着。",
+    "搁置：你会被困在原地更久。",
+  ],
+  commission: [
+    "拖太久：对方会把你归为靠不住的人。",
+    "一直不还：这笔账会换一种方式找上你。",
+    "放鸽子：下次开口，对方未必再信你。",
+  ],
+  opportunity: [
+    "错过：这条路就封死了，得绕远路。",
+    "拖过这阵：机会不会留在原地等你。",
+    "错过时机：往后只能走更麻烦的办法。",
+  ],
+};
 
 function buildIfNotDone(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
   const residue = clipStageText(
@@ -392,10 +439,14 @@ function buildIfNotDone(task: GameTask, role: TaskStageRole, codex?: Record<stri
     100
   );
   if (residue) return residue;
-  if (role === "mainline") return "不做：主线推进停滞，后续选择与资源窗口都会变窄。";
-  if (role === "commission") return "不做：人情账会结转，信任与要价都会换算法。";
-  return "错过：这条捷径/窗口关闭，后续只能走更硬的路线。";
+  return pickStableVariant(task.id, IF_NOT_DONE_FALLBACK[role]);
 }
+
+const PAYOFF_FALLBACK: readonly string[] = [
+  "做成了，故事会往前松动一点。",
+  "拿下这个，你会多一条能用的路。",
+  "办成了，局面会因此挪动一小步。",
+];
 
 function buildPayoffLine(task: GameTask, codex?: Record<string, CodexEntry> | null): string {
   const t = task as GameTaskV2;
@@ -420,7 +471,7 @@ function buildPayoffLine(task: GameTask, codex?: Record<string, CodexEntry> | nu
   if (rel > 0) return `做成会在关系侧留下可购买的下文（${rel} 处关键变动信号）。`;
   if (intel > 0) return "做成会在手记/情报侧出现可验证的新条目，方便下一步下注。";
   if (ori > 0) return `做成可获得资源补给（原石 ${ori} 等），用于后续交换与应急。`;
-  return "做成会把故事舞台向前推进一步，让你获得新的可选项。";
+  return pickStableVariant(t.id, PAYOFF_FALLBACK);
 }
 
 function riskBandFromTier(tier: ReturnType<typeof stageRiskTier>): TaskStageRiskBand {
@@ -479,12 +530,53 @@ export function buildTaskStageCardViewModel(
   };
 }
 
+export type TaskCompactRowViewModel = {
+  taskId: string;
+  title: string;
+  /** 单行摘要：来源 · 钩子/压力/下一步之一，不做整张卡的重排版 */
+  oneLiner: string;
+  tone: TaskStageRiskBand;
+};
+
+function buildTaskCompactOneLiner(task: GameTask, codex?: Record<string, CodexEntry> | null): string {
+  const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 56);
+  const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 56);
+  const hint = clipStageText(sanitizePlayerFacingInline(String(task.nextHint ?? ""), codex), 56);
+  return hook || urg || hint || "轻追踪中，暂无新动向。";
+}
+
+/**
+ * 「牵连 / 线索影子」等轻追踪条目 → 单行 view model。
+ * 这两类任务的产品定位本就是"不抢主视图"（见 taskVisibilityPolicy 的 promise_only/clue_only），
+ * 但先前 UI 仍用整张舞台卡（角色徽章+状态徽章+四行 dt/dd+风险框）渲染，视觉体量与"轻追踪"
+ * 的定位矛盾，也是任务面板显得拥挤的主因之一。改为单行摘要以后，信息仍完整可查（点开仍是
+ * 同一条任务），但默认状态下不再抢占版面。
+ */
+export function buildTaskCompactRowViewModel(
+  task: GameTask,
+  codex?: Record<string, CodexEntry> | null
+): TaskCompactRowViewModel {
+  const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
+  const risk = buildRiskSenseLine(task, codex);
+  return {
+    taskId: task.id,
+    title: sanitizePlayerFacingInline(String(task.title ?? ""), codex),
+    oneLiner: `${issuer || "未知来源"} · ${buildTaskCompactOneLiner(task, codex)}`,
+    tone: risk.band,
+  };
+}
+
 export type TaskBoardStageProjection = {
   board: PlayerTaskBoardViewModel;
   cards: {
     mainline: TaskStageCardViewModel | null;
     commissions: TaskStageCardViewModel[];
     opportunity: TaskStageCardViewModel | null;
+  };
+  /** 轻追踪单行条目：牵连（承诺/风险）与线索影子，默认折叠展示 */
+  secondary: {
+    promises: TaskCompactRowViewModel[];
+    clues: TaskCompactRowViewModel[];
   };
 };
 
@@ -501,6 +593,10 @@ export function projectTaskBoardStageProjection(
       mainline: board.mainline ? buildTaskStageCardViewModel(board.mainline, "mainline", codex) : null,
       commissions: board.commissions.map((t) => buildTaskStageCardViewModel(t, "commission", codex)),
       opportunity: board.opportunity ? buildTaskStageCardViewModel(board.opportunity, "opportunity", codex) : null,
+    },
+    secondary: {
+      promises: board.promises.map((t) => buildTaskCompactRowViewModel(t, codex)),
+      clues: board.clues.map((t) => buildTaskCompactRowViewModel(t, codex)),
     },
   };
 }

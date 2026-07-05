@@ -1,4 +1,4 @@
-import { inferEffectiveNarrativeLayer } from "@/lib/tasks/taskRoleModel";
+import { inferEffectiveNarrativeLayer, type IssuerPersonaMode, type IssuerSoftRevealMode } from "@/lib/tasks/taskRoleModel";
 import type { GameTaskV2 } from "./taskV2";
 
 function clamp(s: string, max: number): string {
@@ -7,6 +7,31 @@ function clamp(s: string, max: number): string {
   return t.length <= max ? t : t.slice(0, max);
 }
 
+/**
+ * 人格模式 → 可直接用于写作的语气提示。
+ * 不把内部枚举码（如 "sweet_patch"）原样丢给模型当"创作指导"——
+ * 模型只能靠猜去解读一个英文标识符，容易退化成千篇一律的通用委托腔（AI 味的常见来源之一）。
+ */
+const PERSONA_VOICE_HINT: Record<IssuerPersonaMode, string> = {
+  silent_reciprocal: "话少但记恩情，帮过的账都记在心里",
+  sweet_patch: "嘴上甜，糊弄细节时藏着算计",
+  ledger_route: "先讲清楚要换什么，再肯带路",
+  audited_trade: "认账不认情面，按规矩兑现",
+  scripted_pull: "像在走流程，话里带着别人的意思",
+  shelter_refusal: "嘴上推开，其实在护着",
+  generic: "普通住户的平常语气，不特别热络也不冷淡",
+};
+
+/** 揭露方式 → 具体动作提示，替代原始枚举码。 */
+const REVEAL_VOICE_HINT: Record<IssuerSoftRevealMode, string> = {
+  whisper: "压低声音说漏一句",
+  ledger_shadow: "翻旧账时无意带出",
+  mirror_fragment: "借镜子/倒影的话题带出",
+  receipt: "像交对账单一样列清楚",
+  script_tweak: "改口时露出破绽",
+  closed_door: "关上门才肯松半句口",
+};
+
 export function buildTaskDramaPacket(args: {
   tasks: GameTaskV2[];
   preferredTaskIds?: string[];
@@ -14,7 +39,7 @@ export function buildTaskDramaPacket(args: {
   maxChars?: number;
 }): string {
   const maxTasks = Math.max(0, Math.min(2, args.maxTasks ?? 2));
-  const maxChars = Math.max(120, Math.min(700, args.maxChars ?? 360));
+  const maxChars = Math.max(120, Math.min(800, args.maxChars ?? 420));
   if (maxTasks === 0) return "";
   const byId = new Map(args.tasks.map((t) => [t.id, t]));
   const picked: GameTaskV2[] = [];
@@ -35,28 +60,39 @@ export function buildTaskDramaPacket(args: {
   const lines: string[] = [];
   lines.push("## 【任务戏剧约束（只供写作，不要像系统提示）】");
   for (const t of picked) {
-    const hook = clamp(t.playerHook ?? t.nextHint ?? "", 60);
-    const urgency = clamp(t.urgencyReason ?? "", 60);
-    const risk = clamp(t.riskNote ?? t.taboo ?? "", 60);
-    const intent = clamp(t.issuerIntent ?? "", 70);
-    const residue = clamp(t.residueOnFail ?? t.residueOnComplete ?? "", 70);
+    const hook = clamp(t.playerHook ?? t.nextHint ?? "", 50);
+    const urgency = clamp(t.urgencyReason ?? "", 50);
+    const risk = clamp(t.riskNote ?? t.taboo ?? "", 50);
+    const intent = clamp(t.issuerIntent ?? "", 56);
+    const motive = clamp(t.hiddenMotive ?? "", 50);
+    const residue = clamp(t.residueOnFail ?? t.residueOnComplete ?? "", 56);
+    const voice = clamp(t.spokenDeliveryStyle ?? "", 44) || (t.issuerPersonaMode ? PERSONA_VOICE_HINT[t.issuerPersonaMode] : "");
+    const revealHint = t.issuerSoftRevealMode ? REVEAL_VOICE_HINT[t.issuerSoftRevealMode] : "";
     const dt = t.dramaticType ? `类型=${t.dramaticType}` : "";
     const layer = inferEffectiveNarrativeLayer(t);
     const layerCn =
       layer === "soft_lead" ? "暗示线" : layer === "conversation_promise" ? "人情约定" : "正式追踪";
-    const persona = t.issuerPersonaMode ? `人格模=${t.issuerPersonaMode}` : "";
-    const softReveal = t.issuerSoftRevealMode ? `揭露口=${t.issuerSoftRevealMode}` : "";
-    lines.push(`${t.issuerName}委托《${t.title}》${dt}[${layerCn}]${persona ? ` ${persona}` : ""}${softReveal ? ` ${softReveal}` : ""}`.trim());
+    const guidance =
+      t.guidanceLevel === "strong"
+        ? "引导：给清晰下一步"
+        : t.guidanceLevel === "light"
+          ? "引导：少直给，多留线索让玩家自己拼"
+          : "";
+    lines.push(`${t.issuerName}委托《${t.title}》${dt}[${layerCn}]`.trim());
     const bits = [
+      voice ? `语气：${voice}` : "",
       intent ? `动机：${intent}` : "",
+      motive ? `潜台词（角色不可自己说破）：${motive}` : "",
       hook ? `钩子：${hook}` : "",
       urgency ? `压力：${urgency}` : "",
       risk ? `代价/禁区：${risk}` : "",
       residue ? `残响：${residue}` : "",
-      typeof t.revealValue === "number" ? `过程揭露权重=${t.revealValue.toFixed(2)}` : "",
+      revealHint ? `露口风：${revealHint}` : "",
+      guidance,
     ].filter(Boolean);
     if (bits.length > 0) lines.push(bits.join("；"));
   }
+  lines.push("不同委托人语气必须彼此区分；以上要点只做潜台词参照，禁止逐字复述进正文。");
   return clamp(lines.join("\n"), maxChars);
 }
 

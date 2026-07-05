@@ -14,6 +14,15 @@ test("npcCombatStyles: major styles are present and distinct", () => {
   assert.equal(new Set(labels).size, labels.length);
 });
 
+// Stage-4：为“武器 counterTags 命中即为用对武器”提供数据来源；此前风格定义完全没有这个字段。
+test("npcCombatStyles: major styles declare vulnerableToTags for the weapon counter matrix", () => {
+  const majors = ["major:N-015", "major:N-010", "major:N-018", "major:N-013", "major:N-007", "major:N-020"];
+  for (const k of majors) {
+    const def = getCombatStyleFromRegistry(k);
+    assert.ok(Array.isArray(def!.vulnerableToTags) && def!.vulnerableToTags!.length >= 1, `missing vulnerableToTags for ${k}`);
+  }
+});
+
 test("npcCombatStyles: templates exist", () => {
   assert.ok(getCombatStyleFromRegistry("tpl:service_staff"));
   assert.ok(getCombatStyleFromRegistry("tpl:dangerous_resident"));

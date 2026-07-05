@@ -47,3 +47,64 @@ test("weapon tactical adjudication: matching weapon affects damage and writes du
   assert.ok(String(out.narrative).includes("武器介入"));
 });
 
+// 修复：此前本函数只会用正则解析 playerContext，且 counterThreatIds 永远按 id 去旧的 4 件固定表回查——
+// 一把“道具武器化”生成的武器（id 不在旧表里）无论实际 counterThreatIds 是什么，都会静默变成空数组。
+// 现在优先信任结构化 clientState.equippedWeapon 自带的字段。用同一个 requestId（reliability 采样种子相同）
+// 对比“对味”与“不对味”两把同 id 武器，只有 counterThreatIds 不同：命中的一侧伤害应更低或相等。
+test("weapon tactical adjudication: 优先信任结构化 clientState，counterThreatIds 来自武器自身字段而非旧表回查", () => {
+  const baseArgs = {
+    playerContext: "用户位置[2F_Corridor]。", // 故意不含任何武器信息，验证不再依赖它
+    latestUserInput: "我压制红水",
+    requestId: "weapon-clientstate-fixed-seed",
+  };
+  const dmRecord = () => ({
+    is_action_legal: true,
+    sanity_damage: 3,
+    narrative: "你尝试压制。",
+    is_death: false,
+    player_location: "2F_Corridor",
+    main_threat_updates: [{ floorId: "2", threatId: "A-004", phase: "active", suppressionProgress: 20 }],
+  });
+
+  const matching = applyWeaponTacticalAdjudication({
+    ...baseArgs,
+    dmRecord: dmRecord(),
+    clientState: {
+      equippedWeapon: {
+        id: "WZ-C-abc123",
+        name: "武器化测试·对味",
+        counterThreatIds: ["A-004"],
+        counterTags: [],
+        stability: 90,
+        contamination: 0,
+        repairable: true,
+        currentMods: [],
+        currentInfusions: [],
+      },
+    } as any,
+  });
+
+  const mismatched = applyWeaponTacticalAdjudication({
+    ...baseArgs,
+    dmRecord: dmRecord(),
+    clientState: {
+      equippedWeapon: {
+        id: "WZ-C-abc123",
+        name: "武器化测试·不对味",
+        counterThreatIds: [],
+        counterTags: [],
+        stability: 90,
+        contamination: 0,
+        repairable: true,
+        currentMods: [],
+        currentInfusions: [],
+      },
+    } as any,
+  });
+
+  assert.ok((matching.sanity_damage as number) <= (mismatched.sanity_damage as number));
+  const matchedUpdates = Array.isArray(matching.weapon_updates) ? matching.weapon_updates : [];
+  assert.equal(matchedUpdates.length, 1);
+  assert.equal((matchedUpdates[0] as Record<string, unknown>).weaponId, "WZ-C-abc123");
+});
+

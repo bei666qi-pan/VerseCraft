@@ -86,6 +86,41 @@ test("resolveTurnConsistency: accepted formal tasks produce narrative hint witho
   assert.equal(Array.isArray(out.new_tasks) && out.new_tasks.length === 1, true);
 });
 
+test("resolveTurnConsistency: new_tasks beyond the per-turn cap are truncated and flagged", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "很多人同时找上了你。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    new_tasks: [
+      { id: "t1", title: "任务一" },
+      { id: "t2", title: "任务二" },
+      { id: "t3", title: "任务三" },
+      { id: "t4", title: "任务四" },
+      { id: "t5", title: "任务五" },
+    ],
+  } as any);
+  assert.equal(out.new_tasks.length, 3);
+  assert.deepEqual(out.new_tasks.map((t: any) => t.id), ["t1", "t2", "t3"]);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("new_tasks_capped") ?? false, true);
+});
+
+test("resolveTurnConsistency: new_tasks within the per-turn cap are not flagged", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "有人找上了你。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    new_tasks: [{ id: "t1", title: "任务一" }],
+  } as any);
+  assert.equal(out.new_tasks.length, 1);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("new_tasks_capped") ?? false, false);
+});
+
 test("resolveTurnConsistency: completed/failed task_updates may produce toast_hint", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,

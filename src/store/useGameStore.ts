@@ -517,6 +517,12 @@ export interface GameState extends IntegrityMetaState {
   visitCount: number;
   /** 是否已经展示过游客软引导提示，防止重复打扰 */
   hasShownGuestSoftNudge: boolean;
+  /**
+   * 本设备是否已经"毕业"过一次新手引导（老刘/麟泽双核）。
+   * 跨 resetForNewGame 保留（新开一局不会清空），只有 destroySaveData 之外的
+   * 显式判定逻辑会翻转它；用于避免对已经玩过的人反复强制新手引导。
+   */
+  hasCompletedNewPlayerGuideBefore: boolean;
 
   /** 游客体验对话次数（玩家有效行动轮次） */
   dialogueCount: number;
@@ -1043,6 +1049,7 @@ export const useGameStore = create<GameState>()(
       playTimeSeconds: 0,
       visitCount: 0,
       hasShownGuestSoftNudge: false,
+      hasCompletedNewPlayerGuideBefore: false,
       dialogueCount: 0,
       playerName: "",
       gender: "",
@@ -1273,7 +1280,16 @@ export const useGameStore = create<GameState>()(
         })),
       resetForNewGame: () => {
         clearResumeShadowSnapshot();
-        set({
+        set((s) => {
+          // 新手引导"毕业"判定：本局若已经明显过了起手阶段（游戏时间超过第1天12时，
+          // 或已经死过至少一次），说明这台设备上的玩家已经不是第一次面对这些机制；
+          // 记下来，下一局新角色就不必再强制打断叙事去重复一遍老刘/麟泽的教学台词。
+          // 该字段刻意不放进 destroySaveData 的重置里，只有真正"清空我的所有数据"时才会消失。
+          const graduatedByTime = (s.time?.day ?? 0) > 1 || ((s.time?.day ?? 0) === 1 && (s.time?.hour ?? 0) > 12);
+          const graduatedByDeath = (s.deathCount ?? 0) > 0;
+          const alreadyGraduated = s.hasCompletedNewPlayerGuideBefore ?? false;
+          const nextGraduated = alreadyGraduated || graduatedByTime || graduatedByDeath;
+          return {
           currentSaveSlot: "main_slot",
           playerName: "",
           gender: "",
@@ -1321,6 +1337,8 @@ export const useGameStore = create<GameState>()(
             droppedLootLedger: [],
             droppedLootOwnerLedger: [],
           },
+          hasCompletedNewPlayerGuideBefore: nextGraduated,
+          };
         });
       },
 
@@ -2231,7 +2249,7 @@ export const useGameStore = create<GameState>()(
             return buildTaskDramaPacket({
               tasks: s.tasks ?? [],
               maxTasks: 2,
-              maxChars: 360,
+              maxChars: 420,
             });
           } catch {
             return "";
@@ -2361,6 +2379,10 @@ export const useGameStore = create<GameState>()(
                 .slice()
                 .reverse()
                 .find((l) => l && l.role === "user")?.content ?? "";
+            const promptProfession = s.professionState?.currentProfession ?? null;
+            const promptProfessionActiveEngaged = promptProfession
+              ? Boolean(s.professionState?.professionFlags?.[getProfessionActiveFlagKey(promptProfession)])
+              : false;
             return buildCombatPromptBlockV1({
               lastUserInput: String(lastUser ?? ""),
               locationId: s.playerLocation ?? "B1_SafeZone",
@@ -2372,6 +2394,8 @@ export const useGameStore = create<GameState>()(
               codex: s.codex ?? {},
               npcHeartViews: (npcHeartViewsCache as any) ?? [],
               maxChars: 420,
+              profession: promptProfession,
+              professionActiveEngaged: promptProfessionActiveEngaged,
             });
           } catch {
             return "";
@@ -2517,6 +2541,7 @@ export const useGameStore = create<GameState>()(
           `原石[${s.originium}]。` +
           `进度[最高层分${s.historicalMaxFloorScore ?? 0}]。` +
           `死亡累计[${s.deathCount ?? 0}]。` +
+          `新手引导[${s.hasCompletedNewPlayerGuideBefore ? "已毕业" : "进行中"}]。` +
           sanityStateBracket +
           (s.tasks.filter((t) => t.status === "active" || t.status === "available").length > 0
             ? `任务追踪：${s.tasks
@@ -4079,6 +4104,7 @@ export const useGameStore = create<GameState>()(
         playTimeSeconds: s.playTimeSeconds ?? 0,
         visitCount: s.visitCount ?? 0,
         hasShownGuestSoftNudge: s.hasShownGuestSoftNudge ?? false,
+        hasCompletedNewPlayerGuideBefore: s.hasCompletedNewPlayerGuideBefore ?? false,
         dialogueCount: s.dialogueCount ?? 0,
         playerName: s.playerName,
         gender: s.gender,
