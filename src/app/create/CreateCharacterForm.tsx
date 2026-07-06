@@ -31,7 +31,7 @@ import { flushGameStorePersistenceDebouncedWrites } from "@/lib/idbDebouncedStor
 import { isLikelyAndroidMobileUa } from "@/lib/platform/isLikelyAndroidMobileUa";
 
 const inputClass =
-  "mt-1.5 h-10 w-full rounded-[10px] border border-vc-line bg-vc-paper-bright px-3 vc-reading-serif text-[17px] leading-none text-vc-ink outline-none transition placeholder:text-[16px] placeholder:text-vc-ink-faint focus:border-vc-ink-deep";
+  "mt-2 h-11 w-full rounded-xl border border-vc-line bg-vc-paper-bright px-3.5 vc-reading-serif text-[17px] leading-none text-vc-ink outline-none transition placeholder:text-[15px] placeholder:text-vc-ink-faint focus:border-vc-ink-deep focus:shadow-[0_0_0_3px_rgba(47,116,106,0.12)]";
 
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] ?? arr[0]!;
@@ -214,10 +214,10 @@ export function CreateCharacterForm() {
           void handleSubmit();
         }}
       >
-        <header className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2 text-vc-ink">
-            <VerseCraftPaperMark className="h-8 w-8 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
-            <span className="vc-reading-serif text-[25px] font-semibold leading-none">VerseCraft</span>
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5 text-vc-ink">
+            <VerseCraftPaperMark className="h-9 w-9 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
+            <span className="vc-reading-serif text-[20px] font-semibold leading-none">VerseCraft</span>
           </div>
 
           <button
@@ -225,18 +225,22 @@ export function CreateCharacterForm() {
             data-testid="quick-create-character"
             aria-label="一键注册角色（仅生成本地角色档案，不生成账号）"
             onClick={fillQuickCharacter}
-            className="absolute right-0 top-[3.55rem] inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-vc-line bg-vc-paper-raised/90 px-3 vc-reading-serif text-[15px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.98]"
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-vc-line bg-vc-paper-raised/90 py-1 pl-1.5 pr-4 vc-reading-serif text-[14px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.97]"
           >
             <VerseCraftPaperMark className="h-7 w-7 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
-            <span className="whitespace-nowrap">一键注册角色</span>
+            <span className="whitespace-nowrap">一键注册</span>
           </button>
         </header>
 
-        <section className="mt-[4.6rem] animate-fade-in-up">
-          <h1 className="vc-reading-serif text-[30px] font-semibold leading-tight text-vc-ink-deep">入卷之前</h1>
+        <section className="mt-8 animate-fade-in-up">
+          <p className="vc-reading-serif text-[12px] font-semibold uppercase tracking-[0.34em] text-vc-ink-faint">
+            序章 · 暗月
+          </p>
+          <h1 className="mt-2.5 vc-reading-serif text-[32px] font-semibold leading-tight text-vc-ink-deep">入卷之前</h1>
           <p className="mt-2 vc-reading-serif text-[15px] leading-relaxed text-vc-ink-soft">
             写下这具身体的轮廓。暗月之下，公寓会记住每一个走进来的名字。
           </p>
+          <VerseCraftPaperDivider className="mt-5 w-[11rem]" />
         </section>
 
         <section className="vc-card mt-6 px-5 py-5">
@@ -312,16 +316,14 @@ export function CreateCharacterForm() {
           </div>
         </section>
 
-        <VerseCraftPaperDivider className="mt-6" />
-
-        <section className="vc-card mt-6 px-5 py-5">
+        <section className="vc-card mt-5 px-5 py-5">
           <div className="flex items-start justify-between gap-4">
             <VerseCraftPaperSectionTitle>潜能赋予</VerseCraftPaperSectionTitle>
-            <div className="mt-1 flex shrink-0 items-baseline gap-4">
-              <span className="vc-reading-serif text-[20px] leading-none text-vc-ink">剩余</span>
+            <div className="mt-0.5 flex shrink-0 items-center gap-2 rounded-full border border-vc-line bg-vc-paper-bright px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+              <span className="vc-reading-serif text-[13px] leading-none text-vc-ink-soft">剩余</span>
               <span
                 data-testid="create-remaining-points"
-                className={`vc-reading-serif text-[30px] font-semibold leading-none transition-colors ${
+                className={`vc-reading-serif text-[22px] font-semibold leading-none transition-colors ${
                   remaining === 0 ? "text-vc-ink" : "text-vc-accent"
                 }`}
               >
@@ -337,8 +339,6 @@ export function CreateCharacterForm() {
           />
         </section>
 
-        <VerseCraftPaperDivider className="mt-4" />
-
         <section className="vc-card mt-5 px-5 py-5">
           <VerseCraftPaperSectionTitle>回响天赋</VerseCraftPaperSectionTitle>
           <CreateTalentGrid selectedTalent={selectedTalent} onSelectTalent={setSelectedTalent} />
@@ -352,15 +352,16 @@ export function CreateCharacterForm() {
           ) : null}
           <VerseCraftPaperPillButton
             type="submit"
+            tone="ink"
             data-testid="create-submit-button"
             disabled={!canSubmit || submitting}
-            className="h-[56px] min-h-[56px] touch-manipulation rounded-[16px] text-[28px]"
+            className="h-[54px] min-h-[54px] touch-manipulation rounded-2xl text-[20px]"
           >
-            <span className="absolute left-7 text-vc-ink-faint" aria-hidden>
+            <span className="absolute left-6 text-vc-paper-bright/50" aria-hidden>
               ✦
             </span>
             <span>{submitting ? "开卷中" : "开卷"}</span>
-            <span className="absolute right-7 text-vc-ink-faint" aria-hidden>
+            <span className="absolute right-6 text-vc-paper-bright/50" aria-hidden>
               ✦
             </span>
           </VerseCraftPaperPillButton>

@@ -1,7 +1,7 @@
 "use client";
 
+import { ChapterTocList } from "@/features/play/chapters";
 import type { ChapterId, ChapterState } from "@/lib/chapters";
-import { buildSettingsChapterItems } from "../settingsChapters";
 
 function OrnamentLine({ className = "" }: { className?: string }) {
   return (
@@ -25,7 +25,6 @@ export function ChapterSwitchModal({
   onSelectChapter: (chapterId: ChapterId) => void;
 }) {
   if (!open) return null;
-  const items = buildSettingsChapterItems(chapterState);
   return (
     <div
       data-testid="chapter-switch-modal"
@@ -53,48 +52,18 @@ export function ChapterSwitchModal({
           </p>
         </header>
         <OrnamentLine className="mt-6" />
-        <div data-testid="chapter-switch-list" className="relative mt-5 max-h-[54vh] overflow-y-auto pr-1 [scrollbar-color:#8fa79f_transparent] [scrollbar-width:thin]">
-          <div className="divide-y divide-[#ded8ce]">
-            {items.map((item) => {
-              const current = item.status === "current";
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-testid="chapter-switch-item"
-                  data-chapter-id={item.id}
-                  disabled={!item.selectable}
-                  aria-current={current ? "page" : undefined}
-                  onClick={() => onSelectChapter(item.id)}
-                  className={`flex min-h-[78px] w-full items-center justify-between gap-4 py-4 text-left transition ${
-                    current
-                      ? "my-2 rounded-[14px] border border-[#d8d1c6] bg-[#f4f6f2] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
-                      : item.selectable
-                        ? "px-4 text-[#174d46] hover:bg-[#f6f2ec] active:scale-[0.99]"
-                        : "px-4 text-[#8b8a84] opacity-70"
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block vc-reading-serif text-[22px] font-semibold leading-tight">
-                      {item.title}
-                    </span>
-                    <span className="mt-1 block vc-reading-serif text-[15px] leading-none text-[#6c7f79]">
-                      {item.statusLabel}
-                    </span>
-                  </span>
-                  <span
-                    className={`shrink-0 vc-reading-serif text-[20px] ${
-                      current
-                        ? "rounded-full border border-[#cfc8bc] bg-vc-paper-bright px-4 py-1 text-[17px]"
-                        : ""
-                    }`}
-                  >
-                    {item.actionLabel}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div
+          data-testid="chapter-switch-list"
+          className="relative mt-5 max-h-[54vh] overflow-y-auto pr-1 [scrollbar-color:#8fa79f_transparent] [scrollbar-width:thin]"
+        >
+          <ChapterTocList
+            chapterState={chapterState}
+            rowTestId="chapter-switch-item"
+            allowEnterNext={false}
+            titleStyle="dot"
+            onReviewChapter={onSelectChapter}
+            onReturnToActive={() => onSelectChapter(chapterState.activeChapterId)}
+          />
         </div>
         <OrnamentLine className="mx-auto mt-7 w-[48%]" />
       </section>

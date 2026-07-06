@@ -30,8 +30,10 @@ orchestrator for those business flows and passes only the required props into th
   volume/mute controls, persisted reading preferences, chapter switch entry, and the existing exit
   confirmation callback. It is an in-shell page, not a `UnifiedMenuModal` sidebar.
 - `GameGuideModal` and `ChapterSwitchModal` are settings-only overlays. Guide content lives in
-  `settingsCopy.ts`; chapter rows come from the real chapter definitions/state through
-  `settingsChapters.ts`.
+  `settingsCopy.ts`; `ChapterSwitchModal` renders its rows through `ChapterTocList`
+  (`src/features/play/chapters`, backed by `selectChapterTocRows`) — the same shared
+  list the in-story "小说目录" panel (`ChapterNavigator`) uses, so there is a single
+  source of chapter status/labels instead of a settings-local copy.
 - `readingPreferences.ts` owns the typed preference defaults, normalization, button labels, and CSS
   variable mapping used by the story text and option labels.
 - `MobileOptionsDropdown` owns the visual list of four model-delivered options.

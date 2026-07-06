@@ -2232,7 +2232,9 @@ function PlayContent() {
     } else if (trigger === "auto_switch") {
       setFirstTimeHint("主笔正在整理可选行动…");
     } else if (trigger === "auto_missing_main") {
-      setFirstTimeHint(seedOptions.length > 0 ? "本回合选项不足，正在补全…" : "本回合没有可选行动，正在补全…");
+      // 静默补全：底部选项区已通过 MobileOptionsEmptyState 展示"正在整理可选行动"的加载态，
+      // 这里不再重复弹出悬浮提示，避免玩家看到"本回合没有可选行动"这类听起来像故障的文案。
+      setFirstTimeHint(null);
     } else {
       setFirstTimeHint("主笔正在按当前剧情重新整理可选行动…");
     }

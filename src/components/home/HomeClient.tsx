@@ -140,7 +140,7 @@ function FooterHaloIconButton({
       onClick={onClick}
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
-      className="h-[64px] w-[64px]"
+      className="h-11 w-11"
     >
       <span className="text-vc-ink">{children}</span>
     </VerseCraftPaperCircleButton>
@@ -160,7 +160,7 @@ function FooterHaloLinkButton({
     <Link
       href={href}
       aria-label={ariaLabel}
-      className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full border border-vc-line bg-vc-paper-raised/90 text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.98]"
+      className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full border border-vc-line bg-vc-paper-raised/90 text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.98]"
     >
       <span className="text-vc-ink">{children}</span>
     </Link>
@@ -1414,7 +1414,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 type="button"
                 onClick={openAuthModal}
                 aria-label="登录或注册"
-                className={`inline-flex h-[58px] min-w-[152px] shrink-0 items-center justify-center rounded-full border border-vc-line bg-vc-paper-raised/90 px-6 vc-reading-serif text-[21px] font-semibold leading-none text-vc-ink shadow-[0_18px_36px_rgba(62,72,68,0.11),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-2px_5px_rgba(106,100,88,0.06)] transition hover:bg-vc-paper-bright active:scale-[0.98] ${
+                className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-full border border-vc-line bg-vc-paper-raised/90 px-5 vc-reading-serif text-[15px] font-semibold leading-none tracking-[0.02em] text-vc-ink shadow-[0_10px_22px_rgba(62,72,68,0.10),inset_0_1px_0_rgba(255,255,255,0.9)] transition hover:bg-vc-paper-bright active:scale-[0.97] ${
                   authWarn ? "ring-2 ring-red-500/70" : ""
                 }`}
               >
@@ -1509,12 +1509,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             <VerseCraftPaperDivider className="mx-auto mt-[clamp(1rem,3.4svh,1.75rem)] w-[13.6rem]" />
           </div>
 
-          <div className="mx-auto mt-[clamp(1.9rem,6.4svh,4.7rem)] w-full">
-            <div className="mx-auto flex w-full flex-col items-stretch justify-center gap-[clamp(1rem,3.5svh,2.15rem)]">
+          <div className="mx-auto mt-[clamp(1.7rem,5.6svh,4rem)] w-full max-w-[400px]">
+            <div className="mx-auto flex w-full flex-col items-stretch justify-center gap-[clamp(0.7rem,2.2svh,1.15rem)]">
               <VerseCraftPaperPillButton
                 type="button"
+                tone="ink"
                 data-testid="home-start-new-button"
-                className="animate-fade-in-up min-h-[68px] text-[29px] lg:min-h-[78px] lg:text-[33px]"
+                className="animate-fade-in-up min-h-[54px] text-[19px] sm:min-h-[58px] sm:text-[21px]"
                 style={{ animationDelay: "80ms" }}
                 aria-busy={isStartNewPending || undefined}
                 onClick={() => {
@@ -1534,9 +1535,9 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 }}
               >
                 <span>{isStartNewPending ? "落笔启程…" : "开始新篇"}</span>
-                <span className="text-vc-ink-faint" aria-hidden>
+                <span className="text-vc-paper-bright/70" aria-hidden>
                   {isStartNewPending ? (
-                    <Loader2 size={24} strokeWidth={2.2} className="animate-spin" />
+                    <Loader2 size={20} strokeWidth={2.2} className="animate-spin" />
                   ) : (
                     "→"
                   )}
@@ -1547,7 +1548,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 <VerseCraftPaperPillButton
                   type="button"
                   data-testid="home-continue-button"
-                  className="animate-fade-in-up min-h-[68px] text-[29px] lg:min-h-[78px] lg:text-[33px]"
+                  className="animate-fade-in-up min-h-[54px] text-[19px] sm:min-h-[58px] sm:text-[21px]"
                   style={{ animationDelay: "160ms" }}
                   onClick={openContinuePicker}
                 >
@@ -1575,26 +1576,26 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
         />
         <div
           data-testid="home-continue-record-modal"
-          className={`relative w-full max-w-[1120px] rounded-[28px] border border-[#d7ccbd] bg-vc-paper-bright/96 p-[clamp(1.5rem,4vw,4.4rem)] text-[#0f5a52] shadow-[0_26px_76px_rgba(76,61,42,0.22),inset_0_0_0_10px_rgba(248,243,235,0.96),inset_0_0_0_11px_rgba(218,207,191,0.7),inset_0_0_0_24px_rgba(255,253,248,0.9),inset_0_0_0_25px_rgba(226,216,200,0.62)] transition-all duration-500 sm:rounded-[42px] ${
+          className={`relative w-full max-w-[760px] rounded-[24px] border border-[#d7ccbd] bg-vc-paper-bright/96 p-[clamp(1.4rem,3vw,2.75rem)] text-[#0f5a52] shadow-[0_26px_76px_rgba(76,61,42,0.22),inset_0_0_0_8px_rgba(248,243,235,0.96),inset_0_0_0_9px_rgba(218,207,191,0.7),inset_0_0_0_20px_rgba(255,253,248,0.9),inset_0_0_0_21px_rgba(226,216,200,0.62)] transition-all duration-500 sm:rounded-[32px] ${
             continuePickerOpen ? "scale-100 opacity-100" : "scale-95 opacity-0"
           }`}
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 text-left">
-              <h3 className="vc-reading-serif text-[clamp(2rem,4.8vw,4rem)] font-semibold leading-none tracking-normal text-[#0f5a52]">
+              <h3 className="vc-reading-serif text-[clamp(1.5rem,3vw,2.2rem)] font-semibold leading-none tracking-normal text-[#0f5a52]">
                 选择要继续的记录
               </h3>
             </div>
             <button
               type="button"
               onClick={() => setContinuePickerOpen(false)}
-              className="vc-reading-serif shrink-0 rounded-full border border-[#d6cabb] bg-vc-paper-bright px-8 py-3 text-[clamp(1.2rem,2.1vw,1.7rem)] text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
+              className="vc-reading-serif shrink-0 rounded-full border border-[#d6cabb] bg-vc-paper-bright px-6 py-2.5 text-[clamp(0.95rem,1.4vw,1.15rem)] text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
             >
               关闭
             </button>
           </div>
 
-          <div className="mt-[clamp(2rem,5vw,4.8rem)] max-h-[48vh] space-y-4 overflow-y-auto text-left pr-1">
+          <div className="mt-[clamp(1.25rem,3vw,2.25rem)] max-h-[52vh] space-y-3 overflow-y-auto text-left pr-1">
             {continueRows.map((r) => {
               const sum = user ? (r.cloudSummary ?? r.localSummary) : (r.localSummary ?? r.cloudSummary);
               const line = summarizeLine(sum);
@@ -1613,7 +1614,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                   role="button"
                   tabIndex={0}
                   data-testid="home-continue-record-row"
-                  className={`w-full rounded-[16px] border px-[clamp(1rem,3vw,2.1rem)] py-[clamp(1rem,2.2vw,1.8rem)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f5a52]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-vc-paper-bright ${
+                  className={`w-full rounded-[16px] border px-[clamp(0.9rem,2.2vw,1.5rem)] py-[clamp(0.85rem,1.6vw,1.25rem)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f5a52]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-vc-paper-bright ${
                     selected
                       ? "border-[#0f5a52] bg-[#edf4ef] text-[#0f5a52] shadow-[inset_0_0_0_1px_rgba(15,90,82,0.1)]"
                       : "border-[#d8d0c4] bg-vc-paper-bright/84 text-[#0f5a52] hover:border-[#0f5a52]/55 hover:bg-[#f7fbf6]"
@@ -1621,13 +1622,13 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <div className="vc-reading-serif text-[clamp(1.45rem,3vw,2.15rem)] font-semibold leading-none">
+                      <div className="vc-reading-serif text-[clamp(1.15rem,2vw,1.45rem)] font-semibold leading-none">
                         {normalizeContinueLabel(sum?.label ?? r.slotId)}
                       </div>
-                      <div className="vc-reading-serif mt-4 text-[clamp(1rem,1.8vw,1.45rem)] leading-none text-[#0f5a52]">{line}</div>
+                      <div className="vc-reading-serif mt-2 text-[clamp(0.9rem,1.4vw,1.1rem)] leading-none text-[#0f5a52]">{line}</div>
                     </div>
-                    <div className="flex shrink-0 items-center justify-between gap-4 sm:justify-end sm:gap-7">
-                      <div className="vc-reading-serif whitespace-nowrap text-[clamp(1rem,1.7vw,1.35rem)] text-[#0f5a52]">
+                    <div className="flex shrink-0 items-center justify-between gap-4 sm:justify-end sm:gap-6">
+                      <div className="vc-reading-serif whitespace-nowrap text-[clamp(0.85rem,1.2vw,1rem)] text-[#0f5a52]">
                         更新 {upd}
                       </div>
                       <button
@@ -1639,7 +1640,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                           setDeleteConfirmOpen(true);
                         }}
                         data-testid="home-continue-delete-button"
-                        className="vc-reading-serif rounded-full border border-[#d6cabb] bg-vc-paper-bright px-5 py-2 text-[clamp(1rem,1.7vw,1.35rem)] font-semibold text-[#0f5a52] shadow-[0_4px_12px_rgba(78,63,47,0.1)] transition hover:border-[#0f5a52]/45 hover:bg-white"
+                        className="vc-reading-serif rounded-full border border-[#d6cabb] bg-vc-paper-bright px-4 py-1.5 text-[clamp(0.85rem,1.2vw,1rem)] font-semibold text-[#0f5a52] shadow-[0_4px_12px_rgba(78,63,47,0.1)] transition hover:border-[#0f5a52]/45 hover:bg-white"
                         aria-label={`删除记录 ${sum?.label ?? r.slotId}`}
                       >
                         删除
@@ -1651,11 +1652,11 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
             })}
           </div>
 
-          <div className="mt-[clamp(2.6rem,7vw,10rem)] flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end sm:gap-8">
+          <div className="mt-[clamp(1.6rem,4vw,3rem)] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
             <button
               type="button"
               onClick={() => setContinuePickerOpen(false)}
-              className="vc-reading-serif rounded-full border border-[#d8d0c4] bg-vc-paper-bright px-9 py-3 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.1)] transition hover:bg-white"
+              className="vc-reading-serif rounded-full border border-[#d8d0c4] bg-vc-paper-bright px-7 py-2.5 text-[clamp(0.95rem,1.4vw,1.15rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.1)] transition hover:bg-white"
             >
               取消
             </button>
@@ -1668,7 +1669,7 @@ export default function HomeClient({ initialUser }: HomeClientProps) {
                 setContinuePickerOpen(false);
                 void handleContinueAdventure(id);
               }}
-              className="vc-reading-serif rounded-full border border-[#8c867d] bg-[#f6f2ec] px-12 py-3 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="vc-reading-serif rounded-full border border-vc-ink-deep bg-vc-ink-deep px-9 py-2.5 text-[clamp(0.95rem,1.4vw,1.15rem)] font-semibold text-vc-paper-bright shadow-[0_12px_24px_rgba(13,63,57,0.24),inset_0_1px_0_rgba(255,255,255,0.14)] transition hover:bg-vc-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               继续行动 →
             </button>

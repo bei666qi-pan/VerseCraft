@@ -114,12 +114,21 @@ export function VerseCraftPaperSectionTitle({
 export function VerseCraftPaperPillButton({
   children,
   className = "",
+  tone = "paper",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  children: ReactNode;
+  /** paper：描边纸质（默认）；ink：深墨实心，用于页面主行动按钮 */
+  tone?: "paper" | "ink";
+}) {
+  const toneClass =
+    tone === "ink"
+      ? "border-vc-ink-deep bg-vc-ink-deep text-vc-paper-bright shadow-[0_16px_30px_rgba(13,63,57,0.26),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-2px_6px_rgba(0,0,0,0.20)] hover:bg-vc-ink"
+      : `${PAPER_LINE} bg-vc-paper-raised/88 text-vc-ink ${PAPER_SHADOW} hover:bg-vc-paper-bright`;
   return (
     <button
       {...props}
-      className={`relative flex min-h-16 w-full items-center justify-center gap-4 rounded-full border ${PAPER_LINE} bg-vc-paper-raised/88 px-8 vc-reading-serif text-[28px] font-semibold leading-none text-vc-ink ${PAPER_SHADOW} transition hover:bg-vc-paper-bright active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 ${className}`}
+      className={`relative flex min-h-[52px] w-full items-center justify-center gap-3 rounded-full border px-7 vc-reading-serif text-[19px] font-semibold leading-none tracking-[0.01em] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55 ${toneClass} ${className}`}
     >
       {children}
     </button>

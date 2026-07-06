@@ -116,7 +116,7 @@ function useStatStepper(
 }
 
 const stepButtonClass =
-  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-vc-line bg-vc-paper/90 vc-reading-serif text-[24px] leading-none text-vc-ink vc-shadow-card transition enabled:hover:bg-vc-paper-bright enabled:active:scale-90 disabled:cursor-not-allowed disabled:opacity-35";
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-vc-line bg-vc-paper-bright/90 vc-reading-serif text-[22px] leading-none text-vc-ink vc-shadow-card transition enabled:hover:border-vc-ink-deep/35 enabled:hover:bg-vc-paper-bright enabled:active:scale-90 disabled:cursor-not-allowed disabled:opacity-30";
 
 export function CreateStatAllocator({
   onDecrement,
@@ -173,13 +173,13 @@ export function CreateStatAllocator({
             <div className="min-w-0">
               <div
                 data-testid={`create-stat-value-${stat}`}
-                className={`vc-reading-serif text-center text-[26px] leading-none transition-colors ${
+                className={`vc-reading-serif text-center text-[27px] font-semibold leading-none transition-colors ${
                   stats[stat] > BASE_STATS[stat] ? "text-vc-accent" : "text-vc-ink"
                 }`}
               >
                 {stats[stat]}
               </div>
-              <div className="mx-auto mt-1.5 h-1 w-11 overflow-hidden rounded-full bg-vc-line/70" aria-hidden>
+              <div className="mx-auto mt-2 h-1.5 w-12 overflow-hidden rounded-full bg-vc-line/70" aria-hidden>
                 <div
                   className="h-full rounded-full bg-vc-accent transition-all"
                   style={{ width: `${Math.min(100, Math.round((stats[stat] / 30) * 100))}%` }}

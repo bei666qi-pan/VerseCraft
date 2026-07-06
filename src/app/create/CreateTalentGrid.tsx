@@ -21,10 +21,10 @@ export function CreateTalentGrid({
             data-testid={`create-talent-${talent.key}`}
             aria-pressed={active}
             onClick={() => onSelectTalent(talent.key)}
-            className={`relative min-h-[72px] rounded-[14px] border px-3.5 py-3 text-left transition active:scale-[0.99] ${
+            className={`relative min-h-[76px] rounded-2xl border px-4 py-3.5 text-left transition active:scale-[0.98] ${
               active
-                ? "border-vc-ink-deep bg-vc-ink-deep vc-shadow-card"
-                : "border-vc-line bg-vc-paper-bright/70 hover:bg-vc-paper"
+                ? "border-vc-ink-deep bg-vc-ink-deep shadow-[0_12px_26px_rgba(13,63,57,0.24),inset_0_1px_0_rgba(255,255,255,0.12)]"
+                : "border-vc-line bg-vc-paper-bright/70 hover:border-vc-ink/25 hover:bg-vc-paper"
             }`}
           >
             <span

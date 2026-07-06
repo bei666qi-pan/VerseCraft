@@ -122,7 +122,20 @@ function roleShellClasses(
 }
 
 const toggleButtonCls =
-  "mb-2 flex w-full items-center justify-between rounded-lg border border-vc-line bg-vc-paper-raised px-3 py-2 text-left text-[11px] font-medium text-vc-ink-soft transition hover:bg-white";
+  "mb-2 flex w-full items-center justify-between rounded-xl border border-vc-line bg-vc-paper-raised px-3.5 py-2.5 text-left text-[11px] font-medium text-vc-ink-soft transition hover:border-vc-line-warm hover:bg-white";
+
+/** 分区小标题：菱形前缀 + 标签 + 收尾细线，与纸墨阅读壳层的分隔符母题一致。 */
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="text-[9px] leading-none text-vc-ink-faint" aria-hidden>
+        ◆
+      </span>
+      <p className="shrink-0 text-[11px] font-semibold tracking-[0.14em] text-vc-ink-soft">{children}</p>
+      <span className="h-px flex-1 bg-vc-line/60" aria-hidden />
+    </div>
+  );
+}
 
 /** 展开态的奖励+风险标签行：图标化短标签，取代此前的整句奖励文案与常驻风险框。 */
 function ChipRow({ vm }: { vm: TaskStageCardViewModel }) {
@@ -235,7 +248,7 @@ export function PlayNarrativeTaskBoard({
     return (
       <article
         key={vm.taskId}
-        className={`relative overflow-hidden rounded-xl border bg-white shadow-[0_1px_0_rgba(73,63,51,0.05)] ${shell.frame} ${ring} ${closedDim} transition`}
+        className={`relative overflow-hidden border bg-white shadow-[0_1px_0_rgba(73,63,51,0.05)] ${size === "hero" ? "rounded-2xl" : "rounded-xl"} ${shell.frame} ${ring} ${closedDim} transition`}
       >
         <div className={`pointer-events-none absolute left-0 top-0 h-full w-[6px] ${shell.accent}`} />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-vc-line/60" />
@@ -295,7 +308,7 @@ export function PlayNarrativeTaskBoard({
             <button
               type="button"
               onClick={() => onClaimTask(vm.taskId)}
-              className="rounded-lg border border-vc-accent/30 bg-vc-accent/10 px-3 py-1.5 text-[11px] font-semibold text-vc-accent transition hover:bg-vc-accent/15"
+              className="rounded-lg border border-vc-accent/40 bg-vc-accent/12 px-4 py-1.5 text-[11px] font-bold tracking-wide text-vc-accent transition hover:border-vc-accent/60 hover:bg-vc-accent/20 active:scale-[0.97]"
             >
               接取
             </button>
@@ -339,9 +352,11 @@ export function PlayNarrativeTaskBoard({
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-vc-ink-faint">
-          <MobileReadingIcons.Tasks className="h-4 w-4 shrink-0 text-vc-accent" strokeWidth={1.4} />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">当前目标</p>
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-vc-line-warm bg-vc-paper-bright shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            <MobileReadingIcons.Tasks className="h-4 w-4 text-vc-accent" strokeWidth={1.4} />
+          </span>
+          <p className="text-[14px] font-bold leading-none tracking-[0.06em] text-vc-ink">当前目标</p>
         </div>
         <div className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-vc-line-warm bg-vc-paper-bright px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
           <MobileReadingIcons.Originium className="h-3.5 w-3.5 shrink-0 text-vc-accent" strokeWidth={1.25} />
@@ -361,24 +376,24 @@ export function PlayNarrativeTaskBoard({
 
       {/* 2. 人物委托（最多两张） */}
       {cards.commissions.length > 0 ? (
-        <section className="space-y-2" aria-label="委托">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-vc-ink-faint">委托</p>
+        <section className="space-y-2.5" aria-label="委托">
+          <SectionLabel>委托</SectionLabel>
           <div className="grid gap-3 sm:grid-cols-1">{cards.commissions.map((vm) => renderStageCard(vm, { size: "standard" }))}</div>
         </section>
       ) : null}
 
       {/* 3. 机会事件（最多一张） */}
       {cards.opportunity ? (
-        <section className="space-y-2" aria-label="机会">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-vc-ink-faint">机会 · 限时</p>
+        <section className="space-y-2.5" aria-label="机会">
+          <SectionLabel>机会 · 限时</SectionLabel>
           {renderStageCard(cards.opportunity, { size: "standard" })}
         </section>
       ) : null}
 
       {/* 4. 其他动向：牵连（轻追踪）+ 线索聚合为一句提示，不再逐条摊开占版面 */}
       {hasSecondary ? (
-        <section className="space-y-2" aria-label="其他动向">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-vc-ink-faint">其他动向</p>
+        <section className="space-y-2.5" aria-label="其他动向">
+          <SectionLabel>其他动向</SectionLabel>
           <div className="space-y-1.5">{secondary.promises.map((row) => renderCompactRow(row))}</div>
           {secondary.clues.length > 0 ? (
             <p className="text-[11px] text-vc-ink-faint">多留意：另有 {secondary.clues.length} 条线索尚未挑明。</p>

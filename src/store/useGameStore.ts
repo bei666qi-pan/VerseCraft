@@ -28,9 +28,15 @@ import {
   activateClaimableHiddenTasks,
   extractRelationshipPatchesFromConsequences,
   applyAutoFailedTasks,
+  formatTaskRewardSummary,
   type GameTaskV2,
   type GameTaskStatus,
+  type GameTaskRewardV2,
 } from "@/lib/tasks/taskV2";
+import {
+  resolveNarrativeInventoryItems,
+  resolveNarrativeWarehouseItems,
+} from "@/features/play/narrativeFeatureTriggers";
 import { inferEffectiveNarrativeLayer } from "@/lib/tasks/taskRoleModel";
 import type { ConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { enableTaskModeLayer } from "@/lib/playRealtime/npcNarrativeRolloutFlags";
@@ -460,6 +466,8 @@ export interface SaveSlotData {
   /** 武器背包：未装备武器列表（装备系统 V3） */
   weaponBag?: Weapon[];
   appliedRelationshipTaskIds?: string[];
+  /** 阶段4：已发放奖励的任务 id 幂等账本（防止委托奖励重复发放）。 */
+  appliedRewardTaskIds?: string[];
   reviveContext?: {
     pending: boolean;
     deathLocation: string | null;
@@ -623,6 +631,8 @@ export interface GameState extends IntegrityMetaState {
   securityFallback: { active: boolean; message: string; at: number; reason?: string };
   reviveContext: SaveSlotData["reviveContext"];
   appliedRelationshipTaskIds: string[];
+  /** 阶段4：已发放奖励的任务 id 幂等账本（防止委托奖励重复发放）。 */
+  appliedRewardTaskIds: string[];
   professionState: ProfessionStateV1;
   chapterState: ChapterState;
   /** Phase-2：职业叙事提示（仅运行时消费；不入存档）。 */
@@ -956,6 +966,143 @@ function applyTaskRelationshipConsequencesToCodex(
   };
 }
 
+/**
+ * 阶段4：任务/委托「完成即结算奖励」。
+ *
+ * 背景：任务的 reward（原石/道具/仓库物品）此前只用于定义与展示，从未在任务真正
+ * 完成时发放——玩家看到「原石+2」却拿不到手。本函数与
+ * applyTaskRelationshipConsequencesToCodex 并列，专职把 reward 落账，并用
+ * appliedRewardTaskIds 幂等账本防重复发放：同一回合 updateTaskStatus + updateTask
+ * 会各触发一次，二者共享账本因此只发一次；旧存档里已完成但从未结算的任务，会在下次
+ * 任务变更时补发一次（数额小、且幂等，之后不再重复）。
+ *
+ * 边界：reward.unlocks 与后续任务链推进由 worldConsequences + activateClaimableHiddenTasks
+ * 负责，此处不重复处理；reward.relationshipChanges 由关系结算函数负责，此处不处理。
+ */
+function applyTaskRewardConsequences(input: {
+  tasks: GameTask[];
+  appliedRewardTaskIds: string[];
+  originium: number;
+  inventory: Item[];
+  warehouse: WarehouseItem[];
+}): {
+  originium: number;
+  inventory: Item[];
+  warehouse: WarehouseItem[];
+  appliedRewardTaskIds: string[];
+  logEntries: Array<{ role: string; content: string }>;
+  granted: boolean;
+} {
+  const appliedRewardTaskIds = input.appliedRewardTaskIds ?? [];
+  const newlyCompleted = (input.tasks ?? []).filter(
+    (t) => t.status === "completed" && !appliedRewardTaskIds.includes(t.id)
+  );
+  if (newlyCompleted.length === 0) {
+    return {
+      originium: input.originium,
+      inventory: input.inventory,
+      warehouse: input.warehouse,
+      appliedRewardTaskIds,
+      logEntries: [],
+      granted: false,
+    };
+  }
+
+  let originium = Math.max(0, input.originium ?? 0);
+  const inventoryById = new Map(
+    (input.inventory ?? []).filter((i): i is Item => !!i && typeof i.id === "string").map((i) => [i.id, i])
+  );
+  const warehouseById = new Map(
+    (input.warehouse ?? []).filter((w): w is WarehouseItem => !!w && typeof w.id === "string").map((w) => [w.id, w])
+  );
+  const logEntries: Array<{ role: string; content: string }> = [];
+  let granted = false;
+
+  for (const task of newlyCompleted) {
+    const reward = task.reward as GameTaskRewardV2 | undefined;
+    if (!reward) continue;
+    let taskGranted = false;
+
+    if (typeof reward.originium === "number" && Number.isFinite(reward.originium) && reward.originium > 0) {
+      originium = Math.max(0, originium + reward.originium);
+      taskGranted = true;
+    }
+
+    for (const item of resolveNarrativeInventoryItems(reward.items ?? [])) {
+      const prev = inventoryById.get(item.id);
+      inventoryById.set(item.id, prev ? { ...prev, ...item } : item);
+      taskGranted = true;
+    }
+
+    for (const wh of resolveNarrativeWarehouseItems(reward.warehouseItems ?? [])) {
+      const prev = warehouseById.get(wh.id);
+      warehouseById.set(wh.id, prev ? { ...prev, ...wh } : wh);
+      taskGranted = true;
+    }
+
+    if (taskGranted) {
+      granted = true;
+      logEntries.push({
+        role: "assistant",
+        content: `**委托达成**：「${task.title}」——奖励已入账（${formatTaskRewardSummary(reward)}）。`,
+      });
+    }
+  }
+
+  return {
+    originium,
+    inventory: granted ? Array.from(inventoryById.values()) : input.inventory,
+    warehouse: granted ? Array.from(warehouseById.values()) : input.warehouse,
+    appliedRewardTaskIds: [...appliedRewardTaskIds, ...newlyCompleted.map((t) => t.id)],
+    logEntries,
+    granted,
+  };
+}
+
+/**
+ * 任务三动作（addTask / updateTaskStatus / updateTask）共享的收口逻辑：先算关系后果，
+ * 再算奖励发放，最后重算职业状态并返回统一的 state patch。抽出来保证四个调用点行为一致，
+ * 避免"某个入口漏发奖励"的漂移。
+ */
+function finalizeTaskMutation(s: GameState, activatedTasks: GameTask[]): Partial<GameState> {
+  const rel = applyTaskRelationshipConsequencesToCodex(
+    s.codex ?? {},
+    activatedTasks,
+    s.appliedRelationshipTaskIds ?? []
+  );
+  const reward = applyTaskRewardConsequences({
+    tasks: activatedTasks,
+    appliedRewardTaskIds: s.appliedRewardTaskIds ?? [],
+    originium: s.originium ?? 0,
+    inventory: s.inventory ?? [],
+    warehouse: s.warehouse ?? [],
+  });
+  const prevProfession = s.professionState;
+  const professionState = computeProfessionState({
+    prev: s.professionState,
+    stats: s.stats ?? DEFAULT_STATS,
+    tasks: activatedTasks,
+    historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
+    mainThreatByFloor: s.mainThreatByFloor ?? {},
+    codex: rel.codex ?? {},
+    inventoryCount: reward.inventory.length,
+    warehouseCount: reward.warehouse.length,
+    equippedWeapon: s.equippedWeapon ?? null,
+  });
+  return {
+    tasks: ensureProfessionTrialTasks(activatedTasks, professionState),
+    codex: rel.codex,
+    appliedRelationshipTaskIds: rel.appliedTaskIds,
+    originium: reward.originium,
+    inventory: reward.inventory,
+    warehouse: reward.warehouse,
+    appliedRewardTaskIds: reward.appliedRewardTaskIds,
+    ...(reward.granted ? { logs: [...(s.logs ?? []), ...reward.logEntries] } : {}),
+    professionState,
+    professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
+  };
+}
+
 function resolveFloorScore(loc: string): number {
   if (!loc) return 0;
   if (loc.startsWith("B2_")) return 8;
@@ -1106,6 +1253,7 @@ export const useGameStore = create<GameState>()(
         droppedLootOwnerLedger: [],
       },
       appliedRelationshipTaskIds: [],
+      appliedRewardTaskIds: [],
       professionState: createDefaultProfessionState(),
       chapterState: createInitialChapterState(),
       hasMetProfessionCertifier: false,
@@ -1331,6 +1479,7 @@ export const useGameStore = create<GameState>()(
           currentBgm: "bgm_b1_daily",
           activeMenu: null,
           appliedRelationshipTaskIds: [],
+          appliedRewardTaskIds: [],
           professionState: createDefaultProfessionState(),
           chapterState: createInitialChapterState(),
           endingState: createInitialEndingState(),
@@ -1375,6 +1524,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           appliedRelationshipTaskIds: [],
+          appliedRewardTaskIds: [],
           professionState: createDefaultProfessionState(),
           chapterState: createInitialChapterState(),
           hasMetProfessionCertifier: false,
@@ -1461,6 +1611,7 @@ export const useGameStore = create<GameState>()(
           currentOptions: [],
           recentOptions: [],
           appliedRelationshipTaskIds: [],
+          appliedRewardTaskIds: [],
           professionState: createDefaultProfessionState(),
           chapterState: createInitialChapterState(),
           endingState: createInitialEndingState(),
@@ -1483,6 +1634,7 @@ export const useGameStore = create<GameState>()(
           historicalMaxFloorScore: 0,
           deathCount: 0,
           appliedRelationshipTaskIds: [],
+          appliedRewardTaskIds: [],
           chapterState: createInitialChapterState(),
           endingState: createInitialEndingState(),
           hasMetProfessionCertifier: false,
@@ -1555,56 +1707,10 @@ export const useGameStore = create<GameState>()(
               t.id === normalized.id ? applyTaskUpdateToTask(t, withLedger) : t
             );
             const activated = activateClaimableHiddenTasks(merged);
-            const rel = applyTaskRelationshipConsequencesToCodex(
-              s.codex ?? {},
-              activated,
-              s.appliedRelationshipTaskIds ?? []
-            );
-            const prevProfession = s.professionState;
-            const professionState = computeProfessionState({
-              prev: s.professionState,
-              stats: s.stats ?? DEFAULT_STATS,
-              tasks: activated,
-              historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
-              mainThreatByFloor: s.mainThreatByFloor ?? {},
-              codex: rel.codex ?? {},
-              inventoryCount: (s.inventory ?? []).length,
-              warehouseCount: (s.warehouse ?? []).length,
-              equippedWeapon: s.equippedWeapon ?? null,
-            });
-            return {
-              tasks: ensureProfessionTrialTasks(activated, professionState),
-              codex: rel.codex,
-              appliedRelationshipTaskIds: rel.appliedTaskIds,
-              professionState,
-              professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
-            };
+            return finalizeTaskMutation(s, activated);
           }
           const activated = activateClaimableHiddenTasks([...(s.tasks ?? []), withLedger]);
-          const rel = applyTaskRelationshipConsequencesToCodex(
-            s.codex ?? {},
-            activated,
-            s.appliedRelationshipTaskIds ?? []
-          );
-          const prevProfession = s.professionState;
-          const professionState = computeProfessionState({
-            prev: s.professionState,
-            stats: s.stats ?? DEFAULT_STATS,
-            tasks: activated,
-            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
-            mainThreatByFloor: s.mainThreatByFloor ?? {},
-            codex: rel.codex ?? {},
-            inventoryCount: (s.inventory ?? []).length,
-            warehouseCount: (s.warehouse ?? []).length,
-            equippedWeapon: s.equippedWeapon ?? null,
-          });
-          return {
-            tasks: ensureProfessionTrialTasks(activated, professionState),
-            codex: rel.codex,
-            appliedRelationshipTaskIds: rel.appliedTaskIds,
-            professionState,
-            professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
-          };
+          return finalizeTaskMutation(s, activated);
         }),
       updateTaskStatus: (taskId, status) =>
         set((s) => {
@@ -1612,30 +1718,7 @@ export const useGameStore = create<GameState>()(
             t.id === taskId ? { ...t, status } : t
           );
           const activated = activateClaimableHiddenTasks(next);
-          const rel = applyTaskRelationshipConsequencesToCodex(
-            s.codex ?? {},
-            activated,
-            s.appliedRelationshipTaskIds ?? []
-          );
-          const prevProfession = s.professionState;
-          const professionState = computeProfessionState({
-            prev: s.professionState,
-            stats: s.stats ?? DEFAULT_STATS,
-            tasks: activated,
-            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
-            mainThreatByFloor: s.mainThreatByFloor ?? {},
-            codex: rel.codex ?? {},
-            inventoryCount: (s.inventory ?? []).length,
-            warehouseCount: (s.warehouse ?? []).length,
-            equippedWeapon: s.equippedWeapon ?? null,
-          });
-          return {
-            tasks: ensureProfessionTrialTasks(activated, professionState),
-            codex: rel.codex,
-            appliedRelationshipTaskIds: rel.appliedTaskIds,
-            professionState,
-            professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
-          };
+          return finalizeTaskMutation(s, activated);
         }),
       updateTask: (taskPatch) =>
         set((s) => {
@@ -1645,30 +1728,7 @@ export const useGameStore = create<GameState>()(
             t.id === patch.id ? applyTaskUpdateToTask(t, patch) : t
           );
           const activated = activateClaimableHiddenTasks(next);
-          const rel = applyTaskRelationshipConsequencesToCodex(
-            s.codex ?? {},
-            activated,
-            s.appliedRelationshipTaskIds ?? []
-          );
-          const prevProfession = s.professionState;
-          const professionState = computeProfessionState({
-            prev: s.professionState,
-            stats: s.stats ?? DEFAULT_STATS,
-            tasks: activated,
-            historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,
-            mainThreatByFloor: s.mainThreatByFloor ?? {},
-            codex: rel.codex ?? {},
-            inventoryCount: (s.inventory ?? []).length,
-            warehouseCount: (s.warehouse ?? []).length,
-            equippedWeapon: s.equippedWeapon ?? null,
-          });
-          return {
-            tasks: ensureProfessionTrialTasks(activated, professionState),
-            codex: rel.codex,
-            appliedRelationshipTaskIds: rel.appliedTaskIds,
-            professionState,
-            professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
-          };
+          return finalizeTaskMutation(s, activated);
         }),
       setPlayerLocation: (loc) =>
         set((s) => {
@@ -3639,6 +3699,9 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: JSON.parse(
             JSON.stringify(s.appliedRelationshipTaskIds ?? [])
           ),
+          appliedRewardTaskIds: JSON.parse(
+            JSON.stringify(s.appliedRewardTaskIds ?? [])
+          ),
           professionState: JSON.parse(JSON.stringify(computedProfession)),
           ...legacyProjection,
           chapterState: JSON.parse(JSON.stringify(chapterState)),
@@ -3848,6 +3911,9 @@ export const useGameStore = create<GameState>()(
           appliedRelationshipTaskIds: JSON.parse(
             JSON.stringify(data.appliedRelationshipTaskIds ?? [])
           ),
+          appliedRewardTaskIds: JSON.parse(
+            JSON.stringify(data.appliedRewardTaskIds ?? [])
+          ),
           professionState: JSON.parse(JSON.stringify(professionState)),
           chapterState: JSON.parse(JSON.stringify(chapterState)),
           endingState: JSON.parse(JSON.stringify(loadedEndingState)),
@@ -4021,6 +4087,9 @@ export const useGameStore = create<GameState>()(
             appliedRelationshipTaskIds: JSON.parse(
               JSON.stringify(data.appliedRelationshipTaskIds ?? s.appliedRelationshipTaskIds ?? [])
             ),
+            appliedRewardTaskIds: JSON.parse(
+              JSON.stringify(data.appliedRewardTaskIds ?? s.appliedRewardTaskIds ?? [])
+            ),
             professionState: JSON.parse(JSON.stringify(professionState)),
             chapterState: JSON.parse(JSON.stringify(chapterState)),
             endingState: JSON.parse(JSON.stringify(loadedEndingState)),
@@ -4168,6 +4237,7 @@ export const useGameStore = create<GameState>()(
           droppedLootOwnerLedger: [],
         },
         appliedRelationshipTaskIds: s.appliedRelationshipTaskIds ?? [],
+        appliedRewardTaskIds: s.appliedRewardTaskIds ?? [],
         professionState: s.professionState ?? createDefaultProfessionState(),
         chapterState: normalizeChapterState(s.chapterState),
         isGameStarted: s.isGameStarted ?? false,

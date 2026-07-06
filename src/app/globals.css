@@ -114,78 +114,118 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes vc-chapter-page-turn-next-sheet {
-  0% { transform: translateX(118%) skewX(-10deg); opacity: 0; filter: brightness(1.03); }
-  22% { opacity: 1; }
-  72% { transform: translateX(2%) skewX(-4deg); opacity: 1; filter: brightness(1); }
-  100% { transform: translateX(-8%) skewX(0deg); opacity: 0; filter: brightness(0.98); }
+/* 章节翻页：仿真卷页效果（高保真自动播放，无需手指跟随）。
+   .vc-cpt-page 用 rotateY + translateX 模拟纸张从书脊卷起再落下；
+   .vc-cpt-shadow 是页面下方的接触阴影；.vc-cpt-sheen 是卷起瞬间的高光/背面暗调。
+   三层动画总时长 600ms，短于 page.tsx 中 620ms 的 overlay 卸载计时，避免动画被提前截断。 */
+.vc-chapter-page-turn-stage {
+  perspective: 1300px;
 }
 
-@keyframes vc-chapter-page-turn-prev-sheet {
-  0% { transform: translateX(-118%) skewX(10deg); opacity: 0; filter: brightness(1.03); }
-  22% { opacity: 1; }
-  72% { transform: translateX(-2%) skewX(4deg); opacity: 1; filter: brightness(1); }
-  100% { transform: translateX(8%) skewX(0deg); opacity: 0; filter: brightness(0.98); }
+@keyframes vc-cpt-shadow-next {
+  0% { transform: translateX(34%) scaleX(0.55); opacity: 0; }
+  16% { opacity: 0.5; }
+  48% { transform: translateX(2%) scaleX(1); opacity: 0.32; }
+  100% { transform: translateX(-62%) scaleX(0.6); opacity: 0; }
 }
 
-@keyframes vc-chapter-page-turn-next-crease {
-  0% { transform: translateX(170%); opacity: 0; }
-  18% { opacity: 0.72; }
-  74% { opacity: 0.4; }
-  100% { transform: translateX(-60%); opacity: 0; }
+@keyframes vc-cpt-shadow-prev {
+  0% { transform: translateX(-34%) scaleX(0.55); opacity: 0; }
+  16% { opacity: 0.5; }
+  48% { transform: translateX(-2%) scaleX(1); opacity: 0.32; }
+  100% { transform: translateX(62%) scaleX(0.6); opacity: 0; }
 }
 
-@keyframes vc-chapter-page-turn-prev-crease {
-  0% { transform: translateX(-170%); opacity: 0; }
-  18% { opacity: 0.72; }
-  74% { opacity: 0.4; }
-  100% { transform: translateX(60%); opacity: 0; }
+@keyframes vc-cpt-page-next {
+  0% { transform: translateX(22%) rotateY(72deg); opacity: 0; }
+  9% { opacity: 1; }
+  40% { transform: translateX(0%) rotateY(3deg); }
+  60% { transform: translateX(0%) rotateY(0deg); }
+  100% { transform: translateX(-60%) rotateY(-76deg); opacity: 0; }
 }
 
-.vc-chapter-page-turn-sheet {
-  top: 0;
-  bottom: 0;
-  background:
-    linear-gradient(90deg, rgba(255, 253, 248, 0.92), rgba(246, 242, 236, 0.98) 58%, rgba(226, 218, 206, 0.88)),
-    repeating-linear-gradient(0deg, rgba(47, 116, 106, 0.018) 0 1px, transparent 1px 7px);
-  will-change: transform, opacity, filter;
+@keyframes vc-cpt-page-prev {
+  0% { transform: translateX(-22%) rotateY(-72deg); opacity: 0; }
+  9% { opacity: 1; }
+  40% { transform: translateX(0%) rotateY(-3deg); }
+  60% { transform: translateX(0%) rotateY(0deg); }
+  100% { transform: translateX(60%) rotateY(76deg); opacity: 0; }
 }
 
-.vc-chapter-page-turn-crease {
-  top: 0;
-  bottom: 0;
-  background:
-    linear-gradient(90deg, transparent, rgba(81, 68, 52, 0.17), rgba(255, 253, 248, 0.62), transparent),
-    linear-gradient(90deg, transparent, rgba(47, 116, 106, 0.08), transparent);
-  filter: blur(0.2px);
+@keyframes vc-cpt-sheen-fold {
+  0%, 100% { opacity: 0; }
+  8% { opacity: 0.9; }
+  40% { opacity: 0.12; }
+  72% { opacity: 0.6; }
+}
+
+.vc-cpt-shadow {
+  position: absolute;
+  top: 6%;
+  bottom: 6%;
+  width: 46%;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, rgba(43, 36, 26, 0.36), rgba(43, 36, 26, 0) 72%);
+  filter: blur(6px);
   will-change: transform, opacity;
 }
 
-.vc-chapter-page-turn--next .vc-chapter-page-turn-sheet {
-  right: -6%;
+.vc-cpt-page {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 72%;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(255, 253, 248, 0.98), rgba(248, 244, 236, 0.99) 55%, rgba(228, 220, 206, 0.94)),
+    repeating-linear-gradient(0deg, rgba(47, 116, 106, 0.02) 0 1px, transparent 1px 8px);
+  box-shadow: 0 22px 48px rgba(58, 48, 36, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+.vc-cpt-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vc-chapter-page-turn--next .vc-cpt-shadow {
+  right: -4%;
+  animation: vc-cpt-shadow-next 600ms cubic-bezier(0.22, 0.61, 0.2, 1) both;
+}
+
+.vc-chapter-page-turn--next .vc-cpt-page {
+  right: -4%;
   transform-origin: right center;
-  animation: vc-chapter-page-turn-next-sheet 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
+  animation: vc-cpt-page-next 600ms cubic-bezier(0.22, 0.61, 0.2, 1) both;
 }
 
-.vc-chapter-page-turn--next .vc-chapter-page-turn-crease {
-  right: 0;
-  animation: vc-chapter-page-turn-next-crease 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
+.vc-chapter-page-turn--next .vc-cpt-sheen {
+  background: linear-gradient(90deg, rgba(81, 68, 52, 0.16), rgba(255, 253, 248, 0.7) 30%, transparent 62%);
+  animation: vc-cpt-sheen-fold 600ms cubic-bezier(0.22, 0.61, 0.2, 1) both;
 }
 
-.vc-chapter-page-turn--previous .vc-chapter-page-turn-sheet {
-  left: -6%;
+.vc-chapter-page-turn--previous .vc-cpt-shadow {
+  left: -4%;
+  animation: vc-cpt-shadow-prev 600ms cubic-bezier(0.22, 0.61, 0.2, 1) both;
+}
+
+.vc-chapter-page-turn--previous .vc-cpt-page {
+  left: -4%;
   transform-origin: left center;
-  animation: vc-chapter-page-turn-prev-sheet 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
+  animation: vc-cpt-page-prev 600ms cubic-bezier(0.22, 0.61, 0.2, 1) both;
 }
 
-.vc-chapter-page-turn--previous .vc-chapter-page-turn-crease {
-  left: 0;
-  animation: vc-chapter-page-turn-prev-crease 520ms cubic-bezier(0.22, 0.68, 0.18, 1) both;
+.vc-chapter-page-turn--previous .vc-cpt-sheen {
+  background: linear-gradient(270deg, rgba(81, 68, 52, 0.16), rgba(255, 253, 248, 0.7) 30%, transparent 62%);
+  animation: vc-cpt-sheen-fold 600ms cubic-bezier(0.22, 0.61, 0.2, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .vc-chapter-page-turn-sheet,
-  .vc-chapter-page-turn-crease {
+  .vc-cpt-shadow,
+  .vc-cpt-page,
+  .vc-cpt-sheen {
     animation-duration: 1ms !important;
   }
 }

@@ -47,7 +47,7 @@ import type {
 } from "@/lib/ai/types/core";
 import type { AiRoutingAttempt, AiRoutingReport } from "@/lib/ai/routing/types";
 import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
-import { isValidJsonObjectString } from "@/lib/ai/validation/structuredOutput";
+import { isValidJsonObjectString, repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 import { buildPlayerDmJsonSchemaRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
 
 const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
@@ -99,6 +99,11 @@ function sanitizeReasonerJsonText(text: string): { content: string; sanitized: b
   if (extracted && isValidJsonObjectString(extracted)) {
     return { content: extracted, sanitized: true };
   }
+  // 离线 reasoner（思考类模型）在强制 JSON 时仍可能残留尾逗号 / 注释 / 单引号等可修复瑕疵。
+  // 仅在上面严格校验已失败、内容本会被判 JSON_PARSE 丢弃时，用 jsonrepair 做最后兜底，
+  // 避免 world director 等离线 tick 因小瑕疵整轮失败、agenda 永不落地。在线路径不经过此分支。
+  const repaired = repairJsonObjectString(extracted ?? noThink);
+  if (repaired) return { content: repaired, sanitized: true };
   return { content: noThink, sanitized: noThink !== text.trim() };
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 
 export type WorldEngineTrigger =
   | "in_game_day_elapsed"
@@ -551,7 +552,15 @@ export function parseWorldEngineDeltaJson(raw: string): WorldEngineStructuredDel
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return null;
+    // 兜底：离线 reasoner 产物可能带 markdown 围栏 / 前后缀说明 / 尾逗号等瑕疵，
+    // 严格 JSON.parse 会直接失败并让 world director 空转。先尽力修复再解析。
+    const repaired = repairJsonObjectString(raw);
+    if (!repaired) return null;
+    try {
+      parsed = JSON.parse(repaired);
+    } catch {
+      return null;
+    }
   }
   const root = asRecord(parsed);
   if (!root) return null;

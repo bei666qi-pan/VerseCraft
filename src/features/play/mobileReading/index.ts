@@ -77,10 +77,6 @@ export {
   type ReadingTextSize,
 } from "./readingPreferences";
 export { GAME_GUIDE_SECTIONS, type GameGuideSection } from "./settingsCopy";
-export {
-  buildSettingsChapterItems,
-  type SettingsChapterItem,
-} from "./settingsChapters";
 export type {
   MobileReadingIcon,
   MobileReadingIconProps,
