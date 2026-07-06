@@ -190,6 +190,14 @@ export type WorldEngineStructuredDelta = DirectorPlan & {
   /** True when deterministic risk gates allow social event rows to be persisted. */
   social_write_allowed: boolean;
   social_reject_reasons: string[];
+  /**
+   * 诊断字段（2026-07，风险排查新增）：production 观测到 world_events_to_schedule
+   * 持续归零，但看不出是"模型确实没提议"还是"提议了但被 normalizeAgendaItems 的
+   * 必填字段校验过滤掉"。这里记录模型原始数组长度（-1 = 字段存在但不是数组，
+   * 0 = 字段缺失/模型给的空数组），落进 world_engine_runs.output_json 供后续排查，
+   * 不改变任何现有过滤/写入行为。
+   */
+  world_events_raw_count: number;
 };
 
 const PRIORITIES = ["low", "medium", "high"] as const;
@@ -544,6 +552,11 @@ function normalizePlan(root: Record<string, unknown>): WorldEngineStructuredDelt
     agenda_reject_reasons: agendaRejectReasons,
     social_write_allowed: socialWriteAllowed,
     social_reject_reasons: socialRejectReasons,
+    world_events_raw_count: Array.isArray(root.world_events_to_schedule)
+      ? root.world_events_to_schedule.length
+      : root.world_events_to_schedule == null
+        ? 0
+        : -1,
   };
 }
 

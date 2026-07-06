@@ -60,6 +60,10 @@ test("getAppRedisClient downgrades connection refusal without repeated error log
     await __resetRatelimitForTests();
   }
 
-  assert.equal(errors.length, 0);
+  // 只过滤 ratelimit 自身的日志，不对 errors.length 做全量零断言：Node 自身的
+  // 一次性 deprecation warning（如 module.register() 已弃用）也会经由某些路径
+  // 触达全局 console.error，与本模块降级行为无关，在单独跑本文件时曾偶发误判失败
+  // （2026-07 排查确认，见项目记忆/对话记录）。
+  assert.equal(errors.filter((msg) => msg.includes("[ratelimit]")).length, 0);
   assert.equal(warnings.filter((msg) => msg.includes("Redis unavailable")).length, 1);
 });

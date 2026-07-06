@@ -65,11 +65,30 @@ async function ensureAnalyticsFoundationTables(client) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS analytics_events_page_time_idx ON analytics_events (page, event_time);
   `);
-  // 注：这个函数的 CREATE TABLE 定义本身已经落后于 schema.ts / ensureSchema.ts（缺
-  // actor_id/actor_type/guest_id/online_duration_delta_sec 等后续新增列的补齐语句——
-  // 后台重构第二轮风险排查发现的既有缺口，本次不在这里展开修复，只保证下面新增的
-  // environment 列在这条独立于 ensureSchema.ts 的路径上也不遗漏）。
+  // 补齐与 ensureSchema.ts 一致的列/索引（原先这里落后于 schema.ts / ensureSchema.ts，
+  // 只是实际运行不受影响——Next.js instrumentation 每次进程启动都会跑 ensureRuntimeSchema()
+  // 把这里漏掉的列/索引补上，早于任何真实请求。这里补齐纯粹是让两条 idempotent bootstrap
+  // 路径的定义保持一致、不再互相漂移；语句与 ensureSchema.ts 完全一致，同样幂等安全）。
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS actor_id VARCHAR(191);`);
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS actor_type VARCHAR(16);`);
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS guest_id VARCHAR(128);`);
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS online_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS active_play_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS read_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS idle_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
   await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS environment VARCHAR(16) NOT NULL DEFAULT 'production';`);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_session_event_time_idx ON analytics_events (session_id, event_time);
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_actor_event_time_idx ON analytics_events (actor_id, event_time);
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_guest_event_time_idx ON analytics_events (guest_id, event_time);
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS analytics_events_payload_world_id_time_idx ON analytics_events ((payload->>'worldId'), event_time);
+  `);
 }
 
 async function ensurePresencePlaytimeTables(client) {
