@@ -34,7 +34,7 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enableProfessionTrialNarrativeGrant, true);
   assert.equal(f.enableProfessionPromptDietV1, true);
   assert.equal(f.enableWeaponLifecycleV1, true);
-  assert.equal(f.enableCombatSummaryV1, false);
+  assert.equal(f.enableCombatSummaryV1, true);
   assert.equal(f.enableWeaponizationPreview, true);
   assert.equal(f.enablePlayabilityCoreLoopsV1, true);
   assert.equal(f.enableWorldFeelLoopPackets, true);

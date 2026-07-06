@@ -207,8 +207,9 @@ test("world knowledge bootstrap：world_arc 实体与 chunk、sourceRef、reveal
 
 test("prompt：stable 前缀体积可控且含 packet 边界句", () => {
   const s = getStablePlayerDmSystemPrefix();
-  // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积小幅上升；仍需保持可控。
-  assert.ok(s.length < 9200, `stable prefix length ${s.length}`);
+  // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积上升到约 9326（见 5d43d7e）；
+  // 阈值同步上调但仍保留可控余量，防止后续无节制增长。
+  assert.ok(s.length < 9400, `stable prefix length ${s.length}`);
   assert.ok(s.includes("major_npc_relink_packet"));
   assert.ok(s.includes("no-instant-party"));
   assert.ok(s.includes("reveal-first"));

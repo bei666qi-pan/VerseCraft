@@ -366,4 +366,3 @@ jobs:
 
       - name: Build production Docker image (no push)
         run: docker build -t versecraft:ci-verify .
-            .runtime-data/live-chat-next.log
