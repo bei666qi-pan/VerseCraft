@@ -1,0 +1,71 @@
+{
+  "id": "game_mechanics_v2",
+  "name": "游戏机制落地评估 V2",
+  "version": "2.0.0",
+  "description": "评估AI是否正确理解和响应了游戏机制状态（道具、职业、武器、原石、图鉴、理智），以及结构化字段的准确性。",
+  "scale": { "min": 1, "max": 5, "passing": 3.5 },
+  "passRule": {
+    "minEach": 2,
+    "minAverage": 3.5,
+    "hardFailIf": {
+      "mechanics_fidelity": 1,
+      "structured_fields": 1
+    }
+  },
+  "dimensions": [
+    {
+      "id": "mechanics_fidelity",
+      "name": "机制响应准确度",
+      "weight": 0.30,
+      "description": "评估AI是否准确识别并响应了玩家状态中的游戏机制信号：道具使用/拾取、武器状态、职业技能、原石消耗/获取、理智变化、天赋效果。",
+      "anchors": [
+        { "score": 5, "label": "精准响应", "description": "叙事准确反映了所有相关机制状态：道具被合理使用（如绷带包扎伤口）、武器特性在战斗中体现、职业技能效果有识别、原石/理智变化有叙事描写。" },
+        { "score": 4, "label": "良好响应", "description": "核心机制被正确响应，偶有1个次要机制被忽略（如提到武器但未体现其具体属性），不影响整体体验。" },
+        { "score": 3, "label": "部分响应", "description": "关键机制有响应但不够细致（如知道有武器但未描写其特性），或遗漏了2个次要机制信号。" },
+        { "score": 2, "label": "大量遗漏", "description": "多数机制信号被忽略：玩家使用了技能但叙事未体现、道具被正常描述但未触发消耗/效果。至少3个机制信号缺失。" },
+        { "score": 1, "label": "完全脱节", "description": "叙事完全无视游戏机制状态，像在没有游戏状态的空白场景中写作。玩家输入中明确的状态（如'我用绷带包扎'）被忽略。" }
+      ],
+      "hardFloor": 2
+    },
+    {
+      "id": "structured_fields",
+      "name": "结构化字段准确性",
+      "weight": 0.25,
+      "description": "评估DM JSON中结构化字段（awarded_items, consumed_items, task_updates, codex_updates, currency_change 等）是否与叙事内容一致且语义正确。",
+      "anchors": [
+        { "score": 5, "label": "完全准确", "description": "所有结构化字段与叙事一一对应：拾取的道具有awarded_items记录、消耗的道具有consumed_items记录、任务进展有task_updates、新发现实体有codex_updates。无多余字段。" },
+        { "score": 4, "label": "基本准确", "description": "主要字段准确，可能有1个次要字段遗漏（如叙事中提到了NPC好感变化但未写relationship_updates）。" },
+        { "score": 3, "label": "有缺口", "description": "存在明确的字段遗漏或多余（如awarded_items中有叙事未提及的道具，或叙事中有明显任务进展但task_updates为空）。" },
+        { "score": 2, "label": "多处错误", "description": "结构化字段与叙事多处不匹配：物品增减不一致、任务状态与实际不符、存在不应出现的codex更新。至少3处错误。" },
+        { "score": 1, "label": "完全混乱", "description": "结构化字段与叙事完全脱节。关键字段（consumed_items, awarded_items）为空但叙事中有明确的道具交互。" }
+      ],
+      "hardFloor": 2
+    },
+    {
+      "id": "sanity_hp_awareness",
+      "name": "理智/生命值叙事敏感度",
+      "weight": 0.20,
+      "description": "评估叙事是否根据当前的理智值和生命值调整叙事风格：低理智时是否出现幻觉、恍惚、感知扭曲等描写；低HP时是否体现虚弱、疼痛、行动受限。",
+      "anchors": [
+        { "score": 5, "label": "高度敏感", "description": "叙事风格随理智/HP精确调整：低理智（<30）有明显感知扭曲/幻觉描写，低HP（<3）有清晰的物理虚弱感。san值渐变对应叙事风格渐变。" },
+        { "score": 4, "label": "有利响应", "description": "低理智/HP时有适配描写，但可能不够细腻（如只写了'头晕'而缺少更具体的感知扭曲细节）。" },
+        { "score": 3, "label": "有感知但粗糙", "description": "知道低理智/HP应该影响叙事，但描写流于表面（如简单加一句'你感到有些恍惚'），缺乏沉浸感。" },
+        { "score": 2, "label": "响应不足", "description": "在明显应该体现理智/HP影响的场景（如sanity=18时）叙叙事仍保持正常理性风格，缺失关键的感知异常描写。" },
+        { "score": 1, "label": "完全无视", "description": "无论san/HP多少，叙事风格完全不变。低理智场景下角色仍能清晰理性地分析，严重违背设定。" }
+      ]
+    },
+    {
+      "id": "options_quality",
+      "name": "行动选项质量",
+      "weight": 0.25,
+      "description": "评估AI生成的行动选项是否：与当前叙事衔接自然、提供有意义的差异化选择、不包含破坏性/元游戏选项、数量符合要求（4个）。",
+      "anchors": [
+        { "score": 5, "label": "高质量选择", "description": "4个选项各有明确不同的风险和收益方向（调查/后退/社交/环境互动），与叙事完美衔接，每个选项都有内在动机逻辑。无不合理选项。" },
+        { "score": 4, "label": "良好选项", "description": "选项合理且有区分度，大部分有清晰的行动逻辑。偶有一个选项略显重复或模糊。" },
+        { "score": 3, "label": "及格选项", "description": "选项数量正确但有明显问题：如2个选项本质上一样、选项与当前场景无关、缺少关键方向（如只有进攻选项没有后退选项）。" },
+        { "score": 2, "label": "低质量选项", "description": "选项数量不足或存在无效选项（空白、重复、无意义），或选项严重脱离当前叙事上下文。" },
+        { "score": 1, "label": "不可接受", "description": "无选项、选项全部无效、选项包含系统提示词或元游戏指令（如'查看背包''打开菜单'）。" }
+      ]
+    }
+  ]
+}

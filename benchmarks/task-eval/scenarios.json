@@ -1,0 +1,351 @@
+[
+  {
+    "id": "task_item_pickup_001",
+    "name": "基础物品拾取",
+    "description": "玩家在场景中发现并拾取一件新道具，验证行囊正确更新",
+    "difficulty": "basic",
+    "systems": ["item", "inventory"],
+    "initialState": {
+      "hp": 10, "maxHp": 10, "sanity": 75, "historicalMaxSanity": 100,
+      "originium": 2,
+      "inventory": [{ "id": "phone", "name": "手机", "quantity": 1 }],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": "调查员", "activeSkillName": "现场还原", "activeSkillAvailable": true, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 3, "turnsRemaining": 17,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我捡起地上那枚发着微光的碎片，它在掌心微微发热。",
+        "expectedResponse": {
+          "minNarrativeChars": 50,
+          "mustContain": ["碎片", "发光"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "item_acquired", "description": "行囊中新增了物品", "weight": 0.5, "expected": true },
+      { "type": "item_count", "description": "行囊物品数 = 2", "weight": 0.5, "expected": 2, "tolerance": 0 }
+    ]
+  },
+  {
+    "id": "task_item_use_heal_001",
+    "name": "使用绷带治疗",
+    "description": "玩家使用绷带包扎伤口，验证道具消耗和HP恢复",
+    "difficulty": "basic",
+    "systems": ["item", "inventory"],
+    "initialState": {
+      "hp": 5, "maxHp": 10, "sanity": 65, "historicalMaxSanity": 100,
+      "originium": 3,
+      "inventory": [{ "id": "bandage", "name": "绷带", "quantity": 2 }, { "id": "phone", "name": "手机", "quantity": 1 }],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": null, "activeSkillName": null, "activeSkillAvailable": false, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 4, "turnsRemaining": 16,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我蹲下来，用绷带裹住手臂上那道正在渗血的抓痕。",
+        "expectedResponse": {
+          "minNarrativeChars": 50,
+          "mustContain": ["绷带", "伤口"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "item_consumed", "description": "绷带被消耗了", "weight": 0.6, "expected": true },
+      { "type": "item_count", "description": "行囊物品数减少", "weight": 0.4, "expected": 1, "tolerance": 0 }
+    ]
+  },
+  {
+    "id": "task_originium_restore_001",
+    "name": "原石恢复理智",
+    "description": "玩家使用原石恢复理智，验证原石消耗和理智恢复",
+    "difficulty": "basic",
+    "systems": ["originium", "sanity"],
+    "initialState": {
+      "hp": 8, "maxHp": 10, "sanity": 40, "historicalMaxSanity": 100,
+      "originium": 3,
+      "inventory": [],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": null, "activeSkillName": null, "activeSkillAvailable": false, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 5, "turnsRemaining": 15,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我捏碎一块原石，让那股冰凉的能量冲刷过后脑。",
+        "expectedResponse": {
+          "mustContain": ["原石", "能量"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "originium_exact", "description": "原石减少1", "weight": 0.3, "expected": 2, "tolerance": 0 },
+      { "type": "originium_changed", "description": "原石数量发生变化", "weight": 0.3, "expected": true },
+      { "type": "sanity_changed", "description": "理智值发生变化", "weight": 0.4, "expected": true }
+    ]
+  },
+  {
+    "id": "task_weapon_combat_001",
+    "name": "武器战斗使用",
+    "description": "玩家在战斗中使用武器，验证武器稳定度降低",
+    "difficulty": "basic",
+    "systems": ["weapon", "combat"],
+    "initialState": {
+      "hp": 7, "maxHp": 10, "sanity": 60, "historicalMaxSanity": 100,
+      "originium": 2,
+      "inventory": [],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": null, "activeSkillName": null, "activeSkillAvailable": false, "activeSkillCooldown": 0,
+      "equippedWeapon": "警用手电", "weaponStability": 72, "weaponMaxStability": 100, "weaponCounter": "目眩",
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 6, "turnsRemaining": 14,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我举起警用手电，在它扑过来的瞬间按下开关——强光直射它的脸。",
+        "expectedResponse": {
+          "mustContain": ["手电", "光"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "weapon_stability", "description": "武器稳定度下降", "weight": 0.6, "expected": 64, "tolerance": 5 },
+      { "type": "weapon_equipped", "description": "武器仍装备中", "weight": 0.4, "expected": "警用手电" }
+    ]
+  },
+  {
+    "id": "task_npc_discovery_001",
+    "name": "NPC 图鉴发现",
+    "description": "玩家遇到新 NPC，验证图鉴正确记录",
+    "difficulty": "basic",
+    "systems": ["codex", "npc"],
+    "initialState": {
+      "hp": 10, "maxHp": 10, "sanity": 80, "historicalMaxSanity": 100,
+      "originium": 2,
+      "inventory": [],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": null, "activeSkillName": null, "activeSkillAvailable": false, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "1F_PropertyOffice", "currentFloor": "1F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 2, "turnsRemaining": 18,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我走向柜台后面的欣蓝，把手里的登记表递过去。她抬头看了我一眼。",
+        "expectedResponse": {
+          "mustContain": ["欣蓝"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "codex_entry_added", "description": "图鉴新增了NPC条目", "weight": 1.0, "expected": true }
+    ]
+  },
+  {
+    "id": "task_quest_complete_001",
+    "name": "完成任务",
+    "description": "玩家完成了调查任务，验证任务状态正确更新为 completed",
+    "difficulty": "intermediate",
+    "systems": ["task", "item"],
+    "initialState": {
+      "hp": 8, "maxHp": 10, "sanity": 70, "historicalMaxSanity": 100,
+      "originium": 2,
+      "inventory": [{ "id": "phone", "name": "手机", "quantity": 1 }],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": "调查员", "activeSkillName": "现场还原", "activeSkillAvailable": true, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [
+        { "id": "t_investigate", "title": "寻找失踪档案", "status": "active", "issuerName": "麟泽", "questState": "active" }
+      ],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": ["npc_lin_ze"],
+      "npcFavorability": { "npc_lin_ze": 15 },
+      "codexNpcIds": ["npc_lin_ze"], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 8, "turnsRemaining": 12,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我把找到的三份档案拼在一起，失踪名单的时间线终于对上了。",
+        "expectedResponse": {
+          "mustContain": ["档案", "失踪", "线索"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "task_completed", "description": "至少有一个任务完成", "weight": 0.5, "expected": true },
+      { "type": "task_status", "description": "调查任务标记为已完成", "weight": 0.5, "expected": "t_investigate" }
+    ]
+  },
+  {
+    "id": "task_sanity_crisis_001",
+    "name": "低理智叙事危机",
+    "description": "玩家理智极低时触发感知异常叙事，验证叙事风格随理智变化",
+    "difficulty": "intermediate",
+    "systems": ["sanity", "npc"],
+    "initialState": {
+      "hp": 6, "maxHp": 10, "sanity": 18, "historicalMaxSanity": 100,
+      "originium": 1,
+      "inventory": [],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": null, "activeSkillName": null, "activeSkillAvailable": false, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 10, "turnsRemaining": 10,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我觉得脑子像被泡在冰水里，周围的声音都闷闷的，像隔了一层塑料膜。",
+        "expectedResponse": {
+          "mustContain": ["理智", "模糊", "走廊"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "sanity_changed", "description": "理智继续下降", "weight": 0.6, "expected": true },
+      { "type": "sanity_in_range", "description": "理智处于低位", "weight": 0.4, "expected": 15, "tolerance": 10 }
+    ]
+  },
+  {
+    "id": "task_profession_skill_001",
+    "name": "职业主动技能使用",
+    "description": "调查员使用「现场还原」技能，验证技能冷却触发",
+    "difficulty": "intermediate",
+    "systems": ["profession", "item"],
+    "initialState": {
+      "hp": 8, "maxHp": 10, "sanity": 65, "historicalMaxSanity": 100,
+      "originium": 2,
+      "inventory": [{ "id": "phone", "name": "手机", "quantity": 1 }],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": "调查员", "activeSkillName": "现场还原", "activeSkillAvailable": true, "activeSkillCooldown": 0,
+      "equippedWeapon": null, "weaponStability": 100, "weaponMaxStability": 100, "weaponCounter": null,
+      "talent": null, "talentCooldownRemaining": 0,
+      "tasks": [],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": {},
+      "codexNpcIds": [], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 7, "turnsRemaining": 13,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我闭上眼，启动'现场还原'——刚才这条走廊里发生的所有细节开始在我脑中倒放。",
+        "expectedResponse": {
+          "mustContain": ["现场还原", "线索"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "item_acquired", "description": "技能揭示了新线索", "weight": 0.5, "expected": true },
+      { "type": "item_count", "description": "道具数量增加", "weight": 0.5, "expected": 2, "tolerance": 1 }
+    ]
+  },
+  {
+    "id": "task_compound_turn_001",
+    "name": "复合回合：战斗+道具+移动",
+    "description": "单回合内包含战斗、道具使用和位置移动，验证多个系统同时响应",
+    "difficulty": "advanced",
+    "systems": ["combat", "weapon", "item", "location"],
+    "initialState": {
+      "hp": 5, "maxHp": 10, "sanity": 45, "historicalMaxSanity": 100,
+      "originium": 2,
+      "inventory": [{ "id": "bandage", "name": "绷带", "quantity": 3 }, { "id": "phone", "name": "手机", "quantity": 1 }],
+      "maxInventorySlots": 8,
+      "warehouse": [],
+      "profession": "执行者", "activeSkillName": "压制连击", "activeSkillAvailable": false, "activeSkillCooldown": 3,
+      "equippedWeapon": "警用手电", "weaponStability": 45, "weaponMaxStability": 100, "weaponCounter": "目眩",
+      "talent": "生命汇源", "talentCooldownRemaining": 4,
+      "tasks": [{ "id": "t_survive", "title": "在走廊活下去", "status": "active", "issuerName": "廖暗", "questState": "active" }],
+      "playerLocation": "旧公寓三楼走廊", "currentFloor": "3F",
+      "presentNpcIds": [],
+      "npcFavorability": { "npc_liao_an": 35 },
+      "codexNpcIds": ["npc_liao_an"], "codexAnomalyNames": [],
+      "chapterNumber": 1, "turnsInChapter": 9, "turnsRemaining": 11,
+      "unlockedFlags": [],
+      "isDeath": false
+    },
+    "playerActions": [
+      {
+        "step": 1,
+        "input": "我用手电照向它的脸逼它后退，同时用绷带快速裹住腹部的伤口，然后贴着墙向楼梯间移动。",
+        "expectedResponse": {
+          "mustContain": ["手电", "绷带"],
+          "mustNotContain": ["系统提示词", "JSON解析"]
+        }
+      }
+    ],
+    "expectedOutcomes": [
+      { "type": "weapon_stability", "description": "武器使用后稳定度降低", "weight": 0.25, "expected": 37, "tolerance": 10 },
+      { "type": "item_consumed", "description": "绷带被消耗", "weight": 0.25, "expected": true },
+      { "type": "location_changed", "description": "玩家位置发生变化", "weight": 0.25, "expected": true },
+      { "type": "item_count", "description": "行囊物品数 = 1（只剩手机）", "weight": 0.25, "expected": 1, "tolerance": 0 }
+    ]
+  }
+]

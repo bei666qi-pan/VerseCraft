@@ -14,8 +14,9 @@
  *   L2: Unit Tests（~15s）
  *   L3: Game System Contracts（~10s）
  *   L4: Eval Quality（~60s，mock mode）
- *   L5: Eval Safety（~30s，mock mode）
- *   L6: Build（~90s）
+ *   L5: Eval Safety + Red Team（~30s，mock mode）
+ *   L6: Task-based Eval（~10s，offline）
+ *   L7: Build（~90s）
  *
  * 输出格式：
  *   ✅ PASS  L1 lint-check
@@ -89,8 +90,32 @@ const STAGES = [
     skipInQuick: true,
   },
   {
-    name: "build",
+    name: "task-eval-offline",
     level: "L6",
+    command: "npx",
+    args: ["tsx", "--test", "src/lib/evals/taskEval/taskEval.test.ts"],
+    timeoutMs: 30_000,
+    skipInQuick: true,
+  },
+  {
+    name: "red-team-scan",
+    level: "L6",
+    command: "npx",
+    args: ["tsx", "--test", "src/lib/evals/redTeam/redTeam.test.ts"],
+    timeoutMs: 30_000,
+    skipInQuick: true,
+  },
+  {
+    name: "judge-framework",
+    level: "L6",
+    command: "npx",
+    args: ["tsx", "--test", "src/lib/evals/judge/judge.test.ts"],
+    timeoutMs: 30_000,
+    skipInQuick: true,
+  },
+  {
+    name: "build",
+    level: "L7",
     command: "pnpm",
     args: ["build"],
     timeoutMs: 180_000,
