@@ -10,6 +10,11 @@
 #   不进运行镜像，镜像体积显著下降 → 每次部署占用磁盘更少、导出/切换更快、更不容易把盘写满。
 #   内嵌 worker 靠 `tsx`（已提为生产依赖）运行，migrate.js 只用 pg，均在生产依赖闭包内。
 # - pnpm 安装带「镜像源失败回退」：主源(npmmirror)超时即切换到备用源(腾讯云)，避免卡在超长重试。
+#   回退只在整条 install 命令退出非零时触发（command 级 `||`），抓不住"单个包被限速/超时、
+#   pnpm 自己按 fetch-retries 退避重试但最终仍会成功或失败"这种情况——2026-07 的一次部署失败
+#   正是如此：单包 ETIMEDOUT 导致整条 install 卡了数分钟。因此额外加了两层加固：
+#   降低 network-concurrency 减少单包被限速概率；给 install 套 timeout，卡够久直接换源重来，
+#   不用等到 fetch-retries 全部耗尽。timeout 阈值参考真实观测（一次正常重试耗时约 5m17s）留出余量。
 #
 # 可选 Build Args（在 Coolify「Build Arguments」中设置）：
 # - PNPM_REGISTRY          主 npm 源；国内默认 https://registry.npmmirror.com
@@ -22,19 +27,21 @@ ARG PNPM_REGISTRY_FALLBACK=https://mirrors.cloud.tencent.com/npm/
 ENV PNPM_REGISTRY=${PNPM_REGISTRY}
 ENV PNPM_REGISTRY_FALLBACK=${PNPM_REGISTRY_FALLBACK}
 
-# 公共 pnpm 配置：更短的重试退避（原来最长退避 120s，超时时会白等 2 分钟）
+# 公共 pnpm 配置：更短的重试退避（原来最长退避 120s，超时时会白等 2 分钟）+
+# 调低并发（默认约16）降低国内镜像源单包被限速/超时的概率
 RUN corepack enable && corepack prepare pnpm@10.0.0 --activate \
- && pnpm config set fetch-retries 5 \
+ && pnpm config set fetch-retries 6 \
  && pnpm config set fetch-retry-mintimeout 10000 \
- && pnpm config set fetch-retry-maxtimeout 30000
+ && pnpm config set fetch-retry-maxtimeout 30000 \
+ && pnpm config set network-concurrency 8
 
 # ---- 第一阶段：完整依赖（供 builder 编译，含 dev 依赖）----
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm config set registry "$PNPM_REGISTRY" \
- && ( pnpm install --frozen-lockfile \
-      || ( echo "[deps] 主源失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
+ && ( timeout 480 pnpm install --frozen-lockfile \
+      || ( echo "[deps] 主源超时/失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
            && pnpm config set registry "$PNPM_REGISTRY_FALLBACK" \
            && pnpm install --frozen-lockfile ) )
 
@@ -43,8 +50,8 @@ FROM base AS prod-deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm config set registry "$PNPM_REGISTRY" \
- && ( pnpm install --frozen-lockfile --prod \
-      || ( echo "[prod-deps] 主源失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
+ && ( timeout 480 pnpm install --frozen-lockfile --prod \
+      || ( echo "[prod-deps] 主源超时/失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
            && pnpm config set registry "$PNPM_REGISTRY_FALLBACK" \
            && pnpm install --frozen-lockfile --prod ) )
 

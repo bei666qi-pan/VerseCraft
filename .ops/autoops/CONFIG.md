@@ -23,6 +23,7 @@
 | `VOLC_REGION` | Usually `cn-shanghai` |
 | `COOLIFY_APP_UUID` | Auto-discovered production VerseCraft app |
 | `VOLC_ECS_INSTANCE_IDS` | Auto-discovered ECS instance ids |
+| `DEEPSEEK_API_KEY` | DeepSeek backend (`lib/agent-runner.mjs`) + `deploy-selfheal.mjs`'s diagnosis step. Local-only, put in `.env.local`, never in Coolify env vars or GitHub Secrets. |
 
 Do not set `OPENAI_API_KEY` for auto-ops. Do not sync a repository secret named `GITHUB_TOKEN`; workflows use built-in `github.token`.
 

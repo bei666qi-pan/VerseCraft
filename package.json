@@ -93,6 +93,7 @@
     "autoops:healthcheck": "node scripts/autoops/healthcheck.mjs",
     "autoops:coolify:deploy": "node scripts/autoops/coolify-deploy.mjs",
     "autoops:coolify:restart": "node scripts/autoops/coolify-restart.mjs",
+    "autoops:coolify:selfheal": "node scripts/autoops/deploy-selfheal.mjs",
     "autoops:volc:diagnose": "node scripts/autoops/run-volc-command.mjs diagnose",
     "autoops:volc:clean-disk": "node scripts/autoops/run-volc-command.mjs clean-disk",
     "autoops:volc:restart-o11y": "node scripts/autoops/run-volc-command.mjs restart-o11y",
