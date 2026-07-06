@@ -30,7 +30,9 @@ export type EmbedTextResult =
   | { ok: false; reason: "network_error"; message: string };
 
 type EmbeddingWireResponse = {
-  data?: Array<{ embedding?: number[]; index?: number }>;
+  // 标准 OpenAI 兼容响应：data 是数组。Ark 多模态向量化响应：data 是单个对象
+  // （已用真实凭证探测确认）。两种真实存在，做防御性双路径读取。
+  data?: Array<{ embedding?: number[]; index?: number }> | { embedding?: number[] };
 };
 
 function isFiniteNumberArray(value: unknown): value is number[] {
@@ -66,13 +68,21 @@ export async function embedText(text: string, timeoutMsOverride?: number): Promi
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Ark 多模态向量化（provider: "ark_multimodal"，见 envCore.ts 的架构例外说明）走独立的
+    // 请求体形状：input 是 [{type:"text", text}]，且支持 dimensions 参数直接要求目标维度
+    // （已用真实凭证探测确认合法值为 1024/2048）。标准 openai_compatible 路径保持原有形状。
+    const requestBody =
+      binding.provider === "ark_multimodal"
+        ? { model: binding.model, input: [{ type: "text", text }], dimensions: binding.dimension, encoding_format: "float" }
+        : { model: binding.model, input: text };
+
     const res = await fetch(binding.apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${binding.apiKey}`,
       },
-      body: JSON.stringify({ model: binding.model, input: text }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -82,9 +92,9 @@ export async function embedText(text: string, timeoutMsOverride?: number): Promi
     }
 
     const json = (await res.json().catch(() => null)) as EmbeddingWireResponse | null;
-    const vector = json?.data?.[0]?.embedding;
+    const vector = Array.isArray(json?.data) ? json?.data?.[0]?.embedding : json?.data?.embedding;
     if (!isFiniteNumberArray(vector) || vector.length === 0) {
-      return { ok: false, reason: "bad_response", message: "response missing data[0].embedding" };
+      return { ok: false, reason: "bad_response", message: "response missing embedding vector" };
     }
 
     if (vector.length !== binding.dimension) {

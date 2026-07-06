@@ -1,9 +1,10 @@
 /**
  * 真实环境 embeddings 维度校验（T4，2026-07）。
  *
- * 用真实凭证（.env.local 里的 AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_EMBEDDING）
+ * 用真实凭证（.env.local 里的 AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY / AI_MODEL_EMBEDDING，
+ * 或 ark_multimodal 架构例外下的 ARK_EMBEDDING_BASE_URL / ARK_EMBEDDING_API_KEY，见 envCore.ts）
  * 实际调用一次 embeddings 网关，打印返回向量的真实维度，并与 AI_EMBEDDING_DIMENSION
- * （默认 256，对应 world_knowledge_chunks.embedding_vector 的 pgvector 列宽度）比对。
+ * （默认 1024，对应 world_knowledge_chunks.embedding_vector 的 pgvector 列宽度）比对。
  *
  * 用法：
  *   pnpm embeddings:verify-dimension
@@ -64,7 +65,7 @@ async function main(): Promise<void> {
 
   console.log(`\n调用成功，耗时: ${elapsedMs}ms`);
   console.log(`  实际返回维度: ${actualDim}`);
-  console.log(`  期望维度（AI_EMBEDDING_DIMENSION / schema vector(256)）: ${expectedDim}`);
+  console.log(`  期望维度（AI_EMBEDDING_DIMENSION / schema vector(${expectedDim})）: ${expectedDim}`);
   console.log(`  维度匹配: ${match ? "是 ✅" : "否 ❌"}`);
 
   if (!match) {
@@ -72,9 +73,9 @@ async function main(): Promise<void> {
       `\n[不匹配] world_knowledge_chunks.embedding_vector 目前是 vector(${expectedDim})。\n` +
         `要接入真实维度为 ${actualDim} 的模型，二选一：\n` +
         `  1. 在 one-api 侧换一个输出维度为 ${expectedDim} 的 embedding 模型/加一层降维投影；\n` +
-        `  2. 同步修改 AI_EMBEDDING_DIMENSION="${actualDim}" 并把 src/db/ensureSchema.ts 里\n` +
-        `     world_knowledge_chunks.embedding_vector 的建表类型从 vector(256) 改成 vector(${actualDim})\n` +
-        `     （这是一次 schema 变更，需要重建索引，请评估对已有 embedding_status='ready' 数据的影响）。\n` +
+        `  2. 同步修改 AI_EMBEDDING_DIMENSION="${actualDim}"（src/db/ensureSchema.ts 会在下次\n` +
+        `     应用启动时自愈把 world_knowledge_chunks.embedding_vector 的列类型迁移到\n` +
+        `     vector(${actualDim})，含 ivfflat 索引重建；请评估对已有 embedding_status='ready' 数据的影响）。\n` +
         `在解决前不要跑 pnpm embeddings:backfill，否则会产生 embedding_status='error' 的记录。`
     );
     if (strict) process.exit(1);

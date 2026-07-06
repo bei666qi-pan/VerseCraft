@@ -2,6 +2,7 @@ import "server-only";
 
 import { pool } from "@/db/index";
 import { env } from "@/lib/env";
+import { envNumber } from "@/lib/config/envRaw";
 
 let ensured = false;
 
@@ -745,7 +746,10 @@ export async function ensureRuntimeSchema(): Promise<void> {
       hasVector = false;
     }
 
-    const embeddingVectorType = hasVector ? "vector(256)" : "TEXT";
+    // T4 后续（2026-07）：目标维度从 256 改成 1024（Ark 唯一未停用的向量化模型只支持 1024/2048 维，
+    // 见 src/lib/ai/config/envCore.ts 的 ark_multimodal 架构例外说明），随 AI_EMBEDDING_DIMENSION 可配置。
+    const worldKnowledgeEmbeddingDimension = Math.max(1, envNumber("AI_EMBEDDING_DIMENSION", 1024));
+    const embeddingVectorType = hasVector ? `vector(${worldKnowledgeEmbeddingDimension})` : "TEXT";
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS world_entities (
@@ -836,6 +840,35 @@ export async function ensureRuntimeSchema(): Promise<void> {
         WITH (lists = 100)
         WHERE embedding_vector IS NOT NULL AND embedding_status = 'ready';
       `);
+
+      // `CREATE TABLE IF NOT EXISTS` 不会改动已存在表的列类型——如果之前用旧维度建过表
+      // （比如从 256 迁移到 1024），这里补一段幂等自愈：只有列已存在且宽度不等于目标维度时才动手
+      // （先 drop 依赖的 ivfflat 索引再改列类型再重建索引）。表为空或宽度已匹配时是无操作的。
+      try {
+        const current = await client.query<{ type_str: string }>(`
+          SELECT format_type(atttypid, atttypmod) AS type_str
+          FROM pg_attribute
+          WHERE attrelid = 'world_knowledge_chunks'::regclass
+            AND attname = 'embedding_vector'
+            AND NOT attisdropped
+        `);
+        const currentTypeStr = current.rows?.[0]?.type_str ?? "";
+        const targetTypeStr = `vector(${worldKnowledgeEmbeddingDimension})`;
+        if (currentTypeStr.startsWith("vector(") && currentTypeStr !== targetTypeStr) {
+          await client.query(`DROP INDEX IF EXISTS world_knowledge_chunks_embedding_ivfflat`);
+          await client.query(
+            `ALTER TABLE world_knowledge_chunks ALTER COLUMN embedding_vector TYPE ${targetTypeStr}`
+          );
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS world_knowledge_chunks_embedding_ivfflat
+            ON world_knowledge_chunks USING ivfflat (embedding_vector vector_cosine_ops)
+            WITH (lists = 100)
+            WHERE embedding_vector IS NOT NULL AND embedding_status = 'ready';
+          `);
+        }
+      } catch {
+        /* 迁移失败不阻塞启动；下次自愈会重试 */
+      }
     }
 
     await client.query(`

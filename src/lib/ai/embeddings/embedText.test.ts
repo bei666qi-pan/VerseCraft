@@ -63,3 +63,54 @@ test("embedText：mock provider 对相同输入返回相同向量（确定性，
     else delete process.env.AI_GATEWAY_PROVIDER;
   }
 });
+
+// ark_multimodal 分支（envCore.ts 的架构例外：直连火山方舟多模态向量化）用 stub fetch 覆盖，
+// 不需要真实凭证——验证请求体形状（input 数组 + dimensions）和响应解析（data 为单对象而非数组，
+// 已用真实凭证探测确认这是 Ark 多模态向量化的真实响应形态）。
+test("embedText：ark_multimodal provider 发送 input 数组请求体，正确解析 data.embedding 单对象响应", async () => {
+  const prevFetch = globalThis.fetch;
+  const prevEnv = {
+    AI_GATEWAY_PROVIDER: process.env.AI_GATEWAY_PROVIDER,
+    AI_EMBEDDING_PROVIDER: process.env.AI_EMBEDDING_PROVIDER,
+    ARK_EMBEDDING_BASE_URL: process.env.ARK_EMBEDDING_BASE_URL,
+    ARK_EMBEDDING_API_KEY: process.env.ARK_EMBEDDING_API_KEY,
+    AI_MODEL_EMBEDDING: process.env.AI_MODEL_EMBEDDING,
+    AI_EMBEDDING_DIMENSION: process.env.AI_EMBEDDING_DIMENSION,
+  };
+  delete process.env.AI_GATEWAY_PROVIDER;
+  process.env.AI_EMBEDDING_PROVIDER = "ark_multimodal";
+  process.env.ARK_EMBEDDING_BASE_URL = "https://ark.example.test";
+  process.env.ARK_EMBEDDING_API_KEY = "test-ark-key";
+  process.env.AI_MODEL_EMBEDDING = "ep-test-endpoint";
+  process.env.AI_EMBEDDING_DIMENSION = "4";
+
+  let capturedUrl = "";
+  let capturedBody: unknown = null;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    capturedUrl = String(url);
+    capturedBody = JSON.parse(String(init?.body));
+    return {
+      ok: true,
+      json: async () => ({ data: { embedding: [0.1, 0.2, 0.3, 0.4] } }),
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const result = await embedText("测试文本");
+    assert.equal(capturedUrl, "https://ark.example.test/api/v3/embeddings/multimodal");
+    assert.deepEqual(capturedBody, {
+      model: "ep-test-endpoint",
+      input: [{ type: "text", text: "测试文本" }],
+      dimensions: 4,
+      encoding_format: "float",
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) assert.deepEqual(result.vector, [0.1, 0.2, 0.3, 0.4]);
+  } finally {
+    globalThis.fetch = prevFetch;
+    for (const [key, value] of Object.entries(prevEnv)) {
+      if (value !== undefined) process.env[key] = value;
+      else delete process.env[key];
+    }
+  }
+});

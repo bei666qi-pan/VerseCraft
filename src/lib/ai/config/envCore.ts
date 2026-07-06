@@ -452,31 +452,66 @@ export function resolveDeepSeekLegacyConfig(): { apiUrl: string; apiKey: string;
   return resolveGatewayPrimaryBinding();
 }
 
+export type EmbeddingProvider = "openai_compatible" | "ark_multimodal";
+
 /**
- * T4（2026-07，世界知识向量检索）：embeddings 网关绑定。
+ * T4 后续（2026-07）：这个账号上唯一未停用的向量化模型是火山方舟的多模态向量化模型
+ * （doubao-embedding-vision / Seed-1.6-Embedding），它走独立的 `POST /api/v3/embeddings/multimodal`
+ * 端点、独立请求体（`input` 为 `[{type:"text",text}]` 数组）和独立响应结构，不是标准 OpenAI 兼容
+ * `/v1/embeddings`。已用真实凭证探测确认 one-api 网关未实现转发这条非标准路径（网关对该路径直接
+ * 返回路由层 404 "Invalid URL"，不是鉴权错误）。
  *
- * 与 `resolveGatewayPrimaryBinding()` 同一套约定——不在业务代码里写死"火山引擎/Ark/豆包"
- * 之类的厂商细节，模型选型通过 `AI_MODEL_EMBEDDING`（opaque 字符串，由 one-api 侧的 channel
- * 配置决定实际打到哪个厂商/模型）解析，鉴权复用 `AI_GATEWAY_API_KEY`（即用户所说的
- * "部署凭证里的信息"，不需要新增独立密钥）。
+ * 这是本仓库对"所有 AI 调用走 one-api"约定的一次有意识例外，范围严格限定在这一条离线 embedding
+ * 路径（`embedText.ts`，只服务 backfill worker，不进 `/api/chat` 首包），需要独立的
+ * `ARK_EMBEDDING_API_KEY`（鉴权域不同，不能复用 `AI_GATEWAY_API_KEY`）。默认仍是
+ * `openai_compatible`（走 one-api 网关），只有显式设置 `AI_EMBEDDING_PROVIDER=ark_multimodal`
+ * 才切到直连火山方舟这条例外路径。
+ */
+function resolveEmbeddingProvider(): EmbeddingProvider {
+  const raw = (envRaw("AI_EMBEDDING_PROVIDER") ?? "").trim().toLowerCase();
+  return raw === "ark_multimodal" ? "ark_multimodal" : "openai_compatible";
+}
+
+/**
+ * T4（2026-07，世界知识向量检索）：embeddings 绑定。
+ *
+ * 默认路径（`openai_compatible`）与 `resolveGatewayPrimaryBinding()` 同一套约定——不在业务
+ * 代码里写死厂商细节，模型选型通过 `AI_MODEL_EMBEDDING`（opaque 字符串，由 one-api 侧的 channel
+ * 配置决定实际打到哪个厂商/模型）解析，鉴权复用 `AI_GATEWAY_API_KEY`。
+ *
+ * `ark_multimodal` 分支是上面注释里说明的架构例外，直连火山方舟，见 `resolveEmbeddingProvider()`。
  *
  * `dimension` 对应 `world_knowledge_chunks.embedding_vector` 的 pgvector 列宽度
- * （`vector(256)`，见 `src/db/ensureSchema.ts`）。如果实际模型输出维度与此不同，
- * 调用方（`embedText.ts`）需要自行处理不匹配（本仓库未接入真实 Ark 凭证，无法在当前环境
- * 验证真实输出维度，上线前必须用真实凭证跑一次 `pnpm verify:ai-gateway` 或等价探测确认）。
+ * （见 `src/db/ensureSchema.ts`）。如果实际模型输出维度与此不同，调用方（`embedText.ts`）
+ * 需要自行处理不匹配，不静默截断/补零。
  */
 export function resolveEmbeddingBinding(): {
   apiUrl: string;
   apiKey: string;
   model: string;
   dimension: number;
+  provider: EmbeddingProvider;
   configured: boolean;
 } {
   const gatewayProvider = resolveAiProviderId();
-  const apiUrl = gatewayProvider === "mock" ? "mock://embeddings" : resolveGatewayEmbeddingsUrl();
-  const apiKey = gatewayProvider === "mock" ? "mock-key" : (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
+  const dimension = Math.max(1, envNumber("AI_EMBEDDING_DIMENSION", 1024));
   const model = (envRaw("AI_MODEL_EMBEDDING") ?? "").trim();
-  const dimension = Math.max(1, envNumber("AI_EMBEDDING_DIMENSION", 256));
-  const configured = gatewayProvider === "mock" || (apiUrl.length > 0 && apiKey.length > 0 && model.length > 0);
-  return { apiUrl, apiKey, model, dimension, configured };
+
+  if (gatewayProvider === "mock") {
+    return { apiUrl: "mock://embeddings", apiKey: "mock-key", model, dimension, provider: "openai_compatible", configured: true };
+  }
+
+  const provider = resolveEmbeddingProvider();
+  if (provider === "ark_multimodal") {
+    const base = (envRaw("ARK_EMBEDDING_BASE_URL") ?? "https://ark.cn-beijing.volces.com").trim().replace(/\/+$/, "");
+    const apiUrl = base.length > 0 ? `${base}/api/v3/embeddings/multimodal` : "";
+    const apiKey = (envRaw("ARK_EMBEDDING_API_KEY") ?? "").trim();
+    const configured = apiUrl.length > 0 && apiKey.length > 0 && model.length > 0;
+    return { apiUrl, apiKey, model, dimension, provider, configured };
+  }
+
+  const apiUrl = resolveGatewayEmbeddingsUrl();
+  const apiKey = (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
+  const configured = apiUrl.length > 0 && apiKey.length > 0 && model.length > 0;
+  return { apiUrl, apiKey, model, dimension, provider, configured };
 }

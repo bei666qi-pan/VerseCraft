@@ -118,10 +118,13 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
     for (const chunk of draft.chunks) {
       const entityId = entityIdByCode.get(chunk.entityCode);
       if (!entityId) continue;
-      const emb = embedText(chunk.content);
-      const embLiteral = toPgVectorLiteral(emb);
 
       if (vectorEnabled) {
+        // T4 后续（2026-07）：embedding_vector 现在是真实 AI 网关维度（见 envCore.ts 的
+        // AI_EMBEDDING_DIMENSION，当前 1024），而 @/lib/kg/embed 的本地确定性哈希固定 256 维——
+        // 写入会因维度不匹配直接报错，而且这个本地哈希本来就不是语义向量，写 'ready' 会让
+        // vectorSearch 误以为已经有真实语义检索能力。改为只标 'pending'，向量统一交给
+        // worldKnowledgeEmbeddingBackfill.ts 的真实 embedText() 补齐。
         const ret = await client.query(
           `
             INSERT INTO world_knowledge_chunks (
@@ -131,7 +134,7 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
             )
             VALUES (
               $1, $2, $3, to_tsvector('simple', $3), $4, $5,
-              $6, $7, $8, $9, 'ready', $10::vector
+              $6, $7, $8, NULL, 'pending', NULL
             )
             ON CONFLICT (entity_id, chunk_index) DO UPDATE SET
               content = EXCLUDED.content,
@@ -141,9 +144,6 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
               visibility_scope = EXCLUDED.visibility_scope,
               owner_user_id = EXCLUDED.owner_user_id,
               retrieval_key = EXCLUDED.retrieval_key,
-              embedding_model = EXCLUDED.embedding_model,
-              embedding_status = EXCLUDED.embedding_status,
-              embedding_vector = EXCLUDED.embedding_vector,
               updated_at = CURRENT_TIMESTAMP
           `,
           [
@@ -155,12 +155,12 @@ export async function seedFromRegistry(options: SeedFromRegistryOptions = {}): P
             chunk.visibilityScope,
             chunk.ownerUserId,
             chunk.retrievalKey,
-            "vc-local-ngram-256",
-            embLiteral,
           ]
         );
         chunksUpserted += ret.rowCount ?? 0;
       } else {
+        const emb = embedText(chunk.content);
+        const embLiteral = toPgVectorLiteral(emb);
         const ret = await client.query(
           `
             INSERT INTO world_knowledge_chunks (
