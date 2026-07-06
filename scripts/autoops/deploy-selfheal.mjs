@@ -94,13 +94,25 @@ async function main() {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     logJson("selfheal.deploy.trigger", { attempt, maxAttempts, uuid });
-    const deploy = await client.deploy(uuid || "dry-run-app", { force: true });
-    const deploymentUuid =
-      deploy?.deployment_uuid || deploy?.deployment?.deployment_uuid || deploy?.deployments?.[0]?.deployment_uuid || "";
 
-    const poll = deploymentUuid
-      ? await client.pollDeployment(deploymentUuid, { attempts: pollAttempts, delayMs: pollDelayMs })
-      : { ok: false, status: "no_deployment_uuid", response: deploy };
+    // lib/coolify.mjs 的 pollDeployment 已经把轮询阶段的瞬时网络错误当"这一轮没查到"处理，
+    // 这里再兜一层：万一 deploy() 触发调用本身抛出（本机到 Coolify 网络更早出问题），
+    // 也按"这次尝试失败，交给下面的 DeepSeek 诊断/重试逻辑"处理，而不是让整个脚本崩掉。
+    let poll;
+    let deploymentUuid = "";
+    try {
+      const deploy = await client.deploy(uuid || "dry-run-app", { force: true });
+      deploymentUuid = deploy?.deployment_uuid || deploy?.deployment?.deployment_uuid || deploy?.deployments?.[0]?.deployment_uuid || "";
+      poll = deploymentUuid
+        ? await client.pollDeployment(deploymentUuid, { attempts: pollAttempts, delayMs: pollDelayMs })
+        : { ok: false, status: "no_deployment_uuid", response: deploy };
+    } catch (error) {
+      warnJson("selfheal.deploy.attempt_error", {
+        attempt,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      poll = { ok: false, status: "local_error", response: { logs: String(error instanceof Error ? error.message : error) } };
+    }
 
     attemptsLog.push({ attempt, deploymentUuid, status: poll.status });
 

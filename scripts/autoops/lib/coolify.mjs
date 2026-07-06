@@ -179,7 +179,21 @@ export class CoolifyClient {
     }
     let last = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      last = await this.deployment(deploymentUuid);
+      // 轮询窗口常常长达 10-20 分钟：本机到 Coolify 的网络瞬时抖动（DNS/连接超时等）
+      // 不代表远端部署本身出了问题——真实遇到过一次 fetch 失败直接抛出把整个自愈脚本
+      // 崩掉，而 Coolify 侧的构建其实还在正常继续。这里把单次查询失败当作"这一轮没查到"，
+      // 等下一轮重试，而不是让异常穿透到调用方。
+      try {
+        last = await this.deployment(deploymentUuid);
+      } catch (error) {
+        warnJson("coolify.deployment.poll_error", {
+          deployment_uuid: deploymentUuid,
+          attempt,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
       const status = String(last?.status || last?.deployment?.status || "");
       logJson("coolify.deployment.poll", { deployment_uuid: deploymentUuid, attempt, status });
       await writeRuntimeJson("coolify-deployment.json", {
