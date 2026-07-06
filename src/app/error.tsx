@@ -6,6 +6,14 @@ import { useRouter } from "next/navigation";
 import { clearVersecraftStorage } from "@/lib/resilientStorage";
 import { VerseCraftPaperMark } from "@/components/VerseCraftPaperFrame";
 
+// Next.js 部署后旧标签页仍持有旧构建里编译出的 Server Action 加密 ID，提交时服务端
+// 报 "Failed to find Server Action ... older or newer deployment"（生产已实测反复出现，
+// 常见于登录/提交类表单，例如 /saiduhsa 的 shadow 登录）。这类错误靠 reset() 重渲染
+// 同一份旧 bundle 没用，必须整页硬刷新才能拿到新构建的 Server Action 清单。
+function isStaleServerActionError(error: Error): boolean {
+  return /Failed to find Server Action/i.test(error.message);
+}
+
 export default function Error({
   error,
   reset,
@@ -14,6 +22,7 @@ export default function Error({
   reset: () => void;
 }) {
   const router = useRouter();
+  const staleServerAction = isStaleServerActionError(error);
 
   useEffect(() => {
     console.error("[VerseCraft] Client error:", error);
@@ -29,17 +38,19 @@ export default function Error({
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#f7f3ec] p-6 text-[#164f4d]">
       <VerseCraftPaperMark className="h-16 w-16" />
       <h1 className="vc-reading-serif mt-6 text-[1.65rem] font-semibold leading-none text-[#0d5a4e]">
-        页面加载出错
+        {staleServerAction ? "页面版本已更新" : "页面加载出错"}
       </h1>
       <p className="mt-4 max-w-xs text-center text-sm leading-relaxed text-[#4f625c]">
-        页面渲染时发生异常。请尝试刷新；若反复出现，可清除本机缓存后重试。
+        {staleServerAction
+          ? "站点刚刚更新过，当前页面还是更新前的旧版本，需要刷新一次才能继续操作。"
+          : "页面渲染时发生异常。请尝试刷新；若反复出现，可清除本机缓存后重试。"}
       </p>
       <button
         type="button"
-        onClick={() => reset()}
+        onClick={() => (staleServerAction ? window.location.reload() : reset())}
         className="vc-reading-serif mt-8 rounded-[16px] border border-[#0a403a] bg-[#244f45] px-8 py-3 text-[1.05rem] font-semibold text-[#fffdf8] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition hover:bg-[#1c453d]"
       >
-        重试
+        {staleServerAction ? "刷新页面" : "重试"}
       </button>
       <button
         type="button"
