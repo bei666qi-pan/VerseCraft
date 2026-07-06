@@ -3,6 +3,10 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
+import { addAppDays, appEndOfDayUtc, appStartOfDayUtc } from "@/lib/admin/appTimezone";
+import { getUtcDateKey } from "@/lib/analytics/dateKeys";
+import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
+import { normalizeAiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { getAdminMetricDefinition } from "@/lib/admin/metricDefinitions";
 import { decodeCursor, encodeCursor, safeRate } from "@/lib/admin/metricsUtils";
 import {
@@ -12,7 +16,7 @@ import {
 } from "@/lib/admin/journeyFunnel";
 import { buildContentQualityMetricsSnapshot } from "@/lib/admin/contentQualityMetrics";
 import { buildAdminUserDetailSignals } from "@/lib/admin/userDetailSignals";
-import { getFeedbackInsights, getOverviewMetrics, getRealtimeMetrics } from "@/lib/admin/service";
+import { getFeedbackInsights, getFunnelMetrics, getOverviewMetrics, getRealtimeMetrics, getRetentionMetrics } from "@/lib/admin/service";
 import { getAdminLoginRateLimitHealth } from "@/lib/admin/loginRateLimit";
 import { computeAdminCapacityEstimate } from "@/lib/admin/capacityEstimate";
 import { anyAiProviderConfigured } from "@/lib/ai/config/env";
@@ -64,6 +68,10 @@ export type AdminKpi = {
   updatedAt: string | null;
   degraded: boolean;
   reason: string | null;
+  /** 对比基线（例如"昨日同口径值"）。null 表示暂无可比数据，undefined 表示该指标未接入趋势对比。 */
+  previousValue?: number | null;
+  deltaAbs?: number | null;
+  deltaPct?: number | null;
 };
 
 function kpi(input: {
@@ -91,47 +99,121 @@ function kpi(input: {
   };
 }
 
+/**
+ * 在 kpi() 基础上附加"对比基线"（默认是昨日同口径值），解决"全是数字但看不出该做什么"——
+ * 没有基线/趋势的裸数字很难判断好坏。previousValue 传 null 表示昨日数据不足或不适用。
+ */
+function kpiWithTrend(input: {
+  metricId: string;
+  label?: string;
+  value: number;
+  previousValue: number | null;
+  unit?: string;
+  source?: string;
+  definition?: string;
+  updatedAt?: string | null;
+}): AdminKpi {
+  const base = kpi(input);
+  const previousValue = input.previousValue;
+  if (previousValue == null || !Number.isFinite(previousValue)) {
+    return { ...base, previousValue: null, deltaAbs: null, deltaPct: null };
+  }
+  const deltaAbs = input.value - previousValue;
+  const deltaPct = previousValue !== 0 ? deltaAbs / previousValue : null;
+  return { ...base, previousValue, deltaAbs, deltaPct };
+}
+
 export async function getBackofficeOverview(range: AdminTimeRange) {
-  const [overview, realtime, todayExtras] = await Promise.all([
+  const now = new Date();
+  // "今日/昨日"边界统一按北京时间对齐（appTimezone.ts），不再依赖数据库会话时区的
+  // CURRENT_DATE——这是"同一页面出现两套互不一致的今日定义"这一根因 bug 的修复点。
+  const todayStart = appStartOfDayUtc(now);
+  const todayEnd = appEndOfDayUtc(now);
+  const yesterdayRef = addAppDays(now, -1);
+  const yesterdayStart = appStartOfDayUtc(yesterdayRef);
+  const yesterdayEnd = appEndOfDayUtc(yesterdayRef);
+  // activeActorsToday 读的是 actor_daily_activity.date_key（既有 UTC 自然日约定），
+  // 按 appTimezone.ts 顶部说明，这里刻意沿用 getUtcDateKey，不做北京对齐，
+  // 避免和 date_key 列的写入口径产生新的不一致。
+  const todayUtcKey = getUtcDateKey(now);
+  const yesterdayUtcKey = getUtcDateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+
+  const [overview, realtime, guestRaw, aiRaw, actorsRaw, updatedAtRaw] = await Promise.all([
     getOverviewMetrics(range),
     getRealtimeMetrics().catch(() => null),
     db.execute(sql`
       SELECT
-        (SELECT COUNT(*)::int FROM guest_registry WHERE first_seen_at >= CURRENT_DATE AND first_seen_at < CURRENT_DATE + INTERVAL '1 day') AS "newGuestsToday",
-        (SELECT COUNT(DISTINCT actor_id)::int FROM actor_daily_activity WHERE date_key = CURRENT_DATE) AS "activeActorsToday",
-        (SELECT MAX(updated_at) FROM admin_metrics_daily) AS "adminMetricsUpdatedAt",
-        COUNT(*) FILTER (WHERE event_name = 'chat_request_finished')::int AS "aiTotal",
-        COUNT(*) FILTER (WHERE event_name = 'chat_request_finished' AND payload->>'success' = 'true')::int AS "aiSuccess",
-        COUNT(*) FILTER (WHERE event_name = 'chat_request_finished' AND payload->>'success' = 'false')::int AS "aiFailed",
-        COALESCE(SUM(token_cost) FILTER (WHERE event_name = 'chat_request_finished'), 0)::int AS "aiTokenCost"
-      FROM analytics_events
-      WHERE event_time >= CURRENT_DATE
-        AND event_time < CURRENT_DATE + INTERVAL '1 day'
+        COUNT(*) FILTER (WHERE first_seen_at >= ${todayStart} AND first_seen_at <= ${todayEnd})::int AS "todayCount",
+        COUNT(*) FILTER (WHERE first_seen_at >= ${yesterdayStart} AND first_seen_at <= ${yesterdayEnd})::int AS "yesterdayCount"
+      FROM guest_registry
     `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE event_time >= ${todayStart} AND event_time <= ${todayEnd} AND event_name = 'chat_request_finished')::int AS "totalToday",
+        COUNT(*) FILTER (WHERE event_time >= ${todayStart} AND event_time <= ${todayEnd} AND event_name = 'chat_request_finished' AND payload->>'success' = 'true')::int AS "successToday",
+        COUNT(*) FILTER (WHERE event_time >= ${todayStart} AND event_time <= ${todayEnd} AND event_name = 'chat_request_finished' AND payload->>'success' = 'false')::int AS "failedToday",
+        COALESCE(SUM(token_cost) FILTER (WHERE event_time >= ${todayStart} AND event_time <= ${todayEnd} AND event_name = 'chat_request_finished'), 0)::int AS "tokenCostToday",
+        COUNT(*) FILTER (WHERE event_time >= ${yesterdayStart} AND event_time <= ${yesterdayEnd} AND event_name = 'chat_request_finished')::int AS "totalYesterday",
+        COUNT(*) FILTER (WHERE event_time >= ${yesterdayStart} AND event_time <= ${yesterdayEnd} AND event_name = 'chat_request_finished' AND payload->>'success' = 'true')::int AS "successYesterday",
+        COUNT(*) FILTER (WHERE event_time >= ${yesterdayStart} AND event_time <= ${yesterdayEnd} AND event_name = 'chat_request_finished' AND payload->>'success' = 'false')::int AS "failedYesterday",
+        COALESCE(SUM(token_cost) FILTER (WHERE event_time >= ${yesterdayStart} AND event_time <= ${yesterdayEnd} AND event_name = 'chat_request_finished'), 0)::int AS "tokenCostYesterday"
+      FROM analytics_events
+      WHERE event_time >= ${yesterdayStart} AND event_time <= ${todayEnd}
+        AND event_name = 'chat_request_finished'
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT
+        COUNT(DISTINCT actor_id) FILTER (WHERE date_key = ${todayUtcKey}::date)::int AS "todayCount",
+        COUNT(DISTINCT actor_id) FILTER (WHERE date_key = ${yesterdayUtcKey}::date)::int AS "yesterdayCount"
+      FROM actor_daily_activity
+      WHERE date_key IN (${todayUtcKey}::date, ${yesterdayUtcKey}::date)
+    `).catch(() => ({ rows: [] })),
+    db.execute(sql`SELECT MAX(updated_at) AS "adminMetricsUpdatedAt" FROM admin_metrics_daily`).catch(() => ({ rows: [] })),
   ]);
-  const extras = rowsOf(todayExtras)[0] ?? {};
-  const aiTotal = n(extras.aiTotal);
-  const aiSuccess = n(extras.aiSuccess);
-  const aiFailed = n(extras.aiFailed);
-  const updatedAt = iso(extras.adminMetricsUpdatedAt) ?? new Date().toISOString();
+
+  const guestRow = rowsOf(guestRaw)[0] ?? {};
+  const aiRow = rowsOf(aiRaw)[0] ?? {};
+  const actorsRow = rowsOf(actorsRaw)[0] ?? {};
+  const updatedAt = iso(rowsOf(updatedAtRaw)[0]?.adminMetricsUpdatedAt) ?? new Date().toISOString();
+  const nowIso = new Date().toISOString();
+
+  const aiTotalToday = n(aiRow.totalToday);
+  const aiSuccessToday = n(aiRow.successToday);
+  const aiFailedToday = n(aiRow.failedToday);
+  const aiTotalYesterday = n(aiRow.totalYesterday);
+  const aiSuccessYesterday = n(aiRow.successYesterday);
+  const aiFailedYesterday = n(aiRow.failedYesterday);
+
   return {
     ...overview,
     updatedAt,
     kpis: [
       kpi({ metricId: "overview.new_registered_today", value: overview.cards.todayNewUsers, updatedAt }),
-      kpi({ metricId: "overview.new_guests_today", value: n(extras.newGuestsToday), updatedAt: new Date().toISOString() }),
-      kpi({ metricId: "overview.active_actors_today", value: n(extras.activeActorsToday), updatedAt }),
-      kpi({
-        metricId: "overview.ai_success_rate_today",
-        value: aiTotal > 0 ? safeRate(aiSuccess, aiTotal) : 0,
-        unit: "ratio",
-        updatedAt: new Date().toISOString(),
+      kpiWithTrend({
+        metricId: "overview.new_guests_today",
+        value: n(guestRow.todayCount),
+        previousValue: n(guestRow.yesterdayCount),
+        updatedAt: nowIso,
       }),
-      kpi({
+      kpiWithTrend({
+        metricId: "overview.active_actors_today",
+        value: n(actorsRow.todayCount),
+        previousValue: n(actorsRow.yesterdayCount),
+        updatedAt: nowIso,
+      }),
+      kpiWithTrend({
+        metricId: "overview.ai_success_rate_today",
+        value: aiTotalToday > 0 ? safeRate(aiSuccessToday, aiTotalToday) : 0,
+        previousValue: aiTotalYesterday > 0 ? safeRate(aiSuccessYesterday, aiTotalYesterday) : null,
+        unit: "ratio",
+        updatedAt: nowIso,
+      }),
+      kpiWithTrend({
         metricId: "overview.ai_failure_rate_today",
-        value: aiTotal > 0 ? safeRate(aiFailed, aiTotal) : 0,
+        value: aiTotalToday > 0 ? safeRate(aiFailedToday, aiTotalToday) : 0,
+        previousValue: aiTotalYesterday > 0 ? safeRate(aiFailedYesterday, aiTotalYesterday) : null,
         unit: "failure_ratio",
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
       }),
       kpi({
         metricId: "overview.online_registered_current",
@@ -139,7 +221,7 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
         value: n(realtime?.onlineUsers),
         source: "presence",
         definition: "presence 近窗口在线注册用户。",
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
         degraded: !realtime,
         reason: realtime ? null : "presence_unavailable",
       } as AdminKpi),
@@ -149,21 +231,125 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
         value: n(realtime?.onlineGuests),
         source: "presence",
         definition: "presence 近窗口在线游客会话。",
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
         degraded: !realtime,
         reason: realtime ? null : "presence_unavailable",
       } as AdminKpi),
-      kpi({
+      kpiWithTrend({
         metricId: "overview.token_cost_today",
         label: "今日 AI 用量",
-        value: n(extras.aiTokenCost),
+        value: n(aiRow.tokenCostToday),
+        previousValue: n(aiRow.tokenCostYesterday),
         source: "analytics_events.token_cost",
-        definition: "今日 AI 回合记录的用量求和。",
-        updatedAt: new Date().toISOString(),
-        degraded: false,
-        reason: null,
-      } as AdminKpi),
+        definition: "今日 AI 回合记录的用量求和（按北京自然日对齐）。",
+        updatedAt: nowIso,
+      }),
     ],
+  };
+}
+
+export type NorthStarInputMetric = {
+  metricId: string;
+  label: string;
+  value: number;
+  unit?: string;
+  definition: string;
+};
+
+/**
+ * 北极星指标（North Star Metric）+ 输入指标 + 护栏指标（Sean Ellis 框架）。
+ *
+ * 之前的后台只有一堆并列的数字，没有一个"最能代表核心价值交付"的锚点指标，也没有对比基线——
+ * 这是"全是数字但看不出该做什么"这类反馈的直接成因。这里选择 D1 留存率作为北极星指标：
+ * 对 VerseCraft 这类单人叙事游戏，新玩家次日是否回来，是"是否被这段叙事体验留住"最直接、
+ * 最难造假的信号，优于总注册数/总PV这类只会单调上涨的虚荣指标。
+ *
+ * 配套：
+ * - 输入指标（可执行的杠杆）：拉新（分母）、新手引导转化率（早期流失点）、人均有效游玩时长（深度）。
+ * - 护栏指标：AI 回合成功率——如果为了拉新/留存牺牲了 AI 体验稳定性，北极星数字会失真，
+ *   必须同时看，不能只盯留存率本身。
+ */
+export async function getNorthStarMetrics(range: AdminTimeRange) {
+  // 对比基线用"紧邻的上一个等长周期"，而不是裸数字——否则又会掉回"看不出好坏"的老问题。
+  const durationMs = range.end.getTime() - range.start.getTime() + 1;
+  const priorStart = new Date(range.start.getTime() - durationMs);
+  const priorEnd = new Date(range.start.getTime() - 1);
+  const priorRange: AdminTimeRange = {
+    ...range,
+    start: priorStart,
+    end: priorEnd,
+    startDateKey: getUtcDateKey(priorStart),
+    endDateKey: getUtcDateKey(priorEnd),
+  };
+
+  const [retention, priorRetention, overview, funnel, aiExperience, guestsRaw] = await Promise.all([
+    getRetentionMetrics(range).catch(() => null),
+    getRetentionMetrics(priorRange).catch(() => null),
+    getOverviewMetrics(range).catch(() => null),
+    getFunnelMetrics(range).catch(() => null),
+    getAiExperienceMetrics(range).catch(() => null),
+    db
+      .execute(
+        sql`SELECT COUNT(*)::int AS count FROM guest_registry WHERE first_seen_at >= ${range.start} AND first_seen_at <= ${range.end}`
+      )
+      .catch(() => ({ rows: [] })),
+  ]);
+
+  const cohortSize = retention?.cohortSize ?? 0;
+  const northStar = {
+    metricId: "north_star.d1_retention",
+    label: "北极星指标：次日留存率（D1 Retention）",
+    definition:
+      "本周期内首次注册/首次出现的账号或游客，在次日（北京自然日）再次活跃的比例；是判断新玩家是否被叙事体验留住的最直接信号。",
+    value: retention?.d1.rate ?? null,
+    unit: "ratio" as const,
+    previousValue: priorRetention && priorRetention.cohortSize > 0 ? priorRetention.d1.rate : null,
+    cohortSize,
+    evidenceSufficiency: cohortSize >= 20 ? ("enough" as const) : ("insufficient" as const),
+    degraded: !retention,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const newGuests = n(rowsOf(guestsRaw)[0]?.count);
+  const newRegistered = overview?.cards.newUsersRange ?? 0;
+  const onboardingEnd = funnel?.stages.find((s) => s.eventName === "enter_main_game") ?? null;
+  const onboardingStart = funnel?.stages[0] ?? null;
+
+  const inputMetrics: NorthStarInputMetric[] = [
+    {
+      metricId: "north_star.input.new_actors",
+      label: "拉新：新增注册 + 新增游客",
+      value: newRegistered + newGuests,
+      definition: `本周期新增注册用户(${newRegistered}) + 新增游客(${newGuests})，是北极星指标留存分母的来源。`,
+    },
+    {
+      metricId: "north_star.input.onboarding_conversion",
+      label: "新手引导转化率",
+      value: onboardingEnd && onboardingStart ? safeRate(onboardingEnd.all, onboardingStart.all) : 0,
+      unit: "ratio",
+      definition: "从漏斗第一阶段到「进入主游戏」的转化率，反映新手引导是否顺畅——是留存率的主要早期杠杆。",
+    },
+    {
+      metricId: "north_star.input.active_play_duration_per_user",
+      label: "人均有效游玩时长",
+      value: overview ? safeRate(overview.cards.playDurationRangeSec, Math.max(1, overview.cards.activeUsersRange)) : 0,
+      unit: "sec_per_user",
+      definition: "周期内有效游玩秒数总和 / 活跃用户数，反映参与深度而非只看是否打开过。",
+    },
+    {
+      metricId: "north_star.guardrail.ai_success_rate",
+      label: "护栏指标：AI 回合成功率",
+      value: aiExperience?.rates.successRate ?? 0,
+      unit: "ratio",
+      definition: "护栏指标：如果为了拉新/留存牺牲了 AI 体验稳定性（成功率下滑），北极星数字会失真，必须同时监控，不能只看留存率本身。",
+    },
+  ];
+
+  return {
+    range,
+    northStar,
+    inputMetrics,
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -312,27 +498,87 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
       COUNT(DISTINCT COALESCE(actor_id, session_id))::int AS "activeActors",
       percentile_cont(0.5) WITHIN GROUP (ORDER BY ttft_ms) AS "ttftP50",
       percentile_cont(0.95) WITHIN GROUP (ORDER BY ttft_ms) AS "ttftP95",
+      percentile_cont(0.99) WITHIN GROUP (ORDER BY ttft_ms) AS "ttftP99",
       percentile_cont(0.5) WITHIN GROUP (ORDER BY total_ms) AS "totalP50",
-      percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS "totalP95"
+      percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS "totalP95",
+      percentile_cont(0.99) WITHIN GROUP (ORDER BY total_ms) AS "totalP99"
     FROM chat
   `);
   const row = rowsOf(raw)[0] ?? {};
   const sampleSize = n(row.sampleSize);
   const totalTokens = n(row.totalTokens);
   const activeActors = n(row.activeActors);
-  const topCostRaw = await db.execute(sql`
-    SELECT
-      COALESCE(actor_id, session_id) AS "actorKey",
-      COUNT(*)::int AS "actions",
-      COALESCE(SUM(token_cost), 0)::int AS "tokens"
-    FROM analytics_events
-    WHERE event_name = 'chat_request_finished'
-      AND event_time >= ${range.start}
-      AND event_time <= ${range.end}
-    GROUP BY COALESCE(actor_id, session_id)
-    ORDER BY "tokens" DESC
-    LIMIT 10
-  `).catch(() => ({ rows: [] }));
+  const [topCostRaw, byRoleRaw, laneRaw, enqueueRaw] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        COALESCE(actor_id, session_id) AS "actorKey",
+        COUNT(*)::int AS "actions",
+        COALESCE(SUM(token_cost), 0)::int AS "tokens"
+      FROM analytics_events
+      WHERE event_name = 'chat_request_finished'
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      GROUP BY COALESCE(actor_id, session_id)
+      ORDER BY "tokens" DESC
+      LIMIT 10
+    `).catch(() => ({ rows: [] })),
+    // 按逻辑角色（chat_request_finished payload.model 存的就是 main/control/enhance/reasoner）
+    // 拆分成本——之前 costModel.ts 里已有 USD 单价估算，但从未接入后台展示。
+    db.execute(sql`
+      SELECT
+        COALESCE(payload->>'model', 'unknown') AS "role",
+        COUNT(*)::int AS "requests",
+        COALESCE(SUM(CASE WHEN (payload->>'promptTokens') ~ '^[0-9]+$' THEN (payload->>'promptTokens')::int ELSE 0 END), 0)::int AS "promptTokens",
+        COALESCE(SUM(CASE WHEN (payload->>'completionTokens') ~ '^[0-9]+$' THEN (payload->>'completionTokens')::int ELSE 0 END), 0)::int AS "completionTokens",
+        COALESCE(SUM(token_cost), 0)::int AS "totalTokens"
+      FROM analytics_events
+      WHERE event_name = 'chat_request_finished'
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      GROUP BY COALESCE(payload->>'model', 'unknown')
+      ORDER BY "requests" DESC
+    `).catch(() => ({ rows: [] })),
+    // turn_lane_decided 此前只写入未被任何面板消费（后台重构调研发现的孤儿事件之一）。
+    db.execute(sql`
+      SELECT COALESCE(NULLIF(payload->>'lane', ''), 'unknown') AS "lane", COUNT(*)::int AS count
+      FROM analytics_events
+      WHERE event_name = 'turn_lane_decided'
+        AND event_time >= ${range.start}
+        AND event_time <= ${range.end}
+      GROUP BY COALESCE(NULLIF(payload->>'lane', ''), 'unknown')
+      ORDER BY count DESC
+    `).catch(() => ({ rows: [] })),
+    // world_engine_enqueued 同样此前未被消费；用它和 chat_action_completed 的比值衡量后台世界
+    // 推进的触发频率，供 reasoner-health 之外再交叉核对一次。
+    db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE event_name = 'world_engine_enqueued')::int AS "enqueued",
+        COUNT(*) FILTER (WHERE event_name = 'chat_action_completed')::int AS "completedActions"
+      FROM analytics_events
+      WHERE event_time >= ${range.start}
+        AND event_time <= ${range.end}
+        AND event_name IN ('world_engine_enqueued', 'chat_action_completed')
+    `).catch(() => ({ rows: [] })),
+  ]);
+  const costByRole = rowsOf(byRoleRaw).map((r) => {
+    const roleRaw = String(r.role ?? "unknown");
+    const role = normalizeAiLogicalRole(roleRaw) ?? "main";
+    const promptTokens = n(r.promptTokens);
+    const completionTokens = n(r.completionTokens);
+    const totalTokensForRole = n(r.totalTokens);
+    const estimatedUsd = estimateUsdForUsage(role, { promptTokens, completionTokens, totalTokens: totalTokensForRole });
+    return {
+      role: roleRaw,
+      requests: n(r.requests),
+      promptTokens,
+      completionTokens,
+      totalTokens: totalTokensForRole,
+      estimatedUsd: Math.round(estimatedUsd * 10000) / 10000,
+    };
+  });
+  const enqueueRow = rowsOf(enqueueRaw)[0] ?? {};
+  const enqueuedCount = n(enqueueRow.enqueued);
+  const completedActionCount = n(enqueueRow.completedActions);
   return {
     range,
     sampleSize,
@@ -340,8 +586,10 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
     metrics: [
       kpi({ metricId: "ai.ttft_p50", label: "首段等待中位数", value: row.ttftP50 == null ? null : Math.round(n(row.ttftP50)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
       kpi({ metricId: "ai.ttft_p95", value: row.ttftP95 == null ? null : Math.round(n(row.ttftP95)), unit: "ms", updatedAt: new Date().toISOString() }),
+      kpi({ metricId: "ai.ttft_p99", label: "首段等待 99 分位", value: row.ttftP99 == null ? null : Math.round(n(row.ttftP99)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
       kpi({ metricId: "ai.total_latency_p50", label: "总耗时中位数", value: row.totalP50 == null ? null : Math.round(n(row.totalP50)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
       kpi({ metricId: "ai.total_latency_p95", value: row.totalP95 == null ? null : Math.round(n(row.totalP95)), unit: "ms", updatedAt: new Date().toISOString() }),
+      kpi({ metricId: "ai.total_latency_p99", label: "总耗时 99 分位", value: row.totalP99 == null ? null : Math.round(n(row.totalP99)), unit: "ms", updatedAt: new Date().toISOString() } as AdminKpi),
     ],
     rates: {
       successRate: safeRate(n(row.successCount), sampleSize),
@@ -361,6 +609,16 @@ export async function getAiExperienceMetrics(range: AdminTimeRange) {
         actions: n(r.actions),
         tokens: n(r.tokens),
       })),
+      /** 按逻辑角色(main/control/enhance/reasoner)拆分的请求数/token/预估USD成本。 */
+      byRole: costByRole,
+      estimatedTotalUsd: Math.round(costByRole.reduce((sum, r) => sum + r.estimatedUsd, 0) * 10000) / 10000,
+    },
+    /** 此前写入但从未被后台消费的两个事件，这里补上最小可用的聚合视图。 */
+    turnLaneDistribution: rowsOf(laneRaw).map((r) => ({ lane: String(r.lane ?? "unknown"), count: n(r.count) })),
+    worldEngineEnqueueRate: {
+      enqueuedCount,
+      completedActionCount,
+      rate: safeRate(enqueuedCount, completedActionCount),
     },
     anomalies: sampleSize < 20 ? ["样本不足，趋势仅供补采方向参考。"] : [],
     updatedAt: new Date().toISOString(),
@@ -512,14 +770,28 @@ export async function getSystemHealth() {
     reason: aiGatewayOk ? null : "ai_gateway_keys_missing",
     updatedAt: new Date().toISOString(),
   };
+  let metaQueryFailed = false;
   const metaRaw = await withDeadline(db.execute(sql`
     SELECT
       (SELECT MAX(created_at) FROM admin_audit_logs WHERE action = 'admin_cron_rebuild_daily') AS "lastCronAt",
       (SELECT MAX(updated_at) FROM admin_metrics_daily) AS "aggregationFreshness",
       (SELECT COUNT(*)::int FROM analytics_events WHERE event_time >= NOW() - INTERVAL '1 hour' AND event_name LIKE '%failed%') AS "recentErrors",
       (SELECT COUNT(*)::int FROM analytics_events WHERE event_time >= NOW() - INTERVAL '1 hour' AND event_name = 'chat_request_finished') AS "recentAiRequests"
-  `), 1200, "system_health_meta_timeout").catch(() => ({ rows: [] }));
+  `), 1200, "system_health_meta_timeout").catch((error) => {
+    metaQueryFailed = true;
+    console.warn("[admin][getSystemHealth] meta query failed, treating as degraded", error);
+    return { rows: [] };
+  });
   const meta = rowsOf(metaRaw)[0] ?? {};
+  // 之前这里查询失败会被 .catch 静默吞掉、返回空对象，导致上层把 recentErrors 当成 0 展示
+  // "系统健康"；现在显式记一条 degraded check，system-health/route.ts 里
+  // `Object.values(data.checks).some(c => c.degraded)` 会自动把它计入整体降级判定。
+  checks.metrics = {
+    ok: !metaQueryFailed,
+    degraded: metaQueryFailed,
+    reason: metaQueryFailed ? "metrics_meta_query_failed" : null,
+    updatedAt: new Date().toISOString(),
+  };
   const realtime = await withDeadline(getRealtimeMetrics(), 1200, "system_health_realtime_timeout").catch(() => null);
   const queueConfig = getChatQueueConfig();
   const queueDecision = await withDeadline(shouldQueueChatRequest(), 800, "chat_queue_capacity_timeout").catch(() => null);

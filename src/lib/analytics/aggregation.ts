@@ -30,6 +30,10 @@ function addDaysUtc(date: Date, deltaDays: number): Date {
  * - Idempotent: uses ON CONFLICT upsert with full overwrite.
  */
 export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promise<AdminMetricsDailyRebuildResult> {
+  // 注：newUsersAgg/feedbackAgg/gameAgg 原先用 `DATE(event_time) = dateKey` 隐式依赖数据库
+  // 会话时区做自然日比较；现在显式转成 `(event_time AT TIME ZONE 'UTC')::date`，
+  // 与 dateKey（getUtcDateKey，纯 UTC 自然日）的既有写入口径保持确定性一致，
+  // 不再受数据库会话 TimeZone 配置影响。这是健壮性修复，不改变既有语义。
   const targetDate = parseUtcDateKeyToDate(dateKey);
   const wauStart = addDaysUtc(targetDate, -6);
   const mauStart = addDaysUtc(targetDate, -29);
@@ -77,7 +81,7 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
       newUsers: sql<number>`COUNT(*)`,
     })
     .from(analyticsEvents)
-    .where(sql`${analyticsEvents.eventName} = 'user_registered' AND DATE(${analyticsEvents.eventTime}) = ${dateKey}::date`);
+    .where(sql`${analyticsEvents.eventName} = 'user_registered' AND (${analyticsEvents.eventTime} AT TIME ZONE 'UTC')::date = ${dateKey}::date`);
 
   const [
     feedbackAgg,
@@ -86,7 +90,7 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
       feedbackSubmittedCount: sql<number>`COUNT(*)`,
     })
     .from(analyticsEvents)
-    .where(sql`${analyticsEvents.eventName} = 'feedback_submitted' AND DATE(${analyticsEvents.eventTime}) = ${dateKey}::date`);
+    .where(sql`${analyticsEvents.eventName} = 'feedback_submitted' AND (${analyticsEvents.eventTime} AT TIME ZONE 'UTC')::date = ${dateKey}::date`);
 
   const [
     gameAgg,
@@ -95,7 +99,7 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
       gameCompletedCount: sql<number>`COUNT(*)`,
     })
     .from(analyticsEvents)
-    .where(sql`${analyticsEvents.eventName} IN ('game_settlement', 'game_record_submitted') AND DATE(${analyticsEvents.eventTime}) = ${dateKey}::date`);
+    .where(sql`${analyticsEvents.eventName} IN ('game_settlement', 'game_record_submitted') AND (${analyticsEvents.eventTime} AT TIME ZONE 'UTC')::date = ${dateKey}::date`);
 
   const result: AdminMetricsDailyRebuildResult = {
     dateKey,

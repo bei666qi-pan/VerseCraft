@@ -29,27 +29,53 @@
 
 ## 数据写入与聚合
 
-- 原始事件：`analytics_events`
-- 会话：`user_sessions`
-- 游客：`guest_registry`、`guest_daily_activity`
-- 用户日活：`actor_daily_activity`、`user_daily_activity`
-- Token 日聚合：`actor_daily_tokens`
+- 原始事件：`analytics_events`（含 `environment` 字段，见下方"环境隔离"）
+- 会话：`actor_sessions`（统一用户/游客会话；`user_sessions`/`guest_sessions` 已确认无应用代码读写，仅作为历史表保留）
+- 游客：`guest_registry`
+- 用户/游客日活：`actor_daily_activity`（`user_daily_activity`/`guest_daily_activity` 已下线，见下方"遗留表下线现状"）
+- Token 日聚合：`actor_daily_tokens`（`user_daily_tokens`/`guest_daily_tokens` 已下线）
 - 后台日聚合：`admin_metrics_daily`
 - 审计日志：`admin_audit_logs`
+
+### 环境隔离（`analytics_events.environment`）
+
+每条事件写入时都会打上 `production` / `development` / `preview` 三选一的标签（见
+`src/lib/config/previewGuards.ts` 的 `resolveAppEnvironmentTag()`），只区分"这个进程属于哪种
+部署"，不区分"生产环境里有人在手动测试"。后台查询目前尚未按此字段过滤（后续如需排除本地/预览
+流量，在对应查询加 `AND environment = 'production'` 即可，历史行的默认值也是 `production`，
+不会影响既有数字）。
+
+### 遗留表下线现状（`user_sessions`/`user_daily_activity`/`user_daily_tokens`/`guest_daily_activity`/`guest_daily_tokens`）
+
+已确认全仓没有任何应用代码读写这 5 张表（职责已被 `actor_sessions`/`actor_daily_activity`/
+`actor_daily_tokens` 取代）。但 `src/db/ensureSchema.ts`（每次进程启动都执行）和
+`scripts/migrate.js`（部署时的 idempotent bootstrap）目前仍会各自用
+`CREATE TABLE IF NOT EXISTS` 独立创建这 5 张表——三处需要协同修改并在真实 Postgres 环境验证一次
+全新建库不受影响后，才能安全地把它们从 `schema.ts` 中一并移除；不要只删 `schema.ts` 里的声明。
 
 日级重建入口：`POST /api/admin/cron/rebuild-daily?days=N`。执行成功或失败都会写入审计日志。所有事件写入失败都必须 best-effort，不阻塞玩家主流程。
 
 ## 新后台 API
 
 - `GET /api/admin/overview?range=today|yesterday|7d|30d`
+- `GET /api/admin/north-star?range=today|yesterday|7d|30d`：北极星指标（D1 留存）+ 输入/护栏指标，见下方"北极星指标"。
 - `GET /api/admin/player-journey?range=7d&actorType=all|registered|guest&platform=all|pc|mobile`
-- `GET /api/admin/ai-experience?range=7d`
+- `GET /api/admin/ai-experience?range=7d`：含 `cost.byRole`（按 `main`/`control`/`enhance`/`reasoner` 逻辑角色拆分的 USD 估算成本，见 `src/lib/ai/governance/costModel.ts`）、`turnLaneDistribution`、`worldEngineEnqueueRate`。
 - `GET /api/admin/content-quality?range=7d`
 - `GET /api/admin/system-health`
 - `GET /api/admin/users?limit=20&cursor=&search=&onlyOnline=&actorType=all&sort=lastActive`
 - `GET /api/admin/users/[actorKey]`
 - `GET /api/admin/audit-logs?limit=20&cursor=`
 - `POST /api/admin/rebuild-daily?days=3`
+- `POST /api/admin/cron/world-engine-cleanup?runsDays=30&queueDays=14&snapshotsDays=14`：清理 `world_engine_runs`/`world_engine_event_queue`（仅终态 `resolved`/`expired`）/`world_engine_agenda_snapshots`（仅保留每个 session 最新 revision）。需要 `x-cron-secret`。
+
+### 北极星指标（North Star Metric）
+
+- 指标：D1 次日留存率（`getRetentionMetrics` 的 `d1.rate`），覆盖注册用户与游客合并 cohort。
+- 输入/杠杆指标：新增 actor（注册+游客）、新手引导转化率、人均有效游玩时长。
+- 护栏指标：AI 回合成功率——防止为了拉新/留存牺牲 AI 体验稳定性而不自知。
+- `cohortSize < 20` 时标记 `evidenceSufficiency=insufficient`，前端只展示"样本不足"，不做趋势结论。
+- 计算入口：`getNorthStarMetrics()`（`src/lib/admin/backofficeMetrics.ts`）。
 
 列表接口必须有 `limit`，默认 20，最大 100。时间范围查询必须走既有索引或新增索引，并纳入 `scripts/admin-explain-baseline.ts`。
 

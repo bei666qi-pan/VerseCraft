@@ -65,6 +65,11 @@ async function ensureAnalyticsFoundationTables(client) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS analytics_events_page_time_idx ON analytics_events (page, event_time);
   `);
+  // 注：这个函数的 CREATE TABLE 定义本身已经落后于 schema.ts / ensureSchema.ts（缺
+  // actor_id/actor_type/guest_id/online_duration_delta_sec 等后续新增列的补齐语句——
+  // 后台重构第二轮风险排查发现的既有缺口，本次不在这里展开修复，只保证下面新增的
+  // environment 列在这条独立于 ensureSchema.ts 的路径上也不遗漏）。
+  await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS environment VARCHAR(16) NOT NULL DEFAULT 'production';`);
 }
 
 async function ensurePresencePlaytimeTables(client) {

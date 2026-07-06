@@ -50,6 +50,11 @@ function createRateLimiter(limit: number, intervalMs: number) {
 }
 
 const generalLimiter = createRateLimiter(10, 1000);
+// 页面导航 / RSC prefetch / 静态壳资源（favicon、robots、sw.js 等）共用一个更宽松的桶：
+// 单次页面加载会并发触发文档请求 + 多个 `_rsc=` 预取 + 若干静态资源，10/s 极易被正常浏览行为
+// （尤其是共享出口 IP 的场景）打满，导致 429 而非真实滥用。真正昂贵/敏感的路径
+// （/api/chat、/api/chat/queue/*、其余 /api/*）继续用各自更严格的桶，不受此项放宽影响。
+const pageLimiter = createRateLimiter(30, 1000);
 const llmLimiter = createRateLimiter(2, 1000);
 const optionsOnlyLlmLimiter = createRateLimiter(6, 1000);
 const chatQueueStatusLimiter = createRateLimiter(20, 1000);
@@ -215,7 +220,11 @@ export async function middleware(req: NextRequest) {
     if (!chatQueueStatusLimiter(ip)) {
       return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
     }
-  } else if (!generalLimiter(ip)) {
+  } else if (isApiPath(pathname)) {
+    if (!generalLimiter(ip)) {
+      return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
+    }
+  } else if (!pageLimiter(ip)) {
     return withHeaders(NextResponse.json(RATE_LIMITED_JSON, { status: 429 }), { previewHost: isPreviewHost });
   }
 
@@ -231,6 +240,6 @@ export const config = {
     "/favicon.ico",
     "/robots.txt",
     "/sw.js",
-    "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff|woff2)$).*)",
+    "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|webmanifest|woff|woff2)$).*)",
   ],
 };

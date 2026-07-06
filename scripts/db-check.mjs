@@ -14,6 +14,12 @@ if (!url) {
 const { Client } = pg;
 const client = new Client({ connectionString: url });
 
+// 注：user_sessions / user_daily_activity / user_daily_tokens 已被 T8 方案B（2026-07）
+// 下线，全仓确认没有任何写入路径（见 src/lib/analytics/repository.ts 注释与
+// recordChatActionCompletedAnalytics 实现），继续把它们列为 required 只会检查一张
+// 冻结不再更新的旧表，不代表任何真实健康信号，因此移除；改为检查实际承载读写的
+// analytics_actors / actor_sessions / actor_daily_activity / actor_daily_tokens /
+// guest_registry。
 const required = [
   "users",
   "feedbacks",
@@ -22,9 +28,11 @@ const required = [
   "users_quota",
   "admin_stats_snapshots",
   "analytics_events",
-  "user_sessions",
-  "user_daily_activity",
-  "user_daily_tokens",
+  "analytics_actors",
+  "actor_sessions",
+  "actor_daily_activity",
+  "actor_daily_tokens",
+  "guest_registry",
   "admin_metrics_daily",
   "settlement_histories",
 ];

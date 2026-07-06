@@ -285,6 +285,8 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS active_play_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
     await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS read_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
     await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS idle_duration_delta_sec INTEGER NOT NULL DEFAULT 0;`);
+    // 环境/测试流量隔离字段（后台重构第二轮风险排查新增，见 schema.ts 同名字段注释）。
+    await client.query(`ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS environment VARCHAR(16) NOT NULL DEFAULT 'production';`);
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS analytics_events_user_event_time_idx ON analytics_events (user_id, event_time);

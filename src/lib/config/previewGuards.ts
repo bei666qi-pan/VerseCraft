@@ -64,6 +64,23 @@ function shortFingerprint(fingerprint: string): string {
   return fingerprint.slice(0, 12);
 }
 
+export type AppEnvironmentTag = "production" | "development" | "preview";
+
+/**
+ * 进程级环境标签（后台重构第二轮风险排查新增）：用于给 analytics_events 打
+ * environment 标记，避免本地开发 / 预览部署产生的流量混入生产后台统计。
+ * 这只判断"当前进程属于哪种部署"，不判断"生产环境里有没有人在手动测试"——
+ * 后者需要更细的请求级标记，是更大范围的后续工作，这里不处理。
+ */
+export function resolveAppEnvironmentTag(
+  nodeEnv: string,
+  env: PreviewGuardEnv = readPreviewGuardEnv()
+): AppEnvironmentTag {
+  if (isPreviewEnvironmentSignal(env)) return "preview";
+  if (nodeEnv !== "production") return "development";
+  return "production";
+}
+
 export function assertPreviewEnvironmentSafe(
   databaseUrl: string,
   env: PreviewGuardEnv = readPreviewGuardEnv()

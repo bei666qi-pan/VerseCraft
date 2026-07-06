@@ -406,6 +406,14 @@ export const analyticsEvents = pgTable(
     page: text("page"),
     source: text("source"),
     platform: text("platform"),
+    /**
+     * 环境/测试流量隔离字段（后台重构第二轮风险排查新增）：标记写入这条事件的进程属于
+     * 生产/开发/预览部署中的哪一种，用于避免本地开发或预览环境流量混入生产统计。
+     * 注意这只区分"进程属于哪种部署"，不区分"生产环境里有人手动测试"——那需要更细的
+     * 请求级标记，属于更大范围的后续工作，这里不处理。见
+     * src/lib/config/previewGuards.ts 的 resolveAppEnvironmentTag()。
+     */
+    environment: varchar("environment", { length: 16 }).notNull().default("production"),
 
     tokenCost: integer("token_cost").notNull().default(0),
     playDurationDeltaSec: integer("play_duration_delta_sec").notNull().default(0),
@@ -429,6 +437,12 @@ export const analyticsEvents = pgTable(
     pageTimeIdx: index("analytics_events_page_time_idx").on(table.page, table.eventTime),
     actorEventTimeIdx: index("analytics_events_actor_event_time_idx").on(table.actorId, table.eventTime),
     guestEventTimeIdx: index("analytics_events_guest_event_time_idx").on(table.guestId, table.eventTime),
+    // 该表达式索引已由 drizzle/0009_admin_analytics_indexes.sql 手写创建，此前未在 schema.ts
+    // 声明，导致 schema.ts 与实际库结构漂移（阅读 schema.ts 的人看不到这条索引存在）。
+    // 这里只是补齐声明以反映真实库结构，不代表可以直接 `pnpm db:generate`——0009 是手写
+    // 迁移，不在 drizzle-kit 自身快照历史里，重新 generate 可能会为同一个索引再生成一条
+    // 不带 IF NOT EXISTS 的 CREATE INDEX，需要人工核对快照/迁移历史后再决定是否生成。
+    payloadWorldIdTimeIdx: index("analytics_events_payload_world_id_time_idx").on(sql`(payload->>'worldId')`, table.eventTime),
   })
 );
 
@@ -540,6 +554,25 @@ export const actorDailyTokens = pgTable(
   })
 );
 
+/**
+ * 遗留双写表下线现状说明（后台重构第二轮风险排查，2026-07）：
+ * 以下 5 张表（userSessions/userDailyActivity/userDailyTokens/guestDailyActivity/
+ * guestDailyTokens）已确认没有任何应用代码路径读取或写入（全仓 grep 验证：只有
+ * "T8 方案B已下线"的说明性注释，无真实 SELECT/INSERT/UPDATE），职责已完全被
+ * actorSessions/actorDailyActivity/actorDailyTokens 取代。
+ *
+ * 但它们尚未能安全地从 schema.ts 中移除：`src/db/ensureSchema.ts`（Next.js
+ * instrumentation，每次进程启动都会跑）与 `scripts/migrate.js`（部署时的
+ * idempotent bootstrap）目前仍分别各自用 `CREATE TABLE IF NOT EXISTS` 独立创建
+ * 这 5 张表——如果只删掉这里的 Drizzle 声明，会让 schema.ts 反而比真实建表行为
+ * "更不准确"（这正是本轮修复别处 schema/真实结构漂移问题时要避免的反例）。
+ *
+ * 真正下线需要三处协同修改（schema.ts + ensureSchema.ts + scripts/migrate.js）
+ * 并在有真实 Postgres 的环境里验证一次全新建库（fresh bootstrap）不受影响，
+ * 而当前沙盒没有可用的 Postgres 实例，因此本轮只做到"确认死表 + 记录清楚现状"，
+ * 不在没有真实库验证的情况下动这三处导入导出建表逻辑。删表本身（`pnpm db:push`）
+ * 仍然只应由用户在确认后手动执行。
+ */
 export const userSessions = pgTable(
   "user_sessions",
   {

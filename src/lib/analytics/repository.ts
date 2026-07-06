@@ -7,6 +7,14 @@ import type { AnalyticsEventInsertInput } from "@/lib/analytics/types";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { buildActorIdentity } from "@/lib/analytics/actorIdentity";
 import { isPostgresUnavailableError, warnOptionalPostgresUnavailableOnce } from "@/lib/db/postgresErrors";
+import { serverConfig } from "@/lib/config/serverConfig";
+import { resolveAppEnvironmentTag } from "@/lib/config/previewGuards";
+
+/**
+ * 进程级常量（见 previewGuards.ts 顶部说明）：所有 analytics_events 写入路径统一打上
+ * 这个环境标签，用于后台按 environment 过滤本地开发/预览部署产生的非真实流量。
+ */
+const ANALYTICS_ENVIRONMENT_TAG = resolveAppEnvironmentTag(serverConfig.nodeEnv);
 
 let analyticsTableMissingWarned = false;
 
@@ -58,6 +66,7 @@ export async function insertAnalyticsEventIdempotent(input: AnalyticsEventInsert
         page: input.page ?? null,
         source: input.source ?? null,
         platform: input.platform,
+        environment: ANALYTICS_ENVIRONMENT_TAG,
         tokenCost: input.tokenCost,
         playDurationDeltaSec: input.playDurationDeltaSec,
         onlineDurationDeltaSec: Math.max(0, Math.trunc(input.onlineDurationDeltaSec ?? 0)),
@@ -142,11 +151,11 @@ export async function recordChatActionCompletedAnalytics(input: Omit<AnalyticsEv
       WITH ins_event AS (
         INSERT INTO analytics_events (
           event_id, actor_id, actor_type, guest_id, user_id, session_id, event_name, event_time, page, source, platform,
-          token_cost, play_duration_delta_sec, active_play_duration_delta_sec, payload, idempotency_key
+          environment, token_cost, play_duration_delta_sec, active_play_duration_delta_sec, payload, idempotency_key
         ) VALUES (
           ${input.eventId}, ${actorId}, ${actorType}, ${actor.guestId ?? null}, ${input.userId}, ${input.sessionId}, 'chat_action_completed',
           ${eventTime}, ${input.page}, ${input.source}, ${input.platform},
-          ${input.tokenCost}, ${input.playDurationDeltaSec}, ${input.playDurationDeltaSec}, ${JSON.stringify(input.payload ?? {})}::jsonb,
+          ${ANALYTICS_ENVIRONMENT_TAG}, ${input.tokenCost}, ${input.playDurationDeltaSec}, ${input.playDurationDeltaSec}, ${JSON.stringify(input.payload ?? {})}::jsonb,
           ${input.idempotencyKey}
         )
         ON CONFLICT (idempotency_key) DO NOTHING
@@ -309,11 +318,11 @@ export async function recordUserRegisteredAnalytics(input: Omit<AnalyticsEventIn
       WITH ins_event AS (
         INSERT INTO analytics_events (
           event_id, user_id, session_id, event_name, event_time, page, source, platform,
-          token_cost, play_duration_delta_sec, payload, idempotency_key
+          environment, token_cost, play_duration_delta_sec, payload, idempotency_key
         ) VALUES (
           ${input.eventId}, ${input.userId}, 'system', 'user_registered', ${eventTime},
           ${input.page}, ${input.source}, ${input.platform},
-          0, 0, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}
+          ${ANALYTICS_ENVIRONMENT_TAG}, 0, 0, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}
         )
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING event_id
@@ -350,11 +359,11 @@ export async function recordFeedbackSubmittedAnalytics(input: Omit<AnalyticsEven
       WITH ins_event AS (
         INSERT INTO analytics_events (
           event_id, user_id, session_id, event_name, event_time, page, source, platform,
-          token_cost, play_duration_delta_sec, payload, idempotency_key
+          environment, token_cost, play_duration_delta_sec, payload, idempotency_key
         ) VALUES (
           ${input.eventId}, ${input.userId}, 'system', 'feedback_submitted', ${eventTime},
           ${input.page}, ${input.source}, ${input.platform},
-          0, 0, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}
+          ${ANALYTICS_ENVIRONMENT_TAG}, 0, 0, ${JSON.stringify(input.payload ?? {})}::jsonb, ${input.idempotencyKey}
         )
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING event_id

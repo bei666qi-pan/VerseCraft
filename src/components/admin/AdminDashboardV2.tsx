@@ -48,6 +48,22 @@ type Kpi = {
 };
 
 type OverviewData = { cards?: Record<string, number>; kpis?: Kpi[]; chartData?: ChartPoint[]; updatedAt?: string } | null;
+type NorthStarData = {
+  northStar?: {
+    metricId: string;
+    label: string;
+    definition: string;
+    value: number | null;
+    unit?: string;
+    previousValue?: number | null;
+    cohortSize?: number;
+    evidenceSufficiency?: "enough" | "insufficient";
+    degraded?: boolean;
+    updatedAt?: string;
+  } | null;
+  inputMetrics?: Array<{ metricId: string; label: string; value: number; unit?: string; definition: string }>;
+  updatedAt?: string;
+} | null;
 type JourneyData = {
   mode?: "strict" | "any_order";
   sampleSize?: number;
@@ -71,7 +87,16 @@ type AiExperienceData = {
   metrics?: Kpi[];
   rates?: { successRate?: number; failureRate?: number; fallbackRate?: number; parseFailureRate?: number; rateLimitRate?: number; queueWait?: { status?: string } };
   rateLimitCount?: number;
-  cost?: { totalTokens?: number; tokenPerEffectiveAction?: number; tokenPerActiveActor?: number; highCostActors?: Array<{ actorKey: string; actions: number; tokens: number }> };
+  cost?: {
+    totalTokens?: number;
+    tokenPerEffectiveAction?: number;
+    tokenPerActiveActor?: number;
+    highCostActors?: Array<{ actorKey: string; actions: number; tokens: number }>;
+    byRole?: Array<{ role: string; requests: number; promptTokens: number; completionTokens: number; totalTokens: number; estimatedUsd: number }>;
+    estimatedTotalUsd?: number;
+  };
+  turnLaneDistribution?: Array<{ lane: string; count: number }>;
+  worldEngineEnqueueRate?: { enqueuedCount: number; completedActionCount: number; rate: number };
   anomalies?: string[];
   updatedAt?: string;
 } | null;
@@ -324,9 +349,31 @@ function sourceLabel(v: string | null | undefined): string {
     PostgreSQL: "数据库",
     Redis: "缓存与限流",
     "scripts/admin-explain-baseline.ts": "后台慢查询检查",
+    north_star: "北极星指标聚合",
     unknown: "来源未登记",
   };
   return map[raw] ?? (raw.includes(".") || raw.includes("_") ? "后台记录" : raw || "来源未登记");
+}
+
+function aiRoleLabel(v: string): string {
+  const map: Record<string, string> = {
+    main: "主叙事（main）",
+    control: "预检/控制面（control）",
+    enhance: "场景增强（enhance）",
+    reasoner: "离线推理（reasoner）",
+    unknown: "未识别角色",
+  };
+  return map[v] ?? v;
+}
+
+function laneLabel(v: string): string {
+  const map: Record<string, string> = {
+    FAST: "快速通道 FAST",
+    RULE: "规则通道 RULE",
+    REVEAL: "揭示通道 REVEAL",
+    unknown: "未记录",
+  };
+  return map[v] ?? v;
 }
 
 function reasonLabel(v: string | null | undefined): string {
@@ -348,6 +395,7 @@ function reasonLabel(v: string | null | undefined): string {
     ai_insights_snapshot_missing_used_rule_fallback: "暂无缓存快照，已使用本地规则建议",
     ai_refresh_failed_used_rule_fallback: "AI 生成失败，已使用本地规则建议",
     partial_rebuild_failed: "部分日期重建失败",
+    north_star_unavailable: "北极星指标暂不可用",
     none: "无异常",
   };
   return map[raw] ?? (raw ? "后台检查提示" : "无异常");
@@ -355,6 +403,7 @@ function reasonLabel(v: string | null | undefined): string {
 
 function translateLooseLabel(v: string): string {
   const map: Record<string, string> = {
+    northStar: "北极星指标",
     ready: "可承接",
     near_limit: "接近上限",
     full: "已满",
@@ -509,6 +558,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [overview, setOverview] = useState<OverviewData>(null);
+  const [northStar, setNorthStar] = useState<NorthStarData>(null);
   const [journey, setJourney] = useState<JourneyData>(null);
   const [aiExperience, setAiExperience] = useState<AiExperienceData>(null);
   const [contentQuality, setContentQuality] = useState<ContentQualityData>(null);
@@ -537,8 +587,9 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
     if (!silent) setRefreshing(true);
     const nextDegraded: Record<string, string | null> = {};
     try {
-      const [ov, j, ai, cq, survey, eh, h, au] = await Promise.all([
+      const [ov, ns, j, ai, cq, survey, eh, h, au] = await Promise.all([
         fetchEnvelope<OverviewData>(`/api/admin/overview?range=${range}`),
+        fetchEnvelope<NorthStarData>(`/api/admin/north-star?range=${range}`),
         fetchEnvelope<JourneyData>(`/api/admin/player-journey?range=${range}&actorType=${journeyActorType}&platform=${journeyPlatform}&mode=${journeyMode}`),
         fetchEnvelope<AiExperienceData>(`/api/admin/ai-experience?range=${range}`),
         fetchEnvelope<ContentQualityData>(`/api/admin/content-quality?range=${range}`),
@@ -547,7 +598,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
         fetchEnvelope<HealthData>("/api/admin/system-health"),
         fetchEnvelope<AuditData>("/api/admin/audit-logs?limit=20"),
       ]);
-      for (const [key, item] of Object.entries({ overview: ov, journey: j, ai, content: cq, survey, eventHealth: eh, health: h, audit: au })) {
+      for (const [key, item] of Object.entries({ overview: ov, northStar: ns, journey: j, ai, content: cq, survey, eventHealth: eh, health: h, audit: au })) {
         if (item.status === 403) {
           window.location.href = "/saiduhsa";
           return;
@@ -555,6 +606,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
         if (!item.env.ok || item.env.degraded) nextDegraded[key] = item.env.reason ?? "degraded";
       }
       if (ov.env.data) setOverview(ov.env.data);
+      if (ns.env.data) setNorthStar(ns.env.data);
       if (j.env.data) setJourney(j.env.data);
       if (ai.env.data) setAiExperience(ai.env.data);
       if (cq.env.data) setContentQuality(cq.env.data);
@@ -745,6 +797,46 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
 
         {tab === "总览" ? (
           <section className="space-y-4">
+            {northStar?.northStar ? (
+              <Panel testId="admin-north-star-panel">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-[#68746c]">北极星指标 North Star</p>
+                    <p className="mt-1 text-sm text-[#173f39]">{northStar.northStar.label}</p>
+                    <p className="mt-2 text-4xl font-semibold text-[#123f39]">{fmt(northStar.northStar.value, "ratio")}</p>
+                    <p className="mt-1 text-xs text-[#68746c]">
+                      {northStar.northStar.previousValue == null ? "暂无上一周期对比" : `环比上一周期 ${fmt(northStar.northStar.previousValue, "ratio")}`}
+                      {" · "}留存分母样本 {fmt(northStar.northStar.cohortSize)}
+                      {northStar.northStar.evidenceSufficiency === "insufficient" ? "（样本不足，仅供参考）" : ""}
+                    </p>
+                  </div>
+                  {northStar.northStar.degraded ? <span className="rounded-full border border-[#c4914a]/35 bg-[#fff2cf] px-2 py-0.5 text-[11px] text-[#7a4e15]">降级</span> : null}
+                </div>
+                <details className="mt-3 text-xs text-[#68746c]">
+                  <summary className="cursor-pointer text-[#335c54]">为什么是这个指标</summary>
+                  <p className="mt-2 leading-relaxed">{northStar.northStar.definition}</p>
+                  <p className="mt-1">更新时间：{time(northStar.northStar.updatedAt)}</p>
+                </details>
+                {(northStar.inputMetrics ?? []).length > 0 ? (
+                  <div className="mt-4">
+                    <p className="mb-2 text-xs font-medium text-[#68746c]">输入指标与护栏指标</p>
+                    <KpiGrid
+                      kpis={(northStar.inputMetrics ?? []).map((m) => ({
+                        metricId: m.metricId,
+                        label: m.label,
+                        value: m.value,
+                        unit: m.unit,
+                        source: "north_star",
+                        definition: m.definition,
+                        updatedAt: northStar?.updatedAt ?? null,
+                        degraded: false,
+                        reason: null,
+                      }))}
+                    />
+                  </div>
+                ) : null}
+              </Panel>
+            ) : null}
             <KpiGrid kpis={overview?.kpis ?? []} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <Card title="当前在线" value={totalOnline.toLocaleString("zh-CN")} meta={`注册 ${fmt(capacity?.online?.registered)}，游客 ${fmt(capacity?.online?.guests)}，窗口 ${capacity?.online?.windowSeconds ?? 90} 秒。`} />
@@ -828,6 +920,44 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
                 ))}
               </div>
             </Panel>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Panel>
+                <SectionTitle title="AI 成本按逻辑角色拆分" meta={`预估总成本 $${(aiExperience?.cost?.estimatedTotalUsd ?? 0).toFixed(4)}（USD，按 costModel.ts 单价估算，仅供参考）`} />
+                <div className="mt-3 space-y-2">
+                  {(aiExperience?.cost?.byRole ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无样本。</p> : null}
+                  {(aiExperience?.cost?.byRole ?? []).map((r) => (
+                    <div key={r.role} className="rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-[#173f39]">{aiRoleLabel(r.role)}</span>
+                        <span>${r.estimatedUsd.toFixed(4)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-[#68746c]">请求 {fmt(r.requests)} · 输入 {fmt(r.promptTokens)} · 输出 {fmt(r.completionTokens)} · 合计 {fmt(r.totalTokens)}</p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel>
+                <SectionTitle title="回合通道分布 / 世界引擎入队率" meta="此前只写入未被后台消费的孤儿事件，这里补上最小可用视图。" />
+                <div className="mt-3 space-y-2">
+                  {(aiExperience?.turnLaneDistribution ?? []).length === 0 ? <p className="text-sm text-[#68746c]">暂无样本。</p> : null}
+                  {(aiExperience?.turnLaneDistribution ?? []).map((l) => (
+                    <div key={l.lane} className="flex items-center justify-between rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                      <span>{laneLabel(l.lane)}</span>
+                      <span>{fmt(l.count)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 rounded-lg border border-[#e1d8ca] bg-[#fffdf8] p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>世界引擎入队率</span>
+                    <span>{percent(aiExperience?.worldEngineEnqueueRate?.rate)}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-[#68746c]">入队 {fmt(aiExperience?.worldEngineEnqueueRate?.enqueuedCount)} / 行动完成 {fmt(aiExperience?.worldEngineEnqueueRate?.completedActionCount)}</p>
+                </div>
+              </Panel>
+            </div>
           </section>
         ) : null}
 

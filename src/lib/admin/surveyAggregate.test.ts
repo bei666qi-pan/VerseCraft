@@ -5,6 +5,8 @@ import type { AdminTimeRange } from "@/lib/admin/timeRange";
 
 const range: AdminTimeRange = {
   preset: "7d",
+  requestedPreset: "7d",
+  customRangeFallback: false,
   label: "最近7天",
   startDateKey: "2026-05-01",
   endDateKey: "2026-05-07",

@@ -44,6 +44,13 @@ export type EventHealthMetrics = {
   topMissingProperties: Array<{ property: string; count: number; eventName: string | null }>;
   eventCoverage: EventHealthCoverageRow[];
   evidenceSufficiency: "enough" | "insufficient";
+  /**
+   * true 表示本次统计命中了采样上限（EVENT_HEALTH_SAMPLE_CAP），是"按最近 N 条事件采样"
+   * 而非"该时间范围内的全部事件"。之前这里对 event_time 范围内的全部行做无 LIMIT 查询，
+   * 大范围（如近30天）会把完整 JSONB payload 明细拉进 Node 内存，既慢又有 OOM 风险，
+   * 且返回结果从不告知调用方"是不是全量"，看起来像可信的精确统计但其实可能是不完整的。
+   */
+  sampleCapped: boolean;
   updatedAt: string;
 };
 
@@ -170,6 +177,9 @@ function isGuestLikeMissingGuest(row: EventHealthRawRow, contract: AnalyticsEven
   return contract.category !== "admin" && contract.category !== "health";
 }
 
+/** 单次 event-health 统计最多处理的事件行数；超过则标记 sampleCapped=true。 */
+export const EVENT_HEALTH_SAMPLE_CAP = 8000;
+
 export function buildEmptyEventHealthMetrics(range: AdminTimeRange): EventHealthMetrics {
   return computeEventHealthMetricsFromRows(range, [], { limit: 20 });
 }
@@ -177,7 +187,7 @@ export function buildEmptyEventHealthMetrics(range: AdminTimeRange): EventHealth
 export function computeEventHealthMetricsFromRows(
   range: AdminTimeRange,
   rows: EventHealthRawRow[],
-  opts?: { limit?: number }
+  opts?: { limit?: number; sampleCapped?: boolean }
 ): EventHealthMetrics {
   const limit = Math.max(1, Math.min(100, Math.trunc(opts?.limit ?? 20)));
   const eventsByName = new Map<string, number>();
@@ -303,11 +313,16 @@ export function computeEventHealthMetricsFromRows(
     })),
     eventCoverage: coverage,
     evidenceSufficiency: totalEvents >= 20 ? "enough" : "insufficient",
+    sampleCapped: Boolean(opts?.sampleCapped),
     updatedAt: new Date().toISOString(),
   };
 }
 
 export async function getEventHealthMetrics(range: AdminTimeRange, opts?: { limit?: number }): Promise<EventHealthMetrics> {
+  // 之前这里没有 LIMIT，会把整个时间范围内的事件明细（含完整 JSONB payload）拉进
+  // Node 内存做 JS 侧统计；大范围（近30天）下既慢又有内存风险。现在按 event_time
+  // 倒序取最近 EVENT_HEALTH_SAMPLE_CAP+1 条，命中上限时通过 sampleCapped 字段
+  // 如实告知调用方"这是采样统计，不是全量"，而不是悄悄截断却装作精确。
   const raw = await db.execute(sql`
     SELECT
       event_name AS "eventName",
@@ -321,8 +336,12 @@ export async function getEventHealthMetrics(range: AdminTimeRange, opts?: { limi
     FROM analytics_events
     WHERE event_time >= ${range.start}
       AND event_time <= ${range.end}
+    ORDER BY event_time DESC
+    LIMIT ${EVENT_HEALTH_SAMPLE_CAP + 1}
   `);
-  const rows = rowsOf(raw).map((row) => ({
+  const allRows = rowsOf(raw);
+  const sampleCapped = allRows.length > EVENT_HEALTH_SAMPLE_CAP;
+  const rows = (sampleCapped ? allRows.slice(0, EVENT_HEALTH_SAMPLE_CAP) : allRows).map((row) => ({
     eventName: text(row.eventName),
     actorId: text(row.actorId),
     actorType: text(row.actorType),
@@ -332,5 +351,5 @@ export async function getEventHealthMetrics(range: AdminTimeRange, opts?: { limi
     platform: text(row.platform),
     payload: row.payload,
   }));
-  return computeEventHealthMetricsFromRows(range, rows, opts);
+  return computeEventHealthMetricsFromRows(range, rows, { ...opts, sampleCapped });
 }

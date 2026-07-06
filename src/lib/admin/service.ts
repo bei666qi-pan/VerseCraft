@@ -4,6 +4,8 @@ import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { actorSessions, adminMetricsDaily, analyticsActors, analyticsEvents, feedbacks, guestRegistry, users } from "@/db/schema";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
+import { getUtcDateKey } from "@/lib/analytics/dateKeys";
+import { hasUnnegatedKeyword } from "@/lib/admin/feedbackClassifier";
 import { getOnlineUsersFromPresence } from "@/lib/presence";
 import { getAdminChartData } from "@/lib/adminDailyMetrics";
 import { getAdminRealtimeMetrics } from "@/lib/analytics/realtime";
@@ -195,6 +197,9 @@ export async function getSurveyAggregate(range: AdminTimeRange): Promise<SurveyA
 }
 
 export async function getDashboardTableData() {
+  // date_key 沿用既有 UTC 自然日约定（与 actor_daily_tokens 写入口径一致），显式绑定参数，
+  // 不再依赖 CURRENT_DATE 隐式读取数据库会话时区。
+  const todayUtcKey = getUtcDateKey(new Date());
   const userRows = await db
     .select({
       id: users.id,
@@ -468,7 +473,7 @@ export async function getDashboardTableData() {
           COALESCE(SUM(daily_token_cost), 0)::int AS todayTokensUsed,
           COALESCE(SUM(active_play_sec), 0)::int AS todayPlayTime
         FROM actor_daily_tokens
-        WHERE date_key = CURRENT_DATE
+        WHERE date_key = ${todayUtcKey}::date
         GROUP BY actor_id
       )
       SELECT
@@ -692,7 +697,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
     WITH reg_users AS (
       SELECT DISTINCT
         ('u:' || user_id) AS actor_key,
-        DATE(event_time) AS cohort_day
+        (event_time AT TIME ZONE 'UTC')::date AS cohort_day
       FROM analytics_events
       WHERE event_name = 'user_registered'
         AND user_id IS NOT NULL
@@ -702,7 +707,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
     guest_first_seen AS (
       SELECT
         ('g:' || session_id) AS actor_key,
-        MIN(DATE(event_time)) AS cohort_day
+        MIN((event_time AT TIME ZONE 'UTC')::date) AS cohort_day
       FROM analytics_events
       WHERE user_id IS NULL
         AND session_id IS NOT NULL
@@ -722,7 +727,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
       FROM actor_daily_activity
       WHERE actor_type = 'user'
       UNION
-      SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
+      SELECT DISTINCT ('g:' || session_id) AS actor_key, (event_time AT TIME ZONE 'UTC')::date AS active_day
       FROM analytics_events
       WHERE user_id IS NULL
         AND session_id IS NOT NULL
@@ -761,7 +766,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
       FROM actor_daily_activity
       WHERE actor_type = 'user'
       UNION
-      SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
+      SELECT DISTINCT ('g:' || session_id) AS actor_key, (event_time AT TIME ZONE 'UTC')::date AS active_day
       FROM analytics_events
       WHERE user_id IS NULL
         AND session_id IS NOT NULL
@@ -787,7 +792,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
       FROM actor_daily_activity
       WHERE actor_type = 'user'
       UNION
-      SELECT DISTINCT ('g:' || session_id) AS actor_key, DATE(event_time) AS active_day
+      SELECT DISTINCT ('g:' || session_id) AS actor_key, (event_time AT TIME ZONE 'UTC')::date AS active_day
       FROM analytics_events
       WHERE user_id IS NULL
         AND session_id IS NOT NULL
@@ -820,7 +825,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
       WITH reg_users AS (
         SELECT DISTINCT
           ('u:' || user_id) AS actor_key,
-          DATE(event_time) AS cohort_day
+          (event_time AT TIME ZONE 'UTC')::date AS cohort_day
         FROM analytics_events
         WHERE event_name = 'user_registered'
           AND user_id IS NOT NULL
@@ -832,7 +837,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
         FROM actor_daily_activity
         WHERE actor_type = 'user'
         UNION
-        SELECT DISTINCT ('u:' || user_id), DATE(event_time)
+        SELECT DISTINCT ('u:' || user_id), (event_time AT TIME ZONE 'UTC')::date
         FROM analytics_events
         WHERE user_id IS NOT NULL
       )
@@ -871,7 +876,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
       WITH guest_cohort AS (
         SELECT
           ('g:' || guest_id) AS actor_key,
-          DATE(first_seen_at) AS cohort_day
+          (first_seen_at AT TIME ZONE 'UTC')::date AS cohort_day
         FROM guest_registry
         WHERE first_seen_at >= ${range.start}
           AND first_seen_at <= ${range.end}
@@ -881,7 +886,7 @@ export async function getRetentionMetrics(range: AdminTimeRange) {
         FROM actor_daily_activity
         WHERE actor_type = 'guest'
         UNION
-        SELECT DISTINCT ('g:' || guest_id), DATE(event_time)
+        SELECT DISTINCT ('g:' || guest_id), (event_time AT TIME ZONE 'UTC')::date
         FROM analytics_events
         WHERE user_id IS NULL
           AND guest_id IS NOT NULL
@@ -1056,7 +1061,7 @@ export async function getFeedbackInsights(range: AdminTimeRange) {
   let negativeCount = 0;
   for (const r of rows) {
     const t = String(r.content ?? "").toLowerCase();
-    if (negativeWords.some((w) => t.includes(w))) negativeCount += 1;
+    if (negativeWords.some((w) => hasUnnegatedKeyword(t, w))) negativeCount += 1;
     if (/卡|慢|lag|延迟/.test(t)) topics["性能卡顿"] += 1;
     if (/剧情|文本|叙事|文案/.test(t)) topics["剧情质量"] += 1;
     if (/难|平衡|数值|太强|太弱/.test(t)) topics["平衡数值"] += 1;

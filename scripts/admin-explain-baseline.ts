@@ -9,6 +9,9 @@ type BaselineQuery = {
 
 const QUERIES: BaselineQuery[] = [
   {
+    // user_sessions 已被 T8 方案B（2026-07）下线，全仓确认无写入路径；继续对它做
+    // EXPLAIN ANALYZE 只会得到一张冻结旧表的（越来越不真实的）执行计划，起不到性能
+    // 基线的作用。实际承载在线会话读写的是 actor_sessions（含注册用户与游客）。
     name: "realtime_active_sessions",
     thresholdMs: 120,
     sql: `
@@ -16,7 +19,7 @@ const QUERIES: BaselineQuery[] = [
       SELECT
         COUNT(*)::int AS active_sessions,
         COALESCE(AVG(EXTRACT(EPOCH FROM (last_seen_at - started_at))), 0)::int AS avg_session_duration_sec
-      FROM user_sessions
+      FROM actor_sessions
       WHERE last_seen_at >= NOW() - (10 * INTERVAL '1 minute');
     `,
   },
