@@ -92,7 +92,6 @@ import { getCommitFailureRecovery } from "./commitFailureRecovery";
 import {
   backfillAcceptedOptionsFromModel,
   getOptionsOnlyDeadlineMs,
-  getOptionsRegenSuccessHint,
 } from "./optionsRegenUx";
 import {
   OPTIONS_REGEN_FAILURE_HINT,
@@ -2758,8 +2757,7 @@ function PlayContent() {
         repairUsed,
         finalOptionsCount: finalOptions.length,
       });
-      const successHint = getOptionsRegenSuccessHint({ trigger, turnMode: lastCommittedTurnModeRef.current });
-      if (successHint) setFirstTimeHint(successHint);
+      setFirstTimeHint(null);
     } catch {
       setOptionsRegenStage("finalizing");
       setOptionsRegenProgress((prev) => Math.max(prev, 92));
