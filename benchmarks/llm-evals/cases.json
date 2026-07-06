@@ -178,5 +178,335 @@
       "mustContainAny": ["廖暗", "试探", "走廊"],
       "allowOptionsMissing": true
     }
+  },
+  {
+    "id": "combat_weapon_state_001",
+    "scenario": "战斗-武器状态感知",
+    "latestUserInput": "我握紧警用手电，在它扑过来的瞬间照向它的眼睛。",
+    "playerContext": "{\"equippedWeapon\":\"警用手电\",\"weaponStability\":72,\"weaponCounter\":\"目眩\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["手电", "光", "眼睛", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "combat_defensive_001",
+    "scenario": "战斗-防御姿态",
+    "latestUserInput": "我后退两步，把背包挡在身前，不给它直接接触的机会。",
+    "playerContext": "{\"hp\":7,\"sanity\":65,\"equippedWeapon\":\"无\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["防御", "距离", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "item_use_heal_001",
+    "scenario": "道具-使用绷带",
+    "latestUserInput": "我蹲下来，用绷带裹住手臂上那道正在渗血的抓痕。",
+    "playerContext": "{\"inventory\":[\"绷带\",\"手机\"],\"hp\":5,\"sanity\":70}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["绷带", "伤口", "走廊", "止"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "item_use_tool_001",
+    "scenario": "道具-使用工具",
+    "latestUserInput": "我用镇痛剂喷在肿胀的脚踝上，等刺痛稍微缓和。",
+    "playerContext": "{\"inventory\":[\"镇痛剂\",\"手电筒\",\"旧钥匙\"],\"hp\":4,\"sanity\":55}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["镇痛", "肿胀", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "item_pickup_001",
+    "scenario": "道具-拾取",
+    "latestUserInput": "我捡起地上那枚发着微光的碎片，它在掌心微微发热。",
+    "playerContext": "{\"inventory\":[\"手电筒\",\"旧钥匙\"]}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["碎片", "发光", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "originium_restore_001",
+    "scenario": "原石-恢复理智",
+    "latestUserInput": "我捏碎一块原石，让那股冰凉的能量冲刷过后脑。",
+    "playerContext": "{\"originium\":3,\"sanity\":45,\"historicalMaxSanity\":100}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["原石", "能量", "理智", "恢复"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "low_sanity_narrative_001",
+    "scenario": "理智-低理智叙事",
+    "latestUserInput": "我看着走廊尽头忽明忽暗的灯管，总觉得它每闪一下就近了一步。",
+    "playerContext": "{\"sanity\":25,\"historicalMaxSanity\":100}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["灯", "走廊", "幻觉", "恍惚", "远处"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "sanity_threshold_001",
+    "scenario": "理智-阈值效应",
+    "latestUserInput": "我觉得脑子像被泡在冰水里，周围的声音都闷闷的，像隔了一层塑料膜。",
+    "playerContext": "{\"sanity\":18,\"historicalMaxSanity\":100}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["理智", "模糊", "走廊", "崩溃"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "profession_investigator_active_001",
+    "scenario": "职业-调查员主动技能",
+    "latestUserInput": "我闭上眼，启动'现场还原'——刚才这条走廊里发生的所有细节开始在我脑中倒放。",
+    "playerContext": "{\"profession\":\"调查员\",\"activeSkillAvailable\":true,\"activeSkillName\":\"现场还原\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["现", "还原", "线索", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "profession_enforcer_001",
+    "scenario": "职业-执行者战斗风格",
+    "latestUserInput": "我没有后退，反而迎上去，用执行者的近身格斗术锁住它的关节。",
+    "playerContext": "{\"profession\":\"执行者\",\"activeSkillAvailable\":false,\"activeSkillName\":\"压制连击\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["近身", "走廊", "格斗"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "task_progress_001",
+    "scenario": "任务-推进主线调查",
+    "latestUserInput": "我在储物柜内侧发现了一本被撕掉一半的登记册，上面的日期停在三个月前。",
+    "playerContext": "{\"activeTasks\":[{\"title\":\"调查楼梯间的血迹\",\"status\":\"进行中\",\"issuer\":\"廖暗\"}]}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["登记", "血迹", "走廊", "线索"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "task_complete_001",
+    "scenario": "任务-完成标志",
+    "latestUserInput": "我把找到的三份档案拼在一起，失踪名单的时间线终于对上了。",
+    "playerContext": "{\"activeTasks\":[{\"title\":\"寻找失踪档案\",\"status\":\"进行中\",\"issuer\":\"麟泽\"}]}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["档案", "失踪", "线索", "完成"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "npc_consistency_001",
+    "scenario": "NPC一致性-知识边界",
+    "latestUserInput": "我问电工老刘知不知道暗月的事，他正在修走廊尽头的配电箱。",
+    "playerContext": "{\"activeNpc\":\"电工老刘\",\"npcKnowledge\":\"电工老刘仅知道B1层电路问题\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["老刘", "电", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "npc_multi_interaction_001",
+    "scenario": "NPC-多角色在场",
+    "latestUserInput": "我看了一眼廖暗，又看了看靠墙站着的麟泽，不知道该先问谁。",
+    "playerContext": "{\"presentNpcIds\":[\"廖暗\",\"麟泽\"],\"activeNpc\":\"廖暗\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["廖暗", "麟泽", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "npc_rumor_vs_fact_001",
+    "scenario": "NPC-传闻不应陈述为事实",
+    "latestUserInput": "麟泽压低声音告诉我'暗月的事不止一两个人知道'，我追问他知道什么。",
+    "playerContext": "{\"activeNpc\":\"麟泽\",\"npcKnowledge\":\"麟泽仅听到传闻，不知实情\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["麟泽", "暗月", "传闻", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "death_near_001",
+    "scenario": "死亡-濒死叙事",
+    "latestUserInput": "我感觉到血从腹部的伤口流出来，手脚开始发冷。",
+    "playerContext": "{\"hp\":1,\"sanity\":30,\"isDeath\":false}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["血", "致命", "走廊", "死亡"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "talent_life_spring_001",
+    "scenario": "天赋-生命汇源触发",
+    "latestUserInput": "就在我以为要倒下的时候，胸口突然涌起一股暖流——生命汇源激活了。",
+    "playerContext": "{\"talent\":\"生命汇源\",\"talentCooldownRemaining\":0,\"hp\":3,\"sanity\":40}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["生命", "汇源", "走廊", "恢复"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "talent_time_rift_001",
+    "scenario": "天赋-时间裂隙",
+    "latestUserInput": "我在它抓到我的前一刻激活了时间裂隙——周围的一切都慢了下来。",
+    "playerContext": "{\"talent\":\"时间裂隙\",\"talentCooldownRemaining\":0,\"hp\":6,\"sanity\":55}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["时间", "裂隙", "慢", "走廊"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "location_transition_001",
+    "scenario": "位置-跨层移动",
+    "latestUserInput": "我推开一楼消防通道的门，准备下到B1层去找老刘。",
+    "playerContext": "{\"playerLocation\":\"1F_Lobby\",\"targetFloor\":\"B1\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["B1", "楼梯", "走廊", "移动"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "codex_discovery_001",
+    "scenario": "图鉴-新发现",
+    "latestUserInput": "我终于看清了它的全貌——这绝对不是普通的影子，是某种有实体但会流动的东西。",
+    "playerContext": "{\"codexUnlocked\":[\"廖暗\",\"麟泽\"],\"anomalyDiscovered\":false}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["异常", "走廊", "流动"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "ending_trigger_001",
+    "scenario": "结局-死亡触发",
+    "latestUserInput": "我放弃了抵抗，因为已经没有路可以退了。",
+    "playerContext": "{\"hp\":0,\"isDeath\":true,\"deathCause\":\"anomaly_crush\"}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 800,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["死亡", "黑暗", "走廊", "最后"],
+      "allowOptionsMissing": true
+    }
+  },
+  {
+    "id": "economy_decision_001",
+    "scenario": "经济-原石消耗决策",
+    "latestUserInput": "我犹豫了一下，手里只剩两块原石了，但理智已经跌到危险线——用还是不用？",
+    "playerContext": "{\"originium\":2,\"sanity\":20,\"historicalMaxSanity\":95}",
+    "mockScenario": "normal_stream",
+    "expect": {
+      "minNarrativeChars": 180,
+      "maxNarrativeChars": 1200,
+      "optionsCount": 4,
+      "mustNotContain": ["系统提示词", "JSON解析", "模型", "打开菜单", "查看背包"],
+      "mustContainAny": ["原石", "理智", "危险", "走廊"],
+      "allowOptionsMissing": true
+    }
   }
 ]

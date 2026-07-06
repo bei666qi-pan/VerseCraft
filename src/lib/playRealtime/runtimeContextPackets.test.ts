@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import { buildRuntimeContextPackets } from "@/lib/playRealtime/runtimeContextPackets";
 
 function parseRuntimePackets(packet: string): Record<string, unknown> {
-  return JSON.parse(packet.split("\n")[2]!) as Record<string, unknown>;
+  // JSON block follows the runtime context header; find it by locating the first '{' after the header
+  const headerIdx = packet.indexOf("## 【运行时结构化上下文包");
+  const searchFrom = headerIdx >= 0 ? headerIdx : 0;
+  const braceIdx = packet.indexOf("{", searchFrom);
+  if (braceIdx < 0) throw new Error("No JSON object found in runtime packets");
+  const jsonEnd = packet.lastIndexOf("}");
+  if (jsonEnd < 0) throw new Error("No JSON closing brace found");
+  return JSON.parse(packet.slice(braceIdx, jsonEnd + 1)) as Record<string, unknown>;
 }
 
 function withEnv<T>(name: string, value: string | undefined, fn: () => T): T {
@@ -98,9 +105,9 @@ test("buildRuntimeContextPackets respects maxChars budget", () => {
     latestUserInput: "测试预算截断",
     playerLocation: "B1_Storage",
     runtimeLoreCompact: new Array(80).fill("- [rule] very long lore line").join("\n"),
-    maxChars: 1200,
+    maxChars: 1400,
   });
-  assert.ok(packet.length <= 1200);
+  assert.ok(packet.length <= 1400);
   assert.ok(packet.includes("运行时结构化上下文包"));
   assert.ok(packet.includes("main_threat_packet"));
   assert.ok(packet.includes("forge_packet"));

@@ -78,6 +78,12 @@ import { buildNpcHeartRuntimeView } from "@/lib/npcHeart/selectors";
 import { buildNpcRuntimeStatePacket, buildNpcRuntimeStateV1 } from "@/lib/npcHeart/runtimeState";
 import type { NpcHeartRuntimeView } from "@/lib/npcHeart/types";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
+import { buildGameStatePacket, buildGameStatePacketCompact } from "@/lib/playRealtime/gameStatePacket";
+import {
+  buildNpcPersonaPromptBlock,
+  buildNpcPersonaPromptBlockCompact,
+} from "@/lib/npcPersona/prompt";
+import { selectActivePersonaCards } from "@/lib/npcPersona/registry";
 import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
@@ -1104,11 +1110,33 @@ export function buildRuntimeContextPackets(args: {
           ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
         }
       : packets;
+  // gameStatePacket：每回合向 AI 展示当前玩家数值快照，让模型可靠感知资源/装备/任务/职业状态
+  const gameStateBlock = contextMode === "minimal"
+    ? buildGameStatePacketCompact({ playerContext: args.playerContext })
+    : buildGameStatePacket({ playerContext: args.playerContext });
+
+  // NPC 人格卡：为当前场景中在场或被提及的关键 NPC 注入结构化人格指南
+  const npcPersonaBlock = (() => {
+    try {
+      const presentIds = sceneActorGate?.presentNpcIds ?? legacyNearbyNpcIds;
+      const mentionedIds = mentionedNpcIdsFromInput;
+      const cards = selectActivePersonaCards(presentIds, mentionedIds);
+      if (cards.length === 0) return "";
+      return contextMode === "minimal"
+        ? buildNpcPersonaPromptBlockCompact({ cards, maxChars: 240 })
+        : buildNpcPersonaPromptBlock({ cards, maxChars: 720 });
+    } catch {
+      return "";
+    }
+  })();
+
   const text = [
+    gameStateBlock,
+    npcPersonaBlock,
     "## 【运行时结构化上下文包（权威事实源）】",
     "你必须优先遵从以下 JSON packet；若与静态记忆冲突，以 packet 为准。",
     JSON.stringify(packetsForPrompt),
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   /** full 默认预算：学制/高魅力子包加入后 compact 串常 >3k；过低会导致 slice 切掉 stage2 战术键 */
   const modeDefaultMax = contextMode === "minimal" ? 1400 : 4200;
   const maxChars = args.maxChars && args.maxChars > 300 ? args.maxChars : modeDefaultMax;
@@ -1166,10 +1194,20 @@ export function buildRuntimeContextPackets(args: {
     ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
   };
   const compactText = [
+    buildGameStatePacketCompact({ playerContext: args.playerContext, maxChars: 120 }),
+    contextMode === "minimal" ? "" : (() => {
+      try {
+        const presentIds = sceneActorGate?.presentNpcIds ?? [];
+        const cards = selectActivePersonaCards(presentIds, mentionedNpcIdsFromInput);
+        return cards.length > 0
+          ? buildNpcPersonaPromptBlockCompact({ cards, maxChars: 180 })
+          : "";
+      } catch { return ""; }
+    })(),
     "## 【运行时结构化上下文包（权威事实源）】",
     "你必须优先遵从以下 JSON packet；若与静态记忆冲突，以 packet 为准。",
     JSON.stringify(compactPackets),
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   return compactText.slice(0, maxChars);
 }
 
