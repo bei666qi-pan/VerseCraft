@@ -85,6 +85,10 @@ import {
 } from "@/lib/npcPersona/prompt";
 import { selectActivePersonaCards } from "@/lib/npcPersona/registry";
 import {
+  buildChapterContextPacket,
+  buildChapterContextPacketCompact,
+} from "@/lib/playRealtime/chapterContextPacket";
+import {
   incrMonthStartStudentRecognitionHitCount,
   incrNewPlayerGuideDualCoreHitCount,
   incrNpcSocialSurfaceUsageCount,
@@ -1130,9 +1134,15 @@ export function buildRuntimeContextPackets(args: {
     }
   })();
 
+  // 章节上下文：当前章节进度、剩余回合、章末指导
+  const chapterContextBlock = contextMode === "minimal"
+    ? buildChapterContextPacketCompact({ playerContext: args.playerContext })
+    : buildChapterContextPacket({ playerContext: args.playerContext });
+
   const text = [
     gameStateBlock,
     npcPersonaBlock,
+    chapterContextBlock,
     "## 【运行时结构化上下文包（权威事实源）】",
     "你必须优先遵从以下 JSON packet；若与静态记忆冲突，以 packet 为准。",
     JSON.stringify(packetsForPrompt),

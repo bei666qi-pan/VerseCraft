@@ -202,6 +202,13 @@ function buildLegacySnapshot(input: {
   currentSaveSlot: string;
   codex: Record<string, unknown>;
   journalClues: unknown[];
+  // 2026-07 增强字段（可选，兼容旧存档）
+  originium?: number;
+  inventory?: Array<{ id?: string; name?: string; tier?: string }>;
+  warehouse?: Array<{ id?: string; name?: string }>;
+  deathCount?: number;
+  tasks?: Array<{ id?: string; title?: string; status?: string; issuerName?: string }>;
+  professionState?: { currentProfession?: string | null };
 }): SettlementViewSnapshot {
   const survivalDay = Math.max(0, Number(input.time.day ?? 0));
   const survivalHour = Math.max(0, Number(input.time.hour ?? 0));
@@ -263,10 +270,33 @@ function buildLegacySnapshot(input: {
       `最终位置：${replaceLocationIdsForDisplay(input.playerLocation)}`,
       `逃离主线：${formatEscapeStageLabel(escapeState.stage)}`,
       `理智：${input.stats.sanity ?? 0}`,
+      `原石余额：${typeof input.originium === "number" ? input.originium : 0}`,
+      `行囊物品：${(input.inventory ?? []).length} 件`,
+      `仓库物品：${(input.warehouse ?? []).length} 件`,
+      `已解锁图鉴：${Object.keys(input.codex ?? {}).length} 条`,
+      `已死亡次数：${input.deathCount ?? 0}`,
+      ...(input.professionState?.currentProfession
+        ? [`职业：${input.professionState.currentProfession}`]
+        : []),
     ],
+    // 2026-07 增强：关键物品 + 未完成任务（重玩钩子）
+    keyItems: compactLines(
+      (input.inventory ?? [])
+        .filter((item) => item?.tier && item.tier !== "common")
+        .map((item) => `${item?.name ?? "某物"} [${item?.tier ?? "?"}]`)
+        .slice(0, 6),
+      6
+    ),
+    incompleteTaskHooks: compactLines(
+      (input.tasks ?? [])
+        .filter((t) => t?.status === "active" || t?.status === "available")
+        .map((t) => `${t?.title ?? "未竟之事"} [${t?.issuerName ?? "未知"}]`)
+        .slice(0, 5),
+      5
+    ),
     createdAt: new Date().toISOString(),
     writingMarkdown,
-  };
+  } as SettlementViewSnapshot;
 }
 
 function DetailList({ empty, items }: { empty: string; items: readonly string[] }) {

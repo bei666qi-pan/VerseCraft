@@ -11,7 +11,12 @@ export type NarrativeStyleIssueCode =
   | "sentence_rhythm_flat"
   | "dialogue_over_explains"
   | "hook_missing"
-  | "purple_prose_overload";
+  | "purple_prose_overload"
+  // === 2026-07 新增：多维叙事质量检测（遥测用，不硬拦截） ===
+  | "sensory_density_low"
+  | "rhythm_variation_flat"
+  | "dialogue_ungrounded"
+  | "info_density_low";
 
 export type NarrativeStyleIssue = {
   code: NarrativeStyleIssueCode;
@@ -29,6 +34,13 @@ export type NarrativeStyleTelemetry = {
   averageSentenceLength: number;
   sentenceLengthSpread: number;
   dialogueSpanCount: number;
+  /** 2026-07 新增质量维度 */
+  sensoryWordCount: number;
+  longSentenceCount: number;
+  shortSentenceCount: number;
+  dialogueGroundedCount: number;
+  dialogueTotalCount: number;
+  uniqueWordRatio: number;
 };
 
 export type NarrativeStyleValidationReport = {
@@ -189,6 +201,71 @@ export function validateNarrativeStyle(args: ValidateNarrativeStyleArgs): Narrat
     }
   }
 
+  // === 2026-07 新增：多维叙事质量检测（仅遥测，不硬拦截）===
+
+  // 1. 画面感：感官词汇密度
+  const SENSORY_WORDS =
+    /(看|看见|望|注视|听|听见|闻|嗅|尝|触|摸|冷|热|凉|烫|疼|痛|刺|麻|痒|光|暗|亮|黑|白|红|蓝|绿|灰|反射|映|照|闪|晃|湿|干|滑|糙|黏|锈|灰|霉|潮|粉笔|血|水|油|药)/g;
+  const sensoryHits = countMatches(narrative, SENSORY_WORDS);
+  const sensoryDensity = narrative.length > 0 ? (sensoryHits / narrative.length) * 100 : 0;
+  if (narrative.length >= 100 && sensoryDensity < 2.5) {
+    issues.push({
+      code: "sensory_density_low",
+      severity: "low",
+      detail: `sensoryHits=${sensoryHits}|len=${narrative.length}|density=${sensoryDensity.toFixed(2)}`,
+    });
+  }
+
+  // 2. 节奏变化：长句与短句的对比（仅对足够长的叙事检测）
+  const longSentences = sentenceLengths.filter((l) => l >= 30);
+  const shortSentences = sentenceLengths.filter((l) => l <= 8);
+  if (sentenceLengths.length >= 4 && narrative.length >= 180 && (longSentences.length === 0 || shortSentences.length === 0)) {
+    issues.push({
+      code: "rhythm_variation_flat",
+      severity: "low",
+      detail: `long=${longSentences.length}|short=${shortSentences.length}|total=${sentenceLengths.length}`,
+    });
+  }
+
+  // 3. 对话落地：每段对话后是否有动作/环境/神情描述
+  let dialogueGrounded = 0;
+  const dialogueTotal = dialogueSpans.length;
+  if (dialogueTotal > 0) {
+    for (let i = 0; i < dialogueSpans.length; i++) {
+      const span = dialogueSpans[i] ?? "";
+      const spanEnd = narrative.indexOf(span);
+      if (spanEnd < 0) continue;
+      // 检查对话结束后的 40 个字符是否包含动作/环境词汇
+      const afterDialogue = narrative.slice(spanEnd + span.length, spanEnd + span.length + 60);
+      const GROUNDING_RE = /(，|。|！|？|看|听|闻|摸|走|站|坐|拿|放|推|拉|指|盯|笑|叹|点头|摇头|皱眉|沉默|转身|后退|上前)/;
+      if (GROUNDING_RE.test(afterDialogue)) {
+        dialogueGrounded += 1;
+      }
+    }
+    if (dialogueGrounded < dialogueTotal) {
+      issues.push({
+        code: "dialogue_ungrounded",
+        severity: "low",
+        detail: `grounded=${dialogueGrounded}/${dialogueTotal}`,
+      });
+    }
+  }
+
+  // 4. 信息密度：非重复内容词占比
+  const contentWords = narrative
+    .replace(/[，。！？、；：""''「」『』《》（）\s\d]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length >= 2);
+  const uniqueWords = new Set(contentWords);
+  const uniqueRatio = contentWords.length > 0 ? uniqueWords.size / contentWords.length : 0;
+  if (contentWords.length >= 40 && uniqueRatio < 0.55) {
+    issues.push({
+      code: "info_density_low",
+      severity: "low",
+      detail: `uniqueRatio=${uniqueRatio.toFixed(2)}|words=${contentWords.length}`,
+    });
+  }
+
   const byCode = countByCode(issues);
   return {
     ok: issues.length === 0,
@@ -202,6 +279,12 @@ export function validateNarrativeStyle(args: ValidateNarrativeStyleArgs): Narrat
       averageSentenceLength: Number(avgLen.toFixed(2)),
       sentenceLengthSpread: spread,
       dialogueSpanCount: dialogueSpans.length,
+      sensoryWordCount: sensoryHits,
+      longSentenceCount: longSentences.length,
+      shortSentenceCount: shortSentences.length,
+      dialogueGroundedCount: dialogueGrounded,
+      dialogueTotalCount: dialogueTotal,
+      uniqueWordRatio: Number(uniqueRatio.toFixed(3)),
     },
   };
 }

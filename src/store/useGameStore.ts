@@ -2664,6 +2664,29 @@ export const useGameStore = create<GameState>()(
             : "") +
           (escapeBlock ? ` ${escapeBlock}` : "") +
           (directorBlock ? ` ${directorBlock}` : "") +
+          // 章节余量：告诉 AI DM 当前章节、进度和剩余回合预算
+          (() => {
+            try {
+              const cs = s.chapterState;
+              if (!cs) return "";
+              const chapterId = cs.activeChapterId ?? cs.currentChapterId;
+              const def = getChapterDefinition(chapterId);
+              if (!def) return "";
+              const progress = cs.progressByChapterId?.[chapterId];
+              const turnsElapsed = progress?.turnCount ?? 0;
+              const turnsMin = def.minTurns;
+              const turnsMax = def.maxTurns;
+              const remaining = Math.max(0, turnsMax - turnsElapsed);
+              const remainingHint = remaining <= 2 ? "章末" : remaining <= 5 ? "章中后" : "章初/章中";
+              const totalChapters = (cs.unlockedChapterIds ?? []).length || def.order;
+              return (
+                ` 当前章节[第${def.order}章/${totalChapters}章|${def.title}|已进行${turnsElapsed}回合|` +
+                `预计剩余${Math.max(0, turnsMin - turnsElapsed)}-${Math.max(0, turnsMax - turnsElapsed)}回合|` +
+                `核心冲突:${def.objective}|停留阶段:${remainingHint}]。` +
+                (remaining <= 3 ? ` 章末提醒：请在接下来 ${remaining} 回合内将核心冲突推向高潮或转折，并在最后一回合给出明确的重击钩子。` : "")
+              );
+            } catch { return ""; }
+          })() +
           (npcHeartBlock ? ` ${npcHeartBlock}` : "") +
           (sanityNarrativeHintBlock ? ` ${sanityNarrativeHintBlock}` : "") +
           (taskDramaBlock ? ` ${taskDramaBlock}` : "") +

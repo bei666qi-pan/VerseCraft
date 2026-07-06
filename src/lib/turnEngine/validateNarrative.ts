@@ -44,6 +44,7 @@
  *
  * The caller (`commitTurn`) is responsible for applying overrides.
  */
+import { resolveActionsFromNarrative, getBackfillTelemetrySummary, type ActionBackfillResult } from "@/lib/turnEngine/actionResolver";
 import { getVerseCraftStyleProfile, type VerseCraftStyleProfile } from "@/lib/narrativeStyle/styleBible";
 import {
   validateNarrativeStyle,
@@ -697,6 +698,51 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     optionsOverride = [...CLEAR_OPTIONS_SIGNAL];
   }
 
+  // === 2026-07 Action Resolver：叙事文本 → 结构化字段自动回填 ===
+  const backfillResult: ActionBackfillResult | null =
+    narrative && !intentIsSystemTransition
+      ? (() => {
+          try {
+            const dmAwarded = Array.isArray((dm as { awarded_items?: unknown }).awarded_items)
+              ? (dm as { awarded_items: unknown[] }).awarded_items
+              : [];
+            const dmConsumed = Array.isArray((dm as { consumed_items?: unknown }).consumed_items)
+              ? (dm as { consumed_items: unknown[] }).consumed_items
+              : [];
+            const dmCurrency = (dm as { currency_change?: { originium?: number } }).currency_change;
+            const originiumChange = dmCurrency?.originium;
+            const hasTaskUpdates = args.delta.taskUpdates.length > 0 || args.delta.newTasks.length > 0;
+
+            const br = resolveActionsFromNarrative({
+              narrative,
+              existingAwardedItems: dmAwarded as unknown[],
+              existingConsumedItems: dmConsumed as unknown[],
+              existingOriginiumChange: typeof originiumChange === "number" ? originiumChange : null,
+              hasTaskUpdates,
+            });
+
+            // 将回填结果写入 dm 记录（仅当原字段为空时）
+            if (br.didBackfill) {
+              if (br.awardedItems && dmAwarded.length === 0) {
+                (dm as Record<string, unknown>).awarded_items = br.awardedItems;
+              }
+              if (br.consumedItems && dmConsumed.length === 0) {
+                (dm as Record<string, unknown>).consumed_items = br.consumedItems;
+              }
+              if (br.originiumDelta !== undefined && (originiumChange === undefined || originiumChange === null)) {
+                (dm as Record<string, unknown>).currency_change = {
+                  ...((dm as Record<string, unknown>).currency_change as Record<string, unknown> ?? {}),
+                  originium: br.originiumDelta,
+                };
+              }
+            }
+            return br;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+
   const telemetry: NarrativeValidationTelemetry = {
     totalIssues: issues.length,
     byCode,
@@ -732,6 +778,9 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     narrativeGovernanceFinalSafe: !issues.some((issue) => issue.severity === "high"),
     optionsOverrideApplied: optionsOverride !== null,
     safeNarrativeFallbackApplied: narrativeOverride !== null,
+    ...(backfillResult?.didBackfill
+      ? { actionBackfill: getBackfillTelemetrySummary(backfillResult) }
+      : {}),
   };
 
   return {

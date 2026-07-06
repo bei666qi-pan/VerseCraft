@@ -123,3 +123,27 @@ export function gateCandidatesForLorePacket(
 ): RetrievalCandidate[] {
   return gateCandidatesForLorePacketV1(candidates, { maxRank }).included.map((result) => result.candidate);
 }
+
+/** 遥测摘要：本回合 lore gate 的拦截统计 */
+export interface LoreGateTelemetry {
+  totalCandidates: number;
+  included: number;
+  blocked: number;
+  blockedByRank: number;
+  blockedByTruthClass: number;
+  blockedByAudience: number;
+  maxRank: RevealTierRank;
+}
+
+export function computeLoreGateTelemetry(resultSet: LoreGateResultSetV1, maxRank: RevealTierRank): LoreGateTelemetry {
+  const totalCandidates = resultSet.included.length + resultSet.blocked.length + resultSet.downgraded.length;
+  return {
+    totalCandidates,
+    included: resultSet.included.length,
+    blocked: resultSet.blocked.length,
+    blockedByRank: resultSet.blocked.filter((r) => r.gateReason.startsWith("reveal_rank:")).length,
+    blockedByTruthClass: resultSet.blocked.filter((r) => r.gateReason.startsWith("truth_class:")).length,
+    blockedByAudience: resultSet.blocked.filter((r) => r.gateReason.startsWith("audience:")).length,
+    maxRank,
+  };
+}
