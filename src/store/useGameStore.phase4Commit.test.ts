@@ -140,6 +140,26 @@ test("mergeCodex accumulates repeated relationship deltas and clamps to [-100,10
   assert.equal(useGameStore.getState().codex["N-020"]?.trust, -100);
 });
 
+test("markCodexViewed marks an entry as viewed and is idempotent", () => {
+  resetStore();
+  const s = useGameStore.getState();
+  s.mergeCodex([{ id: "N-015", name: "麟泽", type: "npc", known_info: "第一次见到他。" }]);
+
+  assert.deepEqual(useGameStore.getState().viewedCodexIds, {});
+
+  s.markCodexViewed("N-015");
+  assert.equal(useGameStore.getState().viewedCodexIds["N-015"], true);
+
+  // 重复标记应保持幂等：已读条目再次标记不应产生新的对象引用。
+  const afterFirstMark = useGameStore.getState().viewedCodexIds;
+  s.markCodexViewed("N-015");
+  assert.equal(useGameStore.getState().viewedCodexIds, afterFirstMark);
+
+  // 空 id 应被忽略，不写入任何 key。
+  s.markCodexViewed("");
+  assert.deepEqual(Object.keys(useGameStore.getState().viewedCodexIds), ["N-015"]);
+});
+
 test("G3: applyGameTimeFromResolvedTurn auto-fails active tasks past autoFailAfterGameHour", () => {
   resetStore();
   useGameStore.setState({

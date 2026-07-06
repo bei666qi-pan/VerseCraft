@@ -42,8 +42,9 @@ test("compact stable prefix preserves core JSON and safety contract", () => {
 test("stable prefix 体积已降到可控范围", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积小幅上升；仍需保持可缓存与可控。
-  assert.ok(s.length < 9200, `stable prefix too large: ${s.length}`);
+  // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积小幅上升；2026-07 文风改造（电影感/长短句/
+  // 命运感）再次小幅推高体积（约 9330 字符）；仍需保持可缓存与可控，暂定新上限 9600。
+  assert.ok(s.length < 9600, `stable prefix too large: ${s.length}`);
   assert.ok(s.includes("【JSON】单个对象"));
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));
@@ -74,16 +75,17 @@ test("stable prefix 体积已降到可控范围", () => {
   assert.ok(!s.includes("镜像灌注"));
 });
 
-test("stable prefix constrains NPC first encounter and lighter web-novel style", () => {
+test("stable prefix constrains NPC first encounter and cinematic literary style", () => {
   __resetStablePlayerDmPrefixMemoForTests();
   const s = getStablePlayerDmSystemPrefix();
-  assert.ok(s.includes("中国青春幻想网文"));
-  assert.ok(s.includes("恐怖/诡异大幅弱化"));
+  assert.ok(s.includes("电影感强的场景调度与命运感"));
+  assert.ok(s.includes("长句蓄势、短句断喝"));
   assert.ok(s.includes("生活化动作、位置、正在做的事"));
   assert.ok(s.includes("对白可通俗"));
   assert.ok(s.includes("误闯学生/新来的人/需要判断风险的陌生人"));
   assert.ok(s.includes("禁止突兀站着等主角"));
   assert.ok(!s.includes("龙族"));
+  assert.ok(!s.includes("江南"));
 });
 
 test("dynamic suffix 含 npc_consistency_boundary_compact（快车道亦适用）", () => {

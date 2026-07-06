@@ -78,8 +78,8 @@ test("chapter climax resolves to climax budget", () => {
   });
 
   assert.equal(budget.tier, "climax");
-  assert.equal(budget.minChars, 700);
-  assert.equal(budget.maxChars, 1100);
+  assert.equal(budget.minChars, 750);
+  assert.equal(budget.maxChars, 1400);
   assert.equal(budget.reasonCodes.includes("chapter_climax"), true);
 });
 

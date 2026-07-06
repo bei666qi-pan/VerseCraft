@@ -52,8 +52,10 @@ const PLAYER_CHAT_MAX_TOKENS_BY_TIER: Record<PlayerChatNarrativeBudgetTier, numb
   micro: 896,
   short: 1152,
   standard: 896,
-  reveal: 1792,
-  climax: 1792,
+  // reveal/climax 随文风改造的 narrativeBudgetPackets 字数上限同步上调，
+  // 但保持在 PLAYER_CHAT_MAX_TOKENS_MAX(2304) 之内；ending 已在上限，不再上调。
+  reveal: 2048,
+  climax: 2240,
   ending: 2304,
 };
 

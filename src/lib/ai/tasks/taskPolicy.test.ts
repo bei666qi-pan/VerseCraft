@@ -97,8 +97,8 @@ test("PLAYER_CHAT narrative budget tiers resolve dynamic maxTokens", () => {
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("micro").maxTokens, 896);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("short").maxTokens, 1152);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 896);
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("reveal").maxTokens, 1792);
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("climax").maxTokens, 1792);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("reveal").maxTokens, 2048);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("climax").maxTokens, 2240);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("ending").maxTokens, 2304);
 });
 

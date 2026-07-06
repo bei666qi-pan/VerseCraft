@@ -1,10 +1,16 @@
 import { buildCodexIntro, computeRelationshipLabel, resolveCodexDisplayName } from "@/lib/registry/codexDisplay";
 import { buildNpcMemoryMomentLines } from "@/lib/registry/relationshipMemoryDisplay";
+import { ANOMALIES } from "@/lib/registry/anomalies";
 import type { FloorId } from "@/lib/registry/types";
 import { formatCompactLocationLabel } from "@/lib/ui/locationLabels";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { CodexEntry } from "@/store/useGameStore";
 import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "./codexCatalog";
+
+/** 图鉴类型筛选：全部 / 仅人物 / 仅异常 */
+export type MobileCodexTypeFilter = "all" | "npc" | "anomaly";
+/** 图鉴楼层范围：仅当前楼层 / 全部楼层 */
+export type MobileCodexFloorScope = "current" | "all";
 
 export type MobileCodexDynamicNpcStates = Record<string, { currentLocation?: string; isAlive?: boolean } | undefined>;
 
@@ -31,6 +37,8 @@ export type MobileCodexCardModel =
       displayName: string;
       location: string;
       disabled: false;
+      /** 已识别但玩家尚未点开查看过详情，驱动卡片"新发现"角标 */
+      unread: boolean;
     }
   | {
       id: "__more__";
@@ -39,6 +47,7 @@ export type MobileCodexCardModel =
       displayName: "——";
       location: "暂无更多";
       disabled: true;
+      unread: false;
     };
 
 export type MobileCodexDetail = {
@@ -51,6 +60,8 @@ export type MobileCodexDetail = {
   relationship: string;
   /** G2：与该 NPC 相关的具体记忆片段（叙事化，非数值），最多数条；无记忆时为空字符串。 */
   memories: string;
+  /** 异常类条目的危险等级展示文案（如"危险等级：高"），仅在已识别异常时存在，否则为 null。 */
+  dangerLabel: string | null;
 };
 
 const LOCATION_FIELD_CANDIDATES = [
@@ -167,6 +178,58 @@ export function getMobileCodexIdentifiedCount(
   return slots.filter((slot) => isMobileCodexSlotIdentified(codex, slot.id)).length;
 }
 
+/** 已识别、但玩家尚未点开查看过详情（不在 viewedCodexIds 中）。用于"新发现"角标持久化。 */
+export function isMobileCodexEntryUnread(
+  codex: Record<string, CodexEntry> | null | undefined,
+  viewedCodexIds: Record<string, boolean> | null | undefined,
+  id: string
+): boolean {
+  return isMobileCodexSlotIdentified(codex, id) && !viewedCodexIds?.[id];
+}
+
+/** 统计未读（已识别但未查看）条目数，默认统计全部楼层，供底部导航角标使用。 */
+export function getMobileCodexUnreadCount(
+  codex: Record<string, CodexEntry> | null | undefined,
+  viewedCodexIds: Record<string, boolean> | null | undefined,
+  slots: readonly CodexCatalogSlot[] = ALL_CODEX_CATALOG_SLOTS
+): number {
+  return slots.filter((slot) => isMobileCodexEntryUnread(codex, viewedCodexIds, slot.id)).length;
+}
+
+/** 按人物/异常类型筛选目录 slot，"all" 时原样返回。 */
+export function filterMobileCodexSlotsByType(
+  slots: readonly CodexCatalogSlot[],
+  typeFilter: MobileCodexTypeFilter
+): CodexCatalogSlot[] {
+  if (typeFilter === "all") return [...slots];
+  return slots.filter((slot) => slot.type === typeFilter);
+}
+
+/**
+ * 按关键字搜索已识别条目的展示名称；空关键字时原样返回。
+ * 未识别条目名称对玩家不可见（显示"？？？"），因此不参与匹配，避免以搜索方式提前泄露未发现条目的真实身份。
+ */
+export function filterMobileCodexSlotsByQuery(
+  slots: readonly CodexCatalogSlot[],
+  codex: Record<string, CodexEntry> | null | undefined,
+  query: string
+): CodexCatalogSlot[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...slots];
+  return slots.filter((slot) => {
+    const entry = codex?.[slot.id] ?? null;
+    if (!entry) return false;
+    return formatMobileCodexName(entry, slot).toLowerCase().includes(q);
+  });
+}
+
+/** 异常危险等级展示文案：仅对已识别异常生效，读取注册表 displayDangerLevel（未配置时为 null）。 */
+export function resolveMobileCodexDangerLabel(slot: CodexCatalogSlot, identified: boolean): string | null {
+  if (!identified || slot.type !== "anomaly") return null;
+  const level = ANOMALIES.find((a) => a.id === slot.id)?.displayDangerLevel?.trim();
+  return level ? `危险等级：${level}` : null;
+}
+
 export function shouldAppendMobileCodexMoreCard(
   codex: Record<string, CodexEntry> | null | undefined,
   slots: readonly CodexCatalogSlot[] = ALL_CODEX_CATALOG_SLOTS
@@ -184,7 +247,9 @@ export function resolveMobileCodexInitialSelection(
 export function buildMobileCodexCardModels(
   codex: Record<string, CodexEntry> | null | undefined,
   slots: readonly CodexCatalogSlot[] = ALL_CODEX_CATALOG_SLOTS,
-  options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> = {}
+  options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> & {
+    viewedCodexIds?: Record<string, boolean> | null;
+  } = {}
 ): MobileCodexCardModel[] {
   const cards: MobileCodexCardModel[] = slots.map((slot) => {
     const entry = codex?.[slot.id] ?? null;
@@ -200,6 +265,7 @@ export function buildMobileCodexCardModels(
           ? resolveMobileCodexEntryLocation(entry, slot, options.dynamicNpcStates)
           : "尚未识别",
       disabled: false,
+      unread: isMobileCodexEntryUnread(codex, options.viewedCodexIds, slot.id),
     };
   });
 
@@ -211,6 +277,7 @@ export function buildMobileCodexCardModels(
       displayName: "——",
       location: "暂无更多",
       disabled: true,
+      unread: false,
     });
   }
 
@@ -276,6 +343,7 @@ export function buildMobileCodexDetail(
       observation: "暂未记录更多观察。",
       relationship: slot.type === "anomaly" ? "暂无稳定应对记录。" : "暂无稳定关系印象。",
       memories: "",
+      dangerLabel: null,
     };
   }
 
@@ -288,6 +356,7 @@ export function buildMobileCodexDetail(
     observation: buildMobileCodexObservation(entry),
     relationship: buildMobileCodexRelationship(entry),
     memories: buildMobileCodexMemories(entry, options.memorySpine),
+    dangerLabel: resolveMobileCodexDangerLabel(slot, true),
   };
 }
 

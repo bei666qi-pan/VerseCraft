@@ -182,7 +182,7 @@ test("projectTaskBoardViewModel returns clear player-facing slots", () => {
   assert.ok(vm.visibleCount >= 4);
 });
 
-test("buildTaskStageCardViewModel exposes six readable rows", () => {
+test("buildTaskStageCardViewModel exposes lean, structured rows", () => {
   const t = task({
     id: "stage1",
     title: "舞台卡",
@@ -196,10 +196,10 @@ test("buildTaskStageCardViewModel exposes six readable rows", () => {
   });
   const vm = buildTaskStageCardViewModel(t, "mainline", null);
   assert.equal(vm.nextStep, "先去问老刘钥匙在哪");
-  assert.equal(vm.whyMatters, "因为门要关了");
-  assert.ok(vm.ifNotDone.includes("会失去钥匙"));
-  assert.ok(vm.payoffLine.includes("权限") || vm.payoffLine.includes("侧门"));
-  assert.ok(vm.riskSense.length > 8);
+  assert.equal(vm.flavorLine, "因为门要关了");
+  assert.ok(vm.rewardChips.some((c) => c.kind === "originium" && c.label === "+10"));
+  assert.ok(vm.rewardChips.some((c) => c.kind === "unlock" && c.label.includes("侧门通行")));
+  assert.equal(vm.riskTag, "高风险高回报");
   assert.equal(vm.riskBand, "hot");
 });
 
@@ -212,12 +212,19 @@ test("buildTaskStageCardViewModel 的 nextStep 不会被 urgencyReason 挤掉，
     grantState: "visible_on_board" as any,
   });
   const vm = buildTaskStageCardViewModel(withUrgencyOnly, "mainline", null);
-  assert.equal(vm.whyMatters, "门要关了");
+  assert.equal(vm.flavorLine, "门要关了");
   assert.equal(vm.nextStep, "去问守卫要钥匙");
 
   const bare = task({ id: "stage-bare", title: "无戏剧字段", grantState: "visible_on_board" as any });
   const bareVm = buildTaskStageCardViewModel(bare, "commission", null);
   assert.ok(bareVm.nextStep.length > 0);
+});
+
+test("buildTaskStageCardViewModel riskTag 在 calm 时为 null，不强制渲染风险感", () => {
+  const calm = task({ id: "calm-1", title: "平静任务", grantState: "visible_on_board" as any });
+  const vm = buildTaskStageCardViewModel(calm, "commission", null);
+  assert.equal(vm.riskTag, null);
+  assert.equal(vm.riskBand, "calm");
 });
 
 test("projectTaskBoardStageProjection aligns cards with 1+2+1 board", () => {
@@ -263,11 +270,11 @@ test("buildTaskStageCardViewModel fallback text varies by task instead of one fi
   const a = buildTaskStageCardViewModel(bare("bare-a", "无戏剧字段任务A"), "commission", null);
   const b = buildTaskStageCardViewModel(bare("bare-b", "无戏剧字段任务B"), "commission", null);
   const c = buildTaskStageCardViewModel(bare("bare-c", "无戏剧字段任务C"), "commission", null);
-  assert.ok(a.whyMatters.length > 0);
-  assert.ok(a.ifNotDone.length > 0);
-  assert.ok(a.payoffLine.length > 0);
+  assert.ok(a.flavorLine.length > 0);
+  assert.ok(a.rewardChips.length > 0);
+  assert.equal(a.riskTag, null);
   // 至少不是三个任务完全相同的一句话（旧实现是全板统一的一句兜底文案）。
-  const allSame = a.whyMatters === b.whyMatters && b.whyMatters === c.whyMatters;
+  const allSame = a.flavorLine === b.flavorLine && b.flavorLine === c.flavorLine;
   assert.equal(allSame, false);
 });
 
@@ -275,9 +282,8 @@ test("buildTaskStageCardViewModel fallback text is stable across repeated calls 
   const t = task({ id: "stable-1", title: "稳定性任务", grantState: "visible_on_board" as any });
   const first = buildTaskStageCardViewModel(t, "opportunity", null);
   const second = buildTaskStageCardViewModel(t, "opportunity", null);
-  assert.equal(first.whyMatters, second.whyMatters);
-  assert.equal(first.ifNotDone, second.ifNotDone);
-  assert.equal(first.payoffLine, second.payoffLine);
+  assert.equal(first.flavorLine, second.flavorLine);
+  assert.deepEqual(first.rewardChips, second.rewardChips);
 });
 
 test("projectTaskBoardStageProjection exposes compact rows for promises/clues without full stage-card bulk", () => {

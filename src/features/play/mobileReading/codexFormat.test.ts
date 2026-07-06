@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CodexEntry } from "@/store/useGameStore";
-import { B1_NPC_CODEX_SLOTS } from "./codexCatalog";
+import { ALL_CODEX_CATALOG_SLOTS, B1_NPC_CODEX_SLOTS } from "./codexCatalog";
 import {
   buildMobileCodexCardModels,
+  buildMobileCodexDetail,
   buildMobileCodexIntro,
   buildMobileCodexObservation,
+  filterMobileCodexSlotsByQuery,
+  filterMobileCodexSlotsByType,
   formatMobileCodexLocation,
   getMobileCodexIdentifiedCount,
   getMobileCodexSlotsForFloor,
+  getMobileCodexUnreadCount,
+  isMobileCodexEntryUnread,
+  resolveMobileCodexDangerLabel,
   resolveMobileCodexFloorId,
   shouldAppendMobileCodexMoreCard,
 } from "./codexFormat";
@@ -142,4 +148,76 @@ test("mobile codex observation prefers newest structured observations", () => {
   assert.equal(observation.startsWith("second scene"), true);
   assert.equal(observation.includes("first scene"), true);
   assert.equal(observation.includes(entry.known_info), false);
+});
+
+test("mobile codex unread tracking follows identified + viewed state", () => {
+  const codex = { "N-001": npcEntry("N-001", "陈婆婆") };
+
+  assert.equal(isMobileCodexEntryUnread(codex, {}, "N-001"), true);
+  assert.equal(isMobileCodexEntryUnread(codex, { "N-001": true }, "N-001"), false);
+  assert.equal(isMobileCodexEntryUnread(codex, {}, "N-002"), false, "未识别条目不算未读");
+
+  const slots = getMobileCodexSlotsForFloor({ playerLocation: "1F_Lobby" });
+  assert.ok(getMobileCodexUnreadCount(codex, {}, slots) >= 1);
+  assert.equal(getMobileCodexUnreadCount(codex, { "N-001": true }, slots), 0);
+});
+
+test("mobile codex card models expose unread flag for the strip badge", () => {
+  const slots = getMobileCodexSlotsForFloor({ playerLocation: "1F_Lobby" });
+  const codex = { "N-001": npcEntry("N-001", "陈婆婆") };
+
+  const unviewedCards = buildMobileCodexCardModels(codex, slots, { viewedCodexIds: {} });
+  const target = unviewedCards.find((card) => card.id === "N-001");
+  assert.equal(target?.kind === "slot" && target.unread, true);
+
+  const viewedCards = buildMobileCodexCardModels(codex, slots, { viewedCodexIds: { "N-001": true } });
+  const viewedTarget = viewedCards.find((card) => card.id === "N-001");
+  assert.equal(viewedTarget?.kind === "slot" && viewedTarget.unread, false);
+});
+
+test("mobile codex filters slots by type", () => {
+  const npcOnly = filterMobileCodexSlotsByType(ALL_CODEX_CATALOG_SLOTS, "npc");
+  const anomalyOnly = filterMobileCodexSlotsByType(ALL_CODEX_CATALOG_SLOTS, "anomaly");
+
+  assert.ok(npcOnly.length > 0 && npcOnly.every((slot) => slot.type === "npc"));
+  assert.ok(anomalyOnly.length > 0 && anomalyOnly.every((slot) => slot.type === "anomaly"));
+  assert.equal(
+    filterMobileCodexSlotsByType(ALL_CODEX_CATALOG_SLOTS, "all").length,
+    ALL_CODEX_CATALOG_SLOTS.length
+  );
+});
+
+test("mobile codex search only matches identified entries by display name", () => {
+  const codex = { "N-001": npcEntry("N-001", "陈婆婆") };
+
+  const hit = filterMobileCodexSlotsByQuery(ALL_CODEX_CATALOG_SLOTS, codex, "陈婆婆");
+  assert.deepEqual(hit.map((slot) => slot.id), ["N-001"]);
+
+  // 未识别条目即使名字匹配也不应命中，避免搜索提前泄露尚未发现的条目身份。
+  const missIdentifiedOthers = filterMobileCodexSlotsByQuery(ALL_CODEX_CATALOG_SLOTS, codex, "林医生");
+  assert.deepEqual(missIdentifiedOthers, []);
+
+  assert.equal(filterMobileCodexSlotsByQuery(ALL_CODEX_CATALOG_SLOTS, codex, "").length, ALL_CODEX_CATALOG_SLOTS.length);
+});
+
+test("mobile codex danger label only shows for identified anomalies", () => {
+  const anomalySlot = ALL_CODEX_CATALOG_SLOTS.find((slot) => slot.id === "A-002");
+  const npcSlot = ALL_CODEX_CATALOG_SLOTS.find((slot) => slot.id === "N-001");
+  assert.ok(anomalySlot && npcSlot);
+
+  assert.equal(resolveMobileCodexDangerLabel(anomalySlot!, false), null);
+  assert.equal(resolveMobileCodexDangerLabel(anomalySlot!, true), "危险等级：高");
+  assert.equal(resolveMobileCodexDangerLabel(npcSlot!, true), null, "人物类条目不展示危险等级");
+});
+
+test("mobile codex detail carries dangerLabel only for identified anomalies", () => {
+  const slots = getMobileCodexSlotsForFloor({ playerLocation: "4F_CorridorEnd" });
+  const slot = slots.find((s) => s.id === "A-002");
+  assert.ok(slot);
+
+  const unidentified = buildMobileCodexDetail({}, slot!, {});
+  assert.equal(unidentified.dangerLabel, null);
+
+  const identified = buildMobileCodexDetail({ "A-002": anomalyEntry("A-002", "无头猎犬") }, slot!, {});
+  assert.equal(identified.dangerLabel, "危险等级：高");
 });

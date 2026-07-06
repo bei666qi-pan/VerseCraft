@@ -448,6 +448,7 @@ export interface SaveSlotData {
   talent?: EchoTalent | null;
   talentCooldowns?: Record<EchoTalent, number>;
   hasCheckedCodex?: boolean;
+  viewedCodexIds?: Record<string, boolean>;
   originium?: number;
   currentBgm?: string;
   currentOptions?: string[];
@@ -570,6 +571,8 @@ export interface GameState extends IntegrityMetaState {
 
   /** 新手引导：是否已查看图鉴（羊皮纸引导已移除） */
   hasCheckedCodex: boolean;
+  /** 图鉴逐条目已读状态：key 为图鉴目录 slot id，值为已查看过详情。用于"新发现"角标持久化。 */
+  viewedCodexIds: Record<string, boolean>;
   /** 仓库：物品（非道具），仅存仓库。无属性要求，有正向作用与对应副作用。 */
   warehouse: WarehouseItem[];
   /** AI 动态选项：由大模型在每次回复中生成的 4 个行动选项 */
@@ -719,6 +722,8 @@ export interface GameState extends IntegrityMetaState {
   triggerIntrusionFlash: () => void;
   setHasCheckedCodex: (v: boolean) => void;
   mergeCodex: (updates: CodexEntry[]) => void;
+  /** 标记图鉴某条目（按目录 slot id）为已查看，供"新发现"角标判断已读/未读。 */
+  markCodexViewed: (id: string) => void;
   /**
    * DM `clue_updates` 经 resolveDmTurn 规范化后的合并入口：按 id 去重、状态晋升、上限裁剪。
    */
@@ -1071,6 +1076,7 @@ export const useGameStore = create<GameState>()(
       endingState: createInitialEndingState(),
       openingNarrativePinned: false,
       hasCheckedCodex: false,
+      viewedCodexIds: {},
       warehouse: [],
       currentOptions: [],
       recentOptions: [],
@@ -1305,6 +1311,7 @@ export const useGameStore = create<GameState>()(
           logs: [],
           codex: {},
           hasCheckedCodex: false,
+          viewedCodexIds: {},
           warehouse: [],
           equippedWeapon: null,
           weaponBag: [],
@@ -1938,6 +1945,14 @@ export const useGameStore = create<GameState>()(
           return { codex: next, professionState, tasks, professionNarrativeCues: cues };
         }),
 
+      markCodexViewed: (id) =>
+        set((s) => {
+          const key = String(id ?? "").trim();
+          if (!key) return {};
+          if (s.viewedCodexIds?.[key]) return {};
+          return { viewedCodexIds: { ...(s.viewedCodexIds ?? {}), [key]: true } };
+        }),
+
       mergeJournalClueUpdates: (incoming) =>
         set((s) => {
           const safe = Array.isArray(incoming) ? incoming : [];
@@ -2121,6 +2136,7 @@ export const useGameStore = create<GameState>()(
           inventory: [],
           codex: {},
           hasCheckedCodex: false,
+          viewedCodexIds: {},
           warehouse: [],
           currentOptions: [],
           recentOptions: [],
@@ -3596,6 +3612,7 @@ export const useGameStore = create<GameState>()(
           talent: s.talent,
           talentCooldowns: JSON.parse(JSON.stringify(s.talentCooldowns ?? {})),
           hasCheckedCodex: s.hasCheckedCodex ?? false,
+          viewedCodexIds: JSON.parse(JSON.stringify(s.viewedCodexIds ?? {})),
           originium: s.originium ?? 0,
           currentBgm: s.currentBgm ?? "bgm_b1_daily",
           currentOptions:
@@ -3781,6 +3798,7 @@ export const useGameStore = create<GameState>()(
           talent: data.talent ?? null,
           talentCooldowns,
           hasCheckedCodex: data.hasCheckedCodex ?? false,
+          viewedCodexIds: data.viewedCodexIds ?? {},
           originium:
             projected.originium ?? data.originium ?? get().originium ?? 0,
           currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_b1_daily",
@@ -3944,6 +3962,7 @@ export const useGameStore = create<GameState>()(
             talent: data.talent ?? s.talent ?? null,
             talentCooldowns,
             hasCheckedCodex: data.hasCheckedCodex ?? false,
+            viewedCodexIds: data.viewedCodexIds ?? {},
             originium: projected.originium ?? data.originium ?? s.originium ?? 0,
             currentBgm: typeof data.currentBgm === "string" ? data.currentBgm : "bgm_b1_daily",
             currentOptions: loadedEndingState.phase !== "playing" ? [] : normalizeStoredOptions(data.currentOptions, 4),
@@ -4129,6 +4148,7 @@ export const useGameStore = create<GameState>()(
         escapeMainline: (s as any).escapeMainline ?? createDefaultEscapeMainlineTemplate(0),
         endingState: normalizeEndingState(s.endingState),
         hasCheckedCodex: s.hasCheckedCodex ?? false,
+        viewedCodexIds: s.viewedCodexIds ?? {},
         warehouse: s.warehouse ?? [],
         originium: s.originium ?? 0,
         tasks: s.tasks ?? [],

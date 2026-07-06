@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type CodexCatalogSlot } from "../codexCatalog";
+import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "../codexCatalog";
 import {
   buildMobileCodexCardModels,
   buildMobileCodexDetail,
+  filterMobileCodexSlotsByQuery,
+  filterMobileCodexSlotsByType,
   formatMobileCodexFloorLabel,
   getMobileCodexIdentifiedCount,
   getMobileCodexSlotsForFloor,
+  isMobileCodexSlotIdentified,
   resolveMobileCodexCurrentFloor,
   resolveMobileCodexInitialSelection,
   type MobileCodexCardModel,
+  type MobileCodexFloorScope,
+  type MobileCodexTypeFilter,
 } from "../codexFormat";
 import { resolveCodexPortrait } from "../codexPortraits";
 import { MobileReadingIcons } from "../icons";
@@ -108,6 +113,13 @@ function CodexCard({
           {card.location}
         </div>
       </div>
+      {card.kind === "slot" && card.unread ? (
+        <span
+          aria-hidden
+          data-testid="mobile-codex-unread-dot"
+          className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-vc-accent shadow-[0_0_6px_rgba(47,116,106,0.6)] ring-2 ring-vc-paper-bright"
+        />
+      ) : null}
       {selected ? (
         <span
           aria-hidden
@@ -212,12 +224,59 @@ function DetailBlock({
   );
 }
 
+const TYPE_FILTER_OPTIONS: { value: MobileCodexTypeFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "npc", label: "人物" },
+  { value: "anomaly", label: "异常" },
+];
+
+function FilterPillGroup<T extends string>({
+  value,
+  options,
+  disabled,
+  onChange,
+  testId,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  disabled?: boolean;
+  onChange: (next: T) => void;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className={`flex overflow-hidden rounded-full border border-[#d8d1c6] bg-vc-paper-bright/85 text-[12px] min-[420px]:text-[13px] ${
+        disabled ? "opacity-45" : ""
+      }`}
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          disabled={disabled}
+          aria-pressed={value === opt.value}
+          data-testid={`${testId}-${opt.value}`}
+          onClick={() => onChange(opt.value)}
+          className={`px-2.5 py-1 transition min-[420px]:px-3 min-[420px]:py-1.5 ${
+            value === opt.value ? "bg-vc-accent text-white" : "text-vc-ink-soft"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function MobileCodexPanel({
   codex,
   dynamicNpcStates,
   mainThreatByFloor,
   playerLocation,
   memorySpine,
+  viewedCodexIds,
+  onViewCodexEntry,
 }: MobileCodexPanelProps) {
   const currentFloor = useMemo(() => resolveMobileCodexCurrentFloor(playerLocation), [playerLocation]);
   const floorLabel = formatMobileCodexFloorLabel(currentFloor);
@@ -231,28 +290,58 @@ export function MobileCodexPanel({
       }),
     [codex, currentFloor, dynamicNpcStates, mainThreatByFloor]
   );
-  const identifiedCount = getMobileCodexIdentifiedCount(codex, floorSlots);
+
+  const [typeFilter, setTypeFilter] = useState<MobileCodexTypeFilter>("all");
+  const [floorScope, setFloorScope] = useState<MobileCodexFloorScope>("current");
+  const [searchQuery, setSearchQuery] = useState("");
+  const trimmedQuery = searchQuery.trim();
+  // 搜索时自动扩大到全部楼层：玩家输入关键字时期望"帮我找到它"，而不是被当前楼层限制住。
+  const effectiveFloorScope: MobileCodexFloorScope = trimmedQuery ? "all" : floorScope;
+  const scopedSlots = effectiveFloorScope === "all" ? ALL_CODEX_CATALOG_SLOTS : floorSlots;
+  const visibleSlots = useMemo(
+    () => filterMobileCodexSlotsByQuery(filterMobileCodexSlotsByType(scopedSlots, typeFilter), codex, trimmedQuery),
+    [scopedSlots, typeFilter, codex, trimmedQuery]
+  );
+
+  const identifiedCount = getMobileCodexIdentifiedCount(codex, visibleSlots);
+  const globalIdentifiedCount = useMemo(() => getMobileCodexIdentifiedCount(codex, ALL_CODEX_CATALOG_SLOTS), [codex]);
   const cards = useMemo(
-    () => buildMobileCodexCardModels(codex, floorSlots, { dynamicNpcStates }),
-    [codex, dynamicNpcStates, floorSlots]
+    () => buildMobileCodexCardModels(codex, visibleSlots, { dynamicNpcStates, viewedCodexIds }),
+    [codex, dynamicNpcStates, visibleSlots, viewedCodexIds]
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    const next = resolveMobileCodexInitialSelection(codex, floorSlots);
+    const next = resolveMobileCodexInitialSelection(codex, visibleSlots);
     setSelectedId((current) => {
-      if (current && floorSlots.some((slot) => slot.id === current)) return current;
+      if (current && visibleSlots.some((slot) => slot.id === current)) return current;
       return next;
     });
-  }, [codex, floorSlots]);
+  }, [codex, visibleSlots]);
 
-  const selectedSlot = floorSlots.find((slot) => slot.id === selectedId) ?? floorSlots[0] ?? null;
-  const selectedIndex = selectedSlot ? Math.max(0, floorSlots.findIndex((slot) => slot.id === selectedSlot.id)) : 0;
+  const selectedSlot = visibleSlots.find((slot) => slot.id === selectedId) ?? visibleSlots[0] ?? null;
+  const selectedIndex = selectedSlot ? Math.max(0, visibleSlots.findIndex((slot) => slot.id === selectedSlot.id)) : 0;
   const progressWidth =
-    floorSlots.length > 0 ? Math.max(18, ((selectedIndex + 1) / floorSlots.length) * 100) : 0;
+    visibleSlots.length > 0 ? Math.max(18, ((selectedIndex + 1) / visibleSlots.length) * 100) : 0;
   const detail = selectedSlot ? buildMobileCodexDetail(codex, selectedSlot, { dynamicNpcStates, memorySpine }) : null;
   const introTitle = selectedSlot?.type === "anomaly" ? "异常简介" : "人物简介";
-  const countPrefix = `${floorLabel}${floorLabel.endsWith("F") ? "" : "层"}已识别人物`;
+
+  // 打开详情即视为"已查看"：清除该条目在卡片带与底部导航上的"新发现"角标。
+  useEffect(() => {
+    if (!selectedSlot) return;
+    if (!isMobileCodexSlotIdentified(codex, selectedSlot.id)) return;
+    onViewCodexEntry?.(selectedSlot.id);
+  }, [selectedSlot, codex, onViewCodexEntry]);
+
+  const scopeLabel = trimmedQuery
+    ? "搜索结果"
+    : effectiveFloorScope === "all"
+      ? "全部楼层"
+      : `${floorLabel}${floorLabel.endsWith("F") ? "" : "层"}`;
+  const typeLabel = typeFilter === "npc" ? "人物" : typeFilter === "anomaly" ? "异常" : "条目";
+  const countLine = trimmedQuery
+    ? `搜索结果：命中 ${visibleSlots.length} 条`
+    : `${scopeLabel}已识别${typeLabel}：${identifiedCount} / ${visibleSlots.length}`;
 
   return (
     <section
@@ -260,10 +349,62 @@ export function MobileCodexPanel({
       aria-label="图鉴"
       className="box-border flex h-full min-h-0 flex-col overflow-hidden bg-[#fbf8f2] px-4 pb-[calc(var(--vc-mobile-bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] pt-[max(0.65rem,env(safe-area-inset-top))] text-[#174d46] min-[420px]:px-5 min-[420px]:pt-[max(0.85rem,env(safe-area-inset-top))]"
     >
-      <div className="vc-reading-serif shrink-0 px-1 text-[20px] font-semibold leading-none min-[420px]:text-[24px]">
-        <span data-testid="mobile-codex-count">
-          {countPrefix}：{identifiedCount} / {floorSlots.length}
+      <div className="flex shrink-0 items-baseline justify-between gap-2 px-1">
+        <span
+          data-testid="mobile-codex-count"
+          className="vc-reading-serif truncate text-[18px] font-semibold leading-none min-[420px]:text-[22px]"
+        >
+          {countLine}
         </span>
+        <span
+          data-testid="mobile-codex-global-count"
+          className="vc-reading-serif shrink-0 text-[13px] leading-none text-vc-ink-soft min-[420px]:text-[15px]"
+        >
+          总收藏 {globalIdentifiedCount} / {ALL_CODEX_CATALOG_SLOTS.length}
+        </span>
+      </div>
+
+      <div className="mt-2.5 flex shrink-0 flex-wrap items-center gap-1.5 px-1">
+        <FilterPillGroup
+          testId="mobile-codex-floor-scope"
+          value={effectiveFloorScope}
+          disabled={Boolean(trimmedQuery)}
+          onChange={setFloorScope}
+          options={[
+            { value: "current", label: `本层 ${floorLabel}` },
+            { value: "all", label: "全部楼层" },
+          ]}
+        />
+        <FilterPillGroup
+          testId="mobile-codex-type-filter"
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={TYPE_FILTER_OPTIONS}
+        />
+      </div>
+
+      <div className="relative mt-2 shrink-0 px-1">
+        <input
+          type="text"
+          inputMode="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="搜索已识别人物 / 异常（跨全部楼层）"
+          aria-label="搜索图鉴"
+          data-testid="mobile-codex-search-input"
+          className="w-full rounded-full border border-[#d8d1c6] bg-vc-paper-bright/90 py-1.5 pl-3.5 pr-8 text-[13px] text-[#174d46] placeholder:text-vc-ink-soft/70 focus:border-vc-accent focus:outline-none min-[420px]:text-[14px]"
+        />
+        {trimmedQuery ? (
+          <button
+            type="button"
+            aria-label="清除搜索"
+            data-testid="mobile-codex-search-clear"
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[15px] leading-none text-vc-ink-soft"
+          >
+            ×
+          </button>
+        ) : null}
       </div>
 
       <div
@@ -280,12 +421,12 @@ export function MobileCodexPanel({
         ))}
       </div>
 
-      {floorSlots.length === 0 ? (
+      {visibleSlots.length === 0 ? (
         <div
           data-testid="mobile-codex-empty"
           className="vc-reading-serif mt-5 rounded-[18px] border border-[#d8d1c6] bg-vc-paper-bright/92 px-5 py-10 text-center text-[20px] text-vc-ink-soft shadow-[0_8px_18px_rgba(73,63,51,0.08)]"
         >
-          当前楼层暂无可记录对象
+          {trimmedQuery ? "没有找到匹配的已识别条目" : "当前条件下暂无可记录对象"}
         </div>
       ) : (
         <>
@@ -318,6 +459,14 @@ export function MobileCodexPanel({
                       >
                         {detail.location}
                       </p>
+                      {detail.dangerLabel ? (
+                        <p
+                          data-testid="mobile-codex-detail-danger"
+                          className="vc-reading-serif mt-1.5 inline-block rounded-full bg-[#174d46]/8 px-2.5 py-0.5 text-[13px] leading-tight text-[#174d46] min-[420px]:text-[14px]"
+                        >
+                          {detail.dangerLabel}
+                        </p>
+                      ) : null}
                     </div>
                     {detail.quote ? (
                       <p className="hidden max-w-[12rem] truncate vc-reading-serif text-[15px] leading-none text-[#1f4b45] min-[420px]:block">

@@ -30,6 +30,7 @@ import {
   MobileSettingsPanel,
   MobileStoryViewport,
   MobileTaskPanel,
+  getMobileCodexUnreadCount,
   type MobileOptionsRegenStage,
 } from "@/features/play/mobileReading";
 import {
@@ -550,6 +551,12 @@ function PlayContent() {
   const memorySpine = useGameStore((s) => s.memorySpine ?? null);
   const escapeMainlineStage = useGameStore((s) => s.escapeMainline?.stage ?? null);
   const setHasCheckedCodex = useGameStore((s) => s.setHasCheckedCodex);
+  const viewedCodexIds = useGameStore((s) => s.viewedCodexIds ?? {});
+  const markCodexViewed = useGameStore((s) => s.markCodexViewed);
+  const hasUnreadCodex = useMemo(
+    () => getMobileCodexUnreadCount(codex, viewedCodexIds) > 0,
+    [codex, viewedCodexIds]
+  );
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
   const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
@@ -5062,6 +5069,8 @@ function PlayContent() {
               mainThreatByFloor={mainThreatByFloor}
               playerLocation={playerLocation}
               memorySpine={memorySpine}
+              viewedCodexIds={viewedCodexIds}
+              onViewCodexEntry={markCodexViewed}
             />
           ) : !isOverlayPanelActive && isTasksPanelActive ? (
             <MobileTaskPanel
@@ -5329,6 +5338,8 @@ function PlayContent() {
                   mainThreatByFloor={mainThreatByFloor}
                   playerLocation={playerLocation}
                   memorySpine={memorySpine}
+                  viewedCodexIds={viewedCodexIds}
+                  onViewCodexEntry={markCodexViewed}
                 />
               ) : isTasksPanelActive ? (
                 <MobileTaskPanel
@@ -5443,6 +5454,7 @@ function PlayContent() {
             onOpenCodex={onOpenCodexNav}
             onOpenTasks={onOpenTasksNav}
             onOpenSettings={onOpenSettingsNav}
+            hasUnreadCodex={hasUnreadCodex}
           />
         </div>
       </div>

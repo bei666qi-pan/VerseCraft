@@ -123,6 +123,10 @@ export type MobileCodexPanelProps = {
   playerLocation: string;
   /** G2：用于生成"记忆片段"区块（叙事化关系呈现），缺省时该区块不展示 */
   memorySpine?: MemorySpineState | null;
+  /** 图鉴逐条目已读状态：key 为图鉴目录 slot id */
+  viewedCodexIds?: Record<string, boolean>;
+  /** 玩家点开某图鉴条目详情时回调，用于标记已读并清除"新发现"角标 */
+  onViewCodexEntry?: (id: string) => void;
 };
 
 export type MobileTaskPanelProps = {
@@ -153,4 +157,6 @@ export type MobileBottomNavProps = {
   onOpenCodex: () => void;
   onOpenSettings: () => void;
   onOpenTasks?: () => void;
+  /** 图鉴是否存在未读的新发现，驱动"图鉴"导航项的角标提示 */
+  hasUnreadCodex?: boolean;
 };

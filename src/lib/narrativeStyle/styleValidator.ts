@@ -166,12 +166,15 @@ export function validateNarrativeStyle(args: ValidateNarrativeStyleArgs): Narrat
     }
   }
 
+  // 文风改造后允许更丰富的比喻密度（尤其 reveal/climax/ending 等更长档位），
+  // 改用长度密度判定（约每 100 字 1.4 次命中）而非固定次数，避免长文本被误判为堆砌。
   const purpleHits = countMatches(narrative, PURPLE_RE);
-  if (purpleHits >= 7) {
+  const purpleThreshold = Math.max(6, Math.ceil((narrative.length * 1.4) / 100));
+  if (purpleHits >= purpleThreshold) {
     issues.push({
       code: "purple_prose_overload",
       severity: "low",
-      detail: `hits=${purpleHits}`,
+      detail: `hits=${purpleHits}|len=${narrative.length}|threshold=${purpleThreshold}`,
     });
   }
 

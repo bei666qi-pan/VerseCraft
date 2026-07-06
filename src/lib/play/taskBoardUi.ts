@@ -339,6 +339,9 @@ export type TaskStageRiskBand = "calm" | "uneasy" | "hot";
 /** UI 用：这件事游戏愿意替玩家指路到什么程度（strong=指引明确，light=靠自己摸索） */
 export type TaskStageGuidanceLevel = "strong" | "standard" | "light" | "none";
 
+export type TaskRewardChipKind = "originium" | "unlock" | "item" | "relationship" | "intel";
+export type TaskRewardChip = { kind: TaskRewardChipKind; label: string };
+
 export type TaskStageCardViewModel = {
   taskId: string;
   role: TaskStageRole;
@@ -348,10 +351,12 @@ export type TaskStageCardViewModel = {
   issuerLine: string;
   /** 玩家现在具体能做/能说的一句话——本卡最具行动力的一行，优先取自任务的 nextHint。 */
   nextStep: string;
-  whyMatters: string;
-  ifNotDone: string;
-  payoffLine: string;
-  riskSense: string;
+  /** 单行氛围/理由文案，取代此前 whyMatters + ifNotDone 两段说明文字（2026-07 四次修订收敛）。 */
+  flavorLine: string;
+  /** 结构化奖励标签（图标+短词），取代此前整句"做成能得到"文案，交给 UI 渲染图标而不是拼句子。 */
+  rewardChips: TaskRewardChip[];
+  /** 风险短标签；calm 时为 null，UI 不再为"暂时很平静"强制渲染一整块风险框。 */
+  riskTag: string | null;
   /** UI 用：低风险中性、期限/中等不安、高反噬灼热 */
   riskBand: TaskStageRiskBand;
   guidanceLevel: TaskStageGuidanceLevel;
@@ -387,7 +392,7 @@ function stageRiskTier(t: GameTask): "low" | "medium" | "high" | "extreme" {
   return "low";
 }
 
-const WHY_MATTERS_FALLBACK: Record<TaskStageRole, readonly string[]> = {
+const FLAVOR_LINE_FALLBACK: Record<TaskStageRole, readonly string[]> = {
   mainline: [
     "这条线不推进，你还是困在这层楼的规则里。",
     "眼下能往前挪一步的，就是这个。",
@@ -405,14 +410,15 @@ const WHY_MATTERS_FALLBACK: Record<TaskStageRole, readonly string[]> = {
   ],
 };
 
-function buildWhyMatters(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
-  const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 96);
-  const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 96);
-  const desc = clipStageText(sanitizePlayerFacingInline(String(task.desc ?? ""), codex), 96);
+/** 单行氛围/理由文案：解释"为何要紧"，优先取作者写的戏剧字段，没有才落到按角色变体的兜底。 */
+function buildFlavorLine(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
+  const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 88);
+  const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 88);
+  const desc = clipStageText(sanitizePlayerFacingInline(String(task.desc ?? ""), codex), 88);
   if (urg) return urg;
   if (hook) return hook;
   if (desc) return desc;
-  return pickStableVariant(task.id, WHY_MATTERS_FALLBACK[role]);
+  return pickStableVariant(task.id, FLAVOR_LINE_FALLBACK[role]);
 }
 
 const NEXT_STEP_FALLBACK: Record<TaskStageRole, readonly string[]> = {
@@ -435,7 +441,7 @@ const NEXT_STEP_FALLBACK: Record<TaskStageRole, readonly string[]> = {
 
 /**
  * 「下一步」行：任务里最具体、最有行动力的一句（作者写在 nextHint 里的原话），
- * 此前只是 buildWhyMatters 的最低优先级兜底——一旦任务写了 urgencyReason/playerHook，
+ * 此前只是 buildFlavorLine 的最低优先级兜底——一旦任务写了 urgencyReason/playerHook，
  * nextHint 就被整句吞掉，UI 上永远看不到。现在单独开一行，任何任务都优先展示它。
  */
 function buildNextStep(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
@@ -444,63 +450,40 @@ function buildNextStep(task: GameTask, role: TaskStageRole, codex?: Record<strin
   return pickStableVariant(task.id, NEXT_STEP_FALLBACK[role]);
 }
 
-const IF_NOT_DONE_FALLBACK: Record<TaskStageRole, readonly string[]> = {
-  mainline: [
-    "拖着不管：出路只会越拖越远。",
-    "放着不做：局面不会替你等着。",
-    "搁置：你会被困在原地更久。",
-  ],
-  commission: [
-    "拖太久：对方会把你归为靠不住的人。",
-    "一直不还：这笔账会换一种方式找上你。",
-    "放鸽子：下次开口，对方未必再信你。",
-  ],
-  opportunity: [
-    "错过：这条路就封死了，得绕远路。",
-    "拖过这阵：机会不会留在原地等你。",
-    "错过时机：往后只能走更麻烦的办法。",
-  ],
-};
-
-function buildIfNotDone(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
-  const residue = clipStageText(
-    sanitizePlayerFacingInline(String((task as { residueOnFail?: string }).residueOnFail ?? ""), codex),
-    100
-  );
-  if (residue) return residue;
-  return pickStableVariant(task.id, IF_NOT_DONE_FALLBACK[role]);
-}
-
-const PAYOFF_FALLBACK: readonly string[] = [
-  "做成了，故事会往前松动一点。",
-  "拿下这个，你会多一条能用的路。",
-  "办成了，局面会因此挪动一小步。",
-];
-
-function buildPayoffLine(task: GameTask, codex?: Record<string, CodexEntry> | null): string {
+/**
+ * 结构化奖励标签（供 UI 渲染图标+短标签），取代此前"做成能得到"整句自然语言描述——
+ * 扫读一排短标签比读一句话更快，也是本轮收敛文字冗余的核心改动之一。
+ * 最多给 3 个标签，优先级：权限/出路 > 道具 > 关系 > 情报，全都没有时兜底"阶段性线索"。
+ */
+function buildRewardChips(task: GameTask, codex?: Record<string, CodexEntry> | null): TaskRewardChip[] {
   const t = task as GameTaskV2;
-  const unlocks = Array.isArray(t.reward?.unlocks) ? t.reward!.unlocks : [];
-  const rel = Array.isArray(t.reward?.relationshipChanges) ? t.reward!.relationshipChanges.length : 0;
-  const route = typeof t.relatedEscapeProgress === "string" && t.relatedEscapeProgress.trim().length > 0;
-  const intel =
-    (Array.isArray(t.sourceClueIds) ? t.sourceClueIds.length : 0) +
-    (Array.isArray(t.followupSeedCodes) ? t.followupSeedCodes.length : 0);
+  const chips: TaskRewardChip[] = [];
   const ori = typeof t.reward?.originium === "number" ? t.reward!.originium : 0;
+  if (ori > 0) chips.push({ kind: "originium", label: `+${ori}` });
 
+  const unlocks = Array.isArray(t.reward?.unlocks) ? t.reward!.unlocks : [];
   if (unlocks.length > 0) {
-    const labels = unlocks
-      .slice(0, 3)
-      .map((u) => clipStageText(sanitizePlayerFacingInline(String(u), codex), 36))
-      .filter(Boolean);
-    if (labels.length > 0)
-      return `做成可打开新权限/通道：${labels.join("、")}${unlocks.length > 3 ? "…" : ""}`;
-    return "做成会解锁新的行动权限或叙事口子。";
+    const first = clipStageText(sanitizePlayerFacingInline(String(unlocks[0]), codex), 18);
+    chips.push({ kind: "unlock", label: unlocks.length > 1 ? `${first}等${unlocks.length}项` : first });
+  } else if (typeof t.relatedEscapeProgress === "string" && t.relatedEscapeProgress.trim().length > 0) {
+    chips.push({ kind: "unlock", label: "推进出路" });
   }
-  if (route) return "做成会更靠近「脱困/出路」相关推进，并松动关键条件。";
-  if (rel > 0) return `做成会在关系侧留下可购买的下文（${rel} 处关键变动信号）。`;
-  if (intel > 0) return "做成会在手记/情报侧出现可验证的新条目，方便下一步下注。";
-  if (ori > 0) return `做成可获得资源补给（原石 ${ori} 等），用于后续交换与应急。`;
-  return pickStableVariant(t.id, PAYOFF_FALLBACK);
+
+  const itemCount =
+    (Array.isArray(t.reward?.items) ? t.reward!.items.length : 0) +
+    (Array.isArray(t.reward?.warehouseItems) ? t.reward!.warehouseItems.length : 0);
+  if (itemCount > 0) chips.push({ kind: "item", label: `道具×${itemCount}` });
+
+  const relCount = Array.isArray(t.reward?.relationshipChanges) ? t.reward!.relationshipChanges.length : 0;
+  if (relCount > 0 && chips.length < 3) chips.push({ kind: "relationship", label: "关系变化" });
+
+  if (chips.length === 0) {
+    const intel =
+      (Array.isArray(t.sourceClueIds) ? t.sourceClueIds.length : 0) +
+      (Array.isArray(t.followupSeedCodes) ? t.followupSeedCodes.length : 0);
+    chips.push({ kind: "intel", label: intel > 0 ? "新情报" : "阶段性线索" });
+  }
+  return chips.slice(0, 3);
 }
 
 function riskBandFromTier(tier: ReturnType<typeof stageRiskTier>): TaskStageRiskBand {
@@ -509,23 +492,16 @@ function riskBandFromTier(tier: ReturnType<typeof stageRiskTier>): TaskStageRisk
   return "calm";
 }
 
-function buildRiskSenseLine(
-  task: GameTask,
-  codex?: Record<string, CodexEntry> | null
-): { line: string; band: TaskStageRiskBand } {
+/**
+ * 风险短标签：只在真正有风险感（非 calm）时才给一句极短提示，calm 时返回 null——
+ * UI 不再为"暂时很平静"渲染一整块风险框，这是此前任务面板显得拥挤的主要来源之一。
+ */
+function buildRiskTag(task: GameTask): string | null {
   const tier = stageRiskTier(task);
-  const band = riskBandFromTier(tier);
-  const deadline = isDeadlineTask(task);
-  const rn = clipStageText(sanitizePlayerFacingInline(String((task as { riskNote?: string }).riskNote ?? ""), codex), 72);
-
-  let base = "";
-  if (tier === "extreme") base = "高风险高回报：容错很薄，反噬会来得很真。";
-  else if (tier === "high") base = "风险偏高：选错或拖延会改写关系与后续窗口。";
-  else if (tier === "medium") base = deadline ? "有时间窗口：拖着做，代价会换一种方式回来。" : "风向不稳：现在看起来还算稳。";
-  else base = deadline ? "期限在走近：未必致命，但会逼你做取舍。" : "当前压迫感不强，但这是舞台不是安全屋。";
-
-  const line = rn ? clipStageText(`${base} ${rn}`, 118) : base;
-  return { line, band };
+  if (tier === "extreme") return "高风险高回报";
+  if (tier === "high") return "有风险";
+  if (tier === "medium" && isDeadlineTask(task)) return "有时限";
+  return null;
 }
 
 /**
@@ -538,7 +514,7 @@ export function buildTaskStageCardViewModel(
   codex?: Record<string, CodexEntry> | null
 ): TaskStageCardViewModel {
   const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
-  const risk = buildRiskSenseLine(task, codex);
+  const riskBand = riskBandFromTier(stageRiskTier(task));
   const guidanceLevel: TaskStageGuidanceLevel =
     task.guidanceLevel === "strong" || task.guidanceLevel === "standard" || task.guidanceLevel === "light"
       ? task.guidanceLevel
@@ -551,11 +527,10 @@ export function buildTaskStageCardViewModel(
     claimMode: task.claimMode,
     issuerLine: issuer || "未知托付方",
     nextStep: buildNextStep(task, role, codex),
-    whyMatters: buildWhyMatters(task, role, codex),
-    ifNotDone: buildIfNotDone(task, role, codex),
-    payoffLine: buildPayoffLine(task, codex),
-    riskSense: risk.line,
-    riskBand: risk.band,
+    flavorLine: buildFlavorLine(task, role, codex),
+    rewardChips: buildRewardChips(task, codex),
+    riskTag: buildRiskTag(task),
+    riskBand,
     guidanceLevel,
   };
 }
@@ -587,12 +562,12 @@ export function buildTaskCompactRowViewModel(
   codex?: Record<string, CodexEntry> | null
 ): TaskCompactRowViewModel {
   const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
-  const risk = buildRiskSenseLine(task, codex);
+  const tone = riskBandFromTier(stageRiskTier(task));
   return {
     taskId: task.id,
     title: sanitizePlayerFacingInline(String(task.title ?? ""), codex),
     oneLiner: `${issuer || "未知来源"} · ${buildTaskCompactOneLiner(task, codex)}`,
-    tone: risk.band,
+    tone,
   };
 }
 

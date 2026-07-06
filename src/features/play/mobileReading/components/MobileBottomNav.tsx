@@ -11,6 +11,8 @@ type DockItem = {
   testId: string;
   active?: boolean;
   disabled?: boolean;
+  /** 存在未读的新发现（如图鉴新条目）时显示小圆点角标 */
+  badge?: boolean;
   onClick?: () => void;
 };
 
@@ -20,7 +22,7 @@ function DockButton({ item }: { item: DockItem }) {
     <button
       type="button"
       onClick={item.onClick}
-      aria-label={item.ariaLabel ?? item.label}
+      aria-label={item.badge ? `${item.ariaLabel ?? item.label}（有新发现）` : item.ariaLabel ?? item.label}
       aria-current={item.active ? "page" : undefined}
       aria-disabled={item.disabled || undefined}
       data-testid={item.testId}
@@ -31,12 +33,21 @@ function DockButton({ item }: { item: DockItem }) {
       {item.active ? (
         <span className={mobileReadingTheme.bottomNavActiveIndicator} aria-hidden />
       ) : null}
-      <Icon
-        className={`${mobileReadingTheme.bottomNavIcon} ${
-          item.active ? mobileReadingTheme.bottomNavIconActive : ""
-        }`}
-        strokeWidth={0.66}
-      />
+      <span className="relative inline-block">
+        <Icon
+          className={`${mobileReadingTheme.bottomNavIcon} ${
+            item.active ? mobileReadingTheme.bottomNavIconActive : ""
+          }`}
+          strokeWidth={0.66}
+        />
+        {item.badge ? (
+          <span
+            aria-hidden
+            data-testid={`${item.testId}-badge`}
+            className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-vc-accent shadow-[0_0_6px_rgba(47,116,106,0.55)] ring-2 ring-vc-paper-bright"
+          />
+        ) : null}
+      </span>
       <span className={mobileReadingTheme.bottomNavLabel}>{item.label}</span>
     </button>
   );
@@ -49,6 +60,7 @@ export function MobileBottomNav({
   onOpenCodex,
   onOpenSettings,
   onOpenTasks,
+  hasUnreadCodex,
 }: MobileBottomNavProps) {
   const items: DockItem[] = [
     {
@@ -81,6 +93,7 @@ export function MobileBottomNav({
       icon: MobileReadingIcons.Codex,
       testId: "bottom-nav-codex",
       active: activeItem === "codex",
+      badge: Boolean(hasUnreadCodex) && activeItem !== "codex",
       onClick: onOpenCodex,
     },
     {
