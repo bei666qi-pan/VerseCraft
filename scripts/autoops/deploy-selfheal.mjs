@@ -101,7 +101,11 @@ async function main() {
     let poll;
     let deploymentUuid = "";
     try {
-      const deploy = await client.deploy(uuid || "dry-run-app", { force: true });
+      // `force: true` 会让 Coolify 在 docker build 上加 --no-cache（已用真实部署日志确认，
+      // 这正是本仓库过去几次部署每次都要完整重装依赖、耗时10分钟+的根因——不是 Coolify 构建层
+      // 缓存机制本身失效，是每次触发都主动要求跳过它）。这里默认不强制，让 Coolify 正常复用
+      // 已有镜像层缓存；仍可用 --forceRebuild 显式要求一次干净重建（怀疑缓存本身有问题时用）。
+      const deploy = await client.deploy(uuid || "dry-run-app", { force: Boolean(args.forceRebuild) });
       deploymentUuid = deploy?.deployment_uuid || deploy?.deployment?.deployment_uuid || deploy?.deployments?.[0]?.deployment_uuid || "";
       poll = deploymentUuid
         ? await client.pollDeployment(deploymentUuid, { attempts: pollAttempts, delayMs: pollDelayMs })
