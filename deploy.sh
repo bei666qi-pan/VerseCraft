@@ -18,6 +18,32 @@
  * --no-selfheal if you just want to push without deploying yet.
  */
 const { execSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+
+// 加载本地凭证文件（GITEE_USER/TOKEN、COOLIFY_API_KEY/BASE_URL 等），不覆盖已有 env。
+// 用 JS 逐行解析而不是 shell source：source 这个文件时曾把一段 token 当命令执行，
+// 把密钥内容打印到了终端输出里（真实事故，见项目记忆）。文件不存在就跳过，不报错。
+function loadDeployCredentialsFile() {
+  const credPath = path.join(__dirname, "部署凭证.txt");
+  let raw = "";
+  try {
+    raw = fs.readFileSync(credPath, "utf8");
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (/^[A-Z_][A-Z0-9_]*$/.test(key) && process.env[key] == null) {
+      process.env[key] = value;
+    }
+  }
+}
 
 function run(cmd, options) {
   return execSync(cmd, { stdio: (options && options.stdio) || "inherit" });
@@ -32,6 +58,7 @@ function quoteArg(input) {
 }
 
 function main() {
+  loadDeployCredentialsFile();
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   const msg = argv.find((a) => !a.startsWith("--")) || "";
