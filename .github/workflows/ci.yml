@@ -355,14 +355,29 @@ jobs:
 
   # T9（技术改良，2026-07）：此前 CI 从未验证过 Dockerfile 的可构建性——生产部署
   # 完全依赖 Coolify 在部署时才第一次 `docker build`，构建失败要等到那时才发现。
-  # 本 job 只做 `docker build`（不 push、不需要任何密钥，见 Dockerfile 本身也没有
-  # 要求 DATABASE_URL/AUTH_SECRET 之类的 build ARG），验证镜像三阶段构建本身是否
-  # 成功，独立于其它 job、不阻塞其它验证的反馈速度。
+  # 本 job 只做 `docker build`（不 push），验证镜像三阶段构建本身是否成功，独立于
+  # 其它 job、不阻塞其它验证的反馈速度。
+  #
+  # 修复记录（2026-07）：此前这里曾误以为 Dockerfile 不需要任何密钥，实际上
+  # `next build` 收集 /api/altcha/challenge 等路由的页面数据时会 eager 校验
+  # `serverConfig.ts` 的 DATABASE_URL/AUTH_SECRET 非空（不要求真的可连接）。生产
+  # 部署能成功是因为 Coolify 会在构建前把配置的环境变量写成 `.env` 文件放进构建
+  # 上下文（`.dockerignore` 只排除 `.env*.local`，plain `.env` 会被 `COPY . .`
+  # 带进镜像，Next.js 构建时自动读取）——本地 `docker build` 没有这一步，此前一直
+  # 被更早的参数错误提前挡住而没暴露。这里同样写一个占位 `.env`（值与 verify job
+  # 一致）来复现同等条件，不代表镜像运行时真的需要连接这个数据库。
   docker-build:
     name: docker-build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Write placeholder .env for build-time env validation
+        run: |
+          cat > .env <<'EOF'
+          DATABASE_URL=postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET=ci-placeholder-auth-secret-at-least-32-chars-long
+          EOF
 
       - name: Build production Docker image (no push)
         run: docker build -t versecraft:ci-verify .
