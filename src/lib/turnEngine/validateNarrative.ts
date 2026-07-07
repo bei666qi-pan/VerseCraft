@@ -105,7 +105,12 @@ export function validateNarrativePersonNames(args: {
     const reportable = unregistered.filter(
       (e) => e.token.length >= 2 && !NAME_STOPWORDS.has(e.token),
     );
+    // 去重：用 .slice(0, 2) 规范化（避免 3-char "陈昆从" 重复报 2 次）
+    const seen = new Set<string>();
     for (const u of reportable) {
+      const canonical = u.token.slice(0, 2);
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
       issues.push({
         code: "narrative_unregistered_person_name",
         severity: "high",

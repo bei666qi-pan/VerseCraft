@@ -149,26 +149,62 @@ export function extractChineseNames(
   // 这些覆盖了汉语最常见 100+ 姓氏 + 老/阿/小 等口语前缀。
   const NAME_PREFIX_RE = /^[老阿小大陈林张王李赵刘杨黄周吴徐孙马朱胡郭何高罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎贺顾毛郝龚邵万钱严覃武戴莫孔向汤]/;
 
-  const VERB_TAIL_RE = /[走来说到笑看听点头摇头抬伸转缩皱眯睁闭盯望敲碰推拉按踢踩拾捡放撕扯握握紧松开坐下站起转身回头转身回头迈步跨步伸手伸手]/;
-  const windowSizes = [3, 2];
+  const VERB_TAIL_RE = /[走来说到笑看听点头摇头抬伸转缩皱眯睁闭盯望敲碰推拉按踢踩拾捡放撕扯握握紧松开坐下站起转身回头迈步跨步伸手和与从往外里上下出入并顾四周在八方]/;
   for (const [rs, re] of runs) {
     const runText = text.slice(rs, re);
-    let matched = false;
-    for (const w of windowSizes) {
-      for (let k = 0; k + w <= runText.length; k += 1) {
-        const token = runText.slice(k, k + w);
-        if (token.length === 0) continue;
-        if (registeredNames.has(token)) continue;
-        if (NAME_STOPWORDS.has(token)) continue;
-        // 若 w=3 且前 2 字符是 stopword（如"黄铜"），降级为 2 字符
-        if (w === 3 && NAME_STOPWORDS.has(token.slice(0, 2))) continue;
-        // 若 w=3 且尾字符是常见动词（"陈昆走"→"陈昆"），降级为 2 字符
-        if (w === 3 && VERB_TAIL_RE.test(token.charAt(2))) continue;
-        if (!NAME_PREFIX_RE.test(token)) continue;
-        const span: [number, number] = [rs + k, rs + k + w];
+    let k = 0;
+    while (k + 2 <= runText.length) {
+      // 第一步：尝试 w=3（更长优先）。仅当 3 字 token 第三字不是动词后缀/虚词时，
+      //   才视为 3 字真名候选（如"赵四海"）。否则视为 2 字真名 + 后续虚词。
+      let consumed = 0;
+      if (k + 3 <= runText.length) {
+        const c3 = runText.slice(k, k + 3);
+        const c3ThirdIsVerbTail = VERB_TAIL_RE.test(c3.charAt(2));
+        const c3FirstTwoIsStopword = NAME_STOPWORDS.has(c3.slice(0, 2));
+        console.log("W3 DEBUG c3=", c3, "verb=", c3ThirdIsVerbTail, "fw=", c3FirstTwoIsStopword, "reg=", registeredNames.has(c3), "sw=", NAME_STOPWORDS.has(c3), "np=", NAME_PREFIX_RE.test(c3));
+        if (
+          !registeredNames.has(c3) &&
+          !NAME_STOPWORDS.has(c3) &&
+          NAME_PREFIX_RE.test(c3) &&
+          !c3ThirdIsVerbTail &&
+          !c3FirstTwoIsStopword
+        ) {
+          const span3: [number, number] = [rs + k, rs + k + 3];
+          const ctx3 = sliceContext(text, span3);
+          out.push({
+            token: c3,
+            span: span3,
+            isAlias: false,
+            contextBefore: ctx3.before,
+            contextAfter: ctx3.after,
+            candidate: true,
+            registered: false,
+          });
+          k += 3;
+          consumed = 1;
+        }
+      }
+      if (consumed === 1) continue;
+
+      const c2 = runText.slice(k, k + 2);
+      // 若 c2 起点的左侧 1 字 + c2 第 1 字 = stopword（如"环顾"配"顾四"），跳过
+      if (k >= 1 && k + 2 <= runText.length && NAME_STOPWORDS.has(runText.slice(k - 1, k + 1))) {
+        k += 1;
+        continue;
+      }
+      if (
+        !registeredNames.has(c2) &&
+        !NAME_STOPWORDS.has(c2) &&
+        NAME_PREFIX_RE.test(c2)
+      ) {
+        const c3 = runText.slice(k, k + 3);
+        const lastCharVerb =
+          c3.length === 3 &&
+          (NAME_STOPWORDS.has(c3.slice(0, 2)) || VERB_TAIL_RE.test(c3.charAt(2)));
+        const span: [number, number] = [rs + k, rs + k + 2];
         const ctx = sliceContext(text, span);
         out.push({
-          token,
+          token: c2,
           span,
           isAlias: false,
           contextBefore: ctx.before,
@@ -176,10 +212,10 @@ export function extractChineseNames(
           candidate: true,
           registered: false,
         });
-        matched = true;
-        break;
+        k += lastCharVerb ? 3 : 2;
+        continue;
       }
-      if (matched) break;
+      k += 1;
     }
   }
 
