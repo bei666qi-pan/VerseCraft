@@ -25,6 +25,8 @@ const PKG_JSON = resolve(ROOT, "package.json");
 interface CliArgs {
   weapon: boolean;
   profession: boolean;
+  refusal: boolean;
+  economy: boolean;
   json: boolean;
   verbose: boolean;
 }
@@ -34,6 +36,8 @@ function parseArgs(): CliArgs {
   return {
     weapon: args.includes("--weapon"),
     profession: args.includes("--profession"),
+    refusal: args.includes("--refusal"),
+    economy: args.includes("--economy"),
     json: args.includes("--json"),
     verbose: args.includes("--verbose") || args.includes("-v"),
   };
@@ -50,9 +54,16 @@ async function runWithNodeTest(args: CliArgs): Promise<number> {
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/weapon-schema.test.ts"));
   } else if (args.profession) {
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/profession-rules.test.ts"));
+  } else if (args.refusal) {
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/refusal-path.test.ts"));
+  } else if (args.economy) {
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/economy-rules.test.ts"));
   } else {
+    // 全量
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/weapon-schema.test.ts"));
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/profession-rules.test.ts"));
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/refusal-path.test.ts"));
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/economy-rules.test.ts"));
   }
 
   // 检查文件是否存在
@@ -138,7 +149,13 @@ async function main(): Promise<void> {
   console.log("🧪 VerseCraft Promptfoo 确定性断言测试");
   console.log("═".repeat(50));
   console.log(`模式: mock (离线，不调 LLM)`);
-  console.log(`范围: ${args.weapon ? "仅武器" : args.profession ? "仅职业" : "全部"}`);
+  console.log(
+    `范围: ${args.weapon ? "仅武器" :
+      args.profession ? "仅职业" :
+      args.refusal ? "仅拒绝路径" :
+      args.economy ? "仅经济规则" :
+      "全部"}`
+  );
 
   // 优先使用 Node 内置测试（更可控，不需要额外依赖）
   const exitCode = args.json

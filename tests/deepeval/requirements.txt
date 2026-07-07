@@ -1,0 +1,20 @@
+# DeepEval + pytest dependencies for VerseCraft narrative evaluation
+#
+# 安装：
+#   pip3 install -r tests/deepeval/requirements.txt
+#
+# 运行（需要先设置裁判模型 API key）：
+#   OPENAI_API_KEY=xxx pytest tests/deepeval/ -v
+#
+# 本地离线 mock 模式：
+#   DEEPEVAL_MOCK_MODE=1 pytest tests/deepeval/ -v
+#
+# 注意：DeepEval 默认用 OpenAI judge model。也可以通过环境变量指定：
+#   DEEPEVAL_MODEL=gpt-4o
+#
+# 真实 API 模式下会调用 OpenAI（或兼容接口）的 chat completion。
+
+deepeval>=2.0.0
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pydantic>=2.0.0

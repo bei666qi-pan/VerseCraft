@@ -71,3 +71,9 @@ tests:
 
   # === 职业规则一致性 ===
   - path: tests/promptfoo/tests/profession-rules.yaml
+
+  # === 拒绝路径 / 拒绝越界（v3 升级） ===
+  - path: tests/promptfoo/tests/refusal-path.yaml
+
+  # === 经济规则护栏（v3 升级） ===
+  - path: tests/promptfoo/tests/economy-rules.yaml

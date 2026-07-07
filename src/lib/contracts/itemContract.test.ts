@@ -84,7 +84,7 @@ describe("道具系统契约", () => {
     });
 
     it("同ID道具堆叠数量", () => {
-      let state = emptyState;
+      const state = emptyState;
       const r1 = addItem(state, { id: "bandage", name: "绷带", tier: "common", quantity: 2 });
       const r2 = addItem(r1.newState, { id: "bandage", name: "绷带", tier: "common", quantity: 3 });
       assert.equal(r2.added, true);
@@ -104,21 +104,21 @@ describe("道具系统契约", () => {
 
   describe("消耗道具", () => {
     it("消耗1个绷带从堆叠中", () => {
-      let state = addItem(emptyState, { id: "bandage", name: "绷带", tier: "common", quantity: 3 }).newState;
+      const state = addItem(emptyState, { id: "bandage", name: "绷带", tier: "common", quantity: 3 }).newState;
       const { newState, consumed } = consumeItem(state, "bandage", 1);
       assert.equal(consumed, true);
       assert.equal(newState.inventory[0]!.quantity, 2);
     });
 
     it("消耗最后1个道具后从行囊移除", () => {
-      let state = addItem(emptyState, { id: "key", name: "旧钥匙", tier: "uncommon", quantity: 1 }).newState;
+      const state = addItem(emptyState, { id: "key", name: "旧钥匙", tier: "uncommon", quantity: 1 }).newState;
       const { newState, consumed } = consumeItem(state, "key", 1);
       assert.equal(consumed, true);
       assert.equal(newState.inventory.length, 0);
     });
 
     it("数量不足时消耗失败", () => {
-      let state = addItem(emptyState, { id: "bandage", name: "绷带", tier: "common", quantity: 1 }).newState;
+      const state = addItem(emptyState, { id: "bandage", name: "绷带", tier: "common", quantity: 1 }).newState;
       const { consumed } = consumeItem(state, "bandage", 3);
       assert.equal(consumed, false);
     });
@@ -131,7 +131,7 @@ describe("道具系统契约", () => {
 
   describe("仓库转移", () => {
     it("行囊道具转移到空仓库", () => {
-      let state = addItem(emptyState, { id: "gem", name: "原石碎片", tier: "rare", quantity: 2 }).newState;
+      const state = addItem(emptyState, { id: "gem", name: "原石碎片", tier: "rare", quantity: 2 }).newState;
       const { newState, moved } = moveToWarehouse(state, "gem");
       assert.equal(moved, true);
       assert.equal(newState.inventory.length, 0);

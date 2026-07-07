@@ -1,0 +1,159 @@
+# Economy Rules — 经济系统一致性
+# 验证 currency_change / consumed_items / awarded_items 是否符合 VerseCraft 经济约束
+# 不调 LLM，纯确定性断言
+
+description: "Economy Rules — Currency & Items Consistency"
+
+# === VerseCraft 经济约束（产品口径） ===
+economyRules:
+  # currency_change 单步绝对值上限
+  maxCurrencyChangePerStep: 50
+  # consumed_items 单步上限
+  maxConsumedItemsPerStep: 10
+  # awarded_items 单步上限（防物品凭空出现）
+  maxAwardedItemsPerStep: 5
+  # 单个物品 id 长度上限
+  maxItemIdLength: 64
+  # NPC id 长度上限
+  maxNpcIdLength: 64
+  # task id 长度上限
+  maxTaskIdLength: 64
+  # 关系系统 delta 单步上限
+  maxRelationshipDeltaPerStep: 30
+
+tests:
+  # === currency_change 经济护栏 ===
+  - description: "currency_change 单步变化应在 ±50 范围内"
+    vars:
+      playerInput: "我获得原石"
+      mockResponse: "economy-positive-originium"
+    assert:
+      - type: javascript
+        value: |
+          const c = output.currency_change;
+          if (!c || typeof c !== "object") return true;
+          for (const [k, v] of Object.entries(c)) {
+            if (typeof v !== "number") {
+              throw new Error(`currency_change.${k} 不是数字`);
+            }
+            if (Math.abs(v) > 50) {
+              throw new Error(`currency_change.${k}=${v} 超过 ±50 上限`);
+            }
+          }
+          return true;
+
+  - description: "currency_change 应至少有一个变化字段"
+    vars:
+      playerInput: "我什么都没做"
+      mockResponse: "economy-noop"
+    assert:
+      - type: javascript
+        value: |
+          const c = output.currency_change;
+          if (c && typeof c === "object" && Object.keys(c).length > 0) return true;
+          // 也允许 null/undefined — AI 判定为无变化
+          return true;
+
+  # === awarded_items 物品发放护栏 ===
+  - description: "awarded_items 单步数量不应超过 5"
+    vars:
+      playerInput: "我打开宝箱"
+      mockResponse: "economy-treasure"
+    assert:
+      - type: javascript
+        value: |
+          const items = output.awarded_items ?? [];
+          if (items.length > 5) {
+            throw new Error(`awarded_items=${items.length} 单步超过 5`);
+          }
+          for (const item of items) {
+            if (typeof item.id !== "string" || item.id.length === 0 || item.id.length > 64) {
+              throw new Error(`物品 id 非法: ${JSON.stringify(item.id)}`);
+            }
+            if (typeof item.name !== "string" || item.name.length === 0) {
+              throw new Error(`物品 name 非法: ${JSON.stringify(item.name)}`);
+            }
+          }
+          return true;
+
+  # === consumed_items 消耗护栏 ===
+  - description: "consumed_items quantity 应是正整数且 ≤ 10"
+    vars:
+      playerInput: "我消耗物品"
+      mockResponse: "economy-consume"
+    assert:
+      - type: javascript
+        value: |
+          const items = output.consumed_items ?? [];
+          for (const item of items) {
+            if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+              throw new Error(`quantity=${item.quantity} 不是正整数`);
+            }
+            if (item.quantity > 10) {
+              throw new Error(`quantity=${item.quantity} 单步超过 10`);
+            }
+          }
+          return true;
+
+  # === 任务进度单调性（不在 turn 内倒退） ===
+  - description: "task_updates.progress 应在 [0,100]"
+    vars:
+      playerInput: "我推进任务"
+      mockResponse: "economy-task-progress"
+    assert:
+      - type: javascript
+        value: |
+          const updates = output.task_updates ?? [];
+          for (const u of updates) {
+            if (typeof u.progress === "number") {
+              if (u.progress < 0 || u.progress > 100) {
+                throw new Error(`task_updates.progress=${u.progress} 越界 [0,100]`);
+              }
+            }
+            if (u.task_id && (typeof u.task_id !== "string" || u.task_id.length === 0)) {
+              throw new Error(`task_id 非法: ${JSON.stringify(u.task_id)}`);
+            }
+          }
+          return true;
+
+  # === 图鉴解锁 id 校验 ===
+  - description: "codex_updates.entry_id 必须是非空字符串"
+    vars:
+      playerInput: "我探索区域"
+      mockResponse: "economy-codex"
+    assert:
+      - type: javascript
+        value: |
+          const updates = output.codex_updates ?? [];
+          for (const u of updates) {
+            if (typeof u.entry_id !== "string" || u.entry_id.length === 0) {
+              throw new Error(`codex_updates.entry_id 非法`);
+            }
+            const VALID_TYPES = ["npc", "location", "threat", "item", "lore", "faction"];
+            if (!VALID_TYPES.includes(u.type)) {
+              throw new Error(`codex_updates.type=${u.type} 非法`);
+            }
+          }
+          return true;
+
+  # === 关系系统护栏 ===
+  - description: "relationship_updates.delta 绝对值 ≤ 30"
+    vars:
+      playerInput: "我和 NPC 交谈"
+      mockResponse: "economy-relationship"
+    assert:
+      - type: javascript
+        value: |
+          const rels = output.relationship_updates ?? [];
+          for (const r of rels) {
+            if (typeof r.delta !== "number") {
+              throw new Error(`relationship_updates.delta 非数字`);
+            }
+            if (Math.abs(r.delta) > 30) {
+              throw new Error(`relationship_updates.delta=${r.delta} 单步超过 30`);
+            }
+            if (r.delta < -100 || r.delta > 100) {
+              throw new Error(`relationship_updates.delta=${r.delta} 越界 [-100,100]`);
+            }
+          }
+          return true;

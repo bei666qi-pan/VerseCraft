@@ -1,0 +1,19 @@
+{
+  "mode": "mock",
+  "version": "v3",
+  "metrics_run": [
+    "coherence",
+    "characterVoice",
+    "plotLogic",
+    "immersion",
+    "factConsistency"
+  ],
+  "hard_floors": {
+    "coherence": 2,
+    "characterVoice": 2,
+    "plotLogic": 2,
+    "immersion": 0,
+    "factConsistency": 3
+  },
+  "note": "DeepEval integration for VerseCraft narrative layer"
+}

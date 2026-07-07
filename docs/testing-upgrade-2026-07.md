@@ -1,6 +1,10 @@
 # 测试体系全面升级 (2026-07)
 
 > 基于三件事：Promptfoo 确定性断言、DeepEval 叙事质量裁判、长程 Playthrough 模拟器
+>
+> **v3 状态（2026-07-07）**：playthrough harness 升级到 v3，含 20 场景库、DM-only 泄漏检测、NPC 复活检测、状态跳变检测；新增 `scripts/run-playthrough-fuzz.ts` nightly runner 和 `.github/workflows/playthrough-fuzz-nightly.yml`；DeepEval 接入完成（5 维度 + ConversationSimulator）。
+>
+> 详细架构：见 [`docs/playthrough-architecture.md`](./playthrough-architecture.md)
 
 ## 升级概览
 
@@ -165,35 +169,48 @@ for persona in [speedrunner, explorer, rulebreaker, confused]:
 连续 N 步（默认 8）无进展 → softlock。
 "进展"定义：任务变化、位置变化、物品变化、HP/理智显著变化、图鉴更新、NPC 状态变化、标记解锁。
 
-### 文件结构
+### 文件结构（v3）
 ```text
 src/lib/evals/playthrough/
-  index.ts               ← 主入口
-  types.ts               ← 核心类型定义
-  playerAgent.ts         ← 模拟玩家（4 persona + mock 动作生成器）
-  invariants.ts          ← 确定性不变量检查 + softlock 检测
-  narrativeJudge.ts      ← 叙事一致性裁判（mock + live）
-  orchestrator.ts        ← 主编排器（单局 + 批次）
-  playthrough.test.ts    ← 测试（24 个）
-scripts/run-playthrough.ts ← CLI 运行器
+  index.ts                ← 主入口
+  types.ts                ← 核心类型
+  playerAgent.ts          ← 4 persona + mock 动作生成
+  invariants.ts           ← 不变量（含 DM-only 泄漏、NPC 复活、状态跳变）
+  narrativeJudge.ts       ← 叙事裁判（mock + live）
+  sutAdapter.ts           ← Mock + Http SUT adapter
+  scenarios.ts            ← 20 场景 × 4 路径
+  orchestrator.ts         ← v3 编排 + 失败聚类 + TraceArtifact
+  playthrough.test.ts     ← 24 v1 测试
+  playthrough-v3.test.ts  ← 24 v3 测试
+scripts/run-playthrough.ts       ← v1 CLI runner（兼容保留）
+scripts/run-playthrough-fuzz.ts  ← nightly fuzz runner（v3）
+.github/workflows/playthrough-fuzz-nightly.yml ← nightly cron
 ```
 
 ### 运行命令
 ```bash
-pnpm test:playthrough                        # 单测
-pnpm test:playthrough:run                    # CLI 运行（所有 persona, mock）
+pnpm test:playthrough                              # 单测（v1 + v3）
+pnpm test:playthrough:run                          # 交互 CLI（v1）
 pnpm dlx tsx scripts/run-playthrough.ts --persona speedrunner --runs 5
 pnpm dlx tsx scripts/run-playthrough.ts --json-out report.json
+
+# Nightly fuzz（CI 用）
+pnpm dlx tsx scripts/run-playthrough-fuzz.ts \
+  --runs 1 --max-steps 20 --fail-on-regression \
+  --threshold 0.10 --json-out .runtime-data/playthrough-fuzz-report.json
+
+# 仅跑指定路径
+pnpm dlx tsx scripts/run-playthrough-fuzz.ts --categories happy,recovery
 ```
 
-### 覆盖矩阵
+### 覆盖矩阵（v3：20 场景 × 4 路径）
 
-| Persona | Happy Path | Recovery Path | Refusal Path | Abandonment |
-|---------|-----------|---------------|--------------|-------------|
-| speedrunner | ✓ 主线速通 | — | — | ✓ 步数上限 |
-| explorer | ✓ 探索通关 | ✓ 迷路后找回 | — | ✓ 软卡死 |
-| rulebreaker | — | ✓ 非法后回退 | ✓ 规则拒绝 | ✓ 违反不变量 |
-| confused | — | ✓ 困惑后回归 | ✓ 无效输入 | ✓ 步数耗尽 |
+| Persona | Happy | Recovery | Refusal | Abandonment |
+|---------|-------|----------|---------|-------------|
+| speedrunner | ✓ 主线速通 / 经济流 | — | — | ✓ 步数上限 |
+| explorer | ✓ 探索通关 / NPC 交互 | ✓ 低 HP / 低 sanity / 库存满 | — | ✓ 软卡死 |
+| rulebreaker | — | — | ✓ 攻击友好 NPC / prompt injection / 非法物品 / 跨职业 / 数值溢出 | ✓ 破坏后崩溃 |
+| confused | — | ✓ 死亡边缘恢复 | ✓ 越界武器 | ✓ 30s 弃坑 / 重复循环 / 低理智后放弃 |
 
 ### 诚实局限
 > LLM 模拟的用户是真实人类的不可靠替身（《Lost in Simulation》, 2026）。
@@ -212,28 +229,30 @@ pnpm dlx tsx scripts/run-playthrough.ts --json-out report.json
   "test:promptfoo": "tsx --test tests/promptfoo/tests/*.test.ts",
   "test:promptfoo:run": "tsx scripts/run-promptfoo.ts",
   "test:deepeval": "tsx --test src/lib/evals/deepEval/*.test.ts",
+  "test:deepeval:run": "tsx scripts/run-deepeval.ts",
   "test:playthrough": "tsx --test src/lib/evals/playthrough/playthrough.test.ts",
-  "test:playthrough:run": "tsx scripts/run-playthrough.ts"
+  "test:playthrough:run": "tsx scripts/run-playthrough.ts",
+  "test:playthrough:fuzz": "tsx scripts/run-playthrough-fuzz.ts"
 }
 ```
 
 ### 推荐 CI 分层
 
 ```yaml
-# .github/workflows/ 可新增：
-#
-# deterministic-assertions:
-#   运行: pnpm test:promptfoo（秒级，免费）
-#   触发: 每个 PR
-#
-# playthrough-mock:
-#   运行: pnpm test:playthrough（~1s，mock 模式）
-#   触发: 每个 PR
-#
-# deep-eval-gate:
-#   运行: pnpm dlx tsx scripts/eval-deepeval.ts --calibrate
-#
-# 后续可添加 live 模式 job（需要真实 AI 网关）
+# 每个 PR：
+deterministic-assertions:    pnpm test:promptfoo（~1s，免费）
+playthrough-mock:            pnpm test:playthrough（~1s，免费）
+e2e-contract:                pnpm run test:e2e:contract（~30s，免费）
+
+# 每晚定时（已实现）：
+playthrough-fuzz-nightly:    pnpm test:playthrough:fuzz + DeepEval（mock）
+                             → 失败率超 10% 自动开 issue
+
+# 后续可添加：
+deep-eval-gate:              pnpm dlx tsx scripts/eval-deepeval.ts --mode live
+                             （需要 AI gateway secrets）
+playthrough-live-fuzz:       pnpm test:playthrough:fuzz --live
+                             （需要 AI gateway secrets）
 ```
 
 ### test-gate 扩展
@@ -263,7 +282,7 @@ L9: Playthrough 模拟器    → pnpm test:playthrough
 ## 六、下一步
 
 1. **补充校准样本**：将 `CALIBRATION_SEEDS` 从 8 个扩展到 30-50 个人工标注样本
-2. **接入 Live 模式**：Playthrough 的 live 模式需要真实 AI 网关
-3. **CI 集成**：在 `.github/workflows/ci.yml` 中新增 deterministic 和 playthrough job
-4. **历史基线**：在 `benchmarks/suite.json` 中记录 playthrough pass rate 基线
-5. **夜间定时跑**：用 `pnpm test:playthrough:run --runs 5` 配 cron 定时跑
+2. **接入 Live 模式**：Playthrough 的 live 模式 + DeepEval 真实裁判（需要 AI gateway）
+3. **历史基线**：用 git tracking `playthrough-fuzz-report.json` 识别回归
+4. **场景扩展**：从 20 个扩到 50 个，覆盖更多支线
+5. **失败聚类 → Issue**：nightly 触发回归时自动开 GitHub issue（已实现开 issue 部分）

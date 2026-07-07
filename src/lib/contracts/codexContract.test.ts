@@ -117,7 +117,7 @@ describe("图鉴系统契约", () => {
     });
 
     it("重复遭遇同一 NPC 不重复创建", () => {
-      let state = ensureCodexEntry(emptyCodex, "N-007", "廖暗", "npc", 3).newState;
+      const state = ensureCodexEntry(emptyCodex, "N-007", "廖暗", "npc", 3).newState;
       const { isNew } = ensureCodexEntry(state, "N-007", "廖暗", "npc", 10);
       assert.equal(isNew, false);
       assert.equal(state.totalNpcDiscovered, 1);
@@ -162,7 +162,7 @@ describe("图鉴系统契约", () => {
     });
 
     it("异常类型不接受好感度", () => {
-      let state = ensureCodexEntry(emptyCodex, "ANOM-001", "暗月残片", "anomaly", 1).newState;
+      const state = ensureCodexEntry(emptyCodex, "ANOM-001", "暗月残片", "anomaly", 1).newState;
       const { changed } = updateFavorability(state, "ANOM-001", 5);
       assert.equal(changed, false);
     });
@@ -181,7 +181,7 @@ describe("图鉴系统契约", () => {
 
   describe("图鉴备注", () => {
     it("为已有条目添加备注", () => {
-      let state = ensureCodexEntry(emptyCodex, "N-007", "廖暗", "npc", 1).newState;
+      const state = ensureCodexEntry(emptyCodex, "N-007", "廖暗", "npc", 1).newState;
       const { added } = addCodexNote(state, "N-007", "在走廊尽头看见了不该看见的东西");
       assert.equal(added, true);
     });

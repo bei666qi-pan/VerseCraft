@@ -71,7 +71,7 @@ interface TurnResolveResult {
 
 function applyDmTurn(dm: DmRecord, prevState: GameState): TurnResolveResult {
   const errors: string[] = [];
-  let state = { ...prevState, inventory: [...prevState.inventory], warehouse: [...prevState.warehouse], tasks: [...prevState.tasks], codex: { ...prevState.codex }, dynamicNpcStates: { ...prevState.dynamicNpcStates } };
+  const state = { ...prevState, inventory: [...prevState.inventory], warehouse: [...prevState.warehouse], tasks: [...prevState.tasks], codex: { ...prevState.codex }, dynamicNpcStates: { ...prevState.dynamicNpcStates } };
 
   // 1. 理智
   let sanityDelta = -(dm.sanity_damage ?? 0);

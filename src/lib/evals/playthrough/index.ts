@@ -1,17 +1,18 @@
 /**
- * 长程 Playthrough 模拟器索引
+ * 长程 Playthrough 模拟器索引（v3）
  *
  * 自建薄壳 harness：Player Agent + 游戏循环 + 双层检查器 + 编排
  *
  * 导出：
  * - types: 核心类型定义
  * - playerAgent: 模拟玩家（4 persona）
- * - invariants: 确定性不变量检查器
+ * - invariants: 确定性不变量检查器（v3 含 DM-only 泄漏、NPC 复活、状态跳变）
  * - narrativeJudge: 叙事一致性裁判
- * - orchestrator: 主编排器
+ * - sutAdapter: SUT 适配器（mock / HTTP live）
+ * - scenarios: 场景库（20+ 场景 × 4 路径）
+ * - orchestrator: 主编排器（v3 含 scenario + SUT + trace artifact + 失败聚类）
  */
 
-// Types
 export type {
   PersonaType,
   PersonaConfig,
@@ -28,14 +29,39 @@ export type {
   TerminatedReason,
 } from "./types";
 
-// Player Agent
 export { PERSONAS, generateMockAction, buildPlayerAgentPrompt } from "./playerAgent";
 
-// Invariants
-export { checkAllInvariants, checkSoftlock, createInitialStateSnapshot } from "./invariants";
+export {
+  checkAllInvariants,
+  checkSoftlock,
+  createInitialStateSnapshot,
+  detectNpcResurrections,
+} from "./invariants";
 
-// Narrative Judge
 export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 
-// Orchestrator
-export { runSinglePlaythrough, runPlaythroughBatch } from "./orchestrator";
+export {
+  createSutAdapter,
+  MockSutAdapter,
+  HttpSutAdapter,
+} from "./sutAdapter";
+export type { SutAction, SutResponse, SutAdapter, HttpSutAdapterOptions } from "./sutAdapter";
+
+export {
+  SCENARIOS,
+  getScenariosByCategory,
+  findScenario,
+  getScenariosForPersona,
+  getScenarioLibraryStats,
+} from "./scenarios";
+export type { Scenario, ScenarioCategory, ScenarioLibraryStats } from "./scenarios";
+
+export {
+  runSinglePlaythroughV3,
+  runPlaythroughBatchV3,
+  runSinglePlaythrough,
+  runPlaythroughBatch,
+  clusterFailures,
+  getScenarioLibraryCounts,
+} from "./orchestrator";
+export type { PlaythroughV3Config, TraceArtifact, FailureCluster } from "./orchestrator";

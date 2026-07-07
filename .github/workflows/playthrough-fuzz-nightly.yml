@@ -1,0 +1,188 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Playthrough Fuzz — 每晚定时（北京时间凌晨）
+#
+# 把 playthrough harness 作为「有状态系统的模糊测试器」使用：
+# - 跑全部 20 个 scenarios × 各自 persona × 1 局（mock 模式，无外部依赖）
+# - 跑 DeepEval 叙事层 mock 评估（GEval 5 维度 + ConversationSimulator）
+# - 失败率超 10% 时上报 issue（不阻塞主流程）
+# - trace artifacts 与 JSON 报告上传 30 天
+#
+# 触发：
+# - cron：每天北京时间 03:00（UTC 19:00，避免和 verify job 同时跑）
+# - workflow_dispatch：可手动触发
+#
+# 注意：
+# - mock 模式无 AI gateway 也能跑
+# - live 模式需要 AI gateway secrets（workflow_dispatch 时选 live=true 触发）
+# ──────────────────────────────────────────────────────────────────────────────
+name: Playthrough Fuzz (Nightly)
+
+on:
+  schedule:
+    - cron: "0 19 * * *"  # 每天 UTC 19:00 / 北京 03:00
+  workflow_dispatch:
+    inputs:
+      live_mode:
+        description: "Run in live mode (requires AI gateway secrets)"
+        required: false
+        type: boolean
+        default: false
+      runs_per_persona:
+        description: "Runs per (scenario, persona) pair"
+        required: false
+        type: string
+        default: "1"
+      max_steps:
+        description: "Max steps per run"
+        required: false
+        type: string
+        default: "20"
+      failure_threshold:
+        description: "Failure rate threshold (0-1) for regression gate"
+        required: false
+        type: string
+        default: "0.10"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: playthrough-fuzz-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playthrough-fuzz:
+    name: playthrough-fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # 默认 mock 模式：不需要 AI gateway
+      AI_PROVIDER: mock
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Run playthrough fuzz (scenarios × personas × N runs)
+        id: fuzz
+        continue-on-error: true
+        run: |
+          RUNS="${{ inputs.runs_per_persona || '1' }}"
+          STEPS="${{ inputs.max_steps || '20' }}"
+          THRESHOLD="${{ inputs.failure_threshold || '0.10' }}"
+          mkdir -p .runtime-data
+          if [ "${{ inputs.live_mode }}" = "true" ]; then
+            echo "⚠️ Live 模式启用 — 需要 AI gateway secrets"
+            pnpm dlx tsx scripts/run-playthrough-fuzz.ts \
+              --runs "$RUNS" \
+              --max-steps "$STEPS" \
+              --live \
+              --fail-on-regression \
+              --threshold "$THRESHOLD" \
+              --json-out .runtime-data/playthrough-fuzz-report.json
+          else
+            pnpm dlx tsx scripts/run-playthrough-fuzz.ts \
+              --runs "$RUNS" \
+              --max-steps "$STEPS" \
+              --fail-on-regression \
+              --threshold "$THRESHOLD" \
+              --json-out .runtime-data/playthrough-fuzz-report.json
+          fi
+        env:
+          AI_GATEWAY_BASE_URL: ${{ secrets.AI_GATEWAY_BASE_URL }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          AI_MODEL_MAIN: ${{ secrets.AI_MODEL_MAIN }}
+          AI_MODEL_CONTROL: ${{ secrets.AI_MODEL_CONTROL }}
+          AI_MODEL_ENHANCE: ${{ secrets.AI_MODEL_ENHANCE }}
+          AI_MODEL_REASONER: ${{ secrets.AI_MODEL_REASONER }}
+
+      - name: Run DeepEval narrative layer (mock mode)
+        id: deepeval
+        continue-on-error: true
+        run: |
+          mkdir -p .runtime-data
+          pnpm dlx tsx scripts/run-deepeval.ts \
+            --json-out .runtime-data/deepeval-report.json
+        env:
+          DEEPEVAL_MOCK_MODE: 1
+
+      - name: Summarize results
+        if: always()
+        run: |
+          echo "=== Playthrough Fuzz 摘要 ==="
+          if [ -f .runtime-data/playthrough-fuzz-report.json ]; then
+            python3 <<'PY'
+          import json, os
+          p = ".runtime-data/playthrough-fuzz-report.json"
+          if not os.path.exists(p):
+              print("(no report)")
+          else:
+              with open(p, encoding="utf-8") as f:
+                  d = json.load(f)
+              s = d.get("summary", {})
+              print(f"  total: {s.get('totalRuns', 0)}")
+              print(f"  passed: {s.get('passedRuns', 0)} ({s.get('passRate', 0)*100:.1f}%)")
+              print(f"  failed: {s.get('failedRuns', 0)}")
+              print(f"  failureClusters: {len(d.get('failureClusters', []))}")
+              print(f"  byPersona:")
+              for k, v in s.get("byPersona", {}).items():
+                  print(f"    - {k}: {v.get('passed',0)}/{v.get('total',0)} ({v.get('rate',0)*100:.0f}%)")
+          PY
+          else
+            echo "(无 playthrough-fuzz-report.json)"
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playthrough-fuzz-${{ github.run_id }}
+          path: |
+            .runtime-data/playthrough-fuzz-report.json
+            .runtime-data/deepeval-report.json
+            .runtime-data/fuzz-traces/
+          retention-days: 30
+
+      - name: File issue on regression (mock mode only)
+        if: github.event_name == 'schedule' && steps.fuzz.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('.runtime-data/playthrough-fuzz-report.json', 'utf8'));
+            const summary = report.summary || {};
+            const clusters = (report.failureClusters || []).slice(0, 5).map(c =>
+              `- \`${c.signature}\` × ${c.count} 次`
+            ).join('\n');
+            const body = [
+              '**自动生成**：夜间 playthrough fuzz 触发回归阈值',
+              '',
+              `- total: ${summary.totalRuns ?? '?'}`,
+              `- passed: ${summary.passedRuns ?? '?'} (${((summary.passRate ?? 0)*100).toFixed(1)}%)`,
+              `- failed: ${summary.failedRuns ?? '?'}`,
+              `- failureClusters: ${(report.failureClusters || []).length}`,
+              '',
+              '### Top 失败聚类',
+              clusters || '_(无)_',
+              '',
+              `完整 trace artifacts 见 workflow run #${context.runId} 的 artifact。`,
+              '',
+              '<!-- playwright-fuzz-nightly -->',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[playthrough-fuzz] 夜间 fuzz 失败率超阈值 ${new Date().toISOString().slice(0,10)}`,
+              body,
+              labels: ['automated', 'testing', 'playthrough-fuzz'],
+            });

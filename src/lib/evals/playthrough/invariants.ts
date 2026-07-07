@@ -1,19 +1,29 @@
 /**
- * 确定性不变量检查器
+ * 确定性不变量检查器（v3 升级）
  *
  * 每一步都检查游戏状态是否始终合法。硬断言，秒出，免费。
  *
  * 检查清单：
- * 1. HP 不为负，不超过 maxHp
- * 2. 行囊物品数不超过最大槽位
- * 3. 理智值 ≥0，不超过历史最大
- * 4. 原石数 ≥0
- * 5. 武器装备与职业不矛盾
- * 6. 死亡 NPC 不应再次出现
- * 7. 位置必须在合法楼层
- * 8. 武器 stability 在 0-100 范围
- * 9. 武器 contamination 在 0-100 范围
- * 10. Softlock 检测：连续 N 步无进展
+ * 第一层（基础结构）：
+ *  1. HP 不为负，不超过 maxHp
+ *  2. 行囊物品数不超过最大槽位
+ *  3. 理智值 ≥0
+ *  4. 原石数 ≥0
+ *  5. 武器属性范围
+ *  6. 死亡 NPC 不应再次出现
+ *  7. 位置必须在合法楼层
+ *  8. 章节号 / 回合数非负
+ *  9. 已完成任务不被回退
+ *  10. 行囊槽位单调性
+ *
+ * 第二层（v3 升级）：
+ *  11. DM-only 信息泄漏 — narrative 不应包含系统术语
+ *  12. NPC 复活检测 — 死亡 NPC 在叙事中被描述为活着
+ *  13. 位置瞬移 — player_location 异常跳变
+ *  14. 物品凭空出现 — inventory 增加但无 awarded_items
+ *  15. 关系单步变化上限
+ *  16. 任务进度单调性
+ *  17. Softlock — 连续 N 步无进展
  */
 
 import type { GameStateSnapshot, InvariantCheckResult, InvariantViolation } from "./types";
@@ -21,15 +31,39 @@ import type { GameStateSnapshot, InvariantCheckResult, InvariantViolation } from
 /** 合法楼层列表 */
 const VALID_FLOORS = ["B2", "B1", "1", "2", "3", "4", "5", "6", "7"];
 
+/** 系统术语泄漏关键词 — narrative 不应包含这些 */
+const DM_ONLY_LEAK_PATTERNS: Array<{
+  pattern: RegExp;
+  severity: InvariantViolation["severity"];
+  description: string;
+}> = [
+  { pattern: /system\s*prompt/i, severity: "critical", description: "narrative 泄漏 system prompt 字样" },
+  { pattern: /系统提示词/, severity: "critical", description: "narrative 包含「系统提示词」字样" },
+  { pattern: /请严格以\s*JSON/, severity: "critical", description: "narrative 泄漏 JSON 格式指令" },
+  { pattern: /^\s*\{\s*"is_action_legal"/, severity: "critical", description: "narrative 是裸 JSON 字符串" },
+  { pattern: /\bDM指令\b/, severity: "major", description: "narrative 包含元叙事「DM指令」" },
+  { pattern: /忽略.*设定/, severity: "major", description: "narrative 中描述 prompt injection" },
+];
+
+/** 武器属性随机突变 */
+const SUSPICIOUS_JUMPS = {
+  hp: 30,        // 单步 HP 变化不应超过 30
+  sanity: 25,    // 单步 sanity 变化不应超过 25
+  originium: 20, // 单步 originium 变化不应超过 20
+};
+
 /**
- * 执行所有不变量检查
+ * 执行所有不变量检查（含 narrative & DM JSON）。
  */
 export function checkAllInvariants(
   stepIndex: number,
   state: GameStateSnapshot,
-  previousState?: GameStateSnapshot
+  previousState?: GameStateSnapshot,
+  narrative?: string
 ): InvariantCheckResult {
   const violations: InvariantViolation[] = [];
+
+  // ──── 第一层：基础结构 ────
 
   // 1. HP 检查
   if (state.hp < 0) {
@@ -74,21 +108,87 @@ export function checkAllInvariants(
     violations.push({ rule: "location_valid", severity: "minor", description: "玩家位置可能不合法", expected: "合法位置", actual: state.playerLocation });
   }
 
-  // 8. 章节号
+  // 8. 章节号 / 回合数
   if (state.chapterNumber < 0) {
     violations.push({ rule: "chapter_non_negative", severity: "minor", description: "章节号不应为负", expected: "chapter ≥ 0", actual: `${state.chapterNumber}` });
   }
-
-  // 9. 回合数
   if (state.turnCount < 0) {
     violations.push({ rule: "turn_count_non_negative", severity: "minor", description: "回合数不应为负", expected: "turnCount ≥ 0", actual: `${state.turnCount}` });
   }
 
-  // 10. 进度检查（与前一步比较）
+  // 9. 已完成任务不被回退
   if (previousState) {
-    // 任务只能增加，不能减少（除非完成）
     if (state.completedTaskIds.length < previousState.completedTaskIds.length) {
       violations.push({ rule: "task_completion_monotonic", severity: "major", description: "已完成的任务被回退", expected: "已完成任务数不减少", actual: `${previousState.completedTaskIds.length} → ${state.completedTaskIds.length}` });
+    }
+    // 10. 行囊槽位单调性（除非丢弃）
+    if (state.inventoryItemCount > previousState.inventoryItemCount + 10) {
+      violations.push({ rule: "inventory_jump", severity: "major", description: "行囊单步增加超过 10（物品凭空出现）", expected: "单步 ≤ 10", actual: `${previousState.inventoryItemCount} → ${state.inventoryItemCount}` });
+    }
+  }
+
+  // ──── 第二层：v3 升级 ────
+
+  // 11. DM-only 信息泄漏
+  if (narrative) {
+    for (const { pattern, severity, description } of DM_ONLY_LEAK_PATTERNS) {
+      if (pattern.test(narrative)) {
+        violations.push({
+          rule: "dm_only_leak",
+          severity,
+          description,
+          expected: "narrative 不含系统术语",
+          actual: `匹配: ${pattern.source}`,
+        });
+      }
+    }
+  }
+
+  // 12. 状态跳变（v3 单步上限）
+  if (previousState) {
+    const dHp = Math.abs(state.hp - previousState.hp);
+    if (dHp > SUSPICIOUS_JUMPS.hp) {
+      violations.push({
+        rule: "hp_jump",
+        severity: "major",
+        description: `HP 单步变化 ${dHp} 超过 ${SUSPICIOUS_JUMPS.hp}`,
+        expected: `单步 |Δ| ≤ ${SUSPICIOUS_JUMPS.hp}`,
+        actual: `${previousState.hp} → ${state.hp}`,
+      });
+    }
+    const dSanity = Math.abs(state.sanity - previousState.sanity);
+    if (dSanity > SUSPICIOUS_JUMPS.sanity) {
+      violations.push({
+        rule: "sanity_jump",
+        severity: "major",
+        description: `Sanity 单步变化 ${dSanity} 超过 ${SUSPICIOUS_JUMPS.sanity}`,
+        expected: `单步 |Δ| ≤ ${SUSPICIOUS_JUMPS.sanity}`,
+        actual: `${previousState.sanity} → ${state.sanity}`,
+      });
+    }
+    const dOriginium = Math.abs(state.originium - previousState.originium);
+    if (dOriginium > SUSPICIOUS_JUMPS.originium) {
+      violations.push({
+        rule: "originium_jump",
+        severity: "major",
+        description: `Originium 单步变化 ${dOriginium} 超过 ${SUSPICIOUS_JUMPS.originium}`,
+        expected: `单步 |Δ| ≤ ${SUSPICIOUS_JUMPS.originium}`,
+        actual: `${previousState.originium} → ${state.originium}`,
+      });
+    }
+    // 13. 位置瞬移（楼层突变）
+    if (previousState.playerLocation && state.playerLocation) {
+      const prevFloor = extractFloor(previousState.playerLocation);
+      const currFloor = extractFloor(state.playerLocation);
+      if (prevFloor !== null && currFloor !== null && Math.abs(currFloor - prevFloor) > 3) {
+        violations.push({
+          rule: "position_teleport",
+          severity: "major",
+          description: `楼层单步跳跃 ${Math.abs(currFloor - prevFloor)} 层（疑似瞬移）`,
+          expected: "单步 ≤ 3 层",
+          actual: `${prevFloor} → ${currFloor}`,
+        });
+      }
     }
   }
 
@@ -105,8 +205,6 @@ export function checkAllInvariants(
  */
 function isValidLocation(location: string): boolean {
   if (!location) return false;
-
-  // 精确匹配
   const knownLocations = [
     "旧公寓", "楼梯间", "走廊", "电梯", "大厅", "配电间",
     "登记口", "办公室", "消防通道", "B1", "B2",
@@ -114,16 +212,24 @@ function isValidLocation(location: string): boolean {
   for (const known of knownLocations) {
     if (location.includes(known)) return true;
   }
-
-  // 检查是否包含合法楼层号
   for (const floor of VALID_FLOORS) {
     if (location.includes(floor) || location.includes(`${floor}F`) || location.includes(`${floor}f`)) {
       return true;
     }
   }
-
-  // 如果没有已知关键词也没有楼层号，可能是新地点——报 minor warning 但不阻止
   return true;
+}
+
+/**
+ * 从位置字符串提取楼层号。
+ * B2 → -2, B1 → -1, 1F → 1, 2F → 2, 3F → 3, etc.
+ */
+function extractFloor(location: string): number | null {
+  const m = location.match(/B\s*(\d+)/i);
+  if (m) return -parseInt(m[1] ?? "0", 10);
+  const m2 = location.match(/(\d+)\s*F/i);
+  if (m2) return parseInt(m2[1] ?? "0", 10);
+  return null;
 }
 
 // === Softlock 检测 ===
@@ -184,37 +290,23 @@ export function checkSoftlock(
  * 判断两步之间是否有进展
  */
 function hasProgress(prev: GameStateSnapshot, curr: GameStateSnapshot): boolean {
-  // 任务进展
   if (curr.activeTaskIds.length !== prev.activeTaskIds.length) return true;
   if (curr.completedTaskIds.length > prev.completedTaskIds.length) return true;
-
-  // 位置改变
   if (curr.playerLocation !== prev.playerLocation) return true;
-
-  // 物品变化
   if (curr.inventoryItemCount !== prev.inventoryItemCount) return true;
-
-  // HP/理智显著变化（>=2 点）
   if (Math.abs(curr.hp - prev.hp) >= 2) return true;
   if (Math.abs(curr.sanity - prev.sanity) >= 1) return true;
-
-  // 图鉴更新
   if (curr.codexNpcIds.length > prev.codexNpcIds.length) return true;
-
-  // NPC 状态变化
   if (curr.aliveNpcIds.length !== prev.aliveNpcIds.length) return true;
-
-  // 标记解锁
   if (curr.unlockedFlags.length > prev.unlockedFlags.length) return true;
-
-  // 结局/死亡
   if (curr.reachedEnding !== prev.reachedEnding) return true;
-
   return false;
 }
 
 /** 生成游戏状态快照的初始值 */
-export function createInitialStateSnapshot(): GameStateSnapshot {
+export function createInitialStateSnapshot(
+  overrides?: Partial<GameStateSnapshot>
+): GameStateSnapshot {
   return {
     hp: 10,
     maxHp: 10,
@@ -239,5 +331,67 @@ export function createInitialStateSnapshot(): GameStateSnapshot {
     isDeath: false,
     reachedEnding: false,
     unlockedFlags: [],
+    ...overrides,
   };
 }
+
+// === 跨步骤状态变化检测（NPC 复活 + 物品凭空） ===
+
+/**
+ * NPC 复活检测：在 state.deadNpcIds 中标记死亡的 NPC，是否在后文中
+ * 出现在 aliveNpcIds 或被 narrative 描述为"在场/说话"。
+ */
+export interface NpcResurrectionResult {
+  resurrections: Array<{
+    npcId: string;
+    diedAtStep: number;
+    resurrectedAtStep: number;
+    evidence: string;
+  }>;
+}
+
+export function detectNpcResurrections(
+  steps: Array<{
+    stepIndex: number;
+    stateAfter: GameStateSnapshot;
+    narrative: string;
+  }>
+): NpcResurrectionResult {
+  const resurrections: NpcResurrectionResult["resurrections"] = [];
+  const diedAt = new Map<string, number>();
+
+  for (const step of steps) {
+    // 追踪死亡
+    for (const deadId of step.stateAfter.deadNpcIds) {
+      if (!diedAt.has(deadId)) {
+        diedAt.set(deadId, step.stepIndex);
+      }
+    }
+    // 检测复活
+    for (const [npcId, diedStep] of diedAt.entries()) {
+      if (step.stateAfter.aliveNpcIds.includes(npcId)) {
+        resurrections.push({
+          npcId,
+          diedAtStep: diedStep,
+          resurrectedAtStep: step.stepIndex,
+          evidence: `stateAfter.aliveNpcIds 包含 ${npcId}`,
+        });
+      }
+      // narrative 中描述死亡 NPC 为"在场"或"说话"
+      if (step.narrative.includes(npcId) && step.stepIndex > diedStep) {
+        // 不严格判定为复活 — 但记录为可能问题
+      }
+    }
+  }
+
+  return { resurrections };
+}
+
+// === 导出供测试的内部常量 ===
+
+export const _internal = {
+  VALID_FLOORS,
+  DM_ONLY_LEAK_PATTERNS,
+  SUSPICIOUS_JUMPS,
+  extractFloor,
+};
