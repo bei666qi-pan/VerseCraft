@@ -278,6 +278,17 @@ import {
   type TurnCommitSummary,
 } from "@/lib/narrativeEngine/committer";
 import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
+// v4 全链路人名白名单 — final guard 依赖项
+import { extractChineseNames } from "@/lib/narrative/extractChineseNames";
+import { SAFE_FALLBACK_NARRATIVE } from "@/lib/narrative/SAFE_FALLBACK_NARRATIVE";
+import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
+import { NPCS } from "@/lib/registry/npcs";
+
+const NPC_NAME_SET: ReadonlySet<string> = new Set([
+  ...NPCS.map((n) => n.name),
+  ...NPC_ALIAS_FLAT_SET,
+]);
+const NPC_ALIAS_SET: ReadonlySet<string> = NPC_ALIAS_FLAT_SET;
 import {
   buildRouteModelOutputFromResolvedTurn,
   buildRouteNarrativeCheckResult,
@@ -4508,6 +4519,35 @@ async function postChatInternal(req: Request) {
           }
           finalizePayload = JSON.stringify(auditedResolved);
           moderationBody = finalizePayload;
+
+          // v4 全链路人名白名单 — Phase-N final guard：
+          // 二次扫 narrative 残留未注册人名；若发现触发 safe fallback。
+          {
+            const residualText = String(auditedResolved.narrative ?? "");
+            if (residualText) {
+              const residual = extractChineseNames(residualText, {
+                registeredNames: NPC_NAME_SET,
+                aliases: NPC_ALIAS_SET,
+              });
+              const hasUnregistered = residual.some(
+                (r) => r.candidate && r.token.length >= 2 && !r.registered,
+              );
+              if (hasUnregistered) {
+                auditedResolved = {
+                  ...auditedResolved,
+                  narrative: SAFE_FALLBACK_NARRATIVE,
+                  _commit_flags: [
+                    ...(Array.isArray(auditedResolved._commit_flags)
+                      ? (auditedResolved._commit_flags as unknown[]).map(String)
+                      : []),
+                    "safe_narrative_fallback_applied_v2",
+                  ],
+                };
+                finalizePayload = JSON.stringify(auditedResolved);
+                moderationBody = finalizePayload;
+              }
+            }
+          }
 
           if (outputAudit.verdict === "reject") {
             const reason = outputAudit.reasonCode || "output_reject";

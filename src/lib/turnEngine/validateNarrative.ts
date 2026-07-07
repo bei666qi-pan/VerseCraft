@@ -70,6 +70,52 @@ import type {
   NormalizedPlayerIntent,
   StateDelta,
 } from "@/lib/turnEngine/types";
+import { NPCS } from "@/lib/registry/npcs";
+import { NPC_ALIASES, NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
+import { extractChineseNames } from "@/lib/narrative/extractChineseNames";
+import { NAME_STOPWORDS } from "@/lib/narrative/nameStopwords";
+
+/** 已注册的真名集合（含 alias）：从 NPCS + NPC_ALIASES 派生 */
+const NPC_NAME_SET: ReadonlySet<string> = new Set([
+  ...NPCS.map((n) => n.name),
+  ...NPC_ALIAS_FLAT_SET,
+]);
+
+/** alias 子集（仅 NPC_ALIASES 中列出的） */
+const NPC_ALIAS_SET: ReadonlySet<string> = NPC_ALIAS_FLAT_SET;
+
+/**
+ * v4 全链路人名白名单：从 narrative 中抽取未注册人名。
+ * 与 route.ts final guard 二次扫描保持同一份算法。
+ */
+export function validateNarrativePersonNames(args: {
+  narrative: string;
+  sceneNpcIds?: readonly string[];
+}): NarrativeValidationIssue[] {
+  const issues: NarrativeValidationIssue[] = [];
+  if (!args.narrative) return issues;
+  const extracted = extractChineseNames(args.narrative, {
+    registeredNames: NPC_NAME_SET,
+    aliases: NPC_ALIAS_SET,
+  });
+  // 只检查 candidate=true 且未注册的项
+  const unregistered = extracted.filter((e) => e.candidate && !e.registered);
+  if (unregistered.length > 0) {
+    // 只对 2 字以上且非 stopword 的 token 报
+    const reportable = unregistered.filter(
+      (e) => e.token.length >= 2 && !NAME_STOPWORDS.has(e.token),
+    );
+    for (const u of reportable) {
+      issues.push({
+        code: "narrative_unregistered_person_name",
+        severity: "high",
+        detail: `narrative 中出现未注册人名 token: ${u.token}（前后文：${u.contextBefore}|${u.contextAfter}）`,
+      });
+    }
+  }
+  // 检查 alias 误用：alias 不应被当成独立人名引用（保留位；当前所有 alias 已在 NPC_NAME_SET 内，不会触发）
+  return issues;
+}
 
 export type NarrativeValidationIssueCode =
   | "dm_only_fact_leaked_in_narrative"
@@ -99,7 +145,9 @@ export type NarrativeValidationIssueCode =
   | "unsupported_event_stage_claim"
   | "fact_id_not_allowed"
   | "used_fact_id_missing_from_registry"
-  | "fact_commit_gate_blocked";
+  | "fact_commit_gate_blocked"
+  | "narrative_unregistered_person_name"
+  | "narrative_alias_misuse";
 
 export type NarrativeValidationIssue = {
   code: NarrativeValidationIssueCode;
@@ -667,6 +715,15 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
         severity: candidate.severity ?? mapUnsupportedSeverity(candidate.code),
       });
     }
+  }
+
+  // v4 全链路人名白名单：检测 narrative 中残留未注册人名
+  if (narrative) {
+    const nameIssues = validateNarrativePersonNames({
+      narrative,
+      sceneNpcIds: args.sceneNpcIds,
+    });
+    issues.push(...nameIssues);
   }
 
   // ---- Decide overrides ----
