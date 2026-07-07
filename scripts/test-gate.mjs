@@ -12,10 +12,10 @@
  * 门禁层级：
  *   L1: Lint + Type Check（~30s）
  *   L2: Unit Tests（~15s）
- *   L3: Game System Contracts（~10s）
+ *   L3: Game Contracts + Promptfoo + Playthrough（~30s）
  *   L4: Eval Quality（~60s，mock mode）
  *   L5: Eval Safety + Red Team（~30s，mock mode）
- *   L6: Task-based Eval（~10s，offline）
+ *   L6: Task-based Eval + Judge（~10s，offline）
  *   L7: Build（~90s）
  *
  * 输出格式：
@@ -72,6 +72,22 @@ const STAGES = [
     args: ["tsx", "--test", "src/lib/contracts/**/*.test.ts"],
     timeoutMs: 30_000,
     skipInQuick: false,
+  },
+  {
+    name: "promptfoo-deterministic",
+    level: "L3",
+    command: "npx",
+    args: ["tsx", "--test", "tests/promptfoo/tests/weapon-schema.test.ts", "tests/promptfoo/tests/profession-rules.test.ts"],
+    timeoutMs: 15_000,
+    skipInQuick: false,
+  },
+  {
+    name: "playthrough-mock",
+    level: "L3",
+    command: "npx",
+    args: ["tsx", "--test", "src/lib/evals/playthrough/playthrough.test.ts"],
+    timeoutMs: 30_000,
+    skipInQuick: true,
   },
   {
     name: "eval-quality",

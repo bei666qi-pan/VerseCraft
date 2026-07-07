@@ -1,0 +1,171 @@
+# 武器 Schema 校验测试用例
+# 验证 AI 输出的武器/装备数据结构是否合法
+# 断言类型：contains / equals / 自定义函数（不调 LLM，免费秒出）
+
+description: "Weapon Schema Validation Tests"
+
+tests:
+  # === 基础 Schema 校验 ===
+  - description: "武器输出必须包含必填字段"
+    vars:
+      profession: "守灯人"
+      equippedWeapon: "静默短棍"
+    assert:
+      - type: javascript
+        value: |
+          // 验证顶层必填字段存在
+          const required = ["narrative", "is_action_legal", "sanity_damage", "options"];
+          const missing = required.filter(k => !(k in output));
+          if (missing.length > 0) {
+            throw new Error(`Missing required fields: ${missing.join(", ")}`);
+          }
+          return true;
+
+  - description: "weapon_updates 中的 stability 必须是 0-100 的数字"
+    vars:
+      profession: "巡迹客"
+      equippedWeapon: "时针刺"
+    assert:
+      - type: javascript
+        value: |
+          const wu = output.weapon_updates;
+          if (!wu) return true; // 无可选字段，通过
+          if (typeof wu.stability !== "undefined") {
+            if (typeof wu.stability !== "number" || wu.stability < 0 || wu.stability > 100) {
+              throw new Error(`stability must be number 0-100, got: ${JSON.stringify(wu.stability)}`);
+            }
+          }
+          return true;
+
+  - description: "weapon_updates 中的 contamination 必须是 0-100 的数字"
+    vars:
+      profession: "溯源师"
+      equippedWeapon: "封缄钉"
+    assert:
+      - type: javascript
+        value: |
+          const wu = output.weapon_updates;
+          if (!wu) return true;
+          if (typeof wu.contamination !== "undefined") {
+            if (typeof wu.contamination !== "number" || wu.contamination < 0 || wu.contamination > 100) {
+              throw new Error(`contamination must be number 0-100, got: ${JSON.stringify(wu.contamination)}`);
+            }
+          }
+          return true;
+
+  - description: "awarded_items 中每个物品必须有 id 和 name"
+    vars:
+      profession: "觅兆者"
+      equippedWeapon: "镜背匕"
+    assert:
+      - type: javascript
+        value: |
+          const items = output.awarded_items ?? [];
+          for (const item of items) {
+            if (!item.id || typeof item.id !== "string") {
+              throw new Error(`Item missing valid id: ${JSON.stringify(item)}`);
+            }
+            if (!item.name || typeof item.name !== "string") {
+              throw new Error(`Item missing valid name: ${JSON.stringify(item)}`);
+            }
+          }
+          return true;
+
+  - description: "weapon_updates 中的 counter 必须是合法反制类型字符串"
+    vars:
+      profession: "齐日角"
+      equippedWeapon: "警用手电"
+    assert:
+      - type: javascript
+        value: |
+          const wu = output.weapon_updates;
+          if (!wu) return true;
+          if (typeof wu.counter !== "undefined") {
+            if (typeof wu.counter !== "string" || wu.counter.length === 0) {
+              throw new Error(`counter must be non-empty string, got: ${JSON.stringify(wu.counter)}`);
+            }
+          }
+          return true;
+
+  # === 数值范围校验 ===
+  - description: "sanity_damage 必须是 0-20 的数字"
+    vars:
+      profession: "守灯人"
+      equippedWeapon: "静默短棍"
+    assert:
+      - type: javascript
+        value: |
+          if (typeof output.sanity_damage !== "number" || output.sanity_damage < 0 || output.sanity_damage > 20) {
+            throw new Error(`sanity_damage must be number 0-20, got: ${JSON.stringify(output.sanity_damage)}`);
+          }
+          return true;
+
+  - description: "options 必须是 2-4 个字符串数组"
+    vars:
+      profession: "巡迹客"
+      equippedWeapon: "时针刺"
+    assert:
+      - type: javascript
+        value: |
+          const opts = output.options;
+          if (!Array.isArray(opts) || opts.length < 2 || opts.length > 4) {
+            throw new Error(`options must be array[2-4], got: ${JSON.stringify(opts)}`);
+          }
+          for (const o of opts) {
+            if (typeof o !== "string" || o.length === 0) {
+              throw new Error(`Each option must be non-empty string, got: ${JSON.stringify(o)}`);
+            }
+          }
+          return true;
+
+  # === 武器属性合法性 ===
+  - description: "武器模块 injection 类型应在合法枚举内"
+    vars:
+      profession: "溯源师"
+      equippedWeapon: "封缄钉"
+    assert:
+      - type: javascript
+        value: |
+          const VALID_INFUSIONS = ["fire", "ice", "lightning", "void", "seal", "anchor", "purify", null, undefined];
+          const wu = output.weapon_updates;
+          if (!wu) return true;
+          if (typeof wu.infusion !== "undefined") {
+            if (!VALID_INFUSIONS.includes(wu.infusion)) {
+              throw new Error(`Invalid infusion: ${wu.infusion}. Must be one of: ${VALID_INFUSIONS.filter(Boolean).join(", ")}`);
+            }
+          }
+          return true;
+
+  - description: "武器模块 mod_type 应在合法枚举内"
+    vars:
+      profession: "觅兆者"
+      equippedWeapon: "镜背匕"
+    assert:
+      - type: javascript
+        value: |
+          const VALID_MODS = ["core", "surface", "counter", "anchor", null, undefined];
+          const wu = output.weapon_updates;
+          if (!wu) return true;
+          if (typeof wu.mod_type !== "undefined") {
+            if (!VALID_MODS.includes(wu.mod_type)) {
+              throw new Error(`Invalid mod_type: ${wu.mod_type}. Must be one of: ${VALID_MODS.filter(Boolean).join(", ")}`);
+            }
+          }
+          return true;
+
+  - description: "weapon_tier 必须是 S/A/B/C 之一"
+    vars:
+      profession: "齐日角"
+      equippedWeapon: "警用手电"
+    assert:
+      - type: javascript
+        value: |
+          const VALID_TIERS = ["S", "A", "B", "C"];
+          const wu = output.weapon_updates;
+          if (!wu) return true;
+          if (typeof wu.tier !== "undefined") {
+            if (!VALID_TIERS.includes(wu.tier)) {
+              throw new Error(`Invalid tier: ${wu.tier}. Must be one of: ${VALID_TIERS.join(", ")}`);
+            }
+          }
+          return true;

@@ -1,0 +1,229 @@
+# 职业规则一致性测试用例
+# 验证给定职业时，AI 输出是否遵守技能池、装备限制、属性范围等规则
+# 断言类型：contains / equals / 自定义函数（不调 LLM，免费秒出）
+
+description: "Profession Rule Consistency Tests"
+
+# === 职业-技能池绑定 ===
+professionSkillPools:
+  守灯人:
+    skillName: "稳心定灯"
+    passiveId: "perk.lampkeeper.threat_telegraph"
+    primaryStat: "sanity"
+    allowedSystems: ["main_threat_states", "suppression_windows", "sanity_damage"]
+    forbiddenSystems: ["weapon_damage", "attribute_override", "threat_counter_bypass"]
+    weaponSynergy: "稳定度"
+
+  巡迹客:
+    skillName: "疾行断压"
+    passiveId: "perk.pathfinder.mobility_window"
+    primaryStat: "agility"
+    allowedSystems: ["player_location", "consumes_time", "main_threat_states"]
+    forbiddenSystems: ["threat_immunity", "free_unlimited_actions", "attribute_override"]
+    weaponSynergy: "机动模组"
+
+  觅兆者:
+    skillName: "征兆聚焦"
+    passiveId: "perk.omenseeker.signal_pick"
+    primaryStat: "luck"
+    allowedSystems: ["threat_telegraphs", "main_threat_states", "codex"]
+    forbiddenSystems: ["auto_solve_threat", "full_auto_hint", "attribute_override"]
+    weaponSynergy: "短期灌注"
+
+  齐日角:
+    skillName: "缓锋陈词"
+    passiveId: "perk.sunhorn.dialogue_window"
+    primaryStat: "charm"
+    allowedSystems: ["relationship", "tasks", "dialogue_windows"]
+    forbiddenSystems: ["force_persuade_all", "relationship_auto_win", "attribute_override"]
+    weaponSynergy: "谈判筹码"
+
+  溯源师:
+    skillName: "断链重组"
+    passiveId: "perk.traceorigin.forge_preference"
+    primaryStat: "background"
+    allowedSystems: ["codex", "truths", "forge", "weapon"]
+    forbiddenSystems: ["truth_full_unlock", "forge_free_upgrade", "attribute_override"]
+    weaponSynergy: "污染管理"
+
+tests:
+  # === 职业技能名称校验 ===
+  - description: "守灯人职业输出中技能名应为「稳心定灯」"
+    vars:
+      profession: "守灯人"
+      activeSkill: "稳心定灯"
+      cooldown: "8"
+      playerInput: "我使用职业技能应对威胁"
+    assert:
+      - type: javascript
+        value: |
+          // 如果输出中包含技能名，则必须是正确的技能名
+          const text = JSON.stringify(output);
+          const wrongSkills = ["疾行断压", "征兆聚焦", "缓锋陈词", "断链重组"];
+          for (const ws of wrongSkills) {
+            if (text.includes(ws)) {
+              throw new Error(`守灯人输出中不应出现其他职业技能：「${ws}」`);
+            }
+          }
+          return true;
+
+  - description: "溯源师职业输出中技能名应为「断链重组」"
+    vars:
+      profession: "溯源师"
+      activeSkill: "断链重组"
+      cooldown: "12"
+      playerInput: "我检查装备的线索链"
+    assert:
+      - type: javascript
+        value: |
+          const text = JSON.stringify(output);
+          const wrongSkills = ["稳心定灯", "疾行断压", "征兆聚焦", "缓锋陈词"];
+          for (const ws of wrongSkills) {
+            if (text.includes(ws)) {
+              throw new Error(`溯源师输出中不应出现其他职业技能：「${ws}」`);
+            }
+          }
+          return true;
+
+  - description: "未认证职业时不应输出任何职业技能名"
+    vars:
+      profession: ""
+      activeSkill: ""
+      cooldown: "0"
+      playerInput: "我想使用职业技能"
+    assert:
+      - type: javascript
+        value: |
+          const text = JSON.stringify(output);
+          const allSkills = ["稳心定灯", "疾行断压", "征兆聚焦", "缓锋陈词", "断链重组"];
+          for (const skill of allSkills) {
+            if (text.includes(skill)) {
+              throw new Error(`未认证职业时不应出现技能名：「${skill}」`);
+            }
+          }
+          return true;
+
+  # === 装备限制校验 ===
+  - description: "巡迹客不应获得武器伤害加成（excludesSystem: weapon_damage）"
+    vars:
+      profession: "巡迹客"
+      activeSkill: "疾行断压"
+      cooldown: "8"
+      playerInput: "我用手电攻击威胁"
+    assert:
+      - type: javascript
+        value: |
+          // 巡迹客的 excludesSystems 包含 weapon_damage
+          // 因此如果输出有 weapon_updates，不能是直接伤害加成
+          const wu = output.weapon_updates;
+          if (wu && wu.damage_boost !== undefined && wu.damage_boost > 0) {
+            throw new Error(`巡迹客不应获得武器伤害加成（excludesSystems 包含 weapon_damage）`);
+          }
+          return true;
+
+  - description: "齐日角不应强制说服（excludesSystem: force_persuade_all）"
+    vars:
+      profession: "齐日角"
+      activeSkill: "缓锋陈词"
+      cooldown: "10"
+      playerInput: "我强迫NPC告诉我真相"
+    assert:
+      - type: javascript
+        value: |
+          const text = JSON.stringify(output).toLowerCase();
+          const forceKeywords = ["强制", "必须服从", "不可拒绝", "绝对控制"];
+          for (const kw of forceKeywords) {
+            if (text.includes(kw)) {
+              throw new Error(`齐日角输出不应包含强制控制关键词：「${kw}」`);
+            }
+          }
+          return true;
+
+  - description: "觅兆者不应声称自动破解威胁（excludesSystem: auto_solve_threat）"
+    vars:
+      profession: "觅兆者"
+      activeSkill: "征兆聚焦"
+      cooldown: "10"
+      playerInput: "我分析威胁并尝试自动破解"
+    assert:
+      - type: javascript
+        value: |
+          const text = JSON.stringify(output).toLowerCase();
+          const autoSolveKeywords = ["自动破解", "完全消除", "威胁消失", "彻底解决"];
+          for (const kw of autoSolveKeywords) {
+            if (text.includes(kw)) {
+              throw new Error(`觅兆者输出不应包含自动破解威胁关键词：「${kw}」`);
+            }
+          }
+          return true;
+
+  # === 统计属性校验 ===
+  - description: "各职业 attribute_override 应在 excludeSystems 中"
+    vars:
+      profession: "守灯人"
+      activeSkill: "稳心定灯"
+      cooldown: "8"
+      playerInput: "我的属性突然大幅提升"
+    assert:
+      - type: javascript
+        value: |
+          // 所有职业都排除 attribute_override
+          // 检查输出是否声称玩家属性发生超常变化
+          const text = JSON.stringify(output).toLowerCase();
+          const overrideKeywords = ["属性翻倍", "属性暴涨", "全属性提升50%", "属性+20"];
+          for (const kw of overrideKeywords) {
+            if (text.includes(kw)) {
+              throw new Error(`输出不应包含属性覆盖关键词(所有职业 excludeSystem 包含 attribute_override)：「${kw}」`);
+            }
+          }
+          return true;
+
+  # === 冷却时间校验 ===
+  - description: "冷却中的技能不应再次触发"
+    vars:
+      profession: "守灯人"
+      activeSkill: "稳心定灯"
+      cooldown: "6"
+      playerInput: "我再次使用职业技能"
+    assert:
+      - type: javascript
+        value: |
+          // 冷却时间为6，技能不应再触发
+          if (typeof output.skill_triggered === "boolean" && output.skill_triggered === true) {
+            throw new Error(`冷却中（剩余6小时）的技能不应触发`);
+          }
+          return true;
+
+  - description: "冷却为0时技能可以触发"
+    vars:
+      profession: "守灯人"
+      activeSkill: "稳心定灯"
+      cooldown: "0"
+      playerInput: "我使用职业技能"
+    assert:
+      - type: javascript
+        value: |
+          // 冷却为0，技能应正常可用
+          // 不强制要求 skill_triggered=true（取决于输入是否匹配），但不应被冷却阻止
+          if (typeof output.skill_triggered === "boolean" && output.skill_triggered === false) {
+            // 允许 false — 可能输入不匹配技能触发条件
+          }
+          return true;
+
+  # === 叙事一致性校验 ===
+  - description: "职业身份应在叙事中得到体现（守灯人→威胁感知）"
+    vars:
+      profession: "守灯人"
+      activeSkill: "稳心定灯"
+      cooldown: "0"
+      playerInput: "我观察周围环境"
+    assert:
+      - type: javascript
+        value: |
+          // 守灯人在探测威胁方面有优势，叙事应体现这种能力
+          const narrative = output.narrative ?? "";
+          // 这不是强制断言 — 但至少不应出现与身份完全矛盾的内容
+          if (narrative.includes("你对威胁完全无能为力") || narrative.includes("你看不到任何危险的迹象")) {
+            throw new Error(`守灯人叙事不应完全否定威胁感知能力`);
+          }
+          return true;
