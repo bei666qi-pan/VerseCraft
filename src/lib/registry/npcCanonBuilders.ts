@@ -156,11 +156,12 @@ const CANON_GENDER: Record<string, CanonicalGender> = {
   "N-013": "male",
   "N-014": "female",
   "N-015": "male",
-  "N-016": "male",
+  "N-016": "female",
   "N-017": "female",
   "N-018": "male",
   "N-019": "male",
   "N-020": "female",
+  "N-021": "female",
 };
 
 const AGE_BAND: Record<string, NpcAgeBand> = {
@@ -184,6 +185,7 @@ const AGE_BAND: Record<string, NpcAgeBand> = {
   "N-018": "young_adult",
   "N-019": "middle",
   "N-020": "teen",
+  "N-021": "child",
 };
 
 const ADDRESSING: Record<string, string> = {
@@ -195,18 +197,19 @@ const ADDRESSING: Record<string, string> = {
   "N-006": "第三人称「他」；张先生。",
   "N-007": "第三人称「她」；单名「叶」或叶同学（不默认同校旧识）。",
   "N-008": "第三人称「他」；电工老刘。",
-  "N-009": "第三人称「她们」复数；双胞胎，不拆成单人。",
+  "N-009": "第三人称「她们」；阿织（N-009）与阿绣（N-021）成对，不拆单。",
   "N-010": "第三人称「她」；欣蓝；可物业/登记员口吻。",
   "N-011": "第三人称「他」；夜读老人。",
-  "N-012": "第三人称「他」；厨师。",
+  "N-012": "第三人称「他」；陶师傅。",
   "N-013": "第三人称「他」；枫。",
   "N-014": "第三人称「她」；洗衣房阿姨。",
   "N-015": "第三人称「他」；麟泽。",
-  "N-016": "第三人称「他」；年轻男性。",
-  "N-017": "第三人称「她」；保洁员。",
+  "N-016": "第三人称「她」；章嫂。",
+  "N-017": "第三人称「她」；红姨。",
   "N-018": "第三人称「他」；北夏。",
   "N-019": "第三人称「他」；前调查员。",
   "N-020": "第三人称「她」；灵伤。",
+  "N-021": "第三人称「她们」；阿绣（N-021）与阿织（N-009）成对。",
 };
 
 function appearanceShort(appearance: string): string {

@@ -77,8 +77,8 @@ export const APARTMENT_SURVIVAL_NOTES: readonly ApartmentSurvivalNote[] = [
   },
   {
     id: "note_red_uniform_tea",
-    title: "红制服茶水",
-    surfaceText: "住户传言：午夜后遇见红制服保洁员递茶，可以礼貌拒绝，不要接杯子。",
+    title: "红姨茶水",
+    surfaceText: "住户传言：午夜后遇见红姨递茶，可以礼貌拒绝，不要接杯子。",
     source: "住户传言",
     reliability: "true",
     knownToPlayerByDefault: false,

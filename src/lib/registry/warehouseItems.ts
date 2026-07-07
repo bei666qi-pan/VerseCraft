@@ -56,10 +56,10 @@ export const WAREHOUSE_ITEMS: readonly WarehouseItem[] = [
   // === 6 楼 6 件 ===
   { id: "W-601", name: "双胞胎的共用手帕", description: "两人共用过的旧手帕。", benefit: "选择机制诡异无法选定你2次。", sideEffect: "会分裂成两半，各映半张脸。", ownerId: "N-009", floor: "6" },
   { id: "W-602", name: "倒行者的脚印拓片", description: "楼梯上拓下的倒行脚印。", benefit: "倒转方向感2小时，规避方向混乱诡异。", sideEffect: "取下后短暂分不清上下左右。", ownerId: "A-006", floor: "6" },
-  { id: "W-603", name: "失眠者的眼罩", description: "失眠症患者用过的眼罩。", benefit: "屏蔽视觉污染3小时，理智消耗减半。", sideEffect: "摘下后短暂看到墙吞咽幻象。", ownerId: "N-016", floor: "6" },
+  { id: "W-603", name: "章嫂的眼罩", description: "章嫂用过的眼罩。", benefit: "屏蔽视觉污染3小时，理智消耗减半。", sideEffect: "摘下后短暂看到墙吞咽幻象。", ownerId: "N-016", floor: "6" },
   { id: "W-604", name: "镜像维度的碎片", description: "倒行者身上剥离的镜面碎片。", benefit: "见镜像诡异真实倒影2小时，可造成伤害。", sideEffect: "倒影会试图与你交换位置。", ownerId: "A-006", floor: "6", forgeTags: ["mirror"], materialValue: 2, compatibleOperations: ["mod", "infuse"] },
   { id: "W-605", name: "共鸣水晶的碎屑", description: "双胞胎水晶上掉落的碎屑。", benefit: "预知双胞胎位置2小时。", sideEffect: "听见两人心声，可能混淆自我。", ownerId: "N-009", floor: "6" },
-  { id: "W-606", name: "失眠者手记的残页", description: "手记上撕下的字迹。", benefit: "保持清醒3小时，免疫睡眠攻击。", sideEffect: "字迹变你的笔迹，写满你的秘密。", ownerId: "N-016", floor: "6" },
+  { id: "W-606", name: "章嫂手记的残页", description: "手记上撕下的字迹。", benefit: "保持清醒3小时，免疫睡眠攻击。", sideEffect: "字迹变你的笔迹，写满你的秘密。", ownerId: "N-016", floor: "6" },
   // === 7 楼 10 件（最强）===
   { id: "W-701", name: "夜读老人的书页", description: "消化日志脱落的泛黄书页。", benefit: "获知1名已消化住户死因，理智+5。", sideEffect: "会显现你名字，完成则被记录。", ownerId: "N-011", floor: "7" },
   { id: "W-702", name: "厨师的刀柄缠布", description: "屠夫菜刀柄上的缠布。", benefit: "敏捷+5约2.5小时。", sideEffect: "2.5小时后吸满血污难解。", ownerId: "N-012", floor: "7" },
