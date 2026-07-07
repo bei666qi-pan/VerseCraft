@@ -2,20 +2,8 @@ import { ANOMALIES } from "@/lib/registry/anomalies";
 import { NPCS } from "@/lib/registry/npcs";
 import { NPC_ALIASES } from "@/lib/registry/npcAliases";
 import type { CodexEntry } from "@/store/useGameStore";
-import { filterOutAmbientMentions } from "@/lib/registry/ambientNpcs.guard";
 
 export type CodexMention = Pick<CodexEntry, "id" | "name" | "type">;
-
-/**
- * 内部 helper：剔除 mention 列表中"属于 ambient slot"的项。
- * Ambient 注册表扩张或被误注册时，仍可保证不入 codex。
- */
-function filterAmbientMentionsInPlace(out: CodexMention[]): void {
-  if (out.length === 0) return;
-  const filtered = filterOutAmbientMentions(out);
-  if (filtered.length === out.length) return;
-  out.splice(0, out.length, ...filtered);
-}
 
 function normalizeText(input: unknown): string {
   if (typeof input !== "string") return "";
@@ -187,11 +175,6 @@ export function extractCodexMentionsFromDmRecord(
     pushUnique(out, seen, entry);
     if (out.length >= maxMatches) return out;
   }
-
-  // Ambient NPC 反向 guard：剔除任何意外混入的 ambient id / descriptor（详见
-  // docs/world-npc-upgrade-plan.md §7）。默认 ambient 不在 NPCS 关键词池中，
-  // 这里仅作防御兜底，注册表扩张仍安全。
-  filterAmbientMentionsInPlace(out);
 
   const codexUpdates = Array.isArray(dmRecord.codex_updates) ? dmRecord.codex_updates : [];
   for (const raw of codexUpdates) {
