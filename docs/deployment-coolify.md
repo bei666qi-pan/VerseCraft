@@ -121,7 +121,7 @@
 
 ## 方案 B：使用命令构建/启动
 
-- Build Command: `pnpm install --frozen-lockfile && pnpm test:ci`（与 GitHub `ci.yml` 对齐：eslint + 单测 + `pnpm build`）
+- Build Command: `pnpm install --frozen-lockfile && pnpm prompts:regen:verify && pnpm test:ci`（与 GitHub `ci.yml` 对齐：canonical 名册校验 + eslint + 单测 + `pnpm build`）
 - Start Command: `pnpm start`
 
 若 Coolify **仅**同步镜像、不跑 GitHub Actions，请至少在构建阶段执行 `pnpm test:ci`，避免「只打镜像、未跑 CI」时的类型/构建回归漏检。

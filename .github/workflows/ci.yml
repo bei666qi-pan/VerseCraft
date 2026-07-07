@@ -33,7 +33,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint, unit tests, production build
-        run: pnpm test:ci
+        run: pnpm prompts:regen:verify && pnpm test:ci
         env:
           AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
           DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci

@@ -68,6 +68,7 @@
     "test:playthrough:run": "tsx scripts/run-playthrough.ts",
     "test:playthrough:fuzz": "tsx scripts/run-playthrough-fuzz.ts",
     "test:deepeval:run": "tsx scripts/run-deepeval.ts",
+    "prompts:regen:verify": "tsx scripts/verify-canonical-name-prompt.ts",
     "test:admin:api": "playwright test e2e/admin-api.spec.ts",
     "test:admin:perf": "playwright test e2e/admin-performance.spec.ts",
     "analyze:admin-sql": "tsx scripts/admin-explain-baseline.ts",
