@@ -1,0 +1,73 @@
+# VerseCraft Promptfoo 配置
+# 用途：武器/职业确定性断言 — Schema 校验 + 规则一致性
+# 运行：pnpm promptfoo eval（全量）/ pnpm promptfoo eval --filter-weapon（仅武器）
+# 说明：这些测试不调 LLM，使用 mock provider，免费且秒出结果
+#
+# 分层：
+# - weapon-schema: AI 输出的武器数据结构是否合法（damage 是数字、type 在枚举内）
+# - profession-rules: 给定职业=法师，输出技能是否属于法师池？装备限制是否违反？
+
+description: "VerseCraft Weapon & Profession Deterministic Assertions"
+
+prompts:
+  # 武器相关 prompts
+  - label: "weapon-generation"
+    id: weapon-gen
+    raw: |
+      你是一个中文互动叙事游戏的 DM（地下城主）。
+      玩家当前职业是：{{profession}}
+      玩家当前装备的武器是：{{equippedWeapon}}
+
+      请为玩家的下一回合行动生成一个 DM JSON 响应，包含：
+      - narrative: 叙事文本（简体中文，100-300字）
+      - is_action_legal: 行动是否合法
+      - sanity_damage: 理智损伤值
+      - weapon_updates: 武器状态更新（如有）
+      - awarded_items: 获得的物品（如有）
+      - options: 2-4个行动选项
+
+      请严格以 JSON 格式输出。
+
+  - label: "profession-skill-check"
+    id: profession-skill
+    raw: |
+      你是一个中文互动叙事游戏的 DM。
+      玩家职业：{{profession}}
+      可用主动技能：{{activeSkill}}
+      技能冷却：{{cooldown}} 小时
+
+      玩家输入：{{playerInput}}
+
+      请判断该行动是否应触发职业技能效果，并生成 DM JSON：
+      - is_action_legal
+      - skill_triggered: 是否触发技能
+      - narrative: 叙事文本
+      - sanity_damage
+      - options
+
+      请严格以 JSON 格式输出。
+
+providers:
+  # 使用 mock 模式 — 不调真实 LLM
+  - id: mock
+    config:
+      mode: mock
+      mockResponses:
+        - file://tests/promptfoo/prompts/mock-weapon-response.json
+        - file://tests/promptfoo/prompts/mock-profession-response.json
+
+defaultTest:
+  assert:
+    - type: contains-json
+    - type: javascript
+      value: "output.narrative && output.narrative.length >= 50"
+
+  options:
+    transformVars: "tests/promptfoo/assertions/schema-validators.ts"
+
+tests:
+  # === 武器 Schema 校验 ===
+  - path: tests/promptfoo/tests/weapon-schema.yaml
+
+  # === 职业规则一致性 ===
+  - path: tests/promptfoo/tests/profession-rules.yaml

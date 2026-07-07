@@ -62,6 +62,58 @@ jobs:
           VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
           VC_FORCE_AI_KEYS_MISSING: "1"
 
+  # ═══ 2026-07 新增：确定性断言 + Playthrough 模拟器 ═══
+  # 这两个 job 秒级完成、不调 LLM、不需要 AI 网关，每个 PR 都跑
+
+  deterministic-assertions:
+    name: deterministic-assertions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Promptfoo-style deterministic contract assertions
+        run: pnpm test:promptfoo
+        env:
+          AI_PROVIDER: mock
+
+  playthrough-mock:
+    name: playthrough-mock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Long-form playthrough simulator (mock mode — 4 personas × 3 runs)
+        run: pnpm test:playthrough
+        env:
+          AI_PROVIDER: mock
+          NODE_ENV: test
+
+      - name: Playthrough batch simulation (smoke)
+        run: pnpm dlx tsx scripts/run-playthrough.ts --runs 2 --max-steps 10
+        env:
+          AI_PROVIDER: mock
+          NODE_ENV: test
+
   e2e-contract:
     name: E2E contract
     runs-on: ubuntu-latest

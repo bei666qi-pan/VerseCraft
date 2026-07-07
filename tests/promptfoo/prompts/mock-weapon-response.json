@@ -1,0 +1,14 @@
+{
+  "narrative": "你握紧静默短棍，感受到它的重量带来的安心感。走廊尽头的灯光闪烁了两下，一股寒气从地板蔓延到你的脚踝。短棍表面微微震颤——它在警告你附近有不属于这个世界的存在。你微微压低重心，随时准备挥出压制一击。",
+  "is_action_legal": true,
+  "sanity_damage": 1,
+  "weapon_updates": {
+    "stability": 78,
+    "contamination": 3,
+    "counter": "目眩",
+    "module": "高亮",
+    "tier": "C"
+  },
+  "awarded_items": [],
+  "options": ["压低重心，准备压制", "后退观察", "呼叫同伴支援", "小心绕行"]
+}
