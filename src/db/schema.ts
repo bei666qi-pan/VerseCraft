@@ -1205,3 +1205,59 @@ export const aiAnalysisSnapshots = pgTable(
     staleIdx: index("ai_analysis_stale_idx").on(table.staleAt),
   })
 );
+
+/**
+ * Phase-2: 回合节奏账本。
+ * 每回合落一条，记录情绪档位、beat、钩子类型、意象键、是否爽点。
+ * 写入是 fire-and-forget（仿 scheduleBackgroundWorldTick 模式），读取有短超时 fail-open。
+ * 表缺失时运行时代码必须降级（empty ledger → 节奏指令 packet 为空字符串）。
+ */
+export const narrativePacingLedger = pgTable(
+  "narrative_pacing_ledger",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    turnIndex: integer("turn_index").notNull(),
+    register: varchar("register", { length: 24 }),
+    beat: varchar("beat", { length: 24 }),
+    hookType: varchar("hook_type", { length: 24 }),
+    imageryKeys: jsonb("imagery_keys").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    isPayoff: boolean("is_payoff").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionTurnIdx: index("narrative_pacing_ledger_session_turn_idx").on(table.sessionId, table.turnIndex),
+  })
+);
+
+/**
+ * Phase-2: 叙事伏笔账本。
+ * 记录伏笔播种/强化/兑现/过期状态，由 DM/worker/task 播种。
+ * phase-5 启用调度器进行兑现编排。
+ * 表缺失时降级为空（无可用伏笔 → directive 中 dueForeshadow 为空数组）。
+ */
+export const narrativeForeshadowLedger = pgTable(
+  "narrative_foreshadow_ledger",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: varchar("session_id", { length: 191 }).notNull(),
+    userId: varchar("user_id", { length: 191 }).references(() => users.id, { onDelete: "set null" }),
+    seedText: text("seed_text").notNull(),
+    source: varchar("source", { length: 24 }).notNull(),
+    plantedTurn: integer("planted_turn").notNull(),
+    status: varchar("status", { length: 24 }).notNull().default("planted"),
+    deadlineTurn: integer("deadline_turn"),
+    importance: integer("importance").notNull().default(0),
+    payoffTurn: integer("payoff_turn"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    sessionStatusIdx: index("narrative_foreshadow_ledger_session_status_idx").on(table.sessionId, table.status),
+    sessionDueIdx: index("narrative_foreshadow_ledger_session_due_idx").on(table.sessionId, table.status, table.deadlineTurn),
+  })
+);
