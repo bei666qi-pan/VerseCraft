@@ -16,7 +16,10 @@ export type NarrativeStyleIssueCode =
   | "sensory_density_low"
   | "rhythm_variation_flat"
   | "dialogue_ungrounded"
-  | "info_density_low";
+  | "info_density_low"
+  // === 2026-07 新增：叙事重构 phase-0 遥测判据（纯遥测，不拦截） ===
+  | "choice_preview_tail"
+  | "simile_chain";
 
 export type NarrativeStyleIssue = {
   code: NarrativeStyleIssueCode;
@@ -41,6 +44,10 @@ export type NarrativeStyleTelemetry = {
   dialogueGroundedCount: number;
   dialogueTotalCount: number;
   uniqueWordRatio: number;
+  /** 2026-07 phase-0 新增遥测 */
+  simileCount: number;
+  hookType: "question" | "threat" | "dilemma" | "bond" | "reveal" | "none";
+  dialogueCharRatio: number;
 };
 
 export type NarrativeStyleValidationReport = {
@@ -266,6 +273,63 @@ export function validateNarrativeStyle(args: ValidateNarrativeStyleArgs): Narrat
     });
   }
 
+  // === 2026-07 phase-0 新增遥测判据（纯遥测，不拦截） ===
+
+  // 1. choice_preview_tail：选项预告尾巴检测
+  const CHOICE_PREVIEW_RE =
+    /(我能[^。]{2,60}(也[能可]|或[者是]))|([。，][或]者[^。]{2,40})|(是[^。]{2,30}还是[^。]{2,30}[。？?])[。！!]?$/;
+  if (narrative.length >= 24) {
+    const tailSentences = sentences.length >= 2
+      ? sentences.slice(-2).join("")
+      : narrative;
+    if (CHOICE_PREVIEW_RE.test(tailSentences)) {
+      issues.push({
+        code: "choice_preview_tail",
+        severity: "low",
+        detail: "choice_preview_detected_in_tail",
+      });
+    }
+  }
+
+  // 2. simile_chain：连喻检测（像/仿佛/如同/好似/宛如 单段 ≥3）
+  const SIMILE_RE = /(像|仿佛|如同|好似|宛如)/g;
+  const simileHits = countMatches(narrative, SIMILE_RE);
+  if (simileHits >= 3) {
+    issues.push({
+      code: "simile_chain",
+      severity: "low",
+      detail: `simileHits=${simileHits}`,
+    });
+  }
+
+  // 3. hookTaxonomy：结尾段钩子分类（telemetry only）
+  function classifyHookType(lastSentences: string[]): "question" | "threat" | "dilemma" | "bond" | "reveal" | "none" {
+    const tail = lastSentences.slice(-2).join("");
+    const tailShort = lastSentences.slice(-1).join("");
+
+    if (/[？?]/.test(tailShort) && /(谁|什么|怎么|为什么|哪|吗|呢|会不会|是不是|有没有)/.test(tailShort)) return "question";
+    if (/[？?]/.test(tailShort) && /(倒计时|只剩|只有|最后|尽头|秒|小时|分钟|天)/.test(tailShort)) return "threat";
+    if (/(刮擦|脚步|逼近|靠近|门后|黑影|黑暗|灯灭了|危险|退路|追|逃)/.test(tailShort)) return "threat";
+    if (/(还是|选择|代价|报酬|名字|换|放弃|保留)/.test(tail) && /[？?]/.test(tail)) return "dilemma";
+    if (/(必须|决定|面对|门槛|站在|岔路|两难)/.test(tail) && /(还是|或)/.test(tail)) return "dilemma";
+    if (/(伞|塞|掌心|暖|温|笑|扶|拉|牵|抱|护|信|等)/.test(tail)) return "bond";
+    if (/(名字|签名|登记|印|写|缺口|裂缝|另一半)/.test(tail)) return "reveal";
+    if (/(真相|线头|串成|连成|回收|兑现|早就|原来|真相|钥匙|拼合)/.test(tail)) return "reveal";
+    return "none";
+  }
+  const hookType = classifyHookType(sentences);
+
+  // 4. dialogueRatio：引号内字符占比
+  const DIALOGUE_QUOTE_RE = /[“「『"]([^“”「」『』"]{2,})[”」』"]/g;
+  let dialogueCharCount = 0;
+  let dqMatch: RegExpExecArray | null;
+  while ((dqMatch = DIALOGUE_QUOTE_RE.exec(narrative)) !== null) {
+    if (dqMatch[1]) dialogueCharCount += dqMatch[1].length;
+  }
+  const dialogueCharRatio = narrative.length > 0
+    ? Number(((dialogueCharCount / narrative.length) * 100).toFixed(2))
+    : 0;
+
   const byCode = countByCode(issues);
   return {
     ok: issues.length === 0,
@@ -285,6 +349,10 @@ export function validateNarrativeStyle(args: ValidateNarrativeStyleArgs): Narrat
       dialogueGroundedCount: dialogueGrounded,
       dialogueTotalCount: dialogueTotal,
       uniqueWordRatio: Number(uniqueRatio.toFixed(3)),
+      /** 2026-07 phase-0 遥测扩展 */
+      simileCount: simileHits,
+      hookType,
+      dialogueCharRatio,
     },
   };
 }
