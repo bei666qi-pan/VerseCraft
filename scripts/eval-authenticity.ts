@@ -1,5 +1,13 @@
+/**
+ * eval:authenticity — 薄壳
+ *
+ * 当前状态：fixture-lint（对 fixture 字段结构打分，非 AI 输出）。
+ * Phase 2 将重造为真实 AI 输出 judge。
+ */
+
 import fs from "node:fs";
 import path from "node:path";
+import { evalLog, writeJson, appendHistory, getGitSha, parseEvalCli } from "../src/lib/evals/harness";
 
 type Fixture = {
   scenario: string;
@@ -44,6 +52,7 @@ function readJson<T>(filePath: string): T {
   return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
+/** 对 fixture 字段结构打分（非 AI 输出） */
 function scoreFixture(fixture: Fixture): Record<string, number> {
   const expect = fixture.expect ?? {};
   const mustNot = expect.mustNotContain ?? [];
@@ -93,6 +102,8 @@ function gate(scores: Record<string, number>, rubric: Rubric): string[] {
 }
 
 function main(): void {
+  const options = parseEvalCli();
+
   const rubric = readJson<Rubric>(rubricPath);
   const results = fixtureNames.map((name) => {
     const fixture = readJson<Fixture>(path.join(fixtureDir, name));
@@ -108,14 +119,44 @@ function main(): void {
   });
 
   for (const result of results) {
-    console.log(
+    evalLog(
+      options,
       `${result.scenario}: ${result.failures.length === 0 ? "pass" : "fail"}${
         result.failures.length > 0 ? ` failures=${result.failures.join(",")}` : ""
       }`
     );
   }
+
   const failed = results.filter((result) => result.failures.length > 0);
-  console.log(`authenticity_eval_v1: total=${results.length} failed=${failed.length} rubric=${rubric.id}`);
+  const total = results.length;
+  const passCount = total - failed.length;
+
+  evalLog(options, `authenticity_eval_v1: total=${total} failed=${failed.length} rubric=${rubric.id}`);
+
+  // 写入 JSON
+  writeJson(options.jsonOut, {
+    mode: "offline",
+    suite: "authenticity",
+    rubric: rubric.id,
+    total,
+    pass: passCount,
+    failed: failed.length,
+    results,
+  });
+
+  // 写入历史
+  appendHistory({
+    suite: "authenticity",
+    mode: "mock",
+    total,
+    pass: passCount,
+    passRate: total > 0 ? passCount / total : 0,
+    gate: failed.length === 0 ? "pass" : "fail",
+    timestamp: new Date().toISOString(),
+    gitSha: getGitSha(),
+  });
+
+  if (options.assert && failed.length > 0) process.exitCode = 1;
   if (failed.length > 0) process.exitCode = 1;
 }
 

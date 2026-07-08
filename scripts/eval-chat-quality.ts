@@ -1,4 +1,10 @@
-import fs from "node:fs";
+/**
+ * Chat Quality Eval — 薄壳
+ *
+ * 核心逻辑（probeChatSse + evaluateChatQualityCase）保持不变。
+ * CLI/日志/输出/历史由 harness 接管，输出格式与迁移前兼容。
+ */
+
 import path from "node:path";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import {
@@ -7,6 +13,7 @@ import {
   type ChatEvalCase,
   type ChatEvalCaseResult,
 } from "../src/lib/evals/chatQualityRubric";
+import { parseEvalCli, evalLog, writeJson, appendHistory, getGitSha } from "../src/lib/evals/harness";
 
 type EvalMode = "mock" | "live";
 
@@ -20,32 +27,23 @@ type CliOptions = {
 const root = path.resolve(__dirname, "..");
 const defaultCasesPath = path.join(root, "benchmarks", "llm-evals", "cases.json");
 
-function getArgValue(args: string[], name: string): string | null {
-  const prefix = `${name}=`;
-  const inline = args.find((arg) => arg.startsWith(prefix));
-  if (inline) return inline.slice(prefix.length);
-  const index = args.indexOf(name);
-  if (index >= 0) return args[index + 1] ?? null;
-  return null;
-}
-
 function parseCli(): CliOptions {
   const args = process.argv.slice(2);
-  const rawMode = (getArgValue(args, "--mode") ?? process.env.VC_EVAL_CHAT_MODE ?? "mock").trim().toLowerCase();
+  const base = parseEvalCli(args, {
+    modeEnv: "VC_EVAL_CHAT_MODE",
+    assertEnv: "VC_EVAL_CHAT_ASSERT",
+    jsonOutEnv: "VC_EVAL_CHAT_JSON_OUT",
+  });
   return {
-    mode: rawMode === "live" ? "live" : "mock",
-    assert: args.includes("--assert") || process.env.VC_EVAL_CHAT_ASSERT === "1",
-    jsonOut: getArgValue(args, "--json-out") ?? process.env.VC_EVAL_CHAT_JSON_OUT ?? null,
-    jsonOnly: args.includes("--json-only"),
+    mode: base.mode,
+    assert: base.assert,
+    jsonOut: base.jsonOut,
+    jsonOnly: base.jsonOnly,
   };
 }
 
-function log(options: CliOptions, message: string): void {
-  if (!options.jsonOnly) console.log(message);
-}
-
-function loadCases(): ChatEvalCase[] {
-  return JSON.parse(fs.readFileSync(defaultCasesPath, "utf8")) as ChatEvalCase[];
+function loadCases(path: string): ChatEvalCase[] {
+  return JSON.parse(require("fs").readFileSync(path, "utf8")) as ChatEvalCase[];
 }
 
 async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, index: number): Promise<ChatEvalCaseResult> {
@@ -70,13 +68,6 @@ async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, 
   return evaluateChatQualityCase(testCase, metrics);
 }
 
-async function writeJson(pathName: string | null, result: unknown): Promise<void> {
-  if (!pathName) return;
-  const resolved = path.resolve(pathName);
-  fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  fs.writeFileSync(resolved, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-}
-
 async function main(): Promise<void> {
   const options = parseCli();
   if (options.mode === "live" && process.env.E2E_AI_LIVE !== "1") {
@@ -84,18 +75,22 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
   const baseUrl = process.env.BENCHMARK_BASE_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
-  const cases = loadCases();
+  const cases = loadCases(defaultCasesPath);
   const results: ChatEvalCaseResult[] = [];
-  log(options, `Running chat quality eval: mode=${options.mode} cases=${cases.length} baseUrl=${baseUrl}`);
+
+  evalLog(options, `Running chat quality eval: mode=${options.mode} cases=${cases.length} baseUrl=${baseUrl}`);
+
   if (options.mode === "mock" && cases[0]) {
     await runCase(baseUrl, options.mode, cases[0], 10_000).catch(() => null);
   }
+
   for (let i = 0; i < cases.length; i += 1) {
     const testCase = cases[i]!;
     const result = await runCase(baseUrl, options.mode, testCase, i);
     results.push(result);
-    log(
+    evalLog(
       options,
       `  ${result.id}: json=${result.jsonPass ? 1 : 0} narrative=${result.narrativePass ? 1 : 0} options=${
         result.optionsPass ? 1 : 0
@@ -104,6 +99,7 @@ async function main(): Promise<void> {
       }`
     );
   }
+
   const summary = summarizeChatQualityEval(results);
   const output = {
     mode: options.mode,
@@ -119,7 +115,8 @@ async function main(): Promise<void> {
     summary,
     results,
   };
-  log(
+
+  evalLog(
     options,
     `summary: json=${summary.jsonPassRate.toFixed(3)} narrative=${summary.narrativePassRate.toFixed(
       3
@@ -131,7 +128,28 @@ async function main(): Promise<void> {
       summary.gatePass ? "pass" : "fail"
     }`
   );
+
+  // 写入 JSON（向后兼容格式）
   await writeJson(options.jsonOut, output);
+
+  // 写入历史聚合行
+  appendHistory({
+    suite: "chat-quality",
+    mode: options.mode,
+    total: results.length,
+    pass: summary.gatePass ? results.length : 0,
+    passRate: summary.overallScore,
+    gate: summary.gatePass ? "pass" : "fail",
+    dimensions: {
+      jsonPassRate: summary.jsonPassRate,
+      narrativePassRate: summary.narrativePassRate,
+      optionsPassRate: summary.optionsPassRate,
+      leakagePassRate: summary.leakagePassRate,
+    },
+    timestamp: new Date().toISOString(),
+    gitSha: getGitSha(),
+  });
+
   if (options.jsonOnly) console.log(JSON.stringify(output, null, 2));
   if (options.assert && !summary.gatePass) process.exitCode = 1;
 }

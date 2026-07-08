@@ -17,6 +17,7 @@ import type {
   PlayerEchoSelectionContext,
   SelectedEchoFragment,
 } from "../src/lib/playerEcho/types";
+import { appendHistory, getGitSha } from "../src/lib/evals/harness";
 
 type EvalResult = {
   id: string;
@@ -345,6 +346,16 @@ function main(): void {
   }
   process.stdout.write(json);
   if (!report.pass) process.exitCode = 1;
+  appendHistory({
+    suite: "player-echo",
+    mode: "mock",
+    total: report.cases,
+    pass: report.pass ? report.cases : 0,
+    passRate: report.pass ? 1 : 0,
+    gate: report.pass ? "pass" : "fail",
+    timestamp: report.generatedAt,
+    gitSha: getGitSha(),
+  });
 }
 
 main();
