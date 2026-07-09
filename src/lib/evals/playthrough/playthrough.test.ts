@@ -20,8 +20,8 @@ import type {
 } from "./types";
 
 describe("Player Agent", () => {
-  it("4个 persona 都有完整定义", () => {
-    const expected = ["speedrunner", "explorer", "rulebreaker", "confused"];
+  it("5个 persona 都有完整定义", () => {
+    const expected = ["speedrunner", "explorer", "rulebreaker", "confused", "collector"];
     for (const p of expected) {
       const config = PERSONAS[p as keyof typeof PERSONAS];
       assert.ok(config, `${p} 应有定义`);

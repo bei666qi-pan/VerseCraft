@@ -17,7 +17,8 @@ export type PersonaType =
   | "speedrunner"   // 速通型：直奔结局，测主线流程
   | "explorer"      // 探索型：到处乱逛，测边缘分支
   | "rulebreaker"   // 搞破坏型：试图违反规则、卡 bug
-  | "confused";     // 迷茫型：乱输入、答非所问，测鲁棒性
+  | "confused"      // 迷茫型：乱输入、答非所问，测鲁棒性
+  | "collector";    // 收集癖：疯狂拾取，测库存上限与经济系统
 
 /** Persona 配置 */
 export interface PersonaConfig {
