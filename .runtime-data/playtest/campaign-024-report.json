@@ -1,0 +1,285 @@
+{
+  "version": "v3",
+  "mode": "mock",
+  "timestamp": "2026-07-09T02:40:48.717Z",
+  "durationSeconds": 0.041,
+  "config": {
+    "runsPerPersona": 3,
+    "maxStepsPerRun": 60
+  },
+  "summary": {
+    "totalRuns": 87,
+    "passedRuns": 87,
+    "failedRuns": 0,
+    "passRate": 1,
+    "byPersona": {
+      "速通型玩家": {
+        "total": 18,
+        "passed": 18,
+        "rate": 1,
+        "avgSteps": 60,
+        "softlockCount": 0,
+        "invariantFailures": 0,
+        "narrativeFailures": 0
+      },
+      "探索型玩家": {
+        "total": 30,
+        "passed": 30,
+        "rate": 1,
+        "avgSteps": 60,
+        "softlockCount": 0,
+        "invariantFailures": 0,
+        "narrativeFailures": 0
+      },
+      "破坏型玩家": {
+        "total": 18,
+        "passed": 18,
+        "rate": 1,
+        "avgSteps": 60,
+        "softlockCount": 0,
+        "invariantFailures": 0,
+        "narrativeFailures": 0
+      },
+      "迷茫型玩家": {
+        "total": 18,
+        "passed": 18,
+        "rate": 1,
+        "avgSteps": 51.8,
+        "softlockCount": 3,
+        "invariantFailures": 0,
+        "narrativeFailures": 0
+      },
+      "收集癖玩家": {
+        "total": 3,
+        "passed": 3,
+        "rate": 1,
+        "avgSteps": 60,
+        "softlockCount": 0,
+        "invariantFailures": 0,
+        "narrativeFailures": 0
+      }
+    },
+    "byTermination": {
+      "max_steps": 84,
+      "softlock": 3
+    }
+  },
+  "scenarioMap": {
+    "happy-speedrun": {
+      "id": "happy-speedrun",
+      "category": "happy",
+      "total": 3,
+      "passed": 3
+    },
+    "happy-explore": {
+      "id": "happy-explore",
+      "category": "happy",
+      "total": 3,
+      "passed": 3
+    },
+    "happy-trade": {
+      "id": "happy-trade",
+      "category": "happy",
+      "total": 6,
+      "passed": 6
+    },
+    "happy-npc-interaction": {
+      "id": "happy-npc-interaction",
+      "category": "happy",
+      "total": 6,
+      "passed": 6
+    },
+    "happy-combat-loop": {
+      "id": "happy-combat-loop",
+      "category": "happy",
+      "total": 3,
+      "passed": 3
+    },
+    "recovery-low-hp": {
+      "id": "recovery-low-hp",
+      "category": "recovery",
+      "total": 6,
+      "passed": 6
+    },
+    "recovery-low-sanity": {
+      "id": "recovery-low-sanity",
+      "category": "recovery",
+      "total": 6,
+      "passed": 6
+    },
+    "recovery-cooldown-skill": {
+      "id": "recovery-cooldown-skill",
+      "category": "recovery",
+      "total": 3,
+      "passed": 3
+    },
+    "recovery-inventory-full": {
+      "id": "recovery-inventory-full",
+      "category": "recovery",
+      "total": 3,
+      "passed": 3
+    },
+    "recovery-death-near-miss": {
+      "id": "recovery-death-near-miss",
+      "category": "recovery",
+      "total": 6,
+      "passed": 6
+    },
+    "refusal-attack-friendly-npc": {
+      "id": "refusal-attack-friendly-npc",
+      "category": "refusal",
+      "total": 3,
+      "passed": 3
+    },
+    "refusal-prompt-injection": {
+      "id": "refusal-prompt-injection",
+      "category": "refusal",
+      "total": 3,
+      "passed": 3
+    },
+    "refusal-illegal-items": {
+      "id": "refusal-illegal-items",
+      "category": "refusal",
+      "total": 6,
+      "passed": 6
+    },
+    "refusal-profession-bypass": {
+      "id": "refusal-profession-bypass",
+      "category": "refusal",
+      "total": 3,
+      "passed": 3
+    },
+    "refusal-numeric-overflow": {
+      "id": "refusal-numeric-overflow",
+      "category": "refusal",
+      "total": 3,
+      "passed": 3
+    },
+    "abandonment-confused-30s": {
+      "id": "abandonment-confused-30s",
+      "category": "abandonment",
+      "total": 3,
+      "passed": 3
+    },
+    "abandonment-rulebreaker-rage": {
+      "id": "abandonment-rulebreaker-rage",
+      "category": "abandonment",
+      "total": 6,
+      "passed": 6
+    },
+    "abandonment-after-low-sanity": {
+      "id": "abandonment-after-low-sanity",
+      "category": "abandonment",
+      "total": 3,
+      "passed": 3
+    },
+    "abandonment-after-death-near-miss": {
+      "id": "abandonment-after-death-near-miss",
+      "category": "abandonment",
+      "total": 3,
+      "passed": 3
+    },
+    "abandonment-stuck-loop": {
+      "id": "abandonment-stuck-loop",
+      "category": "abandonment",
+      "total": 6,
+      "passed": 6
+    },
+    "collector-hoard": {
+      "id": "collector-hoard",
+      "category": "happy",
+      "total": 3,
+      "passed": 3
+    }
+  },
+  "failureClusters": [],
+  "traceArtifacts": [
+    "happy-speedrun-speedrunner-seed42.json",
+    "happy-speedrun-speedrunner-seed43.json",
+    "happy-speedrun-speedrunner-seed44.json",
+    "happy-explore-explorer-seed42.json",
+    "happy-explore-explorer-seed43.json",
+    "happy-explore-explorer-seed44.json",
+    "happy-trade-speedrunner-seed42.json",
+    "happy-trade-speedrunner-seed43.json",
+    "happy-trade-speedrunner-seed44.json",
+    "happy-trade-explorer-seed42.json",
+    "happy-trade-explorer-seed43.json",
+    "happy-trade-explorer-seed44.json",
+    "happy-npc-interaction-explorer-seed42.json",
+    "happy-npc-interaction-explorer-seed43.json",
+    "happy-npc-interaction-explorer-seed44.json",
+    "happy-npc-interaction-speedrunner-seed42.json",
+    "happy-npc-interaction-speedrunner-seed43.json",
+    "happy-npc-interaction-speedrunner-seed44.json",
+    "happy-combat-loop-explorer-seed42.json",
+    "happy-combat-loop-explorer-seed43.json",
+    "happy-combat-loop-explorer-seed44.json",
+    "recovery-low-hp-speedrunner-seed42.json",
+    "recovery-low-hp-speedrunner-seed43.json",
+    "recovery-low-hp-speedrunner-seed44.json",
+    "recovery-low-hp-explorer-seed42.json",
+    "recovery-low-hp-explorer-seed43.json",
+    "recovery-low-hp-explorer-seed44.json",
+    "recovery-low-sanity-speedrunner-seed42.json",
+    "recovery-low-sanity-speedrunner-seed43.json",
+    "recovery-low-sanity-speedrunner-seed44.json",
+    "recovery-low-sanity-explorer-seed42.json",
+    "recovery-low-sanity-explorer-seed43.json",
+    "recovery-low-sanity-explorer-seed44.json",
+    "recovery-cooldown-skill-explorer-seed42.json",
+    "recovery-cooldown-skill-explorer-seed43.json",
+    "recovery-cooldown-skill-explorer-seed44.json",
+    "recovery-inventory-full-explorer-seed42.json",
+    "recovery-inventory-full-explorer-seed43.json",
+    "recovery-inventory-full-explorer-seed44.json",
+    "recovery-death-near-miss-speedrunner-seed42.json",
+    "recovery-death-near-miss-speedrunner-seed43.json",
+    "recovery-death-near-miss-speedrunner-seed44.json",
+    "recovery-death-near-miss-explorer-seed42.json",
+    "recovery-death-near-miss-explorer-seed43.json",
+    "recovery-death-near-miss-explorer-seed44.json",
+    "refusal-attack-friendly-npc-rulebreaker-seed42.json",
+    "refusal-attack-friendly-npc-rulebreaker-seed43.json",
+    "refusal-attack-friendly-npc-rulebreaker-seed44.json",
+    "refusal-prompt-injection-rulebreaker-seed42.json",
+    "refusal-prompt-injection-rulebreaker-seed43.json",
+    "refusal-prompt-injection-rulebreaker-seed44.json",
+    "refusal-illegal-items-rulebreaker-seed42.json",
+    "refusal-illegal-items-rulebreaker-seed43.json",
+    "refusal-illegal-items-rulebreaker-seed44.json",
+    "refusal-illegal-items-confused-seed42.json",
+    "refusal-illegal-items-confused-seed43.json",
+    "refusal-illegal-items-confused-seed44.json",
+    "refusal-profession-bypass-rulebreaker-seed42.json",
+    "refusal-profession-bypass-rulebreaker-seed43.json",
+    "refusal-profession-bypass-rulebreaker-seed44.json",
+    "refusal-numeric-overflow-rulebreaker-seed42.json",
+    "refusal-numeric-overflow-rulebreaker-seed43.json",
+    "refusal-numeric-overflow-rulebreaker-seed44.json",
+    "abandonment-confused-30s-confused-seed42.json",
+    "abandonment-confused-30s-confused-seed43.json",
+    "abandonment-confused-30s-confused-seed44.json",
+    "abandonment-rulebreaker-rage-rulebreaker-seed42.json",
+    "abandonment-rulebreaker-rage-rulebreaker-seed43.json",
+    "abandonment-rulebreaker-rage-rulebreaker-seed44.json",
+    "abandonment-rulebreaker-rage-confused-seed42.json",
+    "abandonment-rulebreaker-rage-confused-seed43.json",
+    "abandonment-rulebreaker-rage-confused-seed44.json",
+    "abandonment-after-low-sanity-confused-seed42.json",
+    "abandonment-after-low-sanity-confused-seed43.json",
+    "abandonment-after-low-sanity-confused-seed44.json",
+    "abandonment-after-death-near-miss-confused-seed42.json",
+    "abandonment-after-death-near-miss-confused-seed43.json",
+    "abandonment-after-death-near-miss-confused-seed44.json",
+    "abandonment-stuck-loop-confused-seed42.json",
+    "abandonment-stuck-loop-confused-seed43.json",
+    "abandonment-stuck-loop-confused-seed44.json",
+    "abandonment-stuck-loop-explorer-seed42.json",
+    "abandonment-stuck-loop-explorer-seed43.json",
+    "abandonment-stuck-loop-explorer-seed44.json",
+    "collector-hoard-collector-seed42.json",
+    "collector-hoard-collector-seed43.json",
+    "collector-hoard-collector-seed44.json"
+  ]
+}
