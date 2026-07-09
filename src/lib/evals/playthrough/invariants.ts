@@ -59,7 +59,8 @@ export function checkAllInvariants(
   stepIndex: number,
   state: GameStateSnapshot,
   previousState?: GameStateSnapshot,
-  narrative?: string
+  narrative?: string,
+  dmJson?: Record<string, unknown>
 ): InvariantCheckResult {
   const violations: InvariantViolation[] = [];
 
@@ -189,6 +190,35 @@ export function checkAllInvariants(
           actual: `${prevFloor} → ${currFloor}`,
         });
       }
+    }
+  }
+
+  // ──── 第三层：DM JSON 结构 ────
+
+  // 14. options 必填检查：当 is_action_legal 为 true 时 options 必须非空
+  if (dmJson) {
+    const isLegal = dmJson["is_action_legal"];
+    if (isLegal === true) {
+      const options = dmJson["options"];
+      if (!Array.isArray(options) || options.length === 0) {
+        violations.push({
+          rule: "dm_json_options_missing",
+          severity: "major",
+          description: "is_action_legal 为 true 时 options 不应为空",
+          expected: "options 为非空数组",
+          actual: `options = ${JSON.stringify(options)}`,
+        });
+      }
+    }
+    // 15. consumes_time 应为布尔值
+    if (dmJson["consumes_time"] !== undefined && typeof dmJson["consumes_time"] !== "boolean") {
+      violations.push({
+        rule: "dm_json_consumes_time_type",
+        severity: "minor",
+        description: "consumes_time 应为布尔值",
+        expected: "boolean",
+        actual: typeof dmJson["consumes_time"],
+      });
     }
   }
 

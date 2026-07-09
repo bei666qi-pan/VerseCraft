@@ -261,8 +261,8 @@ export async function runSinglePlaythroughV3(
       timestamp: Date.now(),
     });
 
-    // ⑥ 不变量检查（含 narrative）
-    const invariantResult = checkAllInvariants(step, currentState, prevState, response.narrative);
+    // ⑥ 不变量检查（含 narrative & DM JSON）
+    const invariantResult = checkAllInvariants(step, currentState, prevState, response.narrative, response.dmJson);
     invariantResults.push(invariantResult);
 
     if (!invariantResult.passed) {

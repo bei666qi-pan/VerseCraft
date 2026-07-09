@@ -134,6 +134,61 @@ describe("不变量检查", () => {
     const result = checkAllInvariants(0, curr, prev);
     assert.ok(result.violations.some((v) => v.rule === "task_completion_monotonic"));
   });
+
+  it("is_action_legal=true 但 options 为空应触发 major 违规", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+      options: [],
+    };
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("is_action_legal=true 但 options 缺失应触发 major 违规", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+    };
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("options 非空时不应触发 options_missing", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+      options: ["选项A", "选项B"],
+    };
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(!result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("consumes_time 非布尔值应触发 minor 违规", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+      consumes_time: 1,
+      options: ["选项A"],
+    };
+    const result = checkAllInvariants(0, state, undefined, "叙事", dmJson);
+    assert.ok(result.violations.some((v) => v.rule === "dm_json_consumes_time_type"));
+  });
+
+  it("不传 dmJson 不应触发 DM JSON 相关违规", () => {
+    const state = createInitialStateSnapshot();
+    const result = checkAllInvariants(0, state);
+    assert.ok(result.passed);
+    assert.ok(!result.violations.some((v) => v.rule.startsWith("dm_json_")));
+  });
 });
 
 describe("Softlock 检测", () => {
