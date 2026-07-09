@@ -33,8 +33,6 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   return commitTurnCore(args);
 }
 
-export const commitNarrativeTurn = commitTurn;
-
 export type NarrativeEventsCommitResult = {
   storyEventIds: Array<number | string>;
   npcMemoryEntryIds: Array<number | string>;

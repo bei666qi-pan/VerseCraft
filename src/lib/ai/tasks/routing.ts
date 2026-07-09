@@ -14,9 +14,7 @@ export {
   isModelForbiddenForTask,
   isRoleForbiddenForTask,
   resolveFallbackPolicy,
-  resolveOrderedModelChain,
   resolveOrderedRoleChain,
-  TASK_MODEL_FORBIDDEN,
   TASK_POLICY,
   TASK_ROLE_FORBIDDEN,
 } from "@/lib/ai/tasks/taskPolicy";

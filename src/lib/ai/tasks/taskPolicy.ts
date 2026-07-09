@@ -250,9 +250,6 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
   EVAL_JUDGE: new Set([REASONER, ENHANCE]),
 };
 
-/** @deprecated Use TASK_ROLE_FORBIDDEN */
-export const TASK_MODEL_FORBIDDEN = TASK_ROLE_FORBIDDEN;
-
 /**
  * Tool-calling（function calling）白名单：只允许离线 / worker 链路。
  * 在线任务（PLAYER_CHAT、control 面、enhance 面）一律禁止 —— tool 往返必然破坏首包与 final 预算，
@@ -414,9 +411,6 @@ export function resolveOrderedRoleChain(
   }
   return configured;
 }
-
-/** @deprecated Use resolveOrderedRoleChain */
-export const resolveOrderedModelChain = resolveOrderedRoleChain;
 
 export function resolveFallbackPolicy(
   task: TaskType,

@@ -177,9 +177,6 @@ export interface ResolvedAiEnv {
 /** Default player SSE fallback role order when env omits chain. */
 export const DEFAULT_PLAYER_ROLE_CHAIN: AiLogicalRole[] = ["main", "control"];
 
-/** @deprecated Use DEFAULT_PLAYER_ROLE_CHAIN */
-export const DEFAULT_PLAYER_CHAIN = DEFAULT_PLAYER_ROLE_CHAIN;
-
 function resolveGatewayChatCompletionsUrl(): string {
   const raw = envRaw("AI_GATEWAY_BASE_URL")?.trim() ?? "";
   if (!raw) return "";
