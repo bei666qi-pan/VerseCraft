@@ -724,7 +724,7 @@ export async function runPlaythroughBatch(
   config: PlaythroughRunConfig
 ): Promise<PlaythroughRunSummary> {
   const startTime = Date.now();
-  const sut = createSutAdapter({ mock: config.mockMode });
+  const sut = createSutAdapter({ mock: config.mockMode, baseUrl: config.baseUrl });
   const allResults: PlaythroughRunResult[] = [];
 
   for (const persona of config.personas) {

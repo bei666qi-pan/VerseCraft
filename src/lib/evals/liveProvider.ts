@@ -69,65 +69,90 @@ export async function callDeepSeekCompletion(
   const config = getDeepSeekConfig();
   const startTime = Date.now();
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 60000);
+  // 429 重试
+  const MAX_RETRIES = 1;
+  let lastError: Error | null = null;
 
-  try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: req.messages,
-        temperature: req.temperature ?? 0.7,
-        max_tokens: req.maxTokens ?? 1024,
-        response_format: req.jsonMode ? { type: "json_object" } : undefined,
-        stream: false,
-      }),
-      signal: controller.signal,
-    });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 60000);
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error");
-      throw new Error(`DeepSeek API error (${response.status}): ${errorText.slice(0, 500)}`);
-    }
+    try {
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages: req.messages,
+          temperature: req.temperature ?? 0.7,
+          max_tokens: req.maxTokens ?? 1024,
+          response_format: req.jsonMode ? { type: "json_object" } : undefined,
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
 
-    const data = await response.json() as {
-      choices: Array<{
-        message: { content: string };
-        finish_reason: string;
-      }>;
-      usage: {
-        prompt_tokens: number;
-        completion_tokens: number;
-        total_tokens: number;
+      if (response.status === 429 && attempt < MAX_RETRIES) {
+        const waitMs = 3000;
+        console.warn(`  ⏳ 触发限流(429)，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
+        clearTimeout(timeout);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`DeepSeek API error (${response.status}): ${errorText.slice(0, 500)}`);
+      }
+
+      const data = await response.json() as {
+        choices: Array<{
+          message: { content: string };
+          finish_reason: string;
+        }>;
+        usage: {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        };
+        model: string;
       };
-      model: string;
-    };
 
-    const latencyMs = Date.now() - startTime;
-    const choice = data.choices?.[0];
-    if (!choice?.message?.content) {
-      throw new Error("DeepSeek API 返回空内容");
+      clearTimeout(timeout);
+      const latencyMs = Date.now() - startTime;
+      const choice = data.choices?.[0];
+      if (!choice?.message?.content) {
+        throw new Error("DeepSeek API 返回空内容");
+      }
+
+      return {
+        content: choice.message.content,
+        finishReason: choice.finish_reason ?? "unknown",
+        usage: {
+          promptTokens: data.usage?.prompt_tokens ?? 0,
+          completionTokens: data.usage?.completion_tokens ?? 0,
+          totalTokens: data.usage?.total_tokens ?? 0,
+        },
+        latencyMs,
+        model: data.model ?? config.model,
+      };
+    } catch (e) {
+      clearTimeout(timeout);
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (e instanceof Error && /rate_limit|429/i.test(e.message) && attempt < MAX_RETRIES) {
+        const waitMs = 10000 * (attempt + 1);
+        console.warn(`  ⏳ 触发限流，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      throw lastError;
     }
-
-    return {
-      content: choice.message.content,
-      finishReason: choice.finish_reason ?? "unknown",
-      usage: {
-        promptTokens: data.usage?.prompt_tokens ?? 0,
-        completionTokens: data.usage?.completion_tokens ?? 0,
-        totalTokens: data.usage?.total_tokens ?? 0,
-      },
-      latencyMs,
-      model: data.model ?? config.model,
-    };
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError ?? new Error("DeepSeek API 重试耗尽");
 }
 
 // === 批量调用（带重试） ===
@@ -236,9 +261,18 @@ export async function generatePlayerActionDeepSeek(params: {
     messages,
     temperature: 0.8,
     maxTokens: 80,
+    jsonMode: true,
   });
 
-  return response.content.trim().replace(/^["']|["']$/g, "");
+  // 通过 json_object 绕过 one-api 网关非流式 content=null 的问题
+  let action = response.content.trim();
+  try {
+    const parsed = JSON.parse(action);
+    action = parsed.text ?? parsed.action ?? parsed.content ?? parsed.response ?? action;
+  } catch {
+    // 若模型返回非 JSON 纯文本则直接使用
+  }
+  return action.replace(/^["']|["']$/g, "");
 }
 
 // === Judge 专用: 叙事质量评分 ===

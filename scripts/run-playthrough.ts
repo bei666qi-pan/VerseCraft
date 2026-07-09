@@ -14,6 +14,10 @@
  *   pnpm dlx tsx scripts/run-playthrough.ts --no-narrative-judge   # 跳过叙事裁判
  */
 
+// 加载 .env.local（playthrough 需要 DEEPSEEK_API_KEY 等环境变量）
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import {
   PERSONAS,
   runPlaythroughBatch,
