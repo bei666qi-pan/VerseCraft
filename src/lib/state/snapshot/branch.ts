@@ -1,8 +1,8 @@
 import { isAbsoluteSafeZoneLocation } from "@/lib/registry/serviceNodes";
 import { mapAnchorUnlocksToEnabledAnchors } from "@/lib/revive/anchorRegistry";
-import type { SnapshotMainThreatState } from "./types";
+import type { SaveSlotKind, SnapshotMainThreatState } from "./types";
 
-export type SaveSlotKind = "main" | "branch" | "auto_branch";
+export type { SaveSlotKind } from "./types";
 
 export interface SaveSlotSnapshotSummary {
   day: number;
