@@ -89,10 +89,6 @@ export function resolveBgmTrackKey(key: string | null | undefined): BgmTrackKey 
   return DEFAULT_BGM;
 }
 
-export function isValidBgmTrack(key: string): boolean {
-  return VALID_BGM_KEYS.has(key);
-}
-
 export function getBgmSrc(track: string | null | undefined): string {
   return BGM_TRACKS[resolveBgmTrackKey(track)];
 }
