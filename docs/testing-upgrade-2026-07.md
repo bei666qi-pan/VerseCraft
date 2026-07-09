@@ -104,14 +104,14 @@ src/lib/evals/deepEval/
   index.ts               ← 主入口
   metrics.ts              ← 维度定义 + 评分标准
   calibration.ts          ← 校准系统 + 校准样本
-scripts/eval-deepeval.ts  ← CLI 运行器
+scripts/run-deepeval.ts  ← CLI 运行器
 ```
 
 ### 运行命令
 ```bash
-pnpm dlx tsx scripts/eval-deepeval.ts              # mock 模式
-pnpm dlx tsx scripts/eval-deepeval.ts --calibrate   # 校准模式
-pnpm dlx tsx scripts/eval-deepeval.ts --mode live   # live 模式
+pnpm dlx tsx scripts/run-deepeval.ts              # mock 模式
+pnpm dlx tsx scripts/run-deepeval.ts --calibrate   # 校准模式
+pnpm dlx tsx scripts/run-deepeval.ts --mode live   # live 模式
 ```
 
 ---
@@ -249,7 +249,7 @@ playthrough-fuzz-nightly:    pnpm test:playthrough:fuzz + DeepEval（mock）
                              → 失败率超 10% 自动开 issue
 
 # 后续可添加：
-deep-eval-gate:              pnpm dlx tsx scripts/eval-deepeval.ts --mode live
+deep-eval-gate:              pnpm dlx tsx scripts/run-deepeval.ts --mode live
                              （需要 AI gateway secrets）
 playthrough-live-fuzz:       pnpm test:playthrough:fuzz --live
                              （需要 AI gateway secrets）
