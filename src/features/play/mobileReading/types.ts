@@ -135,6 +135,10 @@ export type MobileTaskPanelProps = {
   codex?: Record<string, CodexEntry>;
   highlightTaskIds?: string[];
   onClaimTask: (taskId: string) => void;
+  /** 玩家是否从未打开过任务面板 */
+  taskPanelFirstOpen?: boolean;
+  /** 玩家打开任务面板时调用，标记面板已查看 */
+  onMarkTaskPanelOpened?: () => void;
 };
 
 export type MobileSettingsPanelProps = {
@@ -159,4 +163,6 @@ export type MobileBottomNavProps = {
   onOpenTasks?: () => void;
   /** 图鉴是否存在未读的新发现，驱动"图鉴"导航项的角标提示 */
   hasUnreadCodex?: boolean;
+  /** 任务是否存在未查看的更新，驱动"任务"导航项的角标提示 */
+  hasUnviewedTaskUpdates?: boolean;
 };

@@ -147,6 +147,9 @@ export function normalizeEndingSettlementSnapshot(raw: unknown): EndingSettlemen
     lastAction: asString(record.lastAction) || null,
     createdAt: asString(record.createdAt, "1970-01-01T00:00:00.000Z"),
     writingMarkdown: asString(record.writingMarkdown),
+    taskCompletionScore: asFiniteNumber(record.taskCompletionScore, 0) || undefined,
+    completedTasks: Math.max(0, Math.trunc(asFiniteNumber(record.completedTasks, 0))) || undefined,
+    totalFormalTasks: Math.max(0, Math.trunc(asFiniteNumber(record.totalFormalTasks, 0))) || undefined,
   };
 }
 
@@ -293,6 +296,7 @@ export function buildEndingSettlementSnapshotFromStore(input: {
   escapeMainline?: { stage?: unknown } | null;
   finalNarrative?: string | null;
   createdAt?: string;
+  tasks?: unknown[];
 }): EndingSettlementSnapshot | null {
   const endingState = normalizeEndingState(input.endingState);
   if (!endingState.eligibility) return null;
@@ -318,6 +322,7 @@ export function buildEndingSettlementSnapshotFromStore(input: {
     }),
     finalChoice: endingState.finalChoice,
     deathContext: endingState.deathContext,
+    tasks: input.tasks,
   });
 }
 

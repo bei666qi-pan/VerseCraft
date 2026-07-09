@@ -1,3 +1,5 @@
+import type { InjuryDelta } from "@/lib/combat/combatInjuryIntegration";
+
 export type TurnMode = "narrative_only" | "decision_required" | "system_transition";
 
 export type NarrativeDensity = "low" | "medium" | "high";
@@ -9,6 +11,7 @@ export type ConflictOutcomeEnvelope = {
   likelyCost?: "none" | "light" | "moderate" | "heavy" | "unknown";
   suggestedDirection?: string;
   linkedNpcIds?: string[];
+  injury_delta?: InjuryDelta;
 };
 
 export type EndingFinaleEnvelope = {
@@ -154,5 +157,8 @@ export type TurnEnvelope = {
     weapon_bag_updates: Array<Record<string, unknown>>;
     bgm_track?: string;
   };
+
+  // Phase-5: 伏笔操作（可选，DM 可发 plant/reinforce/payoff）
+  foreshadow_ops?: Array<Record<string, unknown>>;
 };
 

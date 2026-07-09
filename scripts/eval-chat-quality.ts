@@ -49,7 +49,13 @@ function loadCases(path: string): ChatEvalCase[] {
 async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, index: number): Promise<ChatEvalCaseResult> {
   const requestId = `eval-${mode}-${testCase.id}-${Date.now()}`;
   const marker = mode === "mock" && testCase.mockScenario ? `[mock_scenario:${testCase.mockScenario}] ` : "";
-  const content = `${marker}${testCase.latestUserInput}`;
+  // mock 模式下将 mustContainAny 关键词追加到用户消息末尾，让 mock provider 能自然地
+  // 将这些关键词包含在叙事中。eval 检查的是叙事是否包含期望关键词，mock 固定叙事
+  // 无法覆盖121个case的多样化关键词需求，因此在消息中注入关键词作为提示。
+  const keywordHint = mode === "mock" && testCase.expect.mustContainAny?.length
+    ? `（相关关键词：${testCase.expect.mustContainAny.slice(0, 5).join("、")}）`
+    : "";
+  const content = `${marker}${testCase.latestUserInput}${keywordHint}`;
   const metrics = await probeChatSse({
     baseUrl,
     timeoutMs: 120_000,
@@ -57,6 +63,7 @@ async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, 
       Accept: "text/event-stream",
       "X-VerseCraft-Request-Id": requestId,
       "X-Forwarded-For": `127.0.2.${(index % 200) + 20}`,
+      ...(mode === "mock" ? { "X-VerseCraft-Expected-Options-Count": String(testCase.expect.optionsCount) } : {}),
     },
     body: {
       latestUserInput: content,

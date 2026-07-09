@@ -4,6 +4,8 @@
 import type { ConflictOutcomeEnvelope } from "@/features/play/turnCommit/turnEnvelope";
 import { outcomeToResultLayer } from "@/lib/combat/combatPresentation";
 import type { CombatOutcomeTier, ConflictResultLayer } from "@/lib/combat/types";
+import { likelyCostToInjuryDelta } from "@/lib/combat/combatInjuryIntegration";
+import type { InjurySeverity, InjuryType } from "@/lib/registry/survivalCanon";
 
 export type ConflictSituationPole = "danger" | "contest" | "pressure" | "retreat";
 
@@ -17,6 +19,8 @@ export type ConflictFeedbackViewModel = {
   opportunityLine: string;
   /** 代价预警 */
   costLine: string;
+  /** 伤势余痕：从 injury_delta 派生的 diegetic 伤势短语；无伤时为空串（不渲染） */
+  injuryLine: string;
   /** 压制 / 逼退 / 互伤 / 撤离 / 失控 */
   resultTierLabel: string;
   /** 结果层级旁白 */
@@ -24,6 +28,43 @@ export type ConflictFeedbackViewModel = {
   /** 叙事回声：清洗后的 summary，避免与上列重复时可为空 */
   narrativeEcho: string;
 };
+
+/** 伤势类型 → 怪谈化短语（不使用医学/系统术语，贴合既有"淤青/皮肉/神经"语调） */
+const INJURY_FLAVOR: Record<InjuryType, string> = {
+  cut: "皮肉开口",
+  bruise: "淤青压痛",
+  fracture: "骨头闷响",
+  burn: "烫红一片",
+  corrosion: "被蚀去一层",
+  infection: "伤口发炎",
+  cognitive: "脑里拨弦",
+  asphyxiation: "喉咙发紧",
+  poison: "血里多了点不对的东西",
+  anomaly: "身上多了不属于这层的痕迹",
+};
+
+/** 严重度 → 强度词（不展示 minor/moderate 等系统字样） */
+const SEVERITY_WORD: Record<InjurySeverity, string> = {
+  minor: "轻",
+  moderate: "明显",
+  severe: "重",
+  critical: "极重",
+  fatal: "致命",
+};
+
+/**
+ * 从 likelyCost 派生 diegetic 伤势余痕行。
+ * 与 resolveDmTurn.ts 服务端 injury_delta 同源（均由 likelyCostToInjuryDelta 从 likelyCost 派生），
+ * 前端 normalizeConflictOutcome 不透传 injury_delta，故在此重算，保证前后端一致。
+ * 无伤（none/unknown）返回空串。
+ */
+function injuryLineFor(likelyCost: ConflictOutcomeEnvelope["likelyCost"]): string {
+  if (likelyCost !== "light" && likelyCost !== "moderate" && likelyCost !== "heavy") return "";
+  const delta = likelyCostToInjuryDelta(likelyCost ?? "none");
+  if (delta.injuries.length === 0) return "";
+  const parts = delta.injuries.map((i) => `${SEVERITY_WORD[i.severity] ?? ""}${INJURY_FLAVOR[i.type] ?? "一处说不清的痕迹"}`);
+  return `身上多了：${parts.join("、")}。`;
+}
 
 const OUTCOME_TIERS = new Set<string>([
   "crush",
@@ -225,6 +266,7 @@ export function buildConflictFeedbackViewModel(input: ConflictFeedbackBuildInput
     situationWhisper: sit.whisper,
     opportunityLine,
     costLine,
+    injuryLine: injuryLineFor(env.likelyCost),
     resultTierLabel,
     resultTierWhisper,
     narrativeEcho: clip(narrativeEcho, 200),

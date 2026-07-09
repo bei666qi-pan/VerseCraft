@@ -907,6 +907,10 @@ export function buildRuntimeContextPackets(args: {
           version: 1,
           promiseCount: 0,
           activeTaskCount: tasks.length,
+          taskFamine: tasks.length === 0,
+          taskFamineTip: tasks.length === 0
+            ? "当前没有正在推进的目标。与住户交谈、探索不熟悉的楼层、回应之前忽略的动静——新的线索会在你行动中浮现。"
+            : "",
           debtPressure: "low",
           certifierPresenceHint: "",
           nextReasons: [],

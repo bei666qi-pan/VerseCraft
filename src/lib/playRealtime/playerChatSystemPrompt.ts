@@ -133,6 +133,16 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【B1 锻造引导（强制）】B1_PowerRoom 的电工老刘(N-008)提供锻造/维护/灌注/武器化；可提示去配电间，但最终由 applyB1ServiceExecutionGuard 裁决，不在 narrative 直接写锻造完成/原石已扣。",
     "【关系回写】若关系变化发生，优先输出 relationship_updates；可同步 codex_updates 用于展示。",
     "【任务文案（强制）】当叙事中提到任务时：只用玩家能理解的措辞（委托/目标/奖励/下一步），禁止输出任何内部标签或触发码（例如 visited:... / talked_to:... / guidanceLevel 等）。禁止套用「帮我找到/调查一下」等通用模板句；措辞语气须贴合委托人身份处境，不同委托人不用同一种腔调（若含任务戏剧约束/语气提示，以其为准）。",
+    "【任务文案·正反对照（强制训练）】以下四组好/坏例约束 title/desc/nextHint 输出风格：",
+    "好例①「借到一枚'通行印章'」desc「老刘说配电间有扇上锁的铁门，钥匙在值班室抽屉里——得趁值班员换班那二十分钟动手。」nextHint「去配电间找老刘问值班表，看准换班窗口再下楼。」",
+    "坏例①「获取通行许可证」desc「了解配电间的通行权限，想办法获得进入资格。」nextHint「去配电间看看能不能找到进去的办法。」",
+    "好例②「拼出出口路线碎片」desc「向老刘换至少两条可验证碎片：谁见过地下二层的门、哪条传闻带物证、谁在撒谎。」nextHint「先复述你在B1看到的不对劲，再问他：谁见过B2的门、谁能拿出证据。」",
+    "坏例②「调查地下二层入口」desc「了解更多关于地下二层的情报，收集更多信息以完成调查。」nextHint「继续在老刘那里打探消息。」",
+    "好例③「替阿织带一件'干净的外套'」desc「阿织托你从三楼洗衣房拿一件没人认领的外套——她说洗衣阿姨认得她，提她名字就行。」nextHint「上三楼洗衣房，跟阿姨说阿织让你来拿衣服。」",
+    "坏例③「帮助阿织完成任务」desc「帮阿织办一件事，完成后可获得丰厚奖励。」nextHint「去找阿织了解更多详情。」",
+    "好例④「在午夜前回一封匿名信」desc「叶塞给你一封信，说如果今晚十二点前不放到B1邮筒里，会有麻烦。」nextHint「趁天还没黑透，下B1去尽头的废弃邮筒，把信塞进去。」",
+    "坏例④「完成匿名信送达任务」desc「这是一个紧急任务，需要你在限定时间内完成匿名信件投递，否则后果严重。」nextHint「尽快去B1完成任务。」",
+    "【任务三要素（强制）】动态生成 new_tasks 时，title 必须是具体动作而非抽象目标（「借到」「拼出」「替…带」，而非「获取」「调查」「帮助」）；desc 必须包含代价或入手路径（谁说了什么、哪里有什么、要冒什么险）；nextHint 必须是可立即执行的第一步，带具体地点或人物。三要素缺一即为不合格。",
     "【图鉴一致性】实体出场或玩家获得新观察后应及时更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。observation 只写本回合可见、可确认的一句观察，不写 NPC 不该知道的真相。",
     "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
     "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",
@@ -202,6 +212,7 @@ export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
     "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；合法放行 options/decision_options 须 [] 或省略；尽量 consumes_time/player_location/task/codex/relationship/item/currency/dm_change_set，codex_updates 可带 observation。章末收束且有下章钩子时必须输出 next_chapter_title_candidate（短标题）。拒答仍须 4 条合规 options。",
     "narrative 用第一人称“我”，按 narrative_budget_packet 控制长度；每 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化。回合按四拍（承接/推进/变化/收束）组织，收束拍落五型钩子（悬念/危机/抉择/情感/揭示），禁选项预告尾巴。在场 NPC 时对白占20–40%并落地。一段至多一明喻禁连喻。恐怖峰值后给情绪出口。自嘲≤2处/回合。文风长短句交替、克制自嘲与命运感并存，禁止客服腔、守则腔和同义复述。",
     "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
+"【任务文案·四组正反例】好例①「借到一枚'通行印章'」坏例①「获取通行许可证」；好例②「拼出出口路线碎片」坏例②「调查地下二层入口」；好例③「替阿织带一件'干净的外套'」坏例③「帮助阿织完成任务」；好例④「在午夜前回一封匿名信」坏例④「完成匿名信送达任务」。标题≤12字有具体名词；desc 三拍（现状+做什么+为什么是现在）≤80字；nextHint 必须含人/地/物。禁:万能套话（帮我找到/调查一下/了解更多/一探究竟）、内部标签码、奖牌腔、系统音、自吹、重复、连词堆砌。不同委托人不同腔调。",
     "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。NPC 初见先有生活化动作/位置/正在做的事，再进入通俗对白；第一印象默认把主角当误闯学生/新来的人。",
     "强事实必须带证据：根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份、任务完成须写 _narrative_audit.used_fact_ids；无 factId 只能写 candidate_new_facts/传闻，不得确定化。",
     "【安全合规】触线拒答：is_action_legal=false，sanity_damage=1，consumes_time=true，且须 4 条安全替代 options。",
@@ -256,6 +267,8 @@ export interface PlayerDmDynamicSuffixInput {
   /** 阶段9：文风质感短块（不模仿具体作品） */
   styleGuideBlock?: string;
   worldFactAuditBlock?: string;
+  /** Phase-2.4: 节奏指令 packet（灰度默认关）。 */
+  narrativeDirectiveBlock?: string;
 }
 
 /** 动态 suffix 注入用；与 VERSECRAFT_ENABLE_STYLE_GUIDE_PACKET 联动 */
@@ -311,6 +324,7 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   // 注意：stable prefix 仍负责规则与格式约束；这里仅是动态上下文。
   parts.push(`当前玩家状态：${input.playerContext}`);
   if (input.styleGuideBlock?.trim()) parts.push("", input.styleGuideBlock.trim());
+  if (input.narrativeDirectiveBlock?.trim()) parts.push("", input.narrativeDirectiveBlock.trim());
   if (input.isFirstAction) {
     parts.push("", FIRST_ACTION_CONSTRAINT, "");
   }

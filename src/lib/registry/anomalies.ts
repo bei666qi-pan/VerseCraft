@@ -7,6 +7,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-001",
     name: "时差症候群",
+    combatName: "窃时者",
     floor: "1",
     combatPower: 4,
     displayDangerLevel: "中",
@@ -27,6 +28,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-002",
     name: "无头猎犬",
+    combatName: "静默回廊",
     floor: "4",
     combatPower: 6,
     displayDangerLevel: "高",
@@ -47,6 +49,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-003",
     name: "认知腐蚀者",
+    combatName: "深层呢喃",
     floor: "3",
     combatPower: 7,
     displayDangerLevel: "高",
@@ -67,6 +70,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-004",
     name: "管道中的屠夫",
+    combatName: "循环裂隙",
     floor: "2",
     combatPower: 7,
     displayDangerLevel: "高",
@@ -87,6 +91,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-005",
     name: "器官拟态墙",
+    combatName: "镜中倒映",
     floor: "5",
     combatPower: 6,
     displayDangerLevel: "中高",
@@ -107,6 +112,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-006",
     name: "楼梯间的倒行者",
+    combatName: "门扉执念",
     floor: "6",
     combatPower: 8,
     displayDangerLevel: "高",
@@ -127,6 +133,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-007",
     name: "13 楼门扉",
+    combatName: "龙胃蠕动",
     floor: "7",
     combatPower: 9,
     displayDangerLevel: "极高",
@@ -147,6 +154,7 @@ export const ANOMALIES: readonly Anomaly[] = [
   {
     id: "A-008",
     name: "深渊守门人",
+    combatName: "归途回声",
     floor: "B2",
     combatPower: 10,
     displayDangerLevel: "终局",

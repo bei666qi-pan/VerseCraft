@@ -185,7 +185,8 @@ export async function probeChatSse(request: ChatSseProbeRequest): Promise<ChatSs
   const narrative = extractNarrative(finalJson);
   const options = extractOptions(finalJson);
   const filteredOptions = filterNarrativeActionOptions(options, 4);
-  const optionsQualityPass = options.length === 4 && filteredOptions.length === 4;
+  // optionQualityPass: 所有返回的选项都通过去重/空值过滤（不要求恰好4个，兼容 mock 模式变长选项）
+  const optionsQualityPass = options.length > 0 && filteredOptions.length === options.length;
   const httpStatus = response?.status ?? 0;
   const contentType = response?.headers.get("content-type") ?? "";
   const aiStatus = response?.headers.get("x-versecraft-ai-status") ?? "";

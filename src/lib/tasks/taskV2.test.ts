@@ -28,7 +28,7 @@ test("normalizeGameTaskDraft supports legacy reward string and defaults", () => 
   });
   assert.ok(task);
   assert.equal(task!.reward.originium, 5);
-  assert.equal(task!.status, "active");
+  assert.equal(task!.status, "available");
   assert.equal(task!.type, "floor");
   assert.equal(task!.claimMode, "manual");
   assert.equal(task!.npcProactiveGrant.enabled, false);

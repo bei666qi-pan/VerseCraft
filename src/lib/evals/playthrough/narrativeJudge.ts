@@ -6,6 +6,8 @@
  * - 角色口吻/世界设定有没有漂移？
  * - NPC 关系/位置是否前后一致？
  * - 道具/状态是否有凭空出现的？
+ * - 叙事是否重复？（v4 升级）
+ * - 状态与叙事是否矛盾？（v4 升级）
  *
  * 设计：
  * - 使用与 judge/ 框架兼容的 prompt 格式
@@ -14,6 +16,13 @@
  */
 
 import type { NarrativeConsistencyResult, PlaythroughTranscript, ConsistencyIssue } from "./types";
+import {
+  detectNarrativeRepetitions,
+  detectStateNarrativeContradictions,
+  detectNarrativeOriginiumInconsistency,
+  detectWeaponUpdateConsistency,
+  detectProfessionChangeConsistency,
+} from "./invariants";
 
 // === Mock 模式：启发式叙事一致性检查 ===
 
@@ -91,6 +100,8 @@ function checkNarrativeForIssues(
 /**
  * Mock 模式：启发式叙事一致性裁判。
  * 不调 LLM，基于规则检查。
+ *
+ * v4 升级：加入叙事重复检测 + 状态-叙事矛盾检测
  */
 export function judgeNarrativeConsistencyMock(
   transcript: PlaythroughTranscript
@@ -117,6 +128,98 @@ export function judgeNarrativeConsistencyMock(
   const resurrectionIssues = checkNpcResurrection(transcript);
   allIssues.push(...resurrectionIssues);
 
+  // v4 升级：叙事重复检测
+  const repetitionResult = detectNarrativeRepetitions(
+    transcript.steps.map((s) => ({ stepIndex: s.stepIndex, narrative: s.narrative }))
+  );
+  if (repetitionResult.overallRepetitionRate > 0.3) {
+    for (const rep of repetitionResult.repetitions) {
+      allIssues.push({
+        type: "contradiction",
+        severity: "major",
+        description: `叙事重复：步骤 ${rep.startStep}-${rep.endStep} 相似度过高 (${(rep.similarity * 100).toFixed(0)}%)`,
+        evidence: [{ stepIndex: rep.startStep, excerpt: rep.excerpt }],
+      });
+    }
+  }
+
+  // v4 升级：状态-叙事矛盾检测
+  const stateContradictions = detectStateNarrativeContradictions(
+    transcript.steps.map((s) => ({
+      stepIndex: s.stepIndex,
+      narrative: s.narrative,
+      stateAfter: s.stateAfter,
+      dmJson: s.dmJson,
+    }))
+  );
+  for (const sc of stateContradictions) {
+    allIssues.push({
+      type: sc.type === "death_contradiction" ? "resurrection" : "world_inconsistency",
+      severity: "major",
+      description: sc.description,
+      evidence: [{ stepIndex: sc.stepIndex, excerpt: sc.evidence }],
+    });
+  }
+
+  // v5 升级：原石叙事一致性
+  const originiumIssues = detectNarrativeOriginiumInconsistency(
+    transcript.steps.map((s) => ({
+      stepIndex: s.stepIndex,
+      narrative: s.narrative,
+      dmJson: s.dmJson,
+      stateAfter: s.stateAfter,
+    }))
+  );
+  for (const oi of originiumIssues) {
+    allIssues.push({
+      type: "fact_hallucination",
+      severity: "major",
+      description: oi.description,
+      evidence: [{ stepIndex: oi.stepIndex, excerpt: oi.narrativeExcerpt }],
+    });
+  }
+
+  // v5 升级：武器生命周期一致性
+  const weaponIssues = detectWeaponUpdateConsistency(
+    transcript.steps.map((s) => ({
+      stepIndex: s.stepIndex,
+      narrative: s.narrative,
+      dmJson: s.dmJson,
+      stateAfter: s.stateAfter,
+    }))
+  );
+  for (const wi of weaponIssues) {
+    // 数值越界 = critical（说明 DM 输出或 store 有问题）
+    // 叙事-状态不一致 = major
+    const severity: ConsistencyIssue["severity"] =
+      wi.type === "stability_out_of_range" || wi.type === "contamination_out_of_range"
+        ? "critical"
+        : "major";
+    allIssues.push({
+      type: "world_inconsistency",
+      severity,
+      description: wi.description,
+      evidence: [{ stepIndex: wi.stepIndex, excerpt: wi.evidence }],
+    });
+  }
+
+  // v5 升级：职业认证一致性（单职业制）
+  const professionIssues = detectProfessionChangeConsistency(
+    transcript.steps.map((s) => ({
+      stepIndex: s.stepIndex,
+      narrative: s.narrative,
+      stateAfter: s.stateAfter,
+    }))
+  );
+  for (const pi of professionIssues) {
+    allIssues.push({
+      type: pi.type === "profession_change_after_certification" ? "contradiction" : "world_inconsistency",
+      severity: "major",
+      description: pi.description,
+      evidence: [{ stepIndex: pi.stepIndex, excerpt: pi.narrativeExcerpt }],
+    });
+  }
+
   // 计算分数
   const criticalIssues = allIssues.filter((i) => i.severity === "critical").length;
   const majorIssues = allIssues.filter((i) => i.severity === "major").length;
@@ -131,11 +234,14 @@ export function judgeNarrativeConsistencyMock(
 
   // 维度分（基于问题类型映射）
   const dimensionScores: Record<string, number> = {
-    coherence: Math.max(1, 5 - contradictionIssues.length * 0.5),
+    coherence: Math.max(1, 5 - contradictionIssues.length * 0.5 - repetitionResult.overallRepetitionRate * 2),
     characterVoice: Math.max(1, 5 - issuesByType(allIssues, "voice_drift") * 1),
     plotLogic: Math.max(1, 5 - criticalIssues * 1.5),
-    immersion: Math.max(1, 5 - issuesByType(allIssues, "voice_drift") * 1),
-    factConsistency: Math.max(1, 5 - (issuesByType(allIssues, "resurrection") * 2 + issuesByType(allIssues, "fact_hallucination") * 2)),
+    immersion: Math.max(1, 5 - issuesByType(allIssues, "voice_drift") * 1 - repetitionResult.overallRepetitionRate * 1.5),
+    factConsistency: Math.max(1, 5 - (issuesByType(allIssues, "resurrection") * 2 + issuesByType(allIssues, "fact_hallucination") * 2 + stateContradictions.length * 1 + originiumIssues.length * 1)),
+    // v5 新增维度：武器状态一致性、职业一致性
+    weaponConsistency: Math.max(1, 5 - weaponIssues.length * 1),
+    professionConsistency: Math.max(1, 5 - professionIssues.length * 1.5),
   };
 
   const passed = overallScore >= 3 && criticalIssues === 0;
@@ -146,7 +252,7 @@ export function judgeNarrativeConsistencyMock(
     overallScore,
     dimensionScores,
     issues: allIssues,
-    reasoning: `启发式裁判：${allIssues.length} 个问题（${criticalIssues} critical, ${majorIssues} major, ${minorIssues} minor）。综合分 ${overallScore}/5。`,
+    reasoning: `启发式裁判（v5）：${allIssues.length} 个问题（${criticalIssues} critical, ${majorIssues} major, ${minorIssues} minor）。综合分 ${overallScore}/5。叙事重复率 ${(repetitionResult.overallRepetitionRate * 100).toFixed(1)}%，状态-叙事矛盾 ${stateContradictions.length} 处，原石-叙事不一致 ${originiumIssues.length} 处，武器不一致 ${weaponIssues.length} 处，职业不一致 ${professionIssues.length} 处。`,
   };
 }
 

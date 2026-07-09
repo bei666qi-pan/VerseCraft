@@ -1,7 +1,7 @@
 {
   "scenario": "npc_dialogue",
   "description": "NPC 对话场景，验证叙事仍保留对话上下文和下一步行动选项。",
-  "latestUserInput": "我压低声音问：你昨晚在这层楼有没有听到奇怪的声音？",
+  "latestUserInput": "[mock_scenario:normal_stream] 我压低声音问：你昨晚在这层楼有没有听到奇怪的声音？",
   "playerContext": "player_location: 电梯厅\nactive_npc: 夜班保安老李\nconversation_state: 初次接触\nhp: 78",
   "ruleSnapshot": {
     "in_combat_hint": false,

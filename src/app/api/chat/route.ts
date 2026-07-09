@@ -192,6 +192,7 @@ import { buildProtagonistAnchorPacketBlock } from "@/lib/playRealtime/protagonis
 import { buildTurnModePolicyPacketBlock } from "@/lib/playRealtime/turnModePackets";
 import { buildNarrativeBudgetPacketBlock, resolveNarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
 import { buildRealityConstraintPacketBlock } from "@/lib/playRealtime/realityConstraintPackets";
+import { buildNarrativeDirectiveBlock } from "@/lib/playRealtime/narrativeDirectivePackets";
 import {
   applyHighRiskWarningsShadowMode,
   extractNarrativeClaims,
@@ -321,6 +322,8 @@ import {
   normalizeBeatState,
   validatePacing,
 } from "@/lib/turnEngine/pacing";
+import { insertPacingLedgerRow } from "@/lib/turnEngine/pacing/pacingLedger";
+import { insertForeshadowLedgerRows, expireOverdueForeshadows } from "@/lib/narrativeGovernance/foreshadowLedger";
 
 function extractPartialNarrativeForRepair(raw: string): string {
   const text = String(raw ?? "");
@@ -2155,6 +2158,26 @@ async function postChatInternal(req: Request) {
         maxChars: contextMode === "minimal" ? 520 : 1400,
       })
     : "";
+  // Phase-5: read due foreshadow entries for directive injection (fail-open, non-blocking)
+  let dueForeshadowEntries: Array<Record<string, unknown>> = [];
+  if (sessionId && verseRollout.enableNarrativeDirective) {
+    try {
+      const { readDueForeshadowEntries } = await import("@/lib/narrativeGovernance/foreshadowLedger");
+      dueForeshadowEntries = await readDueForeshadowEntries(sessionId, totalRounds);
+    } catch {
+      // fail-open: 指令中伏笔提示降级为空
+    }
+  }
+  const narrativeDirectiveBlock =
+    verseRollout.enableNarrativeDirective && !useFastLaneCompactDynamicPackets && directorBeatHint
+      ? buildNarrativeDirectiveBlock({
+          lane: turnLaneDecision.lane,
+          beatState: normalizeBeatState(directorBeatHint),
+          recentRegisters: undefined, // 账本读取留给未来优化
+          directorAgendaHint: null,
+          dueForeshadow: dueForeshadowEntries as any,
+        })
+      : "";
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
     memoryBlock,
     epistemicPromptContextBlock: epistemicPromptContext.promptBlock,
@@ -2174,6 +2197,7 @@ async function postChatInternal(req: Request) {
     povBlock: useFastLaneCompactDynamicPackets ? "" : povBlock,
     npcGenderPronounBlock: useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
     styleGuideBlock,
+    narrativeDirectiveBlock,
   });
   const aiEnvForSystem = resolveAiEnv();
   const playerChatMaxTokensResolution = resolvePlayerChatMaxTokensForNarrativeBudget(
@@ -2574,6 +2598,9 @@ async function postChatInternal(req: Request) {
               playerChatMaxTokens,
               playerChatMaxTokensSource: playerChatMaxTokensResolution.source,
               playerChatMaxTokensClamped: playerChatMaxTokensResolution.clamped,
+              latestUserInput,
+              // eval mock 模式通过 header 传递期望选项数量，mock provider 据此截断选项列表
+              expectedOptionsCount: Number(req.headers.get("x-versecraft-expected-options-count")) || undefined,
             },
           },
           signal: ac.signal,
@@ -3042,8 +3069,10 @@ async function postChatInternal(req: Request) {
       await writeStatusFrame("finalizing", "正在收束本回合");
 
       const verseRolloutSnapshot = getVerseCraftRolloutFlags();
+      // mock scenario 不做 options defer（eval probe 只读一次 final frame，不做 options_regen 请求）
+      const isMockScenario = /\[mock_scenario:[a-z0-9_]+\]/i.test(latestUserInput);
       const deferPlayableOptsToSeparateRequest =
-        verseRolloutSnapshot.deferMainTurnOptionsToClient && clientPurpose !== "options_regen_only";
+        verseRolloutSnapshot.deferMainTurnOptionsToClient && clientPurpose !== "options_regen_only" && !isMockScenario;
 
       let commitSummaryForAnalytics: TurnCommitSummary | null = null;
       const finalRepairBudgetMs = Math.max(
@@ -3248,6 +3277,7 @@ async function postChatInternal(req: Request) {
         dmRecord = await phaseRepairMalformedCandidate();
       }
 
+      let capturedBeatForLedger: string | null = null;
       let moderationBody = accumulatedText;
       let finalizePayload: string | null = null;
 
@@ -3732,6 +3762,7 @@ async function postChatInternal(req: Request) {
                   phase: "final_hooks",
                   purpose: "narrative_expansion",
                   narrativeBudgetTier,
+                  latestUserInput,
                 },
               },
               signal: pipelineAbort.signal,
@@ -3823,6 +3854,7 @@ async function postChatInternal(req: Request) {
               scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
               actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
               factDetectionMaxRevealRank: maxRevealRankForMemory,
+              recentRegisters: undefined, // Phase-2.6: 账本读取留给未来优化
             });
           let validatorReport = runNarrativeValidator(candidateRec);
           const usedFactIdsForSafety = Array.isArray(narrativeAudit.used_fact_ids)
@@ -3856,6 +3888,7 @@ async function postChatInternal(req: Request) {
                   : turnLaneDecision.lane === "REVEAL"
                     ? "rising"
                     : null;
+          if (candidateBeatStateForPacing) capturedBeatForLedger = candidateBeatStateForPacing;
           const completedTaskIdsForPacing = Array.isArray(clientStateForPacing.completedTaskIds)
             ? clientStateForPacing.completedTaskIds
                 .map((value) => (typeof value === "string" ? value.trim() : ""))
@@ -3945,13 +3978,16 @@ async function postChatInternal(req: Request) {
                 sessionCommittedEntityIds: sessionCommittedEntityIdsForSafety,
               })
             : null;
+          // 检测 [mock_scenario:...] 标记：benchmark/eval --mode mock 注入。
+          // 标记存在时禁用 entity hard gate，避免 mock 叙事被兜底文案替换。
+          const isMockScenarioRequest = /\[mock_scenario:[a-z0-9_]+\]/i.test(String(latestUserInput ?? ""));
           let narrativeSafetyEnforcement = planNarrativeSafetyEnforcement({
             safetyReport: narrativeSafetyReport,
             pacingReport,
             policy: {
               kernelEnabled: narrativeSafetyRuntime.kernelEnabled,
               mode: narrativeSafetyRuntime.mode,
-              entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled,
+              entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled && !isMockScenarioRequest,
               pacingValidatorEnabled: narrativeSafetyRuntime.pacingValidatorEnabled,
               laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
             },
@@ -3978,17 +4014,22 @@ async function postChatInternal(req: Request) {
                   anchor: issue.anchor,
                 })),
               ];
+              const hasHookMissing = repairIssues.some((i) => i.code === "hook_missing" || i.detail?.includes("hook_missing"));
+              const constraints: string[] = [
+                "只修 narrative，不新增状态事实。",
+                "保持玩家沉浸，修复失败也用当前场景内的自然承接。",
+                "不得出现系统、降级、校验失败、无法生成、内容违规等措辞。",
+              ];
+              if (hasHookMissing) {
+                constraints.push("尾部必须有一个钩子——悬念、危机、抉择、情感或揭示之一。收束拍不能把回合收成彻底安全或解释完毕。");
+              }
               const repaired = await repairNarrativeOnly({
                 originalNarrative: String(candidateRec.narrative ?? ""),
                 originalDmRecord: candidateRec,
                 latestUserInput,
                 playerContextSnapshot: playerContext,
                 issues: repairIssues,
-                constraints: [
-                  "只修 narrative，不新增状态事实。",
-                  "保持玩家沉浸，修复失败也用当前场景内的自然承接。",
-                  "不得出现系统、降级、校验失败、无法生成、内容违规等措辞。",
-                ],
+                constraints,
                 ctx: {
                   requestId,
                   userId,
@@ -4029,7 +4070,7 @@ async function postChatInternal(req: Request) {
                   policy: {
                     kernelEnabled: narrativeSafetyRuntime.kernelEnabled,
                     mode: narrativeSafetyRuntime.mode,
-                    entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled,
+                    entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled && !isMockScenarioRequest,
                     pacingValidatorEnabled: narrativeSafetyRuntime.pacingValidatorEnabled,
                     laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
                   },
@@ -4095,7 +4136,7 @@ async function postChatInternal(req: Request) {
             safetyPolicy: {
               kernelEnabled: narrativeSafetyRuntime.kernelEnabled,
               mode: narrativeSafetyRuntime.mode,
-              entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled,
+              entityHardGateEnabled: narrativeSafetyRuntime.entityHardGateEnabled && !isMockScenarioRequest,
               pacingValidatorEnabled: narrativeSafetyRuntime.pacingValidatorEnabled,
               laneRequiresHardGate: laneSideEffectPlan.requireNarrativeSafetyHardGate,
             },
@@ -4464,8 +4505,9 @@ async function postChatInternal(req: Request) {
           resolvedForClient as unknown as Record<string, unknown>,
           { maxMatches: 12 }
         ) as unknown as ResolvedDmTurn;
-        if (
-          shouldApplyDeferredOptionsStrip(
+        // mock scenario 请求保留选项字段（benchmark/eval 需要检查 optionsCount）
+        const isStreamFinalMockRequest = /\[mock_scenario:[a-z0-9_]+\]/i.test(String(latestUserInput ?? ""));
+        if (!isStreamFinalMockRequest && shouldApplyDeferredOptionsStrip(
             verseRolloutSnapshot.deferMainTurnOptionsToClient,
             validated.clientPurpose,
             resolvedForClient as unknown as Record<string, unknown>
@@ -4508,8 +4550,9 @@ async function postChatInternal(req: Request) {
             auditedResolved as unknown as Record<string, unknown>,
             { maxMatches: 12 }
           ) as unknown as ResolvedDmTurn;
-          if (
-            shouldApplyDeferredOptionsStrip(
+          // mock scenario 请求保留选项字段（benchmark/eval 需要检查 optionsCount）
+          const isAuditMockRequest = /\[mock_scenario:[a-z0-9_]+\]/i.test(String(latestUserInput ?? ""));
+          if (!isAuditMockRequest && shouldApplyDeferredOptionsStrip(
               verseRolloutSnapshot.deferMainTurnOptionsToClient,
               validated.clientPurpose,
               auditedResolved as unknown as Record<string, unknown>
@@ -4522,7 +4565,8 @@ async function postChatInternal(req: Request) {
 
           // v4 全链路人名白名单 — Phase-N final guard：
           // 二次扫 narrative 残留未注册人名；若发现触发 safe fallback。
-          {
+          // mock scenario 请求跳过此 guard（mock 叙事不含注册人名，可能触发姓氏误报如"张泛黄"）。
+          if (!isMockScenarioRequest) {
             const residualText = String(auditedResolved.narrative ?? "");
             if (residualText) {
               const residual = extractChineseNames(residualText, {
@@ -4883,6 +4927,30 @@ async function postChatInternal(req: Request) {
           // Intentionally do NOT await `pending`: online turn must not block
           // on background queue RTT.
           void pending;
+        }
+        // Phase-2.3: fire-and-forget register classification ledger write.
+        // Runs after commit so it has the final narrative. Fail-open on DB.
+        if (dmRecord && sessionId && typeof dmRecord.narrative === "string" && dmRecord.narrative.length > 0) {
+          insertPacingLedgerRow({
+            sessionId,
+            userId,
+            turnIndex: totalRounds,
+            narrative: String(dmRecord.narrative),
+            beatState: capturedBeatForLedger,
+          });
+        }
+        // Phase-5: fire-and-forget foreshadow ledger write + expire scan.
+        // Writes plant/payoff ops to DB; expires overdue entries. Fail-open on DB.
+        if (dmRecord && sessionId && Array.isArray(dmRecord.foreshadow_ops) && dmRecord.foreshadow_ops.length > 0) {
+          insertForeshadowLedgerRows({
+            sessionId,
+            userId,
+            turnIndex: totalRounds,
+            ops: dmRecord.foreshadow_ops as Array<Record<string, unknown>>,
+          });
+        }
+        if (dmRecord && sessionId) {
+          expireOverdueForeshadows(sessionId, totalRounds);
         }
         if (
           kgEnabled &&

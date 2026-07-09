@@ -25,13 +25,13 @@ export function playWaitUxSemanticSubline(kind: PlaySemanticWaitingKind | null):
     case "investigate":
       return "线索正在从暗处浮出";
     case "meta":
-      return "当前状态正在重新对齐";
+      return "状态正在重新对齐";
     case "unknown":
     case null:
     case undefined:
-      return "世界正在实时推演";
+      return "后果正在落地";
     default:
-      return "世界正在实时推演";
+      return "后果正在落地";
   }
 }
 

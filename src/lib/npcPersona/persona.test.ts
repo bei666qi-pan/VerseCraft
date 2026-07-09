@@ -32,9 +32,9 @@ describe("NPC_PERSONA_CARDS", () => {
 
 describe("selectActivePersonaCards", () => {
   it("returns cards for present NPCs", () => {
-    const cards = selectActivePersonaCards(["N-007", "N-015"]);
+    const cards = selectActivePersonaCards(["N-044", "N-015"]);
     assert.ok(cards.length >= 1);
-    assert.ok(cards.some((c) => c.npcId === "N-007"));
+    assert.ok(cards.some((c) => c.npcId === "N-044"));
     assert.ok(cards.some((c) => c.npcId === "N-015"));
   });
 
@@ -45,7 +45,7 @@ describe("selectActivePersonaCards", () => {
 
   it("limits to max 3 cards", () => {
     const cards = selectActivePersonaCards(
-      ["N-007", "N-015", "N-008", "N-010", "N-018"],
+      ["N-044", "N-015", "N-008", "N-010", "N-045"],
     );
     assert.ok(cards.length <= 3, `expected <=3, got ${cards.length}`);
   });
@@ -57,7 +57,7 @@ describe("selectActivePersonaCards", () => {
 });
 
 describe("buildNpcPersonaPromptBlock", () => {
-  const cards = selectActivePersonaCards(["N-007", "N-015"]);
+  const cards = selectActivePersonaCards(["N-044", "N-015"]);
 
   it("builds a non-empty prompt block", () => {
     const block = buildNpcPersonaPromptBlock({ cards });
@@ -79,7 +79,7 @@ describe("buildNpcPersonaPromptBlock", () => {
 });
 
 describe("buildNpcPersonaPromptBlockCompact", () => {
-  const cards = selectActivePersonaCards(["N-007", "N-008"]);
+  const cards = selectActivePersonaCards(["N-044", "N-008"]);
 
   it("produces a compact single-line summary", () => {
     const block = buildNpcPersonaPromptBlockCompact({ cards, maxChars: 500 });

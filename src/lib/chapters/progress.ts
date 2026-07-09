@@ -72,7 +72,10 @@ function canCompleteKnownBeat(
     case "wake":
       return progress.turnCount >= 1;
     case "observe":
+    case "first-contact":
       return hasNarrative(progress);
+    case "first-anomaly":
+      return progress.turnCount >= 2 || hasStateChange(progress);
     case "first-choice":
       return hasAnyChoice(progress);
     case "first-clue":

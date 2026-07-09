@@ -243,6 +243,8 @@ export type ValidateNarrativeArgs = {
   styleValidationReport?: NarrativeStyleValidationReport | null;
   styleProfile?: VerseCraftStyleProfile | null;
   narrativeStyleFocus?: string | null;
+  /** Phase-2.6: 近 3 回合 register 分布（用于 register_repetition 检测）。 */
+  recentRegisters?: readonly string[] | null;
   npcKnowledgeValidationEnabled?: boolean;
   npcKnowledgeValidationReport?: NpcKnowledgeValidationReport | null;
   npcKnowledgePacket?: NpcKnowledgePacket | null;
@@ -635,6 +637,7 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
             styleProfile: args.styleProfile ?? getVerseCraftStyleProfile(),
             focus: args.narrativeStyleFocus ?? args.intent?.kind ?? null,
             turnMode: isString(dm.turn_mode) ? dm.turn_mode : null,
+            recentRegisters: args.recentRegisters,
           })
         : null;
   if (styleReport && !styleReport.ok) {
@@ -771,15 +774,22 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
             const dmConsumed = Array.isArray((dm as { consumed_items?: unknown }).consumed_items)
               ? (dm as { consumed_items: unknown[] }).consumed_items
               : [];
-            const dmCurrency = (dm as { currency_change?: { originium?: number } }).currency_change;
-            const originiumChange = dmCurrency?.originium;
+            // currency_change 在 wire 协议中是 number（原石 delta），与 resolveDmTurn 对齐。
+            // 兼容旧版对象形式 { originium?: number }，但写入时必须保持 number 形式。
+            const dmCurrencyRaw = (dm as { currency_change?: unknown }).currency_change;
+            const originiumChange: number | null =
+              typeof dmCurrencyRaw === "number" && Number.isFinite(dmCurrencyRaw)
+                ? (dmCurrencyRaw as number)
+                : dmCurrencyRaw && typeof dmCurrencyRaw === "object" && !Array.isArray(dmCurrencyRaw) && typeof (dmCurrencyRaw as { originium?: unknown }).originium === "number"
+                  ? ((dmCurrencyRaw as { originium: number }).originium)
+                  : null;
             const hasTaskUpdates = args.delta.taskUpdates.length > 0 || args.delta.newTasks.length > 0;
 
             const br = resolveActionsFromNarrative({
               narrative,
               existingAwardedItems: dmAwarded as unknown[],
               existingConsumedItems: dmConsumed as unknown[],
-              existingOriginiumChange: typeof originiumChange === "number" ? originiumChange : null,
+              existingOriginiumChange,
               hasTaskUpdates,
             });
 
@@ -791,11 +801,9 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
               if (br.consumedItems && dmConsumed.length === 0) {
                 (dm as Record<string, unknown>).consumed_items = br.consumedItems;
               }
-              if (br.originiumDelta !== undefined && (originiumChange === undefined || originiumChange === null)) {
-                (dm as Record<string, unknown>).currency_change = {
-                  ...((dm as Record<string, unknown>).currency_change as Record<string, unknown> ?? {}),
-                  originium: br.originiumDelta,
-                };
+              if (br.originiumDelta !== undefined && originiumChange === null) {
+                // 回填为 number，与 wire 协议一致（不再写 { originium: N } 对象）
+                (dm as Record<string, unknown>).currency_change = br.originiumDelta;
               }
             }
             return br;

@@ -93,7 +93,6 @@ export function buildProfessionTrialTask(profession: ProfessionId): GameTaskV2 {
     // 叙事层：默认作为“口头约定/试作”，进入承诺/风险带，而非抢占主任务板中心。
     taskNarrativeLayer: "conversation_promise",
     goalKind: "promise",
-    grantState: "narratively_offered",
     shouldBeFormalTask: true,
     shouldStayAsConversationPromise: true,
     issuerDemandStyle: "explicit",

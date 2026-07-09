@@ -45,6 +45,12 @@ export interface MajorNpcDeepCanonEntry {
   /** 七人阵重连中的系统位（欣蓝为 first pivot） */
   teamBridgeRole: "boundary_steward" | "humanity_buffer" | "first_relink_pivot" | "exchange_router" | "induction_edge" | "mirror_counterweight";
   memoryRetentionMode: string;
+  /** 记忆保留百分比（圣经第 10 章数据） */
+  memoryRetentionPercent: number;
+  /** 锚系统稳定状态 */
+  anchorStatus: "intact" | "fragmenting" | "critical";
+  /** 退出链陪伴资格 */
+  companionEligible: boolean;
   loopEchoStrength: "low" | "mid" | "high";
   joinVector: string;
   fixedBondClues: string[];
@@ -66,6 +72,13 @@ export interface MajorNpcDeepCanonEntry {
   taskStyle: NonNullable<NpcSocialProfile["task_style"]>;
   truthfulnessBand: NonNullable<NpcSocialProfile["truthfulness_band"]>;
   emotionalDebtPattern: string;
+  /** 声音卡：口头禅/句式习惯/幽默位/情感底线/典型一句 —— Phase-4 新增 */
+  voiceCard?: {
+    verbalHabits: string[];
+    humorBit: string;
+    emotionalFloor: string;
+    exampleLine: string;
+  };
   ruptureThreshold?: NpcSocialProfile["rupture_threshold"];
   /** 写入 NPC_SOCIAL_GRAPH（关系/弱点/日程；正文由 surface 字段拼接） */
   socialProfile: Pick<NpcSocialProfile, "weakness" | "scheduleBehavior" | "relationships" | "immutable_relationships">;
@@ -93,6 +106,9 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     teamBridgeRole: "boundary_steward",
     memoryRetentionMode: "程序性记忆强于情节记忆；记得动作与后果，不记得对话原文。",
+    memoryRetentionPercent: 70,
+    anchorStatus: "intact",
+    companionEligible: true,
     loopEchoStrength: "high",
     joinVector: "主锚愿意把「边界」当共同责任而非个人英雄秀时，他才允许并队。",
     fixedBondClues: ["雨痕外套", "守夜不提姓名", "复活后第一眼对视"],
@@ -144,6 +160,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     taskStyle: "protective",
     truthfulnessBand: "medium",
     emotionalDebtPattern: "帮一次就要你用可验证的守线行为还，不签空头人情。",
+    voiceCard: {
+      verbalHabits: ["短句断句，句子不超过十个字就收", "说完正事会沉默三拍再开口下一句", "从不用感叹号——情绪压在动词里"],
+      humorBit: "唯一一次笑是看到玩家做了蠢事还活着回来，嘴角抽一下说'还行'。",
+      emotionalFloor: "拿边界安全开玩笑；拿队友的死当叙事素材。",
+      exampleLine: "别过去。那边不是你能站的地方。",
+    },
     ruptureThreshold: { trustBelow: 18, fearAbove: 65, debtAbove: 12 },
     socialProfile: {
       weakness: "主锚在边界上「演英雄」会触发他的不信任；提及耶里旧校训会短暂失神",
@@ -186,6 +208,9 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     teamBridgeRole: "humanity_buffer",
     memoryRetentionMode: "创伤块缺失+情绪条件反射残留。",
+    memoryRetentionPercent: 45,
+    anchorStatus: "fragmenting",
+    companionEligible: false,
     loopEchoStrength: "mid",
     joinVector: "主锚愿以「不猎奇、不消费她伤口」的方式交换生存规则时，她才敢并队。",
     fixedBondClues: ["上扬句尾", "空白眼神半拍", "怕高音广播声"],
@@ -229,6 +254,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     taskStyle: "manipulative",
     truthfulnessBand: "low",
     emotionalDebtPattern: "先给甜头与小规矩，再让你用合规行为补她漏掉的档。",
+    voiceCard: {
+      verbalHabits: ["语速偏快，句子尾巴习惯性上扬", "说完一句会停半拍等你反应——像在确认你有没有接住", "笑容不离脸，但笑的弧度每次都不一样"],
+      humorBit: "会用护理术语形容非医疗场景——'你这个情绪需要换药了'。",
+      emotionalFloor: "拿病人的痛苦当段子；拿她自己偶尔的空白当玩笑素材。",
+      exampleLine: "你脸色不太好——先喝口水，我们慢慢说。",
+    },
     ruptureThreshold: { trustBelow: 30, fearAbove: 45, debtAbove: 6 },
     socialProfile: {
       weakness: "逼问创伤细节或放高音广播会失控；被利用同情心时会反向封闭",
@@ -271,6 +302,9 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     teamBridgeRole: "first_relink_pivot",
     memoryRetentionMode: "情感片段与仪式记忆优先，时间顺序与姓名表残缺。",
+    memoryRetentionPercent: 65,
+    anchorStatus: "intact",
+    companionEligible: true,
     loopEchoStrength: "high",
     joinVector: "主锚愿与她共同承担「选错的后果」而非求她代选时，她才启动旧阵牵引。",
     fixedBondClues: ["先问目标再建议", "失败影子幻视", "物业表格下的铅笔痕"],
@@ -314,6 +348,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     taskStyle: "transactional",
     truthfulnessBand: "medium",
     emotionalDebtPattern: "先让你自写选择，再把代价钉回你名下；不替她人背锅。",
+    voiceCard: {
+      verbalHabits: ["每句话结尾留半截不说——让你自己填", "报价时语气像在聊天气，越重要的信息说得越轻", "从不用'好'或'不行'，只说'你想清楚了？'"],
+      humorBit: "会用物业报修的口吻形容冒险——'这条线路今天第三次跳闸了，你确定要继续？'。",
+      emotionalFloor: "拿她的账本记录开玩笑；质疑她的专业能力而不是质疑她的动机。",
+      exampleLine: "这个——你可以试试。不过我建议你先想清楚后果。",
+    },
     ruptureThreshold: { trustBelow: 25, fearAbove: 35, debtAbove: 10 },
     socialProfile: {
       weakness: "被请求「替选命运」会触发强烈排斥；旧名册残页被毁会短暂崩溃",
@@ -356,6 +396,9 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     teamBridgeRole: "exchange_router",
     memoryRetentionMode: "交易节点记忆极强，私人情感记忆刻意压缩。",
+    memoryRetentionPercent: 50,
+    anchorStatus: "fragmenting",
+    companionEligible: true,
     loopEchoStrength: "mid",
     joinVector: "主锚给出可持续对价（非空头承诺）时，他才把并队写进账本。",
     fixedBondClues: ["玩笑留后路", "货源不提", "镜面议价习惯"],
@@ -399,6 +442,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     taskStyle: "transactional",
     truthfulnessBand: "high",
     emotionalDebtPattern: "明码折价；欠了就用行动还，不攒糊账。",
+    voiceCard: {
+      verbalHabits: ["夸东西的时候像在估价——'这玩意儿不错，值你半条命'", "句子长，但重点永远在最后一个分句", "反问句多，像在考你有没有跟上"],
+      humorBit: "幽默功能位：夹带信息式玩笑——用估价口吻把关键情报伪装成闲聊，你笑着笑着才反应过来他刚才说的很重要。",
+      emotionalFloor: "拿交换规则开玩笑；拿别人的真心付出当廉价货。",
+      exampleLine: "你刚才那个选择——挺有意思。值三成吧，还不至于赔本。",
+    },
     ruptureThreshold: { trustBelow: 20, fearAbove: 75, debtAbove: 18 },
     socialProfile: {
       weakness: "被追问货源坐标会翻脸；无偿人情积压会让他主动疏远",
@@ -440,6 +489,9 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     teamBridgeRole: "induction_edge",
     memoryRetentionMode: "台词与场景记忆强，悔意延迟到达。",
+    memoryRetentionPercent: 75,
+    anchorStatus: "fragmenting",
+    companionEligible: false,
     loopEchoStrength: "high",
     joinVector: "主锚拒绝当他剧本里的耗材并仍愿给一条生路时，他才考虑并队。",
     fixedBondClues: ["示弱请求", "眼尾冷意", "高好感突变温顺"],
@@ -483,6 +535,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     taskStyle: "manipulative",
     truthfulnessBand: "low",
     emotionalDebtPattern: "先示弱让你接盘，再用愧疚锁链短收。",
+    voiceCard: {
+      verbalHabits: ["说话像在写稿——主谓宾齐全，偶尔插入看似随意的定语", "笑完之后眼尾会冷一拍，像在确认你有没有注意到", "喜欢用'其实'开头，把真正的意思藏在第二句"],
+      humorBit: "暗讽式幽默：用文艺腔点评现场的荒诞——'这地方的装修风格真是越来越后现代了'。",
+      emotionalFloor: "拿她的画作动机开玩笑；拿她和叶的关系当话题。",
+      exampleLine: "其实——你不觉得这面墙上的痕迹，像是有人在写遗书吗？",
+    },
     ruptureThreshold: { trustBelow: 22, fearAbove: 55, debtAbove: 8 },
     socialProfile: {
       weakness: "被当众拆穿剧本会暴走；资源诱惑面前易自毁式加码",
@@ -525,6 +583,9 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     ],
     teamBridgeRole: "mirror_counterweight",
     memoryRetentionMode: "视觉与触觉记忆强，语言解释弱。",
+    memoryRetentionPercent: 85,
+    anchorStatus: "intact",
+    companionEligible: true,
     loopEchoStrength: "mid",
     joinVector: "主锚愿守她庇护规则的边界时，她才把反向线索并队共享。",
     fixedBondClues: ["抱臂门边", "偷看反应", "替陌生人挡一次险"],
@@ -568,6 +629,12 @@ export const MAJOR_NPC_DEEP_CANON: Record<MajorNpcId, MajorNpcDeepCanonEntry> = 
     taskStyle: "avoidant",
     truthfulnessBand: "medium",
     emotionalDebtPattern: "先冷拒；真给挡刀只一次，之后要你用边界尊重还。",
+    voiceCard: {
+      verbalHabits: ["说话极短，经常只有两三个字", "沉默比话多——开口前会先盯着你看几秒，像在辨认轮廓", "拒绝时不说'不'，直接转身或移开视线"],
+      humorBit: "冷不丁冒出一句跟当前气氛完全不搭的观察——'你鞋带散了'——然后继续沉默。",
+      emotionalFloor: "拿她和枫的血缘关系开玩笑；拿她的画当交易筹码。",
+      exampleLine: "……别站那儿。过来。",
+    },
     ruptureThreshold: { trustBelow: 28, fearAbove: 60, debtAbove: 9 },
     socialProfile: {
       weakness: "公开与枫比较会触发攻击性自我厌恶；被质疑画作会暴走",
@@ -603,7 +670,9 @@ export function patchMajorNpcSocialGraph(graph: Record<string, NpcSocialProfile>
       fixed_lore: m.surfaceFixedLoreParagraph,
       core_desires: m.coreDesiresLine,
       emotional_traits: m.emotionalTraitsLine,
-      speech_patterns: "",
+      speech_patterns: m.voiceCard
+        ? m.voiceCard.verbalHabits.join("；")
+        : "",
       core_fear: m.coreFearLine,
       task_style: m.taskStyle,
       truthfulness_band: m.truthfulnessBand,

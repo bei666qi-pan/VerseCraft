@@ -11,7 +11,7 @@
  * - 入口统一，供 eval 脚本与 harness runner 共用
  */
 
-import { executeChatCompletion } from "@/lib/ai/router/execute";
+import { executeChatCompletion } from "@/lib/ai/service";
 import { getRubric } from "./rubricRegistry";
 import {
   buildJudgePrompt,

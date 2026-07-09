@@ -18,8 +18,13 @@ test("isOpeningSystemUserMessage：trim 后与 OPENING_SYSTEM_PROMPT 对齐", ()
 });
 
 test("FIXED_OPENING_NARRATIVE：非空固定开场", () => {
+  // Phase-3: 旧版 2026 字含 29 处比喻，新 v3 终版 1435 字、2 处比喻、styleValidator issues=0
   assert.ok(FIXED_OPENING_NARRATIVE.length > 100);
   assert.ok(FIXED_OPENING_NARRATIVE.includes("如月公寓"));
+  // 新开场 v3 新增断言：十日出口钩子、走廊关键词、"我"的声音（贴吧写过两篇烂尾小说）
+  assert.ok(FIXED_OPENING_NARRATIVE.includes("十日"));
+  assert.ok(FIXED_OPENING_NARRATIVE.includes("走廊"));
+  assert.ok(FIXED_OPENING_NARRATIVE.includes("我以前在贴吧"));
 });
 
 test("opening copy exports no local preset option fallback", async () => {

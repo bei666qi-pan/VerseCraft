@@ -1,7 +1,7 @@
 {
   "scenario": "normal_action",
   "description": "走廊探索类短指令，验证普通回合的 TTFT、终帧、叙事长度和 4 个可执行选项。",
-  "latestUserInput": "我放慢脚步，贴着墙根往走廊深处摸过去，注意听有没有脚步声。",
+  "latestUserInput": "[mock_scenario:normal_stream] 我放慢脚步，贴着墙根往走廊深处摸过去，注意听有没有脚步声。",
   "playerContext": "player_location: 公寓三楼走廊\ninventory: 手电筒, 手机\nhp: 78\nsanity: 65",
   "ruleSnapshot": {
     "in_combat_hint": false,

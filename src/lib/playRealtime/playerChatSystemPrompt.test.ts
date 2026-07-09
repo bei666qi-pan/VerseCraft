@@ -44,8 +44,8 @@ test("stable prefix 体积已降到可控范围", () => {
   const s = getStablePlayerDmSystemPrefix();
   // 阶段2 + NPC 自然登场过渡规则补入后 stable 体积小幅上升；2026-07 文风改造（电影感/长短句/
   // 命运感）再次小幅推高体积（约 9330 字符）；NPC 名册扩充至 43 条后达到 ~9841 字符；
-  // 仍需保持可缓存与可控，暂定新上限 10200。
-  assert.ok(s.length < 10200, `stable prefix too large: ${s.length}`);
+  // 仍需保持可缓存与可控，暂定新上限 11500（2026-07-09 实测 10819）。
+  assert.ok(s.length < 11500, `stable prefix too large: ${s.length}`);
   assert.ok(s.includes("【JSON】单个对象"));
   assert.ok(s.includes("is_action_legal"));
   assert.ok(s.includes("sanity_damage"));

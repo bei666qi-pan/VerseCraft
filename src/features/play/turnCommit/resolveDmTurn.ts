@@ -3,6 +3,7 @@ import {
   normalizeTaskUpdateDraft,
   type GameTaskStatus,
 } from "@/lib/tasks/taskV2";
+import { validateGameTask } from "@/lib/tasks/taskCopyValidator";
 import { applyNarrativeAcceptanceDefaults, shouldAutoOpenTaskPanelForNewTask } from "@/lib/tasks/taskNarrativeGrant";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
 import { normalizeActionTimeCostKind } from "@/lib/time/actionCost";
@@ -11,6 +12,7 @@ import { hasStrongAcquireSemantics } from "@/features/play/turnCommit/semanticGu
 import { normalizeClueUpdateArray } from "@/lib/domain/clueMerge";
 import { sanitizeChapterTitleCandidate } from "@/lib/chapters/title";
 import { normalizeNarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
+import { likelyCostToInjuryDelta } from "@/lib/combat/combatInjuryIntegration";
 import type { NarrativeDensity, TurnEnvelope, TurnMode } from "@/features/play/turnCommit/turnEnvelope";
 
 export type ResolvedTurnUiHints = {
@@ -201,15 +203,19 @@ export function normalizeConflictOutcome(raw: unknown): TurnEnvelope["conflict_o
   };
 }
 
+/**
+ * 任务完成/失败的 toast 文案。
+ * §5 爽点语气：一句话、有分量、不系统腔——像 narrator 在落笔。
+ */
 function deriveCompletedTaskToast(tasks: Array<{ id: string; status?: GameTaskStatus; title?: string }>): string | null {
   const closing = tasks.filter((t) => t.status === "completed" || t.status === "failed");
   if (closing.length === 0) return null;
   const first = closing[0];
   const title = typeof first.title === "string" && first.title.trim() ? first.title.trim() : "";
   if (first.status === "completed") {
-    return title ? `你完成了「${title}」。` : "你完成了一项任务。";
+    return title ? `「${title}」——收。` : "一条线索落定。";
   }
-  return title ? `「${title}」似乎失败了。` : "一项任务似乎失败了。";
+  return title ? `「${title}」——落空了。` : "一条线索断了。";
 }
 
 /**
@@ -285,6 +291,18 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const normalizedTaskUpdates = asUnknownArray(input.task_updates)
     .map((u) => normalizeTaskUpdateDraft(u))
     .filter((u): u is NonNullable<ReturnType<typeof normalizeTaskUpdateDraft>> => !!u);
+
+  // taskCopyValidator: lint 每条新任务的 title/desc/nextHint，出现问题则标记 flags
+  for (const t of normalizedNewTasks) {
+    const report = validateGameTask({
+      title: (t as Record<string, unknown>).title as string | undefined,
+      desc: (t as Record<string, unknown>).desc as string | undefined,
+      nextHint: (t as Record<string, unknown>).nextHint as string | undefined,
+    });
+    if (!report.valid) {
+      consistency_flags.push("task_copy_issue");
+    }
+  }
 
   const nowIso = new Date().toISOString();
   const normalizedClueUpdates = normalizeClueUpdateArray((input as { clue_updates?: unknown }).clue_updates, nowIso);
@@ -406,6 +424,12 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     (input as { conflict_outcome?: unknown }).conflict_outcome ??
     (input as { combat_summary?: unknown }).combat_summary
   );
+  const injuryDelta = conflict_outcome
+    ? likelyCostToInjuryDelta(conflict_outcome.likelyCost ?? "none")
+    : null;
+  if (injuryDelta && conflict_outcome) {
+    conflict_outcome.injury_delta = injuryDelta;
+  }
   const nextChapterTitleCandidate = sanitizeChapterTitleCandidate(
     (input as { next_chapter_title_candidate?: unknown }).next_chapter_title_candidate,
     32
@@ -413,7 +437,9 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
 
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
-    sanity_damage: asFiniteInt(input.sanity_damage, 0),
+    sanity_damage: injuryDelta
+      ? Math.max(asFiniteInt(input.sanity_damage, 0), injuryDelta.sanityDamage)
+      : asFiniteInt(input.sanity_damage, 0),
     narrative,
     is_death: asBoolean(input.is_death, false),
     consumes_time: asBoolean(input.consumes_time, true),
@@ -434,6 +460,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       : {}),
     npc_location_updates: asUnknownArray(input.npc_location_updates),
     main_threat_updates: asUnknownArray(input.main_threat_updates),
+    foreshadow_ops: asUnknownArray((input as { foreshadow_ops?: unknown }).foreshadow_ops),
     weapon_updates: asObjectArray(input.weapon_updates),
     weapon_bag_updates: asObjectArray((input as { weapon_bag_updates?: unknown }).weapon_bag_updates),
     ...(bgm_track ? { bgm_track } : {}),

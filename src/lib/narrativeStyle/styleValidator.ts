@@ -19,7 +19,9 @@ export type NarrativeStyleIssueCode =
   | "info_density_low"
   // === 2026-07 新增：叙事重构 phase-0 遥测判据（纯遥测，不拦截） ===
   | "choice_preview_tail"
-  | "simile_chain";
+  | "simile_chain"
+  // === Phase-2.6: 情绪配比软守卫 ===
+  | "register_repetition";
 
 export type NarrativeStyleIssue = {
   code: NarrativeStyleIssueCode;
@@ -61,6 +63,8 @@ export type ValidateNarrativeStyleArgs = {
   styleProfile?: VerseCraftStyleProfile | null;
   focus?: string | null;
   turnMode?: string | null;
+  /** Phase-2.6: 近 3 回合 register 分布（用于 register_repetition 检测）。 */
+  recentRegisters?: readonly string[] | null;
 };
 
 const MECHANICAL_RE =
@@ -329,6 +333,22 @@ export function validateNarrativeStyle(args: ValidateNarrativeStyleArgs): Narrat
   const dialogueCharRatio = narrative.length > 0
     ? Number(((dialogueCharCount / narrative.length) * 100).toFixed(2))
     : 0;
+
+  // Phase-2.6: register_repetition — 近 3 回合同档位贯穿检测
+  if (args.recentRegisters && args.recentRegisters.length >= 2) {
+    const regs = args.recentRegisters.filter((r): r is string => typeof r === "string" && r.length > 0);
+    if (regs.length >= 2) {
+      // 连续三个相同 register
+      const lastSeq = regs.slice(0, 3);
+      if (lastSeq.length >= 3 && lastSeq[0] === lastSeq[1] && lastSeq[1] === lastSeq[2]) {
+        issues.push({
+          code: "register_repetition",
+          severity: "low",
+          detail: `repeated_register=${lastSeq[0]}`,
+        });
+      }
+    }
+  }
 
   const byCode = countByCode(issues);
   return {

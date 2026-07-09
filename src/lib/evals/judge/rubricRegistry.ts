@@ -14,6 +14,11 @@ import type { JudgeRubric } from "./types";
 import narrativeQualityV2 from "@/../benchmarks/judge/rubrics/narrative_quality_v2.json" with { type: "json" };
 import gameMechanicsV2 from "@/../benchmarks/judge/rubrics/game_mechanics_v2.json" with { type: "json" };
 import safetyComplianceV2 from "@/../benchmarks/judge/rubrics/safety_compliance_v2.json" with { type: "json" };
+import professionConsistencyV1 from "@/../benchmarks/judge/rubrics/profession_consistency_v1.json" with { type: "json" };
+import weaponEconomyV1 from "@/../benchmarks/judge/rubrics/weapon_economy_v1.json" with { type: "json" };
+import taskLifecycleV1 from "@/../benchmarks/judge/rubrics/task_lifecycle_v1.json" with { type: "json" };
+import originiumDeductionV1 from "@/../benchmarks/judge/rubrics/originium_deduction_v1.json" with { type: "json" };
+import narrativeStyleV1 from "@/../benchmarks/judge/rubrics/narrative_style_v1.json" with { type: "json" };
 
 /** 所有已注册的 Rubric */
 const rubricRegistry = new Map<string, JudgeRubric>();
@@ -24,6 +29,11 @@ function registerBuiltins(): void {
     narrativeQualityV2 as unknown as JudgeRubric,
     gameMechanicsV2 as unknown as JudgeRubric,
     safetyComplianceV2 as unknown as JudgeRubric,
+    professionConsistencyV1 as unknown as JudgeRubric,
+    weaponEconomyV1 as unknown as JudgeRubric,
+    taskLifecycleV1 as unknown as JudgeRubric,
+    originiumDeductionV1 as unknown as JudgeRubric,
+    narrativeStyleV1 as unknown as JudgeRubric,
   ];
 
   for (const rubric of builtins) {

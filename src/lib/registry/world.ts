@@ -72,6 +72,52 @@ export const ANOMALY_COMBAT_TIERS = {
 /** NPCs hold 8–20 originium each (saved from salary). Originium = stabilized space-residue / ledger credit, not ordinary gold. */
 export const NPC_ORIGINIUM_RANGE = { min: 8, max: 20 };
 
+/**
+ * 各楼层消化功能角色（与 buildingHistoryCanon FLOOR_EVOLUTION 同步）。
+ * 此表为快速引用层，详细演变过程见 buildingHistoryCanon.ts。
+ */
+export const FLOOR_DIGESTION_ROLES: Record<string, string> = {
+  B2: "排泄喉管",
+  B1: "安全缓冲层",
+  "1": "身份剥离层",
+  "2": "管道分拣层",
+  "3": "认知改写层",
+  "4": "声索狩猎层",
+  "5": "器官重塑层",
+  "6": "镜像复制层",
+  "7": "残余循环层",
+} as const;
+
+/**
+ * 六名核心辅锚的记忆保留率（%）。
+ * 基于世界观圣经第 10 章的人物设定值与认知状态推演。
+ * 保留率越高→对外部世界记忆越完整→越可能成为退出链结伴对象。
+ */
+export const NPC_MEMORY_RETENTION: Record<string, number> = {
+  "N-007": 85, // 叶——锚位 6，最高保留：军校同窗与外部身份
+  "N-013": 75, // 枫——锚位 5，高保留：音乐家记忆与 7F 诱导相位
+  "N-015": 70, // 麟泽——锚位 1，中高保留：边界巡守的秩序感
+  "N-010": 65, // 欣蓝——锚位 3，中保留：科层记忆与登记权柄
+  "N-018": 50, // 北夏——锚位 4，低保留：交换链上的碎片记忆
+  "N-020": 45, // 灵伤——锚位 2，最低保留：认知已被公寓部分同化
+} as const;
+
+/**
+ * 七辅锚系统——槽位分配表。
+ * slot 1-6 为已占据辅锚；slot 7 预留给玩家（外来回声体）。
+ */
+export const ANCHOR_SLOT_ASSIGNMENT: Record<string, { slot: number; npcId: string; name: string }> = {
+  "N-015": { slot: 1, npcId: "N-015", name: "麟泽" },
+  "N-020": { slot: 2, npcId: "N-020", name: "灵伤" },
+  "N-010": { slot: 3, npcId: "N-010", name: "欣蓝" },
+  "N-018": { slot: 4, npcId: "N-018", name: "北夏" },
+  "N-013": { slot: 5, npcId: "N-013", name: "枫" },
+  "N-007": { slot: 6, npcId: "N-007", name: "叶" },
+} as const;
+
+/** Player is anchor slot 7 (the vacant echo-body slot). */
+export const PLAYER_ANCHOR_SLOT = 7;
+
 /** S-tier items can ONLY drop from the 7F manager's exclusive quest line */
 export const S_TIER_DROP_HOLDER = "N-011";
 
@@ -112,15 +158,15 @@ export const B2_DOOR_INDESTRUCTIBLE = true;
 
 /** All traversable room nodes per floor */
 export const MAP_ROOMS: Record<string, readonly string[]> = {
-  B2: ["B2_Passage", "B2_GatekeeperDomain"],
-  B1: ["B1_SafeZone", "B1_Storage", "B1_Laundry", "B1_PowerRoom"],
-  "1": ["1F_Lobby", "1F_PropertyOffice", "1F_GuardRoom", "1F_Mailboxes"],
-  "2": ["2F_Clinic201", "2F_Room202", "2F_Room203", "2F_Corridor"],
-  "3": ["3F_Room301", "3F_Room302", "3F_Stairwell"],
-  "4": ["4F_Room401", "4F_Room402", "4F_CorridorEnd"],
-  "5": ["5F_Room501", "5F_Room502", "5F_Studio503"],
-  "6": ["6F_Room601", "6F_Room602", "6F_Stairwell"],
-  "7": ["7F_Room701", "7F_Bench", "7F_Kitchen", "7F_SealedDoor"],
+  B2: ["B2_Passage", "B2_GatekeeperDomain", "B2_Deep"],
+  B1: ["B1_SafeZone", "B1_Storage", "B1_Laundry", "B1_PowerRoom", "B1_Hallway", "B1_Stairwell", "B1_BoilerRoom", "B1_AnchorRoom"],
+  "1": ["1F_Lobby", "1F_PropertyOffice", "1F_GuardRoom", "1F_Mailboxes", "1F_Hallway"],
+  "2": ["2F_Clinic201", "2F_Room202", "2F_Room203", "2F_Corridor", "2F_Hallway"],
+  "3": ["3F_Room301", "3F_Room302", "3F_Stairwell", "3F_Hallway"],
+  "4": ["4F_Room401", "4F_Room402", "4F_CorridorEnd", "4F_Hallway"],
+  "5": ["5F_Room501", "5F_Room502", "5F_Studio503", "5F_Hallway"],
+  "6": ["6F_Room601", "6F_Room602", "6F_Stairwell", "6F_Hallway"],
+  "7": ["7F_Room701", "7F_Bench", "7F_Kitchen", "7F_SealedDoor", "7F_Hallway"],
 };
 
 /** Stage-1: B1 blocks direct hostile anomaly harm and serves as service hub; it does not waive trade/truth/revive/forge/time costs. */
@@ -227,6 +273,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "恐惧阿织（N-009）与阿绣（N-021），她们曾邀请她参与「创作游戏」后她差点消失",
       "认知腐蚀者（A-003）让她想起「母亲」的幻觉，会失控靠近",
     ],
+    emotional_traits: "对陈婆婆有近乎依赖的依恋；提到妈妈时会低头不说话；被夸奖时会反复确认「真的吗」。",
+    speech_patterns: "说话断断续续，像在拼句子；重复「妈妈说」开头即使妈妈不存在；踢毽子时会自己数数，数到某个数会突然停。",
   },
   "N-005": {
     homeLocation: "4F_CorridorEnd",
@@ -264,6 +312,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "邮差老王（N-003）的报纸是每日仪式，十年如一日",
       "时差症候群（A-001）是他时间混乱的根源，刻骨恐惧",
     ],
+    emotional_traits: "表面平静实则内心在与时间崩解搏斗；看到日历会下意识移开视线；对邮差老王有十年默契的温情。",
+    speech_patterns: "绝口不提日期和星期；描述时间用「上次」「那回」「老早以前」模糊代指；偶尔冒出几十年前的课堂用语。",
   },
   "N-007": {
     homeLocation: "5F_Studio503",
@@ -298,7 +348,7 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "与麟泽（N-015）在 B1 职能并存：后勤电系与边界巡守互不统属",
     ],
     emotional_traits: "暴躁是表象，本质是无力感和愤怒——见过真相却无法逃离；对黑猫有软肋，摸猫时语气会不自觉变柔；对新来的人嘴上嫌弃实则会悄悄提醒。",
-    speech_patterns: "爱用「妈的」「搞什么」「别瞎动」；对熟人会骂骂咧咧实则关心；会突然压低声音说正经事。",
+    speech_patterns: "爱用「妈的」「搞什么」「别瞎动」；对熟人会骂骂咧咧实则关心；会突然压低声音说正经事；偶尔蹦出一句冷幽默——'你踩的那块砖昨天还咬过我'——说完自己不笑。",
     new_tenant_guidance_script:
       "你要活久点，就先学会记账：委托先后、身上带着啥、每回遇见了谁，都得自己记清。别逞能，先在地下一层把手里的家伙修顺，再往上走。",
   },
@@ -432,6 +482,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "倒行者（A-006）与错层门牌让他分不清上下",
       "拒绝林医生（N-002）的安眠药",
     ],
+    emotional_traits: "清醒是他的执念也是折磨；数楼梯台阶来确认自己没走错层；偶尔会对着空气问「这是几楼」。",
+    speech_patterns: "说话前会先报楼层「这是……几楼来着」；声音沙哑像很久没睡；描述空间时方位词混乱「往上走两层其实是同一层」。",
   },
   "N-017": {
     homeLocation: "1F_Lobby",
@@ -449,6 +501,8 @@ export const NPC_SOCIAL_GRAPH: Record<string, NpcSocialProfile> = {
       "洗衣房阿姨（N-014）极度恐惧她",
       "登记口秩序（N-010）默许她的工作",
     ],
+    emotional_traits: "推茶车时步伐机械而均匀；递茶给新人时会多看一眼对方的脸，像在确认什么；被打翻茶壶会短暂尖叫后恢复沉默。",
+    speech_patterns: "永远用「喝杯茶吧」开场；语调平缓无起伏像在念广播；被追问过去会停下动作三秒再继续推车。",
   },
   "N-018": {
     homeLocation: "1F_GuardRoom",

@@ -65,7 +65,7 @@ test("narrative guide events can read retained guide content without opening gui
 
   assert.equal(result.applied, true);
   assert.equal(result.counts.guideHintsPresented, 1);
-  assert.deepEqual(result.hints, ["每回合先明确一件行动，让故事继续；遇到风险时先读现场信息，再决定是否冒险。"]);
+  assert.deepEqual(result.hints, ["每回合只做一件事，让故事继续；拿不准时先读现场信息再决定冒险。"]);
 });
 
 test("narrative journal clue updates are merged through the existing clue path", () => {

@@ -308,7 +308,7 @@ test("buildDialogueContext merges snapshot, lore, npc heart, memories, and recen
   assert.ok(context.chapter.unresolvedThreads.length <= 6);
   assert.deepEqual(context.chapter.forbiddenRevealIds, ["mem:secret"]);
   assert.match(context.chapter.closePolicy ?? "", /不要主动宣布章节结束/);
-  assert.ok(context.chapter.allowedEventIds.includes("observe"));
+  assert.ok(context.chapter.allowedEventIds.includes("first-contact"));
   assert.equal(context.activeNpc?.npcId, "N-010");
   assert.equal(context.activeNpc?.displayName, "Xinlan");
   assert.equal(context.npcMemories.length, 1);

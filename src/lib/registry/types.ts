@@ -510,7 +510,14 @@ export interface ApartmentSurvivalNote {
 /** Player cannot reliably overpower anomalies or NPCs unarmed. Must use evidence, counters, windows, or relationships. */
 export interface Anomaly {
   id: string;
+  /** 异常体展示名（lore name）— NPC/玩家/codex 层可见，如"无头猎犬" */
   name: string;
+  /**
+   * 战斗层指定名（combat designation）— combatCanon.ts 中的对抗/武器反制语境用名。
+   * 与 name 构成双轨命名（dual-face design）：lore 面展示表象，combat 面揭示战斗本质。
+   * 必须与 combatCanon.ts ANOMALY_COMBAT_STATS[i].name 一致（cross-registry 测试强制）。
+   */
+  combatName: string;
   /** Canonical floor: A-001/A-004/A-003/A-002/A-005/A-006/A-007 on 1-7; A-008 on B2 only */
   floor: FloorId;
   /** Legacy intensity score. Prefer displayDangerLevel/threatRating for user-facing text. */

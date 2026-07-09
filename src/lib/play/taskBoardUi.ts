@@ -360,6 +360,10 @@ export type TaskStageCardViewModel = {
   /** UI 用：低风险中性、期限/中等不安、高反噬灼热 */
   riskBand: TaskStageRiskBand;
   guidanceLevel: TaskStageGuidanceLevel;
+  /** 期限倒计时的可读标签，如"今日截止""剩 2h""过期"；无时限时为 null。 */
+  deadlineLabel: string | null;
+  /** requiredItemIds 完成计数文案，如"0/2"；无条件时为 null。 */
+  progressLabel: string | null;
 };
 
 function clipStageText(s: string, max: number): string {
@@ -519,6 +523,37 @@ export function buildTaskStageCardViewModel(
     task.guidanceLevel === "strong" || task.guidanceLevel === "standard" || task.guidanceLevel === "light"
       ? task.guidanceLevel
       : "none";
+
+  // 期限倒计时
+  let deadlineLabel: string | null = null;
+  if (task.status === "active" || task.status === "available") {
+    const expiresAt = (task as { expiresAt?: string }).expiresAt;
+    if (typeof expiresAt === "string" && expiresAt.trim()) {
+      const ms = safeDateMs(expiresAt);
+      if (ms != null) {
+        const diffH = Math.round((ms - Date.now()) / 3600000);
+        if (diffH <= 0) deadlineLabel = "已超时";
+        else if (diffH <= 1) deadlineLabel = "剩 <1h";
+        else if (diffH <= 24) deadlineLabel = `剩 ${diffH}h`;
+        else deadlineLabel = `剩 ${Math.round(diffH / 24)}d`;
+      } else {
+        // expiresAt 可能是 "day:N,hour:M" 格式
+        const dayMatch = expiresAt.match(/day[:\s]*(\d+)/i);
+        const hourMatch = expiresAt.match(/hour[:\s]*(\d+)/i);
+        if (dayMatch || hourMatch) {
+          deadlineLabel = `${dayMatch ? `D${dayMatch[1]}` : ""}${hourMatch ? ` ${hourMatch[1]}:00` : ""}`;
+        }
+      }
+    }
+  }
+
+  // requiredItemIds 进度
+  let progressLabel: string | null = null;
+  const req = (task as { requiredItemIds?: string[] }).requiredItemIds;
+  if (Array.isArray(req) && req.length > 0) {
+    progressLabel = `0/${req.length}`;
+  }
+
   return {
     taskId: task.id,
     role,
@@ -532,6 +567,8 @@ export function buildTaskStageCardViewModel(
     riskTag: buildRiskTag(task),
     riskBand,
     guidanceLevel,
+    deadlineLabel,
+    progressLabel,
   };
 }
 

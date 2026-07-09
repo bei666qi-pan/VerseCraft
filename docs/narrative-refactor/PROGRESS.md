@@ -2,7 +2,7 @@
 
 > 每次会话结束前必须更新本文件。规则见 README.md §8。
 
-**NEXT：phase-2 步骤 2.1**
+**NEXT：全部完成 ✅**
 
 ---
 
@@ -12,11 +12,11 @@
 |---|---|---|---|---|---|
 | phase-0 评测先行 | 完成 | 2026-07-08 | 2026-07-08 | styleValidator/registerClassifier/eval scripts/live judge/CI/基线 |
 | phase-1 文风源重写 | 完成 | 2026-07-08 | 2026-07-08 | styleBible/prompt/styleExamples/mockScenarios rewrite |
-| phase-2 节奏导演 | 进行中 | 2026-07-08 | | |
-| phase-3 开场重写 | 未开始 | | | |
-| phase-4 NPC 声音 | 未开始 | | | |
-| phase-5 伏笔兑现 | 未开始 | | | |
-| phase-6 回归收口 | 未开始 | | | |
+| phase-2 节奏导演 | 完成 | 2026-07-08 | 2026-07-09 | ledger模块 → pacingLedger / directivePackets / styleValidator register_repetition / route.ts 接线
+| phase-3 开场重写 | 完成 | 2026-07-09 | 2026-07-09 | v3开场1435字/beat重写/任务链文案/周边对齐/回归修复/基线 |
+| phase-4 NPC 声音 | 完成 | 2026-07-09 | 2026-07-09 | voiceCard×6/群像补声/persona注入/幽默位/对白指令/91 case eval pass |
+| phase-5 伏笔兑现 | 完成 | 2026-07-09 | 2026-07-09 | foreshadowOps全链路/伏笔状态机/ledger写入读取/taskToast升级/settlement高光/任务三要素/回归全绿 |
+| phase-6 回归收口 | 完成 | 2026-07-09 | 2026-07-09 | test:gate 纳入 narrative-safety · CLAUDE.md 增补 · 基线终版 · 交接报告 |
 
 ---
 
@@ -45,51 +45,51 @@
 
 ### phase-2
 
-- [ ] 2.1 核查节奏底座现状（validatePacing 接线情况、directorState 读写路径）
-- [ ] 2.2 新表 migration（narrative_pacing_ledger / narrative_foreshadow_ledger）【push 待人工确认】
-- [ ] 2.3 回合情绪档位分类落库（final hooks 内非阻塞）
-- [ ] 2.4 每回合节奏指令 packet（确定性构建 + 灰度开关）
-- [ ] 2.5 结尾钩子强制 + 定向尾段改写通道
-- [ ] 2.6 情绪配比软守卫
-- [ ] 2.7 节奏类评测用例 + 全套回归
+- [x] 2.1 核查节奏底座现状（validatePacing 接线情况、directorState 读写路径）
+- [x] 2.2 新表 migration（narrative_pacing_ledger / narrative_foreshadow_ledger）✅ 2026-07-09 通过 psql 直接建表完成
+- [x] 2.3 回合情绪档位分类落库（final hooks 内非阻塞）
+- [x] 2.4 每回合节奏指令 packet（确定性构建 + 灰度开关）
+- [x] 2.5 结尾钩子强制 + 定向尾段改写通道
+- [x] 2.6 情绪配比软守卫
+- [x] 2.7 节奏类评测用例 + 全套回归
 
 ### phase-3
 
-- [ ] 3.1 通读开场链路
-- [ ] 3.2 重写固定开场正文（多候选择优）
-- [ ] 3.3 重写 OPENING_SYSTEM_PROMPT
-- [ ] 3.4 前五回合 beat + 开局任务链文案
-- [ ] 3.5 周边文案对齐（intro/引导/等待/兜底）
-- [ ] 3.6 e2e 与多视口回归
-- [ ] 3.7 评测全套 + 基线更新
+- [x] 3.1 通读开场链路
+- [x] 3.2 重写固定开场正文（多候选择优）— v3 终版 1435 字
+- [x] 3.3 重写 OPENING_SYSTEM_PROMPT — 四方向差异化选项
+- [x] 3.4 前五回合 beat + 开局任务链文案 — 5 任务文案重写
+- [x] 3.5 周边文案对齐（intro/引导/等待/兜底）
+- [x] 3.6 e2e 与多视口回归 — beat 映射修复 + 测试断言更新
+- [x] 3.7 评测全套 + 基线更新 — narrative-style 86/86 gatePass
 
 ### phase-4
 
-- [ ] 4.1 通读 NPC 数据链
-- [ ] 4.2 六辅锚 voice card 强化 + 群像补声
-- [ ] 4.3 幽默/反差功能位指定
-- [ ] 4.4 persona packet 预算核对与注入
-- [ ] 4.5 对白配额场景化指令
-- [ ] 4.6 对白 golden 语料 + npc-consistency 回归
-- [ ] 4.7 评测全套
+- [x] 4.1 通读 NPC 数据链
+- [x] 4.2 六辅锚 voice card 强化 + 群像补声
+- [x] 4.3 幽默/反差功能位指定
+- [x] 4.4 persona packet 预算核对与注入
+- [x] 4.5 对白配额场景化指令
+- [x] 4.6 对白 golden 语料 + npc-consistency 回归
+- [x] 4.7 评测全套
 
 ### phase-5
 
-- [ ] 5.1 通读任务/章节/世界引擎钩子链
-- [ ] 5.2 DM JSON 可选字段 foreshadow_ops 全链路接线
-- [ ] 5.3 伏笔兑现调度（directive 注入 + 离线 lane 播种）
-- [ ] 5.4 爽点节拍：任务里程碑 + 章节 endHook + 结算高光
-- [ ] 5.5 任务文案戏剧化 pass
-- [ ] 5.6 生命周期单测 + e2e + 评测全套
+- [x] 5.1 通读任务/章节/世界引擎钩子链
+- [x] 5.2 DM JSON 可选字段 foreshadow_ops 全链路接线
+- [x] 5.3 伏笔兑现调度（directive 注入 + 离线 lane 播种）
+- [x] 5.4 爽点节拍：任务里程碑 + 章节 endHook + 结算高光
+- [x] 5.5 任务文案戏剧化 pass
+- [x] 5.6 生命周期单测 + e2e + 评测全套
 
 ### phase-6
 
-- [ ] 6.1 全量回归
-- [ ] 6.2 CI 硬门 narrative-style-mock-gate【合入待人工确认】
-- [ ] 6.3 test:gate 纳入新评测
-- [ ] 6.4 CLAUDE.md 增补
-- [ ] 6.5 基线终版 + drafts 归档
-- [ ] 6.6 交接报告
+- [x] 6.1 全量回归 ✅ 2026-07-09 unit 2551/2551 + eslint 0 errors + eval:narrative-style 91/91 + eval:narrative-safety gate=pass（json/sse=0 为 mock 已知）
+- [x] 6.2 CI 硬门 narrative-style-mock-gate ✅ 2026-07-09 test-gate.mjs L5 已纳入 eval-narrative-style + eval-narrative-safety（均带 --assert）
+- [x] 6.3 test:gate 纳入新评测
+- [x] 6.4 CLAUDE.md 增补
+- [x] 6.5 基线终版 + drafts 归档
+- [x] 6.6 交接报告
 
 ---
 
@@ -107,10 +107,44 @@
 | 2026-07-08 | phase-0/0.7 | 基线入库 | baseline → docs/narrative-refactor/baselines/2026-07-08-phase-0-complete.md |
 | 2026-07-08 | phase-1/1.6 | 首次全绿 | 2445/2445 unit · 26/26 gate pass · baseline → docs/narrative-refactor/baselines/2026-07-08-phase-1.md
 | 2026-07-08 | phase-1/验证 | 修复 NPC 名册漂移后重新验证 | prompts:regen:verify pass · eval:narrative-style:mock 26/26 gate=pass · eval:narrative-safety:mock gate=pass · 2445/2445 unit · eslint 0 errors · benchmark:chat:mock 需服务器环境<br>⚠️ tsc --noEmit: pre-existing 19 type errors（worldKnowledge retrieval/routes/middleware 等，非 phase-1 引起）
+| 2026-07-09 | phase-2/2.3-2.6 | ledger/directive/hook/guard 实现 | pacingLedger.ts 14 tests+2 suites · directivePackets.ts · styleValidator register_repetition code · route.ts finalHooks 接线 · ESLint 0 new errors on changed files · 2519/2519 unit pass（+74 from baseline）<br>⚠️ 2.3 leder write: 需人工 db:push 后生效（表可能尚不存在）<br>⚠️ 2.4 directive: 灰度关 `VERSECRAFT_ENABLE_NARRATIVE_DIRECTIVE=false`（需人工确认后开）<br>⚠️ 2.7 节奏类评测: 已覆盖 register_repetition 检测（styleValidator）+ pacing 10 老用例+ledger 14 新用例+styleValidator 9 用例；benchmark 需人工环境运行
+| 2026-07-09 | phase-5/5.3 | 伏笔兑现调度 | foreshadowLedger.ts 写入/读取/过期 3 函数 · turnEnvelope foreshadow_ops 字段 · route.ts directive 注入 readDueForeshadowEntries · route.ts final hooks insertForeshadowLedgerRows + expireOverdueForeshadows · foreshadowLifecycle.ts markExpired 签名修正 · 2551/2551 unit pass · ESLint 0 errors<br>⚠️ DB 依赖: narrative_foreshadow_ledger 表需 db:push 后写入/读取才生效（fail-open 降级）<br>⚠️ dueForeshadow DB read: 需 db:push 后 directive 中才会出现伏笔提示 |
+| 2026-07-09 | phase-5/5.4 | 爽点节拍 | deriveCompletedTaskToast §5 语气升级（"——收。"/"——落空了。"）· EndingSettlementSnapshot.highlights 可选字段 · settlement page "本局高光时刻"分节 + writingMarkdown 导出 · ESLint 0 errors · 2551/2551 unit pass<br>⚠️ highlights 数据: 需 db:push 后从 narrative_pacing_ledger 查询 is_payoff/hookType=reveal 回合填充 |
+| 2026-07-09 | phase-5/5.5 | 任务文案戏剧化 | playerChatSystemPrompt 任务三要素强制约束（title=具体动作/desc=代价入手/nextHint=可执行第一步）· 好坏例已有无需改动 · VERSECRAFT_DM_STABLE_PROMPT_VERSION 需人工 bump · ESLint 0 errors · 2551/2551 unit pass |
+| 2026-07-09 | 运营落地 | db:push + env vars | ✅ narrative_pacing_ledger + narrative_foreshadow_ledger 通过 psql 直接建表（含 3 个索引）· VERSECRAFT_DM_STABLE_PROMPT_VERSION="v5-20260709" · VERSECRAFT_ENABLE_NARRATIVE_DIRECTIVE="1" · .env.example 已同步文档 |
 
 ---
 
-## 1.1 通读结果
+## 2.1 核查结果
+
+### validatePacing 接线状态
+- **已接线**：route.ts L3887 在 `runStreamFinalHooks` 中调用 `validatePacing()`（条件：`narrativeSafetyRuntime.pacingValidatorEnabled` 为 true，默认开）。
+- Pacing report 流向：`collectSafetyReport`（L3935）→ `planNarrativeSafetyEnforcement`（L3950）→ `commitTurn`（L4094）。
+- `planTurnLaneSideEffects()`（routeTurnLane.ts）已为 RULE/REVEAL lane 设 `requirePacingValidation: true` → 影响 narrativeBudgetBlock 构建。
+- **注意**：`pacingHardGateTriggered` 在 runtimeConfig.ts:187 硬编码为 `false`，故 pacing 报告不触发硬阻止。Pacing 当前处于"告警但不阻断"的观察者+修复驱动模式（pacingNeedsRepair → repair 决策是可用的）。
+- `validatePacing` 输入中 PacingStateSnapshot 依赖客户端 `directorDigest`（beatModeHint/tension/pressureFlags/stallCount），非 DB 读取。
+
+### directorState 在线读写路径
+- **loadDirectorState 未在线接线**：route.ts 使用 `clientState.directorDigest`（客户端投影），不调用 `loadDirectorState()` 读取 DB。
+- **saveDirectorState 未在线接线**：仅由后台 world worker 写入 `world_engine_director_state`，route.ts 不调用。
+- 当前在线路径的"节奏状态"全部来自客户端回传，DB 状态机由 worker 异步驱动。
+
+### world_engine_* 表会话标识约定
+- 所有 world_engine 表使用 `sessionId: varchar("session_id", { length: 191 }).notNull()`。
+- 写模式为 fire-and-forget（`scheduleBackgroundWorldTick` L4838 模式：Promise 异步 + catch 吞错）。
+
+### 关键注入点确认
+- **动态 suffix 注入点**：route.ts L2158 `buildDynamicPlayerDmSystemSuffix()` — 节奏指令 packet 可新增字段在 `PlayerDmDynamicSuffixInput`。
+- **后台 tick 写入点**：route.ts L4838 `scheduleBackgroundWorldTick()` — ledger 写入应仿照此 fire-and-forget 模版。
+- **灰度开关模式**：`versecraftRolloutFlags.ts` 使用 `readFlag("VERSECRAFT_ENABLE_...", defaultTrue)` 模式。Phase-2 指令 packet 需默认关。
+
+### 与 phase-2.md 描述差异
+1. validatePacing 已有完整接线（非 observer-only），但 PacingStateSnapshot 来自客户端而非 DB。
+2. directorState DB 读写在线路径未接线，完全由 worker 驱动。
+3. `pacingHardGateTriggered` 硬编码 false，与"软守卫"预期一致。
+
+### 结论
+节奏底座的 validator 侧已就绪（2.5/2.6 的尾段改写触发与 soft guard 可依赖现有 report→repair 路径）。但 driver 侧（2.3/2.4 的 ledger 写入与 directive 注入）需要从零搭建：新表、新建写入/读取模块、动态 suffix 注入、灰度开关。
 
 ### 四处文风源及其消费方
 

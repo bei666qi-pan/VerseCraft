@@ -556,6 +556,11 @@ function PlayContent() {
     () => getMobileCodexUnreadCount(codex, viewedCodexIds) > 0,
     [codex, viewedCodexIds]
   );
+  const taskUnviewedCount = useGameStore((s) => s._taskUnviewedCount ?? 0);
+  const hasUnviewedTaskUpdates = useMemo(() => taskUnviewedCount > 0, [taskUnviewedCount]);
+  const clearTaskUnviewedCount = useGameStore((s) => s.clearTaskUnviewedCount);
+  const taskPanelFirstOpen = useGameStore((s) => s._taskPanelFirstOpen ?? true);
+  const markTaskPanelOpened = useGameStore((s) => s.markTaskPanelOpened);
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
   const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
@@ -4247,6 +4252,13 @@ function PlayContent() {
       if (touchedTaskIds.length > 0) {
         setRecentTaskHighlightIds(touchedTaskIds);
       }
+
+      // auto_open_panel == "task"：自动切到任务面板
+      if ((uiHints as Record<string, unknown>)?.auto_open_panel === "task") {
+        clearTaskUnviewedCount();
+        markTaskPanelOpened();
+        setActiveMenu("tasks");
+      }
     } catch {
       // ignore: hints are best-effort
     }
@@ -4990,6 +5002,8 @@ function PlayContent() {
 
   function onOpenTasksNav() {
     playUIClick();
+    clearTaskUnviewedCount();
+    markTaskPanelOpened();
     setOptionsExpanded(false);
     setActiveMenu("tasks");
   }
@@ -5079,6 +5093,8 @@ function PlayContent() {
               codex={codex}
               highlightTaskIds={recentTaskHighlightIds}
               onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
+              taskPanelFirstOpen={taskPanelFirstOpen}
+              onMarkTaskPanelOpened={markTaskPanelOpened}
             />
           ) : !isOverlayPanelActive && isSettingsPanelActive ? (
             <MobileSettingsPanel
@@ -5348,6 +5364,8 @@ function PlayContent() {
                   codex={codex}
                   highlightTaskIds={recentTaskHighlightIds}
                   onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
+                  taskPanelFirstOpen={taskPanelFirstOpen}
+                  onMarkTaskPanelOpened={markTaskPanelOpened}
                 />
               ) : isSettingsPanelActive ? (
                 <MobileSettingsPanel
@@ -5455,6 +5473,7 @@ function PlayContent() {
             onOpenTasks={onOpenTasksNav}
             onOpenSettings={onOpenSettingsNav}
             hasUnreadCodex={hasUnreadCodex}
+            hasUnviewedTaskUpdates={hasUnviewedTaskUpdates}
           />
         </div>
       </div>

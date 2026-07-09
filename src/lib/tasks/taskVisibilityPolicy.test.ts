@@ -18,14 +18,15 @@ function task(overrides: Partial<GameTaskV2>): GameTaskV2 {
   } as GameTaskV2;
 }
 
-test("formal active tasks are not board-visible until accepted or explicitly visible", () => {
-  assert.equal(getTaskVisibilityTier(task({ id: "ordinary_formal" })), "hidden");
+test("formal active tasks are board-visible regardless of grantState", () => {
+  // Phase 2 重构后：visible 性纯从 status 与 narrativeLayer 派生，不再依赖 grantState
   assert.equal(
-    getTaskVisibilityTier(task({ id: "accepted_formal", grantState: "accepted_in_story" })),
+    getTaskVisibilityTier(task({ id: "ordinary_formal" })),
     "board_visible"
   );
+  // 即使 unavailable 状态的 formal 任务也应可见（可接但未激活）
   assert.equal(
-    getTaskVisibilityTier(task({ id: "explicit_formal", grantState: "visible_on_board" })),
+    getTaskVisibilityTier(task({ id: "available_formal", status: "available" })),
     "board_visible"
   );
 });

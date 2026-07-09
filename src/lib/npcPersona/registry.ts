@@ -8,9 +8,9 @@
 import type { NpcPersonaCard } from "./types";
 
 export const NPC_PERSONA_CARDS: Record<string, NpcPersonaCard> = {
-  // ===== 廖暗（N-007：七辅锚之一，公寓核心叙事 NPC）=====
-  "N-007": {
-    npcId: "N-007",
+  // ===== 廖暗（N-044：公寓核心叙事 NPC，非辅锚；异常观察者）=====
+  "N-044": {
+    npcId: "N-044",
     displayName: "廖暗",
     big5: {
       openness: 7,        // 愿意接受异常，但会用理性框架解释
@@ -92,7 +92,7 @@ export const NPC_PERSONA_CARDS: Record<string, NpcPersonaCard> = {
     ],
     playerRelationship: "热络的信息交换者——他把玩家当成一块新的拼图，但内心深处希望玩家不只是一块拼图",
     npcRelationships: {
-      "N-007": "信任廖暗的判断但不理解他的沉默——'你倒是说句话啊，光站着我怎么知道你在想什么'",
+      "N-044": "信任廖暗的判断但不理解他的沉默——'你倒是说句话啊，光站着我怎么知道你在想什么'",
       "N-010": "对欣蓝又敬又怕——'她每次看我的眼神都像在看我有没有说谎，可我自己也不知道自己有没有说谎'",
     },
     crisisBehavior: "第一反应是后退并记录——'别急，让我先看看'；但如果有人受伤，会不顾一切冲上去",
@@ -139,7 +139,7 @@ export const NPC_PERSONA_CARDS: Record<string, NpcPersonaCard> = {
     ],
     playerRelationship: "嘴硬心软的前辈——嘴上骂你蠢，手上已经把备用电池塞给你了",
     npcRelationships: {
-      "N-007": "欣赏廖暗的务实——'那小子懂电路，比大多数人有脑子'",
+      "N-044": "欣赏廖暗的务实——'那小子懂电路，比大多数人有脑子'",
       "N-010": "对欣蓝态度复杂——'她每次来修灯我都觉得她在查什么东西，但修完她就走了，也不说'",
     },
     crisisBehavior: "第一时间切断危险区域的电源——他相信大多数异常怕光；如果停电无法避免，他会把所有备用照明分给在场的人",
@@ -185,7 +185,7 @@ export const NPC_PERSONA_CARDS: Record<string, NpcPersonaCard> = {
     ],
     playerRelationship: "考卷的命题人——她给你线索也在测试你，通过了才有下一页。你不是她的棋子，你是她的答案",
     npcRelationships: {
-      "N-007": "关注但不干预——'廖暗在查的事，我已经归档过了'",
+      "N-044": "关注但不干预——'廖暗在查的事，我已经归档过了'",
       "N-015": "把麟泽的每一句话都默记在心里——不是因为信任，是因为有用",
     },
     crisisBehavior: "不慌不忙地取出登记册确认当前楼层住客——她的镇定不是因为勇敢，是因为她见过更糟的",
@@ -196,9 +196,9 @@ export const NPC_PERSONA_CARDS: Record<string, NpcPersonaCard> = {
     ],
   },
 
-  // ===== 苏弥（N-018：七辅锚之一，人性缓冲锚）=====
-  "N-018": {
-    npcId: "N-018",
+  // ===== 苏弥（N-045：人性缓冲 NPC，非辅锚；情绪收容者）=====
+  "N-045": {
+    npcId: "N-045",
     displayName: "苏弥",
     big5: {
       openness: 5,        // 对异常持中性态度

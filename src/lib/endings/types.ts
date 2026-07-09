@@ -87,6 +87,12 @@ export interface EndingSettlementSnapshot {
   lastAction?: string | null;
   createdAt: string;
   writingMarkdown: string;
+  /** 任务完成度指标（Phase 7） */
+  taskCompletionScore?: number;
+  completedTasks?: number;
+  totalFormalTasks?: number;
+  /** Phase-5: 本局高光时刻（is_payoff / hookType=reveal 的回合，上限 3 条） */
+  highlights?: Array<{ turnIndex: number; narrative: string; hookType: string }>;
 }
 
 export interface EndingState {
@@ -150,6 +156,8 @@ export interface BuildSettlementSnapshotInput {
   finalChoice?: EndingFinalChoice | null;
   deathContext?: EndingDeathContext | null;
   writingMarkdown?: string;
+  /** Phase 7: 原始任务列表（用于计算 taskCompletionScore） */
+  tasks?: unknown[];
 }
 
 export type EndingStateMachineEvent =

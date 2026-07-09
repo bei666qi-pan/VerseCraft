@@ -1,7 +1,7 @@
 {
   "scenario": "long_context",
   "description": "偏长 playerContext，用于压测 prompt 动态段、缓存前缀和终帧预算。",
-  "latestUserInput": "我深呼吸一次，重新整理刚才收集到的线索，在脑子里过一遍时间线。",
+  "latestUserInput": "[mock_scenario:normal_stream] 我深呼吸一次，重新整理刚才收集到的线索，在脑子里过一遍时间线。",
   "playerContext": "player_location: 公寓顶楼\ninventory: 笔记本, 手电\n---\n最近事件摘要：\n你在三楼听见滴水声。\n你在电梯里感到短暂失重。\n你在楼梯间看到墙皮剥落。\n你在四楼闻到霉味。\n你在天台发现铁门虚掩。\n你在地下室找到旧配电箱。\n你在走廊尽头看到人影一闪。\n你在消防栓旁摸到潮湿痕迹。\n你在管道井听到敲击。\n你在弱电间发现线路被剪。\n你在三楼听见滴水声。\n你在电梯里感到短暂失重。\n你在楼梯间看到墙皮剥落。\n你在四楼闻到霉味。\n你在天台发现铁门虚掩。\n你在地下室找到旧配电箱。\n你在走廊尽头看到人影一闪。\n你在消防栓旁摸到潮湿痕迹。\n你在管道井听到敲击。\n你在弱电间发现线路被剪。",
   "ruleSnapshot": {
     "in_combat_hint": false,

@@ -124,7 +124,7 @@ export const CORE_NPC_PROFILES_V2: readonly NpcProfileV2[] = [
     display: {
       name: "北夏",
       appearance: "外套轻扬、笑意明亮，步伐像在旅行而非逃命。",
-      floor: "random",
+      floor: "1",
       publicPersonality: "开朗、潇洒、中立",
       specialty: "中立交易与高价值委托",
       combatPower: 9,

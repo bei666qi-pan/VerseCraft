@@ -217,3 +217,59 @@ test("normalizePlayerDmJson: dirty narrative must not mutate structural state fi
   assert.deepEqual(n!.task_updates, []);
   assert.equal((n as { player_location?: unknown }).player_location, undefined);
 });
+
+test("normalizePlayerDmJson: foreshadow_ops normalizes valid ops and clamps", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "测试",
+    is_death: false,
+    foreshadow_ops: [
+      { op: "plant", text: "走廊尽头有声响", importance: 2 },
+      { op: "reinforce", id: "seed-1", text: "第二次听到" },
+      { op: "payoff", text: "原来是一只猫" },
+      { op: "invalid_op", text: "应该被丢弃" },
+    ],
+  });
+  assert.ok(n);
+  const ops = n.foreshadow_ops as Array<Record<string, unknown>>;
+  assert.equal(ops.length, 3);
+  assert.equal(ops[0]!.op, "plant");
+  assert.equal(ops[0]!.importance, 2);
+  assert.equal(ops[1]!.op, "reinforce");
+  assert.equal(ops[1]!.id, "seed-1");
+  assert.equal(ops[2]!.op, "payoff");
+});
+
+test("normalizePlayerDmJson: foreshadow_ops caps at 3 and rejects empty text", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "测试",
+    is_death: false,
+    foreshadow_ops: [
+      { op: "plant", text: "种子1" },
+      { op: "plant", text: "种子2" },
+      { op: "plant", text: "种子3" },
+      { op: "plant", text: "种子4-应该被截断" },
+      { op: "plant", text: "" },
+      { op: "plant" },
+    ],
+  });
+  assert.ok(n);
+  const ops = n.foreshadow_ops as Array<Record<string, unknown>>;
+  assert.equal(ops.length, 3);
+  assert.equal(ops[0]!.text, "种子1");
+  assert.equal(ops[2]!.text, "种子3");
+});
+
+test("normalizePlayerDmJson: foreshadow_ops defaults to empty array", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "测试",
+    is_death: false,
+  });
+  assert.ok(n);
+  assert.deepEqual(n.foreshadow_ops, []);
+});

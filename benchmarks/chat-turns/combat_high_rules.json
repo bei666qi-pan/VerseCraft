@@ -1,7 +1,7 @@
 {
   "scenario": "combat_high_rules",
   "description": "战斗或强规则裁决场景，验证规则压力下仍有可解析终帧和足够叙事。",
-  "latestUserInput": "我抄起灭火器砸向扑过来的东西，同时往后退到墙角，准备下一击。",
+  "latestUserInput": "[mock_scenario:normal_stream] 我抄起灭火器砸向扑过来的东西，同时往后退到墙角，准备下一击。",
   "playerContext": "player_location: 地下停车场\ncombat_round: 2\nenemy: 未知实体\nhp: 45\nstress: high",
   "ruleSnapshot": {
     "in_combat_hint": true,
