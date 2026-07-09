@@ -88,7 +88,7 @@ async function main(): Promise<void> {
 
   const config: PlaythroughV3Config = {
     // v1 字段
-    personas: ["speedrunner", "explorer", "rulebreaker", "confused"],
+    personas: ["speedrunner", "explorer", "rulebreaker", "confused", "collector"],
     runsPerPersona: args.runs,
     maxStepsPerRun: args.maxSteps,
     baseSeed: 42,

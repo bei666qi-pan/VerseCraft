@@ -50,7 +50,7 @@ function parseArgs(): CliArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs();
-  const personas = args.persona ? [args.persona] : ["speedrunner", "explorer", "rulebreaker", "confused"] as PersonaType[];
+  const personas = args.persona ? [args.persona] : ["speedrunner", "explorer", "rulebreaker", "confused", "collector"] as PersonaType[];
 
   console.log("🎮 VerseCraft 长程 Playthrough 模拟器");
   console.log("═".repeat(60));
