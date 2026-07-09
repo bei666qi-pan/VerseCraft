@@ -13,7 +13,7 @@
 | 环境变量约定 | `docs/environment.md` |
 | 本地运行 | `docs/local-development.md` |
 | Coolify 部署 | `docs/deployment-coolify.md` |
-| 人工回归步骤 | `docs/regression-checklist.md` |
+| 人工回归步骤 | `docs/archive/2026-07/regression-checklist.md` |
 | 上线前验收结论 | `docs/ACCEPTANCE-PRE-RELEASE.md` |
 | AI 故障排查 | `docs/troubleshooting-ai.md` |
 | 扩展任务 | `docs/ai-extensibility.md` |
