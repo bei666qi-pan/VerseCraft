@@ -37,6 +37,9 @@ import {
   checkSoftlock,
   createInitialStateSnapshot,
   detectNpcResurrections,
+  detectNarrativeRepetitions,
+  detectNpcStateChurn,
+  detectRelationshipDrift,
 } from "./invariants";
 import { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 import { createSutAdapter, type SutAdapter } from "./sutAdapter";
@@ -103,6 +106,12 @@ export interface TraceArtifact {
   }>;
   /** 失败聚类标签（重复失败模式） */
   failureTags: string[];
+  /** n-gram 叙事重复率（0-1） */
+  narrativeRepetitionRate: number;
+  /** 关系漂移次数 */
+  relationshipDriftCount: number;
+  /** NPC 状态抖动次数 */
+  npcStateChurnCount: number;
 }
 
 // === 失败聚类 ===
@@ -370,7 +379,28 @@ export async function runSinglePlaythroughV3(
     }
   }
 
-  // ⑬ 构建 trace artifact
+  // ⑬ n-gram 重复率检测
+  const repetitionResult = detectNarrativeRepetitions(
+    steps.map((s) => ({ stepIndex: s.stepIndex, narrative: s.narrative }))
+  );
+
+  // ⑭ NPC 状态抖动检测
+  const stateChurnResult = detectNpcStateChurn(
+    steps.map((s, i) => ({
+      stepIndex: s.stepIndex,
+      stateAfter: s.stateAfter,
+      prevState: i > 0 ? steps[i - 1]!.stateAfter : undefined,
+    }))
+  );
+
+  // ⑮ 关系漂移检测
+  const initialRelationships: Record<string, number> = {};
+  const relationshipDriftResult = detectRelationshipDrift(
+    steps.map((s) => ({ stepIndex: s.stepIndex, dmJson: s.dmJson })),
+    initialRelationships
+  );
+
+  // ⑯ 构建 trace artifact
   const trace: TraceArtifact = {
     runId: transcript.runId,
     scenarioId: scenario.id,
@@ -403,9 +433,12 @@ export async function runSinglePlaythroughV3(
       metrics: s.metrics,
     })),
     failureTags,
+    narrativeRepetitionRate: repetitionResult.overallRepetitionRate,
+    relationshipDriftCount: relationshipDriftResult.drifts.length,
+    npcStateChurnCount: stateChurnResult.churns.length,
   };
 
-  // ⑭ 写 trace artifact 落盘
+  // ⑰ 写 trace artifact 落盘
   if (config.traceOutputDir) {
     try {
       await fs.mkdir(config.traceOutputDir, { recursive: true });
@@ -461,14 +494,19 @@ function applyDmJsonToState(
     delta.reachedEnding = true;
   }
 
-  // currency_change（消费）
-  if (dmJson["currency_change"] && typeof dmJson["currency_change"] === "object") {
-    const cc = dmJson["currency_change"] as Record<string, number>;
-    if (typeof cc["originium"] === "number") {
-      delta.originium = Math.max(0, state.originium + cc["originium"]);
+  // currency_change（wire 协议为 number，旧版可能是 { originium, sanity } 对象）
+  // 与 normalizePlayerDmJson / resolveDmTurn / TurnEnvelope 对齐：number 即原石 delta
+  const currencyChange = dmJson["currency_change"];
+  if (typeof currencyChange === "number" && Number.isFinite(currencyChange)) {
+    // 与 useGameStore.addOriginium 语义一致：originium 永远 >= 0
+    delta.originium = Math.max(0, state.originium + currencyChange);
+  } else if (currencyChange && typeof currencyChange === "object" && !Array.isArray(currencyChange)) {
+    const cc = currencyChange as Record<string, unknown>;
+    if (typeof cc["originium"] === "number" && Number.isFinite(cc["originium"])) {
+      delta.originium = Math.max(0, state.originium + (cc["originium"] as number));
     }
-    if (typeof cc["sanity"] === "number") {
-      delta.sanity = Math.max(0, (delta.sanity ?? state.sanity) + cc["sanity"]);
+    if (typeof cc["sanity"] === "number" && Number.isFinite(cc["sanity"])) {
+      delta.sanity = Math.max(0, (delta.sanity ?? state.sanity) + (cc["sanity"] as number));
     }
   }
 
@@ -503,14 +541,31 @@ function applyDmJsonToState(
     delta.completedTaskIds = [...state.completedTaskIds, ...newlyCompleted];
   }
 
-  // weapon_updates
-  if (dmJson["weapon_updates"] && typeof dmJson["weapon_updates"] === "object") {
-    const wu = dmJson["weapon_updates"] as Record<string, unknown>;
-    if (typeof wu["stability"] === "number") {
-      delta.weaponStability = Math.max(0, Math.min(100, wu["stability"] as number));
-    }
-    if (typeof wu["contamination"] === "number") {
-      delta.weaponContamination = Math.max(0, Math.min(100, wu["contamination"] as number));
+  // weapon_updates（wire 协议为 array，每个元素是一次更新）
+  // 与 useGameStore.applyWeaponUpdates 语义对齐：
+  // - unequip: true → 卸下武器（equippedWeapon = null）
+  // - weaponId / weapon → 装备新武器
+  // - stability / contamination → 更新（last-writer-wins，与 store 一致）
+  if (Array.isArray(dmJson["weapon_updates"])) {
+    for (const row of dmJson["weapon_updates"] as Array<Record<string, unknown>>) {
+      if (!row || typeof row !== "object") continue;
+      if (row["unequip"] === true) {
+        delta.equippedWeapon = null;
+        continue;
+      }
+      if (typeof row["weaponId"] === "string" && row["weaponId"]) {
+        delta.equippedWeapon = row["weaponId"] as string;
+      }
+      // 仅当 equippedWeapon 已有值时，才能更新稳定度/污染度（与 store 逻辑一致：没有武器就无法扣）
+      const curWeapon = delta.equippedWeapon !== undefined ? delta.equippedWeapon : state.equippedWeapon;
+      if (curWeapon !== null) {
+        if (typeof row["stability"] === "number" && Number.isFinite(row["stability"])) {
+          delta.weaponStability = Math.max(0, Math.min(100, Math.trunc(row["stability"] as number)));
+        }
+        if (typeof row["contamination"] === "number" && Number.isFinite(row["contamination"])) {
+          delta.weaponContamination = Math.max(0, Math.min(100, Math.trunc(row["contamination"] as number)));
+        }
+      }
     }
   }
 
@@ -699,12 +754,17 @@ export async function runSinglePlaythrough(
     expectedTerminations: ["max_steps", "reached_ending"],
     criticalInvariants: [],
   };
-  const sut = createSutAdapter({ mock: true });
+  const sut = createSutAdapter({
+    mock: config.mockMode,
+    baseUrl: config.baseUrl,
+    frameTimeoutMs: config.stepTimeoutMs,
+  });
   const v3Config: PlaythroughV3Config = {
     ...config,
     traceOutputDir: undefined,
   };
   const result = await runSinglePlaythroughV3(v3Config, scenario, persona, runIndex, sut);
+  if (sut.close) await sut.close();
   return {
     transcript: result.transcript,
     invariantResults: result.invariantResults,
@@ -724,19 +784,15 @@ export async function runPlaythroughBatch(
   config: PlaythroughRunConfig
 ): Promise<PlaythroughRunSummary> {
   const startTime = Date.now();
-  const sut = createSutAdapter({ mock: config.mockMode });
   const allResults: PlaythroughRunResult[] = [];
 
   for (const persona of config.personas) {
     for (let i = 0; i < config.runsPerPersona; i++) {
       console.log(`  🎮 ${PERSONAS[persona]?.name ?? persona} #${i + 1}/${config.runsPerPersona}`);
-      if (sut.reset) await sut.reset();
       const result = await runSinglePlaythrough(config, persona, i);
       allResults.push(result);
     }
   }
-
-  if (sut.close) await sut.close();
 
   return summarizeResults(allResults, config, Date.now() - startTime);
 }
@@ -752,6 +808,12 @@ export function getScenarioLibraryCounts(): { total: number; byCategory: Record<
 }
 
 // === 内部 helper for tests ===
+
+/**
+ * 供测试直接调用的 applyDmJsonToState 包装。
+ * 用于验证 orchestrator 内部的状态转换逻辑是否正确。
+ */
+export const applyDmJsonToStateHelper = applyDmJsonToState;
 
 const _testHelpers = {
   applyDmJsonToState,

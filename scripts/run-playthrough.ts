@@ -9,6 +9,7 @@
  *   pnpm dlx tsx scripts/run-playthrough.ts --persona speedrunner  # 仅速通型
  *   pnpm dlx tsx scripts/run-playthrough.ts --runs 5               # 每个 persona 跑 5 局
  *   pnpm dlx tsx scripts/run-playthrough.ts --live                 # Live 模式（需 DEEPSEEK_API_KEY）
+ *   pnpm dlx tsx scripts/run-playthrough.ts --live --base-url http://localhost:666  # Live 模式指定 /api/chat 地址
  *   pnpm dlx tsx scripts/run-playthrough.ts --json-out path        # JSON 输出
  *   pnpm dlx tsx scripts/run-playthrough.ts --no-narrative-judge   # 跳过叙事裁判
  */
@@ -30,6 +31,7 @@ interface CliArgs {
   jsonOut?: string;
   verbose: boolean;
   maxSteps: number;
+  baseUrl: string;
 }
 
 function parseArgs(): CliArgs {
@@ -45,6 +47,9 @@ function parseArgs(): CliArgs {
     jsonOut: args.includes("--json-out") ? args[args.indexOf("--json-out") + 1] : undefined,
     verbose: args.includes("--verbose") || args.includes("-v"),
     maxSteps: args.includes("--max-steps") ? parseInt(args[args.indexOf("--max-steps") + 1] ?? "20", 10) : 20,
+    baseUrl: args.includes("--base-url")
+      ? (args[args.indexOf("--base-url") + 1] ?? "http://localhost:666")
+      : "http://localhost:666",
   };
 }
 
@@ -55,6 +60,9 @@ async function main(): Promise<void> {
   console.log("🎮 VerseCraft 长程 Playthrough 模拟器");
   console.log("═".repeat(60));
   console.log(`模式: ${args.mockMode ? "mock（离线模拟）" : "live（真实API）"}`);
+  if (!args.mockMode) {
+    console.log(`API 地址: ${args.baseUrl}`);
+  }
   console.log(`Persona: ${personas.map((p) => PERSONAS[p]?.name ?? p).join(", ")}`);
   console.log(`每 persona 运行: ${args.runs} 局`);
   console.log(`总预计: ${personas.length * args.runs} 局`);
@@ -68,6 +76,7 @@ async function main(): Promise<void> {
     maxStepsPerRun: args.maxSteps,
     baseSeed: 42,
     mockMode: args.mockMode,
+    baseUrl: args.baseUrl,
     runNarrativeJudge: args.narrativeJudge,
     softlockThreshold: 8,
     stepTimeoutMs: 30000,
