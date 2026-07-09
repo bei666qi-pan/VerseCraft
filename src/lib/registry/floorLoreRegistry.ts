@@ -115,9 +115,6 @@ export const FLOOR_LORE_BY_ID: Record<ThreatAxisFloorId, FloorLoreEntry> = {
   },
 };
 
-/** @deprecated 使用 FLOOR_LORE_BY_ID；保留别名避免大范围重命名 */
-export const FLOOR_DIGESTION_AXES = FLOOR_LORE_BY_ID;
-
 export type FloorDigestionAxis = FloorLoreEntry;
 
 export function getFloorLoreByLocation(location: string | null): FloorLoreEntry | null {

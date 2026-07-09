@@ -23,7 +23,7 @@ import {
   B2_BOSS_ID,
   B2_BOSS_LOCKED_FAVORABILITY,
 } from "@/lib/registry/world";
-import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
+import { FLOOR_LORE_BY_ID, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 import { revealKnowledgeTagFromRank } from "@/lib/registry/revealTierRank";
 import { buildSchoolCycleLoreFactsForCanon } from "@/lib/registry/schoolCycleCanon";
 import { buildCycleMoonFlashFactsForCanon } from "@/lib/registry/cycleMoonFlashRegistry";
@@ -141,7 +141,7 @@ export function buildCoreCanonFactsFromRegistry(): LoreFact[] {
     );
   }
 
-  for (const [floorId, axis] of Object.entries(FLOOR_DIGESTION_AXES)) {
+  for (const [floorId, axis] of Object.entries(FLOOR_LORE_BY_ID)) {
     facts.push(
       mkFact({
         layer: "shared_public_lore",

@@ -118,8 +118,7 @@ export function getPublicRuntimeConfig(): PublicRuntimeConfig {
 /**
  * 把一个本地 `/assets/...` 路径改写成 CDN 域名下的路径（未配置 NEXT_PUBLIC_ASSET_CDN_BASE_URL 时原样返回，
  * 本地开发和未接入 CDN 的环境都直接落回本地静态资源）。
- * CDN 源站 bucket 内对象没有 `assets/` 前缀（例如 `npc-avatars/A-001.png`，见
- * scripts/deployAssetsToTos.mjs），所以拼 CDN 路径时要去掉本地约定里的 `/assets` 段。
+ * CDN 源站 bucket 内对象没有 `assets/` 前缀（例如 `npc-avatars/A-001.png`），所以拼 CDN 路径时要去掉本地约定里的 `/assets` 段。
  */
 export function assetUrl(path: string): string {
   const base = getPublicRuntimeConfig().assetCdnBaseUrl;

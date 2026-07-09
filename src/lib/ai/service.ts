@@ -46,7 +46,6 @@ export {
 } from "@/lib/ai/models/logicalRoles";
 export {
   TASK_POLICY,
-  TASK_MODEL_FORBIDDEN,
   TASK_ROLE_FORBIDDEN,
   TASK_TOOLS_ALLOWED,
   getTaskBinding,

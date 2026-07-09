@@ -3,9 +3,6 @@ import type { EchoTalent } from "@/store/useGameStore";
 
 export const MAX_INPUT = 20;
 
-export const COMPLIANCE_HINT_TEXT =
-  "本平台为AI协作创意写作工具，请创作者遵守中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。";
-
 export const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string }> = {
   时间回溯: {
     bg: "radial-gradient(ellipse 90% 90% at 50% 50%, transparent 30%, rgba(6,182,212,0.2) 60%, rgba(8,145,178,0.4) 100%)",

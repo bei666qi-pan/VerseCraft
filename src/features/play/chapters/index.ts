@@ -1,4 +1,4 @@
-export { ChapterEndSheet, ChapterRecapSheet } from "./ChapterEndSheet";
+export { ChapterEndSheet } from "./ChapterEndSheet";
 export { ChapterNavigator } from "./ChapterNavigator";
 export { ChapterPageTurnOverlay, type ChapterPageTurnDirection } from "./ChapterPageTurnOverlay";
 export { ChapterProgressHint } from "./ChapterProgressHint";

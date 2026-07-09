@@ -24,7 +24,7 @@
 - **强度（residueStrength）**：1–6，受触发条件、异常包、NPC 策略影响；欣蓝基线更高。
 - **触发（activeTriggers）**：如近距离对话、关键词回声、夜间压迫、敏感地点/物件、危机语气、认知边界试探等，用于解释「为何本回合可以考虑残响」，而非剧透。
 - **Anti-repeat**：成功触发后把 `{ npcId, mode, iso }` 写入会话认知嵌入 `epistemic_residue_recent_uses`，后续回合优先轮换未在近期出现的模式，降低机械重复感。
-- **开关**：`VERSECRAFT_ENABLE_NPC_RESIDUE`（默认开启）；未设置时回退 `VERSECRAFT_EPISTEMIC_RESIDUE_GAMEFEEL`。总览见 `docs/npc-epistemic-rollout-checklist.md`。
+- **开关**：`VERSECRAFT_ENABLE_NPC_RESIDUE`（默认开启）；未设置时回退 `VERSECRAFT_EPISTEMIC_RESIDUE_GAMEFEEL`。总览见 `docs/archive/2026-07/npc-epistemic-rollout-checklist.md`。
 
 ## 欣蓝与普通 NPC
 

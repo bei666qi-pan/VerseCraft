@@ -35,13 +35,3 @@ export function formatUtcDateKeyLabel(dateKey: string): string {
     day: "numeric",
   }).format(d);
 }
-
-/** Short wall label for “now” ticks (UTC) in live charts. */
-export function formatZhCnUtcTimeShort(value: Date = new Date()): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "UTC",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(value);
-}

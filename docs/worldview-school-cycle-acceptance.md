@@ -125,4 +125,4 @@ pnpm exec tsx --test src/lib/playRealtime/stage2GameplayLoop.test.ts
 pnpm exec tsx --test src/lib/playRealtime/chatRouteContract.test.ts
 ```
 
-**后续内容生产清单**：[content-production-checklist-school-cycle.md](content-production-checklist-school-cycle.md)。
+**后续内容生产清单**：[content-production-checklist-school-cycle.md](docs/archive/2026-07/content-production-checklist-school-cycle.md)。

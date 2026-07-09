@@ -8,6 +8,3 @@
 export function useMounted(): boolean {
   return typeof window !== "undefined";
 }
-
-/** Alias for useMounted; matches Phase 12+ defensive coding convention. */
-export const useIsMounted = useMounted;

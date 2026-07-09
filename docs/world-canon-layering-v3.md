@@ -45,4 +45,4 @@
 
 - `docs/worldview-rewrite-handoff.md` — 世界观重写交接与验收口径
 - `docs/registry-reveal-packets-architecture.md` — Registry / reveal / packet 技术说明
-- `docs/open-beta-compliance-upgrade.md` / `docs/legal-pages-upgrade.md` / `docs/operations-followup-checklist.md` — 合规与运营配合（与叙事架构独立但同轮交付）
+- `docs/archive/2026-07/open-beta-compliance-upgrade.md` / `docs/archive/2026-07/legal-pages-upgrade.md` / `docs/archive/2026-07/operations-followup-checklist.md` — 合规与运营配合（与叙事架构独立但同轮交付）

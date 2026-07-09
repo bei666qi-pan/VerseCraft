@@ -2,7 +2,7 @@ import { NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { NPC_CANONICAL_IDENTITY_BY_ID, resolveNpcRuntimeLocation } from "@/lib/registry/npcCanon";
 import { buildServiceContextForLocation, getServicesForLocation, isAbsoluteSafeZoneLocation } from "@/lib/registry/serviceNodes";
-import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
+import { FLOOR_LORE_BY_ID, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 
 /**
  * 运行时边界：前端仅允许读取最小 UI/状态种子，避免直接消费大段世界 lore 文本。
@@ -27,7 +27,7 @@ export const NPC_RELATIONSHIP_HOOK_SEED: Record<string, string[]> = Object.fromE
 );
 
 export const FLOOR_DIGESTION_THEME_SEED: Record<string, { publicTheme: string; hiddenTheme: string }> = Object.fromEntries(
-  Object.entries(FLOOR_DIGESTION_AXES).map(([floorId, axis]) => [
+  Object.entries(FLOOR_LORE_BY_ID).map(([floorId, axis]) => [
     floorId,
     { publicTheme: axis.publicTheme, hiddenTheme: axis.hiddenTheme },
   ])

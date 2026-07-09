@@ -13,7 +13,7 @@
 | `enhance` 仅用于门控任务 | **已完成** | `SCENE_ENHANCEMENT` / `NPC_EMOTION_POLISH`；`enhancementRulesPure` + 会话预算。 |
 | 本地 `.env.local` 与 Coolify **同名变量** | **已完成** | 无「仅本地 / 仅线上」分支；见 `docs/ai-gateway.md`、`environment.md`。 |
 | 切模型优先 one-api / 次选改 env | **已完成** | 见 `docs/ai-gateway.md` 第五节；`.env.example` 中 `AI_MODEL_*` 为占位 id。 |
-| 链失败可降级与友好错误 | **已完成** | `execute.gateway-contract.test.ts`、`errors/classify`；人工清单 `regression-checklist.md`。 |
+| 链失败可降级与友好错误 | **已完成** | `execute.gateway-contract.test.ts`、`errors/classify`；人工清单 `docs/archive/2026-07/regression-checklist.md`。 |
 
 ## 自动化
 
@@ -28,10 +28,10 @@
 
 | 项 | 状态 | 风险 |
 |----|------|------|
-| Playwright 全链路（真实密钥 + 完整游玩） | **未完成** | 低：SSE 与网关契约已测；全量仍依赖环境与 `regression-checklist.md`。 |
+| Playwright 全链路（真实密钥 + 完整游玩） | **未完成** | 低：SSE 与网关契约已测；全量仍依赖环境与 `docs/archive/2026-07/regression-checklist.md`。 |
 | Coolify Build 阶段跑 `pnpm test:ci` | **建议** | 中：与 `ci.yml` 一致；需在构建命令中显式加入（见 `deployment-coolify.md`）。 |
 
 ## 签署说明
 
 - **已完成**：代码与单测或文档可核对。  
-- **风险点**：已在表中注明；上线前建议至少完成 `docs/regression-checklist.md` 一轮人工勾选。
+- **风险点**：已在表中注明；上线前建议至少完成 `docs/archive/2026-07/regression-checklist.md` 一轮人工勾选。

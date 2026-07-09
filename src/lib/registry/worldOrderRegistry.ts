@@ -82,8 +82,6 @@ export function buildWorldOrderCanonBlock(): string {
   }).join("\n\n");
 }
 
-/** 兼容旧名 */
-export const SYSTEM_CANON_REGISTRY = WORLD_ORDER_CANON;
 export function buildSystemCanonBlock(): string {
   return buildWorldOrderCanonBlock();
 }

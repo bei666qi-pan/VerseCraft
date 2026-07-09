@@ -49,7 +49,6 @@ export {
 } from "./promptBuilder";
 export {
   commitNarrativeEvents,
-  commitNarrativeTurn,
   commitTurn,
   type CommitTurnArgs,
   type CommitTurnResult,

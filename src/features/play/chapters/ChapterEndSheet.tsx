@@ -89,5 +89,3 @@ export function ChapterEndSheet({
     </div>
   );
 }
-
-export const ChapterRecapSheet = ChapterEndSheet;

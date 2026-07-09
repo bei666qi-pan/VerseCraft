@@ -5,7 +5,7 @@ import { NPCS } from "@/lib/registry/npcs";
 import { APARTMENT_SURVIVAL_NOTES } from "@/lib/registry/rules";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
 import { FLOORS, MAP_ROOMS, NPC_SOCIAL_GRAPH } from "@/lib/registry/world";
-import { FLOOR_DIGESTION_AXES, REVEAL_TIERS } from "@/lib/registry/worldCanon";
+import { FLOOR_LORE_BY_ID, REVEAL_TIERS } from "@/lib/registry/worldCanon";
 import { REVEAL_TIER_RANK, revealKnowledgeTagFromRank } from "@/lib/registry/revealTierRank";
 import { SCHOOL_CYCLE_LORE_SLICES } from "@/lib/registry/schoolCycleCanon";
 import { buildCycleMoonFlashFactsForCanon } from "@/lib/registry/cycleMoonFlashRegistry";
@@ -280,7 +280,7 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
     }
   }
 
-  for (const [floorId, axis] of Object.entries(FLOOR_DIGESTION_AXES)) {
+  for (const [floorId, axis] of Object.entries(FLOOR_LORE_BY_ID)) {
     const code = `location:floor_axis:${floorId}`;
     entities.push({
       entityType: "location",
@@ -300,7 +300,7 @@ export function buildRegistryWorldKnowledgeDraft(): RegistrySeedDraft {
       ownerUserId: null,
       status: "active",
       sourceType: "bootstrap",
-      sourceRef: "registry/worldCanon.ts:FLOOR_DIGESTION_AXES",
+      sourceRef: "registry/worldCanon.ts:FLOOR_LORE_BY_ID",
       importance: 84,
       version: 1,
       tags: uniqueTags(["location", "floor_axis", floorId, "digestion", "threat", "reveal_fracture"]),
