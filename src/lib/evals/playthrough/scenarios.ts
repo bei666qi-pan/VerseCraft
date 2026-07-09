@@ -242,6 +242,18 @@ export const SCENARIOS: Scenario[] = [
     expectedTerminations: ["softlock", "max_steps"],
     criticalInvariants: ["hp_non_negative", "sanity_non_negative"],
   },
+
+  // ─────────── collector path（1）───────────
+  {
+    id: "collector-hoard",
+    name: "疯狂收集",
+    description: "收集癖玩家反复拾取物品，测试库存上限与经济守恒",
+    category: "happy",
+    personas: ["collector"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: { originium: 50 },
+    criticalInvariants: ["inventory_slots", "originium_non_negative"],
+  },
 ];
 
 // === 场景检索工具 ===
@@ -273,7 +285,7 @@ export function getScenarioLibraryStats(): ScenarioLibraryStats {
     happy: 0, recovery: 0, refusal: 0, abandonment: 0,
   };
   const personaCoverage: Record<PersonaType, number> = {
-    speedrunner: 0, explorer: 0, rulebreaker: 0, confused: 0,
+    speedrunner: 0, explorer: 0, rulebreaker: 0, confused: 0, collector: 0,
   };
   for (const s of SCENARIOS) {
     byCategory[s.category]++;
