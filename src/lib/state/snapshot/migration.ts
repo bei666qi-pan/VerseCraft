@@ -86,7 +86,7 @@ function normalizeMemorySpine(raw: unknown, nowHour: number): MemorySpineState {
   const entries = Array.isArray(s.entries) ? s.entries : [];
   const state: MemorySpineState = {
     v: 1,
-    entries: entries as any,
+    entries: entries as MemorySpineState["entries"],
   };
   return pruneMemorySpine(state, nowHour, { maxEntries: 64 });
 }
@@ -135,7 +135,7 @@ export function migrateLegacySaveToSnapshot(legacy: LegacySaveSurface): RunSnaps
     currentLocation: legacy.playerLocation ?? "B1_SafeZone",
     alive: (legacy.stats?.sanity ?? DEFAULT_STATS.sanity) > 0,
     equippedWeapon: legacy.equippedWeapon ?? null,
-    weaponBag: (legacy as LegacySaveSurface & { weaponBag?: unknown }).weaponBag as any,
+    weaponBag: (legacy as LegacySaveSurface & { weaponBag?: Weapon[] }).weaponBag ?? [],
     day: legacy.time?.day ?? 0,
     hour: legacy.time?.hour ?? 0,
     dynamicNpcStates: legacy.dynamicNpcStates ?? {},
@@ -289,8 +289,8 @@ export function normalizeRunSnapshotV2(
       pendingEvents: Array.isArray(s.world?.pendingEvents)
         ? s.world.pendingEvents.filter((x): x is string => typeof x === "string")
         : fromLegacy.world.pendingEvents,
-      storyDirector: normalizeDirectorState((s.world as any)?.storyDirector, 0, chapterDirectorBridge),
-      incidentQueue: normalizeIncidentQueue((s.world as any)?.incidentQueue),
+      storyDirector: normalizeDirectorState((s.world as Record<string, unknown> | undefined)?.storyDirector, 0, chapterDirectorBridge),
+      incidentQueue: normalizeIncidentQueue((s.world as Record<string, unknown> | undefined)?.incidentQueue),
       floorThreatTier: asRecord(s.world?.floorThreatTier) as Record<string, number>,
       mainThreatByFloor: (() => {
         const parsed = normalizeMainThreatByFloor(s.world?.mainThreatByFloor);
@@ -298,11 +298,11 @@ export function normalizeRunSnapshotV2(
       })(),
     },
     memory: (() => {
-      const spine = normalizeMemorySpine((s as any).memory, nowHour);
+      const spine = normalizeMemorySpine((s as Record<string, unknown>).memory, nowHour);
       return { spine: spine.entries.length > 0 ? spine : createEmptyMemorySpine() };
     })(),
     escape: (() => {
-      return normalizeEscapeMainline((s as any).escape, nowHour);
+      return normalizeEscapeMainline((s as Record<string, unknown>).escape, nowHour);
     })(),
     journal: normalizeJournalState((s as { journal?: unknown }).journal),
     chapterState: normalizedChapterState,
