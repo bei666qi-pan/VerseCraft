@@ -38,7 +38,6 @@
     "db:check:optional": "node ./scripts/db-check-optional.mjs",
     "db:ensure-schema": "node scripts/ensure-runtime-schema.mjs",
     "db:generate": "drizzle-kit generate",
-    "diagnose:play": "pnpm dlx tsx scripts/diagnose-play-error.ts",
     "test:e2e:webview": "playwright test e2e/webview-inapp-transport.spec.ts",
     "test:unit": "tsx --test \"src/**/*.test.ts\"",
     "verify:ai-gateway": "tsx scripts/verify-ai-gateway.ts",
