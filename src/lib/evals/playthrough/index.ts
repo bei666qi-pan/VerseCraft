@@ -38,6 +38,8 @@ export {
   detectNpcResurrections,
 } from "./invariants";
 
+export { applyDmJsonToState } from "./stateApply";
+
 export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 
 export {

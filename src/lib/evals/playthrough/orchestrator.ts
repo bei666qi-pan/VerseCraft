@@ -40,6 +40,7 @@ import {
 } from "./invariants";
 import { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 import { createSutAdapter, type SutAdapter } from "./sutAdapter";
+import { applyDmJsonToState } from "./stateApply";
 import { SCENARIOS, getScenariosByCategory, type Scenario, type ScenarioCategory } from "./scenarios";
 import { generatePlayerActionDeepSeek } from "../liveProvider";
 import type {
@@ -59,6 +60,8 @@ import type {
 export interface PlaythroughV3Config extends PlaythroughRunConfig {
   /** 场景过滤（默认全部） */
   scenarioCategories?: ScenarioCategory[];
+  /** 指定场景 ID 白名单（可选，与 scenarioCategories 做交集） */
+  scenarioIds?: string[];
   /** Trace artifact 输出目录 */
   traceOutputDir?: string;
   /** 是否启用跨 run 失败聚类 */
@@ -231,7 +234,13 @@ export async function runSinglePlaythroughV3(
       }
     }
 
-    // ② SUT 调用
+    // ② 步间延迟：live 模式使用自适应延迟（调用方通过 stepDelayMs 配置；默认固定 6s）
+    if (!config.mockMode) {
+      const delayMs = typeof config.stepDelayMs === "function" ? config.stepDelayMs(step) : (config.stepDelayMs ?? 6000);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+
+    // ③ SUT 调用
     const response = await sut.step({
       playerAction: action,
       persona: personaType,
@@ -429,102 +438,6 @@ export async function runSinglePlaythroughV3(
   };
 }
 
-// === 从 DM JSON 应用状态变化 ===
-
-function applyDmJsonToState(
-  state: GameStateSnapshot,
-  dmJson: Record<string, unknown>,
-  narrative: string
-): GameStateSnapshot {
-  const delta: Partial<GameStateSnapshot> = {};
-
-  // turnCount + 1
-  delta.turnCount = state.turnCount + 1;
-
-  // sanity_damage
-  if (typeof dmJson["sanity_damage"] === "number") {
-    delta.sanity = Math.max(0, state.sanity - (dmJson["sanity_damage"] as number));
-  }
-
-  // player_location
-  if (typeof dmJson["player_location"] === "string") {
-    delta.playerLocation = dmJson["player_location"] as string;
-  }
-
-  // is_death
-  if (dmJson["is_death"] === true) {
-    delta.isDeath = true;
-  }
-
-  // reached_ending（任意字段命中即可）
-  if (dmJson["reached_ending"] === true || dmJson["is_ending"] === true) {
-    delta.reachedEnding = true;
-  }
-
-  // currency_change（消费）
-  if (dmJson["currency_change"] && typeof dmJson["currency_change"] === "object") {
-    const cc = dmJson["currency_change"] as Record<string, number>;
-    if (typeof cc["originium"] === "number") {
-      delta.originium = Math.max(0, state.originium + cc["originium"]);
-    }
-    if (typeof cc["sanity"] === "number") {
-      delta.sanity = Math.max(0, (delta.sanity ?? state.sanity) + cc["sanity"]);
-    }
-  }
-
-  // consumed_items
-  if (Array.isArray(dmJson["consumed_items"])) {
-    // 简化：只统计数量
-    delta.inventoryItemCount = Math.max(0, state.inventoryItemCount - dmJson["consumed_items"].length);
-  }
-
-  // awarded_items
-  if (Array.isArray(dmJson["awarded_items"])) {
-    delta.inventoryItemCount = state.inventoryItemCount + dmJson["awarded_items"].length;
-  }
-
-  // codex_updates
-  if (Array.isArray(dmJson["codex_updates"])) {
-    const newIds: string[] = [];
-    for (const u of dmJson["codex_updates"] as Array<Record<string, unknown>>) {
-      if (typeof u["entry_id"] === "string") newIds.push(u["entry_id"] as string);
-    }
-    delta.codexNpcIds = [...state.codexNpcIds, ...newIds];
-  }
-
-  // task_updates（completed 推进）
-  if (Array.isArray(dmJson["task_updates"])) {
-    const newlyCompleted: string[] = [];
-    for (const u of dmJson["task_updates"] as Array<Record<string, unknown>>) {
-      if (u["status"] === "completed" && typeof u["task_id"] === "string") {
-        newlyCompleted.push(u["task_id"] as string);
-      }
-    }
-    delta.completedTaskIds = [...state.completedTaskIds, ...newlyCompleted];
-  }
-
-  // weapon_updates
-  if (dmJson["weapon_updates"] && typeof dmJson["weapon_updates"] === "object") {
-    const wu = dmJson["weapon_updates"] as Record<string, unknown>;
-    if (typeof wu["stability"] === "number") {
-      delta.weaponStability = Math.max(0, Math.min(100, wu["stability"] as number));
-    }
-    if (typeof wu["contamination"] === "number") {
-      delta.weaponContamination = Math.max(0, Math.min(100, wu["contamination"] as number));
-    }
-  }
-
-  return {
-    ...state,
-    ...delta,
-    inventoryItemIds: state.inventoryItemIds,
-    activeTaskIds: state.activeTaskIds,
-    aliveNpcIds: state.aliveNpcIds,
-    deadNpcIds: state.deadNpcIds,
-    unlockedFlags: state.unlockedFlags,
-  };
-}
-
 // === 批次编排（v3） ===
 
 export async function runPlaythroughBatchV3(
@@ -536,6 +449,9 @@ export async function runPlaythroughBatchV3(
   let scenarios = SCENARIOS;
   if (config.scenarioCategories && config.scenarioCategories.length > 0) {
     scenarios = scenarios.filter((s) => config.scenarioCategories!.includes(s.category));
+  }
+  if (config.scenarioIds && config.scenarioIds.length > 0) {
+    scenarios = scenarios.filter((s) => config.scenarioIds!.includes(s.id));
   }
 
   // 创建 SUT adapter（每局一个 session）
@@ -754,7 +670,6 @@ export function getScenarioLibraryCounts(): { total: number; byCategory: Record<
 // === 内部 helper for tests ===
 
 const _testHelpers = {
-  applyDmJsonToState,
   extractRunIdInfo: (runId: string) => {
     const parts = runId.split("-");
     const seedPart = parts[parts.length - 1] ?? "";

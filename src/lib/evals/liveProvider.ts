@@ -69,13 +69,13 @@ export async function callDeepSeekCompletion(
   const config = getDeepSeekConfig();
   const startTime = Date.now();
 
-  // 429 重试
-  const MAX_RETRIES = 1;
+  // 429 退避：最多重试 3 次，指数退避
+  const MAX_RETRIES = 3;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 60000);
+    const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 120000);
 
     try {
       const response = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -89,15 +89,26 @@ export async function callDeepSeekCompletion(
           messages: req.messages,
           temperature: req.temperature ?? 0.7,
           max_tokens: req.maxTokens ?? 1024,
-          response_format: req.jsonMode ? { type: "json_object" } : undefined,
+          // 不使用 jsonMode: one-api 网关不支持 response_format: json_object
+	// 模型通常返回纯文本，调用方已有 JSON.parse 回退逻辑
+	response_format: undefined,
           stream: false,
         }),
         signal: controller.signal,
       });
 
       if (response.status === 429 && attempt < MAX_RETRIES) {
-        const waitMs = 3000;
-        console.warn(`  ⏳ 触发限流(429)，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
+        const waitMs = Math.min(5000 * Math.pow(2, attempt), 15000);
+        console.warn(`  ⏳ 限流 429，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
+        clearTimeout(timeout);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      // 503 / upstream unavailable: 间歇性网关问题，也重试
+      if ((response.status === 503 || response.status === 502) && attempt < MAX_RETRIES) {
+        const waitMs = Math.min(8000 * Math.pow(2, attempt), 20000);
+        console.warn(`  ⏳ 上游不可用 ${response.status}，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
         clearTimeout(timeout);
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
@@ -142,9 +153,9 @@ export async function callDeepSeekCompletion(
     } catch (e) {
       clearTimeout(timeout);
       lastError = e instanceof Error ? e : new Error(String(e));
-      if (e instanceof Error && /rate_limit|429/i.test(e.message) && attempt < MAX_RETRIES) {
-        const waitMs = 10000 * (attempt + 1);
-        console.warn(`  ⏳ 触发限流，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
+      if (/rate_limit|429|Too Many Requests/i.test(lastError.message) && attempt < MAX_RETRIES) {
+        const waitMs = Math.min(8000 * Math.pow(2, attempt), 20000);
+        console.warn(`  ⏳ 限流捕获，等待 ${waitMs}ms 后重试 (${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
@@ -258,13 +269,14 @@ export async function generatePlayerActionDeepSeek(params: {
   ];
 
   const response = await callDeepSeekCompletion({
-    messages,
-    temperature: 0.8,
-    maxTokens: 80,
-    jsonMode: true,
-  });
+	    messages,
+	    temperature: 0.8,
+	    maxTokens: 500,     // deepseek-v4-flash 有 reasoning_content 消耗 token，需留足空间给正文
+    timeoutMs: 180000,  // 180s: one-api 网关偶发慢响应，120s 不够
+	    // 不使用 jsonMode: one-api 网关不支持 response_format: json_object
+	    // 已有 JSON.parse 回退逻辑处理非 JSON 输出（第267-274行）
+	  });
 
-  // 通过 json_object 绕过 one-api 网关非流式 content=null 的问题
   let action = response.content.trim();
   try {
     const parsed = JSON.parse(action);

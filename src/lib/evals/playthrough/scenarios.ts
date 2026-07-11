@@ -254,6 +254,110 @@ export const SCENARIOS: Scenario[] = [
     initialStateOverride: { originium: 50 },
     criticalInvariants: ["inventory_slots", "originium_non_negative"],
   },
+
+  // ════════════════════════════════════════════════════════════
+  // 新增：5 个针对性游戏系统场景（for batch-14 test campaign）
+  // ════════════════════════════════════════════════════════════
+
+  // ─────────── 武器系统（1）───────────
+  {
+    id: "weapon-lifecycle",
+    name: "武器获取→使用→损耗全流程",
+    description: "玩家获取短刀→战术军刀→暗月短弓，经历稳定性下降与污染累积，模拟完整武器生命周期",
+    category: "happy",
+    personas: ["speedrunner", "explorer", "collector"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "hp_non_negative"],
+  },
+  {
+    id: "weapon-combat",
+    name: "武器实战战斗循环",
+    description: "玩家带武器遭遇多次战斗：HP 损耗→武器稳定性下降→治疗恢复→继续战斗",
+    category: "happy",
+    personas: ["explorer", "speedrunner"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["weapon_stability_range", "hp_jump", "hp_max"],
+  },
+
+  // ─────────── 职业/转职系统（2）───────────
+  {
+    id: "profession-progression",
+    name: "职业进阶路线",
+    description: "玩家从无职业→守灯人→猎影者，测试职业系统推进流程",
+    category: "happy",
+    personas: ["speedrunner", "explorer"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["hp_non_negative", "sanity_non_negative"],
+  },
+  {
+    id: "profession-combat-synergy",
+    name: "职业与战斗联动",
+    description: "玩家作为特定职业，在战斗中使用武器，测试职业+武器+战斗的组合状态",
+    category: "happy",
+    personas: ["explorer", "speedrunner"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["weapon_stability_range", "hp_non_negative", "sanity_non_negative"],
+  },
+
+  // ─────────── 任务系统（3）───────────
+  {
+    id: "quest-lifecycle",
+    name: "任务领取→推进→完成全流程",
+    description: "玩家经历 5 个任务的完整生命周期：领取→active→completed，测试 task monotonicity",
+    category: "happy",
+    personas: ["speedrunner", "explorer", "collector"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["task_completion_monotonic"],
+  },
+  {
+    id: "quest-multiple-active",
+    name: "多任务并行处理",
+    description: "玩家同时持有多个 active 任务，测试任务系统并发状态管理",
+    category: "happy",
+    personas: ["explorer", "collector"],
+    expectedTerminations: ["max_steps"],
+    criticalInvariants: ["task_completion_monotonic"],
+  },
+
+  // ─────────── 战斗系统（4）───────────
+  {
+    id: "combat-survival",
+    name: "战斗生存链",
+    description: "玩家多次遭遇战斗，HP 多次下跌/恢复，测试战斗状态机与治疗收敛",
+    category: "happy",
+    personas: ["explorer", "speedrunner"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["hp_non_negative", "hp_jump", "sanity_non_negative"],
+  },
+  {
+    id: "combat-weapon-degradation",
+    name: "武器随战斗降级",
+    description: "玩家在连续战斗中武器稳定性和污染度持续变化，测试 weapon 属性边界",
+    category: "happy",
+    personas: ["explorer", "collector"],
+    expectedTerminations: ["max_steps"],
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "hp_non_negative"],
+  },
+
+  // ─────────── 收集+经济系统（5）───────────
+  {
+    id: "economy-currency-flow",
+    name: "经济系统全流通",
+    description: "玩家通过任务/战斗获得原石，又通过购买/治疗消耗原石，测试 currency 不变量",
+    category: "happy",
+    personas: ["speedrunner", "explorer", "collector"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["originium_non_negative"],
+  },
+  {
+    id: "inventory-hoarding",
+    name: "行囊大量拾取",
+    description: "收集癖和探索型玩家反复拾取物品，行囊计数逐步增长，测试 inventory 上限与单调性",
+    category: "happy",
+    personas: ["collector", "explorer"],
+    expectedTerminations: ["max_steps"],
+    criticalInvariants: ["inventory_slots", "inventory_jump"],
+  },
 ];
 
 // === 场景检索工具 ===
