@@ -69,6 +69,7 @@ describe("v4 扩展场景库", () => {
       "hp_non_negative", "hp_max", "sanity_non_negative", "originium_non_negative",
       "inventory_slots", "task_completion_monotonic", "npc_alive_consistency",
       "weapon_stability_range", "weapon_contamination_range",
+      "hp_jump", "sanity_jump", "originium_jump", "inventory_jump",
     ]);
     for (const s of SCENARIOS) {
       for (const rule of s.criticalInvariants) {

@@ -67,7 +67,7 @@ interface QueuedRequest {
   attempt: number;
 }
 
-let _queue: QueuedRequest[] = [];
+const _queue: QueuedRequest[] = [];
 let _lastRequestTime = 0;
 let _globalCooldownUntil = 0; // 全局冷却时间戳（后端全挂时触发）
 const MIN_INTERVAL_MS = 100; // 官方 DeepSeek API：~500 RPM，100ms 间隔安全

@@ -35,9 +35,9 @@ function weaponEquipmentScore(
   opponentVulnerableTags?: string[]
 ): { equipment: number; notes: string[] } {
   if (!weapon) return { equipment: 0, notes: ["未装备武器：更依赖走位与退路。"] };
-  const st = weapon.stability;
-  const contamination = weapon.contamination;
-  const repairable = weapon.repairable;
+  const st = weapon.stability ?? 100;
+  const contamination = weapon.contamination ?? 0;
+  const repairable = weapon.repairable ?? true;
   const infusions = weapon.currentInfusions ?? [];
   const tier = weapon.tier ?? null;
   const hasEffectSource = Boolean(weapon.effectSource && typeof weapon.effectSource === "object");
