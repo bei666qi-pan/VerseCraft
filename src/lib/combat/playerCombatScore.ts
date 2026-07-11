@@ -22,7 +22,7 @@ function weaponCounterMatchBonus(
   const tagPool = new Set<string>(
     [
       ...(Array.isArray(weapon.counterTags) ? weapon.counterTags : []),
-      ...(Array.isArray((weapon as any).currentMods) ? ((weapon as any).currentMods as unknown[]) : []),
+      ...(Array.isArray(weapon.currentMods) ? weapon.currentMods : []),
     ].map((x) => String(x).toLowerCase())
   );
   const matched = opponentVulnerableTags.some((t) => tagPool.has(String(t).toLowerCase()));
@@ -35,18 +35,16 @@ function weaponEquipmentScore(
   opponentVulnerableTags?: string[]
 ): { equipment: number; notes: string[] } {
   if (!weapon) return { equipment: 0, notes: ["未装备武器：更依赖走位与退路。"] };
-  const st = Number.isFinite((weapon as any).stability) ? Number((weapon as any).stability) : null;
-  const contamination = Number.isFinite((weapon as any).contamination) ? Number((weapon as any).contamination) : null;
-  const repairable = typeof (weapon as any).repairable === "boolean" ? Boolean((weapon as any).repairable) : null;
-  const infusions = Array.isArray((weapon as any).currentInfusions) ? ((weapon as any).currentInfusions as unknown[]) : [];
-  const tier = typeof (weapon as any).tier === "string" ? String((weapon as any).tier) : null;
-  const hasEffectSource = Boolean(
-    (weapon as any).effectSource && typeof (weapon as any).effectSource === "object"
-  );
+  const st = weapon.stability;
+  const contamination = weapon.contamination;
+  const repairable = weapon.repairable;
+  const infusions = weapon.currentInfusions ?? [];
+  const tier = weapon.tier ?? null;
+  const hasEffectSource = Boolean(weapon.effectSource && typeof weapon.effectSource === "object");
 
   // 只做轻量影响：稳定性不足与污染会显著拖后腿；小幅考虑 infusion 作为“适配性”
-  const stabilityPenalty = st === null ? 0 : st >= 70 ? 0 : st >= 55 ? -1 : st >= 40 ? -2 : -3;
-  const contaminationPenalty = contamination === null ? 0 : contamination < 20 ? 0 : contamination < 40 ? -1 : contamination < 60 ? -2 : -3;
+  const stabilityPenalty = st >= 70 ? 0 : st >= 55 ? -1 : st >= 40 ? -2 : -3;
+  const contaminationPenalty = contamination < 20 ? 0 : contamination < 40 ? -1 : contamination < 60 ? -2 : -3;
   const infusionBonus = infusions.length >= 2 ? 2 : infusions.length === 1 ? 1 : 0;
   const repairableBonus = repairable === false ? -1 : 0;
   // Stage-3：阶级与“继承道具效果”不再只是展示字段，真正进入战力计算。
@@ -57,8 +55,8 @@ function weaponEquipmentScore(
   const equipment =
     stabilityPenalty + contaminationPenalty + infusionBonus + repairableBonus + tierBonus + effectSourceBonus + counterBonus;
   const notes: string[] = [];
-  if (st !== null && st < 55) notes.push("武器不稳：出手更容易失控或卡壳。");
-  if (contamination !== null && contamination >= 40) notes.push("污染偏高：更难维持干净利落的对抗。");
+  if (st < 55) notes.push("武器不稳：出手更容易失控或卡壳。");
+  if (contamination >= 40) notes.push("污染偏高：更难维持干净利落的对抗。");
   if (infusions.length > 0) notes.push("有过浸润改造：对特定威胁更“对味”。");
   if (tier === "A" || tier === "S") notes.push("高阶武器：底子更扎实。");
   if (counterMatched) notes.push("这把武器的路数正好克制对方：你抓住了一个明确窗口。");
@@ -114,7 +112,7 @@ function professionCombatContribution(args: {
 function derivePlayerStyleTags(args: { profession?: ProfessionId | null; weapon?: Weapon | null }): CombatStyleTag[] {
   const tags: CombatStyleTag[] = [];
   if (args.profession && PROFESSION_STYLE_TAG[args.profession]) tags.push(PROFESSION_STYLE_TAG[args.profession]!);
-  const mods = Array.isArray((args.weapon as any)?.currentMods) ? ((args.weapon as any).currentMods as unknown[]) : [];
+  const mods = args.weapon?.currentMods ?? [];
   const modSet = new Set(mods.map((x) => String(x).toLowerCase()));
   if (modSet.has("mirror")) tags.push("mirror_counter");
   if (modSet.has("grappling")) tags.push("close_quarters");
