@@ -115,7 +115,6 @@ async function main() {
   console.log(`   武器系统 ✅ 已完成（5/5 通过）`);
   console.log("");
 
-  let retryCount = 0;
   const MAX_RETRIES = 2;
 
   for (const sys of SYSTEMS) {

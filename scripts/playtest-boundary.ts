@@ -22,6 +22,8 @@ import { generatePlayerActionDeepSeek } from "@/lib/evals/liveProvider";
 import { PERSONAS } from "@/lib/evals/playthrough/playerAgent";
 import type { PersonaType } from "@/lib/evals/playthrough/types";
 import { parseArgs } from "util";
+import fs from "node:fs";
+import path from "node:path";
 
 // ==================== 配置 ====================
 
@@ -1019,8 +1021,6 @@ async function main() {
   const issuesMd = generateIssuesMd(results, date);
   const logContent = generateLogContent(results, timestamp);
   try {
-    const fs = require("fs");
-    const path = require("path");
     const reportDir = path.resolve(__dirname, "..", REPORT_DIR);
     const logDir = path.resolve(__dirname, "..", LOG_DIR);
     fs.mkdirSync(reportDir, { recursive: true });

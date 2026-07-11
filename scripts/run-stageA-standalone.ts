@@ -73,7 +73,7 @@ async function callDeepSeekPlayer(sp: string, pn: string, step: number, history:
     if (resp.status === 429) { if (attempt < maxRetries - 1) { await new Promise(r => setTimeout(r, 15000)); continue; } throw new Error("DeepSeek HTTP 429"); }
     if (!resp.ok) { const t = await resp.text().catch(() => ""); throw new Error(`DeepSeek HTTP ${resp.status}: ${t.slice(0, 200)}`); }
     const data = await resp.json() as any;
-    let action = (data.choices?.[0]?.message?.content || "").trim().replace(/^["']|["']$/g, "");
+    const action = (data.choices?.[0]?.message?.content || "").trim().replace(/^["']|["']$/g, "");
     if (!action) { if (attempt < maxRetries - 1) continue; throw new Error("DeepSeek returned empty"); }
     return action;
   }

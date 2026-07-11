@@ -129,7 +129,7 @@ async function runSession(
 
   // 初始状态
   const initialState = createInitialStateSnapshot(scenario.initialStateOverride as Record<string, unknown> | undefined);
-  let currentState = { ...initialState };
+  const currentState = { ...initialState };
   const steps: Array<{ step: number; action: string; narrative: string; latencyMs: number }> = [];
   let terminatedReason = "max_steps";
   let totalSteps = 0;
