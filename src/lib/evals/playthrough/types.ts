@@ -95,7 +95,7 @@ export interface TranscriptStep {
   /** 执行后的状态快照 */
   stateAfter: GameStateSnapshot;
   /** 性能指标 */
-  metrics?: Pick<ChatSseProbeMetrics, "firstStatusMs" | "firstTokenMs" | "finalMs">;
+  metrics?: { latencyMs: number; firstStatusMs?: number; firstTokenMs?: number; finalMs?: number };
   /** 模拟时间戳 */
   timestamp: number;
 }
@@ -236,4 +236,11 @@ export interface PlaythroughRunConfig {
   softlockThreshold: number;
   /** 单步超时 ms */
   stepTimeoutMs: number;
+  /**
+   * 步间延迟 ms。
+   * - 数字：固定延迟
+   * - 函数：以 stepIndex 为参数的自适应延迟
+   * - 默认 mock 0ms，live 6000ms
+   */
+  stepDelayMs?: number | ((stepIndex: number) => number);
 }

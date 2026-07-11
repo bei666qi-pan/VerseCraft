@@ -46,6 +46,8 @@ export {
 } from "./invariants";
 export type { NpcResurrectionResult, NarrativeRepetitionResult, StateNarrativeContradiction, SoftlockCheckResult, NarrativeOriginiumInconsistency, WeaponUpdateInconsistency, ProfessionConsistencyIssue, NpcStateChurnResult, RelationshipDriftResult } from "./invariants";
 
+export { applyDmJsonToState } from "./stateApply";
+
 export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 
 export {
