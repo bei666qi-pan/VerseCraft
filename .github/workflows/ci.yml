@@ -15,7 +15,21 @@ on:
         type: boolean
         default: false
 
+# ─── Tier helpers ───────────────────────────────────────────────────
+# PR tier:   L1+L2+L3+L5+L6 quick offline jobs (target <20m)
+# Nightly:   all PR jobs + full mock suite + live small sample
+# Dispatch:  all nightly + live full
+
+env:
+  # Reusable placeholder values
+  CI_DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+  CI_AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
+  CI_ADMIN_PASSWORD: ci-admin-password-placeholder
+  CI_AI_KEYS_MISSING: "1"
+
 jobs:
+  # ═══ PR tier — fast, no AI gateway ═══
+
   verify:
     name: verify
     runs-on: ubuntu-latest
@@ -35,9 +49,15 @@ jobs:
       - name: Lint, unit tests, production build
         run: pnpm prompts:regen:verify && pnpm test:ci
         env:
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
@@ -48,10 +68,10 @@ jobs:
           CI: "true"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
-          ADMIN_PASSWORD: ci-admin-password-placeholder
+          ADMIN_PASSWORD: ${{ env.CI_ADMIN_PASSWORD }}
           ADMIN_CRON_SECRET: ci-admin-cron-secret-placeholder
           AI_GATEWAY_BASE_URL: ""
           AI_GATEWAY_API_KEY: ""
@@ -61,9 +81,6 @@ jobs:
           AI_MODEL_REASONER: ""
           VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
           VC_FORCE_AI_KEYS_MISSING: "1"
-
-  # ═══ 2026-07 新增：确定性断言 + Playthrough 模拟器 ═══
-  # 这两个 job 秒级完成、不调 LLM、不需要 AI 网关，每个 PR 都跑
 
   deterministic-assertions:
     name: deterministic-assertions
@@ -130,6 +147,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
@@ -140,8 +163,8 @@ jobs:
           E2E_EXPECT_KEYS_MISSING: "1"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next dev --webpack -p 3000
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
           AI_GATEWAY_BASE_URL: ""
           AI_GATEWAY_API_KEY: ""
@@ -152,8 +175,9 @@ jobs:
           VC_DISABLE_AI_ENV_FILE_RELOAD: "1"
           VC_FORCE_AI_KEYS_MISSING: "1"
 
-  mock-chat-guardrails:
-    name: mock-chat-guardrails
+  # L5+L6 offline evals — fast (~2s each), no server needed, run on every PR
+  offline-evals-fast:
+    name: offline-evals-fast
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -168,6 +192,53 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Detector mock eval (12 cases)
+        run: pnpm eval:detectors:mock
+
+      - name: Narrative-style mock hard gate (91 cases)
+        run: pnpm eval:narrative-style:mock
+
+  docker-build:
+    name: docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write placeholder .env for build-time env validation
+        run: |
+          cat > .env <<'EOF'
+          DATABASE_URL=${{ env.CI_DATABASE_URL }}
+          AUTH_SECRET=${{ env.CI_AUTH_SECRET }}
+          EOF
+
+      - name: Build production Docker image (no push)
+        run: docker build -t versecraft:ci-verify .
+
+  # ═══ Nightly + Dispatch tier — needs build + mock server ═══
+
+  mock-chat-guardrails:
+    name: mock-chat-guardrails
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
@@ -175,8 +246,8 @@ jobs:
         run: pnpm build
         env:
           CI: "true"
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
           AI_PROVIDER: mock
           AI_GATEWAY_BASE_URL: ""
@@ -201,19 +272,25 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:3000 >/dev/null
-          BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run benchmark:chat:mock
-          BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:chat-quality:mock
-          BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:narrative-safety:mock
-          pnpm run eval:npc-consistency:mock
+          # Collect exit codes so one failure doesn't kill others; final exit = OR of all
+          bm_exit=0; BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run benchmark:chat:mock || bm_exit=$?
+          cq_exit=0; BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:chat-quality:mock || cq_exit=$?
+          ns_exit=0; BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm run eval:narrative-safety:mock || ns_exit=$?
+          nc_exit=0; pnpm run eval:npc-consistency:mock || nc_exit=$?
+          # narrative-style already covered by offline-evals-fast PR gate; re-run here for artifact
+          ns2_exit=0; pnpm run eval:narrative-style:mock || ns2_exit=$?
+          # detectors already covered by offline-evals-fast; re-run for history append
+          pnpm run eval:detectors:mock || true
           kill "$mock_server_pid" 2>/dev/null || true
           wait "$mock_server_pid" 2>/dev/null || true
           trap - EXIT
+          exit $((bm_exit | cq_exit | ns_exit | nc_exit | ns2_exit))
         env:
           CI: "true"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
           PLAYWRIGHT_WEB_SERVER_COMMAND: pnpm exec next start -p 3000
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
           AI_PROVIDER: mock
           AI_GATEWAY_BASE_URL: ""
@@ -234,13 +311,15 @@ jobs:
             .runtime-data/eval-chat-quality-mock.json
             .runtime-data/eval-narrative-safety-mock.json
             .runtime-data/eval-npc-consistency-mock.json
+            .runtime-data/eval-narrative-style-mock.json
+            .runtime-data/eval-detectors-mock.json
             .runtime-data/mock-next.log
 
   narrative-safety-mock-gate:
     name: narrative-safety mock gate
     runs-on: ubuntu-latest
     needs: mock-chat-guardrails
-    if: always()
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Download mock guardrail artifacts
         uses: actions/download-artifact@v4
@@ -350,8 +429,8 @@ jobs:
         if: steps.live_perf.outputs.enabled == 'true'
         run: pnpm build
         env:
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
           AI_GATEWAY_BASE_URL: ${{ secrets.AI_GATEWAY_BASE_URL }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -383,8 +462,8 @@ jobs:
           wait "$live_server_pid" 2>/dev/null || true
           trap - EXIT
         env:
-          AUTH_SECRET: ci-placeholder-auth-secret-at-least-32-chars-long
-          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
           REDIS_URL: ""
           AI_GATEWAY_BASE_URL: ${{ secrets.AI_GATEWAY_BASE_URL }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -404,32 +483,3 @@ jobs:
             .runtime-data/live-chat-benchmark.json
             .runtime-data/live-chat-quality-eval.json
             .runtime-data/live-narrative-safety-eval.json
-
-  # T9（技术改良，2026-07）：此前 CI 从未验证过 Dockerfile 的可构建性——生产部署
-  # 完全依赖 Coolify 在部署时才第一次 `docker build`，构建失败要等到那时才发现。
-  # 本 job 只做 `docker build`（不 push），验证镜像三阶段构建本身是否成功，独立于
-  # 其它 job、不阻塞其它验证的反馈速度。
-  #
-  # 修复记录（2026-07）：此前这里曾误以为 Dockerfile 不需要任何密钥，实际上
-  # `next build` 收集 /api/altcha/challenge 等路由的页面数据时会 eager 校验
-  # `serverConfig.ts` 的 DATABASE_URL/AUTH_SECRET 非空（不要求真的可连接）。生产
-  # 部署能成功是因为 Coolify 会在构建前把配置的环境变量写成 `.env` 文件放进构建
-  # 上下文（`.dockerignore` 只排除 `.env*.local`，plain `.env` 会被 `COPY . .`
-  # 带进镜像，Next.js 构建时自动读取）——本地 `docker build` 没有这一步，此前一直
-  # 被更早的参数错误提前挡住而没暴露。这里同样写一个占位 `.env`（值与 verify job
-  # 一致）来复现同等条件，不代表镜像运行时真的需要连接这个数据库。
-  docker-build:
-    name: docker-build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Write placeholder .env for build-time env validation
-        run: |
-          cat > .env <<'EOF'
-          DATABASE_URL=postgres://ci:ci@127.0.0.1:5432/ci
-          AUTH_SECRET=ci-placeholder-auth-secret-at-least-32-chars-long
-          EOF
-
-      - name: Build production Docker image (no push)
-        run: docker build -t versecraft:ci-verify .

@@ -50,6 +50,21 @@ import type { AIResponse, AIErrorResponse } from "@/lib/ai/types";
 import { isValidJsonObjectString, repairJsonObjectString } from "@/lib/ai/validation/structuredOutput";
 import { buildPlayerDmJsonSchemaRequest } from "@/lib/ai/schemas/playerDmJsonSchema";
 
+const MOCK_SCENARIO_RE = /\[mock_scenario:([a-z0-9_]+)\]/i;
+
+/**
+ * 从 messages 中检测 [mock_scenario:...] 标记。
+ * 该标记由 benchmark/eval 的 --mode mock 模式注入。
+ */
+function hasMockScenarioMarker(messages: ChatMessage[]): boolean {
+  for (const msg of messages) {
+    if (typeof msg.content === "string" && MOCK_SCENARIO_RE.test(msg.content)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
 
 function isOfflineTask(task: TaskType): boolean {
@@ -229,7 +244,9 @@ export async function executePlayerChatStream(params: {
     );
   }
   const env = resolveAiEnv();
-  if (env.gatewayProvider === "mock" || isMockAiProviderEnabled()) {
+  // 检测消息中是否有 [mock_scenario:...] 标记（benchmark/eval --mode mock 注入）。
+  // 标记存在时路由到 mock provider，而不经过真实 AI gateway。
+  if (env.gatewayProvider === "mock" || isMockAiProviderEnabled() || hasMockScenarioMarker(params.messages)) {
     return executeMockPlayerChatStream({ messages: params.messages, ctx: params.ctx });
   }
   const mode = resolveOperationMode();
@@ -590,7 +607,7 @@ export async function executeChatCompletion(params: {
     // Policy gate runs before mock short-circuit so tests and dev both observe the same boundary.
     assertToolUseAllowedForTask(params.task);
   }
-  if (isMockAiProviderEnabled()) {
+  if (isMockAiProviderEnabled() || hasMockScenarioMarker(params.messages)) {
     return executeMockChatCompletion({ task: params.task, messages: params.messages, ctx: params.ctx });
   }
   const env = resolveAiEnv();

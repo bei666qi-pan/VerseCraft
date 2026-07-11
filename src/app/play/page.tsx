@@ -130,6 +130,9 @@ import {
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
 import { applyTurnSanityDamage, normalizeTurnSanityDamage } from "@/features/play/turnCommit/sanityDamage";
+import { buildTurnDeltaDigest } from "@/features/play/turnCommit/buildTurnDeltaDigest";
+import { TurnDeltaDigest } from "@/features/play/components/TurnDeltaDigest";
+import type { TurnDeltaDigest as TurnDeltaDigestData } from "@/features/play/turnCommit/buildTurnDeltaDigest";
 import {
   extractFilteredHintsFromTrace,
   isNarrativeSystemsDebugEnabled,
@@ -556,6 +559,11 @@ function PlayContent() {
     () => getMobileCodexUnreadCount(codex, viewedCodexIds) > 0,
     [codex, viewedCodexIds]
   );
+  const taskUnviewedCount = useGameStore((s) => s._taskUnviewedCount ?? 0);
+  const hasUnviewedTaskUpdates = useMemo(() => taskUnviewedCount > 0, [taskUnviewedCount]);
+  const clearTaskUnviewedCount = useGameStore((s) => s.clearTaskUnviewedCount);
+  const taskPanelFirstOpen = useGameStore((s) => s._taskPanelFirstOpen ?? true);
+  const markTaskPanelOpened = useGameStore((s) => s.markTaskPanelOpened);
   const professionState = useGameStore((s) => s.professionState);
   const hasMetProfessionCertifier = useGameStore((s) => s.hasMetProfessionCertifier);
   const markMetProfessionCertifier = useGameStore((s) => s.markMetProfessionCertifier);
@@ -588,6 +596,8 @@ function PlayContent() {
   /** 本回合新增/更新、或服务端 highlight_task_ids 点名的任务，用于任务面板里的高亮环效果。 */
   const [recentTaskHighlightIds, setRecentTaskHighlightIds] = useState<string[]>([]);
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
+  /** 当前已 commit 回合的 delta 摘要（用于 turn-delta-digest）；流式/commit 中不渲染。 */
+  const [lastTurnDigest, setLastTurnDigest] = useState<TurnDeltaDigestData | null>(null);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
@@ -2833,6 +2843,7 @@ function PlayContent() {
       }
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
+    setLastTurnDigest(null);
     waitUxBackendStageRef.current = null;
     {
       const t0 = performance.now();
@@ -3598,6 +3609,7 @@ function PlayContent() {
     if (!parsed) {
       const salvage = (resolved.narrative ?? "").trim();
       if (!salvage) {
+        setLastTurnDigest(null);
         setStreamPhase("idle");
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -3605,6 +3617,7 @@ function PlayContent() {
         return;
       }
       if (resolved.failure === "protocol_guard_rejected") {
+        setLastTurnDigest(null);
         setStreamPhase("idle");
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -4247,6 +4260,13 @@ function PlayContent() {
       if (touchedTaskIds.length > 0) {
         setRecentTaskHighlightIds(touchedTaskIds);
       }
+
+      // auto_open_panel == "task"：自动切到任务面板
+      if ((uiHints as Record<string, unknown>)?.auto_open_panel === "task") {
+        clearTaskUnviewedCount();
+        markTaskPanelOpened();
+        setActiveMenu("tasks");
+      }
     } catch {
       // ignore: hints are best-effort
     }
@@ -4677,9 +4697,16 @@ function PlayContent() {
     narrativeRef.current = narrativeToPush;
     tailDrainTargetRef.current = narrativeToPush;
     setTailAlignKey((n) => n + 1);
+    // 聚合本回合 delta 摘要（仅 commit 成功、且不是终局/结算等特殊回合时展示）。
+    if (!isEndingFinaleSystemRound && !isEndgameSystemRound) {
+      setLastTurnDigest(buildTurnDeltaDigest(parsed));
+    } else {
+      setLastTurnDigest(null);
+    }
     setStreamPhase("tail_draining");
     } catch (commitErr: unknown) {
       console.error("[play][turn_commit_exception] turn commit failed", commitErr);
+      setLastTurnDigest(null);
       tailDrainTargetRef.current = null;
       parsedPostDrainRef.current = null;
       const rec = getCommitFailureRecovery({ committedNarrativeForRescue });
@@ -4990,6 +5017,8 @@ function PlayContent() {
 
   function onOpenTasksNav() {
     playUIClick();
+    clearTaskUnviewedCount();
+    markTaskPanelOpened();
     setOptionsExpanded(false);
     setActiveMenu("tasks");
   }
@@ -5079,6 +5108,8 @@ function PlayContent() {
               codex={codex}
               highlightTaskIds={recentTaskHighlightIds}
               onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
+              taskPanelFirstOpen={taskPanelFirstOpen}
+              onMarkTaskPanelOpened={markTaskPanelOpened}
             />
           ) : !isOverlayPanelActive && isSettingsPanelActive ? (
             <MobileSettingsPanel
@@ -5162,6 +5193,7 @@ function PlayContent() {
                         void cancelCurrentChatQueue();
                       }}
                       fixedBottomSpace={optionsExpanded ? "expanded" : "default"}
+                      turnDeltaDigest={lastTurnDigest}
                     />
                   </>
                 )}
@@ -5348,6 +5380,8 @@ function PlayContent() {
                   codex={codex}
                   highlightTaskIds={recentTaskHighlightIds}
                   onClaimTask={(taskId) => updateTaskStatus(taskId, "active")}
+                  taskPanelFirstOpen={taskPanelFirstOpen}
+                  onMarkTaskPanelOpened={markTaskPanelOpened}
                 />
               ) : isSettingsPanelActive ? (
                 <MobileSettingsPanel
@@ -5455,6 +5489,7 @@ function PlayContent() {
             onOpenTasks={onOpenTasksNav}
             onOpenSettings={onOpenSettingsNav}
             hasUnreadCodex={hasUnreadCodex}
+            hasUnviewedTaskUpdates={hasUnviewedTaskUpdates}
           />
         </div>
       </div>

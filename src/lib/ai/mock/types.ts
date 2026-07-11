@@ -9,7 +9,16 @@ export type MockAiScenario =
   | "slow_first_token"
   | "long_chunk_gap"
   | "options_only_valid"
-  | "options_only_invalid";
+  | "options_only_invalid"
+  // Dirty adversarial scenarios (L3 narrative safety gate must detect these)
+  | "dirty_forbidden_terms"
+  | "dirty_leak_dm_only"
+  | "dirty_offscreen_npc_speech"
+  | "dirty_reveal_tier_breach"
+  | "dirty_malformed_fields"
+  | "dirty_canned_options"
+  | "dirty_repetitive_empty"
+  | "dirty_name_contamination";
 
 export interface MockAiDelayConfig {
   firstTokenDelayMs: number;

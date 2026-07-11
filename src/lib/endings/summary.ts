@@ -30,6 +30,14 @@ function uniq(values: readonly string[], cap: number): string[] {
   return out;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
 function toInt(value: unknown, fallback = 0): number {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -87,6 +95,35 @@ export function estimateKilledAnomaliesFromLogs(logs: readonly EndingLogEntry[])
     .join("\n");
   const matches = text.match(/(?:消灭|击杀|杀死|解决|压制).{0,8}诡异|诡异.{0,8}(?:消灭|击杀|杀死|解决|压制)/g);
   return matches ? Math.max(0, matches.length) : 0;
+}
+
+/**
+ * 从任务列表计算 taskCompletionScore。
+ * DESIGN.md §3.4:
+ *   score = completedTasks / max(1, totalEverIssuedFormalTasks) * 1.0
+ * "正式任务" = 非 hidden 状态的任务（hidden 可能从未实际发放）。
+ * completed = status === "completed"
+ */
+export function computeTaskCompletionScore(tasks: readonly unknown[]): {
+  taskCompletionScore: number;
+  completedTasks: number;
+  totalFormalTasks: number;
+} {
+  let completedTasks = 0;
+  let totalFormalTasks = 0;
+  for (const raw of tasks) {
+    const record = asRecord(raw);
+    const status = asString(record.status);
+    if (!status) continue; // 格式不合法的跳过
+    // 只统计非 hidden（即玩家曾"见到"的任务）
+    if (status === "hidden") continue;
+    totalFormalTasks++;
+    if (status === "completed") completedTasks++;
+  }
+  const taskCompletionScore = totalFormalTasks > 0
+    ? Math.round((completedTasks / totalFormalTasks) * 100) / 100
+    : 0;
+  return { taskCompletionScore, completedTasks, totalFormalTasks };
 }
 
 export function buildEndingWritingMarkdown(logs: readonly EndingLogEntry[]): string {
@@ -162,5 +199,6 @@ export function buildSettlementSnapshot(input: BuildSettlementSnapshotInput): En
     lastAction: input.deathContext?.lastAction ?? null,
     createdAt: clampText(input.createdAt, 80) || "1970-01-01T00:00:00.000Z",
     writingMarkdown: input.writingMarkdown ?? buildEndingWritingMarkdown(input.logs),
+    ...computeTaskCompletionScore(input.tasks ?? []),
   };
 }

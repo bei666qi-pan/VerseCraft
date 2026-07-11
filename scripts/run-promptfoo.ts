@@ -27,6 +27,10 @@ interface CliArgs {
   profession: boolean;
   refusal: boolean;
   economy: boolean;
+  narrative: boolean;
+  safety: boolean;
+  npc: boolean;
+  agency: boolean;
   json: boolean;
   verbose: boolean;
 }
@@ -38,6 +42,10 @@ function parseArgs(): CliArgs {
     profession: args.includes("--profession"),
     refusal: args.includes("--refusal"),
     economy: args.includes("--economy"),
+    narrative: args.includes("--narrative"),
+    safety: args.includes("--safety"),
+    npc: args.includes("--npc"),
+    agency: args.includes("--agency"),
     json: args.includes("--json"),
     verbose: args.includes("--verbose") || args.includes("-v"),
   };
@@ -50,20 +58,45 @@ function parseArgs(): CliArgs {
 async function runWithNodeTest(args: CliArgs): Promise<number> {
   const testFiles: string[] = [];
 
+  // 检查是否有单个类别过滤
+  const hasFilter = args.weapon || args.profession || args.refusal || args.economy ||
+                    args.narrative || args.safety || args.npc || args.agency;
+
   if (args.weapon) {
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/weapon-schema.test.ts"));
-  } else if (args.profession) {
+  }
+  if (args.profession) {
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/profession-rules.test.ts"));
-  } else if (args.refusal) {
+  }
+  if (args.refusal) {
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/refusal-path.test.ts"));
-  } else if (args.economy) {
+  }
+  if (args.economy) {
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/economy-rules.test.ts"));
-  } else {
+  }
+  if (args.narrative) {
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/narrative-quality.test.ts"));
+  }
+  if (args.safety) {
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/narrative-safety.test.ts"));
+  }
+  if (args.npc) {
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/npc-consistency.test.ts"));
+  }
+  if (args.agency) {
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/player-agency.test.ts"));
+  }
+
+  if (!hasFilter) {
     // 全量
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/weapon-schema.test.ts"));
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/profession-rules.test.ts"));
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/refusal-path.test.ts"));
     testFiles.push(resolve(ROOT, "tests/promptfoo/tests/economy-rules.test.ts"));
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/narrative-quality.test.ts"));
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/narrative-safety.test.ts"));
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/npc-consistency.test.ts"));
+    testFiles.push(resolve(ROOT, "tests/promptfoo/tests/player-agency.test.ts"));
   }
 
   // 检查文件是否存在
@@ -150,11 +183,15 @@ async function main(): Promise<void> {
   console.log("═".repeat(50));
   console.log(`模式: mock (离线，不调 LLM)`);
   console.log(
-    `范围: ${args.weapon ? "仅武器" :
-      args.profession ? "仅职业" :
-      args.refusal ? "仅拒绝路径" :
-      args.economy ? "仅经济规则" :
-      "全部"}`
+    `范围: ${args.weapon ? "武器schema" :
+      args.profession ? "职业规则" :
+      args.refusal ? "拒绝路径" :
+      args.economy ? "经济规则" :
+      args.narrative ? "叙事质量" :
+      args.safety ? "叙事安全" :
+      args.npc ? "NPC一致性" :
+      args.agency ? "玩家选择" :
+      "全部(8个类别)"}`
   );
 
   // 优先使用 Node 内置测试（更可控，不需要额外依赖）

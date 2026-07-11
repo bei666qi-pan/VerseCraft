@@ -78,7 +78,6 @@ function detectFromStructured(taskId: string, dmTaskUpdates: CompletionDetection
   const update = dmTaskUpdates.find((u) => u.taskId === taskId);
   if (!update) return { completed: false, confidence: 0 };
   if (update.status === "completed") return { completed: true, confidence: 0.9 };
-  if (update.status === "deliverable") return { completed: true, confidence: 0.85 };
   return { completed: false, confidence: 0 };
 }
 
@@ -180,9 +179,6 @@ export function detectTaskCompletion(input: CompletionDetectionInput): Completio
 
   if (narrative_detection.completed) {
     metConditions.push(`narrative:${narrative_detection.matchedKeywords.join(",")}`);
-    narrative_detection.matchedKeywords.forEach((kw) => {
-      gameState.recentNarrativeKeywords.push(kw);
-    });
   }
 
   // 4. 检查显式条件（如果任务定义了 requiredItemIds 等）

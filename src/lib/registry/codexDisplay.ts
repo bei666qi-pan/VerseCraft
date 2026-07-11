@@ -22,6 +22,13 @@ export function lookupAnomalyNameById(id: string): string | null {
   return ANOMALIES.find((x) => x.id === key)?.name ?? null;
 }
 
+/** 从 anomalies.ts combatName 查找战斗层指定名，无匹配时返回 null。 */
+export function lookupAnomalyCombatNameById(id: string): string | null {
+  const key = String(id ?? "").trim();
+  if (!key) return null;
+  return ANOMALIES.find((x) => x.id === key)?.combatName ?? null;
+}
+
 export function resolveCodexDisplayName(entry: Pick<CodexEntry, "id" | "name" | "type">): string {
   const rawName = String(entry?.name ?? "").trim();
   const rawId = String(entry?.id ?? "").trim();

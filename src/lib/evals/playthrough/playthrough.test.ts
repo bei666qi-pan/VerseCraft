@@ -20,8 +20,8 @@ import type {
 } from "./types";
 
 describe("Player Agent", () => {
-  it("4个 persona 都有完整定义", () => {
-    const expected = ["speedrunner", "explorer", "rulebreaker", "confused"];
+  it("5个 persona 都有完整定义", () => {
+    const expected = ["speedrunner", "explorer", "rulebreaker", "confused", "collector"];
     for (const p of expected) {
       const config = PERSONAS[p as keyof typeof PERSONAS];
       assert.ok(config, `${p} 应有定义`);
@@ -56,15 +56,14 @@ describe("Player Agent", () => {
   it("generateMockAction 可为每种 persona 生成动作", () => {
     const state = createInitialStateSnapshot();
     for (const persona of Object.keys(PERSONAS)) {
-      const action = generateMockAction(persona as keyof typeof PERSONAS, 0, 42, state);
+      const action = generateMockAction(persona as keyof typeof PERSONAS, 0, 42);
       assert.ok(typeof action === "string" && action.length > 0, `${persona} 应生成有效动作`);
     }
   });
 
   it("相同 persona/seed/step 应生成相同动作（确定性）", () => {
-    const state = createInitialStateSnapshot();
-    const a1 = generateMockAction("speedrunner", 5, 42, state);
-    const a2 = generateMockAction("speedrunner", 5, 42, state);
+    const a1 = generateMockAction("speedrunner", 5, 42);
+    const a2 = generateMockAction("speedrunner", 5, 42);
     assert.equal(a1, a2, "相同输入应产生相同输出");
   });
 });
@@ -133,6 +132,61 @@ describe("不变量检查", () => {
     const curr = { ...prev, completedTaskIds: ["task_1"] };
     const result = checkAllInvariants(0, curr, prev);
     assert.ok(result.violations.some((v) => v.rule === "task_completion_monotonic"));
+  });
+
+  it("is_action_legal=true 但 options 为空应触发 major 违规", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+      options: [],
+    };
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("is_action_legal=true 但 options 缺失应触发 major 违规", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+    };
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("options 非空时不应触发 options_missing", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+      options: ["选项A", "选项B"],
+    };
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(!result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("consumes_time 非布尔值应触发 minor 违规", () => {
+    const state = createInitialStateSnapshot();
+    const dmJson: Record<string, unknown> = {
+      is_action_legal: true,
+      sanity_damage: 1,
+      is_death: false,
+      consumes_time: 1,
+      options: ["选项A"],
+    };
+    const result = checkAllInvariants(0, state, undefined, "叙事", dmJson);
+    assert.ok(result.violations.some((v) => v.rule === "dm_json_consumes_time_type"));
+  });
+
+  it("不传 dmJson 不应触发 DM JSON 相关违规", () => {
+    const state = createInitialStateSnapshot();
+    const result = checkAllInvariants(0, state);
+    assert.ok(result.passed);
+    assert.ok(!result.violations.some((v) => v.rule.startsWith("dm_json_")));
   });
 });
 

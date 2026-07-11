@@ -1,6 +1,7 @@
 import type { GameTime } from "@/store/useGameStore";
 import type { MainThreatPhase, SceneCombatContext } from "./types";
 import { B1_ABSOLUTE_SAFE_ROOMS } from "@/lib/registry/world";
+import { getFloorCombatModifier } from "@/lib/registry/combatCanon";
 
 function floorFromLocation(locationId: string): string {
   const t = String(locationId ?? "").trim();
@@ -34,8 +35,10 @@ export function buildSceneCombatContext(args: {
   const tod = timeOfDay(args.time);
   const isSafeZone = B1_ABSOLUTE_SAFE_ROOMS.includes(locationId as any) || floorId === "B1";
 
-  // 第一版：场景修正只做“压迫/遮蔽/退路”三轴，且保持轻量可解释
-  const pressure = phasePressure(args.threatPhase, floorId) + (floorId === "7" ? 0.5 : floorId === "B2" ? 0.8 : 0);
+  // Scene modifiers: phase-based pressure + canon-sourced floor pressure
+  // Floor pressure read from FLOOR_COMBAT_MODIFIERS, single source of truth with combatCanon.ts
+  const floorMod = getFloorCombatModifier(floorId);
+  const pressure = phasePressure(args.threatPhase, floorId) + (floorMod?.pressure ?? 0);
   const concealment = tod === "night" ? 0.4 : 0;
   const footing = isSafeZone ? 0.7 : floorId === "7" ? -0.4 : 0;
 
@@ -55,4 +58,3 @@ export function buildSceneCombatContext(args: {
     notes,
   };
 }
-

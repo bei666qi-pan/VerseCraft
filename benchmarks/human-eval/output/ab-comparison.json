@@ -1,0 +1,32 @@
+{
+  "metadata": {
+    "type": "ab_comparison",
+    "version": "1.0.0",
+    "generatedAt": "2026-07-08T01:13:52.741Z",
+    "totalPairs": 1
+  },
+  "pairs": [
+    {
+      "id": "ab_demo_001",
+      "scenarioId": "demo_001",
+      "scenario": "B1 走廊探索",
+      "userInput": "我小心翼翼地走向走廊深处",
+      "variantA": {
+        "model": "model-v1",
+        "narrative": "走廊里的灯闪了两下。我贴墙走向深处，听见暗处有细碎的刮擦声。空气里有潮湿纸张的味道。",
+        "dmJson": {
+          "is_action_legal": true,
+          "sanity_damage": 0
+        }
+      },
+      "variantB": {
+        "model": "model-v2",
+        "narrative": "我屏住呼吸，一步步向前。头顶的灯管发出嗡嗡的电流声，忽明忽暗。走廊尽头似乎有什么东西在动。",
+        "dmJson": {
+          "is_action_legal": true,
+          "sanity_damage": 0
+        }
+      }
+    }
+  ]
+}

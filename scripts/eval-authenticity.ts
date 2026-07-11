@@ -1,122 +1,283 @@
+/**
+ * eval:authenticity — 真实 AI 输出 judge（Phase 2 重构版）
+ *
+ * 使用 JudgeService（EVAL_JUDGE TaskType）替代旧的 fixture-lint scoreFixture 启发式。
+ * - mock 模式：退化到 evaluateOffline 启发式（与原行为等价）
+ * - live 模式：调用真实 AI judge
+ *
+ * 流程：
+ * 1. 加载 fixture 文件（与原版本一致）
+ * 2. 转换为 JudgeTarget
+ * 3. 用 JudgeService.judgeMulti 进行多裁判评判
+ * 4. 加载校准种子，计算校准偏移（live 模式）
+ * 5. 输出 JSON + harness history
+ */
+
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { JudgeService, getRubric } from "../src/lib/evals/judge";
+import { parseEvalCli, evalLog, writeJson, appendHistory, getGitSha } from "../src/lib/evals/harness";
+import { resolveEvalMode } from "../src/lib/evals/harness/config";
+import { AUTHENTICITY_CALIBRATION_SEEDS } from "../benchmarks/judge/authenticityCalibrationSeeds";
+import type { JudgeTarget, JudgeVerdict, MultiJudgeResult } from "../src/lib/evals/judge/types";
 
-type Fixture = {
+// === 类型 ===
+
+interface AuthenticityResult {
+  file: string;
+  scenario: string;
+  caseId: string;
+  passed: boolean;
+  consensusOverall: number;
+  consensusScores: Record<string, number>;
+  interJudgeAgreement: number;
+  verdictCount: number;
+  commonIssues: string[];
+  highlights: string[];
+}
+
+interface AuthenticityReport {
+  schema: "authenticity_eval_v2";
+  generatedAt: string;
+  rubricId: string;
+  mode: "mock" | "live";
+  total: number;
+  pass: number;
+  fail: number;
+  passRate: number;
+  averageScore: number;
+  dimensionAverages: Record<string, number>;
+  calibrationDrift: number | null;
+  results: AuthenticityResult[];
+}
+
+// === 夹具转 JudgeTarget ===
+
+interface Fixture {
   scenario: string;
   description?: string;
   latestUserInput: string;
   playerContext: string;
   activeNpcId?: string;
-  maxRevealRank?: string | number;
-  expect: {
-    jsonValid?: boolean;
+  expect?: {
     mustContainAny?: string[];
     mustNotContain?: string[];
-    personaMustFeel?: string[];
-    taskGiverToneMax?: number;
-    revealSafetyRequired?: boolean;
   };
-};
-
-type Rubric = {
-  id: string;
-  dimensions: Array<{ id: string; description: string }>;
-  pass_rule: {
-    min_each: number;
-    min_average: number;
-    hard_fail_if: {
-      reveal_safety_lte: number;
-      json_contract_validity_lte: number;
-    };
-  };
-};
-
-const root = path.resolve(__dirname, "..");
-const fixtureNames = [
-  "major_npc_low_reveal_dialogue.json",
-  "task_pressure_persona_dialogue.json",
-  "actor_scoped_memory_boundary.json",
-];
-const fixtureDir = path.join(root, "benchmarks", "chat-turns");
-const rubricPath = path.join(root, "benchmarks", "rubrics", "versecraft_authenticity_judge_v1.json");
-
-function readJson<T>(filePath: string): T {
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
-function scoreFixture(fixture: Fixture): Record<string, number> {
-  const expect = fixture.expect ?? {};
-  const mustNot = expect.mustNotContain ?? [];
-  const persona = expect.personaMustFeel ?? [];
+function fixtureToJudgeTarget(fixture: Fixture, fileIdx: number): JudgeTarget {
   return {
-    canon_faithfulness: fixture.playerContext.trim().length > 0 && fixture.latestUserInput.trim().length > 0 ? 4 : 1,
-    reveal_safety: expect.revealSafetyRequired && mustNot.length > 0 ? 5 : 3,
-    npc_persona_distinctness: persona.length > 0 ? 4 : 3,
-    task_giver_pressure:
-      typeof expect.taskGiverToneMax === "number" && expect.taskGiverToneMax <= 0.5 ? 4 : 3,
-    relationship_reality: /trust|relationship|active_npc|关系|信任/i.test(fixture.playerContext) ? 4 : 3,
-    json_contract_validity: expect.jsonValid === false ? 1 : 5,
+    caseId: `fixture_${fileIdx}_${fixture.scenario.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+    scenario: fixture.description ?? fixture.scenario,
+    userInput: fixture.latestUserInput ?? "",
+    narrative: fixture.latestUserInput ?? "",
+    narrativeChars: (fixture.latestUserInput ?? "").length,
+    dmJson: {
+      is_action_legal: true,
+      sanity_damage: 0,
+      narrative: fixture.latestUserInput ?? "",
+      is_death: false,
+    },
+    options: [],
+    gameContext: fixture.playerContext ?? "",
   };
 }
 
-function validateFixture(fixture: Fixture): string[] {
-  const failures: string[] = [];
-  if (!fixture.scenario) failures.push("missing_scenario");
-  if (!fixture.latestUserInput) failures.push("missing_latestUserInput");
-  if (!fixture.playerContext) failures.push("missing_playerContext");
-  if (!fixture.expect) failures.push("missing_expect");
-  const mustContainAny = fixture.expect?.mustContainAny ?? [];
-  const mustNotContain = fixture.expect?.mustNotContain ?? [];
-  const overlap = mustContainAny.filter((term) => mustNotContain.includes(term));
-  if (overlap.length > 0) failures.push(`expect_overlap:${overlap.join(",")}`);
-  if (fixture.expect?.revealSafetyRequired && mustNotContain.length === 0) {
-    failures.push("reveal_safety_without_forbidden_terms");
-  }
-  return failures;
+// === 校准 ===
+
+interface CalibrationResult {
+  total: number;
+  correct: number;
+  falsePositives: number;
+  falseNegatives: number;
+  accuracy: number;
+  drift: number;
+  details: Array<{
+    caseId: string;
+    expectedPass: boolean;
+    actualPass: boolean;
+    match: boolean;
+  }>;
 }
 
-function gate(scores: Record<string, number>, rubric: Rubric): string[] {
-  const failures: string[] = [];
-  for (const dim of rubric.dimensions) {
-    const score = scores[dim.id] ?? 0;
-    if (score < rubric.pass_rule.min_each) failures.push(`${dim.id}<${rubric.pass_rule.min_each}`);
+function runCalibration(results: MultiJudgeResult[]): CalibrationResult {
+  const expected = new Map<string, boolean>();
+  for (const seed of AUTHENTICITY_CALIBRATION_SEEDS) {
+    expected.set(seed.caseId, seed.caseId.startsWith("pass_"));
   }
-  const avg = Object.values(scores).reduce((sum, score) => sum + score, 0) / Math.max(1, Object.values(scores).length);
-  if (avg < rubric.pass_rule.min_average) failures.push(`average<${rubric.pass_rule.min_average}`);
-  if ((scores.reveal_safety ?? 0) <= rubric.pass_rule.hard_fail_if.reveal_safety_lte) {
-    failures.push("hard_fail:reveal_safety");
-  }
-  if ((scores.json_contract_validity ?? 0) <= rubric.pass_rule.hard_fail_if.json_contract_validity_lte) {
-    failures.push("hard_fail:json_contract_validity");
-  }
-  return failures;
-}
 
-function main(): void {
-  const rubric = readJson<Rubric>(rubricPath);
-  const results = fixtureNames.map((name) => {
-    const fixture = readJson<Fixture>(path.join(fixtureDir, name));
-    const fixtureFailures = validateFixture(fixture);
-    const scores = scoreFixture(fixture);
-    const gateFailures = gate(scores, rubric);
-    return {
-      file: name,
-      scenario: fixture.scenario,
-      scores,
-      failures: [...fixtureFailures, ...gateFailures],
-    };
-  });
+  let correct = 0;
+  let falsePositives = 0;
+  let falseNegatives = 0;
+  const details: CalibrationResult["details"] = [];
 
   for (const result of results) {
-    console.log(
-      `${result.scenario}: ${result.failures.length === 0 ? "pass" : "fail"}${
-        result.failures.length > 0 ? ` failures=${result.failures.join(",")}` : ""
-      }`
-    );
+    const expectedPass = expected.get(result.caseId);
+    if (expectedPass === undefined) continue;
+
+    const actualPass = result.passed;
+    const match = expectedPass === actualPass;
+    if (match) correct += 1;
+    else if (expectedPass && !actualPass) falsePositives += 1;
+    else falseNegatives += 1;
+
+    details.push({ caseId: result.caseId, expectedPass, actualPass, match });
   }
-  const failed = results.filter((result) => result.failures.length > 0);
-  console.log(`authenticity_eval_v1: total=${results.length} failed=${failed.length} rubric=${rubric.id}`);
-  if (failed.length > 0) process.exitCode = 1;
+
+  const total = details.length;
+  const accuracy = total > 0 ? correct / total : 1;
+  // Drift: 1 - accuracy (positive = judge is misaligned)
+  const drift = 1 - accuracy;
+
+  return { total, correct, falsePositives, falseNegatives, accuracy, drift, details };
 }
 
-main();
+// === 主函数 ===
+
+async function main(): Promise<void> {
+  const options = parseEvalCli();
+  const mode = resolveEvalMode();
+  const rubricId = "versecraft_authenticity_judge_v1";
+
+  // 1. 加载 fixture
+  const root = path.resolve(fileURLToPath(import.meta.url), "../..");
+  const fixtureNames = [
+    "major_npc_low_reveal_dialogue.json",
+    "task_pressure_persona_dialogue.json",
+    "actor_scoped_memory_boundary.json",
+    "normal_action.json",
+    "npc_dialogue.json",
+    "item_interaction.json",
+    "preflight_sensitive.json",
+  ];
+  const fixtureDir = path.join(root, "benchmarks", "chat-turns");
+
+  const fixtureTargets: JudgeTarget[] = [];
+  for (let idx = 0; idx < fixtureNames.length; idx++) {
+    const filePath = path.join(fixtureDir, fixtureNames[idx]!);
+    try {
+      const fixture = JSON.parse(fs.readFileSync(filePath, "utf8")) as Fixture;
+      fixtureTargets.push(fixtureToJudgeTarget(fixture, idx));
+    } catch {
+      evalLog(options, `skipping unreadable fixture: ${fixtureNames[idx]}`);
+    }
+  }
+
+  // 2. 运行 judge
+  const allTargets = [...fixtureTargets, ...AUTHENTICITY_CALIBRATION_SEEDS];
+  const results: AuthenticityResult[] = [];
+  const calResults: MultiJudgeResult[] = [];
+
+  for (const target of allTargets) {
+    const { result } = await JudgeService.judgeMulti({
+      rubricId,
+      target,
+      config: {
+        numJudges: 1, // Single judge for efficiency
+        positionRandomization: false,
+        chainOfThought: false,
+        forceMock: mode === "mock",
+        timeoutMs: 15_000,
+      },
+    });
+
+    if (target.caseId.startsWith("pass_") || target.caseId.startsWith("fail_")) {
+      calResults.push(result);
+    }
+
+    results.push({
+      file: target.caseId.startsWith("fixture_") ? target.caseId : "calibration",
+      scenario: target.scenario,
+      caseId: target.caseId,
+      passed: result.passed,
+      consensusOverall: result.consensusOverall,
+      consensusScores: result.consensusScores,
+      interJudgeAgreement: result.interJudgeAgreement,
+      verdictCount: result.voteCount.total,
+      commonIssues: result.commonIssues.map((i) => `[${i.severity}] ${i.dimension}: ${i.description}`),
+      highlights: result.verdicts.flatMap((v) => v.highlights),
+    });
+
+    evalLog(
+      options,
+      `${target.caseId}: ${result.passed ? "pass" : "fail"} overall=${result.consensusOverall.toFixed(1)} judges=${result.voteCount.total}`
+    );
+  }
+
+  // 3. 校准分析
+  const calibration = runCalibration(calResults);
+
+  // 4. 汇总
+  const passCount = results.filter((r) => r.passed).length;
+  const total = results.length;
+  const passRate = total > 0 ? passCount / total : 0;
+  const averageScore =
+    results.length > 0
+      ? results.reduce((s, r) => s + r.consensusOverall, 0) / results.length
+      : 0;
+
+  // 维度平均
+  const dimMap = new Map<string, number[]>();
+  for (const r of results) {
+    for (const [dimId, score] of Object.entries(r.consensusScores)) {
+      const arr = dimMap.get(dimId) ?? [];
+      arr.push(score);
+      dimMap.set(dimId, arr);
+    }
+  }
+  const dimensionAverages: Record<string, number> = {};
+  for (const [dimId, scores] of dimMap) {
+    dimensionAverages[dimId] =
+      scores.reduce((s, v) => s + v, 0) / scores.length;
+  }
+
+  const report: AuthenticityReport = {
+    schema: "authenticity_eval_v2",
+    generatedAt: new Date().toISOString(),
+    rubricId,
+    mode,
+    total,
+    pass: passCount,
+    fail: total - passCount,
+    passRate,
+    averageScore,
+    dimensionAverages,
+    calibrationDrift: calibration.details.length > 0 ? calibration.drift : null,
+    results,
+  };
+
+  // 校准日志
+  if (calibration.details.length > 0) {
+    evalLog(
+      options,
+      `calibration: accuracy=${(calibration.accuracy * 100).toFixed(1)}% drift=${(calibration.drift * 100).toFixed(1)}% fp=${calibration.falsePositives} fn=${calibration.falseNegatives}`
+    );
+  }
+
+  const json = `${JSON.stringify(report, null, 2)}\n`;
+  if (options.jsonOut) {
+    writeJson(options.jsonOut, report);
+  }
+  process.stdout.write(json);
+
+  // 写入历史
+  appendHistory({
+    suite: "authenticity",
+    mode,
+    total,
+    pass: passCount,
+    passRate,
+    gate: report.passRate >= 0.8 ? "pass" : "fail",
+    timestamp: report.generatedAt,
+    gitSha: getGitSha(),
+  });
+
+  if (options.assert && report.fail > 0) process.exitCode = 1;
+  if (report.fail > 0) process.exitCode = 1;
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

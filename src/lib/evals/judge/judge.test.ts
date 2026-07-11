@@ -163,6 +163,11 @@ describe("rubricRegistry", () => {
     assert.ok(ids.includes("game_mechanics_v2"));
     assert.ok(ids.includes("safety_compliance_v2"));
     assert.ok(ids.includes("versecraft_authenticity_judge_v1"));
+    // 系统专项 rubric
+    assert.ok(ids.includes("profession_consistency_v1"), `missing profession_consistency_v1`);
+    assert.ok(ids.includes("weapon_economy_v1"), `missing weapon_economy_v1`);
+    assert.ok(ids.includes("task_lifecycle_v1"), `missing task_lifecycle_v1`);
+    assert.ok(ids.includes("originium_deduction_v1"), `missing originium_deduction_v1`);
   });
 
   it("getRubric 返回有效 rubric", () => {
@@ -184,6 +189,45 @@ describe("rubricRegistry", () => {
     const desc = describeRubric(rubric);
     assert.ok(desc.includes("测试评分标准"));
     assert.ok(desc.length > 50);
+  });
+
+  it("系统专项 rubric 结构完整", () => {
+    const systemRubrics = [
+      "profession_consistency_v1",
+      "weapon_economy_v1",
+      "task_lifecycle_v1",
+      "originium_deduction_v1",
+    ];
+
+    for (const id of systemRubrics) {
+      const rubric = getRubric(id);
+      assert.ok(rubric, `rubric ${id} should exist`);
+      assert.ok(rubric!.dimensions.length >= 3, `${id} should have >= 3 dimensions`);
+      assert.strictEqual(rubric!.scale.min, 1, `${id} scale.min`);
+      assert.strictEqual(rubric!.scale.max, 5, `${id} scale.max`);
+      assert.ok(rubric!.passRule.minAverage > 0, `${id} passRule.minAverage`);
+      // 验证权重之和 ≈ 1.0
+      const totalWeight = rubric!.dimensions.reduce((sum, dim) => sum + (dim.weight ?? 0), 0);
+      assert.ok(Math.abs(totalWeight - 1.0) < 0.02, `${id} weights sum to ${totalWeight}, expected ~1.0`);
+      // 验证每个维度有锚点
+      for (const dim of rubric!.dimensions) {
+        assert.ok(dim.anchors.length >= 2, `${id}/${dim.id} should have >= 2 anchors`);
+      }
+    }
+  });
+
+  it("profession_consistency_v1 有职业边界硬性底线", () => {
+    const rubric = getRubric("profession_consistency_v1");
+    assert.ok(rubric);
+    assert.ok(rubric!.passRule.hardFailIf, "should have hardFailIf");
+    assert.strictEqual(rubric!.passRule.hardFailIf!["profession_boundary"], 1);
+  });
+
+  it("originium_deduction_v1 有扣除对齐硬性底线", () => {
+    const rubric = getRubric("originium_deduction_v1");
+    assert.ok(rubric);
+    assert.ok(rubric!.passRule.hardFailIf, "should have hardFailIf");
+    assert.strictEqual(rubric!.passRule.hardFailIf!["deduction_alignment"], 1);
   });
 });
 

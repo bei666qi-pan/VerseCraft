@@ -48,7 +48,7 @@ test("mobile codex resolves floor ids from play locations", () => {
 test("mobile codex filters slots to the player's current floor", () => {
   const slots = getMobileCodexSlotsForFloor({ playerLocation: "B1_SafeZone" });
 
-  assert.equal(slots.length, 4);
+  assert.equal(slots.length, B1_NPC_CODEX_SLOTS.length);
   assert.deepEqual(
     slots.map((slot) => slot.id),
     B1_NPC_CODEX_SLOTS.map((slot) => slot.id)
@@ -93,7 +93,7 @@ test("mobile codex counts identified slots on a selected floor", () => {
 
   assert.equal(getMobileCodexIdentifiedCount({}, b1Slots), 0);
   assert.equal(getMobileCodexIdentifiedCount({ "N-008": npcEntry("N-008", "电工老刘") }, b1Slots), 1);
-  assert.equal(getMobileCodexIdentifiedCount(fullB1Codex, b1Slots), 4);
+  assert.equal(getMobileCodexIdentifiedCount(fullB1Codex, b1Slots), b1Slots.length);
 });
 
 test("mobile codex appends disabled more card only after all current-floor slots are identified", () => {

@@ -14,9 +14,10 @@
  *   L2: Unit Tests（~15s）
  *   L3: Game Contracts + Promptfoo + Playthrough（~30s）
  *   L4: Eval Quality（~60s，mock mode）
- *   L5: Eval Safety + Red Team（~30s，mock mode）
+ *   L5: Eval Safety + Red Team + Detectors + Narrative Style + Narrative Safety（~90s，mock mode）
  *   L6: Task-based Eval + Judge（~10s，offline）
  *   L7: Build（~90s）
+ *   L8: Server-side Eval（需 start server，非 CI 仅 quick 跳过）
  *
  * 输出格式：
  *   ✅ PASS  L1 lint-check
@@ -103,6 +104,30 @@ const STAGES = [
     command: "npx",
     args: ["tsx", "scripts/eval-npc-consistency.ts", "--mode", "mock", "--assert", "--json-out", ".runtime-data/eval-gate-npc.json"],
     timeoutMs: 90_000,
+    skipInQuick: true,
+  },
+  {
+    name: "eval-detectors",
+    level: "L5",
+    command: "npx",
+    args: ["tsx", "scripts/eval-detectors.ts", "--mode", "mock", "--json-out", ".runtime-data/eval-gate-detectors.json"],
+    timeoutMs: 30_000,
+    skipInQuick: true,
+  },
+  {
+    name: "eval-narrative-style",
+    level: "L5",
+    command: "npx",
+    args: ["tsx", "scripts/eval-narrative-style.ts", "--mode", "mock", "--assert", "--json-out", ".runtime-data/eval-gate-narrative-style.json"],
+    timeoutMs: 60_000,
+    skipInQuick: true,
+  },
+  {
+    name: "eval-narrative-safety",
+    level: "L5",
+    command: "npx",
+    args: ["tsx", "scripts/eval-narrative-safety.ts", "--mode", "mock", "--json-out", ".runtime-data/eval-gate-narrative-safety.json"],
+    timeoutMs: 60_000,
     skipInQuick: true,
   },
   {

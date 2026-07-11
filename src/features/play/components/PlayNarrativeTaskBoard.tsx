@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClueEntry } from "@/lib/domain/narrativeDomain";
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
 import { resolveFloorTierLabel } from "@/lib/ui/displayNameResolvers";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/play/taskBoardUi";
 import { getClientTaskBoardPressureV1Enabled, getClientTaskVisibilityPolicyV3Enabled } from "@/lib/rollout/versecraftClientRollout";
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
+import { MAX_ACTIVE_TASKS } from "@/lib/tasks/taskV2";
 import { MobileReadingIcons } from "@/features/play/mobileReading/icons";
 
 // 2026-07 重构说明：本组件此前同时维护 "overlay(浅色)/embedded(暗色玻璃)" 两套视觉分支，
@@ -87,7 +88,11 @@ export type PlayNarrativeTaskBoardProps = {
   journalClues?: ClueEntry[];
   codex?: Record<string, CodexEntry>;
   highlightTaskIds?: string[];
-  onClaimTask: (taskId: string) => void;
+  onClaimTask: (taskId: void) => void;
+  /** 玩家是否从未打开过任务面板。true = 显示首次引导文案。 */
+  taskPanelFirstOpen?: boolean;
+  /** 玩家打开任务面板时调用，标记面板已查看。 */
+  onMarkTaskPanelOpened?: () => void;
 };
 
 function roleShellClasses(
@@ -179,11 +184,22 @@ export function PlayNarrativeTaskBoard({
   codex,
   highlightTaskIds,
   onClaimTask,
+  taskPanelFirstOpen,
+  onMarkTaskPanelOpened,
 }: PlayNarrativeTaskBoardProps) {
   const [showMore, setShowMore] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const showPressure = getClientTaskBoardPressureV1Enabled();
+
+  /** 首次打开时标记已查看 */
+  const hasCalledOnMarkTaskPanelOpened = useRef(false);
+  useEffect(() => {
+    if (taskPanelFirstOpen && onMarkTaskPanelOpened && !hasCalledOnMarkTaskPanelOpened.current) {
+      hasCalledOnMarkTaskPanelOpened.current = true;
+      onMarkTaskPanelOpened();
+    }
+  }, [taskPanelFirstOpen, onMarkTaskPanelOpened]);
 
   function toggleExpanded(taskId: string) {
     setExpandedIds((prev) => {
@@ -198,6 +214,11 @@ export function PlayNarrativeTaskBoard({
     const v3 = getClientTaskVisibilityPolicyV3Enabled();
     return projectTaskBoardStageProjection(tasks ?? [], v3, codex);
   }, [tasks, codex]);
+
+  const activeTaskCount = useMemo(
+    () => (tasks ?? []).filter((t) => t.status === "active" || t.status === "available").length,
+    [tasks]
+  );
 
   const { overflow, completed, failed, visibleCount, backgroundHiddenCount } = board;
 
@@ -298,6 +319,17 @@ export function PlayNarrativeTaskBoard({
               <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold ${guidance.cls}`}>{guidance.label}</span>
             ) : null}
             <p>{vm.flavorLine}</p>
+            {/* 进度与期限行 */}
+            {vm.progressLabel || vm.deadlineLabel ? (
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium text-vc-ink-soft">
+                {vm.progressLabel ? <span className="flex items-center gap-1">📋 {vm.progressLabel}</span> : null}
+                {vm.deadlineLabel ? (
+                  <span className={`rounded-full border px-2 py-0.5 ${vm.deadlineLabel === "已超时" ? "border-vc-seal/35 bg-vc-seal/8 text-vc-seal" : "border-vc-line-warm bg-vc-paper-bright text-vc-ink-soft"}`}>
+                    ⏳ {vm.deadlineLabel}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <ChipRow vm={vm} />
             {sourceLine ? <p className="text-[10px] text-vc-ink-faint">{sourceLine}</p> : null}
           </div>
@@ -341,8 +373,10 @@ export function PlayNarrativeTaskBoard({
 
   if (visibleCount === 0) {
     return (
-      <div className="rounded-xl border border-vc-line bg-vc-paper-raised p-4 text-center text-xs text-vc-ink-soft">
-        暂时没有要跟的事。多走走、多问问，可能会有人把麻烦交到你手里。
+      <div className="rounded-xl border border-vc-line bg-vc-paper-raised p-4 text-center text-xs leading-relaxed text-vc-ink-soft">
+        {taskPanelFirstOpen
+          ? "任务会在叙事推进中自然出现，你已经在前往第一件事的路上——先把手头的事做起来，答案在路上。"
+          : "当前没有活跃任务。与 NPC 交谈、探索楼层会带来新的目标。"}
       </div>
     );
   }
@@ -362,6 +396,21 @@ export function PlayNarrativeTaskBoard({
           <MobileReadingIcons.Originium className="h-3.5 w-3.5 shrink-0 text-vc-accent" strokeWidth={1.25} />
           <span className="text-[11px] font-semibold leading-none text-vc-ink">{originium}</span>
         </div>
+      </div>
+
+      {/* 活跃上限进度条 */}
+      <div className="flex items-center gap-2 text-[10px] text-vc-ink-soft">
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-vc-line/50">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${
+              activeTaskCount >= MAX_ACTIVE_TASKS ? "bg-vc-seal" : "bg-vc-accent/50"
+            }`}
+            style={{ width: `${Math.min(100, (activeTaskCount / MAX_ACTIVE_TASKS) * 100)}%` }}
+          />
+        </div>
+        <span className={`shrink-0 font-medium ${activeTaskCount >= MAX_ACTIVE_TASKS ? "text-vc-seal" : ""}`}>
+          {activeTaskCount}/{MAX_ACTIVE_TASKS}
+        </span>
       </div>
 
       {pressure && pressure.tier !== "low" ? (

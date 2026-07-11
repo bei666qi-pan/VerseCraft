@@ -1,0 +1,13 @@
+
+=== Playtest Boundary Runner ===
+Base: http://localhost:666
+Personas: 速通型玩家
+Session: (首次)
+Concurrency: 5 | MaxSteps: 1000 | SoftlockThreshold: 50
+
+[速通型玩家] 启动 session=playtest-speedrunner-1783647589617-1 maxSteps=1000
+(node:98654) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[速通型玩家] Step 1/1000: "打开地图，前往第一个主线任务地点..." (LLM 1254ms)
+[速通型玩家] Step 2/1000: "查看地图..." (LLM 813ms)
+[速通型玩家] Step 3/1000: "打开地图，直奔主线任务点..." (LLM 906ms)

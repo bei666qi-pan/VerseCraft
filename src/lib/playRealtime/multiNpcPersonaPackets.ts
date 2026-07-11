@@ -1,4 +1,5 @@
 import { getNpcCanonicalIdentity } from "@/lib/registry/npcCanon";
+import { getMajorNpcDeepCanon } from "@/lib/registry/majorNpcDeepCanon";
 import { CORE_NPC_PROFILES_V2 } from "@/lib/registry/npcProfiles";
 import { NPCS } from "@/lib/registry/npcs";
 import type { SceneNpcMode } from "@/lib/playRealtime/sceneActorGate";
@@ -14,6 +15,8 @@ type PersonaFullCard = {
   allowed_scene_presence: string[];
   first_appearance_rule: "must_use_appearance_short" | "already_written";
   mode?: SceneNpcMode;
+  /** 声音卡摘要：典型一句 + 幽默位标记（full 档才注入） */
+  voice_hint?: string;
 };
 
 type PersonaMinimalCard = {
@@ -147,6 +150,17 @@ export function buildMultiNpcCompactPersonaPacketObject(args: {
     const firstRule: PersonaFullCard["first_appearance_rule"] = written.has(canon.npcId)
       ? "already_written"
       : "must_use_appearance_short";
+
+    // 声音卡：典型一句 + 幽默位标记（full 档注入）
+    const deepCanon = getMajorNpcDeepCanon(canon.npcId);
+    const vc = deepCanon?.voiceCard;
+    let voiceHint: string | undefined;
+    if (vc) {
+      const example = vc.exampleLine ? `「${vc.exampleLine}」` : "";
+      const humor = vc.humorBit ? `[幽默位: ${vc.humorBit}]` : "";
+      voiceHint = [example, humor].filter(Boolean).join(" ") || undefined;
+    }
+
     cards.push({
       id: canon.npcId,
       name: pub.name || canon.canonicalName || canon.npcId,
@@ -158,6 +172,7 @@ export function buildMultiNpcCompactPersonaPacketObject(args: {
       allowed_scene_presence: (canon.allowedSpawnLocations ?? []).slice(0, 5).map((x) => String(x ?? "").slice(0, 40)),
       first_appearance_rule: firstRule,
       ...(mode ? { mode } : {}),
+      ...(voiceHint ? { voice_hint: voiceHint } : {}),
     });
   }
 

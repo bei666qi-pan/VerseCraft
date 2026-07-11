@@ -1,6 +1,6 @@
 # Codex 叙事安全 Playbook
 
-本文是后续 Codex / 人类开发者处理 VerseCraft 叙事安全任务的操作手册。详细 12 阶段路线见 `docs/narrative-safety-upgrade-plan.md`；本文只规定进入任务、改动边界、测试、CI 与回滚的日常动作。
+本文是后续 Codex / 人类开发者处理 VerseCraft 叙事安全任务的操作手册。详细 12 阶段路线见 `docs/archive/2026-07/narrative-safety-upgrade-plan.md`；本文只规定进入任务、改动边界、测试、CI 与回滚的日常动作。
 
 ## 第一原则
 
@@ -18,7 +18,7 @@
 叙事安全相关任务先读这些文件，再决定改动点：
 
 - `AGENTS.md`
-- `docs/narrative-safety-upgrade-plan.md`
+- `docs/archive/2026-07/narrative-safety-upgrade-plan.md`
 - `docs/turn-engine-architecture.md`
 - `docs/ai-governance.md`
 - `src/app/api/chat/route.ts`

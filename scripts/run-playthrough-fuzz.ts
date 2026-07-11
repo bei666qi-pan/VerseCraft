@@ -11,6 +11,7 @@
  *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --categories happy,recovery  # 仅跑指定路径
  *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --max-steps 15              # 每局最多 15 步
  *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --live                       # Live 模式（需 AI gateway）
+ *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --live --base-url http://localhost:667  # 自定义 API 地址
  *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --json-out path              # JSON 输出
  *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --fail-on-regression        # 失败率超阈值时非零退出
  *   pnpm dlx tsx scripts/run-playthrough-fuzz.ts --threshold 0.15             # 自定义失败率阈值（默认 0.10）
@@ -34,6 +35,7 @@ interface CliArgs {
   runs: number;
   maxSteps: number;
   live: boolean;
+  baseUrl?: string;
   jsonOut?: string;
   failOnRegression: boolean;
   threshold: number;
@@ -62,6 +64,7 @@ function parseArgs(): CliArgs {
     runs: getInt("--runs", 1),
     maxSteps: getInt("--max-steps", 20),
     live: args.includes("--live"),
+    baseUrl: getStr("--base-url") ?? process.env.PLAYTHROUGH_BASE_URL,
     jsonOut: getStr("--json-out"),
     failOnRegression: args.includes("--fail-on-regression"),
     threshold: getFloat("--threshold", 0.10),
@@ -80,6 +83,7 @@ async function main(): Promise<void> {
   const counts = getScenarioLibraryCounts();
   console.log(`场景库: total=${counts.total}, byCategory=${JSON.stringify(counts.byCategory)}`);
   console.log(`模式: ${args.live ? "live（真实 API）" : "mock（离线规则）"}`);
+  if (args.baseUrl) console.log(`API 地址: ${args.baseUrl}`);
   console.log(`每对 (scenario, persona) 跑 ${args.runs} 局`);
   console.log(`每局最大步数: ${args.maxSteps}`);
   console.log(`失败率阈值: ${(args.threshold * 100).toFixed(0)}%${args.failOnRegression ? "（fail-on-regression 开启）" : ""}`);
@@ -88,11 +92,12 @@ async function main(): Promise<void> {
 
   const config: PlaythroughV3Config = {
     // v1 字段
-    personas: ["speedrunner", "explorer", "rulebreaker", "confused"],
+    personas: ["speedrunner", "explorer", "rulebreaker", "confused", "collector"],
     runsPerPersona: args.runs,
     maxStepsPerRun: args.maxSteps,
     baseSeed: 42,
     mockMode: !args.live,
+    baseUrl: args.baseUrl,
     runNarrativeJudge: true,
     softlockThreshold: 8,
     stepTimeoutMs: 30000,

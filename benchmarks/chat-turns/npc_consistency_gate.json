@@ -120,6 +120,36 @@
         "appearanceAlreadyWrittenNpcIds": ["N-020"],
         "packetMaxChars": 1200
       }
+    },
+    {
+      "id": "voice_hint_in_anchor_card",
+      "description": "六辅锚 N-015（麟泽）在场时，persona card 应包含 voice_hint 字段（典型一句 + 幽默位标记），且 packet 总长不超 1200 字符。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_SafeZone]\nNPC当前位置：N-015@B1_SafeZone。",
+      "latestUserInput": "我跟麟泽打了个招呼。",
+      "personaNpcIds": ["N-015"],
+      "expect": {
+        "focusNpcId": "N-015",
+        "presentNpcIds": ["N-015"],
+        "canSpeakNpcIds": ["N-015"],
+        "anchorVoiceHintNpcIds": ["N-015"],
+        "packetMaxChars": 1200
+      }
+    },
+    {
+      "id": "group_npc_no_voice_hint",
+      "description": "群像 NPC N-008（老刘）在场时，persona card 不应有 voice_hint（只有六辅锚有深档声音卡），但 speech_pattern 应含个性化内容。",
+      "playerLocation": null,
+      "playerContext": "player_location[B1_PowerRoom]\nNPC当前位置：N-008@B1_PowerRoom。",
+      "latestUserInput": "老刘在干嘛？",
+      "personaNpcIds": ["N-008"],
+      "expect": {
+        "focusNpcId": "N-008",
+        "presentNpcIds": ["N-008"],
+        "canSpeakNpcIds": ["N-008"],
+        "noVoiceHintNpcIds": ["N-008"],
+        "packetMaxChars": 1200
+      }
     }
   ]
 }

@@ -1,3 +1,10 @@
+/**
+ * NPC Consistency Eval — 薄壳
+ *
+ * 核心逻辑保持不变，CLI/日志/输出/历史由 harness 接管。
+ * 输出格式与迁移前逐字段兼容（CI 无感知）。
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import { buildSceneActorGate, compactSceneActorGatePacket, type SceneActorGateResult } from "../src/lib/playRealtime/sceneActorGate";
@@ -7,6 +14,7 @@ import type { ModelOutputSchema } from "../src/lib/narrativeEngine/schema";
 import type { DialogueContext } from "../src/lib/narrativeEngine/types";
 import { getNpcCanonicalIdentity } from "../src/lib/registry/npcCanon";
 import { REVEAL_TIER_RANK } from "../src/lib/registry/revealTierRank";
+import { parseEvalCli, evalLog, writeJson, registerCase, appendHistory, getGitSha } from "../src/lib/evals/harness";
 
 type EvalMode = "mock" | "live";
 
@@ -88,20 +96,18 @@ function getArgValue(args: string[], name: string): string | null {
 
 function parseCli(): CliOptions {
   const args = process.argv.slice(2);
-  const rawMode = (getArgValue(args, "--mode") ?? process.env.VC_EVAL_NPC_CONSISTENCY_MODE ?? "mock")
-    .trim()
-    .toLowerCase();
+  const base = parseEvalCli(args, {
+    modeEnv: "VC_EVAL_NPC_CONSISTENCY_MODE",
+    assertEnv: "VC_EVAL_NPC_CONSISTENCY_ASSERT",
+    jsonOutEnv: "VC_EVAL_NPC_CONSISTENCY_JSON_OUT",
+  });
   return {
-    mode: rawMode === "live" ? "live" : "mock",
-    assert: args.includes("--assert") || process.env.VC_EVAL_NPC_CONSISTENCY_ASSERT === "1",
-    jsonOut: getArgValue(args, "--json-out") ?? process.env.VC_EVAL_NPC_CONSISTENCY_JSON_OUT ?? null,
-    jsonOnly: args.includes("--json-only"),
+    mode: base.mode,
+    assert: base.assert,
+    jsonOut: base.jsonOut,
+    jsonOnly: base.jsonOnly,
     casesPath: getArgValue(args, "--cases") ?? process.env.VC_EVAL_NPC_CONSISTENCY_CASES ?? defaultCasesPath,
   };
-}
-
-function log(options: CliOptions, message: string): void {
-  if (!options.jsonOnly) console.log(message);
 }
 
 function loadCases(casesPath: string): NpcConsistencyEvalCase[] {
@@ -111,13 +117,6 @@ function loadCases(casesPath: string): NpcConsistencyEvalCase[] {
     throw new Error(`No npc consistency cases found in ${casesPath}`);
   }
   return cases;
-}
-
-function writeJson(pathName: string | null, result: unknown): void {
-  if (!pathName) return;
-  const resolved = path.resolve(pathName);
-  fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  fs.writeFileSync(resolved, `${JSON.stringify(result, null, 2)}\n`, "utf8");
 }
 
 function normalizeNpcId(value: unknown): string | null {
@@ -283,6 +282,8 @@ function checkUnauthorizedRelationship(testCase: NpcConsistencyEvalCase, gate: S
   }
   return leaked;
 }
+
+/* … 核心逻辑（evaluateCase / summarize / checkPersona）保持完全相同 … */
 
 function checkPersona(testCase: NpcConsistencyEvalCase, gate: SceneActorGateResult, failures: string[]): boolean {
   let failed = false;
@@ -479,10 +480,10 @@ async function main(): Promise<void> {
   }
 
   const cases = loadCases(options.casesPath);
-  log(options, `Running NPC consistency eval: mode=${options.mode} cases=${cases.length}`);
+  evalLog(options, `Running NPC consistency eval: mode=${options.mode} cases=${cases.length}`);
   const evaluated = cases.map(evaluateCase);
   for (const row of evaluated) {
-    log(
+    evalLog(
       options,
       `  ${row.result.id}: focus=${row.result.focusNpcId ?? "null"} packetChars=${row.result.sceneActorPacketChars}${
         row.result.failures.length > 0 ? ` failures=${row.result.failures.join(",")}` : ""
@@ -490,11 +491,26 @@ async function main(): Promise<void> {
     );
   }
   const summary = summarize(options.mode, evaluated);
-  log(
+  evalLog(
     options,
     `summary: cases=${summary.cases} offscreen=${summary.offscreenLiveDialogue} wrongFocus=${summary.wrongFocus} persona=${summary.personaMixup} unauthorizedRel=${summary.unauthorizedRelationshipUpdate} packetMax=${summary.maxSceneActorPacketChars} gate=${summary.pass ? "pass" : "fail"}`
   );
+
+  // 写入 JSON（向后兼容格式）
   writeJson(options.jsonOut, summary);
+
+  // 写入历史聚合行
+  appendHistory({
+    suite: "npc-consistency",
+    mode: options.mode,
+    total: summary.cases,
+    pass: summary.pass ? summary.cases : 0,
+    passRate: summary.pass ? 1 : 0,
+    gate: summary.pass ? "pass" : "fail",
+    timestamp: new Date().toISOString(),
+    gitSha: getGitSha(),
+  });
+
   if (options.jsonOnly) console.log(JSON.stringify(summary, null, 2));
   if (options.assert && !summary.pass) process.exitCode = 1;
 }

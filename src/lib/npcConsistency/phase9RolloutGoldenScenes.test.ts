@@ -96,9 +96,15 @@ describe("phase9 golden：世界入口 / 任务 / commit / 展示", () => {
       status: "available",
       type: "main",
     } as unknown as GameTask;
+    // filterTasksForTaskBoardVisibilityV2 负责移除 hidden 层，soft_lead 和 formal 都应通过
+    // partitionTasksForBoard 负责将 soft_lead 分入 clues、formal 分入 board_visible
     const filtered = filterTasksForTaskBoardVisibilityV2([soft, formal], true);
-    assert.equal(filtered.length, 1);
-    assert.equal(filtered[0]!.id, "soft1");
+    assert.equal(filtered.length, 2, "V2 filter 应保留所有非 hidden 任务");
+
+    const partition = partitionTasksForBoard(filtered, 2);
+    assert.equal(partition.clues.length, 1, "soft_lead 应进入线索槽");
+    assert.equal(partition.clues[0]!.id, "soft1");
+    assert.equal(partition.primary?.id, "f1", "formal_task 应进入主视图");
   });
 
   it("6b runtime：world_feel_packet 默认存在（世界错位/月初/生活底噪）", () => {

@@ -151,21 +151,6 @@ export function setDarkMoonMode(active: boolean): void {
 
 // --------------- UI micro-sounds ---------------
 
-export function playUIHover(): void {
-  if (muted) return;
-  const c = getCtx();
-  const osc = c.createOscillator();
-  const g = c.createGain();
-  osc.type = "sine";
-  osc.frequency.value = 3200;
-  g.gain.value = 0.04;
-  g.gain.setTargetAtTime(0, c.currentTime, 0.03);
-  osc.connect(g);
-  g.connect(getMaster());
-  osc.start();
-  osc.stop(c.currentTime + 0.06);
-}
-
 export function playUIClick(): void {
   if (muted) return;
   const c = getCtx();

@@ -61,6 +61,7 @@ export function MobileBottomNav({
   onOpenSettings,
   onOpenTasks,
   hasUnreadCodex,
+  hasUnviewedTaskUpdates,
 }: MobileBottomNavProps) {
   const items: DockItem[] = [
     {
@@ -86,6 +87,7 @@ export function MobileBottomNav({
       testId: "bottom-nav-tasks",
       active: activeItem === "tasks",
       disabled: !onOpenTasks,
+      badge: Boolean(hasUnviewedTaskUpdates) && activeItem !== "tasks",
       onClick: onOpenTasks,
     },
     {

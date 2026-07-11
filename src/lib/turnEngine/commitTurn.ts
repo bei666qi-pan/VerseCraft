@@ -50,6 +50,7 @@ export const COMMIT_STATE_CHANGING_FIELDS = [
   "task_updates",
   "codex_updates",
   "dm_change_set",
+  "foreshadow_ops",
 ] as const;
 
 export const COMMIT_STATE_MIRROR_FIELDS = [

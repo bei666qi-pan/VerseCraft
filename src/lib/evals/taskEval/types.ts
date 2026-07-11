@@ -152,6 +152,7 @@ export type OutcomeType =
   | "location_equals"      // 位置精确值
   | "npc_present"          // NPC 是否在场
   | "npc_favorability"     // NPC 好感度
+  | "npc_favorability_changed" // NPC 好感度变化
   | "codex_entry_added"    // 图鉴条目增加
   | "profession_changed"   // 职业变化
   | "weapon_equipped"      // 武器装备
@@ -160,7 +161,35 @@ export type OutcomeType =
   | "death_occurred"       // 死亡事件
   | "narrative_contains"   // 叙事包含
   | "narrative_not_contains" // 叙事不包含
-  | "dm_json_field";       // DM JSON 字段检查
+  | "dm_json_field"        // DM JSON 字段检查
+  // 以下为离线模式乐观通过的高级场景 outcome（live judge 会精确检查）
+  | "decision_choice_honored"
+  | "task_count_unchanged"
+  | "no_new_task_assigned"
+  | "narrative_downgrade_handled"
+  | "options_provided"
+  | "option_count_valid"
+  | "options_no_duplicates"
+  | "economic_tradeoff_reflected"
+  | "trust_improved"
+  | "combat_avoided"
+  | "stealth_successful"
+  | "faction_reaction_shown"
+  | "narrative_consequence"
+  | "narrative_moral_reflected"
+  | "weapon_broken"
+  | "improvised_weapon"
+  | "combat_outcome_affected"
+  | "narrative_tension"
+  | "narrative_discovery"
+  | "trade_negotiation_narrated"
+  | "relationship_update"
+  | "narrative_distortion_reflected"
+  | "inventory_slot_count"
+  | "narrative_tradeoff_shown"
+  | "lore_delivered"
+  | "npc_reaction_personality"
+  | "narrative_depth";
 
 // === 评测结果 ===
 

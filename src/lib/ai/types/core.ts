@@ -11,6 +11,7 @@ export type AiProviderId = "oneapi" | "mock";
  * - Adjudication / combat text: RULE_RESOLUTION, COMBAT_NARRATION (main role).
  * - Sensory polish: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH, NARRATIVE_EXPANSION (enhance role).
  * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION.
+ * - Eval / judge: EVAL_JUDGE (fast JSON, control role, no streaming).
  */
 export type TaskType =
   | "PLAYER_CHAT"
@@ -27,7 +28,9 @@ export type TaskType =
   | "STORYLINE_SIMULATION"
   | "DIRECTOR_PLAN_CRITIC"
   | "DEV_ASSIST"
-  | "MEMORY_COMPRESSION";
+  | "MEMORY_COMPRESSION"
+  /** LLM-as-Judge: structured rubric scoring, non-streaming, control-role fast path. */
+  | "EVAL_JUDGE";
 
 /** Declared abilities for registry entries (extensible for future tools / vision). */
 export type ModelCapability =

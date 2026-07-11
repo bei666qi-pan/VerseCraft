@@ -15,6 +15,10 @@ export type RelationshipLoopPacketV1 = {
   version: 1;
   promiseCount: number;
   activeTaskCount: number;
+  /** 任务荒标记：连续多回合无活跃目标时触发（Phase 7b） */
+  taskFamine: boolean;
+  /** 任务荒时的补给提示 */
+  taskFamineTip: string;
   debtPressure: "low" | "mid" | "high";
   certifierPresenceHint: string;
   nextReasons: string[];
@@ -89,6 +93,12 @@ export function buildPlayabilityPacketsV1(args: {
   relationshipNext.push("把一条承诺做成可验证结果（证据/交付/回报），换取下一步通融。");
   if (debtPressure !== "low") relationshipNext.push("别再空接：先清掉一条债再扩张关系面。");
 
+  // Phase 7b: 任务荒检测 & 补给提示
+  const taskFamine = activeTasks.length === 0;
+  const taskFamineTip = taskFamine
+    ? "当前没有正在推进的目标。与住户交谈、探索不熟悉的楼层、回应之前忽略的动静——新的线索会在你行动中浮现。"
+    : "";
+
   const invReasons: string[] = [];
   const invNext: string[] = [];
   invReasons.push(`图鉴：NPC ${args.codex.npcCount}，异常 ${args.codex.anomalyCount}。`);
@@ -118,6 +128,8 @@ export function buildPlayabilityPacketsV1(args: {
       version: 1,
       promiseCount,
       activeTaskCount: activeTasks.length,
+      taskFamine,
+      taskFamineTip,
       debtPressure,
       certifierPresenceHint,
       nextReasons: relationshipReasons.slice(0, 4),

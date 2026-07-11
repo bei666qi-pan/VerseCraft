@@ -231,9 +231,3 @@ export function detectAll(input: BatchDetectionInput): RedTeamAttackResult[] {
 }
 
 // === 离线模拟（不依赖真实API调用的快速评估） ===
-
-import { simulateDefense } from "./simulator";
-
-export function simulateRedTeamAttack(attack: RedTeamAttack, playerInput: string): RedTeamAttackResult {
-  return simulateDefense(attack, playerInput);
-}

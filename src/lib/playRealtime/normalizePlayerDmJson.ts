@@ -152,6 +152,40 @@ function normalizeWeaponBagUpdates(v: unknown): Array<Record<string, unknown>> {
   return out;
 }
 
+const VALID_FS_OPS = new Set(["plant", "reinforce", "payoff"]);
+
+/**
+ * Phase-5: 规范化 foreshadow_ops（伏笔操作列表）。
+ * - 仅保留 op ∈ {plant, reinforce, payoff}
+ * - text 必须为非空字符串，裁剪至 140 字符
+ * - importance 限制为 1|2|3，默认 1
+ * - 每回合上限 3 条
+ */
+function normalizeForeshadowOps(v: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(v)) return [];
+  const out: Array<Record<string, unknown>> = [];
+  for (const raw of v) {
+    if (out.length >= 3) break;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const o = raw as Record<string, unknown>;
+    const op = typeof o.op === "string" ? o.op.trim() : "";
+    if (!VALID_FS_OPS.has(op)) continue;
+    const text = typeof o.text === "string" ? o.text.trim() : "";
+    if (!text) continue;
+    const entry: Record<string, unknown> = {
+      op,
+      text: text.length > 140 ? text.slice(0, 140) : text,
+    };
+    if (typeof o.id === "string" && o.id.trim()) entry.id = o.id.trim();
+    const imp = typeof o.importance === "number" && Number.isFinite(o.importance)
+      ? Math.max(1, Math.min(3, Math.round(o.importance)))
+      : 1;
+    entry.importance = imp;
+    out.push(entry);
+  }
+  return out;
+}
+
 /**
  * 从流式累积文本中提取第一个平衡 JSON 对象并 parse。
  */
@@ -242,6 +276,7 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     task_updates: asUnknownArray(o.task_updates),
     clue_updates: asUnknownArray(o.clue_updates).slice(0, 48),
     npc_location_updates: asUnknownArray(o.npc_location_updates),
+    foreshadow_ops: normalizeForeshadowOps(o.foreshadow_ops),
     // Always emit options (possibly empty) so clients can reliably clear stale options.
     options: [],
   };

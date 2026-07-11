@@ -184,5 +184,10 @@ export function inferPlannedTurnMode(args: {
     return { mode: "decision_required", reason: `directorDigest.pending=${pendingIncCount}` };
   }
   void args.pipelineControl;
+
+  // mock scenario 请求默认走 decision_required（benchmark/eval 需要选项字段）。
+  if (/\[mock_scenario:[a-z0-9_]+\]/i.test(raw)) {
+    return { mode: "decision_required", reason: "mock_scenario_default_decision" };
+  }
   return { mode: "narrative_only", reason: "default_narrative" };
 }

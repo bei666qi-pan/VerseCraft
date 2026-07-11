@@ -1,7 +1,7 @@
 import { ANOMALIES } from "@/lib/registry/anomalies";
 import { LIGHT_FORGE_RECIPES } from "@/lib/registry/forge";
 import { getServicesForLocation } from "@/lib/registry/serviceNodes";
-import { FLOOR_DIGESTION_AXES } from "@/lib/registry/worldCanon";
+import { FLOOR_LORE_BY_ID } from "@/lib/registry/worldCanon";
 import { REVEAL_TIER_RANK, type RevealTierRank } from "@/lib/registry/revealTierRank";
 
 type MainThreatPhase = "idle" | "active" | "suppressed" | "breached";
@@ -217,7 +217,7 @@ export function buildWorldviewPacket(args: {
   const maxR = args.maxRevealRank ?? REVEAL_TIER_RANK.surface;
   const floorAxis =
     floorId && floorId !== "B1" && floorId !== "B2"
-      ? FLOOR_DIGESTION_AXES[floorId]
+      ? FLOOR_LORE_BY_ID[floorId]
       : null;
   const b1Meaning =
     floorId === "B1"

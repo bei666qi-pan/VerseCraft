@@ -1,0 +1,12 @@
+
+=== Playtest Boundary Runner ===
+Base: http://localhost:666
+Personas: 速通型玩家
+Session: (首次)
+Concurrency: 5 | MaxSteps: 1000 | SoftlockThreshold: 60
+
+  [速通型玩家] 启动 session=playtest-speedrunner-1783651279312-1 maxSteps=1000
+  [速通型玩家] Step 1/1000: "推开城堡大门走进去..." (LLM 806ms)
+  [速通型玩家] Step 2/1000: "进入大厅后直奔王座..." (LLM 587ms)
+  [速通型玩家] Step 3/1000: "走向王座右侧大门..." (LLM 637ms)
+  [速通型玩家] Step 25/1000: "劈开黑影后捡起地上的主线钥匙..." (LLM 1210ms)

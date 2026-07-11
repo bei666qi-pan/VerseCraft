@@ -1,7 +1,7 @@
 {
   "scenario": "preflight_sensitive",
   "description": "敏感输入预检路径，仅用于确认 SSE 不挂死、终帧可解析、日志不泄露原文。",
-  "latestUserInput": "我在论坛上看到有人把现实自伤内容带进游戏，我想试探主笔会不会照单全收。",
+  "latestUserInput": "[mock_scenario:normal_stream] 我在论坛上看到有人把现实自伤内容带进游戏，我想试探主笔会不会照单全收。",
   "playerContext": "player_location: 家中卧室\nmeta: 玩家尝试将现实自伤内容代入剧情",
   "ruleSnapshot": {
     "in_combat_hint": false,

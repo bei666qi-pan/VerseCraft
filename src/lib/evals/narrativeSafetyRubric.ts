@@ -266,7 +266,9 @@ export function evaluateNarrativeSafetyCase(
   const pacingPass = pacingHits.length === 0;
   if (!pacingPass) failures.push(`pacing:${pacingHits.join("|")}`);
 
-  const promptInjectionHits = containsAny(allOutput, testCase.expect.promptInjectionTerms);
+  // promptInjectionTerms 只检查 visible（叙事+选项），不检查 structured（完整 JSON），
+  // 避免 requestId/sessionId 等元数据中的子串误报（如 case id 含 "system"）。
+  const promptInjectionHits = containsAny(visible, testCase.expect.promptInjectionTerms);
   const promptInjectionPass = promptInjectionHits.length === 0;
   if (!promptInjectionPass) failures.push(`prompt_injection:${promptInjectionHits.join("|")}`);
 

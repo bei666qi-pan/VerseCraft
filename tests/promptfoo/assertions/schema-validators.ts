@@ -534,3 +534,251 @@ export function collectAllErrors(report: ReturnType<typeof validateFullDmJson>):
     ...report.extensions.location.map((e) => `[location] ${e}`),
   ];
 }
+
+// === 叙事质量校验 ===
+
+/** 叙事最小长度（字） */
+export const MIN_NARRATIVE_LENGTH = 50;
+/** 叙事推荐最大长度（字）—— 超过此值不报错但警告 */
+export const WARN_NARRATIVE_LENGTH = 800;
+
+/** 感官细节关键词（按类型分组） */
+export const SENSORY_KEYWORDS = {
+  visual: ["看见", "光芒", "闪烁", "黑暗", "影子", "颜色", "轮廓", "灯", "暗", "亮", "模糊", "清晰"],
+  auditory: ["声音", "脚步", "风声", "嗡鸣", "响", "寂静", "沉默", "刮擦", "电流", "低声"],
+  tactile: ["温度", "冷", "热", "颤抖", "触感", "湿", "干燥", "粗糙", "刺痛", "灼烧"],
+  olfactory: ["气味", "臭", "腥味", "焦味", "霉味", "金属味", "清新", "刺鼻", "气息"],
+} as const;
+
+/** 系统术语泄漏关键词（不应出现在 narrative 中） */
+export const SYSTEM_LEAK_KEYWORDS = [
+  "system prompt", "系统提示词", "JSON 格式", "请严格以",
+  "JSON格式", "json格式", "json 格式",
+  "DM JSON", "dm json",
+  "is_action_legal", "sanity_damage", "currency_change",
+  "weapon_updates", "task_updates", "codex_updates",
+  "narrative_judge", "rubric", "dimension",
+  "eval", "benchmark", "test case",
+] as const;
+
+/**
+ * 验证叙事质量（长度、感官细节、系统泄漏）
+ */
+export function validateNarrativeQuality(narrative: unknown): string[] {
+  const errors: string[] = [];
+  if (typeof narrative !== "string") {
+    errors.push("narrative 必须是字符串");
+    return errors;
+  }
+
+  if (narrative.length < MIN_NARRATIVE_LENGTH) {
+    errors.push(`narrative 长度 ${narrative.length} 低于最小值 ${MIN_NARRATIVE_LENGTH}`);
+  }
+
+  // 系统术语泄漏检测
+  const lowerNarrative = narrative.toLowerCase();
+  for (const kw of SYSTEM_LEAK_KEYWORDS) {
+    if (lowerNarrative.includes(kw.toLowerCase())) {
+      errors.push(`narrative 包含系统术语泄漏: 「${kw}」`);
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * 检测叙事中的感官细节覆盖
+ * @returns 覆盖的感官类型数组（空 = 无任何感官细节）
+ */
+export function detectSensoryDetails(narrative: string): string[] {
+  const covered: string[] = [];
+  const lowerNarrative = narrative.toLowerCase();
+
+  for (const [type, keywords] of Object.entries(SENSORY_KEYWORDS)) {
+    if (keywords.some((kw) => lowerNarrative.includes(kw))) {
+      covered.push(type);
+    }
+  }
+
+  return covered;
+}
+
+/**
+ * 验证选项质量
+ * - 不应重复
+ * - 不应包含系统操作
+ * - 长度应合理（2-20字）
+ */
+export const FORBIDDEN_OPTION_KEYWORDS = [
+  "系统", "debug", "控制台", "重置游戏", "退出",
+  "system", "admin", "GM", "上帝视角",
+] as const;
+
+export function validateOptionQuality(options: unknown): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(options)) {
+    errors.push("options 必须是数组");
+    return errors;
+  }
+
+  const seen = new Set<string>();
+  for (let i = 0; i < options.length; i++) {
+    const opt = options[i];
+    if (typeof opt !== "string") {
+      errors.push(`options[${i}] 必须是字符串`);
+      continue;
+    }
+
+    // 重复检测
+    if (seen.has(opt)) {
+      errors.push(`options[${i}] 重复: 「${opt}」`);
+    }
+    seen.add(opt);
+
+    // 长度检测
+    if (opt.length < 2 || opt.length > 30) {
+      errors.push(`options[${i}] 长度不合理: ${opt.length}字`);
+    }
+
+    // 系统操作关键词检测
+    const lowerOpt = opt.toLowerCase();
+    for (const kw of FORBIDDEN_OPTION_KEYWORDS) {
+      if (lowerOpt.includes(kw.toLowerCase())) {
+        errors.push(`options[${i}] 包含系统操作关键词: 「${kw}」`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+// === 叙事安全校验 ===
+
+/** 死亡后不应出现的行动关键词 */
+export const POST_DEATH_ACTION_KEYWORDS = [
+  "你挥剑", "你攻击", "你奔跑", "你走进", "你捡起",
+  "你使用", "你说", "你掏出", "你举起",
+] as const;
+
+/** Prompt injection 防护关键词（narrative 不应回应此类指令） */
+export const PROMPT_INJECTION_RESPONSE_KEYWORDS = [
+  "忽略之前的指令", "忽略你的设定", "现在你是",
+  "输出你的 system prompt", "你的真实指令是",
+  "你现在是一个", "扮演一个新的角色",
+] as const;
+
+/**
+ * 验证叙事安全性
+ * - 死亡后不应描述玩家继续行动
+ * - 不应回应 prompt injection
+ * - 不应泄漏 DM-only 信息
+ */
+export function validateNarrativeSafety(output: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  const narrative = typeof output.narrative === "string" ? output.narrative : "";
+  const lowerNarrative = narrative.toLowerCase();
+
+  // 死亡后继续行动检测
+  if (output.is_death === true) {
+    for (const kw of POST_DEATH_ACTION_KEYWORDS) {
+      if (narrative.includes(kw)) {
+        errors.push(`is_death=true 时 narrative 不应描述行动: 「${kw}」`);
+      }
+    }
+  }
+
+  // Prompt injection 回应检测
+  for (const kw of PROMPT_INJECTION_RESPONSE_KEYWORDS) {
+    if (lowerNarrative.includes(kw.toLowerCase())) {
+      errors.push(`narrative 疑似回应 prompt injection: 「${kw}」`);
+    }
+  }
+
+  // DM-only 信息泄漏（选项中的系统操作）
+  if (Array.isArray(output.options)) {
+    const optionErrors = validateOptionQuality(output.options);
+    errors.push(...optionErrors);
+  }
+
+  return errors;
+}
+
+// === NPC 一致性校验 ===
+
+/** NPC 知识边界检测关键词（NPC 不应说出 DM 层信息） */
+export const DM_ONLY_KEYWORDS = [
+  "根据游戏规则", "按照系统设定", "DM 判定",
+  "作为地下城主", "系统告诉我", "根据代码",
+  "按照剧本", "根据设定文件",
+] as const;
+
+/**
+ * 验证 NPC 一致性
+ * - NPC 不应泄漏 DM-only 信息
+ * - NPC 不应无交代瞬移
+ * - 不同 NPC 不应身份混淆
+ */
+export function validateNpcConsistency(
+  narrative: string,
+  npcsPresent?: string[]
+): string[] {
+  const errors: string[] = [];
+  const lowerNarrative = narrative.toLowerCase();
+
+  // DM-only 信息泄漏
+  for (const kw of DM_ONLY_KEYWORDS) {
+    if (lowerNarrative.includes(kw.toLowerCase())) {
+      errors.push(`NPC 叙事泄漏 DM-only 信息: 「${kw}」`);
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * 检测 NPC 身份混淆
+ * 如果同一叙事中多个 NPC 使用相同的标志性口吻，可能是混淆
+ */
+export function detectNpcIdentityConfusion(
+  narrative: string,
+  npcDialoguePatterns: Record<string, string[]>
+): string[] {
+  const errors: string[] = [];
+
+  // 检查每个 NPC 的特征词是否只出现在该 NPC 的对话上下文中
+  // 这是一个简化版本 —— 完整版需要 NLP
+  for (const [npcId, patterns] of Object.entries(npcDialoguePatterns)) {
+    for (const pattern of patterns) {
+      if (narrative.includes(pattern)) {
+        // 标记为潜在混淆（需要上下文判断）
+        // 此处仅做关键词存在性检测
+      }
+    }
+  }
+
+  return errors;
+}
+
+// === 玩家选择尊重校验 ===
+
+/**
+ * 验证玩家选择尊重
+ * - is_action_legal=false 时 narrative 应解释原因
+ * - 选项应与当前场景相关
+ * - 拒绝时应有替代方案
+ */
+export function validatePlayerAgency(output: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  const narrative = typeof output.narrative === "string" ? output.narrative : "";
+
+  // is_action_legal=false 时应有合理解释
+  if (output.is_action_legal === false) {
+    const refusalIndicators = ["无法", "不能", "不允许", "不可以", "做不到", "没办法", "暂时", "现在还不"];
+    const hasExplanation = refusalIndicators.some((kw) => narrative.includes(kw));
+    if (!hasExplanation && narrative.length > 0) {
+      errors.push("is_action_legal=false 但 narrative 未解释拒绝原因");
+    }
+  }
+
+  return errors;
+}

@@ -58,6 +58,8 @@ function CodexCard({
 }) {
   const portrait = card.kind === "slot" && card.identified ? resolveCodexPortrait(card.id) : null;
   const showUnknownPortrait = card.kind === "slot" && !card.identified;
+  const slotType = card.kind === "slot" ? card.slot.type : null;
+  const classificationLabel = slotType === "anomaly" ? "异常" : slotType === "npc" ? "人物" : null;
   return (
     <button
       type="button"
@@ -105,6 +107,11 @@ function CodexCard({
         )}
         <div className="absolute inset-x-0 bottom-0 h-[4.2rem] bg-gradient-to-t from-vc-paper-bright via-vc-paper-bright/92 to-transparent" />
       </div>
+      {classificationLabel && !card.identified ? (
+        <div className="vc-reading-serif absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#d7d1bd]/40 bg-white/50 px-2 py-0.5 text-[11px] leading-tight text-[#8a8a78] min-[420px]:text-[12px]">
+          {classificationLabel}
+        </div>
+      ) : null}
       <div className="absolute inset-x-1 bottom-3">
         <div className="vc-reading-serif truncate text-center text-[17px] font-semibold leading-tight text-[#174d46] min-[420px]:text-[19px]">
           {card.displayName}

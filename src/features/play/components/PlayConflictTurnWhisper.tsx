@@ -17,6 +17,7 @@ export function PlayConflictTurnWhisper({ vm }: { vm: ConflictFeedbackViewModel 
       </p>
       <ul className="mt-3 space-y-2.5 text-[13px] leading-relaxed text-slate-600">
         <li>{vm.opportunityLine}</li>
+        {vm.injuryLine ? <li>{vm.injuryLine}</li> : null}
         <li>{vm.costLine}</li>
         <li>
           <span className="font-medium text-slate-500">落点</span> — {vm.resultTierLabel}：{vm.resultTierWhisper}

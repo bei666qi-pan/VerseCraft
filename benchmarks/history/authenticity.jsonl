@@ -1,0 +1,5 @@
+{"suite":"authenticity","mode":"mock","total":17,"pass":0,"passRate":0,"gate":"fail","timestamp":"2026-07-08T15:23:52.879Z","gitSha":"ref: re"}
+{"suite":"authenticity","mode":"mock","total":17,"pass":0,"passRate":0,"gate":"fail","timestamp":"2026-07-08T15:24:22.328Z","gitSha":"ref: re"}
+{"suite":"authenticity","mode":"mock","total":17,"pass":0,"passRate":0,"gate":"fail","timestamp":"2026-07-08T15:25:11.567Z","gitSha":"ref: re"}
+{"suite":"authenticity","mode":"mock","total":17,"pass":0,"passRate":0,"gate":"fail","timestamp":"2026-07-08T15:25:45.227Z","gitSha":"ref: re"}
+{"suite":"authenticity","mode":"mock","total":17,"pass":0,"passRate":0,"gate":"fail","timestamp":"2026-07-08T15:26:17.365Z","gitSha":"ref: re"}

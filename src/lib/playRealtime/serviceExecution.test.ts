@@ -469,3 +469,91 @@ test("weaponize rejects when weapon slot occupied (unique weapon slot)", () => {
   assert.equal(out.is_action_legal, false);
   assert.ok(String(out.narrative).includes("武器栏") || String(out.narrative).includes("卸下"));
 });
+
+test("forge success narrative reflects originium cost (叙事-扣除对齐)", () => {
+  const out = applyB1ServiceExecutionGuard({
+    dmRecord: {
+      is_action_legal: true,
+      sanity_damage: 0,
+      narrative: "电工老刘帮你完成了锻造。",
+      is_death: false,
+      player_location: "B1_PowerRoom",
+    },
+    latestUserInput: "我使用 forge_recipe_flashlight_battery 进行锻造",
+    playerContext:
+      "用户位置[B1_PowerRoom]。行囊道具：手电[I-C03|C]，备用电池[I-C12|C]。原石[9]。NPC当前位置：N-008@B1_PowerRoom。",
+    clientState: {
+      v: 1,
+      turnIndex: 22,
+      playerLocation: "B1_PowerRoom",
+      time: { day: 0, hour: 12 },
+      stats: { sanity: 30, agility: 30, luck: 30, charm: 30, background: 30 },
+      originium: 9,
+      inventoryItemIds: ["I-C03", "I-C12"],
+      warehouseItemIds: [],
+      equippedWeapon: null,
+      weaponBag: [],
+      currentProfession: null,
+      worldFlags: [],
+      presentNpcIds: ["N-008"],
+    },
+  });
+  // 锻造成功，currency_change 为负（扣原石）
+  const forgeCost = out.currency_change as number;
+  assert.ok(forgeCost < 0, `expected negative currency_change, got ${forgeCost}`);
+  // 叙事应反映花费（模型原始叙事可能被覆写，但 guard 应确保叙事包含花费提示）
+  assert.equal(out.is_action_legal, true, "forge should be legal with sufficient originium");
+  const consumed = Array.isArray(out.consumed_items) ? out.consumed_items : [];
+  assert.ok(consumed.length > 0, "forge should consume input items");
+});
+
+test("weapon repair narrative reflects originium cost (叙事-扣除对齐)", () => {
+  const out = applyB1ServiceExecutionGuard({
+    dmRecord: {
+      is_action_legal: true,
+      sanity_damage: 0,
+      narrative: "电工老刘帮你维护了武器。",
+      is_death: false,
+      player_location: "B1_PowerRoom",
+    },
+    latestUserInput: "我在配电间修复主手武器",
+    playerContext:
+      "用户位置[B1_PowerRoom]。行囊道具：防爆手电筒[I-C03|C]。仓库物品：配电间的绝缘胶带[W-B101]。主手武器[WPN-003|稳定40|反制mirror/direction|模组无|灌注无|污染35|可修复1]。原石[4]。NPC当前位置：N-008@B1_PowerRoom。",
+    clientState: {
+      v: 1,
+      turnIndex: 23,
+      playerLocation: "B1_PowerRoom",
+      time: { day: 0, hour: 13 },
+      stats: { sanity: 30, agility: 30, luck: 30, charm: 30, background: 30 },
+      originium: 4,
+      inventoryItemIds: ["I-C03"],
+      warehouseItemIds: ["W-B101"],
+      equippedWeapon: {
+        id: "WPN-003",
+        name: "测试武器",
+        description: "d",
+        counterThreatIds: [],
+        counterTags: ["mirror", "direction"],
+        stability: 40,
+        calibratedThreatId: null,
+        modSlots: ["core", "surface"],
+        currentMods: [],
+        currentInfusions: [],
+        contamination: 35,
+        repairable: true,
+      },
+      weaponBag: [],
+      currentProfession: null,
+      worldFlags: [],
+      presentNpcIds: ["N-008"],
+    },
+  });
+  // 维护成功，currency_change 为负
+  const repairCost = out.currency_change as number;
+  assert.ok(repairCost < 0, `expected negative currency_change, got ${repairCost}`);
+  // 武器状态应被更新
+  const updates = Array.isArray(out.weapon_updates) ? out.weapon_updates : [];
+  assert.ok(updates.length > 0, "weapon_updates should be present");
+  const firstUpdate = updates[0] as { stability?: number } | undefined;
+  assert.ok(firstUpdate?.stability && firstUpdate.stability > 40, "stability should improve after repair");
+});

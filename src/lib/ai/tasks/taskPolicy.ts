@@ -216,6 +216,19 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
+  EVAL_JUDGE: {
+    task: "EVAL_JUDGE",
+    primaryRole: CONTROL,
+    fallbackRoles: [MAIN],
+    stream: false,
+    // Judge output is small structured JSON; keep tight.
+    maxTokens: 1024,
+    temperature: 0,
+    // Judges should be fast and cheap.
+    timeoutMs: 15_000,
+    budgetLevel: "low",
+    responseFormatJsonObject: true,
+  },
 };
 
 /** Roles that must never run under a given task (enforced before network). */
@@ -234,10 +247,8 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
   DIRECTOR_PLAN_CRITIC: new Set([REASONER, ENHANCE]),
   DEV_ASSIST: new Set([ENHANCE]),
   MEMORY_COMPRESSION: new Set([ENHANCE]),
+  EVAL_JUDGE: new Set([REASONER, ENHANCE]),
 };
-
-/** @deprecated Use TASK_ROLE_FORBIDDEN */
-export const TASK_MODEL_FORBIDDEN = TASK_ROLE_FORBIDDEN;
 
 /**
  * Tool-calling（function calling）白名单：只允许离线 / worker 链路。
@@ -400,9 +411,6 @@ export function resolveOrderedRoleChain(
   }
   return configured;
 }
-
-/** @deprecated Use resolveOrderedRoleChain */
-export const resolveOrderedModelChain = resolveOrderedRoleChain;
 
 export function resolveFallbackPolicy(
   task: TaskType,

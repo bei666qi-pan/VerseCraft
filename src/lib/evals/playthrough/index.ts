@@ -36,7 +36,17 @@ export {
   checkSoftlock,
   createInitialStateSnapshot,
   detectNpcResurrections,
+  detectNarrativeRepetitions,
+  detectStateNarrativeContradictions,
+  detectNarrativeOriginiumInconsistency,
+  detectWeaponUpdateConsistency,
+  detectProfessionChangeConsistency,
+  detectNpcStateChurn,
+  detectRelationshipDrift,
 } from "./invariants";
+export type { NpcResurrectionResult, NarrativeRepetitionResult, StateNarrativeContradiction, SoftlockCheckResult, NarrativeOriginiumInconsistency, WeaponUpdateInconsistency, ProfessionConsistencyIssue, NpcStateChurnResult, RelationshipDriftResult } from "./invariants";
+
+export { applyDmJsonToState } from "./stateApply";
 
 export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
 

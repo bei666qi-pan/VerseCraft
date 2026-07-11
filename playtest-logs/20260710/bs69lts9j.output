@@ -1,0 +1,15 @@
+
+=== Playtest Boundary Runner ===
+Base: http://localhost:666
+Personas: 速通型玩家
+Session: (首次)
+Concurrency: 5 | MaxSteps: 1000 | SoftlockThreshold: 60
+
+  [速通型玩家] 启动 session=playtest-speedrunner-1783650420365-1 maxSteps=1000
+  [速通型玩家] Step 1/1000: "打开门进入前方房间..." (LLM 920ms)
+  [速通型玩家] Step 2/1000: "推门进入前方房间..." (LLM 720ms)
+  [速通型玩家] Step 3/1000: "检查房间是否有出口..." (LLM 700ms)
+  [速通型玩家] Step 25/1000: "检查背包里的钥匙和地图..." (LLM 917ms)
+  [速通型玩家] Step 50/1000: "检查走廊天花板是否有活板门..." (LLM 1202ms)
+  [速通型玩家] Step 75/1000: "搜索祭坛上的符文..." (LLM 1333ms)
+  [速通型玩家] Step 100/1000: "拉动石台上的拉杆..." (LLM 1240ms)

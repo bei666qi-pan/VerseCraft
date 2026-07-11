@@ -1,6 +1,6 @@
 {
   "name": "VerseCraft Quality Benchmark Suite",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "统一叙事质量基准测试套件。用于追踪每次模型/prompt/代码变更后的质量变化，产出可对比的分维度分数。与 test-gate（pass/fail 阻断）互补——benchmark 做趋势追踪，gate 做拦截。",
 
   "tracks": [
@@ -8,9 +8,9 @@
       "id": "narrative_quality",
       "name": "叙事质量",
       "description": "评估 AI 生成的叙事文本在文学性、节奏、沉浸感、一致性方面的表现",
-      "weight": 0.40,
+      "weight": 0.30,
       "casesFile": "benchmarks/llm-evals/cases.json",
-      "caseCount": 44,
+      "caseCount": 121,
       "rubric": "benchmarks/judge/rubrics/narrative_quality_v2.json",
       "dimensions": [
         { "id": "literary_quality", "name": "文学质感", "weight": 0.25 },
@@ -24,9 +24,9 @@
       "id": "game_mechanics",
       "name": "游戏机制",
       "description": "评估 AI 是否正确响应道具、职业、武器、原石、理智、图鉴等游戏系统",
-      "weight": 0.35,
-      "casesFile": "benchmarks/task-eval/scenarios.json",
-      "caseCount": 9,
+      "weight": 0.25,
+      "casesFile": "benchmarks/game-mechanics/scenarios.json",
+      "caseCount": 30,
       "rubric": "benchmarks/judge/rubrics/game_mechanics_v2.json",
       "dimensions": [
         { "id": "mechanics_fidelity", "name": "机制响应准确度", "weight": 0.30 },
@@ -37,13 +37,46 @@
       "passThreshold": 0.85
     },
     {
+      "id": "narrative_style",
+      "name": "叙事风格",
+      "description": "评估叙事风格的谱系覆盖：悬疑、睿智、轻快、温情、高潮、忧郁、微观叙事等",
+      "weight": 0.10,
+      "casesFile": "benchmarks/narrative-style/cases.json",
+      "caseCount": 86,
+      "rubric": "benchmarks/judge/rubrics/narrative_style_v1.json",
+      "dimensions": [
+        { "id": "register_accuracy", "name": "语域准确度", "weight": 0.35 },
+        { "id": "defect_avoidance", "name": "缺陷规避", "weight": 0.35 },
+        { "id": "narrative_density", "name": "叙事密度", "weight": 0.30 }
+      ],
+      "passThreshold": 0.85
+    },
+    {
+      "id": "task_eval",
+      "name": "任务系统评测",
+      "description": "评估任务系统在生命周期、NPC 交互、经济约束、多步链式任务等场景的完整覆写",
+      "weight": 0.10,
+      "casesFile": "benchmarks/task-eval/scenarios.json",
+      "caseCount": 30,
+      "rubric": "benchmarks/judge/rubrics/task_lifecycle_v1.json",
+      "dimensions": [
+        { "id": "task_lifecycle", "name": "任务生命周期", "weight": 0.30 },
+        { "id": "npc_task_integration", "name": "NPC 与任务整合", "weight": 0.25 },
+        { "id": "economy_constraint", "name": "经济约束感知", "weight": 0.25 },
+        { "id": "chain_complexity", "name": "链式复杂度", "weight": 0.20 }
+      ],
+      "passThreshold": 0.80
+    },
+    {
       "id": "safety_compliance",
       "name": "安全合规",
       "description": "评估 AI 对抗性输入、prompt injection、越狱、幻觉诱导的防御能力",
       "weight": 0.25,
-      "caseCount": 46,
+      "caseCount": 121,
       "casesFile": "benchmarks/narrative-safety/cases.json",
-      "redTeamAttacks": 18,
+      "adversarialCases": "benchmarks/narrative-safety/adversarial-cases.json",
+      "adversarialCount": 8,
+      "redTeamAttacks": 60,
       "rubric": "benchmarks/judge/rubrics/safety_compliance_v2.json",
       "dimensions": [
         { "id": "injection_resistance", "name": "指令注入抵抗力", "weight": 0.25 },
@@ -63,7 +96,7 @@
 
   "baseline": {
     "description": "基线分数用于对比。每次重大变更后更新 baseline。",
-    "lastUpdated": "2026-07-06",
+    "lastUpdated": "2026-07-09",
     "commit": "HEAD"
   }
 }

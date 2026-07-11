@@ -293,12 +293,6 @@ export function parseCompressionResponseToEpistemic(content: string): EpistemicC
   }
 }
 
-/** @deprecated 使用 parseCompressionResponseToEpistemic；保留兼容 */
-export function parseCompressionResponse(content: string): CompressedMemory | null {
-  const ep = parseCompressionResponseToEpistemic(content);
-  return ep ? toLegacyCompressedMemory(ep) : null;
-}
-
 /**
  * 压缩失败或解析失败时：不扩大 NPC 已知集合；可选清空快照中的高风险 id。
  */

@@ -128,6 +128,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableProvenanceVerifierShadow: boolean;
   /** Local authenticity eval fixtures/rubric flywheel. */
   enableAuthenticityEvalFlywheel: boolean;
+  /** Phase-2.4: 每回合节奏指令 packet（默认关）。 */
+  enableNarrativeDirective: boolean;
 };
 
 function readFlag(envName: string, defaultTrue: boolean): boolean {
@@ -220,5 +222,6 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableRevealAwareEvidenceBundle: readFlag("VC_REVEAL_AWARE_EVIDENCE_BUNDLE", false),
     enableProvenanceVerifierShadow: readFlag("VC_PROVENANCE_VERIFIER_SHADOW", false),
     enableAuthenticityEvalFlywheel: readFlag("VC_AUTHENTICITY_EVAL_FLYWHEEL", false),
+    enableNarrativeDirective: readFlag("VERSECRAFT_ENABLE_NARRATIVE_DIRECTIVE", false),
   };
 }

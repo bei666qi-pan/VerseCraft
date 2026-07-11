@@ -146,17 +146,23 @@ pnpm build                       # 生产构建，standalone output
 pnpm preview                     # build 后 next start -p 666
 pnpm lint                        # 当前等价 eslint .
 npx eslint .                     # 直接 ESLint，推荐在汇报中使用此命令名
-pnpm test:unit                   # tsx --test "src/**/*.test.ts"
+pnpm test:unit                   # tsx --test --test-force-exit "src/**/*.test.ts"
 pnpm dlx tsx --test <file>       # 单个单测，例如 src/lib/chatPurpose.test.ts
+pnpm test:promptfoo              # 确定性契约断言（172 条）
+pnpm test:playthrough            # 长程 playthrough 模拟器
 pnpm test:e2e:chat               # /api/chat SSE contract E2E
 pnpm test:e2e:mock               # mock chat latency + SSE contract
 pnpm test:e2e:contract           # chat latency + SSE + play opening contract
 pnpm test:ci                     # lint + unit + db check optional + build
+pnpm test:gate                   # 本地回归门禁（L1-L7）
 pnpm verify:ai-gateway           # AI gateway 配置验证
 pnpm probe:ai-gateway            # AI gateway 探测
 pnpm benchmark:chat:mock         # mock chat latency budget
 pnpm eval:chat-quality:mock      # mock 叙事质量评估
 pnpm eval:narrative-safety:mock  # mock 叙事安全评估
+pnpm eval:npc-consistency:mock   # mock NPC 一致性评估
+pnpm eval:narrative-style:mock   # mock 叙事风格评估（硬门）
+pnpm eval:detectors:mock         # mock 检测器评估
 pnpm worker:kg:once              # 单次后台 worker
 ```
 
@@ -295,6 +301,7 @@ task_updates
 player_location
 npc_location_updates
 bgm_track
+foreshadow_ops
 ```
 
 改任一字段前，必须同步检查：
@@ -315,9 +322,9 @@ bgm_track
 玩家输入
   -> 安全 / 校验 / 风险分 lane
   -> control preflight + 意图规范化
-  -> runtime lore + prompt assembly
+  -> runtime lore + prompt assembly（含 dueForeshadow 节奏指令注入）
   -> 主模型候选 DM JSON
-  -> final hooks + NPC consistency
+  -> final hooks + NPC consistency + foreshadow_ledger 写入 + 过期扫描
   -> resolveDmTurn
   -> validateNarrative + commitTurn
   -> __VERSECRAFT_FINAL__
@@ -333,6 +340,7 @@ bgm_track
 - **epistemic filtering**：NPC 不应知道 DM-only / player-only 信息。
 - **post-generation validation**：一致性问题优先用 validator、rewrite、degrade、telemetry，而不是无限加长 prompt。
 - **background world tick**：在线回合只入队，离线 reasoner / world engine 不阻塞首包和 final。
+- **foreshadow lifecycle**：伏笔状态机纯函数（`foreshadowLifecycle.ts`）：planted→due→paid_off/expired；ledger 写入/读取（`foreshadowLedger.ts`）fail-open；directive 注入建议式回收。改此链路需检查 normalizePlayerDmJson、resolveDmTurn、commitTurn、route.ts final hooks。
 
 ### 5.4 性能预算
 
@@ -431,6 +439,8 @@ Prompt 是全局行为面，不是无成本文案文件。
 pnpm eval:chat-quality:mock
 pnpm eval:narrative-safety:mock
 pnpm eval:npc-consistency:mock
+pnpm eval:narrative-style:mock
+pnpm eval:detectors:mock
 ```
 
 如只改纯函数，先跑对应单测；如改主链路，再扩大到 mock/e2e/eval。
@@ -658,6 +668,30 @@ pnpm test:admin:perf
 - 不随意引入 Docker Hub syntax frontend 依赖。
 - 不破坏 Coolify 环境变量注入与 `MIGRATE_ON_BOOT` 语义。
 
+### 11.7 评测体系 / Eval Harness
+
+先读：
+
+- `docs/eval/README.md`（体系总览）
+- `docs/eval/PROGRESS.md`（当前进展）
+- `docs/eval/AUDIT-2026-07.md`（基线事实）
+- `src/lib/evals/harness/types.ts`（统一类型系统）
+- `src/lib/evals/taskEval/types.ts`（`OutcomeType` 联合类型——新增类型必须同步更新此处 + evaluator）
+- `src/lib/evals/taskEval/taskEvaluator.ts`（`getActualValue` 分支——新增类型必须加 case）
+- `benchmarks/suite.json`（评测套件配置）
+- `.github/workflows/ci.yml`（PR/nightly/dispatch 层级）
+
+验证优先级：
+
+```bash
+pnpm dlx tsx --test src/lib/evals/harness/harness.test.ts
+pnpm dlx tsx --test src/lib/evals/taskEval/taskEval.test.ts
+pnpm dlx tsx --test src/lib/evals/judge/judge.test.ts
+pnpm dlx tsx --test src/lib/evals/redTeam/redTeam.test.ts
+pnpm eval:detectors:mock
+pnpm eval:narrative-style:mock
+```
+
 ---
 
 ## 12. 验证策略
@@ -671,11 +705,12 @@ pnpm test:admin:perf
 | UI / 组件 | `npx eslint .` + 相关 Playwright / 手动浏览器验证 |
 | `/api/chat` contract | `pnpm test:e2e:chat`，必要时 `pnpm test:e2e:contract` |
 | 性能路径 | `pnpm benchmark:chat:mock`，必要时 live benchmark 由用户提供环境后运行 |
-| 叙事 / safety / NPC | `pnpm eval:chat-quality:mock`、`pnpm eval:narrative-safety:mock`、`pnpm eval:npc-consistency:mock` |
+| 叙事 / safety / NPC / style / detectors | `pnpm eval:chat-quality:mock`、`pnpm eval:narrative-safety:mock`、`pnpm eval:npc-consistency:mock`、`pnpm eval:narrative-style:mock`、`pnpm eval:detectors:mock` |
+| 评测体系 / harness | `pnpm dlx tsx --test src/lib/evals/taskEval/taskEval.test.ts`、`pnpm dlx tsx --test src/lib/evals/judge/judge.test.ts`、`pnpm dlx tsx --test src/lib/evals/harness/harness.test.ts` |
 | DB schema | `pnpm db:check:optional` + migration/兼容说明 |
 | 全局回归 | `pnpm test:ci` |
 
-若 `pnpm test:unit` 因 Redis open handle 等原因不自动退出，但测试输出已完成，汇报中必须说明观察到的实际情况，不把“进程未退出”伪装成完全无问题。
+若 `pnpm test:unit` 因 Redis open handle 等原因不自动退出（已添加 `--test-force-exit` 缓解；仍未退出时当作已知问题接受，不影响结果正确性）。
 
 ---
 

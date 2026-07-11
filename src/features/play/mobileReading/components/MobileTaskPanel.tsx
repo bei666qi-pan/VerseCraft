@@ -9,6 +9,8 @@ export function MobileTaskPanel({
   codex,
   highlightTaskIds,
   onClaimTask,
+  taskPanelFirstOpen,
+  onMarkTaskPanelOpened,
 }: MobileTaskPanelProps) {
   return (
     <section
@@ -26,6 +28,8 @@ export function MobileTaskPanel({
           codex={codex}
           highlightTaskIds={highlightTaskIds}
           onClaimTask={onClaimTask}
+          taskPanelFirstOpen={taskPanelFirstOpen}
+          onMarkTaskPanelOpened={onMarkTaskPanelOpened}
         />
       </div>
     </section>

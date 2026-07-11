@@ -29,10 +29,15 @@ import {
   extractRelationshipPatchesFromConsequences,
   applyAutoFailedTasks,
   formatTaskRewardSummary,
+  MAX_ACTIVE_TASKS,
   type GameTaskV2,
   type GameTaskStatus,
   type GameTaskRewardV2,
 } from "@/lib/tasks/taskV2";
+import {
+  checkStatusTransition,
+  isTerminalStatus,
+} from "@/lib/tasks/taskStateMachine";
 import {
   resolveNarrativeInventoryItems,
   resolveNarrativeWarehouseItems,
@@ -653,6 +658,17 @@ export interface GameState extends IntegrityMetaState {
   /** 是否已在叙事中遇到 1F 认证 NPC（路线引导大姐姐 N-010） */
   hasMetProfessionCertifier: boolean;
   _integrity_dirty: boolean;
+  /** 自上次打开任务面板以来，任务新增/更新的计数。>0 时导航栏显示红点。 */
+  _taskUnviewedCount: number;
+  /** 玩家打开任务面板时调用，清零 _taskUnviewedCount 消除红点。 */
+  clearTaskUnviewedCount: () => void;
+  /**
+   * 玩家是否从未打开过任务面板。true = 首次仍待引导，false = 至少打开过一次。
+   * 用于空状态引导文案区分（第一次打开 vs 后续已熟悉）。
+   */
+  _taskPanelFirstOpen: boolean;
+  /** 玩家打开任务面板时调用，标记任务面板已被查看，将 _taskPanelFirstOpen 置为 false。 */
+  markTaskPanelOpened: () => void;
   verifyStateIntegrity: () => Promise<boolean>;
   markMetProfessionCertifier: () => void;
   pushCombatSummaryV1: (x: {
@@ -1089,6 +1105,16 @@ function finalizeTaskMutation(s: GameState, activatedTasks: GameTask[]): Partial
     warehouseCount: reward.warehouse.length,
     equippedWeapon: s.equippedWeapon ?? null,
   });
+
+  // 计算任务变化计数（新任务 + 状态转换），用于导航栏红点
+  const prevById = new Map((s.tasks ?? []).map((t) => [t.id, t]));
+  let changeCount = 0;
+  for (const t of activatedTasks) {
+    const prev = prevById.get(t.id);
+    if (!prev) changeCount++; // 新增任务
+    else if (prev.status !== t.status) changeCount++; // 状态变更
+  }
+
   return {
     tasks: ensureProfessionTrialTasks(activatedTasks, professionState),
     codex: rel.codex,
@@ -1100,6 +1126,7 @@ function finalizeTaskMutation(s: GameState, activatedTasks: GameTask[]): Partial
     ...(reward.granted ? { logs: [...(s.logs ?? []), ...reward.logEntries] } : {}),
     professionState,
     professionNarrativeCues: attachProfessionNarrativeCues(prevProfession, professionState),
+    _taskUnviewedCount: (s._taskUnviewedCount ?? 0) + changeCount,
   };
 }
 
@@ -1263,6 +1290,8 @@ export const useGameStore = create<GameState>()(
       pendingClientAction: null,
       _checksum_fingerprint: "",
       _integrity_dirty: false,
+      _taskUnviewedCount: 0,
+      _taskPanelFirstOpen: true,
       verifyStateIntegrity: async () => {
         const state = get();
         const expected = state._checksum_fingerprint;
@@ -1321,6 +1350,8 @@ export const useGameStore = create<GameState>()(
           ),
         })),
       setActiveMenu: (menu) => set({ activeMenu: menu }),
+      clearTaskUnviewedCount: () => set({ _taskUnviewedCount: 0 }),
+      markTaskPanelOpened: () => set({ _taskPanelFirstOpen: false }),
       recordChapterTurn: (signals) => {
         const state = get();
         const chapterState = normalizeChapterState(state.chapterState);
@@ -1604,6 +1635,7 @@ export const useGameStore = create<GameState>()(
       clearSaveDataKeepLogs: () => {
         clearResumeShadowSnapshot();
         set(() => ({
+          tasks: [],
           isGameStarted: false,
           saveSlots: {},
           inventory: [],
@@ -1622,6 +1654,7 @@ export const useGameStore = create<GameState>()(
       destroySaveData: () => {
         clearResumeShadowSnapshot();
         set({
+          tasks: [],
           logs: [],
           inventory: [],
           warehouse: [],
@@ -1703,17 +1736,29 @@ export const useGameStore = create<GameState>()(
               : normalized;
           const exists = (s.tasks ?? []).find((t) => t.id === normalized.id);
           if (exists) {
+            // 终态锁：已有任务为 completed/failed 时，禁止合并修改
+            const guard = checkStatusTransition(exists, normalized.status);
+            if (!guard.allowed) return {};
             const merged = (s.tasks ?? []).map((t) =>
               t.id === normalized.id ? applyTaskUpdateToTask(t, withLedger) : t
             );
             const activated = activateClaimableHiddenTasks(merged);
             return finalizeTaskMutation(s, activated);
           }
+          // 活跃上限：active + available 超出 MAX_ACTIVE_TASKS 时，新任务静默丢弃
+          const activeCount = (s.tasks ?? []).filter(
+            (t) => t.status === "active" || t.status === "available"
+          ).length;
+          if (activeCount >= MAX_ACTIVE_TASKS) return {};
           const activated = activateClaimableHiddenTasks([...(s.tasks ?? []), withLedger]);
           return finalizeTaskMutation(s, activated);
         }),
       updateTaskStatus: (taskId, status) =>
         set((s) => {
+          const existing = (s.tasks ?? []).find((t) => t.id === taskId);
+          if (!existing) return {};
+          const guard = checkStatusTransition(existing, status);
+          if (!guard.allowed) return {};
           const next = (s.tasks ?? []).map((t) =>
             t.id === taskId ? { ...t, status } : t
           );
@@ -1724,6 +1769,13 @@ export const useGameStore = create<GameState>()(
         set((s) => {
           const patch = normalizeTaskUpdateDraft(taskPatch);
           if (!patch) return {};
+          const existing = (s.tasks ?? []).find((t) => t.id === patch.id);
+          if (!existing) return {};
+          // 终态锁 & 非法转移守卫
+          if (patch.status && patch.status !== existing.status) {
+            const guard = checkStatusTransition(existing, patch.status);
+            if (!guard.allowed) return {};
+          }
           const next = (s.tasks ?? []).map((t) =>
             t.id === patch.id ? applyTaskUpdateToTask(t, patch) : t
           );
@@ -3112,6 +3164,7 @@ export const useGameStore = create<GameState>()(
           journalClues: s.journalClues ?? [],
           escapeMainline: (s as any).escapeMainline ?? null,
           finalNarrative: narrative,
+          tasks: s.tasks ?? [],
         });
         const nextEndingState = transitionEndingState(committed, {
           type: "SETTLEMENT_SNAPSHOT_CREATED",
@@ -3148,6 +3201,7 @@ export const useGameStore = create<GameState>()(
           codex: s.codex ?? {},
           journalClues: s.journalClues ?? [],
           escapeMainline: (s as any).escapeMainline ?? null,
+          tasks: s.tasks ?? [],
         });
         const nextEndingState = transitionEndingState(endingState, {
           type: "SETTLEMENT_SNAPSHOT_CREATED",
@@ -4244,6 +4298,8 @@ export const useGameStore = create<GameState>()(
         warehouse: s.warehouse ?? [],
         originium: s.originium ?? 0,
         tasks: s.tasks ?? [],
+        _taskUnviewedCount: s._taskUnviewedCount ?? 0,
+        _taskPanelFirstOpen: s._taskPanelFirstOpen ?? true,
         journalClues: s.journalClues ?? [],
         playerLocation: s.playerLocation ?? "B1_SafeZone",
         historicalMaxFloorScore: s.historicalMaxFloorScore ?? 0,

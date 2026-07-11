@@ -38,17 +38,6 @@ export type GameTaskStatus =
   | "hidden"
   | "available";
 
-/**
- * 阶段 3：任务「授予/可见」状态（可选字段；保持向后兼容）。
- * 目的：让“系统里有任务”不等于“玩家已被叙事交付并知晓”。
- */
-export type TaskGrantState =
-  | "discovered_but_unoffered"
-  | "narratively_offered"
-  | "accepted_in_story"
-  | "visible_on_board"
-  | "soft_tracked"
-  | "archived_hidden";
 export type GuidanceLevel = "none" | "light" | "standard" | "strong";
 export type TaskDramaticType =
   | "survival"
@@ -168,16 +157,7 @@ export interface GameTaskV2 {
   /** 叙事推进层：暗示 / 人情约定 / 正式结构化追踪 */
   taskNarrativeLayer?: TaskNarrativeLayerKind;
 
-  /**
-   * 阶段 3：授予/可见状态（旧存档无此字段）。
-   * - discovered_but_unoffered: 系统知道有这件事，但叙事里还没人把它压到玩家头上
-   * - narratively_offered: NPC/事件在叙事里提出了这件事，但玩家尚未明确接下
-   * - accepted_in_story: 玩家在叙事里明确接下（或已形成“正在推进”的事实）
-   * - visible_on_board: 允许进入任务板主视图（通常由 accepted_in_story 推进而来）
-   * - soft_tracked: 轻追踪（承诺/风险层可见，但不抢主视图）
-   * - archived_hidden: 已归档隐藏（对玩家不再可见）
-   */
-  grantState?: TaskGrantState;
+  surfaceClass?: TaskSurfaceClass;
 
   /**
    * G3（玩法改良，2026-07）：任务服务端自动失败阈值，按游戏内整点 hourIndex
@@ -213,6 +193,9 @@ export type GameTaskV2Draft = Partial<GameTaskV2> & {
 };
 
 export type GameTaskUpdateDraft = Partial<GameTaskV2> & { id?: unknown };
+
+/** 活跃任务上限（active + available 总上限） */
+export const MAX_ACTIVE_TASKS = 6;
 
 const DEFAULT_REWARD: GameTaskRewardV2 = {
   originium: 0,
@@ -316,18 +299,7 @@ function normalizeTaskType(v: unknown, taskId: string): GameTaskType {
 function normalizeStatus(v: unknown): GameTaskStatus {
   return v === "active" || v === "completed" || v === "failed" || v === "hidden" || v === "available"
     ? v
-    : "active";
-}
-
-function normalizeGrantState(v: unknown): TaskGrantState | undefined {
-  return v === "discovered_but_unoffered" ||
-    v === "narratively_offered" ||
-    v === "accepted_in_story" ||
-    v === "visible_on_board" ||
-    v === "soft_tracked" ||
-    v === "archived_hidden"
-    ? v
-    : undefined;
+    : "available";
 }
 
 function normalizeReward(raw: unknown): GameTaskRewardV2 {
@@ -422,10 +394,6 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
   const shouldStayAsSoftLead = normalizeOptionalBool(dr.shouldStayAsSoftLead);
   const shouldStayAsConversationPromise = normalizeOptionalBool(dr.shouldStayAsConversationPromise);
   const taskNarrativeLayer = normalizeTaskNarrativeLayer(dr.taskNarrativeLayer);
-  const grantStateRaw =
-    (dr as { grantState?: unknown }).grantState ??
-    (dr as { grant_state?: unknown }).grant_state;
-  const grantState = normalizeGrantState(grantStateRaw);
 
   const normalized = applyIssuerDriveDefaults({
     id,
@@ -517,18 +485,8 @@ export function normalizeGameTaskDraft(draft: unknown): GameTaskV2 | null {
     ...(shouldStayAsSoftLead !== undefined ? { shouldStayAsSoftLead } : {}),
     ...(shouldStayAsConversationPromise !== undefined ? { shouldStayAsConversationPromise } : {}),
     ...(taskNarrativeLayer ? { taskNarrativeLayer } : {}),
-    ...(grantState ? { grantState } : {}),
   });
 
-  // 向后兼容 + 产品默认：没有 grantState 时不要把“系统任务”强行当作“玩家已知”。
-  // active 只代表系统开始追踪，默认仍需叙事提出/玩家承接；新手主线等白名单显式写 visible_on_board。
-  if (!normalized.grantState) {
-    if (normalized.status === "active") {
-      normalized.grantState = "narratively_offered";
-    } else {
-      normalized.grantState = "discovered_but_unoffered";
-    }
-  }
   return normalized;
 }
 
@@ -691,13 +649,6 @@ export function normalizeTaskUpdateDraft(draft: unknown): (Partial<GameTaskV2> &
     const v = normalizeTaskNarrativeLayer(du.taskNarrativeLayer);
     if (v) out.taskNarrativeLayer = v;
   }
-  {
-    const raw = (du as { grantState?: unknown }).grantState ?? (du as { grant_state?: unknown }).grant_state;
-    if (raw !== undefined) {
-      const v = normalizeGrantState(raw);
-      if (v) out.grantState = v;
-    }
-  }
   return out;
 }
 
@@ -738,7 +689,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "main_escape_spine",
       title: "走出去（出口主线）",
-      desc: "先把 B1 的命稳住，再向老刘换「能验证」的出口碎片；上楼找欣蓝换许可，最后才谈代价与真门。",
+      desc: "十天之内离开如月公寓——先在 B1 活下来，再用情报换许可，最后付出代价走真门。",
       type: "main",
       issuerId: "SYSTEM",
       issuerName: "公寓残页",
@@ -747,18 +698,17 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "active",
       claimMode: "auto",
       taskNarrativeLayer: "formal_task",
-      grantState: "visible_on_board",
       surfaceClass: "mainline",
       hiddenTriggerConditions: [],
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "现在：找电工老刘把 B1 生存节奏落下来——他会告诉你该问谁、该信哪一句。完成后再去拼「出口碎片」。",
+      nextHint: "去找电工老刘：问他 B1 怎么活、出口碎片从哪换、谁的话能信。每一步都要知道自己在换什么。",
       dramaticType: "escape",
       issuerIntent: "用一条链拴住你：活下去 → 换情报 → 换许可 → 付代价；禁止在楼里无目的闲逛。",
-      playerHook: "你要的不是聊天，是离开；每一步都要知道自己在换什么。",
-      urgencyReason: "第十日的闸门不会等你；没有目标的对话只会把你泡软在 B1。",
-      riskNote: "别把第一个听来的“出口”当真；公寓喜欢喂假希望。",
-      taboo: "别把‘走出去’当作免费通关；代价必然存在。",
+      playerHook: "十天不多，你没时间闲聊——每一步都得知道在换什么。",
+      urgencyReason: "第十日的闸门不会等你；犹豫只会把你泡软在 B1。",
+      riskNote: "别把第一个听来的'出口'当真；公寓喜欢喂假希望。",
+      taboo: "别把'走出去'当作免费通关；代价必然存在。",
       relatedEscapeProgress: "spine:escape_mainline",
       followupSeedCodes: ["escape.route.fragments", "escape.cost.trial"],
       worldConsequences: ["escape:spine_seeded"],
@@ -767,7 +717,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "escape_route_fragments",
       title: "拼出出口路线碎片",
-      desc: "向老刘换至少两条可验证碎片：谁见过地下二层的门、哪条传闻带物证、谁在撒谎。",
+      desc: "向老刘换至少两条可验证碎片：谁见过地下二层的门、哪条传闻带物证、谁在撒谎。空话不值钱。",
       type: "floor",
       goalKind: "commission",
       issuerId: "N-008",
@@ -777,15 +727,14 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "hidden",
       claimMode: "manual",
       taskNarrativeLayer: "formal_task",
-      grantState: "visible_on_board",
       surfaceClass: "commission",
       hiddenTriggerConditions: ["b1_guidance_seeded"],
       npcProactiveGrant: { enabled: true, npcId: "N-008", minFavorability: 0, preferredLocations: ["B1_SafeZone", "B1_PowerRoom"], cooldownHours: 6 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "先复述你在 B1 看到的不对劲，再问他：谁见过 B2 的门、谁能拿出证据。",
+      nextHint: "先复述你在 B1 看到的不对劲（血手印、断表、校徽），再问他：谁见过 B2 的门、谁能拿出证据。",
       dramaticType: "investigation",
-      issuerIntent: "把你从‘听故事’推到‘拿证据’；他讨厌空话。",
-      playerHook: "别把命押在传闻上，押在能验证的东西上。",
+      issuerIntent: "把你从'听故事'推到'拿证据'；他讨厌空话。",
+      playerHook: "别把命押在传闻上，押在能验证的东西上——老刘手里有你缺的第一块拼图。",
       urgencyReason: "B1 的灯随时会灭；灯一灭，路就会变。",
       residueOnComplete: "你获得了第一组可信路线碎片；出口不再只是传说。",
       relatedEscapeProgress: "cond:get_exit_route_map",
@@ -796,7 +745,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "main_escape_b2_access",
       title: "拿到进入地下二层的权限",
-      desc: "不靠蛮力进入地下二层：拿到许可、通行、或让某个守门人愿意放你过去。",
+      desc: "地下二层的门不让你进——得从一楼物业欣蓝手里拿到通行许可，或者找到她愿意放行的理由。白闯的后果你不会想知道。",
       type: "main",
       issuerId: "N-010",
       issuerName: "欣蓝",
@@ -806,10 +755,10 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       hiddenTriggerConditions: ["escape:route_fragment_seeded"],
       npcProactiveGrant: { enabled: true, npcId: "N-010", minFavorability: 0, preferredLocations: ["1F_PropertyOffice"], cooldownHours: 8 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "问她：‘我要去地下二层，你手里有没有“许可”的替代品？’",
+      nextHint: "找到物业欣蓝，直接说：'我要去地下二层，你手里的许可怎么换？'——她会开价，你得决定能不能接。",
       dramaticType: "leverage",
       issuerIntent: "用通行把你绑进她的账本：你每一步，都得拿信息换。",
-      playerHook: "你想进 B2，就得先交出你的一部分自由。",
+      playerHook: "你想进 B2，就得先交出你的一部分自由——欣蓝的账本上，每一笔都记得清清楚楚。",
       urgencyReason: "路线窗口不会长期开放；等门缝闭合再求许可只会更贵。",
       residueOnComplete: "你拿到了进入地下二层的权限线索；门槛开始具象化。",
       relatedEscapeProgress: "cond:obtain_b2_access",
@@ -821,7 +770,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "main_escape_cost_trial",
       title: "支付出口代价（代价试炼）",
-      desc: "出口不是免费的。完成一次代价试炼，证明你愿意‘失去’来换取离开。",
+      desc: "出口不是免费的——北夏会要你交出一样东西来证明决心。割不割、割什么、割了之后怎么活，你自己定。",
       type: "main",
       issuerId: "N-018",
       issuerName: "北夏",
@@ -831,14 +780,14 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       hiddenTriggerConditions: ["escape:b2_access_granted"],
       npcProactiveGrant: { enabled: true, npcId: "N-018", minFavorability: 0, preferredLocations: ["1F_Lobby", "6F_Stairwell"], cooldownHours: 10 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "先问他：‘出口要付什么？我能付到哪一步？’",
+      nextHint: "找到北夏，直接问：'出口要付什么？我能付到哪一步？'——别绕弯子，他不吃这套。",
       dramaticType: "debt_payment",
       issuerIntent: "他不相信白来的胜利；他要你用一次割肉证明决心。",
-      playerHook: "你敢付代价，他就敢给你看门缝。",
+      playerHook: "你敢付代价，他就敢给你看门缝——但你割下去的那块肉，不会长回来。",
       urgencyReason: "越接近门，越会被盯上。",
       taboo: "别试图用花言巧语绕过代价。",
       residueOnComplete: "你付过一次代价；出口不再把你当作观众。",
-      residueOnFail: "你会被当作‘只想占便宜’的人，门槛会更硬。",
+      residueOnFail: "你会被当作'只想占便宜'的人，门槛会更硬。",
       relatedEscapeProgress: "cond:survive_cost_trial",
       canBackfire: true,
       highRiskHighReward: true,
@@ -850,7 +799,7 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "b1_survival_rhythm",
       title: "在B1建立生存节奏",
-      desc: "与老刘把补给、灯火、退路问清楚：这是你在楼里换一切情报的底牌。",
+      desc: "向电工老刘摸清三件事：补给从哪拿、灯灭了往哪躲、哪些话能换情报、哪些话会送命。摸不清这三样，你连今晚都撑不过。",
       type: "floor",
       goalKind: "commission",
       issuerId: "N-008",
@@ -860,7 +809,6 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "active",
       claimMode: "npc_grant",
       taskNarrativeLayer: "formal_task",
-      grantState: "visible_on_board",
       surfaceClass: "commission",
       hiddenTriggerConditions: [],
       npcProactiveGrant: {
@@ -871,15 +819,15 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
         cooldownHours: 3,
       },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "先去储物间问补给，再去配电间问维护——再问一句：楼上的人里谁嘴最硬、谁手里有真东西。",
+      nextHint: "去储物间问补给清单，再去配电间问灯灭了怎么办——最后问一句：楼上谁嘴最硬、谁手里有真东西。",
       dramaticType: "survival",
-      issuerIntent: "把你留在B1的安全边界里活过第一天，同时让你欠下一点人情。",
-      playerHook: "你想往上走，就得先学会在B1把命稳住。",
+      issuerIntent: "让你在B1活过今晚，同时欠他一点人情；他不想再多一具尸体。",
+      playerHook: "你想往上走，就得先学会在B1把命稳住——老刘知道你今晚最该怕什么。",
       urgencyReason: "停电与混乱会吞人；老刘不想再多一具尸体。",
       riskNote: "别乱碰开关；别在他工作时插话。",
-      taboo: "别追问‘线从哪来’。",
+      taboo: "别追问'线从哪来'。",
       residueOnComplete: "你欠老刘一次；他会更愿意提醒你危险细节。",
-      residueOnFail: "他会认为你不听劝，后续帮助会变成冷淡的‘按规矩来’。",
+      residueOnFail: "他会认为你不听劝，后续帮助会变成冷淡的'按规矩来'。",
       relatedNpcIds: ["N-008", "N-014"],
       relatedLocationIds: ["B1_PowerRoom", "B1_Storage"],
       canBackfire: true,
@@ -903,7 +851,6 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       floorTier: "B1",
       guidanceLevel: "standard",
       taskNarrativeLayer: "conversation_promise",
-      grantState: "narratively_offered",
       status: "hidden",
       claimMode: "manual",
       hiddenTriggerConditions: ["b1_guidance_seeded"],
@@ -923,13 +870,12 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     normalizeGameTaskDraft({
       id: "floor_1f_probe",
       title: "一楼试探性探索",
-      desc: "在1F完成一次试探性探索，带回‘可验证’的线索或物证。",
+      desc: "在1F完成一次试探性探索，带回'可验证'的线索或物证。",
       type: "floor",
       issuerId: "N-008",
       issuerName: "电工老刘",
       floorTier: "1",
       taskNarrativeLayer: "formal_task",
-      grantState: "visible_on_board",
       status: "hidden",
       claimMode: "manual",
       hiddenTriggerConditions: ["escape:route_fragment_seeded"],
@@ -939,11 +885,11 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       nextHint: "先去1F门厅观察物业与登记台的视线，再决定要不要接欣蓝的话茬。",
       dramaticType: "investigation",
       issuerIntent: "用一条可验证线索换取你继续留在B1互助圈的资格。",
-      playerHook: "你带回来的不是‘故事’，是能落地的证据。",
-      urgencyReason: "上行路线的风险越来越高，B1需要早一点知道哪里开始‘不对’。",
+      playerHook: "你带回来的不是'故事'，是能落地的证据。",
+      urgencyReason: "上行路线的风险越来越高，B1需要早一点知道哪里开始'不对'。",
       riskNote: "你能在门厅硬顶一句，但未必该顶——有些眼睛专门等新人出错。",
-      residueOnComplete: "B1的人会更愿意把你当‘能合作的人’。",
-      residueOnFail: "你会被当作‘冲动的新手’，别人会更谨慎地跟你交换信息。",
+      residueOnComplete: "B1的人会更愿意把你当'能合作的人'。",
+      residueOnFail: "你会被当作'冲动的新手'，别人会更谨慎地跟你交换信息。",
       relatedNpcIds: ["N-008", "N-010"],
       relatedLocationIds: ["1F_Lobby", "1F_PropertyOffice"],
       reward: {
@@ -953,8 +899,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     }),
     normalizeGameTaskDraft({
       id: "char_1f_stamp_leverage",
-      title: "借到一枚“通行印章”",
-      desc: "从欣蓝的登记口路径里换到一次性的“通行许可”——不一定是明文的印章，也可以是她一句不点破的放行。",
+      title: "借到一枚'通行印章'",
+      desc: "从欣蓝的登记口路径里换到一次性的'通行许可'——不一定是明文的印章，也可以是她一句不点破的放行。",
       type: "character",
       issuerId: "N-010",
       issuerName: "欣蓝",
@@ -973,18 +919,17 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "hidden",
       claimMode: "manual",
       hiddenTriggerConditions: ["unlock_floor_2f_path"],
-      grantState: "narratively_offered",
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "先说明你的目标，再问‘有没有更稳妥的通行方式’。",
+      nextHint: "先说明你的目标，再问'有没有更稳妥的通行方式'。",
       dramaticType: "leverage",
-      issuerIntent: "用‘许可’把你绑定进她的路线账本里：你每前进一步，都要回报一次信息。",
+      issuerIntent: "用'许可'把你绑定进她的路线账本里：你每前进一步，都要回报一次信息。",
       playerHook: "你想省一次命，就得先交一次信息。",
-      urgencyReason: "有些门不是打不开，而是‘不该由你去开’。",
+      urgencyReason: "有些门不是打不开，而是'不该由你去开'。",
       taboo: "别让她替你做选择再推卸后果。",
       hiddenMotive: "她在筛选你是否值得进入更高层路线。",
       residueOnComplete: "你欠她一条能验证的线索；她会更直白地给你路线建议。",
-      residueOnFail: "她会把你归类为‘不稳定变量’，建议会变得更保守。",
+      residueOnFail: "她会把你归类为'不稳定变量'，建议会变得更保守。",
       relatedNpcIds: ["N-010"],
       relatedLocationIds: ["1F_PropertyOffice"],
       canBackfire: true,
@@ -1015,10 +960,9 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "hidden",
       claimMode: "manual",
       hiddenTriggerConditions: ["route.permit.seeded"],
-      grantState: "narratively_offered",
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "找一个有镜子的角落；先问他‘你在巡什么’再接话。",
+      nextHint: "找一个有镜子的角落；先问他'你在巡什么'再接话。",
       dramaticType: "debt_payment",
       issuerIntent: "他不喜欢欠人情，但这次需要你的眼睛——欠下就会记得还。",
       playerHook: "你帮他稳住边界，他会在关键时刻帮你避开一刀。",
@@ -1035,8 +979,8 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
     }),
     normalizeGameTaskDraft({
       id: "char_newcomer_coverup",
-      title: "帮她把‘漏掉的残页’圆过去",
-      desc: "当灵伤‘不小心’漏掉入住须知残页的一角时，用不露痕迹的方式替她补上，避免她被泡层口径追责。",
+      title: "帮她把'漏掉的残页'圆过去",
+      desc: "当灵伤'不小心'漏掉入住须知残页的一角时，用不露痕迹的方式替她补上，避免她被泡层口径追责。",
       type: "character",
       issuerId: "N-020",
       issuerName: "灵伤",
@@ -1055,23 +999,22 @@ export function createStageOneStarterTasks(): GameTaskV2[] {
       status: "hidden",
       claimMode: "manual",
       hiddenTriggerConditions: ["b1_guidance_seeded"],
-      grantState: "narratively_offered",
       npcProactiveGrant: { enabled: false, npcId: "", minFavorability: 0, preferredLocations: [], cooldownHours: 0 },
       npcProactiveGrantLastIssuedHour: null,
-      nextHint: "别直接纠正她；先顺着她的话补一句‘有人跟我提过…’。",
+      nextHint: "别直接纠正她；先顺着她的话补一句'有人跟我提过…'。",
       dramaticType: "coverup",
       issuerIntent: "她要补给线绩效，也要你继续信她；让你先答应，再用残页和口径催你兑现。",
       playerHook: "你帮她一次，她就会在某个细节上放你一马。",
-      urgencyReason: "泡层审计会查漏；查到就会‘回收’她这条人性缓冲。",
-      taboo: "别追问‘你是人吗’。",
+      urgencyReason: "泡层审计会查漏；查到就会'回收'她这条人性缓冲。",
+      taboo: "别追问'你是人吗'。",
       hiddenMotive: "她在执行泡层口径，同时害怕声纹程序错误。",
-      residueOnComplete: "她会更愿意给你‘看起来无害’但关键的小提醒。",
+      residueOnComplete: "她会更愿意给你'看起来无害'但关键的小提醒。",
       residueOnFail: "她会变得更甜、更假，也更危险；对你的话会开始记录。",
       relatedNpcIds: ["N-020", "N-010"],
       relatedLocationIds: ["1F_Lobby", "1F_PropertyOffice"],
       canBackfire: true,
       backfireConsequences: ["rel:N-020:trust:-4", "rel:N-010:trust:-2"],
-      spokenDeliveryStyle: "句尾上扬、像在哄人；漏掉残页关键信息时会装作‘忘了’。",
+      spokenDeliveryStyle: "句尾上扬、像在哄人；漏掉残页关键信息时会装作'忘了'。",
       reward: { originium: 1 },
       worldConsequences: ["hook:newcomer_coverup_seeded"],
     }),

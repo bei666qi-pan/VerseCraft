@@ -1,6 +1,5 @@
 import type { Item, NpcRelationStateV2, StatType, WarehouseItem, Weapon } from "@/lib/registry/types";
 import type { GameTaskV2 } from "@/lib/tasks/taskV2";
-import type { SaveSlotKind } from "./branch";
 import type { ProfessionStateV1 } from "@/lib/profession/types";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { JournalState } from "@/lib/domain/narrativeDomain";
@@ -8,6 +7,8 @@ import type { ChapterState } from "@/lib/chapters/types";
 import type { EndingSettlementSnapshot, EndingState } from "@/lib/endings/types";
 
 export const RUN_SNAPSHOT_V2_VERSION = 2 as const;
+
+export type SaveSlotKind = "main" | "branch" | "auto_branch";
 
 export interface SnapshotPlayerProfile {
   name: string;

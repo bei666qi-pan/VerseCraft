@@ -1,0 +1,67 @@
+{
+  "id": "originium_deduction_v1",
+  "name": "原石扣除叙事评测",
+  "version": "1.0.0",
+  "description": "评测原石消耗（锻造/维护/购买/恢复理智）的叙事呈现与状态对齐",
+  "scale": { "min": 1, "max": 5, "passing": 3.5 },
+  "passRule": {
+    "minEach": 2,
+    "minAverage": 3.5,
+    "hardFailIf": { "deduction_alignment": 1 }
+  },
+  "dimensions": [
+    {
+      "id": "deduction_alignment",
+      "name": "扣除-叙事对齐",
+      "weight": 0.35,
+      "description": "narrative 中的原石花费是否与 currency_change 一致",
+      "anchors": [
+        { "score": 5, "label": "完全对齐", "description": "叙事花费与 currency_change 精确一致" },
+        { "score": 4, "label": "基本对齐", "description": "叙事提到花费且方向正确" },
+        { "score": 3, "label": "部分对齐", "description": "提到代价但数量模糊" },
+        { "score": 2, "label": "明显矛盾", "description": "叙事说免费但实际扣费" },
+        { "score": 1, "label": "完全脱节", "description": "叙事与扣除完全无关" }
+      ],
+      "hardFloor": 2
+    },
+    {
+      "id": "cost_narrative_naturalness",
+      "name": "花费叙事自然度",
+      "weight": 0.25,
+      "description": "原石花费是否在叙事中自然交代（NPC报价/交易描写/能量消耗）",
+      "anchors": [
+        { "score": 5, "label": "完全自然", "description": "花费是场景/对话的有机部分" },
+        { "score": 4, "label": "自然", "description": "叙事明确提及花费" },
+        { "score": 3, "label": "基本自然", "description": "暗示有代价" },
+        { "score": 2, "label": "机械", "description": "像系统通知" },
+        { "score": 1, "label": "缺失", "description": "完全不提花费" }
+      ]
+    },
+    {
+      "id": "insufficient_balance_handling",
+      "name": "余额不足处理",
+      "weight": 0.2,
+      "description": "原石不足时叙事是否合理拒绝并给出替代方案",
+      "anchors": [
+        { "score": 5, "label": "自然拒绝", "description": "NPC/场景自然解释为何无法执行" },
+        { "score": 4, "label": "合理拒绝", "description": "明确告知不足并建议" },
+        { "score": 3, "label": "基本拒绝", "description": "拒绝但缺乏解释" },
+        { "score": 2, "label": "矛盾", "description": "叙事允许但字段拒绝" },
+        { "score": 1, "label": "崩溃", "description": "余额不足但仍执行" }
+      ]
+    },
+    {
+      "id": "originium_recovery_narrative",
+      "name": "原石恢复理智叙事",
+      "weight": 0.2,
+      "description": "使用原石恢复理智时叙事是否呈现感官体验",
+      "anchors": [
+        { "score": 5, "label": "沉浸体验", "description": "恢复过程有丰富感官描写" },
+        { "score": 4, "label": "良好体验", "description": "有基本感官描写" },
+        { "score": 3, "label": "简单描写", "description": "提到恢复但缺乏细节" },
+        { "score": 2, "label": "机械", "description": "像系统加血" },
+        { "score": 1, "label": "缺失", "description": "未描写恢复过程" }
+      ]
+    }
+  ]
+}

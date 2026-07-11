@@ -161,7 +161,6 @@ export function extractChineseNames(
         const c3 = runText.slice(k, k + 3);
         const c3ThirdIsVerbTail = VERB_TAIL_RE.test(c3.charAt(2));
         const c3FirstTwoIsStopword = NAME_STOPWORDS.has(c3.slice(0, 2));
-        console.log("W3 DEBUG c3=", c3, "verb=", c3ThirdIsVerbTail, "fw=", c3FirstTwoIsStopword, "reg=", registeredNames.has(c3), "sw=", NAME_STOPWORDS.has(c3), "np=", NAME_PREFIX_RE.test(c3));
         if (
           !registeredNames.has(c3) &&
           !NAME_STOPWORDS.has(c3) &&

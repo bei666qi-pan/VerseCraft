@@ -1,5 +1,12 @@
-import fs from "node:fs";
+/**
+ * Narrative Safety Eval — 薄壳
+ *
+ * 核心逻辑（probeChatSse + evaluateNarrativeSafetyCase）保持不变。
+ * CLI/日志/输出/历史由 harness 接管，输出格式与迁移前兼容。
+ */
+
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import {
   evaluateNarrativeSafetyCase,
@@ -7,6 +14,7 @@ import {
   type NarrativeSafetyCaseResult,
   type NarrativeSafetyEvalCase,
 } from "../src/lib/evals/narrativeSafetyRubric";
+import { parseEvalCli, evalLog, writeJson, appendHistory, getGitSha } from "../src/lib/evals/harness";
 
 type EvalMode = "mock" | "live";
 
@@ -20,34 +28,18 @@ type CliOptions = {
 const root = path.resolve(__dirname, "..");
 const defaultCasesPath = path.join(root, "benchmarks", "narrative-safety", "cases.json");
 
-function getArgValue(args: string[], name: string): string | null {
-  const prefix = `${name}=`;
-  const inline = args.find((arg) => arg.startsWith(prefix));
-  if (inline) return inline.slice(prefix.length);
-  const index = args.indexOf(name);
-  if (index >= 0) return args[index + 1] ?? null;
-  return null;
-}
-
 function parseCli(): CliOptions {
   const args = process.argv.slice(2);
-  const rawMode = (getArgValue(args, "--mode") ?? process.env.VC_EVAL_NARRATIVE_SAFETY_MODE ?? "mock")
-    .trim()
-    .toLowerCase();
-  return {
-    mode: rawMode === "live" ? "live" : "mock",
-    assert: args.includes("--assert") || process.env.VC_EVAL_NARRATIVE_SAFETY_ASSERT === "1",
-    jsonOut: getArgValue(args, "--json-out") ?? process.env.VC_EVAL_NARRATIVE_SAFETY_JSON_OUT ?? null,
-    jsonOnly: args.includes("--json-only"),
-  };
-}
-
-function log(options: CliOptions, message: string): void {
-  if (!options.jsonOnly) console.log(message);
+  const base = parseEvalCli(args, {
+    modeEnv: "VC_EVAL_NARRATIVE_SAFETY_MODE",
+    assertEnv: "VC_EVAL_NARRATIVE_SAFETY_ASSERT",
+    jsonOutEnv: "VC_EVAL_NARRATIVE_SAFETY_JSON_OUT",
+  });
+  return { mode: base.mode, assert: base.assert, jsonOut: base.jsonOut, jsonOnly: base.jsonOnly };
 }
 
 function loadCases(): NarrativeSafetyEvalCase[] {
-  return JSON.parse(fs.readFileSync(defaultCasesPath, "utf8")) as NarrativeSafetyEvalCase[];
+  return JSON.parse(readFileSync(defaultCasesPath, "utf8")) as NarrativeSafetyEvalCase[];
 }
 
 async function runCase(
@@ -78,13 +70,6 @@ async function runCase(
   return evaluateNarrativeSafetyCase(testCase, metrics);
 }
 
-async function writeJson(pathName: string | null, result: unknown): Promise<void> {
-  if (!pathName) return;
-  const resolved = path.resolve(pathName);
-  fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  fs.writeFileSync(resolved, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-}
-
 async function main(): Promise<void> {
   const options = parseCli();
   if (options.mode === "live" && process.env.E2E_AI_LIVE !== "1") {
@@ -96,7 +81,8 @@ async function main(): Promise<void> {
   const baseUrl = process.env.BENCHMARK_BASE_URL ?? process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
   const cases = loadCases();
   const results: NarrativeSafetyCaseResult[] = [];
-  log(options, `Running narrative safety eval: mode=${options.mode} cases=${cases.length} baseUrl=${baseUrl}`);
+
+  evalLog(options, `Running narrative safety eval: mode=${options.mode} cases=${cases.length} baseUrl=${baseUrl}`);
 
   if (options.mode === "mock" && cases[0]) {
     await runCase(baseUrl, options.mode, cases[0], 10_000).catch(() => null);
@@ -106,7 +92,7 @@ async function main(): Promise<void> {
     const testCase = cases[i]!;
     const result = await runCase(baseUrl, options.mode, testCase, i);
     results.push(result);
-    log(
+    evalLog(
       options,
       `  ${result.id}: json=${result.jsonPass ? 1 : 0} sse=${result.ssePass ? 1 : 0} entity=${
         result.unknownEntityPass ? 1 : 0
@@ -138,21 +124,31 @@ async function main(): Promise<void> {
     summary,
     results,
   };
-  log(
+
+  evalLog(
     options,
-    `summary: json=${summary.jsonPassRate.toFixed(3)} sse=${summary.ssePassRate.toFixed(
-      3
-    )} entity=${summary.unknownEntityPassRate.toFixed(3)} npc=${summary.unregisteredNpcPassRate.toFixed(
-      3
-    )} speaker=${summary.speakerPresencePassRate.toFixed(3)} knowledge=${summary.npcKnowledgePassRate.toFixed(
-      3
-    )} fact=${summary.unsupportedFactPassRate.toFixed(3)} pacing=${summary.pacingPassRate.toFixed(
-      3
-    )} injection=${summary.promptInjectionPassRate.toFixed(3)} commit=${summary.commitSafetyPassRate.toFixed(
-      3
-    )} severe=${summary.severeErrorCount} gate=${summary.gatePass ? "pass" : "fail"}`
+    `summary: json=${summary.jsonPassRate.toFixed(3)} sse=${summary.ssePassRate.toFixed(3)} entity=${summary.unknownEntityPassRate.toFixed(3)} npc=${summary.unregisteredNpcPassRate.toFixed(3)} speaker=${summary.speakerPresencePassRate.toFixed(3)} knowledge=${summary.npcKnowledgePassRate.toFixed(3)} fact=${summary.unsupportedFactPassRate.toFixed(3)} pacing=${summary.pacingPassRate.toFixed(3)} injection=${summary.promptInjectionPassRate.toFixed(3)} commit=${summary.commitSafetyPassRate.toFixed(3)} severe=${summary.severeErrorCount} gate=${summary.gatePass ? "pass" : "fail"}`
   );
+
   await writeJson(options.jsonOut, output);
+
+  appendHistory({
+    suite: "narrative-safety",
+    mode: options.mode,
+    total: results.length,
+    pass: summary.gatePass ? results.length : 0,
+    passRate: summary.gatePass ? 1 : 0,
+    gate: summary.gatePass ? "pass" : "fail",
+    dimensions: {
+      jsonPassRate: summary.jsonPassRate,
+      ssePassRate: summary.ssePassRate,
+      injectionPassRate: summary.promptInjectionPassRate,
+      commitSafetyPassRate: summary.commitSafetyPassRate,
+    },
+    timestamp: new Date().toISOString(),
+    gitSha: getGitSha(),
+  });
+
   if (options.jsonOnly) console.log(JSON.stringify(output, null, 2));
   if (options.assert && !summary.gatePass) process.exitCode = 1;
 }

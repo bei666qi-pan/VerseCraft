@@ -88,3 +88,33 @@ test("multiNpcPersona: forbidden mode does not emit a card", () => {
   assert.deepEqual(obj.cards, []);
 });
 
+test("multiNpcPersona: voice_hint present for anchor NPCs with deep canon", () => {
+  const obj = buildMultiNpcCompactPersonaPacketObject({
+    npcIds: ["N-015", "N-020", "N-010"],
+    npcPositions: [{ npcId: "N-015", location: "B1_SafeZone" }],
+    currentLocation: "B1_SafeZone",
+    sceneAppearanceAlreadyWrittenIds: [],
+    maxCards: 3,
+  });
+  // N-015 (麟泽) has voice card → voice_hint should be present
+  const linze = obj.cards.find((c) => c.id === "N-015") as Record<string, unknown>;
+  assert.ok(linze, "N-015 card exists");
+  assert.equal(typeof linze.voice_hint, "string");
+  assert.ok((linze.voice_hint as string).length > 0, "voice_hint is non-empty");
+  assert.ok((linze.voice_hint as string).includes("["), "voice_hint includes humor bracket");
+});
+
+test("multiNpcPersona: full packet stays within 1200 char budget with voice_hint", () => {
+  const obj = buildMultiNpcCompactPersonaPacketObject({
+    npcIds: ["N-015", "N-020", "N-010", "N-018", "N-013", "N-007"],
+    npcPositions: [{ npcId: "N-015", location: "B1_SafeZone" }],
+    currentLocation: "B1_SafeZone",
+    sceneAppearanceAlreadyWrittenIds: [],
+    maxCards: 4,
+  });
+  // Re-serialize through the truncation path
+  const text = `## 【multi_npc_persona_compact】\n${JSON.stringify(obj)}`;
+  const truncated = text.length <= 1200 ? text : `${text.slice(0, 1199)}…`;
+  assert.ok(truncated.length <= 1200, `packet ${truncated.length} chars <= 1200`);
+});
+

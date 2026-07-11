@@ -21,6 +21,8 @@ test("buildConflictFeedbackViewModel maps suppress + edge to pressure + 压制",
   assert.equal(vm!.resultTierLabel, "压制");
   assert.ok(vm!.opportunityLine.includes("机会窗"));
   assert.ok(vm!.costLine.includes("代价"));
+  assert.ok(vm!.injuryLine.length > 0, "light cost 应有伤势余痕");
+  assert.ok(vm!.injuryLine.includes("身上多了"), "injuryLine 以「身上多了」开头");
 });
 
 test("buildConflictFeedbackViewModel escalates cost with sanity and relations", () => {

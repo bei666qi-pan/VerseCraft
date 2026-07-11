@@ -114,8 +114,17 @@ function formatFinalNarrativeForSettlement(text: string): string {
   return normalized;
 }
 
-function buildMarkdown(logs: LogEntry[]): string {
+function buildMarkdown(logs: LogEntry[], highlights?: Array<{ turnIndex: number; narrative: string; hookType: string }>): string {
   const lines = ["# 文界工坊 · 本局写作稿", "", "---", ""];
+  // Phase-5: 高光时刻写在文稿开头
+  if (highlights && highlights.length > 0) {
+    lines.push("## 本局高光时刻", "");
+    for (const h of highlights) {
+      const label = h.hookType === "payoff" ? "伏笔兑现" : h.hookType === "reveal" ? "关键揭示" : "高光时刻";
+      lines.push(`**${label} · 第${h.turnIndex}回合**`);
+      lines.push("", replaceLocationIdsForDisplay(h.narrative), "", "---", "");
+    }
+  }
   for (const entry of logs) {
     if (entry.role === "user") {
       lines.push("## 玩家行动", "", replaceLocationIdsForDisplay(entry.content), "", "---", "");
@@ -240,7 +249,7 @@ function buildLegacySnapshot(input: {
   );
   const title = getSettlementOutcomeTitle(outcome);
   const caption = getSettlementGradeCaption(grade, outcome);
-  const writingMarkdown = buildMarkdown(input.logs);
+  const writingMarkdown = buildMarkdown(input.logs, []);
   return {
     v: 1,
     source: "legacy_fallback",
@@ -625,7 +634,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       source: "settlement",
       payload: { outcome: snapshot.outcome, grade: snapshot.grade, maxFloorScore: snapshot.maxFloorScore },
     }).catch(() => {});
-    triggerDownload(snapshot.writingMarkdown || buildMarkdown(logs), `versecraft-writing-${ts}.md`);
+    triggerDownload(snapshot.writingMarkdown || buildMarkdown(logs, snapshot.highlights), `versecraft-writing-${ts}.md`);
   }
 
   async function clearRunAndLeave(target: "/" | "/intro") {
@@ -733,6 +742,26 @@ export default function SettlementPage(props: AppPageDynamicProps) {
           <DetailList empty="本局没有记录到已获得线索。" items={snapshot.obtainedClues} />
         </StorySection>
 
+        {snapshot.highlights && snapshot.highlights.length > 0 ? (
+          <StorySection title="本局高光时刻" delayMs={390}>
+            <div className="grid gap-3" data-testid="settlement-highlights">
+              {snapshot.highlights.map((h, i) => (
+                <div
+                  key={`${h.turnIndex}-${i}`}
+                  className="rounded-lg bg-white/[0.04] border border-white/[0.06] px-4 py-3"
+                >
+                  <span className="text-[11px] font-semibold tracking-[0.12em] text-vc-ink-faint uppercase">
+                    {h.hookType === "payoff" ? "伏笔兑现" : h.hookType === "reveal" ? "关键揭示" : "高光时刻"} · 第{h.turnIndex}回合
+                  </span>
+                  <p className="mt-1.5 text-[15px] leading-relaxed text-vc-ink-deep vc-reading-serif">
+                    {replaceLocationIdsForDisplay(h.narrative)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </StorySection>
+        ) : null}
+
         <StorySection title="NPC 后日谈" delayMs={420}>
           <DetailList empty="本局没有形成可展示的 NPC 后日谈。" items={snapshot.npcEpilogues.map(formatNpcEpilogueLine).filter(Boolean)} />
         </StorySection>
@@ -740,6 +769,16 @@ export default function SettlementPage(props: AppPageDynamicProps) {
         <StorySection title="世界状态" delayMs={480}>
           <DetailList empty="本局没有记录额外世界状态。" items={snapshot.worldStateLines.map(formatWorldStateLine).filter(Boolean)} />
         </StorySection>
+
+        {snapshot.totalFormalTasks !== undefined && snapshot.totalFormalTasks > 0 ? (
+          <StorySection title="任务成就" delayMs={540}>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <MetricTile label="完成任务" value={`${snapshot.completedTasks ?? 0} / ${snapshot.totalFormalTasks}`} />
+              <MetricTile label="任务完成率" value={`${Math.round((snapshot.taskCompletionScore ?? 0) * 100)}%`} />
+              <MetricTile label="任务评级" value={snapshot.taskCompletionScore! >= 0.8 ? "S" : snapshot.taskCompletionScore! >= 0.6 ? "A" : snapshot.taskCompletionScore! >= 0.4 ? "B" : snapshot.taskCompletionScore! >= 0.2 ? "C" : "D"} />
+            </div>
+          </StorySection>
+        ) : null}
 
         {showFullText ? (
           <StorySection title="本局全文">
