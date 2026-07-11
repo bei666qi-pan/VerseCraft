@@ -1,0 +1,5 @@
+{"suite":"npc-consistency","mode":"mock","total":6,"pass":6,"passRate":1,"gate":"pass","timestamp":"2026-07-08T15:02:49.620Z","gitSha":"ref: re"}
+{"suite":"npc-consistency","mode":"mock","total":6,"pass":6,"passRate":1,"gate":"pass","timestamp":"2026-07-08T15:07:11.723Z","gitSha":"ref: re"}
+{"suite":"npc-consistency","mode":"mock","total":6,"pass":6,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:06:17.904Z","gitSha":"ref: re"}
+{"suite":"npc-consistency","mode":"mock","total":8,"pass":8,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:13:55.913Z","gitSha":"ref: re"}
+{"suite":"npc-consistency","mode":"mock","total":8,"pass":8,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:51:42.435Z","gitSha":"ref: re"}

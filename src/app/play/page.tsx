@@ -130,6 +130,9 @@ import {
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
 import { applyTurnSanityDamage, normalizeTurnSanityDamage } from "@/features/play/turnCommit/sanityDamage";
+import { buildTurnDeltaDigest } from "@/features/play/turnCommit/buildTurnDeltaDigest";
+import { TurnDeltaDigest } from "@/features/play/components/TurnDeltaDigest";
+import type { TurnDeltaDigest as TurnDeltaDigestData } from "@/features/play/turnCommit/buildTurnDeltaDigest";
 import {
   extractFilteredHintsFromTrace,
   isNarrativeSystemsDebugEnabled,
@@ -593,6 +596,8 @@ function PlayContent() {
   /** 本回合新增/更新、或服务端 highlight_task_ids 点名的任务，用于任务面板里的高亮环效果。 */
   const [recentTaskHighlightIds, setRecentTaskHighlightIds] = useState<string[]>([]);
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
+  /** 当前已 commit 回合的 delta 摘要（用于 turn-delta-digest）；流式/commit 中不渲染。 */
+  const [lastTurnDigest, setLastTurnDigest] = useState<TurnDeltaDigestData | null>(null);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
@@ -2838,6 +2843,7 @@ function PlayContent() {
       }
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
+    setLastTurnDigest(null);
     waitUxBackendStageRef.current = null;
     {
       const t0 = performance.now();
@@ -3603,6 +3609,7 @@ function PlayContent() {
     if (!parsed) {
       const salvage = (resolved.narrative ?? "").trim();
       if (!salvage) {
+        setLastTurnDigest(null);
         setStreamPhase("idle");
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -3610,6 +3617,7 @@ function PlayContent() {
         return;
       }
       if (resolved.failure === "protocol_guard_rejected") {
+        setLastTurnDigest(null);
         setStreamPhase("idle");
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -4689,9 +4697,16 @@ function PlayContent() {
     narrativeRef.current = narrativeToPush;
     tailDrainTargetRef.current = narrativeToPush;
     setTailAlignKey((n) => n + 1);
+    // 聚合本回合 delta 摘要（仅 commit 成功、且不是终局/结算等特殊回合时展示）。
+    if (!isEndingFinaleSystemRound && !isEndgameSystemRound) {
+      setLastTurnDigest(buildTurnDeltaDigest(parsed));
+    } else {
+      setLastTurnDigest(null);
+    }
     setStreamPhase("tail_draining");
     } catch (commitErr: unknown) {
       console.error("[play][turn_commit_exception] turn commit failed", commitErr);
+      setLastTurnDigest(null);
       tailDrainTargetRef.current = null;
       parsedPostDrainRef.current = null;
       const rec = getCommitFailureRecovery({ committedNarrativeForRescue });
@@ -5178,6 +5193,7 @@ function PlayContent() {
                         void cancelCurrentChatQueue();
                       }}
                       fixedBottomSpace={optionsExpanded ? "expanded" : "default"}
+                      turnDeltaDigest={lastTurnDigest}
                     />
                   </>
                 )}

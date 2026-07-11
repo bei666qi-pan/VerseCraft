@@ -707,19 +707,32 @@ export async function POST(req: Request) {
           try {
       const inner = await postChatInternal(internalReq);
       const innerContentType = inner.headers.get("content-type") ?? "";
-      if (!innerContentType.toLowerCase().includes("text/event-stream")) {
-        if (!outerStreamClosed) {
-          controller.enqueue(
-            sse(
-              `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
-                kind: "site_unavailable",
-                requestId,
-                reason: "early_status_invalid_content_type",
-              })}`
-            )
+      const isStreamingContentType =
+        innerContentType.toLowerCase().includes("text/event-stream");
+
+      // one-api 对流式响应也返回 Content-Type: application/json，
+      // 但 body 是 ReadableStream 且 status=200。仅在此兼容条件下放行。
+      if (!isStreamingContentType) {
+        if (inner.ok && inner.body) {
+          console.warn(
+            "[api/chat][early_status_wrapper] non-streaming content-type with 2xx + body stream — forwarding (one-api compat)",
+            { contentType: innerContentType, status: inner.status, requestId }
           );
+        } else {
+          // 既不是 text/event-stream，也不是成功的流式 body → 降级
+          if (!outerStreamClosed) {
+            controller.enqueue(
+              sse(
+                `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
+                  kind: "site_unavailable",
+                  requestId,
+                  reason: "early_status_invalid_content_type",
+                })}`
+              )
+            );
+          }
+          return;
         }
-        return;
       }
       if (!inner.body) {
         const text = await inner.text();
@@ -2696,7 +2709,7 @@ async function postChatInternal(req: Request) {
       });
       try {
         await writeStatusFrame("finalizing", isUpstreamRateLimited ? "网站生成通道繁忙" : "网站连接暂时不稳定");
-        await writeToStream(degraded);
+        await writeToStream(`${VERSECRAFT_FINAL_PREFIX}${degraded}`);
       } finally {
         await writer.close();
       }

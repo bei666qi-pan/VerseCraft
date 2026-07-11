@@ -1,0 +1,8 @@
+{"suite":"narrative-style","mode":"mock","total":86,"pass":77,"passRate":0.8953488372093024,"gate":"fail","timestamp":"2026-07-09T02:37:36.535Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":86,"pass":81,"passRate":0.9418604651162791,"gate":"fail","timestamp":"2026-07-09T02:40:25.988Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":86,"pass":86,"passRate":1,"gate":"pass","timestamp":"2026-07-09T02:41:12.094Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":91,"pass":88,"passRate":0.967032967032967,"gate":"fail","timestamp":"2026-07-09T03:11:02.361Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":91,"pass":91,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:11:25.501Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":91,"pass":91,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:58:19.325Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":91,"pass":91,"passRate":1,"gate":"pass","timestamp":"2026-07-09T04:19:01.751Z","gitSha":"ref: re"}
+{"suite":"narrative-style","mode":"mock","total":91,"pass":91,"passRate":1,"gate":"pass","timestamp":"2026-07-09T04:29:22.818Z","gitSha":"ref: re"}

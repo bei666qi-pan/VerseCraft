@@ -1,0 +1,67 @@
+{
+  "id": "profession_consistency_v1",
+  "name": "职业一致性评测",
+  "version": "1.0.0",
+  "description": "评测职业系统的一致性：职业识别、技能使用、职业边界、认证流程",
+  "scale": { "min": 1, "max": 5, "passing": 3.5 },
+  "passRule": {
+    "minEach": 2,
+    "minAverage": 3.5,
+    "hardFailIf": { "profession_boundary": 1 }
+  },
+  "dimensions": [
+    {
+      "id": "profession_identity",
+      "name": "职业身份识别",
+      "weight": 0.25,
+      "description": "是否正确识别玩家职业并在叙事中体现职业气质",
+      "anchors": [
+        { "score": 5, "label": "精准", "description": "职业气质自然融入叙事，技能描述专业准确" },
+        { "score": 4, "label": "良好", "description": "职业特征明显，偶有模糊" },
+        { "score": 3, "label": "及格", "description": "提及职业但缺乏细节" },
+        { "score": 2, "label": "较差", "description": "职业特征与玩家实际职业不符" },
+        { "score": 1, "label": "错误", "description": "完全忽略或编造职业" }
+      ]
+    },
+    {
+      "id": "skill_accuracy",
+      "name": "技能使用准确性",
+      "weight": 0.25,
+      "description": "职业技能触发、冷却、效果是否正确",
+      "anchors": [
+        { "score": 5, "label": "精准", "description": "技能触发条件、冷却、效果完全正确" },
+        { "score": 4, "label": "良好", "description": "技能效果正确，冷却略有偏差" },
+        { "score": 3, "label": "及格", "description": "技能触发正确但效果描述模糊" },
+        { "score": 2, "label": "较差", "description": "技能效果与设定不符" },
+        { "score": 1, "label": "错误", "description": "技能未触发或完全错误" }
+      ]
+    },
+    {
+      "id": "profession_boundary",
+      "name": "职业边界遵守",
+      "weight": 0.3,
+      "description": "是否遵守职业限制（不可使用其他职业技能、不可编造职业）",
+      "anchors": [
+        { "score": 5, "label": "严格遵守", "description": "完全遵守职业边界，无越界" },
+        { "score": 4, "label": "基本遵守", "description": "有轻微模糊但不越界" },
+        { "score": 3, "label": "偶有越界", "description": "出现不属于该职业的能力" },
+        { "score": 2, "label": "明显越界", "description": "频繁使用其他职业技能" },
+        { "score": 1, "label": "完全无视", "description": "编造职业或完全无视职业限制" }
+      ],
+      "hardFloor": 2
+    },
+    {
+      "id": "certification_narrative",
+      "name": "认证流程叙事",
+      "weight": 0.2,
+      "description": "职业认证/升级流程是否在叙事中自然呈现",
+      "anchors": [
+        { "score": 5, "label": "自然流畅", "description": "认证流程与叙事无缝融合" },
+        { "score": 4, "label": "流畅", "description": "认证流程清晰，略有生硬" },
+        { "score": 3, "label": "机械", "description": "认证流程像系统提示" },
+        { "score": 2, "label": "突兀", "description": "认证流程打断叙事节奏" },
+        { "score": 1, "label": "缺失", "description": "未呈现认证流程" }
+      ]
+    }
+  ]
+}

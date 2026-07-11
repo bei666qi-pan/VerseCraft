@@ -1,0 +1,894 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "标准化游戏机制基准测试套件 - 覆盖职业/武器/任务/原石系统",
+    "created": "2026-07-08",
+    "total_scenarios": 30
+  },
+  "scenarios": [
+    {
+      "id": "bm_profession_001",
+      "category": "profession",
+      "name": "溯源师职业识别与锻造折扣",
+      "description": "验证模型是否正确识别溯源师职业并在锻造时给予折扣",
+      "setup": {
+        "playerProfession": "溯源师",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 100,
+        "npcPresent": ["老刘"],
+        "inventory": ["防爆手电筒", "绝缘胶带"]
+      },
+      "playerInput": "我想让老刘帮我把这些道具组装成武器",
+      "expectedOutcomes": {
+        "profession_recognized": true,
+        "profession_discount_applied": true,
+        "originium_cost_reduced": true,
+        "narrative_mentions_profession": true
+      },
+      "scoring": {
+        "profession_recognized": { "weight": 0.3, "criteria": "叙事中明确提及玩家是溯源师" },
+        "profession_discount_applied": { "weight": 0.3, "criteria": "currency_change 显示折扣后费用（约 9 原石而非 10）" },
+        "originium_cost_reduced": { "weight": 0.2, "criteria": "实际扣除金额 < 标准价格" },
+        "narrative_mentions_profession": { "weight": 0.2, "criteria": "NPC 对话或叙事中提及职业相关描述" }
+      }
+    },
+    {
+      "id": "bm_profession_002",
+      "category": "profession",
+      "name": "职业边界遵守 - 不使用他职业技能",
+      "description": "验证模型是否遵守职业限制，不让玩家使用非本职业技能",
+      "setup": {
+        "playerProfession": "溯源师",
+        "playerLocation": "B1_Corridor",
+        "playerOriginium": 50,
+        "threatLevel": "medium"
+      },
+      "playerInput": "我使用黑客技能入侵附近的终端",
+      "expectedOutcomes": {
+        "action_rejected_or_adapted": true,
+        "profession_boundary_respected": true,
+        "narrative_explains_limitation": true
+      },
+      "scoring": {
+        "action_rejected_or_adapted": { "weight": 0.4, "criteria": "动作被拒绝或用合理方式改编（如尝试其他方法）" },
+        "profession_boundary_respected": { "weight": 0.4, "criteria": "未使用黑客相关技能描述" },
+        "narrative_explains_limitation": { "weight": 0.2, "criteria": "叙事或 NPC 解释为何无法执行" }
+      }
+    },
+    {
+      "id": "bm_weapon_001",
+      "category": "weapon",
+      "name": "武器锻造流程完整性",
+      "description": "验证武器锻造是否完整执行：NPC 交互 + 材料消耗 + 原石扣除 + 武器生成",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 80,
+        "npcPresent": ["老刘"],
+        "inventory": ["防爆手电筒", "绝缘胶带", "铜线"]
+      },
+      "playerInput": "请老刘帮我把这些材料武器化",
+      "expectedOutcomes": {
+        "forge_process_described": true,
+        "materials_consumed": true,
+        "originium_deducted": true,
+        "weapon_created": true,
+        "narrative_state_alignment": true
+      },
+      "scoring": {
+        "forge_process_described": { "weight": 0.25, "criteria": "叙事中有锻造过程描述（>= 50 字）" },
+        "materials_consumed": { "weight": 0.25, "criteria": "consumed_items 包含输入材料" },
+        "originium_deducted": { "weight": 0.2, "criteria": "currency_change < 0 且金额合理（约 10 原石）" },
+        "weapon_created": { "weight": 0.2, "criteria": "awarded_items 或行囊中出现新武器" },
+        "narrative_state_alignment": { "weight": 0.1, "criteria": "叙事与字段一致" }
+      }
+    },
+    {
+      "id": "bm_weapon_002",
+      "category": "weapon",
+      "name": "武器稳定度反映 - 低稳定度叙事",
+      "description": "验证武器稳定度低时叙事是否反映故障/不可靠",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_Corridor",
+        "playerOriginium": 50,
+        "equippedWeapon": {
+          "name": "自制电击器",
+          "stability": 35
+        },
+        "threatLevel": "high"
+      },
+      "playerInput": "我用武器攻击眼前的敌人",
+      "expectedOutcomes": {
+        "narrative_reflects_low_stability": true,
+        "weapon_malfunction_described": true,
+        "combat_outcome_affected": true
+      },
+      "scoring": {
+        "narrative_reflects_low_stability": { "weight": 0.4, "criteria": "叙事中描述武器不稳定/故障/不可靠" },
+        "weapon_malfunction_described": { "weight": 0.3, "criteria": "具体描述故障现象（如火花、卡顿、失灵）" },
+        "combat_outcome_affected": { "weight": 0.3, "criteria": "战斗结果受武器状态影响（如伤害降低、错失机会）" }
+      }
+    },
+    {
+      "id": "bm_task_001",
+      "category": "task",
+      "name": "NPC 授任任务自然度",
+      "description": "验证 NPC 授予任务是否在叙事中自然发生",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_MedicalRoom",
+        "playerOriginium": 60,
+        "npcPresent": ["医生"],
+        "currentTasks": []
+      },
+      "playerInput": "我询问医生这里发生了什么",
+      "expectedOutcomes": {
+        "npc_initiates_task_naturally": true,
+        "task_motivation_clear": true,
+        "new_task_created": true,
+        "narrative_task_alignment": true
+      },
+      "scoring": {
+        "npc_initiates_task_naturally": { "weight": 0.3, "criteria": "NPC 在对话/剧情中自然提出请求" },
+        "task_motivation_clear": { "weight": 0.3, "criteria": "叙事解释为何 NPC 需要帮助" },
+        "new_task_created": { "weight": 0.2, "criteria": "new_tasks 字段包含新任务" },
+        "narrative_task_alignment": { "weight": 0.2, "criteria": "叙事内容与任务描述一致" }
+      }
+    },
+    {
+      "id": "bm_task_002",
+      "category": "task",
+      "name": "任务完成与奖励发放",
+      "description": "验证任务完成后奖励是否在叙事中交代",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_Storage",
+        "playerOriginium": 50,
+        "currentTasks": [
+          {
+            "id": "task_find_supplies",
+            "title": "寻找医疗物资",
+            "status": "in_progress",
+            "objective": "找到 3 份绷带"
+          }
+        ],
+        "inventory": ["绷带", "绷带", "绷带"]
+      },
+      "playerInput": "我把找到的绷带交给负责人",
+      "expectedOutcomes": {
+        "task_completed": true,
+        "reward_narrated": true,
+        "reward_delivered": true,
+        "narrative_reward_alignment": true
+      },
+      "scoring": {
+        "task_completed": { "weight": 0.3, "criteria": "task_updates 标记任务完成" },
+        "reward_narrated": { "weight": 0.3, "criteria": "叙事中提到获得奖励" },
+        "reward_delivered": { "weight": 0.2, "criteria": "currency_change 或 awarded_items 显示奖励" },
+        "narrative_reward_alignment": { "weight": 0.2, "criteria": "叙事与实际奖励一致" }
+      }
+    },
+    {
+      "id": "bm_originium_001",
+      "category": "originium",
+      "name": "原石扣除叙事对齐 - 锻造场景",
+      "description": "验证锻造时原石扣除是否在叙事中自然交代",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 100,
+        "npcPresent": ["老刘"],
+        "inventory": ["防爆手电筒"]
+      },
+      "playerInput": "我让老刘帮我把这个改造成武器",
+      "expectedOutcomes": {
+        "cost_mentioned_in_narrative": true,
+        "cost_matches_currency_change": true,
+        "npc_explains_cost": true,
+        "narrative_natural": true
+      },
+      "scoring": {
+        "cost_mentioned_in_narrative": { "weight": 0.3, "criteria": "叙事中提及花费/代价" },
+        "cost_matches_currency_change": { "weight": 0.3, "criteria": "叙事金额与 currency_change 一致" },
+        "npc_explains_cost": { "weight": 0.2, "criteria": "NPC 对话中说明费用" },
+        "narrative_natural": { "weight": 0.2, "criteria": "花费交代自然，非系统通知式" }
+      }
+    },
+    {
+      "id": "bm_originium_002",
+      "category": "originium",
+      "name": "余额不足处理 - 合理拒绝",
+      "description": "验证原石不足时是否合理拒绝并给出替代方案",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 5,
+        "npcPresent": ["老刘"],
+        "inventory": ["防爆手电筒", "绝缘胶带"]
+      },
+      "playerInput": "我让老刘帮我武器化这些道具",
+      "expectedOutcomes": {
+        "action_rejected": true,
+        "insufficient_balance_explained": true,
+        "alternative_suggested": true,
+        "narrative_natural_refusal": true
+      },
+      "scoring": {
+        "action_rejected": { "weight": 0.3, "criteria": "is_action_legal = false 或叙事明确拒绝" },
+        "insufficient_balance_explained": { "weight": 0.3, "criteria": "叙事或 NPC 解释原石不足" },
+        "alternative_suggested": { "weight": 0.2, "criteria": "提供替代方案（如先获取原石）" },
+        "narrative_natural_refusal": { "weight": 0.2, "criteria": "拒绝方式自然，符合场景逻辑" }
+      }
+    },
+    {
+      "id": "bm_combat_001",
+      "category": "combat",
+      "name": "窃时者·武器克制验证",
+      "description": "验证持有时针刺（clock_spike）时面对A-001窃时者的战斗差异：武器克制标签导致数值优势",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "1F_Lobby",
+        "playerOriginium": 80,
+        "inventory": ["时针刺"],
+        "equippedWeapon": {
+          "name": "时针刺",
+          "stability": 85
+        },
+        "threatLevel": "high",
+        "npcPresent": []
+      },
+      "playerInput": "我使用时针刺应对前方的诡异身影",
+      "expectedOutcomes": {
+        "weapon_counter_mentioned": true,
+        "numerical_advantage_reflected": true,
+        "combat_outcome_favored": true,
+        "threat_specific_narration": true
+      },
+      "scoring": {
+        "weapon_counter_mentioned": { "weight": 0.3, "criteria": "叙事中提及时针刺对窃时者的特殊克制效果" },
+        "numerical_advantage_reflected": { "weight": 0.25, "criteria": "战斗结果反映武器克制（如命中判定优势、闪避降低）" },
+        "combat_outcome_favored": { "weight": 0.25, "criteria": "likelyCost 不高于 light，玩家有利态势" },
+        "threat_specific_narration": { "weight": 0.2, "criteria": "叙事描述窃时者的时间异常特征及被锚定的反应" }
+      }
+    },
+    {
+      "id": "bm_combat_002",
+      "category": "combat",
+      "name": "龙胃蠕动·高威胁压制",
+      "description": "验证A-007龙胃蠕动在7F消化腔的高威胁战斗是否反映危险程度",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "7F_DigestionChamber",
+        "playerOriginium": 100,
+        "inventory": ["封缄钉", "急救包"],
+        "equippedWeapon": {
+          "name": "封缄钉",
+          "stability": 80
+        },
+        "threatLevel": "extreme",
+        "npcPresent": []
+      },
+      "playerInput": "我小心地向前移动，准备应对消化腔内的威胁",
+      "expectedOutcomes": {
+        "high_threat_reflected": true,
+        "combat_difficulty_high": true,
+        "environmental_hazard_described": true,
+        "post_combat_survival_impact": true
+      },
+      "scoring": {
+        "high_threat_reflected": { "weight": 0.25, "criteria": "叙事明确强调龙胃的高危和消化威胁" },
+        "combat_difficulty_high": { "weight": 0.25, "criteria": "likelyCost 不低于 moderate，战斗结果反映压力环境" },
+        "environmental_hazard_described": { "weight": 0.25, "criteria": "叙事描述消化腔环境（蠕动、酸液、压迫感）" },
+        "post_combat_survival_impact": { "weight": 0.25, "criteria": "战斗结果影响状态（伤势、理智或消耗品减少）" }
+      }
+    },
+    {
+      "id": "bm_combat_003",
+      "category": "combat",
+      "name": "循环裂隙·多次遭遇累积",
+      "description": "验证连续遭遇A-004循环裂隙时疲劳和伤害累积是否合理",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "2F_Commercial",
+        "playerOriginium": 60,
+        "previousCombatCount": 2,
+        "healthState": "wounded",
+        "threatLevel": "high",
+        "npcPresent": []
+      },
+      "playerInput": "再次面对这个扭曲的空间裂隙，我感到体力不支",
+      "expectedOutcomes": {
+        "fatigue_accumulated": true,
+        "repeated_encounter_narrated": true,
+        "combat_escalation": true,
+        "spatial_distortion_described": true
+      },
+      "scoring": {
+        "fatigue_accumulated": { "weight": 0.3, "criteria": "叙事反映玩家体力不支、状态不良" },
+        "repeated_encounter_narrated": { "weight": 0.25, "criteria": "叙事提到这是多次遭遇、空间循环感" },
+        "combat_escalation": { "weight": 0.25, "criteria": "likelyCost 不低于 moderate，累积伤害反映在结果中" },
+        "spatial_distortion_described": { "weight": 0.2, "criteria": "叙事描述 A-004 的空间扭曲和循环特性" }
+      }
+    },
+    {
+      "id": "bm_combat_004",
+      "category": "combat",
+      "name": "静默回廊·逃离窗口",
+      "description": "验证面对A-002静默回廊时escape conflict kind的处理：边界固化使脱离难度增加",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "4F_Cloister",
+        "playerOriginium": 40,
+        "inventory": ["静默短棍"],
+        "equippedWeapon": {
+          "name": "静默短棍",
+          "stability": 80
+        },
+        "threatLevel": "high",
+        "npcPresent": []
+      },
+      "playerInput": "趁回廊还没完全封锁，我试图逃离这个区域",
+      "expectedOutcomes": {
+        "escape_conflict_detected": true,
+        "egress_obstructed_narrated": true,
+        "silence_pressure_described": true,
+        "escape_cost_reflected": true
+      },
+      "scoring": {
+        "escape_conflict_detected": { "weight": 0.3, "criteria": "叙事将玩家动作处理为逃离而非正面战斗" },
+        "egress_obstructed_narrated": { "weight": 0.25, "criteria": "描述回廊边界固化、退路受阻" },
+        "silence_pressure_described": { "weight": 0.25, "criteria": "叙事体现沉默压制和通信受阻" },
+        "escape_cost_reflected": { "weight": 0.2, "criteria": "结局反映逃离代价（如轻伤、理智损失或消耗品使用）" }
+      }
+    },
+    {
+      "id": "bm_combat_005",
+      "category": "combat",
+      "name": "安全区冲突收敛",
+      "description": "验证B1安全区内冲突是否收敛、严重度降低",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 30,
+        "npcPresent": ["老刘"],
+        "threatLevel": "low"
+      },
+      "playerInput": "我和老刘因为工具使用问题发生了争执",
+      "expectedOutcomes": {
+        "safe_zone_effect_reflected": true,
+        "conflict_de_escalated": true,
+        "narrative_peaceful_resolution": true,
+        "no_severe_injuries": true
+      },
+      "scoring": {
+        "safe_zone_effect_reflected": { "weight": 0.3, "criteria": "叙事体现安全区背景（如NPC提醒这里是安全区）" },
+        "conflict_de_escalated": { "weight": 0.25, "criteria": "冲突不升级为激烈战斗" },
+        "narrative_peaceful_resolution": { "weight": 0.25, "criteria": "结局平和，没有严重伤势或致命后果" },
+        "no_severe_injuries": { "weight": 0.2, "criteria": "无 moderate 以上伤势，sanityDamage 不超过 1" }
+      }
+    },
+    {
+      "id": "bm_profession_003",
+      "category": "profession",
+      "name": "调查员现场还原",
+      "description": "验证模型是否能正确处理调查员的现场还原技能，重建旧公寓三楼走廊的事件",
+      "setup": {
+        "playerProfession": "调查员",
+        "playerLocation": "旧公寓三楼走廊",
+        "playerOriginium": 60,
+        "npcPresent": [],
+        "inventory": ["手机", "放大镜"]
+      },
+      "playerInput": "我启动「现场还原」——闭上眼，让走廊里残留的时间碎片在意识中重组。血迹的喷溅方向、拖拽痕迹的角度……那晚发生的事正在浮现。",
+      "expectedOutcomes": {
+        "profession_skill_triggered": true,
+        "scene_reconstructed": true,
+        "clue_discovered": true,
+        "narrative_shows_deduction": true
+      },
+      "scoring": {
+        "profession_skill_triggered": { "weight": 0.3, "criteria": "叙事中明确触发调查员专属的现场还原技能" },
+        "scene_reconstructed": { "weight": 0.3, "criteria": "通过时间碎片和痕迹成功重建事件过程" },
+        "clue_discovered": { "weight": 0.2, "criteria": "从还原场景中发现新的证据或线索" },
+        "narrative_shows_deduction": { "weight": 0.2, "criteria": "叙事以推理演绎方式呈现，而非直接告知答案" }
+      }
+    },
+    {
+      "id": "bm_profession_004",
+      "category": "profession",
+      "name": "工程师紧急抢修",
+      "description": "验证模型是否能正确处理工程师在B1配电间的紧急抢修场景",
+      "setup": {
+        "playerProfession": "工程师",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 70,
+        "npcPresent": ["电工老刘"],
+        "inventory": ["工具钳", "绝缘胶带", "备用保险丝"]
+      },
+      "playerInput": "我检查配电柜的线路，找到烧毁的保险丝，问老刘要替换件",
+      "expectedOutcomes": {
+        "engineering_skill_recognized": true,
+        "repair_process_described": true,
+        "npc_acknowledges_expertise": true,
+        "equipment_restored": true
+      },
+      "scoring": {
+        "engineering_skill_recognized": { "weight": 0.3, "criteria": "叙事中识别玩家的工程师职业并体现专业技能" },
+        "repair_process_described": { "weight": 0.3, "criteria": "修理过程有合理的工程逻辑描述（线路检查、替换保险丝）" },
+        "npc_acknowledges_expertise": { "weight": 0.2, "criteria": "老刘的回应认可玩家的工程专业能力" },
+        "equipment_restored": { "weight": 0.2, "criteria": "设备成功修复，场景状态发生变化" }
+      }
+    },
+    {
+      "id": "bm_profession_005",
+      "category": "profession",
+      "name": "医者急救处置",
+      "description": "验证模型是否能正确处理医者在B1医疗室的急救场景",
+      "setup": {
+        "playerProfession": "医者",
+        "playerLocation": "B1_MedicalRoom",
+        "playerOriginium": 50,
+        "npcPresent": ["北夏"],
+        "inventory": ["急救包", "绷带", "消毒酒精"],
+        "threatLevel": "low"
+      },
+      "playerInput": "我看到北夏手臂上的伤口正在发炎，需要先清创再包扎",
+      "expectedOutcomes": {
+        "medical_skill_recognized": true,
+        "treatment_properly_described": true,
+        "wound_assessment_shown": true,
+        "narrative_medical_accuracy": true
+      },
+      "scoring": {
+        "medical_skill_recognized": { "weight": 0.3, "criteria": "叙事中识别玩家的医者职业并使用医疗相关表述" },
+        "treatment_properly_described": { "weight": 0.3, "criteria": "急救步骤合理（先清创再包扎），符合基本医学常识" },
+        "wound_assessment_shown": { "weight": 0.2, "criteria": "叙事中对伤口状态有专业评估（发炎程度、感染风险）" },
+        "narrative_medical_accuracy": { "weight": 0.2, "criteria": "医疗描述不存在明显医学错误" }
+      }
+    },
+    {
+      "id": "bm_profession_006",
+      "category": "profession",
+      "name": "猎手追踪猎杀",
+      "description": "验证模型是否能正确处理猎手在2F商业区的追踪猎杀场景",
+      "setup": {
+        "playerProfession": "猎手",
+        "playerLocation": "2F_Commercial",
+        "playerOriginium": 50,
+        "npcPresent": [],
+        "inventory": ["战术匕首", "夜视透镜"],
+        "threatLevel": "high"
+      },
+      "playerInput": "我伏低身体，摸清前方那只生物的移动规律——它的呼吸节奏有明显的破绽",
+      "expectedOutcomes": {
+        "hunting_tactics_described": true,
+        "prey_behavior_inferred": true,
+        "combat_advantage_gained": true,
+        "profession_combat_integrated": true
+      },
+      "scoring": {
+        "hunting_tactics_described": { "weight": 0.3, "criteria": "叙事中运用猎手专属捕猎策略（伏低、观察规律）" },
+        "prey_behavior_inferred": { "weight": 0.25, "criteria": "通过猎物行为特征推断弱点（呼吸破绽）" },
+        "combat_advantage_gained": { "weight": 0.25, "criteria": "战斗结果反映猎手的战术优势（先手或命中加成）" },
+        "profession_combat_integrated": { "weight": 0.2, "criteria": "职业特色自然融入战斗叙事，不是生硬堆叠" }
+      }
+    },
+    {
+      "id": "bm_weapon_003",
+      "category": "weapon",
+      "name": "武器耐久修复",
+      "description": "验证模型是否能正确处理低稳定度武器找老刘修理的场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 40,
+        "npcPresent": ["老刘"],
+        "equippedWeapon": {
+          "name": "自制电击器",
+          "stability": 28
+        },
+        "inventory": ["备用线圈", "绝缘胶带"]
+      },
+      "playerInput": "我拿着快要散架的电击器去找老刘，看能不能修好",
+      "expectedOutcomes": {
+        "repair_process_described": true,
+        "materials_consumed": true,
+        "stability_restored": true,
+        "narrative_tool_interaction": true
+      },
+      "scoring": {
+        "repair_process_described": { "weight": 0.3, "criteria": "叙事中有修理过程描述（检查故障、更换零件）" },
+        "materials_consumed": { "weight": 0.25, "criteria": "修理消耗了背包中的备用材料" },
+        "stability_restored": { "weight": 0.25, "criteria": "武器稳定度提升，状态改善" },
+        "narrative_tool_interaction": { "weight": 0.2, "criteria": "叙事中有玩家与NPC关于工具和修理互动的生动描述" }
+      }
+    },
+    {
+      "id": "bm_weapon_004",
+      "category": "weapon",
+      "name": "战斗中切换武器",
+      "description": "验证模型是否能正确处理战斗中因武器无效而切换武器的场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_Corridor",
+        "playerOriginium": 50,
+        "npcPresent": [],
+        "equippedWeapon": {
+          "name": "警用手电",
+          "stability": 62
+        },
+        "inventory": ["匕首", "自制电击器"],
+        "threatLevel": "high"
+      },
+      "playerInput": "手电的光照在它身上似乎没什么效果，我快速抽出匕首",
+      "expectedOutcomes": {
+        "weapon_swap_reflected": true,
+        "old_weapon_ineffective": true,
+        "new_weapon_described": true,
+        "combat_narrative_coherent": true
+      },
+      "scoring": {
+        "weapon_swap_reflected": { "weight": 0.3, "criteria": "叙事中体现武器切换动作（收起手电、抽出匕首）" },
+        "old_weapon_ineffective": { "weight": 0.25, "criteria": "当前武器被描述为对敌人无效或效果很差" },
+        "new_weapon_described": { "weight": 0.25, "criteria": "切换后的武器在战斗中有具体表现描述" },
+        "combat_narrative_coherent": { "weight": 0.2, "criteria": "切换前后战斗叙事连贯，不跳脱" }
+      }
+    },
+    {
+      "id": "bm_weapon_005",
+      "category": "weapon",
+      "name": "武器交易对比",
+      "description": "验证模型是否能正确处理购买成品与自制材料的权衡对比场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 25,
+        "npcPresent": ["老刘"],
+        "inventory": ["防爆手电筒", "铜线"]
+      },
+      "playerInput": "我看了看老刘摊位上那把现成的电击器，又看了看自己手里的材料——是买还是自己做更划算？",
+      "expectedOutcomes": {
+        "economic_choice_presented": true,
+        "price_comparison_narrated": true,
+        "originium_consideration": true,
+        "decision_reflected": true
+      },
+      "scoring": {
+        "economic_choice_presented": { "weight": 0.3, "criteria": "叙事中呈现购买成品与自制材料两种选择的权衡" },
+        "price_comparison_narrated": { "weight": 0.25, "criteria": "对比分析两者的成本差异（原石 vs 材料消耗）" },
+        "originium_consideration": { "weight": 0.25, "criteria": "叙事考虑玩家当前原石余额的约束" },
+        "decision_reflected": { "weight": 0.2, "criteria": "玩家的最终选择在叙事结果中得到体现" }
+      }
+    },
+    {
+      "id": "bm_task_003",
+      "category": "task",
+      "name": "任务链前置依赖",
+      "description": "验证模型是否能正确处理NPC拒绝授任新任务直到前置任务完成的逻辑",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_MedicalRoom",
+        "playerOriginium": 50,
+        "npcPresent": ["北夏"],
+        "currentTasks": [
+          {
+            "id": "task_find_herb",
+            "title": "寻找止血草",
+            "status": "active",
+            "objective": "在走廊深处储物间找到止血草"
+          }
+        ],
+        "inventory": []
+      },
+      "playerInput": "我问北夏还有什么需要帮忙的，想接更多的任务",
+      "expectedOutcomes": {
+        "task_dependency_acknowledged": true,
+        "prior_task_reminded": true,
+        "npc_rejects_until_completion": true,
+        "narrative_natural_block": true
+      },
+      "scoring": {
+        "task_dependency_acknowledged": { "weight": 0.3, "criteria": "叙事承认任务依赖关系，新任务需要前置条件" },
+        "prior_task_reminded": { "weight": 0.25, "criteria": "NPC提醒玩家仍有未完成的任务（寻找止血草）" },
+        "npc_rejects_until_completion": { "weight": 0.25, "criteria": "NPC明确拒绝授任新任务，直到前置任务完成" },
+        "narrative_natural_block": { "weight": 0.2, "criteria": "拒绝方式自然，在叙事和场景逻辑中合理" }
+      }
+    },
+    {
+      "id": "bm_task_004",
+      "category": "task",
+      "name": "紧迫时限任务处理",
+      "description": "验证模型是否有紧迫时限任务时能体现紧迫感和时间压力",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_Corridor",
+        "playerOriginium": 30,
+        "npcPresent": ["廖暗"],
+        "currentTasks": [
+          {
+            "id": "task_urgent_lockdown",
+            "title": "紧急封锁B1东侧门",
+            "status": "active",
+            "objective": "在10回合内封锁B1东侧安全门"
+          }
+        ],
+        "inventory": ["封缄钉"]
+      },
+      "playerInput": "廖暗的语气很急，我知道东侧门一旦失守整个B1都要沦陷",
+      "expectedOutcomes": {
+        "urgency_reflected": true,
+        "time_pressure_narrated": true,
+        "consequences_of_delay_hinted": true,
+        "narrative_immersion_maintained": true
+      },
+      "scoring": {
+        "urgency_reflected": { "weight": 0.3, "criteria": "叙事描写紧急封锁任务的急迫氛围" },
+        "time_pressure_narrated": { "weight": 0.25, "criteria": "突出时间有限的紧张感（如描述不断恶化的局势）" },
+        "consequences_of_delay_hinted": { "weight": 0.25, "criteria": "叙事暗示拖延的严重后果（B1沦陷）" },
+        "narrative_immersion_maintained": { "weight": 0.2, "criteria": "紧迫感不是系统通知式的，而是融入场景叙事" }
+      }
+    },
+    {
+      "id": "bm_task_005",
+      "category": "task",
+      "name": "多任务上限边界",
+      "description": "验证模型是否能正确处理已有3个活动任务时拒绝新授任的边界逻辑",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 60,
+        "npcPresent": ["老刘", "北夏"],
+        "currentTasks": [
+          {
+            "id": "task_fix_generator",
+            "title": "修复发电机",
+            "status": "active",
+            "objective": "修理B1主发电机"
+          },
+          {
+            "id": "task_find_food",
+            "title": "寻找食物补给",
+            "status": "active",
+            "objective": "在2F商店找到罐头食品"
+          },
+          {
+            "id": "task_check_vent",
+            "title": "检查通风管道",
+            "status": "active",
+            "objective": "查看B1西侧通风口是否被封堵"
+          }
+        ],
+        "inventory": ["工具钳"]
+      },
+      "playerInput": "北夏跑过来说走廊尽头发现了一个储藏室需要人去调查",
+      "expectedOutcomes": {
+        "new_task_limit_respected": true,
+        "player_informed_of_limit": true,
+        "existing_tasks_acknowledged": true,
+        "narrative_natural_response": true
+      },
+      "scoring": {
+        "new_task_limit_respected": { "weight": 0.3, "criteria": "遵守任务上限约束，不再授任第4个活动任务" },
+        "player_informed_of_limit": { "weight": 0.25, "criteria": "告知玩家当前任务已满，无法承接新任务" },
+        "existing_tasks_acknowledged": { "weight": 0.25, "criteria": "叙事承认玩家手上已有若干未完成任务" },
+        "narrative_natural_response": { "weight": 0.2, "criteria": "NPC回应自然，不是生硬的系统限制通知" }
+      }
+    },
+    {
+      "id": "bm_originium_003",
+      "category": "originium",
+      "name": "有限库存原石交易",
+      "description": "验证模型是否能正确处理NPC库存有限时玩家购买超过库存的商品",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 80,
+        "npcPresent": ["老刘"],
+        "inventory": [],
+        "npcInventory": {
+          "limit": 3,
+          "items": [
+            { "name": "急救包", "price": 15, "stock": 2 },
+            { "name": "封缄钉", "price": 20, "stock": 1 }
+          ]
+        }
+      },
+      "playerInput": "我想买两个急救包和一枚封缄钉",
+      "expectedOutcomes": {
+        "stock_limit_reflected": true,
+        "pricing_clear": true,
+        "originium_deduction_correct": true,
+        "narrative_trade_natural": true
+      },
+      "scoring": {
+        "stock_limit_reflected": { "weight": 0.3, "criteria": "交易结果反映库存限制（如售罄或按库存上限交易）" },
+        "pricing_clear": { "weight": 0.25, "criteria": "价格明确，每件商品价格在叙事中体现" },
+        "originium_deduction_correct": { "weight": 0.25, "criteria": "原石扣除金额与实际购买量匹配（15+15+20=50）" },
+        "narrative_trade_natural": { "weight": 0.2, "criteria": "交易过程叙事自然流畅，NPC回应合理" }
+      }
+    },
+    {
+      "id": "bm_originium_004",
+      "category": "originium",
+      "name": "原石物物交换",
+      "description": "验证模型是否能正确处理原石不足时用道具进行物物交换的场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 15,
+        "npcPresent": ["老刘"],
+        "inventory": ["防爆手电筒", "铜线", "备用电池"]
+      },
+      "playerInput": "我原石不够了，问老刘能不能用手电筒和铜线换那个急救包",
+      "expectedOutcomes": {
+        "barter_described": true,
+        "item_value_assessed": true,
+        "trade_negotiation_narrated": true,
+        "item_exchange_occurred": true
+      },
+      "scoring": {
+        "barter_described": { "weight": 0.3, "criteria": "叙事体现物物交换过程，不是简单的购买" },
+        "item_value_assessed": { "weight": 0.25, "criteria": "NPC对玩家提供的物品评估价值" },
+        "trade_negotiation_narrated": { "weight": 0.25, "criteria": "双方的讨价还价或交换条件在叙事中体现" },
+        "item_exchange_occurred": { "weight": 0.2, "criteria": "物品成功交换（consumed_items 和 awarded_items 体现）" }
+      }
+    },
+    {
+      "id": "bm_originium_005",
+      "category": "originium",
+      "name": "原石溢出边界行为",
+      "description": "验证模型是否能正确处理原石接近上限时获取原石的边界场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_Corridor",
+        "playerOriginium": 95,
+        "npcPresent": ["苏弥"],
+        "inventory": []
+      },
+      "playerInput": "苏弥递给我一袋原石，说这是在走廊尽头找到的",
+      "expectedOutcomes": {
+        "overflow_handled": true,
+        "cap_mentioned_or_implied": true,
+        "excess_handled_reasonably": true,
+        "narrative_no_data_loss": true
+      },
+      "scoring": {
+        "overflow_handled": { "weight": 0.3, "criteria": "原石达到上限后系统有合理处理（如部分收取）" },
+        "cap_mentioned_or_implied": { "weight": 0.25, "criteria": "叙事中提及或暗示存在原石上限" },
+        "excess_handled_reasonably": { "weight": 0.25, "criteria": "超出部分有合理解释（如丢弃、存留原位、NPC暂存）" },
+        "narrative_no_data_loss": { "weight": 0.2, "criteria": "玩家不会无故丢失应得的原石，有叙事交代去向" }
+      }
+    },
+    {
+      "id": "bm_combat_006",
+      "category": "combat",
+      "name": "紧急战斗撤退",
+      "description": "验证模型是否能正确处理受伤状态下的紧急撤退场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "3F_Corridor",
+        "playerOriginium": 30,
+        "inventory": [],
+        "equippedWeapon": {
+          "name": "警用手电",
+          "stability": 45
+        },
+        "healthState": "injured",
+        "threatLevel": "extreme",
+        "npcPresent": []
+      },
+      "playerInput": "那东西太强了，我转身就跑，把沿途的杂物推倒挡住它的路",
+      "expectedOutcomes": {
+        "retreat_attempt_recognized": true,
+        "escape_route_described": true,
+        "obstacle_use_described": true,
+        "partial_cost_reflected": true
+      },
+      "scoring": {
+        "retreat_attempt_recognized": { "weight": 0.3, "criteria": "叙事将玩家动作处理为撤退而非正面战斗" },
+        "escape_route_described": { "weight": 0.25, "criteria": "描述玩家的逃离路径和方式" },
+        "obstacle_use_described": { "weight": 0.25, "criteria": "叙事中利用沿途杂物制造障碍阻挡追击" },
+        "partial_cost_reflected": { "weight": 0.2, "criteria": "撤退付出合理代价（伤势恶化、理智损失或物品丢弃）" }
+      }
+    },
+    {
+      "id": "bm_combat_007",
+      "category": "combat",
+      "name": "利用环境战斗",
+      "description": "验证模型是否能正确处理引导敌人到环境陷阱的战术战斗",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "B1_PowerRoom",
+        "playerOriginium": 60,
+        "inventory": [],
+        "equippedWeapon": {
+          "name": "自制电击器",
+          "stability": 70
+        },
+        "threatLevel": "high",
+        "npcPresent": []
+      },
+      "playerInput": "我把它引到配电箱旁，准备利用漏电的地面来制造陷阱",
+      "expectedOutcomes": {
+        "environment_usage_described": true,
+        "trap_setup_narrated": true,
+        "hazard_exploitation": true,
+        "combat_environment_synergy": true
+      },
+      "scoring": {
+        "environment_usage_described": { "weight": 0.3, "criteria": "叙事中描述玩家利用环境元素（配电箱、漏电地面）" },
+        "trap_setup_narrated": { "weight": 0.25, "criteria": "引诱敌人进入陷阱的设计过程在叙事中展现" },
+        "hazard_exploitation": { "weight": 0.25, "criteria": "充分利用场景危害造伤害或获得战术优势" },
+        "combat_environment_synergy": { "weight": 0.2, "criteria": "环境利用与战斗动作协同，叙事连贯" }
+      }
+    },
+    {
+      "id": "bm_combat_008",
+      "category": "combat",
+      "name": "赤手空拳应对威胁",
+      "description": "验证模型是否能正确处理无武器状态下的临时武器自卫场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "2F_Commercial",
+        "playerOriginium": 20,
+        "inventory": [],
+        "equippedWeapon": null,
+        "threatLevel": "high",
+        "npcPresent": []
+      },
+      "playerInput": "我手中没有任何武器，只能抓起旁边的破椅子腿自卫",
+      "expectedOutcomes": {
+        "weaponless_state_acknowledged": true,
+        "improvised_weapon_described": true,
+        "combat_disadvantage_reflected": true,
+        "narrative_tension_built": true
+      },
+      "scoring": {
+        "weaponless_state_acknowledged": { "weight": 0.3, "criteria": "叙事承认玩家没有正规武器（equippedWeapon为null）" },
+        "improvised_weapon_described": { "weight": 0.25, "criteria": "临场取材的武器（破椅子腿）被合理描述" },
+        "combat_disadvantage_reflected": { "weight": 0.25, "criteria": "战斗结果反映缺乏武器的劣势（如伤害低、防御不利）" },
+        "narrative_tension_built": { "weight": 0.2, "criteria": "无武器战斗的紧张感和危机感在叙事中充分体现" }
+      }
+    },
+    {
+      "id": "bm_combat_009",
+      "category": "combat",
+      "name": "潜行绕过战斗",
+      "description": "验证模型是否能正确处理潜行绕过而非正面战斗的场景",
+      "setup": {
+        "playerProfession": "普通幸存者",
+        "playerLocation": "4F_Cloister",
+        "playerOriginium": 40,
+        "inventory": [],
+        "equippedWeapon": {
+          "name": "静默短棍",
+          "stability": 90
+        },
+        "threatLevel": "high",
+        "npcPresent": []
+      },
+      "playerInput": "我看到回廊深处那个巡逻的影子，放轻脚步，贴着阴影绕过去",
+      "expectedOutcomes": {
+        "stealth_approach_narrated": true,
+        "combat_avoided": true,
+        "shadow_cover_described": true,
+        "silent_movement_described": true
+      },
+      "scoring": {
+        "stealth_approach_narrated": { "weight": 0.3, "criteria": "叙事体现潜行策略（放轻脚步、观察巡逻路线）" },
+        "combat_avoided": { "weight": 0.25, "criteria": "成功避免正面战斗，未进入战斗状态" },
+        "shadow_cover_described": { "weight": 0.25, "criteria": "利用阴影和掩体进行潜行的细节描述" },
+        "silent_movement_described": { "weight": 0.2, "criteria": "玩家保持安静移动的细节在叙事中体现" }
+      }
+    }
+  ],
+  "scoringGuidelines": {
+    "pass_threshold": 0.7,
+    "excellent_threshold": 0.9,
+    "scoring_method": "weighted_average",
+    "position_randomization": true,
+    "num_judges": 3,
+    "judge_models": ["main", "enhance", "control"]
+  }
+}

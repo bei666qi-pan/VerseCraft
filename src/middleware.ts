@@ -55,7 +55,7 @@ const generalLimiter = createRateLimiter(10, 1000);
 // （尤其是共享出口 IP 的场景）打满，导致 429 而非真实滥用。真正昂贵/敏感的路径
 // （/api/chat、/api/chat/queue/*、其余 /api/*）继续用各自更严格的桶，不受此项放宽影响。
 const pageLimiter = createRateLimiter(30, 1000);
-const llmLimiter = createRateLimiter(2, 1000);
+const llmLimiter = createRateLimiter(20, 1000);
 const optionsOnlyLlmLimiter = createRateLimiter(6, 1000);
 const chatQueueStatusLimiter = createRateLimiter(20, 1000);
 
