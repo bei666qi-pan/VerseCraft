@@ -239,7 +239,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   plainOnlyNewTurn,
   plainOnlyLogIndexMin,
   embeddedOpeningContent,
-  openingAiBusy,
   semanticWaitingKind,
   waitUxPrimaryLine,
   waitUxSecondaryLine,
@@ -268,8 +267,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   plainOnlyLogIndexMin: number;
   /** 尚无助手日志时由前端静态渲染的固定开场正文 */
   embeddedOpeningContent?: string | null;
-  /** 嵌入区「主笔推演」提示：请传入已与 `streamPhase` 交叉校验后的值（如父组件中的 openingBusyUi） */
-  openingAiBusy?: boolean;
   /** waiting_upstream 阶段的语义化过渡提示（不伪造剧情，仅减轻心理空白）。 */
   semanticWaitingKind?: PlaySemanticWaitingKind | null;
   waitUxPrimaryLine?: string;
@@ -311,12 +308,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
               isDarkMoon={isDarkMoon}
               isLowSanity={isLowSanity}
             />
-            {openingAiBusy ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-[#4f706a]">
-                <VcSpinner size={24} strokeWidth={1.6} className="shrink-0" />
-                选项正在由主笔实时推演…
-              </div>
-            ) : null}
           </div>
         ) : null}
 

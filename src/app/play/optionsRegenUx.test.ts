@@ -47,7 +47,7 @@ test("options regen UX: model options backfill semantic-gate misses", () => {
 test("options regen UX: options-only request has Android-safe rate-limit recovery hooks", () => {
   const src = fs.readFileSync(path.resolve("src/app/play/page.tsx"), "utf8");
   assert.match(src, /\[VERSECRAFT_CHAT_PURPOSE_HEADER\]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY/);
+  assert.match(src, /\[CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER\]: getOrCreateChatQueueFingerprint\(\)/);
   assert.match(src, /sleepWithinOptionsDeadline\(/);
   assert.match(src, /setOptionsRegenFailureMessage\(OPTIONS_REGEN_FAILURE_HINT\)/);
 });
-
