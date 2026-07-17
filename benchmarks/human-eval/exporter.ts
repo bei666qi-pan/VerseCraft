@@ -11,9 +11,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // === 类型定义 ===
 
@@ -48,14 +45,6 @@ interface LikertQuestion {
   question: string;
   scale: { min: number; max: number; labels: Record<number, string> };
   description?: string;
-}
-
-interface LikertSheet {
-  id: string;
-  title: string;
-  description: string;
-  questions: LikertQuestion[];
-  samples: EvalSample[];
 }
 
 interface HumanEvalResult {
@@ -97,6 +86,9 @@ export function generateABPairs(
     const sampleB = samplesB[idx]!;
     if (sampleA.id !== sampleB.id) {
       throw new Error(`样本 ID 不匹配: A=${sampleA.id}, B=${sampleB.id}`);
+    }
+    if (sampleA.scenario !== sampleB.scenario || sampleA.userInput !== sampleB.userInput) {
+      throw new Error(`样本场景/输入不匹配: ${sampleA.id}`);
     }
 
     return {
@@ -299,6 +291,14 @@ export function generateLikertQuestions(rubricId: string): LikertQuestion[] {
         },
       },
     ],
+    playability: [
+      { dimension: "行动回报", question: "玩家的行动是否得到具体、可信且与输入相关的结果？", scale: { min: 1, max: 7, labels: { 1: "行动被完全忽略", 2: "几乎无关", 3: "回报很弱", 4: "基本回应", 5: "结果明确", 6: "结果有趣", 7: "结果令人惊喜且合理" } } },
+      { dimension: "选择意义", question: "这一回合是否让你感到不同做法会带来不同后果？", scale: { min: 1, max: 7, labels: { 1: "完全线性", 2: "几乎无选择感", 3: "差异很弱", 4: "基本有差异", 5: "差异清楚", 6: "策略感强", 7: "高度有意义" } } },
+      { dimension: "张力与节奏", question: "危险、发现、缓和与回报的节奏是否让人保持投入？", scale: { min: 1, max: 7, labels: { 1: "极度乏味", 2: "明显拖沓", 3: "偏平", 4: "一般", 5: "有吸引力", 6: "张弛良好", 7: "非常抓人" } } },
+      { dimension: "新鲜度", question: "内容是否避免重复套路，并提供了新的信息、局面或表达？", scale: { min: 1, max: 7, labels: { 1: "高度重复", 2: "很套路", 3: "偏重复", 4: "一般", 5: "有新意", 6: "新鲜", 7: "非常独特" } } },
+      { dimension: "清晰度", question: "你是否清楚发生了什么、状态为何变化以及下一步能做什么？", scale: { min: 1, max: 7, labels: { 1: "完全看不懂", 2: "非常混乱", 3: "有明显疑惑", 4: "基本清楚", 5: "清楚", 6: "很清楚", 7: "清晰且自然" } } },
+      { dimension: "继续游玩意愿", question: "看完这一回合后，你有多想继续输入下一步行动？", scale: { min: 1, max: 7, labels: { 1: "立刻退出", 2: "基本不想", 3: "意愿较低", 4: "一般", 5: "愿意继续", 6: "很想继续", 7: "迫不及待" } } },
+    ],
   };
 
   return questionSets[rubricId] ?? questionSets["narrative_quality"]!;
@@ -438,10 +438,18 @@ function main(): void {
   const modeArg = args.find((a) => a.startsWith("--mode="));
   const outputArg = args.find((a) => a.startsWith("--output="));
   const rubricArg = args.find((a) => a.startsWith("--rubric="));
+  const inputArg = args.find((a) => a.startsWith("--input="));
+  const inputAArg = args.find((a) => a.startsWith("--input-a="));
+  const inputBArg = args.find((a) => a.startsWith("--input-b="));
+  const changedOnly = args.includes("--changed-only");
+  const storyOnly = args.includes("--story-only");
 
   const mode = modeArg ? modeArg.split("=")[1] : "ab";
   const outputDir = outputArg ? outputArg.split("=")[1] : "./benchmarks/human-eval/output/";
   const rubricId = rubricArg ? rubricArg.split("=")[1] : "narrative_quality";
+  const inputPath = inputArg ? inputArg.slice("--input=".length) : null;
+  const inputAPath = inputAArg ? inputAArg.slice("--input-a=".length) : null;
+  const inputBPath = inputBArg ? inputBArg.slice("--input-b=".length) : null;
 
   // 确保输出目录存在
   if (!fs.existsSync(outputDir)) {
@@ -450,8 +458,7 @@ function main(): void {
 
   if (mode === "ab") {
     console.log("📝 生成 A/B 对比评估数据...");
-    // 示例数据（实际应从 benchmark 或 eval 结果加载）
-    const samplePairs: ABPair[] = [
+    let samplePairs: ABPair[] = [
       {
         id: "ab_demo_001",
         scenarioId: "demo_001",
@@ -469,6 +476,26 @@ function main(): void {
         },
       },
     ];
+    if (inputAPath || inputBPath) {
+      if (!inputAPath || !inputBPath) throw new Error("A/B 真实 trace 必须同时提供 --input-a 与 --input-b");
+      const loadTrace = (tracePath: string): EvalSample[] => {
+        const trace = JSON.parse(fs.readFileSync(tracePath, "utf8")) as { scenarioId?: string; runId?: string; steps?: Array<Record<string, unknown>> };
+        return (trace.steps ?? []).map((step, index) => ({
+          id: `${trace.scenarioId ?? "unknown"}-${String(step.stepIndex ?? index)}`,
+          scenario: trace.scenarioId ?? "unknown",
+          userInput: String(step.playerAction ?? ""),
+          narrative: String(step.narrative ?? ""),
+          dmJson: step.dmJson && typeof step.dmJson === "object" ? step.dmJson as Record<string, unknown> : {},
+          metadata: { stepIndex: step.stepIndex ?? index, source: "anonymized_trace" },
+        }));
+      };
+      const samplesA = loadTrace(inputAPath);
+      const samplesB = loadTrace(inputBPath);
+      samplePairs = generateABPairs(samplesA, samplesB, "匿名版本 A", "匿名版本 B");
+      if (changedOnly) {
+        samplePairs = samplePairs.filter((pair) => pair.variantA.narrative.trim() !== pair.variantB.narrative.trim());
+      }
+    }
 
     const jsonPath = path.join(outputDir, "ab-comparison.json");
     const worksheetPath = path.join(outputDir, "ab-worksheet.md");
@@ -477,8 +504,7 @@ function main(): void {
     generateABWorksheet(samplePairs, worksheetPath);
   } else if (mode === "likert") {
     console.log(`📝 生成 Likert 量表评估表单 (${rubricId})...`);
-    // 示例数据
-    const samples: EvalSample[] = [
+    let samples: EvalSample[] = [
       {
         id: "demo_001",
         scenario: "B1 走廊探索",
@@ -487,6 +513,21 @@ function main(): void {
         dmJson: { is_action_legal: true, sanity_damage: 0 },
       },
     ];
+    if (inputPath) {
+      const trace = JSON.parse(fs.readFileSync(inputPath, "utf8")) as { scenarioId?: string; runId?: string; steps?: Array<Record<string, unknown>> };
+      samples = (trace.steps ?? []).map((step, index) => ({
+        id: `${trace.runId ?? "trace"}-${String(step.stepIndex ?? index)}`,
+        scenario: trace.scenarioId ?? "unknown",
+        userInput: String(step.playerAction ?? ""),
+        narrative: String(step.narrative ?? ""),
+        dmJson: step.dmJson && typeof step.dmJson === "object" ? step.dmJson as Record<string, unknown> : {},
+        metadata: { stepIndex: step.stepIndex ?? index, source: "anonymized_trace" },
+      })).filter((sample) => {
+        if (!storyOnly) return true;
+        const meta = sample.dmJson.security_meta;
+        return !(meta && typeof meta === "object" && !Array.isArray(meta) && (meta as Record<string, unknown>).deterministic_service_fast_lane === true);
+      });
+    }
 
     const sheetPath = path.join(outputDir, `likert-sheet-${rubricId}.md`);
     generateLikertSheet(rubricId, samples, sheetPath);

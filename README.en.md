@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/logo.svg" width="92" alt="VerseCraft logo" />
+  <img src="https://versecraft.cn/favicon.ico" width="92" alt="VerseCraft favicon" />
 </p>
 
 <h1 align="center">VerseCraft</h1>

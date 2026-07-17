@@ -21,9 +21,14 @@ export const BUDGET = {
   /** judge 校准调用数上限 */
   JUDGE_CALIBRATION: 360,
   /** 单次 live 评测批次上限 */
-  LIVE_BATCH: 60,
+  LIVE_BATCH: 30,
   /** 单日总调用上限 */
-  DAILY_TOTAL: 2000,
+  DAILY_TOTAL: 300,
   /** 失效前从缓存重放 */
   CACHE_HIT_TTL_MS: 86_400_000, // 24h
 } as const;
+
+export function getDailyLiveBudget(): number {
+  const configured = Number.parseInt(process.env.VERSECRAFT_EVAL_DAILY_CALL_BUDGET ?? "", 10);
+  return Number.isFinite(configured) && configured > 0 ? configured : BUDGET.DAILY_TOTAL;
+}

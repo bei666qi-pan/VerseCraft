@@ -62,6 +62,8 @@ import {
   type UnsupportedFactIssueCode,
   type UnsupportedFactDetectorReport,
 } from "@/lib/worldFacts/unsupportedFactDetector";
+import { findRegisteredItemById } from "@/lib/registry/itemLookup";
+import { softenPendingCandidateFacts } from "@/lib/worldFacts/candidateNarrativeGuard";
 import { normalizeNarrativeAuditPayload, type NarrativeAuditPayload } from "@/lib/worldFacts/narrativeAudit";
 import { listWorldFacts } from "@/lib/worldFacts/worldFactRegistry";
 import type { EpistemicFilterResult } from "@/lib/turnEngine/epistemic/types";
@@ -71,8 +73,8 @@ import type {
   StateDelta,
 } from "@/lib/turnEngine/types";
 import { NPCS } from "@/lib/registry/npcs";
-import { NPC_ALIASES, NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
-import { extractChineseNames } from "@/lib/narrative/extractChineseNames";
+import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
+import { extractChineseNames, isHighConfidenceUnregisteredPersonName } from "@/lib/narrative/extractChineseNames";
 import { NAME_STOPWORDS } from "@/lib/narrative/nameStopwords";
 
 /** 已注册的真名集合（含 alias）：从 NPCS + NPC_ALIASES 派生 */
@@ -103,7 +105,7 @@ export function validateNarrativePersonNames(args: {
   if (unregistered.length > 0) {
     // 只对 2 字以上且非 stopword 的 token 报
     const reportable = unregistered.filter(
-      (e) => e.token.length >= 2 && !NAME_STOPWORDS.has(e.token),
+      (e) => e.token.length >= 2 && !NAME_STOPWORDS.has(e.token) && isHighConfidenceUnregisteredPersonName(e),
     );
     // 去重：用 .slice(0, 2) 规范化（避免 3-char "陈昆从" 重复报 2 次）
     const seen = new Set<string>();
@@ -257,6 +259,8 @@ export type ValidateNarrativeArgs = {
   actorScopedFactIds?: readonly string[];
   sessionCommittedFactIds?: readonly string[];
   factDetectionMaxRevealRank?: number;
+  /** Current client inventory ids, used only for conservative possession checks. */
+  inventoryItemIds?: readonly string[];
 };
 
 /**
@@ -442,6 +446,20 @@ function optionLooksLikeCombatVerb(opt: string): boolean {
  */
 const INVENTORY_ACQUISITION_PATTERN =
   /(捡起|拾起|收进口袋|放进口袋|装进背包|放入背包|收下了|得到了|获得了)/;
+const FIRST_PERSON_POSSESSION_PATTERN =
+  /我(?:下意识)?(?:摸(?:了摸|向)?|伸手(?:摸向|探进)?|翻找)?(?:自己的)?(?:口袋|背包)(?:里|中的|内).{0,12}?(便签|纸条|钥匙|徽章|卡片|药|绷带|武器|刀|枪|证件|硬币|信|笔记本)/;
+
+const BUILTIN_ITEM_SURFACES: Readonly<Record<string, readonly string[]>> = {
+  item_phone: ["手机"],
+  item_bandage: ["绷带"],
+};
+
+function inventorySurfaceNames(ids: readonly string[]): string[] {
+  return ids.flatMap((id) => {
+    const registered = findRegisteredItemById(id);
+    return [...(BUILTIN_ITEM_SURFACES[id] ?? []), ...(registered?.name ? [registered.name] : [])];
+  });
+}
 
 /**
  * Long-duration time cues that would be inconsistent with `consumesTime=false`.
@@ -484,6 +502,8 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
   const options = asStringArray(dm.options);
   const intentIsSystemTransition = Boolean(args.intent?.isSystemTransition);
   const narrativeAudit = extractNarrativeAudit(dm);
+  let possessionNarrativeOverride: string | null = null;
+  const candidateSoftening = softenPendingCandidateFacts({ narrative, candidates: narrativeAudit.candidate_new_facts });
 
   // 1. DM-only fact leak detection.
   if (args.epistemicFilter && narrative) {
@@ -587,6 +607,28 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
         detail: "narrative_claims_acquisition_without_awarded_items",
         severity: "medium",
       });
+    }
+  }
+
+  // Existing-possession claims are a separate failure mode from acquisition:
+  // `我摸了摸口袋里那张便签` silently conjures an item without an award verb.
+  // Restrict to first-person bag/pocket grammar to avoid flagging scene props
+  // or items held by NPCs.
+  if (!intentIsSystemTransition && narrative) {
+    const possession = narrative.match(FIRST_PERSON_POSSESSION_PATTERN);
+    if (possession?.[1]) {
+      const claimedSurface = possession[1];
+      const knownSurfaces = inventorySurfaceNames(args.inventoryItemIds ?? []);
+      const alreadyOwned = knownSurfaces.some((name) => name.includes(claimedSurface) || claimedSurface.includes(name));
+      const hasAward = [dm.awarded_items, dm.awarded_warehouse_items].some((value) => Array.isArray(value) && value.length > 0);
+      if (!alreadyOwned && !hasAward) {
+        issues.push({ code: "inventory_conflict", detail: "narrative_claims_unowned_first_person_possession", severity: "medium" });
+        const rewriteBase = candidateSoftening.rewritten ? candidateSoftening.narrative : narrative;
+        possessionNarrativeOverride = rewriteBase.replace(
+          possession[0],
+          "我下意识摸了摸口袋，那里没有能派上用场的东西",
+        );
+      }
     }
   }
 
@@ -761,6 +803,11 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     // caller（api/chat 的 Phase-8.5）会在看到非空 optionsOverride 为空数组时，
     // 重新调用 `generateOptionsOnlyFallback` 以获得大模型实时输出。
     optionsOverride = [...CLEAR_OPTIONS_SIGNAL];
+  }
+  if (!hasHigh && possessionNarrativeOverride && possessionNarrativeOverride !== narrative) {
+    narrativeOverride = possessionNarrativeOverride;
+  } else if (!hasHigh && candidateSoftening.rewritten) {
+    narrativeOverride = candidateSoftening.narrative;
   }
 
   // === 2026-07 Action Resolver：叙事文本 → 结构化字段自动回填 ===

@@ -3,7 +3,11 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractChineseNames } from "./extractChineseNames";
+import {
+  extractChineseNames,
+  isHighConfidenceUnregisteredPersonName,
+  redactHighConfidenceUnregisteredPersonNames,
+} from "./extractChineseNames";
 import { NPCS } from "@/lib/registry/npcs";
 import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
 
@@ -95,4 +99,88 @@ test("context 标记正确", () => {
   const candidate = r.find((e) => e.candidate);
   assert.ok(candidate);
   assert.match(candidate!.contextAfter, /4/);
+});
+
+test("final guard 仅将人称谓词后的陌生姓名视为高置信", () => {
+  const named = extractChineseNames("陈昆从楼梯走下来。", { registeredNames: registered, aliases })
+    .find((entry) => entry.candidate);
+  assert.ok(named);
+  assert.equal(isHighConfidenceUnregisteredPersonName(named!), true);
+
+  const descriptive = extractChineseNames("陈旧的木门上多了一道划痕。", { registeredNames: registered, aliases })
+    .find((entry) => entry.candidate);
+  assert.ok(descriptive);
+  assert.equal(isHighConfidenceUnregisteredPersonName(descriptive!), false);
+});
+
+test("高置信陌生姓名仅匿名化，不丢弃叙事其余内容", () => {
+  const narrative = "陈昆从楼梯走下来，递给你一把生锈的钥匙。";
+  const entries = extractChineseNames(narrative, { registeredNames: registered, aliases });
+  assert.equal(
+    redactHighConfidenceUnregisteredPersonNames(narrative, entries),
+    "陌生人从楼梯走下来，递给你一把生锈的钥匙。",
+  );
+});
+
+test("物品署名与口语姓名所有格属于高置信陌生人名", () => {
+  const label = "螺丝刀柄上贴着胶布，写着「7F-阿珍」。";
+  const labelEntries = extractChineseNames(label, { registeredNames: registered, aliases });
+  assert.ok(labelEntries.some((entry) => entry.token === "阿珍" && isHighConfidenceUnregisteredPersonName(entry)));
+  assert.equal(redactHighConfidenceUnregisteredPersonNames(label, labelEntries).includes("阿珍"), false);
+
+  const possessive = "这是阿珍的东西，你从阿珍那儿借来的。";
+  const possessiveEntries = extractChineseNames(possessive, { registeredNames: registered, aliases });
+  assert.ok(possessiveEntries.filter((entry) => entry.token === "阿珍").every(isHighConfidenceUnregisteredPersonName));
+});
+
+test("quoted 叫名语境将真实虚构姓名判为高置信", () => {
+  const entries = extractChineseNames("登记册上有一个叫“周远”的名字。", { registeredNames: registered, aliases });
+  const zhou = entries.find((entry) => entry.token === "周远");
+  assert.ok(zhou);
+  assert.equal(isHighConfidenceUnregisteredPersonName(zhou!), true);
+  const sentence = "保安说他叫“周远”，周远在门口值夜。";
+  const sentenceEntries = extractChineseNames(sentence, { registeredNames: registered, aliases });
+  assert.equal(
+    redactHighConfidenceUnregisteredPersonNames(sentence, sentenceEntries),
+    "保安说他的名字还没有得到确认，陌生人在门口值夜。",
+  );
+});
+
+test("描述性陈旧仍不得因所有格规则被匿名化", () => {
+  const narrative = "陈旧的木门上多了一道划痕。";
+  const entries = extractChineseNames(narrative, { registeredNames: registered, aliases });
+  assert.equal(redactHighConfidenceUnregisteredPersonNames(narrative, entries), narrative);
+});
+
+test("核心玩法术语不得从词中间被匿名化", () => {
+  for (const narrative of [
+    "我把原石放在掌心。",
+    "三颗原石在口袋里硌着指腹。",
+    "检查任务列表和职业试炼。",
+  ]) {
+    const entries = extractChineseNames(narrative, { registeredNames: registered, aliases });
+    assert.equal(redactHighConfidenceUnregisteredPersonNames(narrative, entries), narrative);
+  }
+});
+
+test("量词张与后续动词不得被误判为临时人物", () => {
+  const narrative = "另一张纸条旁是一张钉在铁丝网里的表格。";
+  const entries = extractChineseNames(narrative, { registeredNames: registered, aliases });
+  assert.equal(redactHighConfidenceUnregisteredPersonNames(narrative, entries), narrative);
+
+  const actualName = "我看见张三走进大堂。";
+  const actualEntries = extractChineseNames(actualName, { registeredNames: registered, aliases });
+  assert.equal(redactHighConfidenceUnregisteredPersonNames(actualName, actualEntries).includes("张三"), false);
+});
+
+test("地点方向词不得被匿名化为陌生人", () => {
+  for (const narrative of [
+    "欣蓝从电梯口方向走过来。",
+    "我朝出口方向走去。",
+    "前方传来塑料袋的轻响。",
+    "然后向走廊尽头那团难以言状的阴影挺进。",
+  ]) {
+    const entries = extractChineseNames(narrative, { registeredNames: registered, aliases });
+    assert.equal(redactHighConfidenceUnregisteredPersonNames(narrative, entries), narrative);
+  }
 });

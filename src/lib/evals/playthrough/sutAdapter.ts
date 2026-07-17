@@ -19,6 +19,7 @@
 import type { GameStateSnapshot } from "./types";
 import { createInitialStateSnapshot } from "./invariants";
 import { applyDmJsonToState } from "./stateApply";
+import { IncrementalVerseCraftSseDecoder } from "../harness/sseFaultModel";
 
 // === SUT 接口 ===
 
@@ -29,6 +30,9 @@ export interface SutAction {
   persona: string;
   /** 当前步骤（用于 trace） */
   stepIndex: number;
+  /** Client-first state and history equivalents supplied by the playthrough harness. */
+  playerContext?: string;
+  clientState?: Record<string, unknown>;
 }
 
 export interface SutResponse {
@@ -65,6 +69,57 @@ export interface SutAdapter {
    * 标识：mock / live
    */
   readonly kind: "mock" | "http";
+}
+
+const DEGRADED_NARRATIVE_PATTERNS = [
+  "网站暂时无法完成本次生成",
+  "AI 服务暂时不可用",
+  "暂时无法生成",
+] as const;
+
+const RETRYABLE_DEGRADED_PATTERNS = [
+  "网站暂时无法完成本次生成",
+  "AI 服务暂时不可用",
+  "暂时无法生成",
+  "服务暂不可用",
+  "服务异常",
+  "暂时拥塞",
+] as const;
+
+export function isDegradedSutResult(aiStatus: string | undefined, finalJson: Record<string, unknown>): boolean {
+  if (aiStatus && aiStatus !== "ok" && aiStatus !== "ready") return true;
+  const narrative = typeof finalJson["narrative"] === "string" ? finalJson["narrative"] : "";
+  const internalMeta = finalJson["internal_meta"];
+  if (internalMeta && typeof internalMeta === "object" && !Array.isArray(internalMeta)) {
+    const action = (internalMeta as Record<string, unknown>)["action"];
+    if (typeof action === "string" && /fallback|site_unavailable/i.test(action)) return true;
+  }
+  if (narrative.trim().length === 0) return true;
+  return DEGRADED_NARRATIVE_PATTERNS.some((pattern) => narrative.includes(pattern));
+}
+
+export function isRetryableSutDegradation(
+  aiStatus: string | undefined,
+  response: SutResponse,
+): boolean {
+  if (response.error) {
+    if (/(?:ENOTFOUND|ECONNRESET|ETIMEDOUT|EAI_AGAIN|EPIPE|socket hang up|timeout)/i.test(response.error)) {
+      return true;
+    }
+    if (response.error.includes("429") || response.error.includes("503") || response.error.includes("502") || response.error.includes("504")) {
+      return true;
+    }
+  }
+  if (aiStatus === "keys_missing") return false;
+
+  const narrative = typeof response.dmJson["narrative"] === "string" ? String(response.dmJson["narrative"]) : "";
+  const internalMeta = response.dmJson["internal_meta"];
+  const action = internalMeta && typeof internalMeta === "object" && !Array.isArray(internalMeta)
+    ? String((internalMeta as Record<string, unknown>)["action"] ?? "")
+    : "";
+  if (/site_unavailable|fallback|internal_no_visible_fallback/i.test(action)) return true;
+
+  return RETRYABLE_DEGRADED_PATTERNS.some((pattern) => narrative.includes(pattern));
 }
 
 // === Mock SUT（默认，离线 fuzz） ===
@@ -348,7 +403,7 @@ function buildMockSutResponseV2(
   }
 
   // ── 12. 叙事文本 ──
-  const narrative = getPersonaNarrative(persona, step, dm);
+  const narrative = getPersonaNarrative(persona, step);
 
   return {
     narrative,
@@ -363,7 +418,7 @@ function buildMockSutResponseV2(
  * Persona 感知的叙事生成。
  * 战斗/治疗事件有专属叙事；其余按 persona 风格。
  */
-function getPersonaNarrative(persona: string, step: number, dmJson: Record<string, unknown>): string {
+function getPersonaNarrative(persona: string, step: number): string {
   // 战斗叙事优先
   for (const cd of COMBAT_DAMAGE) {
     if (step === cd.step) return cd.narrative;
@@ -467,8 +522,9 @@ export class HttpSutAdapter implements SutAdapter {
   readonly kind = "http" as const;
   private readonly baseUrl: string;
   private readonly frameTimeoutMs: number;
-  private readonly sessionId: string;
+  private sessionId: string;
   private readonly initialCharacter: HttpSutAdapterOptions["initialCharacter"];
+  private readonly history: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   constructor(opts: HttpSutAdapterOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
@@ -488,7 +544,10 @@ export class HttpSutAdapter implements SutAdapter {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.sessionId,
-          messages: [{ role: "user", content: action.playerAction }],
+          messages: [...this.history, { role: "user", content: action.playerAction }],
+          latestUserInput: action.playerAction,
+          playerContext: action.playerContext,
+          clientState: action.clientState,
         }),
         signal: controller.signal,
       });
@@ -517,39 +576,16 @@ export class HttpSutAdapter implements SutAdapter {
         };
       }
 
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let aiStatus: string | undefined;
-      let finalJson: Record<string, unknown> | null = null;
+      const sseDecoder = new IncrementalVerseCraftSseDecoder();
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        // 解析 SSE 帧：data: <payload>\n\n
-        let sepIdx = buffer.indexOf("\n\n");
-        while (sepIdx !== -1) {
-          const frame = buffer.slice(0, sepIdx);
-          buffer = buffer.slice(sepIdx + 2);
-          const payload = frame.replace(/^data:\s*/m, "").trim();
-
-          if (payload.startsWith("__VERSECRAFT_STATUS__:")) {
-            try {
-              const status = JSON.parse(payload.slice("__VERSECRAFT_STATUS__:".length)) as Record<string, unknown>;
-              if (typeof status["aiStatus"] === "string") aiStatus = status["aiStatus"] as string;
-            } catch { /* ignore parse error */ }
-          } else if (payload.startsWith("__VERSECRAFT_FINAL__:")) {
-            try {
-              finalJson = JSON.parse(payload.slice("__VERSECRAFT_FINAL__:".length)) as Record<string, unknown>;
-            } catch { /* ignore parse error */ }
-          } else if (payload && !payload.startsWith(":")) {
-            // 普通正文帧 — 累积；最终会被 final 覆盖
-            // 这里我们不写正文，因为 final 帧覆盖
-          }
-          sepIdx = buffer.indexOf("\n\n");
-        }
+        sseDecoder.push(value);
       }
+
+      const decoded = sseDecoder.finish();
+      const { aiStatus, finalJson } = decoded;
 
       if (!finalJson) {
         return {
@@ -563,11 +599,16 @@ export class HttpSutAdapter implements SutAdapter {
         };
       }
 
+      const degraded = isDegradedSutResult(aiStatus, finalJson);
+      const narrative = typeof finalJson["narrative"] === "string" ? finalJson["narrative"] as string : "";
+      if (!degraded) {
+        this.history.push({ role: "user", content: action.playerAction }, { role: "assistant", content: narrative });
+      }
       return {
-        narrative: typeof finalJson["narrative"] === "string" ? finalJson["narrative"] as string : "",
+        narrative,
         dmJson: finalJson,
         latencyMs: Date.now() - startTime,
-        status: aiStatus === "keys_missing" ? "degraded" : "ok",
+        status: degraded ? "degraded" : "ok",
         reachedFinal: true,
         aiStatus,
       };
@@ -587,6 +628,11 @@ export class HttpSutAdapter implements SutAdapter {
 
   async close(): Promise<void> {
     // fetch 不需要显式 close
+  }
+
+  async reset(): Promise<void> {
+    this.history.splice(0, this.history.length);
+    this.sessionId = `playthrough-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 }
 

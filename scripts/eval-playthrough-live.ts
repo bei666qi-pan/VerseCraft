@@ -16,18 +16,33 @@
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --base-url http://localhost:666
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --sessions 3  # 自定义会话数
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --out path    # 自定义报告路径
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --parallel 3     # 并发会话数（建议 2~4）
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --parallel 3 --continue-on-degrade  # 降级不中断会话，优先提升样本完整性
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --judge-mode codex # 无 API Key 时启用离线 Codex 裁判（默认 mock）
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --judge-mode live  # 强制使用 DeepSeek 裁判（需配置密钥）
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --judge-mode auto  # 自动：先用离线，若通过再尝试 live
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --step-delay-ms 500 # 缩短步间等待到 500ms
  *
  * 环境变量：
- *   DEEPSEEK_API_KEY  — 叙事裁判需要（mock 模式跳过）
+ *   PLAYTEST_LLM_API_KEY 或 DEEPSEEK_API_KEY — 叙事裁判需要（mock 模式跳过）
  *   LIVEPLAY_BASE_URL — 默认 http://localhost:666
+ *   VERSECRAFT_EVAL_PARALLEL_SESSIONS — 并发会话数（默认 1）
+ *   VERSECRAFT_EVAL_STEP_DELAY_MS — 步间延迟（默认 live 2000ms）
+ *   VERSECRAFT_EVAL_CONTINUE_ON_DEGRADE — 1 则降级不中断会话，0 则降级 fail-fast
  */
 
-import { createSutAdapter, SCENARIOS, runSinglePlaythroughV3, PERSONAS } from "../src/lib/evals/playthrough";
-import type { PlaythroughV3Config, Scenario, PersonaType } from "../src/lib/evals/playthrough";
-import { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "../src/lib/evals/playthrough/narrativeJudge";
+import { applyDmJsonToState, buildClientStructuredSnapshot, createSutAdapter, SCENARIOS } from "../src/lib/evals/playthrough";
+import type { PersonaType, PlaythroughTranscript, TerminatedReason, NarrativeConsistencyResult } from "../src/lib/evals/playthrough";
+import type { RunFailureContext } from "../src/lib/evals/playthrough/types";
+import {
+  judgeNarrativeConsistencyMock,
+  judgeNarrativeConsistencyLive,
+  judgeNarrativeConsistencyCodex,
+} from "../src/lib/evals/playthrough/narrativeJudge";
 import { createInitialStateSnapshot } from "../src/lib/evals/playthrough/invariants";
 import { generateMockAction } from "../src/lib/evals/playthrough/playerAgent";
-import type { SutAdapter, SutAction } from "../src/lib/evals/playthrough/sutAdapter";
+import type { SutAction } from "../src/lib/evals/playthrough/sutAdapter";
+import { classifyRunEvidence, resolveEvalExecutionMode } from "../src/lib/evals/productQuality/runOutcome";
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,6 +55,48 @@ interface EvalCli {
   sessions: number;
   maxSteps: number;
   outDir: string;
+  profile: "smoke" | "standard" | "deep";
+  maxLiveCalls: number;
+  scenarioIds?: string[];
+  stepDelayMs: number;
+  compareJudge: boolean;
+  judgeMode: "auto" | "mock" | "live" | "codex";
+  parallelism: number;
+  continueOnDegrade: boolean;
+}
+
+type JudgePairReport = {
+  hasLive: boolean;
+  mockJudge: NarrativeConsistencyResult;
+  liveJudge?: NarrativeConsistencyResult;
+  scoreGap: number | null;
+  passAgreement: boolean | null;
+  criticalGap: number;
+  majorGap: number;
+};
+
+function normalizeJudgeMode(value: string | undefined): EvalCli["judgeMode"] {
+  if (value === "mock" || value === "live" || value === "codex" || value === "auto") {
+    return value;
+  }
+  return "auto";
+}
+
+function hasJudgeCredentials(): boolean {
+  return Boolean(process.env.PLAYTEST_LLM_API_KEY || process.env.DEEPSEEK_API_KEY);
+}
+
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (value == null) return undefined;
+  if (["1", "true", "yes", "on"].includes(value.trim().toLowerCase())) return true;
+  if (["0", "false", "no", "off"].includes(value.trim().toLowerCase())) return false;
+  return undefined;
+}
+
+function parsePosInt(raw: string, fallback: number): number {
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 1) return fallback;
+  return value;
 }
 
 function parseArgs(): EvalCli {
@@ -48,13 +105,130 @@ function parseArgs(): EvalCli {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] ?? def : def;
   };
+  const profileArg = get("--profile", "smoke");
+  const profile = profileArg === "deep" || profileArg === "standard" ? profileArg : "smoke";
+  const defaults = profile === "deep" ? { sessions: "5", steps: "30" } : profile === "standard" ? { sessions: "3", steps: "15" } : { sessions: "2", steps: "8" };
   return {
     live: args.includes("--live"),
     baseUrl: get("--base-url", process.env.LIVEPLAY_BASE_URL ?? "http://localhost:666"),
-    sessions: parseInt(get("--sessions", "5"), 10),
-    maxSteps: parseInt(get("--max-steps", "15"), 10),
+    sessions: parsePosInt(get("--sessions", defaults.sessions), Number(defaults.sessions)),
+    maxSteps: parsePosInt(get("--max-steps", defaults.steps), Number(defaults.steps)),
     outDir: get("--out", "docs/eval"),
+    profile,
+    maxLiveCalls: parsePosInt(
+      get("--max-live-calls", process.env.VERSECRAFT_EVAL_RUN_CALL_BUDGET ?? "60"),
+      60,
+    ),
+    scenarioIds: get("--scenarios", "").split(",").map((id) => id.trim()).filter(Boolean),
+    stepDelayMs: parsePosInt(
+      get("--step-delay-ms", process.env.VERSECRAFT_EVAL_STEP_DELAY_MS ?? (args.includes("--live") ? "2000" : "0")),
+      0,
+    ),
+    compareJudge: args.includes("--compare-judge") || process.env.VERSECRAFT_EVAL_COMPARE_JUDGE === "1",
+    judgeMode: normalizeJudgeMode(get("--judge-mode", process.env.VERSECRAFT_EVAL_JUDGE_MODE ?? "auto")),
+    parallelism: parsePosInt(get("--parallel", process.env.VERSECRAFT_EVAL_PARALLEL_SESSIONS ?? "1"), 1),
+    continueOnDegrade:
+      args.includes("--continue-on-degrade") ? true
+        : args.includes("--stop-on-degrade") ? false
+          : parseBooleanEnv(process.env.VERSECRAFT_EVAL_CONTINUE_ON_DEGRADE) ?? true,
   };
+}
+
+interface SessionSpec {
+  scenarioId: string;
+  persona: PersonaType;
+  description: string;
+  scriptedActions?: string[];
+}
+
+function buildFailureContext(args: {
+  stepIndex: number;
+  action: string;
+  response: {
+    status: string;
+    aiStatus?: string;
+    error?: string;
+    dmJson: Record<string, unknown>;
+    narrative: string;
+  };
+  mode: "step_error" | "step_degraded" | "step_degraded_after_retry" | "step_error_after_retry" | "run_stop";
+}): RunFailureContext {
+  const internalMeta = args.response.dmJson.internal_meta;
+  const reasonRaw = internalMeta && typeof internalMeta === "object" && !Array.isArray(internalMeta)
+    ? String((internalMeta as Record<string, unknown>)?.reason ?? "")
+    : "";
+  const reason = reasonRaw.trim().length > 0 ? reasonRaw : String(args.response.error ?? "unknown");
+  const narrative = typeof args.response.narrative === "string" ? args.response.narrative : "";
+  return {
+    stepIndex: args.stepIndex,
+    action: args.action,
+    reason,
+    transportStatus: args.response.status,
+    aiStatus: args.response.aiStatus,
+    hasVisibleNarrative: narrative.trim().length > 0,
+    stepFailureMode: args.mode,
+  };
+}
+
+function buildSessionPlan(requested: SessionSpec[], targetSessions: number): SessionSpec[] {
+  if (requested.length === 0) return [];
+  if (targetSessions <= requested.length) {
+    return requested.slice(0, targetSessions);
+  }
+
+  const plan: SessionSpec[] = [];
+  for (let i = 0; i < targetSessions; i += 1) {
+    plan.push(requested[i % requested.length]!);
+  }
+  return plan;
+}
+
+function roundTo(n: number, digits = 2): string {
+  return n.toFixed(digits);
+}
+
+function computePassRateInterval(
+  passCount: number,
+  total: number,
+  confidenceLevel: number = 0.95,
+): { rate: number; lower: number; upper: number } | null {
+  if (total <= 0) return null;
+  const p = passCount / total;
+  const z = confidenceLevel === 0.99 ? 2.576 : 1.96;
+  const se = Math.sqrt((p * (1 - p)) / total);
+  const half = z * se;
+  const lower = Math.max(0, p - half);
+  const upper = Math.min(1, p + half);
+  return { rate: p, lower, upper };
+}
+
+function estimateSamplesForHalfWidth(halfWidth: number, confidenceLevel: number = 0.95): number | null {
+  if (halfWidth <= 0) return null;
+  const z = confidenceLevel === 0.99 ? 2.576 : 1.96;
+  const n = Math.ceil((z * z * 0.25) / (halfWidth * halfWidth));
+  return Math.max(3, n);
+}
+
+async function runWithParallelism<TIn, TOut>(
+  items: TIn[],
+  concurrency: number,
+  worker: (item: TIn, index: number) => Promise<TOut>,
+): Promise<TOut[]> {
+  const result: TOut[] = new Array(items.length);
+  let cursor = 0;
+  const limit = Math.max(1, concurrency);
+
+  const runOne = async (): Promise<void> => {
+    while (true) {
+      const idx = cursor;
+      if (idx >= items.length) return;
+      cursor += 1;
+      result[idx] = await worker(items[idx]!, idx);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runOne));
+  return result;
 }
 
 // ─── 精选场景 ───────────────────────────────────────────
@@ -69,7 +243,14 @@ const SELECTED_SCENARIOS: Array<{
     scenarioId: "happy-speedrun",
     persona: "speedrunner",
     description: "速通主线流程",
-    scriptedActions: undefined, // 使用 LLM 玩家
+    scriptedActions: [
+      "先检查当前房间、门牌和手机信息，确认我所在的位置以及眼前真实存在的出口。",
+      "沿三楼走廊前往楼梯间；如果道路受阻，明确说明阻碍来自哪里。",
+      "通过楼梯下到一楼登记口，寻找已经登记在这个世界里的住户或管理员。",
+      "向当前在场且确实存在的 NPC 询问离开公寓所需的条件，不接受凭空出现的新人物。",
+      "根据已经取得的线索检查可通行出口，并验证出口是否属于假逃生路线。",
+      "选择目前证据最充分的逃生方案执行；如果前置条件不足，列明缺少的结构化条件。",
+    ],
   },
   {
     scenarioId: "happy-explore",
@@ -101,17 +282,24 @@ const SELECTED_SCENARIOS: Array<{
 
 async function runSession(
   sessionIndex: number,
-  selected: typeof SELECTED_SCENARIOS[number],
+  selected: SessionSpec,
   config: EvalCli
 ): Promise<{
   sessionIndex: number;
   scenarioId: string;
   persona: PersonaType;
   steps: Array<{ step: number; action: string; narrative: string; latencyMs: number }>;
-  judgeResult: Awaited<ReturnType<typeof judgeNarrativeConsistencyMock>>;
+  judgeResult: NarrativeConsistencyResult;
   terminatedReason: string;
   totalSteps: number;
   durationMs: number;
+  degradedSteps: number;
+  judgeMode: "live" | "mock" | "codex" | "fallback";
+  executionMode: "mock_full" | "live_full" | "live_degraded";
+  initialState: PlaythroughTranscript["initialState"];
+  gameplayGate: { passed: boolean; required: string[]; forbidden: string[]; observed: Record<string, number>; missing: string[]; forbiddenObserved: string[] };
+  judgePair?: JudgePairReport;
+  failureContext?: RunFailureContext;
 }> {
   const startTime = Date.now();
   const scenario = SCENARIOS.find((s) => s.id === selected.scenarioId);
@@ -129,10 +317,12 @@ async function runSession(
 
   // 初始状态
   const initialState = createInitialStateSnapshot(scenario.initialStateOverride as Record<string, unknown> | undefined);
-  const currentState = { ...initialState };
-  const steps: Array<{ step: number; action: string; narrative: string; latencyMs: number }> = [];
-  let terminatedReason = "max_steps";
+  let currentState = { ...initialState };
+  const steps: Array<{ step: number; action: string; narrative: string; latencyMs: number; dmJson: Record<string, unknown>; stateAfter: typeof currentState; status: string; aiStatus?: string }> = [];
+  let terminatedReason: TerminatedReason = "max_steps";
   let totalSteps = 0;
+  let degradedSteps = 0;
+  let failureContext: RunFailureContext | null = null;
 
   try {
     for (let step = 0; step < config.maxSteps; step++) {
@@ -145,21 +335,60 @@ async function runSession(
         playerAction: action,
         persona: selected.persona,
         stepIndex: step,
+        playerContext: `位置:${currentState.playerLocation}；HP:${currentState.hp}/${currentState.maxHp}；理智:${currentState.sanity}；任务:${currentState.activeTaskIds.join(",") || "无"}；图鉴:${currentState.codexNpcIds.join(",") || "无"}；回合:${currentState.turnCount}`,
+        clientState: buildClientStructuredSnapshot(currentState),
       } as SutAction);
 
       if (response.status === "error" && !response.reachedFinal) {
         console.warn(`    ⚠️ Step ${step} 失败: ${response.error ?? "unknown"}`);
+        if (config.live) degradedSteps++;
+        if (!failureContext) {
+          failureContext = buildFailureContext({
+            stepIndex: step,
+            action,
+            response,
+            mode: "step_error",
+          });
+        }
         terminatedReason = "error";
         totalSteps = step;
         break;
       }
+      if (response.status === "degraded" || response.aiStatus) degradedSteps++;
+      if (failureContext === null && (response.status === "degraded" || response.aiStatus)) {
+        failureContext = buildFailureContext({
+          stepIndex: step,
+          action,
+          response,
+          mode: response.status === "error" ? "step_error" : "step_degraded",
+        });
+      }
+      currentState = applyDmJsonToState(currentState, response.dmJson, response.narrative);
 
       steps.push({
         step,
         action,
         narrative: response.narrative,
         latencyMs: response.latencyMs,
+        dmJson: response.dmJson,
+        stateAfter: { ...currentState },
+        status: response.status,
+        aiStatus: response.aiStatus,
       });
+
+      // 在默认策略下不因为降级而中断会话，继续收集后续回合的证据（用于统计置信）。
+      // 仅当显式要求停顿时，才执行止损。
+      if (response.status === "degraded" && !config.continueOnDegrade) {
+        terminatedReason = "error";
+        failureContext = buildFailureContext({
+          stepIndex: step,
+          action,
+          response,
+          mode: "run_stop",
+        });
+        totalSteps = step + 1;
+        break;
+      }
 
       // 检查终止条件
       if (response.dmJson["is_death"] === true) {
@@ -177,6 +406,9 @@ async function runSession(
       if ((step + 1) % 5 === 0) {
         console.log(`    Step ${step + 1}/${config.maxSteps} ... (${response.latencyMs}ms)`);
       }
+      if (config.live && config.stepDelayMs > 0 && step + 1 < config.maxSteps) {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, config.stepDelayMs));
+      }
     }
   } finally {
     await sut.close?.();
@@ -185,7 +417,7 @@ async function runSession(
   const durationMs = Date.now() - startTime;
 
   // 叙事裁判
-  const transcript = {
+  const transcript: PlaythroughTranscript = {
     runId: `live-${selected.scenarioId}-${selected.persona}-session${sessionIndex}`,
     persona: selected.persona,
     seed: sessionIndex,
@@ -193,8 +425,8 @@ async function runSession(
       stepIndex: s.step,
       playerAction: s.action,
       narrative: s.narrative,
-      dmJson: {},
-      stateAfter: currentState,
+      dmJson: s.dmJson,
+      stateAfter: s.stateAfter,
       timestamp: Date.now(),
     })),
     initialState,
@@ -204,15 +436,93 @@ async function runSession(
     durationMs,
   };
 
-  let judgeResult: Awaited<ReturnType<typeof judgeNarrativeConsistencyMock>>;
-  if (config.live && process.env.DEEPSEEK_API_KEY) {
+  const baselineJudge = config.judgeMode === "codex"
+    ? await judgeNarrativeConsistencyCodex(transcript)
+    : judgeNarrativeConsistencyMock(transcript);
+  const observed = {
+    tasks: steps.filter((step) => Array.isArray(step.dmJson.task_updates) && step.dmJson.task_updates.some((raw) => raw && typeof raw === "object" && !Array.isArray(raw) && ["active", "completed"].includes(String((raw as Record<string, unknown>).status ?? "")))).length,
+    codex: steps.filter((step) => Array.isArray(step.dmJson.codex_updates) && step.dmJson.codex_updates.length > 0).length,
+    location: steps.filter((step, index) => {
+      const before = index === 0 ? initialState.playerLocation : steps[index - 1]!.stateAfter.playerLocation;
+      return typeof step.dmJson.player_location === "string" && step.dmJson.player_location.trim().length > 0 && step.dmJson.player_location !== before;
+    }).length,
+    weapons: steps.filter((step) => ["weapon_updates", "weapon_bag_updates"].some((key) => Array.isArray(step.dmJson[key]) && (step.dmJson[key] as unknown[]).length > 0)).length,
+    combat: steps.filter((step) => step.dmJson.conflict_outcome != null || (Array.isArray(step.dmJson.main_threat_updates) && step.dmJson.main_threat_updates.length > 0)).length,
+    economy: steps.filter((step) => typeof step.dmJson.currency_change === "number" && step.dmJson.currency_change !== 0).length,
+    profession: steps.filter((step) => step.dmJson.profession_trial_result != null || typeof step.dmJson.profession === "string").length,
+    ending: steps.filter((step) => step.dmJson.ending_finale != null || step.dmJson.reached_ending === true || step.dmJson.is_ending === true).length,
+  };
+  const required = scenario.requiredFeatureOutcomes ?? [];
+  const forbidden = scenario.forbiddenFeatureOutcomes ?? [];
+  const missing = required.filter((id) => observed[id] === 0);
+  for (const taskId of scenario.requiredCompletedTaskIds ?? []) {
+    if (!currentState.completedTaskIds.includes(taskId)) missing.push(`completed_task:${taskId}`);
+  }
+  if (scenario.requiredFinalLocation && currentState.playerLocation !== scenario.requiredFinalLocation) {
+    missing.push(`final_location:${scenario.requiredFinalLocation}`);
+  }
+  const forbiddenObserved = forbidden.filter((id) => observed[id] > 0);
+  const gameplayGate = { passed: missing.length === 0 && forbiddenObserved.length === 0, required, forbidden, observed, missing, forbiddenObserved };
+  let judgeResult: NarrativeConsistencyResult;
+  const judgePair: JudgePairReport = {
+    mockJudge: baselineJudge,
+    hasLive: false,
+    scoreGap: null,
+    passAgreement: null,
+    criticalGap: 0,
+    majorGap: 0,
+  };
+  let judgeMode: "live" | "mock" | "codex" | "fallback" = config.judgeMode === "codex" ? "codex" : "mock";
+  const forceLiveJudge = process.env.VERSECRAFT_EVAL_FORCE_LIVE_JUDGE === "1";
+  const shouldUseLiveJudge =
+    (config.judgeMode === "live")
+    || (config.judgeMode === "auto" && (baselineJudge.passed || forceLiveJudge));
+  const shouldCompareJudges = config.compareJudge;
+  const canRunLiveJudge = config.live && hasJudgeCredentials() && degradedSteps === 0;
+
+  const runLiveJudge = async (): Promise<NarrativeConsistencyResult | null> => {
+    if (!canRunLiveJudge) return null;
     try {
-      judgeResult = await judgeNarrativeConsistencyLive(transcript);
+      return await judgeNarrativeConsistencyLive(transcript);
     } catch {
-      judgeResult = judgeNarrativeConsistencyMock(transcript);
+      return null;
+    }
+  };
+
+  if (canRunLiveJudge && shouldUseLiveJudge) {
+    const liveJudge = await runLiveJudge();
+    if (liveJudge) {
+      judgeResult = liveJudge;
+      judgePair.hasLive = true;
+      judgePair.liveJudge = liveJudge;
+      judgeMode = "live";
+    } else {
+      judgeResult = baselineJudge;
+      judgeMode = "fallback";
     }
   } else {
-    judgeResult = judgeNarrativeConsistencyMock(transcript);
+    judgeResult = baselineJudge;
+  }
+
+  if (shouldCompareJudges && canRunLiveJudge && !judgePair.hasLive) {
+    const liveJudge = await runLiveJudge();
+    if (liveJudge) {
+      judgePair.hasLive = true;
+      judgePair.liveJudge = liveJudge;
+    }
+  }
+
+  if (judgePair.hasLive && judgePair.liveJudge) {
+    judgePair.scoreGap = Math.abs(baselineJudge.overallScore - judgePair.liveJudge.overallScore);
+    judgePair.criticalGap = Math.abs(
+      baselineJudge.issues.filter((issue) => issue.severity === "critical").length
+      - judgePair.liveJudge.issues.filter((issue) => issue.severity === "critical").length,
+    );
+    judgePair.majorGap = Math.abs(
+      baselineJudge.issues.filter((issue) => issue.severity === "major").length
+      - judgePair.liveJudge.issues.filter((issue) => issue.severity === "major").length,
+    );
+    judgePair.passAgreement = baselineJudge.passed === judgePair.liveJudge.passed;
   }
 
   return {
@@ -224,6 +534,13 @@ async function runSession(
     terminatedReason,
     totalSteps,
     durationMs,
+    degradedSteps,
+    judgeMode,
+    executionMode: resolveEvalExecutionMode({ live: config.live, degradedSteps, terminatedReason }),
+    initialState,
+    gameplayGate,
+    judgePair: shouldCompareJudges ? judgePair : undefined,
+    failureContext: failureContext ?? undefined,
   };
 }
 
@@ -233,10 +550,30 @@ function generateReport(
   results: Awaited<ReturnType<typeof runSession>>[],
   config: EvalCli
 ): string {
+  const statusFor = (result: Awaited<ReturnType<typeof runSession>>) => classifyRunEvidence({
+    executionMode: result.executionMode,
+    terminatedReason: result.terminatedReason,
+    judgePassed: result.judgeResult.passed,
+    gameplayGatePassed: result.gameplayGate.passed,
+    executedSteps: result.totalSteps,
+    plannedScenarioSteps: SCENARIOS.find((scenario) => scenario.id === result.scenarioId)?.scriptedActions?.length ?? config.maxSteps,
+  });
   const totalSteps = results.reduce((s, r) => s + r.totalSteps, 0);
   const totalDuration = results.reduce((s, r) => s + r.durationMs, 0);
-  const avgJudgeScore = results.reduce((s, r) => s + r.judgeResult.overallScore, 0) / results.length;
-  const passedSessions = results.filter((r) => r.judgeResult.passed).length;
+  const denominator = Math.max(1, results.length);
+  const avgJudgeScore = results.reduce((s, r) => s + r.judgeResult.overallScore, 0) / denominator;
+  const passedSessions = results.filter((r) => statusFor(r) === "pass").length;
+  const conclusiveSessions = results.filter((r) => statusFor(r) !== "inconclusive").length;
+  const inconclusiveSessions = results.length - conclusiveSessions;
+  const pairedComparisons = results.filter((r) => r.judgePair?.hasLive).length;
+  const passAgreementRate = pairedComparisons > 0
+    ? results.reduce((s, r) => s + (r.judgePair?.passAgreement === true ? 1 : 0), 0) / pairedComparisons
+    : null;
+  const avgScoreGap = pairedComparisons > 0
+    ? results.reduce((s, r) => s + (r.judgePair?.scoreGap ?? 0), 0) / pairedComparisons
+    : null;
+  const disagreementCases = results.filter((r) => r.judgePair?.passAgreement === false);
+  const highGapCases = results.filter((r) => r.judgePair && (r.judgePair.scoreGap ?? 0) >= 0.5);
 
   const lines: string[] = [];
 
@@ -247,16 +584,48 @@ function generateReport(
   lines.push(`> **会话数**: ${results.length}`);
   lines.push(`> **总回合数**: ${totalSteps}`);
   lines.push(`> **总耗时**: ${(totalDuration / 1000).toFixed(1)}s`);
+  lines.push(`> **执行配方**: ${[...new Set(results.map((r) => r.executionMode))].join(", ")}`);
+  lines.push(`> **成本档位**: ${config.profile}`);
+  lines.push(`> **Judge 对账**: ${pairedComparisons}/${results.length} 会话有 mock↔live 双判`);
+  if (passAgreementRate !== null) {
+    lines.push(`> **Pass 对齐率**: ${(passAgreementRate * 100).toFixed(1)}%`);
+  }
+  if (avgScoreGap !== null) {
+    lines.push(`> **平均分差**: ${avgScoreGap.toFixed(2)}`);
+  }
   lines.push("");
   lines.push("## 综合评分");
   lines.push("");
   lines.push(`| 指标 | 值 |`);
   lines.push(`|---|---|`);
   lines.push(`| 平均叙事分 | ${avgJudgeScore.toFixed(2)}/5 |`);
-  lines.push(`| 通过会话 | ${passedSessions}/${results.length} |`);
-  lines.push(`| 平均回合数 | ${(totalSteps / results.length).toFixed(1)} |`);
-  lines.push(`| 平均会话耗时 | ${(totalDuration / results.length / 1000).toFixed(1)}s |`);
+  lines.push(`| 通过会话 | ${passedSessions}/${conclusiveSessions} 个有结论会话 |`);
+  lines.push(`| 未完成专项 | ${inconclusiveSessions} |`);
+  lines.push(`| 平均回合数 | ${(totalSteps / denominator).toFixed(1)} |`);
+  lines.push(`| 平均会话耗时 | ${(totalDuration / denominator / 1000).toFixed(1)}s |`);
   lines.push("");
+
+  const confidence = computePassRateInterval(passedSessions, conclusiveSessions);
+  if (confidence) {
+    const recommendSamples = confidence.upper - confidence.lower > 0.35
+      ? estimateSamplesForHalfWidth(0.05)
+      : null;
+    lines.push("### 统计置信度（通过会话）");
+    lines.push("");
+    lines.push(`- 通过率：${(confidence.rate * 100).toFixed(1)}%`);
+    lines.push(`- 95% 置信区间：${(confidence.lower * 100).toFixed(1)}% ~ ${(confidence.upper * 100).toFixed(1)}%`);
+    lines.push(`- 区间宽度：${roundTo((confidence.upper - confidence.lower) * 100, 1)}pp`);
+    if (confidence.upper - confidence.lower > 0.35) {
+      lines.push("- ⚠️ 置信区间较宽，建议至少增加 2~4 个会话再复评。");
+      if (recommendSamples !== null) {
+        lines.push(`- 建议总样本数至少到 ${recommendSamples} 会话（95% 下单侧半宽约 5%）。`);
+      }
+    }
+    lines.push("");
+  } else {
+    lines.push("- 当前样本不足，无法做通过率置信区间。");
+    lines.push("");
+  }
 
   // 维度分聚合
   const dims = ["coherence", "characterVoice", "plotLogic", "immersion", "factConsistency"];
@@ -265,23 +634,51 @@ function generateReport(
   lines.push(`| 维度 | 平均分 |`);
   lines.push(`|---|---|`);
   for (const dim of dims) {
-    const avg = results.reduce((s, r) => s + (r.judgeResult.dimensionScores[dim] ?? 0), 0) / results.length;
+    const avg = results.reduce((s, r) => s + (r.judgeResult.dimensionScores[dim] ?? 0), 0) / denominator;
     lines.push(`| ${dim} | ${avg.toFixed(2)} |`);
   }
   lines.push("");
+
+  if (pairedComparisons > 0) {
+    lines.push("### mock/live 对账");
+    lines.push("");
+    lines.push(`- 对账会话数: ${pairedComparisons}`);
+    lines.push(`- Pass 对齐率: ${((passAgreementRate ?? 0) * 100).toFixed(1)}%`);
+    lines.push(`- 平均分差: ${(avgScoreGap ?? 0).toFixed(2)}（0 表示一致）`);
+    lines.push(`- Pass 不一致会话: ${disagreementCases.length} 个`);
+    lines.push(`- 大分差会话（≥0.5）: ${highGapCases.length} 个`);
+    lines.push("");
+    if (disagreementCases.length > 0) {
+      lines.push("#### Pass 不一致样本");
+      lines.push("");
+      for (const r of disagreementCases) {
+        const pair = r.judgePair!;
+        lines.push(`- Session ${r.sessionIndex + 1} ${r.scenarioId}: mock=${pair.mockJudge.passed ? "pass" : "fail"}，live=${pair.liveJudge?.passed ? "pass" : "fail"}，分差=${(pair.scoreGap ?? 0).toFixed(2)}`);
+      }
+      lines.push("");
+    }
+  }
 
   // 逐会话详情
   lines.push("## 逐会话详情");
   lines.push("");
   for (const r of results) {
-    const icon = r.judgeResult.passed ? "✅" : "❌";
-    const ngrams = r.steps.map((s) => s.narrative.length > 30 ? s.narrative.slice(0, 30) + "..." : s.narrative);
+    const evidenceStatus = statusFor(r);
+    const icon = evidenceStatus === "pass" ? "✅" : evidenceStatus === "fail" ? "❌" : "⚪";
     lines.push(`### ${icon} Session ${r.sessionIndex + 1}: ${r.scenarioId} [${r.persona}]`);
     lines.push("");
     lines.push(`- **终止原因**: ${r.terminatedReason}`);
     lines.push(`- **总回合数**: ${r.totalSteps}`);
     lines.push(`- **耗时**: ${(r.durationMs / 1000).toFixed(1)}s`);
     lines.push(`- **叙事评分**: ${r.judgeResult.overallScore}/5`);
+    lines.push(`- **执行模式**: ${r.executionMode}（降级 ${r.degradedSteps} 回合）`);
+    lines.push(`- **裁判模式**: ${r.judgeMode}`);
+    if (r.judgePair?.hasLive && r.judgePair.liveJudge) {
+      const pair = r.judgePair;
+      lines.push(`- **mock/live 对账**: mock=${pair.mockJudge.overallScore}/5, live=${pair.liveJudge.overallScore}/5, pass一致=${pair.passAgreement === null ? "na" : pair.passAgreement ? "是" : "否"}, 分差=${(pair.scoreGap ?? 0).toFixed(2)}`);
+    }
+    lines.push(`- **证据状态**: ${evidenceStatus}`);
+    lines.push(`- **玩法结果门禁**: ${r.gameplayGate.passed ? "通过" : evidenceStatus === "inconclusive" ? `未完成（预算截断；尚缺 ${r.gameplayGate.missing.join(", ")}）` : `失败（缺少 ${r.gameplayGate.missing.join(", ")}）`}；observed=${JSON.stringify(r.gameplayGate.observed)}`);
     lines.push(`- **维度分**: ${JSON.stringify(r.judgeResult.dimensionScores)}`);
     lines.push("");
     lines.push(`#### 问题列表`);
@@ -382,34 +779,150 @@ function generateReport(
 
 async function main(): Promise<void> {
   const config = parseArgs();
+  const estimatedDmCalls = config.sessions * config.maxSteps;
+
+  if (config.live && estimatedDmCalls > config.maxLiveCalls) {
+    throw new Error(
+      `预计 ${estimatedDmCalls} 次 live DM 调用，超过单次预算 ${config.maxLiveCalls}。` +
+      `请降低 --sessions/--max-steps，或显式设置 --max-live-calls。`,
+    );
+  }
 
   console.log("📊 Live Playthrough 小样本长程评测");
   console.log("═".repeat(60));
   console.log(`模式: ${config.live ? "live (真实 SUT)" : "mock (规则模拟)"}`);
+  console.log(`裁判模式: ${config.judgeMode}`);
+  console.log(`成本档位: ${config.profile}`);
+  console.log(`预计 DM 调用: ${estimatedDmCalls}/${config.maxLiveCalls}`);
   console.log(`会话数: ${config.sessions} (每会话 ${config.maxSteps} 回合)`);
   console.log(`报告输出: ${config.outDir}`);
   if (config.live) console.log(`SUT base URL: ${config.baseUrl}`);
   if (!config.live) console.log("提示: 用 --live 启用真实 SUT（需要 dev server）");
+  if (config.compareJudge) {
+    console.log("🧪 已开启 judge 对账：mock 与 live 双判（每会话最多增加一次 live 调用）。");
+    if (!hasJudgeCredentials()) {
+      console.log("⚠️  未设置 PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY，无法执行 live judge 对账。");
+    }
+  }
   console.log("");
 
-  if (!process.env.DEEPSEEK_API_KEY) {
-    console.log("⚠️  DEEPSEEK_API_KEY 未设置，叙事裁判将使用 mock 模式。");
+  if (!hasJudgeCredentials() && (config.judgeMode === "live" || config.compareJudge)) {
+    console.log("⚠️  PLAYTEST_LLM_API_KEY / DEEPSEEK_API_KEY 未设置，当前会话无法执行 live judge。");
     console.log("   设置环境变量以启用真实 LLM 裁判评分。");
+    console.log("   当前脚本兼容 PLAYTEST_LLM_API_KEY 和 DEEPSEEK_API_KEY。");
+    console.log("");
+  }
+  if (config.judgeMode === "codex") {
+    console.log("ℹ️  当前使用离线 Codex 裁判，不需要 LLM API Key。");
     console.log("");
   }
 
   // 选择会话
-  const sessions = SELECTED_SCENARIOS.slice(0, config.sessions);
+  const requestedScenarios = config.scenarioIds && config.scenarioIds.length > 0
+    ? config.scenarioIds.map((id): SessionSpec => {
+      const scenario = SCENARIOS.find((candidate) => candidate.id === id);
+      if (!scenario) throw new Error(`Unknown scenario: ${id}`);
+      return {
+        scenarioId: scenario.id,
+        persona: scenario.personas[0] ?? "explorer" as PersonaType,
+        description: scenario.description,
+        scriptedActions: scenario.scriptedActions,
+      };
+    })
+    : SELECTED_SCENARIOS;
+  const sessions = buildSessionPlan(requestedScenarios, config.sessions);
   console.log(`精选场景: ${sessions.map((s) => s.scenarioId).join(", ")}`);
+  if (sessions.length > 0 && config.parallelism > 1) {
+    console.log(`并发会话数: ${config.parallelism}`);
+  }
+  if (!config.continueOnDegrade) {
+    console.log("🧪 降级策略: 发现降级则中止当前会话，符合平台级 fail-fast 策略。");
+  } else {
+    console.log("🧪 降级策略: 记录降级后继续运行后续回合，优先提高样本完整性。");
+  }
+
+  // Every execution gets a distinct evidence identity. Scenario/index-only IDs
+  // collapse genuine reruns and make bug-ledger run counts untrustworthy.
+  const executionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   // 运行
   const results: Awaited<ReturnType<typeof runSession>>[] = [];
-  for (let i = 0; i < sessions.length; i++) {
-    try {
-      const result = await runSession(i, sessions[i]!, config);
-      results.push(result);
-    } catch (err) {
-      console.error(`  ❌ Session ${i + 1} 失败: ${err instanceof Error ? err.message : String(err)}`);
+  const tracesDir = resolve(config.outDir, "traces");
+  mkdirSync(tracesDir, { recursive: true });
+  const runItems = sessions.map((session, index) => ({ session, index }));
+
+  const runResults = await runWithParallelism(
+    runItems,
+    config.parallelism,
+    async ({ session, index }) => {
+      try {
+        const result = await runSession(index, session, config);
+        const traceSteps = result.steps.map((step) => {
+          const evalMetrics = step.dmJson._eval_metrics;
+          const usage = evalMetrics && typeof evalMetrics === "object" && !Array.isArray(evalMetrics)
+            ? evalMetrics as Record<string, unknown>
+            : {};
+          return {
+            stepIndex: step.step,
+            playerAction: step.action,
+            narrative: step.narrative,
+            stateSnapshot: step.stateAfter,
+            dmJson: step.dmJson,
+            metrics: {
+              latencyMs: step.latencyMs,
+              ...(typeof usage.input_tokens === "number" ? { inputTokens: usage.input_tokens } : {}),
+              ...(typeof usage.output_tokens === "number" ? { outputTokens: usage.output_tokens } : {}),
+              ...(typeof usage.cached_input_tokens === "number" ? { cachedInputTokens: usage.cached_input_tokens } : {}),
+            },
+            transport: { status: step.status, aiStatus: step.aiStatus ?? null },
+          };
+        });
+        const evidenceStatus = classifyRunEvidence({
+          executionMode: result.executionMode,
+          terminatedReason: result.terminatedReason,
+          judgePassed: result.judgeResult.passed,
+          gameplayGatePassed: result.gameplayGate.passed,
+          executedSteps: result.totalSteps,
+          plannedScenarioSteps: session.scriptedActions?.length ?? config.maxSteps,
+        });
+        writeFileSync(resolve(tracesDir, `${result.scenarioId}-${result.persona}-${index}.json`), JSON.stringify({
+          runId: `live-${result.scenarioId}-${executionId}-${index}`,
+          scenarioId: result.scenarioId,
+          persona: result.persona,
+          initialState: result.initialState,
+          steps: traceSteps,
+          terminatedReason: result.terminatedReason,
+          narrativeConsistency: result.judgeResult,
+          judgeComparison: result.judgePair ? {
+            mockOverall: result.judgePair.mockJudge.overallScore,
+            mockPassed: result.judgePair.mockJudge.passed,
+            liveAvailable: result.judgePair.hasLive,
+            liveOverall: result.judgePair.liveJudge?.overallScore ?? null,
+            livePassed: result.judgePair.liveJudge?.passed ?? null,
+            passAgreement: result.judgePair.passAgreement,
+            scoreGap: result.judgePair.scoreGap,
+            criticalGap: result.judgePair.criticalGap,
+            majorGap: result.judgePair.majorGap,
+          } : null,
+          gameplayGate: result.gameplayGate,
+          narrativeRepetitionRate: null,
+          evidenceStatus,
+          failureTags: evidenceStatus === "fail" ? ["quality_or_execution_failed"] : [],
+          executionMode: result.executionMode,
+          judgeMode: result.judgeMode,
+          failureContext: result.failureContext,
+        }, null, 2), "utf8");
+        return result;
+      } catch (err) {
+        console.error(`  ❌ Session ${index + 1} 执行异常: ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    },
+  );
+
+  for (const runResult of runResults) {
+    if (runResult) {
+      results.push(runResult);
     }
   }
 
@@ -428,11 +941,21 @@ async function main(): Promise<void> {
   console.log("\n📊 评测摘要");
   console.log("═".repeat(60));
   for (const r of results) {
-    const icon = r.judgeResult.passed ? "✅" : "❌";
-    console.log(`  ${icon} ${r.scenarioId} [${r.persona}]: ${r.judgeResult.overallScore}/5, ${r.totalSteps} 回合, ${(r.durationMs / 1000).toFixed(1)}s`);
+    const evidenceStatus = classifyRunEvidence({
+      executionMode: r.executionMode,
+      terminatedReason: r.terminatedReason,
+      judgePassed: r.judgeResult.passed,
+      gameplayGatePassed: r.gameplayGate.passed,
+      executedSteps: r.totalSteps,
+      plannedScenarioSteps: SCENARIOS.find((scenario) => scenario.id === r.scenarioId)?.scriptedActions?.length ?? config.maxSteps,
+    });
+    const score = r.executionMode === "live_degraded" ? "N/A (degraded)" : `${r.judgeResult.overallScore}/5`;
+    const icon = evidenceStatus === "pass" ? "✅" : evidenceStatus === "fail" ? "❌" : "⚪";
+    console.log(`  ${icon} ${r.scenarioId} [${r.persona}]: ${score}, ${r.totalSteps} 回合, ${(r.durationMs / 1000).toFixed(1)}s, ${evidenceStatus}`);
   }
-  const avgScore = results.reduce((s, r) => s + r.judgeResult.overallScore, 0) / results.length;
-  console.log(`  平均叙事分: ${avgScore.toFixed(2)}/5`);
+  const scoreableResults = results.filter((r) => r.executionMode !== "live_degraded");
+  const avgScore = scoreableResults.reduce((s, r) => s + r.judgeResult.overallScore, 0) / scoreableResults.length;
+  console.log(`  平均叙事分: ${scoreableResults.length > 0 ? `${avgScore.toFixed(2)}/5` : "N/A (无可评分 live 输出)"}`);
 
   if (!config.live) {
     console.log("\n⏱️  提示：mock 模式不调真实 SUT。使用 --live 运行真实 /api/chat 评测。");

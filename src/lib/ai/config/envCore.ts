@@ -178,7 +178,9 @@ export interface ResolvedAiEnv {
 export const DEFAULT_PLAYER_ROLE_CHAIN: AiLogicalRole[] = ["main", "control"];
 
 function resolveGatewayChatCompletionsUrl(): string {
-  const raw = envRaw("AI_GATEWAY_BASE_URL")?.trim() ?? "";
+  // Local-only direct-provider override. Its distinct prefix prevents Next's
+  // .env.local loading from replacing an explicitly injected test binding.
+  const raw = (envRaw("VC_AI_DIRECT_BASE_URL") ?? envRaw("AI_GATEWAY_BASE_URL") ?? "").trim();
   if (!raw) return "";
   const normalized = raw.replace(/\/+$/, "");
   if (normalized.toLowerCase().endsWith("/chat/completions")) {
@@ -224,7 +226,8 @@ function readModelForRole(role: AiLogicalRole): string {
         : role === "enhance"
           ? "AI_MODEL_ENHANCE"
           : "AI_MODEL_REASONER";
-  const direct = (envRaw(key) ?? "").trim();
+  const directOverride = (envRaw("VC_AI_DIRECT_MODEL") ?? "").trim();
+  const direct = directOverride || (envRaw(key) ?? "").trim();
   if (isMockAiProviderEnv()) {
     return direct.length > 0 ? direct : `mock-${role}`;
   }
@@ -311,7 +314,9 @@ export function resolveAiEnv(): ResolvedAiEnv {
 
   const gatewayProvider = resolveAiProviderId();
   const gatewayBaseUrl = gatewayProvider === "mock" ? "mock://chat/completions" : resolveGatewayChatCompletionsUrl();
-  const gatewayApiKey = gatewayProvider === "mock" ? "mock-key" : (envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
+  const gatewayApiKey = gatewayProvider === "mock"
+    ? "mock-key"
+    : (envRaw("VC_AI_DIRECT_API_KEY") ?? envRaw("AI_GATEWAY_API_KEY") ?? "").trim();
 
   const modelsByRole = {} as Record<AiLogicalRole, string>;
   for (const r of AI_LOGICAL_ROLES) {

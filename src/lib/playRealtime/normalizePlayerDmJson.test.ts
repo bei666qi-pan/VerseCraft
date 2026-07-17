@@ -110,6 +110,31 @@ test("normalizePlayerDmJson preserves a cleaned next chapter title candidate", (
   assert.equal(n!.next_chapter_title_candidate, "潮湿门缝");
 });
 
+test("normalizePlayerDmJson preserves whitelisted internal_meta for traceability", () => {
+  const n = normalizePlayerDmJson({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "x",
+    is_death: false,
+    internal_meta: {
+      action: "site_fallback",
+      request_id: "req-1",
+      reason: "server_internal_generation_failed",
+      kind: "site_unavailable",
+      upstream_status: 503,
+      extra: "should_be_dropped",
+    },
+  });
+  assert.ok(n);
+  assert.deepEqual(n!.internal_meta, {
+    action: "site_fallback",
+    request_id: "req-1",
+    reason: "server_internal_generation_failed",
+    kind: "site_unavailable",
+    upstream_status: 503,
+  });
+});
+
 test("normalizePlayerDmJson sanitizes weapon_updates to whitelist shape", () => {
   const n = normalizePlayerDmJson({
     is_action_legal: true,
@@ -172,6 +197,14 @@ test("parseAccumulatedPlayerDmJson: bad DM first, good DM later -> should pick l
   const n = normalizePlayerDmJson(p);
   assert.ok(n);
   assert.equal(n!.narrative, "good");
+});
+
+test("parseAccumulatedPlayerDmJson repairs literal control characters inside narrative only", () => {
+  const raw = '{"is_action_legal":true,"sanity_damage":0,"narrative":"第一行\n第二行\t缩进","is_death":false}';
+  const parsed = parseAccumulatedPlayerDmJson(raw);
+  const normalized = normalizePlayerDmJson(parsed);
+  assert.ok(normalized);
+  assert.equal(normalized!.narrative, "第一行\n第二行\t缩进");
 });
 
 test("normalized JSON string remains parseable by client tryParseDM", () => {

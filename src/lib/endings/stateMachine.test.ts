@@ -89,6 +89,26 @@ test("TURN_COMMITTED moves playing state to eligible", () => {
   assert.equal(state.idempotencyKey, "run_turn:true_escape:30");
 });
 
+test("higher-priority death overrides an eligible escape before final choice", () => {
+  const escape = evaluateEndingEligibility(baseInput({ escapeMainline: { stage: "escaped_true" }, time: { day: 1, hour: 0 } }));
+  const death = evaluateEndingEligibility(baseInput({ resolvedTurn: { is_death: true }, time: { day: 1, hour: 0 } }));
+  assert.ok(escape && death);
+  let state = transitionEndingState(createInitialEndingState(), { type: "TURN_COMMITTED", runId: "priority", eligibility: escape });
+  state = transitionEndingState(state, { type: "TURN_COMMITTED", runId: "priority", eligibility: death, deathContext: { deathCause: "测试", deathLocation: "3F", lastAction: "前进" } });
+  assert.equal(state.eligibility?.outcome, "death");
+  assert.equal(state.idempotencyKey, "priority:death:30");
+  assert.equal(state.deathContext?.deathCause, "测试");
+});
+
+test("lower-priority ending cannot replace an existing eligible escape", () => {
+  const escape = evaluateEndingEligibility(baseInput({ escapeMainline: { stage: "escaped_true" }, time: { day: 1, hour: 0 } }));
+  const abandon = evaluateEndingEligibility(baseInput({ abandonRequested: true, time: { day: 1, hour: 0 } }));
+  assert.ok(escape && abandon);
+  let state = transitionEndingState(createInitialEndingState(), { type: "TURN_COMMITTED", runId: "priority-low", eligibility: escape });
+  state = transitionEndingState(state, { type: "TURN_COMMITTED", runId: "priority-low", eligibility: abandon });
+  assert.equal(state.eligibility?.outcome, "true_escape");
+});
+
 test("final action and final narrative advance through pending phases", () => {
   const input = baseInput();
   const eligibility = evaluateEndingEligibility(input);

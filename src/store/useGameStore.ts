@@ -815,6 +815,7 @@ export interface GameState extends IntegrityMetaState {
     currentProfession: ProfessionId | null;
     worldFlags: string[];
     presentNpcIds: string[];
+    deadNpcIds?: string[];
     /** Phase-2: 极短记忆摘要（不上传完整记忆数组） */
     memoryDigest?: string;
     /** Phase-2: 可选投影到 facts 的少量短文本（best-effort / budgeted） */
@@ -2821,6 +2822,15 @@ export const useGameStore = create<GameState>()(
           .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive && String((v as any).currentLocation ?? "") === location)
           .map(([id]) => id)
           .slice(0, 32);
+        const deadNpcIds = Object.entries(s.dynamicNpcStates ?? {})
+          .filter(([, v]) => v && typeof v === "object" && (v as any).isAlive === false)
+          .map(([id]) => id)
+          .slice(0, 64);
+        const activeThreatIds = Object.values(s.mainThreatByFloor ?? {})
+          .filter((threat) => threat && ["active", "suppressed", "breached"].includes(String(threat.phase ?? "")))
+          .map((threat) => String(threat.threatId ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 24);
         const activeTaskIds = (s.tasks ?? [])
           .filter((t) => t.status === "active" || t.status === "available")
           .map((t) => t.id)
@@ -2889,6 +2899,8 @@ export const useGameStore = create<GameState>()(
           currentProfession: (s.professionState?.currentProfession ?? null) as ProfessionId | null,
           worldFlags,
           presentNpcIds,
+          ...(deadNpcIds.length ? { deadNpcIds } : {}),
+          ...(activeThreatIds.length ? { activeThreatIds } : {}),
           ...(activeTaskIds.length ? { activeTaskIds } : {}),
           ...(completedTaskIds.length ? { completedTaskIds } : {}),
           ...(recallBlock.digest ? { memoryDigest: recallBlock.digest } : {}),

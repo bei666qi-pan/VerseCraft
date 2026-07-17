@@ -41,8 +41,10 @@ import {
   detectNpcStateChurn,
   detectRelationshipDrift,
 } from "./invariants";
-import { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
+import { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive, judgeNarrativeConsistencyCodex } from "./narrativeJudge";
 import { createSutAdapter, type SutAdapter } from "./sutAdapter";
+import { isRetryableSutDegradation } from "./sutAdapter";
+import { applyDmJsonToState } from "./stateApply";
 import { SCENARIOS, getScenariosByCategory, type Scenario, type ScenarioCategory } from "./scenarios";
 import { generatePlayerActionDeepSeek } from "../liveProvider";
 import type {
@@ -55,17 +57,37 @@ import type {
   TerminatedReason,
   TranscriptStep,
   PersonaType,
+  RunFailureContext,
 } from "./types";
 
 // === 增强的配置 ===
 
 export interface PlaythroughV3Config extends PlaythroughRunConfig {
+  /** Run only these explicit scenario ids (use for focused live campaigns). */
+  scenarioIds?: string[];
+  /** Whether a live run should spend an additional LLM call to generate player actions. */
+  useLivePlayerAgent?: boolean;
+  /** Deterministic, scenario-aware actions for reproducible live mechanics tests. */
+  actionFactory?: (input: { scenario: Scenario; persona: PersonaType; stepIndex: number; state: GameStateSnapshot }) => string;
+  /** Additional authored starting state for a focused mechanics campaign. */
+  initialStateOverrideFactory?: (scenario: Scenario) => Partial<GameStateSnapshot>;
+  personasByScenario?: Record<string, PersonaType[]>;
+  scenarioSuccessPredicate?: (input: { scenario: Scenario; state: GameStateSnapshot; stepIndex: number }) => boolean;
+  postTurnStateReducer?: (input: { scenario: Scenario; state: GameStateSnapshot; stepIndex: number }) => GameStateSnapshot;
   /** 场景过滤（默认全部） */
   scenarioCategories?: ScenarioCategory[];
   /** Trace artifact 输出目录 */
   traceOutputDir?: string;
   /** 是否启用跨 run 失败聚类 */
   enableFailureClustering?: boolean;
+
+  /** 叙事裁判模式：
+   * mock  - 完全离线规则裁判
+   * codex - 离线专家裁判（增强规则）
+   * live  - 调 DeepSeek 裁判
+   * auto  - 默认：mock 先判，若通过可再试一次 live
+   */
+  narrativeJudgeMode?: "auto" | "mock" | "live" | "codex";
 }
 
 // === Trace Artifact ===
@@ -87,13 +109,26 @@ export interface TraceArtifact {
     passed: boolean;
     violations: Array<{ rule: string; severity: string; description: string }>;
   }>;
+  failureContext?: RunFailureContext;
   /** 叙事一致性裁判 */
   narrativeConsistency: {
+    runId: string;
     passed: boolean;
     overallScore: number;
     dimensionScores: Record<string, number>;
     issues: Array<{ type: string; severity: string; description: string }>;
     reasoning: string;
+    judgeMode?: "mock" | "live" | "codex" | "fallback";
+    judgeModel?: string;
+    judgeLatencyMs?: number;
+    judgeTokens?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    judgeConfidence?: number;
+    judgeConfidenceSource?: "model" | "codex" | "mock" | "fallback" | "estimated";
+    judgeError?: string;
   } | null;
   /** 完整步骤 transcript（含 dmJson 与 state 快照） */
   steps: Array<{
@@ -204,10 +239,38 @@ export async function runSinglePlaythroughV3(
   if (!personaConfig) throw new Error(`Unknown persona: ${personaType}`);
 
   // 初始状态（应用 scenario 覆盖）
-  let currentState = createInitialStateSnapshot(scenario.initialStateOverride as Partial<GameStateSnapshot> | undefined);
+  const initialOverride = {
+    ...(scenario.initialStateOverride as Partial<GameStateSnapshot> | undefined),
+    ...(config.initialStateOverrideFactory?.(scenario) ?? {}),
+  };
+  let currentState = createInitialStateSnapshot(initialOverride);
   const steps: TranscriptStep[] = [];
   const invariantResults: InvariantCheckResult[] = [];
   let terminatedReason: TerminatedReason = "max_steps";
+  let failureContext: RunFailureContext | null = null;
+
+  const buildFailureContext = (args: {
+    stepIndex: number;
+    action: string;
+    response: { status: string; aiStatus?: string; error?: string; dmJson: Record<string, unknown> };
+    mode: RunFailureContext["stepFailureMode"];
+  }): RunFailureContext => {
+    const rawInternalMeta = args.response.dmJson.internal_meta;
+    const internalMeta = rawInternalMeta && typeof rawInternalMeta === "object" && !Array.isArray(rawInternalMeta)
+      ? rawInternalMeta as Record<string, unknown>
+      : null;
+    const reason = String(internalMeta?.reason ?? internalMeta?.action ?? args.response.error ?? args.response.aiStatus ?? "unknown");
+    const narrative = typeof args.response.dmJson.narrative === "string" ? args.response.dmJson.narrative : "";
+    return {
+      stepIndex: args.stepIndex,
+      action: args.action,
+      reason,
+      transportStatus: args.response.status,
+      aiStatus: args.response.aiStatus,
+      hasVisibleNarrative: narrative.trim().length > 0,
+      stepFailureMode: args.mode,
+    };
+  };
 
   // 主循环
   for (let step = 0; step < config.maxStepsPerRun; step++) {
@@ -215,9 +278,11 @@ export async function runSinglePlaythroughV3(
     let action: string;
     if (scenario.scriptedActions && scenario.scriptedActions[step]) {
       action = scenario.scriptedActions[step]!;
+    } else if (config.actionFactory) {
+      action = config.actionFactory({ scenario, persona: personaType, stepIndex: step, state: currentState });
     } else if (config.mockMode) {
       action = generateMockAction(personaType, step, seed);
-    } else {
+    } else if (config.useLivePlayerAgent === true) {
       try {
         const recentTranscript = steps.slice(-3).map((s) => ({
           action: s.playerAction,
@@ -238,19 +303,70 @@ export async function runSinglePlaythroughV3(
         console.warn(`  ⚠️ DeepSeek 调用失败，降级到 mock 动作: ${err instanceof Error ? err.message : String(err)}`);
         action = generateMockAction(personaType, step, seed);
       }
+    } else {
+      // The SUT remains real; deterministic player actions keep a mechanics
+      // campaign reproducible and avoid paying for a second model per turn.
+      action = generateMockAction(personaType, step, seed);
     }
 
-    // ② SUT 调用
-    const response = await sut.step({
+  // ② SUT 调用
+    let response = await sut.step({
       playerAction: action,
       persona: personaType,
       stepIndex: step,
+      // Mirror the client-first payload sent by /play.  A live harness that
+      // omits this packet tests a different (and much weaker) server path.
+      playerContext: buildPlayerContext(currentState),
+      clientState: buildClientStructuredSnapshot(currentState),
     });
+
+    // ②.1 对瞬时 degradied 做一次快速重试，避免因短暂抖动导致误判为真实失败。
+    if (
+      response.status === "degraded" &&
+      !config.mockMode &&
+      isRetryableSutDegradation(response.aiStatus, response)
+    ) {
+      console.warn(`  ↻ 发现可重试 degraded，重试当前回合（persona=${personaType}, step=${step}）`);
+      const retry = await sut.step({
+        playerAction: action,
+        persona: personaType,
+        stepIndex: step,
+        playerContext: buildPlayerContext(currentState),
+        clientState: buildClientStructuredSnapshot(currentState),
+      });
+      response = retry;
+      if (response.status === "error" || response.status === "degraded") {
+        failureContext = buildFailureContext({
+          stepIndex: step,
+          action,
+          response,
+          mode: response.status === "error" ? "step_error" : "step_degraded_after_retry",
+        });
+      } else {
+        failureContext = null;
+      }
+    }
 
     // ③ 错误处理
     if (response.status === "error" && !response.reachedFinal) {
       console.warn(`  ⚠️ SUT step 失败: ${response.error ?? "unknown"}`);
+      failureContext ??= buildFailureContext({
+        stepIndex: step,
+        action,
+        response,
+        mode: "step_error",
+      });
       // 仍然记录 transcript，标记为 error
+      terminatedReason = "error";
+      break;
+    }
+    if (response.status === "degraded") {
+      failureContext = buildFailureContext({
+        stepIndex: step,
+        action,
+        response,
+        mode: "step_degraded",
+      });
       terminatedReason = "error";
       break;
     }
@@ -258,6 +374,9 @@ export async function runSinglePlaythroughV3(
     // ④ 应用状态变化（来自 dmJson）
     const prevState = { ...currentState };
     currentState = applyDmJsonToState(currentState, response.dmJson, response.narrative);
+    if (config.postTurnStateReducer) {
+      currentState = config.postTurnStateReducer({ scenario, state: currentState, stepIndex: step });
+    }
 
     // ⑤ 记录 transcript
     steps.push({
@@ -266,7 +385,19 @@ export async function runSinglePlaythroughV3(
       narrative: response.narrative,
       dmJson: response.dmJson,
       stateAfter: { ...currentState },
-      metrics: { latencyMs: response.latencyMs },
+        metrics: {
+          latencyMs: response.latencyMs,
+          ...(() => {
+            const evalMetrics = response.dmJson._eval_metrics;
+            if (!evalMetrics || typeof evalMetrics !== "object" || Array.isArray(evalMetrics)) return {};
+            const raw = evalMetrics as Record<string, unknown>;
+            return {
+              ...(typeof raw.input_tokens === "number" ? { inputTokens: raw.input_tokens } : {}),
+              ...(typeof raw.output_tokens === "number" ? { outputTokens: raw.output_tokens } : {}),
+              ...(typeof raw.cached_input_tokens === "number" ? { cachedInputTokens: raw.cached_input_tokens } : {}),
+            };
+          })(),
+        },
       timestamp: Date.now(),
     });
 
@@ -275,7 +406,18 @@ export async function runSinglePlaythroughV3(
     invariantResults.push(invariantResult);
 
     if (!invariantResult.passed) {
+      failureContext = buildFailureContext({
+        stepIndex: step,
+        action,
+        response,
+        mode: "invariant_failure",
+      });
       terminatedReason = "invariant_failed";
+      break;
+    }
+
+    if (config.scenarioSuccessPredicate?.({ scenario, state: currentState, stepIndex: step })) {
+      terminatedReason = "objective_reached";
       break;
     }
 
@@ -287,6 +429,13 @@ export async function runSinglePlaythroughV3(
       );
       if (softlockCheck.isSoftlocked) {
         terminatedReason = "softlock";
+        failureContext = {
+          stepIndex: step,
+          action,
+          reason: "softlock_detected",
+          stepFailureMode: "softlock",
+          transportStatus: "softlock",
+        };
         break;
       }
     }
@@ -307,7 +456,7 @@ export async function runSinglePlaythroughV3(
     persona: personaType,
     seed,
     steps,
-    initialState: createInitialStateSnapshot(scenario.initialStateOverride as Partial<GameStateSnapshot> | undefined),
+    initialState: createInitialStateSnapshot(initialOverride),
     finalState: currentState,
     terminatedReason,
     totalSteps: steps.length,
@@ -337,20 +486,42 @@ export async function runSinglePlaythroughV3(
   // ⑩ 叙事裁判
   let narrativeConsistency = null;
   if (config.runNarrativeJudge) {
-    if (config.mockMode) {
+    const judgeMode = config.narrativeJudgeMode ?? "auto";
+
+    if (judgeMode === "codex") {
+      narrativeConsistency = await judgeNarrativeConsistencyCodex(transcript);
+    } else if (judgeMode === "mock") {
       narrativeConsistency = judgeNarrativeConsistencyMock(transcript);
-    } else {
+    } else if (judgeMode === "live") {
       try {
         narrativeConsistency = await judgeNarrativeConsistencyLive(transcript);
       } catch (err) {
         console.warn(`  ⚠️ Live 叙事裁判失败，降级到 mock: ${err instanceof Error ? err.message : String(err)}`);
         narrativeConsistency = judgeNarrativeConsistencyMock(transcript);
       }
+    } else {
+      // auto: mock 为第一道筛选，若通过则再尝试一次真实裁判
+      const baseJudge = judgeNarrativeConsistencyMock(transcript);
+      if (baseJudge.passed) {
+        try {
+          narrativeConsistency = await judgeNarrativeConsistencyLive(transcript);
+        } catch {
+          narrativeConsistency = baseJudge;
+        }
+      } else {
+        narrativeConsistency = baseJudge;
+      }
+    }
+    if (narrativeConsistency === null) {
+      narrativeConsistency = judgeNarrativeConsistencyMock(transcript);
     }
   }
 
   // ⑪ 失败汇总
   const failures: string[] = [];
+  if (terminatedReason === "error" || terminatedReason === "softlock" || terminatedReason === "invariant_failed") {
+    failures.push(`terminated:${terminatedReason}`);
+  }
   if (narrativeConsistency && !narrativeConsistency.passed) {
     failures.push(`narrative_consistency:${narrativeConsistency.overallScore}`);
   }
@@ -418,11 +589,19 @@ export async function runSinglePlaythroughV3(
       violations: i.violations.map((v) => ({ rule: v.rule, severity: v.severity, description: v.description })),
     })),
     narrativeConsistency: narrativeConsistency ? {
+      runId: transcript.runId,
       passed: narrativeConsistency.passed,
       overallScore: narrativeConsistency.overallScore,
       dimensionScores: narrativeConsistency.dimensionScores,
       issues: narrativeConsistency.issues.map((i) => ({ type: i.type, severity: i.severity, description: i.description })),
       reasoning: narrativeConsistency.reasoning,
+      judgeMode: narrativeConsistency.judgeMode,
+      judgeModel: narrativeConsistency.judgeModel,
+      judgeLatencyMs: narrativeConsistency.judgeLatencyMs,
+      judgeTokens: narrativeConsistency.judgeTokens,
+      judgeConfidence: narrativeConsistency.judgeConfidence,
+      judgeConfidenceSource: narrativeConsistency.judgeConfidenceSource,
+      judgeError: narrativeConsistency.judgeError,
     } : null,
     steps: steps.map((s) => ({
       stepIndex: s.stepIndex,
@@ -436,6 +615,7 @@ export async function runSinglePlaythroughV3(
     narrativeRepetitionRate: repetitionResult.overallRepetitionRate,
     relationshipDriftCount: relationshipDriftResult.drifts.length,
     npcStateChurnCount: stateChurnResult.churns.length,
+    failureContext: failureContext === null ? undefined : failureContext,
   };
 
   // ⑰ 写 trace artifact 落盘
@@ -456,127 +636,55 @@ export async function runSinglePlaythroughV3(
     passed: failures.length === 0 &&
       invariantResults.every((r) => r.passed) &&
       (narrativeConsistency?.passed ?? true),
+    failureContext: failureContext === null ? undefined : failureContext,
     failureSummary: failures,
     trace,
     scenarioId: scenario.id,
   };
 }
 
-// === 从 DM JSON 应用状态变化 ===
+function buildPlayerContext(state: GameStateSnapshot): string {
+  return [
+    `位置:${state.playerLocation}`,
+    `HP:${state.hp}/${state.maxHp}`,
+    `理智:${state.sanity}`,
+    `职业:${state.profession ?? "无"}`,
+    `武器:${state.equippedWeapon ?? "无"}`,
+    `任务:${state.activeTaskIds.join(",") || "无"}`,
+    `回合:${state.turnCount}`,
+  ].join("；");
+}
 
-function applyDmJsonToState(
-  state: GameStateSnapshot,
-  dmJson: Record<string, unknown>,
-  narrative: string
-): GameStateSnapshot {
-  const delta: Partial<GameStateSnapshot> = {};
-
-  // turnCount + 1
-  delta.turnCount = state.turnCount + 1;
-
-  // sanity_damage
-  if (typeof dmJson["sanity_damage"] === "number") {
-    delta.sanity = Math.max(0, state.sanity - (dmJson["sanity_damage"] as number));
-  }
-
-  // player_location
-  if (typeof dmJson["player_location"] === "string") {
-    delta.playerLocation = dmJson["player_location"] as string;
-  }
-
-  // is_death
-  if (dmJson["is_death"] === true) {
-    delta.isDeath = true;
-  }
-
-  // reached_ending（任意字段命中即可）
-  if (dmJson["reached_ending"] === true || dmJson["is_ending"] === true) {
-    delta.reachedEnding = true;
-  }
-
-  // currency_change（wire 协议为 number，旧版可能是 { originium, sanity } 对象）
-  // 与 normalizePlayerDmJson / resolveDmTurn / TurnEnvelope 对齐：number 即原石 delta
-  const currencyChange = dmJson["currency_change"];
-  if (typeof currencyChange === "number" && Number.isFinite(currencyChange)) {
-    // 与 useGameStore.addOriginium 语义一致：originium 永远 >= 0
-    delta.originium = Math.max(0, state.originium + currencyChange);
-  } else if (currencyChange && typeof currencyChange === "object" && !Array.isArray(currencyChange)) {
-    const cc = currencyChange as Record<string, unknown>;
-    if (typeof cc["originium"] === "number" && Number.isFinite(cc["originium"])) {
-      delta.originium = Math.max(0, state.originium + (cc["originium"] as number));
-    }
-    if (typeof cc["sanity"] === "number" && Number.isFinite(cc["sanity"])) {
-      delta.sanity = Math.max(0, (delta.sanity ?? state.sanity) + (cc["sanity"] as number));
-    }
-  }
-
-  // consumed_items
-  if (Array.isArray(dmJson["consumed_items"])) {
-    // 简化：只统计数量
-    delta.inventoryItemCount = Math.max(0, state.inventoryItemCount - dmJson["consumed_items"].length);
-  }
-
-  // awarded_items
-  if (Array.isArray(dmJson["awarded_items"])) {
-    delta.inventoryItemCount = state.inventoryItemCount + dmJson["awarded_items"].length;
-  }
-
-  // codex_updates
-  if (Array.isArray(dmJson["codex_updates"])) {
-    const newIds: string[] = [];
-    for (const u of dmJson["codex_updates"] as Array<Record<string, unknown>>) {
-      if (typeof u["entry_id"] === "string") newIds.push(u["entry_id"] as string);
-    }
-    delta.codexNpcIds = [...state.codexNpcIds, ...newIds];
-  }
-
-  // task_updates（completed 推进）
-  if (Array.isArray(dmJson["task_updates"])) {
-    const newlyCompleted: string[] = [];
-    for (const u of dmJson["task_updates"] as Array<Record<string, unknown>>) {
-      if (u["status"] === "completed" && typeof u["task_id"] === "string") {
-        newlyCompleted.push(u["task_id"] as string);
+export function buildClientStructuredSnapshot(state: GameStateSnapshot): Record<string, unknown> {
+  const bag = state.weaponBag ?? [];
+  const equippedWeapon = state.equippedWeapon
+    ? bag.find((weapon) => weapon.id === state.equippedWeapon) ?? {
+        id: state.equippedWeapon,
+        name: state.equippedWeapon,
+        stability: state.weaponStability,
+        contamination: state.weaponContamination,
+        repairable: true,
       }
-    }
-    delta.completedTaskIds = [...state.completedTaskIds, ...newlyCompleted];
-  }
-
-  // weapon_updates（wire 协议为 array，每个元素是一次更新）
-  // 与 useGameStore.applyWeaponUpdates 语义对齐：
-  // - unequip: true → 卸下武器（equippedWeapon = null）
-  // - weaponId / weapon → 装备新武器
-  // - stability / contamination → 更新（last-writer-wins，与 store 一致）
-  if (Array.isArray(dmJson["weapon_updates"])) {
-    for (const row of dmJson["weapon_updates"] as Array<Record<string, unknown>>) {
-      if (!row || typeof row !== "object") continue;
-      if (row["unequip"] === true) {
-        delta.equippedWeapon = null;
-        continue;
-      }
-      if (typeof row["weaponId"] === "string" && row["weaponId"]) {
-        delta.equippedWeapon = row["weaponId"] as string;
-      }
-      // 仅当 equippedWeapon 已有值时，才能更新稳定度/污染度（与 store 逻辑一致：没有武器就无法扣）
-      const curWeapon = delta.equippedWeapon !== undefined ? delta.equippedWeapon : state.equippedWeapon;
-      if (curWeapon !== null) {
-        if (typeof row["stability"] === "number" && Number.isFinite(row["stability"])) {
-          delta.weaponStability = Math.max(0, Math.min(100, Math.trunc(row["stability"] as number)));
-        }
-        if (typeof row["contamination"] === "number" && Number.isFinite(row["contamination"])) {
-          delta.weaponContamination = Math.max(0, Math.min(100, Math.trunc(row["contamination"] as number)));
-        }
-      }
-    }
-  }
-
+    : null;
   return {
-    ...state,
-    ...delta,
+    v: 1,
+    turnIndex: state.turnCount,
+    playerLocation: state.playerLocation,
+    stats: { sanity: state.sanity, agility: 10, luck: 10, charm: 10, background: 10 },
+    originium: state.originium,
     inventoryItemIds: state.inventoryItemIds,
+    warehouseItemIds: state.warehouseItemIds ?? [],
+    equippedWeapon,
+    weaponBag: bag,
+    currentProfession: state.profession,
+    worldFlags: state.unlockedFlags,
     activeTaskIds: state.activeTaskIds,
-    aliveNpcIds: state.aliveNpcIds,
+    completedTaskIds: state.completedTaskIds,
+    presentNpcIds: state.presentNpcIds,
     deadNpcIds: state.deadNpcIds,
-    unlockedFlags: state.unlockedFlags,
+    activeThreatIds: state.activeThreatIds,
+    journalClueIds: state.journalClueIds,
+    journalClueCount: state.journalClueIds?.length ?? 0,
   };
 }
 
@@ -589,6 +697,13 @@ export async function runPlaythroughBatchV3(
 
   // 场景过滤
   let scenarios = SCENARIOS;
+  if (config.scenarioIds && config.scenarioIds.length > 0) {
+    const requested = new Set(config.scenarioIds);
+    scenarios = scenarios.filter((scenario) => requested.has(scenario.id));
+    const found = new Set(scenarios.map((scenario) => scenario.id));
+    const missing = config.scenarioIds.filter((id) => !found.has(id));
+    if (missing.length > 0) throw new Error(`Unknown scenario ids: ${missing.join(", ")}`);
+  }
   if (config.scenarioCategories && config.scenarioCategories.length > 0) {
     scenarios = scenarios.filter((s) => config.scenarioCategories!.includes(s.category));
   }
@@ -607,7 +722,9 @@ export async function runPlaythroughBatchV3(
   const traceArtifacts: string[] = [];
 
   for (const scenario of scenarios) {
-    for (const persona of scenario.personas) {
+    const requestedPersonas = config.personasByScenario?.[scenario.id] ?? config.personas;
+    const selectedPersonas = scenario.personas.filter((persona) => requestedPersonas.includes(persona));
+    for (const persona of selectedPersonas) {
       for (let i = 0; i < config.runsPerPersona; i++) {
         console.log(`  🎯 ${scenario.id} → ${persona} #${i + 1}/${config.runsPerPersona}`);
         if (sut.reset) await sut.reset();
@@ -618,6 +735,7 @@ export async function runPlaythroughBatchV3(
           narrativeConsistency: result.narrativeConsistency,
           passed: result.passed,
           failureSummary: result.failureSummary,
+          failureContext: result.failureContext,
         });
         allTraces.push(result.trace);
         traceArtifacts.push(`${result.transcript.runId}.json`);

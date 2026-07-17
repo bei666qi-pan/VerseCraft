@@ -182,6 +182,22 @@ test("entity whitelist does not treat pronoun narration as NPC surface", () => {
   assert.ok(!report.issues.some((issue) => issue.code === "unknown_entity_surface"));
 });
 
+test("entity whitelist ignores real-trace grammatical fragments before speech verbs", () => {
+  for (const narrative of [
+    "按理说这里不该有人。",
+    "对方没有把话说完。",
+    "我回头再问她一句。",
+    "她慢吞吞地说：先登记。",
+    "她像在等我继续问。",
+    "眼神里多了一丝警惕。",
+    "纸条上写着：若有疑问，请去前台。",
+    "我指着告示问：这上面说的是真的吗？",
+  ]) {
+    const report = collectSafetyReport({ narrative, npcSceneAuthorityPacket: scenePacket() });
+    assert.ok(!report.issues.some((issue) => issue.code === "unknown_entity_surface"), narrative);
+  }
+});
+
 test("entity whitelist flags unknown NPC id in options as high", () => {
   const report = collectSafetyReport({
     options: ["去找 N-999 问清楚", "留在原地观察"],

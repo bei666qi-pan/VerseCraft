@@ -184,6 +184,8 @@ const CANON_GENDER: Record<string, CanonicalGender> = {
   "N-041": "male",
   "N-042": "male",
   "N-043": "male",
+  "N-044": "male",
+  "N-045": "female",
 };
 
 const AGE_BAND: Record<string, NpcAgeBand> = {

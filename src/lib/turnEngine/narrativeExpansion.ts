@@ -2,6 +2,7 @@ import type { NarrativeBudget, NarrativeBudgetTier } from "@/lib/playRealtime/na
 import { sanitizeNarrativeLeakageForFinal } from "@/lib/playRealtime/protocolGuard";
 import { countCompactChars } from "@/lib/turnEngine/narrativeLength";
 import type { NarrativeLengthTelemetry } from "@/lib/turnEngine/narrativeLengthTelemetry";
+import type { TokenUsage } from "@/lib/ai/types/core";
 
 export type NarrativeExpansionSkippedReason =
   | "feature_disabled"
@@ -22,6 +23,9 @@ export type NarrativeExpansionTelemetry = {
   narrativeExpansionLatencyMs: number | null;
   narrativeBeforeChars: number | null;
   narrativeAfterChars: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
 };
 
 export type NarrativeExpansionResult =
@@ -32,6 +36,7 @@ export type NarrativeExpansionResult =
       beforeChars: number;
       afterChars: number;
       ignoredFieldKeys: string[];
+      usage?: TokenUsage | null;
     }
   | {
       ok: false;
@@ -40,6 +45,7 @@ export type NarrativeExpansionResult =
       beforeChars: number;
       afterChars?: number;
       ignoredFieldKeys?: string[];
+      usage?: TokenUsage | null;
     };
 
 export const NARRATIVE_EXPANDABLE_TIERS: ReadonlySet<NarrativeBudgetTier> = new Set([
@@ -102,6 +108,9 @@ export function emptyNarrativeExpansionTelemetry(
     narrativeExpansionLatencyMs: null,
     narrativeBeforeChars: null,
     narrativeAfterChars: null,
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
   };
 }
 
@@ -118,6 +127,9 @@ export function narrativeExpansionTelemetryFromResult(
       typeof result.afterChars === "number" && Number.isFinite(result.afterChars)
         ? Math.max(0, Math.trunc(result.afterChars))
         : null,
+    inputTokens: result.usage?.promptTokens ?? null,
+    outputTokens: result.usage?.completionTokens ?? null,
+    totalTokens: result.usage?.totalTokens ?? null,
   };
 }
 

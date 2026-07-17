@@ -38,6 +38,16 @@ describe("harness/config", () => {
     assert.ok(BUDGET.JUDGE_CALIBRATION > 0);
     assert.ok(BUDGET.LIVE_BATCH > 0);
     assert.ok(BUDGET.DAILY_TOTAL > 0);
+    assert.ok(BUDGET.DAILY_TOTAL <= 500, "默认 live 预算应保持成本可控");
+  });
+
+  it("getDailyLiveBudget 应支持环境变量覆盖", async () => {
+    const previous = process.env.VERSECRAFT_EVAL_DAILY_CALL_BUDGET;
+    process.env.VERSECRAFT_EVAL_DAILY_CALL_BUDGET = "42";
+    const { getDailyLiveBudget } = await import("./config");
+    assert.strictEqual(getDailyLiveBudget(), 42);
+    if (previous === undefined) delete process.env.VERSECRAFT_EVAL_DAILY_CALL_BUDGET;
+    else process.env.VERSECRAFT_EVAL_DAILY_CALL_BUDGET = previous;
   });
 });
 
@@ -106,6 +116,21 @@ describe("harness/utils", () => {
     const sha = getGitSha();
     assert.ok(typeof sha === "string");
     assert.ok(sha.length > 0);
+  });
+});
+
+describe("harness/liveResultCache", () => {
+  it("相同输入应生成稳定 cache key", async () => {
+    const { buildLiveResultCacheKey } = await import("./liveResultCache");
+    assert.strictEqual(buildLiveResultCacheKey({ a: 1 }), buildLiveResultCacheKey({ a: 1 }));
+    assert.notStrictEqual(buildLiveResultCacheKey({ a: 1 }), buildLiveResultCacheKey({ a: 2 }));
+  });
+
+  it("应支持结果写入与重放", async () => {
+    const { buildLiveResultCacheKey, readLiveResultCache, writeLiveResultCache } = await import("./liveResultCache");
+    const key = buildLiveResultCacheKey({ test: `cache-${Date.now()}` });
+    writeLiveResultCache(key, { score: 4 });
+    assert.deepStrictEqual(readLiveResultCache(key), { score: 4 });
   });
 });
 

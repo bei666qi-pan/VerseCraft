@@ -836,25 +836,30 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_content_tsv_gin ON world_knowledge_chunks USING GIN (content_tsv);`);
 
     if (hasVector) {
-      await client.query(`
-        CREATE INDEX IF NOT EXISTS world_knowledge_chunks_embedding_ivfflat
-        ON world_knowledge_chunks USING ivfflat (embedding_vector vector_cosine_ops)
-        WITH (lists = 100)
-        WHERE embedding_vector IS NOT NULL AND embedding_status = 'ready';
+      const embeddingColumn = await client.query<{ type_str: string }>(`
+        SELECT format_type(atttypid, atttypmod) AS type_str
+        FROM pg_attribute
+        WHERE attrelid = 'world_knowledge_chunks'::regclass
+          AND attname = 'embedding_vector'
+          AND NOT attisdropped
       `);
+      const embeddingColumnType = embeddingColumn.rows?.[0]?.type_str ?? "";
+      // Existing local databases can predate pgvector and keep this column as text.
+      // Never retry an incompatible ivfflat create on startup/heartbeat.
+      if (embeddingColumnType.startsWith("vector(")) {
+        await client.query(`
+          CREATE INDEX IF NOT EXISTS world_knowledge_chunks_embedding_ivfflat
+          ON world_knowledge_chunks USING ivfflat (embedding_vector vector_cosine_ops)
+          WITH (lists = 100)
+          WHERE embedding_vector IS NOT NULL AND embedding_status = 'ready';
+        `);
+      }
 
       // `CREATE TABLE IF NOT EXISTS` 不会改动已存在表的列类型——如果之前用旧维度建过表
       // （比如从 256 迁移到 1024），这里补一段幂等自愈：只有列已存在且宽度不等于目标维度时才动手
       // （先 drop 依赖的 ivfflat 索引再改列类型再重建索引）。表为空或宽度已匹配时是无操作的。
       try {
-        const current = await client.query<{ type_str: string }>(`
-          SELECT format_type(atttypid, atttypmod) AS type_str
-          FROM pg_attribute
-          WHERE attrelid = 'world_knowledge_chunks'::regclass
-            AND attname = 'embedding_vector'
-            AND NOT attisdropped
-        `);
-        const currentTypeStr = current.rows?.[0]?.type_str ?? "";
+        const currentTypeStr = embeddingColumnType;
         const targetTypeStr = `vector(${worldKnowledgeEmbeddingDimension})`;
         if (currentTypeStr.startsWith("vector(") && currentTypeStr !== targetTypeStr) {
           await client.query(`DROP INDEX IF EXISTS world_knowledge_chunks_embedding_ivfflat`);
@@ -1258,4 +1263,3 @@ async function ensureKgSchema(
     console.warn("[ensureSchema] ensureKgSchema skipped:", e);
   }
 }
-

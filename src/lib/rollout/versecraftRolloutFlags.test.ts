@@ -20,6 +20,7 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enableSpaceAuthorityCanon, true);
   assert.equal(f.enableNpcSocialSurface, true);
   assert.equal(f.enableStyleGuidePacket, true);
+  assert.equal(f.enablePromptPacketDedupV1, true);
   assert.equal(f.enableTaskVisibilityPolicyV3, true);
   assert.equal(f.enableTaskAutoOpenOnNarrativeGrant, true);
   assert.equal(f.enablePlayerFacingTaskCopyV2, true);
@@ -49,6 +50,12 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enablePlayerEchoPersistence, false);
   assert.equal(f.enablePlayerEchoPromptPacket, false);
   assert.equal(f.enablePlayerEchoValidator, false);
+});
+
+test("prompt packet dedup can be rolled back independently", () => {
+  withEnv("VERSECRAFT_ENABLE_PROMPT_PACKET_DEDUP_V1", "0", () => {
+    assert.equal(getVerseCraftRolloutFlags().enablePromptPacketDedupV1, false);
+  });
 });
 
 test("SceneActorGate rollout flags can be disabled by env", () => {

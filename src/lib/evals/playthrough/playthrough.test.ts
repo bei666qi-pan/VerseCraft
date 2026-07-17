@@ -169,6 +169,18 @@ describe("不变量检查", () => {
     assert.ok(!result.violations.some((v) => v.rule === "dm_json_options_missing"));
   });
 
+  it("narrative_only 合法回合允许 deferred options 为空", () => {
+    const state = createInitialStateSnapshot();
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", {
+      is_action_legal: true,
+      turn_mode: "narrative_only",
+      decision_required: false,
+      options: [],
+      consumes_time: true,
+    });
+    assert.ok(!result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
   it("consumes_time 非布尔值应触发 minor 违规", () => {
     const state = createInitialStateSnapshot();
     const dmJson: Record<string, unknown> = {

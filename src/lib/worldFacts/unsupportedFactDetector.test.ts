@@ -159,5 +159,12 @@ test("candidate_new_facts are telemetry candidates only", () => {
     ],
   });
   assert.equal(report.telemetry.candidateNewFactCount, 1);
+  assert.equal(report.telemetry.byReason.candidate_pending_review, 1);
   assert.ok(report.unsupportedCandidates.some((candidate) => candidate.text.startsWith("candidate_new_fact_pending_review")));
+});
+
+test("telemetry exposes only bounded reason codes for diagnosis", () => {
+  const report = baseReport({ narrative: "委托已经完成。", stateDelta: { taskUpdates: [], newTasks: [] } });
+  assert.equal(report.telemetry.byReason.task_completion_without_fact_or_delta, 1);
+  assert.equal(JSON.stringify(report.telemetry).includes("委托已经完成"), false);
 });
