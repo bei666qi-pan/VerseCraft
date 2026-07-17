@@ -1,10 +1,16 @@
 <p align="center">
-  <img src="./public/logo.svg" width="88" alt="VerseCraft logo" />
+  <img src="https://versecraft.cn/favicon.ico" width="88" alt="VerseCraft favicon" />
 </p>
 
 <h1 align="center">文界工坊 VerseCraft</h1>
 
 <p align="center"><strong>AI 互动叙事平台：让大模型作为「故事运行时」，实时承接、推进与扩展一部可游玩的互动小说。</strong></p>
+
+<p align="center">
+  <strong>🌐 官网：</strong><a href="https://versecraft.cn">https://versecraft.cn</a>
+  &nbsp;·&nbsp;
+  <strong>💬 QQ 交流群：377493954</strong>
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs" alt="Next.js" />
@@ -26,9 +32,10 @@ VerseCraft 不是把小说塞进聊天框，而是把**世界观、规则、选�
 
 技术上它是一个 Next.js 16 / React 19 单体应用，内含完整的回合引擎、AI 网关抽象、世界知识 RAG、后台世界推演 worker、内容安全合规层与管理后台，已部署上线。
 
-## 🔗 在线体验
+## 🔗 在线体验与交流
 
-**https://versecraft.cn** （生产环境 · 简体中文）
+- 官网：**[https://versecraft.cn](https://versecraft.cn)**（生产环境 · 简体中文）
+- QQ 交流群：**377493954**
 
 ## ✨ 核心特性
 

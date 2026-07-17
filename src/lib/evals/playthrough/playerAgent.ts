@@ -27,9 +27,11 @@ export const PERSONAS: Record<PersonaType, PersonaConfig> = {
 - 忽略支线任务和可选探索
 - 用简洁的指令快速行动
 - 不会浪费时间在闲聊或调查无关细节上
-- 每步输入控制在10字以内`,
+- 每步输入控制在10字以内
+- 如果有危险选项，你选最危险的那个——死亡也是一种结局
+- 如果主线推进受阻，寻找触发战斗/冲突的机会来推进剧情`,
     maxSteps: 20,
-    styleKeywords: ["速通", "直奔主线", "跳过支线", "简洁指令"],
+    styleKeywords: ["速通", "直奔主线", "跳过支线", "简洁指令", "寻求结局"],
     attemptsIllegalAction: false,
   },
   explorer: {

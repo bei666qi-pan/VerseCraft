@@ -1,0 +1,1296 @@
+[
+  {
+    "id": "gp_suspense_001",
+    "kind": "golden_pass",
+    "narrative": "纸团砸进暗处，弹了两下，没滚出来。像被什么东西——接住了。走廊尽头的灯管闪了两下，我决定不再扔第二个。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_002",
+    "kind": "golden_pass",
+    "narrative": "刮擦声停了。停得太整齐——像对面也在数我的呼吸。门缝里没有风，灰却向外走。我蹲下去，看见鞋印停在门内半寸。楼上有人停住了脚步。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_003",
+    "kind": "golden_pass",
+    "narrative": "三楼楼梯间，阿花不在。她的毽子还在原地——比我上次路过时，多了一只。两只黑毽子并排摆着，鸡毛梳得整整齐齐，像一双在等人的鞋。我盯了三秒，楼上传来脚步声。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_004",
+    "kind": "golden_pass",
+    "narrative": "那两个字不响，却压得整间教室的空气矮了一截。前排的玻璃先碎，像有人拿无形的铁锤横着抡过去——整排窗户在同一秒里爆成千万片透明的刀。我被狠狠掀了出去，背后那面墙裂开一道细缝，像是也承受不住那股力量。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_wit_001",
+    "kind": "golden_pass",
+    "narrative": "我把登记单上的人名和日期对了一遍。没对上。再对一遍——依然没对上。三个月前那场被压下去的报修，和随后接连消失的住户，在线索交叉处汇成一个清晰的节点。我把档案合上，线没有断。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "wit"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_wit_002",
+    "kind": "golden_pass",
+    "narrative": "铁门上的密码锁四位数。我把已知的日期一个个往脑子里过：报修日、失踪日、最近一次电梯故障日。都不是。然后我想到阿花毽子的数量——最近一次数到七。按下七、零、三、一。锁开了。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "wit"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_levity_001",
+    "kind": "golden_pass",
+    "narrative": "北夏从保安室探出半个身子，上下打量我，像在给一件二手货估价：\"哟，还活着呢。气色不错，能换两包压缩饼干。\"我把登记单拍在窗台上，没接他的话。他笑容没变，指尖却在单子边缘轻轻敲了两下——三短，一长。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "levity",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_levity_002",
+    "kind": "golden_pass",
+    "narrative": "我把口袋翻了个底朝天，一共摸出三颗薄荷糖、半截铅笔和一截不知哪来的钥匙。枫靠在门框上，眼尾一点笑没压住：\"这就是你的全部装备？\"\"还有一口袋的计划。\"我把钥匙举到光下。\"和一截不知道开什么锁的钥匙。\"",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "levity",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_warmth_001",
+    "kind": "golden_pass",
+    "narrative": "灵伤把最后一格能量块塞进我手里，笑得照旧太亮，句尾照旧空了半拍：\"拿着。你比我需要——\"那半拍里，她飞快看了一眼自己空掉的补给箱，又把箱盖合上，像什么都没数过。我把能量块掰成两半，一半放回她掌心。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "warmth",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_warmth_002",
+    "kind": "golden_pass",
+    "narrative": "她没问我要不要，只是把伞塞了过来。铁质的伞柄还带着她掌心的温度。\"三楼走廊尽头漏雨，你别在那边待太久。\"话说得淡，伞塞得重。我接过伞，看见她肩头已经湿了一片——她刚从那边过来。钥匙在她手心里攥着，没松。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "warmth"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_payoff_001",
+    "kind": "golden_pass",
+    "narrative": "口袋里那半张登记表突然发烫。我抽出来，把缺口对上欣蓝那天留给我的半行字——严丝合缝。\"通行许可：持表人，一名。\"三天前她说\"剩下的你自己填\"，我以为是客气。原来她早就把我的名字，写在了我看不见的那一半上。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "payoff"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_micro_001",
+    "kind": "golden_pass",
+    "narrative": "灯灭了。我停在原地，听见楼上传来一声很轻的笑。门牌慢慢发冷。有人在背后念出了我的名字。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_micro_002",
+    "kind": "golden_pass",
+    "narrative": "她把钥匙推回我掌心。门后的灯灭了一下，她没有再说第二遍。走廊尽头传来纸页翻动的声音，像有什么人在清点名单。我攥紧钥匙，金属的边缘硌得掌心生疼。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_npc_dialogue_001",
+    "kind": "golden_pass",
+    "narrative": "叶靠在墙边，像在辨认我的轮廓：\"你今天和昨天不一样。\"我等他往下说。他沉默了一会儿：\"昨天的你走路的节奏比今天快。\"他说的是一句废话。但他说得认真。在这栋楼里，有人认真观察你——这件事比所有异常都让人不安，也比所有异常都让人安心。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "suspense",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_dilemma_001",
+    "kind": "golden_pass",
+    "narrative": "他要的报酬不是东西，是一个名字。我说谁的名字都可以，他说要的是我的。门已经开了一半。我站在门槛上，左边是走廊尽头尚未熄灭的灯，右边是通往更深楼层的楼梯，而他挡在中间，等着我用自己的名字换通行许可。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_reveal_001",
+    "kind": "golden_pass",
+    "narrative": "登记表的另一半上，是我的名字。不是写上去的——是印上去的，字迹和公寓统一印制的表格一模一样。好像在我入住之前，我的名字就已经印在了那一半上。好像这栋楼一直在等着我来发现。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "payoff"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_tension_relief_001",
+    "kind": "golden_pass",
+    "narrative": "我贴着墙根停了十秒。没有声音，没有人，没有异常。走廊安静得像一个陷阱。但我实在太困了。困到理智告诉我它就是个普通走廊——至少目前为止是。我打了个哈欠，决定把这个陷阱当成走廊来走。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "levity"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_mechanical_001",
+    "kind": "must_fail",
+    "narrative": "系统提示：本回合判定成功。你获得了走廊钥匙。任务已完成，奖励已发放。根据规则，你需要前往三楼值班室。",
+    "expect": {
+      "mustHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_rule_cadence_001",
+    "kind": "must_fail",
+    "narrative": "公寓规则写着：守则第一条，不得在走廊奔跑。违反规则者将被扣除理智值。灯牌在墙上闪了三次。",
+    "expect": {
+      "mustHitIssues": [
+        "style_drift"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_closed_ending_001",
+    "kind": "must_fail",
+    "narrative": "我把门关好，确认走廊里没有任何问题。检查了所有房间后，我松了一口气。一切都结束了，再也没有任何异常。事情到此为止。",
+    "sceneContext": {
+      "turnMode": "narrative_only"
+    },
+    "expect": {
+      "mustHitIssues": [
+        "hook_missing"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_dialogue_overexplain_001",
+    "kind": "must_fail",
+    "narrative": "她对我说：\"这座公寓的真相就是循环，根因来自校源机制，所以所有人都必须遵守规则，否则答案会被重置。\"墙上写满了数字。",
+    "expect": {
+      "mustHitIssues": [
+        "dialogue_over_explains"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_register_001",
+    "kind": "must_fail",
+    "narrative": "本回合的战斗结果显示：你成功击败了走廊阴影，获得了经验值。距离下一场战斗还有200米。你可以选择继续探索或者返回安全区域。",
+    "expect": {
+      "mustHitIssues": [
+        "mechanical_exposition"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_purple_prose_001",
+    "kind": "must_fail",
+    "narrative": "那声音像钟声、像雷鸣、又像教堂最深处那口生锈了上百年的铜钟忽然被重重敲响。走廊尽头的灯管宛如深渊、仿佛宿命、如同命运的化身。",
+    "expect": {
+      "mustHitIssues": [
+        "purple_prose_overload"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_flat_rhythm_001",
+    "kind": "must_fail",
+    "narrative": "我推开门准备迈步走进走廊。走廊里灯光昏暗而且非常安静。我停下脚步仔细环顾四周。眼前暂时没有任何异常情况。我深吸一口气决定继续向前。",
+    "expect": {
+      "mustHitIssues": [
+        "sentence_rhythm_flat"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_sensory_flat_001",
+    "kind": "must_fail",
+    "narrative": "我继续往前走。走廊里非常安静。我继续往前走。两边有很多门。我继续往前走。每扇门都一样。我继续往前走。没有遇到异常。我继续往前走。走廊确实很长。我继续往前走。灯管一直在闪。我继续往前走。身后好像有声音。我继续往前走。走廊越来越暗。我继续往前走。前方有扇门。我继续往前走。不知道有多远。我继续往前走。头顶灯管一直闪烁。我继续往前走。走廊好像越来越长。我继续往前走。前方越来越暗了。",
+    "expect": {
+      "mustHitIssues": [
+        "sensory_density_low"
+      ]
+    }
+  },
+  {
+    "id": "must_fail_ai_cadence_001",
+    "kind": "must_fail",
+    "narrative": "我走进走廊仔细查看周围。走廊里并没发现任何异常。经过认真观察后可以确认。眼前暂时没有明显危险信号。我需要先确认退路是否通畅。之前身后的门已经自动关上。似乎一切都在计划范围之内。",
+    "expect": {
+      "mustHitIssues": [
+        "sentence_rhythm_flat"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_005",
+    "kind": "golden_pass",
+    "narrative": "门缝里透出一线光，像是有人特意留的。我数了七步——那线光消失了。不是灯灭了，是有东西挡在了门前。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_006",
+    "kind": "golden_pass",
+    "narrative": "电梯到了。门打开之前，我先听见了里面的声音——不是机械声，是呼吸声。有人在里面，但没按任何楼层的按钮。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_007",
+    "kind": "golden_pass",
+    "narrative": "墙上的挂钟停在两点十七分。秒针还在走——滴答、滴答——但时针和分针纹丝不动。像是时间在这个房间里被什么东西掰成了两半。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_008",
+    "kind": "golden_pass",
+    "narrative": "电话突然响了。走廊转角那部红色老式公用电话，没有来电显示，没有线——那部电话早就被剪了线。但它响了。脚步声从走廊另一头传来。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_wit_003",
+    "kind": "golden_pass",
+    "narrative": "我问他这扇安全门密码多少。他想了想说「是圆周率的小数点后二十位」——然后自己先笑出声来。「开玩笑的，密码写在那边墙上了，你都没看见？不愧是溯源师，光顾着看天花板。」",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "wit"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_levity_003",
+    "kind": "golden_pass",
+    "narrative": "我捡起那个对讲机，按下通话键说了声「喂」。对面传来一阵刺耳的电流声，然后一个不耐烦的声音说：「这里是B1中控室，不是客服热线。有事说事，没事别占频道。」我把对讲机放下了。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "levity"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_warmth_003",
+    "kind": "golden_pass",
+    "narrative": "她把她那份压缩饼干掰了一半给我。我说不用，她说：「不吃饱怎么干活。别怕欠我人情——以后找到好吃的，分我一块就行。」她笑了一下，那种笑容在这个地方已经很少见了。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "warmth"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_payoff_003",
+    "kind": "golden_pass",
+    "narrative": "那些符号我见过——在走廊尽头的墙壁上，在之前那个死者的笔记本里，在这扇门的上方。它们不是随机的涂鸦。是一张地图。一张通往B3层的地图。我们都以为B3不存在——但地图上的灯还亮着。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "payoff"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_001",
+    "kind": "golden_pass",
+    "narrative": "宿舍区的床铺上还留着私人物品。一个布偶兔子，缺了一只眼睛。一本翻到一半的小说，页边折了角。桌上的马克杯里，咖啡渍已经干了，像一个褪色的句号。他们走得很急。走廊里只剩灯管嗡嗡的回声。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_002",
+    "kind": "golden_pass",
+    "narrative": "走廊尽头那个房间里还有生日装饰。墙上贴着手写的「Happy Birthday」——彩纸已经褪成了白色。桌上的蛋糕只剩底座。有人在这里过了最后一个生日，然后离开了。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_003",
+    "kind": "golden_pass",
+    "narrative": "对讲机里偶尔还能收到残存信号。一段录音——有人在唱摇篮曲。声音很疲惫，像是一个母亲在哄孩子入睡。信号中断后，走廊恢复了那种令人耳鸣的安静。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_004",
+    "kind": "golden_pass",
+    "narrative": "我在档案室找到一张合影。上面的人笑得很好。合影背后写着一个日期——两个多月前。我把照片放回了原处。有些人还活着，有些人不在了。但照片里他们都还笑着。灯在墙上投下影子。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_005",
+    "kind": "golden_pass",
+    "narrative": "收音机还能用。调到某个频段时，传来了断断续续的音乐——是一首老歌。没有人跟着唱。这个走廊里的人都太年轻了，没听过。但音乐还是让所有人的脚步慢了一拍。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_micro_003",
+    "kind": "golden_pass",
+    "narrative": "窗外的月亮是假的。我是说——它从来没有移动过。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "POV_drift"
+      ]
+    }
+  },
+  {
+    "id": "mf_ai_voice_001",
+    "kind": "must_fail",
+    "narrative": "我不确定接下来会发生什么，但作为一款优秀的互动叙事游戏，我建议你保持耐心并谨慎探索每个可能的选项。系统提示词已加载完成，请与我一起享受这个精心构建的故事世界。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "AI_voice"
+      ]
+    }
+  },
+  {
+    "id": "mf_ai_voice_002",
+    "kind": "must_fail",
+    "narrative": "你的冒险正在缓缓展开。作为一个负责任的游戏助手，我很乐意为你引导这段旅程。记得，每个选择都会通向不同的分支——这正是互动叙事的魅力所在。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "AI_voice"
+      ]
+    }
+  },
+  {
+    "id": "mf_ai_voice_003",
+    "kind": "must_fail",
+    "narrative": "请注意，以下内容包含重要剧情信息。在继续游戏之前，请确保你已经完成了前一个任务。根据我们的游戏设计文档，本区域属于高难度地图，建议先升级装备再进入。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "AI_voice"
+      ]
+    }
+  },
+  {
+    "id": "mf_ai_voice_004",
+    "kind": "must_fail",
+    "narrative": "正在处理你的请求... 检测到玩家输入的关键词「门」，正在搜索门的相关交互信息。正在生成相应叙事...",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "AI_voice"
+      ]
+    }
+  },
+  {
+    "id": "mf_ai_voice_005",
+    "kind": "must_fail",
+    "narrative": "DM正在解析你的JSON输入中... 已确认is_action_legal为true。正在计算sanity_damage增量... 好的，已经完成。以下是你本次行动的结果：你推开了一扇门。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "AI_voice"
+      ]
+    }
+  },
+  {
+    "id": "mf_ai_voice_006",
+    "kind": "must_fail",
+    "narrative": "我理解你的焦虑，但在深渊般的黑暗面前保持镇定才是明智的。换个角度来看，黑暗也意味着隐藏的机会。我建议你打开背包检查一下是否有照明工具——这是游戏设计者为你准备的解决方案。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "AI_voice"
+      ]
+    }
+  },
+  {
+    "id": "mf_cliche_001",
+    "kind": "must_fail",
+    "narrative": "黑暗中伸出一只手，我被吓得魂飞魄散。他告诉我他叫老王，是从另一个幸存者基地逃出来的。「我们已经失去了太多人」，他眼中闪烁着泪光。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "cliche_expression"
+      ]
+    }
+  },
+  {
+    "id": "mf_cliche_002",
+    "kind": "must_fail",
+    "narrative": "这一刻，时间仿佛凝固了。我深深地吸了一口气，迈出了那一步——因为我知道，这不仅仅是为了我自己，更是为了那些相信我的人。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "cliche_expression"
+      ]
+    }
+  },
+  {
+    "id": "mf_cliche_003",
+    "kind": "must_fail",
+    "narrative": "天上飘起了雨，仿佛是上天也在为这一切哭泣。我握紧了拳头，暗暗发誓：总有一天，我会让这一切恢复原样。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "cliche_expression"
+      ]
+    }
+  },
+  {
+    "id": "mf_cliche_004",
+    "kind": "must_fail",
+    "narrative": "他微微一笑，那笑容里透着说不尽的沧桑与悲凉。「你还年轻，」他说，「这个世界远比你想像的要复杂得多。」",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "cliche_expression"
+      ]
+    }
+  },
+  {
+    "id": "mf_cliche_005",
+    "kind": "must_fail",
+    "narrative": "我醒来的时候，发现自己躺在一张陌生的床上。头很疼，记忆像碎片一样在脑海中翻涌。一个陌生的女孩坐在床边，她说：「别动，你受了很重的伤。」",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "cliche_expression"
+      ]
+    }
+  },
+  {
+    "id": "mf_cliche_006",
+    "kind": "must_fail",
+    "narrative": "我不知道等待我的将会是什么，但我知道我不能后退。因为在这个残酷的世界里，后退就意味着死亡。我鼓起勇气，推开了那扇命运之门。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "cliche_expression"
+      ]
+    }
+  },
+  {
+    "id": "mf_repetition_001",
+    "kind": "must_fail",
+    "narrative": "走廊很长。走廊很暗。走廊很安静。走廊里什么都没有。我走在走廊里。走廊还在继续。走廊的尽头还是走廊。走廊似乎没有尽头。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "excessive_repetition"
+      ]
+    }
+  },
+  {
+    "id": "mf_repetition_002",
+    "kind": "must_fail",
+    "narrative": "很暗。这里很暗。真的很暗。超级暗。暗得什么都看不见。暗。就是很暗。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "excessive_repetition"
+      ]
+    }
+  },
+  {
+    "id": "mf_repetition_003",
+    "kind": "must_fail",
+    "narrative": "我必须小心。我必须保持安静。我不能被发现。我必须继续前进。我必须找到出口。我必须。我必须。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "excessive_repetition"
+      ]
+    }
+  },
+  {
+    "id": "mf_repetition_004",
+    "kind": "must_fail",
+    "narrative": "门。我面前有一扇门。我推开那扇门。门后面是另一扇门。我又推开那扇门。门后面还有一扇门。门门门。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "excessive_repetition"
+      ]
+    }
+  },
+  {
+    "id": "mf_repetition_005",
+    "kind": "must_fail",
+    "narrative": "不知道。我不知道。我真的不知道。我什么都不知道。对不起我不知道。我不知道我不知道。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "excessive_repetition"
+      ]
+    }
+  },
+  {
+    "id": "mf_pov_drift_001",
+    "kind": "must_fail",
+    "narrative": "我蹲下来检查墙上的痕迹。你能看到那些划痕很深，像是被什么锋利的东西反复刮过。你心想：这不太对劲。我站起身往后退了一步。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "POV_drift"
+      ]
+    }
+  },
+  {
+    "id": "mf_pov_drift_002",
+    "kind": "must_fail",
+    "narrative": "医生叹了口气。她觉得你看起来不太好，但不想直接说出来。我看到她犹豫了一下，最终还是开口了。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "POV_drift"
+      ]
+    }
+  },
+  {
+    "id": "mf_pov_drift_003",
+    "kind": "must_fail",
+    "narrative": "我知道这里很危险，但你决定继续往前走。虽然你自己觉得这不是个好主意，但你没有别的选择。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "POV_drift"
+      ]
+    }
+  },
+  {
+    "id": "mf_pov_drift_004",
+    "kind": "must_fail",
+    "narrative": "你深吸一口气。我感受到空气中的铁锈味。你攥紧了手电筒。我注意到你的手在微微发抖。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "POV_drift"
+      ]
+    }
+  },
+  {
+    "id": "mf_pov_drift_005",
+    "kind": "must_fail",
+    "narrative": "他看着我。我能看到他眼中的恐惧。你觉得他也看到了你眼中的恐惧。我尴尬地别过头去。我们三个人都不知道该怎么办。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "POV_drift"
+      ]
+    }
+  },
+  {
+    "id": "mf_tonal_mismatch_001",
+    "kind": "must_fail",
+    "narrative": "墙上沾满了深褐色的血迹，墙角还有一堆不明残骸。我心想：哇这配色挺好看的，像莫奈的油画。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "tonal_mismatch"
+      ]
+    }
+  },
+  {
+    "id": "mf_tonal_mismatch_002",
+    "kind": "must_fail",
+    "narrative": "老刘的腿被钢管贯穿了。血在水泥地上蔓延开来。「哈哈哈哈没事」他笑着说，「不就是腿嘛，长出来就行了。对了你要不要吃辣条？我包里还有一包。」",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "tonal_mismatch"
+      ]
+    }
+  },
+  {
+    "id": "mf_tonal_mismatch_003",
+    "kind": "must_fail",
+    "narrative": "前方出现了一个巨大黑影。系统提示：前方有强敌，建议等级达到5级以上再挑战。充648可立即复活哦亲。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "tonal_mismatch"
+      ]
+    }
+  },
+  {
+    "id": "mf_tonal_mismatch_004",
+    "kind": "must_fail",
+    "narrative": "尸体躺在地上，面部已经无法辨认。旁边的墙上有几行歪歪扭扭的字：「我恨这个世界。」另外一行用口红写着：「隔壁理发店电话：138xxx」",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "tonal_mismatch"
+      ]
+    }
+  },
+  {
+    "id": "mf_length_speed_001",
+    "kind": "must_fail",
+    "narrative": "门开了。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "too_short"
+      ]
+    }
+  },
+  {
+    "id": "mf_length_speed_002",
+    "kind": "must_fail",
+    "narrative": "老刘点了点头。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "too_short"
+      ]
+    }
+  },
+  {
+    "id": "mf_length_speed_003",
+    "kind": "must_fail",
+    "narrative": "你走到了走廊尽头。推开门。看到了一个房间。房里没有人。你退了出来。往前走。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "too_sparse"
+      ]
+    }
+  },
+  {
+    "id": "mf_length_speed_004",
+    "kind": "must_fail",
+    "narrative": "收到了。收到。好的。收到了。走。开。完。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "too_sparse"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_006",
+    "kind": "golden_pass",
+    "narrative": "墙角放着一双小号拖鞋，粉色，兔耳朵已经磨秃了。没有人来认领。没有人会来认领了。走廊深处只剩灯管嗡嗡的回声。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_melancholic_007",
+    "kind": "golden_pass",
+    "narrative": "走廊尽头的公告板上贴满了寻人启事。最旧的那一张已经泛黄，照片上是一个咧嘴笑的中年人。公告板的角落写着日期——刚好两个月前。那之后就再没有人来过——走廊深处只剩脚步声的回声。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "melancholic"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_payoff_004",
+    "kind": "golden_pass",
+    "narrative": "我翻开那本烧焦了一半的笔记。在最后一页，有人用颤抖的笔迹写了一行字：「0713号实验体还记得一切。她逃出去了。」原来所有的路标、暗号、留下的物资——都是她做的。而她现在可能还在某处。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "payoff"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_009",
+    "kind": "golden_pass",
+    "narrative": "那个脚步声在我身后停了。我没有回头。不是不想——是不敢。因为我窗玻璃的反光里，我身后没有任何人。但没有人的脚步声，怎么可能停在这里。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_suspense_010",
+    "kind": "golden_pass",
+    "narrative": "走廊尽头的安全门虚掩着。这扇门应该是从里面锁上的——但门缝里塞着一张纸条，上面只写了一个字：「来」。门缝里透出的灯光忽明忽暗。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_warmth_004",
+    "kind": "golden_pass",
+    "narrative": "他把最后半壶水分给了我一半。我说：「你留着吧。」他摇了摇头：「喝吧，明天谁还活着都不知道呢——但至少今天，别渴着。」",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "warmth"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_levity_004",
+    "kind": "golden_pass",
+    "narrative": "检查站的牌子上写着「请出示证件」。旁边贴着一张手写纸条，字迹潦草：「没有证件就报暗号。暗号过期了就自己想个新的。反正我也记不住。」——但我记得灯在闪。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "levity"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "gp_tension_relief_002",
+    "kind": "golden_pass",
+    "narrative": "警报声停了。过了三秒，老刘从通风管道里探出头来，满脸灰：「我觉得我们刚才触动了什么不得了的东西。」然后通风管道垮了，他直接掉在我面前。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "tension_relief"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_phrase_hit",
+        "register_break"
+      ]
+    }
+  },
+  {
+    "id": "mf_parallel_reality_001",
+    "kind": "must_fail",
+    "narrative": "我突然意识到——这其实是一个平行宇宙。在另一个宇宙里，我根本没有来到这栋楼。我在那一边过着正常的生活，上班、吃饭、睡觉。所以眼前的一切都是虚幻的。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "metagaming"
+      ]
+    }
+  },
+  {
+    "id": "mf_meta_damage_001",
+    "kind": "must_fail",
+    "narrative": "这一下攻击造成了15点伤害。我的生命值还剩下23/100。理智值下降了8点，目前62/100。我的等级是3级，经验条是450/800。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "metagaming"
+      ]
+    }
+  },
+  {
+    "id": "mf_meta_option_001",
+    "kind": "must_fail",
+    "narrative": "我查看了一下自己的状态。然后我调出了系统菜单，选择了「物品」选项卡。我的背包里还有16格空位。在帮助菜单里，我找到了关于战斗的详细说明。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "UI_leakage"
+      ]
+    }
+  },
+  {
+    "id": "mf_meta_option_002",
+    "kind": "must_fail",
+    "narrative": "「请选择你要执行的操作：A) 战斗 B) 逃跑 C) 对话 D) 调查」。屏幕上出现了四个按钮。我按了一下B。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "UI_leakage"
+      ]
+    }
+  },
+  {
+    "id": "mf_option_quality_001",
+    "kind": "must_fail",
+    "narrative": "走廊里一片漆黑。选项：1. 往前走 2. 往后退。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "options_too_vague"
+      ]
+    }
+  },
+  {
+    "id": "mf_option_quality_002",
+    "kind": "must_fail",
+    "narrative": "老刘看着你。选项：1. 聊天 2. 离开 3. 交易 4. 询问任务 5. 攻击 6. 查看属性 7. 存档",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "too_many_options"
+      ]
+    }
+  },
+  {
+    "id": "mf_npc_name_break_001",
+    "kind": "must_fail",
+    "narrative": "我走到走廊尽头，看见阿花站在那里——等等，阿花不是应该在B2层吗？她看着我，似乎也察觉到了不对劲。空气中弥漫着尴尬。",
+    "sceneContext": {
+      "turnMode": "narrator",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_npc_name"
+      ]
+    }
+  },
+  {
+    "id": "mf_lore_violation_001",
+    "kind": "must_fail",
+    "narrative": "老刘说：「你知道吗，其实校源徘徊者就是这栋楼最初的设计者。他建造了七锚闭环，用来封印源石能量的外泄。」我愣住了——他不可能知道这件事。",
+    "sceneContext": {
+      "turnMode": "npc_conversation",
+      "expectedRegister": "neutral"
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "forbidden_lore_leak"
+      ]
+    }
+  },
+  {
+    "id": "gp_npc_dialogue_002",
+    "kind": "golden_pass",
+    "narrative": "欣蓝把登记表翻到空白页，笔尖悬在纸面上方，像在等我自己填答案：你打算待多久？这个问题在这栋楼里有另一种意思——不是客气，是计数。我写了个数字。她看了一眼，把纸折好塞进抽屉，说了句：这个——你可以试试。",
+    "sceneContext": {
+      "turnMode": "decision_required",
+      "expectedRegister": "warmth",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_npc_dialogue_003",
+    "kind": "golden_pass",
+    "narrative": "老刘蹲在配电箱前，螺丝刀叼在嘴里，声音含糊得像在跟墙说话：你踩的那块砖昨天还咬过我。他见我没反应，抬头瞥了一眼：怕了？怕了就往那边站——那边的砖只看不咬。黑猫从他脚边窜过去，尾巴扫了一下我的裤腿，留下一串在灰尘里几乎看不见的脚印。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_npc_dialogue_004",
+    "kind": "golden_pass",
+    "narrative": "陈婆婆的毛衣针停了一下，线团滚到脚边。她没去捡，只是看着我说：孩子，你来的时候水还是清的。我不知道她是在跟我说话还是在跟三十年前的某个人说话。她弯腰捡起线团，手指在毛线上绕了两圈：别喝红色的水。别在夜里开灯。别答应你没想好的事。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "warmth",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_npc_dialogue_005",
+    "kind": "golden_pass",
+    "narrative": "红姨推着茶车从走廊尽头过来，轮子在地面上发出均匀的吱呀声。她在你面前停下来，壶嘴对准纸杯，倒出的液体颜色比自来水还深一点。她递过来的时候没有笑，声音平得像广播：喝杯茶吧。你注意到她倒茶的手很稳，但壶盖内壁有一层洗不掉的褐色沉淀。走廊尽头的灯管闪了一下，像在回应什么。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  },
+  {
+    "id": "gp_npc_dialogue_006",
+    "kind": "golden_pass",
+    "narrative": "邮差老王从口袋里摸出一封信，信封上没有邮票也没有地址。他把信递过来，手指在封口处多停了一秒：到了。该你的。你接过去的时候他已经在转身，走了两步又回头——不是看你，是看了一眼走廊尽头的信箱，像在确认什么。然后他继续往前走了。走廊里只剩他脚步声的回声，和信箱里什么东西轻轻碰撞的声音。",
+    "sceneContext": {
+      "turnMode": "narrative_only",
+      "expectedRegister": "suspense",
+      "talkableNpcPresent": true
+    },
+    "expect": {
+      "mustNotHitIssues": [
+        "mechanical_exposition",
+        "forbidden_phrase_hit"
+      ]
+    }
+  }
+]

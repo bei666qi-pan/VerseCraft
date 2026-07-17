@@ -44,7 +44,32 @@ test("weapon tactical adjudication: matching weapon affects damage and writes du
   assert.equal((updates[0] as Record<string, unknown>).weaponId, "WPN-001");
   assert.equal((updates[0] as Record<string, unknown>).contamination, 2);
   assert.equal((updates[0] as Record<string, unknown>).stability, 94);
-  assert.ok(String(out.narrative).includes("武器介入"));
+  assert.ok(String(out.narrative).includes("实际损耗"));
+  assert.match(String(out.narrative), /威胁只是暂退，还没有结束/);
+  assert.equal(String(out.narrative).includes("以本回合状态结算为准"), false);
+  assert.equal(String(out.narrative).includes("可靠性"), false);
+});
+
+test("weapon tactical adjudication: reconnaissance does not spend weapon durability or append settlement prose", () => {
+  const out = applyWeaponTacticalAdjudication({
+    dmRecord: {
+      is_action_legal: true,
+      sanity_damage: 2,
+      narrative: "我沿走廊确认异常的位置。",
+      is_death: false,
+      player_location: "3F_Corridor",
+      main_threat_updates: [{ floorId: "3", threatId: "A-3F-SHADOW", phase: "active" }],
+    },
+    playerContext: "",
+    latestUserInput: "在当前位置寻找已经存在的威胁进入战斗；若没有威胁，不得凭空生成敌人。",
+    requestId: "recon-is-not-strike",
+    clientState: {
+      equippedWeapon: { id: "WPN-3F-IRON-PIPE", stability: 72, contamination: 0 },
+    } as any,
+  });
+  assert.deepEqual(out.weapon_updates, undefined);
+  assert.equal(String(out.narrative).includes("战术裁决"), false);
+  assert.equal(String(out.narrative).includes("实际损耗"), false);
 });
 
 // 修复：此前本函数只会用正则解析 playerContext，且 counterThreatIds 永远按 id 去旧的 4 件固定表回查——
@@ -107,4 +132,3 @@ test("weapon tactical adjudication: 优先信任结构化 clientState，counterT
   assert.equal(matchedUpdates.length, 1);
   assert.equal((matchedUpdates[0] as Record<string, unknown>).weaponId, "WZ-C-abc123");
 });
-

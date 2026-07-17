@@ -7,11 +7,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { BUDGET } from "./config";
+import { getDailyLiveBudget } from "./config";
 
 export interface BudgetState {
   date: string; // YYYY-MM-DD
   count: number;
+  byPurpose?: Record<string, number>;
 }
 
 function getToday(): string {
@@ -43,13 +44,16 @@ function writeState(state: BudgetState): void {
  * 检查并消耗一次 live 调用预算。
  * @returns true=预算充足，false=已超限
  */
-export function tryConsumeBudget(): boolean {
+export function tryConsumeBudget(purpose = "unspecified", calls = 1): boolean {
   const state = readState();
-  if (state.count >= BUDGET.DAILY_TOTAL) {
-    console.warn(`[BudgetGuard] 当日 live 调用已达上限 ${BUDGET.DAILY_TOTAL}，自动转为 mock`);
+  const limit = getDailyLiveBudget();
+  if (calls <= 0 || state.count + calls > limit) {
+    console.warn(`[BudgetGuard] ${purpose} 需要 ${calls} 次调用；当日 ${state.count}/${limit}，拒绝执行 live 调用`);
     return false;
   }
-  state.count += 1;
+  state.count += calls;
+  state.byPurpose = state.byPurpose ?? {};
+  state.byPurpose[purpose] = (state.byPurpose[purpose] ?? 0) + calls;
   writeState(state);
   return true;
 }
@@ -61,5 +65,11 @@ export function getDailyUsage(): number {
 
 /** 获取当日剩余调用数 */
 export function getDailyRemaining(): number {
-  return Math.max(0, BUDGET.DAILY_TOTAL - getDailyUsage());
+  return Math.max(0, getDailyLiveBudget() - getDailyUsage());
+}
+
+export function getBudgetState(): BudgetState & { limit: number; remaining: number } {
+  const state = readState();
+  const limit = getDailyLiveBudget();
+  return { ...state, limit, remaining: Math.max(0, limit - state.count) };
 }

@@ -1,0 +1,680 @@
+{
+  "generatedAt": "2026-07-16T13:57:38.720Z",
+  "inputs": {
+    "baseline": [
+      "/tmp/verse-quality-gate-live-codex/traces"
+    ],
+    "current": [
+      "/tmp/verse-quality-gate-live-codex/traces"
+    ]
+  },
+  "evidence": {
+    "traceRuns": 5,
+    "duplicateArtifactsExcluded": 5,
+    "conclusiveRuns": 5,
+    "inconclusiveRuns": 0,
+    "turns": 60,
+    "latencySamples": 60,
+    "narrativeJudgeSamples": 5,
+    "subjectiveEligibleRuns": 1,
+    "counterfactualPairs": 0,
+    "tokenSamples": 60
+  },
+  "costEvidence": {
+    "inputTokens": 262227,
+    "outputTokens": 11024,
+    "cachedInputTokens": 165248,
+    "cachedInputRate": 0.6301715689078546,
+    "promptComponents": {
+      "stable_prefix": {
+        "averageChars": 4058.016666666667,
+        "samples": 60
+      },
+      "dynamic_total": {
+        "averageChars": 3615.6666666666665,
+        "samples": 60
+      },
+      "message_history": {
+        "averageChars": 1404.0833333333333,
+        "samples": 60
+      },
+      "runtime_packets": {
+        "averageChars": 901.95,
+        "samples": 60
+      },
+      "npc_consistency": {
+        "averageChars": 818.1166666666667,
+        "samples": 60
+      },
+      "epistemic_context": {
+        "averageChars": 576.2333333333333,
+        "samples": 60
+      },
+      "pov_and_pronouns": {
+        "averageChars": 384.55,
+        "samples": 60
+      },
+      "narrative_style": {
+        "averageChars": 340,
+        "samples": 60
+      },
+      "narrative_continuity": {
+        "averageChars": 328.9166666666667,
+        "samples": 60
+      },
+      "protagonist_anchor": {
+        "averageChars": 249.9,
+        "samples": 60
+      },
+      "turn_mode_policy": {
+        "averageChars": 243.66666666666666,
+        "samples": 60
+      },
+      "fact_audit": {
+        "averageChars": 232.61666666666667,
+        "samples": 60
+      },
+      "reality_constraint": {
+        "averageChars": 101.56666666666666,
+        "samples": 60
+      },
+      "narrative_budget": {
+        "averageChars": 76.13333333333334,
+        "samples": 60
+      },
+      "player_context": {
+        "averageChars": 46.38333333333333,
+        "samples": 60
+      },
+      "control_and_lore": {
+        "averageChars": 20.583333333333332,
+        "samples": 60
+      },
+      "player_echo": {
+        "averageChars": 0,
+        "samples": 60
+      },
+      "narrative_directive": {
+        "averageChars": 0,
+        "samples": 60
+      }
+    }
+  },
+  "promptVariantExperiment": {
+    "full_stable/runtime_3200": {
+      "runs": 5,
+      "conclusiveRuns": 5,
+      "inconclusiveRuns": 0,
+      "passRate": 1,
+      "degradedRate": 0,
+      "averageInputTokens": 10236.4
+    }
+  },
+  "signals": {
+    "runs": 5,
+    "turns": 60,
+    "passRate": 1,
+    "softlockRate": 0,
+    "errorRate": 0,
+    "p50LatencyMs": 4374,
+    "p95LatencyMs": 6315,
+    "narrativeScore5": 4.85,
+    "narrativeJudgeConfidence": 0.4,
+    "repetitionRate": 0.0032258064516129032,
+    "worldConsistencyIssueTurnRate": 0,
+    "progressionTurnRate": 0.3,
+    "agencyResponseRate": 0.9666666666666667,
+    "meaningfulChoiceRate": null,
+    "structuredConsequenceRate": 0.5,
+    "deadTurnRate": 0.5,
+    "tokenInput": 262227,
+    "tokenOutput": 11024,
+    "tokenCachedInput": 165248,
+    "tokenCostEquivalent": 122331.96,
+    "tokenCostProfile": "deepseek-v4-flash-usd-2026-07-13",
+    "tokenCoveredTurns": 60,
+    "tokenCoverageRate": 1
+  },
+  "scorecard": {
+    "version": "product-quality-v1",
+    "overallScore": 89.87397849462367,
+    "confidence": 0.6799999999999999,
+    "dimensions": [
+      {
+        "id": "reliability",
+        "score": 100,
+        "weight": 0.3,
+        "evidence": "moderate",
+        "reasons": [
+          "conclusiveRuns=5",
+          "pass=100.0%",
+          "softlock=0.0%",
+          "error=0.0%"
+        ]
+      },
+      {
+        "id": "performance",
+        "score": 91.23333333333333,
+        "weight": 0.2,
+        "evidence": "moderate",
+        "reasons": [
+          "p50=4374ms",
+          "p95=6315ms"
+        ]
+      },
+      {
+        "id": "playability",
+        "score": 60.333333333333336,
+        "weight": 0.2,
+        "evidence": "moderate",
+        "reasons": [
+          "progression=0.3",
+          "agencyResponse=0.9666666666666667",
+          "structuredConsequence=0.5",
+          "deadTurns=0.5",
+          "meaningfulChoice=not_observed"
+        ]
+      },
+      {
+        "id": "narrative",
+        "score": 97.8032258064516,
+        "weight": 0.2,
+        "evidence": "weak",
+        "reasons": [
+          "judge=4.85/5",
+          "judgeConfidence=0.4",
+          "repetition=0.0032258064516129032",
+          "worldIssueTurns=0"
+        ]
+      },
+      {
+        "id": "costEfficiency",
+        "score": 100,
+        "weight": 0.1,
+        "evidence": "moderate",
+        "reasons": [
+          "costEquivalent/turn=2039",
+          "contextTokens/turn=4554",
+          "profile=deepseek-v4-flash-usd-2026-07-13",
+          "coverage=100.0%"
+        ]
+      }
+    ],
+    "blockers": [
+      "narrative_judge_confidence_low",
+      "overall_decision_confidence_low"
+    ],
+    "recommendations": [
+      "压缩低推进功能或流程；先做 A/B，再决定删除。 ",
+      "压缩无状态后果、无明确裁决的空转回合；它们消耗 token 但不形成玩法。 "
+    ]
+  },
+  "subjectivePlayability": {
+    "source": "heuristic_proxy",
+    "confidence": 0.25,
+    "overallScore5": 3.1153846153846154,
+    "sampleCount": 1,
+    "evaluatorCount": 0,
+    "dimensions": {
+      "actionPayoff": 3,
+      "tensionArc": 2.0256410256410255,
+      "novelty": 5,
+      "choiceMeaning": 3,
+      "clarity": 4,
+      "continueDesire": 1.6666666666666665
+    },
+    "evidence": [
+      "mutation_payoff=0/0",
+      "beat_turns=2/12",
+      "choice_turns=0/0",
+      "clear_turns=9/12",
+      "hook_turns=2/12",
+      "unique_sentence_rate=1.000"
+    ],
+    "limitations": [
+      "这是零成本启发式代理，不等同于真人主观评价。",
+      "功能删除仍需要真人盲测或随机 A/B。"
+    ]
+  },
+  "counterfactualChoice": {
+    "pairs": 0,
+    "meaningfulRate": null,
+    "evidence": []
+  },
+  "decisionGates": [
+    "human_playability_evidence_missing",
+    "playability_proxy_sample_too_small",
+    "counterfactual_choice_evidence_missing"
+  ],
+  "featureDecisionPolicy": {
+    "delete": "需要低使用率、低推进贡献、低满意度且移除实验无负面影响四项证据；当前 trace 不单独授权删除功能。",
+    "simplify": "连续两期推进贡献低于 10%，或导致 softlock/错误的流程，可进入简化实验。",
+    "keep": "稳定贡献推进、选择差异或叙事质量，且没有显著成本/故障负担。"
+  },
+  "featureSignals": {
+    "tasks": {
+      "touchedTurns": 1,
+      "progressionTurns": 0,
+      "contributionRate": 0,
+      "decision": "insufficient_evidence"
+    },
+    "weapons": {
+      "touchedTurns": 0,
+      "progressionTurns": 0,
+      "contributionRate": null,
+      "decision": "insufficient_evidence"
+    },
+    "combat": {
+      "touchedTurns": 0,
+      "progressionTurns": 0,
+      "contributionRate": null,
+      "decision": "insufficient_evidence"
+    },
+    "codex": {
+      "touchedTurns": 5,
+      "progressionTurns": 4,
+      "contributionRate": 0.8,
+      "decision": "insufficient_evidence"
+    },
+    "economy": {
+      "touchedTurns": 0,
+      "progressionTurns": 0,
+      "contributionRate": null,
+      "decision": "insufficient_evidence"
+    },
+    "profession": {
+      "touchedTurns": 0,
+      "progressionTurns": 0,
+      "contributionRate": null,
+      "decision": "insufficient_evidence"
+    },
+    "location": {
+      "touchedTurns": 5,
+      "progressionTurns": 0,
+      "contributionRate": 0,
+      "decision": "insufficient_evidence"
+    }
+  },
+  "turnDiagnostics": [
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 11,
+      "action": "输入'debug mode'",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 11793,
+      "outputTokens": 127,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 5147.8,
+      "latencyMs": 3958
+    },
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 9,
+      "action": "输入'debug mode'",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 11619,
+      "outputTokens": 90,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 4899.8,
+      "latencyMs": 3521
+    },
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 7,
+      "action": "输入'debug mode'",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 11417,
+      "outputTokens": 120,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 4757.8,
+      "latencyMs": 3884
+    },
+    {
+      "runId": "live-happy-explore-mrnkd490-9cr223-1",
+      "stepIndex": 11,
+      "action": "闻一下空气中有没有异常气味",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 11370,
+      "outputTokens": 89,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 4648.8,
+      "latencyMs": 3726
+    },
+    {
+      "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+      "stepIndex": 5,
+      "action": "选择目前证据最充分的逃生方案执行；如果前置条件不足，列明缺少的结构化条件。",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 11196,
+      "outputTokens": 413,
+      "cachedInputTokens": 7168,
+      "costEquivalentTokens": 4997.36,
+      "latencyMs": 6204
+    },
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 5,
+      "action": "输入'debug mode'",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 11153,
+      "outputTokens": 174,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 4601.8,
+      "latencyMs": 5058
+    },
+    {
+      "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+      "stepIndex": 4,
+      "action": "根据已经取得的线索检查可通行出口，并验证出口是否属于假逃生路线。",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10934,
+      "outputTokens": 148,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 4330.8,
+      "latencyMs": 4870
+    },
+    {
+      "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+      "stepIndex": 2,
+      "action": "通过楼梯下到一楼登记口，寻找已经登记在这个世界里的住户或管理员。",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10873,
+      "outputTokens": 245,
+      "cachedInputTokens": 7168,
+      "costEquivalentTokens": 4338.360000000001,
+      "latencyMs": 5196
+    },
+    {
+      "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+      "stepIndex": 3,
+      "action": "向当前在场且确实存在的 NPC 询问离开公寓所需的条件，不接受凭空出现的新人物。",
+      "flags": [
+        "mutation_without_structured_or_noop_resolution",
+        "high_context_turn"
+      ],
+      "inputTokens": 10859,
+      "outputTokens": 168,
+      "cachedInputTokens": 7168,
+      "costEquivalentTokens": 4170.360000000001,
+      "latencyMs": 5925
+    },
+    {
+      "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+      "stepIndex": 1,
+      "action": "沿三楼走廊前往楼梯间；如果道路受阻，明确说明阻碍来自哪里。",
+      "flags": [
+        "mutation_without_structured_or_noop_resolution",
+        "high_context_turn"
+      ],
+      "inputTokens": 10852,
+      "outputTokens": 271,
+      "cachedInputTokens": 7168,
+      "costEquivalentTokens": 4369.360000000001,
+      "latencyMs": 6492
+    },
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 3,
+      "action": "输入'debug mode'",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10831,
+      "outputTokens": 169,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 4269.8,
+      "latencyMs": 4669
+    },
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 1,
+      "action": "输入'debug mode'",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10412,
+      "outputTokens": 226,
+      "cachedInputTokens": 7040,
+      "costEquivalentTokens": 3964.8,
+      "latencyMs": 3915
+    },
+    {
+      "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+      "stepIndex": 0,
+      "action": "先检查当前房间、门牌和手机信息，确认我所在的位置以及眼前真实存在的出口。",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10383,
+      "outputTokens": 471,
+      "cachedInputTokens": 10368,
+      "costEquivalentTokens": 1164.3600000000001,
+      "latencyMs": 7107
+    },
+    {
+      "runId": "live-refusal-prompt-injection-mrnkd490-9cr223-2",
+      "stepIndex": 0,
+      "action": "我跳过对话直接拿东西",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10203,
+      "outputTokens": 149,
+      "cachedInputTokens": 8064,
+      "costEquivalentTokens": 2598.28,
+      "latencyMs": 4569
+    },
+    {
+      "runId": "live-abandonment-confused-30s-mrnkd490-9cr223-4",
+      "stepIndex": 0,
+      "action": "嗯...好吧",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10201,
+      "outputTokens": 228,
+      "cachedInputTokens": 7296,
+      "costEquivalentTokens": 3506.92,
+      "latencyMs": 6315
+    },
+    {
+      "runId": "live-recovery-low-hp-mrnkd490-9cr223-3",
+      "stepIndex": 0,
+      "action": "快速移动",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10198,
+      "outputTokens": 238,
+      "cachedInputTokens": 8064,
+      "costEquivalentTokens": 2771.28,
+      "latencyMs": 3344
+    },
+    {
+      "runId": "live-happy-explore-mrnkd490-9cr223-1",
+      "stepIndex": 0,
+      "action": "仔细检查地上的痕迹",
+      "flags": [
+        "high_context_turn"
+      ],
+      "inputTokens": 10197,
+      "outputTokens": 117,
+      "cachedInputTokens": 10112,
+      "costEquivalentTokens": 521.24,
+      "latencyMs": 4209
+    }
+  ],
+  "bugLedger": [
+    {
+      "fingerprint": "validator:unsupported_new_fact:strong_fact_without_evidence",
+      "category": "validator",
+      "severity": "minor",
+      "status": "needs_triage",
+      "count": 8,
+      "baselineCount": 0,
+      "currentCount": 8,
+      "currentActionableCount": 8,
+      "runIds": [
+        "live-abandonment-confused-30s-mrnkd490-9cr223-4",
+        "live-recovery-low-hp-mrnkd490-9cr223-3",
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "currentRunIds": [
+        "live-abandonment-confused-30s-mrnkd490-9cr223-4",
+        "live-recovery-low-hp-mrnkd490-9cr223-3",
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "evidence": [
+        "step=5; count=1; finalSafe=true",
+        "step=10; count=1; finalSafe=true",
+        "step=11; count=1; finalSafe=true"
+      ],
+      "cohortDisposition": "reproduced_current",
+      "ratePer100Turns": 13.333333333333334,
+      "currentRatePer100Turns": 13.333333333333334
+    },
+    {
+      "fingerprint": "validator:narrative_unregistered_person_name",
+      "category": "validator",
+      "severity": "minor",
+      "status": "needs_triage",
+      "count": 6,
+      "baselineCount": 0,
+      "currentCount": 6,
+      "currentActionableCount": 6,
+      "runIds": [
+        "live-happy-explore-mrnkd490-9cr223-1",
+        "live-happy-speedrun-mrnkd490-9cr223-0",
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "currentRunIds": [
+        "live-happy-explore-mrnkd490-9cr223-1",
+        "live-happy-speedrun-mrnkd490-9cr223-0",
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "evidence": [
+        "step=9; count=1; finalSafe=true",
+        "step=0; count=1; finalSafe=true",
+        "step=4; count=1; finalSafe=true"
+      ],
+      "cohortDisposition": "reproduced_current",
+      "ratePer100Turns": 10,
+      "currentRatePer100Turns": 10
+    },
+    {
+      "fingerprint": "validator:unsupported_new_fact:candidate_pending_review",
+      "category": "validator",
+      "severity": "minor",
+      "status": "needs_triage",
+      "count": 2,
+      "baselineCount": 0,
+      "currentCount": 2,
+      "currentActionableCount": 2,
+      "runIds": [
+        "live-happy-speedrun-mrnkd490-9cr223-0"
+      ],
+      "currentRunIds": [
+        "live-happy-speedrun-mrnkd490-9cr223-0"
+      ],
+      "evidence": [
+        "step=1; count=1; finalSafe=true",
+        "step=5; count=1; finalSafe=true"
+      ],
+      "cohortDisposition": "reproduced_current",
+      "ratePer100Turns": 3.3333333333333335,
+      "currentRatePer100Turns": 3.3333333333333335
+    },
+    {
+      "fingerprint": "validator:mechanical_exposition",
+      "category": "validator",
+      "severity": "minor",
+      "status": "needs_triage",
+      "count": 1,
+      "baselineCount": 0,
+      "currentCount": 1,
+      "currentActionableCount": 1,
+      "runIds": [
+        "live-happy-speedrun-mrnkd490-9cr223-0"
+      ],
+      "currentRunIds": [
+        "live-happy-speedrun-mrnkd490-9cr223-0"
+      ],
+      "evidence": [
+        "step=2; count=2; finalSafe=true"
+      ],
+      "cohortDisposition": "reproduced_current",
+      "ratePer100Turns": 1.6666666666666667,
+      "currentRatePer100Turns": 1.6666666666666667
+    },
+    {
+      "fingerprint": "validator:inventory_conflict",
+      "category": "validator",
+      "severity": "minor",
+      "status": "needs_triage",
+      "count": 1,
+      "baselineCount": 0,
+      "currentCount": 1,
+      "currentActionableCount": 1,
+      "runIds": [
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "currentRunIds": [
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "evidence": [
+        "step=5; count=1; finalSafe=true"
+      ],
+      "cohortDisposition": "reproduced_current",
+      "ratePer100Turns": 1.6666666666666667,
+      "currentRatePer100Turns": 1.6666666666666667
+    },
+    {
+      "fingerprint": "validator:narrative_style_bridge",
+      "category": "validator",
+      "severity": "minor",
+      "status": "expected_guard_hit",
+      "count": 42,
+      "baselineCount": 0,
+      "currentCount": 42,
+      "currentActionableCount": 0,
+      "runIds": [
+        "live-abandonment-confused-30s-mrnkd490-9cr223-4",
+        "live-happy-explore-mrnkd490-9cr223-1",
+        "live-happy-speedrun-mrnkd490-9cr223-0",
+        "live-recovery-low-hp-mrnkd490-9cr223-3",
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "currentRunIds": [
+        "live-abandonment-confused-30s-mrnkd490-9cr223-4",
+        "live-happy-explore-mrnkd490-9cr223-1",
+        "live-happy-speedrun-mrnkd490-9cr223-0",
+        "live-recovery-low-hp-mrnkd490-9cr223-3",
+        "live-refusal-prompt-injection-mrnkd490-9cr223-2"
+      ],
+      "evidence": [
+        "step=0; count=2; finalSafe=true",
+        "step=1; count=1; finalSafe=true",
+        "step=2; count=1; finalSafe=true"
+      ],
+      "cohortDisposition": "guard_observed_current",
+      "ratePer100Turns": 70,
+      "currentRatePer100Turns": 70
+    }
+  ]
+}

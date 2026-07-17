@@ -1,0 +1,80 @@
+{
+  "id": "task_lifecycle_v1",
+  "name": "任务生命周期评测",
+  "version": "1.0.0",
+  "description": "评测任务接取、推进、完成、失败、奖励发放的叙事-状态对齐",
+  "scale": { "min": 1, "max": 5, "passing": 3.5 },
+  "passRule": {
+    "minEach": 2,
+    "minAverage": 3.5,
+    "hardFailIf": { "task_state_alignment": 1 }
+  },
+  "dimensions": [
+    {
+      "id": "task_state_alignment",
+      "name": "任务状态-叙事对齐",
+      "weight": 0.3,
+      "description": "narrative 中的任务进展是否与 task_updates/new_tasks 一致",
+      "anchors": [
+        { "score": 5, "label": "完全对齐", "description": "叙事与 task_updates 完全一致" },
+        { "score": 4, "label": "基本对齐", "description": "主要进展对齐" },
+        { "score": 3, "label": "部分对齐", "description": "大方向一致但细节矛盾" },
+        { "score": 2, "label": "明显矛盾", "description": "叙事说完成但字段未标记" },
+        { "score": 1, "label": "完全脱节", "description": "叙事与字段完全无关" }
+      ],
+      "hardFloor": 2
+    },
+    {
+      "id": "npc_grant_naturalness",
+      "name": "NPC授任自然度",
+      "weight": 0.2,
+      "description": "NPC 授予任务是否在叙事中自然发生，而非系统弹窗",
+      "anchors": [
+        { "score": 5, "label": "完全自然", "description": "任务授予是对话/剧情的自然结果" },
+        { "score": 4, "label": "自然", "description": "NPC 主动提出，动机合理" },
+        { "score": 3, "label": "基本自然", "description": "NPC 提及任务但略生硬" },
+        { "score": 2, "label": "机械", "description": "像系统派单" },
+        { "score": 1, "label": "突兀", "description": "NPC无理由突然给任务" }
+      ]
+    },
+    {
+      "id": "reward_narrative",
+      "name": "奖励叙事",
+      "weight": 0.2,
+      "description": "任务完成后的奖励（原石/道具/关系）是否在叙事中交代",
+      "anchors": [
+        { "score": 5, "label": "自然交代", "description": "奖励是叙事高潮的自然结果" },
+        { "score": 4, "label": "明确交代", "description": "叙事中提到获得" },
+        { "score": 3, "label": "间接交代", "description": "暗示有收获" },
+        { "score": 2, "label": "未交代", "description": "奖励到账但叙事未提" },
+        { "score": 1, "label": "矛盾", "description": "叙事说没奖励但字段已发" }
+      ]
+    },
+    {
+      "id": "task_failure_handling",
+      "name": "任务失败处理",
+      "weight": 0.15,
+      "description": "任务失败时叙事是否合理交代原因和后果",
+      "anchors": [
+        { "score": 5, "label": "自然合理", "description": "失败是叙事逻辑的自然结果" },
+        { "score": 4, "label": "合理", "description": "失败有叙事铺垫" },
+        { "score": 3, "label": "基本合理", "description": "失败突兀但可接受" },
+        { "score": 2, "label": "突兀", "description": "失败无叙事支撑" },
+        { "score": 1, "label": "脱节", "description": "字段标记失败但叙事说成功" }
+      ]
+    },
+    {
+      "id": "task_chain_progression",
+      "name": "任务链推进",
+      "weight": 0.15,
+      "description": "任务链的下一步是否在叙事中埋下伏笔或线索",
+      "anchors": [
+        { "score": 5, "label": "巧妙伏笔", "description": "下一步自然从当前叙事中生长" },
+        { "score": 4, "label": "明确伏笔", "description": "叙事暗示下一步" },
+        { "score": 3, "label": "间接伏笔", "description": "有线索但不明确" },
+        { "score": 2, "label": "无伏笔", "description": "任务完成后叙事断裂" },
+        { "score": 1, "label": "矛盾", "description": "叙事暗示的方向与任务链不符" }
+      ]
+    }
+  ]
+}

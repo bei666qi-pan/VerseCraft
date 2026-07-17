@@ -16,6 +16,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { middleware, config } from "@/middleware";
+import {
+  VERSECRAFT_CHAT_PURPOSE_HEADER,
+  VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+} from "@/lib/chatPurpose";
+import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER } from "@/lib/chatQueue/types";
 
 function makeRequest(path: string, ip: string, init: RequestInit = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -107,7 +112,7 @@ test("page limiter and misc-api limiter are independent buckets", async () => {
 
 // --- 4) /api/chat 与 /api/chat/queue/* 的专属限流保持不变、互不干扰 -----------------
 
-test("/api/chat keeps its own 2/s limiter, isolated from page navigation traffic", async () => {
+test("/api/chat keeps its own 20/s limiter, isolated from page navigation traffic", async () => {
   const ip = "203.0.113.14";
   for (let i = 0; i < 30; i++) {
     await middleware(makeRequest("/play", ip));
@@ -120,14 +125,42 @@ test("/api/chat keeps its own 2/s limiter, isolated from page navigation traffic
   assert.equal(chatRes.status, 200);
 });
 
-test("/api/chat rate limit remains 2/s (unchanged by this fix)", async () => {
+test("/api/chat rate limit remains 20/s", async () => {
   const ip = "203.0.113.15";
-  const first = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
-  const second = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
-  const third = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
-  assert.equal(first.status, 200);
-  assert.equal(second.status, 200);
-  assert.equal(third.status, 429);
+  for (let i = 0; i < 20; i++) {
+    const response = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
+    assert.equal(response.status, 200, `request #${i + 1} should pass`);
+  }
+  const exhausted = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
+  assert.equal(exhausted.status, 429);
+});
+
+test("options-only chat limit is isolated by browser fingerprint on a shared IP", async () => {
+  const ip = "203.0.113.17";
+  const headers = (fingerprint: string) => ({
+    [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+    [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: fingerprint,
+  });
+
+  for (let i = 0; i < 6; i++) {
+    const response = await middleware(makeRequest("/api/chat", ip, {
+      method: "POST",
+      headers: headers("browser-one-123456"),
+    }));
+    assert.equal(response.status, 200, `browser one request #${i + 1} should pass`);
+  }
+
+  const exhausted = await middleware(makeRequest("/api/chat", ip, {
+    method: "POST",
+    headers: headers("browser-one-123456"),
+  }));
+  assert.equal(exhausted.status, 429);
+
+  const otherBrowser = await middleware(makeRequest("/api/chat", ip, {
+    method: "POST",
+    headers: headers("browser-two-123456"),
+  }));
+  assert.equal(otherBrowser.status, 200);
 });
 
 test("/api/chat/queue/status keeps its own 20/s limiter, separate from the misc-api bucket", async () => {

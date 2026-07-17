@@ -14,8 +14,6 @@
 
 import {
   NAME_STOPWORDS,
-  SINGLE_CHAR_REGISTRY_TOKENS,
-  SINGLE_CHAR_SCENE_CONTEXT,
 } from "./nameStopwords";
 
 export interface ExtractedName {
@@ -42,6 +40,76 @@ export interface ExtractChineseNamesOptions {
   readonly aliases: ReadonlySet<string>;
 }
 
+/**
+ * Returns whether an unregistered candidate is sufficiently name-shaped to
+ * justify replacing an otherwise valid turn.  The extractor deliberately has
+ * high recall (it is also used for audit), but Chinese descriptive prose makes
+ * that unsuitable as a destructive final-output gate: "陈旧的…" and "老旧…"
+ * both begin with valid surname-like prefixes.
+ *
+ * A final gate therefore requires a person-like predicate immediately after
+ * the token.  Lower-confidence matches remain available to telemetry and the
+ * post-generation validator, without discarding the player's whole turn.
+ */
+export function isHighConfidenceUnregisteredPersonName(entry: ExtractedName): boolean {
+  if (!entry.candidate || entry.registered || entry.token.length < 2) return false;
+
+  const after = entry.contextAfter;
+  const before = entry.contextBefore;
+  const localContext = `${before}${entry.token}${after}`;
+  // Labels, signatures and quoted object markings are explicit naming acts,
+  // e.g. `胶布写着「7F-阿珍」`. They are high-confidence even when no verb
+  // follows the token.
+  if (/(?:写着|署名|签名|名叫|叫作|叫)[^。！？]{0,4}[「“\"]?$/.test(before)) return true;
+
+  // `一张钉在铁丝网里的表格` can yield the surname-shaped sliding window
+  // `张钉`. Here 张 is a measure word and 钉 is the following verb, not a
+  // newly introduced character. Keep this narrow so genuine names such as
+  // `张三走来` are still rejected by the final guard.
+  if (entry.token.startsWith("张") && /[一二两三四五六七八九十几数]$/.test(before) && /^在/.test(after)) return false;
+
+  // Sliding windows can start inside a stopword: `方向走过来` first skips
+  // `方向`, then sees surname-prefixed `向走` and mistakes it for a person.
+  // Treat navigation compounds as one semantic unit before applying the
+  // surname+movement heuristic.
+  if (/(?:方向|前方|后方|上方|下方|入口|出口)(?:走|来|去|看|望|传|伸|移|靠)/.test(localContext)) return false;
+  if (/(?:然后|随后|接着|转身)?向(?:走廊|楼梯|门口|出口|入口|前方|后方|墙角|阴影)/.test(localContext)) return false;
+
+  // Colloquial name prefixes become person references when used possessively
+  // or as a destination (`阿珍的东西` / `从小李那儿`). Restrict this to
+  // 老/阿/小 to avoid treating descriptive prose such as `陈旧的木门` as a name.
+  if (/^[老阿小]/.test(entry.token) && /^(?:的|那儿|那里|家|房)/.test(after)) return true;
+  // Possessive / attributive continuations are overwhelmingly prose such as
+  // "陈旧的木门" rather than a person reference.
+  if (/^[的地得]/.test(after)) return false;
+
+  // Dialogue, movement, gaze and common subject predicates.  This intentionally
+  // accepts "陈昆从楼梯走来" and "赵四海笑着说", while avoiding a destructive
+  // decision for a bare surname-shaped fragment.
+  return /^(?:说|问|答|道|喊|叫|回|笑|哭|走|来|去|站|坐|看|望|抬|低|抖|伸|抬手|转|朝|对|从|在|把|将|递|推|敲|拍|盯|跟|向|用|拿)/.test(after);
+}
+
+/** Replaces only high-confidence, unregistered names without discarding the turn. */
+export function redactHighConfidenceUnregisteredPersonNames(
+  narrative: string,
+  entries: readonly ExtractedName[],
+): string {
+  const spans = entries
+    .filter(isHighConfidenceUnregisteredPersonName)
+    .map((entry) => entry.span)
+    .sort((a, b) => b[0] - a[0]);
+
+  let redacted = narrative;
+  for (const [start, end] of spans) {
+    redacted = `${redacted.slice(0, start)}陌生人${redacted.slice(end)}`;
+  }
+  return redacted
+    .replace(/([他她])叫[「“\"]?陌生人[」”\"]?/g, "$1的名字还没有得到确认")
+    .replace(/(?:画着|写着)陌生人问号/g, "画着一个问号")
+    .replace(/惨陌生人/g, "惨白")
+    .replace(/每陌生人/g, "每个人");
+}
+
 const CJK_RE = /[一-鿿]/;
 
 function isCjkChar(ch: string): boolean {
@@ -51,14 +119,6 @@ function isCjkChar(ch: string): boolean {
 /**
  * 判断 [start, end) 子串是否仅含 CJK 字符且不含标点。
  */
-function isCjkRun(text: string, start: number, end: number): boolean {
-  for (let i = start; i < end; i += 1) {
-    const ch = text.charAt(i);
-    if (!isCjkChar(ch)) return false;
-  }
-  return true;
-}
-
 function sliceContext(text: string, span: readonly [number, number]): {
   before: string;
   after: string;
@@ -68,13 +128,6 @@ function sliceContext(text: string, span: readonly [number, number]): {
     before: text.slice(Math.max(0, s - 6), s),
     after: text.slice(e, Math.min(text.length, e + 6)),
   };
-}
-
-function containsAny(haystack: string, needles: ReadonlySet<string>): boolean {
-  for (const n of needles) {
-    if (haystack.includes(n)) return true;
-  }
-  return false;
 }
 
 export function extractChineseNames(

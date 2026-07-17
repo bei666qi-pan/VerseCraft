@@ -279,6 +279,28 @@ test("validateNarrative does NOT flag inventory_conflict when awarded_items pres
   assert.ok(!report.issues.some((x) => x.code === "inventory_conflict"));
 });
 
+test("validateNarrative flags a first-person possession that is absent from inventory", () => {
+  const report = validateNarrative(baseArgs({
+    inventoryItemIds: ["item_phone", "item_bandage"],
+    dmRecord: {
+      narrative: "我摸了摸口袋里那张皱巴巴的便签，继续观察登记台。",
+      options: [],
+      awarded_items: [],
+      awarded_warehouse_items: [],
+    },
+  }));
+  assert.ok(report.issues.some((issue) => issue.code === "inventory_conflict" && issue.detail === "narrative_claims_unowned_first_person_possession"));
+  assert.ok(report.narrativeOverride?.includes("那里没有能派上用场的东西"));
+  assert.equal(report.narrativeOverride?.includes("皱巴巴的便签"), false);
+});
+
+test("possession check allows owned items and ignores NPC-held scene props", () => {
+  const owned = validateNarrative(baseArgs({ inventoryItemIds: ["item_bandage"], dmRecord: { narrative: "我摸了摸背包里的绷带。", options: [] } }));
+  assert.equal(owned.issues.some((issue) => issue.code === "inventory_conflict"), false);
+  const npcProp = validateNarrative(baseArgs({ inventoryItemIds: [], dmRecord: { narrative: "她手里捏着一封信，站在登记台旁。", options: [] } }));
+  assert.equal(npcProp.issues.some((issue) => issue.code === "inventory_conflict"), false);
+});
+
 test("validateNarrative flags time_feel_drift when consumesTime=false but narrative says long duration", () => {
   const delta = {
     ...emptyStateDelta(),

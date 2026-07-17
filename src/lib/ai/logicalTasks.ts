@@ -181,6 +181,7 @@ export async function expandNarrativeOnly(args: {
         reason: timeout.timedOut() ? "timeout" : `ai_error:${res.code}`,
         latencyMs: Date.now() - startedAt,
         beforeChars,
+        usage: res.usage,
       };
     }
 
@@ -191,6 +192,7 @@ export async function expandNarrativeOnly(args: {
         reason: parsed.reason,
         latencyMs: Date.now() - startedAt,
         beforeChars,
+        usage: res.usage,
       };
     }
 
@@ -207,6 +209,7 @@ export async function expandNarrativeOnly(args: {
         beforeChars: validated.beforeChars,
         afterChars: validated.afterChars,
         ignoredFieldKeys: parsed.ignoredFieldKeys,
+        usage: res.usage,
       };
     }
 
@@ -217,6 +220,7 @@ export async function expandNarrativeOnly(args: {
       beforeChars: validated.beforeChars,
       afterChars: validated.afterChars,
       ignoredFieldKeys: parsed.ignoredFieldKeys,
+      usage: res.usage,
     };
   } finally {
     timeout.cleanup();

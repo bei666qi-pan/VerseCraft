@@ -1,6 +1,5 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
 import { VcSpinner } from "@/features/play/components/VcSpinner";
 import { mobileReadingTheme } from "../theme";
 import type { MobileOptionsEmptyStateProps } from "../types";
@@ -56,12 +55,12 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
       <div
         data-testid="mobile-options-dropdown"
         className="fixed bottom-[calc(var(--vc-mobile-bottom-nav-height)+var(--vc-mobile-stack-gap))] left-1/2 z-40 h-[var(--vc-mobile-options-panel-height)] w-[calc(100%-1.35rem)] max-w-[448px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#ded8ce] bg-vc-paper-bright p-3 text-[#174d46] shadow-[0_10px_26px_rgba(73,63,51,0.13),inset_0_1px_0_rgba(255,255,255,0.92)] min-[420px]:w-[calc(100%-2.7rem)] min-[420px]:p-4"
-        data-options-regen-stage={stage}
+        aria-busy="true"
         role="status"
       >
         <div
           data-testid="mobile-options-loading-card"
-          className="relative grid h-full grid-cols-[58px_minmax(0,1fr)] items-center gap-3 rounded-[14px] border border-[#ebe4d9] bg-vc-paper-bright px-3 py-3 min-[390px]:grid-cols-[68px_minmax(0,1fr)] min-[420px]:gap-4 min-[420px]:px-4"
+          className="relative flex h-full items-center justify-center rounded-[14px] border border-[#ebe4d9] bg-vc-paper-bright px-3 py-3 min-[420px]:px-4"
         >
           <div className="pointer-events-none absolute inset-1.5 rounded-[12px] border border-[#efe8dd]" />
           <div className="pointer-events-none absolute left-2 top-2 h-2.5 w-2.5 rotate-45 border-l border-t border-[#e5d9c9]" aria-hidden />

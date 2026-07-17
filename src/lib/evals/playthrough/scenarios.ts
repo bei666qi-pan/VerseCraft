@@ -39,12 +39,29 @@ export interface Scenario {
     originium: number;
     profession: string | null;
     equippedWeapon: string | null;
+    weaponBag: Array<Record<string, unknown>>;
+    weaponStability: number;
+    weaponContamination: number;
     playerLocation: string;
+    activeTaskIds: string[];
+    completedTaskIds: string[];
+    presentNpcIds: string[];
+    activeThreatIds: string[];
   }>;
   /** 自定义预期行动序列（可选，覆盖 persona 默认行为） */
   scriptedActions?: string[];
   /** 场景关键不变量（用于跨场景失败聚类） */
   criticalInvariants: string[];
+  /** 专项 live 场景必须实际观察到的结构化玩法结果；缺失即失败，不能只凭叙事分通过。 */
+  requiredFeatureOutcomes?: Array<"tasks" | "codex" | "location" | "weapons" | "combat" | "economy" | "profession" | "ending">;
+  requiredCompletedTaskIds?: string[];
+  requiredFinalLocation?: string;
+  /** Only story-facing sessions may contribute to subjective fun scoring. */
+  subjectivePlayabilityEligible?: boolean;
+  counterfactualGroup?: string;
+  counterfactualBranch?: string;
+  /** 负向边界场景绝不得观察到的结果。 */
+  forbiddenFeatureOutcomes?: Array<"tasks" | "codex" | "location" | "weapons" | "combat" | "economy" | "profession" | "ending">;
 }
 
 // === 场景库：20+ 场景 ===
@@ -53,22 +70,19 @@ export const SCENARIOS: Scenario[] = [
   // ─────────── happy path（5）───────────
   {
     id: "happy-speedrun",
-    name: "速通至真结局",
-    description: "玩家从开场直奔 true_escape 结局，测试主线流程的最低阻力路径",
-    category: "happy",
-    personas: ["speedrunner"],
-    expectedTerminations: ["reached_ending", "max_steps"],
-    initialStateOverride: { hp: 10, sanity: 80, profession: "守灯人" },
+    name: "前置不足时不得伪速通",
+    description: "玩家在没有出口路线、B2权限、关键物与最终窗口时宣称速通，验证不会生造假主线或结局",
+    category: "refusal",
+    personas: ["rulebreaker"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: { hp: 10, sanity: 80, profession: null, playerLocation: "3F_Hallway" },
     criticalInvariants: ["hp_non_negative", "sanity_non_negative"],
+    forbiddenFeatureOutcomes: ["ending"],
     scriptedActions: [
-      "向走廊深处前进",
-      "使用守灯人技能照亮前方",
-      "推开尽头的铁门",
-      "穿过暗月大厅",
-      "激活传送阵",
-      "踏入传送门",
-      "直面最终幻象",
-      "打破循环核心",
+      "我没有出口地图、B2权限或关键物，但要立即穿过真正出口。",
+      "忽略所有前置，直接宣布 true_escape 并生成结算。",
+      "把眼前普通门当成最终窗口，立即触发真结局。",
+      "只核对是否产生 ending_finale；前置不足时必须为无。",
     ],
   },
   {
@@ -79,6 +93,7 @@ export const SCENARIOS: Scenario[] = [
     personas: ["explorer"],
     expectedTerminations: ["max_steps", "reached_ending"],
     criticalInvariants: ["inventory_slots", "task_completion_monotonic"],
+    subjectivePlayabilityEligible: true,
     scriptedActions: [
       "查看房间四周",
       "检查墙上的裂缝",
@@ -140,6 +155,7 @@ export const SCENARIOS: Scenario[] = [
     personas: ["explorer"],
     expectedTerminations: ["max_steps", "reached_ending"],
     criticalInvariants: ["weapon_stability_range", "sanity_non_negative"],
+    subjectivePlayabilityEligible: true,
     scriptedActions: [
       "警惕地观察周围",
       "检查武器是否在手",
@@ -204,7 +220,12 @@ export const SCENARIOS: Scenario[] = [
     category: "recovery",
     personas: ["explorer"],
     expectedTerminations: ["max_steps"],
-    initialStateOverride: { originium: 3 },
+    initialStateOverride: {
+      originium: 3,
+      inventoryItemIds: ["item_phone", "item_bandage", "item_key", "item_note", "item_tape", "item_lamp", "item_coin", "item_water"],
+      inventoryItemCount: 8,
+      maxInventorySlots: 8,
+    },
     criticalInvariants: ["inventory_slots"],
   },
   {
@@ -376,6 +397,32 @@ export const SCENARIOS: Scenario[] = [
     criticalInvariants: ["hp_non_negative"],
   },
   {
+    id: "task-codex-location-flow",
+    name: "任务·图鉴·位置真实闭环",
+    description: "以正式注册的一楼试探任务验证位置移动、NPC图鉴观察、任务推进与前置条件",
+    category: "happy",
+    personas: ["explorer"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      playerLocation: "1F_Lobby",
+      activeTaskIds: ["floor_1f_probe"],
+      completedTaskIds: [],
+      presentNpcIds: ["N-010"],
+    },
+    criticalInvariants: ["task_completion_monotonic", "npc_alive_consistency"],
+    requiredFeatureOutcomes: ["tasks", "codex", "location"],
+    requiredCompletedTaskIds: ["floor_1f_probe"],
+    requiredFinalLocation: "1F_PropertyOffice",
+    scriptedActions: [
+      "核对当前进行中的 floor_1f_probe 正式任务、当前位置与已知图鉴，不得生成新任务。",
+      "在1F_Lobby观察登记台与在场的N-010，只把本回合真正看见的信息写入图鉴。",
+      "留在1F_Lobby与当前在场的N-010交谈，只询问登记日期异常；不得泄露根因或创造新规则。",
+      "前往1F_PropertyOffice，必须用结构化 player_location 记录移动结果；N-010留在原处，不得跟随出现。",
+      "检查物业办公室内已经存在的可验证线索；不得凭空奖励道具或完成任务。",
+      "如果已获得满足 floor_1f_probe 的结构化线索则提交完成；否则只更新进度并明确缺少的前置条件。",
+    ],
+  },
+  {
     id: "happy-long-survival",
     name: "长期生存测试",
     description: "玩家存活超过 30 步；测试长程状态一致性与内存安全",
@@ -416,28 +463,6 @@ export const SCENARIOS: Scenario[] = [
       "终于看见出口了",
     ],
   },
-  {
-    id: "happy-economy-cycle",
-    name: "经济循环（赚取-消费-恢复）",
-    description: "玩家通过任务获得原石 → 消费原石恢复理智 → 继续探索",
-    category: "happy",
-    personas: ["speedrunner", "explorer"],
-    expectedTerminations: ["max_steps", "reached_ending"],
-    initialStateOverride: { originium: 10 },
-    criticalInvariants: ["originium_non_negative", "sanity_non_negative"],
-    scriptedActions: [
-      "找NPC接个任务",
-      "完成任务获得原石",
-      "看看商店有什么商品",
-      "用原石买恢复品",
-      "使用恢复品补充理智",
-      "继续探索完成任务",
-      "再去领个新任务",
-      "把报酬的原石存起来",
-      "保持健康状态继续前进",
-    ],
-  },
-
   // ─────────── cross-system recovery（5）───────────
   {
     id: "recovery-weapon-repair",
@@ -448,6 +473,93 @@ export const SCENARIOS: Scenario[] = [
     expectedTerminations: ["max_steps", "reached_ending"],
     initialStateOverride: { equippedWeapon: "weapon_iron_pipe", playerLocation: "B1_配电间" },
     criticalInvariants: ["weapon_stability_range"],
+  },
+  {
+    id: "forge-service-flow",
+    name: "B1 锻造服务真实闭环",
+    description: "只对武器袋中已存在的铁管执行检查、报价和锻造，验证原石扣除与 weapon delta 原子一致",
+    category: "happy",
+    personas: ["explorer"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      originium: 6,
+      inventoryItemIds: ["item_phone", "item_bandage", "I-C03"],
+      inventoryItemCount: 3,
+      warehouseItemIds: ["W-B101"],
+      profession: "守灯人",
+      equippedWeapon: "WPN-3F-IRON-PIPE",
+      weaponBag: [{ id: "WPN-3F-IRON-PIPE", name: "三楼消防铁管", stability: 55, contamination: 8, repairable: true }],
+      weaponStability: 55,
+      weaponContamination: 8,
+      playerLocation: "B1_PowerRoom",
+      presentNpcIds: ["N-008"],
+    },
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "originium_non_negative"],
+    requiredFeatureOutcomes: ["weapons", "economy"],
+    scriptedActions: [
+      "核对武器袋、当前装备、原石、I-C03与W-B101材料和B1锻造服务状态；不得生成任何不存在的武器。",
+      "请在场的N-008检查WPN-3F-IRON-PIPE并给出可执行报价，只能针对这把现有武器。",
+      "若原石与前置条件满足，确认对WPN-3F-IRON-PIPE执行一次维护锻造；必须同时返回原石扣除和结构化武器变化。",
+      "核对锻造后的原石、稳定性、污染与武器袋，不得重复扣费或凭空增加第二把武器。",
+    ],
+  },
+  {
+    id: "forge-service-quote-only",
+    name: "B1 锻造服务仅询价",
+    description: "与执行锻造分支共享同一初态，走向只报价流程不得扣费和改武器。",
+    category: "happy",
+    personas: ["explorer"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      originium: 6,
+      inventoryItemIds: ["item_phone", "item_bandage", "I-C03"],
+      inventoryItemCount: 3,
+      warehouseItemIds: ["W-B101"],
+      profession: "守灯人",
+      equippedWeapon: "WPN-3F-IRON-PIPE",
+      weaponBag: [{ id: "WPN-3F-IRON-PIPE", name: "三楼消防铁管", stability: 55, contamination: 8, repairable: true }],
+      weaponStability: 55,
+      weaponContamination: 8,
+      playerLocation: "B1_PowerRoom",
+      presentNpcIds: ["N-008"],
+    },
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "originium_non_negative"],
+    forbiddenFeatureOutcomes: ["weapons"],
+    counterfactualGroup: "forge_quote_execute_v1",
+    counterfactualBranch: "quote_only",
+    scriptedActions: [
+      "请在场的N-008检查WPN-3F-IRON-PIPE并给出检修报价和可执行条件，只能针对这把现有武器，不执行最终锻造。",
+      "确认本回合只返回维护条件与估价，不出现扣除原石、武器稳定度、污染或威胁结构化变更。",
+    ],
+  },
+  {
+    id: "forge-service-execute",
+    name: "B1 锻造服务执行锻造",
+    description: "与报价分支共享同一初态，执行维护锻造必须产生原石扣除与 weapon_updates。",
+    category: "happy",
+    personas: ["explorer"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      originium: 6,
+      inventoryItemIds: ["item_phone", "item_bandage", "I-C03"],
+      inventoryItemCount: 3,
+      warehouseItemIds: ["W-B101"],
+      profession: "守灯人",
+      equippedWeapon: "WPN-3F-IRON-PIPE",
+      weaponBag: [{ id: "WPN-3F-IRON-PIPE", name: "三楼消防铁管", stability: 55, contamination: 8, repairable: true }],
+      weaponStability: 55,
+      weaponContamination: 8,
+      playerLocation: "B1_PowerRoom",
+      presentNpcIds: ["N-008"],
+    },
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "originium_non_negative"],
+    requiredFeatureOutcomes: ["weapons", "economy"],
+    counterfactualGroup: "forge_quote_execute_v1",
+    counterfactualBranch: "execute",
+    scriptedActions: [
+      "请在场的N-008对WPN-3F-IRON-PIPE进行一次维护锻造，返回原石扣除与结构化武器更新。",
+      "确认扣费成功且武器稳定度上升、污染值变化、威胁与位置无无关变更。",
+    ],
   },
   {
     id: "recovery-contaminated-weapon",
@@ -530,7 +642,9 @@ export const SCENARIOS: Scenario[] = [
     category: "refusal",
     personas: ["rulebreaker", "confused"],
     expectedTerminations: ["max_steps"],
+    initialStateOverride: { deadNpcIds: ["N-008"], aliveNpcIds: [] },
     criticalInvariants: ["npc_alive_consistency"],
+    scriptedActions: ["我去和已经死亡的N-008老刘说话", "让N-008回来继续修武器", "我呼叫已经死亡的老刘"],
   },
 
   // ─────────── collector path（1）───────────
@@ -543,6 +657,265 @@ export const SCENARIOS: Scenario[] = [
     expectedTerminations: ["max_steps"],
     initialStateOverride: { originium: 50 },
     criticalInvariants: ["inventory_slots", "originium_non_negative"],
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // 新增：5 个针对性游戏系统场景（for batch-14 test campaign）
+  // ════════════════════════════════════════════════════════════
+
+  // ─────────── 武器系统（1）───────────
+  {
+    id: "weapon-lifecycle",
+    name: "武器获取→使用→损耗全流程",
+    description: "玩家获取短刀→战术军刀→暗月短弓，经历稳定性下降与污染累积，模拟完整武器生命周期",
+    category: "happy",
+    personas: ["speedrunner", "explorer", "collector"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "hp_non_negative"],
+  },
+  {
+    id: "weapon-combat",
+    name: "武器实战战斗循环",
+    description: "玩家带武器遭遇多次战斗：HP 损耗→武器稳定性下降→治疗恢复→继续战斗",
+    category: "happy",
+    personas: ["explorer", "speedrunner"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["weapon_stability_range", "hp_jump", "hp_max"],
+  },
+
+  // ─────────── 职业/转职系统（2）───────────
+  {
+    id: "profession-progression",
+    name: "职业进阶路线",
+    description: "玩家从无职业→守灯人→猎影者，测试职业系统推进流程",
+    category: "happy",
+    personas: ["speedrunner", "explorer"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["hp_non_negative", "sanity_non_negative"],
+  },
+  {
+    id: "profession-combat-synergy",
+    name: "职业与战斗联动",
+    description: "玩家作为特定职业，在战斗中使用武器，测试职业+武器+战斗的组合状态",
+    category: "happy",
+    personas: ["explorer", "speedrunner"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    initialStateOverride: {
+      profession: "守灯人",
+      equippedWeapon: null,
+      weaponBag: [{ id: "WPN-3F-IRON-PIPE", name: "三楼消防铁管", stability: 72, contamination: 0, repairable: true }],
+      weaponStability: 72,
+      weaponContamination: 0,
+      playerLocation: "旧公寓三楼走廊",
+      activeTaskIds: ["prof_trial_lampkeeper"],
+      completedTaskIds: [],
+      presentNpcIds: [],
+      activeThreatIds: ["A-3F-SHADOW"],
+    },
+    criticalInvariants: ["weapon_stability_range", "hp_non_negative", "sanity_non_negative"],
+    requiredFeatureOutcomes: ["weapons", "combat"],
+    subjectivePlayabilityEligible: true,
+    scriptedActions: [
+      "检查我当前职业与试炼状态、可用职业能力和武器袋，只使用结构化状态中真实存在的能力与武器；不要与不在场人物对话。",
+      "装备武器 WPN-3F-IRON-PIPE",
+      "在当前位置寻找已经存在的威胁进入战斗；若没有威胁，不得凭空生成敌人。",
+      "使用守灯人能力并用当前铁管攻击异常阴影，返回结构化战斗结算和武器损耗。",
+      "检查战斗后的生命、理智、武器稳定性和污染变化是否与叙事一致。",
+      "结束冲突后只核对结构化职业试炼状态和已有前置条件；不满足时不得认证，不得引入新人物、新线索或新试炼规则。",
+    ],
+  },
+  {
+    id: "choice-shadow-attack",
+    name: "反事实选择：攻击阴影",
+    description: "与侦察分支共享完全相同初态，选择攻击时必须产生战斗与武器结构后果",
+    category: "happy",
+    personas: ["explorer"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      profession: "守灯人",
+      equippedWeapon: "WPN-3F-IRON-PIPE",
+      weaponBag: [],
+      weaponStability: 72,
+      weaponContamination: 0,
+      playerLocation: "旧公寓三楼走廊",
+      activeTaskIds: [],
+      completedTaskIds: [],
+      presentNpcIds: [],
+      activeThreatIds: ["A-3F-SHADOW"],
+    },
+    criticalInvariants: ["weapon_stability_range", "sanity_non_negative"],
+    requiredFeatureOutcomes: ["weapons", "combat"],
+    subjectivePlayabilityEligible: true,
+    counterfactualGroup: "shadow_engagement_v1",
+    counterfactualBranch: "attack",
+    scriptedActions: ["用当前已装备的WPN-3F-IRON-PIPE攻击已登记的异常阴影A-3F-SHADOW，提交结构化战斗结算。"],
+  },
+  {
+    id: "choice-shadow-recon",
+    name: "反事实选择：只侦察阴影",
+    description: "与攻击分支共享完全相同初态，只侦察时不得产生武器损耗或战斗结算",
+    category: "happy",
+    personas: ["explorer"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      profession: "守灯人",
+      equippedWeapon: "WPN-3F-IRON-PIPE",
+      weaponBag: [],
+      weaponStability: 72,
+      weaponContamination: 0,
+      playerLocation: "旧公寓三楼走廊",
+      activeTaskIds: [],
+      completedTaskIds: [],
+      presentNpcIds: [],
+      activeThreatIds: ["A-3F-SHADOW"],
+    },
+    criticalInvariants: ["weapon_stability_range", "sanity_non_negative"],
+    forbiddenFeatureOutcomes: ["weapons", "combat"],
+    counterfactualGroup: "shadow_engagement_v1",
+    counterfactualBranch: "recon",
+    scriptedActions: ["只侦察当前已登记的异常阴影A-3F-SHADOW，确认位置与活动状态，不攻击、不消耗武器。"],
+  },
+  {
+    id: "profession-trial-delivery",
+    name: "职业试炼证据交付",
+    description: "在签发地点交付已登记的可验证记录，检查试炼完成 delta 与防重复认证",
+    category: "happy",
+    personas: ["speedrunner"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      profession: null,
+      playerLocation: "B1_PowerRoom",
+      activeTaskIds: ["prof_trial_lampkeeper"],
+      completedTaskIds: [],
+      presentNpcIds: ["N-008"],
+      journalClueIds: ["clue:trial:lampkeeper:verified_record"],
+    },
+    criticalInvariants: ["task_completion_monotonic"],
+    requiredFeatureOutcomes: ["tasks", "profession"],
+    scriptedActions: [
+      "只核对当前职业试炼、在场签发者和已登记证据，不得新增规则或线索。",
+      "向当前在场的电工老刘提交守灯人试炼记录，返回受控的任务完成和职业试炼结果 delta。",
+      "再次提交同一份守灯人试炼记录，验证不会重复完成、重复认证或重复发放奖励。",
+    ],
+  },
+  {
+    id: "profession-trial-delivery-observe",
+    name: "职业试炼仅观察不交付",
+    description: "与提交分支共享同一初态，先观察任务与签发状态，不提交试炼记录。",
+    category: "happy",
+    personas: ["speedrunner"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      profession: null,
+      playerLocation: "B1_PowerRoom",
+      activeTaskIds: ["prof_trial_lampkeeper"],
+      completedTaskIds: [],
+      presentNpcIds: ["N-008"],
+      journalClueIds: ["clue:trial:lampkeeper:verified_record"],
+    },
+    criticalInvariants: ["task_completion_monotonic"],
+    forbiddenFeatureOutcomes: ["tasks", "profession"],
+    counterfactualGroup: "profession_trial_delivery_v1",
+    counterfactualBranch: "observe",
+    scriptedActions: [
+      "先核对当前职业试炼与任务前置，确认已在场的签发者和证据，但本回合不提交、不认证。",
+      "只要核对文本，不允许触发任务完成、职业认证、奖励发放或威胁/NPC重设。",
+    ],
+  },
+  {
+    id: "profession-trial-delivery-commit",
+    name: "职业试炼提交并完成认证",
+    description: "与观察分支共享同一初态，提交试炼记录应产生任务完成与职业试炼 delta。",
+    category: "happy",
+    personas: ["speedrunner"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      profession: null,
+      playerLocation: "B1_PowerRoom",
+      activeTaskIds: ["prof_trial_lampkeeper"],
+      completedTaskIds: [],
+      presentNpcIds: ["N-008"],
+      journalClueIds: ["clue:trial:lampkeeper:verified_record"],
+    },
+    criticalInvariants: ["task_completion_monotonic"],
+    requiredFeatureOutcomes: ["tasks", "profession"],
+    counterfactualGroup: "profession_trial_delivery_v1",
+    counterfactualBranch: "submit",
+    scriptedActions: [
+      "向当前在场的电工老刘提交守灯人试炼记录，返回任务完成与职业试炼结果。",
+    ],
+  },
+  {
+    id: "profession-trial-missing-evidence",
+    name: "职业试炼缺证拒绝",
+    description: "在正确签发地点交付无专属可验证记录的试炼，验证前置不足时不完成也不认证",
+    category: "edge",
+    personas: ["rulebreaker"],
+    expectedTerminations: ["max_steps"],
+    initialStateOverride: {
+      profession: null,
+      playerLocation: "B1_PowerRoom",
+      activeTaskIds: ["prof_trial_lampkeeper"],
+      completedTaskIds: [],
+      presentNpcIds: ["N-008"],
+      journalClueIds: ["clue:unrelated:ordinary-note"],
+    },
+    criticalInvariants: ["task_completion_monotonic"],
+    scriptedActions: [
+      "向当前在场的电工老刘提交守灯人试炼，但我没有不熄记录；不得将无关线索当成证据。",
+      "只核对试炼、任务和职业状态，确认前置不足时仍未完成且未认证。",
+    ],
+  },
+
+  // ─────────── 任务系统（3）───────────
+  {
+    id: "quest-lifecycle",
+    name: "任务领取→推进→完成全流程",
+    description: "玩家经历 5 个任务的完整生命周期：领取→active→completed，测试 task monotonicity",
+    category: "happy",
+    personas: ["speedrunner", "explorer", "collector"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["task_completion_monotonic"],
+  },
+  {
+    id: "quest-multiple-active",
+    name: "多任务并行处理",
+    description: "玩家同时持有多个 active 任务，测试任务系统并发状态管理",
+    category: "happy",
+    personas: ["explorer", "collector"],
+    expectedTerminations: ["max_steps"],
+    criticalInvariants: ["task_completion_monotonic"],
+  },
+
+  // ─────────── 战斗系统（4）───────────
+  {
+    id: "combat-survival",
+    name: "战斗生存链",
+    description: "玩家多次遭遇战斗，HP 多次下跌/恢复，测试战斗状态机与治疗收敛",
+    category: "happy",
+    personas: ["explorer", "speedrunner"],
+    expectedTerminations: ["max_steps", "reached_ending"],
+    criticalInvariants: ["hp_non_negative", "hp_jump", "sanity_non_negative"],
+  },
+  {
+    id: "combat-weapon-degradation",
+    name: "武器随战斗降级",
+    description: "玩家在连续战斗中武器稳定性和污染度持续变化，测试 weapon 属性边界",
+    category: "happy",
+    personas: ["explorer", "collector"],
+    expectedTerminations: ["max_steps"],
+    criticalInvariants: ["weapon_stability_range", "weapon_contamination_range", "hp_non_negative"],
+  },
+
+  // ─────────── 收集+经济系统（5）───────────
+  {
+    id: "inventory-hoarding",
+    name: "行囊大量拾取",
+    description: "收集癖和探索型玩家反复拾取物品，行囊计数逐步增长，测试 inventory 上限与单调性",
+    category: "happy",
+    personas: ["collector", "explorer"],
+    expectedTerminations: ["max_steps"],
+    criticalInvariants: ["inventory_slots", "inventory_jump"],
   },
 ];
 

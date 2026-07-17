@@ -48,6 +48,7 @@ import {
   buildDynamicPlayerDmSystemSuffix,
   buildStyleGuidePacketBlock,
   getCompactStablePlayerDmSystemPrefix,
+  shouldUseCompactStablePrompt,
   getStablePlayerDmSystemPrefix,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
@@ -143,9 +144,22 @@ import {
   guessPlayerLocationFromContext,
 } from "@/lib/playRealtime/b1Safety";
 import { applyB1ServiceExecutionGuard } from "@/lib/playRealtime/serviceExecution";
+import { buildDeterministicServiceTurn } from "@/lib/playRealtime/deterministicServiceTurn";
 import { applyEquipmentExecutionGuard } from "@/lib/playRealtime/equipmentExecution";
 import { applyMainThreatUpdateGuard } from "@/lib/playRealtime/mainThreatGuard";
 import { applyWeaponTacticalAdjudication } from "@/lib/playRealtime/weaponAdjudication";
+import { applyWorldWeaponPickupGuard } from "@/lib/playRealtime/worldWeaponAffordances";
+import { applyPresentNpcObservationGuard } from "@/lib/playRealtime/presentNpcObservationGuard";
+import { applyAuthoredLocationMovementGuard } from "@/lib/playRealtime/authoredLocationMovementGuard";
+import { applyRegisteredMechanicsGuard } from "@/lib/playRealtime/registeredMechanicsGuard";
+import { applyPhysicalInjuryNarrativeGuard } from "@/lib/playRealtime/physicalInjuryNarrativeGuard";
+import { applyEquipmentNarrativeConsistencyGuard } from "@/lib/playRealtime/equipmentNarrativeConsistencyGuard";
+import { applyPresentNpcNarrativeBoundaryGuard } from "@/lib/playRealtime/presentNpcNarrativeBoundaryGuard";
+import { applyInternalIdNarrativeGuard } from "@/lib/playRealtime/internalIdNarrativeGuard";
+import { applyProfessionNarrativeCoherenceGuard } from "@/lib/playRealtime/professionNarrativeCoherenceGuard";
+import { applyAnonymizationArtifactGuard } from "@/lib/playRealtime/anonymizationArtifactGuard";
+import { applyLocationNarrativeConsistencyGuard } from "@/lib/playRealtime/locationNarrativeConsistencyGuard";
+import { applyDeadNpcContinuityGuard } from "@/lib/playRealtime/deadNpcContinuityGuard";
 import { applyStage2SettlementGuard } from "@/lib/playRealtime/settlementGuard";
 import { createDefaultB1ServiceState } from "@/lib/registry/serviceNodes";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
@@ -281,8 +295,11 @@ import {
 } from "@/lib/narrativeEngine/committer";
 import { logNarrativeRun } from "@/lib/narrativeEngine/runLogger";
 // v4 全链路人名白名单 — final guard 依赖项
-import { extractChineseNames } from "@/lib/narrative/extractChineseNames";
-import { SAFE_FALLBACK_NARRATIVE } from "@/lib/narrative/SAFE_FALLBACK_NARRATIVE";
+import {
+  extractChineseNames,
+  isHighConfidenceUnregisteredPersonName,
+  redactHighConfidenceUnregisteredPersonNames,
+} from "@/lib/narrative/extractChineseNames";
 import { NPC_ALIAS_FLAT_SET } from "@/lib/registry/npcAliases";
 import { NPCS } from "@/lib/registry/npcs";
 
@@ -716,19 +733,32 @@ export async function POST(req: Request) {
           try {
       const inner = await postChatInternal(internalReq);
       const innerContentType = inner.headers.get("content-type") ?? "";
-      if (!innerContentType.toLowerCase().includes("text/event-stream")) {
-        if (!outerStreamClosed) {
-          controller.enqueue(
-            sse(
-              `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
-                kind: "site_unavailable",
-                requestId,
-                reason: "early_status_invalid_content_type",
-              })}`
-            )
+      const isStreamingContentType =
+        innerContentType.toLowerCase().includes("text/event-stream");
+
+      // one-api 对流式响应也返回 Content-Type: application/json，
+      // 但 body 是 ReadableStream 且 status=200。仅在此兼容条件下放行。
+      if (!isStreamingContentType) {
+        if (inner.ok && inner.body) {
+          console.warn(
+            "[api/chat][early_status_wrapper] non-streaming content-type with 2xx + body stream — forwarding (one-api compat)",
+            { contentType: innerContentType, status: inner.status, requestId }
           );
+        } else {
+          // 既不是 text/event-stream，也不是成功的流式 body → 降级
+          if (!outerStreamClosed) {
+            controller.enqueue(
+              sse(
+                `${VERSECRAFT_FINAL_PREFIX}${buildVisibleSiteFailureDmJson({
+                  kind: "site_unavailable",
+                  requestId,
+                  reason: "early_status_invalid_content_type",
+                })}`
+              )
+            );
+          }
+          return;
         }
-        return;
       }
       if (!inner.body) {
         const text = await inner.text();
@@ -1178,6 +1208,44 @@ async function postChatInternal(req: Request) {
     });
   }
 
+  // Authoritative B1 forge services do not need a generative DM turn. This
+  // branch intentionally sits after input safety / anti-cheat / lane policy,
+  // but before KG, lore, control preflight and every model call.
+  if (clientPurpose === "normal") {
+    const deterministicServiceTurn = buildDeterministicServiceTurn({
+      latestUserInput,
+      playerContext,
+      clientState,
+      requestId,
+    });
+    if (deterministicServiceTurn) {
+      writeAuditTrail({
+        requestId,
+        sessionId,
+        userId,
+        ip: clientIp,
+        path: "/api/chat",
+        stage: "deterministic_service",
+        riskLevel: "normal",
+        action: "allow",
+        triggeredRule: "b1_forge_service_fast_lane",
+        summary: "model_calls=0 token_cost=0",
+      });
+      const deterministicPayload = [
+          buildStatusFramePayload({
+            stage: "finalizing",
+            message: "正在结算服务结果…",
+            requestId,
+          }),
+          `${VERSECRAFT_FINAL_PREFIX}${JSON.stringify(deterministicServiceTurn)}`,
+        ].map(sseText).join("");
+      return new Response(deterministicPayload, {
+        status: 200,
+        headers: buildSseHeaders(requestId, { "X-VerseCraft-Turn-Path": "deterministic_service" }),
+      });
+    }
+  }
+
   const kgEnabled = isKgLayerEnabled();
   const kgRoute = routeUserInput(latestUserInput);
   if (kgEnabled) {
@@ -1316,10 +1384,12 @@ async function postChatInternal(req: Request) {
     perfFlags.enablePromptSlimming && perfFlags.enableLightweightFastPath && laneSideEffectPlan.compactPrompt
       ? "minimal"
       : "full";
-  const useFastLaneCompactStablePrompt =
-    perfFlags.enablePromptSlimming &&
-    laneSideEffectPlan.compactPrompt &&
-    envBoolean("AI_CHAT_FASTLANE_COMPACT_STABLE_PROMPT", true);
+  const useFastLaneCompactStablePrompt = shouldUseCompactStablePrompt({
+    promptSlimmingEnabled: perfFlags.enablePromptSlimming,
+    compactLanePrompt: laneSideEffectPlan.compactPrompt && envBoolean("AI_CHAT_FASTLANE_COMPACT_STABLE_PROMPT", true),
+    turnLane: turnLaneDecision.lane,
+    standardCompactEnabled: envBoolean("AI_CHAT_STANDARD_COMPACT_STABLE_PROMPT", false),
+  });
   const playerDmStablePrefix = useFastLaneCompactStablePrompt
     ? getCompactStablePlayerDmSystemPrefix()
     : getStablePlayerDmSystemPrefix();
@@ -1386,6 +1456,7 @@ async function postChatInternal(req: Request) {
     isFirstAction: shouldApplyFirstActionConstraint,
     runtimePackets: "",
     controlAugmentation: "",
+    latestUserInput,
     npcConsistencyBoundaryBlock: npcConsistencyBoundaryEarly.text,
     narrativeContinuityBlock: narrativeContinuityBlockEarly,
     povBlock: povBlockEarly,
@@ -1927,6 +1998,9 @@ async function postChatInternal(req: Request) {
     perfFlags.enableLightweightFastPath &&
     perfFlags.fastLaneSkipRuntimePackets &&
     laneSideEffectPlan.compactPrompt;
+  const runtimePacketMaxChars = contextMode === "minimal"
+    ? 900
+    : Math.max(2_400, Math.min(4_000, Math.trunc(envNumber("AI_CHAT_RUNTIME_PACKET_MAX_CHARS", 3_200))));
 
   const runtimePackets = shouldSkipRuntimePacketsForFastLane
     ? ""
@@ -1937,7 +2011,7 @@ async function postChatInternal(req: Request) {
         serviceState,
         runtimeLoreCompact: "",
         contextMode,
-        maxChars: contextMode === "minimal" ? 900 : 4000,
+        maxChars: runtimePacketMaxChars,
         focusNpcId: focusNpcForPrompt,
       });
   runtimePacketChars = runtimePackets.length;
@@ -1961,7 +2035,9 @@ async function postChatInternal(req: Request) {
     },
   });
   const legacyStyleGuideBlock =
-    verseRollout.enableStyleGuidePacket && !useFastLaneCompactDynamicPackets
+    verseRollout.enableStyleGuidePacket &&
+    !(verseRollout.enablePromptPacketDedupV1 && verseRollout.enableNarrativeStyleBible) &&
+    !useFastLaneCompactDynamicPackets
       ? buildStyleGuidePacketBlock()
       : "";
   const narrativeStyleBibleBlock =
@@ -2171,6 +2247,7 @@ async function postChatInternal(req: Request) {
         playerLocationFallback: guessPlayerLocationFromContext(playerContext),
         clientState,
         maxChars: contextMode === "minimal" ? 520 : 1400,
+        dedupeStableRules: verseRollout.enablePromptPacketDedupV1,
       })
     : "";
   // Phase-5: read due foreshadow entries for directive injection (fail-open, non-blocking)
@@ -2214,6 +2291,7 @@ async function postChatInternal(req: Request) {
     npcGenderPronounBlock: useFastLaneCompactDynamicPackets ? "" : npcGenderPronounBlock,
     styleGuideBlock,
     narrativeDirectiveBlock,
+    latestUserInput,
   });
   const aiEnvForSystem = resolveAiEnv();
   const playerChatMaxTokensResolution = resolvePlayerChatMaxTokensForNarrativeBudget(
@@ -2235,6 +2313,26 @@ async function postChatInternal(req: Request) {
     splitDualSystem: aiEnvForSystem.splitPlayerChatDualSystem,
     messagesToSend,
   });
+  const promptComponentChars = {
+    stable_prefix: stableCharLen,
+    message_history: messagesToSend.reduce((sum, message) => sum + (typeof message.content === "string" ? message.content.length : 0), 0),
+    player_context: playerContextForPrompt.length,
+    runtime_packets: runtimePackets.length,
+    control_and_lore: controlAndLoreAugmentation.length,
+    epistemic_context: epistemicPromptContext.promptBlock.length,
+    npc_consistency: npcConsistencyBoundaryFinal.text.length,
+    narrative_style: narrativeStyleBibleBlock.length + styleGuideBlock.length,
+    narrative_continuity: narrativeContinuityBlock.length,
+    narrative_budget: narrativeBudgetBlock.length,
+    reality_constraint: realityConstraintBlock.length,
+    protagonist_anchor: protagonistAnchorBlock.length,
+    turn_mode_policy: turnModePolicyBlock.length,
+    pov_and_pronouns: povBlock.length + npcGenderPronounBlock.length,
+    fact_audit: worldFactAuditBlock.length,
+    player_echo: playerEchoPromptBlock.length,
+    narrative_directive: narrativeDirectiveBlock.length,
+    dynamic_total: dynamicCharLen,
+  };
   recordPromptCharDelta(dynamicCharLen);
 
   ttftProfile.promptBuildMs = elapsedMs(promptBuildStartAt);
@@ -2418,9 +2516,10 @@ async function postChatInternal(req: Request) {
   const enableStatusFrames = envBoolean("AI_CHAT_ENABLE_STATUS_FRAMES", true);
   const SSE_HEADERS = buildSseHeaders(requestId);
 
-  const fallbackPayload = buildInternalNoNarrativeDmJson({
+  const fallbackPayload = buildVisibleSiteFailureDmJson({
+    kind: "site_unavailable",
     requestId,
-    reason: "server_internal_non_visible",
+    reason: "server_internal_generation_failed",
   });
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -2712,7 +2811,7 @@ async function postChatInternal(req: Request) {
       });
       try {
         await writeStatusFrame("finalizing", isUpstreamRateLimited ? "网站生成通道繁忙" : "网站连接暂时不稳定");
-        await writeToStream(degraded);
+        await writeToStream(`${VERSECRAFT_FINAL_PREFIX}${degraded}`);
       } finally {
         await writer.close();
       }
@@ -2774,11 +2873,12 @@ async function postChatInternal(req: Request) {
       if (tokenUsageFlushedGlobal) return;
       tokenUsageFlushedGlobal = true;
       const { latestTotalTokens, accumulated } = args;
+      const expansionTokens = Math.max(0, narrativeExpansionTelemetry.totalTokens ?? 0);
       const toPersist =
         latestTotalTokens > 0
-          ? latestTotalTokens
+          ? latestTotalTokens + expansionTokens
           : accumulated.length > 0
-            ? Math.max(100, Math.ceil(accumulated.length / 2.5))
+            ? Math.max(100, Math.ceil(accumulated.length / 2.5)) + expansionTokens
             : 0;
       await persistTokenUsage(userId, toPersist);
       if (userId && toPersist > 0) {
@@ -3229,6 +3329,9 @@ async function postChatInternal(req: Request) {
           playerContext,
           clientState,
         });
+        rec = applyWorldWeaponPickupGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyAuthoredLocationMovementGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyDeadNpcContinuityGuard({ dmRecord: rec, latestUserInput, deadNpcIds: clientState?.deadNpcIds });
         rec = applyB1SafetyGuard({
           dmRecord: rec,
           fallbackLocation: guessPlayerLocationFromContext(playerContext),
@@ -3241,6 +3344,11 @@ async function postChatInternal(req: Request) {
           requestId,
           clientState,
         });
+        // Must run after tactical adjudication so authored threat/weapon deltas
+        // are the final authority rather than being appended to model deltas.
+        rec = applyRegisteredMechanicsGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyPhysicalInjuryNarrativeGuard(rec);
+        rec = applyPresentNpcObservationGuard({ dmRecord: rec, latestUserInput, clientState });
         rec = normalizeDmTaskPayload(rec);
         rec = ensure7FConspiracyTask(rec, { playerContext, latestUserInput });
         rec = applyNpcProactiveGrantGuard({ dmRecord: rec, playerContext });
@@ -3301,6 +3409,16 @@ async function postChatInternal(req: Request) {
       if (dmRecord) {
         dmRecord = phaseApplyStructuralGuards(dmRecord);
         dmRecord = await phaseEnhanceAndSettle(dmRecord);
+        // Enhancement may replace candidate prose after the structural phase;
+        // re-apply this pure narrative/state consistency guard at the final
+        // post-generation boundary.
+        dmRecord = applyPhysicalInjuryNarrativeGuard(dmRecord);
+        dmRecord = applyEquipmentNarrativeConsistencyGuard({ dmRecord, clientState });
+        dmRecord = applyPresentNpcNarrativeBoundaryGuard({ dmRecord, clientState });
+        dmRecord = applyInternalIdNarrativeGuard(dmRecord);
+        dmRecord = applyProfessionNarrativeCoherenceGuard(dmRecord);
+        dmRecord = applyAnonymizationArtifactGuard(dmRecord);
+        dmRecord = applyLocationNarrativeConsistencyGuard({ dmRecord, clientState });
 
         // --- Phase 4: protocol validator (narrative contamination) ---
         /**
@@ -3876,6 +3994,9 @@ async function postChatInternal(req: Request) {
               scenePublicFactIds: actorEpistemicFilter.scenePublicFacts.map((fact) => fact.id),
               actorScopedFactIds: actorEpistemicFilter.actorScopedFacts.map((fact) => fact.id),
               factDetectionMaxRevealRank: maxRevealRankForMemory,
+              inventoryItemIds: clientState && typeof clientState === "object" && !Array.isArray(clientState) && Array.isArray((clientState as Record<string, unknown>).inventoryItemIds)
+                ? ((clientState as Record<string, unknown>).inventoryItemIds as unknown[]).filter((value): value is string => typeof value === "string")
+                : [],
               recentRegisters: undefined, // Phase-2.6: 账本读取留给未来优化
             });
           let validatorReport = runNarrativeValidator(candidateRec);
@@ -4588,7 +4709,7 @@ async function postChatInternal(req: Request) {
           moderationBody = finalizePayload;
 
           // v4 全链路人名白名单 — Phase-N final guard：
-          // 二次扫 narrative 残留未注册人名；若发现触发 safe fallback。
+          // 二次扫 narrative 残留未注册人名；高置信命中仅匿名化姓名。
           // mock scenario 请求跳过此 guard（mock 叙事不含注册人名，可能触发姓氏误报如"张泛黄"）。
           if (!isAuditMockRequest) {
             const residualText = String(auditedResolved.narrative ?? "");
@@ -4597,21 +4718,40 @@ async function postChatInternal(req: Request) {
                 registeredNames: NPC_NAME_SET,
                 aliases: NPC_ALIAS_SET,
               });
-              const hasUnregistered = residual.some(
+              const unregistered = residual.filter(
                 (r) => r.candidate && r.token.length >= 2 && !r.registered,
               );
-              if (hasUnregistered) {
+              const hasHighConfidenceUnregistered = unregistered.some(isHighConfidenceUnregisteredPersonName);
+              if (hasHighConfidenceUnregistered) {
                 auditedResolved = {
                   ...auditedResolved,
+                  // Preserve the player's actual action and the generated
+                  // scene consequence.  An unknown proper name is unsafe to
+                  // commit, but replacing the *entire* turn with a static
+                  // sentence destroys continuity and makes repeats likely.
                   narrative:
                     validated.language === "en-US"
                       ? "I stop at the edge of the corridor and listen. Whatever moved in the dark has not gone far; I need to choose carefully."
-                      : SAFE_FALLBACK_NARRATIVE,
+                      : redactHighConfidenceUnregisteredPersonNames(residualText, unregistered),
                   _commit_flags: [
                     ...(Array.isArray(auditedResolved._commit_flags)
                       ? (auditedResolved._commit_flags as unknown[]).map(String)
                       : []),
-                    "safe_narrative_fallback_applied_v2",
+                    "unregistered_name_redacted_v1",
+                  ],
+                };
+                finalizePayload = JSON.stringify(auditedResolved);
+                moderationBody = finalizePayload;
+              } else if (unregistered.length > 0) {
+                // Keep the signal for audit, but do not replace a complete turn
+                // based solely on a high-recall Chinese name heuristic.
+                auditedResolved = {
+                  ...auditedResolved,
+                  _commit_flags: [
+                    ...(Array.isArray(auditedResolved._commit_flags)
+                      ? (auditedResolved._commit_flags as unknown[]).map(String)
+                      : []),
+                    "unregistered_name_low_confidence_audited_v1",
                   ],
                 };
                 finalizePayload = JSON.stringify(auditedResolved);
@@ -4727,6 +4867,13 @@ async function postChatInternal(req: Request) {
       if (finalizePayload) {
         try {
           const parsedForMetrics = JSON.parse(finalizePayload) as Record<string, unknown>;
+          parsedForMetrics._eval_metrics = {
+            input_tokens: latestStreamUsage?.promptTokens ?? null,
+            output_tokens: latestStreamUsage?.completionTokens ?? null,
+            cached_input_tokens: latestStreamUsage?.cachedPromptTokens ?? null,
+            prompt_component_chars: promptComponentChars,
+          };
+          finalizePayload = JSON.stringify(parsedForMetrics);
           finalDmRecordForBackground = parsedForMetrics;
           const finalOptions = Array.isArray(parsedForMetrics.options)
             ? parsedForMetrics.options.filter((x): x is string => typeof x === "string" && x.trim().length > 0)

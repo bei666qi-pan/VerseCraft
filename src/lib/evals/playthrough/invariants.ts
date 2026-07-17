@@ -27,6 +27,7 @@
  */
 
 import type { GameStateSnapshot, InvariantCheckResult, InvariantViolation } from "./types";
+import { NPCS } from "@/lib/registry/npcs";
 
 /** 合法楼层列表 */
 const VALID_FLOORS = ["B2", "B1", "1", "2", "3", "4", "5", "6", "7"];
@@ -42,6 +43,8 @@ const DM_ONLY_LEAK_PATTERNS: Array<{
   { pattern: /请严格以\s*JSON/, severity: "critical", description: "narrative 泄漏 JSON 格式指令" },
   { pattern: /^\s*\{\s*"is_action_legal"/, severity: "critical", description: "narrative 是裸 JSON 字符串" },
   { pattern: /\bDM指令\b/, severity: "major", description: "narrative 包含元叙事「DM指令」" },
+  { pattern: /\{[a-z][a-z0-9_:-]{3,80}\}/i, severity: "major", description: "narrative 泄漏花括号内部 registry ID" },
+  { pattern: /\b(?:prof_trial|task|clue|forge)_[a-z0-9_:-]{3,80}\b/i, severity: "major", description: "narrative 泄漏裸露内部 registry ID" },
   { pattern: /忽略.*设定/, severity: "major", description: "narrative 中描述 prompt injection" },
 ];
 
@@ -291,16 +294,19 @@ export function checkAllInvariants(
 
   // ──── 第三层：DM JSON 结构 ────
 
-  // 14. options 必填检查：当 is_action_legal 为 true 时 options 必须非空
+  // 14. options 只在 decision_required 回合必填。显式 narrative_only / system_transition
+  // 以及 deferred-options 回合允许为空；旧 trace 没有 turn_mode 时保留 legacy 检查。
   if (dmJson) {
     const isLegal = dmJson["is_action_legal"];
-    if (isLegal === true) {
+    const explicitDecision = dmJson["decision_required"] === true || dmJson["turn_mode"] === "decision_required";
+    const legacyDecision = dmJson["decision_required"] === undefined && dmJson["turn_mode"] === undefined;
+    if (isLegal === true && (explicitDecision || legacyDecision)) {
       const options = dmJson["options"];
       if (!Array.isArray(options) || options.length === 0) {
         violations.push({
           rule: "dm_json_options_missing",
           severity: "major",
-          description: "is_action_legal 为 true 时 options 不应为空",
+          description: "decision_required 合法回合的 options 不应为空",
           expected: "options 为非空数组",
           actual: `options = ${JSON.stringify(options)}`,
         });
@@ -433,7 +439,7 @@ function hasProgress(prev: GameStateSnapshot, curr: GameStateSnapshot): boolean 
 export function createInitialStateSnapshot(
   overrides?: Partial<GameStateSnapshot>
 ): GameStateSnapshot {
-  return {
+  const snapshot: GameStateSnapshot = {
     hp: 10,
     maxHp: 10,
     sanity: 80,
@@ -452,6 +458,7 @@ export function createInitialStateSnapshot(
     aliveNpcIds: [],
     deadNpcIds: [],
     codexNpcIds: [],
+    journalClueIds: [],
     turnCount: 0,
     chapterNumber: 1,
     isDeath: false,
@@ -459,6 +466,12 @@ export function createInitialStateSnapshot(
     unlockedFlags: [],
     ...overrides,
   };
+  if (overrides?.playerLocation && overrides.currentFloor === undefined) {
+    const value = overrides.playerLocation;
+    const canonical = value.match(/^(B[12]|\d+F)(?:_|$)/i)?.[1]?.toUpperCase();
+    snapshot.currentFloor = canonical ?? snapshot.currentFloor;
+  }
+  return snapshot;
 }
 
 // === 跨步骤状态变化检测（NPC 复活 + 物品凭空） ===
@@ -527,6 +540,7 @@ export interface NarrativeRepetitionResult {
   repetitions: Array<{
     startStep: number;
     endStep: number;
+    comparedStep: number;
     similarity: number;       // 0-1
     excerpt: string;          // 重复的文本片段
   }>;
@@ -547,38 +561,32 @@ export function detectNarrativeRepetitions(
   let duplicateCount = 0;
   for (let i = windowSize - 1; i < steps.length; i++) {
     const current = steps[i]!.narrative;
-    let isRepeat = false;
+    let matchedIndex = -1;
+    let matchedSimilarity = 0;
 
     for (let j = i - windowSize + 1; j < i; j++) {
       const prev = steps[j]!.narrative;
       const sim = computeNarrativeSimilarity(current, prev);
 
       if (sim > 0.7) {
-        isRepeat = true;
+        matchedIndex = j;
+        matchedSimilarity = sim;
         break;
       }
     }
 
-    if (isRepeat) {
+    if (matchedIndex >= 0) {
       duplicateCount++;
-      // 找到连续重复段的起点
-      let startStep = i;
-      for (let k = i - 1; k >= Math.max(0, i - windowSize + 1); k--) {
-        if (computeNarrativeSimilarity(steps[k]!.narrative, current) > 0.7) {
-          startStep = k;
-        } else {
-          break;
-        }
-      }
       // 避免重复记录
       const alreadyRecorded = repetitions.some(
-        (r) => r.startStep <= startStep && r.endStep >= i
+        (r) => r.startStep === steps[matchedIndex]!.stepIndex && r.endStep === steps[i]!.stepIndex
       );
       if (!alreadyRecorded) {
         repetitions.push({
-          startStep,
-          endStep: i,
-          similarity: computeNarrativeSimilarity(steps[startStep]!.narrative, current),
+          startStep: steps[matchedIndex]!.stepIndex,
+          endStep: steps[i]!.stepIndex,
+          comparedStep: steps[matchedIndex]!.stepIndex,
+          similarity: matchedSimilarity,
           excerpt: current.slice(0, 100),
         });
       }
@@ -631,7 +639,7 @@ function getCharBigrams(s: string): string[] {
  */
 export interface StateNarrativeContradiction {
   stepIndex: number;
-  type: "location_mismatch" | "item_claim_without_grant" | "death_contradiction";
+  type: "location_mismatch" | "item_claim_without_grant" | "death_contradiction" | "physical_injury_without_state" | "offscreen_npc_presence";
   description: string;
   evidence: string;
 }
@@ -646,13 +654,45 @@ export function detectStateNarrativeContradictions(
 ): StateNarrativeContradiction[] {
   const contradictions: StateNarrativeContradiction[] = [];
 
+  const explicitTravelDenialPattern = /(?:无法|不能|不能够|没法|没能|不允许|不敢|无权|尚未|未能)/;
+  const explicitFloorMovementPattern = /(?:下到|上到|下楼|上楼|向下|向上|去往|前往|下行|上行|返回|回到|穿过|跨越|走下|走上)/;
+  const explicitLocationDestinationPattern = /(?:一楼|二楼|三楼|四楼|五楼|六楼|七楼|B1|B2|配电间|楼梯间|走廊|走廊尽头|楼梯口|门厅|登记口|保安室|信箱|物业|客厅|房间|室|门口|大厅|诊室|画室|厨房|卫生间)/;
+  const relativeMovementPattern = /(?:身边|身后|身前|眼前|脚边|手边|头顶|附近|跟着|沿着|在|又|然后)/;
+
+  const mentionsMovementClause = (narrative: string): boolean => {
+    const clauses = narrative.match(/(?:我|你)[^。！？\n]{0,32}(?:到达|来到|抵达|前往|回到|返回|进入(?:了)?|走到|走到了|走向|踏入|走进|离开|下到|上到|穿过|穿越|继续下|继续上|下楼|上楼)[^。！？\n]{0,32}/g);
+    if (!clauses) {
+      return false;
+    }
+
+    for (const clause of clauses) {
+      if (explicitTravelDenialPattern.test(clause)) {
+        continue;
+      }
+      if (!explicitFloorMovementPattern.test(clause) && !explicitLocationDestinationPattern.test(clause)) {
+        continue;
+      }
+      const tail = clause.replace(/.*?(?:到达|来到|抵达|前往|回到|返回|进入(?:了)?|走到|走到了|走向|踏入|走进|离开|下到|上到|穿过|穿越|继续下|继续上|下楼|上楼)/, "");
+      if (relativeMovementPattern.test(tail)) {
+        continue;
+      }
+      return true;
+    }
+
+    return false;
+  };
+
   for (let i = 1; i < steps.length; i++) {
     const step = steps[i]!;
     const prevState = steps[i - 1]!.stateAfter;
+    const turnMode = typeof step.dmJson?.turn_mode === "string" ? step.dmJson.turn_mode : null;
 
     // 1. 叙事提到"到达"/"来到"某楼层但 location 未变
-    const locationChangePatterns = [/到达/, /来到/, /进入了/, /走到了/];
-    const mentionsLocationChange = locationChangePatterns.some((p) => p.test(step.narrative));
+    const mentionedFloors = new Set(step.narrative.match(/(?:B[12]|[1-7]F|[一二三四五六七]楼)/gi)?.map((x) => x.toUpperCase()) ?? []);
+    const mentionsLocationMovement = mentionsMovementClause(step.narrative);
+    const mentionsMovementByFloorPair = mentionedFloors.size >= 2 && /(?:下到|上到|继续下|继续上|下楼|上楼|去[1-7]F|去[一二三四五六七]楼)/.test(step.narrative);
+    const explicitTravelDenial = explicitTravelDenialPattern.test(step.narrative);
+    const mentionsLocationChange = !explicitTravelDenial && (mentionsLocationMovement || mentionsMovementByFloorPair) && turnMode !== "narrative_only";
     if (mentionsLocationChange && step.stateAfter.playerLocation === prevState.playerLocation) {
       contradictions.push({
         stepIndex: step.stepIndex,
@@ -674,6 +714,44 @@ export function detectStateNarrativeContradictions(
           });
         }
       }
+    }
+
+    // 3. A newly described physical wound must have an HP delta or an
+    // explicit structured injury. Sanity loss alone must not manufacture a
+    // bruise/cut in prose.
+    const explicitNewInjury = /(?:多了|出现|留下|添了|映出|裂开|渗出|一道|一处|一小道)[^。！？\n]{0,12}(?:擦伤|伤口|淤青|血痕|裂口)|(?:鲜血|血液)[^。！？\n]{0,8}(?:流下|渗出|滴落)|(?:掌心|手掌|皮肤|手指)[^。！？\n]{0,10}(?:磨破|破皮|渗出血丝|流血)/.test(step.narrative);
+    const hpDropped = step.stateAfter.hp < prevState.hp;
+    const conflict = step.dmJson.conflict_outcome;
+    const injuryRows = conflict && typeof conflict === "object" && !Array.isArray(conflict)
+      ? (conflict as Record<string, unknown>).injury_delta
+      : null;
+    const hasStructuredInjury = injuryRows && typeof injuryRows === "object" && !Array.isArray(injuryRows) &&
+      Array.isArray((injuryRows as Record<string, unknown>).injuries) &&
+      ((injuryRows as Record<string, unknown>).injuries as unknown[]).length > 0;
+    if (explicitNewInjury && !hpDropped && !hasStructuredInjury) {
+      contradictions.push({
+        stepIndex: step.stepIndex,
+        type: "physical_injury_without_state",
+        description: "叙事新增身体伤势，但 HP 与结构化伤势均未变化",
+        evidence: `hp=${step.stateAfter.hp} 未下降，conflict_outcome 无 injury_delta.injuries`,
+      });
+    }
+
+    // 4. A registered NPC may only directly appear/speak when the structured
+    // scene snapshot marks that NPC present. Historical recollection without
+    // direct predicates remains allowed.
+    const presentNpcIds = new Set(step.stateAfter.presentNpcIds ?? []);
+    for (const npc of NPCS) {
+      if (presentNpcIds.has(npc.id) || !step.narrative.includes(npc.name)) continue;
+      const escaped = npc.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const direct = new RegExp(`${escaped}[^。！？\\n]{0,28}(?:说|问|答|道|走来|走近|站着|出现|转身|看着|抬头|开口|我叫)`);
+      if (!direct.test(step.narrative)) continue;
+      contradictions.push({
+        stepIndex: step.stepIndex,
+        type: "offscreen_npc_presence",
+        description: `NPC ${npc.name} 未在场却直接出现或说话`,
+        evidence: `presentNpcIds=${[...presentNpcIds].join(",") || "empty"}, npcId=${npc.id}`,
+      });
     }
   }
 
@@ -816,7 +894,8 @@ export interface WeaponUpdateInconsistency {
     | "contamination_out_of_range"
     | "weapon_dropped_without_narrative"
     | "narrative_weapon_drop_without_state"
-    | "narrative_weapon_damage_without_stability_drop";
+    | "narrative_weapon_damage_without_stability_drop"
+    | "narrative_weapon_absence_with_state";
   description: string;
   evidence: string;
 }
@@ -893,8 +972,11 @@ export function detectWeaponUpdateConsistency(
     }
 
     // 4. 叙事说武器损坏/断裂但 stability 未下降
-    const narrativeImpliesDamage = /(?:武器|主手).{0,4}(?:损坏|断裂|碎裂|崩解|报废|损毁)/.test(step.narrative);
-    if (narrativeImpliesDamage && currStability >= prevStability && currWeapon !== null) {
+    const narrativeImpliesDamage = /(?:武器|主手|铁管|钢管|刀|棍)[^。！？\n]{0,16}(?:损坏|断裂|碎裂|崩解|报废|损毁|裂纹|裂痕|缺口)/.test(step.narrative);
+    const initialStability = steps[0]?.stateAfter.weaponStability ?? 100;
+    const hasHistoricalWeaponDamage = currStability < initialStability ||
+      steps.slice(0, i).some((prior, index) => index > 0 && prior.stateAfter.weaponStability < steps[index - 1]!.stateAfter.weaponStability);
+    if (narrativeImpliesDamage && currStability >= prevStability && !hasHistoricalWeaponDamage && currWeapon !== null) {
       issues.push({
         stepIndex: step.stepIndex,
         type: "narrative_weapon_damage_without_stability_drop",
@@ -904,7 +986,7 @@ export function detectWeaponUpdateConsistency(
     }
 
     // 5. 无武器时叙事描述挥舞武器（与现有逻辑重复但独立维度）
-    if (currWeapon === null) {
+    if (currWeapon === null && (step.stateAfter.weaponBag ?? []).length === 0) {
       const impliesHold = WEAPON_HOLD_PATTERNS.some((p) => p.test(step.narrative));
       if (impliesHold && step.narrative.length > 5) {
         issues.push({
@@ -914,6 +996,17 @@ export function detectWeaponUpdateConsistency(
           evidence: `equippedWeapon=null, narrative 含武器持有关键词`,
         });
       }
+    }
+
+    // 6. Equipped/bag weapon exists but prose explicitly denies any weapon.
+    const hasAnyWeapon = currWeapon !== null || (step.stateAfter.weaponBag ?? []).length > 0;
+    if (hasAnyWeapon && /(?:没有|没)(?:有)?(?:任何|一把|可用的)?武器/.test(step.narrative)) {
+      issues.push({
+        stepIndex: step.stepIndex,
+        type: "narrative_weapon_absence_with_state",
+        description: "叙事声称没有武器，但结构化状态仍持有武器",
+        evidence: `equippedWeapon=${currWeapon ?? "null"}, weaponBag=${(step.stateAfter.weaponBag ?? []).length}`,
+      });
     }
   }
 

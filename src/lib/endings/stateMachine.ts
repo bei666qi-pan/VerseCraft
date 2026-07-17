@@ -42,12 +42,22 @@ export function transitionEndingState(
   switch (event.type) {
     case "TURN_COMMITTED": {
       if (!event.eligibility) return state;
-      if (state.idempotencyKey && state.eligibility) return state;
+      if (state.idempotencyKey && state.eligibility) {
+        const canUpgradeBeforeFinalChoice =
+          state.phase === "eligible" && event.eligibility.priority > state.eligibility.priority;
+        if (!canUpgradeBeforeFinalChoice) return state;
+      }
       return {
         ...state,
         phase: "eligible",
         eligibility: event.eligibility,
-        deathContext: event.deathContext ?? state.deathContext ?? null,
+        deathContext: event.eligibility.outcome === "death"
+          ? (event.deathContext ?? state.deathContext ?? null)
+          : null,
+        finalChoice: null,
+        finalNarrative: null,
+        settlementSnapshot: null,
+        redirectedAt: null,
         idempotencyKey: buildEndingIdempotencyKey({
           runId: event.runId,
           outcome: event.eligibility.outcome,

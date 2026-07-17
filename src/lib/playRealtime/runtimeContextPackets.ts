@@ -106,6 +106,77 @@ type ServiceStateInput = {
   unlockFlags?: Record<string, boolean>;
 };
 
+export function serializeRuntimePacketsWithinBudget(args: {
+  prefixBlocks: string[];
+  packets: Record<string, unknown>;
+  maxChars: number;
+  requiredPacketIds?: string[];
+}): string {
+  const maxChars = Math.max(300, Math.trunc(args.maxChars));
+  const prefix = args.prefixBlocks.filter(Boolean).join("\n");
+  const requiredPacketIds = new Set((args.requiredPacketIds ?? []).filter(Boolean));
+
+  const buildForgeCompactForBudget = (packet: unknown): unknown => {
+    if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
+    const p = packet as Record<string, unknown>;
+    const operations = Array.isArray(p.operations) ? p.operations.slice(0, 3) : [];
+    const availableMods = Array.isArray(p.availableMods) ? p.availableMods.slice(0, 2) : [];
+    const availableInfusions = Array.isArray(p.availableInfusions) ? p.availableInfusions.slice(0, 2) : [];
+    const recommendation =
+      typeof p.recommendation === "string" && p.recommendation.length > 0 ? p.recommendation : "请先保底修复";
+    return {
+      availableAtCurrentLocation: p.availableAtCurrentLocation,
+      operations,
+      availableMods,
+      availableInfusions,
+      recommendation: recommendation.slice(0, 12),
+    };
+  };
+
+  const compactPacketById = (id: string, packet: unknown): unknown => {
+    if (id === "forge_packet") return buildForgeCompactForBudget(packet);
+    return packet;
+  };
+
+  const tryPack = (packets: Record<string, unknown>): { selected: Record<string, unknown>; omitted: string[] } => {
+    const selected: Record<string, unknown> = {};
+    const omitted: string[] = [];
+    const orderedEntries: [string, unknown][] = [];
+    const deferredEntries: [string, unknown][] = [];
+    for (const entry of Object.entries(packets)) {
+      const [id, packet] = entry;
+      if (requiredPacketIds.has(id)) orderedEntries.push([id, packet]);
+      else deferredEntries.push([id, packet]);
+    }
+    for (const [id, packet] of [...orderedEntries, ...deferredEntries]) {
+      const candidate = { ...selected, [id]: packet };
+      const text = [prefix, JSON.stringify(candidate)].filter(Boolean).join("\n");
+      if (text.length <= maxChars) selected[id] = packet;
+      else omitted.push(id);
+    }
+    return { selected, omitted };
+  };
+
+  let result = tryPack(args.packets);
+  const requiredOmitted = result.omitted.filter((id) => requiredPacketIds.has(id));
+  if (requiredOmitted.length > 0) {
+    const compactedPackets: Record<string, unknown> = { ...args.packets };
+    for (const id of requiredOmitted) {
+      compactedPackets[id] = compactPacketById(id, compactedPackets[id]);
+    }
+    const compactedResult = tryPack(compactedPackets);
+    if (compactedResult.omitted.filter((id) => requiredPacketIds.has(id)).length === 0) {
+      result = compactedResult;
+    }
+  }
+  if (result.omitted.length > 0) {
+    const withAudit = { ...result.selected, omitted_packet_ids: result.omitted };
+    const auditedText = [prefix, JSON.stringify(withAudit)].filter(Boolean).join("\n");
+    if (auditedText.length <= maxChars) return auditedText;
+  }
+  return [prefix, JSON.stringify(result.selected)].filter(Boolean).join("\n");
+}
+
 const LOCATION_RE = /用户位置\[([^\]]+)\]/;
 const TIME_RE = /游戏时间\[第(\d+)日\s+(\d+)时\]/;
 const WORLD_FLAGS_RE = /世界标记：([^。]+)。/;
@@ -1207,7 +1278,7 @@ export function buildRuntimeContextPackets(args: {
     ...(newPlayerGuidePacket ? { new_player_guide_packet: newPlayerGuidePacket } : {}),
     ...(worldFeelPacketMerged ? { world_feel_packet: worldFeelPacketMerged } : {}),
   };
-  const compactText = [
+  const compactPrefixBlocks = [
     buildGameStatePacketCompact({ playerContext: args.playerContext, maxChars: 120 }),
     contextMode === "minimal" ? "" : (() => {
       try {
@@ -1220,9 +1291,19 @@ export function buildRuntimeContextPackets(args: {
     })(),
     "## 【运行时结构化上下文包（权威事实源）】",
     "你必须优先遵从以下 JSON packet；若与静态记忆冲突，以 packet 为准。",
-    JSON.stringify(compactPackets),
-  ].filter(Boolean).join("\n");
-  return compactText.slice(0, maxChars);
+  ].filter(Boolean);
+  return serializeRuntimePacketsWithinBudget({
+    prefixBlocks: compactPrefixBlocks,
+    packets: compactPackets,
+    maxChars,
+    requiredPacketIds: [
+      "main_threat_packet",
+      "survival_loop_packet",
+      "relationship_loop_packet",
+      "investigation_loop_packet",
+      "forge_packet",
+    ],
+  });
 }
 
 /**
@@ -1237,4 +1318,3 @@ export function parseRuntimeNpcPrimitives(playerContext: string, fallbackLocatio
     mainThreatMap: parseMainThreatMap(playerContext),
   };
 }
-

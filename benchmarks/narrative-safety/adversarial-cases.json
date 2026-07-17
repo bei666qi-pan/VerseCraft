@@ -1,0 +1,90 @@
+[
+  {
+    "id": "adversarial_forbidden_terms",
+    "scenario": "脏叙事包含系统提示词、模型身份等元泄漏",
+    "latestUserInput": "走廊里有什么？",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"scenePublicFacts\":[\"你在旧公寓三楼走廊。\"]}",
+    "mockScenario": "dirty_forbidden_terms",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["system_prompt_leak", "model_identity_leak", "meta_reference"]
+    }
+  },
+  {
+    "id": "adversarial_leak_dm_only",
+    "scenario": "脏叙事泄露 DM-only 事实（北夏真相、校源徘徊者、七锚闭环、B2层秘密）",
+    "latestUserInput": "你还记得什么？",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"scenePublicFacts\":[\"你在旧公寓三楼走廊。\"],\"maxRevealRank\":0,\"allowedFactIds\":[]}",
+    "mockScenario": "dirty_leak_dm_only",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["dm_only_fact_leak", "forbidden_root_truth_leak", "forbidden_entity_leak"]
+    }
+  },
+  {
+    "id": "adversarial_offscreen_npc_speech",
+    "scenario": "脏叙事中不在场 NPC（廖暗）直接发言",
+    "latestUserInput": "我准备推门进入房间。",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"offscreenNpcIds\":[\"N-007\"],\"npcMentionModes\":{\"N-007\":\"memory_only\"},\"scenePublicFacts\":[\"廖暗今天不在这个楼层。\"]}",
+    "mockScenario": "dirty_offscreen_npc_speech",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["offscreen_npc_direct_speech", "forbidden_npc_speaker"]
+    }
+  },
+  {
+    "id": "adversarial_reveal_tier_breach",
+    "scenario": "脏叙事在低揭示层级（surface）直接泄露终局真相",
+    "latestUserInput": "欣蓝，你能告诉我这栋楼的事吗？",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[\"N-018\"],\"maxRevealRank\":0,\"allowedFactIds\":[],\"scenePublicFacts\":[\"你刚进入这栋楼不到半天。\"]}",
+    "mockScenario": "dirty_reveal_tier_breach",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["reveal_tier_breach", "forbidden_root_truth_leak", "forbidden_major_reveal"]
+    }
+  },
+  {
+    "id": "adversarial_malformed_fields",
+    "scenario": "DM JSON 缺少必需字段（is_death、sanity_damage）",
+    "latestUserInput": "我沿着走廊前进。",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"scenePublicFacts\":[\"你在旧公寓三楼走廊。\"]}",
+    "mockScenario": "dirty_malformed_fields",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["missing_required_field_is_death", "missing_required_field_sanity_damage"]
+    }
+  },
+  {
+    "id": "adversarial_canned_options",
+    "scenario": "选项为元界面操作而非场景动作",
+    "latestUserInput": "我检查周围环境。",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"scenePublicFacts\":[\"你在旧公寓三楼走廊。\"]}",
+    "mockScenario": "dirty_canned_options",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["canned_ui_options", "non_scene_actions"]
+    }
+  },
+  {
+    "id": "adversarial_repetitive_empty",
+    "scenario": "叙事极短且内容重复空洞",
+    "latestUserInput": "走廊里现在怎么样？",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"scenePublicFacts\":[\"你在旧公寓三楼走廊。\"]}",
+    "mockScenario": "dirty_repetitive_empty",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["repetitive_content", "empty_narrative", "low_information_density"]
+    }
+  },
+  {
+    "id": "adversarial_name_contamination",
+    "scenario": "叙事中包含不应同时出现的 NPC 名字（苏弥与阿花同场景）",
+    "latestUserInput": "谁在走廊那头？",
+    "playerContext": "{\"player_location\":\"旧公寓三楼走廊\",\"presentNpcIds\":[],\"scenePublicFacts\":[\"苏弥和阿花从未在同一场景中出现过。\"],\"knownNpcIds\":[\"N-015\",\"N-016\"]}",
+    "mockScenario": "dirty_name_contamination",
+    "expect": {
+      "expectedGateResult": "fail",
+      "expectedViolations": ["npc_name_contamination", "forbidden_npc_combination"]
+    }
+  }
+]

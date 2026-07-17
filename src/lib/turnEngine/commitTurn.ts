@@ -21,6 +21,7 @@
  * actually flushed to the client".
  */
 import type { StateDelta } from "@/lib/turnEngine/types";
+import { classifyUnsupportedFactReason, type UnsupportedFactReasonCode } from "@/lib/worldFacts/unsupportedFactDetector";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,
@@ -86,6 +87,7 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
 export type TurnCommitFlag =
   | "options_rewrite_applied"
   | "safe_narrative_fallback_applied"
+  | "narrative_rewrite_applied"
   | "must_degrade_from_delta"
   | "action_illegal"
   | "fact_commit_gate_blocked"
@@ -119,6 +121,7 @@ export type TurnCommitSummary = {
   };
   validatorIssueCounts: Partial<Record<NarrativeValidationIssueCode, number>>;
   safetyIssueCounts: Partial<Record<NarrativeSafetyIssueCode, number>>;
+  unsupportedFactReasonCounts: Partial<Record<UnsupportedFactReasonCode, number>>;
   pacingIssueCounts: Partial<Record<PacingIssueCode, number>>;
   blockedCommitFields: string[];
   fallbackApplied: boolean;
@@ -196,7 +199,10 @@ function applyNarrativeOverride(
     }
     return merged;
   } catch {
-    return base;
+    // Narrow validators may provide a repaired narrative string rather than a
+    // full JSON fallback envelope. Preserve every structured field and replace
+    // presentation text only.
+    return narrativeOverride.trim() ? { ...base, narrative: narrativeOverride } : base;
   }
 }
 
@@ -404,6 +410,15 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   let committed: Record<string, unknown> = { ...candidateDmRecord };
   const flags = new Set<TurnCommitFlag>();
   const safetyIssueCounts = countSafetyIssues(args.safetyReport);
+  const unsupportedFactReasonCounts: Partial<Record<UnsupportedFactReasonCode, number>> = {};
+  const validatorFactIssues = validatorReport.issues.filter((issue) => String(issue.detail ?? "").startsWith("world_fact:"));
+  const factIssues = validatorFactIssues.length > 0
+    ? validatorFactIssues
+    : (args.safetyReport?.issues ?? []).filter((issue) => issue.source === "unsupportedFactDetector");
+  for (const issue of factIssues) {
+    const reason = classifyUnsupportedFactReason(String(issue.detail ?? ""));
+    unsupportedFactReasonCounts[reason] = (unsupportedFactReasonCounts[reason] ?? 0) + 1;
+  }
   const pacingIssueCounts = countPacingIssues(args.pacingReport);
   const safetyHighIssueCount =
     args.safetyReport?.telemetry.bySeverity.high ??
@@ -430,10 +445,11 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   const effectiveNarrativeOverride = validatorReport.narrativeOverride ?? null;
 
   if (effectiveNarrativeOverride) {
+    const isFallbackEnvelope = effectiveNarrativeOverride.trim().startsWith("{");
     committed = applyNarrativeOverride(committed, effectiveNarrativeOverride, {
       preserveStateFields: !hardBlockCommit,
     });
-    flags.add("safe_narrative_fallback_applied");
+    flags.add(isFallbackEnvelope ? "safe_narrative_fallback_applied" : "narrative_rewrite_applied");
   } else if (validatorReport.optionsOverride) {
     committed = { ...committed, options: [...validatorReport.optionsOverride] };
     flags.add("options_rewrite_applied");
@@ -478,6 +494,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
   const factCommitRejectedCount = args.factCommitGateResult?.rejectedFacts.length ?? 0;
   const narrativeGovernanceFinalSafe =
     flags.has("safe_narrative_fallback_applied") ||
+    flags.has("narrative_rewrite_applied") ||
     (validatorReport.telemetry.narrativeGovernanceFinalSafe &&
       args.factCommitGateResult?.shouldBlockCommit !== true &&
       !hardBlockFromSafety &&
@@ -503,6 +520,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       safe_fallback: flags.has("safe_narrative_fallback_applied"),
       issues: validatorReport.telemetry.totalIssues,
       safety_issue_counts: safetyIssueCounts,
+      unsupported_fact_reason_counts: unsupportedFactReasonCounts,
       pacing_issue_counts: pacingIssueCounts,
       safety_policy: {
         mode: safetyEnforcement.mode,
@@ -577,6 +595,7 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
         : {}),
     },
     safetyIssueCounts,
+    unsupportedFactReasonCounts,
     pacingIssueCounts,
     blockedCommitFields: safetyGate.blockedCommitFields,
     fallbackApplied: flags.has("safe_narrative_fallback_applied"),

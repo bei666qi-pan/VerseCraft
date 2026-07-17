@@ -174,6 +174,26 @@ test("resolveTurnConsistency: conflict_outcome derives from combat_summary", () 
   assert.deepEqual(out.conflict_outcome?.linkedNpcIds, ["N-010"]);
 });
 
+test("resolveTurnConsistency: conflict injury sanity mirrors authoritative sanity_damage", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 3,
+    narrative: "阴影造成精神冲击。",
+    is_death: false,
+    consumes_time: true,
+    conflict_outcome: {
+      outcomeTier: "partial_success",
+      resultLayer: "system_adjudicated",
+      summary: "威胁暂时退却。",
+      likelyCost: "none",
+    },
+  } as any);
+  assert.equal(out.sanity_damage, 3);
+  assert.equal(out.conflict_outcome?.injury_delta?.sanityDamage, 3);
+  assert.deepEqual(out.conflict_outcome?.injury_delta?.injuries, []);
+  assert.match(out.conflict_outcome?.injury_delta?.narrativeHint ?? "", /理智-3.*未造成身体伤势/);
+});
+
 test("resolveTurnConsistency: time_cost normalizes to known kind", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,
@@ -293,3 +313,27 @@ test("resolveTurnConsistency: explicit decision_required with invalid payload sh
   assert.equal(out.ui_hints?.consistency_flags?.includes("invalid_decision_required_payload") ?? false, true);
 });
 
+test("resolveTurnConsistency preserves whitelisted internal_meta", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: false,
+    sanity_damage: 0,
+    narrative: "x",
+    is_death: false,
+    consumes_time: false,
+    internal_meta: {
+      action: "site_fallback",
+      request_id: "r-42",
+      reason: "server_internal_generation_failed",
+      upstream_status: 503,
+      kind: "site_unavailable",
+      dropped: "ignored",
+    },
+  } as any);
+  assert.deepEqual(out.internal_meta, {
+    action: "site_fallback",
+    request_id: "r-42",
+    reason: "server_internal_generation_failed",
+    upstream_status: 503,
+    kind: "site_unavailable",
+  });
+});

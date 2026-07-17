@@ -49,6 +49,7 @@ export type TurnEnvelope = {
   relationship_updates: unknown[];
   new_tasks: unknown[];
   task_updates: unknown[];
+  profession_trial_result?: Record<string, unknown>;
   /** 手记线索增量（阶段 2+）；旧前端可忽略 */
   clue_updates: Array<Record<string, unknown>>;
   player_location?: string;
@@ -59,6 +60,7 @@ export type TurnEnvelope = {
 
   // Security / audit info (kept small)
   security_meta?: Record<string, unknown>;
+  internal_meta?: Record<string, unknown>;
 
   // Phase-1 light interaction hints (optional)
   ui_hints?: {
@@ -161,4 +163,3 @@ export type TurnEnvelope = {
   // Phase-5: 伏笔操作（可选，DM 可发 plant/reinforce/payoff）
   foreshadow_ops?: Array<Record<string, unknown>>;
 };
-

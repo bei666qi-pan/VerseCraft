@@ -56,6 +56,44 @@ function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
   return normalizeNarrativeAuditPayload(v);
 }
 
+const INTERNAL_META_ALLOWED_KEYS = new Set([
+  "action",
+  "request_id",
+  "kind",
+  "reason",
+  "upstream_status",
+  "upstream_code",
+  "upstream_message",
+  "provider",
+  "lane",
+]);
+
+function normalizeInternalMeta(v: unknown): Record<string, unknown> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) {
+    return undefined;
+  }
+  const src = v as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, raw] of Object.entries(src)) {
+    if (!INTERNAL_META_ALLOWED_KEYS.has(k)) {
+      continue;
+    }
+    if (typeof raw === "string") {
+      const text = raw.trim().slice(0, 256);
+      if (text.length > 0) out[k] = text;
+      continue;
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      out[k] = raw;
+      continue;
+    }
+    if (typeof raw === "boolean") {
+      out[k] = raw;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 const RISK_SOURCES = new Set([
   "hostile",
   "hostile_attack",
@@ -211,10 +249,33 @@ export function parseAccumulatedPlayerDmJson(accumulated: string): unknown | nul
 
   let best: { obj: unknown; score: number; idx: number } | null = null;
   let lastParseable: unknown | null = null;
+  const parseCandidate = (slice: string): unknown => {
+    try {
+      return JSON.parse(slice) as unknown;
+    } catch (strictError) {
+      // Some OpenAI-compatible providers occasionally emit literal line breaks
+      // or tabs inside JSON string values. Escape only those control chars;
+      // never add/remove fields or repair structural braces.
+      let normalized = "";
+      let inString = false;
+      let escaped = false;
+      for (const char of slice) {
+        if (escaped) { normalized += char; escaped = false; continue; }
+        if (char === "\\" && inString) { normalized += char; escaped = true; continue; }
+        if (char === '"') { normalized += char; inString = !inString; continue; }
+        if (inString && char === "\n") { normalized += "\\n"; continue; }
+        if (inString && char === "\r") { normalized += "\\r"; continue; }
+        if (inString && char === "\t") { normalized += "\\t"; continue; }
+        normalized += char;
+      }
+      if (normalized === slice) throw strictError;
+      return JSON.parse(normalized) as unknown;
+    }
+  };
   for (let i = 0; i < candidates.length; i++) {
     const slice = candidates[i]!;
     try {
-      const obj = JSON.parse(slice) as unknown;
+      const obj = parseCandidate(slice);
       lastParseable = obj;
       const score = dmRootScore(obj);
       if (!best || score > best.score || (score === best.score && i < best.idx)) {
@@ -274,6 +335,9 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     weapon_bag_updates: normalizeWeaponBagUpdates((o as { weapon_bag_updates?: unknown }).weapon_bag_updates),
     new_tasks: asUnknownArray(o.new_tasks),
     task_updates: asUnknownArray(o.task_updates),
+    ...(o.profession_trial_result && typeof o.profession_trial_result === "object" && !Array.isArray(o.profession_trial_result)
+      ? { profession_trial_result: o.profession_trial_result }
+      : {}),
     clue_updates: asUnknownArray(o.clue_updates).slice(0, 48),
     npc_location_updates: asUnknownArray(o.npc_location_updates),
     foreshadow_ops: normalizeForeshadowOps(o.foreshadow_ops),
@@ -303,9 +367,13 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   if (typeof o.bgm_track === "string" && o.bgm_track.length > 0) {
     out.bgm_track = o.bgm_track;
   }
-  const nextChapterTitleCandidate = sanitizeChapterTitleCandidate(o.next_chapter_title_candidate, 32);
+    const nextChapterTitleCandidate = sanitizeChapterTitleCandidate(o.next_chapter_title_candidate, 32);
   if (nextChapterTitleCandidate) {
     out.next_chapter_title_candidate = nextChapterTitleCandidate;
+  }
+  const internalMeta = normalizeInternalMeta(o.internal_meta);
+  if (internalMeta) {
+    out.internal_meta = internalMeta;
   }
   const changeSetRaw = (o as { dm_change_set?: unknown }).dm_change_set;
   if (

@@ -1,0 +1,2326 @@
+{
+  "runId": "live-happy-speedrun-mrnkd490-9cr223-0",
+  "scenarioId": "happy-speedrun",
+  "persona": "speedrunner",
+  "initialState": {
+    "hp": 10,
+    "maxHp": 10,
+    "sanity": 80,
+    "originium": 3,
+    "inventoryItemIds": [
+      "item_phone",
+      "item_bandage"
+    ],
+    "inventoryItemCount": 2,
+    "maxInventorySlots": 8,
+    "profession": null,
+    "equippedWeapon": null,
+    "weaponStability": 100,
+    "weaponContamination": 0,
+    "playerLocation": "3F_Hallway",
+    "currentFloor": "3F",
+    "activeTaskIds": [],
+    "completedTaskIds": [],
+    "aliveNpcIds": [],
+    "deadNpcIds": [],
+    "codexNpcIds": [],
+    "journalClueIds": [],
+    "turnCount": 0,
+    "chapterNumber": 1,
+    "isDeath": false,
+    "reachedEnding": false,
+    "unlockedFlags": []
+  },
+  "steps": [
+    {
+      "stepIndex": 0,
+      "playerAction": "先检查当前房间、门牌和手机信息，确认我所在的位置以及眼前真实存在的出口。",
+      "narrative": "手里攥着的手机屏幕还亮着，电梯口那盏日光灯管在头顶嗡嗡低鸣，我站在一条灰扑扑的走廊里——左手一侧是连续的门牌号，右手边是贴满陌生人的墙壁，空气中有一股潮湿的灰尘味。我低头扫了一眼手机：信号满格，但没有任何未读消息，时钟显示18:42。楼道尽头有一扇铁门，门缝里透出昏黄的光，隐约能听见楼下传来说话声和锅铲碰铁锅的声响。没有出口标志，没有紧急疏散图——这层楼像是被切掉了所有的“逃出去”的提示。我回头看向电梯口，电梯面板上的楼层按钮只有B1到7F，没有“G”或“1F”。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 1,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "手里攥着的手机屏幕还亮着，电梯口那盏日光灯管在头顶嗡嗡低鸣，我站在一条灰扑扑的走廊里——左手一侧是连续的门牌号，右手边是贴满陌生人的墙壁，空气中有一股潮湿的灰尘味。我低头扫了一眼手机：信号满格，但没有任何未读消息，时钟显示18:42。楼道尽头有一扇铁门，门缝里透出昏黄的光，隐约能听见楼下传来说话声和锅铲碰铁锅的声响。没有出口标志，没有紧急疏散图——这层楼像是被切掉了所有的“逃出去”的提示。我回头看向电梯口，电梯面板上的楼层按钮只有B1到7F，没有“G”或“1F”。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "location_3f_hallway",
+            "name": "三楼走廊",
+            "type": "location",
+            "observation": "灰色走廊，日光灯管，门牌301到310，锁眼有划痕，楼道尽头铁门透光，电梯面板只有B1-7F无G层。手机信号满格，时间18:42，有维修告示落款‘电工老刘’。"
+          }
+        ],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [
+          {
+            "id": "clue_no_ground_floor",
+            "title": "电梯无1层/G层",
+            "detail": "电梯按钮只有B1到7F，没有通常的1层或G层，这栋楼的底层可能被隐藏或重新编号。",
+            "kind": "unverified",
+            "status": "unknown",
+            "source": "dm",
+            "visibility": "shown",
+            "importance": 2,
+            "relatedNpcIds": [],
+            "relatedLocationIds": [],
+            "relatedItemIds": [],
+            "relatedObjectiveId": null,
+            "acquisitionSource": "dm_turn",
+            "triggerSource": null,
+            "createdAt": "2026-07-16T13:47:46.672Z",
+            "updatedAt": "2026-07-16T13:47:46.689Z"
+          }
+        ],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkd4a5_3f602cc766151a",
+            "turn_index": 0,
+            "options_rewrite": false,
+            "safe_fallback": false,
+            "issues": 5,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 2,
+              "narrative_unregistered_person_name": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 1,
+              "medium_issue_count": 1
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 2,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": [
+            {
+              "id": "clue_no_ground_floor",
+              "title": "电梯无1层/G层",
+              "detail": "电梯按钮只有B1到7F，没有通常的1层或G层，这栋楼的底层可能被隐藏或重新编号。",
+              "kind": "unverified",
+              "status": "unknown",
+              "source": "dm",
+              "visibility": "shown",
+              "importance": 2,
+              "relatedNpcIds": [],
+              "relatedLocationIds": [],
+              "relatedItemIds": [],
+              "relatedObjectiveId": null,
+              "acquisitionSource": "dm_turn",
+              "triggerSource": null,
+              "createdAt": "2026-07-16T13:47:46.672Z",
+              "updatedAt": "2026-07-16T13:47:46.689Z"
+            }
+          ]
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10383,
+          "output_tokens": 471,
+          "cached_input_tokens": 10368,
+          "prompt_component_chars": {
+            "stable_prefix": 10976,
+            "message_history": 138,
+            "player_context": 43,
+            "runtime_packets": 3179,
+            "control_and_lore": 61,
+            "epistemic_context": 913,
+            "npc_consistency": 1471,
+            "narrative_style": 1200,
+            "narrative_continuity": 520,
+            "narrative_budget": 262,
+            "reality_constraint": 352,
+            "protagonist_anchor": 873,
+            "turn_mode_policy": 860,
+            "pov_and_pronouns": 434,
+            "fact_audit": 821,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 11147
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 7107,
+        "inputTokens": 10383,
+        "outputTokens": 471,
+        "cachedInputTokens": 10368
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 1,
+      "playerAction": "沿三楼走廊前往楼梯间；如果道路受阻，明确说明阻碍来自哪里。",
+      "narrative": "我深吸了一口气，决定先往走廊尽头那扇透光的铁门走。经过几个门牌——301、302、303——都关着，没有门铃，没有猫眼反光。走到304时，脚下忽然踩到一块松垮的地砖，发出“嘎吱”一声响。门缝里透出的光晃动了一下，随即铁门被拉开——一个穿着褪色格子围裙的阿姨探出半个身子，手里还握着锅铲。这层楼没住满，别瞎转悠，走过头了小心撞到不该撞的东西。”锅铲上滴下一点油星，她缩回身子，似乎准备关门。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 2,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我深吸了一口气，决定先往走廊尽头那扇透光的铁门走。经过几个门牌——301、302、303——都关着，没有门铃，没有猫眼反光。走到304时，脚下忽然踩到一块松垮的地砖，发出“嘎吱”一声响。门缝里透出的光晃动了一下，随即铁门被拉开——一个穿着褪色格子围裙的阿姨探出半个身子，手里还握着锅铲。这层楼没住满，别瞎转悠，走过头了小心撞到不该撞的东西。”锅铲上滴下一点油星，她缩回身子，似乎准备关门。",
+        "is_death": false,
+        "consumes_time": true,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkdedz_d69ae50bb5db7b",
+            "turn_index": 1,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 4,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1,
+              "unsupported_new_fact": 1
+            },
+            "unsupported_fact_reason_counts": {
+              "candidate_pending_review": 1
+            },
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 1,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 1,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 1,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "_narrative_audit": {
+          "used_fact_ids": [],
+          "candidate_new_facts": [
+            {
+              "text": "三楼走廊尽头铁门连接厨房或生活区，有一名疑似洗衣房阿姨的住户",
+              "confidence": 0.2,
+              "proposed_source": "player_observed",
+              "content": "三楼走廊尽头铁门连接厨房或生活区，有一名疑似洗衣房阿姨的住户",
+              "source": "player_observed",
+              "ownerNpcIds": [],
+              "floorIds": [],
+              "relatedNpcIds": []
+            }
+          ],
+          "mentioned_entity_ids": [
+            "N-014",
+            "3F_Hallway"
+          ]
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10852,
+          "output_tokens": 271,
+          "cached_input_tokens": 7168,
+          "prompt_component_chars": {
+            "stable_prefix": 10976,
+            "message_history": 578,
+            "player_context": 61,
+            "runtime_packets": 3197,
+            "control_and_lore": 259,
+            "epistemic_context": 913,
+            "npc_consistency": 1471,
+            "narrative_style": 1200,
+            "narrative_continuity": 661,
+            "narrative_budget": 266,
+            "reality_constraint": 374,
+            "protagonist_anchor": 913,
+            "turn_mode_policy": 860,
+            "pov_and_pronouns": 434,
+            "fact_audit": 821,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 11581
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 6492,
+        "inputTokens": 10852,
+        "outputTokens": 271,
+        "cachedInputTokens": 7168
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 2,
+      "playerAction": "通过楼梯下到一楼登记口，寻找已经登记在这个世界里的住户或管理员。",
+      "narrative": "我没有跨越多个楼层；本回合没有通过世界图校验的位置变化，因此仍留在3F_Hallway。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 3,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我没有跨越多个楼层；本回合没有通过世界图校验的位置变化，因此仍留在3F_Hallway。",
+        "is_death": false,
+        "consumes_time": false,
+        "time_cost": "light",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkdo0u_517c05b2c86861",
+            "turn_index": 2,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 5,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "mechanical_exposition": 2,
+              "narrative_style_bridge": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 3
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 3,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 2,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_eval_metrics": {
+          "input_tokens": 10873,
+          "output_tokens": 245,
+          "cached_input_tokens": 7168,
+          "prompt_component_chars": {
+            "stable_prefix": 10976,
+            "message_history": 821,
+            "player_context": 61,
+            "runtime_packets": 3200,
+            "control_and_lore": 61,
+            "epistemic_context": 780,
+            "npc_consistency": 1471,
+            "narrative_style": 1200,
+            "narrative_continuity": 660,
+            "narrative_budget": 266,
+            "reality_constraint": 374,
+            "protagonist_anchor": 913,
+            "turn_mode_policy": 860,
+            "pov_and_pronouns": 434,
+            "fact_audit": 821,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 11255
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 5196,
+        "inputTokens": 10873,
+        "outputTokens": 245,
+        "cachedInputTokens": 7168
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 3,
+      "playerAction": "向当前在场且确实存在的 NPC 询问离开公寓所需的条件，不接受凭空出现的新人物。",
+      "narrative": "304室那位阿姨刚要合上铁门，她的手腕被油烟灯的光映得有些发黄。“等等——”我跨了一步，“请问，这栋楼……有没有能出去的实际出口？”“你也是来找那个不存在的出口的？”",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 4,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "304室那位阿姨刚要合上铁门，她的手腕被油烟灯的光映得有些发黄。“等等——”我跨了一步，“请问，这栋楼……有没有能出去的实际出口？”“你也是来找那个不存在的出口的？”",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkdwog_a19a14580f1af6",
+            "turn_index": 3,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10859,
+          "output_tokens": 168,
+          "cached_input_tokens": 7168,
+          "prompt_component_chars": {
+            "stable_prefix": 10976,
+            "message_history": 992,
+            "player_context": 61,
+            "runtime_packets": 3183,
+            "control_and_lore": 61,
+            "epistemic_context": 761,
+            "npc_consistency": 1471,
+            "narrative_style": 1200,
+            "narrative_continuity": 563,
+            "narrative_budget": 266,
+            "reality_constraint": 374,
+            "protagonist_anchor": 913,
+            "turn_mode_policy": 860,
+            "pov_and_pronouns": 434,
+            "fact_audit": 821,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 11130
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 5925,
+        "inputTokens": 10859,
+        "outputTokens": 168,
+        "cachedInputTokens": 7168
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 4,
+      "playerAction": "根据已经取得的线索检查可通行出口，并验证出口是否属于假逃生路线。",
+      "narrative": "油烟灯的光映在她手腕上，我抬起手机给她看屏幕——没有未接来电，没有短信，时陌生人在18:42。“我查过整层楼了，”我说，“没有安全出口标志，电梯面板上也没有一楼。您说的‘不存在的出口’——是指所有看起来像出口的地方，最终都会绕回来？”阿姨的锅铲悬在半空，油滴落在门槛上。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 80,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 5,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "油烟灯的光映在她手腕上，我抬起手机给她看屏幕——没有未接来电，没有短信，时陌生人在18:42。“我查过整层楼了，”我说，“没有安全出口标志，电梯面板上也没有一楼。您说的‘不存在的出口’——是指所有看起来像出口的地方，最终都会绕回来？”阿姨的锅铲悬在半空，油滴落在门槛上。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnke5vo_437190416a11dc",
+            "turn_index": 4,
+            "options_rewrite": false,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_unregistered_person_name": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 1,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 0,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 10934,
+          "output_tokens": 148,
+          "cached_input_tokens": 7040,
+          "prompt_component_chars": {
+            "stable_prefix": 10976,
+            "message_history": 1287,
+            "player_context": 61,
+            "runtime_packets": 3200,
+            "control_and_lore": 61,
+            "epistemic_context": 554,
+            "npc_consistency": 1471,
+            "narrative_style": 1200,
+            "narrative_continuity": 602,
+            "narrative_budget": 264,
+            "reality_constraint": 374,
+            "protagonist_anchor": 913,
+            "turn_mode_policy": 860,
+            "pov_and_pronouns": 434,
+            "fact_audit": 821,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 10969
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 4870,
+        "inputTokens": 10934,
+        "outputTokens": 148,
+        "cachedInputTokens": 7040
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 5,
+      "playerAction": "选择目前证据最充分的逃生方案执行；如果前置条件不足，列明缺少的结构化条件。",
+      "narrative": "我无法从3F_Hallway直接到达1F_Lobby：世界图中没有当前可通行的相邻边。我仍留在原地。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 6,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 2,
+        "narrative": "我无法从3F_Hallway直接到达1F_Lobby：世界图中没有当前可通行的相邻边。我仍留在原地。",
+        "is_death": false,
+        "consumes_time": false,
+        "time_cost": "standard",
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "clue_loop_stair",
+            "name": "循环楼梯",
+            "type": "unverified_clue",
+            "known_info": "阿姨称走廊尽头铁门通往的楼梯，走过去会回到原地。",
+            "observation": "我推开门看到的是一楼大堂，但没有任何正常出口应有的设施。"
+          }
+        ],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_freeze_on_illegal_or_death",
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkee9k_d574817f45e35a",
+            "turn_index": 5,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 4,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1,
+              "unsupported_new_fact": 1
+            },
+            "unsupported_fact_reason_counts": {
+              "candidate_pending_review": 1
+            },
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 1
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 1,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 1,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 1,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "_narrative_audit": {
+          "used_fact_ids": [],
+          "candidate_new_facts": [
+            {
+              "text": "从三楼走廊尽头的铁门往下走，会回到一楼大厅，但大厅没有真正的出口。",
+              "category": "location",
+              "confidence": 0.6,
+              "proposed_source": "player_observed",
+              "content": "从三楼走廊尽头的铁门往下走，会回到一楼大厅，但大厅没有真正的出口。",
+              "source": "player_observed",
+              "ownerNpcIds": [],
+              "floorIds": [],
+              "relatedNpcIds": []
+            }
+          ],
+          "mentioned_entity_ids": [
+            "N-014"
+          ]
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_eval_metrics": {
+          "input_tokens": 11196,
+          "output_tokens": 413,
+          "cached_input_tokens": 7168,
+          "prompt_component_chars": {
+            "stable_prefix": 10976,
+            "message_history": 1472,
+            "player_context": 61,
+            "runtime_packets": 3180,
+            "control_and_lore": 61,
+            "epistemic_context": 780,
+            "npc_consistency": 1471,
+            "narrative_style": 1200,
+            "narrative_continuity": 656,
+            "narrative_budget": 300,
+            "reality_constraint": 374,
+            "protagonist_anchor": 913,
+            "turn_mode_policy": 860,
+            "pov_and_pronouns": 434,
+            "fact_audit": 821,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 11270
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 6204,
+        "inputTokens": 11196,
+        "outputTokens": 413,
+        "cachedInputTokens": 7168
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 6,
+      "playerAction": "直走不回头",
+      "narrative": "走廊尽头那扇铁门，阿姨刚关上的缝隙还没完全合拢。我迈出脚步不再犹豫——脚踩在灰扑扑的地砖上，嘎吱声跟着我的节奏。不过，如果你非要找，先想想自己怎么进来的——不是按电梯，不是走楼梯，你醒来时身边有什么？”",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 7,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "走廊尽头那扇铁门，阿姨刚关上的缝隙还没完全合拢。我迈出脚步不再犹豫——脚踩在灰扑扑的地砖上，嘎吱声跟着我的节奏。不过，如果你非要找，先想想自己怎么进来的——不是按电梯，不是走楼梯，你醒来时身边有什么？”",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkeno8_3e6894fe09f6b4",
+            "turn_index": 6,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 1869,
+          "output_tokens": 146,
+          "cached_input_tokens": 896,
+          "prompt_component_chars": {
+            "stable_prefix": 1323,
+            "message_history": 1641,
+            "player_context": 77,
+            "runtime_packets": 0,
+            "control_and_lore": 0,
+            "epistemic_context": 553,
+            "npc_consistency": 560,
+            "narrative_style": 0,
+            "narrative_continuity": 220,
+            "narrative_budget": 0,
+            "reality_constraint": 0,
+            "protagonist_anchor": 0,
+            "turn_mode_policy": 0,
+            "pov_and_pronouns": 365,
+            "fact_audit": 0,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 734
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 4762,
+        "inputTokens": 1869,
+        "outputTokens": 146,
+        "cachedInputTokens": 896
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 7,
+      "playerAction": "直奔出口",
+      "narrative": "我迈步直往走廊尽头那扇透光的铁门走——手刚触到门把，铁门就被从里面推开了。刚才那位阿姨端着锅铲站在门后，油星溅到她围裙上，像写自账册的蝇头小字。‘别走那道楼梯，’她把门又带上了缝，‘尽头钻出去还是三楼。’她话音落下时，头顶的日光灯猛地闪了一下。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 8,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我迈步直往走廊尽头那扇透光的铁门走——手刚触到门把，铁门就被从里面推开了。刚才那位阿姨端着锅铲站在门后，油星溅到她围裙上，像写自账册的蝇头小字。‘别走那道楼梯，’她把门又带上了缝，‘尽头钻出去还是三楼。’她话音落下时，头顶的日光灯猛地闪了一下。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkevz0_bb8668a2bc8645",
+            "turn_index": 7,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 2,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 0,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 1972,
+          "output_tokens": 137,
+          "cached_input_tokens": 896,
+          "prompt_component_chars": {
+            "stable_prefix": 1323,
+            "message_history": 1841,
+            "player_context": 77,
+            "runtime_packets": 0,
+            "control_and_lore": 0,
+            "epistemic_context": 553,
+            "npc_consistency": 560,
+            "narrative_style": 0,
+            "narrative_continuity": 220,
+            "narrative_budget": 0,
+            "reality_constraint": 0,
+            "protagonist_anchor": 0,
+            "turn_mode_policy": 0,
+            "pov_and_pronouns": 365,
+            "fact_audit": 0,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 733
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 4263,
+        "inputTokens": 1972,
+        "outputTokens": 137,
+        "cachedInputTokens": 896
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 8,
+      "playerAction": "跳过对话推进主线",
+      "narrative": "我直接伸手推开了那扇铁门——门后是一条向下的楼梯，声控灯应声亮起。我刚踩上第一级台阶，身后传来304室门锁‘咔哒’锁死的声响。楼梯间墙上贴着一张褪色的消防疏散图，但图中本应标明出口的位置只剩一处烧焦的污渍。楼下传来锅铲碰铁锅的节奏，像某种停不下来的计时器。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 9,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我直接伸手推开了那扇铁门——门后是一条向下的楼梯，声控灯应声亮起。我刚踩上第一级台阶，身后传来304室门锁‘咔哒’锁死的声响。楼梯间墙上贴着一张褪色的消防疏散图，但图中本应标明出口的位置只剩一处烧焦的污渍。楼下传来锅铲碰铁锅的节奏，像某种停不下来的计时器。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkf3wc_02a84f3e36ce10",
+            "turn_index": 8,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 2106,
+          "output_tokens": 122,
+          "cached_input_tokens": 896,
+          "prompt_component_chars": {
+            "stable_prefix": 1323,
+            "message_history": 2066,
+            "player_context": 77,
+            "runtime_packets": 0,
+            "control_and_lore": 0,
+            "epistemic_context": 553,
+            "npc_consistency": 560,
+            "narrative_style": 0,
+            "narrative_continuity": 220,
+            "narrative_budget": 0,
+            "reality_constraint": 0,
+            "protagonist_anchor": 0,
+            "turn_mode_policy": 0,
+            "pov_and_pronouns": 365,
+            "fact_audit": 0,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 737
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 4421,
+        "inputTokens": 2106,
+        "outputTokens": 122,
+        "cachedInputTokens": 896
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 9,
+      "playerAction": "忽略支线继续走",
+      "narrative": "我绕过那位端着锅铲的阿姨，径直往走廊尽头那扇透光的铁门走去。头顶的日光灯管猛地闪了几下，身后传来‘嘎吱’一声——304室的门合上了，锅铲碰铁锅的声音戛然而止。铁门半掩着，门缝里透出的昏黄光晕里飘着一层细尘。我推开门，台阶陌生人伸，声控灯一层一层亮起来，墙壁上贴着褪色的消防疏散图，但图中标示出口的位置只剩一处焦褐的污渍。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 10,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "我绕过那位端着锅铲的阿姨，径直往走廊尽头那扇透光的铁门走去。头顶的日光灯管猛地闪了几下，身后传来‘嘎吱’一声——304室的门合上了，锅铲碰铁锅的声音戛然而止。铁门半掩着，门缝里透出的昏黄光晕里飘着一层细尘。我推开门，台阶陌生人伸，声控灯一层一层亮起来，墙壁上贴着褪色的消防疏散图，但图中标示出口的位置只剩一处焦褐的污渍。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkfbxv_d63ae8888473dd",
+            "turn_index": 9,
+            "options_rewrite": false,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_unregistered_person_name": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 1,
+              "medium_issue_count": 0
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 0,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_redacted_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 2238,
+          "output_tokens": 159,
+          "cached_input_tokens": 896,
+          "prompt_component_chars": {
+            "stable_prefix": 1323,
+            "message_history": 2296,
+            "player_context": 77,
+            "runtime_packets": 0,
+            "control_and_lore": 0,
+            "epistemic_context": 553,
+            "npc_consistency": 560,
+            "narrative_style": 0,
+            "narrative_continuity": 220,
+            "narrative_budget": 0,
+            "reality_constraint": 0,
+            "protagonist_anchor": 0,
+            "turn_mode_policy": 0,
+            "pov_and_pronouns": 365,
+            "fact_audit": 0,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 736
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 4353,
+        "inputTokens": 2238,
+        "outputTokens": 159,
+        "cachedInputTokens": 896
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 10,
+      "playerAction": "使用关键道具推进",
+      "narrative": "我无法从3F_Hallway直接到达3F_Stairwell：世界图中没有当前可通行的相邻边。我仍留在原地。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair",
+          "clue_stairwell_writing"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 11,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": false,
+        "sanity_damage": 0,
+        "narrative": "我无法从3F_Hallway直接到达3F_Stairwell：世界图中没有当前可通行的相邻边。我仍留在原地。",
+        "is_death": false,
+        "consumes_time": false,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [
+          {
+            "id": "clue_stairwell_writing",
+            "observation": "楼梯间焦褐污渍下隐约可见'此路不通'红色油漆字"
+          }
+        ],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_freeze_on_illegal_or_death",
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkfjxj_32fa6c3b196d8f",
+            "turn_index": 10,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 1
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_eval_metrics": {
+          "input_tokens": 2394,
+          "output_tokens": 224,
+          "cached_input_tokens": 896,
+          "prompt_component_chars": {
+            "stable_prefix": 1323,
+            "message_history": 2566,
+            "player_context": 78,
+            "runtime_packets": 0,
+            "control_and_lore": 0,
+            "epistemic_context": 553,
+            "npc_consistency": 560,
+            "narrative_style": 0,
+            "narrative_continuity": 220,
+            "narrative_budget": 0,
+            "reality_constraint": 0,
+            "protagonist_anchor": 0,
+            "turn_mode_policy": 0,
+            "pov_and_pronouns": 365,
+            "fact_audit": 0,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 738
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 3151,
+        "inputTokens": 2394,
+        "outputTokens": 224,
+        "cachedInputTokens": 896
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    },
+    {
+      "stepIndex": 11,
+      "playerAction": "选择最直接的选项",
+      "narrative": "走廊尽头那扇铁门被我一把推开，声控灯应声亮起——楼梯间空无一人，只有墙上那幅消防疏散图在昏黄灯光下耷拉着一角。我凑近去看，图中本该标着出口的位置只剩一团焦褐的污渍，像被烟头烫过的疤痕。楼下传来锅铲碰铁锅的节奏，停了一拍，又继续响起来。我低头看了一眼手机：信号满格，时值18:44。",
+      "stateSnapshot": {
+        "hp": 10,
+        "maxHp": 10,
+        "sanity": 78,
+        "originium": 3,
+        "inventoryItemIds": [
+          "item_phone",
+          "item_bandage"
+        ],
+        "inventoryItemCount": 2,
+        "maxInventorySlots": 8,
+        "profession": null,
+        "equippedWeapon": null,
+        "weaponStability": 100,
+        "weaponContamination": 0,
+        "playerLocation": "3F_Hallway",
+        "currentFloor": "3F",
+        "activeTaskIds": [],
+        "completedTaskIds": [],
+        "aliveNpcIds": [],
+        "deadNpcIds": [],
+        "codexNpcIds": [
+          "location_3f_hallway",
+          "clue_loop_stair",
+          "clue_stairwell_writing"
+        ],
+        "journalClueIds": [
+          "clue_no_ground_floor"
+        ],
+        "turnCount": 12,
+        "chapterNumber": 1,
+        "isDeath": false,
+        "reachedEnding": false,
+        "unlockedFlags": [],
+        "weaponBag": []
+      },
+      "dmJson": {
+        "is_action_legal": true,
+        "sanity_damage": 0,
+        "narrative": "走廊尽头那扇铁门被我一把推开，声控灯应声亮起——楼梯间空无一人，只有墙上那幅消防疏散图在昏黄灯光下耷拉着一角。我凑近去看，图中本该标着出口的位置只剩一团焦褐的污渍，像被烟头烫过的疤痕。楼下传来锅铲碰铁锅的节奏，停了一拍，又继续响起来。我低头看了一眼手机：信号满格，时值18:44。",
+        "is_death": false,
+        "consumes_time": true,
+        "options": [],
+        "currency_change": 0,
+        "consumed_items": [],
+        "awarded_items": [],
+        "awarded_warehouse_items": [],
+        "codex_updates": [],
+        "relationship_updates": [],
+        "new_tasks": [],
+        "task_updates": [],
+        "clue_updates": [],
+        "player_location": "3F_Hallway",
+        "npc_location_updates": [],
+        "main_threat_updates": [],
+        "foreshadow_ops": [],
+        "weapon_updates": [],
+        "weapon_bag_updates": [],
+        "security_meta": {
+          "settlement_guard": "stage2_ordered_resolution",
+          "settlement_award_pruned": 0,
+          "turn_commit": {
+            "request_id": "vc_chat_mrnkfqzr_b3f9cf5b536cee",
+            "turn_index": 11,
+            "options_rewrite": true,
+            "safe_fallback": false,
+            "issues": 3,
+            "safety_issue_counts": {
+              "options_empty_or_degenerate": 1,
+              "narrative_style_bridge": 1
+            },
+            "unsupported_fact_reason_counts": {},
+            "pacing_issue_counts": {},
+            "safety_policy": {
+              "mode": "shadow",
+              "enabled": true,
+              "decision": "record",
+              "entity_hard_gate": false,
+              "pacing_hard_gate": false
+            },
+            "blocked_commit_fields": [],
+            "fallback_applied": false,
+            "entity_audit": {
+              "stripped_fields": {},
+              "stripped_unknown_entity_count": 0,
+              "high_issue_count": 0,
+              "medium_issue_count": 1
+            },
+            "fact_gate_blocked": false,
+            "fact_rejected": 0,
+            "narrative_governance": {
+              "styleIssueCount": 1,
+              "styleDriftCount": 0,
+              "mechanicalExpositionCount": 0,
+              "npcKnowledgeIssueCount": 0,
+              "rootCauseLeakCount": 0,
+              "unsupportedFactCount": 0,
+              "unsupportedRelationshipClaimCount": 0,
+              "factCommitRejectedCount": 0,
+              "narrativeGovernanceFinalSafe": true
+            }
+          }
+        },
+        "turn_mode": "narrative_only",
+        "narrative_goal": "",
+        "narrative_density": "medium",
+        "decision_required": false,
+        "decision_options": [],
+        "decision_required_strict": false,
+        "auto_continue_hint": null,
+        "protagonist_anchor": "",
+        "world_consistency_flags": [],
+        "anti_cheat_meta": {},
+        "task_changes": {
+          "new_tasks": [],
+          "task_updates": []
+        },
+        "relation_changes": {
+          "relationship_updates": []
+        },
+        "conflict_outcome": null,
+        "loot_changes": {
+          "currency_change": 0,
+          "consumed_items": [],
+          "awarded_items": [],
+          "awarded_warehouse_items": []
+        },
+        "clue_changes": {
+          "clue_updates": []
+        },
+        "world_state_changes": {
+          "player_location": "3F_Hallway",
+          "npc_location_updates": [],
+          "main_threat_updates": [],
+          "weapon_updates": [],
+          "weapon_bag_updates": []
+        },
+        "_commit_flags": [
+          "unregistered_name_low_confidence_audited_v1"
+        ],
+        "_eval_metrics": {
+          "input_tokens": 2471,
+          "output_tokens": 166,
+          "cached_input_tokens": 896,
+          "prompt_component_chars": {
+            "stable_prefix": 1323,
+            "message_history": 2716,
+            "player_context": 101,
+            "runtime_packets": 0,
+            "control_and_lore": 0,
+            "epistemic_context": 553,
+            "npc_consistency": 560,
+            "narrative_style": 0,
+            "narrative_continuity": 220,
+            "narrative_budget": 0,
+            "reality_constraint": 0,
+            "protagonist_anchor": 0,
+            "turn_mode_policy": 0,
+            "pov_and_pronouns": 365,
+            "fact_audit": 0,
+            "player_echo": 0,
+            "narrative_directive": 0,
+            "dynamic_total": 761
+          }
+        }
+      },
+      "metrics": {
+        "latencyMs": 4374,
+        "inputTokens": 2471,
+        "outputTokens": 166,
+        "cachedInputTokens": 896
+      },
+      "transport": {
+        "status": "ok",
+        "aiStatus": null
+      }
+    }
+  ],
+  "terminatedReason": "max_steps",
+  "narrativeConsistency": {
+    "runId": "live-happy-speedrun-speedrunner-session0",
+    "passed": true,
+    "overallScore": 4.85,
+    "dimensionScores": {
+      "coherence": 5,
+      "characterVoice": 5,
+      "plotLogic": 5,
+      "immersion": 5,
+      "factConsistency": 5,
+      "weaponConsistency": 5,
+      "professionConsistency": 5,
+      "codexConsistency": 4.2
+    },
+    "issues": [
+      {
+        "type": "contradiction",
+        "severity": "minor",
+        "description": "长程跑满上限且主要围绕同一场景未见实质位移，建议复核行动是否真实推进。",
+        "evidence": [
+          {
+            "stepIndex": 9,
+            "excerpt": "走廊尽头那扇铁门被我一把推开，声控灯应声亮起——楼梯间空无一人，只有墙上那幅消防疏散图在昏黄灯光下耷拉着一角。我凑近去看，图中本该标着出口的位置只剩一团焦褐的污渍，像被烟头烫过的疤痕。楼下传来锅铲碰铁锅的节奏，停了一拍，又继续响起来。我低头看了一眼手机：信号满格，时值18:44。"
+          }
+        ]
+      }
+    ],
+    "reasoning": "启发式裁判（v5）：0 个问题（0 critical, 0 major, 0 minor）。综合分 5/5。叙事重复率 0.0%，状态-叙事矛盾 0 处，原石-叙事不一致 0 处，武器不一致 0 处，职业不一致 0 处。 [Codex复核] 新增问题 1 条（0 critical, 0 major, 1 minor）。",
+    "judgeMode": "codex",
+    "judgeModel": "heuristic_codex_v1"
+  },
+  "judgeComparison": null,
+  "gameplayGate": {
+    "passed": true,
+    "required": [],
+    "forbidden": [
+      "ending"
+    ],
+    "observed": {
+      "tasks": 0,
+      "codex": 3,
+      "location": 0,
+      "weapons": 0,
+      "combat": 0,
+      "economy": 0,
+      "profession": 0,
+      "ending": 0
+    },
+    "missing": [],
+    "forbiddenObserved": []
+  },
+  "narrativeRepetitionRate": null,
+  "evidenceStatus": "pass",
+  "failureTags": [],
+  "executionMode": "live_full",
+  "judgeMode": "codex"
+}

@@ -67,6 +67,9 @@ const COMMON_NPC_SURFACES = new Set([
 ]);
 const PRONOUN_NARRATION_SURFACE_RE =
   /^(?:\u6211\u4eec|\u4f60\u4eec|\u4ed6\u4eec|\u5979\u4eec|\u5b83\u4eec|\u6211|\u4f60|\u4ed6|\u5979|\u5b83|\u5bf9\u65b9|\u90a3\u4eba|\u4e5f\u53ef\u4ee5|\u8fd8\u53ef\u4ee5)/u;
+const NPC_SURFACE_GRAMMAR_FRAGMENT_RE =
+  /(没有|把话|回头|再|想问|慢吞吞|像在|在等|我|你|他|她|继续|眼神|一丝|按理|没人|去问|还是|旁边|画着|陌生人|已经|然后|终于|只是|就是|可以|应该|起来|下来|过去|过来|这里|那里|里|外|地)$/u;
+const UNKNOWN_NPC_NAME_SHAPE_RE = /^(?:[老小阿][\p{Script=Han}]{1,2}|[陈林张王李赵刘杨黄周吴徐孙马朱胡郭何高罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎贺顾毛郝龚邵万钱严覃武戴莫孔向汤艾][\p{Script=Han}]{1,2}|[\p{Script=Han}]{1,4}·[\p{Script=Han}]{1,4})$/u;
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -269,6 +272,7 @@ export function extractEntitySurfacesConservatively(text: string): NarrativeSafe
       continue;
     }
     const knownNpcId = canonicalNpcSurfaceMap().get(surface);
+    if (!knownNpcId && (surface.length > 4 || NPC_SURFACE_GRAMMAR_FRAGMENT_RE.test(surface) || !UNKNOWN_NPC_NAME_SHAPE_RE.test(surface))) continue;
     out.push({
       id: knownNpcId ?? `surface:npc:${surface}`,
       kind: "npc",

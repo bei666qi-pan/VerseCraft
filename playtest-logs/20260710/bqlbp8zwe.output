@@ -1,0 +1,868 @@
+closureBinding.test.ts
+closureBinding.ts
+derive.ts
+escapeMainline.test.ts
+finalAction.ts
+integration.ts
+prompt.ts
+reducer.ts
+selectors.test.ts
+selectors.ts
+template.ts
+types.ts
+===
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/closureBinding.test.ts <==
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createStageOneStarterTasks } from "@/lib/tasks/taskV2";
+import { WORLD_CLOSURE_BY_FLOOR } from "@/lib/registry/worldClosureMatrix";
+import {
+  ESCAPE_COST_TRIAL_TASK_IDS,
+  ESCAPE_EXIT_FLOOR_ID,
+  ESCAPE_GATEKEEPER_FLOOR_ID,
+  ESCAPE_GATEKEEPER_NPC_IDS,
+  ESCAPE_KEY_ITEM_ID,
+  getEscapeClosureBindingIssues,
+} from "./closureBinding";
+
+test("closureBinding: escape 条件与 WORLD_CLOSURE_MATRIX 保持一致（回归漂移检测）", () => {
+  const issues = getEscapeClosureBindingIssues();
+  assert.deepStrictEqual(issues, []);
+});
+
+test("closureBinding: 守门人楼层与出口楼层在矩阵中真实存在", () => {
+  assert.ok(WORLD_CLOSURE_BY_FLOOR[ESCAPE_GATEKEEPER_FLOOR_ID]);
+  assert.ok(WORLD_CLOSURE_BY_FLOOR[ESCAPE_EXIT_FLOOR_ID]);
+  for (const npcId of ESCAPE_GATEKEEPER_NPC_IDS) {
+    assert.ok(WORLD_CLOSURE_BY_FLOOR[ESCAPE_GATEKEEPER_FLOOR_ID].keyNpcIds.includes(npcId), npcId);
+  }
+  assert.ok(WORLD_CLOSURE_BY_FLOOR[ESCAPE_GATEKEEPER_FLOOR_ID].itemIds.includes(ESCAPE_KEY_ITEM_ID));
+});
+
+test("closureBinding: 代价试炼任务 id 在真实任务表中存在（未来若改名会在此处失败）", () => {
+  const tasks = createStageOneStarterTasks();
+  const ids = new Set(tasks.map((t) => t.id));
+  for (const id of ESCAPE_COST_TRIAL_TASK_IDS) {
+    assert.ok(ids.has(id), `任务 id ${id} 应存在于 createStageOneStarterTasks()`);
+  }
+});
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/closureBinding.ts <==
+/**
+ * 逃离主线关键条件 ↔ 世界闭环矩阵（WORLD_CLOSURE_MATRIX）的显式绑定。
+ *
+ * 背景：`deriveEscapeFactors`（见 ./derive）判定 obtain_b2_access / secure_key_item /
+ * gain_trust_from_gatekeeper / survive_cost_trial 时用到的具体 npcId / itemId，此前是
+ * derive.ts 内部的裸字面量，与 `WORLD_CLOSURE_MATRIX`（每层楼的权威一致性表）零引用
+ * 关系——两边各自维护同一批事实，任一边改名/删除都不会被另一边发现（静默漂移风险）。
+ *
+ * 本文件把这些字面量集中声明为具名常量并从 WORLD_CLOSURE_MATRIX 反查校验，供 derive.ts
+ * 引用、供测试断言一致性。只做只读交叉校验，不改变 derive.ts 原有的运行时分支逻辑，也不
+ * 改变任何现有单测断言的具体字面量值（"N-018" / "N-010" / "I-C12" / 45 / 50 均保持不变）。
+ */
+
+import { WORLD_CLOSURE_BY_FLOOR } from "@/lib/registry/worldClosureMatrix";
+
+/** 守门人所在楼层：登记口 / 物业口（欣蓝、北夏均在此层承担守门职能）。 */
+export const ESCAPE_GATEKEEPER_FLOOR_ID = "1" as const;
+
+/** 授予"守门人信任"条件的两名 NPC（任一达到各自阈值即算满足）。 */
+export const ESCAPE_GATEKEEPER_NPC_IDS = ["N-018", "N-010"] as const;
+
+/** 与 ESCAPE_GATEKEEPER_NPC_IDS 一一对应的信任阈值。 */
+export const ESCAPE_GATEKEEPER_TRUST_THRESHOLDS: Record<(typeof ESCAPE_GATEKEEPER_NPC_IDS)[number], number> = {
+  "N-018": 45,
+  "N-010": 50,
+};
+
+/**
+ * 关键钥物：欣蓝名下的备用电池。
+ * 注：derive.ts 原注释自称"示例钥物"——是否应替换为更具叙事分量的道具，属于内容设计
+ * 决策，不在本次"修复矩阵脱节"范围内，此处仅如实登记当前实现使用的道具 id。
+ */
+export const ESCAPE_KEY_ITEM_ID = "I-C12" as const;
+
+/** 代价试炼任务 id（均由北夏 / N-018 发放，floorTier "1"）。 */
+export const ESCAPE_COST_TRIAL_TASK_IDS = ["main_escape_cost_trial", "char_mirror_patrol_debt"] as const;
+
+/** 唯一真正出口楼层。 */
+export const ESCAPE_EXIT_FLOOR_ID = "B2" as const;
+
+/**
+ * 交叉校验：确认上述具名常量与 WORLD_CLOSURE_MATRIX 的楼层数据保持一致。
+ * 返回空数组代表一致；非空数组每一项都是可读的不一致描述，供测试直接断言长度为 0，
+ * 这样未来任何一边改名/删除都会让 CI 失败，而不是静默漂移。
+ */
+export function getEscapeClosureBindingIssues(): string[] {
+  const issues: string[] = [];
+
+  const gateFloor = WORLD_CLOSURE_BY_FLOOR[ESCAPE_GATEKEEPER_FLOOR_ID];
+  if (!gateFloor) {
+    issues.push(`WORLD_CLOSURE_BY_FLOOR 缺少楼层 ${ESCAPE_GATEKEEPER_FLOOR_ID}`);
+  } else {
+    for (const npcId of ESCAPE_GATEKEEPER_NPC_IDS) {
+      if (!gateFloor.keyNpcIds.includes(npcId)) {
+        issues.push(`守门人 ${npcId} 未出现在楼层 ${ESCAPE_GATEKEEPER_FLOOR_ID} 的 keyNpcIds 中`);
+      }
+    }
+    if (!gateFloor.itemIds.includes(ESCAPE_KEY_ITEM_ID)) {
+      issues.push(`关键钥物 ${ESCAPE_KEY_ITEM_ID} 未出现在楼层 ${ESCAPE_GATEKEEPER_FLOOR_ID} 的 itemIds 中`);
+    }
+  }
+
+  const exitFloor = WORLD_CLOSURE_BY_FLOOR[ESCAPE_EXIT_FLOOR_ID];
+  if (!exitFloor) {
+    issues.push(`WORLD_CLOSURE_BY_FLOOR 缺少楼层 ${ESCAPE_EXIT_FLOOR_ID}`);
+  } else if (!exitFloor.escapeRelevance) {
+    issues.push(`出口楼层 ${ESCAPE_EXIT_FLOOR_ID} 缺少 escapeRelevance 描述`);
+  }
+
+  return issues;
+}
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/derive.ts <==
+import type { MemorySpineEntry } from "@/lib/memorySpine/types";
+import type { GameTaskV2 } from "@/lib/tasks/taskV2";
+import {
+  ESCAPE_COST_TRIAL_TASK_IDS,
+  ESCAPE_GATEKEEPER_NPC_IDS,
+  ESCAPE_GATEKEEPER_TRUST_THRESHOLDS,
+  ESCAPE_KEY_ITEM_ID,
+} from "./closureBinding";
+
+export type EscapeDerivationInput = {
+  nowHour: number;
+  nowTurn: number;
+  playerLocation: string;
+  tasks: GameTaskV2[];
+  codex: Record<string, any>;
+  inventoryItemIds: string[];
+  worldFlags: string[];
+  memoryEntries: MemorySpineEntry[];
+};
+
+function uniq(xs: string[], cap: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs ?? []) {
+    const s = String(x ?? "").trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+function hasItem(ids: string[], id: string): boolean {
+  return (ids ?? []).some((x) => String(x ?? "").trim() === id);
+}
+
+export function deriveEscapeFactors(input: EscapeDerivationInput): {
+  routeHintCodes: string[];
+  conditionMetCodes: string[];
+  falseLeadCodes: string[];
+  blockers: Array<{ code: string; label: string; severity: "low" | "medium" | "high" }>;
+  pendingFinalAction: string | null;
+} {
+  const loc = String(input.playerLocation ?? "");
+  const mem = input.memoryEntries ?? [];
+  const invIds = input.inventoryItemIds ?? [];
+  const worldFlags = new Set((input.worldFlags ?? []).map((x) => String(x ?? "").trim()).filter(Boolean));
+  const hasB2Access =
+    worldFlags.has("b2_access_granted") ||
+    worldFlags.has("escape:b2_access_granted") ||
+    worldFlags.has("permit.b2_access") ||
+    worldFlags.has("route.permit.b2");
+  const isInB2 = loc.startsWith("B2_");
+
+  // 路线碎片：优先吃 memorySpine 的 route_hint / secret_fragment
+  const routeHintCodes = uniq(
+    mem
+      .filter((e) => e.status === "active" && (e.kind === "route_hint" || e.kind === "secret_fragment"))
+      .map((e) => e.mergeKey || e.summary)
+      .slice(0, 12)
+      .map((x) => `frag:${String(x).slice(0, 24)}`),
+    6
+  );
+
+  // 条件满足（结构化推导示范）
+  const conditionMetCodes: string[] = [];
+  if (hasB2Access) conditionMetCodes.push("obtain_b2_access");
+  // 钥物：unlock flag / 物品 id 作为可验证真相源（id 与 WORLD_CLOSURE_MATRIX 楼层 1 绑定，见 closureBinding.ts）
+  if (worldFlags.has("permit.one_time") || hasItem(invIds, ESCAPE_KEY_ITEM_ID)) conditionMetCodes.push("secure_key_item");
+  // gatekeeper 信任：从 codex 关系字段推导（N-018 / N-010 任一达到阈值，两者均为 WORLD_CLOSURE_MATRIX 楼层 1 的守门人）
+  const trustN018 = Number(input.codex?.[ESCAPE_GATEKEEPER_NPC_IDS[0]]?.trust ?? 0);
+  const trustN010 = Number(input.codex?.[ESCAPE_GATEKEEPER_NPC_IDS[1]]?.trust ?? 0);
+  if (
+    (Number.isFinite(trustN018) && trustN018 >= ESCAPE_GATEKEEPER_TRUST_THRESHOLDS[ESCAPE_GATEKEEPER_NPC_IDS[0]]) ||
+    (Number.isFinite(trustN010) && trustN010 >= ESCAPE_GATEKEEPER_TRUST_THRESHOLDS[ESCAPE_GATEKEEPER_NPC_IDS[1]])
+  ) {
+    conditionMetCodes.push("gain_trust_from_gatekeeper");
+  }
+  // 代价试炼：以任务完成作为结构化真相源（任务 id 与楼层 1 的代价试炼任务绑定，见 closureBinding.ts）
+  const completed = (input.tasks ?? []).filter((t) => t.status === "completed").map((t) => t.id);
+  if (ESCAPE_COST_TRIAL_TASK_IDS.some((id) => completed.includes(id))) {
+    conditionMetCodes.push("survive_cost_trial");
+  }
+
+  // 假出口：来自 memory 的 escape_condition 但 anchors 命中“假路线”标签
+  const falseLeadCodes = uniq(
+    mem
+      .filter((e) => e.status === "active" && e.kind === "escape_condition")
+      .filter((e) => (e.recallTags ?? []).some((t) => String(t).includes("false")))
+      .map((e) => e.mergeKey || e.summary)
+      .map((x) => `false:${String(x).slice(0, 20)}`),
+    3
+  );
+
+  const blockers: Array<{ code: string; label: string; severity: "low" | "medium" | "high" }> = [];
+  if (isInB2 && !hasB2Access) {
+    blockers.push({ code: "illegal_b2_presence", label: "你闯入了地下二层，但这不是通行权限；守门审计正在升高。", severity: "high" });
+  }
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/escapeMainline.test.ts <==
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createDefaultEscapeMainlineTemplate } from "./template";
+import { normalizeEscapeMainline } from "./reducer";
+import { buildEscapePromptBlock } from "./prompt";
+import { advanceEscapeMainlineFromResolvedTurn } from "./integration";
+import { shouldAllowDoomline } from "@/features/play/endgame/endgame";
+import { computeEscapeOutcomeForSettlement } from "./selectors";
+import { deriveEscapeFactors } from "./derive";
+import type { MemorySpineEntry, MemorySpineKind } from "@/lib/memorySpine/types";
+import type { EscapeMainlineState } from "./types";
+
+function makeMemory(kind: MemorySpineKind, mergeKey: string, tags: string[] = []): MemorySpineEntry {
+  return {
+    id: mergeKey,
+    kind,
+    scope: "run_private",
+    summary: mergeKey,
+    salience: 0.8,
+    confidence: 0.9,
+    status: "active",
+    createdAtHour: 0,
+    lastTouchedAtHour: 0,
+    ttlHours: 48,
+    mergeKey,
+    anchors: {},
+    recallTags: tags,
+    source: "system_hook",
+    promoteToLore: false,
+  };
+}
+
+function makeFinalWindowState(overrides: Partial<EscapeMainlineState> = {}): EscapeMainlineState {
+  const base = createDefaultEscapeMainlineTemplate(0);
+  return {
+    ...base,
+    stage: "final_window_open",
+    routeFragments: [
+      { code: "frag:map_piece_a", label: "map_piece_a", confidence: 0.7 },
+      { code: "frag:map_piece_b", label: "map_piece_b", confidence: 0.7 },
+    ],
+    metConditions: ["obtain_b2_access", "secure_key_item", "gain_trust_from_gatekeeper", "survive_cost_trial"],
+    blockers: [],
+    pendingFinalAction: "perform_escape_action_at_gate",
+    finalWindow: {
+      open: true,
+      dueTurn: 9,
+      expiresTurn: 11,
+      locationId: "B2_GatekeeperDomain",
+      hint: "final window",
+    },
+    historyDigest: ["stage:conditions_partially_met->final_window_open"],
+    ...overrides,
+  };
+}
+
+function makeFinalActionArgs(
+  overrides: Partial<Parameters<typeof advanceEscapeMainlineFromResolvedTurn>[0]> = {}
+): Parameters<typeof advanceEscapeMainlineFromResolvedTurn>[0] {
+  return {
+    prevEscapeRaw: makeFinalWindowState(),
+    nowHour: 12,
+    nowTurn: 10,
+    playerLocation: "B2_GatekeeperDomain",
+    tasks: [{ id: "main_escape_cost_trial", status: "completed" } as any],
+    codex: { "N-018": { trust: 55 } },
+    inventoryItemIds: ["I-C12"],
+    worldFlags: ["b2_access_granted"],
+    memoryEntries: [makeMemory("route_hint", "map_piece_a"), makeMemory("route_hint", "map_piece_b")],
+    resolvedTurn: {},
+    playerAction: "\u63a8\u5f00\u771f\u6b63\u7684\u95e8\uff0c\u7a7f\u8fc7\u51fa\u53e3",
+    changedBy: "test",
+    ...overrides,
+  };
+}
+
+test("phase5: old save missing escape mainline normalizes safely", () => {
+  const s = normalizeEscapeMainline(undefined, 10);
+  assert.equal(s.v, 1);
+  assert.ok(typeof s.stage === "string");
+  assert.ok(Array.isArray(s.knownConditions));
+});
+
+test("phase5: route fragments + conditions can advance to final_window_open", () => {
+  const prev = createDefaultEscapeMainlineTemplate(0);
+  const next = advanceEscapeMainlineFromResolvedTurn({
+    prevEscapeRaw: prev,
+    nowHour: 12,
+    nowTurn: 9,
+    playerLocation: "B2_GatekeeperDomain",
+    tasks: [
+      { id: "main_escape_cost_trial", status: "completed" } as any,
+    ],
+    codex: {
+      "N-018": { trust: 55 },
+    },
+    inventoryItemIds: ["I-C12"],
+    worldFlags: ["b2_access_granted"],
+    memoryEntries: [makeMemory("route_hint", "map_piece_a"), makeMemory("route_hint", "map_piece_b")],
+    resolvedTurn: {},
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/finalAction.ts <==
+import type { MemorySpineEntry } from "@/lib/memorySpine/types";
+import type { GameTaskV2 } from "@/lib/tasks/taskV2";
+import type {
+  EscapeConditionCode,
+  EscapeFinalActionDecision,
+  EscapeMainlineState,
+  EscapeOutcomeHint,
+  EscapeStage,
+} from "./types";
+import { createDefaultEscapeMainline } from "./types";
+import { createDefaultEscapeMainlineTemplate } from "./template";
+import { deriveEscapeFactors, type EscapeDerivationInput } from "./derive";
+
+export type ResolveEscapeFinalActionInput = {
+  prevEscapeRaw: unknown;
+  playerAction: string;
+  resolvedTurn: any;
+  nowTurn: number;
+  nowHour: number;
+  playerLocation: string;
+  tasks: GameTaskV2[];
+  codex: Record<string, any>;
+  inventoryItemIds: string[];
+  worldFlags: string[];
+  memoryEntries: MemorySpineEntry[];
+  changedBy?: string;
+};
+
+export type ResolveEscapeFinalActionFromStateInput = {
+  prev: EscapeMainlineState;
+  playerAction?: string;
+  resolvedTurn: any;
+  derived: EscapeDerivationInput;
+  changedBy?: string;
+};
+
+function clampInt(n: unknown, min: number, max: number): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
+  const safe = Number.isFinite(v) ? Math.trunc(v) : min;
+  return Math.max(min, Math.min(max, safe));
+}
+
+function asStringArray(value: unknown, cap: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const text = String(item ?? "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+function uniq(xs: readonly string[], cap: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    const text = String(x ?? "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+function normalizePrevEscape(raw: unknown, nowHour: number): EscapeMainlineState {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return createDefaultEscapeMainlineTemplate(nowHour);
+  }
+  const o = raw as Record<string, unknown>;
+  const base = createDefaultEscapeMainlineTemplate(nowHour);
+  const stage = String(o.stage ?? base.stage) as EscapeStage;
+  const safeStage: EscapeStage =
+    stage === "trapped" ||
+    stage === "aware_exit_exists" ||
+    stage === "route_fragmented" ||
+    stage === "conditions_known" ||
+    stage === "conditions_partially_met" ||
+    stage === "final_window_open" ||
+    stage === "escaped_true" ||
+    stage === "escaped_false" ||
+    stage === "escaped_costly" ||
+    stage === "doomed"
+      ? stage
+      : base.stage;
+
+  return {
+    ...base,
+    ...o,
+    v: 1,
+    stage: safeStage,
+    routeFragments: Array.isArray(o.routeFragments) ? (o.routeFragments as any[]).slice(0, 8) : base.routeFragments,
+    knownConditions: Array.isArray(o.knownConditions) ? (o.knownConditions as any[]).slice(0, 16) : base.knownConditions,
+    metConditions: asStringArray(o.metConditions, 12) as EscapeConditionCode[],
+    blockers: Array.isArray(o.blockers) ? (o.blockers as any[]).slice(0, 8) : base.blockers,
+    falseLeads: Array.isArray(o.falseLeads) ? (o.falseLeads as any[]).slice(0, 6) : base.falseLeads,
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/integration.ts <==
+import type { MemorySpineEntry } from "@/lib/memorySpine/types";
+import type { GameTaskV2 } from "@/lib/tasks/taskV2";
+import type { EscapeMainlineState } from "./types";
+import { normalizeEscapeMainline, advanceEscapeMainlineFromState } from "./reducer";
+import type { EscapeDerivationInput } from "./derive";
+export { resolveEscapeFinalAction } from "./finalAction";
+
+export function advanceEscapeMainlineFromResolvedTurn(args: {
+  prevEscapeRaw: unknown;
+  nowHour: number;
+  nowTurn: number;
+  playerLocation: string;
+  tasks: GameTaskV2[];
+  codex: Record<string, any>;
+  inventoryItemIds: string[];
+  worldFlags: string[];
+  memoryEntries: MemorySpineEntry[];
+  resolvedTurn: any;
+  playerAction?: string;
+  changedBy: string;
+}): EscapeMainlineState {
+  const prev = normalizeEscapeMainline(args.prevEscapeRaw, args.nowHour);
+  const derived: EscapeDerivationInput = {
+    nowHour: args.nowHour,
+    nowTurn: args.nowTurn,
+    playerLocation: args.playerLocation,
+    tasks: args.tasks,
+    codex: args.codex,
+    inventoryItemIds: args.inventoryItemIds,
+    worldFlags: args.worldFlags,
+    memoryEntries: args.memoryEntries,
+  };
+  return advanceEscapeMainlineFromState({
+    prev,
+    derived,
+    resolvedTurn: args.resolvedTurn,
+    playerAction: args.playerAction,
+    changedBy: args.changedBy,
+  });
+}
+
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/prompt.ts <==
+import type { EscapeMainlineState } from "./types";
+import { getEscapeObjectiveSummary, getUnmetConditions } from "./selectors";
+
+function clamp(s: string, max: number): string {
+  const t = String(s ?? "").trim();
+  if (!t) return "";
+  return t.length <= max ? t : t.slice(0, max);
+}
+
+export function buildEscapePromptBlock(args: { state: EscapeMainlineState; maxChars?: number }): string {
+  const maxChars = Math.max(80, Math.min(520, args.maxChars ?? 260));
+  const s = args.state;
+  if (!s) return "";
+  const summary = getEscapeObjectiveSummary(s);
+  const unmet = getUnmetConditions(s, 2);
+  const blocker = (s.blockers ?? []).sort((a, b) => (a.severity === "high" ? -2 : a.severity === "medium" ? -1 : 0) - (b.severity === "high" ? -2 : b.severity === "medium" ? -1 : 0))[0];
+  const falseLead = (s.falseLeads ?? [])[0];
+  const window = s.finalWindow?.open ? `最终窗口：已开（到期回合≤${s.finalWindow.expiresTurn}）。` : "最终窗口：未开。";
+
+  const lines: string[] = [];
+  lines.push("## 【出口主线（只供写作，不要像系统提示）】");
+  lines.push(`阶段：${summary.stage}。${window}`);
+  if (unmet.length > 0) lines.push(`未满足关键条件：${unmet.map((x) => x.label).join("；")}`);
+  if (blocker?.label) lines.push(`最大阻碍：${blocker.label}`);
+  if (falseLead?.label) lines.push(`假出口风险：${falseLead.label}（别把它写成真正胜利）。`);
+  lines.push(`目标：${summary.nextObjective}`);
+  return clamp(lines.join("\n"), maxChars);
+}
+
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/reducer.ts <==
+import type {
+  EscapeMainlineState,
+  EscapeStage,
+  EscapeConditionCode,
+  EscapeFalseLead,
+  EscapeOutcomeHint,
+  EscapeRouteFragment,
+} from "./types";
+import { createDefaultEscapeMainline } from "./types";
+import { createDefaultEscapeMainlineTemplate } from "./template";
+import type { EscapeDerivationInput } from "./derive";
+import { deriveEscapeFactors } from "./derive";
+import { resolveEscapeFinalActionFromState } from "./finalAction";
+
+function clampInt(n: unknown, min: number, max: number): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(n);
+  const safe = Number.isFinite(v) ? Math.trunc(v) : min;
+  return Math.max(min, Math.min(max, safe));
+}
+
+function uniq<T>(xs: T[], cap: number, keyFn: (x: T) => string): T[] {
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const x of xs ?? []) {
+    const k = keyFn(x);
+    if (!k) continue;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(x);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+function asCodeList(v: unknown, cap: number): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of v) {
+    const s = typeof x === "string" ? x.trim() : "";
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+export function normalizeEscapeMainline(raw: unknown, nowHour: number): EscapeMainlineState {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return createDefaultEscapeMainlineTemplate(nowHour);
+  const o = raw as Record<string, unknown>;
+  const base = createDefaultEscapeMainlineTemplate(nowHour);
+  const stage = String(o.stage ?? base.stage) as EscapeStage;
+  const safeStage: EscapeStage =
+    stage === "trapped" ||
+    stage === "aware_exit_exists" ||
+    stage === "route_fragmented" ||
+    stage === "conditions_known" ||
+    stage === "conditions_partially_met" ||
+    stage === "final_window_open" ||
+    stage === "escaped_true" ||
+    stage === "escaped_false" ||
+    stage === "escaped_costly" ||
+    stage === "doomed"
+      ? stage
+      : base.stage;
+  return {
+    ...base,
+    ...o,
+    v: 1,
+    stage: safeStage,
+    routeFragments: Array.isArray(o.routeFragments) ? (o.routeFragments as any[]).slice(0, 8) : base.routeFragments,
+    knownConditions: Array.isArray(o.knownConditions) ? (o.knownConditions as any[]).slice(0, 16) : base.knownConditions,
+    metConditions: asCodeList(o.metConditions, 12) as EscapeConditionCode[],
+    blockers: Array.isArray(o.blockers) ? (o.blockers as any[]).slice(0, 8) : base.blockers,
+    falseLeads: Array.isArray(o.falseLeads) ? (o.falseLeads as any[]).slice(0, 6) : base.falseLeads,
+    allyRequirements: asCodeList(o.allyRequirements, 6),
+    costRequirements: asCodeList(o.costRequirements, 6),
+    pendingFinalAction: typeof o.pendingFinalAction === "string" ? o.pendingFinalAction : base.pendingFinalAction,
+    finalWindow: (o.finalWindow && typeof o.finalWindow === "object" && !Array.isArray(o.finalWindow))
+      ? (o.finalWindow as any)
+      : base.finalWindow,
+    outcomeHint: (o.outcomeHint && typeof o.outcomeHint === "object" && !Array.isArray(o.outcomeHint))
+      ? (o.outcomeHint as any)
+      : base.outcomeHint,
+    lastAdvancedAtHour: clampInt(o.lastAdvancedAtHour, 0, 999999),
+    lastChangedBy: typeof o.lastChangedBy === "string" ? o.lastChangedBy : base.lastChangedBy,
+    historyDigest: asCodeList(o.historyDigest, 18),
+  } as EscapeMainlineState;
+}
+
+function computeStageFromFactors(prev: EscapeMainlineState, factors: ReturnType<typeof deriveEscapeFactors>): EscapeStage {
+  const met = new Set(factors.conditionMetCodes);
+  const blockers = factors.blockers;
+  const routeOk = factors.routeHintCodes.length >= 2;
+  const conditionsKnown = (prev.knownConditions ?? []).length >= 4;
+  const reqAllMet =
+    met.has("obtain_b2_access") &&
+    met.has("secure_key_item") &&
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/selectors.test.ts <==
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createDefaultEscapeMainlineTemplate } from "./template";
+import { getEscapeStageLabel } from "./selectors";
+import type { EscapeStage } from "./types";
+
+test("getEscapeStageLabel: 每个 stage 都返回非空、不等于内部字面量的中文标签", () => {
+  const stages: EscapeStage[] = [
+    "trapped",
+    "aware_exit_exists",
+    "route_fragmented",
+    "conditions_known",
+    "conditions_partially_met",
+    "final_window_open",
+    "escaped_true",
+    "escaped_false",
+    "escaped_costly",
+    "doomed",
+  ];
+  for (const stage of stages) {
+    const label = getEscapeStageLabel(stage);
+    assert.ok(label.length > 0, `${stage} 应有非空标签`);
+    assert.notEqual(label, stage, `${stage} 的标签不应直接等于内部字面量`);
+  }
+});
+
+test("getEscapeStageLabel: 默认状态（trapped）标签与 createDefaultEscapeMainlineTemplate 一致可用", () => {
+  const state = createDefaultEscapeMainlineTemplate(0);
+  const label = getEscapeStageLabel(state.stage);
+  assert.equal(label, "仍被困住");
+});
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/selectors.ts <==
+import type { EscapeMainlineState, EscapeCondition, EscapeConditionCode, EscapeStage } from "./types";
+
+function uniq(xs: string[], cap: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs ?? []) {
+    const s = String(x ?? "").trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+export function getUnmetConditions(state: EscapeMainlineState, maxItems = 2): EscapeCondition[] {
+  const met = new Set((state.metConditions ?? []).map((x) => String(x)));
+  const all = state.knownConditions ?? [];
+  return all.filter((c) => c.required && !met.has(c.code)).slice(0, Math.max(0, Math.min(4, maxItems)));
+}
+
+export function getEscapeObjectiveSummary(state: EscapeMainlineState): {
+  stage: string;
+  nextObjective: string;
+  blockers: string[];
+} {
+  const stage = state.stage;
+  const unmet = getUnmetConditions(state, 2);
+  const blockers = uniq((state.blockers ?? []).map((b) => b.label), 2);
+  const nextObjective =
+    stage === "trapped"
+      ? "先确认出口并拼出路线碎片。"
+      : stage === "aware_exit_exists"
+        ? "收集更多路线碎片与可信线索。"
+        : stage === "route_fragmented"
+          ? "把出口条件弄清楚，别被假出口骗了。"
+          : stage === "conditions_known"
+            ? unmet.length > 0
+              ? `优先满足：${unmet.map((x) => x.label).join("；")}`
+              : "条件已知，开始逐项兑现。"
+            : stage === "conditions_partially_met"
+              ? unmet.length > 0
+                ? `还差：${unmet.map((x) => x.label).join("；")}`
+                : "你离最终窗口很近了。"
+              : stage === "final_window_open"
+                ? "最终窗口已开：去做最后动作。"
+                : stage.startsWith("escaped_")
+                  ? "你已经完成了本局逃离结局。"
+                  : stage === "doomed"
+                    ? "末日闸门落下：只剩终焉。"
+                    : "继续推进出口主线。";
+
+  return { stage, nextObjective, blockers };
+}
+
+/** 玩家可读的阶段短标签：给 UI 展示"我在出口主线上走到哪"，不暴露内部 stage 字面量。 */
+export function getEscapeStageLabel(stage: EscapeStage): string {
+  if (stage === "trapped") return "仍被困住";
+  if (stage === "aware_exit_exists") return "察觉出口";
+  if (stage === "route_fragmented") return "路线破碎";
+  if (stage === "conditions_known") return "条件已知";
+  if (stage === "conditions_partially_met") return "条件渐满";
+  if (stage === "final_window_open") return "窗口已开";
+  if (stage === "escaped_true") return "真正逃离";
+  if (stage === "escaped_costly") return "代价逃离";
+  if (stage === "escaped_false") return "假性逃离";
+  if (stage === "doomed") return "终焉";
+  return "推进中";
+}
+
+export function shouldSuppressDoomlineBecauseEscaped(state: EscapeMainlineState): boolean {
+  return state.stage === "escaped_true" || state.stage === "escaped_false" || state.stage === "escaped_costly";
+}
+
+export function computeEscapeOutcomeForSettlement(state: EscapeMainlineState): "none" | "true_escape" | "false_escape" | "costly_escape" | "doom" {
+  if (state.stage === "escaped_true") return "true_escape";
+  if (state.stage === "escaped_costly") return "costly_escape";
+  if (state.stage === "escaped_false") return "false_escape";
+  if (state.stage === "doomed") return "doom";
+  const hinted = state.outcomeHint?.outcome;
+  return hinted === "true_escape" || hinted === "costly_escape" || hinted === "false_escape" || hinted === "doom" ? hinted : "none";
+}
+
+export function pickEscapeMetCodes(state: EscapeMainlineState, max = 6): EscapeConditionCode[] {
+  return (state.metConditions ?? []).slice(0, max) as EscapeConditionCode[];
+}
+
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/template.ts <==
+import type { EscapeCondition, EscapeMainlineState } from "./types";
+import { createDefaultEscapeMainline } from "./types";
+import { CONTENT_PACKS } from "@/lib/contentSpec/packs";
+
+export function createDefaultEscapeConditions(): EscapeCondition[] {
+  const fromPack = CONTENT_PACKS.find((p) => Array.isArray(p.escapeSpecs?.conditions) && (p.escapeSpecs?.conditions?.length ?? 0) > 0)
+    ?.escapeSpecs?.conditions ?? null;
+  if (!Array.isArray(fromPack) || fromPack.length === 0) {
+    return [
+      { code: "get_exit_route_map", label: "拼出出口路线的地图碎片", kind: "route_hint", required: true },
+      { code: "obtain_b2_access", label: "拿到进入地下二层的权限/通行", kind: "access_grant", required: true },
+      { code: "secure_key_item", label: "拿到关键钥物（开门的‘资格’）", kind: "escape_condition", required: true },
+      { code: "gain_trust_from_gatekeeper", label: "让守门人认可你（或找到替代办法）", kind: "escape_condition", required: true },
+      { code: "survive_cost_trial", label: "承受一次代价试炼", kind: "cost_or_sacrifice", required: true },
+      { code: "choose_sacrifice", label: "做出一次不可回头的取舍", kind: "cost_or_sacrifice", required: false },
+      { code: "invalidate_false_route", label: "拆穿一个假出口", kind: "false_lead", required: false },
+    ];
+  }
+  return fromPack.map((c) => ({
+    code: (c.code ?? "").replace(/^escape\.condition\./, "") as any,
+    label: c.label,
+    kind: c.kind,
+    required: !!c.required,
+  })) as any;
+}
+
+export function createDefaultEscapeMainlineTemplate(nowHour: number): EscapeMainlineState {
+  const base = createDefaultEscapeMainline(nowHour);
+  return {
+    ...base,
+    knownConditions: createDefaultEscapeConditions(),
+    blockers: [
+      { code: "no_route", label: "路线碎片不完整；你还无法确认出口路径。", severity: "high" },
+      { code: "no_b2_access", label: "你没有进入地下二层的权限。", severity: "high" },
+    ],
+  };
+}
+
+
+==> /Users/qi/Desktop/项目/VerseCraft/src/lib/escapeMainline/types.ts <==
+export type EscapeStage =
+  | "trapped"
+  | "aware_exit_exists"
+  | "route_fragmented"
+  | "conditions_known"
+  | "conditions_partially_met"
+  | "final_window_open"
+  | "escaped_true"
+  | "escaped_false"
+  | "escaped_costly"
+  | "doomed";
+
+export type EscapeFactorKind = "route_hint" | "escape_condition" | "access_grant" | "cost_or_sacrifice" | "false_lead";
+
+export type EscapeConditionCode =
+  | "get_exit_route_map"
+  | "obtain_b2_access"
+  | "secure_key_item"
+  | "gain_trust_from_gatekeeper"
+  | "survive_cost_trial"
+  | "choose_sacrifice"
+  | "invalidate_false_route";
+
+export type EscapeCondition = {
+  code: EscapeConditionCode;
+  label: string;
+  kind: EscapeFactorKind;
+  required: boolean;
+};
+
+export type EscapeRouteFragment = {
+  code: string;
+  label: string;
+  confidence: number; // 0..1
+  anchors?: { locationIds?: string[]; npcIds?: string[]; taskIds?: string[] };
+  source?: string;
+};
+
+export type EscapeBlocker = { code: string; label: string; severity: "low" | "medium" | "high" };
+export type EscapeFalseLead = { code: string; label: string; anchors?: { locationIds?: string[]; npcIds?: string[] } };
+
+export type EscapeFinalWindow = {
+  open: boolean;
+  dueTurn: number;
+  expiresTurn: number;
+  locationId: string | null;
+  hint: string;
+};
+
+export type EscapeOutcomeHint = {
+  outcome: "none" | "true_escape" | "false_escape" | "costly_escape" | "doom";
+  title: string;
+  toneLine: string;
+};
+
+export type EscapeFinalActionKind = "none" | "true_exit" | "costly_exit" | "false_exit";
+
+export type EscapeFinalActionDecision = {
+  kind: EscapeFinalActionKind;
+  matchedBy: "resolved_turn" | "world_flag" | "player_text" | "none";
+  reasons: string[];
+};
+
+export type EscapeMainlineState = {
+  v: 1;
+  stage: EscapeStage;
+  routeFragments: EscapeRouteFragment[];
+  knownConditions: EscapeCondition[];
+  metConditions: EscapeConditionCode[];
+  blockers: EscapeBlocker[];
+  falseLeads: EscapeFalseLead[];
+  allyRequirements: string[]; // npcId or role codes
+  costRequirements: string[]; // short codes
+  pendingFinalAction: string | null;
+  finalWindow: EscapeFinalWindow;
+  outcomeHint: EscapeOutcomeHint;
+  lastAdvancedAtHour: number;
+  lastChangedBy: string;
+  historyDigest: string[];
+};
+
+export function createDefaultEscapeMainline(nowHour: number): EscapeMainlineState {
+  return {
+    v: 1,
+    stage: "trapped",
+    routeFragments: [],
+    knownConditions: [],
+    metConditions: [],
+    blockers: [{ code: "unknown_exit", label: "你还不知道出口到底在哪里。", severity: "high" }],
+    falseLeads: [],
+    allyRequirements: [],
+    costRequirements: [],
+    pendingFinalAction: null,
+    finalWindow: { open: false, dueTurn: 0, expiresTurn: 0, locationId: null, hint: "" },
+    outcomeHint: { outcome: "none", title: "未逃离", toneLine: "" },
+    lastAdvancedAtHour: Math.max(0, Math.trunc(nowHour ?? 0)),
+    lastChangedBy: "system",
+    historyDigest: [],
+  };
+}

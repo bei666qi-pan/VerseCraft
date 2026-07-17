@@ -47,12 +47,14 @@ export interface GameStateSnapshot {
 
   // 行囊
   inventoryItemIds: string[];
+  warehouseItemIds?: string[];
   inventoryItemCount: number;
   maxInventorySlots: number;
 
   // 职业 & 武器
   profession: string | null;
   equippedWeapon: string | null;
+  weaponBag?: Array<Record<string, unknown>>;
   weaponStability: number;
   weaponContamination: number;
 
@@ -67,9 +69,12 @@ export interface GameStateSnapshot {
   // NPC
   aliveNpcIds: string[];
   deadNpcIds: string[];
+  presentNpcIds?: string[];
+  activeThreatIds?: string[];
 
   // 图鉴
   codexNpcIds: string[];
+  journalClueIds?: string[];
 
   // 进度
   turnCount: number;
@@ -95,9 +100,19 @@ export interface TranscriptStep {
   /** 执行后的状态快照 */
   stateAfter: GameStateSnapshot;
   /** 性能指标 */
-  metrics?: Pick<ChatSseProbeMetrics, "firstStatusMs" | "firstTokenMs" | "finalMs">;
+  metrics?: { latencyMs: number; firstStatusMs?: number; firstTokenMs?: number; finalMs?: number; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number };
   /** 模拟时间戳 */
   timestamp: number;
+}
+
+export interface RunFailureContext {
+  stepIndex?: number;
+  action?: string;
+  reason?: string;
+  transportStatus?: string;
+  aiStatus?: string;
+  hasVisibleNarrative?: boolean;
+  stepFailureMode?: string;
 }
 
 /** 完整 playthrough transcript */
@@ -115,6 +130,7 @@ export interface PlaythroughTranscript {
 
 export type TerminatedReason =
   | "reached_ending"    // 正常达到结局
+  | "objective_reached" // 专项回归目标已达成
   | "death"             // 玩家死亡
   | "max_steps"         // 达到最大步数
   | "softlock"          // 卡住（连续 N 步无进展）
@@ -150,6 +166,24 @@ export interface NarrativeConsistencyResult {
   issues: ConsistencyIssue[];
   /** 推理过程 */
   reasoning: string;
+  /** 裁判来源：mock/codex/live/fallback */
+  judgeMode?: "mock" | "codex" | "live" | "fallback";
+  /** live/mock 标识，方便追踪版本漂移 */
+  judgeModel?: string;
+  /** live 调用耗时（毫秒） */
+  judgeLatencyMs?: number;
+  /** live token 用量（匿名化） */
+  judgeTokens?: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+  /** 叙事裁判内部置信（0-1） */
+  judgeConfidence?: number;
+  /** 置信度来源 */
+  judgeConfidenceSource?: "model" | "codex" | "mock" | "fallback" | "estimated";
+  /** live 回退原因（若有） */
+  judgeError?: string;
 }
 
 export interface ConsistencyIssue {
@@ -175,6 +209,7 @@ export interface PlaythroughRunResult {
   narrativeConsistency: NarrativeConsistencyResult | null; // null = 未运行
   passed: boolean;
   failureSummary: string[];
+  failureContext?: RunFailureContext;
 }
 
 /** 批次编排结果 */
@@ -236,4 +271,11 @@ export interface PlaythroughRunConfig {
   softlockThreshold: number;
   /** 单步超时 ms */
   stepTimeoutMs: number;
+  /**
+   * 步间延迟 ms。
+   * - 数字：固定延迟
+   * - 函数：以 stepIndex 为参数的自适应延迟
+   * - 默认 mock 0ms，live 6000ms
+   */
+  stepDelayMs?: number | ((stepIndex: number) => number);
 }

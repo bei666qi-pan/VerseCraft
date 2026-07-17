@@ -56,15 +56,14 @@ describe("Player Agent", () => {
   it("generateMockAction 可为每种 persona 生成动作", () => {
     const state = createInitialStateSnapshot();
     for (const persona of Object.keys(PERSONAS)) {
-      const action = generateMockAction(persona as keyof typeof PERSONAS, 0, 42, state);
+      const action = generateMockAction(persona as keyof typeof PERSONAS, 0, 42);
       assert.ok(typeof action === "string" && action.length > 0, `${persona} 应生成有效动作`);
     }
   });
 
   it("相同 persona/seed/step 应生成相同动作（确定性）", () => {
-    const state = createInitialStateSnapshot();
-    const a1 = generateMockAction("speedrunner", 5, 42, state);
-    const a2 = generateMockAction("speedrunner", 5, 42, state);
+    const a1 = generateMockAction("speedrunner", 5, 42);
+    const a2 = generateMockAction("speedrunner", 5, 42);
     assert.equal(a1, a2, "相同输入应产生相同输出");
   });
 });
@@ -167,6 +166,18 @@ describe("不变量检查", () => {
       options: ["选项A", "选项B"],
     };
     const result = checkAllInvariants(0, state, undefined, "一段叙事", dmJson);
+    assert.ok(!result.violations.some((v) => v.rule === "dm_json_options_missing"));
+  });
+
+  it("narrative_only 合法回合允许 deferred options 为空", () => {
+    const state = createInitialStateSnapshot();
+    const result = checkAllInvariants(0, state, undefined, "一段叙事", {
+      is_action_legal: true,
+      turn_mode: "narrative_only",
+      decision_required: false,
+      options: [],
+      consumes_time: true,
+    });
     assert.ok(!result.violations.some((v) => v.rule === "dm_json_options_missing"));
   });
 

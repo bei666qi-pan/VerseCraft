@@ -26,7 +26,7 @@ export function sanitizePlayerFacingInline(text: string, codex?: Record<string, 
 export type TaskCardCopyKind = "formal" | "promise" | "clue";
 
 export function inferTaskCardCopyKind(task: GameTask): TaskCardCopyKind {
-  const layer = (task as { taskNarrativeLayer?: string }).taskNarrativeLayer;
+  const layer = task.taskNarrativeLayer;
   if (layer === "soft_lead") return "clue";
   if (layer === "conversation_promise") return "promise";
   return "formal";
@@ -35,8 +35,8 @@ export function inferTaskCardCopyKind(task: GameTask): TaskCardCopyKind {
 export function buildTaskAtAGlanceLine(task: GameTask, codex?: Record<string, CodexEntry> | null): string {
   const kind = inferTaskCardCopyKind(task);
   const hint = clip(sanitizePlayerFacingInline(String(task.nextHint ?? ""), codex), 72);
-  const hook = clip(sanitizePlayerFacingInline(String((task as any).playerHook ?? ""), codex), 72);
-  const urgency = clip(sanitizePlayerFacingInline(String((task as any).urgencyReason ?? ""), codex), 72);
+  const hook = clip(sanitizePlayerFacingInline(String(task.playerHook ?? ""), codex), 72);
+  const urgency = clip(sanitizePlayerFacingInline(String(task.urgencyReason ?? ""), codex), 72);
 
   const base = hint || urgency || hook || clip(sanitizePlayerFacingInline(task.desc ?? "", codex), 72);
   if (!base) {
@@ -58,8 +58,8 @@ function hasDeadline(task: GameTask): boolean {
 }
 
 function hasRisk(task: GameTask): boolean {
-  const rn = (task as { riskNote?: string }).riskNote;
-  return Boolean(task.highRiskHighReward || (typeof rn === "string" && rn.trim()) || (task as any).canBackfire);
+  const rn = task.riskNote;
+  return Boolean(task.highRiskHighReward || (typeof rn === "string" && rn.trim()) || task.canBackfire);
 }
 
 /** 任务卡牵引短句：只给一枪，避免把任务板写成小说。 */
@@ -91,9 +91,9 @@ export function buildTaskMetaLines(task: GameTask, args: { codex?: Record<string
     lines.push(`委托人：${issuer}`);
   }
 
-  const relatedNpcIds = Array.isArray((task as any).relatedNpcIds) ? (task as any).relatedNpcIds : [];
+  const relatedNpcIds = task.relatedNpcIds ?? [];
   const issuerId = String(task.issuerId ?? "").trim();
-  const related = [...new Set(relatedNpcIds.map((x: any) => String(x ?? "").trim()).filter(Boolean))]
+  const related = [...new Set(relatedNpcIds.map((x) => String(x ?? "").trim()).filter(Boolean))]
     .filter((id) => id !== issuerId)
     .slice(0, 4)
     .map((id) => resolveNpcIdForPlayer(id, codex ?? undefined));
@@ -101,8 +101,8 @@ export function buildTaskMetaLines(task: GameTask, args: { codex?: Record<string
     lines.push(`牵涉人物：${related.join("、")}`);
   }
 
-  const requiredItemIds = Array.isArray((task as any).requiredItemIds) ? (task as any).requiredItemIds : [];
-  const req = [...new Set(requiredItemIds.map((x: any) => String(x ?? "").trim()).filter(Boolean))].slice(0, 6);
+  const requiredItemIds = task.requiredItemIds ?? [];
+  const req = [...new Set(requiredItemIds.map((x) => String(x ?? "").trim()).filter(Boolean))].slice(0, 6);
   if (req.length > 0) {
     // requiredItemLabels 在 UI 层会做 item name 解析；这里保守只输出“你还差什么”的提示句式
     lines.push("条件：仍缺关键物证/门槛（见“你还缺”）");

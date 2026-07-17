@@ -80,7 +80,8 @@ export async function POST(req: Request) {
           ${delta.onlineSec}, ${delta.activePlaySec}, ${delta.readSec}, ${delta.idleSec},
           ${JSON.stringify({ kind, visibility })}::jsonb, ${idempotencyKey}
         )
-        ON CONFLICT (idempotency_key) DO NOTHING
+        -- event_id 与 idempotency_key 都可能在同一分钟重复；任一冲突都应安全去重。
+        ON CONFLICT DO NOTHING
         RETURNING event_id
       ),
       upsert_actor AS (
@@ -149,4 +150,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
-

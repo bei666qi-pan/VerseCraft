@@ -15,18 +15,18 @@ type TierRank = { D: 0; C: 1; B: 2; A: 3; S: 4 };
 const TIER_RANK: TierRank = { D: 0, C: 1, B: 2, A: 3, S: 4 };
 
 function isTierGte(tier: string, min: WeaponTier): boolean {
-  const r = (TIER_RANK as any)[tier] ?? -1;
-  return r >= (TIER_RANK as any)[min];
+  const r = TIER_RANK[tier as keyof TierRank] ?? -1;
+  return r >= TIER_RANK[min];
 }
 
 export function countWeaponizableItems(inventory: Item[], minTier: WeaponTier): number {
   const inv = Array.isArray(inventory) ? inventory : [];
   return inv.filter((it) => {
     if (!it || typeof it !== "object") return false;
-    const tier = String((it as any).tier ?? "");
+    const tier = String(it.tier ?? "");
     if (!tier) return false;
     // explicit override if present
-    const eligible = (it as any).weaponization?.eligible;
+    const eligible = it.weaponization?.eligible;
     if (eligible === false) return false;
     if (eligible === true) return isTierGte(tier, minTier);
     return isTierGte(tier, minTier);
@@ -39,11 +39,11 @@ export function computeWeaponMaintenanceBand(weapon: Weapon | null): {
   reasons: string[];
 } {
   if (!weapon) return { unstableOrPolluted: false, needsMaintenance: false, reasons: [] };
-  const stability = Number((weapon as any).stability ?? 0);
-  const contamination = Number((weapon as any).contamination ?? 0);
-  const repairable = Boolean((weapon as any).repairable);
-  const unstableOrPolluted = (Number.isFinite(stability) ? stability : 0) < 50 || (Number.isFinite(contamination) ? contamination : 0) >= 70;
-  const needsMaintenance = repairable && (((Number.isFinite(stability) ? stability : 0) < 65) || ((Number.isFinite(contamination) ? contamination : 0) >= 40));
+  const stability = weapon.stability;
+  const contamination = weapon.contamination;
+  const repairable = weapon.repairable;
+  const unstableOrPolluted = stability < 50 || contamination >= 70;
+  const needsMaintenance = repairable && (stability < 65 || contamination >= 40);
   const reasons: string[] = [];
   if (unstableOrPolluted) reasons.push("已进入高风险区（容易在关键回合失手）");
   if (needsMaintenance) reasons.push("建议维护（让稳定/污染回到可控区间）");

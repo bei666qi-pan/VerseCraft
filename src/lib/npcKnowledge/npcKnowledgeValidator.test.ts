@@ -48,6 +48,16 @@ test("same-floor NPC may hint same-floor anomaly", () => {
   assert.equal(report.ok, true);
 });
 
+test("player observation of another floor is not attributed to the NPC", () => {
+  const report = validate("我翻开登记表，看见一行7F-04。N-001站在旁边没有说话。");
+  assert.equal(hasIssue(report, "floor_knowledge_overreach"), false);
+});
+
+test("quoted NPC speech about another floor remains blocked", () => {
+  const report = validate("N-001抬头说：“7F的门后已经出事了。”");
+  assert.ok(hasIssue(report, "floor_knowledge_overreach"));
+});
+
 test("ordinary NPC does not know apartment root cause", () => {
   const report = validate("N-001说，公寓的根因就是七锚闭环的真相。");
   assert.ok(hasIssue(report, "root_cause_leak"));

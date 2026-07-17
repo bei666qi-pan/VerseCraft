@@ -45,6 +45,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableStyleGuidePacket: boolean;
   /** VerseCraft Style Bible prompt packet; compact, original style protocol only. */
   enableNarrativeStyleBible: boolean;
+  /** 去除 stable prompt 与动态治理 packet 之间的重复规则文案；保留动态事实与后置 validator。 */
+  enablePromptPacketDedupV1: boolean;
   /** Post-generation style validator; telemetry-only / low-medium severity. */
   enableNarrativeStyleValidator: boolean;
   enableNpcBeliefGraph: boolean;
@@ -178,6 +180,7 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableMonthStartStudentWorldlogic: readFlag("VERSECRAFT_ENABLE_MONTH_START_STUDENT_WORLDLOGIC", true),
     enableStyleGuidePacket: readFlag("VERSECRAFT_ENABLE_STYLE_GUIDE_PACKET", true),
     enableNarrativeStyleBible: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STYLE_BIBLE", true),
+    enablePromptPacketDedupV1: readFlag("VERSECRAFT_ENABLE_PROMPT_PACKET_DEDUP_V1", true),
     enableNarrativeStyleValidator: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STYLE_VALIDATOR", true),
     enableNpcBeliefGraph: readFlag("VERSECRAFT_ENABLE_NPC_BELIEF_GRAPH", true),
     enableNpcKnowledgeValidator: readFlag("VERSECRAFT_ENABLE_NPC_KNOWLEDGE_VALIDATOR", true),

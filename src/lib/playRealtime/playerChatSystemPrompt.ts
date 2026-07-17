@@ -230,6 +230,20 @@ export function getCompactStablePlayerDmSystemPrefix(): string {
   return memoCompactStablePrefix;
 }
 
+export function shouldUseCompactStablePrompt(args: {
+  promptSlimmingEnabled: boolean;
+  compactLanePrompt: boolean;
+  turnLane: "FAST" | "RULE" | "REVEAL";
+  standardCompactEnabled: boolean;
+}): boolean {
+  if (!args.promptSlimmingEnabled) return false;
+  if (args.compactLanePrompt) return true;
+  // REVEAL keeps the exhaustive canon/reveal instructions. Ordinary RULE
+  // turns retain full dynamic fact packets and deterministic post-guards, so
+  // the concise stable contract is sufficient and substantially cheaper.
+  return args.standardCompactEnabled && args.turnLane === "RULE";
+}
+
 /** Test helper: clear module memo. */
 export function __resetStablePlayerDmPrefixMemoForTests(): void {
   memoStablePrefix = undefined;
@@ -246,6 +260,8 @@ export interface PlayerDmDynamicSuffixInput {
   isFirstAction: boolean;
   runtimePackets: string;
   controlAugmentation: string;
+  /** Latest player action, repeated as a compact non-negotiable binding cue. */
+  latestUserInput?: string;
   /** 阶段2：主角锚定包（禁止擅自新增主角背景设定）。 */
   protagonistAnchorBlock?: string;
   /** 阶段2：回合模式策略包（默认长叙事，仅关键节点给决策）。 */
@@ -327,6 +343,12 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   }
   // TTFT/成本优化：保持字段语义不变，但减少无信息密度的 wrapper 文案体积。
   // 注意：stable prefix 仍负责规则与格式约束；这里仅是动态上下文。
+  if (input.latestUserInput?.trim() && !input.isFirstAction) {
+    const action = input.latestUserInput.trim().slice(0, 160);
+    parts.push(
+      `【本回合行动绑定】玩家实际做的是「${action}」。narrative 必须写出该动作触及的对象/方向和一个可观察后果；禁止用“停下脚步、环顾四周、决定先做下一步”等可替换为任意行动的泛化句代替。`
+    );
+  }
   parts.push(`当前玩家状态：${input.playerContext}`);
   if (input.styleGuideBlock?.trim()) parts.push("", input.styleGuideBlock.trim());
   if (input.narrativeDirectiveBlock?.trim()) parts.push("", input.narrativeDirectiveBlock.trim());

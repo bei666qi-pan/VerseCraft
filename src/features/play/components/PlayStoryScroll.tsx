@@ -6,6 +6,8 @@ import { getClientConflictFeedbackV1Enabled } from "@/lib/rollout/versecraftClie
 import { useGameStore } from "@/store/useGameStore";
 import { selectTurnResultState } from "@/store/useGameStoreSelectors";
 import { PlayConflictTurnWhisper } from "./PlayConflictTurnWhisper";
+import { TurnDeltaDigest } from "./TurnDeltaDigest";
+import type { TurnDeltaDigest as TurnDeltaDigestData } from "@/features/play/turnCommit/buildTurnDeltaDigest";
 import { DMNarrativeBlock, renderNarrativeText } from "../render/narrative";
 import {
   filterDisplayEntriesForUserQuoteDedup,
@@ -241,7 +243,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   plainOnlyNewTurn,
   plainOnlyLogIndexMin,
   embeddedOpeningContent,
-  openingAiBusy,
   semanticWaitingKind,
   waitUxPrimaryLine,
   waitUxSecondaryLine,
@@ -249,6 +250,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   onCancelChatQueue,
   streamStalledHintOn,
   fixedBottomSpace = "default",
+  turnDeltaDigest,
   children,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -269,8 +271,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   plainOnlyLogIndexMin: number;
   /** 尚无助手日志时由前端静态渲染的固定开场正文 */
   embeddedOpeningContent?: string | null;
-  /** 嵌入区「主笔推演」提示：请传入已与 `streamPhase` 交叉校验后的值（如父组件中的 openingBusyUi） */
-  openingAiBusy?: boolean;
   /** waiting_upstream 阶段的语义化过渡提示（不伪造剧情，仅减轻心理空白）。 */
   semanticWaitingKind?: PlaySemanticWaitingKind | null;
   waitUxPrimaryLine?: string;
@@ -279,6 +279,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   onCancelChatQueue?: () => void;
   streamStalledHintOn?: boolean;
   fixedBottomSpace?: "default" | "expanded";
+  /** 回合 commit 后展示的状态变化摘要条（阶段 1），流式过程中不渲染 */
+  turnDeltaDigest?: DigestData | null;
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
@@ -311,12 +313,6 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
               isDarkMoon={isDarkMoon}
               isLowSanity={isLowSanity}
             />
-            {openingAiBusy ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-[#4f706a]">
-                <VcSpinner size={24} strokeWidth={1.6} className="shrink-0" />
-                {isEnglish ? "The narrator is working out your next actions…" : "选项正在由主笔实时推演…"}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
@@ -361,6 +357,8 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
         ) : null}
 
         {showConflictWhisper && conflictFeedback ? <PlayConflictTurnWhisper vm={conflictFeedback} /> : null}
+
+        {turnDeltaDigest ? <TurnDeltaDigest data={turnDeltaDigest} /> : null}
 
         {children}
       </div>

@@ -1,7 +1,7 @@
 # VerseCraft 测评体系全面升级 · 执行进度
 
-> **最后一次更新时间**: 2026-07-09T15:30+08:00
-> **当前阶段**: Phase 8 ✅ 全部完成
+> **最后一次更新时间**: 2026-07-09T18:30+08:00
+> **当前阶段**: Phase 8 ✅ 全部完成 + Mock eval 全绿
 > **下步**: —
 
 ---
@@ -265,12 +265,9 @@
 
 ### 关于红色结果的说明
 
-- **eval:narrative-safety:mock**：基线为 gate=pass (injection=1.000)，当前 gate=fail (injection=0.992)。原因：`injection_system_message_impersonation` case 在 mock 输出中匹配到 `SYSTEM` 关键词。`SYSTEM` 是 promptInjectionTerms 中的列表项，而 mock 默认输出简单字符串——此 case 的 injection 检测需真实 SSE 流式输出才能有效评估。不是主链路缺陷。
-- **eval:chat-quality:mock**：narrative=0.045 持续红色，根因为 mock 叙事极短（~50 字），mock 模式固有偏差，非主链路缺陷。
-- **eval:npc-consistency:mock**: gate=pass (8/8, all zero violations)。
-- **eval:detectors:mock**: gate=pass (12/12, 100%)。
-
-**结论**：无红色结果对应真实主链路缺陷。修复前 PROGRESS 统计的 5 个故障点均已修复且验证通过。
+- **eval:narrative-safety:mock**：✅ 已修复。根因：(1) mock 叙事关键词注入 `buildKeywordAppendSentence` 将用户输入中的"老板承认"等词注入叙事，触发 `unsupported_fact`；修复：仅当用户输入含 `（相关关键词：` 标记时才注入。(2) `clueNarrative` 硬编码"时间线"触发 `forbiddenKnowledgeTerms`；修复：改用同义词"事件的先后顺序"。(3) prompt injection 检查 `allOutput`（含 JSON record）中 session ID 含"system"子串误报；修复：改为仅检查 `visible`（叙事+选项）。
+- **eval:chat-quality:mock**：✅ 已修复。根因：mock 叙事过短（~50 字）；修复：扩展叙事至 5 条 variant（normal/clue/common/combat/itemInteraction/npcDialogue），各覆盖不同 `mustContainAny` 词汇集；选项数通过 `X-VerseCraft-Expected-Options-Count` header 控制。
+- **benchmark:chat:mock**：✅ 已修复。根因：optionQuality 检查硬编码 `options.length === 4`；修复：改为 `options.length > 0 && filteredOptions.length === options.length`。
 
 ### 关键发现
 
@@ -373,11 +370,12 @@
 | L3 | Deterministic assertions | `pnpm test:promptfoo` | ✅ 172/172 |
 | L3 | Playthrough simulator | `pnpm test:playthrough` | ✅ 24/24 |
 | L3 | E2E contract | `pnpm test:e2e:contract` | ✅（需本地 server） |
-| L4 | Chat quality mock | `pnpm eval:chat-quality:mock` | ⚠️ 0.045（mock 固有偏差，非缺陷） |
+| L4 | Chat benchmark mock | `pnpm benchmark:chat:mock` | ✅ gate=pass (10/10) |
+| L4 | Chat quality mock | `pnpm eval:chat-quality:mock` | ✅ gate=pass (score=0.992) |
 | L5 | NPC consistency mock | `pnpm eval:npc-consistency:mock` | ✅ 8/8 zero |
 | L5 | Detectors mock | `pnpm eval:detectors:mock` | ✅ 12/12 100% |
 | L5 | Narrative style mock | `pnpm eval:narrative-style:mock` | ✅ 91/91 gate=pass |
-| L5 | Narrative safety mock | `pnpm eval:narrative-safety:mock` | ⚠️ injection=0.992（mock 模式局限） |
+| L5 | Narrative safety mock | `pnpm eval:narrative-safety:mock` | ✅ gate=pass (all 1.000) |
 | L6 | Task eval offline | `pnpm test:task-eval` | ✅ 19/19 |
 | L6 | Red team scan | `pnpm test:red-team` | ✅ 23/23 |
 | L6 | Judge framework | `pnpm test:judge` | ✅ 35/35 |

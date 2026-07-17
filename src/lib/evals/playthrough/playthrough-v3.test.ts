@@ -18,7 +18,6 @@ import {
 } from "./invariants";
 import {
   MockSutAdapter,
-  HttpSutAdapter,
   createSutAdapter,
 } from "./sutAdapter";
 import {
@@ -28,6 +27,7 @@ import {
 } from "./orchestrator";
 import type { PlaythroughV3Config } from "./orchestrator";
 import type { GameStateSnapshot } from "./types";
+import type { SutAdapter, SutResponse } from "./sutAdapter";
 
 describe("Scenario Library", () => {
   it("应至少有 20 个场景", () => {
@@ -60,13 +60,13 @@ describe("Scenario Library", () => {
   it("按 ID 查找场景应可用", () => {
     const s = findScenario("happy-speedrun");
     assert.ok(s, "应能找到 happy-speedrun");
-    assert.equal(s?.category, "happy");
+    assert.equal(s?.category, "refusal");
   });
 
   it("按 persona 找出所有适用场景", () => {
     const speedrunScenarios = getScenariosForPersona("speedrunner");
     assert.ok(speedrunScenarios.length > 0);
-    assert.ok(speedrunScenarios.some((s) => s.id === "happy-speedrun"));
+    assert.ok(speedrunScenarios.some((s) => s.id === "happy-trade"));
   });
 
   it("统计函数应返回正确数量", () => {
@@ -199,12 +199,12 @@ describe("v3 编排器 (mock)", () => {
   };
 
   it("单个场景单 persona 单 run 应产出 trace artifact", async () => {
-    const scenario = findScenario("happy-speedrun")!;
+    const scenario = findScenario("happy-trade")!;
     const sut = new MockSutAdapter();
     const result = await runSinglePlaythroughV3(baseV3Config, scenario, "speedrunner", 0, sut);
     assert.ok(result.transcript, "应有 transcript");
     assert.ok(result.trace, "应有 trace");
-    assert.equal(result.scenarioId, "happy-speedrun");
+    assert.equal(result.scenarioId, "happy-trade");
     assert.ok(result.trace.scenarioCategory === "happy");
     assert.ok(result.trace.steps.length > 0);
   });
@@ -216,6 +216,63 @@ describe("v3 编排器 (mock)", () => {
     assert.ok(Array.isArray(result.trace.invariantChecks));
     assert.ok(result.trace.failureTags !== undefined);
     assert.ok(typeof result.trace.durationMs === "number");
+  });
+
+  it("Live 运行可对可重试 degraded 执行单次重试并继续", async () => {
+    const config: PlaythroughV3Config = {
+      personas: ["speedrunner"],
+      runsPerPersona: 1,
+      maxStepsPerRun: 1,
+      baseSeed: 42,
+      mockMode: false,
+      runNarrativeJudge: false,
+      softlockThreshold: 5,
+      stepTimeoutMs: 10000,
+      scenarioIds: ["weapon-lifecycle"],
+    };
+
+    const scenario = findScenario("weapon-lifecycle")!;
+    let calls = 0;
+    const responses: Array<Omit<SutResponse, "latencyMs">> = [
+      {
+        narrative: "当前网络暂时拥塞，请稍后重试。",
+        dmJson: { narrative: "当前网络暂时拥塞，请稍后重试。", is_action_legal: true },
+        status: "degraded",
+        reachedFinal: true,
+        aiStatus: "temporary_busy",
+      },
+      {
+        narrative: "你向前走去，阴影退去。",
+        dmJson: {
+          is_action_legal: true,
+          consumes_time: true,
+          sanity_damage: 0,
+          is_death: false,
+          reached_ending: false,
+        },
+        status: "ok",
+        reachedFinal: true,
+      },
+    ];
+
+    const sut: SutAdapter = {
+      kind: "http",
+      async step() {
+        const r = responses[Math.min(calls, responses.length - 1)]!;
+        calls += 1;
+        return {
+          ...r,
+          latencyMs: 10,
+        };
+      },
+      async reset() {},
+    } as SutAdapter;
+
+    const result = await runSinglePlaythroughV3(config, scenario, "speedrunner", 0, sut);
+    assert.equal(result.transcript.steps.length, 1);
+    assert.equal(calls, 2);
+    assert.equal(result.transcript.steps[0]?.dmJson.is_action_legal, true);
+    assert.equal(result.passed, true);
   });
 
   it("refusal-path 场景应被检测出更多失败（rulebreaker）", async () => {
@@ -240,6 +297,17 @@ describe("v3 编排器 (mock)", () => {
 });
 
 describe("v3 批次编排 (mock)", () => {
+  const baseBatchConfig: PlaythroughV3Config = {
+    personas: ["speedrunner"],
+    runsPerPersona: 1,
+    maxStepsPerRun: 5,
+    baseSeed: 42,
+    mockMode: true,
+    runNarrativeJudge: false,
+    softlockThreshold: 5,
+    stepTimeoutMs: 10000,
+  };
+
   it("按路径过滤场景应只跑该路径", async () => {
     const config: PlaythroughV3Config = {
       personas: ["speedrunner", "explorer"],
@@ -259,5 +327,54 @@ describe("v3 批次编排 (mock)", () => {
     for (const sid of Object.keys(summary.scenarioMap)) {
       assert.equal(summary.scenarioMap[sid]?.category, "happy");
     }
+  });
+
+  it("scenarioIds 应只执行指定场景", async () => {
+    const summary = await runPlaythroughBatchV3({
+      ...baseBatchConfig,
+      scenarioIds: ["weapon-lifecycle"],
+      personas: ["speedrunner", "explorer", "collector"],
+      maxStepsPerRun: 2,
+      runNarrativeJudge: false,
+    });
+    assert.deepEqual(Object.keys(summary.scenarioMap), ["weapon-lifecycle"]);
+    assert.equal(summary.totalRuns, 3, "weapon-lifecycle 应覆盖其三个 persona");
+  });
+
+  it("personas 应限制指定场景实际执行的人格", async () => {
+    const summary = await runPlaythroughBatchV3({
+      ...baseBatchConfig,
+      scenarioIds: ["weapon-lifecycle"],
+      personas: ["collector"],
+      maxStepsPerRun: 2,
+    });
+    assert.equal(summary.totalRuns, 1);
+    assert.deepEqual(Object.keys(summary.byPersona), ["收集癖玩家"]);
+  });
+
+  it("未知 scenarioIds 应快速失败，避免误跑整库", async () => {
+    await assert.rejects(
+      () => runPlaythroughBatchV3({ ...baseBatchConfig, scenarioIds: ["missing-scenario"] }),
+      /Unknown scenario ids/,
+    );
+  });
+
+  it("actionFactory 应覆盖通用玩家动作", async () => {
+    const actions: string[] = [];
+    const sut = {
+      kind: "mock" as const,
+      step: async (action: { playerAction: string }) => {
+        actions.push(action.playerAction);
+        return { narrative: "你完成了检查。", dmJson: {}, latencyMs: 0, status: "ok" as const, reachedFinal: true };
+      },
+    };
+    await runSinglePlaythroughV3(
+      { ...baseBatchConfig, maxStepsPerRun: 1, actionFactory: () => "专项动作" },
+      findScenario("weapon-lifecycle")!,
+      "speedrunner",
+      0,
+      sut,
+    );
+    assert.deepEqual(actions, ["专项动作"]);
   });
 });

@@ -131,6 +131,9 @@ import {
 import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDecisionOptions";
 import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
 import { applyTurnSanityDamage, normalizeTurnSanityDamage } from "@/features/play/turnCommit/sanityDamage";
+import { buildTurnDeltaDigest } from "@/features/play/turnCommit/buildTurnDeltaDigest";
+import { TurnDeltaDigest } from "@/features/play/components/TurnDeltaDigest";
+import type { TurnDeltaDigest as TurnDeltaDigestData } from "@/features/play/turnCommit/buildTurnDeltaDigest";
 import {
   extractFilteredHintsFromTrace,
   isNarrativeSystemsDebugEnabled,
@@ -274,10 +277,10 @@ async function sleepWithinOptionsDeadline(args: {
 function messageForChatQueueStatus(status: ChatQueueUiStatus, wasQueued = false): string {
   switch (status) {
     case "queued":
-      return "本次行动已接入，主笔正在落笔";
+      return "本次行动已接入";
     case "ready":
     case "running":
-      return wasQueued ? "轮到你了，正在接入主笔通道" : "";
+      return wasQueued ? "轮到你了" : "";
     case "expired":
     case "failed":
     case "rejected":
@@ -597,6 +600,8 @@ function PlayContent() {
   /** 本回合新增/更新、或服务端 highlight_task_ids 点名的任务，用于任务面板里的高亮环效果。 */
   const [recentTaskHighlightIds, setRecentTaskHighlightIds] = useState<string[]>([]);
   const [showDialoguePaywall, setShowDialoguePaywall] = useState(false);
+  /** 当前已 commit 回合的 delta 摘要（用于 turn-delta-digest）；流式/commit 中不渲染。 */
+  const [lastTurnDigest, setLastTurnDigest] = useState<TurnDeltaDigestData | null>(null);
   const [showComplianceHint, setShowComplianceHint] = useState(false);
   const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
   /** 开局仅请求 options 时：隐藏流式条，正文由前端静态块展示 */
@@ -2204,7 +2209,7 @@ function PlayContent() {
     }
 
     if (optionsRegenInFlightRef.current) {
-      if (manual) setFirstTimeHint("正在整理可选行动。");
+      if (manual) setFirstTimeHint(null);
       return;
     }
     const isAutoTrigger = trigger === "auto_missing_main" || trigger === "opening_fallback";
@@ -2236,15 +2241,14 @@ function PlayContent() {
     let optionsRegenTimedOut = false;
     let regenSucceeded = false;
     if (trigger === "opening_fallback") {
-      setFirstTimeHint(language === "en-US" ? "The narrator is completing the first actions…" : "主笔正在补全首轮可选行动…");
+      setFirstTimeHint(null);
     } else if (trigger === "auto_switch") {
-      setFirstTimeHint(language === "en-US" ? "The narrator is preparing available actions…" : "主笔正在整理可选行动…");
+      setFirstTimeHint(null);
     } else if (trigger === "auto_missing_main") {
-      // 静默补全：底部选项区已通过 MobileOptionsEmptyState 展示"正在整理可选行动"的加载态，
-      // 这里不再重复弹出悬浮提示，避免玩家看到"本回合没有可选行动"这类听起来像故障的文案。
+      // 选项区保留无文字的忙碌态；这里不再弹出悬浮加载提示。
       setFirstTimeHint(null);
     } else {
-      setFirstTimeHint(language === "en-US" ? "The narrator is refreshing available actions…" : "主笔正在按当前剧情重新整理可选行动…");
+      setFirstTimeHint(null);
     }
     try {
       const logsNow = useGameStore.getState().logs ?? [];
@@ -2401,6 +2405,8 @@ function PlayContent() {
         const optionsRegenHeaders: Record<string, string> = {
           "Content-Type": "application/json",
           [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+          // 与主回合共用客户端指纹，避免共享出口 IP 下正常玩家共用一个低频限流桶。
+          [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
         };
         const optionsRegenBody = JSON.stringify({
           messages: attemptMessages,
@@ -2844,6 +2850,7 @@ function PlayContent() {
       }
     streamLogsBaselineRef.current = (useGameStore.getState().logs ?? []).length;
     setStreamPhase("waiting_upstream");
+    setLastTurnDigest(null);
     waitUxBackendStageRef.current = null;
     {
       const t0 = performance.now();
@@ -3611,6 +3618,7 @@ function PlayContent() {
     if (!parsed) {
       const salvage = (resolved.narrative ?? "").trim();
       if (!salvage) {
+        setLastTurnDigest(null);
         setStreamPhase("idle");
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -3618,6 +3626,7 @@ function PlayContent() {
         return;
       }
       if (resolved.failure === "protocol_guard_rejected") {
+        setLastTurnDigest(null);
         setStreamPhase("idle");
         narrativeRef.current = "";
         if (!isSystemAction && !bypassLengthCheck) setInput(trimmed);
@@ -4109,11 +4118,11 @@ function PlayContent() {
       setCurrentOptions([]);
       if (!isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你补全四条可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("auto_missing_main", deliveryDecision.seedOptions); }, 200);
       } else if (isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你补全首轮可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("opening_fallback", deliveryDecision.seedOptions); }, 200);
       } else {
         setFirstTimeHint(null);
@@ -4127,12 +4136,12 @@ function PlayContent() {
         // 开场首轮：无论 turn_mode 如何，始终走 opening_fallback 补全选项。
         // 使用 opening_fallback 作为唯一的 regen 触发，避免与 auto_missing_main 同时调度导致互锁。
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你生成可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("opening_fallback"); }, 200);
       } else if (parsedTurnMode === "decision_required") {
         if (getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
           autoMissingOptionsAttemptedRef.current = true;
-          setFirstTimeHint("正在为你生成可选行动…");
+          setFirstTimeHint(null);
           setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
         }
       } else {
@@ -4144,7 +4153,7 @@ function PlayContent() {
           writeResumeShadow();
         });
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你生成可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
       }
     }
@@ -4697,9 +4706,16 @@ function PlayContent() {
     narrativeRef.current = narrativeToPush;
     tailDrainTargetRef.current = narrativeToPush;
     setTailAlignKey((n) => n + 1);
+    // 聚合本回合 delta 摘要（仅 commit 成功、且不是终局/结算等特殊回合时展示）。
+    if (!isEndingFinaleSystemRound && !isEndgameSystemRound) {
+      setLastTurnDigest(buildTurnDeltaDigest(parsed));
+    } else {
+      setLastTurnDigest(null);
+    }
     setStreamPhase("tail_draining");
     } catch (commitErr: unknown) {
       console.error("[play][turn_commit_exception] turn commit failed", commitErr);
+      setLastTurnDigest(null);
       tailDrainTargetRef.current = null;
       parsedPostDrainRef.current = null;
       const rec = getCommitFailureRecovery({ committedNarrativeForRescue });
@@ -4858,14 +4874,18 @@ function PlayContent() {
       case "命运馈赠": {
         void sendAction(
           '【系统强制干预：玩家发动了"命运馈赠"天赋。请在叙事中安排玩家随机抢夺世界里的一个道具（从道具/物品表中选一，须有 ownerId 主人）。叙事需顺理成章，并用红色加粗标出该道具。重要：该道具均有主人；若玩家之后在主人面前使用或展示该道具，主人会察觉是玩家抢夺的，并据此产生敌意或报复。】',
-          true
+          true,
+          false,
+          true,
         );
         break;
       }
       case "主角光环": {
         void sendAction(
           '【系统强制干预：玩家发动了"主角光环"。请注意，接下来的3小时（回合）内玩家绝对免疫死亡，且本回合你必须为玩家触发1次必定幸运的正向事件！】',
-          true
+          true,
+          false,
+          true,
         );
         break;
       }
@@ -4879,14 +4899,18 @@ function PlayContent() {
       case "洞察之眼": {
         void sendAction(
           '【系统强制干预：玩家发动了"洞察之眼"。请在接下来的叙事中，明确且直白地用红色加粗字体，为玩家标记出一个必定收益的选择或逃生路线。】',
-          true
+          true,
+          false,
+          true,
         );
         break;
       }
       case "丧钟回响": {
         void sendAction(
           '【系统强制干预：玩家发动了"丧钟回响"。请在叙事中安排一种极度诡异的死法，强制处决当前场景中的一名恶意NPC或诡异（若存在）。注意：N-011 夜读老人与 A-008 深渊守门人免疫丧钟回响，不可被选为目标。】',
-          true
+          true,
+          false,
+          true,
         );
         break;
       }
@@ -5179,7 +5203,6 @@ function PlayContent() {
                           ? getFixedOpeningNarrative(language)
                           : null
                       }
-                      openingAiBusy={openingBusyUi}
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                       waitUxPrimaryLine={waitUxPrimaryLine}
                       waitUxSecondaryLine={waitUxSecondaryLine}
@@ -5188,6 +5211,7 @@ function PlayContent() {
                         void cancelCurrentChatQueue();
                       }}
                       fixedBottomSpace={optionsExpanded ? "expanded" : "default"}
+                      turnDeltaDigest={lastTurnDigest}
                     />
                   </>
                 )}

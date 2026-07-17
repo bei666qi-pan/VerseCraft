@@ -1,0 +1,10 @@
+  [速通型玩家] Step 1 LLM 不可用，使用 fallback: "继续推进主线"
+  [速通型玩家] Step 1/1000: "继续推进主线..." (LLM -1ms (降级))
+    ⚠️ 队列重试 #1 等待 15s: DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No available channel for model deepseek-v4-flash
+    ⚠️ 队列重试 #2 等待 23s: DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No available channel for model deepseek-v4-flash
+    ⚠️ 队列重试 #3 等待 34s: DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No available channel for model deepseek-v4-flash
+    ⚠️ 队列重试 #4 等待 51s: DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No available channel for model deepseek-v4-flash
+    ⚠️ 队列重试 #5 等待 76s: DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No available channel for model deepseek-v4-flash
+    ⚠️ 触发全局冷却 120s: DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No available channel for model deepseek-v4-flash
+  [速通型玩家] Step 2 LLM 降级 → "向前走" (DeepSeek API error (503): {"error":{"code":"model_not_found","message":"No avail)
+  [速通型玩家] Step 2/1000: "向前走..." (LLM -1ms (降级))

@@ -11,28 +11,12 @@ export const PLAY_WAIT_UX_PRIMARY_COPY: Record<Exclude<PlayWaitUxStage, "idle">,
   finalizing: "正在收束本回合",
 };
 
-/** 中等等待时的副行：和行动类型弱相关，克制，不给固定剩余时间。 */
+/**
+ * 等待主行已经提供了即时反馈；不再额外展示泛化的叙事加载副行，避免把加载过程误认为 AI 旁白。
+ */
 export function playWaitUxSemanticSubline(kind: PlaySemanticWaitingKind | null): string | null {
-  switch (kind) {
-    case "explore":
-      return "世界正在实时推演";
-    case "dialogue":
-      return "对方的反应正在被写入现场";
-    case "combat":
-      return "行动后果正在压向你";
-    case "use_item":
-      return "道具与现场规则正在对齐";
-    case "investigate":
-      return "线索正在从暗处浮出";
-    case "meta":
-      return "状态正在重新对齐";
-    case "unknown":
-    case null:
-    case undefined:
-      return "后果正在落地";
-    default:
-      return "后果正在落地";
-  }
+  void kind;
+  return null;
 }
 
 export function primaryLineForWaitStage(stage: PlayWaitUxStage): string {

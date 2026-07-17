@@ -17,6 +17,17 @@ export type UnsupportedFactIssueCode =
   | "fact_id_not_allowed"
   | "used_fact_id_missing_from_registry";
 
+export type UnsupportedFactReasonCode =
+  | "candidate_pending_review"
+  | "rumor_stated_as_fact"
+  | "root_claim_without_fact"
+  | "relationship_without_fact"
+  | "item_acquisition_without_fact_or_award"
+  | "npc_role_without_fact"
+  | "task_completion_without_fact_or_delta"
+  | "strong_fact_without_evidence"
+  | "other";
+
 export type UnsupportedFactCandidate = {
   code: UnsupportedFactIssueCode;
   text: string;
@@ -33,6 +44,7 @@ export type UnsupportedFactDetectorTelemetry = {
   disallowedFactIdCount: number;
   candidateNewFactCount: number;
   strongFactWithoutEvidenceCount: number;
+  byReason: Partial<Record<UnsupportedFactReasonCode, number>>;
 };
 
 export type UnsupportedFactDetectorReport = {
@@ -91,6 +103,20 @@ function pushCandidate(out: UnsupportedFactCandidate[], candidate: UnsupportedFa
     return;
   }
   out.push(candidate);
+}
+
+/** Privacy-safe diagnostic code; never returns candidate text or narrative. */
+export function classifyUnsupportedFactReason(text: string): UnsupportedFactReasonCode {
+  text = text.replace(/^world_fact:/, "");
+  if (text.startsWith("candidate_new_fact_pending_review:")) return "candidate_pending_review";
+  if (text === "rumor_or_hypothesis_stated_as_fact") return "rumor_stated_as_fact";
+  if (text.includes("root_cause_claim")) return "root_claim_without_fact";
+  if (text.includes("relationship_claim")) return "relationship_without_fact";
+  if (text === "item_acquisition_without_fact_or_award") return "item_acquisition_without_fact_or_award";
+  if (text === "npc_identity_or_deep_role_without_fact_id") return "npc_role_without_fact";
+  if (text === "task_completion_without_fact_or_delta") return "task_completion_without_fact_or_delta";
+  if (text === "strong_fact_sentence_without_fact_id") return "strong_fact_without_evidence";
+  return "other";
 }
 
 function relationAllowed(packet: NpcKnowledgePacket | null | undefined, a: string, b: string): boolean {
@@ -346,7 +372,12 @@ export function detectUnsupportedFacts(args: DetectUnsupportedFactsArgs): Unsupp
   }
 
   const byCode: Partial<Record<UnsupportedFactIssueCode, number>> = {};
-  for (const candidate of candidates) byCode[candidate.code] = (byCode[candidate.code] ?? 0) + 1;
+  const byReason: Partial<Record<UnsupportedFactReasonCode, number>> = {};
+  for (const candidate of candidates) {
+    byCode[candidate.code] = (byCode[candidate.code] ?? 0) + 1;
+    const reason = classifyUnsupportedFactReason(candidate.text);
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
   const strongFactWithoutEvidenceCount = candidates.filter(
     (candidate) =>
       candidate.code === "unsupported_new_fact" &&
@@ -364,6 +395,7 @@ export function detectUnsupportedFacts(args: DetectUnsupportedFactsArgs): Unsupp
       disallowedFactIdCount: byCode.fact_id_not_allowed ?? 0,
       candidateNewFactCount: args.candidateNewFacts?.length ?? 0,
       strongFactWithoutEvidenceCount,
+      byReason,
     },
   };
 }

@@ -1,0 +1,33 @@
+
+=== Playtest Boundary Runner ===
+Base: http://localhost:666
+Personas: 速通型玩家
+Session: (首次)
+Concurrency: 5 | MaxSteps: 1000 | SoftlockThreshold: 20
+
+  [速通型玩家] 启动 session=playtest-speedrunner-1783645214840-1 maxSteps=1000
+  [速通型玩家] Step 1/1000: "前往最近的主线任务点..." (LLM 1817ms)
+  [速通型玩家] Step 2/1000: "前往主线指引点..." (LLM 716ms)
+  [速通型玩家] Step 3/1000: "前往主线任务发布点..." (LLM 559ms)
+  [速通型玩家] ⚠️ Softlock 检测 @ step 21，尝试逃脱...
+  [速通型玩家] Step 21/1000: "打开地图查看当前位置..." (LLM 742ms) [逃脱]
+  [速通型玩家] Step 22/1000: "检查任务日志..." (LLM 643ms) [逃脱]
+  [速通型玩家] Step 23/1000: "回上一个区域..." (LLM 801ms) [逃脱]
+  [速通型玩家] Step 24/1000: "重新选择方向..." (LLM 664ms) [逃脱]
+  [速通型玩家] Step 25/1000: "回头走另一条路..." (LLM 828ms) [逃脱]
+  [速通型玩家] Step 26/1000: "查看任务目标..." (LLM 1133ms) [逃脱]
+  [速通型玩家] Step 27/1000: "打开地图 标记主线目标..." (LLM 997ms) [逃脱]
+  [速通型玩家] Step 28/1000: "向北直走..." (LLM 1007ms) [逃脱]
+  [速通型玩家] Step 29/1000: "向北直走..." (LLM 801ms) [逃脱]
+  [速通型玩家] Step 30/1000: "使用传送卷轴..." (LLM 906ms) [逃脱]
+  [速通型玩家] ✗ Softlock @ step 31
+
+=== 执行摘要 ===
+  ✓ 速通型玩家: softlock (30 steps, 0 violations, 103718ms) [softlock×1 / 0恢复]
+
+总计: 1 persona, 0 违规, 0 错误
+结局达成: 0/1 | 死亡: 0/1
+Wall: 104s
+
+详细报告: docs/eval/TEST_REPORT_PLAYTEST_20260710.md
+  ⚠️ 部分报告文件写入失败

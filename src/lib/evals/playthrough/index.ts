@@ -46,7 +46,9 @@ export {
 } from "./invariants";
 export type { NpcResurrectionResult, NarrativeRepetitionResult, StateNarrativeContradiction, SoftlockCheckResult, NarrativeOriginiumInconsistency, WeaponUpdateInconsistency, ProfessionConsistencyIssue, NpcStateChurnResult, RelationshipDriftResult } from "./invariants";
 
-export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
+export { applyDmJsonToState } from "./stateApply";
+
+export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive, judgeNarrativeConsistencyCodex } from "./narrativeJudge";
 
 export {
   createSutAdapter,
@@ -71,5 +73,6 @@ export {
   runPlaythroughBatch,
   clusterFailures,
   getScenarioLibraryCounts,
+  buildClientStructuredSnapshot,
 } from "./orchestrator";
 export type { PlaythroughV3Config, TraceArtifact, FailureCluster } from "./orchestrator";

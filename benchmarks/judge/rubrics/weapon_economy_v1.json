@@ -1,0 +1,80 @@
+{
+  "id": "weapon_economy_v1",
+  "name": "武器经济系统评测",
+  "version": "1.0.0",
+  "description": "评测武器锻造、维护、武器化、稳定度、原石扣除的叙事-状态对齐",
+  "scale": { "min": 1, "max": 5, "passing": 3.5 },
+  "passRule": {
+    "minEach": 2,
+    "minAverage": 3.5,
+    "hardFailIf": { "state_narrative_alignment": 1 }
+  },
+  "dimensions": [
+    {
+      "id": "forge_narrative",
+      "name": "锻造过程叙事",
+      "weight": 0.2,
+      "description": "锻造/维护/武器化过程是否在叙事中自然呈现，而非跳过或机械化",
+      "anchors": [
+        { "score": 5, "label": "沉浸", "description": "锻造过程有感官细节、NPC互动、时间流逝感" },
+        { "score": 4, "label": "良好", "description": "锻造过程有基本描述" },
+        { "score": 3, "label": "及格", "description": "提及锻造但缺乏细节" },
+        { "score": 2, "label": "机械", "description": "锻造像系统日志" },
+        { "score": 1, "label": "缺失", "description": "未描述锻造过程" }
+      ]
+    },
+    {
+      "id": "state_narrative_alignment",
+      "name": "状态-叙事对齐",
+      "weight": 0.3,
+      "description": "narrative 中的花费/获得/稳定度变化是否与结构化字段一致",
+      "anchors": [
+        { "score": 5, "label": "完全对齐", "description": "叙事与 currency_change/weapon_updates 完全一致" },
+        { "score": 4, "label": "基本对齐", "description": "主要数值对齐，细节略有出入" },
+        { "score": 3, "label": "部分对齐", "description": "大方向一致但具体数值矛盾" },
+        { "score": 2, "label": "明显矛盾", "description": "叙事声称免费但字段扣费" },
+        { "score": 1, "label": "完全脱节", "description": "叙事与字段完全无关" }
+      ],
+      "hardFloor": 2
+    },
+    {
+      "id": "weapon_stability_reflection",
+      "name": "武器稳定度反映",
+      "weight": 0.2,
+      "description": "叙事是否反映武器稳定度变化（低稳定度时描述故障/不可靠）",
+      "anchors": [
+        { "score": 5, "label": "精准反映", "description": "稳定度变化通过叙事感官自然传达" },
+        { "score": 4, "label": "良好反映", "description": "有提及武器状态变化" },
+        { "score": 3, "label": "间接反映", "description": "暗示但不明确" },
+        { "score": 2, "label": "未反映", "description": "叙事完全不提武器状态" },
+        { "score": 1, "label": "矛盾", "description": "叙事说武器完美但稳定度很低" }
+      ]
+    },
+    {
+      "id": "cost_transparency",
+      "name": "花费透明度",
+      "weight": 0.15,
+      "description": "原石花费是否在叙事中自然交代，而非暗扣",
+      "anchors": [
+        { "score": 5, "label": "自然交代", "description": "NPC或叙事自然提及花费" },
+        { "score": 4, "label": "明确交代", "description": "叙事中提到花费" },
+        { "score": 3, "label": "间接交代", "description": "暗示有代价" },
+        { "score": 2, "label": "模糊", "description": "花费不清" },
+        { "score": 1, "label": "暗扣", "description": "完全未提及花费但实际扣费" }
+      ]
+    },
+    {
+      "id": "profession_discount",
+      "name": "职业折扣体现",
+      "weight": 0.15,
+      "description": "溯源师等职业的锻造折扣是否在叙事中体现",
+      "anchors": [
+        { "score": 5, "label": "自然体现", "description": "NPC因职业给折扣，叙事流畅" },
+        { "score": 4, "label": "明确体现", "description": "提及职业折扣" },
+        { "score": 3, "label": "间接体现", "description": "暗示优惠" },
+        { "score": 2, "label": "未体现", "description": "有折扣但叙事未提及" },
+        { "score": 1, "label": "矛盾", "description": "声称无折扣但实际扣费更少" }
+      ]
+    }
+  ]
+}

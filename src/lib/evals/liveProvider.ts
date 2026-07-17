@@ -2,31 +2,34 @@
  * DeepSeek Live Provider for Eval Tools
  *
  * 为 Playthrough 模拟器和 DeepEval 质量评估提供真实 LLM 调用能力。
- * 使用 DeepSeek API（OpenAI 兼容接口），不依赖现有 AI 网关。
+ * 使用 OpenAI-compatible 接口，不依赖现有 AI 网关。
  *
  * 用途：
  * - Player Agent（模拟玩家生成动作）
  * - Narrative Judge（叙事质量裁判评分）
  *
  * 环境变量：
- * - DEEPSEEK_API_KEY: DeepSeek API 密钥
- * - DEEPSEEK_BASE_URL: 可选，默认为 https://api.deepseek.com/v1
- * - DEEPSEEK_MODEL: 可选，默认为 deepseek-chat
+ * - PLAYTEST_LLM_API_KEY 或 DEEPSEEK_API_KEY: API 密钥
+ * - PLAYTEST_LLM_BASE_URL 或 DEEPSEEK_BASE_URL: 可选，默认为 https://api.deepseek.com/v1
+ * - PLAYTEST_LLM_MODEL: 可选，默认为 deepseek-chat
  *
  * 注意：此模块仅用于 eval/测试工具，不接入生产 /api/chat 链路。
  */
 
 // === 配置 ===
 
+import { tryConsumeBudget } from "./harness/budgetGuard";
+import { buildLiveResultCacheKey, readLiveResultCache, writeLiveResultCache } from "./harness/liveResultCache";
+
 function getDeepSeekConfig() {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = process.env.PLAYTEST_LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    throw new Error("DEEPSEEK_API_KEY 未设置。请在 .env.local 中配置或通过环境变量设置。");
+    throw new Error("PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY 未设置。请在 .env.local 中配置或通过环境变量设置。");
   }
   return {
     apiKey,
-    baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1",
-    model: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
+    baseUrl: process.env.PLAYTEST_LLM_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1",
+    model: process.env.PLAYTEST_LLM_MODEL ?? "deepseek-chat",
   };
 }
 
@@ -57,20 +60,96 @@ export interface LiveCompletionResponse {
   model: string;
 }
 
-// === 核心调用 ===
+// === 速率限制全局队列 ===
+// RPM 配额充足时取消节流，保留全局冷却作为后端不可用时的安全阀
 
-/**
- * 调用 DeepSeek API 完成一次聊天补全。
- * 使用 OpenAI 兼容接口。
- */
-export async function callDeepSeekCompletion(
-  req: LiveCompletionRequest
-): Promise<LiveCompletionResponse> {
+interface QueuedRequest {
+  resolve: (response: LiveCompletionResponse) => void;
+  reject: (error: Error) => void;
+  request: LiveCompletionRequest;
+  attempt: number;
+}
+
+const _queue: QueuedRequest[] = [];
+let _lastRequestTime = 0;
+let _globalCooldownUntil = 0; // 全局冷却时间戳（后端全挂时触发）
+const MIN_INTERVAL_MS = 100; // 官方 DeepSeek API：~500 RPM，100ms 间隔安全
+/** 每个 429 冷却期（秒），累加 */
+const _429_BASE_COOLDOWN_MS = 30000;
+const MAX_QUEUE_RETRIES = 2;
+let _isProcessingQueue = false;
+
+function getDelayMs(): number {
+  const now = Date.now();
+  // 全局冷却优先
+  if (now < _globalCooldownUntil) {
+    return Math.min(_globalCooldownUntil - now, 120000);
+  }
+  const elapsed = now - _lastRequestTime;
+  return Math.max(0, MIN_INTERVAL_MS - elapsed);
+}
+
+async function processQueue(): Promise<void> {
+  if (_isProcessingQueue) return;
+  _isProcessingQueue = true;
+
+  try {
+    while (_queue.length > 0) {
+      const delay = getDelayMs();
+      if (delay > 0) {
+        await sleep(delay);
+      }
+
+      const item = _queue.shift();
+      if (!item) continue;
+
+      try {
+        const response = await executeSingleRequest(item.request);
+        _lastRequestTime = Date.now();
+        item.resolve(response);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        // 402 是余额/计费硬失败，立即终止；429/503/空内容只做有上限的短重试。
+        const isRetryable =
+          error.message.includes("(429)") ||
+          error.message.includes("(503)") ||
+          error.message.includes("返回空内容");
+        if (isRetryable && item.attempt < MAX_QUEUE_RETRIES) {
+          const retryAfter = (error.message.includes("返回空内容") || error.message.includes("(503)"))
+            ? Math.min(15000 * Math.pow(1.5, item.attempt), 120000) // 空内容/503: 15s → 23s → 34s → 51s → 76s
+            : error.message.includes("(429)")
+              ? Math.min(_429_BASE_COOLDOWN_MS * Math.pow(1.5, item.attempt), 120000) // 429: 30s → 45s → 68s → 102s → 120s
+              : extractRetryAfter(error.message);
+          console.warn(`    ⚠️ 队列重试 #${item.attempt + 1} 等待 ${Math.round(retryAfter/1000)}s: ${error.message.slice(0, 120)}`);
+          await sleep(retryAfter);
+          _queue.unshift({ ...item, attempt: item.attempt + 1 });
+        } else {
+          // 全局冷却 — 代理后端可能全挂，等待 120s 后继续尝试后续请求
+          if (error.message.includes("(503)")) {
+            _globalCooldownUntil = Date.now() + 120000;
+            console.warn(`    ⚠️ 触发全局冷却 120s: ${error.message.slice(0, 120)}`);
+          }
+          item.reject(error);
+        }
+      }
+    }
+  } finally {
+    _isProcessingQueue = false;
+  }
+}
+
+function extractRetryAfter(errorMsg: string): number {
+  const match = errorMsg.match(/retry.*?(\d+)/i) ?? errorMsg.match(/(\d+)\s*秒/i);
+  const seconds = match ? parseInt(match[1], 10) : 60;
+  return Math.min(Math.max(seconds * 1000, 5000), 120000); // 5s-120s
+}
+
+async function executeSingleRequest(req: LiveCompletionRequest): Promise<LiveCompletionResponse> {
   const config = getDeepSeekConfig();
   const startTime = Date.now();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 60000);
+  const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 90000);
 
   try {
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -86,6 +165,9 @@ export async function callDeepSeekCompletion(
         max_tokens: req.maxTokens ?? 1024,
         response_format: req.jsonMode ? { type: "json_object" } : undefined,
         stream: false,
+        // 禁用 DeepSeek 推理模式，否则 content 可能为空
+        enable_thinking: false,
+        thinking: { type: "disabled" },
       }),
       signal: controller.signal,
     });
@@ -128,6 +210,38 @@ export async function callDeepSeekCompletion(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// === 核心调用 ===
+
+/**
+ * 调用 DeepSeek API 完成一次聊天补全。
+ * 使用 OpenAI 兼容接口，内部通过队列控制速率。
+ */
+export async function callDeepSeekCompletion(
+  req: LiveCompletionRequest
+): Promise<LiveCompletionResponse> {
+  const config = getDeepSeekConfig();
+  const cacheKey = buildLiveResultCacheKey({
+    provider: "playtest_llm",
+    baseUrl: config.baseUrl,
+    model: config.model,
+    messages: req.messages,
+    temperature: req.temperature ?? 0.7,
+    maxTokens: req.maxTokens ?? 1024,
+    jsonMode: req.jsonMode ?? false,
+  });
+  const cached = readLiveResultCache<LiveCompletionResponse>(cacheKey);
+  if (cached) return { ...cached, latencyMs: 0 };
+  if (!tryConsumeBudget("playtest_llm")) {
+    throw new Error("Live eval 调用预算不足；请降低 profile 或设置 VERSECRAFT_EVAL_DAILY_CALL_BUDGET");
+  }
+  const response = await new Promise<LiveCompletionResponse>((resolve, reject) => {
+    _queue.push({ request: req, resolve, reject, attempt: 0 });
+    processQueue();
+  });
+  writeLiveResultCache(cacheKey, response);
+  return response;
 }
 
 // === 批量调用（带重试） ===
@@ -217,6 +331,7 @@ export async function generatePlayerActionDeepSeek(params: {
     sanity: number;
     profession: string | null;
   };
+  forbiddenActions?: string[];
 }): Promise<string> {
   const recentHistory = params.transcript.slice(-5).map(
     (t, i) => `[回${params.stepIndex - params.transcript.length + i + 1}]\n你: ${t.action}\nDM: ${t.narrative.slice(0, 200)}`
@@ -224,18 +339,27 @@ export async function generatePlayerActionDeepSeek(params: {
 
   const stateStr = `位置: ${params.state.playerLocation} | HP: ${params.state.hp} | 理智: ${params.state.sanity} | 职业: ${params.state.profession ?? "无"}`;
 
+  const diversityInstruction = params.transcript.length > 5
+    ? "\n\n注意：你的行动必须多样化！不要重复之前做过的动作。每次都想点之前没做过的事——去新地点、和NPC对话、检查物品、尝试互动、打开菜单、查看状态等。如果一直在做同一类动作（比如一直“前进”），立刻换一个完全不同类型的行动。"
+    : "";
+
+  const forbiddenInstruction = params.forbiddenActions && params.forbiddenActions.length > 0
+    ? `\n\n禁止使用以下动作（已执行过）：${params.forbiddenActions.slice(0, 8).map(s => `「${s}」`).join("、")}\n必须使用完全不同的动作。`
+    : "";
+
   const messages: ChatMessage[] = [
-    { role: "system", content: params.persona.systemPrompt },
+    { role: "system", content: params.persona.systemPrompt + diversityInstruction + forbiddenInstruction },
     {
       role: "user",
-      content: `## 角色\n你是「${params.persona.name}」。\n\n## 当前状态\n${stateStr}\n\n## 最近对话\n${recentHistory || "（游戏刚开始）"}\n\n请以玩家身份输入下一步动作。只用简体中文，10-30字，不要解释，不要加引号。`,
+      content: `## 角色\n你是「${params.persona.name}」。\n\n## 当前状态\n${stateStr}\n\n## 最近对话\n${recentHistory || "（游戏刚开始）"}\n\n请以玩家身份输入下一步动作。只用简体中文，10-30字，不要解释，不要加引号。动作必须具体且与之前不同。`,
     },
   ];
 
   const response = await callDeepSeekCompletion({
     messages,
-    temperature: 0.8,
-    maxTokens: 80,
+    temperature: 0.9,
+    maxTokens: 150,
+    timeoutMs: 90000,
   });
 
   return response.content.trim().replace(/^["']|["']$/g, "");
