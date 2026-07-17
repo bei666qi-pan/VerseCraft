@@ -6,6 +6,8 @@ import { formatCompactLocationLabel } from "@/lib/ui/locationLabels";
 import type { MemorySpineState } from "@/lib/memorySpine/types";
 import type { CodexEntry } from "@/store/useGameStore";
 import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "./codexCatalog";
+import { formatLocalizedLocation, localizedCodexName } from "@/lib/i18n/gameDisplay";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 /** 图鉴类型筛选：全部 / 仅人物 / 仅异常 */
 export type MobileCodexTypeFilter = "all" | "npc" | "anomaly";
@@ -45,7 +47,7 @@ export type MobileCodexCardModel =
       kind: "more";
       identified: false;
       displayName: "——";
-      location: "暂无更多";
+      location: string;
       disabled: true;
       unread: false;
     };
@@ -212,22 +214,26 @@ export function filterMobileCodexSlotsByType(
 export function filterMobileCodexSlotsByQuery(
   slots: readonly CodexCatalogSlot[],
   codex: Record<string, CodexEntry> | null | undefined,
-  query: string
+  query: string,
+  language: GameLanguage = "zh-CN"
 ): CodexCatalogSlot[] {
   const q = query.trim().toLowerCase();
   if (!q) return [...slots];
   return slots.filter((slot) => {
     const entry = codex?.[slot.id] ?? null;
     if (!entry) return false;
-    return formatMobileCodexName(entry, slot).toLowerCase().includes(q);
+    return formatMobileCodexName(entry, slot, language).toLowerCase().includes(q);
   });
 }
 
 /** 异常危险等级展示文案：仅对已识别异常生效，读取注册表 displayDangerLevel（未配置时为 null）。 */
-export function resolveMobileCodexDangerLabel(slot: CodexCatalogSlot, identified: boolean): string | null {
+export function resolveMobileCodexDangerLabel(slot: CodexCatalogSlot, identified: boolean, language: GameLanguage = "zh-CN"): string | null {
   if (!identified || slot.type !== "anomaly") return null;
   const level = ANOMALIES.find((a) => a.id === slot.id)?.displayDangerLevel?.trim();
-  return level ? `危险等级：${level}` : null;
+  if (!level) return null;
+  if (language !== "en-US") return `危险等级：${level}`;
+  const labels: Record<string, string> = { 中: "Medium", 高: "High", 中高: "Medium-High", 极高: "Extreme", 终局: "Final" };
+  return `Danger: ${labels[level] ?? level}`;
 }
 
 export function shouldAppendMobileCodexMoreCard(
@@ -249,7 +255,8 @@ export function buildMobileCodexCardModels(
   slots: readonly CodexCatalogSlot[] = ALL_CODEX_CATALOG_SLOTS,
   options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> & {
     viewedCodexIds?: Record<string, boolean> | null;
-  } = {}
+  } = {},
+  language: GameLanguage = "zh-CN"
 ): MobileCodexCardModel[] {
   const cards: MobileCodexCardModel[] = slots.map((slot) => {
     const entry = codex?.[slot.id] ?? null;
@@ -259,11 +266,11 @@ export function buildMobileCodexCardModels(
       kind: "slot",
       slot,
       identified,
-      displayName: identified && entry ? formatMobileCodexName(entry, slot) : "？？？",
+      displayName: identified && entry ? formatMobileCodexName(entry, slot, language) : language === "en-US" ? "???" : "？？？",
       location:
         identified && entry
-          ? resolveMobileCodexEntryLocation(entry, slot, options.dynamicNpcStates)
-          : "尚未识别",
+          ? resolveMobileCodexEntryLocation(entry, slot, options.dynamicNpcStates, language)
+          : language === "en-US" ? "Unidentified" : "尚未识别",
       disabled: false,
       unread: isMobileCodexEntryUnread(codex, options.viewedCodexIds, slot.id),
     };
@@ -275,7 +282,7 @@ export function buildMobileCodexCardModels(
       kind: "more",
       identified: false,
       displayName: "——",
-      location: "暂无更多",
+      location: language === "en-US" ? "No more entries" : "暂无更多",
       disabled: true,
       unread: false,
     });
@@ -291,57 +298,59 @@ export function buildMobileFloorCodexCardModels(
   return buildMobileCodexCardModels(codex, getMobileCodexSlotsForFloor({ ...options, codex }), options);
 }
 
-export function formatMobileCodexLocation(location: string | null | undefined): string {
+export function formatMobileCodexLocation(location: string | null | undefined, language: GameLanguage = "zh-CN"): string {
   const raw = String(location ?? "").trim();
-  if (!raw) return "未知区域";
+  if (!raw) return language === "en-US" ? "Unknown area" : "未知区域";
 
   const compact = formatCompactLocationLabel(raw);
-  if (compact !== "未知区域") return compact;
-  if (/^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(raw)) return "未知区域";
+  if (compact !== "未知区域") return formatLocalizedLocation(language, raw, compact);
+  if (/^[A-Za-z0-9]+_[A-Za-z0-9_]+$/.test(raw)) return language === "en-US" ? "Unknown area" : "未知区域";
   return raw;
 }
 
-export function formatMobileCodexName(entry: CodexEntry | null | undefined, slot: CodexCatalogSlot): string {
-  if (!entry) return "？？？";
+export function formatMobileCodexName(entry: CodexEntry | null | undefined, slot: CodexCatalogSlot, language: GameLanguage = "zh-CN"): string {
+  if (!entry) return language === "en-US" ? "???" : "？？？";
   const resolved = resolveCodexDisplayName(entry).trim();
-  if (resolved && resolved !== "某位住户" && resolved !== "未知条目") return resolved;
-  return slot.displayName;
+  const fallback = resolved && resolved !== "某位住户" && resolved !== "未知条目" ? resolved : slot.displayName;
+  return localizedCodexName(language, slot.id, fallback);
 }
 
 export function resolveMobileCodexEntryLocation(
   entry: CodexEntry | null | undefined,
   slot: CodexCatalogSlot,
-  dynamicNpcStates?: MobileCodexDynamicNpcStates | null
+  dynamicNpcStates?: MobileCodexDynamicNpcStates | null,
+  language: GameLanguage = "zh-CN"
 ): string {
   if (slot.type === "npc") {
     const dynamicLocation = dynamicNpcStates?.[slot.id]?.currentLocation;
-    const formatted = formatMobileCodexLocation(dynamicLocation);
-    if (formatted !== "未知区域") return formatted;
+    const formatted = formatMobileCodexLocation(dynamicLocation, language);
+    if (formatted !== (language === "en-US" ? "Unknown area" : "未知区域")) return formatted;
   }
 
   const entryLocation = readCodexEntryLocation(entry);
-  const formattedEntryLocation = formatMobileCodexLocation(entryLocation);
-  if (formattedEntryLocation !== "未知区域") return formattedEntryLocation;
+  const formattedEntryLocation = formatMobileCodexLocation(entryLocation, language);
+  if (formattedEntryLocation !== (language === "en-US" ? "Unknown area" : "未知区域")) return formattedEntryLocation;
 
-  return formatMobileCodexLocation(slot.fallbackLocation);
+  return formatMobileCodexLocation(slot.fallbackLocation, language);
 }
 
 export function buildMobileCodexDetail(
   codex: Record<string, CodexEntry> | null | undefined,
   slot: CodexCatalogSlot,
-  options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> & { memorySpine?: MemorySpineState | null } = {}
+  options: Pick<MobileCodexFloorOptions, "dynamicNpcStates"> & { memorySpine?: MemorySpineState | null } = {},
+  language: GameLanguage = "zh-CN"
 ): MobileCodexDetail {
   const entry = codex?.[slot.id] ?? null;
   const entryKind = slot.type === "anomaly" ? "异常" : "人物";
   if (!entry) {
     return {
       identified: false,
-      name: "？？？",
-      location: "尚未识别",
+      name: language === "en-US" ? "???" : "？？？",
+      location: language === "en-US" ? "Unidentified" : "尚未识别",
       quote: null,
-      intro: `尚未识别该${entryKind}。`,
-      observation: "暂未记录更多观察。",
-      relationship: slot.type === "anomaly" ? "暂无稳定应对记录。" : "暂无稳定关系印象。",
+      intro: language === "en-US" ? `This ${slot.type === "anomaly" ? "anomaly" : "person"} is unidentified.` : `尚未识别该${entryKind}。`,
+      observation: language === "en-US" ? "No further observations recorded." : "暂未记录更多观察。",
+      relationship: language === "en-US" ? (slot.type === "anomaly" ? "No stable response record." : "No stable relationship impression.") : (slot.type === "anomaly" ? "暂无稳定应对记录。" : "暂无稳定关系印象。"),
       memories: "",
       dangerLabel: null,
     };
@@ -349,14 +358,14 @@ export function buildMobileCodexDetail(
 
   return {
     identified: true,
-    name: formatMobileCodexName(entry, slot),
-    location: resolveMobileCodexEntryLocation(entry, slot, options.dynamicNpcStates),
+    name: formatMobileCodexName(entry, slot, language),
+    location: resolveMobileCodexEntryLocation(entry, slot, options.dynamicNpcStates, language),
     quote: slot.quote ?? null,
     intro: buildMobileCodexIntro(entry),
     observation: buildMobileCodexObservation(entry),
     relationship: buildMobileCodexRelationship(entry),
     memories: buildMobileCodexMemories(entry, options.memorySpine),
-    dangerLabel: resolveMobileCodexDangerLabel(slot, true),
+    dangerLabel: resolveMobileCodexDangerLabel(slot, true, language),
   };
 }
 

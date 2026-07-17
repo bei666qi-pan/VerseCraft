@@ -5,7 +5,7 @@ export function buildOptionsRegenSystemPrompt(): string {
     '输出形如：{"options":["...","...","...","..."]}。',
     "",
     "硬性规则：",
-    "- options 恰好 4 条，简体中文，第一人称，每条 5-20 字。",
+    "- options 恰好 4 条，使用请求指定的玩家语言，第一人称，每条保持简短。",
     "- 严禁复用或改写复用【当前屏幕选项】与【最近出现选项】中的动作。",
     "- 选项必须承接最近叙事里已出现的人物/物品/地点/风险，不允许泛化动作。",
     "- 至少 2 条必须直接锚定最近叙事中的具体实体或场景对象（如门缝、楼道尽头、某NPC、某道具）。",
@@ -15,4 +15,3 @@ export function buildOptionsRegenSystemPrompt(): string {
     "- 禁止输出解释、注释、markdown、代码块或额外字段。",
   ].join("\n");
 }
-

@@ -6,6 +6,7 @@ import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
 import ChunkErrorHandler from "@/components/ChunkErrorHandler";
 import { MobileChromeTheme } from "@/components/MobileChromeTheme";
 import ViewportRuntimeVars from "@/components/ViewportRuntimeVars";
+import { LanguageDocumentSync } from "@/components/LanguageDocumentSync";
 import { envRawFirst } from "@/lib/config/envRaw";
 
 export const metadata: Metadata = {
@@ -49,6 +50,7 @@ export default function RootLayout({
         <StorageDegradedBanner />
         <ChunkErrorHandler />
         <HydrationProvider>
+          <LanguageDocumentSync />
           {children}
         </HydrationProvider>
         <ServiceWorkerRegistrar />

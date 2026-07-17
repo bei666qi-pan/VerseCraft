@@ -54,6 +54,9 @@ export function CreateCharacterForm() {
   const router = useRouter();
   const user = useGameStore((s) => s.user);
   const guestId = useGameStore((s) => s.guestId ?? "guest_create");
+  const language = useGameStore((s) => s.language);
+  const setLanguage = useGameStore((s) => s.setLanguage);
+  const isEnglish = language === "en-US";
   useHeartbeat(!!user, guestId, "/create");
 
   // 提前预取 /play 的 RSC payload 与大体积 chunk：「开卷」不再现场拉包
@@ -74,7 +77,7 @@ export function CreateCharacterForm() {
   const [stats, setStats] = useState<Record<StatType, number>>({ ...BASE_STATS });
 
   const remaining = useMemo(() => calculateRemainingPoints(stats), [stats]);
-  const personalityValid = isValidCreatePersonality(personality);
+  const personalityValid = isValidCreatePersonality(personality, language);
 
   const canSubmit =
     name.trim().length > 0 &&
@@ -87,7 +90,9 @@ export function CreateCharacterForm() {
   const submitMessage =
     submitError ??
     (submitAttempted && !canSubmit
-      ? "检查称呼、身高、性格格式；点数必须用完，并选择一项回响天赋。"
+      ? isEnglish
+        ? "Check your name, height, personality, allocated points, and Echo talent."
+        : "检查称呼、身高、性格格式；点数必须用完，并选择一项回响天赋。"
       : null);
 
   function inc(stat: StatType) {
@@ -102,8 +107,8 @@ export function CreateCharacterForm() {
   }
 
   function fillQuickCharacter() {
-    const namePool = ["黎川", "苏木", "阿夜", "行者", "白葵", "祁夜"];
-    const personalityPool = ["冷静", "冲动", "多疑", "乐观", "谨慎", "偏执"];
+    const namePool = isEnglish ? ["Rowan", "Mira", "Ash", "Morgan", "June", "Vale"] : ["黎川", "苏木", "阿夜", "行者", "白葵", "祁夜"];
+    const personalityPool = isEnglish ? ["Calm", "Impulsive", "Wary", "Optimistic", "Careful", "Obsessive"] : ["冷静", "冲动", "多疑", "乐观", "谨慎", "偏执"];
 
     setName(pick(namePool));
     setGender(pick(GENDER_OPTIONS));
@@ -198,7 +203,7 @@ export function CreateCharacterForm() {
     } catch (error) {
       console.error("[create] failed to initialize character", error);
       submitInFlightRef.current = false;
-      setSubmitError("本地角色档案没有写入，请检查浏览器存储权限后再次开卷。");
+      setSubmitError(isEnglish ? "Your local character profile was not saved. Check browser storage permission and try again." : "本地角色档案没有写入，请检查浏览器存储权限后再次开卷。");
       setSubmitting(false);
     }
   }
@@ -220,44 +225,55 @@ export function CreateCharacterForm() {
             <span className="vc-reading-serif text-[20px] font-semibold leading-none">VerseCraft</span>
           </div>
 
-          <button
-            type="button"
-            data-testid="quick-create-character"
-            aria-label="一键注册角色（仅生成本地角色档案，不生成账号）"
-            onClick={fillQuickCharacter}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-vc-line bg-vc-paper-raised/90 py-1 pl-1.5 pr-4 vc-reading-serif text-[14px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.97]"
-          >
-            <VerseCraftPaperMark className="h-7 w-7 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
-            <span className="whitespace-nowrap">一键注册</span>
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              data-testid="create-language-toggle"
+              aria-label={isEnglish ? "Switch to Simplified Chinese" : "Switch to English"}
+              onClick={() => setLanguage(isEnglish ? "zh-CN" : "en-US")}
+              className="h-10 rounded-full border border-vc-line bg-vc-paper-raised/90 px-3 vc-reading-serif text-[14px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.97]"
+            >
+              {isEnglish ? "中文" : "EN"}
+            </button>
+            <button
+              type="button"
+              data-testid="quick-create-character"
+              aria-label={isEnglish ? "Create a local character with random values" : "一键注册角色（仅生成本地角色档案，不生成账号）"}
+              onClick={fillQuickCharacter}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-vc-line bg-vc-paper-raised/90 py-1 pl-1.5 pr-4 vc-reading-serif text-[14px] font-semibold leading-none text-vc-ink vc-shadow-card transition hover:bg-vc-paper-bright active:scale-[0.97]"
+            >
+              <VerseCraftPaperMark className="h-7 w-7 border-vc-line shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" />
+              <span className="whitespace-nowrap">{isEnglish ? "Quick start" : "一键注册"}</span>
+            </button>
+          </div>
         </header>
 
         <section className="mt-8 animate-fade-in-up">
           <p className="vc-reading-serif text-[12px] font-semibold uppercase tracking-[0.34em] text-vc-ink-faint">
-            序章 · 暗月
+            {isEnglish ? "PROLOGUE · DARK MOON" : "序章 · 暗月"}
           </p>
-          <h1 className="mt-2.5 vc-reading-serif text-[32px] font-semibold leading-tight text-vc-ink-deep">入卷之前</h1>
+          <h1 className="mt-2.5 vc-reading-serif text-[32px] font-semibold leading-tight text-vc-ink-deep">{isEnglish ? "Before you enter" : "入卷之前"}</h1>
           <p className="mt-2 vc-reading-serif text-[15px] leading-relaxed text-vc-ink-soft">
-            写下这具身体的轮廓。暗月之下，公寓会记住每一个走进来的名字。
+            {isEnglish ? "Give this body a shape. Under the Dark Moon, the apartment remembers every name that enters." : "写下这具身体的轮廓。暗月之下，公寓会记住每一个走进来的名字。"}
           </p>
           <VerseCraftPaperDivider className="mt-5 w-[11rem]" />
         </section>
 
         <section className="vc-card mt-6 px-5 py-5">
-          <VerseCraftPaperSectionTitle>基础档案</VerseCraftPaperSectionTitle>
+          <VerseCraftPaperSectionTitle>{isEnglish ? "Profile" : "基础档案"}</VerseCraftPaperSectionTitle>
           <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4">
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">称呼</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">{isEnglish ? "Name" : "称呼"}</span>
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="请输入 2-6 字"
+                placeholder={isEnglish ? "Enter a name" : "请输入 2-6 字"}
                 className={inputClass}
               />
             </label>
 
             <label className="relative min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">性别</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">{isEnglish ? "Gender" : "性别"}</span>
               <select
                 value={gender}
                 onChange={(event) => setGender(event.target.value as GenderOption)}
@@ -265,7 +281,7 @@ export function CreateCharacterForm() {
               >
                 {GENDER_OPTIONS.map((option) => (
                   <option key={option} value={option} className="bg-vc-paper text-vc-ink">
-                    {option}
+                    {isEnglish ? ({ 男: "Male", 女: "Female", 其他: "Other" }[option]) : option}
                   </option>
                 ))}
               </select>
@@ -278,7 +294,7 @@ export function CreateCharacterForm() {
             </label>
 
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">身高</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">{isEnglish ? "Height" : "身高"}</span>
               <div className="relative">
                 <input
                   type="number"
@@ -300,17 +316,17 @@ export function CreateCharacterForm() {
             </label>
 
             <label className="min-w-0">
-              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">性格</span>
+              <span className="vc-reading-serif text-[18px] font-semibold leading-none text-vc-ink">{isEnglish ? "Personality" : "性格"}</span>
               <input
                 value={personality}
                 onChange={(event) => setPersonality(event.target.value)}
-                placeholder="2-6 个中文字符"
+                placeholder={isEnglish ? "2–24 English characters" : "2-6 个中文字符"}
                 className={`${inputClass} ${
                   personality.length > 0 && !personalityValid ? "border-vc-seal text-vc-seal" : ""
                 }`}
               />
               {!personalityValid && personality.length > 0 ? (
-                <p className="mt-2 vc-reading-serif text-[14px] text-vc-seal">必须为 2-6 个中文字符。</p>
+                <p className="mt-2 vc-reading-serif text-[14px] text-vc-seal">{isEnglish ? "Use 2–24 English letters, spaces, apostrophes, or hyphens." : "必须为 2-6 个中文字符。"}</p>
               ) : null}
             </label>
           </div>
@@ -318,9 +334,9 @@ export function CreateCharacterForm() {
 
         <section className="vc-card mt-5 px-5 py-5">
           <div className="flex items-start justify-between gap-4">
-            <VerseCraftPaperSectionTitle>潜能赋予</VerseCraftPaperSectionTitle>
+            <VerseCraftPaperSectionTitle>{isEnglish ? "Attributes" : "潜能赋予"}</VerseCraftPaperSectionTitle>
             <div className="mt-0.5 flex shrink-0 items-center gap-2 rounded-full border border-vc-line bg-vc-paper-bright px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-              <span className="vc-reading-serif text-[13px] leading-none text-vc-ink-soft">剩余</span>
+              <span className="vc-reading-serif text-[13px] leading-none text-vc-ink-soft">{isEnglish ? "Left" : "剩余"}</span>
               <span
                 data-testid="create-remaining-points"
                 className={`vc-reading-serif text-[22px] font-semibold leading-none transition-colors ${
@@ -340,7 +356,7 @@ export function CreateCharacterForm() {
         </section>
 
         <section className="vc-card mt-5 px-5 py-5">
-          <VerseCraftPaperSectionTitle>回响天赋</VerseCraftPaperSectionTitle>
+          <VerseCraftPaperSectionTitle>{isEnglish ? "Echo talent" : "回响天赋"}</VerseCraftPaperSectionTitle>
           <CreateTalentGrid selectedTalent={selectedTalent} onSelectTalent={setSelectedTalent} />
         </section>
 
@@ -360,7 +376,7 @@ export function CreateCharacterForm() {
             <span className="absolute left-6 text-vc-paper-bright/50" aria-hidden>
               ✦
             </span>
-            <span>{submitting ? "开卷中" : "开卷"}</span>
+            <span>{submitting ? (isEnglish ? "Entering…" : "开卷中") : (isEnglish ? "Enter the story" : "开卷")}</span>
             <span className="absolute right-6 text-vc-paper-bright/50" aria-hidden>
               ✦
             </span>

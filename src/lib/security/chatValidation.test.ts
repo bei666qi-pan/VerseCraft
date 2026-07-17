@@ -34,6 +34,25 @@ test("validateChatRequest: clientPurpose defaults to normal", () => {
   });
   assert.ok(v.ok);
   assert.equal(v.clientPurpose, "normal");
+  assert.equal(v.language, "zh-CN");
+});
+
+test("validateChatRequest: accepts English response language and rejects unknown values", () => {
+  const english = validateChatRequest({
+    messages: [{ role: "user", content: "look at the door" }],
+    playerContext: "ctx",
+    language: "en-US",
+  });
+  assert.ok(english.ok);
+  assert.equal(english.language, "en-US");
+
+  const unknown = validateChatRequest({
+    messages: [{ role: "user", content: "hi" }],
+    playerContext: "ctx",
+    language: "fr-FR",
+  });
+  assert.ok(unknown.ok);
+  assert.equal(unknown.language, "zh-CN");
 });
 
 test("validateChatRequest: clientPurpose accepts options_regen_only", () => {
@@ -87,4 +106,3 @@ test("moderationTextForPrivateStoryChat：options_regen_only 使用固定短句�
 test("moderationTextForPrivateStoryChat：normal 沿用 latestUserInput", () => {
   assert.equal(moderationTextForPrivateStoryChat("normal", "玩家输入"), "玩家输入");
 });
-

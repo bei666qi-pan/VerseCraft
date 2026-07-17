@@ -19,6 +19,19 @@ test("initCharacter starts without gifting a random inventory item", () => {
   assert.deepEqual(useGameStore.getState().inventory, []);
 });
 
+test("initCharacter clears an earlier run's narrative log", () => {
+  resetStore();
+  useGameStore.setState({ logs: [{ role: "assistant", content: "上一局的中文正文" }] });
+
+  useGameStore.getState().initCharacter(
+    { name: "Rowan", gender: "unknown", height: 170, personality: "Calm" },
+    { sanity: 10, agility: 0, luck: 0, charm: 0, background: 10 },
+    "洞察之眼"
+  );
+
+  assert.deepEqual(useGameStore.getState().logs, []);
+});
+
 test("phase4: awarded_items write should land in inventory", () => {
   resetStore();
   const s = useGameStore.getState();

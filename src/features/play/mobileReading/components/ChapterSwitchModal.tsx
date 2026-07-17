@@ -2,6 +2,7 @@
 
 import { ChapterTocList } from "@/features/play/chapters";
 import type { ChapterId, ChapterState } from "@/lib/chapters";
+import { useGameStore } from "@/store/useGameStore";
 
 function OrnamentLine({ className = "" }: { className?: string }) {
   return (
@@ -24,6 +25,8 @@ export function ChapterSwitchModal({
   onClose: () => void;
   onSelectChapter: (chapterId: ChapterId) => void;
 }) {
+  const language = useGameStore((state) => state.language);
+  const isEnglish = language === "en-US";
   if (!open) return null;
   return (
     <div
@@ -41,14 +44,14 @@ export function ChapterSwitchModal({
           data-testid="chapter-switch-close"
           className="absolute right-6 top-7 z-10 rounded-full border border-[#d8d1c6] bg-vc-paper-bright px-4 py-2 vc-reading-serif text-[16px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
         >
-          关闭
+          {isEnglish ? "Close" : "关闭"}
         </button>
         <header className="text-center">
           <h2 id="chapter-switch-title" className="pointer-events-none vc-reading-serif text-[32px] font-semibold leading-none text-[#174d46]">
-            切换章节
+            {isEnglish ? "Switch chapter" : "切换章节"}
           </h2>
           <p className="mt-3 vc-reading-serif text-[16px] leading-none text-vc-ink-soft">
-            上滑查看已解锁章节
+            {isEnglish ? "Scroll to view unlocked chapters" : "上滑查看已解锁章节"}
           </p>
         </header>
         <OrnamentLine className="mt-6" />
@@ -61,6 +64,7 @@ export function ChapterSwitchModal({
             rowTestId="chapter-switch-item"
             allowEnterNext={false}
             titleStyle="dot"
+            language={language}
             onReviewChapter={onSelectChapter}
             onReturnToActive={() => onSelectChapter(chapterState.activeChapterId)}
           />

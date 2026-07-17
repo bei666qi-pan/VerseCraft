@@ -3,6 +3,7 @@
 import { MobileReadingIcons, type MobileReadingIcon } from "../icons";
 import { mobileReadingTheme } from "../theme";
 import type { MobileBottomNavProps } from "../types";
+import { normalizeGameLanguage } from "@/lib/i18n/language";
 
 type DockItem = {
   label: string;
@@ -22,7 +23,7 @@ function DockButton({ item }: { item: DockItem }) {
     <button
       type="button"
       onClick={item.onClick}
-      aria-label={item.badge ? `${item.ariaLabel ?? item.label}（有新发现）` : item.ariaLabel ?? item.label}
+      aria-label={item.badge ? `${item.ariaLabel ?? item.label}${item.label === "Codex" || item.label === "Quests" ? " (new)" : "（有新发现）"}` : item.ariaLabel ?? item.label}
       aria-current={item.active ? "page" : undefined}
       aria-disabled={item.disabled || undefined}
       data-testid={item.testId}
@@ -62,11 +63,13 @@ export function MobileBottomNav({
   onOpenTasks,
   hasUnreadCodex,
   hasUnviewedTaskUpdates,
+  language,
 }: MobileBottomNavProps) {
+  const isEnglish = normalizeGameLanguage(language) === "en-US";
   const items: DockItem[] = [
     {
-      label: "角色",
-      ariaLabel: "打开角色",
+      label: isEnglish ? "Character" : "角色",
+      ariaLabel: isEnglish ? "Open character" : "打开角色",
       icon: MobileReadingIcons.Character,
       testId: "bottom-nav-character",
       active: activeItem === "character",
@@ -74,15 +77,15 @@ export function MobileBottomNav({
       onClick: onOpenCharacter,
     },
     {
-      label: "剧情",
+      label: isEnglish ? "Story" : "剧情",
       icon: MobileReadingIcons.Story,
       testId: "bottom-nav-story",
       active: activeItem === "story",
       onClick: onFocusStory,
     },
     {
-      label: "任务",
-      ariaLabel: "打开任务",
+      label: isEnglish ? "Quests" : "任务",
+      ariaLabel: isEnglish ? "Open quests" : "打开任务",
       icon: MobileReadingIcons.Tasks,
       testId: "bottom-nav-tasks",
       active: activeItem === "tasks",
@@ -91,7 +94,7 @@ export function MobileBottomNav({
       onClick: onOpenTasks,
     },
     {
-      label: "图鉴",
+      label: isEnglish ? "Codex" : "图鉴",
       icon: MobileReadingIcons.Codex,
       testId: "bottom-nav-codex",
       active: activeItem === "codex",
@@ -99,7 +102,7 @@ export function MobileBottomNav({
       onClick: onOpenCodex,
     },
     {
-      label: "设置",
+      label: isEnglish ? "Settings" : "设置",
       icon: MobileReadingIcons.Settings,
       testId: "bottom-nav-settings",
       active: activeItem === "settings",
@@ -108,7 +111,7 @@ export function MobileBottomNav({
   ];
 
   return (
-    <nav data-testid="mobile-bottom-nav" aria-label="阅读导航" className={mobileReadingTheme.bottomNav}>
+    <nav data-testid="mobile-bottom-nav" aria-label={isEnglish ? "Reading navigation" : "阅读导航"} className={mobileReadingTheme.bottomNav}>
       <div className={mobileReadingTheme.bottomNavGrid}>
         {items.map((item) => (
           <DockButton key={item.label} item={item} />

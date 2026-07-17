@@ -64,3 +64,19 @@ test("opening turn private_story_action 也应避免吐出涉黄涉暴硬话术"
   assert.equal(result.narrative.includes("涉黄"), false);
   assert.equal(result.narrative.includes("涉暴"), false);
 });
+
+test("english opening turn uses an english neutral fallback", () => {
+  const result = buildOutputFallback({
+    scene: "private_story_output",
+    stage: "post_model",
+    decision: "fallback",
+    riskLevel: "gray",
+    reasonCode: "private_explicit_details_rewrite",
+    isProviderFailureFallback: false,
+    isOpeningTurn: true,
+    language: "en-US",
+  });
+
+  assert.ok(result.narrative.includes("night wind"));
+  assert.equal(/[\u4e00-\u9fff]/.test(result.narrative), false);
+});

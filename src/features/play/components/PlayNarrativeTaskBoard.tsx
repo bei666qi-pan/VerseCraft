@@ -16,6 +16,8 @@ import { getClientTaskBoardPressureV1Enabled, getClientTaskVisibilityPolicyV3Ena
 import { getTaskStatusLabel } from "@/lib/tasks/taskV2";
 import { MAX_ACTIVE_TASKS } from "@/lib/tasks/taskV2";
 import { MobileReadingIcons } from "@/features/play/mobileReading/icons";
+import { languageText } from "@/lib/i18n/gameDisplay";
+import { useGameStore } from "@/store/useGameStore";
 
 // 2026-07 重构说明：本组件此前同时维护 "overlay(浅色)/embedded(暗色玻璃)" 两套视觉分支，
 // 但全仓库唯一两个调用方（PlayTaskPanel、MobileTaskPanel）实际只会传 density="overlay"，
@@ -54,12 +56,12 @@ import { MobileReadingIcons } from "@/features/play/mobileReading/icons";
 //    "更多在办（N）"→"其余进行中（N）"；"收起的记录：已完成 N · 落空 N"→"已完成 N ·
 //    落空 N"（"收起的记录"是这个折叠按钮本身已经在说的事，前缀是纯冗余）。
 
-function guidanceBadge(level: TaskStageCardViewModel["guidanceLevel"]): { label: string; cls: string } | null {
+function guidanceBadge(level: TaskStageCardViewModel["guidanceLevel"], english: boolean): { label: string; cls: string } | null {
   if (level === "strong") {
-    return { label: "指引明确", cls: "border-vc-accent/30 bg-vc-accent/8 text-vc-accent" };
+    return { label: english ? "Clear lead" : "指引明确", cls: "border-vc-accent/30 bg-vc-accent/8 text-vc-accent" };
   }
   if (level === "light") {
-    return { label: "靠自己摸索", cls: "border-vc-line text-vc-ink-faint" };
+    return { label: english ? "Find your way" : "靠自己摸索", cls: "border-vc-line text-vc-ink-faint" };
   }
   return null;
 }
@@ -76,9 +78,9 @@ function statusStyle(status: GameTask["status"]): string {
  * （-rotate-6 圆形描边+单字），比一条彩色 pill 更像纸质记录本上盖的戳，
  * 也顺带把"这条已经有定论"和"这条还在跟"从视觉上分得更开。
  */
-function closedStamp(status: GameTask["status"]): { glyph: string; cls: string } | null {
-  if (status === "completed") return { glyph: "成", cls: "border-vc-accent/60 text-vc-accent" };
-  if (status === "failed") return { glyph: "败", cls: "border-vc-seal/60 text-vc-seal" };
+function closedStamp(status: GameTask["status"], english: boolean): { glyph: string; cls: string } | null {
+  if (status === "completed") return { glyph: english ? "OK" : "成", cls: "border-vc-accent/60 text-vc-accent" };
+  if (status === "failed") return { glyph: english ? "X" : "败", cls: "border-vc-seal/60 text-vc-seal" };
   return null;
 }
 
@@ -88,7 +90,7 @@ export type PlayNarrativeTaskBoardProps = {
   journalClues?: ClueEntry[];
   codex?: Record<string, CodexEntry>;
   highlightTaskIds?: string[];
-  onClaimTask: (taskId: void) => void;
+  onClaimTask: (taskId: string) => void;
   /** 玩家是否从未打开过任务面板。true = 显示首次引导文案。 */
   taskPanelFirstOpen?: boolean;
   /** 玩家打开任务面板时调用，标记面板已查看。 */
@@ -97,7 +99,8 @@ export type PlayNarrativeTaskBoardProps = {
 
 function roleShellClasses(
   role: TaskStageCardViewModel["role"],
-  size: "hero" | "standard"
+  size: "hero" | "standard",
+  english: boolean
 ): { frame: string; accent: string; rolePill: string; roleLabel: string } {
   if (role === "mainline") {
     return {
@@ -107,7 +110,7 @@ function roleShellClasses(
           : "border border-vc-line-warm bg-vc-paper-bright",
       accent: "bg-vc-accent/55",
       rolePill: "border border-vc-line-warm bg-vc-paper-bright text-vc-ink",
-      roleLabel: "主线",
+      roleLabel: english ? "Main" : "主线",
     };
   }
   if (role === "opportunity") {
@@ -115,14 +118,14 @@ function roleShellClasses(
       frame: "border border-dashed border-vc-line bg-vc-paper-raised",
       accent: "bg-vc-accent/25",
       rolePill: "border border-vc-line bg-white/60 text-vc-ink-soft",
-      roleLabel: "机会",
+      roleLabel: english ? "Chance" : "机会",
     };
   }
   return {
     frame: "border border-vc-line bg-vc-paper-raised",
     accent: "bg-vc-ink-faint/35",
     rolePill: "border border-vc-line bg-white/60 text-vc-ink-soft",
-    roleLabel: "委托",
+    roleLabel: english ? "Request" : "委托",
   };
 }
 
@@ -187,6 +190,8 @@ export function PlayNarrativeTaskBoard({
   taskPanelFirstOpen,
   onMarkTaskPanelOpened,
 }: PlayNarrativeTaskBoardProps) {
+  const language = useGameStore((state) => state.language);
+  const isEnglish = language === "en-US";
   const [showMore, setShowMore] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -250,7 +255,7 @@ export function PlayNarrativeTaskBoard({
     const size = opts.size;
     const dimmed = opts.dimmed ?? false;
     const showRolePill = opts.showRolePill ?? false;
-    const shell = roleShellClasses(vm.role, size);
+    const shell = roleShellClasses(vm.role, size, isEnglish);
     const highlighted = highlightSet.has(vm.taskId);
     const ring = highlighted
       ? "ring-2 ring-vc-accent/30 shadow-[0_0_0_3px_rgba(47,116,106,0.12),0_10px_24px_rgba(73,63,51,0.10)]"
@@ -261,8 +266,8 @@ export function PlayNarrativeTaskBoard({
     const headPad = size === "hero" ? "p-4 sm:p-5" : "p-3 sm:p-3.5";
 
     const floorLine = t ? resolveFloorTierLabel(t.floorTier) : "";
-    const stamp = t ? closedStamp(t.status) : null;
-    const guidance = guidanceBadge(vm.guidanceLevel);
+    const stamp = t ? closedStamp(t.status, isEnglish) : null;
+    const guidance = guidanceBadge(vm.guidanceLevel, isEnglish);
     const canClaim = Boolean(t && t.status === "available" && t.claimMode === "manual");
     const sourceLine = [vm.issuerLine, floorLine].filter(Boolean).join(" · ");
 
@@ -295,12 +300,12 @@ export function PlayNarrativeTaskBoard({
             <div className="flex flex-wrap items-center gap-1.5">
               {showRolePill ? <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide ${shell.rolePill}`}>{shell.roleLabel}</span> : null}
               {t && t.status !== "completed" && t.status !== "failed" ? (
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusStyle(t.status)}`}>{getTaskStatusLabel(t.status)}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusStyle(t.status)}`}>{isEnglish ? ({ active: "Active", available: "Available", completed: "Completed", failed: "Failed", hidden: "Hidden" } as const)[t.status] : getTaskStatusLabel(t.status)}</span>
               ) : null}
               <h4 className={titleCls}>{vm.title}</h4>
             </div>
             <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-vc-ink-soft sm:text-[13px]">
-              <span className="font-semibold text-vc-accent">下一步 · </span>
+              <span className="font-semibold text-vc-accent">{isEnglish ? "Next · " : "下一步 · "}</span>
               {vm.nextStep}
             </p>
           </div>
@@ -342,7 +347,7 @@ export function PlayNarrativeTaskBoard({
               onClick={() => onClaimTask(vm.taskId)}
               className="rounded-lg border border-vc-accent/40 bg-vc-accent/12 px-4 py-1.5 text-[11px] font-bold tracking-wide text-vc-accent transition hover:border-vc-accent/60 hover:bg-vc-accent/20 active:scale-[0.97]"
             >
-              接取
+              {isEnglish ? "Accept" : "接取"}
             </button>
           </div>
         ) : null}
@@ -366,7 +371,7 @@ export function PlayNarrativeTaskBoard({
           <span className="text-vc-ink-faint"> · </span>
           <span className="text-vc-ink-soft">{row.oneLiner}</span>
         </div>
-        <span className="shrink-0 text-[9px] uppercase tracking-wide text-vc-ink-faint">牵连</span>
+        <span className="shrink-0 text-[9px] uppercase tracking-wide text-vc-ink-faint">{isEnglish ? "Link" : "牵连"}</span>
       </div>
     );
   }
@@ -375,8 +380,8 @@ export function PlayNarrativeTaskBoard({
     return (
       <div className="rounded-xl border border-vc-line bg-vc-paper-raised p-4 text-center text-xs leading-relaxed text-vc-ink-soft">
         {taskPanelFirstOpen
-          ? "任务会在叙事推进中自然出现，你已经在前往第一件事的路上——先把手头的事做起来，答案在路上。"
-          : "当前没有活跃任务。与 NPC 交谈、探索楼层会带来新的目标。"}
+          ? languageText(language, "任务会在叙事推进中自然出现，你已经在前往第一件事的路上——先把手头的事做起来，答案在路上。", "Tasks emerge through the story. Begin with what is in front of you.")
+          : languageText(language, "当前没有活跃任务。与 NPC 交谈、探索楼层会带来新的目标。", "No active tasks. Talk to NPCs or explore to uncover new goals.")}
       </div>
     );
   }
@@ -390,7 +395,7 @@ export function PlayNarrativeTaskBoard({
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-vc-line-warm bg-vc-paper-bright shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
             <MobileReadingIcons.Tasks className="h-4 w-4 text-vc-accent" strokeWidth={1.4} />
           </span>
-          <p className="text-[14px] font-bold leading-none tracking-[0.06em] text-vc-ink">当前目标</p>
+          <p className="text-[14px] font-bold leading-none tracking-[0.06em] text-vc-ink">{isEnglish ? "Current objectives" : "当前目标"}</p>
         </div>
         <div className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-vc-line-warm bg-vc-paper-bright px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
           <MobileReadingIcons.Originium className="h-3.5 w-3.5 shrink-0 text-vc-accent" strokeWidth={1.25} />
@@ -415,7 +420,7 @@ export function PlayNarrativeTaskBoard({
 
       {pressure && pressure.tier !== "low" ? (
         <p className={`text-[11px] leading-relaxed ${pressure.tier === "critical" ? "font-semibold text-vc-seal" : "text-vc-ink-soft"}`}>
-          {pressure.tier === "critical" ? "墙在收紧——" : pressure.tier === "high" ? "别分心——" : "风向不稳——"}
+          {isEnglish ? (pressure.tier === "critical" ? "The walls tighten — " : pressure.tier === "high" ? "Stay focused — " : "The air shifts — ") : (pressure.tier === "critical" ? "墙在收紧——" : pressure.tier === "high" ? "别分心——" : "风向不稳——")}
           {pressure.line}
         </p>
       ) : null}
@@ -425,27 +430,27 @@ export function PlayNarrativeTaskBoard({
 
       {/* 2. 人物委托（最多两张） */}
       {cards.commissions.length > 0 ? (
-        <section className="space-y-2.5" aria-label="委托">
-          <SectionLabel>委托</SectionLabel>
+        <section className="space-y-2.5" aria-label={isEnglish ? "Requests" : "委托"}>
+          <SectionLabel>{isEnglish ? "REQUESTS" : "委托"}</SectionLabel>
           <div className="grid gap-3 sm:grid-cols-1">{cards.commissions.map((vm) => renderStageCard(vm, { size: "standard" }))}</div>
         </section>
       ) : null}
 
       {/* 3. 机会事件（最多一张） */}
       {cards.opportunity ? (
-        <section className="space-y-2.5" aria-label="机会">
-          <SectionLabel>机会 · 限时</SectionLabel>
+        <section className="space-y-2.5" aria-label={isEnglish ? "Timed chance" : "机会"}>
+          <SectionLabel>{isEnglish ? "CHANCE · TIMED" : "机会 · 限时"}</SectionLabel>
           {renderStageCard(cards.opportunity, { size: "standard" })}
         </section>
       ) : null}
 
       {/* 4. 其他动向：牵连（轻追踪）+ 线索聚合为一句提示，不再逐条摊开占版面 */}
       {hasSecondary ? (
-        <section className="space-y-2.5" aria-label="其他动向">
-          <SectionLabel>其他动向</SectionLabel>
+        <section className="space-y-2.5" aria-label={isEnglish ? "Other leads" : "其他动向"}>
+          <SectionLabel>{isEnglish ? "OTHER LEADS" : "其他动向"}</SectionLabel>
           <div className="space-y-1.5">{secondary.promises.map((row) => renderCompactRow(row))}</div>
           {secondary.clues.length > 0 ? (
-            <p className="text-[11px] text-vc-ink-faint">多留意：另有 {secondary.clues.length} 条线索尚未挑明。</p>
+            <p className="text-[11px] text-vc-ink-faint">{isEnglish ? `${secondary.clues.length} more clues remain unresolved.` : `多留意：另有 ${secondary.clues.length} 条线索尚未挑明。`}</p>
           ) : null}
         </section>
       ) : null}
@@ -453,24 +458,24 @@ export function PlayNarrativeTaskBoard({
       {overflowCards.length > 0 ? (
         <div>
           <button type="button" onClick={() => setShowMore((v) => !v)} className={toggleButtonCls}>
-            <span>其余进行中（{overflowCards.length}）</span>
-            <span className="text-vc-ink-faint">{showMore ? "收起" : "展开"}</span>
+            <span>{isEnglish ? `More active (${overflowCards.length})` : `其余进行中（${overflowCards.length}）`}</span>
+            <span className="text-vc-ink-faint">{isEnglish ? (showMore ? "Collapse" : "Expand") : (showMore ? "收起" : "展开")}</span>
           </button>
           {showMore ? <div className="space-y-2">{overflowCards.map((vm) => renderStageCard(vm, { size: "standard", showRolePill: true }))}</div> : null}
         </div>
       ) : null}
 
       {backgroundHiddenCount > 0 ? (
-        <p className="text-[11px] text-vc-ink-faint">还有 {backgroundHiddenCount} 件事在暗处发酵，眼下还摸不着，多留意周围。</p>
+        <p className="text-[11px] text-vc-ink-faint">{isEnglish ? `${backgroundHiddenCount} matters are still developing out of sight.` : `还有 ${backgroundHiddenCount} 件事在暗处发酵，眼下还摸不着，多留意周围。`}</p>
       ) : null}
 
       {completed.length + failed.length > 0 ? (
         <div>
           <button type="button" onClick={() => setShowClosed((v) => !v)} className={toggleButtonCls}>
             <span>
-              已完成 {completed.length} · 落空 {failed.length}
+              {isEnglish ? `Completed ${completed.length} · Failed ${failed.length}` : `已完成 ${completed.length} · 落空 ${failed.length}`}
             </span>
-            <span className="text-vc-ink-faint">{showClosed ? "收起" : "展开"}</span>
+            <span className="text-vc-ink-faint">{isEnglish ? (showClosed ? "Collapse" : "Expand") : (showClosed ? "收起" : "展开")}</span>
           </button>
           {showClosed ? (
             <div className="space-y-2 opacity-80">{closedCards.map((vm) => renderStageCard(vm, { size: "standard", dimmed: true, showRolePill: true }))}</div>

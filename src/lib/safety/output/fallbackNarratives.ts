@@ -8,6 +8,7 @@ import {
   isVisibleSafetyDegradeReason,
   VISIBLE_SAFETY_DEGRADE_MESSAGE,
 } from "@/lib/security/visibleSafety";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 const EMPTY_OPTIONS: string[] = [];
 
@@ -24,10 +25,15 @@ function truncate(s: string, max = 1200): string {
  */
 const OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE =
   "夜风从走廊深处吹来，我先把心稳一稳，再决定下一步。";
+const OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE_EN =
+  "A night wind rises from the far end of the corridor. I steady myself before choosing my next move.";
 
-function privateStoryOutputFallback(reasonCode: string, isOpeningTurn: boolean): string {
+function privateStoryOutputFallback(reasonCode: string, isOpeningTurn: boolean, language: GameLanguage): string {
   if (isVisibleSafetyDegradeReason(reasonCode)) {
-    return isOpeningTurn ? OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE : VISIBLE_SAFETY_DEGRADE_MESSAGE;
+    if (isOpeningTurn) {
+      return language === "en-US" ? OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE_EN : OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE;
+    }
+    return VISIBLE_SAFETY_DEGRADE_MESSAGE;
   }
   return "这一步已做安全改写，请继续当前行动。";
 }
@@ -44,9 +50,11 @@ export function buildOutputFallback(args: {
    * 命中时若仍为可见安全降级原因，会改用中性中文承接句，避免污染既定开场白沉浸感。
    */
   isOpeningTurn?: boolean;
+  language?: GameLanguage;
 }): { narrative: string; options?: string[] } {
   const { scene, stage, reasonCode, isProviderFailureFallback } = args;
   const isOpeningTurn = Boolean(args.isOpeningTurn);
+  const language = args.language ?? "zh-CN";
 
   if (isProviderFailureFallback) {
     if (scene === "private_story_output") {
@@ -67,7 +75,7 @@ export function buildOutputFallback(args: {
 
   if (scene === "private_story_output") {
     return {
-      narrative: truncate(privateStoryOutputFallback(reasonCode, isOpeningTurn), 900),
+      narrative: truncate(privateStoryOutputFallback(reasonCode, isOpeningTurn, language), 900),
       options: [...EMPTY_OPTIONS],
     };
   }
@@ -91,6 +99,6 @@ export function buildOutputFallback(args: {
   }
 
   return {
-    narrative: truncate(privateStoryOutputFallback(reasonCode, isOpeningTurn), 400),
+    narrative: truncate(privateStoryOutputFallback(reasonCode, isOpeningTurn, language), 400),
   };
 }

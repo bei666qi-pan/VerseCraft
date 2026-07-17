@@ -43,6 +43,7 @@ import {
 } from "@/lib/ai/logicalTasks";
 import { resolvePlayerChatMaxTokensForNarrativeBudget } from "@/lib/ai/tasks/taskPolicy";
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
+import { buildNarrativeLanguageInstruction, type GameLanguage } from "@/lib/i18n/language";
 import {
   buildDynamicPlayerDmSystemSuffix,
   buildStyleGuidePacketBlock,
@@ -367,10 +368,18 @@ const TTFT_HARD_CAP_SESSION_MEMORY_MS = 140;
  */
 const OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE =
   "夜风从走廊深处吹来，我先把心稳一稳，再决定下一步。";
+const OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE_EN =
+  "A night wind rises from the far end of the corridor. I steady myself before choosing my next move.";
 
-function resolveVisibleSafetyMessageForTurn(raw: string | null, isOpeningTurn: boolean): string | null {
+function resolveVisibleSafetyMessageForTurn(
+  raw: string | null,
+  isOpeningTurn: boolean,
+  language: GameLanguage = "zh-CN"
+): string | null {
   if (!raw) return null;
-  if (isOpeningTurn) return OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE;
+  if (isOpeningTurn) {
+    return language === "en-US" ? OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE_EN : OPENING_TURN_NEUTRAL_FALLBACK_NARRATIVE;
+  }
   return raw;
 }
 
@@ -847,6 +856,7 @@ async function postChatInternal(req: Request) {
   let latestUserInput = validated.latestUserInput;
   const sessionId = validated.sessionId;
   const clientPurpose = validated.clientPurpose;
+  const languageInstruction = buildNarrativeLanguageInstruction(validated.language);
   const perfFlags = resolveChatPerfFlags();
   const {
     clientIp,
@@ -910,6 +920,7 @@ async function postChatInternal(req: Request) {
       playerContext: snapshot,
       ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only" } },
       systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+      outputLanguage: validated.language,
       budgetMs: optionsServerBudgetMs,
       signal: undefined,
     });
@@ -922,6 +933,7 @@ async function postChatInternal(req: Request) {
           playerContext: snapshot,
           ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { clientPurpose: "options_regen_only", retryPass: true } },
           systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+          outputLanguage: validated.language,
           budgetMs: retryBudgetMs,
           signal: undefined,
         });
@@ -1052,7 +1064,8 @@ async function postChatInternal(req: Request) {
         reasonCode: inputSafetyReasonCode,
         category: inputSafetyCategory,
       }),
-      Boolean(shouldApplyFirstActionConstraint)
+      Boolean(shouldApplyFirstActionConstraint),
+      validated.language
     );
     return createSseResponse({
       requestId,
@@ -1160,7 +1173,8 @@ async function postChatInternal(req: Request) {
           reason: preCheck.result.reason,
           categories: preCheck.result.categories,
         }),
-        Boolean(shouldApplyFirstActionConstraint)
+        Boolean(shouldApplyFirstActionConstraint),
+        validated.language
       );
       return createSseResponse({
         requestId,
@@ -1436,6 +1450,7 @@ async function postChatInternal(req: Request) {
     maxChars: contextMode === "minimal" ? 280 : 760,
   });
   const dynamicCoreForQuota = buildDynamicPlayerDmSystemSuffix({
+    languageInstruction,
     memoryBlock,
     playerContext: playerContextForPrompt,
     isFirstAction: shouldApplyFirstActionConstraint,
@@ -2256,6 +2271,7 @@ async function postChatInternal(req: Request) {
         })
       : "";
   const dynamicSuffixFull = buildDynamicPlayerDmSystemSuffix({
+    languageInstruction,
     memoryBlock,
     epistemicPromptContextBlock: epistemicPromptContext.promptBlock,
     playerContext: playerContextForPrompt,
@@ -3275,6 +3291,7 @@ async function postChatInternal(req: Request) {
                 tags: { phase: "final_hooks", purpose: "malformed_dm_options_repair" },
               },
               signal: pipelineAbort.signal,
+              outputLanguage: validated.language,
               budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
             });
             optionsRepairUsedTelemetry = true;
@@ -3480,6 +3497,7 @@ async function postChatInternal(req: Request) {
               playerContext,
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks" } },
               signal: pipelineAbort.signal,
+              outputLanguage: validated.language,
               budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
             });
             optionsRepairUsedTelemetry = true;
@@ -3574,6 +3592,7 @@ async function postChatInternal(req: Request) {
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", purpose: "decision_options_fix" } },
                 signal: pipelineAbort.signal,
+                outputLanguage: validated.language,
                 budgetMs: nextFinalRepairBudgetMs(OPTIONS_REGEN_LATENCY_BUDGET.repairAttemptTimeoutMs),
               });
               optionsRepairUsedTelemetry = true;
@@ -3663,6 +3682,7 @@ async function postChatInternal(req: Request) {
                 playerContext,
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "quality_gate", purpose: "decision_options_fix" } },
                 signal: pipelineAbort.signal,
+                outputLanguage: validated.language,
                 budgetMs: nextFinalRepairBudgetMs(1_800),
               });
               if (regen.ok) {
@@ -3718,6 +3738,7 @@ async function postChatInternal(req: Request) {
               ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn" } },
               signal: pipelineAbort.signal,
               systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+              outputLanguage: validated.language,
               budgetMs: nextFinalRepairBudgetMs(4_500),
             });
             if (!regen.ok && canRunFinalRepair()) {
@@ -3728,6 +3749,7 @@ async function postChatInternal(req: Request) {
                 ctx: { requestId, userId, sessionId, path: "/api/chat", tags: { phase: "final_hooks", after: "resolveDmTurn", retryPass: true } },
                 signal: pipelineAbort.signal,
                 systemExtra: rollout.enableOptionsOnlyRegenPathV2 ? buildOptionsOnlySystemPrompt() : "",
+                outputLanguage: validated.language,
                 budgetMs: nextFinalRepairBudgetMs(3_500),
               });
             }
@@ -4321,6 +4343,7 @@ async function postChatInternal(req: Request) {
                   systemExtra: rolloutForRegen.enableOptionsOnlyRegenPathV2
                     ? buildOptionsOnlySystemPrompt()
                     : "",
+                  outputLanguage: validated.language,
                   budgetMs: nextFinalRepairBudgetMs(4_500),
                 });
                 if (regen.ok && regen.options.length >= 2) {
@@ -4660,6 +4683,7 @@ async function postChatInternal(req: Request) {
             sessionId: sessionId ?? undefined,
             ip: clientIp,
             isOpeningTurn: Boolean(shouldApplyFirstActionConstraint),
+            language: validated.language,
           });
 
           dmRecord = outputAudit.updatedDmRecord;
@@ -4705,7 +4729,10 @@ async function postChatInternal(req: Request) {
                   // scene consequence.  An unknown proper name is unsafe to
                   // commit, but replacing the *entire* turn with a static
                   // sentence destroys continuity and makes repeats likely.
-                  narrative: redactHighConfidenceUnregisteredPersonNames(residualText, unregistered),
+                  narrative:
+                    validated.language === "en-US"
+                      ? "I stop at the edge of the corridor and listen. Whatever moved in the dark has not gone far; I need to choose carefully."
+                      : redactHighConfidenceUnregisteredPersonNames(residualText, unregistered),
                   _commit_flags: [
                     ...(Array.isArray(auditedResolved._commit_flags)
                       ? (auditedResolved._commit_flags as unknown[]).map(String)
@@ -4737,7 +4764,8 @@ async function postChatInternal(req: Request) {
             const reason = outputAudit.reasonCode || "output_reject";
             const blockedMessage = resolveVisibleSafetyMessageForTurn(
               visibleSafetyDegradeMessageFor(reason),
-              Boolean(shouldApplyFirstActionConstraint)
+              Boolean(shouldApplyFirstActionConstraint),
+              validated.language
             );
 
             recordHighRisk({ ip: clientIp, sessionId, userId }, `output_reject:${reason}`);
@@ -4810,7 +4838,8 @@ async function postChatInternal(req: Request) {
 
           const narrative = resolveVisibleSafetyMessageForTurn(
             visibleSafetyDegradeMessageFor(finalModeration.result.reason),
-            Boolean(shouldApplyFirstActionConstraint)
+            Boolean(shouldApplyFirstActionConstraint),
+            validated.language
           );
           if (narrative) {
             await writer.write(

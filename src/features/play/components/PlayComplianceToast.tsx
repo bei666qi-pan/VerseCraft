@@ -1,6 +1,9 @@
 "use client";
 
+import { useGameStore } from "@/store/useGameStore";
+
 export function PlayComplianceToast({ visible }: { visible: boolean }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   if (!visible) return null;
   return (
     <div className="pointer-events-none fixed left-1/2 top-1/2 z-[80] w-[min(86vw,560px)] -translate-x-1/2 -translate-y-1/2">
@@ -14,9 +17,7 @@ export function PlayComplianceToast({ visible }: { visible: boolean }) {
           <span className="h-px flex-1 bg-[#d8d1c6]" />
         </div>
         <p className="vc-reading-serif text-[clamp(1.18rem,4.6vw,1.6rem)] leading-[2.05] tracking-normal">
-          本平台为AI协作创意写作工具，请创作者遵守
-          <br />
-          中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。
+          {isEnglish ? "VerseCraft is an AI-assisted creative-writing experience. Do not enter or solicit illegal, exploitative, or harmful content." : "本平台为AI协作创意写作工具，请创作者遵守中国法律法规，严禁输入或引导生成涉黄、涉政、涉暴等违规内容。"}
         </p>
         <div className="mx-auto mt-7 flex w-[46%] items-center justify-center gap-3">
           <span className="h-px flex-1 bg-[#d8d1c6]" />

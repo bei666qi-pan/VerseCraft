@@ -31,6 +31,7 @@ import {
   type EndingTelemetryEventName,
 } from "@/lib/endings/telemetry";
 import { pushEndingDecisionDebugEvent } from "@/lib/debug/narrativeSystemsDebugRing";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 type LogEntry = { role: string; content: string; reasoning?: string };
 type SettlementSource = "ending_snapshot" | "legacy_fallback";
@@ -68,48 +69,61 @@ function replaceLocationIdsForDisplay(text: string): string {
   return out;
 }
 
-function formatSettlementSourceLabel(source: SettlementSource): string {
+function formatSettlementSourceLabel(source: SettlementSource, language: GameLanguage = "zh-CN"): string {
+  if (language === "en-US") return source === "legacy_fallback" ? "Local settlement record" : "This run";
   return source === "legacy_fallback" ? "本地结算记录" : "本局结算";
 }
 
-function formatEscapeStageLabel(stage: unknown): string {
+function formatEscapeStageLabel(stage: unknown, language: GameLanguage = "zh-CN"): string {
   const raw = String(stage ?? "").trim();
+  if (language === "en-US") {
+    const english: Record<string, string> = {
+      trapped: "Still trapped in the apartment", aware_exit_exists: "Has noticed an exit clue", route_fragmented: "Has parts of the route",
+      conditions_known: "Knows the primary escape conditions", conditions_partially_met: "Some escape conditions met",
+      final_window_open: "The final window is open", escaped_true: "Truly escaped", escaped_false: "Entered a false exit",
+      escaped_costly: "Left at a cost", doomed: "The ending has fallen",
+    };
+    return english[raw] ?? (raw ? raw.replace(/_/g, " ") : "Exit status unknown");
+  }
   return ESCAPE_STAGE_LABELS[raw] ?? (raw ? raw.replace(/_/g, " ") : "尚未确认出口");
 }
 
-function formatWorldStateLine(line: string): string {
+function formatWorldStateLine(line: string, language: GameLanguage = "zh-CN"): string {
   const text = replaceLocationIdsForDisplay(String(line ?? "").trim());
   if (!text) return "";
+  const english = language === "en-US";
 
   const location = text.match(/^location:(.+)$/);
-  if (location) return `最终位置：${replaceLocationIdsForDisplay(location[1] ?? "").trim() || "未记录"}`;
+  if (location) return english ? `Final location: ${replaceLocationIdsForDisplay(location[1] ?? "").trim() || "Not recorded"}` : `最终位置：${replaceLocationIdsForDisplay(location[1] ?? "").trim() || "未记录"}`;
 
   const time = text.match(/^time:day=(\d+),hour=(\d+)$/);
-  if (time) return `经历时间：第 ${time[1]} 日 ${time[2]} 时`;
+  if (time) return english ? `Time survived: Day ${time[1]} ${time[2]}:00` : `经历时间：第 ${time[1]} 日 ${time[2]} 时`;
 
   const sanity = text.match(/^sanity:(-?\d+)$/);
-  if (sanity) return `理智：${sanity[1]}`;
+  if (sanity) return english ? `Sanity: ${sanity[1]}` : `理智：${sanity[1]}`;
 
   const escape = text.match(/^escape:(.+)$/);
-  if (escape) return `逃离主线：${formatEscapeStageLabel(escape[1])}`;
+  if (escape) return english ? `Escape route: ${formatEscapeStageLabel(escape[1], language)}` : `逃离主线：${formatEscapeStageLabel(escape[1], language)}`;
 
-  if (text === "结算来源：legacy_fallback") return "结算方式：根据本地游玩记录生成";
-  if (text.startsWith("逃离主线：")) return `逃离主线：${formatEscapeStageLabel(text.slice("逃离主线：".length))}`;
+  if (text === "结算来源：legacy_fallback") return english ? "Settlement generated from local play records" : "结算方式：根据本地游玩记录生成";
+  if (text.startsWith("逃离主线：")) return english ? `Escape route: ${formatEscapeStageLabel(text.slice("逃离主线：".length), language)}` : `逃离主线：${formatEscapeStageLabel(text.slice("逃离主线：".length), language)}`;
 
   return text;
 }
 
-function formatNpcEpilogueLine(line: string): string {
+function formatNpcEpilogueLine(line: string, language: GameLanguage = "zh-CN"): string {
   return replaceLocationIdsForDisplay(String(line ?? "").trim())
-    .replace(/\btrust=(-?\d+)\b/g, "信任 $1")
-    .replace(/\bfavor=(-?\d+)\b/g, "好感 $1")
-    .replace(/\bfavorability=(-?\d+)\b/g, "好感 $1");
+    .replace(/\btrust=(-?\d+)\b/g, language === "en-US" ? "Trust $1" : "信任 $1")
+    .replace(/\bfavor=(-?\d+)\b/g, language === "en-US" ? "Favor $1" : "好感 $1")
+    .replace(/\bfavorability=(-?\d+)\b/g, language === "en-US" ? "Favor $1" : "好感 $1");
 }
 
-function formatFinalNarrativeForSettlement(text: string): string {
+function formatFinalNarrativeForSettlement(text: string, language: GameLanguage = "zh-CN"): string {
   const normalized = replaceLocationIdsForDisplay(String(text ?? "").trim());
   if (!normalized || LEGACY_SAFETY_FALLBACK_RE.test(normalized)) {
-    return "本局最后一段剧情没有完整保存。你仍可以查看下方的行动回顾、线索和世界状态，重新开局也不会影响这些已记录的内容。";
+    return language === "en-US"
+      ? "The final scene was not fully saved. You can still review the recorded actions, clues, and world state below."
+      : "本局最后一段剧情没有完整保存。你仍可以查看下方的行动回顾、线索和世界状态，重新开局也不会影响这些已记录的内容。";
   }
   return normalized;
 }
@@ -429,6 +443,8 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   const isDead = outcome === "death";
   const hasEscaped = outcome === "true_escape" || outcome === "costly_escape";
   const historyRecap = useMemo(() => buildHistoryRecap(snapshot), [snapshot]);
+  const language = useGameStore((state) => state.language);
+  const isEnglish = language === "en-US";
 
   const emitSettlementEndingTelemetry = useCallback(
     (
@@ -659,7 +675,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
   if (!mounted) {
     return (
       <main className="flex min-h-screen w-full items-center justify-center overflow-x-hidden bg-vc-paper text-vc-ink">
-        <div className="vc-reading-serif animate-pulse text-xl">结算中...</div>
+        <div className="vc-reading-serif animate-pulse text-xl">{isEnglish ? "Preparing settlement..." : "结算中..."}</div>
       </main>
     );
   }
@@ -669,7 +685,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
       <article className="w-full min-w-0 max-w-[1040px]" data-testid="settlement-paper-card">
         <header className="animate-fade-in-up pb-8 text-center">
           <p className="text-[12px] font-semibold tracking-[0.32em] text-vc-ink-faint">
-            {formatSettlementSourceLabel(snapshot.source)}
+            {formatSettlementSourceLabel(snapshot.source, language)}
           </p>
           <h1 className="vc-reading-serif mt-5 text-[clamp(2.4rem,7vw,4.8rem)] font-semibold leading-none tracking-[0.04em] text-vc-ink-deep">
             {snapshot.title || getSettlementOutcomeTitle(outcome)}
@@ -687,7 +703,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             >
               <span aria-hidden className="pointer-events-none absolute inset-1 rounded-[8px] border border-current opacity-40" />
               <div className="text-center">
-                <p className="pl-[0.28em] text-[10px] font-semibold tracking-[0.28em]">评级</p>
+                <p className="pl-[0.28em] text-[10px] font-semibold tracking-[0.28em]">{isEnglish ? "GRADE" : "评级"}</p>
                 <p className="vc-reading-serif mt-0.5 text-[40px] font-semibold leading-none">{snapshot.grade}</p>
               </div>
             </div>
@@ -698,9 +714,9 @@ export default function SettlementPage(props: AppPageDynamicProps) {
           className="grid animate-fade-in-up gap-3 border-t border-vc-line-warm py-6 sm:grid-cols-3"
           style={{ animationDelay: "120ms" }}
         >
-          <MetricTile label="存活时间" value={`${snapshot.survivalDay} 日 ${snapshot.survivalHour} 时`} />
-          <MetricTile label="最高抵达" value={snapshot.maxFloorLabel} />
-          <MetricTile label="消灭诡异" value={`${snapshot.killedAnomalies} 只`} />
+          <MetricTile label={isEnglish ? "Time survived" : "存活时间"} value={isEnglish ? `${snapshot.survivalDay} days ${snapshot.survivalHour} hours` : `${snapshot.survivalDay} 日 ${snapshot.survivalHour} 时`} />
+          <MetricTile label={isEnglish ? "Highest floor" : "最高抵达"} value={snapshot.maxFloorLabel} />
+          <MetricTile label={isEnglish ? "Anomalies defeated" : "消灭诡异"} value={isEnglish ? `${snapshot.killedAnomalies}` : `${snapshot.killedAnomalies} 只`} />
         </section>
 
         {isDead ? (
@@ -715,35 +731,35 @@ export default function SettlementPage(props: AppPageDynamicProps) {
               >
                 殁
               </span>
-              <h2 className="vc-reading-serif text-[22px] font-semibold text-vc-seal">死亡记录</h2>
+              <h2 className="vc-reading-serif text-[22px] font-semibold text-vc-seal">{isEnglish ? "Death record" : "死亡记录"}</h2>
             </div>
             <div className="mt-3 grid gap-2 text-[15px] leading-relaxed text-vc-ink-soft">
-              <p>死因：{snapshot.deathCause || "未记录"}</p>
-              <p>地点：{snapshot.deathLocation || "未记录"}</p>
-              <p>最后行动：{snapshot.lastAction || "未记录"}</p>
+              <p>{isEnglish ? "Cause: " : "死因："}{snapshot.deathCause || (isEnglish ? "Not recorded" : "未记录")}</p>
+              <p>{isEnglish ? "Location: " : "地点："}{snapshot.deathLocation || (isEnglish ? "Not recorded" : "未记录")}</p>
+              <p>{isEnglish ? "Last action: " : "最后行动："}{snapshot.lastAction || (isEnglish ? "Not recorded" : "未记录")}</p>
             </div>
           </section>
         ) : null}
 
-        <StorySection title="最终叙事" delayMs={240}>
+        <StorySection title={isEnglish ? "Final narrative" : "最终叙事"} delayMs={240}>
           <div
             data-testid="settlement-final-narrative"
             className="whitespace-pre-wrap vc-reading-serif text-[18px] leading-[2.05] text-vc-ink-deep"
           >
-            {formatFinalNarrativeForSettlement(snapshot.finalNarrative)}
+            {formatFinalNarrativeForSettlement(snapshot.finalNarrative, language)}
           </div>
         </StorySection>
 
-        <StorySection title="关键选择回顾" delayMs={300}>
-          <DetailList empty="本局没有留下可回顾的关键选择。" items={snapshot.keyChoices} />
+        <StorySection title={isEnglish ? "Key choices" : "关键选择回顾"} delayMs={300}>
+          <DetailList empty={isEnglish ? "No key choices were recorded for this run." : "本局没有留下可回顾的关键选择。"} items={snapshot.keyChoices} />
         </StorySection>
 
-        <StorySection title="获得线索" delayMs={360}>
-          <DetailList empty="本局没有记录到已获得线索。" items={snapshot.obtainedClues} />
+        <StorySection title={isEnglish ? "Clues obtained" : "获得线索"} delayMs={360}>
+          <DetailList empty={isEnglish ? "No obtained clues were recorded." : "本局没有记录到已获得线索。"} items={snapshot.obtainedClues} />
         </StorySection>
 
         {snapshot.highlights && snapshot.highlights.length > 0 ? (
-          <StorySection title="本局高光时刻" delayMs={390}>
+          <StorySection title={isEnglish ? "Highlights" : "本局高光时刻"} delayMs={390}>
             <div className="grid gap-3" data-testid="settlement-highlights">
               {snapshot.highlights.map((h, i) => (
                 <div
@@ -751,7 +767,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                   className="rounded-lg bg-white/[0.04] border border-white/[0.06] px-4 py-3"
                 >
                   <span className="text-[11px] font-semibold tracking-[0.12em] text-vc-ink-faint uppercase">
-                    {h.hookType === "payoff" ? "伏笔兑现" : h.hookType === "reveal" ? "关键揭示" : "高光时刻"} · 第{h.turnIndex}回合
+                    {isEnglish ? (h.hookType === "payoff" ? "PAYOFF" : h.hookType === "reveal" ? "REVEAL" : "HIGHLIGHT") : (h.hookType === "payoff" ? "伏笔兑现" : h.hookType === "reveal" ? "关键揭示" : "高光时刻")} · {isEnglish ? `TURN ${h.turnIndex}` : `第${h.turnIndex}回合`}
                   </span>
                   <p className="mt-1.5 text-[15px] leading-relaxed text-vc-ink-deep vc-reading-serif">
                     {replaceLocationIdsForDisplay(h.narrative)}
@@ -762,32 +778,32 @@ export default function SettlementPage(props: AppPageDynamicProps) {
           </StorySection>
         ) : null}
 
-        <StorySection title="NPC 后日谈" delayMs={420}>
-          <DetailList empty="本局没有形成可展示的 NPC 后日谈。" items={snapshot.npcEpilogues.map(formatNpcEpilogueLine).filter(Boolean)} />
+        <StorySection title={isEnglish ? "NPC epilogues" : "NPC 后日谈"} delayMs={420}>
+          <DetailList empty={isEnglish ? "No NPC epilogues were recorded." : "本局没有形成可展示的 NPC 后日谈。"} items={snapshot.npcEpilogues.map((line) => formatNpcEpilogueLine(line, language)).filter(Boolean)} />
         </StorySection>
 
-        <StorySection title="世界状态" delayMs={480}>
-          <DetailList empty="本局没有记录额外世界状态。" items={snapshot.worldStateLines.map(formatWorldStateLine).filter(Boolean)} />
+        <StorySection title={isEnglish ? "World state" : "世界状态"} delayMs={480}>
+          <DetailList empty={isEnglish ? "No additional world state was recorded." : "本局没有记录额外世界状态。"} items={snapshot.worldStateLines.map((line) => formatWorldStateLine(line, language)).filter(Boolean)} />
         </StorySection>
 
         {snapshot.totalFormalTasks !== undefined && snapshot.totalFormalTasks > 0 ? (
-          <StorySection title="任务成就" delayMs={540}>
+          <StorySection title={isEnglish ? "Task progress" : "任务成就"} delayMs={540}>
             <div className="grid gap-4 sm:grid-cols-3">
-              <MetricTile label="完成任务" value={`${snapshot.completedTasks ?? 0} / ${snapshot.totalFormalTasks}`} />
-              <MetricTile label="任务完成率" value={`${Math.round((snapshot.taskCompletionScore ?? 0) * 100)}%`} />
-              <MetricTile label="任务评级" value={snapshot.taskCompletionScore! >= 0.8 ? "S" : snapshot.taskCompletionScore! >= 0.6 ? "A" : snapshot.taskCompletionScore! >= 0.4 ? "B" : snapshot.taskCompletionScore! >= 0.2 ? "C" : "D"} />
+              <MetricTile label={isEnglish ? "Tasks completed" : "完成任务"} value={`${snapshot.completedTasks ?? 0} / ${snapshot.totalFormalTasks}`} />
+              <MetricTile label={isEnglish ? "Completion rate" : "任务完成率"} value={`${Math.round((snapshot.taskCompletionScore ?? 0) * 100)}%`} />
+              <MetricTile label={isEnglish ? "Task grade" : "任务评级"} value={snapshot.taskCompletionScore! >= 0.8 ? "S" : snapshot.taskCompletionScore! >= 0.6 ? "A" : snapshot.taskCompletionScore! >= 0.4 ? "B" : snapshot.taskCompletionScore! >= 0.2 ? "C" : "D"} />
             </div>
           </StorySection>
         ) : null}
 
         {showFullText ? (
-          <StorySection title="本局全文">
+          <StorySection title={isEnglish ? "Full run" : "本局全文"}>
             <div className="grid gap-5" data-testid="settlement-fulltext">
               {logs.length > 0 ? (
                 logs.map((entry, index) => (
                   <section key={`${entry.role}:${index}`} className="border-l-2 border-vc-line-warm pl-4">
                     <p className="text-[12px] font-semibold tracking-[0.14em] text-vc-ink-faint">
-                      {entry.role === "user" ? "玩家行动" : entry.role === "assistant" ? "剧情叙事" : "系统记录"}
+                      {isEnglish ? (entry.role === "user" ? "PLAYER ACTION" : entry.role === "assistant" ? "NARRATIVE" : "SYSTEM") : (entry.role === "user" ? "玩家行动" : entry.role === "assistant" ? "剧情叙事" : "系统记录")}
                     </p>
                     <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-vc-ink">
                       {replaceLocationIdsForDisplay(entry.content)}
@@ -795,7 +811,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
                   </section>
                 ))
               ) : (
-                <p className="text-[15px] leading-relaxed text-vc-ink-soft">本地日志已经不可用，只能查看上方最终叙事。</p>
+                <p className="text-[15px] leading-relaxed text-vc-ink-soft">{isEnglish ? "The local log is unavailable; only the final narrative can be shown." : "本地日志已经不可用，只能查看上方最终叙事。"}</p>
               )}
             </div>
           </StorySection>
@@ -811,7 +827,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             data-testid="settlement-export-writing"
             className="rounded-[10px] border border-vc-line-warm bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent"
           >
-            导出本局写作稿
+            {isEnglish ? "Export writing" : "导出本局写作稿"}
           </button>
           <button
             type="button"
@@ -819,7 +835,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             data-testid="settlement-review-fulltext"
             className="rounded-[10px] border border-vc-line bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent"
           >
-            {showFullText ? "收起全文" : "回看全文"}
+            {isEnglish ? (showFullText ? "Hide full run" : "Review full run") : (showFullText ? "收起全文" : "回看全文")}
           </button>
           <button
             type="button"
@@ -829,7 +845,7 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             aria-busy={leaveTarget === "/" || undefined}
             className="rounded-[10px] border border-vc-line bg-vc-paper-bright px-5 py-3 text-[15px] font-semibold text-vc-ink-deep transition-colors hover:border-vc-accent/60 hover:text-vc-accent disabled:opacity-60"
           >
-            {leaveTarget === "/" ? "收卷离场…" : "返回首页"}
+            {isEnglish ? (leaveTarget === "/" ? "Leaving..." : "Return home") : (leaveTarget === "/" ? "收卷离场…" : "返回首页")}
           </button>
           <button
             type="button"
@@ -839,13 +855,13 @@ export default function SettlementPage(props: AppPageDynamicProps) {
             aria-busy={leaveTarget === "/intro" || undefined}
             className="rounded-[10px] bg-vc-ink px-5 py-3 text-[15px] font-semibold text-vc-paper-bright transition-colors hover:bg-vc-ink-deep disabled:opacity-60"
           >
-            {leaveTarget === "/intro" ? "另起新篇…" : "新一局"}
+            {isEnglish ? (leaveTarget === "/intro" ? "Starting..." : "New run") : (leaveTarget === "/intro" ? "另起新篇…" : "新一局")}
           </button>
         </section>
 
         <footer aria-hidden className="animate-fade-in-up pb-4 pt-2 text-center" style={{ animationDelay: "600ms" }}>
           <VerseCraftPaperDivider className="mx-auto max-w-[360px]" />
-          <p className="mt-3 pl-[0.4em] text-[12px] tracking-[0.4em] text-vc-ink-faint">全 卷 终</p>
+          <p className="mt-3 pl-[0.4em] text-[12px] tracking-[0.4em] text-vc-ink-faint">{isEnglish ? "THE END" : "全 卷 终"}</p>
         </footer>
       </article>
     </main>

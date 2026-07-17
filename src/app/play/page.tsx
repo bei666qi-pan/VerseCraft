@@ -47,8 +47,9 @@ import {
   shouldRecoverStaleSendActionFlight,
 } from "@/features/play/opening/openingStreamUi";
 import {
-  FIXED_OPENING_NARRATIVE,
-  OPENING_SYSTEM_PROMPT,
+  getFixedOpeningNarrative,
+  getOpeningSystemPrompt,
+  isOpeningSystemUserMessage,
 } from "@/features/play/opening/openingCopy";
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
@@ -153,6 +154,7 @@ import {
 } from "@/lib/rollout/versecraftClientRollout";
 import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTurn";
 import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
+import { localizedTalentName } from "@/lib/i18n/gameDisplay";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { buildNoEndingTelemetryBlockers } from "@/lib/play/noEndingTelemetryBlockers";
 import {
@@ -424,7 +426,7 @@ function guessSemanticWaitingKind(action: string): PlaySemanticWaitingKind {
 const OPTIONS_REGEN_SYSTEM_PROMPT =
   "你是互动叙事平台的行动选项主笔助手。你必须只输出一个 JSON 对象，且只包含 options 键：" +
   '{"options":["...","...","...","..."]}。' +
-  "强制：options 恰好 4 条、简体中文、第一人称、5–20字、互不重复且差异明显；" +
+  "强制：options 恰好 4 条、使用请求指定的玩家语言、第一人称、互不重复且差异明显；" +
   "必须承接正文之后的当前剧情，生成下一步可执行行动；" +
   "必须避免复用当前与最近选项（含换说法的近似动作），至少 2 条直接锚定最近叙事中的实体或场景；" +
   "禁止灵感手记/背包/任务/仓库/成就/武器栏/游戏指南/属性/菜单等 UI 或资料簿选项，禁止泛化的“使用道具”；" +
@@ -588,6 +590,8 @@ function PlayContent() {
   const setVolume = useGameStore((s) => s.setVolume);
   const readingPreferences = useGameStore((s) => s.readingPreferences);
   const setReadingPreference = useGameStore((s) => s.setReadingPreference);
+  const language = useGameStore((s) => s.language);
+  const setLanguage = useGameStore((s) => s.setLanguage);
   const [, setPendingHallucinationCheck] = useState(false);
   const [hitEffectUntil, setHitEffectUntil] = useState(0);
   const [talentEffectUntil, setTalentEffectUntil] = useState(0);
@@ -1581,7 +1585,7 @@ function PlayContent() {
     hasTriggeredOpening.current = true;
     openingAwaitingAssistantRef.current = true;
     openingStartedAtRef.current = Date.now();
-    void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
+    void sendActionRef.current(getOpeningSystemPrompt(useGameStore.getState().language), true, false, true);
   }, [isHydrated, isChatBusy]);
 
   /** 成功拿到选项后清掉【开局】类提示，避免与正常对局并存 */
@@ -1627,7 +1631,7 @@ function PlayContent() {
           openingAwaitingAssistantRef.current = false;
           void requestFreshOptions("opening_fallback");
         } else {
-          void sendActionRef.current(OPENING_SYSTEM_PROMPT, true, false, true);
+          void sendActionRef.current(getOpeningSystemPrompt(useGameStore.getState().language), true, false, true);
         }
         return;
       }
@@ -2272,6 +2276,7 @@ function PlayContent() {
       const regenRecentOptions = Array.isArray(recentOptions) ? recentOptions : [];
       const playerContext = useGameStore.getState().getPromptContext();
       const clientState = useGameStore.getState().getStructuredClientStateForServer();
+      const language = useGameStore.getState().language;
       const inventoryHints = (Array.isArray(inventory) ? inventory : [])
         .map((item) => {
           if (!item || typeof item !== "object") return "";
@@ -2407,6 +2412,7 @@ function PlayContent() {
           messages: attemptMessages,
           playerContext,
           clientState,
+          language,
           sessionId: guestId ?? "browser_session",
           openingOptionsOnlyRound: false,
           clientPurpose: "options_regen_only",
@@ -2868,7 +2874,7 @@ function PlayContent() {
     }
     // Only compute hint at request start; keep stable during waiting_upstream.
     setWaitingHintKind(guessSemanticWaitingKind(trimmed));
-    const isOpeningSystemRequest = Boolean(isSystemAction && trimmed === OPENING_SYSTEM_PROMPT);
+    const isOpeningSystemRequest = Boolean(isSystemAction && isOpeningSystemUserMessage(trimmed));
     const isEndgameSystemRound = Boolean(isSystemAction && trimmed === ENDGAME_SYSTEM_PROMPT);
     const isEndingFinaleSystemRound = Boolean(isSystemAction && trimmed.startsWith(ENDING_FINALE_SYSTEM_PROMPT_TAG));
     if (isOpeningSystemRequest) {
@@ -2933,11 +2939,13 @@ function PlayContent() {
 
     const playerContext = useGameStore.getState().getPromptContext();
     const clientState = useGameStore.getState().getStructuredClientStateForServer();
+    const language = useGameStore.getState().language;
     const chatRequestId = waitUxSignalsRef.current.requestId ?? createVerseCraftRequestId("chat");
     const chatRequestBody = {
       messages,
       playerContext,
       clientState,
+      language,
       sessionId: guestId ?? "browser_session",
       openingOptionsOnlyRound: false,
     };
@@ -5124,6 +5132,7 @@ function PlayContent() {
             <MobileSettingsPanel
               audioMuted={audioMuted}
               chapterState={chapterRuntime.chapterState}
+              language={language}
               onExitGame={() => setShowExitModal(true)}
               onReturnToActiveChapter={() => {
                 runChapterPageTurn("return", () => {
@@ -5138,6 +5147,7 @@ function PlayContent() {
                 setActiveMenu(null);
               }}
               onSetReadingPreference={setReadingPreference}
+              onSetLanguage={setLanguage}
               onToggleMute={() => {
                 toggleMute();
                 setAudioMuted(isMuted());
@@ -5190,7 +5200,7 @@ function PlayContent() {
                       plainOnlyLogIndexMin={streamLogsBaselineRef.current}
                       embeddedOpeningContent={
                         showPinnedOpeningNarrative && chapterRuntime.activeDefinition.order === 1
-                          ? FIXED_OPENING_NARRATIVE
+                          ? getFixedOpeningNarrative(language)
                           : null
                       }
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
@@ -5287,17 +5297,19 @@ function PlayContent() {
                 chatBusy={isChatBusy || endgameState.active || endingSettlementReady}
                 helperText={
                   endgameState.active
-                    ? (endgameLocked ? "终局已至。" : "终局正在收束")
+                    ? (language === "en-US" ? (endgameLocked ? "The ending has arrived." : "The ending is coming together.") : (endgameLocked ? "终局已至。" : "终局正在收束"))
                     : chatQueueState.active
                       ? chatQueueState.message
                     : isChatBusy
-                      ? (waitUxPrimaryLine || "本回合处理中")
-                      : (guestTurnsRemainingHint || "保持简短。保持真实。")
+                      ? (language === "en-US"
+                          ? (/[一-鿿]/.test(waitUxPrimaryLine ?? "") ? "Processing this turn" : (waitUxPrimaryLine || "Processing this turn"))
+                          : (waitUxPrimaryLine || "本回合处理中"))
+                      : (guestTurnsRemainingHint || (language === "en-US" ? "Keep it brief. Keep it real." : "保持简短。保持真实。"))
                 }
                 showRegisterPrompt={showRegisterPrompt}
                 isGuestDialogueExhausted={isGuestDialogueExhausted}
                 optionsExpanded={optionsExpanded}
-                talentLabel={talent}
+                talentLabel={localizedTalentName(language, talent)}
                 talentReady={Boolean(
                   talent &&
                   talentCdLeft === 0 &&
@@ -5306,7 +5318,7 @@ function PlayContent() {
                   !endgameState.active &&
                   !isGuestDialogueExhausted
                 )}
-                talentCooldownText={talent && talentCdLeft > 0 ? `冷却:${talentCdLeft}` : null}
+                talentCooldownText={talent && talentCdLeft > 0 ? (language === "en-US" ? `Cooldown: ${talentCdLeft}` : `冷却:${talentCdLeft}`) : null}
                 onUseTalent={onUseTalent}
                 professionActiveLabel={
                   professionState?.currentProfession
@@ -5395,6 +5407,7 @@ function PlayContent() {
                 <MobileSettingsPanel
                   audioMuted={audioMuted}
                   chapterState={chapterRuntime.chapterState}
+                  language={language}
                   onExitGame={() => setShowExitModal(true)}
                   onReturnToActiveChapter={() => {
                     runChapterPageTurn("return", () => {
@@ -5409,6 +5422,7 @@ function PlayContent() {
                     setActiveMenu(null);
                   }}
                   onSetReadingPreference={setReadingPreference}
+                  onSetLanguage={setLanguage}
                   onToggleMute={() => {
                     toggleMute();
                     setAudioMuted(isMuted());
@@ -5498,6 +5512,7 @@ function PlayContent() {
             onOpenSettings={onOpenSettingsNav}
             hasUnreadCodex={hasUnreadCodex}
             hasUnviewedTaskUpdates={hasUnviewedTaskUpdates}
+            language={language}
           />
         </div>
       </div>

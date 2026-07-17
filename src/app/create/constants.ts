@@ -1,10 +1,12 @@
 import type { StatType } from "@/lib/registry/types";
 import type { EchoTalent } from "@/store/useGameStore";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 export const GENDER_OPTIONS = ["男", "女", "其他"] as const;
 export type GenderOption = (typeof GENDER_OPTIONS)[number];
 
 export const PERSONALITY_RE = /^[\u4e00-\u9fa5]{2,6}$/;
+export const ENGLISH_PERSONALITY_RE = /^[A-Za-z][A-Za-z '\-]{1,23}$/;
 
 export const BASE_STATS: Record<StatType, number> = {
   sanity: 10,
@@ -54,8 +56,9 @@ export const TALENTS: readonly {
   { key: "丧钟回响", title: "丧钟回响", cd: "冷却：30 小时", desc: "清除一位恶意实体" },
 ] as const;
 
-export function isValidCreatePersonality(value: string): boolean {
-  return PERSONALITY_RE.test(value.trim());
+export function isValidCreatePersonality(value: string, language: GameLanguage = "zh-CN"): boolean {
+  const clean = value.trim();
+  return language === "en-US" ? ENGLISH_PERSONALITY_RE.test(clean) : PERSONALITY_RE.test(clean);
 }
 
 export function baseStatTotal(): number {

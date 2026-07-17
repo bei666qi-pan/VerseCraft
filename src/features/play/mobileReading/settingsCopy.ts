@@ -43,3 +43,42 @@ export const GAME_GUIDE_SECTIONS: readonly GameGuideSection[] = [
     body: "多数有效行动都会推动时间。时间会影响安全程度、人物位置、事件触发与天赋冷却。回响天赋适合在高风险或路线不明时使用。",
   },
 ] as const;
+
+export const GAME_GUIDE_SECTIONS_EN: readonly GameGuideSection[] = [
+  {
+    id: "what-is-it",
+    index: "01",
+    title: "What is VerseCraft?",
+    body: "VerseCraft is an AI-driven mystery interactive novel. You do not simply follow a fixed plot: type a natural-language action and the world judges its consequences from the scene, your state, time, and clues.",
+  },
+  {
+    id: "objective",
+    index: "02",
+    title: "Your objective",
+    body: "The current world is Prologue: Dark Moon. Survive the anomalous apartment, test rumors and scraps of evidence, collect clues, navigate relationships, and move toward the real exit.",
+  },
+  {
+    id: "how-to-act",
+    index: "03",
+    title: "How to act",
+    body: "Choose an action each turn or type your own. Be clear about your target, method, and way out. For example: I do not open the door yet; I press close to it and listen for movement inside.",
+  },
+  {
+    id: "not-wishing",
+    index: "04",
+    title: "Actions are not wishes",
+    body: "The game understands intent, but it will not grant outcomes unconditionally. Instead of typing “win” or “tell me the truth”, progress through observation, questions, verification, and evidence.",
+  },
+  {
+    id: "stats-originium",
+    index: "05",
+    title: "Stats & Originium",
+    body: "Sanity affects resilience; Agility affects reactions; Luck reveals opportunities; Charm affects dialogue; Background affects your starting registration credit. Originium is the apartment's order-currency—save it for crucial services or escape windows.",
+  },
+  {
+    id: "time-talent",
+    index: "06",
+    title: "Time & talents",
+    body: "Most meaningful actions advance time. Time changes safety, character positions, event triggers, and talent cooldowns. Echo talents are best saved for high-risk moments or uncertain routes.",
+  },
+] as const;

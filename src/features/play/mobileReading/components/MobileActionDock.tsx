@@ -7,6 +7,7 @@ import { mobileReadingTheme } from "../theme";
 import type { MobileActionDockProps } from "../types";
 import { EchoTalentButton } from "./EchoTalentButton";
 import { ProfessionActiveButton } from "./ProfessionActiveButton";
+import { useGameStore } from "@/store/useGameStore";
 
 export function MobileActionDock({
   inputMode,
@@ -35,6 +36,7 @@ export function MobileActionDock({
   professionActiveCooldownText,
   onUseProfessionActive,
 }: MobileActionDockProps) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   void inputMode;
   void _isLowSanity;
   void _isDarkMoon;
@@ -54,7 +56,7 @@ export function MobileActionDock({
     });
 
   const OptionsIcon = optionsExpanded ? MobileReadingIcons.CollapseOptions : MobileReadingIcons.ExpandOptions;
-  const inputPlaceholder = chatBusy && statusText ? statusText : "输入下一步行动或对白…";
+  const inputPlaceholder = chatBusy && statusText ? statusText : isEnglish ? "Describe your next action or dialogue…" : "输入下一步行动或对白…";
 
   return (
     <div
@@ -120,7 +122,7 @@ export function MobileActionDock({
             <button
               type="button"
               onClick={onToggleOptions}
-              aria-label={optionsExpanded ? "收起行动选项" : "展开行动选项"}
+              aria-label={optionsExpanded ? (isEnglish ? "Collapse action options" : "收起行动选项") : (isEnglish ? "Expand action options" : "展开行动选项")}
               aria-pressed={optionsExpanded}
               data-testid="options-toggle-button"
               disabled={chatBusy || isGuestDialogueExhausted}
@@ -138,7 +140,7 @@ export function MobileActionDock({
             <button
               type="submit"
               disabled={!canSubmitNow}
-              aria-label="提交行动"
+              aria-label={isEnglish ? "Submit action" : "提交行动"}
               data-testid="send-action-button"
               className={`${mobileReadingTheme.sendButton} ${
                 submitFlash ? mobileReadingTheme.sendButtonFlash : ""
@@ -148,7 +150,7 @@ export function MobileActionDock({
             </button>
           </div>
           <div id="play-input-status" className="sr-only" aria-live="polite">
-            {statusText} 字数：{inputLength}/{MAX_INPUT}
+            {statusText} {isEnglish ? "Characters:" : "字数："}{inputLength}/{MAX_INPUT}
           </div>
         </form>
       )}

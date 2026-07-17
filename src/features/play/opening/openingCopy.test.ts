@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FIXED_OPENING_NARRATIVE,
+  FIXED_OPENING_NARRATIVE_EN,
+  getFixedOpeningNarrative,
+  getOpeningSystemPrompt,
   isOpeningSystemUserMessage,
   OPENING_SYSTEM_PROMPT,
+  OPENING_SYSTEM_PROMPT_EN,
 } from "./openingCopy";
 
 test("OPENING_SYSTEM_PROMPT：要求主笔产出非空四条 options，与固定前文协议一致", () => {
@@ -14,7 +18,15 @@ test("OPENING_SYSTEM_PROMPT：要求主笔产出非空四条 options，与固定
 
 test("isOpeningSystemUserMessage：trim 后与 OPENING_SYSTEM_PROMPT 对齐", () => {
   assert.equal(isOpeningSystemUserMessage(`  ${OPENING_SYSTEM_PROMPT}  `), true);
+  assert.equal(isOpeningSystemUserMessage(`  ${OPENING_SYSTEM_PROMPT_EN}  `), true);
   assert.equal(isOpeningSystemUserMessage("玩家行动：观察"), false);
+});
+
+test("英文开场与 system prompt 使用英文版本", () => {
+  assert.equal(getFixedOpeningNarrative("en-US"), FIXED_OPENING_NARRATIVE_EN);
+  assert.equal(getOpeningSystemPrompt("en-US"), OPENING_SYSTEM_PROMPT_EN);
+  assert.ok(FIXED_OPENING_NARRATIVE_EN.includes("Kisaragi Apartments"));
+  assert.ok(OPENING_SYSTEM_PROMPT_EN.includes("exactly four"));
 });
 
 test("FIXED_OPENING_NARRATIVE：非空固定开场", () => {

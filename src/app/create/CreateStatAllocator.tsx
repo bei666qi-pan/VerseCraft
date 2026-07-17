@@ -3,6 +3,8 @@
 import { useCallback, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { StatType } from "@/lib/registry/types";
+import { ENGLISH_STAT_LABELS } from "@/lib/i18n/gameDisplay";
+import { useGameStore } from "@/store/useGameStore";
 import {
   BASE_STATS,
   CREATE_STAT_ORDER,
@@ -129,6 +131,8 @@ export function CreateStatAllocator({
   remaining: number;
   stats: Record<StatType, number>;
 }) {
+  const language = useGameStore((state) => state.language);
+  const isEnglish = language === "en-US";
   const stepper = useStatStepper(onIncrement, onDecrement, remaining, stats);
 
   return (
@@ -142,14 +146,16 @@ export function CreateStatAllocator({
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <h3 className="vc-reading-serif text-[22px] font-semibold leading-none text-vc-ink">
-                {STAT_LABELS[stat]}
+                {isEnglish ? ENGLISH_STAT_LABELS[stat] : STAT_LABELS[stat]}
               </h3>
               <span className="vc-reading-serif text-[16px] font-semibold leading-none text-vc-ink">
-                当前：{stats[stat]}
+                {isEnglish ? `Current: ${stats[stat]}` : `当前：${stats[stat]}`}
               </span>
             </div>
             <p className="mt-1.5 whitespace-pre-line vc-reading-serif text-[14px] leading-[1.22] text-vc-ink-soft">
-              {STAT_DESCRIPTIONS[stat]}
+              {isEnglish
+                ? ({ sanity: "Affects insight and anomaly perception", agility: "Affects actions and reactions", luck: "Affects hidden clues and chance", charm: "Affects persuasion and rapport", background: "Affects Originium earned each turn" } as const)[stat]
+                : STAT_DESCRIPTIONS[stat]}
             </p>
           </div>
 
@@ -157,7 +163,7 @@ export function CreateStatAllocator({
             <button
               type="button"
               data-testid={`create-stat-decrement-${stat}`}
-              aria-label={`减少${STAT_LABELS[stat]}`}
+              aria-label={isEnglish ? `Decrease ${ENGLISH_STAT_LABELS[stat]}` : `减少${STAT_LABELS[stat]}`}
               disabled={stats[stat] <= BASE_STATS[stat]}
               onPointerDown={(event) => {
                 releasePointerCapture(event);
@@ -189,7 +195,7 @@ export function CreateStatAllocator({
             <button
               type="button"
               data-testid={`create-stat-increment-${stat}`}
-              aria-label={`增加${STAT_LABELS[stat]}`}
+              aria-label={isEnglish ? `Increase ${ENGLISH_STAT_LABELS[stat]}` : `增加${STAT_LABELS[stat]}`}
               disabled={remaining <= 0}
               onPointerDown={(event) => {
                 releasePointerCapture(event);

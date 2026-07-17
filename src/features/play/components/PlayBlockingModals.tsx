@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useGameStore } from "@/store/useGameStore";
 
 export function PlayBlockingModals({
   showDialoguePaywall,
@@ -19,6 +20,7 @@ export function PlayBlockingModals({
   onSaveAndExit: () => void;
   onAbandonAndDie: () => void;
 }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   return (
     <>
       {showDialoguePaywall && (
@@ -28,10 +30,10 @@ export function PlayBlockingModals({
           aria-modal
         >
           <div className="w-full max-w-md rounded-[28px] border border-[#d8cbb8] bg-[#fbf7f0]/98 p-8 text-[#164f4d] shadow-[0_22px_62px_rgba(77,61,40,0.18),inset_0_0_0_7px_rgba(248,244,237,0.92),inset_0_0_0_8px_rgba(209,199,184,0.55)]">
-            <h2 className="vc-reading-serif text-[1.7rem] font-semibold leading-none text-[#0d5a4e]">体验次数已耗尽</h2>
+            <h2 className="vc-reading-serif text-[1.7rem] font-semibold leading-none text-[#0d5a4e]">{isEnglish ? "Free turns used" : "体验次数已耗尽"}</h2>
             {showRegisterPrompt && (
               <p className="mt-4 text-sm leading-relaxed text-[#4f625c]">
-                体验次数已耗尽。若你仍要继续行动，请注册或登录。
+                {isEnglish ? "Your free turns are used. Register or sign in to keep playing." : "体验次数已耗尽。若你仍要继续行动，请注册或登录。"}
               </p>
             )}
             <div className="mt-8 flex justify-center">
@@ -40,7 +42,7 @@ export function PlayBlockingModals({
                 onClick={onPaywallRegister}
                 className="vc-reading-serif inline-flex min-h-12 items-center justify-center rounded-[16px] border border-[#0a403a] bg-[#244f45] px-8 text-[1.05rem] font-semibold text-[#fffdf8] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.08),0_10px_22px_rgba(27,79,69,0.18)] transition hover:bg-[#1c453d]"
               >
-                注册 / 登录
+                {isEnglish ? "Register / Sign in" : "注册 / 登录"}
               </button>
             </div>
           </div>
@@ -61,7 +63,7 @@ export function PlayBlockingModals({
             <button
               type="button"
               onClick={onDismissExitModal}
-              aria-label="取消退出"
+              aria-label={isEnglish ? "Cancel exit" : "取消退出"}
               className="absolute right-[clamp(1.4rem,4vw,4rem)] top-[clamp(1.4rem,4vw,4rem)] inline-flex h-[clamp(3.4rem,6vw,5.2rem)] w-[clamp(3.4rem,6vw,5.2rem)] items-center justify-center rounded-full border border-[#9f967f] bg-[#fffdf8] text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
             >
               <X className="h-[56%] w-[56%]" strokeWidth={1.9} aria-hidden />
@@ -70,12 +72,12 @@ export function PlayBlockingModals({
               id="exit-modal-title"
               className="vc-reading-serif pr-20 text-[clamp(2.3rem,6vw,5rem)] font-semibold leading-none tracking-normal text-[#0f5a52]"
             >
-              退出确认
+              {isEnglish ? "Leave this story?" : "退出确认"}
             </h2>
             <p className="vc-reading-serif mt-[clamp(2.2rem,5vw,4.5rem)] max-w-[760px] text-[clamp(1.35rem,3.1vw,2.6rem)] leading-[1.75] tracking-normal text-[#0f5a52]">
-              选择“存档退出”会先存档再返回首页；
+              {isEnglish ? "Save and exit preserves this run before returning home;" : "选择“存档退出”会先存档再返回首页；"}
               <br />
-              选择“直接退出”将放弃本次存档。
+              {isEnglish ? "Exit without saving abandons this run." : "选择“直接退出”将放弃本次存档。"}
             </p>
             <div className="mt-[clamp(2.8rem,6vw,5.4rem)] flex flex-col gap-5 sm:flex-row sm:justify-center sm:gap-10">
               <button
@@ -85,7 +87,7 @@ export function PlayBlockingModals({
                 className="vc-reading-serif relative min-h-[4.4rem] min-w-[min(100%,300px)] rounded-[16px] border border-[#b7ad99] bg-[#fffdf8] px-10 py-4 text-[clamp(1.45rem,3vw,2.5rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
               >
                 <span className="absolute left-5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border border-[#b7ad99]" aria-hidden />
-                存档退出
+                {isEnglish ? "Save and exit" : "存档退出"}
                 <span className="absolute right-5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border border-[#b7ad99]" aria-hidden />
               </button>
               <button
@@ -95,7 +97,7 @@ export function PlayBlockingModals({
                 className="vc-reading-serif relative min-h-[4.4rem] min-w-[min(100%,300px)] rounded-[16px] border border-[#0f5a52] bg-[#fffdf8] px-10 py-4 text-[clamp(1.45rem,3vw,2.5rem)] font-semibold text-[#0f5a52] shadow-[0_5px_14px_rgba(78,63,47,0.12)] transition hover:bg-white"
               >
                 <span className="absolute left-5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border border-[#b7ad99]" aria-hidden />
-                直接退出
+                {isEnglish ? "Exit without saving" : "直接退出"}
                 <span className="absolute right-5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border border-[#b7ad99]" aria-hidden />
               </button>
             </div>

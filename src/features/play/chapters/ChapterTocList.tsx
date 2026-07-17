@@ -1,9 +1,12 @@
 "use client";
 
 import { selectChapterTocRows, type ChapterId, type ChapterState, type ChapterTocRow } from "@/lib/chapters";
+import { formatChapterTitle } from "@/lib/chapters";
+import type { GameLanguage } from "@/lib/i18n/language";
 
-function displayRowTitle(row: ChapterTocRow, titleStyle: "colon" | "dot"): string {
-  return titleStyle === "dot" ? row.title.replace("：", "·") : row.title;
+function displayRowTitle(row: ChapterTocRow, titleStyle: "colon" | "dot", language: GameLanguage): string {
+  const title = language === "en-US" ? formatChapterTitle(row.definition, undefined, language) : row.title;
+  return titleStyle === "dot" ? title.replace("：", "·") : title;
 }
 
 /**
@@ -16,6 +19,7 @@ export function ChapterTocList({
   rowTestId = "chapter-toc-item",
   allowEnterNext = true,
   titleStyle = "colon",
+  language = "zh-CN",
   onReviewChapter,
   onReturnToActive,
   onEnterNext,
@@ -27,6 +31,7 @@ export function ChapterTocList({
   allowEnterNext?: boolean;
   /** 设置弹窗历史上用"·"分隔标题，小说目录用原始的"："。 */
   titleStyle?: "colon" | "dot";
+  language?: GameLanguage;
   onReviewChapter: (chapterId: ChapterId) => void;
   onReturnToActive: () => void;
   onEnterNext?: () => void;
@@ -63,10 +68,10 @@ export function ChapterTocList({
           >
             <span className="min-w-0">
               <span className="block vc-reading-serif text-[19px] font-semibold leading-tight">
-                {displayRowTitle(row, titleStyle)}
+                {displayRowTitle(row, titleStyle, language)}
               </span>
               <span className="mt-1 block vc-reading-serif text-[13px] leading-none text-[#6c7f79]">
-                {row.statusLabel}
+                {language === "en-US" ? ({ reviewing: "Reviewing", current: "Current chapter", completed: "Unlocked · Review", unlocked: "Unlocked", locked: "Locked" } as const)[row.status] : row.statusLabel}
               </span>
               {row.excerpt ? (
                 <span className="mt-1.5 block text-[12px] leading-relaxed text-current/75">{row.excerpt}</span>
@@ -77,7 +82,7 @@ export function ChapterTocList({
                 highlight ? "rounded-full border border-[#cfc8bc] bg-vc-paper-bright px-3 py-1" : ""
               }`}
             >
-              {row.actionLabel}
+              {language === "en-US" ? ({ review: "Review", return: "Return", enter: "Continue", none: row.status === "locked" ? "Not yet" : "Reading" } as const)[row.action] : row.actionLabel}
             </span>
           </button>
         );
