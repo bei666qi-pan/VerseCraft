@@ -2,7 +2,6 @@ import { FORGE_CATALOG_MINIMAL, SHOP_CATALOG_MINIMAL, getServicesForLocation } f
 import { getWeaponById } from "@/lib/registry/weapons";
 import { buildLightForgePreview, executeLightForge } from "./forgeService";
 import { guessPlayerLocationFromContext } from "./b1Safety";
-import { ITEMS } from "@/lib/registry/items";
 import type { ClientStructuredContextV1 } from "@/lib/security/chatValidation";
 
 type DmRecord = Record<string, unknown>;
@@ -83,6 +82,29 @@ function addNarrativeLine(record: DmRecord, line: string) {
   record.narrative = n ? `${n}\n\n${line}` : line;
 }
 
+function applyForgeStateAudit(args: {
+  record: DmRecord;
+  actionText: string;
+  originium: number;
+  equippedWeapon: { weaponId: string | null; stability: number | null; contamination: number; raw: Record<string, unknown> | null };
+  weaponBagCount: number;
+  inventoryMaterialCount: number;
+  warehouseMaterialCount: number;
+}): boolean {
+  if (!/(核对|检查|查看)/.test(args.actionText)) return false;
+  if (/(报价|锻造台|整备)/.test(args.actionText)) return false;
+  if (/(修复|维护|改装|灌注|武器化|执行)/.test(args.actionText)) return false;
+  const weaponName = typeof args.equippedWeapon.raw?.name === "string"
+    ? args.equippedWeapon.raw.name
+    : args.equippedWeapon.weaponId;
+  clearEconomyWritebackFields(args.record);
+  args.record.consumes_time = false;
+  args.record.narrative = weaponName
+    ? `我核对了随身状态：当前装备“${weaponName}”，稳定度 ${args.equippedWeapon.stability ?? "未知"}，污染 ${args.equippedWeapon.contamination}；武器袋共 ${args.weaponBagCount} 把，原石 ${args.originium} 颗。行囊与仓库中共有 ${args.inventoryMaterialCount + args.warehouseMaterialCount} 份可供锻造台校验的现有材料。`
+    : `我核对了随身状态：当前没有装备主手武器，武器袋共 ${args.weaponBagCount} 把，原石 ${args.originium} 颗。`;
+  return true;
+}
+
 function sumCurrencyChange(record: DmRecord, delta: number) {
   const prev = Number(record.currency_change ?? 0);
   const base = Number.isFinite(prev) ? prev : 0;
@@ -159,7 +181,7 @@ function applyLightForgeWeaponAction(args: {
   originium: number;
   inventoryIds: string[];
   warehouseIds: string[];
-  equippedWeapon: { weaponId: string | null; stability: number | null; mods: string[]; infusions: any[]; contamination: number; repairable: boolean };
+  equippedWeapon: { weaponId: string | null; stability: number | null; mods: string[]; infusions: any[]; contamination: number; repairable: boolean; raw: Record<string, unknown> | null };
   stats: Record<string, number>;
   location: string;
   presentNpcIds: string[];
@@ -168,7 +190,9 @@ function applyLightForgeWeaponAction(args: {
   weaponSlotEmpty: boolean;
 }): boolean {
   const text = args.actionText;
-  const mentionsPreview = text.includes("查看锻造") || text.includes("锻造台") || text.includes("整备");
+  const mentionsPreview =
+    text.includes("查看锻造") || text.includes("锻造台") || text.includes("整备") || text.includes("报价") ||
+    (text.includes("检查") && /武器|WPN-/.test(text));
   const mentionsForgeAction =
     text.includes("修复") || text.includes("维护") || text.includes("改装") || text.includes("灌注") ||
     text.includes("武器化") ||
@@ -176,6 +200,7 @@ function applyLightForgeWeaponAction(args: {
   if (!mentionsPreview && !mentionsForgeAction) return false;
   if (mentionsPreview && !mentionsForgeAction) {
     // 预览不改经济字段，不消耗回合
+    clearEconomyWritebackFields(args.record);
     args.record.consumes_time = false;
     const preview = buildLightForgePreview({
       weapon: args.equippedWeapon,
@@ -183,7 +208,10 @@ function applyLightForgeWeaponAction(args: {
       warehouseIds: args.warehouseIds,
       stats: args.stats,
     });
-    addNarrativeLine(args.record, `你检查了配电间锻造台：${preview}`);
+    const repairAvailable = preview.includes("forge_repair_basic") && preview.includes("forge_repair_basic[repair|耗原石1|需insulation|可执行]");
+    args.record.narrative = args.equippedWeapon.weaponId
+      ? `我在配电间锻造台前完成了现有武器检查：当前稳定度为 ${args.equippedWeapon.stability ?? "未知"}；基础维护需要 1 颗原石和绝缘材料，${repairAvailable ? "现有材料满足，可以执行" : "现有材料不足，暂时不能执行"}。其他改装与灌注需要分别核对材料，不会在本次报价中自动生效。`
+      : "我在配电间锻造台前查看了服务条件，但当前没有装备主手武器；只能先整理材料或选择对已有道具进行武器化。";
     args.record.options = [
       "执行修复（forge_repair_basic）",
       "执行静音改装（forge_mod_silent）",
@@ -195,18 +223,46 @@ function applyLightForgeWeaponAction(args: {
   }
   // 执行类锻造/武器化：必须系统裁决（清空经济字段，禁止模型夹带奖励/扣费/装备伪造）。
   clearEconomyWritebackFields(args.record);
+  // The model's candidate prose may invent a different price or claim a
+  // transaction succeeded/failed before this deterministic guard rules on
+  // it. Execution turns therefore replace, rather than append to, candidate
+  // service prose so narrative and authoritative deltas cannot contradict.
+  args.record.narrative = "";
   args.record.consumes_time = true;
   const weaponIdFromText = [...text.matchAll(/\b(WPN-\d{3})\b/g)][0]?.[1] ?? null;
   const weaponId = weaponIdFromText ?? args.equippedWeapon.weaponId;
   const weapon = (() => {
     if (!weaponId) return null;
     const base = getWeaponById(weaponId);
-    if (!base) return null;
+    // World-authored weapons are authoritative state objects but are not
+    // necessarily members of the legacy fixed WEAPONS registry. Rejecting
+    // them here made an actually equipped weapon appear absent during forge.
+    // Build the minimal Weapon contract only from the supplied equipped
+    // object; never invent a weapon when the slot is empty.
+    const supplied = args.equippedWeapon.raw;
+    if (!base && !supplied) return null;
+    const fallback = supplied
+      ? {
+          id: weaponId,
+          name: typeof supplied.name === "string" ? supplied.name : weaponId,
+          description: typeof supplied.description === "string" ? supplied.description : "世界内已有武器。",
+          counterThreatIds: Array.isArray(supplied.counterThreatIds) ? supplied.counterThreatIds.filter((x): x is string => typeof x === "string") : [],
+          counterTags: Array.isArray(supplied.counterTags) ? supplied.counterTags.filter((x): x is string => typeof x === "string") : [],
+          stability: args.equippedWeapon.stability ?? 60,
+          modSlots: Array.isArray(supplied.modSlots) ? supplied.modSlots : ["core", "surface"],
+          currentMods: args.equippedWeapon.mods,
+          currentInfusions: args.equippedWeapon.infusions,
+          contamination: args.equippedWeapon.contamination,
+          repairable: args.equippedWeapon.repairable,
+        }
+      : null;
+    const source = base ?? fallback;
+    if (!source) return null;
     return {
-      ...base,
-      stability: args.equippedWeapon.stability ?? base.stability,
-      currentMods: (args.equippedWeapon.mods as typeof base.currentMods) ?? base.currentMods,
-      currentInfusions: args.equippedWeapon.infusions ?? base.currentInfusions,
+      ...source,
+      stability: args.equippedWeapon.stability ?? source.stability,
+      currentMods: (args.equippedWeapon.mods as typeof source.currentMods) ?? source.currentMods,
+      currentInfusions: args.equippedWeapon.infusions ?? source.currentInfusions,
       contamination: args.equippedWeapon.contamination,
       repairable: args.equippedWeapon.repairable,
     };
@@ -263,7 +319,7 @@ function applyLightForgeWeaponAction(args: {
   if (result.consumedWarehouseIds.length > 0) appendArrayField(args.record, "consumed_items", result.consumedWarehouseIds);
   if (result.currencyChange !== 0) sumCurrencyChange(args.record, result.currencyChange);
   if (result.weaponUpdates.length > 0) appendObjectArrayField(args.record, "weapon_updates", result.weaponUpdates as Array<Record<string, unknown>>);
-  addNarrativeLine(args.record, result.narrative);
+  args.record.narrative = result.narrative.replace(/^你/, "我");
   return true;
 }
 
@@ -311,7 +367,7 @@ export function applyB1ServiceExecutionGuard(args: {
   const eq = args.clientState?.equippedWeapon ?? null;
   const equippedWeapon = (() => {
     if (!eq || typeof eq !== "object" || Array.isArray(eq)) {
-      return { weaponId: null, stability: null, mods: [], infusions: [], contamination: 0, repairable: true };
+      return { weaponId: null, stability: null, mods: [], infusions: [], contamination: 0, repairable: true, raw: null };
     }
     const id = typeof (eq as any).id === "string" ? String((eq as any).id) : null;
     const stability = typeof (eq as any).stability === "number" ? Math.max(0, Math.min(100, Math.trunc((eq as any).stability))) : null;
@@ -319,7 +375,7 @@ export function applyB1ServiceExecutionGuard(args: {
     const repairable = typeof (eq as any).repairable === "boolean" ? Boolean((eq as any).repairable) : true;
     const mods = Array.isArray((eq as any).currentMods) ? (eq as any).currentMods.filter((x: any) => typeof x === "string") : [];
     const infusions = Array.isArray((eq as any).currentInfusions) ? (eq as any).currentInfusions : [];
-    return { weaponId: id, stability, mods, infusions, contamination, repairable };
+    return { weaponId: id, stability, mods, infusions, contamination, repairable, raw: eq as Record<string, unknown> };
   })();
 
   const worldFlags = (args.clientState?.worldFlags ?? []).slice(0, 128);
@@ -340,7 +396,15 @@ export function applyB1ServiceExecutionGuard(args: {
       addNarrativeLine(record, "配电间锻造服务当前无人值守，无法执行操作。");
       handled = true;
     } else {
-    handled =
+    handled = applyForgeStateAudit({
+      record,
+      actionText,
+      originium,
+      equippedWeapon,
+      weaponBagCount: args.clientState?.weaponBag.length ?? 0,
+      inventoryMaterialCount: inventoryIds.filter((id) => /^I-/.test(id)).length,
+      warehouseMaterialCount: warehouseIds.length,
+    }) ||
       applyLightForgeWeaponAction({
         record,
         actionText,

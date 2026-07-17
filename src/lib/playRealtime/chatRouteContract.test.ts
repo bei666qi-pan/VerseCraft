@@ -21,11 +21,17 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   }
   // Phase-1: 终帧必须经过 resolver 收口为“可提交对象”
   assert.ok(routeContent.includes("resolveDmTurn"), "final envelope resolver must be applied");
-  assert.ok(
-    routeContent.includes("maxChars: 4000") ||
-      routeContent.includes("contextMode === \"minimal\" ? 900 : 4000"),
-    "runtime packet budget must stay aligned with buildRuntimeContextPackets full default (stage2 + 学制子包)"
-  );
+  const deterministicServiceIndex = routeContent.indexOf("buildDeterministicServiceTurn({");
+  const kgIndex = routeContent.indexOf("const kgEnabled = isKgLayerEnabled()");
+  const preflightIndex = routeContent.indexOf("runControlPreflightStage({");
+  const modelIndex = routeContent.indexOf("generateMainReply({");
+  assert.ok(deterministicServiceIndex > 0, "deterministic service fast lane must exist");
+  assert.ok(deterministicServiceIndex < kgIndex, "deterministic service must avoid KG work");
+  assert.ok(deterministicServiceIndex < preflightIndex, "deterministic service must avoid control preflight");
+  assert.ok(deterministicServiceIndex < modelIndex, "deterministic service must avoid model generation");
+  assert.ok(routeContent.includes('"X-VerseCraft-Turn-Path": "deterministic_service"'));
+  assert.ok(routeContent.includes("AI_CHAT_RUNTIME_PACKET_MAX_CHARS"), "runtime packet budget must be configurable");
+  assert.ok(routeContent.includes("Math.max(2_400"), "runtime packet budget must retain the authority-packet safety floor");
   assert.ok(routeContent.includes("finalOutputModeration"), "final output safety must be retained");
   assert.ok(routeContent.includes("collectSafetyReport"), "Narrative Safety Kernel must stay on final path");
   assert.ok(routeContent.includes("lane_side_effect_applied"), "TurnLane side-effect telemetry must be retained");

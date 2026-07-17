@@ -136,6 +136,25 @@ test("commitTurn applies options override", () => {
   assert.equal(result.summary.degraded, false);
 });
 
+test("commitTurn applies a narrow plain-text narrative rewrite without dropping state", () => {
+  const report = okReport();
+  report.ok = false;
+  report.narrativeOverride = "我摸了摸口袋，那里没有能派上用场的东西。";
+  const result = commitTurn({
+    requestId: "req_narrow_rewrite",
+    sessionId: "s_1",
+    turnIndex: 1,
+    candidateDmRecord: { narrative: "我摸了摸口袋里的便签。", player_location: "1F_Lobby", task_updates: [{ taskId: "t", status: "active" }] },
+    delta: { ...emptyStateDelta(), isActionLegal: true, playerLocation: "1F_Lobby" },
+    validatorReport: report,
+  });
+  assert.equal(result.committedDmRecord.narrative, report.narrativeOverride);
+  assert.equal(result.committedDmRecord.player_location, "1F_Lobby");
+  assert.deepEqual(result.committedDmRecord.task_updates, [{ taskId: "t", status: "active" }]);
+  assert.ok(result.summary.commitFlags.includes("narrative_rewrite_applied"));
+  assert.equal(result.summary.safeNarrativeFallbackApplied, false);
+});
+
 test("commitTurn falls back to safe narrative when override present", () => {
   const candidate = {
     narrative: "禁忌内容。",
@@ -525,6 +544,33 @@ test("commitTurn disabled safety policy returns to the legacy no-op safety path"
   const meta = result.committedDmRecord.security_meta as Record<string, any>;
   assert.equal(meta.turn_commit.safety_policy.enabled, false);
   assert.equal(meta.turn_commit.safety_policy.decision, "pass");
+});
+
+test("commit trace records privacy-safe unsupported fact reason codes", () => {
+  const result = commitTurn({
+    requestId: "req_fact_reason",
+    sessionId: "s_private",
+    turnIndex: 1,
+    candidateDmRecord: { narrative: "玩家私密正文", options: [] },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: {
+      ...okReport(),
+      ok: false,
+      issues: [{ code: "unsupported_new_fact", severity: "low", detail: "world_fact:task_completion_without_fact_or_delta" }],
+      telemetry: baseTelemetry({ totalIssues: 1, byCode: { unsupported_new_fact: 1 }, unsupportedFactCount: 1 }),
+    },
+    safetyReport: safetyReport([{
+      code: "unsupported_new_fact",
+      invariant: "unsupported_new_fact",
+      severity: "medium",
+      source: "unsupportedFactDetector",
+      detail: "task_completion_without_fact_or_delta",
+    }], "record"),
+  });
+  assert.equal(result.summary.unsupportedFactReasonCounts.task_completion_without_fact_or_delta, 1, "validator and safety copies must not double count");
+  const turnCommit = (result.committedDmRecord.security_meta as { turn_commit: Record<string, unknown> }).turn_commit;
+  assert.deepEqual(turnCommit.unsupported_fact_reason_counts, { task_completion_without_fact_or_delta: 1 });
+  assert.equal(JSON.stringify(turnCommit).includes("玩家私密正文"), false);
 });
 
 test("commitTurn soft mode strips state but keeps narrative for block_commit safety report", () => {

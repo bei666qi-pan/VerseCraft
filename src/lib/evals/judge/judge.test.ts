@@ -14,7 +14,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import { buildJudgePrompt, buildJudgePromptCompact } from "./judgePrompt";
 import { parseJudgeVerdict, aggregateMultiJudge, evaluateOffline, buildBatchJudgePrompts } from "./judgeExecutor";
-import { getRubric, listRubricIds, registerRubric, describeRubric } from "./rubricRegistry";
+import { getRubric, listRubricIds, listRubrics, registerRubric, describeRubric } from "./rubricRegistry";
 import {
   generatePositionScheme,
   median,
@@ -213,6 +213,13 @@ describe("rubricRegistry", () => {
       for (const dim of rubric!.dimensions) {
         assert.ok(dim.anchors.length >= 2, `${id}/${dim.id} should have >= 2 anchors`);
       }
+    }
+  });
+
+  it("所有内置 rubric 的维度权重总和必须为 1", () => {
+    for (const rubric of listRubrics()) {
+      const total = rubric.dimensions.reduce((sum, dimension) => sum + dimension.weight, 0);
+      assert.ok(Math.abs(total - 1) < 0.000_001, `${rubric.id} weight sum=${total}`);
     }
   });
 

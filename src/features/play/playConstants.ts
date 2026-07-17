@@ -1,7 +1,9 @@
 import type { StatType } from "@/lib/registry/types";
 import type { EchoTalent } from "@/store/useGameStore";
 
-export const MAX_INPUT = 20;
+// 中文自然语言行动常包含目标、方法和风险判断；20 字会迫使玩家写成关键词。
+// 上游仍有 token、风险与速率守卫，此处只定义可用的交互表达上限。
+export const MAX_INPUT = 100;
 
 export const TALENT_EFFECT_STYLE: Record<EchoTalent, { bg: string; anim: string }> = {
   时间回溯: {

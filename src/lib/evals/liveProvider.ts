@@ -9,8 +9,8 @@
  * - Narrative Judge（叙事质量裁判评分）
  *
  * 环境变量：
- * - PLAYTEST_LLM_API_KEY: API 密钥
- * - PLAYTEST_LLM_BASE_URL: 可选，默认为 https://api.deepseek.com/v1
+ * - PLAYTEST_LLM_API_KEY 或 DEEPSEEK_API_KEY: API 密钥
+ * - PLAYTEST_LLM_BASE_URL 或 DEEPSEEK_BASE_URL: 可选，默认为 https://api.deepseek.com/v1
  * - PLAYTEST_LLM_MODEL: 可选，默认为 deepseek-chat
  *
  * 注意：此模块仅用于 eval/测试工具，不接入生产 /api/chat 链路。
@@ -18,14 +18,17 @@
 
 // === 配置 ===
 
+import { tryConsumeBudget } from "./harness/budgetGuard";
+import { buildLiveResultCacheKey, readLiveResultCache, writeLiveResultCache } from "./harness/liveResultCache";
+
 function getDeepSeekConfig() {
-  const apiKey = process.env.PLAYTEST_LLM_API_KEY;
+  const apiKey = process.env.PLAYTEST_LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    throw new Error("PLAYTEST_LLM_API_KEY 未设置。请在 .env.local 中配置或通过环境变量设置。");
+    throw new Error("PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY 未设置。请在 .env.local 中配置或通过环境变量设置。");
   }
   return {
     apiKey,
-    baseUrl: process.env.PLAYTEST_LLM_BASE_URL ?? "https://api.deepseek.com/v1",
+    baseUrl: process.env.PLAYTEST_LLM_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1",
     model: process.env.PLAYTEST_LLM_MODEL ?? "deepseek-chat",
   };
 }
@@ -73,6 +76,7 @@ let _globalCooldownUntil = 0; // 全局冷却时间戳（后端全挂时触发�
 const MIN_INTERVAL_MS = 100; // 官方 DeepSeek API：~500 RPM，100ms 间隔安全
 /** 每个 429 冷却期（秒），累加 */
 const _429_BASE_COOLDOWN_MS = 30000;
+const MAX_QUEUE_RETRIES = 2;
 let _isProcessingQueue = false;
 
 function getDelayMs(): number {
@@ -105,20 +109,17 @@ async function processQueue(): Promise<void> {
         item.resolve(response);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        // 429、402（中转波动/余额不足/排队）、503（model_not_found/no available channel）、空内容（代理限速静默返回空）
+        // 402 是余额/计费硬失败，立即终止；429/503/空内容只做有上限的短重试。
         const isRetryable =
           error.message.includes("(429)") ||
-          error.message.includes("(402)") ||
           error.message.includes("(503)") ||
           error.message.includes("返回空内容");
-        if (isRetryable && item.attempt < 5) {
+        if (isRetryable && item.attempt < MAX_QUEUE_RETRIES) {
           const retryAfter = (error.message.includes("返回空内容") || error.message.includes("(503)"))
             ? Math.min(15000 * Math.pow(1.5, item.attempt), 120000) // 空内容/503: 15s → 23s → 34s → 51s → 76s
             : error.message.includes("(429)")
               ? Math.min(_429_BASE_COOLDOWN_MS * Math.pow(1.5, item.attempt), 120000) // 429: 30s → 45s → 68s → 102s → 120s
-              : error.message.includes("(402)")
-                ? Math.min(30000 * Math.pow(1.5, item.attempt), 120000) // 402 余额不足/波动: 30s → 45s → 68s → 102s → 120s
-                : extractRetryAfter(error.message);
+              : extractRetryAfter(error.message);
           console.warn(`    ⚠️ 队列重试 #${item.attempt + 1} 等待 ${Math.round(retryAfter/1000)}s: ${error.message.slice(0, 120)}`);
           await sleep(retryAfter);
           _queue.unshift({ ...item, attempt: item.attempt + 1 });
@@ -220,10 +221,27 @@ async function executeSingleRequest(req: LiveCompletionRequest): Promise<LiveCom
 export async function callDeepSeekCompletion(
   req: LiveCompletionRequest
 ): Promise<LiveCompletionResponse> {
-  return new Promise((resolve, reject) => {
+  const config = getDeepSeekConfig();
+  const cacheKey = buildLiveResultCacheKey({
+    provider: "playtest_llm",
+    baseUrl: config.baseUrl,
+    model: config.model,
+    messages: req.messages,
+    temperature: req.temperature ?? 0.7,
+    maxTokens: req.maxTokens ?? 1024,
+    jsonMode: req.jsonMode ?? false,
+  });
+  const cached = readLiveResultCache<LiveCompletionResponse>(cacheKey);
+  if (cached) return { ...cached, latencyMs: 0 };
+  if (!tryConsumeBudget("playtest_llm")) {
+    throw new Error("Live eval 调用预算不足；请降低 profile 或设置 VERSECRAFT_EVAL_DAILY_CALL_BUDGET");
+  }
+  const response = await new Promise<LiveCompletionResponse>((resolve, reject) => {
     _queue.push({ request: req, resolve, reject, attempt: 0 });
     processQueue();
   });
+  writeLiveResultCache(cacheKey, response);
+  return response;
 }
 
 // === 批量调用（带重试） ===

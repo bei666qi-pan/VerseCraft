@@ -98,6 +98,30 @@ function mentionedFloorIds(narrative: string): string[] {
   return uniqueIds(out);
 }
 
+/**
+ * Conservative text attributable to the active NPC speaker.
+ *
+ * The surrounding narrative also contains player observations, documents and
+ * inner monologue. Running NPC belief checks over that entire text turns
+ * `我在登记表上看到 7F` into an NPC knowledge violation. Quotes are the
+ * production-format speech signal; explicit `N-xxx说/问/答` clauses preserve
+ * the compact golden/eval fixture format.
+ */
+function npcAttributedSpeech(narrative: string, speakerNpcId: string): string {
+  const parts: string[] = [];
+  for (const match of narrative.matchAll(/[“「]([^”」]{1,500})[”」]/g)) {
+    if (match[1]) parts.push(match[1]);
+  }
+  if (speakerNpcId) {
+    const escaped = speakerNpcId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const explicit = new RegExp(`${escaped}[^。！？\\n]{0,16}(?:说|问|答|道|喊|低声说|压低声音)[，,:：]?([^。！？\\n]{1,500})`, "g");
+    for (const match of narrative.matchAll(explicit)) {
+      if (match[1]) parts.push(match[1]);
+    }
+  }
+  return parts.join("\n");
+}
+
 function packetAllowsFloor(packet: NpcKnowledgePacket, floorId: string): boolean {
   const f = floorId.toLowerCase();
   const allFactIds = [...packet.can_know_fact_ids, ...packet.can_hint_fact_ids];
@@ -137,6 +161,7 @@ export function validateNpcKnowledgeInNarrative(
   }
 
   const speakerNpcId = normalizeId(args.speakerNpcId) || packet.speakerNpcId;
+  const attributedSpeech = npcAttributedSpeech(narrative, speakerNpcId);
   const presentNpcIds = uniqueIds(args.presentNpcIds);
   const mentionableNpcIds = uniqueIds([
     speakerNpcId,
@@ -213,7 +238,7 @@ export function validateNpcKnowledgeInNarrative(
   }
 
   const speakerFloorId = packet.speaker_floor_id;
-  for (const floorId of mentionedFloorIds(narrative)) {
+  for (const floorId of mentionedFloorIds(attributedSpeech)) {
     if (!speakerFloorId || floorId === speakerFloorId) continue;
     if (!packetAllowsFloor(packet, floorId)) {
       addIssue(issues, {

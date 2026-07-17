@@ -6,6 +6,7 @@ import {
   buildDynamicPlayerDmSystemSuffix,
   getCompactStablePlayerDmSystemPrefix,
   getStablePlayerDmSystemPrefix,
+  shouldUseCompactStablePrompt,
 } from "@/lib/playRealtime/playerChatSystemPrompt";
 import { buildNpcConsistencyBoundaryCompactBlock } from "@/lib/playRealtime/npcConsistencyBoundaryPackets";
 
@@ -37,6 +38,14 @@ test("compact stable prefix preserves core JSON and safety contract", () => {
   assert.ok(compact.includes("options"));
   assert.ok(compact.includes("结构化字段"));
   assert.ok(compact.includes("安全合规"));
+});
+
+test("ordinary RULE turns use compact stable prompt while REVEAL retains full canon", () => {
+  const base = { promptSlimmingEnabled: true, compactLanePrompt: false, standardCompactEnabled: true };
+  assert.equal(shouldUseCompactStablePrompt({ ...base, turnLane: "RULE" }), true);
+  assert.equal(shouldUseCompactStablePrompt({ ...base, turnLane: "REVEAL" }), false);
+  assert.equal(shouldUseCompactStablePrompt({ ...base, turnLane: "FAST", compactLanePrompt: true }), true);
+  assert.equal(shouldUseCompactStablePrompt({ ...base, turnLane: "RULE", standardCompactEnabled: false }), false);
 });
 
 test("stable prefix 体积已降到可控范围", () => {

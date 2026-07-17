@@ -28,6 +28,7 @@ import {
 } from "./scenarios";
 import { judgeNarrativeConsistencyMock } from "./narrativeJudge";
 import type { GameStateSnapshot, PlaythroughTranscript } from "./types";
+import { isDegradedSutResult } from "./sutAdapter";
 
 // === 扩展场景库验证 ===
 
@@ -53,7 +54,6 @@ describe("v4 扩展场景库", () => {
   it("cross-system 场景应存在（武器-经济-NPC 交叉）", () => {
     const crossSystemIds = [
       "happy-weapon-degradation-cycle",
-      "happy-economy-cycle",
       "recovery-weapon-repair",
       "recovery-triple-crisis",
       "refusal-cross-floor-teleport",
@@ -62,6 +62,12 @@ describe("v4 扩展场景库", () => {
       const s = findScenario(id);
       assert.ok(s, `应找到 cross-system 场景 ${id}`);
     }
+  });
+
+  it("主观可玩性样本必须显式 opt-in", () => {
+    assert.equal(findScenario("profession-combat-synergy")?.subjectivePlayabilityEligible, true);
+    assert.notEqual(findScenario("forge-service-flow")?.subjectivePlayabilityEligible, true);
+    assert.notEqual(findScenario("happy-speedrun")?.subjectivePlayabilityEligible, true);
   });
 
   it("场景 criticalInvariants 应引用合法规则名", () => {
@@ -166,6 +172,11 @@ describe("v4 NPC DM-only 信息检测", () => {
     const r = checkAllInvariants(0, state, undefined, narrative);
     assert.ok(!r.violations.some((v) => v.rule === "npc_dm_only_leak"));
   });
+
+  it("玩家正文泄漏花括号任务 ID 应触发 dm_only_leak", () => {
+    const r = checkAllInvariants(0, createInitialStateSnapshot(), undefined, "{prof_trial_lampkeeper}这个任务还挂在那里。");
+    assert.ok(r.violations.some((v) => v.rule === "dm_only_leak"));
+  });
 });
 
 // === v4 不变量增强：Prompt injection ===
@@ -213,6 +224,7 @@ describe("v4 叙事重复检测", () => {
     const result = detectNarrativeRepetitions(steps);
     assert.ok(result.overallRepetitionRate >= 0.5, "相同叙事应有高重复率");
     assert.ok(result.repetitions.length > 0, "应报告重复段");
+    assert.ok(result.repetitions.every((r) => r.startStep !== r.endStep), "重复证据不得把步骤与自身比较");
   });
 
   it("步骤不足时不应报告重复", () => {
@@ -220,6 +232,23 @@ describe("v4 叙事重复检测", () => {
     const result = detectNarrativeRepetitions(steps);
     assert.equal(result.repetitions.length, 0);
     assert.equal(result.overallRepetitionRate, 0);
+  });
+});
+
+describe("live SUT 降级识别", () => {
+  it("通用失败终帧不得标记为 live_full", () => {
+    assert.equal(isDegradedSutResult(undefined, { narrative: "网站暂时无法完成本次生成，请稍后再试。" }), true);
+  });
+
+  it("正常叙事不应误判为降级", () => {
+    assert.equal(isDegradedSutResult(undefined, { narrative: "走廊尽头传来轻微的敲击声。" }), false);
+  });
+
+  it("空叙事 internal fallback 必须判为降级", () => {
+    assert.equal(isDegradedSutResult(undefined, {
+      narrative: "",
+      internal_meta: { action: "internal_no_visible_fallback" },
+    }), true);
   });
 });
 
@@ -238,6 +267,45 @@ describe("v4 状态-叙事矛盾检测", () => {
       "应报 location_mismatch");
   });
 
+  it("narrative_only 回合中相对移动描写不应触发位置矛盾", () => {
+    const state1 = createInitialStateSnapshot({ playerLocation: "3F_Hallway" });
+    const state2 = createInitialStateSnapshot({ playerLocation: "3F_Hallway" });
+    const steps = [
+      { stepIndex: 0, narrative: "", stateAfter: state1, dmJson: {} },
+      {
+        stepIndex: 1,
+        narrative: "他推开门，我回头看了一眼身后，脚步从门缝那边慢慢退去。我仍旧站在走廊里，没有离开。",
+        stateAfter: state2,
+        dmJson: { turn_mode: "narrative_only" },
+      },
+    ];
+    const contradictions = detectStateNarrativeContradictions(steps);
+    assert.equal(contradictions.some((c) => c.type === "location_mismatch"), false);
+  });
+
+  it("跨多层过程描写但 state 未变也应被检测", () => {
+    const state = createInitialStateSnapshot({ playerLocation: "3F_Hallway" });
+    const contradictions = detectStateNarrativeContradictions([
+      { stepIndex: 0, narrative: "", stateAfter: state, dmJson: {} },
+      { stepIndex: 1, narrative: "我下到2F，继续下到1F，然后穿过门到B1。", stateAfter: { ...state, turnCount: 1 }, dmJson: {} },
+    ]);
+    assert.ok(contradictions.some((row) => row.type === "location_mismatch"));
+  });
+
+  it("叙事明确表达无法到达时不应判为位置矛盾", () => {
+    const state = createInitialStateSnapshot({ playerLocation: "3F_Hallway" });
+    const contradictions = detectStateNarrativeContradictions([
+      { stepIndex: 0, narrative: "", stateAfter: state, dmJson: {} },
+      {
+        stepIndex: 1,
+        narrative: "我无法从3F_Hallway直接到达2F_Stairwell：世界图中没有当前可通行的相邻边。我仍留在原地。",
+        stateAfter: { ...state, turnCount: 1 },
+        dmJson: {},
+      },
+    ]);
+    assert.ok(!contradictions.some((row) => row.type === "location_mismatch"));
+  });
+
   it("叙事与状态一致时不应检测矛盾", () => {
     const state1 = createInitialStateSnapshot({ playerLocation: "3F_走廊" });
     const state2 = createInitialStateSnapshot({ playerLocation: "B1_配电间" }); // 位置变化了
@@ -250,6 +318,15 @@ describe("v4 状态-叙事矛盾检测", () => {
       "位置一致时不应报 location_mismatch");
   });
 
+  it("NPC 在同一场景走到另一端不应误报玩家位置变化", () => {
+    const state = createInitialStateSnapshot({ playerLocation: "1F_Lobby" });
+    const contradictions = detectStateNarrativeContradictions([
+      { stepIndex: 0, narrative: "", stateAfter: state, dmJson: {} },
+      { stepIndex: 1, narrative: "她不知什么时候走到了台子另一端，仍在大堂里看着我。", stateAfter: state, dmJson: {} },
+    ]);
+    assert.ok(!contradictions.some((c) => c.type === "location_mismatch"));
+  });
+
   it("死亡状态但叙事描述行动应被检测", () => {
     const state1 = createInitialStateSnapshot({ isDeath: false });
     const state2 = createInitialStateSnapshot({ isDeath: true });
@@ -260,6 +337,57 @@ describe("v4 状态-叙事矛盾检测", () => {
     const contradictions = detectStateNarrativeContradictions(steps);
     assert.ok(contradictions.some((c) => c.type === "death_contradiction"),
       "应报 death_contradiction");
+  });
+
+  it("叙事凭空新增擦伤但 HP 与伤势结构未变化应被检测", () => {
+    const before = createInitialStateSnapshot({ hp: 10 });
+    const after = createInitialStateSnapshot({ hp: 10 });
+    const contradictions = detectStateNarrativeContradictions([
+      { stepIndex: 0, narrative: "", stateAfter: before, dmJson: {} },
+      { stepIndex: 1, narrative: "手机屏映出脸侧的一小道擦伤，血已经凝住了。", stateAfter: after, dmJson: { conflict_outcome: null } },
+    ]);
+    assert.ok(contradictions.some((c) => c.type === "physical_injury_without_state"));
+  });
+
+  it("HP 真实下降时允许叙事描写新伤势", () => {
+    const before = createInitialStateSnapshot({ hp: 10 });
+    const after = createInitialStateSnapshot({ hp: 9 });
+    const contradictions = detectStateNarrativeContradictions([
+      { stepIndex: 0, narrative: "", stateAfter: before, dmJson: {} },
+      { stepIndex: 1, narrative: "脸侧留下了一道擦伤。", stateAfter: after, dmJson: {} },
+    ]);
+    assert.ok(!contradictions.some((c) => c.type === "physical_injury_without_state"));
+  });
+
+  it("单个 major 状态矛盾不得仍显示 5/5", () => {
+    const before = createInitialStateSnapshot({ hp: 10 });
+    const after = createInitialStateSnapshot({ hp: 10 });
+    const transcript: PlaythroughTranscript = {
+      runId: "injury-score-test",
+      persona: "explorer",
+      seed: 1,
+      steps: [
+        { stepIndex: 0, playerAction: "等待", narrative: "走廊很安静。", dmJson: {}, stateAfter: before, timestamp: 0 },
+        { stepIndex: 1, playerAction: "检查伤势", narrative: "脸侧映出一小道擦伤。", dmJson: {}, stateAfter: after, timestamp: 1 },
+      ],
+      initialState: before,
+      finalState: after,
+      terminatedReason: "max_steps",
+      totalSteps: 2,
+      durationMs: 1,
+    };
+    const judged = judgeNarrativeConsistencyMock(transcript);
+    assert.equal(judged.passed, false);
+    assert.ok(judged.overallScore < 5);
+  });
+
+  it("注册 NPC 未在场却直接开口必须被检测", () => {
+    const state = createInitialStateSnapshot({ presentNpcIds: [] });
+    const contradictions = detectStateNarrativeContradictions([
+      { stepIndex: 0, narrative: "走廊很安静。", stateAfter: state, dmJson: {} },
+      { stepIndex: 1, narrative: "欣蓝走近一步，轻声问我有没有受伤。", stateAfter: state, dmJson: {} },
+    ]);
+    assert.ok(contradictions.some((c) => c.type === "offscreen_npc_presence"));
   });
 });
 
@@ -292,6 +420,7 @@ describe("v4 叙事裁判（Mock）增强", () => {
     assert.ok(result.dimensionScores.coherence < 5, "高重复应降低 coherence");
     assert.ok(result.dimensionScores.immersion < 5, "高重复应降低 immersion");
     assert.ok(result.reasoning.includes("重复率"), "reasoning 应提及重复率");
+    assert.ok(!result.passed, "高重复叙事不能被判为产品通过");
   });
 
   it("状态-叙事矛盾 transcript 应获得较低 factConsistency", () => {

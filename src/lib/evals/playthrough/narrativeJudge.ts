@@ -23,6 +23,303 @@ import {
   detectWeaponUpdateConsistency,
   detectProfessionChangeConsistency,
 } from "./invariants";
+import { callDeepSeekCompletion } from "../liveProvider";
+
+type JudgeIssue = ConsistencyIssue;
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampScore(value: number): number {
+  return Math.max(1, Math.min(5, value));
+}
+
+function normalizeJudgeConfidence(raw: unknown): number | undefined {
+  const num = typeof raw === "number" && Number.isFinite(raw) ? raw : Number.NaN;
+  if (!Number.isFinite(num)) return undefined;
+  if (num <= 0 || num >= 1) {
+    if (num > 1 && num <= 100) return clamp01(num / 100);
+    if (num >= 0) return clamp01(num);
+    return undefined;
+  }
+  return clamp01(num);
+}
+
+function withConfidenceSource(result: NarrativeConsistencyResult, source: NarrativeConsistencyResult["judgeConfidenceSource"], fallback?: number): NarrativeConsistencyResult {
+  return {
+    ...result,
+    judgeConfidence: typeof fallback === "number" ? clamp01(fallback) : result.judgeConfidence,
+    judgeConfidenceSource: source,
+  };
+}
+
+type ModelJudgeOutput = {
+  overallScore: number;
+  judgeConfidence: number | null;
+  dimensionScores: Record<string, number>;
+  passed: boolean;
+  issues: JudgeIssue[];
+  reasoning: string;
+};
+
+function normalizeIssueType(raw: unknown): ConsistencyIssue["type"] {
+  switch (raw) {
+    case "contradiction":
+    case "resurrection":
+    case "voice_drift":
+    case "world_inconsistency":
+    case "fact_hallucination":
+    case "position_teleport":
+      return raw;
+    default:
+      return "contradiction";
+  }
+}
+
+function normalizeIssueSeverity(raw: unknown): ConsistencyIssue["severity"] {
+  switch (raw) {
+    case "critical":
+    case "major":
+    case "minor":
+      return raw;
+    default:
+      return "minor";
+  }
+}
+
+function normalizeEvidence(raw: unknown): Array<{ stepIndex: number; excerpt: string }> {
+  if (!Array.isArray(raw)) return [];
+  const items: Array<{ stepIndex: number; excerpt: string }> = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const obj = entry as Record<string, unknown>;
+    const stepIndex = Number(obj.stepIndex);
+    if (!Number.isFinite(stepIndex)) continue;
+    items.push({
+      stepIndex,
+      excerpt: typeof obj.excerpt === "string" ? obj.excerpt : "",
+    });
+  }
+  return items;
+}
+
+function normalizeDimensionScores(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const rows: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      rows[key] = clampScore(value);
+    }
+  }
+  return rows;
+}
+
+function extractJsonBody(raw: string): string | null {
+  const fenced = raw.match(/```json\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+  const first = raw.indexOf("{");
+  if (first < 0) return null;
+  const last = raw.lastIndexOf("}");
+  if (last <= first) return null;
+  return raw.slice(first, last + 1).trim();
+}
+
+function parseLlmJudgePayload(raw: unknown): Omit<ModelJudgeOutput, "judgeConfidence" | "dimensionScores"> & {
+  judgeConfidence: number | null;
+  dimensionScores: Record<string, number> | null;
+} | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+
+  const overallScore = typeof obj.overallScore === "number" && Number.isFinite(obj.overallScore)
+    ? clampScore(obj.overallScore)
+    : null;
+  const passed = typeof obj.passed === "boolean" ? obj.passed : null;
+  const reasoning = typeof obj.reasoning === "string" ? obj.reasoning : "";
+  const judgeConfidence = normalizeJudgeConfidence(obj.judgeConfidence);
+  const dimensionScores = normalizeDimensionScores(obj.dimensionScores);
+  const rawIssues = Array.isArray(obj.issues) ? obj.issues : [];
+  const issues: JudgeIssue[] = [];
+
+  for (const item of rawIssues) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const i = item as Record<string, unknown>;
+    const issue: JudgeIssue = {
+      type: normalizeIssueType(i.type),
+      severity: normalizeIssueSeverity(i.severity),
+      description: typeof i.description === "string" ? i.description : "模型返回的叙事问题",
+      evidence: normalizeEvidence(i.evidence),
+    };
+    issues.push(issue);
+  }
+
+  if (overallScore === null) return null;
+
+  return {
+    overallScore,
+    passed: passed ?? overallScore >= 3,
+    reasoning,
+    judgeConfidence,
+    dimensionScores,
+    issues,
+  };
+}
+
+function parseLlmJudgeResponse(content: string): ModelJudgeOutput | null {
+  const jsonBody = extractJsonBody(content);
+  if (!jsonBody) return null;
+  try {
+    const parsed = JSON.parse(jsonBody) as unknown;
+    const normalized = parseLlmJudgePayload(parsed);
+    if (!normalized) return null;
+    return {
+      ...normalized,
+      judgeConfidence: normalized.judgeConfidence ?? null,
+      dimensionScores: normalized.dimensionScores ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function toModelJudgePrompt(transcript: PlaythroughTranscript): { system: string; user: string } {
+  const transcriptSummary = transcript.steps
+    .map((s) => `[第${s.stepIndex}步]\n玩家: ${s.playerAction}\nDM: ${s.narrative.slice(0, 300)}`)
+    .join("\n\n---\n\n");
+
+  const systemPrompt = `你是一位严格的互动叙事一致性审查专家。
+你需要基于给定 transcript 识别叙事一致性问题。你必须在 JSON 中只输出结构化结果，不得输出解释性文字。`;
+
+  const userPrompt = `请检查以下 complete transcript（完整内容已截断为摘要）：
+
+${transcriptSummary.slice(0, 8000)}
+
+请按 JSON 输出以下字段，不要加 Markdown：
+{
+  "overallScore": 1-5,
+  "judgeConfidence": 0-1,
+  "dimensionScores": {"coherence":1-5,"characterVoice":1-5,"plotLogic":1-5,"immersion":1-5,"factConsistency":1-5},
+  "passed": true/false,
+  "issues": [{"type":"contradiction|resurrection|voice_drift|world_inconsistency|fact_hallucination|position_teleport","severity":"critical|major|minor","description":"...","evidence":[{"stepIndex":0,"excerpt":"..."}]}],
+  "reasoning":"..."
+}
+
+检测标准：
+1) contradiction：叙事前后逻辑冲突
+2) resurrection：角色死亡后重复出现
+3) voice_drift：角色口吻/身份偏离
+4) world_inconsistency：世界观约束冲突
+5) fact_hallucination：不符合既有事实
+6) position_teleport：无依据的位置突变
+
+请用 0-1 区间给出 judgeConfidence（越高越置信）。`;
+
+  return { system: systemPrompt, user: userPrompt };
+}
+
+async function runNarrativeJudgeByModel(
+  transcript: PlaythroughTranscript,
+  source: NarrativeConsistencyResult["judgeConfidenceSource"],
+): Promise<Omit<NarrativeConsistencyResult, "runId">> {
+  const prompt = toModelJudgePrompt(transcript);
+  const response = await callDeepSeekCompletion({
+    messages: [
+      { role: "system", content: prompt.system },
+      { role: "user", content: prompt.user },
+    ],
+    temperature: 0.2,
+    maxTokens: 4096,
+    jsonMode: true,
+    timeoutMs: 90000,
+  });
+
+  const parsed = parseLlmJudgeResponse(response.content);
+  if (!parsed) {
+    throw new Error("LLM 裁判返回无法解析的 JSON");
+  }
+
+  const issues = parsed.issues.length === 0
+    ? []
+    : parsed.issues;
+  const overallScore = parsed.overallScore;
+
+  return {
+    passed: parsed.passed,
+    overallScore,
+    dimensionScores: parsed.dimensionScores,
+    issues,
+    reasoning: parsed.reasoning,
+    judgeModel: response.model,
+    judgeConfidence: Number.isFinite(parsed.judgeConfidence) ? parsed.judgeConfidence : null,
+    judgeConfidenceSource: Number.isFinite(parsed.judgeConfidence) ? source : "estimated",
+    judgeMode: source === "model" ? "live" : "codex",
+    judgeLatencyMs: response.latencyMs,
+    judgeTokens: {
+      prompt: response.usage.promptTokens,
+      completion: response.usage.completionTokens,
+      total: response.usage.totalTokens,
+    },
+  };
+}
+
+interface StateDiffProfile {
+  playerLocationChanges: number;
+  taskProgressChanges: number;
+  weaponProgressChanges: number;
+  inventoryProgressChanges: number;
+  hpSanityChanges: number;
+}
+
+/**
+ * 检查回放过程中的关键状态进展数量。
+ * 对比起点从 initialState 开始，覆盖首回合变化，避免首步进展漏判。
+ */
+function hasStateProgress(
+  initialState: PlaythroughTranscript["initialState"],
+  steps: Array<{ stateAfter: PlaythroughTranscript["steps"][number]["stateAfter"] }>
+): StateDiffProfile {
+  let playerLocationChanges = 0;
+  let taskProgressChanges = 0;
+  let weaponProgressChanges = 0;
+  let inventoryProgressChanges = 0;
+  let hpSanityChanges = 0;
+
+  let prev = initialState;
+  for (const step of steps) {
+    const curr = step.stateAfter;
+
+    if (prev.playerLocation !== curr.playerLocation) playerLocationChanges++;
+
+    if (prev.profession !== curr.profession || prev.equippedWeapon !== curr.equippedWeapon) {
+      weaponProgressChanges++;
+    }
+
+    if (prev.inventoryItemCount !== curr.inventoryItemCount) {
+      inventoryProgressChanges++;
+    }
+
+    if (prev.activeTaskIds.length !== curr.activeTaskIds.length || prev.completedTaskIds.length !== curr.completedTaskIds.length) {
+      taskProgressChanges++;
+    }
+
+    if (prev.hp !== curr.hp || prev.sanity !== curr.sanity) {
+      hpSanityChanges++;
+    }
+
+    prev = curr;
+  }
+
+  return {
+    playerLocationChanges,
+    taskProgressChanges,
+    weaponProgressChanges,
+    inventoryProgressChanges,
+    hpSanityChanges,
+  };
+}
 
 // === Mock 模式：启发式叙事一致性检查 ===
 
@@ -98,6 +395,31 @@ function checkNarrativeForIssues(
 }
 
 /**
+ * Codex 风格裁判（无外部 LLM 调用）
+ *
+ * 与 mock 裁判相比，额外加入“可玩性进展”与“叙事重复”检查，
+ * 适合在没有 API Key 时做更严格的人工化筛选。
+ */
+export async function judgeNarrativeConsistencyCodex(
+  transcript: PlaythroughTranscript
+): Promise<NarrativeConsistencyResult> {
+  try {
+    return {
+      runId: transcript.runId,
+      ...(await runNarrativeJudgeByModel(transcript, "codex")),
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const fallback = withConfidenceSource(judgeNarrativeConsistencyMock(transcript), "fallback");
+    return {
+      ...fallback,
+      judgeMode: "fallback",
+      judgeError: reason,
+    };
+  }
+}
+
+/**
  * Mock 模式：启发式叙事一致性裁判。
  * 不调 LLM，基于规则检查。
  *
@@ -137,7 +459,7 @@ export function judgeNarrativeConsistencyMock(
       allIssues.push({
         type: "contradiction",
         severity: "major",
-        description: `叙事重复：步骤 ${rep.startStep}-${rep.endStep} 相似度过高 (${(rep.similarity * 100).toFixed(0)}%)`,
+        description: `叙事重复：步骤 ${rep.comparedStep + 1} 与 ${rep.endStep + 1} 相似度过高 (${(rep.similarity * 100).toFixed(0)}%)`,
         evidence: [{ stepIndex: rep.startStep, excerpt: rep.excerpt }],
       });
     }
@@ -220,6 +542,23 @@ export function judgeNarrativeConsistencyMock(
     });
   }
 
+  // v5 升级：长程停滞检测。
+  // 仅当连续 8 回合中“位置 / 任务 / 武器 / 库存 / 血量理智”均无实质变化时判定。
+  const stateProgress = hasStateProgress(transcript.initialState, transcript.steps);
+  const hasCoreProgress = stateProgress.playerLocationChanges > 0
+    || stateProgress.taskProgressChanges > 0
+    || stateProgress.weaponProgressChanges > 0
+    || stateProgress.inventoryProgressChanges > 0
+    || stateProgress.hpSanityChanges > 0;
+  if (!hasCoreProgress && transcript.steps.length >= 8) {
+    allIssues.push({
+      type: "world_inconsistency",
+      severity: "major",
+      description: "8+ 回合内状态缺少核心进展（位置/任务/武器/库存/血量理智无变化）",
+      evidence: [{ stepIndex: 0, excerpt: "长程状态停滞（无核心指标变化）" }],
+    });
+  }
+
   // 计算分数
   const criticalIssues = allIssues.filter((i) => i.severity === "critical").length;
   const majorIssues = allIssues.filter((i) => i.severity === "major").length;
@@ -230,7 +569,10 @@ export function judgeNarrativeConsistencyMock(
   overallScore -= criticalIssues * 2;
   overallScore -= majorIssues * 0.5;
   overallScore -= minorIssues * 0.25;
-  overallScore = Math.max(1, Math.round(overallScore));
+  // Preserve half/quarter-point penalties. Integer rounding made a run with
+  // one major contradiction display as 5/5 while `passed=false`, which is
+  // misleading in product reports and hides detector improvements.
+  overallScore = Math.max(1, Math.round(overallScore * 100) / 100);
 
   // 维度分（基于问题类型映射）
   const dimensionScores: Record<string, number> = {
@@ -244,8 +586,9 @@ export function judgeNarrativeConsistencyMock(
     professionConsistency: Math.max(1, 5 - professionIssues.length * 1.5),
   };
 
-  const passed = overallScore >= 3 && criticalIssues === 0;
-
+  // Major continuity failures make a playthrough unsuitable for product sign-off
+  // even when score rounding leaves the aggregate at three or above.
+  const passed = overallScore >= 3 && criticalIssues === 0 && majorIssues === 0;
   return {
     runId: transcript.runId,
     passed,
@@ -253,6 +596,9 @@ export function judgeNarrativeConsistencyMock(
     dimensionScores,
     issues: allIssues,
     reasoning: `启发式裁判（v5）：${allIssues.length} 个问题（${criticalIssues} critical, ${majorIssues} major, ${minorIssues} minor）。综合分 ${overallScore}/5。叙事重复率 ${(repetitionResult.overallRepetitionRate * 100).toFixed(1)}%，状态-叙事矛盾 ${stateContradictions.length} 处，原石-叙事不一致 ${originiumIssues.length} 处，武器不一致 ${weaponIssues.length} 处，职业不一致 ${professionIssues.length} 处。`,
+    judgeMode: "mock",
+    judgeModel: "heuristic_v5",
+    judgeConfidenceSource: "mock",
   };
 }
 
@@ -329,8 +675,6 @@ function checkNpcResurrection(
 
 // === Live 模式：DeepSeek 裁判 ===
 
-import { callDeepSeekCompletion } from "../liveProvider";
-
 /**
  * Live 模式：使用 DeepSeek 进行叙事一致性评判。
  * 将完整 transcript 发送给 DeepSeek，让它逐项检查矛盾、复活、口吻漂移等。
@@ -338,64 +682,19 @@ import { callDeepSeekCompletion } from "../liveProvider";
 export async function judgeNarrativeConsistencyLive(
   transcript: PlaythroughTranscript
 ): Promise<NarrativeConsistencyResult> {
-  // 构建 transcript 摘要（避免超过 token 限制）
-  const transcriptSummary = transcript.steps
-    .map((s) => `[第${s.stepIndex}步]\n玩家: ${s.playerAction}\nDM: ${s.narrative.slice(0, 300)}`)
-    .join("\n\n---\n\n");
-
-  const systemPrompt = `你是一位专业的互动叙事一致性审查员。你的任务是阅读完整游戏 transcript，检查以下问题：
-
-1. **contradiction（前后矛盾）**: 叙事中是否有明显的逻辑矛盾？
-2. **resurrection（角色复活）**: 是否有之前明确死亡的角色在后面又出现了？
-3. **voice_drift（口吻漂移）**: NPC 的说话方式和人物设定是否前后一致？
-4. **world_inconsistency（世界观不一致）**: 是否违反了游戏世界观设定？
-5. **fact_hallucination（事实幻觉）**: 是否出现了与已设定事实不一致的描述？
-6. **position_teleport（位置瞬移）**: 角色是否没有交代就换了位置？
-
-对每个问题，给出：
-- type: 问题类型
-- severity: critical/major/minor
-- description: 问题描述
-- evidence: 引用的 transcript 步骤号和片段
-
-最后给出综合评分（1-5）和各维度评分。
-
-请严格以 JSON 格式输出。`;
-
-  const userPrompt = `## Transcript\n\n${transcriptSummary.slice(0, 8000)}\n\n请逐项检查，输出JSON：\n{\n  "overallScore": 0,\n  "dimensionScores": {"coherence":0,"characterVoice":0,"plotLogic":0,"immersion":0,"factConsistency":0},\n  "passed": true,\n  "issues": [],\n  "reasoning": ""\n}`;
-
   try {
-    const response = await callDeepSeekCompletion({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.3,
-      maxTokens: 2048,
-      jsonMode: true,
-      timeoutMs: 60000,
-    });
-
-    const parsed = JSON.parse(response.content) as Record<string, unknown>;
-
     return {
       runId: transcript.runId,
-      passed: typeof parsed.passed === "boolean" ? parsed.passed : (typeof parsed.overallScore === "number" ? parsed.overallScore >= 3 : true),
-      overallScore: typeof parsed.overallScore === "number" ? parsed.overallScore : 3,
-      dimensionScores: (parsed.dimensionScores as Record<string, number>) ?? {},
-      issues: Array.isArray(parsed.issues)
-        ? parsed.issues.map((i: Record<string, unknown>) => ({
-            type: String(i.type ?? "contradiction") as import("./types").ConsistencyIssue["type"],
-            severity: String(i.severity ?? "minor") as import("./types").ConsistencyIssue["severity"],
-            description: String(i.description ?? ""),
-            evidence: Array.isArray(i.evidence) ? i.evidence as Array<{ stepIndex: number; excerpt: string }> : [],
-          }))
-        : [],
-      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+      ...(await runNarrativeJudgeByModel(transcript, "model")),
     };
   } catch (err) {
     // JSON 解析失败或 API 调用失败，降级到 mock
-    console.warn(`DeepSeek 叙事裁判失败，降级到 mock: ${err instanceof Error ? err.message : String(err)}`);
-    return judgeNarrativeConsistencyMock(transcript);
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`DeepSeek 叙事裁判失败，降级到 mock: ${reason}`);
+    return {
+      ...withConfidenceSource(judgeNarrativeConsistencyMock(transcript), "fallback"),
+      judgeMode: "fallback",
+      judgeError: reason,
+    };
   }
 }

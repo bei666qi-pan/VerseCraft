@@ -48,7 +48,7 @@ export type { NpcResurrectionResult, NarrativeRepetitionResult, StateNarrativeCo
 
 export { applyDmJsonToState } from "./stateApply";
 
-export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive } from "./narrativeJudge";
+export { judgeNarrativeConsistencyMock, judgeNarrativeConsistencyLive, judgeNarrativeConsistencyCodex } from "./narrativeJudge";
 
 export {
   createSutAdapter,
@@ -73,5 +73,6 @@ export {
   runPlaythroughBatch,
   clusterFailures,
   getScenarioLibraryCounts,
+  buildClientStructuredSnapshot,
 } from "./orchestrator";
 export type { PlaythroughV3Config, TraceArtifact, FailureCluster } from "./orchestrator";

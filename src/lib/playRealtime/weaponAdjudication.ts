@@ -165,11 +165,16 @@ function intersects(a: string[], b: string[]): boolean {
 
 function isHighRiskThreatAction(latestUserInput: string, threatPhase: ThreatPhase, baseSanityDamage: number): boolean {
   const t = String(latestUserInput ?? "");
-  if (baseSanityDamage > 0) return true;
+  const explicitWeaponCombat = /(?:攻击|反击|压制|敲击|挥击|劈砍|刺击|开火|射击|搏斗|硬闯|强行突破)/.test(t);
+  if (!explicitWeaponCombat && /(?:寻找|观察|检查|确认|侦察|靠近|接近).{0,16}(?:威胁|异常|阴影|敌人)/.test(t)) return false;
+  // A model-authored sanity delta is not proof that the player used a weapon.
+  // Weapon wear must remain action-bound; otherwise status/audit turns can
+  // acquire phantom durability prose without a committed weapon delta.
+  void baseSanityDamage;
   if (threatPhase === "active" || threatPhase === "breached") {
-    return /(压制|突破|硬闯|攻击|对抗|封|闯|搏|冲|追|强行)/.test(t);
+    return explicitWeaponCombat || /(对抗|封锁|冲撞|追击)/.test(t);
   }
-  return /(压制|威胁|异常|诡异|对抗)/.test(t);
+  return explicitWeaponCombat || /(对抗|封锁)/.test(t);
 }
 
 function appendNarrative(record: DmRecord, line: string) {
@@ -342,7 +347,8 @@ export function applyWeaponTacticalAdjudication(args: {
     repairable,
   });
 
-  // 叙事兜底：告诉 DM “系统裁决生效”，避免胡写神兵无敌
+  // Player-facing prose only states the consequence and preserves the scene
+  // hook. Exact numbers belong to structured deltas / the client digest.
   const summary = [
     directThreatMatch ? "反制命中" : tagMatch || modMatch || infusionMatch ? "部分命中" : "失配",
     fault ? "故障" : "稳定",
@@ -350,7 +356,7 @@ export function applyWeaponTacticalAdjudication(args: {
     `污染+${contamGain}`,
     `稳定-${stabilityLoss}`,
   ].join("·");
-  appendNarrative(next, `（战术裁决）武器介入：${summary}。`);
+  appendNarrative(next, "武器在这次交锋中承受了实际损耗。掌心残留的震颤提醒我：威胁只是暂退，还没有结束。");
 
   // 结构化审计：写入 security_meta，供反作弊/追责（不影响前端契约）
   const meta =
@@ -374,9 +380,9 @@ export function applyWeaponTacticalAdjudication(args: {
       baseDamage,
       finalDamage: nextDamage,
       suppressionDelta,
+      summary,
     },
   };
 
   return next;
 }
-

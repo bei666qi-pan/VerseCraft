@@ -118,6 +118,13 @@ test("normalize：普通 NPC 覆盖为 exact_knowledge 时纠偏", () => {
   assert.equal(fixed.playerRecognitionMode, "emotional_residue");
 });
 
+test("关键 NPC 性别映射应明确，不回退 unknown", () => {
+  const npc044 = getNpcCanonicalIdentity("N-044");
+  const npc045 = getNpcCanonicalIdentity("N-045");
+  assert.equal(npc044.canonicalGender, "male");
+  assert.equal(npc045.canonicalGender, "female");
+});
+
 test("isNpcAllowedToKnowRevealTier：欣蓝覆盖 abyss，普通较低", () => {
   assert.ok(isNpcAllowedToKnowRevealTier("N-010", REVEAL_TIER_RANK.abyss));
   assert.ok(!isNpcAllowedToKnowRevealTier("N-001", REVEAL_TIER_RANK.deep));

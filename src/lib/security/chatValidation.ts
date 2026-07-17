@@ -46,6 +46,9 @@ export type ClientStructuredContextV1 = {
   /** 阶段 7/6：任务权威摘要（用于反作弊与轻量路由；只传 id，不传正文） */
   activeTaskIds?: string[];
   completedTaskIds?: string[];
+  deadNpcIds?: string[];
+  /** 当前可被战斗结算的已注册威胁；禁止模型凭叙事捏造目标。 */
+  activeThreatIds?: string[];
   /** 阶段 6：手记线索权威摘要（可见线索 id 列表；只传 id） */
   journalClueCount?: number;
   journalClueIds?: string[];
@@ -171,6 +174,8 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
 
   const activeTaskIds = obj.activeTaskIds ? asStringArray(obj.activeTaskIds, 48) : undefined;
   const completedTaskIds = obj.completedTaskIds ? asStringArray(obj.completedTaskIds, 48) : undefined;
+  const deadNpcIds = obj.deadNpcIds ? asStringArray(obj.deadNpcIds, 64) : undefined;
+  const activeThreatIds = obj.activeThreatIds ? asStringArray(obj.activeThreatIds, 24) : undefined;
 
   const journalClueCountRaw = obj.journalClueCount;
   const journalClueCount =
@@ -203,6 +208,8 @@ function validateClientState(raw: unknown): ClientStructuredContextV1 | null {
     ...(presentNpcIds ? { presentNpcIds } : {}),
     ...(activeTaskIds ? { activeTaskIds } : {}),
     ...(completedTaskIds ? { completedTaskIds } : {}),
+    ...(deadNpcIds ? { deadNpcIds } : {}),
+    ...(activeThreatIds ? { activeThreatIds } : {}),
     ...(typeof journalClueCount === "number" ? { journalClueCount } : {}),
     ...(journalClueIds ? { journalClueIds } : {}),
     ...(narrativeLinkageDigest ? { narrativeLinkageDigest } : {}),

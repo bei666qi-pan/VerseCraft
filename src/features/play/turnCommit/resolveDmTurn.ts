@@ -36,6 +36,17 @@ export type ResolvedDmTurn = TurnEnvelope;
  * 超额部分推进"更多在办"，但服务端理应先做一道防线，而不是只靠前端兜底）。
  */
 const MAX_NEW_TASKS_PER_TURN = 3;
+const INTERNAL_META_ALLOWED_KEYS = new Set([
+  "action",
+  "request_id",
+  "kind",
+  "reason",
+  "upstream_status",
+  "upstream_code",
+  "upstream_message",
+  "provider",
+  "lane",
+]);
 
 type ResolveTurnConsistencyOptions = {
   maxNarrativeChars?: number;
@@ -138,6 +149,32 @@ function mergeSecurityMeta(existing: unknown, patch: Record<string, unknown>, ma
 function asUnknownRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   return v as Record<string, unknown>;
+}
+
+function normalizeInternalMeta(v: unknown): Record<string, unknown> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) {
+    return undefined;
+  }
+  const src = v as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, raw] of Object.entries(src)) {
+    if (!INTERNAL_META_ALLOWED_KEYS.has(k)) {
+      continue;
+    }
+    if (typeof raw === "string") {
+      const text = raw.trim().slice(0, 256);
+      if (text.length > 0) out[k] = text;
+      continue;
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      out[k] = raw;
+      continue;
+    }
+    if (typeof raw === "boolean") {
+      out[k] = raw;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function normalizeNarrativeAudit(v: unknown): Record<string, unknown> | null {
@@ -408,6 +445,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
       ? ((input as any).anti_cheat_meta as Record<string, unknown>)
       : {};
   const narrativeAudit = normalizeNarrativeAudit((input as { _narrative_audit?: unknown })._narrative_audit);
+  const internalMeta = normalizeInternalMeta((input as { internal_meta?: unknown }).internal_meta);
   const endingFinale = normalizeEndingFinale((input as { ending_finale?: unknown }).ending_finale);
 
   // options normalization policy under new modes:
@@ -427,8 +465,19 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const injuryDelta = conflict_outcome
     ? likelyCostToInjuryDelta(conflict_outcome.likelyCost ?? "none")
     : null;
+  const resolvedSanityDamage = injuryDelta
+    ? Math.max(asFiniteInt(input.sanity_damage, 0), injuryDelta.sanityDamage)
+    : asFiniteInt(input.sanity_damage, 0);
   if (injuryDelta && conflict_outcome) {
-    conflict_outcome.injury_delta = injuryDelta;
+    // `sanity_damage` is the authoritative turn delta. Keep the conflict
+    // envelope aligned even when the physical-cost tier is `none`.
+    conflict_outcome.injury_delta = {
+      ...injuryDelta,
+      sanityDamage: resolvedSanityDamage,
+      ...(resolvedSanityDamage > 0 && injuryDelta.injuries.length === 0
+        ? { narrativeHint: `精神冲击造成理智-${resolvedSanityDamage}，未造成身体伤势。` }
+        : {}),
+    };
   }
   const nextChapterTitleCandidate = sanitizeChapterTitleCandidate(
     (input as { next_chapter_title_candidate?: unknown }).next_chapter_title_candidate,
@@ -437,9 +486,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
 
   const out: ResolvedDmTurn = {
     is_action_legal: asBoolean(input.is_action_legal, false),
-    sanity_damage: injuryDelta
-      ? Math.max(asFiniteInt(input.sanity_damage, 0), injuryDelta.sanityDamage)
-      : asFiniteInt(input.sanity_damage, 0),
+    sanity_damage: resolvedSanityDamage,
     narrative,
     is_death: asBoolean(input.is_death, false),
     consumes_time: asBoolean(input.consumes_time, true),
@@ -454,6 +501,9 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     relationship_updates: asUnknownArray(input.relationship_updates),
     new_tasks: grantNormalizedNewTasks,
     task_updates: normalizedTaskUpdates,
+    ...((input as { profession_trial_result?: unknown }).profession_trial_result && typeof (input as { profession_trial_result?: unknown }).profession_trial_result === "object" && !Array.isArray((input as { profession_trial_result?: unknown }).profession_trial_result)
+      ? { profession_trial_result: (input as { profession_trial_result: Record<string, unknown> }).profession_trial_result }
+      : {}),
     clue_updates: normalizedClueUpdateRecords,
     ...(typeof input.player_location === "string" && input.player_location.trim()
       ? { player_location: clampString(input.player_location.trim(), 80) }
@@ -467,6 +517,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     ...(nextChapterTitleCandidate ? { next_chapter_title_candidate: nextChapterTitleCandidate } : {}),
     ...(endingFinale ? { ending_finale: endingFinale } : {}),
     ...(security_meta ? { security_meta } : {}),
+    ...(internalMeta ? { internal_meta: internalMeta } : {}),
     ...(narrativeAudit ? ({ _narrative_audit: narrativeAudit } as Record<string, unknown>) : {}),
     ...(Object.keys(ui_hints).length > 0 ? { ui_hints } : {}),
 
@@ -528,4 +579,3 @@ export function resolveDmTurn(dmRecord: Record<string, unknown>): ResolvedDmTurn
     maxSecurityMetaChars: 2400,
   });
 }
-

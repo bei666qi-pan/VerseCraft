@@ -88,8 +88,8 @@ const SYSTEM_GROUPS: SystemGroup[] = [
   {
     name: "收集+经济",
     emoji: "💰",
-    description: "经济系统全流通、行囊大量拾取",
-    scenarioIds: ["economy-currency-flow", "inventory-hoarding"],
+    description: "已注册锻造消费闭环、行囊收集边界",
+    scenarioIds: ["forge-service-flow", "inventory-hoarding"],
   },
 ];
 
