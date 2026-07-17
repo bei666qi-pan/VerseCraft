@@ -2,6 +2,8 @@
 
 import { memo, useMemo, useState } from "react";
 import type { TurnDeltaDigest as DigestData, DeltaItem } from "@/features/play/turnCommit/buildTurnDeltaDigest";
+import { useGameStore } from "@/store/useGameStore";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 // ── 单维度行渲染 ──────────────────────────────────────────────
 
@@ -33,30 +35,31 @@ const RowIcon = memo(function RowIcon({ item }: { item: DeltaItem }) {
   }
 });
 
-function deltaItemLabel(item: DeltaItem): string {
+function deltaItemLabel(item: DeltaItem, language: GameLanguage): string {
+  const english = language === "en-US";
   switch (item.kind) {
     case "sanity":
-      return `理智 ${item.delta >= 0 ? "+" : ""}${item.delta}`;
+      return `${english ? "Sanity" : "理智"} ${item.delta >= 0 ? "+" : ""}${item.delta}`;
     case "time":
-      return "时间流逝";
+      return english ? "Time passes" : "时间流逝";
     case "currency":
-      return `源石 ${item.delta >= 0 ? "+" : ""}${item.delta}`;
+      return `${english ? "Originium" : "源石"} ${item.delta >= 0 ? "+" : ""}${item.delta}`;
     case "acquired":
-      return `获得：${item.label}`;
+      return `${english ? "Acquired" : "获得"}: ${item.label}`;
     case "warehouse_acquired":
-      return `收入仓库：${item.label}`;
+      return `${english ? "Stored" : "收入仓库"}: ${item.label}`;
     case "consumed":
-      return `消耗：${item.label}`;
+      return `${english ? "Used" : "消耗"}: ${item.label}`;
     case "new":
-      return `新线索：${item.label}`;
+      return `${english ? "New clue" : "新线索"}: ${item.label}`;
     case "status":
       return item.label;
     case "relation":
-      return `关系变化：${item.label}`;
+      return `${english ? "Relationship" : "关系变化"}: ${item.label}`;
     case "codex":
-      return `图鉴解锁：${item.label}`;
+      return `${english ? "Codex unlocked" : "图鉴解锁"}: ${item.label}`;
     case "foreshadow_payoff":
-      return "此前的某个细节，此刻显露了意义";
+      return english ? "An earlier detail reveals its meaning" : "此前的某个细节，此刻显露了意义";
     default:
       return "";
   }
@@ -106,6 +109,7 @@ export type TurnDeltaDigestProps = {
 export const TurnDeltaDigest = memo(function TurnDeltaDigest({
   data,
 }: TurnDeltaDigestProps) {
+  const language = useGameStore((state) => state.language);
   const [expandedPayoffId, setExpandedPayoffId] = useState<number | null>(null);
 
   const rows = useMemo(() => {
@@ -143,7 +147,7 @@ export const TurnDeltaDigest = memo(function TurnDeltaDigest({
             return (
               <span key={`${item.kind}-${i}`} className={`inline-flex items-center gap-1 ${toneCls}`}>
                 <RowIcon item={item} />
-                {deltaItemLabel(item)}
+                {deltaItemLabel(item, language)}
               </span>
             );
           })}
@@ -165,7 +169,7 @@ export const TurnDeltaDigest = memo(function TurnDeltaDigest({
                   data-testid={`foreshadow-payoff-${i}`}
                 >
                   <span>✦</span>
-                  <span>{deltaItemLabel(item)}</span>
+                  <span>{deltaItemLabel(item, language)}</span>
                   {text ? (
                     <span className="text-[10px] text-[#8b8a84]">{expanded ? "▲" : "▼"}</span>
                   ) : null}
