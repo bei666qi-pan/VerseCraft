@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildNarrativeLanguageInstruction,
+  hasWrongPlayerFacingLanguage,
   normalizeGameLanguage,
 } from "./language";
 
@@ -16,4 +17,10 @@ test("English narrative instruction preserves JSON and canonical facts", () => {
   assert.match(instruction, /field in English/i);
   assert.match(instruction, /JSON keys/i);
   assert.match(instruction, /canonical IDs/i);
+});
+
+test("English player-facing copy rejects untranslated Chinese prose", () => {
+  assert.equal(hasWrongPlayerFacingLanguage("I listen at the door.", "en-US"), false);
+  assert.equal(hasWrongPlayerFacingLanguage("我听着门后的动静。", "en-US"), true);
+  assert.equal(hasWrongPlayerFacingLanguage("我听着门后的动静。", "zh-CN"), false);
 });

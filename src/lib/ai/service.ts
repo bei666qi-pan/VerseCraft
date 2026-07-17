@@ -10,6 +10,7 @@ export {
   compressSessionMemory,
   enhanceScene,
   generateMainReply,
+  localizeGameplayPresentation,
   narrateCombat,
   parsePlayerIntent,
   resolveRuleOutcome,

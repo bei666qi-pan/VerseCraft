@@ -155,6 +155,7 @@ import {
 import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTurn";
 import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { localizedTalentName } from "@/lib/i18n/gameDisplay";
+import type { GameLanguage } from "@/lib/i18n/language";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { buildNoEndingTelemetryBlockers } from "@/lib/play/noEndingTelemetryBlockers";
 import {
@@ -2792,6 +2793,74 @@ function PlayContent() {
     }
   }
 
+  async function handleLanguageChange(nextLanguage: GameLanguage) {
+    const before = useGameStore.getState();
+    if (before.language === nextLanguage) return;
+
+    setLanguage(nextLanguage);
+    // A running turn is already on its way to the server. Its response will be
+    // governed by the newly persisted language on the next action; do not race
+    // it by replacing live stream state underneath the player.
+    if (isChatBusy || sendActionInFlightRef.current) return;
+
+    const latestAssistant = [...(before.logs ?? [])]
+      .reverse()
+      .find((entry) => entry?.role === "assistant")?.content;
+    if (!latestAssistant) {
+      if ((before.currentOptions ?? []).length > 0) {
+        useGameStore.getState().replaceCurrentOptions([]);
+        void requestFreshOptions("manual_button");
+      }
+      return;
+    }
+
+    // Do not leave the previous language's choices clickable while the scene is
+    // being localized. The endpoint only replaces presentation text; inventory,
+    // tasks, location, time and every other authoritative field stay untouched.
+    useGameStore.getState().replaceCurrentOptions([]);
+    setOptionsRegenBusy(true);
+    setOptionsRegenStage("generating");
+    setOptionsRegenProgress(35);
+    setOptionsRegenFailureMessage(null);
+    setFirstTimeHint(nextLanguage === "en-US" ? "Refreshing the current scene in English…" : "正在切换当前场景为中文…");
+
+    let localized = false;
+    let needsOptionsRefresh = false;
+    try {
+      const response = await fetch("/api/play/localize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          narrative: latestAssistant,
+          options: before.currentOptions ?? [],
+          language: nextLanguage,
+          sessionId: guestId ?? "browser_session",
+        }),
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as { narrative?: unknown; options?: unknown } | null;
+      if (response.ok && payload && typeof payload.narrative === "string" && Array.isArray(payload.options)) {
+        const localizedOptions = payload.options.filter((option): option is string => typeof option === "string");
+        useGameStore.getState().replaceLatestAssistantLog(payload.narrative);
+        useGameStore.getState().replaceCurrentOptions(localizedOptions);
+        localized = true;
+        // A legacy save may have carried fewer than four options. Preserve every
+        // translated choice, then replenish the missing slots through the same
+        // language-guarded options-only workflow used by ordinary turns.
+        needsOptionsRefresh = localizedOptions.length < 4;
+        setOptionsRegenStage("complete");
+        setOptionsRegenProgress(100);
+      }
+    } catch {
+      // The existing, bounded options-only path below is the non-state-mutating
+      // fallback. The scene itself remains safely intact until it can be retried.
+    } finally {
+      setOptionsRegenBusy(false);
+      setFirstTimeHint(null);
+      if (!localized || needsOptionsRefresh) void requestFreshOptions("manual_button");
+    }
+  }
+
   async function sendAction(
     action: string,
     bypassLengthCheck?: boolean,
@@ -5147,7 +5216,7 @@ function PlayContent() {
                 setActiveMenu(null);
               }}
               onSetReadingPreference={setReadingPreference}
-              onSetLanguage={setLanguage}
+              onSetLanguage={handleLanguageChange}
               onToggleMute={() => {
                 toggleMute();
                 setAudioMuted(isMuted());
@@ -5422,7 +5491,7 @@ function PlayContent() {
                     setActiveMenu(null);
                   }}
                   onSetReadingPreference={setReadingPreference}
-                  onSetLanguage={setLanguage}
+                  onSetLanguage={handleLanguageChange}
                   onToggleMute={() => {
                     toggleMute();
                     setAudioMuted(isMuted());

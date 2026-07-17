@@ -169,7 +169,7 @@ export function MobileSettingsPanel({
           </div>
         </div>
         <p className="mt-1.5 shrink-0 px-1 text-[11px] leading-4 text-[#6d827a] min-[420px]:text-[12px]">
-          {isEnglish ? "New story responses will use your selected language. Existing entries remain unchanged." : "后续生成的剧情会使用所选语言，已有记录不会被改写。"}
+          {isEnglish ? "The current scene and choices will be refreshed in English. Future story responses will continue in English." : "当前场景与选项会切换为中文，后续剧情也会继续使用中文。"}
         </p>
 
         <SettingsDivider className="my-2.5 shrink-0 min-[420px]:my-3" />

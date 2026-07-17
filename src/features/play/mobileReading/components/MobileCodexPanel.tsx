@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGameStore } from "@/store/useGameStore";
 import { languageText } from "@/lib/i18n/gameDisplay";
+import { localizedCodexClassification } from "@/lib/i18n/gameplayPresentation";
+import type { GameLanguage } from "@/lib/i18n/language";
 import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "../codexCatalog";
 import {
   buildMobileCodexCardModels,
@@ -51,17 +53,19 @@ function CodexSilhouette({ identified }: { identified: boolean }) {
 
 function CodexCard({
   card,
+  language,
   selected,
   onSelect,
 }: {
   card: MobileCodexCardModel;
+  language: GameLanguage;
   selected: boolean;
   onSelect: (slot: CodexCatalogSlot) => void;
 }) {
   const portrait = card.kind === "slot" && card.identified ? resolveCodexPortrait(card.id) : null;
   const showUnknownPortrait = card.kind === "slot" && !card.identified;
   const slotType = card.kind === "slot" ? card.slot.type : null;
-  const classificationLabel = slotType === "anomaly" ? "异常" : slotType === "npc" ? "人物" : null;
+  const classificationLabel = localizedCodexClassification(language, slotType);
   return (
     <button
       type="button"
@@ -424,6 +428,7 @@ export function MobileCodexPanel({
           <CodexCard
             key={card.id}
             card={card}
+            language={language}
             selected={card.kind === "slot" && card.id === selectedSlot?.id}
             onSelect={(slot) => setSelectedId(slot.id)}
           />

@@ -15,7 +15,11 @@ import type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight
 import type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
 import type { NarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
-import type { GameLanguage } from "@/lib/i18n/language";
+import { hasWrongPlayerFacingLanguage, type GameLanguage } from "@/lib/i18n/language";
+import {
+  parseLocalizedGameplayPresentation,
+  type LocalizedGameplayPresentation,
+} from "@/lib/i18n/gameplayPresentation";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import {
@@ -83,6 +87,49 @@ export async function enhanceScene(args: {
 export type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 export type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight";
 export type { NarrativeExpansionResult } from "@/lib/turnEngine/narrativeExpansion";
+
+/** Translate player-visible copy after an explicit language switch. Never changes game state. */
+export async function localizeGameplayPresentation(args: {
+  narrative: string;
+  options: string[];
+  language: GameLanguage;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+}): Promise<{ ok: true; value: LocalizedGameplayPresentation } | { ok: false; reason: string }> {
+  const expectedOptionCount = Math.min(4, Math.max(0, args.options.length));
+  const target = args.language === "en-US" ? "English" : "Simplified Chinese";
+  const system: ChatMessage = {
+    role: "system",
+    content: [
+      "You localize an already-resolved VerseCraft scene for display only. Do not decide, add, remove, or imply any game-state change.",
+      "请严格以 JSON 格式输出，且只能输出一个 JSON 对象：{\"narrative\":\"...\",\"options\":[\"...\"]}。",
+      `Translate every player-facing sentence into ${target}. Translate Chinese personal names into readable Latin transliterations when the target is English; do not leave Chinese characters in English output. Keep identifiers such as B1 unchanged.`,
+      `Keep exactly ${expectedOptionCount} options, in the same order and with the same intent. Do not add explanations, markdown, fields, facts, or choices.`,
+    ].join("\n"),
+  };
+  const user: ChatMessage = {
+    role: "user",
+    content: JSON.stringify({ narrative: String(args.narrative ?? "").slice(0, 6_000), options: args.options.slice(0, 4) }),
+  };
+  const result: AIResponse | AIErrorResponse = await executeChatCompletion({
+    task: "GAMEPLAY_LOCALIZATION",
+    messages: [system, user],
+    ctx: {
+      requestId: args.ctx.requestId,
+      task: "GAMEPLAY_LOCALIZATION",
+      userId: args.ctx.userId,
+      sessionId: args.ctx.sessionId,
+      path: args.ctx.path,
+      tags: { ...(args.ctx.tags ?? {}), purpose: "language_switch" },
+    },
+    signal: args.signal,
+    requestTimeoutMs: 18_000,
+    skipCache: true,
+  });
+  if (!result.ok) return { ok: false, reason: `ai_error:${result.code}` };
+  const parsed = parseLocalizedGameplayPresentation(result.content, args.language, expectedOptionCount);
+  return parsed.ok ? { ok: true, value: parsed.value } : parsed;
+}
 
 export type NarrativeRepairResult =
   | {
@@ -670,6 +717,17 @@ export async function generateOptionsOnlyFallback(args: {
       };
     }
     const parsed = parseOptionsArrayFromAiJson(obj.options ?? (obj as any).decision_options);
+    if (args.outputLanguage === "en-US" && parsed.some((option) => hasWrongPlayerFacingLanguage(option, "en-US"))) {
+      return {
+        ok: false,
+        reason: "wrong_output_language",
+        debugReasonCodes: ["wrong_output_language"],
+        rawLength,
+        extractedOptionsCount: parsed.length,
+        normalizedOptionsCount: 0,
+        acceptedOptions: [],
+      };
+    }
     const done = finalizeOptionsFallbackParsed(parsed);
     if (!done) {
       const normalized = guardOptionsQualityToFour({
@@ -866,6 +924,9 @@ export async function generateOptionsOnlyFallback(args: {
     temperature: 0.55,
     systemExtra: [
       args.systemExtra ?? "",
+      args.outputLanguage === "en-US"
+        ? "FINAL LANGUAGE GATE: Every option value must be English only. Do not output Chinese characters, even for people or locations; transliterate names into Latin letters."
+        : "",
       `Repair pass only: keep accepted_options_locked unchanged and add exactly ${missingCount} new scene-specific options. Do not rewrite accepted options.`,
     ].filter(Boolean).join("\n"),
     timeoutMs: repairTimeoutMs,

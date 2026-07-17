@@ -2,6 +2,8 @@ export const GAME_LANGUAGES = ["zh-CN", "en-US"] as const;
 
 export type GameLanguage = (typeof GAME_LANGUAGES)[number];
 
+const CJK_RE = /[\u3400-\u9fff\uf900-\ufaff]/;
+
 export function normalizeGameLanguage(value: unknown): GameLanguage {
   return value === "en-US" ? "en-US" : "zh-CN";
 }
@@ -25,4 +27,9 @@ export function buildNarrativeLanguageInstruction(language: GameLanguage): strin
 
 export function languageDisplayName(language: GameLanguage): string {
   return language === "en-US" ? "English" : "简体中文";
+}
+
+/** English gameplay copy must never silently fall back to Chinese source prose. */
+export function hasWrongPlayerFacingLanguage(text: string, language: GameLanguage): boolean {
+  return language === "en-US" && CJK_RE.test(String(text ?? ""));
 }
