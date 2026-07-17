@@ -16,6 +16,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { middleware, config } from "@/middleware";
+import {
+  VERSECRAFT_CHAT_PURPOSE_HEADER,
+  VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+} from "@/lib/chatPurpose";
+import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER } from "@/lib/chatQueue/types";
 
 function makeRequest(path: string, ip: string, init: RequestInit = {}): NextRequest {
   const headers = new Headers(init.headers);
@@ -128,6 +133,34 @@ test("/api/chat rate limit remains 20/s", async () => {
   }
   const exhausted = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
   assert.equal(exhausted.status, 429);
+});
+
+test("options-only chat limit is isolated by browser fingerprint on a shared IP", async () => {
+  const ip = "203.0.113.17";
+  const headers = (fingerprint: string) => ({
+    [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+    [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: fingerprint,
+  });
+
+  for (let i = 0; i < 6; i++) {
+    const response = await middleware(makeRequest("/api/chat", ip, {
+      method: "POST",
+      headers: headers("browser-one-123456"),
+    }));
+    assert.equal(response.status, 200, `browser one request #${i + 1} should pass`);
+  }
+
+  const exhausted = await middleware(makeRequest("/api/chat", ip, {
+    method: "POST",
+    headers: headers("browser-one-123456"),
+  }));
+  assert.equal(exhausted.status, 429);
+
+  const otherBrowser = await middleware(makeRequest("/api/chat", ip, {
+    method: "POST",
+    headers: headers("browser-two-123456"),
+  }));
+  assert.equal(otherBrowser.status, 200);
 });
 
 test("/api/chat/queue/status keeps its own 20/s limiter, separate from the misc-api bucket", async () => {

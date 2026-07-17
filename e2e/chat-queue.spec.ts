@@ -256,7 +256,7 @@ test.describe("chat queue UI", () => {
 
       const queuePanel = page.getByTestId("chat-queue-status");
       await expect(queuePanel).toContainText("本次行动已接入", { timeout: 10_000 });
-      await expect(queuePanel).toContainText("主笔正在落笔");
+      await expect(queuePanel).not.toContainText("主笔");
       await expect(queuePanel).toContainText("你前面还有 2 人");
       await expect(queuePanel).toContainText("预计等待约 24 秒");
       await expect(queuePanel).toContainText("不用重复提交");

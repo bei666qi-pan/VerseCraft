@@ -275,10 +275,10 @@ async function sleepWithinOptionsDeadline(args: {
 function messageForChatQueueStatus(status: ChatQueueUiStatus, wasQueued = false): string {
   switch (status) {
     case "queued":
-      return "本次行动已接入，主笔正在落笔";
+      return "本次行动已接入";
     case "ready":
     case "running":
-      return wasQueued ? "轮到你了，正在接入主笔通道" : "";
+      return wasQueued ? "轮到你了" : "";
     case "expired":
     case "failed":
     case "rejected":
@@ -2205,7 +2205,7 @@ function PlayContent() {
     }
 
     if (optionsRegenInFlightRef.current) {
-      if (manual) setFirstTimeHint("正在整理可选行动。");
+      if (manual) setFirstTimeHint(null);
       return;
     }
     const isAutoTrigger = trigger === "auto_missing_main" || trigger === "opening_fallback";
@@ -2237,15 +2237,14 @@ function PlayContent() {
     let optionsRegenTimedOut = false;
     let regenSucceeded = false;
     if (trigger === "opening_fallback") {
-      setFirstTimeHint("主笔正在补全首轮可选行动…");
+      setFirstTimeHint(null);
     } else if (trigger === "auto_switch") {
-      setFirstTimeHint("主笔正在整理可选行动…");
+      setFirstTimeHint(null);
     } else if (trigger === "auto_missing_main") {
-      // 静默补全：底部选项区已通过 MobileOptionsEmptyState 展示"正在整理可选行动"的加载态，
-      // 这里不再重复弹出悬浮提示，避免玩家看到"本回合没有可选行动"这类听起来像故障的文案。
+      // 选项区保留无文字的忙碌态；这里不再弹出悬浮加载提示。
       setFirstTimeHint(null);
     } else {
-      setFirstTimeHint("主笔正在按当前剧情重新整理可选行动…");
+      setFirstTimeHint(null);
     }
     try {
       const logsNow = useGameStore.getState().logs ?? [];
@@ -2401,6 +2400,8 @@ function PlayContent() {
         const optionsRegenHeaders: Record<string, string> = {
           "Content-Type": "application/json",
           [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
+          // 与主回合共用客户端指纹，避免共享出口 IP 下正常玩家共用一个低频限流桶。
+          [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
         };
         const optionsRegenBody = JSON.stringify({
           messages: attemptMessages,
@@ -4109,11 +4110,11 @@ function PlayContent() {
       setCurrentOptions([]);
       if (!isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你补全四条可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("auto_missing_main", deliveryDecision.seedOptions); }, 200);
       } else if (isOpeningSystemRequest && getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你补全首轮可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("opening_fallback", deliveryDecision.seedOptions); }, 200);
       } else {
         setFirstTimeHint(null);
@@ -4127,12 +4128,12 @@ function PlayContent() {
         // 开场首轮：无论 turn_mode 如何，始终走 opening_fallback 补全选项。
         // 使用 opening_fallback 作为唯一的 regen 触发，避免与 auto_missing_main 同时调度导致互锁。
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你生成可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("opening_fallback"); }, 200);
       } else if (parsedTurnMode === "decision_required") {
         if (getClientOptionsAutoRegenOnEmptyEnabled() && !autoMissingOptionsAttemptedRef.current) {
           autoMissingOptionsAttemptedRef.current = true;
-          setFirstTimeHint("正在为你生成可选行动…");
+          setFirstTimeHint(null);
           setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
         }
       } else {
@@ -4144,7 +4145,7 @@ function PlayContent() {
           writeResumeShadow();
         });
         autoMissingOptionsAttemptedRef.current = true;
-        setFirstTimeHint("正在为你生成可选行动…");
+        setFirstTimeHint(null);
         setTimeout(() => { void requestFreshOptions("auto_missing_main"); }, 200);
       }
     }
@@ -5192,7 +5193,6 @@ function PlayContent() {
                           ? FIXED_OPENING_NARRATIVE
                           : null
                       }
-                      openingAiBusy={openingBusyUi}
                       semanticWaitingKind={streamPhase === "waiting_upstream" ? waitingHintKind : null}
                       waitUxPrimaryLine={waitUxPrimaryLine}
                       waitUxSecondaryLine={waitUxSecondaryLine}

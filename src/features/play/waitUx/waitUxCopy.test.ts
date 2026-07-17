@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { playWaitUxSemanticSubline } from "./waitUxCopy";
 
-test("wait UX uses neutral realtime world simulation copy", () => {
-  assert.equal(playWaitUxSemanticSubline("explore"), "世界正在实时推演");
-  assert.equal(playWaitUxSemanticSubline(null), "后果正在落地");
+test("wait UX does not add a generic narrative loading subline", () => {
+  assert.equal(playWaitUxSemanticSubline("explore"), null);
+  assert.equal(playWaitUxSemanticSubline(null), null);
 });

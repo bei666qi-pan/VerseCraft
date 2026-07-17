@@ -1306,22 +1306,18 @@ test.describe("mobile reading UI", () => {
       await page.getByTestId("options-toggle-button").click();
       const card = page.getByTestId("mobile-options-loading-card");
       await expect(card).toBeVisible({ timeout: 5000 });
-      await expect(card).toContainText("正在整理可选行动");
+      await expect(card).toBeEmpty();
 
       const metrics = await page.evaluate(() => {
         const dropdown = document.querySelector<HTMLElement>('[data-testid="mobile-options-dropdown"]');
         const card = document.querySelector<HTMLElement>('[data-testid="mobile-options-loading-card"]');
-        const title = document.querySelector<HTMLElement>('[data-testid="mobile-options-loading-title"]');
         const spinner = card?.querySelector<HTMLElement>(".vc-logo-loader");
-        if (!dropdown || !card || !title || !spinner) throw new Error("missing options waiting elements");
-        const titleRect = title.getBoundingClientRect();
+        if (!dropdown || !card || !spinner) throw new Error("missing options waiting elements");
         const cardRect = card.getBoundingClientRect();
         return {
           overflowX: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
           cardLeft: cardRect.left,
           cardRight: cardRect.right,
-          titleHeight: titleRect.height,
-          titleWhiteSpace: getComputedStyle(title).whiteSpace,
           spinnerVisible: spinner.getBoundingClientRect().width > 20,
         };
       });
@@ -1329,8 +1325,6 @@ test.describe("mobile reading UI", () => {
       expect(metrics.overflowX).toBeLessThanOrEqual(1);
       expect(metrics.cardLeft).toBeGreaterThanOrEqual(0);
       expect(metrics.cardRight).toBeLessThanOrEqual(viewport.width);
-      expect(metrics.titleHeight).toBeLessThanOrEqual(44);
-      expect(metrics.titleWhiteSpace).toBe("nowrap");
       expect(metrics.spinnerVisible).toBe(true);
     });
   }
@@ -1357,11 +1351,13 @@ test.describe("mobile reading UI", () => {
 
         let optionsRequests = 0;
         const seenPurposeHeaders: Array<string | undefined> = [];
+        const seenFingerprintHeaders: Array<string | undefined> = [];
         await page.route("**/api/chat", async (route) => {
           const body = route.request().postDataJSON() as Record<string, unknown>;
           if (body.clientPurpose === "options_regen_only") {
             optionsRequests += 1;
             seenPurposeHeaders.push(route.request().headers()["x-versecraft-chat-purpose"]);
+            seenFingerprintHeaders.push(route.request().headers()["x-versecraft-client-fingerprint"]);
             if (optionsRequests === 1) {
               await route.fulfill({
                 status: 429,
@@ -1398,6 +1394,9 @@ test.describe("mobile reading UI", () => {
         await expect(page.getByTestId("mobile-option-item")).toHaveCount(4, { timeout: 12_000 });
         await expect.poll(() => optionsRequests, { timeout: 12_000 }).toBe(2);
         expect(seenPurposeHeaders).toEqual(["options_regen_only", "options_regen_only"]);
+        expect(seenFingerprintHeaders).toHaveLength(2);
+        expect(seenFingerprintHeaders.every((value) => /^[A-Za-z0-9_.:-]{8,160}$/.test(value ?? ""))).toBe(true);
+        expect(seenFingerprintHeaders[0]).toBe(seenFingerprintHeaders[1]);
         await expect(page.locator("body")).not.toContainText("网站生成通道繁忙");
       });
     }
