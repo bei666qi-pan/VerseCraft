@@ -155,7 +155,7 @@ import {
 import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTurn";
 import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { localizedTalentName } from "@/lib/i18n/gameDisplay";
-import type { GameLanguage } from "@/lib/i18n/language";
+import { hasWrongPlayerFacingLanguage, type GameLanguage } from "@/lib/i18n/language";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { buildNoEndingTelemetryBlockers } from "@/lib/play/noEndingTelemetryBlockers";
 import {
@@ -725,6 +725,8 @@ function PlayContent() {
   const openingTimeoutRetryRef = useRef(false);
   /** 开局回合：叙事固定为本地文案，不从 SSE 的 narrative 字段增量覆盖 */
   const optionsRegenInFlightRef = useRef(false);
+  /** An explicit language switch translates persisted history before changing the display language. */
+  const languageSwitchInFlightRef = useRef(false);
   const modeSwitchByUserRef = useRef(false);
   /** SSE `__VERSECRAFT_STATUS__` 最新阶段（仅展示层） */
   const waitUxBackendStageRef = useRef<PlayWaitUxStage | null>(null);
@@ -2186,6 +2188,7 @@ function PlayContent() {
     trigger: "auto_switch" | "manual_button" | "opening_fallback" | "auto_missing_main",
     seedOptions: string[] = []
   ) {
+    if (languageSwitchInFlightRef.current) return;
     // 以前这里仅做 UI 视图切换；现在升级为能力切换：空 options 时发起一次“仅生成选项”请求。
     const manual = trigger === "manual_button";
     const ending = useGameStore.getState().endingState;
@@ -2405,6 +2408,7 @@ function PlayContent() {
             ];
         const optionsRegenHeaders: Record<string, string> = {
           "Content-Type": "application/json",
+          "x-versecraft-output-language": language,
           [VERSECRAFT_CHAT_PURPOSE_HEADER]: VERSECRAFT_CHAT_PURPOSE_OPTIONS_REGEN_ONLY,
           // 与主回合共用客户端指纹，避免共享出口 IP 下正常玩家共用一个低频限流桶。
           [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
@@ -2795,28 +2799,22 @@ function PlayContent() {
 
   async function handleLanguageChange(nextLanguage: GameLanguage) {
     const before = useGameStore.getState();
-    if (before.language === nextLanguage) return;
-
-    setLanguage(nextLanguage);
+    if (before.language === nextLanguage || languageSwitchInFlightRef.current) return;
     // A running turn is already on its way to the server. Its response will be
-    // governed by the newly persisted language on the next action; do not race
-    // it by replacing live stream state underneath the player.
-    if (isChatBusy || sendActionInFlightRef.current) return;
+    // governed by its original language; do not race it by replacing a live
+    // stream or the conversation history underneath the player.
+    if (isChatBusy || sendActionInFlightRef.current) {
+      setFirstTimeHint(nextLanguage === "en-US" ? "Finish the current turn before switching languages." : "请在当前回合结束后再切换语言。");
+      return;
+    }
 
     const latestAssistant = [...(before.logs ?? [])]
       .reverse()
       .find((entry) => entry?.role === "assistant")?.content;
-    if (!latestAssistant) {
-      if ((before.currentOptions ?? []).length > 0) {
-        useGameStore.getState().replaceCurrentOptions([]);
-        void requestFreshOptions("manual_button");
-      }
-      return;
-    }
-
-    // Do not leave the previous language's choices clickable while the scene is
-    // being localized. The endpoint only replaces presentation text; inventory,
-    // tasks, location, time and every other authoritative field stay untouched.
+    // Keep the old language visible until every affected timeline entry is
+    // translated. This is deliberately transactional: changing the preference
+    // first was what allowed old Chinese entries to sit between English turns.
+    languageSwitchInFlightRef.current = true;
     useGameStore.getState().replaceCurrentOptions([]);
     setOptionsRegenBusy(true);
     setOptionsRegenStage("generating");
@@ -2824,39 +2822,77 @@ function PlayContent() {
     setOptionsRegenFailureMessage(null);
     setFirstTimeHint(nextLanguage === "en-US" ? "Refreshing the current scene in English…" : "正在切换当前场景为中文…");
 
-    let localized = false;
+    let localized = !latestAssistant;
     let needsOptionsRefresh = false;
     try {
-      const response = await fetch("/api/play/localize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          narrative: latestAssistant,
-          options: before.currentOptions ?? [],
-          language: nextLanguage,
-          sessionId: guestId ?? "browser_session",
-        }),
-        cache: "no-store",
-      });
-      const payload = (await response.json().catch(() => null)) as { narrative?: unknown; options?: unknown } | null;
-      if (response.ok && payload && typeof payload.narrative === "string" && Array.isArray(payload.options)) {
-        const localizedOptions = payload.options.filter((option): option is string => typeof option === "string");
-        useGameStore.getState().replaceLatestAssistantLog(payload.narrative);
-        useGameStore.getState().replaceCurrentOptions(localizedOptions);
-        localized = true;
-        // A legacy save may have carried fewer than four options. Preserve every
-        // translated choice, then replenish the missing slots through the same
-        // language-guarded options-only workflow used by ordinary turns.
-        needsOptionsRefresh = localizedOptions.length < 4;
-        setOptionsRegenStage("complete");
-        setOptionsRegenProgress(100);
+      const timelineEntries = (before.logs ?? [])
+        .map((entry, index) => ({ index, content: String(entry?.content ?? "").trim() }))
+        .filter((entry) => entry.content.length > 0)
+        .filter((entry) => nextLanguage !== "en-US" || hasWrongPlayerFacingLanguage(entry.content, nextLanguage));
+      const translatedEntries: Array<{ index: number; content: string }> = [];
+      for (let offset = 0; offset < timelineEntries.length; offset += 6) {
+        const response = await fetch("/api/play/localize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            entries: timelineEntries.slice(offset, offset + 6),
+            language: nextLanguage,
+            sessionId: guestId ?? "browser_session",
+          }),
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as { entries?: unknown } | null;
+        if (!response.ok || !payload || !Array.isArray(payload.entries)) throw new Error("history_localization_failed");
+        const batch = payload.entries
+          .filter((entry): entry is { index: number; content: string } =>
+            Boolean(entry) && typeof entry === "object" && Number.isInteger((entry as { index?: unknown }).index) &&
+            typeof (entry as { content?: unknown }).content === "string"
+          )
+          .map((entry) => ({ index: entry.index, content: entry.content }));
+        if (batch.length !== Math.min(6, timelineEntries.length - offset)) throw new Error("history_localization_incomplete");
+        translatedEntries.push(...batch);
       }
+
+      let localizedNarrative = latestAssistant ?? "";
+      let localizedOptions: string[] = [];
+      if (latestAssistant) {
+        const response = await fetch("/api/play/localize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            narrative: latestAssistant,
+            options: before.currentOptions ?? [],
+            language: nextLanguage,
+            sessionId: guestId ?? "browser_session",
+          }),
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as { narrative?: unknown; options?: unknown } | null;
+        if (!response.ok || !payload || typeof payload.narrative !== "string" || !Array.isArray(payload.options)) {
+          throw new Error("scene_localization_failed");
+        }
+        localizedNarrative = payload.narrative;
+        localizedOptions = payload.options.filter((option): option is string => typeof option === "string");
+      }
+      // Commit all visual copy together, then flip the language preference. No
+      // authoritative gameplay state or option history is modified here.
+      useGameStore.getState().replaceLogContents(translatedEntries);
+      if (localizedNarrative) useGameStore.getState().replaceLatestAssistantLog(localizedNarrative);
+      useGameStore.getState().replaceCurrentOptions(localizedOptions);
+      setLanguage(nextLanguage);
+      localized = true;
+      needsOptionsRefresh = localizedOptions.length < 4;
+      setOptionsRegenStage("complete");
+      setOptionsRegenProgress(100);
     } catch {
-      // The existing, bounded options-only path below is the non-state-mutating
-      // fallback. The scene itself remains safely intact until it can be retried.
+      // Leave the old preference and all prior logs intact. A partial switch is
+      // worse than a failed switch because it corrupts the readable timeline.
+      useGameStore.getState().replaceCurrentOptions(before.currentOptions ?? []);
+      setOptionsRegenFailureMessage(nextLanguage === "en-US" ? "Could not switch the full story to English. Please try again." : "无法完整切换剧情语言，请稍后重试。");
     } finally {
       setOptionsRegenBusy(false);
       setFirstTimeHint(null);
+      languageSwitchInFlightRef.current = false;
       if (!localized || needsOptionsRefresh) void requestFreshOptions("manual_button");
     }
   }
@@ -2869,7 +2905,7 @@ function PlayContent() {
     resumeQueueId?: string | null,
     retriedAfterRateLimit?: boolean
   ) {
-    if (isChatBusy || sendActionInFlightRef.current) return;
+    if (isChatBusy || sendActionInFlightRef.current || languageSwitchInFlightRef.current) return;
     const currentState = useGameStore.getState();
     if (!isSystemAction && currentState.endingState?.phase && currentState.endingState.phase !== "playing") {
       emitEndingTelemetryEvent("ending_blocked", {
@@ -3072,6 +3108,7 @@ function PlayContent() {
     const useLegacySseTransport = needsLegacySseClientTransport() || legacySseHighEntropyHintRef.current;
     const chatSendHeaders: Record<string, string> = {
       "Content-Type": "application/json",
+      "x-versecraft-output-language": language,
       [VERSECRAFT_REQUEST_ID_HEADER]: chatRequestId,
       [CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER]: getOrCreateChatQueueFingerprint(),
       ...(queueIdForChat ? { [CHAT_QUEUE_ID_HEADER]: queueIdForChat } : {}),
@@ -3140,7 +3177,7 @@ function PlayContent() {
          * - 命中协议污染时不展示原文，改为克制的统一提示。
          * - 这层只能兜底“显示”，不能兜底“状态”，禁止前端脑补 DM 结构。
          */
-        const shown = sanitizeDisplayedNarrative(preview);
+        const shown = sanitizeDisplayedNarrative(preview, language);
         narrativeRef.current = shown.text;
       } catch {
         narrativeRef.current = "";
@@ -3323,7 +3360,7 @@ function PlayContent() {
         const dmRawFromError = foldSseTextToDmRaw(errorText);
         const degradedDm = tryParseDM(dmRawFromError);
         if (degradedDm && typeof degradedDm.narrative === "string" && degradedDm.narrative.trim().length > 0) {
-          const shown = sanitizeDisplayedNarrative(degradedDm.narrative);
+          const shown = sanitizeDisplayedNarrative(degradedDm.narrative, language);
           useGameStore.getState().pushLog({
             role: "assistant",
             content: shown.text.slice(0, 50000),
@@ -3775,10 +3812,10 @@ function PlayContent() {
     let narrativeToPush: string;
     try {
       const prepared = sanitizeNarrativeDisplayMarkers(rawNarrative).slice(0, 50000);
-      const shown = sanitizeDisplayedNarrative(prepared);
+      const shown = sanitizeDisplayedNarrative(prepared, language);
       narrativeToPush = shown.text;
     } catch {
-      narrativeToPush = sanitizeDisplayedNarrative(rawNarrative.slice(0, 50000)).text;
+      narrativeToPush = sanitizeDisplayedNarrative(rawNarrative.slice(0, 50000), language).text;
     }
     useGameStore.getState().pushLog({
       role: "assistant",
@@ -4122,7 +4159,7 @@ function PlayContent() {
     const validOpts = Array.isArray(pickedTurnOpts.options)
       ? pickedTurnOpts.options
           .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
-          .map((o) => sanitizeDisplayedOptionText(o))
+          .map((o) => sanitizeDisplayedOptionText(o, language))
           .filter((o) => o.length > 0)
           .slice(0, 4)
       : [];

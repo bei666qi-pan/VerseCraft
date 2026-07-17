@@ -18,7 +18,9 @@ import type { NarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets"
 import { hasWrongPlayerFacingLanguage, type GameLanguage } from "@/lib/i18n/language";
 import {
   parseLocalizedGameplayPresentation,
+  parseLocalizedStoryEntries,
   type LocalizedGameplayPresentation,
+  type LocalizedStoryEntry,
 } from "@/lib/i18n/gameplayPresentation";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
@@ -128,6 +130,51 @@ export async function localizeGameplayPresentation(args: {
   });
   if (!result.ok) return { ok: false, reason: `ai_error:${result.code}` };
   const parsed = parseLocalizedGameplayPresentation(result.content, args.language, expectedOptionCount);
+  return parsed.ok ? { ok: true, value: parsed.value } : parsed;
+}
+
+/** Translate a bounded set of already-rendered timeline entries after an explicit language switch. */
+export async function localizeGameplayHistory(args: {
+  entries: LocalizedStoryEntry[];
+  language: GameLanguage;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+}): Promise<{ ok: true; value: LocalizedStoryEntry[] } | { ok: false; reason: string }> {
+  const entries = args.entries
+    .filter((entry) => Number.isInteger(entry.index) && typeof entry.content === "string" && entry.content.trim())
+    .slice(0, 6)
+    .map((entry) => ({ index: entry.index, content: entry.content.trim().slice(0, 4_000) }));
+  if (entries.length === 0) return { ok: true, value: [] };
+  const target = args.language === "en-US" ? "English" : "Simplified Chinese";
+  const result: AIResponse | AIErrorResponse = await executeChatCompletion({
+    task: "GAMEPLAY_LOCALIZATION",
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You localize already-rendered VerseCraft timeline entries for display only. Do not decide, add, remove, or imply any game-state change.",
+          "请严格以 JSON 格式输出，且只能输出一个 JSON 对象：{\"entries\":[{\"index\":0,\"content\":\"...\"}]}。",
+          `Translate every entry into ${target}. Preserve every index exactly once and in the supplied order.`,
+          "When the target is English, do not leave Chinese characters; transliterate personal names into readable Latin text. Keep identifiers such as B1 unchanged.",
+          "Do not add explanations, markdown, fields, facts, or choices.",
+        ].join("\n"),
+      },
+      { role: "user", content: JSON.stringify({ entries }) },
+    ],
+    ctx: {
+      requestId: args.ctx.requestId,
+      task: "GAMEPLAY_LOCALIZATION",
+      userId: args.ctx.userId,
+      sessionId: args.ctx.sessionId,
+      path: args.ctx.path,
+      tags: { ...(args.ctx.tags ?? {}), purpose: "language_history" },
+    },
+    signal: args.signal,
+    requestTimeoutMs: 18_000,
+    skipCache: true,
+  });
+  if (!result.ok) return { ok: false, reason: `ai_error:${result.code}` };
+  const parsed = parseLocalizedStoryEntries(result.content, args.language, entries);
   return parsed.ok ? { ok: true, value: parsed.value } : parsed;
 }
 

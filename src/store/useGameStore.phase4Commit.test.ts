@@ -370,7 +370,7 @@ test("phase4: setCurrentOptions filters journal/menu-like options", () => {
   assert.deepEqual(useGameStore.getState().currentOptions, ["我用手电照向门缝"]);
 });
 
-test("language presentation replacement changes only the latest DM text and current choices", () => {
+test("language presentation replacement atomically updates every translated timeline entry without changing game state", () => {
   resetStore();
   useGameStore.setState({
     dialogueCount: 5,
@@ -384,16 +384,43 @@ test("language presentation replacement changes only the latest DM text and curr
     recentOptions: ["历史选项"],
   });
 
+  useGameStore.getState().replaceLogContents([
+    { index: 0, content: "Earlier scene" },
+    { index: 1, content: "I listen" },
+    { index: 2, content: "Current scene" },
+  ]);
   useGameStore.getState().replaceLatestAssistantLog("Current scene");
   useGameStore.getState().replaceCurrentOptions(["I listen at the door.", "I step back."]);
 
   const state = useGameStore.getState();
   assert.equal(state.logs[0]?.content, "Earlier scene");
+  assert.equal(state.logs[1]?.content, "I listen");
   assert.equal(state.logs[2]?.content, "Current scene");
   assert.deepEqual(state.currentOptions, ["I listen at the door.", "I step back."]);
   assert.deepEqual(state.recentOptions, ["历史选项"]);
   assert.equal(state.dialogueCount, 5);
   assert.deepEqual(state.time, { day: 2, hour: 6 });
+});
+
+test("language history replacement ignores invalid entries and leaves unrelated turns intact", () => {
+  resetStore();
+  useGameStore.setState({
+    logs: [
+      { role: "assistant", content: "第一幕" },
+      { role: "user", content: "我保持安静" },
+      { role: "assistant", content: "第二幕" },
+    ],
+  });
+  useGameStore.getState().replaceLogContents([
+    { index: 0, content: "Act one" },
+    { index: 99, content: "must not be appended" },
+    { index: -1, content: "must not be prepended" },
+    { index: 2, content: "Act two" },
+  ]);
+  assert.deepEqual(
+    useGameStore.getState().logs.map((entry) => entry.content),
+    ["Act one", "我保持安静", "Act two"]
+  );
 });
 
 test("chapter-aware migration preserves legacy local saves and backfills director chapter", () => {

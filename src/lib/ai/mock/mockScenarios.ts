@@ -383,6 +383,38 @@ export function buildMockCompletionScenario(input: MockScenarioInput): MockCompl
   if (input.task === "NARRATIVE_EXPANSION") {
     return { scenario, content: narrativeExpansionJson(input, scenario), usage };
   }
+  if (input.task === "GAMEPLAY_LOCALIZATION") {
+    const raw = input.messages.find((message) => message.role === "user")?.content ?? "{}";
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch {
+      // The production parser rejects malformed input; keep the mock
+      // deterministic for the valid language-switch paths only.
+    }
+    if (Array.isArray(payload.entries)) {
+      return {
+        scenario,
+        content: JSON.stringify({
+          entries: payload.entries.map((entry, index) => ({
+            index: Number((entry as Record<string, unknown>)?.index ?? index),
+            content: `Localized timeline entry ${index + 1}.`,
+          })),
+        }),
+        usage,
+      };
+    }
+    const sourceOptions = Array.isArray(payload.options) ? payload.options : [];
+    return {
+      scenario,
+      content: JSON.stringify({
+        narrative: "The scene remains tense, and I keep listening for the next sign of danger.",
+        options: sourceOptions.map((_, index) => `Continue with action ${index + 1}.`),
+      }),
+      usage,
+    };
+  }
   if (scenario === "options_only_invalid" || scenario === "dirty_canned_options") {
     return {
       scenario,

@@ -1,3 +1,5 @@
+import type { GameLanguage } from "@/lib/i18n/language";
+
 export const DISPLAY_NARRATIVE_FALLBACK = "";
 
 function countMatches(text: string, re: RegExp): number {
@@ -30,7 +32,7 @@ export function isProtocolLeakLikeText(text: string): boolean {
   return false;
 }
 
-export function sanitizeDisplayedNarrative(raw: string): {
+export function sanitizeDisplayedNarrative(raw: string, language?: GameLanguage): {
   text: string;
   blocked: boolean;
 } {
@@ -39,12 +41,19 @@ export function sanitizeDisplayedNarrative(raw: string): {
   if (isProtocolLeakLikeText(t)) {
     return { text: DISPLAY_NARRATIVE_FALLBACK, blocked: true };
   }
+  // The server final frame is authoritative, but streamed text is shown before
+  // that frame arrives. Do not flash Chinese source prose in an English scene
+  // while the server-side final language guard repairs the resolved turn.
+  if (language === "en-US" && /[\u3400-\u9fff\uf900-\ufaff]/.test(t)) {
+    return { text: DISPLAY_NARRATIVE_FALLBACK, blocked: true };
+  }
   return { text: t, blocked: false };
 }
 
-export function sanitizeDisplayedOptionText(raw: string): string {
+export function sanitizeDisplayedOptionText(raw: string, language?: GameLanguage): string {
   const t = String(raw ?? "").trim();
   if (!t) return "";
   if (isProtocolLeakLikeText(t)) return "";
+  if (language === "en-US" && /[\u3400-\u9fff\uf900-\ufaff]/.test(t)) return "";
   return t;
 }
