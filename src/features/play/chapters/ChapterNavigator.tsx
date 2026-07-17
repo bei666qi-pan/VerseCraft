@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChapterId, ChapterState } from "@/lib/chapters";
+import { useGameStore } from "@/store/useGameStore";
 import { ChapterTocList } from "./ChapterTocList";
 
 export function ChapterNavigator({
@@ -18,23 +19,25 @@ export function ChapterNavigator({
   onReturnToActive: () => void;
   onEnterNext?: () => void;
 }) {
+  const language = useGameStore((state) => state.language);
+  const isEnglish = language === "en-US";
   if (!open) return null;
   return (
     <div className="absolute inset-x-3 bottom-[calc(7.8rem+env(safe-area-inset-bottom))] z-40">
       <section
         data-testid="chapter-navigator"
         className="rounded-[16px] border border-[#d8d1c6] bg-[#fffdf8]/98 p-4 text-[#174d46] shadow-[0_18px_44px_rgba(73,63,51,0.16),inset_0_1px_0_rgba(255,255,255,0.92)]"
-        aria-label="小说目录"
+        aria-label={isEnglish ? "Story chapters" : "小说目录"}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="vc-reading-serif text-[22px] font-semibold leading-none text-[#174d46]">小说目录</h2>
+          <h2 className="vc-reading-serif text-[22px] font-semibold leading-none text-[#174d46]">{isEnglish ? "Chapters" : "小说目录"}</h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="关闭小说目录"
+            aria-label={isEnglish ? "Close chapters" : "关闭小说目录"}
             className="rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-3 py-1 text-[14px] text-[#4f706a] shadow-[0_6px_14px_rgba(73,63,51,0.08)]"
           >
-            关闭
+            {isEnglish ? "Close" : "关闭"}
           </button>
         </div>
         <div
@@ -46,6 +49,7 @@ export function ChapterNavigator({
             rowTestId="chapter-nav-item"
             allowEnterNext
             titleStyle="colon"
+            language={language}
             onReviewChapter={onReviewChapter}
             onReturnToActive={onReturnToActive}
             onEnterNext={onEnterNext}
@@ -58,7 +62,7 @@ export function ChapterNavigator({
             onClick={onReturnToActive}
             className="mt-3 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-2 vc-reading-serif text-[16px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.08)]"
           >
-            回到正在阅读
+            {isEnglish ? "Return to current chapter" : "回到正在阅读"}
           </button>
         ) : null}
       </section>

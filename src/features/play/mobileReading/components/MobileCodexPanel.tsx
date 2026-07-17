@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useGameStore } from "@/store/useGameStore";
+import { languageText } from "@/lib/i18n/gameDisplay";
 import { ALL_CODEX_CATALOG_SLOTS, type CodexCatalogSlot } from "../codexCatalog";
 import {
   buildMobileCodexCardModels,
@@ -224,12 +226,6 @@ function DetailBlock({
   );
 }
 
-const TYPE_FILTER_OPTIONS: { value: MobileCodexTypeFilter; label: string }[] = [
-  { value: "all", label: "全部" },
-  { value: "npc", label: "人物" },
-  { value: "anomaly", label: "异常" },
-];
-
 function FilterPillGroup<T extends string>({
   value,
   options,
@@ -278,6 +274,8 @@ export function MobileCodexPanel({
   viewedCodexIds,
   onViewCodexEntry,
 }: MobileCodexPanelProps) {
+  const language = useGameStore((state) => state.language);
+  const isEnglish = language === "en-US";
   const currentFloor = useMemo(() => resolveMobileCodexCurrentFloor(playerLocation), [playerLocation]);
   const floorLabel = formatMobileCodexFloorLabel(currentFloor);
   const floorSlots = useMemo(
@@ -299,15 +297,15 @@ export function MobileCodexPanel({
   const effectiveFloorScope: MobileCodexFloorScope = trimmedQuery ? "all" : floorScope;
   const scopedSlots = effectiveFloorScope === "all" ? ALL_CODEX_CATALOG_SLOTS : floorSlots;
   const visibleSlots = useMemo(
-    () => filterMobileCodexSlotsByQuery(filterMobileCodexSlotsByType(scopedSlots, typeFilter), codex, trimmedQuery),
-    [scopedSlots, typeFilter, codex, trimmedQuery]
+    () => filterMobileCodexSlotsByQuery(filterMobileCodexSlotsByType(scopedSlots, typeFilter), codex, trimmedQuery, language),
+    [scopedSlots, typeFilter, codex, trimmedQuery, language]
   );
 
   const identifiedCount = getMobileCodexIdentifiedCount(codex, visibleSlots);
   const globalIdentifiedCount = useMemo(() => getMobileCodexIdentifiedCount(codex, ALL_CODEX_CATALOG_SLOTS), [codex]);
   const cards = useMemo(
-    () => buildMobileCodexCardModels(codex, visibleSlots, { dynamicNpcStates, viewedCodexIds }),
-    [codex, dynamicNpcStates, visibleSlots, viewedCodexIds]
+    () => buildMobileCodexCardModels(codex, visibleSlots, { dynamicNpcStates, viewedCodexIds }, language),
+    [codex, dynamicNpcStates, visibleSlots, viewedCodexIds, language]
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -323,8 +321,8 @@ export function MobileCodexPanel({
   const selectedIndex = selectedSlot ? Math.max(0, visibleSlots.findIndex((slot) => slot.id === selectedSlot.id)) : 0;
   const progressWidth =
     visibleSlots.length > 0 ? Math.max(18, ((selectedIndex + 1) / visibleSlots.length) * 100) : 0;
-  const detail = selectedSlot ? buildMobileCodexDetail(codex, selectedSlot, { dynamicNpcStates, memorySpine }) : null;
-  const introTitle = selectedSlot?.type === "anomaly" ? "异常简介" : "人物简介";
+  const detail = selectedSlot ? buildMobileCodexDetail(codex, selectedSlot, { dynamicNpcStates, memorySpine }, language) : null;
+  const introTitle = selectedSlot?.type === "anomaly" ? languageText(language, "异常简介", "Anomaly") : languageText(language, "人物简介", "Profile");
 
   // 打开详情即视为"已查看"：清除该条目在卡片带与底部导航上的"新发现"角标。
   useEffect(() => {
@@ -334,19 +332,19 @@ export function MobileCodexPanel({
   }, [selectedSlot, codex, onViewCodexEntry]);
 
   const scopeLabel = trimmedQuery
-    ? "搜索结果"
+    ? languageText(language, "搜索结果", "Search results")
     : effectiveFloorScope === "all"
-      ? "全部楼层"
-      : `${floorLabel}${floorLabel.endsWith("F") ? "" : "层"}`;
-  const typeLabel = typeFilter === "npc" ? "人物" : typeFilter === "anomaly" ? "异常" : "条目";
+      ? languageText(language, "全部楼层", "All floors")
+      : isEnglish ? floorLabel : `${floorLabel}${floorLabel.endsWith("F") ? "" : "层"}`;
+  const typeLabel = typeFilter === "npc" ? languageText(language, "人物", "people") : typeFilter === "anomaly" ? languageText(language, "异常", "anomalies") : languageText(language, "条目", "entries");
   const countLine = trimmedQuery
-    ? `搜索结果：命中 ${visibleSlots.length} 条`
-    : `${scopeLabel}已识别${typeLabel}：${identifiedCount} / ${visibleSlots.length}`;
+    ? isEnglish ? `Results: ${visibleSlots.length} found` : `搜索结果：命中 ${visibleSlots.length} 条`
+    : isEnglish ? `${scopeLabel} identified ${typeLabel}: ${identifiedCount} / ${visibleSlots.length}` : `${scopeLabel}已识别${typeLabel}：${identifiedCount} / ${visibleSlots.length}`;
 
   return (
     <section
       data-testid="mobile-codex-panel"
-      aria-label="图鉴"
+      aria-label={languageText(language, "图鉴", "Codex")}
       className="box-border flex h-full min-h-0 flex-col overflow-hidden bg-[#fbf8f2] px-4 pb-[calc(var(--vc-mobile-bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] pt-[max(0.65rem,env(safe-area-inset-top))] text-[#174d46] min-[420px]:px-5 min-[420px]:pt-[max(0.85rem,env(safe-area-inset-top))]"
     >
       <div className="flex shrink-0 items-baseline justify-between gap-2 px-1">
@@ -360,7 +358,7 @@ export function MobileCodexPanel({
           data-testid="mobile-codex-global-count"
           className="vc-reading-serif shrink-0 text-[13px] leading-none text-vc-ink-soft min-[420px]:text-[15px]"
         >
-          总收藏 {globalIdentifiedCount} / {ALL_CODEX_CATALOG_SLOTS.length}
+          {isEnglish ? `Collection ${globalIdentifiedCount} / ${ALL_CODEX_CATALOG_SLOTS.length}` : `总收藏 ${globalIdentifiedCount} / ${ALL_CODEX_CATALOG_SLOTS.length}`}
         </span>
       </div>
 
@@ -371,15 +369,19 @@ export function MobileCodexPanel({
           disabled={Boolean(trimmedQuery)}
           onChange={setFloorScope}
           options={[
-            { value: "current", label: `本层 ${floorLabel}` },
-            { value: "all", label: "全部楼层" },
+            { value: "current", label: isEnglish ? `This floor ${floorLabel}` : `本层 ${floorLabel}` },
+            { value: "all", label: languageText(language, "全部楼层", "All floors") },
           ]}
         />
         <FilterPillGroup
           testId="mobile-codex-type-filter"
           value={typeFilter}
           onChange={setTypeFilter}
-          options={TYPE_FILTER_OPTIONS}
+          options={[
+            { value: "all", label: languageText(language, "全部", "All") },
+            { value: "npc", label: languageText(language, "人物", "People") },
+            { value: "anomaly", label: languageText(language, "异常", "Anomalies") },
+          ]}
         />
       </div>
 
@@ -389,15 +391,15 @@ export function MobileCodexPanel({
           inputMode="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="搜索已识别人物 / 异常（跨全部楼层）"
-          aria-label="搜索图鉴"
+          placeholder={languageText(language, "搜索已识别人物 / 异常（跨全部楼层）", "Search identified people / anomalies")}
+          aria-label={languageText(language, "搜索图鉴", "Search codex")}
           data-testid="mobile-codex-search-input"
           className="w-full rounded-full border border-[#d8d1c6] bg-vc-paper-bright/90 py-1.5 pl-3.5 pr-8 text-[13px] text-[#174d46] placeholder:text-vc-ink-soft/70 focus:border-vc-accent focus:outline-none min-[420px]:text-[14px]"
         />
         {trimmedQuery ? (
           <button
             type="button"
-            aria-label="清除搜索"
+            aria-label={languageText(language, "清除搜索", "Clear search")}
             data-testid="mobile-codex-search-clear"
             onClick={() => setSearchQuery("")}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-[15px] leading-none text-vc-ink-soft"
@@ -426,7 +428,7 @@ export function MobileCodexPanel({
           data-testid="mobile-codex-empty"
           className="vc-reading-serif mt-5 rounded-[18px] border border-[#d8d1c6] bg-vc-paper-bright/92 px-5 py-10 text-center text-[20px] text-vc-ink-soft shadow-[0_8px_18px_rgba(73,63,51,0.08)]"
         >
-          {trimmedQuery ? "没有找到匹配的已识别条目" : "当前条件下暂无可记录对象"}
+          {trimmedQuery ? languageText(language, "没有找到匹配的已识别条目", "No matching identified entries") : languageText(language, "当前条件下暂无可记录对象", "No entries under these filters")}
         </div>
       ) : (
         <>
@@ -482,13 +484,13 @@ export function MobileCodexPanel({
                 {detail.intro}
               </DetailBlock>
               <DetailDivider />
-              <DetailBlock icon="eye" title="我所见" scrollable testId="mobile-codex-observation">
+              <DetailBlock icon="eye" title={languageText(language, "我所见", "Observations")} scrollable testId="mobile-codex-observation">
                 {detail.observation}
               </DetailBlock>
               <DetailDivider />
               <DetailBlock
                 icon="heart"
-                title={selectedSlot.type === "anomaly" ? "应对记录" : "关系印象"}
+                title={selectedSlot.type === "anomaly" ? languageText(language, "应对记录", "Response record") : languageText(language, "关系印象", "Relationship")}
                 lines={1}
                 testId="mobile-codex-relationship"
               >
@@ -497,7 +499,7 @@ export function MobileCodexPanel({
               {detail.memories ? (
                 <>
                   <DetailDivider />
-                  <DetailBlock icon="book" title="记忆片段" lines={3} scrollable testId="mobile-codex-memories">
+                  <DetailBlock icon="book" title={languageText(language, "记忆片段", "Memory fragments")} lines={3} scrollable testId="mobile-codex-memories">
                     {detail.memories}
                   </DetailBlock>
                 </>

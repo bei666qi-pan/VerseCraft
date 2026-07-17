@@ -1,6 +1,7 @@
 "use client";
 
 import type { EchoTalent } from "@/store/useGameStore";
+import { useGameStore } from "@/store/useGameStore";
 import { TALENTS } from "./constants";
 
 export function CreateTalentGrid({
@@ -10,6 +11,15 @@ export function CreateTalentGrid({
   selectedTalent: EchoTalent | null;
   onSelectTalent: (talent: EchoTalent) => void;
 }) {
+  const language = useGameStore((state) => state.language);
+  const englishCopy: Partial<Record<EchoTalent, { title: string; cd: string; desc: string }>> = {
+    时间回溯: { title: "Time Rewind", cd: "Cooldown: 6 hours", desc: "Return to where you stood one hour ago." },
+    命运馈赠: { title: "Gift of Fate", cd: "Cooldown: 10 hours", desc: "Receive one gifted item." },
+    主角光环: { title: "Hero's Halo", cd: "Cooldown: 8 hours", desc: "Briefly become the true protagonist." },
+    生命汇源: { title: "Life Spring", cd: "Cooldown: 10 hours", desc: "Restore up to 20 Sanity." },
+    洞察之眼: { title: "Eye of Insight", cd: "Cooldown: 8 hours", desc: "Reveal the most reliable next direction." },
+    丧钟回响: { title: "Deathbell Echo", cd: "Cooldown: 30 hours", desc: "Clear one malicious entity." },
+  };
   return (
     <div data-testid="create-talent-grid" className="mt-4 grid grid-cols-2 gap-3">
       {TALENTS.map((talent) => {
@@ -40,21 +50,21 @@ export function CreateTalentGrid({
                 active ? "text-vc-paper-bright" : "text-vc-ink"
               }`}
             >
-              {talent.title}
+              {language === "en-US" ? englishCopy[talent.key]?.title ?? talent.title : talent.title}
             </span>
             <span
               className={`mt-2 block vc-reading-serif text-[13px] leading-none ${
                 active ? "text-vc-paper-bright/80" : "text-vc-ink-soft"
               }`}
             >
-              {talent.cd}
+              {language === "en-US" ? englishCopy[talent.key]?.cd ?? talent.cd : talent.cd}
             </span>
             <span
               className={`mt-2 block vc-reading-serif text-[13px] leading-[1.25] ${
                 active ? "text-vc-paper-bright/80" : "text-vc-ink-soft"
               }`}
             >
-              {talent.desc}
+              {language === "en-US" ? englishCopy[talent.key]?.desc ?? talent.desc : talent.desc}
             </span>
           </button>
         );

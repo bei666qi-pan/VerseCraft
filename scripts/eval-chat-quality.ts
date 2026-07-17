@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import {
   evaluateChatQualityCase,
@@ -43,7 +44,7 @@ function parseCli(): CliOptions {
 }
 
 function loadCases(path: string): ChatEvalCase[] {
-  return JSON.parse(require("fs").readFileSync(path, "utf8")) as ChatEvalCase[];
+  return JSON.parse(readFileSync(path, "utf8")) as ChatEvalCase[];
 }
 
 async function runCase(baseUrl: string, mode: EvalMode, testCase: ChatEvalCase, index: number): Promise<ChatEvalCaseResult> {

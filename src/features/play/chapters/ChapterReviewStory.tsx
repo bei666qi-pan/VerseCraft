@@ -7,6 +7,7 @@ import {
   filterDisplayEntriesForUserQuoteDedup,
   formatUserNarrativeForDisplay,
 } from "@/features/play/render/userNarrative";
+import { useGameStore } from "@/store/useGameStore";
 
 function summaryFallbackLines(summary: ChapterSummary | null | undefined): string[] {
   if (!summary) return [];
@@ -37,6 +38,7 @@ export function ChapterReviewStory({
   isDarkMoon: boolean;
   onReturnToActive: () => void;
 }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   const visibleEntries = useMemo(() => filterDisplayEntriesForUserQuoteDedup(entries), [entries]);
   const fallback = useMemo(() => summaryFallbackLines(summary), [summary]);
 
@@ -44,11 +46,13 @@ export function ChapterReviewStory({
     <section
       data-testid="chapter-review-panel"
       className="px-5 pb-[calc(var(--vc-mobile-bottom-nav-height)+2rem+env(safe-area-inset-bottom))] pt-5"
-      aria-label="章节留页"
+      aria-label={isEnglish ? "Chapter review" : "章节留页"}
     >
       <div>
         <div className="mb-4 border-b border-[#ded8ce] pb-3">
-          <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">章节留页，只读，不影响当前章节</p>
+          <p className="vc-reading-serif text-[15px] leading-none text-[#4f706a]">
+            {isEnglish ? "Chapter review · read-only · your current chapter is unchanged" : "章节留页，只读，不影响当前章节"}
+          </p>
           <h2 className="mt-2 vc-reading-serif text-[26px] font-semibold leading-tight text-[#174d46]">
             {title}
           </h2>
@@ -84,7 +88,7 @@ export function ChapterReviewStory({
             ))
           ) : (
             <p className="vc-reading-serif text-[16px] leading-relaxed text-[#4f706a]">
-              这一章还没有留下可回看的正文。
+              {isEnglish ? "This chapter has not left any story text to revisit yet." : "这一章还没有留下可回看的正文。"}
             </p>
           )}
         </div>
@@ -94,7 +98,7 @@ export function ChapterReviewStory({
           onClick={onReturnToActive}
           className="mt-5 w-full rounded-full border border-[#d8d1c6] bg-[#fffdf8] px-4 py-3 vc-reading-serif text-[17px] text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)]"
         >
-          回到正在阅读
+          {isEnglish ? "Return to current chapter" : "回到正在阅读"}
         </button>
       </div>
     </section>

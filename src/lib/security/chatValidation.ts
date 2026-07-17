@@ -1,4 +1,5 @@
 import { sanitizeInputText } from "@/lib/security/helpers";
+import { normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
 
 export type IncomingMessage = {
   role: "system" | "user" | "assistant" | string;
@@ -82,6 +83,8 @@ export type ChatValidationResult =
       clientTurnModeHint: "decision_required" | "narrative_only" | "system_transition" | null;
       /** options-only 专用轻量上下文包（不用于主回合推进）。 */
       optionsRegenContext: OptionsRegenContextPayload | null;
+      /** Requested player-facing response language. Defaults to legacy Chinese. */
+      language: GameLanguage;
     }
   | { ok: false; status: number; error: string };
 
@@ -220,6 +223,7 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const rawClientReason = bodyObj.clientReason;
   const rawClientTurnModeHint = bodyObj.clientTurnModeHint;
   const rawOptionsRegenContext = bodyObj.optionsRegenContext;
+  const rawLanguage = bodyObj.language;
 
   if (!Array.isArray(rawMessages)) {
     return { ok: false, status: 400, error: "messages must be an array" };
@@ -252,6 +256,7 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
   const sessionId = sessionIdCandidate || null;
 
   const clientState = validateClientState(rawClientState);
+  const language = normalizeGameLanguage(rawLanguage);
   const openingOptionsOnlyRound = rawOpeningOptionsOnlyRound === true;
   const clientPurpose = rawClientPurpose === "options_regen_only" ? "options_regen_only" : "normal";
   const clientReason =
@@ -291,6 +296,7 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
     latestUserInput,
     sessionId,
     clientState,
+    language,
     openingOptionsOnlyRound,
     clientPurpose,
     clientReason,

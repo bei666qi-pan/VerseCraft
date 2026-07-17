@@ -14,6 +14,7 @@ import { buildOutputFallback } from "@/lib/safety/output/fallbackNarratives";
 import { writeOutputAuditEvent, buildOutputActorHashes } from "@/lib/safety/output/audit";
 import { fingerprintText } from "@/lib/safety/input/audit";
 import { isVisibleSafetyDegradeReason } from "@/lib/security/visibleSafety";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 function resolveOutputFailMode(stage: ModerationStage): "fail_soft" | "fail_closed" {
   const privateMode = (envRaw("VC_OUTPUT_FAIL_MODE_PRIVATE") ?? "fail_soft").trim();
@@ -78,10 +79,12 @@ export async function auditDmOutputCandidateOnServer(args: {
   ip?: string;
   providerSignalsOverride?: ProviderSignal[];
   providerTextToModerate?: string;
-  /** 是否为开场首轮（OPENING_SYSTEM_PROMPT 触发的回合）；命中 visible safety reason 时改用中性中文承接句。 */
+  /** 是否为开场首轮（OPENING_SYSTEM_PROMPT 触发的回合）；命中 visible safety reason 时改用中性承接句。 */
   isOpeningTurn?: boolean;
+  language?: GameLanguage;
 }): Promise<OutputModerationVerdictResult> {
   const isOpeningTurn = Boolean(args.isOpeningTurn);
+  const language = args.language ?? "zh-CN";
   const startedAt = Date.now();
   const { scene, stage } = resolveOutputSceneAndStage(args.sceneKind);
   const failMode = resolveOutputFailMode(stage);
@@ -192,6 +195,7 @@ export async function auditDmOutputCandidateOnServer(args: {
         reasonCode,
         isProviderFailureFallback: true,
         isOpeningTurn,
+        language,
       });
       updatedDmRecord.narrative = fb.narrative;
       if (fb.options) updatedDmRecord.options = fb.options;
@@ -230,6 +234,7 @@ export async function auditDmOutputCandidateOnServer(args: {
         reasonCode: evalResult.reasonCode,
         isProviderFailureFallback: false,
         isOpeningTurn,
+        language,
       });
       updatedDmRecord.narrative = fb.narrative;
       if (fb.options) updatedDmRecord.options = fb.options;
@@ -269,6 +274,7 @@ export async function auditDmOutputCandidateOnServer(args: {
         reasonCode: evalResult.reasonCode,
         isProviderFailureFallback: stage === "public_display" ? true : false,
         isOpeningTurn,
+        language,
       });
       updatedDmRecord.narrative = fb.narrative;
       if (fb.options) updatedDmRecord.options = fb.options;
@@ -312,4 +318,3 @@ export async function auditDmOutputCandidateOnServer(args: {
     reasonCode,
   };
 }
-

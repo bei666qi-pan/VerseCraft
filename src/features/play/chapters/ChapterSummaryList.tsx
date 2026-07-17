@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChapterSummary } from "@/lib/chapters";
+import { useGameStore } from "@/store/useGameStore";
 
 const BLOCKED_PLAYER_TEXT = [
   "\u672c\u7ae0\u5b8c\u6210",
@@ -48,11 +49,12 @@ function getRecapParagraphs(summary: ChapterSummary): string[] {
 }
 
 export function ChapterSummaryList({ summary }: { summary: ChapterSummary }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   const paragraphs = getRecapParagraphs(summary);
   return (
-    <section data-testid="chapter-summary-list" className="space-y-3" aria-label="章节留页">
+    <section data-testid="chapter-summary-list" className="space-y-3" aria-label={isEnglish ? "Chapter review" : "章节留页"}>
       <h3 className="vc-reading-serif text-[19px] font-semibold leading-none text-[#174d46]">
-        章节留页
+        {isEnglish ? "Chapter review" : "章节留页"}
       </h3>
       <div className="space-y-3">
         {paragraphs.map((line, index) => (

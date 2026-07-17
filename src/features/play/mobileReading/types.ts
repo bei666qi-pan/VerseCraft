@@ -9,6 +9,7 @@ import type {
   ReadingPreferenceKey,
   ReadingPreferences,
 } from "./readingPreferences";
+import type { GameLanguage } from "@/lib/i18n/language";
 import type {
   MobileCodexDynamicNpcStates,
   MobileCodexMainThreatByFloor,
@@ -144,10 +145,12 @@ export type MobileTaskPanelProps = {
 export type MobileSettingsPanelProps = {
   audioMuted: boolean;
   chapterState: ChapterState;
+  language: GameLanguage;
   onExitGame: () => void;
   onReturnToActiveChapter: () => void;
   onReviewChapter: (chapterId: ChapterId) => void;
   onSetReadingPreference: (key: ReadingPreferenceKey, value: ReadingPreferences[ReadingPreferenceKey]) => void;
+  onSetLanguage: (language: GameLanguage) => void;
   onToggleMute: () => void;
   readingPreferences: ReadingPreferences;
   setVolume: (value: number) => void;
@@ -165,4 +168,5 @@ export type MobileBottomNavProps = {
   hasUnreadCodex?: boolean;
   /** 任务是否存在未查看的更新，驱动"任务"导航项的角标提示 */
   hasUnviewedTaskUpdates?: boolean;
+  language?: GameLanguage;
 };

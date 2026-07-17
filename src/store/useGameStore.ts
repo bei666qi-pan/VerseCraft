@@ -170,9 +170,10 @@ import {
   type ReadingPreferenceKey,
   type ReadingPreferences,
 } from "@/features/play/mobileReading/readingPreferences";
+import { normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
 
 const DB_KEY = "versecraft-storage";
-const PERSIST_VERSION = 2;
+const PERSIST_VERSION = 3;
 
 function normalizeStoredOptions(options: unknown, maxCount = 4): string[] {
   if (!Array.isArray(options)) return [];
@@ -303,6 +304,7 @@ export function migratePersistedState(
     storyDirector: rootStoryDirector,
     endingState: rootEndingState,
     readingPreferences: normalizeReadingPreferences(raw.readingPreferences),
+    language: normalizeGameLanguage(raw.language),
     deathCount: typeof raw.deathCount === "number" && Number.isFinite(raw.deathCount) ? raw.deathCount : 0,
     saveSlots: pruneVisibleSaveSlots(migratedSlots as Record<string, SaveSlotData>),
     pendingHourProgress:
@@ -630,6 +632,8 @@ export interface GameState extends IntegrityMetaState {
   volume: number;
   /** Mobile reading display preferences. */
   readingPreferences: ReadingPreferences;
+  /** Player-facing UI and newly generated narrative language. Device-level preference. */
+  language: GameLanguage;
   /** Unified in-game menu surface (pure UI). */
   activeMenu: ActiveMenu;
   /** 安全降级：当上游安全拦截/流破损导致解析失败时，强制覆盖叙事并扣理智 */
@@ -690,6 +694,7 @@ export interface GameState extends IntegrityMetaState {
   setStorageMode: (mode: StorageMode) => void;
   setVolume: (volume: number) => void;
   setReadingPreference: <K extends ReadingPreferenceKey>(key: K, value: ReadingPreferences[K]) => void;
+  setLanguage: (language: GameLanguage) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
   recordChapterTurn: (signals: ChapterTurnSignals) => ChapterState;
   enterNextChapter: () => void;
@@ -1270,6 +1275,7 @@ export const useGameStore = create<GameState>()(
       currentBgm: "bgm_b1_daily",
       volume: 50,
       readingPreferences: { ...DEFAULT_READING_PREFERENCES },
+      language: "zh-CN",
       activeMenu: null,
       securityFallback: { active: false, message: "", at: 0 },
       reviveContext: {
@@ -1349,6 +1355,7 @@ export const useGameStore = create<GameState>()(
             value
           ),
         })),
+      setLanguage: (language) => set({ language: normalizeGameLanguage(language) }),
       setActiveMenu: (menu) => set({ activeMenu: menu }),
       clearTaskUnviewedCount: () => set({ _taskUnviewedCount: 0 }),
       markTaskPanelOpened: () => set({ _taskPanelFirstOpen: false }),
@@ -2246,6 +2253,9 @@ export const useGameStore = create<GameState>()(
           stats,
           historicalMaxSanity: initialSanity,
           inventory: [],
+          // 创建新角色必须从空白叙事开始；否则切换到英文后会把上一局中文日志
+          // 与安全降级文本带入新开场，破坏当前语言的一致性。
+          logs: [],
           codex: {},
           hasCheckedCodex: false,
           viewedCodexIds: {},
@@ -4323,6 +4333,7 @@ export const useGameStore = create<GameState>()(
         openingNarrativePinned: (s as any).openingNarrativePinned ?? false,
         volume: clampVolume(s.volume ?? 50),
         readingPreferences: normalizeReadingPreferences(s.readingPreferences),
+        language: normalizeGameLanguage(s.language),
       }),
     }
   )

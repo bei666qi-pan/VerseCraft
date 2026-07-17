@@ -1,3 +1,5 @@
+import type { GameLanguage } from "@/lib/i18n/language";
+
 /** 固定开局叙事：由前端直接渲染，不经大模型流式输出 */
 export const FIXED_OPENING_NARRATIVE = `夕阳斜斜地压在黑板上，粉笔灰薄薄洒了一层。老师的声音在教室里来回反弹，平得让人犯困。
 
@@ -83,6 +85,80 @@ export const FIXED_OPENING_NARRATIVE = `夕阳斜斜地压在黑板上，粉笔�
 
 但我站在这条走廊里，心跳重得发疼——背后那道脚步声的回声还没散。`;
 
+export const FIXED_OPENING_NARRATIVE_EN = `Late sunlight lay across the blackboard. A thin veil of chalk dust drifted through the room while the teacher's voice bounced from wall to wall, level enough to make everyone sleepy.
+
+Thirteen minutes until class ended.
+
+The clock ticked against my temples. I propped my book up, slipped an ancient MP3 player from my desk, and decided a bad novel was still better than listening.
+
+The instant I put in an earbud, the world went still.
+
+Not quiet. Everything had been ripped out of time for a single beat. Chalk stopped against the board. Curtains froze in the wind. Even the clock lost its tick.
+
+Then someone spoke.
+
+The voice was not loud, but it came down from the highest point of the ceiling with the weight of a bell, thunder, and a rusted bronze gong struck after a hundred years.
+
+【Word of Power: Release】
+
+I did not even have time to understand it.
+
+The room exploded. Every window at the front of the classroom shattered at once. The shockwave threw me and my chair into the wall, knocked the air from my lungs, and left nothing in my ears but a hard, bright whine.
+
+Outside, a figure hung above the playground, wrapped in white light. Wind twisted around him. When he raised a hand, hairline cracks ran across the school building.
+
+This could not be real.
+
+But the broken MP3 player at my feet and the earbud cord still looped around my wrist told me otherwise.
+
+Someone was crying near the back door. Someone else was shouting for help. That was enough to wake me up.
+
+Run.
+
+I forced my way into the corridor. It was worse there: dust, glass, a broken broadcast system hissing with static, students stumbling down the stairs or crouching against the walls.
+
+Then the voice came again, closer this time, as if it were whispering directly into my ear.
+
+【Word of Power: Void】
+
+The floor disappeared.
+
+I fell into darkness. Light, screams, blood, the corridor, that figure in the sky—everything vanished before I could catch hold of it. My last stupid thought was that class had still had thirteen minutes left.
+
+…
+
+When I opened my eyes again, a failing fluorescent tube buzzed above me.
+
+I was lying on cold concrete. Mold, rust, and a faint sweetness like old blood hung in the air. The walls were gray and split with cracks. Old cardboard boxes and rusted shelves crowded the corners.
+
+Near my hand lay half a school badge, cracked down the middle. Farther away, a broken digital watch still counted seconds. A dark bloody handprint dragged toward the end of the corridor.
+
+Someone had been here. More than one person.
+
+I could not explain why, but I knew most of them had not found a way out.
+
+Years ago I had posted two unfinished stories online. Standing in this black, freezing corridor, I had the unpleasant feeling that this one would not forgive an unfinished ending.
+
+I made myself think of three things: where was I, how did I leave, and how did I stay alive until then?
+
+The light flickered. For one bright second, I saw a peeling metal sign on the wall.
+
+Kisaragi Apartments.
+
+The name made the question feel real: how was I supposed to leave this place?
+
+Someone had said that anyone who failed to find an exit in ten days would remain here forever. That left ten days.
+
+A soft sound came from the far end of the corridor. Close enough to recognize as a footstep. Someone—or something—dragged one foot, then stopped.
+
+I held my breath. The sound did not come again.
+
+But its echo was still behind me, and my heart would not slow down.`;
+
+export function getFixedOpeningNarrative(language: GameLanguage = "zh-CN"): string {
+  return language === "en-US" ? FIXED_OPENING_NARRATIVE_EN : FIXED_OPENING_NARRATIVE;
+}
+
 /**
  * 开局系统局：触发首回合 DM JSON；固定长文已由前端展示，**首轮 options 必须由本请求产出**（非空四条）。
  * 与 `isOpeningSystemUserMessage` 判定同步；服务端据此注入首轮承接约束。
@@ -100,7 +176,18 @@ export const OPENING_SYSTEM_PROMPT =
   "其余键按常规模板合理默认：is_action_legal:true，sanity_damage:0，is_death:false，consumes_time:true，consumed_items:[]，player_location:\"B1_SafeZone\"，bgm_track:\"bgm_b1_daily\" 等。" +
   "禁止输出空数组作为 options；禁止省略 options 键。";
 
+export const OPENING_SYSTEM_PROMPT_EN =
+  "[Opening · first-turn DM request] The client has already shown a fixed first-person English opening: a classroom collapses into Kisaragi Apartments near B1, a flickering light, an old bloody handprint, and footsteps in a corridor. You are the narrative lead, not a system initializer. The player is a student thrown through the rift at the start of the month. Output exactly one JSON object. " +
+  "narrative may be a single period or 1–3 very short English sentences continuing the fixed ending (headache, heartbeat, footsteps in darkness, or the ten-day exit); do not recap the classroom or begin an unrelated scene. " +
+  "options must be exactly four non-empty, distinct English first-person actionable strings. Spread them across exploring, approaching someone present, checking personal condition, and observing danger or exits. Do not use a fixed template, force a named character encounter, or start with a grand cross-floor objective. " +
+  "Use sensible defaults for remaining fields: is_action_legal:true, sanity_damage:0, is_death:false, consumes_time:true, consumed_items:[], player_location:\"B1_SafeZone\", bgm_track:\"bgm_b1_daily\". Never omit options or return an empty options array.";
+
+export function getOpeningSystemPrompt(language: GameLanguage = "zh-CN"): string {
+  return language === "en-US" ? OPENING_SYSTEM_PROMPT_EN : OPENING_SYSTEM_PROMPT;
+}
+
 /** 与 route / 客户端首轮判定对齐（trim 后全等） */
 export function isOpeningSystemUserMessage(userContent: string): boolean {
-  return String(userContent ?? "").trim() === OPENING_SYSTEM_PROMPT.trim();
+  const normalized = String(userContent ?? "").trim();
+  return normalized === OPENING_SYSTEM_PROMPT.trim() || normalized === OPENING_SYSTEM_PROMPT_EN.trim();
 }

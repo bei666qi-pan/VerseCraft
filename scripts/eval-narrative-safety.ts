@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import {
   evaluateNarrativeSafetyCase,
@@ -38,7 +39,7 @@ function parseCli(): CliOptions {
 }
 
 function loadCases(): NarrativeSafetyEvalCase[] {
-  return JSON.parse(require("fs").readFileSync(defaultCasesPath, "utf8")) as NarrativeSafetyEvalCase[];
+  return JSON.parse(readFileSync(defaultCasesPath, "utf8")) as NarrativeSafetyEvalCase[];
 }
 
 async function runCase(

@@ -15,6 +15,7 @@ import type { ControlPreflightResult } from "@/lib/playRealtime/controlPreflight
 import type { EnhanceAfterMainStreamResult } from "@/lib/playRealtime/narrativeEnhancement";
 import type { PlayerControlPlane, PlayerRuleSnapshot } from "@/lib/playRealtime/types";
 import type { NarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
+import type { GameLanguage } from "@/lib/i18n/language";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import {
@@ -508,6 +509,7 @@ async function runOptionsOnlyAiOnce(args: {
   signal?: AbortSignal;
   temperature: number;
   systemExtra?: string;
+  outputLanguage?: GameLanguage;
   timeoutMs: number;
   maxTokens?: number;
 }): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
@@ -516,7 +518,9 @@ async function runOptionsOnlyAiOnce(args: {
     content: [
       "你是互动叙事平台的行动选项主笔助手，任务是在正文生成之后，为玩家实时生成下一步可点击行动选项。",
       "你必须只输出一个 JSON 对象，形如：{\"options\":[\"...\",\"...\",\"...\",\"...\"]}。",
-      "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
+      args.outputLanguage === "en-US"
+        ? "Strict requirements: exactly 4 options, written in English; each is a distinct first-person action sentence of 2–8 words and at most 40 characters, grounded in the current story and player state."
+        : "严格要求：options 恰好 4 条，中文简体，每条 5–20 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
       [
         "四条必须彼此差异明显，禁止四条都变成同义弱变化（例如都以“我先看看/我先观察/我先确认”开头）。",
         "你必须让四条在行动类型上分化，并尽量覆盖以下至少三类：",
@@ -603,6 +607,8 @@ export async function generateOptionsOnlyFallback(args: {
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
   signal?: AbortSignal;
   systemExtra?: string;
+  /** Player-facing option language. Omitted callers preserve the legacy Chinese default. */
+  outputLanguage?: GameLanguage;
   /**
    * Hard budget wall-clock for the entire fallback tool.
    * When hit, skip upstream calls and return failure; callers must not synthesize visible options.
@@ -743,6 +749,7 @@ export async function generateOptionsOnlyFallback(args: {
     ...args,
     temperature: 0.4,
     systemExtra: args.systemExtra,
+    outputLanguage: args.outputLanguage,
     timeoutMs: firstTimeoutMs,
     signal: withBudgetSignal(firstTimeoutMs),
     maxTokens: 640,
@@ -758,7 +765,9 @@ export async function generateOptionsOnlyFallback(args: {
         temperature: 0.35,
         systemExtra: [
           args.systemExtra ?? "",
-          "Retry because the previous options-only model call did not produce any usable action option. Output only the JSON object with exactly four first-person Chinese action options.",
+          args.outputLanguage === "en-US"
+            ? "Retry because the previous options-only model call did not produce usable actions. Output only JSON with exactly four first-person English action options."
+            : "上一轮没有生成可用行动。只输出 JSON 对象，且必须含恰好四条第一人称简体中文行动选项。",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -792,7 +801,9 @@ export async function generateOptionsOnlyFallback(args: {
       temperature: 0.35,
       systemExtra: [
         args.systemExtra ?? "",
-        "Retry because the previous options-only model call returned no usable JSON. Output only the JSON object with exactly four first-person Chinese action options.",
+        args.outputLanguage === "en-US"
+          ? "Retry because the previous options-only model call returned no usable JSON. Output only JSON with exactly four first-person English action options."
+          : "上一轮没有返回可用 JSON。只输出 JSON 对象，且必须含恰好四条第一人称简体中文行动选项。",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -904,6 +915,7 @@ async function runDecisionOnlyAiOnce(args: {
   signal?: AbortSignal;
   temperature: number;
   systemExtra?: string;
+  outputLanguage?: GameLanguage;
   timeoutMs: number;
 }): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const system: ChatMessage = {
@@ -911,7 +923,9 @@ async function runDecisionOnlyAiOnce(args: {
     content: [
       "你是互动叙事平台的决策选项主笔助手，任务是在正文生成之后，为玩家生成关键节点的决策选项。",
       "你必须只输出一个 JSON 对象，形如：{\"decision_options\":[\"...\",\"...\"]}。",
-      "严格要求：decision_options 只能有 2–4 条，中文简体，每条 5–24 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
+      args.outputLanguage === "en-US"
+        ? "Strict requirements: decision_options must contain 2–4 distinct English first-person action sentences, each 2–8 words and at most 40 characters, grounded in the current story and player state."
+        : "严格要求：decision_options 只能有 2–4 条，中文简体，每条 5–24 字，第一人称行动句，不重复，贴合当前剧情与玩家状态。",
       "这 2–4 条必须真正分叉后果，不允许换皮同义句，不允许只是不同措辞的同一个行动。",
       "禁止把选项写成 UI/面板/资料簿操作，例如“查看灵感手记”“检查背包”“查看仓库/成就”“打开武器栏/游戏指南”“打开任务/属性/菜单”“使用道具”。",
       "禁止输出任何解释、禁止输出 markdown、禁止输出代码块、禁止输出额外字段。",
@@ -962,6 +976,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
   signal?: AbortSignal;
   systemExtra?: string;
+  outputLanguage?: GameLanguage;
   /** See `generateOptionsOnlyFallback.budgetMs`. */
   budgetMs?: number;
 }): Promise<{ ok: true; decision_options: string[] } | { ok: false; reason: string }> {
@@ -1013,6 +1028,7 @@ export async function generateDecisionOptionsOnlyFallback(args: {
     ...args,
     temperature: 0.35,
     systemExtra: args.systemExtra,
+    outputLanguage: args.outputLanguage,
     timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs,
     signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt1TimeoutMs),
   });
@@ -1028,7 +1044,13 @@ export async function generateDecisionOptionsOnlyFallback(args: {
   const second = await runDecisionOnlyAiOnce({
     ...args,
     temperature: 0.6,
-    systemExtra: [args.systemExtra ?? "", "本次必须输出 2–4 条 decision_options，至少 2 条。"].filter(Boolean).join("\n"),
+    systemExtra: [
+      args.systemExtra ?? "",
+      args.outputLanguage === "en-US"
+        ? "This time return 2–4 decision_options, with at least 2 usable options."
+        : "本次必须输出 2–4 条 decision_options，至少 2 条。",
+    ].filter(Boolean).join("\n"),
+    outputLanguage: args.outputLanguage,
     timeoutMs: VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs,
     signal: withBudgetSignal(VC_WAITING.optionsOnlyFallbackAttempt2TimeoutMs),
   });

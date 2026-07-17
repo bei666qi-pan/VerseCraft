@@ -153,6 +153,19 @@ test("dynamic suffix 不传 narrativeBudgetBlock 时保持兼容", () => {
   assert.ok(dyn.includes("ctx"));
 });
 
+test("dynamic suffix gives the selected response-language instruction first and final priority", () => {
+  const suffix = buildDynamicPlayerDmSystemSuffix({
+    languageInstruction: "[Response language] English only.",
+    memoryBlock: "memory",
+    playerContext: "context",
+    isFirstAction: false,
+    runtimePackets: "runtime",
+    controlAugmentation: "",
+  });
+  assert.ok(suffix.startsWith("[Response language] English only."));
+  assert.ok(suffix.endsWith("[Response language] English only."));
+});
+
 test("首回合与普通回合都可注入 lore", () => {
   const lore = "【RAG-Lore精简片段】\n- [rule] 示例规则";
   const first = buildDynamicPlayerDmSystemSuffix({
@@ -173,6 +186,19 @@ test("首回合与普通回合都可注入 lore", () => {
   assert.ok(normal.includes(lore));
   assert.ok(first.includes("首轮承接与行动选项"));
   assert.ok(!normal.includes("开局叙事强制约束"));
+});
+
+test("English first turn uses an English continuation constraint", () => {
+  const suffix = buildDynamicPlayerDmSystemSuffix({
+    languageInstruction: "[Response language] English only.",
+    memoryBlock: "",
+    playerContext: "ctx",
+    isFirstAction: true,
+    runtimePackets: "",
+    controlAugmentation: "",
+  });
+  assert.ok(suffix.includes("[First-turn continuation and actions]"));
+  assert.equal(suffix.includes("【首轮承接与行动选项"), false);
 });
 test("stable prefix keeps concrete narrative budget packet data out of the cacheable section", () => {
   __resetStablePlayerDmPrefixMemoForTests();

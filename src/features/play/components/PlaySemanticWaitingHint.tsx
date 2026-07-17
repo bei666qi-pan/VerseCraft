@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { useGameStore } from "@/store/useGameStore";
 
 export type PlaySemanticWaitingKind =
   | "explore"
@@ -16,7 +17,22 @@ export const PlaySemanticWaitingHint = memo(function PlaySemanticWaitingHint({
 }: {
   kind: PlaySemanticWaitingKind;
 }) {
-  const line =
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
+  const line = isEnglish
+    ? kind === "explore"
+      ? "Reading environmental clues / calibrating the scene…"
+      : kind === "dialogue"
+        ? "Tracing a shift in tone / weighing the reply…"
+        : kind === "combat"
+          ? "Checking action risk / resolving the threat…"
+          : kind === "use_item"
+            ? "Checking the item effect / aligning the outcome…"
+            : kind === "investigate"
+              ? "Focusing on a suspicious detail / shaping a usable clue…"
+              : kind === "meta"
+                ? "Syncing the game state / preparing the response…"
+                : "Interpreting your action / building the response…"
+    :
     kind === "explore"
       ? "正在检索环境线索 / 校准场景状态…"
       : kind === "dialogue"
@@ -37,4 +53,3 @@ export const PlaySemanticWaitingHint = memo(function PlaySemanticWaitingHint({
     </div>
   );
 });
-

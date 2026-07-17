@@ -1,6 +1,7 @@
 "use client";
 
-import { GAME_GUIDE_SECTIONS } from "../settingsCopy";
+import { GAME_GUIDE_SECTIONS, GAME_GUIDE_SECTIONS_EN } from "../settingsCopy";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 function OrnamentLine() {
   return (
@@ -12,8 +13,10 @@ function OrnamentLine() {
   );
 }
 
-export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function GameGuideModal({ open, onClose, language = "zh-CN" }: { open: boolean; onClose: () => void; language?: GameLanguage }) {
   if (!open) return null;
+  const isEnglish = language === "en-US";
+  const sections = isEnglish ? GAME_GUIDE_SECTIONS_EN : GAME_GUIDE_SECTIONS;
   return (
     <div
       data-testid="game-guide-modal"
@@ -31,10 +34,10 @@ export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () =
             onClick={onClose}
             className="absolute right-0 top-1 z-10 rounded-full border border-[#d8d1c6] bg-vc-paper-bright px-4 py-2 vc-reading-serif text-[17px] leading-none text-[#174d46] shadow-[0_6px_14px_rgba(73,63,51,0.1)] transition hover:bg-white active:scale-95"
           >
-            关闭
+            {isEnglish ? "Close" : "关闭"}
           </button>
           <h2 id="game-guide-title" className="pointer-events-none vc-reading-serif text-center text-[42px] font-semibold leading-none text-[#174d46]">
-            游戏指南
+            {isEnglish ? "Game guide" : "游戏指南"}
           </h2>
           <div className="mt-6">
             <OrnamentLine />
@@ -44,7 +47,7 @@ export function GameGuideModal({ open, onClose }: { open: boolean; onClose: () =
             className="mt-5 max-h-[66vh] overflow-y-auto rounded-[16px] border border-[#d8d1c6] bg-vc-paper-bright px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] [scrollbar-color:#8fa79f_#eee8df] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#8fa79f] [&::-webkit-scrollbar-track]:bg-[#eee8df]"
           >
             <div className="divide-y divide-[#ded8ce]">
-              {GAME_GUIDE_SECTIONS.map((section) => (
+              {sections.map((section) => (
                 <section key={section.id} className="py-5 first:pt-0 last:pb-0">
                   <h3 className="vc-reading-serif text-[25px] font-semibold leading-tight text-[#174d46]">
                     {section.index} | {section.title}

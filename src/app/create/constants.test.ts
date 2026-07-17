@@ -34,6 +34,13 @@ test("create personality validation accepts 2-6 Chinese characters only", () => 
   assert.equal(isValidCreatePersonality("过于冷静谨慎的人"), false);
 });
 
+test("create personality validation supports English profiles in English mode", () => {
+  assert.equal(isValidCreatePersonality("Calm", "en-US"), true);
+  assert.equal(isValidCreatePersonality("Very careful", "en-US"), true);
+  assert.equal(isValidCreatePersonality("冷静", "en-US"), false);
+  assert.equal(isValidCreatePersonality("too-many-letters-for-a-single-personality", "en-US"), false);
+});
+
 test("create talent list contains six choices", () => {
   assert.equal(TALENTS.length, 6);
 });

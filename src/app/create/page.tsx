@@ -4,8 +4,8 @@ import { unwrapPageDynamicOnServer } from "@/lib/next/pageDynamicProps";
 import { CreateCharacterForm } from "./CreateCharacterForm";
 
 export const metadata: Metadata = {
-  title: "角色创建",
-  description: "分配属性、选择天赋，塑造将踏入异常公寓的角色。",
+  title: "文界工坊 VerseCraft · 角色创建 / Character Creation",
+  description: "分配属性并选择天赋，进入异变公寓。 / Choose attributes and a talent before entering the strange apartment.",
 };
 
 export default async function CreatePage(props: AppPageDynamicProps) {

@@ -110,11 +110,14 @@ const StreamPanel = memo(function StreamPanel({
   waitUxSecondaryLine?: string | null;
   streamStalledHintOn?: boolean;
 }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   if (!isStreamVisualActive) return null;
   const primaryThinkingLine =
     waitUxPrimaryLine && waitUxPrimaryLine.trim().length > 0
       ? waitUxPrimaryLine.trim()
-      : "正在继续处理你的行动";
+      : isEnglish
+        ? "Continuing with your action"
+        : "正在继续处理你的行动";
   const useLegacySemanticHint =
     !waitUxSecondaryLine &&
     (!waitUxPrimaryLine || waitUxPrimaryLine.trim().length === 0) &&
@@ -155,7 +158,7 @@ const StreamPanel = memo(function StreamPanel({
           {streamStalledHintOn ? (
             <div className="flex items-center gap-2 text-[12px] text-[#8b8a84]">
               <VcSpinner size={20} strokeWidth={1.5} tone="neutral" className="shrink-0" />
-              内容仍在继续形成
+              {isEnglish ? "The response is still taking shape" : "内容仍在继续形成"}
             </div>
           ) : null}
           {smoothComplete ? <div className="pt-2" /> : null}
@@ -172,15 +175,16 @@ const ChatQueuePanel = memo(function ChatQueuePanel({
   state: ChatQueuePanelState;
   onCancel?: () => void;
 }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   if (!state.active || state.status === "idle" || state.status === "cancelled") return null;
   const positionText =
     typeof state.position === "number" && Number.isFinite(state.position)
-      ? `你前面还有 ${Math.max(0, state.position)} 人`
-      : "正在确认你的位置";
+      ? isEnglish ? `${Math.max(0, state.position)} people are ahead of you` : `你前面还有 ${Math.max(0, state.position)} 人`
+      : isEnglish ? "Confirming your place in line" : "正在确认你的位置";
   const etaText =
     typeof state.etaSeconds === "number" && Number.isFinite(state.etaSeconds)
-      ? `预计等待约 ${Math.max(1, Math.ceil(state.etaSeconds))} 秒`
-      : "预计等待时间正在计算";
+      ? isEnglish ? `Estimated wait: ${Math.max(1, Math.ceil(state.etaSeconds))} seconds` : `预计等待约 ${Math.max(1, Math.ceil(state.etaSeconds))} 秒`
+      : isEnglish ? "Calculating wait time" : "预计等待时间正在计算";
   const running = state.status === "ready" || state.status === "running";
   const terminal = state.status === "failed" || state.status === "expired" || state.status === "rejected";
   if (running && !state.wasQueued) return null;
@@ -198,11 +202,11 @@ const ChatQueuePanel = memo(function ChatQueuePanel({
             <>
               <p className="text-xs text-[#5f756f]">{positionText}</p>
               <p className="text-xs text-[#7e7b70]">{etaText}</p>
-              <p className="text-xs text-[#8b8a84]">不用重复提交，轮到后会自动继续。</p>
+              <p className="text-xs text-[#8b8a84]">{isEnglish ? "No need to submit again; your turn will continue automatically." : "不用重复提交，轮到后会自动继续。"}</p>
             </>
           ) : null}
           {terminal && state.retryAfterSeconds ? (
-            <p className="text-xs text-[#7e7b70]">可稍等约 {Math.max(1, Math.ceil(state.retryAfterSeconds))} 秒后再试。</p>
+            <p className="text-xs text-[#7e7b70]">{isEnglish ? `Try again in about ${Math.max(1, Math.ceil(state.retryAfterSeconds))} seconds.` : `可稍等约 ${Math.max(1, Math.ceil(state.retryAfterSeconds))} 秒后再试。`}</p>
           ) : null}
         </div>
         {!terminal && onCancel ? (
@@ -212,7 +216,7 @@ const ChatQueuePanel = memo(function ChatQueuePanel({
             onClick={onCancel}
             className="shrink-0 rounded-[6px] border border-[#d7d1bd] px-2 py-1 text-xs text-[#5f756f]"
           >
-            取消排队
+            {isEnglish ? "Cancel" : "取消排队"}
           </button>
         ) : null}
       </div>
@@ -278,6 +282,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
+  const isEnglish = useGameStore((s) => s.language) === "en-US";
   const conflictFeedback = useGameStore((s) => selectTurnResultState(s).conflictTurnFeedback);
   const showConflictWhisper = getClientConflictFeedbackV1Enabled() && Boolean(conflictFeedback) && !streamOn;
   const bottomSpaceVar =
@@ -309,7 +314,7 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
             {openingAiBusy ? (
               <div className="mt-4 flex items-center gap-2 text-sm text-[#4f706a]">
                 <VcSpinner size={24} strokeWidth={1.6} className="shrink-0" />
-                选项正在由主笔实时推演…
+                {isEnglish ? "The narrator is working out your next actions…" : "选项正在由主笔实时推演…"}
               </div>
             ) : null}
           </div>

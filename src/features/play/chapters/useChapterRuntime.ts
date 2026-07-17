@@ -18,6 +18,7 @@ import { useGameStore } from "@/store/useGameStore";
 
 export function useChapterRuntime() {
   const rawChapterState = useGameStore((s) => s.chapterState);
+  const language = useGameStore((s) => s.language);
   const enterNextChapterAction = useGameStore((s) => s.enterNextChapter);
   const reviewChapterAction = useGameStore((s) => s.reviewChapter);
   const returnToActiveChapterAction = useGameStore((s) => s.returnToActiveChapter);
@@ -47,9 +48,9 @@ export function useChapterRuntime() {
     activeProgress,
     pending,
     isReviewing: Boolean(chapterState.reviewChapterId),
-    headerTitle: formatChapterTitle(displayedDefinition, chapterState),
-    displayedTitle: getChapterDisplayName(displayedDefinition, chapterState),
-    activeTitle: getChapterDisplayName(activeDefinition, chapterState),
+    headerTitle: formatChapterTitle(displayedDefinition, chapterState, language),
+    displayedTitle: getChapterDisplayName(displayedDefinition, chapterState, language),
+    activeTitle: getChapterDisplayName(activeDefinition, chapterState, language),
     nextDefinition: getChapterDefinition(pending?.definition.nextChapterId),
     previousDefinition: getChapterDefinition(displayedDefinition.previousChapterId),
     enterNextChapter: enterNextChapterAction,

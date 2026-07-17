@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { VcSpinner } from "@/features/play/components/VcSpinner";
 import { mobileReadingTheme } from "../theme";
 import type { MobileOptionsEmptyStateProps } from "../types";
+import { useGameStore } from "@/store/useGameStore";
 
 const STAGE_PROGRESS: Record<NonNullable<MobileOptionsEmptyStateProps["stage"]>, number> = {
   idle: 8,
@@ -24,10 +25,11 @@ const STAGE_INDEX: Record<NonNullable<MobileOptionsEmptyStateProps["stage"]>, nu
 };
 
 const STAGE_LABELS = ["分析局势", "判断影响", "生成选项"] as const;
+const STAGE_LABELS_EN = ["Reading the scene", "Weighing consequences", "Generating actions"] as const;
 
-function StageLabels({ activeIndex }: { activeIndex: number }) {
+function StageLabels({ activeIndex, labels }: { activeIndex: number; labels: readonly string[] }) {
   const nodes: ReactNode[] = [];
-  STAGE_LABELS.forEach((label, index) => {
+  labels.forEach((label, index) => {
     nodes.push(
       <span key={label} className={index <= activeIndex ? "text-[#0f6a60]" : "text-[#9a948b]"}>
         {label}
@@ -45,6 +47,7 @@ function StageLabels({ activeIndex }: { activeIndex: number }) {
 }
 
 export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle" }: MobileOptionsEmptyStateProps) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   const safeProgress = Math.max(6, Math.min(100, progress ?? STAGE_PROGRESS[stage] ?? 8));
   const activeIndex = STAGE_INDEX[stage] ?? 0;
 
@@ -74,10 +77,10 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
               data-testid="mobile-options-loading-title"
               className="vc-reading-serif w-full whitespace-nowrap text-center text-[clamp(1.28rem,5.1vw,2.05rem)] font-semibold leading-none text-[#0f6a60]"
             >
-              正在整理可选行动
+              {isEnglish ? "Preparing actions" : "正在整理可选行动"}
             </div>
             <div className="vc-reading-serif mt-5 grid w-full grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-1.5 text-center text-[clamp(0.78rem,3.05vw,1rem)] text-[#0f6a60] min-[390px]:mt-6 min-[390px]:gap-2.5">
-              <StageLabels activeIndex={activeIndex} />
+              <StageLabels activeIndex={activeIndex} labels={isEnglish ? STAGE_LABELS_EN : STAGE_LABELS} />
             </div>
             <div className="relative mt-4 h-px w-[92%] bg-[#d8d1c6] min-[390px]:mt-5">
               <div
@@ -108,7 +111,7 @@ export function MobileOptionsEmptyState({ busy, message, progress, stage = "idle
 
   return (
     <div data-testid="mobile-options-empty-fallback" className={mobileReadingTheme.optionsEmptyState} role="status">
-      {message?.trim() || "正在重新整理可选行动…"}
+      {message?.trim() || (isEnglish ? "Refreshing action options…" : "正在重新整理可选行动…")}
     </div>
   );
 }

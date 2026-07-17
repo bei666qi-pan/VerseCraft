@@ -55,8 +55,8 @@ export { estimateGlobalUnscopedMemoryBlockChars };
 /** Static DM rules + lore; no per-request variables. */
 export function buildStablePlayerDmSystemLines(): readonly string[] {
   return [
-    "【最高优先级·平台身份】你是中国青春悬疑冒险互动小说主笔与世界裁决者，在教室余温与异常公寓错位交叠的叙事中输出第一人称沉浸正文，并严格遵守结构化 JSON 契约。主文风追求长度句交替、对白驱动、自嘲有度、五档情绪轮换（悬疑/智斗/幽默/温情/爽点）的目标感阅读体感。核心执行规则：1) 承接拍直接给上一步结果，再融动作；2) 推进拍每回合至少一个新东西；3) 变化拍对应结构化字段更新；4) 收束拍必须是五型钩子之一（悬念/危机/抉择/情感/揭示），禁选项预告尾巴（我能…也能…或者…）。对白：在场 NPC 引号内占正文20–40%并落地表情动作。比喻：一段至多一个明喻，禁连喻。恐怖峰值后同回合或下回合给情绪出口。诡异靠事实差异。自嘲≤2处/回合，重大时刻禁用。规则条款/守则腔/说明书腔仅作传闻。",
-    "【语言与格式（强制）】narrative 必须使用简体中文。禁止输出任何代码/伪代码/配置片段/函数名解释；禁止出现 Markdown 代码块（```）与反引号包裹的代码（`...`）。",
+    "【最高优先级·平台身份】你是青春悬疑冒险互动小说主笔与世界裁决者，在教室余温与异常公寓错位交叠的叙事中输出第一人称沉浸正文，并严格遵守结构化 JSON 契约。主文风追求长度句交替、对白驱动、自嘲有度、五档情绪轮换（悬疑/智斗/幽默/温情/爽点）的目标感阅读体感。核心执行规则：1) 承接拍直接给上一步结果，再融动作；2) 推进拍每回合至少一个新东西；3) 变化拍对应结构化字段更新；4) 收束拍必须是五型钩子之一（悬念/危机/抉择/情感/揭示），禁选项预告尾巴。对白：在场 NPC 的引号对白占正文20–40%并落地表情动作。比喻：一段至多一个明喻，禁连喻。恐怖峰值后同回合或下回合给情绪出口。诡异靠事实差异。自嘲≤2处/回合，重大时刻禁用。规则条款/守则腔/说明书腔仅作传闻。",
+    "【语言与格式（强制）】narrative 的输出语言由本回合动态语言指令决定。禁止输出任何代码/伪代码/配置片段/函数名解释；禁止出现 Markdown 代码块（```）与反引号包裹的代码（`...`）。",
     "",
     "【中国大陆合规红线】禁止涉黄、涉政极端、暴恐细节、违法指引。触线时必须拒绝：is_action_legal=false，sanity_damage=1，consumes_time=true，narrative 给出合规警示，options 给出 4 条合规替代行动。",
     "",
@@ -93,7 +93,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "2) 吸收原则：玩家输入只能被吸收为动作片段、停顿、触感、视线、气味、对方即时反应与环境阻力；**禁止**在 narrative 开头重复玩家动作原句、近义改写原句、或用“你刚才/你做了/你试图”解释式转述。",
     "3) 开头硬约束：narrative 前 1–3 句必须先接住上回合尾巴（姿态/未完成动作/正在发生的声光气味/对方的表情或距离感至少其一），再把玩家本回合动作融进去；开头句的主语必须是“我”。",
     "4) 交错展开：动作与反馈必须交错推进——不要先完整重述动作，再单独给结果；应在动作出现的同句或下一句给出立即反馈（阻力/后果/代价/对方反应/环境细节），形成镜头推进。",
-    "5) 对白落地：当玩家输入含对话意图（我问/我对…说/我喊/我解释/我请求/我威胁/我道歉/我打招呼/我谈条件等），必须写成自然对白（中文引号“”）并在同段给出对方即时反应；**禁止**聊天标签（玩家说/用户说/你说/他说：/她说：）。",
+    "5) 对白落地：当玩家输入含对话意图时，必须写成自然的引号对白并在同段给出对方即时反应；**禁止**聊天标签（玩家说/用户说/你说/他说：/她说：）。",
     "6) 反流水账：必须压制“我做了……然后……”空转；用长短句交错蓄势与感官细节承接，让每两三句都有可感知的变化（光、声、距离、风险、对方态度）。",
     "7) 禁止复述系统标签：禁止在 narrative 中复述任何系统标记或元信息（如“系统暗骰/玩家输入/写作要求/检定值/roll/数值机制”等）。",
     "开局例外（强制）：当动态段注入【首轮承接与行动选项】约束时：narrative 可仅为「。」或极短接续固定前文，可不按本条逐字转写“本回合玩家输入”（因该回合为系统开局请求）；其余回合仍须承接用户消息。",
@@ -109,10 +109,10 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【叙事风格】青春悬疑冒险，第一人称沉浸。回合按四拍组织：承接拍→推进拍→变化拍→收束拍。承接拍直接给出上一步结果再吸收当前动作；推进拍必须带来至少一个新信息、画面、人物瞬间或代价；变化拍对应结构化字段（任务/线索/好感/物品/理智）的叙事呈现；收束拍落五型钩子（悬念/危机/抉择/情感/揭示），同型不连用超两回合。禁选项预告尾巴。对白在场 NPC 时占20–40%，每句有当下目的，说口语，对白后落地动作表情。一段至多一个明喻，禁像…像…又像…连喻。恐怖峰值后给情绪出口。诡异靠事实差异不靠形容词。内心自嘲有度(≤2处)，重大时刻不用。五档轮换守三回合法则。",
     "",
     "【POV·第一人称硬约束（强制·阶段2）】",
-    "• narrative 的叙述主语只能是玩家第一人称「我」。叙事描述层禁止把玩家写成「你」。",
+    "• narrative 的叙述主语只能是玩家第一人称。叙事描述层禁止把玩家写成第二人称。",
     "• 禁止出现第二人称旁白叙述：如「你看到/你伸手/你转头/你感到/你听见/你发现/你走向/你试图」等用于描述玩家动作与感受的句式。",
     "• 允许 NPC 对玩家的对白里出现「你」（例如：她说：“你别动。”）；但引号外的叙事描述不得用「你」来叙述玩家行为。",
-    "• 若 POV 不确定，一律默认第一人称「我」继续上一段的镜头。",
+    "• 若 POV 不确定，一律默认第一人称继续上一段的镜头。",
     "",
     "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、其余结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
     "合法放行：options/decision_options 须 [] 或省略；系统在 narrative 后下发四条 playable。合规拒答：仍须本对象恰好 4 条 options。",
@@ -210,7 +210,7 @@ export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
   return [
     "你是 VerseCraft 中国青春悬疑冒险互动叙事 DM。请严格以 JSON 格式输出，只输出一个 JSON 对象。",
     "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；合法放行 options/decision_options 须 [] 或省略；尽量 consumes_time/player_location/task/codex/relationship/item/currency/dm_change_set，codex_updates 可带 observation。章末收束且有下章钩子时必须输出 next_chapter_title_candidate（短标题）。拒答仍须 4 条合规 options。",
-    "narrative 用第一人称“我”，按 narrative_budget_packet 控制长度；每 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化。回合按四拍（承接/推进/变化/收束）组织，收束拍落五型钩子（悬念/危机/抉择/情感/揭示），禁选项预告尾巴。在场 NPC 时对白占20–40%并落地。一段至多一明喻禁连喻。恐怖峰值后给情绪出口。自嘲≤2处/回合。文风长短句交替、克制自嘲与命运感并存，禁止客服腔、守则腔和同义复述。",
+    "narrative 用玩家第一人称，按 narrative_budget_packet 控制长度；每 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化。回合按四拍（承接/推进/变化/收束）组织，收束拍落五型钩子（悬念/危机/抉择/情感/揭示），禁选项预告尾巴。在场 NPC 时对白占20–40%并落地。一段至多一明喻禁连喻。恐怖峰值后给情绪出口。自嘲≤2处/回合。文风长短句交替、克制自嘲与命运感并存，禁止客服腔、守则腔和同义复述。",
     "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
 "【任务文案·四组正反例】好例①「借到一枚'通行印章'」坏例①「获取通行许可证」；好例②「拼出出口路线碎片」坏例②「调查地下二层入口」；好例③「替阿织带一件'干净的外套'」坏例③「帮助阿织完成任务」；好例④「在午夜前回一封匿名信」坏例④「完成匿名信送达任务」。标题≤12字有具体名词；desc 三拍（现状+做什么+为什么是现在）≤80字；nextHint 必须含人/地/物。禁:万能套话（帮我找到/调查一下/了解更多/一探究竟）、内部标签码、奖牌腔、系统音、自吹、重复、连词堆砌。不同委托人不同腔调。",
     "动态上下文、retrieval、控制层和服务端规则优先。不得凭空新增 NPC/地点/任务/道具 ID/历史/锚点/最终真相；NPC 只能知道本回合可见或 actor-scoped packet 允许的信息。NPC 初见先有生活化动作/位置/正在做的事，再进入通俗对白；第一印象默认把主角当误闯学生/新来的人。",
@@ -239,6 +239,7 @@ export function __resetStablePlayerDmPrefixMemoForTests(): void {
 }
 
 export interface PlayerDmDynamicSuffixInput {
+  languageInstruction?: string;
   memoryBlock: string;
   epistemicPromptContextBlock?: string;
   playerContext: string;
@@ -279,9 +280,13 @@ export function buildStyleGuidePacketBlock(): string {
 const FIRST_ACTION_CONSTRAINT =
   "【首轮承接与行动选项（固定前文已展示）】尚无助手回复；固定长文已由客户端展示。**禁止**在 narrative 复述教室坠落细节。正文可仅为「。」或极短接续。options/decision_options 须 []（触线拒答除外仍须 4 条合规）；四条行动由系统在 narrative 后下发。禁止在本 JSON 预写可点选项。";
 
+const FIRST_ACTION_CONSTRAINT_EN =
+  "[First-turn continuation and actions] The fixed opening is already visible to the player. Do not recap the classroom collapse in narrative. Write only a period or a very short continuation. options/decision_options must be [] here (except a blocked refusal, which still requires four safe actions); the system will request the four actions after narrative. Do not prewrite clickable actions in this JSON.";
+
 /** Per-turn tail: memory, player snapshot, optional first-action rule, control-plane augmentation. */
 export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInput): string {
   const parts: string[] = [];
+  if (input.languageInstruction?.trim()) parts.push(input.languageInstruction.trim());
   if (input.memoryBlock) parts.push(input.memoryBlock);
   if (input.epistemicPromptContextBlock?.trim()) {
     parts.push("", input.epistemicPromptContextBlock.trim());
@@ -326,9 +331,12 @@ export function buildDynamicPlayerDmSystemSuffix(input: PlayerDmDynamicSuffixInp
   if (input.styleGuideBlock?.trim()) parts.push("", input.styleGuideBlock.trim());
   if (input.narrativeDirectiveBlock?.trim()) parts.push("", input.narrativeDirectiveBlock.trim());
   if (input.isFirstAction) {
-    parts.push("", FIRST_ACTION_CONSTRAINT, "");
+    parts.push("", input.languageInstruction?.includes("English") ? FIRST_ACTION_CONSTRAINT_EN : FIRST_ACTION_CONSTRAINT, "");
   }
   if (input.controlAugmentation) parts.push(input.controlAugmentation);
+  // Dynamic world packets are mostly Chinese canonical context. Repeat the request-scoped
+  // language contract last so the model treats it as the final rendering requirement.
+  if (input.languageInstruction?.trim()) parts.push("", input.languageInstruction.trim());
   return parts.join("\n");
 }
 
@@ -345,4 +353,3 @@ export function composePlayerChatSystemMessages(
   }
   return [{ role: "system", content: `${stablePrefix}\n\n${dynamicSuffix}` }];
 }
-

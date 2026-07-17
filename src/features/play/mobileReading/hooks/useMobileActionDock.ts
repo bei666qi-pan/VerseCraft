@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MAX_INPUT } from "../../playConstants";
+import { useGameStore } from "@/store/useGameStore";
 
 export function useMobileActionDock({
   chatBusy,
@@ -26,6 +27,7 @@ export function useMobileActionDock({
   talentLabel?: string | null;
   talentReady: boolean;
 }) {
+  const isEnglish = useGameStore((state) => state.language) === "en-US";
   const [submitFlash, setSubmitFlash] = useState(false);
   const flashTimerRef = useRef<number | null>(null);
 
@@ -41,15 +43,15 @@ export function useMobileActionDock({
   const canSubmitNow = !chatBusy && !isGuestDialogueExhausted && input.trim().length > 0;
   const talentButtonLabel = talentLabel
     ? talentReady
-      ? `发动天赋：${talentLabel}`
-      : `${talentLabel}${talentCooldownText ? `，${talentCooldownText}` : ""}`
-    : "暂无可发动天赋";
+      ? isEnglish ? `Use talent: ${talentLabel}` : `发动天赋：${talentLabel}`
+      : `${talentLabel}${talentCooldownText ? isEnglish ? ` · ${talentCooldownText}` : `，${talentCooldownText}` : ""}`
+    : isEnglish ? "No talent available" : "暂无可发动天赋";
   const statusText = inputError
     ? inputError
     : isGuestDialogueExhausted
-      ? (showRegisterPrompt ? "体验次数已耗尽。若你仍要继续行动，请注册或登录。" : "")
+      ? (showRegisterPrompt ? isEnglish ? "Your free turns are used. Register or sign in to keep playing." : "体验次数已耗尽。若你仍要继续行动，请注册或登录。" : "")
       : input.trim().length > MAX_INPUT
-        ? "文本过长：将被叙事拒绝。"
+        ? isEnglish ? "This action is too long for the narrator." : "文本过长：将被叙事拒绝。"
         : helperText;
 
   function submitWithFlash() {

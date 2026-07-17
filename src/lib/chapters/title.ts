@@ -1,4 +1,5 @@
 import type { ChapterDefinition, ChapterId, ChapterState, ChapterSummary } from "./types";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 const CHINESE_ORDER_LABELS: Record<number, string> = {
   1: "一",
@@ -96,9 +97,16 @@ export function getChapterStoredTitle(state: ChapterState | null | undefined, ch
 
 export function getChapterDisplayName(
   definition: ChapterDefinition | null | undefined,
-  state?: ChapterState | null
+  state?: ChapterState | null,
+  language: GameLanguage = "zh-CN"
 ): string {
-  if (!definition) return "暗月初醒";
+  if (!definition) return language === "en-US" ? "Dark Moon Awakens" : "暗月初醒";
+  if (language === "en-US") {
+    const englishSeeds: Record<number, string> = { 1: "Dark Moon Awakens", 2: "Echoes Beyond the Door" };
+    const stored = getChapterStoredTitle(state, definition.id);
+    if (stored && !/[\u4e00-\u9fff]/.test(stored) && !isWeakChapterBookmarkSnippet(stored)) return stored;
+    return englishSeeds[definition.order] ?? "";
+  }
   const storedRaw = getChapterStoredTitle(state, definition.id);
   const stored = storedRaw && !isWeakChapterBookmarkSnippet(storedRaw) ? storedRaw : null;
   if (stored) return stored;
@@ -108,9 +116,14 @@ export function getChapterDisplayName(
 
 export function formatChapterTitle(
   definition: ChapterDefinition | null | undefined,
-  state?: ChapterState | null
+  state?: ChapterState | null,
+  language: GameLanguage = "zh-CN"
 ): string {
-  if (!definition) return "第一章：暗月初醒";
+  if (!definition) return language === "en-US" ? "Chapter 1: Dark Moon Awakens" : "第一章：暗月初醒";
+  if (language === "en-US") {
+    const title = getChapterDisplayName(definition, state, language);
+    return title ? `Chapter ${definition.order}: ${title}` : `Chapter ${definition.order}`;
+  }
   const orderText = `第${toChineseChapterOrder(definition.order)}章`;
   const title = getChapterDisplayName(definition, state);
   return title ? `${orderText}：${title}` : orderText;
