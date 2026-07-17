@@ -33,6 +33,10 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
   assert.ok(routeContent.includes("AI_CHAT_RUNTIME_PACKET_MAX_CHARS"), "runtime packet budget must be configurable");
   assert.ok(routeContent.includes("Math.max(2_400"), "runtime packet budget must retain the authority-packet safety floor");
   assert.ok(routeContent.includes("finalOutputModeration"), "final output safety must be retained");
+  assert.ok(routeContent.includes("x-versecraft-output-language"), "outer SSE fallback must preserve requested display language");
+  assert.ok(routeContent.includes("language: validated.language"), "inner fallback payloads must preserve validated display language");
+  assert.ok(routeContent.includes("VERSECRAFT_ENABLE_FINAL_LANGUAGE_GUARD"), "mixed-language final output must have a guarded recovery path");
+  assert.ok(routeContent.includes("hasWrongGameplayTurnLanguage"), "final output must reject wrong-language narrative and choices");
   assert.ok(routeContent.includes("collectSafetyReport"), "Narrative Safety Kernel must stay on final path");
   assert.ok(routeContent.includes("lane_side_effect_applied"), "TurnLane side-effect telemetry must be retained");
   assert.ok(routeContent.includes("sideEffectPlan"), "route.ts must consume TurnLane sideEffectPlan");

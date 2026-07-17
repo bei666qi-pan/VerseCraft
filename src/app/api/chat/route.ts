@@ -38,12 +38,14 @@ import {
   generateMainReply,
   generateDecisionOptionsOnlyFallback,
   generateOptionsOnlyFallback,
+  localizeGameplayPresentation,
   repairNarrativeOnly,
   type EnhanceAfterMainStreamResult,
 } from "@/lib/ai/logicalTasks";
 import { resolvePlayerChatMaxTokensForNarrativeBudget } from "@/lib/ai/tasks/taskPolicy";
 import { buildControlAugmentationBlock } from "@/lib/playRealtime/augmentation";
-import { buildNarrativeLanguageInstruction, type GameLanguage } from "@/lib/i18n/language";
+import { buildNarrativeLanguageInstruction, normalizeGameLanguage, type GameLanguage } from "@/lib/i18n/language";
+import { hasWrongGameplayTurnLanguage } from "@/lib/i18n/gameplayPresentation";
 import {
   buildDynamicPlayerDmSystemSuffix,
   buildStyleGuidePacketBlock,
@@ -414,6 +416,11 @@ function hasAuthSessionCookie(headers: Headers): boolean {
 }
 
 const EARLY_STATUS_WRAPPER_HEADER = "x-versecraft-early-status-wrapper";
+const OUTPUT_LANGUAGE_HEADER = "x-versecraft-output-language";
+
+function requestedOutputLanguage(headers: Headers): GameLanguage {
+  return normalizeGameLanguage(headers.get(OUTPUT_LANGUAGE_HEADER));
+}
 
 function rebuildChatRequest(req: Request, requestId?: string, chatQueueId?: string | null): Request {
   const headers = new Headers(req.headers);
@@ -699,6 +706,7 @@ export async function POST(req: Request) {
     : createVerseCraftRequestId("chat");
   const queueGate = await resolveChatQueueGate(req, requestId);
   if (queueGate.response) return queueGate.response;
+  const outputLanguage = requestedOutputLanguage(req.headers);
 
   if (!envBoolean("AI_CHAT_ENABLE_EARLY_STATUS_WRAPPER", true)) {
     const internalReq = rebuildChatRequest(req, requestId, queueGate.queueId);
@@ -753,6 +761,7 @@ export async function POST(req: Request) {
                   kind: "site_unavailable",
                   requestId,
                   reason: "early_status_invalid_content_type",
+                  language: outputLanguage,
                 })}`
               )
             );
@@ -786,6 +795,7 @@ export async function POST(req: Request) {
                       kind: "site_unavailable",
                       requestId,
                       reason: "early_status_wrapper_failed",
+                      language: outputLanguage,
                     })}`
                   )
                 );
@@ -1015,6 +1025,7 @@ async function postChatInternal(req: Request) {
         kind: "site_busy",
         requestId,
         reason: `risk_control:${riskControl.reason}`,
+        language: validated.language,
       }),
     });
   }
@@ -2491,6 +2502,7 @@ async function postChatInternal(req: Request) {
       kind: "auth_or_config",
       requestId,
       reason: "keys_missing",
+      language: validated.language,
     });
     return new Response(
       `${sseText(
@@ -2520,6 +2532,7 @@ async function postChatInternal(req: Request) {
     kind: "site_unavailable",
     requestId,
     reason: "server_internal_generation_failed",
+    language: validated.language,
   });
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -2808,6 +2821,7 @@ async function postChatInternal(req: Request) {
         reason: hintFields.upstreamCode
           ? `ai_router:${first.code}:${hintFields.upstreamCode}`
           : `ai_router:${first.code}:${upstreamStatus || "unknown"}`,
+        language: validated.language,
       });
       try {
         await writeStatusFrame("finalizing", isUpstreamRateLimited ? "网站生成通道繁忙" : "网站连接暂时不稳定");
@@ -4758,6 +4772,66 @@ async function postChatInternal(req: Request) {
                 moderationBody = finalizePayload;
               }
             }
+          }
+
+          // The prompt is the primary language control, but a mixed-language
+          // upstream turn must never be committed to an English play surface.
+          // This exceptional final hook only translates already-resolved display
+          // copy; state deltas remain untouched. If translation fails, fail
+          // closed to a neutral English line and let the bounded options-only
+          // path restore choices on the next client tick.
+          if (
+            validated.language === "en-US" &&
+            envBoolean("VERSECRAFT_ENABLE_FINAL_LANGUAGE_GUARD", true) &&
+            hasWrongGameplayTurnLanguage(auditedResolved, validated.language)
+          ) {
+            const sourceOptions = Array.isArray(auditedResolved.decision_options) && auditedResolved.decision_options.length > 0
+              ? auditedResolved.decision_options
+              : Array.isArray(auditedResolved.options)
+                ? auditedResolved.options
+                : [];
+            const localized = await localizeGameplayPresentation({
+              narrative: String(auditedResolved.narrative ?? ""),
+              options: sourceOptions.filter((option): option is string => typeof option === "string"),
+              language: validated.language,
+              ctx: {
+                requestId,
+                userId,
+                sessionId,
+                path: "/api/chat",
+                tags: { phase: "final_language_guard" },
+              },
+              signal: pipelineAbort.signal,
+            });
+            if (localized.ok) {
+              auditedResolved = {
+                ...auditedResolved,
+                narrative: localized.value.narrative,
+                options: localized.value.options,
+                decision_options: localized.value.options,
+                _commit_flags: [
+                  ...(Array.isArray(auditedResolved._commit_flags)
+                    ? (auditedResolved._commit_flags as unknown[]).map(String)
+                    : []),
+                  "english_presentation_localized_v1",
+                ],
+              };
+            } else {
+              auditedResolved = {
+                ...auditedResolved,
+                narrative: "I pause at the edge of the scene and listen. The danger has not passed, so I need to choose my next move carefully.",
+                options: [],
+                decision_options: [],
+                _commit_flags: [
+                  ...(Array.isArray(auditedResolved._commit_flags)
+                    ? (auditedResolved._commit_flags as unknown[]).map(String)
+                    : []),
+                  `english_presentation_fallback_v1:${localized.reason}`,
+                ],
+              };
+            }
+            finalizePayload = JSON.stringify(auditedResolved);
+            moderationBody = finalizePayload;
           }
 
           if (outputAudit.verdict === "reject") {

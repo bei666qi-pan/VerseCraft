@@ -5,6 +5,24 @@ export type LocalizedGameplayPresentation = {
   options: string[];
 };
 
+export type LocalizedStoryEntry = {
+  index: number;
+  content: string;
+};
+
+/** Player-facing fields that appear in the play surface and must share its language. */
+export function hasWrongGameplayTurnLanguage(
+  turn: { narrative?: unknown; options?: unknown; decision_options?: unknown },
+  language: GameLanguage
+): boolean {
+  const texts = [
+    turn.narrative,
+    ...(Array.isArray(turn.options) ? turn.options : []),
+    ...(Array.isArray(turn.decision_options) ? turn.decision_options : []),
+  ];
+  return texts.some((text) => typeof text === "string" && hasWrongPlayerFacingLanguage(text, language));
+}
+
 function compactText(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -47,6 +65,48 @@ export function parseLocalizedGameplayPresentation(
   }
 
   return { ok: true, value: { narrative, options } };
+}
+
+/**
+ * Parse a bounded language-switch history batch. Indices are supplied by the
+ * client and must return one-for-one, so a late response can never overwrite
+ * a different log entry after a save changes.
+ */
+export function parseLocalizedStoryEntries(
+  raw: string,
+  language: GameLanguage,
+  expected: readonly LocalizedStoryEntry[]
+): { ok: true; value: LocalizedStoryEntry[] } | { ok: false; reason: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw ?? "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim());
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+  const entries = parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).entries)
+    ? (parsed as Record<string, unknown>).entries
+    : null;
+  if (!entries || entries.length !== expected.length) return { ok: false, reason: "entry_count_mismatch" };
+
+  const expectedIndexes = expected.map((entry) => entry.index);
+  const localized: LocalizedStoryEntry[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") return { ok: false, reason: "invalid_entry" };
+    const record = entry as Record<string, unknown>;
+    const index = Number(record.index);
+    const content = compactText(record.content, 6_000);
+    if (!Number.isInteger(index) || !expectedIndexes.includes(index) || !content) {
+      return { ok: false, reason: "invalid_entry" };
+    }
+    if (hasWrongPlayerFacingLanguage(content, language)) {
+      return { ok: false, reason: "english_contains_cjk" };
+    }
+    localized.push({ index, content });
+  }
+  if (new Set(localized.map((entry) => entry.index)).size !== expectedIndexes.length) {
+    return { ok: false, reason: "duplicate_entry_index" };
+  }
+  return { ok: true, value: localized.sort((a, b) => a.index - b.index) };
 }
 
 export function localizedCodexClassification(language: GameLanguage, type: "npc" | "anomaly" | null): string | null {

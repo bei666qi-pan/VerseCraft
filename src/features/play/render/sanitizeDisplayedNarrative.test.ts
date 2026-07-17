@@ -19,9 +19,21 @@ test("display sanitizer keeps normal narrative", () => {
   assert.equal(out.text, "你慢慢推开门，尘埃在光里浮起来。");
 });
 
+test("display sanitizer suppresses a wrong-language stream preview in English mode", () => {
+  const out = sanitizeDisplayedNarrative("我听见门后有脚步声。", "en-US");
+  assert.equal(out.blocked, true);
+  assert.equal(out.text, "");
+  assert.equal(sanitizeDisplayedNarrative("I hear footsteps behind the door.", "en-US").blocked, false);
+});
+
 test("display sanitizer filters protocol-like option text", () => {
   assert.equal(sanitizeDisplayedOptionText('{"is_action_legal":true}'), "");
   assert.equal(sanitizeDisplayedOptionText("我沿着走廊继续前进"), "我沿着走廊继续前进");
+});
+
+test("display sanitizer suppresses wrong-language options in English mode", () => {
+  assert.equal(sanitizeDisplayedOptionText("我沿着走廊继续前进", "en-US"), "");
+  assert.equal(sanitizeDisplayedOptionText("I continue along the corridor.", "en-US"), "I continue along the corridor.");
 });
 
 test("display sanitizer blocks screenshot-like mixed leakage sample", () => {

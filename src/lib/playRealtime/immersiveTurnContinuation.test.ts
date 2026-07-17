@@ -12,6 +12,14 @@ test("visible site fallback is reserved for real website or gateway failures", (
   assert.match(buildVisibleSiteFailureMessage("auth_or_config"), /网站|服务/);
 });
 
+test("English fallback copy never leaks Chinese when a live turn fails", () => {
+  const message = buildVisibleSiteFailureMessage("site_unavailable", "en-US");
+  const dm = JSON.parse(buildVisibleSiteFailureDmJson({ kind: "site_busy", requestId: "r-en", language: "en-US" }));
+  assert.doesNotMatch(message, /[\u3400-\u9fff\uf900-\ufaff]/);
+  assert.doesNotMatch(dm.narrative, /[\u3400-\u9fff\uf900-\ufaff]/);
+  assert.match(dm.narrative, /story service|try again/i);
+});
+
 test("internal story-chain fallback produces no player-visible narrative", () => {
   const dm = JSON.parse(buildInternalNoNarrativeDmJson({ requestId: "r1", reason: "validator_internal" }));
   assert.equal(dm.is_action_legal, true);

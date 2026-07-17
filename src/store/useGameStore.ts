@@ -697,6 +697,8 @@ export interface GameState extends IntegrityMetaState {
   setLanguage: (language: GameLanguage) => void;
   /** Replace only display copy after an explicit language switch; game state is untouched. */
   replaceLatestAssistantLog: (content: string) => void;
+  /** Replace exact timeline entries after a language switch; all game state stays untouched. */
+  replaceLogContents: (entries: Array<{ index: number; content: string }>) => void;
   /** Replace current translated choices without polluting duplicate-option history. */
   replaceCurrentOptions: (options: string[]) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
@@ -1374,6 +1376,22 @@ export const useGameStore = create<GameState>()(
             logs: (s.logs ?? []).map((entry, index) =>
               index === latestAssistantIndex ? { ...entry, content: nextContent } : entry
             ),
+          };
+        }),
+      replaceLogContents: (entries) =>
+        set((s) => {
+          const replacements = new Map(
+            (entries ?? [])
+              .filter((entry) => Number.isInteger(entry?.index) && entry.index >= 0 && typeof entry?.content === "string")
+              .map((entry) => [entry.index, entry.content.trim()] as const)
+              .filter(([, content]) => Boolean(content))
+          );
+          if (replacements.size === 0) return {};
+          return {
+            logs: (s.logs ?? []).map((entry, index) => {
+              const content = replacements.get(index);
+              return content ? { ...entry, content } : entry;
+            }),
           };
         }),
       replaceCurrentOptions: (options) =>
