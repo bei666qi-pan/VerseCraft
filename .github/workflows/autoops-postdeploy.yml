@@ -75,33 +75,10 @@ jobs:
         continue-on-error: true
         run: pnpm autoops:healthcheck -- --attempts 6 --timeout-ms 10000
 
-      - name: Create incident issue on failure
+      - name: Record postdeploy health failure without incident issue
         if: steps.gate.outputs.run == 'true' && steps.health.outcome != 'success'
         run: |
-          mkdir -p .ops/autoops/runtime
-          node - <<'NODE'
-          const fs = require("node:fs");
-          fs.writeFileSync(".ops/autoops/runtime/postdeploy-failure.json", JSON.stringify({
-            source: "github-actions",
-            alert_type: "app_health_failed",
-            severity: "critical",
-            resource_id: process.env.AUTOOPS_HEALTH_URL,
-            trace_id: process.env.GITHUB_RUN_ID,
-            created_at: new Date().toISOString()
-          }));
-          NODE
-          node scripts/autoops/create-incident-issue.mjs --payload-file .ops/autoops/runtime/postdeploy-failure.json
-
-      - name: Escalate postdeploy failure
-        if: steps.gate.outputs.run == 'true' && steps.health.outcome != 'success' && (github.event_name == 'push' || inputs.trigger_codex_on_failure == true)
-        run: |
-          node scripts/autoops/trigger-github-dispatch.mjs \
-            --event-type autoops-codex \
-            --source github-actions \
-            --type app_health_failed \
-            --severity critical \
-            --resource-id "${AUTOOPS_HEALTH_URL}" \
-            --trace-id "${GITHUB_RUN_ID}"
+          echo "::warning::Postdeploy health check failed; inspect this workflow run instead of creating an auto-ops issue."
 
       - name: Skip ordinary push
         if: steps.gate.outputs.run != 'true'

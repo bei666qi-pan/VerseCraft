@@ -79,18 +79,12 @@ jobs:
             echo "exit_code=0" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── Escalate health failure ──
-      - name: Dispatch runbook on health failure
+      # ── Health failures stay in workflow logs ──
+      # 短暂网络波动或 worker 的可恢复 degraded 状态不应重复创建 GitHub Issue。
+      - name: Record health failure without incident issue
         if: steps.health.outcome != 'success'
         run: |
-          pnpm exec node scripts/autoops/trigger-github-dispatch.mjs \
-            --event-type autoops-runbook \
-            --source github-actions-schedule \
-            --type app_health_failed \
-            --severity warning \
-            --resource-id "${AUTOOPS_HEALTH_URL}" \
-            --trace-id "${GITHUB_RUN_ID}" \
-            --runbook diagnose
+          echo "::warning::Health check failed; retained in this workflow run without creating an incident issue."
 
       # ── Escalate disk critical ──
       - name: Dispatch runbook on disk critical
