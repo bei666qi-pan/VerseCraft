@@ -695,6 +695,10 @@ export interface GameState extends IntegrityMetaState {
   setVolume: (volume: number) => void;
   setReadingPreference: <K extends ReadingPreferenceKey>(key: K, value: ReadingPreferences[K]) => void;
   setLanguage: (language: GameLanguage) => void;
+  /** Replace only display copy after an explicit language switch; game state is untouched. */
+  replaceLatestAssistantLog: (content: string) => void;
+  /** Replace current translated choices without polluting duplicate-option history. */
+  replaceCurrentOptions: (options: string[]) => void;
   setActiveMenu: (menu: ActiveMenu) => void;
   recordChapterTurn: (signals: ChapterTurnSignals) => ChapterState;
   enterNextChapter: () => void;
@@ -1357,6 +1361,26 @@ export const useGameStore = create<GameState>()(
           ),
         })),
       setLanguage: (language) => set({ language: normalizeGameLanguage(language) }),
+      replaceLatestAssistantLog: (content) =>
+        set((s) => {
+          const nextContent = typeof content === "string" ? content.trim() : "";
+          if (!nextContent) return {};
+          const latestAssistantIndex = [...(s.logs ?? [])]
+            .map((entry, index) => ({ entry, index }))
+            .reverse()
+            .find(({ entry }) => entry?.role === "assistant")?.index;
+          if (latestAssistantIndex === undefined) return {};
+          return {
+            logs: (s.logs ?? []).map((entry, index) =>
+              index === latestAssistantIndex ? { ...entry, content: nextContent } : entry
+            ),
+          };
+        }),
+      replaceCurrentOptions: (options) =>
+        set((s) => {
+          if (s.endingState?.phase && s.endingState.phase !== "playing") return {};
+          return { currentOptions: normalizeStoredOptions(options, 4) };
+        }),
       setActiveMenu: (menu) => set({ activeMenu: menu }),
       clearTaskUnviewedCount: () => set({ _taskUnviewedCount: 0 }),
       markTaskPanelOpened: () => set({ _taskPanelFirstOpen: false }),

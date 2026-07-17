@@ -162,6 +162,20 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     budgetLevel: "high",
     responseFormatJsonObject: false,
   },
+  // Used only when the player explicitly changes display language. It translates
+  // the already-resolved latest scene and choices; it must never adjudicate game
+  // state or enter the realtime /api/chat first-token path.
+  GAMEPLAY_LOCALIZATION: {
+    task: "GAMEPLAY_LOCALIZATION",
+    primaryRole: MAIN,
+    fallbackRoles: [CONTROL],
+    stream: false,
+    maxTokens: 1400,
+    temperature: 0.1,
+    timeoutMs: 18_000,
+    budgetLevel: "medium",
+    responseFormatJsonObject: true,
+  },
   WORLDBUILD_OFFLINE: {
     task: "WORLDBUILD_OFFLINE",
     primaryRole: REASONER,
@@ -242,6 +256,7 @@ export const TASK_ROLE_FORBIDDEN: Readonly<Record<TaskType, ReadonlySet<AiLogica
   SCENE_ENHANCEMENT: new Set([REASONER]),
   NARRATIVE_EXPANSION: new Set([REASONER]),
   NPC_EMOTION_POLISH: new Set([REASONER]),
+  GAMEPLAY_LOCALIZATION: new Set([REASONER, ENHANCE]),
   WORLDBUILD_OFFLINE: new Set([ENHANCE]),
   STORYLINE_SIMULATION: new Set([ENHANCE]),
   DIRECTOR_PLAN_CRITIC: new Set([REASONER, ENHANCE]),

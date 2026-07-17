@@ -10,6 +10,7 @@ export type AiProviderId = "oneapi" | "mock";
  * - Control-plane tasks: PLAYER_CONTROL_PREFLIGHT, INTENT_PARSE, SAFETY_PREFILTER (control role).
  * - Adjudication / combat text: RULE_RESOLUTION, COMBAT_NARRATION (main role).
  * - Sensory polish: SCENE_ENHANCEMENT, NPC_EMOTION_POLISH, NARRATIVE_EXPANSION (enhance role).
+ * - Presentation-only localization: GAMEPLAY_LOCALIZATION (main role, no state changes).
  * - Offline / admin: WORLDBUILD_OFFLINE, STORYLINE_SIMULATION, DEV_ASSIST, MEMORY_COMPRESSION.
  * - Eval / judge: EVAL_JUDGE (fast JSON, control role, no streaming).
  */
@@ -24,6 +25,7 @@ export type TaskType =
   | "SCENE_ENHANCEMENT"
   | "NARRATIVE_EXPANSION"
   | "NPC_EMOTION_POLISH"
+  | "GAMEPLAY_LOCALIZATION"
   | "WORLDBUILD_OFFLINE"
   | "STORYLINE_SIMULATION"
   | "DIRECTOR_PLAN_CRITIC"

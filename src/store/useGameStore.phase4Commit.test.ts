@@ -370,6 +370,32 @@ test("phase4: setCurrentOptions filters journal/menu-like options", () => {
   assert.deepEqual(useGameStore.getState().currentOptions, ["我用手电照向门缝"]);
 });
 
+test("language presentation replacement changes only the latest DM text and current choices", () => {
+  resetStore();
+  useGameStore.setState({
+    dialogueCount: 5,
+    time: { day: 2, hour: 6 },
+    logs: [
+      { role: "assistant", content: "Earlier scene" },
+      { role: "user", content: "I listen" },
+      { role: "assistant", content: "旧场景" },
+    ],
+    currentOptions: ["旧选项一", "旧选项二"],
+    recentOptions: ["历史选项"],
+  });
+
+  useGameStore.getState().replaceLatestAssistantLog("Current scene");
+  useGameStore.getState().replaceCurrentOptions(["I listen at the door.", "I step back."]);
+
+  const state = useGameStore.getState();
+  assert.equal(state.logs[0]?.content, "Earlier scene");
+  assert.equal(state.logs[2]?.content, "Current scene");
+  assert.deepEqual(state.currentOptions, ["I listen at the door.", "I step back."]);
+  assert.deepEqual(state.recentOptions, ["历史选项"]);
+  assert.equal(state.dialogueCount, 5);
+  assert.deepEqual(state.time, { day: 2, hour: 6 });
+});
+
 test("chapter-aware migration preserves legacy local saves and backfills director chapter", () => {
   const chapterState = {
     currentChapterId: "chapter-2",
