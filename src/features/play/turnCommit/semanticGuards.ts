@@ -7,7 +7,10 @@ export function hasStrongAcquireSemantics(text: string): boolean {
   const t = String(text ?? "");
   if (!t) return false;
   // 保守：只覆盖最常见的“已获得/已拿到”确定性措辞；不要把“看见/发现”算作强获得。
-  return /(获得了|拿到了|得到了|入手了|收下了|拾起了|捡起了|获得|拿到|得到|入手|收下)/.test(t);
+  // “捡起/拾起”在自然叙事中经常不带“了”（例如“我弯腰捡起刚才放下的铁管”），
+  // 但仍是明确的所有权/获得断言。漏掉该形态会让 final resolver 的保守降级
+  // 根本不执行，造成“结构化状态没有发奖、正文却说已收入背包”的分裂。
+  return /(获得了|拿到了|得到了|入手了|收下了|拾起(?:了)?|捡起(?:了)?|获得|拿到|得到|入手|收下)/.test(t);
 }
 
 export function shouldWarnAcquireMismatch(input: {
@@ -21,4 +24,3 @@ export function shouldWarnAcquireMismatch(input: {
     Math.max(0, Math.trunc(input.awardedWarehouseWriteCount ?? 0)) === 0
   );
 }
-

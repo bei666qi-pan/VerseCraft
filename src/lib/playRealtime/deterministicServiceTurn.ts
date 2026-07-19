@@ -4,6 +4,7 @@ import { normalizePlayerDmJson } from "./normalizePlayerDmJson";
 import { applyB1ServiceExecutionGuard } from "./serviceExecution";
 import { applyEquipmentExecutionGuard } from "./equipmentExecution";
 import { applyRegisteredMechanicsGuard } from "./registeredMechanicsGuard";
+import { getAnomalyCombatStat } from "@/lib/registry/combatCanon";
 
 const FORGE_EXECUTION_PATTERN = /(修复|维护|改装|灌注|武器化|执行\s*(?:修复|维护|改装|灌注)|forge_[a-z0-9_]+)/i;
 const FORGE_QUOTE_PATTERN = /(报价|查看锻造|锻造台|整备)/;
@@ -84,6 +85,10 @@ export function buildDeterministicServiceTurn(args: {
   const isTrialDelivery = /(?:提交|交付|汇报).{0,24}(?:守灯人|试炼|记录|证据)/.test(args.latestUserInput) &&
     /B1|配电/.test(args.clientState?.playerLocation ?? "") &&
     [...(args.clientState?.activeTaskIds ?? []), ...(args.clientState?.completedTaskIds ?? [])].includes("prof_trial_lampkeeper");
+  const hasLegacyLetterDelivery = (args.clientState?.activeTaskIds ?? []).includes("t_delivery_letter_b1");
+  const isLegacyLetterDelivery = hasLegacyLetterDelivery &&
+    /B1|配电/.test(args.clientState?.playerLocation ?? "") &&
+    /(?:提交|交付|交给|核对|确认).*?(?:任务|委托|信件|配给|交.*?信)/.test(args.latestUserInput);
   const hasFloorProbe = [...(args.clientState?.activeTaskIds ?? []), ...(args.clientState?.completedTaskIds ?? [])].includes("floor_1f_probe");
   const isFloorProbeObservation = hasFloorProbe && /1F|一楼/.test(args.clientState?.playerLocation ?? "") && /(?:观察|检查|核对|翻看).{0,20}(?:登记|报修|日期|门牌|线索)/.test(args.latestUserInput);
   const isFloorProbeDialogue = hasFloorProbe && args.clientState?.playerLocation === "1F_Lobby" && (args.clientState?.presentNpcIds ?? []).includes("N-010") && /(?:交谈|询问|问).{0,24}(?:登记|日期|异常|错位)/.test(args.latestUserInput);
@@ -92,7 +97,7 @@ export function buildDeterministicServiceTurn(args: {
   const isInvalidTraversal = /(?:直接.{0,8}(?:B2|地下二层)|跳过中间楼层|不管距离.{0,8}瞬移|直接瞬移|从窗户跳下去)/i.test(args.latestUserInput);
   const isPrematureEndingClaim = /(?:true_escape|真结局|真正出口|ending_finale|生成结算)/i.test(args.latestUserInput) &&
     /(?:没有|忽略|普通门|前置不足|直接宣布|立即触发|必须为无)/.test(args.latestUserInput);
-  if (!isForge && !isEquipment && !isThreatRecon && !isStatusAudit && !isTrialDelivery && !isFloorProbeObservation && !isFloorProbeDialogue && !isFloorProbeDelivery && !isAuthoredOneFloorMove && !isInvalidTraversal && !isPrematureEndingClaim) return null;
+  if (!isForge && !isEquipment && !isThreatRecon && !isStatusAudit && !isTrialDelivery && !isLegacyLetterDelivery && !isFloorProbeObservation && !isFloorProbeDialogue && !isFloorProbeDelivery && !isAuthoredOneFloorMove && !isInvalidTraversal && !isPrematureEndingClaim) return null;
 
   const seed: Record<string, unknown> = {
       is_action_legal: true,
@@ -126,11 +131,13 @@ export function buildDeterministicServiceTurn(args: {
         playerContext: args.playerContext,
         clientState: args.clientState,
       }) : isThreatRecon ? (() => {
-        const activeThreatIds = (args.clientState?.activeThreatIds ?? []).filter((id) => typeof id === "string");
-        const threatLabels: Record<string, string> = { "A-3F-SHADOW": "三楼异常阴影" };
+        const activeThreats = (args.clientState?.activeThreatIds ?? [])
+          .filter((id): id is string => typeof id === "string")
+          .map((id) => getAnomalyCombatStat(id))
+          .filter((threat): threat is NonNullable<typeof threat> => threat !== null);
         seed.consumes_time = false;
-        seed.narrative = activeThreatIds.length > 0
-          ? `我根据当前地点的已有记录完成接战定位：${activeThreatIds.map((id) => threatLabels[id] ?? "已登记异常").join("、")}仍处于活动状态。本回合只确认目标，没有发动攻击，因此没有产生武器损耗或战斗结算。`
+        seed.narrative = activeThreats.length > 0
+          ? `我根据当前地点的已有记录完成接战定位：${activeThreats.map((threat) => `${threat.name}（${threat.threatId}）`).join("、")}仍处于活动状态。本回合只确认目标，没有发动攻击，因此没有产生武器损耗或战斗结算。`
           : "我核对了当前位置的已有记录，这里没有处于活动状态的已登记威胁；本回合没有生成敌人，也没有发生战斗。";
         return seed;
       })() : isPrematureEndingClaim ? (() => {
@@ -168,6 +175,12 @@ export function buildDeterministicServiceTurn(args: {
           adjudicated.narrative = "已登记的一楼时间错位线索满足 floor_1f_probe 的交付条件，任务本回合完成一次；没有额外生成奖励、人物或线索。";
         }
         return adjudicated;
+      })() : isLegacyLetterDelivery ? (() => {
+        return applyRegisteredMechanicsGuard({
+          dmRecord: seed,
+          latestUserInput: args.latestUserInput,
+          clientState: args.clientState,
+        });
       })() : isTrialDelivery ? (() => {
         const alreadyCompleted = (args.clientState?.completedTaskIds ?? []).includes("prof_trial_lampkeeper");
         if (alreadyCompleted) {
@@ -207,7 +220,7 @@ export function buildDeterministicServiceTurn(args: {
       ? resolved.security_meta as Record<string, unknown>
       : {}),
     deterministic_service_fast_lane: true,
-    deterministic_action_kind: isForge ? "forge_service" : isEquipment ? "equipment" : isThreatRecon ? "threat_recon" : isPrematureEndingClaim ? "premature_ending_claim" : isInvalidTraversal ? "invalid_world_traversal" : isFloorProbeDialogue ? "floor_probe_dialogue" : isAuthoredOneFloorMove ? "authored_location_move" : isFloorProbeObservation ? "floor_probe_observation" : isFloorProbeDelivery ? "floor_probe_delivery" : isTrialDelivery ? "profession_trial_delivery" : "structured_status_audit",
+    deterministic_action_kind: isForge ? "forge_service" : isEquipment ? "equipment" : isThreatRecon ? "threat_recon" : isPrematureEndingClaim ? "premature_ending_claim" : isInvalidTraversal ? "invalid_world_traversal" : isFloorProbeDialogue ? "floor_probe_dialogue" : isAuthoredOneFloorMove ? "authored_location_move" : isFloorProbeObservation ? "floor_probe_observation" : isFloorProbeDelivery ? "floor_probe_delivery" : isLegacyLetterDelivery ? "legacy_letter_delivery" : isTrialDelivery ? "profession_trial_delivery" : "structured_status_audit",
     request_id: args.requestId,
   };
   resolved._eval_metrics = {

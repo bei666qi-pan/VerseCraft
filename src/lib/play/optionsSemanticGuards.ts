@@ -24,6 +24,8 @@ export interface OptionSemanticGuardInput {
   recentOptions: string[];
   latestNarrative: string;
   playerLocation?: string;
+  /** 已在客户端当前界面/状态中可见的地点、NPC、武器或道具文本锚点。 */
+  sceneAnchors?: string[];
 }
 
 export interface OptionSemanticGuardResult {
@@ -45,6 +47,15 @@ const ANCHOR_HINT_WORDS = [
   "窗",
   "墙角",
   "阴影",
+  "黑影",
+  "铁管",
+  "绷带",
+  "配电箱",
+  "老刘",
+  "信件",
+  "电视",
+  "静噪",
+  "消防栓",
   "脚步",
   "动静",
   "钥匙",
@@ -89,13 +100,22 @@ function isGenericAction(option: string): boolean {
   return isOverGenericNarrativeOption(t);
 }
 
-function extractNarrativeAnchors(latestNarrative: string, playerLocation?: string): string[] {
+function extractNarrativeAnchors(latestNarrative: string, playerLocation?: string, sceneAnchors?: string[]): string[] {
   const text = String(latestNarrative ?? "");
   const anchors = new Set<string>();
   for (const word of ANCHOR_HINT_WORDS) {
     if (text.includes(word)) anchors.add(word);
   }
+  if (/(?:阴影|黑影|漆黑)/.test(text)) {
+    anchors.add("阴影");
+    anchors.add("黑影");
+    anchors.add("漆黑");
+  }
   if (playerLocation && playerLocation.trim()) anchors.add(playerLocation.trim());
+  for (const anchor of sceneAnchors ?? []) {
+    const text = String(anchor ?? "").trim();
+    if (text.length >= 2) anchors.add(text);
+  }
   const chunks = text.match(/[\u4e00-\u9fa5]{2,6}/g) ?? [];
   for (const token of chunks) {
     if (anchors.size >= 20) break;
@@ -144,7 +164,7 @@ export function evaluateOptionsSemanticQuality(input: OptionSemanticGuardInput):
   const source = Array.isArray(input.options) ? input.options : [];
   const current = (Array.isArray(input.currentOptions) ? input.currentOptions : []).map((x) => String(x ?? "").trim());
   const recent = (Array.isArray(input.recentOptions) ? input.recentOptions : []).map((x) => String(x ?? "").trim());
-  const anchors = extractNarrativeAnchors(input.latestNarrative, input.playerLocation);
+  const anchors = extractNarrativeAnchors(input.latestNarrative, input.playerLocation, input.sceneAnchors);
   const rejected: Array<{ option: string; reason: OptionRejectReason }> = [];
   const accepted: string[] = [];
   const categoryCounts = initCategoryCounts();
@@ -216,4 +236,3 @@ export function evaluateOptionsSemanticQuality(input: OptionSemanticGuardInput):
     anchoredCount: accepted.length,
   };
 }
-

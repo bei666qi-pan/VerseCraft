@@ -43,9 +43,22 @@ import { createInitialStateSnapshot } from "../src/lib/evals/playthrough/invaria
 import { generateMockAction } from "../src/lib/evals/playthrough/playerAgent";
 import type { SutAction } from "../src/lib/evals/playthrough/sutAdapter";
 import { classifyRunEvidence, resolveEvalExecutionMode } from "../src/lib/evals/productQuality/runOutcome";
+import {
+  requestClientOptionsRegenEvidence,
+  shouldRequestClientOptionsRegen,
+  type ClientOptionsRegenEvidence,
+} from "../src/lib/evals/clientOptionsRegenEvidence";
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { config as loadEnv } from "dotenv";
+
+// This CLI runs outside Next.js, so it must explicitly mirror the local
+// development env load before it invokes the independent live judge.
+for (const name of [".env", ".env.local"]) {
+  const envPath = resolve(process.cwd(), name);
+  if (existsSync(envPath)) loadEnv({ path: envPath, override: false, quiet: true });
+}
 
 // ─── CLI ────────────────────────────────────────────────
 
@@ -318,7 +331,7 @@ async function runSession(
   // 初始状态
   const initialState = createInitialStateSnapshot(scenario.initialStateOverride as Record<string, unknown> | undefined);
   let currentState = { ...initialState };
-  const steps: Array<{ step: number; action: string; narrative: string; latencyMs: number; dmJson: Record<string, unknown>; stateAfter: typeof currentState; status: string; aiStatus?: string }> = [];
+  const steps: Array<{ step: number; action: string; narrative: string; latencyMs: number; dmJson: Record<string, unknown>; stateAfter: typeof currentState; status: string; aiStatus?: string; clientOptionRegeneration?: ClientOptionsRegenEvidence }> = [];
   let terminatedReason: TerminatedReason = "max_steps";
   let totalSteps = 0;
   let degradedSteps = 0;
@@ -365,6 +378,23 @@ async function runSession(
       }
       currentState = applyDmJsonToState(currentState, response.dmJson, response.narrative);
 
+      const mainOptions = Array.isArray(response.dmJson.options)
+        ? response.dmJson.options.filter((option): option is string => typeof option === "string" && option.trim().length > 0)
+        : [];
+      // The main turn remains the only state authority. This follows the
+      // browser's options-only repair policy strictly for player-visible
+      // choices and records every outcome instead of inventing options.
+      const clientOptionRegeneration = shouldRequestClientOptionsRegen(mainOptions)
+        ? await requestClientOptionsRegenEvidence({
+            baseUrl: config.baseUrl,
+            sessionId: `live-eval-${sessionIndex}`,
+            playerAction: action,
+            narrative: response.narrative,
+            state: currentState,
+            currentOptions: mainOptions,
+          })
+        : undefined;
+
       steps.push({
         step,
         action,
@@ -374,6 +404,7 @@ async function runSession(
         stateAfter: { ...currentState },
         status: response.status,
         aiStatus: response.aiStatus,
+        clientOptionRegeneration,
       });
 
       // 在默认策略下不因为降级而中断会话，继续收集后续回合的证据（用于统计置信）。
@@ -550,18 +581,26 @@ function generateReport(
   results: Awaited<ReturnType<typeof runSession>>[],
   config: EvalCli
 ): string {
-  const statusFor = (result: Awaited<ReturnType<typeof runSession>>) => classifyRunEvidence({
-    executionMode: result.executionMode,
-    terminatedReason: result.terminatedReason,
-    judgePassed: result.judgeResult.passed,
-    gameplayGatePassed: result.gameplayGate.passed,
-    executedSteps: result.totalSteps,
-    plannedScenarioSteps: SCENARIOS.find((scenario) => scenario.id === result.scenarioId)?.scriptedActions?.length ?? config.maxSteps,
-  });
+  const statusFor = (result: Awaited<ReturnType<typeof runSession>>) => {
+    // 真实回放中，只有已完成的 live judge 才能构成模型质量证据；mock/codex/fallback
+    // 都不能把 baseline 分数包装成真实可玩性结论。
+    if (config.live && result.judgeMode !== "live") return "inconclusive" as const;
+    return classifyRunEvidence({
+      executionMode: result.executionMode,
+      terminatedReason: result.terminatedReason,
+      judgePassed: result.judgeResult.passed,
+      gameplayGatePassed: result.gameplayGate.passed,
+      executedSteps: result.totalSteps,
+      plannedScenarioSteps: SCENARIOS.find((scenario) => scenario.id === result.scenarioId)?.scriptedActions?.length ?? config.maxSteps,
+    });
+  };
   const totalSteps = results.reduce((s, r) => s + r.totalSteps, 0);
   const totalDuration = results.reduce((s, r) => s + r.durationMs, 0);
   const denominator = Math.max(1, results.length);
-  const avgJudgeScore = results.reduce((s, r) => s + r.judgeResult.overallScore, 0) / denominator;
+  const trustedJudgeResults = results.filter((result) => !config.live || result.judgeMode === "live");
+  const avgJudgeScore = trustedJudgeResults.length > 0
+    ? trustedJudgeResults.reduce((sum, result) => sum + result.judgeResult.overallScore, 0) / trustedJudgeResults.length
+    : null;
   const passedSessions = results.filter((r) => statusFor(r) === "pass").length;
   const conclusiveSessions = results.filter((r) => statusFor(r) !== "inconclusive").length;
   const inconclusiveSessions = results.length - conclusiveSessions;
@@ -598,7 +637,7 @@ function generateReport(
   lines.push("");
   lines.push(`| 指标 | 值 |`);
   lines.push(`|---|---|`);
-  lines.push(`| 平均叙事分 | ${avgJudgeScore.toFixed(2)}/5 |`);
+  lines.push(`| 平均叙事分 | ${avgJudgeScore === null ? "N/A（无 live judge 证据）" : `${avgJudgeScore.toFixed(2)}/5`} |`);
   lines.push(`| 通过会话 | ${passedSessions}/${conclusiveSessions} 个有结论会话 |`);
   lines.push(`| 未完成专项 | ${inconclusiveSessions} |`);
   lines.push(`| 平均回合数 | ${(totalSteps / denominator).toFixed(1)} |`);
@@ -634,8 +673,10 @@ function generateReport(
   lines.push(`| 维度 | 平均分 |`);
   lines.push(`|---|---|`);
   for (const dim of dims) {
-    const avg = results.reduce((s, r) => s + (r.judgeResult.dimensionScores[dim] ?? 0), 0) / denominator;
-    lines.push(`| ${dim} | ${avg.toFixed(2)} |`);
+    const avg = trustedJudgeResults.length > 0
+      ? trustedJudgeResults.reduce((sum, result) => sum + (result.judgeResult.dimensionScores[dim] ?? 0), 0) / trustedJudgeResults.length
+      : null;
+    lines.push(`| ${dim} | ${avg === null ? "N/A" : avg.toFixed(2)} |`);
   }
   lines.push("");
 
@@ -763,7 +804,9 @@ function generateReport(
   if (criticalIssues.length > 0) {
     lines.push(`🔴 发现 ${criticalIssues.length} 个 Critical 问题，建议优先修复。`);
   }
-  if (avgJudgeScore < 3) {
+  if (avgJudgeScore === null) {
+    lines.push("⚪ 当前没有可用于真实质量结论的 live judge 证据；请运行 model narrative review 或配置 live judge。");
+  } else if (avgJudgeScore < 3) {
     lines.push("⚠️ 平均叙事分低于 3/5，整体叙事质量需改善。");
   } else if (avgJudgeScore < 4) {
     lines.push("📈 平均叙事分在 3-4 区间，有提升空间。");
@@ -868,6 +911,9 @@ async function main(): Promise<void> {
             narrative: step.narrative,
             stateSnapshot: step.stateAfter,
             dmJson: step.dmJson,
+            ...(step.clientOptionRegeneration
+              ? { clientOptionRegeneration: step.clientOptionRegeneration }
+              : {}),
             metrics: {
               latencyMs: step.latencyMs,
               ...(typeof usage.input_tokens === "number" ? { inputTokens: usage.input_tokens } : {}),
@@ -877,7 +923,7 @@ async function main(): Promise<void> {
             transport: { status: step.status, aiStatus: step.aiStatus ?? null },
           };
         });
-        const evidenceStatus = classifyRunEvidence({
+        const evidenceStatus = config.live && result.judgeMode !== "live" ? "inconclusive" : classifyRunEvidence({
           executionMode: result.executionMode,
           terminatedReason: result.terminatedReason,
           judgePassed: result.judgeResult.passed,
@@ -941,7 +987,7 @@ async function main(): Promise<void> {
   console.log("\n📊 评测摘要");
   console.log("═".repeat(60));
   for (const r of results) {
-    const evidenceStatus = classifyRunEvidence({
+    const evidenceStatus = config.live && r.judgeMode !== "live" ? "inconclusive" : classifyRunEvidence({
       executionMode: r.executionMode,
       terminatedReason: r.terminatedReason,
       judgePassed: r.judgeResult.passed,
@@ -949,11 +995,15 @@ async function main(): Promise<void> {
       executedSteps: r.totalSteps,
       plannedScenarioSteps: SCENARIOS.find((scenario) => scenario.id === r.scenarioId)?.scriptedActions?.length ?? config.maxSteps,
     });
-    const score = r.executionMode === "live_degraded" ? "N/A (degraded)" : `${r.judgeResult.overallScore}/5`;
+    const score = r.executionMode === "live_degraded"
+      ? "N/A (degraded)"
+      : config.live && r.judgeMode !== "live"
+        ? "N/A (no live judge evidence)"
+        : `${r.judgeResult.overallScore}/5`;
     const icon = evidenceStatus === "pass" ? "✅" : evidenceStatus === "fail" ? "❌" : "⚪";
     console.log(`  ${icon} ${r.scenarioId} [${r.persona}]: ${score}, ${r.totalSteps} 回合, ${(r.durationMs / 1000).toFixed(1)}s, ${evidenceStatus}`);
   }
-  const scoreableResults = results.filter((r) => r.executionMode !== "live_degraded");
+  const scoreableResults = results.filter((r) => r.executionMode !== "live_degraded" && (!config.live || r.judgeMode === "live"));
   const avgScore = scoreableResults.reduce((s, r) => s + r.judgeResult.overallScore, 0) / scoreableResults.length;
   console.log(`  平均叙事分: ${scoreableResults.length > 0 ? `${avgScore.toFixed(2)}/5` : "N/A (无可评分 live 输出)"}`);
 
@@ -963,7 +1013,15 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error("❌ 评测脚本失败:", err);
-  process.exit(1);
-});
+// A pending fetch/readable-stream promise is not always enough to keep a
+// standalone tsx process alive (notably when the underlying socket is
+// unref'ed). Keep this evidence runner alive until it has either written its
+// report or surfaced the actual transport failure; a partial live run must
+// never disappear as a successful empty invocation.
+const mainLiveness = setInterval(() => undefined, 1_000);
+main()
+  .catch((err) => {
+    console.error("❌ 评测脚本失败:", err);
+    process.exitCode = 1;
+  })
+  .finally(() => clearInterval(mainLiveness));

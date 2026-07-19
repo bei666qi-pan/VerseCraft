@@ -41,6 +41,7 @@ function baseEnv(over: Partial<ResolvedAiEnv> = {}): ResolvedAiEnv {
     playerChatMaxTokensOverride: null,
     onlineShortJsonMaxRetries: 0,
     onlineShortJsonRelaxResponseFormat: true,
+    onlineShortJsonDisableThinking: true,
     onlineShortJsonDisableMainFallback: true,
     playerChatAggressiveFailover: true,
     playerChatFastLaneZeroRetry: true,
@@ -163,6 +164,15 @@ test("NARRATIVE_EXPANSION uses bounded non-stream json enhance policy", () => {
   assert.equal(b.timeoutMs, 7_000);
   assert.equal(b.responseFormatJsonObject, true);
   assert.equal(isModelForbiddenForTask("NARRATIVE_EXPANSION", "reasoner"), true);
+});
+
+test("EVAL_JUDGE allows a full bounded offline verdict window", () => {
+  const b = getTaskBinding("EVAL_JUDGE");
+  assert.equal(b.primaryRole, "control");
+  assert.deepEqual(b.fallbackRoles, ["main"]);
+  assert.equal(b.timeoutMs, 30_000);
+  assert.equal(b.budgetLevel, "medium");
+  assert.equal(b.responseFormatJsonObject, true);
 });
 
 test("WORLDBUILD_OFFLINE uses reasoner primary and forbids enhance", () => {

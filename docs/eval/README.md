@@ -20,7 +20,7 @@ PR 层（每个 PR 自动运行，目标 <20min）
 ├── Mock server 全量 (benchmark:chat:mock + eval:chat-quality:mock +
 │   eval:narrative-safety:mock + eval:npc-consistency:mock)
 ├── Narrative safety mock gate（10 维度全部 1.000 断言）
-└── Live small sample (live-chat-perf + schedule 含 live eval)
+└── Live small sample (live-chat-perf + schedule 含 live eval；可额外运行 model narrative review)
 
 本地开发层（开发者手动运行）
 ├── test:gate / test:gate:quick / test:gate:ci
@@ -66,6 +66,7 @@ PR 层（每个 PR 自动运行，目标 <20min）
 | `pnpm eval:narrative-safety -- --mode live` | 安全合规（live） |
 | `pnpm eval:narrative-style:live` | 叙事风格（live） |
 | `pnpm benchmark:chat-metrics` | 延迟基准（live） |
+| `pnpm eval:model-narrative-review:live` | 以 `EVAL_JUDGE` gateway 审查真实轨迹中的幻觉、认知边界与可玩性；需显式开关 |
 
 ### 特殊工具
 
@@ -110,6 +111,23 @@ PR 层（每个 PR 自动运行，目标 <20min）
 - 校准种子：40 种子 × 3 裁判 × ≤3 轮 prompt 迭代
 - 缓存：按 (caseId, contentHash) 缓存结果
 - 预算防御：单日 ≤2000 次 live 调用（`budgetGuard.ts`）
+
+### 证据边界（重要）
+
+- mock、关键词断言和离线 heuristic 只证明测试夹具、协议与确定性 guard 没有回归；它们**不是**真实模型的叙事质量或可玩性证据。
+- `eval:model-narrative-review:live` 复用 `EVAL_JUDGE` logical task 和 AI gateway，对完成的真实 `/api/chat` trace 做独立审查。默认关闭，只有同时传入 `--mode live` 和 `VERSECRAFT_ENABLE_MODEL_NARRATIVE_REVIEW_EVALS=1` 才发送模型请求。
+- live 审查失败、预算耗尽、响应 JSON 无效、低置信或 critical/major 问题缺少玩家可见证据时，结果为 `inconclusive`，绝不会回退为“启发式通过”。报告会显示 live coverage、每个不可判定原因、content hash、模型/provider 与带 step 的 issue evidence。
+- 对真实游玩结果，先用 `pnpm eval:playthrough:live:smoke` 生成 trace，再运行：
+
+  ```bash
+  VERSECRAFT_ENABLE_MODEL_NARRATIVE_REVIEW_EVALS=1 \
+    pnpm eval:model-narrative-review -- --mode live \
+    --input .runtime-data/eval/playthrough-live-smoke/traces/<trace>.json \
+    --assert-live-coverage --json-out .runtime-data/model-review.json \
+    --markdown-out .runtime-data/model-review.md
+  ```
+
+  `benchmarks/model-narrative-review/cases.json` 是校准/对抗 fixture，不应被报告为真实玩家回合。
 
 ### 离线处理规则
 
@@ -166,3 +184,23 @@ A: 正常。Mock 对复杂叙事质量类乐观返回 `true`，live judge 才会
 
 **Q: 如何加大型评测？**
 A: 遵循 Phase 3 模式：扩展数据集 → 更新 types → 更新 evaluator → 加 regression case → 验证门禁。
+---
+
+## 8. 意图锚定的可玩性评测
+
+`eval:intent-grounded-playability` 不用 mock 猜自然语言。它先让真实 `PLAYER_CONTROL_PREFLIGHT` 为每条中文表达生成候选控制面，再由带场景事实、允许 / 禁止 slot 与状态不变量的确定性 oracle 审核候选。fast path、缓存、网关失败、解析失败和未启用 live 都是 `inconclusive`，严格 gate 绝不会把它们当作通过。
+
+```bash
+# 只检查 corpus 和报告结构；不会证明可玩性，也不会调用模型
+pnpm eval:intent-grounded-playability -- --mode mock
+
+# 真实 one-api 模型矩阵；require_model 会跳过 control fast path 和 cache
+VERSECRAFT_ENABLE_INTENT_GROUNDED_PLAYABILITY_EVALS=1 \
+pnpm eval:intent-grounded-playability -- --mode live --assert-strict \
+  --json-out .runtime-data/intent-grounded-playability.json \
+  --markdown-out .runtime-data/intent-grounded-playability.md
+```
+
+可选 `--trace <actual-api-chat-trace.json>` 会把和 corpus 表达精确匹配的真实 `/api/chat` 回合交给现有 model narrative review，并把两类证据关联。没有匹配场景事实、SSE final 或 live narrative review 的 trace 不能计为端到端通过。
+
+报告中的 Wilson 区间仅描述固定语料上的观察结果；它不外推为“任意世界状态、任意模型版本、任意自然语言均已证明可玩”。语料当前覆盖探索、调查、对话、道具、战斗、否定、歧义、注入和 root-truth 越权；新增玩法或事实边界时必须先扩展语料和 oracle，再宣称覆盖。

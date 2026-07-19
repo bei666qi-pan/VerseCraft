@@ -21,7 +21,7 @@ test("model-proposed non-adjacent or unknown location delta is blocked", () => {
   });
   assert.equal(out.player_location, undefined);
   assert.equal(out.is_action_legal, false);
-  assert.ok((out._commit_flags as string[]).includes("invalid_location_delta_blocked_v1"));
+  assert.ok((out._commit_flags as string[]).includes("invalid_location_delta_blocked_v2"));
   assert.match(String(out.narrative), /仍留在原地/);
 });
 
@@ -33,5 +33,49 @@ test("legacy Chinese save locations are canonicalized before validating deltas",
   });
   assert.equal(out.player_location, undefined);
   assert.equal(out.is_action_legal, false);
-  assert.ok((out._commit_flags as string[]).includes("invalid_location_delta_blocked_v1"));
+  assert.ok((out._commit_flags as string[]).includes("invalid_location_delta_blocked_v2"));
+});
+
+test("legacy third-floor hallway enters the registered stairwell on downstairs intent", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { narrative: "我一路下到一楼登记口。", player_location: "一楼登记口" },
+    latestUserInput: "下楼探索",
+    clientState: { playerLocation: "旧公寓三楼走廊", worldFlags: [] },
+  });
+  assert.equal(out.player_location, "3F_Stairwell");
+  assert.match(String(out.narrative), /3F_Stairwell/);
+  assert.ok((out._commit_flags as string[]).includes("canonical_location_transition_v1"));
+});
+
+test("downstairs intent continues one confirmed edge at a time", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { narrative: "我在楼梯口犹豫了一下。", player_location: "3F_Stairwell" },
+    latestUserInput: "继续下楼",
+    clientState: { playerLocation: "3F_Stairwell", worldFlags: [] },
+  });
+  assert.equal(out.player_location, "2F_Corridor");
+  assert.match(String(out.narrative), /2F_Corridor/);
+});
+
+test("unknown location candidate is stripped without rejecting an observation turn", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { is_action_legal: true, narrative: "门缝下有一条新的泥痕。", player_location: "旧公寓三楼走廊·304门口" },
+    latestUserInput: "看看有没有隐藏的通道",
+    clientState: { playerLocation: "旧公寓三楼走廊", worldFlags: [] },
+  });
+  assert.equal(out.player_location, undefined);
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, "门缝下有一条新的泥痕。");
+  assert.ok((out._commit_flags as string[]).includes("invalid_location_delta_stripped_v1"));
+});
+
+test("canonical movement synthesis can be disabled without bypassing candidate validation", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: { narrative: "我正要下楼。" },
+    latestUserInput: "下楼探索",
+    clientState: { playerLocation: "旧公寓三楼走廊", worldFlags: [] },
+    enableCanonicalLocationMovement: false,
+  });
+  assert.equal(out.player_location, undefined);
+  assert.equal(out.narrative, "我正要下楼。");
 });

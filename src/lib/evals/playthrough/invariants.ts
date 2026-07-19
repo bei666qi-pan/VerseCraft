@@ -471,6 +471,12 @@ export function createInitialStateSnapshot(
     const canonical = value.match(/^(B[12]|\d+F)(?:_|$)/i)?.[1]?.toUpperCase();
     snapshot.currentFloor = canonical ?? snapshot.currentFloor;
   }
+  // Focused live scenarios frequently replace the default inventory IDs. Keep
+  // the derived slot count coherent unless the fixture intentionally supplies
+  // an explicit count for an overflow/counterfactual invariant.
+  if (overrides?.inventoryItemIds && overrides.inventoryItemCount === undefined) {
+    snapshot.inventoryItemCount = snapshot.inventoryItemIds.length;
+  }
   return snapshot;
 }
 

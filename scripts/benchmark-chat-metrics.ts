@@ -8,6 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { CHAT_LATENCY_BUDGET } from "../src/lib/perf/waitingConfig";
 import { probeChatSse, type ChatSseProbeMetrics } from "../src/lib/perf/chatSseProbe";
+import { buildBenchmarkPlayerInput } from "../src/lib/evals/benchmarkInput";
+import { resolveNarrativeBudget } from "../src/lib/playRealtime/narrativeBudgetPackets";
 
 type BenchmarkMode = "fixtures" | "mock" | "live" | "degraded";
 
@@ -32,6 +34,7 @@ type Fixture = {
 type ProbeMetrics = ChatSseProbeMetrics & {
   scenario: string;
   run: number;
+  narrativeMinimumChars: number;
   narrativeNonEmpty: boolean;
   contractPass: boolean;
   qualityPass: boolean;
@@ -168,14 +171,27 @@ function finalDoesNotContain(metrics: ChatSseProbeMetrics, terms: string[]): boo
   return terms.every((term) => !text.includes(term));
 }
 
-function assessFixtureQuality(fixture: Fixture, metrics: ChatSseProbeMetrics): string[] {
+function resolveBenchmarkNarrativeMinimum(fixture: Fixture): number {
+  // Reuse the exact pure narrative-budget authority used by /api/chat. Fixture
+  // values document intent but must not become a competing quality policy.
+  return resolveNarrativeBudget({
+    latestUserInput: fixture.latestUserInput,
+    playerContext: fixture.playerContext,
+  }).minChars;
+}
+
+function assessFixtureQuality(
+  fixture: Fixture,
+  metrics: ChatSseProbeMetrics,
+  narrativeMinimumChars: number
+): string[] {
   const failures: string[] = [];
   const expect = fixture.expect;
   if (!metrics.contractPass) failures.push("contract_failed");
   if (!metrics.finalJsonParseSuccess) failures.push("final_json_parse_failed");
   if (metrics.narrativeChars <= 0) failures.push("narrative_empty");
-  if (metrics.narrativeChars < expect.minNarrativeChars) {
-    failures.push(`narrativeChars<${expect.minNarrativeChars}`);
+  if (metrics.narrativeChars < narrativeMinimumChars) {
+    failures.push(`narrativeChars<budgetMin=${narrativeMinimumChars}`);
   }
   const expectedOptions = expect.optionsCount ?? 4;
   if (!expect.allowOptionsMissing && metrics.optionsCount !== expectedOptions) {
@@ -217,8 +233,11 @@ function assessBudget(mode: BenchmarkMode, metrics: ChatSseProbeMetrics): string
 
 async function probeOne(baseUrl: string, fixture: Fixture, run: number, mode: BenchmarkMode): Promise<ProbeMetrics> {
   const requestId = `benchmark-${mode}-${fixture.scenario}-${run}-${Date.now()}`;
-  const marker = mode === "mock" && fixture.mockScenario ? `[mock_scenario:${fixture.mockScenario}] ` : "";
-  const content = `${marker}${fixture.latestUserInput}`;
+  const content = buildBenchmarkPlayerInput({
+    input: fixture.latestUserInput,
+    mode,
+    mockScenario: fixture.mockScenario,
+  });
   const metrics = await probeChatSse({
     baseUrl,
     timeoutMs: 120_000,
@@ -234,12 +253,15 @@ async function probeOne(baseUrl: string, fixture: Fixture, run: number, mode: Be
       sessionId: requestId,
     },
   });
+  const narrativeMinimumChars = resolveBenchmarkNarrativeMinimum(fixture);
   const budgetFailures = assessBudget(mode, metrics);
-  const qualityFailures = mode === "degraded" ? [] : assessFixtureQuality(fixture, metrics);
+  const qualityFailures =
+    mode === "degraded" ? [] : assessFixtureQuality(fixture, metrics, narrativeMinimumChars);
   return {
     ...metrics,
     scenario: fixture.scenario,
     run,
+    narrativeMinimumChars,
     narrativeNonEmpty: metrics.narrativeChars > 0,
     contractPass: metrics.contractPass,
     qualityPass: qualityFailures.length === 0,
@@ -255,7 +277,7 @@ function printProbe(options: CliOptions, m: ProbeMetrics): void {
     options,
     `  ${m.scenario}#${m.run}: http=${m.httpStatus} firstSseMs=${fmt(m.firstSseMs)} firstStatusMs=${fmt(
       m.firstStatusMs
-    )} firstTokenMs=${fmt(m.firstTokenMs)} finalMs=${fmt(m.finalMs)} narrativeChars=${m.narrativeChars} options=${
+    )} firstTokenMs=${fmt(m.firstTokenMs)} finalMs=${fmt(m.finalMs)} narrativeChars=${m.narrativeChars}/${m.narrativeMinimumChars} options=${
       m.optionsCount
     } optionsQuality=${m.optionsQualityPass ? 1 : 0} final=${m.finalFrameReceived ? 1 : 0} finalJson=${
       m.finalJsonParseSuccess ? 1 : 0
@@ -322,13 +344,17 @@ async function main(): Promise<void> {
       chars,
       estimatedTokens: Math.ceil(chars / 4),
       minNarrativeChars: f.expect?.minNarrativeChars,
+      authoritativeNarrativeMinChars: resolveBenchmarkNarrativeMinimum(f),
       observabilityNotes: f.observabilityNotes ?? "",
     };
   });
 
   log(options, `Loaded ${fixtures.length} fixtures from benchmarks/chat-turns`);
   for (const f of fixtureSummaries) {
-    log(options, `${f.scenario}: ~${f.chars} chars (~${f.estimatedTokens} tok est), minNarrative=${f.minNarrativeChars}`);
+    log(
+      options,
+      `${f.scenario}: ~${f.chars} chars (~${f.estimatedTokens} tok est), documentedMin=${f.minNarrativeChars}, authoritativeBudgetMin=${f.authoritativeNarrativeMinChars}`
+    );
   }
 
   const baseUrl = process.env.BENCHMARK_BASE_URL ?? "http://localhost:666";

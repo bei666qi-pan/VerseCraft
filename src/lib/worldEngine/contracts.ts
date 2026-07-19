@@ -198,6 +198,8 @@ export type WorldEngineStructuredDelta = DirectorPlan & {
    * 不改变任何现有过滤/写入行为。
    */
   world_events_raw_count: number;
+  /** Bounded parser telemetry; never stores raw model text or player-private content. */
+  world_event_drop_reasons: string[];
 };
 
 const PRIORITIES = ["low", "medium", "high"] as const;
@@ -330,6 +332,39 @@ function normalizeAgendaItems(raw: unknown): DirectorAgendaItem[] {
     const title = clampText(o.title, 120);
     const injectionHint = clampText(o.injection_hint, 360);
     if (!eventCode || !title || !injectionHint) continue;
+    const rawPayload = asRecord(o.payload) ?? {};
+    const declaredPayloadType = typeof rawPayload.type === "string" ? rawPayload.type.trim().toLowerCase() : "";
+    const canonicalPayloadType =
+      declaredPayloadType === "audio_hint"
+        ? "audio_cue"
+        : declaredPayloadType === "environmental_hint"
+          ? "environmental_change"
+          : declaredPayloadType === "ambient_event"
+            ? "ambient_sound"
+            : declaredPayloadType === "clue_update" ||
+                declaredPayloadType === "environmental_clue" ||
+                declaredPayloadType === "environmental_event"
+              ? "environmental_change"
+          : declaredPayloadType;
+    const payload = canonicalPayloadType && canonicalPayloadType !== declaredPayloadType
+      ? { ...rawPayload, type: canonicalPayloadType }
+      : rawPayload;
+    const declaredAgency = uniqueStrings(o.agency_constraints, 8, 160);
+    const declaredForbidden = uniqueStrings(o.forbidden_outcomes, 8, 160);
+    // This is deliberately a small semantic class, not a blanket repair for
+    // missing model fields: the event has to be an observational cue with no
+    // forced consequence, no high priority, and no high-pressure language.
+    const isSafeObservationCandidate =
+      (payload.type === "ambient_sound" ||
+        payload.type === "environmental_effect" ||
+        payload.type === "environmental_change" ||
+        payload.type === "audio_cue") &&
+      (enumOr(o.priority, PRIORITIES, "low") === "low" ||
+        (enumOr(o.priority, PRIORITIES, "low") === "medium" &&
+          clamp01(o.salience, 0.4) <= 0.5)) &&
+      !/(?:强制|必定|死亡|受伤|失败|根因|核心真相|直接揭示|攻击|袭击|追逐|囚禁|锁死|爆炸|坠落|自杀|尸体|怪物|玩家(?:被|将|必须))/i.test(
+        `${title}\n${injectionHint}`
+      );
     out.push({
       event_code: eventCode,
       title,
@@ -339,13 +374,43 @@ function normalizeAgendaItems(raw: unknown): DirectorAgendaItem[] {
       salience: clamp01(o.salience, o.priority === "high" ? 0.8 : 0.4),
       trigger_conditions: uniqueStrings(o.trigger_conditions, 8, 120),
       injection_hint: injectionHint,
-      agency_constraints: uniqueStrings(o.agency_constraints, 8, 160),
-      forbidden_outcomes: uniqueStrings(o.forbidden_outcomes, 8, 160),
-      payload: asRecord(o.payload) ?? {},
+      // A model often omits boilerplate for a harmless observational cue. Only
+      // this narrowly typed, low-salience class gets server-owned defaults;
+      // every consequential event must still declare its own constraints or
+      // be rejected by the validator.
+      agency_constraints:
+        declaredAgency.length > 0
+          ? declaredAgency
+          : isSafeObservationCandidate
+            ? ["玩家可以忽略、离开或以其他方式回应这一环境提示；不得代替玩家选择。"]
+            : [],
+      forbidden_outcomes:
+        declaredForbidden.length > 0
+          ? declaredForbidden
+          : isSafeObservationCandidate
+            ? ["不得强制失败、受伤、移动、战斗或揭示隐藏真相。"]
+            : [],
+      payload,
     });
     if (out.length >= 12) break;
   }
   return out;
+}
+
+function diagnoseDroppedAgendaItems(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return raw == null ? [] : ["world_events_not_array"];
+  const reasons = new Set<string>();
+  for (const item of raw) {
+    const o = asRecord(item);
+    if (!o) {
+      reasons.add("event_not_object");
+      continue;
+    }
+    if (!clampText(o.event_code, 80)) reasons.add("event_code_missing");
+    if (!clampText(o.title, 120)) reasons.add("title_missing");
+    if (!clampText(o.injection_hint, 360)) reasons.add("injection_hint_missing");
+  }
+  return [...reasons].slice(0, 8);
 }
 
 function normalizeSocialEvents(raw: unknown, socialWriteAllowed: boolean): DirectorSocialEvent[] {
@@ -531,6 +596,12 @@ function normalizePlan(root: Record<string, unknown>): WorldEngineStructuredDelt
   if (risk.spoiler_risk === "high") socialRejectReasons.push("spoiler_risk_high");
   if (risk.safety_risk === "high") socialRejectReasons.push("safety_risk_high");
   const socialWriteAllowed = socialRejectReasons.length === 0;
+  const normalizedAgenda = normalizeAgendaItems(root.world_events_to_schedule);
+  const worldEventsRawCount = Array.isArray(root.world_events_to_schedule)
+    ? root.world_events_to_schedule.length
+    : root.world_events_to_schedule == null
+      ? 0
+      : -1;
 
   return {
     schema_version: "director_plan_v1",
@@ -541,7 +612,7 @@ function normalizePlan(root: Record<string, unknown>): WorldEngineStructuredDelt
     risk_assessment: risk,
     reveal_policy: enumOr(root.reveal_policy, REVEAL_POLICIES, "hint_only"),
     npc_next_actions: normalizeNpcActions(root.npc_next_actions),
-    world_events_to_schedule: normalizeAgendaItems(root.world_events_to_schedule),
+    world_events_to_schedule: normalizedAgenda,
     social_events_to_schedule: normalizeSocialEvents(root.social_events_to_schedule, socialWriteAllowed),
     npc_relation_deltas: normalizeNpcRelationDeltas(root.npc_relation_deltas),
     npc_agent_patches: normalizeNpcAgentPatches(root.npc_agent_patches),
@@ -552,11 +623,9 @@ function normalizePlan(root: Record<string, unknown>): WorldEngineStructuredDelt
     agenda_reject_reasons: agendaRejectReasons,
     social_write_allowed: socialWriteAllowed,
     social_reject_reasons: socialRejectReasons,
-    world_events_raw_count: Array.isArray(root.world_events_to_schedule)
-      ? root.world_events_to_schedule.length
-      : root.world_events_to_schedule == null
-        ? 0
-        : -1,
+    world_events_raw_count: worldEventsRawCount,
+    world_event_drop_reasons:
+      worldEventsRawCount > normalizedAgenda.length ? diagnoseDroppedAgendaItems(root.world_events_to_schedule) : [],
   };
 }
 

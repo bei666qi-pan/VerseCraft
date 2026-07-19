@@ -279,6 +279,54 @@ test("validateNarrative does NOT flag inventory_conflict when awarded_items pres
   assert.ok(!report.issues.some((x) => x.code === "inventory_conflict"));
 });
 
+test("validateNarrative records a supported acquisition without promoting prose into an award", () => {
+  const dmRecord = {
+    narrative: "你捡起了黄铜钥匙，迅速塞进口袋。",
+    options: ["继续前进", "侧耳细听", "回身后退", "贴墙观察"],
+    player_location: "三楼走廊",
+    awarded_items: [],
+    awarded_warehouse_items: [],
+  };
+
+  const report = validateNarrative(baseArgs({ dmRecord }));
+
+  assert.deepEqual(dmRecord.awarded_items, []);
+  assert.equal(report.telemetry.actionBackfill?.backfill_pickup, 1);
+});
+
+test("validateNarrative preserves an existing structured award and skips redundant action telemetry", () => {
+  const authoritativeAward = { id: "i_key_brass", name: "黄铜钥匙", quantity: 1 };
+  const dmRecord = {
+    narrative: "你捡起了黄铜钥匙，迅速塞进口袋。",
+    options: ["继续前进", "侧耳细听", "回身后退", "贴墙观察"],
+    player_location: "三楼走廊",
+    awarded_items: [authoritativeAward],
+  };
+
+  const report = validateNarrative(baseArgs({ dmRecord }));
+
+  assert.deepEqual(dmRecord.awarded_items, [authoritativeAward]);
+  assert.equal(report.telemetry.actionBackfill, undefined);
+});
+
+test("validateNarrative keeps unsupported narrative actions out of structured state", () => {
+  const dmRecord = {
+    narrative: "你看见一只从未登记的银色怀表，决定先不触碰它。",
+    options: ["继续前进", "侧耳细听", "回身后退", "贴墙观察"],
+    player_location: "三楼走廊",
+    awarded_items: [],
+    consumed_items: [],
+    currency_change: 0,
+  };
+
+  const report = validateNarrative(baseArgs({ dmRecord }));
+
+  assert.deepEqual(dmRecord.awarded_items, []);
+  assert.deepEqual(dmRecord.consumed_items, []);
+  assert.equal(dmRecord.currency_change, 0);
+  assert.equal(report.telemetry.actionBackfill, undefined);
+});
+
 test("validateNarrative flags a first-person possession that is absent from inventory", () => {
   const report = validateNarrative(baseArgs({
     inventoryItemIds: ["item_phone", "item_bandage"],

@@ -120,6 +120,7 @@ test("parseWorldEngineDeltaJson accepts director_plan_v1 json", () => {
   assert.equal(parsed?.schema_version, "director_plan_v1");
   assert.equal(parsed?.world_events_to_schedule.length, 1);
   assert.equal(parsed?.world_events_to_schedule[0]?.salience, 1);
+  assert.deepEqual(parsed?.world_event_drop_reasons, []);
   assert.equal(parsed?.story_branch_seeds[0]?.confidence, 1);
   assert.equal(parsed?.player_private_hooks[0]?.must_not_surface_directly, true);
 });
@@ -184,6 +185,191 @@ test("parseWorldEngineDeltaJson normalizes noncanonical enum labels instead of r
   assert.equal(parsed?.reveal_policy, "hint_only");
   assert.equal(parsed?.risk_assessment.agency_risk, "low");
   assert.equal(parsed?.world_events_to_schedule.length, 1);
+});
+
+test("parseWorldEngineDeltaJson exposes bounded reasons when a model event is dropped", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [{ event_code: "EV_MISSING_HINT", title: "缺少可消费提示" }],
+  }));
+  assert.ok(parsed);
+  assert.equal(parsed?.world_events_raw_count, 1);
+  assert.equal(parsed?.world_events_to_schedule.length, 0);
+  assert.deepEqual(parsed?.world_event_drop_reasons, ["injection_hint_missing"]);
+});
+
+test("safe ambient director events receive only fixed agency defaults when the model omits boilerplate", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [{
+      event_code: "EV_LIGHT_FLICKER",
+      title: "走廊灯光闪烁",
+      priority: "low",
+      injection_hint: "走廊灯光短暂闪烁，随后恢复正常，空气里留下轻微的电流声。",
+      payload: { type: "environmental_effect" },
+    }],
+  }));
+  assert.ok(parsed);
+  const event = parsed?.world_events_to_schedule[0];
+  assert.equal(event?.agency_constraints.length, 1);
+  assert.equal(event?.forbidden_outcomes.length, 1);
+  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+});
+
+test("safe environmental changes receive the same fixed agency defaults", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [{
+      event_code: "EV_305_TRAIL",
+      title: "305 门缝拖痕更新",
+      priority: "low",
+      injection_hint: "305 门缝的米粒拖痕向外延伸了一小段。",
+      payload: { type: "environmental_change", persistence: "temporary" },
+    }],
+  }));
+  assert.ok(parsed);
+  const event = parsed?.world_events_to_schedule[0];
+  assert.equal(event?.agency_constraints.length, 1);
+  assert.equal(event?.forbidden_outcomes.length, 1);
+  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+});
+
+test("real-model ambient and environmental aliases receive defaults only through existing safe observation gates", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [
+      {
+        event_code: "EVT_305_DOOR_CREAK",
+        title: "305门后轻响",
+        priority: "low",
+        salience: 1,
+        injection_hint: "305门后传来一声短促轻响，随后走廊又恢复了安静。",
+        agency_constraints: [],
+        forbidden_outcomes: [],
+        payload: { type: "ambient_event" },
+      },
+      {
+        event_code: "EVT_MICE_TRAIL_UPDATE",
+        title: "米粒拖痕更新",
+        priority: "low",
+        salience: 1,
+        injection_hint: "门缝旁的米粒拖痕向楼梯口延伸了很短的一段距离。",
+        agency_constraints: [],
+        forbidden_outcomes: [],
+        payload: { type: "clue_update" },
+      },
+      {
+        event_code: "EVT_LIGHT_FLICKER_305",
+        title: "305灯光闪烁",
+        priority: "low",
+        salience: 1,
+        injection_hint: "305门外的灯光短暂闪烁，门缝边的阴影随即恢复原状。",
+        agency_constraints: [],
+        forbidden_outcomes: [],
+        payload: { type: "environmental_clue" },
+      },
+      {
+        event_code: "EVT_LIGHT_FLICKER_MILL_TRACE",
+        title: "灯光闪烁与米粒拖痕",
+        priority: "low",
+        salience: 1,
+        injection_hint: "走廊灯光短暂熄灭又亮起，305门缝的米粒出现新的拖痕。",
+        agency_constraints: [],
+        forbidden_outcomes: [],
+        payload: { type: "environmental_event", description: "米粒拖痕延伸向楼梯方向。" },
+      },
+    ],
+  }));
+  assert.ok(parsed);
+  assert.deepEqual(parsed?.world_events_to_schedule.map((event) => event.payload.type), ["ambient_sound", "environmental_change", "environmental_change", "environmental_change"]);
+  assert.ok(parsed?.world_events_to_schedule.every((event) => event.agency_constraints.length === 1));
+  assert.ok(parsed?.world_events_to_schedule.every((event) => event.forbidden_outcomes.length === 1));
+  assert.equal(validateDirectorPlan(parsed!).accepted, true);
+});
+
+test("medium-salience observational cues may receive defaults, but high-priority events may not", () => {
+  const medium = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [{
+      event_code: "EV_HALLWAY_TRACE",
+      title: "走廊痕迹变化",
+      priority: "medium",
+      salience: 0.4,
+      injection_hint: "门缝旁的灰尘里多出一行朝楼梯口延伸的细痕。",
+      payload: { type: "ambient_event" },
+    }],
+  }));
+  assert.ok(medium);
+  assert.equal(validateDirectorPlan(medium!).accepted, true);
+
+  const high = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [{
+      event_code: "EV_HIGH_ALERT",
+      title: "走廊紧急异动",
+      priority: "high",
+      injection_hint: "走廊尽头传来连续重响，灯光骤然熄灭。",
+      payload: { type: "environmental_change" },
+    }],
+  }));
+  assert.ok(high);
+  assert.equal(validateDirectorPlan(high!).accepted, false);
+});
+
+test("a rejected high-risk sibling does not discard independently safe director agenda events", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [
+      {
+        event_code: "EV_SAFE_DOOR_CREAK",
+        title: "门缝轻响",
+        priority: "low",
+        injection_hint: "走廊尽头传来轻微的门轴声，随后又恢复了安静。",
+        payload: { type: "audio_cue" },
+      },
+      {
+        event_code: "EV_UNSAFE_FORCED_TRAIL",
+        title: "高风险拖痕",
+        priority: "high",
+        injection_hint: "门缝下的拖痕突然延伸到你脚边，逼迫你立刻追过去。",
+        payload: { type: "environmental_event" },
+        agency_constraints: [],
+        forbidden_outcomes: [],
+      },
+    ],
+  }));
+  assert.ok(parsed);
+  const validation = validateDirectorPlan(parsed!);
+  assert.equal(validation.accepted, true);
+  assert.deepEqual(validation.acceptedEventCodes, ["EV_SAFE_DOOR_CREAK"]);
+  assert.deepEqual(validation.rejectedEventCodes, ["EV_UNSAFE_FORCED_TRAIL"]);
+  assert.ok(validation.issues.some((issue) => issue.eventCode === "EV_UNSAFE_FORCED_TRAIL"));
+});
+
+test("plan-level director risk still rejects every otherwise-valid agenda event", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    risk_assessment: { agency_risk: "high", continuity_risk: "low", spoiler_risk: "low", safety_risk: "low" },
+    world_events_to_schedule: [{
+      event_code: "EV_SAFE_BUT_GLOBAL_RISK",
+      title: "安全灯闪",
+      priority: "low",
+      injection_hint: "头顶灯管短暂闪烁，空气中留下一丝细小的电流声。",
+      payload: { type: "environmental_effect" },
+    }],
+  }));
+  assert.ok(parsed);
+  const validation = validateDirectorPlan(parsed!);
+  assert.equal(validation.accepted, false);
+  assert.deepEqual(validation.acceptedEventCodes, []);
+});
+
+test("normalizes safe hint aliases without broadening the event vocabulary", () => {
+  const parsed = parseWorldEngineDeltaJson(JSON.stringify({
+    world_events_to_schedule: [{
+      event_code: "EV_DOOR_AUDIO",
+      title: "门内轻响",
+      priority: "low",
+      salience: 1,
+      injection_hint: "门内传来一声轻微的金属碰撞声，随后恢复安静。",
+      payload: { type: "audio_hint" },
+    }],
+  }));
+  assert.ok(parsed);
+  assert.equal(parsed?.world_events_to_schedule[0]?.payload.type, "audio_cue");
+  assert.equal(validateDirectorPlan(parsed!).accepted, true);
 });
 
 test("parseWorldEngineDeltaJson parses and normalizes Social World extension fields", () => {

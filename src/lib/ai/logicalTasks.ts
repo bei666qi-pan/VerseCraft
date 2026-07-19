@@ -63,6 +63,8 @@ export async function parsePlayerIntent(args: {
   ruleSnapshot: PlayerRuleSnapshot;
   ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path">;
   signal?: AbortSignal;
+  budgetMs?: number;
+  executionStrategy?: "prefer_fast_path" | "require_model";
 }): Promise<ControlPreflightResult> {
   const { runPlayerControlPreflight } = await import("@/lib/playRealtime/controlPreflight");
   return runPlayerControlPreflight(args);
@@ -211,7 +213,7 @@ export async function expandNarrativeOnly(args: {
   const startedAt = Date.now();
   const originalNarrative = String(args.originalNarrative ?? "");
   const beforeChars = Array.from(originalNarrative.replace(/\s+/g, "")).length;
-  const budgetMs = Math.max(1, Math.min(8_000, args.budgetMs ?? 6_000));
+  const budgetMs = Math.max(1, Math.min(10_000, args.budgetMs ?? 6_000));
   const timeout = createTimeoutSignal(args.signal, budgetMs);
 
   const system: ChatMessage = {
@@ -223,6 +225,7 @@ export async function expandNarrativeOnly(args: {
       "禁止修改 awarded_items、consumed_items、task_updates、relationship_updates、codex_updates、clue_updates、npc_location_updates、main_threat_updates、weapon_updates 等结构字段。",
       "禁止新增 NPC、地点、道具、任务，禁止提前揭示世界真相，必须保持原始事件结论。",
       "只能补充：动作反馈、感官细节、环境阻力、NPC 即时反应、心理压迫、悬疑节奏。",
+      `扩写后 narrative 必须达到 ${Math.max(0, Math.round(args.narrativeBudget.minChars))} 字；达不到时宁可继续补足已知场景细节，不得编造新事实。`,
       `扩写后 narrative 不得超过 ${Math.max(0, Math.round(args.narrativeBudget.maxChars))} 字。`,
       "禁止输出 markdown、解释、代码块或任何额外文本。",
     ].join("\n"),
@@ -337,7 +340,7 @@ export async function repairNarrativeOnly(args: {
   const originalNarrative = String(args.originalNarrative ?? "");
   const beforeChars = Array.from(originalNarrative.replace(/\s+/g, "")).length;
   const maxChars = Math.max(80, Math.min(2800, Math.trunc(args.maxChars ?? Math.max(900, originalNarrative.length + 240))));
-  const budgetMs = Math.max(500, Math.min(5_000, args.budgetMs ?? 2_500));
+  const budgetMs = Math.max(500, Math.min(6_000, args.budgetMs ?? 2_500));
   const timeout = createTimeoutSignal(args.signal, budgetMs);
 
   const system: ChatMessage = {

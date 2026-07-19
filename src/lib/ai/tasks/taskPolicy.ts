@@ -238,9 +238,11 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     // Judge output is small structured JSON; keep tight.
     maxTokens: 1024,
     temperature: 0,
-    // Judges should be fast and cheap.
-    timeoutMs: 15_000,
-    budgetLevel: "low",
+    // Narrative review has a compact output but may inspect a multi-turn
+    // transcript. Keep it offline and bounded, without cutting a healthy
+    // control attempt before its verdict can arrive.
+    timeoutMs: 30_000,
+    budgetLevel: "medium",
     responseFormatJsonObject: true,
   },
 };

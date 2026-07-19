@@ -7,7 +7,7 @@ import type { TokenUsage } from "@/lib/ai/types/core";
 export type NarrativeExpansionSkippedReason =
   | "feature_disabled"
   | "budget_missing"
-  | "severity_not_medium"
+  | "not_under_minimum"
   | "tier_not_expandable"
   | "safety_fallback"
   | "illegal_action"
@@ -49,6 +49,9 @@ export type NarrativeExpansionResult =
     };
 
 export const NARRATIVE_EXPANDABLE_TIERS: ReadonlySet<NarrativeBudgetTier> = new Set([
+  // A short turn below its explicit playable minimum must not silently bypass
+  // the constrained narrative-only recovery path.
+  "short",
   "standard",
   "reveal",
   "climax",
@@ -79,8 +82,10 @@ export function shouldTriggerNarrativeExpansion(args: {
 }): { trigger: true; skippedReason: null } | { trigger: false; skippedReason: NarrativeExpansionSkippedReason } {
   if (!args.enabled) return { trigger: false, skippedReason: "feature_disabled" };
   if (!args.budget) return { trigger: false, skippedReason: "budget_missing" };
-  if (args.lengthTelemetry?.narrativeLengthSeverity !== "medium") {
-    return { trigger: false, skippedReason: "severity_not_medium" };
+  // Severity distinguishes diagnostics; it must not weaken the actual
+  // player-visible minimum. A small shortfall is still a shortfall.
+  if (!args.lengthTelemetry?.narrativeUnderMin) {
+    return { trigger: false, skippedReason: "not_under_minimum" };
   }
   if (!NARRATIVE_EXPANDABLE_TIERS.has(args.budget.tier)) {
     return { trigger: false, skippedReason: "tier_not_expandable" };
@@ -177,6 +182,9 @@ export function validateExpandedNarrativeCandidate(args: {
   if (!narrative || afterChars <= 0) return { ok: false, reason: "empty_narrative", beforeChars, afterChars };
   if (afterChars > Math.max(0, Math.round(args.budget.maxChars))) {
     return { ok: false, reason: "over_max_chars", beforeChars, afterChars };
+  }
+  if (afterChars < Math.max(0, Math.round(args.budget.minChars))) {
+    return { ok: false, reason: "below_min_chars", beforeChars, afterChars };
   }
   if (afterChars < beforeChars + MIN_EXPANSION_GAIN_CHARS) {
     return { ok: false, reason: "not_expanded", beforeChars, afterChars };

@@ -224,9 +224,16 @@ export function computeProfessionState(input: {
   };
 }
 
-export function certifyProfession(state: ProfessionStateV1, profession: ProfessionId): ProfessionStateV1 {
+export function certifyProfession(
+  state: ProfessionStateV1,
+  profession: ProfessionId,
+  options: { certifierEncounterConfirmed?: boolean } = {}
+): ProfessionStateV1 {
   const eligibility = state.eligibilityByProfession?.[profession] ?? false;
-  if (!eligibility) return state;
+  // This reducer is the irreversible state-commit boundary. UI visibility is
+  // only advisory, so a caller must carry forward the structured encounter
+  // fact rather than certify from eligibility alone.
+  if (!eligibility || options.certifierEncounterConfirmed !== true) return state;
   const unlocked = state.unlockedProfessions.includes(profession)
     ? state.unlockedProfessions
     : [...state.unlockedProfessions, profession];
@@ -244,4 +251,3 @@ export function certifyProfession(state: ProfessionStateV1, profession: Professi
     activePerks: [PROFESSION_REGISTRY[profession].passivePerkId],
   };
 }
-

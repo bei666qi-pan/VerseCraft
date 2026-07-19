@@ -49,6 +49,10 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enablePromptPacketDedupV1: boolean;
   /** Post-generation style validator; telemetry-only / low-medium severity. */
   enableNarrativeStyleValidator: boolean;
+  /** Final-turn downgrade for player-visible state assertions without authoritative deltas. */
+  enableNarrativeStateConflictDegrade: boolean;
+  /** Resolve bounded Chinese movement phrases to one registered world-graph edge. */
+  enableCanonicalLocationMovement: boolean;
   enableNpcBeliefGraph: boolean;
   enableNpcKnowledgeValidator: boolean;
   enableWorldFactRegistry: boolean;
@@ -182,6 +186,8 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableNarrativeStyleBible: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STYLE_BIBLE", true),
     enablePromptPacketDedupV1: readFlag("VERSECRAFT_ENABLE_PROMPT_PACKET_DEDUP_V1", true),
     enableNarrativeStyleValidator: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STYLE_VALIDATOR", true),
+    enableNarrativeStateConflictDegrade: readFlag("VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE", true),
+    enableCanonicalLocationMovement: readFlag("VERSECRAFT_ENABLE_CANONICAL_LOCATION_MOVEMENT", true),
     enableNpcBeliefGraph: readFlag("VERSECRAFT_ENABLE_NPC_BELIEF_GRAPH", true),
     enableNpcKnowledgeValidator: readFlag("VERSECRAFT_ENABLE_NPC_KNOWLEDGE_VALIDATOR", true),
     enableWorldFactRegistry: readFlag("VERSECRAFT_ENABLE_WORLD_FACT_REGISTRY", true),

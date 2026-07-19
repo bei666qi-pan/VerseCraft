@@ -3,8 +3,10 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 import { resolveCampaignExecution } from "./liveExecutionMode";
 
-test("reachable probe is labelled live without spending a chat call", async () => {
-  const server = createServer((_req, res) => {
+test("reachable probe uses the lightweight health path without spending a chat call", async () => {
+  let requestedUrl = "";
+  const server = createServer((req, res) => {
+    requestedUrl = req.url ?? "";
     res.statusCode = 405;
     res.end();
   });
@@ -14,6 +16,7 @@ test("reachable probe is labelled live without spending a chat call", async () =
   const result = await resolveCampaignExecution({ baseUrl: `http://127.0.0.1:${address.port}` });
   assert.equal(result.mode, "live");
   assert.equal(result.reason, "http_405");
+  assert.equal(requestedUrl, "/api/health");
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
@@ -26,4 +29,3 @@ test("unreachable probe fails closed unless fallback is explicit", async () => {
   assert.equal(degraded.mode, "live_degraded");
   assert.match(degraded.reason, /^probe_failed:/);
 });
-

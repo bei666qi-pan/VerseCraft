@@ -58,7 +58,7 @@ test("weapon tactical adjudication: reconnaissance does not spend weapon durabil
       narrative: "我沿走廊确认异常的位置。",
       is_death: false,
       player_location: "3F_Corridor",
-      main_threat_updates: [{ floorId: "3", threatId: "A-3F-SHADOW", phase: "active" }],
+      main_threat_updates: [{ floorId: "3", threatId: "A-003", phase: "active" }],
     },
     playerContext: "",
     latestUserInput: "在当前位置寻找已经存在的威胁进入战斗；若没有威胁，不得凭空生成敌人。",

@@ -457,6 +457,13 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ]; then
             E2E_AI_LIVE=1 BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm eval:chat-quality -- --mode live --assert --json-out .runtime-data/live-chat-quality-eval.json
             E2E_AI_LIVE=1 BENCHMARK_BASE_URL=http://127.0.0.1:3000 pnpm eval:narrative-safety -- --mode live --assert --json-out .runtime-data/live-narrative-safety-eval.json
+            # A real trace is judged after its SSE final has completed. Do not use mock
+            # fixtures here: this gate is specifically for model-visible playability evidence.
+            pnpm exec tsx scripts/eval-playthrough-live.ts --live --base-url http://127.0.0.1:3000 --sessions 1 --max-steps 1 --scenarios happy-explore --step-delay-ms 1 --out .runtime-data/live-model-review-trace
+            model_review_trace=$(find .runtime-data/live-model-review-trace/traces -name '*.json' -print -quit)
+            test -n "$model_review_trace"
+            VERSECRAFT_ENABLE_MODEL_NARRATIVE_REVIEW_EVALS=1 pnpm eval:model-narrative-review -- --mode live --input "$model_review_trace" --assert-live-coverage --json-out .runtime-data/live-model-narrative-review.json --markdown-out .runtime-data/live-model-narrative-review.md
+            VERSECRAFT_ENABLE_INTENT_GROUNDED_PLAYABILITY_EVALS=1 pnpm eval:intent-grounded-playability -- --mode live --assert-strict --trace "$model_review_trace" --json-out .runtime-data/live-intent-grounded-playability.json --markdown-out .runtime-data/live-intent-grounded-playability.md
           fi
           kill "$live_server_pid" 2>/dev/null || true
           wait "$live_server_pid" 2>/dev/null || true
@@ -483,3 +490,8 @@ jobs:
             .runtime-data/live-chat-benchmark.json
             .runtime-data/live-chat-quality-eval.json
             .runtime-data/live-narrative-safety-eval.json
+            .runtime-data/live-model-narrative-review.json
+            .runtime-data/live-model-narrative-review.md
+            .runtime-data/live-intent-grounded-playability.json
+            .runtime-data/live-intent-grounded-playability.md
+            .runtime-data/live-model-review-trace/traces/*.json

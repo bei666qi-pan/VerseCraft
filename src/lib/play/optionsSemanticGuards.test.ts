@@ -46,3 +46,40 @@ test("semantic guards: should detect over-homogeneous categories and keep divers
   );
 });
 
+test("semantic guards: visible recovery scene anchors prevent literal-anchor false negatives", () => {
+  const result = evaluateOptionsSemanticQuality({
+    options: ["我检查电源室的其他设备", "我询问老刘下一步计划", "我握紧武器警戒门口", "我去北门打篮球"],
+    currentOptions: [],
+    recentOptions: [],
+    latestNarrative: "我完成修复，稳定度已经恢复。",
+    playerLocation: "B1_PowerRoom",
+    sceneAnchors: ["配电间", "电源室", "电工老刘", "老刘", "武器"],
+  });
+  assert.equal(result.accepted.includes("我检查电源室的其他设备"), true);
+  assert.equal(result.accepted.includes("我询问老刘下一步计划"), true);
+  assert.equal(result.accepted.includes("我握紧武器警戒门口"), true);
+  assert.equal(result.accepted.includes("我去北门打篮球"), false);
+});
+
+test("semantic guards: concrete combat aftermath actions keep their visible narrative anchors", () => {
+  const result = evaluateOptionsSemanticQuality({
+    options: ["我后退两步，与黑影保持安全距离", "我检查铁管受损程度，并摸出绷带准备应急", "我向欣蓝点头示意，问她是否知道更多"],
+    currentOptions: [],
+    recentOptions: [],
+    latestNarrative: "走廊尽头那团黑影被铁管压退，空气里还残留着潮湿的铁锈味。",
+  });
+  assert.deepEqual(result.accepted, ["我后退两步，与黑影保持安全距离", "我检查铁管受损程度，并摸出绷带准备应急"]);
+  assert.equal(result.rejected[0]?.option, "我向欣蓝点头示意，问她是否知道更多");
+  assert.equal(result.rejected[0]?.reason, "missing_story_anchor");
+});
+
+test("semantic guards: shadow variants and live scene details anchor distinct real actions", () => {
+  const result = evaluateOptionsSemanticQuality({
+    options: ["我朝那团黑影喊话，试探它是否有反应", "我用绷带缠紧虎口，准备下一轮", "我朝电视方向喊一声，看有无回应"],
+    currentOptions: [],
+    recentOptions: [],
+    latestNarrative: "电视静噪从走廊尽头传来，漆黑的轮廓还在缓慢蠕动。",
+    sceneAnchors: ["绷带"],
+  });
+  assert.deepEqual(result.accepted, ["我朝那团黑影喊话，试探它是否有反应", "我用绷带缠紧虎口，准备下一轮", "我朝电视方向喊一声，看有无回应"]);
+});

@@ -164,6 +164,8 @@ function buildWorldEngineMessages(input: {
     "你的任务是评估节奏、张力、疲劳、伏笔压力、连续性风险和玩家自主性风险，并输出可验证的导演计划。",
     "不要输出玩家可见 narrative，不要替玩家做决定，不要强制玩家失败，不要提前揭示核心真相。",
     "所有事件只能作为后续主叙事可选择采用的软提示；每个事件必须说明玩家自主性约束和禁止结果。",
+    "若 world_events_to_schedule 非空，每个事件必须包含：event_code、title、due_in_turns、ttl_turns、priority、salience、trigger_conditions、injection_hint、agency_constraints、forbidden_outcomes、payload。缺任一字段的事件会被系统丢弃。",
+    "当 trigger_signals 含 multi_room_movement、repeated_investigation_loop、key_story_node_hit 或 due_hook_reached 时，除非明确无安全且可逆的提示，至少给出 1 个可观察、可拒绝的事件；injection_hint 必须是主笔可直接采用的短提示，而非计划摘要。",
     "player_private_hooks 永远不能直接展示给玩家，也不能把隐藏真相、NPC 私有知识或伏笔原文写进 injection_hint。",
     "control risk tags 只用于安全/节奏评估，不能把 political、violence 等安全标签直接变成剧情事件。",
     "NPC 后台行动必须尊重 knowledge_scope；NPC 不应围绕自己不知道的事实行动。",

@@ -37,6 +37,8 @@ export type ResumeShadowSnapshot = {
   stats: Record<string, number>;
   originium: number;
   professionState?: unknown;
+  /** 已确认遇到职业认证签发者；旧 shadow 缺省时按未确认处理。 */
+  hasMetProfessionCertifier: boolean;
 };
 
 export type ResumeShadowSummary = {
@@ -204,6 +206,7 @@ export function buildResumeShadowSnapshot(state: Record<string, unknown>): Resum
     stats,
     originium: clampInt(state.originium, 0, 999999),
     ...(state.professionState ? { professionState: state.professionState } : {}),
+    hasMetProfessionCertifier: state.hasMetProfessionCertifier === true,
   };
 }
 
@@ -258,6 +261,7 @@ export function readResumeShadowSnapshot(): ResumeShadowSnapshot | null {
       stats: (toPlainObject(obj.stats) as Record<string, number> | null) ?? {},
       originium: clampInt(obj.originium, 0, 999999),
       ...(obj.professionState ? { professionState: obj.professionState } : {}),
+      hasMetProfessionCertifier: obj.hasMetProfessionCertifier === true,
     };
   } catch {
     return null;

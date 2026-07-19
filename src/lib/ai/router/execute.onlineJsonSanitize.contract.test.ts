@@ -9,6 +9,7 @@ test("AI router: 在线短 JSON 任务具备轻量思考污染清洗（<think> +
 
   assert.ok(content.includes("sanitizeOnlineShortJsonText"), "missing sanitizeOnlineShortJsonText");
   assert.ok(content.includes("ONLINE_SHORT_JSON_TASKS"), "missing ONLINE_SHORT_JSON_TASKS gate");
+  assert.ok(content.includes("STRICT_JSON_TRANSPORT_TASKS"), "missing strict JSON transport gate");
   assert.ok(
     content.includes("\"PLAYER_CONTROL_PREFLIGHT\"") ||
       content.includes("'PLAYER_CONTROL_PREFLIGHT'"),
@@ -16,5 +17,8 @@ test("AI router: 在线短 JSON 任务具备轻量思考污染清洗（<think> +
   );
   assert.ok(content.includes("stripThinkBlocks"), "must strip <think> blocks");
   assert.ok(content.includes("extractFirstJsonObject"), "must extract first JSON object from prose");
+  assert.ok(
+    content.includes('"EVAL_JUDGE"') || content.includes("'EVAL_JUDGE'"),
+    "EVAL_JUDGE must use strict JSON transport without becoming an online fail-fast task"
+  );
 });
-

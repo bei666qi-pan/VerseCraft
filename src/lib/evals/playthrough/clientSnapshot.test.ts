@@ -17,6 +17,15 @@ test("live smoke snapshot carries the same structured weapon/profession/task fie
   assert.deepEqual(snapshot.presentNpcIds, []);
 });
 
+test("focused initial inventory override keeps item ids and slot count coherent", () => {
+  const state = createInitialStateSnapshot({ inventoryItemIds: [] });
+  assert.deepEqual(state.inventoryItemIds, []);
+  assert.equal(state.inventoryItemCount, 0);
+
+  const explicitCount = createInitialStateSnapshot({ inventoryItemIds: [], inventoryItemCount: 8 });
+  assert.equal(explicitCount.inventoryItemCount, 8);
+});
+
 test("forge deltas update bag contents and remove consumed material ids from the next snapshot", () => {
   const state = createInitialStateSnapshot({
     inventoryItemIds: ["item_phone", "I-C03"],

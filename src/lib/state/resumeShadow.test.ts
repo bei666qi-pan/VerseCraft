@@ -42,12 +42,14 @@ test("phase4: resume shadow should keep options/inputMode/logs/time/location", (
     stats: { sanity: 12, agility: 3, luck: 1, charm: 1, background: 2 },
     originium: 5,
     professionState: { currentProfession: "守灯人" },
+    hasMetProfessionCertifier: true,
   });
   assert.equal(s.playerLocation, "1F_Corridor");
   assert.equal(s.time.day, 3);
   assert.equal(s.logs.length, 1);
   assert.equal(s.currentOptions[0], "查看门锁");
   assert.equal(s.inputMode, "options");
+  assert.equal(s.hasMetProfessionCertifier, true);
 });
 
 test("phase4: resume shadow read/write roundtrip", () => {
@@ -67,12 +69,14 @@ test("phase4: resume shadow read/write roundtrip", () => {
     currentBgm: "bgm_b1_daily",
     stats: { sanity: 10, agility: 0, luck: 0, charm: 0, background: 0 },
     originium: 0,
+    hasMetProfessionCertifier: true,
   });
   writeResumeShadowSnapshot(s);
   const read = readResumeShadowSnapshot();
   assert.ok(read);
   assert.equal(read?.inputMode, "text");
   assert.equal(read?.currentOptions[0], "选项A");
+  assert.equal(read?.hasMetProfessionCertifier, true);
 });
 
 test("phase4: playable and summary extraction", () => {

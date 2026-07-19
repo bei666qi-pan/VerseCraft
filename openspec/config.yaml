@@ -1,0 +1,28 @@
+schema: spec-driven
+
+# This context is supplied to Codex whenever it creates or updates OpenSpec artifacts.
+context: |
+  VerseCraft（文界工坊）是单机、浏览器内运行、AI 驱动的中文互动叙事游戏平台原型；
+  当前主世界为「序章·暗月」。所有产品 UI 文案默认使用简体中文。
+  技术栈固定为 Next.js 16 App Router、React 19、TypeScript、Tailwind CSS v4、Zustand 5、
+  Drizzle + PostgreSQL 和 IndexedDB。包管理器为 pnpm@10，Node.js 基线为 >=22.22.0。
+  /api/chat 是在线回合主链路：必须维持 200 + text/event-stream、status 帧、
+  __VERSECRAFT_FINAL__ 终帧覆盖规则以及 keys_missing SSE 降级。模型 JSON 是候选；
+  结构化 state delta、guard、validator 和 resolveDmTurn 才是状态真相源。
+  useGameStore 是唯一主游戏 store，并保留 skipHydration: true 和显式 rehydrate()。
+  不将 reasoner、重型检索、数据库写入、analytics rollup 或 world tick 放进首字前路径；
+  在线回合只裁决当前回合，后台世界演化交给 worker。新增叙事或 lore 行为必须保持
+  epistemic filtering 和 post-generation validation，且不把 narrative 当作可解析状态。
+  开始实施前请先阅读根目录 AGENTS.md；它是完整的架构、兼容性与验证约束来源。
+
+rules:
+  proposal:
+    - 明确列出受影响的 SSE/JSON、状态、analytics、数据库和性能契约；无影响也要说明。
+    - 对 /api/chat、prompt、validator 或 schema 改动，说明首包/TTFT 影响、降级策略与灰度开关。
+    - 写明非目标，避免把独立的架构重构混入同一个 change。
+  design:
+    - 优先采用确定性 staged workflow、typed state delta 和 post-generation validation，而非多 agent 协商或仅靠加长 prompt。
+    - schema 和 analytics 变动必须包含历史兼容、迁移或回填计划。
+  tasks:
+    - 每项任务应小而可验证；涉及代码时包含相关 unit、contract 或 E2E 验证步骤。
+    - /play UI 改动包含 390×844、393×852、430×932 的移动端验证。

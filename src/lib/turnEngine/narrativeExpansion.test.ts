@@ -69,6 +69,18 @@ test("validateExpandedNarrativeCandidate rejects over max chars", () => {
   assert.equal(result.reason, "over_max_chars");
 });
 
+test("validateExpandedNarrativeCandidate rejects an expansion below the active budget minimum", () => {
+  const result = validateExpandedNarrativeCandidate({
+    originalNarrative: "我推开门。",
+    candidateNarrative: "走廊的冷风贴着手背掠过去，尽头的灯闪了一下。",
+    budget: budget("standard"),
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.reason, "below_min_chars");
+});
+
 test("applyNarrativeExpansionResultToDmRecord preserves original record on failed expansion", () => {
   const original = { narrative: "我推开门。", is_death: false, options: ["继续看"] };
   const failed: NarrativeExpansionResult = {
@@ -99,7 +111,7 @@ test("applyNarrativeExpansionResultToDmRecord replaces only narrative on success
   assert.deepEqual(next.options, ["继续看"]);
 });
 
-test("shouldTriggerNarrativeExpansion triggers only for enabled medium standard/reveal/climax turns", () => {
+test("shouldTriggerNarrativeExpansion triggers for an enabled under-minimum standard turn", () => {
   const decision = shouldTriggerNarrativeExpansion({
     enabled: true,
     budget: budget("standard"),
@@ -109,6 +121,36 @@ test("shouldTriggerNarrativeExpansion triggers only for enabled medium standard/
   });
 
   assert.equal(decision.trigger, true);
+});
+
+test("short turns below their explicit playable minimum can use constrained expansion even at low diagnostic severity", () => {
+  const lowSeverityShortfall: NarrativeLengthTelemetry = {
+    ...mediumTelemetry("short"),
+    narrativeLengthSeverity: "low",
+    narrativeLengthIssueCodes: ["under_min"],
+  };
+  const decision = shouldTriggerNarrativeExpansion({
+    enabled: true,
+    budget: budget("short"),
+    lengthTelemetry: lowSeverityShortfall,
+    isActionLegal: true,
+    performanceBudgetMs: 3000,
+  });
+
+  assert.equal(decision.trigger, true);
+});
+
+test("a turn already at its minimum does not spend an expansion call", () => {
+  const decision = shouldTriggerNarrativeExpansion({
+    enabled: true,
+    budget: budget("standard"),
+    lengthTelemetry: { ...mediumTelemetry("standard"), narrativeUnderMin: false, narrativeLengthSeverity: "none" },
+    performanceBudgetMs: 3000,
+  });
+
+  assert.equal(decision.trigger, false);
+  if (decision.trigger) return;
+  assert.equal(decision.skippedReason, "not_under_minimum");
 });
 
 test("feature flag off does not trigger expansion", () => {
