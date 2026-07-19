@@ -11,6 +11,8 @@ async function main() {
     throw new Error("COOLIFY_APP_UUID is required because Coolify discovery did not find exactly one VerseCraft app.");
   }
   const client = new CoolifyClient({ dryRun });
+  const startedAt = Date.now();
+  const snapshot = await client.deploymentSnapshot(uuid || "");
   const deploy = await client.deploy(uuid || "dry-run-app", {
     force: Boolean(args.force),
     instant: Boolean(args.instant),
@@ -25,11 +27,21 @@ async function main() {
     poll = await client.pollDeployment(deploymentUuid, {
       attempts: Number(args.attempts || 36),
       delayMs: Number(args.delayMs || 5000),
+      applicationUuid: uuid,
+      applicationName: snapshot.applicationName,
+      applicationUpdatedAt: snapshot.applicationUpdatedAt,
+      knownDeploymentIds: snapshot.knownDeploymentIds,
     });
   }
-  const result = { uuid, deploy, deployment_uuid: deploymentUuid, poll };
+  const result = { uuid, deploy, deployment_uuid: deploymentUuid, poll, duration_ms: Date.now() - startedAt };
   await writeRuntimeJson("coolify-deployment.json", result);
-  logJson("coolify.deploy.completed", result);
+  logJson("coolify.deploy.completed", {
+    uuid,
+    deployment_uuid: poll?.deploymentUuid || deploymentUuid,
+    status: poll?.status || "not_polled",
+    ok: poll?.ok ?? true,
+    duration_ms: result.duration_ms,
+  });
   if (poll && !poll.ok) {
     process.exitCode = 1;
   }

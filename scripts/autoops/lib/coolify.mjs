@@ -3,6 +3,52 @@ import { env, logJson, warnJson, writeRuntimeJson } from "./logger.mjs";
 const SUCCESS_STATUS_RE = /(success|finished|completed|healthy|running)/i;
 const FAILURE_STATUS_RE = /(fail|failed|error|cancel|exited|unhealthy)/i;
 
+export function normalizeDeploymentList(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.deployments)) return result.deployments;
+  if (Array.isArray(result?.data?.deployments)) return result.data.deployments;
+  return [];
+}
+
+export function deploymentStatus(deployment) {
+  return String(deployment?.status || deployment?.deployment?.status || "").trim();
+}
+
+function deploymentCreatedAt(deployment) {
+  const value = Date.parse(String(deployment?.created_at || deployment?.updated_at || ""));
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Coolify releases have returned a non-queryable UUID on some installations.
+ * Prefer the reported UUID, then select the newest deployment created for the
+ * same application after ignoring the snapshot captured before triggering.
+ */
+export function selectTriggeredDeployment(
+  deployments,
+  { expectedUuid = "", applicationName = "", knownDeploymentIds = new Set() } = {}
+) {
+  const list = normalizeDeploymentList(deployments);
+  if (expectedUuid) {
+    const exact = list.find((item) => String(item?.deployment_uuid || item?.uuid || "") === expectedUuid);
+    if (exact) return exact;
+  }
+  const normalizedName = String(applicationName).trim().toLowerCase();
+  if (!normalizedName) return null;
+  const known = knownDeploymentIds instanceof Set ? knownDeploymentIds : new Set(knownDeploymentIds || []);
+  return list
+    .filter((item) => {
+      const id = String(item?.deployment_uuid || item?.uuid || "");
+      return (
+        id.length > 0 &&
+        !known.has(id) &&
+        String(item?.application_name || "").trim().toLowerCase() === normalizedName
+      );
+    })
+    .sort((a, b) => deploymentCreatedAt(b) - deploymentCreatedAt(a))[0] || null;
+}
+
 export function coolifyBaseCandidates(baseUrl = env("COOLIFY_BASE_URL")) {
   if (!baseUrl) {
     return [];
@@ -62,6 +108,13 @@ export class CoolifyClient {
           lastError = new Error(`Coolify ${method} ${path} failed at ${base}: ${response.status} ${text.slice(0, 400)}`);
           continue;
         }
+        // A base URL without the API suffix can return the Coolify SPA with
+        // HTTP 200. Treat that HTML as a failed candidate so the next API base
+        // is tried instead of later interpreting it as an empty deployment.
+        if (/^\s*<!doctype html/i.test(text) || /^\s*<html[\s>]/i.test(text)) {
+          lastError = new Error(`Coolify ${method} ${path} returned HTML at ${base}`);
+          continue;
+        }
         return data;
       } catch (error) {
         lastError = error;
@@ -94,8 +147,27 @@ export class CoolifyClient {
       logJson("coolify.deployments.dry_run", {});
       return [];
     }
-    const result = await this.request("/deployments");
-    return Array.isArray(result) ? result : result?.data || result?.deployments || [];
+    return normalizeDeploymentList(await this.request("/deployments"));
+  }
+
+  async application(uuid) {
+    if (!uuid) return null;
+    if (this.dryRun) return { uuid, name: "dry-run", status: "running:healthy" };
+    return this.request(`/applications/${encodeURIComponent(uuid)}`);
+  }
+
+  async deploymentSnapshot(applicationUuid) {
+    const [application, deployments] = await Promise.all([
+      this.application(applicationUuid).catch(() => null),
+      this.deployments(),
+    ]);
+    return {
+      applicationName: String(application?.name || application?.application_name || ""),
+      applicationUpdatedAt: String(application?.last_online_at || application?.updated_at || ""),
+      knownDeploymentIds: new Set(
+        deployments.map((item) => String(item?.deployment_uuid || item?.uuid || "")).filter(Boolean)
+      ),
+    };
   }
 
   async applicationDeployments(uuid) {
@@ -173,40 +245,110 @@ export class CoolifyClient {
     }
   }
 
-  async pollDeployment(deploymentUuid, { attempts = 36, delayMs = 5000 } = {}) {
+  async pollDeployment(
+    deploymentUuid,
+    {
+      attempts = 36,
+      delayMs = 5000,
+      applicationUuid = "",
+      knownDeploymentIds = new Set(),
+      applicationName = "",
+      applicationUpdatedAt = "",
+    } = {}
+  ) {
     if (!deploymentUuid) {
       return null;
     }
     let last = null;
+    let observed = false;
+    let observedUuid = deploymentUuid;
+    let resolvedApplicationName = applicationName;
+    if (!resolvedApplicationName && applicationUuid) {
+      try {
+        const application = await this.application(applicationUuid);
+        resolvedApplicationName = String(application?.name || application?.application_name || "");
+      } catch {
+        // Collection fallback remains safe even if application metadata is temporarily unavailable.
+      }
+    }
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       // 轮询窗口常常长达 10-20 分钟：本机到 Coolify 的网络瞬时抖动（DNS/连接超时等）
       // 不代表远端部署本身出了问题——真实遇到过一次 fetch 失败直接抛出把整个自愈脚本
       // 崩掉，而 Coolify 侧的构建其实还在正常继续。这里把单次查询失败当作"这一轮没查到"，
       // 等下一轮重试，而不是让异常穿透到调用方。
       try {
-        last = await this.deployment(deploymentUuid);
+        last = await this.deployment(observedUuid);
       } catch (error) {
         warnJson("coolify.deployment.poll_error", {
-          deployment_uuid: deploymentUuid,
+          deployment_uuid: observedUuid,
           attempt,
           message: error instanceof Error ? error.message : String(error),
         });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        continue;
+        last = null;
       }
-      const status = String(last?.status || last?.deployment?.status || "");
-      logJson("coolify.deployment.poll", { deployment_uuid: deploymentUuid, attempt, status });
+
+      let status = deploymentStatus(last);
+      if (!status) {
+        try {
+          const candidate = selectTriggeredDeployment(await this.deployments(), {
+            expectedUuid: deploymentUuid,
+            applicationName: resolvedApplicationName,
+            knownDeploymentIds,
+          });
+          if (candidate) {
+            last = candidate;
+            observed = true;
+            observedUuid = String(candidate.deployment_uuid || candidate.uuid || observedUuid);
+            status = deploymentStatus(candidate);
+            logJson("coolify.deployment.resolved_from_collection", {
+              expected_deployment_uuid: deploymentUuid,
+              deployment_uuid: observedUuid,
+              attempt,
+              status,
+            });
+          }
+        } catch (error) {
+          warnJson("coolify.deployment.collection_poll_error", {
+            deployment_uuid: deploymentUuid,
+            attempt,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      } else {
+        observed = true;
+      }
+
+      if (!status && observed && applicationUuid) {
+        try {
+          const application = await this.application(applicationUuid);
+          const applicationStatus = deploymentStatus(application);
+          const currentApplicationUpdatedAt = String(application?.last_online_at || application?.updated_at || "");
+          if (
+            SUCCESS_STATUS_RE.test(applicationStatus) &&
+            applicationUpdatedAt &&
+            currentApplicationUpdatedAt &&
+            currentApplicationUpdatedAt !== applicationUpdatedAt
+          ) {
+            return { ok: true, status: applicationStatus, response: application, deploymentUuid: observedUuid };
+          }
+        } catch {
+          // Preserve the bounded observation window when the application endpoint is transiently unavailable.
+        }
+      }
+
+      logJson("coolify.deployment.poll", { deployment_uuid: observedUuid, attempt, status });
       await writeRuntimeJson("coolify-deployment.json", {
-        deployment_uuid: deploymentUuid,
+        deployment_uuid: observedUuid,
+        expected_deployment_uuid: deploymentUuid,
         attempt,
         status,
         response: last,
       });
       if (SUCCESS_STATUS_RE.test(status)) {
-        return { ok: true, status, response: last };
+        return { ok: true, status, response: last, deploymentUuid: observedUuid };
       }
       if (FAILURE_STATUS_RE.test(status)) {
-        return { ok: false, status, response: last };
+        return { ok: false, status, response: last, deploymentUuid: observedUuid };
       }
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
