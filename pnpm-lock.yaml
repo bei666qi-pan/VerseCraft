@@ -23,6 +23,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      dotenv:
+        specifier: ^17.3.1
+        version: 17.3.1
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@libsql/client-wasm@0.17.4)(@opentelemetry/api@1.9.1)(@types/pg@8.18.0)(@upstash/redis@1.36.4)(better-sqlite3@11.10.0)(mysql2@3.19.0(@types/node@22.19.17))(pg@8.20.0)
@@ -93,9 +96,6 @@ importers:
       '@volcengine/tos-sdk':
         specifier: ^2.9.1
         version: 2.9.1
-      dotenv:
-        specifier: ^17.3.1
-        version: 17.3.1
       drizzle-kit:
         specifier: ^0.31.9
         version: 0.31.9
@@ -110,7 +110,7 @@ importers:
         version: 4.7.0
       promptfoo:
         specifier: ^0.100.0
-        version: 0.100.6(@aws-sdk/client-bedrock-runtime@3.1080.0)(@aws-sdk/credential-provider-sso@3.972.60)(@azure/identity@4.13.1)(@azure/openai-assistants@1.0.0-beta.6)(@fal-ai/serverless-client@0.14.3)(@ibm-cloud/watsonx-ai@1.7.14)(@ibm-generative-ai/node-sdk@2.0.6(@langchain/core@1.2.1(@opentelemetry/api@1.9.1)(openai@4.104.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)))(@libsql/client-wasm@0.17.4)(@opentelemetry/api@1.9.1)(@playwright/browser-chromium@1.61.1)(@smithy/node-http-handler@3.3.3)(@types/pg@8.18.0)(@types/react@19.2.14)(babel-plugin-macros@3.1.0)(google-auth-library@9.15.1)(ibm-cloud-sdk-core@5.5.0)(langfuse@3.38.20)(mysql2@3.19.0(@types/node@22.19.17))(node-sql-parser@5.4.0)(pdf-parse@1.1.4)(pg@8.20.0)(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2))(playwright@1.58.2)(puppeteer-extra-plugin-stealth@2.11.2(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 0.100.6(@aws-sdk/client-bedrock-runtime@3.1080.0)(@aws-sdk/credential-provider-sso@3.972.60)(@azure/identity@4.13.1)(@azure/openai-assistants@1.0.0-beta.6)(@fal-ai/serverless-client@0.14.3)(@ibm-cloud/watsonx-ai@1.7.14)(@ibm-generative-ai/node-sdk@2.0.6(@langchain/core@1.2.1(@opentelemetry/api@1.9.1)(openai@4.104.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)))(@libsql/client-wasm@0.17.4)(@opentelemetry/api@1.9.1)(@playwright/browser-chromium@1.61.1)(@smithy/node-http-handler@4.9.3)(@types/pg@8.18.0)(@types/react@19.2.14)(babel-plugin-macros@3.1.0)(google-auth-library@9.15.1)(ibm-cloud-sdk-core@5.5.0)(langfuse@3.38.20)(mysql2@3.19.0(@types/node@22.19.17))(node-sql-parser@5.4.0)(pdf-parse@1.1.4)(pg@8.20.0)(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2))(playwright@1.58.2)(puppeteer-extra-plugin-stealth@2.11.2(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@22.19.17)
@@ -1620,10 +1620,6 @@ packages:
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
 
-  '@smithy/abort-controller@3.1.9':
-    resolution: {integrity: sha512-yiW0WI30zj8ZKoSYNx90no7ugVn3khlyH/z5W8qtKBtVE6awRALbhSG+2SAHA1r6bO/6M9utxYKVZ3PCJ1rWxw==}
-    engines: {node: '>=16.0.0'}
-
   '@smithy/core@3.29.1':
     resolution: {integrity: sha512-qoiY4nrk5OCu1+eIR1VB8l5DmON/oKiqrd5zZFAhXJXjJlLWQusKEW/SkBDAtGDcPaz86m9kfcE1lngU0GlM6A==}
     engines: {node: '>=18.0.0'}
@@ -1644,20 +1640,12 @@ packages:
     resolution: {integrity: sha512-+Fsu6Q6C4RSJiy81Y8eApjEB5gVtM+oFKTffg+jSuwtvomJJrhUJBu2zS8wjXSgH/g1MKEWrzyChTBe6clb5FQ==}
     engines: {node: '>=16.0.0'}
 
-  '@smithy/node-http-handler@3.3.3':
-    resolution: {integrity: sha512-BrpZOaZ4RCbcJ2igiSNG16S+kgAc65l/2hmxWdmhyoGWHTLlzQzr06PXavJp9OBlPEG/sHlqdxjWmjzV66+BSQ==}
-    engines: {node: '>=16.0.0'}
-
   '@smithy/node-http-handler@4.9.3':
     resolution: {integrity: sha512-qZTa4gQFUo8RM02rk6q5UVTDLNrQ1oS20LsepBzqq1QBVc/EHJ03OOUADcqMZiXHArW+Y7+OGY0BpdTwZRq/Yg==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/protocol-http@4.1.8':
     resolution: {integrity: sha512-hmgIAVyxw1LySOwkgMIUN0kjN8TG9Nc85LJeEmEE/cNEe2rkHDUWhnJf2gxcSRFLWsyqWsrZGw40ROjUogg+Iw==}
-    engines: {node: '>=16.0.0'}
-
-  '@smithy/querystring-builder@3.0.11':
-    resolution: {integrity: sha512-u+5HV/9uJaeLj5XTb6+IEF/dokWWkEqJ0XiaRRogyREmKGUgZnNecLucADLdauWFKUNbQfulHFEZEdjwEBjXRg==}
     engines: {node: '>=16.0.0'}
 
   '@smithy/signature-v4@4.2.4':
@@ -6965,11 +6953,6 @@ snapshots:
 
   '@rtsao/scc@1.1.0': {}
 
-  '@smithy/abort-controller@3.1.9':
-    dependencies:
-      '@smithy/types': 3.7.2
-      tslib: 2.8.1
-
   '@smithy/core@3.29.1':
     dependencies:
       '@smithy/types': 4.15.1
@@ -6995,14 +6978,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@smithy/node-http-handler@3.3.3':
-    dependencies:
-      '@smithy/abort-controller': 3.1.9
-      '@smithy/protocol-http': 4.1.8
-      '@smithy/querystring-builder': 3.0.11
-      '@smithy/types': 3.7.2
-      tslib: 2.8.1
-
   '@smithy/node-http-handler@4.9.3':
     dependencies:
       '@smithy/core': 3.29.1
@@ -7012,12 +6987,6 @@ snapshots:
   '@smithy/protocol-http@4.1.8':
     dependencies:
       '@smithy/types': 3.7.2
-      tslib: 2.8.1
-
-  '@smithy/querystring-builder@3.0.11':
-    dependencies:
-      '@smithy/types': 3.7.2
-      '@smithy/util-uri-escape': 3.0.0
       tslib: 2.8.1
 
   '@smithy/signature-v4@4.2.4':
@@ -10072,7 +10041,7 @@ snapshots:
   process@0.11.10:
     optional: true
 
-  promptfoo@0.100.6(@aws-sdk/client-bedrock-runtime@3.1080.0)(@aws-sdk/credential-provider-sso@3.972.60)(@azure/identity@4.13.1)(@azure/openai-assistants@1.0.0-beta.6)(@fal-ai/serverless-client@0.14.3)(@ibm-cloud/watsonx-ai@1.7.14)(@ibm-generative-ai/node-sdk@2.0.6(@langchain/core@1.2.1(@opentelemetry/api@1.9.1)(openai@4.104.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)))(@libsql/client-wasm@0.17.4)(@opentelemetry/api@1.9.1)(@playwright/browser-chromium@1.61.1)(@smithy/node-http-handler@3.3.3)(@types/pg@8.18.0)(@types/react@19.2.14)(babel-plugin-macros@3.1.0)(google-auth-library@9.15.1)(ibm-cloud-sdk-core@5.5.0)(langfuse@3.38.20)(mysql2@3.19.0(@types/node@22.19.17))(node-sql-parser@5.4.0)(pdf-parse@1.1.4)(pg@8.20.0)(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2))(playwright@1.58.2)(puppeteer-extra-plugin-stealth@2.11.2(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+  promptfoo@0.100.6(@aws-sdk/client-bedrock-runtime@3.1080.0)(@aws-sdk/credential-provider-sso@3.972.60)(@azure/identity@4.13.1)(@azure/openai-assistants@1.0.0-beta.6)(@fal-ai/serverless-client@0.14.3)(@ibm-cloud/watsonx-ai@1.7.14)(@ibm-generative-ai/node-sdk@2.0.6(@langchain/core@1.2.1(@opentelemetry/api@1.9.1)(openai@4.104.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)))(@libsql/client-wasm@0.17.4)(@opentelemetry/api@1.9.1)(@playwright/browser-chromium@1.61.1)(@smithy/node-http-handler@4.9.3)(@types/pg@8.18.0)(@types/react@19.2.14)(babel-plugin-macros@3.1.0)(google-auth-library@9.15.1)(ibm-cloud-sdk-core@5.5.0)(langfuse@3.38.20)(mysql2@3.19.0(@types/node@22.19.17))(node-sql-parser@5.4.0)(pdf-parse@1.1.4)(pg@8.20.0)(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2))(playwright@1.58.2)(puppeteer-extra-plugin-stealth@2.11.2(playwright-extra@4.3.6(playwright-core@1.61.1)(playwright@1.58.2)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       '@adaline/anthropic': 0.19.0
       '@adaline/azure': 0.9.1
@@ -10099,7 +10068,7 @@ snapshots:
       '@ibm-generative-ai/node-sdk': 2.0.6(@langchain/core@1.2.1(@opentelemetry/api@1.9.1)(openai@4.104.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))
       '@mui/material': 6.5.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@playwright/browser-chromium': 1.61.1
-      '@smithy/node-http-handler': 3.3.3
+      '@smithy/node-http-handler': 4.9.3
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       async: 3.2.6
