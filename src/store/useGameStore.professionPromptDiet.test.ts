@@ -8,6 +8,21 @@ function resetStore() {
   useGameStore.setState(initial, true);
 }
 
+test("profession certification refuses an ineligible store state without mutating current profession", () => {
+  resetStore();
+  useGameStore.setState({
+    isGameStarted: true,
+    currentSaveSlot: "main_slot",
+    professionState: createDefaultProfessionState(),
+    tasks: [],
+    mainThreatByFloor: {},
+  });
+
+  const state = useGameStore.getState();
+  assert.equal(state.certifyProfession("守灯人"), false);
+  assert.equal(useGameStore.getState().professionState.currentProfession, null);
+});
+
 test("profession prompt diet V1: enabled -> no long profit/progress spam", () => {
   resetStore();
   process.env.VERSECRAFT_ENABLE_PROFESSION_PROMPT_DIET_V1 = "true";
@@ -93,6 +108,8 @@ test("profession prompt diet V1: enabled -> no long profit/progress spam", () =>
   });
   const s = useGameStore.getState();
   s.refreshProfessionState();
+  assert.equal(s.certifyProfession("守灯人"), false, "eligible state alone must not bypass encounter proof");
+  useGameStore.setState({ hasMetProfessionCertifier: true });
   assert.equal(s.certifyProfession("守灯人"), true);
 
   const ctx = s.getPromptContext();
@@ -184,6 +201,7 @@ test("profession prompt diet V1: disabled -> legacy detailed profit/progress is 
     ] as never,
     mainThreatByFloor: { "1": { floorId: "1", threatId: "A-001", phase: "suppressed", suppressionProgress: 100, lastResolvedAtHour: 1, counterHintsUsed: [] } },
     professionState: createDefaultProfessionState(),
+    hasMetProfessionCertifier: true,
   });
   const s = useGameStore.getState();
   s.refreshProfessionState();
@@ -194,4 +212,3 @@ test("profession prompt diet V1: disabled -> legacy detailed profit/progress is 
   assert.ok(ctx.includes("职业进度："));
   assert.ok(ctx.includes("命中率["));
 });
-

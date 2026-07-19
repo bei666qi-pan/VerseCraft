@@ -358,6 +358,100 @@ test("commitTurn blocks relationship updates with an unknown NPC id", () => {
   assert.ok(result.summary.blockedCommitFields.includes("accepted_delta"));
 });
 
+test("commitTurn replaces an unregistered described NPC with an identity-unconfirmed fallback in hard mode", () => {
+  const result = commitTurn({
+    requestId: "req_described_unknown_person",
+    sessionId: "s_1",
+    turnIndex: 7,
+    candidateDmRecord: {
+      narrative: "格子衫男人从门缝里探出半个身子，眼眶发红地盯着你。",
+      options: ["询问男人", "靠近门缝", "后退", "离开"],
+      codex_updates: [{ type: "npc", name: "格子衫男人" }],
+      player_location: "1F_Lobby",
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true, playerLocation: "1F_Lobby" },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([
+      {
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        severity: "high",
+        source: "entityAudit",
+        detail: "kind=npc|surface=男人|context=generic_described_person",
+        anchor: "surface:npc:男人",
+      },
+    ], "block_commit"),
+  });
+
+  assert.equal(result.committedDmRecord.narrative, "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。");
+  assert.deepEqual(result.committedDmRecord.options, []);
+  assert.equal(result.committedDmRecord.codex_updates, undefined);
+  assert.equal(result.committedDmRecord.player_location, undefined);
+  assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
+  assert.ok(result.summary.commitFlags.includes("structured_updates_stripped"));
+});
+
+test("commitTurn removes an uncommitted combat claim when hard safety blocks its state", () => {
+  const result = commitTurn({
+    requestId: "req_blocked_combat_claim",
+    sessionId: "s_1",
+    turnIndex: 8,
+    candidateDmRecord: {
+      narrative: "铁管砸中黑影，武器在交锋中承受了实际损耗。",
+      options: ["继续压制"],
+      conflict_outcome: { outcomeTier: "partial_success" },
+      weapon_updates: [{ weaponId: "WPN-3F-IRON-PIPE", stability: 68 }],
+    },
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([
+      {
+        code: "unsupported_new_fact",
+        invariant: "unsupported_new_fact",
+        severity: "high",
+        source: "unsupportedFactDetector",
+        detail: "candidate_pending_review",
+      },
+    ], "block_commit"),
+  });
+
+  assert.equal(result.committedDmRecord.narrative, "眼前的动静尚不足以形成可提交的战果；你停下动作重新确认局势，武器与世界状态没有变化。");
+  assert.deepEqual(result.committedDmRecord.options, []);
+  assert.deepEqual(result.committedDmRecord.weapon_updates, []);
+  assert.ok(result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
+});
+
+test("commitTurn keeps described-person candidate untouched in shadow mode", () => {
+  const candidate = {
+    narrative: "格子衫男人从门缝里探出半个身子，眼眶发红地盯着你。",
+    options: ["询问男人", "靠近门缝", "后退", "离开"],
+  };
+  const result = commitTurn({
+    requestId: "req_described_unknown_person_shadow",
+    sessionId: "s_1",
+    turnIndex: 8,
+    candidateDmRecord: candidate,
+    delta: { ...emptyStateDelta(), isActionLegal: true },
+    validatorReport: okReport(),
+    safetyReport: safetyReport([
+      {
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        severity: "high",
+        source: "entityAudit",
+        detail: "kind=npc|surface=男人|context=generic_described_person",
+        anchor: "surface:npc:男人",
+      },
+    ], "block_commit"),
+    safetyPolicy: { kernelEnabled: true, mode: "shadow", entityHardGateEnabled: true, pacingValidatorEnabled: true },
+  });
+
+  assert.equal(result.committedDmRecord.narrative, candidate.narrative);
+  assert.deepEqual(result.committedDmRecord.options, candidate.options);
+  assert.ok(!result.summary.commitFlags.includes("safe_narrative_fallback_applied"));
+  assert.ok(!result.summary.commitFlags.includes("structured_updates_stripped"));
+});
+
 test("commitTurn strips state but keeps narrative on high root cause leak", () => {
   const result = commitTurn({
     requestId: "req_root_cause",
@@ -565,7 +659,7 @@ test("commit trace records privacy-safe unsupported fact reason codes", () => {
       severity: "medium",
       source: "unsupportedFactDetector",
       detail: "task_completion_without_fact_or_delta",
-    }], "record"),
+    }], "repair"),
   });
   assert.equal(result.summary.unsupportedFactReasonCounts.task_completion_without_fact_or_delta, 1, "validator and safety copies must not double count");
   const turnCommit = (result.committedDmRecord.security_meta as { turn_commit: Record<string, unknown> }).turn_commit;

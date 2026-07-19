@@ -79,3 +79,42 @@ test("chat route 保持 SSE 终帧与 JSON 契约关键字段", () => {
     assert.equal(routeContent.includes(forbidden), false, `non-safety fallback leaked: ${forbidden}`);
   }
 });
+
+test("malformed DM repair keeps a bounded post-generation budget", () => {
+  const routePath = join(process.cwd(), "src/app/api/chat/route.ts");
+  const routeContent = readFileSync(routePath, "utf8");
+  const finalizingIndex = routeContent.indexOf('writeStatusFrame("finalizing"');
+  const budgetIndex = routeContent.indexOf('envNumber("VC_FINAL_REPAIR_BUDGET_MS", 6_000)');
+  const repairIndex = routeContent.indexOf("const phaseRepairMalformedCandidate");
+  assert.ok(budgetIndex > finalizingIndex, "repair budget must be created in final hooks, after first status");
+  assert.ok(repairIndex > budgetIndex, "malformed-DM repair must consume the final-hook budget");
+  assert.ok(routeContent.includes("budgetMs: nextFinalRepairBudgetMs(4_000)"), "malformed-DM repair must retain its four-second default window");
+  assert.ok(routeContent.includes("budgetMs: nextFinalRepairBudgetMs(6_000)"), "post-validator narrative repair must receive the six-second default window");
+  assert.ok(routeContent.includes("Math.max(\n        1_000,\n        Math.min(12_000"), "repair budget must retain 1–12 second bounds");
+});
+
+test("narrative expansion remains a bounded final hook with a p95 deadline", () => {
+  const routeContent = readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8");
+  const logicalTasksContent = readFileSync(join(process.cwd(), "src/lib/ai/logicalTasks.ts"), "utf8");
+  const statusIndex = routeContent.indexOf('writeStatusFrame("request_sent"');
+  const expansionIndex = routeContent.indexOf("const finalP95RemainingMs");
+
+  assert.ok(expansionIndex > statusIndex, "expansion must remain after the first status frame");
+  assert.ok(routeContent.includes("CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms"));
+  assert.ok(routeContent.includes("Math.min(configuredExpansionBudgetMs, performanceBudgetMs - 250, finalP95RemainingMs)"));
+  assert.ok(logicalTasksContent.includes("Math.min(10_000, args.budgetMs ?? 6_000)"));
+});
+
+test("non-injection entity hard blocks receive a bounded model repair before deterministic fallback", () => {
+  const routeContent = readFileSync(join(process.cwd(), "src/app/api/chat/route.ts"), "utf8");
+  const logicalTasksContent = readFileSync(join(process.cwd(), "src/lib/ai/logicalTasks.ts"), "utf8");
+  const repairableIndex = routeContent.indexOf("const repairableNarrativeFailure");
+  const repairIndex = routeContent.lastIndexOf("const repaired = await repairNarrativeOnly");
+  const commitIndex = routeContent.indexOf("const commitResult = commitTurn");
+
+  assert.ok(repairableIndex >= 0 && repairIndex > repairableIndex && commitIndex > repairIndex);
+  assert.ok(routeContent.includes("narrativeSafetyEnforcement.shouldBlockCommit"));
+  assert.ok(routeContent.includes("!narrativeSafetyEnforcement.promptInjectionBlocked"));
+  assert.ok(routeContent.includes("narrativeSafetyReport = narrativeSafetyRuntime.kernelEnabled"));
+  assert.ok(logicalTasksContent.includes("Math.min(6_000, args.budgetMs ?? 2_500)"));
+});

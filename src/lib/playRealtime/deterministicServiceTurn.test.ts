@@ -102,16 +102,29 @@ test("authored threat reconnaissance reports snapshot state without combat or mo
       ...forgeState(),
       playerLocation: "旧公寓三楼走廊",
       presentNpcIds: [],
-      activeThreatIds: ["A-3F-SHADOW"],
+      activeThreatIds: ["A-003"],
     } as ClientStructuredContextV1,
     requestId: "vc_test_threat_recon",
   }) as Record<string, any>;
   assert.equal(turn.security_meta.deterministic_action_kind, "threat_recon");
   assert.equal(turn._eval_metrics.model_calls, 0);
-  assert.match(turn.narrative, /三楼异常阴影.*只确认目标/);
+  assert.match(turn.narrative, /深层呢喃（A-003）.*只确认目标/);
   assert.deepEqual(turn.weapon_updates, []);
   assert.deepEqual(turn.main_threat_updates, []);
   assert.equal(turn.conflict_outcome, null);
+});
+
+test("threat reconnaissance ignores unregistered threat IDs", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "在当前位置寻找已经存在的威胁进入战斗；若没有威胁，不得凭空生成敌人。",
+    playerContext: "",
+    clientState: { ...forgeState(), playerLocation: "旧公寓三楼走廊", presentNpcIds: [], activeThreatIds: ["A-UNKNOWN"] } as ClientStructuredContextV1,
+    requestId: "vc_test_unknown_threat_recon",
+  }) as Record<string, any>;
+  assert.match(turn.narrative, /没有处于活动状态的已登记威胁/);
+  assert.doesNotMatch(turn.narrative, /A-UNKNOWN/);
+  assert.deepEqual(turn.weapon_updates, []);
+  assert.deepEqual(turn.main_threat_updates, []);
 });
 
 test("multi-field structured status audit is read-only and costs no model tokens", () => {
@@ -168,6 +181,34 @@ test("profession trial delivery and replay are authoritative zero-model turns", 
   assert.deepEqual(replay.task_updates, []);
   assert.equal(replay.profession_trial_result, undefined);
   assert.match(replay.narrative, /不会重复完成/);
+});
+
+test("registered letter delivery is a zero-model task settlement only at its authored location", () => {
+  const state = {
+    ...forgeState(),
+    playerLocation: "B1_PowerRoom",
+    activeTaskIds: ["t_delivery_letter_b1"],
+    completedTaskIds: [],
+    inventoryItemIds: ["I-B08"],
+  } as ClientStructuredContextV1;
+  const delivered = buildDeterministicServiceTurn({
+    latestUserInput: "把已持有的挂号信交给老刘完成委托",
+    playerContext: "",
+    clientState: state,
+    requestId: "vc_letter_delivery",
+  }) as Record<string, any>;
+  assert.equal(delivered.security_meta.deterministic_action_kind, "legacy_letter_delivery");
+  assert.equal(delivered._eval_metrics.model_calls, 0);
+  assert.deepEqual(delivered.consumed_items, ["I-B08"]);
+  assert.deepEqual(delivered.task_updates, [{ id: "t_delivery_letter_b1", status: "completed" }]);
+
+  const elsewhere = buildDeterministicServiceTurn({
+    latestUserInput: "把已持有的挂号信交给老刘完成委托",
+    playerContext: "",
+    clientState: { ...state, playerLocation: "1F_Lobby" },
+    requestId: "vc_letter_delivery_wrong_place",
+  });
+  assert.equal(elsewhere, null);
 });
 
 test("authored 1F probe observation, movement, and delivery use zero-model structured deltas", () => {

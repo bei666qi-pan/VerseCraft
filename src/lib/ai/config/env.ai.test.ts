@@ -284,6 +284,15 @@ test("resolveAiEnv budgets control preflight by default and allows rollback", ()
   );
 });
 
+test("resolveAiEnv disables thinking for online short JSON by default and supports rollback", () => {
+  withEnv({ ...gatewayBase, AI_ONLINE_SHORT_JSON_DISABLE_THINKING: undefined }, () => {
+    assert.equal(resolveAiEnv().onlineShortJsonDisableThinking, true);
+  });
+  withEnv({ ...gatewayBase, AI_ONLINE_SHORT_JSON_DISABLE_THINKING: "0" }, () => {
+    assert.equal(resolveAiEnv().onlineShortJsonDisableThinking, false);
+  });
+});
+
 test("resolveAiEnv uses bounded player chat upstream timeout defaults", () => {
   withEnv(
     {

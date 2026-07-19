@@ -108,6 +108,7 @@ test("runControlPreflightStage captures successful control result", async () => 
       },
       latencyMs: 12,
       fromCache: true,
+      source: "cache" as const,
     }),
   });
 

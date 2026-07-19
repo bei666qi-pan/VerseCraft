@@ -76,8 +76,20 @@ test("phase3: loadGame blocks non-main_slot in single-timeline mode", () => {
     ] as never,
     mainThreatByFloor: { "1": { floorId: "1", threatId: "A-001", phase: "suppressed", suppressionProgress: 100, lastResolvedAtHour: 1, counterHintsUsed: [] } },
     professionState: createDefaultProfessionState(),
+    hasMetProfessionCertifier: true,
   });
   s.refreshProfessionState();
+  assert.equal(useGameStore.getState().professionState.eligibilityByProfession["守灯人"], true);
+  s.saveGame("main_slot");
+
+  // Simulate a fresh client process whose transient state has been replaced;
+  // the saved structured encounter fact must be sufficient to certify.
+  useGameStore.setState({
+    hasMetProfessionCertifier: false,
+    professionState: createDefaultProfessionState(),
+  });
+  s.loadGame("main_slot");
+  assert.equal(useGameStore.getState().hasMetProfessionCertifier, true);
   assert.equal(s.certifyProfession("守灯人"), true);
   s.saveGame("main_slot");
 
@@ -90,9 +102,34 @@ test("phase3: loadGame blocks non-main_slot in single-timeline mode", () => {
   s.loadGame("main_slot");
   assert.equal(useGameStore.getState().professionState.currentProfession, "守灯人");
   assert.equal(useGameStore.getState().stats.agility, 1);
+  assert.equal(useGameStore.getState().hasMetProfessionCertifier, true);
   s.loadGame("branch_fake");
   assert.equal(useGameStore.getState().professionState.currentProfession, "守灯人");
   assert.equal(useGameStore.getState().stats.agility, 1);
+});
+
+test("phase3: legacy profession slot without a structured certifier encounter stays unconfirmed after reload", () => {
+  resetStore();
+  useGameStore.setState({
+    isGameStarted: true,
+    currentSaveSlot: "main_slot",
+    hasMetProfessionCertifier: false,
+    saveSlots: {
+      main_slot: {
+        stats: { sanity: 25, agility: 1, luck: 1, charm: 1, background: 1 },
+        inventory: [],
+        logs: [],
+        time: { day: 1, hour: 1 },
+        codex: {},
+        historicalMaxSanity: 25,
+        tasks: [],
+        playerLocation: "1F_Lobby",
+      },
+    },
+  });
+
+  useGameStore.getState().loadGame("main_slot");
+  assert.equal(useGameStore.getState().hasMetProfessionCertifier, false);
 });
 
 test("phase3: certification task integration and branch summary profession regression", () => {
@@ -110,6 +147,7 @@ test("phase3: certification task integration and branch summary profession regre
       { id: "prof_trial_lampkeeper", status: "completed", title: "认证试炼", desc: "试炼", issuerId: "N-008", issuerName: "电工老刘", type: "character", reward: { originium: 0 }, floorTier: "1", guidanceLevel: "standard", hiddenTriggerConditions: [], claimMode: "auto", npcProactiveGrant: { enabled: false, npcId: null, minFavorability: 0, preferredLocations: [], cooldownHours: 0 }, highRiskHighReward: false, worldConsequences: [] },
     ] as never,
     mainThreatByFloor: { "1": { floorId: "1", threatId: "A-001", phase: "suppressed", suppressionProgress: 100, lastResolvedAtHour: 1, counterHintsUsed: [] } },
+    hasMetProfessionCertifier: true,
   });
   s.refreshProfessionState();
   assert.equal(useGameStore.getState().professionState.eligibilityByProfession["守灯人"], true);
@@ -120,4 +158,3 @@ test("phase3: certification task integration and branch summary profession regre
   const saved = useGameStore.getState().saveSlots["main_slot"];
   assert.equal(saved.slotMeta?.snapshotSummary.activeProfession, "守灯人");
 });
-

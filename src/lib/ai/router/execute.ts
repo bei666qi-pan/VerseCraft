@@ -142,6 +142,14 @@ const ONLINE_SHORT_JSON_TASKS = new Set<TaskType>([
   "SAFETY_PREFILTER",
 ]);
 
+// EVAL_JUDGE is offline and deliberately keeps its own larger timeout/retry
+// policy, but it consumes a machine-parsed verdict just like short control
+// tasks. Keep transport cleanup separate from online fail-fast routing.
+const STRICT_JSON_TRANSPORT_TASKS = new Set<TaskType>([
+  ...ONLINE_SHORT_JSON_TASKS,
+  "EVAL_JUDGE",
+]);
+
 const ONLINE_FAIL_FAST_JSON_TASKS = new Set<TaskType>([
   ...ONLINE_SHORT_JSON_TASKS,
   "NARRATIVE_EXPANSION",
@@ -759,13 +767,17 @@ export async function executeChatCompletion(params: {
       expectJsonObject &&
       (forceJsonObjectFromOverride ||
         !(env.onlineShortJsonRelaxResponseFormat && ONLINE_SHORT_JSON_TASKS.has(params.task)));
+    const strictJsonTransportExtraBody =
+      STRICT_JSON_TRANSPORT_TASKS.has(params.task) && env.onlineShortJsonDisableThinking
+        ? { ...(params.extraBody ?? {}), enable_thinking: false, thinking: { type: "disabled" } }
+        : params.extraBody;
     const body = buildNonStreamBody(
       gatewayModel,
       params.messages,
       binding.maxTokens,
       binding.temperature,
       requestJsonObject,
-      params.extraBody,
+      strictJsonTransportExtraBody,
       toolsActive ? params.tools : undefined,
       params.toolChoice
     );
@@ -849,7 +861,7 @@ export async function executeChatCompletion(params: {
           const s = sanitizeReasonerJsonText(trimmed);
           processed = s.content;
           jsonSanitized = s.sanitized;
-        } else if (ONLINE_FAIL_FAST_JSON_TASKS.has(params.task)) {
+        } else if (STRICT_JSON_TRANSPORT_TASKS.has(params.task)) {
           const s = sanitizeOnlineShortJsonText(trimmed);
           processed = s.content;
           jsonSanitized = s.sanitized;

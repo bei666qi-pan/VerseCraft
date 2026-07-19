@@ -3207,7 +3207,7 @@ async function postChatInternal(req: Request) {
       let commitSummaryForAnalytics: TurnCommitSummary | null = null;
       const finalRepairBudgetMs = Math.max(
         1_000,
-        Math.min(12_000, envNumber("VC_FINAL_REPAIR_BUDGET_MS", 2_000))
+        Math.min(12_000, envNumber("VC_FINAL_REPAIR_BUDGET_MS", 6_000))
       );
       const finalRepairDeadlineAt = Date.now() + finalRepairBudgetMs;
       const remainingFinalRepairBudgetMs = () => Math.max(0, finalRepairDeadlineAt - Date.now());
@@ -3286,7 +3286,7 @@ async function postChatInternal(req: Request) {
               tags: { phase: "final_hooks", purpose: "malformed_dm_repair" },
             },
             signal: pipelineAbort.signal,
-            budgetMs: nextFinalRepairBudgetMs(3_000),
+            budgetMs: nextFinalRepairBudgetMs(4_000),
             maxChars: narrativeBudget.maxChars,
           });
           if (!repaired.ok) return null;
@@ -3344,7 +3344,12 @@ async function postChatInternal(req: Request) {
           clientState,
         });
         rec = applyWorldWeaponPickupGuard({ dmRecord: rec, latestUserInput, clientState });
-        rec = applyAuthoredLocationMovementGuard({ dmRecord: rec, latestUserInput, clientState });
+        rec = applyAuthoredLocationMovementGuard({
+          dmRecord: rec,
+          latestUserInput,
+          clientState,
+          enableCanonicalLocationMovement: verseRolloutSnapshot.enableCanonicalLocationMovement,
+        });
         rec = applyDeadNpcContinuityGuard({ dmRecord: rec, latestUserInput, deadNpcIds: clientState?.deadNpcIds });
         rec = applyB1SafetyGuard({
           dmRecord: rec,
@@ -3880,17 +3885,21 @@ async function postChatInternal(req: Request) {
             const configuredExpansionBudgetMs = Math.max(
               0,
               Math.min(
-                6_000,
+                10_000,
                 envNumber("VC_NARRATIVE_EXPANSION_BUDGET_MS", VC_WAITING.narrativeExpansionServerBudgetMs)
               )
             );
-            const finalP50RemainingMs = Math.max(
+            // This optional recovery must remain inside the observable p95
+            // deadline. A per-turn p50 cap was too strict: it cancelled valid
+            // 7–8s expansions even while the completed turn still fit well
+            // inside the 20s p95 budget.
+            const finalP95RemainingMs = Math.max(
               0,
-              CHAT_LATENCY_BUDGET.normalTurnFinalP50Ms - (Date.now() - requestStartedAt) - 500
+              CHAT_LATENCY_BUDGET.normalTurnFinalP95Ms - (Date.now() - requestStartedAt) - 500
             );
             const expansionBudgetMs = Math.max(
               0,
-              Math.min(configuredExpansionBudgetMs, performanceBudgetMs - 250, finalP50RemainingMs)
+              Math.min(configuredExpansionBudgetMs, performanceBudgetMs - 250, finalP95RemainingMs)
             );
             if (expansionBudgetMs < 1_500) {
               narrativeExpansionTelemetry = emptyNarrativeExpansionTelemetry("performance_budget_exhausted");
@@ -4151,7 +4160,11 @@ async function postChatInternal(req: Request) {
           });
           const repairableNarrativeFailure =
             narrativeSafetyRuntime.mode !== "shadow" &&
-            (Boolean(validatorReport.narrativeOverride) || narrativeSafetyEnforcement.shouldFallback) &&
+            (
+              Boolean(validatorReport.narrativeOverride) ||
+              narrativeSafetyEnforcement.shouldFallback ||
+              narrativeSafetyEnforcement.shouldBlockCommit
+            ) &&
             !narrativeSafetyEnforcement.promptInjectionBlocked;
           if (repairableNarrativeFailure && canRunFinalRepair()) {
             try {
@@ -4195,7 +4208,7 @@ async function postChatInternal(req: Request) {
                   tags: { phase: "post_validator", purpose: "narrative_repair" },
                 },
                 signal: pipelineAbort.signal,
-                budgetMs: nextFinalRepairBudgetMs(3_000),
+                budgetMs: nextFinalRepairBudgetMs(6_000),
                 maxChars: narrativeBudget.maxChars,
               });
               if (repaired.ok) {
@@ -4324,6 +4337,11 @@ async function postChatInternal(req: Request) {
               delete (resolved as any)[field];
             }
           }
+          // Narrative safety may conservatively clear a candidate change set.
+          // Reassert only authored, structured mechanics after that decision so
+          // a registered task delivery or registered combat action cannot become
+          // randomly non-playable because the model prose was repaired/blocked.
+          resolved = applyRegisteredMechanicsGuard({ dmRecord: resolved, latestUserInput, clientState });
           recordNarrativeGovernanceOutcome(commitResult.summary.narrativeGovernanceTelemetry);
           commitSummaryForAnalytics = commitResult.summary;
           void commitSummaryForAnalytics; // signal usage across try/catch for eslint dataflow
@@ -4701,7 +4719,18 @@ async function postChatInternal(req: Request) {
           });
 
           dmRecord = outputAudit.updatedDmRecord;
-          let auditedResolved = resolveDmTurn(dmRecord);
+          // Output auditing reconstructs a resolved DM envelope. Reapply
+          // authored mechanics afterwards: otherwise the audit round-trip can
+          // erase a deterministic state transition that was already
+          // adjudicated (for example, consuming the registered letter while
+          // completing its delivery task).
+          let auditedResolved = resolveDmTurn(
+            applyRegisteredMechanicsGuard({
+              dmRecord,
+              latestUserInput,
+              clientState,
+            })
+          );
           if (!shouldSkipItemOptionInjection({ resolved: auditedResolved, clientPurpose: validated.clientPurpose })) {
             auditedResolved = applyItemGameplayOptionInjection(auditedResolved, clientState);
           }

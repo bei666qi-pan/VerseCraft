@@ -235,6 +235,102 @@ test("executeChatCompletion honors explicit JSON response override for online sh
   assert.equal(responseFormatType, "json_object");
 });
 
+test("executeChatCompletion requests JSON object by default for control-plane tasks", async (t) => {
+  const restore = patchEnv({ ...baseGateway, AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT: undefined });
+  const origFetch = globalThis.fetch;
+  let responseFormatType = "";
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { response_format?: { type?: string } };
+    responseFormatType = body.response_format?.type ?? "";
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"intent\":\"explore\"}" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const result = await executeChatCompletion({
+    task: "PLAYER_CONTROL_PREFLIGHT",
+    messages: [{ role: "user", content: "观察四周" }],
+    ctx: { requestId: "gw-contract-control-json-default", task: "PLAYER_CONTROL_PREFLIGHT" },
+    skipCache: true,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(responseFormatType, "json_object");
+});
+
+test("online short JSON response format can be relaxed only by explicit compatibility flag", async (t) => {
+  const restore = patchEnv({ ...baseGateway, AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT: "1" });
+  const origFetch = globalThis.fetch;
+  let responseFormatType = "";
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { response_format?: { type?: string } };
+    responseFormatType = body.response_format?.type ?? "";
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"intent\":\"explore\"}" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const result = await executeChatCompletion({
+    task: "PLAYER_CONTROL_PREFLIGHT",
+    messages: [{ role: "user", content: "观察四周" }],
+    ctx: { requestId: "gw-contract-control-json-relaxed", task: "PLAYER_CONTROL_PREFLIGHT" },
+    skipCache: true,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(responseFormatType, "");
+});
+
+test("control-plane JSON disables provider thinking by default so output budget remains available", async (t) => {
+  const restore = patchEnv({ ...baseGateway, AI_ONLINE_SHORT_JSON_DISABLE_THINKING: undefined });
+  const origFetch = globalThis.fetch;
+  let bodyExtra: Record<string, unknown> = {};
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    bodyExtra = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{\"intent\":\"explore\"}" } }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+  resetModelCircuitsForTests();
+  resetProviderCircuitsForTests();
+
+  const result = await executeChatCompletion({
+    task: "PLAYER_CONTROL_PREFLIGHT",
+    messages: [{ role: "user", content: "观察四周" }],
+    ctx: { requestId: "gw-contract-control-disable-thinking", task: "PLAYER_CONTROL_PREFLIGHT" },
+    skipCache: true,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(bodyExtra.enable_thinking, false);
+  assert.deepEqual(bodyExtra.thinking, { type: "disabled" });
+});
+
 test("executeChatCompletion stops before upstream fetch when caller signal is already aborted", async (t) => {
   const restore = patchEnv(baseGateway);
   const origFetch = globalThis.fetch;

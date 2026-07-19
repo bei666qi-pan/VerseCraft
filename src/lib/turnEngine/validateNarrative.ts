@@ -193,6 +193,8 @@ export type NarrativeValidationTelemetry = {
   optionsOverrideApplied: boolean;
   /** Whether the validator fell all the way back to a safe narrative. */
   safeNarrativeFallbackApplied: boolean;
+  /** Bounded narrative-action signal for audit only; it never commits state. */
+  actionBackfill?: ReturnType<typeof getBackfillTelemetrySummary>;
 };
 
 export type NarrativeValidationReport = {
@@ -810,7 +812,8 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
     narrativeOverride = candidateSoftening.narrative;
   }
 
-  // === 2026-07 Action Resolver：叙事文本 → 结构化字段自动回填 ===
+  // Narrative actions are diagnostic hints only. State remains authoritative
+  // only when it arrives through the structured candidate delta and commit gates.
   const backfillResult: ActionBackfillResult | null =
     narrative && !intentIsSystemTransition
       ? (() => {
@@ -836,23 +839,10 @@ export function validateNarrative(args: ValidateNarrativeArgs): NarrativeValidat
               narrative,
               existingAwardedItems: dmAwarded as unknown[],
               existingConsumedItems: dmConsumed as unknown[],
-              existingOriginiumChange,
+              existingOriginiumChange: originiumChange,
               hasTaskUpdates,
             });
 
-            // 将回填结果写入 dm 记录（仅当原字段为空时）
-            if (br.didBackfill) {
-              if (br.awardedItems && dmAwarded.length === 0) {
-                (dm as Record<string, unknown>).awarded_items = br.awardedItems;
-              }
-              if (br.consumedItems && dmConsumed.length === 0) {
-                (dm as Record<string, unknown>).consumed_items = br.consumedItems;
-              }
-              if (br.originiumDelta !== undefined && originiumChange === null) {
-                // 回填为 number，与 wire 协议一致（不再写 { originium: N } 对象）
-                (dm as Record<string, unknown>).currency_change = br.originiumDelta;
-              }
-            }
             return br;
           } catch {
             return null;

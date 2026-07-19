@@ -2,6 +2,7 @@ type RecordLike = Record<string, unknown>;
 
 import { createStageOneStarterTasks } from "@/lib/tasks/taskV2";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
+import { getAnomalyCombatStat } from "@/lib/registry/combatCanon";
 
 export const REGISTERED_TASK_IDS = new Set([
   ...createStageOneStarterTasks().map((task) => task.id),
@@ -9,6 +10,9 @@ export const REGISTERED_TASK_IDS = new Set([
   "prof_trial_pathfinder", "prof_trial_omenseeker", "prof_trial_sunhorn",
   "prof_trial_traceorigin",
 ]);
+
+const DENIES_REGISTERED_COMBAT_TARGET_RE =
+  /(?:没有敌人|什么都没有|没有异常|不存在威胁|空荡荡.{0,24}(?:连个|没有|只有)|(?:连个|一个).{0,8}(?:鬼影|人影|敌人|异常|目标).{0,6}(?:都|也)?没有|朝(?:着)?空气.{0,8}(?:喊|攻击|挥|砸)|独角戏|(?:但|却)?我没(?:有)?动|没有(?:发起|进行|做出)(?:攻击|行动)|(?:不敢|拒绝)(?:攻击|动手)|尚不足以形成可提交的战果|武器与世界状态没有变化)/u;
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((x): x is string => typeof x === "string") : [];
@@ -35,6 +39,7 @@ export function applyRegisteredMechanicsGuard(args: {
     equippedWeapon?: RecordLike | null;
     activeThreatIds?: string[];
     journalClueIds?: string[];
+    inventoryItemIds?: string[];
   } | null;
 }): RecordLike {
   const record = { ...args.dmRecord };
@@ -43,7 +48,9 @@ export function applyRegisteredMechanicsGuard(args: {
   const active = new Set(strings(args.clientState?.activeTaskIds));
   const completed = new Set(strings(args.clientState?.completedTaskIds));
   const activeThreatIds = strings(args.clientState?.activeThreatIds);
+  const registeredActiveThreatIds = activeThreatIds.filter((id) => getAnomalyCombatStat(id) !== null);
   const journalClueIds = strings(args.clientState?.journalClueIds);
+  const inventoryItemIds = new Set(strings(args.clientState?.inventoryItemIds));
   // Profession outcomes are server-adjudicated only; never trust a candidate
   // model field or replay it after the task has already reached a terminal state.
   delete record.profession_trial_result;
@@ -106,12 +113,42 @@ export function applyRegisteredMechanicsGuard(args: {
     }
   }
 
-  const legacyDeliveryTaskIds = new Set(["t_delivery_letter_b1"]);
+  const legacyDeliveryTaskRequirements: Record<string, string> = {
+    t_delivery_letter_b1: "I-B08",
+  };
+  const legacyDeliveryTaskIds = new Set(Object.keys(legacyDeliveryTaskRequirements));
   const hasLegacyDeliveryActive = [...active].some((id) => legacyDeliveryTaskIds.has(id));
   if (hasLegacyDeliveryActive && /(?:提交|交付|交给|核对|确认).*?(?:任务|委托|信件|配给|交.*?信)/.test(action) && /B1|配电/.test(location)) {
     for (const taskId of active) {
       if (!legacyDeliveryTaskIds.has(taskId)) continue;
+      const requiredItemId = legacyDeliveryTaskRequirements[taskId];
+      if (!inventoryItemIds.has(requiredItemId)) {
+        if (Array.isArray(record.task_updates)) {
+          record.task_updates = record.task_updates.filter((raw) => {
+            if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+            const row = raw as RecordLike;
+            const id = typeof row.id === "string" ? row.id : typeof row.task_id === "string" ? row.task_id : "";
+            return id !== taskId;
+          });
+        }
+        record.narrative = "我核对了行囊与委托记录：要交付的挂号信并不在身上，不能凭空取出信件或完成任务。委托仍保持进行中。";
+        record.consumes_time = false;
+        record._commit_flags = [...strings(record._commit_flags), "legacy_task_delivery_item_missing_v1"];
+        continue;
+      }
+      // Candidate output may already contain this task with a missing or stale
+      // status. Replace it rather than letting generic de-duplication preserve
+      // an incomplete row over the authoritative completion.
+      const existingUpdates = Array.isArray(record.task_updates) ? record.task_updates : [];
+      record.task_updates = existingUpdates.filter((raw) => {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+        const row = raw as RecordLike;
+        const id = typeof row.id === "string" ? row.id : typeof row.task_id === "string" ? row.task_id : "";
+        return id !== taskId;
+      });
       append(record, "task_updates", { id: taskId, status: "completed", title: "旧信件任务完成：完成交付" });
+      record.consumed_items = [...new Set([...strings(record.consumed_items), requiredItemId])];
+      record.narrative = "我把已登记的挂号信交给老刘。老刘核对后确认收下，委托完成；信件已不再留在行囊中。";
       record._commit_flags = [...strings(record._commit_flags), "legacy_task_delivery_completed_v1"];
     }
   }
@@ -145,22 +182,28 @@ export function applyRegisteredMechanicsGuard(args: {
   }
 
   const weapon = args.clientState?.equippedWeapon;
-  const explicitCombat = /(?:攻击|反击|压制|敲击).{0,18}(?:阴影|异常|威胁)|(?:阴影|异常|威胁).{0,18}(?:攻击|反击|压制|敲击)/.test(action);
+  const explicitCombatVerb = /(?:攻击|反击|压制|敲击)/.test(action);
+  const explicitCombat =
+    /(?:攻击|反击|压制|敲击).{0,18}(?:阴影|异常|威胁)|(?:阴影|异常|威胁).{0,18}(?:攻击|反击|压制|敲击)/.test(action) ||
+    // ID itself is not sufficient. Once a registered threat is already in the
+    // structured state, however, an explicit attack verb is a legal target
+    // reference even when the player writes the ID instead of a Chinese noun.
+    (explicitCombatVerb && registeredActiveThreatIds.length > 0);
   const weaponMutationAction = explicitCombat || /(?:装备|修理|修复|锻造|强化|净化).{0,18}(?:武器|铁管|刀|棍)/.test(action);
   if (!weaponMutationAction) delete record.weapon_updates;
 
-  if (explicitCombat && activeThreatIds.length === 0) {
+  if (explicitCombat && registeredActiveThreatIds.length === 0) {
     delete record.weapon_updates;
     delete record.main_threat_updates;
     delete record.conflict_outcome;
-    record.narrative = "我检查了当前地点与已登记的威胁状态。这里没有可结算的攻击目标，因此没有发生战斗，也没有产生武器损耗。";
+    record.narrative = "我检查了当前地点与异常战斗登记。这里没有可结算的已登记攻击目标，因此没有发生战斗，也没有产生武器损耗。";
     record.consumes_time = false;
-    record._commit_flags = [...strings(record._commit_flags), "combat_without_active_threat_blocked_v1"];
+    record._commit_flags = [...strings(record._commit_flags), "combat_without_registered_threat_blocked_v1"];
   } else if (weapon && explicitCombat) {
     // The authored target, location and equipped weapon make this a legal
     // combat attempt. Provider prose cannot veto the deterministic mechanic.
     record.is_action_legal = true;
-    const threatId = activeThreatIds[0];
+    const threatId = registeredActiveThreatIds[0]!;
     record.main_threat_updates = [{ floorId: location.includes("3") ? "3F" : location, threatId, phase: "suppressed", suppressionProgress: 25 }];
     const stability = typeof weapon.stability === "number" ? Math.max(0, Math.trunc(weapon.stability) - 4) : 68;
     record.weapon_updates = [{ weaponId: weapon.id, stability, contamination: Math.min(100, Number(weapon.contamination ?? 0) + 1) }];
@@ -172,7 +215,7 @@ export function applyRegisteredMechanicsGuard(args: {
       // Sanity damage alone is not evidence of a bruise or wound.
       likelyCost: "none",
     };
-    if (/(?:没有敌人|什么都没有|没有异常|不存在威胁)/.test(String(record.narrative ?? ""))) {
+    if (DENIES_REGISTERED_COMBAT_TARGET_RE.test(String(record.narrative ?? ""))) {
       record.narrative = "异常阴影从灯下压近。我以守灯人的节奏稳住光线，用当前铁管完成一次有效压制；武器承受了明确损耗，威胁仍未彻底清除。";
     }
     record._commit_flags = [...strings(record._commit_flags), "authoritative_combat_settlement_v1"];

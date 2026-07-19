@@ -157,8 +157,6 @@ export interface GameTaskV2 {
   /** 叙事推进层：暗示 / 人情约定 / 正式结构化追踪 */
   taskNarrativeLayer?: TaskNarrativeLayerKind;
 
-  surfaceClass?: TaskSurfaceClass;
-
   /**
    * G3（玩法改良，2026-07）：任务服务端自动失败阈值，按游戏内整点 hourIndex
    * （day*24+hour，与 `promiseBinding.boundAtGameHour` / `npcProactiveGrant`

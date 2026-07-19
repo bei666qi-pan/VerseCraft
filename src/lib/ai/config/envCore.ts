@@ -124,11 +124,10 @@ export interface ResolvedAiEnv {
   playerChatMaxTokensOverride: number | null;
   /** Online short JSON tasks: max retries (default 0 to avoid TTFT amplification). */
   onlineShortJsonMaxRetries: number;
-  /**
-   * Online short JSON tasks: when true, do not send response_format=json_object to upstream,
-   * but still sanitize + validate JSON locally.
-   */
+  /** Online short JSON tasks: true is an explicit compatibility rollback that omits json_object. */
   onlineShortJsonRelaxResponseFormat: boolean;
+  /** Disable provider reasoning tokens for short control/risk JSON to preserve output budget. */
+  onlineShortJsonDisableThinking: boolean;
   /**
    * Online short JSON tasks: when true, disallow falling back to MAIN (keep control-plane fast).
    */
@@ -387,7 +386,11 @@ export function resolveAiEnv(): ResolvedAiEnv {
       const resolved = Number.isFinite(override) ? override : 0;
       return Math.max(0, Math.min(3, resolved));
     })(),
-    onlineShortJsonRelaxResponseFormat: envBoolean("AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT", true),
+    // DeepSeek and the supported one-api gateways accept json_object. Keep a
+    // named opt-out for legacy providers, but do not make malformed control
+    // output the default behavior for player-facing intent/risk decisions.
+    onlineShortJsonRelaxResponseFormat: envBoolean("AI_ONLINE_SHORT_JSON_RELAX_RESPONSE_FORMAT", false),
+    onlineShortJsonDisableThinking: envBoolean("AI_ONLINE_SHORT_JSON_DISABLE_THINKING", true),
     onlineShortJsonDisableMainFallback: envBoolean("AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK", true),
     playerChatAggressiveFailover: envBoolean("AI_PLAYER_CHAT_AGGRESSIVE_FAILOVER", true),
     playerChatFastLaneZeroRetry: envBoolean("AI_PLAYER_CHAT_FASTLANE_ZERO_RETRY", true),

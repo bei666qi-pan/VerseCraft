@@ -53,6 +53,62 @@ test("resolveTurnConsistency: acquire semantics without awards should be downgra
   assert.equal(out.security_meta?.consistency_warning, "acquire_without_awards_downgraded");
 });
 
+test("resolveTurnConsistency: unsupported bare pick-up prose is downgraded without inventing an award", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "我弯腰捡起脚边的铁管，端详上面的锈痕。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    awarded_items: [],
+    awarded_warehouse_items: [],
+  });
+  assert.equal(out.narrative.includes("捡起"), false);
+  assert.match(out.narrative, /无法确认|尚未确认归属/);
+  assert.deepEqual(out.awarded_items, []);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("acquire_without_awards_downgraded") ?? false, true);
+});
+
+test("resolveTurnConsistency: unsupported pick-up followed by backpack possession falls back instead of retaining ownership", () => {
+  const out = resolveTurnConsistency({
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "我弯腰捡起刚才放下的铁管，又把它塞进背包主仓。",
+    is_death: false,
+    consumes_time: true,
+    options: [],
+    awarded_items: [],
+    awarded_warehouse_items: [],
+  });
+  assert.equal(out.narrative, "你注意到附近有一件尚未确认归属的物品，暂时没有把它记入行囊。");
+  assert.deepEqual(out.awarded_items, []);
+  assert.equal(out.ui_hints?.consistency_flags?.includes("acquire_without_awards_fallback") ?? false, true);
+});
+
+test("resolveTurnConsistency: conflict degrade can be disabled without changing award state", () => {
+  const previous = process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE;
+  process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE = "0";
+  try {
+    const out = resolveTurnConsistency({
+      is_action_legal: true,
+      sanity_damage: 0,
+      narrative: "我捡起了脚边的铁管。",
+      is_death: false,
+      consumes_time: true,
+      options: [],
+      awarded_items: [],
+      awarded_warehouse_items: [],
+    });
+    assert.equal(out.narrative.includes("捡起了"), true);
+    assert.deepEqual(out.awarded_items, []);
+    assert.equal(out.ui_hints?.consistency_flags?.includes("acquire_without_awards_detected") ?? false, true);
+  } finally {
+    if (previous === undefined) delete process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE;
+    else process.env.VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE = previous;
+  }
+});
+
 test("resolveTurnConsistency: awards without explicit acquire text should only record flag", () => {
   const out = resolveTurnConsistency({
     is_action_legal: true,

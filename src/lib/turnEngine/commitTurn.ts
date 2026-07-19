@@ -84,6 +84,26 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
   "npc_status_forbidden_direct_speech",
 ]);
 
+const UNKNOWN_ENTITY_SAFE_NARRATIVE = "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。";
+const BLOCKED_CONFLICT_SAFE_NARRATIVE = "眼前的动静尚不足以形成可提交的战果；你停下动作重新确认局势，武器与世界状态没有变化。";
+
+function hasDescribedUnknownPersonIssue(report: NarrativeSafetyReport | null | undefined): boolean {
+  return Boolean(
+    report?.issues.some(
+      (issue) =>
+        issue.code === "unknown_entity_surface" &&
+        issue.source === "entityAudit" &&
+        (String(issue.detail ?? "").includes("context=generic_described_person") ||
+          String(issue.detail ?? "").includes("context=player_induced_anaphoric_person") ||
+          String(issue.detail ?? "").includes("context=unanchored_anaphoric_person"))
+    )
+  );
+}
+
+function hasCandidateConflictOutcome(record: Record<string, unknown>): boolean {
+  return Boolean(record.conflict_outcome && typeof record.conflict_outcome === "object" && !Array.isArray(record.conflict_outcome));
+}
+
 export type TurnCommitFlag =
   | "options_rewrite_applied"
   | "safe_narrative_fallback_applied"
@@ -338,7 +358,10 @@ function applySafetyCommitGate(args: {
       record,
       blockedCommitFields: [...blocked],
       strippedFields,
-      strippedUnknownEntityCount: Object.values(strippedFields).reduce((sum, count) => sum + (count ?? 0), 0),
+      strippedUnknownEntityCount: Object.values(strippedFields).reduce<number>(
+        (sum, count) => sum + (count ?? 0),
+        0
+      ),
     };
   }
 
@@ -360,7 +383,10 @@ function applySafetyCommitGate(args: {
     record,
     blockedCommitFields: [...blocked],
     strippedFields,
-    strippedUnknownEntityCount: Object.values(strippedFields).reduce((sum, count) => sum + (count ?? 0), 0),
+    strippedUnknownEntityCount: Object.values(strippedFields).reduce<number>(
+      (sum, count) => sum + (count ?? 0),
+      0
+    ),
   };
 }
 
@@ -369,7 +395,7 @@ function neutralizeAcceptedDeltaFields(
   blocked: readonly string[]
 ): Record<string, unknown> {
   if (!blocked.includes("accepted_delta")) return record;
-  const next = {
+  const next: Record<string, unknown> = {
     ...record,
     sanity_damage: 0,
     consumes_time: false,
@@ -450,6 +476,30 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
       preserveStateFields: !hardBlockCommit,
     });
     flags.add(isFallbackEnvelope ? "safe_narrative_fallback_applied" : "narrative_rewrite_applied");
+  } else if (
+    hardBlockFromSafety &&
+    safetyEnforcement.entityHardGateTriggered &&
+    hasDescribedUnknownPersonIssue(args.safetyReport)
+  ) {
+    // Entity hard blocks must not leave an invented, player-visible person in
+    // place merely because no asynchronous repair model answered. This stays
+    // deterministic and final-hook-only, so it adds no first-token latency.
+    committed = {
+      ...committed,
+      narrative: UNKNOWN_ENTITY_SAFE_NARRATIVE,
+      options: [],
+    };
+    flags.add("safe_narrative_fallback_applied");
+  } else if (hardBlockFromSafety && hasCandidateConflictOutcome(candidateDmRecord)) {
+    // A hard safety block strips the candidate combat delta. The visible text
+    // must not keep claiming a hit, suppression, or weapon loss that was not
+    // committed as authoritative state.
+    committed = {
+      ...committed,
+      narrative: BLOCKED_CONFLICT_SAFE_NARRATIVE,
+      options: [],
+    };
+    flags.add("safe_narrative_fallback_applied");
   } else if (validatorReport.optionsOverride) {
     committed = { ...committed, options: [...validatorReport.optionsOverride] };
     flags.add("options_rewrite_applied");

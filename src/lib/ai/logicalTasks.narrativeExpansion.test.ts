@@ -58,8 +58,7 @@ test("expandNarrativeOnly returns only validated narrative and ignores structure
           {
             message: {
               content: JSON.stringify({
-                narrative:
-                  "我推开门，冷风先贴上手背，像有人从门缝里轻轻吹了一口气。走廊尽头的灯闪了两下，墙皮下传来细小的刮擦声，原本只是黑暗的门洞忽然有了重量。",
+                narrative: "走廊的灯闪了一下，我握紧门把，听见风从墙缝里穿过。".repeat(10),
                 is_death: true,
                 options: ["不该被采用"],
               }),
@@ -86,7 +85,7 @@ test("expandNarrativeOnly returns only validated narrative and ignores structure
       is_death: false,
       options: ["继续看"],
     },
-    narrativeBudget: standardBudget,
+    narrativeBudget: { ...standardBudget, minChars: 1, maxChars: 800 },
     latestUserInput: "推开门",
     playerContextSnapshot: "位置：走廊",
     ctx: { requestId: "expand-test", userId: null, sessionId: "s1", path: "/api/chat" },

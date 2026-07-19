@@ -1,0 +1,58 @@
+[
+  {
+    "caseId": "hallucinated-item-and-false-option",
+    "scenario": "玩家仅持有手机，正在三楼走廊调查。",
+    "permittedFacts": [{ "id": "phone", "text": "玩家持有一部手机", "revealTier": 1, "actorScope": "player" }],
+    "steps": [{
+      "stepIndex": 0,
+      "playerAction": "检查口袋里的东西",
+      "narrative": "你摸到一把祖传黄铜钥匙，钥匙正好能打开三楼尽头的门。",
+      "options": ["用黄铜钥匙打开尽头的门"],
+      "dmJson": { "is_action_legal": true, "sanity_damage": 0, "is_death": false, "narrative": "你摸到一把祖传黄铜钥匙，钥匙正好能打开三楼尽头的门。", "options": ["用黄铜钥匙打开尽头的门"] },
+      "stateBefore": { "inventory": ["phone"], "playerLocation": "3F_Hallway" },
+      "stateAfter": { "inventory": ["phone"], "playerLocation": "3F_Hallway" }
+    }]
+  },
+  {
+    "caseId": "low-reveal-root-truth-leak",
+    "scenario": "新玩家刚进入公寓，尚未解锁根因线索。",
+    "permittedFacts": [{ "id": "hallway-light", "text": "三楼走廊的灯管不稳定", "revealTier": 1, "actorScope": "scene" }],
+    "steps": [{
+      "stepIndex": 0,
+      "playerAction": "询问走廊为什么会闪灯",
+      "narrative": "住户平静地告诉你：公寓的根因是地下仪式失败，所有楼层只是它的投影。",
+      "options": ["追问地下仪式的细节"],
+      "dmJson": { "is_action_legal": true, "sanity_damage": 0, "is_death": false, "narrative": "住户平静地告诉你：公寓的根因是地下仪式失败，所有楼层只是它的投影。", "options": ["追问地下仪式的细节"] },
+      "stateBefore": { "revealTier": 1 },
+      "stateAfter": { "revealTier": 1 }
+    }]
+  },
+  {
+    "caseId": "state-conflict-and-no-agency",
+    "scenario": "玩家仍在三楼走廊，未持有钥匙，尝试调查门牌。",
+    "permittedFacts": [{ "id": "door-locked", "text": "走廊尽头的铁门锁着", "revealTier": 1, "actorScope": "scene" }],
+    "steps": [{
+      "stepIndex": 0,
+      "playerAction": "观察门牌上的划痕",
+      "narrative": "你还没来得及观察，故事已经替你推开铁门并把你送到地下室，那里等待着最终答案。",
+      "options": ["继续接受命运安排"],
+      "dmJson": { "is_action_legal": true, "sanity_damage": 0, "is_death": false, "narrative": "你还没来得及观察，故事已经替你推开铁门并把你送到地下室，那里等待着最终答案。", "options": ["继续接受命运安排"], "player_location": "3F_Hallway" },
+      "stateBefore": { "playerLocation": "3F_Hallway", "inventory": ["phone"] },
+      "stateAfter": { "playerLocation": "3F_Hallway", "inventory": ["phone"] }
+    }]
+  },
+  {
+    "caseId": "healthy-scoped-turn",
+    "scenario": "玩家在三楼走廊调查闪烁灯管。",
+    "permittedFacts": [{ "id": "hallway-light", "text": "三楼走廊的灯管不稳定", "revealTier": 1, "actorScope": "scene" }, { "id": "phone", "text": "玩家持有一部手机", "revealTier": 1, "actorScope": "player" }],
+    "steps": [{
+      "stepIndex": 0,
+      "playerAction": "用手机照亮灯管下的门牌",
+      "narrative": "手机的冷光掠过门牌，闪烁的灯管忽然静了半拍。你发现305的锁眼边有新鲜的铜屑，却还看不出它来自哪里。",
+      "options": ["检查305的锁眼", "先记录门牌和铜屑", "退到走廊中央观察灯光变化"],
+      "dmJson": { "is_action_legal": true, "sanity_damage": 0, "is_death": false, "narrative": "手机的冷光掠过门牌，闪烁的灯管忽然静了半拍。你发现305的锁眼边有新鲜的铜屑，却还看不出它来自哪里。", "options": ["检查305的锁眼", "先记录门牌和铜屑", "退到走廊中央观察灯光变化"] },
+      "stateBefore": { "playerLocation": "3F_Hallway", "inventory": ["phone"] },
+      "stateAfter": { "playerLocation": "3F_Hallway", "inventory": ["phone"] }
+    }]
+  }
+]

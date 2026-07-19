@@ -529,6 +529,18 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 如果用户显式要求“先讨论 / 先评审 / 先给方案”，按 Ask 处理
 - 否则默认按 Code 处理，但仍应先理解代码路径，再动手
 
+### 7.4 OpenSpec 自动分流
+
+VerseCraft 已启用 OpenSpec。后续 Codex 不要求用户显式输入 `/opsx:*` 或提及 OpenSpec，必须先按以下规则自动选择工作流；OpenSpec 的项目上下文与技能位于 `openspec/` 和 `.codex/skills/openspec-*`。
+
+- **直接执行（不创建 OpenSpec change）**：纯问答、只读检查、文案/拼写/格式修正、无行为变化的单文件小改动、已有 OpenSpec change 内的明确后续小任务，或单个已定位 bug 的最小修复。仍须遵守本文件的测试与契约要求。
+- **OpenSpec 轻量变更**：新增或改变可见行为、涉及两个及以上模块、需要权衡实现方案、需要新增/调整测试、或可能影响产品规则但不触及核心高风险契约时，先使用 `openspec-propose` 创建 proposal、design、tasks 与 delta spec，再实施并更新任务清单。
+- **OpenSpec 强制变更**：任何涉及 `/api/chat`、SSE/DM JSON 契约、AI routing 或 prompt、`useGameStore` / hydration、数据库 schema、analytics 事件、epistemic filtering、post-generation validation、world tick、认证/权限、跨端存档，或影响等待体验与性能预算的改动，必须使用 OpenSpec change；不得绕过 proposal、design、tasks 与验证记录。
+- **复用与收口**：若已有匹配的未归档 change，先使用 `openspec-update-change` 更新现有 artifacts，不新建重复 change。功能完成且验证通过后，使用 `openspec-sync-specs` 将 delta 同步至主 specs；归档由用户请求、PR 收口或明确的完成流程触发，使用 `openspec-archive-change`。
+- **Ask / Code 协作**：Ask 模式或需求尚不明确时，只完成 explore/propose 并等待用户确认。明确的 Code 模式或明确要求“实现/修复/修改”时，用户请求本身视为实施授权：Codex 先生成 OpenSpec artifacts，再在同一任务中按 tasks 实施；若 proposal 暴露出需要新的产品选择、外部权限或明显扩大范围，则停下请求用户决定。
+
+OpenSpec 是对本仓库现有 AGENTS.md 约束的补充，不替代其中的 SSE、状态、性能、数据兼容、叙事治理和验证红线；发生冲突时，以本文件其他明确的不可破坏契约为准。
+
 ---
 
 ## 8. 给未来 Codex 的八条最重要约束

@@ -27,6 +27,13 @@ const ENTITY_INJECTION_RE =
 const STRONG_NPC_SURFACE_RE =
   /(?:^|[\s"'“”‘’（(，。！？；:：])([\p{Script=Han}·]{2,8})(?:推门进来|走进来|走了进来|站起来|出现在|忽然出现|开口|低声说|说道|说|问|喊|回答|递给)/gu;
 const GENERIC_DIRECT_SPEECH_RE = /(?:^|[\s"'“”‘’（(，。！？；])(?:他|她|那人|对方)\s*(?:说|问|喊|回答|低声说)\s*[：:]/u;
+const GENERIC_PERSON_SURFACE_RE = /(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人)/gu;
+const GENERIC_PERSON_NOUN_RE = /(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人)/u;
+const GENERIC_PERSON_SCENE_ACTION_RE =
+  /(?:推门|走(?:进|出|来|去)|出现|探出|站(?:在|起)|靠(?:在|近)|从.{0,12}(?:走|探|钻|闪)出|开口|低声(?:说|问)|(?:说|问|喊)道|(?:往后)?退(?:了|开|半步)?|盯(?:着|住)|(?:抬|转)头|转身)/u;
+const INDIVIDUAL_PERSON_DESCRIPTION_RE =
+  /(?:穿(?:着)?|身着|披着|戴着|留着|扎着|眼眶|头发|脸色|面容|伤疤|瞳孔|双眼|皮肤|身形|身材|神情|衣角|袖口|格子衫|工装|大衣|校服|裙摆|胡茬|指节)/u;
+const ANAPHORIC_PERSON_RE = /(?:他|她|那人|对方)[\s\S]{0,96}/u;
 
 const STRUCTURED_FIELDS = [
   "codex_updates",
@@ -146,6 +153,40 @@ function isKnownNpcSurface(surface: string): boolean {
 
 function looksLikePronounNarrationSurface(surface: string): boolean {
   return PRONOUN_NARRATION_SURFACE_RE.test(surface);
+}
+
+function isGenericPersonSurface(surface: string | undefined): boolean {
+  return Boolean(surface && /^(?:男人|女人|男孩|女孩|男生|女生|少年|少女|老人|青年|中年人)$/u.test(surface));
+}
+
+function hasPlayerInducedAnaphoricPersonClaim(input: NarrativeSafetyInput, surfaceText: string): boolean {
+  const intentText = [input.intent?.rawText, input.intent?.normalizedText].filter(Boolean).join("\n");
+  const authority = input.npcSceneAuthorityPacket;
+  const hasAuthorizedSceneNpc = Boolean(input.speakerNpcId) || (authority?.presentNpcIds.length ?? 0) > 0;
+  return (
+    !hasAuthorizedSceneNpc &&
+    GENERIC_PERSON_NOUN_RE.test(intentText) &&
+    INDIVIDUAL_PERSON_DESCRIPTION_RE.test(intentText) &&
+    ANAPHORIC_PERSON_RE.test(surfaceText) &&
+    INDIVIDUAL_PERSON_DESCRIPTION_RE.test(surfaceText)
+  );
+}
+
+/**
+ * A model can evade the generic-person surface detector by introducing an
+ * actor with an anaphor only (for example, “她低声说”).  With no authorized
+ * scene NPC, an individually described, acting anaphor is still a visible
+ * character assertion and must not become a new canonical person.
+ */
+function hasUnanchoredAnaphoricPersonClaim(input: NarrativeSafetyInput, surfaceText: string): boolean {
+  const authority = input.npcSceneAuthorityPacket;
+  const hasAuthorizedSceneNpc = Boolean(input.speakerNpcId) || (authority?.presentNpcIds.length ?? 0) > 0;
+  return (
+    !hasAuthorizedSceneNpc &&
+    ANAPHORIC_PERSON_RE.test(surfaceText) &&
+    GENERIC_PERSON_SCENE_ACTION_RE.test(surfaceText) &&
+    INDIVIDUAL_PERSON_DESCRIPTION_RE.test(surfaceText)
+  );
 }
 
 function isNpcIdRegistered(npcId: string, input: NarrativeSafetyInput): boolean {
@@ -277,6 +318,22 @@ export function extractEntitySurfacesConservatively(text: string): NarrativeSafe
       id: knownNpcId ?? `surface:npc:${surface}`,
       kind: "npc",
       registered: Boolean(knownNpcId),
+      surface,
+      source: "narrative",
+    });
+  }
+  for (const match of String(text ?? "").matchAll(GENERIC_PERSON_SURFACE_RE)) {
+    const surface = normalizeText(match[0]);
+    const index = match.index ?? 0;
+    // A generic noun alone is useful suspense texture. Treat it as a person
+    // assertion only when the nearby prose also stages an arrival/action and
+    // gives the person individual physical or clothing detail.
+    const context = String(text ?? "").slice(Math.max(0, index - 72), index + surface.length + 108);
+    if (!GENERIC_PERSON_SCENE_ACTION_RE.test(context) || !INDIVIDUAL_PERSON_DESCRIPTION_RE.test(context)) continue;
+    out.push({
+      id: `surface:npc:${surface}`,
+      kind: "npc",
+      registered: false,
       surface,
       source: "narrative",
     });
@@ -493,6 +550,30 @@ function collectSurfaceWhitelistIssues(input: NarrativeSafetyInput): NarrativeSa
     ...Object.keys(mentionModes),
   ].map(normalizeNpcId));
 
+  if (hasPlayerInducedAnaphoricPersonClaim(input, surfaceText)) {
+    issues.push(
+      issue({
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        source: "entityAudit",
+        detail: "kind=npc|context=player_induced_anaphoric_person",
+        anchor: "surface:npc:player-induced-generic-person",
+      })
+    );
+  }
+
+  if (hasUnanchoredAnaphoricPersonClaim(input, surfaceText)) {
+    issues.push(
+      issue({
+        code: "unknown_entity_surface",
+        invariant: "unknown_entity_surface",
+        source: "entityAudit",
+        detail: "kind=npc|context=unanchored_anaphoric_person",
+        anchor: "surface:npc:unanchored-anaphoric-person",
+      })
+    );
+  }
+
   for (const ref of input.entityReferences ?? []) {
     if (ref.registered) continue;
     issues.push(
@@ -516,7 +597,9 @@ function collectSurfaceWhitelistIssues(input: NarrativeSafetyInput): NarrativeSa
         code: "unknown_entity_surface",
         invariant: "unknown_entity_surface",
         source: "entityAudit",
-        detail: `kind=npc|surface=${ref.surface ?? ref.id}|context=strong_surface_action`,
+        detail: `kind=npc|surface=${ref.surface ?? ref.id}|context=${
+          isGenericPersonSurface(ref.surface) ? "generic_described_person" : "strong_surface_action"
+        }`,
         anchor: ref.id,
       })
     );

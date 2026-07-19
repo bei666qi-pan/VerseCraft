@@ -21,6 +21,8 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
   assert.equal(f.enableNpcSocialSurface, true);
   assert.equal(f.enableStyleGuidePacket, true);
   assert.equal(f.enablePromptPacketDedupV1, true);
+  assert.equal(f.enableNarrativeStateConflictDegrade, true);
+  assert.equal(f.enableCanonicalLocationMovement, true);
   assert.equal(f.enableTaskVisibilityPolicyV3, true);
   assert.equal(f.enableTaskAutoOpenOnNarrativeGrant, true);
   assert.equal(f.enablePlayerFacingTaskCopyV2, true);
@@ -55,6 +57,18 @@ test("getVerseCraftRolloutFlags defaults match current mainline", () => {
 test("prompt packet dedup can be rolled back independently", () => {
   withEnv("VERSECRAFT_ENABLE_PROMPT_PACKET_DEDUP_V1", "0", () => {
     assert.equal(getVerseCraftRolloutFlags().enablePromptPacketDedupV1, false);
+  });
+});
+
+test("narrative state-conflict degrade can be rolled back independently", () => {
+  withEnv("VERSECRAFT_ENABLE_NARRATIVE_STATE_CONFLICT_DEGRADE", "0", () => {
+    assert.equal(getVerseCraftRolloutFlags().enableNarrativeStateConflictDegrade, false);
+  });
+});
+
+test("canonical location movement can be rolled back independently", () => {
+  withEnv("VERSECRAFT_ENABLE_CANONICAL_LOCATION_MOVEMENT", "0", () => {
+    assert.equal(getVerseCraftRolloutFlags().enableCanonicalLocationMovement, false);
   });
 });
 

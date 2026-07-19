@@ -53,7 +53,11 @@ import {
 } from "@/features/play/opening/openingCopy";
 import { isColdPlayOpening } from "@/features/play/opening/coldOpening";
 import { FALLBACK_STATS, MAX_INPUT, STAT_ORDER } from "@/features/play/playConstants";
-import { PROFESSION_IDS, PROFESSION_REGISTRY } from "@/lib/profession/registry";
+import { PROFESSION_IDS } from "@/lib/profession/registry";
+import {
+  buildPersistedProfessionCertificationChoice,
+  resolveProfessionCertificationGate,
+} from "@/features/play/professionCertificationEncounter";
 import { getProfessionActiveSkillName, getProfessionActiveCooldownKey } from "@/lib/profession/benefits";
 import type { ProfessionId } from "@/lib/profession/types";
 import { localInputSafetyCheck, safeNumber } from "@/features/play/render/inputGuards";
@@ -78,6 +82,9 @@ import {
 } from "@/features/play/turnFailurePolicy";
 import { buildClientOptionsRegenContext } from "@/lib/play/optionsRegenContext";
 import { evaluateOptionsSemanticQuality } from "@/lib/play/optionsSemanticGuards";
+import { buildVisibleOptionsSceneAnchors } from "@/lib/play/optionsSceneAnchors";
+import { isPlayableRegeneratedOptions } from "@/lib/play/optionsRegenPlayability";
+import { NPCS } from "@/lib/registry/npcs";
 import { buildOptionsRepairReason, getRepairMissingCount, shouldTriggerOptionsRepairPass } from "@/lib/play/optionsRepair";
 import { formatOptionsRegenDebugHint, mapOptionRejectReasonToCodes, type OptionsRegenReasonCode } from "@/lib/play/optionsRegenObservability";
 import {
@@ -173,6 +180,7 @@ import { VC_PERF_FLAGS, VC_WAITING, resolvePlayChatTransportTimeouts } from "@/l
 import { createVerseCraftRequestId, VERSECRAFT_REQUEST_ID_HEADER, isSafeVerseCraftRequestId } from "@/lib/telemetry/requestId";
 import { postSameOriginForSseDocumentText } from "@/lib/chat/sameOriginSsePost";
 import { CHAT_QUEUE_CLIENT_FINGERPRINT_HEADER, CHAT_QUEUE_ID_HEADER } from "@/lib/chatQueue/types";
+import { shouldRecoverStaleChatQueueTicket } from "@/features/play/chatQueueStaleTicketRecovery";
 import { needsLegacySseClientTransport, needsLegacySseClientTransportFromHighEntropyUserAgentData } from "@/lib/platform/needsLegacySseClientTransport";
 import {
   VERSECRAFT_CHAT_PURPOSE_HEADER,
@@ -629,9 +637,19 @@ function PlayContent() {
     options: string[];
     mapping: Record<string, ProfessionId>;
   }>({ enabled: false, options: [], mapping: {} });
+  const persistedProfessionChoice = useMemo(
+    () =>
+      buildPersistedProfessionCertificationChoice({
+        playerLocation,
+        hasMetProfessionCertifier: Boolean(hasMetProfessionCertifier),
+        currentProfession: professionState?.currentProfession,
+        eligibilityByProfession: professionState?.eligibilityByProfession,
+      }),
+    [hasMetProfessionCertifier, playerLocation, professionState]
+  );
   const chapterRuntime = useChapterRuntime();
   const [chapterPageTurn, setChapterPageTurn] = useState<ChapterPageTurnDirection | null>(null);
-  const hasModelChoiceOptions = currentOptions.length === 4;
+  const hasModelChoiceOptions = isPlayableRegeneratedOptions(currentOptions);
   const hasVisibleChoiceOptions = hasModelChoiceOptions || pendingProfessionChoice.enabled;
   const endingSettlementReady =
     endingState?.phase === "settlement_ready" && Boolean(endingState.settlementSnapshot);
@@ -940,6 +958,32 @@ function PlayContent() {
     () => isColdPlayOpening({ logs, time }),
     [logs, time]
   );
+
+  // `pendingProfessionChoice` is transient UI state. Rebuild it from the
+  // persisted encounter proof and current eligibility after a reload so a
+  // player cannot be stranded with a valid but unclickable certification
+  // opportunity. Do not overwrite an active model choice set mid-turn.
+  useEffect(() => {
+    if (!isHydrated || !isGameStarted || isChatBusy) return;
+    if (pendingProfessionChoice.enabled || currentOptions.length > 0) return;
+    if (persistedProfessionChoice.options.length === 0) return;
+    setPendingProfessionChoice({
+      enabled: true,
+      options: persistedProfessionChoice.options,
+      mapping: persistedProfessionChoice.mapping,
+    });
+    useGameStore.getState().setCurrentOptions(persistedProfessionChoice.options);
+    if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
+    setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
+  }, [
+    currentOptions.length,
+    isChatBusy,
+    isGameStarted,
+    isHydrated,
+    pendingProfessionChoice.enabled,
+    persistedProfessionChoice,
+  ]);
+
   const showEmbeddedOpening = isHydrated && isGameStarted && coldPlayOpening;
   const openingNarrativePinned = useGameStore((s) => (s as any).openingNarrativePinned ?? false);
   const showPinnedOpeningNarrative = isHydrated && isGameStarted && openingNarrativePinned;
@@ -985,7 +1029,8 @@ function PlayContent() {
     // After every turn completes, auto-generate options if fewer than four model actions survived.
     // Use a slightly longer delay (500ms) to allow any in-flight options regen
     // (e.g., opening_fallback triggered during turn commit) to complete first.
-    // If that regen succeeded, currentOptions will have exactly four entries and we skip.
+    // A completed repair has four entries; a two/three-choice partial is still
+    // immediately playable and remains visible while a later turn may retry.
     const currentOpts = filterNarrativeActionOptions(useGameStore.getState().currentOptions ?? [], 4);
     if (currentOpts.length < 4 && !endgameState.active && !pendingProfessionChoice.enabled) {
       setTimeout(() => {
@@ -2290,6 +2335,17 @@ function PlayContent() {
         })
         .filter((x): x is string => x.length > 0)
         .slice(0, 3);
+      const presentNpcIds = Object.entries(dynamicNpcStates)
+        .filter(([, npc]) => npc?.isAlive && npc.currentLocation === clientState?.playerLocation)
+        .map(([npcId]) => npcId)
+        .filter((npcId) => NPCS.some((npc) => npc.id === npcId));
+      const visibleSceneAnchors = buildVisibleOptionsSceneAnchors({
+        playerLocation: clientState?.playerLocation,
+        presentNpcIds,
+        equippedWeapon: clientState?.equippedWeapon,
+        inventoryHints,
+        latestNarrative: String(lastAssistant ?? ""),
+      });
       const optionsRegenContext = buildClientOptionsRegenContext({
         latestPlayerAction: String(lastUser ?? ""),
         latestNarrativeExcerpt: String(lastAssistant ?? ""),
@@ -2318,6 +2374,7 @@ function PlayContent() {
           recentOptions: regenRecentOptions,
           latestNarrative: optionsRegenContext.latestNarrativeExcerpt,
           playerLocation: clientState?.playerLocation,
+          sceneAnchors: visibleSceneAnchors,
         });
         return {
           accepted: backfillAcceptedOptionsFromModel({
@@ -2750,7 +2807,7 @@ function PlayContent() {
         }
       }
 
-      if (finalOptions.length !== 4) {
+      if (!isPlayableRegeneratedOptions(finalOptions)) {
         setOptionsRegenStage("finalizing");
         setOptionsRegenProgress((prev) => Math.max(prev, 92));
         setFirstTimeHint(null);
@@ -2903,7 +2960,8 @@ function PlayContent() {
     isResume?: boolean,
     isSystemAction?: boolean,
     resumeQueueId?: string | null,
-    retriedAfterRateLimit?: boolean
+    retriedAfterRateLimit?: boolean,
+    retriedAfterStaleQueueTicket?: boolean
   ) {
     if (isChatBusy || sendActionInFlightRef.current || languageSwitchInFlightRef.current) return;
     const currentState = useGameStore.getState();
@@ -3446,6 +3504,26 @@ function PlayContent() {
       ) {
         sendActionInFlightRef.current = false;
         await sendAction(trimmed, true, true, isSystemAction, null, true);
+        return;
+      }
+
+      if (
+        shouldRecoverStaleChatQueueTicket({
+          status: httpStatus,
+          reason,
+          hasQueueTicket: Boolean(queueIdForChat),
+          alreadyRetried: retriedAfterStaleQueueTicket,
+        })
+      ) {
+        // This request has not entered SSE/model execution: either a restored
+        // or newly admitted ticket became invalid before its execution claim.
+        // Drop the stale persistence and re-admit once through the normal
+        // queue rather than replaying a turn.
+        clearPendingChatQueueAction();
+        pendingQueueActionRef.current = null;
+        setChatQueueState(EMPTY_CHAT_QUEUE_STATE);
+        sendActionInFlightRef.current = false;
+        await sendAction(trimmed, bypassLengthCheck, true, isSystemAction, null, retriedAfterRateLimit, true);
         return;
       }
 
@@ -4418,82 +4496,39 @@ function PlayContent() {
         typeof parsed.player_location === "string" && parsed.player_location.trim().length > 0
           ? parsed.player_location.trim()
           : (useGameStore.getState().playerLocation ?? "B1_SafeZone");
-      const in1F = currentLoc.startsWith("1F_");
-
-      // 本回合“出现过的NPC”集合：复用下方外貌去重的 ids 收集逻辑，但这里保持独立避免顺序耦合。
-      const seenNpcIds = new Set<string>();
-      if (Array.isArray(parsed.codex_updates)) {
-        for (const u of parsed.codex_updates as unknown[]) {
-          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
-          if ((u as { type?: unknown }).type !== "npc") continue;
-          const id = (u as { id?: unknown }).id;
-          if (typeof id === "string" && id.trim()) seenNpcIds.add(id.trim());
-        }
-      }
-      if (Array.isArray((parsed as { relationship_updates?: unknown[] }).relationship_updates)) {
-        for (const u of ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])) {
-          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
-          const id = (u as { npcId?: unknown }).npcId;
-          if (typeof id === "string" && id.trim()) seenNpcIds.add(id.trim());
-        }
-      }
-      if (Array.isArray(parsed.npc_location_updates)) {
-        for (const u of parsed.npc_location_updates) {
-          if (!u || typeof u !== "object" || Array.isArray(u)) continue;
-          const id = (u as { id?: unknown }).id;
-          if (typeof id === "string" && id.trim()) seenNpcIds.add(id.trim());
-        }
-      }
-
-      // 五位职业签发者（去重）：守灯人/觅兆者/溯源师=N-008，巡迹客=N-014，齐日角=N-011。
-      const certifierNpcIds = [...new Set(PROFESSION_IDS.map((id) => PROFESSION_REGISTRY[id].certification.certifierNpcId))];
-
-      // 遇到认证NPC：只在 1F 触发（避免其它楼层的误判），且必须是真实签发者之一。
-      const metAnyCertifierThisTurn = certifierNpcIds.some(
-        (npcId) =>
-          seenNpcIds.has(npcId) ||
-          useGameStore.getState().dynamicNpcStates?.[npcId]?.currentLocation?.startsWith("1F_")
-      );
-      if (in1F && metAnyCertifierThisTurn) {
+      // 首次相遇只能由本回合的结构化 NPC delta 证明。世界中某 NPC
+      // 恰好在一楼不等于玩家已遇到他，更不能据此开放不可逆职业认证。
+      const stateBeforeCertificationGate = useGameStore.getState();
+      const certificationGate = resolveProfessionCertificationGate({
+        playerLocation: currentLoc,
+        dmRecord: parsed as Record<string, unknown>,
+        hasMetProfessionCertifier: Boolean(stateBeforeCertificationGate.hasMetProfessionCertifier),
+        currentProfession: stateBeforeCertificationGate.professionState?.currentProfession,
+        eligibilityByProfession: stateBeforeCertificationGate.professionState?.eligibilityByProfession,
+      });
+      if (certificationGate.markEncounter) {
         if (!useGameStore.getState().hasMetProfessionCertifier) markMetProfessionCertifier();
       }
 
-      const stateNow = useGameStore.getState();
-      const alreadyHasProfession = Boolean(stateNow.professionState?.currentProfession);
-      const metNpc = Boolean(stateNow.hasMetProfessionCertifier);
-      // 好感门槛：取玩家已接触到的签发者里最高的好感值，而不是固定读一个与当前候选职业无关的 NPC。
-      const favor = Math.max(
-        0,
-        ...certifierNpcIds.map((npcId) =>
-          typeof stateNow.codex?.[npcId]?.favorability === "number" ? (stateNow.codex[npcId]!.favorability as number) : 0
-        )
-      );
-      const favorOk = favor >= 0;
-
-      if (!alreadyHasProfession && in1F && metNpc && favorOk) {
+      if (certificationGate.eligibleProfessions.length > 0) {
         // 可选职业：以 `professionState.eligibilityByProfession` 为准（stat + 行为证据 + 试炼任务），
         // 避免“前端提示可认证，但 engine 实际不可认证”的矛盾。
         // 修复：去掉此前额外叠加的“任一属性>20”门槛——它与 engine 的 primaryStatMin(18) 不一致，
         // 会造成“engine 判定可认证，但这里因为门槛更高而不展示”的自相矛盾。
-        const eligible: ProfessionId[] = PROFESSION_IDS.filter(
-          (id) => Boolean(stateNow.professionState?.eligibilityByProfession?.[id])
-        );
-        if (eligible.length > 0) {
-          const optionTextById: Record<ProfessionId, string> = {
-            守灯人: "认证职业：守灯人",
-            巡迹客: "认证职业：巡迹客",
-            觅兆者: "认证职业：觅兆者",
-            齐日角: "认证职业：齐日角",
-            溯源师: "认证职业：溯源师",
-          };
-          const opts = eligible.map((id) => optionTextById[id]);
-          const mapping = Object.fromEntries(eligible.map((id) => [optionTextById[id], id])) as Record<string, ProfessionId>;
+        const choice = buildPersistedProfessionCertificationChoice({
+          playerLocation: currentLoc,
+          hasMetProfessionCertifier:
+            Boolean(stateBeforeCertificationGate.hasMetProfessionCertifier) || certificationGate.markEncounter,
+          currentProfession: stateBeforeCertificationGate.professionState?.currentProfession,
+          eligibilityByProfession: stateBeforeCertificationGate.professionState?.eligibilityByProfession,
+        });
+        if (choice.options.length > 0) {
           // 修复：此前的默认分支会提示“可在【设置→职业】中完成认证”，但代码库里并不存在这样的设置面板，
           // 是一句指向不存在 UI 的死提示。职业认证走“对话驱动”设计（不新增设置页/面板），因此统一改为
           // 把可认证职业直接作为本回合可选项呈现，玩家选择后即完成认证。
-          setPendingProfessionChoice({ enabled: true, options: opts.slice(0, 5), mapping });
+          setPendingProfessionChoice({ enabled: true, options: choice.options.slice(0, 5), mapping: choice.mapping });
           if (useGameStore.getState().inputMode !== "options") useGameStore.getState().toggleInputMode();
-          setCurrentOptions([...opts.slice(0, 4)]);
+          setCurrentOptions([...choice.options.slice(0, 4)]);
           setFirstTimeHint("你已满足职业认证条件，请选择你的职业。");
         }
       }
@@ -4915,8 +4950,11 @@ function PlayContent() {
       return;
     }
     playUIClick();
-    if (pendingProfessionChoice.enabled && pendingProfessionChoice.mapping[option]) {
-      const chosen = pendingProfessionChoice.mapping[option]!;
+    const persistedChoice = currentOptions.includes(option)
+      ? persistedProfessionChoice.mapping[option]
+      : undefined;
+    const chosen = pendingProfessionChoice.mapping[option] ?? persistedChoice;
+    if (chosen) {
       const ok = certifyProfession(chosen);
       setPendingProfessionChoice({ enabled: false, options: [], mapping: {} });
       if (!ok) {

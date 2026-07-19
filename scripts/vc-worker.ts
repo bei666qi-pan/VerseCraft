@@ -5,10 +5,19 @@
  * 用法：pnpm worker:kg
  * 单次：pnpm worker:kg:once
  */
+import { config as dotenvConfig } from "dotenv";
 import { hostname } from "node:os";
+import { resolve } from "node:path";
+import { parseWorkerTargetJobId, selectWorkerJobs } from "../src/lib/kg/workerTargetJob";
+
+// `next dev` loads .env.local for the web process, but this standalone CLI
+// does not. Keep deployed environments unchanged while making the documented
+// local worker command use the same database and AI configuration.
+dotenvConfig({ path: resolve(".env.local"), quiet: true });
 
 const workerId = `${hostname()}-${process.pid}`;
 const once = process.argv.includes("--once");
+const targetJobId = parseWorkerTargetJobId(process.env.VC_WORKER_ONLY_JOB_ID);
 
 let consecutiveFailures = 0;
 let lastJobProcessedAt: string | null = null;
@@ -222,7 +231,7 @@ async function main(): Promise<void> {
   const { runWorldEngineTick } = await import("../src/lib/worldEngine/engine");
   const { enqueueConsensusSweepBatch, runConsensusForCandidate } = await import("../src/lib/kg/consensus");
   const { runJanitorForCandidate } = await import("../src/lib/kg/janitor");
-  const { claimJobs, completeJob, failJob, releaseStaleRunningJobs } = await import("../src/lib/kg/jobs");
+  const { claimJobs, claimJobById, completeJob, failJob, releaseStaleRunningJobs } = await import("../src/lib/kg/jobs");
 
   const deps = {
     recordGenericAnalyticsEvent,
@@ -235,7 +244,7 @@ async function main(): Promise<void> {
     failJob,
   };
 
-  logJson({ level: "info", msg: "worker_start", once, concurrency: workerConcurrency() });
+  logJson({ level: "info", msg: "worker_start", once, concurrency: workerConcurrency(), targetJobId });
 
   // 启动时立即写一次心跳
   await writeHeartbeat();
@@ -247,7 +256,11 @@ async function main(): Promise<void> {
       const stale = await releaseStaleRunningJobs(10);
       if (stale > 0) logJson({ level: "info", msg: "stale_locks_released", count: stale });
 
-      const jobs = (await claimJobs({ workerId, batch: 4 })) as ClaimedJob[];
+      const targetedJob = targetJobId === null ? null : await claimJobById({ workerId, jobId: targetJobId });
+      const claimedBatch = targetJobId === null
+        ? (await claimJobs({ workerId, batch: 4 })) as ClaimedJob[]
+        : [];
+      const jobs = selectWorkerJobs({ targetJobId, targetedJob, claimedBatch });
       if (jobs.length === 0) {
         // 空闲时也写心跳
         heartbeatCounter += 1;

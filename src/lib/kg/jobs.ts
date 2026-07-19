@@ -113,6 +113,54 @@ export async function claimJobs(args: {
   }
 }
 
+/**
+ * Claims one known pending job without consuming unrelated queue work.
+ * This is intentionally opt-in for diagnostics; normal workers keep using
+ * `claimJobs` and its priority/FIFO batch selection.
+ */
+export async function claimJobById(args: {
+  workerId: string;
+  jobId: number;
+}): Promise<ClaimedJob | null> {
+  const jobId = Math.floor(args.jobId);
+  if (!Number.isSafeInteger(jobId) || jobId <= 0) return null;
+  let client;
+  try {
+    client = await pool.connect();
+  } catch {
+    return null;
+  }
+  try {
+    const r = await client.query<{
+      job_id: string;
+      job_type: string;
+      payload: unknown;
+      attempts: string;
+      max_attempts: string;
+    }>(
+      `UPDATE vc_jobs
+       SET status = 'running', locked_by = $1, locked_at = NOW(), attempts = attempts + 1
+       WHERE job_id = $2 AND status = 'pending' AND run_at <= NOW()
+       RETURNING job_id, job_type, payload, attempts, max_attempts`,
+      [args.workerId, String(jobId)]
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      jobId: Number(row.job_id),
+      jobType: row.job_type as JobType,
+      payload: row.payload,
+      attempts: Number(row.attempts),
+      maxAttempts: Math.max(1, Number(row.max_attempts) || 8),
+    };
+  } catch (e) {
+    if (isMissingJobsTable(e)) return null;
+    return null;
+  } finally {
+    client.release();
+  }
+}
+
 export async function completeJob(jobId: number): Promise<void> {
   let client;
   try {

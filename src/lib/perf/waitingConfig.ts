@@ -162,7 +162,10 @@ export const VC_WAITING = {
    * This is not the main narrative generation path; if it cannot finish inside
    * this budget, keep the model's original narrative and preserve final latency.
    */
-  narrativeExpansionServerBudgetMs: 2_000,
+  // Live traces show valid JSON-only expansion can approach nine seconds under
+  // normal gateway variance. The route still clamps this optional hook to the
+  // normal-turn p95 final budget before it can affect a player turn.
+  narrativeExpansionServerBudgetMs: 10_000,
 
   /**
    * Server wall-clock budget for control preflight before the main PLAYER_CHAT

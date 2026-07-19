@@ -257,20 +257,27 @@ function deriveCompletedTaskToast(tasks: Array<{ id: string; status?: GameTaskSt
 
 /**
  * 保守降级：当叙事命中“强获得语义”但结构化 awarded_* 为空时，
- * 不猜物品、不发奖；仅把“已获得/已拿到”等确定性措辞降到“发现/似乎找到但未确认归属”的表述。
+ * 不猜物品、不发奖；仅把“已获得/已拿到/已捡起”等确定性措辞降到“发现/注意到但未确认归属”的表述。
  * 只做局部替换（最多一次），避免破坏文风与段落结构。
  */
 export function downgradeAcquireSemanticsInNarrative(narrative: string): { text: string; applied: boolean } {
   const src = String(narrative ?? "");
   if (!src) return { text: src, applied: false };
+  // 如果获得动词之后已经继续声称“塞入背包 / 紧握在手”，局部把“捡起”
+  // 换成“注意到”会留下同样错误的所有权结论，甚至形成病句。此时让调用方走
+  // 明确的无所有权 fallback，宁可少留一段文学细节，也不能把未提交的道具写成
+  // 玩家已经持有。
+  if (/(?:塞进|放进|装进|收入).{0,12}(?:背包|行囊)|(?:握紧|握住).{0,10}(?:它|这(?:件|根|把)|[\u4e00-\u9fff]{1,8})/.test(src)) {
+    return { text: src, applied: false };
+  }
   const rules: Array<{ re: RegExp; to: string }> = [
     { re: /获得了/g, to: "发现了" },
     { re: /拿到了/g, to: "摸到了" },
     { re: /得到了/g, to: "看到了" },
     { re: /入手了/g, to: "注意到了一件" },
-    { re: /收下了/g, to: "暂时收起了" },
-    { re: /拾起了/g, to: "捡起了" },
-    { re: /捡起了/g, to: "捡起了" },
+    { re: /收下(?:了)?/g, to: "触碰到了" },
+    { re: /拾起(?:了)?/g, to: "注意到了一件" },
+    { re: /捡起(?:了)?/g, to: "注意到了一件" },
   ];
   for (const r of rules) {
     const m = src.match(r.re);
@@ -303,13 +310,19 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const awardedItems = asUnknownArray(input.awarded_items);
   const awardedWarehouseItems = asUnknownArray(input.awarded_warehouse_items);
   const hasAwards = awardedItems.length > 0 || awardedWarehouseItems.length > 0;
+  const rollout = getVerseCraftRolloutFlags();
 
   let narrative = baseNarrative;
   if (hasStrongAcquireSemantics(narrative) && !hasAwards) {
-    const downgraded = downgradeAcquireSemanticsInNarrative(narrative);
-    if (downgraded.applied) {
-      narrative = clampString(downgraded.text, maxNarrativeChars);
-      consistency_flags.push("acquire_without_awards_downgraded");
+    if (rollout.enableNarrativeStateConflictDegrade) {
+      const downgraded = downgradeAcquireSemanticsInNarrative(narrative);
+      if (downgraded.applied) {
+        narrative = clampString(downgraded.text, maxNarrativeChars);
+        consistency_flags.push("acquire_without_awards_downgraded");
+      } else {
+        narrative = "你注意到附近有一件尚未确认归属的物品，暂时没有把它记入行囊。";
+        consistency_flags.push("acquire_without_awards_fallback");
+      }
     } else {
       consistency_flags.push("acquire_without_awards_detected");
     }
@@ -346,7 +359,6 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
   const normalizedClueUpdateRecords: Array<Record<string, unknown>> = normalizedClueUpdates.map((clue) => ({ ...clue }));
 
   const grantNormalizedNewTasks = normalizedNewTasks.map((t) => applyNarrativeAcceptanceDefaults(t));
-  const rollout = getVerseCraftRolloutFlags();
   if (rollout.enableTaskAutoOpenOnNarrativeGrant) {
     if (grantNormalizedNewTasks.some((t) => shouldAutoOpenTaskPanelForNewTask(t))) {
       ui_hints.toast_hint ??= "新的叙事线索已被记录。";

@@ -161,6 +161,114 @@ test("entity whitelist flags fabricated Chinese NPC surface in narrative as high
   assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.severity === "high"));
 });
 
+test("entity whitelist flags an individually described unregistered generic person", () => {
+  const report = collectSafetyReport({
+    narrative:
+      "走廊尽头传来木门吱呀一声，门缝里摇曳的光线中探出半个身子。那是一个男人，穿着褪色的格子衫，眼眶发红，头发乱蓬蓬的。",
+    npcSceneAuthorityPacket: scenePacket(),
+  });
+
+  assert.equal(report.decision, "repair");
+  assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.anchor === "surface:npc:男人"));
+});
+
+test("entity whitelist flags the live-style workwear stranger with direct speech", () => {
+  const report = collectSafetyReport({
+    narrative: "一个穿旧工装的男人靠在墙边，叼着烟，开口说：‘拿根铁管跟走廊过不去？’",
+    npcSceneAuthorityPacket: scenePacket({ presentNpcIds: [], npcMentionModes: {} }),
+  });
+
+  assert.equal(report.decision, "repair");
+  assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.anchor === "surface:npc:男人"));
+});
+
+test("entity whitelist blocks an unregistered ponytail girl staged as an interactive scene actor", () => {
+  const report = collectSafetyReport({
+    narrative: "一个扎着马尾的女生猛地转身，练习册从她怀中滑落，纸张纷飞。她没有回头，飞快地冲下楼梯。",
+    npcSceneAuthorityPacket: scenePacket({ presentNpcIds: [], npcMentionModes: {} }),
+  });
+
+  assert.equal(report.decision, "repair");
+  assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.anchor === "surface:npc:女生"));
+});
+
+test("entity whitelist does not let player-induced described-person paraphrases become authorized", () => {
+  const report = collectSafetyReport({
+    narrative: "门缝里的格子衫男人像被目光烫了一下，往后退了半步，眼眶的红肿在昏黄廊灯下更显扎眼。",
+    intent: {
+      rawText: "我盯着门缝里那个穿褪色格子衫、眼眶发红的男人，追问他是谁。",
+      normalizedText: "询问门缝里的格子衫男人身份",
+      kind: "dialogue",
+      slots: {},
+      riskTags: [],
+      isSystemTransition: false,
+      isFirstAction: false,
+      clientPurpose: "normal",
+    },
+    npcSceneAuthorityPacket: scenePacket(),
+  });
+
+  assert.equal(report.decision, "repair");
+  assert.ok(report.issues.some((issue) => issue.code === "unknown_entity_surface" && issue.anchor === "surface:npc:男人"));
+});
+
+test("entity whitelist blocks a player-induced person continued only with an anaphor", () => {
+  const report = collectSafetyReport({
+    narrative: "门缝里的光晃了晃，那件褪色格子衫的肩线在门框边沿蹭出一道褶皱。他没有立刻应声，眼眶红得像刚揉过，手指扣在门板上。",
+    intent: {
+      rawText: "我盯着门缝里那个穿褪色格子衫、眼眶发红的男人，追问他是谁。",
+      normalizedText: "询问门缝里的格子衫男人身份",
+      kind: "dialogue",
+      slots: {},
+      riskTags: [],
+      isSystemTransition: false,
+      isFirstAction: false,
+      clientPurpose: "normal",
+    },
+    npcSceneAuthorityPacket: scenePacket({ presentNpcIds: [], npcMentionModes: {} }),
+  });
+
+  assert.equal(report.decision, "repair");
+  assert.ok(report.issues.some((issue) => issue.anchor === "surface:npc:player-induced-generic-person"));
+});
+
+test("entity whitelist blocks an unanchored described anaphoric actor", () => {
+  const report = collectSafetyReport({
+    narrative: "肩膀忽然被人拍了一下。她指向门缝，袖口沾着墙灰，随即低声说：别回头。",
+    npcSceneAuthorityPacket: scenePacket({ presentNpcIds: [], npcMentionModes: {} }),
+  });
+
+  assert.equal(report.decision, "repair");
+  assert.ok(report.issues.some((issue) => issue.anchor === "surface:npc:unanchored-anaphoric-person"));
+});
+
+test("entity whitelist does not infer an unknown person from an anaphor when a scene NPC is authorized", () => {
+  const report = collectSafetyReport({
+    narrative: "他没有立刻应声，眼眶在走廊冷光里显得很疲惫，手指扣在门板上。",
+    intent: {
+      rawText: "我问老板昨夜有没有听见声音。",
+      normalizedText: "询问老板昨夜声音",
+      kind: "dialogue",
+      slots: {},
+      riskTags: [],
+      isSystemTransition: false,
+      isFirstAction: false,
+      clientPurpose: "normal",
+    },
+    speakerNpcId: "N-001",
+    npcSceneAuthorityPacket: scenePacket(),
+  });
+
+  assert.ok(!report.issues.some((issue) => issue.anchor === "surface:npc:player-induced-generic-person"));
+});
+
+test("entity whitelist keeps generic atmospheric people when no individual character is introduced", () => {
+  for (const narrative of ["远处有人咳嗽。", "一道模糊的人影从门口掠过。", "楼上传来住户拖动椅子的声音。"]) {
+    const report = collectSafetyReport({ narrative, npcSceneAuthorityPacket: scenePacket() });
+    assert.ok(!report.issues.some((issue) => issue.code === "unknown_entity_surface"), narrative);
+  }
+});
+
 test("entity whitelist allows committed NPC surface nickname", () => {
   const report = collectSafetyReport({
     narrative: "老李低声说：昨晚电梯井里确实有声音。",

@@ -103,6 +103,8 @@ export interface TraceArtifact {
   durationMs: number;
   terminatedReason: TerminatedReason;
   totalSteps: number;
+  /** 首回合前的权威状态；用于审计首次状态变更。 */
+  initialState: GameStateSnapshot;
   /** 各步不变量检查结果 */
   invariantChecks: Array<{
     stepIndex: number;
@@ -583,6 +585,7 @@ export async function runSinglePlaythroughV3(
     durationMs: transcript.durationMs,
     terminatedReason,
     totalSteps: transcript.totalSteps,
+    initialState: transcript.initialState,
     invariantChecks: invariantResults.map((i) => ({
       stepIndex: i.stepIndex,
       passed: i.passed,

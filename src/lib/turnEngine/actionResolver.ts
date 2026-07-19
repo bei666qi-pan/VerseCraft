@@ -67,7 +67,10 @@ function extractMatch(text: string, patterns: RegExp[]): string | null {
   for (const pattern of patterns) {
     const m = text.match(pattern);
     if (m && m[1]) {
-      const extracted = m[1].trim();
+      // The broad legacy capture permits up to 12 characters so that compound
+      // Chinese item names remain usable. Never let it cross a clause boundary:
+      // otherwise “捡起了黄铜钥匙，迅速塞进口袋” becomes a fabricated item name.
+      const extracted = m[1].split(/[，。！？；、\s]/, 1)[0]?.trim() ?? "";
       // 过滤掉明显不是物品名的提取（如：他、她、它、自己、一个等）
       if (extracted.length >= 2 && !/^(他|她|它|自己|一个|那个|这个|东西|什么)$/.test(extracted)) {
         return extracted;

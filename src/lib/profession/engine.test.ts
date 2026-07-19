@@ -21,7 +21,7 @@ test("profession eligibility follows stat + behavior gates", () => {
   assert.equal(state.eligibilityByProfession["巡迹客"], false);
 });
 
-test("certify profession sets current and perk", () => {
+test("certify profession requires a confirmed certifier encounter before setting current and perk", () => {
   const computed = computeProfessionState({
     prev: createDefaultProfessionState(),
     stats: { sanity: 25, agility: 1, luck: 1, charm: 1, background: 1 },
@@ -35,8 +35,8 @@ test("certify profession sets current and perk", () => {
     warehouseCount: 0,
     equippedWeapon: null,
   });
-  const next = certifyProfession(computed, "守灯人");
+  assert.equal(certifyProfession(computed, "守灯人").currentProfession, null);
+  const next = certifyProfession(computed, "守灯人", { certifierEncounterConfirmed: true });
   assert.equal(next.currentProfession, "守灯人");
   assert.equal(next.activePerks.length, 1);
 });
-

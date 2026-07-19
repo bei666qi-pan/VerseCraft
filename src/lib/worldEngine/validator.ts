@@ -122,13 +122,22 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
     issues.push(issue("safety_risk_high", "High safety risk plans require deterministic rejection.", "high"));
   }
 
+  // These failures invalidate the plan's governing safety contract. They are
+  // deliberately distinct from a malformed *single* agenda item: a bad
+  // sibling must not discard independent, already-safe environmental cues.
+  for (const hook of plan.player_private_hooks ?? []) {
+    if (hook.must_not_surface_directly !== true) {
+      issues.push(issue("private_hook_contract_missing", "player_private_hooks must never be directly surfaced.", "high"));
+    }
+  }
+  const planLevelReject = issues.some((x) => x.severity === "high");
+
   const seen = new Set<string>();
   const acceptedEventCodes: string[] = [];
   const rejectedEventCodes: string[] = [];
   const seenSocial = new Set<string>();
   const acceptedSocialEventCodes: string[] = [];
   const rejectedSocialEventCodes: string[] = [];
-  const planLevelReject = issues.some((x) => x.severity === "high");
 
   for (const ev of plan.world_events_to_schedule ?? []) {
     const itemIssues = validateAgendaItem(ev);
@@ -158,18 +167,19 @@ export function validateDirectorPlan(plan: DirectorPlan): DirectorValidationResu
     }
   }
 
-  for (const hook of plan.player_private_hooks ?? []) {
-    if (hook.must_not_surface_directly !== true) {
-      issues.push(issue("private_hook_contract_missing", "player_private_hooks must never be directly surfaced.", "high"));
-    }
-  }
+  const scheduledCandidateCount =
+    (plan.world_events_to_schedule?.length ?? 0) + (plan.social_events_to_schedule?.length ?? 0);
+  const acceptedCandidateCount = acceptedEventCodes.length + acceptedSocialEventCodes.length;
+  // A plan with no agenda is still valid (it may only update director state),
+  // while a plan whose every requested event was rejected must not look like a
+  // successful agenda write. Mixed plans retain their independently safe items.
+  const accepted = !planLevelReject && (scheduledCandidateCount === 0 || acceptedCandidateCount > 0);
 
-  const hasHighIssue = issues.some((x) => x.severity === "high");
   return {
-    accepted: !hasHighIssue,
-    acceptedEventCodes: hasHighIssue ? [] : acceptedEventCodes,
+    accepted,
+    acceptedEventCodes: planLevelReject ? [] : acceptedEventCodes,
     rejectedEventCodes: Array.from(new Set(rejectedEventCodes)),
-    acceptedSocialEventCodes: hasHighIssue ? [] : acceptedSocialEventCodes,
+    acceptedSocialEventCodes: planLevelReject ? [] : acceptedSocialEventCodes,
     rejectedSocialEventCodes: Array.from(new Set(rejectedSocialEventCodes)),
     issues,
   };

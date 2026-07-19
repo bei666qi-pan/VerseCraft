@@ -833,6 +833,24 @@ export async function ensureRuntimeSchema(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_owner_scope_idx ON world_knowledge_chunks (owner_user_id, visibility_scope);`);
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_retrieval_key_idx ON world_knowledge_chunks (retrieval_key);`);
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_embedding_status_idx ON world_knowledge_chunks (embedding_status);`);
+    // Drizzle maps this compatibility field as text, while the runtime
+    // retrieval contract is tsvector. A partial schema push can therefore
+    // leave an existing table with a text column and make the GIN index below
+    // crash application startup. Convert it once, preserving searchable text.
+    const contentTsvColumn = await client.query<{ type_str: string }>(`
+      SELECT format_type(atttypid, atttypmod) AS type_str
+      FROM pg_attribute
+      WHERE attrelid = 'world_knowledge_chunks'::regclass
+        AND attname = 'content_tsv'
+        AND NOT attisdropped
+    `);
+    if ((contentTsvColumn.rows[0]?.type_str ?? "") !== "tsvector") {
+      await client.query(`
+        ALTER TABLE world_knowledge_chunks
+        ALTER COLUMN content_tsv TYPE tsvector
+        USING to_tsvector('simple', COALESCE(content_tsv::text, content, ''));
+      `);
+    }
     await client.query(`CREATE INDEX IF NOT EXISTS world_knowledge_chunks_content_tsv_gin ON world_knowledge_chunks USING GIN (content_tsv);`);
 
     if (hasVector) {
@@ -927,6 +945,14 @@ export async function ensureRuntimeSchema(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // `CREATE TABLE IF NOT EXISTS` does not retrofit the inline UNIQUE
+    // constraint on databases created by an older/partial schema push. The
+    // worker uses ON CONFLICT (dedup_key), so the standalone index is a
+    // runtime correctness requirement, not merely an optimization.
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS world_engine_runs_dedup_unique
+       ON world_engine_runs (dedup_key);`
+    );
     await client.query(
       `CREATE INDEX IF NOT EXISTS world_engine_runs_session_created_idx ON world_engine_runs (session_id, created_at);`
     );

@@ -207,6 +207,7 @@ describe("v3 编排器 (mock)", () => {
     assert.equal(result.scenarioId, "happy-trade");
     assert.ok(result.trace.scenarioCategory === "happy");
     assert.ok(result.trace.steps.length > 0);
+    assert.deepEqual(result.trace.initialState, result.transcript.initialState);
   });
 
   it("trace artifact 应包含步骤详情、不变量、narrative 裁判", async () => {

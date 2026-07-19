@@ -15,3 +15,9 @@ test("B1 to B2 locked edge requires explicit access flag", () => {
   assert.equal(canTraverseWorldEdge("B1_SafeZone", "B2_Passage", ["b2_access_granted"]), true);
   assert.equal(canTraverseWorldEdge("B1_SafeZone", "B2_Passage", ["escape:b2_access_granted"]), true);
 });
+
+test("legacy third-floor hallway has a registered route into the stairwell", () => {
+  const graph = buildWorldGraph();
+  assert.equal(graph.get("3F_Hallway")?.has("3F_Stairwell"), true);
+  assert.equal(shortestPathDistance(graph, "3F_Hallway", "2F_Corridor"), 2);
+});

@@ -475,6 +475,8 @@ export interface SaveSlotData {
   appliedRelationshipTaskIds?: string[];
   /** 阶段4：已发放奖励的任务 id 幂等账本（防止委托奖励重复发放）。 */
   appliedRewardTaskIds?: string[];
+  /** 已由结构化回合确认遇到过 1F 职业认证签发者。旧存档缺省时按未确认处理。 */
+  hasMetProfessionCertifier?: boolean;
   reviveContext?: {
     pending: boolean;
     deathLocation: string | null;
@@ -3411,6 +3413,10 @@ export const useGameStore = create<GameState>()(
         const s = get();
         // 单职业：一局只能认证一次，认证后不可再认证/转职
         if (s.professionState?.currentProfession) return false;
+        // The page may hide the choice, but state commits must independently
+        // reject a direct/stale caller until a structured certifier encounter
+        // has been persisted for this run.
+        if (!s.hasMetProfessionCertifier) return false;
         const computed = computeProfessionState({
           prev: s.professionState,
           stats: s.stats ?? DEFAULT_STATS,
@@ -3423,7 +3429,7 @@ export const useGameStore = create<GameState>()(
           equippedWeapon: s.equippedWeapon ?? null,
         });
         if (!computed.eligibilityByProfession[profession]) return false;
-        const nextRaw = certifyProfession(computed, profession);
+        const nextRaw = certifyProfession(computed, profession, { certifierEncounterConfirmed: true });
         const next: ProfessionStateV1 = {
           ...nextRaw,
           professionFlags: {
@@ -3843,6 +3849,7 @@ export const useGameStore = create<GameState>()(
           appliedRewardTaskIds: JSON.parse(
             JSON.stringify(s.appliedRewardTaskIds ?? [])
           ),
+          hasMetProfessionCertifier: s.hasMetProfessionCertifier === true,
           professionState: JSON.parse(JSON.stringify(computedProfession)),
           ...legacyProjection,
           chapterState: JSON.parse(JSON.stringify(chapterState)),
@@ -4055,6 +4062,7 @@ export const useGameStore = create<GameState>()(
           appliedRewardTaskIds: JSON.parse(
             JSON.stringify(data.appliedRewardTaskIds ?? [])
           ),
+          hasMetProfessionCertifier: data.hasMetProfessionCertifier === true,
           professionState: JSON.parse(JSON.stringify(professionState)),
           chapterState: JSON.parse(JSON.stringify(chapterState)),
           endingState: JSON.parse(JSON.stringify(loadedEndingState)),
@@ -4231,6 +4239,7 @@ export const useGameStore = create<GameState>()(
             appliedRewardTaskIds: JSON.parse(
               JSON.stringify(data.appliedRewardTaskIds ?? s.appliedRewardTaskIds ?? [])
             ),
+            hasMetProfessionCertifier: data.hasMetProfessionCertifier === true,
             professionState: JSON.parse(JSON.stringify(professionState)),
             chapterState: JSON.parse(JSON.stringify(chapterState)),
             endingState: JSON.parse(JSON.stringify(loadedEndingState)),
@@ -4291,6 +4300,7 @@ export const useGameStore = create<GameState>()(
             shadow.professionState && typeof shadow.professionState === "object" && !Array.isArray(shadow.professionState)
               ? JSON.parse(JSON.stringify(shadow.professionState))
               : s.professionState,
+          hasMetProfessionCertifier: shadow.hasMetProfessionCertifier === true,
           chapterState,
           openingNarrativePinned:
             typeof (shadow as any).openingNarrativePinned === "boolean"
@@ -4381,6 +4391,7 @@ export const useGameStore = create<GameState>()(
         },
         appliedRelationshipTaskIds: s.appliedRelationshipTaskIds ?? [],
         appliedRewardTaskIds: s.appliedRewardTaskIds ?? [],
+        hasMetProfessionCertifier: s.hasMetProfessionCertifier === true,
         professionState: s.professionState ?? createDefaultProfessionState(),
         chapterState: normalizeChapterState(s.chapterState),
         isGameStarted: s.isGameStarted ?? false,

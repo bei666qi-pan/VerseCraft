@@ -12,6 +12,9 @@ const FLOOR_INTERNAL_EDGES: Array<[string, string]> = [
   ["2F_Corridor", "2F_Room203"],
   ["3F_Stairwell", "3F_Room301"],
   ["3F_Stairwell", "3F_Room302"],
+  // `3F_Hallway` is a real legacy/opening node. Without this edge a fresh
+  // player can never begin a registered route toward the stairwell.
+  ["3F_Hallway", "3F_Stairwell"],
   ["4F_CorridorEnd", "4F_Room401"],
   ["4F_CorridorEnd", "4F_Room402"],
   ["5F_Studio503", "5F_Room501"],

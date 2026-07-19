@@ -38,7 +38,10 @@ export async function resolveCampaignExecution(input: {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(baseUrl, { method: "GET", signal: controller.signal });
+    // The root page may trigger a cold Next.js page compilation in dev mode.
+    // Campaign reachability must not depend on that UI work or spend a chat
+    // call, so use the small health endpoint instead.
+    const response = await fetch(`${baseUrl}/api/health`, { method: "GET", signal: controller.signal });
     clearTimeout(timer);
     // Any HTTP response proves that the server is reachable.  A 404/405 is
     // acceptable because the probe intentionally does not spend a chat call.
@@ -52,4 +55,3 @@ export async function resolveCampaignExecution(input: {
     throw new Error(`live SUT unreachable at ${baseUrl}: ${reason}; set LIVEPLAY_ALLOW_MOCK_FALLBACK=1 only for explicitly labelled mock runs`);
   }
 }
-

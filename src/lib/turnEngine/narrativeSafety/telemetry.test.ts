@@ -109,6 +109,7 @@ function commitSummary(overrides: Partial<TurnCommitSummary> = {}): TurnCommitSu
     },
     validatorIssueCounts: {},
     safetyIssueCounts: { unknown_entity_surface: 1 },
+    unsupportedFactReasonCounts: {},
     pacingIssueCounts: {},
     blockedCommitFields: ["codex_updates"],
     fallbackApplied: true,
