@@ -17,10 +17,12 @@
 #   不用等到 fetch-retries 全部耗尽。timeout 阈值参考真实观测（一次正常重试耗时约 5m17s）留出余量。
 #
 # 可选 Build Args（在 Coolify「Build Arguments」中设置）：
+# - NODE_IMAGE             Node 基础镜像；默认国内镜像代理，避免 Docker Hub metadata 超时
 # - PNPM_REGISTRY          主 npm 源；国内默认 https://registry.npmmirror.com
 # - PNPM_REGISTRY_FALLBACK 备用源；主源超时后自动切换
 
-FROM node:22-alpine AS base
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
+FROM ${NODE_IMAGE} AS base
 RUN apk add --no-cache ca-certificates libc6-compat
 ARG PNPM_REGISTRY=https://registry.npmmirror.com
 ARG PNPM_REGISTRY_FALLBACK=https://mirrors.cloud.tencent.com/npm/
@@ -35,27 +37,32 @@ RUN corepack enable && corepack prepare pnpm@10.0.0 --activate \
  && pnpm config set fetch-retry-maxtimeout 30000 \
  && pnpm config set network-concurrency 8
 
-# ---- 第一阶段：完整依赖（供 builder 编译，含 dev 依赖）----
-FROM base AS deps
+# ---- 第一阶段：锁文件驱动的 package store（冷构建只下载一次）----
+# 不使用 BuildKit cache mount：当前 Coolify builder 明确不支持 BuildKit。
+# 普通 Docker layer cache 仍会在 pnpm-lock.yaml 未变化的源码发布中复用本层；
+# 冷缓存时后续 full/prod install 都离线复用同一个 store，避免重复网络下载。
+FROM base AS package-cache
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm config set registry "$PNPM_REGISTRY" \
- && ( timeout 480 pnpm install --frozen-lockfile \
-      || ( echo "[deps] 主源超时/失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
+ && ( timeout 480 pnpm fetch --frozen-lockfile \
+      || ( echo "[package-cache] 主源超时/失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
            && pnpm config set registry "$PNPM_REGISTRY_FALLBACK" \
-           && pnpm install --frozen-lockfile ) )
+           && pnpm fetch --frozen-lockfile ) )
 
-# ---- 第二阶段：仅生产依赖（供运行镜像，体积小；与 builder 并行构建）----
-FROM base AS prod-deps
+# ---- 第二阶段：完整依赖（供 builder 编译，含 dev 依赖）----
+FROM package-cache AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm config set registry "$PNPM_REGISTRY" \
- && ( timeout 480 pnpm install --frozen-lockfile --prod \
-      || ( echo "[prod-deps] 主源超时/失败，切换备用源 $PNPM_REGISTRY_FALLBACK" \
-           && pnpm config set registry "$PNPM_REGISTRY_FALLBACK" \
-           && pnpm install --frozen-lockfile --prod ) )
+RUN pnpm install --offline --frozen-lockfile
 
-# ---- 第三阶段：编译打包 ----
+# ---- 第三阶段：仅生产依赖（供运行镜像，体积小；与 builder 并行构建）----
+FROM package-cache AS prod-deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --offline --frozen-lockfile --prod
+
+# ---- 第四阶段：编译打包 ----
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -66,7 +73,7 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 
 RUN pnpm run build
 
-# ---- 第四阶段：运行镜像 ----
+# ---- 第五阶段：运行镜像 ----
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production

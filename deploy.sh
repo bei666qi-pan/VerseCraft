@@ -10,12 +10,13 @@
  * GITEE_USER (e.g. "https://gitee.com/<owner>") and GITEE_TOKEN to enable it;
  * skipped with a warning if either is missing so this still works without Gitee.
  *
- * After a successful push, also triggers a Coolify deploy and self-heals it
+ * After a successful push, GitHub Actions owns the standard Coolify release
+ * after CI and Gitee sync. Use --local-coolify only for an explicit local
+ * recovery release; this prevents one commit from building multiple times.
  * (scripts/autoops/deploy-selfheal.mjs): on failure it asks DeepSeek whether
  * the failure looks like a transient infra blip (network/registry timeout —
  * retries it automatically) or an actual code/config problem (stops and only
- * leaves a diagnosis record; never edits or commits anything). Skip with
- * --no-selfheal if you just want to push without deploying yet.
+ * leaves a diagnosis record; never edits or commits anything).
  */
 const { execSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -65,7 +66,8 @@ function main() {
   const dryRun = flags.has("--dry-run");
   const noCommit = dryRun || flags.has("--no-commit");
   const noPush = dryRun || flags.has("--no-push");
-  const noSelfheal = dryRun || noPush || flags.has("--no-selfheal");
+  const localCoolify = flags.has("--local-coolify");
+  const noSelfheal = dryRun || noPush || flags.has("--no-selfheal") || !localCoolify;
 
   if (!msg && !noCommit && !noPush) {
     console.error('Usage: node deploy.sh "feat: your message" [--no-commit] [--no-push] [--no-selfheal] [--dry-run]');
@@ -155,7 +157,7 @@ function main() {
       process.exitCode = 1;
     }
   } else {
-    console.log("Skipping Coolify deploy trigger (--no-selfheal / --no-push / --dry-run).");
+    console.log("Skipping local Coolify trigger (GitHub Actions owns the standard release; use --local-coolify for recovery).");
   }
 
   console.log([
@@ -163,9 +165,8 @@ function main() {
     "部署完成提示：",
     "- 已使用 SSH 远端推送到指定仓库。",
     "- 已尝试同时直推 Gitee（若配置了 GITEE_USER/GITEE_TOKEN）。",
-    "- 已自动触发 Coolify 部署并自愈监控（除非加了 --no-selfheal）。",
+    "- 标准发布由 GitHub Actions 在 CI 通过并同步 Gitee 后触发 Coolify；仅 --local-coolify 走本地恢复发布。",
   ].join("\n"));
 }
 
 main();
-

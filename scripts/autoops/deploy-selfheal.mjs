@@ -41,6 +41,29 @@ function recentCommitSummary() {
   }
 }
 
+async function verifyPublicHealth(healthUrl) {
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(healthUrl, { signal: AbortSignal.timeout(15000) });
+    const result = {
+      ok: response.ok,
+      status: response.status,
+      duration_ms: Date.now() - startedAt,
+    };
+    logJson("selfheal.phase.completed", { phase: "public_health_verification", health_url: healthUrl, ...result });
+    return result;
+  } catch (error) {
+    const result = {
+      ok: false,
+      status: 0,
+      duration_ms: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    warnJson("selfheal.phase.completed", { phase: "public_health_verification", health_url: healthUrl, ...result });
+    return result;
+  }
+}
+
 async function diagnoseWithDeepSeek({ logTail, commitSummary, attempt }) {
   const runner = createAgentRunner("deepseek");
   const prompt = [
@@ -91,9 +114,11 @@ async function main() {
   const client = new CoolifyClient({ dryRun });
   const commitSummary = recentCommitSummary();
   const attemptsLog = [];
+  const healthUrl = String(args.healthUrl || env("AUTOOPS_HEALTH_URL", "https://versecraft.cn/api/health"));
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     logJson("selfheal.deploy.trigger", { attempt, maxAttempts, uuid });
+    const phaseStartedAt = Date.now();
 
     // lib/coolify.mjs 的 pollDeployment 已经把轮询阶段的瞬时网络错误当"这一轮没查到"处理，
     // 这里再兜一层：万一 deploy() 触发调用本身抛出（本机到 Coolify 网络更早出问题），
@@ -101,6 +126,7 @@ async function main() {
     let poll;
     let deploymentUuid = "";
     try {
+      const snapshot = await client.deploymentSnapshot(uuid || "");
       // `force: true` 会让 Coolify 在 docker build 上加 --no-cache（已用真实部署日志确认，
       // 这正是本仓库过去几次部署每次都要完整重装依赖、耗时10分钟+的根因——不是 Coolify 构建层
       // 缓存机制本身失效，是每次触发都主动要求跳过它）。这里默认不强制，让 Coolify 正常复用
@@ -108,7 +134,14 @@ async function main() {
       const deploy = await client.deploy(uuid || "dry-run-app", { force: Boolean(args.forceRebuild) });
       deploymentUuid = deploy?.deployment_uuid || deploy?.deployment?.deployment_uuid || deploy?.deployments?.[0]?.deployment_uuid || "";
       poll = deploymentUuid
-        ? await client.pollDeployment(deploymentUuid, { attempts: pollAttempts, delayMs: pollDelayMs })
+        ? await client.pollDeployment(deploymentUuid, {
+            attempts: pollAttempts,
+            delayMs: pollDelayMs,
+            applicationUuid: uuid,
+            applicationName: snapshot.applicationName,
+            applicationUpdatedAt: snapshot.applicationUpdatedAt,
+            knownDeploymentIds: snapshot.knownDeploymentIds,
+          })
         : { ok: false, status: "no_deployment_uuid", response: deploy };
     } catch (error) {
       warnJson("selfheal.deploy.attempt_error", {
@@ -118,13 +151,30 @@ async function main() {
       poll = { ok: false, status: "local_error", response: { logs: String(error instanceof Error ? error.message : error) } };
     }
 
-    attemptsLog.push({ attempt, deploymentUuid, status: poll.status });
+    logJson("selfheal.phase.completed", {
+      phase: "queue_resolution_and_rollout",
+      attempt,
+      deployment_uuid: poll.deploymentUuid || deploymentUuid,
+      status: poll.status,
+      ok: poll.ok,
+      duration_ms: Date.now() - phaseStartedAt,
+    });
+
+    if (poll.ok) {
+      const health = await verifyPublicHealth(healthUrl);
+      if (!health.ok) {
+        poll = { ...poll, ok: false, status: "public_health_failed", health };
+      }
+    }
+
+    attemptsLog.push({ attempt, deploymentUuid: poll.deploymentUuid || deploymentUuid, status: poll.status });
 
     if (poll.ok) {
       logJson("selfheal.deploy.succeeded", { attempt, deploymentUuid, status: poll.status });
       await writeRuntimeJson("deploy-selfheal-incident.json", {
         outcome: "succeeded",
         attempts: attemptsLog,
+        health_url: healthUrl,
         finished_at: new Date().toISOString(),
       });
       return;
