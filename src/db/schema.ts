@@ -705,6 +705,18 @@ export const adminMetricsDaily = pgTable(
   })
 );
 
+/** 北京时间自然日网页访问客流量（独立于历史 UTC 日报口径）。 */
+export const webTrafficDaily = pgTable(
+  "web_traffic_daily",
+  {
+    dateKey: date("date_key").primaryKey(),
+    pageViews: integer("page_views").notNull().default(0),
+    uniqueVisitors: integer("unique_visitors").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({ dateKeyIdx: index("web_traffic_daily_date_key_idx").on(table.dateKey) })
+);
+
 /**
  * Safety audit events (Phase 3+).
  * Append-only, minimal necessary fields. Raw user text must not be stored by default.

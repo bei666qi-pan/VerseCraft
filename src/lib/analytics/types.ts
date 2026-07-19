@@ -1,4 +1,5 @@
 export type AnalyticsEventName =
+  | "page_viewed"
   | "home_viewed"
   | "home_auth_clicked"
   | "home_start_new_clicked"
@@ -131,4 +132,3 @@ export type AnalyticsEventInsertInput = {
 
   payload: AnalyticsEventInsertPayload;
 };
-

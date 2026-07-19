@@ -124,6 +124,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableSessionClockV1: boolean;
   /** 阶段7：管理后台玩法指标（profession/weapon/guide/return） */
   enableAdminPlaystyleMetrics: boolean;
+  /** 全站产品事件口径 PV/UV 采集（可独立回滚，不影响页面访问）。 */
+  enableWebTrafficAnalytics: boolean;
   /** CanonFactV1 structured fact contract and adapters; default off for rollout safety. */
   enableCanonFactV1: boolean;
   /** NpcRuntimeStateV1 prompt/runtime packet rendering; default off for behavior parity. */
@@ -226,6 +228,7 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableGuestUnifiedMetrics: readFlag("VERSECRAFT_ENABLE_GUEST_UNIFIED_METRICS", true),
     enableSessionClockV1: readFlag("VERSECRAFT_ENABLE_SESSION_CLOCK_V1", true),
     enableAdminPlaystyleMetrics: readFlag("VERSECRAFT_ENABLE_ADMIN_PLAYSTYLE_METRICS", true),
+    enableWebTrafficAnalytics: readFlag("VERSECRAFT_ENABLE_WEB_TRAFFIC_ANALYTICS", true),
     enableCanonFactV1: readFlag("VC_CANON_FACT_V1", false),
     enableNpcRuntimeStateV1: readFlag("VC_NPC_RUNTIME_STATE_V1", false),
     enableRevealAwareEvidenceBundle: readFlag("VC_REVEAL_AWARE_EVIDENCE_BUNDLE", false),

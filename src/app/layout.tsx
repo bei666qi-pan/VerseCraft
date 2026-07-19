@@ -7,6 +7,7 @@ import ChunkErrorHandler from "@/components/ChunkErrorHandler";
 import { MobileChromeTheme } from "@/components/MobileChromeTheme";
 import ViewportRuntimeVars from "@/components/ViewportRuntimeVars";
 import { LanguageDocumentSync } from "@/components/LanguageDocumentSync";
+import WebTrafficTracker from "@/components/WebTrafficTracker";
 import { envRawFirst } from "@/lib/config/envRaw";
 
 export const metadata: Metadata = {
@@ -51,6 +52,7 @@ export default function RootLayout({
         <ChunkErrorHandler />
         <HydrationProvider>
           <LanguageDocumentSync />
+          <WebTrafficTracker />
           {children}
         </HydrationProvider>
         <ServiceWorkerRegistrar />

@@ -3,7 +3,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import type { AdminTimeRange } from "@/lib/admin/timeRange";
-import { addAppDays, appEndOfDayUtc, appStartOfDayUtc } from "@/lib/admin/appTimezone";
+import { addAppDays, appDateLabel, appEndOfDayUtc, appStartOfDayUtc } from "@/lib/admin/appTimezone";
 import { getUtcDateKey } from "@/lib/analytics/dateKeys";
 import { estimateUsdForUsage } from "@/lib/ai/governance/costModel";
 import { normalizeAiLogicalRole } from "@/lib/ai/models/logicalRoles";
@@ -137,8 +137,10 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
   // 避免和 date_key 列的写入口径产生新的不一致。
   const todayUtcKey = getUtcDateKey(now);
   const yesterdayUtcKey = getUtcDateKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  const todayBeijingKey = appDateLabel(now);
+  const yesterdayBeijingKey = appDateLabel(addAppDays(now, -1));
 
-  const [overview, realtime, guestRaw, aiRaw, actorsRaw, updatedAtRaw] = await Promise.all([
+  const [overview, realtime, guestRaw, aiRaw, actorsRaw, trafficRaw, updatedAtRaw] = await Promise.all([
     getOverviewMetrics(range),
     getRealtimeMetrics().catch(() => null),
     db.execute(sql`
@@ -168,12 +170,20 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
       FROM actor_daily_activity
       WHERE date_key IN (${todayUtcKey}::date, ${yesterdayUtcKey}::date)
     `).catch(() => ({ rows: [] })),
+    db.execute(sql`
+      SELECT date_key AS "dateKey", page_views AS "pageViews", unique_visitors AS "uniqueVisitors"
+      FROM web_traffic_daily
+      WHERE date_key IN (${todayBeijingKey}::date, ${yesterdayBeijingKey}::date)
+    `).catch(() => ({ rows: [] })),
     db.execute(sql`SELECT MAX(updated_at) AS "adminMetricsUpdatedAt" FROM admin_metrics_daily`).catch(() => ({ rows: [] })),
   ]);
 
   const guestRow = rowsOf(guestRaw)[0] ?? {};
   const aiRow = rowsOf(aiRaw)[0] ?? {};
   const actorsRow = rowsOf(actorsRaw)[0] ?? {};
+  const trafficByDate = new Map(rowsOf(trafficRaw).map((row) => [String(row.dateKey ?? ""), row]));
+  const trafficToday = trafficByDate.get(todayBeijingKey) ?? {};
+  const trafficYesterday = trafficByDate.get(yesterdayBeijingKey) ?? {};
   const updatedAt = iso(rowsOf(updatedAtRaw)[0]?.adminMetricsUpdatedAt) ?? new Date().toISOString();
   const nowIso = new Date().toISOString();
 
@@ -188,6 +198,22 @@ export async function getBackofficeOverview(range: AdminTimeRange) {
     ...overview,
     updatedAt,
     kpis: [
+      kpiWithTrend({
+        metricId: "overview.page_views_today",
+        value: n(trafficToday.pageViews),
+        previousValue: n(trafficYesterday.pageViews),
+        source: "web_traffic_daily",
+        definition: "page_viewed 产品事件数；按北京时间自然日汇总。",
+        updatedAt: nowIso,
+      }),
+      kpiWithTrend({
+        metricId: "overview.unique_visitors_today",
+        value: n(trafficToday.uniqueVisitors),
+        previousValue: n(trafficYesterday.uniqueVisitors),
+        source: "web_traffic_daily",
+        definition: "page_viewed 的匿名浏览器 visitorId 去重数；按北京时间自然日汇总。",
+        updatedAt: nowIso,
+      }),
       kpi({ metricId: "overview.new_registered_today", value: overview.cards.todayNewUsers, updatedAt }),
       kpiWithTrend({
         metricId: "overview.new_guests_today",

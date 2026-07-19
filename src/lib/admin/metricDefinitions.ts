@@ -13,6 +13,28 @@ export type AdminMetricDefinition = {
 
 export const ADMIN_METRIC_DEFINITIONS: AdminMetricDefinition[] = [
   {
+    id: "overview.page_views_today",
+    nameZh: "今日网页访问量（PV）",
+    meaning: "北京时间自然日内的页面浏览次数。",
+    calculation: "page_viewed 产品事件数量。",
+    source: "analytics_events.page_viewed / web_traffic_daily",
+    refresh: "客户端非阻塞采集；每日重建全量覆盖",
+    scope: "all",
+    degradable: true,
+    notes: "产品事件口径，不等同 CDN 请求数；日界为 Asia/Shanghai。",
+  },
+  {
+    id: "overview.unique_visitors_today",
+    nameZh: "今日网页访客数（UV）",
+    meaning: "北京时间自然日内按匿名浏览器 visitorId 去重的访问者数。",
+    calculation: "page_viewed 产品事件中非空 visitorId 去重计数。",
+    source: "analytics_events.page_viewed / web_traffic_daily",
+    refresh: "客户端非阻塞采集；每日重建全量覆盖",
+    scope: "all",
+    degradable: true,
+    notes: "清除浏览器存储或换设备会被视为新访客；日界为 Asia/Shanghai。",
+  },
+  {
     id: "overview.new_registered_today",
     nameZh: "今日新增注册用户",
     meaning: "今天首次完成账号注册的用户数。",
