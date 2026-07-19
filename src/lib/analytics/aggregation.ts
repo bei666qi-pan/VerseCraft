@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { actorDailyActivity, actorDailyTokens, analyticsEvents } from "@/db/schema";
 import { getUtcDateKey, parseUtcDateKeyToDate } from "@/lib/analytics/dateKeys";
+import { getBeijingDateRange } from "@/lib/analytics/webTraffic";
 
 export type AdminMetricsDailyRebuildResult = {
   dateKey: string;
@@ -17,6 +18,34 @@ export type AdminMetricsDailyRebuildResult = {
   feedbackSubmittedCount: number;
   gameCompletedCount: number;
 };
+
+export type WebTrafficDailyRebuildResult = { dateKey: string; pageViews: number; uniqueVisitors: number };
+
+/** Rebuild one Asia/Shanghai calendar day's PV/UV from the append-only event log. */
+export async function rebuildWebTrafficDailyForDateKey(dateKey: string): Promise<WebTrafficDailyRebuildResult> {
+  const { start, end } = getBeijingDateRange(dateKey);
+  const result = await db.execute(sql`
+    WITH traffic AS (
+      SELECT
+        COUNT(*)::int AS page_views,
+        COUNT(DISTINCT NULLIF(BTRIM(payload->>'visitorId'), ''))::int AS unique_visitors
+      FROM analytics_events
+      WHERE event_name = 'page_viewed' AND event_time >= ${start} AND event_time <= ${end}
+    ), upserted AS (
+      INSERT INTO web_traffic_daily (date_key, page_views, unique_visitors, updated_at)
+      SELECT ${dateKey}::date, page_views, unique_visitors, CURRENT_TIMESTAMP FROM traffic
+      ON CONFLICT (date_key) DO UPDATE SET
+        page_views = EXCLUDED.page_views,
+        unique_visitors = EXCLUDED.unique_visitors,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING page_views, unique_visitors
+    )
+    SELECT page_views AS "pageViews", unique_visitors AS "uniqueVisitors" FROM upserted
+  `);
+  const rows = Array.isArray(result) ? result : ((result as { rows?: Array<Record<string, unknown>> }).rows ?? []);
+  const row = rows[0] ?? {};
+  return { dateKey, pageViews: Number(row.pageViews ?? 0), uniqueVisitors: Number(row.uniqueVisitors ?? 0) };
+}
 
 function addDaysUtc(date: Date, deltaDays: number): Date {
   const next = new Date(date.getTime());
@@ -101,6 +130,10 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
     .from(analyticsEvents)
     .where(sql`${analyticsEvents.eventName} IN ('game_settlement', 'game_record_submitted') AND (${analyticsEvents.eventTime} AT TIME ZONE 'UTC')::date = ${dateKey}::date`);
 
+  // Kept separate from legacy UTC admin_metrics_daily; the same date label is rebuilt by the
+  // shared maintenance route, but web traffic itself uses an Asia/Shanghai time range.
+  await rebuildWebTrafficDailyForDateKey(dateKey);
+
   const result: AdminMetricsDailyRebuildResult = {
     dateKey,
     dau: Number(dauAgg?.dau ?? 0),
@@ -142,4 +175,3 @@ export async function rebuildAdminMetricsDailyForDateKey(dateKey: string): Promi
 
   return result;
 }
-

@@ -332,6 +332,15 @@ async function applySchemaV1(client) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS admin_metrics_daily_date_key_idx ON admin_metrics_daily (date_key);
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS web_traffic_daily (
+      date_key DATE PRIMARY KEY,
+      page_views INTEGER NOT NULL DEFAULT 0,
+      unique_visitors INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS web_traffic_daily_date_key_idx ON web_traffic_daily (date_key);`);
 }
 
 /**
@@ -598,4 +607,3 @@ main().catch((err) => {
   });
   process.exitCode = 0;
 });
-
