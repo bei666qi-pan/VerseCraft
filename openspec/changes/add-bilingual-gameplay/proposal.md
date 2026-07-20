@@ -15,6 +15,10 @@ the generated turn and the surrounding gameplay experience.
 - Localize player-visible static gameplay chrome and registry-backed display
   copy, including character, codex, task, chapter, guide, waiting, and
   completion surfaces.
+- Keep task-card player-facing content language-consistent after a language
+  switch, and refine the mobile task board as a focused objective surface.
+- Remove the redundant type word from unknown codex portrait cards, leaving
+  the silhouette itself as the placeholder signal.
 - Keep the original language of previously persisted free-form turn history;
   language selection applies to future generation and to deterministic display
   copy without mutating saved state.

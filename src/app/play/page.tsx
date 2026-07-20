@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { toggleMute, isMuted, updateSanityFilter, setDarkMoonMode, playUIClick, setMasterVolume, startAmbientDrone, stopAmbientDrone } from "@/lib/audioEngine";
 import type { StatType } from "@/lib/registry/types";
-import { useGameStore, type CodexEntry, type EchoTalent } from "@/store/useGameStore";
+import { useGameStore, type CodexEntry, type EchoTalent, type GameTask } from "@/store/useGameStore";
 import { useSmoothStreamFromRef, type SmoothStreamTailDrainConfig } from "@/hooks/useSmoothStream";
 import { usePlayWaitUx } from "@/hooks/usePlayWaitUx";
 import { useHeartbeat } from "@/hooks/useHeartbeat";
@@ -163,6 +163,7 @@ import { normalizeConflictOutcome } from "@/features/play/turnCommit/resolveDmTu
 import { buildConflictFeedbackViewModel } from "@/lib/play/conflictFeedbackPresentation";
 import { localizedTalentName } from "@/lib/i18n/gameDisplay";
 import { hasWrongPlayerFacingLanguage, type GameLanguage } from "@/lib/i18n/language";
+import { LOCALIZABLE_TASK_TEXT_FIELDS, type LocalizableTaskText } from "@/lib/i18n/gameplayPresentation";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
 import { buildNoEndingTelemetryBlockers } from "@/lib/play/noEndingTelemetryBlockers";
 import {
@@ -2882,6 +2883,16 @@ function PlayContent() {
     let localized = !latestAssistant;
     let needsOptionsRefresh = false;
     try {
+      const localizableTasks: LocalizableTaskText[] = (before.tasks ?? [])
+        .map((task: GameTask) => {
+          const fields: LocalizableTaskText["fields"] = {};
+          for (const key of LOCALIZABLE_TASK_TEXT_FIELDS) {
+            const value = task[key];
+            if (typeof value === "string" && value.trim()) fields[key] = value.trim().slice(0, 480);
+          }
+          return Object.keys(fields).length > 0 ? { id: task.id, fields } : null;
+        })
+        .filter((task): task is LocalizableTaskText => task !== null);
       const timelineEntries = (before.logs ?? [])
         .map((entry, index) => ({ index, content: String(entry?.content ?? "").trim() }))
         .filter((entry) => entry.content.length > 0)
@@ -2910,6 +2921,29 @@ function PlayContent() {
         translatedEntries.push(...batch);
       }
 
+      const translatedTaskPatches: LocalizableTaskText[] = [];
+      for (let offset = 0; offset < localizableTasks.length; offset += 4) {
+        const response = await fetch("/api/play/localize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tasks: localizableTasks.slice(offset, offset + 4),
+            language: nextLanguage,
+            sessionId: guestId ?? "browser_session",
+          }),
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as { tasks?: unknown } | null;
+        if (!response.ok || !payload || !Array.isArray(payload.tasks)) throw new Error("task_localization_failed");
+        const batch = payload.tasks.filter((task): task is LocalizableTaskText => {
+          if (!task || typeof task !== "object") return false;
+          const candidate = task as LocalizableTaskText;
+          return typeof candidate.id === "string" && Boolean(candidate.id) && Boolean(candidate.fields) && typeof candidate.fields === "object";
+        });
+        if (batch.length !== Math.min(4, localizableTasks.length - offset)) throw new Error("task_localization_incomplete");
+        translatedTaskPatches.push(...batch);
+      }
+
       let localizedNarrative = latestAssistant ?? "";
       let localizedOptions: string[] = [];
       if (latestAssistant) {
@@ -2936,6 +2970,18 @@ function PlayContent() {
       useGameStore.getState().replaceLogContents(translatedEntries);
       if (localizedNarrative) useGameStore.getState().replaceLatestAssistantLog(localizedNarrative);
       useGameStore.getState().replaceCurrentOptions(localizedOptions);
+      if (translatedTaskPatches.length > 0) {
+        const taskTextById = new Map(translatedTaskPatches.map((patch) => [patch.id, patch.fields]));
+        // This is a presentation-only, explicitly validated language-switch patch.
+        // It intentionally bypasses gameplay task transitions: IDs, statuses,
+        // rewards, deadlines, and all mechanics fields stay byte-for-byte intact.
+        useGameStore.setState((state) => ({
+          tasks: (state.tasks ?? []).map((task) => {
+            const fields = taskTextById.get(task.id);
+            return fields ? { ...task, ...fields } : task;
+          }),
+        }));
+      }
       setLanguage(nextLanguage);
       localized = true;
       needsOptionsRefresh = localizedOptions.length < 4;

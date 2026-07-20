@@ -10,6 +10,83 @@ export type LocalizedStoryEntry = {
   content: string;
 };
 
+export const LOCALIZABLE_TASK_TEXT_FIELDS = [
+  "title",
+  "desc",
+  "issuerName",
+  "nextHint",
+  "playerHook",
+  "urgencyReason",
+  "riskNote",
+] as const;
+
+export type LocalizableTaskText = {
+  id: string;
+  fields: Partial<Record<(typeof LOCALIZABLE_TASK_TEXT_FIELDS)[number], string>>;
+};
+
+function compactTaskFields(value: unknown): LocalizableTaskText["fields"] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const fields: LocalizableTaskText["fields"] = {};
+  for (const key of LOCALIZABLE_TASK_TEXT_FIELDS) {
+    const text = compactText(record[key], 480);
+    if (text) fields[key] = text;
+  }
+  return Object.keys(fields).length > 0 ? fields : null;
+}
+
+/**
+ * Parses task-display localization without accepting any mechanics fields.
+ * The returned IDs and text-field keys must exactly match the supplied batch.
+ */
+export function parseLocalizedTaskTexts(
+  raw: string,
+  language: GameLanguage,
+  expected: readonly LocalizableTaskText[]
+): { ok: true; value: LocalizableTaskText[] } | { ok: false; reason: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw ?? "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim());
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+  const tasks: unknown[] | null = parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).tasks)
+    ? ((parsed as Record<string, unknown>).tasks as unknown[])
+    : null;
+  if (!tasks || tasks.length !== expected.length) return { ok: false, reason: "task_count_mismatch" };
+
+  const expectedById = new Map(expected.map((task) => [task.id, task.fields]));
+  const localized: LocalizableTaskText[] = [];
+  for (const task of tasks) {
+    if (!task || typeof task !== "object") return { ok: false, reason: "invalid_task" };
+    const record = task as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : "";
+    const expectedFields = expectedById.get(id);
+    const rawFields = record.fields && typeof record.fields === "object" && !Array.isArray(record.fields)
+      ? (record.fields as Record<string, unknown>)
+      : null;
+    const fields = compactTaskFields(record.fields);
+    if (!id || !expectedFields || !fields || !rawFields) return { ok: false, reason: "invalid_task" };
+    if (Object.keys(rawFields).some((key) => !(LOCALIZABLE_TASK_TEXT_FIELDS as readonly string[]).includes(key))) {
+      return { ok: false, reason: "task_field_mismatch" };
+    }
+    const expectedKeys = Object.keys(expectedFields).sort();
+    const actualKeys = Object.keys(fields).sort();
+    if (expectedKeys.length !== actualKeys.length || expectedKeys.some((key, index) => key !== actualKeys[index])) {
+      return { ok: false, reason: "task_field_mismatch" };
+    }
+    if (Object.values(fields).some((text) => hasWrongPlayerFacingLanguage(text, language))) {
+      return { ok: false, reason: "english_contains_cjk" };
+    }
+    localized.push({ id, fields });
+  }
+  if (new Set(localized.map((task) => task.id)).size !== expectedById.size) {
+    return { ok: false, reason: "duplicate_task" };
+  }
+  return { ok: true, value: localized };
+}
+
 /** Player-facing fields that appear in the play surface and must share its language. */
 export function hasWrongGameplayTurnLanguage(
   turn: { narrative?: unknown; options?: unknown; decision_options?: unknown },
@@ -83,8 +160,8 @@ export function parseLocalizedStoryEntries(
   } catch {
     return { ok: false, reason: "invalid_json" };
   }
-  const entries = parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).entries)
-    ? (parsed as Record<string, unknown>).entries
+  const entries: unknown[] | null = parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).entries)
+    ? ((parsed as Record<string, unknown>).entries as unknown[])
     : null;
   if (!entries || entries.length !== expected.length) return { ok: false, reason: "entry_count_mismatch" };
 

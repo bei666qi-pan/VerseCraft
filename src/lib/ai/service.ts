@@ -12,6 +12,7 @@ export {
   generateMainReply,
   localizeGameplayHistory,
   localizeGameplayPresentation,
+  localizeGameplayTasks,
   narrateCombat,
   parsePlayerIntent,
   resolveRuleOutcome,

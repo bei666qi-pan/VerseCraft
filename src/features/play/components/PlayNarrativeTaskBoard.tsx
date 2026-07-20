@@ -84,6 +84,15 @@ function closedStamp(status: GameTask["status"], english: boolean): { glyph: str
   return null;
 }
 
+function localizedTaskFloorLabel(floorTier: string, english: boolean): string {
+  if (!english) return resolveFloorTierLabel(floorTier);
+  const tier = String(floorTier ?? "").trim().toUpperCase();
+  if (!tier) return "Location unknown";
+  if (/^B\d+$/.test(tier)) return `Basement ${tier.slice(1)}`;
+  if (/^\d+$/.test(tier)) return `Floor ${tier}`;
+  return `Near ${tier}`;
+}
+
 export type PlayNarrativeTaskBoardProps = {
   tasks: GameTask[];
   originium: number;
@@ -217,8 +226,8 @@ export function PlayNarrativeTaskBoard({
 
   const { board, cards, secondary } = useMemo(() => {
     const v3 = getClientTaskVisibilityPolicyV3Enabled();
-    return projectTaskBoardStageProjection(tasks ?? [], v3, codex);
-  }, [tasks, codex]);
+    return projectTaskBoardStageProjection(tasks ?? [], v3, codex, language);
+  }, [tasks, codex, language]);
 
   const activeTaskCount = useMemo(
     () => (tasks ?? []).filter((t) => t.status === "active" || t.status === "available").length,
@@ -234,16 +243,16 @@ export function PlayNarrativeTaskBoard({
 
   const pressure = useMemo(() => {
     if (!showPressure) return null;
-    return computeTaskBoardPressureSummary(tasks ?? [], { primary: board.mainline, promises: board.promises });
-  }, [showPressure, tasks, board.mainline, board.promises]);
+    return computeTaskBoardPressureSummary(tasks ?? [], { primary: board.mainline, promises: board.promises }, language);
+  }, [showPressure, tasks, board.mainline, board.promises, language]);
 
   const overflowCards = useMemo(
-    () => overflow.map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex)),
-    [overflow, codex]
+    () => overflow.map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex, language)),
+    [overflow, codex, language]
   );
   const closedCards = useMemo(
-    () => [...completed, ...failed].map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex)),
-    [completed, failed, codex]
+    () => [...completed, ...failed].map((t) => buildTaskStageCardViewModel(t, inferTaskStageRole(t), codex, language)),
+    [completed, failed, codex, language]
   );
 
   function taskById(id: string): GameTask | undefined {
@@ -265,7 +274,7 @@ export function PlayNarrativeTaskBoard({
     const titleCls = size === "hero" ? "line-clamp-2 text-base font-bold text-vc-ink sm:text-lg" : "line-clamp-2 text-sm font-semibold text-vc-ink";
     const headPad = size === "hero" ? "p-4 sm:p-5" : "p-3 sm:p-3.5";
 
-    const floorLine = t ? resolveFloorTierLabel(t.floorTier) : "";
+    const floorLine = t ? localizedTaskFloorLabel(t.floorTier, isEnglish) : "";
     const stamp = t ? closedStamp(t.status, isEnglish) : null;
     const guidance = guidanceBadge(vm.guidanceLevel, isEnglish);
     const canClaim = Boolean(t && t.status === "available" && t.claimMode === "manual");
@@ -274,6 +283,8 @@ export function PlayNarrativeTaskBoard({
     return (
       <article
         key={vm.taskId}
+        data-testid="mobile-task-card"
+        data-task-id={vm.taskId}
         className={`relative overflow-hidden border bg-white shadow-[0_1px_0_rgba(73,63,51,0.05)] ${size === "hero" ? "rounded-2xl" : "rounded-xl"} ${shell.frame} ${ring} ${closedDim} transition`}
       >
         <div className={`pointer-events-none absolute left-0 top-0 h-full w-[6px] ${shell.accent}`} />
@@ -390,33 +401,38 @@ export function PlayNarrativeTaskBoard({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-vc-line-warm bg-vc-paper-bright shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-            <MobileReadingIcons.Tasks className="h-4 w-4 text-vc-accent" strokeWidth={1.4} />
+      <section className="relative overflow-hidden rounded-2xl border border-vc-line-warm bg-[linear-gradient(135deg,#fffdf8_0%,#f2f6f1_100%)] px-3.5 py-3.5 shadow-[0_8px_24px_rgba(73,63,51,0.07)] sm:px-4">
+        <div className="pointer-events-none absolute -right-5 -top-7 h-24 w-24 rounded-full border border-vc-accent/10 bg-vc-accent/5" aria-hidden />
+        <div className="relative flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-vc-line-warm bg-vc-paper-bright shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+              <MobileReadingIcons.Tasks className="h-5 w-5 text-vc-accent" strokeWidth={1.35} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-vc-ink-faint">{isEnglish ? "Your path" : "你的路径"}</p>
+              <p className="mt-0.5 truncate text-[16px] font-bold leading-none text-vc-ink">{isEnglish ? "Current objectives" : "当前目标"}</p>
+            </div>
+          </div>
+          <div className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-vc-line-warm bg-vc-paper-bright px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            <MobileReadingIcons.Originium className="h-3.5 w-3.5 shrink-0 text-vc-accent" strokeWidth={1.25} />
+            <span className="text-[11px] font-semibold leading-none text-vc-ink">{originium}</span>
+          </div>
+        </div>
+        <div className="relative mt-3 flex items-center gap-2 text-[10px] text-vc-ink-soft">
+          <span className="shrink-0 font-medium">{isEnglish ? "Focus" : "专注度"}</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-vc-line/50">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                activeTaskCount >= MAX_ACTIVE_TASKS ? "bg-vc-seal" : "bg-vc-accent/60"
+              }`}
+              style={{ width: `${Math.min(100, (activeTaskCount / MAX_ACTIVE_TASKS) * 100)}%` }}
+            />
+          </div>
+          <span className={`shrink-0 font-semibold ${activeTaskCount >= MAX_ACTIVE_TASKS ? "text-vc-seal" : "text-vc-ink"}`}>
+            {activeTaskCount}/{MAX_ACTIVE_TASKS} {isEnglish ? "active" : "进行中"}
           </span>
-          <p className="text-[14px] font-bold leading-none tracking-[0.06em] text-vc-ink">{isEnglish ? "Current objectives" : "当前目标"}</p>
         </div>
-        <div className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-vc-line-warm bg-vc-paper-bright px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-          <MobileReadingIcons.Originium className="h-3.5 w-3.5 shrink-0 text-vc-accent" strokeWidth={1.25} />
-          <span className="text-[11px] font-semibold leading-none text-vc-ink">{originium}</span>
-        </div>
-      </div>
-
-      {/* 活跃上限进度条 */}
-      <div className="flex items-center gap-2 text-[10px] text-vc-ink-soft">
-        <div className="h-1 flex-1 overflow-hidden rounded-full bg-vc-line/50">
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${
-              activeTaskCount >= MAX_ACTIVE_TASKS ? "bg-vc-seal" : "bg-vc-accent/50"
-            }`}
-            style={{ width: `${Math.min(100, (activeTaskCount / MAX_ACTIVE_TASKS) * 100)}%` }}
-          />
-        </div>
-        <span className={`shrink-0 font-medium ${activeTaskCount >= MAX_ACTIVE_TASKS ? "text-vc-seal" : ""}`}>
-          {activeTaskCount}/{MAX_ACTIVE_TASKS}
-        </span>
-      </div>
+      </section>
 
       {pressure && pressure.tier !== "low" ? (
         <p className={`text-[11px] leading-relaxed ${pressure.tier === "critical" ? "font-semibold text-vc-seal" : "text-vc-ink-soft"}`}>
