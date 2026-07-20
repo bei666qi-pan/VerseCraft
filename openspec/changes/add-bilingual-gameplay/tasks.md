@@ -26,3 +26,15 @@
 - [ ] 3.3 Sync the validated delta spec, commit only scoped changes, and deploy
   through the established GitHub → Gitee → Coolify flow with a healthy online
   verification.
+
+## 4. Task panel language consistency and visual refinement
+
+- [x] 4.1 Extend the explicit language-switch presentation path so current
+  task display text is translated and committed atomically without changing
+  task mechanics or `/api/chat`.
+- [x] 4.2 Refresh the mobile task board hierarchy and compact action treatment
+  while preserving task-panel actions, state, and test selectors.
+- [x] 4.3 Remove the redundant centered type word from unknown codex portrait
+  cards and update the focused rendering tests.
+- [x] 4.4 Add task-localization and mobile UI regressions; run lint, relevant
+  unit/contract tests, build, and 390×844 / 393×852 / 430×932 visual checks.

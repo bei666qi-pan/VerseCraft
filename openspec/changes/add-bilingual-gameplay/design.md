@@ -66,6 +66,28 @@ run remains in the language in which it was authored. Rewriting it on a toggle
 would require an unbounded translation operation and could alter game history;
 deterministic shell and registry copy still switches immediately.
 
+### Localize task display content as one bounded presentation batch
+
+The task board must not mix English chrome with Chinese task titles, hints, or
+descriptions after a language switch. The existing display-localization route
+will accept bounded task text patches and return the same task IDs with only
+player-facing text fields translated. The client validates and prepares every
+patch before committing the explicit presentation-only fields, then flips the
+language together with the localized scene. Task status, IDs, rewards,
+deadlines, and all structured gameplay fields remain untouched.
+
+This reuses the existing explicit language-switch slow path rather than adding
+work to `/api/chat` or creating a second task state. New turns continue to be
+instructed to generate task fields in the selected language.
+
+### Task board remains a presentation-only reading surface
+
+The visual refresh changes hierarchy, density, and interaction affordances in
+`PlayNarrativeTaskBoard`; it does not change task prioritization, claim rules,
+visibility policy, or persisted task semantics. Unknown codex portrait cards
+retain their silhouette, name, location, and accessibility metadata but omit
+the redundant centered type word.
+
 ## Risks / Trade-offs
 
 - [A model emits the wrong language] → Make the runtime directive explicit in

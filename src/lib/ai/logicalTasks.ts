@@ -19,8 +19,10 @@ import { hasWrongPlayerFacingLanguage, type GameLanguage } from "@/lib/i18n/lang
 import {
   parseLocalizedGameplayPresentation,
   parseLocalizedStoryEntries,
+  parseLocalizedTaskTexts,
   type LocalizedGameplayPresentation,
   type LocalizedStoryEntry,
+  type LocalizableTaskText,
 } from "@/lib/i18n/gameplayPresentation";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 import { filterNarrativeActionOptions } from "@/lib/play/optionQuality";
@@ -177,6 +179,51 @@ export async function localizeGameplayHistory(args: {
   });
   if (!result.ok) return { ok: false, reason: `ai_error:${result.code}` };
   const parsed = parseLocalizedStoryEntries(result.content, args.language, entries);
+  return parsed.ok ? { ok: true, value: parsed.value } : parsed;
+}
+
+/** Translate only player-facing task text after an explicit language switch. Never changes task mechanics. */
+export async function localizeGameplayTasks(args: {
+  tasks: LocalizableTaskText[];
+  language: GameLanguage;
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+}): Promise<{ ok: true; value: LocalizableTaskText[] } | { ok: false; reason: string }> {
+  const tasks = args.tasks
+    .filter((task) => typeof task.id === "string" && task.id.trim() && Object.keys(task.fields ?? {}).length > 0)
+    .slice(0, 4)
+    .map((task) => ({ id: task.id.trim(), fields: task.fields }));
+  if (tasks.length === 0) return { ok: true, value: [] };
+  const target = args.language === "en-US" ? "English" : "Simplified Chinese";
+  const result: AIResponse | AIErrorResponse = await executeChatCompletion({
+    task: "GAMEPLAY_LOCALIZATION",
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You localize VerseCraft task display copy only. Do not alter task IDs, mechanics, requirements, rewards, status, deadlines, or implied game-state changes.",
+          "请严格以 JSON 格式输出，且只能输出一个 JSON 对象：{\"tasks\":[{\"id\":\"...\",\"fields\":{\"title\":\"...\"}}]}。",
+          `Translate every supplied task text field into ${target}. Return every supplied task ID exactly once and preserve the exact supplied text-field keys for each task.`,
+          "When the target is English, do not leave Chinese characters; transliterate personal names into readable Latin text. Keep canonical IDs such as N-001 and B1 unchanged.",
+          "Do not add explanations, markdown, fields, tasks, facts, or choices.",
+        ].join("\n"),
+      },
+      { role: "user", content: JSON.stringify({ tasks }) },
+    ],
+    ctx: {
+      requestId: args.ctx.requestId,
+      task: "GAMEPLAY_LOCALIZATION",
+      userId: args.ctx.userId,
+      sessionId: args.ctx.sessionId,
+      path: args.ctx.path,
+      tags: { ...(args.ctx.tags ?? {}), purpose: "language_task_text" },
+    },
+    signal: args.signal,
+    requestTimeoutMs: 18_000,
+    skipCache: true,
+  });
+  if (!result.ok) return { ok: false, reason: `ai_error:${result.code}` };
+  const parsed = parseLocalizedTaskTexts(result.content, args.language, tasks);
   return parsed.ok ? { ok: true, value: parsed.value } : parsed;
 }
 

@@ -5,6 +5,7 @@ import {
   hasWrongGameplayTurnLanguage,
   parseLocalizedGameplayPresentation,
   parseLocalizedStoryEntries,
+  parseLocalizedTaskTexts,
 } from "./gameplayPresentation";
 
 test("English localized presentation rejects untranslated Chinese narrative and options", () => {
@@ -54,4 +55,48 @@ test("localized presentation preserves only the latest display copy fields", () 
   });
   assert.equal(localizedCodexClassification("en-US", "npc"), "Person");
   assert.equal(localizedCodexClassification("zh-CN", "npc"), "人物");
+});
+
+test("task localization rejects an untranslated English field and mechanic-shaped additions", () => {
+  const expected = [{ id: "task-a", fields: { title: "找钥匙", nextHint: "去问老刘" } }];
+  assert.deepEqual(
+    parseLocalizedTaskTexts(
+      JSON.stringify({ tasks: [{ id: "task-a", fields: { title: "Find the key", nextHint: "去问老刘" } }] }),
+      "en-US",
+      expected
+    ),
+    { ok: false, reason: "english_contains_cjk" }
+  );
+  assert.deepEqual(
+    parseLocalizedTaskTexts(
+      JSON.stringify({ tasks: [{ id: "task-a", fields: { title: "Find the key", nextHint: "Ask Old Liu", status: "completed" } }] }),
+      "en-US",
+      expected
+    ),
+    { ok: false, reason: "task_field_mismatch" }
+  );
+});
+
+test("task localization preserves IDs and exactly the requested display fields", () => {
+  const expected = [
+    { id: "task-a", fields: { title: "找钥匙", desc: "门锁住了" } },
+    { id: "task-b", fields: { issuerName: "老刘" } },
+  ];
+  assert.deepEqual(
+    parseLocalizedTaskTexts(
+      JSON.stringify({ tasks: [
+        { id: "task-b", fields: { issuerName: "Old Liu" } },
+        { id: "task-a", fields: { title: "Find the key", desc: "The door is locked." } },
+      ] }),
+      "en-US",
+      expected
+    ),
+    {
+      ok: true,
+      value: [
+        { id: "task-b", fields: { issuerName: "Old Liu" } },
+        { id: "task-a", fields: { title: "Find the key", desc: "The door is locked." } },
+      ],
+    }
+  );
 });

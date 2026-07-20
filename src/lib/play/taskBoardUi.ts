@@ -9,6 +9,8 @@ import type { GameTaskV2, TaskSurfaceClass, TaskSurfaceSlot } from "@/lib/tasks/
 import type { CodexEntry, GameTask } from "@/store/useGameStore";
 import { resolveTaskIssuerDisplay } from "@/lib/ui/displayNameResolvers";
 import { sanitizePlayerFacingInline } from "@/lib/ui/taskPlayerFacingText";
+import { localizedCodexName } from "@/lib/i18n/gameDisplay";
+import type { GameLanguage } from "@/lib/i18n/language";
 
 const GUIDANCE_RANK: Record<string, number> = {
   strong: 0,
@@ -214,7 +216,11 @@ function isDeadlineTask(t: GameTask): boolean {
  * 任务板危险态势（UI-only）：只基于现有 taskV2 字段推导，不引入新系统。
  * 目标：让玩家知道“楼在逼近”，而不是堆待办。
  */
-export function computeTaskBoardPressureSummary(tasks: GameTask[], partition?: Pick<TaskBoardPartition, "primary" | "promises">): TaskBoardPressureSummary {
+export function computeTaskBoardPressureSummary(
+  tasks: GameTask[],
+  partition?: Pick<TaskBoardPartition, "primary" | "promises">,
+  language: GameLanguage = "zh-CN"
+): TaskBoardPressureSummary {
   const open = (tasks ?? []).filter((t) => t && (t.status === "active" || t.status === "available"));
   const primaryExists = Boolean(partition?.primary);
 
@@ -232,12 +238,13 @@ export function computeTaskBoardPressureSummary(tasks: GameTask[], partition?: P
   const tier: TaskBoardPressureTier =
     tierScore >= 10 ? "critical" : tierScore >= 7 ? "high" : tierScore >= 4 ? "medium" : "low";
 
+  const english = language === "en-US";
   const parts: string[] = [];
-  if (primaryExists) parts.push("主线在前");
-  if (deadlineCount > 0) parts.push(`期限 ${deadlineCount}`);
-  if (riskCount > 0) parts.push(`高风险 ${riskCount}`);
-  if (promisePressure > 0) parts.push(`牵连 ${Math.min(99, promisePressure)}`);
-  if (parts.length === 0) parts.push("暂时平静，但别当作安全");
+  if (primaryExists) parts.push(english ? "Main path ahead" : "主线在前");
+  if (deadlineCount > 0) parts.push(english ? `${deadlineCount} deadline${deadlineCount === 1 ? "" : "s"}` : `期限 ${deadlineCount}`);
+  if (riskCount > 0) parts.push(english ? `${riskCount} high-risk` : `高风险 ${riskCount}`);
+  if (promisePressure > 0) parts.push(english ? `${Math.min(99, promisePressure)} ties` : `牵连 ${Math.min(99, promisePressure)}`);
+  if (parts.length === 0) parts.push(english ? "Quiet for now — not safe." : "暂时平静，但别当作安全");
 
   return {
     tier,
@@ -396,51 +403,41 @@ function stageRiskTier(t: GameTask): "low" | "medium" | "high" | "extreme" {
   return "low";
 }
 
-const FLAVOR_LINE_FALLBACK: Record<TaskStageRole, readonly string[]> = {
-  mainline: [
-    "这条线不推进，你还是困在这层楼的规则里。",
-    "眼下能往前挪一步的，就是这个。",
-    "不趟这条线，你连下一步该问谁都不知道。",
-  ],
-  commission: [
-    "答应了就是答应了，对方在等一个交代。",
-    "这笔人情已经欠下，迟早要还。",
-    "对方开了口，你的回应会被记在心里。",
-  ],
-  opportunity: [
-    "这扇窗口不会一直开着。",
-    "现在顺手能拿到，过这阵就难说了。",
-    "错过这次，下次未必还有这么巧的时机。",
-  ],
+const FLAVOR_LINE_FALLBACK: Record<GameLanguage, Record<TaskStageRole, readonly string[]>> = {
+  "zh-CN": {
+    mainline: ["这条线不推进，你还是困在这层楼的规则里。", "眼下能往前挪一步的，就是这个。", "不趟这条线，你连下一步该问谁都不知道。"],
+    commission: ["答应了就是答应了，对方在等一个交代。", "这笔人情已经欠下，迟早要还。", "对方开了口，你的回应会被记在心里。"],
+    opportunity: ["这扇窗口不会一直开着。", "现在顺手能拿到，过这阵就难说了。", "错过这次，下次未必还有这么巧的时机。"],
+  },
+  "en-US": {
+    mainline: ["This is the thread that moves you beyond this floor's rules.", "This is the step that can move things forward right now.", "Follow this thread, or you will not know whom to ask next."],
+    commission: ["A promise was made. Someone is waiting for an answer.", "This favor is owed now; it will have to be answered for.", "They spoke first. Your reply will be remembered."],
+    opportunity: ["This window will not stay open forever.", "You can reach it now; later may be too late.", "Miss this moment and the same opening may not return."],
+  },
 };
 
 /** 单行氛围/理由文案：解释"为何要紧"，优先取作者写的戏剧字段，没有才落到按角色变体的兜底。 */
-function buildFlavorLine(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
+function buildFlavorLine(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null, language: GameLanguage = "zh-CN"): string {
   const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 88);
   const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 88);
   const desc = clipStageText(sanitizePlayerFacingInline(String(task.desc ?? ""), codex), 88);
   if (urg) return urg;
   if (hook) return hook;
   if (desc) return desc;
-  return pickStableVariant(task.id, FLAVOR_LINE_FALLBACK[role]);
+  return pickStableVariant(task.id, FLAVOR_LINE_FALLBACK[language][role]);
 }
 
-const NEXT_STEP_FALLBACK: Record<TaskStageRole, readonly string[]> = {
-  mainline: [
-    "找当事人把话挑明，别绕圈子。",
-    "先去现场确认一遍，再决定怎么开口。",
-    "把手上的线索摊开问一句，看对方怎么接。",
-  ],
-  commission: [
-    "去见委托人，把你已经掌握的说清楚。",
-    "先把对方交代的事往前推一步，再回去交差。",
-    "找对的人，问出你还缺的那一句话。",
-  ],
-  opportunity: [
-    "现在就去看一眼，别等它自己关上。",
-    "抓紧时间探一探，机会不等人。",
-    "先去确认这条路还开着，再决定要不要走。",
-  ],
+const NEXT_STEP_FALLBACK: Record<GameLanguage, Record<TaskStageRole, readonly string[]>> = {
+  "zh-CN": {
+    mainline: ["找当事人把话挑明，别绕圈子。", "先去现场确认一遍，再决定怎么开口。", "把手上的线索摊开问一句，看对方怎么接。"],
+    commission: ["去见委托人，把你已经掌握的说清楚。", "先把对方交代的事往前推一步，再回去交差。", "找对的人，问出你还缺的那一句话。"],
+    opportunity: ["现在就去看一眼，别等它自己关上。", "抓紧时间探一探，机会不等人。", "先去确认这条路还开着，再决定要不要走。"],
+  },
+  "en-US": {
+    mainline: ["Speak plainly with the person at the center of this.", "Check the scene first, then decide how to approach it.", "Put your clues on the table and see how they respond."],
+    commission: ["Meet the requester and tell them what you know.", "Move their request forward, then return with an answer.", "Find the right person and ask the question you still lack."],
+    opportunity: ["Look now. Do not wait for it to close by itself.", "Investigate while the opening is still here.", "Confirm the route is still open before you choose it."],
+  },
 };
 
 /**
@@ -448,10 +445,10 @@ const NEXT_STEP_FALLBACK: Record<TaskStageRole, readonly string[]> = {
  * 此前只是 buildFlavorLine 的最低优先级兜底——一旦任务写了 urgencyReason/playerHook，
  * nextHint 就被整句吞掉，UI 上永远看不到。现在单独开一行，任何任务都优先展示它。
  */
-function buildNextStep(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null): string {
+function buildNextStep(task: GameTask, role: TaskStageRole, codex?: Record<string, CodexEntry> | null, language: GameLanguage = "zh-CN"): string {
   const hint = clipStageText(sanitizePlayerFacingInline(String(task.nextHint ?? ""), codex), 72);
   if (hint) return hint;
-  return pickStableVariant(task.id, NEXT_STEP_FALLBACK[role]);
+  return pickStableVariant(task.id, NEXT_STEP_FALLBACK[language][role]);
 }
 
 /**
@@ -459,7 +456,8 @@ function buildNextStep(task: GameTask, role: TaskStageRole, codex?: Record<strin
  * 扫读一排短标签比读一句话更快，也是本轮收敛文字冗余的核心改动之一。
  * 最多给 3 个标签，优先级：权限/出路 > 道具 > 关系 > 情报，全都没有时兜底"阶段性线索"。
  */
-function buildRewardChips(task: GameTask, codex?: Record<string, CodexEntry> | null): TaskRewardChip[] {
+function buildRewardChips(task: GameTask, codex?: Record<string, CodexEntry> | null, language: GameLanguage = "zh-CN"): TaskRewardChip[] {
+  const english = language === "en-US";
   const t = task as GameTaskV2;
   const chips: TaskRewardChip[] = [];
   const ori = typeof t.reward?.originium === "number" ? t.reward!.originium : 0;
@@ -468,24 +466,24 @@ function buildRewardChips(task: GameTask, codex?: Record<string, CodexEntry> | n
   const unlocks = Array.isArray(t.reward?.unlocks) ? t.reward!.unlocks : [];
   if (unlocks.length > 0) {
     const first = clipStageText(sanitizePlayerFacingInline(String(unlocks[0]), codex), 18);
-    chips.push({ kind: "unlock", label: unlocks.length > 1 ? `${first}等${unlocks.length}项` : first });
+    chips.push({ kind: "unlock", label: unlocks.length > 1 ? (english ? `${first} +${unlocks.length - 1}` : `${first}等${unlocks.length}项`) : first });
   } else if (typeof t.relatedEscapeProgress === "string" && t.relatedEscapeProgress.trim().length > 0) {
-    chips.push({ kind: "unlock", label: "推进出路" });
+    chips.push({ kind: "unlock", label: english ? "Route progress" : "推进出路" });
   }
 
   const itemCount =
     (Array.isArray(t.reward?.items) ? t.reward!.items.length : 0) +
     (Array.isArray(t.reward?.warehouseItems) ? t.reward!.warehouseItems.length : 0);
-  if (itemCount > 0) chips.push({ kind: "item", label: `道具×${itemCount}` });
+  if (itemCount > 0) chips.push({ kind: "item", label: english ? `Item ×${itemCount}` : `道具×${itemCount}` });
 
   const relCount = Array.isArray(t.reward?.relationshipChanges) ? t.reward!.relationshipChanges.length : 0;
-  if (relCount > 0 && chips.length < 3) chips.push({ kind: "relationship", label: "关系变化" });
+  if (relCount > 0 && chips.length < 3) chips.push({ kind: "relationship", label: english ? "Relationship" : "关系变化" });
 
   if (chips.length === 0) {
     const intel =
       (Array.isArray(t.sourceClueIds) ? t.sourceClueIds.length : 0) +
       (Array.isArray(t.followupSeedCodes) ? t.followupSeedCodes.length : 0);
-    chips.push({ kind: "intel", label: intel > 0 ? "新情报" : "阶段性线索" });
+    chips.push({ kind: "intel", label: intel > 0 ? (english ? "New intel" : "新情报") : (english ? "Lead" : "阶段性线索") });
   }
   return chips.slice(0, 3);
 }
@@ -500,11 +498,12 @@ function riskBandFromTier(tier: ReturnType<typeof stageRiskTier>): TaskStageRisk
  * 风险短标签：只在真正有风险感（非 calm）时才给一句极短提示，calm 时返回 null——
  * UI 不再为"暂时很平静"渲染一整块风险框，这是此前任务面板显得拥挤的主要来源之一。
  */
-function buildRiskTag(task: GameTask): string | null {
+function buildRiskTag(task: GameTask, language: GameLanguage = "zh-CN"): string | null {
+  const english = language === "en-US";
   const tier = stageRiskTier(task);
-  if (tier === "extreme") return "高风险高回报";
-  if (tier === "high") return "有风险";
-  if (tier === "medium" && isDeadlineTask(task)) return "有时限";
+  if (tier === "extreme") return english ? "High risk · high reward" : "高风险高回报";
+  if (tier === "high") return english ? "Risky" : "有风险";
+  if (tier === "medium" && isDeadlineTask(task)) return english ? "Time limited" : "有时限";
   return null;
 }
 
@@ -515,9 +514,10 @@ function buildRiskTag(task: GameTask): string | null {
 export function buildTaskStageCardViewModel(
   task: GameTask,
   role: TaskStageRole,
-  codex?: Record<string, CodexEntry> | null
+  codex?: Record<string, CodexEntry> | null,
+  language: GameLanguage = "zh-CN"
 ): TaskStageCardViewModel {
-  const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
+  const issuer = localizedCodexName(language, task.issuerId, resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined));
   const riskBand = riskBandFromTier(stageRiskTier(task));
   const guidanceLevel: TaskStageGuidanceLevel =
     task.guidanceLevel === "strong" || task.guidanceLevel === "standard" || task.guidanceLevel === "light"
@@ -532,10 +532,10 @@ export function buildTaskStageCardViewModel(
       const ms = safeDateMs(expiresAt);
       if (ms != null) {
         const diffH = Math.round((ms - Date.now()) / 3600000);
-        if (diffH <= 0) deadlineLabel = "已超时";
-        else if (diffH <= 1) deadlineLabel = "剩 <1h";
-        else if (diffH <= 24) deadlineLabel = `剩 ${diffH}h`;
-        else deadlineLabel = `剩 ${Math.round(diffH / 24)}d`;
+        if (diffH <= 0) deadlineLabel = language === "en-US" ? "Expired" : "已超时";
+        else if (diffH <= 1) deadlineLabel = language === "en-US" ? "<1h left" : "剩 <1h";
+        else if (diffH <= 24) deadlineLabel = language === "en-US" ? `${diffH}h left` : `剩 ${diffH}h`;
+        else deadlineLabel = language === "en-US" ? `${Math.round(diffH / 24)}d left` : `剩 ${Math.round(diffH / 24)}d`;
       } else {
         // expiresAt 可能是 "day:N,hour:M" 格式
         const dayMatch = expiresAt.match(/day[:\s]*(\d+)/i);
@@ -560,11 +560,11 @@ export function buildTaskStageCardViewModel(
     title: sanitizePlayerFacingInline(String(task.title ?? ""), codex),
     status: task.status,
     claimMode: task.claimMode,
-    issuerLine: issuer || "未知托付方",
-    nextStep: buildNextStep(task, role, codex),
-    flavorLine: buildFlavorLine(task, role, codex),
-    rewardChips: buildRewardChips(task, codex),
-    riskTag: buildRiskTag(task),
+    issuerLine: issuer || (language === "en-US" ? "Unknown requester" : "未知托付方"),
+    nextStep: buildNextStep(task, role, codex, language),
+    flavorLine: buildFlavorLine(task, role, codex, language),
+    rewardChips: buildRewardChips(task, codex, language),
+    riskTag: buildRiskTag(task, language),
     riskBand,
     guidanceLevel,
     deadlineLabel,
@@ -580,11 +580,11 @@ export type TaskCompactRowViewModel = {
   tone: TaskStageRiskBand;
 };
 
-function buildTaskCompactOneLiner(task: GameTask, codex?: Record<string, CodexEntry> | null): string {
+function buildTaskCompactOneLiner(task: GameTask, codex?: Record<string, CodexEntry> | null, language: GameLanguage = "zh-CN"): string {
   const hook = clipStageText(sanitizePlayerFacingInline(String((task as { playerHook?: string }).playerHook ?? ""), codex), 56);
   const urg = clipStageText(sanitizePlayerFacingInline(String((task as { urgencyReason?: string }).urgencyReason ?? ""), codex), 56);
   const hint = clipStageText(sanitizePlayerFacingInline(String(task.nextHint ?? ""), codex), 56);
-  return hook || urg || hint || "轻追踪中，暂无新动向。";
+  return hook || urg || hint || (language === "en-US" ? "Still unfolding. No new lead yet." : "轻追踪中，暂无新动向。");
 }
 
 /**
@@ -596,14 +596,15 @@ function buildTaskCompactOneLiner(task: GameTask, codex?: Record<string, CodexEn
  */
 export function buildTaskCompactRowViewModel(
   task: GameTask,
-  codex?: Record<string, CodexEntry> | null
+  codex?: Record<string, CodexEntry> | null,
+  language: GameLanguage = "zh-CN"
 ): TaskCompactRowViewModel {
-  const issuer = resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined);
+  const issuer = localizedCodexName(language, task.issuerId, resolveTaskIssuerDisplay(task.issuerId, task.issuerName, codex ?? undefined));
   const tone = riskBandFromTier(stageRiskTier(task));
   return {
     taskId: task.id,
     title: sanitizePlayerFacingInline(String(task.title ?? ""), codex),
-    oneLiner: `${issuer || "未知来源"} · ${buildTaskCompactOneLiner(task, codex)}`,
+    oneLiner: `${issuer || (language === "en-US" ? "Unknown source" : "未知来源")} · ${buildTaskCompactOneLiner(task, codex, language)}`,
     tone,
   };
 }
@@ -626,19 +627,20 @@ export type TaskBoardStageProjection = {
 export function projectTaskBoardStageProjection(
   tasks: GameTask[],
   v3VisibilityEnabled: boolean,
-  codex?: Record<string, CodexEntry> | null
+  codex?: Record<string, CodexEntry> | null,
+  language: GameLanguage = "zh-CN"
 ): TaskBoardStageProjection {
   const board = projectTaskBoardViewModel(tasks ?? [], v3VisibilityEnabled);
   return {
     board,
     cards: {
-      mainline: board.mainline ? buildTaskStageCardViewModel(board.mainline, "mainline", codex) : null,
-      commissions: board.commissions.map((t) => buildTaskStageCardViewModel(t, "commission", codex)),
-      opportunity: board.opportunity ? buildTaskStageCardViewModel(board.opportunity, "opportunity", codex) : null,
+      mainline: board.mainline ? buildTaskStageCardViewModel(board.mainline, "mainline", codex, language) : null,
+      commissions: board.commissions.map((t) => buildTaskStageCardViewModel(t, "commission", codex, language)),
+      opportunity: board.opportunity ? buildTaskStageCardViewModel(board.opportunity, "opportunity", codex, language) : null,
     },
     secondary: {
-      promises: board.promises.map((t) => buildTaskCompactRowViewModel(t, codex)),
-      clues: board.clues.map((t) => buildTaskCompactRowViewModel(t, codex)),
+      promises: board.promises.map((t) => buildTaskCompactRowViewModel(t, codex, language)),
+      clues: board.clues.map((t) => buildTaskCompactRowViewModel(t, codex, language)),
     },
   };
 }

@@ -151,6 +151,9 @@ test("computeTaskBoardPressureSummary escalates with risk/deadlines/promises", (
   assert.ok(s.line.length > 0);
   assert.ok(["low", "medium", "high", "critical"].includes(s.tier));
   assert.ok(s.signals.openCount >= 3);
+
+  const english = computeTaskBoardPressureSummary(base, { primary: p.primary, promises: p.promises }, "en-US");
+  assert.doesNotMatch(english.line, /[\u3400-\u9fff]/);
 });
 
 test("projectTaskBoardViewModel returns clear player-facing slots", () => {
@@ -225,6 +228,15 @@ test("buildTaskStageCardViewModel riskTag 在 calm 时为 null，不强制渲染
   const vm = buildTaskStageCardViewModel(calm, "commission", null);
   assert.equal(vm.riskTag, null);
   assert.equal(vm.riskBand, "calm");
+});
+
+test("English task board uses English fallback copy and known issuer names", () => {
+  const t = task({ id: "english-fallback", title: "Find the key", issuerId: "N-008", issuerName: "电工老刘", grantState: "visible_on_board" as any });
+  const vm = buildTaskStageCardViewModel(t, "commission", null, "en-US");
+  assert.equal(vm.issuerLine, "Old Liu, Electrician");
+  assert.match(vm.nextStep, /^[\x00-\x7F]+$/);
+  assert.match(vm.flavorLine, /^[\x00-\x7F]+$/);
+  assert.equal(vm.rewardChips[0]?.label, "Lead");
 });
 
 test("projectTaskBoardStageProjection aligns cards with 1+2+1 board", () => {
