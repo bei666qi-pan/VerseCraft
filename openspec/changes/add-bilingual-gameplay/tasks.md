@@ -23,7 +23,7 @@
   record any unrelated repository build/type blockers.
 - [x] 3.2 Verify Chinese and English `/play` behavior at 390×844, 393×852, and
   430×932, using the in-app browser when available and Playwright otherwise.
-- [ ] 3.3 Sync the validated delta spec, commit only scoped changes, and deploy
+- [x] 3.3 Sync the validated delta spec, commit only scoped changes, and deploy
   through the established GitHub → Gitee → Coolify flow with a healthy online
   verification.
 
