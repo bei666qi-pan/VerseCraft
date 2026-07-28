@@ -87,6 +87,11 @@ const DIRECT_DENIAL_AFTER_RE = new RegExp(
   "iu",
 );
 const DENIAL_FILLER_RE = /^(?:\s*(?:任何|这个|这名|该|所谓的?|名为|一个|一名|the|a|an|any|such|named))*\s*$/iu;
+const ENTITY_REFERENCE_RE = /(?:她|他|它|那人|对方|这个人|该人物|此人|she|he|it|they|that person)/iu;
+const PLAYER_OR_OBJECT_REFERENCE_RE = /(?:我|你|玩家|它|该物品|这件物品|I|you|player|it|this item)/iu;
+const ENTITY_REASSERTION_ACTION_RE = /(?:出现|走出|推门|进入|抵达|加入|开口|说|说道|承认|确认|存在|在场|appears?|emerges?|enters?|arrives?|joins?|speaks?|says?|confirms?|exists?|is present)/iu;
+const ACTION_REASSERTION_ACTION_RE = /(?:获得|捡起|拾起|拿起|装备|进入|抵达|加入|创建|确认|承认|obtains?|gets?|picks? up|equips?|enters?|arrives?|joins?|creates?|confirms?)/iu;
+const ACTION_TERM_RE = /(?:获得|捡起|拾起|拿起|装备|进入|抵达|加入|创建|确认|承认|obtain|get|pick up|equip|enter|arrive|join|create|confirm)/iu;
 const SAFE_DENIAL_PLACEHOLDER = "⟦已否认引用⟧";
 
 function readOption(args: string[], name: string): string | null {
@@ -147,6 +152,54 @@ function matchesDirectDenialAfter(suffix: string): boolean {
   return next.length === 0 || /[\s，,。.!?；;：:）)"'”’]/u.test(next);
 }
 
+function termOccurrenceStarts(text: string, term: string): number[] {
+  const starts: number[] = [];
+  if (!term.trim()) return starts;
+  const haystack = text.toLocaleLowerCase();
+  const needle = term.toLocaleLowerCase();
+  let cursor = 0;
+  while (cursor <= haystack.length - needle.length) {
+    const found = haystack.indexOf(needle, cursor);
+    if (found < 0) break;
+    starts.push(found);
+    cursor = found + Math.max(1, needle.length);
+  }
+  return starts;
+}
+
+function isDirectDenialWithoutReversal(text: string, term: string, occurrenceStart: number): boolean {
+  const occurrenceEnd = occurrenceStart + term.length;
+  const bounds = sentenceBounds(text, occurrenceStart, occurrenceEnd);
+  const sentence = text.slice(bounds.start, bounds.end);
+  const localStart = occurrenceStart - bounds.start;
+  const localEnd = localStart + term.length;
+  return matchesDirectDenialBefore(sentence.slice(0, localStart)) || matchesDirectDenialAfter(sentence.slice(localEnd));
+}
+
+function referencedActionIsAffirmative(contrast: string, term: string): boolean {
+  const referenceRe = ACTION_TERM_RE.test(term) ? PLAYER_OR_OBJECT_REFERENCE_RE : ENTITY_REFERENCE_RE;
+  const actionRe = ACTION_TERM_RE.test(term) ? ACTION_REASSERTION_ACTION_RE : ENTITY_REASSERTION_ACTION_RE;
+  const referenceMatch = contrast.match(referenceRe);
+  if (!referenceMatch || referenceMatch.index === undefined) return false;
+  const afterReference = contrast.slice(referenceMatch.index + referenceMatch[0].length);
+  const actionMatch = afterReference.match(actionRe);
+  if (!actionMatch || actionMatch.index === undefined || actionMatch.index > 24) return false;
+  const beforeAction = afterReference.slice(0, actionMatch.index);
+  return !matchesDirectDenialBefore(`${referenceMatch[0]}${beforeAction}`);
+}
+
+function hasReassertionAfterReversal(suffixAfterOccurrence: string, term: string): boolean {
+  const reversals = [...suffixAfterOccurrence.matchAll(new RegExp(REVERSAL_RE.source, "giu"))];
+  for (const reversal of reversals) {
+    if (reversal.index === undefined) continue;
+    const contrast = suffixAfterOccurrence.slice(reversal.index + reversal[0].length);
+    const sameTermReasserted = termOccurrenceStarts(contrast, term)
+      .some((start) => !isDirectDenialWithoutReversal(contrast, term, start));
+    if (sameTermReasserted || referencedActionIsAffirmative(contrast, term)) return true;
+  }
+  return false;
+}
+
 export function visibleTextFromFinalJson(finalJson: unknown): string {
   const record = asRecord(finalJson) ?? {};
   const narrative = typeof record.narrative === "string" ? record.narrative : "";
@@ -164,27 +217,8 @@ export function isDirectlyDeniedOccurrence(text: string, term: string, occurrenc
   const localEnd = localStart + term.length;
   const suffixAfterOccurrence = sentence.slice(localEnd);
 
-  // A later reversal can turn an initial denial into an affirmative assertion.
-  if (REVERSAL_RE.test(suffixAfterOccurrence)) return false;
-
-  const prefix = sentence.slice(0, localStart);
-  const suffix = sentence.slice(localEnd);
-  return matchesDirectDenialBefore(prefix) || matchesDirectDenialAfter(suffix);
-}
-
-function termOccurrenceStarts(text: string, term: string): number[] {
-  const starts: number[] = [];
-  if (!term.trim()) return starts;
-  const haystack = text.toLocaleLowerCase();
-  const needle = term.toLocaleLowerCase();
-  let cursor = 0;
-  while (cursor <= haystack.length - needle.length) {
-    const found = haystack.indexOf(needle, cursor);
-    if (found < 0) break;
-    starts.push(found);
-    cursor = found + Math.max(1, needle.length);
-  }
-  return starts;
+  if (hasReassertionAfterReversal(suffixAfterOccurrence, term)) return false;
+  return matchesDirectDenialBefore(sentence.slice(0, localStart)) || matchesDirectDenialAfter(sentence.slice(localEnd));
 }
 
 export function hasUnsafeTermOccurrence(text: string, term: string): boolean {
