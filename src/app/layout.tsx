@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./ui-refresh.css";
 import HydrationProvider from "@/components/HydrationProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import { StorageDegradedBanner } from "@/components/StorageDegradedBanner";
@@ -32,7 +33,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#f7f3ec",
+  themeColor: "#f4efe7",
   colorScheme: "light",
 };
 
@@ -44,7 +45,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body
-        className="flex min-h-[calc(var(--vc-vh,1svh)_*_100)] flex-col overflow-x-hidden bg-[#f7f3ec] text-foreground antialiased"
+        className="flex min-h-[calc(var(--vc-vh,1svh)_*_100)] flex-col overflow-x-hidden bg-vc-paper text-foreground antialiased"
       >
         <ViewportRuntimeVars />
         <MobileChromeTheme />
