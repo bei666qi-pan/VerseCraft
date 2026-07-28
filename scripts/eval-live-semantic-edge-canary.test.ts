@@ -71,8 +71,9 @@ test("safe second NPC denials and questions are not treated as affirmations", ()
   assert.equal(detectSecondNpcAffirmation("你提到的女孩是谁？这里暂时无法确认。").matched, false);
 });
 
-test("pronoun-only second NPC affirmation is detected", () => {
-  assert.equal(detectSecondNpcAffirmation("她叫小雪，正站在老板身边。").matched, true);
+test("roster pronouns are not standalone evidence of a second NPC", () => {
+  assert.equal(detectSecondNpcAffirmation("老板仍站在柜台后，他看着你。 ").matched, false);
+  assert.equal(detectSecondNpcAffirmation("她叫小雪，正站在老板身边。").matched, false);
   assert.equal(detectSecondNpcAffirmation("她并不存在。").matched, false);
 });
 
