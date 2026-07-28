@@ -43,7 +43,6 @@ const TERM_EXPECTATION_KEYS = [
 ] as const satisfies readonly (keyof NarrativeSafetyExpect)[];
 
 const STRONG_BOUNDARY_RE = /[。！？!?；;\n]/u;
-const REVERSAL_RE = /(?:但|不过|然而|其实|事实上|却|反而|\bbut\b|\bhowever\b|\bactually\b|\bin fact\b)/iu;
 const DIRECT_DENIAL_BEFORE_RE = new RegExp(
   [
     "没有",
@@ -89,10 +88,22 @@ const DIRECT_DENIAL_AFTER_RE = new RegExp(
 const DENIAL_FILLER_RE = /^(?:\s*(?:任何|这个|这名|该|所谓的?|名为|一个|一名|the|a|an|any|such|named))*\s*$/iu;
 const ENTITY_REFERENCE_RE = /(?:她|他|它|那人|对方|这个人|该人物|此人|she|he|it|they|that person)/iu;
 const PLAYER_OR_OBJECT_REFERENCE_RE = /(?:我|你|玩家|它|该物品|这件物品|I|you|player|it|this item)/iu;
+const OBJECT_REFERENCE_RE = /(?:它|该物品|这件物品|那件物品|那把(?:剑|武器)|it|this item|that item)/iu;
 const ENTITY_REASSERTION_ACTION_RE = /(?:出现|走出|推门|进入|抵达|加入|开口|说|说道|承认|确认|存在|在场|appears?|emerges?|enters?|arrives?|joins?|speaks?|says?|confirms?|exists?|is present)/iu;
 const ACTION_REASSERTION_ACTION_RE = /(?:获得|捡起|拾起|拿起|装备|进入|抵达|加入|创建|确认|承认|obtains?|gets?|picks? up|equips?|enters?|arrives?|joins?|creates?|confirms?)/iu;
-const ACTION_TERM_RE = /(?:获得|捡起|拾起|拿起|装备|进入|抵达|加入|创建|确认|承认|obtain|get|pick up|equip|enter|arrive|join|create|confirm)/iu;
 const SAFE_DENIAL_PLACEHOLDER = "⟦已否认引用⟧";
+
+type ActionFamily = { trigger: RegExp; actionSource: string };
+const ACTION_FAMILIES: ActionFamily[] = [
+  { trigger: /(?:捡起|拾起|拿起|pick\s+up)/iu, actionSource: "(?:捡起|拾起|拿起|pick(?:s|ed|ing)?\\s+up)" },
+  { trigger: /(?:获得|得到|拿到|obtain|get)/iu, actionSource: "(?:获得|得到|拿到|obtain(?:s|ed|ing)?|get(?:s|ting)?|got)" },
+  { trigger: /(?:装备|equip)/iu, actionSource: "(?:装备|equip(?:s|ped|ping)?)" },
+  { trigger: /(?:进入|enter)/iu, actionSource: "(?:进入|enter(?:s|ed|ing)?)" },
+  { trigger: /(?:抵达|到达|arriv)/iu, actionSource: "(?:抵达|到达|arriv(?:e|es|ed|ing))" },
+  { trigger: /(?:加入|join)/iu, actionSource: "(?:加入|join(?:s|ed|ing)?)" },
+  { trigger: /(?:创建|创造|create)/iu, actionSource: "(?:创建|创造|create(?:s|d|ing)?)" },
+  { trigger: /(?:确认|承认|confirm|admit)/iu, actionSource: "(?:确认|承认|confirm(?:s|ed|ing)?|admit(?:s|ted|ting)?)" },
+];
 
 function readOption(args: string[], name: string): string | null {
   const inline = args.find((value) => value.startsWith(`${name}=`));
@@ -167,7 +178,7 @@ function termOccurrenceStarts(text: string, term: string): number[] {
   return starts;
 }
 
-function isDirectDenialWithoutReversal(text: string, term: string, occurrenceStart: number): boolean {
+function isDirectDenialWithoutConsequences(text: string, term: string, occurrenceStart: number): boolean {
   const occurrenceEnd = occurrenceStart + term.length;
   const bounds = sentenceBounds(text, occurrenceStart, occurrenceEnd);
   const sentence = text.slice(bounds.start, bounds.end);
@@ -176,28 +187,52 @@ function isDirectDenialWithoutReversal(text: string, term: string, occurrenceSta
   return matchesDirectDenialBefore(sentence.slice(0, localStart)) || matchesDirectDenialAfter(sentence.slice(localEnd));
 }
 
-function referencedActionIsAffirmative(contrast: string, term: string): boolean {
-  const referenceRe = ACTION_TERM_RE.test(term) ? PLAYER_OR_OBJECT_REFERENCE_RE : ENTITY_REFERENCE_RE;
-  const actionRe = ACTION_TERM_RE.test(term) ? ACTION_REASSERTION_ACTION_RE : ENTITY_REASSERTION_ACTION_RE;
-  const referenceMatch = contrast.match(referenceRe);
+function actionFamilyForTerm(term: string): ActionFamily | null {
+  return ACTION_FAMILIES.find((family) => family.trigger.test(term)) ?? null;
+}
+
+function extractActionObject(term: string, family: ActionFamily): string {
+  const match = term.match(new RegExp(family.actionSource, "iu"));
+  if (!match || match.index === undefined) return "";
+  return term.slice(match.index + match[0].length).replace(/^[\s了的:：-]+/u, "").trim();
+}
+
+function referencedActionIsAffirmative(remainder: string, term: string): boolean {
+  const actionTerm = actionFamilyForTerm(term) !== null;
+  const referenceRe = actionTerm ? PLAYER_OR_OBJECT_REFERENCE_RE : ENTITY_REFERENCE_RE;
+  const actionRe = actionTerm ? ACTION_REASSERTION_ACTION_RE : ENTITY_REASSERTION_ACTION_RE;
+  const referenceMatch = remainder.match(referenceRe);
   if (!referenceMatch || referenceMatch.index === undefined) return false;
-  const afterReference = contrast.slice(referenceMatch.index + referenceMatch[0].length);
+  const afterReference = remainder.slice(referenceMatch.index + referenceMatch[0].length);
   const actionMatch = afterReference.match(actionRe);
   if (!actionMatch || actionMatch.index === undefined || actionMatch.index > 24) return false;
   const beforeAction = afterReference.slice(0, actionMatch.index);
   return !matchesDirectDenialBefore(`${referenceMatch[0]}${beforeAction}`);
 }
 
-function hasReassertionAfterReversal(suffixAfterOccurrence: string, term: string): boolean {
-  const reversals = [...suffixAfterOccurrence.matchAll(new RegExp(REVERSAL_RE.source, "giu"))];
-  for (const reversal of reversals) {
-    if (reversal.index === undefined) continue;
-    const contrast = suffixAfterOccurrence.slice(reversal.index + reversal[0].length);
-    const sameTermReasserted = termOccurrenceStarts(contrast, term)
-      .some((start) => !isDirectDenialWithoutReversal(contrast, term, start));
-    if (sameTermReasserted || referencedActionIsAffirmative(contrast, term)) return true;
+function actionConsequenceIsAffirmative(remainder: string, term: string): boolean {
+  const family = actionFamilyForTerm(term);
+  if (!family) return false;
+  const object = extractActionObject(term, family);
+  const actionRe = new RegExp(family.actionSource, "giu");
+
+  for (const match of remainder.matchAll(actionRe)) {
+    if (match.index === undefined) continue;
+    const beforeAction = remainder.slice(0, match.index);
+    if (matchesDirectDenialBefore(beforeAction)) continue;
+    const afterAction = remainder.slice(match.index + match[0].length, match.index + match[0].length + 32);
+    const pointsToOriginalObject = object.length > 0 && includesCaseInsensitive(afterAction, object);
+    if (pointsToOriginalObject || OBJECT_REFERENCE_RE.test(afterAction)) return true;
   }
   return false;
+}
+
+function hasAffirmativeReassertion(remainder: string, term: string): boolean {
+  const sameTermReasserted = termOccurrenceStarts(remainder, term)
+    .some((start) => !isDirectDenialWithoutConsequences(remainder, term, start));
+  return sameTermReasserted
+    || referencedActionIsAffirmative(remainder, term)
+    || actionConsequenceIsAffirmative(remainder, term);
 }
 
 export function visibleTextFromFinalJson(finalJson: unknown): string {
@@ -215,10 +250,10 @@ export function isDirectlyDeniedOccurrence(text: string, term: string, occurrenc
   const sentence = text.slice(bounds.start, bounds.end);
   const localStart = occurrenceStart - bounds.start;
   const localEnd = localStart + term.length;
-  const suffixAfterOccurrence = sentence.slice(localEnd);
+  const remainder = sentence.slice(localEnd);
 
-  if (hasReassertionAfterReversal(suffixAfterOccurrence, term)) return false;
-  return matchesDirectDenialBefore(sentence.slice(0, localStart)) || matchesDirectDenialAfter(sentence.slice(localEnd));
+  if (hasAffirmativeReassertion(remainder, term)) return false;
+  return matchesDirectDenialBefore(sentence.slice(0, localStart)) || matchesDirectDenialAfter(remainder);
 }
 
 export function hasUnsafeTermOccurrence(text: string, term: string): boolean {
