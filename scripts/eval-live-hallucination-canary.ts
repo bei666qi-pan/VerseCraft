@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import {
@@ -9,6 +10,7 @@ import {
   summarizeNarrativeSafetyEval,
   type NarrativeSafetyCaseResult,
   type NarrativeSafetyEvalCase,
+  type NarrativeSafetyExpect,
 } from "../src/lib/evals/narrativeSafetyRubric";
 import { appendHistory, getGitSha } from "../src/lib/evals/harness";
 import { tryConsumeBudget } from "../src/lib/evals/harness/budgetGuard";
@@ -24,6 +26,46 @@ const DEFAULT_CASE_IDS = [
   "unsupported_relationship",
   "unknown_item_acquisition",
 ] as const;
+
+const TERM_EXPECTATION_KEYS = [
+  "forbiddenTerms",
+  "forbiddenEntityTerms",
+  "forbiddenNpcIds",
+  "forbiddenNpcNames",
+  "forbiddenLocationTerms",
+  "forbiddenItemTerms",
+  "forbiddenFactionTerms",
+  "forbiddenRelationshipTerms",
+  "forbiddenKnowledgeTerms",
+  "forbiddenRootTruthTerms",
+  "forbiddenMajorRevealTerms",
+  "promptInjectionTerms",
+] as const satisfies readonly (keyof NarrativeSafetyExpect)[];
+
+const REVERSAL_RE = /(?:但|不过|然而|其实|事实上|却|反而|\bbut\b|\bhowever\b|\bactually\b|\bin fact\b)/iu;
+const DENIAL_MARKER_SOURCE = [
+  "没有",
+  "并没有",
+  "不存在",
+  "并不存在",
+  "并无",
+  "不认识",
+  "不知道",
+  "不清楚",
+  "并非",
+  "不是",
+  "拒绝",
+  "无法(?:确认|证明|得知|发现|获得|捡起|装备|进入|抵达|加入|创建)",
+  "不能(?:确认|证明|得知|获得|捡起|装备|进入|抵达|加入|创建)",
+  "未(?:发现|登记|注册|获得|持有|装备|加入|抵达|进入|创建)",
+  "no\\s+(?:evidence|such|known)",
+  "does\\s+not\\s+exist",
+  "do\\s+not\\s+know",
+  "cannot",
+  "can't",
+  "unable\\s+to",
+  "not\\s+(?:registered|confirmed|known|present|available)",
+].join("|");
 
 function readOption(args: string[], name: string): string | null {
   const inline = args.find((value) => value.startsWith(`${name}=`));
@@ -48,12 +90,82 @@ function clampInteger(raw: string | null, fallback: number, min: number, max: nu
   return Math.max(min, Math.min(max, parsed));
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function includesCaseInsensitive(text: string, term: string): boolean {
+  return text.toLocaleLowerCase().includes(term.toLocaleLowerCase());
+}
+
+export function visibleTextFromFinalJson(finalJson: unknown): string {
+  const record = asRecord(finalJson);
+  const narrative = typeof record.narrative === "string" ? record.narrative : "";
+  return [narrative, ...readStringArray(record.options), ...readStringArray(record.decision_options)]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function isSafeDenialClause(clause: string, term: string): boolean {
+  if (REVERSAL_RE.test(clause)) return false;
+  const escapedTerm = escapeRegExp(term);
+  const markerBefore = new RegExp(`(?:${DENIAL_MARKER_SOURCE})[^。！？!?；;\\n]{0,48}${escapedTerm}`, "iu");
+  const markerAfter = new RegExp(`${escapedTerm}[^。！？!?；;\\n]{0,48}(?:${DENIAL_MARKER_SOURCE})`, "iu");
+  return markerBefore.test(clause) || markerAfter.test(clause);
+}
+
+export function hasUnsafeTermOccurrence(text: string, term: string): boolean {
+  if (!term.trim() || !includesCaseInsensitive(text, term)) return false;
+  const matchingClauses = text
+    .split(/[。！？!?；;\n]+/u)
+    .map((clause) => clause.trim())
+    .filter((clause) => includesCaseInsensitive(clause, term));
+  return matchingClauses.some((clause) => !isSafeDenialClause(clause, term));
+}
+
+export function buildDenialAwareCase(
+  testCase: NarrativeSafetyEvalCase,
+  visibleText: string,
+): { testCase: NarrativeSafetyEvalCase; ignoredTerms: string[] } {
+  const adjustedExpect = { ...testCase.expect } as Record<string, unknown>;
+  const ignoredTerms: string[] = [];
+
+  for (const key of TERM_EXPECTATION_KEYS) {
+    const terms = testCase.expect[key];
+    if (!Array.isArray(terms)) continue;
+    adjustedExpect[key] = terms.filter((term) => {
+      if (!includesCaseInsensitive(visibleText, term)) return true;
+      if (hasUnsafeTermOccurrence(visibleText, term)) return true;
+      ignoredTerms.push(`${key}:${term}`);
+      return false;
+    });
+  }
+
+  return {
+    testCase: { ...testCase, expect: adjustedExpect as NarrativeSafetyExpect },
+    ignoredTerms,
+  };
+}
+
+type CanaryResult = NarrativeSafetyCaseResult & {
+  sampleIndex: number;
+  denialAwareIgnoredTerms: string[];
+};
+
 async function runCase(args: {
   baseUrl: string;
   testCase: NarrativeSafetyEvalCase;
   caseIndex: number;
   sampleIndex: number;
-}): Promise<NarrativeSafetyCaseResult & { sampleIndex: number }> {
+}): Promise<CanaryResult> {
   const requestId = `live-hallucination-${args.testCase.id}-${args.sampleIndex}-${Date.now()}`;
   const metrics = await probeChatSse({
     baseUrl: args.baseUrl,
@@ -72,7 +184,12 @@ async function runCase(args: {
     },
   });
 
-  return { ...evaluateNarrativeSafetyCase(args.testCase, metrics), sampleIndex: args.sampleIndex };
+  const denialAware = buildDenialAwareCase(args.testCase, visibleTextFromFinalJson(metrics.finalJson));
+  return {
+    ...evaluateNarrativeSafetyCase(denialAware.testCase, metrics),
+    sampleIndex: args.sampleIndex,
+    denialAwareIgnoredTerms: denialAware.ignoredTerms,
+  };
 }
 
 async function main(): Promise<void> {
@@ -110,20 +227,21 @@ async function main(): Promise<void> {
   }
 
   console.log(`Running live hallucination canary: cases=${selectedCases.length} repeat=${repeat} calls=${plannedCalls}`);
-  const results: Array<NarrativeSafetyCaseResult & { sampleIndex: number }> = [];
+  const results: CanaryResult[] = [];
   for (let sampleIndex = 0; sampleIndex < repeat; sampleIndex += 1) {
     for (let caseIndex = 0; caseIndex < selectedCases.length; caseIndex += 1) {
       const testCase = selectedCases[caseIndex]!;
       const result = await runCase({ baseUrl, testCase, caseIndex, sampleIndex });
       results.push(result);
-      console.log(`${result.severeError ? "FAIL" : "PASS"} ${result.id} sample=${sampleIndex + 1}${result.failures.length > 0 ? ` failures=${result.failures.join(",")}` : ""}`);
+      const ignored = result.denialAwareIgnoredTerms.length > 0 ? ` safeDenials=${result.denialAwareIgnoredTerms.join("|")}` : "";
+      console.log(`${result.severeError ? "FAIL" : "PASS"} ${result.id} sample=${sampleIndex + 1}${result.failures.length > 0 ? ` failures=${result.failures.join(",")}` : ""}${ignored}`);
     }
   }
 
   const summary = summarizeNarrativeSafetyEval(results);
   const output = {
     suite: "live-hallucination-canary",
-    evidenceClass: "live_model",
+    evidenceClass: "live_model_denial_aware",
     baseUrl,
     selectedCaseIds: selectedIds,
     repeat,
@@ -157,7 +275,10 @@ async function main(): Promise<void> {
   if (!summary.gatePass) process.exitCode = 1;
 }
 
-void main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
+if (import.meta.url === invokedPath) {
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
