@@ -67,6 +67,9 @@ jobs:
       - name: Verify report assertion helper
         run: node --test scripts/assert-eval-report.test.mjs
 
+      - name: Validate live canary configuration without network
+        run: pnpm exec tsx scripts/eval-live-hallucination-canary.ts --dry-run --repeat 1
+
       - name: Detector eval and explicit hard assertion
         run: |
           pnpm eval:detectors:mock
@@ -98,10 +101,10 @@ jobs:
       BENCHMARK_BASE_URL: http://127.0.0.1:3000
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
       VC_AI_DIRECT_BASE_URL: https://api.deepseek.com
-      VC_AI_DIRECT_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
+      VC_AI_DIRECT_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY || secrets.AI_GATEWAY_API_KEY }}
       VC_AI_DIRECT_MODEL: deepseek-v4-flash
       AI_GATEWAY_BASE_URL: https://api.deepseek.com
-      AI_GATEWAY_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
+      AI_GATEWAY_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY || secrets.AI_GATEWAY_API_KEY }}
       AI_MODEL_MAIN: deepseek-v4-flash
       AI_MODEL_CONTROL: deepseek-v4-flash
       AI_MODEL_ENHANCE: deepseek-v4-flash
@@ -127,7 +130,7 @@ jobs:
         shell: bash
         run: |
           if [[ -z "${VC_AI_DIRECT_API_KEY:-}" ]]; then
-            echo "::error::Missing GitHub Actions secret DEEPSEEK_EVAL_API_KEY. Live AI checks must not silently skip."
+            echo "::error::Missing encrypted GitHub Actions secret DEEPSEEK_EVAL_API_KEY (or legacy AI_GATEWAY_API_KEY). Live AI checks must not silently skip."
             exit 1
           fi
 
