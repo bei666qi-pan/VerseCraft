@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 function readOption(args, name) {
   const inline = args.find((value) => value.startsWith(`${name}=`));
@@ -90,4 +91,5 @@ function main() {
   console.log(`Eval hard gate passed: ${absolutePath}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
+if (import.meta.url === invokedPath) main();
