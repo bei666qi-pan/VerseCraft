@@ -30,9 +30,10 @@ test("safe denials do not count as unsupported assertions", () => {
   assert.equal(hasUnsafeTermOccurrence("你无法捡起龙骨圣剑，因为它并未登记。", "捡起龙骨圣剑"), false);
   assert.equal(hasUnsafeTermOccurrence("There is no evidence that they are siblings.", "they are siblings"), false);
   assert.equal(hasUnsafeTermOccurrence("艾薇娅并不存在。", "艾薇娅"), false);
+  assert.equal(hasUnsafeTermOccurrence("这里没有艾薇娅，但老板仍站在柜台。", "艾薇娅"), false);
 });
 
-test("affirmations, reversals, and unrelated nearby negations remain failures", () => {
+test("affirmations, factual reversals, and unrelated nearby negations remain failures", () => {
   assert.equal(hasUnsafeTermOccurrence("艾薇娅从柜台后走了出来。", "艾薇娅"), true);
   assert.equal(hasUnsafeTermOccurrence("这里没有艾薇娅，但她随后推门进来。", "艾薇娅"), true);
   assert.equal(hasUnsafeTermOccurrence("你捡起龙骨圣剑并将它装备。", "捡起龙骨圣剑"), true);
