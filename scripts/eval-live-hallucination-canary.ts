@@ -77,10 +77,7 @@ async function runCase(args: {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (process.env.E2E_AI_LIVE !== "1") {
-    throw new Error("Live hallucination canary requires E2E_AI_LIVE=1.");
-  }
-
+  const dryRun = args.includes("--dry-run");
   const baseUrl = readOption(args, "--base-url")
     ?? process.env.BENCHMARK_BASE_URL
     ?? process.env.PLAYWRIGHT_BASE_URL
@@ -101,6 +98,13 @@ async function main(): Promise<void> {
 
   const plannedCalls = selectedCases.length * repeat;
   if (plannedCalls <= 0) throw new Error("Live hallucination canary selected no cases.");
+  if (dryRun) {
+    console.log(JSON.stringify({ selectedCaseIds: selectedIds, repeat, plannedCalls, casesPath }, null, 2));
+    return;
+  }
+  if (process.env.E2E_AI_LIVE !== "1") {
+    throw new Error("Live hallucination canary requires E2E_AI_LIVE=1.");
+  }
   if (!tryConsumeBudget("live_hallucination_canary", plannedCalls)) {
     throw new Error(`Live hallucination canary budget rejected ${plannedCalls} calls.`);
   }
