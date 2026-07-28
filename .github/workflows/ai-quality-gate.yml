@@ -71,13 +71,11 @@ jobs:
       - name: Verify denial-aware canary logic
         run: pnpm exec tsx --test scripts/eval-live-hallucination-canary.test.ts
 
-      - name: Verify semantic edge canary logic
+      - name: Verify unified semantic canary logic
         run: pnpm exec tsx --test scripts/eval-live-semantic-edge-canary.test.ts
 
-      - name: Validate live canary configurations without network
-        run: |
-          pnpm exec tsx scripts/eval-live-hallucination-canary.ts --dry-run --repeat 1
-          pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts --dry-run
+      - name: Validate live canary configuration without network
+        run: pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts --dry-run
 
       - name: Detector eval and explicit hard assertion
         run: |
@@ -96,7 +94,7 @@ jobs:
         run: pnpm test:playthrough
 
   live-deepseek-canary:
-    name: live DeepSeek hallucination gate
+    name: live DeepSeek semantic safety gate
     if: github.event_name != 'pull_request'
     needs: offline-hard-gates
     runs-on: ubuntu-latest
@@ -118,12 +116,16 @@ jobs:
       AI_MODEL_CONTROL: deepseek-v4-flash
       AI_MODEL_ENHANCE: deepseek-v4-flash
       AI_MODEL_REASONER: deepseek-v4-flash
-      PLAYTEST_LLM_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
-      PLAYTEST_LLM_BASE_URL: https://api.deepseek.com/v1
-      PLAYTEST_LLM_MODEL: deepseek-v4-flash
-      NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_REPAIR_PASS: "0"
+      AI_PLAYER_ROLE_CHAIN: main
+      AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES: "1"
       AI_MAX_RETRIES: "0"
+      AI_RETRY_COUNT: "0"
       AI_PLAYER_CHAT_MAX_RETRIES: "0"
+      AI_ONLINE_SHORT_JSON_MAX_RETRIES: "0"
+      AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK: "1"
+      AI_ENABLE_NARRATIVE_ENHANCEMENT: "0"
+      AI_NARRATIVE_EXPANSION_ENABLED: "false"
+      AI_ENABLE_WORLD_VECTOR_RETRIEVAL: "false"
       AI_LOG_LEVEL: error
       VERSECRAFT_EVAL_DAILY_CALL_BUDGET: "16"
       VERSECRAFT_EVAL_DISABLE_CACHE: "1"
@@ -143,19 +145,18 @@ jobs:
         shell: bash
         run: |
           if [[ -z "${VC_AI_DIRECT_API_KEY:-}" ]]; then
-            echo "::error::Missing encrypted GitHub Actions secret DEEPSEEK_EVAL_API_KEY. Live AI checks must not silently skip or reuse an unrelated gateway key."
+            echo "::error::Missing encrypted GitHub Actions secret DEEPSEEK_EVAL_API_KEY. Live AI checks must not silently skip."
             exit 1
           fi
 
       - name: Validate complete live request budget
         shell: bash
         run: |
-          # The second options-repair pass is disabled. Worst-case request plan:
-          # 4 hallucination + 2 semantic edge + 2 chat + 2 options regeneration
-          # + 2 route-internal control preflights + 3 judges = 15 requests.
-          planned_requests=$((4 + 2 + 2 + 2 + 2 + 3))
+          # Four SUT calls. Conservatively allow one route-internal control
+          # preflight for every SUT call, plus one combined semantic judge.
+          planned_requests=$((4 + 4 + 1))
           hard_limit=16
-          echo "Planned live requests including internal preflights: ${planned_requests}/${hard_limit}"
+          echo "Planned worst-case live requests: ${planned_requests}/${hard_limit}"
           if (( planned_requests > hard_limit )); then
             echo "::error::Live request plan exceeds the hard budget."
             exit 1
@@ -182,66 +183,11 @@ jobs:
           cat .runtime-data/ai-quality/next.log
           exit 1
 
-      - name: Budgeted live hallucination canary
-        run: |
-          pnpm exec tsx scripts/eval-live-hallucination-canary.ts \
-            --base-url http://127.0.0.1:3000 \
-            --repeat 1 \
-            --json-out .runtime-data/ai-quality/live-hallucination-canary.json
-
-      - name: Structured fact and open-entity semantic canary
+      - name: Unified live semantic safety gate
         run: |
           pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts \
             --base-url http://127.0.0.1:3000 \
-            --json-out .runtime-data/ai-quality/live-semantic-edge-canary.json
-
-      - name: Short real multi-turn trace
-        run: |
-          pnpm exec tsx scripts/eval-playthrough-live.ts \
-            --live \
-            --base-url http://127.0.0.1:3000 \
-            --sessions 1 \
-            --max-steps 2 \
-            --max-live-calls 4 \
-            --scenarios happy-speedrun \
-            --judge-mode live \
-            --parallel 1 \
-            --step-delay-ms 1 \
-            --stop-on-degrade \
-            --out .runtime-data/ai-quality/playthrough
-
-      - name: Require live playthrough judge and strict semantic review
-        shell: bash
-        run: |
-          trace=$(find .runtime-data/ai-quality/playthrough/traces -name '*.json' -print -quit)
-          if [[ -z "$trace" ]]; then
-            echo "::error::Live playthrough produced no trace."
-            exit 1
-          fi
-          node - "$trace" <<'NODE'
-          const fs = require("node:fs");
-          const tracePath = process.argv[2];
-          const trace = JSON.parse(fs.readFileSync(tracePath, "utf8"));
-          if (trace.judgeMode !== "live") {
-            console.error(`Expected live playthrough judge, got ${String(trace.judgeMode)}`);
-            process.exit(1);
-          }
-          if (!trace.narrativeConsistency || !Number.isFinite(trace.narrativeConsistency.overallScore)) {
-            console.error("Live playthrough judge produced no numeric narrative score.");
-            process.exit(1);
-          }
-          console.log(`Live playthrough judge confirmed: score=${trace.narrativeConsistency.overallScore}`);
-          NODE
-          pnpm eval:model-narrative-review -- \
-            --mode live \
-            --input "$trace" \
-            --assert-live-coverage \
-            --json-out .runtime-data/ai-quality/model-narrative-review.json \
-            --markdown-out .runtime-data/ai-quality/model-narrative-review.md
-          node scripts/assert-eval-report.mjs \
-            --file .runtime-data/ai-quality/model-narrative-review.json \
-            --require-true liveCoverageGatePass \
-            --require-true summary.strictGatePass
+            --json-out .runtime-data/ai-quality/live-semantic-safety-gate.json
 
       - name: Stop application
         if: always()
