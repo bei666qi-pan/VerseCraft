@@ -19,9 +19,7 @@ on:
       - "benchmarks/**"
       - ".github/workflows/ai-quality-gate.yml"
   push:
-    # Temporary trusted same-repository branch enables real-model evidence before merge.
-    # Remove it after the pre-merge live run passes; pull_request events still receive no secrets.
-    branches: [main, agent/harden-ai-test-gates]
+    branches: [main]
     paths:
       - "src/app/api/chat/**"
       - "src/lib/ai/**"
@@ -123,6 +121,7 @@ jobs:
       PLAYTEST_LLM_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
       PLAYTEST_LLM_BASE_URL: https://api.deepseek.com/v1
       PLAYTEST_LLM_MODEL: deepseek-v4-flash
+      NEXT_PUBLIC_VERSECRAFT_ENABLE_OPTIONS_REGEN_REPAIR_PASS: "0"
       AI_MAX_RETRIES: "0"
       AI_PLAYER_CHAT_MAX_RETRIES: "0"
       AI_LOG_LEVEL: error
@@ -151,9 +150,8 @@ jobs:
       - name: Validate complete live request budget
         shell: bash
         run: |
-          # Fixed request plan, including the worst case where each of the three
-          # playthrough turns requires one options-regeneration request:
-          # 4 hallucination + 2 semantic edge + 3 chat + 3 options repair
+          # The second options-repair pass is disabled for this workflow. Worst case:
+          # 4 hallucination + 2 semantic edge + 3 chat + 3 options regeneration
           # + 1 roster judge + 1 playthrough judge + 1 trace judge = 15 requests.
           planned_requests=$((4 + 2 + 3 + 3 + 1 + 1 + 1))
           hard_limit=16
