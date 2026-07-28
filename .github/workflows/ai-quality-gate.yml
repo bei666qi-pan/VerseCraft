@@ -150,12 +150,12 @@ jobs:
       - name: Validate complete live request budget
         shell: bash
         run: |
-          # The second options-repair pass is disabled for this workflow. Worst case:
-          # 4 hallucination + 2 semantic edge + 3 chat + 3 options regeneration
-          # + 1 roster judge + 1 playthrough judge + 1 trace judge = 15 requests.
-          planned_requests=$((4 + 2 + 3 + 3 + 1 + 1 + 1))
+          # The second options-repair pass is disabled. Worst-case request plan:
+          # 4 hallucination + 2 semantic edge + 2 chat + 2 options regeneration
+          # + 2 route-internal control preflights + 3 judges = 15 requests.
+          planned_requests=$((4 + 2 + 2 + 2 + 2 + 3))
           hard_limit=16
-          echo "Planned top-level live requests: ${planned_requests}/${hard_limit}"
+          echo "Planned live requests including internal preflights: ${planned_requests}/${hard_limit}"
           if (( planned_requests > hard_limit )); then
             echo "::error::Live request plan exceeds the hard budget."
             exit 1
@@ -201,8 +201,8 @@ jobs:
             --live \
             --base-url http://127.0.0.1:3000 \
             --sessions 1 \
-            --max-steps 3 \
-            --max-live-calls 6 \
+            --max-steps 2 \
+            --max-live-calls 4 \
             --scenarios happy-speedrun \
             --judge-mode live \
             --parallel 1 \
