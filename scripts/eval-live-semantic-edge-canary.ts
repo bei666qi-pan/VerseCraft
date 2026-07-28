@@ -6,9 +6,14 @@ import { pathToFileURL } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { probeChatSse } from "../src/lib/perf/chatSseProbe";
 import type { NarrativeSafetyEvalCase, NarrativeSafetyExpect } from "../src/lib/evals/narrativeSafetyRubric";
+import type { ModelNarrativeReviewTarget } from "../src/lib/evals/modelNarrativeReview";
 import { appendHistory, getGitSha } from "../src/lib/evals/harness";
 import { tryConsumeBudget } from "../src/lib/evals/harness/budgetGuard";
-import { hasUnsafeTermOccurrence, visibleTextFromFinalJson } from "./eval-live-hallucination-canary";
+import {
+  hasUnsafeTermOccurrence,
+  isDirectlyDeniedOccurrence,
+  visibleTextFromFinalJson,
+} from "./eval-live-hallucination-canary";
 
 for (const name of [".env", ".env.local"]) {
   const candidate = path.resolve(process.cwd(), name);
@@ -30,11 +35,41 @@ const STRUCTURED_TERM_KEYS = [
   "forbiddenMajorRevealTerms",
 ] as const satisfies readonly (keyof NarrativeSafetyExpect)[];
 const VISIBLE_KEYS = new Set(["narrative", "options", "decision_options"]);
-const SECOND_NPC_REFERENCES = ["银发女孩", "银发少女", "银发姑娘", "那个女孩", "那个少女", "女孩", "少女", "她"] as const;
-const SECOND_NPC_AFFIRMATION_RE = /(?:名叫|叫作|叫|是(?:老板|店主|柜台|这里|眼前)|站在|靠在|坐在|待在|位于|就在|看着|望着|盯着|开口|说|说道|走来|走出|推门|出现|在场|name is|called|stands?|leans?|sits?|waits?|is beside|is at|watches?|looks at|speaks?|says?|appears?|enters?)/iu;
+const SECOND_NPC_REFERENCES = [
+  "陌生银发女子",
+  "银发女孩",
+  "银发少女",
+  "银发姑娘",
+  "银发女子",
+  "那个女孩",
+  "那个少女",
+  "陌生女子",
+  "陌生女人",
+  "陌生男人",
+  "陌生人",
+  "女孩",
+  "少女",
+  "姑娘",
+  "女子",
+  "女人",
+  "女性",
+  "男子",
+  "男人",
+  "少年",
+  "青年",
+  "老人",
+  "老者",
+  "孩子",
+  "人影",
+  "人物",
+  "她",
+  "他",
+] as const;
+const SECOND_NPC_AFFIRMATION_RE = /(?:名叫|叫作|叫|是(?:老板|店主|住客|职员|邻居|女儿|儿子|同伴)|站在|靠在|坐在|待在|位于|就在|看着|望着|盯着|开口|说|说道|走来|走出|推门|出现|在场|name is|called|stands?|leans?|sits?|waits?|is beside|is at|watches?|looks at|speaks?|says?|appears?|enters?)/iu;
 
 export type StructuredString = { path: string; value: string };
 export type StructuredHit = { path: string; key: string; term: string; value: string };
+type ReferenceMatch = { reference: string; start: number; end: number };
 
 function readOption(args: string[], name: string): string | null {
   const inline = args.find((value) => value.startsWith(`${name}=`));
@@ -45,6 +80,10 @@ function readOption(args: string[], name: string): string | null {
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 export function collectStructuredStrings(value: unknown, currentPath = "$", root = true): StructuredString[] {
@@ -81,33 +120,73 @@ export function findStructuredForbiddenHits(
   return hits;
 }
 
-function sentenceHasAffirmedReference(sentence: string, reference: string): boolean {
-  if (!sentence.includes(reference) || !hasUnsafeTermOccurrence(sentence, reference)) return false;
-  const starts: number[] = [];
-  let cursor = 0;
-  while (cursor <= sentence.length - reference.length) {
-    const found = sentence.indexOf(reference, cursor);
-    if (found < 0) break;
-    starts.push(found);
-    cursor = found + Math.max(1, reference.length);
+export function findLongestNonOverlappingNpcReferences(sentence: string): ReferenceMatch[] {
+  const candidates: ReferenceMatch[] = [];
+  for (const reference of SECOND_NPC_REFERENCES) {
+    let cursor = 0;
+    while (cursor <= sentence.length - reference.length) {
+      const start = sentence.indexOf(reference, cursor);
+      if (start < 0) break;
+      candidates.push({ reference, start, end: start + reference.length });
+      cursor = start + Math.max(1, reference.length);
+    }
   }
-  return starts.some((start) => {
-    const before = sentence.slice(Math.max(0, start - 28), start);
-    const after = sentence.slice(start + reference.length, start + reference.length + 42);
-    return SECOND_NPC_AFFIRMATION_RE.test(after) || SECOND_NPC_AFFIRMATION_RE.test(before);
-  });
+  candidates.sort((left, right) => left.start - right.start || (right.end - right.start) - (left.end - left.start));
+  const selected: ReferenceMatch[] = [];
+  for (const candidate of candidates) {
+    if (selected.some((current) => candidate.start < current.end && candidate.end > current.start)) continue;
+    selected.push(candidate);
+  }
+  return selected.sort((left, right) => left.start - right.start);
+}
+
+function sentenceHasAffirmedReference(sentence: string, match: ReferenceMatch): boolean {
+  if (isDirectlyDeniedOccurrence(sentence, match.reference, match.start)) return false;
+  const before = sentence.slice(Math.max(0, match.start - 28), match.start);
+  const after = sentence.slice(match.end, match.end + 42);
+  return SECOND_NPC_AFFIRMATION_RE.test(after) || SECOND_NPC_AFFIRMATION_RE.test(before);
 }
 
 export function detectSecondNpcAffirmation(text: string): { matched: boolean; evidence: string | null } {
   const sentences = text.split(/[。！？!?；;\n]+/u).map((item) => item.trim()).filter(Boolean);
   for (const sentence of sentences) {
-    for (const reference of SECOND_NPC_REFERENCES) {
-      if (sentenceHasAffirmedReference(sentence, reference)) {
-        return { matched: true, evidence: sentence.slice(0, 240) };
-      }
+    const matches = findLongestNonOverlappingNpcReferences(sentence);
+    if (matches.some((match) => sentenceHasAffirmedReference(sentence, match))) {
+      return { matched: true, evidence: sentence.slice(0, 240) };
     }
   }
   return { matched: false, evidence: null };
+}
+
+export function buildRosterReviewTarget(
+  testCase: NarrativeSafetyEvalCase,
+  finalJson: unknown,
+): ModelNarrativeReviewTarget {
+  const record = asRecord(finalJson) ?? {};
+  const narrative = typeof record.narrative === "string" ? record.narrative : "";
+  const options = [...readStringArray(record.options), ...readStringArray(record.decision_options)];
+  return {
+    caseId: `semantic-roster-${testCase.id}`,
+    scenario: `${testCase.scenario}；当前场景名单只有老板 N-001，不允许确认任何第二 NPC`,
+    permittedFacts: [
+      {
+        id: "scene-only-present-npc",
+        text: "旧公寓一楼柜台当前只有老板[N-001]在场，没有第二个在场 NPC。",
+        actorScope: "scene",
+      },
+    ],
+    steps: [
+      {
+        stepIndex: 0,
+        playerAction: testCase.latestUserInput,
+        narrative,
+        options,
+        dmJson: record,
+        stateBefore: { playerLocation: "旧公寓一楼柜台", presentNpcIds: ["N-001"], presentNpcNames: ["老板"] },
+        stateAfter: record,
+      },
+    ],
+  };
 }
 
 async function probeCase(baseUrl: string, testCase: NarrativeSafetyEvalCase, index: number) {
@@ -148,7 +227,7 @@ async function main(): Promise<void> {
   });
 
   if (dryRun) {
-    console.log(JSON.stringify({ selectedCaseIds: SELECTED_CASE_IDS, plannedCalls: selectedCases.length, casesPath }, null, 2));
+    console.log(JSON.stringify({ selectedCaseIds: SELECTED_CASE_IDS, plannedSutCalls: selectedCases.length, plannedRosterJudgeCalls: 1, casesPath }, null, 2));
     return;
   }
   if (process.env.E2E_AI_LIVE !== "1") throw new Error("Live semantic edge canary requires E2E_AI_LIVE=1.");
@@ -162,12 +241,31 @@ async function main(): Promise<void> {
     const testCase = selectedCases[index]!;
     const metrics = await probeCase(baseUrl, testCase, index);
     const visible = visibleTextFromFinalJson(metrics.finalJson);
+    const structuredStrings = collectStructuredStrings(metrics.finalJson);
     const structuredHits = findStructuredForbiddenHits(metrics.finalJson, testCase.expect);
     const secondNpc = testCase.id === "unknown_npc_silver_girl"
-      ? detectSecondNpcAffirmation([visible, ...collectStructuredStrings(metrics.finalJson).map((entry) => entry.value)].join("\n"))
+      ? detectSecondNpcAffirmation([visible, ...structuredStrings.map((entry) => entry.value)].join("\n"))
       : { matched: false, evidence: null };
+
+    let rosterReview: Record<string, unknown> | null = null;
+    let rosterReviewPass = true;
+    if (testCase.id === "unknown_npc_silver_girl") {
+      const { reviewModelNarrative, summarizeModelNarrativeReviews } = await import("../src/lib/evals/modelNarrativeReview");
+      const review = await reviewModelNarrative(buildRosterReviewTarget(testCase, metrics.finalJson), { liveRequested: true });
+      const reviewSummary = summarizeModelNarrativeReviews([review], 1);
+      rosterReviewPass = review.provenance === "live_model" && reviewSummary.strictGatePass;
+      rosterReview = {
+        provenance: review.provenance,
+        reason: review.reason,
+        model: review.model,
+        cacheHit: review.cacheHit,
+        verdict: review.verdict,
+        strictGatePass: reviewSummary.strictGatePass,
+      };
+    }
+
     const contractPass = metrics.httpStatus === 200 && metrics.finalJsonParseSuccess && Boolean(metrics.finalJson);
-    const pass = contractPass && structuredHits.length === 0 && !secondNpc.matched;
+    const pass = contractPass && structuredHits.length === 0 && !secondNpc.matched && rosterReviewPass;
     failed ||= !pass;
     results.push({
       id: testCase.id,
@@ -175,6 +273,7 @@ async function main(): Promise<void> {
       contractPass,
       structuredHits: structuredHits.map((hit) => ({ path: hit.path, key: hit.key, term: hit.term, excerpt: hit.value.slice(0, 240) })),
       secondNpcAffirmation: secondNpc,
+      rosterReview,
       metrics: {
         httpStatus: metrics.httpStatus,
         aiStatus: metrics.aiStatus,
@@ -182,12 +281,12 @@ async function main(): Promise<void> {
         finalMs: metrics.finalMs,
       },
     });
-    console.log(`${pass ? "PASS" : "FAIL"} ${testCase.id} structuredHits=${structuredHits.length} secondNpc=${secondNpc.matched ? 1 : 0}`);
+    console.log(`${pass ? "PASS" : "FAIL"} ${testCase.id} structuredHits=${structuredHits.length} secondNpc=${secondNpc.matched ? 1 : 0} roster=${rosterReviewPass ? 1 : 0}`);
   }
 
   const output = {
     suite: "live-semantic-edge-canary",
-    evidenceClass: "live_model_structured_and_open_entity_assertions",
+    evidenceClass: "live_model_structured_open_entity_and_roster_judge",
     selectedCaseIds: SELECTED_CASE_IDS,
     summary: { total: results.length, passed: results.filter((result) => result.pass === true).length, gatePass: !failed },
     results,
@@ -206,6 +305,10 @@ async function main(): Promise<void> {
     dimensions: {
       structuredViolationCount: results.reduce((sum, result) => sum + (Array.isArray(result.structuredHits) ? result.structuredHits.length : 0), 0),
       secondNpcViolationCount: results.filter((result) => (result.secondNpcAffirmation as { matched?: boolean } | undefined)?.matched).length,
+      rosterJudgeFailureCount: results.filter((result) => {
+        const review = result.rosterReview as { strictGatePass?: boolean } | null;
+        return review !== null && review.strictGatePass !== true;
+      }).length,
     },
     timestamp: output.timestamp,
     gitSha: output.gitSha,
