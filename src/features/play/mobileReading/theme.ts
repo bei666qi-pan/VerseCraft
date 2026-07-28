@@ -133,7 +133,7 @@ export const mobileReadingTheme = {
   optionLabelVisible: "opacity-100",
   optionLabelHidden: "select-none opacity-0",
   optionChevron: "h-6 w-6 shrink-0 text-[#2d756b] transition-opacity",
-  optionChevronVisible: "opacity-85",
+  optionChevronVisible: "opacity-[0.85]",
   optionChevronHidden: "opacity-0",
 
   bottomNav:
