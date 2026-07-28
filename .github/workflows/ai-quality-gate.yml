@@ -120,6 +120,9 @@ jobs:
       AI_MODEL_CONTROL: deepseek-v4-flash
       AI_MODEL_ENHANCE: deepseek-v4-flash
       AI_MODEL_REASONER: deepseek-v4-flash
+      PLAYTEST_LLM_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
+      PLAYTEST_LLM_BASE_URL: https://api.deepseek.com/v1
+      PLAYTEST_LLM_MODEL: deepseek-v4-flash
       AI_MAX_RETRIES: "0"
       AI_PLAYER_CHAT_MAX_RETRIES: "0"
       AI_LOG_LEVEL: error
@@ -190,7 +193,7 @@ jobs:
             --stop-on-degrade \
             --out .runtime-data/ai-quality/playthrough
 
-      - name: Strict semantic review of real trace
+      - name: Require live playthrough judge and strict semantic review
         shell: bash
         run: |
           trace=$(find .runtime-data/ai-quality/playthrough/traces -name '*.json' -print -quit)
@@ -198,6 +201,20 @@ jobs:
             echo "::error::Live playthrough produced no trace."
             exit 1
           fi
+          node - "$trace" <<'NODE'
+          const fs = require("node:fs");
+          const tracePath = process.argv[2];
+          const trace = JSON.parse(fs.readFileSync(tracePath, "utf8"));
+          if (trace.judgeMode !== "live") {
+            console.error(`Expected live playthrough judge, got ${String(trace.judgeMode)}`);
+            process.exit(1);
+          }
+          if (!trace.narrativeConsistency || !Number.isFinite(trace.narrativeConsistency.overallScore)) {
+            console.error("Live playthrough judge produced no numeric narrative score.");
+            process.exit(1);
+          }
+          console.log(`Live playthrough judge confirmed: score=${trace.narrativeConsistency.overallScore}`);
+          NODE
           pnpm eval:model-narrative-review -- \
             --mode live \
             --input "$trace" \
