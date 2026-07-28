@@ -152,8 +152,8 @@ jobs:
           # Fixed request plan, including the worst case where each of the three
           # playthrough turns requires one options-regeneration request:
           # 4 hallucination + 2 semantic edge + 3 chat + 3 options repair
-          # + 1 playthrough judge + 1 semantic judge = 14 top-level live requests.
-          planned_requests=$((4 + 2 + 3 + 3 + 1 + 1))
+          # + 1 roster judge + 1 playthrough judge + 1 trace judge = 15 requests.
+          planned_requests=$((4 + 2 + 3 + 3 + 1 + 1 + 1))
           hard_limit=16
           echo "Planned top-level live requests: ${planned_requests}/${hard_limit}"
           if (( planned_requests > hard_limit )); then
