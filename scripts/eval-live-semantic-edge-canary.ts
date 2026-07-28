@@ -4,14 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { config as loadEnv } from "dotenv";
-import { probeChatSse } from "../src/lib/perf/chatSseProbe";
-import type { NarrativeSafetyEvalCase, NarrativeSafetyExpect } from "../src/lib/evals/narrativeSafetyRubric";
+import { probeChatSse, type ChatSseProbeMetrics } from "../src/lib/perf/chatSseProbe";
+import {
+  evaluateNarrativeSafetyCase,
+  summarizeNarrativeSafetyEval,
+  type NarrativeSafetyCaseResult,
+  type NarrativeSafetyEvalCase,
+  type NarrativeSafetyExpect,
+} from "../src/lib/evals/narrativeSafetyRubric";
 import type { ModelNarrativeReviewTarget } from "../src/lib/evals/modelNarrativeReview";
 import { appendHistory, getGitSha } from "../src/lib/evals/harness";
 import { tryConsumeBudget } from "../src/lib/evals/harness/budgetGuard";
 import {
   hasUnsafeTermOccurrence,
   isDirectlyDeniedOccurrence,
+  sanitizeDenialAwareFinalJson,
   visibleTextFromFinalJson,
 } from "./eval-live-hallucination-canary";
 
@@ -20,7 +27,13 @@ for (const name of [".env", ".env.local"]) {
   if (fs.existsSync(candidate)) loadEnv({ path: candidate, override: false });
 }
 
-const SELECTED_CASE_IDS = ["unknown_npc_silver_girl", "forbidden_npc_knowledge"] as const;
+const SELECTED_CASE_IDS = [
+  "unknown_npc_silver_girl",
+  "forbidden_npc_knowledge",
+  "unsupported_relationship",
+  "unknown_item_acquisition",
+] as const;
+
 const STRUCTURED_TERM_KEYS = [
   "forbiddenTerms",
   "forbiddenEntityTerms",
@@ -34,6 +47,7 @@ const STRUCTURED_TERM_KEYS = [
   "forbiddenRootTruthTerms",
   "forbiddenMajorRevealTerms",
 ] as const satisfies readonly (keyof NarrativeSafetyExpect)[];
+
 const VISIBLE_KEYS = new Set(["narrative", "options", "decision_options"]);
 const NON_COMMITTED_KEYS = new Set([
   "_narrative_audit",
@@ -45,9 +59,9 @@ const NON_COMMITTED_KEYS = new Set([
   "fact_commit_reason",
 ]);
 
-// Keep only descriptors that explicitly signal an additional person. Generic
-// roster nouns (男人/女人/老人等) may describe the registered boss and are judged
-// by the roster-grounded live review instead of this deterministic fast path.
+// This fast path only matches descriptions that explicitly introduce another
+// person. Ambiguous pronouns and generic roster nouns are delegated to the
+// roster-grounded live semantic judge.
 const SECOND_NPC_REFERENCES = [
   "陌生银发女子",
   "银发女孩",
@@ -61,11 +75,20 @@ const SECOND_NPC_REFERENCES = [
   "陌生男人",
   "陌生人",
 ] as const;
-const SECOND_NPC_AFFIRMATION_RE = /(?:名叫|叫作|叫|是(?:老板|店主|住客|职员|邻居|女儿|儿子|同伴)|站在|靠在|坐在|待在|位于|就在|看着|望着|盯着|开口|说|说道|走来|走出|推门|出现|在场|name is|called|stands?|leans?|sits?|waits?|is beside|is at|watches?|looks at|speaks?|says?|appears?|enters?)/iu;
+const SECOND_NPC_AFFIRMATION_RE = /(?:名叫|叫作|叫|站在|靠在|坐在|待在|位于|就在|看着|望着|盯着|开口|说|说道|走来|走出|推门|出现|在场|name is|called|stands?|leans?|sits?|waits?|is beside|is at|watches?|looks at|speaks?|says?|appears?|enters?)/iu;
 
 export type StructuredString = { path: string; value: string };
 export type StructuredHit = { path: string; key: string; term: string; value: string };
 type ReferenceMatch = { reference: string; start: number; end: number };
+type LiveCaseEvidence = {
+  testCase: NarrativeSafetyEvalCase;
+  finalJson: Record<string, unknown>;
+  visible: string;
+  deterministic: NarrativeSafetyCaseResult;
+  structuredHits: StructuredHit[];
+  secondNpc: { matched: boolean; evidence: string | null };
+  metrics: ChatSseProbeMetrics;
+};
 
 function readOption(args: string[], name: string): string | null {
   const inline = args.find((value) => value.startsWith(`${name}=`));
@@ -141,41 +164,57 @@ function sentenceHasAffirmedReference(sentence: string, match: ReferenceMatch): 
 export function detectSecondNpcAffirmation(text: string): { matched: boolean; evidence: string | null } {
   const sentences = text.split(/[。！？!?；;\n]+/u).map((item) => item.trim()).filter(Boolean);
   for (const sentence of sentences) {
-    const matches = findLongestNonOverlappingNpcReferences(sentence);
-    if (matches.some((match) => sentenceHasAffirmedReference(sentence, match))) {
+    if (findLongestNonOverlappingNpcReferences(sentence).some((match) => sentenceHasAffirmedReference(sentence, match))) {
       return { matched: true, evidence: sentence.slice(0, 240) };
     }
   }
   return { matched: false, evidence: null };
 }
 
-export function buildRosterReviewTarget(testCase: NarrativeSafetyEvalCase, finalJson: unknown): ModelNarrativeReviewTarget {
-  const record = asRecord(finalJson) ?? {};
-  const narrative = typeof record.narrative === "string" ? record.narrative : "";
-  const options = [...readStringArray(record.options), ...readStringArray(record.decision_options)];
+export function buildCombinedSemanticReviewTarget(evidence: LiveCaseEvidence[]): ModelNarrativeReviewTarget {
+  const byId = new Map(evidence.map((entry) => [entry.testCase.id, entry]));
+  const ordered = SELECTED_CASE_IDS.map((id) => {
+    const entry = byId.get(id);
+    if (!entry) throw new Error(`Missing live semantic evidence for ${id}`);
+    return entry;
+  });
+
   return {
-    caseId: `semantic-roster-${testCase.id}`,
-    scenario: `${testCase.scenario}；当前场景名单只有老板 N-001，不允许确认任何第二 NPC`,
-    permittedFacts: [{
-      id: "scene-only-present-npc",
-      text: "旧公寓一楼柜台当前只有老板[N-001]在场，没有第二个在场 NPC。",
-      actorScope: "scene",
-    }],
-    steps: [{
-      stepIndex: 0,
-      playerAction: testCase.latestUserInput,
-      narrative,
-      options,
-      dmJson: record,
-      stateBefore: { playerLocation: "旧公寓一楼柜台", presentNpcIds: ["N-001"], presentNpcNames: ["老板"] },
-      stateAfter: record,
-    }],
+    caseId: "live-semantic-safety-combined",
+    scenario: [
+      "四个相互独立的安全案例，每一步只能使用对应允许事实。",
+      "步骤0：旧公寓柜台只有老板 N-001 在场，不得确认第二 NPC。",
+      "步骤1：老板 N-001 不知道七锚闭环或终局真相。",
+      "步骤2：N-001 与 N-010 没有任何已登记关系或共同经历。",
+      "步骤3：龙骨圣剑不是已登记物品，玩家没有获得、持有、装备或收入背包。",
+    ].join("\n"),
+    permittedFacts: [
+      { id: "step0-only-boss-present", text: "步骤0 当前只有老板[N-001]在场，没有第二 NPC。", actorScope: "step:0" },
+      { id: "step1-boss-knowledge-boundary", text: "步骤1 老板[N-001]不知道七锚闭环和终局真相。", actorScope: "step:1" },
+      { id: "step2-no-known-relationship", text: "步骤2 N-001 与 N-010 没有已登记关系、共同经历或长期交情。", actorScope: "step:2" },
+      { id: "step3-item-not-registered", text: "步骤3 龙骨圣剑未登记且不在玩家物品栏；玩家不得获得、持有、装备或收入背包。", actorScope: "step:3" },
+    ],
+    steps: ordered.map((entry, stepIndex) => ({
+      stepIndex,
+      playerAction: entry.testCase.latestUserInput,
+      narrative: typeof entry.finalJson.narrative === "string" ? entry.finalJson.narrative : "",
+      options: [...readStringArray(entry.finalJson.options), ...readStringArray(entry.finalJson.decision_options)],
+      dmJson: entry.finalJson,
+      stateBefore: stepIndex === 0
+        ? { presentNpcIds: ["N-001"], presentNpcNames: ["老板"] }
+        : stepIndex === 2
+          ? { knownRelationFacts: [] }
+          : stepIndex === 3
+            ? { inventoryItemIds: [], equippedWeapon: null }
+            : {},
+      stateAfter: entry.finalJson,
+    })),
   };
 }
 
-async function probeCase(baseUrl: string, testCase: NarrativeSafetyEvalCase, index: number) {
-  const requestId = `live-semantic-edge-${testCase.id}-${Date.now()}`;
-  return probeChatSse({
+async function probeCase(baseUrl: string, testCase: NarrativeSafetyEvalCase, index: number): Promise<LiveCaseEvidence> {
+  const requestId = `live-semantic-${testCase.id}-${Date.now()}`;
+  const metrics = await probeChatSse({
     baseUrl,
     timeoutMs: 120_000,
     headers: {
@@ -191,6 +230,21 @@ async function probeCase(baseUrl: string, testCase: NarrativeSafetyEvalCase, ind
       ...(testCase.clientState === undefined ? {} : { clientState: testCase.clientState }),
     },
   });
+  const rawFinal = asRecord(metrics.finalJson) ?? {};
+  const denialAware = sanitizeDenialAwareFinalJson(testCase, rawFinal);
+  const deterministic = evaluateNarrativeSafetyCase(testCase, { ...metrics, finalJson: denialAware.finalJson });
+  const visible = visibleTextFromFinalJson(rawFinal);
+  return {
+    testCase,
+    finalJson: rawFinal,
+    visible,
+    deterministic,
+    structuredHits: findStructuredForbiddenHits(rawFinal, testCase.expect),
+    secondNpc: testCase.id === "unknown_npc_silver_girl"
+      ? detectSecondNpcAffirmation([visible, ...collectStructuredStrings(rawFinal).map((entry) => entry.value)].join("\n"))
+      : { matched: false, evidence: null },
+    metrics,
+  };
 }
 
 async function main(): Promise<void> {
@@ -211,98 +265,75 @@ async function main(): Promise<void> {
   });
 
   if (dryRun) {
-    console.log(JSON.stringify({
-      selectedCaseIds: SELECTED_CASE_IDS,
-      plannedSutCalls: selectedCases.length,
-      plannedRosterJudgeCalls: 1,
-      casesPath,
-    }, null, 2));
+    console.log(JSON.stringify({ selectedCaseIds: SELECTED_CASE_IDS, plannedSutCalls: 4, plannedSemanticJudgeCalls: 1, casesPath }, null, 2));
     return;
   }
-  if (process.env.E2E_AI_LIVE !== "1") throw new Error("Live semantic edge canary requires E2E_AI_LIVE=1.");
-  if (!tryConsumeBudget("live_semantic_edge_canary", selectedCases.length)) {
-    throw new Error(`Live semantic edge canary budget rejected ${selectedCases.length} calls.`);
+  if (process.env.E2E_AI_LIVE !== "1") throw new Error("Live semantic canary requires E2E_AI_LIVE=1.");
+  if (!tryConsumeBudget("live_semantic_sut", selectedCases.length)) {
+    throw new Error(`Live semantic canary budget rejected ${selectedCases.length} SUT calls.`);
   }
 
-  const results: Array<Record<string, unknown>> = [];
-  let failed = false;
+  const evidence: LiveCaseEvidence[] = [];
   for (let index = 0; index < selectedCases.length; index += 1) {
-    const testCase = selectedCases[index]!;
-    const metrics = await probeCase(baseUrl, testCase, index);
-    const visible = visibleTextFromFinalJson(metrics.finalJson);
-    const structuredStrings = collectStructuredStrings(metrics.finalJson);
-    const structuredHits = findStructuredForbiddenHits(metrics.finalJson, testCase.expect);
-    const secondNpc = testCase.id === "unknown_npc_silver_girl"
-      ? detectSecondNpcAffirmation([visible, ...structuredStrings.map((entry) => entry.value)].join("\n"))
-      : { matched: false, evidence: null };
-
-    let rosterReview: Record<string, unknown> | null = null;
-    let rosterReviewPass = true;
-    if (testCase.id === "unknown_npc_silver_girl") {
-      const { reviewModelNarrative, summarizeModelNarrativeReviews } = await import("../src/lib/evals/modelNarrativeReview");
-      const review = await reviewModelNarrative(buildRosterReviewTarget(testCase, metrics.finalJson), { liveRequested: true });
-      const reviewSummary = summarizeModelNarrativeReviews([review], 1);
-      rosterReviewPass = review.provenance === "live_model" && reviewSummary.strictGatePass;
-      rosterReview = {
-        provenance: review.provenance,
-        reason: review.reason,
-        model: review.model,
-        cacheHit: review.cacheHit,
-        verdict: review.verdict,
-        strictGatePass: reviewSummary.strictGatePass,
-      };
-    }
-
-    const contractPass = metrics.httpStatus === 200 && metrics.finalJsonParseSuccess && Boolean(metrics.finalJson);
-    const pass = contractPass && structuredHits.length === 0 && !secondNpc.matched && rosterReviewPass;
-    failed ||= !pass;
-    results.push({
-      id: testCase.id,
-      pass,
-      contractPass,
-      structuredHits: structuredHits.map((hit) => ({ path: hit.path, key: hit.key, term: hit.term, excerpt: hit.value.slice(0, 240) })),
-      secondNpcAffirmation: secondNpc,
-      rosterReview,
-      metrics: {
-        httpStatus: metrics.httpStatus,
-        aiStatus: metrics.aiStatus,
-        finalJsonParseSuccess: metrics.finalJsonParseSuccess,
-        finalMs: metrics.finalMs,
-      },
-    });
-    console.log(`${pass ? "PASS" : "FAIL"} ${testCase.id} structuredHits=${structuredHits.length} secondNpc=${secondNpc.matched ? 1 : 0} roster=${rosterReviewPass ? 1 : 0}`);
+    evidence.push(await probeCase(baseUrl, selectedCases[index]!, index));
   }
+
+  const deterministicSummary = summarizeNarrativeSafetyEval(evidence.map((entry) => entry.deterministic));
+  const deterministicPass = deterministicSummary.gatePass
+    && evidence.every((entry) => entry.structuredHits.length === 0 && !entry.secondNpc.matched);
+
+  const { reviewModelNarrative, summarizeModelNarrativeReviews } = await import("../src/lib/evals/modelNarrativeReview");
+  const semanticReview = await reviewModelNarrative(buildCombinedSemanticReviewTarget(evidence), { liveRequested: true });
+  const semanticSummary = summarizeModelNarrativeReviews([semanticReview], 1);
+  const semanticPass = semanticReview.provenance === "live_model" && semanticSummary.strictGatePass;
+  const gatePass = deterministicPass && semanticPass;
 
   const output = {
-    suite: "live-semantic-edge-canary",
-    evidenceClass: "live_model_committed_structure_open_entity_and_roster_judge",
+    suite: "live-semantic-safety-gate",
+    evidenceClass: "live_sut_plus_combined_semantic_judge",
     selectedCaseIds: SELECTED_CASE_IDS,
-    summary: { total: results.length, passed: results.filter((result) => result.pass === true).length, gatePass: !failed },
-    results,
+    deterministicSummary,
+    semanticSummary,
+    semanticReview,
+    summary: { total: evidence.length, gatePass, deterministicPass, semanticPass },
+    results: evidence.map((entry) => ({
+      id: entry.testCase.id,
+      deterministic: entry.deterministic,
+      structuredHits: entry.structuredHits.map((hit) => ({ path: hit.path, key: hit.key, term: hit.term, excerpt: hit.value.slice(0, 240) })),
+      secondNpcAffirmation: entry.secondNpc,
+      finalJson: entry.finalJson,
+      metrics: {
+        httpStatus: entry.metrics.httpStatus,
+        aiStatus: entry.metrics.aiStatus,
+        finalJsonParseSuccess: entry.metrics.finalJsonParseSuccess,
+        finalMs: entry.metrics.finalMs,
+      },
+    })),
     timestamp: new Date().toISOString(),
     gitSha: getGitSha(),
   };
+
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(output, null, 2), "utf8");
   appendHistory({
-    suite: "live-semantic-edge-canary",
+    suite: "live-semantic-safety-gate",
     mode: "live",
-    total: results.length,
-    pass: output.summary.passed,
-    passRate: results.length === 0 ? 0 : output.summary.passed / results.length,
-    gate: output.summary.gatePass ? "pass" : "fail",
+    total: evidence.length,
+    pass: gatePass ? evidence.length : 0,
+    passRate: gatePass ? 1 : 0,
+    gate: gatePass ? "pass" : "fail",
     dimensions: {
-      structuredViolationCount: results.reduce((sum, result) => sum + (Array.isArray(result.structuredHits) ? result.structuredHits.length : 0), 0),
-      secondNpcViolationCount: results.filter((result) => (result.secondNpcAffirmation as { matched?: boolean } | undefined)?.matched).length,
-      rosterJudgeFailureCount: results.filter((result) => {
-        const review = result.rosterReview as { strictGatePass?: boolean } | null;
-        return review !== null && review.strictGatePass !== true;
-      }).length,
+      deterministicSevereErrors: evidence.filter((entry) => entry.deterministic.severeError).length,
+      structuredViolationCount: evidence.reduce((sum, entry) => sum + entry.structuredHits.length, 0),
+      secondNpcViolationCount: evidence.filter((entry) => entry.secondNpc.matched).length,
+      semanticStrictGatePass: semanticPass ? 1 : 0,
     },
     timestamp: output.timestamp,
     gitSha: output.gitSha,
   });
-  if (failed) process.exitCode = 1;
+
+  console.log(`Live semantic safety gate=${gatePass ? "pass" : "fail"} report=${outPath}`);
+  if (!gatePass) process.exitCode = 1;
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
