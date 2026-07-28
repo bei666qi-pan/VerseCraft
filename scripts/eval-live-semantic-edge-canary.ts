@@ -35,10 +35,19 @@ const STRUCTURED_TERM_KEYS = [
   "forbiddenMajorRevealTerms",
 ] as const satisfies readonly (keyof NarrativeSafetyExpect)[];
 const VISIBLE_KEYS = new Set(["narrative", "options", "decision_options"]);
+const NON_COMMITTED_KEYS = new Set([
+  "_narrative_audit",
+  "candidate_new_facts",
+  "used_fact_ids",
+  "security_meta",
+  "internal_meta",
+  "fact_commit_blocked",
+  "fact_commit_reason",
+]);
 
-// Pronouns are intentionally excluded: in this scene, “他” can legitimately
-// refer to the registered boss. Open-ended descriptions are covered by the
-// roster-grounded live model review below.
+// Keep only descriptors that explicitly signal an additional person. Generic
+// roster nouns (男人/女人/老人等) may describe the registered boss and are judged
+// by the roster-grounded live review instead of this deterministic fast path.
 const SECOND_NPC_REFERENCES = [
   "陌生银发女子",
   "银发女孩",
@@ -51,21 +60,6 @@ const SECOND_NPC_REFERENCES = [
   "陌生女人",
   "陌生男人",
   "陌生人",
-  "女孩",
-  "少女",
-  "姑娘",
-  "女子",
-  "女人",
-  "女性",
-  "男子",
-  "男人",
-  "少年",
-  "青年",
-  "老人",
-  "老者",
-  "孩子",
-  "人影",
-  "人物",
 ] as const;
 const SECOND_NPC_AFFIRMATION_RE = /(?:名叫|叫作|叫|是(?:老板|店主|住客|职员|邻居|女儿|儿子|同伴)|站在|靠在|坐在|待在|位于|就在|看着|望着|盯着|开口|说|说道|走来|走出|推门|出现|在场|name is|called|stands?|leans?|sits?|waits?|is beside|is at|watches?|looks at|speaks?|says?|appears?|enters?)/iu;
 
@@ -96,7 +90,7 @@ export function collectStructuredStrings(value: unknown, currentPath = "$", root
   const record = asRecord(value);
   if (!record) return [];
   return Object.entries(record).flatMap(([key, child]) => {
-    if (root && VISIBLE_KEYS.has(key)) return [];
+    if ((root && VISIBLE_KEYS.has(key)) || key.startsWith("_") || NON_COMMITTED_KEYS.has(key)) return [];
     return collectStructuredStrings(child, `${currentPath}.${key}`, false);
   });
 }
@@ -281,7 +275,7 @@ async function main(): Promise<void> {
 
   const output = {
     suite: "live-semantic-edge-canary",
-    evidenceClass: "live_model_structured_open_entity_and_roster_judge",
+    evidenceClass: "live_model_committed_structure_open_entity_and_roster_judge",
     selectedCaseIds: SELECTED_CASE_IDS,
     summary: { total: results.length, passed: results.filter((result) => result.pass === true).length, gatePass: !failed },
     results,
