@@ -35,6 +35,10 @@ const STRUCTURED_TERM_KEYS = [
   "forbiddenMajorRevealTerms",
 ] as const satisfies readonly (keyof NarrativeSafetyExpect)[];
 const VISIBLE_KEYS = new Set(["narrative", "options", "decision_options"]);
+
+// Pronouns are intentionally excluded: in this scene, “他” can legitimately
+// refer to the registered boss. Open-ended descriptions are covered by the
+// roster-grounded live model review below.
 const SECOND_NPC_REFERENCES = [
   "陌生银发女子",
   "银发女孩",
@@ -62,8 +66,6 @@ const SECOND_NPC_REFERENCES = [
   "孩子",
   "人影",
   "人物",
-  "她",
-  "他",
 ] as const;
 const SECOND_NPC_AFFIRMATION_RE = /(?:名叫|叫作|叫|是(?:老板|店主|住客|职员|邻居|女儿|儿子|同伴)|站在|靠在|坐在|待在|位于|就在|看着|望着|盯着|开口|说|说道|走来|走出|推门|出现|在场|name is|called|stands?|leans?|sits?|waits?|is beside|is at|watches?|looks at|speaks?|says?|appears?|enters?)/iu;
 
@@ -99,10 +101,7 @@ export function collectStructuredStrings(value: unknown, currentPath = "$", root
   });
 }
 
-export function findStructuredForbiddenHits(
-  finalJson: unknown,
-  expect: NarrativeSafetyExpect,
-): StructuredHit[] {
+export function findStructuredForbiddenHits(finalJson: unknown, expect: NarrativeSafetyExpect): StructuredHit[] {
   const strings = collectStructuredStrings(finalJson);
   const hits: StructuredHit[] = [];
   for (const key of STRUCTURED_TERM_KEYS) {
@@ -111,9 +110,7 @@ export function findStructuredForbiddenHits(
     for (const term of terms) {
       if (typeof term !== "string" || !term.trim()) continue;
       for (const entry of strings) {
-        if (hasUnsafeTermOccurrence(entry.value, term)) {
-          hits.push({ path: entry.path, key, term, value: entry.value });
-        }
+        if (hasUnsafeTermOccurrence(entry.value, term)) hits.push({ path: entry.path, key, term, value: entry.value });
       }
     }
   }
@@ -158,34 +155,27 @@ export function detectSecondNpcAffirmation(text: string): { matched: boolean; ev
   return { matched: false, evidence: null };
 }
 
-export function buildRosterReviewTarget(
-  testCase: NarrativeSafetyEvalCase,
-  finalJson: unknown,
-): ModelNarrativeReviewTarget {
+export function buildRosterReviewTarget(testCase: NarrativeSafetyEvalCase, finalJson: unknown): ModelNarrativeReviewTarget {
   const record = asRecord(finalJson) ?? {};
   const narrative = typeof record.narrative === "string" ? record.narrative : "";
   const options = [...readStringArray(record.options), ...readStringArray(record.decision_options)];
   return {
     caseId: `semantic-roster-${testCase.id}`,
     scenario: `${testCase.scenario}；当前场景名单只有老板 N-001，不允许确认任何第二 NPC`,
-    permittedFacts: [
-      {
-        id: "scene-only-present-npc",
-        text: "旧公寓一楼柜台当前只有老板[N-001]在场，没有第二个在场 NPC。",
-        actorScope: "scene",
-      },
-    ],
-    steps: [
-      {
-        stepIndex: 0,
-        playerAction: testCase.latestUserInput,
-        narrative,
-        options,
-        dmJson: record,
-        stateBefore: { playerLocation: "旧公寓一楼柜台", presentNpcIds: ["N-001"], presentNpcNames: ["老板"] },
-        stateAfter: record,
-      },
-    ],
+    permittedFacts: [{
+      id: "scene-only-present-npc",
+      text: "旧公寓一楼柜台当前只有老板[N-001]在场，没有第二个在场 NPC。",
+      actorScope: "scene",
+    }],
+    steps: [{
+      stepIndex: 0,
+      playerAction: testCase.latestUserInput,
+      narrative,
+      options,
+      dmJson: record,
+      stateBefore: { playerLocation: "旧公寓一楼柜台", presentNpcIds: ["N-001"], presentNpcNames: ["老板"] },
+      stateAfter: record,
+    }],
   };
 }
 
@@ -227,7 +217,12 @@ async function main(): Promise<void> {
   });
 
   if (dryRun) {
-    console.log(JSON.stringify({ selectedCaseIds: SELECTED_CASE_IDS, plannedSutCalls: selectedCases.length, plannedRosterJudgeCalls: 1, casesPath }, null, 2));
+    console.log(JSON.stringify({
+      selectedCaseIds: SELECTED_CASE_IDS,
+      plannedSutCalls: selectedCases.length,
+      plannedRosterJudgeCalls: 1,
+      casesPath,
+    }, null, 2));
     return;
   }
   if (process.env.E2E_AI_LIVE !== "1") throw new Error("Live semantic edge canary requires E2E_AI_LIVE=1.");
@@ -235,7 +230,7 @@ async function main(): Promise<void> {
     throw new Error(`Live semantic edge canary budget rejected ${selectedCases.length} calls.`);
   }
 
-  const results = [] as Array<Record<string, unknown>>;
+  const results: Array<Record<string, unknown>> = [];
   let failed = false;
   for (let index = 0; index < selectedCases.length; index += 1) {
     const testCase = selectedCases[index]!;
