@@ -100,10 +100,18 @@ test("streamed tool argument fragments are projected onto delta.content", async 
 
   const normalized = await normalizePlayerTurnTerminalToolResponse(response, terminalInit(true));
   const text = await normalized.text();
-  assert.match(text, /"content":"\\{\\\"narrative\\\":\\\""/);
-  assert.match(text, /"content":"走廊\\\"\\}"/);
-  assert.equal(text.includes("tool_calls"), false);
-  assert.match(text, /"finish_reason":"stop"/);
+  const frames = text
+    .split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice("data: ".length)) as {
+      choices: Array<{ delta: { content?: string; tool_calls?: unknown }; finish_reason: string | null }>;
+    });
+  assert.equal(frames.length, 2);
+  assert.equal(frames[0].choices[0].delta.content, '{"narrative":"');
+  assert.equal(frames[1].choices[0].delta.content, '走廊"}');
+  assert.equal("tool_calls" in frames[0].choices[0].delta, false);
+  assert.equal("tool_calls" in frames[1].choices[0].delta, false);
+  assert.equal(frames[1].choices[0].finish_reason, "stop");
 });
 
 test("prefer mode recognizes provider tool incompatibility and builds json fallback", async () => {
