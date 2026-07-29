@@ -1,4 +1,10 @@
 // src/lib/ai/resilience/fetchWithRetry.ts
+import {
+  buildPlayerTurnJsonFallbackInit,
+  normalizePlayerTurnTerminalToolResponse,
+  shouldFallbackPlayerTurnTerminalTool,
+} from "@/lib/ai/stream/playerTurnTerminalToolResponse";
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -27,6 +33,11 @@ export interface ResilientFetchOptions {
 
 /**
  * Bounded timeout + retry for upstream LLM HTTP calls. Retries only when retryable (network / 429 / 503…).
+ *
+ * The PLAYER_CHAT terminal Function Calling envelope is handled at this transport
+ * boundary so callers continue to receive the legacy content JSON stream. In
+ * prefer mode, a provider compatibility 4xx gets one immediate retry without
+ * tools and with json_object restored; required mode never downgrades.
  */
 export async function resilientFetch(
   url: string,
@@ -61,8 +72,14 @@ export async function resilientFetch(
     try {
       lastResponse = await fetch(url, { ...init, signal: combined });
       clearTimeout(timeoutId);
+
+      if (await shouldFallbackPlayerTurnTerminalTool(lastResponse, init)) {
+        options.onRetry?.({ attempt, waitMs: 0, cause: "http", status: lastResponse.status });
+        return resilientFetch(url, buildPlayerTurnJsonFallbackInit(init), options);
+      }
+
       if (!isRetryable(lastResponse, null)) {
-        return lastResponse;
+        return normalizePlayerTurnTerminalToolResponse(lastResponse, init);
       }
       if (attempt < maxRetries) {
         const waitMs = 400 * 2 ** attempt;
@@ -70,7 +87,7 @@ export async function resilientFetch(
         await sleep(waitMs);
         continue;
       }
-      return lastResponse;
+      return normalizePlayerTurnTerminalToolResponse(lastResponse, init);
     } catch (e) {
       clearTimeout(timeoutId);
       const timeoutHit = timeoutController.signal.aborted && parentSignal?.aborted !== true;
@@ -89,6 +106,6 @@ export async function resilientFetch(
     }
   }
 
-  if (lastResponse) return lastResponse;
+  if (lastResponse) return normalizePlayerTurnTerminalToolResponse(lastResponse, init);
   throw lastError ?? new Error("resilientFetch: empty result");
 }
