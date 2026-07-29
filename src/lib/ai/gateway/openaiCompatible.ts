@@ -55,23 +55,21 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     const usePlayerTurnTerminalTool =
       body.stream && terminalToolMode !== "off" && (!body.tools || body.tools.length === 0);
 
-    // Tools and response_format are intentionally mutually exclusive for the
-    // terminal player-turn path to maximize OpenAI-compatible gateway support.
-    if (!usePlayerTurnTerminalTool) {
-      // Schema-constrained mode takes priority over plain json_object mode when
-      // both are set. Opt-in via `responseFormatJsonSchema` (see providers/types.ts).
-      if (body.responseFormatJsonSchema) {
-        payload.response_format = {
-          type: "json_schema",
-          json_schema: {
-            name: body.responseFormatJsonSchema.name,
-            strict: body.responseFormatJsonSchema.strict,
-            schema: body.responseFormatJsonSchema.schema,
-          },
-        };
-      } else if (body.responseFormatJsonObject) {
-        payload.response_format = { type: "json_object" };
-      }
+    // Preserve the existing response-format contract even when the terminal tool
+    // is enabled. The function parameter schema governs tool arguments; the
+    // response_format remains a compatibility signal for established gateways,
+    // tests, metrics, and immediate prefer-mode rollback.
+    if (body.responseFormatJsonSchema && !usePlayerTurnTerminalTool) {
+      payload.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: body.responseFormatJsonSchema.name,
+          strict: body.responseFormatJsonSchema.strict,
+          schema: body.responseFormatJsonSchema.schema,
+        },
+      };
+    } else if (body.responseFormatJsonObject) {
+      payload.response_format = { type: "json_object" };
     }
     if (body.stream && body.streamIncludeUsage) {
       payload.stream_options = { include_usage: true };
