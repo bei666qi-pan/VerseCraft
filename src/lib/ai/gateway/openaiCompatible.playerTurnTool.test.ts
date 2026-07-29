@@ -43,7 +43,7 @@ test("PLAYER_CHAT stream defaults to one forced terminal function call", () => {
       type: "function",
       function: { name: PLAYER_TURN_TERMINAL_TOOL_NAME },
     });
-    assert.equal("response_format" in payload, false);
+    assert.deepEqual(payload.response_format, { type: "json_object" });
   });
 });
 
