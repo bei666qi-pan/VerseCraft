@@ -3,7 +3,7 @@ import {
   resolvePlayerChatFunctionCallingMode,
 } from "@/lib/ai/tools/playerTurnTerminalTool";
 
- type JsonRecord = Record<string, unknown>;
+type JsonRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): JsonRecord | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -179,10 +179,15 @@ function rewriteSseBody(body: ReadableStream<Uint8Array>, expectedToolName: stri
 }
 
 function cloneResponse(response: Response, body: BodyInit | null): Response {
+  const headers = new Headers(response.headers);
+  // The projected body length/encoding no longer matches the upstream wire body.
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  headers.delete("transfer-encoding");
   return new Response(body, {
     status: response.status,
     statusText: response.statusText,
-    headers: new Headers(response.headers),
+    headers,
   });
 }
 
