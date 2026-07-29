@@ -52,6 +52,8 @@ export interface ToolDefinition {
     description: string;
     /** JSON Schema object describing the arguments. */
     parameters: Record<string, unknown>;
+    /** Provider strict-schema switch when supported. Omit for widest gateway compatibility. */
+    strict?: boolean;
   };
 }
 
@@ -66,8 +68,16 @@ export interface ToolCall {
   };
 }
 
+/** Force one named function without allowing the model to choose another tool. */
+export interface NamedFunctionToolChoice {
+  type: "function";
+  function: {
+    name: string;
+  };
+}
+
 /** Request-level tool selection strategy. */
-export type ToolChoiceOption = "auto" | "none" | "required";
+export type ToolChoiceOption = "auto" | "none" | "required" | NamedFunctionToolChoice;
 
 /** Message shape after sanitization (no reasoning_content). */
 export interface ChatMessage {
