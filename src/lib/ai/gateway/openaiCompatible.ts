@@ -1,4 +1,9 @@
 import type { NormalizedCompletionRequest, ProviderRequestFactory } from "@/lib/ai/providers/types";
+import {
+  buildPlayerTurnTerminalTool,
+  buildPlayerTurnTerminalToolChoice,
+  resolvePlayerChatFunctionCallingMode,
+} from "@/lib/ai/tools/playerTurnTerminalTool";
 import type { AiProviderId, ChatMessage } from "@/lib/ai/types/core";
 
 /**
@@ -41,24 +46,40 @@ export const openaiCompatibleGateway: ProviderRequestFactory = {
     if (body.temperature !== undefined) {
       payload.temperature = body.temperature;
     }
-    // Schema-constrained mode takes priority over plain json_object mode when
-    // both are set. Opt-in via `responseFormatJsonSchema` (see providers/types.ts).
-    if (body.responseFormatJsonSchema) {
-      payload.response_format = {
-        type: "json_schema",
-        json_schema: {
-          name: body.responseFormatJsonSchema.name,
-          strict: body.responseFormatJsonSchema.strict,
-          schema: body.responseFormatJsonSchema.schema,
-        },
-      };
-    } else if (body.responseFormatJsonObject) {
-      payload.response_format = { type: "json_object" };
+
+    // PLAYER_CHAT is the only realtime streaming task. In function-calling mode,
+    // the model must submit one terminal `submit_player_turn` call. Its arguments
+    // are rewritten back into the existing DM JSON stream by fetchWithRetry, so
+    // the route keeps one model call and all downstream contracts stay unchanged.
+    const terminalToolMode = resolvePlayerChatFunctionCallingMode();
+    const usePlayerTurnTerminalTool =
+      body.stream && terminalToolMode !== "off" && (!body.tools || body.tools.length === 0);
+
+    // Tools and response_format are intentionally mutually exclusive for the
+    // terminal player-turn path to maximize OpenAI-compatible gateway support.
+    if (!usePlayerTurnTerminalTool) {
+      // Schema-constrained mode takes priority over plain json_object mode when
+      // both are set. Opt-in via `responseFormatJsonSchema` (see providers/types.ts).
+      if (body.responseFormatJsonSchema) {
+        payload.response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: body.responseFormatJsonSchema.name,
+            strict: body.responseFormatJsonSchema.strict,
+            schema: body.responseFormatJsonSchema.schema,
+          },
+        };
+      } else if (body.responseFormatJsonObject) {
+        payload.response_format = { type: "json_object" };
+      }
     }
     if (body.stream && body.streamIncludeUsage) {
       payload.stream_options = { include_usage: true };
     }
-    if (body.tools && body.tools.length > 0) {
+    if (usePlayerTurnTerminalTool) {
+      payload.tools = [buildPlayerTurnTerminalTool()];
+      payload.tool_choice = buildPlayerTurnTerminalToolChoice();
+    } else if (body.tools && body.tools.length > 0) {
       payload.tools = body.tools;
       if (body.toolChoice) payload.tool_choice = body.toolChoice;
     }
