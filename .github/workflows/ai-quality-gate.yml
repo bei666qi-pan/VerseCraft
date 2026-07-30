@@ -1,0 +1,209 @@
+name: AI Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/app/api/chat/**"
+      - "src/lib/ai/**"
+      - "src/lib/epistemic/**"
+      - "src/lib/evals/**"
+      - "src/lib/narrativeEngine/**"
+      - "src/lib/npcConsistency/**"
+      - "src/lib/playRealtime/**"
+      - "src/lib/registry/**"
+      - "src/lib/turnEngine/**"
+      - "scripts/eval-*.ts"
+      - "scripts/assert-eval-report.mjs"
+      - "scripts/assert-eval-report.test.mjs"
+      - "benchmarks/**"
+      - ".github/workflows/ai-quality-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/app/api/chat/**"
+      - "src/lib/ai/**"
+      - "src/lib/epistemic/**"
+      - "src/lib/evals/**"
+      - "src/lib/narrativeEngine/**"
+      - "src/lib/npcConsistency/**"
+      - "src/lib/playRealtime/**"
+      - "src/lib/registry/**"
+      - "src/lib/turnEngine/**"
+      - "scripts/eval-*.ts"
+      - "scripts/assert-eval-report.mjs"
+      - "scripts/assert-eval-report.test.mjs"
+      - "benchmarks/**"
+      - ".github/workflows/ai-quality-gate.yml"
+  schedule:
+    # Twice weekly rather than nightly: keeps drift detection while limiting spend.
+    - cron: "43 20 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-quality-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-hard-gates:
+    name: offline AI hard gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify report assertion helper
+        run: node --test scripts/assert-eval-report.test.mjs
+
+      - name: Verify denial-aware canary logic
+        run: pnpm exec tsx --test scripts/eval-live-hallucination-canary.test.ts
+
+      - name: Verify unified semantic canary logic
+        run: pnpm exec tsx --test scripts/eval-live-semantic-edge-canary.test.ts
+
+      - name: Validate live canary configuration without network
+        run: pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts --dry-run
+
+      - name: Detector eval and explicit hard assertion
+        run: |
+          pnpm eval:detectors:mock
+          node scripts/assert-eval-report.mjs \
+            --file .runtime-data/eval-detectors-mock.json \
+            --require-equal summary.gate=pass
+
+      - name: Narrative style hard gate
+        run: pnpm eval:narrative-style:mock
+
+      - name: Red-team detector and judge regressions
+        run: pnpm test:red-team && pnpm test:judge
+
+      - name: Multi-turn deterministic regression
+        run: pnpm test:playthrough
+
+  live-deepseek-canary:
+    name: live DeepSeek semantic safety gate
+    if: github.event_name != 'pull_request'
+    needs: offline-hard-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: "true"
+      AUTH_SECRET: ci-ai-quality-auth-secret-at-least-32-characters
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      REDIS_URL: ""
+      E2E_AI_LIVE: "1"
+      BENCHMARK_BASE_URL: http://127.0.0.1:3000
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      VC_AI_DIRECT_BASE_URL: https://api.deepseek.com
+      VC_AI_DIRECT_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
+      VC_AI_DIRECT_MODEL: deepseek-v4-flash
+      AI_GATEWAY_BASE_URL: https://api.deepseek.com
+      AI_GATEWAY_API_KEY: ${{ secrets.DEEPSEEK_EVAL_API_KEY }}
+      AI_MODEL_MAIN: deepseek-v4-flash
+      AI_MODEL_CONTROL: deepseek-v4-flash
+      AI_MODEL_ENHANCE: deepseek-v4-flash
+      AI_MODEL_REASONER: deepseek-v4-flash
+      AI_PLAYER_ROLE_CHAIN: main
+      AI_PLAYER_CHAT_MAX_ROLE_CANDIDATES: "1"
+      AI_MAX_RETRIES: "0"
+      AI_RETRY_COUNT: "0"
+      AI_PLAYER_CHAT_MAX_RETRIES: "0"
+      AI_ONLINE_SHORT_JSON_MAX_RETRIES: "0"
+      AI_ONLINE_SHORT_JSON_DISABLE_MAIN_FALLBACK: "1"
+      AI_ENABLE_NARRATIVE_ENHANCEMENT: "0"
+      AI_NARRATIVE_EXPANSION_ENABLED: "false"
+      AI_ENABLE_WORLD_VECTOR_RETRIEVAL: "false"
+      AI_LOG_LEVEL: error
+      VERSECRAFT_EVAL_DAILY_CALL_BUDGET: "16"
+      VERSECRAFT_EVAL_DISABLE_CACHE: "1"
+      VERSECRAFT_ENABLE_MODEL_NARRATIVE_REVIEW_EVALS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: pnpm
+
+      - name: Require encrypted evaluation secret
+        shell: bash
+        run: |
+          if [[ -z "${VC_AI_DIRECT_API_KEY:-}" ]]; then
+            echo "::error::Missing encrypted GitHub Actions secret DEEPSEEK_EVAL_API_KEY. Live AI checks must not silently skip."
+            exit 1
+          fi
+
+      - name: Validate complete live request budget
+        shell: bash
+        run: |
+          # Four SUT calls. Conservatively allow one route-internal control
+          # preflight for every SUT call, plus one combined semantic judge.
+          planned_requests=$((4 + 4 + 1))
+          hard_limit=16
+          echo "Planned worst-case live requests: ${planned_requests}/${hard_limit}"
+          if (( planned_requests > hard_limit )); then
+            echo "::error::Live request plan exceeds the hard budget."
+            exit 1
+          fi
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production app
+        run: pnpm build
+
+      - name: Start application
+        shell: bash
+        run: |
+          mkdir -p .runtime-data/ai-quality
+          pnpm exec next start -p 3000 > .runtime-data/ai-quality/next.log 2>&1 &
+          echo $! > .runtime-data/ai-quality/next.pid
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat .runtime-data/ai-quality/next.log
+          exit 1
+
+      - name: Unified live semantic safety gate
+        run: |
+          pnpm exec tsx scripts/eval-live-semantic-edge-canary.ts \
+            --base-url http://127.0.0.1:3000 \
+            --json-out .runtime-data/ai-quality/live-semantic-safety-gate.json
+
+      - name: Stop application
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f .runtime-data/ai-quality/next.pid ]]; then
+            kill "$(cat .runtime-data/ai-quality/next.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload AI quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-quality-evidence-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            .runtime-data/ai-quality/**
+            .runtime-data/budget-state.json
