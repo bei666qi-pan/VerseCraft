@@ -3,6 +3,11 @@ type RecordLike = Record<string, unknown>;
 import { createStageOneStarterTasks } from "@/lib/tasks/taskV2";
 import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import { getAnomalyCombatStat } from "@/lib/registry/combatCanon";
+import { findRegisteredItemById } from "@/lib/registry/itemLookup";
+import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import { enrichOptionsFromNarrative } from "@/lib/turnEngine/enrichGameState";
+
+const REGISTERED_WAREHOUSE_ITEM_IDS = new Set(WAREHOUSE_ITEMS.map((item) => item.id));
 
 export const REGISTERED_TASK_IDS = new Set([
   ...createStageOneStarterTasks().map((task) => task.id),
@@ -23,6 +28,219 @@ function append(record: RecordLike, key: string, row: RecordLike): void {
   const rowId = typeof row.id === "string" ? row.id : null;
   if (rowId && prev.some((item) => item && typeof item === "object" && !Array.isArray(item) && (item as RecordLike).id === rowId)) return;
   record[key] = [...prev, row];
+}
+
+/**
+ * 注册表门禁：模型候选 award 只能引用已注册物品 id。未注册 id、只有名称的
+ * object-form（无法核验身份）以及未注册字符串一律剔除——模型不得动态创造物品。
+ * 混合场景保留合法项；合法注册物品不受影响（keep-alive）。
+ *
+ * 状态—叙事一致性：被剔除物品的"已获得"叙述不得保留给玩家。不做全局字符串
+ * 替换——当剔除物品的显式名称出现在 narrative/options 中，或全部奖励被剔除且
+ * narrative 带有获得语义时，整体替换为诚实的中性叙事；只提及合法物品的叙事保留。
+ */
+const ACQUISITION_SEMANTICS_RE =
+  /(?:获得|拿到|得到|捡起|拾起|接过|收进|放入(?:行囊|背包|口袋|仓库)|奖励你|赠(?:送|予|给)你|交给了你)/u;
+
+function pruneUnregisteredAwards(record: RecordLike): RecordLike {
+  let pruned = false;
+  const prunedNames: string[] = [];
+  const filterField = (value: unknown, isRegistered: (id: string) => boolean): unknown[] => {
+    if (!Array.isArray(value)) return [];
+    return (value as unknown[]).filter((entry) => {
+      const id =
+        typeof entry === "string"
+          ? entry
+          : entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as RecordLike).id === "string"
+            ? ((entry as RecordLike).id as string)
+            : null;
+      const keep = id !== null && isRegistered(id);
+      if (!keep) {
+        pruned = true;
+        const name =
+          entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as RecordLike).name === "string"
+            ? ((entry as RecordLike).name as string).trim()
+            : typeof entry === "string"
+              ? entry.trim()
+              : "";
+        if (name.length >= 2) prunedNames.push(name);
+      }
+      return keep;
+    });
+  };
+  const next = { ...record };
+  const hadItems = Array.isArray(record.awarded_items) && (record.awarded_items as unknown[]).length > 0;
+  const hadWarehouse = Array.isArray(record.awarded_warehouse_items) && (record.awarded_warehouse_items as unknown[]).length > 0;
+  if (hadItems) {
+    next.awarded_items = filterField(record.awarded_items, (id) => findRegisteredItemById(id) !== undefined);
+  }
+  if (hadWarehouse) {
+    next.awarded_warehouse_items = filterField(record.awarded_warehouse_items, (id) => REGISTERED_WAREHOUSE_ITEM_IDS.has(id));
+  }
+  if (pruned) {
+    next._commit_flags = [...strings(record._commit_flags), "unregistered_item_pruned_v1"];
+
+    const remaining =
+      (Array.isArray(next.awarded_items) ? (next.awarded_items as unknown[]).length : 0) +
+      (Array.isArray(next.awarded_warehouse_items) ? (next.awarded_warehouse_items as unknown[]).length : 0);
+    const narrative = String(record.narrative ?? "");
+    const mentionsPruned = prunedNames.some((name) => narrative.includes(name));
+    const allPruned = remaining === 0 && (hadItems || hadWarehouse);
+    if (mentionsPruned || (allPruned && ACQUISITION_SEMANTICS_RE.test(narrative))) {
+      // 诚实降级：不伪造成功，不保留任何被剔除物品的"已获得"语义。
+      const keptNames = [
+        ...(Array.isArray(next.awarded_items) ? (next.awarded_items as unknown[]) : []),
+        ...(Array.isArray(next.awarded_warehouse_items) ? (next.awarded_warehouse_items as unknown[]) : []),
+      ]
+        .map((entry) => (entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as RecordLike).name === "string" ? ((entry as RecordLike).name as string) : null))
+        .filter((name): name is string => Boolean(name));
+      next.narrative =
+        keptNames.length > 0
+          ? `我核对了行囊与仓库登记：${keptNames.join("、")} 已登记在册；另有所指物品并不在登记中，无法真正取得。`
+          : "我核对了行囊与仓库登记：刚才提到的那样东西并不在登记中，无法真正取得。物品状态没有变化。";
+      next._commit_flags = [...strings(next._commit_flags), "phantom_award_narrative_aligned_v1"];
+    }
+    if (Array.isArray(record.options) && prunedNames.length > 0) {
+      const options = strings(record.options).filter((option) => !prunedNames.some((name) => option.includes(name)));
+      if (options.length !== strings(record.options).length) {
+        next.options = options;
+        next._commit_flags = [...strings(next._commit_flags), "phantom_award_options_aligned_v1"];
+      }
+    }
+  }
+  return next;
+}
+
+const EXPLICIT_NEVER_OWNED_ITEM_RE =
+  /(?:从未|从来没|并未|没有)(?:真正)?(?:拥有|获得|拿到|持有|捡到|买到|得到).{0,12}(?:钥匙|物品|道具|卡|票|药|符|工具|武器)|(?:钥匙|物品|道具|卡|票|药|符|工具|武器).{0,12}(?:从未|从来没|并未|没有)(?:真正)?(?:拥有|获得|拿到|持有|捡到|买到|得到)/u;
+const EXPLICIT_ITEM_USE_RE =
+  /(?:拿出|取出|掏出|使用|用|插入|递出|交出|装备|服用|打开|解锁|挥动)/u;
+
+function rejectExplicitPhantomItem(record: RecordLike): RecordLike {
+  const next = { ...record };
+  for (const field of [
+    "player_location",
+    "npc_location_updates",
+    "dm_change_set",
+    "task_changes",
+    "relation_changes",
+    "loot_changes",
+    "clue_changes",
+    "world_state_changes",
+    "main_threat_updates",
+    "weapon_updates",
+    "weapon_bag_updates",
+    "task_updates",
+    "new_tasks",
+    "relationship_updates",
+    "clue_updates",
+    "decision_options",
+    "next_chapter_title_candidate",
+    "_narrative_audit",
+  ]) {
+    delete next[field];
+  }
+  return {
+    ...next,
+    is_action_legal: false,
+    consumes_time: false,
+    time_cost: "none",
+    sanity_damage: 0,
+    consumed_items: [],
+    consumed_warehouse_items: [],
+    awarded_items: [],
+    awarded_warehouse_items: [],
+    codex_updates: [],
+    currency_change: 0,
+    narrative: "我核对了行囊与已获得物品：这件物品并不在行囊中，也没有取得记录，不能凭空拿出或使用。行动没有发生。",
+    options: [],
+    _commit_flags: [...strings(record._commit_flags), "explicit_phantom_item_blocked_v1"],
+  };
+}
+
+function ensureLegalTurnOptions(record: RecordLike): RecordLike {
+  if (record.is_action_legal !== true || record.is_death === true) return record;
+  const options = strings(record.options).map((option) => option.trim()).filter(Boolean);
+  if (options.length >= 2) return options === record.options ? record : { ...record, options };
+  return {
+    ...record,
+    options: enrichOptionsFromNarrative({
+      currentOptions: [],
+      narrative: String(record.narrative ?? ""),
+    }).slice(0, 4),
+    _commit_flags: [...strings(record._commit_flags), "legal_turn_options_backfilled_v1"],
+  };
+}
+
+const HARMLESS_CONTACT_ATTEMPT_RE =
+  /(?:走过去|走向|朝(?:着)?|靠近|上前|过去|找到?|寻找|去找|碰见|遇见).{0,24}(?:打个?招呼|问候|问(?:他|她|对方)?|询问|打听|聊聊|聊天|交谈|谈谈|说(?:句|话))/u;
+const INDEPENDENTLY_PROHIBITED_SOCIAL_ACTION_RE =
+  /(?:强迫|逼迫|控制|操控|催眠|洗脑|命令|服从|爱上|喜欢上|攻击|袭击|殴打|伤害|杀死|杀掉|绑架|威胁|侵犯)/u;
+const CONTACT_TARGET_UNAVAILABLE_RE =
+  /(?:什么也没有|没有人|没人应|空无一人|无人回应|没有回应|无人出现|没有出现|找不到|未找到|没找到|不在(?:场|家|房间|这里)?(?:[。！!，,]|$)|并不在|并不存在|(?:人影|身影|对方|他|她|目标).{0,12}(?:不见了|消失(?:了)?)|只有.{0,16}(?:墙|空走廊|空气))/u;
+
+function hasProtocolOnlyNarrativeDegradation(record: RecordLike): boolean {
+  if (String(record.narrative ?? "").trim() !== "") return false;
+  const meta = record.security_meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  const securityMeta = meta as RecordLike;
+  return (
+    securityMeta.action === "degrade" &&
+    securityMeta.stage === "final_output" &&
+    securityMeta.protocol_guard === "narrative_contaminated"
+  );
+}
+
+/**
+ * Approaching someone to greet them is an executable player attempt even when
+ * the named target cannot be found. The attempt may fail in-world, but absence
+ * is not itself an illegal action. Keep the no-contact prose while preventing
+ * the candidate from materializing that target through structured NPC deltas.
+ */
+function preserveHarmlessUnavailableContactAttempt(record: RecordLike, action: string): RecordLike {
+  const protocolNarrativeDegraded = hasProtocolOnlyNarrativeDegradation(record);
+  if (
+    record.is_action_legal !== false ||
+    !HARMLESS_CONTACT_ATTEMPT_RE.test(action) ||
+    INDEPENDENTLY_PROHIBITED_SOCIAL_ACTION_RE.test(action) ||
+    (!protocolNarrativeDegraded && !CONTACT_TARGET_UNAVAILABLE_RE.test(String(record.narrative ?? "")))
+  ) {
+    return record;
+  }
+
+  const codexUpdates = protocolNarrativeDegraded
+    ? []
+    : Array.isArray(record.codex_updates)
+    ? (record.codex_updates as unknown[]).filter((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return true;
+        const row = entry as RecordLike;
+        const type = String(row.type ?? row.kind ?? "").toLowerCase();
+        const id = String(row.id ?? row.npcId ?? row.npc_id ?? "");
+        return type !== "npc" && !/^N-/i.test(id) && !row.npcId && !row.npc_id;
+      })
+    : [];
+  const relationChanges =
+    record.relation_changes && typeof record.relation_changes === "object" && !Array.isArray(record.relation_changes)
+      ? { ...(record.relation_changes as RecordLike), relationship_updates: [] }
+      : record.relation_changes;
+  const worldStateChanges =
+    record.world_state_changes && typeof record.world_state_changes === "object" && !Array.isArray(record.world_state_changes)
+      ? { ...(record.world_state_changes as RecordLike), npc_location_updates: [] }
+      : record.world_state_changes;
+
+  return {
+    ...record,
+    is_action_legal: true,
+    narrative: protocolNarrativeDegraded
+      ? "我走过去试着与对方打招呼，但眼前的动静没有形成可确认的回应；这次尝试没有带来可记录的变化。"
+      : record.narrative,
+    relationship_updates: [],
+    npc_location_updates: [],
+    codex_updates: codexUpdates,
+    ...(relationChanges === undefined ? {} : { relation_changes: relationChanges }),
+    ...(worldStateChanges === undefined ? {} : { world_state_changes: worldStateChanges }),
+    _commit_flags: [...strings(record._commit_flags), "unavailable_contact_attempt_legalized_v1"],
+  };
 }
 
 /**
@@ -55,6 +273,14 @@ export function applyRegisteredMechanicsGuard(args: {
   // model field or replay it after the task has already reached a terminal state.
   delete record.profession_trial_result;
 
+  if (EXPLICIT_NEVER_OWNED_ITEM_RE.test(action) && EXPLICIT_ITEM_USE_RE.test(action)) {
+    return rejectExplicitPhantomItem(record);
+  }
+
+  // 状态真相源门禁：假物品不得经 award 字段进入最终 inventory/warehouse。
+  const awardChecked = pruneUnregisteredAwards(record);
+  Object.assign(record, awardChecked);
+
   if (Array.isArray(record.new_tasks)) {
     const before = record.new_tasks as unknown[];
     const filtered = before.filter((raw) => {
@@ -75,7 +301,7 @@ export function applyRegisteredMechanicsGuard(args: {
 
   if (Array.isArray(record.task_updates)) {
     record.task_updates = (record.task_updates as unknown[]).flatMap((raw) => {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
       const row = raw as RecordLike;
       const id = typeof row.id === "string" ? row.id : typeof row.task_id === "string" ? row.task_id : "";
       if (!(REGISTERED_TASK_IDS.has(id) || active.has(id) || completed.has(id))) return [];
@@ -220,5 +446,5 @@ export function applyRegisteredMechanicsGuard(args: {
     }
     record._commit_flags = [...strings(record._commit_flags), "authoritative_combat_settlement_v1"];
   }
-  return record;
+  return ensureLegalTurnOptions(preserveHarmlessUnavailableContactAttempt(record, action));
 }
