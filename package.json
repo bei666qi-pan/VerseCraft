@@ -141,7 +141,16 @@
     "autoops:setup-disk-alert": "node scripts/autoops/setup-disk-alert.mjs",
     "autoops:start": "node scripts/autoops/start-autoops.mjs",
     "autoops:start:codex": "node scripts/autoops/start-autoops.mjs --agent codex",
-    "autoops:start:deepseek": "node scripts/autoops/start-autoops.mjs --agent deepseek"
+    "autoops:start:deepseek": "node scripts/autoops/start-autoops.mjs --agent deepseek",
+    "self-improve:dry-run": "tsx --conditions=react-server scripts/self-improve/run.ts --dry-run",
+    "self-improve:baseline": "tsx --conditions=react-server scripts/self-improve/baseline.ts",
+    "self-improve:run": "tsx --conditions=react-server scripts/self-improve/run.ts",
+    "self-improve:resume": "tsx --conditions=react-server scripts/self-improve/resume.ts",
+    "self-improve:report": "tsx --conditions=react-server scripts/self-improve/report.ts",
+    "self-improve:campaign": "tsx --conditions=react-server scripts/self-improve/campaign.ts",
+    "self-improve:calibration": "tsx --conditions=react-server scripts/self-improve/calibration.ts",
+    "self-improve:verify:strict": "tsx --conditions=react-server scripts/self-improve/verify-strict.ts",
+    "self-improve:supervise": "tsx --conditions=react-server scripts/self-improve/supervise.ts"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
