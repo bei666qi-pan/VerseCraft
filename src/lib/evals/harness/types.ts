@@ -10,6 +10,31 @@
 
 import type { EvalMode } from "./config";
 
+/**
+ * 实验溯源身份（供 selfImprove / eval 统一 provenance）。
+ * - 所有 eval/bench/playthrough 脚本共享同一套字段
+ * - 统一 JSONL 历史，支持跨批次对比
+ * - 可审计：谁在什么配置下用什么模型跑了什么数据集
+ */
+export interface ExperimentProvenance {
+  /** Git commit SHA（40 字符完整值） */
+  commit: string;
+  /** DM stable prompt 版本（来自 VERSECRAFT_DM_STABLE_PROMPT_VERSION） */
+  promptVersion: string;
+  /** 主模型标识（如 deepseek-v3、gpt-4o） */
+  model: string;
+  /** 配置快照键（如 "prod-default"、"slow-lane-only"） */
+  config: string;
+  /** 数据集版本标识（如 "v2.1.0"、"2026-07-09"） */
+  datasetVersion: string;
+  /** 随机种子（确定性复现） */
+  seed: number;
+  /** Judge 溯源：judge 模型 + rubric 版本 */
+  judgeProvenance: string;
+  /** 实验运行的 ISO 时间戳 */
+  timestamp: string;
+}
+
 // ── Case 元数据 ──────────────────────────────────────────
 
 export type CaseDifficulty = "basic" | "intermediate" | "advanced";

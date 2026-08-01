@@ -5,7 +5,7 @@ import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import { getAnomalyCombatStat } from "@/lib/registry/combatCanon";
 import { findRegisteredItemById } from "@/lib/registry/itemLookup";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
-import { enrichOptionsFromNarrative } from "@/lib/turnEngine/enrichGameState";
+import { enrichOptionsFromNarrative } from "./legalTurnOptionsFallback";
 
 const REGISTERED_WAREHOUSE_ITEM_IDS = new Set(WAREHOUSE_ITEMS.map((item) => item.id));
 
