@@ -50,14 +50,13 @@ function allowObtainedItem(args: {
     }
     return { ok: true };
   }
+  // 未注册 id 一律拒绝：模型不得经 obtained_items 动态创造物品（任意 tier）。
+  // 拒绝理由区分 tier 仅为 telemetry 粒度，行为一致。
   const th = args.tierHint ?? "B";
   if (th === "S" || th === "A") {
     return { ok: false, reason: "high_tier_unknown_id" };
   }
-  if (args.isKeyItem && (args.inventoryIds.includes(args.itemId) || args.warehouseIds.includes(args.itemId))) {
-    return { ok: false, reason: "duplicate_key_item" };
-  }
-  return { ok: true };
+  return { ok: false, reason: "unregistered_item_id" };
 }
 
 function collectCandidates(cs: DmChangeSetV1): ObjectiveCandidateV1[] {

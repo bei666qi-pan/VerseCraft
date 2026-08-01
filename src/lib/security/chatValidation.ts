@@ -96,6 +96,19 @@ const MAX_MESSAGE_CHARS = 4000;
 const MAX_PLAYER_CONTEXT_CHARS = 6000;
 const MAX_CLIENT_STATE_JSON_CHARS = 10_000;
 
+const ACTIONLESS_CONFIRMATION_RE =
+  /^[\s（(【\[]*(?:再次|再)?确认[\s。！!？?）)】\]]*$/u;
+
+/**
+ * Rejects input that carries no executable player action. Besides blank text,
+ * this covers a context-free confirmation marker produced by repeated-submit
+ * clients; sending it to the model lets the model invent an unrelated turn.
+ */
+export function isActionlessPlayerInput(value: unknown): boolean {
+  const text = String(value ?? "").trim();
+  return text.length === 0 || ACTIONLESS_CONFIRMATION_RE.test(text);
+}
+
 function clampInt(n: unknown, min: number, max: number): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : Number(String(n ?? ""));
   const safe = Number.isFinite(v) ? Math.trunc(v) : min;
@@ -258,6 +271,10 @@ export function validateChatRequest(body: unknown): ChatValidationResult {
       .slice()
       .reverse()
       .find((m) => m.role === "user")?.content ?? "";
+
+  if (isActionlessPlayerInput(latestUserInput)) {
+    return { ok: false, status: 400, error: "player action is empty" };
+  }
 
   const sessionIdCandidate = sanitizeInputText(String(rawSessionId ?? ""), 120);
   const sessionId = sessionIdCandidate || null;

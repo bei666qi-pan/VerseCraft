@@ -315,3 +315,34 @@ test("applyDmChangeSetToDmRecord: rejects S-tier unknown item id", () => {
   const out = applyDmChangeSetToDmRecord(dm, { clientState: baseClient });
   assert.deepEqual(out.awarded_items, []);
 });
+
+test("applyDmChangeSetToDmRecord: rejects unregistered low-tier item ids (no dynamic item creation)", () => {
+  const dm: Record<string, unknown> = {
+    is_action_legal: true,
+    sanity_damage: 0,
+    narrative: "你捡到了一把幻影钥匙。",
+    is_death: false,
+    consumes_time: true,
+    consumed_items: [],
+    awarded_items: [],
+    codex_updates: [],
+    relationship_updates: [],
+    main_threat_updates: [],
+    weapon_updates: [],
+    weapon_bag_updates: [],
+    new_tasks: [],
+    task_updates: [],
+    clue_updates: [],
+    npc_location_updates: [],
+    options: [],
+    currency_change: 0,
+    dm_change_set: {
+      obtained_items: [{ item_id: "I-X999", tier_hint: "C" }],
+    },
+  };
+  const out = applyDmChangeSetToDmRecord(dm, { clientState: baseClient });
+  assert.deepEqual(out.awarded_items, []);
+  const meta = out.security_meta as Record<string, unknown>;
+  const trace = meta.change_set_trace as string[];
+  assert.ok(trace.some((t) => t.includes("obtained_reject:I-X999:unregistered_item_id")));
+});

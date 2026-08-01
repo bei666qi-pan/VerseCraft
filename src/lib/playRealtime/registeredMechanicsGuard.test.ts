@@ -200,3 +200,381 @@ test("negated task completion language cannot complete floor probe", () => {
   });
   assert.deepEqual(out.task_updates, []);
 });
+
+test("legal non-terminal turns receive executable fallback options at the production guard", () => {
+  const legal = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "我沿着走廊查看每一扇门。",
+      options: [],
+    },
+    latestUserInput: "顺着走廊往前走，留意两边的动静。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+  assert.ok(Array.isArray(legal.options));
+  assert.ok((legal.options as string[]).length >= 2);
+  assert.ok((legal.options as string[]).every((option) => option.trim().length > 0));
+
+  const illegal = applyRegisteredMechanicsGuard({
+    dmRecord: { is_action_legal: false, is_death: false, narrative: "行动无法执行。", options: [] },
+    latestUserInput: "穿过不存在的墙。",
+  });
+  assert.deepEqual(illegal.options, []);
+
+  const terminal = applyRegisteredMechanicsGuard({
+    dmRecord: { is_action_legal: true, is_death: true, narrative: "故事在这里结束。", options: [] },
+    latestUserInput: "继续。",
+  });
+  assert.deepEqual(terminal.options, []);
+});
+
+test("golden-talk-to-npc-var-2 keeps an unavailable greeting attempt legal without NPC state", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "林晚枫这个名字像一枚锈钉子挂在脑子里。可走廊尽头只有灰白的墙，我环顾四周，除了自己的呼吸声，什么也没有。",
+      options: [],
+      relationship_updates: [{ npcId: "林晚枫", affinity: 1 }],
+      npc_location_updates: [{ npcId: "林晚枫", locationId: "公寓走廊" }],
+      codex_updates: [{ type: "npc", name: "林晚枫", summary: "刚认识的人" }],
+    },
+    latestUserInput: "走过去和林晚枫打个招呼。",
+    clientState: { playerLocation: "公寓走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /什么也没有/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-repeat-3 keeps an unavailable conversation attempt legal", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "我敲了两下门，没人应。林晚枫不在。",
+      options: ["我退出房间，在走廊里喊林晚枫的名字", "我回到一楼大厅等他"],
+      relationship_updates: [{ npcId: "林晚枫", affinity: 1 }],
+      npc_location_updates: [{ npcId: "林晚枫", locationId: "公寓一楼走廊" }],
+      codex_updates: [{ type: "npc", name: "林晚枫", summary: "刚认识的人" }],
+    },
+    latestUserInput: "我找到林晚枫，问他最近有没有发现什么异常。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /没人应|不在/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-repeat-3 preserves harmless contact legality after protocol-only narrative degradation", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      time_cost: "light",
+      narrative: "",
+      options: [
+        "我走近林晚枫，轻声问他最近是否安好",
+        "我站在几步外，观察林晚枫的神色变化",
+      ],
+      codex_updates: [{
+        id: "obs_lobby_light_flicker",
+        name: "值班室灯光异动",
+        observation: "林晚枫提到楼下值班室灯光亮了一下又灭。",
+      }],
+      relationship_updates: [{ npcId: "N-007", affinity: 1 }],
+      npc_location_updates: [{ npcId: "N-007", locationId: "公寓一楼走廊" }],
+      security_meta: {
+        action: "degrade",
+        stage: "final_output",
+        protocol_guard: "narrative_contaminated",
+        protocol_guard_flags: ["embedded_dm_key"],
+      },
+    },
+    latestUserInput: "我走向林晚枫，想和他聊聊最近发生的事。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /试着|回应|记录/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.equal((out.security_meta as Record<string, unknown>).protocol_guard, "narrative_contaminated");
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-var-2-var-3 treats a vanished target as a legal unavailable-contact outcome", () => {
+  const narrative = "我迈出那步的瞬间，左脚的触感不对——地板凉得发木，像踩进一摊不该存在的积水。我低头，脚下是平整的灰白地砖，干燥，没有水渍。再抬头时，走廊尽头那道身影已经不见了。林晚枫？这个名字在我舌尖上滚了一圈，空落落的。";
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      time_cost: "light",
+      sanity_damage: 1,
+      narrative,
+      options: ["我快步走向走廊尽头，查看那道身影消失的拐角", "我后退两步，先确认身后没有动静"],
+      relationship_updates: [],
+      npc_location_updates: [],
+      codex_updates: [],
+    },
+    latestUserInput: "走过去和林晚枫打个招呼。（再试一次）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, narrative);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("unavailable-contact adjudication does not legalize coercive or violent social actions", () => {
+  for (const latestUserInput of [
+    "走过去强迫林晚枫爱上我。",
+    "走过去和林晚枫打招呼，然后攻击他。",
+  ]) {
+    const out = applyRegisteredMechanicsGuard({
+      dmRecord: {
+        is_action_legal: false,
+        is_death: false,
+        narrative: "走廊里没有人，也没有任何回应。",
+        options: [],
+      },
+      latestUserInput,
+      clientState: { playerLocation: "公寓走廊" },
+    });
+
+    assert.equal(out.is_action_legal, false, latestUserInput);
+    assert.equal(Boolean((out._commit_flags as string[] | undefined)?.includes("unavailable_contact_attempt_legalized_v1")), false);
+  }
+});
+
+test("explicit use of a never-owned item is rejected and cannot commit phantom deltas", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      consumes_time: true,
+      narrative: "我把那枚钥匙插进锁孔，门应声打开。",
+      options: [],
+      consumed_items: ["phantom-key"],
+      awarded_items: [{ id: "phantom-key", name: "不存在的钥匙" }],
+      codex_updates: [{ id: "phantom-door", name: "被打开的门" }],
+      player_location: "门后房间",
+    },
+    latestUserInput: "我拿出那把从未拥有的钥匙，试着打开面前的门。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+
+  assert.equal(out.is_action_legal, false);
+  assert.equal(out.consumes_time, false);
+  assert.deepEqual(out.consumed_items, []);
+  assert.deepEqual(out.awarded_items, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.equal(out.player_location, undefined);
+  assert.match(String(out.narrative), /并不在行囊|不能凭空/);
+});
+
+test("phantom-item rejection clears nested mirrors from a resolved live envelope", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      consumes_time: true,
+      time_cost: "light",
+      narrative: "我用不存在的钥匙打开门，并走进门后房间。",
+      task_changes: { new_tasks: [{ id: "phantom-task" }], task_updates: [] },
+      relation_changes: { relationship_updates: [{ npcId: "phantom-npc", delta: 5 }] },
+      loot_changes: { awarded_items: [{ id: "phantom-key" }], consumed_items: [] },
+      clue_changes: { clue_updates: [{ id: "phantom-clue" }] },
+      world_state_changes: { player_location: "门后房间" },
+    },
+    latestUserInput: "我拿出那把从未拥有的钥匙，试着打开面前的门。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+
+  assert.equal(out.is_action_legal, false);
+  assert.equal(out.consumes_time, false);
+  assert.equal(out.time_cost, "none");
+  assert.equal(out.task_changes, undefined);
+  assert.equal(out.relation_changes, undefined);
+  assert.equal(out.loot_changes, undefined);
+  assert.equal(out.clue_changes, undefined);
+  assert.equal(out.world_state_changes, undefined);
+});
+
+test("phantom-item guard leaves ordinary exploration and valid deltas unchanged", () => {
+  const codexUpdate = { id: "corridor-scratch", name: "门边划痕" };
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "我在门边发现一道新划痕。",
+      options: ["靠近查看划痕", "检查走廊尽头"],
+      codex_updates: [codexUpdate],
+    },
+    latestUserInput: "我沿着走廊慢慢走，看看两边有什么房间。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.deepEqual(out.codex_updates, [codexUpdate]);
+  assert.deepEqual(out.options, ["靠近查看划痕", "检查走廊尽头"]);
+});
+
+test("unregistered awarded item ids are pruned before commit (no_fake_item state gate)", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "你把那把幻影钥匙收进了行囊。",
+      options: ["继续检查房门", "回到走廊"],
+      awarded_items: [{ id: "I-X999", name: "幻影钥匙" }],
+    },
+    latestUserInput: "我沿着走廊慢慢走，看看两边有什么房间。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_items, []);
+  assert.ok((out._commit_flags as string[]).includes("unregistered_item_pruned_v1"));
+});
+
+test("name-only phantom award objects cannot self-create an item", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "你获得了一把不存在的刀。",
+      options: ["查看行囊", "继续前进"],
+      awarded_items: [{ name: "不存在的刀" }],
+    },
+    latestUserInput: "我沿着走廊慢慢走，看看有什么发现。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_items, []);
+  assert.ok((out._commit_flags as string[]).includes("unregistered_item_pruned_v1"));
+});
+
+test("mixed awards keep registered items and prune only the phantom", () => {
+  const legit = { id: "I-C12", name: " registered name unused" };
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "你捡起一件杂物，又捡到一把幻影钥匙。",
+      options: ["查看行囊", "继续前进"],
+      awarded_items: [legit, { id: "I-X999", name: "幻影钥匙" }],
+    },
+    latestUserInput: "我在走廊里四处翻找，看看能捡到什么。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_items, [legit]);
+  assert.ok((out._commit_flags as string[]).includes("unregistered_item_pruned_v1"));
+});
+
+test("registered awarded items pass through untouched (keep-alive)", () => {
+  const legit = { id: "I-A01", name: "停止转动的怀表" };
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "老人把怀表交到你手里。",
+      options: ["道谢", "询问来历"],
+      awarded_items: [legit],
+    },
+    latestUserInput: "我沿着走廊慢慢走，和老人聊了几句。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_items, [legit]);
+  assert.ok(!(out._commit_flags as string[] | undefined)?.includes("unregistered_item_pruned_v1"));
+});
+
+test("unregistered warehouse awards are pruned; registered warehouse items survive", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "仓库里多了一卷胶带和一台幽灵机器。",
+      options: ["查看仓库", "离开"],
+      awarded_warehouse_items: [{ id: "W-B101" }, { id: "W-X999", name: "幽灵机器" }],
+    },
+    latestUserInput: "我去仓库清点了一下物资。",
+    clientState: { playerLocation: "B1_配电间", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_warehouse_items, [{ id: "W-B101" }]);
+  assert.ok((out._commit_flags as string[]).includes("unregistered_item_pruned_v1"));
+});
+
+test("narrative must not claim acquisition of a pruned phantom award", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "你获得了幻影钥匙，把它收进了行囊。",
+      options: ["用幻影钥匙开门", "继续探索"],
+      awarded_items: [{ id: "I-X999", name: "幻影钥匙" }],
+    },
+    latestUserInput: "我在走廊里翻找，看看有什么收获。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_items, []);
+  assert.ok(!/获得了?幻影钥匙|收进|幻影钥匙/.test(String(out.narrative)));
+  assert.ok((out.options as string[]).every((o) => !o.includes("幻影钥匙")));
+});
+
+test("narrative for a legit registered award is preserved", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "老人把停止转动的怀表交到你手里，你获得了它。",
+      options: ["道谢", "询问来历"],
+      awarded_items: [{ id: "I-A01", name: "停止转动的怀表" }],
+    },
+    latestUserInput: "我和老人聊了几句。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.match(String(out.narrative), /停止转动的怀表/);
+});
+
+test("mixed awards: narrative only confirms the registered change", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "你捡起配电间的绝缘胶带，又获得了幽灵机器，收获满满。",
+      options: ["查看幽灵机器", "离开仓库"],
+      awarded_warehouse_items: [{ id: "W-B101", name: "配电间的绝缘胶带" }, { id: "W-X999", name: "幽灵机器" }],
+    },
+    latestUserInput: "我去仓库清点了一下物资。",
+    clientState: { playerLocation: "B1_配电间", inventoryItemIds: [] },
+  });
+  assert.deepEqual(out.awarded_warehouse_items, [{ id: "W-B101", name: "配电间的绝缘胶带" }]);
+  assert.ok(!/幽灵机器/.test(String(out.narrative)));
+  assert.ok((out.options as string[]).every((o) => !o.includes("幽灵机器")));
+});
+
+test("seeing an item is not acquiring it: no award, narrative untouched", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: true,
+      is_death: false,
+      narrative: "你看见桌上放着一把从未见过的钥匙，但没有伸手。",
+      options: ["拿起钥匙看看", "离开房间"],
+      awarded_items: [],
+    },
+    latestUserInput: "我环顾房间，观察桌上的东西。",
+    clientState: { playerLocation: "公寓一楼走廊", inventoryItemIds: [] },
+  });
+  assert.match(String(out.narrative), /从未见过的钥匙/);
+});
