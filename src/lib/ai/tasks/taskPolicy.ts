@@ -45,17 +45,17 @@ const CONTROL = "control" as const satisfies AiLogicalRole;
 const ENHANCE = "enhance" as const satisfies AiLogicalRole;
 const REASONER = "reasoner" as const satisfies AiLogicalRole;
 
-export const PLAYER_CHAT_MAX_TOKENS_MIN = 896;
+export const PLAYER_CHAT_MAX_TOKENS_MIN = 2048;
 export const PLAYER_CHAT_MAX_TOKENS_MAX = 2304;
 
 const PLAYER_CHAT_MAX_TOKENS_BY_TIER: Record<PlayerChatNarrativeBudgetTier, number> = {
-  micro: 896,
-  short: 1152,
-  standard: 896,
+  micro: 2048,
+  short: 2048,
+  standard: 2304,
   // reveal/climax 随文风改造的 narrativeBudgetPackets 字数上限同步上调，
   // 但保持在 PLAYER_CHAT_MAX_TOKENS_MAX(2304) 之内；ending 已在上限，不再上调。
   reveal: 2048,
-  climax: 2240,
+  climax: 2304,
   ending: 2304,
 };
 
@@ -65,7 +65,7 @@ export const TASK_POLICY: Record<TaskType, TaskBinding> = {
     primaryRole: MAIN,
     fallbackRoles: [],
     stream: true,
-    maxTokens: 896,
+    maxTokens: 2304,
     timeoutMs: 60_000,
     budgetLevel: "critical",
     responseFormatJsonObject: true,

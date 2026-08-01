@@ -5368,6 +5368,8 @@ async function postChatInternal(req: Request) {
           pushAiRoutingReport(routingReport);
           await flushThisRound();
           if (!closedByFinalHooks) {
+            await closeWithFallback();
+          } else {
             await writer.close();
           }
           return;
@@ -5436,6 +5438,8 @@ async function postChatInternal(req: Request) {
             pushAiRoutingReport(routingReport);
             await flushThisRound();
             if (!closedByFinalHooksDone) {
+              await closeWithFallback();
+            } else {
               await writer.close();
             }
             return;
@@ -5631,7 +5635,7 @@ async function postChatInternal(req: Request) {
       }
     );
     try {
-      await writer.write(sse(fallbackPayload));
+      await writer.write(`${VERSECRAFT_FINAL_PREFIX}${fallbackPayload}`);
     } catch {
       /* stream may already be closed or errored */
     }
