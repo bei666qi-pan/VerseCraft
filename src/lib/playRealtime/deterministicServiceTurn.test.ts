@@ -78,6 +78,43 @@ test("deterministic forge quote does not mutate resources", () => {
   assert.deepEqual(turn.weapon_updates, []);
 });
 
+test("boundary-forge-insufficient-materials-qty-3 returns a zero-mutation deterministic final turn", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "我有充足的材料，锻造一把精良长剑。",
+    playerContext: "",
+    clientState: {
+      ...forgeState(),
+      playerLocation: "公寓一楼走廊",
+      presentNpcIds: [],
+      originium: 0,
+      inventoryItemIds: [],
+      warehouseItemIds: [],
+      equippedWeapon: null,
+      weaponBag: [],
+    },
+    requestId: "vc_test_unregistered_forge",
+  }) as Record<string, any> | null;
+
+  assert.ok(turn);
+  assert.equal(turn.is_action_legal, false);
+  assert.deepEqual(turn.consumed_items, []);
+  assert.deepEqual(turn.awarded_items, []);
+  assert.deepEqual(turn.awarded_warehouse_items, []);
+  assert.equal(turn.currency_change, 0);
+  assert.equal(turn._eval_metrics.model_calls, 0);
+  assert.equal(turn.security_meta.deterministic_action_kind, "unregistered_forge_attempt");
+});
+
+test("discussion of a possible unregistered forge remains on the narrative path", () => {
+  const turn = buildDeterministicServiceTurn({
+    latestUserInput: "询问老刘以后能否打造一把长剑。",
+    playerContext: "",
+    clientState: forgeState(),
+    requestId: "vc_test_forge_discussion",
+  });
+  assert.equal(turn, null);
+});
+
 test("explicit equipment command is adjudicated without a model call", () => {
   const state = { ...forgeState(), equippedWeapon: null } as ClientStructuredContextV1;
   const turn = buildDeterministicServiceTurn({

@@ -277,6 +277,65 @@ test("keepalive-normal-talk-repeat-3 keeps an unavailable conversation attempt l
   assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
 });
 
+test("keepalive-normal-talk-repeat-3 preserves legality for the observed wrong-person final", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "走廊尽头的声控灯忽明忽暗，我循着那股淡淡的颜料气味拐过转角，却在墙根处撞见一个倚着消防栓的人影——不是林晚枫。‘找谁？’他问。我张了张嘴，林晚枫这个名字卡在喉咙里。这栋楼里没有叫陌生人枫的住户，至少此刻没有。",
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_redacted_v1"],
+    },
+    latestUserInput: "我找到林晚枫，问他最近有没有发现什么异常。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /不是林晚枫/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-repeat-3 preserves legality after the entity hard-gate fallback", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      narrative: "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。",
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      security_meta: {
+        settlement_guard: "stage2_freeze_on_illegal_or_death",
+        turn_commit: {
+          safe_fallback: true,
+          safety_policy: {
+            decision: "block_commit",
+            entity_hard_gate: true,
+          },
+        },
+      },
+    },
+    latestUserInput: "我找到林晚枫，问他最近有没有发现什么异常。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /无法确认来者身份/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
 test("golden-talk-to-npc-repeat-3 preserves harmless contact legality after protocol-only narrative degradation", () => {
   const out = applyRegisteredMechanicsGuard({
     dmRecord: {
@@ -337,6 +396,247 @@ test("golden-talk-to-npc-var-2-var-3 treats a vanished target as a legal unavail
 
   assert.equal(out.is_action_legal, true);
   assert.equal(out.narrative, narrative);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-var-2-npcswap-3 treats explicit named-target absence as a legal contact attempt", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "我朝那个方向迈出两步——然后停住了。没有林晚枫。走廊灯下只有我自己的影子。",
+      options: [],
+      codex_updates: [{ id: "N-013", name: "枫", type: "npc", observation: "刚才的场面里，已经确认其踪迹。" }],
+      relationship_updates: [],
+      npc_location_updates: [],
+    },
+    latestUserInput: "走过去和林晚枫打个招呼。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-npcswap-3 preserves legality for the exact named-target denial", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      narrative: "走廊的灯管在头顶嗡嗡作响，我迈出第一步时才发现——这里根本没有叫陌生人枫的人。",
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_redacted_v1"],
+    },
+    latestUserInput: "我走向林晚枫，想和他聊聊最近发生的事。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /根本没有叫陌生人枫的人/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-var-2-var-3 preserves direct ordinary inquiry legality when nobody responds", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "我喊出林晚枫的名字，但走廊里没有回应。没人从紧闭的门后出现。",
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+    },
+    latestUserInput: "向林晚枫了解最新的情况。（再试一次）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-var-2 preserves legality for the observed empty-corridor final", () => {
+  const narrative = `走廊的声控灯在我抬手的瞬间熄了，黑暗像一块没拧干的抹布糊上来。我愣在原地，指尖还悬在半空——刚才明明想叫住谁，可喉咙里卡着那个名字，像含着一颗没化开的糖，甜得发腻，却想不起是什么时候尝过的。
+
+“林晚枫。”
+
+我试着念出声，声控灯没亮。这个名字从嘴里滚出来，陌生得像在背别人的台词。我盯着走廊尽头等一个回应——等脚步声，等咳嗽，等任何能证明我刚才不是在自言自语的东西。
+
+什么都没有。
+
+“有人吗？”我对着空走廊喊。回应我的是暖气片里传来的咕噜声。`;
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      sanity_damage: 1,
+      narrative,
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_redacted_v1"],
+    },
+    latestUserInput: "向林晚枫了解最新的情况。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, narrative);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-var-2-repeat-3 preserves legality for the observed unreachable-contact final", () => {
+  const narrative = `林晚枫。
+
+这个名字从我嘴里滑出来，带着点自嘲的苦味。我连这人是男是女、住几楼、长什么样都不知道，上哪儿“再次确认”？我把某个游戏里记混的NPC名字，或者昨晚没做完的梦，当成了这栋公寓里的真人。
+
+我意识到一个更实际的问题：我连张住户名册都没有，连“最新情况”该找谁问都摸不着门。`;
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      sanity_damage: 1,
+      narrative,
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_redacted_v1"],
+    },
+    latestUserInput: "向林晚枫了解最新的情况。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, narrative);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-npcswap-3 preserves legality for the latest no-contact final", () => {
+  const narrative = `走廊的日光灯管在头顶嗡嗡作响，我迈出半步才意识到——林晚枫是谁？
+
+这个念头像一粒石子落进空井，回声撞得太阳穴发紧。我明明记得那个名字，记得"最近发生的事"像一团湿棉花堵在胸口，可当我试图把名字和脸缝在一起时，针脚全散了。走廊两侧的门牌号在视野边缘浮动，没有一扇门后传出我期待的那个声音。
+
+"同学，你挡着消防栓了。"
+
+身后传来保洁阿姨的提醒，拖把桶轮子碾过地砖的声响由远及近。我侧身让开，后背贴上冰凉的金属箱体，那凉意顺着校服布料渗进来，把恍惚钉回现实——我在这里，公寓一楼走廊，日光灯下，影子被拉得偏长，像是下午四点的太阳角度。
+
+可我不该在这里。至少，我不该一个人都不认识地站在这里。`;
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      sanity_damage: 0,
+      narrative,
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_low_confidence_audited_v1"],
+    },
+    latestUserInput: "我走向林晚枫，想和他聊聊最近发生的事。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, narrative);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-var-2-repeat-3 preserves legality for the latest resident-denial final", () => {
+  const narrative = `走廊的日光灯管在我头顶发出低频的嗡鸣，像某种不耐烦的催促。我停下脚步，视线扫过两侧紧闭的住户门牌——404、405、406——没有一扇门缝透出林晚枫可能存在的痕迹。这个名字从我嘴里滑出来的时候，连我自己都愣了一下。林晚枫？我为什么会觉得这个人应该在这里？
+
+我伸手按住406的门铃，金属按钮冰凉刺骨，没有回响。再按一次，只有灯管继续嗡鸣。
+
+"找谁？"一个沙哑的声音突然从背后截住我。
+
+"我……"喉咙发紧，那个名字卡在那里。林晚枫。我不确定这是我要找的人，还是我从某个不该记得的梦里偷来的名字。
+
+老伯的眼睛眯成一条缝，目光在我校服袖口停留了两秒。"学生娃？这层楼没姓林的。"他抿了口茶，搪瓷杯沿磕出一声脆响，"走错门了。"`;
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      sanity_damage: 0,
+      narrative,
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_low_confidence_audited_v1"],
+    },
+    latestUserInput: "向林晚枫了解最新的情况。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, narrative);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc preserves the original harmless conversation attempt when the target is absent", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "走廊的声控灯在我踏出第三步时灭了。没有林晚枫。没有脚步声。只有我自己的呼吸在窄道里撞出回音。",
+      options: [],
+      codex_updates: [{ id: "N-008", name: "电工老刘", type: "npc", observation: "刚才的场面里，已经确认其踪迹。" }],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_redacted_v1"],
+    },
+    latestUserInput: "我走向林晚枫，想和他聊聊最近发生的事。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /没有林晚枫/);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-var-3 preserves a search-and-inquire attempt when residents deny the target exists", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "我抬头看门牌号，一水的锈迹和剥落墙皮，没有哪扇门上写着这个名字。我拦住一个端着搪瓷杯路过的住户。‘没这人。’他走了两步又停住，背对着我补了半句，‘这楼里没有姓林的。’",
+      options: [],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_low_confidence_audited_v1"],
+    },
+    latestUserInput: "找林晚枫打听消息。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /没这人/);
   assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
 });
 

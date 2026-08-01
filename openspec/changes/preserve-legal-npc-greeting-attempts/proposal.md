@@ -5,7 +5,7 @@ A live deterministic golden case showed that an ordinary attempt to approach and
 ## What Changes
 
 - Add a narrow production adjudication rule for ordinary approach/greeting attempts that preserves action legality while leaving an absent or unknown target unavailable.
-- Add regression tests reproducing `golden-talk-to-npc-var-2`, `golden-talk-to-npc-repeat-3`, and `golden-talk-to-npc-var-2-var-3` before implementing each rule refinement.
+- Add regression tests reproducing `golden-talk-to-npc`, `golden-talk-to-npc-npcswap-3`, `golden-talk-to-npc-var-2`, `golden-talk-to-npc-var-2-npcswap-3`, `golden-talk-to-npc-repeat-3`, `golden-talk-to-npc-var-2-var-3`, `keepalive-normal-talk-var-2`, `keepalive-normal-talk-var-2-repeat-3`, `keepalive-normal-talk-var-3`, `keepalive-normal-talk-repeat-3`, and `keepalive-normal-talk-var-2-var-3` before implementing each rule refinement.
 - Preserve legality when a harmless contact attempt is degraded only because its narrative contains protocol leakage, while replacing the unusable narrative with a deterministic no-contact fallback.
 - Preserve all entity, state-delta, SSE, and final-envelope guards; do not create NPC, relationship, codex, location, or task state for an unknown target.
 - Exclude coercive, violent, supernatural-control, and other independently illegal social actions from the override.
