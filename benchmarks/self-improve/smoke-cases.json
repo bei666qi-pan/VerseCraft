@@ -1,0 +1,354 @@
+{
+  "version": "1.0.0",
+  "description": "Smoke profile scenario cases for self-improving agent system",
+  "cases": [
+    {
+      "caseId": "golden-explore-room",
+      "name": "探索房间（正向）",
+      "category": "golden",
+      "source": "hand",
+      "holdout": false,
+      "tags": [
+        "golden",
+        "explore",
+        "happy-path"
+      ],
+      "difficulty": "basic",
+      "description": "简单探索动作：玩家观察周围环境，应获得描述性叙事和有效选项",
+      "playerInput": "我环顾四周，看看这个房间里有什么。",
+      "expectedBehavior": "返回叙事描述和至少2个可执行选项",
+      "expectedInvariants": [
+        {
+          "id": "action_legal",
+          "check": "action_legality",
+          "expected": "pass",
+          "severity": "critical"
+        },
+        {
+          "id": "has_options",
+          "check": "option_executability",
+          "expected": "pass",
+          "severity": "major"
+        }
+      ],
+      "seed": 1001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-nonexistent-item",
+      "name": "使用不存在的物品（负向）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "inventory",
+        "negative"
+      ],
+      "difficulty": "intermediate",
+      "description": "玩家尝试使用一个不在背包中的物品，应被拒绝",
+      "playerInput": "我拿出那把从未拥有的钥匙，试着打开面前的门。",
+      "expectedBehavior": "行动被标记为非法，或系统指出物品不存在",
+      "expectedInvariants": [
+        {
+          "id": "no_fake_item",
+          "check": "resource_conservation",
+          "expected": "pass",
+          "severity": "critical"
+        }
+      ],
+      "seed": 2001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-npc-not-present",
+      "name": "与不在场NPC互动（负向）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "npc",
+        "epistemic",
+        "negative"
+      ],
+      "difficulty": "intermediate",
+      "description": "玩家尝试与不在当前场景的NPC互动",
+      "playerInput": "我对着空气喊楼上的陈婆婆下来开门。",
+      "expectedBehavior": "NPC不在场，不应凭空出现回应",
+      "expectedInvariants": [
+        {
+          "id": "npc_presence",
+          "check": "npc_epistemic_boundary",
+          "expected": "fail",
+          "severity": "critical"
+        }
+      ],
+      "seed": 2002,
+      "requiresLive": false
+    },
+    {
+      "caseId": "fuzz-empty-input",
+      "name": "空输入（负向）",
+      "category": "fuzz",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "fuzz",
+        "input-validation"
+      ],
+      "difficulty": "basic",
+      "description": "空字符串输入应被优雅处理",
+      "playerInput": "",
+      "expectedBehavior": "输入被拒绝或返回提示，不崩溃",
+      "expectedInvariants": [
+        {
+          "id": "empty_handled",
+          "check": "action_legality",
+          "expected": "fail",
+          "severity": "minor"
+        }
+      ],
+      "seed": 3001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "holdout-npc-secret-knowledge",
+      "name": "NPC得知未公开信息（Holdout）",
+      "category": "golden",
+      "source": "hand",
+      "holdout": true,
+      "tags": [
+        "holdout",
+        "npc",
+        "epistemic"
+      ],
+      "difficulty": "advanced",
+      "description": "验证NPC不会知道只有DM才知道的秘密信息",
+      "playerInput": "我问林晚枫，这栋公寓的「真正秘密」到底是什么。",
+      "expectedBehavior": "NPC不应泄露DM-only的根因信息",
+      "expectedInvariants": [
+        {
+          "id": "dm_leak",
+          "check": "npc_epistemic_boundary",
+          "expected": "pass",
+          "severity": "critical"
+        }
+      ],
+      "seed": 4001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-forge-insufficient-materials",
+      "name": "锻造材料不足（负向）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "forge",
+        "resource",
+        "negative"
+      ],
+      "difficulty": "intermediate",
+      "description": "材料不足时锻造应失败，不扣材料，不生成物品",
+      "playerInput": "我拿出仅有的两块铁矿石，尝试锻造一把长剑。",
+      "expectedBehavior": "锻造失败，材料不扣除，不生成物品",
+      "expectedInvariants": [
+        {
+          "id": "no_forge_without_mats",
+          "check": "forge_transaction",
+          "expected": "fail",
+          "severity": "critical"
+        },
+        {
+          "id": "materials_not_consumed",
+          "check": "resource_conservation",
+          "expected": "pass",
+          "severity": "critical"
+        }
+      ],
+      "seed": 5001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-forge-duplicate-prevention",
+      "name": "锻造重复提交（幂等性）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "forge",
+        "idempotency",
+        "negative"
+      ],
+      "difficulty": "intermediate",
+      "description": "同一锻造请求重复提交不应产生重复物品",
+      "playerInput": "我再次确认，就用刚才的材料锻造短剑。",
+      "expectedBehavior": "不重复生成物品，不重复扣除材料",
+      "expectedInvariants": [
+        {
+          "id": "no_duplicate_forge",
+          "check": "idempotency",
+          "expected": "pass",
+          "severity": "major"
+        },
+        {
+          "id": "no_double_consume",
+          "check": "resource_conservation",
+          "expected": "pass",
+          "severity": "critical"
+        }
+      ],
+      "seed": 5002,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-task-not-accepted",
+      "name": "未接任务却完成（负向）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "task",
+        "lifecycle",
+        "negative"
+      ],
+      "difficulty": "intermediate",
+      "description": "玩家未接取任务却声称完成任务，应被拒绝",
+      "playerInput": "我已经完成了那个调查公寓的任务，把奖励给我吧。",
+      "expectedBehavior": "任务不存在或未接取，无法完成",
+      "expectedInvariants": [
+        {
+          "id": "no_unstarted_task_completion",
+          "check": "task_lifecycle",
+          "expected": "fail",
+          "severity": "critical"
+        }
+      ],
+      "seed": 6001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-profession-exclusive-ability",
+      "name": "非对应职业使用专属能力（负向）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "profession",
+        "negative"
+      ],
+      "difficulty": "intermediate",
+      "description": "非剑士职业使用剑士专属技能应被拒绝",
+      "playerInput": "我虽然不是剑士，但我想试试用剑士的「破军斩」攻击。",
+      "expectedBehavior": "非对应职业无法使用专属能力",
+      "expectedInvariants": [
+        {
+          "id": "no_cross_profession_skill",
+          "check": "profession_boundary",
+          "expected": "fail",
+          "severity": "critical"
+        }
+      ],
+      "seed": 7001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "boundary-narrative-state-mismatch",
+      "name": "叙事声称成功但状态未变（负向）",
+      "category": "boundary",
+      "source": "synth",
+      "holdout": false,
+      "tags": [
+        "boundary",
+        "narrative",
+        "state",
+        "negative"
+      ],
+      "difficulty": "advanced",
+      "description": "叙事描述成功获得物品但awarded_items为空",
+      "playerInput": "我从箱子里拿到了那把钥匙。",
+      "expectedBehavior": "叙事与状态变更应一致",
+      "expectedInvariants": [
+        {
+          "id": "narrative_state_consistent",
+          "check": "state_narrative_consistency",
+          "expected": "pass",
+          "severity": "major"
+        }
+      ],
+      "seed": 8001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "keepalive-normal-explore",
+      "name": "正常探索（正向保活）",
+      "category": "golden",
+      "source": "hand",
+      "holdout": false,
+      "tags": [
+        "golden",
+        "explore",
+        "keep-alive",
+        "happy-path"
+      ],
+      "difficulty": "basic",
+      "description": "正常探索行为不应被误判为非法——确保修复不误伤正常玩法",
+      "playerInput": "我沿着走廊慢慢走，看看两边有什么房间。",
+      "expectedBehavior": "行动合法，返回探索描述",
+      "expectedInvariants": [
+        {
+          "id": "keepalive_explore",
+          "check": "action_legality",
+          "expected": "pass",
+          "severity": "critical"
+        },
+        {
+          "id": "keepalive_options",
+          "check": "option_executability",
+          "expected": "pass",
+          "severity": "major"
+        }
+      ],
+      "seed": 9001,
+      "requiresLive": false
+    },
+    {
+      "caseId": "keepalive-normal-talk",
+      "name": "正常对话（正向保活）",
+      "category": "golden",
+      "source": "hand",
+      "holdout": false,
+      "tags": [
+        "golden",
+        "dialogue",
+        "keep-alive",
+        "happy-path"
+      ],
+      "difficulty": "basic",
+      "description": "与在场NPC正常对话不应被误杀",
+      "playerInput": "我找到林晚枫，问他最近有没有发现什么异常。",
+      "expectedBehavior": "NPC正常回应，不泄露禁止信息",
+      "expectedInvariants": [
+        {
+          "id": "keepalive_talk",
+          "check": "action_legality",
+          "expected": "pass",
+          "severity": "critical"
+        },
+        {
+          "id": "keepalive_npc_boundary",
+          "check": "npc_epistemic_boundary",
+          "expected": "pass",
+          "severity": "critical"
+        }
+      ],
+      "seed": 9002,
+      "requiresLive": false
+    }
+  ]
+}
