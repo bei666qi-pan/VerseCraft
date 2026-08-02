@@ -186,7 +186,31 @@ async function executeLiveTurn(
   let options: string[] = [];
   const tokenUsage: { prompt: number; completion: number; total: number } | null = null;
 
-  // ── timing observability state ──
+  // ── SSE read with per-chunk deadline ──────────────
+  // Per-read stall guard: cancel the reader if no bytes arrive within
+  // 45s to prevent indefinite hang when the server stalls mid-stream.
+  let readerCancelled = false;
+  const cancelReader = (r: ReadableStreamDefaultReader<Uint8Array> | undefined) => {
+    if (readerCancelled || !r) return;
+    readerCancelled = true;
+    try { r.cancel("eval_stall_guard"); } catch { /* best effort */ }
+  };
+
+  async function readWithDeadline(
+    r: ReadableStreamDefaultReader<Uint8Array>,
+    deadlineMs: number,
+  ): Promise<ReadableStreamReadResult<Uint8Array>> {
+    const result = await Promise.race([
+      r.read(),
+      new Promise<ReadableStreamReadResult<Uint8Array>>((_, reject) =>
+        setTimeout(() => {
+          cancelReader(r);
+          reject(new DOMException("SSE stream stalled (no bytes)", "TimeoutError"));
+        }, deadlineMs).unref()
+      ),
+    ]);
+    return result;
+  }
   let serverAcceptedMs: number | null = null;
   let firstStatusMs: number | null = null;
   let firstTokenMs: number | null = null;
@@ -203,6 +227,7 @@ async function executeLiveTurn(
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
+        Connection: "close",
         // Every eval turn is a DISTINCT logical request, never a duplicate
         // submission. Without an explicit fingerprint the server falls back to
         // anon:sha256(ip|ua), identical for all harness requests, which makes
@@ -236,7 +261,9 @@ async function executeLiveTurn(
     }
 
     // Parse SSE stream
-    const reader = res.body?.getReader();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+    reader = res.body?.getReader();
     if (!reader) {
       errors.push("No response body reader available.");
     } else {
@@ -244,8 +271,8 @@ async function executeLiveTurn(
       let buffer = "";
       let finalJsonStr = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
+      while (!readerCancelled) {
+        const { done, value } = await readWithDeadline(reader, 45_000);
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
@@ -298,6 +325,9 @@ async function executeLiveTurn(
         // Fallback: try to accumulate all data as narrative
         errors.push("No __VERSECRAFT_FINAL__ frame received.");
       }
+    }
+    } finally {
+      cancelReader(reader);
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
