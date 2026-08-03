@@ -181,6 +181,13 @@ const INDEPENDENTLY_PROHIBITED_SOCIAL_ACTION_RE =
 const CONTACT_TARGET_UNAVAILABLE_RE =
   /(?:什么(?:也|都)没有|没有人|没(?:有)?(?:这|这个|此)(?:人|住户)|(?:没(?:有)?|不存在)(?:叫|名为).{1,12}(?:的)?(?:人|住户)|没人应|空无一人|无人回应|没有回应|无人出现|没有出现|找不到|未找到|没找到|上哪儿.{0,16}(?:确认|找|问)|(?:找谁问|找谁打听).{0,12}(?:摸不着门|不知道|不清楚)|不在(?:场|家|房间|这里)?(?:[。！!，,]|$)|并不在|并不存在|(?:人影|身影|对方|他|她|目标).{0,12}(?:不见了|消失(?:了)?)|只有.{0,16}(?:墙|空走廊|空气))/u;
 
+const NAVIGATION_FAILURE_MISREAD_RE =
+  /(?:可通行相邻路线|仍留在原地|没能确认.{0,20}(?:路线|路径|方向)|无法确认.{0,20}(?:路线|路径|方向))/u;
+
+function hasNavigationFailureMisread(narrative: string): boolean {
+  return NAVIGATION_FAILURE_MISREAD_RE.test(narrative);
+}
+
 function extractContactTarget(action: string): string | null {
   const match = action.match(
     /(?:和|向|找(?:到)?|寻找|去找|碰见|遇见)([\p{Script=Han}·]{2,8})(?=(?:，|,)?(?:想)?(?:和(?:他|她|对方))?(?:打个?招呼|问候|问|询问|了解|打听|聊聊|聊天|交谈|谈谈))/u,
@@ -198,10 +205,12 @@ function hasUnavailableContactOutcome(record: RecordLike, action: string): boole
     narrative.includes(`没有名为${target}`) ||
     narrative.includes(`不是${target}`) ||
     narrative.includes(`并非${target}`) ||
+    narrative.includes(`${target}不是`) ||
+    narrative.includes(`${target}并非`) ||
     narrative.includes(`${target}是谁`) ||
     /没有一扇(?:门|门缝).{0,24}(?:声音|回应|痕迹)/u.test(narrative) ||
     (surname !== "" && new RegExp(`(?:这|本)(?:一)?(?:层楼|栋楼|楼里).{0,8}没(?:有)?姓${surname}的`, "u").test(narrative)) ||
-    new RegExp(`${target}.{0,12}(?:不在|不见了|消失了?|不存在)`, "u").test(narrative);
+    new RegExp(`${target}.{0,12}(?:不是|并非|不在|不见了|消失了?|不存在)`, "u").test(narrative);
 }
 
 function hasProtocolOnlyNarrativeDegradation(record: RecordLike): boolean {
@@ -243,7 +252,7 @@ function preserveHarmlessUnavailableContactAttempt(record: RecordLike, action: s
     record.is_action_legal !== false ||
     (!HARMLESS_CONTACT_ATTEMPT_RE.test(action) && !DIRECT_HARMLESS_CONTACT_ATTEMPT_RE.test(action)) ||
     INDEPENDENTLY_PROHIBITED_SOCIAL_ACTION_RE.test(action) ||
-    (!protocolNarrativeDegraded && !entityHardGateFallback && !hasUnavailableContactOutcome(record, action))
+    (!protocolNarrativeDegraded && !entityHardGateFallback && !hasUnavailableContactOutcome(record, action) && !hasNavigationFailureMisread(String(record.narrative ?? "")))
   ) {
     return record;
   }

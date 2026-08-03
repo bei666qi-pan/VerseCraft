@@ -878,3 +878,100 @@ test("seeing an item is not acquiring it: no award, narrative untouched", () => 
   });
   assert.match(String(out.narrative), /从未见过的钥匙/);
 });
+
+test("golden-talk-to-npc-npcswap-2-var-3 preserves legality when model misreads NPC approach as navigation", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      narrative: "我没能确认一条从公寓一楼走廊出发的可通行相邻路线，因此仍留在原地。",
+      options: ["我轻声问陈婆婆最近楼里有没有怪事", "我留意陈婆婆手里是否拿着东西", "我靠近陈婆婆，闻闻有没有异味", "我后退一步，先看看陈婆婆的表情"],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+    },
+    latestUserInput: "我走向陈婆婆，想和他聊聊最近发生的事。（再试一次）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /可通行相邻路线/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-npcswap-2-npcswap-3 preserves legality when model treats NPC approach as move failure", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      narrative: "我没能确认一条从公寓一楼走廊出发的可通行相邻路线，因此仍留在原地。",
+      options: ["我试着从楼梯间绕到二楼看看", "我退后几步，重新打量走廊两侧的门"],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+    },
+    latestUserInput: "我走向陈婆婆，想和他聊聊最近发生的事。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /可通行相邻路线/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("golden-talk-to-npc-npcswap-2-repeat-3 preserves legality for route-finding failure during repeated NPC approach", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: false,
+      narrative: "我没能确认一条从公寓一楼走廊出发的可通行相邻路线，因此仍留在原地。",
+      options: ["我喊了一声陈婆婆的名字", "我敲了敲最近的一扇门"],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+    },
+    latestUserInput: "我走向陈婆婆，想和他聊聊最近发生的事。（再次确认）",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /可通行相邻路线/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});
+
+test("keepalive-normal-talk-var-2 preserves legality when model denies NPC as unregistered resident", () => {
+  const out = applyRegisteredMechanicsGuard({
+    dmRecord: {
+      is_action_legal: false,
+      is_death: false,
+      consumes_time: true,
+      narrative: "「林晚枫」不是公寓登记在册的住户，我环顾走廊也没看见这个人。日光灯嗡嗡响，一楼大堂那边传来翻报纸的窸窣声——前台登记台后面坐着个打哈欠的年轻人。\n\n也许你记错了名字，或者是某个住户的外号？公寓里大家都习惯用登记名互相称呼，你可以先去前台问问，或者描述一下那个人的特征。",
+      options: ["我走向前台向年轻人打听林晚枫", "我描述林晚枫的特征给年轻人听", "我环顾走廊寻找类似特征的人", "我仔细听大堂里的动静判断人数"],
+      codex_updates: [],
+      relationship_updates: [],
+      npc_location_updates: [],
+      _commit_flags: ["unregistered_name_low_confidence_audited_v1"],
+    },
+    latestUserInput: "向林晚枫了解最新的情况。",
+    clientState: { playerLocation: "公寓一楼走廊" },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.match(String(out.narrative), /不是公寓登记在册的住户/);
+  assert.deepEqual(out.relationship_updates, []);
+  assert.deepEqual(out.npc_location_updates, []);
+  assert.deepEqual(out.codex_updates, []);
+  assert.ok((out._commit_flags as string[]).includes("unavailable_contact_attempt_legalized_v1"));
+});

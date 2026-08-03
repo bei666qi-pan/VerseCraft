@@ -5277,7 +5277,7 @@ async function postChatInternal(req: Request) {
             .catch(() => {});
         }
       }
-      return false;
+      return true;
     };
 
     let streamTtftTelemetrySent = false;
