@@ -1,7 +1,7 @@
 {
   "name": "versecraft",
   "version": "0.1.0",
-  "description": "AI-powered interactive fiction game platform / AI 驱动的互动小说游戏平台",
+  "description": "AI-powered interactive fiction game platform / AI \u9a71\u52a8\u7684\u4e92\u52a8\u5c0f\u8bf4\u6e38\u620f\u5e73\u53f0",
   "author": "VerseCraft Contributors",
   "license": "MIT",
   "homepage": "https://versecraft.cn",
@@ -150,7 +150,12 @@
     "self-improve:campaign": "tsx --conditions=react-server scripts/self-improve/campaign.ts",
     "self-improve:calibration": "tsx --conditions=react-server scripts/self-improve/calibration.ts",
     "self-improve:verify:strict": "tsx --conditions=react-server scripts/self-improve/verify-strict.ts",
-    "self-improve:supervise": "tsx --conditions=react-server scripts/self-improve/supervise.ts"
+    "self-improve:supervise": "tsx --conditions=react-server scripts/self-improve/supervise.ts",
+    "verse:install": "node scripts/verse-install.mjs",
+    "verse:uninstall": "node scripts/verse-uninstall.mjs",
+    "verse:ds": "node scripts/verse-cli.mjs -ds",
+    "verse:ds:test": "node --test --test-force-exit scripts/self-improve/ds-*.test.mjs",
+    "verse:ds:doctor": "node scripts/verse-cli.mjs -ds doctor"
   },
   "dependencies": {
     "@upstash/ratelimit": "^2.0.8",
