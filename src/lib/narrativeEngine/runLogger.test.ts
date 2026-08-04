@@ -63,7 +63,10 @@ test("logNarrativeRun writes narrative_runs best-effort payload", async () => {
   assert.equal((row.meta as Record<string, unknown>).routeLane, "slow");
 });
 
-test("logNarrativeRun swallows repository failures", async () => {
+test("logNarrativeRun swallows repository failures and reports via warn", async () => {
+  let warnCalled = false;
+  let warnReason = "";
+
   await logNarrativeRun({
     requestId: "req_log_2",
     sessionId: null,
@@ -73,10 +76,16 @@ test("logNarrativeRun swallows repository failures", async () => {
       upsert: async () => {
         throw new Error("db unavailable");
       },
-      warn: () => undefined,
+      warn: (reason) => {
+        warnCalled = true;
+        warnReason = reason;
+      },
     },
   });
 
-  assert.ok(true);
+  // 函数本身不应抛异常（best-effort 语义）
+  // errors 应通过 warn 回调上报
+  assert.equal(warnCalled, true, "upsert failure should be reported via warn");
+  assert.ok(warnReason.includes("db unavailable"), "warn should include error reason");
 });
 

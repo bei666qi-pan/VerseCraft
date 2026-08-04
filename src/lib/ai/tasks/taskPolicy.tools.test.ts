@@ -9,10 +9,10 @@ import {
 } from "@/lib/ai/tasks/taskPolicy";
 import type { TaskType } from "@/lib/ai/types/core";
 
-test("tool 白名单只包含离线任务", () => {
+test("tool 白名单只包含离线任务和 DM 代理", () => {
   assert.deepEqual(
     [...TASK_TOOLS_ALLOWED].sort(),
-    ["DEV_ASSIST", "STORYLINE_SIMULATION", "WORLDBUILD_OFFLINE"]
+    ["DEV_ASSIST", "DM_AGENT", "STORYLINE_SIMULATION", "WORLDBUILD_OFFLINE"]
   );
 });
 

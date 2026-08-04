@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-explicit-any": "off",
       // React 19 + complex UI flows: allow state sync in effects where needed.
       "react-hooks/set-state-in-effect": "off",
+      // Allow underscore-prefixed unused vars (common convention for intentionally unused)
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
+      }],
     },
   },
   {

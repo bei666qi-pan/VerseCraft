@@ -26,7 +26,7 @@ test("normalizeGameTaskDraft supports legacy reward string and defaults", () => 
     reward: "奖励 5 原石",
     issuer: "未知",
   });
-  assert.ok(task);
+  assert.equal(task?.id, "floor_intro_1");
   assert.equal(task!.reward.originium, 5);
   assert.equal(task!.status, "available");
   assert.equal(task!.type, "floor");
@@ -43,7 +43,7 @@ test("normalizeTaskUpdateDraft keeps only patchable fields", () => {
     surfacePriority: 88,
     unknown: "x",
   });
-  assert.ok(patch);
+  assert.equal(patch?.id, "t_1");
   assert.equal(patch!.id, "t_1");
   assert.equal(patch!.status, "completed");
   assert.equal(patch!.nextHint, "去B1交付");
@@ -61,7 +61,7 @@ test("applyTaskUpdateToTask merges reward fields", () => {
     title: "角色任务",
     reward: { originium: 3, items: ["I-A01"] },
   });
-  assert.ok(base);
+  assert.equal(base?.id, "char_1");
   const updated = applyTaskUpdateToTask(base!, {
     reward: { originium: 8, items: ["I-A01", "I-B01"], warehouseItems: [], unlocks: [], relationshipChanges: [] },
   });
@@ -91,7 +91,7 @@ test("stage one starter tasks include main and floor", () => {
   assert.ok(tasks.some((t) => t.type === "floor"));
   assert.ok(tasks.some((t) => t.id === "b1_survival_rhythm"));
   assert.ok(tasks.some((t) => t.id === "escape_route_fragments"));
-  assert.ok(formatTaskRewardSummary(tasks.find((x) => x.id === "b1_survival_rhythm")!.reward).length > 0);
+  assert.equal(formatTaskRewardSummary(tasks.find((x) => x.id === "b1_survival_rhythm")!.reward), "原石+2 / 解锁2项");
 });
 
 test("starter: before b1 complete, route fragments stays hidden and board shows spine + b1", () => {
@@ -170,8 +170,8 @@ test("normalizeGameTaskDraft accepts phase-3 dramatic fields safely", () => {
   assert.ok(task);
   assert.equal(task!.dramaticType, "survival");
   assert.equal(typeof task!.urgencyReason, "string");
-  assert.ok(Array.isArray(task!.relatedNpcIds) || task!.relatedNpcIds === undefined);
-  assert.ok(Array.isArray(task!.backfireConsequences) || task!.backfireConsequences === undefined);
+  assert.deepEqual(task!.relatedNpcIds, ["N-008", "N-010"]);
+  assert.deepEqual(task!.backfireConsequences, ["rel:N-008:trust:-2", "x", "rel:N-010:fear:+1"]);
 });
 
 test("applyNpcProactiveGrantGuard keeps only matching location and one npc grant", () => {
@@ -297,8 +297,6 @@ test("extractRelationshipPatchesFromConsequences parses relationship deltas", ()
     worldConsequences: [
       "rel:N-018:trust:+6",
       "rel:N-018:debt:+3",
-      "rel:N-018:romanceEligible:true",
-      "rel:N-018:romanceStage:hint",
       "rel:N-018:betrayal:merchant_secret_flag",
     ],
   });
@@ -308,8 +306,6 @@ test("extractRelationshipPatchesFromConsequences parses relationship deltas", ()
   assert.equal(patches[0]?.npcId, "N-018");
   assert.equal(patches[0]?.trust, 6);
   assert.equal(patches[0]?.debt, 3);
-  assert.equal(patches[0]?.romanceEligible, true);
-  assert.equal(patches[0]?.romanceStage, "hint");
   assert.equal(patches[0]?.betrayalFlagAdd, "merchant_secret_flag");
 });
 

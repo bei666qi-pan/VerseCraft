@@ -8,7 +8,7 @@ import {
 } from "@/lib/ai/models/logicalRoles";
 
 test("AI_LOGICAL_ROLES has four roles", () => {
-  assert.deepEqual([...AI_LOGICAL_ROLES].sort(), ["control", "enhance", "main", "reasoner"]);
+  assert.deepEqual([...AI_LOGICAL_ROLES].sort(), ["control", "enhance", "main", "reasoner", "writer"]);
 });
 
 test("normalizeAiLogicalRole accepts canonical names", () => {

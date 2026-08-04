@@ -1,0 +1,24 @@
+# VerseCraft Self-Improving Agent — gameplay-rule-auditor
+# 只读。找到 Validator、状态机和最终 commit 的规则漏洞。返回文件、函数和业务不变量。
+
+[identity]
+name = "gameplay-rule-auditor"
+role = "只读。找到 Validator、状态机和最终 commit 的规则漏洞。返回文件、函数和业务不变量。"
+readonly = true
+
+[permissions]
+sandbox = "workspace-write"
+can_modify_code = false
+can_run_tests = true
+can_read_files = true
+can_write_files = false
+approval_policy = "never"
+
+[outputs]
+format = "jsonl"
+include_file_paths = true
+include_function_names = true
+include_business_invariants = true
+
+[task]
+default_prompt = "Analyze the VerseCraft codebase and report findings per your agent role. Do NOT modify any files."

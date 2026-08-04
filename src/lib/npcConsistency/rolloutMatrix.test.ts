@@ -20,11 +20,14 @@ describe("rolloutMatrix：阶段8 验收索引", () => {
     assert.equal(typeof flags.enableNpcResidue, "boolean");
     assert.equal(typeof flags.enableXinlanHighPrivilege, "boolean");
     assert.equal(typeof flags.npcDebug, "boolean");
+    // Verify default values for rollout-critical flags
+    assert.equal(flags.enableNpcCanonGuard, true);
+    assert.equal(flags.npcDebug, false);
   });
 
   it("快车道 env 仍可读取（边界用例由 goldenScenes + chat perf flags 覆盖）", () => {
     const v = envBoolean("AI_CHAT_FASTLANE_SKIP_RUNTIME_PACKETS", true);
-    assert.equal(typeof v, "boolean");
+    assert.equal(v, true, "envBoolean should return fallback when env var is not set");
   });
 
   it("残响 packet 约束仍禁止具体旧事命题（矩阵 #10）", () => {

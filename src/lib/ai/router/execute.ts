@@ -13,12 +13,11 @@ import { isModelCircuitOpen, recordModelFailure, recordModelSuccess } from "@/li
 import type { AiLogicalRole } from "@/lib/ai/models/logicalRoles";
 import { getProviderFactory } from "@/lib/ai/providers";
 import type { NormalizedCompletionRequest } from "@/lib/ai/providers/types";
-import { resilientFetch } from "@/lib/ai/resilience/fetchWithRetry";
+import { resilientFetch, forceHttp1ForGateway } from "@/lib/ai/resilience/fetchWithRetry";
 import { extractNonStreamContent } from "@/lib/ai/stream/openaiLike";
 import {
   assertModelAllowedForTask,
   assertToolUseAllowedForTask,
-  clampPlayerChatMaxTokens,
   getTaskBinding,
   resolveFallbackPolicy,
   resolveOrderedRoleChain,
@@ -68,7 +67,50 @@ function hasMockScenarioMarker(messages: ChatMessage[]): boolean {
 const PROVIDER_ID = "oneapi" as const satisfies AiProviderId;
 
 function isOfflineTask(task: TaskType): boolean {
-  return task === "WORLDBUILD_OFFLINE" || task === "STORYLINE_SIMULATION" || task === "DEV_ASSIST";
+  return (
+    task === "WORLDBUILD_OFFLINE" ||
+    task === "STORYLINE_SIMULATION" ||
+    task === "DIRECTOR_PLAN_CRITIC" ||
+    task === "DEV_ASSIST" ||
+    task === "EVAL_JUDGE"
+  );
+}
+
+const PLAYER_GAMEPLAY_TASKS = new Set<TaskType>([
+  "PLAYER_CHAT",
+  "PLAYER_CONTROL_PREFLIGHT",
+  "INTENT_PARSE",
+  "SAFETY_PREFILTER",
+  "RULE_RESOLUTION",
+  "COMBAT_NARRATION",
+  "SCENE_ENHANCEMENT",
+  "NARRATIVE_EXPANSION",
+  "NPC_EMOTION_POLISH",
+  "GAMEPLAY_LOCALIZATION",
+  "DM_AGENT",
+]);
+
+function resolveGatewayModelForTask(
+  env: ReturnType<typeof resolveAiEnv>,
+  task: TaskType,
+  role: AiLogicalRole
+): string {
+  if (PLAYER_GAMEPLAY_TASKS.has(task) && env.playerGameplayModel) {
+    return env.playerGameplayModel;
+  }
+  return env.modelsByRole[role];
+}
+
+function hasDirectPlayerSplit(env: ReturnType<typeof resolveAiEnv>): boolean {
+  return Boolean(env.playerGameplayModel);
+}
+
+function mergeExtraBody(
+  base: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  const merged = { ...(base ?? {}), ...(override ?? {}) };
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function stripThinkBlocks(text: string): string {
@@ -166,7 +208,6 @@ function buildPlayerStreamBody(
   enableStream: boolean,
   streamIncludeUsage: boolean,
   requestJsonObject: boolean,
-  maxTokensOverride?: number,
   extraBody?: Record<string, unknown>,
   responseFormatJsonSchema?: NormalizedCompletionRequest["responseFormatJsonSchema"]
 ): NormalizedCompletionRequest {
@@ -175,7 +216,6 @@ function buildPlayerStreamBody(
     modelApiName: gatewayModel,
     messages,
     stream,
-    maxTokens: maxTokensOverride ?? binding.maxTokens,
     temperature: binding.temperature,
     responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: stream && streamIncludeUsage,
@@ -187,7 +227,6 @@ function buildPlayerStreamBody(
 function buildNonStreamBody(
   gatewayModel: string,
   messages: ChatMessage[],
-  maxTokens: number,
   temperature: number | undefined,
   requestJsonObject: boolean,
   extraBody?: Record<string, unknown>,
@@ -198,7 +237,6 @@ function buildNonStreamBody(
     modelApiName: gatewayModel,
     messages,
     stream: false,
-    maxTokens,
     temperature,
     responseFormatJsonObject: requestJsonObject,
     streamIncludeUsage: false,
@@ -259,7 +297,6 @@ export async function executePlayerChatStream(params: {
   }
   const mode = resolveOperationMode();
   const taskBinding = getTaskBinding("PLAYER_CHAT");
-  const playerChatMaxTokens = clampPlayerChatMaxTokens(params.maxTokensOverride ?? taskBinding.maxTokens).maxTokens;
   const policy = resolveFallbackPolicy("PLAYER_CHAT", env, mode);
   const timeoutMs = params.timeoutMs ?? taskBinding.timeoutMs;
   const tags = (params.ctx.tags ?? {}) as Record<string, unknown>;
@@ -297,7 +334,7 @@ export async function executePlayerChatStream(params: {
     if (skip.has(role)) continue;
 
     assertModelAllowedForTask("PLAYER_CHAT", role);
-    const gatewayModel = env.modelsByRole[role];
+    const gatewayModel = resolveGatewayModelForTask(env, "PLAYER_CHAT", role);
     if (!gatewayModel) continue;
 
     if (policy.tripCircuitOnFailure && (isCircuitOpen(PROVIDER_ID) || isModelCircuitOpen(role))) {
@@ -346,8 +383,9 @@ export async function executePlayerChatStream(params: {
 
     const factory = getProviderFactory();
     const bodyT0 = Date.now();
-    const playerChatExtraBody =
-      env.playerChatExtraBody && Object.keys(env.playerChatExtraBody).length > 0
+    const playerChatExtraBody = hasDirectPlayerSplit(env)
+      ? env.playerChatExtraBody
+      : env.playerChatExtraBody && Object.keys(env.playerChatExtraBody).length > 0
         ? { ...(env.gatewayExtraBody ?? {}), ...env.playerChatExtraBody }
         : env.gatewayExtraBody;
     // T2（2026-07）：仅在非 fast-lane 且显式开启 AI_GATEWAY_JSON_SCHEMA_ENABLED 时
@@ -363,7 +401,6 @@ export async function executePlayerChatStream(params: {
       env.enableStream,
       env.playerChatStreamIncludeUsage,
       !(isFastLane && env.playerChatFastLaneRelaxResponseFormat) && taskBinding.responseFormatJsonObject,
-      playerChatMaxTokens,
       playerChatExtraBody,
       useJsonSchemaForThisTurn ? buildPlayerDmJsonSchemaRequest() : undefined
     );
@@ -415,6 +452,7 @@ export async function executePlayerChatStream(params: {
         timeoutMs,
         maxRetries,
         parentSignal: params.signal,
+        transport: forceHttp1ForGateway() && url.startsWith("https:") ? "http1" : "default",
         onRetry: () => {
           retryCount += 1;
         },
@@ -616,7 +654,7 @@ export async function executeChatCompletion(params: {
     assertToolUseAllowedForTask(params.task);
   }
   if (isMockAiProviderEnabled() || hasMockScenarioMarker(params.messages)) {
-    return executeMockChatCompletion({ task: params.task, messages: params.messages, ctx: params.ctx });
+    return executeMockChatCompletion({ task: params.task, messages: params.messages, ctx: params.ctx, tools: params.tools, toolChoice: params.toolChoice });
   }
   const env = resolveAiEnv();
   const mode = resolveOperationMode();
@@ -732,7 +770,7 @@ export async function executeChatCompletion(params: {
       };
     }
 
-    const gatewayModel = env.modelsByRole[role];
+    const gatewayModel = resolveGatewayModelForTask(env, params.task, role);
     if (!gatewayModel) continue;
 
     if (policy.tripCircuitOnFailure && (isCircuitOpen(PROVIDER_ID) || isModelCircuitOpen(role))) {
@@ -767,14 +805,19 @@ export async function executeChatCompletion(params: {
       expectJsonObject &&
       (forceJsonObjectFromOverride ||
         !(env.onlineShortJsonRelaxResponseFormat && ONLINE_SHORT_JSON_TASKS.has(params.task)));
+    const directTaskExtraBody = hasDirectPlayerSplit(env)
+      ? mergeExtraBody(
+          PLAYER_GAMEPLAY_TASKS.has(params.task) ? env.playerChatExtraBody : env.gatewayExtraBody,
+          params.extraBody
+        )
+      : params.extraBody;
     const strictJsonTransportExtraBody =
-      STRICT_JSON_TRANSPORT_TASKS.has(params.task) && env.onlineShortJsonDisableThinking
-        ? { ...(params.extraBody ?? {}), enable_thinking: false, thinking: { type: "disabled" } }
-        : params.extraBody;
+      ONLINE_SHORT_JSON_TASKS.has(params.task) && env.onlineShortJsonDisableThinking
+        ? { ...(directTaskExtraBody ?? {}), enable_thinking: false, thinking: { type: "disabled" } }
+        : directTaskExtraBody;
     const body = buildNonStreamBody(
       gatewayModel,
       params.messages,
-      binding.maxTokens,
       binding.temperature,
       requestJsonObject,
       strictJsonTransportExtraBody,
@@ -801,6 +844,7 @@ export async function executeChatCompletion(params: {
         timeoutMs,
         maxRetries,
         parentSignal: params.signal,
+        transport: forceHttp1ForGateway() && url.startsWith("https:") ? "http1" : "default",
         onRetry: () => {
           retryCount += 1;
         },

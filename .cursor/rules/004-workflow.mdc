@@ -1,22 +1,20 @@
 ---
-description: Automated Git and Deployment Workflow
+description: Authorized Git and Deployment Workflow
 globs: "**/*"
 alwaysApply: true
 ---
 
-# Automated Git and Deployment Workflow
+# Authorized Git and Deployment Workflow
 
-## 强制法则（MANDATORY）
+## 授权边界（MANDATORY）
 
-当以下条件全部满足时，Cursor Agent **必须**主动执行部署脚本：
+Cursor Agent **不得**在任务完成后自动提交、推送或部署。只有用户明确要求提交或发布时，才可以执行相应操作。
 
-1. 用户提出的任务已全部完成；
-2. 代码修改已落地且通过校验；
-3. 用户未明确反对提交或部署。
+涉及行为变化的任务必须先遵循 `.cursor/rules/000-openspec-workflow.mdc` 和根 `AGENTS.md` 的 OpenSpec 默认分流；完成 OpenSpec change 时，先完成相关验证和 spec 同步，再依据明确授权进行 Git 或发布操作。
 
 ## 执行指令
 
-在集成终端中运行（**跨平台**：`deploy.sh` 实为 Node 脚本，Windows 请用 `node` 或 `pnpm run ship`，勿用 `bash ./deploy.sh`）：
+在用户明确要求发布时，可在集成终端中运行（**跨平台**：`deploy.sh` 实为 Node 脚本，Windows 请用 `node` 或 `pnpm run ship`，勿用 `bash ./deploy.sh`）：
 
 ```bash
 node deploy.sh "feat: 更新说明"
@@ -39,7 +37,7 @@ pnpm run ship -- "feat: 更新说明"
 
 ## 示例
 
-任务完成后的典型调用：
+用户明确要求发布后的典型调用：
 
 ```bash
 node deploy.sh "feat: 完成动态 BGM 与移动端 UI 适配"

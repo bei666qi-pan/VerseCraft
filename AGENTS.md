@@ -2,7 +2,7 @@
 
 ## Purpose
 
-这份文件是 VerseCraft 仓库内长期有效的 Codex 上下文入口。目标不是复述一次性任务需求，而是让后续代理在进入仓库时，先对齐同一套产品定位、接口契约、架构方向与改码边界，再开始动手。
+这份文件是 VerseCraft 仓库内长期有效的 AI 编码代理上下文入口。无论使用 Codex、Kimi Code、Claude Code、Cursor 或其他会读取 `AGENTS.md` 的代理，都必须先对齐同一套产品定位、接口契约、架构方向与改码边界，再开始动手。
 
 如果这里的描述与代码冲突，以当前仓库真实代码为准，并应优先更新本文件，而不是让同类背景知识继续散落在聊天记录里。
 
@@ -508,7 +508,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 
 ### 7.1 Ask 模式
 
-后续 Codex 任务如果明确写了 **“Ask 模式”**，默认行为是：
+后续 AI 编码代理任务如果明确写了 **“Ask 模式”**，默认行为是：
 
 - 先给计划
 - 说明会改哪些文件
@@ -517,7 +517,7 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 
 ### 7.2 Code 模式
 
-后续 Codex 任务如果明确写了 **“Code 模式”**，默认行为是：
+后续 AI 编码代理任务如果明确写了 **“Code 模式”**，默认行为是：
 
 - 按最小可验证路径直接实施
 - 回报改动文件
@@ -529,17 +529,19 @@ VerseCraft 现状不是“prompt 一把梭”，而是“**生成后仍要校验
 - 如果用户显式要求“先讨论 / 先评审 / 先给方案”，按 Ask 处理
 - 否则默认按 Code 处理，但仍应先理解代码路径，再动手
 
-### 7.4 OpenSpec 自动分流
+### 7.4 OpenSpec 默认自动分流
 
-VerseCraft 已启用 OpenSpec。后续 Codex 不要求用户显式输入 `/opsx:*` 或提及 OpenSpec，必须先按以下规则自动选择工作流；OpenSpec 的项目上下文与技能位于 `openspec/` 和 `.codex/skills/openspec-*`。
+VerseCraft 默认使用 OpenSpec。所有 AI 编码代理（包括 Codex、Kimi Code、Claude Code、Cursor 和其他读取本文件的客户端）不要求用户显式输入 `/opsx:*` 或提及 OpenSpec，必须先按以下规则自动选择工作流。根 `AGENTS.md` 是跨客户端的规则事实源；项目级 adapter 位于 `.codex/`、`.kimi/`、`.claude/` 与 `.cursor/`。
 
 - **直接执行（不创建 OpenSpec change）**：纯问答、只读检查、文案/拼写/格式修正、无行为变化的单文件小改动、已有 OpenSpec change 内的明确后续小任务，或单个已定位 bug 的最小修复。仍须遵守本文件的测试与契约要求。
-- **OpenSpec 轻量变更**：新增或改变可见行为、涉及两个及以上模块、需要权衡实现方案、需要新增/调整测试、或可能影响产品规则但不触及核心高风险契约时，先使用 `openspec-propose` 创建 proposal、design、tasks 与 delta spec，再实施并更新任务清单。
+- **OpenSpec 轻量变更**：新增或改变可见行为、涉及两个及以上模块、需要权衡实现方案、需要新增/调整测试、或可能影响产品规则但不触及核心高风险契约时，先使用可用的 OpenSpec skill / command，或直接运行 `openspec new change <name>`，创建 proposal、design、tasks 与 delta spec，再实施并更新任务清单。
 - **OpenSpec 强制变更**：任何涉及 `/api/chat`、SSE/DM JSON 契约、AI routing 或 prompt、`useGameStore` / hydration、数据库 schema、analytics 事件、epistemic filtering、post-generation validation、world tick、认证/权限、跨端存档，或影响等待体验与性能预算的改动，必须使用 OpenSpec change；不得绕过 proposal、design、tasks 与验证记录。
 - **复用与收口**：若已有匹配的未归档 change，先使用 `openspec-update-change` 更新现有 artifacts，不新建重复 change。功能完成且验证通过后，使用 `openspec-sync-specs` 将 delta 同步至主 specs；归档由用户请求、PR 收口或明确的完成流程触发，使用 `openspec-archive-change`。
-- **Ask / Code 协作**：Ask 模式或需求尚不明确时，只完成 explore/propose 并等待用户确认。明确的 Code 模式或明确要求“实现/修复/修改”时，用户请求本身视为实施授权：Codex 先生成 OpenSpec artifacts，再在同一任务中按 tasks 实施；若 proposal 暴露出需要新的产品选择、外部权限或明显扩大范围，则停下请求用户决定。
+- **Ask / Code 协作**：Ask 模式或需求尚不明确时，只完成 explore/propose 并等待用户确认。明确的 Code 模式或明确要求“实现/修复/修改”时，用户请求本身视为实施授权：coding agent 先生成 OpenSpec artifacts，再在同一任务中按 tasks 实施；若 proposal 暴露出需要新的产品选择、外部权限或明显扩大范围，则停下请求用户决定。
 
-OpenSpec 是对本仓库现有 AGENTS.md 约束的补充，不替代其中的 SSE、状态、性能、数据兼容、叙事治理和验证红线；发生冲突时，以本文件其他明确的不可破坏契约为准。
+客户端 adapter 的维护命令为：`openspec init . --tools codex,kimi,claude,cursor --force`。只在团队实际采用新的客户端时，才通过 `openspec init . --tools <tool> --force` 添加其 adapter；不要用 `--tools all` 产生未使用的配置噪声。升级 OpenSpec 后可运行 `openspec update . --force` 更新已安装 adapter，并审查生成 diff。
+
+OpenSpec 是本仓库所有编码代理的默认变更工作流，但不替代其中的 SSE、状态、性能、数据兼容、叙事治理和验证红线；发生冲突时，以本文件其他明确的不可破坏契约为准。
 
 ---
 
@@ -692,3 +694,15 @@ AI_PROVIDER=mock pnpm eval:chat-quality -- --mode mock --assert --json-out .runt
 ```
 
 真实网关 benchmark/eval 只在有 secrets 的 main / workflow_dispatch / nightly 中运行；PR 不依赖真实 AI key。新增线上失败样本时，先匿名化，再回流到 `benchmarks/llm-evals/cases.json`。
+
+
+## 13. 测试交付红线（不可协商）
+
+1. **不得为了通过测试而放宽测试标准。** 测试断言必须反映真实契约（SSE 形状、DM JSON 必需字段、延迟预算、叙事安全门等），不能因为"改完后测试不过"就把断言改松、删掉或者注释掉。
+2. **未通过的测试必须修复后复测，直到通过才可交付。** 如果某个测试因为环境差异（如缺少网关密钥、本地无数据库）无法在本机运行，必须：
+   - 明确记录具体命令、阻塞原因和缺失的环境变量
+   - 区分「本任务导致的失败」与「预有失败」
+   - 本任务导致的一律修复；预有失败且不能安全修复的，记录具体文件、行号和错误，不得伪称全绿
+3. **E2E 与 benchmark 不是可选项。** 只要改动涉及 `/api/chat`、AI routing、prompt、SSE 契约、状态提交链、world tick 或性能预算，至少运行 `pnpm test:e2e:contract` 和 `pnpm benchmark:chat:mock`（或 live，取决于是否有网关密钥）。无法运行时，在 PROGRESS 中明确记录原因。
+4. **复测证据必须可审计。** 交付时 PROGRESS 必须包含：运行了哪些命令、退出码、通过/失败数、失败归属（本任务 or 预有）、以及无法运行的命令及阻塞原因。
+5. **不得通过降级 fallback 来伪造通过。** 测试必须验证真实链路成功，不能依赖 `CHAIN_EXHAUSTED`、`keys_missing`、`AI router failed` 等降级路径产出"看起来合法"的 SSE/JSON 就算通过。如果网关不可达导致 AI 调用失败，必须修复网关连接，不能把降级响应当作测试通过的证据。降级路径的正确性由专门的降级测试（如 `keys_missing stays 200 + SSE`）单独验证，不应与正常链路测试混淆。

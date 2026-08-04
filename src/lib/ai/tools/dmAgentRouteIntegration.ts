@@ -161,7 +161,7 @@ export async function tryRunDmAgentTurn(
       signal: input.signal,
     });
 
-    if (result) {
+    if (result && result.toolsUsed) {
       return {
         agentUsed: true,
         result,

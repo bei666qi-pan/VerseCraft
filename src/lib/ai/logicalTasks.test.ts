@@ -1,3 +1,6 @@
+// These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
+// transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
+process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -5,6 +8,22 @@ import {
   resolveRuleOutcome,
   runOfflineReasonerTask,
 } from "@/lib/ai/logicalTasks";
+
+// Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
+const KIMI_INJECTED_VARS = [
+  "VC_AI_DIRECT_BASE_URL",
+  "VC_AI_DIRECT_API_KEY",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
+  "KIMI_MODEL_PROVIDER_TYPE",
+  "KIMI_MODEL_BASE_URL",
+  "KIMI_MODEL_API_KEY",
+  "KIMI_MODEL_NAME",
+];
 
 function withEnv(patch: Record<string, string | undefined>, fn: () => void | Promise<void>): Promise<void> {
   const prev: Record<string, string | undefined> = {};
@@ -17,6 +36,12 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void | Pro
       process.env[k] = v;
     }
   }
+  for (const k of KIMI_INJECTED_VARS) {
+    if (!(k in patch)) {
+      prev[k] = process.env[k];
+      delete process.env[k];
+    }
+  }
   return Promise.resolve()
     .then(() => fn())
     .finally(() => {
@@ -26,6 +51,16 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void | Pro
           delete process.env[k];
         } else {
           process.env[k] = old;
+        }
+      }
+      for (const k of KIMI_INJECTED_VARS) {
+        if (!(k in patch)) {
+          const old = prev[k];
+          if (old === undefined) {
+            delete process.env[k];
+          } else {
+            process.env[k] = old;
+          }
         }
       }
     });

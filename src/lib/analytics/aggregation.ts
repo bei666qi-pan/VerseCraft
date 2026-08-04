@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { actorDailyActivity, actorDailyTokens, analyticsEvents } from "@/db/schema";
 import { getUtcDateKey, parseUtcDateKeyToDate } from "@/lib/analytics/dateKeys";
-import { getBeijingDateRange } from "@/lib/analytics/webTraffic";
+import { getBeijingDateRange, WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN } from "@/lib/analytics/webTraffic";
 
 export type AdminMetricsDailyRebuildResult = {
   dateKey: string;
@@ -28,7 +28,11 @@ export async function rebuildWebTrafficDailyForDateKey(dateKey: string): Promise
     WITH traffic AS (
       SELECT
         COUNT(*)::int AS page_views,
-        COUNT(DISTINCT NULLIF(BTRIM(payload->>'visitorId'), ''))::int AS unique_visitors
+        COUNT(DISTINCT CASE
+          WHEN payload->>'visitorId' ~ ${WEB_TRAFFIC_VISITOR_ID_SQL_PATTERN}
+          THEN payload->>'visitorId'
+          ELSE NULL
+        END)::int AS unique_visitors
       FROM analytics_events
       WHERE event_name = 'page_viewed' AND event_time >= ${start} AND event_time <= ${end}
     ), upserted AS (

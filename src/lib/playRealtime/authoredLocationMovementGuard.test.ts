@@ -79,3 +79,21 @@ test("canonical movement synthesis can be disabled without bypassing candidate v
   assert.equal(out.player_location, undefined);
   assert.equal(out.narrative, "我正要下楼。");
 });
+
+test("approaching an NPC to talk is dialogue, not unresolved location traversal", () => {
+  const out = applyAuthoredLocationMovementGuard({
+    dmRecord: {
+      is_action_legal: true,
+      consumes_time: true,
+      narrative: "我在陈婆婆面前停下，问起最近楼里的怪事。",
+      player_location: "陈婆婆",
+    },
+    latestUserInput: "我走向陈婆婆，想和他聊聊最近发生的事。（再试一次）",
+    clientState: { playerLocation: "公寓一楼走廊", worldFlags: [] },
+  });
+
+  assert.equal(out.is_action_legal, true);
+  assert.equal(out.narrative, "我在陈婆婆面前停下，问起最近楼里的怪事。");
+  assert.equal(out.player_location, undefined);
+  assert.equal(Boolean((out._commit_flags as string[] | undefined)?.includes("invalid_location_delta_blocked_v2")), false);
+});

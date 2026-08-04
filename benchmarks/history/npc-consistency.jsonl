@@ -3,3 +3,4 @@
 {"suite":"npc-consistency","mode":"mock","total":6,"pass":6,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:06:17.904Z","gitSha":"ref: re"}
 {"suite":"npc-consistency","mode":"mock","total":8,"pass":8,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:13:55.913Z","gitSha":"ref: re"}
 {"suite":"npc-consistency","mode":"mock","total":8,"pass":8,"passRate":1,"gate":"pass","timestamp":"2026-07-09T03:51:42.435Z","gitSha":"ref: re"}
+{"suite":"npc-consistency","mode":"mock","total":8,"pass":8,"passRate":1,"gate":"pass","timestamp":"2026-08-04T01:17:22.009Z","gitSha":"532fb93caf7bba310eb3e1c765817339ca738547","provenance":{"commit":"532fb93caf7bba310eb3e1c765817339ca738547","promptVersion":"default","model":"unknown","config":"default","datasetVersion":"current","seed":242008,"judgeProvenance":"deepseek-v4-flash@current","timestamp":"2026-08-04T01:17:22.008Z"}}

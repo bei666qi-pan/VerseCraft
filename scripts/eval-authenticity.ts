@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JudgeService, getRubric } from "../src/lib/evals/judge";
-import { parseEvalCli, evalLog, writeJson, appendHistory, getGitSha } from "../src/lib/evals/harness";
+import { parseEvalCli, evalLog, writeJson, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 import { resolveEvalMode } from "../src/lib/evals/harness/config";
 import { AUTHENTICITY_CALIBRATION_SEEDS } from "../benchmarks/judge/authenticityCalibrationSeeds";
 import type { JudgeTarget, JudgeVerdict, MultiJudgeResult } from "../src/lib/evals/judge/types";
@@ -262,6 +262,7 @@ async function main(): Promise<void> {
   process.stdout.write(json);
 
   // 写入历史
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "authenticity",
     mode,
@@ -270,7 +271,8 @@ async function main(): Promise<void> {
     passRate,
     gate: report.passRate >= 0.8 ? "pass" : "fail",
     timestamp: report.generatedAt,
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   if (options.assert && report.fail > 0) process.exitCode = 1;

@@ -118,7 +118,7 @@ test("valid turns accumulate turn count, narrative characters, and state changes
   assert.equal(next.turnCount, 1);
   assert.equal(next.narrativeCharCount, progressSignals().narrativeText!.length);
   assert.equal(next.keyChoiceCount, 1);
-  assert.equal(next.stateChangeCount >= 1, true);
+  assert.ok(next.stateChangeCount >= 1);
 });
 
 test("chapter one completes from local readiness, enters chapter two, and keeps recap choice", () => {
@@ -133,7 +133,9 @@ test("chapter one completes from local readiness, enters chapter two, and keeps 
   }
   const progress = state.progressByChapterId[CHAPTER_ONE_ID];
   assert.equal(progress.status, "completed");
-  assert.equal(progress.completedBeatIds.includes("hook"), true);
+  for (const beatId of ["wake", "first-contact", "first-anomaly", "first-choice", "hook"]) {
+    assert.ok(progress.completedBeatIds.includes(beatId), `chapter one beat ${beatId} not completed`);
+  }
   assert.equal(state.completedChapterIds.includes(CHAPTER_ONE_ID), true);
   assert.equal(state.unlockedChapterIds.includes(CHAPTER_TWO_ID), true);
   assert.equal(state.summariesByChapterId[CHAPTER_ONE_ID].title, "暗月初醒");
@@ -171,8 +173,9 @@ test("chapter two completes from local readiness including state-change and next
 
   const progress = state.progressByChapterId[CHAPTER_TWO_ID];
   assert.equal(progress.status, "completed");
-  assert.equal(progress.completedBeatIds.includes("state-change"), true);
-  assert.equal(progress.completedBeatIds.includes("next-risk"), true);
+  for (const beatId of ["new-objective", "search", "obstacle", "key-choice", "state-change", "next-risk"]) {
+    assert.ok(progress.completedBeatIds.includes(beatId), `chapter two beat ${beatId} not completed`);
+  }
   assert.equal(state.completedChapterIds.includes(CHAPTER_TWO_ID), true);
   assert.equal(state.pendingChapterEndId, CHAPTER_TWO_ID);
 });

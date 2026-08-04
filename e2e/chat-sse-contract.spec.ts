@@ -112,7 +112,7 @@ async function postChat(
   _request?: unknown,
   options: { content?: string; sessionIdPrefix?: string; cookieHeader?: string; timeoutMs?: number } = {}
 ) {
-  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
+  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://[::1]:666";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 120_000);
   const response = await fetch(`${baseURL}/api/chat`, {
@@ -256,9 +256,9 @@ test.describe("/api/chat SSE — 登录态（可选）", () => {
     await page.getByPlaceholder("账号").fill(E2E_USER);
     await page.getByPlaceholder("密码").fill(E2E_PASS);
     await page.getByRole("button", { name: /登录|正在连接/ }).click();
-    await page.waitForTimeout(3000);
+    await page.waitForURL("**/play", { timeout: 10000 });
 
-    const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:666";
+    const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://[::1]:666";
     const cookieHeader = (await page.context().cookies(baseURL))
       .map((cookie) => `${cookie.name}=${cookie.value}`)
       .join("; ");

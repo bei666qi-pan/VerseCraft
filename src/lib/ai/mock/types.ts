@@ -18,7 +18,14 @@ export type MockAiScenario =
   | "dirty_malformed_fields"
   | "dirty_canned_options"
   | "dirty_repetitive_empty"
-  | "dirty_name_contamination";
+  | "dirty_name_contamination"
+  // HTTP / gateway error scenarios
+  | "http_429_rate_limit"
+  | "http_503_service_unavailable"
+  | "http_401_unauthorized"
+  // Content error scenarios
+  | "gibberish_non_json"
+  | "content_filter_blocked";
 
 export interface MockAiDelayConfig {
   firstTokenDelayMs: number;

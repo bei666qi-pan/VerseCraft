@@ -28,7 +28,7 @@ export function repairNarrativeCrossRefs(args: {
 }): { tasks: GameTaskV2[]; clues: ClueEntry[]; report: NarrativeIntegrityReport } {
   const inv = new Set(args.inventoryItemIds.map((x) => String(x).trim()).filter(Boolean));
   const wh = new Set(args.warehouseItemIds.map((x) => String(x).trim()).filter(Boolean));
-  const taskById = new Map(args.tasks.map((t) => [t.id, t]));
+  const __taskById = new Map(args.tasks.map((t) => [t.id, t]));
   const issues: NarrativeIntegrityReport["issues"] = [];
   const repairsApplied: string[] = [];
 
@@ -109,7 +109,7 @@ export function repairNarrativeCrossRefs(args: {
       audit: [`cleared_mature_objective:${mid}:${task.status}`],
     });
     const mergedTrace = mergeNarrativeTrace(c.trace, repairTrace, true);
-    const { maturesToObjectiveId: _drop, ...rest } = c;
+    const { maturesToObjectiveId: __drop, ...rest } = c;
     return { ...rest, ...(mergedTrace ? { trace: mergedTrace } : {}) };
   });
 

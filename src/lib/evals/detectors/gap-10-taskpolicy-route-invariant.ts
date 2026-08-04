@@ -21,7 +21,7 @@ const meta: DetectorMeta = {
 
 // ── 不变量检查 ─────────────────────────────────────────
 
-interface Invariant {
+interface _Invariant {
   name: string;
   run(): InvariantResult;
 }

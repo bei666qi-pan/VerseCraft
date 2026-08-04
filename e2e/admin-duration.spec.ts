@@ -20,7 +20,7 @@ test.describe("Admin duration rendering", () => {
     const adminPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
     test.skip(!adminPassword, "requires ADMIN_PASSWORD to enter the admin page");
 
-    const url = new URL(baseURL ?? "http://127.0.0.1:666");
+    const url = new URL(baseURL ?? "http://[::1]:666");
     await context.addCookies([
       {
         name: ADMIN_COOKIE,

@@ -9,8 +9,38 @@ import {
 import { resolveOperationMode } from "@/lib/ai/degrade/modeCore";
 import { VC_WAITING } from "@/lib/perf/waitingConfig";
 
+// Kimi Code CLI 运行时注入的环境变量，会绕过 withEnv 补丁。
+// 测试需要在执行前主动清除这些变量，除非显式设置了它们。
+const KIMI_INJECTED_VARS = [
+  // VC_AI_DIRECT_* injected by Kimi Code CLI / Codex DeepSeek
+  "VC_AI_DIRECT_BASE_URL",
+  "VC_AI_DIRECT_API_KEY",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
+  "VC_AI_DIRECT_SOURCE",
+  // Kimi Code CLI model binding
+  "KIMI_MODEL_PROVIDER_TYPE",
+  "KIMI_MODEL_BASE_URL",
+  "KIMI_MODEL_API_KEY",
+  "KIMI_MODEL_NAME",
+  // Gateway provider override (injected by Kimi/Codex as openai_compatible)
+  "AI_GATEWAY_PROVIDER",
+  // Extra body injections that override thinking/reasoning defaults
+  "AI_GATEWAY_MERGE_EXTRA_BODY",
+  "AI_GATEWAY_EXTRA_BODY_JSON",
+  "AI_PLAYER_CHAT_MERGE_EXTRA_BODY",
+  "AI_PLAYER_CHAT_EXTRA_BODY_JSON",
+  "AI_PLAYER_CHAT_DISABLE_THINKING",
+  "AI_ONLINE_SHORT_JSON_DISABLE_THINKING",
+];
+
 function withEnv(patch: Record<string, string | undefined>, fn: () => void): void {
   const prev: Record<string, string | undefined> = {};
+  // 保存 patch 中的原始值
   for (const k of Object.keys(patch)) {
     prev[k] = process.env[k];
     const v = patch[k];
@@ -18,6 +48,13 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void): voi
       delete process.env[k];
     } else {
       process.env[k] = v;
+    }
+  }
+  // 清除 Kimi 注入变量（除非 patch 中显式设置了它们）
+  for (const k of KIMI_INJECTED_VARS) {
+    if (!(k in patch)) {
+      prev[k] = process.env[k];
+      delete process.env[k];
     }
   }
   try {
@@ -29,6 +66,17 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void): voi
         delete process.env[k];
       } else {
         process.env[k] = old;
+      }
+    }
+    // 恢复 Kimi 注入变量
+    for (const k of KIMI_INJECTED_VARS) {
+      if (!(k in patch)) {
+        const old = prev[k];
+        if (old === undefined) {
+          delete process.env[k];
+        } else {
+          process.env[k] = old;
+        }
       }
     }
   }
@@ -140,6 +188,105 @@ test("resolveAiEnv keeps full chat completions URL when already suffixed", () =>
         resolveAiEnv().gatewayBaseUrl,
         "https://oneapi.example.com/v1/chat/completions"
       );
+    }
+  );
+});
+
+test("resolveAiEnv gives the kimi-ds direct binding priority over project gateway env", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      VC_AI_DIRECT_BASE_URL: "https://direct-gateway.example/v1",
+      VC_AI_DIRECT_API_KEY: "direct-key",
+      VC_AI_DIRECT_MODEL: "deepseek-v4-flash",
+      AI_PLAYER_CHAT_DISABLE_THINKING: "1",
+      AI_ONLINE_SHORT_JSON_DISABLE_THINKING: "1",
+    },
+    () => {
+      const env = resolveAiEnv();
+      assert.equal(env.gatewayProvider, "openai_compatible");
+      assert.equal(env.gatewayBaseUrl, "https://direct-gateway.example/v1/chat/completions");
+      assert.equal(env.gatewayApiKey, "direct-key");
+      assert.deepEqual(env.modelsByRole, {
+        main: "deepseek-v4-flash",
+        control: "deepseek-v4-flash",
+        enhance: "deepseek-v4-flash",
+        reasoner: "deepseek-v4-flash",
+        writer: "deepseek-v4-flash",
+      });
+      assert.deepEqual(env.playerChatExtraBody, {
+        enable_thinking: false,
+        thinking: { type: "disabled" },
+      });
+      assert.equal(env.onlineShortJsonDisableThinking, true);
+    }
+  );
+});
+
+test("resolveAiEnv scopes Flash to gameplay while all logical roles stay on Pro", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      VC_AI_DIRECT_BASE_URL: "https://direct-gateway.example/v1",
+      VC_AI_DIRECT_API_KEY: "direct-key",
+      VC_AI_DIRECT_MODEL: undefined,
+      VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
+      VC_AI_DIRECT_MODEL_MAIN: "deepseek-v4-pro-202606",
+      VC_AI_DIRECT_MODEL_CONTROL: "deepseek-v4-pro-202606",
+      VC_AI_DIRECT_MODEL_ENHANCE: "deepseek-v4-pro-202606",
+      VC_AI_DIRECT_MODEL_REASONER: "deepseek-v4-pro-202606",
+    },
+    () => {
+      assert.equal(resolveAiEnv().playerGameplayModel, "deepseek-v4-flash");
+      assert.deepEqual(resolveAiEnv().modelsByRole, {
+        main: "deepseek-v4-pro-202606",
+        control: "deepseek-v4-pro-202606",
+        enhance: "deepseek-v4-pro-202606",
+        reasoner: "deepseek-v4-pro-202606",
+        writer: "deepseek-v4-pro-202606",
+      });
+    }
+  );
+});
+
+test("resolveAiEnv inherits an existing kimi-ds OpenAI binding without affecting ordinary Kimi", () => {
+  withEnv(
+    {
+      ...gatewayBase,
+      VC_AI_DIRECT_BASE_URL: undefined,
+      VC_AI_DIRECT_API_KEY: undefined,
+      VC_AI_DIRECT_MODEL: undefined,
+      KIMI_MODEL_PROVIDER_TYPE: "openai",
+      KIMI_MODEL_BASE_URL: "https://kimi-openai.example/v1",
+      KIMI_MODEL_API_KEY: "kimi-openai-key",
+      KIMI_MODEL_NAME: "kimi-openai-model",
+    },
+    () => {
+      const env = resolveAiEnv();
+      assert.equal(env.gatewayProvider, "openai_compatible");
+      assert.equal(env.gatewayBaseUrl, "https://kimi-openai.example/v1/chat/completions");
+      assert.equal(env.gatewayApiKey, "kimi-openai-key");
+      assert.equal(env.modelsByRole.main, "kimi-openai-model");
+    }
+  );
+
+  withEnv(
+    {
+      ...gatewayBase,
+      VC_AI_DIRECT_BASE_URL: undefined,
+      VC_AI_DIRECT_API_KEY: undefined,
+      VC_AI_DIRECT_MODEL: undefined,
+      KIMI_MODEL_PROVIDER_TYPE: "kimi",
+      KIMI_MODEL_BASE_URL: "https://ordinary-kimi.example/v1",
+      KIMI_MODEL_API_KEY: "ordinary-kimi-key",
+      KIMI_MODEL_NAME: "ordinary-kimi-model",
+    },
+    () => {
+      const env = resolveAiEnv();
+      assert.equal(env.gatewayProvider, "oneapi");
+      assert.equal(env.gatewayBaseUrl, "https://oneapi.example.com/v1/chat/completions");
+      assert.equal(env.gatewayApiKey, "sk-gateway");
+      assert.equal(env.modelsByRole.main, "upstream-main");
     }
   );
 });

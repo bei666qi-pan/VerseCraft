@@ -98,6 +98,48 @@ function shouldRecordObservability(phase: AiLogPhase): boolean {
 /** Stable log envelope type for log drains / CI assertions. */
 export const AI_TELEMETRY_LOG_TYPE = "ai.telemetry" as const;
 
+function postUsageToLocalMeter(rec: AiCostRecord): void {
+  const meterUrl = process.env.DEEPSEEK_METER_URL?.trim();
+  if (!meterUrl || !rec.usage || (rec.phase !== "success" && rec.phase !== "stream_complete")) return;
+  const usage = rec.usage;
+  const dedupeKey = [
+    "versecraft",
+    rec.requestId,
+    rec.task,
+    rec.logicalRole,
+    rec.gatewayModel ?? "unknown",
+    rec.phase,
+    usage.promptTokens ?? 0,
+    usage.completionTokens ?? 0,
+    usage.cachedPromptTokens ?? 0,
+  ].join(":");
+  void fetch(meterUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dedupeKey,
+      occurredAt: new Date().toISOString(),
+      requestId: rec.requestId,
+      task: rec.task,
+      source: "VerseCraft /api/chat",
+      model: rec.gatewayModel ?? "unknown",
+      usage: {
+        prompt_tokens: usage.promptTokens,
+        completion_tokens: usage.completionTokens,
+        total_tokens: usage.totalTokens,
+        ...(usage.cachedPromptTokens != null
+          ? { prompt_tokens_details: { cached_tokens: usage.cachedPromptTokens } }
+          : {}),
+      },
+      status: "success",
+      latencyMs: rec.latencyMs,
+    }),
+    signal: AbortSignal.timeout(1_500),
+  }).catch(() => {
+    // Observability must never affect the player-facing AI request path.
+  });
+}
+
 /** Structured logs for observability + future billing pipelines. */
 export function logAiTelemetry(rec: AiCostRecord): void {
   const payload = {
@@ -145,6 +187,7 @@ export function logAiTelemetry(rec: AiCostRecord): void {
     providerInitMs: rec.providerInitMs,
     toolCallCount: rec.toolCallCount,
   };
+  postUsageToLocalMeter(rec);
   if (shouldEmitConsole(rec.phase)) {
     if (rec.phase === "error") {
       console.error(JSON.stringify(payload));

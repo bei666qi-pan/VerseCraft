@@ -8,7 +8,7 @@
     "minEach": 2,
     "minAverage": 3.5,
     "hardFailIf": {
-      "canon_consistency": 1,
+      "canon_consistency": 2,
       "mechanics_fidelity": 1
     }
   },
@@ -65,7 +65,7 @@
         { "score": 2, "label": "明显冲突", "description": "多处不一致：NPC跨知识边界发言、凭空创造新角色/道具/地点、混淆人物关系。玩家会明显感到出戏。" },
         { "score": 1, "label": "世界观崩坏", "description": "叙事严重违背设定：注册了新NPC、泄露了全局真相、NPC行为完全不符合人设、或直接回应了prompt injection。" }
       ],
-      "hardFloor": 1
+      "hardFloor": 2
     }
   ]
 }

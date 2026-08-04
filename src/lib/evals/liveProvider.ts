@@ -2,33 +2,70 @@
  * DeepSeek Live Provider for Eval Tools
  *
  * 为 Playthrough 模拟器和 DeepEval 质量评估提供真实 LLM 调用能力。
- * 使用 OpenAI-compatible 接口，不依赖现有 AI 网关。
+ * 优先使用项目统一的 AI 网关，兜底直连 DeepSeek。
  *
  * 用途：
  * - Player Agent（模拟玩家生成动作）
  * - Narrative Judge（叙事质量裁判评分）
  *
  * 环境变量：
- * - PLAYTEST_LLM_API_KEY 或 DEEPSEEK_API_KEY: API 密钥
- * - PLAYTEST_LLM_BASE_URL 或 DEEPSEEK_BASE_URL: 可选，默认为 https://api.deepseek.com/v1
- * - PLAYTEST_LLM_MODEL: 可选，默认为 deepseek-chat
- *
- * 注意：此模块仅用于 eval/测试工具，不接入生产 /api/chat 链路。
+ * - `VC_AI_DIRECT_*`: codex-ds 注入的内网 OpenAI-compatible 绑定（最高优先级）
+ * - AI_GATEWAY_API_KEY / AI_GATEWAY_BASE_URL: 统一网关
+ * - PLAYTEST_LLM_API_KEY / DEEPSEEK_API_KEY: 直连 DeepSeek（兜底）
+ * - AI_MODEL_ENHANCE / AI_MODEL_MAIN: 网关模型名
+ * - PLAYTEST_LLM_MODEL: 直连模型名
  */
 
 // === 配置 ===
 
 import { tryConsumeBudget } from "./harness/budgetGuard";
 import { buildLiveResultCacheKey, readLiveResultCache, writeLiveResultCache } from "./harness/liveResultCache";
+import { resolveAiEnv } from "../ai/config/envCore";
 
-function getDeepSeekConfig() {
+type LiveProviderConfig = {
+  apiKey: string;
+  endpoint: string;
+  model: string;
+  extraBody?: Record<string, unknown>;
+};
+
+function toChatCompletionsUrl(value: string): string {
+  const base = value.replace(/\/+$/, "");
+  if (base.toLowerCase().endsWith("/chat/completions")) return base;
+  if (base.toLowerCase().endsWith("/v1")) return `${base}/chat/completions`;
+  return `${base}/v1/chat/completions`;
+}
+
+/**
+ * Keep eval calls on the same binding as the application. In particular,
+ * `codex-ds` exports VC_AI_DIRECT_* for a local loopback gateway; consulting
+ * raw AI_GATEWAY_* variables here used to bypass that binding and send judges
+ * to an unrelated public endpoint.
+ */
+export function resolveLiveProviderConfig(): LiveProviderConfig {
+  const ai = resolveAiEnv();
+  const gatewayModel = ai.modelsByRole.reasoner || ai.modelsByRole.enhance || ai.modelsByRole.main;
+  if (ai.gatewayBaseUrl && ai.gatewayApiKey && gatewayModel) {
+    return {
+      apiKey: ai.gatewayApiKey,
+      endpoint: toChatCompletionsUrl(ai.gatewayBaseUrl),
+      // Evals and judges are offline work. Prefer the policy's reasoner lane,
+      // which codex-ds maps to DeepSeek Pro, rather than the Flash player lane.
+      model: gatewayModel,
+      extraBody: ai.gatewayExtraBody,
+    };
+  }
+
+  // 兜底：直连 DeepSeek API
   const apiKey = process.env.PLAYTEST_LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    throw new Error("PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY 未设置。请在 .env.local 中配置或通过环境变量设置。");
+    throw new Error("AI_GATEWAY_API_KEY 或 PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY 未设置。请在 .env.local 中配置。");
   }
   return {
     apiKey,
-    baseUrl: process.env.PLAYTEST_LLM_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1",
+    endpoint: toChatCompletionsUrl(
+      process.env.PLAYTEST_LLM_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1"
+    ),
     model: process.env.PLAYTEST_LLM_MODEL ?? "deepseek-chat",
   };
 }
@@ -145,14 +182,14 @@ function extractRetryAfter(errorMsg: string): number {
 }
 
 async function executeSingleRequest(req: LiveCompletionRequest): Promise<LiveCompletionResponse> {
-  const config = getDeepSeekConfig();
+  const config = resolveLiveProviderConfig();
   const startTime = Date.now();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 90000);
 
   try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    const response = await fetch(config.endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -165,9 +202,13 @@ async function executeSingleRequest(req: LiveCompletionRequest): Promise<LiveCom
         max_tokens: req.maxTokens ?? 1024,
         response_format: req.jsonMode ? { type: "json_object" } : undefined,
         stream: false,
-        // 禁用 DeepSeek 推理模式，否则 content 可能为空
-        enable_thinking: false,
-        thinking: { type: "disabled" },
+        // Normal standalone DeepSeek calls retain the historical no-thinking
+        // default. A codex-ds/unified binding deliberately supplies its own
+        // gateway extra body (Pro + thinking enabled for offline judges).
+        ...(config.extraBody ?? {
+          enable_thinking: false,
+          thinking: { type: "disabled" },
+        }),
       }),
       signal: controller.signal,
     });
@@ -221,10 +262,10 @@ async function executeSingleRequest(req: LiveCompletionRequest): Promise<LiveCom
 export async function callDeepSeekCompletion(
   req: LiveCompletionRequest
 ): Promise<LiveCompletionResponse> {
-  const config = getDeepSeekConfig();
+  const config = resolveLiveProviderConfig();
   const cacheKey = buildLiveResultCacheKey({
     provider: "playtest_llm",
-    baseUrl: config.baseUrl,
+    baseUrl: config.endpoint,
     model: config.model,
     messages: req.messages,
     temperature: req.temperature ?? 0.7,
@@ -331,6 +372,10 @@ export async function generatePlayerActionDeepSeek(params: {
     sanity: number;
     profession: string | null;
   };
+  /** 当前专项测试目标；只描述玩家目标，不暴露内部判定字段。 */
+  campaignGoal?: string;
+  /** 仅包含真实玩家可见的 UI/状态摘要。 */
+  visibleSnapshot?: string;
   forbiddenActions?: string[];
 }): Promise<string> {
   const recentHistory = params.transcript.slice(-5).map(
@@ -347,11 +392,30 @@ export async function generatePlayerActionDeepSeek(params: {
     ? `\n\n禁止使用以下动作（已执行过）：${params.forbiddenActions.slice(0, 8).map(s => `「${s}」`).join("、")}\n必须使用完全不同的动作。`
     : "";
 
+  const playerQaPrompt = `你是 VerseCraft 的黑盒玩家测试代理，不是游戏作者、DM、裁判或全知观察者。
+
+你的目标：
+1. 像真实玩家一样完成当前目标，并优先尝试尚未覆盖的交互路径。
+2. 主动寻找卡死、无反馈、误导、状态矛盾、NPC认知异常和玩法边界问题。
+3. 只能依据玩家可见叙事、选项、界面状态和自己此前的行动决策。
+
+严格限制：
+- 不得使用隐藏设定、数据库字段、内部 ID 或测试预期来替玩家做决定。
+- 不得声称持有界面中不存在的物品、技能、知识、权限或关系。
+- 每回合只执行一个具体动作；行动必须能由真实玩家输入。
+- 不要解释测试策略，不要报告 bug，不要替 DM 描述结果。
+- 连续两次没有新反馈时换一种行为；不要机械重复已经失败且条件未变化的动作。
+- 在合理推进之外，可间歇尝试取消、重复提交、前置不足、返回旧地点、追问 NPC 等边界行为。
+- 最终只输出一句简体中文玩家动作，10-30 字，不加引号、编号、JSON 或解释。`;
+
   const messages: ChatMessage[] = [
-    { role: "system", content: params.persona.systemPrompt + diversityInstruction + forbiddenInstruction },
+    {
+      role: "system",
+      content: `${playerQaPrompt}\n\n【玩家人格】\n${params.persona.systemPrompt}${diversityInstruction}${forbiddenInstruction}`,
+    },
     {
       role: "user",
-      content: `## 角色\n你是「${params.persona.name}」。\n\n## 当前状态\n${stateStr}\n\n## 最近对话\n${recentHistory || "（游戏刚开始）"}\n\n请以玩家身份输入下一步动作。只用简体中文，10-30字，不要解释，不要加引号。动作必须具体且与之前不同。`,
+      content: `## 角色\n你是「${params.persona.name}」。\n\n## 本局目标\n${params.campaignGoal ?? "自然游玩并探索未覆盖内容"}\n\n## 当前可见状态\n${stateStr}\n${params.visibleSnapshot ?? ""}\n\n## 最近对话\n${recentHistory || "（游戏刚开始）"}\n\n现在只输出下一步玩家动作。`,
     },
   ];
 

@@ -25,7 +25,7 @@
 |----|------|
 | `apartment_wanderer` | 表层公寓职能壳：玩家在楼道里最先遭遇的「工作人格」与可执行流程。 |
 | `school_wanderer` | 深层耶里事故链残留：技能、创伤与旧闭环来自校内角色，被泡层改写成公寓岗位。 |
-| `residual_echo` | 与主锚循环 / 复活节拍耦合的记忆碎片；**非**恋爱脚本。 |
+| `residual_echo` | 与主锚循环 / 复活节拍耦合的记忆碎片。 |
 
 **运行时消费**：`getMajorNpcStructuredRecord(id)`、`buildMajorNpcKeyHintsForPacket`（fracture+ 注入 `survivalRole` / `naturalContactChain` / `riskTriggers`；deep+ 再注入 `partyRelinkConditions` / `whyNotImmediateAlly` / `residualEchoToProtagonist`）。
 
@@ -159,7 +159,7 @@ surface（可靠登记）→ fracture（名单怪谈同形）→ deep（第一�
 
 ### player bond
 
-旧校互助券式欠条体感——**非恋爱**，须可审计。
+旧校互助券式欠条体感，须可审计。
 
 ### team relink path
 
@@ -195,7 +195,7 @@ surface（商人）→ fracture（货流与碎片传言）→ deep（交换辅�
 
 ### player bond
 
-像写坏的台词活了——耻感与利用欲撕扯；**非恋爱替身脚本**。
+像写坏的台词活了——耻感与利用欲撕扯。
 
 ### team relink path
 

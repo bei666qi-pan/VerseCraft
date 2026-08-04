@@ -58,6 +58,35 @@ export async function generateMainReply(params: {
   });
 }
 
+/** 
+ * Writer 回合（Phase 2: 唯一玩家可见叙事责任主体）。
+ * 
+ * Writer 负责：
+ * - PLAYER_CHAT 玩家可见正文
+ * - 已裁决 mechanics 结果的文学呈现
+ * - 场景增强、情绪润色等玩家可见修辞能力
+ * 
+ * Writer 不负责：
+ * - 意图分类和风险 lane（control）
+ * - 安全政策裁决
+ * - 伤害、奖励、掉落、任务状态等领域规则（domain services）
+ * - 提交 StateDelta 或写 FINAL
+ * - 后台世界推演（reasoner）
+ * 
+ * 配置：`AI_MODEL_WRITER`（未配置时回退 `AI_MODEL_MAIN`）。
+ * 此为 `generateMainReply` 的语义别名，当前委托同一实现。
+ */
+export async function generateWriterTurn(params: {
+  messages: ChatMessage[];
+  ctx: Pick<AIRequestContext, "requestId" | "userId" | "sessionId" | "path" | "tags">;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  skipRoles?: readonly AiLogicalRole[];
+  maxTokensOverride?: number;
+}): Promise<PlayerChatStreamResult> {
+  return generateMainReply(params);
+}
+
 /** 控制面：意图、槽位、风险标签、增强开关（无剧情正文）。内部任务 PLAYER_CONTROL_PREFLIGHT。 */
 export async function parsePlayerIntent(args: {
   latestUserInput: string;

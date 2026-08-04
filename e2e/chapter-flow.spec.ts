@@ -457,7 +457,7 @@ test.describe("chapter flow", () => {
     await expect(page.getByTestId("mobile-reading-header")).toContainText("第二章：潮湿门缝");
 
     const viewportBox = await page.getByTestId("mobile-story-viewport").boundingBox();
-    expect(viewportBox).toBeTruthy();
+    expect(viewportBox).not.toBeNull();
     if (viewportBox) {
       const y = viewportBox.y + Math.min(220, viewportBox.height / 2);
       await expectPageTurnDuring(page, async () => {

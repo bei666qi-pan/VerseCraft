@@ -33,6 +33,7 @@ test("buildInit: responseFormatJsonSchema 序列化为 response_format:{type:jso
   assert.equal(jsonSchema.name, PLAYER_DM_JSON_SCHEMA_NAME);
   assert.equal(jsonSchema.strict, false);
   assert.equal(typeof jsonSchema.schema, "object");
+  assert.ok(jsonSchema.schema !== null && Object.keys(jsonSchema.schema as Record<string, unknown>).length > 0);
 });
 
 test("buildInit: responseFormatJsonSchema 优先于 responseFormatJsonObject", () => {

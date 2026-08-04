@@ -80,3 +80,36 @@ test("fast path: 模糊长输入不命中（交给 LLM）", () => {
   assert.equal(r.hit, false);
 });
 
+
+test("fast path: move+dialogue compound defers to LLM instead of misrouting as explore", () => {
+  const inputs = [
+    "我走向林晚枫，想和他聊聊最近发生的事。",
+    "我走向前台，向管理员打听情况。",
+    "我过去和陈婆婆说几句话。",
+  ];
+  for (const input of inputs) {
+    const result = runDeterministicControlFastPath({
+      latestUserInput: input,
+      ruleSnapshot: { in_dialogue_hint: false, in_combat_hint: false },
+    });
+    // Must NOT hit as explore — should either be dialogue or defer to LLM
+    if (result.hit) {
+      assert.notEqual(result.reason, "move_explore_explicit",
+        `"${input}" should not be fast-pathed as move_explore_explicit`);
+    }
+  }
+});
+
+test("fast path: pure move still works after dialogue compound fix", () => {
+  const pureMoves = ["我走向门口", "我去B1层看看", "前往三楼"];
+  for (const input of pureMoves) {
+    const result = runDeterministicControlFastPath({
+      latestUserInput: input,
+      ruleSnapshot: { in_dialogue_hint: false, in_combat_hint: false },
+    });
+    if (result.hit) {
+      assert.equal(result.reason, "move_explore_explicit",
+        `Pure move "${input}" should still fast-path as explore`);
+    }
+  }
+});

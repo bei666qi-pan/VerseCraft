@@ -1,5 +1,5 @@
 /**
- * 校验当前进程环境下的 one-api 网关配置（不发起真实 LLM 请求）。
+ * 校验当前进程环境下的 OpenAI-compatible 网关配置（不发起真实 LLM 请求）。
  * 加载顺序：`.env` → `.env.local`（与 Next 常见习惯一致）。
  *
  * 用法：pnpm verify:ai-gateway
@@ -22,7 +22,8 @@ async function main(): Promise<void> {
 
   const e = resolveAiEnv();
 
-  console.log("[verify-ai-gateway] VerseCraft one-api 配置检查");
+  console.log("[verify-ai-gateway] VerseCraft OpenAI-compatible 网关配置检查");
+  console.log(`  gatewayProvider: ${e.gatewayProvider}`);
   console.log(`  gatewayBaseUrl: ${e.gatewayBaseUrl ? "已设置" : "缺失"}`);
   console.log(
     `  gatewayApiKey: ${e.gatewayApiKey.length > 0 ? `已设置（${e.gatewayApiKey.length} 字符）` : "缺失"}`
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
     );
     if (strict) process.exit(1);
   } else {
-    console.log("\n配置项齐全（是否连通 one-api 需自行 curl 或跑 e2e）。");
+    console.log("\n配置项齐全（是否连通上游网关需运行 live smoke 或 e2e）。");
   }
 
   if (strict && !anyAiProviderConfigured()) {

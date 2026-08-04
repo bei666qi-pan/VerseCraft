@@ -72,9 +72,7 @@ describe("applyNpcConsistencyPostGeneration", () => {
   it("性别称谓明显写反 -> 软化", () => {
     const npcId = "N-008";
     const canon = getNpcCanonicalIdentity(npcId);
-    if (canon.canonicalGender !== "male") {
-      return;
-    }
+    assert.equal(canon.canonicalGender, "male", "precondition: N-008 should be male");
     const r = applyNpcConsistencyPostGeneration({
       dmRecord: baseDm("她低声道：‘别靠那么近。’"),
       actorNpcId: npcId,
@@ -140,9 +138,7 @@ describe("applyNpcConsistencyPostGeneration", () => {
   it("高魅力可保留熟悉感但不一口 omnibus", () => {
     const npcId = "N-020";
     const canon = getNpcCanonicalIdentity(npcId);
-    if (canon.memoryPrivilege !== "major_charm") {
-      return;
-    }
+    assert.equal(canon.memoryPrivilege, "major_charm", "precondition: N-020 should have major_charm privilege");
     const r = applyNpcConsistencyPostGeneration({
       dmRecord: baseDm("七锚全员真相闭环已经写在校史根因里。"),
       actorNpcId: npcId,

@@ -1,3 +1,6 @@
+// These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
+// transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
+process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -145,7 +148,7 @@ test("generateOptionsOnlyFallback retries one transient empty model response wit
   });
 
   assert.equal(fetchCount, 2);
-  assert.deepEqual(seenMaxTokens, [640, 640]);
+  assert.deepEqual(seenMaxTokens, [undefined, undefined]);
   assert.equal(res.ok, true);
   if (!res.ok) return;
   assert.deepEqual(res.options, [

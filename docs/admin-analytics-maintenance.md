@@ -35,7 +35,15 @@
 - 用户/游客日活：`actor_daily_activity`（`user_daily_activity`/`guest_daily_activity` 已下线，见下方"遗留表下线现状"）
 - Token 日聚合：`actor_daily_tokens`（`user_daily_tokens`/`guest_daily_tokens` 已下线）
 - 后台日聚合：`admin_metrics_daily`
+- 页面访问日聚合：`web_traffic_daily`（用于历史报表重建；总览当日 PV/UV 与来源直接查询 `analytics_events.page_viewed`）
 - 审计日志：`admin_audit_logs`
+
+### 页面访问与来源的隐私边界
+
+`WebTrafficTracker` 只为同一浏览器保存一个随机访客 ID，并在页面浏览事件中写入五种粗粒度来源之一：
+`direct`（没有可用来源）、`internal`（站内跳转）、`search`、`social`、`referral`（其他外部站点）。它不会写入原始
+referrer URL、域名、搜索词、UTM 或页面路径。后台的 UV 仅对格式合法的访客 ID 去重；历史脏值或缺失 ID 仍保留在 PV，
+但不会虚增 UV。来源 UV 只能用于分别观察渠道，不能相加当作总 UV，因为同一访客可能经多个来源访问。
 
 ### 环境隔离（`analytics_events.environment`）
 

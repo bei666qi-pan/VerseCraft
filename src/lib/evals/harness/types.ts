@@ -6,9 +6,39 @@
  * - Scorer 接口允许 rule-based / feature-heuristic / LLM judge 三种实现
  * - Reporter 双写全量 JSON + 聚合历史行
  * - Registry 保证 case 元数据可自检
+ * - ExperimentProvenance 统一所有实验的溯源身份
  */
 
 import type { EvalMode } from "./config";
+
+// ── 实验溯源（统一身份）──────────────────────────────────
+
+/**
+ * 每次实验的不可变溯源身份。
+ *
+ * 设计目标：
+ * - 所有 eval/bench/playthrough 脚本共享同一套字段
+ * - 统一 JSONL 历史，支持跨批次对比
+ * - 可审计：谁在什么配置下用什么模型跑了什么数据集
+ */
+export interface ExperimentProvenance {
+  /** Git commit SHA（40 字符完整值） */
+  commit: string;
+  /** DM stable prompt 版本（来自 VERSECRAFT_DM_STABLE_PROMPT_VERSION） */
+  promptVersion: string;
+  /** 主模型标识（如 deepseek-v3、gpt-4o） */
+  model: string;
+  /** 配置快照键（如 "prod-default"、"slow-lane-only"） */
+  config: string;
+  /** 数据集版本标识（如 "v2.1.0"、"2026-07-09"） */
+  datasetVersion: string;
+  /** 随机种子（确定性复现） */
+  seed: number;
+  /** Judge 溯源：judge 模型 + rubric 版本 */
+  judgeProvenance: string;
+  /** 实验运行的 ISO 时间戳 */
+  timestamp: string;
+}
 
 // ── Case 元数据 ──────────────────────────────────────────
 
@@ -92,7 +122,10 @@ export interface ReportEntry {
   dimensions?: Record<string, number>;
   latencyMs?: { p50: number; p95: number };
   timestamp: string;
+  /** @deprecated Use provenance.commit instead */
   gitSha: string;
+  /** 统一实验溯源身份 */
+  provenance: ExperimentProvenance;
 }
 
 // ── Registry ─────────────────────────────────────────────

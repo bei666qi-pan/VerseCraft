@@ -1,12 +1,31 @@
 /**
  * 网关契约：错误聚合、环境切换对请求体的影响（无真实 one-api、无扣费）。
  */
+// These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
+// transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
+process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resetProviderCircuitsForTests } from "@/lib/ai/fallback/circuitBreaker";
 import { resetModelCircuitsForTests } from "@/lib/ai/fallback/modelCircuit";
 import type { ChatMessage } from "@/lib/ai/types/core";
 import { executeChatCompletion, executePlayerChatStream } from "@/lib/ai/router/execute";
+
+// Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
+const KIMI_INJECTED_VARS = [
+  "VC_AI_DIRECT_BASE_URL",
+  "VC_AI_DIRECT_API_KEY",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
+  "KIMI_MODEL_PROVIDER_TYPE",
+  "KIMI_MODEL_BASE_URL",
+  "KIMI_MODEL_API_KEY",
+  "KIMI_MODEL_NAME",
+];
 
 function patchEnv(updates: Record<string, string | undefined>): () => void {
   const prev: Record<string, string | undefined> = {};
@@ -16,11 +35,25 @@ function patchEnv(updates: Record<string, string | undefined>): () => void {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  // 清除 Kimi 注入变量
+  for (const k of KIMI_INJECTED_VARS) {
+    if (!(k in updates)) {
+      prev[k] = process.env[k];
+      delete process.env[k];
+    }
+  }
   return () => {
     for (const k of Object.keys(updates)) {
       const o = prev[k];
       if (o === undefined) delete process.env[k];
       else process.env[k] = o;
+    }
+    for (const k of KIMI_INJECTED_VARS) {
+      if (!(k in updates)) {
+        const o = prev[k];
+        if (o === undefined) delete process.env[k];
+        else process.env[k] = o;
+      }
     }
   };
 }
@@ -41,10 +74,13 @@ const baseGateway = {
 test("executePlayerChatStream CHAIN_EXHAUSTED after all roles return 5xx", async (t) => {
   const restore = patchEnv(baseGateway);
   const origFetch = globalThis.fetch;
+  let callCount = 0;
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    callCount++;
     assert.ok(String(input).includes("gw.contract.test"));
     const body = JSON.parse(String(init?.body)) as { model?: string };
-    assert.ok(body.model === "model-main" || body.model === "model-control");
+    if (callCount === 1) assert.equal(body.model, "model-main");
+    else if (callCount === 2) assert.equal(body.model, "model-control");
     return new Response("err", { status: 503 });
   };
   t.after(() => {
@@ -88,7 +124,7 @@ test("executeChatCompletion CHAIN_EXHAUSTED for RULE_RESOLUTION when upstream al
   assert.equal(res.ok, false);
   if (res.ok) return;
   assert.equal(res.code, "CHAIN_EXHAUSTED");
-  assert.ok(res.routing?.attempts && res.routing.attempts.length >= 1);
+  assert.equal(res.routing?.attempts?.length, 2);
 });
 
 test("first player stream hop uses AI_MODEL_MAIN from env", async (t) => {
@@ -121,18 +157,21 @@ test("first player stream hop uses AI_MODEL_MAIN from env", async (t) => {
   assert.equal(firstModel, "vc-custom-main");
 });
 
-test("executePlayerChatStream applies clamped PLAYER_CHAT maxTokensOverride", async (t) => {
+test("executePlayerChatStream omits max_tokens even when a legacy override is supplied", async (t) => {
   const restore = patchEnv(baseGateway);
   const origFetch = globalThis.fetch;
   let maxTokens: number | undefined;
   let responseFormatType = "";
+  let streamEnabled = false;
   globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as {
       max_tokens?: number;
       response_format?: { type?: string };
+      stream?: boolean;
     };
     maxTokens = body.max_tokens;
     responseFormatType = body.response_format?.type ?? "";
+    streamEnabled = body.stream === true;
     const stream = new ReadableStream({
       start(controller) {
         controller.close();
@@ -159,8 +198,38 @@ test("executePlayerChatStream applies clamped PLAYER_CHAT maxTokensOverride", as
   });
 
   assert.equal(result.ok, true);
-  assert.equal(maxTokens, 2304);
+  assert.equal(maxTokens, undefined);
   assert.equal(responseFormatType, "json_object");
+  assert.equal(streamEnabled, true);
+});
+
+test("legacy 896 PLAYER_CHAT override cannot reintroduce a wire-level cap", async (t) => {
+  const restore = patchEnv(baseGateway);
+  const origFetch = globalThis.fetch;
+  let maxTokens: number | undefined;
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { max_tokens?: number };
+    maxTokens = body.max_tokens;
+    return new Response(new ReadableStream({ start(controller) { controller.close(); } }), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+
+  const result = await executePlayerChatStream({
+    messages: [{ role: "user", content: "x" }],
+    ctx: { requestId: "gw-contract-min-tokens-player", task: "PLAYER_CHAT", userId: null },
+    maxTokensOverride: 896,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(maxTokens, undefined);
 });
 
 test("AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE does not affect non PLAYER_CHAT completion tasks", async (t) => {
@@ -194,7 +263,7 @@ test("AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE does not affect non PLAYER_CHAT complet
   });
 
   assert.equal(res.ok, true);
-  assert.equal(maxTokens, 640);
+  assert.equal(maxTokens, undefined);
 });
 
 test("executeChatCompletion honors explicit JSON response override for online short JSON tasks", async (t) => {
@@ -331,6 +400,98 @@ test("control-plane JSON disables provider thinking by default so output budget 
   assert.deepEqual(bodyExtra.thinking, { type: "disabled" });
 });
 
+test("codex-ds split routes PLAYER_CHAT to Flash with thinking disabled", async (t) => {
+  const restore = patchEnv({
+    ...baseGateway,
+    VC_AI_DIRECT_MODEL: undefined,
+    VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
+    VC_AI_DIRECT_MODEL_MAIN: "deepseek-v4-pro-202606",
+    VC_AI_DIRECT_MODEL_CONTROL: "deepseek-v4-pro-202606",
+    VC_AI_DIRECT_MODEL_ENHANCE: "deepseek-v4-pro-202606",
+    VC_AI_DIRECT_MODEL_REASONER: "deepseek-v4-pro-202606",
+    AI_GATEWAY_MERGE_EXTRA_BODY: "1",
+    AI_GATEWAY_EXTRA_BODY_JSON:
+      '{"enable_thinking":true,"thinking":{"type":"enabled"},"reasoning_effort":"max"}',
+    AI_PLAYER_CHAT_DISABLE_THINKING: "1",
+    AI_PLAYER_CHAT_MERGE_EXTRA_BODY: "1",
+    AI_PLAYER_CHAT_EXTRA_BODY_JSON:
+      '{"enable_thinking":false,"thinking":{"type":"disabled"}}',
+  });
+  const origFetch = globalThis.fetch;
+  let captured: Record<string, unknown> = {};
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    captured = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(new ReadableStream({ start(controller) { controller.close(); } }), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+
+  const result = await executePlayerChatStream({
+    messages: [{ role: "user", content: "观察四周" }],
+    ctx: { requestId: "gw-contract-split-player", task: "PLAYER_CHAT" },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(captured.model, "deepseek-v4-flash");
+  assert.equal(captured.stream, true);
+  assert.equal(captured.enable_thinking, false);
+  assert.deepEqual(captured.thinking, { type: "disabled" });
+  assert.equal("reasoning_effort" in captured, false);
+});
+
+test("codex-ds split routes EVAL_JUDGE to Pro with maximum thinking", async (t) => {
+  const restore = patchEnv({
+    ...baseGateway,
+    VC_AI_DIRECT_MODEL: undefined,
+    VC_AI_DIRECT_PLAYER_MODEL: "deepseek-v4-flash",
+    VC_AI_DIRECT_MODEL_MAIN: "deepseek-v4-pro-202606",
+    VC_AI_DIRECT_MODEL_CONTROL: "deepseek-v4-pro-202606",
+    VC_AI_DIRECT_MODEL_ENHANCE: "deepseek-v4-pro-202606",
+    VC_AI_DIRECT_MODEL_REASONER: "deepseek-v4-pro-202606",
+    AI_GATEWAY_MERGE_EXTRA_BODY: "1",
+    AI_GATEWAY_EXTRA_BODY_JSON:
+      '{"enable_thinking":true,"thinking":{"type":"enabled"},"reasoning_effort":"max"}',
+    AI_PLAYER_CHAT_DISABLE_THINKING: "1",
+    AI_ONLINE_SHORT_JSON_DISABLE_THINKING: "1",
+  });
+  const origFetch = globalThis.fetch;
+  let captured: Record<string, unknown> = {};
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    captured = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: "{\"score\":1}" } }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  };
+  t.after(() => {
+    globalThis.fetch = origFetch;
+    restore();
+    resetModelCircuitsForTests();
+    resetProviderCircuitsForTests();
+  });
+
+  const result = await executeChatCompletion({
+    task: "EVAL_JUDGE",
+    messages: [{ role: "user", content: "judge" }],
+    ctx: { requestId: "gw-contract-split-judge", task: "EVAL_JUDGE" },
+    skipCache: true,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(captured.model, "deepseek-v4-pro-202606");
+  assert.equal(captured.max_tokens, undefined);
+  assert.equal(captured.enable_thinking, true);
+  assert.deepEqual(captured.thinking, { type: "enabled" });
+  assert.equal(captured.reasoning_effort, "max");
+});
+
 test("executeChatCompletion stops before upstream fetch when caller signal is already aborted", async (t) => {
   const restore = patchEnv(baseGateway);
   const origFetch = globalThis.fetch;
@@ -363,7 +524,7 @@ test("executeChatCompletion stops before upstream fetch when caller signal is al
   assert.equal(fetchCalled, false);
 });
 
-test("NARRATIVE_EXPANSION is non-stream json with bounded max tokens", async (t) => {
+test("NARRATIVE_EXPANSION is non-stream json without a max_tokens cap", async (t) => {
   const restore = patchEnv(baseGateway);
   const origFetch = globalThis.fetch;
   let maxTokens: number | undefined;
@@ -403,7 +564,7 @@ test("NARRATIVE_EXPANSION is non-stream json with bounded max tokens", async (t)
 
   assert.equal(res.ok, true);
   assert.equal(model, "model-enhance");
-  assert.equal(maxTokens, 768);
+  assert.equal(maxTokens, undefined);
   assert.equal(responseFormatType, "json_object");
   assert.equal(stream, false);
 });

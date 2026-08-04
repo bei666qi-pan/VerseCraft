@@ -251,6 +251,13 @@ async function probeOne(baseUrl: string, fixture: Fixture, run: number, mode: Be
       messages: [{ role: "user", content }],
       playerContext: fixture.playerContext,
       sessionId: requestId,
+      // Minimal clientState required for live mode turn resolution
+      clientState: JSON.stringify({
+        playerLocation: "3F_Hallway",
+        stats: { sanity: 12, agility: 12, luck: 10, charm: 10, background: 10 },
+        time: { day: 1, hour: 8 },
+        originium: 10,
+      }),
     },
   });
   const narrativeMinimumChars = resolveBenchmarkNarrativeMinimum(fixture);

@@ -17,6 +17,8 @@
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --sessions 3  # 自定义会话数
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --out path    # 自定义报告路径
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --parallel 3     # 并发会话数（建议 2~4）
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --live --action-mode live # 全程由真实玩家 AI 决策，忽略场景脚本
+ *   pnpm dlx tsx scripts/eval-playthrough-live.ts --live --action-mode hybrid # 场景脚本结束后交给玩家 AI
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --parallel 3 --continue-on-degrade  # 降级不中断会话，优先提升样本完整性
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --judge-mode codex # 无 API Key 时启用离线 Codex 裁判（默认 mock）
  *   pnpm dlx tsx scripts/eval-playthrough-live.ts --judge-mode live  # 强制使用 DeepSeek 裁判（需配置密钥）
@@ -40,8 +42,9 @@ import {
   judgeNarrativeConsistencyCodex,
 } from "../src/lib/evals/playthrough/narrativeJudge";
 import { createInitialStateSnapshot } from "../src/lib/evals/playthrough/invariants";
-import { generateMockAction } from "../src/lib/evals/playthrough/playerAgent";
+import { generateMockAction, PERSONAS } from "../src/lib/evals/playthrough/playerAgent";
 import type { SutAction } from "../src/lib/evals/playthrough/sutAdapter";
+import { generatePlayerActionDeepSeek } from "../src/lib/evals/liveProvider";
 import { classifyRunEvidence, resolveEvalExecutionMode } from "../src/lib/evals/productQuality/runOutcome";
 import {
   requestClientOptionsRegenEvidence,
@@ -76,6 +79,7 @@ interface EvalCli {
   judgeMode: "auto" | "mock" | "live" | "codex";
   parallelism: number;
   continueOnDegrade: boolean;
+  actionMode: "scripted" | "live" | "hybrid";
 }
 
 type JudgePairReport = {
@@ -95,8 +99,17 @@ function normalizeJudgeMode(value: string | undefined): EvalCli["judgeMode"] {
   return "auto";
 }
 
+function normalizeActionMode(value: string | undefined): EvalCli["actionMode"] {
+  if (value === "scripted" || value === "live" || value === "hybrid") return value;
+  return "scripted";
+}
+
 function hasJudgeCredentials(): boolean {
-  return Boolean(process.env.PLAYTEST_LLM_API_KEY || process.env.DEEPSEEK_API_KEY);
+  return Boolean(
+    (process.env.AI_GATEWAY_API_KEY && process.env.AI_GATEWAY_BASE_URL)
+    || process.env.PLAYTEST_LLM_API_KEY
+    || process.env.DEEPSEEK_API_KEY,
+  );
 }
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
@@ -144,6 +157,10 @@ function parseArgs(): EvalCli {
       args.includes("--continue-on-degrade") ? true
         : args.includes("--stop-on-degrade") ? false
           : parseBooleanEnv(process.env.VERSECRAFT_EVAL_CONTINUE_ON_DEGRADE) ?? true,
+    // --live-player 保持兼容，但现在明确表示“全程 live”，不会再被 scriptedActions 抢占。
+    actionMode: normalizeActionMode(
+      get("--action-mode", args.includes("--live-player") ? "live" : "scripted"),
+    ),
   };
 }
 
@@ -339,9 +356,51 @@ async function runSession(
 
   try {
     for (let step = 0; step < config.maxSteps; step++) {
-      // 玩家动作
-      const action = selected.scriptedActions?.[step]
-        ?? generateMockAction(selected.persona, step, 42 + sessionIndex);
+      // 玩家动作：scripted=固定回归，live=全程自主，hybrid=脚本完成后自主。
+      let action: string;
+      const scriptedAction = selected.scriptedActions?.[step];
+      const shouldUseScript = config.actionMode === "scripted"
+        || (config.actionMode === "hybrid" && Boolean(scriptedAction));
+      const shouldUseLivePlayer = config.actionMode === "live"
+        || (config.actionMode === "hybrid" && !scriptedAction);
+
+      if (shouldUseScript && scriptedAction) {
+        action = scriptedAction;
+      } else if (shouldUseLivePlayer) {
+        const persona = PERSONAS[selected.persona];
+        const previousDm = steps.at(-1)?.dmJson;
+        const visibleOptions = Array.isArray(previousDm?.options)
+          ? previousDm.options.filter((option): option is string => typeof option === "string").slice(0, 6)
+          : [];
+        const visibleWeapon = currentState.weaponBag?.find((weapon) =>
+          String(weapon.id ?? "") === String(currentState.equippedWeapon ?? ""),
+        );
+        action = await generatePlayerActionDeepSeek({
+          persona: { type: selected.persona, name: persona?.name ?? selected.persona, systemPrompt: persona?.systemPrompt ?? "" },
+          campaignGoal: selected.description,
+          stepIndex: step,
+          transcript: steps.map(s => ({ action: s.action, narrative: s.narrative })),
+          state: {
+            playerLocation: currentState.playerLocation,
+            hp: currentState.hp,
+            sanity: currentState.sanity,
+            profession: currentState.profession ?? null,
+          },
+          visibleSnapshot: [
+            `原石:${currentState.originium}`,
+            `行囊:${currentState.inventoryItemCount}/${currentState.maxInventorySlots}`,
+            `当前武器:${String(visibleWeapon?.name ?? (currentState.equippedWeapon ? "已装备武器" : "无"))}`,
+            `武器稳定:${currentState.weaponStability}`,
+            `武器污染:${currentState.weaponContamination}`,
+            `进行中任务数:${currentState.activeTaskIds.length}`,
+            `已完成任务数:${currentState.completedTaskIds.length}`,
+            `已解锁图鉴数:${currentState.codexNpcIds.length}`,
+            `可见选项:${visibleOptions.length > 0 ? visibleOptions.join(" / ") : "当前未显示"}`,
+          ].join(" | "),
+        });
+      } else {
+        action = generateMockAction(selected.persona, step, 42 + sessionIndex);
+      }
 
       // SUT 调用
       const response = await sut.step({
@@ -620,6 +679,7 @@ function generateReport(
   lines.push("");
   lines.push(`> **生成时间**: ${new Date().toISOString()}`);
   lines.push(`> **模式**: ${config.live ? "live (真实 SUT)" : "mock (规则模拟)"}`);
+  lines.push(`> **玩家动作模式**: ${config.actionMode}`);
   lines.push(`> **会话数**: ${results.length}`);
   lines.push(`> **总回合数**: ${totalSteps}`);
   lines.push(`> **总耗时**: ${(totalDuration / 1000).toFixed(1)}s`);
@@ -834,6 +894,7 @@ async function main(): Promise<void> {
   console.log("📊 Live Playthrough 小样本长程评测");
   console.log("═".repeat(60));
   console.log(`模式: ${config.live ? "live (真实 SUT)" : "mock (规则模拟)"}`);
+  console.log(`玩家动作模式: ${config.actionMode}`);
   console.log(`裁判模式: ${config.judgeMode}`);
   console.log(`成本档位: ${config.profile}`);
   console.log(`预计 DM 调用: ${estimatedDmCalls}/${config.maxLiveCalls}`);
@@ -849,10 +910,9 @@ async function main(): Promise<void> {
   }
   console.log("");
 
-  if (!hasJudgeCredentials() && (config.judgeMode === "live" || config.compareJudge)) {
-    console.log("⚠️  PLAYTEST_LLM_API_KEY / DEEPSEEK_API_KEY 未设置，当前会话无法执行 live judge。");
-    console.log("   设置环境变量以启用真实 LLM 裁判评分。");
-    console.log("   当前脚本兼容 PLAYTEST_LLM_API_KEY 和 DEEPSEEK_API_KEY。");
+  if (!hasJudgeCredentials() && (config.judgeMode === "live" || config.compareJudge || config.actionMode !== "scripted")) {
+    console.log("⚠️  未设置可用的评测模型凭据，玩家 AI 或 live judge 将无法运行。");
+    console.log("   设置 AI_GATEWAY_API_KEY + AI_GATEWAY_BASE_URL，或 PLAYTEST_LLM_API_KEY/DEEPSEEK_API_KEY。");
     console.log("");
   }
   if (config.judgeMode === "codex") {

@@ -34,6 +34,7 @@ const required = [
   "actor_daily_tokens",
   "guest_registry",
   "admin_metrics_daily",
+  "web_traffic_daily",
   "settlement_histories",
 ];
 const kgRequired = [
@@ -84,4 +85,3 @@ main()
       await client.end();
     } catch {}
   });
-

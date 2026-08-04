@@ -17,3 +17,14 @@ The system SHALL add daily traffic fields through backward-compatible schema mig
 #### Scenario: Existing daily metrics remain populated
 - **WHEN** a daily rebuild includes web-traffic events and existing gameplay analytics events
 - **THEN** the rebuilt row contains both the correct traffic totals and the correct pre-existing daily metrics
+
+### Requirement: Overview uses a consistent authoritative traffic calculation
+The system SHALL calculate overview traffic totals and source distribution from the same append-only page-view event set, using the same valid visitorId rule as request validation and the same Beijing-day boundary. It MUST NOT present a stale daily aggregate as the current authoritative total.
+
+#### Scenario: Invalid historic visitor identifier
+- **WHEN** a stored page-view event has a blank or malformed visitorId payload
+- **THEN** it SHALL contribute to PV and its source category but SHALL NOT contribute to UV in either the daily rebuild or the overview.
+
+#### Scenario: Daily rebuild has not yet run
+- **WHEN** a valid current-day page-view event exists after the most recent `web_traffic_daily` rebuild
+- **THEN** the authenticated overview SHALL include that event in traffic totals and source distribution.

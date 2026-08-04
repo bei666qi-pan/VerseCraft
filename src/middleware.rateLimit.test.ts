@@ -29,6 +29,23 @@ function makeRequest(path: string, ip: string, init: RequestInit = {}): NextRequ
   return new NextRequest(`https://versecraft.cn${path}`, { ...init, headers });
 }
 
+async function withEnv<T>(patch: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> {
+  const previous: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    previous[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 // --- 1) matcher 静态资源排除规则 -------------------------------------------------
 
 const catchAllPattern = config.matcher[config.matcher.length - 1];
@@ -133,6 +150,31 @@ test("/api/chat rate limit remains 20/s", async () => {
   }
   const exhausted = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
   assert.equal(exhausted.status, 429);
+});
+
+test("a first anonymous chat after visiting /play is isolated from an exhausted shared IP bucket", async () => {
+  const ip = "203.0.113.18";
+  for (let i = 0; i < 20; i++) {
+    const res = await middleware(makeRequest("/api/chat", ip, { method: "POST" }));
+    assert.equal(res.status, 200);
+  }
+
+  const pageRes = await middleware(makeRequest("/play", ip));
+  const browserIdentity = pageRes.cookies.get("versecraft_chat_limit_identity")?.value;
+  assert.match(browserIdentity ?? "", /^vcrl_[a-zA-Z0-9_-]{16,96}$/);
+
+  const firstAction = await middleware(makeRequest("/api/chat", ip, {
+    method: "POST",
+    headers: { cookie: `versecraft_chat_limit_identity=${browserIdentity}` },
+  }));
+  assert.equal(firstAction.status, 200);
+});
+
+test("anonymous chat identity can be disabled for rollback", async () => {
+  await withEnv({ VERSECRAFT_ENABLE_ANONYMOUS_CHAT_LIMIT_IDENTITY: "false" }, async () => {
+    const res = await middleware(makeRequest("/play", "203.0.113.19"));
+    assert.equal(res.cookies.get("versecraft_chat_limit_identity"), undefined);
+  });
 });
 
 test("options-only chat limit is isolated by browser fingerprint on a shared IP", async () => {

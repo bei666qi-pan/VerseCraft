@@ -533,7 +533,46 @@ export async function runWorldEngineTick(payload: WorldEngineTickPayload): Promi
     activeNpcIds: activeSocialNpcStates.map((state) => state.npcId),
     pendingEventCount: pendingSocialEventCount,
   };
-  const messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState, socialWorld: socialWorldContext });
+  let messages = buildWorldEngineMessages({ payload, recentFacts, recentAgenda, directorState, socialWorld: socialWorldContext });
+
+  // Phase 3: Actor Simulation — 可选的后台 NPC 行动推演。
+  // 仅在 VERSECRAFT_ENABLE_ACTOR_SIMULATION=true 且 mode≠off 时运行。
+  // shadow 模式只记录 telemetry；soft 模式将推演上下文注入 reasoner prompt。
+  let _actorSimTelemetry: Record<string, unknown> | null = null;
+  try {
+    const { runActorSimulationPhase, appendActorSimulationToMessages } = await import(
+      "@/lib/worldEngine/actorSimulation/integration"
+    );
+    const actorCtx = {
+      npcStates: activeSocialNpcStates.length > 0
+        ? activeSocialNpcStates
+        : socialNpcStates.slice(0, 3),
+      turnIndex: payload.turnIndex,
+      sceneNpcIds: activeSocialNpcStates.map((s) => s.npcId),
+      playerMentionedNpcIds: [],
+      worldFacts: recentFacts.map((fact, i) => ({
+        id: `fact_${i}`,
+        summary: typeof fact === "string" ? fact.slice(0, 200) : String(fact).slice(0, 200),
+        revealTier: 1,
+        category: "world",
+        sourceId: `src_${i}`,
+      })),
+      relationEdges: [],
+      epistemicIndex: {
+        knownFactIdsByNpc: new Map(),
+        suspectedFactIdsByNpc: new Map(),
+        forbiddenFactIds: new Set(),
+      },
+    };
+    const simResult = runActorSimulationPhase(actorCtx);
+    _actorSimTelemetry = simResult.telemetry as unknown as Record<string, unknown>;
+    if (simResult.reasonerContextHint) {
+      messages = appendActorSimulationToMessages(messages, simResult.reasonerContextHint);
+    }
+  } catch {
+    // Actor simulation is optional; failures must not block the world tick
+  }
+
   const reasonerStartedAt = Date.now();
   // 试点开关：tool loop 版导演推理（只读检索工具，有界轮数）；默认走原单次 reasoner 路径。
   const res = cfg.toolLoopEnabled

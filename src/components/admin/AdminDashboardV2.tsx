@@ -47,7 +47,15 @@ type Kpi = {
   reason: string | null;
 };
 
-type OverviewData = { cards?: Record<string, number>; kpis?: Kpi[]; chartData?: ChartPoint[]; updatedAt?: string } | null;
+type TrafficSourceMetric = { source: "direct" | "internal" | "search" | "social" | "referral"; pageViews: number; uniqueVisitors: number };
+type TrafficOverview = { dateKey?: string; source?: string; definition?: string; sources?: TrafficSourceMetric[] };
+type OverviewData = {
+  cards?: Record<string, number>;
+  kpis?: Kpi[];
+  chartData?: ChartPoint[];
+  updatedAt?: string;
+  traffic?: TrafficOverview;
+} | null;
 type NorthStarData = {
   northStar?: {
     metricId: string;
@@ -280,6 +288,7 @@ type AiReport = {
     }>;
     generatedAt?: string;
     evidenceSufficiency?: string;
+    confidence?: { score?: number; level?: string; reason?: string };
   };
 } | null;
 
@@ -341,6 +350,7 @@ function sourceLabel(v: string | null | undefined): string {
   const raw = String(v ?? "").trim();
   const map: Record<string, string> = {
     analytics_events: "行为事件记录",
+    "analytics_events.page_viewed": "网页访问事件记录",
     "analytics_events.token_cost": "AI 消耗事件",
     admin_metrics_daily: "每日运营聚合",
     feedbacks: "玩家反馈",
@@ -353,6 +363,17 @@ function sourceLabel(v: string | null | undefined): string {
     unknown: "来源未登记",
   };
   return map[raw] ?? (raw.includes(".") || raw.includes("_") ? "后台记录" : raw || "来源未登记");
+}
+
+function trafficSourceLabel(source: TrafficSourceMetric["source"]): string {
+  const map: Record<TrafficSourceMetric["source"], string> = {
+    direct: "直接访问",
+    internal: "站内跳转",
+    search: "搜索引擎",
+    social: "社交平台",
+    referral: "其他外部网站",
+  };
+  return map[source];
 }
 
 function aiRoleLabel(v: string): string {
@@ -527,6 +548,23 @@ function KpiGrid({ kpis }: { kpis: Kpi[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function TrafficSourcePanel({ traffic }: { traffic?: TrafficOverview }) {
+  if (!traffic) return null;
+  const total = (traffic.sources ?? []).reduce((sum, item) => sum + Number(item.pageViews ?? 0), 0);
+  return (
+    <Panel testId="admin-traffic-source-panel">
+      <SectionTitle title="今日访问从哪里来" meta={`${traffic.dateKey ?? "今日"} · ${traffic.definition ?? "来源数据加载中"}`} />
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {(traffic.sources ?? []).map((item) => {
+          const pct = total > 0 ? (Number(item.pageViews ?? 0) / total) * 100 : 0;
+          return <Card key={item.source} title={trafficSourceLabel(item.source)} value={fmt(item.pageViews)} meta={`占今日 PV ${pct.toFixed(1)}% · 去重访客 ${fmt(item.uniqueVisitors)}。`} />;
+        })}
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-[#68746c]">来源只保留粗粒度分类，不保存原始跳转链接、域名、搜索词或 UTM；“直接访问”也可能是浏览器未提供来源信息。</p>
+    </Panel>
   );
 }
 
@@ -838,6 +876,7 @@ export default function AdminDashboardV2({ onlineCount, totalUsers, totalTokens 
               </Panel>
             ) : null}
             <KpiGrid kpis={overview?.kpis ?? []} />
+            <TrafficSourcePanel traffic={overview?.traffic} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <Card title="当前在线" value={totalOnline.toLocaleString("zh-CN")} meta={`注册 ${fmt(capacity?.online?.registered)}，游客 ${fmt(capacity?.online?.guests)}，窗口 ${capacity?.online?.windowSeconds ?? 90} 秒。`} />
               <Card title="预计即时承载余量" value={capacity?.estimate?.remainingConcurrentActions == null ? "暂无法可靠估算" : `${capacity.estimate.remainingConcurrentActions.toLocaleString("zh-CN")} 个行动`} meta={capacity?.estimate?.explanation ?? "等待系统健康数据返回。"} degraded={capacity?.estimate?.status === "unavailable" || capacity?.estimate?.status === "sample_insufficient"} />

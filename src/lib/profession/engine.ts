@@ -65,7 +65,7 @@ function codexHasNpc(codex: Record<string, CodexLite>, npcId: string): boolean {
   return Boolean(entry && entry.type === "npc");
 }
 
-function computeBehaviorEvidenceKeys(profession: ProfessionId, input: {
+export function computeBehaviorEvidenceKeys(profession: ProfessionId, input: {
   tasks: TaskLite[];
   historicalMaxFloorScore: number;
   mainThreatByFloor: Record<string, SnapshotMainThreatState>;
@@ -100,7 +100,7 @@ function computeBehaviorEvidenceKeys(profession: ProfessionId, input: {
   if (profession === "觅兆者") {
     if (anomalyCodex >= 2) keys.push("anomaly_codex_work");
     if (weaponModInf) keys.push("omen_validation");
-    if (completedTasks >= 2) keys.push("omen_validation");
+    if (completedTasks >= 2 && !weaponModInf) keys.push("omen_validation");
     return keys;
   }
   if (profession === "齐日角") {

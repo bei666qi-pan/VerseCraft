@@ -23,7 +23,7 @@ test("combatPromptBlock V1: major NPC 风格可辨识且文本受 maxChars 限�
     maxChars: 520,
   });
 
-  assert.ok(text.length > 40);
+  assert.ok(text.length >= 200);
   assert.ok(text.length <= 520);
   assert.ok(text.includes("【冲突回合·战斗裁决锚（V1）】"));
   assert.ok(text.includes("禁止："));

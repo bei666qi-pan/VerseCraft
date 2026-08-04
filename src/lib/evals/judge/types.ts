@@ -15,6 +15,7 @@
  */
 
 import type { ChatSseProbeMetrics } from "@/lib/perf/chatSseProbe";
+import type { ExperimentProvenance } from "@/lib/evals/harness/types";
 
 // === Rubric 定义 ===
 
@@ -162,6 +163,8 @@ export interface JudgeRunConfig {
   calibrationSamples?: JudgeTarget[];
   /** 超时 ms */
   timeoutMs: number;
+  /** 实验溯源身份 */
+  provenance?: ExperimentProvenance;
 }
 
 /** 评测运行摘要 */
@@ -184,6 +187,8 @@ export interface JudgeRunSummary {
   durationMs: number;
   /** gate 判定 */
   gatePass: boolean;
+  /** 实验溯源身份 */
+  provenance: ExperimentProvenance;
 }
 
 // === 位置随机化 ===

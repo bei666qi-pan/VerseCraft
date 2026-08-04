@@ -94,7 +94,7 @@ function inferType(
 }
 
 /** 根据 likelyCost 决定基础严重度 */
-function severityForCost(cost: "none" | "light" | "moderate" | "heavy"): InjurySeverity {
+function _severityForCost(cost: "none" | "light" | "moderate" | "heavy"): InjurySeverity {
   switch (cost) {
     case "light": return "minor";
     case "moderate": return "moderate";

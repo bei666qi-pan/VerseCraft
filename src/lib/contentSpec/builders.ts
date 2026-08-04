@@ -1,4 +1,4 @@
-import type { NpcContentSpec, TaskContentSpec, EscapeContentSpec } from "./types";
+import type { NpcContentSpec, EscapeContentSpec } from "./types";
 import type { NpcProfileV2 } from "@/lib/registry/types";
 import { clampText } from "./naming";
 

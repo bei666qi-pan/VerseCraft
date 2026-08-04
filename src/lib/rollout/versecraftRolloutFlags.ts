@@ -138,6 +138,8 @@ export type VerseCraftRolloutFlagsSnapshot = {
   enableAuthenticityEvalFlywheel: boolean;
   /** Phase-2.4: 每回合节奏指令 packet（默认关）。 */
   enableNarrativeDirective: boolean;
+  /** DM Agent: bounded tool-calling DM (feature-flagged; default off). */
+  enableDmAgent: boolean;
 };
 
 function readFlag(envName: string, defaultTrue: boolean): boolean {
@@ -235,5 +237,6 @@ export function getVerseCraftRolloutFlags(): VerseCraftRolloutFlagsSnapshot {
     enableProvenanceVerifierShadow: readFlag("VC_PROVENANCE_VERIFIER_SHADOW", false),
     enableAuthenticityEvalFlywheel: readFlag("VC_AUTHENTICITY_EVAL_FLYWHEEL", false),
     enableNarrativeDirective: readFlag("VERSECRAFT_ENABLE_NARRATIVE_DIRECTIVE", false),
+    enableDmAgent: readFlag("VERSECRAFT_ENABLE_DM_AGENT", false),
   };
 }

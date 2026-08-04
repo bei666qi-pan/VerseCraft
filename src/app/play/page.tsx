@@ -139,7 +139,6 @@ import { pickTurnOptionsFromResolvedDm } from "@/features/play/turnCommit/pickDe
 import { decideModelOptionsDelivery } from "@/features/play/turnCommit/modelOptionsDelivery";
 import { applyTurnSanityDamage, normalizeTurnSanityDamage } from "@/features/play/turnCommit/sanityDamage";
 import { buildTurnDeltaDigest } from "@/features/play/turnCommit/buildTurnDeltaDigest";
-import { TurnDeltaDigest } from "@/features/play/components/TurnDeltaDigest";
 import type { TurnDeltaDigest as TurnDeltaDigestData } from "@/features/play/turnCommit/buildTurnDeltaDigest";
 import {
   extractFilteredHintsFromTrace,
@@ -2122,6 +2121,7 @@ function PlayContent() {
       decision_options: [],
       currency_change: 0,
       consumed_items: [],
+      consumed_warehouse_items: [],
       awarded_items: [],
       awarded_warehouse_items: [],
       codex_updates: [],
@@ -3169,16 +3169,16 @@ function PlayContent() {
     let queueIdForChat: string | null = null;
     const transportTimeouts = resolvePlayChatTransportTimeouts();
 
+    const queueAdmissionArgs = {
+      body: chatRequestBody,
+      requestId: chatRequestId,
+      action: trimmed,
+      bypassLengthCheck: Boolean(bypassLengthCheck),
+      isResume: Boolean(isResume),
+      isSystemAction: Boolean(isSystemAction),
+      resumeQueueId: resumeQueueId ?? null,
+    };
     try {
-      const queueAdmissionArgs = {
-        body: chatRequestBody,
-        requestId: chatRequestId,
-        action: trimmed,
-        bypassLengthCheck: Boolean(bypassLengthCheck),
-        isResume: Boolean(isResume),
-        isSystemAction: Boolean(isSystemAction),
-        resumeQueueId: resumeQueueId ?? null,
-      };
       const queueAdmission = await requestChatQueueAdmission(queueAdmissionArgs);
       if (queueAdmission === false) {
         setStreamPhase("idle");
@@ -4039,6 +4039,19 @@ function PlayContent() {
       );
     }
 
+    const consumedWarehouseNames = Array.isArray(parsed.consumed_warehouse_items)
+      ? (parsed.consumed_warehouse_items as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0)
+      : [];
+    if (consumedWarehouseNames.length > 0) {
+      applyNarrativeFeatureEvent(
+        { type: "warehouse.consume", raw: consumedWarehouseNames },
+        {
+          getWarehouseItems: () => useGameStore.getState().warehouse ?? [],
+          removeWarehouseItems: (itemKeys) => useGameStore.getState().removeWarehouseItems(itemKeys),
+        }
+      );
+    }
+
     const inventoryTrigger = applyNarrativeFeatureEvent(
       { type: "inventory.award", raw: parsed.awarded_items, writeLog: true },
       {
@@ -4089,10 +4102,6 @@ function PlayContent() {
         trust?: unknown;
         fear?: unknown;
         debt?: unknown;
-        affection?: unknown;
-        desire?: unknown;
-        romanceEligible?: unknown;
-        romanceStage?: unknown;
         betrayalFlags?: unknown;
         combatPower?: unknown;
         combatPowerDisplay?: unknown;
@@ -4120,13 +4129,6 @@ function PlayContent() {
         trust: typeof u.trust === "number" ? u.trust : undefined,
         fear: typeof u.fear === "number" ? u.fear : undefined,
         debt: typeof u.debt === "number" ? u.debt : undefined,
-        affection: typeof u.affection === "number" ? u.affection : undefined,
-        desire: typeof u.desire === "number" ? u.desire : undefined,
-        romanceEligible: typeof u.romanceEligible === "boolean" ? u.romanceEligible : undefined,
-        romanceStage:
-          u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
-            ? u.romanceStage
-            : undefined,
         betrayalFlags: Array.isArray(u.betrayalFlags)
           ? u.betrayalFlags.filter((x): x is string => typeof x === "string")
           : undefined,
@@ -4219,10 +4221,6 @@ function PlayContent() {
         trust?: unknown;
         fear?: unknown;
         debt?: unknown;
-        affection?: unknown;
-        desire?: unknown;
-        romanceEligible?: unknown;
-        romanceStage?: unknown;
         betrayalFlagAdd?: unknown;
       };
       let relCodexEntries: CodexEntry[] = ((parsed as { relationship_updates?: unknown[] }).relationship_updates ?? [])
@@ -4238,12 +4236,6 @@ function PlayContent() {
             ...(typeof u.trust === "number" ? { trust: u.trust } : {}),
             ...(typeof u.fear === "number" ? { fear: u.fear } : {}),
             ...(typeof u.debt === "number" ? { debt: u.debt } : {}),
-            ...(typeof u.affection === "number" ? { affection: u.affection } : {}),
-            ...(typeof u.desire === "number" ? { desire: u.desire } : {}),
-            ...(typeof u.romanceEligible === "boolean" ? { romanceEligible: u.romanceEligible } : {}),
-            ...(u.romanceStage === "none" || u.romanceStage === "hint" || u.romanceStage === "bonded" || u.romanceStage === "committed"
-              ? { romanceStage: u.romanceStage }
-              : {}),
             ...(typeof u.betrayalFlagAdd === "string" ? { betrayalFlags: [u.betrayalFlagAdd] } : {}),
           } as CodexEntry;
         })
@@ -4457,10 +4449,6 @@ function PlayContent() {
           ...(typeof p.trust === "number" ? { trust: p.trust } : {}),
           ...(typeof p.fear === "number" ? { fear: p.fear } : {}),
           ...(typeof p.debt === "number" ? { debt: p.debt } : {}),
-          ...(typeof p.affection === "number" ? { affection: p.affection } : {}),
-          ...(typeof p.desire === "number" ? { desire: p.desire } : {}),
-          ...(typeof p.romanceEligible === "boolean" ? { romanceEligible: p.romanceEligible } : {}),
-          ...(p.romanceStage ? { romanceStage: p.romanceStage } : {}),
           ...(typeof p.betrayalFlagAdd === "string" && p.betrayalFlagAdd.trim().length > 0 ? { betrayalFlags: [p.betrayalFlagAdd] } : {}),
         }));
         mergeCodex(relCodexEntries);

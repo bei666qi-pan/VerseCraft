@@ -99,7 +99,7 @@ test("antiCheat: options_regen_only is always allowed (no rewrite)", () => {
   assert.equal(r.decision, "allow");
 });
 
-test("antiCheat: ambiguous desire '我想去X' should not be treated as forged arrival", () => {
+test("antiCheat: ambiguous intent '我想去X' should not be treated as forged arrival", () => {
   const r = assessAndRewriteAntiCheatInput({
     latestUserInput: "我想去B2_ExitDoor看看，但先确认走廊是否安全。",
     clientState: baseClientState as any,
@@ -107,4 +107,3 @@ test("antiCheat: ambiguous desire '我想去X' should not be treated as forged a
   });
   assert.equal(r.decision, "allow");
 });
-

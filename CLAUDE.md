@@ -42,7 +42,7 @@
 - 不确定的路径、脚本、环境变量、字段、表名、事件名，一律先查仓库。
 - 不编造不存在的组件、API、schema、script、环境变量或测试。
 - `package.json` 是命令事实源；代码和测试是行为事实源；文档只作为辅助。
-- `AGENTS.md`、`.cursorrules` 是辅助上下文；本文件服务 Claude Code，但代码事实高于所有说明文件。
+- 根 `AGENTS.md` 是跨客户端的工作流与架构约束事实源；本文件补充 Claude Code 行为。代码和测试事实高于所有说明文件。
 
 ### 1.3 修改边界
 
@@ -66,6 +66,14 @@
 - 安装新依赖或切换包管理器
 
 可以读取 `.env.example` 和文档中的变量名；不要把真实密钥写入日志、报错、截图或回复。
+
+### 1.5 OpenSpec 默认分流
+
+VerseCraft 默认使用 OpenSpec。收到实现类任务时，不必等待用户输入 `/opsx:*`：先按根 `AGENTS.md` 的“OpenSpec 默认自动分流”判断直接执行、轻量变更或强制变更。
+
+- 对需要 OpenSpec 的任务，先检查是否已有匹配的未归档 change；有则更新它，没有则创建 change，完成 proposal、design、tasks 和 delta spec 后再实施。
+- 实施时按 tasks 逐项更新并运行相关验证；完成后按根 `AGENTS.md` 同步 delta specs。归档仅在用户请求、PR 收口或明确完成流程时进行。
+- `.claude/skills/openspec-*` 和 `.claude/commands/opsx/*` 是本仓库的项目级入口；若命令不可用，直接使用 `openspec` CLI，不能因此跳过流程。
 
 ---
 

@@ -27,10 +27,6 @@ export interface SnapshotCodexEntry {
   trust?: number;
   fear?: number;
   debt?: number;
-  affection?: number;
-  desire?: number;
-  romanceEligible?: boolean;
-  romanceStage?: "none" | "hint" | "bonded" | "committed";
   betrayalFlags?: string[];
   combatPower?: number;
   combatPowerDisplay?: string;
@@ -135,6 +131,7 @@ export interface SnapshotDeath {
   reviveOffered: boolean;
   reviveConsumed: boolean;
   droppedLootLedger: string[];
+  droppedLootOwnerLedger: string[];
 }
 
 export interface SnapshotServiceState {

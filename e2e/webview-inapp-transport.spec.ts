@@ -723,7 +723,7 @@ test.describe("middleware CSRF: WebView false-positive Sec-Fetch-Site", () => {
       request,
       baseURL,
     }) => {
-      const origin = baseURL ?? "http://127.0.0.1:666";
+      const origin = baseURL ?? "http://[::1]:666";
       const res = await request.post(`${origin}/api/presence/heartbeat`, {
         headers: {
           "Content-Type": "application/json",

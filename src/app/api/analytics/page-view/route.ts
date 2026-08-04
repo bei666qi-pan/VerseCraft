@@ -7,7 +7,7 @@ import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags"
 
 export const dynamic = "force-dynamic";
 
-type PageViewBody = { pathname?: unknown; visitorId?: unknown; eventId?: unknown };
+type PageViewBody = { pathname?: unknown; visitorId?: unknown; eventId?: unknown; trafficSource?: unknown };
 
 export async function POST(req: Request) {
   if (!shouldCollectPageView(getVerseCraftRolloutFlags().enableWebTrafficAnalytics)) {
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     platform: derivePlatformFromUserAgent(requestHeaders.get("user-agent")),
     tokenCost: 0,
     playDurationDeltaSec: 0,
-    payload: { visitorId: pageView.visitorId },
+    payload: { visitorId: pageView.visitorId, trafficSource: pageView.trafficSource },
   }).catch(() => {});
 
   return NextResponse.json({ ok: true });

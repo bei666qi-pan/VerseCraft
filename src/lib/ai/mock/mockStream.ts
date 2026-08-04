@@ -48,6 +48,19 @@ function openAiUsagePayload(scenario: MockStreamScenario): string {
   });
 }
 
+function scenarioHttpStatus(scenarioName: string): number {
+  switch (scenarioName) {
+    case "http_429_rate_limit":
+      return 429;
+    case "http_503_service_unavailable":
+      return 503;
+    case "http_401_unauthorized":
+      return 401;
+    default:
+      return 200;
+  }
+}
+
 export function createMockOpenAiStreamResponse(scenario: MockStreamScenario): Response {
   const delayConfig = resolveMockDelayConfig(scenario.scenario);
   const encoder = new TextEncoder();
@@ -76,7 +89,7 @@ export function createMockOpenAiStreamResponse(scenario: MockStreamScenario): Re
   });
 
   return new Response(body, {
-    status: 200,
+    status: scenarioHttpStatus(scenario.scenario),
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "X-VerseCraft-Mock-AI": scenario.scenario,

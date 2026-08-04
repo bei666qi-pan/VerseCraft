@@ -14,7 +14,7 @@ import type { ModelOutputSchema } from "../src/lib/narrativeEngine/schema";
 import type { DialogueContext } from "../src/lib/narrativeEngine/types";
 import { getNpcCanonicalIdentity } from "../src/lib/registry/npcCanon";
 import { REVEAL_TIER_RANK } from "../src/lib/registry/revealTierRank";
-import { parseEvalCli, evalLog, writeJson, registerCase, appendHistory, getGitSha } from "../src/lib/evals/harness";
+import { parseEvalCli, evalLog, writeJson, registerCase, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 type EvalMode = "mock" | "live";
 
@@ -500,6 +500,7 @@ async function main(): Promise<void> {
   writeJson(options.jsonOut, summary);
 
   // 写入历史聚合行
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "npc-consistency",
     mode: options.mode,
@@ -508,7 +509,8 @@ async function main(): Promise<void> {
     passRate: summary.pass ? 1 : 0,
     gate: summary.pass ? "pass" : "fail",
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   if (options.jsonOnly) console.log(JSON.stringify(summary, null, 2));

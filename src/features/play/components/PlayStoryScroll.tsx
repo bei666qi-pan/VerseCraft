@@ -280,11 +280,11 @@ export const PlayStoryScroll = memo(function PlayStoryScroll({
   streamStalledHintOn?: boolean;
   fixedBottomSpace?: "default" | "expanded";
   /** 回合 commit 后展示的状态变化摘要条（阶段 1），流式过程中不渲染 */
-  turnDeltaDigest?: DigestData | null;
+  turnDeltaDigest?: TurnDeltaDigestData | null;
   children?: ReactNode;
 }) {
   const streamOn = isStreamVisualActive && !suppressStreamVisual;
-  const isEnglish = useGameStore((s) => s.language) === "en-US";
+  const _isEnglish = useGameStore((s) => s.language) === "en-US";
   const conflictFeedback = useGameStore((s) => selectTurnResultState(s).conflictTurnFeedback);
   const showConflictWhisper = getClientConflictFeedbackV1Enabled() && Boolean(conflictFeedback) && !streamOn;
   const bottomSpaceVar =

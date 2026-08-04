@@ -502,6 +502,48 @@ describe("aggregateMultiJudge", () => {
 
 // === 离线评估测试 ===
 
+/** 构建包含 literary_quality / canon_consistency 维度的测试 rubric */
+function makeNarrativeTestRubric(): JudgeRubric {
+  return {
+    id: "test_narrative_rubric",
+    name: "测试叙事评分标准",
+    version: "1.0.0",
+    description: "用于离线启发式评估测试",
+    scale: { min: 1, max: 5, passing: 3.5 },
+    passRule: {
+      minEach: 2,
+      minAverage: 3.5,
+      hardFailIf: { "canon_consistency": 2, "literary_quality": 2 },
+    },
+    dimensions: [
+      {
+        id: "literary_quality",
+        name: "文学质感",
+        weight: 0.5,
+        description: "文学质量",
+        anchors: [
+          { score: 5, label: "优秀", description: "很好" },
+          { score: 3, label: "及格", description: "还行" },
+          { score: 1, label: "差", description: "不好" },
+        ],
+        hardFloor: 2,
+      },
+      {
+        id: "canon_consistency",
+        name: "世界观一致性",
+        weight: 0.5,
+        description: "世界观一致性",
+        anchors: [
+          { score: 5, label: "一致", description: "完全一致" },
+          { score: 3, label: "基本一致", description: "基本一致" },
+          { score: 1, label: "不一致", description: "不一致" },
+        ],
+        hardFloor: 2,
+      },
+    ],
+  };
+}
+
 describe("evaluateOffline", () => {
   it("正常叙事通过离线评估", () => {
     const rubric = makeTestRubric();
@@ -523,6 +565,174 @@ describe("evaluateOffline", () => {
 
     // 因为 safety 维度没有启发式规则，但 quality 会低
     assert.ok(result.overallScore <= 3, `expected overall <= 3, got ${result.overallScore}`);
+  });
+
+  // P2: 新增启发式检查
+
+  it("中文字符不足 20 个时 literary_quality 应为 1 分", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative: "Hello world. This is a test. No Chinese here.",
+      narrativeChars: 45,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.strictEqual(result.dimensionScores["literary_quality"], 1);
+    assert.ok(
+      result.issues.some(
+        (i) => i.dimension === "literary_quality" && i.severity === "critical"
+      ),
+      "should have critical issue for low Chinese chars"
+    );
+  });
+
+  it("中文字符 >= 20 且叙事长度适中时 literary_quality 应 >= 3", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "走廊里的灯闪了两下。我贴墙走向深处，听见暗处有细碎的刮擦声。空气里有潮湿纸张的味道。黑暗中有微弱的呼吸声从左侧房间传来，我握紧手电筒，推开那扇半掩的门。",
+      narrativeChars: 100,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.ok(
+      result.dimensionScores["literary_quality"]! >= 2,
+      `expected literary_quality >= 2, got ${result.dimensionScores["literary_quality"]}`
+    );
+  });
+
+  it("DM-only 关键词「校源徘徊者」触发 canon_consistency 硬性失败", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "走廊尽头站着一个校源徘徊者。它在黑暗中缓缓转身，你感到一阵寒意袭来。周围安静得可怕，只能听到自己的心跳声。",
+      narrativeChars: 60,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.strictEqual(result.dimensionScores["canon_consistency"], 1);
+    assert.ok(
+      result.issues.some(
+        (i) =>
+          i.dimension === "canon_consistency" &&
+          i.severity === "critical" &&
+          i.description.includes("校源徘徊者")
+      ),
+      "should report DM-only leak keyword 校源徘徊者"
+    );
+  });
+
+  it("DM-only 关键词「七锚闭环」触发 canon_consistency 硬性失败", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "你想起了七锚闭环的传说，那是这座城市最大的秘密。灯光开始以诡异的节奏闪烁，似乎在回应你的思绪。",
+      narrativeChars: 50,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.strictEqual(result.dimensionScores["canon_consistency"], 1);
+    assert.ok(
+      result.issues.some(
+        (i) =>
+          i.dimension === "canon_consistency" &&
+          i.severity === "critical" &&
+          i.description.includes("七锚闭环")
+      ),
+      "should report DM-only leak keyword 七锚闭环"
+    );
+  });
+
+  it("DM-only 关键词「系统提示词」触发 canon_consistency 硬性失败", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "系统提示词告诉你要小心行事。作为冒险者，你知道暗月公寓隐藏着许多秘密。这次探索必须格外谨慎。",
+      narrativeChars: 55,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.strictEqual(result.dimensionScores["canon_consistency"], 1);
+    assert.ok(
+      result.issues.some(
+        (i) =>
+          i.dimension === "canon_consistency" &&
+          i.severity === "critical" &&
+          i.description.includes("系统提示词")
+      ),
+      "should report DM-only leak keyword 系统提示词"
+    );
+  });
+
+  it("不含 DM-only 关键词的正常叙事 canon_consistency 保持默认分", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "昏暗的走廊里弥漫着潮湿的霉味。你握紧手电筒，小心翼翼地向前走去。脚下的地板发出吱呀的响声，在寂静中格外刺耳。远处传来微弱的滴水声。",
+      narrativeChars: 80,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.strictEqual(result.dimensionScores["canon_consistency"], 2);
+    assert.ok(
+      !result.issues.some((i) => i.dimension === "canon_consistency"),
+      "should have no canon_consistency issues for clean narrative"
+    );
+  });
+
+  it("同一句子重复超过 3 次触发 literary_quality 硬性失败", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "走廊尽头的灯光忽明忽暗。走廊尽头的灯光忽明忽暗。走廊尽头的灯光忽明忽暗。走廊尽头的灯光忽明忽暗。走廊尽头的灯光忽明忽暗。空气中弥漫着不安的气息。",
+      narrativeChars: 90,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.strictEqual(result.dimensionScores["literary_quality"], 1);
+    assert.ok(
+      result.issues.some(
+        (i) =>
+          i.dimension === "literary_quality" &&
+          i.severity === "critical" &&
+          i.description.includes("严重重复")
+      ),
+      "should report severe repetition"
+    );
+  });
+
+  it("句子重复恰好 3 次不触发重复检测（阈值 > 3）", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "黑暗中有东西在移动。黑暗中有东西在移动。黑暗中有东西在移动。你停下脚步，屏住呼吸，侧耳倾听周围的动静。",
+      narrativeChars: 60,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.ok(
+      !result.issues.some(
+        (i) => i.dimension === "literary_quality" && i.description.includes("严重重复")
+      ),
+      "3 repetitions should not trigger the >3 threshold"
+    );
+  });
+
+  it("无重复的正常叙事 literary_quality 按长度评分", () => {
+    const rubric = makeNarrativeTestRubric();
+    const target = makeTestTarget({
+      narrative:
+        "走廊里的灯闪了两下。我贴墙走向深处，听见暗处有细碎的刮擦声。空气里有潮湿纸张的味道。推开门后，一股冷风迎面扑来，带着陈旧的灰尘气息。墙角的蛛网轻轻晃动，仿佛有什么刚刚经过。",
+      narrativeChars: 100,
+    });
+    const result = evaluateOffline({ rubric, target });
+
+    assert.ok(
+      !result.issues.some(
+        (i) => i.dimension === "literary_quality" && i.description.includes("严重重复")
+      ),
+      "clean narrative should not have repetition issues"
+    );
   });
 });
 

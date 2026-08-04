@@ -28,7 +28,7 @@ import {
   evalLog,
   writeJson,
   appendHistory,
-  getGitSha,
+  resolveExperimentProvenance,
 } from "../src/lib/evals/harness";
 
 type CliOptions = {
@@ -133,6 +133,7 @@ async function runMockMode(options: CliOptions): Promise<void> {
 
   await writeJson(options.jsonOut, output);
 
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "narrative-style",
     mode: options.mode,
@@ -141,7 +142,8 @@ async function runMockMode(options: CliOptions): Promise<void> {
     passRate: summary.total > 0 ? summary.passCount / summary.total : 0,
     gate: summary.gatePass ? "pass" : "fail",
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   if (options.jsonOnly) console.log(JSON.stringify(output, null, 2));
@@ -295,6 +297,7 @@ async function runLiveMode(options: CliOptions): Promise<void> {
 
   await writeJson(options.jsonOut, output);
 
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "narrative-style",
     mode: options.mode,
@@ -304,7 +307,8 @@ async function runLiveMode(options: CliOptions): Promise<void> {
     gate: summary.gatePass ? "pass" : "fail",
     dimensions: dimensionAverages,
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   if (options.jsonOnly) console.log(JSON.stringify(output, null, 2));

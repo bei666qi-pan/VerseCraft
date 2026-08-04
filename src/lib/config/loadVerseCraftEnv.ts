@@ -38,7 +38,21 @@ const AI_SECRET_ENV_NAMES = [
   "AI_TIMEOUT_MS",
   "AI_ENABLE_STREAM",
   "AI_LOG_LEVEL",
+  "AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE",
 ] as const;
+
+const KIMI_DS_PROFILE_ENV_NAMES = new Set([
+  "AI_GATEWAY_PROVIDER",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
+  "AI_PLAYER_CHAT_DISABLE_THINKING",
+  "AI_PLAYER_CHAT_MAX_TOKENS_OVERRIDE",
+  "AI_ONLINE_SHORT_JSON_DISABLE_THINKING",
+]);
 
 function stripBom(s: string): string {
   if (s.length > 0 && s.charCodeAt(0) === 0xfeff) return s.slice(1);
@@ -80,6 +94,30 @@ function applyAiSecretsFromParsedEnv(parsed: Record<string, string>): void {
     if (typeof v === "string" && v.trim().length > 0) {
       process.env[name] = v.trim();
     }
+  }
+}
+
+/**
+ * Apply VerseCraft's non-secret DM profile only to an OpenAI-compatible Kimi
+ * child process. The profile deliberately wins over project dotenv values so
+ * the requested Flash/no-thinking DM lane is deterministic; an already-open
+ * `kimi -ds` session gets the same profile without being restarted.
+ */
+function applyKimiDsAiProfile(root: string): void {
+  if ((process.env.KIMI_MODEL_PROVIDER_TYPE ?? "").trim().toLowerCase() !== "openai") {
+    return;
+  }
+  const abs = path.join(root, "src", "config", "kimi-ds-ai.profile.json");
+  try {
+    const parsed = JSON.parse(fs.readFileSync(abs, "utf8")) as Record<string, unknown>;
+    for (const name of KIMI_DS_PROFILE_ENV_NAMES) {
+      const value = parsed[name];
+      if (typeof value === "string" && value.trim().length > 0) {
+        process.env[name] = value.trim();
+      }
+    }
+  } catch {
+    /* missing/invalid local profile → retain the normal gateway configuration */
   }
 }
 
@@ -128,6 +166,7 @@ export function loadVerseCraftEnvFilesOnce(): void {
   const root = resolveVerseCraftProjectRoot();
   loadEnvConfigSync(root);
   mergeAiSecretsFromProjectEnvFiles(root);
+  applyKimiDsAiProfile(root);
   versecraftEnvLoaded = true;
 }
 
@@ -140,4 +179,5 @@ export function reloadVerseCraftProcessEnv(): void {
   const root = resolveVerseCraftProjectRoot();
   loadEnvConfigSync(root);
   mergeAiSecretsFromProjectEnvFiles(root);
+  applyKimiDsAiProfile(root);
 }

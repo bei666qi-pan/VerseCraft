@@ -44,8 +44,6 @@ const relationshipImpactSchema = z.object({
   trust: z.number().optional(),
   fear: z.number().optional(),
   debt: z.number().optional(),
-  affection: z.number().optional(),
-  desire: z.number().optional(),
 });
 
 export const dmChangeSetSchemaV1 = z.object({

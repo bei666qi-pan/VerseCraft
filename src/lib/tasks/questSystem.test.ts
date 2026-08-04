@@ -22,7 +22,7 @@ import {
   detectTaskCompletion,
   extractNarrativeKeywords,
   type CompletionGameState,
-  type CompletionDetectionInput,
+  type _CompletionDetectionInput,
 } from "./completionDetector";
 
 import { normalizeGameTaskDraft, type GameTaskV2 } from "./taskV2";

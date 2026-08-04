@@ -68,8 +68,48 @@ export async function executeMockChatCompletion(params: {
   task: TaskType;
   messages: ChatMessage[];
   ctx: AIRequestContext;
+  /** Function tools provided by the caller (DM Agent 等). */
+  tools?: ReadonlyArray<{ type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
+  /** Tool choice strategy. */
+  toolChoice?: "auto" | "none" | "required";
 }): Promise<AIResponse> {
   const t0 = Date.now();
+
+  // ── DM Agent mock tool-calling 模拟 ──
+  // 当 task=DM_AGENT 且有 tools 且 toolChoice !== "none" 时，
+  // 模拟一轮 tool call：返回一个 inspect_forge_options（或其他只读工具）调用，
+  // 让调用方执行 handler 后将结果回灌，再在下一轮返回最终 narrative。
+  const toolsActive = Boolean(params.tools && params.tools.length > 0);
+  const isDmAgent = params.task === "DM_AGENT";
+  const isFinalRound = params.toolChoice === "none" || params.ctx.tags?.dmAgentFinal === true;
+  const round = Number(params.ctx.tags?.dmAgentRound) || 1;
+
+  if (isDmAgent && toolsActive && !isFinalRound && round === 1) {
+    // 模拟第一轮：返回一个只读工具调用
+    const toolNames = (params.tools ?? []).map((t) => t.function.name);
+    const readTool = toolNames.find((n) => n.startsWith("get_") || n.startsWith("inspect_")) ?? toolNames[0];
+    const latencyMs = Math.max(1, Date.now() - t0);
+    const attempt = mockAttempt(params.task, latencyMs);
+    return {
+      ok: true,
+      providerId: MOCK_PROVIDER_ID,
+      logicalRole: attempt.logicalRole,
+      content: "",
+      toolCalls: readTool ? [{
+        id: `mock_call_${Date.now()}`,
+        type: "function" as const,
+        function: {
+          name: readTool,
+          arguments: "{}",
+        },
+      }] : [],
+      usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+      latencyMs,
+      routing: mockRoutingReport({ task: params.task, ctx: params.ctx, attempt }),
+    };
+  }
+
+  // 模拟最终轮：返回 DM JSON narrative
   const scenario = buildMockCompletionScenario({
     task: params.task,
     messages: params.messages,

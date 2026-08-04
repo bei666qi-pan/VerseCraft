@@ -14,7 +14,7 @@ import {
   type NarrativeSafetyCaseResult,
   type NarrativeSafetyEvalCase,
 } from "../src/lib/evals/narrativeSafetyRubric";
-import { parseEvalCli, evalLog, writeJson, appendHistory, getGitSha } from "../src/lib/evals/harness";
+import { parseEvalCli, evalLog, writeJson, appendHistory, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 type EvalMode = "mock" | "live";
 
@@ -132,6 +132,7 @@ async function main(): Promise<void> {
 
   await writeJson(options.jsonOut, output);
 
+  const provenance = resolveExperimentProvenance();
   appendHistory({
     suite: "narrative-safety",
     mode: options.mode,
@@ -146,7 +147,8 @@ async function main(): Promise<void> {
       commitSafetyPassRate: summary.commitSafetyPassRate,
     },
     timestamp: new Date().toISOString(),
-    gitSha: getGitSha(),
+    gitSha: provenance.commit,
+    provenance,
   });
 
   if (options.jsonOnly) console.log(JSON.stringify(output, null, 2));

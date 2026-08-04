@@ -28,7 +28,7 @@ const META: DetectorMeta = {
   offlineOnly: true,
 };
 
-type GridResult = {
+type _GridResult = {
   scope: KnowledgeScope;
   actorId: string;
   expected: boolean;
@@ -99,7 +99,7 @@ class Gap3CanActorKnowFactMatrixDetector implements Detector<void, DetectorResul
     }
 
     // Report per-cell
-    const failedCells = grid.filter((g) => !g.pass);
+    const _failedCells = grid.filter((g) => !g.pass);
     for (const g of grid) {
       if (g.pass) {
         issues.push({

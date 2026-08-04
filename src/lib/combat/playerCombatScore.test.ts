@@ -13,7 +13,7 @@ test("computePlayerCombatScore: 武器污染/不稳会降低 score", () => {
     equippedWeapon: { id: "w1", stability: 42, contamination: 55, repairable: true } as any,
     threatPhase: "idle",
   });
-  assert.ok(worse.score < base.score);
+  assert.ok(base.score - worse.score >= 1, "污染/不稳应使 score 至少降低 1");
 });
 
 test("computePlayerCombatScore: active/breached 压力更大", () => {
@@ -27,8 +27,9 @@ test("computePlayerCombatScore: active/breached 压力更大", () => {
     equippedWeapon: null,
     threatPhase: "breached",
   });
-  assert.ok(breached.score > 0);
-  assert.ok(breached.score <= idle.score + 2); // 第一版只是压缩容错，不做大幅波动
+  assert.ok(breached.score >= 3, "breached 相位下即使无武器也应 ≥ 3");
+  assert.ok(breached.score <= idle.score + 2, "上限：不做大幅波动");
+  assert.ok(breached.score >= idle.score - 2, "下限：breached 不应比 idle 差太多");
 });
 
 // Stage-4：职业进入战力计算（此前 computePlayerCombatScore 完全不认识 profession 参数）。
@@ -41,7 +42,8 @@ test("computePlayerCombatScore: 已认证职业提供小幅稳定加成", () => 
     threatPhase: "idle",
     profession: "守灯人",
   });
-  assert.ok(withProfession.score > noProfession.score);
+  assert.ok(withProfession.score - noProfession.score >= 0.5, "已认证职业应提供至少 0.5 加成");
+  assert.ok(withProfession.score <= noProfession.score + 3, "职业加成上限：不做数值碾压");
 });
 
 test("computePlayerCombatScore: 职业倾向与冲突类型契合时加成更高", () => {
@@ -60,7 +62,7 @@ test("computePlayerCombatScore: 职业倾向与冲突类型契合时加成更高
     profession: "巡迹客",
     kind: "escape",
   });
-  assert.ok(onAffinity.score > offAffinity.score);
+  assert.ok(onAffinity.score - offAffinity.score >= 0.5, "职业倾向契合应提供至少 0.5 额外加成");
 });
 
 test("computePlayerCombatScore: 职业主动已发动时额外加成", () => {
@@ -79,7 +81,7 @@ test("computePlayerCombatScore: 职业主动已发动时额外加成", () => {
     profession: "守灯人",
     professionActiveEngaged: true,
   });
-  assert.ok(engaged.score > idle.score);
+  assert.ok(engaged.score - idle.score >= 0.5, "职业主动发动应提供至少 0.5 额外加成");
 });
 
 // Stage-4：武器阶级/继承效果此前只是展示字段，不影响战力；现在应真正提供加成。
@@ -95,7 +97,7 @@ test("computePlayerCombatScore: 高阶武器（tier）提供更高战力", () =>
     equippedWeapon: { id: "w1", stability: 70, contamination: 0, tier: "S" } as any,
     threatPhase: "idle",
   });
-  assert.ok(tierS.score > tierC.score);
+  assert.ok(tierS.score - tierC.score >= 2, "S vs C 阶级差应 ≥ 2");
 });
 
 // Stage-4：验收标准——“用对武器获得窗口”。武器 counterTags/currentMods 命中对方 vulnerableToTags 时应有加成。
@@ -114,7 +116,7 @@ test("computePlayerCombatScore: 武器命中对方弱点标签时提供窗口加
     threatPhase: "idle",
     opponentVulnerableTags: ["mirror"],
   });
-  assert.ok(matched.score > noMatch.score);
+  assert.ok(matched.score - noMatch.score >= 1, "武器命中弱点标签应提供至少 1 点窗口加成");
 });
 
 test("computePlayerCombatScore: styleTags 反映职业倾向而不是恒定 close_quarters", () => {

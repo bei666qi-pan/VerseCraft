@@ -1,0 +1,14 @@
+---
+description: OpenSpec default task dispatch
+globs: "**/*"
+alwaysApply: true
+---
+
+# OpenSpec 默认任务分流
+
+VerseCraft 默认使用 OpenSpec。开始任何实现任务前，必须先读取根 `AGENTS.md` 的“OpenSpec 默认自动分流”并决定：直接执行、OpenSpec 轻量变更或 OpenSpec 强制变更。
+
+- 不要要求用户显式输入 `/opsx:*` 才启用 OpenSpec。
+- 有匹配的未归档 change 时先复用并更新；没有时使用 `.cursor/commands/opsx-*.md`、`.cursor/skills/openspec-*` 或 `openspec` CLI 创建并完成 artifacts。
+- 代码实施完成后，按 tasks 更新、运行相关验证，并在需要时同步 delta specs；归档只在用户请求、PR 收口或明确完成流程时执行。
+- 根 `AGENTS.md` 是完整的跨工具规则事实源。本文件只提供 Cursor 的触发入口，不复制或覆盖项目架构、验证和安全约束。

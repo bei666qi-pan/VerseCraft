@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { classifyWebTrafficSource } from "@/lib/analytics/webTraffic";
 
 const VISITOR_ID_STORAGE_KEY = "versecraft.web_traffic_visitor_id.v1";
 
@@ -33,7 +34,12 @@ export default function WebTrafficTracker() {
       method: "POST",
       keepalive: true,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pathname, visitorId, eventId }),
+      body: JSON.stringify({
+        pathname,
+        visitorId,
+        eventId,
+        trafficSource: classifyWebTrafficSource(document.referrer, window.location.origin),
+      }),
     }).catch(() => {});
   }, [pathname]);
 

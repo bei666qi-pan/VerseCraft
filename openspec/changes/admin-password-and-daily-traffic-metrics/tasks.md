@@ -14,3 +14,10 @@
 - [x] 3.1 Add unit and route/contract tests for traffic normalization, flag-off behavior, Beijing-time aggregation, UV deduplication, and existing daily metrics compatibility.
 - [x] 3.2 Run targeted tests, ESLint, OpenSpec validation, and a production build; document results.
 - [ ] 3.3 Rotate the deployed `ADMIN_PASSWORD` to `panpan666`, deploy through the repository release workflow, and verify the new admin authentication plus dashboard traffic response.
+
+## 4. Traffic source accuracy and explainability
+
+- [x] 4.1 Add privacy-minimized browser source classification and validate it at the page-view API boundary without storing raw referrer data.
+- [x] 4.2 Read overview PV, UV, and source distribution from one authoritative Beijing-day event-log calculation; align daily-rebuild UV validity filtering with it.
+- [x] 4.3 Add a plain-language source-distribution panel and metric definitions to the admin overview.
+- [x] 4.4 Add strict pure-function, route-contract, query-shape, and UI regression tests covering all source categories, invalid identifiers, stale daily rollups, and Beijing boundaries; run the relevant test gate.

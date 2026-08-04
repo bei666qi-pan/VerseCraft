@@ -326,6 +326,7 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
     ...(normalizeRiskSource(o.risk_source) ? { risk_source: normalizeRiskSource(o.risk_source) } : {}),
     ...(normalizeRiskSource(o.damage_source) ? { damage_source: normalizeRiskSource(o.damage_source) } : {}),
     consumed_items: asStringArray(o.consumed_items),
+    consumed_warehouse_items: asStringArray(o.consumed_warehouse_items),
     awarded_items: asUnknownArray(o.awarded_items),
     awarded_warehouse_items: asUnknownArray(o.awarded_warehouse_items),
     codex_updates: asUnknownArray(o.codex_updates),
@@ -396,6 +397,14 @@ export function normalizePlayerDmJson(obj: unknown): Record<string, unknown> | n
   }
   const narrativeAudit = normalizeNarrativeAudit(o._narrative_audit);
   if (narrativeAudit) out._narrative_audit = narrativeAudit;
+
+  // DM Agent 工具使用标记和状态变更摘要（Phase-10：白名单透传）
+  if (typeof o.dm_agent_tools_used === "boolean") {
+    out.dm_agent_tools_used = o.dm_agent_tools_used;
+  }
+  if (o.dm_agent_state_delta && typeof o.dm_agent_state_delta === "object" && !Array.isArray(o.dm_agent_state_delta)) {
+    out.dm_agent_state_delta = o.dm_agent_state_delta;
+  }
 
   return out;
 }

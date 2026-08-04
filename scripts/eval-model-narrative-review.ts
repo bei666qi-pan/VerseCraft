@@ -10,7 +10,7 @@ import {
   type ModelNarrativeReviewStep,
   type ModelNarrativeReviewTarget,
 } from "../src/lib/evals/modelNarrativeReview";
-import { appendHistory, evalLog, getGitSha, parseEvalCli, writeJson } from "../src/lib/evals/harness";
+import { appendHistory, evalLog, parseEvalCli, writeJson, resolveExperimentProvenance } from "../src/lib/evals/harness";
 
 // This standalone CLI runs outside Next.js, so mirror the local development env load.
 for (const name of [".env", ".env.local"]) {
@@ -152,7 +152,8 @@ async function main(): Promise<void> {
     fs.mkdirSync(path.dirname(path.resolve(cli.markdownOut)), { recursive: true });
     fs.writeFileSync(path.resolve(cli.markdownOut), markdown({ input: cli.input, summary, liveCoverageGatePass, results }), "utf8");
   }
-  appendHistory({ suite: "model-narrative-review", mode: cli.mode, total: summary.total, pass: summary.passed, passRate: summary.liveCoverage, gate: liveCoverageGatePass ? "pass" : "fail", dimensions: { liveCoverage: summary.liveCoverage, inconclusive: summary.inconclusive, contentQualityGate: summary.strictGatePass }, timestamp: new Date().toISOString(), gitSha: getGitSha() });
+  const provenance = resolveExperimentProvenance();
+  appendHistory({ suite: "model-narrative-review", mode: cli.mode, total: summary.total, pass: summary.passed, passRate: summary.liveCoverage, gate: liveCoverageGatePass ? "pass" : "fail", dimensions: { liveCoverage: summary.liveCoverage, inconclusive: summary.inconclusive, contentQualityGate: summary.strictGatePass }, timestamp: new Date().toISOString(), gitSha: provenance.commit, provenance });
   if (cli.assertLiveCoverage && !liveCoverageGatePass) process.exitCode = 1;
 }
 

@@ -13,8 +13,8 @@ test("combatAdjudication: NPC vs 玩家可解算且可解释", () => {
     attacker: { kind: "npc", npc },
     defender: { kind: "player", stats: { sanity: 12, agility: 12, luck: 10, charm: 10, background: 10 } as any, equippedWeapon: null, threatPhase: "active" },
   });
-  assert.ok(typeof res.outcome === "string");
-  assert.ok(res.explain.why.length >= 1);
+  assert.ok(typeof res.outcome === "string" && res.outcome.length > 0);
+  assert.ok(res.explain.why.length >= 1 && res.explain.why.every((w: string) => w.length > 0));
 });
 
 test("combatAdjudication: NPC vs NPC 可解算", () => {
@@ -47,7 +47,7 @@ test("combatAdjudication: profession 会经 adjudicateCombat 传导到玩家战�
     attacker: { kind: "player", stats, equippedWeapon: null, threatPhase: "idle", profession: "巡迹客" },
     defender: { kind: "npc", npc },
   });
-  assert.ok(withProfession.attacker.score > withoutProfession.attacker.score);
+  assert.ok(withProfession.attacker.score > withoutProfession.attacker.score && withProfession.attacker.score - withoutProfession.attacker.score >= 1);
 });
 
 // Stage-4 验收标准：“用对武器获得窗口”——武器 counterTags 命中对方 vulnerableToTags 时应有加成。
@@ -72,7 +72,7 @@ test("combatAdjudication: 武器命中对方风格弱点标签时提供加成（
     },
     defender: { kind: "npc", npc },
   });
-  assert.ok(withCounterWeapon.attacker.score > withoutCounterWeapon.attacker.score);
+  assert.ok(withCounterWeapon.attacker.score > withoutCounterWeapon.attacker.score && withCounterWeapon.attacker.score - withoutCounterWeapon.attacker.score >= 1);
 });
 
 test("combatAdjudication: 战斗前态势判断不输出裸数且稳定", () => {
@@ -87,8 +87,8 @@ test("combatAdjudication: 战斗前态势判断不输出裸数且稳定", () => 
     scene,
     kind: "intimidate",
   });
-  assert.ok(typeof pre.verdict === "string");
-  assert.ok(pre.explain.length >= 1);
+  assert.ok(typeof pre.verdict === "string" && pre.verdict.length > 0);
+  assert.ok(pre.explain.length >= 1 && pre.explain.every((e: string) => e.length > 0));
   assert.ok(!pre.explain.join(" ").match(/\b\d+(\.\d+)?\b/));
 });
 

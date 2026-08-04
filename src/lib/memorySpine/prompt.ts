@@ -1,4 +1,4 @@
-import type { MemorySpineEntry, MemorySpineState } from "./types";
+import type { MemorySpineEntry, _MemorySpineState } from "./types";
 import type { RecalledMemory } from "./selectors";
 
 function clampText(s: string, maxChars: number): string {

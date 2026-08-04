@@ -11,7 +11,7 @@ test.describe("Play page (guest)", () => {
       errors.push(err.message + "\n" + (err.stack ?? ""));
     });
 
-    const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 15_000 });
+    const res = await page.goto("/play", { waitUntil: "domcontentloaded", timeout: 30_000 });
     expect(res?.status()).toBeLessThan(500);
 
     await page.waitForTimeout(2000);

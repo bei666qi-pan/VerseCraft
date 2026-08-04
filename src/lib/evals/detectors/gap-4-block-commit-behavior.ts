@@ -13,10 +13,7 @@ import {
   COMMIT_STATE_CHANGING_FIELDS,
   COMMIT_STATE_MIRROR_FIELDS,
 } from "@/lib/turnEngine/commitTurn";
-import {
-  planNarrativeSafetyEnforcement,
-  type NarrativeSafetyCommitPolicy,
-} from "@/lib/turnEngine/narrativeSafety/runtimeConfig";
+import { planNarrativeSafetyEnforcement } from "@/lib/turnEngine/narrativeSafety/runtimeConfig";
 import type {
   NarrativeSafetyIssue,
   NarrativeSafetyIssueCode,

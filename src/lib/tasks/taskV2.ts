@@ -52,7 +52,6 @@ export type TaskDramaticType =
 export type RelationshipDelta =
   | "trust_up"
   | "trust_down"
-  | "romance_open"
   | "betrayal_flag"
   | "secret_revealed";
 
@@ -175,10 +174,6 @@ export interface RelationshipStatePatch {
   trust?: number;
   fear?: number;
   debt?: number;
-  affection?: number;
-  desire?: number;
-  romanceEligible?: boolean;
-  romanceStage?: "none" | "hint" | "bonded" | "committed";
   betrayalFlagAdd?: string;
 }
 
@@ -322,7 +317,7 @@ function normalizeReward(raw: unknown): GameTaskRewardV2 {
       .map((x) => {
         const delta = x.delta;
         const normalizedDelta: RelationshipDelta =
-          delta === "trust_up" || delta === "trust_down" || delta === "romance_open" || delta === "betrayal_flag" || delta === "secret_revealed"
+          delta === "trust_up" || delta === "trust_down" || delta === "betrayal_flag" || delta === "secret_revealed"
             ? delta
             : "trust_up";
         return {
@@ -1105,8 +1100,6 @@ function parseSignedInt(v: string): number | null {
  * Format examples:
  * - rel:N-018:trust:+6
  * - rel:N-013:fear:+8
- * - rel:N-007:romanceEligible:true
- * - rel:N-007:romanceStage:hint
  * - rel:N-013:betrayal:flag_boy_trap
  */
 export function extractRelationshipPatchesFromConsequences(tasks: GameTaskV2[]): RelationshipStatePatch[] {
@@ -1123,13 +1116,7 @@ export function extractRelationshipPatchesFromConsequences(tasks: GameTaskV2[]):
       const value = parts.slice(3).join(":");
       if (!npcId) continue;
       const base = byNpc.get(npcId) ?? { npcId };
-      if (key === "romanceEligible") {
-        base.romanceEligible = value === "true";
-      } else if (key === "romanceStage") {
-        if (value === "none" || value === "hint" || value === "bonded" || value === "committed") {
-          base.romanceStage = value;
-        }
-      } else if (key === "betrayal") {
+      if (key === "betrayal") {
         if (value) base.betrayalFlagAdd = value;
       } else {
         const delta = parseSignedInt(value);
@@ -1138,8 +1125,6 @@ export function extractRelationshipPatchesFromConsequences(tasks: GameTaskV2[]):
         if (key === "trust") base.trust = (base.trust ?? 0) + delta;
         if (key === "fear") base.fear = (base.fear ?? 0) + delta;
         if (key === "debt") base.debt = (base.debt ?? 0) + delta;
-        if (key === "affection") base.affection = (base.affection ?? 0) + delta;
-        if (key === "desire") base.desire = (base.desire ?? 0) + delta;
       }
       byNpc.set(npcId, base);
     }

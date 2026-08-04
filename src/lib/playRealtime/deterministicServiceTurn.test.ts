@@ -47,7 +47,7 @@ test("deterministic forge repair produces authoritative zero-model turn", () => 
   }) as Record<string, any>;
   assert.ok(turn);
   assert.equal(turn.currency_change, -1);
-  assert.deepEqual(turn.consumed_items, ["W-B101"]);
+  assert.deepEqual(turn.consumed_warehouse_items, ["W-B101"]);
   assert.equal(turn.weapon_updates[0].stability, 85);
   assert.equal(turn.weapon_updates[0].contamination, 0);
   assert.equal(turn.security_meta.deterministic_service_fast_lane, true);

@@ -36,6 +36,7 @@ function okReport(): NarrativeValidationReport {
     issues: [],
     optionsOverride: null,
     narrativeOverride: null,
+    awardedItemsOverride: null,
     telemetry: baseTelemetry(),
   };
 }
@@ -116,6 +117,7 @@ test("commitTurn applies options override", () => {
     issues: [],
     optionsOverride: ["观察", "退后", "记录", "思考"],
     narrativeOverride: null,
+    awardedItemsOverride: null,
     telemetry: baseTelemetry({
       totalIssues: 1,
       byCode: { options_duplicate_only: 1 },
@@ -172,6 +174,7 @@ test("commitTurn falls back to safe narrative when override present", () => {
       options: ["a2", "b2", "c2", "d2"],
       security_meta: { action: "degrade", stage: "post_model", risk_level: "gray", reason: "x" },
     }),
+    awardedItemsOverride: null,
     telemetry: baseTelemetry({
       totalIssues: 1,
       byCode: { dm_only_fact_leaked_in_narrative: 1 },
@@ -383,7 +386,7 @@ test("commitTurn replaces an unregistered described NPC with an identity-unconfi
     ], "block_commit"),
   });
 
-  assert.equal(result.committedDmRecord.narrative, "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。");
+  assert.equal(result.committedDmRecord.narrative, "四周恢复了安静。灰白的墙皮在灯光下显得有些斑驳，一切如常。");
   assert.deepEqual(result.committedDmRecord.options, []);
   assert.equal(result.committedDmRecord.codex_updates, undefined);
   assert.equal(result.committedDmRecord.player_location, undefined);

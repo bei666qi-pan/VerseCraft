@@ -14,6 +14,9 @@
 | overview.ai_failure_rate.today | 今日 AI 失败率 | AI 异常规模 | 失败事件 / AI 请求事件 | `analytics_events` | 实时查询 | 全部 | 是 | 与成功率互补 |
 | overview.token_cost.today | 今日 Token 成本 | 成本控制 | 今日 token_cost 求和 | `analytics_events` | 实时查询/日聚合 | 全部 | 是 | 依赖事件 token_cost |
 | overview.negative_feedback_rate.today | 今日负反馈率 | 用户不满程度 | 负反馈 / 全部反馈 | `feedbacks`、`analytics_events` | 实时查询 | 全部 | 是 | 样本不足不下结论 |
+| overview.traffic.page_views.today | 今日页面浏览量（PV） | 今日页面被打开的次数 | 今日 `page_viewed` 事件总数 | `analytics_events` | 实时查询 | 全部访问 | 是 | 刷新日聚合尚未运行也不影响总览数字 |
+| overview.traffic.unique_visitors.today | 今日独立访客（UV） | 今日不同浏览器访客数 | 今日 `page_viewed` 中格式合法的 `visitorId` 去重数 | `analytics_events` | 实时查询 | 全部访问 | 是 | 不合法或缺失 ID 只计 PV，不计 UV；不能把各来源 UV 相加 |
+| overview.traffic_sources.today | 今日访问来源 | 访问从何种渠道进入的粗粒度分布 | `direct` / `internal` / `search` / `social` / `referral` 分别统计 PV 与合法 visitorId 去重 UV | `analytics_events.payload.trafficSource` | 实时查询 | 全部访问 | 是 | 只保存类别，不保存原始链接、域名、搜索词或 UTM；直达也可能是浏览器未提供来源 |
 
 ## 玩家旅程漏斗
 

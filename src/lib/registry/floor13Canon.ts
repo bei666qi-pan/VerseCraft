@@ -8,7 +8,8 @@
  * DM 编排时的硬参考。
  */
 
-import type { FloorId } from "./types";
+// FloorId removed (unused)
+// import type { FloorId } from "./types";
 
 // ── 空间特征 ──
 

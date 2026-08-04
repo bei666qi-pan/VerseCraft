@@ -74,10 +74,6 @@ export type DMJson = {
     trust?: number;
     fear?: number;
     debt?: number;
-    affection?: number;
-    desire?: number;
-    romanceEligible?: boolean;
-    romanceStage?: "none" | "hint" | "bonded" | "committed";
     betrayalFlags?: string[];
     combatPower?: number;
     combatPowerDisplay?: string;
@@ -92,10 +88,6 @@ export type DMJson = {
     trust?: number;
     fear?: number;
     debt?: number;
-    affection?: number;
-    desire?: number;
-    romanceEligible?: boolean;
-    romanceStage?: "none" | "hint" | "bonded" | "committed";
     betrayalFlagAdd?: string;
   }>;
   main_threat_updates?: Array<{

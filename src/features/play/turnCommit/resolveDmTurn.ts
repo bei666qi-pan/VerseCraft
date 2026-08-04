@@ -507,6 +507,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     options: normalizedLegacyOptions,
     currency_change: asFiniteInt(input.currency_change, 0),
     consumed_items: asStringArray(input.consumed_items),
+    consumed_warehouse_items: asStringArray(input.consumed_warehouse_items),
     awarded_items: awardedItems,
     awarded_warehouse_items: awardedWarehouseItems,
     codex_updates: asUnknownArray(input.codex_updates),
@@ -555,6 +556,7 @@ export function resolveTurnConsistency(input: Record<string, unknown>, opts?: Re
     loot_changes: {
       currency_change: asFiniteInt(input.currency_change, 0),
       consumed_items: asStringArray(input.consumed_items),
+      consumed_warehouse_items: asStringArray(input.consumed_warehouse_items),
       awarded_items: awardedItems,
       awarded_warehouse_items: awardedWarehouseItems,
     },

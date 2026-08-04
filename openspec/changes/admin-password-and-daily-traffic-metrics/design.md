@@ -37,12 +37,16 @@
 6. **通过 `VERSECRAFT_ENABLE_WEB_TRAFFIC_ANALYTICS` 灰度开关控制采集。**
    默认开启；关闭时 API 仅返回 `{ ok: true, skipped: true }`，后台读取零值/已有历史值，不抛错。该开关读取遵从配置层单一入口。
 
+7. **来源只记录隐私最小化类别，且总量与来源用同一 event-log 查询计算。**
+   客户端将 `document.referrer` 分类为 direct、internal、search、social 或 referral；不上传原始 referrer、域名、查询参数或 UTM 原文。后台“今日”PV/UV和来源分布都直接从 append-only `analytics_events.page_viewed` 查询，以避免日汇总任务尚未运行时显示过期数据；日报表仍作为回填和趋势缓存。SQL 复用与 API 相同的 visitorId 有效性规则，避免无效历史 payload 被算进 UV。
+
 ## Risks / Trade-offs
 
 - [浏览器阻止或中断 best-effort 请求] → PV/UV 是产品事件口径，不承诺等同于 CDN 请求量；后台注明采集口径，客户端使用 keepalive 且失败不影响访问。
 - [同一用户跨浏览器/清理存储] → UV 定义为“稳定匿名浏览器 visitorId”，不声称是跨设备真人数。
 - [部署前旧数据库缺字段] → migration 和 runtime schema 使用 `ADD COLUMN IF NOT EXISTS`；读取缺字段的错误降级到零值，部署后可调用 rebuild cron 回填。
 - [重复上报] → event ID 与 idempotency key 同值，event insert 冲突后不产生第二条记录；日重建以覆盖写入确保幂等。
+- [来源分类被伪造或浏览器省略 referrer] → 该指标明确是“浏览器上报的来源类别”，direct/unknown 不被解释为自然流量；不以它做认证或安全决策。
 - [弱口令传播或仓库泄露] → `panpan666` 仅注入生产部署环境，不写入源码、测试 fixture、`.env.example` 或日志。
 
 ## Migration Plan

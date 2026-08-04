@@ -11,7 +11,8 @@
  */
 
 import type { GameTaskV2 } from "./taskV2";
-import type { QuestGuardContext } from "./taskStateMachine";
+// QuestGuardContext removed (unused)
+// import type { QuestGuardContext } from "./taskStateMachine";
 
 // === 完成条件类型 ===
 
@@ -83,7 +84,7 @@ function detectFromStructured(taskId: string, dmTaskUpdates: CompletionDetection
 
 /** 从叙事文本中反向检测任务完成关键词 */
 function detectFromNarrative(task: GameTaskV2, narrative: string): { completed: boolean; confidence: number; matchedKeywords: string[] } {
-  const narrative_lower = narrative.toLowerCase();
+  const __narrative_lower = narrative.toLowerCase();
   const keywords: string[] = [];
   let score = 0;
 
@@ -131,7 +132,7 @@ function detectFromNarrative(task: GameTaskV2, narrative: string): { completed: 
 }
 
 /** 检查具体条件 */
-function checkCondition(condition: CompletionCondition, state: CompletionGameState): boolean {
+function _checkCondition(condition: CompletionCondition, state: CompletionGameState): boolean {
   switch (condition.type) {
     case "item_collected":
       return state.inventoryItemIds.includes(condition.itemId);

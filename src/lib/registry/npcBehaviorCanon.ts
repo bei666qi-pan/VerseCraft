@@ -12,9 +12,10 @@
  * 周期相位：平静期/校准期/前兆期/修正窗口（见 cyclePhaseCanon.ts）
  */
 
-import type { NpcSocialProfile } from "./types";
+// NpcSocialProfile removed (unused)
+// import type { NpcSocialProfile } from "./types";
 import type { CyclePhase } from "./cyclePhaseCanon";
-import { NPC_SOCIAL_GRAPH } from "./world";
+import { _NPC_SOCIAL_GRAPH } from "./world";
 
 // ──────────────────────────────────────
 // Section 1: Daily Schedule Types

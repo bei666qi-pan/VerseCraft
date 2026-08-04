@@ -28,3 +28,14 @@ The authenticated admin overview SHALL expose current and previous Beijing-day p
 #### Scenario: Dashboard shows day-over-day web traffic
 - **WHEN** an authenticated administrator loads the overview after daily aggregates are available
 - **THEN** the response includes page-view and unique-visitor KPIs with the immediately preceding Beijing-day values as their comparison baseline
+
+### Requirement: Explain privacy-minimized traffic sources
+The system SHALL classify each eligible page view into exactly one privacy-minimized source category—direct, internal, search, social, or referral—without storing a raw referrer URL, host, query string, or UTM value. The authenticated overview SHALL expose a Beijing-day source distribution alongside a plain-language definition.
+
+#### Scenario: External search visit
+- **WHEN** an eligible page entry has a recognized search-engine referrer
+- **THEN** the page-view event SHALL store only the `search` source category and the overview SHALL include it in the search traffic count.
+
+#### Scenario: No referrer is available
+- **WHEN** an eligible page entry has no referrer
+- **THEN** the page-view event SHALL store the `direct` source category without adding raw source data.

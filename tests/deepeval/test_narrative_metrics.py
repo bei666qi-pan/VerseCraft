@@ -106,7 +106,7 @@ HARD_FLOORS = {
     "coherence": 2,
     "characterVoice": 2,
     "plotLogic": 2,
-    "immersion": 0,  # 沉浸感没有硬底线
+    "immersion": 1,  # 沉浸感硬底线与评分范围对齐
     "factConsistency": 3,  # 事实一致性要求最严
 }
 

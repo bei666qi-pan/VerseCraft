@@ -17,7 +17,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { combatToInjuryDelta } from "./combatInjuryIntegration";
-import type { CombatConflictKind, CombatOutcomeTier, CombatResolution, CombatStyleTag, SceneCombatContext } from "./types";
+import type { _CombatConflictKind, CombatOutcomeTier, CombatResolution, CombatStyleTag, SceneCombatContext } from "./types";
 
 // ──────────────────────────────────────
 // Helper: 构建最小 CombatResolution
@@ -84,7 +84,7 @@ describe("combatToInjuryDelta: cost → injury mapping", () => {
     const delta = combatToInjuryDelta(makeResolution({ likelyCost: "none" }));
     assert.equal(delta.injuries.length, 0);
     assert.equal(delta.sanityDamage, 0);
-    assert.ok(delta.narrativeHint.length > 0);
+    assert.equal(delta.narrativeHint, "战斗未造成实质伤害。");
   });
 
   it('returns 1 minor injury for "light" cost', () => {
@@ -92,17 +92,14 @@ describe("combatToInjuryDelta: cost → injury mapping", () => {
     assert.equal(delta.injuries.length, 1);
     assert.equal(delta.injuries[0].severity, "minor");
     assert.equal(delta.sanityDamage, 1);
-    assert.ok(delta.injuries[0].chance > 0);
+    assert.ok(delta.injuries[0].chance >= 0.3 && delta.injuries[0].chance <= 0.7);
   });
 
   it('returns 2 injuries for "moderate" cost (primary + secondary bruise)', () => {
     const delta = combatToInjuryDelta(makeResolution({ likelyCost: "moderate" }));
     assert.equal(delta.injuries.length, 2);
-    // primary injury should be moderate
-    assert.ok(
-      delta.injuries[0].severity === "moderate" || delta.injuries[0].severity === "minor",
-      `Expected primary injury severity to be moderate or minor (safe zone), got ${delta.injuries[0].severity}`,
-    );
+    // primary injury should be moderate (non-safe zone)
+    assert.equal(delta.injuries[0].severity, "moderate");
     assert.equal(delta.sanityDamage, 2);
   });
 
@@ -111,7 +108,7 @@ describe("combatToInjuryDelta: cost → injury mapping", () => {
     assert.equal(delta.injuries.length, 2);
     const hasNonMinor = delta.injuries.some((i) => i.severity !== "minor");
     assert.ok(hasNonMinor, "Expected at least one non-minor injury for heavy cost");
-    assert.ok(delta.sanityDamage >= 3, `Expected sanityDamage >= 3 for heavy, got ${delta.sanityDamage}`);
+    assert.ok(delta.sanityDamage >= 3 && delta.sanityDamage <= 5, `Expected sanityDamage 3-5 for heavy, got ${delta.sanityDamage}`);
   });
 });
 
@@ -301,9 +298,10 @@ describe("combatToInjuryDelta: sanityDamage progression", () => {
     const moderateDelta = combatToInjuryDelta(makeResolution({ likelyCost: "moderate" }));
     const heavyDelta = combatToInjuryDelta(makeResolution({ likelyCost: "heavy" }));
 
-    assert.ok(noneDelta.sanityDamage < lightDelta.sanityDamage);
-    assert.ok(lightDelta.sanityDamage < moderateDelta.sanityDamage);
-    assert.ok(moderateDelta.sanityDamage < heavyDelta.sanityDamage);
+    assert.equal(noneDelta.sanityDamage, 0);
+    assert.equal(lightDelta.sanityDamage, 1);
+    assert.equal(moderateDelta.sanityDamage, 2);
+    assert.equal(heavyDelta.sanityDamage, 4);
   });
 });
 

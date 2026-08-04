@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   aggregateWebTrafficEvents,
+  aggregateWebTrafficSources,
+  classifyWebTrafficSource,
   getBeijingDateKey,
   getBeijingDateRange,
   normalizeWebTrafficPathname,
+  normalizeWebTrafficSource,
   normalizeWebTrafficVisitorId,
 } from "@/lib/analytics/webTraffic";
 import { parsePageViewRequest, shouldCollectPageView } from "@/lib/analytics/pageViewRequest";
@@ -31,9 +34,37 @@ test("web traffic keeps every page view but deduplicates only valid visitor ids"
 
 test("page-view request contract rejects malformed and internal-path traffic", () => {
   const eventId = "event_" + "x".repeat(24);
-  assert.deepEqual(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId }), { pathname: "/", visitorId: VISITOR_A, eventId });
+  assert.deepEqual(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId }), { pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "direct" });
+  assert.deepEqual(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "search" }), { pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "search" });
   assert.equal(parsePageViewRequest({ pathname: "/saiduhsa", visitorId: VISITOR_A, eventId }), null);
   assert.equal(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId: "bad" }), null);
+  assert.equal(parsePageViewRequest({ pathname: "/", visitorId: VISITOR_A, eventId, trafficSource: "raw-referrer.example" }), null);
+});
+
+test("traffic source classification stores only coarse categories", () => {
+  assert.equal(classifyWebTrafficSource("", "https://versecraft.cn"), "direct");
+  assert.equal(classifyWebTrafficSource("https://versecraft.cn/intro?from=secret", "https://versecraft.cn"), "internal");
+  assert.equal(classifyWebTrafficSource("https://www.google.com/search?q=versecraft", "https://versecraft.cn"), "search");
+  assert.equal(classifyWebTrafficSource("https://www.xiaohongshu.com/explore/123", "https://versecraft.cn"), "social");
+  assert.equal(classifyWebTrafficSource("https://partner.example/path", "https://versecraft.cn"), "referral");
+  assert.equal(normalizeWebTrafficSource("https://partner.example/path"), null);
+});
+
+test("source aggregates preserve PV while excluding malformed visitor ids from UV", () => {
+  assert.deepEqual(
+    aggregateWebTrafficSources([
+      { visitorId: VISITOR_A, trafficSource: "search" },
+      { visitorId: VISITOR_A, trafficSource: "search" },
+      { visitorId: "bad", trafficSource: "social" },
+    ]),
+    [
+      { source: "direct", pageViews: 0, uniqueVisitors: 0 },
+      { source: "internal", pageViews: 0, uniqueVisitors: 0 },
+      { source: "search", pageViews: 2, uniqueVisitors: 1 },
+      { source: "social", pageViews: 1, uniqueVisitors: 0 },
+      { source: "referral", pageViews: 0, uniqueVisitors: 0 },
+    ]
+  );
 });
 
 test("feature flag can disable page-view collection without rejecting the page request", () => {

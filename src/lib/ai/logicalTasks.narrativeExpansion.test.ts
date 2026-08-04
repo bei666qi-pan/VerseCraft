@@ -1,9 +1,28 @@
+// These tests stub global fetch with fake hosts; the HTTP/1.1 gateway
+// transport (AI_GATEWAY_FORCE_HTTP1) would bypass the stub with real DNS.
+process.env.AI_GATEWAY_FORCE_HTTP1 = "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resetProviderCircuitsForTests } from "@/lib/ai/fallback/circuitBreaker";
 import { resetModelCircuitsForTests } from "@/lib/ai/fallback/modelCircuit";
 import { expandNarrativeOnly } from "@/lib/ai/logicalTasks";
 import type { NarrativeBudget } from "@/lib/playRealtime/narrativeBudgetPackets";
+
+// Kimi Code CLI 运行时注入的环境变量。测试期间需清除。
+const KIMI_INJECTED_VARS = [
+  "VC_AI_DIRECT_BASE_URL",
+  "VC_AI_DIRECT_API_KEY",
+  "VC_AI_DIRECT_MODEL",
+  "VC_AI_DIRECT_MODEL_MAIN",
+  "VC_AI_DIRECT_MODEL_CONTROL",
+  "VC_AI_DIRECT_MODEL_ENHANCE",
+  "VC_AI_DIRECT_MODEL_REASONER",
+  "VC_AI_DIRECT_PLAYER_MODEL",
+  "KIMI_MODEL_PROVIDER_TYPE",
+  "KIMI_MODEL_BASE_URL",
+  "KIMI_MODEL_API_KEY",
+  "KIMI_MODEL_NAME",
+];
 
 function patchEnv(updates: Record<string, string | undefined>): () => void {
   const prev: Record<string, string | undefined> = {};
@@ -13,11 +32,24 @@ function patchEnv(updates: Record<string, string | undefined>): () => void {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+  for (const k of KIMI_INJECTED_VARS) {
+    if (!(k in updates)) {
+      prev[k] = process.env[k];
+      delete process.env[k];
+    }
+  }
   return () => {
     for (const key of Object.keys(updates)) {
       const old = prev[key];
       if (old === undefined) delete process.env[key];
       else process.env[key] = old;
+    }
+    for (const k of KIMI_INJECTED_VARS) {
+      if (!(k in updates)) {
+        const old = prev[k];
+        if (old === undefined) delete process.env[k];
+        else process.env[k] = old;
+      }
     }
   };
 }

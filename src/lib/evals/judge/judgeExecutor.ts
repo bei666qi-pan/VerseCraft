@@ -58,7 +58,7 @@ function parseJudgeJsonOutput(rawText: string, rubric: JudgeRubric): ParsedJudge
     // 确保所有维度都有分数
     for (const dim of rubric.dimensions) {
       if (typeof dimensionScores[dim.id] !== "number") {
-        dimensionScores[dim.id] = 3; // 默认及格分
+        dimensionScores[dim.id] = 2; // 缺失维度默认为未验证
       }
       // 截断到 1-5
       dimensionScores[dim.id] = Math.max(1, Math.min(5, Math.round(dimensionScores[dim.id]!)));
@@ -106,11 +106,11 @@ function computeWeightedAverage(scores: Record<string, number>, dimensions: Judg
   let totalWeight = 0;
   let weightedSum = 0;
   for (const dim of dimensions) {
-    const score = scores[dim.id] ?? 3;
+    const score = scores[dim.id] ?? 2;
     weightedSum += score * dim.weight;
     totalWeight += dim.weight;
   }
-  return totalWeight > 0 ? weightedSum / totalWeight : 3;
+  return totalWeight > 0 ? weightedSum / totalWeight : 2;
 }
 
 function checkPassed(
@@ -375,6 +375,66 @@ export function buildBatchJudgePrompts(input: BuildBatchJudgePromptsInput): Judg
   return { tasks };
 }
 
+// === 离线评估专用启发式辅助函数 ===
+
+/** 统计中文字符数（CJK 统一表意文字及扩展区） */
+function countChineseChars(text: string): number {
+  let count = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    if (code == null) continue;
+    if (
+      (code >= 0x4E00 && code <= 0x9FFF) ||     // CJK Unified Ideographs
+      (code >= 0x3400 && code <= 0x4DBF) ||     // CJK Extension A
+      (code >= 0x20000 && code <= 0x2A6DF)       // CJK Extension B
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** DM-only 泄漏关键词：叙事中不应出现的元信息/内部术语 */
+const DM_ONLY_LEAK_KEYWORDS = [
+  "校源徘徊者",
+  "七锚闭环",
+  "系统提示词",
+  "DM指令",
+  "请严格以JSON",
+  "地下城主",
+  "is_action_legal",
+  "sanity_damage",
+];
+
+/** 检测叙事中的 DM-only 泄漏关键词，返回命中的关键词列表 */
+function detectDmOnlyLeakKeywords(narrative: string): string[] {
+  return DM_ONLY_LEAK_KEYWORDS.filter((kw) => narrative.includes(kw));
+}
+
+/** 检测叙事中是否存在同一句子重复超过 threshold 次 */
+function detectSentenceRepetition(
+  narrative: string,
+  threshold = 3,
+): { found: boolean; sentence: string; count: number } {
+  const sentences = narrative
+    .split(/[。！？!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 5);
+
+  const counts = new Map<string, number>();
+  for (const s of sentences) {
+    counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+
+  for (const [sentence, count] of counts) {
+    if (count > threshold) {
+      return { found: true, sentence, count };
+    }
+  }
+
+  return { found: false, sentence: "", count: 0 };
+}
+
 // === 无 LLM 的纯函数评估（fallback / 离线模式） ===
 
 export interface OfflineJudgeInput {
@@ -390,29 +450,71 @@ export function evaluateOffline(input: OfflineJudgeInput): JudgeVerdict {
 
   for (const dim of rubric.dimensions) {
     // 基于简单启发式评估
-    let score = 3; // 默认及格
+    let score = 2; // 默认保守：未触发已知缺陷的维度不假定及格
 
     switch (dim.id) {
-      case "literary_quality":
-        // 基于叙事长度和字符多样性粗略评估
-        if (target.narrativeChars >= 300 && target.narrativeChars <= 900) score = 4;
-        else if (target.narrativeChars >= 180) score = 3;
-        else if (target.narrativeChars < 100) score = 2;
-        break;
-      case "canon_consistency":
-        // 检查是否有系统提示词泄漏
-        if (target.narrative.includes("系统提示词") || target.narrative.includes("JSON解析")) {
+      case "literary_quality": {
+        const chineseCount = countChineseChars(target.narrative);
+
+        // 1. 中文字符不足：无法构成有效中文叙事
+        if (chineseCount < 20) {
           score = 1;
           issues.push({
             dimension: dim.id,
             severity: "critical",
-            description: "叙事中包含系统提示词泄漏",
+            description: `叙事中中文字符不足（${chineseCount} < 20），无法构成有效中文叙事`,
+            evidence: target.narrative.slice(0, 100),
+          });
+          break;
+        }
+
+        // 2. 检测句子严重重复
+        const repetition = detectSentenceRepetition(target.narrative);
+        if (repetition.found) {
+          score = 1;
+          issues.push({
+            dimension: dim.id,
+            severity: "critical",
+            description: `叙事存在严重重复：句子「${repetition.sentence.slice(0, 30)}…」重复了 ${repetition.count} 次`,
+            evidence: repetition.sentence.slice(0, 100),
+          });
+          break;
+        }
+
+        // 3. 基于叙事长度粗略评估
+        if (target.narrativeChars >= 300 && target.narrativeChars <= 900) score = 4;
+        else if (target.narrativeChars >= 180) score = 3;
+        else if (target.narrativeChars < 100) score = 2;
+        break;
+      }
+      case "canon_consistency": {
+        // 1. 检查 DM-only 泄漏关键词
+        const leakKeywords = detectDmOnlyLeakKeywords(target.narrative);
+        if (leakKeywords.length > 0) {
+          score = 1;
+          issues.push({
+            dimension: dim.id,
+            severity: "critical",
+            description: `叙事中包含 DM-only 泄漏关键词: ${leakKeywords.join("、")}`,
+            evidence: target.narrative.slice(0, 100),
+          });
+          break;
+        }
+
+        // 2. 检查其他系统术语泄漏（不在 DM-only 关键词列表中的补充检测）
+        if (target.narrative.includes("JSON解析")) {
+          score = 1;
+          issues.push({
+            dimension: dim.id,
+            severity: "critical",
+            description: "叙事中包含系统术语泄漏（JSON解析）",
             evidence: target.narrative.slice(0, 100),
           });
         }
         break;
+      }
       default:
-        // 其他维度保持默认 3 分
+        // 其他维度保持默认 2 分
         break;
     }
 

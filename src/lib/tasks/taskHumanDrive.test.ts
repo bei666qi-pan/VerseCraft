@@ -31,9 +31,9 @@ test("normalizeGameTaskDraft + defaults: 旧接口仍产出完整 GameTaskV2", (
     issuerId: "N-999",
     issuerName: "路人",
   });
-  assert.ok(t);
+  assert.equal(t?.id, "legacy_like");
   assert.equal(t!.claimMode, "manual");
-  assert.ok(t!.taskNarrativeLayer);
+  assert.equal(t!.taskNarrativeLayer, "formal_task");
 });
 
 test("inferEffectiveNarrativeLayer 尊重显式 soft_lead", () => {
@@ -115,10 +115,7 @@ test("partitionTasksForBoard: 人情约定线进入 promiseRisk 并排序", () =
   });
   const part = partitionTasksForBoard([main, f1, f2, p1, p2], 2);
   assert.equal(part.primary?.id, "mainline");
-  const pr = part.promises.map((x) => x.id);
-  assert.ok(pr.includes("p2"));
-  assert.ok(pr.includes("p1"));
-  assert.equal(pr[0], "p2");
+  assert.deepEqual(part.promises.map((x) => x.id), ["p2", "p1"]);
 });
 
 test("applyIssuerDriveDefaults 不覆盖草稿已写字段", () => {

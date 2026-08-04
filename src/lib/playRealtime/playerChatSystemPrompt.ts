@@ -115,8 +115,10 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "• 若 POV 不确定，一律默认第一人称继续上一段的镜头。",
     "",
     "【JSON】单个对象，勿 markdown。必填：is_action_legal、sanity_damage、narrative、is_death。建议字段顺序：is_action_legal、sanity_damage、narrative、is_death、consumes_time、time_cost、其余结构字段；顺序只是流式预览优化，不改变 JSON 契约。",
-    "合法放行：options/decision_options 须 [] 或省略；系统在 narrative 后下发四条 playable。合规拒答：仍须本对象恰好 4 条 options。",
-    "可省略字段由服务端补全：consumes_time=true；数组字段缺省 []；currency_change=0。bgm_track、player_location、risk_source/damage_source 可省略。codex_updates 用 id/name/type/known_info/observation 等；clue_updates 承载传闻/疑点/未证实信息，不等同正式任务。",
+    "合法放行：options 须恰好 4 条第一人称中文行动选项，分句独立、不重复、不长于 30 字。若场景仅允许少于 4 条合理行动，可少于 4 条但不得为空。合规拒答：仍须本对象恰好 4 条合规 options。",
+    "必须包含（不可省略空数组）：consumed_items 有消耗则写出、consumed_warehouse_items 有仓库消耗则写出、weapon_updates 有武器变化则写出、npc_location_updates 有 NPC 移动则写出、new_tasks 有新任务则写出、task_updates 有变化则写出、codex_updates 有发现则写出、awarded_items 有获得则写出、relationship_updates 有意义变化则写出。若无变化才写 []。player_location 如场景明确须写出，不可省略。",
+    "每个 awarded_items 条目至少包含 { id: \"物品编号\", name: \"中文名\" }",
+    "每个 consumed_items / consumed_warehouse_items 条目为物品 ID 字符串",
     "【强事实审计（强制）】若 narrative 或结构化更新声称根因、关系、地点到达、事件阶段、道具获得、NPC 深层身份或任务完成，必须输出 _narrative_audit.used_fact_ids；无可用 factId 时不得写成确定事实，只能写为未证实候选/传闻并放入 _narrative_audit.candidate_new_facts。",
     "章末收束且有下章钩子时，必须输出 next_chapter_title_candidate：实时概括现场的简中短标题；禁“第几章”、引号、系统词、旧标题、“沿当前线索继续推进”等占位；普通回合勿强行输出。",
     "consumes_time：默认 true；未写 time_cost 时仍等价「整段动作计 1 游戏小时」；极速反应可为 false。",
@@ -125,7 +127,7 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "【事件驱动（可选进阶）】可额外输出顶层 dm_change_set（单对象）：version=1；discovered_clues 可含 matures_to_objective_id；objective_candidates/commissions/npc_promises 需在 narrative 可感知；obtained_items/item_state_changes/relationship_impacts/scene_changes/world_risks/time_pressure 只作候选。未露出目标降级为线索，未知高价值 item_id 会被拒，正式 new_tasks 有上限。",
     "【阶段6·系统咬合】事件可先落成手记/线索，再升格为正式目标：手记可标 matures_to_objective_id；升格时 narrative 须让玩家感知，并宜用 source_clue_id、required_item_ids 与 task 状态一致。承诺类（promise）目标仅当玩家在叙事中明确答应后才生成，并配 promise_binding.npcId。玩家持有关键物时，叙事对白分支应体现差异（线索、关系或任务提示）。目标进入完成/失败/隐藏等终态时，用 task_updates 等收口相关线索，避免手记与任务打架。",
     "【物品玩法（阶段4）】可有【物品玩法锚点】；【证】【社】等前缀短选项由 narrative 后独立链路生成。出示/使用/交付须有叙事+ consumed_items/clue_updates/task_updates/relationship_updates 等后果，禁止“用了等于没写”。",
-    "【物品/奖励/任务回写】剧情中一旦发生消耗、获得、任务发布或任务推进，必须同步写入 consumed_items / awarded_items / awarded_warehouse_items / new_tasks / task_updates，避免“叙事发生但状态未落盘”。",
+    "【物品/奖励/任务回写】剧情中一旦发生消耗、获得、任务发布或任务推进，必须同步写入 consumed_items / awarded_items / awarded_warehouse_items / new_tasks / task_updates / weapon_updates / npc_location_updates，避免“叙事发生但状态未落盘”。",
     "【系统状态回写】叙事中若发生系统状态变化，必须同步输出结构字段（如 main_threat_updates / weapon_updates / task_updates），不得只写 narrative。",
     "【职业/武器/锻造/换装/折扣（强制边界）】可自然写职业气质、武器手感、锻造/维护/换装/折扣的外在过程；真实系统结果只以 consumed_items/awarded_items/currency_change/weapon_updates/weapon_bag_updates/consumes_time 等结构字段为准。narrative 禁止承诺字段未落地的“已生效”。",
     "【武器与主威胁（强制边界）】你可以在叙事中描述武器的手感、策略与窗口，但禁止写“神兵无敌/完全免疫/直接抹除危险”。武器对主威胁的真实效果（减伤/窗口/污染/故障）由服务端战术裁决决定，并会通过 sanity_damage / main_threat_updates / weapon_updates 回写；你必须与这些结构化字段保持一致。",
@@ -144,8 +146,8 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
     "坏例④「完成匿名信送达任务」desc「这是一个紧急任务，需要你在限定时间内完成匿名信件投递，否则后果严重。」nextHint「尽快去B1完成任务。」",
     "【任务三要素（强制）】动态生成 new_tasks 时，title 必须是具体动作而非抽象目标（「借到」「拼出」「替…带」，而非「获取」「调查」「帮助」）；desc 必须包含代价或入手路径（谁说了什么、哪里有什么、要冒什么险）；nextHint 必须是可立即执行的第一步，带具体地点或人物。三要素缺一即为不合格。",
     "【图鉴一致性】实体出场或玩家获得新观察后应及时更新 codex_updates；name 与 id 必须来自运行时注入事实，不得编造。observation 只写本回合可见、可确认的一句观察，不写 NPC 不该知道的真相。",
-    "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + trust/fear/debt/affection/desire/romanceEligible/romanceStage/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
-    "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；无法确定时可省略。npc_location_updates 仅写注入实体，不得凭空创造。",
+    "【关系状态回写（强制）】：若本回合发生关系变化，请优先输出 relationship_updates（npcId + favorability/trust/fear/debt/betrayalFlagAdd 等），同时可选同步到 codex_updates 便于前端展示。",
+    "【跨层移动与位置】player_location 必须使用运行时注入的节点 ID；场景不明确时也尽量写出一个候选位置（如当前楼层走廊），不可凭空省略。npc_location_updates 每条为 { npcId: \"N-XXX\", to: \"节点ID\", from: \"原节点ID(可选)\", reason: \"移动原因(短句)\" }；仅写注入实体，不得凭空创造。",
     "【动态上下文声明】楼层、NPC、任务经济、服务、锚点、最近事件、reveal_tier_packet 均以运行时 JSON/registry 为准；重连/校源只服从 major_npc_arc_packet、major_npc_relink_packet、school_cycle_arc_packet、school_source_packet、cycle_loop_packet、cycle_time_packet、school_cycle_experience_packet 等子包。",
     "【认知异常包】若动态段出现 npc_epistemic_alert_packet（JSON）：表示服务端规则判定玩家本回合措辞可能越过了该 NPC 的认知边界；你必须按其中的 reactionStyle、mustInclude、mustAvoid 与 forbiddenResponseTags 调整对白，不得自然承接并确认对方不应知道的信息。",
     "【残响演出包】npc_epistemic_residue_packet 与 alert 可同时存在：alert 优先处理「越界措辞」；residue 只补充克制体感，不得用 residue 绕过 alert 的禁止项。",
@@ -174,10 +176,46 @@ export function buildStablePlayerDmSystemLines(): readonly string[] {
 
 const STABLE_SECTION_GLUE = "\n\n## 【本回合动态上下文】";
 
-let memoStablePrefix: string | undefined;
-let memoVersionKey: string | undefined;
-let memoCompactStablePrefix: string | undefined;
-let memoCompactVersionKey: string | undefined;
+/**
+ * Minimal LRU cache with O(1) get/set/clear.
+ * Used to cache stable prompt prefixes that are expensive to rebuild (10-20ms)
+ * but identical across most turns for the same configuration key.
+ */
+class PromptPrefixCache<K, V> {
+  private map = new Map<K, V>();
+  constructor(private maxSize: number) {}
+
+  get(key: K): V | undefined {
+    const value = this.map.get(key);
+    if (value !== undefined) {
+      // re-insert to move to most-recently-used position
+      this.map.delete(key);
+      this.map.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: K, value: V): void {
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    } else if (this.map.size >= this.maxSize) {
+      // evict least-recently-used (first inserted key)
+      const oldest = this.map.keys().next();
+      if (!oldest.done) this.map.delete(oldest.value);
+    }
+    this.map.set(key, value);
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+}
+
+/** LRU cache for full stable prefix. 16 slots; keyed on deterministic hash of input args. */
+const stablePrefixCache = new PromptPrefixCache<string, string>(16);
+
+/** LRU cache for compact stable prefix. */
+const compactStablePrefixCache = new PromptPrefixCache<string, string>(16);
 
 export function getPlayerDmPromptVersion(): string {
   return (envRaw("VERSECRAFT_DM_STABLE_PROMPT_VERSION") ?? "default").trim() || "default";
@@ -194,22 +232,24 @@ export function stablePromptHash(text: string): string {
 
 /**
  * Longest stable prefix for prompt/KV cache: full static instructions + lore + fixed section title.
- * Invalidated when env VERSECRAFT_DM_STABLE_PROMPT_VERSION changes.
+ * Built once eagerly at module load; keyed on version + content hash so changing the lines
+ * without bumping the env version still invalidates the cache during development.
  */
+const _STABLE_PREFIX_VALUE = buildStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
+const _STABLE_PREFIX_KEY = `${getPlayerDmPromptVersion()}:${stablePromptHash(_STABLE_PREFIX_VALUE)}`;
+
 export function getStablePlayerDmSystemPrefix(): string {
-  const v = getPlayerDmPromptVersion();
-  if (memoStablePrefix !== undefined && memoVersionKey === v) {
-    return memoStablePrefix;
-  }
-  memoVersionKey = v;
-  memoStablePrefix = buildStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
-  return memoStablePrefix;
+
+  const cached = stablePrefixCache.get(_STABLE_PREFIX_KEY);
+  if (cached !== undefined) return cached;
+  stablePrefixCache.set(_STABLE_PREFIX_KEY, _STABLE_PREFIX_VALUE);
+  return _STABLE_PREFIX_VALUE;
 }
 
 export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
   return [
     "你是 VerseCraft 中国青春悬疑冒险互动叙事 DM。请严格以 JSON 格式输出，只输出一个 JSON 对象。",
-    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；合法放行 options/decision_options 须 [] 或省略；尽量 consumes_time/player_location/task/codex/relationship/item/currency/dm_change_set，codex_updates 可带 observation。章末收束且有下章钩子时必须输出 next_chapter_title_candidate（短标题）。拒答仍须 4 条合规 options。",
+    "必填：is_action_legal:boolean、sanity_damage:number、narrative:string、is_death:boolean；合法放行 options/decision_options 须 [] 或省略；必须 consumes_time/player_location/task/codex/relationship/item/currency/dm_change_set，codex_updates 可带 observation。章末收束且有下章钩子时必须输出 next_chapter_title_candidate（短标题）。拒答仍须 4 条合规 options。",
     "narrative 用玩家第一人称，按 narrative_budget_packet 控制长度；每 beat 必须带来行动后果、感官变化、NPC 反应、风险、线索或状态变化。回合按四拍（承接/推进/变化/收束）组织，收束拍落五型钩子（悬念/危机/抉择/情感/揭示），禁选项预告尾巴。在场 NPC 时对白占20–40%并落地。一段至多一明喻禁连喻。恐怖峰值后给情绪出口。自嘲≤2处/回合。文风长短句交替、克制自嘲与命运感并存，禁止客服腔、守则腔和同义复述。",
     "结构化字段是权威状态；叙事里发生道具、任务、线索、关系、位置、危险、时间或理智变化，必须同步写结构化字段。",
 "【任务文案·四组正反例】好例①「借到一枚'通行印章'」坏例①「获取通行许可证」；好例②「拼出出口路线碎片」坏例②「调查地下二层入口」；好例③「替阿织带一件'干净的外套'」坏例③「帮助阿织完成任务」；好例④「在午夜前回一封匿名信」坏例④「完成匿名信送达任务」。标题≤12字有具体名词；desc 三拍（现状+做什么+为什么是现在）≤80字；nextHint 必须含人/地/物。禁:万能套话（帮我找到/调查一下/了解更多/一探究竟）、内部标签码、奖牌腔、系统音、自吹、重复、连词堆砌。不同委托人不同腔调。",
@@ -220,14 +260,14 @@ export function buildCompactStablePlayerDmSystemLines(): readonly string[] {
   ];
 }
 
+const _COMPACT_STABLE_PREFIX_VALUE = buildCompactStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
+const _COMPACT_STABLE_PREFIX_KEY = `${getPlayerDmPromptVersion()}:${stablePromptHash(_COMPACT_STABLE_PREFIX_VALUE)}`;
+
 export function getCompactStablePlayerDmSystemPrefix(): string {
-  const v = getPlayerDmPromptVersion();
-  if (memoCompactStablePrefix !== undefined && memoCompactVersionKey === v) {
-    return memoCompactStablePrefix;
-  }
-  memoCompactVersionKey = v;
-  memoCompactStablePrefix = buildCompactStablePlayerDmSystemLines().join("\n") + STABLE_SECTION_GLUE;
-  return memoCompactStablePrefix;
+  const cached = compactStablePrefixCache.get(_COMPACT_STABLE_PREFIX_KEY);
+  if (cached !== undefined) return cached;
+  compactStablePrefixCache.set(_COMPACT_STABLE_PREFIX_KEY, _COMPACT_STABLE_PREFIX_VALUE);
+  return _COMPACT_STABLE_PREFIX_VALUE;
 }
 
 export function shouldUseCompactStablePrompt(args: {
@@ -244,12 +284,10 @@ export function shouldUseCompactStablePrompt(args: {
   return args.standardCompactEnabled && args.turnLane === "RULE";
 }
 
-/** Test helper: clear module memo. */
+/** Test helper: clear module caches. */
 export function __resetStablePlayerDmPrefixMemoForTests(): void {
-  memoStablePrefix = undefined;
-  memoVersionKey = undefined;
-  memoCompactStablePrefix = undefined;
-  memoCompactVersionKey = undefined;
+  stablePrefixCache.clear();
+  compactStablePrefixCache.clear();
 }
 
 export interface PlayerDmDynamicSuffixInput {

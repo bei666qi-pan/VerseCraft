@@ -85,6 +85,15 @@ const UNKNOWN_ENTITY_CODES = new Set<NarrativeSafetyIssueCode>([
 ]);
 
 const UNKNOWN_ENTITY_SAFE_NARRATIVE = "走廊尽头传来短促的动静，但光线与距离让你暂时无法确认来者身份。";
+
+/** 位置/环境安全叙事变体，避免连续 fallback 时反复出现相同文本 */
+const SAFE_NARRATIVE_VARIANTS = [
+  "走廊灯管闪了一下，空气里只有老旧的嗡鸣声。你没有发现明确的威胁。",
+  "你停下动作，侧耳倾听——只有水管里的水声和远处隐约的电梯响动。",
+  "四周恢复了安静。灰白的墙皮在灯光下显得有些斑驳，一切如常。",
+  "走廊深处的阴影里什么都没有。你再次确认——目前没有直接的危险。",
+  "你的脚步在空荡的楼道里回响。周围没有任何异常的变化。",
+];
 const BLOCKED_CONFLICT_SAFE_NARRATIVE = "眼前的动静尚不足以形成可提交的战果；你停下动作重新确认局势，武器与世界状态没有变化。";
 
 function hasDescribedUnknownPersonIssue(report: NarrativeSafetyReport | null | undefined): boolean {
@@ -116,7 +125,8 @@ export type TurnCommitFlag =
   | "pacing_hard_gate_blocked"
   | "structured_updates_stripped"
   | "post_validator_ok"
-  | "post_validator_issues";
+  | "post_validator_issues"
+;
 
 export type TurnCommitSummary = {
   requestId: string;
@@ -484,9 +494,12 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     // Entity hard blocks must not leave an invented, player-visible person in
     // place merely because no asynchronous repair model answered. This stays
     // deterministic and final-hook-only, so it adds no first-token latency.
+    // Use turn-index-based variant to avoid repetitive identical fallback text.
+    const variantIndex = args.turnIndex % SAFE_NARRATIVE_VARIANTS.length;
+    const safeNarrative = SAFE_NARRATIVE_VARIANTS[variantIndex] ?? UNKNOWN_ENTITY_SAFE_NARRATIVE;
     committed = {
       ...committed,
-      narrative: UNKNOWN_ENTITY_SAFE_NARRATIVE,
+      narrative: safeNarrative,
       options: [],
     };
     flags.add("safe_narrative_fallback_applied");
@@ -504,6 +517,8 @@ export function commitTurn(args: CommitTurnArgs): CommitTurnResult {
     committed = { ...committed, options: [...validatorReport.optionsOverride] };
     flags.add("options_rewrite_applied");
   }
+
+
 
   if (delta.mustDegrade) flags.add("must_degrade_from_delta");
   if (delta.isActionLegal === false) flags.add("action_illegal");
