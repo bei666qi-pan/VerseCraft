@@ -83,7 +83,7 @@ function main() {
   // 收集所有 valid trace
   const traceDir = ".runtime-data/playthrough";
   const { readdirSync, statSync } = await_import_fs();
-  
+
   // 遍历所有 batch-*/traces/*.json
   const batchDirs = readdirSync(traceDir).filter((d: string) => d.startsWith("batch-"));
   const traces: TraceFile[] = [];

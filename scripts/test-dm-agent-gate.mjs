@@ -129,15 +129,15 @@ function runTscFiltered() {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  
+
   const output = (result.stdout || "") + (result.stderr || "");
   const lines = output.split("\n");
-  
+
   // Filter to only touched files
-  const filtered = lines.filter(line => 
+  const filtered = lines.filter(line =>
     tsPatterns.some(p => line.includes(p))
   );
-  
+
   if (filtered.length > 0) {
     return { status: 1, stdout: filtered.join("\n"), stderr: "" };
   }

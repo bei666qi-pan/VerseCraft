@@ -68,7 +68,7 @@ UNDERSTAND → BASELINE → REPRODUCE/RED → IMPLEMENT
 ## 完整性红线
 
 1. 禁止 `assert.ok(true)` 存根断言
-2. 禁止永久 `test.skip(true)` 
+2. 禁止永久 `test.skip(true)`
 3. 禁止吞错后返回成功
 4. 禁止 fallback 到满分
 5. 禁止 Mock 自证
@@ -89,4 +89,3 @@ UNDERSTAND → BASELINE → REPRODUCE/RED → IMPLEMENT
 | `benchmark-run.mjs` | 修复降级逻辑 |
 | `mockScenarios.ts` | 清除设计时 eval 耦合 |
 | `run-quality-gate.ts` | 拆分为模块化 gate runner |
-

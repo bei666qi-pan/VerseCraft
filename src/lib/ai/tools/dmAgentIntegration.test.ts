@@ -1,7 +1,7 @@
 // src/lib/ai/tools/dmAgentIntegration.test.ts
 /**
  * DM Agent 集成测试
- * 
+ *
  * 在 mock AI 环境下演练完整的 DM Agent 流程：
  * 1. 普通对话 → 不调用工具
  * 2. 需要状态查询 → 调用只读工具 → 返回叙事
@@ -78,7 +78,7 @@ describe("DM Agent Integration (Mock AI)", () => {
     const ctx = makeTestContext();
     // 设置 mock scenario 为 normal（纯文本响应，不含工具调用标记）
     process.env.VC_MOCK_AI_SCENARIO = "normal_stream";
-    
+
     const result = await runDmAgentTurn({
       flags: ctx.flags,
       ctx,
@@ -94,7 +94,7 @@ describe("DM Agent Integration (Mock AI)", () => {
       assert.ok(result.narrative.length > 0, "应该有叙事输出");
       assert.ok(result.toolsUsed, "mock 模式下应该调用了工具");
     }
-    
+
     delete process.env.VC_MOCK_AI_SCENARIO;
   });
 
@@ -144,7 +144,7 @@ describe("DM Agent Integration (Mock AI)", () => {
 
   it("工具追踪应该包含正确的结构", async () => {
     const ctx = makeTestContext();
-    
+
     const result = await runDmAgentTurn({
       flags: ctx.flags,
       ctx,
@@ -168,7 +168,7 @@ describe("DM Agent Integration (Mock AI)", () => {
 
   it("状态 Delta 字段应该正确初始化", async () => {
     const ctx = makeTestContext();
-    
+
     const result = await runDmAgentTurn({
       flags: ctx.flags,
       ctx,

@@ -1,10 +1,10 @@
 // src/lib/worldEngine/actorSimulation/integration.ts
 /**
  * Phase 3: World Engine Integration Adapter
- * 
+ *
  * 将 Actor Simulation 接入现有 `runWorldEngineTick` 流程。
  * 所有模拟在 worker/background 运行，不进入 /api/chat 等待路径。
- * 
+ *
  * 集成策略：
  * - shadow 模式：运行 cast selection + input building，记录 telemetry，不调用 LLM
  * - soft 模式：运行完整流程，将 projection summary 作为 reasoner 的附加上下文
@@ -80,7 +80,7 @@ export interface RunActorSimulationResult {
 
 /**
  * 运行一轮 Actor Simulation（在 world engine tick 内调用）。
- * 
+ *
  * @returns simulation result，包含 cast plan、inputs、projections 和 telemetry
  */
 export function runActorSimulationPhase(ctx: ActorSimulationContext): RunActorSimulationResult {

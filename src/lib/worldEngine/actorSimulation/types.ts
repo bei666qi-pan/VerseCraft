@@ -1,7 +1,7 @@
 // src/lib/worldEngine/actorSimulation/types.ts
 /**
  * Phase 3: Background Actor Simulation Types
- * 
+ *
  * 这些类型定义后台 NPC 行动推演与导演汇总所需的数据结构。
  * 所有模拟均在 worker/background tick 运行，不进入 /api/chat 等待路径。
  */

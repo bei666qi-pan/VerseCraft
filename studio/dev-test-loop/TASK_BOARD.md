@@ -65,4 +65,3 @@ Gate 3 (Wave 3): IMPL-07/08/09 → 244/244 + 0 lint ✅
 | `package.json` | 扩展 | +1 script |
 | `docs/prompts/ai-dev-test-loop/README.md` | 更新 | 重写 |
 | **合计** | | **~2,800 行** |
-

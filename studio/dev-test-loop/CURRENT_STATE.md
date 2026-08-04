@@ -68,4 +68,3 @@ VerseCraft 拥有**数量庞大但缺乏统一编排**的测试基础设施。�
 | Judge 校准门未接线 | `calibration.ts` | 中 |
 | `test:gate:quick` 与 CI 结果可能矛盾 | 两套体系 | 高 |
 | 无 pre-commit hook | 无 | 中 |
-

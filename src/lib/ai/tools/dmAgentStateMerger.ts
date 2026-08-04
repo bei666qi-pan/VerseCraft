@@ -1,10 +1,10 @@
 // src/lib/ai/tools/dmAgentStateMerger.ts
 /**
  * DM Agent StateDelta → DM JSON Merger
- * 
+ *
  * 将 DM Agent 工具执行结果映射为标准 DM JSON 字段，
  * 使其能被 normalizePlayerDmJson / resolveDmTurn / commitTurn 正确消费。
- * 
+ *
  * 核心原则：
  * - 工具结果是"候选变更"，不是"最终状态"
  * - 所有变更必须经过 normalize → guards → validator → resolve → commit
@@ -97,7 +97,7 @@ interface ToolResultData {
 
 /**
  * 将工具追踪记录转换为可合并的 DM JSON 字段
- * 
+ *
  * 只处理成功 (ok: true) 的工具调用结果。
  * 每个工具的类型安全映射，避免属性误读。
  */
@@ -324,4 +324,3 @@ const READONLY_TOOLS = new Set([
 function isReadonlyTool(toolName: string): boolean {
   return READONLY_TOOLS.has(toolName);
 }
-

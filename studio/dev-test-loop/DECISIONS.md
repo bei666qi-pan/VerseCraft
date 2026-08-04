@@ -104,4 +104,3 @@
 - LOOP-CONTRACT.md §3 明确禁止
 - D02 审计确认 mock 与 eval 存在设计时耦合
 - `docs/ai-dev-test-agent.md` §6 明确禁止
-

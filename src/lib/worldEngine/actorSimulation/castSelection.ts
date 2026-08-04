@@ -1,10 +1,10 @@
 // src/lib/worldEngine/actorSimulation/castSelection.ts
 /**
  * Phase 3: Deterministic Cast Selection
- * 
+ *
  * 纯函数，从候选 NPC 中选择本轮需要推演的角色。
  * 复用现有 `selectActiveNpcsForSocialTick()` 并增加窄适配层。
- * 
+ *
  * 设计约束：
  * - 纯函数，不做 IO，不调用 LLM
  * - 确定性输出，依赖现有 NPC agent state

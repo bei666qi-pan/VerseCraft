@@ -31,7 +31,7 @@ const CHAT_API = "/api/chat";
 
 /**
  * Collect SSE response body from a /api/chat POST.
- * 
+ *
  * With VC_MOCK_AI_BYPASS_CHAT_QUEUE=true and AI_PROVIDER=mock,
  * the server returns a direct SSE stream (no queue ticket).
  * This function waits for the response and returns the full body

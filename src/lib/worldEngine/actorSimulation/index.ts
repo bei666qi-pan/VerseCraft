@@ -1,7 +1,7 @@
 // src/lib/worldEngine/actorSimulation/index.ts
 /**
  * Phase 3: Background Actor Simulation
- * 
+ *
  * 后台 NPC 行动推演与导演汇总。
  * 所有模拟均在 worker/background tick 运行，不进入 /api/chat 等待路径。
  */

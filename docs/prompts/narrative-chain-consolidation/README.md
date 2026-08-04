@@ -48,4 +48,3 @@ docs/narrative-chain-consolidation/PROGRESS.md
 ```
 
 新会话仍使用同一句启动语。总控必须先读取 `PROGRESS.md` 和当前代码，不重做已经有证据完成的阶段。
-

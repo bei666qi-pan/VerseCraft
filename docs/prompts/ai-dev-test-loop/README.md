@@ -81,4 +81,3 @@ node scripts/test-runner.mjs --risk L3 --mode full --json-out .runtime-data/repo
 创建独立 worktree task，管理文件所有权和依赖 DAG。
 每个 task 由同一个 AI 完成开发+测试+修复+复测。
 ```
-

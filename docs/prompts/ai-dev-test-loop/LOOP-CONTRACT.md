@@ -147,4 +147,3 @@ UNDERSTAND
 5. 没有通过删测、降断言、fallback 及格或 mock 自证制造绿色。
 6. 用户修改和范围外文件未被覆盖。
 7. handoff 写明测试、未执行项、风险、回滚和 commit。
-

@@ -1,22 +1,22 @@
 // src/lib/ai/tools/dmAgentOrchestrator.ts
 /**
  * DM Agent Orchestrator
- * 
+ *
  * 协调 DM Agent 的工具调用循环。
- * 
+ *
  * 执行模式：
  * 1. 模型接收玩家输入 + 上下文字段
  * 2. 模型决定：直接叙事 / 调用工具 / 询问玩家
  * 3. 0～N 个工具调用 → 服务端验证并执行
  * 4. 一次最终叙事输出
- * 
+ *
  * 硬限制：
  * - 默认最多 2 轮工具决策
  * - 绝对上限 3 轮
  * - 总预算 30 秒
  * - 单工具超时 3 秒
  * - 禁止无上限 Agent Loop
- * 
+ *
  * FIXED (2025-07-24):
  * - executeDmTool 中 args 变量未定义，现已通过 parseToolArguments 解析 call.function.arguments
  * - 新增 toolResultData 收集，用于状态合并
@@ -80,7 +80,7 @@ export interface DmAgentOptions {
 
 /**
  * 运行 DM Agent 工具调用循环
- * 
+ *
  * 返回最终的叙事文本和工具调用追踪。
  * 如果 dmAgentEnabled 为 false 或没有工具被调用，返回 null 表示应使用普通 DM 路径。
  */

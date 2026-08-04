@@ -190,4 +190,3 @@ NPC 纪律：
 - prompt 不包含外部小说原文或模仿具体作者要求。
 - compact/fast path 不会丢失最关键的权威性和认知约束。
 - runtime packet 有长度上限，hidden/private 字段不会进入玩家可见输出。
-

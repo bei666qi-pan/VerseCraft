@@ -46,23 +46,6 @@ export async function GET() {
         }
       }
 
-      // 检查最近 tick 成功记录
-      const tickResult = await pool
-        .query<{ last_success: string }>(
-          `SELECT MAX(created_at)::text AS last_success
-           FROM world_engine_runs
-           WHERE status = 'succeeded'
-             AND created_at >= NOW() - INTERVAL '${WORKER_LAST_TICK_STALE_MIN} minutes'`
-        )
-        .catch(() => null);
-      const lastTickSuccess = tickResult?.rows[0]?.last_success ?? null;
-      workerMeta = { ...workerMeta, lastTickSuccess };
-
-      if (!lastTickSuccess) {
-        workerDegraded = true;
-        workerReason = workerReason ?? "no_recent_tick_success";
-      }
-
       // 检查 dead job 堆积
       const deadResult = await pool
         .query<{ count: string }>(
@@ -79,6 +62,23 @@ export async function GET() {
       if (deadCount > WORKER_DEAD_JOB_WARN_THRESHOLD) {
         workerDegraded = true;
         workerReason = workerReason ?? "dead_jobs_accumulating";
+      }
+
+      // 只有存在 dead job 时，近期无成功 tick 才表示 worker 异常。
+      const tickResult = await pool
+        .query<{ last_success: string }>(
+          `SELECT MAX(created_at)::text AS last_success
+           FROM world_engine_runs
+           WHERE status = 'succeeded'
+             AND created_at >= NOW() - INTERVAL '${WORKER_LAST_TICK_STALE_MIN} minutes'`
+        )
+        .catch(() => null);
+      const lastTickSuccess = tickResult?.rows[0]?.last_success ?? null;
+      workerMeta = { ...workerMeta, lastTickSuccess };
+
+      if (!lastTickSuccess && deadCount > 0) {
+        workerDegraded = true;
+        workerReason = workerReason ?? "no_recent_tick_success";
       }
     } catch {
       workerDegraded = true;

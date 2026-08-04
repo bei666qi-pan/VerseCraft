@@ -107,7 +107,7 @@ function decide(input, state, processTree, recoveryHistory, lastErrors) {
   const recoveryCount = recoveryHistory.length;
   if (recoveryCount >= 2) {
     const samePhaseRecoveries = recoveryHistory.filter(e =>
-      e.phase === phase || (e.detail && e.detail.phase === phase) || 
+      e.phase === phase || (e.detail && e.detail.phase === phase) ||
       (e.recoveryClass && e.recoveryClass.includes(phase))
     ).length;
     if (samePhaseRecoveries >= 2) {

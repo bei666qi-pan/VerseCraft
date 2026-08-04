@@ -1,10 +1,10 @@
 // src/lib/ai/tools/dmAgentSseFeedback.ts
 /**
  * DM Agent SSE 状态反馈帧
- * 
+ *
  * 通过 SSE status frame 向前端推送 DM Agent 的执行状态，
  * 让玩家看到不同的处理阶段。
- * 
+ *
  * 使用现有的 __VERSECRAFT_STATUS__ 约定和 writeStatusFrame 体系。
  */
 

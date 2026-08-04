@@ -200,4 +200,3 @@ npx eslint .
 - 输出兼容现有 DirectorPlan/persistence/agenda。
 - flag off 能回到旧 director。
 - unit、golden、director/social eval 通过并记录证据。
-

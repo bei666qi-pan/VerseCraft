@@ -1,10 +1,10 @@
 // src/lib/worldEngine/actorSimulation/validateProjection.ts
 /**
  * Phase 3: Actor Projection Validator
- * 
+ *
  * 纯函数 validator，检查 Actor 推演候选输出的合法性。
  * 不做 IO，不访问数据库，不读写文件，不调用 LLM。
- * 
+ *
  * 检查项：
  * - NPC 是否注册
  * - 事实来源是否合法

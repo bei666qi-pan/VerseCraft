@@ -1,7 +1,7 @@
 // src/lib/ai/tools/dmToolHandlers.ts
 /**
  * DM Agent 工具处理器
- * 
+ *
  * 将工具调用映射到 Game Domain Services，执行确定性业务规则。
  * 每个处理器负责：
  * 1. 参数验证

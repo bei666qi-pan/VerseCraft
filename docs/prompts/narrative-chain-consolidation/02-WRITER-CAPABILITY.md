@@ -124,4 +124,3 @@ npx eslint .
 - PLAYER_CHAT 的 stream、forbidden route 和延迟预算没有退化。
 - Writer prompt 无权创造结构化状态。
 - OpenSpec 与 PROGRESS 已记录迁移策略和回滚方式。
-

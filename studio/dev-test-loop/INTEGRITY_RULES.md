@@ -128,4 +128,3 @@ test-integrity:
     - name: Check no fallback passRate:1
       run: '! grep -rn "passRate.*:\s*1" scripts/ || exit 1'
 ```
-

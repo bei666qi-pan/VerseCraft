@@ -1,7 +1,7 @@
 // src/lib/ai/tools/dmAgentTypes.ts
 /**
  * DM Agent 类型定义
- * 
+ *
  * 核心概念：
  * - DM Agent 是一个受限的工具调用 Agent，不是自由循环的自主 Agent
  * - 工具调用必须经过服务端验证和业务规则裁决

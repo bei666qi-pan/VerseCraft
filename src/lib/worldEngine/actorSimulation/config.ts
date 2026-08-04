@@ -1,7 +1,7 @@
 // src/lib/worldEngine/actorSimulation/config.ts
 /**
  * Phase 3: Actor Simulation Feature Flags
- * 
+ *
  * 所有新能力均通过独立灰度开关控制，关闭后旧 world director 路径不受影响。
  */
 
@@ -28,7 +28,7 @@ const DEFAULTS: ActorSimulationFlags = {
 
 /**
  * 解析 Actor Simulation 灰度配置。
- * 
+ *
  * 环境变量：
  * - `VERSECRAFT_ENABLE_ACTOR_SIMULATION`: 主开关（true/false）
  * - `VERSECRAFT_ACTOR_SIMULATION_MODE`: 模式（off/batch_shadow/batch_soft）

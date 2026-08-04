@@ -162,4 +162,3 @@ npx eslint .
 - Writer/Actor/Director 候选结构有 parser 和 validator。
 - strict schema 只在真实兼容证据存在时启用，否则安全保持关闭。
 - 工具、gateway、stream、contract 和 mechanics benchmark 通过。
-

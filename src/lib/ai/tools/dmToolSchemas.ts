@@ -1,7 +1,7 @@
 // src/lib/ai/tools/dmToolSchemas.ts
 /**
  * DM Agent 工具 JSON Schema 定义
- * 
+ *
  * 每个工具都有严格的参数 Schema，用于：
  * 1. 模型 function calling 参数验证
  * 2. 服务端参数校验

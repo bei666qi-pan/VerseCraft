@@ -302,4 +302,3 @@ cat studio/dev-test-loop/handoffs/VCDT-*.md | grep "state:"
 | 反馈时长 | focused test 从触发到结果的时间 |
 | CI 信号准确率 | CI 失败但实际是假绿的次数 |
 | 证据完整性 | handoff 中缺失退出码/截图的 task 比例 |
-

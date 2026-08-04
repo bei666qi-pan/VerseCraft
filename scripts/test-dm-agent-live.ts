@@ -1,8 +1,8 @@
 /**
  * DM Agent 真实 AI 测试脚本
- * 
+ *
  * 用法: VERSECRAFT_ENABLE_DM_AGENT=true npx tsx scripts/test-dm-agent-live.ts
- * 
+ *
  * 测试 DM Agent 在真实 AI 模型下的 function calling 行为。
  */
 
@@ -88,7 +88,7 @@ async function main() {
     console.log(`\n✅ 完成！耗时: ${elapsed}ms`);
     console.log(`   工具调用: ${result.toolsUsed ? "是" : "否"}`);
     console.log(`   工具追踪: ${result.toolTrace.length} 条`);
-    
+
     for (const t of result.toolTrace) {
       console.log(`     - ${t.toolName}: ${t.ok ? "✅" : "❌"} (${t.latencyMs}ms)`);
       if (!t.ok) console.log(`       错误: ${t.error}`);

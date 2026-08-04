@@ -297,8 +297,8 @@ git diff --name-only HEAD
 
 ```typescript
 // 状态机
-type WorkerState = 
-  | "UNDERSTAND" | "BASELINE" | "REPRODUCE" 
+type WorkerState =
+  | "UNDERSTAND" | "BASELINE" | "REPRODUCE"
   | "IMPLEMENT" | "FOCUSED_TEST" | "ADVERSARIAL_TEST"
   | "APP_TEST" | "REGRESSION" | "HANDOFF" | "BLOCKED";
 
@@ -321,4 +321,3 @@ interface TestBudget {
   regressionMs: number;
 }
 ```
-

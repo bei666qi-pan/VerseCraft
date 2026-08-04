@@ -1,7 +1,7 @@
 // src/lib/ai/tools/dmAgentTools.test.ts
 /**
  * DM Agent 工具系统测试
- * 
+ *
  * 覆盖：
  * - 工具 Schema 验证
  * - 只读工具正确返回快照
@@ -468,10 +468,10 @@ describe("Idempotency Store", () => {
 
     const key = "test_key_1";
     const result = { ok: true as const, data: { value: 42 }, narrativeContext: "test" };
-    
+
     assert.strictEqual(checkIdempotency(key), null);
     recordIdempotency(key, result as any);
-    
+
     const cached = checkIdempotency(key);
     assert.ok(cached !== null);
     if (cached) {
@@ -527,10 +527,10 @@ describe("Tool Access Control", () => {
   it("只读工具定义不包含写工具", () => {
     const readonlyDefs = getReadonlyDmToolDefinitions();
     const readonlyNames = readonlyDefs.map((d) => d.function.name);
-    
+
     // 验证只包含 6 个只读工具
     assert.strictEqual(readonlyNames.length, 6);
-    
+
     // 验证不包含任何写工具
     const writeNames = ["issue_quest", "update_quest_progress", "forge_weapon",
       "consume_materials", "grant_item", "start_combat",
@@ -543,10 +543,10 @@ describe("Tool Access Control", () => {
   it("写工具定义不包含只读工具", () => {
     const writeDefs = getWriteDmToolDefinitions();
     const writeNames = writeDefs.map((d) => d.function.name);
-    
+
     // 验证包含 8 个写工具
     assert.strictEqual(writeNames.length, 8);
-    
+
     const readonlyNames = ["get_player_state", "get_inventory", "get_active_quests",
       "get_world_context", "get_combat_state", "inspect_forge_options"];
     for (const name of readonlyNames) {
@@ -570,7 +570,7 @@ describe("Invalid Parameter Injection Prevention", () => {
   it("forge_weapon: 拒绝非字符串 recipe_id", () => {
     __resetIdempotencyStore();
     const state = { originium: 100, playerLocation: "B1_PowerRoom", inventory: [] };
-    
+
     // Simulate malicious injection of a number
     const result = executeForge(
       { recipeId: "", idempotencyKey: "inject_test_1" },
@@ -627,13 +627,13 @@ describe("Narrative Consistency After Tool Failure", () => {
   it("锻造失败时 narrativeContext 不声称成功", () => {
     __resetIdempotencyStore();
     const state = { originium: 0, playerLocation: "B1_PowerRoom", inventory: [] };
-    
+
     const result = executeForge(
       { recipeId: "forge_repair_basic", idempotencyKey: "narrative_fail_1" },
       state as any
 
     );
-    
+
     assert.strictEqual(result.ok, false);
     // narrativeContext 不应包含"成功"相关词汇
     assert.ok(!result.narrativeContext.includes("成功"));
@@ -647,7 +647,7 @@ describe("Narrative Consistency After Tool Failure", () => {
       description: "",
       idempotencyKey: "narrative_fail_2",
     });
-    
+
     assert.strictEqual(result.ok, false);
     assert.ok(!result.narrativeContext.includes("已创建"));
   });
@@ -659,7 +659,7 @@ describe("Narrative Consistency After Tool Failure", () => {
       description: "这是一个测试",
       idempotencyKey: "narrative_success_1",
     });
-    
+
     assert.strictEqual(result.ok, true);
     assert.ok(result.narrativeContext.includes("测试任务"));
   });
@@ -668,7 +668,7 @@ describe("Narrative Consistency After Tool Failure", () => {
 describe("Old DM Fallback Path", () => {
   it("tryRunDmAgentTurn 在 feature flag 关闭时返回 agentUsed=false", async () => {
     const { tryRunDmAgentTurn } = await import("./dmAgentRouteIntegration");
-    
+
     const result = await tryRunDmAgentTurn({
       requestId: "fallback_test_1",
       sessionId: "test_session",
@@ -678,7 +678,7 @@ describe("Old DM Fallback Path", () => {
       userMessage: { role: "user", content: "hello" },
       forceEnabled: false, // Explicitly disabled
     });
-    
+
     assert.strictEqual(result.agentUsed, false);
     assert.strictEqual(result.result, undefined);
   });
@@ -695,13 +695,13 @@ describe("Transaction Atomicity", () => {
     const state = { originium: 100, playerLocation: "B1_PowerRoom", inventory: [] };
     const originalOriginium = state.originium;
     const originalInventoryLen = state.inventory.length;
-    
+
     const result = executeForge(
       { recipeId: "forge_mod_silent", idempotencyKey: "atomic_forge_fail" },
       state as any
 
     );
-    
+
     // 验证失败
     assert.strictEqual(result.ok, false);
     // 验证原石未被扣除（因为没有实际修改 state，只是验证）
@@ -711,16 +711,16 @@ describe("Transaction Atomicity", () => {
 
   it("任务创建失败时不产生副作用", () => {
     __resetIdempotencyStore();
-    
+
     // 尝试创建无效任务
     const result = createQuest({
       title: "",
       description: "",
       idempotencyKey: "atomic_quest_fail",
     });
-    
+
     assert.strictEqual(result.ok, false);
-    
+
     // 验证幂等存储中不会记录失败操作
     const cached = checkIdempotency("atomic_quest_fail");
     assert.strictEqual(cached, null);
@@ -728,13 +728,13 @@ describe("Transaction Atomicity", () => {
 
   it("战斗开始失败时不修改任何状态", () => {
     __resetIdempotencyStore();
-    
+
     const result = initiateCombat({
       enemyNpcId: "invalid",
       reason: "test",
       idempotencyKey: "atomic_combat_fail",
     });
-    
+
     assert.strictEqual(result.ok, false);
     // 验证没有战斗 ID 被生成（通过幂等存储检查）
     const cached = checkIdempotency("atomic_combat_fail");
@@ -782,7 +782,7 @@ describe("Tool Timeout Protection", () => {
       const schema = DM_TOOL_SCHEMAS[name as keyof typeof DM_TOOL_SCHEMAS];
       const params = schema.parameters as { required?: string[] };
       // 幂等键应该在 required 或 properties 中
-      const hasIdempotency = 
+      const hasIdempotency =
         (params.required && params.required.includes("idempotency_key")) ||
         (schema.parameters.properties && "idempotency_key" in (schema.parameters.properties as any));
       assert.ok(hasIdempotency,

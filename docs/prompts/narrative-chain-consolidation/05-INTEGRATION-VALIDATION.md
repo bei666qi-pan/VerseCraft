@@ -178,4 +178,3 @@ pnpm build
 - 性能满足预算，或新增功能保持关闭并明确阻塞证据。
 - OpenSpec specs 已同步，PROGRESS 完整。
 - lint/build/相关 unit、contract、E2E、benchmark、eval 有真实结果。
-

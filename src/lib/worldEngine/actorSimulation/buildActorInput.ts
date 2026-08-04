@@ -1,10 +1,10 @@
 // src/lib/worldEngine/actorSimulation/buildActorInput.ts
 /**
  * Phase 3: Actor Simulation Input Builder
- * 
+ *
  * 为每个选中 NPC 构建 actor-scoped 模拟输入。
  * 严格限制每个 NPC 只能访问其认知边界内的事实。
- * 
+ *
  * 设计约束：
  * - 纯函数，不做 IO
  * - 不包含其他 NPC 私有记忆

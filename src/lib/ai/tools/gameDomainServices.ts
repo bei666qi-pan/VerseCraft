@@ -1,7 +1,7 @@
 // src/lib/ai/tools/gameDomainServices.ts
 /**
  * Game Domain Services
- * 
+ *
  * 确定性业务规则层。模型不能直接计算最终属性、成功率、伤害或奖励。
  * 所有游戏状态变更都必须经过这里的服务端验证。
  */
@@ -177,10 +177,10 @@ export function buildActiveQuestSnapshot(state: GameState): ActiveQuestSnapshot 
 export function buildWorldContextSnapshot(state: GameState): WorldContextSnapshot {
   const hour = state.time?.hour ?? 8;
   const isNight = hour >= 18 || hour < 6;
-  
+
   const currentFloor = state.playerLocation?.replace(/[^BF\d]/g, "") || "1";
   const threat = state.mainThreatByFloor?.[currentFloor]?.phase ?? "idle";
-  
+
   const dangerMap: Record<string, string> = {
     idle: "安全",
     active: "危险",
@@ -209,7 +209,7 @@ export function buildWorldContextSnapshot(state: GameState): WorldContextSnapsho
 export function buildCombatStateSnapshot(state: GameState): CombatStateSnapshot {
   // 检查是否有活跃战斗（通过 combat 相关状态）
   const hasCombat = false; // 实际需从 combat state 读取
-  
+
   if (!hasCombat) {
     return {
       isInCombat: false,
@@ -303,7 +303,7 @@ export function createQuest(
   }
 
   const questId = `quest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  
+
   // 构建符合 DM JSON new_tasks 格式的任务对象
   const taskObject = {
     id: questId,
@@ -477,7 +477,7 @@ export function initiateCombat(params: StartCombatParams): DmToolResult<CombatSt
   }
 
   const combatId = `combat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  
+
   const result: DmToolResult<CombatStartData> = {
     ok: true,
     data: {

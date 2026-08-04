@@ -1,7 +1,7 @@
 // src/lib/ai/tools/dmAuditLog.ts
 /**
  * DM Agent 审计日志
- * 
+ *
  * 持久化工具调用追踪到现有的 analytics 基础设施。
  * 每个工具调用记录为独立事件，包含：
  * - 工具名、参数 hash、成功/失败、延迟、错误码

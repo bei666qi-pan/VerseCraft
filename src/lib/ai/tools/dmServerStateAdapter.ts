@@ -1,10 +1,10 @@
 // src/lib/ai/tools/dmServerStateAdapter.ts
 /**
  * 服务端状态适配器
- * 
+ *
  * 将 /api/chat 路由中的服务端状态（clientState + sessionMemory）
  * 适配为 DM Agent 工具所需的领域查询格式。
- * 
+ *
  * 设计原则：
  * - 不依赖客户端 Zustand store（服务端无法访问）
  * - 以 clientState (ClientStructuredContextV1) 为主要真相源
