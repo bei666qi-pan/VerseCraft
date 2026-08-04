@@ -12,7 +12,7 @@
  */
 
 import { spawn, exec, execSync, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync } from "node:fs";
+import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { extractRunId, diffSnapshots, type WorkingTreeSnapshot } from "./supervisor-utils";
@@ -117,7 +117,7 @@ async function startManagedServer(workDir?: string): Promise<boolean> {
   return new Promise((resolve) => {
     const logFile = join(cwd, ".runtime-data", "self-improve", "server.log");
     mkdirSync(join(cwd, ".runtime-data", "self-improve"), { recursive: true });
-    const logStream = require("fs").createWriteStream(logFile, { flags: "a" });
+    const logStream = createWriteStream(logFile, { flags: "a" });
 
     const proc = spawn("pnpm", ["dev"], {
       cwd,

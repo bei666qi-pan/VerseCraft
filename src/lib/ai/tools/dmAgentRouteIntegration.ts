@@ -14,6 +14,11 @@
 
 import { findRegisteredItemById } from "@/lib/registry/itemLookup";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
+import type { ChatMessage } from "@/lib/ai/types/core";
+import { getVerseCraftRolloutFlags } from "@/lib/rollout/versecraftRolloutFlags";
+import { buildDmAgentSystemPromptBlock, DEFAULT_FLAGS, runDmAgentTurn } from "./dmAgentOrchestrator";
+import type { DmAgentContext, DmAgentFeatureFlags, DmAgentTurnResult } from "./dmAgentTypes";
+import type { ServerGameState } from "./dmServerStateAdapter";
 
 const REGISTERED_WAREHOUSE_ITEM_IDS = new Set(WAREHOUSE_ITEMS.map((item) => item.id));
 

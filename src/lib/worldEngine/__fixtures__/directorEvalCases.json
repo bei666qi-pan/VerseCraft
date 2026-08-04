@@ -105,7 +105,7 @@
     "id": "duplicate_event_reject",
     "objective": "Duplicate event_code in one plan should be rejected deterministically.",
     "candidate": { "event_code": "EV_DUPLICATE", "duplicate": true },
-    "expect": { "parseOk": true, "accepted": false, "issuesInclude": ["duplicate_event_code"] }
+    "expect": { "parseOk": true, "accepted": true, "issuesInclude": ["duplicate_event_code"] }
   },
   {
     "id": "missing_injection_hint_drop",

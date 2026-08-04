@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, writeFileSync, chmodSync, readFileSync, appendFi
 import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
@@ -72,7 +73,6 @@ if (existsSync(BASHRC)) {
 
 // 5. Verify installation
 try {
-  const { execSync } = require("node:child_process");
   const ver = execSync(`"${VERSE_BIN}" --version`, { encoding: "utf-8", timeout: 5000 }).trim();
   console.log(`\n  \x1b[32m✓ Installation verified: ${ver}\x1b[0m`);
 } catch {

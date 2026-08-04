@@ -2,6 +2,11 @@
 import https from "node:https";
 import { Readable } from "node:stream";
 import { envBoolean } from "@/lib/config/envRaw";
+import {
+  buildPlayerTurnJsonFallbackInit,
+  normalizePlayerTurnTerminalToolResponse,
+  shouldFallbackPlayerTurnTerminalTool,
+} from "@/lib/ai/stream/playerTurnTerminalToolResponse";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
