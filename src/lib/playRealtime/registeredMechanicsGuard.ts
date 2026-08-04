@@ -5,7 +5,7 @@ import { NPC_KNOWLEDGE_FACT_IDS } from "@/lib/npcKnowledge/npcBeliefGraph";
 import { getAnomalyCombatStat } from "@/lib/registry/combatCanon";
 import { findRegisteredItemById } from "@/lib/registry/itemLookup";
 import { WAREHOUSE_ITEMS } from "@/lib/registry/warehouseItems";
-import { enrichOptionsFromNarrative } from "@/lib/turnEngine/enrichGameState";
+import { enrichOptionsFromNarrative } from "./legalTurnOptionsFallback";
 
 const REGISTERED_WAREHOUSE_ITEM_IDS = new Set(WAREHOUSE_ITEMS.map((item) => item.id));
 
@@ -174,10 +174,44 @@ function ensureLegalTurnOptions(record: RecordLike): RecordLike {
 
 const HARMLESS_CONTACT_ATTEMPT_RE =
   /(?:走过去|走向|朝(?:着)?|靠近|上前|过去|找到?|寻找|去找|碰见|遇见).{0,24}(?:打个?招呼|问候|问(?:他|她|对方)?|询问|打听|聊聊|聊天|交谈|谈谈|说(?:句|话))/u;
+const DIRECT_HARMLESS_CONTACT_ATTEMPT_RE =
+  /(?:向|和).{1,12}(?:打个?招呼|问候|询问|了解|打听|聊聊|聊天|交谈|谈谈)/u;
 const INDEPENDENTLY_PROHIBITED_SOCIAL_ACTION_RE =
   /(?:强迫|逼迫|控制|操控|催眠|洗脑|命令|服从|爱上|喜欢上|攻击|袭击|殴打|伤害|杀死|杀掉|绑架|威胁|侵犯)/u;
 const CONTACT_TARGET_UNAVAILABLE_RE =
-  /(?:什么也没有|没有人|没人应|空无一人|无人回应|没有回应|无人出现|没有出现|找不到|未找到|没找到|不在(?:场|家|房间|这里)?(?:[。！!，,]|$)|并不在|并不存在|(?:人影|身影|对方|他|她|目标).{0,12}(?:不见了|消失(?:了)?)|只有.{0,16}(?:墙|空走廊|空气))/u;
+  /(?:什么(?:也|都)没有|没有人|没(?:有)?(?:这|这个|此)(?:人|住户)|(?:没(?:有)?|不存在)(?:叫|名为).{1,12}(?:的)?(?:人|住户)|没人应|空无一人|无人回应|没有回应|无人出现|没有出现|找不到|未找到|没找到|上哪儿.{0,16}(?:确认|找|问)|(?:找谁问|找谁打听).{0,12}(?:摸不着门|不知道|不清楚)|不在(?:场|家|房间|这里)?(?:[。！!，,]|$)|并不在|并不存在|(?:人影|身影|对方|他|她|目标).{0,12}(?:不见了|消失(?:了)?)|只有.{0,16}(?:墙|空走廊|空气))/u;
+
+const NAVIGATION_FAILURE_MISREAD_RE =
+  /(?:可通行相邻路线|仍留在原地|没能确认.{0,20}(?:路线|路径|方向)|无法确认.{0,20}(?:路线|路径|方向))/u;
+
+function hasNavigationFailureMisread(narrative: string): boolean {
+  return NAVIGATION_FAILURE_MISREAD_RE.test(narrative);
+}
+
+function extractContactTarget(action: string): string | null {
+  const match = action.match(
+    /(?:和|向|找(?:到)?|寻找|去找|碰见|遇见)([\p{Script=Han}·]{2,8})(?=(?:，|,)?(?:想)?(?:和(?:他|她|对方))?(?:打个?招呼|问候|问|询问|了解|打听|聊聊|聊天|交谈|谈谈))/u,
+  );
+  return match?.[1] ?? null;
+}
+
+function hasUnavailableContactOutcome(record: RecordLike, action: string): boolean {
+  const narrative = String(record.narrative ?? "");
+  if (CONTACT_TARGET_UNAVAILABLE_RE.test(narrative)) return true;
+  const target = extractContactTarget(action);
+  if (!target) return false;
+  const surname = Array.from(target)[0] ?? "";
+  return narrative.includes(`没有${target}`) ||
+    narrative.includes(`没有名为${target}`) ||
+    narrative.includes(`不是${target}`) ||
+    narrative.includes(`并非${target}`) ||
+    narrative.includes(`${target}不是`) ||
+    narrative.includes(`${target}并非`) ||
+    narrative.includes(`${target}是谁`) ||
+    /没有一扇(?:门|门缝).{0,24}(?:声音|回应|痕迹)/u.test(narrative) ||
+    (surname !== "" && new RegExp(`(?:这|本)(?:一)?(?:层楼|栋楼|楼里).{0,8}没(?:有)?姓${surname}的`, "u").test(narrative)) ||
+    new RegExp(`${target}.{0,12}(?:不是|并非|不在|不见了|消失了?|不存在)`, "u").test(narrative);
+}
 
 function hasProtocolOnlyNarrativeDegradation(record: RecordLike): boolean {
   if (String(record.narrative ?? "").trim() !== "") return false;
@@ -191,6 +225,20 @@ function hasProtocolOnlyNarrativeDegradation(record: RecordLike): boolean {
   );
 }
 
+function hasEntityHardGateFallback(record: RecordLike): boolean {
+  const meta = record.security_meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  const turnCommit = (meta as RecordLike).turn_commit;
+  if (!turnCommit || typeof turnCommit !== "object" || Array.isArray(turnCommit)) return false;
+  const safetyPolicy = (turnCommit as RecordLike).safety_policy;
+  if (!safetyPolicy || typeof safetyPolicy !== "object" || Array.isArray(safetyPolicy)) return false;
+  return (
+    (turnCommit as RecordLike).safe_fallback === true &&
+    (safetyPolicy as RecordLike).decision === "block_commit" &&
+    (safetyPolicy as RecordLike).entity_hard_gate === true
+  );
+}
+
 /**
  * Approaching someone to greet them is an executable player attempt even when
  * the named target cannot be found. The attempt may fail in-world, but absence
@@ -199,11 +247,12 @@ function hasProtocolOnlyNarrativeDegradation(record: RecordLike): boolean {
  */
 function preserveHarmlessUnavailableContactAttempt(record: RecordLike, action: string): RecordLike {
   const protocolNarrativeDegraded = hasProtocolOnlyNarrativeDegradation(record);
+  const entityHardGateFallback = hasEntityHardGateFallback(record);
   if (
     record.is_action_legal !== false ||
-    !HARMLESS_CONTACT_ATTEMPT_RE.test(action) ||
+    (!HARMLESS_CONTACT_ATTEMPT_RE.test(action) && !DIRECT_HARMLESS_CONTACT_ATTEMPT_RE.test(action)) ||
     INDEPENDENTLY_PROHIBITED_SOCIAL_ACTION_RE.test(action) ||
-    (!protocolNarrativeDegraded && !CONTACT_TARGET_UNAVAILABLE_RE.test(String(record.narrative ?? "")))
+    (!protocolNarrativeDegraded && !entityHardGateFallback && !hasUnavailableContactOutcome(record, action) && !hasNavigationFailureMisread(String(record.narrative ?? "")))
   ) {
     return record;
   }

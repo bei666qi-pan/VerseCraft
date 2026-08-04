@@ -10,6 +10,9 @@ const FORGE_EXECUTION_PATTERN = /(修复|维护|改装|灌注|武器化|执行\s
 const FORGE_QUOTE_PATTERN = /(报价|查看锻造|锻造台|整备)/;
 const FORGE_AUDIT_PATTERN = /(核对|检查|查看)/;
 const FORGE_STATE_PATTERN = /(原石|稳定|污染|武器袋|当前装备|锻造后|材料|武器状态)/;
+const GENERIC_UNREGISTERED_FORGE_PATTERN =
+  /(?:锻造|打造|铸造|制作).{0,16}(?:长剑|短剑|刀剑|刀|剑|武器)/;
+const FORGE_DISCUSSION_PATTERN = /(?:询问|问问|打听|能否|是否|可否|能不能|可以吗|怎么|如何)/;
 const STATUS_AUDIT_PATTERN = /(核对|检查|查看|确认|只核对)/;
 const STATUS_AUDIT_FIELDS = /(职业|试炼|能力|武器袋|武器|生命|理智|稳定|污染|前置条件|结构化状态|任务|位置|图鉴|线索)/g;
 
@@ -77,6 +80,10 @@ export function buildDeterministicServiceTurn(args: {
   requestId: string;
 }): ResolvedDmTurn | null {
   const isForge = isDeterministicForgeServiceAction(args);
+  const isUnregisteredForgeAttempt =
+    GENERIC_UNREGISTERED_FORGE_PATTERN.test(args.latestUserInput.trim()) &&
+    !/forge_[a-z0-9_]+/i.test(args.latestUserInput) &&
+    !FORGE_DISCUSSION_PATTERN.test(args.latestUserInput);
   const isEquipment = /^(?:装备武器|装备主手|装备主手武器|更换武器|替换武器|换装武器)[\s:：]*\[?[A-Z0-9-]{4,64}\]?$/i.test(args.latestUserInput.trim()) ||
     /^(?:卸下武器|解除武器装备|卸下主手武器)$/.test(args.latestUserInput.trim());
   const isThreatRecon = /(?:寻找|观察|检查|确认|侦察).{0,18}(?:已存在|当前|登记)?.{0,8}(?:威胁|异常|阴影|敌人)/.test(args.latestUserInput.trim()) &&
@@ -97,7 +104,7 @@ export function buildDeterministicServiceTurn(args: {
   const isInvalidTraversal = /(?:直接.{0,8}(?:B2|地下二层)|跳过中间楼层|不管距离.{0,8}瞬移|直接瞬移|从窗户跳下去)/i.test(args.latestUserInput);
   const isPrematureEndingClaim = /(?:true_escape|真结局|真正出口|ending_finale|生成结算)/i.test(args.latestUserInput) &&
     /(?:没有|忽略|普通门|前置不足|直接宣布|立即触发|必须为无)/.test(args.latestUserInput);
-  if (!isForge && !isEquipment && !isThreatRecon && !isStatusAudit && !isTrialDelivery && !isLegacyLetterDelivery && !isFloorProbeObservation && !isFloorProbeDialogue && !isFloorProbeDelivery && !isAuthoredOneFloorMove && !isInvalidTraversal && !isPrematureEndingClaim) return null;
+  if (!isForge && !isUnregisteredForgeAttempt && !isEquipment && !isThreatRecon && !isStatusAudit && !isTrialDelivery && !isLegacyLetterDelivery && !isFloorProbeObservation && !isFloorProbeDialogue && !isFloorProbeDelivery && !isAuthoredOneFloorMove && !isInvalidTraversal && !isPrematureEndingClaim) return null;
 
   const seed: Record<string, unknown> = {
       is_action_legal: true,
@@ -125,6 +132,11 @@ export function buildDeterministicServiceTurn(args: {
         playerContext: args.playerContext,
         clientState: args.clientState,
       })
+    : isUnregisteredForgeAttempt ? (() => {
+        seed.is_action_legal = false;
+        seed.narrative = "当前结构化状态没有登记可执行的长剑配方，也没有可核验的锻造地点、操作者与材料清单。口头声称材料充足不能创建物品；本回合没有锻造、扣除材料或改变货币。";
+        return seed;
+      })()
     : isEquipment ? applyEquipmentExecutionGuard({
         dmRecord: seed,
         latestUserInput: args.latestUserInput,
@@ -220,7 +232,7 @@ export function buildDeterministicServiceTurn(args: {
       ? resolved.security_meta as Record<string, unknown>
       : {}),
     deterministic_service_fast_lane: true,
-    deterministic_action_kind: isForge ? "forge_service" : isEquipment ? "equipment" : isThreatRecon ? "threat_recon" : isPrematureEndingClaim ? "premature_ending_claim" : isInvalidTraversal ? "invalid_world_traversal" : isFloorProbeDialogue ? "floor_probe_dialogue" : isAuthoredOneFloorMove ? "authored_location_move" : isFloorProbeObservation ? "floor_probe_observation" : isFloorProbeDelivery ? "floor_probe_delivery" : isLegacyLetterDelivery ? "legacy_letter_delivery" : isTrialDelivery ? "profession_trial_delivery" : "structured_status_audit",
+    deterministic_action_kind: isForge ? "forge_service" : isUnregisteredForgeAttempt ? "unregistered_forge_attempt" : isEquipment ? "equipment" : isThreatRecon ? "threat_recon" : isPrematureEndingClaim ? "premature_ending_claim" : isInvalidTraversal ? "invalid_world_traversal" : isFloorProbeDialogue ? "floor_probe_dialogue" : isAuthoredOneFloorMove ? "authored_location_move" : isFloorProbeObservation ? "floor_probe_observation" : isFloorProbeDelivery ? "floor_probe_delivery" : isLegacyLetterDelivery ? "legacy_letter_delivery" : isTrialDelivery ? "profession_trial_delivery" : "structured_status_audit",
     request_id: args.requestId,
   };
   resolved._eval_metrics = {

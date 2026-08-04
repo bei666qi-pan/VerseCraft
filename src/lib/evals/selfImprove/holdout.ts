@@ -62,6 +62,10 @@ export function computeConfigHash(configSurface: Record<string, unknown> = {
   minLiveTraces: 10,
   maxFailingCases: 0,
   requireHoldout: true,
+  minValidEvidenceCoverage: 1.0,
+  minHoldoutValidCoverage: 1.0,
+  minHoldoutValidCases: 8,
+  requireAllRequiredHoldoutCases: true,
 }): string {
   return sha256(`config:${JSON.stringify(configSurface)}`);
 }

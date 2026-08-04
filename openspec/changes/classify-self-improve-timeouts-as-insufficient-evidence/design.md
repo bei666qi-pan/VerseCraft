@@ -26,4 +26,3 @@ An alternative was to make `checkDeterministicInvariant` infer results from miss
 
 - [Risk] A case may record a non-fatal warning in `errors` despite having a usable final payload. → The current runner uses `errors` for execution/SSE failures; regression coverage will pin the conservative behavior, appropriate for a strict gate.
 - [Risk] Fewer scored invariants can make a run look cleaner. → Any excluded case forces `INSUFFICIENT_EVIDENCE`, so exclusion can never produce `STRICT_PASS`.
-

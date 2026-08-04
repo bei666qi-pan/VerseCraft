@@ -44,6 +44,14 @@ export interface StrictVerificationResult {
     excludedNonGameplayCases: string[];
     /** Valid evidence coverage: judged cases / total cases (0-1) */
     validEvidenceCoverage: number;
+    // ── Holdout-specific metrics ──
+    holdoutTotal: number;
+    holdoutValid: number;
+    holdoutPassed: number;
+    holdoutInfraFailures: number;
+    holdoutModelUnavailable: number;
+    holdoutValidCoverage: number;
+    missingRequiredHoldoutCaseIds: string[];
   };
   verifiedDefects: string[];
   unresolvedDefects: string[];
@@ -61,6 +69,14 @@ export interface StrictGateConfig {
   maxFailingCases: number;
   /** Whether holdout evidence is required */
   requireHoldout: boolean;
+  /** Minimum valid evidence coverage for main eval (judged / total, 0-1) */
+  minValidEvidenceCoverage: number;
+  /** Minimum valid holdout coverage (valid holdout cases / total, 0-1) */
+  minHoldoutValidCoverage: number;
+  /** Minimum number of valid (non-infra) holdout cases */
+  minHoldoutValidCases: number;
+  /** Require that all holdout corpus cases produce valid results */
+  requireAllRequiredHoldoutCases: boolean;
 }
 
 const DEFAULT_GATE_CONFIG: StrictGateConfig = {
@@ -69,7 +85,23 @@ const DEFAULT_GATE_CONFIG: StrictGateConfig = {
   minLiveTraces: 10,
   maxFailingCases: 0,
   requireHoldout: true,
+  minValidEvidenceCoverage: 1.0,
+  minHoldoutValidCoverage: 1.0,
+  minHoldoutValidCases: 8, // must be kept in sync with holdout corpus
+  requireAllRequiredHoldoutCases: true,
 };
+
+function emptyMetrics(): StrictVerificationResult["metrics"] {
+  return {
+    totalTraces: 0, liveTraces: 0,
+    oracleExpectationMatches: 0, oracleExpectationTotal: 0, oracleExpectationMatchRate: 0,
+    uniqueFailingCaseIds: [], roundsCompleted: 0, uniqueDefectClusters: [],
+    excludedNonGameplayCases: [], validEvidenceCoverage: 0,
+    holdoutTotal: 0, holdoutValid: 0, holdoutPassed: 0,
+    holdoutInfraFailures: 0, holdoutModelUnavailable: 0,
+    holdoutValidCoverage: 0, missingRequiredHoldoutCaseIds: [],
+  };
+}
 
 // ── Core verification ─────────────────────────────────
 
@@ -89,7 +121,7 @@ export function runStrictVerification(
         passed: false,
         status: "INSUFFICIENT_EVIDENCE",
         reasons: [`Missing required artifact: ${f}`],
-        metrics: { totalTraces: 0, liveTraces: 0, oracleExpectationMatches: 0, oracleExpectationTotal: 0, oracleExpectationMatchRate: 0, uniqueFailingCaseIds: [], roundsCompleted: 0, uniqueDefectClusters: [], excludedNonGameplayCases: [], validEvidenceCoverage: 0 },
+        metrics: emptyMetrics(),
         verifiedDefects: [],
         unresolvedDefects: [],
         exitCode: 2,
@@ -115,10 +147,19 @@ export function runStrictVerification(
     manifest = JSON.parse(readFileSync(resolve(dir, "manifest.json"), "utf-8"));
   } catch { /* empty */ }
 
-  // ── Holdout gate (D7 fix: requireHoldout was a dead field) ──
+  // ── Holdout gate ──
   let holdoutRegressed = false;
   let holdoutFailed = false;
   let holdoutEvidenceMissing = false;
+  let holdoutTotal = 0;
+  let holdoutValid = 0;
+  let holdoutPassed = 0;
+  let holdoutInfraFailures = 0;
+  let holdoutModelUnavailable = 0;
+  let holdoutValidCoverage = 0;
+  const missingRequiredHoldoutCaseIds: string[] = [];
+  const requiredHoldoutCaseIds: string[] = loadHoldoutCases().map((c) => c.caseId);
+
   if (cfg.requireHoldout) {
     const holdoutResultsPath = resolve(dir, "holdout-results.json");
     const manifestHoldout = manifest.holdout;
@@ -130,64 +171,94 @@ export function runStrictVerification(
     } else {
       // 1. Corpus / prompt / config changed since the run → old holdout evidence is stale
       const currentBinding: HashBinding = {
-        codeHash: manifestHashes.codeHash, // code at run time is what it was; staleness checked via corpus/prompt/config
+        codeHash: manifestHashes.codeHash,
         promptHash: computePromptHash(manifest.provenance?.promptVersion ?? ""),
         modelId: manifestHashes.modelId,
         corpusHash: computeCorpusHash(loadHoldoutCases()),
         rubricVersion: HOLDOUT_RUBRIC_VERSION,
         configHash: computeConfigHash(),
       };
-      const mismatches = bindingMismatchFields(manifestHashes, currentBinding)
-        .filter((f) => f !== "codeHash" && f !== "modelId");
+      const mismatches = bindingMismatchFields(manifestHashes, currentBinding);
       if (mismatches.length > 0) {
         holdoutFailed = true; holdoutEvidenceMissing = true;
-        reasons.push(`Holdout evidence stale: binding mismatch on ${mismatches.join(", ")} (code/prompt/corpus/config changed since run)`);
+        reasons.push(`Holdout evidence stale: hash mismatch on ${mismatches.join(", ")}`);
       }
-
-      // 2. Holdout must actually have been executed
+      // 2. Holdout must have been executed
       if (!manifestHoldout.executedAt || !existsSync(holdoutResultsPath)) {
         holdoutFailed = true; holdoutEvidenceMissing = true;
         reasons.push("Holdout not executed: missing holdout-results.json (INSUFFICIENT_EVIDENCE class)");
       } else {
         try {
           const holdoutRun = JSON.parse(readFileSync(holdoutResultsPath, "utf-8"));
-          // 3. Artifact inconsistency = tampering
+
+          // 3. Corpus hash must match manifest
           if (holdoutRun.corpusHash !== manifestHoldout.corpusHash) {
+            holdoutFailed = true; holdoutEvidenceMissing = true;
+            reasons.push("Holdout corpus hash mismatch — GATE_TAMPERING_DETECTED");
             return {
               passed: false,
               status: "GATE_TAMPERING_DETECTED",
               reasons: ["holdout-results.json corpusHash does not match manifest holdout corpusHash"],
-              metrics: {
-                totalTraces: 0, liveTraces: 0, oracleExpectationMatches: 0, oracleExpectationTotal: 0,
-                oracleExpectationMatchRate: 0, uniqueFailingCaseIds: [], roundsCompleted: 0,
-                uniqueDefectClusters: [], excludedNonGameplayCases: [], validEvidenceCoverage: 0,
-              },
+              metrics: emptyMetrics(),
               verifiedDefects: [],
               unresolvedDefects: [],
-              exitCode: 1,
+              exitCode: 3,
             };
           }
+
           const results: any[] = Array.isArray(holdoutRun.results) ? holdoutRun.results : [];
-          const validResults = results.filter((r) =>
-            !["infrastructure_failure", "model_unavailable", "external_blocked", "insufficient_evidence"].includes(r.errorClass));
-          if (validResults.length === 0 && results.length > 0) {
-            holdoutFailed = true; holdoutEvidenceMissing = true;
-            reasons.push("Holdout evidence invalid: all holdout cases failed on infra/model errors");
-          } else if (results.length === 0) {
-            holdoutFailed = true; holdoutEvidenceMissing = true;
-            reasons.push("Holdout evidence missing: empty results");
+          holdoutTotal = results.length;
+
+          // Classify each holdout result
+          for (const r of results) {
+            const ec = r.errorClass as string | undefined;
+            if (ec === "infrastructure_failure") { holdoutInfraFailures++; continue; }
+            if (ec === "model_unavailable") { holdoutModelUnavailable++; continue; }
+            if (ec === "external_blocked") { holdoutModelUnavailable++; continue; }
+            // Valid result
+            holdoutValid++;
+            if (r.passed === true) holdoutPassed++;
+            else if (!r.passed && r.maxSeverityFailed && (r.maxSeverityFailed === "critical" || r.maxSeverityFailed === "major")) {
+              holdoutRegressed = true;
+            }
           }
-          const regressions = validResults.filter(
-            (r) => !r.passed && (r.maxSeverityFailed === "critical" || r.maxSeverityFailed === "major"),
-          );
-          if (regressions.length > 0) {
+
+          holdoutValidCoverage = holdoutTotal > 0 ? holdoutValid / holdoutTotal : 0;
+
+          // Check for missing required cases
+          if (cfg.requireAllRequiredHoldoutCases) {
+            const resultCaseIds = new Set(results.map((r: any) => r.caseId));
+            for (const cid of requiredHoldoutCaseIds) {
+              if (!resultCaseIds.has(cid)) {
+                missingRequiredHoldoutCaseIds.push(cid);
+              }
+            }
+            if (missingRequiredHoldoutCaseIds.length > 0) {
+              holdoutFailed = true; holdoutEvidenceMissing = true;
+              reasons.push(`Holdout missing required cases: ${missingRequiredHoldoutCaseIds.join(", ")}`);
+            }
+          }
+
+          // Coverage gate: valid holdout cases must meet threshold
+          if (holdoutValid < cfg.minHoldoutValidCases) {
+            holdoutFailed = true; holdoutEvidenceMissing = true;
+            reasons.push(`Holdout valid cases: ${holdoutValid}/${cfg.minHoldoutValidCases} (minimum not met; ${holdoutInfraFailures} infra, ${holdoutModelUnavailable} model-unavailable)`);
+          }
+
+          if (holdoutValidCoverage < cfg.minHoldoutValidCoverage) {
+            holdoutFailed = true; holdoutEvidenceMissing = true;
+            reasons.push(`Holdout valid coverage: ${(holdoutValidCoverage * 100).toFixed(0)}% (need ${(cfg.minHoldoutValidCoverage * 100).toFixed(0)}%); ${holdoutInfraFailures} infra-failures, ${holdoutModelUnavailable} model-unavailable`);
+          }
+
+          // Regression gate within valid results
+          if (holdoutRegressed && !holdoutEvidenceMissing) {
             holdoutFailed = true;
-            holdoutRegressed = true;
-            reasons.push(`Holdout regression: ${regressions.map((r) => `${r.caseId}(${r.maxSeverityFailed})`).join(", ")}`);
+            reasons.push(`Holdout regression detected: ${results.filter((r: any) => !r.passed && r.maxSeverityFailed).length} critical/major failure(s) in valid cases`);
           }
-        } catch {
+
+        } catch (e: any) {
           holdoutFailed = true; holdoutEvidenceMissing = true;
-          reasons.push("Holdout results corrupted: unparseable holdout-results.json");
+          reasons.push(`Holdout evidence unreadable: ${e.message}`);
         }
       }
     }
@@ -258,6 +329,12 @@ export function runStrictVerification(
     reasons.push(`Rounds completed: ${roundsCompleted}/${cfg.minCleanRounds} (need at least ${cfg.minCleanRounds} clean rounds)`);
   }
 
+  // Check: valid evidence coverage
+  if (totalCaseCount > 0 && validEvidenceCoverage < cfg.minValidEvidenceCoverage) {
+    passed = false;
+    reasons.push(`Valid evidence coverage: ${(validEvidenceCoverage * 100).toFixed(0)}% (need ${(cfg.minValidEvidenceCoverage * 100).toFixed(0)}%); ${excludedNonGameplayCases.size} cases excluded as infra/model failures`);
+  }
+
   // 5. Determine unique defect clusters from failing cases
   const uniqueDefectClusters = [...new Set(
     [...uniqueFailingCaseIds].map((id) => {
@@ -273,16 +350,13 @@ export function runStrictVerification(
   const verifiedDefects = uniqueFailingCaseIds.size === 0 ? uniqueDefectClusters : [];
 
   // 6. Final status determination
-  // External unavailability is NEVER a gameplay pass or a gameplay fail:
-  // - externally blocked dominates              → EXTERNAL_MODEL_BLOCKED
-  // - no valid evidence left to judge           → INSUFFICIENT_EVIDENCE
   let status: StrictVerificationResult["status"];
   if (passed) {
     status = "STRICT_PASS";
   } else if (externalBlockedCount > 0 && externalBlockedCount >= judgedCaseCount + modelUnavailableCount) {
     status = "EXTERNAL_MODEL_BLOCKED";
     reasons.push(`External model blocked: ${externalBlockedCount}/${totalCaseCount} cases blocked by gateway/auth (excluded from gameplay stats)`);
-  } else if (uniqueFailingCaseIds.size === 0 && !holdoutRegressed && holdoutEvidenceMissing) {
+  } else if (uniqueFailingCaseIds.size === 0 && !holdoutRegressed && (holdoutEvidenceMissing || validEvidenceCoverage < cfg.minValidEvidenceCoverage)) {
     status = "INSUFFICIENT_EVIDENCE";
   } else if (totalTraces === 0 || judgedCaseCount === 0) {
     status = "INSUFFICIENT_EVIDENCE";
@@ -308,6 +382,13 @@ export function runStrictVerification(
       uniqueDefectClusters,
       excludedNonGameplayCases: [...excludedNonGameplayCases],
       validEvidenceCoverage,
+      holdoutTotal,
+      holdoutValid,
+      holdoutPassed,
+      holdoutInfraFailures,
+      holdoutModelUnavailable,
+      holdoutValidCoverage,
+      missingRequiredHoldoutCaseIds,
     },
     verifiedDefects,
     unresolvedDefects,

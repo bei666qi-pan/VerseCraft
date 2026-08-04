@@ -189,7 +189,15 @@ export function runDeterministicControlFastPath(args: {
   }
 
   // 5) 明确移动 / 探索（极短）
+  // IMPORTANT: If the input contains dialogue indicators alongside movement,
+  // it's likely a compound action (move to talk). Don't fast-path as pure move.
+  const hasDialogueIndicator = /[说问聊谈讲告诉询问回答打听]/.test(input) ||
+    /(聊聊|说话|交谈|对话|沟通|打招呼)/.test(input);
   if (/^(我)?(去|前往|走向|进入|回到|返回)/.test(input) || /^(探索|移动到)/.test(input)) {
+    // Compound: move + dialogue → let LLM handle, don't misroute
+    if (hasDialogueIndicator) {
+      return { hit: false, reason: "move_with_dialogue_indicator_defer_to_llm" };
+    }
     const loc =
       extractBetween(input, "去", ["，", "。", "！", "?", "？"], 22) ??
       extractBetween(input, "前往", ["，", "。", "！", "?", "？"], 22) ??

@@ -24,4 +24,3 @@ The implementation MUST preserve scenario expectations, strict gate thresholds, 
 #### Scenario: Applying the evidence-validity fix
 - **WHEN** the implementation is reviewed
 - **THEN** no expectation, threshold, or holdout file SHALL be modified
-

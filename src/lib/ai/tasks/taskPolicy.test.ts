@@ -90,16 +90,16 @@ test("PLAYER_CHAT primary role is main", () => {
   assert.equal(getTaskBinding("PLAYER_CHAT").primaryRole, "main");
 });
 
-test("PLAYER_CHAT maxTokens aligned with short DM JSON budget", () => {
-  assert.equal(getTaskBinding("PLAYER_CHAT").maxTokens, 896);
+test("PLAYER_CHAT maxTokens aligned with full DM JSON budget", () => {
+  assert.equal(getTaskBinding("PLAYER_CHAT").maxTokens, 2304);
 });
 
 test("PLAYER_CHAT narrative budget tiers resolve dynamic maxTokens", () => {
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("micro").maxTokens, 896);
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("short").maxTokens, 1152);
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 896);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("micro").maxTokens, 2048);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("short").maxTokens, 2048);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("standard").maxTokens, 2304);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("reveal").maxTokens, 2048);
-  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("climax").maxTokens, 2240);
+  assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("climax").maxTokens, 2304);
   assert.equal(resolvePlayerChatMaxTokensForNarrativeBudget("ending").maxTokens, 2304);
 });
 
@@ -129,7 +129,7 @@ test("PLAYER_CHAT maxTokens env override applies and clamps", () => {
       "ending",
       resolveAiEnv().playerChatMaxTokensOverride
     );
-    assert.equal(resolved.maxTokens, 896);
+    assert.equal(resolved.maxTokens, 2048);
     assert.equal(resolved.source, "env_override");
     assert.equal(resolved.clamped, true);
   });

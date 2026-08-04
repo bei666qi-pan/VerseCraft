@@ -478,10 +478,22 @@ export interface HoldoutCaseResult {
   errorClass: string;
 }
 
+export interface HoldoutCaseDetail {
+  caseId: string;
+  requestedUrl: string;
+  serverHealthyBeforeRequest: boolean;
+  httpStatus: number;
+  errorClass: string;
+  errorDetail: string;
+  validEvidence: boolean;
+  passed: boolean;
+}
+
 export interface HoldoutRunResult {
   executedAt: string;
   corpusHash: string;
   results: HoldoutCaseResult[];
+  details: HoldoutCaseDetail[];
   regressed: boolean;
 }
 
@@ -492,11 +504,43 @@ export interface HoldoutRunResult {
  * instead — the strict verifier treats missing/invalid holdout evidence as
  * INSUFFICIENT_EVIDENCE).
  */
+
+/**
+ * Simple server health check: GET the base URL and expect a 2xx response.
+ */
+async function checkServerHealth(baseUrl: string): Promise<{ healthy: boolean; status: number; error: string }> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    const res = await fetch(baseUrl, { method: "GET", signal: controller.signal });
+    clearTimeout(timeout);
+    return { healthy: res.ok, status: res.status, error: res.ok ? "" : `HTTP ${res.status}` };
+  } catch (e: any) {
+    return { healthy: false, status: 0, error: e.message || String(e) };
+  }
+}
+
 async function executeHoldoutCorpus(runId: string): Promise<HoldoutRunResult> {
   const cases = loadHoldoutCases();
   const executedAt = new Date().toISOString();
   const corpusHash = computeCorpusHash(cases);
   const results: HoldoutCaseResult[] = [];
+
+  const baseUrl = (process.env.LIVEPLAY_BASE_URL || "http://localhost:666").replace(/\/$/, "");
+
+  console.log("[SelfImprove] HOLDOUT_START", JSON.stringify({
+    totalCases: cases.length,
+    baseUrl,
+    timestamp: new Date().toISOString(),
+  }));
+
+  // Server health check before holdout execution
+  const serverHealth = await checkServerHealth(baseUrl);
+  console.log("[SelfImprove] HOLDOUT_SERVER_HEALTH", JSON.stringify({
+    healthy: serverHealth.healthy,
+    status: serverHealth.status,
+    error: serverHealth.error,
+  }));
 
   if (cases.length === 0) {
     console.log("[SelfImprove] Holdout corpus is EMPTY — strict gate will require evidence.");
@@ -505,16 +549,40 @@ async function executeHoldoutCorpus(runId: string): Promise<HoldoutRunResult> {
   }
 
   const severityRank = (s: string) => (s === "critical" ? 3 : s === "major" ? 2 : 1);
+  const details: HoldoutCaseDetail[] = [];
 
   for (const scenario of cases) {
+    const requestedUrl = `${baseUrl}/api/chat`;
+    console.log("[SelfImprove] HOLDOUT_CASE_START", JSON.stringify({
+      caseId: scenario.caseId,
+      requestedUrl,
+      timestamp: new Date().toISOString(),
+    }));
+
     try {
       const [trace] = await runScenarios([scenario], runId, 0);
       const errorClass = classifyTraceErrors(trace?.errors ?? []);
+      const httpStatus = trace?.httpStatus ?? 0;
+      const validEvidence = !!trace && !NON_GAMEPLAY_CLASSES.has(errorClass);
+
       if (!trace || NON_GAMEPLAY_CLASSES.has(errorClass)) {
-        results.push({
+        const result: HoldoutCaseResult = {
           caseId: scenario.caseId, passed: false, maxSeverityFailed: null,
           invariantResults: [], errors: trace?.errors ?? ["no trace produced"], errorClass,
+        };
+        results.push(result);
+        details.push({
+          caseId: scenario.caseId, requestedUrl,
+          serverHealthyBeforeRequest: serverHealth.healthy,
+          httpStatus, errorClass,
+          errorDetail: (trace?.errors ?? ["no trace produced"]).join("; "),
+          validEvidence, passed: false,
         });
+        console.log("[SelfImprove] HOLDOUT_CASE_RESULT", JSON.stringify({
+          caseId: scenario.caseId, passed: false, errorClass,
+          httpStatus, validEvidence,
+          errors: trace?.errors ?? ["no trace produced"],
+        }));
         continue;
       }
       const invariantResults = scenario.expectedInvariants.map((inv) => {
@@ -532,20 +600,48 @@ async function executeHoldoutCorpus(runId: string): Promise<HoldoutRunResult> {
       const maxSev = failed.length
         ? (failed.reduce((a, b) => (severityRank(a.severity) >= severityRank(b.severity) ? a : b)).severity as HoldoutCaseResult["maxSeverityFailed"])
         : null;
-      results.push({
+      const casePassed = failed.length === 0;
+      const result: HoldoutCaseResult = {
         caseId: scenario.caseId,
-        passed: failed.length === 0,
+        passed: casePassed,
         maxSeverityFailed: maxSev,
         invariantResults,
         errors: trace.errors,
         errorClass,
+      };
+      results.push(result);
+      details.push({
+        caseId: scenario.caseId, requestedUrl,
+        serverHealthyBeforeRequest: serverHealth.healthy,
+        httpStatus, errorClass,
+        errorDetail: trace.errors?.join("; ") ?? "",
+        validEvidence, passed: casePassed,
       });
+      console.log("[SelfImprove] HOLDOUT_CASE_RESULT", JSON.stringify({
+        caseId: scenario.caseId, passed: casePassed, errorClass,
+        httpStatus, validEvidence,
+        invariantCount: invariantResults.length,
+        failedCount: failed.length,
+      }));
     } catch (e) {
+      const errorMsg = `holdout execution error: ${e instanceof Error ? e.message : String(e)}`;
       results.push({
         caseId: scenario.caseId, passed: false, maxSeverityFailed: null,
-        invariantResults: [], errors: [`holdout execution error: ${e instanceof Error ? e.message : String(e)}`],
+        invariantResults: [], errors: [errorMsg],
         errorClass: "infrastructure_failure",
       });
+      details.push({
+        caseId: scenario.caseId, requestedUrl,
+        serverHealthyBeforeRequest: serverHealth.healthy,
+        httpStatus: 0, errorClass: "infrastructure_failure",
+        errorDetail: errorMsg,
+        validEvidence: false, passed: false,
+      });
+      console.log("[SelfImprove] HOLDOUT_CASE_RESULT", JSON.stringify({
+        caseId: scenario.caseId, passed: false, errorClass: "infrastructure_failure",
+        httpStatus: 0, validEvidence: false,
+        errors: [errorMsg],
+      }));
     }
   }
 
@@ -553,11 +649,19 @@ async function executeHoldoutCorpus(runId: string): Promise<HoldoutRunResult> {
     (r) => !r.passed && r.maxSeverityFailed && (r.maxSeverityFailed === "critical" || r.maxSeverityFailed === "major"),
   );
 
-  const holdoutResult: HoldoutRunResult = { executedAt, corpusHash, results, regressed };
+  const holdoutResult: HoldoutRunResult = { executedAt, corpusHash, results, details, regressed };
   const state = getState();
   if (state) state.holdoutExecutedAt = executedAt;
   const r = atomicWriteJsonSync(`.runtime-data/self-improve/${runId}/holdout-results.json`, holdoutResult);
   if (!r.ok) console.error(`[SelfImprove] WARNING: holdout results write failed: ${r.error}`);
+  console.log(`[SelfImprove] HOLDOUT_DONE`, JSON.stringify({
+    total: results.length,
+    passed: results.filter((x) => x.passed).length,
+    regressed,
+    validCoverage: `${details.filter((d) => d.validEvidence).length}/${details.length}`,
+    infraFailures: details.filter((d) => d.errorClass === "infrastructure_failure").length,
+    modelUnavailable: details.filter((d) => d.errorClass === "model_unavailable").length,
+  }));
   console.log(`[SelfImprove] Holdout: ${results.filter((x) => x.passed).length}/${results.length} passed, regressed=${regressed}`);
   return holdoutResult;
 }
